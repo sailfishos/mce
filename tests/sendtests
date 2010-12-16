@@ -1,0 +1,25 @@
+#! /bin/sh
+DBUS_PATH=/com/nokia/mce/request
+DBUS_DEST=com.nokia.mce
+DBUS_INTERFACE=com.nokia.mce.request
+DBUS_SEND=dbus-send
+DBUS_SEND_FLAGS_REPLY='--system --type=method_call --print-reply'
+DBUS_SEND_FLAGS='--system --type=method_call'
+
+# set device mode to normal
+$DBUS_SEND $DBUS_SEND_FLAGS --dest=$DBUS_DEST $DBUS_PATH $DBUS_INTERFACE.req_device_mode_change string:normal
+
+# should return normal
+$DBUS_SEND $DBUS_SEND_FLAGS_REPLY --dest=$DBUS_DEST $DBUS_PATH $DBUS_INTERFACE.get_device_mode
+
+# set device mode to flight
+$DBUS_SEND $DBUS_SEND_FLAGS --dest=$DBUS_DEST $DBUS_PATH $DBUS_INTERFACE.req_device_mode_change string:flight
+
+# should return flight
+$DBUS_SEND $DBUS_SEND_FLAGS_REPLY --dest=$DBUS_DEST $DBUS_PATH $DBUS_INTERFACE.get_device_mode
+
+# set device mode to offline
+$DBUS_SEND $DBUS_SEND_FLAGS --dest=$DBUS_DEST $DBUS_PATH $DBUS_INTERFACE.req_device_mode_change string:offline
+
+# should return flight (since offline and flight are equivalent for now)
+$DBUS_SEND $DBUS_SEND_FLAGS_REPLY --dest=$DBUS_DEST $DBUS_PATH $DBUS_INTERFACE.get_device_mode

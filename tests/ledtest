@@ -1,0 +1,50 @@
+#! /bin/sh
+DBUS_PATH=/com/nokia/mce/request
+DBUS_DEST=com.nokia.mce
+DBUS_INTERFACE=$DBUS_DEST.request
+DBUS_SEND=dbus-send
+DBUS_SEND_FLAGS_REPLY='--system --type=method_call --print-reply'
+DBUS_SEND_FLAGS='--system --type=method_call'
+
+# dbus-send --system --type=method_call --print-reply --dest=com.nokia.mce /com/nokia/mce/request com.nokia.mce.request.
+echo Enabling led
+$DBUS_SEND $DBUS_SEND_FLAGS --dest=$DBUS_DEST $DBUS_PATH $DBUS_INTERFACE.req_led_enable
+
+echo Activating poweron led pattern # priority 1
+$DBUS_SEND $DBUS_SEND_FLAGS --dest=$DBUS_DEST $DBUS_PATH $DBUS_INTERFACE.req_led_pattern_activate string:PatternPowerOn
+
+# sleep for 10 seconds
+sleep 10
+
+echo Activating error led pattern # priority 0
+$DBUS_SEND $DBUS_SEND_FLAGS --dest=$DBUS_DEST $DBUS_PATH $DBUS_INTERFACE.req_led_pattern_activate string:PatternError
+
+# sleep for 10 seconds
+sleep 10
+
+echo Activating poweroff led pattern # priority 2 -- should not make a difference
+$DBUS_SEND $DBUS_SEND_FLAGS --dest=$DBUS_DEST $DBUS_PATH $DBUS_INTERFACE.req_led_pattern_activate string:PatternPowerOff
+
+# sleep for 10 seconds
+sleep 10
+
+echo Deactivating error led pattern # should cause poweron to be visible
+$DBUS_SEND $DBUS_SEND_FLAGS --dest=$DBUS_DEST $DBUS_PATH $DBUS_INTERFACE.req_led_pattern_deactivate string:PatternError
+
+# sleep for 10 seconds
+sleep 10
+
+echo Deactivating poweron led pattern # should cause poweroff to be visible
+$DBUS_SEND $DBUS_SEND_FLAGS --dest=$DBUS_DEST $DBUS_PATH $DBUS_INTERFACE.req_led_pattern_deactivate string:PatternPowerOn
+
+# sleep for 10 seconds
+sleep 10
+
+echo Deactivating poweroff led pattern
+$DBUS_SEND $DBUS_SEND_FLAGS --dest=$DBUS_DEST $DBUS_PATH $DBUS_INTERFACE.req_led_pattern_deactivate string:PatternPowerOff
+
+# sleep for 10 seconds
+sleep 10
+
+echo Disabling led
+$DBUS_SEND $DBUS_SEND_FLAGS --dest=$DBUS_DEST $DBUS_PATH $DBUS_INTERFACE.req_led_disable

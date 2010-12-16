@@ -1,0 +1,7 @@
+sbin
+etc/mce
+etc/gconf/schemas
+var/lib/mce
+usr/lib/mce
+usr/share/mce
+usr/share/backup-framework/applications

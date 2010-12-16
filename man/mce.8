@@ -1,0 +1,165 @@
+.TH MCE 8 "Jun 16, 2010" "Nokia"
+
+.SH NAME
+mce \- daemon that provides mode control functionality
+
+.SH SYNOPSIS
+.B mce
+[\fIOPTION\fP]...
+
+.SH DESCRIPTION
+.B mce
+is a daemon that provides mode control functionality.
+
+On startup,
+.B mce
+will read the initial states of the various radios from the
+radio states file and broadcast these states.
+
+Notifiers are registered for various GConf entries,
+as well as
+\%D\(hyBus message handlers for the method calls that
+.B mce
+provides, and \%D\(hyBus signal handlers for the signals that
+.B mce
+listens to.
+
+.B mce
+will also listen to key events from the power button.
+If the user preses the power button, the action configured in
+.I /etc/mce/mce.ini
+will be executed.
+
+Among the other functionality handled by
+.B mce
+is the logic for the touch screen and keypad lock,
+LED patterns and display backlight control.
+
+.SH OPTIONS
+.TP
+.BR \-d , \ \-\-daemonflag
+Run
+.B mce
+as a daemon
+.TP
+.B \-\-force\-syslog
+Log to syslog even when mce isn't run as a daemon
+.TP
+.B \-\-force\-stderr
+Log to stderr even when mce is run as a daemon
+.TP
+.BR \-S , \ \-\-session
+Use the session bus instead of the system bus for \%D\(hyBus
+communication
+.TP
+.B \-\-show\-module\-info
+Show information about loaded modules
+.TP
+.B \-\-debug\-mode
+Start mce even if communication with dsme fails
+.TP
+.B \-\-quiet
+Decrease debug message verbosity
+.TP
+.B \-\-verbose
+Increase debug message verbosity
+.TP
+.B \-\-help
+Display help for the command
+.TP
+.B \-\-version
+Display version and author information
+
+.SH GCONF KEYS
+.TP
+.I /system/osso/dsm/dsm/locks/touchscreen_keypad_autolock_enabled
+.B bool
+(read only)
+.br
+If this key is set to
+.BR true ,
+the touchscreen/keypad lock
+will automatically be enabled when the screen blanks.
+If this key is set to
+.BR false ,
+the lock will only be activated if the user triggers it
+manually.
+
+.TP
+.I /system/osso/dsm/display/display_brightness
+.B int
+(read only)
+.br
+The brightness profile to use for the screen.
+Valid values range from
+.B 1
+to
+.BR 5 .
+
+.TP
+.I /system/osso/dsm/display/display_dim_timeout
+.B int
+(read only)
+.br
+Number of seconds to wait before the screen is dimmed.
+
+.TP
+.I /system/osso/dsm/display/display_blank_timeout
+.B int
+(read only)
+.br
+Number of seconds to wait before the screen is blanked.
+
+.SH FILES
+.TP
+.I /var/run/mce.pid
+PID\(hyfile used by
+.BR mce .
+.TP
+.I /var/run/mce/boot
+File used by
+.B mce
+to detect whether the program was started on bootup or
+restarted due to a crash/manual restart.
+.TP
+.I /var/lib/mce/radio_states
+Stores the system radio states.
+This file should never be edited manually,
+and shall not be modified by any other process than
+.BR mce ,
+since the file is only read when
+.B mce
+is started.
+
+.SH SEE ALSO
+.BR mcetool (8)
+
+.SH HISTORY
+Jun 16 2010: Updated for new and modified functionality.
+.br
+Jun 13 2010: Various improvements.
+.br
+May 13 2010: Updated for modified functionality.
+.br
+Oct 19 2007: Use escape\(hycodes for hyphens.
+.br
+Apr 12 2007: Minor fixes.
+.br
+Oct 23 2006: Minor fixes.
+.br
+Oct 3 2006: Fix typo.
+.br
+Sep 23 2005: Fixed minor typos.
+.br
+Sep 21 2005: Initial version of this manual page.
+
+.SH AUTHOR
+mce and its manual page is written by
+David Weinehall <\fIdavid.weinehall@nokia.com\fP>
+
+.SH REPORTING BUGS
+Report bugs to
+<\fIdavid.weinehall@nokia.com\fP>.
+
+.SH COPYRIGHT
+Copyright \(co 2005\(hy2010 Nokia Corporation.  All rights reserved.

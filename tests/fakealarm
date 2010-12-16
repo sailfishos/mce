@@ -1,0 +1,82 @@
+#! /bin/sh
+program=fakealarm
+version=1.0.2
+
+DBUS_PATH=/com/nokia/voland/signal
+DBUS_INTERFACE=com.nokia.voland.signal
+DBUS_SEND=dbus-send
+DBUS_SEND_FLAGS='--system --type=signal'
+
+usage()
+{
+	printf "Usage: %s [OPTION]... [STATE]\n" $program
+	printf "Test MCE by emulating alarm UI state signals\n\n"
+
+	printf "  --help      display this help and exit\n"
+	printf "  --version   output version information and exit\n\n"
+
+	printf "Valid states are:\n\n"
+
+	printf "  on-screen\n"
+	printf "  not-ringing\n"
+	printf "  not-on-screen\n"
+}
+
+error()
+{
+	usage
+	exit 1
+}
+
+version()
+{
+	printf "%s %s\n" $program $version
+}
+
+alarm_dialog_on_screen()
+{
+# Signal that the alarm dialog is on screen and alarm is ringing
+	$DBUS_SEND $DBUS_SEND_FLAGS $DBUS_PATH $DBUS_INTERFACE.visual_reminders_status uint32:0
+}
+
+alarm_dialog_not_ringing()
+{
+# Signal that the alarm dialog is on screen, but alarm is not ringing
+	$DBUS_SEND $DBUS_SEND_FLAGS $DBUS_PATH $DBUS_INTERFACE.visual_reminders_status uint32:2
+}
+
+alarm_dialog_not_on_screen()
+{
+# Signal that the alarm dialog is not on screen
+	$DBUS_SEND $DBUS_SEND_FLAGS $DBUS_PATH $DBUS_INTERFACE.visual_reminders_status uint32:1
+}
+
+[ $# -eq 0 ] && error
+
+# setup command line options
+while ! [ $# -eq 0 ]; do
+	case $1 in
+	on-screen)
+		alarm_dialog_on_screen
+		;;
+	not-ringing)
+		alarm_dialog_not_ringing
+		;;
+	not-on-screen)
+		alarm_dialog_not_on_screen
+		;;
+	--help)
+		usage
+		exit 0
+		;;
+	--version)
+		version
+		exit 0
+		;;
+	*)
+		usage
+		exit 1
+		;;
+	esac
+	shift
+done

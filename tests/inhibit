@@ -1,0 +1,155 @@
+#! /bin/sh
+program=inhibit
+version=1.0.0
+
+GCONFTOOL=gconftool-2
+
+GCONF_DISPLAY_BLANKING_INHIBIT_MODE_PATH=/system/osso/dsm/display/inhibit_blank_mode
+
+usage()
+{
+	printf "Usage: %s [OPTION]... [MODE]...\n" $program
+	printf "Get/set display dimming and blanking inhibit mode\n\n"
+
+	printf "  --help      display this help and exit\n"
+	printf "  --version   output version information and exit\n\n"
+
+	printf "Valid modes are:\n\n"
+
+	printf "  no-inhibit\n"
+	printf "  stay-on-with-charger\n"
+	printf "  stay-dim-with-charger\n"
+	printf "  stay-on\n"
+	printf "  stay-dim\n"
+}
+
+version()
+{
+	printf "%s %s\n" $program $version
+}
+
+gconf_unset_key()
+{
+	$GCONFTOOL --unset $1
+}
+
+gconf_set()
+{
+	keytype=$($GCONFTOOL --get-type $1 2> /dev/null)
+
+	# If the key is not set, accept any keytype
+	if [ x"$keytype" = x"" ]; then
+		keytype=$2
+	fi
+
+	if [ x"$keytype" != x"$2" ]; then
+		abort "Got type $keytype for GConf key $1, expected $2"
+	fi
+
+	$GCONFTOOL --set --type=$2 $1 $3
+	sleep 1
+}
+
+gconf_set_int()
+{
+	gconf_set $1 int $2
+}
+
+gconf_get()
+{
+	keytype=$($GCONFTOOL --get-type $2 2> /dev/null)
+
+	status=0
+
+	# if the key is not set, don't bother reading it
+	if [ x"$keytype" = x"" ]; then
+		status=42
+		retval=0
+		return
+	fi
+
+	if [ x"$keytype" != x"$1" ]; then
+		abort "Got type $keytype for GConf key $2, expected $1"
+	fi
+
+	retval=$($GCONFTOOL --get $2 2> /dev/null)
+}
+
+gconf_get_int()
+{
+	gconf_get int $1
+	# This looks stupid; it's just to allow altering
+	# of the return value
+	tmp=$retval
+	retval=$tmp
+}
+
+status()
+{
+	# Get current value
+	gconf_get_int $GCONF_DISPLAY_BLANKING_INHIBIT_MODE_PATH
+
+	case $retval in
+	0)
+		mode="no inhibit"
+		;;
+	1)
+		mode="inhibit blank+dim if charger is connected"
+		;;
+	2)
+		mode="inhibit blank if charger is connected"
+		;;
+	3)
+		mode="inhibit blank unconditionally"
+		;;
+	4)
+		mode="inhibit dim unconditionally"
+		;;
+	*)
+		mode="invalid"
+		;;
+	esac
+
+	printf "Inhibit mode: %s\n" "$mode"
+}
+
+[ $# -eq 0 ] && ( status; exit 0 )
+
+# setup command line options
+while ! [ $# -eq 0 ]; do
+	case $1 in
+	no-inhibit)
+		# do not inhibit blanking or dimming
+		gconf_set_int $GCONF_DISPLAY_BLANKING_INHIBIT_MODE_PATH 0
+		;;
+	stay-on-with-charger)
+		# if charger is connected, inhibit blanking and dimming
+		gconf_set_int $GCONF_DISPLAY_BLANKING_INHIBIT_MODE_PATH 1
+		;;
+	stay-dim-with-charger)
+		# if charger is connected, inhibit blanking, but not dimming
+		gconf_set_int $GCONF_DISPLAY_BLANKING_INHIBIT_MODE_PATH 2
+		;;
+	stay-on)
+		# inhibit blanking and dimming
+		gconf_set_int $GCONF_DISPLAY_BLANKING_INHIBIT_MODE_PATH 3
+		;;
+	stay-dim)
+		# inhibit blanking, but not dimming
+		gconf_set_int $GCONF_DISPLAY_BLANKING_INHIBIT_MODE_PATH 4
+		;;
+	--help)
+		usage
+		exit 0
+		;;
+	--version)
+		version
+		exit 0
+		;;
+	*)
+		usage
+		exit 1
+		;;
+	esac
+	shift
+done

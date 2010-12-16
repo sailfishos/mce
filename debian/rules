@@ -1,0 +1,95 @@
+#!/usr/bin/make -f
+# debian/rules for mce using debhelper.
+# Copyright © 2004-2010 Nokia Corporation and/or its subsidiary(-ies).
+
+# Uncomment this to turn on verbose mode.
+#export DH_VERBOSE=1
+
+# This has to be exported to make some magic below work.
+export DH_OPTIONS
+
+pkgdir = $(CURDIR)/debian/tmp
+
+makefileversion := $$(grep -m1 '^VERSION' Makefile | sed -e 's/VERSION *:= *//')
+changelogversion := $$(grep -m1 'mce (' debian/changelog | sed -e 's/mce (\(.*\)).*/\1/;s/\(^'$(makefileversion)'\).*/\1/')
+
+CC = gcc
+CFLAGS = -Wall -g
+LDFLAGS = -Wl,--as-needed
+
+ifneq (,$(findstring noopt,$(DEB_BUILD_OPTIONS)))
+	CFLAGS += -O0
+else
+	CFLAGS += -O2
+endif
+
+# Use soft-float and thumb mode if enabled
+ifneq (,$(findstring thumb,$(DEB_BUILD_OPTIONS)))
+	CFLAGS += -mthumb
+endif
+
+.PHONY: clean
+clean:
+	dh_testdir
+	dh_testroot
+	rm -f build-stamp
+
+	$(MAKE) distclean
+
+	dh_clean
+
+.PHONY: check
+check:
+	@if [ x"$(makefileversion)" != x"$(changelogversion)" ]; then \
+		printf "error: version-number mismatch\n"; \
+		printf "Makefile version: $(makefileversion)\n"; \
+		printf "changelog version: $(changelogversion)\n"; \
+		exit 1; \
+	fi
+
+build-stamp:
+	dh_testdir
+
+	$(MAKE) CC="$(CC)" CFLAGS="$(CFLAGS)"
+
+	touch build-stamp
+
+.PHONY: build
+build: check build-stamp
+
+.PHONY: install
+install:
+	dh_testdir
+	dh_testroot
+	dh_clean -k
+	dh_installdirs
+	$(MAKE) install DESTDIR="$(pkgdir)"
+
+.PHONY: binary-indep
+binary-indep:
+#nothing to see here, move along
+
+.PHONY: binary-arch
+binary-arch: build install
+	dh_testdir
+	dh_testroot
+	dh_installdocs
+	dh_installman
+	dh_installchangelogs
+	dh_install -s
+	dh_gconf
+	dh_strip -pmce --dbg-package=mce-dbg
+	dh_strip -pmcetools --dbg-package=mcetools-dbg
+	dh_link
+	dh_compress
+	dh_fixperms
+	dh_installdeb
+	dh_shlibdeps
+	dh_gencontrol
+	dh_md5sums
+	dh_builddeb
+	aegis-deb-add -control debian/mce/DEBIAN/control .. debian/mce.aegis=_aegis
+	aegis-deb-add -control debian/mcetools/DEBIAN/control .. debian/mcetools.aegis=_aegis
+
+.PHONY: binary
+binary: binary-indep binary-arch

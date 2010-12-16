@@ -1,0 +1,166 @@
+.TH MCE 8 "Jun 16, 2010" "Nokia"
+
+.SH NAMN
+mce \- ett program som tillhandah\(oaller l\(:ageskontrollfunktionalitet
+
+.SH SYNOPSIS
+.B mce
+[\fIFLAGGA\fP]...
+
+.SH BESKRIVNING
+.B mce
+\(:ar ett program som tillhandah\(oaller
+l\(:ageskontrollfunktionalitet.
+
+Vid start l\(:aser
+.B mce
+in vilka tillst\(oand de de olika radiorna skall ha initialt fr\(oan
+radiotillst\(oandsfilen och uts\(:ander sedan dessa tillst\(oand.
+
+\(:Andringshanterare registreras f\(:or diverse GConfnycklar,
+samt meddelandehanterare f\(:or de \%D\(hyBus\(hy\:metodanrop som
+.B mce
+tillhandah\(oaller och signalhanterare f\(:or de \%D\(hyBus\(hy\:signaler
+som
+.B mce
+lyssnar efter.
+
+.B mce
+lyssnar \(:aven efter tangenttryckningar fr\(oan
+av/p\(oa\(hyknappen.  Om anv\(:andaren trycker p\(oa
+av/p\(oa\(hyknappen utf\(:ors den handling som angivits i
+.I /etc/mce/mce.ini.
+
+Bland den \(:ovriga funktionalitet som hanteras av
+.B mce
+finns logiken f\(:or trycksk\(:arms\(hy och tangentl\(oaset,
+lysdiodsm\(:onster och ljusstyrkekontroll f\(:or
+bildsk\(:armen.
+
+.SH FLAGGOR
+.TP
+.BR \-d , \ \-\-daemonflag
+K\(:or
+.B mce
+som en bakgrundsprocess ("daemon")
+.TP
+.B \-\-force\-syslog
+Logga till syslog \(:aven om mce inte k\(:ors
+som en bakgrundsprocess ("daemon")
+.TP
+.B \-\-force\-stderr
+Logga till stderr \(:aven om mce k\(:ors
+som en bakgrundsprocess ("daemon")
+.TP
+.BR \-S , \ \-\-session
+Anv\(:and sessionsbussen ist\(:allet f\(:or systembussen
+vid \%D\(hyBus\:\(hykommunikation
+.TP
+.B \-\-show\-module\-info
+Visa information om inl\(:asta moduler
+.TP
+.B \-\-debug\-mode
+Starta mce \(:aven om kommunikation med dsme misslyckas
+.TP
+.B \-\-quiet
+Minska m\(:angden debuginformation
+.TP
+.B \-\-verbose
+\(:Oka m\(:angden debuginformation
+.TP
+.B \-\-help
+Visa en hj\(:alptext f\(:or kommandot
+.TP
+.B \-\-version
+Visa versionsinformation och information om upphovsr\(:att
+
+.SH GCONF\(hyNYCKLAR
+.TP
+.I /system/osso/dsm/dsm/locks/touchscreen_keypad_autolock_enabled
+.B bool
+(enbart l\(:asning)
+.br
+Om denna nyckel har v\(:ardet
+.BR true ,
+kommer trycksk\(:arms\(hy och tangentl\(oaset att aktiveras n\(:ar sk\(:armen
+sl\(:acks.
+Om nyckeln har v\(:ardet
+.BR false ,
+aktiveras l\(oaset endast n\(:ar anv\(:andaren manuellt triggar
+det.
+
+.TP
+.I /system/osso/dsm/display/display_brightness
+.B int
+(l\(:asning/skrivning)
+.br
+Den ljusstyrkeprofil som skall anv\(:andas f\(:or sk\(:armen.
+Giltiga v\(:arden \(:ar
+.B 1
+till
+.BR 5 .
+
+.TP
+.I /system/osso/dsm/display/display_dim_timeout
+.B int
+(enbart l\(:asning)
+.br
+V\(:antetid i antal sekunder innan sk\(:armens ljusstyrka d\(:ampas.
+
+.TP
+.I /system/osso/dsm/display/display_blank_timeout
+.B int
+(enbart l\(:asning)
+.br
+V\(:antetid i sekunder innan sk\(:armen sl\(:acks.
+
+.SH FILER
+.TP
+.I /var/run/mce.pid
+Processidentitetsfil ("PID\(hyfile") som anv\(:ands av
+.BR mce .
+.TP
+.I /var/run/mce/boot
+Fil som anv\(:ands av
+.B mce
+f\(:or att uppt\(:acka huruvida programmet startats vid
+uppstart, eller om det startats om p\(oa grund av en
+krasch/manuell omstart.
+.TP
+.I /var/lib/mce/radio_states
+Inneh\(oaller radiotillst\(oand.
+Den h\(:ar filen b\(:or aldrig \(:andras manuellt,
+och f\(oar inte modifieras av andra processer \(:an
+.BR mce ,
+eftersom filen endast l\(:ases av
+.B mce
+n\(:ar programmet startar.
+
+.SH SE \(:AVEN
+.BR mcetool (8)
+
+.SH HISTORIK
+Jun 16 2010: Uppdaterad f\(:or ny och \(:andrad funktionalitet.
+.br
+Jun 13 2010: Diverse f\(:orb\(:attringar.
+.br
+Maj 13 2010: Uppdaterad f\(:or \(:andrad funktionalitet.
+.br
+Okt 19 2007: Anv\(:and escape\(hysekvenser ist\(:allet f\(:or bindestreck.
+.br
+Apr 12 2007: Anv\(:and escape\(hysekvenser ist\(:allet f\(:or latin\(hy1.
+.br
+Okt 23 2006: Sm\(:arre r\(:attelser.
+.br
+Sep 23 2005: F\(:orsta svenska versionen av manualsidan.
+
+.SH F\(:ORFATTARE
+mce och dess manualsida \(:ar skriven av
+David Weinehall <\fIdavid.weinehall@nokia.com\fP>
+
+.SH RAPPORTERA FEL
+Rapportera fel till
+<\fIdavid.weinehall@nokia.com\fP>.
+
+.SH UPPHOVSR\(:ATT
+Copyright \(co 2005\(hy2010 Nokia Corporation.  Alla r\(:attigheter f\(:orbeh\(oallna.

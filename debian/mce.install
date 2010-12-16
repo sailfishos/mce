@@ -1,0 +1,7 @@
+debian/tmp/etc/mce
+debian/tmp/etc/gconf
+debian/tmp/var
+debian/tmp/sbin/mce
+debian/tmp/usr/lib/mce
+debian/tmp/usr/share/mce
+debian/tmp/usr/share/backup-framework/applications

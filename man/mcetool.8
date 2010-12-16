@@ -1,0 +1,178 @@
+.TH MCETOOL 8 "Oct 27, 2010" "Nokia"
+
+.SH NAME
+mcetool \- tool to test mode control functionality
+
+.SH SYNOPSIS
+.B mcetool
+[\fIOPTION\fP]...
+
+.SH DESCRIPTION
+.B mcetool
+provides several means of testing mode control functionality,
+and to set or display mode related settings.
+
+.SH OPTIONS
+.TP
+.B \-\-blank\-prevent
+Send blank prevent request to MCE
+.TP
+.B \-\-cancel\-blank\-prevent
+Send cancel blank prevent request to MCE
+.TP
+.B \-\-unblank\-screen
+Send unblank screen request to MCE
+.TP
+.B \-\-dim\-screen
+Send screen dim request to MCE
+.TP
+.B \-\-blank\-screen
+Send screen blank request to MCE
+.TP
+.B \-\-set\-display\-brightness
+Set the display brightness level; valid levels are:
+1\-5
+.TP
+.B \-\-set\-inhibit\-mode
+Set the screen blanking inhibit mode; valid modes are:
+"disabled", "stay\-on\-with\-charger", "stay\-dim\-with\-charger",
+"stay\-on" and "stay\-dim"
+.TP
+.B \-\-set\-cabc\-mode
+Set the CABC mode; valid modes are:
+"off", "ui", "still\-image" and "moving\-image"
+.TP
+.B \-\-set\-call\-state
+Set the call state STATE:TYPE tuple; valid states are:
+"none", "ringing", "active" and "service".
+Valid types are:
+"normal" and "emergency"
+.TP
+.B \-\-enable\-radio
+Enable the specified radio; valid radios are:
+"master", "wireless", "cellular" and "bluetooth".
+"master" acts as master switch; individual radios are only
+considered if the master switch is enabled
+.TP
+.B \-\-disable\-radio
+Disable the specified radio; valid radios are:
+"master", "wireless", "cellular" and "bluetooth".
+"master" acts as master switch; individual radios are only
+considered if the master switch is enabled
+.TP
+.B \-\-set\-power\-saving\-mode
+Set the automatic power saving mode; valid modes are:
+"enabled" and "disabled"
+.TP
+.B \-\-set\-forced\-psm
+Force enable the power saving mode; valid modes are:
+"enabled" and "disabled"
+.TP
+.B \-\-set\-psm\-threshold
+Set the battery level threshold for the automatic power saving
+mode; valid values are:
+10, 20, 30, 40, 50
+.TP
+.B \-\-set\-tklock\-mode
+Set the touchscreen/keypad lock mode; valid values are:
+"locked", "locked\-dim", "silent\-locked", "silent\-locked\-dim",
+"unlocked" and "silent\-unlocked"
+.TP
+.B \-\-enable\-led
+Enable the LED framework
+.TP
+.B \-\-disable\-led
+Disable the LED framework
+.TP
+.B \-\-activate\-led\-pattern
+Activate a LED pattern
+.TP
+.B \-\-deactivate\-led\-pattern
+Deactivate a LED pattern
+.TP
+.B \-\-powerkey\-event
+Trigger a powerkey event; valid values are:
+"short", "double" and "long"
+.TP
+.B \-\-status
+Output the MCE status even when executing a command
+.TP
+.B \-\-block
+Block after executing commands; useful for commands that use
+D\-Bus caller name monitoring
+.TP
+.B \-S, \-\-session
+Use the session bus instead of the system bus for \%D\(hyBus communication
+.TP
+.B \-\-help
+Display help for the command
+.TP
+.B \-\-version
+Display version and author information
+
+.SH SEE ALSO
+.BR mce (8)
+
+.SH HISTORY
+oct 27 2010: Updated for new and removed functionality.
+.br
+Jun 16 2010: Updated for new functionality.
+.br
+Jun 15 2010: Updated for new functionality.
+.br
+Jun 2 2010: Updated for new functionality.
+.br
+May 11 2010: Updated for new functionality.
+.br
+May 5 2010: Updated for new functionality.
+.br
+May 4 2010: Updated for new functionality.
+.br
+May 3 2010: Updated for modified behaviour.
+.br
+Apr 28 2010: Updated for new functionality.
+.br
+Dec 2 2009: Updated for removed functionality.
+.br
+Mar 16 2009: Updated for new functionality.
+.br
+Jan 27 2009: Updated for new and removed functionality.
+.br
+Jan 07 2009: Updated for new and removed functionality.
+.br
+May 20 2008: Updated for new functionality.
+.br
+Oct 19 2007: Use escape\(hycodes for hyphens.
+.br
+Sep 4 2007: Updated for new functionality.
+.br
+Apr 12 2007: Minor fixes.
+.br
+Oct 23 2006: Minor fixes.
+.br
+Oct 11 2005: Updated for new functionality.
+.br
+Oct 10 2005: Updated for new functionality.
+.br
+Oct 6 2005: Updated for new functionality.
+.br
+Oct 5 2005: Updated for new functionality.
+.br
+Oct 4 2005: Updated for new functionality.
+.br
+Sep 23 2005: Updated for new functionality.
+.br
+Sep 21 2005: Fixed typos.
+.br
+Sep 19 2005: Initial version of this manual page.
+
+.SH AUTHOR
+mcetool and its manual page is written by
+David Weinehall <\fIdavid.weinehall@nokia.com\fP>
+
+.SH REPORTING BUGS
+Report bugs to
+<\fIdavid.weinehall@nokia.com\fP>.
+
+.SH COPYRIGHT
+Copyright \(co 2005\(hy2010 Nokia Corporation.  All rights reserved.

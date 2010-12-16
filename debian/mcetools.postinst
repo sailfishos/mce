@@ -1,0 +1,6 @@
+#! /bin/sh -e
+
+#DEBHELPER#
+
+# Remove old D-Bus configuration
+rm -f /etc/dbus-1/system.d/mcetool.conf

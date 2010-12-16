@@ -1,0 +1,44 @@
+Source: mce
+Section: misc
+Priority: optional
+Maintainer: David Weinehall <david.weinehall@nokia.com>
+Uploaders: Philippe De Swert <philippe.de-swert@nokia.com>, Pekka Lundström <pekka.lundstrom@nokia.com>, Tuomo Tanskanen <ext-tuomo.1.tanskanen@nokia.com>
+Build-Depends: debhelper (>= 5.0.0), mce-dev (>= 1.10.21), pkg-config, libglib2.0-dev (>= 2.18.0), libdbus-1-dev (>= 1.0.2), libdbus-glib-1-dev, libdsme0.2.0-dev (>= 0.58), libgconf2-dev, linux-kernel-headers (>= 2.6.32-20100102) | linux-libc-dev (>= 2.6.32), libconic0-dev (>= 0.15-0.1), dpkg-dev (>= 1.13.19), libcal-dev (>= 0.2.4), libi2c-dev, aegis-builder (>= 1.4), libsysinfo-dev
+Standards-Version: 3.8.4
+
+Package: mce
+Architecture: any
+Depends: dbus, ${shlibs:Depends}, ${misc:Depends}
+Recommends: dsme (>= 0.30.11), devicelock (>= 0.3.3)
+Description: the Mode Control Entity for Nokia mobile computers
+ This package contains the Mode Control Entity which provides
+ mode management features.  This is a daemon that is the backend
+ for many features on Nokia's mobile computers.
+
+Package: mce-dbg
+Section: devel
+Priority: extra
+Architecture: any
+Depends: mce (= ${binary:Version}), ${misc:Depends}
+Description: debug symbols for mce
+ This package contains the debug symbols for the Mode Control Entity.
+
+Package: mcetools
+Section: utils
+Architecture: any
+Depends: dbus, ${shlibs:Depends}, ${misc:Depends}
+Recommends: mce (>= 1.3.1)
+Description: tools for interacting with mce
+ This package contains tools that can be used to interact with
+ the Mode Control Entity and to get mode information.
+
+Package: mcetools-dbg
+Section: devel
+Priority: extra
+Architecture: any
+Depends: mcetools (= ${binary:Version}), ${misc:Depends}
+Recommends: mce (>= 1.3.1)
+Description: debug symbols for mcetools
+ This package contains tools that can be used to interact with
+ the Mode Control Entity and to get mode information with all
+ debugging information.
