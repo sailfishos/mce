@@ -75,7 +75,6 @@
 					 * append_output_trigger_to_datapipe(),
 					 * remove_output_trigger_from_datapipe()
 					 */
-#include "connectivity.h"		/* get_connectivity_status() */
 
 /** Charger state */
 static gboolean charger_connected = FALSE;
@@ -88,58 +87,8 @@ static gboolean dsme_disabled = FALSE;
 /** ID for state transition timer source */
 static guint transition_timeout_cb_id = 0;
 
-/** Soft poweroff connectivity policy when connected to charger */
-static gint softoff_connectivity_policy_charger =
-					DEFAULT_SOFTOFF_CONNECTIVITY_CHARGER;
-
-/** Soft poweroff connectivity policy when running on battery */
-static gint softoff_connectivity_policy_battery =
-					DEFAULT_SOFTOFF_CONNECTIVITY_BATTERY;
-
-/** Soft poweroff connectivity policy on poweron */
-static gint softoff_connectivity_policy_poweron =
-					DEFAULT_SOFTOFF_CONNECTIVITY_POWERON;
-
 /** Soft poweroff charger connect policy */
-static gint softoff_charger_connect_policy =
-					DEFAULT_SOFTOFF_CHARGER_CONNECT;
-
-/** Previous master radio state */
-static gint previous_radio_state = -1;
-
-/** Mapping of soft poweroff connectivity integer <-> policy string */
-static const mce_translation_t soft_poweroff_connectivity_translation[] = {
-	{
-		.number = SOFTOFF_CONNECTIVITY_RETAIN,
-		.string = SOFTOFF_CONNECTIVITY_RETAIN_STR
-	}, {
-		.number = SOFTOFF_CONNECTIVITY_SOFT_OFFLINE,
-		.string = SOFTOFF_CONNECTIVITY_SOFT_OFFLINE_STR
-	}, {
-		.number = SOFTOFF_CONNECTIVITY_FORCE_OFFLINE,
-		.string = SOFTOFF_CONNECTIVITY_FORCE_OFFLINE_STR
-	}, { /* MCE_INVALID_TRANSLATION marks the end of this array */
-		.number = MCE_INVALID_TRANSLATION,
-		.string = NULL
-	}
-};
-
-/** Mapping of soft poweron connectivity integer <-> policy string */
-static const mce_translation_t soft_poweron_connectivity_translation[] = {
-	{
-		.number = SOFTOFF_CONNECTIVITY_RETAIN,
-		.string = SOFTOFF_CONNECTIVITY_RETAIN_STR
-	}, {
-		.number = SOFTOFF_CONNECTIVITY_SOFT_OFFLINE,
-		.string = SOFTOFF_CONNECTIVITY_SOFT_OFFLINE_STR
-	}, {
-		.number = SOFTOFF_CONNECTIVITY_FORCE_OFFLINE,
-		.string = SOFTOFF_CONNECTIVITY_FORCE_OFFLINE_STR
-	}, { /* MCE_INVALID_TRANSLATION marks the end of this array */
-		.number = MCE_INVALID_TRANSLATION,
-		.string = NULL
-	}
-};
+static gint softoff_charger_connect_policy = DEFAULT_SOFTOFF_CHARGER_CONNECT;
 
 /** Mapping of soft poweroff charger connect integer <-> policy string */
 static const mce_translation_t soft_poweroff_charger_connect_translation[] = {
@@ -303,21 +252,6 @@ void request_soft_poweron(void)
 	execute_datapipe(&display_state_pipe,
 			 GINT_TO_POINTER(MCE_DISPLAY_ON),
 			 USE_INDATA, CACHE_INDATA);
-
-	/* Connectivity policy */
-	switch (softoff_connectivity_policy_poweron) {
-	case SOFTOFF_CONNECTIVITY_FORCE_OFFLINE:
-		/* Restore previous radio state */
-		execute_datapipe(&master_radio_pipe,
-				 GINT_TO_POINTER(previous_radio_state),
-				 USE_INDATA, CACHE_INDATA);
-		break;
-
-	case SOFTOFF_CONNECTIVITY_OFFLINE:
-	default:
-		/* Do nothing */
-		break;
-	}
 }
 
 /**
@@ -325,39 +259,6 @@ void request_soft_poweron(void)
  */
 void request_soft_poweroff(void)
 {
-	gboolean connected;
-	gint policy;
-
-	if (charger_connected == TRUE)
-		policy = softoff_connectivity_policy_charger;
-	else
-		policy = softoff_connectivity_policy_battery;
-
-	connected = get_connectivity_status();
-
-	/* Connectivity policy */
-	switch (policy) {
-	case SOFTOFF_CONNECTIVITY_SOFT_OFFLINE:
-		/* If there are open connections, abort */
-		if (connected == TRUE)
-			break;
-
-		/* Fall-through */
-	case SOFTOFF_CONNECTIVITY_FORCE_OFFLINE:
-		/* Store radio state for restore on soft poweron */
-		previous_radio_state = datapipe_get_gint(master_radio_pipe);
-
-		/* Go offline */
-		execute_datapipe(&master_radio_pipe,
-				 GINT_TO_POINTER(0),
-				 USE_INDATA, CACHE_INDATA);
-		break;
-
-	case SOFTOFF_CONNECTIVITY_RETAIN:
-	default:
-		break;
-	}
-
 	mce_add_submode_int32(MCE_SOFTOFF_SUBMODE);
 	execute_datapipe(&display_state_pipe,
 			 GINT_TO_POINTER(MCE_DISPLAY_OFF),
@@ -748,30 +649,6 @@ gboolean mce_dsme_init(gboolean debug_mode)
 		goto EXIT;
 
 	/* Get configuration options */
-	tmp = mce_conf_get_string(MCE_CONF_SOFTPOWEROFF_GROUP,
-				  MCE_CONF_SOFTPOWEROFF_CONNECTIVITY_POLICY_CHARGER,
-				  "",
-				  NULL);
-
-	softoff_connectivity_policy_charger = mce_translate_string_to_int_with_default(soft_poweroff_connectivity_translation, tmp, DEFAULT_SOFTOFF_CONNECTIVITY_CHARGER);
-	g_free(tmp);
-
-	tmp = mce_conf_get_string(MCE_CONF_SOFTPOWEROFF_GROUP,
-				  MCE_CONF_SOFTPOWEROFF_CONNECTIVITY_POLICY_BATTERY,
-				  "",
-				  NULL);
-
-	softoff_connectivity_policy_battery = mce_translate_string_to_int_with_default(soft_poweroff_connectivity_translation, tmp, DEFAULT_SOFTOFF_CONNECTIVITY_BATTERY);
-	g_free(tmp);
-
-	tmp = mce_conf_get_string(MCE_CONF_SOFTPOWEROFF_GROUP,
-				  MCE_CONF_SOFTPOWEROFF_CONNECTIVITY_POLICY_POWERON,
-				  "",
-				  NULL);
-
-	softoff_connectivity_policy_poweron = mce_translate_string_to_int_with_default(soft_poweron_connectivity_translation, tmp, DEFAULT_SOFTOFF_CONNECTIVITY_POWERON);
-	g_free(tmp);
-
 	tmp = mce_conf_get_string(MCE_CONF_SOFTPOWEROFF_GROUP,
 				  MCE_CONF_SOFTPOWEROFF_CHARGER_POLICY_CONNECT,
 				  "",

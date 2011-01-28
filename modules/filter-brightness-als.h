@@ -144,8 +144,8 @@ struct dipro_als {
 /** Window size for the median filter */
 #define MEDIAN_FILTER_WINDOW_SIZE	5
 
-/** CAL identifier for the ALS calibration values */
-#define ALS_CALIB_IDENTIFIER		"als_calib"
+/** Sysinfo identifier for the ALS calibration values */
+#define ALS_CALIB_IDENTIFIER		"/device/als_calib"
 
 /** Number of ranges in ALS profile */
 #define ALS_RANGES			10

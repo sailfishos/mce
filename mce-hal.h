@@ -23,15 +23,12 @@
 
 #include <glib.h>
 
-/** The sysinfo key to request */
-#define PRODUCT_SYSINFO_KEY		"/component/product"
-
 #define PRODUCT_SU18_STR		"SU-18"	/**< 770 */
 #define PRODUCT_RX34_STR		"RX-34"	/**< N800 */
 #define PRODUCT_RX44_STR		"RX-44"	/**< N810 */
 #define PRODUCT_RX48_STR		"RX-48"	/**< N810 WiMAX Edition */
 #define PRODUCT_RX51_STR		"RX-51" /**< N900 */
-#define PRODUCT_RX71_STR		"RX-71" /**< N/A */
+#define PRODUCT_RX71_STR		"RX-71" /**< Development board */
 #define PRODUCT_RM680_STR		"RM-680" /**< ??? */
 #define PRODUCT_RM690_STR		"RM-690" /**< ??? */
 #define PRODUCT_RM696_STR		"RM-696" /**< ??? */
@@ -53,6 +50,7 @@ typedef enum {
 	PRODUCT_RM716 = 12			/**< RM-716 */
 } product_id_t;
 
+gboolean get_sysinfo_value(const gchar *const key, guint8 **array, gulong *len);
 product_id_t get_product_id(void);
 
 #endif /* _MCE_HAL_H_ */

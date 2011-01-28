@@ -1,3 +1,52 @@
+mce (1.10.92) unstable; urgency=low
+
+  * Additional fixes for visual submode handling (Fixes: NB#217321)
+
+ -- David Weinehall <david.weinehall@nokia.com>  Wed, 19 Jan 2011 13:31:25 +0200
+
+mce (1.10.91) unstable; urgency=low
+
+  * Fixed case where visual submode wasn't properly enabled when unblanking
+    | Thanks to Victor Portnov
+  * Removed deprecated MCE_PSM_MODE handling (Fixes: NB#219219)
+
+ -- David Weinehall <david.weinehall@nokia.com>  Fri, 14 Jan 2011 15:27:58 +0200
+
+mce (1.10.90) unstable; urgency=low
+
+  * Added option to always leave touchscreen interrupts on even when the
+    tklock is active -- this is to allow for double-tap unlocking
+  * Show visual tklock when touchscreen is double-tapped
+    | Only if touchscreen interrupts are enabled when the display is blank
+  * Added get_sysinfo_value() that retrieves information from sysinfo via
+    the D-Bus interface rather than the library interface
+    | While slightly slower this enables us to remove the direct dependency,
+    | which benefits platforms that do not have sysinfo
+  * Modified get_product_id() to use get_sysinfo_value()
+  * Modified the ALS and proximity sensor modules to get calibration data via
+    get_sysinfo_value() rather than directly from CAL
+  * Moved strmemcmp() from mce-hal to mce-lib
+  * debian/control: Dropped build-dependencies on libsysinfo-dev
+    and libcal-dev
+  * debian/control: Added recommends on sysinfod (>= 1.0.20)
+  * debian/mce.aegis: No longer request cal credential, since we don't
+    access cal directly anymore
+  * Removed connectivity tracking; it was only used by the soft poweroff
+    option, which has never been an officially supported option
+
+ -- David Weinehall <david.weinehall@nokia.com>  Thu, 13 Jan 2011 20:45:47 +0200
+
+mce (1.10.89) unstable; urgency=low
+
+  * Corrected the visual blank timeout (Fixes: NB#211445)
+  * Properly enable support for hardware display brightness fading
+    (Fixes: NB#196567, NB#213716)
+  * Don't request the devicelock credentials; they are now being granted
+    by devicelock to mce instead, to work around a flawed design in the
+    token resolver (Fixes: NB#208392)
+
+ -- David Weinehall <david.weinehall@nokia.com>  Fri, 17 Dec 2010 08:21:37 +0200
+
 mce (1.10.88) unstable; urgency=low
 
   * Added backup/restore support for the radio state files

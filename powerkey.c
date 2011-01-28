@@ -41,16 +41,24 @@
 					 * mce_conf_get_string()
 					 */
 #include "mce-dbus.h"			/* mce_dbus_handler_add(),
+					 * dbus_send(),
 					 * dbus_send_message(),
 					 * dbus_new_method_reply(),
 					 * dbus_message_get_no_reply(),
+					 * dbus_message_iter_init(),
+					 * dbus_message_iter_get_arg_type(),
+					 * dbus_message_iter_get_basic(),
+					 * dbus_message_iter_next(),
 					 * dbus_error_init(),
 					 * dbus_error_free(),
 					 * DBUS_MESSAGE_TYPE_METHOD_CALL,
 					 * DBUS_TYPE_BOOLEAN,
+					 * DBUS_TYPE_UINT32,
 					 * DBUS_TYPE_INVALID,
-					 * DBusMessage, DBusError,
+					 * DBusMessage, DBusMessageIter,
+					 * DBusError,
 					 * dbus_bool_t,
+					 * dbus_uint32_t
 					 */
 #include "mce-dsme.h"			/* request_normal_shutdown(),
 					 * request_soft_poweron(),
@@ -279,13 +287,9 @@ EXIT:
 
 /**
  * Logic for short key press
- *
- * @return TRUE on success, FALSE on failure
  */
-static gboolean handle_shortpress(void)
+static void handle_shortpress(void)
 {
-	gboolean status = FALSE;
-
 	cancel_powerkey_timeout();
 
 	if (doublepress_timeout_cb_id == 0) {
@@ -297,11 +301,6 @@ static gboolean handle_shortpress(void)
 		generic_powerkey_handler(doublepressaction,
 					 doublepresssignal);
 	}
-
-	status = TRUE;
-
-//EXIT:
-	return status;
 }
 
 /**

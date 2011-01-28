@@ -55,7 +55,7 @@
 #define DEFAULT_BRIGHTNESS_DECREASE_CONSTANT_TIME	3000
 
 /** Path to the SysFS entry for the CABC controls */
-#define DISPLAY_CABC_PATH			"/sys/class/backlight"
+#define DISPLAY_BACKLIGHT_PATH			"/sys/class/backlight"
 /** CABC brightness file */
 #define DISPLAY_CABC_BRIGHTNESS_FILE		"/brightness"
 /** CABC maximum brightness file */
@@ -78,8 +78,15 @@
 /** The name of the directory for ACPI controlled displays */
 #define DISPLAY_ACPI_VIDEO0			"/acpi_video0"
 
+/** Display device path */
+#define DISPLAY_DEVICE_PATH			"/device"
+
 /** Path to hardware dimming support */
-#define DISPLAY_HARDWARE_DIMMING		"/sys/devices/omapdss/display0/dimming"
+#define DISPLAY_HW_DIMMING_FILE			"/dimming"
+/** Low Power Mode file */
+#define DISPLAY_LPM_FILE			"/lpm"
+/** High Brightness Mode file */
+#define DISPLAY_HBM_FILE			"/hbm"
 
 /** CABC name for CABC disabled */
 #define CABC_MODE_OFF				"off"

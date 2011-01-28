@@ -96,7 +96,7 @@ static hysteresis_t dipro_ps_threshold_dipro = {
 	.threshold_falling = 70,
 };
 
-/** CAL identifier for the proximity sensor calibration values */
-#define PS_CALIB_IDENTIFIER		"ps_calib"
+/** Sysinfo identifier for the proximity sensor calibration values */
+#define PS_CALIB_IDENTIFIER		"/device/ps_calib"
 
 #endif /* _PROXIMITY_H_ */

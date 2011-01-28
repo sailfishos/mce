@@ -250,10 +250,18 @@ static gchar *max_brightness_file = NULL;
 static gchar *cabc_mode_file = NULL;
 /** File used to get the available CABC modes */
 static gchar *cabc_available_modes_file = NULL;
+/** File used to set hw display fading */
+static gchar *hw_fading_file = NULL;
 /** Is hardware driven display fading supported */
-static gboolean hw_display_fading_supported = FALSE;
+static gboolean hw_fading_supported = FALSE;
+/** File used to enable high brightness mode */
+static gchar *high_brightness_mode_file = NULL;
+/** Is display high brightness mode supported */
+static gboolean high_brightness_mode_supported = FALSE;
+/** File used to enable low power mode */
+static gchar *low_power_mode_file = NULL;
 /** Is display low power mode supported */
-static gboolean display_low_power_mode_supported = FALSE;
+static gboolean low_power_mode_supported = FALSE;
 
 /** Brightness change policies */
 typedef enum {
@@ -447,56 +455,64 @@ static display_type_t get_display_type(void)
 	if (display_type != DISPLAY_TYPE_UNSET)
 		goto EXIT;
 
-	if (g_access(DISPLAY_CABC_PATH DISPLAY_ACX565AKM, W_OK) == 0) {
+	if (g_access(DISPLAY_BACKLIGHT_PATH DISPLAY_ACX565AKM, W_OK) == 0) {
 		display_type = DISPLAY_TYPE_ACX565AKM;
 
-		brightness_file = g_strconcat(DISPLAY_CABC_PATH, DISPLAY_ACX565AKM, DISPLAY_CABC_BRIGHTNESS_FILE, NULL);
-		max_brightness_file = g_strconcat(DISPLAY_CABC_PATH, DISPLAY_ACX565AKM, DISPLAY_CABC_MAX_BRIGHTNESS_FILE, NULL);
-		cabc_mode_file = g_strconcat(DISPLAY_CABC_PATH, DISPLAY_ACX565AKM, DISPLAY_CABC_MODE_FILE, NULL);
-		cabc_available_modes_file = g_strconcat(DISPLAY_CABC_PATH, DISPLAY_ACX565AKM, DISPLAY_CABC_AVAILABLE_MODES_FILE, NULL);
-	} else if (g_access(DISPLAY_CABC_PATH DISPLAY_L4F00311, W_OK) == 0) {
+		brightness_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_ACX565AKM, DISPLAY_CABC_BRIGHTNESS_FILE, NULL);
+		max_brightness_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_ACX565AKM, DISPLAY_CABC_MAX_BRIGHTNESS_FILE, NULL);
+		cabc_mode_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_ACX565AKM, DISPLAY_CABC_MODE_FILE, NULL);
+		cabc_available_modes_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_ACX565AKM, DISPLAY_CABC_AVAILABLE_MODES_FILE, NULL);
+	} else if (g_access(DISPLAY_BACKLIGHT_PATH DISPLAY_L4F00311, W_OK) == 0) {
 		display_type = DISPLAY_TYPE_L4F00311;
 
-		brightness_file = g_strconcat(DISPLAY_CABC_PATH, DISPLAY_L4F00311, DISPLAY_CABC_BRIGHTNESS_FILE, NULL);
-		max_brightness_file = g_strconcat(DISPLAY_CABC_PATH, DISPLAY_L4F00311, DISPLAY_CABC_MAX_BRIGHTNESS_FILE, NULL);
-		cabc_mode_file = g_strconcat(DISPLAY_CABC_PATH, DISPLAY_L4F00311, DISPLAY_CABC_MODE_FILE, NULL);
-		cabc_available_modes_file = g_strconcat(DISPLAY_CABC_PATH, DISPLAY_L4F00311, DISPLAY_CABC_AVAILABLE_MODES_FILE, NULL);
-	} else if (g_access(DISPLAY_CABC_PATH DISPLAY_TAAL, W_OK) == 0) {
+		brightness_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_L4F00311, DISPLAY_CABC_BRIGHTNESS_FILE, NULL);
+		max_brightness_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_L4F00311, DISPLAY_CABC_MAX_BRIGHTNESS_FILE, NULL);
+		cabc_mode_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_L4F00311, DISPLAY_CABC_MODE_FILE, NULL);
+		cabc_available_modes_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_L4F00311, DISPLAY_CABC_AVAILABLE_MODES_FILE, NULL);
+	} else if (g_access(DISPLAY_BACKLIGHT_PATH DISPLAY_TAAL, W_OK) == 0) {
 		display_type = DISPLAY_TYPE_TAAL;
 
-		brightness_file = g_strconcat(DISPLAY_CABC_PATH, DISPLAY_TAAL, DISPLAY_CABC_BRIGHTNESS_FILE, NULL);
-		max_brightness_file = g_strconcat(DISPLAY_CABC_PATH, DISPLAY_TAAL, DISPLAY_CABC_MAX_BRIGHTNESS_FILE, NULL);
+		brightness_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_TAAL, DISPLAY_CABC_BRIGHTNESS_FILE, NULL);
+		max_brightness_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_TAAL, DISPLAY_CABC_MAX_BRIGHTNESS_FILE, NULL);
 
-		cabc_mode_file = g_strconcat(DISPLAY_CABC_PATH, DISPLAY_TAAL, "/device", DISPLAY_CABC_MODE_FILE, NULL);
-		cabc_available_modes_file = g_strconcat(DISPLAY_CABC_PATH, DISPLAY_TAAL, "/device", DISPLAY_CABC_AVAILABLE_MODES_FILE, NULL);
-	} else if (g_access(DISPLAY_CABC_PATH DISPLAY_HIMALAYA, W_OK) == 0) {
+		cabc_mode_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_TAAL, "/device", DISPLAY_CABC_MODE_FILE, NULL);
+		cabc_available_modes_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_TAAL, "/device", DISPLAY_CABC_AVAILABLE_MODES_FILE, NULL);
+	} else if (g_access(DISPLAY_BACKLIGHT_PATH DISPLAY_HIMALAYA, W_OK) == 0) {
 		display_type = DISPLAY_TYPE_HIMALAYA;
 
-		brightness_file = g_strconcat(DISPLAY_CABC_PATH, DISPLAY_HIMALAYA, DISPLAY_CABC_BRIGHTNESS_FILE, NULL);
-		max_brightness_file = g_strconcat(DISPLAY_CABC_PATH, DISPLAY_HIMALAYA, DISPLAY_CABC_MAX_BRIGHTNESS_FILE, NULL);
+		brightness_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_HIMALAYA, DISPLAY_CABC_BRIGHTNESS_FILE, NULL);
+		max_brightness_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_HIMALAYA, DISPLAY_CABC_MAX_BRIGHTNESS_FILE, NULL);
 
-		cabc_mode_file = g_strconcat(DISPLAY_CABC_PATH, DISPLAY_HIMALAYA, "/device", DISPLAY_CABC_MODE_FILE, NULL);
-		cabc_available_modes_file = g_strconcat(DISPLAY_CABC_PATH, DISPLAY_HIMALAYA, "/device", DISPLAY_CABC_AVAILABLE_MODES_FILE, NULL);
-	} else if (g_access(DISPLAY_CABC_PATH DISPLAY_DISPLAY0, W_OK) == 0) {
+		cabc_mode_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_HIMALAYA, "/device", DISPLAY_CABC_MODE_FILE, NULL);
+		cabc_available_modes_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_HIMALAYA, "/device", DISPLAY_CABC_AVAILABLE_MODES_FILE, NULL);
+	} else if (g_access(DISPLAY_BACKLIGHT_PATH DISPLAY_DISPLAY0, W_OK) == 0) {
 		display_type = DISPLAY_TYPE_DISPLAY0;
 
-		brightness_file = g_strconcat(DISPLAY_CABC_PATH, DISPLAY_DISPLAY0, DISPLAY_CABC_BRIGHTNESS_FILE, NULL);
-		max_brightness_file = g_strconcat(DISPLAY_CABC_PATH, DISPLAY_DISPLAY0, DISPLAY_CABC_MAX_BRIGHTNESS_FILE, NULL);
+		brightness_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_DISPLAY0, DISPLAY_CABC_BRIGHTNESS_FILE, NULL);
+		max_brightness_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_DISPLAY0, DISPLAY_CABC_MAX_BRIGHTNESS_FILE, NULL);
 
-		cabc_mode_file = g_strconcat(DISPLAY_CABC_PATH, DISPLAY_DISPLAY0, "/device", DISPLAY_CABC_MODE_FILE, NULL);
-		cabc_available_modes_file = g_strconcat(DISPLAY_CABC_PATH, DISPLAY_DISPLAY0, "/device", DISPLAY_CABC_AVAILABLE_MODES_FILE, NULL);
-		hw_display_fading_supported = (g_access(DISPLAY_HARDWARE_DIMMING, W_OK) == 0);
+		cabc_mode_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_DISPLAY0, "/device", DISPLAY_CABC_MODE_FILE, NULL);
+		cabc_available_modes_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_DISPLAY0, "/device", DISPLAY_CABC_AVAILABLE_MODES_FILE, NULL);
 
-#if 0
+		hw_fading_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_DISPLAY0, DISPLAY_DEVICE_PATH, DISPLAY_HW_DIMMING_FILE, NULL);
+		high_brightness_mode_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_DISPLAY0, DISPLAY_DEVICE_PATH, DISPLAY_HBM_FILE, NULL);
+		low_power_mode_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_DISPLAY0, DISPLAY_DEVICE_PATH, DISPLAY_LPM_FILE, NULL);
+
+		hw_fading_supported =
+			(g_access(hw_fading_file, W_OK) == 0);
+		high_brightness_mode_supported =
+			(g_access(high_brightness_mode_file, W_OK) == 0);
+		low_power_mode_supported =
+			(g_access(low_power_mode_file, W_OK) == 0);
+
 		/* Enable hardware fading if supported */
-		if (hw_display_fading_supported == TRUE)
-			(void)mce_write_number_string_to_file(DISPLAY_HARDWARE_DIMMING, 1, NULL, TRUE, TRUE);
-#endif
-	} else if (g_access(DISPLAY_CABC_PATH DISPLAY_ACPI_VIDEO0, W_OK) == 0) {
+		if (hw_fading_supported == TRUE)
+			(void)mce_write_number_string_to_file(hw_fading_file, 1, NULL, TRUE, TRUE);
+	} else if (g_access(DISPLAY_BACKLIGHT_PATH DISPLAY_ACPI_VIDEO0, W_OK) == 0) {
 		display_type = DISPLAY_TYPE_ACPI_VIDEO0;
 
-		brightness_file = g_strconcat(DISPLAY_CABC_PATH, DISPLAY_ACPI_VIDEO0, DISPLAY_CABC_BRIGHTNESS_FILE, NULL);
-		max_brightness_file = g_strconcat(DISPLAY_CABC_PATH, DISPLAY_ACPI_VIDEO0, DISPLAY_CABC_MAX_BRIGHTNESS_FILE, NULL);
+		brightness_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_ACPI_VIDEO0, DISPLAY_CABC_BRIGHTNESS_FILE, NULL);
+		max_brightness_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_ACPI_VIDEO0, DISPLAY_CABC_MAX_BRIGHTNESS_FILE, NULL);
 	} else if (g_access(DISPLAY_GENERIC_PATH, W_OK) == 0) {
 		display_type = DISPLAY_TYPE_GENERIC;
 
@@ -716,7 +732,7 @@ static void update_brightness_fade(gint new_brightness)
 	/* If we have support for HW-fading, or if we're using the direct
 	 * brightness change policy, don't bother with any of this
 	 */
-	if ((hw_display_fading_supported == TRUE) ||
+	if ((hw_fading_supported == TRUE) ||
 	    ((brightness_increase_policy == BRIGHTNESS_CHANGE_DIRECT) &&
 	     (increase == TRUE)) ||
 	    ((brightness_decrease_policy == BRIGHTNESS_CHANGE_DIRECT) &&
@@ -1540,7 +1556,7 @@ static gboolean display_low_power_mode_req_dbus_cb(DBusMessage *const msg)
 	mce_log(LL_DEBUG,
 		"Received display low power mode request");
 
-	if (display_low_power_mode_supported == TRUE) {
+	if (low_power_mode_supported == TRUE) {
 		(void)execute_datapipe(&display_state_pipe,
 				       GINT_TO_POINTER(MCE_DISPLAY_LOW_POWER),
 				       USE_INDATA, CACHE_INDATA);
@@ -2444,6 +2460,9 @@ void g_module_unload(GModule *module)
 	g_free(max_brightness_file);
 	g_free(cabc_mode_file);
 	g_free(cabc_available_modes_file);
+	g_free(hw_fading_file);
+	g_free(high_brightness_mode_file);
+	g_free(low_power_mode_file);
 
 	/* Remove all timer sources */
 	cancel_blank_prevent();

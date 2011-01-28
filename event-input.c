@@ -289,6 +289,7 @@ static void setup_touchscreen_io_monitor_timeout(void)
  */
 static void touchscreen_cb(gpointer data, gsize bytes_read)
 {
+	display_state_t display_state = datapipe_get_gint(display_state_pipe);
 	submode_t submode = mce_get_submode_int32();
 	struct input_event *ev;
 
@@ -308,11 +309,13 @@ static void touchscreen_cb(gpointer data, gsize bytes_read)
 	(void)execute_datapipe(&device_inactive_pipe, GINT_TO_POINTER(FALSE),
 			       USE_INDATA, CACHE_INDATA);
 
-	/* If visual tklock is active or autorelock isn't active,
-	 * suspend I/O monitors
+	/* If the display is on/dim and visual tklock is active
+	 * or autorelock isn't active, suspend I/O monitors
 	 */
-	if (((submode & MCE_VISUAL_TKLOCK_SUBMODE) != 0) ||
-	    ((submode & MCE_AUTORELOCK_SUBMODE) == 0)) {
+	if (((display_state == MCE_DISPLAY_ON) ||
+	     (display_state == MCE_DISPLAY_DIM)) &&
+	    (((submode & MCE_VISUAL_TKLOCK_SUBMODE) != 0) ||
+	     ((submode & MCE_AUTORELOCK_SUBMODE) == 0))) {
 		if (touchscreen_dev_list != NULL) {
 			g_slist_foreach(touchscreen_dev_list,
 					(GFunc)suspend_io_monitor, NULL);
@@ -328,13 +331,12 @@ static void touchscreen_cb(gpointer data, gsize bytes_read)
 		goto EXIT;
 	}
 
-	/* For now there's no reason to cache the value,
-	 * or indeed to send any kind of real value at all
+	/* For now there's no reason to cache the value
 	 *
 	 * If the event eater is active, don't send anything
 	 */
 	if ((submode & MCE_EVEATER_SUBMODE) == 0) {
-		(void)execute_datapipe(&touchscreen_pipe, NULL,
+		(void)execute_datapipe(&touchscreen_pipe, &ev,
 				       USE_INDATA, DONT_CACHE_INDATA);
 	}
 

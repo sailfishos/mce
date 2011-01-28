@@ -46,9 +46,7 @@
 					 * MCE_SIGNAL_PATH,
 					 * MCE_REQUEST_IF,
 					 * MCE_PSM_STATE_GET,
-					 * MCE_PSM_STATE_SIG,
-					 * MCE_PSM_MODE_GET,
-					 * MCE_PSM_MODE_SIG
+					 * MCE_PSM_STATE_SIG
 					 */
 #include "mce-gconf.h"			/* mce_gconf_get_bool(),
 					 * mce_gconf_notifier_add(),
@@ -146,32 +144,6 @@ static gboolean send_psm_state(DBusMessage *const method_call)
 
 	/* Send the message */
 	status = dbus_send_message(msg);
-
-// XXX: remove
-if (method_call == NULL) {
-	/* psm_mode_ind */
-	msg = dbus_new_signal(MCE_SIGNAL_PATH, MCE_SIGNAL_IF,
-			      MCE_PSM_MODE_SIG);
-
-	/* Append the power saving mode */
-	if (dbus_message_append_args(msg,
-				     DBUS_TYPE_BOOLEAN, &active_power_saving_mode,
-				     DBUS_TYPE_INVALID) == FALSE) {
-		mce_log(LL_CRIT,
-			"Failed to append %sargument to D-Bus message "
-			"for %s.%s",
-			method_call ? "reply " : "",
-			method_call ? MCE_REQUEST_IF :
-				      MCE_SIGNAL_IF,
-			method_call ? MCE_PSM_MODE_GET :
-				      MCE_PSM_MODE_SIG);
-		dbus_message_unref(msg);
-		goto EXIT;
-	}
-
-	/* Send the message */
-	dbus_send_message(msg);
-}
 
 EXIT:
 	return status;
@@ -355,14 +327,6 @@ const gchar *g_module_check_init(GModule *module)
 	/* get_psm_state */
 	if (mce_dbus_handler_add(MCE_REQUEST_IF,
 				 MCE_PSM_STATE_GET,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_METHOD_CALL,
-				 psm_state_get_dbus_cb) == NULL)
-		goto EXIT;
-
-	/* get_psm_mode */
-	if (mce_dbus_handler_add(MCE_REQUEST_IF,
-				 MCE_PSM_MODE_GET,
 				 NULL,
 				 DBUS_MESSAGE_TYPE_METHOD_CALL,
 				 psm_state_get_dbus_cb) == NULL)

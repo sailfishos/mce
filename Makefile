@@ -3,7 +3,7 @@
 # Written by David Weinehall
 # Modified by Tuomo Tanskanen
 
-VERSION := 1.10.88
+VERSION := 1.10.92
 
 INSTALL := install -o root -g root --mode=755
 INSTALL_DIR := install -d
@@ -86,16 +86,16 @@ COMMON_CFLAGS += -DPRG_VERSION=$(VERSION)
 
 MCE_CFLAGS := $(COMMON_CFLAGS)
 MCE_CFLAGS += -DMCE_CONF_FILE=$(CONFDIR)/$(CONFFILE)
-MCE_CFLAGS += $$(pkg-config gobject-2.0 glib-2.0 gio-2.0 gmodule-2.0 dbus-1 dbus-glib-1 gconf-2.0 conic sysinfo --cflags)
-MCE_LDFLAGS := $$(pkg-config gobject-2.0 glib-2.0 gio-2.0 gmodule-2.0 dbus-1 dbus-glib-1 gconf-2.0 conic dsme sysinfo --libs)
-LIBS := tklock.c modetransition.c powerkey.c connectivity.c mce-dbus.c mce-dsme.c mce-gconf.c event-input.c event-switches.c mce-hal.c mce-log.c mce-conf.c datapipe.c mce-modules.c mce-io.c mce-lib.c
-HEADERS := tklock.h modetransition.h powerkey.h connectivity.h mce.h mce-dbus.h mce-dsme.h mce-gconf.h event-input.h event-switches.h mce-hal.h mce-log.h mce-conf.h datapipe.h mce-modules.h mce-io.h mce-lib.h
+MCE_CFLAGS += $$(pkg-config gobject-2.0 glib-2.0 gio-2.0 gmodule-2.0 dbus-1 dbus-glib-1 gconf-2.0 --cflags)
+MCE_LDFLAGS := $$(pkg-config gobject-2.0 glib-2.0 gio-2.0 gmodule-2.0 dbus-1 dbus-glib-1 gconf-2.0 dsme --libs)
+LIBS := tklock.c modetransition.c powerkey.c mce-dbus.c mce-dsme.c mce-gconf.c event-input.c event-switches.c mce-hal.c mce-log.c mce-conf.c datapipe.c mce-modules.c mce-io.c mce-lib.c
+HEADERS := tklock.h modetransition.h powerkey.h mce.h mce-dbus.h mce-dsme.h mce-gconf.h event-input.h event-switches.h mce-hal.h mce-log.h mce-conf.h datapipe.h mce-modules.h mce-io.h mce-lib.h
 
 MODULE_CFLAGS := $(COMMON_CFLAGS)
 MODULE_CFLAGS += -fPIC -shared
 MODULE_CFLAGS += -I.
 MODULE_CFLAGS += $$(pkg-config gobject-2.0 glib-2.0 gmodule-2.0 dbus-1 dbus-glib-1 gconf-2.0 --cflags)
-MODULE_LDFLAGS := $$(pkg-config gobject-2.0 glib-2.0 gmodule-2.0 dbus-1 dbus-glib-1 gconf-2.0 libcal --libs)
+MODULE_LDFLAGS := $$(pkg-config gobject-2.0 glib-2.0 gmodule-2.0 dbus-1 dbus-glib-1 gconf-2.0 --libs)
 MODULE_LIBS := datapipe.c mce-hal.c mce-log.c mce-dbus.c mce-conf.c mce-gconf.c median_filter.c mce-lib.c
 MODULE_HEADERS := datapipe.h mce-hal.h mce-log.h mce-dbus.h mce-conf.h mce-gconf.h mce.h median_filter.h mce-lib.h
 

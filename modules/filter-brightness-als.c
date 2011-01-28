@@ -28,11 +28,7 @@
 #include <fcntl.h>			/* O_NONBLOCK */
 #include <unistd.h>			/* R_OK */
 #include <stdlib.h>			/* free() */
-
-#include <cal.h>			/* cal_init(), cal_read_block(),
-					 * cal_finish(),
-					 * struct cal
-					 */
+#include <string.h>			/* memcpy() */
 
 #include "mce.h"
 #include "filter-brightness-als.h"
@@ -43,6 +39,7 @@
 #include "mce-lib.h"			/* mce_translate_string_to_int_with_default(),
 					 * mce_translation_t
 					 */
+#include "mce-hal.h"			/* get_sysinfo_value() */
 #include "mce-log.h"			/* mce_log(), LL_* */
 #include "mce-conf.h"			/* mce_conf_get_int(),
 					 * mce_conf_get_string()
@@ -310,50 +307,65 @@ EXIT:
  */
 static void calibrate_als(void)
 {
-	struct cal *cal_data = NULL;
+	guint32 calib0 = 0;
+	guint32 calib1 = 0;
+	guint8 *tmp = NULL;
+	gsize count;
+	gulong len;
 
 	/* If we don't have any calibration points, don't bother */
 	if ((als_calib0_path == NULL) && (als_calib1_path == NULL))
 		goto EXIT;
 
-	/* Retrieve the calibration data stored in CAL */
-	if (cal_init(&cal_data) >= 0) {
-		void *ptr = NULL;
-		unsigned long len;
-		int retval;
-
-		if ((retval = cal_read_block(cal_data, ALS_CALIB_IDENTIFIER,
-					     &ptr, &len, 0)) == 0) {
-			guint32 *als_calib = ptr;
-
-			/* Correctness checks */
-			if ((len == sizeof (guint32)) ||
-			    (len == (2 * sizeof (guint32)))) {
-				/* Write calibration values */
-				if (als_calib0_path != NULL)
-					mce_write_number_string_to_file(als_calib0_path, als_calib[0], NULL, TRUE, TRUE);
-
-				if (als_calib1_path != NULL)
-					mce_write_number_string_to_file(als_calib1_path, als_calib[1], NULL, TRUE, TRUE);
-			} else {
-				mce_log(LL_ERR,
-					"Received incorrect number of ALS "
-					"calibration values from CAL");
-			}
-
-			free(ptr);
-		} else {
-			mce_log(LL_ERR,
-				"cal_read_block() (als_calib) failed; "
-				"retval: %d",
-				retval);
-		}
-
-		cal_finish(cal_data);
-	} else {
+	/* Retrieve the calibration data from sysinfo */
+	if (get_sysinfo_value(ALS_CALIB_IDENTIFIER, &tmp, &len) == FALSE) {
 		mce_log(LL_ERR,
-			"cal_init() failed");
+			"Failed to retrieve calibration data");
+		goto EXIT;
 	}
+
+	/* Is the memory properly aligned? */
+	if ((len % sizeof (guint32)) != 0) {
+		mce_log(LL_ERR,
+			"Invalid calibration data returned");
+		goto EXIT2;
+	}
+
+	count = len / sizeof (guint32);
+
+	/* We don't have any calibration data */
+	if (count == 0) {
+		mce_log(LL_INFO,
+			"No calibration data available");
+		goto EXIT2;
+	}
+
+	switch (count) {
+	default:
+		mce_log(LL_INFO,
+			"Ignored excess calibration data");
+
+	case 2:
+		memcpy(&calib1, tmp, sizeof (calib1));
+
+	case 1:
+		memcpy(&calib0, tmp, sizeof (calib0));
+	}
+
+	/* Write calibration value 0 */
+	if (als_calib0_path != NULL) {
+		mce_write_number_string_to_file(als_calib0_path,
+						calib0, NULL, TRUE, TRUE);
+	}
+
+	/* Write calibration value 1 */
+	if ((als_calib1_path != NULL) && (count > 1)) {
+		mce_write_number_string_to_file(als_calib1_path,
+						calib1, NULL, TRUE, TRUE);
+	}
+
+EXIT2:
+	free(tmp);
 
 EXIT:
 	return;

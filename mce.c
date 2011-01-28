@@ -116,9 +116,6 @@
 #include "event-switches.h"		/* mce_switches_init(),
 					 * mce_switches_exit()
 					 */
-#include "connectivity.h"		/* mce_connectivity_init(),
-					 * mce_connectivity_exit()
-					 */
 #include "datapipe.h"			/* setup_datapipe(),
 					 * free_datapipe()
 					 */
@@ -591,10 +588,10 @@ int main(int argc, char **argv)
 		       0, NULL);
 	setup_datapipe(&key_backlight_pipe, READ_WRITE, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(0));
-	setup_datapipe(&keypress_pipe, READ_WRITE, FREE_CACHE,
+	setup_datapipe(&keypress_pipe, READ_ONLY, FREE_CACHE,
 		       sizeof (struct input_event), NULL);
-	setup_datapipe(&touchscreen_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(0));
+	setup_datapipe(&touchscreen_pipe, READ_ONLY, FREE_CACHE,
+		       sizeof (struct input_event), NULL);
 	setup_datapipe(&device_inactive_pipe, READ_WRITE, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(FALSE));
 	setup_datapipe(&lockkey_pipe, READ_ONLY, DONT_FREE_CACHE,
@@ -629,14 +626,6 @@ int main(int argc, char **argv)
 		       0, GINT_TO_POINTER(0));
 	setup_datapipe(&thermal_state_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(THERMAL_STATE_UNDEF));
-
-	/* Initialise connectivity monitoring
-	 * pre-requisite: g_type_init()
-	 */
-	if (mce_connectivity_init() == FALSE) {
-		status = EXIT_FAILURE;
-		goto EXIT;
-	}
 
 	/* Initialise mode management
 	 * pre-requisite: mce_gconf_init()
@@ -714,7 +703,6 @@ EXIT:
 	mce_powerkey_exit();
 	mce_dsme_exit();
 	mce_mode_exit();
-	mce_connectivity_exit();
 
 	/* Free all datapipes */
 	free_datapipe(&thermal_state_pipe);

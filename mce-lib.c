@@ -334,3 +334,28 @@ gchar *strstr_delim(const gchar *const haystack, const char *needle,
 EXIT:
 	return match;
 }
+
+/**
+ * Compare a string with memory, with length checks
+ *
+ * @param mem The memory to compare with
+ * @param str The string to compare the memory to
+ * @param len The length of the memory area
+ * @return TRUE if the string matches the memory area,
+ *         FALSE if the memory area does not match, or if the lengths differ
+ */
+gboolean strmemcmp(guint8 *mem, const gchar *str, gulong len)
+{
+	gboolean result = FALSE;
+
+	if (strlen(str) != len)
+		goto EXIT;
+
+	if (memcmp(mem, str, len) != 0)
+		goto EXIT;
+
+	result = TRUE;
+
+EXIT:
+	return result;
+}

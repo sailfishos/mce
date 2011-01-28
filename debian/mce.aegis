@@ -51,9 +51,6 @@
 	</provide>
 	<request>
 		<credential name="GRP::i2c" />
-		<credential name="GRP::cal" />
-		<credential name="devicelock::DeviceLockControl" />
-		<credential name="devicelock::State_Inhibit" />
 		<for path="/sbin/mce" />
 	</request>
 	<request>

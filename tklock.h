@@ -91,6 +91,9 @@
 /** Name of configuration key for volume key triggered unlock screen */
 #define MCE_CONF_VOLKEY_VISUAL_TRIGGER	"TriggerUnlockScreenWithVolumeKeys"
 
+/** Double tap timeout for the touchscreen in milliseconds; 0.5 seconds */
+#define DEFAULT_TS_DOUBLE_DELAY		500
+
 /** Default fallback setting for tklock immediate blanking */
 #define DEFAULT_BLANK_IMMEDIATELY	FALSE		/* FALSE / TRUE */
 
@@ -98,7 +101,7 @@
 #define DEFAULT_DIM_IMMEDIATELY		FALSE		/* FALSE / TRUE */
 
 /** Default visual lock blank timeout */
-#define DEFAULT_VISUAL_BLANK_DELAY	3		/* 3 seconds */
+#define DEFAULT_VISUAL_BLANK_DELAY	5		/* 5 seconds */
 
 /** Default visual lock blank timeout */
 #define DEFAULT_VISUAL_FORCED_BLANK_DELAY	30	/* 30 seconds */

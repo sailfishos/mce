@@ -72,6 +72,15 @@
 					 */
 
 /**
+ * The ID of the timeout used when determining
+ * whether the touchscreen tap was a double tap
+ */
+static guint doubletap_timeout_cb_id = 0;
+
+/** Timeout in milliseconds during which ts tap is considered double */
+static gint doubletapdelay = DEFAULT_TS_DOUBLE_DELAY;
+
+/**
  * TRUE if the touchscreen/keypad autolock is enabled,
  * FALSE if the touchscreen/keypad autolock is disabled
  */
@@ -102,7 +111,7 @@ static gboolean dim_immediately = DEFAULT_DIM_IMMEDIATELY;
 static gint dim_delay = DEFAULT_DIM_DELAY;
 
 /** Disable touchscreen immediately on tklock instead of at blank */
-static gboolean disable_ts_immediately = DEFAULT_TS_OFF_IMMEDIATELY;
+static gint disable_ts_immediately = DEFAULT_TS_OFF_IMMEDIATELY;
 
 /** Disable keypad immediately on tklock instead of at blank */
 static gint disable_kp_immediately = DEFAULT_KP_OFF_IMMEDIATELY;
@@ -520,32 +529,54 @@ static gboolean ts_kp_disable_policy(void)
 	} else if ((display_state == MCE_DISPLAY_OFF) &&
 		   (is_tklock_enabled() == TRUE)) {
 		if (disable_kp_immediately == 2) {
-			if (ts_disable() == FALSE)
-				goto EXIT;
+			if (disable_ts_immediately != 2) {
+				if (ts_disable() == FALSE)
+					goto EXIT;
+			}
 		} else if (disable_kp_immediately == 1) {
 			/*  Don't disable kp during call (volume must work) */
 			if (call_state != CALL_STATE_NONE) {
-				if (ts_disable() == FALSE)
-					goto EXIT;
+				if (disable_ts_immediately != 2) {
+					if (ts_disable() == FALSE)
+						goto EXIT;
+				}
 			} else {
-				if (ts_kp_disable() == FALSE) {
-					goto EXIT;
+				if (disable_ts_immediately != 2) {
+					if (ts_kp_disable() == FALSE)
+						goto EXIT;
+				} else {
+					if (kp_disable() == FALSE)
+						goto EXIT;
 				}
 			}
-		} else if (ts_kp_disable() == FALSE) {
-			goto EXIT;
+		} else {
+			if (disable_ts_immediately != 2) {
+				if (ts_kp_disable() == FALSE)
+					goto EXIT;
+			} else {
+				if (kp_disable() == FALSE)
+					goto EXIT;
+			}
 		}
 	} else if (is_tklock_enabled() == TRUE) {
-		/*  Don't disable kp during call (volume must work) */
-		if ((disable_kp_immediately == 1) &&
-		    (call_state == CALL_STATE_NONE)) {
-			if (kp_disable() == FALSE)
-				goto EXIT;
-		}
-
-		if (disable_ts_immediately == TRUE)
+		/*  Don't disable kp during call (volume keys must work) */
+		if (call_state != CALL_STATE_NONE) {
+			if (disable_ts_immediately == 1) {
+				if (ts_disable() == FALSE)
+					goto EXIT;
+			}
+		} else if (disable_kp_immediately == 1) {
+			if (disable_ts_immediately == 1) {
+				if (ts_kp_disable() == FALSE)
+					goto EXIT;
+			} else {
+				if (kp_disable() == FALSE)
+					goto EXIT;
+			}
+		} else {
 			if (ts_disable() == FALSE)
 				goto EXIT;
+		}
 	}
 
 EXIT2:
@@ -839,6 +870,7 @@ static gboolean enable_tklock(gboolean silent)
 		goto EXIT;
 
 	enable_tklock_raw();
+	mce_add_submode_int32(MCE_VISUAL_TKLOCK_SUBMODE);
 
 	status = TRUE;
 
@@ -1861,15 +1893,89 @@ static void camera_button_trigger(gconstpointer const data)
 }
 
 /**
- * Datapipe trigger for touchscreen events
+ * Timeout callback for double tap
  *
  * @param data Unused
+ * @return Always returns FALSE, to disable the timeout
  */
-static void touchscreen_trigger(gconstpointer const data)
+static gboolean doubletap_timeout_cb(gpointer data)
 {
 	(void)data;
 
-	disable_autorelock_policy();
+	doubletap_timeout_cb_id = 0;
+
+	return FALSE;
+}
+
+/**
+ * Cancel doublepress timeout
+ */
+static void cancel_doubletap_timeout(void)
+{
+	/* Remove the timeout source for the touchscreen double tap handler */
+	if (doubletap_timeout_cb_id != 0) {
+		g_source_remove(doubletap_timeout_cb_id);
+		doubletap_timeout_cb_id = 0;
+	}
+}
+
+/**
+ * Setup doubletap timeout
+ *
+ * @return TRUE if the doubletap action was setup,
+ *         FALSE if no action was setup
+ */
+static void setup_doubletap_timeout(void)
+{
+	cancel_doubletap_timeout();
+
+	/* Setup new timeout */
+	doubletap_timeout_cb_id =
+		g_timeout_add(doubletapdelay, doubletap_timeout_cb, NULL);
+}
+
+/**
+ * Datapipe trigger for touchscreen events
+ *
+ * @param data A pointer to the input_event struct
+ */
+static void touchscreen_trigger(gconstpointer const data)
+{
+	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+	struct input_event const *const *evp;
+	struct input_event const *ev;
+
+	/* Don't dereference until we know it's safe */
+	if (data == NULL)
+		goto EXIT;
+
+	evp = data;
+	ev = *evp;
+
+	if (ev == NULL)
+		goto EXIT;
+
+	if (is_tklock_enabled() == TRUE) {
+		if (display_state == MCE_DISPLAY_OFF) {
+			if ((ev->type == EV_KEY) &&
+			    (ev->code == BTN_TOUCH) &&
+			    (ev->value == 1)) {
+				if (doubletap_timeout_cb_id == 0) {
+					setup_doubletap_timeout();
+				} else {
+					cancel_doubletap_timeout();
+					trigger_visual_tklock(FALSE);
+				}
+			}
+		} else {
+			trigger_visual_tklock(FALSE);
+		}
+	} else {
+		disable_autorelock_policy();
+	}
+
+EXIT:
+	return;
 }
 
 /**
@@ -1909,6 +2015,9 @@ static void display_state_trigger(gconstpointer data)
 
 	if (old_display_state == display_state)
 		goto EXIT;
+
+	/* Cancel the doubletap timeout whenever the display state changes */
+	cancel_doubletap_timeout();
 
 	switch (display_state) {
 	case MCE_DISPLAY_OFF:
@@ -2012,6 +2121,8 @@ static void alarm_ui_state_trigger(gconstpointer data)
 		break;
 
 	case MCE_ALARM_UI_RINGING_INT32:
+		mce_rem_submode_int32(MCE_VISUAL_TKLOCK_SUBMODE);
+
 		/* If the proximity state is "open",
 		 * disable tklock/event eater UI and proximity sensor
 		 */
@@ -2068,6 +2179,8 @@ static void alarm_ui_state_trigger(gconstpointer data)
 					   TRUE) == FALSE) {
 				disable_tklock(TRUE);
 				goto EXIT;
+			} else {
+				mce_add_submode_int32(MCE_VISUAL_TKLOCK_SUBMODE);
 			}
 
 			enable_autorelock();
@@ -2521,10 +2634,10 @@ gboolean mce_tklock_init(void)
 				     NULL);
 
 	disable_ts_immediately =
-		mce_conf_get_bool(MCE_CONF_TKLOCK_GROUP,
-				  MCE_CONF_TS_OFF_IMMEDIATELY,
-				  DEFAULT_TS_OFF_IMMEDIATELY,
-				  NULL);
+		mce_conf_get_int(MCE_CONF_TKLOCK_GROUP,
+				 MCE_CONF_TS_OFF_IMMEDIATELY,
+				 DEFAULT_TS_OFF_IMMEDIATELY,
+				 NULL);
 
 	disable_kp_immediately =
 		mce_conf_get_int(MCE_CONF_TKLOCK_GROUP,

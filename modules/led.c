@@ -539,7 +539,8 @@ static gint queue_prio_compare(gconstpointer entry1,
  *
  * @param brightness The brightness of the LED
  *                   (0 - maximum_led_brightness),
- *                   or -1 to adjust colour hues without changing brightness
+ *                   or -1 to adjust colour hues without changing brightness,
+ *                   and to reset brightness when the LED has been disabled
  */
 static void lysti_set_brightness(gint brightness)
 {
@@ -552,9 +553,6 @@ static void lysti_set_brightness(gint brightness)
 		return;
 	}
 
-        /* -1 is used to set proper colour hues
-	 * without changing current brightness
-	 */
 	if (brightness != -1) {
 		if (active_brightness == brightness)
 			return;
@@ -615,23 +613,30 @@ static void lysti_set_brightness(gint brightness)
 /**
  * Set NJoy-LED brightness
  *
- * @param brightness The brightness of the LED (0-3)
+ * @param brightness The brightness of the LED
+ *                   (0 - maximum_led_brightness),
+ *                   or -1 to reset brightness when the LED has been disabled
  */
 static void njoy_set_brightness(gint brightness)
 {
-	if (brightness < 0 || brightness > (gint)maximum_led_brightness) {
+	if (brightness < -1 || brightness > (gint)maximum_led_brightness) {
 		mce_log(LL_WARN, "Invalid brightness value %d", brightness);
 		return;
 	}
 
-	if (active_brightness == brightness)
-		return;
+	if (brightness != -1) {
+		if (active_brightness == brightness)
+			return;
 
-	active_brightness = brightness;
+		active_brightness = brightness;
+	}
+
 	(void)mce_write_number_string_to_file(led_brightness_rm_path,
-					      (unsigned)brightness, &led_brightness_rm_fp, TRUE, FALSE);
+					      (unsigned)active_brightness,
+					      &led_brightness_rm_fp,
+					      TRUE, FALSE);
 
-	mce_log(LL_DEBUG, "Brightness set to %d", brightness);
+	mce_log(LL_DEBUG, "Brightness set to %d", active_brightness);
 }
 
 /**
@@ -827,7 +832,9 @@ static void lysti_program_led(const pattern_struct *const pattern)
         /* Save what colors we are driving */
         current_lysti_led_pattern = pattern->engine1_mux | pattern->engine2_mux;
 
-        /* Update color hue according what leds are driven */
+        /* Reset brightness and update color hue
+	 * according what leds are driven
+	 */
         lysti_set_brightness(-1);
 }
 
@@ -871,6 +878,9 @@ static void njoy_program_led(const pattern_struct *const pattern)
 
 	(void)mce_write_string_to_file(engine1_mode_path,
 				       MCE_LED_RUN_MODE);
+
+	/* Reset brightness */
+        njoy_set_brightness(-1);
 }
 
 /**

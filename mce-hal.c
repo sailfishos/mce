@@ -22,35 +22,48 @@
 
 #include <string.h>			/* strstr() */
 #include <stdlib.h>			/* free() */
-#include <sysinfo.h>			/* sysinfo_init(),
-					 * sysinfo_get_value(),
-					 * sysinfo_finish(),
-					 * struct system_config
-					 */
 
 #include "mce-hal.h"
 
+#include "mce-lib.h"			/* strmemcmp() */
 #include "mce-log.h"			/* mce_log(), LL_* */
+#include "mce-dbus.h"			/* dbus_send(),
+					 * dbus_message_iter_init(),
+					 * dbus_message_iter_get_arg_type(),
+					 * dbus_message_iter_get_basic(),
+					 * dbus_message_iter_next(),
+					 * dbus_error_init(),
+					 * dbus_error_free(),
+					 * DBUS_TYPE_BYTE,
+					 * DBUS_TYPE_ARRAY,
+					 * DBUS_TYPE_STRING,
+					 * DBUS_TYPE_INVALID,
+					 * DBusMessage, DBusError,
+					 * dbus_bool_t,
+					 */
 
-#if 0
-/** Lock key type */
-typdef enum {
-	/** No lockkey */
-	LOCKKEY_NONE,
-	/** Flicker key */
-	LOCKKEY_FLICKER,
-	/** Slider key */
-	LOCKKEY_SLIDER
-} lockkey_t;
+#ifndef SYSINFOD_SERVICE
+/** SYSINFOD D-Bus service */
+#define SYSINFOD_SERVICE                "com.nokia.SystemInfo"
+#endif /* SYSINFOD_SERVICE */
 
-/** Hardware information */
-typedef struct {
-	/** Does the device have a lock key?  If so, what type? */
-	lockkey_t lockkey;
-	/** Does the device have a hardware keyboard? */
-	gboolean keyboard;
-} product_info_t;
-#endif
+#ifndef SYSINFOD_INTERFACE
+/** SYSINFOD D-Bus interface */
+#define SYSINFOD_INTERFACE              "com.nokia.SystemInfo"
+#endif /* SYSINFOD_INTERFACE */
+
+#ifndef SYSINFOD_PATH
+/** SYSINFOD D-Bus object path */
+#define SYSINFOD_PATH                   "/com/nokia/SystemInfo"
+#endif /* SYSINFOD_PATH */
+
+#ifndef SYSINFOD_GET_CONFIG_VALUE
+/** Query value of a sysinfo key */
+#define SYSINFOD_GET_CONFIG_VALUE       "GetConfigValue"
+#endif /* SYSINFOD_GET_CONFIG_VALUE */
+
+/** The sysinfo key to request */
+#define PRODUCT_SYSINFO_KEY		"/component/product"
 
 /**
  * The product ID of the device
@@ -58,28 +71,45 @@ typedef struct {
 static product_id_t product_id = PRODUCT_UNSET;
 
 /**
- * Compare a string with memory, with length checks
+ * Retrieve a sysinfo value via D-Bus
  *
- * @param mem The memory to compare with
- * @param str The string to compare the memory to
- * @param len The length of the memory area
- * @return TRUE if the string matches the memory area,
- *         FALSE if the memory area does not match, or if the lengths differ
+ * @param key The sysinfo key to retrieve
+ * @param[out] array A newly allocated byte array with the result;
+ *                   this array should to be freed when no longer used
+ * @param[out] len The length of the newly allocated string
+ * @return TRUE on success, FALSE on failure
  */
-static gboolean strmemcmp(guint8 *mem, const gchar *str, gulong len)
+gboolean get_sysinfo_value(const gchar *const key, guint8 **array, gulong *len)
 {
-	gboolean result = FALSE;
+	DBusMessage *reply;
+	guint8 *tmp = NULL;
+	gboolean status = FALSE;
 
-	if (strlen(str) != len)
-		goto EXIT;
+	if ((reply = dbus_send_with_block(SYSINFOD_SERVICE, SYSINFOD_PATH,
+					  SYSINFOD_INTERFACE,
+					  SYSINFOD_GET_CONFIG_VALUE,
+					  -1,
+					  DBUS_TYPE_STRING, &key,
+					  DBUS_TYPE_INVALID)) != NULL) {
+		dbus_message_get_args(reply, NULL,
+				      DBUS_TYPE_ARRAY,
+				      DBUS_TYPE_BYTE,
+				      &tmp, len,
+				      DBUS_TYPE_INVALID);
 
-	if (memcmp(mem, str, len) != 0)
-		goto EXIT;
+		if (*len > 0) {
+			if ((*array = malloc(*len)) != NULL) {
+				*array = memcpy(*array, tmp, *len);
+			} else {
+				*len = 0;
+			}
+		}
 
-	result = TRUE;
+		dbus_message_unref(reply);
+		status = TRUE;
+	}
 
-EXIT:
-	return result;
+	return status;
 }
 
 /**
@@ -89,25 +119,17 @@ EXIT:
  */
 product_id_t get_product_id(void)
 {
-	static struct system_config *sc = 0;
 	guint8 *tmp = NULL;
-	gulong len = 0;
+	gulong len;
 
 	if (product_id != PRODUCT_UNSET)
 		goto EXIT;
 
-	if (sysinfo_init(&sc) != 0) {
+	if (get_sysinfo_value(PRODUCT_SYSINFO_KEY, &tmp, &len) == FALSE) {
 		mce_log(LL_ERR,
-			"sysinfo_init() failed");
+			"Failed to get the product ID");
 		product_id = PRODUCT_UNKNOWN;
 		goto EXIT;
-	}
-
-	if (sysinfo_get_value(sc, PRODUCT_SYSINFO_KEY, &tmp, &len) != 0) {
-		mce_log(LL_ERR,
-			"sysinfo_get_value() failed");
-		product_id = PRODUCT_UNKNOWN;
-		goto EXIT2;
 	}
 
 	if (strmemcmp(tmp, PRODUCT_SU18_STR, len) == TRUE) {
@@ -135,9 +157,6 @@ product_id_t get_product_id(void)
 	}
 
 	free(tmp);
-
-EXIT2:
-	sysinfo_finish(sc);
 
 EXIT:
 	return product_id;

@@ -54,7 +54,6 @@
 					 * append_output_trigger_to_datapipe(),
 					 * remove_output_trigger_from_datapipe()
 					 */
-#include "connectivity.h"		/* get_connectivity_status() */
 
 /**
  * Set the MCE submode flags

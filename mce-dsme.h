@@ -29,43 +29,9 @@
 /** Name of Powerkey configuration group */
 #define MCE_CONF_SOFTPOWEROFF_GROUP	"SoftPowerOff"
 
-/** Name of configuration key for connectivity policy with charger connected */
-#define MCE_CONF_SOFTPOWEROFF_CONNECTIVITY_POLICY_CHARGER "ConnectivityPolicyCharger"
-
-/** Name of configuration key for connectivity policy when running on battery */
-#define MCE_CONF_SOFTPOWEROFF_CONNECTIVITY_POLICY_BATTERY "ConnectivityPolicyBattery"
-
-/** Name of configuration key for connectivity policy when powering on */
-#define MCE_CONF_SOFTPOWEROFF_CONNECTIVITY_POLICY_POWERON "ConnectivityPolicyPowerOn"
-
 /** Name of configuration key for charger connect policy in soft poweroff */
 #define MCE_CONF_SOFTPOWEROFF_CHARGER_POLICY_CONNECT "ChargerPolicyConnect"
 
-/**
- * Name of configuration value for the "forced offline" policy
- * when entering soft poweroff
- */
-#define SOFTOFF_CONNECTIVITY_FORCE_OFFLINE_STR		"forceoffline"
-/**
- * Name of configuration value for the "soft offline" policy
- * when entering soft poweroff
- */
-#define SOFTOFF_CONNECTIVITY_SOFT_OFFLINE_STR		"softoffline"
-/**
- * Name of configuration value for the "retain connectivity" policy
- * when entering soft poweroff
- */
-#define SOFTOFF_CONNECTIVITY_RETAIN_STR			"retain"
-/**
- * Name of configuration value for the "stay offline" policy
- * when powering on from soft poweroff
- */
-#define SOFTOFF_CONNECTIVITY_OFFLINE_STR		"offline"
-/**
- * Name of configuration value for the "restore connectivity" policy
- * when powering on from soft poweroff
- */
-#define SOFTOFF_CONNECTIVITY_RESTORE_STR		"restore"
 /**
  * Name of configuration value for the "wake on charger" policy
  * when in soft poweroff
@@ -76,32 +42,6 @@
  * when in soft poweroff
  */
 #define SOFTOFF_CHARGER_CONNECT_IGNORE_STR		"ignore"
-
-/** Soft poweroff connectivity policies */
-enum {
-	/** Policy not set */
-	SOFTOFF_CONNECTIVITY_INVALID = MCE_INVALID_TRANSLATION,
-	/** Retain connectivity */
-	SOFTOFF_CONNECTIVITY_RETAIN = 0,
-	/** Default setting when charger connected */
-	DEFAULT_SOFTOFF_CONNECTIVITY_CHARGER = SOFTOFF_CONNECTIVITY_RETAIN,
-	/** Go to offline mode if no connections are open */
-	SOFTOFF_CONNECTIVITY_SOFT_OFFLINE = 1,
-	/** Go to offline mode */
-	SOFTOFF_CONNECTIVITY_FORCE_OFFLINE = 2,
-	/** Default setting when running on battery */
-	DEFAULT_SOFTOFF_CONNECTIVITY_BATTERY = SOFTOFF_CONNECTIVITY_FORCE_OFFLINE,
-};
-
-/** Soft poweron connectivity policies */
-enum {
-	/** Stay in offline mode */
-	SOFTOFF_CONNECTIVITY_OFFLINE = 0,
-	/** Default setting */
-	DEFAULT_SOFTOFF_CONNECTIVITY_POWERON = SOFTOFF_CONNECTIVITY_OFFLINE,
-	/** Restore previous mode */
-	SOFTOFF_CONNECTIVITY_RESTORE = 1,
-};
 
 /** Soft poweroff charger connect policy */
 enum {
