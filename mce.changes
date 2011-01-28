@@ -1,0 +1,9 @@
+* Wed Jan 26 2011 Tapio Rantala <ext-tapio.rantala@nokia.com> 1.10.92-2
+- Drop init script, part of fix for BMC#12898
+
+* Fri Jan 21 2011 Tapio Rantala <ext-tapio.rantala@nokia.com> 1.10.92-1
+- New upstream version (BMC#12782)
+- Drop deprecated-names patch, applied upstream
+
+* Fri Jan 14 2011 Tapio Rantala <ext-tapio.rantala@nokia.com> 1.10.90-1
+- Initial meego packaging (FEA#5525) (FEA#5526) (FEA#5527) (FEA#5528)

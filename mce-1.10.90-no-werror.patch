@@ -1,0 +1,12 @@
+diff -urN a/Makefile b/Makefile
+--- a/Makefile	2010-06-16 21:06:27.315595000 +0300
++++ b/Makefile	2010-07-07 10:24:01.530452891 +0300
+@@ -67,7 +67,7 @@
+ WARNINGS += -Wmissing-format-attribute
+ #WARNINGS += -Wswitch-enum -Wunreachable-code
+ WARNINGS += -Wstack-protector
+-WARNINGS += -Werror # -std=c99
++#WARNINGS += -Werror # -std=c99
+ WARNINGS += -Wno-declaration-after-statement
+ 
+ COMMON_CFLAGS := -D_GNU_SOURCE

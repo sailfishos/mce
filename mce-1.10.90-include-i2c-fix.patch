@@ -1,0 +1,12 @@
+diff -urN a/modules/led.c b/modules/led.c
+--- a/modules/led.c	2010-06-16 21:06:27.315595000 +0300
++++ b/modules/led.c	2010-06-21 12:01:27.816734760 +0300
+@@ -28,7 +28,7 @@
+ #include <string.h>			/* strcmp(), strcpy(), strdup() */
+ #include <unistd.h>			/* close(), W_OK */
+ #include <sys/ioctl.h>			/* ioctl() */
+-#include <linux/i2c-dev.h>		/* i2c_smbus_write_byte_data(),
++#include <libi2c/i2c-dev.h>	/* i2c_smbus_write_byte_data(),
+ 					 * I2C_SLAVE_FORCE
+ 					 */
+ 
