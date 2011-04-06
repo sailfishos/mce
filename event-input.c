@@ -116,6 +116,8 @@ static gboolean gpio_key_disable_exists = FALSE;
 
 static void update_inputdevices(const gchar *device, gboolean add);
 
+static time_t prev_handled_touchscreen_activity_seconds = 0;
+
 /**
  * Enable the specified GPIO key
  * non-existing or already enabled keys are silently ignored
@@ -253,27 +255,6 @@ static void unregister_io_monitor(gpointer io_monitor, gpointer user_data)
 }
 
 /**
- * Timeout function for touchscreen I/O monitor reprogramming
- *
- * @param data Unused
- * @return Always returns FALSE, to disable the timeout
- */
-static gboolean touchscreen_io_monitor_timeout_cb(gpointer data)
-{
-	(void)data;
-
-	touchscreen_io_monitor_timeout_cb_id = 0;
-
-	/* Resume I/O monitors */
-	if (touchscreen_dev_list != NULL) {
-		g_slist_foreach(touchscreen_dev_list,
-				(GFunc)resume_io_monitor, NULL);
-	}
-
-	return FALSE;
-}
-
-/**
  * Cancel timeout for touchscreen I/O monitor reprogramming
  */
 static void cancel_touchscreen_io_monitor_timeout(void)
@@ -282,19 +263,6 @@ static void cancel_touchscreen_io_monitor_timeout(void)
 		g_source_remove(touchscreen_io_monitor_timeout_cb_id);
 		touchscreen_io_monitor_timeout_cb_id = 0;
 	}
-}
-
-/**
- * Setup timeout for touchscreen I/O monitor reprogramming
- */
-static void setup_touchscreen_io_monitor_timeout(void)
-{
-	cancel_touchscreen_io_monitor_timeout();
-
-	/* Setup new timeout */
-	touchscreen_io_monitor_timeout_cb_id =
-		g_timeout_add_seconds(MONITORING_DELAY,
-				      touchscreen_io_monitor_timeout_cb, NULL);
 }
 
 /**
@@ -307,10 +275,10 @@ static void setup_touchscreen_io_monitor_timeout(void)
  */
 static gboolean touchscreen_iomon_cb(gpointer data, gsize bytes_read)
 {
-	display_state_t display_state = datapipe_get_gint(display_state_pipe);
 	submode_t submode = mce_get_submode_int32();
 	struct input_event *ev;
 	gboolean flush = FALSE;
+	time_t time_now;
 
 	ev = data;
 
@@ -326,27 +294,21 @@ static gboolean touchscreen_iomon_cb(gpointer data, gsize bytes_read)
 		goto EXIT;
 	}
 
+	/* ignore all other tousch screen events except the first one happened at same second */
+	if ((ev->time.tv_sec - prev_handled_touchscreen_activity_seconds) == 0) {
+		goto EXIT;
+	}
+	prev_handled_touchscreen_activity_seconds	= ev->time.tv_sec;
+
+	time(&time_now);
+	if ((time_now - ev->time.tv_sec) > 2) {
+		// ignore events that are more than 2 seconds old
+		goto EXIT;
+	}
+
 	/* Generate activity */
 	(void)execute_datapipe(&device_inactive_pipe, GINT_TO_POINTER(FALSE),
 			       USE_INDATA, CACHE_INDATA);
-
-	/* If the display is on/dim and visual tklock is active
-	 * or autorelock isn't active, suspend I/O monitors
-	 */
-	if (((display_state == MCE_DISPLAY_ON) ||
-	     (display_state == MCE_DISPLAY_DIM)) &&
-	    (((submode & MCE_VISUAL_TKLOCK_SUBMODE) != 0) ||
-	     ((submode & MCE_AUTORELOCK_SUBMODE) == 0))) {
-		if (touchscreen_dev_list != NULL) {
-			g_slist_foreach(touchscreen_dev_list,
-					(GFunc)suspend_io_monitor, NULL);
-		}
-
-		/* Setup a timeout I/O monitor reprogramming */
-		setup_touchscreen_io_monitor_timeout();
-
-		flush = TRUE;
-	}
 
 	/* Only send pressure and gesture events */
 	if (((ev->type != EV_ABS) || (ev->code != ABS_PRESSURE)) &&
