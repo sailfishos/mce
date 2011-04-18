@@ -1,0 +1,16 @@
+Index: trunk/mce.c
+===================================================================
+--- trunk/mce.c	(revision 19701)
++++ trunk/mce.c	(revision 19702)
+@@ -312,10 +312,7 @@
+ 				i++;
+ 				retries++;
+ 			} else if (errno == EBADF) {
+-				mce_log(LL_ERR,
+-					"Failed to close() fd %d; %s. "
+-					"Ignoring.",
+-					i + 1, g_strerror(errno));
++				/* Ignore invalid file descriptors */
+ 				errno = 0;
+ 			} else {
+ 				mce_log(LL_CRIT,

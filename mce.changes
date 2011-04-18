@@ -1,5 +1,39 @@
+* Mon Apr 18 2011 Mika Laitio  <ext-mika.laitio@nokia.com> 1.10.92-8
+- (BMC#16313) Added dependency from mce to dsme because mce fails to start
+  if dsme is not running.
+
+* Thu Apr 07 2011 Mika Laitio  <ext-mika.laitio@nokia.com> 1.10.92-7
+- (BMC#15233) Added MCE_DISPLAY_TOGGLE value to mce.h and and 
+  send TOGGLE request from the power button keypreses in the event-input.c.
+  Added also the code to meegodisplay.c to handle these display toggle requests.
+
+* Wed Apr 06 2011 Mika Laitio <ext-mika.laitio@nokia.com> 1.10.92-6
+- (BMC#14738) Additional fix. Sometimes the screen got invoked couple of
+  seconds after blanking it even thought there were not any user activity.
+  This was caused by the code in event-input.c which suspended the event
+  reading for a while in certain situations after sending the activity
+  event. I removed the suspend code and instead use the input events time
+  as a filter so that only one activity event is send in maximum on each
+  second from the touchscreen events.
+
+* Mon Apr 04 2011 Mika Laitio <ext-mika.laitio@nokia.com> 1.10.92-5
+- (BMC#14738) Add new displaymeego module which simplifies the display blanking
+  code that was used in display module by removing all dimming related 
+  functionality that's not needed and had problems.
+- Drop previously used display-module-disabled patch
+
+* Wed Mar 09 2011 Tapio Rantala <ext-tapio.rantala@nokia.com> 1.10.92-4
+- Add silent-fd-close patch from upstream svn (BMC#14264)
+  + Don't print unnecessary info on startup
+- Add pwr-button-event-name patch from upstream svn
+  + Added event driver name for the power button in various MeeGo devices
+- Refresh display-module-disabled patch
+
+* Mon Feb 28 2011 Tapio Rantala <ext-tapio.rantala@nokia.com> 1.10.92-3
+- Do not load display module (BMC#13332)
+
 * Wed Jan 26 2011 Tapio Rantala <ext-tapio.rantala@nokia.com> 1.10.92-2
-- Drop init script, part of fix for BMC#12898
+- Drop init script, part of fix for (BMC#12898)
 
 * Fri Jan 21 2011 Tapio Rantala <ext-tapio.rantala@nokia.com> 1.10.92-1
 - New upstream version (BMC#12782)

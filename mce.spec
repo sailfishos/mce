@@ -1,6 +1,6 @@
 Name:     mce
 Version:  1.10.92
-Release:  2
+Release:  8
 Summary:  Mode Control Entity for Nokia mobile computers
 Group:    System/System Control
 License:  LGPLv2
@@ -9,6 +9,11 @@ Source0:  %{name}-%{version}.tar.bz2
 Patch0:   %{name}-1.10.90-no-ownership.patch
 Patch1:   %{name}-1.10.90-include-i2c-fix.patch
 Patch2:   %{name}-1.10.90-no-werror.patch
+Patch3:   %{name}-1.10.92-add-and-enable-displaymeego-module.patch
+Patch4:   %{name}-1.10.92-silent-fd-close.patch
+Patch5:   %{name}-1.10.92-pwr-button-event-name.patch
+Patch6:   %{name}-1.10.92-fix-delay-when-processing-touchscreen-events.patch
+Patch7:   %{name}-1.10.92-pwr-btn-fix-for-display-blank-and-unblank.patch
 
 BuildRequires: pkgconfig(dbus-1) >= 1.0.2
 BuildRequires: pkgconfig(dbus-glib-1)
@@ -18,6 +23,8 @@ BuildRequires: pkgconfig(glib-2.0) >= 2.18.0
 BuildRequires: pkgconfig(mce) >= 1.10.21
 BuildRequires: kernel-headers >= 2.6.32
 BuildRequires: libi2c-devel
+
+Requires: dsme
 
 %description
 This package contains the Mode Control Entity which provides
@@ -38,6 +45,11 @@ the Mode Control Entity and to get mode information.
 %patch0 -p1
 %patch1 -p1
 %patch2 -p1
+%patch3 -p1
+%patch4 -p1
+%patch5 -p1
+%patch6 -p1
+%patch7 -p1
 
 %build
 make %{?_smp_mflags}

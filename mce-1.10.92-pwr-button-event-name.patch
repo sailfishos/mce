@@ -1,0 +1,14 @@
+Index: trunk/event-input.h
+===================================================================
+--- trunk/event-input.h	(revision 19482)
++++ trunk/event-input.h	(revision 19483)
+@@ -94,6 +94,9 @@
+ 	/** Input layer name for standard PC keyboards */
+ 	"AT Translated Set 2 keyboard",
+ 
++	/** Input layer name for the power button in various MeeGo devices */
++	"msic_power_btn",
++
+ 	/** Input layer name for the TWL4030 power button */
+ 	"twl4030_pwrbutton",
+ 

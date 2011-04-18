@@ -1,0 +1,136 @@
+From e5d34a846136f0e1a9b152fdeba103a62ccf0945 Mon Sep 17 00:00:00 2001
+From: Mika Laitio <lamikr@pilppa.org>
+Date: Thu, 7 Apr 2011 10:26:20 +0300
+Subject: [PATCH 3/3] pwr-btn fix for display blank/unblank.
+
+Signed-off-by: Mika Laitio <lamikr@pilppa.org>
+---
+ event-input.c          |   45 +++++++++++++++++++++++++++------------------
+ mce.h                  |    3 ++-
+ modules/displaymeego.c |   12 ++++++++++--
+ 3 files changed, 39 insertions(+), 21 deletions(-)
+
+diff --git a/event-input.c b/event-input.c
+index c5ea85e..c65d3ba 100644
+--- a/event-input.c
++++ b/event-input.c
+@@ -273,7 +273,7 @@ static void touchscreen_cb(gpointer data, gsize bytes_read)
+ 		goto EXIT;
+ 	}
+ 
+-	/* ignore all other tousch screen events except the first one happened at same second */
++	/* ignore all other touch screen events except the first one happened at same second */
+ 	if ((ev->time.tv_sec - prev_handled_touchscreen_activity_seconds) == 0) {
+ 		goto EXIT;
+ 	}
+@@ -284,7 +284,6 @@ static void touchscreen_cb(gpointer data, gsize bytes_read)
+ 		// ignore events that are more than 2 seconds old
+ 		goto EXIT;
+ 	}
+-
+ 	/* Generate activity */
+ 	(void)execute_datapipe(&device_inactive_pipe, GINT_TO_POINTER(FALSE),
+ 			       USE_INDATA, CACHE_INDATA);
+@@ -379,22 +378,32 @@ static void keypress_cb(gpointer data, gsize bytes_read)
+ 					       USE_INDATA, CACHE_INDATA);
+ 		}
+ 
+-		/* For now there's no reason to cache the keypress
+-		 *
+-		 * If the event eater is active, and this is the press,
+-		 * don't send anything; never eat releases, otherwise
+-		 * the release event for a [power] press might get lost
+-		 * and the device shut down...  Not good(tm)
+-		 *
+-		 * Also, don't send repeat events, and don't send
+-		 * keypress events for the focus and screenlock keys
+-		 */
+-		if ((ev->code != KEY_CAMERA_FOCUS) &&
+-	            (ev->code != KEY_SCREENLOCK) &&
+-	            ((((submode & MCE_EVEATER_SUBMODE) == 0) &&
+-		       (ev->value == 1)) || (ev->value == 0))) {
+-			(void)execute_datapipe(&keypress_pipe, &ev,
+-					       USE_INDATA, DONT_CACHE_INDATA);
++		if (ev->code == KEY_POWER) {
++			if (ev->value == 1) {
++				(void)execute_datapipe(&display_state_pipe,
++									GINT_TO_POINTER(MCE_DISPLAY_TOGGLE),
++									USE_INDATA,
++									CACHE_INDATA);
++			}
++		}
++		else {
++			/* For now there's no reason to cache the keypress
++			 *
++			 * If the event eater is active, and this is the press,
++			 * don't send anything; never eat releases, otherwise
++			 * the release event for a [power] press might get lost
++			 * and the device shut down...  Not good(tm)
++			 *
++			 * Also, don't send repeat events, and don't send
++			 * keypress events for the focus and screenlock keys
++			 */
++			if ((ev->code != KEY_CAMERA_FOCUS) &&
++					(ev->code != KEY_SCREENLOCK) &&
++					((((submode & MCE_EVEATER_SUBMODE) == 0) &&
++				   (ev->value == 1)) || (ev->value == 0))) {
++				(void)execute_datapipe(&keypress_pipe, &ev,
++							   USE_INDATA, DONT_CACHE_INDATA);
++			}
+ 		}
+ 	}
+ 
+diff --git a/mce.h b/mce.h
+index 561a224..bdadf00 100644
+--- a/mce.h
++++ b/mce.h
+@@ -175,7 +175,8 @@ typedef enum {
+ 	MCE_DISPLAY_OFF	= 0,		/**< Display is off */
+ 	MCE_DISPLAY_LOW_POWER = 1,	/**< Display is in low power mode */
+ 	MCE_DISPLAY_DIM = 2,		/**< Display is dimmed */
+-	MCE_DISPLAY_ON = 3		/**< Display is on */
++	MCE_DISPLAY_ON = 3,		/**< Display is on */
++	MCE_DISPLAY_TOGGLE = 4		/**< Display is on */
+ } display_state_t;
+ 
+ /** Cover state */
+diff --git a/modules/displaymeego.c b/modules/displaymeego.c
+index 865225d..f486382 100644
+--- a/modules/displaymeego.c
++++ b/modules/displaymeego.c
+@@ -642,7 +642,6 @@ static void cancel_blank_timeout(void)
+ static void setup_blank_timeout(void)
+ {
+ 	cancel_blank_timeout();
+-
+ 	log_debug("blanking_inhibited: %d, disp_blank_timeout: %d\n", blanking_inhibited, disp_blank_timeout);
+ 	if (blanking_inhibited == FALSE) {
+ 		/* Setup new timeout */
+@@ -1480,6 +1479,16 @@ static void display_state_trigger(gconstpointer data)
+ 	submode_t submode = mce_get_submode_int32();
+ 
+ 	log_debug("display_state: %d\n", display_state);
++	if (display_state == MCE_DISPLAY_TOGGLE) {
++		if (cached_display_state == MCE_DISPLAY_ON) {
++			display_state	= MCE_DISPLAY_OFF;
++			log_debug("togling display, cached_display_state: %d,new_display_state: %d\n", cached_display_state, display_state);
++		}
++		else {
++			display_state	= MCE_DISPLAY_ON;
++			log_debug("togling display, cached_display_state: %d,new_display_state: %d\n", cached_display_state, display_state);
++		}
++	}
+ 	switch (display_state) {
+ 		case MCE_DISPLAY_OFF:
+ 		case MCE_DISPLAY_DIM:
+@@ -1514,7 +1523,6 @@ static void display_state_trigger(gconstpointer data)
+ 		 * since the pipe contains the new value
+ 		 */
+ 		send_display_status(NULL);
+-
+ 		/* Update the cached value */
+ 		cached_display_state	= display_state;
+ 	}
+-- 
+1.7.1
+
