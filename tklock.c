@@ -3103,6 +3103,9 @@ gboolean mce_tklock_init(void)
 	if (g_access(MCE_RM680_TOUCHSCREEN_SYSFS_DISABLE_PATH, W_OK) == 0) {
 		mce_touchscreen_sysfs_disable_path =
 			MCE_RM680_TOUCHSCREEN_SYSFS_DISABLE_PATH;
+	} else if (g_access(MCE_RX44_TOUCHSCREEN_SYSFS_DISABLE_PATH_KERNEL2637, W_OK) == 0) {
+		mce_touchscreen_sysfs_disable_path =
+			MCE_RX44_TOUCHSCREEN_SYSFS_DISABLE_PATH_KERNEL2637;
 	} else if (g_access(MCE_RX44_TOUCHSCREEN_SYSFS_DISABLE_PATH, W_OK) == 0) {
 		mce_touchscreen_sysfs_disable_path =
 			MCE_RX44_TOUCHSCREEN_SYSFS_DISABLE_PATH;
