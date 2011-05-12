@@ -1,12 +1,8 @@
 /**
  * @file dbus-names.h
- * DBus Interface to the System UI
+ * D-Bus Interface for communicating with SystemUI
  * <p>
- * This file is part of osso-systemui-dbus-dev
- * <p>
- * Copyright (C) 2004-2006 Nokia Corporation.
- * <p>
- * Contact person: David Weinehall <david.weinehall@nokia.com>
+ * Copyright © 2004-2011 Nokia Corporation and/or its subsidiary(-ies).
  *
  * These headers are free software; you can redistribute them
  * and/or modify them under the terms of the GNU Lesser General Public
@@ -18,11 +14,8 @@
  * Lesser General Public License for more details.
  *
  * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA
+ * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
-
 #ifndef _SYSTEMUI_DBUS_NAMES_H
 #define _SYSTEMUI_DBUS_NAMES_H
 
@@ -47,4 +40,4 @@
  */
 #define SYSTEMUI_STARTED_SIG   "system_ui_started"
 
-#endif
+#endif /* _SYSTEMUI_DBUS_NAMES_H */

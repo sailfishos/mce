@@ -2,7 +2,7 @@
  * @file proximity.c
  * Proximity sensor module
  * <p>
- * Copyright © 2010 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright © 2010-2011 Nokia Corporation and/or its subsidiary(-ies).
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Tuomo Tanskanen <ext-tuomo.1.tanskanen@nokia.com>
@@ -23,6 +23,7 @@
 #include <gmodule.h>
 #include <glib/gstdio.h>		/* g_access */
 
+#include <errno.h>			/* errno */
 #include <fcntl.h>			/* O_NONBLOCK */
 #include <unistd.h>			/* R_OK */
 #include <stdlib.h>			/* free() */
@@ -31,7 +32,12 @@
 #include "mce.h"
 #include "proximity.h"
 
-#include "mce-io.h"			/* mce_read_chunk_from_file() */
+#include "mce-io.h"			/* mce_read_chunk_from_file(),
+					 * mce_write_string_to_file(),
+					 * mce_write_number_string_to_file(),
+					 * mce_register_io_monitor_chunk(),
+					 * mce_unregister_io_monitor()
+					 */
 #include "mce-hal.h"			/* get_sysinfo_value() */
 #include "mce-log.h"			/* mce_log(), LL_* */
 #include "mce-dbus.h"			/* Direct:
@@ -102,6 +108,8 @@ static gconstpointer proximity_sensor_iomon_id = NULL;
 static const gchar *ps_device_path = NULL;
 /** Path to the proximity sensor enable/disable file entry */
 static const gchar *ps_enable_path = NULL;
+/** Path to the proximity sensor on/off mode file entry */
+static const gchar *ps_onoff_mode_path = NULL;
 /** Path to the first proximity sensor calibration point sysfs entry */
 static const gchar *ps_calib0_path = NULL;
 /** Path to the second proximity sensor calibration point sysfs entry */
@@ -142,6 +150,7 @@ static ps_type_t get_ps_type(void)
 		ps_type = PS_TYPE_AVAGO;
 		ps_device_path = PS_DEVICE_PATH_AVAGO;
 		ps_enable_path = PS_PATH_AVAGO_ENABLE;
+		ps_onoff_mode_path = PS_PATH_AVAGO_ONOFF_MODE;
 	} else if (g_access(PS_DEVICE_PATH_DIPRO, R_OK) == 0) {
 		ps_type = PS_TYPE_DIPRO;
 		ps_device_path = PS_DEVICE_PATH_DIPRO;
@@ -154,6 +163,8 @@ static ps_type_t get_ps_type(void)
 		ps_type = PS_TYPE_NONE;
 		ps_device_path = NULL;
 	}
+
+	errno = 0;
 
 	mce_log(LL_DEBUG, "Proximity sensor-type: %d", ps_type);
 
@@ -221,12 +232,15 @@ static void calibrate_ps(void)
 	default:
 		mce_log(LL_INFO,
 			"Ignored excess calibration data");
+		/* Fall-through */
 
 	case 2:
 		memcpy(&calib1, tmp, sizeof (calib1));
+		/* Fall-through */
 
 	case 1:
 		memcpy(&calib0, tmp, sizeof (calib0));
+		break;
 	}
 
 	/* Write calibration value 0 */
@@ -253,18 +267,19 @@ EXIT:
  *
  * @param data The new data
  * @param bytes_read Unused
+ * @return Always returns FALSE to return remaining chunks (if any)
  */
-static void proximity_sensor_avago_cb(gpointer data, gsize bytes_read)
+static gboolean ps_avago_iomon_cb(gpointer data, gsize bytes_read)
 {
 	cover_state_t proximity_sensor_state = COVER_UNDEF;
 	struct avago_ps *ps;
-
-	ps = data;
 
 	/* Don't process invalid reads */
 	if (bytes_read != sizeof (struct avago_ps)) {
 		goto EXIT;
 	}
+
+	ps = data;
 
 	if ((ps->status & APDS990X_PS_UPDATED) == 0)
 		goto EXIT;
@@ -283,10 +298,8 @@ static void proximity_sensor_avago_cb(gpointer data, gsize bytes_read)
 			       GINT_TO_POINTER(proximity_sensor_state),
 			       USE_INDATA, CACHE_INDATA);
 
-	old_proximity_sensor_state = proximity_sensor_state;
-
 EXIT:
-	return;
+	return FALSE;
 }
 
 /**
@@ -294,18 +307,19 @@ EXIT:
  *
  * @param data The new data
  * @param bytes_read Unused
+ * @return Always returns FALSE to return remaining chunks (if any)
  */
-static void proximity_sensor_dipro_cb(gpointer data, gsize bytes_read)
+static gboolean ps_dipro_iomon_cb(gpointer data, gsize bytes_read)
 {
 	cover_state_t proximity_sensor_state = COVER_UNDEF;
 	struct dipro_ps *ps;
-
-	ps = data;
 
 	/* Don't process invalid reads */
 	if (bytes_read != sizeof (struct dipro_ps)) {
 		goto EXIT;
 	}
+
+	ps = data;
 
 	if (old_proximity_sensor_state == COVER_UNDEF) {
 		if (ps->led1 < ps_threshold->threshold_rising)
@@ -330,42 +344,36 @@ static void proximity_sensor_dipro_cb(gpointer data, gsize bytes_read)
 			       GINT_TO_POINTER(proximity_sensor_state),
 			       USE_INDATA, CACHE_INDATA);
 
-	old_proximity_sensor_state = proximity_sensor_state;
-
 EXIT:
-	return;
+	return FALSE;
 }
 
 /**
  * Update the proximity state (Avago)
  *
  * @note Only gives reasonable readings when the proximity sensor is enabled
- * @return TRUE on success, FALSE on failure
  */
-static gboolean update_proximity_sensor_state_avago(void)
+static void update_proximity_sensor_state_avago(void)
 {
 	cover_state_t proximity_sensor_state;
-	gboolean status = FALSE;
 	struct avago_ps *ps;
 	void *tmp = NULL;
 	gssize len = sizeof (struct avago_ps);
 
-	if (mce_read_chunk_from_file(ps_device_path, &tmp, &len,
-				     0, -1) == FALSE)
+	if (mce_read_chunk_from_file(ps_device_path, &tmp, &len, 0) == FALSE)
 		goto EXIT;
 
 	if (len != sizeof (struct avago_ps)) {
 		mce_log(LL_ERR,
 			"Short read from `%s'",
 			ps_device_path);
-		g_free(tmp);
 		goto EXIT;
 	}
 
 	ps = (struct avago_ps *)tmp;
 
 	if ((ps->status & APDS990X_PS_UPDATED) == 0)
-		goto EXIT2;
+		goto EXIT;
 
 	if (ps->ps != 0)
 		proximity_sensor_state = COVER_CLOSED;
@@ -378,38 +386,31 @@ static gboolean update_proximity_sensor_state_avago(void)
 			       GINT_TO_POINTER(proximity_sensor_state),
 			       USE_INDATA, CACHE_INDATA);
 
-EXIT2:
+EXIT:
 	g_free(tmp);
 
-	status = TRUE;
-
-EXIT:
-	return status;
+	return;
 }
 
 /**
  * Update the proximity state (Dipro)
  *
  * @note Only gives reasonable readings when the proximity sensor is enabled
- * @return TRUE on success, FALSE on failure
  */
-static gboolean update_proximity_sensor_state_dipro(void)
+static void update_proximity_sensor_state_dipro(void)
 {
 	cover_state_t proximity_sensor_state;
-	gboolean status = FALSE;
 	struct dipro_ps *ps;
 	void *tmp = NULL;
 	gssize len = sizeof (struct dipro_ps);
 
-	if (mce_read_chunk_from_file(ps_device_path, &tmp, &len,
-				     0, -1) == FALSE)
+	if (mce_read_chunk_from_file(ps_device_path, &tmp, &len, 0) == FALSE)
 		goto EXIT;
 
 	if (len != sizeof (struct dipro_ps)) {
 		mce_log(LL_ERR,
 			"Short read from `%s'",
 			ps_device_path);
-		g_free(tmp);
 		goto EXIT;
 	}
 
@@ -426,12 +427,10 @@ static gboolean update_proximity_sensor_state_dipro(void)
 			       GINT_TO_POINTER(proximity_sensor_state),
 			       USE_INDATA, CACHE_INDATA);
 
+EXIT:
 	g_free(tmp);
 
-	status = TRUE;
-
-EXIT:
-	return status;
+	return;
 }
 
 /**
@@ -439,10 +438,18 @@ EXIT:
  */
 static void update_proximity_monitor(void)
 {
+	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+	submode_t submode = mce_get_submode_int32();
+
 	if (get_ps_type() == PS_TYPE_NONE)
 		goto EXIT;
 
-	if ((ps_external_refcount > 0) ||
+	if ((display_state == MCE_DISPLAY_ON) ||
+	    (display_state == MCE_DISPLAY_LPM_ON) ||
+	    (((submode & MCE_TKLOCK_SUBMODE) != 0) &&
+	     ((display_state == MCE_DISPLAY_OFF) ||
+	      (display_state == MCE_DISPLAY_LPM_OFF))) ||
+	    (ps_external_refcount > 0) ||
 	    (call_state == CALL_STATE_RINGING) ||
 	    (call_state == CALL_STATE_ACTIVE) ||
 	    (alarm_ui_state == MCE_ALARM_UI_VISIBLE_INT32) ||
@@ -454,17 +461,17 @@ static void update_proximity_monitor(void)
 			/* FIXME: is code forking the only way to do these? */
 			switch (get_ps_type()) {
 			case PS_TYPE_AVAGO:
-				(void)update_proximity_sensor_state_avago();
-
-				if ((proximity_sensor_iomon_id = mce_register_io_monitor_chunk(-1, ps_device_path, MCE_IO_ERROR_POLICY_WARN, G_IO_IN | G_IO_PRI | G_IO_ERR, FALSE, proximity_sensor_avago_cb, sizeof (struct avago_ps))) == NULL)
+				if ((proximity_sensor_iomon_id = mce_register_io_monitor_chunk(-1, ps_device_path, MCE_IO_ERROR_POLICY_WARN, G_IO_IN | G_IO_PRI | G_IO_ERR, FALSE, ps_avago_iomon_cb, sizeof (struct avago_ps))) == NULL)
 					goto EXIT;
+
+				update_proximity_sensor_state_avago();
 				break;
 
 			case PS_TYPE_DIPRO:
-				(void)update_proximity_sensor_state_dipro();
-
-				if ((proximity_sensor_iomon_id = mce_register_io_monitor_chunk(-1, ps_device_path, MCE_IO_ERROR_POLICY_WARN, G_IO_IN | G_IO_PRI | G_IO_ERR, FALSE, proximity_sensor_dipro_cb, sizeof (struct dipro_ps))) == NULL)
+				if ((proximity_sensor_iomon_id = mce_register_io_monitor_chunk(-1, ps_device_path, MCE_IO_ERROR_POLICY_WARN, G_IO_IN | G_IO_PRI | G_IO_ERR, FALSE, ps_dipro_iomon_cb, sizeof (struct dipro_ps))) == NULL)
 					goto EXIT;
+
+				update_proximity_sensor_state_dipro();
 				break;
 
 			default:
@@ -495,13 +502,25 @@ static void call_state_trigger(gconstpointer const data)
 }
 
 /**
- * Handle alarm UI state change
+ * Handle alarm ui state change
  *
  * @param data The alarm state stored in a pointer
  */
 static void alarm_ui_state_trigger(gconstpointer const data)
 {
 	alarm_ui_state = GPOINTER_TO_INT(data);
+
+	update_proximity_monitor();
+}
+
+/**
+ * Handle display state change
+ *
+ * @param data The display state stored in a pointer
+ */
+static void display_state_trigger(gconstpointer data)
+{
+	(void)data;
 
 	update_proximity_monitor();
 }
@@ -539,7 +558,7 @@ static gboolean proximity_sensor_owner_monitor_dbus_cb(DBusMessage *const msg)
 		goto EXIT;
 	}
 
-	/* Remove the name monitor for the CABC mode */
+	/* Remove the name monitor for the proximity sensor owner */
 	retval = mce_dbus_owner_monitor_remove(old_name, &proximity_sensor_owner_monitor_list);
 
 	if (retval == -1) {
@@ -547,10 +566,14 @@ static gboolean proximity_sensor_owner_monitor_dbus_cb(DBusMessage *const msg)
 			"Failed to remove name owner monitoring for `%s'",
 			old_name);
 	} else {
-		ps_external_refcount = retval;
+		if ((ps_external_refcount > 0) && (retval == 0)) {
+			if (ps_onoff_mode_path != NULL)
+				mce_write_number_string_to_file(ps_onoff_mode_path, 1, NULL, TRUE, TRUE);
 
-		if (ps_external_refcount == 0)
 			update_proximity_monitor();
+		}
+
+		ps_external_refcount = retval;
 	}
 
 	status = TRUE;
@@ -576,9 +599,16 @@ static gboolean proximity_sensor_enable_req_dbus_cb(DBusMessage *const msg)
 	/* Register error channel */
 	dbus_error_init(&error);
 
+	if (sender == NULL) {
+		mce_log(LL_ERR,
+			"Received invalid proximity sensor enable request "
+			"(sender == NULL)");
+		goto EXIT;
+	}
+
 	mce_log(LL_DEBUG,
 		"Received proximity sensor enable request from %s",
-		(sender == NULL) ? "(unknown)" : sender);
+		sender);
 
 	retval = mce_dbus_owner_monitor_add(sender, proximity_sensor_owner_monitor_dbus_cb, &proximity_sensor_owner_monitor_list, PS_MAX_MONITORED);
 
@@ -587,10 +617,14 @@ static gboolean proximity_sensor_enable_req_dbus_cb(DBusMessage *const msg)
 			"Failed to add name owner monitoring for `%s'",
 			sender);
 	} else {
-		ps_external_refcount = retval;
+		if ((ps_external_refcount == 0) && (retval == 1)) {
+			if (ps_onoff_mode_path != NULL)
+				mce_write_number_string_to_file(ps_onoff_mode_path, 0, NULL, TRUE, TRUE);
 
-		if (ps_external_refcount == 1)
 			update_proximity_monitor();
+		}
+
+		ps_external_refcount = retval;
 	}
 
 	if (no_reply == FALSE) {
@@ -601,6 +635,7 @@ static gboolean proximity_sensor_enable_req_dbus_cb(DBusMessage *const msg)
 		status = TRUE;
 	}
 
+EXIT:
 	return status;
 }
 
@@ -621,9 +656,16 @@ static gboolean proximity_sensor_disable_req_dbus_cb(DBusMessage *const msg)
 	/* Register error channel */
 	dbus_error_init(&error);
 
+	if (sender == NULL) {
+		mce_log(LL_ERR,
+			"Received invalid proximity sensor disable request "
+			"(sender == NULL)");
+		goto EXIT;
+	}
+
 	mce_log(LL_DEBUG,
 		"Received proximity sensor disable request from %s",
-		(sender == NULL) ? "(unknown)" : sender);
+		sender);
 
 	retval = mce_dbus_owner_monitor_remove(sender,
 					       &proximity_sensor_owner_monitor_list);
@@ -633,10 +675,14 @@ static gboolean proximity_sensor_disable_req_dbus_cb(DBusMessage *const msg)
 			"Failed to remove name owner monitoring for `%s'",
 			sender);
 	} else {
-		ps_external_refcount = retval;
+		if ((ps_external_refcount > 0) && (retval == 0)) {
+			if (ps_onoff_mode_path != NULL)
+				mce_write_number_string_to_file(ps_onoff_mode_path, 1, NULL, TRUE, TRUE);
 
-		if (ps_external_refcount == 0)
 			update_proximity_monitor();
+		}
+
+		ps_external_refcount = retval;
 	}
 
 	if (no_reply == FALSE) {
@@ -647,6 +693,7 @@ static gboolean proximity_sensor_disable_req_dbus_cb(DBusMessage *const msg)
 		status = TRUE;
 	}
 
+EXIT:
 	return status;
 }
 
@@ -668,6 +715,8 @@ const gchar *g_module_check_init(GModule *module)
 					 call_state_trigger);
 	append_input_trigger_to_datapipe(&alarm_ui_state_pipe,
 					 alarm_ui_state_trigger);
+	append_output_trigger_to_datapipe(&display_state_pipe,
+					  display_state_trigger);
 
 	/* req_proximity_sensor_enable */
 	if (mce_dbus_handler_add(MCE_REQUEST_IF,
@@ -690,6 +739,10 @@ const gchar *g_module_check_init(GModule *module)
 		calibrate_ps();
 	}
 
+	if (ps_onoff_mode_path != NULL)
+		mce_write_number_string_to_file(ps_onoff_mode_path,
+						1, NULL, TRUE, TRUE);
+
 	ps_external_refcount = 0;
 
 EXIT:
@@ -707,6 +760,8 @@ void g_module_unload(GModule *module)
 	(void)module;
 
 	/* Remove triggers/filters from datapipes */
+	remove_output_trigger_from_datapipe(&display_state_pipe,
+					    display_state_trigger);
 	remove_input_trigger_from_datapipe(&alarm_ui_state_pipe,
 					   alarm_ui_state_trigger);
 	remove_input_trigger_from_datapipe(&call_state_pipe,

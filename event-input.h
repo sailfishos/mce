@@ -2,7 +2,7 @@
  * @file event-input.h
  * Headers for the /dev/input event provider for the Mode Control Entity
  * <p>
- * Copyright © 2007-2010 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright © 2007-2011 Nokia Corporation and/or its subsidiary(-ies).
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  *
@@ -94,6 +94,9 @@ static const gchar *const keyboard_event_drivers[] = {
 	/** Input layer name for standard PC keyboards */
 	"AT Translated Set 2 keyboard",
 
+	/** Input layer name for the power button in various MeeGo devices */
+	"msic_power_btn",
+
 	/** Input layer name for the TWL4030 power button */
 	"twl4030_pwrbutton",
 
@@ -165,7 +168,7 @@ static const gchar *const driver_blacklist[] = {
 	/** Input layer name for the UVC 17ef:4807 webcam in thinkpad X301 */
 	"UVC Camera (17ef:4807)",
 
-	/** Input layer name for the UVC 17ef:480c webcam in thinkpad X301si */
+	/** Input layer name for the UVC 17ef:480c webcam in thinkpad X201si */
 	"UVC Camera (17ef:480c)",
 
 	/** No more entries */

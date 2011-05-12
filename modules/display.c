@@ -2,7 +2,7 @@
  * @file display.c
  * Display module -- this implements display handling for MCE
  * <p>
- * Copyright © 2007-2010 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright © 2007-2011 Nokia Corporation and/or its subsidiary(-ies).
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  *
@@ -54,7 +54,8 @@
 					 */
 #include "display.h"
 
-#include "mce-io.h"			/* mce_read_string_from_file(),
+#include "mce-io.h"			/* mce_close_file(),
+					 * mce_read_string_from_file(),
 					 * mce_read_number_string_from_file(),
 					 * mce_write_number_string_to_file()
 					 */
@@ -69,11 +70,15 @@
 #include "mce-dbus.h"			/* Direct:
 					 * ---
 					 * mce_dbus_handler_add(),
+					 * mce_dbus_owner_monitor_add(),
+					 * mce_dbus_owner_monitor_remove(),
 					 * dbus_send_message(),
 					 * dbus_new_method_reply(),
 					 * dbus_new_signal(),
 					 * dbus_message_append_args(),
 					 * dbus_message_get_no_reply(),
+					 * dbus_message_get_sender(),
+					 * dbus_message_has_path(),
 					 * dbus_message_unref(),
 					 * DBusMessage,
 					 * DBUS_MESSAGE_TYPE_METHOD_CALL,
@@ -111,12 +116,11 @@
 
 /* These defines are taken from devicelock.h, but slightly modified */
 #ifndef DEVICELOCK_H
+
 /** Devicelock D-Bus service */
 #define DEVLOCK_SERVICE			"com.nokia.devicelock"
-
 /** Devicelock D-Bus service */
 #define DEVLOCK_PATH			"/request"
-
 /** Set devicelock state */
 #define DEVLOCK_SET			"setState"
 
@@ -136,7 +140,7 @@ enum LockState {
 	Locked,
 	/** Configuration - Open the locks configuration settings */
 	Configuration,
-/** WipeMMC - Secure wipe of the device */
+	/** WipeMMC - Secure wipe of the device */
 	WipeMMC,
 	/** Inhibit - Stop the lock ui(s) from being displayed */
 	Inhibit,
@@ -145,10 +149,12 @@ enum LockState {
 };
 #endif /* DEVICELOCK_H */
 
-// XXX: remove
-#ifndef MCE_DISPLAY_LOW_POWER_MODE_REQ
-#define MCE_DISPLAY_LOW_POWER_MODE_REQ	"req_display_state_low_power"
-#endif
+/** Contextkit D-Bus service */
+#define ORIENTATION_SIGNAL_IF		"org.maemo.contextkit.Property"
+/** Contextkit D-Bus orientation path */
+#define ORIENTATION_SIGNAL_PATH		"/org/maemo/contextkit/Screen/TopEdge"
+/** Contextkit D-Bus orientation changed signal */
+#define ORIENTATION_VALUE_CHANGE_SIG	"ValueChanged"
 
 /** Module name */
 #define MODULE_NAME		"display"
@@ -176,8 +182,18 @@ static guint disp_dim_timeout_gconf_cb_id = 0;
 
 /** Display blanking timeout setting */
 static gint disp_blank_timeout = DEFAULT_BLANK_TIMEOUT;
+/** Display blank timeout setting when low power mode is supported */
+static gint disp_lpm_blank_timeout = DEFAULT_LPM_BLANK_TIMEOUT;
 /** GConf callback ID for display blanking timeout setting */
 static guint disp_blank_timeout_gconf_cb_id = 0;
+
+/** Use low power mode setting */
+static gboolean use_low_power_mode = FALSE;
+/** GConf callback ID for low power mode setting */
+static guint use_low_power_mode_gconf_cb_id = 0;
+
+/** Display low power mode timeout setting */
+static gint disp_lpm_timeout = DEFAULT_BLANK_TIMEOUT;
 
 /** ID for display blank prevention timer source */
 static guint blank_prevent_timeout_cb_id = 0;
@@ -203,14 +219,20 @@ static gint blank_prevent_timeout = BLANK_PREVENT_TIMEOUT;
 /** Bootup dim additional timeout */
 static gint bootup_dim_additional_timeout = 0;
 
+/** ID for high brightness mode timer source */
+static guint hbm_timeout_cb_id = 0;
+
 /** Cached brightness */
 static gint cached_brightness = -1;
-
 /** Target brightness */
 static gint target_brightness = -1;
-
 /** Brightness */
 static gint set_brightness = -1;
+
+/** Cached high brightness mode; this is the logical value */
+static gint cached_hbm_level = -1;
+/** High brightness mode; this is the filtered value */
+static gint set_hbm_level = -1;
 
 /** Dim brightness */
 static gint dim_brightness = (DEFAULT_MAXIMUM_DISPLAY_BRIGHTNESS *
@@ -231,6 +253,10 @@ static gint brightness_fade_steplength = 2;
 static guint brightness_fade_timeout_cb_id = 0;
 /** Display dimming timeout callback ID */
 static guint dim_timeout_cb_id = 0;
+/** Low power mode timeout callback ID */
+static guint lpm_timeout_cb_id = 0;
+/** Low power mode proximity blank timeout callback ID */
+static guint lpm_proximity_blank_timeout_cb_id = 0;
 /** Display blanking timeout callback ID */
 static guint blank_timeout_cb_id = 0;
 
@@ -250,12 +276,16 @@ static gchar *max_brightness_file = NULL;
 static gchar *cabc_mode_file = NULL;
 /** File used to get the available CABC modes */
 static gchar *cabc_available_modes_file = NULL;
+/** Is content adaptive brightness control supported */
+static gboolean cabc_supported = FALSE;
 /** File used to set hw display fading */
 static gchar *hw_fading_file = NULL;
 /** Is hardware driven display fading supported */
 static gboolean hw_fading_supported = FALSE;
-/** File used to enable high brightness mode */
+/** File used to set high brightness mode */
 static gchar *high_brightness_mode_file = NULL;
+/** File pointer used to set high brightness mode */
+static FILE *high_brightness_mode_fp = NULL;
 /** Is display high brightness mode supported */
 static gboolean high_brightness_mode_supported = FALSE;
 /** File used to enable low power mode */
@@ -360,11 +390,11 @@ static gboolean dimming_inhibited = FALSE;
 /** List of monitored blanking pause requesters */
 static GSList *blanking_pause_monitor_list = NULL;
 
+/** Maximum number of monitored services that calls blanking pause */
+#define BLANKING_PAUSE_MAX_MONITORED	5
+
 /** List of monitored CABC mode requesters */
 static GSList *cabc_mode_monitor_list = NULL;
-
-static void update_blanking_inhibit(gboolean timed_inhibit);
-static void cancel_dim_timeout(void);
 
 /** Display type */
 typedef enum {
@@ -442,6 +472,28 @@ cabc_mode_mapping_t cabc_mode_mapping[] = {
 	}
 };
 
+static void update_blanking_inhibit(gboolean timed_inhibit);
+static void cancel_lpm_timeout(void);
+static void cancel_dim_timeout(void);
+
+/**
+ * Check whether changing from LPM to blank can be done
+ *
+ * @return TRUE if blanking is possible, FALSE otherwise
+ */
+static gboolean is_dismiss_low_power_mode_enabled(void)
+{
+	call_state_t call_state = datapipe_get_gint(call_state_pipe);
+	submode_t submode = mce_get_submode_int32();
+
+	return ((((use_low_power_mode == TRUE) &&
+		((call_state == CALL_STATE_RINGING) ||
+		 (call_state == CALL_STATE_ACTIVE))) &&
+	        (((submode & MCE_PROXIMITY_TKLOCK_SUBMODE) != 0) ||
+		 (((submode & MCE_TKLOCK_SUBMODE) == 0) &&
+		  ((submode & MCE_PROXIMITY_TKLOCK_SUBMODE) == 0)))) ? TRUE : FALSE);
+}
+
 /**
  * Get the display type
  *
@@ -462,6 +514,9 @@ static display_type_t get_display_type(void)
 		max_brightness_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_ACX565AKM, DISPLAY_CABC_MAX_BRIGHTNESS_FILE, NULL);
 		cabc_mode_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_ACX565AKM, DISPLAY_CABC_MODE_FILE, NULL);
 		cabc_available_modes_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_ACX565AKM, DISPLAY_CABC_AVAILABLE_MODES_FILE, NULL);
+
+		cabc_supported =
+			(g_access(cabc_mode_file, W_OK) == 0);
 	} else if (g_access(DISPLAY_BACKLIGHT_PATH DISPLAY_L4F00311, W_OK) == 0) {
 		display_type = DISPLAY_TYPE_L4F00311;
 
@@ -469,6 +524,9 @@ static display_type_t get_display_type(void)
 		max_brightness_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_L4F00311, DISPLAY_CABC_MAX_BRIGHTNESS_FILE, NULL);
 		cabc_mode_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_L4F00311, DISPLAY_CABC_MODE_FILE, NULL);
 		cabc_available_modes_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_L4F00311, DISPLAY_CABC_AVAILABLE_MODES_FILE, NULL);
+
+		cabc_supported =
+			(g_access(cabc_mode_file, W_OK) == 0);
 	} else if (g_access(DISPLAY_BACKLIGHT_PATH DISPLAY_TAAL, W_OK) == 0) {
 		display_type = DISPLAY_TYPE_TAAL;
 
@@ -477,6 +535,9 @@ static display_type_t get_display_type(void)
 
 		cabc_mode_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_TAAL, "/device", DISPLAY_CABC_MODE_FILE, NULL);
 		cabc_available_modes_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_TAAL, "/device", DISPLAY_CABC_AVAILABLE_MODES_FILE, NULL);
+
+		cabc_supported =
+			(g_access(cabc_mode_file, W_OK) == 0);
 	} else if (g_access(DISPLAY_BACKLIGHT_PATH DISPLAY_HIMALAYA, W_OK) == 0) {
 		display_type = DISPLAY_TYPE_HIMALAYA;
 
@@ -485,6 +546,9 @@ static display_type_t get_display_type(void)
 
 		cabc_mode_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_HIMALAYA, "/device", DISPLAY_CABC_MODE_FILE, NULL);
 		cabc_available_modes_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_HIMALAYA, "/device", DISPLAY_CABC_AVAILABLE_MODES_FILE, NULL);
+
+		cabc_supported =
+			(g_access(cabc_mode_file, W_OK) == 0);
 	} else if (g_access(DISPLAY_BACKLIGHT_PATH DISPLAY_DISPLAY0, W_OK) == 0) {
 		display_type = DISPLAY_TYPE_DISPLAY0;
 
@@ -493,11 +557,12 @@ static display_type_t get_display_type(void)
 
 		cabc_mode_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_DISPLAY0, "/device", DISPLAY_CABC_MODE_FILE, NULL);
 		cabc_available_modes_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_DISPLAY0, "/device", DISPLAY_CABC_AVAILABLE_MODES_FILE, NULL);
-
 		hw_fading_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_DISPLAY0, DISPLAY_DEVICE_PATH, DISPLAY_HW_DIMMING_FILE, NULL);
 		high_brightness_mode_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_DISPLAY0, DISPLAY_DEVICE_PATH, DISPLAY_HBM_FILE, NULL);
 		low_power_mode_file = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_DISPLAY0, DISPLAY_DEVICE_PATH, DISPLAY_LPM_FILE, NULL);
 
+		cabc_supported =
+			(g_access(cabc_mode_file, W_OK) == 0);
 		hw_fading_supported =
 			(g_access(hw_fading_file, W_OK) == 0);
 		high_brightness_mode_supported =
@@ -522,10 +587,288 @@ static display_type_t get_display_type(void)
 		display_type = DISPLAY_TYPE_NONE;
 	}
 
+	errno = 0;
+
 	mce_log(LL_DEBUG, "Display type: %d", display_type);
 
 EXIT:
 	return display_type;
+}
+
+/* Only for systems where libcal is available */
+#ifdef USE_LIBCAL
+#include <stdlib.h>			/* free() */
+
+#include <cal.h>			/* cal_init(), cal_read_block(),
+					 * cal_finish(),
+					 * struct cal
+					 */
+
+/** CAL identifier for the display timers */
+#define DISPLAY_TIMERS_IDENTIFIER	"display_timers"
+
+/**
+ * Threshold in seconds before things are flushed to CAL;
+ * default is every 10h
+ * In *worst* case this is 876 times/year, but that would mean that the
+ * display would stay continuously on that long, which is unlikely
+ */
+#define TIMER_FLUSH_THRESHOLD		(60 * 60 * 10)
+
+/** CAL struct for display use-time data */
+struct display_timer_struct {
+	/** On/dim time for display; in minutes */
+	guint32 display;
+	/** HBM time for display; in minutes */
+	guint32 hbm;
+} __attribute__((packed));
+
+static struct display_timer_struct display_timers = {
+	.display = 0,
+	.hbm = 0
+};
+
+/** Display timer ID */
+GTimer *display_timer;
+/** HBM timer ID */
+GTimer *hbm_timer;
+
+/**
+ * Update display timers, and if necessary, flush to CAL
+ *
+ * @param force_flush Force a flush even if the timer flush threshold has
+ *                    not been exceeded since last flush
+ */
+static void update_display_timers(gboolean force_flush)
+{
+	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+	gdouble display_elapsed = 0;
+	gdouble hbm_elapsed = 0;
+	gboolean flush_cal = FALSE;
+
+	/* Pause timers and get the elapsed time */
+	if (display_timer != NULL) {
+		g_timer_stop(display_timer);
+		display_elapsed = g_timer_elapsed(display_timer, NULL);
+	}
+
+	if (hbm_timer != NULL) {
+		g_timer_stop(hbm_timer);
+		hbm_elapsed = g_timer_elapsed(hbm_timer, NULL);
+	}
+
+	switch (display_state) {
+	case MCE_DISPLAY_ON:
+	case MCE_DISPLAY_DIM:
+		if (display_timer != NULL) {
+			if (force_flush == TRUE) {
+				/* Force flush and restart timer */
+				flush_cal = TRUE;
+				g_timer_start(display_timer);
+			} else {
+				/* Continue timer */
+				g_timer_continue(display_timer);
+			}
+		} else {
+			/* Create timer; if (display_timer == NULL) there's
+			 * nothing to force flush
+			 */
+			display_timer = g_timer_new();
+		}
+
+		break;
+
+	case MCE_DISPLAY_UNDEF:
+	case MCE_DISPLAY_OFF:
+	case MCE_DISPLAY_LPM_OFF:
+	case MCE_DISPLAY_LPM_ON:
+	default:
+		if (display_timer != NULL) {
+			if ((display_elapsed > TIMER_FLUSH_THRESHOLD) ||
+			    (force_flush == TRUE)) {
+				flush_cal = TRUE;
+				g_timer_destroy(display_timer);
+				display_timer = NULL;
+			}
+		}
+
+		break;
+	}
+
+	if (set_hbm_level > 0) {
+		if (hbm_timer != NULL) {
+			if (force_flush == TRUE) {
+				/* Force flush and restart timer */
+				flush_cal = TRUE;
+				g_timer_start(hbm_timer);
+			} else {
+				/* Continue timer */
+				g_timer_continue(hbm_timer);
+			}
+		} else {
+			/* Create timer; if (display_timer == NULL) there's
+			 * nothing to force flush
+			 */
+			hbm_timer = g_timer_new();
+		}
+	} else {
+		if (hbm_timer != NULL) {
+			hbm_elapsed = g_timer_elapsed(hbm_timer, NULL);
+
+			if ((hbm_elapsed > TIMER_FLUSH_THRESHOLD) ||
+			    (force_flush == TRUE)) {
+				flush_cal = TRUE;
+				g_timer_destroy(hbm_timer);
+				hbm_timer = NULL;
+			}
+		}
+	}
+
+	if (flush_cal == TRUE) {
+		struct cal *cal_data = NULL;
+
+		if (cal_init(&cal_data) >= 0) {
+			void *ptr = NULL;
+			unsigned long len;
+			int retval;
+
+			if ((retval = cal_read_block(cal_data,
+						     DISPLAY_TIMERS_IDENTIFIER,
+						     &ptr, &len,
+						     CAL_FLAG_USER)) == 0) {
+				/* Correctness checks */
+				if (len == sizeof (struct display_timer_struct)) {
+					memcpy(&display_timers, ptr,
+					       sizeof (display_timers));
+				} else {
+					/* If block has wrong size we
+					 * write a new block
+					 */
+					mce_log(LL_ERR,
+						"Display timer CAL block has "
+						"incorrect size");
+				}
+
+				free(ptr);
+			} else {
+				/* Failed to read block; either there isn't
+				 * one yet, or the read failed -- in either
+				 * case we write a new block
+				 */
+				mce_log(LL_INFO,
+					"No display timer CAL block found");
+			}
+
+			display_timers.display += (guint32)display_elapsed;
+			display_timers.hbm += (guint32)hbm_elapsed;
+
+			/* Write new data to CAL */
+			if (cal_write_block(cal_data,
+					    DISPLAY_TIMERS_IDENTIFIER,
+					    &display_timers,
+					    sizeof (display_timers),
+					    CAL_FLAG_USER) < 0) {
+				mce_log(LL_ERR,
+					"Failed to write display timers "
+					"to CAL");
+			}
+
+			cal_finish(cal_data);
+		} else {
+			mce_log(LL_ERR,
+				"cal_init() failed");
+		}
+	}
+
+	return;
+}
+#else
+/** Dummy function used on non-Nokia platforms (where CAL is not available) */
+#define update_display_timers(x)			do {} while (0)
+#endif /* USE_LIBCAL */
+
+/**
+ * Timeout callback for the high brightness mode
+ *
+ * @param data Unused
+ * @return Always returns FALSE, to disable the timeout
+ */
+static gboolean hbm_timeout_cb(gpointer data)
+{
+	(void)data;
+
+	hbm_timeout_cb_id = 0;
+
+	/* Disable high brightness mode */
+	(void)mce_write_number_string_to_file(high_brightness_mode_file, 0, &high_brightness_mode_fp, TRUE, FALSE);
+	set_hbm_level = 0;
+	update_display_timers(FALSE);
+
+	return FALSE;
+}
+
+/**
+ * Cancel the high brightness mode timeout
+ */
+static void cancel_hbm_timeout(void)
+{
+	/* Remove the timeout source for the high brightness mode */
+	if (hbm_timeout_cb_id != 0) {
+		g_source_remove(hbm_timeout_cb_id);
+		hbm_timeout_cb_id = 0;
+	}
+}
+
+/**
+ * Setup the high brightness mode timeout
+ */
+static void setup_hbm_timeout(void)
+{
+	cancel_hbm_timeout();
+
+	/* Setup new timeout */
+	hbm_timeout_cb_id = g_timeout_add_seconds(DEFAULT_HBM_TIMEOUT,
+						  hbm_timeout_cb, NULL);
+}
+
+/**
+ * Update high brightness mode
+ *
+ * @param hbm_level The wanted high brightness mode level;
+ *                  will be overridden if the display is dimmed/off
+ *                  or if high brightness mode is not supported
+ */
+static void update_high_brightness_mode(gint hbm_level)
+{
+	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+
+	if (high_brightness_mode_supported == FALSE)
+		goto EXIT;
+
+	/* If the display is off or dimmed, disable HBM */
+	if (display_state != MCE_DISPLAY_ON) {
+		if (set_hbm_level != 0) {
+			(void)mce_write_number_string_to_file(high_brightness_mode_file, 0, &high_brightness_mode_fp, TRUE, FALSE);
+			set_hbm_level = 0;
+			update_display_timers(FALSE);
+		}
+	} else if (set_hbm_level != hbm_level) {
+		(void)mce_write_number_string_to_file(high_brightness_mode_file, hbm_level, &high_brightness_mode_fp, TRUE, FALSE);
+		set_hbm_level = hbm_level;
+		update_display_timers(FALSE);
+	}
+
+	/**
+	 * Half brightness mode should be disabled after a certain timeout
+	 */
+	if (set_hbm_level == 0) {
+		cancel_hbm_timeout();
+	} else if (hbm_timeout_cb_id == 0) {
+		setup_hbm_timeout();
+	}
+
+EXIT:
+	return;
 }
 
 /**
@@ -539,7 +882,7 @@ static void set_cabc_mode(const gchar *const mode)
 	const gchar *tmp = NULL;
 	gint i;
 
-	if (cabc_available_modes_file == NULL)
+	if ((cabc_supported == FALSE) || (cabc_available_modes_file == NULL))
 		goto EXIT;
 
 	/* Update the list of available modes against the list we support */
@@ -799,11 +1142,22 @@ static void display_blank(void)
 }
 
 /**
+ * Enable low power mode
+ */
+static void display_lpm(void)
+{
+	cancel_brightness_fade_timeout();
+	backlight_ioctl(FB_BLANK_UNBLANK);
+}
+
+/**
  * Dim display
  */
 static void display_dim(void)
 {
-	/* If we unblank, switch on display immediately */
+	/* If we unblank, switch on display immediately;
+	 * no matter what we keep the previous low power mode
+	 */
 	if (cached_brightness == 0) {
 		cached_brightness = dim_brightness;
 		target_brightness = dim_brightness;
@@ -821,7 +1175,9 @@ static void display_dim(void)
  */
 static void display_unblank(void)
 {
-	/* If we unblank, switch on display immediately */
+	/* If we unblank, switch on display immediately;
+	 * no matter what we disable the low power mode
+	 */
 	if (cached_brightness == 0) {
 		cached_brightness = set_brightness;
 		target_brightness = set_brightness;
@@ -843,23 +1199,35 @@ static void display_unblank(void)
 static void display_brightness_trigger(gconstpointer data)
 {
 	display_state_t display_state = datapipe_get_gint(display_state_pipe);
-	gint new_brightness = GPOINTER_TO_INT(data);
+	gint new_brightness = GPOINTER_TO_INT(data) & 0xff;
+	gint new_hbm_level = (GPOINTER_TO_INT(data) >> 8) & 0xff;
 
 	/* If the pipe is choked, ignore the value */
 	if (new_brightness == 0)
 		goto EXIT;
 
-	/* Adjust the value, since it's a percentage value */
+	/* This is always necessary,
+	 * since 100% + HBM is not the same as 100% without HBM
+	 */
+	update_high_brightness_mode(new_hbm_level);
+	cached_hbm_level = new_hbm_level;
+
+	/* Adjust the value, since it's a percentage value, and filter out
+	 * the high brightness setting
+	 */
 	new_brightness = (maximum_display_brightness * new_brightness) / 100;
 
 	/* If we're just rehashing the same brightness value, don't bother */
-	if ((new_brightness == cached_brightness) && (cached_brightness != -1))
+	if ((new_brightness == cached_brightness) &&
+	     (cached_brightness != -1))
 		goto EXIT;
 
 	/* The value we have here is for non-dimmed screen only */
 	set_brightness = new_brightness;
 
 	if ((display_state == MCE_DISPLAY_OFF) ||
+	    (display_state == MCE_DISPLAY_LPM_OFF) ||
+	    (display_state == MCE_DISPLAY_LPM_ON) ||
 	    (display_state == MCE_DISPLAY_DIM))
 		goto EXIT;
 
@@ -877,12 +1245,19 @@ EXIT:
  */
 static gboolean blank_timeout_cb(gpointer data)
 {
+	display_state_t display_off_state = MCE_DISPLAY_LPM_OFF;
+
 	(void)data;
 
 	blank_timeout_cb_id = 0;
 
+	if ((use_low_power_mode == FALSE) ||
+	    (low_power_mode_supported == FALSE) ||
+	    (is_dismiss_low_power_mode_enabled() == TRUE))
+		display_off_state = MCE_DISPLAY_OFF;
+
 	(void)execute_datapipe(&display_state_pipe,
-			       GINT_TO_POINTER(MCE_DISPLAY_OFF),
+			       GINT_TO_POINTER(display_off_state),
 			       USE_INDATA, CACHE_INDATA);
 
 	return FALSE;
@@ -905,16 +1280,133 @@ static void cancel_blank_timeout(void)
  */
 static void setup_blank_timeout(void)
 {
+	gint timeout;
+
 	cancel_blank_timeout();
+	cancel_lpm_timeout();
+	cancel_dim_timeout();
+
+	if (blanking_inhibited == TRUE)
+		goto EXIT;
+
+	if ((low_power_mode_supported == TRUE) &&
+	    ((use_low_power_mode == TRUE) &&
+	     (is_dismiss_low_power_mode_enabled() == FALSE))) {
+		timeout = disp_lpm_blank_timeout;
+	} else {
+		timeout = disp_blank_timeout;
+	}
+
+	if (timeout == 0)
+		goto EXIT;
+
+	/* Setup new timeout */
+	blank_timeout_cb_id =
+		g_timeout_add_seconds(timeout, blank_timeout_cb, NULL);
+
+EXIT:
+	return;
+}
+
+/**
+ * Timeout callback for low power mode proximity blank
+ *
+ * @param data Unused
+ * @return Always returns FALSE, to disable the timeout
+ */
+static gboolean lpm_proximity_blank_timeout_cb(gpointer data)
+{
+	(void)data;
+
+	lpm_proximity_blank_timeout_cb_id = 0;
+
+	(void)execute_datapipe(&display_state_pipe,
+			       GINT_TO_POINTER(MCE_DISPLAY_LPM_OFF),
+			       USE_INDATA, CACHE_INDATA);
+
+	return FALSE;
+}
+
+/**
+ * Cancel the low power mode proximity blank timeout
+ */
+static void cancel_lpm_proximity_blank_timeout(void)
+{
+	/* Remove the timeout source for low power mode */
+	if (lpm_proximity_blank_timeout_cb_id != 0) {
+		g_source_remove(lpm_proximity_blank_timeout_cb_id);
+		lpm_proximity_blank_timeout_cb_id = 0;
+	}
+}
+
+/**
+ * Setup low power mode proximity blank timeout if supported
+ */
+static void setup_lpm_proximity_blank_timeout(void)
+{
+	if ((blanking_inhibited == TRUE) ||
+	    (low_power_mode_supported == FALSE))
+		return;
+
+	/* Setup new timeout */
+	lpm_proximity_blank_timeout_cb_id =
+		g_timeout_add_seconds(DEFAULT_LPM_PROXIMITY_BLANK_TIMEOUT,
+				      lpm_proximity_blank_timeout_cb, NULL);
+}
+
+/**
+ * Timeout callback for low power mode
+ *
+ * @param data Unused
+ * @return Always returns FALSE, to disable the timeout
+ */
+static gboolean lpm_timeout_cb(gpointer data)
+{
+	(void)data;
+
+	lpm_timeout_cb_id = 0;
+
+	(void)execute_datapipe(&display_state_pipe,
+			       GINT_TO_POINTER(MCE_DISPLAY_LPM_ON),
+			       USE_INDATA, CACHE_INDATA);
+
+	return FALSE;
+}
+
+/**
+ * Cancel the low power mode timeout
+ */
+static void cancel_lpm_timeout(void)
+{
+	/* Remove the timeout source for low power mode */
+	if (lpm_timeout_cb_id != 0) {
+		g_source_remove(lpm_timeout_cb_id);
+		lpm_timeout_cb_id = 0;
+	}
+}
+
+/**
+ * Setup low power mode timeout if supported
+ */
+static void setup_lpm_timeout(void)
+{
+	cancel_blank_timeout();
+	cancel_lpm_timeout();
 	cancel_dim_timeout();
 
 	if (blanking_inhibited == TRUE)
 		return;
 
-	/* Setup new timeout */
-	blank_timeout_cb_id =
-		g_timeout_add_seconds(disp_blank_timeout,
-				      blank_timeout_cb, NULL);
+	if ((low_power_mode_supported == TRUE) &&
+	    ((use_low_power_mode == TRUE) &&
+	     (is_dismiss_low_power_mode_enabled() == FALSE))) {
+		/* Setup new timeout */
+		lpm_timeout_cb_id =
+			g_timeout_add_seconds(disp_lpm_timeout,
+					      lpm_timeout_cb, NULL);
+	} else {
+		setup_blank_timeout();
+	}
 }
 
 /**
@@ -1004,6 +1496,7 @@ static void setup_dim_timeout(void)
 
 	cancel_blank_timeout();
 	cancel_adaptive_dimming_timeout();
+	cancel_lpm_timeout();
 	cancel_dim_timeout();
 
 	if (dimming_inhibited == TRUE)
@@ -1036,6 +1529,9 @@ static gboolean blank_prevent_timeout_cb(gpointer data)
 	(void)data;
 
 	blank_prevent_timeout_cb_id = 0;
+
+	/* Remove all name monitors for the blanking pause requester */
+	mce_dbus_owner_monitor_remove_all(&blanking_pause_monitor_list);
 
 	update_blanking_inhibit(FALSE);
 
@@ -1093,6 +1589,7 @@ static void update_blanking_inhibit(gboolean timed_inhibit)
 		dimming_inhibited = FALSE;
 		cancel_blank_prevent();
 	} else if ((call_state == CALL_STATE_RINGING) ||
+		   (alarm_ui_state == MCE_ALARM_UI_RINGING_INT32) ||
 		   (blanking_inhibit_mode == INHIBIT_STAY_ON) ||
 		   (blanking_inhibit_mode == INHIBIT_STAY_DIM) ||
 		   (timed_inhibit == TRUE) ||
@@ -1111,6 +1608,7 @@ static void update_blanking_inhibit(gboolean timed_inhibit)
 		      (blanking_inhibit_mode == INHIBIT_STAY_ON)) &&
 		     (system_state != MCE_STATE_ACTDEAD)) ||
 		    (call_state == CALL_STATE_RINGING) ||
+		    (alarm_ui_state == MCE_ALARM_UI_RINGING_INT32) ||
 		    (timed_inhibit == TRUE)) {
 			dimming_inhibited = TRUE;
 		} else {
@@ -1124,10 +1622,12 @@ static void update_blanking_inhibit(gboolean timed_inhibit)
 	}
 
 	/* Reprogram timeouts, if necessary */
-	if (display_state == MCE_DISPLAY_DIM)
-		setup_blank_timeout();
-	else if (display_state != MCE_DISPLAY_OFF)
+	if (display_state == MCE_DISPLAY_ON)
 		setup_dim_timeout();
+	else if (display_state == MCE_DISPLAY_DIM)
+		setup_lpm_timeout();
+	else if (display_state == MCE_DISPLAY_LPM_ON)
+		setup_blank_timeout();
 }
 
 /**
@@ -1276,6 +1776,7 @@ static void display_gconf_cb(GConfClient *const gcc, const guint id,
 		}
 	} else if (id == disp_blank_timeout_gconf_cb_id) {
 		disp_blank_timeout = gconf_value_get_int(gcv);
+		disp_lpm_timeout = disp_blank_timeout;
 
 		/* Update blank prevent */
 		update_blanking_inhibit(FALSE);
@@ -1285,6 +1786,28 @@ static void display_gconf_cb(GConfClient *const gcc, const guint id,
 				       GINT_TO_POINTER(disp_dim_timeout +
 						       disp_blank_timeout),
 				       USE_INDATA, CACHE_INDATA);
+	} else if (id == use_low_power_mode_gconf_cb_id) {
+		display_state_t display_state =
+			datapipe_get_gint(display_state_pipe);
+
+		use_low_power_mode = gconf_value_get_bool(gcv);
+
+		if (((display_state == MCE_DISPLAY_LPM_OFF) ||
+		     (display_state == MCE_DISPLAY_LPM_ON)) &&
+		    ((low_power_mode_supported == FALSE) ||
+		     (use_low_power_mode == FALSE) ||
+		     (is_dismiss_low_power_mode_enabled() == TRUE))) {
+			(void)execute_datapipe(&display_state_pipe,
+					       GINT_TO_POINTER(MCE_DISPLAY_OFF),
+					       USE_INDATA, CACHE_INDATA);
+		} else if ((display_state == MCE_DISPLAY_OFF) &&
+		           (use_low_power_mode == TRUE) &&
+			   (is_dismiss_low_power_mode_enabled() == FALSE) &&
+			       (low_power_mode_supported == TRUE)) {
+			(void)execute_datapipe(&display_state_pipe,
+					       GINT_TO_POINTER(MCE_DISPLAY_LPM_ON),
+					       USE_INDATA, CACHE_INDATA);
+		}
 	} else if (id == adaptive_dimming_enabled_gconf_cb_id) {
 		adaptive_dimming_enabled = gconf_value_get_bool(gcv);
 		cancel_adaptive_dimming_timeout();
@@ -1335,7 +1858,10 @@ static gboolean send_display_status(DBusMessage *const method_call)
 	gboolean status = FALSE;
 
 	switch (display_state) {
+	case MCE_DISPLAY_UNDEF:
 	case MCE_DISPLAY_OFF:
+	case MCE_DISPLAY_LPM_OFF:
+	case MCE_DISPLAY_LPM_ON:
 		state = MCE_DISPLAY_OFF_STRING;
 		break;
 
@@ -1543,44 +2069,6 @@ static gboolean display_dim_req_dbus_cb(DBusMessage *const msg)
 }
 
 /**
- * D-Bus callback for the display low power mode method call
- *
- * @param msg The D-Bus message
- * @return TRUE on success, FALSE on failure
- */
-static gboolean display_low_power_mode_req_dbus_cb(DBusMessage *const msg)
-{
-	dbus_bool_t no_reply = dbus_message_get_no_reply(msg);
-	gboolean status = FALSE;
-
-	mce_log(LL_DEBUG,
-		"Received display low power mode request");
-
-	if (low_power_mode_supported == TRUE) {
-		(void)execute_datapipe(&display_state_pipe,
-				       GINT_TO_POINTER(MCE_DISPLAY_LOW_POWER),
-				       USE_INDATA, CACHE_INDATA);
-	} else {
-		(void)execute_datapipe(&display_state_pipe,
-				       GINT_TO_POINTER(MCE_DISPLAY_OFF),
-				       USE_INDATA, CACHE_INDATA);
-		mce_log(LL_DEBUG,
-			"Display low power mode not supported; "
-			"using display off instead");
-	}
-
-	if (no_reply == FALSE) {
-		DBusMessage *reply = dbus_new_method_reply(msg);
-
-		status = dbus_send_message(reply);
-	} else {
-		status = TRUE;
-	}
-
-	return status;
-}
-
-/**
  * D-Bus callback for the display off method call
  *
  * @param msg The D-Bus message
@@ -1692,9 +2180,16 @@ static gboolean display_cancel_blanking_pause_req_dbus_cb(DBusMessage *const msg
 	const gchar *sender = dbus_message_get_sender(msg);
 	gboolean status = FALSE;
 
+	if (sender == NULL) {
+		mce_log(LL_ERR,
+			"Received invalid cancel blanking pause request "
+			"(sender == NULL)");
+		goto EXIT;
+	}
+
 	mce_log(LL_DEBUG,
 		"Received cancel blanking pause request from %s",
-		(sender == NULL) ? "(unknown)" : sender);
+		sender);
 
 	remove_blanking_pause(sender);
 
@@ -1706,6 +2201,7 @@ static gboolean display_cancel_blanking_pause_req_dbus_cb(DBusMessage *const msg
 		status = TRUE;
 	}
 
+EXIT:
 	return status;
 }
 
@@ -1721,9 +2217,16 @@ static gboolean display_blanking_pause_req_dbus_cb(DBusMessage *const msg)
 	const gchar *sender = dbus_message_get_sender(msg);
 	gboolean status = FALSE;
 
+	if (sender == NULL) {
+		mce_log(LL_ERR,
+			"Received invalid blanking pause request "
+			"(sender == NULL)");
+		goto EXIT;
+	}
+
 	mce_log(LL_DEBUG,
 		"Received blanking pause request from %s",
-		(sender == NULL) ? "(unknown)" : sender);
+		sender);
 
 	request_display_blanking_pause();
 	inhibit_devicelock();
@@ -1731,7 +2234,7 @@ static gboolean display_blanking_pause_req_dbus_cb(DBusMessage *const msg)
 	if (mce_dbus_owner_monitor_add(sender,
 				       blanking_pause_owner_monitor_dbus_cb,
 				       &blanking_pause_monitor_list,
-				       MAX_MONITORED_SERVICES) == -1) {
+				       BLANKING_PAUSE_MAX_MONITORED) == -1) {
 		mce_log(LL_INFO,
 			"Failed to add name owner monitoring for `%s'",
 			sender);
@@ -1745,6 +2248,7 @@ static gboolean display_blanking_pause_req_dbus_cb(DBusMessage *const msg)
 		status = TRUE;
 	}
 
+EXIT:
 	return status;
 }
 
@@ -1810,9 +2314,16 @@ static gboolean cabc_mode_req_dbus_cb(DBusMessage *const msg)
 	/* Register error channel */
 	dbus_error_init(&error);
 
+	if (sender == NULL) {
+		mce_log(LL_ERR,
+			"Received invalid set CABC mode request "
+			"(sender == NULL)");
+		goto EXIT;
+	}
+
 	mce_log(LL_DEBUG,
 		"Received set CABC mode request from %s",
-		(sender == NULL) ? "(unknown)" : sender);
+		sender);
 
 	/* Extract result */
 	if (dbus_message_get_args(msg, &error,
@@ -1860,10 +2371,12 @@ static gboolean cabc_mode_req_dbus_cb(DBusMessage *const msg)
 
 		for (i = 0; cabc_mode_mapping[i].sysfs != NULL; i++) {
 			if (!strcmp(sysfs_cabc_mode, cabc_mode_mapping[i].sysfs)) {
+				// XXX: error handling!
 				dbus_message_append_args(reply, DBUS_TYPE_STRING, &cabc_mode_mapping[i].dbus, DBUS_TYPE_INVALID);
 				break;
 			}
 		}
+
 		status = dbus_send_message(reply);
 	} else {
 		status = TRUE;
@@ -1911,33 +2424,155 @@ static gboolean desktop_startup_dbus_cb(DBusMessage *const msg)
 }
 
 /**
+ * D-Bus callback for the display orientation change signal
+ *
+ * @param msg The D-Bus message
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean display_orientation_change_dbus_cb(DBusMessage *const msg)
+{
+	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+	gboolean status = FALSE;
+
+	(void)msg;
+
+	mce_log(LL_DEBUG,
+		"Received display orientation change notification");
+
+	/* Since there are two signals using the same interface,
+	 * the dbus_message_has_path() function is called
+	 * to check if the signal is the required one
+	 */
+	if (dbus_message_has_path(msg, ORIENTATION_SIGNAL_PATH) == TRUE) {
+		/* Generate activity if the display is on/dim */
+		if ((display_state == MCE_DISPLAY_ON) ||
+		    (display_state == MCE_DISPLAY_DIM)) {
+			(void)execute_datapipe(&device_inactive_pipe,
+					       GINT_TO_POINTER(FALSE),
+					       USE_INDATA, CACHE_INDATA);
+		}
+	}
+
+	status = TRUE;
+
+	return status;
+}
+
+/**
+ * Filter display state changes
+ *
+ * @param data The unfiltered display state stored in a pointer
+ * @return The filtered display state stored in a pointer
+ */
+static gpointer display_state_filter(gpointer data)
+{
+	alarm_ui_state_t alarm_ui_state =
+				datapipe_get_gint(alarm_ui_state_pipe);
+	system_state_t system_state = datapipe_get_gint(system_state_pipe);
+	static display_state_t cached_display_state = MCE_DISPLAY_UNDEF;
+	display_state_t display_state = GPOINTER_TO_INT(data);
+	submode_t submode = mce_get_submode_int32();
+	gpointer new_data;
+
+	/* Ignore display on requests during transition to shutdown
+         * and reboot, when in acting dead and when system state is unknown
+	 */
+	if (((cached_display_state == MCE_DISPLAY_UNDEF) ||
+	     (cached_display_state == MCE_DISPLAY_OFF) ||
+	     (cached_display_state == MCE_DISPLAY_LPM_OFF)) &&
+	    ((display_state != MCE_DISPLAY_LPM_OFF) &&
+	     (display_state != MCE_DISPLAY_OFF)) &&
+	    ((((system_state == MCE_STATE_SHUTDOWN) ||
+	       (system_state == MCE_STATE_REBOOT)) &&
+	       (submode & MCE_TRANSITION_SUBMODE)) ||
+	     (system_state == MCE_STATE_UNDEF) ||
+	     ((system_state == MCE_STATE_ACTDEAD) &&
+	      ((alarm_ui_state != MCE_ALARM_UI_VISIBLE_INT32) &&
+	       (alarm_ui_state != MCE_ALARM_UI_RINGING_INT32))))) {
+		mce_log(LL_DEBUG,
+			"Ignoring display state change request %d "
+			"due to shutdown/reboot/acting dead",
+			display_state);
+		display_state = cached_display_state;
+	} else if ((use_low_power_mode == FALSE) ||
+		       (low_power_mode_supported == FALSE) ||
+		       (is_dismiss_low_power_mode_enabled() == TRUE)) {
+		/* If we don't use low power mode, use OFF instead */
+		if ((display_state == MCE_DISPLAY_LPM_OFF) ||
+		    (display_state == MCE_DISPLAY_LPM_ON))
+			display_state = MCE_DISPLAY_OFF;
+	} else {
+		/* If we're in user state, use LPM instead of OFF */
+		if ((display_state == MCE_DISPLAY_OFF) &&
+		    (system_state == MCE_STATE_USER))
+			display_state = MCE_DISPLAY_LPM_ON;
+	}
+
+	new_data = GINT_TO_POINTER(display_state);
+	cached_display_state = display_state;
+
+	/* XXX: This is seriously ugly, but since the cached value ends up
+	 *      being read a lot, we need to alter it to avoid too much
+	 *      special casing
+	 */
+	display_state_pipe.cached_data = new_data;
+
+	return new_data;
+}
+
+/**
  * Handle display state change
  *
  * @param data The display state stored in a pointer
  */
 static void display_state_trigger(gconstpointer data)
 {
+	cover_state_t proximity_sensor_state =
+				datapipe_get_gint(proximity_sensor_pipe);
 	/** Cached display state */
 	static display_state_t cached_display_state = MCE_DISPLAY_UNDEF;
 	display_state_t display_state = GPOINTER_TO_INT(data);
 	submode_t submode = mce_get_submode_int32();
 
+	cancel_lpm_proximity_blank_timeout();
+
 	switch (display_state) {
 	case MCE_DISPLAY_OFF:
-		cancel_dim_timeout();
+	case MCE_DISPLAY_LPM_OFF:
 		cancel_adaptive_dimming_timeout();
 		adaptive_dimming_index = 0;
+
+		cancel_dim_timeout();
+		cancel_lpm_timeout();
 		cancel_blank_timeout();
 		break;
 
-	case MCE_DISPLAY_DIM:
-		cancel_dim_timeout();
-		setup_adaptive_dimming_timeout();
+	case MCE_DISPLAY_LPM_ON:
+		cancel_adaptive_dimming_timeout();
+		adaptive_dimming_index = 0;
+
+		/* Also cancels dim and lpm timeout */
 		setup_blank_timeout();
+
+		if (proximity_sensor_state == COVER_CLOSED)
+			setup_lpm_proximity_blank_timeout();
+		break;
+
+	case MCE_DISPLAY_DIM:
+		setup_adaptive_dimming_timeout();
+
+		/* Also cancels dim and blank timeout */
+		setup_lpm_timeout();
 		break;
 
 	case MCE_DISPLAY_ON:
 	default:
+		cancel_adaptive_dimming_timeout();
+
+		cancel_dim_timeout();
+		cancel_lpm_timeout();
+		cancel_blank_timeout();
+
 		/* The tklock has its own timeout */
 		if ((submode & MCE_TKLOCK_SUBMODE) == 0) {
 			setup_dim_timeout();
@@ -1952,9 +2587,16 @@ static void display_state_trigger(gconstpointer data)
 	if (cached_display_state == display_state)
 		goto EXIT;
 
+	update_high_brightness_mode(cached_hbm_level);
+
 	switch (display_state) {
 	case MCE_DISPLAY_OFF:
+	case MCE_DISPLAY_LPM_OFF:
 		display_blank();
+		break;
+
+	case MCE_DISPLAY_LPM_ON:
+		display_lpm();
 		break;
 
 	case MCE_DISPLAY_DIM:
@@ -1975,6 +2617,9 @@ static void display_state_trigger(gconstpointer data)
 	/* Update the cached value */
 	cached_display_state = display_state;
 
+	/* Update display on timers */
+	update_display_timers(FALSE);
+
 EXIT:
 	return;
 }
@@ -1986,7 +2631,10 @@ EXIT:
  */
 static void submode_trigger(gconstpointer data)
 {
-	static submode_t old_submode = MCE_NORMAL_SUBMODE;
+	system_state_t system_state = datapipe_get_gint(system_state_pipe);
+	alarm_ui_state_t alarm_ui_state =
+				datapipe_get_gint(alarm_ui_state_pipe);
+	static submode_t old_submode = MCE_INVALID_SUBMODE;
 	submode_t submode = GPOINTER_TO_INT(data);
 
 	/* Avoid unnecessary updates:
@@ -1994,10 +2642,22 @@ static void submode_trigger(gconstpointer data)
 	 *       not logical, else it won't work,
 	 *       for (hopefully) obvious reasons
 	 */
-	if ((old_submode | submode) & MCE_TRANSITION_SUBMODE)
-		update_blanking_inhibit(FALSE);
+	if (((old_submode == MCE_INVALID_SUBMODE) &&
+	     ((submode & MCE_TRANSITION_SUBMODE) == 0)) ||
+	    ((old_submode | submode) & MCE_TRANSITION_SUBMODE)) {
+		/* We've reached acting dead -- blank the screen */
+		if ((system_state == MCE_STATE_ACTDEAD) &&
+		    (alarm_ui_state != MCE_ALARM_UI_RINGING_INT32) &&
+		    (alarm_ui_state != MCE_ALARM_UI_VISIBLE_INT32)) {
+			(void)execute_datapipe(&display_state_pipe,
+					       GINT_TO_POINTER(MCE_DISPLAY_OFF),
+					       USE_INDATA, CACHE_INDATA);
+		}
 
-	submode = old_submode;
+		update_blanking_inhibit(FALSE);
+	}
+
+	old_submode = submode;
 }
 
 /**
@@ -2131,6 +2791,47 @@ static void system_state_trigger(gconstpointer data)
 }
 
 /**
+ * Handle proximity sensor state change
+ *
+ * @param data Unused
+ */
+static void proximity_sensor_trigger(gconstpointer data)
+{
+	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+	cover_state_t proximity_sensor_state = GPOINTER_TO_INT(data);
+
+	/* If the display is on in low power mode,
+	 * and there's proximity, setup a timeout,
+	 * else cancel the timeout
+	 */
+	if ((display_state == MCE_DISPLAY_LPM_ON) &&
+	    (proximity_sensor_state == COVER_CLOSED)) {
+		setup_lpm_proximity_blank_timeout();
+	} else {
+		cancel_lpm_proximity_blank_timeout();
+
+		if (display_state == MCE_DISPLAY_LPM_OFF) {
+			(void)execute_datapipe(&display_state_pipe,
+					       GINT_TO_POINTER(MCE_DISPLAY_LPM_ON),
+					       USE_INDATA, CACHE_INDATA);
+		}
+	}
+}
+
+/**
+ * Handle alarm UI state change
+ *
+ * @param data Unused
+ */
+static void alarm_ui_state_trigger(gconstpointer data)
+{
+	(void)data;
+
+	/* Update blank prevent */
+	update_blanking_inhibit(FALSE);
+}
+
+/**
  * Init function for the display handling module
  *
  * @todo XXX status needs to be set on error!
@@ -2141,6 +2842,7 @@ static void system_state_trigger(gconstpointer data)
 G_MODULE_EXPORT const gchar *g_module_check_init(GModule *module);
 const gchar *g_module_check_init(GModule *module)
 {
+	display_state_t init_display_state = MCE_DISPLAY_ON;
 	submode_t submode = mce_get_submode_int32();
 	gchar *str = NULL;
 	gulong tmp;
@@ -2158,6 +2860,8 @@ const gchar *g_module_check_init(GModule *module)
 	}
 
 	/* Append triggers/filters to datapipes */
+	append_filter_to_datapipe(&display_state_pipe,
+				  display_state_filter);
 	append_output_trigger_to_datapipe(&system_state_pipe,
 					  system_state_trigger);
 	append_output_trigger_to_datapipe(&charger_state_pipe,
@@ -2174,6 +2878,10 @@ const gchar *g_module_check_init(GModule *module)
 					  call_state_trigger);
 	append_output_trigger_to_datapipe(&power_saving_mode_pipe,
 					  power_saving_mode_trigger);
+	append_output_trigger_to_datapipe(&proximity_sensor_pipe,
+					  proximity_sensor_trigger);
+	append_output_trigger_to_datapipe(&alarm_ui_state_pipe,
+					  alarm_ui_state_trigger);
 
 	/* Get maximum brightness */
 	if (mce_read_number_string_from_file(max_brightness_file,
@@ -2212,9 +2920,23 @@ const gchar *g_module_check_init(GModule *module)
 		cached_brightness = tmp;
 	}
 
-	(void)execute_datapipe(&display_brightness_pipe,
-			       GINT_TO_POINTER(real_disp_brightness),
-			       USE_INDATA, CACHE_INDATA);
+	/* Ensure that internal display state is in sync with reality */
+	if (cached_brightness == 0) {
+		gconstpointer cooked_brightness;
+
+		/* Cache the brightness setting */
+		display_brightness_pipe.cached_data = GINT_TO_POINTER(real_disp_brightness);
+
+		/* Filter the brightness setting */
+		cooked_brightness = execute_datapipe_filters(&display_brightness_pipe, NULL, USE_CACHE);
+
+		set_brightness = GPOINTER_TO_INT(cooked_brightness);
+		init_display_state = MCE_DISPLAY_OFF;
+	} else {
+		(void)execute_datapipe(&display_brightness_pipe,
+				       GINT_TO_POINTER(real_disp_brightness),
+				       USE_INDATA, CACHE_INDATA);
+	}
 
 	if (mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
 				   MCE_GCONF_DISPLAY_BRIGHTNESS_PATH,
@@ -2226,6 +2948,8 @@ const gchar *g_module_check_init(GModule *module)
 	/* Since we've set a default, error handling is unnecessary */
 	(void)mce_gconf_get_int(MCE_GCONF_DISPLAY_BLANK_TIMEOUT_PATH,
 				&disp_blank_timeout);
+
+	disp_lpm_timeout = disp_blank_timeout;
 
 	if (mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
 				   MCE_GCONF_DISPLAY_BLANK_TIMEOUT_PATH,
@@ -2281,6 +3005,17 @@ const gchar *g_module_check_init(GModule *module)
 					       bootup_dim_additional_timeout),
 			       USE_INDATA, CACHE_INDATA);
 
+	/* Use low power mode? */
+	/* Since we've set a default, error handling is unnecessary */
+	(void)mce_gconf_get_bool(MCE_GCONF_USE_LOW_POWER_MODE_PATH,
+				 &use_low_power_mode);
+
+	if (mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
+				   MCE_GCONF_USE_LOW_POWER_MODE_PATH,
+				   display_gconf_cb,
+				   &use_low_power_mode_gconf_cb_id) == FALSE)
+		goto EXIT;
+
 	/* Don't blank on charger */
 	/* Since we've set a default, error handling is unnecessary */
 	(void)mce_gconf_get_int(MCE_GCONF_BLANKING_INHIBIT_MODE_PATH,
@@ -2324,14 +3059,6 @@ const gchar *g_module_check_init(GModule *module)
 				 display_dim_req_dbus_cb) == NULL)
 		goto EXIT;
 
-	/* req_display_state_low_power */
-	if (mce_dbus_handler_add(MCE_REQUEST_IF,
-				 MCE_DISPLAY_LOW_POWER_MODE_REQ,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_METHOD_CALL,
-				 display_low_power_mode_req_dbus_cb) == NULL)
-		goto EXIT;
-
 	/* req_display_state_off */
 	if (mce_dbus_handler_add(MCE_REQUEST_IF,
 				 MCE_DISPLAY_OFF_REQ,
@@ -2370,6 +3097,14 @@ const gchar *g_module_check_init(GModule *module)
 				 NULL,
 				 DBUS_MESSAGE_TYPE_SIGNAL,
 				 desktop_startup_dbus_cb) == NULL)
+		goto EXIT;
+
+	/* Display orientation change signal */
+	if (mce_dbus_handler_add(ORIENTATION_SIGNAL_IF,
+				 ORIENTATION_VALUE_CHANGE_SIG,
+				 NULL,
+				 DBUS_MESSAGE_TYPE_SIGNAL,
+				 display_orientation_change_dbus_cb) == NULL)
 		goto EXIT;
 
 	/* Get configuration options */
@@ -2413,9 +3148,8 @@ const gchar *g_module_check_init(GModule *module)
 				 DEFAULT_BRIGHTNESS_DECREASE_CONSTANT_TIME,
 				 NULL);
 
-	/* Request display on to get the state machine in sync */
 	(void)execute_datapipe(&display_state_pipe,
-			       GINT_TO_POINTER(MCE_DISPLAY_ON),
+			       GINT_TO_POINTER(init_display_state),
 			       USE_INDATA, CACHE_INDATA);
 
 EXIT:
@@ -2434,7 +3168,14 @@ void g_module_unload(GModule *module)
 {
 	(void)module;
 
+	/* Write display on timers to CAL */
+	update_display_timers(TRUE);
+
 	/* Remove triggers/filters from datapipes */
+	remove_output_trigger_from_datapipe(&alarm_ui_state_pipe,
+					    alarm_ui_state_trigger);
+	remove_output_trigger_from_datapipe(&proximity_sensor_pipe,
+					    proximity_sensor_trigger);
 	remove_output_trigger_from_datapipe(&power_saving_mode_pipe,
 					    power_saving_mode_trigger);
 	remove_output_trigger_from_datapipe(&call_state_pipe,
@@ -2451,9 +3192,15 @@ void g_module_unload(GModule *module)
 					    charger_state_trigger);
 	remove_output_trigger_from_datapipe(&system_state_pipe,
 					    system_state_trigger);
+	remove_filter_from_datapipe(&display_state_pipe,
+				    display_state_filter);
 
 	/* Free lists */
 	g_slist_free(possible_dim_timeouts);
+
+	/* Close files */
+	mce_close_file(brightness_file, &brightness_fp);
+	mce_close_file(high_brightness_mode_file, &high_brightness_mode_fp);
 
 	/* Free strings */
 	g_free(brightness_file);

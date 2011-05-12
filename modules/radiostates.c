@@ -2,7 +2,7 @@
  * @file radiostates.c
  * Radio state module for the Mode Control Entity
  * <p>
- * Copyright © 2010 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright © 2010-2011 Nokia Corporation and/or its subsidiary(-ies).
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  *
@@ -21,7 +21,7 @@
 #include <glib.h>
 #include <gmodule.h>
 
-#include <errno.h>			/* errno */
+#include <errno.h>		/* errno */
 #include <string.h>		/* strlen(), strncmp() */
 
 #include <mce/mode-names.h>	/* MCE_RADIO_STATE_MASTER */
@@ -30,9 +30,15 @@
 #include "radiostates.h"	/* MCE_RADIO_STATES_PATH */
 
 #include "mce-io.h"		/* mce_read_number_string_from_file(),
-				 * mce_write_number_string_to_file_atomic()
+				 * mce_write_number_string_to_file_atomic(),
+				 * mce_are_settings_locked(),
+				 * mce_unlock_settings()
 				 */
 #include "mce-log.h"		/* mce_log(), LL_* */
+#include "mce-conf.h"		/* mce_conf_read_conf_file(),
+				 * mce_conf_free_conf_file(),
+				 * mce_conf_get_bool()
+				 */
 #include "mce-dbus.h"		/* Direct:
 				 * ---
 				 * mce_dbus_handler_add(),
@@ -64,6 +70,39 @@
 /** Module name */
 #define MODULE_NAME		"radiostates"
 
+/** Number of radio states */
+#define RADIO_STATES_COUNT	6
+
+/** Names of radio state configuration keys */
+static const gchar *const radio_state_names[RADIO_STATES_COUNT] = {
+	MCE_CONF_MASTER_RADIO_STATE,
+	MCE_CONF_CELLULAR_RADIO_STATE,
+	MCE_CONF_WLAN_RADIO_STATE,
+	MCE_CONF_BLUETOOTH_RADIO_STATE,
+	MCE_CONF_NFC_RADIO_STATE,
+	MCE_CONF_FMTX_RADIO_STATE
+};
+
+/** Radio state default values */
+static const gboolean radio_state_defaults[RADIO_STATES_COUNT] = {
+	DEFAULT_MASTER_RADIO_STATE,
+	DEFAULT_CELLULAR_RADIO_STATE,
+	DEFAULT_WLAN_RADIO_STATE,
+	DEFAULT_BLUETOOTH_RADIO_STATE,
+	DEFAULT_NFC_RADIO_STATE,
+	DEFAULT_FMTX_RADIO_STATE
+};
+
+/** radio state flag */
+static const gint radio_state_flags[RADIO_STATES_COUNT] = {
+	MCE_RADIO_STATE_MASTER,
+	MCE_RADIO_STATE_CELLULAR,
+	MCE_RADIO_STATE_WLAN,
+	MCE_RADIO_STATE_BLUETOOTH,
+	MCE_RADIO_STATE_NFC,
+	MCE_RADIO_STATE_FMTX
+};
+
 /** Functionality provided by this module */
 static const gchar *const provides[] = { MODULE_NAME, NULL };
 
@@ -82,6 +121,38 @@ static dbus_uint32_t radio_states = 0;
 
 /** Active radio states (master switch disables all radios) */
 static dbus_uint32_t active_radio_states = 0;
+
+/**
+ * Get default radio states from customisable settings
+ *
+ * @return -1 in case of error, radio states otherwise
+ */
+static gint get_default_radio_states(void)
+{
+	GKeyFile *radio_states_conf = NULL;
+	gint default_radio_states = -1;
+	gboolean radio_state = FALSE;
+	gint i = 0;
+
+	if ((radio_states_conf = mce_conf_read_conf_file(G_STRINGIFY(MCE_RADIO_STATES_CONF_FILE))) == NULL)
+		goto EXIT;
+
+	for (i = 0, default_radio_states = 0; i < RADIO_STATES_COUNT; ++i) {
+		radio_state = mce_conf_get_bool(MCE_CONF_RADIO_STATES_GROUP,
+						radio_state_names[i],
+						radio_state_defaults[i],
+						radio_states_conf);
+		default_radio_states |= radio_state_flags[i] *
+					(radio_state == TRUE ? 1 : 0);
+	}
+
+	mce_log(LL_DEBUG, "default_radio_states = %x", default_radio_states);
+
+	mce_conf_free_conf_file(radio_states_conf);
+
+EXIT:
+	return default_radio_states;
+}
 
 /**
  * Send the radio states
@@ -165,9 +236,10 @@ static gboolean save_radio_states(const gulong online_states,
 {
 	gboolean status = FALSE;
 
-	if (mce_is_backup_pending() == TRUE) {
+	if (mce_are_settings_locked() == TRUE) {
 		mce_log(LL_WARN,
-			"Cannot save radio states; backup/restore pending");
+			"Cannot save radio states; backup/restore "
+			"or device clear/factory reset pending");
 		goto EXIT;
 	}
 
@@ -183,6 +255,35 @@ EXIT:
 }
 
 /**
+ * Read radio states from persistent storage
+ *
+ * @param online_file The path to the online radio states file
+ * @param[out] online_states A pointer to the restored online radio states
+ * @param offline_file The path to the offline radio states file
+ * @param[out] offline_states A pointer to the restored offline radio states
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean read_radio_states(const gchar *const online_file,
+				  gulong *online_states,
+				  const gchar *const offline_file,
+				  gulong *offline_states)
+{
+	gboolean status = FALSE;
+
+	status = mce_read_number_string_from_file(offline_file, offline_states,
+						  NULL, TRUE, TRUE);
+
+	if (status == FALSE)
+		goto EXIT;
+
+	status = mce_read_number_string_from_file(online_file, online_states,
+						  NULL, TRUE, TRUE);
+
+EXIT:
+	return status;
+}
+
+/**
  * Restore the radio states from persistant storage
  *
  * @param[out] online_states A pointer to the restored online radio states
@@ -192,26 +293,52 @@ EXIT:
 static gboolean restore_radio_states(gulong *online_states,
 				     gulong *offline_states)
 {
-	gboolean status = FALSE;
-
-	if (mce_is_backup_pending() == TRUE) {
+	if (mce_are_settings_locked() == TRUE) {
 		mce_log(LL_INFO,
-			"Removing stale backup lockfile");
+			"Removing stale settings lockfile");
 
-		if (mce_unlock_backup() == FALSE) {
+		if (mce_unlock_settings() == FALSE) {
 			mce_log(LL_ERR,
-				"Failed to remove backup lockfile; %s",
+				"Failed to remove settings lockfile; %s",
 				g_strerror(errno));
 			errno = 0;
 		}
 	}
 
-	status = mce_read_number_string_from_file(MCE_OFFLINE_RADIO_STATES_PATH, offline_states, NULL, TRUE, TRUE);
+	return read_radio_states(MCE_ONLINE_RADIO_STATES_PATH, online_states, MCE_OFFLINE_RADIO_STATES_PATH, offline_states);
+}
 
-	if (status == FALSE)
+/**
+ * Restore the default radio states from persistent storage
+ *
+ * @param[out] online_states A pointer to the restored online radio states
+ * @param[out] offline_states A pointer to the restored offline radio states
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean restore_default_radio_states(gulong *online_states,
+					     gulong *offline_states)
+{
+	gint default_radio_states = get_default_radio_states();
+	gboolean status = FALSE;
+
+	*offline_states = 0;
+	*online_states = 0;
+
+	if (default_radio_states == -1)
 		goto EXIT;
 
-	status = mce_read_number_string_from_file(MCE_ONLINE_RADIO_STATES_PATH, online_states, NULL, TRUE, TRUE);
+	*offline_states = default_radio_states;
+
+	if (default_radio_states & MCE_RADIO_STATE_MASTER)
+		*online_states = default_radio_states;
+
+	if (save_radio_states((gulong)*online_states,
+			      (gulong)*offline_states) == FALSE) {
+		mce_log(LL_ERR, "Could not save restored radio states");
+		goto EXIT;
+	}
+
+	status = TRUE;
 
 EXIT:
 	return status;
@@ -349,12 +476,18 @@ const gchar *g_module_check_init(GModule *module)
 
 	/* If we fail to restore the radio states, default to offline */
 	if (restore_radio_states(&tmp, &tmp2) == FALSE) {
-		tmp2 = 0;
-		tmp = 0;
+		if (restore_default_radio_states(&tmp, &tmp2) == FALSE) {
+			tmp2 = 0;
+			tmp = 0;
+		}
 	}
 
 	radio_states = tmp2;
 	active_radio_states = tmp;
+
+	mce_log(LL_DEBUG,
+		"active_radio_states: %x, radio_states: %x",
+		active_radio_states, radio_states);
 
 	/* Append triggers/filters to datapipes */
 	append_output_trigger_to_datapipe(&master_radio_pipe,

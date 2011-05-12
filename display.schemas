@@ -2,6 +2,19 @@
 <gconfschemafile>
   <schemalist>
     <schema>
+      <key>/schemas/system/osso/dsm/display/als_enabled</key>
+      <applyto>/system/osso/dsm/display/als_enabled</applyto>
+      <owner>mce</owner>
+      <type>bool</type>
+      <default>true</default>
+      <locale name="C">
+        <short>Use the Ambient Light Sensor for brightness adjustment</short>
+	<long>Should the Ambient Light Sensor (if available) be used
+for brightness adjustment?</long>
+      </locale>
+    </schema>
+
+    <schema>
       <key>/schemas/system/osso/dsm/display/display_dim_timeout</key>
       <applyto>/system/osso/dsm/display/display_dim_timeout</applyto>
       <owner>mce</owner>
@@ -30,7 +43,7 @@
       <applyto>/system/osso/dsm/display/display_brightness</applyto>
       <owner>mce</owner>
       <type>int</type>
-      <default>4</default>
+      <default>3</default>
       <locale name="C">
 	<short>Display brightness level.</short>
 	<long></long>
@@ -112,6 +125,18 @@
     </schema>
 
     <schema>
+      <key>/schemas/system/osso/dsm/display/use_low_power_mode</key>
+      <applyto>/system/osso/dsm/display/use_low_power_mode</applyto>
+      <owner>mce</owner>
+      <type>bool</type>
+      <default>true</default>
+      <locale name="C">
+        <short>Use Low Power Mode for display blank (if supported)</short>
+	<long>Should the Low Power Mode be used after the display blank timeout expires, instead of turning the display off?</long>
+      </locale>
+    </schema>
+
+    <schema>
       <key>/schemas/system/osso/dsm/locks/touchscreen_keypad_autolock_enabled</key>
       <applyto>/system/osso/dsm/locks/touchscreen_keypad_autolock_enabled</applyto>
       <owner>mce</owner>
@@ -120,6 +145,18 @@
       <locale name="C">
 	<short>Should tklock be enabled when display is blanked.</short>
 	<long>If true, touch screen and keypad lock will be enabled, when display is blanked</long>
+      </locale>
+    </schema>
+
+    <schema>
+      <key>/schemas/system/osso/dsm/locks/tklock_double_tap_gesture</key>
+      <applyto>/system/osso/dsm/locks/tklock_double_tap_gesture</applyto>
+      <owner>mce</owner>
+      <type>int</type>
+      <default>1</default>
+      <locale name="C">
+	<short>How should the tklock behave if the screen is double tapped.</short>
+	<long>0 - Gesture disabled; 1 - Double tap shows unlock screen; 2 - Double tap unlocks tklock.</long>
       </locale>
     </schema>
 

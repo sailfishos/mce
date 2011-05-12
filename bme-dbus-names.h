@@ -1,7 +1,6 @@
 /**
  * @file bme-dbus-names.h
  */
-
 #ifndef _BME_DBUS_NAMES_H_
 #define _BME_DBUS_NAMES_H_
 
@@ -34,4 +33,4 @@
 #define BME_STATUS_INFO_REQ		"status_info_req"
 #define BME_TIMELEFT_INFO_REQ		"timeleft_info_req"
 
-#endif /*__BME_DBUS_NAMES_H_ */
+#endif /* _BME_DBUS_NAMES_H_ */

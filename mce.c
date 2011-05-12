@@ -2,7 +2,7 @@
  * @file mce.c
  * Mode Control Entity - main file
  * <p>
- * Copyright © 2004-2010 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright © 2004-2011 Nokia Corporation and/or its subsidiary(-ies).
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  *
@@ -312,10 +312,7 @@ static gboolean daemonize(void)
 				i++;
 				retries++;
 			} else if (errno == EBADF) {
-				mce_log(LL_ERR,
-					"Failed to close() fd %d; %s. "
-					"Ignoring.",
-					i + 1, g_strerror(errno));
+				/* Ignore invalid file descriptors */
 				errno = 0;
 			} else {
 				mce_log(LL_CRIT,
@@ -576,7 +573,7 @@ int main(int argc, char **argv)
 		       0, GINT_TO_POINTER(MCE_ALARM_UI_INVALID_INT32));
 	setup_datapipe(&submode_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(MCE_NORMAL_SUBMODE));
-	setup_datapipe(&display_state_pipe, READ_ONLY, DONT_FREE_CACHE,
+	setup_datapipe(&display_state_pipe, READ_WRITE, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(MCE_DISPLAY_UNDEF));
 	setup_datapipe(&display_brightness_pipe, READ_WRITE, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(0));

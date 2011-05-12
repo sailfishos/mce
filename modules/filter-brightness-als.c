@@ -4,7 +4,7 @@
  * for display backlight, key backlight, and LED brightness
  * This file implements a filter module for MCE
  * <p>
- * Copyright © 2007-2010 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright © 2007-2011 Nokia Corporation and/or its subsidiary(-ies).
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Tuomo Tanskanen <ext-tuomo.1.tanskanen@nokia.com>
@@ -25,6 +25,7 @@
 #include <gmodule.h>
 #include <glib/gstdio.h>		/* g_access */
 
+#include <errno.h>			/* errno */
 #include <fcntl.h>			/* O_NONBLOCK */
 #include <unistd.h>			/* R_OK */
 #include <stdlib.h>			/* free() */
@@ -33,8 +34,13 @@
 #include "mce.h"
 #include "filter-brightness-als.h"
 
-#include "mce-io.h"			/* mce_read_chunk_from_file(),
-					 * mce_read_number_string_from_file()
+#include "mce-io.h"			/* mce_close_file(),
+					 * mce_read_chunk_from_file(),
+					 * mce_read_number_string_from_file(),
+					 * mce_write_string_to_file(),
+					 * mce_write_number_string_to_file(),
+					 * mce_register_io_monitor_chunk(),
+					 * mce_unregister_io_monitor()
 					 */
 #include "mce-lib.h"			/* mce_translate_string_to_int_with_default(),
 					 * mce_translation_t
@@ -50,6 +56,24 @@
 					 * gconf_value_get_bool(),
 					 * GConfClient, GConfEntry, GConfValue
 					 */
+#include "mce-dbus.h"			/* Direct:
+					 * ---
+					 * mce_dbus_handler_add(),
+					 * dbus_send_message(),
+					 * dbus_new_method_reply(),
+					 * dbus_new_signal(),
+					 * dbus_message_append_args(),
+					 * dbus_message_get_no_reply(),
+					 * dbus_message_unref(),
+					 * DBusMessage,
+					 * DBUS_MESSAGE_TYPE_METHOD_CALL,
+					 * DBUS_TYPE_INVALID,
+					 * dbus_bool_t
+					 *
+					 * Indirect:
+					 * ---
+					 * MCE_REQUEST_IF
+					 */
 #include "datapipe.h"			/* execute_datapipe(),
 					 * append_output_trigger_to_datapipe(),
 					 * append_filter_to_datapipe(),
@@ -59,6 +83,15 @@
 #include "median_filter.h"		/* median_filter_init(),
 					 * median_filter_map()
 					 */
+
+/** Request enabling of ALS; reference counted */
+#define MCE_REQ_ALS_ENABLE		"req_als_enable"
+
+/** Request disabling of ALS; reference counted */
+#define MCE_REQ_ALS_DISABLE		"req_als_disable"
+
+/** Maximum number of monitored ALS owners */
+#define ALS_MAX_MONITORED		16
 
 /** Module name */
 #define MODULE_NAME		"filter-brightness-als"
@@ -133,6 +166,14 @@ static gint led_brightness_upper = -1;
 static gint kbd_brightness_lower = -1;
 /** ALS upper threshold for keyboard backlight */
 static gint kbd_brightness_upper = -1;
+/** Colour phase adjustment profiles for the display */
+static cpa_profile_struct *display_cpa_profiles = NULL;
+/** Has colour phase adjustment been enabled */
+static gboolean display_cpa_enabled = FALSE;
+/** Path to the colour phase adjustment enabling sysfs entry */
+static const gchar *display_cpa_enable_path = NULL;
+/** Path to the colour phase adjustment coefficients sysfs entry */
+static const gchar *display_cpa_coefficients_path = NULL;
 
 /** Display state */
 static display_state_t display_state = MCE_DISPLAY_UNDEF;
@@ -159,12 +200,10 @@ typedef enum {
 	ALS_TYPE_TSL2562 = 1,
 	/** TSL2563 type ALS */
 	ALS_TYPE_TSL2563 = 2,
-	/** BH1780GLI type ALS */
-	ALS_TYPE_BH1780GLI = 3,
 	/** Dipro (BH1770GLC/SFH7770) type ALS */
-	ALS_TYPE_DIPRO = 4,
+	ALS_TYPE_DIPRO = 3,
 	/** Avago (APDS990x (QPDS-T900)) type ALS */
-	ALS_TYPE_AVAGO = 5,
+	ALS_TYPE_AVAGO = 4
 } als_type_t;
 
 static void cancel_als_poll_timer(void);
@@ -198,6 +237,12 @@ static const mce_translation_t brightness_step_policy_translation[] = {
 /** Brightness step-down policy */
 static brightness_step_policy_t brightness_step_down_policy =
 					DEFAULT_BRIGHTNESS_STEP_DOWN_POLICY;
+
+/** External reference count for ALS */
+static guint als_external_refcount = 0;
+
+/** List of monitored als owners */
+static GSList *als_owner_monitor_list = NULL;
 
 /**
  * GConf callback for ALS settings
@@ -259,6 +304,13 @@ static als_type_t get_als_type(void)
 		display_als_profiles = display_als_profiles_rm696;
 		led_als_profiles = led_als_profiles_rm696;
 		use_median_filter = FALSE;
+
+		display_cpa_enable_path = COLOUR_PHASE_ENABLE_PATH;
+		display_cpa_coefficients_path = COLOUR_PHASE_COEFFICIENTS_PATH;
+
+		if (g_access(display_cpa_enable_path, W_OK) == 0) {
+			display_cpa_profiles = rm696_phase_profile;
+		}
 	} else if (g_access(ALS_DEVICE_PATH_DIPRO, R_OK) == 0) {
 		als_type = ALS_TYPE_DIPRO;
 		als_device_path = ALS_DEVICE_PATH_DIPRO;
@@ -268,6 +320,13 @@ static als_type_t get_als_type(void)
 		led_als_profiles = led_als_profiles_rm680;
 		kbd_als_profiles = kbd_als_profiles_rm680;
 		use_median_filter = FALSE;
+
+		display_cpa_enable_path = COLOUR_PHASE_ENABLE_PATH;
+		display_cpa_coefficients_path = COLOUR_PHASE_COEFFICIENTS_PATH;
+
+		if (g_access(display_cpa_enable_path, W_OK) == 0) {
+			display_cpa_profiles = rm680_phase_profile;
+		}
 	} else if (g_access(ALS_LUX_PATH_TSL2563, R_OK) == 0) {
 		als_type = ALS_TYPE_TSL2563;
 		als_lux_path = ALS_LUX_PATH_TSL2563;
@@ -295,6 +354,8 @@ static als_type_t get_als_type(void)
 		if (g_access(als_threshold_range_path, W_OK) == -1)
 			als_threshold_range_path = NULL;
 	}
+
+	errno = 0;
 
 	mce_log(LL_DEBUG, "ALS-type: %d", als_type);
 
@@ -344,12 +405,15 @@ static void calibrate_als(void)
 	default:
 		mce_log(LL_INFO,
 			"Ignored excess calibration data");
+		/* Fall-through */
 
 	case 2:
 		memcpy(&calib1, tmp, sizeof (calib1));
+		/* Fall-through */
 
 	case 1:
 		memcpy(&calib0, tmp, sizeof (calib0));
+		break;
 	}
 
 	/* Write calibration value 0 */
@@ -423,7 +487,7 @@ static gint filter_data(als_profile_struct *profiles, als_profile_t profile,
  * Ambient Light Sensor filter for display brightness
  *
  * @param data The un-processed brightness setting (1-5) stored in a pointer
- * @return The processed brightness value (percentage)
+ * @return The processed brightness value (percentage) stored in a pointer
  */
 static gpointer display_brightness_filter(gpointer data)
 {
@@ -432,8 +496,12 @@ static gpointer display_brightness_filter(gpointer data)
 	gint raw = GPOINTER_TO_INT(data) - 1;
 	gpointer retval;
 
-	/* If the display is off, don't update its brightness */
-	if (display_state == MCE_DISPLAY_OFF) {
+	/* If the display is off or in low power mode,
+	 * don't update its brightness
+	 */
+	if ((display_state == MCE_DISPLAY_OFF) ||
+	    (display_state == MCE_DISPLAY_LPM_OFF) ||
+	    (display_state == MCE_DISPLAY_LPM_ON)) {
 		raw = 0;
 		goto EXIT;
 	}
@@ -445,6 +513,9 @@ static gpointer display_brightness_filter(gpointer data)
 		raw = ALS_PROFILE_MAXIMUM;
 
 	if ((als_enabled == TRUE) && (display_als_profiles != NULL)) {
+		/* Not true percentage,
+		 * since this value may be boosted by high brightness mode
+		 */
 		gint percentage = filter_data(display_als_profiles, raw,
 					      als_lux, &display_als_level,
 					      &display_brightness_lower,
@@ -561,6 +632,7 @@ static gint als_median_filter_map(gint value)
 static gint als_read_value_filtered(void)
 {
 	gint filtered_read = -2;
+	void *tmp = NULL;
 	gulong lux;
 
 	if (als_enabled == FALSE)
@@ -568,11 +640,10 @@ static gint als_read_value_filtered(void)
 
 	if (get_als_type() == ALS_TYPE_AVAGO) {
 		struct avago_als *als;
-		void *tmp = NULL;
 		gssize len = sizeof (struct avago_als);
 
 		if (mce_read_chunk_from_file(als_device_path, &tmp, &len,
-					     0, -1) == FALSE) {
+					     0) == FALSE) {
 			filtered_read = -1;
 			goto EXIT;
 		}
@@ -581,22 +652,23 @@ static gint als_read_value_filtered(void)
 			mce_log(LL_ERR,
 				"Short read from `%s'",
 				als_device_path);
-			g_free(tmp);
 			filtered_read = -1;
 			goto EXIT;
 		}
 
 		als = (struct avago_als *)tmp;
-		lux = als->lux;
 
-		g_free(tmp);
+		if ((als->status & APDS990X_ALS_SATURATED) != 0) {
+			lux = G_MAXINT;
+		} else {
+			lux = als->lux;
+		}
 	} else if (get_als_type() == ALS_TYPE_DIPRO) {
 		struct dipro_als *als;
-		void *tmp = NULL;
 		gssize len = sizeof (struct dipro_als);
 
 		if (mce_read_chunk_from_file(als_device_path, &tmp, &len,
-					     0, -1) == FALSE) {
+					     0) == FALSE) {
 			filtered_read = -1;
 			goto EXIT;
 		}
@@ -605,15 +677,12 @@ static gint als_read_value_filtered(void)
 			mce_log(LL_ERR,
 				"Short read from `%s'",
 				als_device_path);
-			g_free(tmp);
 			filtered_read = -1;
 			goto EXIT;
 		}
 
 		als = (struct dipro_als *)tmp;
 		lux = als->lux;
-
-		g_free(tmp);
 	} else {
 		/* Read lux value from ALS */
 		if (mce_read_number_string_from_file(als_lux_path,
@@ -627,12 +696,16 @@ static gint als_read_value_filtered(void)
 	filtered_read = als_median_filter_map(lux);
 
 EXIT:
+	g_free(tmp);
+
 	return filtered_read;
 }
 
 /**
  * Adjust ALS thresholds if supported
  *
+ * @note Call with 0, 0 to unconditionally generate interrupts
+ *       Call with -1, -1 to use cached thresholds
  * @param lower Lower threshold;
  *              any reading below this will generate interrupts
  * @param upper Upper threshold;
@@ -640,26 +713,42 @@ EXIT:
  */
 static void adjust_als_thresholds(gint lower, gint upper)
 {
+	static gint cached_lower = -1;
+	static gint cached_upper = -1;
+	gchar *str;
+
 	/* Only adjust thresholds if there's support for doing so */
 	if (als_threshold_range_path == NULL)
 		goto EXIT;
 
-	/* If the lower threshold is higher than the upper threshold,
-	 * set both to 0 to guarantee that we get a new interupt
-	 */
-	if (lower >= upper) {
+	/* Special cases */
+	if ((lower > upper) || ((lower == upper) && (lower == 0))) {
+		/* If the lower threshold is higher than the upper threshold,
+		 * set both to 0 to guarantee that we get a new interupt;
+		 * don't cache
+		 */
 		lower = 0;
 		upper = 0;
+	} else if ((lower == upper) && (lower == -1)) {
+		if (cached_lower == -1) {
+			lower = 0;
+			upper = 0;
+		} else {
+			lower = cached_lower;
+			upper = cached_upper;
+		}
+	} else if ((lower == 0) &&(upper == 65535)) {
+		/* [0, 65535] is used to disable ALS reads;
+		 * do not cache these values
+		 */
+	} else {
+		cached_lower = lower;
+		cached_upper = upper;
 	}
 
-	/* Only write to the threshold registers
-	 * if we are monitoring the ALS
-	 */
-	if ((als_poll_timer_cb_id != 0) || (als_iomon_id != NULL)) {
-		gchar *str = g_strdup_printf("%d %d", lower, upper);
-		mce_write_string_to_file(als_threshold_range_path, str);
-		g_free(str);
-	}
+	str = g_strdup_printf("%d %d", lower, upper);
+	mce_write_string_to_file(als_threshold_range_path, str);
+	g_free(str);
 
 EXIT:
 	return;
@@ -704,6 +793,32 @@ static gboolean als_poll_timer_cb(gpointer data)
 	(void)execute_datapipe(&key_backlight_pipe, NULL,
 			       USE_CACHE, DONT_CACHE_INDATA);
 
+	/* Adjust the colour phase coefficients */
+	if (display_cpa_profiles != NULL) {
+		gint level = -1;
+		gint i;
+
+		for (i = 0; display_cpa_profiles[i].range[0] != -1; i++) {
+			if ((als_lux >= display_cpa_profiles[i].range[0]) &&
+			    ((als_lux < display_cpa_profiles[i].range[1]) ||
+			     (display_cpa_profiles[i].range[1] == -1))) {
+				level = i;
+				break;
+			}
+		}
+
+		if (level != -1) {
+			mce_write_string_to_file(display_cpa_coefficients_path, display_cpa_profiles[level].coefficients);
+
+			/* If this is the first time we adjust the colour phase
+			 * coefficients, enable cpa adjustment
+			 */
+			if (display_cpa_enabled == FALSE) {
+				mce_write_string_to_file(display_cpa_enable_path, "1");
+			}
+		}
+	}
+
 	/* The lower threshold is the largest of the lower thresholds */
 	lower = display_brightness_lower;
 
@@ -722,7 +837,8 @@ static gboolean als_poll_timer_cb(gpointer data)
 	if (kbd_als_profiles != NULL)
 		upper = MIN(upper, kbd_brightness_upper);
 
-	adjust_als_thresholds(lower, upper);
+	if (als_external_refcount == 0)
+		adjust_als_thresholds(lower, upper);
 
 EXIT2:
 	status = TRUE;
@@ -741,6 +857,8 @@ EXIT:
  */
 static void als_iomon_common(gint lux)
 {
+	cover_state_t proximity_sensor_state =
+				datapipe_get_gint(proximity_sensor_pipe);
 	gboolean status = FALSE;
 	gint new_lux;
 	gint lower;
@@ -748,11 +866,20 @@ static void als_iomon_common(gint lux)
 
 	new_lux = als_median_filter_map(lux);
 
-	/* No readjustment is needed if the read is identical
-	 * to the old value, unless we've never set the threshold
-	 * values before
+	/* There's no point in readjusting the brightness
+	 * if the read failed; also no readjustment is needed
+	 * if the read is identical to the old value, unless
+	 * we've never set the threshold values before
 	 */
-	if ((als_lux == new_lux) && (display_brightness_lower != -1))
+	if ((new_lux == -1) ||
+	    ((als_lux == new_lux) && (display_brightness_lower != -1)))
+		goto EXIT;
+
+	/* Don't readjust the brightness if there's proximity,
+	 * to avoid the backlight from changing if the user
+	 * inadvertently covers the ALS
+	 */
+	if (proximity_sensor_state == COVER_CLOSED)
 		goto EXIT;
 
 	als_lux = new_lux;
@@ -764,6 +891,32 @@ static void als_iomon_common(gint lux)
 			       USE_CACHE, DONT_CACHE_INDATA);
 	(void)execute_datapipe(&key_backlight_pipe, NULL,
 			       USE_CACHE, DONT_CACHE_INDATA);
+
+	/* Adjust the colour phase coefficients */
+	if (display_cpa_profiles != NULL) {
+		gint level = -1;
+		gint i;
+
+		for (i = 0; display_cpa_profiles[i].range[0] != -1; i++) {
+			if ((als_lux >= display_cpa_profiles[i].range[0]) &&
+			    ((als_lux < display_cpa_profiles[i].range[1]) ||
+			     (display_cpa_profiles[i].range[1] == -1))) {
+				level = i;
+				break;
+			}
+		}
+
+		if (level != -1) {
+			mce_write_string_to_file(display_cpa_coefficients_path, display_cpa_profiles[level].coefficients);
+
+			/* If this is the first time we adjust the colour phase
+			 * coefficients, enable cpa adjustment
+			 */
+			if (display_cpa_enabled == FALSE) {
+				mce_write_string_to_file(display_cpa_enable_path, "1");
+			}
+		}
+	}
 
 	/* The lower threshold is the largest of the lower thresholds */
 	lower = display_brightness_lower;
@@ -783,7 +936,9 @@ static void als_iomon_common(gint lux)
 	if (kbd_als_profiles != NULL)
 		upper = MIN(upper, kbd_brightness_upper);
 
-	adjust_als_thresholds(lower, upper);
+	if (als_external_refcount == 0)
+		adjust_als_thresholds(lower, upper);
+
 
 EXIT:
 	status = TRUE;
@@ -797,11 +952,11 @@ EXIT:
  *
  * @param data The new data
  * @param bytes_read Unused
+ * @return Always returns FALSE to return remaining chunks (if any)
  */
-static void als_iomon_dipro_cb(gpointer data, gsize bytes_read)
+static gboolean als_dipro_iomon_cb(gpointer data, gsize bytes_read)
 {
 	struct dipro_als *als;
-	als = data;
 
 	/* Don't process invalid reads */
 	if (bytes_read != sizeof (struct dipro_als)) {
@@ -810,10 +965,12 @@ static void als_iomon_dipro_cb(gpointer data, gsize bytes_read)
 		goto EXIT;
 	}
 
+	als = data;
+
 	als_iomon_common(als->lux);
 
 EXIT:
-	return;
+	return FALSE;
 }
 
 /**
@@ -821,11 +978,11 @@ EXIT:
  *
  * @param data The new data
  * @param bytes_read Unused
+ * @return Always returns FALSE to return remaining chunks (if any)
  */
-static void als_iomon_avago_cb(gpointer data, gsize bytes_read)
+static gboolean als_avago_iomon_cb(gpointer data, gsize bytes_read)
 {
 	struct avago_als *als;
-	als = data;
 
 	/* Don't process invalid reads */
 	if (bytes_read != sizeof (struct avago_als)) {
@@ -834,20 +991,21 @@ static void als_iomon_avago_cb(gpointer data, gsize bytes_read)
 		goto EXIT;
 	}
 
+	als = data;
+
 	/* The ALS hasn't got anything to offer */
 	if ((als->status & APDS990X_ALS_UPDATED) == 0)
 		goto EXIT;
 
 	if ((als->status & APDS990X_ALS_SATURATED) != 0) {
-		als_iomon_common(G_MAXUINT);
+		als_iomon_common(G_MAXINT);
 	} else {
 		als_iomon_common(als->lux);
 	}
 
 EXIT:
-	return;
+	return FALSE;
 }
-
 
 /**
  * Cancel Ambient Light Sensor poll timer
@@ -892,7 +1050,7 @@ static void setup_als_poll_timer(void)
 			goto EXIT;
 
 		/* Register ALS I/O monitor */
-		als_iomon_id = mce_register_io_monitor_chunk(-1, als_device_path, MCE_IO_ERROR_POLICY_WARN, G_IO_IN | G_IO_PRI | G_IO_ERR, FALSE, als_iomon_avago_cb, sizeof (struct avago_als));
+		als_iomon_id = mce_register_io_monitor_chunk(-1, als_device_path, MCE_IO_ERROR_POLICY_WARN, G_IO_IN | G_IO_PRI | G_IO_ERR, FALSE, als_avago_iomon_cb, sizeof (struct avago_als));
 		break;
 
 	case ALS_TYPE_DIPRO:
@@ -903,7 +1061,7 @@ static void setup_als_poll_timer(void)
 			goto EXIT;
 
 		/* Register ALS I/O monitor */
-		als_iomon_id = mce_register_io_monitor_chunk(-1, als_device_path, MCE_IO_ERROR_POLICY_WARN, G_IO_IN | G_IO_PRI | G_IO_ERR, FALSE, als_iomon_dipro_cb, sizeof (struct dipro_als));
+		als_iomon_id = mce_register_io_monitor_chunk(-1, als_device_path, MCE_IO_ERROR_POLICY_WARN, G_IO_IN | G_IO_PRI | G_IO_ERR, FALSE, als_dipro_iomon_cb, sizeof (struct dipro_als));
 		break;
 
 	default:
@@ -939,6 +1097,8 @@ static void display_state_trigger(gconstpointer data)
 	/* Update poll timeout */
 	switch (display_state) {
 	case MCE_DISPLAY_OFF:
+	case MCE_DISPLAY_LPM_OFF:
+	case MCE_DISPLAY_LPM_ON:
 		als_poll_interval = ALS_DISPLAY_OFF_POLL_FREQ;
 		break;
 
@@ -954,7 +1114,9 @@ static void display_state_trigger(gconstpointer data)
 	}
 
 	/* Re-fill the median filter */
-	if ((old_display_state == MCE_DISPLAY_OFF) &&
+	if (((old_display_state == MCE_DISPLAY_OFF) ||
+	     (old_display_state == MCE_DISPLAY_LPM_OFF) ||
+	     (old_display_state == MCE_DISPLAY_LPM_ON)) &&
 	    ((display_state == MCE_DISPLAY_ON) ||
 	     (display_state == MCE_DISPLAY_DIM))) {
 		gint new_lux;
@@ -983,6 +1145,16 @@ static void display_state_trigger(gconstpointer data)
 			(void)execute_datapipe(&led_brightness_pipe, NULL, USE_CACHE, DONT_CACHE_INDATA);
 			(void)execute_datapipe(&key_backlight_pipe, NULL, USE_CACHE, DONT_CACHE_INDATA);
 		}
+
+		/* Restore threshold values */
+		adjust_als_thresholds(-1, -1);
+	} else if (((old_display_state == MCE_DISPLAY_ON) ||
+	            (old_display_state == MCE_DISPLAY_DIM)) &&
+		   ((display_state == MCE_DISPLAY_OFF) ||
+		    (display_state == MCE_DISPLAY_LPM_OFF) ||
+		    (display_state == MCE_DISPLAY_LPM_ON))) {
+		/* Set thresholds to not trigger ALS updates */
+		adjust_als_thresholds(0, 65535);
 	}
 
 	/* Reprogram timer, if needed */
@@ -994,6 +1166,166 @@ EXIT:
 	old_display_state = display_state;
 
 	return;
+}
+
+/**
+ * D-Bus callback used for reference counting ALS enabling;
+ * if the requesting process exits, immediately decrease the refcount
+ *
+ * @param msg The D-Bus message
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean als_owner_monitor_dbus_cb(DBusMessage *const msg)
+{
+	gboolean status = FALSE;
+	const gchar *old_name;
+	const gchar *new_name;
+	const gchar *service;
+	gssize retval;
+	DBusError error;
+
+	/* Register error channel */
+	dbus_error_init(&error);
+
+	/* Extract result */
+	if (dbus_message_get_args(msg, &error,
+				  DBUS_TYPE_STRING, &service,
+				  DBUS_TYPE_STRING, &old_name,
+				  DBUS_TYPE_STRING, &new_name,
+				  DBUS_TYPE_INVALID) == FALSE) {
+		mce_log(LL_ERR,
+			"Failed to get argument from %s.%s; %s",
+			"org.freedesktop.DBus", "NameOwnerChanged",
+			error.message);
+		dbus_error_free(&error);
+		goto EXIT;
+	}
+
+	/* Remove the name monitor for the ALS owner */
+	retval = mce_dbus_owner_monitor_remove(old_name, &als_owner_monitor_list);
+
+	if (retval == -1) {
+		mce_log(LL_INFO,
+			"Failed to remove name owner monitoring for `%s'",
+			old_name);
+	} else {
+		als_external_refcount = retval;
+
+		if (als_external_refcount == 0)
+			adjust_als_thresholds(-1, -1);
+	}
+
+	status = TRUE;
+
+EXIT:
+	return status;
+}
+
+/**
+ * D-Bus callback for the ALS enabling method call
+ *
+ * @param msg The D-Bus message
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean als_enable_req_dbus_cb(DBusMessage *const msg)
+{
+	dbus_bool_t no_reply = dbus_message_get_no_reply(msg);
+	const gchar *sender = dbus_message_get_sender(msg);
+	gboolean status = FALSE;
+	gssize retval;
+	DBusError error;
+
+	/* Register error channel */
+	dbus_error_init(&error);
+
+	if (sender == NULL) {
+		mce_log(LL_ERR,
+			"Received invalid ALS enable request "
+			"(sender == NULL)");
+		goto EXIT;
+	}
+
+	mce_log(LL_DEBUG,
+		"Received ALS enable request from %s",
+		sender);
+
+	retval = mce_dbus_owner_monitor_add(sender, als_owner_monitor_dbus_cb, &als_owner_monitor_list, ALS_MAX_MONITORED);
+
+	if (retval == -1) {
+		mce_log(LL_INFO,
+			"Failed to add name owner monitoring for `%s'",
+			sender);
+	} else {
+		als_external_refcount = retval;
+
+		if (als_external_refcount == 1)
+			adjust_als_thresholds(0, 0);
+	}
+
+	if (no_reply == FALSE) {
+		DBusMessage *reply = dbus_new_method_reply(msg);
+
+		status = dbus_send_message(reply);
+	} else {
+		status = TRUE;
+	}
+
+EXIT:
+	return status;
+}
+
+/**
+ * D-Bus callback for the ALS disabling method call
+ *
+ * @param msg The D-Bus message
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean als_disable_req_dbus_cb(DBusMessage *const msg)
+{
+	dbus_bool_t no_reply = dbus_message_get_no_reply(msg);
+	const gchar *sender = dbus_message_get_sender(msg);
+	gboolean status = FALSE;
+	gssize retval;
+	DBusError error;
+
+	/* Register error channel */
+	dbus_error_init(&error);
+
+	if (sender == NULL) {
+		mce_log(LL_ERR,
+			"Received invalid ALS disable request "
+			"(sender == NULL)");
+		goto EXIT;
+	}
+
+	mce_log(LL_DEBUG,
+		"Received ALS disable request from %s",
+		sender);
+
+	retval = mce_dbus_owner_monitor_remove(sender,
+					       &als_owner_monitor_list);
+
+	if (retval == -1) {
+		mce_log(LL_INFO,
+			"Failed to remove name owner monitoring for `%s'",
+			sender);
+	} else {
+		als_external_refcount = retval;
+
+		if (als_external_refcount == 0)
+			adjust_als_thresholds(-1, -1);
+	}
+
+	if (no_reply == FALSE) {
+		DBusMessage *reply = dbus_new_method_reply(msg);
+
+		status = dbus_send_message(reply);
+	} else {
+		status = TRUE;
+	}
+
+EXIT:
+	return status;
 }
 
 /**
@@ -1020,6 +1352,24 @@ const gchar *g_module_check_init(GModule *module)
 				  key_backlight_filter);
 	append_output_trigger_to_datapipe(&display_state_pipe,
 					  display_state_trigger);
+
+	/* req_als_enable */
+	if (mce_dbus_handler_add(MCE_REQUEST_IF,
+				 MCE_REQ_ALS_ENABLE,
+				 NULL,
+				 DBUS_MESSAGE_TYPE_METHOD_CALL,
+				 als_enable_req_dbus_cb) == NULL)
+		goto EXIT;
+
+	/* req_als_disable */
+	if (mce_dbus_handler_add(MCE_REQUEST_IF,
+				 MCE_REQ_ALS_DISABLE,
+				 NULL,
+				 DBUS_MESSAGE_TYPE_METHOD_CALL,
+				 als_disable_req_dbus_cb) == NULL)
+		goto EXIT;
+
+	als_external_refcount = 0;
 
 	/* ALS enabled */
 	/* Since we've set a default, error handling is unnecessary */

@@ -3,7 +3,7 @@
  * This file provides various helper functions
  * for the Mode Control Entity
  * <p>
- * Copyright © 2004-2010 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright © 2004-2011 Nokia Corporation and/or its subsidiary(-ies).
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  *
@@ -251,7 +251,7 @@ gint mce_translate_string_to_int_with_default(const mce_translation_t translatio
 
 	while (translation[i].number != MCE_INVALID_TRANSLATION) {
 		/* If the string matches, set number and stop searching */
-		if (strcmp(translation[i].string, string) == 0) {
+		if (!strcmp(translation[i].string, string)) {
 			number = translation[i].number;
 			break;
 		}

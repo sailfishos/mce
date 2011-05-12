@@ -2,7 +2,7 @@
  * @file mce.h
  * Generic headers for Mode Control Entity
  * <p>
- * Copyright © 2004-2010 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright © 2004-2011 Nokia Corporation and/or its subsidiary(-ies).
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  *
@@ -70,7 +70,7 @@
 #define MCE_LED_PATTERN_COMMUNICATION_EVENT_BATTERY_FULL	"PatternCommunicationAndBatteryFull"
 
 /** Persistent lock file for backups */
-#define MCE_BACKUP_LOCK_FILE_PATH		G_STRINGIFY(MCE_VAR_DIR) "/restored"
+#define MCE_SETTINGS_LOCK_FILE_PATH		G_STRINGIFY(MCE_RUN_DIR) "/restored"
 
 /** Module information */
 typedef struct {
@@ -134,6 +134,8 @@ typedef gint submode_t;
 #define MCE_AUTORELOCK_SUBMODE		(1 << 5)
 /** Visual Touchscreen/Keypad active */
 #define MCE_VISUAL_TKLOCK_SUBMODE	(1 << 6)
+/** Touchscreen/Keypad lock is enabled based on proximity state */
+#define MCE_PROXIMITY_TKLOCK_SUBMODE (1 << 7)
 
 /** System state */
 typedef enum {
@@ -173,9 +175,10 @@ typedef enum {
 typedef enum {
 	MCE_DISPLAY_UNDEF = -1,		/**< Display state not set */
 	MCE_DISPLAY_OFF	= 0,		/**< Display is off */
-	MCE_DISPLAY_LOW_POWER = 1,	/**< Display is in low power mode */
-	MCE_DISPLAY_DIM = 2,		/**< Display is dimmed */
-	MCE_DISPLAY_ON = 3		/**< Display is on */
+	MCE_DISPLAY_LPM_OFF = 1,	/**< Display is off in low power mode */
+	MCE_DISPLAY_LPM_ON = 2,		/**< Display is on in low power mode */
+	MCE_DISPLAY_DIM = 3,		/**< Display is dimmed */
+	MCE_DISPLAY_ON = 4		/**< Display is on */
 } display_state_t;
 
 /** Cover state */
@@ -191,29 +194,18 @@ typedef enum {
 	LOCK_UNDEF = -1,
 	/** Lock is disabled */
 	LOCK_OFF = 0,
-	/**
-	 * Lock is disabled, but unlock doesn't trigger artificial activity;
-	 * used when opening the tklock UI or event eater fails
-	 */
-	LOCK_OFF_NO_ACTIVITY = 1,
 	/** Delayed unlock; write only */
-	LOCK_OFF_DELAYED = 2,
-	/** Silent unlock; write only */
-	LOCK_OFF_SILENT = 3,
+	LOCK_OFF_DELAYED = 1,
 	/** Lock is disabled, but autorelock isn't disabled; write only */
-	LOCK_OFF_PROXIMITY = 4,
+	LOCK_OFF_PROXIMITY = 2,
 	/** Lock is enabled */
-	LOCK_ON = 5,
+	LOCK_ON = 3,
 	/** Dimmed lock; write only */
-	LOCK_ON_DIMMED = 6,
-	/** Silent lock; write only */
-	LOCK_ON_SILENT = 7,
-	/** Silent dimmed lock; write only */
-	LOCK_ON_SILENT_DIMMED = 8,
+	LOCK_ON_DIMMED = 4,
 	/** Enable proximity lock (no UI); write only */
-	LOCK_ON_PROXIMITY = 9,
+	LOCK_ON_PROXIMITY = 5,
 	/** Toggle lock state; write only */
-	LOCK_TOGGLE = 10
+	LOCK_TOGGLE = 6
 } lock_state_t;
 
 /** Battery status */
@@ -271,7 +263,11 @@ datapipe_struct led_pattern_activate_pipe;
 datapipe_struct led_pattern_deactivate_pipe;
 /** State of display; read only */
 datapipe_struct display_state_pipe;
-/** Display brightness */
+/**
+ * Display brightness;
+ * bits 0-7 is brightness in percent (0-100)
+ * upper 8 bits is high brightness boost (0-2)
+ */
 datapipe_struct display_brightness_pipe;
 /** Key backlight */
 datapipe_struct key_backlight_pipe;

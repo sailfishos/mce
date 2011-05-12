@@ -2,7 +2,7 @@
  * @file mce-io.h
  * Headers for the generic I/O functionality for the Mode Control Entity
  * <p>
- * Copyright © 2007, 2009-2010 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright © 2007, 2009-2011 Nokia Corporation and/or its subsidiary(-ies).
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  *
@@ -36,11 +36,11 @@ typedef enum {
 } error_policy_t;
 
 /** Function pointer for I/O monitor callback */
-typedef void (*iomon_cb)(gpointer data, gsize bytes_read);
+typedef gboolean (*iomon_cb)(gpointer data, gsize bytes_read);
 
 gboolean mce_close_file(const gchar *const file, FILE **fp);
 gboolean mce_read_chunk_from_file(const gchar *const file, void **data,
-				  gssize *len, int flags, int fd);
+				  gssize *len, int flags);
 gboolean mce_read_string_from_file(const gchar *const file, gchar **string);
 gboolean mce_read_number_string_from_file(const gchar *const file,
 					  gulong *number, FILE **fp,
@@ -73,7 +73,7 @@ void mce_unregister_io_monitor(gconstpointer io_monitor);
 const gchar *mce_get_io_monitor_name(gconstpointer io_monitor);
 int mce_get_io_monitor_fd(gconstpointer io_monitor);
 
-gboolean mce_is_backup_pending(void);
-gboolean mce_unlock_backup(void);
+gboolean mce_are_settings_locked(void);
+gboolean mce_unlock_settings(void);
 
 #endif /* _MCE_IO_H_ */

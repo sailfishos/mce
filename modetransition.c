@@ -1,10 +1,9 @@
 /**
  * @file modetransition.c
- * This file implements the mode transition component
- * (normal/flight mode/off)
+ * This file implements the submode handling component
  * of the Mode Control Entity
  * <p>
- * Copyright © 2004-2010 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright © 2004-2011 Nokia Corporation and/or its subsidiary(-ies).
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  *
@@ -21,6 +20,7 @@
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include <glib.h>
+#include <glib/gstdio.h>		/* g_access() */
 
 #include <errno.h>			/* errno, ENOENT */
 #include <stdlib.h>			/* exit(), EXIT_FAILURE */
@@ -44,9 +44,7 @@
 					 */
 #include "modetransition.h"
 
-#include "mce-io.h"			/* mce_read_string_from_file(),
-					 * mce_write_string_to_file()
-					 */
+#include "mce-io.h"			/* mce_write_string_to_file() */
 #include "mce-log.h"			/* mce_log(), LL_* */
 #include "datapipe.h"			/* execute_datapipe(),
 					 * execute_datapipe_output_triggers(),
@@ -150,7 +148,7 @@ static void system_state_trigger(gconstpointer data)
 		 */
 		if (old_system_state == MCE_STATE_ACTDEAD) {
 			execute_datapipe(&display_state_pipe,
-					 GINT_TO_POINTER(MCE_DISPLAY_OFF),
+					 GINT_TO_POINTER(MCE_DISPLAY_LPM_OFF),
 					 USE_INDATA, CACHE_INDATA);
 		}
 
@@ -195,7 +193,7 @@ gboolean mce_mode_init(void)
 	 * If the file doesn't exist, create it to ensure that
 	 * restarting mce doesn't get mce stuck in the transition submode
 	 */
-	if (access(MCE_BOOTUP_FILENAME, F_OK) == -1) {
+	if (g_access(MCE_BOOTUP_FILENAME, F_OK) == -1) {
 		if (errno == ENOENT) {
 			mce_log(LL_DEBUG, "Bootup mode enabled");
 			mce_add_submode_int32(MCE_TRANSITION_SUBMODE);

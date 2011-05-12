@@ -2,7 +2,7 @@
  * @file camera.c
  * Camera module -- this handles the camera LED-indicator for MCE
  * <p>
- * Copyright © 2007-2010 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright © 2007-2011 Nokia Corporation and/or its subsidiary(-ies).
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  *
@@ -74,8 +74,9 @@ static gconstpointer camera_popout_state_iomon_id = NULL;
  *
  * @param data The new data
  * @param bytes_read Unused
+ * @return Always returns FALSE to return remaining chunks (if any)
  */
-static void camera_active_state_cb(gpointer data, gsize bytes_read)
+static gboolean camera_active_state_iomon_cb(gpointer data, gsize bytes_read)
 {
 	(void)bytes_read;
 
@@ -88,6 +89,8 @@ static void camera_active_state_cb(gpointer data, gsize bytes_read)
 						 MCE_LED_PATTERN_CAMERA,
 						 USE_INDATA);
 	}
+
+	return FALSE;
 }
 
 /**
@@ -95,8 +98,9 @@ static void camera_active_state_cb(gpointer data, gsize bytes_read)
  *
  * @param data The new data
  * @param bytes_read Unused
+ * @return Always returns FALSE to return remaining chunks (if any)
  */
-static void camera_popout_state_cb(gpointer data, gsize bytes_read)
+static gboolean camera_popout_state_iomon_cb(gpointer data, gsize bytes_read)
 {
 	(void)bytes_read;
 
@@ -117,7 +121,7 @@ static void camera_popout_state_cb(gpointer data, gsize bytes_read)
 	}
 
 EXIT:
-	return;
+	return FALSE;
 }
 
 /**
@@ -145,13 +149,15 @@ const gchar *g_module_check_init(GModule *module)
 		mce_register_io_monitor_string(-1, CAMERA_ACTIVE_STATE_PATH,
 					       MCE_IO_ERROR_POLICY_IGNORE,
 					       G_IO_PRI | G_IO_ERR,
-					       TRUE, camera_active_state_cb);
+					       TRUE,
+					       camera_active_state_iomon_cb);
 
 	camera_popout_state_iomon_id =
 		mce_register_io_monitor_string(-1, CAMERA_POPOUT_STATE_PATH,
 					       MCE_IO_ERROR_POLICY_IGNORE,
 					       G_IO_PRI | G_IO_ERR,
-					       TRUE, camera_popout_state_cb);
+					       TRUE,
+					       camera_popout_state_iomon_cb);
 
 //EXIT:
 	return NULL;

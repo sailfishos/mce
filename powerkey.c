@@ -2,7 +2,7 @@
  * @file powerkey.c
  * Power key logic for the Mode Control Entity
  * <p>
- * Copyright © 2004-2010 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright © 2004-2011 Nokia Corporation and/or its subsidiary(-ies).
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  *
@@ -136,9 +136,7 @@ static void generic_powerkey_handler(poweraction_t action,
 		 */
 		if ((submode & MCE_TKLOCK_SUBMODE) == 0) {
 			mce_log(LL_WARN,
-				"Requesting shutdown from "
-				"powerkey.c: generic_powerkey_handler(); "
-				"action: %d",
+				"Requesting shutdown (action: %d)",
 				action);
 
 			request_normal_shutdown();
@@ -160,7 +158,7 @@ static void generic_powerkey_handler(poweraction_t action,
 		 */
 		if ((submode & MCE_TKLOCK_SUBMODE) == 0) {
 			execute_datapipe(&tk_lock_pipe,
-					 GINT_TO_POINTER(LOCK_ON_SILENT),
+					 GINT_TO_POINTER(LOCK_ON),
 					 USE_INDATA, CACHE_INDATA);
 		}
 
@@ -172,7 +170,7 @@ static void generic_powerkey_handler(poweraction_t action,
 		 */
 		if ((submode & MCE_TKLOCK_SUBMODE) != 0) {
 			execute_datapipe(&tk_lock_pipe,
-					 GINT_TO_POINTER(LOCK_OFF_SILENT),
+					 GINT_TO_POINTER(LOCK_OFF),
 					 USE_INDATA, CACHE_INDATA);
 		}
 
@@ -185,11 +183,11 @@ static void generic_powerkey_handler(poweraction_t action,
 		 */
 		if ((submode & MCE_TKLOCK_SUBMODE) == 0) {
 			execute_datapipe(&tk_lock_pipe,
-					 GINT_TO_POINTER(LOCK_ON_SILENT),
+					 GINT_TO_POINTER(LOCK_ON),
 					 USE_INDATA, CACHE_INDATA);
 		} else {
 			execute_datapipe(&tk_lock_pipe,
-					 GINT_TO_POINTER(LOCK_OFF_SILENT),
+					 GINT_TO_POINTER(LOCK_OFF),
 					 USE_INDATA, CACHE_INDATA);
 		}
 
@@ -427,10 +425,8 @@ static gboolean trigger_powerkey_event_req_dbus_cb(DBusMessage *const msg)
 	if (dbus_message_iter_init(msg, &iter) == FALSE) {
 		// XXX: should we return an error instead?
 		mce_log(LL_ERR,
-			"Too few arguments passed to %s.%s; "
-			"got %d, expected %d",
-			MCE_REQUEST_IF, MCE_TRIGGER_POWERKEY_EVENT_REQ,
-			0, 1);
+			"Failed to initialise D-Bus message iterator; "
+			"message has no arguments");
 		goto EXIT;
 	}
 

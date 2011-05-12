@@ -2,7 +2,7 @@
  * @file mcetool.c
  * Tool to test and remote control the Mode Control Entity
  * <p>
- * Copyright © 2005-2010 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright © 2005-2011 Nokia Corporation and/or its subsidiary(-ies).
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  *
@@ -65,8 +65,21 @@
 
 /** Enabled string; used for arg-parsing */
 #define ENABLED_STRING				"enabled"
-/** Disabled string; used for arg-parsing */
+/**
+ * Disabled string; used for arg-parsing and for output
+ * do not mark this string for translation here, since
+ * it's used for parsing too
+ */
 #define DISABLED_STRING				"disabled"
+
+/** Show unlock screen string; used for output */
+#define SHOW_UNLOCK_SCREEN_STRING		_("show unlock screen")
+/** Unlock string; used for output */
+#define UNLOCK_STRING				_("unlock")
+/** Invalid string; used for output */
+#define INVALID_STRING				_("invalid")
+/** <unset> string; used for output */
+#define UNSET_STRING				_("unset")
 
 /** Master string; used for arg-parsing */
 #define RADIO_MASTER				"master"
@@ -76,6 +89,10 @@
 #define RADIO_WLAN				"wlan"
 /** Bluetooth string; used for arg-parsing */
 #define RADIO_BLUETOOTH				"bluetooth"
+/** NFC string; used for arg-parsing */
+#define RADIO_NFC				"nfc"
+/** FM transmitter string; used for arg-parsing */
+#define RADIO_FMTX				"fmtx"
 
 /** Enums for powerkey events */
 enum {
@@ -189,10 +206,7 @@ static void usage(void)
 		  "                                    valid modes are:\n"
 		  "                                    ``locked'', "
 		  "``locked-dim'',\n"
-		  "                                    ``silent-locked'', "
-		  "``silent-locked-dim'',\n"
-		  "                                    ``unlocked'' and "
-		  "``silent-unlocked''\n"
+		  "                                    and ``unlocked''\n"
 		  "      --enable-led                enable LED framework\n"
 		  "      --disable-led               disable LED framework\n"
 		  "      --activate-led-pattern=PATTERN\n"
@@ -231,7 +245,7 @@ static void version(void)
 		G_STRINGIFY(PRG_VERSION),
 		_("Written by David Weinehall.\n"
 		  "\n"
-		  "Copyright (C) 2005-2010 Nokia Corporation.  "
+		  "Copyright (C) 2005-2011 Nokia Corporation.  "
 		  "All rights reserved.\n"));
 }
 
@@ -823,8 +837,7 @@ static void mcetool_dbus_exit(void)
  * Enable/disable the tklock
  *
  * @param mode The mode to change to; valid modes:
- *             "locked", "locked-dim", "silent-locked", "silent-locked-dim",
- *             "unlocked", "silent-unlocked"
+ *             "locked", "locked-dim", "unlocked"
  * @return TRUE on success, FALSE on FAILURE
  */
 static gboolean set_tklock_mode(gchar **mode)
@@ -1059,6 +1072,7 @@ static gint mcetool_get_status(void)
 	gchar *mce_version = NULL;
 	gchar *callstate = NULL;
 	gchar *calltype = NULL;
+	const gchar *policy_string = NULL;
 	gint brightness = DEFAULT_DISP_BRIGHTNESS;
 	gint dim_timeout = DEFAULT_DIM_TIMEOUT;
 	gint blank_timeout = DEFAULT_BLANK_TIMEOUT;
@@ -1073,6 +1087,7 @@ static gint mcetool_get_status(void)
 	gboolean tklock_autolock = DEFAULT_TK_AUTOLOCK;
 	gint blank_inhibit = -1;
 	gint psm_threshold = DEFAULT_PSM_THRESHOLD;
+	gint doubletap_gesture_policy = DEFAULT_DOUBLETAP_GESTURE_POLICY;
 	dbus_uint32_t radio_states = 0;
 	DBusMessage *reply = NULL;
 	DBusError error;
@@ -1123,6 +1138,14 @@ static gint mcetool_get_status(void)
 		"         %-32s %s\n",
 		_("Bluetooth:"),
 		radio_states & MCE_RADIO_STATE_BLUETOOTH ? _("enabled") : _("disabled"));
+	fprintf(stdout,
+		"         %-32s %s\n",
+		_("NFC:"),
+		radio_states & MCE_RADIO_STATE_NFC ? _("enabled") : _("disabled"));
+	fprintf(stdout,
+		"         %-32s %s\n",
+		_("FM transmitter:"),
+		radio_states & MCE_RADIO_STATE_FMTX ? _("enabled") : _("disabled"));
 
 	/* Get the call state; just ignore if no reply */
 	reply = mcetool_dbus_call_with_reply(MCE_CALL_STATE_GET, NULL);
@@ -1380,6 +1403,37 @@ static gint mcetool_get_status(void)
 		_("Touchscreen/Keypad autolock:"),
 		retval ? (tklock_autolock ? _("enabled") : _("disabled")) : _("<unset>"));
 
+	/* Get touchscreen/keypad double tap gesture policy */
+	retval = mcetool_gconf_get_int(MCE_GCONF_TK_DOUBLE_TAP_GESTURE_PATH,
+				       &doubletap_gesture_policy);
+
+	if (retval == FALSE) {
+		policy_string = UNSET_STRING;
+	} else {
+		switch (doubletap_gesture_policy) {
+		case 0:
+			policy_string = DISABLED_STRING;
+			break;
+
+		case 1:
+			policy_string = SHOW_UNLOCK_SCREEN_STRING;
+			break;
+
+		case 2:
+			policy_string = UNLOCK_STRING;
+			break;
+
+		default:
+			policy_string = _(INVALID_STRING);
+			break;
+		}
+	}
+
+	fprintf(stdout,
+		" %-40s %s\n",
+		_("Double-tap gesture policy:"),
+		policy_string);
+
 EXIT:
 	fprintf(stdout, "\n");
 
@@ -1512,6 +1566,12 @@ int main(int argc, char **argv)
 			} else if (!strcmp(optarg, RADIO_BLUETOOTH)) {
 				new_radio_states |= MCE_RADIO_STATE_BLUETOOTH;
 				radio_states_mask |= MCE_RADIO_STATE_BLUETOOTH;
+			} else if (!strcmp(optarg, RADIO_NFC)) {
+				new_radio_states |= MCE_RADIO_STATE_NFC;
+				radio_states_mask |= MCE_RADIO_STATE_NFC;
+			} else if (!strcmp(optarg, RADIO_FMTX)) {
+				new_radio_states |= MCE_RADIO_STATE_FMTX;
+				radio_states_mask |= MCE_RADIO_STATE_FMTX;
 			} else {
 				usage();
 				status = EINVAL;
@@ -1533,6 +1593,12 @@ int main(int argc, char **argv)
 			} else if (!strcmp(optarg, RADIO_BLUETOOTH)) {
 				new_radio_states &= ~MCE_RADIO_STATE_BLUETOOTH;
 				radio_states_mask |= MCE_RADIO_STATE_BLUETOOTH;
+			} else if (!strcmp(optarg, RADIO_NFC)) {
+				new_radio_states &= ~MCE_RADIO_STATE_NFC;
+				radio_states_mask |= MCE_RADIO_STATE_NFC;
+			} else if (!strcmp(optarg, RADIO_FMTX)) {
+				new_radio_states &= ~MCE_RADIO_STATE_FMTX;
+				radio_states_mask |= MCE_RADIO_STATE_FMTX;
 			} else {
 				usage();
 				status = EINVAL;

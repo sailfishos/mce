@@ -2,7 +2,7 @@
  * @file mce-hal.h
  * Headers for the Hardware Abstraction Layer for MCE
  * <p>
- * Copyright © 2008-2010 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright © 2008-2011 Nokia Corporation and/or its subsidiary(-ies).
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  *

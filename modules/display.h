@@ -2,7 +2,7 @@
  * @file display.h
  * Headers for the display module
  * <p>
- * Copyright © 2007-2010 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright © 2007-2011 Nokia Corporation and/or its subsidiary(-ies).
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  *
@@ -53,6 +53,9 @@
 
 /** Default brightness decrease constant time */
 #define DEFAULT_BRIGHTNESS_DECREASE_CONSTANT_TIME	3000
+
+/** Default timeout for the high brightness mode; in seconds */
+#define DEFAULT_HBM_TIMEOUT				1800	/* 30 min */
 
 /** Path to the SysFS entry for the CABC controls */
 #define DISPLAY_BACKLIGHT_PATH			"/sys/class/backlight"
@@ -130,6 +133,8 @@
 #define MCE_GCONF_DISPLAY_ADAPTIVE_DIM_THRESHOLD_PATH	MCE_GCONF_DISPLAY_PATH "/adaptive_display_dim_threshold"
 /** Path to the blanking inhibit GConf setting */
 #define MCE_GCONF_BLANKING_INHIBIT_MODE_PATH	MCE_GCONF_DISPLAY_PATH "/inhibit_blank_mode"
+/** Path to the use Low Power Mode GConf setting */
+#define MCE_GCONF_USE_LOW_POWER_MODE_PATH	MCE_GCONF_DISPLAY_PATH "/use_low_power_mode"
 
 /** Default display brightness on a scale from 1-5 */
 #define DEFAULT_DISP_BRIGHTNESS			3	/* 60% */
@@ -137,6 +142,13 @@
 #define DEFAULT_PSM_DISP_BRIGHTNESS		1	/* 20% */
 /** Default blank timeout, in seconds */
 #define DEFAULT_BLANK_TIMEOUT			3	/* 3 seconds */
+/**
+ * Default blank timeout, in seconds, when low power mode is active
+ * and the proximity sensor indicates proximity
+ */
+#define DEFAULT_LPM_PROXIMITY_BLANK_TIMEOUT	5	/* 5 seconds */
+/** Default blank timeout, in seconds, when low power mode is active */
+#define DEFAULT_LPM_BLANK_TIMEOUT		0	/* disabled */
 /** Default adaptive dimming threshold, in milliseconds */
 #define DEFAULT_ADAPTIVE_DIMMING_ENABLED	TRUE	/* TRUE */
 /** Default adaptive dimming threshold, in milliseconds */
@@ -160,8 +172,5 @@
 #define DEFAULT_MAXIMUM_DISPLAY_BRIGHTNESS	127
 /** Default dim brightness, in percent */
 #define DEFAULT_DIM_BRIGHTNESS			3
-
-/** Maximum number of monitored services that calls blanking pause */
-#define MAX_MONITORED_SERVICES			5
 
 #endif /* _DISPLAY_H_ */

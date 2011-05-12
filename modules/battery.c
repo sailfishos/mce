@@ -2,7 +2,7 @@
  * @file battery.c
  * Battery module -- this implements battery and charger logic for MCE
  * <p>
- * Copyright © 2008-2010 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright © 2008-2011 Nokia Corporation and/or its subsidiary(-ies).
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  *
@@ -201,36 +201,77 @@ static gboolean battery_empty_dbus_cb(DBusMessage *const msg)
  */
 static gboolean battery_state_changed_dbus_cb(DBusMessage *const msg)
 {
+	dbus_uint32_t percentage;
+	DBusMessageIter iter;
 	dbus_uint32_t now;
 	dbus_uint32_t max;
+	gint argcount = 0;
+	gint argtype;
 	gboolean status = FALSE;
-	DBusError error;
-
-	/* Register error channel */
-	dbus_error_init(&error);
 
 	mce_log(LL_DEBUG,
 		"Received battery state changed signal");
 
-	if (dbus_message_get_args(msg, &error,
-				  DBUS_TYPE_UINT32, &now,
-				  DBUS_TYPE_UINT32, &max,
-				  DBUS_TYPE_INVALID) == FALSE) {
+	if (dbus_message_iter_init(msg, &iter) == FALSE) {
 		// XXX: should we return an error instead?
-		mce_log(LL_CRIT,
-			"Failed to get argument from %s.%s: %s",
-			BME_SIGNAL_IF, BME_BATTERY_STATE_UPDATE,
-			error.message);
-		dbus_error_free(&error);
+		mce_log(LL_ERR,
+			"Failed to initialise D-Bus message iterator; "
+			"message has no arguments");
 		goto EXIT;
 	}
 
+	while ((argtype = dbus_message_iter_get_arg_type(&iter)) != DBUS_TYPE_INVALID) {
+		if (argtype == DBUS_TYPE_UINT32) {
+			if (argcount == 0) {
+				dbus_message_iter_get_basic(&iter, &now);
+			} else if (argcount == 1) {
+				dbus_message_iter_get_basic(&iter, &max);
+			} else if (argcount == 2) {
+				dbus_message_iter_get_basic(&iter, &percentage);
+			}
+		} else if (argcount < 3) {
+			mce_log(LL_ERR,
+				"Argument %d passed to %s.%s has "
+				"incorrect type",
+				argcount,
+				BME_SIGNAL_IF,
+				BME_BATTERY_STATE_UPDATE);
+			goto EXIT;
+		}
+
+		argcount++;
+		dbus_message_iter_next (&iter);
+	}
+
+	if (argcount < 2) {
+		mce_log(LL_ERR,
+			"Too few arguments received from "
+			"%s.%s; "
+			"got %d, expected %d-%d",
+			BME_SIGNAL_IF, BME_BATTERY_STATE_UPDATE,
+			argcount, 2, 3);
+		goto EXIT;
+	}
+
+	if (argcount > 3) {
+		mce_log(LL_INFO,
+			"Too many arguments received from "
+			"%s.%s; "
+			"got %d, expected %d-%d -- ignoring extra arguments",
+			BME_SIGNAL_IF, BME_BATTERY_STATE_UPDATE,
+			argcount, 2, 3);
+	}
+
+	if (argcount == 2) {
+		percentage = (now * 10 / max) * 10;
+	}
+
 	mce_log(LL_DEBUG,
-		"Battery bars: %d/%d (%d %%)",
-		now, max, (now * 10 / max) * 10);
+		"Percentage: %d",
+		percentage);
 
 	execute_datapipe(&battery_level_pipe,
-			 GINT_TO_POINTER((now * 10 / max) * 10),
+			 GINT_TO_POINTER(percentage),
 			 USE_INDATA, CACHE_INDATA);
 
 	status = TRUE;

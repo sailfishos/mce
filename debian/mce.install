@@ -1,4 +1,6 @@
 debian/tmp/etc/mce
+debian/tmp/etc/osso-cud-scripts
+debian/tmp/etc/osso-rfs-scripts
 debian/tmp/etc/gconf
 debian/tmp/var
 debian/tmp/sbin/mce

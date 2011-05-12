@@ -2,7 +2,7 @@
  * @file event-input.c
  * /dev/input event provider for the Mode Control Entity
  * <p>
- * Copyright © 2004-2010 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright © 2004-2011 Nokia Corporation and/or its subsidiary(-ies).
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Ismo Laitinen <ismo.laitinen@nokia.com>
@@ -65,8 +65,14 @@
 #include "mce.h"
 #include "event-input.h"
 
-#include "mce-io.h"			/* mce_register_io_monitor_chunk(),
-					 * mce_unregister_io_monitor()
+#include "mce-io.h"			/* mce_read_string_from_file(),
+					 * mce_write_string_to_file(),
+					 * mce_suspend_io_monitor(),
+					 * mce_resume_io_monitor(),
+					 * mce_register_io_monitor_chunk(),
+					 * mce_unregister_io_monitor(),
+					 * mce_get_io_monitor_name(),
+					 * mce_get_io_monitor_fd()
 					 */
 #include "mce-lib.h"			/* bitsize_of(),
 					 * set_bit(), clear_bit(), test_bit(),
@@ -222,6 +228,8 @@ static void resume_io_monitor(gpointer io_monitor, gpointer user_data)
  */
 static void unregister_io_monitor(gpointer io_monitor, gpointer user_data)
 {
+	const gchar *filename = mce_get_io_monitor_name(io_monitor);
+
 	/* If we opened an fd to monitor, retrieve it to ensure
 	 * that we can close it after unregistering the I/O monitor
 	 */
@@ -232,8 +240,16 @@ static void unregister_io_monitor(gpointer io_monitor, gpointer user_data)
 	mce_unregister_io_monitor(io_monitor);
 
 	/* Close the fd if there is one */
-	if (fd != -1)
-		close(fd);
+	if (fd != -1) {
+		if (close(fd) == -1) {
+			mce_log(LL_ERR,
+				"Failed to close `%s'; %s",
+				filename, g_strerror(errno));
+			errno = 0;
+		}
+
+		fd = -1;
+	}
 }
 
 /**
@@ -286,12 +302,15 @@ static void setup_touchscreen_io_monitor_timeout(void)
  *
  * @param data The new data
  * @param bytes_read The number of bytes read
+ * @return FALSE to return remaining chunks (if any),
+ *         TRUE to flush all remaining chunks
  */
-static void touchscreen_cb(gpointer data, gsize bytes_read)
+static gboolean touchscreen_iomon_cb(gpointer data, gsize bytes_read)
 {
 	display_state_t display_state = datapipe_get_gint(display_state_pipe);
 	submode_t submode = mce_get_submode_int32();
 	struct input_event *ev;
+	gboolean flush = FALSE;
 
 	ev = data;
 
@@ -301,7 +320,9 @@ static void touchscreen_cb(gpointer data, gsize bytes_read)
 	}
 
 	/* Ignore unwanted events */
-	if ((ev->type != EV_ABS) && (ev->type != EV_KEY)) {
+	if ((ev->type != EV_ABS) &&
+	    (ev->type != EV_KEY) &&
+	    (ev->type != EV_MSC)) {
 		goto EXIT;
 	}
 
@@ -323,12 +344,22 @@ static void touchscreen_cb(gpointer data, gsize bytes_read)
 
 		/* Setup a timeout I/O monitor reprogramming */
 		setup_touchscreen_io_monitor_timeout();
+
+		flush = TRUE;
 	}
 
-	/* Ignore non-pressure events */
+	/* Only send pressure and gesture events */
 	if (((ev->type != EV_ABS) || (ev->code != ABS_PRESSURE)) &&
-	    ((ev->type != EV_KEY) || (ev->code != BTN_TOUCH))) {
+	    ((ev->type != EV_KEY) || (ev->code != BTN_TOUCH)) &&
+	    ((ev->type != EV_MSC) || (ev->code != MSC_GESTURE))) {
 		goto EXIT;
+	}
+
+	/* If we get a double tap gesture, flush the remaining data */
+	if ((ev->type == EV_MSC) &&
+	    (ev->code == MSC_GESTURE) &&
+	    (ev->value == 0x4)) {
+		flush = TRUE;
 	}
 
 	/* For now there's no reason to cache the value
@@ -341,7 +372,7 @@ static void touchscreen_cb(gpointer data, gsize bytes_read)
 	}
 
 EXIT:
-	return;
+	return flush;
 }
 
 /**
@@ -390,8 +421,9 @@ static void setup_keypress_repeat_timeout(void)
  *
  * @param data The new data
  * @param bytes_read The number of bytes read
+ * @return Always returns FALSE to return remaining chunks (if any)
  */
-static void keypress_cb(gpointer data, gsize bytes_read)
+static gboolean keypress_iomon_cb(gpointer data, gsize bytes_read)
 {
 	submode_t submode = mce_get_submode_int32();
 	struct input_event *ev;
@@ -498,7 +530,7 @@ static void keypress_cb(gpointer data, gsize bytes_read)
 	}
 
 EXIT:
-	return;
+	return FALSE;
 }
 
 /**
@@ -551,8 +583,9 @@ static void setup_misc_io_monitor_timeout(void)
  *
  * @param data Unused
  * @param bytes_read Unused
+ * @return Always returns FALSE to return remaining chunks (if any)
  */
-static void misc_cb(gpointer data, gsize bytes_read)
+static gboolean misc_iomon_cb(gpointer data, gsize bytes_read)
 {
 	struct input_event *ev;
 
@@ -595,7 +628,7 @@ static void misc_cb(gpointer data, gsize bytes_read)
 	setup_misc_io_monitor_timeout();
 
 EXIT:
-	return;
+	return FALSE;
 }
 
 /**
@@ -688,7 +721,8 @@ static int match_event_file(const gchar *const filename,
 
 	/* If we cannot open the file, abort */
 	if ((fd = open(filename, O_NONBLOCK | O_RDONLY)) == -1) {
-		mce_log(LL_DEBUG, "Failed to open `%s', skipping",
+		mce_log(LL_DEBUG,
+			"Failed to open `%s', skipping",
 			filename);
 
 		/* Ignore error */
@@ -698,7 +732,7 @@ static int match_event_file(const gchar *const filename,
 
 	for (i = 0; drivers[i] != NULL; i++) {
 		if (ioctl(fd, EVIOCGNAME(sizeof name), name) >= 0) {
-			if (strcmp(name, drivers[i]) == 0) {
+			if (!strcmp(name, drivers[i])) {
 				/* We found our event file */
 				mce_log(LL_DEBUG,
 					"`%s' is `%s'",
@@ -716,8 +750,13 @@ static int match_event_file(const gchar *const filename,
 	 * we didn't find any match
 	 */
 	if (drivers[i] == NULL) {
-		/* XXX: improve close policy? errno? */
-		close(fd);
+		if (close(fd) == -1) {
+			mce_log(LL_ERR,
+				"Failed to close `%s'; %s",
+				filename, g_strerror(errno));
+			errno = 0;
+		}
+
 		fd = -1;
 		goto EXIT;
 	}
@@ -753,34 +792,50 @@ static void match_and_register_io_monitor(const gchar *filename)
 	if ((fd = match_event_file(filename,
 				   driver_blacklist)) != -1) {
 		/* If the driver for the event file is blacklisted, skip it */
-		close(fd);
+		if (close(fd) == -1) {
+			mce_log(LL_ERR,
+				"Failed to close `%s'; %s",
+				filename, g_strerror(errno));
+			errno = 0;
+		}
+
 		fd = -1;
 	} else if ((fd = match_event_file(filename,
 					  touchscreen_event_drivers)) != -1) {
 		gconstpointer iomon = NULL;
 
-		iomon = mce_register_io_monitor_chunk(fd, filename, MCE_IO_ERROR_POLICY_WARN, G_IO_IN | G_IO_ERR, FALSE, touchscreen_cb, sizeof (struct input_event));
+		iomon = mce_register_io_monitor_chunk(fd, filename, MCE_IO_ERROR_POLICY_WARN, G_IO_IN | G_IO_ERR, FALSE, touchscreen_iomon_cb, sizeof (struct input_event));
 
 		/* If we fail to register an I/O monitor,
 		 * don't leak the file descriptor,
 		 * and don't add the device to the list
 		 */
 		if (iomon == NULL) {
-			close(fd);
+			if (close(fd) == -1) {
+				mce_log(LL_ERR,
+					"Failed to close `%s'; %s",
+					filename, g_strerror(errno));
+				errno = 0;
+			}
 		} else {
 			touchscreen_dev_list = g_slist_prepend(touchscreen_dev_list, (gpointer)iomon);
 		}
 	} else if ((fd = match_event_file(filename, keyboard_event_drivers)) != -1) {
 		gconstpointer iomon = NULL;
 
-		iomon = mce_register_io_monitor_chunk(fd, filename, MCE_IO_ERROR_POLICY_WARN, G_IO_IN | G_IO_ERR, FALSE, keypress_cb, sizeof (struct input_event));
+		iomon = mce_register_io_monitor_chunk(fd, filename, MCE_IO_ERROR_POLICY_WARN, G_IO_IN | G_IO_ERR, FALSE, keypress_iomon_cb, sizeof (struct input_event));
 
 		/* If we fail to register an I/O monitor,
 		 * don't leak the file descriptor,
 		 * and don't add the device to the list
 		 */
 		if (iomon == NULL) {
-			close(fd);
+			if (close(fd) == -1) {
+				mce_log(LL_ERR,
+					"Failed to close `%s'; %s",
+					filename, g_strerror(errno));
+				errno = 0;
+			}
 		} else {
 			keyboard_dev_list = g_slist_prepend(keyboard_dev_list, (gpointer)iomon);
 		}
@@ -790,7 +845,7 @@ static void match_and_register_io_monitor(const gchar *filename)
 		/* XXX: don't register a misc device unless it has
 		 * EV_KEY, EV_REL, EV_ABS, EV_MSC or EV_SW events
 		 */
-		iomon = mce_register_io_monitor_chunk(-1, filename, MCE_IO_ERROR_POLICY_WARN, G_IO_IN | G_IO_ERR, FALSE, misc_cb, sizeof (struct input_event));
+		iomon = mce_register_io_monitor_chunk(-1, filename, MCE_IO_ERROR_POLICY_WARN, G_IO_IN | G_IO_ERR, FALSE, misc_iomon_cb, sizeof (struct input_event));
 
 		/* If we fail to register an I/O monitor,
 		 * don't add the device to the list
@@ -899,10 +954,18 @@ static gboolean scan_inputdevices(void)
 		g_free(filename);
 	}
 
+	if ((direntry == NULL) && (errno != 0)) {
+		mce_log(LL_ERR,
+			"readdir() failed; %s",
+			g_strerror(errno));
+		errno = 0;
+	}
+
 	/* Report, but ignore, errors when closing directory */
 	if (closedir(dir) == -1) {
 		mce_log(LL_ERR,
-			"closedir() failed; %s", g_strerror(errno));
+			"closedir() failed; %s",
+			g_strerror(errno));
 		errno = 0;
 	}
 
@@ -1069,6 +1132,7 @@ gboolean mce_input_init(void)
 	gpio_key_disable_exists = (g_access(GPIO_KEY_DISABLE_PATH, W_OK) == 0);
 
 EXIT:
+	errno = 0;
 	g_clear_error(&error);
 
 	return status;

@@ -2,7 +2,7 @@
  * @file mce-dsme.h
  * Headers for the DSME<->MCE interface and logic
  * <p>
- * Copyright © 2004-2009 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright © 2004-2011 Nokia Corporation and/or its subsidiary(-ies).
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  *

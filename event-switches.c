@@ -2,7 +2,7 @@
  * @file event-switches.c
  * Switch event provider for the Mode Control Entity
  * <p>
- * Copyright © 2007-2010 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright © 2007-2011 Nokia Corporation and/or its subsidiary(-ies).
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  *
@@ -21,13 +21,16 @@
 #include <glib.h>
 #include <glib/gstdio.h>		/* g_access() */
 
+#include <errno.h>			/* errno */
 #include <string.h>			/* strncmp(), strlen() */
 #include <unistd.h>			/* W_OK */
 
 #include "mce.h"
 #include "event-switches.h"
 
-#include "mce-io.h"			/* mce_register_io_monitor_string(),
+#include "mce-io.h"			/* mce_read_string_from_file(),
+					 * mce_write_string_to_file(),
+					 * mce_register_io_monitor_string(),
 					 * mce_unregister_io_monitor()
 					 */
 #include "datapipe.h"			/* execute_datapipe(),
@@ -88,8 +91,9 @@ gboolean has_flicker_key = FALSE;
  *
  * @param data Unused
  * @param bytes_read Unused
+ * @return Always returns FALSE to return remaining data (if any)
  */
-static void generic_activity_cb(gpointer data, gsize bytes_read)
+static gboolean generic_activity_iomon_cb(gpointer data, gsize bytes_read)
 {
 	(void)data;
 	(void)bytes_read;
@@ -97,6 +101,8 @@ static void generic_activity_cb(gpointer data, gsize bytes_read)
 	/* Generate activity */
 	(void)execute_datapipe(&device_inactive_pipe, GINT_TO_POINTER(FALSE),
 			       USE_INDATA, CACHE_INDATA);
+
+	return FALSE;
 }
 
 /**
@@ -104,8 +110,9 @@ static void generic_activity_cb(gpointer data, gsize bytes_read)
  *
  * @param data Unused
  * @param bytes_read Unused
+ * @return Always returns FALSE to return remaining data (if any)
  */
-static void camera_launch_button_cb(gpointer data, gsize bytes_read)
+static gboolean camera_launch_button_iomon_cb(gpointer data, gsize bytes_read)
 {
 	camera_button_state_t camera_button_state;
 
@@ -126,6 +133,8 @@ static void camera_launch_button_cb(gpointer data, gsize bytes_read)
 	(void)execute_datapipe(&camera_button_pipe,
 			       GINT_TO_POINTER(camera_button_state),
 			       USE_INDATA, CACHE_INDATA);
+
+	return FALSE;
 }
 
 /**
@@ -133,8 +142,9 @@ static void camera_launch_button_cb(gpointer data, gsize bytes_read)
  *
  * @param data The new data
  * @param bytes_read Unused
+ * @return Always returns FALSE to return remaining data (if any)
  */
-static void lockkey_cb(gpointer data, gsize bytes_read)
+static gboolean lockkey_iomon_cb(gpointer data, gsize bytes_read)
 {
 	gint lockkey_state;
 
@@ -150,6 +160,8 @@ static void lockkey_cb(gpointer data, gsize bytes_read)
 	(void)execute_datapipe(&lockkey_pipe,
 			       GINT_TO_POINTER(lockkey_state),
 			       USE_INDATA, CACHE_INDATA);
+
+	return FALSE;
 }
 
 /**
@@ -157,8 +169,9 @@ static void lockkey_cb(gpointer data, gsize bytes_read)
  *
  * @param data The new data
  * @param bytes_read Unused
+ * @return Always returns FALSE to return remaining data (if any)
  */
-static void kbd_slide_cb(gpointer data, gsize bytes_read)
+static gboolean kbd_slide_iomon_cb(gpointer data, gsize bytes_read)
 {
 	cover_state_t slide_state;
 
@@ -178,6 +191,8 @@ static void kbd_slide_cb(gpointer data, gsize bytes_read)
 	(void)execute_datapipe(&keyboard_slide_pipe,
 			       GINT_TO_POINTER(slide_state),
 			       USE_INDATA, CACHE_INDATA);
+
+	return FALSE;
 }
 
 /**
@@ -185,8 +200,9 @@ static void kbd_slide_cb(gpointer data, gsize bytes_read)
  *
  * @param data The new data
  * @param bytes_read Unused
+ * @return Always returns FALSE to return remaining data (if any)
  */
-static void lid_cover_cb(gpointer data, gsize bytes_read)
+static gboolean lid_cover_iomon_cb(gpointer data, gsize bytes_read)
 {
 	cover_state_t lid_cover_state;
 
@@ -206,6 +222,8 @@ static void lid_cover_cb(gpointer data, gsize bytes_read)
 	(void)execute_datapipe(&lid_cover_pipe,
 			       GINT_TO_POINTER(lid_cover_state),
 			       USE_INDATA, CACHE_INDATA);
+
+	return FALSE;
 }
 
 /**
@@ -213,8 +231,9 @@ static void lid_cover_cb(gpointer data, gsize bytes_read)
  *
  * @param data The new data
  * @param bytes_read Unused
+ * @return Always returns FALSE to return remaining data (if any)
  */
-static void proximity_sensor_cb(gpointer data, gsize bytes_read)
+static gboolean proximity_sensor_iomon_cb(gpointer data, gsize bytes_read)
 {
 	cover_state_t proximity_sensor_state;
 
@@ -230,6 +249,8 @@ static void proximity_sensor_cb(gpointer data, gsize bytes_read)
 	(void)execute_datapipe(&proximity_sensor_pipe,
 			       GINT_TO_POINTER(proximity_sensor_state),
 			       USE_INDATA, CACHE_INDATA);
+
+	return FALSE;
 }
 
 /**
@@ -237,8 +258,9 @@ static void proximity_sensor_cb(gpointer data, gsize bytes_read)
  *
  * @param data The new data
  * @param bytes_read Unused
+ * @return Always returns FALSE to return remaining data (if any)
  */
-static void usb_cable_cb(gpointer data, gsize bytes_read)
+static gboolean usb_cable_iomon_cb(gpointer data, gsize bytes_read)
 {
 	usb_cable_state_t cable_state;
 
@@ -258,6 +280,8 @@ static void usb_cable_cb(gpointer data, gsize bytes_read)
 	(void)execute_datapipe(&usb_cable_pipe,
 			       GINT_TO_POINTER(cable_state),
 			       USE_INDATA, CACHE_INDATA);
+
+	return FALSE;
 }
 
 /**
@@ -265,8 +289,9 @@ static void usb_cable_cb(gpointer data, gsize bytes_read)
  *
  * @param data The new data
  * @param bytes_read Unused
+ * @return Always returns FALSE to return remaining data (if any)
  */
-static void lens_cover_cb(gpointer data, gsize bytes_read)
+static gboolean lens_cover_iomon_cb(gpointer data, gsize bytes_read)
 {
 	cover_state_t lens_cover_state;
 
@@ -286,6 +311,8 @@ static void lens_cover_cb(gpointer data, gsize bytes_read)
 	(void)execute_datapipe(&lens_cover_pipe,
 			       GINT_TO_POINTER(lens_cover_state),
 			       USE_INDATA, CACHE_INDATA);
+
+	return FALSE;
 }
 
 /**
@@ -327,18 +354,21 @@ EXIT:
  */
 static void update_proximity_monitor(void)
 {
+	if (proximity_sensor_disable_exists == FALSE)
+		goto EXIT;
+
 	if ((call_state == CALL_STATE_RINGING) ||
 	    (call_state == CALL_STATE_ACTIVE) ||
 	    (alarm_ui_state == MCE_ALARM_UI_VISIBLE_INT32) ||
 	    (alarm_ui_state == MCE_ALARM_UI_RINGING_INT32)) {
-		if (proximity_sensor_disable_exists == TRUE) {
-			mce_write_string_to_file(MCE_PROXIMITY_SENSOR_DISABLE_PATH, "0");
-			(void)update_proximity_sensor_state();
-		}
+		mce_write_string_to_file(MCE_PROXIMITY_SENSOR_DISABLE_PATH, "0");
+		(void)update_proximity_sensor_state();
 	} else {
-		if (proximity_sensor_disable_exists == TRUE)
-			mce_write_string_to_file(MCE_PROXIMITY_SENSOR_DISABLE_PATH, "1");
+		mce_write_string_to_file(MCE_PROXIMITY_SENSOR_DISABLE_PATH, "1");
 	}
+
+EXIT:
+	return;
 }
 
 /**
@@ -423,67 +453,67 @@ gboolean mce_switches_init(void)
 					       MCE_FLICKER_KEY_STATE_PATH,
 					       MCE_IO_ERROR_POLICY_IGNORE,
 					       G_IO_PRI | G_IO_ERR,
-					       TRUE, lockkey_cb);
+					       TRUE, lockkey_iomon_cb);
 	kbd_slide_iomon_id =
 		mce_register_io_monitor_string(-1,
 					       MCE_KBD_SLIDE_STATE_PATH,
 					       MCE_IO_ERROR_POLICY_IGNORE,
 					       G_IO_PRI | G_IO_ERR,
-					       TRUE, kbd_slide_cb);
+					       TRUE, kbd_slide_iomon_cb);
 	cam_focus_iomon_id =
 		mce_register_io_monitor_string(-1,
 					       MCE_CAM_FOCUS_STATE_PATH,
 					       MCE_IO_ERROR_POLICY_IGNORE,
 					       G_IO_PRI | G_IO_ERR,
-					       TRUE, generic_activity_cb);
+					       TRUE, generic_activity_iomon_cb);
 	cam_launch_iomon_id =
 		mce_register_io_monitor_string(-1,
 					       MCE_CAM_LAUNCH_STATE_PATH,
 					       MCE_IO_ERROR_POLICY_IGNORE,
 					       G_IO_PRI | G_IO_ERR,
-					       TRUE, camera_launch_button_cb);
+					       TRUE, camera_launch_button_iomon_cb);
 	lid_cover_iomon_id =
 		mce_register_io_monitor_string(-1,
 					       MCE_LID_COVER_STATE_PATH,
 					       MCE_IO_ERROR_POLICY_IGNORE,
 					       G_IO_PRI | G_IO_ERR,
-					       TRUE, lid_cover_cb);
+					       TRUE, lid_cover_iomon_cb);
 	proximity_sensor_iomon_id =
 		mce_register_io_monitor_string(-1,
 					       MCE_PROXIMITY_SENSOR_STATE_PATH,
 					       MCE_IO_ERROR_POLICY_IGNORE,
 					       G_IO_PRI | G_IO_ERR,
-					       TRUE, proximity_sensor_cb);
+					       TRUE, proximity_sensor_iomon_cb);
 	musb_omap3_usb_cable_iomon_id =
 		mce_register_io_monitor_string(-1,
 					       MCE_MUSB_OMAP3_USB_CABLE_STATE_PATH,
 					       MCE_IO_ERROR_POLICY_IGNORE,
 					       G_IO_PRI | G_IO_ERR,
-					       TRUE, usb_cable_cb);
+					       TRUE, usb_cable_iomon_cb);
 	lens_cover_iomon_id =
 		mce_register_io_monitor_string(-1,
 					       MCE_LENS_COVER_STATE_PATH,
 					       MCE_IO_ERROR_POLICY_IGNORE,
 					       G_IO_PRI | G_IO_ERR,
-					       TRUE, lens_cover_cb);
+					       TRUE, lens_cover_iomon_cb);
 	mmc0_cover_iomon_id =
 		mce_register_io_monitor_string(-1,
 					       MCE_MMC0_COVER_STATE_PATH,
 					       MCE_IO_ERROR_POLICY_IGNORE,
 					       G_IO_PRI | G_IO_ERR,
-					       TRUE, generic_activity_cb);
+					       TRUE, generic_activity_iomon_cb);
 	mmc_cover_iomon_id =
 		mce_register_io_monitor_string(-1,
 					       MCE_MMC_COVER_STATE_PATH,
 					       MCE_IO_ERROR_POLICY_IGNORE,
 					       G_IO_PRI | G_IO_ERR,
-					       TRUE, generic_activity_cb);
+					       TRUE, generic_activity_iomon_cb);
 	bat_cover_iomon_id =
 		mce_register_io_monitor_string(-1,
 					       MCE_BATTERY_COVER_STATE_PATH,
 					       MCE_IO_ERROR_POLICY_IGNORE,
 					       G_IO_PRI | G_IO_ERR,
-					       TRUE, generic_activity_cb);
+					       TRUE, generic_activity_iomon_cb);
 
 	update_proximity_monitor();
 
@@ -495,6 +525,8 @@ gboolean mce_switches_init(void)
 
 	cam_focus_disable_exists =
 		(g_access(MCE_CAM_FOCUS_DISABLE_PATH, W_OK) == 0);
+
+	errno = 0;
 
 	status = TRUE;
 

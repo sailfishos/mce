@@ -3,7 +3,7 @@
  * Power saving mode module -- this handles the power saving mode
  * for MCE
  * <p>
- * Copyright © 2010 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright © 2010-2011 Nokia Corporation and/or its subsidiary(-ies).
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  *

@@ -1,4 +1,4 @@
-.TH MCETOOL 8 "Oct 27, 2010" "Nokia"
+.TH MCETOOL 8 "Feb 22, 2011" "Nokia"
 
 .SH NAME
 mcetool \- tool to test mode control functionality
@@ -50,13 +50,13 @@ Valid types are:
 .TP
 .B \-\-enable\-radio
 Enable the specified radio; valid radios are:
-"master", "wireless", "cellular" and "bluetooth".
+"master", "wireless", "cellular", "bluetooth", "nfc" and "fmtx".
 "master" acts as master switch; individual radios are only
 considered if the master switch is enabled
 .TP
 .B \-\-disable\-radio
 Disable the specified radio; valid radios are:
-"master", "wireless", "cellular" and "bluetooth".
+"master", "wireless", "cellular", "bluetooth", "nfc" and "fmtx".
 "master" acts as master switch; individual radios are only
 considered if the master switch is enabled
 .TP
@@ -75,8 +75,7 @@ mode; valid values are:
 .TP
 .B \-\-set\-tklock\-mode
 Set the touchscreen/keypad lock mode; valid values are:
-"locked", "locked\-dim", "silent\-locked", "silent\-locked\-dim",
-"unlocked" and "silent\-unlocked"
+"locked", "locked\-dim" and "unlocked"
 .TP
 .B \-\-enable\-led
 Enable the LED framework
@@ -114,6 +113,10 @@ Display version and author information
 .BR mce (8)
 
 .SH HISTORY
+Feb 22 2011: Updated for removed functionality.
+.br
+jan 20 2011: Updated for new functionality.
+.br
 oct 27 2010: Updated for new and removed functionality.
 .br
 Jun 16 2010: Updated for new functionality.
@@ -175,4 +178,4 @@ Report bugs to
 <\fIdavid.weinehall@nokia.com\fP>.
 
 .SH COPYRIGHT
-Copyright \(co 2005\(hy2010 Nokia Corporation.  All rights reserved.
+Copyright \(co 2005\(hy2011 Nokia Corporation.  All rights reserved.

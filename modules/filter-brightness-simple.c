@@ -4,7 +4,7 @@
  * for display backlight brightness
  * This file implements a filter module for MCE
  * <p>
- * Copyright © 2007-2009 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright © 2007-2011 Nokia Corporation and/or its subsidiary(-ies).
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  *
@@ -72,8 +72,12 @@ static gpointer display_brightness_filter(gpointer data)
 	gint raw = GPOINTER_TO_INT(data);
 	gpointer retval;
 
-	/* If the display is off, don't update its brightness */
-	if (display_state == MCE_DISPLAY_OFF) {
+	/* If the display is off or in low power mode,
+	 * don't update its brightness
+	 */
+	if ((display_state == MCE_DISPLAY_OFF) ||
+	    (display_state == MCE_DISPLAY_LPM_OFF) ||
+	    (display_state == MCE_DISPLAY_LPM_ON)) {
 		raw = 0;
 		goto EXIT;
 	}

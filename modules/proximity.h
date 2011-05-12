@@ -2,7 +2,7 @@
  * @file proximity.h
  * Headers for the proximity sensor module
  * <p>
- * Copyright © 2010 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright © 2010-2011 Nokia Corporation and/or its subsidiary(-ies).
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Tuomo Tanskanen <ext-tuomo.1.tanskanen@nokia.com>
@@ -51,6 +51,9 @@ struct avago_ps {
 
 /** Path to enable/disable Avago proximity sensor */
 #define PS_PATH_AVAGO_ENABLE		PS_PATH_AVAGO "/prox_enable"
+
+/** Path to control onoff/continuous Avago proximity sensor mode */
+#define PS_PATH_AVAGO_ONOFF_MODE	PS_PATH_AVAGO "/prox_onoff_mode"
 
 /** Proximity Sensor status */
 #ifndef APDS990X_PS_UPDATED

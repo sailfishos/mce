@@ -1,3 +1,331 @@
+mce (1.10.118) unstable; urgency=low
+
+  * Close LPM tklock on unlock request. (Fixes: NB#254339)
+    | Thanks to Jukka Turunen
+
+ -- Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>  Wed, 11 May 2011 08:37:45 +0300
+
+mce (1.10.117) unstable; urgency=low
+
+  * Unset low power mode gconf key on device clean
+
+ -- Jukka Turunen <ext-jukka.t.turunen@nokia.com>  Mon, 09 May 2011 14:21:43 +0300
+
+mce (1.10.116) unstable; urgency=low
+
+  * Low power mode (screen saver)  enabled by default (Fixes: NB#247527)
+
+ -- Jukka Turunen <ext-jukka.t.turunen@nokia.com>  Mon, 09 May 2011 12:45:48 +0300
+
+mce (1.10.115) unstable; urgency=low
+
+  * Fix for proximity locking when low power mode is enabled. Display
+    now goes off instead of LPM when voice call is active (headset in
+    use) (Fixes: NB#249789)
+    | Thanks to Irina Bezruk
+
+ -- Jyrki Hämäläinen <ext-jyrki.pe.hamalainen@nokia.com>  Wed, 04 May 2011 15:09:04 +0300
+
+mce (1.10.114) unstable; urgency=low
+
+  * Fix acting dead alarm logic mistake (Fixes: NB#251528)
+
+ -- Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>  Wed, 04 May 2011 15:39:22 +0300
+
+mce (1.10.113+nmu3) unstable; urgency=low
+
+  * Checking in modules/keypad.c to guard against division by
+    zero (Fixes: NB#252430)
+
+ -- Jukka Turunen <ext-jukka.t.turunen@nokia.com>  Wed, 04 May 2011 13:53:36 +0300
+
+mce (1.10.113+nmu2) unstable; urgency=low
+
+  * idle_interval values in ms, was Hz (Fixes: NB#240705)
+
+ -- Jukka Turunen <ext-jukka.t.turunen@nokia.com>  Wed, 04 May 2011 11:21:22 +0300
+
+mce (1.10.113+nmu1) unstable; urgency=low
+
+  * Set tklock timer when call active, disable proximity locking with
+    headset (Fixes: NB#248570)
+
+ -- Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>  Mon, 02 May 2011 13:53:29 +0300
+
+mce (1.10.113) unstable; urgency=low
+
+  * Fixed incorrect logic in the submode trigger inside modules/display.c
+  * Filter out requests to turn on the display when the device
+    is in acting dead, unless there's an active alarm
+    (Fixes: NB#237750)
+
+ -- David Weinehall <david.weinehall@nokia.com>  Wed, 27 Apr 2011 23:29:13 +0300
+
+mce (1.10.112) unstable; urgency=low
+
+  * Load the ALS module before the display module, to ensure that the
+    brightness filter are available before we attempt to filter the
+    brightness settings (Fixes: NB#239982, NB#250357)
+  * Modified the display blanking inhibit to also cover alarms
+    (Fixes: NB#247420)
+  * Don't disable touchscreen/keypad when alarm UI state changes to off
+    if the visual tklock UI is active (Fixes: NB#248865)
+
+ -- David Weinehall <david.weinehall@nokia.com>  Wed, 27 Apr 2011 05:02:05 +0300
+
+mce (1.10.111) unstable; urgency=low
+
+  * Do not autorelock when calls end (Fixes: NB#242930)
+    | Thanks to Victor Portnov
+  * Modified the proximity logic for LPM a bit
+
+ -- David Weinehall <david.weinehall@nokia.com>  Tue, 26 Apr 2011 12:28:58 +0300
+
+mce (1.10.110) unstable; urgency=low
+
+  * Double tap gesture related proximity should only be processed
+    when the display is off or in low power mode (Fixes: NB#249263)
+  * Request sys_rawio and sys_admin credentials, needed due to stricter
+    security for I2C
+
+ -- David Weinehall <david.weinehall@nokia.com>  Thu, 21 Apr 2011 16:08:51 +0300
+
+mce (1.10.109) unstable; urgency=low
+
+  * Set ALS thresholds to [0, 65535] when the ALS isn't in use,
+    to ensure that it does not trigger unnecessary wakeups
+    (Fixes: NB#249176)
+
+ -- David Weinehall <david.weinehall@nokia.com>  Wed, 20 Apr 2011 10:45:20 +0300
+
+mce (1.10.108) unstable; urgency=low
+
+  * Disable doubletap gesture when there's proximity
+    (Fixes: NB#240705)
+  * Unset the GConf key for the double tap gesture in mce-device-clear
+    (Fixes: NB#245318)
+    | Thanks to Victor Portnov
+  * Handle corner cases with double tap gesture + proximity + call/alarm
+    (Fixes: NB#240720)
+    | Thanks to Alexadner Shertz
+  * Inhibit proximity sensor during call if manually blanked
+    (Fixes: NB#239703)
+    | Thanks to Irina Bezruk
+  * Added synthetic powerkey repeat events to tklock code,
+    to keep the display from blanking when the user keeps the power
+    button pressed for longer than the visual blank timeout
+    (Fixes: NB#235482)
+    | Thanks to Alexadner Shertz
+  * Set proximity sensor to provide continuous data when the external
+    reference count is > 0 (Fixes: NB#248161)
+  * Changed default brightness setting to 3 instead of 4
+    (Fixes: NB#248535)
+
+ -- David Weinehall <david.weinehall@nokia.com>  Tue, 19 Apr 2011 13:52:22 +0300
+
+mce (1.10.107) unstable; urgency=low
+
+  * Added blank timeout for low power mode when there's proximity
+    (Fixes: NB#246627)
+  * Increase the idle interval for the touchscreen to minimise
+    power consumption when the screen is off and lower it when waiting
+    for the tklock swipe gesture
+  * Modified the HBM use-time tracking to report correct values when
+    the device doesn't support high brightness mode
+  * Fixed two stupid mistakes in the activity callback code
+    (Fixes: NB#239760)
+
+ -- David Weinehall <david.weinehall@nokia.com>  Thu, 14 Apr 2011 13:56:51 +0300
+
+mce (1.10.106) unstable; urgency=low
+
+  * Added support for the activity callback API (Fixes: NB#239760)
+    | Build-Depends: mce-dev (>= 1.10.28)
+
+ -- David Weinehall <david.weinehall@nokia.com>  Fri, 08 Apr 2011 16:03:27 +0300
+
+mce (1.10.105) unstable; urgency=low
+
+  * Fixed radio state restore to work properly (Fixes: NB#243320)
+    | Thanks to Victor Portnov
+  * Minor fixes to the display and HBM use-time tracking
+  * Low Power Mode shouldn't be included in the display use-time
+
+ -- David Weinehall <david.weinehall@nokia.com>  Fri, 08 Apr 2011 11:44:35 +0300
+
+mce (1.10.104) unstable; urgency=low
+
+  * Added support for tracking display and high brightness mode use-time
+    (Fixes: NB#229232)
+    | This means that we have to reintroduce the dependency on libcal;
+    | it's made optional though, it's only used when USE_LIBCAL is defined,
+    | and this is defined in debian/rules, thus making sure that mce builds
+    | without it on MeeGo
+
+ -- David Weinehall <david.weinehall@nokia.com>  Tue, 05 Apr 2011 14:55:34 +0300
+
+mce (1.10.103) unstable; urgency=low
+
+  * Made the double tap gesture behaviour configurable through GConf
+    (Fixes: NB#240708)
+  * Generate activity on device rotation (Fixes: NB#240348)
+    | Thanks to Irina Bezruk
+  * Filter out display state change requests during shutdown, reboot
+    and acting dead unless triggered by alarms (Fixes: NB#232617)
+    | Thanks to Victor Portnov
+  * Use the normal visual blank timeout after alarms/calls instead of
+    blanking immediately (Fixes: NB#238091)
+    | Thanks to Victor Portnov
+  * Fixed display blank prevent owner tracking to properly remove
+    owners once the timeout expires
+
+ -- David Weinehall <david.weinehall@nokia.com>  Thu, 31 Mar 2011 11:38:55 +0300
+
+mce (1.10.102) unstable; urgency=low
+
+  * Fixed leak in io_chunk_cb()
+    (Fixes: NB#238638)
+  * Disable high brightness mode after a set timeout
+  * Various minor memory leak fixes
+  * Simplified mce_read_chunk_from_file()
+  * Include the number of iterations in the mcetorture leak log
+
+ -- David Weinehall <david.weinehall@nokia.com>  Thu, 24 Mar 2011 20:57:41 +0200
+
+mce (1.10.101) unstable; urgency=low
+
+  * Trigger visual tklock UI instead of unlocking on double tap
+    (Fixes: NB#239851)
+  * Simplified mce_write_string_to_file()
+  * Fixed a few timer resource leaks
+  * Fixed bug in mcetorture that caused the charger and call state
+    tests never to be executed
+  * Added support for the battery percentage parameter to mcetorture
+    and fakecharger
+  * Fixed mce_read_number_string_from_file() to handle EAGAIN
+  * Fixed error handling in various pieces of I/O code
+  * Removed some unused code
+  * If "--no-abort" is specified and mcetorture finds a memory leak
+    it will now log the test that triggered the leak to mcetorture_leaks.log
+    | Feeding this through "| sort -n | uniq -c" can then produce nice
+    | statistics on what tests trigger leaks
+  * Fixed bug in mcetorture that caused fluctuating memory use to be
+    reported as leaks
+
+ -- David Weinehall <david.weinehall@nokia.com>  Thu, 24 Mar 2011 13:39:55 +0200
+
+mce (1.10.100) unstable; urgency=low
+
+  * Fallback to disabling touchscreen interrupts immediately in case
+    there's no double tap support available (Fixes: NB#238451)
+
+ -- David Weinehall <david.weinehall@nokia.com>  Tue, 22 Mar 2011 12:42:29 +0200
+
+mce (1.10.99) unstable; urgency=low
+
+  * Another fix to the restore script, to handle non-existing $HOME/.mce
+
+ -- David Weinehall <david.weinehall@nokia.com>  Fri, 18 Mar 2011 15:24:29 +0200
+
+mce (1.10.98) unstable; urgency=low
+
+  * Improved the backup/restore scripts to handle an empty /var/lib/mce
+    (Fixes: NB#233644)
+  * Fixed bug that caused recursion in proximity sensor code
+  * I/O monitor callbacks now have a return value that decides whether or
+    not remaining data will be flushed
+  * Read all data from the touchscreen I/O monitor if we're waiting for
+    a gesture event, not just the first event
+  * Improved the EAGAIN handling in mce-io, to only permit 10 retries also
+    in I/O monitor callbacks
+  * Fixed two incorrect GConf keys in mcetorture
+  * Fixed incorrect GConf key type in mcetorture
+
+ -- David Weinehall <david.weinehall@nokia.com>  Fri, 18 Mar 2011 11:37:36 +0200
+
+mce (1.10.97) unstable; urgency=low
+
+  * Don't unlock tklock on incoming calls or alarms
+    (Fixes: NB#229692, NB#235226)
+  * Moved the device clear/factory reset script from /etc to /usr/share/mce
+    to allow it to be privileged (Fixes: NB#233618)
+    | Thanks to Victor Portnov
+  * Do not disable touchscreen interrupts when using the doubletap gesture
+  * Simplified the touchscreen/keypad interrupt enabling/disabling logic
+  * Only attempt to enable/disable double-tap gesture when there's support
+    for them (Fixes: NB#236328)
+  * Made the tklock UI calls a bit more robust, by adding a D-Bus owner
+    monitor to the SystemUI calls -- that way we can disable the tklock
+    if SystemUI crashes
+  * Some more radio state fixes
+  * Fixed issue with ALS saturation not being handled properly
+    (Fixes: NB#236799)
+  * Added code to handle the new percentage based battery status
+    (Fixes: NB#236438)
+
+ -- David Weinehall <david.weinehall@nokia.com>  Wed, 16 Mar 2011 15:07:52 +0200
+
+mce (1.10.96) unstable; urgency=low
+
+  * Added support for reading radio state defaults from a configuration file
+    (Fixes: NB#221443)
+    | Thanks to Victor Portnov
+
+ -- David Weinehall <david.weinehall@nokia.com>  Fri, 11 Mar 2011 07:21:44 +0200
+
+mce (1.10.95) unstable; urgency=low
+
+  * Enabled high brightness mode (Fixes: NB#222812)
+  * Added support for colour phase adjustment
+  * ALS profile adjustments to compensate for colour phase adjustments
+    and high brightness mode (Fixes: NB#222824)
+  * Modified the ALS logic to take the proximity sensor reading into account;
+    if there's proximity it's likely that the ALS has been covered too
+    and is unlikely to give a proper reading, hence we ignore the data
+    (Fixes: NB#215779)
+  * Modified the proximity sensor logic to always keep the sensor enabled
+    when the display is on, to accomodate for the above fix
+    | Only do this for proximity sensors with threshold triggered interrupts
+
+ -- David Weinehall <david.weinehall@nokia.com>  Wed, 09 Mar 2011 23:56:38 +0200
+
+mce (1.10.94) unstable; urgency=low
+
+  * Reverted linking fix for the time being
+  * Added device clear/factory reset support (Fixes: NB#222670)
+    | Thanks to Victor Portnov
+  * Added internal API (for SystemSW use only) for enabling/disabling
+    continuous ALS interrupts (Fixes: NB#223439)
+  * Disabled the hard 30s timeout for the visual tklock (Fixes: NB#224019)
+  * Added proper double-tap support
+  * Modified the visual unlock screen to be triggered on key press,
+    but blanked again on key release (Fixes: NB#225582)
+  * Fixed various issues with low power mode support
+  * Added configuration option for low power mode
+  * Modified display state logic to base the initial display state on
+    the current display brightness, to ensure that we don't turn on
+    the display during flat battery charging (Fixes: NB#207228)
+  * Annotate two cases of intended fall-through, to silence Coverity
+    warnings
+
+ -- David Weinehall <david.weinehall@nokia.com>  Fri, 04 Mar 2011 06:42:51 +0200
+
+mce (1.10.93) unstable; urgency=low
+
+  * Added support for NFC and FMTX to mcetool
+    | Build-Depends: mce-dev (>= 1.10.25)
+  * debian/control: recommend sysinfo-dbus | sysinfod (= 1.0.20) instead of
+    sysinfod (>= 1.0.20), to account for new sysinfo packaging
+    (Fixes: NB#222510)
+  * Added event driver name for the power button in various MeeGo devices
+  * Corrected some module linking issues
+  * Add initial support for low power mode
+    | Disabled for now
+  * Added high brightness mode support to the display and ALS modules
+    | Disabled for now
+
+ -- David Weinehall <david.weinehall@nokia.com>  Fri, 28 Jan 2011 11:27:57 +0200
+
 mce (1.10.92) unstable; urgency=low
 
   * Additional fixes for visual submode handling (Fixes: NB#217321)
@@ -1534,7 +1862,7 @@ mce (1.8.61) unstable; urgency=low
   * When a call is ongoing, only dim, don't blank
   * If the device is in autorelock submode, don't open the visual
     tklock when a key is pressed
-  * Tune the accelerometer values for face down
+  * Tuned the accelerometer values for face down
     | Thanks to Pekka Lundström
   * Added a new D-Bus helper to mce-dbus, for sending D-Bus messages
     and blocking for the reply (use with care!)
@@ -1642,10 +1970,10 @@ mce (1.8.55) unstable; urgency=low
   * Fixed bug in blanking inhibit code (Fixes: NB#93557, NB#111158, NB#112401)
   * If the restored device mode is invalid, properly default to INVALID
     (Fixes: NB#111716)
-  * Tune accelerometer to fix unexpected switching between portrait
+  * Tuned accelerometer to fix unexpected switching between portrait
     and landscape (Fixes: NB#112741)
     | Patch by Matti Halme
-  * Tune the ALS profiles for the RX-51
+  * Tuned the ALS profiles for the RX-51
   * Remove the CABC hack again; always use the CABC even for the
     highest brightness setting
   * Remove Workaround for the TKLOCK_ENABLE_VISUAL issue; this should
@@ -2168,8 +2496,8 @@ mce (1.8.12) unstable; urgency=low
   * Made it possible to restart LED patterns after a timeout
   * Fixed incorrect use of g_free() instead of g_strfreev() in module/led.c
   * Always update device orientation when the orientation is requested
-  * Tune the accelerometer values for portrait/landscape a bit
-  * Reinstate missing transition code
+  * Tuned the accelerometer values for portrait/landscape a bit
+  * Reinstated missing transition code
 
  -- David Weinehall <david.weinehall@nokia.com>  Tue, 07 Oct 2008 16:24:20 +0300
 

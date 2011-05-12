@@ -3,7 +3,7 @@
  * Headers for the Ambient Light Sensor level adjusting filter module
  * for display backlight, key backlight, and LED brightness
  * <p>
- * Copyright © 2007-2010 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright © 2007-2011 Nokia Corporation and/or its subsidiary(-ies).
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Tuomo Tanskanen <ext-tuomo.1.tanskanen@nokia.com>
@@ -32,7 +32,7 @@
 /*  Paths for Avago APDS990x (QPDS-T900) ALS */
 
 /** Device path for Avago ALS */
-#define ALS_DEVICE_PATH_AVAGO "/dev/apds990x0"
+#define ALS_DEVICE_PATH_AVAGO			"/dev/apds990x0"
 
 #ifndef APDS990X_ALS_SATURATED
 /** Read is saturated */
@@ -59,7 +59,7 @@ struct avago_als {
 } __attribute__((packed));
 
 /** Base path to the Avago ALS */
-#define ALS_PATH_AVAGO "/sys/class/misc/apds990x0/device"
+#define ALS_PATH_AVAGO			"/sys/class/misc/apds990x0/device"
 /** Path to the first calibration point for the Avago ALS */
 #define ALS_CALIB_PATH_AVAGO		ALS_PATH_AVAGO "/als_calib"
 /** ALS threshold range for the Avago ALS */
@@ -69,7 +69,7 @@ struct avago_als {
 /* Paths for the Dipro (BH1770GLC/SFH7770) ALS */
 
 /** Device path for the Dipro ALS */
-#define ALS_DEVICE_PATH_DIPRO	"/dev/bh1770glc_als"
+#define ALS_DEVICE_PATH_DIPRO		"/dev/bh1770glc_als"
 
 /** Struct for the Dipro data */
 struct dipro_als {
@@ -78,26 +78,17 @@ struct dipro_als {
 } __attribute__((packed));
 
 /** Base path to the Dipro ALS */
-#define ALS_PATH_DIPRO		"/sys/class/misc/bh1770glc_als/device"
+#define ALS_PATH_DIPRO			"/sys/class/misc/bh1770glc_als/device"
 /** Path to the first calibration point for the Dipro ALS */
 #define ALS_CALIB_PATH_DIPRO		ALS_PATH_DIPRO "/als_calib"
 
 /** ALS threshold range for the Dipro ALS */
 #define ALS_THRESHOLD_RANGE_PATH_DIPRO	ALS_PATH_DIPRO "/als_thres_range"
 
-/* Paths for the BH1780GLI ALS */
-
-/** Base path to the BH1780GLI ALS */
-#define ALS_PATH_BH1780GLI	"/sys/devices/platform/i2c_omap.3/i2c-3/3-0029"
-/** Path to the ALS lux value */
-#define ALS_LUX_PATH_BH1780GLI		ALS_PATH_BH1780GLI "/lux"
-/** Path to the first calibration point for the BH1780GLI ALS */
-#define ALS_CALIB_PATH_BH1780GLI	ALS_PATH_BH1780GLI "/calib"
-
 /* Paths for the TSL2563 ALS */
 
 /** Base path to the TSL2563 ALS */
-#define ALS_PATH_TSL2563	"/sys/class/i2c-adapter/i2c-2/2-0029"
+#define ALS_PATH_TSL2563		"/sys/class/i2c-adapter/i2c-2/2-0029"
 /** Path to the TSL2563 ALS lux value */
 #define ALS_LUX_PATH_TSL2563		ALS_PATH_TSL2563 "/lux"
 /** Path to the first calibration point for the TSL2563 ALS */
@@ -148,15 +139,90 @@ struct dipro_als {
 #define ALS_CALIB_IDENTIFIER		"/device/als_calib"
 
 /** Number of ranges in ALS profile */
-#define ALS_RANGES			10
+#define ALS_RANGES			11
+
+/** Path to display manager */
+#define DISPLAY_MANAGER_PATH			"/sys/devices/platform/omapdss/manager0"
+/** Colour phase adjustment enable path */
+#define COLOUR_PHASE_ENABLE_PATH		DISPLAY_MANAGER_PATH "/cpr_enable"
+/** Colour phase adjustment coefficients path */
+#define COLOUR_PHASE_COEFFICIENTS_PATH		DISPLAY_MANAGER_PATH "/cpr_coef"
 
 /** ALS profile */
 typedef struct {
 	/** Lower and upper bound for each brightness range */
-	gint range[ALS_RANGES][2];
-	/** brightness in % */
-	gint value[ALS_RANGES + 1];
+	const gint range[ALS_RANGES][2];
+	/** Brightness in % + possible HBM boost (boost level * 256) */
+	const gint value[ALS_RANGES + 1];
 } als_profile_struct;
+
+
+/** Colour phase adjustment matrix */
+typedef struct {
+	/**
+	 * Lower and upper bound for each brightness range,
+	 * followed by high brightness mode level
+	 */
+	const gint range[3];
+	/**
+	  * Colour phase adjustment matrix for the specified range;
+	  * 9 space separated integers
+	  */
+	const gchar *const coefficients;
+} cpa_profile_struct;
+
+/* Colour phase adjustment matrices */
+
+/** Colour phase calibration for RM-696/RM-716 */
+static cpa_profile_struct rm696_phase_profile[] = {
+	{	/* 0-100 lux; quite neutral colours compared to normal OLED */
+		{ 0, 3.3 * 100, 0 },
+		"  215   20   20"
+		"   10  235   10"
+		"    0    0  255"
+	}, {	/* 100-1000 lux; slightly decreased red and green saturation */
+		{ 3.3 * 100, 3.3 * 1000, 0 },
+		"  235   10   10"
+		"    5  245    5"
+		"    0    0  255"
+	}, {	/* 1000-10000 lux; normal OLED colours */
+		{ 3.3 * 1000, 3.3 * 10000, 0 },
+		"  255    0    0"
+		"    0  255    0"
+		"    0    0  255"
+	}, {	/* 10000-inf lux; slightly boosted colours */
+		{ 3.3 * 10000, -1, 0 },
+		"  275  -10  -10"
+		"  -10  275  -10"
+		"  -10  -10  275"
+	}, {	/* 10000-inf lux, HBM level: 1; more boosted colours */
+		{ 3.3 * 10000, -1, 1 },
+		"  295  -20  -20"
+		"  -20  295  -20"
+		"  -20  -20  295"
+	}, {	/* 10000-inf lux, HBM level: 2; over-saturated colours */
+		{ 3.3 * 10000, -1, 2 },
+		"  315  -30  -30"
+		"  -30  315  -30"
+		"  -30  -30  315"
+	}, {
+		{ -1, -1, -1 },
+		NULL
+	}
+};
+
+/** Colour phase calibration for RM-680/RM-690 */
+static cpa_profile_struct rm680_phase_profile[] = {
+	{	/* 0-inf lux */
+		{ 0, -1, 0 },
+		"  325  -35  -35"
+		"  -30  315  -30"
+		"  -20  -20  295"
+	}, {
+		{ -1, -1, -1 },
+		NULL
+	}
+};
 
 /**
  * ALS profile for the display in:
@@ -173,57 +239,60 @@ typedef struct {
  * [12-1] 5%
  * [0] 0%
  */
-als_profile_struct display_als_profiles_rm696[] = {
+static als_profile_struct display_als_profiles_rm696[] = {
 	{       /* Minimum */
 		{
-			{ 30, 50 },
-			{ 70, 100 },
-			{ 150, 200 },
-			{ 800, 1100 },
-			{ 5000, 10000 },
-			{ 10000, 35000 },
-			{ 20000, 50000 },
+			{ 3.3 * 30, 3.3 * 50 },
+			{ 3.3 * 70, 3.3 * 100 },
+			{ 3.3 * 150, 3.3 * 200 },
+			{ 3.3 * 800, 3.3 * 1100 },
+			{ 3.3 * 5000, 3.3 * 10000 },
+			{ 3.3 * 10000, 3.3 * 35000 },
+			{ 3.3 * 20000, 3.3 * 50000 },
 			{ -1, -1 },
 		}, { 5, 10, 20, 30, 42, 60, 83, 100 }
 	}, {    /* Economy */
 		{
-			{ 10, 15 },
-			{ 30, 50 },
-			{ 50, 100 },
-			{ 150, 200 },
-			{ 800, 1100 },
-			{ 5000, 10000 },
-			{ 10000, 35000 },
+			{ 3.3 * 10, 3.3 * 15 },
+			{ 3.3 * 30, 3.3 * 50 },
+			{ 3.3 * 50, 3.3 * 100 },
+			{ 3.3 * 150, 3.3 * 200 },
+			{ 3.3 * 800, 3.3 * 1100 },
+			{ 3.3 * 5000, 3.3 * 10000 },
+			{ 3.3 * 10000, 3.3 * 35000 },
 			{ -1, -1 },
 		}, { 5, 10, 20, 30, 42, 60, 83, 100 }
 	}, {    /* Normal */
 		{
-			{ 3, 5 },
-			{ 10, 15 },
-			{ 20, 30 },
-			{ 50, 100 },
-			{ 150, 200 },
-			{ 800, 1100 },
-			{ 5000, 10000 },
+			{ 3.3 * 3, 3.3 * 5 },
+			{ 3.3 * 10, 3.3 * 15 },
+			{ 3.3 * 20, 3.3 * 30 },
+			{ 3.3 * 50, 3.3 * 100 },
+			{ 3.3 * 150, 3.3 * 200 },
+			{ 3.3 * 800, 3.3 * 1100 },
+			{ 3.3 * 5000, 3.3 * 10000 },
 			{ -1, -1 },
 		}, { 5, 10, 20, 30, 42, 60, 83, 100 }
 	}, {    /* Bright */
 		{
-			{ 3, 5 },
-			{ 10, 15 },
-			{ 20, 30 },
-			{ 50, 100 },
-			{ 150, 200 },
-			{ 800, 1100 },
+			{ 3.3 * 0, 3.3 * 3 },
+			{ 3.3 * 3, 3.3 * 10 },
+			{ 3.3 * 10, 3.3 * 20 },
+			{ 3.3 * 20, 3.3 * 50 },
+			{ 3.3 * 50, 3.3 * 100 },
+			{ 3.3 * 100, 3.3 * 200 },
+			{ 3.3 * 800, 3.3 * 1100 },
+			{ 3.3 * 5000, 3.3 * 10000 },
+			{ 3.3 * 20000, 3.3 * 40000 },
 			{ -1, -1 },
-		}, { 10, 20, 30, 42, 60, 83, 100 }
+		}, { 5, 10, 20, 30, 42, 60, 83, 100, 100 + (1 << 8), 100 + (2 << 8) }
 	}, {    /* Maximum */
 		{
-			{ 20, 30 },
-			{ 50, 100 },
+			{ 3.3 * 20, 3.3 * 30 },
+			{ 3.3 * 50, 3.3 * 100 },
+			{ 3.3 * 5000, 3.3 * 10000 },
 			{ -1, -1 },
-/* XXX: Insane request from higher management */
-		}, { 30, 60, 100 }
+		}, { 30, 60, 100, 100 + (2 << 8) }
 	}
 };
 
@@ -233,7 +302,7 @@ als_profile_struct display_als_profiles_rm696[] = {
  * RM-680
  * RM-690
  */
-als_profile_struct display_als_profiles_rm680[] = {
+static als_profile_struct display_als_profiles_rm680[] = {
 	{       /* Minimum */
 		{
 			{ 3, 5 },
@@ -285,12 +354,8 @@ als_profile_struct display_als_profiles_rm680[] = {
 		{
 			{ 20, 30 },
 			{ 50, 100 },
-			{ 150, 200 },
-			{ 800, 1100 },
 			{ -1, -1 },
-/* XXX: Insane request from higher management */
-		}, { 30, 50, 100, 100, 100 }
-//		}, { 16, 22, 30, 83, 100 }
+		}, { 30, 50, 100 }
 	}
 };
 
@@ -298,7 +363,7 @@ als_profile_struct display_als_profiles_rm680[] = {
  * ALS profile for the display in:
  * RX-51
  */
-als_profile_struct display_als_profiles_rx51[] = {
+static als_profile_struct display_als_profiles_rx51[] = {
 	{       /* Minimum */
 		{
 			{ 24, 32 },
@@ -348,7 +413,7 @@ als_profile_struct display_als_profiles_rx51[] = {
  * RX-48
  * RX-44
  */
-als_profile_struct display_als_profiles_rx44[] = {
+static als_profile_struct display_als_profiles_rx44[] = {
 	{       /* Minimum */
 		{
 			{ 10000, 13000 },
@@ -392,7 +457,7 @@ als_profile_struct display_als_profiles_rx44[] = {
  * RM-716 - FIXME/TODO: No idea if usable for RM-696, just a copy of RM-680
  * RM-696 - FIXME/TODO: No idea if usable for RM-696, just a copy of RM-680
  */
-als_profile_struct led_als_profiles_rm696[] = {
+static als_profile_struct led_als_profiles_rm696[] = {
 	{	/* Minimum; unused */
 		{ { -1, -1 } },
 		{ }
@@ -406,10 +471,10 @@ als_profile_struct led_als_profiles_rm696[] = {
 		}, { 80, 100 }
 	}, {	/* Bright; unused */
 		{ { -1, -1 } },
-		{  }
+		{ }
 	}, {	/* Maximum; unused */
 		{ { -1, -1 } },
-		{  }
+		{ }
 	}
 };
 
@@ -419,7 +484,7 @@ als_profile_struct led_als_profiles_rm696[] = {
  * RM-680
  * RM-690
  */
-als_profile_struct led_als_profiles_rm680[] = {
+static als_profile_struct led_als_profiles_rm680[] = {
 	{	/* Minimum; unused */
 		{ { -1, -1 } },
 		{ }
@@ -433,10 +498,10 @@ als_profile_struct led_als_profiles_rm680[] = {
 		}, { 80, 100 }
 	}, {	/* Bright; unused */
 		{ { -1, -1 } },
-		{  }
+		{ }
 	}, {	/* Maximum; unused */
 		{ { -1, -1 } },
-		{  }
+		{ }
 	}
 };
 
@@ -444,13 +509,13 @@ als_profile_struct led_als_profiles_rm680[] = {
  * ALS profile for the RGB LED in:
  * RX-51
  */
-als_profile_struct led_als_profiles_rx51[] = {
+static als_profile_struct led_als_profiles_rx51[] = {
 	{	/* Minimum; unused */
 		{ { -1, -1 } },
-		{  }
+		{ }
 	}, {	/* Economy; unused */
 		{ { -1, -1 } },
-		{  }
+		{ }
 	}, {	/* Normal */
 		{
 			{ 32, 64 },
@@ -459,10 +524,10 @@ als_profile_struct led_als_profiles_rx51[] = {
 		}, { 5, 5, 0 }
 	}, {	/* Bright; unused */
 		{ { -1, -1 } },
-		{  }
+		{ }
 	}, {	/* Maximum; unused */
 		{ { -1, -1 } },
-		{  }
+		{ }
 	}
 };
 
@@ -471,13 +536,13 @@ als_profile_struct led_als_profiles_rx51[] = {
  * RX-48
  * RX-44
  */
-als_profile_struct led_als_profiles_rx44[] = {
+static als_profile_struct led_als_profiles_rx44[] = {
 	{	/* Minimum; unused */
 		{ { -1, -1 } },
-		{  }
+		{ }
 	}, {	/* Economy; unused */
 		{ { -1, -1 } },
-		{  }
+		{ }
 	}, {	/* Normal */
 		{
 			{ 3, 5 },
@@ -504,10 +569,10 @@ als_profile_struct led_als_profiles_rx44[] = {
  * RM-680
  * RM-690
  */
-als_profile_struct kbd_als_profiles_rm680[] = {
+static als_profile_struct kbd_als_profiles_rm680[] = {
 	{	/* Minimum; unused */
 		{ { -1, -1 } },
-		{  }
+		{ }
 	}, {	/* Economy; unused */
 		{ { -1, -1 } },
 		{ }
@@ -530,7 +595,7 @@ als_profile_struct kbd_als_profiles_rm680[] = {
  * ALS profile for the keyboard backlight in:
  * RX-51
  */
-als_profile_struct kbd_als_profiles_rx51[] = {
+static als_profile_struct kbd_als_profiles_rx51[] = {
 	{	/* Minimum; unused */
 		{ { -1, -1 } },
 		{ }
@@ -556,7 +621,7 @@ als_profile_struct kbd_als_profiles_rx51[] = {
  * RX-48
  * RX-44
  */
-als_profile_struct kbd_als_profiles_rx44[] = {
+static als_profile_struct kbd_als_profiles_rx44[] = {
 	{	/* Minimum; unused */
 		{ { -1, -1 } },
 		{ }

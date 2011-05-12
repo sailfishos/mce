@@ -1,6 +1,6 @@
 #! /bin/sh
 program=fakecharger
-version=1.1.2
+version=1.2.0
 
 DBUS_PATH=/com/nokia/bme/signal
 DBUS_INTERFACE=com.nokia.bme.signal
@@ -26,7 +26,7 @@ usage()
 	printf "  battery_ok\n"
 	printf "  battery_low\n"
 	printf "  battery_empty\n"
-	printf "  battery_state_changed CURRENT_BARS MAX_BARS\n"
+	printf "  battery_state_changed CURRENT_BARS MAX_BARS PERCENTAGE\n"
 }
 
 error()
@@ -91,7 +91,7 @@ battery_empty()
 battery_state_changed()
 {
 # Fake that the number of battery bars changed
-	$DBUS_SEND $DBUS_SEND_FLAGS $DBUS_PATH $DBUS_INTERFACE.battery_state_changed uint32:$1 uint32:$2
+	$DBUS_SEND $DBUS_SEND_FLAGS $DBUS_PATH $DBUS_INTERFACE.battery_state_changed uint32:$1 uint32:$2 uint32:$3
 }
 
 [ $# -eq 0 ] && error
@@ -124,7 +124,7 @@ while ! [ $# -eq 0 ]; do
 		eval ${1}
 		;;
 	battery_state_changed)
-		eval ${1} ${2} ${3}
+		eval ${1} ${2} ${3} ${4}
 		shift
 		shift
 		;;

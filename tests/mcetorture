@@ -1,6 +1,6 @@
 #! /bin/sh
 program=mcetorture
-version=1.8.4
+version=1.9.1
 
 GCONFTOOL=gconftool-2
 
@@ -17,6 +17,7 @@ logdir=/media/mmc1
 [ -d $logdir ] || logdir=/root
 
 logfile=$logdir/mcetorture.log
+leaklogfile=$logdir/mcetorture_leaks.log
 logball=$logdir/dsmelog.tar
 memfile=$logdir/mcememlog
 mcepid=$(pidof mce)
@@ -71,6 +72,20 @@ gconftimeout=
 gconfled=
 dbuserrors=
 
+size=0
+rss=0
+shared_clean=0
+shared_dirty=0
+private_clean=0
+private_dirty=0
+
+old_size=0
+old_rss=0
+old_shared_clean=0
+old_shared_dirty=0
+old_private_clean=0
+old_private_dirty=0
+
 EVENT_TIMESTAMP="\x48\x67\x98\x45\x5f\x16\x0b\x00"
 
 EVENT_KEY_TYPE="\x01\x00"		# EV_KEY / 0x01
@@ -90,8 +105,8 @@ GCONF_DISPLAY_BRIGHTNESS_PATH=/system/osso/dsm/display/display_brightness
 GCONF_DISPLAY_BLANK_TIMEOUT_PATH=/system/osso/dsm/display/display_blank_timeout
 GCONF_DISPLAY_DIM_TIMEOUT_PATH=/system/osso/dsm/display/display_dim_timeout
 GCONF_DISPLAY_INHIBIT_BLANK_PATH=/system/osso/dsm/display/inhibit_blank_mode
-GCONF_DISPLAY_ADAPTIVE_DIMMING_ENABLED_PATH=/system/osso/dsm/display/adaptive_dimming_enabled
-GCONF_DISPLAY_ADAPTIVE_DIMMING_THRESHOLD_PATH=/system/osso/dsm/display/adaptive_dimming_threshold
+GCONF_DISPLAY_ADAPTIVE_DIMMING_ENABLED_PATH=/system/osso/dsm/display/use_adaptive_display_dimming
+GCONF_DISPLAY_ADAPTIVE_DIMMING_THRESHOLD_PATH=/system/osso/dsm/display/adaptive_display_dim_threshold
 GCONF_LED_PATTERN_ERROR_PATH=/system/osso/dsm/leds/PatternError
 GCONF_BRIGHTNESS_MIN=1
 GCONF_BRIGHTNESS_MAX=5
@@ -137,12 +152,12 @@ leakcheck()
 		return 0
 	fi
 
-	old_size=$size
-	old_rss=$rss
-	old_shared_clean=$shared_clean
-	old_shared_dirty=$shared_dirty
-	old_private_clean=$private_clean
-	old_private_dirty=$private_dirty
+	[ $size -gt $old_size ] && old_size=$size
+	[ $rss -gt $old_rss ] && old_rss=$rss
+	[ $shared_clean -gt $old_shared_clean ] && old_shared_clean=$shared_clean
+	[ $shared_dirty -gt $old_shared_dirty ] && old_shared_dirty=$shared_dirty
+	[ $private_clean -gt $old_private_clean ] && old_private_clean=$private_clean
+	[ $private_dirty -gt $old_private_dirty ] && old_private_dirty=$private_dirty
 
 	get_memstats
 
@@ -155,6 +170,18 @@ leakcheck()
 		printf "Aieeek, a leak!\n"
 		if [ $nolog -eq 0 ]; then
 			cp /proc/$mcepid/smaps $memfile.after
+
+			if [ $noabort -eq 1 ]; then
+				printf "leaked testcase: $1 (iterations: $x)\n" >> $leaklogfile
+				printf "\n" >> $leaklogfile
+				printf "size         : %d\n" $size >> $leaklogfile
+				printf "rss          : %d\n" $rss >> $leaklogfile
+				printf "shared_clean : %d\n" $shared_clean >> $leaklogfile
+				printf "shared_dirty : %d\n" $shared_dirty >> $leaklogfile
+				printf "private_clean: %d\n" $private_clean >> $leaklogfile
+				printf "private_dirty: %d\n" $private_dirty >> $leaklogfile
+				printf "----\n" >> $leaklogfile
+			fi
 		fi
 		return 1
 	fi
@@ -433,11 +460,17 @@ test_battery()
 	# Fake that battery level is full
 	$DBUS_SEND $DBUS_SEND_SIGNAL_FLAGS $BME_DBUS_PATH $BME_DBUS_INTERFACE.battery_full
 
-	# Send a fake battery state
+	# Send a fake battery state, without percentage
 	$DBUS_SEND $DBUS_SEND_SIGNAL_FLAGS $BME_DBUS_PATH $BME_DBUS_INTERFACE.battery_state_changed uint32:1 uint32:8
 
-	# Send a fake battery state
-	$DBUS_SEND $DBUS_SEND_SIGNAL_FLAGS $BME_DBUS_PATH $BME_DBUS_INTERFACE.battery_state_changed uint32:9 uint32:8
+	# Send a fake battery state, without percentage
+	$DBUS_SEND $DBUS_SEND_SIGNAL_FLAGS $BME_DBUS_PATH $BME_DBUS_INTERFACE.battery_state_changed uint32:8 uint32:8
+
+	# Send a fake battery state, with percentage
+	$DBUS_SEND $DBUS_SEND_SIGNAL_FLAGS $BME_DBUS_PATH $BME_DBUS_INTERFACE.battery_state_changed uint32:1 uint32:8 uint32:10
+
+	# Send a fake battery state, with percentage
+	$DBUS_SEND $DBUS_SEND_SIGNAL_FLAGS $BME_DBUS_PATH $BME_DBUS_INTERFACE.battery_state_changed uint32:8 uint32:8 uint32:96
 }
 
 test_charger()
@@ -675,7 +708,7 @@ test_gconf_timeouts()
 	old_display_inhibit_blank=$retval
 
 	# Save old adaptive dimming
-	gconf_get_int $GCONF_DISPLAY_ADAPTIVE_DIMMING_ENABLED_PATH
+	gconf_get_bool $GCONF_DISPLAY_ADAPTIVE_DIMMING_ENABLED_PATH
 	old_display_adaptive_dimming_enabled=$retval
 
 	# Save old adaptive dimming threshold
@@ -704,10 +737,10 @@ test_gconf_timeouts()
 	gconf_set_int $GCONF_DISPLAY_INHIBIT_BLANK_PATH 4
 
 	# Set the adaptive dimming threhold to 7500 milliseconds
-	gconf_set_int $GCONF_DISPLAY_ADAPTIVE_DIMMING_THRESHOLD 15
+	gconf_set_int $GCONF_DISPLAY_ADAPTIVE_DIMMING_THRESHOLD_PATH 15
 
 	# Disable adaptive dimming
-	gconf_set_bool $GCONF_DISPLAY_ADAPTIVE_DIMMING_ENABLED false
+	gconf_set_bool $GCONF_DISPLAY_ADAPTIVE_DIMMING_ENABLED_PATH false
 
 	# Restore blank timeout
 	gconf_set_int $GCONF_DISPLAY_BLANK_TIMEOUT_PATH $old_blank_timeout
@@ -719,10 +752,10 @@ test_gconf_timeouts()
 	gconf_set_int $GCONF_DISPLAY_INHIBIT_BLANK_PATH $old_display_inhibit_blank
 
 	# Restore display adaptive dimming
-	gconf_set_bool $GCONF_DISPLAY_ADAPTIVE_DIMMING_ENABLED $old_display_adaptive_dimming_enabled
+	gconf_set_bool $GCONF_DISPLAY_ADAPTIVE_DIMMING_ENABLED_PATH $old_display_adaptive_dimming_enabled
 
 	# Restore display adaptive dimming threshold
-	gconf_set_int $GCONF_DISPLAY_ADAPTIVE_DIMMING_THRESHOLD $old_display_adaptive_dimming_threshold
+	gconf_set_int $GCONF_DISPLAY_ADAPTIVE_DIMMING_THRESHOLD_PATH $old_display_adaptive_dimming_threshold
 }
 
 test_gconf_led()
@@ -826,7 +859,7 @@ test_dbus_errors()
 	# $DBUS_SEND $DBUS_SEND_FLAGS --dest=$DBUS_DEST $DBUS_PATH $DBUS_INTERFACE.req_display_state_on int32:42
 
 	# prevent blank (too many arguments)
-	$DBUS_SEND $DBUS_SEND_FLAGS --dest=$DBUS_DEST $DBUS_PATH $DBUS_INTERFACE.req_display_blanking_pause int32:42
+	# $DBUS_SEND $DBUS_SEND_FLAGS --dest=$DBUS_DEST $DBUS_PATH $DBUS_INTERFACE.req_display_blanking_pause int32:42
 
 	# cancel prevent blank (too many arguments)
 	# $DBUS_SEND $DBUS_SEND_FLAGS --dest=$DBUS_DEST $DBUS_PATH $DBUS_INTERFACE.req_display_cancel_blanking_pause int32:42
@@ -910,7 +943,7 @@ run_test()
 	$2
 
 	crashcheck || abort "$1 test-case caused a crash"
-	leakcheck || abort "$1 test-case leaked"
+	leakcheck $1 || abort "$1 test-case leaked"
 }
 
 # setup command line options
@@ -1037,9 +1070,11 @@ while /bin/true; do
 	run_test "dim" $dim
 	run_test "radiostates" $radiostates
 	run_test "cabcmode" $cabcmode
+	run_test "callstate" $callstate
 	run_test "tklock" $tklock
 	run_test "alarm" $alarm
 	run_test "battery" $battery
+	run_test "charger" $charger
 	run_test "led" $led
 	run_test "homeshort" $homeshort
 	run_test "homelong" $homelong

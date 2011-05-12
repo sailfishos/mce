@@ -18,6 +18,13 @@
 					<method name="req_trigger_powerkey_event">
 						<annotation name="com.maemo.Aegis" value="DeviceModeControl"/>
 					</method>
+
+					<method name="req_als_enable">
+						<annotation name="com.maemo.Aegis" value="SensorControl"/>
+					</method>
+					<method name="req_als_disable">
+						<annotation name="com.maemo.Aegis" value="SensorControl"/>
+					</method>
 					<method name="req_proximity_sensor_enable">
 						<annotation name="com.maemo.Aegis" value="SensorControl"/>
 					</method>
@@ -50,12 +57,20 @@
 		</dbus>
 	</provide>
 	<request>
+		<credential name="CAP::sys_admin" />
+		<credential name="CAP::sys_rawio" />
 		<credential name="GRP::i2c" />
+		<credential name="GRP::cal" />
 		<for path="/sbin/mce" />
 	</request>
 	<request>
 		<credential name="UID::root" />
 		<credential name="GID::root" />
 		<for path="/usr/share/mce/mce-restore" />
+	</request>
+	<request>
+		<credential name="UID::root" />
+		<credential name="GID::root" />
+		<for path="/usr/share/mce/mce-device-clear" />
 	</request>
 </aegis>

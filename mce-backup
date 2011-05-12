@@ -2,7 +2,7 @@
 
 rm -rf $HOME/.mce
 
-(mkdir $HOME/.mce) && (cp /var/lib/mce/* $HOME/.mce)
+(mkdir $HOME/.mce) && (cd /var/lib/mce; tar cf - .) | (cd $HOME/.mce; tar xf - .)
 status=$?
 
 if [ $status -ne 0 ]; then

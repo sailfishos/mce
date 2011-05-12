@@ -1,6 +1,6 @@
 #!/usr/bin/make -f
 # debian/rules for mce using debhelper.
-# Copyright © 2004-2010 Nokia Corporation and/or its subsidiary(-ies).
+# Copyright © 2004-2011 Nokia Corporation and/or its subsidiary(-ies).
 
 # Uncomment this to turn on verbose mode.
 #export DH_VERBOSE=1
@@ -16,6 +16,8 @@ changelogversion := $$(grep -m1 'mce (' debian/changelog | sed -e 's/mce (\(.*\)
 CC = gcc
 CFLAGS = -Wall -g
 LDFLAGS = -Wl,--as-needed
+MODULES_CFLAGS = $(CFLAGS) -DUSE_LIBCAL
+MODULES_LDFLAGS = $(LDFLAGS) $$(pkg-config libcal --libs)
 
 ifneq (,$(findstring noopt,$(DEB_BUILD_OPTIONS)))
 	CFLAGS += -O0
@@ -50,7 +52,9 @@ check:
 build-stamp:
 	dh_testdir
 
-	$(MAKE) CC="$(CC)" CFLAGS="$(CFLAGS)"
+	$(MAKE) targets CC="$(CC)" CFLAGS="$(CFLAGS)" LDFLAGS="$(LDFLAGS)"
+	$(MAKE) modules CC="$(CC)" CFLAGS="$(MODULES_CFLAGS)" LDFLAGS="$(MODULES_LDFLAGS)"
+	$(MAKE) tools CC="$(CC)" CFLAGS="$(CFLAGS)" LDFLAGS="$(LDFLAGS)"
 
 	touch build-stamp
 

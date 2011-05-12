@@ -1,9 +1,9 @@
 # Makefile for MCE
-# Copyright © 2004-2010 Nokia Corporation.
+# Copyright © 2004-2011 Nokia Corporation.
 # Written by David Weinehall
 # Modified by Tuomo Tanskanen
 
-VERSION := 1.10.92
+VERSION := 1.10.118
 
 INSTALL := install -o root -g root --mode=755
 INSTALL_DIR := install -d
@@ -21,7 +21,9 @@ DBUSDIR := $(DESTDIR)/etc/dbus-1/system.d
 LOCALEDIR := $(DESTDIR)/usr/share/locale
 GCONFSCHEMADIR := $(DESTDIR)/etc/gconf/schemas
 BACKUPCONFDIR := $(DESTDIR)/usr/share/backup-framework/applications
-BACKUPSCRIPTDIR := $(DESTDIR)/usr/share/mce
+HELPERSCRIPTDIR := $(DESTDIR)/usr/share/mce
+DEVICECLEARSCRIPTDIR := $(DESTDIR)/etc/osso-cud-scripts
+FACTORYRESETSCRIPTDIR := $(DESTDIR)/etc/osso-rfs-scripts
 
 TOPDIR := .
 DOCDIR := $(TOPDIR)/doc
@@ -50,13 +52,14 @@ MODULES := \
 	$(MODULE_DIR)/libcallstate.so \
 	$(MODULE_DIR)/libaudiorouting.so \
 	$(MODULE_DIR)/libpowersavemode.so
-ONLINERADIOSTATESFILE := radio_states.online
-OFFLINERADIOSTATESFILE := radio_states.offline
 CONFFILE := mce.ini
+RADIOSTATESCONFFILE := mce-radio-states.ini
 DBUSCONF := mce.conf mcetool.conf
 GCONFSCHEMAS := display.schemas energymanagement.schemas
 BACKUPCONF := mcebackup.conf
 BACKUPSCRIPTS := mce-backup mce-restore
+PRIVILEGEDDEVICECLEARSCRIPT := mce-device-clear
+REGULARDEVICECLEARSCRIPT := mce-device-clear.sh
 
 WARNINGS := -Wextra -Wall -Wpointer-arith -Wundef -Wcast-align -Wshadow
 WARNINGS += -Wbad-function-cast -Wwrite-strings -Wsign-compare
@@ -70,9 +73,8 @@ WARNINGS += -Wmissing-include-dirs -Wstrict-aliasing=2
 WARNINGS += -Wunsafe-loop-optimizations -Winvalid-pch
 WARNINGS += -Waddress -Wvolatile-register-var
 WARNINGS += -Wmissing-format-attribute
-#WARNINGS += -Wswitch-enum -Wunreachable-code
 WARNINGS += -Wstack-protector
-WARNINGS += -Werror # -std=c99
+WARNINGS += -Werror
 WARNINGS += -Wno-declaration-after-statement
 
 COMMON_CFLAGS := -D_GNU_SOURCE
@@ -81,8 +83,6 @@ COMMON_CFLAGS += -DG_DISABLE_DEPRECATED
 COMMON_CFLAGS += -DOSSOLOG_COMPILE
 COMMON_CFLAGS += -DMCE_VAR_DIR=$(VARDIR) -DMCE_RUN_DIR=$(RUNDIR)
 COMMON_CFLAGS += -DPRG_VERSION=$(VERSION)
-#COMMON_CFLAGS += -funit-at-a-time -fwhole-program -combine
-#COMMON_CFLAGS += -fstack-protector
 
 MCE_CFLAGS := $(COMMON_CFLAGS)
 MCE_CFLAGS += -DMCE_CONF_FILE=$(CONFDIR)/$(CONFFILE)
@@ -94,6 +94,7 @@ HEADERS := tklock.h modetransition.h powerkey.h mce.h mce-dbus.h mce-dsme.h mce-
 MODULE_CFLAGS := $(COMMON_CFLAGS)
 MODULE_CFLAGS += -fPIC -shared
 MODULE_CFLAGS += -I.
+MODULE_CFLAGS += -DMCE_RADIO_STATES_CONF_FILE=$(CONFDIR)/$(RADIOSTATESCONFFILE)
 MODULE_CFLAGS += $$(pkg-config gobject-2.0 glib-2.0 gmodule-2.0 dbus-1 dbus-glib-1 gconf-2.0 --cflags)
 MODULE_LDFLAGS := $$(pkg-config gobject-2.0 glib-2.0 gmodule-2.0 dbus-1 dbus-glib-1 gconf-2.0 --libs)
 MODULE_LIBS := datapipe.c mce-hal.c mce-log.c mce-dbus.c mce-conf.c mce-gconf.c median_filter.c mce-lib.c
@@ -108,11 +109,20 @@ TOOLS_HEADERS := tklock.h mce-dsme.h tools/mcetool.h
 .PHONY: all
 all: $(TARGETS) $(MODULES) $(TOOLS)
 
+.PHONY: targets
+targets: $(TARGETS)
+
 $(TARGETS): %: %.c $(HEADERS) $(LIBS)
 	@$(CC) $(CFLAGS) $(MCE_CFLAGS) -o $@ $< $(LIBS) $(LDFLAGS) $(MCE_LDFLAGS)
 
+.PHONY: modules
+modules: $(MODULES)
+
 $(MODULES): $(MODULE_DIR)/lib%.so: $(MODULE_DIR)/%.c $(MODULE_HEADERS) $(MODULE_LIBS)
 	@$(CC) $(CFLAGS) $(MODULE_CFLAGS) -o $@ $< $(MODULE_LIBS) $(LDFLAGS) $(MODULE_LDFLAGS)
+
+.PHONY: tools
+tools: $(TOOLS)
 
 $(TOOLS): %: %.c $(TOOLS_HEADERS)
 	@$(CC) $(CFLAGS) $(TOOLS_CFLAGS) -o $@ $< $(LDFLAGS) mce-log.c $(TOOLS_LDFLAGS)
@@ -129,13 +139,15 @@ doc:
 install: all
 	$(INSTALL_DIR) $(SBINDIR) $(DBUSDIR) $(VARDIR) $(MODULEDIR)	&&\
 	$(INSTALL_DIR) $(RUNDIR) $(CONFINSTDIR) $(GCONFSCHEMADIR)	&&\
-	$(INSTALL_DIR) $(BACKUPCONFDIR) $(BACKUPSCRIPTDIR)		&&\
+	$(INSTALL_DIR) $(BACKUPCONFDIR) $(HELPERSCRIPTDIR)		&&\
+	$(INSTALL_DIR) $(DEVICECLEARSCRIPTDIR) $(FACTORYRESETSCRIPTDIR)	&&\
 	$(INSTALL) $(TARGETS) $(SBINDIR)				&&\
 	$(INSTALL) $(TOOLS) $(TESTS) $(SBINDIR)				&&\
 	$(INSTALL) $(MODULES) $(MODULEDIR)				&&\
-	$(INSTALL) $(BACKUPSCRIPTS) $(BACKUPSCRIPTDIR)			&&\
-	$(INSTALL_DATA) $(ONLINERADIOSTATESFILE) $(VARDIR)		&&\
-	$(INSTALL_DATA) $(OFFLINERADIOSTATESFILE) $(VARDIR)		&&\
+	$(INSTALL) $(BACKUPSCRIPTS) $(HELPERSCRIPTDIR)			&&\
+	$(INSTALL) $(PRIVILEGEDDEVICECLEARSCRIPT) $(HELPERSCRIPTDIR)	&&\
+	$(INSTALL) $(REGULARDEVICECLEARSCRIPT) $(DEVICECLEARSCRIPTDIR)	&&\
+	$(INSTALL) $(REGULARDEVICECLEARSCRIPT) $(FACTORYRESETSCRIPTDIR)	&&\
 	$(INSTALL_DATA) $(CONFFILE) $(CONFINSTDIR)			&&\
 	$(INSTALL_DATA) $(GCONFSCHEMAS) $(GCONFSCHEMADIR)		&&\
 	$(INSTALL_DATA) $(DBUSCONF) $(DBUSDIR)				&&\

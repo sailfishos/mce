@@ -2,7 +2,7 @@
  * @file mce-io.c
  * Generic I/O functionality for the Mode Control Entity
  * <p>
- * Copyright © 2006-2010 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright © 2006-2011 Nokia Corporation and/or its subsidiary(-ies).
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  *
@@ -120,21 +120,18 @@ EXIT:
  * @param flags Additional flags to pass to open();
  *              by default O_RDONLY is always passed -- this is mainly
  *              to allow passing O_NONBLOCK
- * @param fd A file descriptor to use, or -1 to use the file path instead
  * @return TRUE on success, FALSE on failure
  */
 gboolean mce_read_chunk_from_file(const gchar *const file, void **data,
-				  gssize *len, int flags, int fd)
+				  gssize *len, int flags)
 {
 	gboolean status = FALSE;
 	gint again_count = 0;
 	gssize result = -1;
+	gint fd;
 
-	if ((file == NULL) && (fd == -1)) {
-		mce_log(LL_CRIT, "(file == NULL) && (fd == -1)!");
-		goto EXIT;
-	} else if ((file != NULL) && (fd != -1)) {
-		mce_log(LL_CRIT, "(file != NULL) && (fd != -1)!");
+	if (file == NULL) {
+		mce_log(LL_CRIT, "file == NULL!");
 		goto EXIT;
 	}
 
@@ -149,7 +146,7 @@ gboolean mce_read_chunk_from_file(const gchar *const file, void **data,
 	}
 
 	/* If we cannot open the file, abort */
-	if ((fd == -1) && (fd = open(file, O_RDONLY | flags)) == -1) {
+	if ((fd = open(file, O_RDONLY | flags)) == -1) {
 		mce_log(LL_ERR,
 			"Cannot open `%s' for reading; %s",
 			file, g_strerror(errno));
@@ -193,10 +190,11 @@ gboolean mce_read_chunk_from_file(const gchar *const file, void **data,
 	status = TRUE;
 
 EXIT2:
-	/* XXX: improve close policy? */
-	if (file != NULL) {
-		close(fd);
-		fd = -1;
+	if (close(fd) == -1) {
+		mce_log(LL_ERR,
+			"Failed to close `%s'; %s",
+			file, g_strerror(errno));
+		errno = 0;
 	}
 
 	/* Ignore error */
@@ -235,6 +233,10 @@ gboolean mce_read_string_from_file(const gchar *const file, gchar **string)
 	status = TRUE;
 
 EXIT:
+	/* Reset errno,
+	 * to avoid false positives down the line
+	 */
+	errno = 0;
 	g_clear_error(&error);
 
 	return status;
@@ -260,6 +262,7 @@ gboolean mce_read_number_string_from_file(const gchar *const file,
 					  gboolean close_on_exit)
 {
 	gboolean status = FALSE;
+	gint again_count = 0;
 	FILE *new_fp = NULL;
 	gint retval;
 
@@ -306,10 +309,23 @@ gboolean mce_read_number_string_from_file(const gchar *const file,
 	if ((fp != NULL) && (*fp == NULL))
 		*fp = new_fp;
 
-	retval = fscanf(new_fp, "%lu", number);
+	while (again_count++ < 10) {
+		/* Clear errors from earlier iterations */
+		clearerr(new_fp);
+		errno = 0;
+
+		retval = fscanf(new_fp, "%lu", number);
+
+		if ((retval == EOF) &&
+		    (ferror(new_fp) != 0) && (errno == EAGAIN)) {
+			continue;
+		} else {
+			break;
+		}
+	}
 
 	/* Was the read successful? */
-	if (retval == EOF) {
+	if ((retval == EOF) && (ferror(new_fp) != 0)) {
 		mce_log(LL_ERR,
 			"Failed to read from `%s'; %s",
 			file, g_strerror(errno));
@@ -355,56 +371,51 @@ EXIT:
 gboolean mce_write_string_to_file(const gchar *const file,
 				  const gchar *const string)
 {
-	GIOChannel *iochan = NULL;
-	GIOStatus iostatus;
-	GError *error = NULL;
-	gboolean status = TRUE;
+	gboolean status = FALSE;
+	FILE *fp = NULL;
+	gint retval;
 
 	if (file == NULL) {
 		mce_log(LL_CRIT, "file == NULL!");
-		status = FALSE;
 		goto EXIT;
 	}
 
 	if (string == NULL) {
 		mce_log(LL_CRIT, "string == NULL!");
-		status = FALSE;
 		goto EXIT;
 	}
 
-	if ((iochan = g_io_channel_new_file(file, "w", &error)) == NULL) {
+	if ((fp = fopen(file, "w")) == NULL) {
 		mce_log(LL_ERR,
-			"Cannot open `%s' for writing; %s",
-			file, error->message);
-		status = FALSE;
+			"Cannot open `%s' for %s; %s",
+			file,
+			"writing",
+			g_strerror(errno));
+
+		/* Ignore error */
+		errno = 0;
 		goto EXIT;
 	}
 
-	iostatus = g_io_channel_write_chars(iochan, string,
-					    -1, NULL, &error);
+	retval = fprintf(fp, "%s", string);
 
-	if (iostatus != G_IO_STATUS_NORMAL) {
+	/* Was the write successful? */
+	if (retval < 0) {
 		mce_log(LL_ERR,
-			"Cannot modify `%s'; %s",
-			file, error->message);
-		status = FALSE;
-		g_clear_error(&error);
+			"Failed to write to `%s'; %s",
+			file, g_strerror(errno));
+
+		/* Ignore error */
+		errno = 0;
+		goto EXIT2;
 	}
 
-	iostatus = g_io_channel_shutdown(iochan, TRUE, &error);
+	status = TRUE;
 
-	if (iostatus != G_IO_STATUS_NORMAL) {
-		mce_log(LL_ERR,
-			"Cannot close `%s'; %s",
-			file, error->message);
-		status = FALSE;
-	}
-
-	g_io_channel_unref(iochan);
+EXIT2:
+	(void)mce_close_file(file, &fp);
 
 EXIT:
-	g_clear_error(&error);
-
 	return status;
 }
 
@@ -494,11 +505,10 @@ gboolean mce_write_number_string_to_file(const gchar *const file,
 	retval = fprintf(new_fp, "%lu", number);
 
 	/* Was the write successful? */
-	if (retval == EOF) {
+	if (retval < 0) {
 		mce_log(LL_ERR,
 			"Failed to write to `%s'; %s",
 			file, g_strerror(errno));
-		clearerr(new_fp);
 
 		/* Ignore error */
 		errno = 0;
@@ -569,11 +579,10 @@ gboolean mce_write_number_string_to_file_atomic(const gchar *const file,
 	retval = fprintf(fp, "%lu", number);
 
 	/* Was the write successful? */
-	if (retval == EOF) {
+	if (retval < 0) {
 		mce_log(LL_ERR,
 			"Failed to write to `%s'; %s",
 			tmpname, g_strerror(errno));
-		clearerr(fp);
 
 		/* Ignore error */
 		errno = 0;
@@ -590,7 +599,7 @@ gboolean mce_write_number_string_to_file_atomic(const gchar *const file,
 		goto EXIT2;
 	}
 
-	/** Ensure that the data makes it to disk */
+	/* Ensure that the data makes it to disk */
 	if (fsync(fd) == -1) {
 		mce_log(LL_ERR,
 			"Failed to fsync `%s'; %s",
@@ -666,6 +675,11 @@ static gboolean io_string_cb(GIOChannel *source,
 	/* Seek to the beginning of the file before reading if needed */
 	if (iomon->rewind == TRUE) {
 		g_io_channel_seek_position(source, 0, G_SEEK_SET, &error);
+
+		/* Reset errno,
+		 * to avoid false positives down the line
+		 */
+		errno = 0;
 		g_clear_error(&error);
 	}
 
@@ -682,10 +696,15 @@ static gboolean io_string_cb(GIOChannel *source,
 			"Empty read from %s",
 			iomon->file);
 	} else {
-		iomon->callback(str, bytes_read);
+		(void)iomon->callback(str, bytes_read);
 	}
 
 	g_free(str);
+
+	/* Reset errno,
+	 * to avoid false positives down the line
+	 */
+	errno = 0;
 	g_clear_error(&error);
 
 EXIT:
@@ -713,6 +732,7 @@ static gboolean io_chunk_cb(GIOChannel *source,
 			    gpointer data)
 {
 	iomon_struct *iomon = data;
+	gint again_count = 0;
 	gchar *chunk = NULL;
 	gsize bytes_read;
 	GIOStatus io_status;
@@ -733,23 +753,54 @@ static gboolean io_chunk_cb(GIOChannel *source,
 	/* Seek to the beginning of the file before reading if needed */
 	if (iomon->rewind == TRUE) {
 		g_io_channel_seek_position(source, 0, G_SEEK_SET, &error);
+
+		/* Reset errno,
+		 * to avoid false positives down the line
+		 */
+		errno = 0;
 		g_clear_error(&error);
 	}
 
 	chunk = g_malloc(iomon->chunk_size);
 
-	do {
+	while (again_count < 10) {
 		io_status = g_io_channel_read_chars(source, chunk,
 						    iomon->chunk_size,
 						    &bytes_read, &error);
 
-		if ((io_status != G_IO_STATUS_AGAIN) || (error == NULL))
+		/* If the read was interrupted, retry */
+		if (io_status == G_IO_STATUS_AGAIN) {
+			again_count++;
+
+			/* Reset errno,
+			 * to avoid false positives down the line
+			 */
+			errno = 0;
+			g_clear_error(&error);
+			continue;
+		}
+
+		/* Stop on error and if we get an inexplicable empty read */
+		if ((error != NULL) ||
+		    (bytes_read == 0) ||
+		    (io_status == G_IO_STATUS_EOF))
 			break;
 
-		g_clear_error(&error);
-	} while (TRUE);
+		/* Process the data, and optionally flush the remaining data */
+		if (iomon->callback(chunk, bytes_read) == TRUE) {
+			if ((g_io_channel_get_flags(iomon->iochan) &
+			     G_IO_FLAG_IS_SEEKABLE) == G_IO_FLAG_IS_SEEKABLE) {
+				g_io_channel_seek_position(iomon->iochan, 0,
+							   G_SEEK_END, &error);
+			}
 
-	/* Errors and empty reads are nasty */
+			break;
+		}
+	}
+
+	g_free(chunk);
+
+	/* Were there any errors? */
 	if (error != NULL) {
 		mce_log(LL_ERR,
 			"Error when reading from %s: %s",
@@ -759,6 +810,7 @@ static gboolean io_chunk_cb(GIOChannel *source,
 		    (errno == ENODEV) &&
 		    ((g_io_channel_get_flags(iomon->iochan) &
 		      G_IO_FLAG_IS_SEEKABLE) == G_IO_FLAG_IS_SEEKABLE)) {
+			errno = 0;
 			g_clear_error(&error);
 			g_io_channel_seek_position(iomon->iochan, 0,
 						   G_SEEK_END, &error);
@@ -770,16 +822,14 @@ static gboolean io_chunk_cb(GIOChannel *source,
 		 * to avoid false positives down the line
 		 */
 		errno = 0;
-	} else if (bytes_read == 0) {
+		g_clear_error(&error);
+	} else if ((bytes_read == 0) &&
+		   (io_status != G_IO_STATUS_EOF) &&
+		   (io_status != G_IO_STATUS_AGAIN)) {
 		mce_log(LL_ERR,
 			"Empty read from %s",
 			iomon->file);
-	} else {
-		iomon->callback(chunk, bytes_read);
 	}
-
-	g_free(chunk);
-	g_clear_error(&error);
 
 EXIT:
 	if ((status == FALSE) &&
@@ -930,6 +980,10 @@ void mce_resume_io_monitor(gconstpointer io_monitor)
 		      G_IO_FLAG_IS_SEEKABLE) == G_IO_FLAG_IS_SEEKABLE)) {
 			g_io_channel_seek_position(iomon->iochan, 0,
 						   G_SEEK_END, &error);
+			/* Reset errno,
+			 * to avoid false positives down the line
+			 */
+			errno = 0;
 			g_clear_error(&error);
 		}
 
@@ -1035,6 +1089,10 @@ static iomon_struct *mce_register_io_monitor(const gint fd,
 	iomon->suspended = TRUE;
 
 EXIT:
+	/* Reset errno,
+	 * to avoid false positives down the line
+	 */
+	errno = 0;
 	g_clear_error(&error);
 
 	return iomon;
@@ -1141,11 +1199,19 @@ gconstpointer mce_register_io_monitor_chunk(const gint fd,
 	/* We only read this file in binary form */
 	(void)g_io_channel_set_encoding(iomon->iochan, NULL, &error);
 
+	/* Reset errno,
+	 * to avoid false positives down the line
+	 */
+	errno = 0;
 	g_clear_error(&error);
 
 	/* Don't block */
 	(void)g_io_channel_set_flags(iomon->iochan, G_IO_FLAG_NONBLOCK, &error);
 
+	/* Reset errno,
+	 * to avoid false positives down the line
+	 */
+	errno = 0;
 	g_clear_error(&error);
 
 	/* Set the I/O monitor type and call resume to add an I/O watch */
@@ -1209,6 +1275,10 @@ void mce_unregister_io_monitor(gconstpointer io_monitor)
 				iomon->file, error->message);
 		}
 
+		/* Reset errno,
+		 * to avoid false positives down the line
+		 */
+		errno = 0;
 		g_clear_error(&error);
 	}
 
@@ -1249,22 +1319,31 @@ int mce_get_io_monitor_fd(gconstpointer io_monitor)
 }
 
 /**
- * Test whether there's a pending backup/restore operation
+ * Test whether there's a settings lock due to pending
+ * backup/restore or device clear/factory reset operation
  *
- * @return TRUE if the backup lock file is in place,
- *         FALSE if the backup lock file is not in place
+ * @return TRUE if the settings lock file is in place,
+ *         FALSE if the settings lock file is not in place
  */
-gboolean mce_is_backup_pending(void)
+gboolean mce_are_settings_locked(void)
 {
-	return (g_access(MCE_BACKUP_LOCK_FILE_PATH, F_OK) == 0);
+	gboolean status = (g_access(MCE_SETTINGS_LOCK_FILE_PATH, F_OK) == 0);
+
+	errno = 0;
+
+	return status;
 }
 
 /**
- * Remove the backup/restore lock file
+ * Remove the settings lock file
  *
  * @return TRUE on success, FALSE on failure
  */
-gboolean mce_unlock_backup(void)
+gboolean mce_unlock_settings(void)
 {
-	return (g_unlink(MCE_BACKUP_LOCK_FILE_PATH) == 0);
+	gboolean status = (g_unlink(MCE_SETTINGS_LOCK_FILE_PATH) == 0);
+
+	errno = 0;
+
+	return status;
 }

@@ -4,7 +4,7 @@
  * DSME (the Device State Management Entity)
  * and MCE (the Mode Control Entity)
  * <p>
- * Copyright © 2004-2010 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright © 2004-2011 Nokia Corporation and/or its subsidiary(-ies).
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Ismo Laitinen <ismo.laitinen@nokia.com>
@@ -261,7 +261,7 @@ void request_soft_poweroff(void)
 {
 	mce_add_submode_int32(MCE_SOFTOFF_SUBMODE);
 	execute_datapipe(&display_state_pipe,
-			 GINT_TO_POINTER(MCE_DISPLAY_OFF),
+			 GINT_TO_POINTER(MCE_DISPLAY_LPM_OFF),
 			 USE_INDATA, CACHE_INDATA);
 
 	/* Enable the soft poweroff LED pattern */

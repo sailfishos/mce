@@ -1,4 +1,4 @@
-.TH MCETOOL 8 "Okt 27, 2010" "Nokia"
+.TH MCETOOL 8 "Feb 22, 2011" "Nokia"
 
 .SH NAMN
 mcetool \- verktyg f\(:or att testa l\(:ageskontrollfunktionalitet
@@ -54,13 +54,13 @@ Giltiga typer \(:ar:
 .TP
 .B \-\-enable\-radio
 Sl\(oa p\(oa den angivna radion; till\(oatna radior \(:ar:
-"master", "wireless", "cellular" och "bluetooth".
+"master", "wireless", "cellular", "bluetooth", "nfc" och "fmtx".
 "master" tj\(:anar som en huvudbrytare; individuella radior
 beaktas endast om huvudbrytaren \(:ar p\(oa
 .TP
 .B \-\-disable\-radio
 Sl\(oa av den angivna radion; till\(oatna radior \(:ar:
-"master", "wireless", "cellular" och "bluetooth".
+"master", "wireless", "cellular", "bluetooth", "nfc" och "fmtx".
 "master" tj\(:anar som en huvudbrytare; individuella radior
 beaktas endast om huvudbrytaren \(:ar av
 .TP
@@ -73,27 +73,13 @@ Framtvinga automatiskt str\:omsparl\(:age; giltiga l\(:agen \(:ar:
 "enabled" och "disabled"
 .TP
 .B \-\-set\-psm\-threshold
-.TP
+\(:Andra batteriniv\(oatr\(:oskelv\(:arde f\(:or automatiskt
+str\:omsparl\(:age; giltiga v\(:arden \(:ar:
 10, 20, 30, 40, 50
-.B \-\-set\-tklock\-mode
-\(:Andra tangentbordsl\(oasl\(:aget till det angivna l\(:aget;
-giltiga v\(:arden \(:ar:
-"locked", "locked\-dim", "silent\-locked", "silent\-locked\-dim",
-"unlocked" och "silent\-unlocked"
-.TP
-.B \-\-powerup
-Skicka en beg\(:aran till MCE att enheten skall starta upp
-.TP
-.B \-\-reboot
-Skicka en beg\(:aran till MCE att enheten skall startas om
-.TP
-.B \-\-shutdown
-Skicka en beg\(:aran till MCE att enheten skall st\(:angas av
 .TP
 .B \-\-set\-tklock\-mode
 \(:Andra knapp\(hy/sk\(:arml\(oasets l\(:age; giltiga v\(:arden \(:ar:
-"locked", "locked\-dim", "silent\-locked", "silent\-locked\-dim",
-"unlocked" samt "silent\-unlocked"
+"locked", "locked\-dim" samt "unlocked"
 .TP
 .B \-\-enable\-led
 Sl\(oa p\(oa LED\(hyramverket
@@ -133,6 +119,10 @@ Visa versionsinformation och information om upphovsr\(:att
 .BR mce (8)
 
 .SH HISTORIK
+Feb 22 2011: Uppdaterad f\(:or borttagen funktionalitet.
+.br
+Jan 20 2011: Uppdaterad f\(:or ny funktionalitet.
+.br
 Okt 27 2010: Uppdaterad f\(:or ny och borttagen funktionalitet.
 .br
 Jan 16 2010: Uppdaterad f\(:or ny funktionalitet.
@@ -198,4 +188,4 @@ Rapportera fel till
 <\fIdavid.weinehall@nokia.com\fP>.
 
 .SH UPPHOVSR\(:ATT
-Copyright \(co 2005\(hy2010 Nokia Corporation.  Alla r\(:attigheter f\(:orbeh\(oallna.
+Copyright \(co 2005\(hy2011 Nokia Corporation.  Alla r\(:attigheter f\(:orbeh\(oallna.

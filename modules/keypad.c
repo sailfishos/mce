@@ -2,7 +2,7 @@
  * @file keypad.c
  * Keypad module -- this handles the keypress logic for MCE
  * <p>
- * Copyright © 2004-2010 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright © 2004-2011 Nokia Corporation and/or its subsidiary(-ies).
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  *
@@ -26,7 +26,10 @@
 #include "mce.h"
 #include "keypad.h"
 
-#include "mce-io.h"			/* mce_write_number_string_to_file() */
+#include "mce-io.h"			/* mce_close_file(),
+					 * mce_write_string_to_file(),
+					 * mce_write_number_string_to_file()
+					 */
 #include "mce-hal.h"			/* get_product_id() */
 #include "mce-lib.h"			/* bin_to_string() */
 #include "mce-log.h"			/* mce_log(), LL_* */
@@ -243,6 +246,7 @@ static void set_lysti_backlight_brightness(guint fadetime, guint brightness)
 	static gchar pattern[] = "9d80" "4000" "0000" "c000";
 	static gchar convert[] = "0123456789abcdef";
 	static gint old_brightness = 0;
+	gint steps = (gint)brightness - old_brightness;
 
 	/* If we're fading towards 0 and receive a new brightness,
 	 * without the backlight timeout being set, the ALS has
@@ -251,8 +255,12 @@ static void set_lysti_backlight_brightness(guint fadetime, guint brightness)
 	if ((old_brightness == 0) && (key_backlight_timeout_cb_id == 0))
 		goto EXIT;
 
-	/* Calculate fade time; if fade time is 0, set immediately */
-	if (fadetime == 0) {
+	/* Calculate fade time; if fade time is 0, set immediately. If
+	 * old and new brightnesses are the same, also write the value
+	 * just in case, this also avoids division by zero in other
+	 * branch.
+	 */
+	if ( (fadetime == 0) || (steps == 0) ) {
 		/* No fade */
 		pattern[6] = convert[(brightness & 0xf0) >> 4];
 		pattern[7] = convert[brightness & 0xf];
@@ -261,7 +269,6 @@ static void set_lysti_backlight_brightness(guint fadetime, guint brightness)
 		pattern[10] = '0';
 		pattern[11] = '0';
 	} else {
-		gint steps = (gint)brightness - old_brightness;
 		gint stepspeed;
 
 		/* Figure out how big steps we need to take when
@@ -272,7 +279,16 @@ static void set_lysti_backlight_brightness(guint fadetime, guint brightness)
 		 *
 		 * Every step is 0.49ms big
 		 */
-		stepspeed = (((fadetime * 1000) / ABS(steps)) / 0.49) / 1000;
+
+		/* This should be ok already to avoid division by
+		 * zero, but paranoid checking just in case some patch
+		 * breaks previous check.
+		 */
+		if (steps == 0) {
+			stepspeed = 1;
+		} else {
+			stepspeed = (((fadetime * 1000) / ABS(steps)) / 0.49) / 1000;
+		}
 
 		/* Sanity check the stepspeed */
 		if (stepspeed < 1)
@@ -625,12 +641,14 @@ static void display_state_trigger(gconstpointer data)
 	/* Disable the key backlight if the display dims */
 	switch (display_state) {
 	case MCE_DISPLAY_OFF:
+	case MCE_DISPLAY_LPM_OFF:
+	case MCE_DISPLAY_LPM_ON:
 	case MCE_DISPLAY_DIM:
 		disable_key_backlight();
 		break;
 
 	case MCE_DISPLAY_ON:
-		if (old_display_state == MCE_DISPLAY_OFF)
+		if (old_display_state != MCE_DISPLAY_ON)
 			enable_key_backlight_policy();
 
 		break;

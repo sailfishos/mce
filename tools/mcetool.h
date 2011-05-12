@@ -2,7 +2,7 @@
  * @file mcetool.h
  * Headers for the mcetool
  * <p>
- * Copyright © 2005-2008 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright © 2005-2008, 2011 Nokia Corporation and/or its subsidiary(-ies).
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  *
@@ -38,9 +38,6 @@
 /** Dummy _() to use when NLS is disabled */
 #define _(__str)		__str
 #endif /* ENABLE_NLS */
-
-/** Path to the GConf entry for the devicelock autolock setting */
-#define SYSTEMUI_GCONF_DEVICE_AUTOLOCK_ENABLED_PATH "/system/systemui/devlock/devicelock_autolock_enabled"
 
 /** The mcetool DBus service */
 #define MCETOOL_SERVICE			"com.nokia.mcetool"

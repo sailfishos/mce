@@ -2,7 +2,7 @@
  * @file led.c
  * LED module -- this handles the LED logic for MCE
  * <p>
- * Copyright © 2006-2010 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright © 2006-2011 Nokia Corporation and/or its subsidiary(-ies).
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  *
@@ -20,7 +20,6 @@
  */
 #include <glib.h>
 #include <gmodule.h>
-#include <glib/gstdio.h>		/* g_access */
 
 #include <errno.h>                      /* errno, EINVAL, ERANGE */
 #include <fcntl.h>			/* open(), O_RDWR, O_CREAT */
@@ -1008,8 +1007,12 @@ static void led_update_active_pattern(void)
 			continue;
 		}
 
-		/* If the display is off, we can use any active pattern */
-		if (display_state == MCE_DISPLAY_OFF)
+		/* If the display is off or in low power mode,
+		 * we can use any active pattern
+		 */
+		if ((display_state == MCE_DISPLAY_OFF) ||
+		    (display_state == MCE_DISPLAY_LPM_OFF) ||
+		    (display_state == MCE_DISPLAY_LPM_ON))
 			break;
 
 		/* If the pattern should be shown with screen on, use it */
