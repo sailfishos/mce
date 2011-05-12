@@ -3,7 +3,7 @@
 # Written by David Weinehall
 # Modified by Tuomo Tanskanen
 
-VERSION := 1.10.118
+VERSION := 1.10.119
 
 INSTALL := install -o root -g root --mode=755
 INSTALL_DIR := install -d

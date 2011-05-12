@@ -1,3 +1,9 @@
+mce (1.10.119) unstable; urgency=low
+
+  * Request dsme::DeviceStateControl capability (Fixes: NB#255382)
+
+ -- Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>  Thu, 12 May 2011 15:06:16 +0300
+
 mce (1.10.118) unstable; urgency=low
 
   * Close LPM tklock on unlock request. (Fixes: NB#254339)

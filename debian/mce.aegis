@@ -61,6 +61,7 @@
 		<credential name="CAP::sys_rawio" />
 		<credential name="GRP::i2c" />
 		<credential name="GRP::cal" />
+		<credential name="dsme::DeviceStateControl" />
 		<for path="/sbin/mce" />
 	</request>
 	<request>
