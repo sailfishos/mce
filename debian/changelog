@@ -1,3 +1,9 @@
+mce (1.10.120) unstable; urgency=low
+
+  * Add delay to brightness stepdown (Fixes: NB#253917)
+
+ -- Jukka Turunen <ext-jukka.t.turunen@nokia.com>  Tue, 17 May 2011 13:22:03 +0300
+
 mce (1.10.119) unstable; urgency=low
 
   * Request dsme::DeviceStateControl capability (Fixes: NB#255382)

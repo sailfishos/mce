@@ -132,6 +132,9 @@ struct dipro_als {
  */
 #define ALS_DISPLAY_OFF_FLUSH_FILTER
 
+/** Brightness stepdown delay, secs */
+#define ALS_BRIGHTNESS_STEPDOWN_DELAY	5
+
 /** Window size for the median filter */
 #define MEDIAN_FILTER_WINDOW_SIZE	5
 

@@ -148,6 +148,8 @@ static gboolean als_enabled = TRUE;
 static gboolean use_median_filter = FALSE;
 /** Lux reading from the ALS */
 static gint als_lux = -1;
+/** Lux cache for delayed brightness stepdown */
+static gint delayed_lux = -1;
 /** ALS profiles for the display */
 static als_profile_struct *display_als_profiles = NULL;
 /** ALS profiles for the LED */
@@ -187,6 +189,12 @@ static gint als_poll_interval = ALS_DISPLAY_ON_POLL_FREQ;
 /** ID for ALS poll timer source */
 static guint als_poll_timer_cb_id = 0;
 
+/** Brightness stepdown delay */
+static gint brightness_stepdown_delay = ALS_BRIGHTNESS_STEPDOWN_DELAY;
+
+/** ID for brightness stepdown delay timer */
+static guint brightness_delay_timer_cb_id = 0;
+
 /** FILE * for the ambient_light_sensor */
 static FILE *als_fp = NULL;
 
@@ -207,6 +215,8 @@ typedef enum {
 } als_type_t;
 
 static void cancel_als_poll_timer(void);
+static void cancel_brightness_delay_timer(void);
+static void als_iomon_common(gint lux, gboolean no_delay);
 
 /** Brightness level step policies */
 typedef enum {
@@ -851,11 +861,30 @@ EXIT:
 }
 
 /**
+ * Timer callback for brightness stepdown delay
+ *
+ * @param data Unused
+ * @return Always returns FALSE, this is a one-shot cb
+ */
+static gboolean brightness_delay_timer_cb(gpointer data)
+{
+	gboolean status = FALSE;
+
+	(void)data;
+
+	/* No delay for lux setting this time, as we already waited. */
+	als_iomon_common(delayed_lux, TRUE);
+
+	return status;
+}
+
+/**
  * I/O monitor callback for the Ambient Light Sensor
  *
  * @param lux The lux value
+ * @param no_delay If TRUE, do not use stepdown delay
  */
-static void als_iomon_common(gint lux)
+static void als_iomon_common(gint lux, gboolean no_delay)
 {
 	cover_state_t proximity_sensor_state =
 				datapipe_get_gint(proximity_sensor_pipe);
@@ -881,6 +910,30 @@ static void als_iomon_common(gint lux)
 	 */
 	if (proximity_sensor_state == COVER_CLOSED)
 		goto EXIT;
+
+	/* Step-down is delayed */
+	if (als_lux > new_lux) {
+		if (no_delay) {
+			/* brightness_delay_timer_cb called us. cb removes itself from
+			 * event loop by returning FALSE, so we just clear timer id
+			 */
+			brightness_delay_timer_cb_id = 0;
+		} else {
+			/* Setup timer if not already active and store lux
+			 * value, then exit
+			 */
+			if (brightness_delay_timer_cb_id == 0) {
+				brightness_delay_timer_cb_id =
+					g_timeout_add_seconds(brightness_stepdown_delay,
+										  brightness_delay_timer_cb, NULL);
+			}
+			delayed_lux = lux;
+			goto EXIT;
+		}
+	} else {
+		/* Remove delay timer when stepping up */
+		cancel_brightness_delay_timer();
+	}
 
 	als_lux = new_lux;
 
@@ -967,7 +1020,7 @@ static gboolean als_dipro_iomon_cb(gpointer data, gsize bytes_read)
 
 	als = data;
 
-	als_iomon_common(als->lux);
+	als_iomon_common(als->lux, FALSE);
 
 EXIT:
 	return FALSE;
@@ -998,9 +1051,9 @@ static gboolean als_avago_iomon_cb(gpointer data, gsize bytes_read)
 		goto EXIT;
 
 	if ((als->status & APDS990X_ALS_SATURATED) != 0) {
-		als_iomon_common(G_MAXINT);
+		als_iomon_common(G_MAXINT, FALSE);
 	} else {
-		als_iomon_common(als->lux);
+		als_iomon_common(als->lux, FALSE);
 	}
 
 EXIT:
@@ -1076,6 +1129,17 @@ static void setup_als_poll_timer(void)
 
 EXIT:
 	return;
+}
+
+/**
+ * Cancel brightness delay timer
+ */
+static void cancel_brightness_delay_timer(void)
+{
+	if (brightness_delay_timer_cb_id != 0) {
+		g_source_remove(brightness_delay_timer_cb_id);
+		brightness_delay_timer_cb_id = 0;
+	}
 }
 
 /**
@@ -1464,6 +1528,7 @@ void g_module_unload(GModule *module)
 
 	/* Remove all timer sources */
 	cancel_als_poll_timer();
+	cancel_brightness_delay_timer();
 
 	return;
 }
