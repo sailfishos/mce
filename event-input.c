@@ -456,11 +456,15 @@ static gboolean keypress_iomon_cb(gpointer data, gsize bytes_read)
 		 *
 		 * Also, don't send repeat events, and don't send
 		 * keypress events for the focus and screenlock keys
+		 *
+		 * Additionally ignore all key events if proximity locked
+		 * during a call or alarm.
 		 */
-		if ((ev->code != KEY_CAMERA_FOCUS) &&
-	            (ev->code != KEY_SCREENLOCK) &&
-	            ((((submode & MCE_EVEATER_SUBMODE) == 0) &&
-		       (ev->value == 1)) || (ev->value == 0))) {
+		if (((ev->code != KEY_CAMERA_FOCUS) &&
+		     (ev->code != KEY_SCREENLOCK) &&
+		     ((((submode & MCE_EVEATER_SUBMODE) == 0) &&
+		       (ev->value == 1)) || (ev->value == 0))) &&
+		    ((submode & MCE_PROXIMITY_TKLOCK_SUBMODE) == 0)) {
 			(void)execute_datapipe(&keypress_pipe, &ev,
 					       USE_INDATA, DONT_CACHE_INDATA);
 		}
