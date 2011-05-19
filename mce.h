@@ -134,8 +134,10 @@ typedef gint submode_t;
 #define MCE_AUTORELOCK_SUBMODE		(1 << 5)
 /** Visual Touchscreen/Keypad active */
 #define MCE_VISUAL_TKLOCK_SUBMODE	(1 << 6)
+/** Proximity is used to protect from accidental events */
+#define MCE_POCKET_SUBMODE		(1 << 7)
 /** Touchscreen/Keypad lock is enabled based on proximity state */
-#define MCE_PROXIMITY_TKLOCK_SUBMODE (1 << 7)
+#define MCE_PROXIMITY_TKLOCK_SUBMODE	(1 << 8)
 
 /** System state */
 typedef enum {

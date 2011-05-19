@@ -378,6 +378,8 @@ static gboolean doubletap_proximity_timeout_cb(gpointer data)
 	set_doubletap_gesture(FALSE);
 	doubletap_gesture_inhibited = TRUE;
 
+	mce_add_submode_int32(MCE_POCKET_SUBMODE);
+
 	return FALSE;
 }
 
@@ -386,6 +388,8 @@ static gboolean doubletap_proximity_timeout_cb(gpointer data)
  */
 static void cancel_doubletap_proximity_timeout(void)
 {
+	mce_rem_submode_int32(MCE_POCKET_SUBMODE);
+
 	/* Remove the timer source for doubletap gesture proximity */
 	if (doubletap_proximity_timeout_cb_id != 0) {
 		g_source_remove(doubletap_proximity_timeout_cb_id);
@@ -443,6 +447,10 @@ static void set_doubletap_gesture(gboolean enable)
 		cancel_doubletap_proximity_timeout();
 		doubletap_gesture_enabled = FALSE;
 		ts_disable();
+
+		if (is_tklock_enabled_by_proximity() == FALSE)
+			mce_add_submode_int32(MCE_POCKET_SUBMODE);
+
 		goto EXIT;
 	}
 
@@ -2261,6 +2269,8 @@ static void display_state_trigger(gconstpointer data)
 			(void)enable_autokeylock();
 		}
 
+		mce_rem_submode_int32(MCE_POCKET_SUBMODE);
+
 		break;
 
 
@@ -2278,6 +2288,8 @@ static void display_state_trigger(gconstpointer data)
 		    (old_display_state == MCE_DISPLAY_LPM_ON)) {
 			ts_kp_enable_policy();
 		}
+
+		mce_rem_submode_int32(MCE_POCKET_SUBMODE);
 
 		break;
 
@@ -2300,6 +2312,8 @@ static void display_state_trigger(gconstpointer data)
 				setup_tklock_visual_blank_timeout();
 			}
 		}
+
+		mce_rem_submode_int32(MCE_POCKET_SUBMODE);
 
 		(void)disable_eveater();
 		break;
