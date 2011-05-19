@@ -2017,12 +2017,14 @@ static gboolean display_on_req_dbus_cb(DBusMessage *const msg)
 {
 	call_state_t call_state = datapipe_get_gint(call_state_pipe);
 	dbus_bool_t no_reply = dbus_message_get_no_reply(msg);
+	submode_t submode = mce_get_submode_int32();
 	gboolean status = FALSE;
 
 	mce_log(LL_DEBUG,
 		"Received display on request");
 
-	if (call_state != CALL_STATE_RINGING) {
+	if ((call_state != CALL_STATE_RINGING) && 
+	    ((submode & (MCE_PROXIMITY_TKLOCK_SUBMODE | MCE_POCKET_SUBMODE)) == 0)) {
 		(void)execute_datapipe(&display_state_pipe,
 				       GINT_TO_POINTER(MCE_DISPLAY_ON),
 				       USE_INDATA, CACHE_INDATA);

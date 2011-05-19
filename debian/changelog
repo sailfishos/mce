@@ -1,3 +1,9 @@
+mce (1.10.121) UNRELEASED; urgency=low
+
+  * Ignore external events in proximity states (Fixes: NB#250798)
+
+ -- Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>  Thu, 19 May 2011 11:21:00 +0300
+
 mce (1.10.120) unstable; urgency=low
 
   * Add delay to brightness stepdown (Fixes: NB#253917)

@@ -1581,12 +1581,15 @@ static void trigger_visual_tklock(gboolean powerkey)
 				datapipe_get_gint(alarm_ui_state_pipe);
 	system_state_t system_state = datapipe_get_gint(system_state_pipe);
 	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+	submode_t submode = mce_get_submode_int32();
 
 	if ((is_tklock_enabled() == FALSE) ||
 	    (is_autorelock_enabled() == FALSE) ||
 	    (system_state != MCE_STATE_USER) ||
 	    (alarm_ui_state == MCE_ALARM_UI_VISIBLE_INT32) ||
-	    (alarm_ui_state == MCE_ALARM_UI_RINGING_INT32)) {
+	    (alarm_ui_state == MCE_ALARM_UI_RINGING_INT32) ||
+	    ((submode & MCE_POCKET_SUBMODE) != 0 &&
+	     (powerkey == FALSE))) {
 		goto EXIT;
 	}
 
