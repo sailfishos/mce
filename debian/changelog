@@ -1,4 +1,4 @@
-mce (1.10.122) UNRELEASED; urgency=low
+mce (1.10.122) unstable; urgency=low
 
   * Change ALS maximum threshold values (Fixes: NB#256471)
 
