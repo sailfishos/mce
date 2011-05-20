@@ -1221,6 +1221,9 @@ static void display_state_trigger(gconstpointer data)
 		   ((display_state == MCE_DISPLAY_OFF) ||
 		    (display_state == MCE_DISPLAY_LPM_OFF) ||
 		    (display_state == MCE_DISPLAY_LPM_ON))) {
+		/* Cancel delayed brightness adjustment */
+		cancel_brightness_delay_timer();
+
 		/* Set thresholds to not trigger ALS updates */
 		adjust_als_thresholds(0, als_threshold_max);
 	}
