@@ -140,6 +140,8 @@ static const gchar *als_calib0_path = NULL;
 static const gchar *als_calib1_path = NULL;
 /** Path to the ALS threshold range sysfs entry */
 static const gchar *als_threshold_range_path = NULL;
+/** Maximum als threshold value */
+static gint als_threshold_max = -1;
 /** Is there an ALS available? */
 static gboolean als_available = TRUE;
 /** Filter things through ALS? */
@@ -311,6 +313,7 @@ static als_type_t get_als_type(void)
 		als_device_path = ALS_DEVICE_PATH_AVAGO;
 		als_calib0_path = ALS_CALIB_PATH_AVAGO;
 		als_threshold_range_path = ALS_THRESHOLD_RANGE_PATH_AVAGO;
+		als_threshold_max = ALS_THRESHOLD_MAX_AVAGO;
 		display_als_profiles = display_als_profiles_rm696;
 		led_als_profiles = led_als_profiles_rm696;
 		use_median_filter = FALSE;
@@ -326,6 +329,7 @@ static als_type_t get_als_type(void)
 		als_device_path = ALS_DEVICE_PATH_DIPRO;
 		als_calib0_path = ALS_CALIB_PATH_DIPRO;
 		als_threshold_range_path = ALS_THRESHOLD_RANGE_PATH_DIPRO;
+		als_threshold_max = ALS_THRESHOLD_MAX_DIPRO;
 		display_als_profiles = display_als_profiles_rm680;
 		led_als_profiles = led_als_profiles_rm680;
 		kbd_als_profiles = kbd_als_profiles_rm680;
@@ -485,9 +489,9 @@ static gint filter_data(als_profile_struct *profiles, als_profile_t profile,
 		mce_log(LL_CRIT,
 			"The ALS profile %d lacks terminating { -1, -1 }",
 			profile);
-		*upper = 65535;
+		*upper = als_threshold_max;
 	} else {
-		*upper = (profiles[profile].range[i][1] == -1) ? 65535 : profiles[profile].range[i][1];
+		*upper = (profiles[profile].range[i][1] == -1) ? als_threshold_max : profiles[profile].range[i][1];
 	}
 
 	return profiles[profile].value[*level];
@@ -747,8 +751,8 @@ static void adjust_als_thresholds(gint lower, gint upper)
 			lower = cached_lower;
 			upper = cached_upper;
 		}
-	} else if ((lower == 0) &&(upper == 65535)) {
-		/* [0, 65535] is used to disable ALS reads;
+	} else if ((lower == 0) && (upper == als_threshold_max)) {
+		/* [0, MAX] is used to disable ALS reads;
 		 * do not cache these values
 		 */
 	} else {
@@ -1218,7 +1222,7 @@ static void display_state_trigger(gconstpointer data)
 		    (display_state == MCE_DISPLAY_LPM_OFF) ||
 		    (display_state == MCE_DISPLAY_LPM_ON))) {
 		/* Set thresholds to not trigger ALS updates */
-		adjust_als_thresholds(0, 65535);
+		adjust_als_thresholds(0, als_threshold_max);
 	}
 
 	/* Reprogram timer, if needed */

@@ -64,6 +64,8 @@ struct avago_als {
 #define ALS_CALIB_PATH_AVAGO		ALS_PATH_AVAGO "/als_calib"
 /** ALS threshold range for the Avago ALS */
 #define ALS_THRESHOLD_RANGE_PATH_AVAGO	ALS_PATH_AVAGO "/als_threshold_range"
+/** Maximun threshold value for the Avago ALS */
+#define ALS_THRESHOLD_MAX_AVAGO		655350
 
 
 /* Paths for the Dipro (BH1770GLC/SFH7770) ALS */
@@ -84,6 +86,8 @@ struct dipro_als {
 
 /** ALS threshold range for the Dipro ALS */
 #define ALS_THRESHOLD_RANGE_PATH_DIPRO	ALS_PATH_DIPRO "/als_thres_range"
+/** Maximun threshold value for the Dipro ALS */
+#define ALS_THRESHOLD_MAX_DIPRO		65535
 
 /* Paths for the TSL2563 ALS */
 

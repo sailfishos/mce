@@ -1,3 +1,9 @@
+mce (1.10.122) UNRELEASED; urgency=low
+
+  * Change ALS maximum threshold values (Fixes: NB#256471)
+
+ -- Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>  Fri, 20 May 2011 10:39:00 +0300
+
 mce (1.10.121) unstable; urgency=low
 
   * Ignore external events in proximity states (Fixes: NB#250798)
