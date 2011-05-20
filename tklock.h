@@ -45,15 +45,6 @@
  */
 #define DEFAULT_DOUBLETAP_GESTURE_POLICY		1
 
-/** Touchscreen controller frequency when waiting for double tap; in ms */
-#define TS_IDLE_INTERVAL_DOUBLETAP			50
-
-/** Touchscreen controller frequency when waiting for swipe; in ms */
-#define TS_IDLE_INTERVAL_SWIPE				5
-
-/** Touchscreen controller frequency normal behaviour; in ms */
-#define TS_IDLE_INTERVAL_NORMAL				20
-
 /** Proximity timeout for double tap gesture; in seconds */
 #define DEFAULT_DOUBLETAP_PROXIMITY_TIMEOUT		5
 
@@ -62,12 +53,6 @@
  * RM-680/RM-690/RM-696/RM-716 double tap gesture recognition
  */
 #define MCE_RM680_DOUBLETAP_SYSFS_PATH			"/sys/class/i2c-adapter/i2c-2/2-004b/wait_for_gesture"
-
-/**
- * SysFS interface to set
- * RM-680/RM-690/RM-696/RM-716 idle interval
- */
-#define MCE_RM680_IDLE_INTERVAL_SYSFS_PATH		"/sys/class/i2c-adapter/i2c-2/2-004b/idle_interval"
 
 /**
  * SysFS interface to enable/disable

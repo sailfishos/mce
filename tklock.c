@@ -458,8 +458,6 @@ static void set_doubletap_gesture(gboolean enable)
 
 	/* Adjust the touchscreen idle frequency */
 	if (enable == TRUE) {
-		(void)mce_write_number_string_to_file(MCE_RM680_IDLE_INTERVAL_SYSFS_PATH, TS_IDLE_INTERVAL_DOUBLETAP, NULL, TRUE, TRUE);
-
 		if (proximity_sensor_state == COVER_CLOSED)
 			setup_doubletap_proximity_timeout();
 	} else {
@@ -1259,8 +1257,6 @@ static gboolean disable_tklock(void)
 	if ((tklock_ui_state == MCE_TKLOCK_UI_NORMAL) || 
 	    (tklock_ui_state == MCE_TKLOCK_UI_LPM) ||
 	    (tklock_ui_state == MCE_TKLOCK_UI_SLIDER)) {
-		(void)mce_write_number_string_to_file(MCE_RM680_IDLE_INTERVAL_SYSFS_PATH, TS_IDLE_INTERVAL_NORMAL, NULL, TRUE, TRUE);
-
 		if (close_tklock_ui() == FALSE)
 			goto EXIT;
 	}
@@ -1608,7 +1604,6 @@ static void trigger_visual_tklock(gboolean powerkey)
 			(void)execute_datapipe(&display_state_pipe,
 					       GINT_TO_POINTER(MCE_DISPLAY_ON),
 					       USE_INDATA, CACHE_INDATA);
-			(void)mce_write_number_string_to_file(MCE_RM680_IDLE_INTERVAL_SYSFS_PATH, TS_IDLE_INTERVAL_SWIPE, NULL, TRUE, TRUE);
 		}
 	} else if (powerkey == TRUE) {
 		/* XXX: we probably want to make this configurable */
