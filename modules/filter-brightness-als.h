@@ -182,16 +182,16 @@ typedef struct {
 
 /** Colour phase calibration for RM-696/RM-716 */
 static cpa_profile_struct rm696_phase_profile[] = {
-	{	/* 0-100 lux; quite neutral colours compared to normal OLED */
+	{	/* 0-100 lux; */
 		{ 0, 3.3 * 100, 0 },
-		"  215   20   20"
-		"   10  235   10"
-		"    0    0  255"
-	}, {	/* 100-1000 lux; slightly decreased red and green saturation */
+		"  199   28   28"
+		"    8  209   38"
+		"    8    8  239"
+	}, {	/* 100-1000 lux; same as previous */
 		{ 3.3 * 100, 3.3 * 1000, 0 },
-		"  235   10   10"
-		"    5  245    5"
-		"    0    0  255"
+		"  199   28   28"
+		"    8  209   38"
+		"    8    8  239"
 	}, {	/* 1000-10000 lux; normal OLED colours */
 		{ 3.3 * 1000, 3.3 * 10000, 0 },
 		"  255    0    0"
