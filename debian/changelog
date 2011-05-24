@@ -1,3 +1,11 @@
+mce (1.10.123) unstable; urgency=low
+
+  * Enable proximity relock during call after powerkey unlock 
+    (Fixes: NB#255573)
+  * Tune color calibration (Fixes: NB#258964)
+
+ -- Jukka Turunen <ext-jukka.t.turunen@nokia.com>  Tue, 24 May 2011 14:41:25 +0300
+
 mce (1.10.122) unstable; urgency=low
 
   * Change ALS maximum threshold values (Fixes: NB#256471)

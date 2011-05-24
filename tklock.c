@@ -1480,6 +1480,7 @@ EXIT:
 static void set_tklock_state(lock_state_t lock_state)
 {
 	submode_t submode = mce_get_submode_int32();
+	call_state_t call_state = datapipe_get_gint(call_state_pipe);
 
 	/* Ignore requests to enable tklock during bootup */
 	switch (lock_state) {
@@ -1499,6 +1500,10 @@ static void set_tklock_state(lock_state_t lock_state)
 
 	switch (lock_state) {
 	case LOCK_OFF:
+		/* Allow proximity relock if call ringing or active */
+		if (call_state == CALL_STATE_RINGING ||
+			call_state == CALL_STATE_ACTIVE)
+			inhibit_proximity_relock = MCE_ALLOW_PROXIMITY_RELOCK;
 		(void)disable_tklock();
 		(void)disable_eveater();
 		disable_autorelock();
