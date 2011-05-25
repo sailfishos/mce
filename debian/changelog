@@ -1,3 +1,9 @@
+mce (1.10.124) unstable; urgency=low
+
+  * Fix USB connection turning off proximity locking (Fixes: NB#250798)
+
+ -- Jukka Turunen <ext-jukka.t.turunen@nokia.com>  Wed, 25 May 2011 14:43:34 +0300
+
 mce (1.10.123) unstable; urgency=low
 
   * Enable proximity relock during call after powerkey unlock 

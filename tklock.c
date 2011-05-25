@@ -287,6 +287,18 @@ static gboolean is_autorelock_enabled(void)
 }
 
 /**
+ * Query the pocket mode status
+ *
+ * @return TRUE if the pocket mode is enabled,
+ *         FALSE if the pocket mode is disabled
+ */
+static gboolean is_pocket_mode_enabled(void) G_GNUC_PURE;
+static gboolean is_pocket_mode_enabled(void)
+{
+	return ((mce_get_submode_int32() & MCE_POCKET_SUBMODE) != 0);
+}
+
+/**
  * Enable auto-relock
  */
 static void enable_autorelock(void)
@@ -1500,6 +1512,8 @@ static void set_tklock_state(lock_state_t lock_state)
 
 	switch (lock_state) {
 	case LOCK_OFF:
+		if (is_tklock_enabled_by_proximity() || is_pocket_mode_enabled())
+			goto EXIT;
 		/* Allow proximity relock if call ringing or active */
 		if (call_state == CALL_STATE_RINGING ||
 			call_state == CALL_STATE_ACTIVE)
@@ -2720,7 +2734,8 @@ static void usb_cable_trigger(gconstpointer data)
 	system_state_t system_state = datapipe_get_gint(system_state_pipe);
 	usb_cable_state_t usb_cable_state = GPOINTER_TO_INT(data);
 
-	if ((system_state != MCE_STATE_USER))
+	if ((system_state != MCE_STATE_USER) ||
+		is_tklock_enabled_by_proximity() || is_pocket_mode_enabled())
 		goto EXIT;
 
 	switch (usb_cable_state) {
