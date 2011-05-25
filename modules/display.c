@@ -2484,13 +2484,13 @@ static gpointer display_state_filter(gpointer data)
 	     (cached_display_state == MCE_DISPLAY_LPM_OFF)) &&
 	    ((display_state != MCE_DISPLAY_LPM_OFF) &&
 	     (display_state != MCE_DISPLAY_OFF)) &&
-	    ((((system_state == MCE_STATE_SHUTDOWN) ||
-	       (system_state == MCE_STATE_REBOOT)) &&
-	       (submode & MCE_TRANSITION_SUBMODE)) ||
-	     (system_state == MCE_STATE_UNDEF) ||
-	     ((system_state == MCE_STATE_ACTDEAD) &&
+	    ((system_state == MCE_STATE_UNDEF) ||
+		 ((submode & MCE_TRANSITION_SUBMODE) && 
+		  (((system_state == MCE_STATE_SHUTDOWN) ||
+	       (system_state == MCE_STATE_REBOOT)) ||
+	      ((system_state == MCE_STATE_ACTDEAD) &&
 	      ((alarm_ui_state != MCE_ALARM_UI_VISIBLE_INT32) &&
-	       (alarm_ui_state != MCE_ALARM_UI_RINGING_INT32))))) {
+	       (alarm_ui_state != MCE_ALARM_UI_RINGING_INT32))))))) {
 		mce_log(LL_DEBUG,
 			"Ignoring display state change request %d "
 			"due to shutdown/reboot/acting dead",

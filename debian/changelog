@@ -1,3 +1,9 @@
+mce (1.10.125) unstable; urgency=low
+
+  * Screen can be activated in ACT_DEAD mode (Fixes: NB#258492)
+
+ -- Jukka Turunen <ext-jukka.t.turunen@nokia.com>  Wed, 25 May 2011 16:39:05 +0300
+
 mce (1.10.124) unstable; urgency=low
 
   * Fix USB connection turning off proximity locking (Fixes: NB#250798)
