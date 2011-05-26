@@ -1,3 +1,9 @@
+mce (1.10.126) unstable; urgency=low
+
+  * Fix headset jack turning off proximity locking (Fixes: NB#250798)
+
+ -- Jukka Turunen <ext-jukka.t.turunen@nokia.com>  Thu, 26 May 2011 11:58:45 +0300
+
 mce (1.10.125) unstable; urgency=low
 
   * Screen can be activated in ACT_DEAD mode (Fixes: NB#258492)

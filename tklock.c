@@ -2762,7 +2762,8 @@ static void jack_sense_trigger(gconstpointer data)
 	system_state_t system_state = datapipe_get_gint(system_state_pipe);
 	cover_state_t jack_sense_state = GPOINTER_TO_INT(data);
 
-	if ((system_state != MCE_STATE_USER))
+	if ((system_state != MCE_STATE_USER) ||
+		is_tklock_enabled_by_proximity() || is_pocket_mode_enabled())
 		goto EXIT;
 
 	switch (jack_sense_state) {

@@ -2485,7 +2485,7 @@ static gpointer display_state_filter(gpointer data)
 	    ((display_state != MCE_DISPLAY_LPM_OFF) &&
 	     (display_state != MCE_DISPLAY_OFF)) &&
 	    ((system_state == MCE_STATE_UNDEF) ||
-		 ((submode & MCE_TRANSITION_SUBMODE) && 
+		 ((submode & MCE_TRANSITION_SUBMODE) &&
 		  (((system_state == MCE_STATE_SHUTDOWN) ||
 	       (system_state == MCE_STATE_REBOOT)) ||
 	      ((system_state == MCE_STATE_ACTDEAD) &&
