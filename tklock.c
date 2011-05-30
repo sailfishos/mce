@@ -2624,6 +2624,8 @@ static void call_state_trigger(gconstpointer data)
 {
 	static call_state_t old_call_state = CALL_STATE_INVALID;
 	call_state_t call_state = GPOINTER_TO_INT(data);
+	/* Saving the state for not to interfere with old call paths */
+	gboolean proximity_locked = is_tklock_enabled_by_proximity();
 
 	switch (call_state) {
 	case CALL_STATE_RINGING:
@@ -2680,12 +2682,11 @@ static void call_state_trigger(gconstpointer data)
 			enable_tklock_policy();
 		} else {
 			/* Disable autorelock unless tklock is active */
-			if (is_tklock_enabled() == FALSE) {
+			if (is_tklock_enabled() == FALSE)
 				disable_autorelock();
-
-				/* Unblank screen */
+			/* Unblank screen */
+			if (is_tklock_enabled() == FALSE || proximity_locked == TRUE)
 				(void)execute_datapipe(&display_state_pipe, GINT_TO_POINTER(MCE_DISPLAY_ON), USE_INDATA, CACHE_INDATA);
-			}
 		}
 
 		break;
@@ -2719,6 +2720,15 @@ static void audio_route_trigger(gconstpointer data)
 			inhibit_proximity_relock =
 				MCE_TEMP_INHIBIT_PROXIMITY_RELOCK;
 		break;
+	}
+
+	/* process_proximity_state() would be better place for this */
+	if (is_tklock_enabled_by_proximity() == TRUE) {
+		mce_rem_submode_int32(MCE_PROXIMITY_TKLOCK_SUBMODE);
+		/* disable_tklock() resets mode, we are not in this branch if we're
+		 * in LPM/pocket mode or normally tklocked */
+		disable_tklock();
+		(void)execute_datapipe(&display_state_pipe, GINT_TO_POINTER(MCE_DISPLAY_ON), USE_INDATA, CACHE_INDATA);
 	}
 
 	process_proximity_state();
