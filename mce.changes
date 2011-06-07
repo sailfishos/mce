@@ -1,3 +1,52 @@
+* Wed May 11 2011 Mika Laitio  <ext-mika.laitio@nokia.com> 1.10.92-14
+- BMC#17416 fix by checking from the tklock whether the
+  screen lock ui active or not when handling the power button
+  event. Patch is made to updated version of
+  mce-1.10.92-pwr-btn-fix-for-display-blank-and-unblank.patch
+- reorganized the order how patches are applied on spec file
+  as 2 of the patches touches same tklock file
+
+* Wed May 11 2011 Timo Rongas <timo.rongas@digia.com> 1.10.92-13
+- Added ofono signal listening to call state module. Knowing call
+  state makes it possible to enable screen blanking/locking via
+  proximity sensor during calls (BMC#14990)
+
+* Wed May 11 2011 Mika Laitio  <ext-mika.laitio@nokia.com> 1.10.92-12
+- BMC#17413 fix with patch
+  mce-1.10.92-fix-n900-tsc2005-sysfs-disable-path-for-newer-kernels.patch.
+  Sysfs path for disabling/enabling the touschreen has changed in
+  newer kernels for N900 to /sys/devices/platform/omap2_mcspi.1/spi1.0/disable
+  This patch will make mce to check both the new and old path for finding
+  the correct sysfs file path.
+
+* Mon May 09 2011 Mika Laitio  <ext-mika.laitio@nokia.com> 1.10.92-11
+- BMC#15953 Changed the behaviour of power key in unlock case.
+  When the screen is off(blank) and power key is pressed, screen is unblanked
+  but the "lock ui" application is not disabled. Lock key will work just
+  like with the previous version, so it will unblank the screen and
+  also disable the lock ui application.
+
+* Fri May 06 2011 Mika Laitio  <ext-mika.laitio@nokia.com> 1.10.92-10
+- When the device is booted, the initial blanking delay needs to be
+  longer to prevent the display to be blanked during the device
+  boot-up or immediately after that.
+- Simplified mce-1.10.92-pwr-btn-fix-for-display-blank-and-unblank.patch
+  by taking out MCE_DISPLAY_TOGGLE related code that this patch
+  added, because it was not needed anymore.
+
+* Thu May 05 2011 Mika Laitio  <ext-mika.laitio@nokia.com> 1.10.92-9
+- (BMC#15953) Fixed the usage of lock key for locking the screen.
+- Fixedthe power button usage for blanking the screen to follow the
+  same behaviour with lock/unlock key.
+  When the screen is now blanked, it can not be activated anymore
+  by simply touching the touchscreen. Instead the user can unblank 
+  the display either by using the power button or lock/unlock button again.
+- The power button will now blank/unblank the screen after release event
+  instead of press-event. This will allow user to see the shutdown
+  ui, in the case user keeps power button down for a long time in order
+  to shutdown the device.
+- increased the blanking timeout during inactivity from 30 to 60 sec
+
 * Mon Apr 18 2011 Mika Laitio  <ext-mika.laitio@nokia.com> 1.10.92-8
 - (BMC#16313) Added dependency from mce to dsme because mce fails to start
   if dsme is not running.

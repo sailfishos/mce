@@ -1,0 +1,48 @@
+From b881236517b9f69c75a0622e68a3f1ecc2e8f07b Mon Sep 17 00:00:00 2001
+From: Mika Laitio <lamikr@pilppa.org>
+Date: Wed, 11 May 2011 14:52:22 +0300
+Subject: [PATCH 5/5] fix N900 tsc2005 disable sysfs disable path for newer kernels
+
+Add new path to check for enable/disable support of touschreen during
+the display blank/unblank. In newer kernels the disable path has changed from
+/sys/devices/platform/omap2_mcspi.1/spi1.0/ts_disable
+to
+/sys/devices/platform/omap2_mcspi.1/spi1.0/disable
+
+Signed-off-by: Mika Laitio <ext-mika.1.laitio@nokia.com>
+---
+ tklock.c |    3 +++
+ tklock.h |    3 ++-
+ 2 files changed, 5 insertions(+), 1 deletions(-)
+
+diff --git a/tklock.c b/tklock.c
+index a9a513b..0ec3ccb 100644
+--- a/tklock.c
++++ b/tklock.c
+@@ -2529,6 +2529,9 @@ gboolean mce_tklock_init(void)
+ 	if (g_access(MCE_RM680_TOUCHSCREEN_SYSFS_DISABLE_PATH, W_OK) == 0) {
+ 		mce_touchscreen_sysfs_disable_path =
+ 			MCE_RM680_TOUCHSCREEN_SYSFS_DISABLE_PATH;
++	} else if (g_access(MCE_RX44_TOUCHSCREEN_SYSFS_DISABLE_PATH_KERNEL2637, W_OK) == 0) {
++		mce_touchscreen_sysfs_disable_path =
++			MCE_RX44_TOUCHSCREEN_SYSFS_DISABLE_PATH_KERNEL2637;
+ 	} else if (g_access(MCE_RX44_TOUCHSCREEN_SYSFS_DISABLE_PATH, W_OK) == 0) {
+ 		mce_touchscreen_sysfs_disable_path =
+ 			MCE_RX44_TOUCHSCREEN_SYSFS_DISABLE_PATH;
+diff --git a/tklock.h b/tklock.h
+index a963229..3f2e2a9 100644
+--- a/tklock.h
++++ b/tklock.h
+@@ -43,7 +43,8 @@
+ #define MCE_RM680_TOUCHSCREEN_SYSFS_DISABLE_PATH	"/sys/class/i2c-adapter/i2c-2/2-004b/disable_ts"
+ 
+ /** SysFS interface to enable/disable RX-44/RX-48/RX-51 touchscreen IRQs */
+-#define MCE_RX44_TOUCHSCREEN_SYSFS_DISABLE_PATH		"/sys/devices/platform/omap2_mcspi.1/spi1.0/disable_ts"
++#define MCE_RX44_TOUCHSCREEN_SYSFS_DISABLE_PATH		    "/sys/devices/platform/omap2_mcspi.1/spi1.0/disable_ts"
++#define MCE_RX44_TOUCHSCREEN_SYSFS_DISABLE_PATH_KERNEL2637	"/sys/devices/platform/omap2_mcspi.1/spi1.0/disable"
+ 
+ /** Default fallback setting for the touchscreen/keypad autolock */
+ #define DEFAULT_TK_AUTOLOCK		FALSE		/* FALSE / TRUE */
+-- 
+1.7.1
+

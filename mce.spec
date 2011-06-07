@@ -1,6 +1,6 @@
 Name:     mce
 Version:  1.10.92
-Release:  8
+Release:  14
 Summary:  Mode Control Entity for Nokia mobile computers
 Group:    System/System Control
 License:  LGPLv2
@@ -12,8 +12,10 @@ Patch2:   %{name}-1.10.90-no-werror.patch
 Patch3:   %{name}-1.10.92-add-and-enable-displaymeego-module.patch
 Patch4:   %{name}-1.10.92-silent-fd-close.patch
 Patch5:   %{name}-1.10.92-pwr-button-event-name.patch
-Patch6:   %{name}-1.10.92-fix-delay-when-processing-touchscreen-events.patch
-Patch7:   %{name}-1.10.92-pwr-btn-fix-for-display-blank-and-unblank.patch
+Patch6:   %{name}-1.10.92-add-ofono-call-state-handling.patch
+Patch7:   %{name}-1.10.92-fix-delay-when-processing-touchscreen-events.patch
+Patch8:   %{name}-1.10.92-pwr-btn-fix-for-display-blank-and-unblank.patch
+Patch9:   %{name}-1.10.92-fix-n900-tsc2005-sysfs-disable-path-for-newer-kernels.patch
 
 BuildRequires: pkgconfig(dbus-1) >= 1.0.2
 BuildRequires: pkgconfig(dbus-glib-1)
@@ -50,6 +52,8 @@ the Mode Control Entity and to get mode information.
 %patch5 -p1
 %patch6 -p1
 %patch7 -p1
+%patch8 -p1
+%patch9 -p1
 
 %build
 make %{?_smp_mflags}
