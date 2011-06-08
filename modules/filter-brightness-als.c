@@ -1215,7 +1215,8 @@ static void display_state_trigger(gconstpointer data)
 		}
 
 		/* Restore threshold values */
-		adjust_als_thresholds(-1, -1);
+		if (als_external_refcount == 0)
+			adjust_als_thresholds(-1, -1);
 	} else if (((old_display_state == MCE_DISPLAY_ON) ||
 	            (old_display_state == MCE_DISPLAY_DIM)) &&
 		   ((display_state == MCE_DISPLAY_OFF) ||
@@ -1225,7 +1226,8 @@ static void display_state_trigger(gconstpointer data)
 		cancel_brightness_delay_timer();
 
 		/* Set thresholds to not trigger ALS updates */
-		adjust_als_thresholds(0, als_threshold_max);
+		if (als_external_refcount == 0)
+			adjust_als_thresholds(0, als_threshold_max);
 	}
 
 	/* Reprogram timer, if needed */
@@ -1282,8 +1284,14 @@ static gboolean als_owner_monitor_dbus_cb(DBusMessage *const msg)
 	} else {
 		als_external_refcount = retval;
 
-		if (als_external_refcount == 0)
-			adjust_als_thresholds(-1, -1);
+		if (als_external_refcount == 0) {
+			if (display_state == MCE_DISPLAY_OFF ||
+			    display_state == MCE_DISPLAY_LPM_OFF ||
+			    display_state == MCE_DISPLAY_LPM_ON)
+				adjust_als_thresholds(0, als_threshold_max);
+			else
+				adjust_als_thresholds(-1, -1);
+		}
 	}
 
 	status = TRUE;
