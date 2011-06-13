@@ -1608,6 +1608,9 @@ static void trigger_visual_tklock(gboolean powerkey)
 		goto EXIT;
 	}
 
+	/* If woken from pocket mode, doubletap inhibit might stay on */
+	doubletap_gesture_inhibited = FALSE;
+
 	if (powerkey == TRUE)
 		inhibit_proximity_relock = MCE_IGNORE_PROXIMITY_EVENTS;
 
