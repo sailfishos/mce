@@ -1,3 +1,10 @@
+mce (1.10.129) unstable; urgency=low
+
+  * Power button works after reminder dbus service crash
+    (Fixes: NB#266551)
+
+ -- Jukka Turunen <ext-jukka.t.turunen@nokia.com>  Fri, 17 Jun 2011 10:43:40 +0300
+
 mce (1.10.128) unstable; urgency=low
 
   * Doubletap no more disabled after powerkey trigger from pocket mode

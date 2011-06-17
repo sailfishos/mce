@@ -59,8 +59,14 @@ typedef enum {
 /** Module name */
 #define MODULE_NAME		"alarm"
 
+/** Maximum number of alarm D-Bus objects requesting alarm mode */
+#define ALARM_MAX_MONITORED	5
+
 /** Functionality provided by this module */
 static const gchar *const provides[] = { MODULE_NAME, NULL };
+
+/** Alarm D-Bus service monitor list */
+static GSList *alarm_owner_monitor_list = NULL;
 
 /** Module information */
 G_MODULE_EXPORT module_info_struct module_info = {
@@ -73,6 +79,76 @@ G_MODULE_EXPORT module_info_struct module_info = {
 };
 
 /**
+ * Alarm D-Bus service monitor callback.
+ *
+ * @param msg The D-Bus message
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean alarm_owner_monitor_dbus_cb(DBusMessage *const msg)
+{
+	gboolean status = FALSE;
+	const gchar *old_name;
+	const gchar *new_name;
+	const gchar *service;
+	gssize retval;
+
+	DBusError error;
+	/* Register error channel */
+	dbus_error_init(&error);
+
+	/* Extract result */
+	if (dbus_message_get_args(msg, &error,
+							  DBUS_TYPE_STRING, &service,
+							  DBUS_TYPE_STRING, &old_name,
+							  DBUS_TYPE_STRING, &new_name,
+							  DBUS_TYPE_INVALID) == FALSE) {
+		mce_log(LL_ERR,
+				"Failed to get argument from %s.%s; %s",
+				"org.freedesktop.DBus", "NameOwnerChanged",
+				error.message);
+		dbus_error_free(&error);
+		goto EXIT;
+	}
+
+	retval = mce_dbus_owner_monitor_remove(old_name, &alarm_owner_monitor_list);
+
+	if (retval == 0) {
+		/* We didn't get alarm off from the same service before it
+		 * unregistered (e.g. due crash), turn alarm state off so at
+		 * least powerkey works again.
+		 */
+		mce_log(LL_DEBUG, "visual reminder service died, "
+				"turning off alarm state");
+		(void)execute_datapipe(&alarm_ui_state_pipe,
+							   GINT_TO_POINTER(MCE_ALARM_UI_OFF_INT32),
+							   USE_INDATA, CACHE_INDATA);
+	}
+
+	status = TRUE;
+
+ EXIT:
+	return status;
+
+}
+
+/**
+ * Install alarm D-Bus service monitor callback.
+ *
+ * @param sender sender D-Bus address
+ */
+static void setup_alarm_dbus_monitor(const gchar* sender)
+{
+	mce_log(LL_DEBUG, "adding dbus monitor for: '%s'" ,sender);
+	/* No need to check return value, if it does not succeed, not much
+	 * we can do / fall back to
+	 */
+	mce_dbus_owner_monitor_add(sender,
+							   alarm_owner_monitor_dbus_cb,
+							   &alarm_owner_monitor_list,
+							   ALARM_MAX_MONITORED);
+}
+
+/**
  * D-Bus callback for the alarm dialog status signal
  *
  * @param msg The D-Bus message
@@ -82,6 +158,7 @@ static gboolean alarm_dialog_status_dbus_cb(DBusMessage *const msg)
 {
 	alarm_ui_state_t alarm_ui_state = MCE_ALARM_UI_INVALID_INT32;
 	gboolean status = FALSE;
+	const gchar *sender = dbus_message_get_sender(msg);
 	DBusError error;
 	dbus_int32_t dialog_status;
 
@@ -107,14 +184,17 @@ static gboolean alarm_dialog_status_dbus_cb(DBusMessage *const msg)
 	/* Convert alarm dialog status to to MCE alarm ui enum */
 	switch (dialog_status) {
 	case VISUAL_REMINDER_ON_SCREEN:
+		setup_alarm_dbus_monitor(sender);
 		alarm_ui_state = MCE_ALARM_UI_RINGING_INT32;
 		break;
 
 	case VISUAL_REMINDER_ON_SCREEN_NO_SOUND:
+		setup_alarm_dbus_monitor(sender);
 		alarm_ui_state = MCE_ALARM_UI_VISIBLE_INT32;
 		break;
 
 	case VISUAL_REMINDER_NOT_ON_SCREEN:
+		mce_dbus_owner_monitor_remove(sender, &alarm_owner_monitor_list);
 		alarm_ui_state = MCE_ALARM_UI_OFF_INT32;
 		break;
 
