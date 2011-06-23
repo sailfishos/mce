@@ -623,6 +623,18 @@ static void njoy_set_brightness(gint brightness)
 		return;
 	}
 
+	/* This is a bit questionable, but currently 696 does not have any
+	 * use for brightness setting, it only causes unwanted LED
+	 * turn-ons when used with ALS. Let zero brightnesses through to
+	 * be a bit safer.
+	 */
+	if ((get_product_id() == PRODUCT_RM696) &&
+		((brightness > 0) ||
+		 (brightness == -1 && active_brightness != 0))) {
+		mce_log(LL_DEBUG, "don't set useless brightness value %d", brightness);
+		return;
+	}
+
 	if (brightness != -1) {
 		if (active_brightness == brightness)
 			return;

@@ -1,3 +1,9 @@
+mce (1.10.130) unstable; urgency=low
+
+  * Don't set useless led brightness for 696 (Fixes: NB#268093)
+
+ -- Jukka Turunen <ext-jukka.t.turunen@nokia.com>  Thu, 23 Jun 2011 14:50:05 +0300
+
 mce (1.10.129) unstable; urgency=low
 
   * Power button works after reminder dbus service crash
