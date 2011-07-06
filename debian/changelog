@@ -1,3 +1,9 @@
+mce (1.10.131) unstable; urgency=low
+
+  * Default zero doubletap proximity timeout (Fixes: NB#270915)
+
+ -- Jukka Turunen <ext-jukka.t.turunen@nokia.com>  Wed, 06 Jul 2011 14:41:43 +0300
+
 mce (1.10.130) unstable; urgency=low
 
   * Don't set useless led brightness for 696 (Fixes: NB#268093)

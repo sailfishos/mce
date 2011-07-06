@@ -46,7 +46,7 @@
 #define DEFAULT_DOUBLETAP_GESTURE_POLICY		1
 
 /** Proximity timeout for double tap gesture; in seconds */
-#define DEFAULT_DOUBLETAP_PROXIMITY_TIMEOUT		5
+#define DEFAULT_DOUBLETAP_PROXIMITY_TIMEOUT		0
 
 /**
  * SysFS interface to enable/disable
