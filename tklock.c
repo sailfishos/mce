@@ -426,14 +426,23 @@ static void cancel_doubletap_proximity_timeout(void)
  */
 static void setup_doubletap_proximity_timeout(void)
 {
+	gint timeout = DEFAULT_DOUBLETAP_PROXIMITY_TIMEOUT;
+	call_state_t call_state = datapipe_get_gint(call_state_pipe);
+	audio_route_t audio_route = datapipe_get_gint(audio_route_pipe);
 	cancel_doubletap_proximity_timeout();
 
 	if (doubletap_gesture_enabled == FALSE)
 		goto EXIT;
 
 	/* Setup new timeout */
+	if ((audio_route == AUDIO_ROUTE_HANDSET) &&
+	    ((call_state == CALL_STATE_RINGING) ||
+	     (call_state == CALL_STATE_ACTIVE)))
+		timeout = 0;
+
 	doubletap_proximity_timeout_cb_id =
-		g_timeout_add_seconds(DEFAULT_DOUBLETAP_PROXIMITY_TIMEOUT, doubletap_proximity_timeout_cb, NULL);
+		g_timeout_add_seconds(timeout,
+				      doubletap_proximity_timeout_cb, NULL);
 
 EXIT:
 	return;

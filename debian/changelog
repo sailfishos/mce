@@ -1,6 +1,8 @@
 mce (1.10.135~) UNRELEASED; urgency=low
 
   * Don't touch ALS thresholds in streaming mode (Fixes: NB#259582)
+  * Disable LPM and double tap immediately on proximity in tklock during
+    call (Fixes: NB#264676)
 
  -- Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>  Thu, 21 Jul 2011 13:06:33 +0300
 
