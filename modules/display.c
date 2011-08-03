@@ -1492,6 +1492,7 @@ static void cancel_dim_timeout(void)
  */
 static void setup_dim_timeout(void)
 {
+	system_state_t system_state = datapipe_get_gint(system_state_pipe);
 	gint dim_timeout = disp_dim_timeout + bootup_dim_additional_timeout;
 
 	cancel_blank_timeout();
@@ -1499,7 +1500,8 @@ static void setup_dim_timeout(void)
 	cancel_lpm_timeout();
 	cancel_dim_timeout();
 
-	if (dimming_inhibited == TRUE)
+	if ((dimming_inhibited == TRUE) ||
+		(system_state == MCE_STATE_ACTDEAD))
 		return;
 
 	if (adaptive_dimming_enabled == TRUE) {

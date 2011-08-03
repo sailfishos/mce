@@ -1,3 +1,9 @@
+mce (1.10.132) UNRELEASED; urgency=low
+
+  * Remove dim timeout in act_dead (Fixes: NB#267569)
+
+ -- Jukka Turunen <ext-jukka.t.turunen@nokia.com>  Wed, 03 Aug 2011 13:46:23 +0300
+
 mce (1.10.131) unstable; urgency=low
 
   * Default zero doubletap proximity timeout (Fixes: NB#270915)
