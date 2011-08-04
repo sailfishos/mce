@@ -1,4 +1,4 @@
-mce (1.10.132) UNRELEASED; urgency=low
+mce (1.10.132) unstable; urgency=low
 
   * Remove dim timeout in act_dead (Fixes: NB#267569)
 
