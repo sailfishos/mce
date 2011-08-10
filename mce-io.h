@@ -37,6 +37,8 @@ typedef enum {
 
 /** Function pointer for I/O monitor callback */
 typedef gboolean (*iomon_cb)(gpointer data, gsize bytes_read);
+/** Function pointer for I/O monitor error callback */
+typedef void (*iomon_err_cb)(gpointer data, GIOCondition condition);
 
 gboolean mce_close_file(const gchar *const file, FILE **fp);
 gboolean mce_read_chunk_from_file(const gchar *const file, void **data,
@@ -69,6 +71,7 @@ gconstpointer mce_register_io_monitor_chunk(const gint fd,
 					    gboolean rewind_policy,
 					    iomon_cb callback,
 					    gulong chunk_size);
+void mce_set_io_monitor_err_cb(gconstpointer io_monitor, iomon_err_cb err_cb);
 void mce_unregister_io_monitor(gconstpointer io_monitor);
 const gchar *mce_get_io_monitor_name(gconstpointer io_monitor);
 int mce_get_io_monitor_fd(gconstpointer io_monitor);

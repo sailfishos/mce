@@ -787,6 +787,22 @@ static gint iomon_name_compare(gconstpointer iomon_id,
 }
 
 /**
+ * I/O monitor error callback for misc devices. Removes device
+ * if suitable error condition.
+ *
+ * @param iomon An I/O monitor cookie
+ * @param condition I/O condition
+ */
+static void misc_err_cb(gpointer iomon, GIOCondition condition)
+{
+	if (condition == G_IO_HUP) {
+		mce_log(LL_DEBUG, "removing monitor for misc device %s", mce_get_io_monitor_name(iomon));
+		misc_dev_list = g_slist_remove(misc_dev_list, iomon);
+		mce_unregister_io_monitor(iomon);
+	}
+}
+
+/**
  * Match and register I/O monitor
  */
 static void match_and_register_io_monitor(const gchar *filename)
@@ -855,6 +871,7 @@ static void match_and_register_io_monitor(const gchar *filename)
 		 * don't add the device to the list
 		 */
 		if (iomon != NULL) {
+			mce_set_io_monitor_err_cb(iomon, misc_err_cb);
 			misc_dev_list = g_slist_prepend(misc_dev_list, (gpointer)iomon);
 		}
 	}

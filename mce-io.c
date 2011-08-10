@@ -51,6 +51,7 @@ typedef struct {
 	gchar *file;				/**< Monitored file */
 	GIOChannel *iochan;			/**< I/O channel */
 	iomon_cb callback;			/**< Callback */
+	iomon_err_cb err_callback;	/**< error callback */
 	gulong chunk_size;			/**< Read-chunk size */
 	guint data_source_id;			/**< GSource ID for data */
 	guint error_source_id;			/**< GSource ID for errors */
@@ -907,6 +908,11 @@ EXIT:
 		exit(EXIT_FAILURE);
 	}
 
+	/* Call error callback if set */
+	if (iomon->err_callback) {
+		iomon->err_callback(iomon, condition);
+	}
+
 	return TRUE;
 }
 
@@ -1083,6 +1089,7 @@ static iomon_struct *mce_register_io_monitor(const gint fd,
 	iomon->latest_io_condition = 0;
 	iomon->rewind = FALSE;
 	iomon->chunk_size = 0;
+	iomon->err_callback = 0;
 
 	file_monitors = g_slist_prepend(file_monitors, iomon);
 
@@ -1288,6 +1295,22 @@ void mce_unregister_io_monitor(gconstpointer io_monitor)
 
 EXIT:
 	return;
+}
+
+/**
+ * Set error handling callback for I/O monitor. Error handling callback
+ * is called from io_error_cb. 
+ *
+ * @param io_monitor A pointer to the I/O monitor
+ * @param err_cb A pointer to the error callback. Can be 0 to unset the cb.
+ */
+void mce_set_io_monitor_err_cb(gconstpointer io_monitor, iomon_err_cb err_cb)
+{
+	iomon_struct *iomon = (iomon_struct *)io_monitor;
+
+	if (iomon) {
+		iomon->err_callback = err_cb;
+	}
 }
 
 /**
