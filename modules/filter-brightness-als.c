@@ -876,6 +876,7 @@ static gboolean brightness_delay_timer_cb(gpointer data)
 
 	(void)data;
 
+	brightness_delay_timer_cb_id = 0;
 	/* No delay for lux setting this time, as we already waited. */
 	als_iomon_common(delayed_lux, TRUE);
 
@@ -917,12 +918,7 @@ static void als_iomon_common(gint lux, gboolean no_delay)
 
 	/* Step-down is delayed */
 	if (als_lux > new_lux) {
-		if (no_delay) {
-			/* brightness_delay_timer_cb called us. cb removes itself from
-			 * event loop by returning FALSE, so we just clear timer id
-			 */
-			brightness_delay_timer_cb_id = 0;
-		} else {
+		if (no_delay == FALSE) {
 			/* Setup timer if not already active and store lux
 			 * value, then exit
 			 */

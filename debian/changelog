@@ -1,3 +1,9 @@
+mce (1.11.0~) UNRELEASED; urgency=low
+
+  * Clear brightness stepdown timer callback id (Fixes: NB#266540)
+
+ -- Jukka Turunen <ext-jukka.t.turunen@nokia.com>  Tue, 23 Aug 2011 14:35:14 +0300
+
 mce (1.10.135~) UNRELEASED; urgency=low
 
   * Don't touch ALS thresholds in streaming mode (Fixes: NB#259582)
