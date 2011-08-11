@@ -1,3 +1,9 @@
+mce (1.10.133) unstable; urgency=low
+
+  * Enable automatic display blanking in MALF state (Fixes: NB#271980)
+
+ -- Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>  Thu, 11 Aug 2011 14:12:47 +0300
+
 mce (1.10.132) unstable; urgency=low
 
   * Remove dim timeout in act_dead (Fixes: NB#267569)
