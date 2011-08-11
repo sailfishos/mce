@@ -486,12 +486,13 @@ static gboolean is_dismiss_low_power_mode_enabled(void)
 	call_state_t call_state = datapipe_get_gint(call_state_pipe);
 	submode_t submode = mce_get_submode_int32();
 
-	return ((((use_low_power_mode == TRUE) &&
+	return (((((use_low_power_mode == TRUE) &&
 		((call_state == CALL_STATE_RINGING) ||
 		 (call_state == CALL_STATE_ACTIVE))) &&
 	        (((submode & MCE_PROXIMITY_TKLOCK_SUBMODE) != 0) ||
 		 (((submode & MCE_TKLOCK_SUBMODE) == 0) &&
-		  ((submode & MCE_PROXIMITY_TKLOCK_SUBMODE) == 0)))) ? TRUE : FALSE);
+		  ((submode & MCE_PROXIMITY_TKLOCK_SUBMODE) == 0)))) ||
+		 ((submode & MCE_MALF_SUBMODE) != 0)) ? TRUE : FALSE);
 }
 
 /**
@@ -1464,13 +1465,24 @@ EXIT:
  */
 static gboolean dim_timeout_cb(gpointer data)
 {
+	submode_t submode = mce_get_submode_int32();
+
 	(void)data;
 
 	dim_timeout_cb_id = 0;
 
-	(void)execute_datapipe(&display_state_pipe,
-			       GINT_TO_POINTER(MCE_DISPLAY_DIM),
-			       USE_INDATA, CACHE_INDATA);
+	if ((submode & MCE_MALF_SUBMODE) == 0) {
+		(void)execute_datapipe(&display_state_pipe,
+				       GINT_TO_POINTER(MCE_DISPLAY_DIM),
+				       USE_INDATA, CACHE_INDATA);
+	} else {
+		/* If device is in MALF state skip dimming since systemui
+		 * isn't working yet
+		 */
+		(void)execute_datapipe(&display_state_pipe,
+				       GINT_TO_POINTER(MCE_DISPLAY_OFF),
+				       USE_INDATA, CACHE_INDATA);
+	}
 
 	return FALSE;
 }
@@ -1501,7 +1513,7 @@ static void setup_dim_timeout(void)
 	cancel_dim_timeout();
 
 	if ((dimming_inhibited == TRUE) ||
-		(system_state == MCE_STATE_ACTDEAD))
+	    (system_state == MCE_STATE_ACTDEAD))
 		return;
 
 	if (adaptive_dimming_enabled == TRUE) {
@@ -2410,6 +2422,11 @@ static gboolean desktop_startup_dbus_cb(DBusMessage *const msg)
 
 	mce_rem_submode_int32(MCE_BOOTUP_SUBMODE);
 
+	mce_rem_submode_int32(MCE_MALF_SUBMODE);
+	if (g_access(MCE_MALF_FILENAME, F_OK) == 0) {
+		g_remove(MCE_MALF_FILENAME);
+	}
+
 	/* Restore normal inactivity timeout */
 	(void)execute_datapipe(&inactivity_timeout_pipe,
 			       GINT_TO_POINTER(disp_dim_timeout +
@@ -2487,8 +2504,8 @@ static gpointer display_state_filter(gpointer data)
 	    ((display_state != MCE_DISPLAY_LPM_OFF) &&
 	     (display_state != MCE_DISPLAY_OFF)) &&
 	    ((system_state == MCE_STATE_UNDEF) ||
-		 ((submode & MCE_TRANSITION_SUBMODE) &&
-		  (((system_state == MCE_STATE_SHUTDOWN) ||
+	     ((submode & MCE_TRANSITION_SUBMODE) &&
+	      (((system_state == MCE_STATE_SHUTDOWN) ||
 	       (system_state == MCE_STATE_REBOOT)) ||
 	      ((system_state == MCE_STATE_ACTDEAD) &&
 	      ((alarm_ui_state != MCE_ALARM_UI_VISIBLE_INT32) &&
@@ -2499,8 +2516,8 @@ static gpointer display_state_filter(gpointer data)
 			display_state);
 		display_state = cached_display_state;
 	} else if ((use_low_power_mode == FALSE) ||
-		       (low_power_mode_supported == FALSE) ||
-		       (is_dismiss_low_power_mode_enabled() == TRUE)) {
+		   (low_power_mode_supported == FALSE) ||
+		   (is_dismiss_low_power_mode_enabled() == TRUE)) {
 		/* If we don't use low power mode, use OFF instead */
 		if ((display_state == MCE_DISPLAY_LPM_OFF) ||
 		    (display_state == MCE_DISPLAY_LPM_ON))

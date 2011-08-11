@@ -251,6 +251,18 @@ static gboolean is_tklock_enabled(void)
 }
 
 /**
+ * Query whether the device is in the MALF state
+ *
+ * @return TRUE if the malf state is enabled,
+ *         FALSE if the malf state is disabled
+ */
+static gboolean is_malf_state_enabled(void) G_GNUC_PURE;
+static gboolean is_malf_state_enabled(void)
+{
+	return ((mce_get_submode_int32() & MCE_MALF_SUBMODE) != 0);
+}
+
+/**
  * Query the visual touchscreen/keypad lock status
  *
  * @return TRUE if the visual touchscreen/keypad lock is enabled,
@@ -608,7 +620,8 @@ static void ts_kp_disable_policy(void)
 		goto EXIT;
 	}
 
-	if (system_state != MCE_STATE_USER) {
+	if ((system_state != MCE_STATE_USER) || 
+	    (is_malf_state_enabled() == TRUE)){
 		ts_disable();
 		kp_disable();
 	} else if (((display_state == MCE_DISPLAY_OFF) ||
@@ -1034,11 +1047,15 @@ static gboolean enable_tklock(void)
 {
 	gboolean status = FALSE;
 
-	if (open_tklock_ui(TKLOCK_ENABLE_LPM_UI) == FALSE)
+	if ((is_malf_state_enabled() == FALSE) &&
+	    (open_tklock_ui(TKLOCK_ENABLE_LPM_UI) == FALSE))
 		goto EXIT;
 
 	enable_tklock_raw();
-	mce_add_submode_int32(MCE_VISUAL_TKLOCK_SUBMODE);
+
+	if (is_malf_state_enabled() == FALSE) {
+		mce_add_submode_int32(MCE_VISUAL_TKLOCK_SUBMODE);
+	}
 
 	status = TRUE;
 
@@ -1306,9 +1323,10 @@ static gboolean enable_eveater(void)
 	/* If we're in acting dead and no alarm is visible,
 	 * don't activate the event eater
 	 */
-	if ((system_state == MCE_STATE_ACTDEAD) &&
-	    ((alarm_ui_state != MCE_ALARM_UI_VISIBLE_INT32) ||
-	     (alarm_ui_state != MCE_ALARM_UI_RINGING_INT32)))
+	if (((system_state == MCE_STATE_ACTDEAD) &&
+	     ((alarm_ui_state != MCE_ALARM_UI_VISIBLE_INT32) ||
+	      (alarm_ui_state != MCE_ALARM_UI_RINGING_INT32))) ||
+	    (is_malf_state_enabled() == TRUE))
 		goto EXIT;
 
 	/* If we're already showing a tklock UI, exit */
@@ -1456,8 +1474,11 @@ static gboolean enable_autokeylock(void)
 	submode_t submode = datapipe_get_gint(submode_pipe);
 	gboolean status = TRUE;
 
-	/* Don't enable automatic tklock during bootup */
-	if ((submode & MCE_BOOTUP_SUBMODE) != 0)
+	/* Don't enable automatic tklock during bootup, except when in MALF
+	 * state
+	 */
+	if (((submode & MCE_BOOTUP_SUBMODE) != 0) &&
+	    (is_malf_state_enabled() == FALSE))
 		goto EXIT;
 
 	if ((system_state == MCE_STATE_USER) &&
@@ -1503,9 +1524,10 @@ static void set_tklock_state(lock_state_t lock_state)
 	case LOCK_ON:
 	case LOCK_ON_DIMMED:
 	case LOCK_ON_PROXIMITY:
-		if ((submode & MCE_BOOTUP_SUBMODE) != 0)
+		if (((submode & MCE_BOOTUP_SUBMODE) != 0) && 
+		    (is_malf_state_enabled() == FALSE)){
 			goto EXIT;
-
+		}
 	default:
 		break;
 	}
@@ -1598,7 +1620,8 @@ static void trigger_visual_tklock(gboolean powerkey)
 	display_state_t display_state = datapipe_get_gint(display_state_pipe);
 	submode_t submode = mce_get_submode_int32();
 
-	if ((is_tklock_enabled() == FALSE) ||
+	if ((is_malf_state_enabled() == TRUE) || 
+	    (is_tklock_enabled() == FALSE) ||
 	    (is_autorelock_enabled() == FALSE) ||
 	    (system_state != MCE_STATE_USER) ||
 	    (alarm_ui_state == MCE_ALARM_UI_VISIBLE_INT32) ||
@@ -2272,7 +2295,9 @@ static void display_state_trigger(gconstpointer data)
 			ts_kp_disable_policy();
 		} else if ((alarm_ui_state != MCE_ALARM_UI_RINGING_INT32) &&
 		           (is_tklock_enabled() == TRUE)) {
-			(void)open_tklock_ui(TKLOCK_ENABLE_VISUAL);
+			if (is_malf_state_enabled() == FALSE) { 
+				(void)open_tklock_ui(TKLOCK_ENABLE_VISUAL);
+			}
 			ts_kp_disable_policy();
 		} else {
 			(void)enable_autokeylock();

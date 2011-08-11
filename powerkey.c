@@ -160,6 +160,10 @@ static void generic_powerkey_handler(poweraction_t action,
 			execute_datapipe(&tk_lock_pipe,
 					 GINT_TO_POINTER(LOCK_ON),
 					 USE_INDATA, CACHE_INDATA);
+		} else if ((submode & MCE_MALF_SUBMODE) != 0) {
+			execute_datapipe(&tk_lock_pipe,
+					 GINT_TO_POINTER(LOCK_OFF),
+					 USE_INDATA, CACHE_INDATA);
 		}
 
 		break;

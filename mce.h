@@ -71,6 +71,10 @@
 
 /** Persistent lock file for backups */
 #define MCE_SETTINGS_LOCK_FILE_PATH		G_STRINGIFY(MCE_RUN_DIR) "/restored"
+/** Path for system MALF state indicator file */
+#define MALF_FILENAME				"/var/malf"
+/** Path for MCE MALF state indicator file */
+#define MCE_MALF_FILENAME			G_STRINGIFY(MCE_RUN_DIR) "/malf"
 
 /** Module information */
 typedef struct {
@@ -138,6 +142,8 @@ typedef gint submode_t;
 #define MCE_POCKET_SUBMODE		(1 << 7)
 /** Touchscreen/Keypad lock is enabled based on proximity state */
 #define MCE_PROXIMITY_TKLOCK_SUBMODE	(1 << 8)
+/** Device is in MALF state */
+#define MCE_MALF_SUBMODE		(1 << 9)
 
 /** System state */
 typedef enum {

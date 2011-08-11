@@ -201,11 +201,37 @@ gboolean mce_mode_init(void)
 
 			(void)mce_write_string_to_file(MCE_BOOTUP_FILENAME,
 						       ENABLED_STRING);
+
+			if (g_access(MALF_FILENAME, F_OK) == 0) {
+				mce_add_submode_int32(MCE_MALF_SUBMODE);
+				mce_log(LL_DEBUG, "Malf mode enabled");
+				if (g_access(MCE_MALF_FILENAME, F_OK) == -1) {
+					if (errno != ENOENT) {
+						mce_log(LL_CRIT,
+							"access() failed: %s. Exiting.",
+							g_strerror(errno));
+						goto EXIT;
+					}
+
+					(void)mce_write_string_to_file(MCE_MALF_FILENAME,
+								       ENABLED_STRING);
+				}
+			}
 		} else {
 			mce_log(LL_CRIT,
 				"access() failed: %s. Exiting.",
 				g_strerror(errno));
 			goto EXIT;
+		}
+	} else {
+		if (g_access(MALF_FILENAME, F_OK) == 0) {
+			if (g_access(MCE_MALF_FILENAME, F_OK) == 0) {
+				mce_add_submode_int32(MCE_MALF_SUBMODE);
+				mce_log(LL_DEBUG, "Malf mode enabled");
+			}
+		} else if ((errno == ENOENT) &&
+			   (g_access(MCE_MALF_FILENAME, F_OK) == 0)) {
+			g_remove(MCE_MALF_FILENAME);
 		}
 	}
 
