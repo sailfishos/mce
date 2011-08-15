@@ -35,6 +35,8 @@
 
 /** List of all D-Bus handlers */
 static GSList *dbus_handlers = NULL;
+/** List iterator for msg_handler */
+static GSList *msg_handler_iter = NULL;
 
 /** D-Bus handler structure */
 typedef struct {
@@ -510,13 +512,14 @@ static DBusHandlerResult msg_handler(DBusConnection *const connection,
 				     gpointer const user_data)
 {
 	guint status = DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
-	GSList *list;
 
 	(void)connection;
 	(void)user_data;
 
-	for (list = dbus_handlers; list != NULL; list = g_slist_next(list)) {
-		handler_struct *handler = list->data;
+	for (msg_handler_iter = dbus_handlers;
+	     msg_handler_iter != NULL;
+	     msg_handler_iter = g_slist_next(msg_handler_iter)) {
+		handler_struct *handler = msg_handler_iter->data;
 
 		switch (handler->type) {
 		case DBUS_MESSAGE_TYPE_METHOD_CALL:
@@ -680,6 +683,7 @@ void mce_dbus_handler_remove(gconstpointer cookie)
 	handler_struct *h = (handler_struct *)cookie;
 	gchar *match = NULL;
 	DBusError error;
+	GSList *iter;
 
 	/* Register error channel */
 	dbus_error_init(&error);
@@ -717,7 +721,11 @@ void mce_dbus_handler_remove(gconstpointer cookie)
 		/* Don't abort here, since we want to unregister it anyway */
 	}
 
-	dbus_handlers = g_slist_remove(dbus_handlers, h);
+	if ((iter = g_slist_find(dbus_handlers, h))) {
+		if (iter == msg_handler_iter)
+			msg_handler_iter = iter->next;
+		dbus_handlers = g_slist_remove_link(dbus_handlers, iter);
+	}
 
 	g_free(h->interface);
 	g_free(h->rules);
