@@ -808,6 +808,30 @@ gboolean mce_dbus_is_owner_monitored(const gchar *service,
 }
 
 /**
+ * Generate and handle fake owner gone message
+ *
+ * @param data Name of owner that is gone
+ * @return Always FALSE
+ */
+static gboolean fake_owner_gone(gpointer data)
+{
+	DBusMessage *msg;
+	const char *empty = "";
+
+	msg = dbus_message_new_signal("/org/freedesktop/DBus",
+				      "org.freedesktop.DBus",
+				      "NameOwnerChanged");
+	dbus_message_append_args(msg, DBUS_TYPE_STRING, &data,
+				 DBUS_TYPE_STRING, &data,
+				 DBUS_TYPE_STRING, &empty,
+				 DBUS_TYPE_INVALID);
+
+	msg_handler(NULL, msg, NULL);
+
+	return FALSE;
+}
+
+/**
  * Add a service to a D-Bus owner monitor list
  *
  * @param service The service to monitor
@@ -875,6 +899,11 @@ gssize mce_dbus_owner_monitor_add(const gchar *service,
 
 	*monitor_list = g_slist_prepend(*monitor_list, (gpointer)cookie);
 	retval = num + 1;
+
+	if (dbus_bus_name_has_owner(dbus_connection, service, NULL) == FALSE)
+		g_idle_add_full(G_PRIORITY_DEFAULT_IDLE,
+				fake_owner_gone, g_strdup(service),
+				g_free);
 
 EXIT:
 	g_free(rule);
