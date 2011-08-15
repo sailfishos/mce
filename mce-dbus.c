@@ -415,6 +415,88 @@ EXIT:
 }
 
 /**
+ * D-Bus rule checker
+ *
+ * @param msg The D-Bus message being checked
+ * @param rules The rule string to check against
+ * @return TRUE if message matches the rules,
+	   FALSE if not
+ */
+static gboolean check_rules(DBusMessage *const msg,
+			    const char *rules)
+{
+	if (rules == NULL)
+		return TRUE;
+	rules += strspn(rules, " ");;
+
+	while (*rules != '\0') {
+		const char *eq;
+		const char *value;
+		const char *value_end;
+		const char *val = NULL;
+		gboolean quot = FALSE;
+
+		if ((eq = strchr(rules, '=')) == NULL)
+			return FALSE;
+		eq += strspn(eq, " ");
+
+		if (eq[1] == '\'') {
+			value = eq + 2;
+			value_end = strchr(value, '\'');
+			quot = TRUE;
+		} else {
+			value = eq + 1;
+			value_end = strchrnul(value, ',');
+		}
+
+		if (value_end == NULL)
+			return FALSE;
+
+		if (strncmp(rules, "arg", 3) == 0) {
+			int fld = atoi(rules + 3);
+
+			DBusMessageIter iter;
+
+			if (dbus_message_iter_init(msg, &iter) == FALSE)
+				return FALSE;
+
+			for (; fld; fld--) {
+				if (dbus_message_iter_has_next(&iter) == FALSE)
+					return FALSE;
+				dbus_message_iter_next(&iter);
+			}
+
+			if (dbus_message_iter_get_arg_type(&iter) !=
+			    DBUS_TYPE_STRING)
+				return FALSE;
+			dbus_message_iter_get_basic(&iter, &val);
+
+		} else if (strncmp(rules, "path", 4) == 0) {
+			val = dbus_message_get_path(msg);
+		}
+
+		if (((value_end != NULL) &&
+		     ((strncmp(value, val, value_end - value) != 0) ||
+		      (val[value_end - value] != '\0'))) ||
+		    ((value_end == NULL) &&
+		     (strcmp(value, val) != 0)))
+			return FALSE;
+
+		if (value_end == NULL)
+			break;
+
+		rules = value_end + (quot == TRUE ? 1 : 0);
+		rules += strspn(rules, " ");;
+
+		if (*rules == ',')
+			rules++;
+		rules += strspn(rules, " ");;
+	}
+
+	return TRUE;
+}
+
+/**
  * D-Bus message handler
  *
  * @param connection Unused
@@ -459,9 +541,10 @@ static DBusHandlerResult msg_handler(DBusConnection *const connection,
 			break;
 
 		case DBUS_MESSAGE_TYPE_SIGNAL:
-			if (dbus_message_is_signal(msg,
+			if ((dbus_message_is_signal(msg,
 						   handler->interface,
-						   handler->name) == TRUE) {
+						   handler->name) == TRUE) &&
+			    (check_rules(msg, handler->rules) == TRUE)) {
 				handler->callback(msg);
 				status = DBUS_HANDLER_RESULT_HANDLED;
 			}
