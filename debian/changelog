@@ -1,4 +1,4 @@
-mce (1.11.0~) UNRELEASED; urgency=low
+mce (1.11.0) unstable; urgency=low
 
   * Clear brightness stepdown timer callback id (Fixes: NB#266540)
   * Error callback for I/O monitors (Fixes: NB#275841)
