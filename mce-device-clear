@@ -2,4 +2,5 @@
 
 gconftool-2 -u /system/osso/dsm/locks/tklock_double_tap_gesture
 gconftool-2 -u /system/osso/dsm/display/use_low_power_mode
-(touch /var/run/mce/restored) && (rm -f /var/lib/mce/radio_states.offline /var/lib/mce/radio_states.online /var/lib/mce/mce-settings.ini)
+gconftool-2 -u /system/osso/dsm/display/color_profile
+(touch /var/run/mce/restored) && (rm -f /var/lib/mce/radio_states.offline /var/lib/mce/radio_states.online)

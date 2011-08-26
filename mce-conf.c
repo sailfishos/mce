@@ -258,6 +258,40 @@ EXIT:
 	return tmp;
 }
 
+gchar **mce_conf_get_keys(const gchar *group, gsize *length,
+			  gpointer keyfileptr)
+{
+	gchar **tmp = NULL;
+	GError *error = NULL;
+
+	if (keyfileptr == NULL) {
+		if (keyfile == NULL) {
+			mce_log(LL_ERR,
+				"Could not get config keys %s; "
+				"no configuration file initialised",
+				group);
+			*length = 0;
+			goto EXIT;
+		} else {
+			keyfileptr = keyfile;
+		}
+	}
+
+	tmp = g_key_file_get_keys(keyfileptr, group, length, &error);
+
+	if (error != NULL) {
+		mce_log(LL_WARN,
+			"Could not get config keys %s; %s",
+			group, error->message);
+		*length = 0;
+	}
+
+	g_clear_error(&error);
+
+EXIT:
+	return tmp;
+}
+
 /**
  * Free configuration file
  *

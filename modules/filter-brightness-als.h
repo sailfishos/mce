@@ -23,8 +23,8 @@
 #ifndef _FILTER_BRIGHTNESS_ALS_H_
 #define _FILTER_BRIGHTNESS_ALS_H_
 
-/** Name of display id (group) in color profiles conf file */
-#define MCE_CONF_DEFAULT_DISPLAY_ID	"Display"
+/** Path to get the display manufacturer */
+#define DISPLAY_HARDWARE_REVISION_PATH "/sys/devices/omapdss/display0/hw_revision"
 
 /** Name of common group in color profiles conf file */
 #define MCE_CONF_COMMON_GROUP	"Common"
@@ -32,14 +32,11 @@
 /** Name of default color profile id key in color profiles conf file */
 #define MCE_CONF_DEFAULT_PROFILE_ID_KEY	"DefaultProfile"
 
-/** Name of color profile group in current settings conf file */
-#define MCE_CONF_COLOR_PROFILE_GROUP	"ColorProfile"
-
-/** Name of current color profile id key in current settings conf file */
-#define MCE_CONF_CURRENT_PROFILE_ID_KEY	"CurrentProfile"
-
 /** Name of the hardcoded color profile */
 #define COLOR_PROFILE_ID_HARDCODED	"hardcoded"
+
+/** Color profile group prefix */
+#define MCE_COLOR_PROFILE_GROUP_PREFIX		"Display-"
 
 /** Name of ALS configuration group */
 #define MCE_CONF_ALS_GROUP			"ALS"
@@ -135,6 +132,8 @@ struct dipro_als {
 #endif /* MCE_GCONF_DISPLAY_PATH */
 /** Path to the ALS enabled GConf setting */
 #define MCE_GCONF_DISPLAY_ALS_ENABLED_PATH	MCE_GCONF_DISPLAY_PATH "/als_enabled"
+/** Path to the color profile GConf setting */
+#define MCE_GCONF_DISPLAY_COLOR_PROFILE_PATH	MCE_GCONF_DISPLAY_PATH "/color_profile"
 
 /** Default ALS polling frequency when the display is on */
 #define ALS_DISPLAY_ON_POLL_FREQ	1500		/* Milliseconds */
@@ -195,6 +194,18 @@ typedef struct {
 	  */
 	const gchar *const coefficients;
 } cpa_profile_struct;
+
+/** Colour profile */
+typedef struct {
+	/**
+	 * Color phase adjustment matrix
+	 */
+	cpa_profile_struct *profiles;
+	/**
+	 * Name of profile
+	 */
+	gchar *name;
+} cpa_profile_entry;
 
 /* Colour phase adjustment matrices */
 

@@ -1,9 +1,15 @@
+mce (1.11.2) unstable; urgency=low
+
+  * Implement color profile changing (Fixes: NB#269000)
+  * Implement separate color profiles for displays (Fixes: NB#268997)
+
+ -- Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>  Mon, 12 Sep 2011 11:56:42 +0300
+
 mce (1.11.1) unstable; urgency=low
 
   * Fixed ALS threshold limit setting when ALS disabled by D-Bus
 
  -- Jukka Turunen <ext-jukka.t.turunen@nokia.com>  Tue, 30 Aug 2011 16:03:45 +0300
-
 mce (1.11.0) unstable; urgency=low
 
   * Clear brightness stepdown timer callback id (Fixes: NB#266540)

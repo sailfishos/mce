@@ -31,6 +31,8 @@ gboolean mce_gconf_set_int(const gchar *const key, const gint value);
 gboolean mce_gconf_get_bool(const gchar *const key, gboolean *value);
 gboolean mce_gconf_get_int(const gchar *const key, gint *value);
 gboolean mce_gconf_get_int_list(const gchar *const key, GSList **values);
+gboolean mce_gconf_get_string(const gchar *const key, gchar **value);
+gboolean mce_gconf_set_string(const gchar *const key, const gchar *const value);
 gboolean mce_gconf_notifier_add(const gchar *path, const gchar *key,
 				const GConfClientNotifyFunc callback,
 				guint *cb_id);

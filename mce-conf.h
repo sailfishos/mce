@@ -33,6 +33,8 @@ gchar *mce_conf_get_string(const gchar *group, const gchar *key,
 			   const gchar *defaultval, gpointer keyfileptr);
 gchar **mce_conf_get_string_list(const gchar *group, const gchar *key,
 				 gsize *length, gpointer keyfileptr);
+gchar **mce_conf_get_keys(const gchar *group, gsize *length,
+			  gpointer keyfileptr);
 
 gpointer mce_conf_read_conf_file(const gchar *const conffile);
 void mce_conf_free_conf_file(gpointer keyfileptr);

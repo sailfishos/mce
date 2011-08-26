@@ -59,6 +59,31 @@ EXIT:
 }
 
 /**
+ * Set an string GConf key to the specified value
+ *
+ * @param key The GConf key to set the value of
+ * @param value The value to set the key to
+ * @return TRUE on success, FALSE on failure
+ */
+gboolean mce_gconf_set_string(const gchar *const key, const gchar *const value)
+{
+	gboolean status = FALSE;
+
+	if (gconf_client_set_string(gconf_client, key, value, NULL) == FALSE) {
+		mce_log(LL_WARN, "Failed to write %s to GConf", key);
+		goto EXIT;
+	}
+
+	/* synchronise if possible, ignore errors */
+	gconf_client_suggest_sync(gconf_client, NULL);
+
+	status = TRUE;
+
+EXIT:
+	return status;
+}
+
+/**
  * Return a boolean from the specified GConf key
  *
  * @param key The GConf key to get the value from
@@ -184,6 +209,46 @@ gboolean mce_gconf_get_int_list(const gchar *const key, GSList **values)
 
 	/* Reverse the list, since we want the entries in the right order */
 	*values = g_slist_reverse(*values);
+	gconf_value_free(gcv);
+
+	status = TRUE;
+
+EXIT:
+	g_clear_error(&error);
+
+	return status;
+}
+
+/**
+ * Return an string from the specified GConf key
+ *
+ * @param key The GConf key to get the values from
+ * @param[out] value Will contain a newly allocated string with the value
+ * @return TRUE on success, FALSE on failure
+ */
+gboolean mce_gconf_get_string(const gchar *const key, gchar **value)
+{
+	gboolean status = FALSE;
+	GError *error = NULL;
+	GConfValue *gcv;
+
+	gcv = gconf_client_get(gconf_client, key, &error);
+
+	if (gcv == NULL) {
+		mce_log((error != NULL) ? LL_WARN : LL_INFO,
+			"Could not retrieve %s from GConf; %s",
+			key, (error != NULL) ? error->message : "Key not set");
+		goto EXIT;
+	}
+
+	if ((gcv->type != GCONF_VALUE_STRING)) {
+		mce_log(LL_ERR,
+			"GConf key %s should have type: %d, but has type: %d",
+			key, GCONF_VALUE_STRING, gcv->type);
+		goto EXIT;
+	}
+
+	*value = g_strdup(gconf_value_get_string(gcv));
 	gconf_value_free(gcv);
 
 	status = TRUE;

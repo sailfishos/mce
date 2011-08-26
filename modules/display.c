@@ -2104,7 +2104,8 @@ static gboolean display_off_req_dbus_cb(DBusMessage *const msg)
 	gboolean status = FALSE;
 
 	mce_log(LL_DEBUG,
-		"Received display off request");
+		"Received display off request from %s",
+		dbus_message_get_sender(msg));
 
 	(void)execute_datapipe(&display_state_pipe,
 			       GINT_TO_POINTER(MCE_DISPLAY_OFF),

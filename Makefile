@@ -3,7 +3,7 @@
 # Written by David Weinehall
 # Modified by Tuomo Tanskanen
 
-VERSION := 1.11.1
+VERSION := 1.11.2
 
 INSTALL := install -o root -g root --mode=755
 INSTALL_DIR := install -d
@@ -55,7 +55,6 @@ MODULES := \
 CONFFILE := mce.ini
 RADIOSTATESCONFFILE := mce-radio-states.ini
 COLORPROFILESCONFFILE := mce-color-profiles.ini
-CURRENTSETTINGSCONFFILE := mce-settings.ini
 DBUSCONF := mce.conf mcetool.conf
 GCONFSCHEMAS := display.schemas energymanagement.schemas
 BACKUPCONF := mcebackup.conf
@@ -85,7 +84,6 @@ COMMON_CFLAGS += -DG_DISABLE_DEPRECATED
 COMMON_CFLAGS += -DOSSOLOG_COMPILE
 COMMON_CFLAGS += -DMCE_VAR_DIR=$(VARDIR) -DMCE_RUN_DIR=$(RUNDIR)
 COMMON_CFLAGS += -DPRG_VERSION=$(VERSION)
-COMMON_CFLAGS += -DMCE_CURRENT_SETTINGS_CONF_FILE=$(VARDIR)/$(CURRENTSETTINGSCONFFILE)
 
 MCE_CFLAGS := $(COMMON_CFLAGS)
 MCE_CFLAGS += -DMCE_CONF_FILE=$(CONFDIR)/$(CONFFILE)

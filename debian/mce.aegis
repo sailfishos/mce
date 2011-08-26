@@ -5,7 +5,6 @@
 		<credential name="LEDControl" />
 		<credential name="TKLockControl" />
 		<credential name="SensorControl" />
-		<credential name="ColorProfileControl" />
 
 		<dbus name="com.nokia.mce" own="SELF" bus="system">
 			<node name="/">
@@ -52,9 +51,6 @@
 					</method>
 					<method name="req_led_disable">
 						<annotation name="com.maemo.Aegis" value="LEDControl"/>
-					</method>
-					<method name="req_color_profile_change">
-						<annotation name="com.maemo.Aegis" value="ColorProfileControl"/>
 					</method>
 				</interface>
 			</node>

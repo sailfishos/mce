@@ -3,7 +3,7 @@ Section: misc
 Priority: optional
 Maintainer: Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>
 Uploaders: Philippe De Swert <philippe.de-swert@nokia.com>, Pekka Lundström <pekka.lundstrom@nokia.com>, Tuomo Tanskanen <ext-tuomo.1.tanskanen@nokia.com>, Jukka Turunen <ext-jukka.t.turunen@nokia.com>, Jyrki Hämäläinen <ext-jyrki.pe.hamalainen@nokia.com>
-Build-Depends: debhelper (>= 5.0.0), mce-dev (>= 1.10.28), pkg-config, libglib2.0-dev (>= 2.18.0), libdbus-1-dev (>= 1.0.2), libdbus-glib-1-dev, libdsme0.2.0-dev (>= 0.58), libgconf2-dev, linux-kernel-headers (>= 2.6.32-20100102) | linux-libc-dev (>= 2.6.32), dpkg-dev (>= 1.13.19), libi2c-dev, aegis-builder (>= 1.4), libcal-dev (>= 0.2.4)
+Build-Depends: debhelper (>= 5.0.0), mce-dev (>= 1.11.0), pkg-config, libglib2.0-dev (>= 2.18.0), libdbus-1-dev (>= 1.0.2), libdbus-glib-1-dev, libdsme0.2.0-dev (>= 0.58), libgconf2-dev, linux-kernel-headers (>= 2.6.32-20100102) | linux-libc-dev (>= 2.6.32), dpkg-dev (>= 1.13.19), libi2c-dev, aegis-builder (>= 1.4), libcal-dev (>= 0.2.4)
 Standards-Version: 3.8.4
 
 Package: mce
