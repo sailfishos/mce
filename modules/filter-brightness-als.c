@@ -1387,8 +1387,14 @@ static gboolean als_disable_req_dbus_cb(DBusMessage *const msg)
 	} else {
 		als_external_refcount = retval;
 
-		if (als_external_refcount == 0)
-			adjust_als_thresholds(-1, -1);
+		if (als_external_refcount == 0) {
+			if (display_state == MCE_DISPLAY_OFF ||
+			    display_state == MCE_DISPLAY_LPM_OFF ||
+			    display_state == MCE_DISPLAY_LPM_ON)
+				adjust_als_thresholds(0, als_threshold_max);
+			else
+				adjust_als_thresholds(-1, -1);
+		}
 	}
 
 	if (no_reply == FALSE) {
