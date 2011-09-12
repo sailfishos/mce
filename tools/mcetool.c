@@ -154,6 +154,13 @@ static void usage(void)
 		  "``ui'',\n"
 		  "                                    ``still-image' and "
 		  "``moving-image''\n"
+		  "      --set-color-profile=ID\n"
+		  "                                  set the color profile id "
+		  "to ID; use --get-color-profile-ids\n"
+		  "                                    to get available values\n"
+		  "      --get-color-profile-ids\n"
+		  "                                  get available color profile "
+		  "ids (see --set-color-profile)\n"
 		  "      --set-call-state=STATE:TYPE\n"
 		  "                                  set the call state to "
 		  "STATE and the call type\n"
@@ -847,6 +854,61 @@ static gboolean set_tklock_mode(gchar **mode)
 }
 
 /**
+ * Get and print available color profile ids
+ *
+ * @return TRUE on success, FALSE on FAILURE
+ */
+static gboolean get_color_profile_ids(void)
+{
+	/* com.nokia.mce.request.get_color_profile_ids */
+	DBusMessage *reply = NULL;
+	DBusError error;
+	gchar **ids = NULL;
+	gint ids_count = 0, i = 0;
+	gboolean status = FALSE;
+
+	reply = mcetool_dbus_call_with_reply(MCE_COLOR_PROFILE_IDS_GET, NULL);
+
+	if (dbus_message_get_args(reply, &error,
+				  DBUS_TYPE_ARRAY, DBUS_TYPE_STRING, &ids, &ids_count,
+				  DBUS_TYPE_INVALID) == FALSE) {
+		fprintf(stderr,
+			"Failed to get reply argument from %s: "
+			"%s; exiting",
+			MCE_COLOR_PROFILE_IDS_GET, error.message);
+		dbus_error_free(&error);
+		goto EXIT;
+	}
+
+	fprintf(stdout, "Available color profiles ids are: \n");
+
+	for(i=0; i < ids_count; ++i) {
+		fprintf(stdout, "%s\n", ids[i]);
+	}
+
+	dbus_free_string_array(ids);
+	status = TRUE;
+
+EXIT:
+	dbus_message_unref(reply);
+	return status;
+}
+
+/**
+ * Set color profile id
+ *
+ * @param id The color profile id;
+ *             available ids are printed
+ *             by get_color_profile_ids(void)
+ * @return TRUE on success, FALSE on FAILURE
+ */
+static gboolean set_color_profile(gchar **id)
+{
+	/* com.nokia.mce.request.req_color_profile_change */
+	return mcetool_dbus_call_string(MCE_COLOR_PROFILE_CHANGE_REQ, id, TRUE);
+}
+
+/**
  * Trigger a powerkey event
  *
  * @param type The type of event to trigger; valid types:
@@ -1068,6 +1130,7 @@ static gint mcetool_get_status(void)
 	gchar *cabc = NULL;
 	gchar *tklock = NULL;
 	gchar *display = NULL;
+	gchar *color_profile = NULL;
 	const gchar *inhibit_string = NULL;
 	gchar *mce_version = NULL;
 	gchar *callstate = NULL;
@@ -1182,6 +1245,21 @@ static gint mcetool_get_status(void)
 		" %-40s %s\n",
 		_("Display state:"),
 		display);
+
+	/* Get color profile */
+	status = mcetool_dbus_call_string(MCE_COLOR_PROFILE_GET,
+					  &color_profile, FALSE);
+
+	if (status != 0)
+		goto EXIT;
+
+	fprintf(stdout,
+		" %-40s %s\n",
+		_("Color profile:"),
+		color_profile);
+
+	g_free(color_profile);
+	color_profile = NULL;
 
 	/* Display brightness */
 	retval = mcetool_gconf_get_int(MCE_GCONF_DISPLAY_BRIGHTNESS_PATH,
@@ -1464,6 +1542,7 @@ int main(int argc, char **argv)
 	gchar *newcallstate = NULL;
 	gchar *newcalltype = NULL;
 	gchar *newtklockmode = NULL;
+	gchar *newcolorprofile = NULL;
 	gchar *ledpattern = NULL;
 	gint led_enable = -1;
 	gboolean block = FALSE;
@@ -1475,6 +1554,7 @@ int main(int argc, char **argv)
 	gboolean send_unblank = FALSE;
 	gboolean send_dim = FALSE;
 	gboolean send_blank = FALSE;
+	gboolean request_color_profile_ids = FALSE;
 	dbus_uint32_t new_radio_states;
 	dbus_uint32_t radio_states_mask;
 
@@ -1492,6 +1572,8 @@ int main(int argc, char **argv)
 		{ "set-display-brightness", required_argument, 0, 'b' },
 		{ "set-inhibit-mode", required_argument, 0, 'I' },
 		{ "set-cabc-mode", required_argument, 0, 'C' },
+		{ "get-color-profile-ids", no_argument, 0, 'a'},
+		{ "set-color-profile", required_argument, 0, 'A'},
 		{ "set-call-state", required_argument, 0, 'c' },
 		{ "enable-radio", required_argument, 0, 'r' },
 		{ "disable-radio", required_argument, 0, 'R' },
@@ -1736,6 +1818,16 @@ int main(int argc, char **argv)
 			get_mce_status = FALSE;
 			break;
 
+		case 'a':
+			request_color_profile_ids = TRUE;
+			get_mce_status = FALSE;
+			break;
+
+		case 'A':
+			newcolorprofile = strdup(optarg);
+			get_mce_status = FALSE;
+			break;
+
 		case 'l':
 			if (led_enable != -1) {
 				usage();
@@ -1888,6 +1980,14 @@ int main(int argc, char **argv)
 		set_tklock_mode(&newtklockmode);
 	}
 
+	if (newcolorprofile != NULL) {
+		set_color_profile(&newcolorprofile);
+	}
+
+	if (request_color_profile_ids == TRUE) {
+		get_color_profile_ids();
+	}
+
 	if (powerkeyevent != INVALID_EVENT) {
 		trigger_powerkey_event(powerkeyevent);
 	}
@@ -1967,6 +2067,8 @@ int main(int argc, char **argv)
 		/* Do nothing */;
 
 EXIT:
+	g_free(newcolorprofile);
+
 	mcetool_gconf_exit();
 	mcetool_dbus_exit();
 

@@ -7,6 +7,7 @@
 		<credential name="mce::DeviceModeControl" />
 		<credential name="mce::LEDControl" />
 		<credential name="mce::TKLockControl" />
+		<credential name="mce::ColorProfileControl" />
 		<for path="/sbin/mcetool" />
 	</request>
 </aegis>

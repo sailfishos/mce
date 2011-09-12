@@ -54,6 +54,8 @@ MODULES := \
 	$(MODULE_DIR)/libpowersavemode.so
 CONFFILE := mce.ini
 RADIOSTATESCONFFILE := mce-radio-states.ini
+COLORPROFILESCONFFILE := mce-color-profiles.ini
+CURRENTSETTINGSCONFFILE := mce-settings.ini
 DBUSCONF := mce.conf mcetool.conf
 GCONFSCHEMAS := display.schemas energymanagement.schemas
 BACKUPCONF := mcebackup.conf
@@ -83,6 +85,7 @@ COMMON_CFLAGS += -DG_DISABLE_DEPRECATED
 COMMON_CFLAGS += -DOSSOLOG_COMPILE
 COMMON_CFLAGS += -DMCE_VAR_DIR=$(VARDIR) -DMCE_RUN_DIR=$(RUNDIR)
 COMMON_CFLAGS += -DPRG_VERSION=$(VERSION)
+COMMON_CFLAGS += -DMCE_CURRENT_SETTINGS_CONF_FILE=$(VARDIR)/$(CURRENTSETTINGSCONFFILE)
 
 MCE_CFLAGS := $(COMMON_CFLAGS)
 MCE_CFLAGS += -DMCE_CONF_FILE=$(CONFDIR)/$(CONFFILE)
@@ -95,6 +98,7 @@ MODULE_CFLAGS := $(COMMON_CFLAGS)
 MODULE_CFLAGS += -fPIC -shared
 MODULE_CFLAGS += -I.
 MODULE_CFLAGS += -DMCE_RADIO_STATES_CONF_FILE=$(CONFDIR)/$(RADIOSTATESCONFFILE)
+MODULE_CFLAGS += -DMCE_COLOR_PROFILES_CONF_FILE=$(CONFDIR)/$(COLORPROFILESCONFFILE)
 MODULE_CFLAGS += $$(pkg-config gobject-2.0 glib-2.0 gmodule-2.0 dbus-1 dbus-glib-1 gconf-2.0 --cflags)
 MODULE_LDFLAGS := $$(pkg-config gobject-2.0 glib-2.0 gmodule-2.0 dbus-1 dbus-glib-1 gconf-2.0 --libs)
 MODULE_LIBS := datapipe.c mce-hal.c mce-log.c mce-dbus.c mce-conf.c mce-gconf.c median_filter.c mce-lib.c

@@ -170,14 +170,18 @@ static gint led_brightness_upper = -1;
 static gint kbd_brightness_lower = -1;
 /** ALS upper threshold for keyboard backlight */
 static gint kbd_brightness_upper = -1;
-/** Colour phase adjustment profiles for the display */
-static cpa_profile_struct *display_cpa_profiles = NULL;
+/** Pointer to the hardcoded color profile for the display */
+static cpa_profile_struct *display_cpa_profile_static = NULL;
+/** Pointer to the loaded color profile for the display */
+static cpa_profile_struct *display_cpa_profile_dynamic = NULL;
 /** Has colour phase adjustment been enabled */
 static gboolean display_cpa_enabled = FALSE;
 /** Path to the colour phase adjustment enabling sysfs entry */
 static const gchar *display_cpa_enable_path = NULL;
 /** Path to the colour phase adjustment coefficients sysfs entry */
 static const gchar *display_cpa_coefficients_path = NULL;
+/** The current profile id */
+static gchar *current_color_profile_id = NULL;
 
 /** Display state */
 static display_state_t display_state = MCE_DISPLAY_UNDEF;
@@ -219,6 +223,9 @@ typedef enum {
 static void cancel_als_poll_timer(void);
 static void cancel_brightness_delay_timer(void);
 static void als_iomon_common(gint lux, gboolean no_delay);
+static gboolean set_current_color_profile(const gchar* id);
+static gboolean save_color_profile_id_into_conf_file(const gchar *id);
+static gboolean is_raw_color_profile_valid(const gint *raw_color_profile, gint raw_color_profile_length);
 
 /** Brightness level step policies */
 typedef enum {
@@ -255,6 +262,16 @@ static guint als_external_refcount = 0;
 
 /** List of monitored als owners */
 static GSList *als_owner_monitor_list = NULL;
+
+/**
+ * Get the current color profile
+ *
+ * @return The pointer to the current color profile or NULL
+ */
+static const cpa_profile_struct *display_cpa_profile(void)
+{
+	return display_cpa_profile_dynamic? : display_cpa_profile_static;
+}
 
 /**
  * GConf callback for ALS settings
@@ -322,7 +339,7 @@ static als_type_t get_als_type(void)
 		display_cpa_coefficients_path = COLOUR_PHASE_COEFFICIENTS_PATH;
 
 		if (g_access(display_cpa_enable_path, W_OK) == 0) {
-			display_cpa_profiles = rm696_phase_profile;
+			display_cpa_profile_static = rm696_phase_profile;
 		}
 	} else if (g_access(ALS_DEVICE_PATH_DIPRO, R_OK) == 0) {
 		als_type = ALS_TYPE_DIPRO;
@@ -339,7 +356,7 @@ static als_type_t get_als_type(void)
 		display_cpa_coefficients_path = COLOUR_PHASE_COEFFICIENTS_PATH;
 
 		if (g_access(display_cpa_enable_path, W_OK) == 0) {
-			display_cpa_profiles = rm680_phase_profile;
+			display_cpa_profile_static = rm680_phase_profile;
 		}
 	} else if (g_access(ALS_LUX_PATH_TSL2563, R_OK) == 0) {
 		als_type = ALS_TYPE_TSL2563;
@@ -808,21 +825,21 @@ static gboolean als_poll_timer_cb(gpointer data)
 			       USE_CACHE, DONT_CACHE_INDATA);
 
 	/* Adjust the colour phase coefficients */
-	if (display_cpa_profiles != NULL) {
+	if (display_cpa_profile() != NULL) {
 		gint level = -1;
 		gint i;
 
-		for (i = 0; display_cpa_profiles[i].range[0] != -1; i++) {
-			if ((als_lux >= display_cpa_profiles[i].range[0]) &&
-			    ((als_lux < display_cpa_profiles[i].range[1]) ||
-			     (display_cpa_profiles[i].range[1] == -1))) {
+		for (i = 0; display_cpa_profile()[i].range[0] != -1; i++) {
+			if ((als_lux >= display_cpa_profile()[i].range[0]) &&
+			    ((als_lux < display_cpa_profile()[i].range[1]) ||
+			     (display_cpa_profile()[i].range[1] == -1))) {
 				level = i;
 				break;
 			}
 		}
 
 		if (level != -1) {
-			mce_write_string_to_file(display_cpa_coefficients_path, display_cpa_profiles[level].coefficients);
+			mce_write_string_to_file(display_cpa_coefficients_path, display_cpa_profile()[level].coefficients);
 
 			/* If this is the first time we adjust the colour phase
 			 * coefficients, enable cpa adjustment
@@ -946,21 +963,21 @@ static void als_iomon_common(gint lux, gboolean no_delay)
 			       USE_CACHE, DONT_CACHE_INDATA);
 
 	/* Adjust the colour phase coefficients */
-	if (display_cpa_profiles != NULL) {
+	if (display_cpa_profile() != NULL) {
 		gint level = -1;
 		gint i;
 
-		for (i = 0; display_cpa_profiles[i].range[0] != -1; i++) {
-			if ((als_lux >= display_cpa_profiles[i].range[0]) &&
-			    ((als_lux < display_cpa_profiles[i].range[1]) ||
-			     (display_cpa_profiles[i].range[1] == -1))) {
+		for (i = 0; display_cpa_profile()[i].range[0] != -1; i++) {
+			if ((als_lux >= display_cpa_profile()[i].range[0]) &&
+			    ((als_lux < display_cpa_profile()[i].range[1]) ||
+			     (display_cpa_profile()[i].range[1] == -1))) {
 				level = i;
 				break;
 			}
 		}
 
 		if (level != -1) {
-			mce_write_string_to_file(display_cpa_coefficients_path, display_cpa_profiles[level].coefficients);
+			mce_write_string_to_file(display_cpa_coefficients_path, display_cpa_profile()[level].coefficients);
 
 			/* If this is the first time we adjust the colour phase
 			 * coefficients, enable cpa adjustment
@@ -1410,6 +1427,473 @@ EXIT:
 }
 
 /**
+ * Send the current profile id
+ *
+ * @param method_call A DBusMessage to reply to
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean send_current_color_profile(DBusMessage *const method_call)
+{
+	DBusMessage *msg = NULL;
+	gboolean status = FALSE;
+	const gchar *id_to_send = current_color_profile_id? : COLOR_PROFILE_ID_HARDCODED;
+
+	msg = dbus_new_method_reply(method_call);
+
+	/* Append the new mode */
+	if (dbus_message_append_args(msg,
+				     DBUS_TYPE_STRING, &id_to_send,
+				     DBUS_TYPE_INVALID) == FALSE) {
+		mce_log(LL_CRIT,
+			"Failed to append reply argument to D-Bus message "
+			"for %s.%s", MCE_REQUEST_IF, MCE_COLOR_PROFILE_GET);
+		dbus_message_unref(msg);
+		goto EXIT;
+	}
+
+	/* Send the message */
+	status = dbus_send_message(msg);
+
+EXIT:
+	return status;
+}
+
+/**
+ * D-Bus callback for the get color profile method call
+ *
+ * @param msg The D-Bus message
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean color_profile_get_req_dbus_cb(DBusMessage *const msg)
+{
+	gboolean status = FALSE;
+
+	mce_log(LL_DEBUG, "Received color profile get request");
+
+	/* Try to send a reply that contains the current color profile id */
+	if (send_current_color_profile(msg) == FALSE)
+		goto EXIT;
+
+	status = TRUE;
+
+EXIT:
+	return status;
+}
+
+/**
+ * D-Bus callback for the get color profile ids method call
+ *
+ * @param msg The D-Bus message
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean color_profile_ids_get_req_dbus_cb(DBusMessage *const msg)
+{
+	DBusMessage *reply_msg = NULL;
+	GError *error = NULL;
+	GKeyFile *color_profiles_conf = NULL;
+	gsize color_profiles_ids_count = 0;
+	gchar **color_profile_ids = NULL;
+	gchar **iter = NULL, **last_ok = NULL;
+	gint *raw_color_profile = NULL;
+	gsize raw_color_profile_length = 0;
+	gchar **strv_to_send = NULL;
+	gsize strv_to_send_length = 0;
+	const gchar *hardcoded_profile_id = COLOR_PROFILE_ID_HARDCODED;
+	gboolean status = FALSE;
+	const gchar *display_id = MCE_CONF_DEFAULT_DISPLAY_ID; /* TODO: add logic to choose the display id - see bug 268997*/
+
+	mce_log(LL_DEBUG, "Received list of color profile ids get request");
+
+	if ((color_profiles_conf = mce_conf_read_conf_file(G_STRINGIFY(MCE_COLOR_PROFILES_CONF_FILE))) != NULL) {
+		color_profile_ids = g_key_file_get_keys(color_profiles_conf, display_id, &color_profiles_ids_count, &error);
+
+		mce_log(LL_DEBUG, "Conf file has  %d profiles", color_profiles_ids_count);
+
+		for(iter = color_profile_ids, last_ok = color_profile_ids; *iter != NULL; ) {
+			mce_log(LL_DEBUG, "Testing profile '%s'", *iter);
+
+			raw_color_profile = mce_conf_get_int_list(display_id, *iter, &raw_color_profile_length, color_profiles_conf);
+
+			if (is_raw_color_profile_valid(raw_color_profile, raw_color_profile_length) == FALSE) {
+				mce_log(LL_DEBUG, "Wrong profile '%s' is found; removed from available profiles", *iter);
+				g_free(*iter);
+				*(iter++) = NULL;
+			} else {
+				*(last_ok++) = *(iter++);
+			}
+
+			g_free(raw_color_profile);
+		}
+
+		*last_ok = NULL;
+
+		mce_conf_free_conf_file(color_profiles_conf);
+
+		strv_to_send = color_profile_ids;
+		strv_to_send_length = g_strv_length(color_profile_ids);
+	}
+
+	if (color_profile_ids == NULL) {
+		mce_log(LL_ERR, "Can't read color profiles ids from group '%s' in conf file %s", display_id, G_STRINGIFY(MCE_COLOR_PROFILES_CONF_FILE));
+		g_clear_error(&error);
+	}
+
+	if ((strv_to_send == NULL) || (strv_to_send_length == 0)) {
+		mce_log(LL_WARN, "Only hardcoded profile is available");
+
+		strv_to_send = (gchar **)(&hardcoded_profile_id);
+		strv_to_send_length = 1;
+	}
+
+	reply_msg = dbus_new_method_reply(msg);
+
+	if (dbus_message_append_args(reply_msg,
+				     DBUS_TYPE_ARRAY, DBUS_TYPE_STRING, &strv_to_send, strv_to_send_length,
+				     DBUS_TYPE_INVALID) == FALSE) {
+		mce_log(LL_CRIT,
+			"Failed to append reply argument to D-Bus message "
+			"for %s.%s", MCE_REQUEST_IF, MCE_COLOR_PROFILE_IDS_GET);
+		dbus_message_unref(reply_msg);
+		goto EXIT;
+	}
+
+	status = dbus_send_message(reply_msg);
+
+EXIT:
+	g_strfreev(color_profile_ids);
+	return status;
+}
+
+/**
+ * D-Bus callback for the color profile change method call
+ *
+ * @param msg The D-Bus message
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean color_profile_change_req_dbus_cb(DBusMessage *const msg)
+{
+	dbus_bool_t no_reply = dbus_message_get_no_reply(msg);
+	const gchar *id = NULL;
+	gboolean status = FALSE;
+	DBusError error;
+
+	/* Register error channel */
+	dbus_error_init(&error);
+
+	mce_log(LL_DEBUG, "Received color profile change request");
+
+	if (dbus_message_get_args(msg, &error,
+				  DBUS_TYPE_STRING, &id,
+				  DBUS_TYPE_INVALID) == FALSE) {
+		// XXX: should we return an error instead?
+		mce_log(LL_CRIT,
+			"Failed to get argument from %s.%s: %s",
+			MCE_REQUEST_IF, MCE_COLOR_PROFILE_CHANGE_REQ,
+			error.message);
+		dbus_error_free(&error);
+		goto EXIT;
+	}
+
+	if (set_current_color_profile(id) == FALSE)
+	{
+		mce_log(LL_WARN, "Wrong color profile id '%s' is received; ignored", id);
+		goto EXIT;
+	}
+
+	if (no_reply == FALSE) {
+		DBusMessage *reply = dbus_new_method_reply(msg);
+
+		status = dbus_send_message(reply);
+	} else {
+		status = TRUE;
+	}
+
+EXIT:
+	return status;
+}
+
+/**
+ * Free memory allocated for the loaded color profile
+ */
+static void free_dynamic_color_profile(cpa_profile_struct *color_profile)
+{
+	gint i = 0;
+
+	if (color_profile == NULL)
+		return;
+
+	for(i = 0; color_profile[i].coefficients ; ++i) {
+		g_free((gchar *)(color_profile[i].coefficients));
+	}
+
+	g_free(color_profile);
+}
+
+/**
+ * Test if color profile read from conf file is valid or not
+ *
+ * @param raw_color_profile List of ints which represents the profile in conf file
+ * @param raw_color_profile_length Length of the list
+ * @return TRUE if the profile is valid; FALSE if not
+ */
+static gboolean is_raw_color_profile_valid(const gint *raw_color_profile, gint raw_color_profile_length)
+{
+	gboolean status = FALSE;
+
+	if (raw_color_profile == NULL) {
+		mce_log(LL_DEBUG, "Can't read the color profile");
+		goto EXIT;
+	}
+
+	if ((raw_color_profile_length % 12) != 0) {
+		mce_log(LL_DEBUG, "Wrong color profile length %d'", raw_color_profile_length);
+		goto EXIT;
+	}
+
+	status = TRUE;
+
+EXIT:
+	return status;
+}
+
+/**
+ * Read requested color profile from conf file
+ *
+ * @param profile_id Name of the profile in conf file
+ * @return Pointer to the color profile on success, NULL on failure
+ *          (@ref free_dynamic_color_profile(cpa_profile_struct*) shall be used to free
+ *           the memory allocated for the color profile)
+ */
+static cpa_profile_struct *read_color_profile_from_conf_file(const gchar *profile_id)
+{
+	GKeyFile *color_profiles_conf = NULL;
+	cpa_profile_struct *color_profile = NULL;
+	gint *raw_color_profile = NULL;
+	gsize raw_color_profile_length = 0;
+	gsize color_profile_length = 0;
+	gint *iter = NULL;
+	gchar **coef_w_p = NULL;
+	guint i = 0;
+	const gchar *display_id = MCE_CONF_DEFAULT_DISPLAY_ID; /* TODO: add logic to choose the display id - see bug 268997*/
+
+	if ((color_profiles_conf = mce_conf_read_conf_file(G_STRINGIFY(MCE_COLOR_PROFILES_CONF_FILE))) == NULL)
+		goto EXIT;
+
+	raw_color_profile = mce_conf_get_int_list(display_id, profile_id, &raw_color_profile_length, color_profiles_conf);
+
+	mce_conf_free_conf_file(color_profiles_conf);
+
+	if (is_raw_color_profile_valid(raw_color_profile, raw_color_profile_length) == FALSE) {
+		mce_log(LL_ERR, "Invalid profile '%s' is requested", profile_id);
+		goto EXIT;
+	}
+
+	color_profile_length = raw_color_profile_length / 12;
+	mce_log(LL_DEBUG, "Color profile '%s' has length %d", profile_id, color_profile_length);
+
+	color_profile = g_malloc0((color_profile_length + 1) * sizeof (cpa_profile_struct));
+
+	mce_log(LL_DEBUG, "Color profile data:");
+	for (i = 0, iter = raw_color_profile; i < color_profile_length; ++i, iter += 12) {
+		color_profile[i].range[0] = iter[0];
+		color_profile[i].range[1] = iter[1];
+		color_profile[i].range[2] = iter[2];
+		coef_w_p = (gchar **)(&color_profile[i].coefficients);
+		*coef_w_p = g_strdup_printf(" %d %d %d %d %d %d %d %d %d",
+		  iter[3], iter[4], iter[5], iter[6], iter[7], iter[8], iter[9], iter[10], iter[11]);
+		mce_log(LL_DEBUG, "%d -> Min: %d, Max: %d, Level: %d;   Coeff: %s", i,
+		  color_profile[i].range[0], color_profile[i].range[1],
+		  color_profile[i].range[2], color_profile[i].coefficients);
+	} 
+
+	color_profile[color_profile_length].range[0] = -1;
+	color_profile[color_profile_length].range[1] = -1;
+	color_profile[color_profile_length].range[2] = -1;
+	coef_w_p = (gchar **)(&color_profile[color_profile_length].coefficients);
+	*coef_w_p = NULL;
+
+EXIT:
+	g_free(raw_color_profile);
+	return color_profile;
+}
+
+/**
+ * Set the current color profile according to requested
+ *
+ * @param id Name of requested color profile
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean set_current_color_profile(const gchar *id)
+{
+	gboolean status = FALSE;
+	cpa_profile_struct *color_profile = NULL;
+	gchar *id_dup = NULL;
+
+	if (id == NULL) {
+		mce_log(LL_WARN, "Null sent as color profile id; ignored");
+		goto EXIT;
+	}
+
+	color_profile = read_color_profile_from_conf_file(id);
+
+	if (color_profile == NULL) {
+		mce_log(LL_WARN, "The color profile can't be loaded; ignored");
+		goto EXIT;
+	}
+
+	id_dup = strdup(id);
+
+	if (id_dup == NULL) {
+		mce_log(LL_WARN, "Can't allocate memory to store the color profile id; the profile is not changed");
+		free_dynamic_color_profile(color_profile);
+		color_profile = NULL;
+		goto EXIT;
+	}
+
+	status = save_color_profile_id_into_conf_file(id_dup);
+
+	if (status == FALSE) {
+		mce_log(LL_WARN, "The current color profile id can't be saved into settings file; the profile is not chnaged");
+		free_dynamic_color_profile(color_profile);
+		color_profile = NULL;
+		g_free(id_dup);
+		id_dup = NULL;
+		goto EXIT;
+	}
+
+	g_free(current_color_profile_id);
+	current_color_profile_id = id_dup;
+	id_dup = NULL;
+
+	free_dynamic_color_profile(display_cpa_profile_dynamic);
+	display_cpa_profile_dynamic = color_profile;
+	color_profile = NULL;
+
+	display_brightness_lower = -1; /* To force readjustment */
+	als_iomon_common(als_lux, TRUE);
+
+EXIT:
+	return status;
+}
+
+/**
+ * Read string value from conf file
+ *
+ * @param file_name The name of the conf file
+ * @param group The name of group in the conf file
+ * @param key The name of the key to read in the group in the conf file
+ * @return Pointer to allocated string if success; NULL otherwise
+ */
+static gchar *read_string_from_conf_file(const gchar *file_name, const gchar *group, const gchar *key)
+{
+	GKeyFile *key_file = NULL;
+	gchar *ret = NULL;
+
+	if ((key_file = mce_conf_read_conf_file(file_name)) == NULL)
+		goto EXIT;
+
+	ret = mce_conf_get_string(group, key, NULL, key_file);
+
+	mce_conf_free_conf_file(key_file);
+
+EXIT:
+	return ret;
+}
+
+/**
+ * Save the profile id into conf file
+ *
+ * @param id The profile id to save
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean save_color_profile_id_into_conf_file(const gchar *id)
+{
+	/* TODO: Most probably it shall be moved (and reworked for common use) into mce-conf.c */
+	GError *error = NULL;
+	GKeyFile *keyfileptr = NULL;
+	gboolean status = FALSE;
+	gchar *keyfile_content = NULL;
+	gsize keyfile_content_length = 0;
+
+	if (mce_are_settings_locked() == TRUE) {
+		mce_log(LL_WARN,
+			"Cannot save current color profile id; backup/restore "
+			"or device clear/factory reset pending");
+		goto EXIT;
+	}
+
+	if ((keyfileptr = g_key_file_new()) == NULL) {
+		mce_log(LL_ERR, "No memory to create key file structure");
+		goto EXIT;
+	}
+
+	if (g_key_file_load_from_file(keyfileptr, G_STRINGIFY(MCE_CURRENT_SETTINGS_CONF_FILE),
+				      G_KEY_FILE_NONE, &error) == FALSE) {
+		mce_log(LL_DEBUG, "No existing conf file for current settings; new one would be created");
+		g_clear_error(&error);
+	}
+
+	g_key_file_set_string(keyfileptr, MCE_CONF_COLOR_PROFILE_GROUP, MCE_CONF_CURRENT_PROFILE_ID_KEY, id);
+	keyfile_content = g_key_file_to_data(keyfileptr, &keyfile_content_length, &error);
+	g_clear_error(&error);
+
+	if (keyfile_content && keyfile_content_length > 0) {
+		status = mce_write_string_to_file(G_STRINGIFY(MCE_CURRENT_SETTINGS_CONF_FILE), keyfile_content);
+	} else {
+		mce_log(LL_ERR, "Can't save file; content was not created somehow!");
+	}
+
+	g_free(keyfile_content);
+	mce_conf_free_conf_file(keyfileptr);
+EXIT:
+	return status;
+}
+
+/**
+ * Read the default color profile id from conf file
+ *
+ * @return Pointer to allocated string if success; NULL otherwise
+ */
+static gchar *read_default_color_profile_id_from_conf_file(void)
+{
+	return read_string_from_conf_file(G_STRINGIFY(MCE_COLOR_PROFILES_CONF_FILE), MCE_CONF_COMMON_GROUP, MCE_CONF_DEFAULT_PROFILE_ID_KEY);
+}
+
+/**
+ * Read the current color profile id from conf file
+ *
+ * @return Pointer to allocated string if success; NULL otherwise
+ */
+static gchar *read_current_color_profile_id_from_conf_file(void)
+{
+	return read_string_from_conf_file(G_STRINGIFY(MCE_CURRENT_SETTINGS_CONF_FILE), MCE_CONF_COLOR_PROFILE_GROUP, MCE_CONF_CURRENT_PROFILE_ID_KEY);
+}
+
+/**
+ * Initialization of saveed color profile during boot
+ *
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean init_current_color_profile(void)
+{
+	gchar *tmp = NULL;
+	gboolean status = FALSE;
+
+	tmp = read_current_color_profile_id_from_conf_file();
+
+	if (tmp == NULL) {
+		tmp = read_default_color_profile_id_from_conf_file();
+	}
+
+	if (tmp) {
+		status = set_current_color_profile(tmp);
+		g_free(tmp);
+	}
+
+	return status;
+}
+
+/**
  * Init function for the ALS filter
  *
  * @todo XXX status needs to be set on error!
@@ -1450,6 +1934,30 @@ const gchar *g_module_check_init(GModule *module)
 				 als_disable_req_dbus_cb) == NULL)
 		goto EXIT;
 
+	/* get_color_profile */
+	if (mce_dbus_handler_add(MCE_REQUEST_IF,
+				 MCE_COLOR_PROFILE_GET,
+				 NULL,
+				 DBUS_MESSAGE_TYPE_METHOD_CALL,
+				 color_profile_get_req_dbus_cb) == NULL)
+		goto EXIT;
+
+	/* get_color_profile_ids */
+	if (mce_dbus_handler_add(MCE_REQUEST_IF,
+				 MCE_COLOR_PROFILE_IDS_GET,
+				 NULL,
+				 DBUS_MESSAGE_TYPE_METHOD_CALL,
+				 color_profile_ids_get_req_dbus_cb) == NULL)
+		goto EXIT;
+
+	/* req_color_profile_change */
+	if (mce_dbus_handler_add(MCE_REQUEST_IF,
+				 MCE_COLOR_PROFILE_CHANGE_REQ,
+				 NULL,
+				 DBUS_MESSAGE_TYPE_METHOD_CALL,
+				 color_profile_change_req_dbus_cb) == NULL)
+		goto EXIT;
+
 	als_external_refcount = 0;
 
 	/* ALS enabled */
@@ -1462,6 +1970,10 @@ const gchar *g_module_check_init(GModule *module)
 				   als_gconf_cb,
 				   &als_enabled_gconf_cb_id) == FALSE)
 		goto EXIT;
+
+	if (init_current_color_profile() == FALSE) {
+		mce_log(LL_WARN, "Can't init dynamic color profile; hardcoded is used instead");
+	}
 
 	/* Do we have an ALS at all?
 	 * If so, make an initial read
@@ -1527,6 +2039,11 @@ G_MODULE_EXPORT void g_module_unload(GModule *module);
 void g_module_unload(GModule *module)
 {
 	(void)module;
+
+	free_dynamic_color_profile(display_cpa_profile_dynamic);
+	display_cpa_profile_dynamic = NULL;
+	g_free(current_color_profile_id);
+	current_color_profile_id = NULL;
 
 	als_enabled = FALSE;
 

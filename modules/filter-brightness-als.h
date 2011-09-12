@@ -23,6 +23,24 @@
 #ifndef _FILTER_BRIGHTNESS_ALS_H_
 #define _FILTER_BRIGHTNESS_ALS_H_
 
+/** Name of display id (group) in color profiles conf file */
+#define MCE_CONF_DEFAULT_DISPLAY_ID	"Display"
+
+/** Name of common group in color profiles conf file */
+#define MCE_CONF_COMMON_GROUP	"Common"
+
+/** Name of default color profile id key in color profiles conf file */
+#define MCE_CONF_DEFAULT_PROFILE_ID_KEY	"DefaultProfile"
+
+/** Name of color profile group in current settings conf file */
+#define MCE_CONF_COLOR_PROFILE_GROUP	"ColorProfile"
+
+/** Name of current color profile id key in current settings conf file */
+#define MCE_CONF_CURRENT_PROFILE_ID_KEY	"CurrentProfile"
+
+/** Name of the hardcoded color profile */
+#define COLOR_PROFILE_ID_HARDCODED	"hardcoded"
+
 /** Name of ALS configuration group */
 #define MCE_CONF_ALS_GROUP			"ALS"
 
@@ -170,7 +188,7 @@ typedef struct {
 	 * Lower and upper bound for each brightness range,
 	 * followed by high brightness mode level
 	 */
-	const gint range[3];
+	gint range[3];
 	/**
 	  * Colour phase adjustment matrix for the specified range;
 	  * 9 space separated integers
