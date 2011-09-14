@@ -1533,10 +1533,12 @@ static void set_tklock_state(lock_state_t lock_state)
 	case LOCK_ON:
 	case LOCK_ON_DIMMED:
 	case LOCK_ON_PROXIMITY:
-		if (((submode & MCE_BOOTUP_SUBMODE) != 0) && 
-		    (is_malf_state_enabled() == FALSE)){
+		if (((submode & MCE_BOOTUP_SUBMODE) != 0) &&
+		    (is_malf_state_enabled() == FALSE) &&
+		    ((lock_state != LOCK_ON_PROXIMITY) ||
+		     ((call_state != CALL_STATE_RINGING) &&
+		      (call_state != CALL_STATE_ACTIVE))))
 			goto EXIT;
-		}
 	default:
 		break;
 	}
