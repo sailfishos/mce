@@ -1,3 +1,9 @@
+mce (1.10.135) UNRELEASED; urgency=low
+
+  * Use different color phase profiles for different displays
+
+ -- Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>  Wed, 14 Sep 2011 14:39:27 +0300
+
 mce (1.10.134) unstable; urgency=low
 
   * Fix multiple errors in D-Bus subsystem (Fixes: NB#277115)

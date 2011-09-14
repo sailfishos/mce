@@ -171,7 +171,9 @@ static gint kbd_brightness_lower = -1;
 /** ALS upper threshold for keyboard backlight */
 static gint kbd_brightness_upper = -1;
 /** Colour phase adjustment profiles for the display */
-static cpa_profile_struct *display_cpa_profiles = NULL;
+static const cpa_profile_struct *display_cpa_profiles = NULL;
+/** Dynamic colour phase adjustment profiles for the display */
+static cpa_profile_struct *dynamic_display_cpa_profiles = NULL;
 /** Has colour phase adjustment been enabled */
 static gboolean display_cpa_enabled = FALSE;
 /** Path to the colour phase adjustment enabling sysfs entry */
@@ -296,6 +298,121 @@ EXIT:
 }
 
 /**
+ * Free dynamically allocated color phase profile
+ * @param profile Profile to be freed
+ */
+static void free_phase_profile(cpa_profile_struct *profile)
+{
+	gint i;
+
+	if (profile == NULL)
+		return;
+
+	for (i = 0; profile[i].range[0] != -1; i++)
+		g_free((gchar *)profile[i].coefficients);
+
+	g_free(profile);
+}
+
+/**
+ * Parse a raw color phase profile
+ *
+ * @param raw_color_profile Color profile data
+ * @param raw_color_profile_length Length of the data
+ * @return Newly allocated profile on success, NULL if data was invalid
+ */
+static cpa_profile_struct *parse_phase_profile(const gint *raw_color_profile,
+					       gsize raw_color_profile_length)
+{
+	cpa_profile_struct *profiles;
+	gint n_profiles;
+	gint i;
+
+	if (raw_color_profile == NULL) {
+		mce_log(LL_DEBUG, "Can't read the color profile");
+		return NULL;
+	}
+
+	if ((raw_color_profile_length % 12) != 0) {
+		mce_log(LL_DEBUG, "Invalid color profile length %d",
+			raw_color_profile_length);
+		return NULL;
+	}
+
+	n_profiles = raw_color_profile_length / 12;
+	profiles = g_new0(cpa_profile_struct, n_profiles + 1);
+
+	for (i = 0; i < n_profiles; i++) {
+		gint *readp = (gint *)raw_color_profile + 12 * i;
+		gchar **coef_w_p = (gchar **)&profiles[i].coefficients;
+
+		profiles[i].range[0] = readp[0] >= 0 ? readp[0] : 0;
+		profiles[i].range[1] = readp[1];
+		profiles[i].range[2] = readp[2];
+
+		*coef_w_p = g_strdup_printf("%d %d %d %d %d %d %d %d %d",
+					    readp[3], readp[4],
+					    readp[5], readp[6],
+					    readp[7], readp[8],
+					    readp[9], readp[10],
+					    readp[11]);
+	}
+
+	profiles[n_profiles].range[0] = -1;
+	profiles[n_profiles].range[1] = -1;
+	profiles[n_profiles].range[2] = -1;
+
+	return profiles;
+}
+
+/**
+ * Initialize phase profile
+ *
+ * @return TRUE if phase profile set, FALSE if not
+ */
+static gboolean init_phase_profile(void)
+{
+	gboolean status = FALSE;
+	gchar *revision = NULL;
+	gchar *key = NULL;
+	gint *values = NULL;
+	gsize n_values;
+
+	if (mce_read_string_from_file(DISPLAY_REVISION_PATH,
+				      &revision) == FALSE) 
+		goto EXIT;
+
+	if ((key = strchr(revision, '.')) != NULL)
+		*key = '\0';
+
+	key = g_strconcat(MCE_CONF_CPA_PREFIX, revision, NULL);
+
+	values = mce_conf_get_int_list(MCE_CONF_ALS_GROUP,
+				       key,
+				       &n_values,
+				       NULL);
+
+	if ((values == NULL) || (n_values == 0))
+		goto EXIT;
+
+	if ((dynamic_display_cpa_profiles = parse_phase_profile(values,
+								n_values))
+	    != NULL) {
+		mce_log(LL_DEBUG, "Using color phase profile for revision %s",
+			revision);
+		display_cpa_profiles = dynamic_display_cpa_profiles;
+		status = TRUE;
+	}
+
+EXIT:
+	g_free(values);
+	g_free(key);
+	g_free(revision);
+
+	return status;
+}
+
+/**
  * Get the ALS type
  *
  * @return The ALS-type
@@ -322,7 +439,8 @@ static als_type_t get_als_type(void)
 		display_cpa_coefficients_path = COLOUR_PHASE_COEFFICIENTS_PATH;
 
 		if (g_access(display_cpa_enable_path, W_OK) == 0) {
-			display_cpa_profiles = rm696_phase_profile;
+			if (init_phase_profile() == FALSE)
+				display_cpa_profiles = rm696_phase_profile;
 		}
 	} else if (g_access(ALS_DEVICE_PATH_DIPRO, R_OK) == 0) {
 		als_type = ALS_TYPE_DIPRO;
@@ -1536,6 +1654,8 @@ void g_module_unload(GModule *module)
 	/* Remove all timer sources */
 	cancel_als_poll_timer();
 	cancel_brightness_delay_timer();
+
+	free_phase_profile(dynamic_display_cpa_profiles);
 
 	return;
 }

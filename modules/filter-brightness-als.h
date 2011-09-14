@@ -29,6 +29,9 @@
 /** Name of the configuration key for the brightness level step-down policy */
 #define MCE_CONF_STEP_DOWN_POLICY		"StepDownPolicy"
 
+/** Prefix of configuration key for color phase adjustments */
+#define MCE_CONF_CPA_PREFIX			"PhaseProfile-"
+
 /*  Paths for Avago APDS990x (QPDS-T900) ALS */
 
 /** Device path for Avago ALS */
@@ -148,6 +151,11 @@ struct dipro_als {
 /** Number of ranges in ALS profile */
 #define ALS_RANGES			11
 
+/** Path to display */
+#define DISPLAY_PATH			"/sys/devices/platform/omapdss/display0"
+/** Display hardware revision path */
+#define DISPLAY_REVISION_PATH		DISPLAY_PATH "/hw_revision"
+
 /** Path to display manager */
 #define DISPLAY_MANAGER_PATH			"/sys/devices/platform/omapdss/manager0"
 /** Colour phase adjustment enable path */
@@ -170,7 +178,7 @@ typedef struct {
 	 * Lower and upper bound for each brightness range,
 	 * followed by high brightness mode level
 	 */
-	const gint range[3];
+	gint range[3];
 	/**
 	  * Colour phase adjustment matrix for the specified range;
 	  * 9 space separated integers
@@ -181,7 +189,7 @@ typedef struct {
 /* Colour phase adjustment matrices */
 
 /** Colour phase calibration for RM-696/RM-716 */
-static cpa_profile_struct rm696_phase_profile[] = {
+static const cpa_profile_struct rm696_phase_profile[] = {
 	{	/* 0-100 lux; */
 		{ 0, 3.3 * 100, 0 },
 		"  199   28   28"
@@ -219,7 +227,7 @@ static cpa_profile_struct rm696_phase_profile[] = {
 };
 
 /** Colour phase calibration for RM-680/RM-690 */
-static cpa_profile_struct rm680_phase_profile[] = {
+static const cpa_profile_struct rm680_phase_profile[] = {
 	{	/* 0-inf lux */
 		{ 0, -1, 0 },
 		"  325  -35  -35"
