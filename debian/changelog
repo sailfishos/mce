@@ -1,3 +1,9 @@
+mce (1.11.4) unstable; urgency=low
+
+  * Use correct display revision
+
+ -- Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>  Wed, 14 Sep 2011 13:52:22 +0300
+
 mce (1.11.3) unstable; urgency=low
 
   * Allow proximity lock during call in bootup phase (Fixes: NB#269742)
