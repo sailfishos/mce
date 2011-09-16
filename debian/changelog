@@ -1,6 +1,6 @@
-mce (1.10.135) UNRELEASED; urgency=low
+mce (1.10.135) unstable; urgency=low
 
-  * Use different color phase profiles for different displays
+  * Use different color phase profiles for different displays (Fixes: NB#268997)
 
  -- Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>  Wed, 14 Sep 2011 14:39:27 +0300
 
