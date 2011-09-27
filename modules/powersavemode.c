@@ -77,6 +77,8 @@ G_MODULE_EXPORT module_info_struct module_info = {
 
 /** Battery charge level */
 static gint battery_level = 100;
+/** Charger state */
+static gboolean charger_state = FALSE;
 
 /** GConf callback ID for power saving mode setting */
 static guint psm_gconf_cb_id = 0;
@@ -160,7 +162,8 @@ static void update_power_saving_mode(void)
 	 *      trigger for power saving mode too
 	 */
 	if (((battery_level <= psm_threshold) &&
-	     (power_saving_mode == TRUE)) ||
+	     (power_saving_mode == TRUE) &&
+	     (charger_state == FALSE)) ||
 	    (force_psm == TRUE) ||
 	    (thermal_state == THERMAL_STATE_OVERHEATED)) {
 		/* If the battery charge level is lower than the threshold,
@@ -190,6 +193,20 @@ static void update_power_saving_mode(void)
 static void battery_level_trigger(gconstpointer const data)
 {
 	battery_level = GPOINTER_TO_INT(data);
+
+	update_power_saving_mode();
+}
+
+/**
+ * Datapipe trigger for the charger state
+ *
+ * @param data A pointer representation of the charger state
+ */
+static void charger_state_trigger(gconstpointer const data)
+{
+	(void)data;
+
+	charger_state = datapipe_get_gbool(charger_state_pipe);
 
 	update_power_saving_mode();
 }
@@ -288,6 +305,8 @@ const gchar *g_module_check_init(GModule *module)
 	/* Append triggers/filters to datapipes */
 	append_output_trigger_to_datapipe(&battery_level_pipe,
 					  battery_level_trigger);
+	append_output_trigger_to_datapipe(&charger_state_pipe,
+					  charger_state_trigger);
 	append_output_trigger_to_datapipe(&thermal_state_pipe,
 					  thermal_state_trigger);
 
@@ -353,6 +372,8 @@ void g_module_unload(GModule *module)
 					    thermal_state_trigger);
 	remove_output_trigger_from_datapipe(&battery_level_pipe,
 					    battery_level_trigger);
+	remove_output_trigger_from_datapipe(&charger_state_pipe,
+					    charger_state_trigger);
 
 	return;
 }

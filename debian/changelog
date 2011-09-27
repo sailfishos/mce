@@ -1,3 +1,9 @@
+mce (1.11.8) unstable; urgency=low
+
+  * Disable PSM when charging (Fixes: NB#280901)
+
+ -- Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>  Thu, 20 Oct 2011 12:46:06 +0300
+
 mce (1.11.7) unstable; urgency=low
 
   * Add 100ms delay to display events after enabling touch screen
