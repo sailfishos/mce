@@ -1,3 +1,9 @@
+mce (1.11.5) UNRELEASED; urgency=low
+
+  * Change color phase adjustments for c1 display (Fixes: NB#283428)
+
+ -- Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>  Wed, 28 Sep 2011 15:04:18 +0300
+
 mce (1.11.4) unstable; urgency=low
 
   * Use correct display revision
