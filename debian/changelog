@@ -1,4 +1,4 @@
-mce (1.11.5) UNRELEASED; urgency=low
+mce (1.11.5) unstable; urgency=low
 
   * Change color phase adjustments for c1 display (Fixes: NB#283428)
 
@@ -19,7 +19,7 @@ mce (1.11.3) unstable; urgency=low
 mce (1.11.2) unstable; urgency=low
 
   * Implement color profile changing (Fixes: NB#269000)
-  * Implement separate color profiles for displays (Fixes: NB#268997)
+  * Implement separate color profiles for displays (Fixes N#268997)
 
  -- Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>  Mon, 12 Sep 2011 11:56:42 +0300
 

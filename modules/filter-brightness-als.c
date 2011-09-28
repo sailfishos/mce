@@ -2041,6 +2041,8 @@ const gchar *g_module_check_init(GModule *module)
 	if ((display_cpa_profile_static != NULL) &&
 	    (init_display_id() != FALSE) &&
 	    (init_color_profiles() != FALSE)) {
+		mce_log(LL_DEBUG, "Using color phase profiles for revision %s",
+			display_id);
 
 		if (init_current_color_profile() == FALSE)
 			mce_log(LL_WARN, "Color profile init failed");
