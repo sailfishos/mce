@@ -63,6 +63,9 @@
 /** SysFS interface to enable/disable RX-44/RX-48/RX-51 touchscreen IRQs */
 #define MCE_RX44_TOUCHSCREEN_SYSFS_DISABLE_PATH		"/sys/devices/platform/omap2_mcspi.1/spi1.0/disable_ts"
 
+/** Touch screen enable delay for calibration **/
+#define MCE_TOUCHSCREEN_CALIBRATION_DELAY		100000 /* 100 milliseconds */
+
 /** Default fallback setting for the touchscreen/keypad autolock */
 #define DEFAULT_TK_AUTOLOCK		FALSE		/* FALSE / TRUE */
 

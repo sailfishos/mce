@@ -186,6 +186,16 @@ typedef enum {
 /** TKLock UI state */
 static tklock_ui_state_t tklock_ui_state = MCE_TKLOCK_UI_UNSET;
 
+typedef enum {
+	MCE_TS_UNSET = -1,
+	MCE_TS_DISABLED,
+	MCE_TS_ENABLED 
+} ts_state_t;
+
+/** Touch screen state */
+static ts_state_t ts_state = MCE_TS_UNSET;
+
+
 /* Valid triggers for autorelock */
 
 /** No autorelock triggers */
@@ -545,7 +555,12 @@ EXIT:
  */
 static void ts_enable(void)
 {
-	generic_event_control(mce_touchscreen_sysfs_disable_path, TRUE);
+	if (ts_state != MCE_TS_ENABLED) {
+		generic_event_control(mce_touchscreen_sysfs_disable_path,
+				      TRUE);
+		g_usleep(MCE_TOUCHSCREEN_CALIBRATION_DELAY);
+		ts_state = MCE_TS_ENABLED;
+	}
 }
 
 /**
@@ -553,7 +568,11 @@ static void ts_enable(void)
  */
 static void ts_disable(void)
 {
-	generic_event_control(mce_touchscreen_sysfs_disable_path, FALSE);
+	if (ts_state != MCE_TS_DISABLED) {
+		generic_event_control(mce_touchscreen_sysfs_disable_path,
+				      FALSE);
+		ts_state = MCE_TS_DISABLED;
+	}
 }
 
 /**
@@ -1654,13 +1673,9 @@ static void trigger_visual_tklock(gboolean powerkey)
 	if ((display_state == MCE_DISPLAY_OFF) ||
 	    (display_state == MCE_DISPLAY_LPM_OFF) ||
 	    (display_state == MCE_DISPLAY_LPM_ON)) {
-		if (open_tklock_ui(TKLOCK_ENABLE_VISUAL) == TRUE) {
-			mce_add_submode_int32(MCE_VISUAL_TKLOCK_SUBMODE);
-			setup_tklock_visual_blank_timeout();
-			(void)execute_datapipe(&display_state_pipe,
-					       GINT_TO_POINTER(MCE_DISPLAY_ON),
-					       USE_INDATA, CACHE_INDATA);
-		}
+		(void)execute_datapipe(&display_state_pipe,
+				       GINT_TO_POINTER(MCE_DISPLAY_ON),
+				       USE_INDATA, CACHE_INDATA);
 	} else if (powerkey == TRUE) {
 		/* XXX: we probably want to make this configurable */
 		/* Blank screen */
