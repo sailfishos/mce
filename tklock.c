@@ -92,11 +92,11 @@ static guint doubletap_gesture_policy_cb_id = 0;
 /** Doubletap gesture proximity timeout ID */
 static guint doubletap_proximity_timeout_cb_id = 0;
 
+/** Doubletap gesture proximity timeout ID */
+static guint pocket_mode_proximity_timeout_cb_id = 0;
+
 /** Blanking timeout ID for the visual tklock */
 static guint tklock_visual_blank_timeout_cb_id = 0;
-
-/** Forced blanking timeout ID for the visual tklock */
-static guint tklock_visual_forced_blank_timeout_cb_id = 0;
 
 /** Dimming timeout ID for the tklock */
 static guint tklock_dim_timeout_cb_id = 0;
@@ -167,6 +167,19 @@ static submode_t saved_submode = MCE_INVALID_SUBMODE;
 /** List of monitored SystemUI processes (should be one or zero) */
 static GSList *systemui_monitor_list = NULL;
 
+/** TKLock saved state type */
+typedef enum {
+	/** TKLock was not enabled */
+	MCE_TKLOCK_UNLOCKED_STATE = 0,
+	/** Visual TKLock was enabled */
+	MCE_TKLOCK_VISUAL_STATE = 1,
+	/** Full TKLock was enabled */
+	MCE_TKLOCK_LOCKED_STATE = 2
+} saved_tklock_state_t;
+
+/** TKLock saved state */
+static saved_tklock_state_t saved_tklock_state = MCE_TKLOCK_UNLOCKED_STATE;
+
 /** TKLock UI state type */
 typedef enum {
 	/** TKLock UI state unknown */
@@ -231,8 +244,6 @@ typedef enum {
 	MCE_ALLOW_PROXIMITY_RELOCK = 1,
 	/** Temporarily inhibit proximity relock */
 	MCE_TEMP_INHIBIT_PROXIMITY_RELOCK = 2,
-	/** Ignore proximity events */
-	MCE_IGNORE_PROXIMITY_EVENTS = 3
 } inhibit_proximity_relock_t;
 
 /** Inhibit autorelock using proximity sensor */
@@ -412,6 +423,17 @@ EXIT:
 }
 
 /**
+ * Cancel timeout for pocket mode
+ */
+static void cancel_pocket_mode_timeout(void)
+{
+	if (pocket_mode_proximity_timeout_cb_id != 0) {
+		g_source_remove(pocket_mode_proximity_timeout_cb_id);
+		pocket_mode_proximity_timeout_cb_id = 0;
+	}
+}
+
+/**
  * Timeout callback for doubletap gesture proximity
  *
  * @param data Unused
@@ -419,7 +441,18 @@ EXIT:
  */
 static gboolean doubletap_proximity_timeout_cb(gpointer data)
 {
+	call_state_t call_state = datapipe_get_gint(call_state_pipe);
+	audio_route_t audio_route = datapipe_get_gint(audio_route_pipe);
+
 	(void)data;
+
+	if ((audio_route == AUDIO_ROUTE_HANDSET) &&
+	    ((call_state == CALL_STATE_RINGING) ||
+	     (call_state == CALL_STATE_ACTIVE))) {
+		cancel_pocket_mode_timeout();
+		mce_add_submode_int32(MCE_POCKET_SUBMODE);
+		mce_add_submode_int32(MCE_PROXIMITY_TKLOCK_SUBMODE);
+	}
 
 	doubletap_proximity_timeout_cb_id = 0;
 
@@ -428,9 +461,37 @@ static gboolean doubletap_proximity_timeout_cb(gpointer data)
 	set_doubletap_gesture(FALSE);
 	doubletap_gesture_inhibited = TRUE;
 
+	return FALSE;
+}
+
+/**
+ * Timeout callback for pocket mode
+ *
+ * @param data Unused
+ * @return Always returns FALSE to disable the timeout
+ */
+static gboolean pocket_mode_timeout_cb(gpointer data)
+{
+	(void)data;
+
+	pocket_mode_proximity_timeout_cb_id = 0;
+
 	mce_add_submode_int32(MCE_POCKET_SUBMODE);
 
 	return FALSE;
+}
+
+/**
+ * Setup a timeout for pocket mode
+ */
+static void setup_pocket_mode_timeout(void)
+{
+	if (pocket_mode_proximity_timeout_cb_id != 0)
+		return;
+
+	pocket_mode_proximity_timeout_cb_id =
+		g_timeout_add_seconds(DEFAULT_POCKET_MODE_PROXIMITY_TIMEOUT,
+				      pocket_mode_timeout_cb, NULL);
 }
 
 /**
@@ -438,8 +499,6 @@ static gboolean doubletap_proximity_timeout_cb(gpointer data)
  */
 static void cancel_doubletap_proximity_timeout(void)
 {
-	mce_rem_submode_int32(MCE_POCKET_SUBMODE);
-
 	/* Remove the timer source for doubletap gesture proximity */
 	if (doubletap_proximity_timeout_cb_id != 0) {
 		g_source_remove(doubletap_proximity_timeout_cb_id);
@@ -503,12 +562,11 @@ static void set_doubletap_gesture(gboolean enable)
 	      ((call_state != CALL_STATE_NONE) ||
 	       (alarm_ui_state == MCE_ALARM_UI_VISIBLE_INT32) ||
 	       (alarm_ui_state == MCE_ALARM_UI_RINGING_INT32))))) {
+
 		cancel_doubletap_proximity_timeout();
+
 		doubletap_gesture_enabled = FALSE;
 		ts_disable();
-
-		if (is_tklock_enabled_by_proximity() == FALSE)
-			mce_add_submode_int32(MCE_POCKET_SUBMODE);
 
 		goto EXIT;
 	}
@@ -517,8 +575,14 @@ static void set_doubletap_gesture(gboolean enable)
 
 	/* Adjust the touchscreen idle frequency */
 	if (enable == TRUE) {
-		if (proximity_sensor_state == COVER_CLOSED)
+		mce_rem_submode_int32(MCE_POCKET_SUBMODE);
+		cancel_doubletap_proximity_timeout();
+		cancel_pocket_mode_timeout();
+
+		if (proximity_sensor_state == COVER_CLOSED) {
 			setup_doubletap_proximity_timeout();
+			setup_pocket_mode_timeout();
+		}
 	} else {
 		cancel_doubletap_proximity_timeout();
 	}
@@ -1110,22 +1174,13 @@ static gboolean enable_tklock(void)
 		mce_add_submode_int32(MCE_VISUAL_TKLOCK_SUBMODE);
 	}
 
+	if (saved_tklock_state == MCE_TKLOCK_VISUAL_STATE)
+		saved_tklock_state = MCE_TKLOCK_LOCKED_STATE;
+
 	status = TRUE;
 
 EXIT:
 	return status;
-}
-
-/**
- * Cancel timeout for visual touchscreen/keypad lock forced blanking
- */
-static void cancel_tklock_visual_forced_blank_timeout(void)
-{
-	/* Remove the timer source for visual tklock forced blanking */
-	if (tklock_visual_forced_blank_timeout_cb_id != 0) {
-		g_source_remove(tklock_visual_forced_blank_timeout_cb_id);
-		tklock_visual_forced_blank_timeout_cb_id = 0;
-	}
 }
 
 /**
@@ -1151,11 +1206,14 @@ static gboolean tklock_visual_blank_timeout_cb(gpointer data)
 	(void)data;
 
 	cancel_tklock_visual_blank_timeout();
-	cancel_tklock_visual_forced_blank_timeout();
 
-	(void)execute_datapipe(&display_state_pipe,
-			       GINT_TO_POINTER(MCE_DISPLAY_LPM_ON),
-			       USE_INDATA, CACHE_INDATA);
+	if (saved_tklock_state == MCE_TKLOCK_VISUAL_STATE)
+		saved_tklock_state = MCE_TKLOCK_LOCKED_STATE;
+
+	if (is_tklock_enabled_by_proximity() == FALSE)
+		(void)execute_datapipe(&display_state_pipe,
+				       GINT_TO_POINTER(MCE_DISPLAY_LPM_ON),
+				       USE_INDATA, CACHE_INDATA);
 
 	return FALSE;
 }
@@ -1183,14 +1241,6 @@ static void setup_tklock_visual_blank_timeout(void)
 	tklock_visual_blank_timeout_cb_id =
 		g_timeout_add_seconds(DEFAULT_VISUAL_BLANK_DELAY, tklock_visual_blank_timeout_cb, NULL);
 
-#if 0
-	/* Setup forced blank timeout */
-	if (tklock_visual_forced_blank_timeout_cb_id == 0) {
-		tklock_visual_forced_blank_timeout_cb_id =
-			g_timeout_add_seconds(DEFAULT_VISUAL_FORCED_BLANK_DELAY, tklock_visual_blank_timeout_cb, NULL);
-	}
-#endif
-
 EXIT:
 	return;
 }
@@ -1211,6 +1261,8 @@ static gboolean tklock_dim_timeout_cb(gpointer data)
 		(void)execute_datapipe(&display_state_pipe,
 				       GINT_TO_POINTER(MCE_DISPLAY_LPM_ON),
 				       USE_INDATA, CACHE_INDATA);
+		if (saved_tklock_state == MCE_TKLOCK_VISUAL_STATE)
+			saved_tklock_state = MCE_TKLOCK_LOCKED_STATE;
 	} else {
 		(void)execute_datapipe(&display_state_pipe,
 				       GINT_TO_POINTER(MCE_DISPLAY_DIM),
@@ -1258,7 +1310,6 @@ static void setup_dim_blank_timeout_policy(display_state_t force)
 {
 	display_state_t display_state = datapipe_get_gint(display_state_pipe);
 
-	cancel_tklock_visual_forced_blank_timeout();
 	cancel_tklock_visual_blank_timeout();
 	cancel_tklock_unlock_timeout();
 	cancel_tklock_dim_timeout();
@@ -1344,7 +1395,6 @@ static gboolean disable_tklock(void)
 	}
 
 	/* Disable timeouts, just to be sure */
-	cancel_tklock_visual_forced_blank_timeout();
 	cancel_tklock_visual_blank_timeout();
 	cancel_tklock_unlock_timeout();
 	cancel_tklock_dim_timeout();
@@ -1589,12 +1639,10 @@ static void set_tklock_state(lock_state_t lock_state)
 
 	switch (lock_state) {
 	case LOCK_OFF:
+		saved_tklock_state = MCE_TKLOCK_UNLOCKED_STATE;
 		if (is_tklock_enabled_by_proximity() || is_pocket_mode_enabled())
 			goto EXIT;
-		/* Allow proximity relock if call ringing or active */
-		if (call_state == CALL_STATE_RINGING ||
-			call_state == CALL_STATE_ACTIVE)
-			inhibit_proximity_relock = MCE_ALLOW_PROXIMITY_RELOCK;
+
 		(void)disable_tklock();
 		(void)disable_eveater();
 		disable_autorelock();
@@ -1612,12 +1660,11 @@ static void set_tklock_state(lock_state_t lock_state)
 		break;
 
 	case LOCK_ON:
-		inhibit_proximity_relock = MCE_IGNORE_PROXIMITY_EVENTS;
 		synthesise_inactivity();
 
 		if (enable_tklock() == TRUE)
 			setup_dim_blank_timeout_policy(MCE_DISPLAY_UNDEF);
-
+		saved_tklock_state = MCE_TKLOCK_LOCKED_STATE;
 		break;
 
 	case LOCK_ON_DIMMED:
@@ -1625,13 +1672,16 @@ static void set_tklock_state(lock_state_t lock_state)
 
 		if (enable_tklock() == TRUE)
 			setup_dim_blank_timeout_policy(MCE_DISPLAY_DIM);
-
+		saved_tklock_state = MCE_TKLOCK_LOCKED_STATE;
 		break;
 
 	case LOCK_ON_PROXIMITY:
 		synthesise_inactivity();
 		enable_tklock_raw();
 		setup_dim_blank_timeout_policy(MCE_DISPLAY_UNDEF);
+
+		if (saved_tklock_state == MCE_TKLOCK_VISUAL_STATE)
+			setup_tklock_visual_blank_timeout();
 		break;
 
 	case LOCK_TOGGLE:
@@ -1689,9 +1739,6 @@ static void trigger_visual_tklock(gboolean powerkey)
 	/* If woken from pocket mode, doubletap inhibit might stay on */
 	doubletap_gesture_inhibited = FALSE;
 
-	if (powerkey == TRUE)
-		inhibit_proximity_relock = MCE_IGNORE_PROXIMITY_EVENTS;
-
 	/* Only activate visual tklock if the display is off;
 	 * else blank the screen again
 	 */
@@ -1708,6 +1755,9 @@ static void trigger_visual_tklock(gboolean powerkey)
 			(void)execute_datapipe(&display_state_pipe,
 					       GINT_TO_POINTER(MCE_DISPLAY_LPM_ON),
 					       USE_INDATA, CACHE_INDATA);
+			if (saved_tklock_state == MCE_TKLOCK_VISUAL_STATE)
+				saved_tklock_state = MCE_TKLOCK_LOCKED_STATE;
+
 			cancel_tklock_visual_blank_timeout();
 		}
 	} else {
@@ -1908,6 +1958,46 @@ EXIT:
 	return;
 }
 
+static void return_from_proximity(void)
+{
+	mce_rem_submode_int32(MCE_PROXIMITY_TKLOCK_SUBMODE);
+	mce_rem_submode_int32(MCE_POCKET_SUBMODE);
+
+	switch (saved_tklock_state) {
+	case MCE_TKLOCK_UNLOCKED_STATE:
+	default:
+		/* Disable tklock */
+		set_tklock_state(LOCK_OFF_PROXIMITY);
+
+		break;
+
+	case MCE_TKLOCK_LOCKED_STATE:
+		mce_add_submode_int32(MCE_VISUAL_TKLOCK_SUBMODE);
+
+		/* Enable tklock */
+		set_tklock_state(LOCK_ON);
+
+		/* Blank screen */
+		(void)execute_datapipe(&display_state_pipe,
+				       GINT_TO_POINTER(MCE_DISPLAY_LPM_ON),
+				       USE_INDATA, CACHE_INDATA);
+		break;
+
+	case MCE_TKLOCK_VISUAL_STATE:
+		mce_add_submode_int32(MCE_VISUAL_TKLOCK_SUBMODE);
+
+		/* Enable tklock */
+		trigger_visual_tklock(FALSE);
+
+		/* Unblank screen */
+		(void)execute_datapipe(&display_state_pipe,
+				       GINT_TO_POINTER(MCE_DISPLAY_ON),
+				       USE_INDATA, CACHE_INDATA);
+
+		break;
+	}
+}
+
 /**
  * Process the proximity state
  */
@@ -1928,14 +2018,19 @@ static void process_proximity_state(void)
 		if (proximity_sensor_state == COVER_OPEN) {
 			doubletap_gesture_inhibited = FALSE;
 			cancel_doubletap_proximity_timeout();
+			cancel_pocket_mode_timeout();
+			mce_rem_submode_int32(MCE_POCKET_SUBMODE);
 			ts_kp_disable_policy();
 		} else if (doubletap_gesture_inhibited == FALSE) {
-			setup_doubletap_proximity_timeout();
+			if (doubletap_gesture_policy != 0)
+				setup_doubletap_proximity_timeout();
+			if (is_tklock_enabled_by_proximity() == FALSE)
+				setup_pocket_mode_timeout();
 		}
 	}
 
-	if ((inhibit_proximity_relock == MCE_IGNORE_PROXIMITY_EVENTS) ||
-	    (((alarm_ui_state == MCE_ALARM_UI_VISIBLE_INT32) ||
+
+	if ((((alarm_ui_state == MCE_ALARM_UI_VISIBLE_INT32) ||
 	      (alarm_ui_state == MCE_ALARM_UI_RINGING_INT32)) &&
 	     (call_state == CALL_STATE_NONE) &&
 	     ((autorelock_triggers & AUTORELOCK_ON_PROXIMITY) == 0)))
@@ -1944,7 +2039,8 @@ static void process_proximity_state(void)
 	/* If there's an incoming call or an alarm is visible,
 	 * and the proximity sensor reports open, unblank the display
 	 */
-	if (((call_state == CALL_STATE_RINGING) ||
+	if ((((call_state == CALL_STATE_RINGING) && 
+	      (inhibit_proximity_relock != MCE_TEMP_INHIBIT_PROXIMITY_RELOCK))||
 	     ((alarm_ui_state == MCE_ALARM_UI_VISIBLE_INT32) ||
 	      (alarm_ui_state == MCE_ALARM_UI_RINGING_INT32))) &&
 	    (proximity_sensor_state == COVER_OPEN)) {
@@ -1957,7 +2053,6 @@ static void process_proximity_state(void)
 		}
 
 		/* Disable timeouts, just to be sure */
-		cancel_tklock_visual_forced_blank_timeout();
 		cancel_tklock_visual_blank_timeout();
 		cancel_tklock_unlock_timeout();
 		cancel_tklock_dim_timeout();
@@ -1971,14 +2066,13 @@ static void process_proximity_state(void)
 		    (alarm_ui_state != MCE_ALARM_UI_RINGING_INT32)) {
 			autorelock_triggers = AUTORELOCK_ON_PROXIMITY;
 
-			if (proximity_lock_when_ringing == FALSE) {
-				inhibit_proximity_relock = MCE_IGNORE_PROXIMITY_EVENTS;
-			}
 		} else {
 			autorelock_triggers = ~(~autorelock_triggers |
 				                AUTORELOCK_ON_PROXIMITY);
 		}
 
+		if (call_state == CALL_STATE_RINGING)
+			inhibit_proximity_relock = MCE_TEMP_INHIBIT_PROXIMITY_RELOCK;
 		mce_rem_submode_int32(MCE_PROXIMITY_TKLOCK_SUBMODE);
 		goto EXIT;
 	}
@@ -1999,28 +2093,19 @@ static void process_proximity_state(void)
 
 	switch (proximity_sensor_state) {
 	case COVER_OPEN:
-		if (autorelock_triggers == AUTORELOCK_ON_PROXIMITY) {
-			if ((is_tklock_enabled() == TRUE) &&
-			    (is_autorelock_enabled() == TRUE))
-				/* Disable tklock */
-				set_tklock_state(LOCK_OFF_PROXIMITY);
-
-			/* Unblank screen */
-			(void)execute_datapipe(&display_state_pipe,
-					       GINT_TO_POINTER(MCE_DISPLAY_ON),
-					       USE_INDATA, CACHE_INDATA);
-
-			mce_rem_submode_int32(MCE_PROXIMITY_TKLOCK_SUBMODE);
-		}
-
+		if (autorelock_triggers == AUTORELOCK_ON_PROXIMITY)
+			return_from_proximity();
 		break;
 
 	case COVER_CLOSED:
 		if ((inhibit_proximity_relock == MCE_ALLOW_PROXIMITY_RELOCK) &&
-		    (((is_tklock_enabled() == FALSE) &&
-		      (is_autorelock_enabled() == FALSE)) ||
-		     ((is_autorelock_enabled() == TRUE) &&
-		      (autorelock_triggers == AUTORELOCK_ON_PROXIMITY)))) {
+		    ((((is_tklock_enabled() == FALSE) &&
+		       (is_autorelock_enabled() == FALSE)) ||
+		      ((is_autorelock_enabled() == TRUE) &&
+		       (autorelock_triggers == AUTORELOCK_ON_PROXIMITY))) || 
+		     ((saved_tklock_state == MCE_TKLOCK_LOCKED_STATE) || 
+		      (saved_tklock_state == MCE_TKLOCK_VISUAL_STATE)))) {
+
 			mce_add_submode_int32(MCE_PROXIMITY_TKLOCK_SUBMODE);
 
 			if ((alarm_ui_state != MCE_ALARM_UI_VISIBLE_INT32) &&
@@ -2365,6 +2450,7 @@ static void display_state_trigger(gconstpointer data)
 			(void)enable_autokeylock();
 		}
 
+		cancel_pocket_mode_timeout();
 		mce_rem_submode_int32(MCE_POCKET_SUBMODE);
 
 		break;
@@ -2385,6 +2471,7 @@ static void display_state_trigger(gconstpointer data)
 			ts_kp_enable_policy();
 		}
 
+		cancel_pocket_mode_timeout();
 		mce_rem_submode_int32(MCE_POCKET_SUBMODE);
 
 		break;
@@ -2405,10 +2492,12 @@ static void display_state_trigger(gconstpointer data)
 			 */
 			if (is_visual_tklock_enabled() == TRUE) {
 				open_tklock_ui(TKLOCK_ENABLE_VISUAL);
+				saved_tklock_state = MCE_TKLOCK_VISUAL_STATE;
 				setup_tklock_visual_blank_timeout();
 			}
 		}
 
+		cancel_pocket_mode_timeout();
 		mce_rem_submode_int32(MCE_POCKET_SUBMODE);
 
 		(void)disable_eveater();
@@ -2476,7 +2565,6 @@ static void alarm_ui_state_trigger(gconstpointer data)
 			mce_rem_submode_int32(MCE_PROXIMITY_TKLOCK_SUBMODE);
 
 			/* Disable timeouts, just to be sure */
-			cancel_tklock_visual_forced_blank_timeout();
 			cancel_tklock_visual_blank_timeout();
 			cancel_tklock_unlock_timeout();
 			cancel_tklock_dim_timeout();
@@ -2749,28 +2837,32 @@ static void call_state_trigger(gconstpointer data)
 		if (autorelock_triggers == AUTORELOCK_ON_PROXIMITY)
 			autorelock_triggers = AUTORELOCK_NO_TRIGGERS;
 
-		mce_rem_submode_int32(MCE_PROXIMITY_TKLOCK_SUBMODE);
+		if (proximity_locked == TRUE) {
+			if ((saved_tklock_state == MCE_TKLOCK_LOCKED_STATE) ||
+			    ((autorelock_after_call_end == TRUE) &&
+			     ((saved_submode & MCE_TKLOCK_SUBMODE) != 0)))
+				saved_tklock_state = MCE_TKLOCK_VISUAL_STATE;
 
-		if (is_visual_tklock_enabled() == TRUE) {
+			return_from_proximity();
+		} else if (is_visual_tklock_enabled() == TRUE) {
+			(void)execute_datapipe(&display_state_pipe,
+					       GINT_TO_POINTER(MCE_DISPLAY_ON),
+					       USE_INDATA, CACHE_INDATA);
 			setup_tklock_visual_blank_timeout();
 		} else if ((autorelock_after_call_end == TRUE) &&
-			   (saved_submode & MCE_TKLOCK_SUBMODE) != 0) {
+			   ((saved_submode & MCE_TKLOCK_SUBMODE) != 0)) {
 			synthesise_inactivity();
 
 			/* Enable the tklock again */
 			enable_tklock_policy();
-		} else {
-			/* Disable autorelock unless tklock is active */
-			if (is_tklock_enabled() == FALSE)
-				disable_autorelock();
-
-			/* Disable proximity lock if necessary */
-			if (proximity_locked == TRUE)
-				set_tklock_state(LOCK_OFF_PROXIMITY);
+		} else if (is_tklock_enabled() == FALSE) {
+			/* Disable autorelock */
+			disable_autorelock();
 
 			/* Unblank screen */
-			if (is_tklock_enabled() == FALSE || proximity_locked == TRUE)
-				(void)execute_datapipe(&display_state_pipe, GINT_TO_POINTER(MCE_DISPLAY_ON), USE_INDATA, CACHE_INDATA);
+			(void)execute_datapipe(&display_state_pipe,
+					       GINT_TO_POINTER(MCE_DISPLAY_ON),
+					       USE_INDATA, CACHE_INDATA);
 		}
 
 		break;
@@ -3146,9 +3238,9 @@ void mce_tklock_exit(void)
 					   autorelock_touchscreen_trigger);
 
 	/* Remove all timeout sources */
-	cancel_tklock_visual_forced_blank_timeout();
 	cancel_powerkey_repeat_emulation_timeout();
 	cancel_doubletap_proximity_timeout();
+	cancel_pocket_mode_timeout();
 	cancel_tklock_visual_blank_timeout();
 	cancel_tklock_unlock_timeout();
 	cancel_tklock_dim_timeout();

@@ -1,3 +1,10 @@
+mce (1.11.12) unstable; urgency=low
+
+  * Ignore power key when proximity during tklock and call (Fixes:
+    NB#264676)
+
+ -- Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>  Fri, 04 Nov 2011 10:37:32 +0200
+
 mce (1.11.11) unstable; urgency=low
 
   * Disable proximity lock when call ends (Fixes: NB#289065)
