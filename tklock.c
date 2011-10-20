@@ -186,15 +186,31 @@ typedef enum {
 /** TKLock UI state */
 static tklock_ui_state_t tklock_ui_state = MCE_TKLOCK_UI_UNSET;
 
+/** Touch screen state type */
 typedef enum {
+	/** Touch screen state unknown */
 	MCE_TS_UNSET = -1,
+	/** Touch screen disabled */
 	MCE_TS_DISABLED,
+	/** Touch screen enabled */
 	MCE_TS_ENABLED 
 } ts_state_t;
 
 /** Touch screen state */
 static ts_state_t ts_state = MCE_TS_UNSET;
 
+/** Double tap state type */
+typedef enum {
+	/** Double tap state unknown */
+	MCE_DT_UNSET = -1,
+	/** Double tap disabled */
+	MCE_DT_DISABLED,
+	/** Double tap enabled */
+	MCE_DT_ENABLED
+} dt_state_t;
+
+/** Double tap state */
+static dt_state_t dt_state = MCE_DT_UNSET;
 
 /* Valid triggers for autorelock */
 
@@ -507,8 +523,17 @@ static void set_doubletap_gesture(gboolean enable)
 		cancel_doubletap_proximity_timeout();
 	}
 
-	(void)mce_write_string_to_file(mce_touchscreen_gesture_control_path,
-				       enable ? "4" : "0");
+	if (enable && dt_state != MCE_DT_ENABLED) {
+		(void)mce_write_string_to_file(mce_touchscreen_gesture_control_path, "4");
+		dt_state = MCE_DT_ENABLED;
+	} else if (!enable && dt_state != MCE_DT_DISABLED) {
+		(void)mce_write_string_to_file(mce_touchscreen_gesture_control_path, "0");
+		/* Disabling the double tap gesture causes recalibration */
+		if (ts_state == MCE_TS_ENABLED) {
+			g_usleep(MCE_TOUCHSCREEN_CALIBRATION_DELAY);
+		}
+		dt_state = MCE_DT_DISABLED;
+	}
 
 	/* Finally, ensure that touchscreen interrupts are enabled
 	 * if doubletap gestures are enabled
