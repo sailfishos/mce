@@ -161,10 +161,10 @@ static void update_power_saving_mode(void)
 	/* XXX: later on we should make overheating another
 	 *      trigger for power saving mode too
 	 */
-	if (((battery_level <= psm_threshold) &&
-	     (power_saving_mode == TRUE) &&
+	if (((((battery_level <= psm_threshold) &&
+	       (power_saving_mode == TRUE)) ||
+	      (force_psm == TRUE)) &&
 	     (charger_state == FALSE)) ||
-	    (force_psm == TRUE) ||
 	    (thermal_state == THERMAL_STATE_OVERHEATED)) {
 		/* If the battery charge level is lower than the threshold,
 		 * and the user has enable power saving mode,

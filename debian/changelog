@@ -1,3 +1,9 @@
+mce (1.11.10) unstable; urgency=low
+
+  * Disable forced PSM when charging (NB#280901)
+
+ -- Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>  Mon, 24 Oct 2011 13:45:03 +0300
+
 mce (1.11.9) unstable; urgency=low
 
   * Add delay also after disabling double tap gesture (NB#261982)
