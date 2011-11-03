@@ -2763,6 +2763,11 @@ static void call_state_trigger(gconstpointer data)
 			/* Disable autorelock unless tklock is active */
 			if (is_tklock_enabled() == FALSE)
 				disable_autorelock();
+
+			/* Disable proximity lock if necessary */
+			if (proximity_locked == TRUE)
+				set_tklock_state(LOCK_OFF_PROXIMITY);
+
 			/* Unblank screen */
 			if (is_tklock_enabled() == FALSE || proximity_locked == TRUE)
 				(void)execute_datapipe(&display_state_pipe, GINT_TO_POINTER(MCE_DISPLAY_ON), USE_INDATA, CACHE_INDATA);

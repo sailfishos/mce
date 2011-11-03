@@ -1,3 +1,9 @@
+mce (1.11.11) unstable; urgency=low
+
+  * Disable proximity lock when call ends (Fixes: NB#289065)
+
+ -- Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>  Thu, 03 Nov 2011 16:26:43 +0200
+
 mce (1.11.10) unstable; urgency=low
 
   * Disable forced PSM when charging (NB#280901)
