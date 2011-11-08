@@ -1,3 +1,9 @@
+mce (1.11.14) unstable; urgency=low
+
+  * Reset state properly when call ends
+
+ -- Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>  Tue, 08 Nov 2011 16:51:26 +0200
+
 mce (1.11.13) unstable; urgency=low
 
   * Restore allowing proximity relock

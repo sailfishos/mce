@@ -2850,10 +2850,8 @@ static void call_state_trigger(gconstpointer data)
 
 			return_from_proximity();
 		} else if (is_visual_tklock_enabled() == TRUE) {
-			(void)execute_datapipe(&display_state_pipe,
-					       GINT_TO_POINTER(MCE_DISPLAY_ON),
-					       USE_INDATA, CACHE_INDATA);
-			setup_tklock_visual_blank_timeout();
+			mce_rem_submode_int32(MCE_POCKET_SUBMODE);
+			trigger_visual_tklock(FALSE);
 		} else if ((autorelock_after_call_end == TRUE) &&
 			   ((saved_submode & MCE_TKLOCK_SUBMODE) != 0)) {
 			synthesise_inactivity();
