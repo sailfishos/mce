@@ -1643,6 +1643,11 @@ static void set_tklock_state(lock_state_t lock_state)
 		if (is_tklock_enabled_by_proximity() || is_pocket_mode_enabled())
 			goto EXIT;
 
+		/* Allow proximity relock if call ringing or active */
+		if (call_state == CALL_STATE_RINGING ||
+		    call_state == CALL_STATE_ACTIVE)
+			inhibit_proximity_relock = MCE_ALLOW_PROXIMITY_RELOCK;
+
 		(void)disable_tklock();
 		(void)disable_eveater();
 		disable_autorelock();
