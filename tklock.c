@@ -2796,6 +2796,7 @@ static void call_state_trigger(gconstpointer data)
 {
 	static call_state_t old_call_state = CALL_STATE_INVALID;
 	call_state_t call_state = GPOINTER_TO_INT(data);
+	display_state_t display_state = datapipe_get_gint(display_state_pipe);
 	/* Saving the state for not to interfere with old call paths */
 	gboolean proximity_locked = is_tklock_enabled_by_proximity();
 
@@ -2850,8 +2851,8 @@ static void call_state_trigger(gconstpointer data)
 
 			return_from_proximity();
 		} else if (is_visual_tklock_enabled() == TRUE) {
-			mce_rem_submode_int32(MCE_POCKET_SUBMODE);
-			trigger_visual_tklock(FALSE);
+			if (display_state == MCE_DISPLAY_ON)
+				setup_tklock_visual_blank_timeout();
 		} else if ((autorelock_after_call_end == TRUE) &&
 			   ((saved_submode & MCE_TKLOCK_SUBMODE) != 0)) {
 			synthesise_inactivity();

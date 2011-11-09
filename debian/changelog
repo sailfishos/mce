@@ -1,3 +1,9 @@
+mce (1.11.15) unstable; urgency=low
+
+  * Don't turn display on unnecessarily when call ends
+
+ -- Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>  Wed, 09 Nov 2011 13:05:32 +0200
+
 mce (1.11.14) unstable; urgency=low
 
   * Reset state properly when call ends
