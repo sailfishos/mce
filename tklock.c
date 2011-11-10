@@ -2029,7 +2029,8 @@ static void process_proximity_state(void)
 		} else if (doubletap_gesture_inhibited == FALSE) {
 			if (doubletap_gesture_policy != 0)
 				setup_doubletap_proximity_timeout();
-			if (is_tklock_enabled_by_proximity() == FALSE)
+			if ((is_tklock_enabled_by_proximity() == FALSE) &&
+			    (is_pocket_mode_enabled() == FALSE))
 				setup_pocket_mode_timeout();
 		}
 	}
@@ -2454,9 +2455,6 @@ static void display_state_trigger(gconstpointer data)
 		} else {
 			(void)enable_autokeylock();
 		}
-
-		cancel_pocket_mode_timeout();
-		mce_rem_submode_int32(MCE_POCKET_SUBMODE);
 
 		break;
 

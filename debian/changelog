@@ -1,3 +1,9 @@
+mce (1.11.16) unstable; urgency=low
+
+  * Do not interfere with pocket mode timeout when display state changes
+
+ -- Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>  Thu, 10 Nov 2011 13:33:53 +0200
+
 mce (1.11.15) unstable; urgency=low
 
   * Don't turn display on unnecessarily when call ends
