@@ -58,6 +58,12 @@
 #define MCE_RM680_DOUBLETAP_SYSFS_PATH			"/sys/class/i2c-adapter/i2c-2/2-004b/wait_for_gesture"
 
 /**
+ * SysFS interface to recalibrate
+ * RM-680/RM-690/RM-696/RM-716 touchscreen
+ */
+#define MCE_RM680_TOUCHSCREEN_CALIBRATION_PATH		"/sys/class/i2c-adapter/i2c-2/2-004b/calibrate"
+
+/**
  * SysFS interface to enable/disable
  * RM-680/RM-690/RM-696/RM-716 touchscreen IRQs
  */

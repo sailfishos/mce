@@ -155,6 +155,9 @@ static const gchar *mce_touchscreen_sysfs_disable_path = NULL;
 /** SysFS path to touchscreen double-tap gesture control */
 static const gchar *mce_touchscreen_gesture_control_path = NULL;
 
+/** SysFS path to touchscreen recalibration control */
+static const gchar *mce_touchscreen_calibration_control_path = NULL;
+
 /** SysFS path to keypad event disable */
 static const gchar *mce_keypad_sysfs_disable_path = NULL;
 
@@ -166,6 +169,17 @@ static submode_t saved_submode = MCE_INVALID_SUBMODE;
 
 /** List of monitored SystemUI processes (should be one or zero) */
 static GSList *systemui_monitor_list = NULL;
+
+/** Double tap recalibration delays */
+static const guint doubletap_recal_delays[] = {
+	2, 4, 8, 16, 30
+};
+
+/** Double tap recalibration index */
+static guint doubletap_recal_index = 0;
+
+/** Double tap recalibration toumeout identifier */
+static guint doubletap_recal_timeout_id = 0;
 
 /** TKLock saved state type */
 typedef enum {
@@ -345,6 +359,57 @@ static gboolean is_pocket_mode_enabled(void) G_GNUC_PURE;
 static gboolean is_pocket_mode_enabled(void)
 {
 	return ((mce_get_submode_int32() & MCE_POCKET_SUBMODE) != 0);
+}
+
+/**
+ * Callback for doubletap recalibration
+ *
+ * @param data Not used.
+ * @return Always FALSE for remove event source
+ */
+static gboolean doubletap_recal_timeout_cb(gpointer data)
+{
+	(void)data;
+
+	/* Hop to next delay, if available */
+	if (doubletap_recal_index < G_N_ELEMENTS(doubletap_recal_delays) - 1)
+		doubletap_recal_index++;
+	doubletap_recal_timeout_id =
+		g_timeout_add_seconds(doubletap_recal_delays[doubletap_recal_index],
+				      doubletap_recal_timeout_cb, NULL);
+
+	mce_log(LL_DEBUG, "Recalibrating double tap");
+	(void)mce_write_string_to_file(mce_touchscreen_calibration_control_path,
+				       "1");
+
+	return FALSE;
+}
+
+/**
+ * Cancel doubletap recalibration timeouts
+ */
+static void cancel_doubletap_recal_timeout(void)
+{
+	if (doubletap_recal_timeout_id != 0)
+		g_source_remove(doubletap_recal_timeout_id);
+	doubletap_recal_timeout_id = 0;
+}
+
+/**
+ * Setup doubletap recalibration timeouts
+ */
+static void setup_doubletap_recal_timeout(void)
+{
+	if (mce_touchscreen_calibration_control_path == NULL)
+		return;
+
+	cancel_doubletap_recal_timeout();
+	doubletap_recal_index = 0;
+
+	doubletap_recal_timeout_id =
+		g_timeout_add_seconds(doubletap_recal_delays[doubletap_recal_index],
+				      doubletap_recal_timeout_cb, NULL);
+
 }
 
 /**
@@ -589,9 +654,11 @@ static void set_doubletap_gesture(gboolean enable)
 
 	if (enable && dt_state != MCE_DT_ENABLED) {
 		(void)mce_write_string_to_file(mce_touchscreen_gesture_control_path, "4");
+		setup_doubletap_recal_timeout();
 		dt_state = MCE_DT_ENABLED;
 	} else if (!enable && dt_state != MCE_DT_DISABLED) {
 		(void)mce_write_string_to_file(mce_touchscreen_gesture_control_path, "0");
+		cancel_doubletap_recal_timeout();
 		/* Disabling the double tap gesture causes recalibration */
 		if (ts_state == MCE_TS_ENABLED) {
 			g_usleep(MCE_TOUCHSCREEN_CALIBRATION_DELAY);
@@ -3011,6 +3078,14 @@ gboolean mce_tklock_init(void)
 			"No touchscreen gesture control interface available");
 	}
 
+	if (g_access(MCE_RM680_TOUCHSCREEN_CALIBRATION_PATH, W_OK) == 0) {
+		mce_touchscreen_calibration_control_path =
+			MCE_RM680_TOUCHSCREEN_CALIBRATION_PATH;
+	} else {
+		mce_log(LL_INFO,
+			"No touchscreen calibration control interface available");
+	}
+
 	errno = 0;
 
 	/* Close the touchscreen/keypad lock and event eater UI,
@@ -3246,6 +3321,7 @@ void mce_tklock_exit(void)
 	cancel_tklock_visual_blank_timeout();
 	cancel_tklock_unlock_timeout();
 	cancel_tklock_dim_timeout();
+	cancel_doubletap_recal_timeout();
 
 	return;
 }

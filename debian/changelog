@@ -1,3 +1,9 @@
+mce (1.11.17) unstable; urgency=low
+
+  * Recalibrate double tap with growing intervals (Fixes: NB#273570)
+
+ -- Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>  Mon, 21 Nov 2011 13:12:54 +0200
+
 mce (1.11.16) unstable; urgency=low
 
   * Do not interfere with pocket mode timeout when display state changes
