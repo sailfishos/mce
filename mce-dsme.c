@@ -159,6 +159,9 @@ static void dsme_send_pong(void)
 	mce_dsme_send(&msg);
 	mce_log(LL_DEBUG,
 		"DSM_MSGTYPE_PROCESSWD_PONG sent to DSME");
+
+	execute_datapipe(&heartbeat_pipe, GINT_TO_POINTER(0),
+			 USE_INDATA, DONT_CACHE_INDATA);
 }
 
 /**

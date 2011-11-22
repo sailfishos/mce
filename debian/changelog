@@ -1,3 +1,9 @@
+mce (1.11.18) unstable; urgency=low
+
+  * Synchronize double tap recalibrations with DSME PINGs
+
+ -- Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>  Tue, 22 Nov 2011 13:24:16 +0200
+
 mce (1.11.17) unstable; urgency=low
 
   * Recalibrate double tap with growing intervals (Fixes: NB#273570)

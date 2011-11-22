@@ -327,6 +327,8 @@ datapipe_struct jack_sense_pipe;
 datapipe_struct power_saving_mode_pipe;
 /** Thermal state; read only */
 datapipe_struct thermal_state_pipe;
+/** Heartbeat; read only */
+datapipe_struct heartbeat_pipe;
 
 /* XXX: use HAL */
 /** Does the device have a flicker key? */

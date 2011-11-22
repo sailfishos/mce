@@ -181,6 +181,9 @@ static guint doubletap_recal_index = 0;
 /** Double tap recalibration toumeout identifier */
 static guint doubletap_recal_timeout_id = 0;
 
+/** Do double tap recalibration on heartbeat */
+static gboolean doubletap_recal_on_heartbeat = FALSE;
+
 /** TKLock saved state type */
 typedef enum {
 	/** TKLock was not enabled */
@@ -362,6 +365,22 @@ static gboolean is_pocket_mode_enabled(void)
 }
 
 /**
+ * Heartbeat trigger
+ *
+ * @param data Not used
+ */
+static void heartbeat_trigger(gconstpointer data)
+{
+	(void)data;
+
+	if (doubletap_recal_on_heartbeat == TRUE) {
+		mce_log(LL_DEBUG, "Recalibrating double tap");
+		(void)mce_write_string_to_file(mce_touchscreen_calibration_control_path,
+					       "1");
+	}
+}
+
+/**
  * Callback for doubletap recalibration
  *
  * @param data Not used.
@@ -371,16 +390,23 @@ static gboolean doubletap_recal_timeout_cb(gpointer data)
 {
 	(void)data;
 
-	/* Hop to next delay, if available */
-	if (doubletap_recal_index < G_N_ELEMENTS(doubletap_recal_delays) - 1)
-		doubletap_recal_index++;
-	doubletap_recal_timeout_id =
-		g_timeout_add_seconds(doubletap_recal_delays[doubletap_recal_index],
-				      doubletap_recal_timeout_cb, NULL);
-
 	mce_log(LL_DEBUG, "Recalibrating double tap");
 	(void)mce_write_string_to_file(mce_touchscreen_calibration_control_path,
 				       "1");
+
+	/* If at last delay, start recalibrating on DSME heartbeat */
+	if (doubletap_recal_index == G_N_ELEMENTS(doubletap_recal_delays) - 1) {
+		doubletap_recal_timeout_id = 0;
+		doubletap_recal_on_heartbeat = TRUE;
+
+		return FALSE;
+	}
+
+	/* Otherwise use next delay */
+	doubletap_recal_index++;
+	doubletap_recal_timeout_id =
+	       	g_timeout_add_seconds(doubletap_recal_delays[doubletap_recal_index],
+				      doubletap_recal_timeout_cb, NULL);
 
 	return FALSE;
 }
@@ -393,6 +419,7 @@ static void cancel_doubletap_recal_timeout(void)
 	if (doubletap_recal_timeout_id != 0)
 		g_source_remove(doubletap_recal_timeout_id);
 	doubletap_recal_timeout_id = 0;
+	doubletap_recal_on_heartbeat = FALSE;
 }
 
 /**
@@ -405,6 +432,7 @@ static void setup_doubletap_recal_timeout(void)
 
 	cancel_doubletap_recal_timeout();
 	doubletap_recal_index = 0;
+	doubletap_recal_on_heartbeat = FALSE;
 
 	doubletap_recal_timeout_id =
 		g_timeout_add_seconds(doubletap_recal_delays[doubletap_recal_index],
@@ -3134,6 +3162,8 @@ gboolean mce_tklock_init(void)
 					  jack_sense_trigger);
 	append_output_trigger_to_datapipe(&usb_cable_pipe,
 					  usb_cable_trigger);
+	append_output_trigger_to_datapipe(&heartbeat_pipe,
+					  heartbeat_trigger);
 
 	/* Touchscreen/keypad autolock */
 	/* Since we've set a default, error handling is unnecessary */
@@ -3273,6 +3303,8 @@ EXIT:
 void mce_tklock_exit(void)
 {
 	/* Remove triggers/filters from datapipes */
+	remove_output_trigger_from_datapipe(&heartbeat_pipe,
+					    heartbeat_trigger);
 	remove_output_trigger_from_datapipe(&usb_cable_pipe,
 					    usb_cable_trigger);
 	remove_output_trigger_from_datapipe(&jack_sense_pipe,

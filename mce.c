@@ -623,6 +623,8 @@ int main(int argc, char **argv)
 		       0, GINT_TO_POINTER(0));
 	setup_datapipe(&thermal_state_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(THERMAL_STATE_UNDEF));
+	setup_datapipe(&heartbeat_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(0));
 
 	/* Initialise mode management
 	 * pre-requisite: mce_gconf_init()
@@ -732,6 +734,7 @@ EXIT:
 	free_datapipe(&call_state_pipe);
 	free_datapipe(&master_radio_pipe);
 	free_datapipe(&system_state_pipe);
+	free_datapipe(&heartbeat_pipe);
 
 	/* Call the exit function for all subsystems */
 	mce_gconf_exit();
