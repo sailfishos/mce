@@ -2620,6 +2620,7 @@ static void alarm_ui_state_trigger(gconstpointer data)
 				datapipe_get_gint(proximity_sensor_pipe);
 	alarm_ui_state_t alarm_ui_state = GPOINTER_TO_INT(data);
 	call_state_t call_state = datapipe_get_gint(call_state_pipe);
+	audio_route_t audio_route = datapipe_get_gint(audio_route_pipe);
 
 	switch (alarm_ui_state) {
 	case MCE_ALARM_UI_VISIBLE_INT32:
@@ -2685,6 +2686,12 @@ static void alarm_ui_state_trigger(gconstpointer data)
 		break;
 
 	case MCE_ALARM_UI_OFF_INT32:
+		if ((is_tklock_enabled_by_proximity() == TRUE) &&
+		    (call_state != CALL_STATE_INVALID) &&
+		    (call_state != CALL_STATE_NONE) &&
+		    (audio_route == AUDIO_ROUTE_HANDSET))
+			break;
+
 		mce_rem_submode_int32(MCE_PROXIMITY_TKLOCK_SUBMODE);
 
 		/* In acting dead the event eater is only
