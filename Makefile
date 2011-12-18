@@ -5,9 +5,9 @@
 
 VERSION := 1.12.0
 
-INSTALL := install -o root -g root --mode=755
+INSTALL := install --mode=755
 INSTALL_DIR := install -d
-INSTALL_DATA := install -o root -g root --mode=644
+INSTALL_DATA := install --mode=644
 
 DOXYGEN := doxygen
 
