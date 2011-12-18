@@ -27,7 +27,7 @@
 #include <string.h>			/* strcmp(), strcpy(), strdup() */
 #include <unistd.h>			/* close(), W_OK */
 #include <sys/ioctl.h>			/* ioctl() */
-#include <linux/i2c-dev.h>		/* i2c_smbus_write_byte_data(),
+#include <libi2c/i2c-dev.h>	/* i2c_smbus_write_byte_data(),
 					 * I2C_SLAVE_FORCE
 					 */
 
