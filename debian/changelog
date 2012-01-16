@@ -1,3 +1,9 @@
+mce (1.11.20) unstable; urgency=low
+
+  * Tune muted color profile (Fixes: NB#296928)
+
+ -- Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>  Fri, 13 Jan 2012 10:06:53 +0200
+
 mce (1.11.19) unstable; urgency=low
 
   * Don't exit proximity lock after alarm when having ongoing call
