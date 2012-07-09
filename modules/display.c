@@ -113,6 +113,7 @@
 					 * append_output_trigger_to_datapipe(),
 					 * remove_output_trigger_from_datapipe()
 					 */
+#include "tklock.h"
 
 /* These defines are taken from devicelock.h, but slightly modified */
 #ifndef DEVICELOCK_H
@@ -2636,6 +2637,7 @@ static void display_state_trigger(gconstpointer data)
 	case MCE_DISPLAY_ON:
 	default:
 		display_unblank();
+		mce_tklock_show_tklock_ui();
 		break;
 	}
 
