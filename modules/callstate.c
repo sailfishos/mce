@@ -138,6 +138,9 @@ static GSList *call_state_monitor_list = NULL;
 /** Keep track of whether call state is monitored */
 static gboolean call_state_is_monitored = FALSE;
 
+/** Reference counter for number of active calls */
+static unsigned char num_of_active_calls = 0;
+
 /**
  * Send the call state and type
  *
@@ -509,9 +512,17 @@ static gboolean ofono_handle_call_property(DBusMessageIter *it)
 
 		if (!strcmp(prop_value_str, "incoming") ||
 		    !strcmp(prop_value_str, "dialing")) {
+			num_of_active_calls += 1;
 			call_state = CALL_STATE_RINGING;
 		} else if (!strcmp(prop_value_str, "disconnected")) {
-			call_state = CALL_STATE_NONE;
+			num_of_active_calls -= 1;
+            /* Only set state to NONE if there are no remaining calls.
+             * This information could also be verified from ofono if
+             * some dbus signals are expected to go missing. */
+			if (num_of_active_calls <= 0) {
+				num_of_active_calls = 0;
+				call_state = CALL_STATE_NONE;
+			}
 		} else {
 			call_state = CALL_STATE_ACTIVE;
 		}
