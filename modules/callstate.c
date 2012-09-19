@@ -26,6 +26,8 @@
 #include "mce.h"
 #include "callstate.h"
 
+#include "ofono-dbus-names.h"
+
 #include <mce/mode-names.h>		/* MCE_CALL_STATE_NONE,
 					 * MCE_CALL_STATE_ACTIVE,
 					 * MCE_CALL_STATE_SERVICE,
@@ -463,6 +465,184 @@ EXIT:
 }
 
 /**
+ * Parses an ofono property message from given iterator.
+ *
+ * Actions related to the property are done.
+ *
+ * @param it Iterator to ofono property.
+ * @return TRUE on success, FALSE on failure.
+ */
+static gboolean ofono_handle_call_property(DBusMessageIter *it)
+{
+	gboolean status = FALSE;
+	gboolean call_state_changed = FALSE;
+	DBusMessageIter varit;
+	gchar *propname;
+	gchar *prop_value_str;
+	gboolean prop_value_bool;
+	call_state_t old_call_state = datapipe_get_gint(call_state_pipe);
+	call_type_t old_call_type = datapipe_get_gint(call_type_pipe);
+	call_state_t call_state = old_call_state;
+	call_type_t call_type = old_call_type;
+
+	if (dbus_message_iter_get_arg_type(it) != DBUS_TYPE_STRING) {
+		mce_log(LL_WARN, "Parsing failure with ofono signal");
+		goto EXIT;
+	}
+	dbus_message_iter_get_basic(it, (void *)&propname);
+	mce_log(LL_DEBUG, "Handling call property '%s' from ofono", propname);
+
+	dbus_message_iter_next(it);
+
+	if (dbus_message_iter_get_arg_type(it) != DBUS_TYPE_VARIANT) {
+		mce_log(LL_WARN, "Parsing failure with ofono signal");
+		goto EXIT;
+	}
+	dbus_message_iter_recurse(it, &varit);
+
+	if (!strcmp(propname, "State")) {
+		if (dbus_message_iter_get_arg_type(&varit) != DBUS_TYPE_STRING) {
+			mce_log(LL_WARN, "Parsing failure with ofono signal");
+			goto EXIT;
+		}
+		dbus_message_iter_get_basic(&varit, (void *)&prop_value_str);
+
+		if (!strcmp(prop_value_str, "incoming") ||
+		    !strcmp(prop_value_str, "dialing")) {
+			call_state = CALL_STATE_RINGING;
+		} else if (!strcmp(prop_value_str, "disconnected")) {
+			call_state = CALL_STATE_NONE;
+		} else {
+			call_state = CALL_STATE_ACTIVE;
+		}
+
+		if (old_call_state != call_state)
+			call_state_changed = TRUE;
+
+	} else if (!strcmp(propname, "Emergency")) {
+		if (dbus_message_iter_get_arg_type(&varit) != DBUS_TYPE_BOOLEAN) {
+			mce_log(LL_WARN, "Parsing failure with ofono signal");
+			goto EXIT;
+		}
+		dbus_message_iter_get_basic(&varit, (void *)&prop_value_bool);
+
+		if (prop_value_bool) {
+			call_type = EMERGENCY_CALL;
+		} else {
+			call_type = NORMAL_CALL;
+		}
+
+		if (old_call_type != call_type)
+			call_state_changed = TRUE;
+
+	} else {
+		mce_log(LL_DEBUG,
+		        "No handling for property '%s' from ofono", propname);
+	}
+
+	if (call_state_changed) {
+		(void)execute_datapipe(&call_state_pipe,
+					   GINT_TO_POINTER(call_state),
+					   USE_INDATA, CACHE_INDATA);
+
+		(void)execute_datapipe(&call_type_pipe,
+					   GINT_TO_POINTER(call_type),
+					   USE_INDATA, CACHE_INDATA);
+	}
+
+	status = TRUE;
+EXIT:
+	return status;
+}
+
+/**
+ * D-Bus callback for ofono call added signal.
+ *
+ * @param msg The D-Bus message.
+ * @return TRUE on success, FALSE on failure.
+ */
+ static gboolean ofono_call_added_dbus_cb(DBusMessage *const msg)
+ {
+	gboolean status = FALSE;
+	DBusMessageIter msgit;
+	DBusMessageIter arrit;
+	DBusMessageIter entit;
+	DBusError error;
+
+	/* Register error channel */
+	dbus_error_init(&error);
+
+	mce_log(LL_DEBUG,
+		"Received call added signal from ofono");
+
+	dbus_message_iter_init(msg, &msgit);
+
+	/* Message correctness checking */
+	if (dbus_message_iter_get_arg_type(&msgit) != DBUS_TYPE_OBJECT_PATH) {
+		mce_log(LL_WARN, "Parsing failure with ofono signal");
+		goto EXIT;
+	}
+
+	if (!dbus_message_iter_next(&msgit) ||
+	    dbus_message_iter_get_arg_type(&msgit) != DBUS_TYPE_ARRAY) {
+		mce_log(LL_WARN, "Parsing failure with ofono signal");
+		goto EXIT;
+	}
+
+	dbus_message_iter_recurse(&msgit, &arrit);
+
+	if (dbus_message_iter_get_arg_type(&arrit) != DBUS_TYPE_DICT_ENTRY) {
+		mce_log(LL_WARN, "Parsing failure with ofono signal");
+		goto EXIT;
+	}
+
+	dbus_message_iter_recurse(&arrit, &entit);
+
+	do {
+		if (!ofono_handle_call_property(&entit)) {
+			mce_log(LL_WARN,
+			        "Failed to parse call property change from ofono");
+		}
+		goto EXIT;
+	} while (dbus_message_iter_next(&entit));
+
+	status = TRUE;
+EXIT:
+	return status;
+ }
+
+/**
+ * D-Bus callback for ofono call property changed signal.
+ *
+ * @param msg The D-Bus message.
+ * @return TRUE on success, FALSE on failure.
+ */
+ static gboolean ofono_call_props_changed_dbus_cb(DBusMessage *const msg)
+ {
+	gboolean status = FALSE;
+	DBusMessageIter msgit;
+	DBusError error;
+
+	/* Register error channel */
+	dbus_error_init(&error);
+
+	mce_log(LL_DEBUG,
+		"Received call property changed signal from ofono");
+
+	dbus_message_iter_init(msg, &msgit);
+
+	if (!ofono_handle_call_property(&msgit)) {
+		mce_log(LL_WARN,
+		        "Failed to parse call property change from ofono");
+		goto EXIT;
+	}
+
+	status = TRUE;
+EXIT:
+	return status;
+}
+
+/**
  * Init function for the call state module
  *
  * @todo XXX status needs to be set on error!
@@ -489,6 +669,22 @@ const gchar *g_module_check_init(GModule *module)
 				 NULL,
 				 DBUS_MESSAGE_TYPE_METHOD_CALL,
 				 get_call_state_dbus_cb) == NULL)
+		goto EXIT;
+
+	//~ /* Listen to call added signal from ofono */
+	if (mce_dbus_handler_add(OFONO_VOICEMGR_SIGNAL_IF,
+				 OFONO_CALL_ADDED_SIG,
+				 NULL,
+				 DBUS_MESSAGE_TYPE_SIGNAL,
+				 ofono_call_added_dbus_cb) == NULL)
+		goto EXIT;
+
+	/* Listen to call property change signal from ofono */
+	if (mce_dbus_handler_add(OFONO_VOICE_SIGNAL_IF,
+				 OFONO_VOICE_PROP_CHANGED_SIG,
+				 NULL,
+				 DBUS_MESSAGE_TYPE_SIGNAL,
+				 ofono_call_props_changed_dbus_cb) == NULL)
 		goto EXIT;
 
 EXIT:

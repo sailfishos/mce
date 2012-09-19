@@ -2107,7 +2107,7 @@ static void process_proximity_state(void)
 	cover_state_t slide_state = datapipe_get_gint(keyboard_slide_pipe);
 	cover_state_t proximity_sensor_state =
 				datapipe_get_gint(proximity_sensor_pipe);
-	audio_route_t audio_route = datapipe_get_gint(audio_route_pipe);
+	/* audio_route_t audio_route = datapipe_get_gint(audio_route_pipe); */
 	alarm_ui_state_t alarm_ui_state =
 				datapipe_get_gint(alarm_ui_state_pipe);
 	call_state_t call_state = datapipe_get_gint(call_state_pipe);
@@ -2180,13 +2180,19 @@ static void process_proximity_state(void)
 
 	/* If there's no incoming or active call, or the audio isn't
 	 * routed to the handset or headset, or if the slide is open, exit
+         *
+         * XXX: Audio routing has been taken out from the condition, as mce
+         * does not currently get the information anywhere.
+         * Condition should be re-enabled once audio routing information
+         * is available.
 	 */
+
 	if (((((call_state != CALL_STATE_RINGING) ||
 	       (proximity_lock_when_ringing != TRUE)) &&
-	      (call_state != CALL_STATE_ACTIVE)) ||
+	      (call_state != CALL_STATE_ACTIVE)) /* ||
              ((audio_route != AUDIO_ROUTE_HANDSET) &&
 	      ((audio_route != AUDIO_ROUTE_SPEAKER) ||
-	       (call_state != CALL_STATE_RINGING)))) ||
+	       (call_state != CALL_STATE_RINGING)))*/) ||
 	    ((proximity_lock_with_open_slide == FALSE) &&
 	     (slide_state == COVER_OPEN))) {
 		goto EXIT;
