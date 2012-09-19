@@ -919,7 +919,6 @@ static void als_iomon_common(gint lux, gboolean no_delay)
 {
 	cover_state_t proximity_sensor_state =
 				datapipe_get_gint(proximity_sensor_pipe);
-	gboolean status = FALSE;
 	gint new_lux;
 	gint lower;
 	gint upper;
@@ -1020,8 +1019,6 @@ static void als_iomon_common(gint lux, gboolean no_delay)
 
 
 EXIT:
-	status = TRUE;
-
 	return;
 }
 
