@@ -3,11 +3,11 @@
 # Written by David Weinehall
 # Modified by Tuomo Tanskanen
 
-VERSION := 1.12.0
+VERSION := 1.12.1
 
-INSTALL := install -o root -g root --mode=755
+INSTALL := install --mode=755
 INSTALL_DIR := install -d
-INSTALL_DATA := install -o root -g root --mode=644
+INSTALL_DATA := install --mode=644
 
 DOXYGEN := doxygen
 
@@ -151,6 +151,7 @@ install: all
 	$(INSTALL) $(REGULARDEVICECLEARSCRIPT) $(DEVICECLEARSCRIPTDIR)	&&\
 	$(INSTALL) $(REGULARDEVICECLEARSCRIPT) $(FACTORYRESETSCRIPTDIR)	&&\
 	$(INSTALL_DATA) $(CONFFILE) $(CONFINSTDIR)			&&\
+	$(INSTALL_DATA) $(RADIOSTATESCONFFILE) $(CONFINSTDIR)		&&\
 	$(INSTALL_DATA) $(GCONFSCHEMAS) $(GCONFSCHEMADIR)		&&\
 	$(INSTALL_DATA) $(DBUSCONF) $(DBUSDIR)				&&\
 	$(INSTALL_DATA) $(BACKUPCONF) $(BACKUPCONFDIR)

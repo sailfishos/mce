@@ -1,3 +1,10 @@
+mce (1.12.1) unstable; urgency=low
+
+  * Added updates from Mer/Nemo to upstream git
+  * Includes fixes for building, call control and display handling
+
+ -- Kalle Jokiniemi <kalle.jokiniemi@jolla.com>  Wed, 19 Sep 2012 11:27:00 +0200
+
 mce (1.12.0) unstable; urgency=low
 
   * Tune muted color profile (Fixes: NB#296995)

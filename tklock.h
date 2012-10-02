@@ -70,7 +70,8 @@
 #define MCE_RM680_TOUCHSCREEN_SYSFS_DISABLE_PATH	"/sys/class/i2c-adapter/i2c-2/2-004b/disable_ts"
 
 /** SysFS interface to enable/disable RX-44/RX-48/RX-51 touchscreen IRQs */
-#define MCE_RX44_TOUCHSCREEN_SYSFS_DISABLE_PATH		"/sys/devices/platform/omap2_mcspi.1/spi1.0/disable_ts"
+#define MCE_RX44_TOUCHSCREEN_SYSFS_DISABLE_PATH		    "/sys/devices/platform/omap2_mcspi.1/spi1.0/disable_ts"
+#define MCE_RX44_TOUCHSCREEN_SYSFS_DISABLE_PATH_KERNEL2637	"/sys/devices/platform/omap2_mcspi.1/spi1.0/disable"
 
 /** Touch screen enable delay for calibration **/
 #define MCE_TOUCHSCREEN_CALIBRATION_DELAY		100000 /* 100 milliseconds */
@@ -179,5 +180,7 @@
  */
 gboolean mce_tklock_init(void);
 void mce_tklock_exit(void);
+
+void mce_tklock_show_tklock_ui(void);
 
 #endif /* _TKLOCK_H_ */
