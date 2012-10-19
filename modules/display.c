@@ -2935,6 +2935,87 @@ const gchar *g_module_check_init(GModule *module)
 
 	set_cabc_mode(DEFAULT_CABC_MODE);
 
+	/* dbus methods first so that those work even if gconf fails */
+	/* get_display_status */
+	if (mce_dbus_handler_add(MCE_REQUEST_IF,
+				 MCE_DISPLAY_STATUS_GET,
+				 NULL,
+				 DBUS_MESSAGE_TYPE_METHOD_CALL,
+				 display_status_get_dbus_cb) == NULL)
+		goto EXIT;
+
+	/* get_cabc_mode */
+	if (mce_dbus_handler_add(MCE_REQUEST_IF,
+				 MCE_CABC_MODE_GET,
+				 NULL,
+				 DBUS_MESSAGE_TYPE_METHOD_CALL,
+				 cabc_mode_get_dbus_cb) == NULL)
+		goto EXIT;
+
+	/* req_display_state_on */
+	if (mce_dbus_handler_add(MCE_REQUEST_IF,
+				 MCE_DISPLAY_ON_REQ,
+				 NULL,
+				 DBUS_MESSAGE_TYPE_METHOD_CALL,
+				 display_on_req_dbus_cb) == NULL)
+		goto EXIT;
+
+	/* req_display_state_dim */
+	if (mce_dbus_handler_add(MCE_REQUEST_IF,
+				 MCE_DISPLAY_DIM_REQ,
+				 NULL,
+				 DBUS_MESSAGE_TYPE_METHOD_CALL,
+				 display_dim_req_dbus_cb) == NULL)
+		goto EXIT;
+
+	/* req_display_state_off */
+	if (mce_dbus_handler_add(MCE_REQUEST_IF,
+				 MCE_DISPLAY_OFF_REQ,
+				 NULL,
+				 DBUS_MESSAGE_TYPE_METHOD_CALL,
+				 display_off_req_dbus_cb) == NULL)
+		goto EXIT;
+
+	/* req_display_blanking_pause */
+	if (mce_dbus_handler_add(MCE_REQUEST_IF,
+				 MCE_PREVENT_BLANK_REQ,
+				 NULL,
+				 DBUS_MESSAGE_TYPE_METHOD_CALL,
+				 display_blanking_pause_req_dbus_cb) == NULL)
+		goto EXIT;
+
+	/* req_display_cancel_blanking_pause */
+	if (mce_dbus_handler_add(MCE_REQUEST_IF,
+				 MCE_CANCEL_PREVENT_BLANK_REQ,
+				 NULL,
+				 DBUS_MESSAGE_TYPE_METHOD_CALL,
+				 display_cancel_blanking_pause_req_dbus_cb) == NULL)
+		goto EXIT;
+
+	/* req_cabc_mode */
+	if (mce_dbus_handler_add(MCE_REQUEST_IF,
+				 MCE_CABC_MODE_REQ,
+				 NULL,
+				 DBUS_MESSAGE_TYPE_METHOD_CALL,
+				 cabc_mode_req_dbus_cb) == NULL)
+		goto EXIT;
+
+	/* Desktop readiness signal */
+	if (mce_dbus_handler_add("com.nokia.startup.signal",
+				 "desktop_visible",
+				 NULL,
+				 DBUS_MESSAGE_TYPE_SIGNAL,
+				 desktop_startup_dbus_cb) == NULL)
+		goto EXIT;
+
+	/* Display orientation change signal */
+	if (mce_dbus_handler_add(ORIENTATION_SIGNAL_IF,
+				 ORIENTATION_VALUE_CHANGE_SIG,
+				 NULL,
+				 DBUS_MESSAGE_TYPE_SIGNAL,
+				 display_orientation_change_dbus_cb) == NULL)
+		goto EXIT;
+
 	/* Display brightness */
 	/* Since we've set a default, error handling is unnecessary */
 	(void)mce_gconf_get_int(MCE_GCONF_DISPLAY_BRIGHTNESS_PATH,
@@ -3059,86 +3140,6 @@ const gchar *g_module_check_init(GModule *module)
 				   MCE_GCONF_BLANKING_INHIBIT_MODE_PATH,
 				   display_gconf_cb,
 				   &blanking_inhibit_mode_gconf_cb_id) == FALSE)
-		goto EXIT;
-
-	/* get_display_status */
-	if (mce_dbus_handler_add(MCE_REQUEST_IF,
-				 MCE_DISPLAY_STATUS_GET,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_METHOD_CALL,
-				 display_status_get_dbus_cb) == NULL)
-		goto EXIT;
-
-	/* get_cabc_mode */
-	if (mce_dbus_handler_add(MCE_REQUEST_IF,
-				 MCE_CABC_MODE_GET,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_METHOD_CALL,
-				 cabc_mode_get_dbus_cb) == NULL)
-		goto EXIT;
-
-	/* req_display_state_on */
-	if (mce_dbus_handler_add(MCE_REQUEST_IF,
-				 MCE_DISPLAY_ON_REQ,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_METHOD_CALL,
-				 display_on_req_dbus_cb) == NULL)
-		goto EXIT;
-
-	/* req_display_state_dim */
-	if (mce_dbus_handler_add(MCE_REQUEST_IF,
-				 MCE_DISPLAY_DIM_REQ,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_METHOD_CALL,
-				 display_dim_req_dbus_cb) == NULL)
-		goto EXIT;
-
-	/* req_display_state_off */
-	if (mce_dbus_handler_add(MCE_REQUEST_IF,
-				 MCE_DISPLAY_OFF_REQ,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_METHOD_CALL,
-				 display_off_req_dbus_cb) == NULL)
-		goto EXIT;
-
-	/* req_display_blanking_pause */
-	if (mce_dbus_handler_add(MCE_REQUEST_IF,
-				 MCE_PREVENT_BLANK_REQ,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_METHOD_CALL,
-				 display_blanking_pause_req_dbus_cb) == NULL)
-		goto EXIT;
-
-	/* req_display_cancel_blanking_pause */
-	if (mce_dbus_handler_add(MCE_REQUEST_IF,
-				 MCE_CANCEL_PREVENT_BLANK_REQ,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_METHOD_CALL,
-				 display_cancel_blanking_pause_req_dbus_cb) == NULL)
-		goto EXIT;
-
-	/* req_cabc_mode */
-	if (mce_dbus_handler_add(MCE_REQUEST_IF,
-				 MCE_CABC_MODE_REQ,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_METHOD_CALL,
-				 cabc_mode_req_dbus_cb) == NULL)
-		goto EXIT;
-
-	/* Desktop readiness signal */
-	if (mce_dbus_handler_add("com.nokia.startup.signal",
-				 "desktop_visible",
-				 NULL,
-				 DBUS_MESSAGE_TYPE_SIGNAL,
-				 desktop_startup_dbus_cb) == NULL)
-		goto EXIT;
-
-	/* Display orientation change signal */
-	if (mce_dbus_handler_add(ORIENTATION_SIGNAL_IF,
-				 ORIENTATION_VALUE_CHANGE_SIG,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_SIGNAL,
-				 display_orientation_change_dbus_cb) == NULL)
 		goto EXIT;
 
 	/* Get configuration options */
