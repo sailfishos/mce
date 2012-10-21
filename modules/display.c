@@ -160,6 +160,9 @@ enum LockState {
 /** Module name */
 #define MODULE_NAME		"display"
 
+/** Define demo mode DBUS method */
+#define MCE_DBUS_DEMO_MODE_REQ	"display_set_demo_mode"
+
 /** Functionality provided by this module */
 static const gchar *const provides[] = { MODULE_NAME, NULL };
 
@@ -1960,6 +1963,48 @@ EXIT:
 }
 
 /**
+ * D-Bus callback to switch demo mode on or off
+ *
+ * @param msg The D-Bus message
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean display_set_demo_mode_dbus_cb(DBusMessage *const msg)
+{
+	gboolean status = FALSE;
+	DBusError error;
+	DBusMessage *reply = NULL;
+	char *use = 0;
+
+	mce_log(LL_DEBUG,
+		"Recieved demo mode change request");
+
+	dbus_error_init(&error);
+
+	if(!dbus_message_get_args(msg, &error, DBUS_TYPE_STRING, &use, DBUS_TYPE_INVALID))
+	{
+		dbus_error_free(&error);
+		goto EXIT;
+	}
+
+	if(!strcmp(use, "on"))
+		blanking_inhibit_mode = INHIBIT_STAY_ON;
+	else
+		blanking_inhibit_mode = DEFAULT_BLANKING_INHIBIT_MODE;
+
+	if((reply = dbus_message_new_method_return(msg)))
+		if(dbus_message_append_args (reply, DBUS_TYPE_STRING, &use, DBUS_TYPE_INVALID) == FALSE)
+		{
+			dbus_message_unref(reply);
+			goto EXIT;
+		}
+
+	status = dbus_send_message(reply) ;
+
+EXIT:
+	return status;
+}
+
+/**
  * Send a CABC status reply
  *
  * @param method_call A DBusMessage to reply to
@@ -3015,6 +3060,15 @@ const gchar *g_module_check_init(GModule *module)
 				 DBUS_MESSAGE_TYPE_SIGNAL,
 				 display_orientation_change_dbus_cb) == NULL)
 		goto EXIT;
+
+	/* Turning demo mode on/off */
+	if (mce_dbus_handler_add(MCE_REQUEST_IF,
+				 MCE_DBUS_DEMO_MODE_REQ,
+				 NULL,
+				 DBUS_MESSAGE_TYPE_METHOD_CALL,
+				 display_set_demo_mode_dbus_cb) == NULL)
+		goto EXIT;
+				
 
 	/* Display brightness */
 	/* Since we've set a default, error handling is unnecessary */
