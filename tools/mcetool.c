@@ -2035,7 +2035,7 @@ int main(int argc, char **argv)
 					  newinhibitmode) == FALSE)
 			goto EXIT;
 	}
-	
+
 	if (demomode != -1) {
 		if (dbus_send(MCE_SERVICE, MCE_REQUEST_PATH,
 			      MCE_REQUEST_IF, MCE_DBUS_DEMO_MODE_REQ, TRUE,

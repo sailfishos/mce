@@ -1299,7 +1299,7 @@ EXIT:
 
 /**
  * Set error handling callback for I/O monitor. Error handling callback
- * is called from io_error_cb. 
+ * is called from io_error_cb.
  *
  * @param io_monitor A pointer to the I/O monitor
  * @param err_cb A pointer to the error callback. Can be 0 to unset the cb.

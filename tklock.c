@@ -223,7 +223,7 @@ typedef enum {
 	/** Touch screen disabled */
 	MCE_TS_DISABLED,
 	/** Touch screen enabled */
-	MCE_TS_ENABLED 
+	MCE_TS_ENABLED
 } ts_state_t;
 
 /** Touch screen state */
@@ -832,7 +832,7 @@ static void ts_kp_disable_policy(void)
 		goto EXIT;
 	}
 
-	if ((system_state != MCE_STATE_USER) || 
+	if ((system_state != MCE_STATE_USER) ||
 	    (is_malf_state_enabled() == TRUE)){
 		ts_disable();
 		kp_disable();
@@ -1482,7 +1482,7 @@ static gboolean disable_tklock(void)
 	gboolean status = FALSE;
 
 	/* Only disable the UI if the active UI is the tklock */
-	if ((tklock_ui_state == MCE_TKLOCK_UI_NORMAL) || 
+	if ((tklock_ui_state == MCE_TKLOCK_UI_NORMAL) ||
 	    (tklock_ui_state == MCE_TKLOCK_UI_LPM) ||
 	    (tklock_ui_state == MCE_TKLOCK_UI_SLIDER)) {
 		if (close_tklock_ui() == FALSE)
@@ -1825,7 +1825,7 @@ static void trigger_visual_tklock(gboolean powerkey)
 	display_state_t display_state = datapipe_get_gint(display_state_pipe);
 	submode_t submode = mce_get_submode_int32();
 
-	if ((is_malf_state_enabled() == TRUE) || 
+	if ((is_malf_state_enabled() == TRUE) ||
 	    (is_tklock_enabled() == FALSE) ||
 	    (is_autorelock_enabled() == FALSE) ||
 	    (system_state != MCE_STATE_USER) ||
@@ -2140,7 +2140,7 @@ static void process_proximity_state(void)
 	/* If there's an incoming call or an alarm is visible,
 	 * and the proximity sensor reports open, unblank the display
 	 */
-	if ((((call_state == CALL_STATE_RINGING) && 
+	if ((((call_state == CALL_STATE_RINGING) &&
 	      (inhibit_proximity_relock != MCE_TEMP_INHIBIT_PROXIMITY_RELOCK))||
 	     ((alarm_ui_state == MCE_ALARM_UI_VISIBLE_INT32) ||
 	      (alarm_ui_state == MCE_ALARM_UI_RINGING_INT32))) &&
@@ -2209,8 +2209,8 @@ static void process_proximity_state(void)
 		    ((((is_tklock_enabled() == FALSE) &&
 		       (is_autorelock_enabled() == FALSE)) ||
 		      ((is_autorelock_enabled() == TRUE) &&
-		       (autorelock_triggers == AUTORELOCK_ON_PROXIMITY))) || 
-		     ((saved_tklock_state == MCE_TKLOCK_LOCKED_STATE) || 
+		       (autorelock_triggers == AUTORELOCK_ON_PROXIMITY))) ||
+		     ((saved_tklock_state == MCE_TKLOCK_LOCKED_STATE) ||
 		      (saved_tklock_state == MCE_TKLOCK_VISUAL_STATE)))) {
 
 			mce_add_submode_int32(MCE_PROXIMITY_TKLOCK_SUBMODE);
@@ -2538,7 +2538,7 @@ static void display_state_trigger(gconstpointer data)
 			ts_kp_disable_policy();
 		} else if ((alarm_ui_state != MCE_ALARM_UI_RINGING_INT32) &&
 		           (is_tklock_enabled() == TRUE)) {
-			if (is_malf_state_enabled() == FALSE) { 
+			if (is_malf_state_enabled() == FALSE) {
 				(void)open_tklock_ui(TKLOCK_ENABLE_VISUAL);
 			}
 			ts_kp_disable_policy();

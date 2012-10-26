@@ -2091,7 +2091,7 @@ static gboolean display_on_req_dbus_cb(DBusMessage *const msg)
 	mce_log(LL_DEBUG,
 		"Received display on request");
 
-	if ((call_state != CALL_STATE_RINGING) && 
+	if ((call_state != CALL_STATE_RINGING) &&
 	    ((submode & (MCE_PROXIMITY_TKLOCK_SUBMODE | MCE_POCKET_SUBMODE)) == 0)) {
 		(void)execute_datapipe(&display_state_pipe,
 				       GINT_TO_POINTER(MCE_DISPLAY_ON),
@@ -3068,7 +3068,7 @@ const gchar *g_module_check_init(GModule *module)
 				 DBUS_MESSAGE_TYPE_METHOD_CALL,
 				 display_set_demo_mode_dbus_cb) == NULL)
 		goto EXIT;
-				
+
 
 	/* Display brightness */
 	/* Since we've set a default, error handling is unnecessary */
