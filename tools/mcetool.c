@@ -94,6 +94,9 @@
 /** FM transmitter string; used for arg-parsing */
 #define RADIO_FMTX				"fmtx"
 
+/** Define demo mode DBUS method */
+#define MCE_DBUS_DEMO_MODE_REQ      		"display_set_demo_mode"
+
 /** Enums for powerkey events */
 enum {
 	INVALID_EVENT = -1,		/**< Event not set */
@@ -145,6 +148,11 @@ static void usage(void)
 		  "'', ``stay-on'',\n"
 		  "                                    ``stay-dim-with-charger"
 		  "'', ``stay-dim''\n"
+		  "      --set-demo-mode=STATE\n"
+		  "				     set the display demo mode "
+		  " to STATE;\n"
+		  "					valid states "
+		  "are: 'on' and 'off'\n"
 		  "      --set-cabc-mode=MODE\n"
 		  "                                  set the CABC mode to "
 		  "MODE;\n"
@@ -1534,10 +1542,12 @@ int main(int argc, char **argv)
 
 	gint powerkeyevent = INVALID_EVENT;
 	gint newinhibitmode = -1;
+	gint demomode = -1;
 	gint newpsm = -1;
 	gint newforcedpsm = -1;
 	gint newpsmthreshold = -1;
 	gint newbrightness = -1;
+	gchar *newdemostate = NULL;
 	gchar *newcabcmode = NULL;
 	gchar *newcallstate = NULL;
 	gchar *newcalltype = NULL;
@@ -1571,6 +1581,7 @@ int main(int argc, char **argv)
 		{ "blank-screen", no_argument, 0, 'n' },
 		{ "set-display-brightness", required_argument, 0, 'b' },
 		{ "set-inhibit-mode", required_argument, 0, 'I' },
+		{ "set-demo-mode", required_argument, 0, 'D' },
 		{ "set-cabc-mode", required_argument, 0, 'C' },
 		{ "get-color-profile-ids", no_argument, 0, 'a'},
 		{ "set-color-profile", required_argument, 0, 'A'},
@@ -1808,6 +1819,24 @@ int main(int argc, char **argv)
 			get_mce_status = FALSE;
 			break;
 
+		case 'D':
+			if(!strcmp(optarg, "on")){
+				newdemostate = strdup(optarg);
+				demomode = 1;
+			}
+			else if(!strcmp(optarg, "off")) {
+				newdemostate = strdup(optarg);
+				demomode = 0;
+			}
+			else {
+				usage();
+				status = EINVAL;
+				goto EXIT;
+			}
+
+			get_mce_status = FALSE;
+			break;
+
 		case 'C':
 			newcabcmode = strdup(optarg);
 			get_mce_status = FALSE;
@@ -2005,6 +2034,16 @@ int main(int argc, char **argv)
 		if (mcetool_gconf_set_int(MCE_GCONF_BLANKING_INHIBIT_MODE_PATH,
 					  newinhibitmode) == FALSE)
 			goto EXIT;
+	}
+	
+	if (demomode != -1) {
+		if (dbus_send(MCE_SERVICE, MCE_REQUEST_PATH,
+			      MCE_REQUEST_IF, MCE_DBUS_DEMO_MODE_REQ, TRUE,
+			      DBUS_TYPE_STRING, &newdemostate,
+			      DBUS_TYPE_INVALID) == FALSE) {
+				status = EXIT_FAILURE;
+				goto EXIT;
+		}
 	}
 
 	if (radio_states_mask != 0) {
