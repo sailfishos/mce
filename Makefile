@@ -75,7 +75,7 @@ WARNINGS += -Wunsafe-loop-optimizations -Winvalid-pch
 WARNINGS += -Waddress -Wvolatile-register-var
 WARNINGS += -Wmissing-format-attribute
 WARNINGS += -Wstack-protector
-WARNINGS += -Werror
+#WARNINGS += -Werror
 WARNINGS += -Wno-declaration-after-statement
 
 COMMON_CFLAGS := -D_GNU_SOURCE
