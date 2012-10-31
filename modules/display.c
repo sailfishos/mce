@@ -1987,9 +1987,25 @@ static gboolean display_set_demo_mode_dbus_cb(DBusMessage *const msg)
 	}
 
 	if(!strcmp(use, "on"))
+	{
 		blanking_inhibit_mode = INHIBIT_STAY_ON;
+
+		/* unblank screen */
+		(void)execute_datapipe(&display_state_pipe,
+                                       GINT_TO_POINTER(MCE_DISPLAY_ON),
+                                       USE_INDATA, CACHE_INDATA);
+		/* turn off tklock */
+		(void)execute_datapipe(&tk_lock_pipe,
+				       GINT_TO_POINTER(LOCK_OFF_DELAYED),
+				       USE_INDATA, CACHE_INDATA);
+
+		update_blanking_inhibit(FALSE);
+	}
 	else
+	{
 		blanking_inhibit_mode = DEFAULT_BLANKING_INHIBIT_MODE;
+		update_blanking_inhibit(FALSE);
+	}
 
 	if((reply = dbus_message_new_method_return(msg)))
 		if(dbus_message_append_args (reply, DBUS_TYPE_STRING, &use, DBUS_TYPE_INVALID) == FALSE)
