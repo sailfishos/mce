@@ -1722,6 +1722,7 @@ static void set_tklock_state(lock_state_t lock_state)
 	case LOCK_ON:
 	case LOCK_ON_DIMMED:
 	case LOCK_ON_PROXIMITY:
+	case LOCK_ON_DELAYED:
 		if (((submode & MCE_BOOTUP_SUBMODE) != 0) &&
 		    (is_malf_state_enabled() == FALSE) &&
 		    ((lock_state != LOCK_ON_PROXIMITY) ||
@@ -1782,6 +1783,14 @@ static void set_tklock_state(lock_state_t lock_state)
 
 		if (saved_tklock_state == MCE_TKLOCK_VISUAL_STATE)
 			setup_tklock_visual_blank_timeout();
+		break;
+
+	case LOCK_ON_DELAYED:
+		synthesise_inactivity();
+		enable_tklock();
+
+		saved_tklock_state = MCE_TKLOCK_LOCKED_STATE;
+		setup_tklock_visual_blank_timeout();
 		break;
 
 	case LOCK_TOGGLE:
@@ -1931,6 +1940,8 @@ static gboolean tklock_mode_change_req_dbus_cb(DBusMessage *const msg)
 		set_tklock_state(LOCK_ON);
 	} else if (!strcmp(MCE_TK_LOCKED_DIM, mode)) {
 		set_tklock_state(LOCK_ON_DIMMED);
+	} else if (!strcmp(MCE_TK_LOCKED_DELAY, mode)) {
+		set_tklock_state(LOCK_ON_DELAYED);
 	} else if (!strcmp(MCE_TK_UNLOCKED, mode)) {
 		set_tklock_state(LOCK_OFF);
 
