@@ -1,3 +1,9 @@
+mce (1.12.2) unstable; urgency=low
+
+  * Support for locking the touch screen without blanking the display
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 31 Oct 2012 19:48:24 +0200
+
 mce (1.12.1) unstable; urgency=low
 
   * Added updates from Mer/Nemo to upstream git
