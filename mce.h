@@ -213,7 +213,9 @@ typedef enum {
 	/** Enable proximity lock (no UI); write only */
 	LOCK_ON_PROXIMITY = 5,
 	/** Toggle lock state; write only */
-	LOCK_TOGGLE = 6
+	LOCK_TOGGLE = 6,
+	/** Delayed lock; write only */
+	LOCK_ON_DELAYED = 7
 } lock_state_t;
 
 /** Battery status */

@@ -221,6 +221,7 @@ static void usage(void)
 		  "                                    valid modes are:\n"
 		  "                                    ``locked'', "
 		  "``locked-dim'',\n"
+		  "                                    ``locked-delay'',\n"
 		  "                                    and ``unlocked''\n"
 		  "      --enable-led                enable LED framework\n"
 		  "      --disable-led               disable LED framework\n"
@@ -852,7 +853,7 @@ static void mcetool_dbus_exit(void)
  * Enable/disable the tklock
  *
  * @param mode The mode to change to; valid modes:
- *             "locked", "locked-dim", "unlocked"
+ *             "locked", "locked-dim", "locked-delay", "unlocked"
  * @return TRUE on success, FALSE on FAILURE
  */
 static gboolean set_tklock_mode(gchar **mode)
