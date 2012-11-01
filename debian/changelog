@@ -1,3 +1,9 @@
+mce (1.12.3) unstable; urgency=low
+
+  * Fixes NEMO#483: mce wakes up a lot when interacting with touchscreen
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 01 Nov 2012 13:17:58 +0200
+
 mce (1.12.2) unstable; urgency=low
 
   * Support for locking the touch screen without blanking the display
