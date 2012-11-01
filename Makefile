@@ -11,6 +11,9 @@ INSTALL_DATA := install --mode=644
 
 DOXYGEN := doxygen
 
+# Whether to enable wakelock compatibility code
+ENABLE_WAKELOCKS ?= n
+
 VARDIR := $(DESTDIR)/var/lib/mce
 RUNDIR := $(DESTDIR)/var/run/mce
 CONFDIR := /etc/mce
@@ -85,12 +88,21 @@ COMMON_CFLAGS += -DOSSOLOG_COMPILE
 COMMON_CFLAGS += -DMCE_VAR_DIR=$(VARDIR) -DMCE_RUN_DIR=$(RUNDIR)
 COMMON_CFLAGS += -DPRG_VERSION=$(VERSION)
 
+ifeq ($(strip $(ENABLE_WAKELOCKS)),y)
+COMMON_CFLAGS += -DENABLE_WAKELOCKS
+endif
+
 MCE_CFLAGS := $(COMMON_CFLAGS)
 MCE_CFLAGS += -DMCE_CONF_FILE=$(CONFDIR)/$(CONFFILE)
 MCE_CFLAGS += $$(pkg-config gobject-2.0 glib-2.0 gio-2.0 gmodule-2.0 dbus-1 dbus-glib-1 gconf-2.0 --cflags)
 MCE_LDFLAGS := $$(pkg-config gobject-2.0 glib-2.0 gio-2.0 gmodule-2.0 dbus-1 dbus-glib-1 gconf-2.0 dsme --libs)
 LIBS := tklock.c modetransition.c powerkey.c mce-dbus.c mce-dsme.c mce-gconf.c event-input.c event-switches.c mce-hal.c mce-log.c mce-conf.c datapipe.c mce-modules.c mce-io.c mce-lib.c
 HEADERS := tklock.h modetransition.h powerkey.h mce.h mce-dbus.h mce-dsme.h mce-gconf.h event-input.h event-switches.h mce-hal.h mce-log.h mce-conf.h datapipe.h mce-modules.h mce-io.h mce-lib.h
+
+ifeq ($(strip $(ENABLE_WAKELOCKS)),y)
+LIBS    += libwakelock.c
+HEADERS += libwakelock.h
+endif
 
 MODULE_CFLAGS := $(COMMON_CFLAGS)
 MODULE_CFLAGS += -fPIC -shared
