@@ -115,6 +115,10 @@
 					 */
 #include "tklock.h"
 
+#ifdef ENABLE_WAKELOCKS
+# include "../libwakelock.h"		/* API for wakelocks */
+#endif
+
 /* These defines are taken from devicelock.h, but slightly modified */
 #ifndef DEVICELOCK_H
 
@@ -2713,6 +2717,18 @@ static void display_state_trigger(gconstpointer data)
 	/* Update display on timers */
 	update_display_timers(FALSE);
 
+#ifdef ENABLE_WAKELOCKS
+	/* Inhibit suspend unless the display is off */
+	switch (display_state) {
+	case MCE_DISPLAY_OFF:
+	case MCE_DISPLAY_LPM_OFF:
+	        wakelock_unlock("mce_display_on");
+		break;
+	default:
+	        wakelock_lock("mce_display_on", -1);
+		break;
+	}
+#endif
 EXIT:
 	return;
 }
