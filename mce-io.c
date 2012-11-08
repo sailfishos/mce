@@ -727,6 +727,25 @@ EXIT:
 
 	return TRUE;
 }
+/**
+ * Get glib io status as human readable string
+ *
+ * @param io_status as returned from g_io_channel_read_chars()
+ * @return Name of the status enum, without the common prefix
+ */
+
+static const char *io_status_name(GIOStatus io_status)
+{
+	const char *status_name = "UNKNOWN";
+	switch (io_status) {
+	case G_IO_STATUS_NORMAL: status_name = "NORMAL"; break;
+	case G_IO_STATUS_ERROR:  status_name = "ERROR";  break;
+	case G_IO_STATUS_EOF:    status_name = "EOF";    break;
+	case G_IO_STATUS_AGAIN:  status_name = "AGAIN";  break;
+	default: break; // ... just to keep static analysis happy
+	}
+	return status_name;
+}
 
 /**
  * Callback for successful chunk I/O
@@ -742,9 +761,11 @@ static gboolean io_chunk_cb(GIOChannel *source,
 			    gpointer data)
 {
 	iomon_struct *iomon = data;
-	gint again_count = 0;
-	gchar *chunk = NULL;
-	gsize bytes_read;
+	gchar *buffer = NULL;
+	gsize bytes_want = 4096;
+	gsize bytes_read = 0;
+	gsize chunks_read = 0;
+	gsize chunks_done = 0;
 	GIOStatus io_status;
 	GError *error = NULL;
 	gboolean status = TRUE;
@@ -775,7 +796,13 @@ static gboolean io_chunk_cb(GIOChannel *source,
 		g_clear_error(&error);
 	}
 
-	chunk = g_malloc(iomon->chunk_size);
+	if( iomon->chunk_size < bytes_want ) {
+		bytes_want -= bytes_want % iomon->chunk_size;
+	} else {
+		bytes_want -= iomon->chunk_size;
+	}
+
+	buffer = g_malloc(bytes_want);
 
 #ifdef ENABLE_WAKELOCKS
 	/* Since the locks on kernel side are released once all
@@ -784,46 +811,49 @@ static gboolean io_chunk_cb(GIOChannel *source,
 	wakelock_lock("mce_input_handler", -1);
 #endif
 
-	while (again_count < 10) {
-		io_status = g_io_channel_read_chars(source, chunk,
-						    iomon->chunk_size,
-						    &bytes_read, &error);
+	io_status = g_io_channel_read_chars(source, buffer,
+					    bytes_want, &bytes_read, &error);
 
-		/* If the read was interrupted, retry */
-		if (io_status == G_IO_STATUS_AGAIN) {
-			again_count++;
 
-			/* Reset errno,
-			 * to avoid false positives down the line
-			 */
-			errno = 0;
-			g_clear_error(&error);
-			continue;
-		}
+	/* If the read was interrupted, ignore */
+	if (io_status == G_IO_STATUS_AGAIN) {
+		g_clear_error(&error);
+	}
 
-		/* Stop on error and if we get an inexplicable empty read */
-		if ((error != NULL) ||
-		    (bytes_read == 0) ||
-		    (io_status == G_IO_STATUS_EOF))
-			break;
+	if( bytes_read % iomon->chunk_size ) {
+		mce_log(LL_WARN, "Incomplete chunks read from: %s", iomon->file);
+	}
 
-		/* Process the data, and optionally flush the remaining data */
-		if (iomon->callback(chunk, bytes_read) == TRUE) {
-			if ((g_io_channel_get_flags(iomon->iochan) &
-			     G_IO_FLAG_IS_SEEKABLE) == G_IO_FLAG_IS_SEEKABLE) {
+	/* Process the data, and optionally ignore some of it */
+	if( (chunks_read = bytes_read / iomon->chunk_size) ) {
+		gchar *chunk = buffer;
+		for( ; chunks_done < chunks_read ; chunk += iomon->chunk_size ) {
+			++chunks_done;
+			if (iomon->callback(chunk, iomon->chunk_size) != TRUE) {
+				continue;
+			}
+			/* if possible, seek to the end of file */
+			if (iomon->seekable) {
 				g_io_channel_seek_position(iomon->iochan, 0,
 							   G_SEEK_END, &error);
 			}
-
+			/* in any case ignore rest of the data already read */
 			break;
 		}
 	}
+
+	mce_log(LL_INFO, "%s: status=%s, data=%d/%d=%d+%d, skipped=%d",
+		iomon->file, io_status_name(io_status),
+		bytes_read, (int)iomon->chunk_size, chunks_read,
+		bytes_read % (int)iomon->chunk_size, chunks_read - chunks_done);
+
 #ifdef ENABLE_WAKELOCKS
 	/* Release the lock after we're done with processing it */
 	wakelock_unlock("mce_input_handler");
 #endif
 
-	g_free(chunk);
+
+	g_free(buffer);
 
 	/* Were there any errors? */
 	if (error != NULL) {
