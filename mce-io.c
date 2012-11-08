@@ -681,6 +681,10 @@ static gboolean io_string_cb(GIOChannel *source,
 	if (iomon->rewind == TRUE) {
 		g_io_channel_seek_position(source, 0, G_SEEK_SET, &error);
 
+		if( error ) {
+			mce_log(LL_ERR,	"%s: seek error: %s",
+				iomon->file, error->message);
+		}
 		/* Reset errno,
 		 * to avoid false positives down the line
 		 */
@@ -758,6 +762,10 @@ static gboolean io_chunk_cb(GIOChannel *source,
 	/* Seek to the beginning of the file before reading if needed */
 	if (iomon->rewind == TRUE) {
 		g_io_channel_seek_position(source, 0, G_SEEK_SET, &error);
+		if( error ) {
+			mce_log(LL_ERR,	"%s: seek error: %s",
+				iomon->file, error->message);
+		}
 
 		/* Reset errno,
 		 * to avoid false positives down the line
@@ -830,6 +838,10 @@ static gboolean io_chunk_cb(GIOChannel *source,
 			g_clear_error(&error);
 			g_io_channel_seek_position(iomon->iochan, 0,
 						   G_SEEK_END, &error);
+			if( error ) {
+				mce_log(LL_ERR,	"%s: seek error: %s",
+					iomon->file, error->message);
+			}
 		} else {
 			status = FALSE;
 		}
@@ -1001,6 +1013,10 @@ void mce_resume_io_monitor(gconstpointer io_monitor)
 		      G_IO_FLAG_IS_SEEKABLE) == G_IO_FLAG_IS_SEEKABLE)) {
 			g_io_channel_seek_position(iomon->iochan, 0,
 						   G_SEEK_END, &error);
+			if( error ) {
+				mce_log(LL_ERR,	"%s: seek error: %s",
+					iomon->file, error->message);
+			}
 			/* Reset errno,
 			 * to avoid false positives down the line
 			 */
