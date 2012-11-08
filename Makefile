@@ -3,7 +3,7 @@
 # Written by David Weinehall
 # Modified by Tuomo Tanskanen
 
-VERSION := 1.12.3
+VERSION := 1.12.4
 
 INSTALL := install --mode=755
 INSTALL_DIR := install -d

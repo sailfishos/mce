@@ -1,3 +1,9 @@
+mce (1.12.4) unstable; urgency=low
+
+  * NOT RELEASED YET
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 08 Nov 2012 15:19:26 +0200
+
 mce (1.12.3) unstable; urgency=low
 
   * Fixes NEMO#483: mce wakes up a lot when interacting with touchscreen
