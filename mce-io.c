@@ -67,6 +67,7 @@ typedef struct {
 	gboolean rewind;			/**< Rewind policy */
 	gboolean suspended;			/**< Is the I/O monitor
 						 *   suspended? */
+	gboolean seekable;			/**< is the I/O channel seekable */
 } iomon_struct;
 
 /** Suffix used for temporary files */
@@ -832,8 +833,7 @@ static gboolean io_chunk_cb(GIOChannel *source,
 
 		if ((error->code == G_IO_CHANNEL_ERROR_FAILED) &&
 		    (errno == ENODEV) &&
-		    ((g_io_channel_get_flags(iomon->iochan) &
-		      G_IO_FLAG_IS_SEEKABLE) == G_IO_FLAG_IS_SEEKABLE)) {
+		    (iomon->seekable)) {
 			errno = 0;
 			g_clear_error(&error);
 			g_io_channel_seek_position(iomon->iochan, 0,
@@ -1008,9 +1008,7 @@ void mce_resume_io_monitor(gconstpointer io_monitor)
 		/* Seek to the end of the file if the file is seekable,
 		 * unless we use the rewind policy
 		 */
-		if ((iomon->rewind == FALSE) &&
-		    ((g_io_channel_get_flags(iomon->iochan) &
-		      G_IO_FLAG_IS_SEEKABLE) == G_IO_FLAG_IS_SEEKABLE)) {
+		if (iomon->seekable && !iomon->rewind) {
 			g_io_channel_seek_position(iomon->iochan, 0,
 						   G_SEEK_END, &error);
 			if( error ) {
@@ -1040,6 +1038,34 @@ void mce_resume_io_monitor(gconstpointer io_monitor)
 EXIT:
 	return;
 }
+/**
+ * Check if the monitored io channel is truly seekable
+ *
+ * Glib seems to be making guesses based on file type and
+ * gets it massively wrong for the files MCE needs to read.
+ */
+
+static void mce_determine_io_monitor_seekable(iomon_struct *iomon)
+{
+	gboolean glib = FALSE, kernel = FALSE;
+
+	/* glib assumes ... */
+	if (g_io_channel_get_flags(iomon->iochan) & G_IO_FLAG_IS_SEEKABLE) {
+		glib = TRUE;
+	}
+	/* ... kernel knows */
+	if (lseek64(g_io_channel_unix_get_fd(iomon->iochan), 0, SEEK_CUR) != -1) {
+		kernel = TRUE;
+	}
+	/* report the difference */
+	if (kernel != glib) {
+		mce_log(LL_WARN, "%s: is %sseekable, while glib thinks it is %sseekable",
+			iomon->file, kernel ? "" : "NOT ", glib ? "" : "NOT ");
+	}
+
+	iomon->seekable = kernel;
+}
+
 
 /**
  * Register an I/O monitor; reads and returns data
@@ -1122,6 +1148,8 @@ static iomon_struct *mce_register_io_monitor(const gint fd,
 	iomon->chunk_size = 0;
 	iomon->err_callback = 0;
 
+	mce_determine_io_monitor_seekable(iomon);
+
 	file_monitors = g_slist_prepend(file_monitors, iomon);
 
 	iomon->suspended = TRUE;
@@ -1166,8 +1194,7 @@ gconstpointer mce_register_io_monitor_string(const gint fd,
 		goto EXIT;
 
 	/* Verify that the rewind policy is sane */
-	if ((g_io_channel_get_flags(iomon->iochan) &
-	     G_IO_FLAG_IS_SEEKABLE) == G_IO_FLAG_IS_SEEKABLE) {
+	if (iomon->seekable) {
 		/* Set the rewind policy */
 		iomon->rewind = rewind_policy;
 	} else if (rewind_policy == TRUE) {
@@ -1222,8 +1249,7 @@ gconstpointer mce_register_io_monitor_chunk(const gint fd,
 	iomon->chunk_size = chunk_size;
 
 	/* Verify that the rewind policy is sane */
-	if ((g_io_channel_get_flags(iomon->iochan) &
-	     G_IO_FLAG_IS_SEEKABLE) == G_IO_FLAG_IS_SEEKABLE) {
+	if (iomon->seekable) {
 		/* Set the rewind policy */
 		iomon->rewind = rewind_policy;
 	} else if (rewind_policy == TRUE) {
