@@ -36,6 +36,10 @@
 
 #include "mce-log.h"			/* mce_log(), LL_* */
 
+#ifdef ENABLE_WAKELOCKS
+# include "libwakelock.h"		/* API for wakelocks */
+#endif
+
 /** List of all file monitors */
 static GSList *file_monitors = NULL;
 
@@ -764,6 +768,13 @@ static gboolean io_chunk_cb(GIOChannel *source,
 
 	chunk = g_malloc(iomon->chunk_size);
 
+#ifdef ENABLE_WAKELOCKS
+	/* Since the locks on kernel side are released once all
+	 * events are read, we must obtain the userspace lock
+	 * before reading the available data */
+	wakelock_lock("mce_input_handler", -1);
+#endif
+
 	while (again_count < 10) {
 		io_status = g_io_channel_read_chars(source, chunk,
 						    iomon->chunk_size,
@@ -798,6 +809,10 @@ static gboolean io_chunk_cb(GIOChannel *source,
 			break;
 		}
 	}
+#ifdef ENABLE_WAKELOCKS
+	/* Release the lock after we're done with processing it */
+	wakelock_unlock("mce_input_handler");
+#endif
 
 	g_free(chunk);
 
