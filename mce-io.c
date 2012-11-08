@@ -1221,6 +1221,13 @@ gconstpointer mce_register_io_monitor_chunk(const gint fd,
 	/* We only read this file in binary form */
 	(void)g_io_channel_set_encoding(iomon->iochan, NULL, &error);
 
+	/* No buffering since we're using this for reading data from
+	 * device drivers and need to keep the i/o state in sync
+	 * between kernel and user space for the automatic suspend
+	 * prevention via wakelocks to work
+	 */
+	g_io_channel_set_buffered(iomon->iochan, FALSE);
+
 	/* Reset errno,
 	 * to avoid false positives down the line
 	 */
