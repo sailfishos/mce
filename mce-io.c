@@ -799,7 +799,7 @@ static gboolean io_chunk_cb(GIOChannel *source,
 	if( iomon->chunk_size < bytes_want ) {
 		bytes_want -= bytes_want % iomon->chunk_size;
 	} else {
-		bytes_want -= iomon->chunk_size;
+		bytes_want = iomon->chunk_size;
 	}
 
 	buffer = g_malloc(bytes_want);
