@@ -35,6 +35,40 @@ typedef enum {
 	MCE_IO_ERROR_POLICY_IGNORE
 } error_policy_t;
 
+/** Control structure for updating output files */
+typedef struct {
+	/* static configuration */
+
+	/** descriptive context information used for identifying the
+	 *  purpose of the output file even if no valid output path
+	 *  is available */
+	const gchar *context;
+
+	/** TRUE to truncate the file before writing,
+	 *  FALSE to append to the end of the file */
+	gboolean truncate_file;
+
+	/** TRUE to close the file on exit
+	 *  [from mce_write_number_string_to_file() function],
+	 *  FALSE to leave the file open */
+	gboolean close_on_exit;
+
+	/* runtime configuration */
+
+	/** Path to the file, or NULL (in which case one misconfiguration
+	 *  error message will be logged if write helpers are called) */
+	const char *path;
+
+	/* dynamic state */
+
+	/** Cached output stream, use mce_close_output() to close */
+	FILE *file;
+
+	/** TRUE if missing path configuration error has already been
+	 *  written for this file */
+	gboolean invalid_config_reported;
+} output_state_t;
+
 /** Function pointer for I/O monitor callback */
 typedef gboolean (*iomon_cb)(gpointer data, gsize bytes_read);
 /** Function pointer for I/O monitor error callback */
@@ -50,10 +84,8 @@ gboolean mce_read_number_string_from_file(const gchar *const file,
 					  gboolean close_on_exit);
 gboolean mce_write_string_to_file(const gchar *const file,
 				  const gchar *const string);
-gboolean mce_write_number_string_to_file(const gchar *const file,
-					 const gulong number, FILE **fp,
-					 gboolean truncate_file,
-					 gboolean close_on_exit);
+void mce_close_output(output_state_t *output);
+gboolean mce_write_number_string_to_file(output_state_t *output, const gulong number);
 gboolean mce_write_number_string_to_file_atomic(const gchar *const file,
 						const gulong number);
 void mce_suspend_io_monitor(gconstpointer io_monitor);

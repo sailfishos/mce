@@ -426,118 +426,100 @@ EXIT:
 }
 
 /**
+ * Cleanup function for output file control structures
+ *
+ * Closes file stream associated with output if it is open
+ *
+ * It is explicitly permitted to call this function:
+ * 1) with NULL output parameter
+ * 2) without open stream in ouput
+ * 3) more than one times
+ *
+ * @param output control structure for writing to a file
+ */
+
+void mce_close_output(output_state_t *output)
+{
+	if( output && output->file ) {
+		if( fclose(output->file) == EOF ) {
+			mce_log(LL_WARN,"%s: can't close %s: %m", output->context, output->path);
+		}
+		output->file = 0;
+	}
+}
+
+/**
  * Write a string representation of a number to a file
  *
  * Note: this variant uses in-place rewrites when truncating.
  * It should thus not be used in cases where atomicity is expected.
  * For atomic replace, use mce_write_number_string_to_file_atomic()
  *
- * @param file Path to the file, or NULL to user an already open FILE * instead
+ * @param output control structure for writing to a file
  * @param number The number to write
- * @param fp A pointer to a FILE *; set the FILE * to NULL to use the file
- *           path instead
- * @param truncate_file TRUE to truncate the file before writing,
- *                      FALSE to append to the end of the file
- * @param close_on_exit TRUE to close the file on exit,
- *                      FALSE to leave the file open
+ *
  * @return TRUE on success, FALSE on failure
  */
-gboolean mce_write_number_string_to_file(const gchar *const file,
-					 const gulong number, FILE **fp,
-					 gboolean truncate_file,
-					 gboolean close_on_exit)
+
+gboolean mce_write_number_string_to_file(output_state_t *output, const gulong number)
 {
-	gboolean status = FALSE;
-	FILE *new_fp = NULL;
-	gint retval;
+	gboolean status = FALSE; // assume failure
 
-	if ((file == NULL) && ((fp == NULL) || (*fp == NULL))) {
-		mce_log(LL_CRIT,
-			"(file == NULL) && ((fp == NULL) || (*fp == NULL))!");
+	if( !output ) {
+		mce_log(LL_CRIT, "NULL output passed, terminating");
+		abort();
+	}
+
+	if( !output->context ) {
+		mce_log(LL_CRIT, "output->context missing, terminating");
+		abort();
+	}
+
+	if( !output->path ) {
+		if( !output->invalid_config_reported ) {
+			output->invalid_config_reported = TRUE;
+			mce_log(LL_ERR, "%s: output->path not configured", output->context);
+		}
 		goto EXIT;
 	}
 
-	if ((fp == NULL) && (close_on_exit == FALSE)) {
-		mce_log(LL_CRIT,
-			"(fp == NULL) && (close_on_exit == FALSE)!");
-		goto EXIT;
-	}
-
-	/* If we cannot open the file, abort */
-	if ((fp == NULL) || (*fp == NULL)) {
-		if ((new_fp = fopen(file, truncate_file ? "w" : "a")) == NULL) {
-			mce_log(LL_ERR,
-				"Cannot open `%s' for %s; %s",
-				file,
-				truncate_file ? "writing" : "appending",
-				g_strerror(errno));
-
-			/* Ignore error */
-			errno = 0;
+	if( !output->file ) {
+		output->file = fopen(output->path, output->truncate_file ? "w" : "a");
+		if( !output->file ) {
+			mce_log(LL_ERR,"%s: can't open %s: %m", output->context, output->path);
 			goto EXIT;
 		}
-	} else {
-		new_fp = *fp;
 	}
-
-	/* Truncate file if we already have one */
-	if ((fp != NULL) && (*fp != NULL) && (truncate_file == TRUE)) {
-		int fd = fileno(*fp);
-
-		if (fd == -1) {
-			mce_log(LL_ERR,
-				"Failed to convert *fp to fd; %s",
-				g_strerror(errno));
-
-			/* Ignore error */
-			errno = 0;
-			goto EXIT2;
-		}
-
-		if (ftruncate(fd, 0L) == -1) {
-			mce_log(LL_ERR,
-				"Failed to truncate `%s'; %s",
-				file, g_strerror(errno));
-
-			/* Ignore error */
-			errno = 0;
-			goto EXIT2;
+	else if( output->truncate_file )
+	{
+		rewind(output->file);
+		if( ftruncate(fileno(output->file), 0) == -1 ) {
+			mce_log(LL_WARN,"%s: can't truncate %s: %m", output->context, output->path);
 		}
 	}
 
-	if ((fp != NULL) && (*fp == NULL))
-		*fp = new_fp;
-
-	retval = fprintf(new_fp, "%lu", number);
-
-	/* Was the write successful? */
-	if (retval < 0) {
-		mce_log(LL_ERR,
-			"Failed to write to `%s'; %s",
-			file, g_strerror(errno));
-
-		/* Ignore error */
-		errno = 0;
-		goto EXIT2;
-	}
-
+	// from now on assume success
 	status = TRUE;
 
-EXIT2:
-	/* XXX: improve close policy? */
-	if ((status == FALSE) || (close_on_exit == TRUE)) {
-		(void)mce_close_file(file, &new_fp);
-
-		if (fp != NULL)
-			*fp = NULL;
-	} else {
-		fflush(*fp);
+	if( fprintf(output->file, "%lu", number) < 0 ) {
+		mce_log(LL_WARN,"%s: can't write %s: %m", output->context, output->path);
+		status = FALSE;
 	}
 
-	/* Ignore error */
-	errno = 0;
+	if( fflush(output->file) == EOF ) {
+		mce_log(LL_WARN,"%s: can't flush %s: %m", output->context, output->path);
+		status = FALSE;
+	}
 
 EXIT:
+
+	if( output->close_on_exit && output->file ) {
+		if( fclose(output->file) == EOF ) {
+			mce_log(LL_WARN,"%s: can't close %s: %m", output->context, output->path);
+		}
+		output->file = 0;
+	}
+
 	return status;
 }
 

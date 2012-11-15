@@ -135,9 +135,19 @@ static const gchar *als_device_path = NULL;
 /** Path to the ALS lux sysfs entry */
 static const gchar *als_lux_path = NULL;
 /** Path to the first ALS calibration point sysfs entry */
-static const gchar *als_calib0_path = NULL;
+static output_state_t als_calib0_output =
+{
+  .context = "als_calib0",
+  .truncate_file = TRUE,
+  .close_on_exit = TRUE,
+};
 /** Path to the second ALS calibration point sysfs entry */
-static const gchar *als_calib1_path = NULL;
+static output_state_t als_calib1_output =
+{
+  .context = "als_calib1",
+  .truncate_file = TRUE,
+  .close_on_exit = TRUE,
+};
 /** Path to the ALS threshold range sysfs entry */
 static const gchar *als_threshold_range_path = NULL;
 /** Maximum als threshold value */
@@ -337,7 +347,7 @@ static als_type_t get_als_type(void)
 	if (g_access(ALS_DEVICE_PATH_AVAGO, R_OK) == 0) {
 		als_type = ALS_TYPE_AVAGO;
 		als_device_path = ALS_DEVICE_PATH_AVAGO;
-		als_calib0_path = ALS_CALIB_PATH_AVAGO;
+		als_calib0_output.path = ALS_CALIB_PATH_AVAGO;
 		als_threshold_range_path = ALS_THRESHOLD_RANGE_PATH_AVAGO;
 		als_threshold_max = ALS_THRESHOLD_MAX_AVAGO;
 		display_als_profiles = display_als_profiles_rm696;
@@ -353,7 +363,7 @@ static als_type_t get_als_type(void)
 	} else if (g_access(ALS_DEVICE_PATH_DIPRO, R_OK) == 0) {
 		als_type = ALS_TYPE_DIPRO;
 		als_device_path = ALS_DEVICE_PATH_DIPRO;
-		als_calib0_path = ALS_CALIB_PATH_DIPRO;
+		als_calib0_output.path = ALS_CALIB_PATH_DIPRO;
 		als_threshold_range_path = ALS_THRESHOLD_RANGE_PATH_DIPRO;
 		als_threshold_max = ALS_THRESHOLD_MAX_DIPRO;
 		display_als_profiles = display_als_profiles_rm680;
@@ -370,8 +380,8 @@ static als_type_t get_als_type(void)
 	} else if (g_access(ALS_LUX_PATH_TSL2563, R_OK) == 0) {
 		als_type = ALS_TYPE_TSL2563;
 		als_lux_path = ALS_LUX_PATH_TSL2563;
-		als_calib0_path = ALS_CALIB0_PATH_TSL2563;
-		als_calib1_path = ALS_CALIB1_PATH_TSL2563;
+		als_calib0_output.path = ALS_CALIB0_PATH_TSL2563;
+		als_calib1_output.path = ALS_CALIB1_PATH_TSL2563;
 		display_als_profiles = display_als_profiles_rx51;
 		led_als_profiles = led_als_profiles_rx51;
 		kbd_als_profiles = kbd_als_profiles_rx51;
@@ -379,8 +389,8 @@ static als_type_t get_als_type(void)
 	} else if (g_access(ALS_LUX_PATH_TSL2562, R_OK) == 0) {
 		als_type = ALS_TYPE_TSL2562;
 		als_lux_path = ALS_LUX_PATH_TSL2562;
-		als_calib0_path = ALS_CALIB0_PATH_TSL2562;
-		als_calib1_path = ALS_CALIB1_PATH_TSL2562;
+		als_calib0_output.path = ALS_CALIB0_PATH_TSL2562;
+		als_calib1_output.path = ALS_CALIB1_PATH_TSL2562;
 		display_als_profiles = display_als_profiles_rx44;
 		led_als_profiles = led_als_profiles_rx44;
 		kbd_als_profiles = kbd_als_profiles_rx44;
@@ -415,7 +425,7 @@ static void calibrate_als(void)
 	gulong len;
 
 	/* If we don't have any calibration points, don't bother */
-	if ((als_calib0_path == NULL) && (als_calib1_path == NULL))
+	if ((als_calib0_output.path == NULL) && (als_calib1_output.path == NULL))
 		goto EXIT;
 
 	/* Retrieve the calibration data from sysinfo */
@@ -457,15 +467,13 @@ static void calibrate_als(void)
 	}
 
 	/* Write calibration value 0 */
-	if (als_calib0_path != NULL) {
-		mce_write_number_string_to_file(als_calib0_path,
-						calib0, NULL, TRUE, TRUE);
+	if (als_calib0_output.path != NULL) {
+	  mce_write_number_string_to_file(&als_calib0_output, calib0);
 	}
 
 	/* Write calibration value 1 */
-	if ((als_calib1_path != NULL) && (count > 1)) {
-		mce_write_number_string_to_file(als_calib1_path,
-						calib1, NULL, TRUE, TRUE);
+	if ((als_calib1_output.path != NULL) && (count > 1)) {
+		mce_write_number_string_to_file(&als_calib1_output, calib1);
 	}
 
 EXIT2:

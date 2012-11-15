@@ -98,30 +98,90 @@ static gint key_backlight_fade_out_time = DEFAULT_KEY_BACKLIGHT_FADE_OUT_TIME;
 static gboolean key_backlight_is_enabled = FALSE;
 
 /** Key backlight channel 0 LED current path */
-static gchar *led_current_kb0_path = NULL;
+static output_state_t led_current_kb0_output =
+{
+  .context = "led_current_kb0",
+  .truncate_file = TRUE,
+  .close_on_exit = FALSE,
+};
 /** Key backlight channel 1 LED current path */
-static gchar *led_current_kb1_path = NULL;
+static output_state_t led_current_kb1_output =
+{
+  .context = "led_current_kb1",
+  .truncate_file = TRUE,
+  .close_on_exit = FALSE,
+};
 /** Key backlight channel 2 LED current path */
-static gchar *led_current_kb2_path = NULL;
+static output_state_t led_current_kb2_output =
+{
+  .context = "led_current_kb2",
+  .truncate_file = TRUE,
+  .close_on_exit = FALSE,
+};
 /** Key backlight channel 3 LED current path */
-static gchar *led_current_kb3_path = NULL;
+static output_state_t led_current_kb3_output =
+{
+  .context = "led_current_kb3",
+  .truncate_file = TRUE,
+  .close_on_exit = FALSE,
+};
 /** Key backlight channel 4 LED current path */
-static gchar *led_current_kb4_path = NULL;
+static output_state_t led_current_kb4_output =
+{
+  .context = "led_current_kb4",
+  .truncate_file = TRUE,
+  .close_on_exit = FALSE,
+};
 /** Key backlight channel 5 LED current path */
-static gchar *led_current_kb5_path = NULL;
+static output_state_t led_current_kb5_output =
+{
+  .context = "led_current_kb5",
+  .truncate_file = TRUE,
+  .close_on_exit = FALSE,
+};
 
 /** Key backlight channel 0 backlight path */
-static gchar *led_brightness_kb0_path = NULL;
+static output_state_t led_brightness_kb0_output =
+{
+  .context = "led_brightness_kb0",
+  .truncate_file = TRUE,
+  .close_on_exit = FALSE,
+};
 /** Key backlight channel 1 backlight path */
-static gchar *led_brightness_kb1_path = NULL;
+static output_state_t led_brightness_kb1_output =
+{
+  .context = "led_brightness_kb1",
+  .truncate_file = TRUE,
+  .close_on_exit = FALSE,
+};
 /** Key backlight channel 2 backlight path */
-static gchar *led_brightness_kb2_path = NULL;
+static output_state_t led_brightness_kb2_output =
+{
+  .context = "led_brightness_kb2",
+  .truncate_file = TRUE,
+  .close_on_exit = FALSE,
+};
 /** Key backlight channel 3 backlight path */
-static gchar *led_brightness_kb3_path = NULL;
+static output_state_t led_brightness_kb3_output =
+{
+  .context = "led_brightness_kb3",
+  .truncate_file = TRUE,
+  .close_on_exit = FALSE,
+};
 /** Key backlight channel 4 backlight path */
-static gchar *led_brightness_kb4_path = NULL;
+static output_state_t led_brightness_kb4_output =
+{
+  .context = "led_brightness_kb4",
+  .truncate_file = TRUE,
+  .close_on_exit = FALSE,
+};
 /** Key backlight channel 5 backlight path */
-static gchar *led_brightness_kb5_path = NULL;
+static output_state_t led_brightness_kb5_output =
+{
+  .context = "led_brightness_kb5",
+  .truncate_file = TRUE,
+  .close_on_exit = FALSE,
+};
 
 /** Path to engine 3 mode */
 static gchar *engine3_mode_path = NULL;
@@ -132,36 +192,23 @@ static gchar *engine3_load_path = NULL;
 /** Path to engine 3 leds */
 static gchar *engine3_leds_path = NULL;
 
-/** File pointer for the keyboard backlight 1 LED brightness */
-static FILE *led_brightness_kb0_fp = NULL;
-/** File pointer for the keyboard backlight 2 LED brightness */
-static FILE *led_brightness_kb1_fp = NULL;
-/** File pointer for the keyboard backlight 3 LED brightness */
-static FILE *led_brightness_kb2_fp = NULL;
-/** File pointer for the keyboard backlight 4 LED brightness */
-static FILE *led_brightness_kb3_fp = NULL;
-/** File pointer for the keyboard backlight 5 LED brightness */
-static FILE *led_brightness_kb4_fp = NULL;
-/** File pointer for the keyboard backlight 6 LED brightness */
-static FILE *led_brightness_kb5_fp = NULL;
-
-/** File pointer for the keyboard backlight 1 LED current */
-static FILE *led_current_kb0_fp = NULL;
-/** File pointer for the keyboard backlight 2 LED current */
-static FILE *led_current_kb1_fp = NULL;
-/** File pointer for the keyboard backlight 3 LED current */
-static FILE *led_current_kb2_fp = NULL;
-/** File pointer for the keyboard backlight 4 LED current */
-static FILE *led_current_kb3_fp = NULL;
-/** File pointer for the keyboard backlight 5 LED current */
-static FILE *led_current_kb4_fp = NULL;
-/** File pointer for the keyboard backlight 6 LED current */
-static FILE *led_current_kb5_fp = NULL;
-
 /** File pointer for the N810 keypad fadetime */
-static FILE *n810_keypad_fadetime_fp = NULL;
+static output_state_t n810_keypad_fadetime_output =
+{
+  .context = "n810_keypad_fadetime",
+  .truncate_file = TRUE,
+  .close_on_exit = FALSE,
+  .path = MCE_KEYPAD_BACKLIGHT_FADETIME_SYS_PATH,
+};
+
 /** File pointer for the N810 keyboard fadetime */
-static FILE *n810_keyboard_fadetime_fp = NULL;
+static output_state_t n810_keyboard_fadetime_output =
+{
+  .context = "n810_keyboard_fadetime",
+  .truncate_file = TRUE,
+  .close_on_exit = FALSE,
+  .path = MCE_KEYBOARD_BACKLIGHT_FADETIME_SYS_PATH,
+};
 
 
 /** Key backlight mask */
@@ -179,19 +226,19 @@ static void setup_key_backlight(void)
 	case PRODUCT_RM680:
 		key_backlight_mask = MCE_LYSTI_KB_BACKLIGHT_MASK_RM680;
 
-		led_current_kb0_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_CURRENT_SUFFIX, NULL);
-		led_current_kb1_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL1, MCE_LED_CURRENT_SUFFIX, NULL);
-		led_current_kb2_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL2, MCE_LED_CURRENT_SUFFIX, NULL);
-		led_current_kb3_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL3, MCE_LED_CURRENT_SUFFIX, NULL);
-		led_current_kb4_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL4, MCE_LED_CURRENT_SUFFIX, NULL);
-		led_current_kb5_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL5, MCE_LED_CURRENT_SUFFIX, NULL);
+		led_current_kb0_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_CURRENT_SUFFIX, NULL);
+		led_current_kb1_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL1, MCE_LED_CURRENT_SUFFIX, NULL);
+		led_current_kb2_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL2, MCE_LED_CURRENT_SUFFIX, NULL);
+		led_current_kb3_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL3, MCE_LED_CURRENT_SUFFIX, NULL);
+		led_current_kb4_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL4, MCE_LED_CURRENT_SUFFIX, NULL);
+		led_current_kb5_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL5, MCE_LED_CURRENT_SUFFIX, NULL);
 
-		led_brightness_kb0_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
-		led_brightness_kb1_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL1, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
-		led_brightness_kb2_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL2, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
-		led_brightness_kb3_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL3, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
-		led_brightness_kb4_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL4, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
-		led_brightness_kb5_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL5, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
+		led_brightness_kb0_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
+		led_brightness_kb1_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL1, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
+		led_brightness_kb2_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL2, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
+		led_brightness_kb3_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL3, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
+		led_brightness_kb4_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL4, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
+		led_brightness_kb5_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL5, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
 
 		engine3_mode_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE3, MCE_LED_MODE_SUFFIX, NULL);
 		engine3_load_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE3, MCE_LED_LOAD_SUFFIX, NULL);
@@ -201,19 +248,19 @@ static void setup_key_backlight(void)
 	case PRODUCT_RX51:
 		key_backlight_mask = MCE_LYSTI_KB_BACKLIGHT_MASK_RX51;
 
-		led_current_kb0_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_CURRENT_SUFFIX, NULL);
-		led_current_kb1_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL1, MCE_LED_CURRENT_SUFFIX, NULL);
-		led_current_kb2_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL2, MCE_LED_CURRENT_SUFFIX, NULL);
-		led_current_kb3_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL3, MCE_LED_CURRENT_SUFFIX, NULL);
-		led_current_kb4_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL7, MCE_LED_CURRENT_SUFFIX, NULL);
-		led_current_kb5_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL8, MCE_LED_CURRENT_SUFFIX, NULL);
+		led_current_kb0_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_CURRENT_SUFFIX, NULL);
+		led_current_kb1_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL1, MCE_LED_CURRENT_SUFFIX, NULL);
+		led_current_kb2_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL2, MCE_LED_CURRENT_SUFFIX, NULL);
+		led_current_kb3_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL3, MCE_LED_CURRENT_SUFFIX, NULL);
+		led_current_kb4_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL7, MCE_LED_CURRENT_SUFFIX, NULL);
+		led_current_kb5_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL8, MCE_LED_CURRENT_SUFFIX, NULL);
 
-		led_brightness_kb0_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
-		led_brightness_kb1_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL1, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
-		led_brightness_kb2_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL2, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
-		led_brightness_kb3_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL3, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
-		led_brightness_kb4_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL7, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
-		led_brightness_kb5_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL8, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
+		led_brightness_kb0_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
+		led_brightness_kb1_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL1, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
+		led_brightness_kb2_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL2, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
+		led_brightness_kb3_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL3, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
+		led_brightness_kb4_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL7, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
+		led_brightness_kb5_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL8, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
 
 		engine3_mode_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE3, MCE_LED_MODE_SUFFIX, NULL);
 		engine3_load_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE3, MCE_LED_LOAD_SUFFIX, NULL);
@@ -223,8 +270,8 @@ static void setup_key_backlight(void)
 	case PRODUCT_RX48:
 	case PRODUCT_RX44:
 		/* Has backlight, but no special setup needed */
-		led_brightness_kb0_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_COVER_PREFIX, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
-		led_brightness_kb1_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_KEYBOARD_PREFIX, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
+		led_brightness_kb0_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_COVER_PREFIX, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
+		led_brightness_kb1_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_KEYBOARD_PREFIX, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
 		break;
 
 	default:
@@ -321,20 +368,20 @@ static void set_lysti_backlight_brightness(guint fadetime, guint brightness)
 				       MCE_LED_DISABLED_MODE);
 
 	/* Turn off all keyboard backlight LEDs */
-	(void)mce_write_number_string_to_file(led_brightness_kb0_path, 0, &led_brightness_kb0_fp, TRUE, FALSE);
-	(void)mce_write_number_string_to_file(led_brightness_kb1_path, 0, &led_brightness_kb1_fp, TRUE, FALSE);
-	(void)mce_write_number_string_to_file(led_brightness_kb2_path, 0, &led_brightness_kb2_fp, TRUE, FALSE);
-	(void)mce_write_number_string_to_file(led_brightness_kb3_path, 0, &led_brightness_kb3_fp, TRUE, FALSE);
-	(void)mce_write_number_string_to_file(led_brightness_kb4_path, 0, &led_brightness_kb4_fp, TRUE, FALSE);
-	(void)mce_write_number_string_to_file(led_brightness_kb5_path, 0, &led_brightness_kb5_fp, TRUE, FALSE);
+	(void)mce_write_number_string_to_file(&led_brightness_kb0_output, 0);
+	(void)mce_write_number_string_to_file(&led_brightness_kb1_output, 0);
+	(void)mce_write_number_string_to_file(&led_brightness_kb2_output, 0);
+	(void)mce_write_number_string_to_file(&led_brightness_kb3_output, 0);
+	(void)mce_write_number_string_to_file(&led_brightness_kb4_output, 0);
+	(void)mce_write_number_string_to_file(&led_brightness_kb5_output, 0);
 
 	/* Set backlight LED current */
-	(void)mce_write_number_string_to_file(led_current_kb0_path, MAXIMUM_LYSTI_BACKLIGHT_LED_CURRENT, &led_current_kb0_fp, TRUE, FALSE);
-	(void)mce_write_number_string_to_file(led_current_kb1_path, MAXIMUM_LYSTI_BACKLIGHT_LED_CURRENT, &led_current_kb1_fp, TRUE, FALSE);
-	(void)mce_write_number_string_to_file(led_current_kb2_path, MAXIMUM_LYSTI_BACKLIGHT_LED_CURRENT, &led_current_kb2_fp, TRUE, FALSE);
-	(void)mce_write_number_string_to_file(led_current_kb3_path, MAXIMUM_LYSTI_BACKLIGHT_LED_CURRENT, &led_current_kb3_fp, TRUE, FALSE);
-	(void)mce_write_number_string_to_file(led_current_kb4_path, MAXIMUM_LYSTI_BACKLIGHT_LED_CURRENT, &led_current_kb4_fp, TRUE, FALSE);
-	(void)mce_write_number_string_to_file(led_current_kb5_path, MAXIMUM_LYSTI_BACKLIGHT_LED_CURRENT, &led_current_kb5_fp, TRUE, FALSE);
+	(void)mce_write_number_string_to_file(&led_current_kb0_output, MAXIMUM_LYSTI_BACKLIGHT_LED_CURRENT);
+	(void)mce_write_number_string_to_file(&led_current_kb1_output, MAXIMUM_LYSTI_BACKLIGHT_LED_CURRENT);
+	(void)mce_write_number_string_to_file(&led_current_kb2_output, MAXIMUM_LYSTI_BACKLIGHT_LED_CURRENT);
+	(void)mce_write_number_string_to_file(&led_current_kb3_output, MAXIMUM_LYSTI_BACKLIGHT_LED_CURRENT);
+	(void)mce_write_number_string_to_file(&led_current_kb4_output, MAXIMUM_LYSTI_BACKLIGHT_LED_CURRENT);
+	(void)mce_write_number_string_to_file(&led_current_kb5_output, MAXIMUM_LYSTI_BACKLIGHT_LED_CURRENT);
 
 	/* Engine 3 */
 	(void)mce_write_string_to_file(engine3_mode_path,
@@ -361,15 +408,15 @@ static void set_n810_backlight_brightness(guint fadetime, guint brightness)
 {
 	/* Set fade time */
 	if (brightness == 0) {
-		(void)mce_write_number_string_to_file(MCE_KEYPAD_BACKLIGHT_FADETIME_SYS_PATH, fadetime, &n810_keypad_fadetime_fp, TRUE, FALSE);
-		(void)mce_write_number_string_to_file(MCE_KEYBOARD_BACKLIGHT_FADETIME_SYS_PATH, fadetime, &n810_keyboard_fadetime_fp, TRUE, FALSE);
+		(void)mce_write_number_string_to_file(&n810_keypad_fadetime_output, fadetime);
+		(void)mce_write_number_string_to_file(&n810_keyboard_fadetime_output, fadetime);
 	} else {
-		(void)mce_write_number_string_to_file(MCE_KEYPAD_BACKLIGHT_FADETIME_SYS_PATH, 0, &n810_keypad_fadetime_fp, TRUE, FALSE);
-		(void)mce_write_number_string_to_file(MCE_KEYBOARD_BACKLIGHT_FADETIME_SYS_PATH, 0, &n810_keyboard_fadetime_fp, TRUE, FALSE);
+		(void)mce_write_number_string_to_file(&n810_keypad_fadetime_output, 0);
+		(void)mce_write_number_string_to_file(&n810_keyboard_fadetime_output, 0);
 	}
 
-	(void)mce_write_number_string_to_file(led_brightness_kb0_path, brightness, &led_brightness_kb0_fp, TRUE, FALSE);
-	(void)mce_write_number_string_to_file(led_brightness_kb1_path, brightness, &led_brightness_kb1_fp, TRUE, FALSE);
+	(void)mce_write_number_string_to_file(&led_brightness_kb0_output, brightness);
+	(void)mce_write_number_string_to_file(&led_brightness_kb1_output, brightness);
 }
 
 /**
@@ -761,39 +808,37 @@ void g_module_unload(GModule *module)
 	(void)module;
 
 	/* Close files */
-	mce_close_file(led_current_kb0_path, &led_current_kb0_fp);
-	mce_close_file(led_current_kb1_path, &led_current_kb1_fp);
-	mce_close_file(led_current_kb2_path, &led_current_kb2_fp);
-	mce_close_file(led_current_kb3_path, &led_current_kb3_fp);
-	mce_close_file(led_current_kb4_path, &led_current_kb4_fp);
-	mce_close_file(led_current_kb5_path, &led_current_kb5_fp);
+	mce_close_output(&led_current_kb0_output);
+	mce_close_output(&led_current_kb1_output);
+	mce_close_output(&led_current_kb2_output);
+	mce_close_output(&led_current_kb3_output);
+	mce_close_output(&led_current_kb4_output);
+	mce_close_output(&led_current_kb5_output);
 
-	mce_close_file(led_brightness_kb0_path, &led_brightness_kb0_fp);
-	mce_close_file(led_brightness_kb1_path, &led_brightness_kb1_fp);
-	mce_close_file(led_brightness_kb2_path, &led_brightness_kb2_fp);
-	mce_close_file(led_brightness_kb3_path, &led_brightness_kb3_fp);
-	mce_close_file(led_brightness_kb4_path, &led_brightness_kb4_fp);
-	mce_close_file(led_brightness_kb5_path, &led_brightness_kb5_fp);
+	mce_close_output(&led_brightness_kb0_output);
+	mce_close_output(&led_brightness_kb1_output);
+	mce_close_output(&led_brightness_kb2_output);
+	mce_close_output(&led_brightness_kb3_output);
+	mce_close_output(&led_brightness_kb4_output);
+	mce_close_output(&led_brightness_kb5_output);
 
-	mce_close_file(MCE_KEYPAD_BACKLIGHT_FADETIME_SYS_PATH,
-		       &n810_keypad_fadetime_fp);
-	mce_close_file(MCE_KEYBOARD_BACKLIGHT_FADETIME_SYS_PATH,
-		       &n810_keyboard_fadetime_fp);
+	mce_close_output(&n810_keypad_fadetime_output);
+	mce_close_output(&n810_keyboard_fadetime_output);
 
 	/* Free path strings */
-	g_free(led_current_kb0_path);
-	g_free(led_current_kb1_path);
-	g_free(led_current_kb2_path);
-	g_free(led_current_kb3_path);
-	g_free(led_current_kb4_path);
-	g_free(led_current_kb5_path);
+	g_free((void*)led_current_kb0_output.path);
+	g_free((void*)led_current_kb1_output.path);
+	g_free((void*)led_current_kb2_output.path);
+	g_free((void*)led_current_kb3_output.path);
+	g_free((void*)led_current_kb4_output.path);
+	g_free((void*)led_current_kb5_output.path);
 
-	g_free(led_brightness_kb0_path);
-	g_free(led_brightness_kb1_path);
-	g_free(led_brightness_kb2_path);
-	g_free(led_brightness_kb3_path);
-	g_free(led_brightness_kb4_path);
-	g_free(led_brightness_kb5_path);
+	g_free((void*)led_brightness_kb0_output.path);
+	g_free((void*)led_brightness_kb1_output.path);
+	g_free((void*)led_brightness_kb2_output.path);
+	g_free((void*)led_brightness_kb3_output.path);
+	g_free((void*)led_brightness_kb4_output.path);
+	g_free((void*)led_brightness_kb5_output.path);
 
 	g_free(engine3_mode_path);
 	g_free(engine3_load_path);

@@ -109,11 +109,26 @@ static const gchar *ps_device_path = NULL;
 /** Path to the proximity sensor enable/disable file entry */
 static const gchar *ps_enable_path = NULL;
 /** Path to the proximity sensor on/off mode file entry */
-static const gchar *ps_onoff_mode_path = NULL;
+static output_state_t ps_onoff_mode_output =
+{
+  .context = "ps_onoff_mode",
+  .truncate_file = TRUE,
+  .close_on_exit = TRUE,
+};
 /** Path to the first proximity sensor calibration point sysfs entry */
-static const gchar *ps_calib0_path = NULL;
+static output_state_t ps_calib0_output =
+{
+  .context = "ps_calib0",
+  .truncate_file = TRUE,
+  .close_on_exit = TRUE,
+};
 /** Path to the second proximity sensor calibration point sysfs entry */
-static const gchar *ps_calib1_path = NULL;
+static output_state_t ps_calib1_output =
+{
+  .context = "ps_calib1",
+  .truncate_file = TRUE,
+  .close_on_exit = TRUE,
+};
 
 /** Proximity threshold */
 static hysteresis_t *ps_threshold = NULL;
@@ -150,11 +165,11 @@ static ps_type_t get_ps_type(void)
 		ps_type = PS_TYPE_AVAGO;
 		ps_device_path = PS_DEVICE_PATH_AVAGO;
 		ps_enable_path = PS_PATH_AVAGO_ENABLE;
-		ps_onoff_mode_path = PS_PATH_AVAGO_ONOFF_MODE;
+		ps_onoff_mode_output.path = PS_PATH_AVAGO_ONOFF_MODE;
 	} else if (g_access(PS_DEVICE_PATH_DIPRO, R_OK) == 0) {
 		ps_type = PS_TYPE_DIPRO;
 		ps_device_path = PS_DEVICE_PATH_DIPRO;
-		ps_calib0_path = PS_CALIB_PATH_DIPRO;
+		ps_calib0_output.path = PS_CALIB_PATH_DIPRO;
 		ps_threshold = &dipro_ps_threshold_dipro;
 	} else {
 		/* Device either has no proximity sensor,
@@ -202,7 +217,7 @@ static void calibrate_ps(void)
 	gulong len;
 
 	/* If we don't have any calibration points, don't bother */
-	if ((ps_calib0_path == NULL) && (ps_calib1_path == NULL))
+	if ((ps_calib0_output.path == NULL) && (ps_calib1_output.path == NULL))
 		goto EXIT;
 
 	/* Retrieve the calibration data from sysinfo */
@@ -244,15 +259,13 @@ static void calibrate_ps(void)
 	}
 
 	/* Write calibration value 0 */
-	if (ps_calib0_path != NULL) {
-		mce_write_number_string_to_file(ps_calib0_path,
-						calib0, NULL, TRUE, TRUE);
+	if (ps_calib0_output.path != NULL) {
+		mce_write_number_string_to_file(&ps_calib0_output, calib0);
 	}
 
 	/* Write calibration value 1 */
-	if ((ps_calib1_path != NULL) && (count > 1)) {
-		mce_write_number_string_to_file(ps_calib1_path,
-						calib1, NULL, TRUE, TRUE);
+	if ((ps_calib1_output.path != NULL) && (count > 1)) {
+		mce_write_number_string_to_file(&ps_calib1_output, calib1);
 	}
 
 EXIT2:
@@ -567,8 +580,8 @@ static gboolean proximity_sensor_owner_monitor_dbus_cb(DBusMessage *const msg)
 			old_name);
 	} else {
 		if ((ps_external_refcount > 0) && (retval == 0)) {
-			if (ps_onoff_mode_path != NULL)
-				mce_write_number_string_to_file(ps_onoff_mode_path, 1, NULL, TRUE, TRUE);
+			if (ps_onoff_mode_output.path != NULL)
+				mce_write_number_string_to_file(&ps_onoff_mode_output, 1);
 
 			update_proximity_monitor();
 		}
@@ -618,9 +631,8 @@ static gboolean proximity_sensor_enable_req_dbus_cb(DBusMessage *const msg)
 			sender);
 	} else {
 		if ((ps_external_refcount == 0) && (retval == 1)) {
-			if (ps_onoff_mode_path != NULL)
-				mce_write_number_string_to_file(ps_onoff_mode_path, 0, NULL, TRUE, TRUE);
-
+			if (ps_onoff_mode_output.path != NULL)
+				mce_write_number_string_to_file(&ps_onoff_mode_output, 0);
 			update_proximity_monitor();
 		}
 
@@ -676,8 +688,8 @@ static gboolean proximity_sensor_disable_req_dbus_cb(DBusMessage *const msg)
 			sender);
 	} else {
 		if ((ps_external_refcount > 0) && (retval == 0)) {
-			if (ps_onoff_mode_path != NULL)
-				mce_write_number_string_to_file(ps_onoff_mode_path, 1, NULL, TRUE, TRUE);
+			if (ps_onoff_mode_output.path != NULL)
+				mce_write_number_string_to_file(&ps_onoff_mode_output, 1);
 
 			update_proximity_monitor();
 		}
@@ -739,9 +751,8 @@ const gchar *g_module_check_init(GModule *module)
 		calibrate_ps();
 	}
 
-	if (ps_onoff_mode_path != NULL)
-		mce_write_number_string_to_file(ps_onoff_mode_path,
-						1, NULL, TRUE, TRUE);
+	if (ps_onoff_mode_output.path != NULL)
+		mce_write_number_string_to_file(&ps_onoff_mode_output, 1);
 
 	ps_external_refcount = 0;
 
