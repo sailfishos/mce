@@ -977,6 +977,14 @@ static gint mcetool_gconf_init(void)
 	/* Init GType */
 	g_type_init();
 
+	/* Trying to use gconf without already existing session
+	 * bus can only yield problems -> disable gconf access
+	 */
+	if( !getenv("DBUS_SESSION_BUS_ADDRESS") ) {
+		fprintf(stderr, "No session bus - disabling gconf accesss\n");
+		goto EXIT;
+	}
+
 	gconf_client = gconf_client_get_default();
 
 	if (gconf_client == NULL) {
@@ -1012,6 +1020,9 @@ static gboolean mcetool_gconf_get_bool(const gchar *const key, gboolean *value)
 	GError *error = NULL;
 	GConfValue *gcv;
 
+	if( !gconf_client )
+		goto EXIT;
+
 	gcv = gconf_client_get(gconf_client, key, &error);
 
 	/* If the value isn't set, just return */
@@ -1033,6 +1044,8 @@ static gboolean mcetool_gconf_get_bool(const gchar *const key, gboolean *value)
 	status = TRUE;
 
 EXIT:
+	g_clear_error(&error);
+
 	return status;
 }
 
@@ -1048,6 +1061,9 @@ static gboolean mcetool_gconf_get_int(const gchar *const key, gint *value)
 	gboolean status = FALSE;
 	GError *error = NULL;
 	GConfValue *gcv;
+
+	if( !gconf_client )
+		goto EXIT;
 
 	gcv = gconf_client_get(gconf_client, key, &error);
 
@@ -1087,6 +1103,9 @@ static gboolean mcetool_gconf_set_bool(const gchar *const key,
 {
 	gboolean status = FALSE;
 
+	if( !gconf_client )
+		goto EXIT;
+
 	if (gconf_client_set_bool(gconf_client, key, value, NULL) == FALSE) {
 		fprintf(stderr,
 			"Failed to write %s to GConf\n", key);
@@ -1112,6 +1131,9 @@ EXIT:
 static gboolean mcetool_gconf_set_int(const gchar *const key, const gint value)
 {
 	gboolean status = FALSE;
+
+	if( !gconf_client )
+		goto EXIT;
 
 	if (gconf_client_set_int(gconf_client, key, value, NULL) == FALSE) {
 		fprintf(stderr,
