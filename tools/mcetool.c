@@ -937,9 +937,6 @@ static gint mcetool_gconf_init(void)
 {
 	gint status = 0;
 
-	/* Init GType */
-	g_type_init();
-
 	/* Trying to use gconf without already existing session
 	 * bus can only yield problems -> disable gconf access
 	 */
@@ -1934,6 +1931,9 @@ int main(int argc, char **argv)
 		status = EINVAL;
 		goto EXIT;
 	}
+
+	/* Init GType */
+	g_type_init();
 
 	/* Initialise D-Bus */
 	if ((status = mcetool_dbus_init(bus_type)) != 0)
