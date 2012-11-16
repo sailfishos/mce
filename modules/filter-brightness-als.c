@@ -421,14 +421,14 @@ static void calibrate_als(void)
 	/* Retrieve the calibration data from sysinfo */
 	if (get_sysinfo_value(ALS_CALIB_IDENTIFIER, &tmp, &len) == FALSE) {
 		mce_log(LL_ERR,
-			"Failed to retrieve calibration data");
+			"Failed to retrieve ALS calibration data");
 		goto EXIT;
 	}
 
 	/* Is the memory properly aligned? */
 	if ((len % sizeof (guint32)) != 0) {
 		mce_log(LL_ERR,
-			"Invalid calibration data returned");
+			"Invalid ALS calibration data returned");
 		goto EXIT2;
 	}
 
@@ -437,14 +437,14 @@ static void calibrate_als(void)
 	/* We don't have any calibration data */
 	if (count == 0) {
 		mce_log(LL_INFO,
-			"No calibration data available");
+			"No ALS calibration data available");
 		goto EXIT2;
 	}
 
 	switch (count) {
 	default:
 		mce_log(LL_INFO,
-			"Ignored excess calibration data");
+			"Ignored excess ALS calibration data");
 		/* Fall-through */
 
 	case 2:
