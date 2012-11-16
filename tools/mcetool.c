@@ -773,37 +773,6 @@ EXIT:
 }
 
 /**
- * Acquire D-Bus services
- *
- * @return TRUE on success, FALSE on failure
- */
-static gboolean dbus_acquire_services(void)
-{
-	gboolean status = FALSE;
-	int ret;
-	DBusError error;
-
-	/* Register error channel */
-	dbus_error_init(&error);
-
-	ret = dbus_bus_request_name(dbus_connection, MCETOOL_SERVICE, 0,
-				    &error);
-
-	if (ret != DBUS_REQUEST_NAME_REPLY_PRIMARY_OWNER) {
-		fprintf(stderr,
-			"Cannot acquire service: %s",
-			error.message);
-		dbus_error_free(&error);
-		goto EXIT;
-	}
-
-	status = TRUE;
-
-EXIT:
-	return status;
-}
-
-/**
  * D-Bus initialisation
  *
  * @param bus_type "system" or "session" bus
@@ -823,12 +792,6 @@ static gint mcetool_dbus_init(DBusBusType bus_type)
 			"Failed to open connection to message bus; %s",
 			error.message);
 		dbus_error_free(&error);
-		status = EXIT_FAILURE;
-		goto EXIT;
-	}
-
-	/* Acquire D-Bus service */
-	if (dbus_acquire_services() == FALSE) {
 		status = EXIT_FAILURE;
 		goto EXIT;
 	}

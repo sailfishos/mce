@@ -39,12 +39,4 @@
 #define _(__str)		__str
 #endif /* ENABLE_NLS */
 
-/** The mcetool DBus service */
-#define MCETOOL_SERVICE			"com.nokia.mcetool"
-
-/** The mcetool DBus Request interface */
-#define MCETOOL_REQUEST_IF		"com.nokia.mcetool.request"
-/** The mcetool DBus Signal interface */
-#define MCETOOL_REQUEST_PATH		"/com/nokia/mcetool/request"
-
 #endif /* _MCETOOL_H_ */
