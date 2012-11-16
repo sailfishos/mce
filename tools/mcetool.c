@@ -324,7 +324,7 @@ static DBusMessage *dbus_new_signal(const gchar *const path,
 	DBusMessage *msg;
 
 	if ((msg = dbus_message_new_signal(path, interface, name)) == NULL) {
-		fprintf(stderr, "No memory for new signal!");
+		fprintf(stderr, "No memory for new signal!\n");
 		exit(EXIT_FAILURE);
 	}
 
@@ -351,7 +351,7 @@ static DBusMessage *dbus_new_method_call(const gchar *const service,
 	if ((msg = dbus_message_new_method_call(service, path,
 						interface, name)) == NULL) {
 		fprintf(stderr,
-			"Cannot allocate memory for D-Bus method call!");
+			"Cannot allocate memory for D-Bus method call!\n");
 		exit(EXIT_FAILURE);
 	}
 
@@ -401,7 +401,7 @@ static DBusMessage *mcetool_dbus_call_with_reply(const gchar *const method,
 						MCE_REQUEST_IF,
 						method)) == NULL) {
 		fprintf(stderr,
-			"Cannot allocate memory for D-Bus method call!");
+			"Cannot allocate memory for D-Bus method call!\n");
 		goto EXIT;
 	}
 
@@ -413,7 +413,7 @@ static DBusMessage *mcetool_dbus_call_with_reply(const gchar *const method,
 			dbus_message_unref(msg);
 			fprintf(stderr,
 				"Failed to append argument to D-Bus message "
-				"for %s",
+				"for %s\n",
 				method);
 			goto EXIT;
 		}
@@ -430,7 +430,7 @@ static DBusMessage *mcetool_dbus_call_with_reply(const gchar *const method,
 
 	if (dbus_error_is_set(&error) == TRUE) {
 		fprintf(stderr,
-			"Could not call method %s: %s; exiting",
+			"Could not call method %s: %s; exiting\n",
 			method, error.message);
 		dbus_error_free(&error);
 		reply = NULL;
@@ -468,7 +468,7 @@ static gint mcetool_dbus_call_string(const gchar *const method,
 						MCE_REQUEST_IF,
 						method)) == NULL) {
 		fprintf(stderr,
-			"Cannot allocate memory for D-Bus method call!");
+			"Cannot allocate memory for D-Bus method call!\n");
 		status = EXIT_FAILURE;
 		goto EXIT;
 	}
@@ -481,7 +481,7 @@ static gint mcetool_dbus_call_string(const gchar *const method,
 			dbus_message_unref(msg);
 			fprintf(stderr,
 				"Failed to append argument to D-Bus message "
-				"for %s",
+				"for %s\n",
 				method);
 			status = EXIT_FAILURE;
 			goto EXIT;
@@ -508,7 +508,7 @@ static gint mcetool_dbus_call_string(const gchar *const method,
 
 	if (dbus_error_is_set(&error) == TRUE) {
 		fprintf(stderr,
-			"Could not call method %s: %s; exiting",
+			"Could not call method %s: %s; exiting\n",
 			method, error.message);
 		dbus_error_free(&error);
 		status = EXIT_FAILURE;
@@ -521,7 +521,7 @@ static gint mcetool_dbus_call_string(const gchar *const method,
 					  DBUS_TYPE_INVALID) == FALSE) {
 			fprintf(stderr,
 				"Failed to get reply argument from %s: "
-				"%s; exiting",
+				"%s; exiting\n",
 				method, error.message);
 			dbus_message_unref(reply);
 			dbus_error_free(&error);
@@ -562,7 +562,7 @@ static gint mcetool_dbus_call_bool(const gchar *const method,
 						MCE_REQUEST_IF,
 						method)) == NULL) {
 		fprintf(stderr,
-			"Cannot allocate memory for D-Bus method call!");
+			"Cannot allocate memory for D-Bus method call!\n");
 		status = EXIT_FAILURE;
 		goto EXIT;
 	}
@@ -575,7 +575,7 @@ static gint mcetool_dbus_call_bool(const gchar *const method,
 			dbus_message_unref(msg);
 			fprintf(stderr,
 				"Failed to append argument to D-Bus message "
-				"for %s",
+				"for %s\n",
 				method);
 			status = EXIT_FAILURE;
 			goto EXIT;
@@ -593,7 +593,7 @@ static gint mcetool_dbus_call_bool(const gchar *const method,
 
 	if (dbus_error_is_set(&error) == TRUE) {
 		fprintf(stderr,
-			"Could not call method %s: %s; exiting",
+			"Could not call method %s: %s; exiting\n",
 			method, error.message);
 		dbus_error_free(&error);
 		status = EXIT_FAILURE;
@@ -606,7 +606,7 @@ static gint mcetool_dbus_call_bool(const gchar *const method,
 					  DBUS_TYPE_INVALID) == FALSE) {
 			fprintf(stderr,
 				"Failed to get reply argument from %s: "
-				"%s; exiting",
+				"%s; exiting\n",
 				method, error.message);
 			dbus_message_unref(reply);
 			dbus_error_free(&error);
@@ -647,7 +647,7 @@ static gint mcetool_dbus_call_uint(const gchar *const method,
 						MCE_REQUEST_IF,
 						method)) == NULL) {
 		fprintf(stderr,
-			"Cannot allocate memory for D-Bus method call!");
+			"Cannot allocate memory for D-Bus method call!\n");
 		status = EXIT_FAILURE;
 		goto EXIT;
 	}
@@ -660,7 +660,7 @@ static gint mcetool_dbus_call_uint(const gchar *const method,
 			dbus_message_unref(msg);
 			fprintf(stderr,
 				"Failed to append argument to D-Bus message "
-				"for %s",
+				"for %s\n",
 				method);
 			status = EXIT_FAILURE;
 			goto EXIT;
@@ -678,7 +678,7 @@ static gint mcetool_dbus_call_uint(const gchar *const method,
 
 	if (dbus_error_is_set(&error) == TRUE) {
 		fprintf(stderr,
-			"Could not call method %s: %s; exiting",
+			"Could not call method %s: %s; exiting\n",
 			method, error.message);
 		dbus_error_free(&error);
 		status = EXIT_FAILURE;
@@ -691,7 +691,7 @@ static gint mcetool_dbus_call_uint(const gchar *const method,
 					  DBUS_TYPE_INVALID) == FALSE) {
 			fprintf(stderr,
 				"Failed to get reply argument from %s: "
-				"%s; exiting",
+				"%s; exiting\n",
 				method, error.message);
 			dbus_message_unref(reply);
 			dbus_error_free(&error);
@@ -748,7 +748,7 @@ static gboolean dbus_send(const gchar *const service, const gchar *const path,
 						    first_arg_type,
 						    var_args) == FALSE) {
 			fprintf(stderr,
-				"Failed to append arguments to D-Bus message");
+				"Failed to append arguments to D-Bus message\n");
 			dbus_message_unref(msg);
 			goto EXIT;
 		}
@@ -757,9 +757,9 @@ static gboolean dbus_send(const gchar *const service, const gchar *const path,
 	/* Send the signal / call the method */
 	if (dbus_send_message(msg) == FALSE) {
 		if (service != NULL)
-			fprintf(stderr, "Cannot call method %s", name);
+			fprintf(stderr, "Cannot call method %s\n", name);
 		else
-			fprintf(stderr, "Cannot send signal %s", name);
+			fprintf(stderr, "Cannot send signal %s\n", name);
 
 		goto EXIT;
 	}
@@ -789,7 +789,7 @@ static gint mcetool_dbus_init(DBusBusType bus_type)
 	/* Establish D-Bus connection */
 	if ((dbus_connection = dbus_bus_get(bus_type, &error)) == 0) {
 		fprintf(stderr,
-			"Failed to open connection to message bus; %s",
+			"Failed to open connection to message bus; %s\n",
 			error.message);
 		dbus_error_free(&error);
 		status = EXIT_FAILURE;
@@ -846,7 +846,7 @@ static gboolean get_color_profile_ids(void)
 				  DBUS_TYPE_INVALID) == FALSE) {
 		fprintf(stderr,
 			"Failed to get reply argument from %s: "
-			"%s; exiting",
+			"%s; exiting\n",
 			MCE_COLOR_PROFILE_IDS_GET, error.message);
 		dbus_error_free(&error);
 		goto EXIT;
@@ -951,7 +951,7 @@ static gint mcetool_gconf_init(void)
 	gconf_client = gconf_client_get_default();
 
 	if (gconf_client == NULL) {
-		fprintf(stderr, "Could not get default GConf client");
+		fprintf(stderr, "Could not get default GConf client\n");
 		status = EXIT_FAILURE;
 		goto EXIT;
 	}
@@ -1213,7 +1213,7 @@ static gint mcetool_get_status(void)
 				  DBUS_TYPE_INVALID) == FALSE) {
 		fprintf(stderr,
 			"Failed to get reply argument from %s: "
-			"%s; exiting",
+			"%s; exiting\n",
 			MCE_CALL_STATE_GET, error.message);
 		dbus_message_unref(reply);
 		dbus_error_free(&error);
