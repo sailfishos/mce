@@ -81,6 +81,7 @@ static product_id_t product_id = PRODUCT_UNSET;
  */
 gboolean get_sysinfo_value(const gchar *const key, guint8 **array, gulong *len)
 {
+#ifdef ENABLE_SYSINFOD_QUERIES
 	DBusMessage *reply;
 	guint8 *tmp = NULL;
 	gboolean status = FALSE;
@@ -110,6 +111,11 @@ gboolean get_sysinfo_value(const gchar *const key, guint8 **array, gulong *len)
 	}
 
 	return status;
+#else
+	/* Provide a dummy function that always fails silently */
+	return (void)key, *array = 0, *len = 0, FALSE;
+#endif /* ENABLE_SYSINFOD_QUERIES */
+
 }
 
 /**
@@ -120,19 +126,17 @@ gboolean get_sysinfo_value(const gchar *const key, guint8 **array, gulong *len)
 product_id_t get_product_id(void)
 {
 	guint8 *tmp = NULL;
-	gulong len;
+	gulong len = 0;
 
 	if (product_id != PRODUCT_UNSET)
 		goto EXIT;
 
-	if (get_sysinfo_value(PRODUCT_SYSINFO_KEY, &tmp, &len) == FALSE) {
-		mce_log(LL_ERR,
-			"Failed to get the product ID");
-		product_id = PRODUCT_UNKNOWN;
-		goto EXIT;
-	}
+	product_id = PRODUCT_UNKNOWN;
 
-	if (strmemcmp(tmp, PRODUCT_SU18_STR, len) == TRUE) {
+	if( !get_sysinfo_value(PRODUCT_SYSINFO_KEY, &tmp, &len) ) {
+		// nothing
+	}
+	else if (strmemcmp(tmp, PRODUCT_SU18_STR, len) == TRUE) {
 		product_id = PRODUCT_SU18;
 	} else if (strmemcmp(tmp, PRODUCT_RX34_STR, len) == TRUE) {
 		product_id = PRODUCT_RX34;
@@ -152,11 +156,12 @@ product_id_t get_product_id(void)
 		product_id = PRODUCT_RM696;
 	} else if (strmemcmp(tmp, PRODUCT_RM716_STR, len) == TRUE) {
 		product_id = PRODUCT_RM716;
-	} else {
-		product_id = PRODUCT_UNKNOWN;
 	}
-
 	free(tmp);
+
+	if ( product_id == PRODUCT_UNKNOWN ) {
+		mce_log(LL_ERR,	"Failed to get the product ID");
+	}
 
 EXIT:
 	return product_id;

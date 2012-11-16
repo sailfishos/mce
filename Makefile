@@ -14,6 +14,9 @@ DOXYGEN := doxygen
 # Whether to enable wakelock compatibility code
 ENABLE_WAKELOCKS ?= n
 
+# Whether to enable sysinfod queries
+ENABLE_SYSINFOD_QUERIES ?= n
+
 VARDIR := $(DESTDIR)/var/lib/mce
 RUNDIR := $(DESTDIR)/var/run/mce
 CONFDIR := /etc/mce
@@ -90,6 +93,10 @@ COMMON_CFLAGS += -DPRG_VERSION=$(VERSION)
 
 ifeq ($(strip $(ENABLE_WAKELOCKS)),y)
 COMMON_CFLAGS += -DENABLE_WAKELOCKS
+endif
+
+ifeq ($(strip $(ENABLE_SYSINFOD_QUERIES)),y)
+COMMON_CFLAGS += -DENABLE_SYSINFOD_QUERIES
 endif
 
 MCE_CFLAGS := $(COMMON_CFLAGS)
