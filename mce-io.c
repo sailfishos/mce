@@ -67,6 +67,7 @@ typedef struct {
 	gboolean rewind;			/**< Rewind policy */
 	gboolean suspended;			/**< Is the I/O monitor
 						 *   suspended? */
+	gboolean seekable;			/**< is the I/O channel seekable */
 } iomon_struct;
 
 /** Suffix used for temporary files */
@@ -681,6 +682,10 @@ static gboolean io_string_cb(GIOChannel *source,
 	if (iomon->rewind == TRUE) {
 		g_io_channel_seek_position(source, 0, G_SEEK_SET, &error);
 
+		if( error ) {
+			mce_log(LL_ERR,	"%s: seek error: %s",
+				iomon->file, error->message);
+		}
 		/* Reset errno,
 		 * to avoid false positives down the line
 		 */
@@ -722,6 +727,25 @@ EXIT:
 
 	return TRUE;
 }
+/**
+ * Get glib io status as human readable string
+ *
+ * @param io_status as returned from g_io_channel_read_chars()
+ * @return Name of the status enum, without the common prefix
+ */
+
+static const char *io_status_name(GIOStatus io_status)
+{
+	const char *status_name = "UNKNOWN";
+	switch (io_status) {
+	case G_IO_STATUS_NORMAL: status_name = "NORMAL"; break;
+	case G_IO_STATUS_ERROR:  status_name = "ERROR";  break;
+	case G_IO_STATUS_EOF:    status_name = "EOF";    break;
+	case G_IO_STATUS_AGAIN:  status_name = "AGAIN";  break;
+	default: break; // ... just to keep static analysis happy
+	}
+	return status_name;
+}
 
 /**
  * Callback for successful chunk I/O
@@ -737,9 +761,11 @@ static gboolean io_chunk_cb(GIOChannel *source,
 			    gpointer data)
 {
 	iomon_struct *iomon = data;
-	gint again_count = 0;
-	gchar *chunk = NULL;
-	gsize bytes_read;
+	gchar *buffer = NULL;
+	gsize bytes_want = 4096;
+	gsize bytes_read = 0;
+	gsize chunks_read = 0;
+	gsize chunks_done = 0;
 	GIOStatus io_status;
 	GError *error = NULL;
 	gboolean status = TRUE;
@@ -758,6 +784,10 @@ static gboolean io_chunk_cb(GIOChannel *source,
 	/* Seek to the beginning of the file before reading if needed */
 	if (iomon->rewind == TRUE) {
 		g_io_channel_seek_position(source, 0, G_SEEK_SET, &error);
+		if( error ) {
+			mce_log(LL_ERR,	"%s: seek error: %s",
+				iomon->file, error->message);
+		}
 
 		/* Reset errno,
 		 * to avoid false positives down the line
@@ -766,7 +796,13 @@ static gboolean io_chunk_cb(GIOChannel *source,
 		g_clear_error(&error);
 	}
 
-	chunk = g_malloc(iomon->chunk_size);
+	if( iomon->chunk_size < bytes_want ) {
+		bytes_want -= bytes_want % iomon->chunk_size;
+	} else {
+		bytes_want = iomon->chunk_size;
+	}
+
+	buffer = g_malloc(bytes_want);
 
 #ifdef ENABLE_WAKELOCKS
 	/* Since the locks on kernel side are released once all
@@ -775,46 +811,49 @@ static gboolean io_chunk_cb(GIOChannel *source,
 	wakelock_lock("mce_input_handler", -1);
 #endif
 
-	while (again_count < 10) {
-		io_status = g_io_channel_read_chars(source, chunk,
-						    iomon->chunk_size,
-						    &bytes_read, &error);
+	io_status = g_io_channel_read_chars(source, buffer,
+					    bytes_want, &bytes_read, &error);
 
-		/* If the read was interrupted, retry */
-		if (io_status == G_IO_STATUS_AGAIN) {
-			again_count++;
 
-			/* Reset errno,
-			 * to avoid false positives down the line
-			 */
-			errno = 0;
-			g_clear_error(&error);
-			continue;
-		}
+	/* If the read was interrupted, ignore */
+	if (io_status == G_IO_STATUS_AGAIN) {
+		g_clear_error(&error);
+	}
 
-		/* Stop on error and if we get an inexplicable empty read */
-		if ((error != NULL) ||
-		    (bytes_read == 0) ||
-		    (io_status == G_IO_STATUS_EOF))
-			break;
+	if( bytes_read % iomon->chunk_size ) {
+		mce_log(LL_WARN, "Incomplete chunks read from: %s", iomon->file);
+	}
 
-		/* Process the data, and optionally flush the remaining data */
-		if (iomon->callback(chunk, bytes_read) == TRUE) {
-			if ((g_io_channel_get_flags(iomon->iochan) &
-			     G_IO_FLAG_IS_SEEKABLE) == G_IO_FLAG_IS_SEEKABLE) {
+	/* Process the data, and optionally ignore some of it */
+	if( (chunks_read = bytes_read / iomon->chunk_size) ) {
+		gchar *chunk = buffer;
+		for( ; chunks_done < chunks_read ; chunk += iomon->chunk_size ) {
+			++chunks_done;
+			if (iomon->callback(chunk, iomon->chunk_size) != TRUE) {
+				continue;
+			}
+			/* if possible, seek to the end of file */
+			if (iomon->seekable) {
 				g_io_channel_seek_position(iomon->iochan, 0,
 							   G_SEEK_END, &error);
 			}
-
+			/* in any case ignore rest of the data already read */
 			break;
 		}
 	}
+
+	mce_log(LL_INFO, "%s: status=%s, data=%d/%d=%d+%d, skipped=%d",
+		iomon->file, io_status_name(io_status),
+		bytes_read, (int)iomon->chunk_size, chunks_read,
+		bytes_read % (int)iomon->chunk_size, chunks_read - chunks_done);
+
 #ifdef ENABLE_WAKELOCKS
 	/* Release the lock after we're done with processing it */
 	wakelock_unlock("mce_input_handler");
 #endif
 
-	g_free(chunk);
+
+	g_free(buffer);
 
 	/* Were there any errors? */
 	if (error != NULL) {
@@ -824,12 +863,15 @@ static gboolean io_chunk_cb(GIOChannel *source,
 
 		if ((error->code == G_IO_CHANNEL_ERROR_FAILED) &&
 		    (errno == ENODEV) &&
-		    ((g_io_channel_get_flags(iomon->iochan) &
-		      G_IO_FLAG_IS_SEEKABLE) == G_IO_FLAG_IS_SEEKABLE)) {
+		    (iomon->seekable)) {
 			errno = 0;
 			g_clear_error(&error);
 			g_io_channel_seek_position(iomon->iochan, 0,
 						   G_SEEK_END, &error);
+			if( error ) {
+				mce_log(LL_ERR,	"%s: seek error: %s",
+					iomon->file, error->message);
+			}
 		} else {
 			status = FALSE;
 		}
@@ -996,11 +1038,13 @@ void mce_resume_io_monitor(gconstpointer io_monitor)
 		/* Seek to the end of the file if the file is seekable,
 		 * unless we use the rewind policy
 		 */
-		if ((iomon->rewind == FALSE) &&
-		    ((g_io_channel_get_flags(iomon->iochan) &
-		      G_IO_FLAG_IS_SEEKABLE) == G_IO_FLAG_IS_SEEKABLE)) {
+		if (iomon->seekable && !iomon->rewind) {
 			g_io_channel_seek_position(iomon->iochan, 0,
 						   G_SEEK_END, &error);
+			if( error ) {
+				mce_log(LL_ERR,	"%s: seek error: %s",
+					iomon->file, error->message);
+			}
 			/* Reset errno,
 			 * to avoid false positives down the line
 			 */
@@ -1024,6 +1068,34 @@ void mce_resume_io_monitor(gconstpointer io_monitor)
 EXIT:
 	return;
 }
+/**
+ * Check if the monitored io channel is truly seekable
+ *
+ * Glib seems to be making guesses based on file type and
+ * gets it massively wrong for the files MCE needs to read.
+ */
+
+static void mce_determine_io_monitor_seekable(iomon_struct *iomon)
+{
+	gboolean glib = FALSE, kernel = FALSE;
+
+	/* glib assumes ... */
+	if (g_io_channel_get_flags(iomon->iochan) & G_IO_FLAG_IS_SEEKABLE) {
+		glib = TRUE;
+	}
+	/* ... kernel knows */
+	if (lseek64(g_io_channel_unix_get_fd(iomon->iochan), 0, SEEK_CUR) != -1) {
+		kernel = TRUE;
+	}
+	/* report the difference */
+	if (kernel != glib) {
+		mce_log(LL_WARN, "%s: is %sseekable, while glib thinks it is %sseekable",
+			iomon->file, kernel ? "" : "NOT ", glib ? "" : "NOT ");
+	}
+
+	iomon->seekable = kernel;
+}
+
 
 /**
  * Register an I/O monitor; reads and returns data
@@ -1106,6 +1178,8 @@ static iomon_struct *mce_register_io_monitor(const gint fd,
 	iomon->chunk_size = 0;
 	iomon->err_callback = 0;
 
+	mce_determine_io_monitor_seekable(iomon);
+
 	file_monitors = g_slist_prepend(file_monitors, iomon);
 
 	iomon->suspended = TRUE;
@@ -1150,8 +1224,7 @@ gconstpointer mce_register_io_monitor_string(const gint fd,
 		goto EXIT;
 
 	/* Verify that the rewind policy is sane */
-	if ((g_io_channel_get_flags(iomon->iochan) &
-	     G_IO_FLAG_IS_SEEKABLE) == G_IO_FLAG_IS_SEEKABLE) {
+	if (iomon->seekable) {
 		/* Set the rewind policy */
 		iomon->rewind = rewind_policy;
 	} else if (rewind_policy == TRUE) {
@@ -1206,8 +1279,7 @@ gconstpointer mce_register_io_monitor_chunk(const gint fd,
 	iomon->chunk_size = chunk_size;
 
 	/* Verify that the rewind policy is sane */
-	if ((g_io_channel_get_flags(iomon->iochan) &
-	     G_IO_FLAG_IS_SEEKABLE) == G_IO_FLAG_IS_SEEKABLE) {
+	if (iomon->seekable) {
 		/* Set the rewind policy */
 		iomon->rewind = rewind_policy;
 	} else if (rewind_policy == TRUE) {
@@ -1220,6 +1292,13 @@ gconstpointer mce_register_io_monitor_chunk(const gint fd,
 
 	/* We only read this file in binary form */
 	(void)g_io_channel_set_encoding(iomon->iochan, NULL, &error);
+
+	/* No buffering since we're using this for reading data from
+	 * device drivers and need to keep the i/o state in sync
+	 * between kernel and user space for the automatic suspend
+	 * prevention via wakelocks to work
+	 */
+	g_io_channel_set_buffered(iomon->iochan, FALSE);
 
 	/* Reset errno,
 	 * to avoid false positives down the line
