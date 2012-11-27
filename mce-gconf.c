@@ -23,6 +23,8 @@
 
 #include <gconf/gconf-client.h>
 
+#include <stdlib.h>			/* getenv() */
+
 #include "mce.h"
 #include "mce-gconf.h"
 
@@ -30,6 +32,8 @@
 
 /** Pointer to the GConf client */
 static GConfClient *gconf_client = NULL;
+/** Is GConf disabled on purpose */
+static gboolean gconf_disabled = FALSE;
 /** List of GConf notifiers */
 static GSList *gconf_notifiers = NULL;
 
@@ -43,6 +47,11 @@ static GSList *gconf_notifiers = NULL;
 gboolean mce_gconf_set_int(const gchar *const key, const gint value)
 {
 	gboolean status = FALSE;
+
+	if( gconf_disabled ) {
+		mce_log(LL_DEBUG, "blocked %s = %d", key, value);
+		goto EXIT;
+	}
 
 	if (gconf_client_set_int(gconf_client, key, value, NULL) == FALSE) {
 		mce_log(LL_WARN, "Failed to write %s to GConf", key);
@@ -68,6 +77,11 @@ EXIT:
 gboolean mce_gconf_set_string(const gchar *const key, const gchar *const value)
 {
 	gboolean status = FALSE;
+
+	if( gconf_disabled ) {
+		mce_log(LL_DEBUG, "blocked %s = \"%s\"", key, value);
+		goto EXIT;
+	}
 
 	if (gconf_client_set_string(gconf_client, key, value, NULL) == FALSE) {
 		mce_log(LL_WARN, "Failed to write %s to GConf", key);
@@ -95,6 +109,11 @@ gboolean mce_gconf_get_bool(const gchar *const key, gboolean *value)
 	gboolean status = FALSE;
 	GError *error = NULL;
 	GConfValue *gcv;
+
+	if( gconf_disabled ) {
+		mce_log(LL_DEBUG, "blocked %s query", key);
+		goto EXIT;
+	}
 
 	gcv = gconf_client_get(gconf_client, key, &error);
 
@@ -135,6 +154,11 @@ gboolean mce_gconf_get_int(const gchar *const key, gint *value)
 	gboolean status = FALSE;
 	GError *error = NULL;
 	GConfValue *gcv;
+
+	if( gconf_disabled ) {
+		mce_log(LL_DEBUG, "blocked %s query", key);
+		goto EXIT;
+	}
 
 	gcv = gconf_client_get(gconf_client, key, &error);
 
@@ -177,6 +201,11 @@ gboolean mce_gconf_get_int_list(const gchar *const key, GSList **values)
 	GConfValue *gcv, *gcv2;
 	GSList *list;
 	gint i;
+
+	if( gconf_disabled ) {
+		mce_log(LL_DEBUG, "blocked %s query", key);
+		goto EXIT;
+	}
 
 	gcv = gconf_client_get(gconf_client, key, &error);
 
@@ -232,6 +261,11 @@ gboolean mce_gconf_get_string(const gchar *const key, gchar **value)
 	GError *error = NULL;
 	GConfValue *gcv;
 
+	if( gconf_disabled ) {
+		mce_log(LL_DEBUG, "blocked %s query", key);
+		goto EXIT;
+	}
+
 	gcv = gconf_client_get(gconf_client, key, &error);
 
 	if (gcv == NULL) {
@@ -275,6 +309,15 @@ gboolean mce_gconf_notifier_add(const gchar *path, const gchar *key,
 	GError *error = NULL;
 	gboolean status = FALSE;
 
+	if( gconf_disabled ) {
+		mce_log(LL_DEBUG, "blocked %s notifier", key);
+
+		/* Returning failure would result in termination
+		 * of mce process -> return bogus success if we
+		 * have disabled gconf on purpose. */
+		status = TRUE;
+		goto EXIT;
+	}
 	gconf_client_add_dir(gconf_client, path,
 			     GCONF_CLIENT_PRELOAD_NONE, &error);
 
@@ -301,7 +344,7 @@ gboolean mce_gconf_notifier_add(const gchar *path, const gchar *key,
 					  GINT_TO_POINTER(*cb_id));
 	status = TRUE;
 
-//EXIT:
+EXIT:
 	g_clear_error(&error);
 
 	return status;
@@ -317,8 +360,14 @@ void mce_gconf_notifier_remove(gpointer cb_id, gpointer user_data)
 {
 	(void)user_data;
 
+	if( gconf_disabled )
+		goto EXIT;
+
 	gconf_client_notify_remove(gconf_client, GPOINTER_TO_INT(cb_id));
 	gconf_notifiers = g_slist_remove(gconf_notifiers, cb_id);
+
+EXIT:
+	return;
 }
 
 /**
@@ -329,6 +378,16 @@ void mce_gconf_notifier_remove(gpointer cb_id, gpointer user_data)
 gboolean mce_gconf_init(void)
 {
 	gboolean status = FALSE;
+
+	/* Trying to use gconf without already existing session
+	 * bus can only yield problems -> disable gconf access
+	 */
+	if( !getenv("DBUS_SESSION_BUS_ADDRESS") ) {
+		mce_log(LL_ERR, "No session bus - disabling gconf accesss");
+		gconf_disabled = TRUE;
+		status = TRUE;
+		goto EXIT;
+	}
 
 	/* Get the default GConf client */
 	if ((gconf_client = gconf_client_get_default()) == FALSE) {
