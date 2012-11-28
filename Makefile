@@ -17,6 +17,9 @@ ENABLE_WAKELOCKS ?= n
 # Whether to enable sysinfod queries
 ENABLE_SYSINFOD_QUERIES ?= n
 
+# Whether to use builtin-gconf instead of the real thing
+ENABLE_BUILTIN_GCONF ?= y
+
 VARDIR := $(DESTDIR)/var/lib/mce
 RUNDIR := $(DESTDIR)/var/run/mce
 CONFDIR := /etc/mce
@@ -85,6 +88,7 @@ WARNINGS += -Wstack-protector
 WARNINGS += -Wno-declaration-after-statement
 
 COMMON_CFLAGS := -D_GNU_SOURCE
+COMMON_CFLAGS += -std=c99
 COMMON_CFLAGS += -I. $(WARNINGS)
 COMMON_CFLAGS += -DG_DISABLE_DEPRECATED
 COMMON_CFLAGS += -DOSSOLOG_COMPILE
@@ -99,11 +103,31 @@ ifeq ($(strip $(ENABLE_SYSINFOD_QUERIES)),y)
 COMMON_CFLAGS += -DENABLE_SYSINFOD_QUERIES
 endif
 
+ifeq ($(strip $(ENABLE_BUILTIN_GCONF)),y)
+COMMON_CFLAGS += -DENABLE_BUILTIN_GCONF
+endif
+
+# allow "make clean" outside sdk chroot to work without warnings
+# about missing pkg-config files
+ifeq ($(MAKECMDGOALS),clean)
+PKG_CONFIG = true
+endif
+PKG_CONFIG ?= pkg-config
+
 MCE_CFLAGS := $(COMMON_CFLAGS)
 MCE_CFLAGS += -DMCE_CONF_FILE=$(CONFDIR)/$(CONFFILE)
-MCE_CFLAGS += $$(pkg-config gobject-2.0 glib-2.0 gio-2.0 gmodule-2.0 dbus-1 dbus-glib-1 gconf-2.0 --cflags)
-MCE_LDFLAGS := $$(pkg-config gobject-2.0 glib-2.0 gio-2.0 gmodule-2.0 dbus-1 dbus-glib-1 gconf-2.0 dsme --libs)
+MCE_CFLAGS += $(shell $(PKG_CONFIG) --cflags gobject-2.0 glib-2.0 gio-2.0 gmodule-2.0 dbus-1 dbus-glib-1 gconf-2.0)
+
+MCE_LDFLAGS := $(shell $(PKG_CONFIG) --libs  gobject-2.0 glib-2.0 gio-2.0 gmodule-2.0 dbus-1 dbus-glib-1 gconf-2.0 dsme)
+
 LIBS := tklock.c modetransition.c powerkey.c mce-dbus.c mce-dsme.c mce-gconf.c event-input.c event-switches.c mce-hal.c mce-log.c mce-conf.c datapipe.c mce-modules.c mce-io.c mce-lib.c
+
+# HACK: do not link against libgconf-2
+ifeq ($(strip $(ENABLE_BUILTIN_GCONF)),y)
+LIBS        += builtin-gconf.c
+MCE_LDFLAGS := $(filter-out -lgconf-2, $(MCE_LDFLAGS))
+endif
+
 HEADERS := tklock.h modetransition.h powerkey.h mce.h mce-dbus.h mce-dsme.h mce-gconf.h event-input.h event-switches.h mce-hal.h mce-log.h mce-conf.h datapipe.h mce-modules.h mce-io.h mce-lib.h
 
 ifeq ($(strip $(ENABLE_WAKELOCKS)),y)
@@ -116,15 +140,26 @@ MODULE_CFLAGS += -fPIC -shared
 MODULE_CFLAGS += -I.
 MODULE_CFLAGS += -DMCE_RADIO_STATES_CONF_FILE=$(CONFDIR)/$(RADIOSTATESCONFFILE)
 MODULE_CFLAGS += -DMCE_COLOR_PROFILES_CONF_FILE=$(CONFDIR)/$(COLORPROFILESCONFFILE)
-MODULE_CFLAGS += $$(pkg-config gobject-2.0 glib-2.0 gmodule-2.0 dbus-1 dbus-glib-1 gconf-2.0 --cflags)
-MODULE_LDFLAGS := $$(pkg-config gobject-2.0 glib-2.0 gmodule-2.0 dbus-1 dbus-glib-1 gconf-2.0 --libs)
+MODULE_CFLAGS += $(shell $(PKG_CONFIG) --cflags gobject-2.0 glib-2.0 gmodule-2.0 dbus-1 dbus-glib-1 gconf-2.0)
+
+MODULE_LDFLAGS := $(shell $(PKG_CONFIG)  --libs gobject-2.0 glib-2.0 gmodule-2.0 dbus-1 dbus-glib-1 gconf-2.0)
+
 MODULE_LIBS := datapipe.c mce-hal.c mce-log.c mce-dbus.c mce-conf.c mce-gconf.c median_filter.c mce-lib.c
+
+# HACK: do not link against libgconf-2
+ifeq ($(strip $(ENABLE_BUILTIN_GCONF)),y)
+MODULE_LIBS    += builtin-gconf.c
+MODULE_LDFLAGS := $(filter-out -lgconf-2, $(MCE_LDFLAGS))
+endif
+
 MODULE_HEADERS := datapipe.h mce-hal.h mce-log.h mce-dbus.h mce-conf.h mce-gconf.h mce.h median_filter.h mce-lib.h
 
 TOOLS_CFLAGS := $(COMMON_CFLAGS)
 TOOLS_CFLAGS += -I.
-TOOLS_CFLAGS += $$(pkg-config gobject-2.0 glib-2.0 dbus-1 gconf-2.0 --cflags)
-TOOLS_LDFLAGS := $$(pkg-config gobject-2.0 glib-2.0 dbus-1 gconf-2.0 --libs)
+TOOLS_CFLAGS += $(shell $(PKG_CONFIG) --cflags gobject-2.0 glib-2.0 dbus-1 gconf-2.0)
+
+TOOLS_LDFLAGS := $(shell $(PKG_CONFIG)  --libs gobject-2.0 glib-2.0 dbus-1 gconf-2.0)
+
 TOOLS_HEADERS := tklock.h mce-dsme.h tools/mcetool.h
 
 .PHONY: all
