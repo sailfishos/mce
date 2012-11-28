@@ -244,18 +244,52 @@ static guint led_pattern_timeout_cb_id = 0;
 static const gchar *led_pattern_group = NULL;
 
 /** Path to monochrome/red channel LED current path  */
-static gchar *led_current_rm_path = NULL;
+static output_state_t led_current_rm_output =
+{
+  .context = "led_current_rm",
+  .truncate_file = TRUE,
+  .close_on_exit = FALSE,
+};
+
 /** Path to green channel LED current path */
-static gchar *led_current_g_path = NULL;
+static output_state_t led_current_g_output =
+{
+  .context = "led_current_g",
+  .truncate_file = TRUE,
+  .close_on_exit = FALSE,
+};
+
 /** Path to blue channel LED current path */
-static gchar *led_current_b_path = NULL;
+static output_state_t led_current_b_output =
+{
+  .context = "led_current_b",
+  .truncate_file = TRUE,
+  .close_on_exit = FALSE,
+};
 
 /** Path to monochrome/red channel LED brightness path  */
-static gchar *led_brightness_rm_path = NULL;
+static output_state_t led_brightness_rm_output =
+{
+  .context = "led_brightness_rm",
+  .truncate_file = TRUE,
+  .close_on_exit = FALSE,
+};
+
 /** Path to red channel LED brightness path */
-static gchar *led_brightness_g_path = NULL;
+static output_state_t led_brightness_g_output =
+{
+  .context = "led_brightness_g",
+  .truncate_file = TRUE,
+  .close_on_exit = FALSE,
+};
+
 /** Path to blue channel LED brightness path */
-static gchar *led_brightness_b_path = NULL;
+static output_state_t led_brightness_b_output =
+{
+  .context = "led_brightness_b",
+  .truncate_file = TRUE,
+  .close_on_exit = FALSE,
+};
 
 /** Path to engine 1 mode */
 static gchar *engine1_mode_path = NULL;
@@ -277,20 +311,6 @@ static gchar *engine1_leds_path = NULL;
 static gchar *engine2_leds_path = NULL;
 /** Path to engine 3 leds */
 static gchar *engine3_leds_path = NULL;
-
-/** File pointer for the monochrome/red channel LED current */
-static FILE *led_current_rm_fp = NULL;
-/** File pointer for the green channel LED current */
-static FILE *led_current_g_fp = NULL;
-/** File pointer for the blue channel LED current */
-static FILE *led_current_b_fp = NULL;
-
-/** File pointer for the monochrome/red channel LED brightness */
-static FILE *led_brightness_rm_fp = NULL;
-/** File pointer for the green channel LED brightness */
-static FILE *led_brightness_g_fp = NULL;
-/** File pointer for the blue channel LED brightness */
-static FILE *led_brightness_b_fp = NULL;
 
 /** Maximum LED brightness */
 static guint maximum_led_brightness = MAXIMUM_LYSTI_MONOCHROME_LED_CURRENT;
@@ -375,8 +395,8 @@ static led_type_t get_led_type(void)
 		maximum_led_brightness = MAXIMUM_NJOY_MONOCHROME_LED_CURRENT;
 
 		/* Build paths */
-		led_current_rm_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5521_PREFIX, MCE_LED_CHANNEL0, MCE_LED_CURRENT_SUFFIX, NULL);
-		led_brightness_rm_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5521_PREFIX, MCE_LED_CHANNEL0, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
+		led_current_rm_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5521_PREFIX, MCE_LED_CHANNEL0, MCE_LED_CURRENT_SUFFIX, NULL);
+		led_brightness_rm_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5521_PREFIX, MCE_LED_CHANNEL0, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
 
 		engine1_mode_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5521_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE1, MCE_LED_MODE_SUFFIX, NULL);
 		engine2_mode_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5521_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE2, MCE_LED_MODE_SUFFIX, NULL);
@@ -399,8 +419,8 @@ static led_type_t get_led_type(void)
 		maximum_led_brightness = MAXIMUM_LYSTI_MONOCHROME_LED_CURRENT;
 
 		/* Build paths */
-		led_current_rm_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL8, MCE_LED_CURRENT_SUFFIX, NULL);
-		led_brightness_rm_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL8, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
+		led_current_rm_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL8, MCE_LED_CURRENT_SUFFIX, NULL);
+		led_brightness_rm_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL8, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
 
 		/* Engine 3 is used by keyboard backlight */
 		engine1_mode_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE1, MCE_LED_MODE_SUFFIX, NULL);
@@ -421,12 +441,12 @@ static led_type_t get_led_type(void)
 		maximum_led_brightness = MAXIMUM_LYSTI_RGB_LED_CURRENT;
 
 		/* Build paths */
-		led_current_rm_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_CURRENT_SUFFIX, NULL);
-		led_current_g_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL1, MCE_LED_CURRENT_SUFFIX, NULL);
-		led_current_b_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL2, MCE_LED_CURRENT_SUFFIX, NULL);
-		led_brightness_rm_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
-		led_brightness_g_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL1, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
-		led_brightness_b_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL2, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
+		led_current_rm_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_CURRENT_SUFFIX, NULL);
+		led_current_g_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL1, MCE_LED_CURRENT_SUFFIX, NULL);
+		led_current_b_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL2, MCE_LED_CURRENT_SUFFIX, NULL);
+		led_brightness_rm_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
+		led_brightness_g_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL1, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
+		led_brightness_b_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL2, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
 
 		engine1_mode_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE1, MCE_LED_MODE_SUFFIX, NULL);
 		engine2_mode_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE2, MCE_LED_MODE_SUFFIX, NULL);
@@ -452,8 +472,8 @@ static led_type_t get_led_type(void)
 			led_pattern_group = MCE_CONF_LED_PATTERN_RX44_GROUP;
 
 		/* Build paths */
-		led_current_rm_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5521_PREFIX, MCE_LED_CHANNEL0, MCE_LED_CURRENT_SUFFIX, NULL);
-		led_brightness_rm_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5521_PREFIX, MCE_LED_CHANNEL0, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
+		led_current_rm_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5521_PREFIX, MCE_LED_CHANNEL0, MCE_LED_CURRENT_SUFFIX, NULL);
+		led_brightness_rm_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5521_PREFIX, MCE_LED_CHANNEL0, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
 
 		engine1_mode_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5521_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE1, MCE_LED_MODE_SUFFIX, NULL);
 		engine2_mode_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5521_PREFIX, MCE_LED_CHANNEL1, MCE_LED_DEVICE, MCE_LED_ENGINE2, MCE_LED_MODE_SUFFIX, NULL);
@@ -469,7 +489,7 @@ static led_type_t get_led_type(void)
 		led_pattern_group = MCE_CONF_LED_PATTERN_RX34_GROUP;
 
 		/* Build paths */
-		led_brightness_rm_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_KEYPAD_PREFIX, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
+		led_brightness_rm_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_KEYPAD_PREFIX, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
 		break;
 
 	default:
@@ -591,16 +611,16 @@ static void lysti_set_brightness(gint brightness)
 
 	if (get_led_type() == LED_TYPE_LYSTI_MONO) {
 		/* If we have a monochrome LED only set one brightness */
-		(void)mce_write_number_string_to_file(led_current_rm_path, r_brightness, &led_current_rm_fp, TRUE, FALSE);
+		(void)mce_write_number_string_to_file(&led_current_rm_output, r_brightness);
 
 		mce_log(LL_DEBUG,
 			"Brightness set to %d",
 			active_brightness);
 	} else if (get_led_type() == LED_TYPE_LYSTI_RGB) {
 		/* If we have an RGB LED set the brightness for all channels */
-		(void)mce_write_number_string_to_file(led_current_rm_path, r_brightness, &led_current_rm_fp, TRUE, FALSE);
-		(void)mce_write_number_string_to_file(led_current_g_path, g_brightness, &led_current_g_fp, TRUE, FALSE);
-		(void)mce_write_number_string_to_file(led_current_b_path, b_brightness, &led_current_b_fp, TRUE, FALSE);
+		(void)mce_write_number_string_to_file(&led_current_rm_output, r_brightness);
+		(void)mce_write_number_string_to_file(&led_current_g_output, g_brightness);
+		(void)mce_write_number_string_to_file(&led_current_b_output, b_brightness);
 
 		mce_log(LL_DEBUG,
 			"Brightness set to %d (%d, %d, %d)",
@@ -642,10 +662,8 @@ static void njoy_set_brightness(gint brightness)
 		active_brightness = brightness;
 	}
 
-	(void)mce_write_number_string_to_file(led_brightness_rm_path,
-					      (unsigned)active_brightness,
-					      &led_brightness_rm_fp,
-					      TRUE, FALSE);
+	(void)mce_write_number_string_to_file(&led_brightness_rm_output,
+					      (unsigned)active_brightness);
 
 	mce_log(LL_DEBUG, "Brightness set to %d", active_brightness);
 }
@@ -666,7 +684,7 @@ static void mono_set_brightness(gint brightness)
 		return;
 
 	active_brightness = brightness;
-	(void)mce_write_string_to_file(led_brightness_rm_path,
+	(void)mce_write_string_to_file(led_brightness_rm_output.path,
 				       brightness_map[brightness]);
 
 	mce_log(LL_DEBUG, "Brightness set to %d", brightness);
@@ -683,16 +701,16 @@ static void lysti_disable_led(void)
 
 	if (get_led_type() == LED_TYPE_LYSTI_MONO) {
 		/* Turn off the led */
-		(void)mce_write_number_string_to_file(led_brightness_rm_path, 0, &led_brightness_rm_fp, TRUE, FALSE);
+		(void)mce_write_number_string_to_file(&led_brightness_rm_output, 0);
 	} else if (get_led_type() == LED_TYPE_LYSTI_RGB) {
 		/* Disable engine 2 */
 		(void)mce_write_string_to_file(engine2_mode_path,
 					       MCE_LED_DISABLED_MODE);
 
 		/* Turn off all three leds */
-		(void)mce_write_number_string_to_file(led_brightness_rm_path, 0, &led_brightness_rm_fp, TRUE, FALSE);
-		(void)mce_write_number_string_to_file(led_brightness_g_path, 0, &led_brightness_g_fp, TRUE, FALSE);
-		(void)mce_write_number_string_to_file(led_brightness_b_path, 0, &led_brightness_b_fp, TRUE, FALSE);
+		(void)mce_write_number_string_to_file(&led_brightness_rm_output, 0);
+		(void)mce_write_number_string_to_file(&led_brightness_g_output, 0);
+		(void)mce_write_number_string_to_file(&led_brightness_b_output, 0);
 	}
 }
 
@@ -707,7 +725,7 @@ static void njoy_disable_led(void)
 
 	if (get_led_type() == LED_TYPE_NJOY_MONO) {
 		/* Turn off the led */
-		(void)mce_write_number_string_to_file(led_brightness_rm_path, 0, &led_brightness_rm_fp, TRUE, FALSE);
+		(void)mce_write_number_string_to_file(&led_brightness_rm_output, 0);
 	} else if (get_led_type() == LED_TYPE_NJOY_RGB) {
 		/* Disable engine 2 */
 		(void)mce_write_string_to_file(engine2_mode_path,
@@ -718,9 +736,9 @@ static void njoy_disable_led(void)
 					       MCE_LED_DISABLED_MODE);
 
 		/* Turn off all three leds */
-		(void)mce_write_number_string_to_file(led_brightness_rm_path, 0, &led_brightness_rm_fp, TRUE, FALSE);
-		(void)mce_write_number_string_to_file(led_brightness_g_path, 0, &led_brightness_g_fp, TRUE, FALSE);
-		(void)mce_write_number_string_to_file(led_brightness_b_path, 0, &led_brightness_b_fp, TRUE, FALSE);
+		(void)mce_write_number_string_to_file(&led_brightness_rm_output, 0);
+		(void)mce_write_number_string_to_file(&led_brightness_g_output, 0);
+		(void)mce_write_number_string_to_file(&led_brightness_b_output, 0);
 	}
 }
 
@@ -901,6 +919,22 @@ static void njoy_program_led(const pattern_struct *const pattern)
  */
 static void mono_program_led(const pattern_struct *const pattern)
 {
+	static output_state_t led_on_period_output =
+	{
+		.context = "led_on_period",
+		.truncate_file = TRUE,
+		.close_on_exit = TRUE,
+		.path = MCE_LED_ON_PERIOD_PATH,
+	};
+	static output_state_t led_off_period_output =
+	{
+		.context = "led_off_period",
+		.truncate_file = TRUE,
+		.close_on_exit = TRUE,
+		.path = MCE_LED_OFF_PERIOD_PATH,
+	};
+
+
 	/* This shouldn't happen; disable the LED instead */
 	if (pattern->on_period == 0) {
 		mono_disable_led();
@@ -913,10 +947,10 @@ static void mono_program_led(const pattern_struct *const pattern)
 	if (pattern->off_period != 0) {
 		(void)mce_write_string_to_file(MCE_LED_TRIGGER_PATH,
 					       MCE_LED_TRIGGER_TIMER);
-		(void)mce_write_number_string_to_file(MCE_LED_OFF_PERIOD_PATH,
-						      (unsigned)pattern->off_period, NULL, TRUE, TRUE);
-		(void)mce_write_number_string_to_file(MCE_LED_ON_PERIOD_PATH,
-						      (unsigned)pattern->on_period, NULL, TRUE, TRUE);
+		(void)mce_write_number_string_to_file(&led_off_period_output,
+						      (unsigned)pattern->off_period);
+		(void)mce_write_number_string_to_file(&led_on_period_output,
+						      (unsigned)pattern->on_period);
 	} else {
 		(void)mce_write_string_to_file(MCE_LED_TRIGGER_PATH,
 					       MCE_LED_TRIGGER_NONE);
@@ -2151,13 +2185,13 @@ void g_module_unload(GModule *module)
 	(void)module;
 
 	/* Close files */
-	mce_close_file(led_current_rm_path, &led_current_rm_fp);
-	mce_close_file(led_current_g_path, &led_current_g_fp);
-	mce_close_file(led_current_b_path, &led_current_b_fp);
+	mce_close_output(&led_current_rm_output);
+	mce_close_output(&led_current_g_output);
+	mce_close_output(&led_current_b_output);
 
-	mce_close_file(led_brightness_rm_path, &led_brightness_rm_fp);
-	mce_close_file(led_brightness_g_path, &led_brightness_g_fp);
-	mce_close_file(led_brightness_b_path, &led_brightness_b_fp);
+	mce_close_output(&led_brightness_rm_output);
+	mce_close_output(&led_brightness_g_output);
+	mce_close_output(&led_brightness_b_output);
 
 	/* Remove triggers/filters from datapipes */
 	remove_output_trigger_from_datapipe(&led_pattern_deactivate_pipe,
@@ -2181,13 +2215,13 @@ void g_module_unload(GModule *module)
 	/* Free path strings; this has to be done after led_disable(),
 	 * since it uses these paths
 	 */
-	g_free(led_current_rm_path);
-	g_free(led_current_g_path);
-	g_free(led_current_b_path);
+	g_free((void*)led_current_rm_output.path);
+	g_free((void*)led_current_g_output.path);
+	g_free((void*)led_current_b_output.path);
 
-	g_free(led_brightness_rm_path);
-	g_free(led_brightness_g_path);
-	g_free(led_brightness_b_path);
+	g_free((void*)led_brightness_rm_output.path);
+	g_free((void*)led_brightness_g_output.path);
+	g_free((void*)led_brightness_b_output.path);
 
 	g_free(engine1_mode_path);
 	g_free(engine2_mode_path);

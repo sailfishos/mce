@@ -150,7 +150,12 @@ static gboolean doubletap_gesture_inhibited = FALSE;
 static gboolean volkey_visual_trigger = DEFAULT_VOLKEY_VISUAL_TRIGGER;
 
 /** SysFS path to touchscreen event disable */
-static const gchar *mce_touchscreen_sysfs_disable_path = NULL;
+static output_state_t mce_touchscreen_sysfs_disable_output =
+{
+  .context = "touchscreen_disable",
+  .truncate_file = TRUE,
+  .close_on_exit = TRUE,
+};
 
 /** SysFS path to touchscreen double-tap gesture control */
 static const gchar *mce_touchscreen_gesture_control_path = NULL;
@@ -159,7 +164,12 @@ static const gchar *mce_touchscreen_gesture_control_path = NULL;
 static const gchar *mce_touchscreen_calibration_control_path = NULL;
 
 /** SysFS path to keypad event disable */
-static const gchar *mce_keypad_sysfs_disable_path = NULL;
+static output_state_t mce_keypad_sysfs_disable_output =
+{
+  .context = "keypad_disable",
+  .truncate_file = TRUE,
+  .close_on_exit = TRUE,
+};
 
 /** Touchscreen double tap gesture policy */
 static gint doubletap_gesture_policy = DEFAULT_DOUBLETAP_GESTURE_POLICY;
@@ -709,27 +719,25 @@ EXIT:
  *
  * @note Since nothing sensible can be done on error except reporting it,
  *       we don't return the status
- * @param file Path to enable/disable file
+ * @param output control structure for enable/disable file
  * @param enable TRUE enable events, FALSE disable events
  */
-static void generic_event_control(const gchar *const file,
+static void generic_event_control(output_state_t *output,
 				  const gboolean enable)
 {
-	if (file == NULL)
+	if (output->path == NULL)
 		goto EXIT;
 
-	if (mce_write_number_string_to_file(file, !enable ? 1 : 0,
-					    NULL, TRUE, TRUE) == FALSE) {
+	if (mce_write_number_string_to_file(output, !enable ? 1 : 0) == FALSE) {
 		mce_log(LL_ERR,
 			"%s: Event status *not* modified",
-			file);
+			output->path);
 		goto EXIT;
 	}
 
 	mce_log(LL_DEBUG,
 		"%s: events %s\n",
-		file, enable ? "enabled" : "disabled");
-
+		output->path, enable ? "enabled" : "disabled");
 EXIT:
 	return;
 }
@@ -740,7 +748,7 @@ EXIT:
 static void ts_enable(void)
 {
 	if (ts_state != MCE_TS_ENABLED) {
-		generic_event_control(mce_touchscreen_sysfs_disable_path,
+		generic_event_control(&mce_touchscreen_sysfs_disable_output,
 				      TRUE);
 		g_usleep(MCE_TOUCHSCREEN_CALIBRATION_DELAY);
 		ts_state = MCE_TS_ENABLED;
@@ -753,7 +761,7 @@ static void ts_enable(void)
 static void ts_disable(void)
 {
 	if (ts_state != MCE_TS_DISABLED) {
-		generic_event_control(mce_touchscreen_sysfs_disable_path,
+		generic_event_control(&mce_touchscreen_sysfs_disable_output,
 				      FALSE);
 		ts_state = MCE_TS_DISABLED;
 	}
@@ -764,7 +772,7 @@ static void ts_disable(void)
  */
 static void kp_enable(void)
 {
-	generic_event_control(mce_keypad_sysfs_disable_path, TRUE);
+	generic_event_control(&mce_keypad_sysfs_disable_output, TRUE);
 }
 
 /**
@@ -772,7 +780,7 @@ static void kp_enable(void)
  */
 static void kp_disable(void)
 {
-	generic_event_control(mce_keypad_sysfs_disable_path, FALSE);
+	generic_event_control(&mce_keypad_sysfs_disable_output, FALSE);
 }
 
 /**
@@ -3101,13 +3109,13 @@ gboolean mce_tklock_init(void)
 
 	/* Init event control files */
 	if (g_access(MCE_RX51_KEYBOARD_SYSFS_DISABLE_PATH, W_OK) == 0) {
-		mce_keypad_sysfs_disable_path =
+		mce_keypad_sysfs_disable_output.path =
 			MCE_RX51_KEYBOARD_SYSFS_DISABLE_PATH;
 	} else if (g_access(MCE_RX44_KEYBOARD_SYSFS_DISABLE_PATH, W_OK) == 0) {
-		mce_keypad_sysfs_disable_path =
+		mce_keypad_sysfs_disable_output.path =
 			MCE_RX44_KEYBOARD_SYSFS_DISABLE_PATH;
 	} else if (g_access(MCE_KEYPAD_SYSFS_DISABLE_PATH, W_OK) == 0) {
-		mce_keypad_sysfs_disable_path =
+		mce_keypad_sysfs_disable_output.path =
 			MCE_KEYPAD_SYSFS_DISABLE_PATH;
 	} else {
 		mce_log(LL_INFO,
@@ -3115,13 +3123,13 @@ gboolean mce_tklock_init(void)
 	}
 
 	if (g_access(MCE_RM680_TOUCHSCREEN_SYSFS_DISABLE_PATH, W_OK) == 0) {
-		mce_touchscreen_sysfs_disable_path =
+		mce_touchscreen_sysfs_disable_output.path =
 			MCE_RM680_TOUCHSCREEN_SYSFS_DISABLE_PATH;
 	} else if (g_access(MCE_RX44_TOUCHSCREEN_SYSFS_DISABLE_PATH_KERNEL2637, W_OK) == 0) {
-		mce_touchscreen_sysfs_disable_path =
+		mce_touchscreen_sysfs_disable_output.path =
 			MCE_RX44_TOUCHSCREEN_SYSFS_DISABLE_PATH_KERNEL2637;
 	} else if (g_access(MCE_RX44_TOUCHSCREEN_SYSFS_DISABLE_PATH, W_OK) == 0) {
-		mce_touchscreen_sysfs_disable_path =
+		mce_touchscreen_sysfs_disable_output.path =
 			MCE_RX44_TOUCHSCREEN_SYSFS_DISABLE_PATH;
 	} else {
 		mce_log(LL_INFO,
