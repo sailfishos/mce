@@ -97,6 +97,12 @@
 /** Define demo mode DBUS method */
 #define MCE_DBUS_DEMO_MODE_REQ      		"display_set_demo_mode"
 
+/** Define get config DBUS method */
+#define MCE_DBUS_GET_CONFIG_REQ      		"get_config"
+
+/** Define set config DBUS method */
+#define MCE_DBUS_SET_CONFIG_REQ      		"set_config"
+
 /** Enums for powerkey events */
 enum {
 	INVALID_EVENT = -1,		/**< Event not set */
@@ -110,7 +116,7 @@ extern char *optarg;			/**< Used by getopt */
 
 static const gchar *progname;	/**< Used to store the name of the program */
 
-static DBusConnection *dbus_connection;	/**< D-Bus connection */
+static DBusConnection *dbus_connection = NULL;	/**< D-Bus connection */
 
 static GConfClient *gconf_client = NULL;	/**< GConf client */
 
@@ -928,6 +934,289 @@ static gboolean set_led_pattern_state(const gchar *const pattern,
 			 DBUS_TYPE_INVALID);
 }
 
+#ifdef ENABLE_BUILTIN_GCONF
+/* Assume ENABLE_BUILTIN_GCONF means mce supports config
+ * settings via D-Bus system bus interface. */
+
+/** Helper for making MCE D-Bus method calls
+ *
+ * @param method name of the method in mce request interface
+ * @param first_arg_type as with dbus_message_append_args()
+ * @param ... must be terminated with DBUS_TYPE_INVALID
+ */
+static DBusMessage *mcetool_config_request(const gchar *const method,
+                                           int first_arg_type, ...)
+{
+        DBusMessage *req = 0;
+        DBusMessage *rsp = 0;
+        DBusError    err = DBUS_ERROR_INIT;
+
+        va_list va;
+        dbus_bool_t ack;
+
+	req = dbus_message_new_method_call(MCE_SERVICE,
+                                                MCE_REQUEST_PATH,
+                                                MCE_REQUEST_IF,
+                                                method);
+        if( !req ) {
+                fprintf(stderr,
+                        "Cannot allocate memory for D-Bus method call!\n");
+                goto EXIT;
+        }
+
+        va_start(va, first_arg_type);
+        ack = dbus_message_append_args_valist(req, first_arg_type, va);
+        va_end(va);
+
+        if( !ack ) {
+                fprintf(stderr,
+                        "Failed to append argument to D-Bus message "
+                        "for %s\n",
+                        method);
+                goto EXIT;
+        }
+
+        rsp = dbus_connection_send_with_reply_and_block(dbus_connection, req, -1, &err);
+
+        if( !rsp ) {
+		fprintf(stderr, "method call %s failed: %s: %s\n",
+                        method, err.name, err.message);
+                goto EXIT;
+        }
+
+EXIT:
+        if( req ) dbus_message_unref(req);
+
+        dbus_error_free(&err);
+
+        return rsp;
+}
+
+/**
+ * Init function for the mcetool GConf handling
+ *
+ * @return TRUE on success, FALSE on failure
+ */
+static gint mcetool_gconf_init(void)
+{
+        gint      res = EXIT_SUCCESS;
+        DBusError err = DBUS_ERROR_INIT;
+
+	if( !dbus_connection ) {
+		fprintf(stderr, "No D-Bus connection, blocking config access\n");
+		goto EXIT;
+	}
+
+	if( !dbus_bus_name_has_owner(dbus_connection, MCE_SERVICE, &err) ) {
+		if( dbus_error_is_set(&err) ) {
+			fprintf(stderr, "%s: %s: %s\n", MCE_SERVICE,
+				err.name, err.message);
+		}
+		fprintf(stderr, "MCE not running, blocking config access\n");
+		goto EXIT;
+	}
+
+        /* just provide non-null pointer */
+        gconf_client = calloc(1,1);
+
+EXIT:
+        dbus_error_free(&err);
+
+        return res;
+}
+
+/**
+ * Exit function for the mcetool GConf handling
+ */
+static void mcetool_gconf_exit(void)
+{
+        /* just free the dummy pointer */
+        free(gconf_client), gconf_client = 0;
+}
+
+/**
+ * Return a boolean from the specified GConf key
+ *
+ * @param key The GConf key to get the value from
+ * @param value Will contain the value on return
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean mcetool_gconf_get_bool(const gchar *const key, gboolean *value)
+{
+        gboolean     res = FALSE;
+        DBusMessage *rsp = 0;
+        DBusError    err = DBUS_ERROR_INIT;
+        dbus_bool_t  dta = 0;
+
+        dbus_bool_t  ack;
+
+        if( !gconf_client )
+                goto EXIT;
+
+        rsp = mcetool_config_request(MCE_DBUS_GET_CONFIG_REQ,
+                                     DBUS_TYPE_OBJECT_PATH, &key,
+                                     DBUS_TYPE_INVALID);
+
+        if( !rsp )
+                goto EXIT;
+
+        ack = dbus_message_get_args(rsp, &err,
+                                    DBUS_TYPE_BOOLEAN, &dta,
+                                    DBUS_TYPE_INVALID);
+
+        if( !ack ) {
+                fprintf(stderr, "%s: %s\n", err.name, err.message);
+                goto EXIT;
+        }
+
+        *value = dta, res = TRUE;
+
+EXIT:
+        if( rsp ) dbus_message_unref(rsp);
+        dbus_error_free(&err);
+
+        return res;
+}
+
+/**
+ * Return an integer from the specified GConf key
+ *
+ * @param key The GConf key to get the value from
+ * @param value Will contain the value on return
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean mcetool_gconf_get_int(const gchar *const key, gint *value)
+{
+        gboolean     res = FALSE;
+        DBusMessage *rsp = 0;
+        DBusError    err = DBUS_ERROR_INIT;
+        dbus_int32_t dta = 0;
+
+        dbus_bool_t  ack;
+
+        if( !gconf_client )
+                goto EXIT;
+
+        rsp = mcetool_config_request(MCE_DBUS_GET_CONFIG_REQ,
+                                     DBUS_TYPE_OBJECT_PATH, &key,
+                                     DBUS_TYPE_INVALID);
+
+        if( !rsp )
+                goto EXIT;
+
+        ack = dbus_message_get_args(rsp, &err,
+                                    DBUS_TYPE_INT32, &dta,
+                                    DBUS_TYPE_INVALID);
+
+        if( !ack ) {
+                fprintf(stderr, "%s: %s\n", err.name, err.message);
+                goto EXIT;
+        }
+
+        *value = dta, res = TRUE;
+
+EXIT:
+        if( rsp ) dbus_message_unref(rsp);
+        dbus_error_free(&err);
+
+        return res;
+}
+
+/**
+ * Set a boolean GConf key to the specified value
+ *
+ * @param key The GConf key to set the value of
+ * @param value The value to set the key to
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean mcetool_gconf_set_bool(const gchar *const key,
+                                       const gboolean value)
+{
+        gboolean     res = FALSE;
+        DBusMessage *rsp = 0;
+        DBusError    err = DBUS_ERROR_INIT;
+        dbus_bool_t  dta = value;
+
+        dbus_bool_t  ack;
+
+        if( !gconf_client )
+                goto EXIT;
+
+        rsp = mcetool_config_request(MCE_DBUS_SET_CONFIG_REQ,
+                                     DBUS_TYPE_OBJECT_PATH, &key,
+                                     DBUS_TYPE_BOOLEAN, &dta,
+                                     DBUS_TYPE_INVALID);
+
+        if( !rsp )
+                goto EXIT;
+
+        dta = FALSE;
+        ack = dbus_message_get_args(rsp, &err,
+                                    DBUS_TYPE_BOOLEAN, &dta,
+                                    DBUS_TYPE_INVALID);
+
+        if( !ack ) {
+                fprintf(stderr, "%s: %s\n", err.name, err.message);
+                goto EXIT;
+        }
+
+        res = dta;
+
+EXIT:
+        if( rsp ) dbus_message_unref(rsp);
+        dbus_error_free(&err);
+
+        return res;
+}
+
+/**
+ * Set an integer GConf key to the specified value
+ *
+ * @param key The GConf key to set the value of
+ * @param value The value to set the key to
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean mcetool_gconf_set_int(const gchar *const key, const gint value)
+{
+        gboolean     res = FALSE;
+        DBusMessage *rsp = 0;
+        DBusError    err = DBUS_ERROR_INIT;
+        dbus_int32_t dta = value;
+
+        dbus_bool_t  ack;
+
+        if( !gconf_client )
+                goto EXIT;
+
+        rsp = mcetool_config_request(MCE_DBUS_SET_CONFIG_REQ,
+                                     DBUS_TYPE_OBJECT_PATH, &key,
+                                     DBUS_TYPE_INT32, &dta,
+                                     DBUS_TYPE_INVALID);
+
+        if( !rsp )
+                goto EXIT;
+
+        dta = FALSE;
+        ack = dbus_message_get_args(rsp, &err,
+                                    DBUS_TYPE_BOOLEAN, &dta,
+                                    DBUS_TYPE_INVALID);
+
+        if( !ack ) {
+                fprintf(stderr, "%s: %s\n", err.name, err.message);
+                goto EXIT;
+        }
+
+        res = dta;
+
+EXIT:
+        if( rsp ) dbus_message_unref(rsp);
+        dbus_error_free(&err);
+
+        return res;
+}
+#else // !defined(ENABLE_BUILTIN_GCONF)
+/* Use regular GConf API must be used for mce settings queries */
+
 /**
  * Init function for the mcetool GConf handling
  *
@@ -1109,6 +1398,7 @@ static gboolean mcetool_gconf_set_int(const gchar *const key, const gint value)
 EXIT:
 	return status;
 }
+#endif // !defined(ENABLE_BUILTIN_GCONF)
 
 /**
  * Print mce related information

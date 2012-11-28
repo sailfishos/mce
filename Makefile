@@ -149,7 +149,7 @@ MODULE_LIBS := datapipe.c mce-hal.c mce-log.c mce-dbus.c mce-conf.c mce-gconf.c 
 # HACK: do not link against libgconf-2
 ifeq ($(strip $(ENABLE_BUILTIN_GCONF)),y)
 MODULE_LIBS    += builtin-gconf.c
-MODULE_LDFLAGS := $(filter-out -lgconf-2, $(MCE_LDFLAGS))
+MODULE_LDFLAGS := $(filter-out -lgconf-2, $(MODULE_LDFLAGS))
 endif
 
 MODULE_HEADERS := datapipe.h mce-hal.h mce-log.h mce-dbus.h mce-conf.h mce-gconf.h mce.h median_filter.h mce-lib.h
@@ -161,6 +161,11 @@ TOOLS_CFLAGS += $(shell $(PKG_CONFIG) --cflags gobject-2.0 glib-2.0 dbus-1 gconf
 TOOLS_LDFLAGS := $(shell $(PKG_CONFIG)  --libs gobject-2.0 glib-2.0 dbus-1 gconf-2.0)
 
 TOOLS_HEADERS := tklock.h mce-dsme.h tools/mcetool.h
+
+# HACK: do not link against libgconf-2
+ifeq ($(strip $(ENABLE_BUILTIN_GCONF)),y)
+TOOLS_LDFLAGS := $(filter-out -lgconf-2, $(TOOLS_LDFLAGS))
+endif
 
 .PHONY: all
 all: $(TARGETS) $(MODULES) $(TOOLS)
