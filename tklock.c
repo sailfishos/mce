@@ -1171,7 +1171,7 @@ static gboolean open_tklock_ui(dbus_uint32_t mode)
 		goto EXIT;
 	}
 
-	/* com.nokia.system_ui.request.tklock_open */
+	/* org.nemomobile.lipstick.screenlock.tklock_open */
 	status = dbus_send(SYSTEMUI_SERVICE, SYSTEMUI_REQUEST_PATH,
 			   SYSTEMUI_REQUEST_IF, SYSTEMUI_TKLOCK_OPEN_REQ,
 			   tklock_reply_dbus_cb,
@@ -1207,7 +1207,7 @@ static gboolean close_tklock_ui(void)
 	gboolean silent = TRUE;
 	gboolean status = FALSE;
 
-	/* com.nokia.system_ui.request.tklock_close */
+	/* org.nemomobile.lipstick.screenlock.tklock_close */
 	status = dbus_send(SYSTEMUI_SERVICE, SYSTEMUI_REQUEST_PATH,
 			   SYSTEMUI_REQUEST_IF, SYSTEMUI_TKLOCK_CLOSE_REQ,
 			   NULL,
