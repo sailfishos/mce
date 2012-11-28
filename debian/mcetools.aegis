@@ -1,7 +1,4 @@
 <aegis>
-	<provide>
-		<dbus name="com.nokia.mcetool" own="SELF" bus="system" />
-	</provide>
 	<request>
 		<credential name="mce::CallStateControl" />
 		<credential name="mce::DeviceModeControl" />
