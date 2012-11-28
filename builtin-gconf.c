@@ -24,8 +24,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <assert.h>
-
 /* ========================================================================= *
  *
  * CONFIGURATION
@@ -178,7 +176,9 @@ static const char *gconf_type_repr(GConfValueType type);
 static gboolean gconf_require_type(const char *key, const GConfValue *value, GConfValueType type, GError **err);
 static gboolean gconf_require_list_type(const char *key, const GConfValue *value, GConfValueType type, GError **err);
 gchar *gconf_concat_dir_and_key(const gchar *dir, const gchar *key);
+#if GCONF_ENABLE_DEBUG_LOGGING
 static char *gconf_value_repr(const char *key, GConfValue *self);
+#endif
 static void gconf_value_unset(GConfValue *self);
 static gboolean gconf_value_list_validata(GSList *src, GConfValueType type);
 static GSList *gconf_value_list_copy(GSList *src);
@@ -203,7 +203,9 @@ void gconf_value_set_list(GConfValue *self, GSList *list);
 static GConfEntry *gconf_entry_init(const char *key, const char *type, const char *data);
 const char *gconf_entry_get_key(const GConfEntry *entry);
 GConfValue *gconf_entry_get_value(const GConfEntry *entry);
+#if GCONF_ENABLE_DEBUG_LOGGING
 static void gconf_client_debug(GConfClient *self);
+#endif
 GConfClient *gconf_client_get_default(void);
 void gconf_client_add_dir(GConfClient *client, const gchar *dir, GConfClientPreloadType preload, GError **err);
 static GConfEntry *gconf_client_find_entry(GConfClient *self, const gchar *key, GError **err);
@@ -440,6 +442,7 @@ static GConfValueType gconf_parse_type(int chr)
  *
  * ========================================================================= */
 
+#if GCONF_ENABLE_DEBUG_LOGGING
 /** Boolean to text helper */
 static
 const char *
@@ -447,6 +450,7 @@ gconf_bool_repr(gboolean value)
 {
   return value ? *gconf_true_lut : *gconf_false_lut;
 }
+#endif
 
 /** GConfValueType to text helper */
 static
@@ -547,6 +551,7 @@ gconf_concat_dir_and_key(const gchar *dir,
  *
  * ========================================================================= */
 
+#if GCONF_ENABLE_DEBUG_LOGGING
 /** GConfValue to text helper */
 static
 char *
@@ -625,6 +630,7 @@ gconf_value_repr(const char *key, GConfValue *self)
 
   return data;
 }
+#endif
 
 /** Release dynamic resources of value, but not the value itself */
 static
@@ -1209,7 +1215,26 @@ static const setting_t gconf_defaults[] =
 /** The one and only GConfClient we expect to see */
 static GConfClient *default_client = 0;
 
+/** Verify that we get only expected GConfClient pointers */
+static
+gboolean
+gconf_client_is_valid(GConfClient *self, GError **err)
+{
+  if( self == 0 ) {
+    gconf_set_error(err, GCONF_ERROR_FAILED, "NULL client passed");
+    return FALSE;
+  }
+
+  if( self != default_client ) {
+    gconf_set_error(err, GCONF_ERROR_FAILED, "Non default client passed");
+    return FALSE;
+  }
+
+  return TRUE;
+}
+
 /** List client values [debugging] */
+#if GCONF_ENABLE_DEBUG_LOGGING
 static
 void
 gconf_client_debug(GConfClient *self)
@@ -1222,6 +1247,7 @@ gconf_client_debug(GConfClient *self)
     free(repr);
   }
 }
+#endif
 
 /** See GConf API documentation */
 GConfClient *
@@ -1239,7 +1265,10 @@ gconf_client_get_default(void)
     }
     self->entries = g_slist_reverse(self->entries);
 
+#if GCONF_ENABLE_DEBUG_LOGGING
     gconf_client_debug(self);
+#endif
+
     default_client = self;
   }
 
@@ -1265,13 +1294,10 @@ gconf_client_find_entry(GConfClient *self, const gchar *key, GError **err)
 {
   GConfEntry *res = 0;
 
-  if( !self )
+  if( !gconf_client_is_valid(self, err) )
   {
-    gconf_set_error(err, GCONF_ERROR_FAILED, "NULL client passed");
     goto cleanup;
   }
-
-  assert( self == default_client );
 
   for( GSList *e_iter = self->entries; e_iter; e_iter = e_iter->next )
   {
@@ -1312,6 +1338,12 @@ gconf_client_get(GConfClient *self, const gchar *key, GError **err)
 
   if( res )
   {
+#if GCONF_ENABLE_DEBUG_LOGGING
+    char *repr = gconf_value_repr(key, res);
+    gconf_log_debug("GET %s", repr);
+    free(repr);
+#endif
+
     /* Since we know that MCE will not modify the GConfValue
      * we return -> skip deep copy and just increase refcount */
     res->refcount += 1;
@@ -1335,9 +1367,11 @@ gconf_client_set_bool(GConfClient *client,
     gconf_value_set_bool(value, val);
     res = TRUE;
 
+#if GCONF_ENABLE_DEBUG_LOGGING
     char *repr = gconf_value_repr(key, value);
     gconf_log_debug("SET %s", repr);
     free(repr);
+#endif
 
     gconf_client_notify_change(client, key);
   }
@@ -1360,9 +1394,11 @@ gconf_client_set_int(GConfClient *client,
     gconf_value_set_int(value, val);
     res = TRUE;
 
+#if GCONF_ENABLE_DEBUG_LOGGING
     char *repr = gconf_value_repr(key, value);
     gconf_log_debug("SET %s", repr);
     free(repr);
+#endif
 
     gconf_client_notify_change(client, key);
   }
@@ -1384,9 +1420,11 @@ gconf_client_set_float(GConfClient *client,
     gconf_value_set_float(value, val);
     res = TRUE;
 
+#if GCONF_ENABLE_DEBUG_LOGGING
     char *repr = gconf_value_repr(key, value);
     gconf_log_debug("SET %s", repr);
     free(repr);
+#endif
 
     gconf_client_notify_change(client, key);
   }
@@ -1408,9 +1446,11 @@ gconf_client_set_string(GConfClient *client,
     gconf_value_set_string(value, val);
     res = TRUE;
 
+#if GCONF_ENABLE_DEBUG_LOGGING
     char *repr = gconf_value_repr(key, value);
     gconf_log_debug("SET %s", repr);
     free(repr);
+#endif
 
     gconf_client_notify_change(client, key);
   }
@@ -1434,9 +1474,11 @@ gconf_client_set_list(GConfClient *client,
 
     res = TRUE;
 
+#if GCONF_ENABLE_DEBUG_LOGGING
     char *repr = gconf_value_repr(key, value);
     gconf_log_debug("SET %s", repr);
     free(repr);
+#endif
 
     gconf_client_notify_change(client, key);
   }
@@ -1447,9 +1489,8 @@ gconf_client_set_list(GConfClient *client,
 void
 gconf_client_suggest_sync(GConfClient *client, GError **err)
 {
-  unused(client), unused(err);
+  gconf_client_is_valid(client, err);
   gconf_log_error("%s(): UNIMPLEMENTED\n", __FUNCTION__);
-  assert( client == default_client );
 }
 
 /* ========================================================================= *
@@ -1544,6 +1585,11 @@ gconf_client_notify_add(GConfClient *client,
 {
   GConfClientNotify *notify = 0;
 
+  if( !gconf_client_is_valid(client, err) )
+  {
+    goto cleanup;
+  }
+
   if( gconf_client_find_value(client, namespace_section, err) )
   {
     notify = gconf_client_notify_new(namespace_section,
@@ -1553,6 +1599,8 @@ gconf_client_notify_add(GConfClient *client,
     client->notify_list = g_slist_prepend(client->notify_list, notify);
   }
 
+cleanup:
+
   return notify ? notify->id : 0;
 }
 
@@ -1560,7 +1608,10 @@ gconf_client_notify_add(GConfClient *client,
 void
 gconf_client_notify_remove(GConfClient *client, guint cnxn)
 {
-  assert( client == default_client );
+  if( !gconf_client_is_valid(client, 0) )
+  {
+    goto cleanup;
+  }
 
   for( GSList *item = client->notify_list; item; item = item->next )
   {
@@ -1573,4 +1624,8 @@ gconf_client_notify_remove(GConfClient *client, guint cnxn)
       break;
     }
   }
+
+cleanup:
+
+  return;
 }
