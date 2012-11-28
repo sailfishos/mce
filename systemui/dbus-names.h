@@ -20,24 +20,10 @@
 #define _SYSTEMUI_DBUS_NAMES_H
 
 /** The System UI service */
-#define SYSTEMUI_SERVICE       "com.nokia.system_ui"
+#define SYSTEMUI_SERVICE       "org.nemomobile.lipstick"
 /** The System UI request interface. */
-#define SYSTEMUI_REQUEST_IF    "com.nokia.system_ui.request"
-/** The System UI signal interface. */
-#define SYSTEMUI_SIGNAL_IF     "com.nokia.system_ui.signal"
+#define SYSTEMUI_REQUEST_IF    "org.nemomobile.lipstick.screenlock"
 /** The System UI request path. */
-#define SYSTEMUI_REQUEST_PATH  "/com/nokia/system_ui/request"
-/** The System UI signal path. */
-#define SYSTEMUI_SIGNAL_PATH   "/com/nokia/system_ui/signal"
-
-/**
- * Requests system UI to shut down.
- */
-#define SYSTEMUI_QUIT_REQ      "quit"
-
-/**
- * Notify everyone that the System UI has started.
- */
-#define SYSTEMUI_STARTED_SIG   "system_ui_started"
+#define SYSTEMUI_REQUEST_PATH  "/screenlock"
 
 #endif /* _SYSTEMUI_DBUS_NAMES_H */
