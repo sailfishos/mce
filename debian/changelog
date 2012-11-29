@@ -1,7 +1,5 @@
 mce (1.12.4) unstable; urgency=low
 
-  * NOT RELEASED YET
-
   * Added logic for holding wakelocks to block autosuspend while display is
     on or mce is processing evdev input
   * Use unbuffered input channels for chunked data
@@ -15,7 +13,7 @@ mce (1.12.4) unstable; urgency=low
   * MCE no longer tries to make Sysinfod related D-Bus queries
   * Various fixes to amount and quality of diagnostic logging in mce & mcetool
 
- -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 29 Nov 2012 09:28:56 +0200
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 29 Nov 2012 15:33:17 +0200
 
 mce (1.12.3) unstable; urgency=low
 
