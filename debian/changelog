@@ -2,7 +2,20 @@ mce (1.12.4) unstable; urgency=low
 
   * NOT RELEASED YET
 
- -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 08 Nov 2012 15:19:26 +0200
+  * Added logic for holding wakelocks to block autosuspend while display is
+    on or mce is processing evdev input
+  * Use unbuffered input channels for chunked data
+  * Seek errors are no longer silently ignored
+  * Use custom logic for determining if a io channel is really seekable
+    (at least for now glib thinks all character devices are seekable)
+  * I/O callbacks for chunked input channels try to read and process
+    multiple chunks in one go
+  * MCE now does tklock related D-Bus IPC with Lipstick instead of System UI
+    (from Vesa Halttunen)
+  * MCE no longer tries to make Sysinfod related D-Bus queries
+  * Various fixes to amount and quality of diagnostic logging in mce & mcetool
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 29 Nov 2012 09:28:56 +0200
 
 mce (1.12.3) unstable; urgency=low
 
