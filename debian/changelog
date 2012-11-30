@@ -1,3 +1,9 @@
+mce (1.12.5) unstable; urgency=low
+
+  * NOT RELEASED YET
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 30 Nov 2012 11:23:08 +0200
+
 mce (1.12.4) unstable; urgency=low
 
   * Added logic for holding wakelocks to block autosuspend while display is
