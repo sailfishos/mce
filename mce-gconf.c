@@ -379,6 +379,9 @@ gboolean mce_gconf_init(void)
 {
 	gboolean status = FALSE;
 
+#ifdef ENABLE_BUILTIN_GCONF
+	/* builtin-gconf does not use D-Bus */
+#else
 	/* Trying to use gconf without already existing session
 	 * bus can only yield problems -> disable gconf access
 	 */
@@ -388,6 +391,7 @@ gboolean mce_gconf_init(void)
 		status = TRUE;
 		goto EXIT;
 	}
+#endif
 
 	/* Get the default GConf client */
 	if ((gconf_client = gconf_client_get_default()) == FALSE) {

@@ -97,6 +97,12 @@
 /** Define demo mode DBUS method */
 #define MCE_DBUS_DEMO_MODE_REQ      		"display_set_demo_mode"
 
+/** Define get config DBUS method */
+#define MCE_DBUS_GET_CONFIG_REQ      		"get_config"
+
+/** Define set config DBUS method */
+#define MCE_DBUS_SET_CONFIG_REQ      		"set_config"
+
 /** Enums for powerkey events */
 enum {
 	INVALID_EVENT = -1,		/**< Event not set */
@@ -110,7 +116,7 @@ extern char *optarg;			/**< Used by getopt */
 
 static const gchar *progname;	/**< Used to store the name of the program */
 
-static DBusConnection *dbus_connection;	/**< D-Bus connection */
+static DBusConnection *dbus_connection = NULL;	/**< D-Bus connection */
 
 static GConfClient *gconf_client = NULL;	/**< GConf client */
 
@@ -928,6 +934,568 @@ static gboolean set_led_pattern_state(const gchar *const pattern,
 			 DBUS_TYPE_INVALID);
 }
 
+#ifdef ENABLE_BUILTIN_GCONF
+/* Assume ENABLE_BUILTIN_GCONF means mce supports config
+ * settings via D-Bus system bus interface. */
+
+/** Helper for getting dbus data type as string
+ *
+ * @param type dbus data type (DBUS_TYPE_BOOLEAN etc)
+ *
+ * @return type name with out common prefix (BOOLEAN etc)
+ */
+static const char *dbushelper_get_type_name(int type)
+{
+	const char *res = "UNKNOWN";
+	switch( type ) {
+	case DBUS_TYPE_INVALID:     res = "INVALID";     break;
+	case DBUS_TYPE_BYTE:        res = "BYTE";        break;
+	case DBUS_TYPE_BOOLEAN:     res = "BOOLEAN";     break;
+	case DBUS_TYPE_INT16:       res = "INT16";       break;
+	case DBUS_TYPE_UINT16:      res = "UINT16";      break;
+	case DBUS_TYPE_INT32:       res = "INT32";       break;
+	case DBUS_TYPE_UINT32:      res = "UINT32";      break;
+	case DBUS_TYPE_INT64:       res = "INT64";       break;
+	case DBUS_TYPE_UINT64:      res = "UINT64";      break;
+	case DBUS_TYPE_DOUBLE:      res = "DOUBLE";      break;
+	case DBUS_TYPE_STRING:      res = "STRING";      break;
+	case DBUS_TYPE_OBJECT_PATH: res = "OBJECT_PATH"; break;
+	case DBUS_TYPE_SIGNATURE:   res = "SIGNATURE";   break;
+	case DBUS_TYPE_UNIX_FD:     res = "UNIX_FD";     break;
+	case DBUS_TYPE_ARRAY:       res = "ARRAY";       break;
+	case DBUS_TYPE_VARIANT:     res = "VARIANT";     break;
+	case DBUS_TYPE_STRUCT:      res = "STRUCT";      break;
+	case DBUS_TYPE_DICT_ENTRY:  res = "DICT_ENTRY";  break;
+	default: break;
+	}
+	return res;
+}
+
+/** Helper for testing that iterator points to expected data type
+ *
+ * @param iter D-Bus message iterator
+ * @param want_type D-Bus data type
+ *
+ * @return TRUE if iterator points to give data type, FALSE otherwise
+ */
+static gboolean dbushelper_require_type(DBusMessageIter *iter,
+					int want_type)
+{
+	int have_type = dbus_message_iter_get_arg_type(iter);
+
+	if( want_type != have_type ) {
+		fprintf(stderr, "expected DBUS_TYPE_%s, got %s\n",
+			dbushelper_get_type_name(want_type),
+			dbushelper_get_type_name(have_type));
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+/** Helper for making blocking D-Bus method calls
+ *
+ * @param req D-Bus method call message to send
+ *
+ * @return D-Bus method reply message, or NULL on failure
+ */
+static DBusMessage *dbushelper_call_method(DBusMessage *req)
+{
+        DBusMessage *rsp = 0;
+        DBusError    err = DBUS_ERROR_INIT;
+
+        rsp = dbus_connection_send_with_reply_and_block(dbus_connection,
+							req, -1, &err);
+
+        if( !rsp ) {
+		fprintf(stderr, "%s.%s: %s: %s\n",
+			dbus_message_get_interface(req),
+			dbus_message_get_member(req),
+			err.name, err.message);
+                goto EXIT;
+        }
+
+EXIT:
+        dbus_error_free(&err);
+
+        return rsp;
+}
+
+/** Helper for parsing int value from D-Bus message iterator
+ *
+ * @param iter D-Bus message iterator
+ * @param value Where to store the value (not modified on failure)
+ *
+ * @return TRUE if value could be read, FALSE on failure
+ */
+static gboolean dbushelper_read_int(DBusMessageIter *iter, gint *value)
+{
+	dbus_int32_t data = 0;
+
+	if( !dbushelper_require_type(iter, DBUS_TYPE_INT32) )
+		return FALSE;
+
+	dbus_message_iter_get_basic(iter, &data);
+	dbus_message_iter_next(iter);
+
+	return *value = data, TRUE;
+}
+
+/** Helper for parsing boolean value from D-Bus message iterator
+ *
+ * @param iter D-Bus message iterator
+ * @param value Where to store the value (not modified on failure)
+ *
+ * @return TRUE if value could be read, FALSE on failure
+ */
+static gboolean dbushelper_read_boolean(DBusMessageIter *iter, gboolean *value)
+{
+	dbus_bool_t data = 0;
+
+	if( !dbushelper_require_type(iter, DBUS_TYPE_BOOLEAN) )
+		return FALSE;
+
+	dbus_message_iter_get_basic(iter, &data);
+	dbus_message_iter_next(iter);
+
+	return *value = data, TRUE;
+}
+
+/** Helper for entering variant container from D-Bus message iterator
+ *
+ * @param iter D-Bus message iterator
+ * @param sub  D-Bus message iterator for variant (not modified on failure)
+ *
+ * @return TRUE if container could be entered, FALSE on failure
+ */
+static gboolean dbushelper_read_variant(DBusMessageIter *iter, DBusMessageIter *sub)
+{
+  if( !dbushelper_require_type(iter, DBUS_TYPE_VARIANT) )
+  return FALSE;
+
+  dbus_message_iter_recurse(iter, sub);
+  dbus_message_iter_next(iter);
+
+  return TRUE;
+}
+
+/** Helper for initializing D-Bus message read iterator
+ *
+ * @param rsp  D-Bus message
+ * @param iter D-Bus iterator for parsing message (not modified on failure)
+ *
+ * @return TRUE if read iterator could be initialized, FALSE on failure
+ */
+static gboolean dbushelper_init_read_iterator(DBusMessage *rsp,
+					      DBusMessageIter *iter)
+{
+  if( !dbus_message_iter_init(rsp, iter) ) {
+    fprintf(stderr, "failed to initialize dbus read iterator\n");
+    return FALSE;
+  }
+  return TRUE;
+}
+
+/** Helper for initializing D-Bus message write iterator
+ *
+ * @param rsp  D-Bus message
+ * @param iter D-Bus iterator for appending message (not modified on failure)
+ *
+ * @return TRUE if append iterator could be initialized, FALSE on failure
+ */
+static gboolean dbushelper_init_write_iterator(DBusMessage *req,
+					       DBusMessageIter *iter)
+{
+	dbus_message_iter_init_append(req, iter);
+	return TRUE;
+}
+
+/** Helper for adding int value to D-Bus iterator
+ *
+ * @param iter Write iterator where to add the value
+ * @param value the value to add
+ *
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean dbushelper_write_int(DBusMessageIter *iter, gint value)
+{
+	dbus_int32_t data = value;
+	int          type = DBUS_TYPE_INT32;
+
+	if( !dbus_message_iter_append_basic(iter, type, &data) ) {
+		fprintf(stderr, "failed to add %s data\n",
+			dbushelper_get_type_name(type));
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+/** Helper for adding boolean value to D-Bus iterator
+ *
+ * @param iter Write iterator where to add the value
+ * @param value the value to add
+ *
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean dbushelper_write_boolean(DBusMessageIter *iter, gboolean value)
+{
+	dbus_bool_t data = value;
+	int         type = DBUS_TYPE_BOOLEAN;
+
+	if( !dbus_message_iter_append_basic(iter, type, &data) ) {
+		fprintf(stderr, "failed to add %s data\n",
+			dbushelper_get_type_name(type));
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+/** Helper for adding object path value to D-Bus iterator
+ *
+ * @param iter Write iterator where to add the value
+ * @param value the value to add
+ *
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean dbushelper_write_path(DBusMessageIter *iter, const gchar *value)
+{
+	const char *data = value;
+	int         type = DBUS_TYPE_OBJECT_PATH;
+
+	if( !dbus_message_iter_append_basic(iter, type, &data) ) {
+		fprintf(stderr, "failed to add %s data\n",
+			dbushelper_get_type_name(type));
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+/** Helper for opening a variant container
+ *
+ * @param stack pointer to D-Bus message iterator pointer (not
+                modified on failure)
+ *
+ * @param signature signature string of the data that will be added to the
+ *                  variant container
+ *
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean dbushelper_push_variant(DBusMessageIter **stack,
+					const char *signature)
+{
+	DBusMessageIter *iter = *stack;
+	DBusMessageIter *sub  = iter + 1;
+
+	if( !dbus_message_iter_open_container(iter, DBUS_TYPE_VARIANT,
+					      signature, sub) ) {
+		fprintf(stderr, "failed to initialize variant write iterator\n");
+		return FALSE;
+	}
+
+	*stack = sub;
+	return TRUE;
+}
+
+/** Helper for closing a container
+ *
+ * @param stack pointer to D-Bus message iterator pointer
+ *
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean dbushelper_pop_container(DBusMessageIter **stack)
+{
+	DBusMessageIter *sub  = *stack;
+	DBusMessageIter *iter = sub - 1;
+
+	gboolean res = dbus_message_iter_close_container(iter, sub);
+
+	*stack = iter;
+	return res;
+}
+
+/** Helper for abandoning message iterator stack
+ *
+ * @param stack Start of iterator stack
+ * @param iter  Current iterator within the stack
+ */
+static void dbushelper_abandon_stack(DBusMessageIter *stack,
+				     DBusMessageIter *iter)
+{
+	while( iter-- > stack )
+		dbus_message_iter_abandon_container(iter, iter+1);
+}
+
+/** Helper for making MCE D-Bus method calls
+ *
+ * @param method name of the method in mce request interface
+ * @param first_arg_type as with dbus_message_append_args()
+ * @param ... must be terminated with DBUS_TYPE_INVALID
+ */
+static DBusMessage *mcetool_config_request(const gchar *const method)
+{
+        DBusMessage *req = 0;
+
+	req = dbus_message_new_method_call(MCE_SERVICE,
+					   MCE_REQUEST_PATH,
+					   MCE_REQUEST_IF,
+					   method);
+        if( !req ) {
+                fprintf(stderr,
+                        "%s.%s: can't allocate method call\n",
+			MCE_REQUEST_IF, method);
+	}
+
+        return req;
+}
+
+/**
+ * Init function for the mcetool GConf handling
+ *
+ * @return TRUE on success, FALSE on failure
+ */
+static gint mcetool_gconf_init(void)
+{
+        gint      res = EXIT_SUCCESS;
+        DBusError err = DBUS_ERROR_INIT;
+
+	if( !dbus_connection ) {
+		fprintf(stderr, "No D-Bus connection, blocking config access\n");
+		goto EXIT;
+	}
+
+	if( !dbus_bus_name_has_owner(dbus_connection, MCE_SERVICE, &err) ) {
+		if( dbus_error_is_set(&err) ) {
+			fprintf(stderr, "%s: %s: %s\n", MCE_SERVICE,
+				err.name, err.message);
+		}
+		fprintf(stderr, "MCE not running, blocking config access\n");
+		goto EXIT;
+	}
+
+        /* just provide non-null pointer */
+        gconf_client = calloc(1,1);
+
+EXIT:
+        dbus_error_free(&err);
+
+        return res;
+}
+
+/**
+ * Exit function for the mcetool GConf handling
+ */
+static void mcetool_gconf_exit(void)
+{
+        /* just free the dummy pointer */
+        free(gconf_client), gconf_client = 0;
+}
+
+/**
+ * Return a boolean from the specified GConf key
+ *
+ * @param key The GConf key to get the value from
+ * @param value Will contain the value on return
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean mcetool_gconf_get_bool(const gchar *const key, gboolean *value)
+{
+	printf("@%s(%s)\n", __FUNCTION__, key);
+
+        gboolean     res = FALSE;
+        DBusMessage *req = 0;
+        DBusMessage *rsp = 0;
+
+	DBusMessageIter body, variant;
+
+        if( !gconf_client )
+                goto EXIT;
+
+        if( !(req = mcetool_config_request(MCE_DBUS_GET_CONFIG_REQ)) )
+		goto EXIT;
+	if( !dbushelper_init_write_iterator(req, &body) )
+		goto EXIT;
+	if( !dbushelper_write_path(&body, key) )
+		goto EXIT;
+
+	if( !(rsp = dbushelper_call_method(req)) )
+		goto EXIT;
+	if( !dbushelper_init_read_iterator(rsp, &body) )
+		goto EXIT;
+	if( !dbushelper_read_variant(&body, &variant) )
+		goto EXIT;
+
+	res = dbushelper_read_boolean(&variant, value);
+
+EXIT:
+        if( rsp ) dbus_message_unref(rsp);
+        if( req ) dbus_message_unref(req);
+
+        return res;
+}
+
+/**
+ * Return an integer from the specified GConf key
+ *
+ * @param key The GConf key to get the value from
+ * @param value Will contain the value on return
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean mcetool_gconf_get_int(const gchar *const key, gint *value)
+{
+	printf("@%s(%s)\n", __FUNCTION__, key);
+
+        gboolean     res = FALSE;
+        DBusMessage *req = 0;
+        DBusMessage *rsp = 0;
+
+	DBusMessageIter body, variant;
+
+        if( !gconf_client )
+                goto EXIT;
+
+        if( !(req = mcetool_config_request(MCE_DBUS_GET_CONFIG_REQ)) )
+		goto EXIT;
+	if( !dbushelper_init_write_iterator(req, &body) )
+		goto EXIT;
+	if( !dbushelper_write_path(&body, key) )
+		goto EXIT;
+
+	if( !(rsp = dbushelper_call_method(req)) )
+		goto EXIT;
+	if( !dbushelper_init_read_iterator(rsp, &body) )
+		goto EXIT;
+	if( !dbushelper_read_variant(&body, &variant) )
+		goto EXIT;
+
+	res = dbushelper_read_int(&variant, value);
+
+EXIT:
+        if( rsp ) dbus_message_unref(rsp);
+        if( req ) dbus_message_unref(req);
+
+        return res;
+}
+
+/**
+ * Set a boolean GConf key to the specified value
+ *
+ * @param key The GConf key to set the value of
+ * @param value The value to set the key to
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean mcetool_gconf_set_bool(const gchar *const key,
+                                       const gboolean value)
+{
+	printf("@%s(%s, %d)\n", __FUNCTION__, key, value);
+
+	static const char sig[] = DBUS_TYPE_BOOLEAN_AS_STRING;
+
+        gboolean     res = FALSE;
+        DBusMessage *req = 0;
+        DBusMessage *rsp = 0;
+
+	DBusMessageIter stack[2];
+	DBusMessageIter *wpos = stack;
+	DBusMessageIter *rpos = stack;
+
+        if( !gconf_client )
+                goto EXIT;
+
+        if( !(req = mcetool_config_request(MCE_DBUS_SET_CONFIG_REQ)) )
+		goto EXIT;
+	if( !dbushelper_init_write_iterator(req, wpos) )
+		goto EXIT;
+	if( !dbushelper_write_path(wpos, key) )
+		goto EXIT;
+	if( !dbushelper_push_variant(&wpos, sig) )
+		goto EXIT;
+	if( !dbushelper_write_boolean(wpos, value) )
+		goto EXIT;
+	if( !dbushelper_pop_container(&wpos) )
+		goto EXIT;
+	if( wpos != stack )
+		abort();
+
+	if( !(rsp = dbushelper_call_method(req)) )
+		goto EXIT;
+	if( !dbushelper_init_read_iterator(rsp, rpos) )
+		goto EXIT;
+	if( !dbushelper_read_boolean(rpos, &res) )
+		res = FALSE;
+
+EXIT:
+	// make sure write iterator stack is collapsed
+	dbushelper_abandon_stack(stack, wpos);
+
+        if( rsp ) dbus_message_unref(rsp);
+        if( req ) dbus_message_unref(req);
+
+        return res;
+}
+
+/**
+ * Set an integer GConf key to the specified value
+ *
+ * @param key The GConf key to set the value of
+ * @param value The value to set the key to
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean mcetool_gconf_set_int(const gchar *const key, const gint value)
+{
+	printf("@%s(%s, %d)\n", __FUNCTION__, key, value);
+
+	static const char sig[] = DBUS_TYPE_INT32_AS_STRING;
+
+        gboolean     res = FALSE;
+        DBusMessage *req = 0;
+        DBusMessage *rsp = 0;
+
+	DBusMessageIter stack[2];
+	DBusMessageIter *wpos = stack;
+	DBusMessageIter *rpos = stack;
+
+        if( !gconf_client )
+                goto EXIT;
+
+	// construct request
+        if( !(req = mcetool_config_request(MCE_DBUS_SET_CONFIG_REQ)) )
+		goto EXIT;
+	if( !dbushelper_init_write_iterator(req, wpos) )
+		goto EXIT;
+	if( !dbushelper_write_path(wpos, key) )
+		goto EXIT;
+	if( !dbushelper_push_variant(&wpos, sig) )
+		goto EXIT;
+	if( !dbushelper_write_int(wpos, value) )
+		goto EXIT;
+	if( !dbushelper_pop_container(&wpos) )
+		goto EXIT;
+	if( wpos != stack )
+		abort();
+
+	// get reply and process it
+	if( !(rsp = dbushelper_call_method(req)) )
+		goto EXIT;
+	if( !dbushelper_init_read_iterator(rsp, rpos) )
+		goto EXIT;
+	if( !dbushelper_read_boolean(rpos, &res) )
+		res = FALSE;
+
+EXIT:
+	// make sure write iterator stack is collapsed
+	dbushelper_abandon_stack(stack, wpos);
+
+        if( rsp ) dbus_message_unref(rsp);
+        if( req ) dbus_message_unref(req);
+
+        return res;
+}
+#else // !defined(ENABLE_BUILTIN_GCONF)
+/* Use regular GConf API must be used for mce settings queries */
+
 /**
  * Init function for the mcetool GConf handling
  *
@@ -1109,6 +1677,7 @@ static gboolean mcetool_gconf_set_int(const gchar *const key, const gint value)
 EXIT:
 	return status;
 }
+#endif // !defined(ENABLE_BUILTIN_GCONF)
 
 /**
  * Print mce related information

@@ -33,6 +33,8 @@
 
 #include "mce-log.h"			/* mce_log(), LL_* */
 
+#include "mce-gconf.h"
+
 /** List of all D-Bus handlers */
 static GSList *dbus_handlers = NULL;
 /** List iterator for msg_handler */
@@ -379,7 +381,6 @@ pid_t dbus_get_pid_from_bus_name(const gchar *const bus_name)
 	return (pid_t)pid;
 }
 
-
 /**
  * D-Bus callback for the version get method call
  *
@@ -413,6 +414,680 @@ static gboolean version_get_dbus_cb(DBusMessage *const msg)
 	status = dbus_send_message(reply);
 
 EXIT:
+	return status;
+}
+
+/** Helper for appending gconf string list to dbus message
+ *
+ * @param conf GConfValue of string list type
+ * @param pcount number of items in the returned array is stored here
+ * @return array of string pointers that can be easily added to DBusMessage
+ */
+static const char **string_array_from_gconf_value(GConfValue *conf, int *pcount)
+{
+	const char **array = 0;
+	int    count = 0;
+
+	GSList *list, *item;
+
+	if( conf->type != GCONF_VALUE_LIST )
+		goto EXIT;
+
+	if( gconf_value_get_list_type(conf) != GCONF_VALUE_STRING )
+		goto EXIT;
+
+	list = gconf_value_get_list(conf);
+
+	for( item = list; item; item = item->next )
+		++count;
+
+	array = g_malloc_n(count, sizeof *array);
+	count = 0;
+
+	for( item = list; item; item = item->next )
+		array[count++] = gconf_value_get_string(item->data);
+
+EXIT:
+	return *pcount = count, array;
+}
+
+/** Helper for appending gconf int list to dbus message
+ *
+ * @param conf GConfValue of int list type
+ * @param pcount number of items in the returned array is stored here
+ * @return array of integers that can be easily added to DBusMessage
+ */
+static dbus_int32_t *int_array_from_gconf_value(GConfValue *conf, int *pcount)
+{
+	dbus_int32_t *array = 0;
+	int           count = 0;
+
+	GSList *list, *item;
+
+	if( conf->type != GCONF_VALUE_LIST )
+		goto EXIT;
+
+	if( gconf_value_get_list_type(conf) != GCONF_VALUE_INT )
+		goto EXIT;
+
+	list = gconf_value_get_list(conf);
+
+	for( item = list; item; item = item->next )
+		++count;
+
+	array = g_malloc_n(count, sizeof *array);
+	count = 0;
+
+	for( item = list; item; item = item->next )
+		array[count++] = gconf_value_get_int(item->data);
+
+EXIT:
+	return *pcount = count, array;
+}
+
+/** Helper for appending gconf bool list to dbus message
+ *
+ * @param conf GConfValue of bool list type
+ * @param pcount number of items in the returned array is stored here
+ * @return array of booleans that can be easily added to DBusMessage
+ */
+static dbus_bool_t *bool_array_from_gconf_value(GConfValue *conf, int *pcount)
+{
+	dbus_bool_t *array = 0;
+	int          count = 0;
+
+	GSList *list, *item;
+
+	if( conf->type != GCONF_VALUE_LIST )
+		goto EXIT;
+
+	if( gconf_value_get_list_type(conf) != GCONF_VALUE_BOOL )
+		goto EXIT;
+
+	list = gconf_value_get_list(conf);
+
+	for( item = list; item; item = item->next )
+		++count;
+
+	array = g_malloc_n(count, sizeof *array);
+	count = 0;
+
+	for( item = list; item; item = item->next )
+		array[count++] = gconf_value_get_bool(item->data);
+
+EXIT:
+	return *pcount = count, array;
+}
+
+/** Helper for appending gconf float list to dbus message
+ *
+ * @param conf GConfValue of float list type
+ * @param pcount number of items in the returned array is stored here
+ * @return array of doubles that can be easily added to DBusMessage
+ */
+static double *float_array_from_gconf_value(GConfValue *conf, int *pcount)
+{
+	double *array = 0;
+	int     count = 0;
+
+	GSList *list, *item;
+
+	if( conf->type != GCONF_VALUE_LIST )
+		goto EXIT;
+
+	if( gconf_value_get_list_type(conf) != GCONF_VALUE_FLOAT )
+		goto EXIT;
+
+	list = gconf_value_get_list(conf);
+
+	for( item = list; item; item = item->next )
+		++count;
+
+	array = g_malloc_n(count, sizeof *array);
+	count = 0;
+
+	for( item = list; item; item = item->next )
+		array[count++] = gconf_value_get_float(item->data);
+
+EXIT:
+	return *pcount = count, array;
+}
+
+/** Helper for deducing what kind of array signature we need for a list value
+ *
+ * @param type Non-complex gconf value type
+ *
+ * @return D-Bus signature needed for adding given type to a container
+ */
+static const char *type_signature(GConfValueType type)
+{
+	switch( type ) {
+	case GCONF_VALUE_STRING: return DBUS_TYPE_STRING_AS_STRING;
+	case GCONF_VALUE_INT:    return DBUS_TYPE_INT32_AS_STRING;
+	case GCONF_VALUE_FLOAT:  return DBUS_TYPE_DOUBLE_AS_STRING;
+	case GCONF_VALUE_BOOL:   return DBUS_TYPE_BOOLEAN_AS_STRING;
+	default: break;
+	}
+	return 0;
+}
+
+/** Helper for deducing what kind of variant signature we need for a value
+ *
+ * @param conf GConf value
+ *
+ * @return D-Bus signature needed for adding given value to a container
+ */
+static const char *value_signature(GConfValue *conf)
+{
+	if( conf->type != GCONF_VALUE_LIST ) {
+		return type_signature(conf->type);
+	}
+
+	switch( gconf_value_get_list_type(conf) ) {
+	case GCONF_VALUE_STRING:
+		return DBUS_TYPE_ARRAY_AS_STRING DBUS_TYPE_STRING_AS_STRING;
+	case GCONF_VALUE_INT:
+		return DBUS_TYPE_ARRAY_AS_STRING DBUS_TYPE_INT32_AS_STRING;
+	case GCONF_VALUE_FLOAT:
+		return DBUS_TYPE_ARRAY_AS_STRING DBUS_TYPE_DOUBLE_AS_STRING;
+	case GCONF_VALUE_BOOL:
+		return DBUS_TYPE_ARRAY_AS_STRING DBUS_TYPE_BOOLEAN_AS_STRING;
+	default: break;
+	}
+
+	return 0;
+}
+
+/** Helper for appending GConfValue to dbus message
+ *
+ * @param reply DBusMessage under construction
+ * @param conf GConfValue to be added to the reply
+ *
+ * @return TRUE if the value was succesfully appended, or FALSE on failure
+ */
+static gboolean append_gconf_value_to_dbus_message(DBusMessage *reply, GConfValue *conf)
+{
+	const char *sig = 0;
+
+	DBusMessageIter body, variant, array;
+
+	if( !(sig = value_signature(conf)) ) {
+		goto bailout_message;
+	}
+
+	dbus_message_iter_init_append(reply, &body);
+
+	if( !dbus_message_iter_open_container(&body, DBUS_TYPE_VARIANT,
+					      sig, &variant) ) {
+		goto bailout_message;
+	}
+
+	switch( conf->type ) {
+	case GCONF_VALUE_STRING:
+		{
+			const char *arg = gconf_value_get_string(conf) ?: "";
+			dbus_message_iter_append_basic(&variant,
+						       DBUS_TYPE_STRING,
+						       &arg);
+		}
+		break;
+
+	case GCONF_VALUE_INT:
+		{
+			dbus_int32_t arg = gconf_value_get_int(conf);
+			dbus_message_iter_append_basic(&variant,
+						       DBUS_TYPE_INT32,
+						       &arg);
+		}
+		break;
+
+	case GCONF_VALUE_FLOAT:
+		{
+			double arg = gconf_value_get_float(conf);
+			dbus_message_iter_append_basic(&variant,
+						       DBUS_TYPE_DOUBLE,
+						       &arg);
+		}
+		break;
+
+	case GCONF_VALUE_BOOL:
+		{
+			dbus_bool_t arg = gconf_value_get_bool(conf);
+			dbus_message_iter_append_basic(&variant,
+						       DBUS_TYPE_BOOLEAN,
+						       &arg);
+		}
+		break;
+
+	case GCONF_VALUE_LIST:
+		if( !(sig = type_signature(gconf_value_get_list_type(conf))) ) {
+			goto bailout_variant;
+		}
+
+		if( !dbus_message_iter_open_container(&variant,
+						      DBUS_TYPE_ARRAY,
+						      sig, &array) ) {
+			goto bailout_variant;
+		}
+
+		switch( gconf_value_get_list_type(conf) ) {
+		case GCONF_VALUE_STRING:
+			{
+				int          cnt = 0;
+				const char **arg = string_array_from_gconf_value(conf, &cnt);
+				for( int i = 0; i < cnt; ++i ) {
+					const char *str = arg[i];
+					dbus_message_iter_append_basic(&array,
+								       DBUS_TYPE_STRING,
+								       &str);
+				}
+				g_free(arg);
+			}
+			break;
+		case GCONF_VALUE_INT:
+			{
+				int           cnt = 0;
+				dbus_int32_t *arg = int_array_from_gconf_value(conf, &cnt);
+				dbus_message_iter_append_fixed_array(&array,
+								     DBUS_TYPE_INT32,
+								     &arg, cnt);
+				g_free(arg);
+			}
+			break;
+		case GCONF_VALUE_FLOAT:
+			{
+				int     cnt = 0;
+				double *arg = float_array_from_gconf_value(conf, &cnt);
+				dbus_message_iter_append_fixed_array(&array,
+								     DBUS_TYPE_DOUBLE,
+								     &arg, cnt);
+				g_free(arg);
+			}
+			break;
+		case GCONF_VALUE_BOOL:
+			{
+				int          cnt = 0;
+				dbus_bool_t *arg = bool_array_from_gconf_value(conf, &cnt);
+				dbus_message_iter_append_fixed_array(&array,
+								     DBUS_TYPE_BOOLEAN,
+								     &arg, cnt);
+				g_free(arg);
+			}
+			break;
+
+		default:
+			goto bailout_array;
+		}
+
+		if( !dbus_message_iter_close_container(&variant, &array) ) {
+			goto bailout_variant;
+		}
+		break;
+
+	default:
+		goto bailout_variant;
+	}
+
+	if( !dbus_message_iter_close_container(&body, &variant) ) {
+		goto bailout_message;
+	}
+	return TRUE;
+
+bailout_array:
+	dbus_message_iter_abandon_container(&variant, &array);
+
+bailout_variant:
+	dbus_message_iter_abandon_container(&body, &variant);
+
+bailout_message:
+	return FALSE;
+}
+
+/**
+ * D-Bus callback for the config get method call
+ *
+ * @param msg The D-Bus message to reply to
+ *
+ * @return TRUE if reply message was successfully sent, FALSE on failure
+ */
+static gboolean config_get_dbus_cb(DBusMessage *const msg)
+{
+	gboolean status = FALSE;
+	DBusMessage *reply = NULL;
+	const char *key = NULL;
+	GError *err = NULL;
+	GConfValue *conf = 0;
+
+	DBusError error = DBUS_ERROR_INIT;
+
+	mce_log(LL_DEBUG, "Received configuration query request");
+
+	if( !dbus_message_get_args(msg, &error,
+				   DBUS_TYPE_OBJECT_PATH, &key,
+				   DBUS_TYPE_INVALID) )	{
+		mce_log(LL_ERR, "%s: %s", error.name, error.message);
+		reply = dbus_message_new_error(msg, error.name, error.message);
+		goto EXIT;
+	}
+
+	if( !(conf = gconf_client_get(gconf_client_get_default(), key, &err)) ) {
+		reply = dbus_message_new_error(msg,
+					       "com.nokia.mce.GConf.Error",
+					       err->message ?: "unknown");
+		goto EXIT;
+	}
+
+	if( !(reply = dbus_new_method_reply(msg)) )
+		goto EXIT;
+
+	if( !append_gconf_value_to_dbus_message(reply, conf) ) {
+		dbus_message_unref(reply);
+		reply = dbus_message_new_error(msg,
+					       "com.nokia.mce.GConf.Error",
+					       "constructing reply failed");
+	}
+
+EXIT:
+	/* Send a reply if we have one */
+	if( reply ) {
+		/* dbus_send_message unrefs the reply message */
+		status = dbus_send_message(reply), reply = 0;
+	}
+
+	if( conf )
+		gconf_value_free(conf);
+
+	g_clear_error(&err);
+	dbus_error_free(&error);
+
+	return status;
+}
+
+/** Release GSList of GConfValue objects
+ *
+ * @param list GSList where item->data members are pointers to GConfValue
+ */
+static void value_list_free(GSList *list)
+{
+  g_slist_free_full(list, (GDestroyNotify)gconf_value_free);
+}
+
+/** Convert D-Bus string array into GSList of GConfValue objects
+ *
+ * @param iter D-Bus message iterator at DBUS_TYPE_ARRAY
+ * @return GSList where item->data members are pointers to GConfValue
+ */
+static GSList *value_list_from_string_array(DBusMessageIter *iter)
+{
+	GSList *res = 0;
+
+	DBusMessageIter subiter;
+
+	dbus_message_iter_recurse(iter, &subiter);
+
+	int i = 0;
+	while ( dbus_message_iter_get_arg_type(&subiter) == DBUS_TYPE_STRING ) {
+		const char *tmp = 0;
+		dbus_message_iter_get_basic(&subiter, &tmp);
+		dbus_message_iter_next(&subiter);
+
+		mce_log(LL_INFO, "arr[%d] = string:%s", i++, tmp);
+
+		GConfValue *value = gconf_value_new(GCONF_VALUE_STRING);
+		gconf_value_set_string(value, tmp);
+		res = g_slist_prepend(res, value);
+	}
+
+	res = g_slist_reverse(res);
+
+	return res;
+}
+
+/** Convert D-Bus int32 array into GSList of GConfValue objects
+ *
+ * @param iter D-Bus message iterator at DBUS_TYPE_ARRAY
+ * @return GSList where item->data members are pointers to GConfValue
+ */
+static GSList *value_list_from_int_array(DBusMessageIter *iter)
+{
+	GSList *res = 0;
+
+	DBusMessageIter subiter;
+
+	dbus_message_iter_recurse(iter, &subiter);
+
+	int i = 0;
+	while ( dbus_message_iter_get_arg_type(&subiter) == DBUS_TYPE_INT32 ) {
+		dbus_int32_t tmp = 0;
+		dbus_message_iter_get_basic(&subiter, &tmp);
+		dbus_message_iter_next(&subiter);
+
+		mce_log(LL_INFO, "arr[%d] = int:%d", i++, tmp);
+
+		GConfValue *value = gconf_value_new(GCONF_VALUE_INT);
+		gconf_value_set_int(value, tmp);
+		res = g_slist_prepend(res, value);
+	}
+
+	res = g_slist_reverse(res);
+
+	return res;
+}
+
+/** Convert D-Bus bool array into GSList of GConfValue objects
+ *
+ * @param iter D-Bus message iterator at DBUS_TYPE_ARRAY
+ * @return GSList where item->data members are pointers to GConfValue
+ */
+static GSList *value_list_from_bool_array(DBusMessageIter *iter)
+{
+	GSList *res = 0;
+
+	DBusMessageIter subiter;
+
+	dbus_message_iter_recurse(iter, &subiter);
+
+	int i = 0;
+	while ( dbus_message_iter_get_arg_type(&subiter) == DBUS_TYPE_BOOLEAN ) {
+		dbus_bool_t tmp = 0;
+		dbus_message_iter_get_basic(&subiter, &tmp);
+		dbus_message_iter_next(&subiter);
+
+		mce_log(LL_INFO, "arr[%d] = bool:%s", i++, tmp ? "true" : "false");
+
+		GConfValue *value = gconf_value_new(GCONF_VALUE_BOOL);
+		gconf_value_set_bool(value, tmp);
+		res = g_slist_prepend(res, value);
+	}
+
+	res = g_slist_reverse(res);
+
+	return res;
+}
+
+/** Convert D-Bus double array into GSList of GConfValue objects
+ *
+ * @param iter D-Bus message iterator at DBUS_TYPE_ARRAY
+ * @return GSList where item->data members are pointers to GConfValue
+ */
+static GSList *value_list_from_float_array(DBusMessageIter *iter)
+{
+	GSList *res = 0;
+
+	DBusMessageIter subiter;
+
+	dbus_message_iter_recurse(iter, &subiter);
+
+	int i = 0;
+	while ( dbus_message_iter_get_arg_type(&subiter) == DBUS_TYPE_DOUBLE ) {
+		double tmp = 0;
+		dbus_message_iter_get_basic(&subiter, &tmp);
+		dbus_message_iter_next(&subiter);
+
+		mce_log(LL_INFO, "arr[%d] = float:%g", i++, tmp);
+
+		GConfValue *value = gconf_value_new(GCONF_VALUE_FLOAT);
+		gconf_value_set_float(value, tmp);
+		res = g_slist_prepend(res, value);
+	}
+
+	res = g_slist_reverse(res);
+
+	return res;
+}
+
+/**
+ * D-Bus callback for the config set method call
+ *
+ * @param msg The D-Bus message to reply to
+ *
+ * @return TRUE if reply message was successfully sent, FALSE on failure
+ */
+static gboolean config_set_dbus_cb(DBusMessage *const msg)
+{
+	gboolean status = FALSE;
+	DBusMessage *reply = NULL;
+	const char *key = NULL;
+	GError *err = NULL;
+	GConfClient *client = 0;
+	GSList *list = 0;
+
+	DBusError error = DBUS_ERROR_INIT;
+	DBusMessageIter body, iter;
+
+	mce_log(LL_DEBUG, "Received configuration change request");
+
+	if( !(client = gconf_client_get_default()) )
+		goto EXIT;
+
+	dbus_message_iter_init(msg, &body);
+
+	if( dbus_message_iter_get_arg_type(&body) != DBUS_TYPE_OBJECT_PATH ) {
+		reply = dbus_message_new_error(msg, DBUS_ERROR_INVALID_ARGS,
+					       "expected object path");
+		goto EXIT;
+	}
+	dbus_message_iter_get_basic(&body, &key);
+	dbus_message_iter_next(&body);
+
+	if( dbus_message_iter_get_arg_type(&body) == DBUS_TYPE_VARIANT ) {
+		dbus_message_iter_recurse(&body, &iter);
+		dbus_message_iter_next(&body);
+	}
+	else if( dbus_message_iter_get_arg_type(&body) == DBUS_TYPE_ARRAY ) {
+		/* HACK: dbus-send does not know how to handle nested
+		 * containers,  so it can't be used to send variant
+		 * arrays 'variant:array:int32:1,2,3', so we allow array
+		 * requrest without variant too ... */
+		iter = body;
+	}
+	else {
+		reply = dbus_message_new_error(msg, DBUS_ERROR_INVALID_ARGS,
+					       "expected variant");
+		goto EXIT;
+	}
+
+	switch( dbus_message_iter_get_arg_type(&iter) ) {
+	case DBUS_TYPE_BOOLEAN:
+		{
+			dbus_bool_t arg = 0;
+			dbus_message_iter_get_basic(&iter, &arg);
+			gconf_client_set_bool(client, key, arg, &err);
+		}
+		break;
+	case DBUS_TYPE_INT32:
+		{
+			dbus_int32_t arg = 0;
+			dbus_message_iter_get_basic(&iter, &arg);
+			gconf_client_set_int(client, key, arg, &err);
+		}
+		break;
+	case DBUS_TYPE_DOUBLE:
+		{
+			double arg = 0;
+			dbus_message_iter_get_basic(&iter, &arg);
+			gconf_client_set_float(client, key, arg, &err);
+		}
+		break;
+	case DBUS_TYPE_STRING:
+		{
+			const char *arg = 0;
+			dbus_message_iter_get_basic(&iter, &arg);
+			gconf_client_set_string(client, key, arg, &err);
+		}
+		break;
+
+	case DBUS_TYPE_ARRAY:
+		switch( dbus_message_iter_get_element_type(&iter) ) {
+		case DBUS_TYPE_BOOLEAN:
+			list = value_list_from_bool_array(&iter);
+			gconf_client_set_list(client, key, GCONF_VALUE_BOOL, list, &err);
+			break;
+		case DBUS_TYPE_INT32:
+			list = value_list_from_int_array(&iter);
+			gconf_client_set_list(client, key, GCONF_VALUE_INT, list, &err);
+			break;
+		case DBUS_TYPE_DOUBLE:
+			list = value_list_from_float_array(&iter);
+			gconf_client_set_list(client, key, GCONF_VALUE_FLOAT, list, &err);
+			break;
+		case DBUS_TYPE_STRING:
+			list = value_list_from_string_array(&iter);
+			gconf_client_set_list(client, key, GCONF_VALUE_STRING, list, &err);
+			break;
+		default:
+			reply = dbus_message_new_error(msg, DBUS_ERROR_INVALID_ARGS,
+						       "unexpected value array type");
+			goto EXIT;
+
+		}
+		break;
+
+	default:
+		reply = dbus_message_new_error(msg, DBUS_ERROR_INVALID_ARGS,
+					       "unexpected value type");
+		goto EXIT;
+	}
+
+	if( err )
+	{
+		/* some of the above gconf_client_set_xxx() calls failed */
+		reply = dbus_message_new_error(msg,
+					       "com.nokia.mce.GConf.Error",
+					       err->message ?: "unknown");
+		goto EXIT;
+	}
+
+	/* we changed something */
+	gconf_client_suggest_sync(client, &err);
+	if( err ) {
+		mce_log(LL_ERR, "gconf_client_suggest_sync: %s", err->message);
+	}
+
+	if( !(reply = dbus_new_method_reply(msg)) )
+		goto EXIT;
+
+	/* it is either error reply or true, and we got here... */
+	{
+		dbus_bool_t arg = TRUE;
+		dbus_message_append_args(reply,
+					 DBUS_TYPE_BOOLEAN, &arg,
+					 DBUS_TYPE_INVALID);
+	}
+
+EXIT:
+	value_list_free(list);
+
+	/* Send a reply if we have one */
+	if( reply ) {
+		/* dbus_send_message unrefs the reply message */
+		status = dbus_send_message(reply), reply = 0;
+	}
+
+	g_clear_error(&err);
+	dbus_error_free(&error);
+
+
 	return status;
 }
 
@@ -1063,6 +1738,22 @@ gboolean mce_dbus_init(const gboolean systembus)
 				 NULL,
 				 DBUS_MESSAGE_TYPE_METHOD_CALL,
 				 version_get_dbus_cb) == NULL)
+		goto EXIT;
+
+	/* get_config */
+	if (mce_dbus_handler_add(MCE_REQUEST_IF,
+				 "get_config",
+				 NULL,
+				 DBUS_MESSAGE_TYPE_METHOD_CALL,
+				 config_get_dbus_cb) == NULL)
+		goto EXIT;
+
+	/* set_config */
+	if (mce_dbus_handler_add(MCE_REQUEST_IF,
+				 "set_config",
+				 NULL,
+				 DBUS_MESSAGE_TYPE_METHOD_CALL,
+				 config_set_dbus_cb) == NULL)
 		goto EXIT;
 
 	status = TRUE;
