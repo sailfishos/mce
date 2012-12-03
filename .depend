@@ -1,0 +1,626 @@
+builtin-gconf.o:\
+	builtin-gconf.c\
+
+builtin-gconf.pic.o:\
+	builtin-gconf.c\
+
+datapipe.o:\
+	datapipe.c\
+	datapipe.h\
+	mce-log.h\
+
+datapipe.pic.o:\
+	datapipe.c\
+	datapipe.h\
+	mce-log.h\
+
+event-input.o:\
+	event-input.c\
+	datapipe.h\
+	event-input.h\
+	mce-conf.h\
+	mce-io.h\
+	mce-lib.h\
+	mce-log.h\
+	mce.h\
+
+event-input.pic.o:\
+	event-input.c\
+	datapipe.h\
+	event-input.h\
+	mce-conf.h\
+	mce-io.h\
+	mce-lib.h\
+	mce-log.h\
+	mce.h\
+
+event-switches.o:\
+	event-switches.c\
+	datapipe.h\
+	event-switches.h\
+	mce-io.h\
+	mce.h\
+
+event-switches.pic.o:\
+	event-switches.c\
+	datapipe.h\
+	event-switches.h\
+	mce-io.h\
+	mce.h\
+
+libwakelock.o:\
+	libwakelock.c\
+	libwakelock.h\
+
+libwakelock.pic.o:\
+	libwakelock.c\
+	libwakelock.h\
+
+mce-conf.o:\
+	mce-conf.c\
+	datapipe.h\
+	mce-conf.h\
+	mce-log.h\
+	mce.h\
+
+mce-conf.pic.o:\
+	mce-conf.c\
+	datapipe.h\
+	mce-conf.h\
+	mce-log.h\
+	mce.h\
+
+mce-dbus.o:\
+	mce-dbus.c\
+	datapipe.h\
+	mce-dbus.h\
+	mce-gconf.h\
+	mce-log.h\
+	mce.h\
+
+mce-dbus.pic.o:\
+	mce-dbus.c\
+	datapipe.h\
+	mce-dbus.h\
+	mce-gconf.h\
+	mce-log.h\
+	mce.h\
+
+mce-dsme.o:\
+	mce-dsme.c\
+	datapipe.h\
+	mce-conf.h\
+	mce-dbus.h\
+	mce-dsme.h\
+	mce-lib.h\
+	mce-log.h\
+	mce.h\
+
+mce-dsme.pic.o:\
+	mce-dsme.c\
+	datapipe.h\
+	mce-conf.h\
+	mce-dbus.h\
+	mce-dsme.h\
+	mce-lib.h\
+	mce-log.h\
+	mce.h\
+
+mce-gconf.o:\
+	mce-gconf.c\
+	datapipe.h\
+	mce-gconf.h\
+	mce-log.h\
+	mce.h\
+
+mce-gconf.pic.o:\
+	mce-gconf.c\
+	datapipe.h\
+	mce-gconf.h\
+	mce-log.h\
+	mce.h\
+
+mce-hal.o:\
+	mce-hal.c\
+	mce-dbus.h\
+	mce-hal.h\
+	mce-lib.h\
+	mce-log.h\
+
+mce-hal.pic.o:\
+	mce-hal.c\
+	mce-dbus.h\
+	mce-hal.h\
+	mce-lib.h\
+	mce-log.h\
+
+mce-io.o:\
+	mce-io.c\
+	datapipe.h\
+	mce-io.h\
+	mce-log.h\
+	mce.h\
+
+mce-io.pic.o:\
+	mce-io.c\
+	datapipe.h\
+	mce-io.h\
+	mce-log.h\
+	mce.h\
+
+mce-lib.o:\
+	mce-lib.c\
+	datapipe.h\
+	mce-lib.h\
+	mce-log.h\
+	mce.h\
+
+mce-lib.pic.o:\
+	mce-lib.c\
+	datapipe.h\
+	mce-lib.h\
+	mce-log.h\
+	mce.h\
+
+mce-log.o:\
+	mce-log.c\
+	mce-log.h\
+
+mce-log.pic.o:\
+	mce-log.c\
+	mce-log.h\
+
+mce-modules.o:\
+	mce-modules.c\
+	datapipe.h\
+	mce-conf.h\
+	mce-log.h\
+	mce-modules.h\
+	mce.h\
+
+mce-modules.pic.o:\
+	mce-modules.c\
+	datapipe.h\
+	mce-conf.h\
+	mce-log.h\
+	mce-modules.h\
+	mce.h\
+
+mce.o:\
+	mce.c\
+	datapipe.h\
+	event-input.h\
+	event-switches.h\
+	mce-conf.h\
+	mce-dbus.h\
+	mce-dsme.h\
+	mce-gconf.h\
+	mce-log.h\
+	mce-modules.h\
+	mce.h\
+	modetransition.h\
+	powerkey.h\
+	tklock.h\
+
+mce.pic.o:\
+	mce.c\
+	datapipe.h\
+	event-input.h\
+	event-switches.h\
+	mce-conf.h\
+	mce-dbus.h\
+	mce-dsme.h\
+	mce-gconf.h\
+	mce-log.h\
+	mce-modules.h\
+	mce.h\
+	modetransition.h\
+	powerkey.h\
+	tklock.h\
+
+median_filter.o:\
+	median_filter.c\
+	median_filter.h\
+
+median_filter.pic.o:\
+	median_filter.c\
+	median_filter.h\
+
+modetransition.o:\
+	modetransition.c\
+	datapipe.h\
+	mce-io.h\
+	mce-log.h\
+	mce.h\
+	modetransition.h\
+
+modetransition.pic.o:\
+	modetransition.c\
+	datapipe.h\
+	mce-io.h\
+	mce-log.h\
+	mce.h\
+	modetransition.h\
+
+modules/alarm.o:\
+	modules/alarm.c\
+	datapipe.h\
+	datapipe.h\
+	mce-dbus.h\
+	mce-log.h\
+	mce.h\
+
+modules/alarm.pic.o:\
+	modules/alarm.c\
+	datapipe.h\
+	datapipe.h\
+	mce-dbus.h\
+	mce-log.h\
+	mce.h\
+
+modules/audiorouting.o:\
+	modules/audiorouting.c\
+	datapipe.h\
+	mce-dbus.h\
+	mce-log.h\
+	mce.h\
+
+modules/audiorouting.pic.o:\
+	modules/audiorouting.c\
+	datapipe.h\
+	mce-dbus.h\
+	mce-log.h\
+	mce.h\
+
+modules/battery.o:\
+	modules/battery.c\
+	bme-dbus-names.h\
+	datapipe.h\
+	datapipe.h\
+	mce-dbus.h\
+	mce-log.h\
+	mce.h\
+
+modules/battery.pic.o:\
+	modules/battery.c\
+	bme-dbus-names.h\
+	datapipe.h\
+	datapipe.h\
+	mce-dbus.h\
+	mce-log.h\
+	mce.h\
+
+modules/callstate.o:\
+	modules/callstate.c\
+	datapipe.h\
+	datapipe.h\
+	mce-dbus.h\
+	mce-lib.h\
+	mce-log.h\
+	mce.h\
+	modules/callstate.h\
+	ofono-dbus-names.h\
+
+modules/callstate.pic.o:\
+	modules/callstate.c\
+	datapipe.h\
+	datapipe.h\
+	mce-dbus.h\
+	mce-lib.h\
+	mce-log.h\
+	mce.h\
+	modules/callstate.h\
+	ofono-dbus-names.h\
+
+modules/camera.o:\
+	modules/camera.c\
+	datapipe.h\
+	datapipe.h\
+	mce-conf.h\
+	mce-io.h\
+	mce.h\
+	modules/camera.h\
+
+modules/camera.pic.o:\
+	modules/camera.c\
+	datapipe.h\
+	datapipe.h\
+	mce-conf.h\
+	mce-io.h\
+	mce.h\
+	modules/camera.h\
+
+modules/display.o:\
+	modules/display.c\
+	datapipe.h\
+	datapipe.h\
+	mce-conf.h\
+	mce-dbus.h\
+	mce-gconf.h\
+	mce-io.h\
+	mce-lib.h\
+	mce-log.h\
+	mce.h\
+	modules/display.h\
+	tklock.h\
+
+modules/display.pic.o:\
+	modules/display.c\
+	datapipe.h\
+	datapipe.h\
+	mce-conf.h\
+	mce-dbus.h\
+	mce-gconf.h\
+	mce-io.h\
+	mce-lib.h\
+	mce-log.h\
+	mce.h\
+	modules/display.h\
+	tklock.h\
+
+modules/displaymeego.o:\
+	modules/displaymeego.c\
+	datapipe.h\
+	datapipe.h\
+	mce-conf.h\
+	mce-dbus.h\
+	mce-gconf.h\
+	mce-io.h\
+	mce-lib.h\
+	mce-log.h\
+	mce.h\
+	modules/displaymeego.h\
+
+modules/displaymeego.pic.o:\
+	modules/displaymeego.c\
+	datapipe.h\
+	datapipe.h\
+	mce-conf.h\
+	mce-dbus.h\
+	mce-gconf.h\
+	mce-io.h\
+	mce-lib.h\
+	mce-log.h\
+	mce.h\
+	modules/displaymeego.h\
+
+modules/filter-brightness-als.o:\
+	modules/filter-brightness-als.c\
+	datapipe.h\
+	datapipe.h\
+	mce-conf.h\
+	mce-dbus.h\
+	mce-gconf.h\
+	mce-hal.h\
+	mce-io.h\
+	mce-lib.h\
+	mce-log.h\
+	mce.h\
+	median_filter.h\
+	modules/filter-brightness-als.h\
+
+modules/filter-brightness-als.pic.o:\
+	modules/filter-brightness-als.c\
+	datapipe.h\
+	datapipe.h\
+	mce-conf.h\
+	mce-dbus.h\
+	mce-gconf.h\
+	mce-hal.h\
+	mce-io.h\
+	mce-lib.h\
+	mce-log.h\
+	mce.h\
+	median_filter.h\
+	modules/filter-brightness-als.h\
+
+modules/filter-brightness-simple.o:\
+	modules/filter-brightness-simple.c\
+	datapipe.h\
+	datapipe.h\
+	mce.h\
+	modules/filter-brightness-simple.h\
+
+modules/filter-brightness-simple.pic.o:\
+	modules/filter-brightness-simple.c\
+	datapipe.h\
+	datapipe.h\
+	mce.h\
+	modules/filter-brightness-simple.h\
+
+modules/inactivity.o:\
+	modules/inactivity.c\
+	datapipe.h\
+	datapipe.h\
+	mce-dbus.h\
+	mce-log.h\
+	mce.h\
+
+modules/inactivity.pic.o:\
+	modules/inactivity.c\
+	datapipe.h\
+	datapipe.h\
+	mce-dbus.h\
+	mce-log.h\
+	mce.h\
+
+modules/keypad.o:\
+	modules/keypad.c\
+	datapipe.h\
+	datapipe.h\
+	mce-conf.h\
+	mce-dbus.h\
+	mce-hal.h\
+	mce-io.h\
+	mce-lib.h\
+	mce-log.h\
+	mce.h\
+	modules/keypad.h\
+	modules/led.h\
+
+modules/keypad.pic.o:\
+	modules/keypad.c\
+	datapipe.h\
+	datapipe.h\
+	mce-conf.h\
+	mce-dbus.h\
+	mce-hal.h\
+	mce-io.h\
+	mce-lib.h\
+	mce-log.h\
+	mce.h\
+	modules/keypad.h\
+	modules/led.h\
+
+modules/led.o:\
+	modules/led.c\
+	datapipe.h\
+	datapipe.h\
+	mce-conf.h\
+	mce-dbus.h\
+	mce-gconf.h\
+	mce-hal.h\
+	mce-io.h\
+	mce-lib.h\
+	mce-log.h\
+	mce.h\
+	modules/led.h\
+
+modules/led.pic.o:\
+	modules/led.c\
+	datapipe.h\
+	datapipe.h\
+	mce-conf.h\
+	mce-dbus.h\
+	mce-gconf.h\
+	mce-hal.h\
+	mce-io.h\
+	mce-lib.h\
+	mce-log.h\
+	mce.h\
+	modules/led.h\
+
+modules/powersavemode.o:\
+	modules/powersavemode.c\
+	datapipe.h\
+	datapipe.h\
+	mce-dbus.h\
+	mce-gconf.h\
+	mce-log.h\
+	mce.h\
+	modules/powersavemode.h\
+
+modules/powersavemode.pic.o:\
+	modules/powersavemode.c\
+	datapipe.h\
+	datapipe.h\
+	mce-dbus.h\
+	mce-gconf.h\
+	mce-log.h\
+	mce.h\
+	modules/powersavemode.h\
+
+modules/proximity.o:\
+	modules/proximity.c\
+	datapipe.h\
+	datapipe.h\
+	mce-dbus.h\
+	mce-hal.h\
+	mce-io.h\
+	mce-log.h\
+	mce.h\
+	modules/proximity.h\
+
+modules/proximity.pic.o:\
+	modules/proximity.c\
+	datapipe.h\
+	datapipe.h\
+	mce-dbus.h\
+	mce-hal.h\
+	mce-io.h\
+	mce-log.h\
+	mce.h\
+	modules/proximity.h\
+
+modules/radiostates.o:\
+	modules/radiostates.c\
+	datapipe.h\
+	datapipe.h\
+	mce-conf.h\
+	mce-dbus.h\
+	mce-io.h\
+	mce-log.h\
+	mce.h\
+	modules/radiostates.h\
+
+modules/radiostates.pic.o:\
+	modules/radiostates.c\
+	datapipe.h\
+	datapipe.h\
+	mce-conf.h\
+	mce-dbus.h\
+	mce-io.h\
+	mce-log.h\
+	mce.h\
+	modules/radiostates.h\
+
+powerkey.o:\
+	powerkey.c\
+	datapipe.h\
+	mce-conf.h\
+	mce-dbus.h\
+	mce-dsme.h\
+	mce-log.h\
+	mce.h\
+	powerkey.h\
+
+powerkey.pic.o:\
+	powerkey.c\
+	datapipe.h\
+	mce-conf.h\
+	mce-dbus.h\
+	mce-dsme.h\
+	mce-log.h\
+	mce.h\
+	powerkey.h\
+
+tklock.o:\
+	tklock.c\
+	datapipe.h\
+	mce-conf.h\
+	mce-dbus.h\
+	mce-gconf.h\
+	mce-io.h\
+	mce-log.h\
+	mce.h\
+	systemui/dbus-names.h\
+	systemui/tklock-dbus-names.h\
+	tklock.h\
+
+tklock.pic.o:\
+	tklock.c\
+	datapipe.h\
+	mce-conf.h\
+	mce-dbus.h\
+	mce-gconf.h\
+	mce-io.h\
+	mce-log.h\
+	mce.h\
+	systemui/dbus-names.h\
+	systemui/tklock-dbus-names.h\
+	tklock.h\
+
+tools/mcetool.o:\
+	tools/mcetool.c\
+	modules/display.h\
+	modules/powersavemode.h\
+	tklock.h\
+	tools/mcetool.h\
+
+tools/mcetool.pic.o:\
+	tools/mcetool.c\
+	modules/display.h\
+	modules/powersavemode.h\
+	tklock.h\
+	tools/mcetool.h\
+
