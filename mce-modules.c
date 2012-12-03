@@ -172,7 +172,7 @@ gboolean mce_modules_init(void)
 			GModule *module;
 			gchar *tmp = g_module_build_path(path, modlist[i]);
 
-			mce_log(LL_DEBUG,
+			mce_log(LL_INFO,
 				"Loading module: %s from %s",
 				modlist[i], path);
 
@@ -180,7 +180,9 @@ gboolean mce_modules_init(void)
 				/* XXX: check dependencies, conflicts, et al */
 				modules = g_slist_prepend(modules, module);
 			} else {
-				mce_log(LL_DEBUG,
+				const char *err = g_module_error();
+				mce_log(LL_ERR, "%s", err ?: "unknown error");
+				mce_log(LL_ERR,
 					"Failed to load module: %s; skipping",
 					modlist[i]);
 			}
