@@ -2,14 +2,61 @@
 # Copyright © 2004-2011 Nokia Corporation.
 # Written by David Weinehall
 # Modified by Tuomo Tanskanen
+# Modified by Simo Piiroinen
+#
+# mce is free software; you can redistribute it and/or modify
+# it under the terms of the GNU Lesser General Public License
+# version 2.1 as published by the Free Software Foundation.
+#
+# mce is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with mce.  If not, see <http://www.gnu.org/licenses/>.
+
+# ----------------------------------------------------------------------------
+# TOP LEVEL TARGETS
+# ----------------------------------------------------------------------------
+
+.PHONY: build modules tools doc install clean distclean mostlyclean
+
+build::
+
+modules::
+
+tools::
+
+doc::
+
+install::
+
+mostlyclean::
+	$(RM) *.o *.bak *~ */*.o */*.bak */*~
+
+clean:: mostlyclean
+
+distclean:: clean
+
+# ----------------------------------------------------------------------------
+# CONFIGURATION
+# ----------------------------------------------------------------------------
 
 VERSION := 1.12.5
 
-INSTALL := install --mode=755
+INSTALL_BIN := install --mode=755
 INSTALL_DIR := install -d
-INSTALL_DATA := install --mode=644
+INSTALL_DTA := install --mode=644
 
-DOXYGEN := doxygen
+DOXYGEN     := doxygen
+
+# allow "make clean" outside sdk chroot to work without warnings
+# about missing pkg-config files
+ifeq ($(MAKECMDGOALS),clean)
+PKG_CONFIG   := true
+endif
+PKG_CONFIG   ?= pkg-config
 
 # Whether to enable wakelock compatibility code
 ENABLE_WAKELOCKS ?= n
@@ -20,212 +67,325 @@ ENABLE_SYSINFOD_QUERIES ?= n
 # Whether to use builtin-gconf instead of the real thing
 ENABLE_BUILTIN_GCONF ?= y
 
-VARDIR := $(DESTDIR)/var/lib/mce
-RUNDIR := $(DESTDIR)/var/run/mce
-CONFDIR := /etc/mce
-CONFINSTDIR := $(DESTDIR)$(CONFDIR)
-SBINDIR := $(DESTDIR)/sbin
-MODULEDIR := $(DESTDIR)/usr/lib/mce/modules
-DBUSDIR := $(DESTDIR)/etc/dbus-1/system.d
-LOCALEDIR := $(DESTDIR)/usr/share/locale
-GCONFSCHEMADIR := $(DESTDIR)/etc/gconf/schemas
-BACKUPCONFDIR := $(DESTDIR)/usr/share/backup-framework/applications
-HELPERSCRIPTDIR := $(DESTDIR)/usr/share/mce
-DEVICECLEARSCRIPTDIR := $(DESTDIR)/etc/osso-cud-scripts
+# Install directories
+VARDIR                := $(DESTDIR)/var/lib/mce
+RUNDIR                := $(DESTDIR)/var/run/mce
+CONFDIR               := /etc/mce
+CONFINSTDIR           := $(DESTDIR)$(CONFDIR)
+SBINDIR               := $(DESTDIR)/sbin
+MODULEDIR             := $(DESTDIR)/usr/lib/mce/modules
+DBUSDIR               := $(DESTDIR)/etc/dbus-1/system.d
+LOCALEDIR             := $(DESTDIR)/usr/share/locale
+GCONFSCHEMADIR        := $(DESTDIR)/etc/gconf/schemas
+BACKUPCONFDIR         := $(DESTDIR)/usr/share/backup-framework/applications
+HELPERSCRIPTDIR       := $(DESTDIR)/usr/share/mce
+DEVICECLEARSCRIPTDIR  := $(DESTDIR)/etc/osso-cud-scripts
 FACTORYRESETSCRIPTDIR := $(DESTDIR)/etc/osso-rfs-scripts
 
-TOPDIR := .
-DOCDIR := $(TOPDIR)/doc
-TOOLDIR := $(TOPDIR)/tools
-TESTSDIR := $(TOPDIR)/tests
+# Source directories
+TOPDIR     := .
+DOCDIR     := $(TOPDIR)/doc
+TOOLDIR    := $(TOPDIR)/tools
+TESTSDIR   := $(TOPDIR)/tests
 MODULE_DIR := $(TOPDIR)/modules
 
-TOOLS := \
-	$(TOOLDIR)/mcetool
-TESTS := \
-	$(TESTSDIR)/mcetorture
-TARGETS := \
-	mce
-MODULES := \
-	$(MODULE_DIR)/libradiostates.so \
-	$(MODULE_DIR)/libfilter-brightness-als.so \
-	$(MODULE_DIR)/libfilter-brightness-simple.so \
-	$(MODULE_DIR)/libproximity.so \
-	$(MODULE_DIR)/libkeypad.so \
-	$(MODULE_DIR)/libinactivity.so \
-	$(MODULE_DIR)/libcamera.so \
-	$(MODULE_DIR)/libalarm.so \
-	$(MODULE_DIR)/libbattery.so \
-	$(MODULE_DIR)/libdisplay.so \
-	$(MODULE_DIR)/libled.so \
-	$(MODULE_DIR)/libcallstate.so \
-	$(MODULE_DIR)/libaudiorouting.so \
-	$(MODULE_DIR)/libpowersavemode.so
-CONFFILE := mce.ini
-RADIOSTATESCONFFILE := mce-radio-states.ini
+# Binaries to build
+TARGETS += mce
+
+# Plugins to build
+MODULES += $(MODULE_DIR)/libradiostates.so
+MODULES += $(MODULE_DIR)/libfilter-brightness-als.so
+MODULES += $(MODULE_DIR)/libfilter-brightness-simple.so
+MODULES += $(MODULE_DIR)/libproximity.so
+MODULES += $(MODULE_DIR)/libkeypad.so
+MODULES += $(MODULE_DIR)/libinactivity.so
+MODULES += $(MODULE_DIR)/libcamera.so
+MODULES += $(MODULE_DIR)/libalarm.so
+MODULES += $(MODULE_DIR)/libbattery.so
+MODULES += $(MODULE_DIR)/libdisplay.so
+MODULES += $(MODULE_DIR)/libled.so
+MODULES += $(MODULE_DIR)/libcallstate.so
+MODULES += $(MODULE_DIR)/libaudiorouting.so
+MODULES += $(MODULE_DIR)/libpowersavemode.so
+
+# Tools to build
+TOOLS   += $(TOOLDIR)/mcetool
+
+# Testapps to build
+TESTS   += $(TESTSDIR)/mcetorture
+
+# MCE configuration files
+CONFFILE              := mce.ini
+RADIOSTATESCONFFILE   := mce-radio-states.ini
 COLORPROFILESCONFFILE := mce-color-profiles.ini
-DBUSCONF := mce.conf
-GCONFSCHEMAS := display.schemas energymanagement.schemas
-BACKUPCONF := mcebackup.conf
-BACKUPSCRIPTS := mce-backup mce-restore
+DBUSCONF              := mce.conf
+GCONFSCHEMAS          := display.schemas energymanagement.schemas
+
+# Backup / Restore
+BACKUPCONF            := mcebackup.conf
+BACKUPSCRIPTS         := mce-backup mce-restore
+
+# Restore factory settings / clear user data
 PRIVILEGEDDEVICECLEARSCRIPT := mce-device-clear
-REGULARDEVICECLEARSCRIPT := mce-device-clear.sh
+REGULARDEVICECLEARSCRIPT    := mce-device-clear.sh
 
-WARNINGS := -Wextra -Wall -Wpointer-arith -Wundef -Wcast-align -Wshadow
-WARNINGS += -Wbad-function-cast -Wwrite-strings -Wsign-compare
-WARNINGS += -Waggregate-return -Wmissing-noreturn -Wnested-externs
-WARNINGS += -Wchar-subscripts -Wmissing-prototypes -Wformat-security
-WARNINGS += -Wformat=2 -Wformat-nonliteral -Winit-self
-WARNINGS += -Wswitch-default -Wstrict-prototypes
-WARNINGS += -Wdeclaration-after-statement
-WARNINGS += -Wold-style-definition -Wmissing-declarations
-WARNINGS += -Wmissing-include-dirs -Wstrict-aliasing=2
-WARNINGS += -Wunsafe-loop-optimizations -Winvalid-pch
-WARNINGS += -Waddress -Wvolatile-register-var
-WARNINGS += -Wmissing-format-attribute
-WARNINGS += -Wstack-protector
-#WARNINGS += -Werror
-WARNINGS += -Wno-declaration-after-statement
+# ----------------------------------------------------------------------------
+# DEFAULT FLAGS
+# ----------------------------------------------------------------------------
 
-COMMON_CFLAGS := -D_GNU_SOURCE
-COMMON_CFLAGS += -std=c99
-COMMON_CFLAGS += -I. $(WARNINGS)
-COMMON_CFLAGS += -DG_DISABLE_DEPRECATED
-COMMON_CFLAGS += -DOSSOLOG_COMPILE
-COMMON_CFLAGS += -DMCE_VAR_DIR=$(VARDIR) -DMCE_RUN_DIR=$(RUNDIR)
-COMMON_CFLAGS += -DPRG_VERSION=$(VERSION)
+# C Preprocessor
+CPPFLAGS += -D_GNU_SOURCE
+CPPFLAGS += -I.
+CPPFLAGS += -DG_DISABLE_DEPRECATED
+CPPFLAGS += -DOSSOLOG_COMPILE
+CPPFLAGS += -DMCE_VAR_DIR=$(VARDIR)
+CPPFLAGS += -DMCE_RUN_DIR=$(RUNDIR)
+CPPFLAGS += -DPRG_VERSION=$(VERSION)
 
 ifeq ($(strip $(ENABLE_WAKELOCKS)),y)
-COMMON_CFLAGS += -DENABLE_WAKELOCKS
+CPPFLAGS += -DENABLE_WAKELOCKS
 endif
 
 ifeq ($(strip $(ENABLE_SYSINFOD_QUERIES)),y)
-COMMON_CFLAGS += -DENABLE_SYSINFOD_QUERIES
+CPPFLAGS += -DENABLE_SYSINFOD_QUERIES
 endif
 
 ifeq ($(strip $(ENABLE_BUILTIN_GCONF)),y)
-COMMON_CFLAGS += -DENABLE_BUILTIN_GCONF
+CPPFLAGS += -DENABLE_BUILTIN_GCONF
 endif
 
-# allow "make clean" outside sdk chroot to work without warnings
-# about missing pkg-config files
-ifeq ($(MAKECMDGOALS),clean)
-PKG_CONFIG = true
-endif
-PKG_CONFIG ?= pkg-config
+# C Compiler
+CFLAGS += -std=c99
 
-MCE_CFLAGS := $(COMMON_CFLAGS)
+# Do we really need all of these?
+CFLAGS += -Wall
+CFLAGS += -Wextra
+CFLAGS += -Wpointer-arith
+CFLAGS += -Wundef
+CFLAGS += -Wcast-align
+CFLAGS += -Wshadow
+CFLAGS += -Wbad-function-cast
+CFLAGS += -Wwrite-strings
+CFLAGS += -Wsign-compare
+CFLAGS += -Waggregate-return
+CFLAGS += -Wmissing-noreturn
+CFLAGS += -Wnested-externs
+#CFLAGS += -Wchar-subscripts (-Wall does this)
+CFLAGS += -Wmissing-prototypes
+CFLAGS += -Wformat-security
+CFLAGS += -Wformat=2
+CFLAGS += -Wformat-nonliteral
+CFLAGS += -Winit-self
+CFLAGS += -Wswitch-default
+CFLAGS += -Wstrict-prototypes
+CFLAGS += -Wdeclaration-after-statement
+CFLAGS += -Wold-style-definition
+CFLAGS += -Wmissing-declarations
+CFLAGS += -Wmissing-include-dirs
+CFLAGS += -Wstrict-aliasing=2
+CFLAGS += -Wunsafe-loop-optimizations
+CFLAGS += -Winvalid-pch
+#CFLAGS += -Waddress  (-Wall does this)
+CFLAGS += -Wvolatile-register-var
+CFLAGS += -Wmissing-format-attribute
+CFLAGS += -Wstack-protector
+#CFLAGS += -Werror (OBS build might have different compiler)
+CFLAGS += -Wno-declaration-after-statement
+
+# Linker
+LDLIBS   += -Wl,--as-needed
+
+# ----------------------------------------------------------------------------
+# MCE
+# ----------------------------------------------------------------------------
+
+MCE_PKG_NAMES += gobject-2.0
+MCE_PKG_NAMES += glib-2.0
+MCE_PKG_NAMES += gio-2.0
+MCE_PKG_NAMES += gmodule-2.0
+MCE_PKG_NAMES += dbus-1
+MCE_PKG_NAMES += dbus-glib-1
+MCE_PKG_NAMES += gconf-2.0
+MCE_PKG_NAMES += dsme
+
+MCE_PKG_CFLAGS := $(shell $(PKG_CONFIG) --cflags $(MCE_PKG_NAMES))
+MCE_PKG_LDLIBS := $(shell $(PKG_CONFIG) --libs   $(MCE_PKG_NAMES))
+
 MCE_CFLAGS += -DMCE_CONF_FILE=$(CONFDIR)/$(CONFFILE)
-MCE_CFLAGS += $(shell $(PKG_CONFIG) --cflags gobject-2.0 glib-2.0 gio-2.0 gmodule-2.0 dbus-1 dbus-glib-1 gconf-2.0)
+MCE_CFLAGS += $(MCE_PKG_CFLAGS)
 
-MCE_LDFLAGS := $(shell $(PKG_CONFIG) --libs  gobject-2.0 glib-2.0 gio-2.0 gmodule-2.0 dbus-1 dbus-glib-1 gconf-2.0 dsme)
+MCE_LDLIBS += $(MCE_PKG_LDLIBS)
 
-LIBS := tklock.c modetransition.c powerkey.c mce-dbus.c mce-dsme.c mce-gconf.c event-input.c event-switches.c mce-hal.c mce-log.c mce-conf.c datapipe.c mce-modules.c mce-io.c mce-lib.c
+# These must be made callable from the plugins
+MCE_CORE += tklock.c
+MCE_CORE += modetransition.c
+MCE_CORE += powerkey.c
+MCE_CORE += mce-dbus.c
+MCE_CORE += mce-dsme.c
+MCE_CORE += mce-gconf.c
+MCE_CORE += event-input.c
+MCE_CORE += event-switches.c
+MCE_CORE += mce-hal.c
+MCE_CORE += mce-log.c
+MCE_CORE += mce-conf.c
+MCE_CORE += datapipe.c
+MCE_CORE += mce-modules.c
+MCE_CORE += mce-io.c
+MCE_CORE += mce-lib.c
+MCE_CORE += median_filter.c
 
 # HACK: do not link against libgconf-2
 ifeq ($(strip $(ENABLE_BUILTIN_GCONF)),y)
-LIBS        += builtin-gconf.c
-MCE_LDFLAGS := $(filter-out -lgconf-2, $(MCE_LDFLAGS))
+MCE_CORE   += builtin-gconf.c
+MCE_LDLIBS := $(filter-out -lgconf-2, $(MCE_LDLIBS))
 endif
-
-HEADERS := tklock.h modetransition.h powerkey.h mce.h mce-dbus.h mce-dsme.h mce-gconf.h event-input.h event-switches.h mce-hal.h mce-log.h mce-conf.h datapipe.h mce-modules.h mce-io.h mce-lib.h
 
 ifeq ($(strip $(ENABLE_WAKELOCKS)),y)
-LIBS    += libwakelock.c
-HEADERS += libwakelock.h
+MCE_CORE   += libwakelock.c
 endif
 
-MODULE_CFLAGS := $(COMMON_CFLAGS)
-MODULE_CFLAGS += -fPIC -shared
-MODULE_CFLAGS += -I.
+mce : CFLAGS += $(MCE_CFLAGS)
+mce : LDLIBS += $(MCE_LDLIBS)
+mce : mce.o $(patsubst %.c,%.o,$(MCE_CORE))
+
+# ----------------------------------------------------------------------------
+# MODULES
+# ----------------------------------------------------------------------------
+
+MODULE_PKG_NAMES += gobject-2.0
+MODULE_PKG_NAMES += glib-2.0
+MODULE_PKG_NAMES += gmodule-2.0
+MODULE_PKG_NAMES += dbus-1
+MODULE_PKG_NAMES += dbus-glib-1
+MODULE_PKG_NAMES += gconf-2.0
+
+MODULE_PKG_CFLAGS := $(shell $(PKG_CONFIG) --cflags $(MODULE_PKG_NAMES))
+MODULE_PKG_LDLIBS := $(shell $(PKG_CONFIG) --libs   $(MODULE_PKG_NAMES))
+
 MODULE_CFLAGS += -DMCE_RADIO_STATES_CONF_FILE=$(CONFDIR)/$(RADIOSTATESCONFFILE)
 MODULE_CFLAGS += -DMCE_COLOR_PROFILES_CONF_FILE=$(CONFDIR)/$(COLORPROFILESCONFFILE)
-MODULE_CFLAGS += $(shell $(PKG_CONFIG) --cflags gobject-2.0 glib-2.0 gmodule-2.0 dbus-1 dbus-glib-1 gconf-2.0)
 
-MODULE_LDFLAGS := $(shell $(PKG_CONFIG)  --libs gobject-2.0 glib-2.0 gmodule-2.0 dbus-1 dbus-glib-1 gconf-2.0)
-
-MODULE_LIBS := datapipe.c mce-hal.c mce-log.c mce-dbus.c mce-conf.c mce-gconf.c median_filter.c mce-lib.c
+MODULE_CFLAGS += $(MODULE_PKG_CFLAGS)
+MODULE_LDLIBS += $(MODULE_PKG_LDLIBS)
 
 # HACK: do not link against libgconf-2
 ifeq ($(strip $(ENABLE_BUILTIN_GCONF)),y)
-MODULE_LIBS    += builtin-gconf.c
-MODULE_LDFLAGS := $(filter-out -lgconf-2, $(MODULE_LDFLAGS))
+MODULE_LDLIBS := $(filter-out -lgconf-2, $(MODULE_LDLIBS))
 endif
 
-MODULE_HEADERS := datapipe.h mce-hal.h mce-log.h mce-dbus.h mce-conf.h mce-gconf.h mce.h median_filter.h mce-lib.h
+.PRECIOUS: %.pic.o
 
-TOOLS_CFLAGS := $(COMMON_CFLAGS)
-TOOLS_CFLAGS += -I.
-TOOLS_CFLAGS += $(shell $(PKG_CONFIG) --cflags gobject-2.0 glib-2.0 dbus-1 gconf-2.0)
+%.pic.o : %.c
+	$(CC) -c -o $@ $< -fPIC $(CPPFLAGS) $(CFLAGS)
 
-TOOLS_LDFLAGS := $(shell $(PKG_CONFIG)  --libs gobject-2.0 glib-2.0 dbus-1 gconf-2.0)
+$(MODULE_DIR)/lib%.so : CFLAGS += $(MODULE_CFLAGS)
+$(MODULE_DIR)/lib%.so : LDLIBS += $(MODULE_LDLIBS)
+$(MODULE_DIR)/lib%.so : $(MODULE_DIR)/%.pic.o
+	$(CC) -shared -o $@ $^ $(LDFLAGS) $(LDLIBS)
 
-TOOLS_HEADERS := tklock.h mce-dsme.h tools/mcetool.h
+# ----------------------------------------------------------------------------
+# TOOLS
+# ----------------------------------------------------------------------------
+
+TOOLS_PKG_NAMES += gobject-2.0
+TOOLS_PKG_NAMES += glib-2.0
+TOOLS_PKG_NAMES += dbus-1
+TOOLS_PKG_NAMES += gconf-2.0
+
+TOOLS_PKG_CFLAGS := $(shell $(PKG_CONFIG) --cflags $(TOOLS_PKG_NAMES))
+TOOLS_PKG_LDLIBS := $(shell $(PKG_CONFIG) --libs   $(TOOLS_PKG_NAMES))
+
+TOOLS_CFLAGS += $(TOOLS_PKG_CFLAGS)
+TOOLS_LDLIBS += $(TOOLS_PKG_LDLIBS)
 
 # HACK: do not link against libgconf-2
 ifeq ($(strip $(ENABLE_BUILTIN_GCONF)),y)
-TOOLS_LDFLAGS := $(filter-out -lgconf-2, $(TOOLS_LDFLAGS))
+TOOLS_LDLIBS := $(filter-out -lgconf-2, $(TOOLS_LDLIBS))
 endif
 
-.PHONY: all
-all: $(TARGETS) $(MODULES) $(TOOLS)
+$(TOOLDIR)/mcetool : CFLAGS += $(TOOLS_CFLAGS)
+$(TOOLDIR)/mcetool : LDLIBS += $(TOOLS_LDLIBS)
+$(TOOLDIR)/mcetool : $(TOOLDIR)/mcetool.o
 
-.PHONY: targets
-targets: $(TARGETS)
+# ----------------------------------------------------------------------------
+# TESTS
+# ----------------------------------------------------------------------------
 
-$(TARGETS): %: %.c $(HEADERS) $(LIBS)
-	@$(CC) $(CFLAGS) $(MCE_CFLAGS) -o $@ $< $(LIBS) $(LDFLAGS) $(MCE_LDFLAGS)
+$(TESTSDIR)/mcetorture : $(TESTSDIR)/mcetorture.o
 
-.PHONY: modules
-modules: $(MODULES)
+# ----------------------------------------------------------------------------
+# ACTIONS FOR TOP LEVEL TARGETS
+# ----------------------------------------------------------------------------
 
-$(MODULES): $(MODULE_DIR)/lib%.so: $(MODULE_DIR)/%.c $(MODULE_HEADERS) $(MODULE_LIBS)
-	@$(CC) $(CFLAGS) $(MODULE_CFLAGS) -o $@ $< $(MODULE_LIBS) $(LDFLAGS) $(MODULE_LDFLAGS)
+build:: $(TARGETS) $(MODULES) $(TOOLS)
 
-.PHONY: tools
-tools: $(TOOLS)
+modules:: $(MODULES)
 
-$(TOOLS): %: %.c $(TOOLS_HEADERS)
-	@$(CC) $(CFLAGS) $(TOOLS_CFLAGS) -o $@ $< $(LDFLAGS) mce-log.c $(TOOLS_LDFLAGS)
+tools:: $(TOOLS)
+
+install:: build
+	$(INSTALL_DIR) $(SBINDIR) $(DBUSDIR) $(VARDIR) $(MODULEDIR)
+	$(INSTALL_DIR) $(RUNDIR) $(CONFINSTDIR) $(GCONFSCHEMADIR)
+	$(INSTALL_DIR) $(BACKUPCONFDIR) $(HELPERSCRIPTDIR)
+	$(INSTALL_DIR) $(DEVICECLEARSCRIPTDIR) $(FACTORYRESETSCRIPTDIR)
+	$(INSTALL_BIN) $(TARGETS) $(SBINDIR)
+	$(INSTALL_BIN) $(TOOLS) $(TESTS) $(SBINDIR)
+	$(INSTALL_BIN) $(MODULES) $(MODULEDIR)
+	$(INSTALL_BIN) $(BACKUPSCRIPTS) $(HELPERSCRIPTDIR)
+	$(INSTALL_BIN) $(PRIVILEGEDDEVICECLEARSCRIPT) $(HELPERSCRIPTDIR)
+	$(INSTALL_BIN) $(REGULARDEVICECLEARSCRIPT) $(DEVICECLEARSCRIPTDIR)
+	$(INSTALL_BIN) $(REGULARDEVICECLEARSCRIPT) $(FACTORYRESETSCRIPTDIR)
+	$(INSTALL_DTA) $(CONFFILE) $(CONFINSTDIR)
+	$(INSTALL_DTA) $(RADIOSTATESCONFFILE) $(CONFINSTDIR)
+	$(INSTALL_DTA) $(GCONFSCHEMAS) $(GCONFSCHEMADIR)
+	$(INSTALL_DTA) $(DBUSCONF) $(DBUSDIR)
+	$(INSTALL_DTA) $(BACKUPCONF) $(BACKUPCONFDIR)
+
+clean::
+	$(RM) $(TARGETS) $(TOOLS) $(MODULES)
+
+# ----------------------------------------------------------------------------
+# DOCUMENTATION
+# ----------------------------------------------------------------------------
+
+doc::
+	mkdir -p doc
+	$(DOXYGEN) > /dev/null # 2> $(DOCDIR)/warnings
+
+clean::
+	$(RM) -r doc # in case DOCDIR points somewhere funny ...
+
+# ----------------------------------------------------------------------------
+# CTAGS
+# ----------------------------------------------------------------------------
 
 .PHONY: tags
-tags:
-	@find . $(MODULE_DIR) -maxdepth 1 -type f -name '*.[ch]' | xargs ctags -a --extra=+f
+tags::
+	find . $(MODULE_DIR) -maxdepth 1 -type f -name '*.[ch]' | xargs ctags -a --extra=+f
 
-.PHONY: doc
-doc:
-	@$(DOXYGEN) 2> $(DOCDIR)/warnings > /dev/null
+distclean::
+	$(RM) tags
 
-.PHONY: install
-install: all
-	$(INSTALL_DIR) $(SBINDIR) $(DBUSDIR) $(VARDIR) $(MODULEDIR)	&&\
-	$(INSTALL_DIR) $(RUNDIR) $(CONFINSTDIR) $(GCONFSCHEMADIR)	&&\
-	$(INSTALL_DIR) $(BACKUPCONFDIR) $(HELPERSCRIPTDIR)		&&\
-	$(INSTALL_DIR) $(DEVICECLEARSCRIPTDIR) $(FACTORYRESETSCRIPTDIR)	&&\
-	$(INSTALL) $(TARGETS) $(SBINDIR)				&&\
-	$(INSTALL) $(TOOLS) $(TESTS) $(SBINDIR)				&&\
-	$(INSTALL) $(MODULES) $(MODULEDIR)				&&\
-	$(INSTALL) $(BACKUPSCRIPTS) $(HELPERSCRIPTDIR)			&&\
-	$(INSTALL) $(PRIVILEGEDDEVICECLEARSCRIPT) $(HELPERSCRIPTDIR)	&&\
-	$(INSTALL) $(REGULARDEVICECLEARSCRIPT) $(DEVICECLEARSCRIPTDIR)	&&\
-	$(INSTALL) $(REGULARDEVICECLEARSCRIPT) $(FACTORYRESETSCRIPTDIR)	&&\
-	$(INSTALL_DATA) $(CONFFILE) $(CONFINSTDIR)			&&\
-	$(INSTALL_DATA) $(RADIOSTATESCONFFILE) $(CONFINSTDIR)		&&\
-	$(INSTALL_DATA) $(GCONFSCHEMAS) $(GCONFSCHEMADIR)		&&\
-	$(INSTALL_DATA) $(DBUSCONF) $(DBUSDIR)				&&\
-	$(INSTALL_DATA) $(BACKUPCONF) $(BACKUPCONFDIR)
+# ----------------------------------------------------------------------------
+# FIXME
+# ----------------------------------------------------------------------------
 
 .PHONY: fixme
-fixme:
-	@find . -type f -name "*.[ch]" | xargs grep -E "FIXME|XXX|TODO"
+fixme::
+	find . -type f -name "*.[ch]" | xargs grep -E "(FIXME|XXX|TODO)"
 
-.PHONY: clean
-clean:
-	@rm -f $(TARGETS) $(TOOLS) $(MODULES)
-	@if [ x"$(DOCDIR)" != x"" ] && [ -d "$(DOCDIR)" ]; then		\
-		rm -rf $(DOCDIR)/*;					\
-	fi
+# ----------------------------------------------------------------------------
+# AUTOMATIC HEADER DEPENDENCIES
+# ----------------------------------------------------------------------------
 
-.PHONY: distclean
-distclean: clean
-	@rm -f tags
+.PHONY: depend
+depend::
+	@echo "Updating .depend"
+	$(CC) -MM $(CPPFLAGS) $(MCE_CFLAGS) *.c */*.c |\
+	./depend_filter.py > .depend
+
+ifneq ($(MAKECMDGOALS),depend) # not while: make depend
+ifneq (,$(wildcard .depend))   # not if .depend does not exist
+include .depend
+endif
+endif
