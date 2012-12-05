@@ -1,0 +1,12 @@
+[Unit]
+Description=Mode Control Entity (MCE)
+Requires=dsme.service
+Requires=dbus.service
+After=dsme.service
+
+[Service]
+ExecStart=/sbin/mce
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
