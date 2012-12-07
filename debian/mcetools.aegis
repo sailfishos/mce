@@ -4,6 +4,6 @@
 		<credential name="mce::DeviceModeControl" />
 		<credential name="mce::LEDControl" />
 		<credential name="mce::TKLockControl" />
-		<for path="/sbin/mcetool" />
+		<for path="/usr/sbin/mcetool" />
 	</request>
 </aegis>

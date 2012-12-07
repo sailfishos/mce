@@ -5,7 +5,7 @@ Requires=dbus.service
 After=dsme.service
 
 [Service]
-ExecStart=/sbin/mce
+ExecStart=/usr/sbin/mce
 Restart=always
 
 [Install]

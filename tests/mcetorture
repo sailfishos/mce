@@ -1018,7 +1018,7 @@ while ! [ $# -eq 0 ]; do
 	shift
 done
 
-if ! [ -x "/sbin/mcetool" ]; then
+if ! [ -x "/usr/sbin/mcetool" ]; then
 	printf "mcetool is not installed; exiting\n"
 	exit 1
 fi
