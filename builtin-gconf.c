@@ -24,6 +24,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "mce-log.h"
+
 /* ========================================================================= *
  *
  * CONFIGURATION
@@ -31,7 +33,7 @@
  * ========================================================================= */
 
 /** Provide additional values for type testing purposes */
-#define GCONF_ADD_DEBUG_VALUES 01
+#define GCONF_ADD_DEBUG_VALUES 0
 
 /** Enable error logging to stderr via gconf_log_error() */
 #define GCONF_ENABLE_ERROR_LOGGING 01
@@ -241,58 +243,18 @@ gconf_error_quark (void)
 
 /** Error logging function */
 #if GCONF_ENABLE_ERROR_LOGGING
-static
-void
-gconf_log_error(const gchar *fmt, ...)
-__attribute__((format(printf, 1, 2)));
-
-static
-void
-gconf_log_error(const gchar *fmt, ...)
-{
-  char *msg = 0;
-
-  va_list va;
-  va_start(va, fmt);
-  if( vasprintf(&msg, fmt, va) < 0 )
-  {
-    msg = 0;
-  }
-  va_end(va);
-
-  fprintf(stderr, "GCONF-ERROR: %s\n", gconf_strip_string(msg) ?: "unknown");
-  free(msg);
-}
+# define gconf_log_error(FMT, ARG...) mce_log_file(LL_ERR, __FILE__, __FUNCTION__, FMT , ##ARG)
 #else
-# define gconf_log_error(FMT, ARG...)     do{}while(0)
+# define gconf_log_error(FMT, ARG...) do{}while(0)
 #endif
 
 /** Debug logging function */
 #if GCONF_ENABLE_DEBUG_LOGGING
-static
-void
-gconf_log_debug(const gchar *fmt, ...)
-__attribute__((format(printf, 1, 2)));
-
-static
-void
-gconf_log_debug(const gchar *fmt, ...)
-{
-  char *msg = 0;
-
-  va_list va;
-  va_start(va, fmt);
-  if( vasprintf(&msg, fmt, va) < 0 )
-  {
-    msg = 0;
-  }
-  va_end(va);
-
-  fprintf(stderr, "gconf-debug: %s\n", gconf_strip_string(msg) ?: "unknown");
-  free(msg);
-}
+# define gconf_log_debug_p()          mce_log_p(LL_DEBUG)
+# define gconf_log_debug(FMT, ARG...) mce_log_file(LL_DEBUG, __FILE__, __FUNCTION__, FMT , ##ARG)
 #else
-# define gconf_log_debug(FMT, ARG...)     do{}while(0)
+# define gconf_log_debug_p()          0
+# define gconf_log_debug(FMT, ARG...) do{}while(0)
 #endif
 
 /** Set GError helper */
@@ -430,7 +392,7 @@ static GConfValueType gconf_parse_type(int chr)
   case 'a': res = GCONF_VALUE_LIST;   break;
 
   default:
-    gconf_log_error("%s(%c): unknown type\n",__FUNCTION__,chr);
+    gconf_log_error("unknown type '%c'", chr);
     break;
   }
   return res;
@@ -667,14 +629,14 @@ gconf_value_list_validata(GSList *src, GConfValueType type)
 
     if( !val )
     {
-      gconf_log_error("%s(): list has NULL value\n",__FUNCTION__);
+      gconf_log_error("list has NULL value");
       return FALSE;
     }
 
     if( val->type != type )
     {
-      gconf_log_error("%s(): list has %s value, expected %s\n",__FUNCTION__,
-                     gconf_type_repr(val->type), gconf_type_repr(type));
+      gconf_log_error("list has %s value, expected %s\n",
+		      gconf_type_repr(val->type), gconf_type_repr(type));
       return FALSE;
     }
   }
@@ -851,8 +813,6 @@ gconf_value_free(GConfValue *self)
 {
   if( self != 0 && --self->refcount == 0 )
   {
-    gconf_log_debug("%s(%p)", __FUNCTION__, self);
-
     /* get rid of dynamically allocated resources */
     gconf_value_unset(self);
 
@@ -882,7 +842,7 @@ gconf_value_set_bool(GConfValue *self, gboolean val)
   }
   else
   {
-    gconf_log_error("%s(): not a bool value\n", __FUNCTION__);
+    gconf_log_error("not a bool value");
   }
 }
 
@@ -903,7 +863,7 @@ gconf_value_set_int(GConfValue *self, gint val)
   }
   else
   {
-    gconf_log_error("%s(): not an int value\n", __FUNCTION__);
+    gconf_log_error("not an int value");
   }
 }
 
@@ -924,7 +884,7 @@ gconf_value_set_float(GConfValue *self, double val)
   }
   else
   {
-    gconf_log_error("%s(): not a float value\n", __FUNCTION__);
+    gconf_log_error("not a float value");
   }
 }
 
@@ -945,7 +905,7 @@ gconf_value_set_string(GConfValue *self, const char *val)
   }
   else
   {
-    gconf_log_error("%s(): not a string value\n", __FUNCTION__);
+    gconf_log_error("not a string value");
   }
 }
 
@@ -969,13 +929,13 @@ gconf_value_set_list_type(GConfValue *self, GConfValueType list_type)
     break;
 
   default:
-    gconf_log_error("%s(): list type can't be %s\n", __FUNCTION__, gconf_type_repr(list_type));
+    gconf_log_error("list type can't be %s", gconf_type_repr(list_type));
     goto cleanup;
   }
 
   if( self->type != GCONF_VALUE_LIST )
   {
-    gconf_log_error("%s(): not a list value\n", __FUNCTION__);
+    gconf_log_error("not a list value");
     goto cleanup;
   }
 
@@ -986,7 +946,7 @@ gconf_value_set_list_type(GConfValue *self, GConfValueType list_type)
 
   if( self->list_type != list_type )
   {
-    gconf_log_error("%s(): list type already set\n", __FUNCTION__);
+    gconf_log_error("list type already set");
     goto cleanup;
   }
 
@@ -1239,6 +1199,7 @@ static
 void
 gconf_client_debug(GConfClient *self)
 {
+  fprintf(stderr, "Values known to builtin-gconf:\n");
   for( GSList *e_iter = self->entries; e_iter; e_iter = e_iter->next )
   {
     GConfEntry *entry = e_iter->data;
@@ -1266,7 +1227,10 @@ gconf_client_get_default(void)
     self->entries = g_slist_reverse(self->entries);
 
 #if GCONF_ENABLE_DEBUG_LOGGING
-    gconf_client_debug(self);
+    if( gconf_log_debug_p() )
+    {
+      gconf_client_debug(self);
+    }
 #endif
 
     default_client = self;
@@ -1339,9 +1303,12 @@ gconf_client_get(GConfClient *self, const gchar *key, GError **err)
   if( res )
   {
 #if GCONF_ENABLE_DEBUG_LOGGING
-    char *repr = gconf_value_repr(key, res);
-    gconf_log_debug("GET %s", repr);
-    free(repr);
+    if( gconf_log_debug_p() )
+    {
+      char *repr = gconf_value_repr(key, res);
+      gconf_log_debug("GET %s", repr);
+      free(repr);
+    }
 #endif
 
     /* Since we know that MCE will not modify the GConfValue
@@ -1368,9 +1335,12 @@ gconf_client_set_bool(GConfClient *client,
     res = TRUE;
 
 #if GCONF_ENABLE_DEBUG_LOGGING
-    char *repr = gconf_value_repr(key, value);
-    gconf_log_debug("SET %s", repr);
-    free(repr);
+    if( gconf_log_debug_p() )
+    {
+      char *repr = gconf_value_repr(key, value);
+      gconf_log_debug("SET %s", repr);
+      free(repr);
+    }
 #endif
 
     gconf_client_notify_change(client, key);
@@ -1395,9 +1365,12 @@ gconf_client_set_int(GConfClient *client,
     res = TRUE;
 
 #if GCONF_ENABLE_DEBUG_LOGGING
-    char *repr = gconf_value_repr(key, value);
-    gconf_log_debug("SET %s", repr);
-    free(repr);
+    if( gconf_log_debug_p() )
+    {
+      char *repr = gconf_value_repr(key, value);
+      gconf_log_debug("SET %s", repr);
+      free(repr);
+    }
 #endif
 
     gconf_client_notify_change(client, key);
@@ -1421,9 +1394,12 @@ gconf_client_set_float(GConfClient *client,
     res = TRUE;
 
 #if GCONF_ENABLE_DEBUG_LOGGING
-    char *repr = gconf_value_repr(key, value);
-    gconf_log_debug("SET %s", repr);
-    free(repr);
+    if( gconf_log_debug_p() )
+    {
+      char *repr = gconf_value_repr(key, value);
+      gconf_log_debug("SET %s", repr);
+      free(repr);
+    }
 #endif
 
     gconf_client_notify_change(client, key);
@@ -1447,9 +1423,12 @@ gconf_client_set_string(GConfClient *client,
     res = TRUE;
 
 #if GCONF_ENABLE_DEBUG_LOGGING
-    char *repr = gconf_value_repr(key, value);
-    gconf_log_debug("SET %s", repr);
-    free(repr);
+    if( gconf_log_debug_p() )
+    {
+      char *repr = gconf_value_repr(key, value);
+      gconf_log_debug("SET %s", repr);
+      free(repr);
+    }
 #endif
 
     gconf_client_notify_change(client, key);
@@ -1475,9 +1454,12 @@ gconf_client_set_list(GConfClient *client,
     res = TRUE;
 
 #if GCONF_ENABLE_DEBUG_LOGGING
-    char *repr = gconf_value_repr(key, value);
-    gconf_log_debug("SET %s", repr);
-    free(repr);
+    if( gconf_log_debug_p() )
+    {
+      char *repr = gconf_value_repr(key, value);
+      gconf_log_debug("SET %s", repr);
+      free(repr);
+    }
 #endif
 
     gconf_client_notify_change(client, key);
@@ -1490,7 +1472,7 @@ void
 gconf_client_suggest_sync(GConfClient *client, GError **err)
 {
   gconf_client_is_valid(client, err);
-  gconf_log_error("%s(): UNIMPLEMENTED\n", __FUNCTION__);
+  gconf_log_error("UNIMPLEMENTED");
 }
 
 /* ========================================================================= *
@@ -1508,7 +1490,7 @@ gconf_client_notify_free(GConfClientNotify *self)
 
   if( self )
   {
-    gconf_log_debug("%s(%u, %s)\n", __FUNCTION__, self->id, self->namespace_section);
+    gconf_log_debug("id=%u, namespace=%s", self->id, self->namespace_section);
 
     if( self->destroy_notify )
     {
@@ -1538,7 +1520,7 @@ gconf_client_notify_new(const gchar           *namespace_section,
   self->user_data = user_data;
   self->destroy_notify = destroy_notify;
 
-  gconf_log_debug("%s(%u, %s)\n", __FUNCTION__, self->id, self->namespace_section);
+  gconf_log_debug("id=%u, namespace=%s", self->id, self->namespace_section);
 
   return self;
 }
@@ -1565,7 +1547,7 @@ gconf_client_notify_change(GConfClient           *client,
 
       if( !strcmp(notify->namespace_section, namespace_section) )
       {
-        gconf_log_debug("%s(%u, %s)\n", __FUNCTION__, notify->id, notify->namespace_section);
+	gconf_log_debug("id=%u, namespace=%s", notify->id, notify->namespace_section);
         notify->func(client, notify->id, entry, notify->user_data);
       }
     }

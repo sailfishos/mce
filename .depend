@@ -1,8 +1,10 @@
 builtin-gconf.o:\
 	builtin-gconf.c\
+	mce-log.h\
 
 builtin-gconf.pic.o:\
 	builtin-gconf.c\
+	mce-log.h\
 
 datapipe.o:\
 	datapipe.c\
