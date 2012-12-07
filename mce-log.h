@@ -46,6 +46,7 @@ void mce_log_file(const loglevel_t loglevel, const char *const file,
 void mce_log_set_verbosity(const int verbosity);
 void mce_log_open(const char *const name, const int facility, const int type);
 void mce_log_close(void);
+int mce_log_p(const loglevel_t loglevel);
 #else
 /** Dummy version used when logging is disabled at compile time */
 #define mce_log(_loglevel, _fmt, ...)			do {} while (0)
@@ -55,6 +56,8 @@ void mce_log_close(void);
 #define mce_log_open(_name, _facility, _type)		do {} while (0)
 /** Dummy version used when logging is disabled at compile time */
 #define mce_log_close()					do {} while (0)
+/** Dummy version used when logging is disabled at compile time */
+#define mce_log_p(_loglevel)				0
 #endif /* OSSOLOG_COMPILE */
 
 #endif /* _MCE_LOG_H_ */

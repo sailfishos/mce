@@ -139,4 +139,20 @@ void mce_log_close(void)
 	if (logtype == MCE_LOG_SYSLOG)
 		closelog();
 }
+
+/**
+ * Log level testing predicate
+ *
+ * For testing whether given level of logging is allowed
+ * before spending cpu time for gathering parameters etc
+ *
+ * @param loglevel level of logging we might do
+ *
+ * @return 1 if logging at givel level is enabled, 0 if not
+ */
+int mce_log_p(const loglevel_t loglevel)
+{
+	return logverbosity >= loglevel;
+}
+
 #endif /* OSSOLOG_COMPILE */
