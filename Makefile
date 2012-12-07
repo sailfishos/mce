@@ -70,7 +70,7 @@ endif
 PKG_CONFIG   ?= pkg-config
 
 # Whether to enable wakelock compatibility code
-ENABLE_WAKELOCKS ?= n
+ENABLE_WAKELOCKS ?= y
 
 # Whether to enable sysinfod queries
 ENABLE_SYSINFOD_QUERIES ?= n
