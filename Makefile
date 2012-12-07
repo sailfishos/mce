@@ -51,10 +51,21 @@ INSTALL_DTA := install --mode=644
 
 DOXYGEN     := doxygen
 
-# allow "make clean" outside sdk chroot to work without warnings
-# about missing pkg-config files
-ifeq ($(MAKECMDGOALS),clean)
+# Allow "make clean" (and similar non-compile targets) to work outside
+# the sdk chroot without warnings about missing pkg-config files
+PKG_CONFIG_NOT_REQUIRED += doc
+PKG_CONFIG_NOT_REQUIRED += mostlyclean
+PKG_CONFIG_NOT_REQUIRED += clean
+PKG_CONFIG_NOT_REQUIRED += distclean
+PKG_CONFIG_NOT_REQUIRED += tags
+PKG_CONFIG_NOT_REQUIRED += fixme
+PKG_CONFIG_NOT_REQUIRED += tarball
+PKG_CONFIG_NOT_REQUIRED += tarball_from_git
+
+ifneq ($(MAKECMDGOALS),)
+ifeq ($(filter $(PKG_CONFIG_NOT_REQUIRED),$(MAKECMDGOALS)),$(MAKECMDGOALS))
 PKG_CONFIG   := true
+endif
 endif
 PKG_CONFIG   ?= pkg-config
 
@@ -67,46 +78,75 @@ ENABLE_SYSINFOD_QUERIES ?= n
 # Whether to use builtin-gconf instead of the real thing
 ENABLE_BUILTIN_GCONF ?= y
 
-# Install directories
-VARDIR                := $(DESTDIR)/var/lib/mce
-RUNDIR                := $(DESTDIR)/var/run/mce
-CONFDIR               := /etc/mce
-CONFINSTDIR           := $(DESTDIR)$(CONFDIR)
-SBINDIR               := $(DESTDIR)/sbin
-MODULEDIR             := $(DESTDIR)/usr/lib/mce/modules
-DBUSDIR               := $(DESTDIR)/etc/dbus-1/system.d
-LOCALEDIR             := $(DESTDIR)/usr/share/locale
-GCONFSCHEMADIR        := $(DESTDIR)/etc/gconf/schemas
-BACKUPCONFDIR         := $(DESTDIR)/usr/share/backup-framework/applications
-HELPERSCRIPTDIR       := $(DESTDIR)/usr/share/mce
-DEVICECLEARSCRIPTDIR  := $(DESTDIR)/etc/osso-cud-scripts
-FACTORYRESETSCRIPTDIR := $(DESTDIR)/etc/osso-rfs-scripts
+# Whether to install systemd control files
+ENABLE_SYSTEMD_SUPPORT ?= y
+
+# Whether to install man pages
+ENABLE_MANPAGE_INSTALL ?= y
+
+# Whether to install restore-factory-settings and
+# clear-user-data control files
+ENABLE_RFS_CUD_SUPPORT ?= n
+
+# Whether to enable backup/restore support
+ENABLE_BACKUP_SUPPORT ?= n
+
+# Install destination
+DESTDIR               ?= /tmp/test-mce-install
+
+# Standard directories
+_PREFIX         ?= /usr#                         # /usr
+_INCLUDEDIR     ?= $(_PREFIX)/include#           # /usr/include
+_EXEC_PREFIX    ?= $(_PREFIX)#                   # /usr
+_BINDIR         ?= $(_EXEC_PREFIX)/bin#          # /usr/bin
+_SBINDIR        ?= $(_EXEC_PREFIX)/sbin#         # /usr/sbin
+_LIBEXECDIR     ?= $(_EXEC_PREFIX)/libexec#      # /usr/libexec
+_LIBDIR         ?= $(_EXEC_PREFIX)/lib#          # /usr/lib
+_SYSCONFDIR     ?= /etc#                         # /etc
+_DATADIR        ?= $(_PREFIX)/share#             # /usr/share
+_MANDIR         ?= $(_DATADIR)/man#              # /usr/share/man
+_INFODIR        ?= $(_DATADIR)/info#             # /usr/share/info
+_DEFAULTDOCDIR  ?= $(_DATADIR)/doc#              # /usr/share/doc
+_LOCALSTATEDIR  ?= /var#                         # /var
+_UNITDIR        ?= /lib/systemd/system#
+
+# Install directories within DESTDIR
+VARDIR                := $(_LOCALSTATEDIR)/lib/mce
+RUNDIR                := $(_LOCALSTATEDIR)/run/mce
+CONFDIR               := $(_SYSCONFDIR)/mce
+MODULEDIR             := $(_LIBDIR)/mce/modules
+DBUSDIR               := $(_SYSCONFDIR)/dbus-1/system.d
+LOCALEDIR             := $(_DATADIR)/locale
+GCONFSCHEMADIR        := $(_SYSCONFDIR)/gconf/schemas
+BACKUPCONFDIR         := $(_DATADIR)/backup-framework/applications
+HELPERSCRIPTDIR       := $(_DATADIR)/mce
+DEVICECLEARSCRIPTDIR  := $(_SYSCONFDIR)/osso-cud-scripts
+FACTORYRESETSCRIPTDIR := $(_SYSCONFDIR)/osso-rfs-scripts
 
 # Source directories
-TOPDIR     := .
-DOCDIR     := $(TOPDIR)/doc
-TOOLDIR    := $(TOPDIR)/tools
-TESTSDIR   := $(TOPDIR)/tests
-MODULE_DIR := $(TOPDIR)/modules
+DOCDIR     := doc
+TOOLDIR    := tools
+TESTSDIR   := tests
+MODULE_DIR := modules
 
 # Binaries to build
 TARGETS += mce
 
 # Plugins to build
-MODULES += $(MODULE_DIR)/libradiostates.so
-MODULES += $(MODULE_DIR)/libfilter-brightness-als.so
-MODULES += $(MODULE_DIR)/libfilter-brightness-simple.so
-MODULES += $(MODULE_DIR)/libproximity.so
-MODULES += $(MODULE_DIR)/libkeypad.so
-MODULES += $(MODULE_DIR)/libinactivity.so
-MODULES += $(MODULE_DIR)/libcamera.so
-MODULES += $(MODULE_DIR)/libalarm.so
-MODULES += $(MODULE_DIR)/libbattery.so
-MODULES += $(MODULE_DIR)/libdisplay.so
-MODULES += $(MODULE_DIR)/libled.so
-MODULES += $(MODULE_DIR)/libcallstate.so
-MODULES += $(MODULE_DIR)/libaudiorouting.so
-MODULES += $(MODULE_DIR)/libpowersavemode.so
+MODULES += $(MODULE_DIR)/radiostates.so
+MODULES += $(MODULE_DIR)/filter-brightness-als.so
+MODULES += $(MODULE_DIR)/filter-brightness-simple.so
+MODULES += $(MODULE_DIR)/proximity.so
+MODULES += $(MODULE_DIR)/keypad.so
+MODULES += $(MODULE_DIR)/inactivity.so
+MODULES += $(MODULE_DIR)/camera.so
+MODULES += $(MODULE_DIR)/alarm.so
+MODULES += $(MODULE_DIR)/battery.so
+MODULES += $(MODULE_DIR)/display.so
+MODULES += $(MODULE_DIR)/led.so
+MODULES += $(MODULE_DIR)/callstate.so
+MODULES += $(MODULE_DIR)/audiorouting.so
+MODULES += $(MODULE_DIR)/powersavemode.so
 
 # Tools to build
 TOOLS   += $(TOOLDIR)/mcetool
@@ -278,9 +318,9 @@ endif
 %.pic.o : %.c
 	$(CC) -c -o $@ $< -fPIC $(CPPFLAGS) $(CFLAGS)
 
-$(MODULE_DIR)/lib%.so : CFLAGS += $(MODULE_CFLAGS)
-$(MODULE_DIR)/lib%.so : LDLIBS += $(MODULE_LDLIBS)
-$(MODULE_DIR)/lib%.so : $(MODULE_DIR)/%.pic.o
+$(MODULE_DIR)/%.so : CFLAGS += $(MODULE_CFLAGS)
+$(MODULE_DIR)/%.so : LDLIBS += $(MODULE_LDLIBS)
+$(MODULE_DIR)/%.so : $(MODULE_DIR)/%.pic.o
 	$(CC) -shared -o $@ $^ $(LDFLAGS) $(LDLIBS)
 
 # ----------------------------------------------------------------------------
@@ -323,26 +363,82 @@ modules:: $(MODULES)
 
 tools:: $(TOOLS)
 
-install:: build
-	$(INSTALL_DIR) $(SBINDIR) $(DBUSDIR) $(VARDIR) $(MODULEDIR)
-	$(INSTALL_DIR) $(RUNDIR) $(CONFINSTDIR) $(GCONFSCHEMADIR)
-	$(INSTALL_DIR) $(BACKUPCONFDIR) $(HELPERSCRIPTDIR)
-	$(INSTALL_DIR) $(DEVICECLEARSCRIPTDIR) $(FACTORYRESETSCRIPTDIR)
-	$(INSTALL_BIN) $(TARGETS) $(SBINDIR)
-	$(INSTALL_BIN) $(TOOLS) $(TESTS) $(SBINDIR)
-	$(INSTALL_BIN) $(MODULES) $(MODULEDIR)
-	$(INSTALL_BIN) $(BACKUPSCRIPTS) $(HELPERSCRIPTDIR)
-	$(INSTALL_BIN) $(PRIVILEGEDDEVICECLEARSCRIPT) $(HELPERSCRIPTDIR)
-	$(INSTALL_BIN) $(REGULARDEVICECLEARSCRIPT) $(DEVICECLEARSCRIPTDIR)
-	$(INSTALL_BIN) $(REGULARDEVICECLEARSCRIPT) $(FACTORYRESETSCRIPTDIR)
-	$(INSTALL_DTA) $(CONFFILE) $(CONFINSTDIR)
-	$(INSTALL_DTA) $(RADIOSTATESCONFFILE) $(CONFINSTDIR)
-	$(INSTALL_DTA) $(GCONFSCHEMAS) $(GCONFSCHEMADIR)
-	$(INSTALL_DTA) $(DBUSCONF) $(DBUSDIR)
-	$(INSTALL_DTA) $(BACKUPCONF) $(BACKUPCONFDIR)
-
 clean::
 	$(RM) $(TARGETS) $(TOOLS) $(MODULES)
+
+install:: build
+	$(INSTALL_DIR) $(DESTDIR)$(VARDIR)
+	$(INSTALL_DIR) $(DESTDIR)$(RUNDIR)
+
+	$(INSTALL_DIR) $(DESTDIR)$(_SBINDIR)
+	$(INSTALL_BIN) $(TARGETS) $(DESTDIR)$(_SBINDIR)/
+	$(INSTALL_BIN) $(TOOLS)   $(DESTDIR)$(_SBINDIR)/
+	$(INSTALL_BIN) $(TESTS)   $(DESTDIR)$(_SBINDIR)/
+
+	$(INSTALL_DIR) $(DESTDIR)$(MODULEDIR)
+	$(INSTALL_BIN) $(MODULES) $(DESTDIR)$(MODULEDIR)/
+
+	$(INSTALL_DIR) $(DESTDIR)$(DBUSDIR)
+	$(INSTALL_DTA) $(DBUSCONF) $(DESTDIR)$(DBUSDIR)/
+
+	$(INSTALL_DIR) $(DESTDIR)$(CONFDIR)
+	$(INSTALL_DTA) $(CONFFILE) $(DESTDIR)$(CONFDIR)/
+	$(INSTALL_DTA) $(RADIOSTATESCONFFILE) $(DESTDIR)$(CONFDIR)/
+
+	$(INSTALL_DIR) $(DESTDIR)$(GCONFSCHEMADIR)
+	$(INSTALL_DTA) $(GCONFSCHEMAS) $(DESTDIR)$(GCONFSCHEMADIR)/
+
+ifeq ($(ENABLE_BACKUP_SUPPORT),y)
+install:: install_backup_support
+endif
+
+install_backup_support::
+	$(INSTALL_DIR) $(DESTDIR)$(BACKUPCONFDIR)
+	$(INSTALL_DTA) $(BACKUPCONF) $(DESTDIR)$(BACKUPCONFDIR)/
+
+	$(INSTALL_DIR) $(DESTDIR)$(HELPERSCRIPTDIR)
+	$(INSTALL_BIN) $(BACKUPSCRIPTS) $(DESTDIR)$(HELPERSCRIPTDIR)/
+
+ifeq ($(ENABLE_RFS_CUD_SUPPORT),y)
+install:: install_rfs_cud_support
+endif
+
+install_rfs_cud_support::
+	$(INSTALL_DIR) $(DESTDIR)$(HELPERSCRIPTDIR)
+	$(INSTALL_BIN) $(PRIVILEGEDDEVICECLEARSCRIPT) $(DESTDIR)$(HELPERSCRIPTDIR)/
+
+	$(INSTALL_DIR) $(DESTDIR)$(DEVICECLEARSCRIPTDIR)
+	$(INSTALL_BIN) $(REGULARDEVICECLEARSCRIPT) $(DESTDIR)$(DEVICECLEARSCRIPTDIR)/
+
+	$(INSTALL_DIR) $(DESTDIR)$(FACTORYRESETSCRIPTDIR)
+	$(INSTALL_BIN) $(REGULARDEVICECLEARSCRIPT) $(DESTDIR)$(FACTORYRESETSCRIPTDIR)/
+
+ifeq ($(ENABLE_SYSTEMD_SUPPORT),y)
+install:: install_systemd_support
+endif
+
+install_systemd_support::
+	$(INSTALL_DIR) $(DESTDIR)$(_UNITDIR)/multi-user.target.wants/
+	ln -s ../mce.service $(DESTDIR)$(_UNITDIR)/multi-user.target.wants/mce.service
+
+	$(INSTALL_DTA) -D systemd/mce.service $(DESTDIR)$(_UNITDIR)/mce.service
+	$(INSTALL_DTA) -D systemd/mce.conf    $(DESTDIR)$(_SYSCONFDIR)/tmpfiles.d/mce.conf
+
+ifeq ($(ENABLE_MANPAGE_INSTALL),y)
+install:: install_man_pages
+endif
+
+install_man_pages::
+	$(INSTALL_DIR) $(DESTDIR)/$(_MANDIR)/man8
+	$(INSTALL_DTA) man/mce.8        $(DESTDIR)/$(_MANDIR)/man8/mce.8
+	$(INSTALL_DTA) man/mcetool.8    $(DESTDIR)/$(_MANDIR)/man8/mcetool.8
+	$(INSTALL_DTA) man/mcetorture.8 $(DESTDIR)/$(_MANDIR)/man8/mcetorture.8
+
+install_man_pages_sv::
+	$(INSTALL_DIR) $(DESTDIR)/$(_MANDIR)/sv/man8
+	$(INSTALL_DTA) man/mce.sv.8        $(DESTDIR)/$(_MANDIR)/sv/man8/mce.8
+	$(INSTALL_DTA) man/mcetool.sv.8    $(DESTDIR)/$(_MANDIR)/sv/man8/mcetool.8
+	$(INSTALL_DTA) man/mcetorture.sv.8 $(DESTDIR)/$(_MANDIR)/sv/man8/mcetorture.8
 
 # ----------------------------------------------------------------------------
 # DOCUMENTATION
@@ -389,3 +485,37 @@ ifneq (,$(wildcard .depend))   # not if .depend does not exist
 include .depend
 endif
 endif
+
+# ----------------------------------------------------------------------------
+# LOCAL RPMBUILD (copy mce.* from OBS to rpm subdir)
+# ----------------------------------------------------------------------------
+
+# The spec file expects to find a tarball with version ...
+TARBALL=mce-$(VERSION).tar
+# .. that unpacks to a directory without the version.
+TARWORK=mce
+
+.PHONY: tarball
+tarball:: distclean
+	$(RM) -r /tmp/$(TARWORK)
+	mkdir /tmp/$(TARWORK)
+	tar -cf - . --exclude=.git --exclude=.gitignore --exclude=rpm |\
+	tar -xf - -C /tmp/$(TARWORK)/
+	tar -cjf $(TARBALL).bz2 -C /tmp $(TARWORK)/
+	$(RM) -r /tmp/$(TARWORK)
+
+
+.PHONY: tarball_from_git
+tarball_from_git::
+	git archive --prefix=mce/ -o $(TARBALL) HEAD
+	bzip2 $(TARBALL)
+
+clean::
+	$(RM) $(TARBALL).bz2
+
+.PHONY: rpmbuild
+rpmbuild:: tarball
+	@test -d rpm || (echo "you need rpm/ subdir for this to work" && false)
+	install -m644 $(TARBALL).bz2 rpm/mce.* ~/rpmbuild/SOURCES/
+	rpmbuild -ba ~/rpmbuild/SOURCES/mce.spec
+

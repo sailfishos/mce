@@ -142,6 +142,19 @@ void mce_modules_dump_info(void)
 	}
 }
 
+/** Construct path for named mce plugin
+ *
+ * @param directory Location of the plugin
+ * @module_name Name of the plugin
+ *
+ * @return Path to shared object
+ */
+static gchar * mce_modules_build_path(const gchar *directory,
+				      const gchar *module_name)
+{
+	return g_strdup_printf("%s/%s.so", directory, module_name);
+}
+
 /**
  * Init function for the mce-modules component
  *
@@ -170,7 +183,7 @@ gboolean mce_modules_init(void)
 
 		for (i = 0; modlist[i]; i++) {
 			GModule *module;
-			gchar *tmp = g_module_build_path(path, modlist[i]);
+			gchar *tmp = mce_modules_build_path(path, modlist[i]);
 
 			mce_log(LL_INFO,
 				"Loading module: %s from %s",

@@ -1,2 +1,2 @@
-debian/tmp/sbin/mcetool
-debian/tmp/sbin/mcetorture
+debian/tmp/usr/sbin/mcetool
+debian/tmp/usr/sbin/mcetorture
