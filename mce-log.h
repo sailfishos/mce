@@ -26,19 +26,22 @@
 #define MCE_LOG_SYSLOG			1	/**< Log to syslog */
 #define MCE_LOG_STDERR			0	/**< Log to stderr */
 
-/** Severity of loglevels */
+/** Severity of loglevels (subset of syslog priorities) */
 typedef enum {
-	LL_NONE = 0,			/**< No logging at all */
-	LL_CRIT = 1,			/**< Critical error */
-	LL_ERR = 2,			/**< Error */
-	LL_WARN = 3,			/**< Warning */
+	LL_NONE    = 0,			/**< No logging at all */
+
+	LL_CRIT    = 2,			/**< Critical error */
+	LL_ERR     = 3,			/**< Error */
+	LL_WARN    = 4,			/**< Warning */
+	LL_NOTICE  = 5,			/**< Normal but noteworthy */
+	LL_INFO    = 6,			/**< Informational message */
+	LL_DEBUG   = 7,			/**< Useful when debugging */
+
 	LL_DEFAULT = LL_WARN,		/**< Default log level */
-	LL_INFO = 4,			/**< Informational message */
-	LL_DEBUG = 5			/**< Useful when debugging */
 } loglevel_t;
 
 #ifdef OSSOLOG_COMPILE
-void mce_log_file(const loglevel_t loglevel, const char *const file,
+void mce_log_file(loglevel_t loglevel, const char *const file,
 		  const char *const function, const char *const fmt, ...)
 	__attribute__((format(printf, 4, 5)));
 #define mce_log_raw(__loglevel, __fmt, __args...)	mce_log_file(__loglevel, NULL, NULL, __fmt , ## __args)

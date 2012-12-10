@@ -33,6 +33,44 @@ static unsigned int logverbosity = LL_WARN;	/**< Log verbosity */
 static int logtype = MCE_LOG_STDERR;		/**< Output for log messages */
 static char *logname = NULL;
 
+/** Make sure loglevel is in the supported range
+ *
+ * @param loglevel level to check
+ *
+ * @return log level clipped to LL_CRIT ... LL_DEBUG range
+ */
+static loglevel_t mce_log_level_normalize(loglevel_t loglevel)
+{
+	if( loglevel < LL_CRIT ) {
+		loglevel = LL_CRIT;
+	}
+	else if( loglevel > LL_DEBUG ) {
+		loglevel = LL_DEBUG;
+	}
+	return loglevel;
+}
+
+/** Get level indication tag to include in stderr logging
+ *
+ * @param loglevel level for the message
+ *
+ * @return level indication string
+ */
+static const char *mce_log_level_tag(loglevel_t loglevel)
+{
+	const char *res = "?";
+	switch( loglevel ) {
+        case LL_CRIT:   res = "C"; break;
+        case LL_ERR:    res = "E"; break;
+        case LL_WARN:   res = "W"; break;
+        case LL_NOTICE: res = "N"; break;
+        case LL_INFO:   res = "I"; break;
+        case LL_DEBUG:  res = "D"; break;
+        default: break;
+        }
+	return res;
+}
+
 /**
  * Log debug message with optional filename and function name attached
  *
@@ -40,64 +78,39 @@ static char *logname = NULL;
  * @param fmt The format string for this message
  * @param ... Input to the format string
  */
-void mce_log_file(const loglevel_t loglevel, const char *const file,
+void mce_log_file(loglevel_t loglevel, const char *const file,
 		  const char *const function, const char *const fmt, ...)
 {
 	va_list args;
 
-	va_start(args, fmt);
+	loglevel = mce_log_level_normalize(loglevel);
 
 	if (logverbosity >= loglevel) {
-		gchar *tmp;
-		gchar *msg;
+		gchar *msg = 0;
 
-		g_vasprintf(&tmp, fmt, args);
+		va_start(args, fmt);
+		g_vasprintf(&msg, fmt, args);
+		va_end(args);
 
-		if ((file != NULL) && (function != NULL)) {
-			msg = g_strconcat(file, ":",
-					  function, "(): ",
-					  tmp, NULL);
-		} else {
-			msg = g_strdup(tmp);
+		if( file && function ) {
+			gchar *tmp = g_strconcat(file, ": ", function, "(): ",
+						 msg, NULL);
+			g_free(msg), msg = tmp;
 		}
 
-		g_free(tmp);
-
 		if (logtype == MCE_LOG_STDERR) {
-			fprintf(stderr, "%s: %s\n", logname, msg);
+			fprintf(stderr, "%s: %s: %s\n",
+				logname,
+				mce_log_level_tag(loglevel),
+				msg);
 		} else {
-			int priority;
-
-			switch (loglevel) {
-			case LL_DEBUG:
-				priority = LOG_DEBUG;
-				break;
-
-			case LL_ERR:
-				priority = LOG_ERR;
-				break;
-
-			case LL_CRIT:
-				priority = LOG_CRIT;
-				break;
-
-			case LL_INFO:
-				priority = LOG_INFO;
-				break;
-
-			case LL_WARN:
-			default:
-				priority = LOG_WARNING;
-				break;
-			}
-
-			syslog(priority, "%s", msg);
+			/* loglevels are subset of syslog priorities, so
+			 * we can use loglevel as is for syslog priority */
+			syslog(loglevel, "%s", msg);
 		}
 
 		g_free(msg);
 	}
-
-	va_end(args);
 }
 
 /**
@@ -133,8 +146,7 @@ void mce_log_open(const char *const name, const int facility, const int type)
  */
 void mce_log_close(void)
 {
-	if (logname)
-		g_free(logname);
+	g_free(logname), logname = 0;
 
 	if (logtype == MCE_LOG_SYSLOG)
 		closelog();
