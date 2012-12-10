@@ -1,8 +1,10 @@
 builtin-gconf.o:\
 	builtin-gconf.c\
+	mce-log.h\
 
 builtin-gconf.pic.o:\
 	builtin-gconf.c\
+	mce-log.h\
 
 datapipe.o:\
 	datapipe.c\
@@ -137,6 +139,7 @@ mce-hal.pic.o:\
 mce-io.o:\
 	mce-io.c\
 	datapipe.h\
+	libwakelock.h\
 	mce-io.h\
 	mce-log.h\
 	mce.h\
@@ -144,6 +147,7 @@ mce-io.o:\
 mce-io.pic.o:\
 	mce-io.c\
 	datapipe.h\
+	libwakelock.h\
 	mce-io.h\
 	mce-log.h\
 	mce.h\
@@ -341,6 +345,7 @@ modules/display.o:\
 	mce-lib.h\
 	mce-log.h\
 	mce.h\
+	libwakelock.h\
 	modules/display.h\
 	tklock.h\
 
@@ -355,6 +360,7 @@ modules/display.pic.o:\
 	mce-lib.h\
 	mce-log.h\
 	mce.h\
+	libwakelock.h\
 	modules/display.h\
 	tklock.h\
 

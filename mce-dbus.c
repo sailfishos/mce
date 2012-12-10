@@ -337,7 +337,8 @@ DBusMessage *dbus_send_with_block(const gchar *const service,
 	}
 
 	/* Call the method */
-	reply = dbus_connection_send_with_reply_and_block(dbus_connection, msg,								  timeout, &error);
+	reply = dbus_connection_send_with_reply_and_block(dbus_connection, msg,
+							  timeout, &error);
 
 	dbus_message_unref(msg);
 

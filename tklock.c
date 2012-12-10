@@ -736,7 +736,7 @@ static void generic_event_control(output_state_t *output,
 	}
 
 	mce_log(LL_DEBUG,
-		"%s: events %s\n",
+		"%s: events %s",
 		output->path, enable ? "enabled" : "disabled");
 EXIT:
 	return;
