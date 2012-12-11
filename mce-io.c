@@ -703,6 +703,7 @@ EXIT:
 	if ((status == FALSE) &&
 	    (iomon != NULL) &&
 	    (iomon->error_policy == MCE_IO_ERROR_POLICY_EXIT)) {
+		// FIXME: this is not how one should exit from mainloop
 		g_main_loop_quit(mainloop);
 		exit(EXIT_FAILURE);
 	}
@@ -875,6 +876,7 @@ EXIT:
 	if ((status == FALSE) &&
 	    (iomon != NULL) &&
 	    (iomon->error_policy == MCE_IO_ERROR_POLICY_EXIT)) {
+		// FIXME: this is not how one should exit from mainloop
 		g_main_loop_quit(mainloop);
 		exit(EXIT_FAILURE);
 	}
@@ -943,6 +945,7 @@ static gboolean io_error_cb(GIOChannel *source,
 
 EXIT:
 	if ((iomon != NULL) && (exit_on_error == TRUE)) {
+		// FIXME: this is not how one should exit from mainloop
 		g_main_loop_quit(mainloop);
 		exit(EXIT_FAILURE);
 	}

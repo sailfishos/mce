@@ -127,6 +127,7 @@ static void mce_dsme_send(gpointer msg)
 	if (dsme_conn == NULL) {
 		mce_log(LL_CRIT,
 			"Attempt to use dsme_conn uninitialised; aborting!");
+		// FIXME: this is not how one should exit from mainloop
 		g_main_loop_quit(mainloop);
 		exit(EXIT_FAILURE);
 	}
@@ -136,6 +137,7 @@ static void mce_dsme_send(gpointer msg)
 			"dsmesock_send error: %s",
 			g_strerror(errno));
 #ifdef MCE_DSME_ERROR_POLICY
+		// FIXME: this is not how one should exit from mainloop
 		g_main_loop_quit(mainloop);
 		exit(EXIT_FAILURE);
 #endif /* MCE_DSME_ERROR_POLICY */
@@ -426,6 +428,7 @@ static gboolean io_data_ready_cb(GIOChannel *source,
 			"DSME socket closed; trying to reopen");
 
 		if ((init_dsmesock()) == FALSE) {
+			// FIXME: this is not how one should exit from mainloop
 			g_main_loop_quit(mainloop);
 			exit(EXIT_FAILURE);
 		}
@@ -502,6 +505,7 @@ static gboolean io_error_cb(GIOChannel *source,
 	/* DSME socket closed/error */
 	mce_log(LL_CRIT,
 		"DSME socket closed/error, exiting...");
+	// FIXME: this is not how one should exit from mainloop
 	g_main_loop_quit(mainloop);
 	exit(EXIT_FAILURE);
 }
