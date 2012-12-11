@@ -104,3 +104,32 @@ void wakelock_unlock(const char *name)
 		lwl_write_file(lwl_unlock_path, tmp);
 	}
 }
+
+static const char lwl_state_path[] = "/sys/power/state";
+
+/** Use sysfs interface to allow automatic entry to suspend
+ *
+ * After this call the device will enter suspend mode once all
+ * the wakelocks have been released.
+ *
+ * Android kernels will enter early suspend (i.e. display is
+ * turned off etc) even if there still are active wakelocks.
+ */
+void wakelock_allow_suspend(void)
+{
+	if( lwl_enabled() ) {
+		lwl_write_file(lwl_state_path, "mem\n");
+	}
+}
+
+/** Use sysfs interface to block automatic entry to suspend
+ *
+ * The device will not enter suspend mode with or without
+ * active wakelocks.
+ */
+void wakelock_block_suspend(void)
+{
+	if( lwl_enabled() ) {
+		lwl_write_file(lwl_state_path, "on\n");
+	}
+}

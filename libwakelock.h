@@ -16,6 +16,9 @@ extern "C" {
 void wakelock_lock  (const char *name, long long ns);
 void wakelock_unlock(const char *name);
 
+void wakelock_allow_suspend(void);
+void wakelock_block_suspend(void);
+
 # ifdef __cplusplus
 };
 # endif
