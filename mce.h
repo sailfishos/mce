@@ -349,4 +349,6 @@ submode_t mce_get_submode_int32(void);
 gboolean mce_add_submode_int32(const submode_t submode);
 gboolean mce_rem_submode_int32(const submode_t submode);
 
+void mce_abort(void) __attribute__((noreturn));
+
 #endif /* _MCE_H_ */
