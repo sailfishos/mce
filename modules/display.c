@@ -2726,10 +2726,12 @@ static void display_state_trigger(gconstpointer data)
 	switch (display_state) {
 	case MCE_DISPLAY_OFF:
 	case MCE_DISPLAY_LPM_OFF:
+		wakelock_allow_suspend();
 	        wakelock_unlock("mce_display_on");
 		break;
 	default:
 	        wakelock_lock("mce_display_on", -1);
+		wakelock_block_suspend();
 		break;
 	}
 #endif
