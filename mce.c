@@ -305,6 +305,8 @@ void mce_abort(void)
 #endif
 }
 
+static void mce_tx_signal_cb(int sig);
+
 /**
  * Signal handler
  *
