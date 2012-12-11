@@ -417,9 +417,16 @@ void mce_gconf_exit(void)
 					(GFunc)mce_gconf_notifier_remove, NULL);
 			gconf_notifiers = NULL;
 		}
-
+#ifdef ENABLE_BUILTIN_GCONF
+		/* FIME: did not notice that gconf clients are GObjects ...
+		 *       now we can't g_object_unref() the client pointers
+		 *       from builtin-gconf
+		 */
+#else
 		/* Unreference GConf client */
 		g_object_unref(gconf_client);
+#endif
+		gconf_client = 0;
 	}
 
 	return;
