@@ -467,12 +467,12 @@ gboolean mce_write_number_string_to_file(output_state_t *output, const gulong nu
 
 	if( !output ) {
 		mce_log(LL_CRIT, "NULL output passed, terminating");
-		abort();
+		mce_abort();
 	}
 
 	if( !output->context ) {
 		mce_log(LL_CRIT, "output->context missing, terminating");
-		abort();
+		mce_abort();
 	}
 
 	if( !output->path ) {
