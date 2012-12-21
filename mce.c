@@ -175,22 +175,22 @@ static void usage(void)
 		  "Mode Control Entity\n"
 		  "\n"
 		  "  -d, --daemonflag           run MCE as a daemon\n"
-		  "      --force-syslog         log to syslog even when not "
+		  "  -s, --force-syslog         log to syslog even when not "
 		  "daemonized\n"
-		  "      --force-stderr         log to stderr even when "
+		  "  -T, --force-stderr         log to stderr even when "
 		  "daemonized\n"
 		  "  -S, --session              use the session bus instead\n"
 		  "                               of the "
 		  "system bus for D-Bus\n"
-		  "      --show-module-info     show information about "
+		  "  -M, --show-module-info     show information about "
 		  "loaded modules\n"
-		  "      --debug-mode           run even if dsme fails\n"
-		  "      --quiet                decrease debug message "
+		  "  -D, --debug-mode           run even if dsme fails\n"
+		  "  -q, --quiet                decrease debug message "
 		  "verbosity\n"
-		  "      --verbose              increase debug message "
+		  "  -v, --verbose              increase debug message "
 		  "verbosity\n"
-		  "      --help                 display this help and exit\n"
-		  "      --version              output version information "
+		  "  -h, --help                 display this help and exit\n"
+		  "  -V, --version              output version information "
 		  "and exit\n"
 		  "\n"
 		  "Report bugs to <david.weinehall@nokia.com>\n"),
@@ -665,7 +665,7 @@ int main(int argc, char **argv)
 	gboolean systembus = TRUE;
 	gboolean debugmode = FALSE;
 
-	const char optline[] = "dS";
+	const char optline[] = "dsTSMDqvhV";
 
 	struct option const options[] = {
 		{ "daemonflag", no_argument, 0, 'd' },
