@@ -18,6 +18,7 @@ void wakelock_unlock(const char *name);
 
 void wakelock_allow_suspend(void);
 void wakelock_block_suspend(void);
+void wakelock_block_suspend_until_exit(void);
 
 # ifdef __cplusplus
 };

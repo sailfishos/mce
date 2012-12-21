@@ -107,6 +107,8 @@ void wakelock_unlock(const char *name)
 
 static const char lwl_state_path[] = "/sys/power/state";
 
+static int        lwl_shutting_down = 0;
+
 /** Use sysfs interface to allow automatic entry to suspend
  *
  * After this call the device will enter suspend mode once all
@@ -117,7 +119,7 @@ static const char lwl_state_path[] = "/sys/power/state";
  */
 void wakelock_allow_suspend(void)
 {
-	if( lwl_enabled() ) {
+	if( lwl_enabled() && !lwl_shutting_down ) {
 		lwl_write_file(lwl_state_path, "mem\n");
 	}
 }
@@ -132,4 +134,20 @@ void wakelock_block_suspend(void)
 	if( lwl_enabled() ) {
 		lwl_write_file(lwl_state_path, "on\n");
 	}
+}
+
+/** Block automatic suspend without possibility to unblock it again
+ *
+ * For use on exit path. We want to do clean exit from mainloop and
+ * that might that code that re-enables autosuspend gets triggered
+ * while we're on exit path.
+ *
+ * By calling this function when initiating daemon shutdown we are
+ * protected against this.
+ */
+
+void wakelock_block_suspend_until_exit(void)
+{
+  lwl_shutting_down = 1;
+  wakelock_block_suspend();
 }
