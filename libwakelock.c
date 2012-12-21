@@ -32,10 +32,17 @@
 # define lwl_debugf(FMT, ARGS...) do { } while( 0 )
 #endif
 
-/** Paths to wakelock interfaces in sysfs
- */
+/** Flag that gets set once the process is about to exit */
+static int        lwl_shutting_down = 0;
+
+/** Sysfs entry for acquiring wakelocks */
 static const char lwl_lock_path[]   = "/sys/power/wake_lock";
+
+/** Sysfs entry for releasing wakelocks */
 static const char lwl_unlock_path[] = "/sys/power/wake_unlock";
+
+/** Sysfs entry for allow/block suspend */
+static const char lwl_state_path[] = "/sys/power/state";
 
 /** Helper for writing to sysfs files
  */
@@ -79,7 +86,7 @@ static int lwl_enabled(void)
  */
 void wakelock_lock(const char *name, long long ns)
 {
-	if( lwl_enabled() ) {
+	if( lwl_enabled() && !lwl_shutting_down ) {
 		char tmp[64];
 		if( ns < 0 ) {
 			snprintf(tmp, sizeof tmp, "%s\n", name);
@@ -104,10 +111,6 @@ void wakelock_unlock(const char *name)
 		lwl_write_file(lwl_unlock_path, tmp);
 	}
 }
-
-static const char lwl_state_path[] = "/sys/power/state";
-
-static int        lwl_shutting_down = 0;
 
 /** Use sysfs interface to allow automatic entry to suspend
  *
