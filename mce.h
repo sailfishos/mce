@@ -99,9 +99,6 @@ typedef struct {
 	const gint priority;
 } module_info_struct;
 
-/** The GMainLoop used by MCE */
-GMainLoop *mainloop;
-
 /** Used for invalid translations and values */
 #define MCE_INVALID_TRANSLATION		-1
 
@@ -350,5 +347,6 @@ gboolean mce_add_submode_int32(const submode_t submode);
 gboolean mce_rem_submode_int32(const submode_t submode);
 
 void mce_abort(void) __attribute__((noreturn));
+void mce_quit_mainloop(void);
 
 #endif /* _MCE_H_ */

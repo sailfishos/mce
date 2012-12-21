@@ -144,6 +144,9 @@ extern char *optarg;			/**< Used by getopt */
 
 static const gchar *progname;	/**< Used to store the name of the program */
 
+/** The GMainLoop used by MCE */
+static GMainLoop *mainloop = 0;
+
 /** Wrapper for write() for use when we do not care if it works or not
  *
  * Main purpose is to stop static analyzers from nagging us when
@@ -250,6 +253,20 @@ EXIT:
 	return status;
 }
 
+void mce_quit_mainloop(void)
+{
+	/* We are on exit path -> block suspend for good */
+	wakelock_block_suspend_until_exit();
+
+	/* Exit immediately if there is no mainloop to terminate */
+	if( !mainloop ) {
+		exit(1);
+	}
+
+	/* Terminate mainloop */
+	g_main_loop_quit(mainloop);
+}
+
 #ifdef ENABLE_WAKELOCKS
 /** Disable automatic suspend and remove wakelocks mce might hold
  *
@@ -264,7 +281,9 @@ static void mce_cleanup_wakelocks(void)
 	 * that are not safe.
 	 */
 
-	wakelock_block_suspend();
+	/* We are on exit path -> block suspend for good */
+	wakelock_block_suspend_until_exit();
+
 	wakelock_unlock("mce_display_on");
 	wakelock_unlock("mce_input_handler");
 }
@@ -277,17 +296,16 @@ static void mce_cleanup_wakelocks(void)
 static void mce_exit_via_signal(int signr) __attribute__((noreturn));
 static void mce_exit_via_signal(int signr)
 {
+#ifdef ENABLE_WAKELOCKS
+	/* Cancel auto suspend */
+	mce_cleanup_wakelocks();
+#endif
 	/* Give us N seconds to exit */
 	signal(SIGALRM, SIG_DFL);
 	alarm(3);
 
 	/* Restore default behavior */
 	signal(signr, SIG_DFL);
-
-#ifdef ENABLE_WAKELOCKS
-	/* Cancel auto suspend */
-	mce_cleanup_wakelocks();
-#endif
 
 	/* Exit via default handler or abort() */
 	raise(signr);
@@ -298,11 +316,7 @@ static void mce_exit_via_signal(int signr)
  */
 void mce_abort(void)
 {
-#ifdef ENABLE_WAKELOCKS
 	mce_exit_via_signal(SIGABRT);
-#else
-	abort();
-#endif
 }
 
 static void mce_tx_signal_cb(int sig);
@@ -349,7 +363,7 @@ static void signal_handler(const gint signr)
 		}
 
 		/* Terminate mainloop */
-		g_main_loop_quit(mainloop);
+		mce_quit_mainloop();
 		break;
 
 	default:
@@ -444,6 +458,9 @@ static void mce_tx_signal_cb(int sig)
 	case SIGINT:
 	case SIGQUIT:
 	case SIGTERM:
+		/* We are on exit path -> block suspend for good */
+		wakelock_block_suspend_until_exit();
+
 		no_error_check_write(STDERR_FILENO, msg, sizeof msg - 1);
 
 		if( !mainloop || ++exit_tries >= 2 ) {
@@ -663,9 +680,6 @@ int main(int argc, char **argv)
 		{ "version", no_argument, 0, 'V' },
 		{ 0, 0, 0, 0 }
 	};
-
-	/* NULL the mainloop */
-	mainloop = NULL;
 
 	/* Initialise support for locales, and set the program-name */
 	if (init_locales(PRG_NAME) != 0)
@@ -984,8 +998,10 @@ EXIT:
 	mce_conf_exit();
 
 	/* If the mainloop is initialised, unreference it */
-	if (mainloop != NULL)
+	if (mainloop != NULL) {
 		g_main_loop_unref(mainloop);
+		mainloop = 0;
+	}
 
 	/* Log a farewell message and close the log */
 	mce_log(LL_INFO, "Exiting...");
