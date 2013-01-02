@@ -195,6 +195,7 @@ mce.o:\
 	datapipe.h\
 	event-input.h\
 	event-switches.h\
+	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-dsme.h\
@@ -211,6 +212,7 @@ mce.pic.o:\
 	datapipe.h\
 	event-input.h\
 	event-switches.h\
+	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-dsme.h\

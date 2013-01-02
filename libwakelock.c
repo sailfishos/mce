@@ -32,10 +32,17 @@
 # define lwl_debugf(FMT, ARGS...) do { } while( 0 )
 #endif
 
-/** Paths to wakelock interfaces in sysfs
- */
+/** Flag that gets set once the process is about to exit */
+static int        lwl_shutting_down = 0;
+
+/** Sysfs entry for acquiring wakelocks */
 static const char lwl_lock_path[]   = "/sys/power/wake_lock";
+
+/** Sysfs entry for releasing wakelocks */
 static const char lwl_unlock_path[] = "/sys/power/wake_unlock";
+
+/** Sysfs entry for allow/block suspend */
+static const char lwl_state_path[] = "/sys/power/state";
 
 /** Helper for writing to sysfs files
  */
@@ -79,7 +86,7 @@ static int lwl_enabled(void)
  */
 void wakelock_lock(const char *name, long long ns)
 {
-	if( lwl_enabled() ) {
+	if( lwl_enabled() && !lwl_shutting_down ) {
 		char tmp[64];
 		if( ns < 0 ) {
 			snprintf(tmp, sizeof tmp, "%s\n", name);
@@ -103,4 +110,47 @@ void wakelock_unlock(const char *name)
 		snprintf(tmp, sizeof tmp, "%s\n", name);
 		lwl_write_file(lwl_unlock_path, tmp);
 	}
+}
+
+/** Use sysfs interface to allow automatic entry to suspend
+ *
+ * After this call the device will enter suspend mode once all
+ * the wakelocks have been released.
+ *
+ * Android kernels will enter early suspend (i.e. display is
+ * turned off etc) even if there still are active wakelocks.
+ */
+void wakelock_allow_suspend(void)
+{
+	if( lwl_enabled() && !lwl_shutting_down ) {
+		lwl_write_file(lwl_state_path, "mem\n");
+	}
+}
+
+/** Use sysfs interface to block automatic entry to suspend
+ *
+ * The device will not enter suspend mode with or without
+ * active wakelocks.
+ */
+void wakelock_block_suspend(void)
+{
+	if( lwl_enabled() ) {
+		lwl_write_file(lwl_state_path, "on\n");
+	}
+}
+
+/** Block automatic suspend without possibility to unblock it again
+ *
+ * For use on exit path. We want to do clean exit from mainloop and
+ * that might that code that re-enables autosuspend gets triggered
+ * while we're on exit path.
+ *
+ * By calling this function when initiating daemon shutdown we are
+ * protected against this.
+ */
+
+void wakelock_block_suspend_until_exit(void)
+{
+  lwl_shutting_down = 1;
+  wakelock_block_suspend();
 }

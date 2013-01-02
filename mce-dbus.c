@@ -69,7 +69,8 @@ DBusMessage *dbus_new_signal(const gchar *const path,
 
 	if ((msg = dbus_message_new_signal(path, interface, name)) == NULL) {
 		mce_log(LL_CRIT, "No memory for new signal!");
-		g_main_loop_quit(mainloop);
+		// FIXME: this is not how one should exit from mainloop
+		mce_quit_mainloop();
 		exit(EXIT_FAILURE);
 	}
 
@@ -93,7 +94,8 @@ static DBusMessage *dbus_new_error(DBusMessage *const message,
 	if ((error_msg = dbus_message_new_error(message, error,
 						NULL)) == NULL) {
 		mce_log(LL_CRIT, "No memory for new D-Bus error message!");
-		g_main_loop_quit(mainloop);
+		// FIXME: this is not how one should exit from mainloop
+		mce_quit_mainloop();
 		exit(EXIT_FAILURE);
 	}
 
@@ -122,7 +124,8 @@ DBusMessage *dbus_new_method_call(const gchar *const service,
 						interface, name)) == NULL) {
 		mce_log(LL_CRIT,
 			"Cannot allocate memory for D-Bus method call!");
-		g_main_loop_quit(mainloop);
+		// FIXME: this is not how one should exit from mainloop
+		mce_quit_mainloop();
 		exit(EXIT_FAILURE);
 	}
 
@@ -142,7 +145,8 @@ DBusMessage *dbus_new_method_reply(DBusMessage *const message)
 
 	if ((msg = dbus_message_new_method_return(message)) == NULL) {
 		mce_log(LL_CRIT, "No memory for new reply!");
-		g_main_loop_quit(mainloop);
+		// FIXME: this is not how one should exit from mainloop
+		mce_quit_mainloop();
 		exit(EXIT_FAILURE);
 	}
 

@@ -130,6 +130,9 @@
 #include "powerkey.h"			/* mce_powerkey_init(),
 					 * mce_powerkey_exit()
 					 */
+#ifdef ENABLE_WAKELOCKS
+# include "libwakelock.h"
+#endif
 
 /** Path to the lockfile */
 #define MCE_LOCKFILE			"/var/run/mce.pid"
@@ -141,6 +144,27 @@ extern char *optarg;			/**< Used by getopt */
 
 static const gchar *progname;	/**< Used to store the name of the program */
 
+/** The GMainLoop used by MCE */
+static GMainLoop *mainloop = 0;
+
+/** Wrapper for write() for use when we do not care if it works or not
+ *
+ * Main purpose is to stop static analyzers from nagging us when
+ * we really do not care whether the data gets written or not
+ *
+ * @param fd   file descriptor to write to
+ * @param data data to write
+ * @param size amount of data to write
+ */
+static void no_error_check_write(int fd, const void *data, size_t size)
+{
+	// do the write, then ...
+	ssize_t rc = TEMP_FAILURE_RETRY(write(fd, data, size));
+	// try to silence static analyzers by doing /something/ with rc
+	if( rc == -1 )
+		rc = rc;
+}
+
 /**
  * Display usage information
  */
@@ -151,22 +175,22 @@ static void usage(void)
 		  "Mode Control Entity\n"
 		  "\n"
 		  "  -d, --daemonflag           run MCE as a daemon\n"
-		  "      --force-syslog         log to syslog even when not "
+		  "  -s, --force-syslog         log to syslog even when not "
 		  "daemonized\n"
-		  "      --force-stderr         log to stderr even when "
+		  "  -T, --force-stderr         log to stderr even when "
 		  "daemonized\n"
 		  "  -S, --session              use the session bus instead\n"
 		  "                               of the "
 		  "system bus for D-Bus\n"
-		  "      --show-module-info     show information about "
+		  "  -M, --show-module-info     show information about "
 		  "loaded modules\n"
-		  "      --debug-mode           run even if dsme fails\n"
-		  "      --quiet                decrease debug message "
+		  "  -D, --debug-mode           run even if dsme fails\n"
+		  "  -q, --quiet                decrease debug message "
 		  "verbosity\n"
-		  "      --verbose              increase debug message "
+		  "  -v, --verbose              increase debug message "
 		  "verbosity\n"
-		  "      --help                 display this help and exit\n"
-		  "      --version              output version information "
+		  "  -h, --help                 display this help and exit\n"
+		  "  -V, --version              output version information "
 		  "and exit\n"
 		  "\n"
 		  "Report bugs to <david.weinehall@nokia.com>\n"),
@@ -229,6 +253,74 @@ EXIT:
 	return status;
 }
 
+void mce_quit_mainloop(void)
+{
+	/* We are on exit path -> block suspend for good */
+	wakelock_block_suspend_until_exit();
+
+	/* Exit immediately if there is no mainloop to terminate */
+	if( !mainloop ) {
+		exit(1);
+	}
+
+	/* Terminate mainloop */
+	g_main_loop_quit(mainloop);
+}
+
+#ifdef ENABLE_WAKELOCKS
+/** Disable automatic suspend and remove wakelocks mce might hold
+ *
+ * This function should be called just before mce process terminates
+ * so that we do not leave the system in a non-functioning state
+ */
+static void mce_cleanup_wakelocks(void)
+{
+	/* FIXME: since this gets called from signal handler too,
+	 * all wakelock functions should be made async-signal-safe.
+	 * At the moment they use at least fprintf() and snprintf()
+	 * that are not safe.
+	 */
+
+	/* We are on exit path -> block suspend for good */
+	wakelock_block_suspend_until_exit();
+
+	wakelock_unlock("mce_display_on");
+	wakelock_unlock("mce_input_handler");
+}
+#endif // ENABLE_WAKELOCKS
+
+/** Disable autosuspend then exit via default signal handler
+ *
+ * @param signr the signal to exit through
+ */
+static void mce_exit_via_signal(int signr) __attribute__((noreturn));
+static void mce_exit_via_signal(int signr)
+{
+#ifdef ENABLE_WAKELOCKS
+	/* Cancel auto suspend */
+	mce_cleanup_wakelocks();
+#endif
+	/* Give us N seconds to exit */
+	signal(SIGALRM, SIG_DFL);
+	alarm(3);
+
+	/* Restore default behavior */
+	signal(signr, SIG_DFL);
+
+	/* Exit via default handler or abort() */
+	raise(signr);
+	abort();
+}
+
+/** Suspend safe replacement for _exit(1), abort() etc
+ */
+void mce_abort(void)
+{
+	mce_exit_via_signal(SIGABRT);
+}
+
+static void mce_tx_signal_cb(int sig);
+
 /**
  * Signal handler
  *
@@ -245,15 +337,170 @@ static void signal_handler(const gint signr)
 		/* Possibly for re-reading configuration? */
 		break;
 
+#ifdef ENABLE_WAKELOCKS
+	case SIGABRT:
+	case SIGILL:
+	case SIGFPE:
+	case SIGSEGV:
+	case SIGPIPE:
+	case SIGALRM:
+	case SIGBUS:
+		/* Terminating, but disable suspend first */
+		mce_exit_via_signal(signr);
+		break;
+
+	case SIGTSTP:
+		/* Stopping mce could also lead to unrecoverable suspend */
+		break;
+#endif
+
+	case SIGINT:
+	case SIGQUIT:
 	case SIGTERM:
-		/* This should be done through a pipe or signalfd instead */
-		g_main_loop_quit(mainloop);
+		/* Just die if we somehow get here without having a mainloop */
+		if( !mainloop ) {
+			mce_exit_via_signal(signr);
+		}
+
+		/* Terminate mainloop */
+		mce_quit_mainloop();
 		break;
 
 	default:
 		/* Should never happen */
 		break;
 	}
+}
+
+/** Install handlers for signals we need to trap
+ */
+static void install_signal_handlers(void)
+{
+	static const int sig[] = {
+		SIGUSR1,
+		SIGHUP,
+
+		SIGINT,
+		SIGQUIT,
+		SIGTERM,
+
+#ifdef ENABLE_WAKELOCKS
+		SIGABRT,
+		SIGILL,
+		SIGFPE,
+		SIGSEGV,
+		SIGPIPE,
+		SIGALRM,
+		SIGBUS,
+		SIGTSTP,
+#endif
+
+		-1
+	};
+
+	for( size_t i = 0; sig[i] != -1; ++i ) {
+		signal(sig[i], mce_tx_signal_cb);
+	}
+}
+
+/** Pipe used for transferring signals out of signal handler context */
+static int signal_pipe[2] = {-1, -1};
+
+/** GIO callback for reading signals from pipe
+ *
+ * @param channel   io channel for signal pipe
+ * @param condition call reason
+ * @param data      user data
+ *
+ * @return TRUE (or aborts on error)
+ */
+static gboolean mce_rx_signal_cb(GIOChannel *channel,
+				 GIOCondition condition, gpointer data)
+{
+	// we just want the cb ...
+	(void)channel; (void)condition; (void)data;
+
+	int sig = 0;
+	int got = TEMP_FAILURE_RETRY(read(signal_pipe[0], &sig, sizeof sig));
+
+	if( got != sizeof sig ) {
+		mce_abort();
+	}
+
+	/* handle the signal */
+	signal_handler(sig);
+
+	/* keep the io watch */
+	return TRUE;
+}
+
+/** Signal handler callback for writing signals to pipe
+ *
+ * @param sig the signal number to pass to mainloop via pipe
+ */
+static void mce_tx_signal_cb(int sig)
+{
+	/* NOTE: this function must be kept async-signal-safe! */
+
+	static volatile int exit_tries = 0;
+
+	static const char msg[] = "\n*** BREAK ***\n";
+
+	/* FIXME: Should really use sigaction() to avoid having
+	 * the default handler active until we manage to restore
+	 * our handler here ... */
+	signal(sig, mce_tx_signal_cb);
+
+	/* Make sure that a stuck or non-existing mainloop does not stop
+	 * us from handling at least repeated terminating signals */
+	switch( sig )
+	{
+	case SIGINT:
+	case SIGQUIT:
+	case SIGTERM:
+		/* We are on exit path -> block suspend for good */
+		wakelock_block_suspend_until_exit();
+
+		no_error_check_write(STDERR_FILENO, msg, sizeof msg - 1);
+
+		if( !mainloop || ++exit_tries >= 2 ) {
+			mce_abort();
+		}
+		break;
+	default:
+		break;
+	}
+
+	/* transfer the signal to mainloop via pipe */
+	int did = TEMP_FAILURE_RETRY(write(signal_pipe[1], &sig, sizeof sig));
+
+	if( did != (int)sizeof sig ) {
+		mce_abort();
+	}
+}
+
+/** Create a pipe and io watch for handling signal from glib mainloop
+ */
+static gboolean mce_init_signal_pipe(void)
+{
+	int         result  = FALSE;
+	GIOChannel *channel = 0;
+
+	if( pipe(signal_pipe) == -1 )
+		goto EXIT;
+
+	if( (channel = g_io_channel_unix_new(signal_pipe[0])) == 0 )
+		goto EXIT;
+
+	if( !g_io_add_watch(channel, G_IO_IN, mce_rx_signal_cb, 0) )
+		goto EXIT;
+
+	result = TRUE;
+
+EXIT:
+	if( channel != 0 ) g_io_channel_unref(channel);
+
+	return result;
 }
 
 /**
@@ -273,7 +520,7 @@ static gboolean daemonize(void)
 	/* Detach from process group */
 	switch (fork()) {
 	case -1:
-		/* Failure */
+		/* Parent - Failure */
 		mce_log(LL_CRIT, "daemonize: fork failed: %s",
 			g_strerror(errno));
 		mce_log_close();
@@ -284,8 +531,11 @@ static gboolean daemonize(void)
 		break;
 
 	default:
-		/* Parent -- exit */
-		exit(EXIT_SUCCESS);
+		/* Parent -- Success */
+
+		/* One main() one exit() - in this case the parent
+		 * must not call atexit handlers etc */
+		_exit(EXIT_SUCCESS);
 	}
 
 	/* Detach TTY */
@@ -379,7 +629,7 @@ static gboolean daemonize(void)
 	}
 
 	sprintf(str, "%d\n", getpid());
-	write(i, str, strlen(str));
+	no_error_check_write(i, str, strlen(str));
 	close(i);
 
 	/* Ignore TTY signals */
@@ -415,7 +665,7 @@ int main(int argc, char **argv)
 	gboolean systembus = TRUE;
 	gboolean debugmode = FALSE;
 
-	const char optline[] = "dS";
+	const char optline[] = "dsTSMDqvhV";
 
 	struct option const options[] = {
 		{ "daemonflag", no_argument, 0, 'd' },
@@ -430,9 +680,6 @@ int main(int argc, char **argv)
 		{ "version", no_argument, 0, 'V' },
 		{ 0, 0, 0, 0 }
 	};
-
-	/* NULL the mainloop */
-	mainloop = NULL;
 
 	/* Initialise support for locales, and set the program-name */
 	if (init_locales(PRG_NAME) != 0)
@@ -520,19 +767,28 @@ int main(int argc, char **argv)
 	mce_log_open(PRG_NAME, LOG_DAEMON, logtype);
 	mce_log_set_verbosity(verbosity);
 
+#ifdef ENABLE_WAKELOCKS
+	/* Since mce enables automatic suspend, we must try to
+	 * disable it when mce process exits */
+	atexit(mce_cleanup_wakelocks);
+#endif
+
 	/* Daemonize if requested */
 	if (daemonflag == TRUE)
 		daemonize();
-
-	signal(SIGUSR1, signal_handler);
-	signal(SIGHUP, signal_handler);
-	signal(SIGTERM, signal_handler);
 
 	/* Initialise GType system */
 	g_type_init();
 
 	/* Register a mainloop */
 	mainloop = g_main_loop_new(NULL, FALSE);
+
+	/* Signal handlers can be installed once we have a mainloop */
+	if( !mce_init_signal_pipe() ) {
+		mce_log(LL_CRIT, "Failed to initialise signal pipe");
+		exit(EXIT_FAILURE);
+	}
+	install_signal_handlers();
 
 	/* Initialise subsystems */
 
@@ -742,12 +998,17 @@ EXIT:
 	mce_conf_exit();
 
 	/* If the mainloop is initialised, unreference it */
-	if (mainloop != NULL)
+	if (mainloop != NULL) {
 		g_main_loop_unref(mainloop);
+		mainloop = 0;
+	}
 
 	/* Log a farewell message and close the log */
 	mce_log(LL_INFO, "Exiting...");
-	mce_log_close();
+
+	/* We do not need to explicitly close the log and doing so
+	 * would not allow logging from atexit handlers */
+	//mce_log_close();
 
 	return status;
 }

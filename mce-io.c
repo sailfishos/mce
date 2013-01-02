@@ -467,12 +467,12 @@ gboolean mce_write_number_string_to_file(output_state_t *output, const gulong nu
 
 	if( !output ) {
 		mce_log(LL_CRIT, "NULL output passed, terminating");
-		abort();
+		mce_abort();
 	}
 
 	if( !output->context ) {
 		mce_log(LL_CRIT, "output->context missing, terminating");
-		abort();
+		mce_abort();
 	}
 
 	if( !output->path ) {
@@ -703,7 +703,8 @@ EXIT:
 	if ((status == FALSE) &&
 	    (iomon != NULL) &&
 	    (iomon->error_policy == MCE_IO_ERROR_POLICY_EXIT)) {
-		g_main_loop_quit(mainloop);
+		// FIXME: this is not how one should exit from mainloop
+		mce_quit_mainloop();
 		exit(EXIT_FAILURE);
 	}
 
@@ -875,7 +876,8 @@ EXIT:
 	if ((status == FALSE) &&
 	    (iomon != NULL) &&
 	    (iomon->error_policy == MCE_IO_ERROR_POLICY_EXIT)) {
-		g_main_loop_quit(mainloop);
+		// FIXME: this is not how one should exit from mainloop
+		mce_quit_mainloop();
 		exit(EXIT_FAILURE);
 	}
 
@@ -943,7 +945,8 @@ static gboolean io_error_cb(GIOChannel *source,
 
 EXIT:
 	if ((iomon != NULL) && (exit_on_error == TRUE)) {
-		g_main_loop_quit(mainloop);
+		// FIXME: this is not how one should exit from mainloop
+		mce_quit_mainloop();
 		exit(EXIT_FAILURE);
 	}
 

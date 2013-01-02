@@ -2558,6 +2558,133 @@ static gboolean display_orientation_change_dbus_cb(DBusMessage *const msg)
 	return status;
 }
 
+#ifdef ENABLE_WAKELOCKS
+/** Are we already unloading the module? */
+static gboolean suspend_unload = FALSE;
+
+/** Still waiting for desktop ready ?*/
+static guint suspend_timer_id = 0;
+
+/** Make suspend policy decision
+ *
+ * Unless we are still booting up or exiting mce, the policy
+ * is based on display state as follows:
+ * - full suspend on OFF / LPM_OFF
+ * - early suspend on LPM_ON
+ * - otherwise block suspend
+ */
+static void suspend_rethink(void)
+{
+	static int suspend_have  = -1;
+	static int wakelock_have = -1;
+
+	int suspend_want  = 0; // default to block suspend
+	int wakelock_want = 1; //        and hold wakelock
+
+	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+
+	/* suspend if display is off/lpm */
+	switch (display_state) {
+	case MCE_DISPLAY_OFF:
+	case MCE_DISPLAY_LPM_OFF:
+		// full suspend
+		suspend_want  = 1;
+		wakelock_want = 0;
+		break;
+	case MCE_DISPLAY_LPM_ON:
+		// early suspend
+		suspend_want  = 1;
+		wakelock_want = 1;
+		break;
+	default:
+		break;
+	}
+
+	/* do not suspend mid bootup */
+	if( suspend_timer_id ) {
+		suspend_want = 0;
+	}
+
+	/* no more suspend at module unload */
+	if( suspend_unload ) {
+		suspend_want  = 0;
+		wakelock_want = 0;
+	}
+
+	/* act if decision has changed */
+	if( wakelock_have != wakelock_want && wakelock_want )
+		wakelock_lock("mce_display_on", -1);
+
+	if( suspend_have != suspend_want ) {
+		if( (suspend_have = suspend_want) )
+			wakelock_allow_suspend();
+		else
+			wakelock_block_suspend();
+	}
+
+	if( wakelock_have != wakelock_want && !wakelock_want )
+		wakelock_unlock("mce_display_on");
+
+	wakelock_have = wakelock_want;
+}
+
+/** Simulated "desktop ready" via uptime based timer
+ */
+static gboolean suspend_timer_cb(gpointer user_data)
+{
+	(void)user_data;
+	if( suspend_timer_id ) {
+		suspend_timer_id = 0;
+		mce_log(LL_NOTICE, "suspend delay ended");
+		suspend_rethink();
+	}
+	return FALSE;
+}
+
+/** Cleanup suspend policy
+ */
+static void suspend_quit(void)
+{
+	suspend_unload = TRUE;
+
+	if( suspend_timer_id ) {
+		g_source_remove(suspend_timer_id);
+		suspend_timer_id = 0;
+	}
+
+	suspend_rethink();
+}
+
+/** Initialize suspend policy
+ */
+static void suspend_init(void)
+{
+	/* FIXME: While we do not have a proper desktop-is-ready
+	 *        signal/state we are guestimating that we can
+	 *        allow suspend after uptime is large enough */
+
+	time_t uptime = 0;  // uptime in seconds
+	time_t ready  = 60; // desktop ready at
+	time_t delay  = 10; // default wait time
+
+	struct timespec ts;
+
+	/* Assume that monotonic clock == uptime */
+	if( clock_gettime(CLOCK_MONOTONIC, &ts) == 0 )
+		uptime = ts.tv_sec;
+
+	if( uptime + delay < ready )
+		delay = ready - uptime;
+
+	mce_log(LL_NOTICE, "suspend delay %d seconds", (int)delay);
+
+	if( suspend_timer_id )
+		g_source_remove(suspend_timer_id);
+
+	suspend_timer_id = g_timeout_add_seconds(delay, suspend_timer_cb, 0);
+}
+#endif /* ENABLE_WAKELOCKS */
+
 /**
  * Filter display state changes
  *
@@ -2721,19 +2848,10 @@ static void display_state_trigger(gconstpointer data)
 	/* Update display on timers */
 	update_display_timers(FALSE);
 
-#ifdef ENABLE_WAKELOCKS
-	/* Inhibit suspend unless the display is off */
-	switch (display_state) {
-	case MCE_DISPLAY_OFF:
-	case MCE_DISPLAY_LPM_OFF:
-	        wakelock_unlock("mce_display_on");
-		break;
-	default:
-	        wakelock_lock("mce_display_on", -1);
-		break;
-	}
-#endif
 EXIT:
+#ifdef ENABLE_WAKELOCKS
+	suspend_rethink();
+#endif
 	return;
 }
 
@@ -2964,6 +3082,11 @@ const gchar *g_module_check_init(GModule *module)
 
 	/* Initialise the display type and the relevant paths */
 	(void)get_display_type();
+
+#ifdef ENABLE_WAKELOCKS
+	/* Initialize suspend policy evaluator */
+	suspend_init();
+#endif
 
 	if ((submode & MCE_TRANSITION_SUBMODE) != 0) {
 		/* Disable bootup submode. It causes tklock problems if we don't */
@@ -3292,6 +3415,11 @@ G_MODULE_EXPORT void g_module_unload(GModule *module);
 void g_module_unload(GModule *module)
 {
 	(void)module;
+
+#ifdef ENABLE_WAKELOCKS
+	/* Cleanup suspend policy evaluator */
+	suspend_quit();
+#endif
 
 	/* Write display on timers to CAL */
 	update_display_timers(TRUE);
