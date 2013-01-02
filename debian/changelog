@@ -1,6 +1,20 @@
 mce (1.12.5) unstable; urgency=low
 
   * NOT RELEASED YET
+  * MCE uses built-in gconf replacement for handling settings internally
+    and provides a dbus interface for accessing the settings
+  * Mcetool uses the mce setting dbus interface instead of gconf
+  * Common mce core functions no longer included in every plugin.so too
+  * Mce sbin binaries now installed to /usr/sbin/ instead of /sbin/
+  * The mce.service and tmpfiles.d hook moved from OBS to mce source tree
+  * Wakelock manipulation now enabled by default
+  * Logging changes: removed excess whitespace, error levels used by
+    mce conform to syslog priorities, error level indication prefixes
+    used for stderr logging
+  * Autosuspend is enabled/disabled based on display state
+  * Signals passed via a pipe for processing within the mainloop context
+  * Autosuspend is blocked during system startup / when mce exits
+  * MCE supports short command line options too (e.g. -v == --verbose)
 
  -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 30 Nov 2012 11:23:08 +0200
 
