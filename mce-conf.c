@@ -19,6 +19,8 @@
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include <glib.h>
+#include <glob.h>
+#include <string.h>
 
 #include "mce.h"
 #include "mce-conf.h"
@@ -333,6 +335,157 @@ EXIT:
 	return keyfileptr;
 }
 
+/** Copy key value key value from one keyfile to another
+ *
+ * @param dest keyfile to modify
+ * @param srce keyfile to copy from
+ * @param grp  value group to copy
+ * @param key  value key to copy
+ */
+static void mce_conf_override_key(GKeyFile *dest, GKeyFile *srce,
+			       const char *grp, const char *key)
+{
+	gchar *val = g_key_file_get_value(srce, grp, key, 0);
+	if( val ) {
+		//mce_log(LL_NOTICE, "[%s] %s = %s", grp, key, val);
+		g_key_file_set_value(dest, grp, key, val);
+		g_free(val);
+	}
+}
+
+/** Augment key value with data from another file
+ *
+ * @param dest keyfile to modify
+ * @param srce keyfile to add from
+ * @param grp  value group to add
+ * @param key  value key to add
+ */
+static void mce_conf_append_key(GKeyFile *dest, GKeyFile *srce,
+			       const char *grp, const char *key)
+{
+	gchar *val = g_key_file_get_value(srce, grp, key, 0);
+
+	if( val ) {
+		gchar *old = g_key_file_get_value(dest, grp, key, 0);
+		gchar *tmp = 0;
+
+		if( old && *old ) {
+			tmp = g_strconcat(old, ";", val, NULL);
+		}
+
+		mce_log(LL_NOTICE, "[%s] %s = %s", grp, key, tmp ?: val);
+		g_key_file_set_value(dest, grp, key, tmp ?: val);
+
+		g_free(tmp);
+		g_free(old);
+		g_free(val);
+	}
+}
+
+/** Merge value from one keyfile to another
+ *
+ * Existing values will be overridden, except for values
+ * in group [evdev] that are appended to existing data.
+ *
+ * @param dest keyfile to modify
+ * @param srce keyfile to merge from
+ * @param grp  value group to merge
+ * @param key  value key to merge
+ */
+static void mce_conf_merge_key(GKeyFile *dest, GKeyFile *srce,
+			       const char *grp, const char *key)
+{
+	if( !strcmp(grp, "evdev") ) {
+		mce_conf_append_key(dest, srce, grp, key);
+	}
+	else {
+		mce_conf_override_key(dest, srce, grp, key);
+	}
+}
+
+/** Merge group of values from one keyfile to another
+ *
+ * @param dest keyfile to modify
+ * @param srce keyfile to merge from
+ * @param grp  value group to merge
+ */
+static void mce_conf_merge_group(GKeyFile *dest, GKeyFile *srce,
+				 const char *grp)
+{
+	gchar **key = g_key_file_get_keys(srce, grp, 0, 0);
+	if( key ) {
+		for( size_t k = 0; key[k]; ++k )
+			mce_conf_merge_key(dest, srce, grp, key[k]);
+		g_strfreev(key);
+	}
+}
+
+/** Merge all groups and values from one keyfile to another
+ *
+ * @param dest keyfile to modify
+ * @param srce keyfile to merge from
+ */
+static void mce_conf_merge_file(GKeyFile *dest, GKeyFile *srce)
+{
+	gchar **grp = g_key_file_get_groups(srce, 0);
+
+	if( grp ) {
+		for( size_t g = 0; grp[g]; ++g )
+			mce_conf_merge_group(dest, srce, grp[g]);
+		g_strfreev(grp);
+	}
+}
+
+/** Callback function for logging errors within glob()
+ *
+ * @param path path to file/dir where error occurred
+ * @param err  errno that occurred
+ *
+ * @return 0 (= do not stop glob)
+ */
+static int mce_conf_glob_error_cb(const char *path, int err)
+{
+  mce_log(LL_WARN, "%s: glob: %s", path, g_strerror(err));
+  return 0;
+}
+
+/** Process config data from /etc/mce/mce.d/xxx.ini files
+ */
+static GKeyFile *mce_conf_read_ini_files(void)
+{
+	GKeyFile *ini = g_key_file_new();
+	glob_t    gb;
+
+	memset(&gb, 0, sizeof gb);
+
+	if( glob("/etc/mce/*.ini", 0, mce_conf_glob_error_cb, &gb) != 0 ) {
+		mce_log(LL_WARN, "no mce configuration ini-files found");
+		goto EXIT;
+	}
+
+	for( size_t i = 0; i < gb.gl_pathc; ++i ) {
+		const char *path = gb.gl_pathv[i];
+		GError     *err  = 0;
+		GKeyFile   *tmp  = g_key_file_new();
+
+		if( !g_key_file_load_from_file(tmp, path, 0, &err) ) {
+			mce_log(LL_WARN, "%s: can't load: %s", path,
+				err->message ?: "unknown");
+		}
+		else {
+			mce_log(LL_NOTICE, "processing %s ...", path);
+			mce_conf_merge_file(ini, tmp);
+		}
+		g_clear_error(&err);
+		g_key_file_free(tmp);
+	}
+
+EXIT:
+	globfree(&gb);
+
+	return ini;
+}
+
 /**
  * Init function for the mce-conf component
  *
@@ -342,9 +495,8 @@ gboolean mce_conf_init(void)
 {
 	gboolean status = FALSE;
 
-	if ((keyfile = mce_conf_read_conf_file(G_STRINGIFY(MCE_CONF_FILE))) == NULL) {
+	if( !(keyfile = mce_conf_read_ini_files()) )
 		goto EXIT;
-	}
 
 	status = TRUE;
 
@@ -357,7 +509,7 @@ EXIT:
  */
 void mce_conf_exit(void)
 {
-	mce_conf_free_conf_file(keyfile);
+	mce_conf_free_conf_file(keyfile), keyfile = 0;
 
 	return;
 }
