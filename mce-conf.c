@@ -125,7 +125,7 @@ EXIT:
  *
  * @param group The configuration group to get the value from
  * @param key The configuration key to get the value of
- * @param length The length of the list
+ * @param length The length of the list, or NULL if not needed
  * @param keyfileptr A keyfile pointer, or NULL to use the default keyfile
  * @return The configuration value on success, NULL on failure
  */
@@ -141,7 +141,8 @@ gint *mce_conf_get_int_list(const gchar *group, const gchar *key,
 				"Could not get config key %s/%s; "
 				"no configuration file initialised",
 				group, key);
-			*length = 0;
+			if( length )
+				*length = 0;
 			goto EXIT;
 		} else {
 			keyfileptr = keyfile;
@@ -155,7 +156,8 @@ gint *mce_conf_get_int_list(const gchar *group, const gchar *key,
 		mce_log(LL_WARN,
 			"Could not get config key %s/%s; %s",
 			group, key, error->message);
-		*length = 0;
+		if( length )
+			*length = 0;
 	}
 
 	g_clear_error(&error);
@@ -221,7 +223,7 @@ EXIT:
  *
  * @param group The configuration group to get the value from
  * @param key The configuration key to get the value of
- * @param length The length of the list
+ * @param length The length of the list, or NULL if not needed
  * @param keyfileptr A keyfile pointer, or NULL to use the default keyfile
  * @return The configuration value on success, NULL on failure
  */
@@ -237,7 +239,8 @@ gchar **mce_conf_get_string_list(const gchar *group, const gchar *key,
 				"Could not get config key %s/%s; "
 				"no configuration file initialised",
 				group, key);
-			*length = 0;
+			if( length )
+				*length = 0;
 			goto EXIT;
 		} else {
 			keyfileptr = keyfile;
@@ -251,7 +254,8 @@ gchar **mce_conf_get_string_list(const gchar *group, const gchar *key,
 		mce_log(LL_WARN,
 			"Could not get config key %s/%s; %s",
 			group, key, error->message);
-		*length = 0;
+		if( length )
+			*length = 0;
 	}
 
 	g_clear_error(&error);
@@ -272,7 +276,8 @@ gchar **mce_conf_get_keys(const gchar *group, gsize *length,
 				"Could not get config keys %s; "
 				"no configuration file initialised",
 				group);
-			*length = 0;
+			if( length )
+				*length = 0;
 			goto EXIT;
 		} else {
 			keyfileptr = keyfile;
@@ -285,7 +290,8 @@ gchar **mce_conf_get_keys(const gchar *group, gsize *length,
 		mce_log(LL_WARN,
 			"Could not get config keys %s; %s",
 			group, error->message);
-		*length = 0;
+		if( length )
+			*length = 0;
 	}
 
 	g_clear_error(&error);
