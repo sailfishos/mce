@@ -492,6 +492,158 @@ EXIT:
 	return ini;
 }
 
+/* XXX:
+ * We should probably use
+ * /dev/input/keypad
+ * /dev/input/gpio-keys
+ * /dev/input/pwrbutton
+ * /dev/input/ts
+ * and add whitelist entries for misc devices instead
+ */
+
+/**
+ * List of drivers that provide touchscreen events
+ * XXX: If this is made case insensitive,
+ *      we could search for "* touchscreen" instead
+ */
+static const gchar *const touch_builtin[] = {
+	/** Input layer name for the Atmel mXT touchscreen */
+	"Atmel mXT Touchscreen",
+
+	/** Input layer name for the Atmel QT602240 touchscreen */
+	"Atmel QT602240 Touchscreen",
+
+	/** TSC2005 touchscreen */
+	"TSC2005 touchscreen",
+
+	/** TSC2301 touchscreen */
+	"TSC2301 touchscreen",
+
+	/** ADS784x touchscreen */
+	"ADS784x touchscreen",
+
+	/** No more entries */
+	NULL
+};
+
+/**
+ * List of drivers that provide keyboard events
+ */
+static const gchar *const keybd_builtin[] = {
+	/** Input layer name for the TWL4030 keyboard/keypad */
+	"TWL4030 Keypad",
+
+	/** Legacy input layer name for the TWL4030 keyboard/keypad */
+	"omap_twl4030keypad",
+
+	/** Generic input layer name for keyboard/keypad */
+	"Internal keyboard",
+
+	/** Input layer name for the LM8323 keypad */
+	"LM8323 keypad",
+
+	/** Generic input layer name for keypad */
+	"Internal keypad",
+
+	/** Input layer name for the TSC2301 keypad */
+	"TSC2301 keypad",
+
+	/** Legacy generic input layer name for keypad */
+	"omap-keypad",
+
+	/** Input layer name for standard PC keyboards */
+	"AT Translated Set 2 keyboard",
+
+	/** Input layer name for the power button in various MeeGo devices */
+	"msic_power_btn",
+
+	/** Input layer name for the TWL4030 power button */
+	"twl4030_pwrbutton",
+
+	/** Input layer name for the Triton 2 power button */
+	"triton2-pwrbutton",
+
+	/** Input layer name for the Retu powerbutton */
+	"retu-pwrbutton",
+
+	/** Input layer name for the PC Power button */
+	"Power Button",
+
+	/** Input layer name for the PC Sleep button */
+	"Sleep Button",
+
+	/** Input layer name for the Thinkpad extra buttons */
+	"Thinkpad Extra Buttons",
+
+	/** Input layer name for ACPI virtual keyboard */
+	"ACPI Virtual Keyboard Device",
+
+	/** Input layer name for GPIO-keys */
+	"gpio-keys",
+
+	/** Input layer name for DFL-61/TWL4030 jack sense */
+	"dfl61-twl4030 Jack",
+
+	/** Legacy input layer name for TWL4030 jack sense */
+	"rx71-twl4030 Jack",
+
+	/** Input layer name for PC Lid switch */
+	"Lid Switch",
+
+	/** No more entries */
+	NULL
+};
+
+/**
+ * List of drivers that we should not monitor
+ */
+static const gchar *const black_builtin[] = {
+	/** Input layer name for the AMI305 magnetometer */
+	"ami305 magnetometer",
+
+	/** Input layer name for the ST LIS3LV02DL accelerometer */
+	"ST LIS3LV02DL Accelerometer",
+
+	/** Input layer name for the ST LIS302DL accelerometer */
+	"ST LIS302DL Accelerometer",
+
+	/** Input layer name for the TWL4030 vibrator */
+	"twl4030:vibrator",
+
+	/** Input layer name for AV accessory */
+	"AV Accessory",
+
+	/** Input layer name for the video bus */
+	"Video Bus",
+
+	/** Input layer name for the PC speaker */
+	"PC Speaker",
+
+	/** Input layer name for the Intel HDA headphone */
+	"HDA Intel Headphone",
+
+	/** Input layer name for the Intel HDA microphone */
+	"HDA Intel Mic",
+
+	/** Input layer name for the UVC 17ef:4807 webcam in thinkpad X301 */
+	"UVC Camera (17ef:4807)",
+
+	/** Input layer name for the UVC 17ef:480c webcam in thinkpad X201si */
+	"UVC Camera (17ef:480c)",
+
+	/** No more entries */
+	NULL
+};
+
+/** List of touchscreen event devices obtained from ini files */
+static gchar **touch_cached = NULL;
+
+/** List of keyboard event devices obtained from ini files */
+static gchar **keybd_cached = NULL;
+
+/** List of blacklisted event devices obtained from ini files */
+static gchar **black_cached = NULL;
+
 /**
  * Init function for the mce-conf component
  *
@@ -504,6 +656,20 @@ gboolean mce_conf_init(void)
 	if( !(keyfile = mce_conf_read_ini_files()) )
 		goto EXIT;
 
+	touch_cached = g_key_file_get_string_list(keyfile,
+						  "evdev",
+						  "touch",
+						  0, 0);
+
+	keybd_cached = g_key_file_get_string_list(keyfile,
+						  "evdev",
+						  "keybd",
+						  0, 0);
+
+	black_cached = g_key_file_get_string_list(keyfile,
+						  "evdev",
+						  "black",
+						  0, 0);
 	status = TRUE;
 
 EXIT:
@@ -515,7 +681,26 @@ EXIT:
  */
 void mce_conf_exit(void)
 {
+	g_strfreev(touch_cached), touch_cached = 0;
+	g_strfreev(keybd_cached), keybd_cached = 0;
+	g_strfreev(black_cached), black_cached = 0;
+
 	mce_conf_free_conf_file(keyfile), keyfile = 0;
 
 	return;
+}
+
+const gchar * const *mce_conf_get_touchscreen_event_drivers(void)
+{
+	return (const gchar*const*)touch_cached ?: touch_builtin;
+}
+
+const gchar * const *mce_conf_get_keyboard_event_drivers(void)
+{
+	return (const gchar*const*)keybd_cached ?: keybd_builtin;
+}
+
+const gchar * const *mce_conf_get_blacklisted_event_drivers(void)
+{
+	return (const gchar*const*)black_cached ?: black_builtin;
 }

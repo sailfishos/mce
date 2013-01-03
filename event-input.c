@@ -719,53 +719,48 @@ static void update_switch_states(void)
 static int match_event_file(const gchar *const filename,
 			    const gchar *const *const drivers)
 {
-	static char name[256];
+	char name[256];
 	int fd = -1;
-	int i;
 
 	/* If we cannot open the file, abort */
 	if ((fd = open(filename, O_NONBLOCK | O_RDONLY)) == -1) {
 		mce_log(LL_DEBUG,
 			"Failed to open `%s', skipping",
 			filename);
-
-		/* Ignore error */
-		errno = 0;
 		goto EXIT;
 	}
 
-	for (i = 0; drivers[i] != NULL; i++) {
-		if (ioctl(fd, EVIOCGNAME(sizeof name), name) >= 0) {
-			if (!strcmp(name, drivers[i])) {
-				/* We found our event file */
-				mce_log(LL_DEBUG,
-					"`%s' is `%s'",
-					filename, drivers[i]);
-				break;
-			}
-		} else {
-			mce_log(LL_WARN,
-				"ioctl(EVIOCGNAME) failed on `%s'",
-				filename);
-		}
+	/* Get name of the evdev node */
+        if (ioctl(fd, EVIOCGNAME(sizeof name), name) < 0) {
+		mce_log(LL_WARN,
+			"ioctl(EVIOCGNAME) failed on `%s'",
+			filename);
+		goto EXIT;
 	}
 
-	/* If the scan terminated with drivers[i] == NULL,
-	 * we didn't find any match
-	 */
-	if (drivers[i] == NULL) {
-		if (close(fd) == -1) {
-			mce_log(LL_ERR,
-				"Failed to close `%s'; %s",
-				filename, g_strerror(errno));
-			errno = 0;
+	/* Then check from the provided list */
+	for (int i = 0; drivers[i] != NULL; i++) {
+		if (!strcmp(name, drivers[i])) {
+			/* We found our event file */
+			mce_log(LL_DEBUG,
+				"`%s' is `%s'",
+				filename, drivers[i]);
+			goto SUCCESS;
 		}
-
-		fd = -1;
-		goto EXIT;
 	}
 
 EXIT:
+	/* Close the file descriptor */
+	if( fd != -1 ) {
+		if(close(fd) == -1) {
+			mce_log(LL_ERR,
+				"Failed to close `%s'; %s",
+				filename, g_strerror(errno));
+		}
+		fd = -1;
+	}
+SUCCESS:
+
 	return fd;
 }
 
@@ -810,7 +805,7 @@ static void match_and_register_io_monitor(const gchar *filename)
 	int fd;
 
 	if ((fd = match_event_file(filename,
-				   driver_blacklist)) != -1) {
+				   mce_conf_get_blacklisted_event_drivers())) != -1) {
 		/* If the driver for the event file is blacklisted, skip it */
 		if (close(fd) == -1) {
 			mce_log(LL_ERR,
@@ -821,7 +816,7 @@ static void match_and_register_io_monitor(const gchar *filename)
 
 		fd = -1;
 	} else if ((fd = match_event_file(filename,
-					  touchscreen_event_drivers)) != -1) {
+					  mce_conf_get_touchscreen_event_drivers())) != -1) {
 		gconstpointer iomon = NULL;
 
 		iomon = mce_register_io_monitor_chunk(fd, filename, MCE_IO_ERROR_POLICY_WARN, G_IO_IN | G_IO_ERR, FALSE, touchscreen_iomon_cb, sizeof (struct input_event));
@@ -840,7 +835,8 @@ static void match_and_register_io_monitor(const gchar *filename)
 		} else {
 			touchscreen_dev_list = g_slist_prepend(touchscreen_dev_list, (gpointer)iomon);
 		}
-	} else if ((fd = match_event_file(filename, keyboard_event_drivers)) != -1) {
+	} else if ((fd = match_event_file(filename,
+					  mce_conf_get_keyboard_event_drivers())) != -1) {
 		gconstpointer iomon = NULL;
 
 		iomon = mce_register_io_monitor_chunk(fd, filename, MCE_IO_ERROR_POLICY_WARN, G_IO_IN | G_IO_ERR, FALSE, keypress_iomon_cb, sizeof (struct input_event));

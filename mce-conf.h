@@ -42,4 +42,8 @@ void mce_conf_free_conf_file(gpointer keyfileptr);
 gboolean mce_conf_init(void);
 void mce_conf_exit(void);
 
+const gchar * const *mce_conf_get_touchscreen_event_drivers(void);
+const gchar * const *mce_conf_get_keyboard_event_drivers(void);
+const gchar * const *mce_conf_get_blacklisted_event_drivers(void);
+
 #endif /* _MCE_CONF_H_ */
