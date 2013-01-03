@@ -4,12 +4,17 @@
  * License: LGPLv2
  * ------------------------------------------------------------------------- */
 
+/* NOTE: Only async-signal-safe functions can be called from this
+ *       module since we might need to use the functionality while
+ *       handling non-recoverable signals!
+ */
+
 #include "libwakelock.h"
 
 #include <fcntl.h>
 #include <string.h>
 #include <unistd.h>
-#include <stdio.h>
+#include <stdarg.h>
 #include <errno.h>
 
 /** Whether to write debug logging to stderr
@@ -24,12 +29,117 @@
  */
 #define LWL_LOG_PFIX "LWL: "
 
+/** Number to string helper
+ *
+ * @param buf work space
+ * @param len size of work space
+ * @param num number to convert
+ * @return pointer to ascii representation of num
+ */
+static char *lwl_number(char *buf, size_t len, long long num)
+{
+	char              *pos = buf + len;
+	int                sgn = (num < 0);
+	unsigned long long val = sgn ? -num : num;
+
+	auto void emit(int c) {
+		if( pos > buf ) *--pos = c;
+	}
+
+	/* terminate at end of work space */
+	emit(0);
+
+	/* work backwards from least signigicant digits */
+	do { emit('0' + val % 10); } while( val /= 10 );
+
+	/* apply minus sign if needed */
+	if( sgn ) emit('-');
+
+	/* return pointer to 1st digit (not start of buffer) */
+	return pos;
+}
+
+/** String concatenation helper
+ *
+ * @param buf work space
+ * @param len size of work space
+ * @param str first string to copy
+ * @param ... NULL terminated list of more strings to copy
+ * @return pointer to the start of the buffer
+ */
+static char *lwl_concat(char *buf, size_t len, const char *str, ...)
+{
+	char *pos = buf;
+	char *end = buf + len - 1;
+	va_list va;
+
+	auto void emit(const char *s) {
+		while( pos < end && *s ) *pos++ = *s++;
+	}
+
+	va_start(va, str);
+	while( str )
+		emit(str), str = va_arg(va, const char *);
+	va_end(va);
+
+	*pos = 0;
+	return buf;
+}
+
+#if LWL_ENABLE_LOGGING
+/** Debug predicate function
+ *
+ * Even if logging is enabled, we will not write to stderr
+ * unless we're running from console.
+ *
+ * [Systemd captures stderr output and we do not want to
+ * cause unnecessary scheduling close to entry to suspend.]
+ *
+ * @return Non-zero value if logging can be done
+ */
+static int lwl_debug_p(void)
+{
+	static int res = -1;
+	if( res == -1 )
+		res = (isatty(2) > 0);
+	return res;
+}
+
 /** Logging functionality that can be configured out at compile time
  */
-#if LWL_ENABLE_LOGGING
-# define lwl_debugf(FMT, ARGS...) fprintf(stderr, LWL_LOG_PFIX FMT, ##ARGS)
+static void lwl_debug_(const char *m, ...)
+{
+	char buf[256];
+	char *pos = buf;
+	char *end = buf + sizeof buf - 1;
+	va_list va;
+
+	auto void emit(const char *s)
+	{
+		while( pos < end && *s ) *pos++ = *s++;
+	}
+
+	emit("LWL: ");
+	va_start(va, m);
+	while( m )
+	{
+		emit(m), m = va_arg(va, const char *);
+	}
+	va_end(va);
+
+	if( write(STDERR_FILENO, buf, pos - buf) < 0 )
+	{
+		// do not care
+	}
+}
+
+# define lwl_debug(MSG, MORE...) \
+	do {\
+		if( lwl_debug_p() ) lwl_debug_(MSG, ##MORE); \
+	} while( 0 )
+
 #else
-# define lwl_debugf(FMT, ARGS...) do { } while( 0 )
+# define lwl_debug(MSG, MORE...) do { } while( 0 )
 #endif
 
 /** Flag that gets set once the process is about to exit */
@@ -50,15 +160,16 @@ static void lwl_write_file(const char *path, const char *data)
 {
 	int file;
 
-	lwl_debugf("%s << %s", path, data);
+	lwl_debug(path, " << ", data, NULL);
 
 	if( (file = TEMP_FAILURE_RETRY(open(path, O_WRONLY))) == -1 ) {
-		lwl_debugf("%s: open: %m\n", path);
+		lwl_debug(path, ": open: ", strerror(errno), "\n", NULL);
 	} else {
 		int size = strlen(data);
 		errno = 0;
 		if( TEMP_FAILURE_RETRY(write(file, data, size)) != size ) {
-			lwl_debugf("%s: write: %m\n", path);
+			lwl_debug(path, ": write: ", strerror(errno),
+				  "\n", NULL);
 		}
 		TEMP_FAILURE_RETRY(close(file));
 	}
@@ -72,7 +183,7 @@ static int lwl_enabled(void)
 
 	if( !checked ) {
 		checked = 1, enabled = !access(lwl_lock_path, F_OK);
-		lwl_debugf("%s\n", enabled ? "enabled" : "disabled");
+		lwl_debug(enabled ? "enabled" : "disabled", "\n", NULL);
 	}
 
 	return enabled;
@@ -88,10 +199,13 @@ void wakelock_lock(const char *name, long long ns)
 {
 	if( lwl_enabled() && !lwl_shutting_down ) {
 		char tmp[64];
+		char num[64];
 		if( ns < 0 ) {
-			snprintf(tmp, sizeof tmp, "%s\n", name);
+			lwl_concat(tmp, sizeof tmp, name, "\n", NULL);
 		} else {
-			snprintf(tmp, sizeof tmp, "%s %lld\n", name, ns);
+			lwl_concat(tmp, sizeof tmp, name,
+				   lwl_number(num, sizeof num, ns),
+				   "\n", NULL);
 		}
 		lwl_write_file(lwl_lock_path, tmp);
 	}
@@ -107,7 +221,7 @@ void wakelock_unlock(const char *name)
 {
 	if( lwl_enabled() ) {
 		char tmp[64];
-		snprintf(tmp, sizeof tmp, "%s\n", name);
+		lwl_concat(tmp, sizeof tmp, name, "\n", NULL);
 		lwl_write_file(lwl_unlock_path, tmp);
 	}
 }
@@ -151,6 +265,6 @@ void wakelock_block_suspend(void)
 
 void wakelock_block_suspend_until_exit(void)
 {
-  lwl_shutting_down = 1;
-  wakelock_block_suspend();
+	lwl_shutting_down = 1;
+	wakelock_block_suspend();
 }
