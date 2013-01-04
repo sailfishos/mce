@@ -275,12 +275,6 @@ void mce_quit_mainloop(void)
  */
 static void mce_cleanup_wakelocks(void)
 {
-	/* FIXME: since this gets called from signal handler too,
-	 * all wakelock functions should be made async-signal-safe.
-	 * At the moment they use at least fprintf() and snprintf()
-	 * that are not safe.
-	 */
-
 	/* We are on exit path -> block suspend for good */
 	wakelock_block_suspend_until_exit();
 
@@ -296,19 +290,27 @@ static void mce_cleanup_wakelocks(void)
 static void mce_exit_via_signal(int signr) __attribute__((noreturn));
 static void mce_exit_via_signal(int signr)
 {
+	sigset_t ss;
+
+	sigemptyset(&ss);
+	sigaddset(&ss, SIGALRM);
+
+	/* Give us N seconds to exit */
+	signal(SIGALRM, SIG_DFL);
+	alarm(3);
+	sigprocmask(SIG_UNBLOCK, &ss, 0);
+
 #ifdef ENABLE_WAKELOCKS
 	/* Cancel auto suspend */
 	mce_cleanup_wakelocks();
 #endif
-	/* Give us N seconds to exit */
-	signal(SIGALRM, SIG_DFL);
-	alarm(3);
-
-	/* Restore default behavior */
+	/* Try to exit via default handler */
 	signal(signr, SIG_DFL);
-
-	/* Exit via default handler or abort() */
+	sigaddset(&ss, signr);
+	sigprocmask(SIG_UNBLOCK, &ss, 0);
 	raise(signr);
+
+	/* Or just abort as the last resort*/
 	abort();
 }
 
@@ -337,23 +339,6 @@ static void signal_handler(const gint signr)
 		/* Possibly for re-reading configuration? */
 		break;
 
-#ifdef ENABLE_WAKELOCKS
-	case SIGABRT:
-	case SIGILL:
-	case SIGFPE:
-	case SIGSEGV:
-	case SIGPIPE:
-	case SIGALRM:
-	case SIGBUS:
-		/* Terminating, but disable suspend first */
-		mce_exit_via_signal(signr);
-		break;
-
-	case SIGTSTP:
-		/* Stopping mce could also lead to unrecoverable suspend */
-		break;
-#endif
-
 	case SIGINT:
 	case SIGQUIT:
 	case SIGTERM:
@@ -364,6 +349,9 @@ static void signal_handler(const gint signr)
 
 		/* Terminate mainloop */
 		mce_quit_mainloop();
+		break;
+
+	case SIGPIPE:
 		break;
 
 	default:
@@ -445,19 +433,22 @@ static void mce_tx_signal_cb(int sig)
 	static volatile int exit_tries = 0;
 
 	static const char msg[] = "\n*** BREAK ***\n";
+	static const char die[] = "\n*** UNRECOVERABLE FAILURE ***\n";
 
 	/* FIXME: Should really use sigaction() to avoid having
 	 * the default handler active until we manage to restore
 	 * our handler here ... */
 	signal(sig, mce_tx_signal_cb);
 
-	/* Make sure that a stuck or non-existing mainloop does not stop
-	 * us from handling at least repeated terminating signals */
 	switch( sig )
 	{
 	case SIGINT:
 	case SIGQUIT:
 	case SIGTERM:
+		/* Make sure that a stuck or non-existing mainloop does
+		 * not stop us from handling at least repeated terminating
+		 signals ... */
+
 		/* We are on exit path -> block suspend for good */
 		wakelock_block_suspend_until_exit();
 
@@ -467,6 +458,24 @@ static void mce_tx_signal_cb(int sig)
 			mce_abort();
 		}
 		break;
+
+#ifdef ENABLE_WAKELOCKS
+	case SIGABRT:
+	case SIGILL:
+	case SIGFPE:
+	case SIGSEGV:
+	case SIGALRM:
+	case SIGBUS:
+		/* Unrecoverable failures can't be handled in the mainloop
+		 * Terminate but disable suspend first */
+		no_error_check_write(STDERR_FILENO, die, sizeof die - 1);
+		mce_exit_via_signal(sig);
+		break;
+
+	case SIGTSTP:
+		/* Stopping mce could also lead to unrecoverable suspend */
+		break;
+#endif
 	default:
 		break;
 	}

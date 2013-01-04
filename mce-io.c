@@ -1074,7 +1074,7 @@ static void mce_determine_io_monitor_seekable(iomon_struct *iomon)
 	}
 	/* report the difference */
 	if (kernel != glib) {
-		mce_log(LL_WARN, "%s: is %sseekable, while glib thinks it is %sseekable",
+		mce_log(LL_DEBUG, "%s: is %sseekable, while glib thinks it is %sseekable",
 			iomon->file, kernel ? "" : "NOT ", glib ? "" : "NOT ");
 	}
 
