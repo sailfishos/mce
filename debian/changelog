@@ -19,6 +19,7 @@ mce (1.12.5) unstable; urgency=low
   * Evdev input sources can be configured in /etc/mce/*.ini
   * Support for short mcetool command line options and changes to
     --set-debug-mode handling
+  * Display brightness control paths can be specified in config files
 
  -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 30 Nov 2012 11:23:08 +0200
 
