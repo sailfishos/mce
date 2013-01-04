@@ -516,6 +516,94 @@ static gboolean is_dismiss_low_power_mode_enabled(void)
 		 ((submode & MCE_MALF_SUBMODE) != 0)) ? TRUE : FALSE);
 }
 
+/** Get the display type from [modules/display] config group
+ *
+ * @param display_type where to store the selected display type
+ *
+ * @return TRUE if valid configuration was found, FALSE otherwise
+ */
+
+static gboolean get_display_type_from_config(display_type_t *display_type)
+{
+	static const gchar group[] = "modules/display";
+
+	gboolean   res = FALSE;
+	gchar     *set = 0;
+	gchar     *max = 0;
+
+	gchar    **vdir = 0;
+	gchar    **vset = 0;
+	gchar    **vmax = 0;
+
+	/* First check if we have a configured brightness directory
+	 * that a) exists and b) contains both brightness and
+	 * max_brightness files */
+	if( (vdir = mce_conf_get_string_list(group, "brightness_dir", 0, 0)) ) {
+		for( size_t i = 0; vdir[i]; ++i ) {
+			if( !*vdir[i] || g_access(vdir[i], F_OK) )
+				continue;
+
+			set = g_strdup_printf("%s/brightness", vdir[i]);
+			max = g_strdup_printf("%s/max_brightness", vdir[i]);
+
+			if( !g_access(set, W_OK) && !g_access(max, R_OK) ) {
+				goto EXIT;
+			}
+			g_free(set), set = 0;
+			g_free(max), max = 0;
+		}
+	}
+
+	/* Then check if we can find mathes from possible brightness and
+	 * max_brightness file lists */
+	if( !(vset = mce_conf_get_string_list(group, "brightness", 0, 0)) )
+		goto EXIT;
+
+	if( !(vmax = mce_conf_get_string_list(group, "max_brightness", 0, 0)) )
+		goto EXIT;
+
+	for( size_t i = 0; vset[i]; ++i ) {
+		if( *vset[i] && !g_access(vset[i], W_OK) ) {
+			set = g_strdup(vset[i]);
+			break;
+		}
+	}
+
+	for( size_t i = 0; vmax[i]; ++i ) {
+		if( *vmax[i] && !g_access(vmax[i], R_OK) ) {
+			max = g_strdup(vmax[i]);
+			break;
+		}
+	}
+
+EXIT:
+	/* Have we found both brightness and max_brightness files? */
+	if( set && max ) {
+		mce_log(LL_NOTICE, "applying DISPLAY_TYPE_GENERIC from config file");
+		mce_log(LL_NOTICE, "brightness path = %s", set);
+		mce_log(LL_NOTICE, "max_brightness path = %s", max);
+
+		brightness_output.path = set, set = 0;
+		max_brightness_file    = max, max = 0;
+
+		cabc_mode_file            = 0;
+		cabc_available_modes_file = 0;
+		cabc_supported            = 0;
+
+		*display_type = DISPLAY_TYPE_GENERIC;
+		res = TRUE;
+	}
+
+	g_free(max);
+	g_free(set);
+
+	g_strfreev(vmax);
+	g_strfreev(vset);
+	g_strfreev(vdir);
+
+	return res;
+}
+
 /**
  * Get the display type
  *
@@ -529,7 +617,10 @@ static display_type_t get_display_type(void)
 	if (display_type != DISPLAY_TYPE_UNSET)
 		goto EXIT;
 
-	if (g_access(DISPLAY_BACKLIGHT_PATH DISPLAY_ACX565AKM, W_OK) == 0) {
+	if( get_display_type_from_config(&display_type) ) {
+		// nop
+	}
+	else if (g_access(DISPLAY_BACKLIGHT_PATH DISPLAY_ACX565AKM, W_OK) == 0) {
 		display_type = DISPLAY_TYPE_ACX565AKM;
 
 		brightness_output.path = g_strconcat(DISPLAY_BACKLIGHT_PATH, DISPLAY_ACX565AKM, DISPLAY_CABC_BRIGHTNESS_FILE, NULL);

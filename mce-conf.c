@@ -376,7 +376,7 @@ static void mce_conf_append_key(GKeyFile *dest, GKeyFile *srce,
 		gchar *tmp = 0;
 
 		if( old && *old ) {
-			tmp = g_strconcat(old, ";", val, NULL);
+			tmp = g_strconcat(val, ";", old, NULL);
 		}
 
 		mce_log(LL_NOTICE, "[%s] %s = %s", grp, key, tmp ?: val);
@@ -401,11 +401,27 @@ static void mce_conf_append_key(GKeyFile *dest, GKeyFile *srce,
 static void mce_conf_merge_key(GKeyFile *dest, GKeyFile *srce,
 			       const char *grp, const char *key)
 {
-	if( !strcmp(grp, "evdev") ) {
-		mce_conf_append_key(dest, srce, grp, key);
-	}
-	else {
-		mce_conf_override_key(dest, srce, grp, key);
+	/* groups/keys to append instead of overriding */
+	static const struct {
+		const gchar *grp;
+		const gchar *key; // NULL == every key in the group
+	} lut[] = {
+		{ .grp = "evdev" },
+		{ .grp = "modules/display" },
+		{ .grp = NULL }
+	};
+
+	for( size_t i = 0; ; ++i ) {
+		if( lut[i].grp == NULL ) {
+			mce_conf_override_key(dest, srce, grp, key);
+			break;
+		}
+		if( strcmp(lut[i].grp, grp) )
+			continue;
+		if( !lut[i].key || !strcmp(lut[i].key, key) ) {
+			mce_conf_append_key(dest, srce, grp, key);
+			break;
+		}
 	}
 }
 
