@@ -42,6 +42,9 @@
 #include "modules/display.h"		/* For GConf paths */
 #include "modules/powersavemode.h"	/* For GConf paths */
 
+/** Whether to use demo mode hack or the real thing */
+#define MCETOOL_USE_DEMOMODE_HACK 0
+
 /** Whether to enable development time debugging */
 #define MCETOOL_ENABLE_DEBUG 0
 
@@ -2103,12 +2106,16 @@ int main(int argc, char **argv)
 
 	gint powerkeyevent = INVALID_EVENT;
 	gint newinhibitmode = -1;
+#if MCETOOL_USE_DEMOMODE_HACK
 	gint demomode = -1;
+#endif
 	gint newpsm = -1;
 	gint newforcedpsm = -1;
 	gint newpsmthreshold = -1;
 	gint newbrightness = -1;
+#if MCETOOL_USE_DEMOMODE_HACK
 	gchar *newdemostate = NULL;
+#endif
 	gchar *newcabcmode = NULL;
 	gchar *newcallstate = NULL;
 	gchar *newcalltype = NULL;
@@ -2382,12 +2389,29 @@ int main(int argc, char **argv)
 
 		case 'D':
 			if(!strcmp(optarg, "on")){
+#if MCETOOL_USE_DEMOMODE_HACK
 				newdemostate = strdup(optarg);
 				demomode = 1;
+#else
+				// mcetool --unblank-screen --set-inhibit-mode=stay-on --set-tklock-mode=unlocked
+				send_unblank   = TRUE;
+				newinhibitmode = 3;
+				newtklockmode  = strdup("unlocked");
+#endif
 			}
 			else if(!strcmp(optarg, "off")) {
+#if MCETOOL_USE_DEMOMODE_HACK
 				newdemostate = strdup(optarg);
 				demomode = 0;
+#else
+				// mcetool --unblank-screen --dim-screen --blank-screen
+				//         --set-inhibit-mode=disabled --set-tklock-mode=locked
+				send_unblank   = TRUE;
+				send_dim       = TRUE;
+				send_blank     = TRUE;
+				newinhibitmode = 0;
+				newtklockmode  = strdup("locked");
+#endif
 			}
 			else {
 				usage();
@@ -2600,6 +2624,7 @@ int main(int argc, char **argv)
 			goto EXIT;
 	}
 
+#if MCETOOL_USE_DEMOMODE_HACK
 	if (demomode != -1) {
 		if (dbus_send(MCE_SERVICE, MCE_REQUEST_PATH,
 			      MCE_REQUEST_IF, MCE_DBUS_DEMO_MODE_REQ, TRUE,
@@ -2609,6 +2634,7 @@ int main(int argc, char **argv)
 				goto EXIT;
 		}
 	}
+#endif
 
 	if (radio_states_mask != 0) {
 		/* Change radio states */
