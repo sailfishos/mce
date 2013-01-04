@@ -17,6 +17,8 @@ mce (1.12.5) unstable; urgency=low
   * MCE supports short command line options too (e.g. -v == --verbose)
   * Installing extra ini-files to /etc/mce allows overriding mce.ini
   * Evdev input sources can be configured in /etc/mce/*.ini
+  * Support for short mcetool command line options and changes to
+    --set-debug-mode handling
 
  -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 30 Nov 2012 11:23:08 +0200
 
