@@ -137,136 +137,92 @@ static GConfClient *gconf_client = NULL;	/**< GConf client */
  */
 static void usage(void)
 {
-	fprintf(stdout,
-		_("Usage: %s [OPTION]\n"
-		  "Mode Control Entity tool\n"
-		  "\n"
-		  "      --blank-prevent             send blank prevent "
-		  "request to MCE\n"
-		  "      --cancel-blank-prevent      send cancel blank prevent "
-		  "request to MCE\n"
-		  "      --unblank-screen            send unblank request to "
-		  "MCE\n"
-		  "      --dim-screen                send dim request "
-		  "to MCE\n"
-		  "      --blank-screen              send blank request "
-		  "to MCE\n"
-		  "      --set-display-brightness=BRIGHTNESS\n"
-		  "                                  set the display "
-		  "brightness to BRIGHTNESS;\n"
-		  "                                    valid values are: "
-		  "1-5\n"
-		  "      --set-inhibit-mode=MODE\n"
-		  "                                  set the blanking inhibit "
-		  "mode to MODE;\n"
-		  "                                    valid modes "
-		  "are:\n"
-		  "                                    ``disabled'',\n"
-		  "                                    ``stay-on-with-charger"
-		  "'', ``stay-on'',\n"
-		  "                                    ``stay-dim-with-charger"
-		  "'', ``stay-dim''\n"
-		  "      --set-demo-mode=STATE\n"
-		  "				     set the display demo mode "
-		  " to STATE;\n"
-		  "					valid states "
-		  "are: 'on' and 'off'\n"
-		  "      --set-cabc-mode=MODE\n"
-		  "                                  set the CABC mode to "
-		  "MODE;\n"
-		  "                                    valid modes "
-		  "are:\n"
-		  "                                    ``off'', "
-		  "``ui'',\n"
-		  "                                    ``still-image' and "
-		  "``moving-image''\n"
-		  "      --set-color-profile=ID\n"
-		  "                                  set the color profile id "
-		  "to ID; use --get-color-profile-ids\n"
-		  "                                    to get available values\n"
-		  "      --get-color-profile-ids\n"
-		  "                                  get available color profile "
-		  "ids (see --set-color-profile)\n"
-		  "      --set-call-state=STATE:TYPE\n"
-		  "                                  set the call state to "
-		  "STATE and the call type\n"
-		  "                                    to TYPE; valid states "
-		  "are:\n"
-		  "                                    ``none'', "
-		  "``ringing'',\n"
-		  "                                    ``active'' and "
-		  "``service''\n"
-		  "                                    valid types are:\n"
-		  "                                    ``normal'' and "
-		  "``emergency''\n"
-		  "      --enable-radio=RADIO\n"
-		  "                                  enable the specified "
-		  "radio; valid radios are:\n"
-		  "                                    ``master'', "
-		  "``cellular'',\n"
-		  "                                    ``wlan'' and "
-		  "``bluetooth'';\n"
-		  "                                    ``master'' affects "
-		  "all radios\n"
-		  "      --disable-radio=RADIO\n"
-		  "                                  disable the specified "
-		  "radio; valid radios are:\n"
-		  "                                    ``master'', "
-		  "``cellular'',\n"
-		  "                                    ``wlan'' and "
-		  "``bluetooth'';\n"
-		  "                                    ``master'' affects "
-		  "all radios\n"
-		  "      --set-power-saving-mode=MODE\n"
-		  "                                  set the power saving "
-		  "mode; valid modes are:\n"
-		  "                                    ``enabled'' and "
-		  "``disabled''\n"
-		  "      --set-forced-psm=MODE\n"
-		  "                                  the forced "
-		  "power saving mode to MODE;\n"
-		  "                                    valid modes are:\n"
-		  "                                    ``enabled'' and "
-		  "``disabled''\n"
-		  "      --set-psm-threshold=VALUE\n"
-		  "                                  set the threshold for "
-		  "the power saving mode;\n"
-		  "                                    valid values are:\n"
-		  "                                    10, 20, 30, 40, 50\n"
-		  "      --set-tklock-mode=MODE\n"
-		  "                                  set the touchscreen/"
-		  "keypad lock mode;\n"
-		  "                                    valid modes are:\n"
-		  "                                    ``locked'', "
-		  "``locked-dim'',\n"
-		  "                                    ``locked-delay'',\n"
-		  "                                    and ``unlocked''\n"
-		  "      --enable-led                enable LED framework\n"
-		  "      --disable-led               disable LED framework\n"
-		  "      --activate-led-pattern=PATTERN\n"
-		  "                                  activate a LED pattern\n"
-		  "      --deactivate-led-pattern=PATTERN\n"
-		  "                                  deactivate a LED "
-		  "pattern\n"
-		  "      --powerkey-event=TYPE       trigger a powerkey "
-		  "event; valid types are:\n"
-		  "                                    ``short'', ``double'' "
-		  "and ``long''\n"
-		  "      --status                    output MCE status\n"
-		  "      --block                     block after executing "
-		  "commands\n"
-		  "  -S, --session                   use the session bus "
-		  "instead of the system bus\n"
-		  "                                    for D-Bus\n"
-		  "      --help                      display this help and "
-		  "exit\n"
-		  "      --version                   output version "
-		  "information and exit\n"
-		  "\n"
-		  "If no option is specified, the status is output.\n"
-		  "\n"
-		  "Report bugs to <david.weinehall@nokia.com>\n"),
-		progname);
+	static const char fmt[] =
+		"Usage: %s [OPTION]\n"
+		"Mode Control Entity tool\n"
+		"\n"
+		"  -P, --blank-prevent             send blank prevent request to MCE\n"
+		"  -v, --cancel-blank-prevent      send cancel blank prevent request to MCE\n"
+		"  -U, --unblank-screen            send unblank request to MCE\n"
+		"  -d, --dim-screen                send dim request to MCE\n"
+		"  -n, --blank-screen              send blank request to MCE\n"
+		"  -b, --set-display-brightness=BRIGHTNESS\n"
+		"                                  set the display brightness to BRIGHTNESS;\n"
+		"                                    valid values are: 1-5\n"
+		"  -I, --set-inhibit-mode=MODE\n"
+		"                                  set the blanking inhibit mode to MODE;\n"
+		"                                    valid modes are:\n"
+		"                                    ``disabled'',\n"
+		"                                    ``stay-on-with-charger'', ``stay-on'',\n"
+		"                                    ``stay-dim-with-charger'', ``stay-dim''\n"
+		"  -D, --set-demo-mode=STATE\n"
+		"                                    set the display demo mode  to STATE;\n"
+		"                                       valid states are: 'on' and 'off'\n"
+		"  -C, --set-cabc-mode=MODE\n"
+		"                                  set the CABC mode to MODE;\n"
+		"                                    valid modes are:\n"
+		"                                    ``off'', ``ui'',\n"
+		"                                    ``still-image' and ``moving-image''\n"
+		"  -A, --set-color-profile=ID\n"
+		"                                  set the color profile id to ID; use --get-color-profile-ids\n"
+		"                                    to get available values\n"
+		"  -a, --get-color-profile-ids\n"
+		"                                  get available color profile ids (see --set-color-profile)\n"
+		"  -c, --set-call-state=STATE:TYPE\n"
+		"                                  set the call state to STATE and the call type\n"
+		"                                    to TYPE; valid states are:\n"
+		"                                    ``none'', ``ringing'',\n"
+		"                                    ``active'' and ``service''\n"
+		"                                    valid types are:\n"
+		"                                    ``normal'' and ``emergency''\n"
+		"  -r, --enable-radio=RADIO\n"
+		"                                  enable the specified radio; valid radios are:\n"
+		"                                    ``master'', ``cellular'',\n"
+		"                                    ``wlan'' and ``bluetooth'';\n"
+		"                                    ``master'' affects all radios\n"
+		"  -R, --disable-radio=RADIO\n"
+		"                                  disable the specified radio; valid radios are:\n"
+		"                                    ``master'', ``cellular'',\n"
+		"                                    ``wlan'' and ``bluetooth'';\n"
+		"                                    ``master'' affects all radios\n"
+		"  -p, --set-power-saving-mode=MODE\n"
+		"                                  set the power saving mode; valid modes are:\n"
+		"                                    ``enabled'' and ``disabled''\n"
+		"  -F, --set-forced-psm=MODE\n"
+		"                                  the forced power saving mode to MODE;\n"
+		"                                    valid modes are:\n"
+		"                                    ``enabled'' and ``disabled''\n"
+		"  -T, --set-psm-threshold=VALUE\n"
+		"                                  set the threshold for the power saving mode;\n"
+		"                                    valid values are:\n"
+		"                                    10, 20, 30, 40, 50\n"
+		"  -k, --set-tklock-mode=MODE\n"
+		"                                  set the touchscreen/keypad lock mode;\n"
+		"                                    valid modes are:\n"
+		"                                    ``locked'', ``locked-dim'',\n"
+		"                                    ``locked-delay'',\n"
+		"                                    and ``unlocked''\n"
+		"  -l, --enable-led                enable LED framework\n"
+		"  -L, --disable-led               disable LED framework\n"
+		"  -y, --activate-led-pattern=PATTERN\n"
+		"                                  activate a LED pattern\n"
+		"  -Y, --deactivate-led-pattern=PATTERN\n"
+		"                                  deactivate a LED pattern\n"
+		"  -e, --powerkey-event=TYPE       trigger a powerkey event; valid types are:\n"
+		"                                    ``short'', ``double'' and ``long''\n"
+		"  -N, --status                    output MCE status\n"
+		"  -B, --block                     block after executing commands\n"
+		"  -S, --session                   use the session bus instead of the system bus\n"
+		"                                    for D-Bus\n"
+		"  -h, --help                      display this help and exit\n"
+		"  -V, --version                   output version information and exit\n"
+		"\n"
+		"If no option is specified, the status is output.\n"
+		"\n"
+		"Report bugs to <david.weinehall@nokia.com>\n"
+		;
+
+	fprintf(stdout, fmt, progname);
 }
 
 /**
@@ -2138,40 +2094,70 @@ int main(int argc, char **argv)
 
 	DBusBusType bus_type = DBUS_BUS_SYSTEM;
 
-	const char optline[] = "S";
+	const char optline[] =
+		"B"  // --block,
+		"P"  // --blank-prevent,
+		"v"  // --cancel-blank-prevent,
+		"U"  // --unblank-screen,
+		"d"  // --dim-screen,
+		"n"  // --blank-screen,
+		"b:" // --set-display-brightness,
+		"I:" // --set-inhibit-mode,
+		"D:" // --set-demo-mode,
+		"C:" // --set-cabc-mode,
+		"a"  // --get-color-profile-ids,
+		"A:" // --set-color-profile,
+		"c:" // --set-call-state,
+		"r:" // --enable-radio,
+		"R:" // --disable-radio,
+		"p:" // --set-power-saving-mode,
+		"F:" // --set-forced-psm,
+		"T:" // --set-psm-threshold,
+		"k:" // --set-tklock-mode,
+		"l"  // --enable-led,
+		"L"  // --disable-led,
+		"y:" // --activate-led-pattern,
+		"Y:" // --deactivate-led-pattern,
+		"e:" // --powerkey-event,
+		"M:" // --modinfo,
+		"N"  // --status,
+		"S"  // --session,
+		"h"  // --help,
+		"V"  // --version,
+		;
 
 	struct option const options[] = {
-		{ "block", no_argument, 0, 'B' },
-		{ "blank-prevent", no_argument, 0, 'P' },
-		{ "cancel-blank-prevent", no_argument, 0, 'v' },
-		{ "unblank-screen", no_argument, 0, 'U' },
-		{ "dim-screen", no_argument, 0, 'd' },
-		{ "blank-screen", no_argument, 0, 'n' },
-		{ "set-display-brightness", required_argument, 0, 'b' },
-		{ "set-inhibit-mode", required_argument, 0, 'I' },
-		{ "set-demo-mode", required_argument, 0, 'D' },
-		{ "set-cabc-mode", required_argument, 0, 'C' },
-		{ "get-color-profile-ids", no_argument, 0, 'a'},
-		{ "set-color-profile", required_argument, 0, 'A'},
-		{ "set-call-state", required_argument, 0, 'c' },
-		{ "enable-radio", required_argument, 0, 'r' },
-		{ "disable-radio", required_argument, 0, 'R' },
-		{ "set-power-saving-mode", required_argument, 0, 'p' },
-		{ "set-forced-psm", required_argument, 0, 'F' },
-		{ "set-psm-threshold", required_argument, 0, 'T' },
-		{ "set-tklock-mode", required_argument, 0, 'k' },
-		{ "enable-led", no_argument, 0, 'l' },
-		{ "disable-led", no_argument, 0, 'L' },
-		{ "activate-led-pattern", required_argument, 0, 'y' },
-		{ "deactivate-led-pattern", required_argument, 0, 'Y' },
-		{ "powerkey-event", required_argument, 0, 'e' },
-		{ "modinfo", required_argument, 0, 'M' },
-		{ "status", no_argument, 0, 'N' },
-		{ "session", no_argument, 0, 'S' },
-		{ "help", no_argument, 0, 'h' },
-		{ "version", no_argument, 0, 'V' },
-		{ 0, 0, 0, 0 }
-	};
+                { "block",                  no_argument,       0, 'B' },
+                { "blank-prevent",          no_argument,       0, 'P' },
+                { "cancel-blank-prevent",   no_argument,       0, 'v' },
+                { "unblank-screen",         no_argument,       0, 'U' },
+                { "dim-screen",             no_argument,       0, 'd' },
+                { "blank-screen",           no_argument,       0, 'n' },
+                { "set-display-brightness", required_argument, 0, 'b' },
+                { "set-inhibit-mode",       required_argument, 0, 'I' },
+                { "set-demo-mode",          required_argument, 0, 'D' },
+                { "set-cabc-mode",          required_argument, 0, 'C' },
+                { "get-color-profile-ids",  no_argument,       0, 'a' },
+                { "set-color-profile",      required_argument, 0, 'A' },
+                { "set-call-state",         required_argument, 0, 'c' },
+                { "enable-radio",           required_argument, 0, 'r' },
+                { "disable-radio",          required_argument, 0, 'R' },
+                { "set-power-saving-mode",  required_argument, 0, 'p' },
+                { "set-forced-psm",         required_argument, 0, 'F' },
+                { "set-psm-threshold",      required_argument, 0, 'T' },
+                { "set-tklock-mode",        required_argument, 0, 'k' },
+                { "enable-led",             no_argument,       0, 'l' },
+                { "disable-led",            no_argument,       0, 'L' },
+                { "activate-led-pattern",   required_argument, 0, 'y' },
+                { "deactivate-led-pattern", required_argument, 0, 'Y' },
+                { "powerkey-event",         required_argument, 0, 'e' },
+                { "modinfo",                required_argument, 0, 'M' },
+                { "status",                 no_argument,       0, 'N' },
+                { "session",                no_argument,       0, 'S' },
+                { "help",                   no_argument,       0, 'h' },
+                { "version",                no_argument,       0, 'V' },
+                { 0, 0, 0, 0 }
+        };
 
 	/* By default, don't change any radio state */
 	new_radio_states = 0;
