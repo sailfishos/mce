@@ -42,6 +42,9 @@
 #include "modules/display.h"		/* For GConf paths */
 #include "modules/powersavemode.h"	/* For GConf paths */
 
+/** Whether to enable development time debugging */
+#define MCETOOL_ENABLE_DEBUG 0
+
 /** Name shown by --help etc. */
 #define PRG_NAME			"mcetool"
 
@@ -119,6 +122,12 @@ static const gchar *progname;	/**< Used to store the name of the program */
 static DBusConnection *dbus_connection = NULL;	/**< D-Bus connection */
 
 static GConfClient *gconf_client = NULL;	/**< GConf client */
+
+#if MCETOOL_ENABLE_DEBUG
+# define debugf(FMT, ARGS...) fprintf(stderr, "D: "FMT, ##ARGS)
+#else
+# define debugf(FMT, ARGS...) do { }while(0)
+#endif
 
 /**
  * Display usage information
@@ -1302,7 +1311,7 @@ static void mcetool_gconf_exit(void)
  */
 static gboolean mcetool_gconf_get_bool(const gchar *const key, gboolean *value)
 {
-	printf("@%s(%s)\n", __FUNCTION__, key);
+	debugf("@%s(%s)\n", __FUNCTION__, key);
 
         gboolean     res = FALSE;
         DBusMessage *req = 0;
@@ -1345,7 +1354,7 @@ EXIT:
  */
 static gboolean mcetool_gconf_get_int(const gchar *const key, gint *value)
 {
-	printf("@%s(%s)\n", __FUNCTION__, key);
+	debugf("@%s(%s)\n", __FUNCTION__, key);
 
         gboolean     res = FALSE;
         DBusMessage *req = 0;
@@ -1389,7 +1398,7 @@ EXIT:
 static gboolean mcetool_gconf_set_bool(const gchar *const key,
                                        const gboolean value)
 {
-	printf("@%s(%s, %d)\n", __FUNCTION__, key, value);
+	debugf("@%s(%s, %d)\n", __FUNCTION__, key, value);
 
 	static const char sig[] = DBUS_TYPE_BOOLEAN_AS_STRING;
 
@@ -1445,7 +1454,7 @@ EXIT:
  */
 static gboolean mcetool_gconf_set_int(const gchar *const key, const gint value)
 {
-	printf("@%s(%s, %d)\n", __FUNCTION__, key, value);
+	debugf("@%s(%s, %d)\n", __FUNCTION__, key, value);
 
 	static const char sig[] = DBUS_TYPE_INT32_AS_STRING;
 
