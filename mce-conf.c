@@ -376,7 +376,7 @@ static void mce_conf_append_key(GKeyFile *dest, GKeyFile *srce,
 		gchar *tmp = 0;
 
 		if( old && *old ) {
-			tmp = g_strconcat(old, ";", val, NULL);
+			tmp = g_strconcat(val, ";", old, NULL);
 		}
 
 		mce_log(LL_NOTICE, "[%s] %s = %s", grp, key, tmp ?: val);
