@@ -155,9 +155,9 @@ TOOLS   += $(TOOLDIR)/mcetool
 TESTS   += $(TESTSDIR)/mcetorture
 
 # MCE configuration files
-CONFFILE              := mce.ini
-RADIOSTATESCONFFILE   := mce-radio-states.ini
-COLORPROFILESCONFFILE := mce-color-profiles.ini
+CONFFILE              := 10mce.ini
+RADIOSTATESCONFFILE   := 20mce-radio-states.ini
+COLORPROFILESCONFFILE := 20mce-color-profiles.ini
 DBUSCONF              := mce.conf
 GCONFSCHEMAS          := display.schemas energymanagement.schemas
 
@@ -251,7 +251,7 @@ MCE_PKG_NAMES += dsme
 MCE_PKG_CFLAGS := $(shell $(PKG_CONFIG) --cflags $(MCE_PKG_NAMES))
 MCE_PKG_LDLIBS := $(shell $(PKG_CONFIG) --libs   $(MCE_PKG_NAMES))
 
-MCE_CFLAGS += -DMCE_CONF_FILE=$(CONFDIR)/$(CONFFILE)
+MCE_CFLAGS += -DMCE_CONF_DIR='"$(CONFDIR)"'
 MCE_CFLAGS += $(MCE_PKG_CFLAGS)
 
 MCE_LDLIBS += $(MCE_PKG_LDLIBS)
@@ -382,8 +382,8 @@ install:: build
 	$(INSTALL_DTA) $(DBUSCONF) $(DESTDIR)$(DBUSDIR)/
 
 	$(INSTALL_DIR) $(DESTDIR)$(CONFDIR)
-	$(INSTALL_DTA) $(CONFFILE) $(DESTDIR)$(CONFDIR)/
-	$(INSTALL_DTA) $(RADIOSTATESCONFFILE) $(DESTDIR)$(CONFDIR)/
+	$(INSTALL_DTA) mce.ini $(DESTDIR)$(CONFDIR)/$(CONFFILE)
+	$(INSTALL_DTA) mce-radio-states.ini $(DESTDIR)$(CONFDIR)/$(RADIOSTATESCONFFILE)
 
 	$(INSTALL_DIR) $(DESTDIR)$(GCONFSCHEMADIR)
 	$(INSTALL_DTA) $(GCONFSCHEMAS) $(DESTDIR)$(GCONFSCHEMADIR)/
