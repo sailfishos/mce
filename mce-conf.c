@@ -475,12 +475,14 @@ static int mce_conf_glob_error_cb(const char *path, int err)
  */
 static GKeyFile *mce_conf_read_ini_files(void)
 {
+	static const char pattern[] = MCE_CONF_DIR"/[0-9][0-9]*.ini";
+
 	GKeyFile *ini = g_key_file_new();
 	glob_t    gb;
 
 	memset(&gb, 0, sizeof gb);
 
-	if( glob("/etc/mce/*.ini", 0, mce_conf_glob_error_cb, &gb) != 0 ) {
+	if( glob(pattern, 0, mce_conf_glob_error_cb, &gb) != 0 ) {
 		mce_log(LL_WARN, "no mce configuration ini-files found");
 		goto EXIT;
 	}
