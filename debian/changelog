@@ -20,6 +20,7 @@ mce (1.12.5) unstable; urgency=low
   * Support for short mcetool command line options and changes to
     --set-debug-mode handling
   * Display brightness control paths can be specified in config files
+  * MCE ini-files now have <digit><digit> priority prefixes
 
  -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 30 Nov 2012 11:23:08 +0200
 
