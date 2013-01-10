@@ -21,6 +21,8 @@
 #ifndef _MCE_IO_H_
 #define _MCE_IO_H_
 
+#include <sys/stat.h>
+
 #include <glib.h>
 
 #include <stdio.h>			/* FILE * */
@@ -110,5 +112,16 @@ int mce_get_io_monitor_fd(gconstpointer io_monitor);
 
 gboolean mce_are_settings_locked(void);
 gboolean mce_unlock_settings(void);
+
+void *mce_io_load_file(const char *path, size_t *psize);
+gboolean mce_io_save_file(const char *path,
+			  const void *data, size_t size,
+			  mode_t mode);
+gboolean mce_io_save_file_atomic(const char *path,
+				 const void *data, size_t size,
+				 mode_t mode, gboolean keep_backup);
+gboolean mce_io_update_file_atomic(const char *path,
+				   const void *data, size_t size,
+				   mode_t mode, gboolean keep_backup);
 
 #endif /* _MCE_IO_H_ */
