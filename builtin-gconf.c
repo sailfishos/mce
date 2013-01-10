@@ -23,8 +23,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 #include "mce-log.h"
+#include "mce-io.h"
 
 /* ========================================================================= *
  *
@@ -40,6 +42,9 @@
 
 /** Enable debug logging to stderr via gconf_log_debug() */
 #define GCONF_ENABLE_DEBUG_LOGGING 01
+
+/** Path to persistent storage file */
+#define VALUES_PATH G_STRINGIFY(MCE_VAR_DIR)"/builtin-gconf.values"
 
 /* ========================================================================= *
  *
@@ -181,6 +186,7 @@ gchar *gconf_concat_dir_and_key(const gchar *dir, const gchar *key);
 #if GCONF_ENABLE_DEBUG_LOGGING
 static char *gconf_value_repr(const char *key, GConfValue *self);
 #endif
+static char *gconf_value_str(GConfValue *self);
 static void gconf_value_unset(GConfValue *self);
 static gboolean gconf_value_list_validata(GSList *src, GConfValueType type);
 static GSList *gconf_value_list_copy(GSList *src);
@@ -514,14 +520,22 @@ gconf_concat_dir_and_key(const gchar *dir,
  * ========================================================================= */
 
 #if GCONF_ENABLE_DEBUG_LOGGING
-/** GConfValue to text helper */
+/** GConfValue to text helper
+ *
+ * The result is for human readable for debugging purposes
+ */
 static
 char *
 gconf_value_repr(const char *key, GConfValue *self)
 {
   char   *data = 0;
   size_t  size = 0;
-  FILE   *file = open_memstream(&data, &size);
+  FILE   *file = 0;
+
+  if( !(file = open_memstream(&data, &size)) )
+  {
+    goto cleanup;
+  }
 
   fprintf(file, "'%s' %s", key, gconf_type_repr(self->type));
 
@@ -588,11 +602,97 @@ gconf_value_repr(const char *key, GConfValue *self)
     break;
   }
 
-  fclose(file);
+cleanup:
+  if( file ) fclose(file);
 
   return data;
 }
 #endif
+
+/** GConfValue to text helper
+ *
+ * The result is compatible with gconf_value_set_from_string()
+ */
+static
+char *
+gconf_value_str(GConfValue *self)
+{
+  char   *data = 0;
+  size_t  size = 0;
+  FILE   *file = 0;
+
+  if( !(file = open_memstream(&data, &size)) )
+  {
+    goto cleanup;
+  }
+
+  switch( self->type )
+  {
+  case GCONF_VALUE_STRING:
+    fprintf(file, "%s", self->data.s);
+    break;
+
+  case GCONF_VALUE_INT:
+    fprintf(file, "%d", self->data.i);
+    break;
+
+  case GCONF_VALUE_FLOAT:
+    fprintf(file, "%g", self->data.f);
+    break;
+
+  case GCONF_VALUE_BOOL:
+    fprintf(file, "%s", gconf_bool_repr(self->data.b));
+    break;
+
+  case GCONF_VALUE_SCHEMA:
+    fprintf(file, "%g", self->data.f);
+    break;
+
+  case GCONF_VALUE_LIST:
+    for( GSList *v_iter = self->list_head; v_iter; v_iter = v_iter->next )
+    {
+      switch( (self = v_iter->data)->type )
+      {
+      case GCONF_VALUE_STRING:
+        fprintf(file, "%s", self->data.s);
+        break;
+
+      case GCONF_VALUE_INT:
+        fprintf(file, "%d", self->data.i);
+        break;
+
+      case GCONF_VALUE_FLOAT:
+        fprintf(file, "%g", self->data.f);
+        break;
+
+      case GCONF_VALUE_BOOL:
+        fprintf(file, "%s", gconf_bool_repr(self->data.b));
+        break;
+
+      default:
+        fprintf(file, "???");
+        break;
+      }
+      if( v_iter->next ) {
+	fprintf(file, ",");
+      }
+    }
+    break;
+
+  case GCONF_VALUE_PAIR:
+    fprintf(file, "???");
+    break;
+  case GCONF_VALUE_INVALID:
+  default:
+    break;
+  }
+
+cleanup:
+
+  if( file ) fclose(file);
+
+  return data;
+}
 
 /** Release dynamic resources of value, but not the value itself */
 static
@@ -1175,6 +1275,85 @@ static const setting_t gconf_defaults[] =
 /** The one and only GConfClient we expect to see */
 static GConfClient *default_client = 0;
 
+/** Save values to persistent storage file */
+static void gconf_client_save_values(GConfClient *self, const char *path)
+{
+  char   *data = 0;
+  size_t  size = 0;
+  FILE   *file = 0;
+
+  mce_log(LL_NOTICE, "updating %s", path);
+
+  if( !(file = open_memstream(&data, &size)) ) {
+    goto cleanup;
+  }
+
+  for( GSList *e_iter = self->entries; e_iter; e_iter = e_iter->next )
+  {
+    GConfEntry *entry = e_iter->data;
+    char *str = gconf_value_str(entry->value);
+    fprintf(file, "%s=%s\n", entry->key, str);
+    free(str);
+  }
+
+  // the data pointer gets set at fclose()
+  fclose(file), file = 0;
+
+  if( data )
+  {
+    mce_io_update_file_atomic(path, data, size, 0664, FALSE);
+  }
+
+cleanup:
+
+  if( file ) fclose(file);
+
+  free(data);
+
+  return;
+}
+
+/** Load values from persistent storage file */
+static void gconf_client_load_values(GConfClient *self, const char *path)
+{
+  FILE  *file = 0;
+  char  *buff = 0;
+  size_t size = 0;
+
+  mce_log(LL_NOTICE, "loading %s", path);
+
+  if( !(file = fopen(path, "r")) ) {
+    if( errno != ENOENT ) {
+      mce_log(LL_ERR, "fopen(%s): %m", path);
+    }
+    goto EXIT;
+  }
+
+  while( getline(&buff, &size, file) >= 0 ) {
+    char *key = buff;
+    char *val = strchr(key, '=');
+
+    if( val ) {
+      GError *err = 0;
+      GConfEntry *entry;
+
+      *val++ = 0;
+      gconf_strip_string(key);
+      gconf_strip_string(val);
+
+      if( (entry = gconf_client_find_entry(self, key, &err)) ) {
+	gconf_value_set_from_string(entry->value, val);
+      }
+      g_clear_error(&err);
+    }
+  }
+
+EXIT:
+  free(buff);
+  if( file ) fclose(file);
+  return;
+}
+
 /** Verify that we get only expected GConfClient pointers */
 static
 gboolean
@@ -1214,7 +1393,6 @@ gconf_client_debug(GConfClient *self)
 GConfClient *
 gconf_client_get_default(void)
 {
-
   if( default_client == 0 )
   {
     GConfClient *self = calloc(1, sizeof *self);
@@ -1226,14 +1404,17 @@ gconf_client_get_default(void)
     }
     self->entries = g_slist_reverse(self->entries);
 
+    // let gconf_client_is_valid() know about this
+    default_client = self;
+
+    gconf_client_load_values(self, VALUES_PATH);
+
 #if GCONF_ENABLE_DEBUG_LOGGING
     if( gconf_log_debug_p() )
     {
       gconf_client_debug(self);
     }
 #endif
-
-    default_client = self;
   }
 
   return default_client;
@@ -1471,8 +1652,10 @@ gconf_client_set_list(GConfClient *client,
 void
 gconf_client_suggest_sync(GConfClient *client, GError **err)
 {
-  gconf_client_is_valid(client, err);
-  gconf_log_error("UNIMPLEMENTED");
+  if( gconf_client_is_valid(client, err) ) {
+    // FIXME: do we need delayed save?
+    gconf_client_save_values(client, VALUES_PATH);
+  }
 }
 
 /* ========================================================================= *
