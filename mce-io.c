@@ -1449,3 +1449,261 @@ gboolean mce_unlock_settings(void)
 
 	return status;
 }
+
+/** Helper for dealing with partially successful reads
+ *
+ * @param fd file descriptor to read from
+ * @param buff address where to read to
+ * @param size number of bytes to read
+ * @param pdone where to store actual read count, or NULL
+ *
+ * @return TRUE if all bytes could be read, otherwise FALSE
+ */
+static
+gboolean mce_io_read_all(int fd, void *buff, size_t size, size_t *pdone)
+{
+	size_t  done = 0;
+	char   *data = buff;
+
+	while( done < size ) {
+		ssize_t rc = TEMP_FAILURE_RETRY(read(fd, data+done, size));
+
+		if( rc < 0 )
+			break;
+
+		if( rc == 0 ) {
+			// clear errno if returning prematurely due to eof
+			errno = 0;
+			break;
+		}
+
+		done += (size_t)rc;
+	}
+
+	if( pdone )
+		*pdone = done;
+
+	return (done == size);
+}
+
+/** Helper for dealing with partially successful writes
+ *
+ * @param fd file descriptor to write to
+ * @param buff address where to write from
+ * @param size number of bytes to write
+ * @param pdone where to store actual write count, or NULL
+ *
+ * @return TRUE if all bytes could be written, otherwise FALSE
+ */
+static
+gboolean mce_io_write_all(int fd, const void *buff, size_t size, size_t *pdone)
+{
+	size_t      done = 0;
+	const char *data = buff;
+
+	while( done < size ) {
+		ssize_t rc = TEMP_FAILURE_RETRY(write(fd, data+done, size));
+
+		if( rc < 0 )
+			break;
+
+		done += (size_t)rc;
+	}
+
+	if( pdone )
+		*pdone = done;
+
+	return (done == size);
+}
+
+/** Load contents of a file
+ *
+ * @param path file to read from
+ * @param psize where to store size of the loaded file, or NULL if not needed
+ *
+ * @return Zero terminated contents of the file, or NULL in case of errors
+ */
+void *mce_io_load_file(const char *path, size_t *psize)
+{
+	void  *res  = 0;
+	char  *data = 0;
+	size_t size = 0;
+	int    fd = -1;
+
+	struct stat st;
+
+	if( (fd = TEMP_FAILURE_RETRY(open(path, O_RDONLY))) == -1 ) {
+		if( errno != ENOENT )
+			mce_log(LL_WARN, "open(%s): %m", path);
+		goto EXIT;
+	}
+
+	if( fstat(fd, &st) == -1 ) {
+		mce_log(LL_WARN, "stat(%s): %m", path);
+		goto EXIT;
+	}
+
+	size = st.st_size;
+	data = g_malloc(size + 1);
+
+	if( !mce_io_read_all(fd, data, size, 0) ) {
+		mce_log(LL_WARN, "read(%s): %m", path);
+		goto EXIT;
+	}
+
+	data[size] = 0;
+
+	res = data, data = 0;
+
+EXIT:
+	g_free(data);
+
+	if( fd != -1 && TEMP_FAILURE_RETRY(close(fd)) == -1 )
+		mce_log(LL_WARN, "close(%s): %m", path);
+
+	if( psize )
+		*psize = res ? size : 0;
+
+	return res;
+}
+
+/** Write datablock to a file
+ *
+ * @param path file to write to
+ * @param data start of the data to write
+ * @param size length of the data to write
+ * @param mode protection bits to apply
+ *
+ * @return TRUE on success, FALSE on errors
+ */
+gboolean mce_io_save_file(const char *path,
+			  const void *data, size_t size,
+			  mode_t mode)
+{
+	gboolean res = FALSE;
+	int      fd  = -1;
+
+	if( mode <= 0 )
+		mode = 0664;
+
+	fd = TEMP_FAILURE_RETRY(open(path, O_WRONLY|O_CREAT|O_TRUNC, 0600));
+	if( fd == -1 ) {
+		mce_log(LL_WARN, "open(%s): %m", path);
+		goto EXIT;
+	}
+
+	if( !mce_io_write_all(fd, data, size, 0) ) {
+		mce_log(LL_WARN, "write(%s): %m", path);
+		goto EXIT;
+	}
+
+	if( fchmod(fd, mode) == -1 ) {
+		mce_log(LL_WARN, "chmod(%s, %03o): %m", path, (int)mode);
+		goto EXIT;
+	}
+
+	res = TRUE;
+
+EXIT:
+	if( fd != -1 && TEMP_FAILURE_RETRY(close(fd)) == -1 )
+		mce_log(LL_WARN, "close(%s): %m", path);
+
+	return res;
+}
+
+/** Atomically replace a file contents
+ *
+ * First writes to a temp file, then duplicates the original as
+ * a backup and atomically replaces the original with freshly
+ * written data.
+ *
+ * @param path file to write to
+ * @param data start of the data to write
+ * @param size length of the data to write
+ * @param mode protection bits to apply
+ * @param keep_backup whether to keep backup file on successful update
+ *
+ * @return TRUE on success, FALSE on errors
+ */
+gboolean mce_io_save_file_atomic(const char *path,
+				 const void *data, size_t size,
+				 mode_t mode, gboolean keep_backup)
+{
+	gboolean res = FALSE;
+
+	gchar *temp = g_strdup_printf("%s.tmp", path);
+	gchar *back = g_strdup_printf("%s.bak", path);
+
+	if( !mce_io_save_file(temp, data, size, mode) )
+		goto EXIT;
+
+	if( unlink(back) == -1 && errno != ENOENT ) {
+		mce_log(LL_WARN, "unlink(%s): %m", back);
+		goto EXIT;
+	}
+
+	if( link(path, back) == -1 && errno != ENOENT ) {
+		mce_log(LL_WARN, "link(%s, %s): %m", path, back);
+		goto EXIT;
+	}
+
+	if( rename(temp, path) == -1 ) {
+		mce_log(LL_WARN, "rename(%s, %s): %m", temp, path);
+		goto EXIT;
+	}
+
+	if( !keep_backup && unlink(back) == -1 && errno != ENOENT ) {
+		mce_log(LL_WARN, "unlink(%s): %m", back);
+		goto EXIT;
+	}
+
+	res = TRUE;
+
+EXIT:
+	if( temp && unlink(temp) == -1 && errno != ENOENT )
+		mce_log(LL_WARN, "unlink(%s): %m", temp);
+
+	g_free(back);
+	g_free(temp);
+
+	return res;
+}
+
+/** Atomically replace a file if existing file content differs from wanted
+ *
+ * The purpose of this function is to avoid unnecessary writes when
+ * writing to filesystem is slow or otherwise undesired (flash wear out).
+ *
+ * @param path file to write to
+ * @param data start of the data to write
+ * @param size length of the data to write
+ * @param mode protection bits to apply
+ * @param keep_backup whether to keep backup file on successful update
+ *
+ * @return TRUE on success, FALSE on errors
+ */
+
+gboolean mce_io_update_file_atomic(const char *path,
+				   const void *data, size_t size,
+				   mode_t mode, gboolean keep_backup)
+{
+	gboolean res = FALSE;
+
+	size_t old_size = 0;
+	void  *old_data = 0;
+
+	/* Skip write if the content would not change */
+	if( (old_data = mce_io_load_file(path, &old_size)) ) {
+		if( old_size == size && !memcmp(old_data, data, size) )	{
+			res = TRUE;
+			goto EXIT;
+		}
+	}
+
+	res = mce_io_save_file_atomic(path, data, size, mode, keep_backup);
+
+EXIT:
+	g_free(old_data);
+
+	return res;
+}
