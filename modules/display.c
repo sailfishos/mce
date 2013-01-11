@@ -2650,6 +2650,9 @@ static gboolean display_orientation_change_dbus_cb(DBusMessage *const msg)
 }
 
 #ifdef ENABLE_WAKELOCKS
+/** Have we seen shutdown_ind signal from dsme */
+static gboolean shutdown_started = FALSE;
+
 /** Are we already unloading the module? */
 static gboolean suspend_unload = FALSE;
 
@@ -2696,6 +2699,11 @@ static void suspend_rethink(void)
 		suspend_want = 0;
 	}
 
+	/* no late suspend during shutdown */
+	if( shutdown_started && suspend_want ) {
+		wakelock_want = 1;
+	}
+
 	/* no more suspend at module unload */
 	if( suspend_unload ) {
 		suspend_want  = 0;
@@ -2717,6 +2725,27 @@ static void suspend_rethink(void)
 		wakelock_unlock("mce_display_on");
 
 	wakelock_have = wakelock_want;
+}
+
+/** D-Bus callback for the shutdown notification signal
+ *
+ * @param msg The D-Bus message
+ * @return TRUE on success, FALSE on failure
+ */
+
+static gboolean shutdown_dbus_cb(DBusMessage *const msg)
+{
+	(void)msg;
+
+	mce_log(LL_WARN, "Received shutdown notification");
+
+	/* mark that we're shutting down */
+	shutdown_started = TRUE;
+
+	/* re-evaluate suspend policy */
+	suspend_rethink();
+
+	return TRUE;
 }
 
 /** Simulated "desktop ready" via uptime based timer
@@ -3302,6 +3331,16 @@ const gchar *g_module_check_init(GModule *module)
 				 DBUS_MESSAGE_TYPE_SIGNAL,
 				 desktop_startup_dbus_cb) == NULL)
 		goto EXIT;
+
+#ifdef ENABLE_WAKELOCKS
+	/* System shutdown signal */
+	if (mce_dbus_handler_add("com.nokia.dsme.signal",
+				 "shutdown_ind",
+				 NULL,
+				 DBUS_MESSAGE_TYPE_SIGNAL,
+				 shutdown_dbus_cb) == NULL)
+		goto EXIT;
+#endif
 
 	/* Display orientation change signal */
 	if (mce_dbus_handler_add(ORIENTATION_SIGNAL_IF,
