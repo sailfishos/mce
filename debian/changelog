@@ -23,6 +23,7 @@ mce (1.12.5) unstable; urgency=low
   * MCE ini-files now have <digit><digit> priority prefixes
   * The builtin-gconf values persist over mce restarts
   * Late suspend is blocked when the device is shutting down
+  * Wakelock debugging must be explicitly enabled via --trace=wakelocks
 
  -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 30 Nov 2012 11:23:08 +0200
 
