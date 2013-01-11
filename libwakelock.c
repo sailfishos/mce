@@ -87,23 +87,8 @@ static char *lwl_concat(char *buf, size_t len, const char *str, ...)
 }
 
 #if LWL_ENABLE_LOGGING
-/** Debug predicate function
- *
- * Even if logging is enabled, we will not write to stderr
- * unless we're running from console.
- *
- * [Systemd captures stderr output and we do not want to
- * cause unnecessary scheduling close to entry to suspend.]
- *
- * @return Non-zero value if logging can be done
- */
-static int lwl_debug_p(void)
-{
-	static int res = -1;
-	if( res == -1 )
-		res = (isatty(2) > 0);
-	return res;
-}
+/** Flag for enabling wakelock debug logging */
+static int lwl_debug_enabled = 0;
 
 /** Logging functionality that can be configured out at compile time
  */
@@ -135,7 +120,7 @@ static void lwl_debug_(const char *m, ...)
 
 # define lwl_debug(MSG, MORE...) \
 	do {\
-		if( lwl_debug_p() ) lwl_debug_(MSG, ##MORE); \
+		if( lwl_debug_enabled ) lwl_debug_(MSG, ##MORE); \
 	} while( 0 )
 
 #else
@@ -267,4 +252,11 @@ void wakelock_block_suspend_until_exit(void)
 {
 	lwl_shutting_down = 1;
 	wakelock_block_suspend();
+}
+
+/** Enable wakelock debug logging (if support compiled in)
+ */
+void lwl_enable_logging(void)
+{
+  lwl_debug_enabled = 1;
 }
