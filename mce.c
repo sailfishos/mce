@@ -165,36 +165,32 @@ static void no_error_check_write(int fd, const void *data, size_t size)
 		rc = rc;
 }
 
+static const char usage_fmt[] =
+"Usage: %s [OPTION]...\n"
+"Mode Control Entity\n"
+"\n"
+"  -d, --daemonflag           run MCE as a daemon\n"
+"  -s, --force-syslog         log to syslog even when not daemonized\n"
+"  -T, --force-stderr         log to stderr even when daemonized\n"
+"  -S, --session              use the session bus instead of the system\n"
+"                               bus for D-Bus\n"
+"  -M, --show-module-info     show information about loaded modules\n"
+"  -D, --debug-mode           run even if dsme fails\n"
+"  -q, --quiet                decrease debug message verbosity\n"
+"  -v, --verbose              increase debug message verbosity\n"
+"  -t, --trace=<what>         enable domain specific debug logging;\n"
+"                               supported values: \"wakelocks\"\n"
+"  -h, --help                 display this help and exit\n"
+"  -V, --version              output version information and exit\n"
+"\n"
+"Report bugs to <david.weinehall@nokia.com>\n"
+;
 /**
  * Display usage information
  */
 static void usage(void)
 {
-	fprintf(stdout,
-		_("Usage: %s [OPTION]...\n"
-		  "Mode Control Entity\n"
-		  "\n"
-		  "  -d, --daemonflag           run MCE as a daemon\n"
-		  "  -s, --force-syslog         log to syslog even when not "
-		  "daemonized\n"
-		  "  -T, --force-stderr         log to stderr even when "
-		  "daemonized\n"
-		  "  -S, --session              use the session bus instead\n"
-		  "                               of the "
-		  "system bus for D-Bus\n"
-		  "  -M, --show-module-info     show information about "
-		  "loaded modules\n"
-		  "  -D, --debug-mode           run even if dsme fails\n"
-		  "  -q, --quiet                decrease debug message "
-		  "verbosity\n"
-		  "  -v, --verbose              increase debug message "
-		  "verbosity\n"
-		  "  -h, --help                 display this help and exit\n"
-		  "  -V, --version              output version information "
-		  "and exit\n"
-		  "\n"
-		  "Report bugs to <david.weinehall@nokia.com>\n"),
-		progname);
+  fprintf(stdout, usage_fmt, progname);
 }
 
 /**
@@ -659,6 +655,84 @@ EXIT:
 	return 0;
 }
 
+/** Helper for determining how long common prefix two strings have
+ *
+ * @param str1 non null string
+ * @param str2 non null string
+ *
+ * @return length of common prefix strings share
+ */
+static size_t common_length(const char *str1, const char *str2)
+{
+	size_t i;
+	for( i = 0; str1[i] && str1[i] == str2[i]; ++i ) {}
+	return i;
+}
+
+/** Handle --trace=flags options
+ *
+ * @param flags comma separated list of trace domains
+ *
+ * @return TRUE on success, FALSE if unknown domains used
+ */
+static gboolean mce_enable_trace(const char *flags)
+{
+	static const struct {
+		const char *domain;
+		void (*callback)(void);
+	} lut[] = {
+#ifdef ENABLE_WAKELOCKS
+		{ "wakelocks", lwl_enable_logging },
+#endif
+		{ NULL, NULL }
+	};
+
+	gboolean  res = TRUE;
+	gchar    *tmp = g_strdup(flags);
+
+	gchar    *now, *zen;
+	size_t    bi, bn;
+
+	for( now = tmp; now; now = zen ) {
+		if( (zen = strchr(now, ',')) )
+			*zen++ = 0;
+
+		// initialize to: no match
+		bi = bn = 0;
+
+		for( size_t ti = 0; lut[ti].domain; ++ti ) {
+			size_t tn = common_length(lut[ti].domain, now);
+
+			// all of flag mathed?
+			if( now[tn] )
+				continue;
+
+			// better or equal as the previous best?
+			if( bn <= tn )
+				bi = ti, bn = tn;
+
+			// full match found?
+			if( !lut[ti].domain[tn] )
+				break;
+		}
+
+		// did we find a match?
+		if( !bn ) {
+			fprintf(stderr, "unknown trace domain: '%s'\n", now);
+			res = FALSE;
+		}
+		else {
+			// report if non-full match was used
+			if( lut[bi].domain[bn] )
+				fprintf(stderr, "trace: %s\n", lut[bi].domain);
+			lut[bi].callback();
+		}
+	}
+
+	g_free(tmp);
+	return res;
+}
+
 /**
  * Main
  *
@@ -672,29 +746,30 @@ int main(int argc, char **argv)
 	int opt_index;
 
 	int verbosity = LL_DEFAULT;
-	int logtype = -1;
+	int logtype   = MCE_LOG_SYSLOG;
 
-	gint status = 0;
+	gint status = EXIT_FAILURE;
 	gboolean show_module_info = FALSE;
 	gboolean daemonflag = FALSE;
 	gboolean systembus = TRUE;
 	gboolean debugmode = FALSE;
 
-	const char optline[] = "dsTSMDqvhV";
+	const char optline[] = "dsTSMDqvhVt:";
 
 	struct option const options[] = {
-		{ "daemonflag", no_argument, 0, 'd' },
-		{ "force-syslog", no_argument, 0, 's' },
-		{ "force-stderr", no_argument, 0, 'T' },
-		{ "session", no_argument, 0, 'S' },
-		{ "show-module-info", no_argument, 0, 'M' },
-		{ "debug-mode", no_argument, 0, 'D' },
-		{ "quiet", no_argument, 0, 'q' },
-		{ "verbose", no_argument, 0, 'v' },
-		{ "help", no_argument, 0, 'h' },
-		{ "version", no_argument, 0, 'V' },
+		{ "daemonflag",       no_argument,       0, 'd' },
+		{ "force-syslog",     no_argument,       0, 's' },
+		{ "force-stderr",     no_argument,       0, 'T' },
+		{ "session",          no_argument,       0, 'S' },
+		{ "show-module-info", no_argument,       0, 'M' },
+		{ "debug-mode",       no_argument,       0, 'D' },
+		{ "quiet",            no_argument,       0, 'q' },
+		{ "verbose",          no_argument,       0, 'v' },
+		{ "help",             no_argument,       0, 'h' },
+		{ "version",          no_argument,       0, 'V' },
+		{ "trace",            required_argument, 0, 't' },
 		{ 0, 0, 0, 0 }
-	};
+        };
 
 	/* Initialise support for locales, and set the program-name */
 	if (init_locales(PRG_NAME) != 0)
@@ -709,22 +784,10 @@ int main(int argc, char **argv)
 			break;
 
 		case 's':
-			if (logtype != -1) {
-				usage();
-				status = EINVAL;
-				goto EXIT;
-			}
-
 			logtype = MCE_LOG_SYSLOG;
 			break;
 
 		case 'T':
-			if (logtype != -1) {
-				usage();
-				status = EINVAL;
-				goto EXIT;
-			}
-
 			logtype = MCE_LOG_STDERR;
 			break;
 
@@ -752,16 +815,18 @@ int main(int argc, char **argv)
 
 		case 'h':
 			usage();
-			goto EXIT;
+			exit(EXIT_SUCCESS);
 
 		case 'V':
 			version();
-			goto EXIT;
-
+			exit(EXIT_SUCCESS);
+		case 't':
+			if( !mce_enable_trace(optarg) )
+				exit(EXIT_FAILURE);
+			break;
 		default:
 			usage();
-			status = EINVAL;
-			goto EXIT;
+			exit(EXIT_FAILURE);
 		}
 	}
 
@@ -771,13 +836,8 @@ int main(int argc, char **argv)
 			_("%s: Too many arguments\n"
 			  "Try: `%s --help' for more information.\n"),
 			progname, progname);
-		status = EINVAL;
-		goto EXIT;
+		exit(EXIT_FAILURE);
 	}
-
-	if (logtype == -1)
-		logtype = (daemonflag == TRUE) ? MCE_LOG_SYSLOG :
-						 MCE_LOG_STDERR;
 
 	mce_log_open(PRG_NAME, LOG_DAEMON, logtype);
 	mce_log_set_verbosity(verbosity);
@@ -902,7 +962,6 @@ int main(int argc, char **argv)
 	 * pre-requisite: mce_dbus_init()
 	 */
 	if (mce_mode_init() == FALSE) {
-		status = EXIT_FAILURE;
 		goto EXIT;
 	}
 
@@ -914,14 +973,12 @@ int main(int argc, char **argv)
 	if (mce_dsme_init(debugmode) == FALSE) {
 		if (debugmode == FALSE) {
 			mce_log(LL_CRIT, "Cannot connect to DSME");
-			status = EXIT_FAILURE;
 			goto EXIT;
 		}
 	}
 
 	/* Initialise powerkey driver */
 	if (mce_powerkey_init() == FALSE) {
-		status = EXIT_FAILURE;
 		goto EXIT;
 	}
 
@@ -929,25 +986,21 @@ int main(int argc, char **argv)
 	 * pre-requisite: g_type_init()
 	 */
 	if (mce_input_init() == FALSE) {
-		status = EXIT_FAILURE;
 		goto EXIT;
 	}
 
 	/* Initialise switch driver */
 	if (mce_switches_init() == FALSE) {
-		status = EXIT_FAILURE;
 		goto EXIT;
 	}
 
 	/* Initialise tklock driver */
 	if (mce_tklock_init() == FALSE) {
-		status = EXIT_FAILURE;
 		goto EXIT;
 	}
 
 	/* Load all modules */
 	if (mce_modules_init() == FALSE) {
-		status = EXIT_FAILURE;
 		goto EXIT;
 	}
 
@@ -955,6 +1008,9 @@ int main(int argc, char **argv)
 		mce_modules_dump_info();
 		goto EXIT;
 	}
+
+	/* MCE startup succeeded */
+	status = EXIT_SUCCESS;
 
 	/* Run the main loop */
 	g_main_loop_run(mainloop);
