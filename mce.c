@@ -255,8 +255,10 @@ EXIT:
 
 void mce_quit_mainloop(void)
 {
+#ifdef ENABLE_WAKELOCKS
 	/* We are on exit path -> block suspend for good */
 	wakelock_block_suspend_until_exit();
+#endif
 
 	/* Exit immediately if there is no mainloop to terminate */
 	if( !mainloop ) {
@@ -433,7 +435,9 @@ static void mce_tx_signal_cb(int sig)
 	static volatile int exit_tries = 0;
 
 	static const char msg[] = "\n*** BREAK ***\n";
+#ifdef ENABLE_WAKELOCKS
 	static const char die[] = "\n*** UNRECOVERABLE FAILURE ***\n";
+#endif
 
 	/* FIXME: Should really use sigaction() to avoid having
 	 * the default handler active until we manage to restore
@@ -449,8 +453,10 @@ static void mce_tx_signal_cb(int sig)
 		 * not stop us from handling at least repeated terminating
 		 signals ... */
 
+#ifdef ENABLE_WAKELOCKS
 		/* We are on exit path -> block suspend for good */
 		wakelock_block_suspend_until_exit();
+#endif
 
 		no_error_check_write(STDERR_FILENO, msg, sizeof msg - 1);
 
