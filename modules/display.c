@@ -22,6 +22,7 @@
 #include <gmodule.h>
 #include <glib/gstdio.h>		/* g_access() */
 
+#include <glob.h>
 #include <errno.h>			/* errno */
 #include <fcntl.h>			/* open() */
 #include <stdio.h>			/* O_RDWR */
@@ -604,6 +605,83 @@ EXIT:
 	return res;
 }
 
+/** Callback function for logging errors within glob()
+ *
+ * @param path path to file/dir where error occurred
+ * @param err  errno that occurred
+ *
+ * @return 0 (= do not stop glob)
+ */
+static int display_glob_err_cb(const char *path, int err)
+{
+  mce_log(LL_WARN, "%s: glob: %s", path, g_strerror(err));
+  return 0;
+}
+/** Get the display type by looking up from sysfs
+ *
+ * @param display_type where to store the selected display type
+ *
+ * @return TRUE if valid configuration was found, FALSE otherwise
+ */
+static gboolean get_display_type_from_sysfs_probe(display_type_t *display_type)
+{
+	static const char pattern[] = "/sys/class/backlight/*";
+
+	gboolean   res = FALSE;
+	gchar     *set = 0;
+	gchar     *max = 0;
+
+	glob_t    gb;
+
+	memset(&gb, 0, sizeof gb);
+
+	if( glob(pattern, 0, display_glob_err_cb, &gb) != 0 ) {
+		mce_log(LL_WARN, "no backlight devices found");
+		goto EXIT;
+	}
+
+	if( gb.gl_pathc > 1 )
+		mce_log(LL_WARN, "several backlight devices present, "
+			"choosing the first usable one");
+
+	for( size_t i = 0; i < gb.gl_pathc; ++i ) {
+		const char *path = gb.gl_pathv[i];
+		set = g_strdup_printf("%s/brightness", path);
+		max = g_strdup_printf("%s/max_brightness", path);
+
+		if( !g_access(set, W_OK) && !g_access(max, R_OK) ) {
+			goto EXIT;
+		}
+		g_free(set), set = 0;
+		g_free(max), max = 0;
+	}
+
+EXIT:
+	/* Have we found both brightness and max_brightness files? */
+	if( set && max ) {
+		mce_log(LL_NOTICE, "applying DISPLAY_TYPE_GENERIC from sysfs probe");
+		mce_log(LL_NOTICE, "brightness path = %s", set);
+		mce_log(LL_NOTICE, "max_brightness path = %s", max);
+
+		brightness_output.path = set, set = 0;
+		max_brightness_file    = max, max = 0;
+
+		cabc_mode_file            = 0;
+		cabc_available_modes_file = 0;
+		cabc_supported            = 0;
+
+		*display_type = DISPLAY_TYPE_GENERIC;
+		res = TRUE;
+	}
+
+	g_free(max);
+	g_free(set);
+
+	globfree(&gb);
+
+	return res;
+}
+
 /**
  * Get the display type
  *
@@ -696,6 +774,9 @@ static display_type_t get_display_type(void)
 
 		brightness_output.path = g_strconcat(DISPLAY_GENERIC_PATH, DISPLAY_GENERIC_BRIGHTNESS_FILE, NULL);
 		max_brightness_file = g_strconcat(DISPLAY_GENERIC_PATH, DISPLAY_GENERIC_MAX_BRIGHTNESS_FILE, NULL);
+	}
+	else if( get_display_type_from_sysfs_probe(&display_type) ) {
+		// nop
 	} else {
 		display_type = DISPLAY_TYPE_NONE;
 	}
