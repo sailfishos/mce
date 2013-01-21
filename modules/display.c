@@ -22,7 +22,9 @@
 #include <gmodule.h>
 #include <glib/gstdio.h>		/* g_access() */
 
+#include <stdlib.h>
 #include <glob.h>
+#include <poll.h>
 #include <errno.h>			/* errno */
 #include <fcntl.h>			/* open() */
 #include <stdio.h>			/* O_RDWR */
@@ -231,11 +233,11 @@ static gint bootup_dim_additional_timeout = 0;
 /** ID for high brightness mode timer source */
 static guint hbm_timeout_cb_id = 0;
 
-/** Cached brightness */
+/** Cached brightness, last value written; [0, maximum_display_brightness] */
 static gint cached_brightness = -1;
-/** Target brightness */
+/** Target brightness; [0, maximum_display_brightness] */
 static gint target_brightness = -1;
-/** Brightness */
+/** Brightness, when display is not off; [0, maximum_display_brightness] */
 static gint set_brightness = -1;
 
 /** Cached high brightness mode; this is the logical value */
@@ -243,9 +245,8 @@ static gint cached_hbm_level = -1;
 /** High brightness mode; this is the filtered value */
 static gint set_hbm_level = -1;
 
-/** Dim brightness */
-static gint dim_brightness = (DEFAULT_MAXIMUM_DISPLAY_BRIGHTNESS *
-			      DEFAULT_DIM_BRIGHTNESS) / 100;
+/** Dim brightness; [0, maximum_display_brightness] */
+static gint dim_brightness = -1;
 
 /** CABC mode -- uses the SysFS mode names */
 static const gchar *cabc_mode = DEFAULT_CABC_MODE;
@@ -272,8 +273,8 @@ static guint blank_timeout_cb_id = 0;
 /** Charger state */
 static gboolean charger_connected = FALSE;
 
-/** Maximum display brightness */
-static gint maximum_display_brightness = DEFAULT_MAXIMUM_DISPLAY_BRIGHTNESS;
+/** Maximum display brightness, hw specific */
+static gint maximum_display_brightness = -1;
 
 /** File used to set display brightness */
 static output_state_t brightness_output =
@@ -348,7 +349,7 @@ static const mce_translation_t brightness_change_policy_translation[] = {
 	}
 };
 
-/** Real display brightness setting */
+/** Real display brightness setting; [1, 5] */
 static gint real_disp_brightness = DEFAULT_DISP_BRIGHTNESS;
 
 /** Brightness increase policy */
@@ -517,6 +518,34 @@ static gboolean is_dismiss_low_power_mode_enabled(void)
 		 ((submode & MCE_MALF_SUBMODE) != 0)) ? TRUE : FALSE);
 }
 
+/** Check if sysfs directory contains brightness and max_brightness entries
+ *
+ * @param sysfs directory to probe
+ * @param setpath place to store path to brightness file
+ * @param maxpath place to store path to max_brightness file
+ * @return TRUE if brightness and max_brightness files were found,
+ *         FALSE otherwise
+ */
+static gboolean get_brightness_controls(const gchar *dirpath,
+					char **setpath, char **maxpath)
+{
+	gboolean  res = FALSE;
+
+	gchar *set = g_strdup_printf("%s/brightness", dirpath);
+	gchar *max = g_strdup_printf("%s/max_brightness", dirpath);
+
+	if( set && max && !g_access(set, W_OK) && !g_access(max, R_OK) ) {
+		*setpath = set, set = 0;
+		*maxpath = max, max = 0;
+		res = TRUE;
+	}
+
+	g_free(set);
+	g_free(max);
+
+	return res;
+}
+
 /** Get the display type from [modules/display] config group
  *
  * @param display_type where to store the selected display type
@@ -544,14 +573,8 @@ static gboolean get_display_type_from_config(display_type_t *display_type)
 			if( !*vdir[i] || g_access(vdir[i], F_OK) )
 				continue;
 
-			set = g_strdup_printf("%s/brightness", vdir[i]);
-			max = g_strdup_printf("%s/max_brightness", vdir[i]);
-
-			if( !g_access(set, W_OK) && !g_access(max, R_OK) ) {
+			if( get_brightness_controls(vdir[i], &set, &max) )
 				goto EXIT;
-			}
-			g_free(set), set = 0;
-			g_free(max), max = 0;
 		}
 	}
 
@@ -617,6 +640,7 @@ static int display_glob_err_cb(const char *path, int err)
   mce_log(LL_WARN, "%s: glob: %s", path, g_strerror(err));
   return 0;
 }
+
 /** Get the display type by looking up from sysfs
  *
  * @param display_type where to store the selected display type
@@ -627,6 +651,12 @@ static gboolean get_display_type_from_sysfs_probe(display_type_t *display_type)
 {
 	static const char pattern[] = "/sys/class/backlight/*";
 
+	static const char * const lut[] = {
+		/* this seems to be some kind of "Android standard" path */
+		"/sys/class/leds/lcd-backlight",
+		NULL
+	};
+
 	gboolean   res = FALSE;
 	gchar     *set = 0;
 	gchar     *max = 0;
@@ -634,6 +664,13 @@ static gboolean get_display_type_from_sysfs_probe(display_type_t *display_type)
 	glob_t    gb;
 
 	memset(&gb, 0, sizeof gb);
+
+	/* Assume: Any match from fixed list will be true positive.
+	 * Check them before possibly ambiguous backlight class entries. */
+	for( size_t i = 0; lut[i]; ++i ) {
+		if( get_brightness_controls(lut[i], &set, &max) )
+			goto EXIT;
+	}
 
 	if( glob(pattern, 0, display_glob_err_cb, &gb) != 0 ) {
 		mce_log(LL_WARN, "no backlight devices found");
@@ -646,14 +683,9 @@ static gboolean get_display_type_from_sysfs_probe(display_type_t *display_type)
 
 	for( size_t i = 0; i < gb.gl_pathc; ++i ) {
 		const char *path = gb.gl_pathv[i];
-		set = g_strdup_printf("%s/brightness", path);
-		max = g_strdup_printf("%s/max_brightness", path);
 
-		if( !g_access(set, W_OK) && !g_access(max, R_OK) ) {
+		if( get_brightness_controls(path, &set, &max) )
 			goto EXIT;
-		}
-		g_free(set), set = 0;
-		g_free(max), max = 0;
 	}
 
 EXIT:
@@ -1182,6 +1214,33 @@ EXIT:
 	return status;
 }
 
+/** Helper for updating backlight brightness with bounds checking
+ *
+ * @param number brightness in 0 to maximum_display_brightness range
+ */
+static void write_brightness_value(int number)
+{
+	int minval = 0;
+	int maxval = maximum_display_brightness;
+
+	/* If we manage to get out of hw bounds values from depths
+	 * of pipelines and state machines we could end up with
+	 * black screen without easy way out -> clip to valid range */
+	if( number < minval ) {
+		mce_log(LOG_ERR, "value=%d vs min=%d", number, minval);
+		number = minval;
+	}
+	else if( number > maxval ) {
+		mce_log(LL_ERR, "value=%d vs max=%d",
+			number, maxval);
+		number = maxval;
+	}
+	else
+		mce_log(LL_DEBUG, "value=%d", number);
+
+	mce_write_number_string_to_file(&brightness_output, number);
+}
+
 /**
  * Timeout callback for the brightness fade
  *
@@ -1210,7 +1269,7 @@ static gboolean brightness_fade_timeout_cb(gpointer data)
 		cached_brightness -= brightness_fade_steplength;
 	}
 
-	mce_write_number_string_to_file(&brightness_output, cached_brightness);
+	write_brightness_value(cached_brightness);
 
 	if (cached_brightness == 0) {
 		backlight_ioctl(FB_BLANK_POWERDOWN);
@@ -1276,7 +1335,7 @@ static void update_brightness_fade(gint new_brightness)
 		cached_brightness = new_brightness;
 		target_brightness = new_brightness;
 		backlight_ioctl(FB_BLANK_UNBLANK);
-		mce_write_number_string_to_file(&brightness_output, new_brightness);
+		write_brightness_value(new_brightness);
 		goto EXIT;
 	}
 
@@ -1326,7 +1385,7 @@ static void display_blank(void)
 	cancel_brightness_fade_timeout();
 	cached_brightness = 0;
 	target_brightness = 0;
-	mce_write_number_string_to_file(&brightness_output, 0);
+	write_brightness_value(0);
 	backlight_ioctl(FB_BLANK_POWERDOWN);
 }
 
@@ -1351,7 +1410,7 @@ static void display_dim(void)
 		cached_brightness = dim_brightness;
 		target_brightness = dim_brightness;
 		backlight_ioctl(FB_BLANK_UNBLANK);
-		mce_write_number_string_to_file(&brightness_output, dim_brightness);
+		write_brightness_value(dim_brightness);
 	} else {
 		update_brightness_fade(dim_brightness);
 	}
@@ -1369,7 +1428,7 @@ static void display_unblank(void)
 		cached_brightness = set_brightness;
 		target_brightness = set_brightness;
 		backlight_ioctl(FB_BLANK_UNBLANK);
-		mce_write_number_string_to_file(&brightness_output, set_brightness);
+		write_brightness_value(set_brightness);
 	} else {
 		update_brightness_fade(set_brightness);
 	}
@@ -1386,6 +1445,9 @@ static void display_brightness_trigger(gconstpointer data)
 	display_state_t display_state = datapipe_get_gint(display_state_pipe);
 	gint new_brightness = GPOINTER_TO_INT(data) & 0xff;
 	gint new_hbm_level = (GPOINTER_TO_INT(data) >> 8) & 0xff;
+
+	mce_log(LL_DEBUG, "new_brightness=%d, new_hbm_level=%d",
+		new_brightness, new_hbm_level);
 
 	/* If the pipe is choked, ignore the value */
 	if (new_brightness == 0)
@@ -3274,7 +3336,7 @@ static void alarm_ui_state_trigger(gconstpointer data)
 G_MODULE_EXPORT const gchar *g_module_check_init(GModule *module);
 const gchar *g_module_check_init(GModule *module)
 {
-	display_state_t init_display_state = MCE_DISPLAY_ON;
+	gboolean display_is_on = FALSE;
 	submode_t submode = mce_get_submode_int32();
 	gchar *str = NULL;
 	gulong tmp;
@@ -3323,20 +3385,24 @@ const gchar *g_module_check_init(GModule *module)
 					  alarm_ui_state_trigger);
 
 	/* Get maximum brightness */
-	if (mce_read_number_string_from_file(max_brightness_file,
-					     &tmp, NULL, FALSE,
-					     TRUE) == FALSE) {
+	maximum_display_brightness = DEFAULT_MAXIMUM_DISPLAY_BRIGHTNESS;
+
+	if( !mce_read_number_string_from_file(max_brightness_file,
+					      &tmp, NULL, FALSE, TRUE) ) {
 		mce_log(LL_ERR,
 			"Could not read the maximum brightness from %s; "
 			"defaulting to %d",
-			max_brightness_file,
-			DEFAULT_MAXIMUM_DISPLAY_BRIGHTNESS);
-		tmp = DEFAULT_MAXIMUM_DISPLAY_BRIGHTNESS;
+			max_brightness_file, maximum_display_brightness);
 	}
+	else
+		maximum_display_brightness = tmp;
+	mce_log(LL_INFO, "max_brightness = %d", maximum_display_brightness);
 
-	maximum_display_brightness = tmp;
 	dim_brightness = (maximum_display_brightness *
 			  DEFAULT_DIM_BRIGHTNESS) / 100;
+	if( dim_brightness < 1 )
+		dim_brightness = 1;
+	mce_log(LL_INFO, "dim_brightness = %d", dim_brightness);
 
 	set_cabc_mode(DEFAULT_CABC_MODE);
 
@@ -3440,10 +3506,20 @@ const gchar *g_module_check_init(GModule *module)
 		goto EXIT;
 
 
-	/* Display brightness */
+	/* Display brightness from configuration */
 	/* Since we've set a default, error handling is unnecessary */
 	(void)mce_gconf_get_int(MCE_GCONF_DISPLAY_BRIGHTNESS_PATH,
 				&real_disp_brightness);
+	mce_log(LOG_INFO, "real_disp_brightness=%d", real_disp_brightness);
+
+	/* Simulate display_brightness_pipe behavior and calulate the
+	 * display brightness we ought to have (when display is not off)
+	 * 1) translate brightness setting to percentage
+	 * 2) translate percentage to hw scale */
+
+	set_brightness = real_disp_brightness * 100 / 5;
+	set_brightness = set_brightness * maximum_display_brightness / 100;
+	mce_log(LL_INFO, "set_brightness = %d", set_brightness);
 
 	/* Use the current brightness as cached brightness on startup,
 	 * and fade from that value
@@ -3458,24 +3534,11 @@ const gchar *g_module_check_init(GModule *module)
 	} else {
 		cached_brightness = tmp;
 	}
+	mce_log(LOG_INFO, "cached_brightness=%d", cached_brightness);
 
 	/* Ensure that internal display state is in sync with reality */
-	if (cached_brightness == 0) {
-		gconstpointer cooked_brightness;
-
-		/* Cache the brightness setting */
-		display_brightness_pipe.cached_data = GINT_TO_POINTER(real_disp_brightness);
-
-		/* Filter the brightness setting */
-		cooked_brightness = execute_datapipe_filters(&display_brightness_pipe, NULL, USE_CACHE);
-
-		set_brightness = GPOINTER_TO_INT(cooked_brightness);
-		init_display_state = MCE_DISPLAY_OFF;
-	} else {
-		(void)execute_datapipe(&display_brightness_pipe,
-				       GINT_TO_POINTER(real_disp_brightness),
-				       USE_INDATA, CACHE_INDATA);
-	}
+	if (cached_brightness > 0)
+		display_is_on = TRUE;
 
 	if (mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
 				   MCE_GCONF_DISPLAY_BRIGHTNESS_PATH,
@@ -3607,8 +3670,15 @@ const gchar *g_module_check_init(GModule *module)
 				 DEFAULT_BRIGHTNESS_DECREASE_CONSTANT_TIME,
 				 NULL);
 
+	/* Note: Transition to MCE_DISPLAY_OFF can be made already
+	 * here, but the MCE_DISPLAY_ON state is blocked until mCE
+	 * gets notification from DSME */
+	mce_log(LL_INFO, "initial display mode = %s",
+		display_is_on ? "ON" : "OFF");
 	(void)execute_datapipe(&display_state_pipe,
-			       GINT_TO_POINTER(init_display_state),
+			       GINT_TO_POINTER(display_is_on ?
+					       MCE_DISPLAY_ON :
+					       MCE_DISPLAY_OFF),
 			       USE_INDATA, CACHE_INDATA);
 
 EXIT:
