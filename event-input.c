@@ -116,6 +116,387 @@ static gboolean gpio_key_disable_exists = FALSE;
 
 static void update_inputdevices(const gchar *device, gboolean add);
 
+#ifndef FF_STATUS_CNT
+# ifdef FF_STATUS_MAX
+#  define FF_STATUS_CNT (FF_STATUS_MAX+1)
+# else
+#  define FF_STATUS_CNT 0
+# endif
+#endif
+
+#ifndef PWR_CNT
+# ifdef PWR_MAX
+#  define PWR_CNT (PWR_MAX+1)
+# else
+#  define PWR_CNT 0
+# endif
+#endif
+
+static const char *evtype(int type)
+{
+	static const char * const lut[EV_CNT] = {
+		[EV_SYN] = "EV_SYN",
+		[EV_KEY] = "EV_KEY",
+		[EV_REL] = "EV_REL",
+		[EV_ABS] = "EV_ABS",
+		[EV_MSC] = "EV_MSC",
+		[EV_SW]  = "EV_SW",
+		[EV_LED] = "EV_LED",
+		[EV_SND] = "EV_SND",
+		[EV_REP] = "EV_REP",
+		[EV_FF]  = "EV_FF",
+		[EV_PWR] = "EV_PWR",
+		[EV_FF_STATUS] = "EV_FF_STATUS",
+	};
+
+	if( (unsigned)type < (unsigned)EV_CNT )
+		return lut[type];
+	return 0;
+};
+
+/** Calculate how many elements an array of longs bitmap needs to
+ *  have enough space for bc items */
+#define EVDEVBITS_LEN(bc) (((bc)+LONG_BIT-1)/LONG_BIT)
+
+/** Supported codes for one evdev event type
+ */
+typedef struct
+{
+	/** event type */
+	int type;
+	/** event code count for this type */
+	int cnt;
+	/** bitmask of supported event codes */
+	unsigned long bit[0];
+} evdevbits_t;
+
+/** Create empty event code bitmap for one evdev event type
+ *
+ * @param type evdev event type
+ *
+ * @return evdevbits_t object, or NULL for types not needed by mce
+ */
+static evdevbits_t *evdevbits_create(int type)
+{
+	evdevbits_t *self = 0;
+	int cnt = 0;
+
+	switch( type ) {
+	case EV_SYN:       cnt = EV_CNT;        break;
+	case EV_KEY:       cnt = KEY_CNT;       break;
+	case EV_REL:       cnt = REL_CNT;       break;
+	case EV_ABS:       cnt = ABS_CNT;       break;
+	case EV_MSC:       cnt = MSC_CNT;       break;
+	case EV_SW:        cnt = SW_CNT;        break;
+#if 0
+	case EV_LED:       cnt = LED_CNT;       break;
+	case EV_SND:       cnt = SND_CNT;       break;
+	case EV_REP:       cnt = REP_CNT;       break;
+	case EV_FF:        cnt = FF_CNT;        break;
+	case EV_PWR:       cnt = PWR_CNT;       break;
+	case EV_FF_STATUS: cnt = FF_STATUS_CNT; break;
+#endif
+	default: break;
+	}
+
+	if( cnt > 0 ) {
+		int len = EVDEVBITS_LEN(cnt);
+		self = g_malloc0(sizeof *self + len * sizeof *self->bit);
+		self->type = type;
+		self->cnt  = cnt;
+	}
+	return self;
+}
+
+/** Delete evdev event code bitmap
+ *
+ * @param self evdevbits_t object, or NULL
+ */
+static void evdevbits_delete(evdevbits_t *self)
+{
+	g_free(self);
+}
+
+/** Clear bits in evdev event code bitmap
+ *
+ * @param self evdevbits_t object, or NULL
+ */
+static void evdevbits_clear(evdevbits_t *self)
+{
+	if( self ) {
+		int len = EVDEVBITS_LEN(self->cnt);
+		memset(self->bit, 0, len * sizeof *self->bit);
+	}
+}
+
+/** Read supported codes from file descriptor
+ *
+ * @param self evdevbits_t object, or NULL
+ * @param fd file descriptor to probe data from
+ *
+ * @return 0 on success, -1 on errors
+ */
+static int evdevbits_probe(evdevbits_t *self, int fd)
+{
+	int res = 0;
+	if( self && ioctl(fd, EVIOCGBIT(self->type, self->cnt), self->bit) == -1 ) {
+		mce_log(LL_WARN, "EVIOCGBIT(%s, %d): %m", evtype(self->type), self->cnt);
+		evdevbits_clear(self);
+		res = -1;
+	}
+	return res;
+}
+
+/** Test if evdev event code is set in bitmap
+ *
+ * @param self evdevbits_t object, or NULL
+ * @param bit event code to check
+ *
+ * @return 1 if code is supported, 0 otherwise
+ */
+static int evdevbits_test(const evdevbits_t *self, int bit)
+{
+	int res = 0;
+	if( self && (unsigned)bit < (unsigned)self->cnt ) {
+		int i = bit / LONG_BIT;
+		unsigned long m = 1ul << (bit % LONG_BIT);
+		if( self->bit[i] & m ) res = 1;
+	}
+	return res;
+}
+
+/** Supported event types and codes for an evdev device node
+ */
+typedef struct
+{
+	/** Array of bitmasks for supported event types */
+	evdevbits_t *mask[EV_CNT];
+} evdevinfo_t;
+
+/** Create evdev information object
+ *
+ * @return evdevinfo_t object
+ */
+static evdevinfo_t *evdevinfo_create(void)
+{
+	evdevinfo_t *self = g_malloc0(sizeof *self);
+
+	for( int i = 0; i < EV_CNT; ++i )
+		self->mask[i] = evdevbits_create(i);
+
+	return self;
+}
+
+/** Delete evdev information object
+ *
+ * @param self evdevinfo_t object
+ */
+static void evdevinfo_delete(evdevinfo_t *self)
+{
+  if( self ) {
+	  for( int i = 0; i < EV_CNT; ++i )
+		  evdevbits_delete(self->mask[i]);
+	  g_free(self);
+  }
+}
+
+/** Check if event type is supported
+ *
+ * @param self evdevinfo_t object
+ * @param type evdev event type
+ *
+ * @return 1 if event type is supported, 0 otherwise
+ */
+static int evdevinfo_has_type(const evdevinfo_t *self, int type)
+{
+  int res = 0;
+  if( (unsigned)type < EV_CNT )
+		res = evdevbits_test(self->mask[0], type);
+  return res;
+}
+
+/** Check if any of given event types are supported
+ *
+ * @param self evdevinfo_t object
+ * @param types array of evdev event types
+ *
+ * @return 1 if at least on of the types is supported, 0 otherwise
+ */
+static int evdevinfo_has_types(const evdevinfo_t *self, const int *types)
+{
+  int res = 0;
+  for( size_t i = 0; types[i] >= 0; ++i ) {
+	  if( (res = evdevinfo_has_type(self, types[i])) )
+		  break;
+  }
+  return res;
+}
+
+/** Check if event code is supported
+ *
+ * @param self evdevinfo_t object
+ * @param type evdev event type
+ * @param code evdev event code
+ *
+ * @return 1 if event code for type is supported, 0 otherwise
+ */
+static int evdevinfo_has_code(const evdevinfo_t *self, int type, int code)
+{
+	int res = 0;
+
+	if( evdevinfo_has_type(self, type) )
+		res = evdevbits_test(self->mask[type], code);
+	return res;
+}
+
+/** Check if any of given event codes are supported
+ *
+ * @param self evdevinfo_t object
+ * @param type evdev event type
+ * @param code array of evdev event codes
+ *
+ * @return 1 if at least on of the event codes for type is supported, 0 otherwise
+ */
+static int evdevinfo_has_codes(const evdevinfo_t *self, int type, const int *codes)
+{
+	int res = 0;
+
+	if( evdevinfo_has_type(self, type) ) {
+		for( size_t i = 0; codes[i] != -1; ++i ) {
+			if( (res = evdevbits_test(self->mask[type], codes[i])) )
+				break;
+		}
+	}
+	return res;
+}
+
+/** Fill in evdev data by probing file descriptor
+ *
+ * @param self evdevinfo_t object
+ * @param fd file descriptor to probe data from
+ *
+ * @return 0 on success, -1 on errors
+ */
+static int evdevinfo_probe(evdevinfo_t *self, int fd)
+{
+	int res = evdevbits_probe(self->mask[0], fd);
+
+	for( int i = 1; i < EV_CNT; ++i ) {
+		if( evdevbits_test(self->mask[0], i) )
+			evdevbits_probe(self->mask[i], fd);
+		else
+			evdevbits_clear(self->mask[i]);
+	}
+
+	return res;
+}
+
+/** Types of use MCE can have for evdev input devices
+ */
+typedef enum {
+	/** Sensors that might look like touch but should be ignored */
+	EVDEV_REJECT,
+	/** Touch screen to be tracked and processed */
+	EVDEV_TOUCH,
+	/** Keys etc that mce needs to track and process */
+	EVDEV_INPUT,
+	/** Keys etc that mce itself does not need, tracked only for
+	 *  detecting user activity */
+	EVDEV_ACTIVITY,
+	/** The rest, mce does not track these */
+	EVDEV_IGNORE,
+
+} evdev_type_t;
+
+/** Human readable evdev classifications for debugging purposes
+ */
+static const char * const evdev_class[] =
+{
+	[EVDEV_REJECT]   = "REJECT",
+	[EVDEV_TOUCH]    = "TOUCHSCREEN",
+	[EVDEV_INPUT]    = "KEY, BUTTON or SWITCH",
+	[EVDEV_ACTIVITY] = "USER ACTIVITY ONLY",
+	[EVDEV_IGNORE]   = "IGNORE",
+};
+
+
+/** Use heuristics to determine what mce should do with an evdev device node
+ *
+ * @param fd file descriptor to probe data from
+ *
+ * @return one of EVDEV_TOUCH, EVDEV_INPUT, ...
+ */
+static evdev_type_t get_evdev_type(int fd)
+{
+	int res = EVDEV_IGNORE;
+
+	evdevinfo_t *feat = evdevinfo_create();
+
+	evdevinfo_probe(feat, fd);
+
+	static const int keypad_lut[] = {
+		KEY_CAMERA,
+		KEY_CAMERA_FOCUS,
+		KEY_POWER,
+		KEY_SCREENLOCK,
+		KEY_VOLUMEDOWN,
+		KEY_VOLUMEUP,
+		-1
+	};
+	static const int switch_lut[] = {
+		SW_CAMERA_LENS_COVER,
+		SW_FRONT_PROXIMITY,
+		SW_HEADPHONE_INSERT,
+		SW_KEYPAD_SLIDE,
+		SW_LINEOUT_INSERT,
+		SW_MICROPHONE_INSERT,
+		SW_VIDEOOUT_INSERT,
+		-1
+	};
+
+	static const int misc_lut[] = {
+		EV_KEY,
+		EV_REL,
+		EV_ABS,
+		EV_MSC,
+		EV_SW,
+		-1
+	};
+
+	if( evdevinfo_has_code(feat, EV_KEY, BTN_Z) ||
+	    evdevinfo_has_code(feat, EV_ABS, ABS_Z) ) {
+		// 3d sensor like accelorometer/magnetometer
+		res = EVDEV_REJECT;
+		goto cleanup;
+	}
+
+	if( evdevinfo_has_code(feat, EV_KEY, BTN_TOUCH) )	{
+		if( evdevinfo_has_code(feat, EV_ABS, ABS_X) &&
+		    evdevinfo_has_code(feat, EV_ABS, ABS_Y) )
+		{
+			res = EVDEV_TOUCH;
+			goto cleanup;
+		}
+	}
+
+	if( evdevinfo_has_codes(feat, EV_KEY, keypad_lut ) ||
+	    evdevinfo_has_codes(feat, EV_SW,  switch_lut ) ) {
+		res = EVDEV_INPUT;
+		goto cleanup;
+	}
+
+	if( evdevinfo_has_types(feat, misc_lut) )	{
+		res = EVDEV_ACTIVITY;
+		goto cleanup;
+	}
+
+cleanup:
+
+	evdevinfo_delete(feat);
+
+	return res;
+}
+
 /**
  * Enable the specified GPIO key
  * non-existing or already enabled keys are silently ignored
@@ -710,61 +1091,6 @@ static void update_switch_states(void)
 }
 
 /**
- * Try to match /dev/input event file to a specific driver
- *
- * @param filename A string containing the name of the event file
- * @param drivers An array of driver names
- * @return An open file descriptor on success, -1 on failure
- */
-static int match_event_file(const gchar *const filename,
-			    const gchar *const *const drivers)
-{
-	char name[256];
-	int fd = -1;
-
-	/* If we cannot open the file, abort */
-	if ((fd = open(filename, O_NONBLOCK | O_RDONLY)) == -1) {
-		mce_log(LL_DEBUG,
-			"Failed to open `%s', skipping",
-			filename);
-		goto EXIT;
-	}
-
-	/* Get name of the evdev node */
-        if (ioctl(fd, EVIOCGNAME(sizeof name), name) < 0) {
-		mce_log(LL_WARN,
-			"ioctl(EVIOCGNAME) failed on `%s'",
-			filename);
-		goto EXIT;
-	}
-
-	/* Then check from the provided list */
-	for (int i = 0; drivers[i] != NULL; i++) {
-		if (!strcmp(name, drivers[i])) {
-			/* We found our event file */
-			mce_log(LL_DEBUG,
-				"`%s' is `%s'",
-				filename, drivers[i]);
-			goto SUCCESS;
-		}
-	}
-
-EXIT:
-	/* Close the file descriptor */
-	if( fd != -1 ) {
-		if(close(fd) == -1) {
-			mce_log(LL_ERR,
-				"Failed to close `%s'; %s",
-				filename, g_strerror(errno));
-		}
-		fd = -1;
-	}
-SUCCESS:
-
-	return fd;
-}
-
-/**
  * Custom compare function used to find I/O monitor entries
  *
  * @param iomon_id An I/O monitor cookie
@@ -802,73 +1128,83 @@ static void misc_err_cb(gpointer iomon, GIOCondition condition)
  */
 static void match_and_register_io_monitor(const gchar *filename)
 {
-	int fd;
+	gconstpointer iomon = NULL;
+	int           fd    = -1;
+	int           type  = -1;
 
-	if ((fd = match_event_file(filename,
-				   mce_conf_get_blacklisted_event_drivers())) != -1) {
-		/* If the driver for the event file is blacklisted, skip it */
-		if (close(fd) == -1) {
+	char  name[256];
+	const gchar * const *black;
+
+	/* If we cannot open the file, abort */
+	if ((fd = open(filename, O_NONBLOCK | O_RDONLY)) == -1) {
+		mce_log(LL_DEBUG,
+			"Failed to open `%s', skipping",
+			filename);
+		goto EXIT;
+	}
+
+	/* Get name of the evdev node */
+        if (ioctl(fd, EVIOCGNAME(sizeof name), name) < 0) {
+		mce_log(LL_WARN,
+			"ioctl(EVIOCGNAME) failed on `%s'",
+			filename);
+		goto EXIT;
+	}
+
+	/* Probe how mce could use the evdev node */
+	type = get_evdev_type(fd);
+	mce_log(LL_NOTICE, "%s: \"%s\", probe: %s", filename, name, evdev_class[type]);
+
+	/* Check if the device is blacklisted by name in the config files */
+	if( (black = mce_conf_get_blacklisted_event_drivers()) ) {
+		for( size_t i = 0; black[i]; i++ ) {
+			if( strcmp(name, black[i]) )
+				continue;
+			mce_log(LL_NOTICE, "%s: \"%s\", is blacklisted", filename, name);
+			goto EXIT;
+		}
+	}
+
+	switch( type ) {
+	default:
+	case EVDEV_IGNORE:
+	case EVDEV_REJECT:
+		break;
+
+	case EVDEV_TOUCH:
+		iomon = mce_register_io_monitor_chunk(fd, filename, MCE_IO_ERROR_POLICY_WARN,
+						      G_IO_IN | G_IO_ERR, FALSE, touchscreen_iomon_cb,
+						      sizeof (struct input_event));
+		if( iomon )
+			touchscreen_dev_list = g_slist_prepend(touchscreen_dev_list, (gpointer)iomon);
+		break;
+
+	case EVDEV_INPUT:
+		iomon = mce_register_io_monitor_chunk(fd, filename, MCE_IO_ERROR_POLICY_WARN,
+						      G_IO_IN | G_IO_ERR, FALSE, keypress_iomon_cb,
+						      sizeof (struct input_event));
+		if( iomon )
+			keyboard_dev_list = g_slist_prepend(keyboard_dev_list, (gpointer)iomon);
+		break;
+
+	case EVDEV_ACTIVITY:
+		iomon = mce_register_io_monitor_chunk(fd, filename, MCE_IO_ERROR_POLICY_WARN,
+						      G_IO_IN | G_IO_ERR, FALSE, misc_iomon_cb,
+						      sizeof (struct input_event));
+		if( iomon ) {
+			mce_set_io_monitor_err_cb(iomon, misc_err_cb);
+			misc_dev_list = g_slist_prepend(misc_dev_list, (gpointer)iomon);
+		}
+		break;
+	}
+
+EXIT:
+	/* Close unmonitored file descriptors */
+	if( !iomon && fd != -1 ) {
+		if(close(fd) == -1) {
 			mce_log(LL_ERR,
 				"Failed to close `%s'; %s",
 				filename, g_strerror(errno));
-			errno = 0;
-		}
-
-		fd = -1;
-	} else if ((fd = match_event_file(filename,
-					  mce_conf_get_touchscreen_event_drivers())) != -1) {
-		gconstpointer iomon = NULL;
-
-		iomon = mce_register_io_monitor_chunk(fd, filename, MCE_IO_ERROR_POLICY_WARN, G_IO_IN | G_IO_ERR, FALSE, touchscreen_iomon_cb, sizeof (struct input_event));
-
-		/* If we fail to register an I/O monitor,
-		 * don't leak the file descriptor,
-		 * and don't add the device to the list
-		 */
-		if (iomon == NULL) {
-			if (close(fd) == -1) {
-				mce_log(LL_ERR,
-					"Failed to close `%s'; %s",
-					filename, g_strerror(errno));
-				errno = 0;
-			}
-		} else {
-			touchscreen_dev_list = g_slist_prepend(touchscreen_dev_list, (gpointer)iomon);
-		}
-	} else if ((fd = match_event_file(filename,
-					  mce_conf_get_keyboard_event_drivers())) != -1) {
-		gconstpointer iomon = NULL;
-
-		iomon = mce_register_io_monitor_chunk(fd, filename, MCE_IO_ERROR_POLICY_WARN, G_IO_IN | G_IO_ERR, FALSE, keypress_iomon_cb, sizeof (struct input_event));
-
-		/* If we fail to register an I/O monitor,
-		 * don't leak the file descriptor,
-		 * and don't add the device to the list
-		 */
-		if (iomon == NULL) {
-			if (close(fd) == -1) {
-				mce_log(LL_ERR,
-					"Failed to close `%s'; %s",
-					filename, g_strerror(errno));
-				errno = 0;
-			}
-		} else {
-			keyboard_dev_list = g_slist_prepend(keyboard_dev_list, (gpointer)iomon);
-		}
-	} else {
-		gconstpointer iomon = NULL;
-
-		/* XXX: don't register a misc device unless it has
-		 * EV_KEY, EV_REL, EV_ABS, EV_MSC or EV_SW events
-		 */
-		iomon = mce_register_io_monitor_chunk(-1, filename, MCE_IO_ERROR_POLICY_WARN, G_IO_IN | G_IO_ERR, FALSE, misc_iomon_cb, sizeof (struct input_event));
-
-		/* If we fail to register an I/O monitor,
-		 * don't add the device to the list
-		 */
-		if (iomon != NULL) {
-			mce_set_io_monitor_err_cb(iomon, misc_err_cb);
-			misc_dev_list = g_slist_prepend(misc_dev_list, (gpointer)iomon);
 		}
 	}
 }
