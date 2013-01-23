@@ -24,6 +24,8 @@ mce (1.12.5) unstable; urgency=low
   * The builtin-gconf values persist over mce restarts
   * Late suspend is blocked when the device is shutting down
   * Wakelock debugging must be explicitly enabled via --trace=wakelocks
+  * Autodetect evdev inputs instead of relying on lookup tables
+  * Display brightness control paths can be probed from /sys/class/backligt
 
  -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 30 Nov 2012 11:23:08 +0200
 
