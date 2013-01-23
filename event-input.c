@@ -1153,14 +1153,14 @@ static void match_and_register_io_monitor(const gchar *filename)
 
 	/* Probe how mce could use the evdev node */
 	type = get_evdev_type(fd);
-	mce_log(LL_WARN, "%s: \"%s\", probe: %s", filename, name, evdev_class[type]);
+	mce_log(LL_NOTICE, "%s: \"%s\", probe: %s", filename, name, evdev_class[type]);
 
 	/* Check if the device is blacklisted by name in the config files */
 	if( (black = mce_conf_get_blacklisted_event_drivers()) ) {
 		for( size_t i = 0; black[i]; i++ ) {
 			if( strcmp(name, black[i]) )
 				continue;
-			mce_log(LL_WARN, "%s: \"%s\", is blacklisted", filename, name);
+			mce_log(LL_NOTICE, "%s: \"%s\", is blacklisted", filename, name);
 			goto EXIT;
 		}
 	}
