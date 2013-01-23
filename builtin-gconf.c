@@ -806,6 +806,8 @@ static void gconf_value_set_from_string(GConfValue *self, const char *data)
       goto cleanup;
     }
 
+    self->list_head = gconf_value_list_free(self->list_head);
+
     for( now = tmp = strdup(data); now; now = zen )
     {
       if( (zen = strchr(now, ',')) )
