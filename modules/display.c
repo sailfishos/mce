@@ -1227,7 +1227,7 @@ static void write_brightness_value(int number)
 	 * of pipelines and state machines we could end up with
 	 * black screen without easy way out -> clip to valid range */
 	if( number < minval ) {
-		mce_log(LOG_ERR, "value=%d vs min=%d", number, minval);
+		mce_log(LL_ERR, "value=%d vs min=%d", number, minval);
 		number = minval;
 	}
 	else if( number > maxval ) {
@@ -3510,7 +3510,7 @@ const gchar *g_module_check_init(GModule *module)
 	/* Since we've set a default, error handling is unnecessary */
 	(void)mce_gconf_get_int(MCE_GCONF_DISPLAY_BRIGHTNESS_PATH,
 				&real_disp_brightness);
-	mce_log(LOG_INFO, "real_disp_brightness=%d", real_disp_brightness);
+	mce_log(LL_INFO, "real_disp_brightness=%d", real_disp_brightness);
 
 	/* Simulate display_brightness_pipe behavior and calulate the
 	 * display brightness we ought to have (when display is not off)
@@ -3534,7 +3534,7 @@ const gchar *g_module_check_init(GModule *module)
 	} else {
 		cached_brightness = tmp;
 	}
-	mce_log(LOG_INFO, "cached_brightness=%d", cached_brightness);
+	mce_log(LL_INFO, "cached_brightness=%d", cached_brightness);
 
 	/* Ensure that internal display state is in sync with reality */
 	if (cached_brightness > 0)
