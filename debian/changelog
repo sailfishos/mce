@@ -1,6 +1,5 @@
 mce (1.12.5) unstable; urgency=low
 
-  * NOT RELEASED YET
   * MCE uses built-in gconf replacement for handling settings internally
     and provides a dbus interface for accessing the settings
   * Mcetool uses the mce setting dbus interface instead of gconf
@@ -27,7 +26,7 @@ mce (1.12.5) unstable; urgency=low
   * Autodetect evdev inputs instead of relying on lookup tables
   * Display brightness control paths can be probed from /sys/class/backligt
 
- -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 30 Nov 2012 11:23:08 +0200
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 24 Jan 2013 08:47:57 +0200
 
 mce (1.12.4) unstable; urgency=low
 
