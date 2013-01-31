@@ -33,6 +33,7 @@ evdev.pic.o:\
 event-input.o:\
 	event-input.c\
 	datapipe.h\
+	evdev.h\
 	event-input.h\
 	mce-conf.h\
 	mce-io.h\
@@ -43,6 +44,7 @@ event-input.o:\
 event-input.pic.o:\
 	event-input.c\
 	datapipe.h\
+	evdev.h\
 	event-input.h\
 	mce-conf.h\
 	mce-io.h\

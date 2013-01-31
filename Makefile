@@ -274,6 +274,7 @@ MCE_CORE += mce-modules.c
 MCE_CORE += mce-io.c
 MCE_CORE += mce-lib.c
 MCE_CORE += median_filter.c
+MCE_CORE += evdev.c
 
 # HACK: do not link against libgconf-2
 ifeq ($(strip $(ENABLE_BUILTIN_GCONF)),y)
