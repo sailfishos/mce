@@ -150,6 +150,7 @@ MODULES += $(MODULE_DIR)/powersavemode.so
 
 # Tools to build
 TOOLS   += $(TOOLDIR)/mcetool
+TOOLS   += $(TOOLDIR)/evdev_trace
 
 # Testapps to build
 TESTS   += $(TESTSDIR)/mcetorture
@@ -346,6 +347,10 @@ endif
 $(TOOLDIR)/mcetool : CFLAGS += $(TOOLS_CFLAGS)
 $(TOOLDIR)/mcetool : LDLIBS += $(TOOLS_LDLIBS)
 $(TOOLDIR)/mcetool : $(TOOLDIR)/mcetool.o
+
+$(TOOLDIR)/evdev_trace : CFLAGS += $(TOOLS_CFLAGS)
+$(TOOLDIR)/evdev_trace : LDLIBS += $(TOOLS_LDLIBS)
+$(TOOLDIR)/evdev_trace : $(TOOLDIR)/evdev_trace.o evdev.o
 
 # ----------------------------------------------------------------------------
 # TESTS
