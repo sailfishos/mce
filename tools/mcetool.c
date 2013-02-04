@@ -1089,13 +1089,13 @@ static gboolean dbushelper_read_boolean(DBusMessageIter *iter, gboolean *value)
  */
 static gboolean dbushelper_read_variant(DBusMessageIter *iter, DBusMessageIter *sub)
 {
-  if( !dbushelper_require_type(iter, DBUS_TYPE_VARIANT) )
-  return FALSE;
+	if( !dbushelper_require_type(iter, DBUS_TYPE_VARIANT) )
+		return FALSE;
 
-  dbus_message_iter_recurse(iter, sub);
-  dbus_message_iter_next(iter);
+	dbus_message_iter_recurse(iter, sub);
+	dbus_message_iter_next(iter);
 
-  return TRUE;
+	return TRUE;
 }
 
 /** Helper for entering array container from D-Bus message iterator
@@ -1160,11 +1160,11 @@ static gboolean dbushelper_read_int_array(DBusMessageIter *iter,
 static gboolean dbushelper_init_read_iterator(DBusMessage *rsp,
 					      DBusMessageIter *iter)
 {
-  if( !dbus_message_iter_init(rsp, iter) ) {
-    fprintf(stderr, "failed to initialize dbus read iterator\n");
-    return FALSE;
-  }
-  return TRUE;
+	if( !dbus_message_iter_init(rsp, iter) ) {
+		fprintf(stderr, "failed to initialize dbus read iterator\n");
+		return FALSE;
+	}
+	return TRUE;
 }
 
 /** Helper for initializing D-Bus message write iterator
@@ -2346,7 +2346,6 @@ static gint mcetool_get_status(void)
 		g_free(vec);
 	}
 
-
 EXIT:
 	fprintf(stdout, "\n");
 
@@ -2362,7 +2361,6 @@ typedef struct
 	/** Value of the symbol */
 	int         val;
 } symbol_t;
-
 
 /** Lookup symbol by name and return value
  *
