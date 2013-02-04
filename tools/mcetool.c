@@ -25,6 +25,7 @@
 					 * ENOMEM
 					 */
 #include <stdio.h>			/* fprintf() */
+#include <unistd.h>			/* sleep() */
 #include <getopt.h>			/* getopt_long(),
 					 * struct option
 					 */
@@ -3235,7 +3236,7 @@ int main(int argc, char **argv)
 		mcetool_get_status();
 
 	while (block == TRUE)
-		/* Do nothing */;
+		sleep(60*60); /* Do nothing */
 
 EXIT:
 	g_free(newdimtimeout_arr);
