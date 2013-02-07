@@ -1,6 +1,10 @@
 mce (1.12.6) unstable; urgency=low
 
   * NOT RELEASED YET
+  * Added evdev_trace utility to mce-tools package
+  * Improved mce event input diagnostics
+  * More mce settings can be modified via mcetool utility
+  * Missing ini-file items not reported in default verbosity
 
  -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 30 Jan 2013 12:52:17 +0200
 
