@@ -249,7 +249,7 @@ gconf_error_quark (void)
 
 /** Error logging function */
 #if GCONF_ENABLE_ERROR_LOGGING
-# define gconf_log_error(FMT, ARG...) mce_log_file(LL_ERR, __FILE__, __FUNCTION__, FMT , ##ARG)
+# define gconf_log_error(FMT, ARG...) mce_log_file(LL_WARN, __FILE__, __FUNCTION__, FMT , ##ARG)
 #else
 # define gconf_log_error(FMT, ARG...) do{}while(0)
 #endif
@@ -283,7 +283,10 @@ gconf_set_error(GError **err, gint code, const gchar *fmt, ...)
   }
   va_end(va);
 
-  gconf_log_error("%s", msg ?: "unknown");
+  /* Assume caller will report error in appropriate context,
+   * log from builtin-gconf only in debug verbosity level */
+  mce_log(LL_DEBUG, "%s", msg ?: "unknown");
+
   g_set_error_literal(err, GCONF_ERROR, code, msg ?: "unknown");
   free(msg);
 }

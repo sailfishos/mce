@@ -868,10 +868,11 @@ int main(int argc, char **argv)
 	/* Initialise subsystems */
 
 	/* Get configuration options */
-	/* ignore errors; this way the defaults will be used if
-	 * the configuration file is invalid or unavailable
-	 */
-	(void)mce_conf_init();
+	if( !mce_conf_init() ) {
+		mce_log(LL_CRIT,
+			"Failed to initialise configuration options");
+		exit(EXIT_FAILURE);
+	}
 
 	/* Initialise D-Bus */
 	if (mce_dbus_init(systembus) == FALSE) {

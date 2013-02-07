@@ -30,6 +30,28 @@
 /** Pointer to the keyfile structure where config values are read from */
 static gpointer keyfile = NULL;
 
+/** Internal helper for insuring valid keyfile pointer is available
+ *
+ * @param keyfilepointer custom key file, or NULL to use the default one
+ *
+ * @returns non-null keyfile pointer, or aborts
+ */
+static gpointer mce_conf_get_keyfile(gpointer keyfileptr)
+{
+	if( !keyfileptr && !(keyfileptr = keyfile) ) {
+		/* Earlier it was possible to have mce running with NULL
+		 * keyfile. Now the only reasons that might happen are:
+		 *   1) mce_conf_init() was not called yet
+		 *   2) mce_conf_init() has failed
+		 *   3) mce_conf_exit() has already been called
+		 * i.e. critical logic errors somewhere */
+		mce_log(LL_CRIT, "mce config subsystem used without "
+			"properly initializing it");
+		mce_abort();
+	}
+	return keyfileptr;
+}
+
 /**
  * Get a boolean configuration value
  *
@@ -45,24 +67,12 @@ gboolean mce_conf_get_bool(const gchar *group, const gchar *key,
 	gboolean tmp = FALSE;
 	GError *error = NULL;
 
-	if (keyfileptr == NULL) {
-		if (keyfile == NULL) {
-			mce_log(LL_ERR,
-				"Could not get config key %s/%s; "
-				"no configuration file initialised; "
-				"defaulting to `%d'",
-				group, key, defaultval);
-			tmp = defaultval;
-			goto EXIT;
-		} else {
-			keyfileptr = keyfile;
-		}
-	}
+	keyfileptr = mce_conf_get_keyfile(keyfileptr);
 
 	tmp = g_key_file_get_boolean(keyfileptr, group, key, &error);
 
 	if (error != NULL) {
-		mce_log(LL_WARN,
+		mce_log(LL_DEBUG,
 			"Could not get config key %s/%s; %s; "
 			"defaulting to `%d'",
 			group, key, error->message, defaultval);
@@ -71,7 +81,6 @@ gboolean mce_conf_get_bool(const gchar *group, const gchar *key,
 
 	g_clear_error(&error);
 
-EXIT:
 	return tmp;
 }
 
@@ -90,24 +99,12 @@ gint mce_conf_get_int(const gchar *group, const gchar *key,
 	gint tmp = -1;
 	GError *error = NULL;
 
-	if (keyfileptr == NULL) {
-		if (keyfile == NULL) {
-			mce_log(LL_ERR,
-				"Could not get config key %s/%s; "
-				"no configuration file initialised; "
-				"defaulting to `%d'",
-				group, key, defaultval);
-			tmp = defaultval;
-			goto EXIT;
-		} else {
-			keyfileptr = keyfile;
-		}
-	}
+	keyfileptr = mce_conf_get_keyfile(keyfileptr);
 
 	tmp = g_key_file_get_integer(keyfileptr, group, key, &error);
 
 	if (error != NULL) {
-		mce_log(LL_WARN,
+		mce_log(LL_DEBUG,
 			"Could not get config key %s/%s; %s; "
 			"defaulting to `%d'",
 			group, key, error->message, defaultval);
@@ -116,7 +113,6 @@ gint mce_conf_get_int(const gchar *group, const gchar *key,
 
 	g_clear_error(&error);
 
-EXIT:
 	return tmp;
 }
 
@@ -135,25 +131,13 @@ gint *mce_conf_get_int_list(const gchar *group, const gchar *key,
 	gint *tmp = NULL;
 	GError *error = NULL;
 
-	if (keyfileptr == NULL) {
-		if (keyfile == NULL) {
-			mce_log(LL_ERR,
-				"Could not get config key %s/%s; "
-				"no configuration file initialised",
-				group, key);
-			if( length )
-				*length = 0;
-			goto EXIT;
-		} else {
-			keyfileptr = keyfile;
-		}
-	}
+	keyfileptr = mce_conf_get_keyfile(keyfileptr);
 
 	tmp = g_key_file_get_integer_list(keyfileptr, group, key,
 					  length, &error);
 
 	if (error != NULL) {
-		mce_log(LL_WARN,
+		mce_log(LL_DEBUG,
 			"Could not get config key %s/%s; %s",
 			group, key, error->message);
 		if( length )
@@ -162,7 +146,6 @@ gint *mce_conf_get_int_list(const gchar *group, const gchar *key,
 
 	g_clear_error(&error);
 
-EXIT:
 	return tmp;
 }
 
@@ -181,27 +164,12 @@ gchar *mce_conf_get_string(const gchar *group, const gchar *key,
 	gchar *tmp = NULL;
 	GError *error = NULL;
 
-	if (keyfileptr == NULL) {
-		if (keyfile == NULL) {
-			mce_log(LL_ERR,
-				"Could not get config key %s/%s; "
-				"no configuration file initialised; "
-				"defaulting to `%s'",
-				group, key, defaultval);
-
-			if (defaultval != NULL)
-				tmp = g_strdup(defaultval);
-
-			goto EXIT;
-		} else {
-			keyfileptr = keyfile;
-		}
-	}
+	keyfileptr = mce_conf_get_keyfile(keyfileptr);
 
 	tmp = g_key_file_get_string(keyfileptr, group, key, &error);
 
 	if (error != NULL) {
-		mce_log(LL_WARN,
+		mce_log(LL_DEBUG,
 			"Could not get config key %s/%s; %s; %s%s%s",
 			group, key, error->message,
 			defaultval ? "defaulting to `" : "no default set",
@@ -214,7 +182,6 @@ gchar *mce_conf_get_string(const gchar *group, const gchar *key,
 
 	g_clear_error(&error);
 
-EXIT:
 	return tmp;
 }
 
@@ -233,25 +200,13 @@ gchar **mce_conf_get_string_list(const gchar *group, const gchar *key,
 	gchar **tmp = NULL;
 	GError *error = NULL;
 
-	if (keyfileptr == NULL) {
-		if (keyfile == NULL) {
-			mce_log(LL_ERR,
-				"Could not get config key %s/%s; "
-				"no configuration file initialised",
-				group, key);
-			if( length )
-				*length = 0;
-			goto EXIT;
-		} else {
-			keyfileptr = keyfile;
-		}
-	}
+	keyfileptr = mce_conf_get_keyfile(keyfileptr);
 
 	tmp = g_key_file_get_string_list(keyfileptr, group, key,
 					 length, &error);
 
 	if (error != NULL) {
-		mce_log(LL_WARN,
+		mce_log(LL_DEBUG,
 			"Could not get config key %s/%s; %s",
 			group, key, error->message);
 		if( length )
@@ -260,7 +215,6 @@ gchar **mce_conf_get_string_list(const gchar *group, const gchar *key,
 
 	g_clear_error(&error);
 
-EXIT:
 	return tmp;
 }
 
@@ -270,19 +224,7 @@ gchar **mce_conf_get_keys(const gchar *group, gsize *length,
 	gchar **tmp = NULL;
 	GError *error = NULL;
 
-	if (keyfileptr == NULL) {
-		if (keyfile == NULL) {
-			mce_log(LL_ERR,
-				"Could not get config keys %s; "
-				"no configuration file initialised",
-				group);
-			if( length )
-				*length = 0;
-			goto EXIT;
-		} else {
-			keyfileptr = keyfile;
-		}
-	}
+	keyfileptr = mce_conf_get_keyfile(keyfileptr);
 
 	tmp = g_key_file_get_keys(keyfileptr, group, length, &error);
 
@@ -296,7 +238,6 @@ gchar **mce_conf_get_keys(const gchar *group, gsize *length,
 
 	g_clear_error(&error);
 
-EXIT:
 	return tmp;
 }
 
@@ -379,7 +320,7 @@ static void mce_conf_append_key(GKeyFile *dest, GKeyFile *srce,
 			tmp = g_strconcat(val, ";", old, NULL);
 		}
 
-		mce_log(LL_NOTICE, "[%s] %s = %s", grp, key, tmp ?: val);
+		//mce_log(LL_NOTICE, "[%s] %s = %s", grp, key, tmp ?: val);
 		g_key_file_set_value(dest, grp, key, tmp ?: val);
 
 		g_free(tmp);
