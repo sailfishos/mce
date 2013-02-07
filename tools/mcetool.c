@@ -25,6 +25,7 @@
 					 * ENOMEM
 					 */
 #include <stdio.h>			/* fprintf() */
+#include <unistd.h>			/* sleep() */
 #include <getopt.h>			/* getopt_long(),
 					 * struct option
 					 */
@@ -41,6 +42,7 @@
 #include "tklock.h"			/* For GConf paths */
 #include "modules/display.h"		/* For GConf paths */
 #include "modules/powersavemode.h"	/* For GConf paths */
+#include "modules/filter-brightness-als.h" /* For GConf paths */
 
 /** Whether to use demo mode hack or the real thing */
 #define MCETOOL_USE_DEMOMODE_HACK 0
@@ -188,6 +190,30 @@ static void usage(void)
 		"  -p, --set-power-saving-mode=MODE\n"
 		"                                  set the power saving mode; valid modes are:\n"
 		"                                    ``enabled'' and ``disabled''\n"
+		"  -f, --set-adaptive-dimming-mode=MODE\n"
+		"                                  set the adaptive dimming mode; valid modes are:\n"
+		"                                    \"enabled\" and \"disabled\"\n"
+		"  -J, --set-adaptive-dimming-time=MSEC\n"
+		"                                  set the adaptive dimming threshold\n"
+		"  -E, --set-low-power-mode=MODE\n"
+		"                                  set the low power mode; valid modes are:\n"
+		"                                    \"enabled\" and \"disabled\"\n"
+		"  -g, --set-als-mode=MODE\n"
+		"                                  set the als mode; valid modes are:\n"
+		"                                    \"enabled\" and \"disabled\"\n"
+		"  -G, --set-dim-timeout=SECS\n"
+		"                                  set the automatic dimming timeout\n"
+		"  -H, --set-blank-timeout=SECS\n"
+		"                                  set the automatic blanking timeout\n"
+		"  -K, --set-autolock-mode=MODE\n"
+		"                                  set the autolock mode; valid modes are:\n"
+		"                                    \"enabled\" and \"disabled\"\n"
+		"  -M, --set-doubletap-mode=MODE\n"
+		"                                  set the autolock mode; valid modes are:\n"
+		"                                    \"disabled\", \"show-unlock-screen\", \"unlock\"\n"
+		"  -O, --set-dim-timeouts=SECS,SECS,...\n"
+		"                                  set the allowed dim timeouts; valid list must\n"
+		"                                    must have 5 entries, in ascending order\n"
 		"  -F, --set-forced-psm=MODE\n"
 		"                                  the forced power saving mode to MODE;\n"
 		"                                    valid modes are:\n"
@@ -961,6 +987,31 @@ static gboolean dbushelper_require_type(DBusMessageIter *iter,
 	return TRUE;
 }
 
+/** Helper for testing that iterator points to array of expected data type
+ *
+ * @param iter D-Bus message iterator
+ * @param want_type D-Bus data type
+ *
+ * @return TRUE if iterator points to give data type, FALSE otherwise
+ */
+static gboolean dbushelper_require_array_type(DBusMessageIter *iter,
+					      int want_type)
+{
+	if( !dbushelper_require_type(iter, DBUS_TYPE_ARRAY) )
+		return FALSE;
+
+	int have_type = dbus_message_iter_get_element_type(iter);
+
+	if( want_type != have_type ) {
+		fprintf(stderr, "expected array of DBUS_TYPE_%s, got %s\n",
+			dbushelper_get_type_name(want_type),
+			dbushelper_get_type_name(have_type));
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
 /** Helper for making blocking D-Bus method calls
  *
  * @param req D-Bus method call message to send
@@ -1038,13 +1089,65 @@ static gboolean dbushelper_read_boolean(DBusMessageIter *iter, gboolean *value)
  */
 static gboolean dbushelper_read_variant(DBusMessageIter *iter, DBusMessageIter *sub)
 {
-  if( !dbushelper_require_type(iter, DBUS_TYPE_VARIANT) )
-  return FALSE;
+	if( !dbushelper_require_type(iter, DBUS_TYPE_VARIANT) )
+		return FALSE;
 
-  dbus_message_iter_recurse(iter, sub);
-  dbus_message_iter_next(iter);
+	dbus_message_iter_recurse(iter, sub);
+	dbus_message_iter_next(iter);
 
-  return TRUE;
+	return TRUE;
+}
+
+/** Helper for entering array container from D-Bus message iterator
+ *
+ * @param iter D-Bus message iterator
+ * @param sub  D-Bus message iterator for array (not modified on failure)
+ *
+ * @return TRUE if container could be entered, FALSE on failure
+ */
+static gboolean dbushelper_read_array(DBusMessageIter *iter, DBusMessageIter *sub)
+{
+	if( !dbushelper_require_type(iter, DBUS_TYPE_ARRAY) )
+		return FALSE;
+
+	dbus_message_iter_recurse(iter, sub);
+	dbus_message_iter_next(iter);
+
+	return TRUE;
+}
+
+/** Helper for parsing int array from D-Bus message iterator
+ *
+ * @param iter D-Bus message iterator
+ * @param value Where to store the array pointer (not modified on failure)
+ * @param count Where to store the array length (not modified on failure)
+ *
+ * @return TRUE if value could be read, FALSE on failure
+ */
+static gboolean dbushelper_read_int_array(DBusMessageIter *iter,
+					  gint **value, gint *count)
+{
+	debugf("@%s()\n", __FUNCTION__);
+
+	dbus_int32_t *arr_dbus = 0;
+	gint         *arr_glib = 0;
+	int           cnt = 0;
+	DBusMessageIter tmp;
+
+	if( !dbushelper_require_array_type(iter, DBUS_TYPE_INT32) )
+		return FALSE;
+
+	if( !dbushelper_read_array(iter, &tmp) )
+		return FALSE;
+
+	dbus_message_iter_get_fixed_array(&tmp, &arr_dbus, &cnt);
+	dbus_message_iter_next(iter);
+
+	arr_glib = g_malloc0(cnt * sizeof *arr_glib);
+	for( gint i = 0; i < cnt; ++i )
+		arr_glib[i] = arr_dbus[i];
+
+	return *value = arr_glib, *count = cnt, TRUE;
 }
 
 /** Helper for initializing D-Bus message read iterator
@@ -1057,11 +1160,11 @@ static gboolean dbushelper_read_variant(DBusMessageIter *iter, DBusMessageIter *
 static gboolean dbushelper_init_read_iterator(DBusMessage *rsp,
 					      DBusMessageIter *iter)
 {
-  if( !dbus_message_iter_init(rsp, iter) ) {
-    fprintf(stderr, "failed to initialize dbus read iterator\n");
-    return FALSE;
-  }
-  return TRUE;
+	if( !dbus_message_iter_init(rsp, iter) ) {
+		fprintf(stderr, "failed to initialize dbus read iterator\n");
+		return FALSE;
+	}
+	return TRUE;
 }
 
 /** Helper for initializing D-Bus message write iterator
@@ -1097,6 +1200,37 @@ static gboolean dbushelper_write_int(DBusMessageIter *iter, gint value)
 	}
 
 	return TRUE;
+}
+
+/** Helper for adding int value array to D-Bus iterator
+ *
+ * @param iter Write iterator where to add the value
+ * @param value the value to add
+ *
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean dbushelper_write_int_array(DBusMessageIter *iter,
+					   const gint *value, gint count)
+{
+	gboolean      res  = FALSE;
+	int           type = DBUS_TYPE_INT32;
+	dbus_int32_t *data = g_malloc0(count * sizeof *data);
+
+	for( gint i = 0; i < count; ++i )
+		data[i] = value[i];
+
+	if( !dbus_message_iter_append_fixed_array(iter, type, &data, count) ) {
+		fprintf(stderr, "failed to add array of %s data\n",
+			dbushelper_get_type_name(type));
+		goto cleanup;
+	}
+
+	res = TRUE;
+
+cleanup:
+	g_free(data);
+
+	return res;
 }
 
 /** Helper for adding boolean value to D-Bus iterator
@@ -1160,6 +1294,32 @@ static gboolean dbushelper_push_variant(DBusMessageIter **stack,
 	if( !dbus_message_iter_open_container(iter, DBUS_TYPE_VARIANT,
 					      signature, sub) ) {
 		fprintf(stderr, "failed to initialize variant write iterator\n");
+		return FALSE;
+	}
+
+	*stack = sub;
+	return TRUE;
+}
+
+/** Helper for opening a array container
+ *
+ * @param stack pointer to D-Bus message iterator pointer (not
+                modified on failure)
+ *
+ * @param signature signature string of the data that will be added to the
+ *                  variant container
+ *
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean dbushelper_push_array(DBusMessageIter **stack,
+					const char *signature)
+{
+	DBusMessageIter *iter = *stack;
+	DBusMessageIter *sub  = iter + 1;
+
+	if( !dbus_message_iter_open_container(iter, DBUS_TYPE_ARRAY,
+					      signature, sub) ) {
+		fprintf(stderr, "failed to initialize array write iterator\n");
 		return FALSE;
 	}
 
@@ -1348,6 +1508,51 @@ EXIT:
 }
 
 /**
+ * Return an integer array from the specified GConf key
+ *
+ * @param key The GConf key to get the value from
+ * @param values Will contain the array of values on return
+ * @param count  Will contain the array size on return
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean mcetool_gconf_get_int_array(const gchar *const key, gint **values, gint *count)
+{
+	debugf("@%s(%s)\n", __FUNCTION__, key);
+
+        gboolean     res = FALSE;
+        DBusMessage *req = 0;
+        DBusMessage *rsp = 0;
+
+	DBusMessageIter body, variant;
+
+        if( !gconf_client )
+                goto EXIT;
+
+        if( !(req = mcetool_config_request(MCE_DBUS_GET_CONFIG_REQ)) )
+		goto EXIT;
+	if( !dbushelper_init_write_iterator(req, &body) )
+		goto EXIT;
+	if( !dbushelper_write_path(&body, key) )
+		goto EXIT;
+
+	if( !(rsp = dbushelper_call_method(req)) )
+		goto EXIT;
+
+	if( !dbushelper_init_read_iterator(rsp, &body) )
+		goto EXIT;
+	if( !dbushelper_read_variant(&body, &variant) )
+		goto EXIT;
+
+	res = dbushelper_read_int_array(&variant, values, count);
+
+EXIT:
+        if( rsp ) dbus_message_unref(rsp);
+        if( req ) dbus_message_unref(req);
+
+        return res;
+}
+
+/**
  * Set a boolean GConf key to the specified value
  *
  * @param key The GConf key to set the value of
@@ -1461,6 +1666,74 @@ EXIT:
 
         return res;
 }
+
+/**
+ * Set an integer array GConf key to the specified values
+ *
+ * @param key The GConf key to set the value of
+ * @param values The array of values to set the key to
+ * @param count  The number of values in the array
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean mcetool_gconf_set_int_array(const gchar *const key,
+					    const gint *values,
+					    gint count)
+{
+	debugf("@%s(%s, num x %d)\n", __FUNCTION__, key, count);
+
+	static const char vsig[] = DBUS_TYPE_ARRAY_AS_STRING
+		                   DBUS_TYPE_INT32_AS_STRING;
+	static const char asig[] = DBUS_TYPE_INT32_AS_STRING;
+
+        gboolean     res = FALSE;
+        DBusMessage *req = 0;
+        DBusMessage *rsp = 0;
+
+	DBusMessageIter stack[3];
+	DBusMessageIter *wpos = stack;
+	DBusMessageIter *rpos = stack;
+
+        if( !gconf_client )
+                goto EXIT;
+
+	// construct request
+        if( !(req = mcetool_config_request(MCE_DBUS_SET_CONFIG_REQ)) )
+		goto EXIT;
+	if( !dbushelper_init_write_iterator(req, wpos) )
+		goto EXIT;
+	if( !dbushelper_write_path(wpos, key) )
+		goto EXIT;
+	if( !dbushelper_push_variant(&wpos, vsig) )
+		goto EXIT;
+	if( !dbushelper_push_array(&wpos, asig) )
+		goto EXIT;
+	if( !dbushelper_write_int_array(wpos, values, count) )
+		goto EXIT;
+	if( !dbushelper_pop_container(&wpos) )
+		goto EXIT;
+	if( !dbushelper_pop_container(&wpos) )
+		goto EXIT;
+	if( wpos != stack )
+		abort();
+
+	// get reply and process it
+	if( !(rsp = dbushelper_call_method(req)) )
+		goto EXIT;
+	if( !dbushelper_init_read_iterator(rsp, rpos) )
+		goto EXIT;
+	if( !dbushelper_read_boolean(rpos, &res) )
+		res = FALSE;
+
+EXIT:
+	// make sure write iterator stack is collapsed
+	dbushelper_abandon_stack(stack, wpos);
+
+        if( rsp ) dbus_message_unref(rsp);
+        if( req ) dbus_message_unref(req);
+
+        return res;
+}
+
 #else // !defined(ENABLE_BUILTIN_GCONF)
 /* Use regular GConf API must be used for mce settings queries */
 
@@ -2040,10 +2313,127 @@ static gint mcetool_get_status(void)
 		_("Double-tap gesture policy:"),
 		policy_string);
 
+	/* Get low power mode mode */
+	{
+		gboolean flag;
+		retval = mcetool_gconf_get_bool(MCE_GCONF_USE_LOW_POWER_MODE_PATH,
+						&flag);
+		fprintf(stdout,	" %-40s %s\n","Use low power mode:",
+			!retval ? "<unset>" : flag ? "enabled" : "disabled");
+	}
+
+	/* Get als enabled mode */
+	{
+		gboolean flag;
+		retval = mcetool_gconf_get_bool(MCE_GCONF_DISPLAY_ALS_ENABLED_PATH,
+						&flag);
+		fprintf(stdout, " %-40s %s\n", "Use als mode:",
+			!retval ? "<unset>" : flag ? "enabled" : "disabled");
+	}
+	/* Get list of allowed dim timeouts */
+	{
+		gint *vec = 0;
+		gint  len = 0;
+
+		retval = mcetool_gconf_get_int_array(MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST_PATH,
+						     &vec, &len);
+
+		fprintf(stdout,	" %-40s [", "Allowed dim timeouts");
+		for( gint i = 0; i < len; ++i )
+			fprintf(stdout, " %d", vec[i]);
+		fprintf(stdout, " ]\n");
+
+		g_free(vec);
+	}
+
 EXIT:
 	fprintf(stdout, "\n");
 
 	return status;
+}
+
+/** Simple string key to integer value symbol */
+typedef struct
+{
+	/** Name of the symbol, or NULL to mark end of symbol table */
+	const char *key;
+
+	/** Value of the symbol */
+	int         val;
+} symbol_t;
+
+/** Lookup symbol by name and return value
+ *
+ * @param stab array of symbol_t objects
+ * @param key name of the symbol to find
+ *
+ * @return Value matching the name. Or if not found, the
+ *         value of the end-of-table marker symbol */
+static int lookup(const symbol_t *stab, const char *key)
+{
+	for( ; ; ++stab ) {
+		if( !stab->key || !strcmp(stab->key, key) )
+		    return stab->val;
+	}
+}
+
+/** Lookup table for doubletap gesture policies
+ *
+ * @note These must match the hardcoded values in mce itself.
+ */
+static const symbol_t doubletap_values[] = {
+	{ "disabled",           0 },
+	{ "show-unlock-screen", 1 },
+	{ "unlock",             2 },
+	{ NULL, -1 }
+};
+
+/** Convert a comma separated string in to gint array
+ *
+ * @param text string to split
+ * @param len where to store number of elements in array
+ *
+ * @return array of gint type numbers
+ */
+static gint *parse_gint_array(const char *text, gint *len)
+{
+	gint   used = 0;
+	gint   size = 0;
+	gint  *data = 0;
+	gchar *temp = 0;
+
+	gchar *now, *zen;
+	gint val;
+
+	if( !text )
+		goto EXIT;
+
+	temp = g_strdup(text);
+	size = 16;
+	data = g_malloc(size * sizeof *data);
+
+	for( now = zen = temp; *now; now = zen ) {
+		val = strtol(now, &zen, 0);
+
+		if( now == zen )
+			break;
+
+		if( used == size )
+			data = g_realloc(data, (size *= 2) * sizeof *data);
+
+		data[used++] = val;
+
+		if( *zen == ',' )
+			++zen;
+	}
+
+	size = used ? used : 1;
+	data = g_realloc(data, size * sizeof *data);
+
+EXIT:
+	g_free(temp);
+
+	return *len = used, data;
 }
 
 /**
@@ -2066,6 +2456,16 @@ int main(int argc, char **argv)
 	gint demomode = -1;
 #endif
 	gint newpsm = -1;
+	gint newadaptdim = -1;
+	gint newlpm = -1;
+	gint newalsena = -1;
+	gint newdimtime = -1;
+	gint newblanktime = -1;
+	gint newadaptthres = -1;
+	gint newautolockena = -1;
+	gint newdbltapgest = -1;
+	gint *newdimtimeout_arr = 0;
+	gint  newdimtimeout_len = 0;
 	gint newforcedpsm = -1;
 	gint newpsmthreshold = -1;
 	gint newbrightness = -1;
@@ -2093,6 +2493,10 @@ int main(int argc, char **argv)
 	dbus_uint32_t radio_states_mask;
 
 	DBusBusType bus_type = DBUS_BUS_SYSTEM;
+
+	// Unused short options left ....
+	// - - - - - - - - i j - - m - o - q - s t u - w x - z
+	// - - - - - - - - - - - - - - - - Q - - - - - W X - Z
 
 	const char optline[] =
 		"B"  // --block,
@@ -2123,6 +2527,15 @@ int main(int argc, char **argv)
 		"S"  // --session,
 		"h"  // --help,
 		"V"  // --version,
+		"f:" // --set-adaptive-dimming-mode
+		"E:" // --set-low-power-mode
+		"g:" // --set-als-mode
+		"G:" // --set-dim-timeout
+		"H:" // --set-blank-timeout
+		"J:" // --set-adaptive-dimming-time
+		"K:" // --set-autolock-mode
+		"M:" // --set-doubletap-mode
+		"O:" // --set-dim-timeouts
 		;
 
 	struct option const options[] = {
@@ -2154,6 +2567,15 @@ int main(int argc, char **argv)
                 { "session",                no_argument,       0, 'S' },
                 { "help",                   no_argument,       0, 'h' },
                 { "version",                no_argument,       0, 'V' },
+		{ "set-adaptive-dimming-mode", required_argument, 0, 'f' },
+		{ "set-adaptive-dimming-time", required_argument, 0, 'J' },
+		{ "set-low-power-mode",        required_argument, 0, 'E' },
+		{ "set-als-mode",              required_argument, 0, 'g' },
+		{ "set-dim-timeout",           required_argument, 0, 'G' },
+		{ "set-blank-timeout",         required_argument, 0, 'H' },
+		{ "set-autolock-mode",         required_argument, 0, 'K' },
+		{ "set-doubletap-mode",        required_argument, 0, 'M' },
+		{ "set-dim-timeouts",          required_argument, 0, 'O' },
                 { 0, 0, 0, 0 }
         };
 
@@ -2263,6 +2685,94 @@ int main(int argc, char **argv)
 				goto EXIT;
 			}
 
+			get_mce_status = FALSE;
+			break;
+
+		case 'f':
+			if (!strcmp(optarg, ENABLED_STRING)) {
+				newadaptdim = TRUE;
+			} else if (!strcmp(optarg, DISABLED_STRING)) {
+				newadaptdim = FALSE;
+			} else {
+				usage();
+				status = EINVAL;
+				goto EXIT;
+			}
+
+			get_mce_status = FALSE;
+			break;
+
+		case 'E':
+			if (!strcmp(optarg, ENABLED_STRING)) {
+				newlpm = TRUE;
+			} else if (!strcmp(optarg, DISABLED_STRING)) {
+				newlpm = FALSE;
+			} else {
+				usage();
+				status = EINVAL;
+				goto EXIT;
+			}
+
+			get_mce_status = FALSE;
+			break;
+		case 'g':
+			if (!strcmp(optarg, ENABLED_STRING)) {
+				newalsena = TRUE;
+			} else if (!strcmp(optarg, DISABLED_STRING)) {
+				newalsena = FALSE;
+			} else {
+				usage();
+				status = EINVAL;
+				goto EXIT;
+			}
+
+			get_mce_status = FALSE;
+			break;
+
+		case 'G':
+			newdimtime = strtol(optarg, 0, 0);
+			get_mce_status = FALSE;
+			break;
+
+		case 'H':
+			newblanktime = strtol(optarg, 0, 0);
+			get_mce_status = FALSE;
+			break;
+		case 'J':
+			newadaptthres = strtol(optarg, 0, 0);
+			get_mce_status = FALSE;
+			break;
+		case 'K':
+			if (!strcmp(optarg, ENABLED_STRING)) {
+				newautolockena = TRUE;
+			} else if (!strcmp(optarg, DISABLED_STRING)) {
+				newautolockena = FALSE;
+			} else {
+				usage();
+				status = EINVAL;
+				goto EXIT;
+			}
+
+			get_mce_status = FALSE;
+			break;
+		case 'M':
+			if( (newdbltapgest = lookup(doubletap_values, optarg)) < 0 ) {
+				fprintf(stderr, "invalid doubletap policy: %s\n",
+					optarg);
+				goto EXIT;
+			}
+			get_mce_status = FALSE;
+			break;
+
+		case 'O':
+			newdimtimeout_arr = parse_gint_array(optarg,
+							     &newdimtimeout_len);
+
+			if( newdimtimeout_len != 5 ) {
+				fprintf(stderr, "invalid dim timeout list: %s\n",
+					optarg);
+				goto EXIT;
+			}
 			get_mce_status = FALSE;
 			break;
 
@@ -2638,6 +3148,53 @@ int main(int argc, char **argv)
 			goto EXIT;
 	}
 
+	if (newadaptdim != -1) {
+		if (mcetool_gconf_set_bool(MCE_GCONF_DISPLAY_ADAPTIVE_DIMMING_PATH,
+				    newadaptdim) == FALSE)
+			goto EXIT;
+	}
+	if (newlpm != -1) {
+		if (mcetool_gconf_set_bool(MCE_GCONF_USE_LOW_POWER_MODE_PATH,
+					   newlpm) == FALSE )
+			goto EXIT;
+	}
+	if (newalsena != -1) {
+		if (mcetool_gconf_set_bool(MCE_GCONF_DISPLAY_ALS_ENABLED_PATH,
+					   newalsena) == FALSE )
+			goto EXIT;
+	}
+	if (newdimtime != -1) {
+		if (mcetool_gconf_set_int(MCE_GCONF_DISPLAY_DIM_TIMEOUT_PATH,
+					  newdimtime) == FALSE )
+			goto EXIT;
+	}
+	if (newblanktime != -1) {
+		if (mcetool_gconf_set_int(MCE_GCONF_DISPLAY_BLANK_TIMEOUT_PATH,
+					  newblanktime) == FALSE )
+			goto EXIT;
+	}
+	if (newadaptthres != -1) {
+		if (mcetool_gconf_set_int(MCE_GCONF_DISPLAY_ADAPTIVE_DIM_THRESHOLD_PATH,
+					  newadaptthres) == FALSE )
+			goto EXIT;
+	}
+	if (newautolockena != -1) {
+		if (mcetool_gconf_set_bool(MCE_GCONF_TK_AUTOLOCK_ENABLED_PATH,
+					   newautolockena) == FALSE )
+			goto EXIT;
+	}
+	if (newdbltapgest != -1) {
+		if (mcetool_gconf_set_int(MCE_GCONF_TK_DOUBLE_TAP_GESTURE_PATH,
+					   newdbltapgest) == FALSE )
+			goto EXIT;
+	}
+	if( newdimtimeout_arr != 0 && newdimtimeout_len > 0 ) {
+		if (mcetool_gconf_set_int_array(MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST_PATH,
+						newdimtimeout_arr,
+						newdimtimeout_len) == FALSE )
+			goto EXIT;
+	}
+
 	if (newforcedpsm != -1) {
 		if (mcetool_gconf_set_bool(MCE_GCONF_FORCED_PSM_PATH,
 					   newforcedpsm) == FALSE)
@@ -2677,9 +3234,10 @@ int main(int argc, char **argv)
 		mcetool_get_status();
 
 	while (block == TRUE)
-		/* Do nothing */;
+		sleep(60*60); /* Do nothing */
 
 EXIT:
+	g_free(newdimtimeout_arr);
 	g_free(newcolorprofile);
 
 	mcetool_gconf_exit();
