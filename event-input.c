@@ -84,7 +84,7 @@
 					 * mce_conf_get_string()
 					 */
 #include "datapipe.h"			/* execute_datapipe() */
-
+#include "evdev.h"
 /** ID for touchscreen I/O monitor timeout source */
 static guint touchscreen_io_monitor_timeout_cb_id = 0;
 
@@ -131,28 +131,6 @@ static void update_inputdevices(const gchar *device, gboolean add);
 #  define PWR_CNT 0
 # endif
 #endif
-
-static const char *evtype(int type)
-{
-	static const char * const lut[EV_CNT] = {
-		[EV_SYN] = "EV_SYN",
-		[EV_KEY] = "EV_KEY",
-		[EV_REL] = "EV_REL",
-		[EV_ABS] = "EV_ABS",
-		[EV_MSC] = "EV_MSC",
-		[EV_SW]  = "EV_SW",
-		[EV_LED] = "EV_LED",
-		[EV_SND] = "EV_SND",
-		[EV_REP] = "EV_REP",
-		[EV_FF]  = "EV_FF",
-		[EV_PWR] = "EV_PWR",
-		[EV_FF_STATUS] = "EV_FF_STATUS",
-	};
-
-	if( (unsigned)type < (unsigned)EV_CNT )
-		return lut[type];
-	return 0;
-};
 
 /** Calculate how many elements an array of longs bitmap needs to
  *  have enough space for bc items */
@@ -240,7 +218,8 @@ static int evdevbits_probe(evdevbits_t *self, int fd)
 {
 	int res = 0;
 	if( self && ioctl(fd, EVIOCGBIT(self->type, self->cnt), self->bit) == -1 ) {
-		mce_log(LL_WARN, "EVIOCGBIT(%s, %d): %m", evtype(self->type), self->cnt);
+		mce_log(LL_WARN, "EVIOCGBIT(%s, %d): %m",
+			evdev_get_event_type_name(self->type), self->cnt);
 		evdevbits_clear(self);
 		res = -1;
 	}
@@ -700,6 +679,11 @@ static gboolean touchscreen_iomon_cb(gpointer data, gsize bytes_read)
 		goto EXIT;
 	}
 
+	mce_log(LL_DEBUG, "type: %s, code: %s, value: %d",
+		evdev_get_event_type_name(ev->type),
+		evdev_get_event_code_name(ev->type, ev->code),
+		ev->value);
+
 	/* Ignore unwanted events */
 	if ((ev->type != EV_ABS) &&
 	    (ev->type != EV_KEY) &&
@@ -815,6 +799,11 @@ static gboolean keypress_iomon_cb(gpointer data, gsize bytes_read)
 	if (bytes_read != sizeof (*ev)) {
 		goto EXIT;
 	}
+
+	mce_log(LL_DEBUG, "type: %s, code: %s, value: %d",
+		evdev_get_event_type_name(ev->type),
+		evdev_get_event_code_name(ev->type, ev->code),
+		ev->value);
 
 	/* Ignore non-keypress events */
 	if ((ev->type != EV_KEY) && (ev->type != EV_SW)) {
@@ -980,6 +969,11 @@ static gboolean misc_iomon_cb(gpointer data, gsize bytes_read)
 	if (bytes_read != sizeof (*ev)) {
 		goto EXIT;
 	}
+
+	mce_log(LL_DEBUG, "type: %s, code: %s, value: %d",
+		evdev_get_event_type_name(ev->type),
+		evdev_get_event_code_name(ev->type, ev->code),
+		ev->value);
 
 	/* Ignore synchronisation, force feedback, LED,
 	 * and force feedback status

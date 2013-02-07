@@ -1,9 +1,11 @@
 builtin-gconf.o:\
 	builtin-gconf.c\
+	mce-io.h\
 	mce-log.h\
 
 builtin-gconf.pic.o:\
 	builtin-gconf.c\
+	mce-io.h\
 	mce-log.h\
 
 datapipe.o:\
@@ -16,9 +18,22 @@ datapipe.pic.o:\
 	datapipe.h\
 	mce-log.h\
 
+evdev.o:\
+	evdev.c\
+	evdev.h\
+	evdev.inc\
+	mce-log.h\
+
+evdev.pic.o:\
+	evdev.c\
+	evdev.h\
+	evdev.inc\
+	mce-log.h\
+
 event-input.o:\
 	event-input.c\
 	datapipe.h\
+	evdev.h\
 	event-input.h\
 	mce-conf.h\
 	mce-io.h\
@@ -29,6 +44,7 @@ event-input.o:\
 event-input.pic.o:\
 	event-input.c\
 	datapipe.h\
+	evdev.h\
 	event-input.h\
 	mce-conf.h\
 	mce-io.h\
@@ -617,6 +633,16 @@ tklock.pic.o:\
 	systemui/dbus-names.h\
 	systemui/tklock-dbus-names.h\
 	tklock.h\
+
+tools/evdev_trace.o:\
+	tools/evdev_trace.c\
+	evdev.h\
+	mce-log.h\
+
+tools/evdev_trace.pic.o:\
+	tools/evdev_trace.c\
+	evdev.h\
+	mce-log.h\
 
 tools/mcetool.o:\
 	tools/mcetool.c\

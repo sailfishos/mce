@@ -150,6 +150,7 @@ MODULES += $(MODULE_DIR)/powersavemode.so
 
 # Tools to build
 TOOLS   += $(TOOLDIR)/mcetool
+TOOLS   += $(TOOLDIR)/evdev_trace
 
 # Testapps to build
 TESTS   += $(TESTSDIR)/mcetorture
@@ -273,6 +274,7 @@ MCE_CORE += mce-modules.c
 MCE_CORE += mce-io.c
 MCE_CORE += mce-lib.c
 MCE_CORE += median_filter.c
+MCE_CORE += evdev.c
 
 # HACK: do not link against libgconf-2
 ifeq ($(strip $(ENABLE_BUILTIN_GCONF)),y)
@@ -346,6 +348,10 @@ endif
 $(TOOLDIR)/mcetool : CFLAGS += $(TOOLS_CFLAGS)
 $(TOOLDIR)/mcetool : LDLIBS += $(TOOLS_LDLIBS)
 $(TOOLDIR)/mcetool : $(TOOLDIR)/mcetool.o
+
+$(TOOLDIR)/evdev_trace : CFLAGS += $(TOOLS_CFLAGS)
+$(TOOLDIR)/evdev_trace : LDLIBS += $(TOOLS_LDLIBS)
+$(TOOLDIR)/evdev_trace : $(TOOLDIR)/evdev_trace.o evdev.o
 
 # ----------------------------------------------------------------------------
 # TESTS
