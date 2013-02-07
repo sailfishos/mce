@@ -72,7 +72,7 @@ gboolean mce_conf_get_bool(const gchar *group, const gchar *key,
 	tmp = g_key_file_get_boolean(keyfileptr, group, key, &error);
 
 	if (error != NULL) {
-		mce_log(LL_WARN,
+		mce_log(LL_DEBUG,
 			"Could not get config key %s/%s; %s; "
 			"defaulting to `%d'",
 			group, key, error->message, defaultval);
@@ -104,7 +104,7 @@ gint mce_conf_get_int(const gchar *group, const gchar *key,
 	tmp = g_key_file_get_integer(keyfileptr, group, key, &error);
 
 	if (error != NULL) {
-		mce_log(LL_WARN,
+		mce_log(LL_DEBUG,
 			"Could not get config key %s/%s; %s; "
 			"defaulting to `%d'",
 			group, key, error->message, defaultval);
@@ -137,7 +137,7 @@ gint *mce_conf_get_int_list(const gchar *group, const gchar *key,
 					  length, &error);
 
 	if (error != NULL) {
-		mce_log(LL_WARN,
+		mce_log(LL_DEBUG,
 			"Could not get config key %s/%s; %s",
 			group, key, error->message);
 		if( length )
@@ -169,7 +169,7 @@ gchar *mce_conf_get_string(const gchar *group, const gchar *key,
 	tmp = g_key_file_get_string(keyfileptr, group, key, &error);
 
 	if (error != NULL) {
-		mce_log(LL_WARN,
+		mce_log(LL_DEBUG,
 			"Could not get config key %s/%s; %s; %s%s%s",
 			group, key, error->message,
 			defaultval ? "defaulting to `" : "no default set",
@@ -206,7 +206,7 @@ gchar **mce_conf_get_string_list(const gchar *group, const gchar *key,
 					 length, &error);
 
 	if (error != NULL) {
-		mce_log(LL_WARN,
+		mce_log(LL_DEBUG,
 			"Could not get config key %s/%s; %s",
 			group, key, error->message);
 		if( length )
@@ -320,7 +320,7 @@ static void mce_conf_append_key(GKeyFile *dest, GKeyFile *srce,
 			tmp = g_strconcat(val, ";", old, NULL);
 		}
 
-		mce_log(LL_NOTICE, "[%s] %s = %s", grp, key, tmp ?: val);
+		//mce_log(LL_NOTICE, "[%s] %s = %s", grp, key, tmp ?: val);
 		g_key_file_set_value(dest, grp, key, tmp ?: val);
 
 		g_free(tmp);
