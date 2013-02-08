@@ -1,3 +1,9 @@
+mce (1.12.7) unstable; urgency=low
+
+  * NOT RELEASED YET
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 08 Feb 2013 11:58:26 +0200
+
 mce (1.12.6) unstable; urgency=low
 
   * Added evdev_trace utility to mce-tools package
