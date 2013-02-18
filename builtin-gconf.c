@@ -1267,6 +1267,11 @@ static const setting_t gconf_defaults[] =
   },
 #endif
   {
+    .key  = "/system/osso/dsm/display/autosuspend_policy",
+    .type = "i",
+    .def  = "1",
+  },
+  {
     .key = NULL,
   }
 };

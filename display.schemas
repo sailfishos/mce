@@ -171,5 +171,17 @@ for brightness adjustment?</long>
 	<long>0 - Don't inhibit blanking; 1 - Inhibit dimming if charger is connected; 2 - Inhibit blanking if charger is connected; 3 - Inhibit dimming; 4 - Inhibit blanking</long>
       </locale>
     </schema>
+
+    <schema>
+      <key>/schemas/system/osso/dsm/display/autosuspend_policy</key>
+      <applyto>/system/osso/dsm/display/autosuspend_policy</applyto>
+      <owner>mce</owner>
+      <type>int</type>
+      <default>1</default>
+      <locale name="C">
+        <short>Automatic suspend mode</short>
+	<long>0 - Disabled; 1 - Enabled; 2 - Early suspend enabled</long>
+      </locale>
+    </schema>
   </schemalist>
 </gconfschemafile>

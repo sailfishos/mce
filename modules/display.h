@@ -135,6 +135,8 @@
 #define MCE_GCONF_BLANKING_INHIBIT_MODE_PATH	MCE_GCONF_DISPLAY_PATH "/inhibit_blank_mode"
 /** Path to the use Low Power Mode GConf setting */
 #define MCE_GCONF_USE_LOW_POWER_MODE_PATH	MCE_GCONF_DISPLAY_PATH "/use_low_power_mode"
+/** Path to the use autosuspend GConf setting */
+#define MCE_GCONF_USE_AUTOSUSPEND_PATH		MCE_GCONF_DISPLAY_PATH "/autosuspend_policy"
 
 /** Default display brightness on a scale from 1-5 */
 #define DEFAULT_DISP_BRIGHTNESS			3	/* 60% */
