@@ -2802,6 +2802,29 @@ static gboolean suspend_unload = FALSE;
 /** Still waiting for desktop ready ?*/
 static guint suspend_timer_id = 0;
 
+/** Automatic suspend policy modes */
+enum
+{
+	/** Always stay in on-mode */
+	SUSPEND_POLICY_DISABLED    = 0,
+
+	/** Normal transitions between on, early suspend, and late suspend */
+	SUSPEND_POLICY_ENABLED     = 1,
+
+	/** Allow on and early suspend, but never enter late suspend */
+	SUSPEND_POLICY_EARLY_ONLY  = 2,
+
+	/** Default mode to use if no configuration exists */
+	SUSPEND_POLICY_DEFAULT     = SUSPEND_POLICY_ENABLED,
+};
+
+/** Automatic suspend policy */
+static gint suspend_policy = SUSPEND_POLICY_DEFAULT;
+
+/** GConf callback ID for automatic suspend policy changes */
+static guint suspend_policy_id = 0;
+
+
 /** Make suspend policy decision
  *
  * Unless we are still booting up or exiting mce, the policy
@@ -2853,6 +2876,21 @@ static void suspend_rethink(void)
 		wakelock_want = 0;
 	}
 
+	/* adjust based on gconf setting */
+	switch( suspend_policy ) {
+	case SUSPEND_POLICY_DISABLED:
+		suspend_want  = 0;
+		break;
+
+	case SUSPEND_POLICY_EARLY_ONLY:
+		wakelock_want = 1;
+		break;
+
+	default:
+	case SUSPEND_POLICY_ENABLED:
+		break;
+	}
+
 	/* act if decision has changed */
 	if( wakelock_have != wakelock_want && wakelock_want )
 		wakelock_lock("mce_display_on", -1);
@@ -2868,6 +2906,33 @@ static void suspend_rethink(void)
 		wakelock_unlock("mce_display_on");
 
 	wakelock_have = wakelock_want;
+}
+
+/** Callback for handling changes to autosuspend policy configuration
+ *
+ * @param client (not used)
+ * @param id     (not used)
+ * @param entry  GConf entry that changed
+ * @param data   (not used)
+ */
+static void suspend_policy_cb(GConfClient *const client, const guint id,
+			      GConfEntry *const entry, gpointer const data)
+{
+	(void)client; (void)id; (void)data;
+
+	gint policy = SUSPEND_POLICY_ENABLED;
+	const GConfValue *value = 0;
+
+	if( entry && (value = gconf_entry_get_value(entry)) ) {
+		if( value->type == GCONF_VALUE_INT )
+			policy = gconf_value_get_int(value);
+	}
+	if( suspend_policy != policy ) {
+		mce_log(LL_NOTICE, "suspend policy change: %d -> %d",
+			suspend_policy, policy);
+		suspend_policy = policy;
+		suspend_rethink();
+	}
 }
 
 /** D-Bus callback for the shutdown notification signal
@@ -3347,6 +3412,14 @@ const gchar *g_module_check_init(GModule *module)
 	(void)get_display_type();
 
 #ifdef ENABLE_WAKELOCKS
+	/* Get autosuspend policy configuration & track changes */
+	mce_gconf_get_int(MCE_GCONF_USE_AUTOSUSPEND_PATH,
+			  &suspend_policy);
+	mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
+			       MCE_GCONF_USE_AUTOSUSPEND_PATH,
+			       suspend_policy_cb,
+			       &suspend_policy_id);
+
 	/* Initialize suspend policy evaluator */
 	suspend_init();
 #endif
@@ -3698,6 +3771,11 @@ void g_module_unload(GModule *module)
 	(void)module;
 
 #ifdef ENABLE_WAKELOCKS
+	/* Remove suspend policy change notifier */
+	if( suspend_policy_id ) {
+		mce_gconf_notifier_remove(GINT_TO_POINTER(suspend_policy_id), 0);
+	}
+
 	/* Cleanup suspend policy evaluator */
 	suspend_quit();
 #endif
