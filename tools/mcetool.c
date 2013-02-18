@@ -208,6 +208,9 @@ static void usage(void)
 		"  -K, --set-autolock-mode=MODE\n"
 		"                                  set the autolock mode; valid modes are:\n"
 		"                                    \"enabled\" and \"disabled\"\n"
+		"  -s, --set-suspend-policy=MODE\n"
+		"                                  set the autosuspend mode; valid modes are:\n"
+		"                                    \"enabled\", \"disabled\" and \"early\"\n"
 		"  -M, --set-doubletap-mode=MODE\n"
 		"                                  set the autolock mode; valid modes are:\n"
 		"                                    \"disabled\", \"show-unlock-screen\", \"unlock\"\n"
@@ -1920,6 +1923,68 @@ EXIT:
 }
 #endif // !defined(ENABLE_BUILTIN_GCONF)
 
+/** Simple string key to integer value symbol */
+typedef struct
+{
+	/** Name of the symbol, or NULL to mark end of symbol table */
+	const char *key;
+
+	/** Value of the symbol */
+	int         val;
+} symbol_t;
+
+/** Lookup symbol by name and return value
+ *
+ * @param stab array of symbol_t objects
+ * @param key name of the symbol to find
+ *
+ * @return Value matching the name. Or if not found, the
+ *         value of the end-of-table marker symbol */
+static int lookup(const symbol_t *stab, const char *key)
+{
+	for( ; ; ++stab ) {
+		if( !stab->key || !strcmp(stab->key, key) )
+		    return stab->val;
+	}
+}
+
+/** Lookup symbol by value and return name
+ *
+ * @param stab array of symbol_t objects
+ * @param val value of the symbol to find
+ *
+ * @return name of the first matching value, or NULL
+ */
+static const char *rlookup(const symbol_t *stab, int val)
+{
+	for( ; ; ++stab ) {
+		if( !stab->key || stab->val == val )
+		    return stab->key;
+	}
+}
+
+/** Lookup table for doubletap gesture policies
+ *
+ * @note These must match the hardcoded values in mce itself.
+ */
+static const symbol_t doubletap_values[] = {
+	{ "disabled",           0 },
+	{ "show-unlock-screen", 1 },
+	{ "unlock",             2 },
+	{ NULL, -1 }
+};
+
+/** Lookup table for autosuspend policies
+ *
+ * @note These must match the hardcoded values in mce itself.
+ */
+static const symbol_t suspendpol_values[] = {
+	{ "disabled",  0 },
+	{ "enabled",   1 },
+	{ "early",     2 },
+	{ NULL, -1 }
+};
+
 /**
  * Print mce related information
  *
@@ -2346,47 +2411,19 @@ static gint mcetool_get_status(void)
 		g_free(vec);
 	}
 
+	/* Get autosuspend policy */
+	{
+		gint policy;
+		retval = mcetool_gconf_get_int(MCE_GCONF_USE_AUTOSUSPEND_PATH,
+					       &policy);
+		fprintf(stdout,	" %-40s %s", "Autosuspend policy",
+			!retval ? "<unset>" : rlookup(suspendpol_values, policy) ?: "<unknown>");
+	}
 EXIT:
 	fprintf(stdout, "\n");
 
 	return status;
 }
-
-/** Simple string key to integer value symbol */
-typedef struct
-{
-	/** Name of the symbol, or NULL to mark end of symbol table */
-	const char *key;
-
-	/** Value of the symbol */
-	int         val;
-} symbol_t;
-
-/** Lookup symbol by name and return value
- *
- * @param stab array of symbol_t objects
- * @param key name of the symbol to find
- *
- * @return Value matching the name. Or if not found, the
- *         value of the end-of-table marker symbol */
-static int lookup(const symbol_t *stab, const char *key)
-{
-	for( ; ; ++stab ) {
-		if( !stab->key || !strcmp(stab->key, key) )
-		    return stab->val;
-	}
-}
-
-/** Lookup table for doubletap gesture policies
- *
- * @note These must match the hardcoded values in mce itself.
- */
-static const symbol_t doubletap_values[] = {
-	{ "disabled",           0 },
-	{ "show-unlock-screen", 1 },
-	{ "unlock",             2 },
-	{ NULL, -1 }
-};
 
 /** Convert a comma separated string in to gint array
  *
@@ -2464,6 +2501,7 @@ int main(int argc, char **argv)
 	gint newadaptthres = -1;
 	gint newautolockena = -1;
 	gint newdbltapgest = -1;
+	gint newsuspendpol = -1;
 	gint *newdimtimeout_arr = 0;
 	gint  newdimtimeout_len = 0;
 	gint newforcedpsm = -1;
@@ -2536,6 +2574,7 @@ int main(int argc, char **argv)
 		"K:" // --set-autolock-mode
 		"M:" // --set-doubletap-mode
 		"O:" // --set-dim-timeouts
+		"s:" // --set-suspend-policy
 		;
 
 	struct option const options[] = {
@@ -2576,6 +2615,7 @@ int main(int argc, char **argv)
 		{ "set-autolock-mode",         required_argument, 0, 'K' },
 		{ "set-doubletap-mode",        required_argument, 0, 'M' },
 		{ "set-dim-timeouts",          required_argument, 0, 'O' },
+		{ "set-suspend-policy",        required_argument, 0, 's' },
                 { 0, 0, 0, 0 }
         };
 
@@ -2758,6 +2798,15 @@ int main(int argc, char **argv)
 		case 'M':
 			if( (newdbltapgest = lookup(doubletap_values, optarg)) < 0 ) {
 				fprintf(stderr, "invalid doubletap policy: %s\n",
+					optarg);
+				goto EXIT;
+			}
+			get_mce_status = FALSE;
+			break;
+
+		case 's':
+			if( (newsuspendpol = lookup(suspendpol_values, optarg)) < 0 ) {
+				fprintf(stderr, "invalid suspend policy: %s\n",
 					optarg);
 				goto EXIT;
 			}
@@ -3186,6 +3235,11 @@ int main(int argc, char **argv)
 	if (newdbltapgest != -1) {
 		if (mcetool_gconf_set_int(MCE_GCONF_TK_DOUBLE_TAP_GESTURE_PATH,
 					   newdbltapgest) == FALSE )
+			goto EXIT;
+	}
+	if (newsuspendpol != -1) {
+		if (mcetool_gconf_set_int(MCE_GCONF_USE_AUTOSUSPEND_PATH,
+					   newsuspendpol) == FALSE )
 			goto EXIT;
 	}
 	if( newdimtimeout_arr != 0 && newdimtimeout_len > 0 ) {
