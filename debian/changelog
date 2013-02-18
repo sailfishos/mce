@@ -1,3 +1,9 @@
+mce (1.12.8) unstable; urgency=low
+
+  * NOT RELEASED YET
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 18 Feb 2013 18:43:24 +0200
+
 mce (1.12.7) unstable; urgency=low
 
   * Allow user processes to make get_config and set_config method calls
