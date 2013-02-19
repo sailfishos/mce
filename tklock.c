@@ -171,6 +171,12 @@ static output_state_t mce_keypad_sysfs_disable_output =
   .close_on_exit = TRUE,
 };
 
+/** Disable automatic dim/blank from tklock */
+static gint tklock_blank_disable = FALSE;
+
+/** GConf notifier id for tracking tklock_blank_disable changes */
+static guint tklock_blank_disable_id = 0;
+
 /** Touchscreen double tap gesture policy */
 static gint doubletap_gesture_policy = DEFAULT_DOUBLETAP_GESTURE_POLICY;
 
@@ -1330,6 +1336,8 @@ static void setup_tklock_visual_blank_timeout(void)
 				datapipe_get_gint(alarm_ui_state_pipe);
 	call_state_t call_state = datapipe_get_gint(call_state_pipe);
 
+	gint delay = DEFAULT_VISUAL_BLANK_DELAY;
+
 	cancel_tklock_dim_timeout();
 	cancel_tklock_visual_blank_timeout();
 
@@ -1340,9 +1348,14 @@ static void setup_tklock_visual_blank_timeout(void)
 	    (alarm_ui_state == MCE_ALARM_UI_RINGING_INT32))
 		goto EXIT;
 
+	if( tklock_blank_disable ) {
+		mce_log(LL_INFO, "visual_blank_timeout disabled");
+		delay = 24 * 60 * 60; // 24h
+	}
+
 	/* Setup blank timeout */
 	tklock_visual_blank_timeout_cb_id =
-		g_timeout_add_seconds(DEFAULT_VISUAL_BLANK_DELAY, tklock_visual_blank_timeout_cb, NULL);
+		g_timeout_add_seconds(delay, tklock_visual_blank_timeout_cb, NULL);
 
 EXIT:
 	return;
@@ -1392,11 +1405,18 @@ static void cancel_tklock_dim_timeout(void)
  */
 static void setup_tklock_dim_timeout(void)
 {
+	gint delay = dim_delay;
+
 	cancel_tklock_dim_timeout();
+
+	if( tklock_blank_disable ) {
+		mce_log(LL_INFO, "visual_dim_timeout disabled");
+		delay = 24 * 60 * 60; // 24h
+	}
 
 	/* Setup new timeout */
 	tklock_dim_timeout_cb_id =
-		g_timeout_add_seconds(dim_delay, tklock_dim_timeout_cb, NULL);
+		g_timeout_add_seconds(delay, tklock_dim_timeout_cb, NULL);
 }
 
 /**
@@ -2068,6 +2088,23 @@ static void tklock_gconf_cb(GConfClient *const gcc, const guint id,
 				doubletap_gesture_policy);
 			doubletap_gesture_policy =
 				DEFAULT_DOUBLETAP_GESTURE_POLICY;
+		}
+	} else if(id == tklock_blank_disable_id) {
+		gint old = tklock_blank_disable;
+
+		tklock_blank_disable = gconf_value_get_int(gcv);
+
+		mce_log(LL_NOTICE, "tklock_blank_disable: %d -> %d",
+			old, tklock_blank_disable);
+
+		if( tklock_blank_disable == old ) {
+			// no need to change the timers
+		}
+		else if( tklock_visual_blank_timeout_cb_id ) {
+			setup_tklock_visual_blank_timeout();
+		}
+		else if( tklock_dim_timeout_cb_id ) {
+			setup_tklock_dim_timeout();
 		}
 	} else {
 		mce_log(LL_WARN, "Spurious GConf value received; confused!");
@@ -3203,6 +3240,17 @@ gboolean mce_tklock_init(void)
 	append_output_trigger_to_datapipe(&heartbeat_pipe,
 					  heartbeat_trigger);
 
+	/* Config tracking for disabling automatic screen dimming/blanking
+	 * while showing lockscreen. This is demo/debugging feature, so sane
+	 * defaults must be used and no error checking is needed. */
+	mce_gconf_notifier_add(MCE_GCONF_LOCK_PATH,
+			       MCE_GCONF_TK_AUTO_BLANK_DISABLE_PATH,
+			       tklock_gconf_cb,
+			       &tklock_blank_disable_id);
+
+	mce_gconf_get_int(MCE_GCONF_TK_AUTO_BLANK_DISABLE_PATH,
+			  &tklock_blank_disable);
+
 	/* Touchscreen/keypad autolock */
 	/* Since we've set a default, error handling is unnecessary */
 	/*(void)mce_gconf_get_bool(MCE_GCONF_TK_AUTOLOCK_ENABLED_PATH,
@@ -3341,6 +3389,11 @@ EXIT:
  */
 void mce_tklock_exit(void)
 {
+	/* Remove gconf change notifiers */
+	if( tklock_blank_disable_id ) {
+		mce_gconf_notifier_remove(GINT_TO_POINTER(tklock_blank_disable_id), 0);
+	}
+
 	/* Remove triggers/filters from datapipes */
 	remove_output_trigger_from_datapipe(&heartbeat_pipe,
 					    heartbeat_trigger);

@@ -225,6 +225,10 @@ static void usage(void)
 		"                                  set the threshold for the power saving mode;\n"
 		"                                    valid values are:\n"
 		"                                    10, 20, 30, 40, 50\n"
+		"  -t, --set-tklock-noblank=MODE\n"
+		"                                  set the touchscreen/keypad autoblank mode;\n"
+		"                                    valid modes are: \"enabled\" and \"disabled\"\n"
+
 		"  -k, --set-tklock-mode=MODE\n"
 		"                                  set the touchscreen/keypad lock mode;\n"
 		"                                    valid modes are:\n"
@@ -1985,6 +1989,16 @@ static const symbol_t suspendpol_values[] = {
 	{ NULL, -1 }
 };
 
+/** Lookup table for tklock autoblank policy values
+ *
+ * @note These must match the hardcoded values in mce itself.
+ */
+static const symbol_t tklockblank_values[] = {
+	{ "disabled",  1 },
+	{ "enabled",   0 },
+	{ NULL, -1 }
+};
+
 /**
  * Print mce related information
  *
@@ -2416,8 +2430,17 @@ static gint mcetool_get_status(void)
 		gint policy;
 		retval = mcetool_gconf_get_int(MCE_GCONF_USE_AUTOSUSPEND_PATH,
 					       &policy);
-		fprintf(stdout,	" %-40s %s", "Autosuspend policy",
+		fprintf(stdout,	" %-40s %s\n", "Autosuspend policy",
 			!retval ? "<unset>" : rlookup(suspendpol_values, policy) ?: "<unknown>");
+	}
+
+	/* Get tklock blank policy */
+	{
+		gint policy;
+		retval = mcetool_gconf_get_int(MCE_GCONF_TK_AUTO_BLANK_DISABLE_PATH,
+					       &policy);
+		fprintf(stdout,	" %-40s %s\n", "tklock autoblank policy",
+			!retval ? "<unset>" : rlookup(tklockblank_values, policy) ?: "<unknown>");
 	}
 EXIT:
 	fprintf(stdout, "\n");
@@ -2489,6 +2512,7 @@ int main(int argc, char **argv)
 
 	gint powerkeyevent = INVALID_EVENT;
 	gint newinhibitmode = -1;
+	gint newtklockblank = -1;
 #if MCETOOL_USE_DEMOMODE_HACK
 	gint demomode = -1;
 #endif
@@ -2533,7 +2557,7 @@ int main(int argc, char **argv)
 	DBusBusType bus_type = DBUS_BUS_SYSTEM;
 
 	// Unused short options left ....
-	// - - - - - - - - i j - - m - o - q - s t u - w x - z
+	// - - - - - - - - i j - - m - o - q - - - u - w x - z
 	// - - - - - - - - - - - - - - - - Q - - - - - W X - Z
 
 	const char optline[] =
@@ -2575,6 +2599,7 @@ int main(int argc, char **argv)
 		"M:" // --set-doubletap-mode
 		"O:" // --set-dim-timeouts
 		"s:" // --set-suspend-policy
+		"t:" // --set-tklock-noblank
 		;
 
 	struct option const options[] = {
@@ -2597,6 +2622,7 @@ int main(int argc, char **argv)
                 { "set-forced-psm",         required_argument, 0, 'F' },
                 { "set-psm-threshold",      required_argument, 0, 'T' },
                 { "set-tklock-mode",        required_argument, 0, 'k' },
+                { "set-tklock-noblank",     required_argument, 0, 't' },
                 { "enable-led",             no_argument,       0, 'l' },
                 { "disable-led",            no_argument,       0, 'L' },
                 { "activate-led-pattern",   required_argument, 0, 'y' },
@@ -2910,6 +2936,15 @@ int main(int argc, char **argv)
 			get_mce_status = FALSE;
 			break;
 
+		case 't':
+			if( (newtklockblank = lookup(tklockblank_values, optarg)) < 0 ) {
+				fprintf(stderr, "invalid lockscreen blanking policy: %s\n",
+					optarg);
+				goto EXIT;
+			}
+			get_mce_status = FALSE;
+			break;
+
 		case 'I':
 			if (!strcmp(optarg, BLANKING_INHIBIT_DISABLED)) {
 				newinhibitmode = 0;
@@ -3166,6 +3201,13 @@ int main(int argc, char **argv)
 					  newinhibitmode) == FALSE)
 			goto EXIT;
 	}
+
+	if (newtklockblank != -1) {
+		if (mcetool_gconf_set_int(MCE_GCONF_TK_AUTO_BLANK_DISABLE_PATH,
+					  newtklockblank) == FALSE)
+			goto EXIT;
+	}
+
 
 #if MCETOOL_USE_DEMOMODE_HACK
 	if (demomode != -1) {
