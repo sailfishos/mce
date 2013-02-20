@@ -120,6 +120,7 @@
 
 #ifdef ENABLE_WAKELOCKS
 # include "../libwakelock.h"		/* API for wakelocks */
+# include "../filewatcher.h"
 #endif
 
 /* These defines are taken from devicelock.h, but slightly modified */
@@ -2802,6 +2803,12 @@ static gboolean suspend_unload = FALSE;
 /** Still waiting for desktop ready ?*/
 static guint suspend_timer_id = 0;
 
+/** Content change watcher for the init-done flag file */
+static filewatcher_t *init_done_watcher = 0;
+
+/** Is the init-done flag file present in the file system */
+static gboolean init_done = FALSE;
+
 /** Automatic suspend policy modes */
 enum
 {
@@ -2860,9 +2867,9 @@ static void suspend_rethink(void)
 		break;
 	}
 
-	/* do not suspend mid bootup */
-	if( suspend_timer_id ) {
-		suspend_want = 0;
+	/* no late suspend during bootup */
+	if( suspend_timer_id || !init_done ) {
+		wakelock_want = 1;
 	}
 
 	/* no late suspend during shutdown */
@@ -2969,11 +2976,39 @@ static gboolean suspend_timer_cb(gpointer user_data)
 	return FALSE;
 }
 
+/** Content of init-done flag file has changed
+ *
+ * @param path directory where flag file is
+ * @param file name of the flag file
+ * @param data (not used)
+ */
+static void init_done_changed_cb(const char *path,
+				 const char *file,
+				 gpointer data)
+{
+	(void)data;
+
+	char full[256];
+	snprintf(full, sizeof full, "%s/%s", path, file);
+
+	gboolean flag = access(full, F_OK) ? FALSE : TRUE;
+
+	if( init_done != flag ) {
+		init_done = flag;
+		mce_log(LL_NOTICE, "init_done -> %s",
+			init_done ? "true" : "false");
+		suspend_rethink();
+	}
+}
+
+
 /** Cleanup suspend policy
  */
 static void suspend_quit(void)
 {
 	suspend_unload = TRUE;
+
+	filewatcher_delete(init_done_watcher), init_done_watcher = 0;
 
 	if( suspend_timer_id ) {
 		g_source_remove(suspend_timer_id);
@@ -2987,29 +3022,37 @@ static void suspend_quit(void)
  */
 static void suspend_init(void)
 {
-	/* FIXME: While we do not have a proper desktop-is-ready
-	 *        signal/state we are guestimating that we can
-	 *        allow suspend after uptime is large enough */
-
 	time_t uptime = 0;  // uptime in seconds
 	time_t ready  = 60; // desktop ready at
 	time_t delay  = 10; // default wait time
 
-	struct timespec ts;
+	/* wait for flag file to appear */
+	init_done_watcher = filewatcher_create("/run/systemd/boot-status",
+					       "init-done",
+					       init_done_changed_cb, 0, 0);
 
-	/* Assume that monotonic clock == uptime */
-	if( clock_gettime(CLOCK_MONOTONIC, &ts) == 0 )
-		uptime = ts.tv_sec;
+	/* or fall back to waiting for uptime to reach some minimum value */
+	if( !init_done_watcher ) {
+		struct timespec ts;
 
-	if( uptime + delay < ready )
-		delay = ready - uptime;
+		/* Assume that monotonic clock == uptime */
+		if( clock_gettime(CLOCK_MONOTONIC, &ts) == 0 )
+			uptime = ts.tv_sec;
+
+		if( uptime + delay < ready )
+			delay = ready - uptime;
+
+		/* do not wait for the init-done flag file */
+		init_done = TRUE;
+	}
 
 	mce_log(LL_NOTICE, "suspend delay %d seconds", (int)delay);
-
-	if( suspend_timer_id )
-		g_source_remove(suspend_timer_id);
-
 	suspend_timer_id = g_timeout_add_seconds(delay, suspend_timer_cb, 0);
+
+	if( init_done_watcher ) {
+		/* evaluate the initial state of init-done flag file */
+		filewatcher_force_trigger(init_done_watcher);
+	}
 }
 #endif /* ENABLE_WAKELOCKS */
 
