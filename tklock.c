@@ -177,6 +177,9 @@ static gint tklock_blank_disable = FALSE;
 /** GConf notifier id for tracking tklock_blank_disable changes */
 static guint tklock_blank_disable_id = 0;
 
+/** Pseudo-forever dim/blank delay to use when tklock_blank_disable is set */
+#define DISABLED_VISUAL_BLANK_DELAY	(24*60*60) // 24h
+
 /** Touchscreen double tap gesture policy */
 static gint doubletap_gesture_policy = DEFAULT_DOUBLETAP_GESTURE_POLICY;
 
@@ -1314,6 +1317,12 @@ static gboolean tklock_visual_blank_timeout_cb(gpointer data)
 {
 	(void)data;
 
+	/* Keep the timeout alive while tklock_blank_disable is set */
+	if( tklock_blank_disable ) {
+		mce_log(LL_INFO, "renew fake visual_blank_timeout");
+		return TRUE;
+	}
+
 	cancel_tklock_visual_blank_timeout();
 
 	if (saved_tklock_state == MCE_TKLOCK_VISUAL_STATE)
@@ -1349,8 +1358,8 @@ static void setup_tklock_visual_blank_timeout(void)
 		goto EXIT;
 
 	if( tklock_blank_disable ) {
-		mce_log(LL_INFO, "visual_blank_timeout disabled");
-		delay = 24 * 60 * 60; // 24h
+		mce_log(LL_INFO, "set up fake visual_blank_timeout");
+		delay = DISABLED_VISUAL_BLANK_DELAY;
 	}
 
 	/* Setup blank timeout */
@@ -1370,6 +1379,12 @@ EXIT:
 static gboolean tklock_dim_timeout_cb(gpointer data)
 {
 	(void)data;
+
+	/* Keep the timeout alive while tklock_blank_disable is set */
+	if( tklock_blank_disable ) {
+		mce_log(LL_INFO, "renew fake visual_dim_timeout");
+		return TRUE;
+	}
 
 	tklock_dim_timeout_cb_id = 0;
 
@@ -1410,8 +1425,8 @@ static void setup_tklock_dim_timeout(void)
 	cancel_tklock_dim_timeout();
 
 	if( tklock_blank_disable ) {
-		mce_log(LL_INFO, "visual_dim_timeout disabled");
-		delay = 24 * 60 * 60; // 24h
+		mce_log(LL_INFO, "set up fake visual_dim_timeout");
+		delay = DISABLED_VISUAL_BLANK_DELAY;
 	}
 
 	/* Setup new timeout */
