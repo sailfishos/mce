@@ -1272,6 +1272,12 @@ static const setting_t gconf_defaults[] =
     .def  = "1",
   },
   {
+    // MCE_GCONF_TK_AUTO_BLANK_DISABLE_PATH @ tklock.h
+    .key  = "/system/osso/dsm/locks/tklock_blank_disable",
+    .type = "i",
+    .def  = "0",
+  },
+  {
     .key = NULL,
   }
 };

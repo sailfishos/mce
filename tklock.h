@@ -85,6 +85,9 @@
 /** Path to the touchscreen/keypad double tap gesture GConf setting */
 #define MCE_GCONF_TK_DOUBLE_TAP_GESTURE_PATH	MCE_GCONF_LOCK_PATH "/tklock_double_tap_gesture"
 
+/** Path to the automatic tklock dim/blank disable GConf setting */
+#define MCE_GCONF_TK_AUTO_BLANK_DISABLE_PATH	MCE_GCONF_LOCK_PATH "/tklock_blank_disable"
+
 /** Name of D-Bus callback to provide to Touchscreen/Keypad Lock SystemUI */
 #define MCE_TKLOCK_CB_REQ		"tklock_callback"
 /** Delay before the touchscreen/keypad is unlocked */
