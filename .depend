@@ -66,6 +66,16 @@ event-switches.pic.o:\
 	mce-io.h\
 	mce.h\
 
+filewatcher.o:\
+	filewatcher.c\
+	filewatcher.h\
+	mce-log.h\
+
+filewatcher.pic.o:\
+	filewatcher.c\
+	filewatcher.h\
+	mce-log.h\
+
 libwakelock.o:\
 	libwakelock.c\
 	libwakelock.h\
@@ -363,6 +373,7 @@ modules/display.o:\
 	mce-lib.h\
 	mce-log.h\
 	mce.h\
+	filewatcher.h\
 	libwakelock.h\
 	modules/display.h\
 	tklock.h\
@@ -378,6 +389,7 @@ modules/display.pic.o:\
 	mce-lib.h\
 	mce-log.h\
 	mce.h\
+	filewatcher.h\
 	libwakelock.h\
 	modules/display.h\
 	tklock.h\
@@ -608,6 +620,14 @@ powerkey.pic.o:\
 	mce.h\
 	powerkey.h\
 
+test_inotify.o:\
+	test_inotify.c\
+	filewatcher.h\
+
+test_inotify.pic.o:\
+	test_inotify.c\
+	filewatcher.h\
+
 tklock.o:\
 	tklock.c\
 	datapipe.h\
@@ -647,6 +667,7 @@ tools/evdev_trace.pic.o:\
 tools/mcetool.o:\
 	tools/mcetool.c\
 	modules/display.h\
+	modules/filter-brightness-als.h\
 	modules/powersavemode.h\
 	tklock.h\
 	tools/mcetool.h\
@@ -654,6 +675,7 @@ tools/mcetool.o:\
 tools/mcetool.pic.o:\
 	tools/mcetool.c\
 	modules/display.h\
+	modules/filter-brightness-als.h\
 	modules/powersavemode.h\
 	tklock.h\
 	tools/mcetool.h\
