@@ -52,6 +52,26 @@ typedef struct {
 /** Pointer to the DBusConnection */
 static DBusConnection *dbus_connection = NULL;
 
+
+
+/** Return reference to dbus connection cached at mce-dbus module
+ *
+ * For use in situations where the abstraction provided by mce-dbus
+ * makes things too complicated.
+ *
+ * Caller must release non-null return values with dbus_connection_unref().
+ *
+ * @return DBusConnection, or NULL if mce has no dbus connection
+ */
+DBusConnection *dbus_connection_get(void)
+{
+	if( !dbus_connection ) {
+		mce_log(LL_WARN, "no dbus connection");
+		return NULL;
+	}
+	return dbus_connection_ref(dbus_connection);
+}
+
 /**
  * Create a new D-Bus signal, with proper error checking
  * will exit the mainloop if an error occurs

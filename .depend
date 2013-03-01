@@ -352,6 +352,18 @@ modules/camera.pic.o:\
 	mce.h\
 	modules/camera.h\
 
+modules/cpu-keepalive.o:\
+	modules/cpu-keepalive.c\
+	mce-dbus.h\
+	mce-log.h\
+	libwakelock.h\
+
+modules/cpu-keepalive.pic.o:\
+	modules/cpu-keepalive.c\
+	mce-dbus.h\
+	mce-log.h\
+	libwakelock.h\
+
 modules/display.o:\
 	modules/display.c\
 	datapipe.h\

@@ -26,6 +26,8 @@
 
 #include <mce/dbus-names.h>
 
+DBusConnection *dbus_connection_get(void);
+
 DBusMessage *dbus_new_signal(const gchar *const path,
 			     const gchar *const interface,
 			     const gchar *const name);
