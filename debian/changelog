@@ -1,11 +1,10 @@
 mce (1.12.8) unstable; urgency=low
 
-  * NOT RELEASED YET
   * Allow disabling of automatic screen blanking from lock screen
   * System startup ready detection is based on init-done flag file
   * Implement cpu-keepalive plugin for mce
 
- -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 18 Feb 2013 18:43:24 +0200
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 06 Mar 2013 14:47:35 +0200
 
 mce (1.12.7) unstable; urgency=low
 
