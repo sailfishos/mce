@@ -2293,9 +2293,9 @@ EXIT:
  */
 static gchar *read_default_color_profile(void)
 {
-	return read_string_from_conf_file(G_STRINGIFY(MCE_COLOR_PROFILES_CONF_FILE),
-					  MCE_CONF_COMMON_GROUP,
-					  MCE_CONF_DEFAULT_PROFILE_ID_KEY);
+	return mce_conf_get_string(MCE_CONF_COMMON_GROUP,
+				   MCE_CONF_DEFAULT_PROFILE_ID_KEY,
+				   NULL, NULL);
 }
 
 /**
