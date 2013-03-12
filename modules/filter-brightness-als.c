@@ -2239,31 +2239,6 @@ EXIT:
 }
 
 /**
- * Read string value from a conf file
- *
- * @param file_name The name of the conf file
- * @param group The name of group in the conf file
- * @param key The name of the key to read in the group in the conf file
- * @return Pointer to allocated string if success; NULL otherwise
- */
-static gchar *read_string_from_conf_file(const gchar *file_name,
-					 const gchar *group, const gchar *key)
-{
-	GKeyFile *key_file = NULL;
-	gchar *ret = NULL;
-
-	if ((key_file = mce_conf_read_conf_file(file_name)) == NULL)
-		goto EXIT;
-
-	ret = mce_conf_get_string(group, key, NULL, key_file);
-
-	mce_conf_free_conf_file(key_file);
-
-EXIT:
-	return ret;
-}
-
-/**
  * Save the profile id into conf file
  *
  * @param id The profile id to save
