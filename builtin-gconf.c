@@ -1165,6 +1165,12 @@ static const setting_t gconf_defaults[] =
     .def  = "true",
   },
   {
+    // MCE_GCONF_DISPLAY_COLOR_PROFILE_PATH @ modules/filter-brightness-als.h
+    .key  = "/system/osso/dsm/display/color_profile",
+    .type = "s",
+    .def  = "",
+  },
+  {
     // MCE_GCONF_DISPLAY_DIM_TIMEOUT_PATH @ modules/display.h
     .key  = "/system/osso/dsm/display/display_dim_timeout",
     .type = "i",

@@ -2309,6 +2309,10 @@ static gchar *read_current_color_profile(void)
 	(void)mce_gconf_get_string(MCE_GCONF_DISPLAY_COLOR_PROFILE_PATH,
 				   &retval);
 
+	/* Treat empty string as NULL */
+	if( retval && !*retval )
+		g_free(retval), retval = 0;
+
 	return retval;
 }
 
