@@ -2849,6 +2849,7 @@ static void suspend_rethink(void)
 	int wakelock_want = 1; //        and hold wakelock
 
 	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+	system_state_t  system_state  = datapipe_get_gint(system_state_pipe);
 
 	/* suspend if display is off/lpm */
 	switch (display_state) {
@@ -2865,6 +2866,11 @@ static void suspend_rethink(void)
 		break;
 	default:
 		break;
+	}
+
+	/* no late suspend in ACTDEAD etc */
+	if( system_state != MCE_STATE_USER ) {
+		wakelock_want = 1;
 	}
 
 	/* no late suspend during bootup */
@@ -3388,6 +3394,16 @@ static void system_state_trigger(gconstpointer data)
 	default:
 		break;
 	}
+
+#ifdef ENABLE_WAKELOCKS
+	/* Clear shutting down flag on re-entry to USER state */
+	if( system_state == MCE_STATE_USER && shutdown_started ) {
+		shutdown_started = FALSE;
+		mce_log(LL_NOTICE, "Shutdown canceled");
+	}
+	/* re-evaluate suspend policy */
+	suspend_rethink();
+#endif
 
 	return;
 }
