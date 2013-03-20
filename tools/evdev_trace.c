@@ -152,7 +152,8 @@ static const char optS[] =
 /** Program name string */
 static const char *progname = 0;
 
-/** Compatibility with mce-log.h */
+/** Compatibility with mce-log.h
+ */
 void
 mce_log_file(loglevel_t loglevel,
              const char *const file,
@@ -183,7 +184,7 @@ mce_log_file(loglevel_t loglevel,
   }
   va_end(va);
 
-  fprintf(stderr, "%s: %s: %s", progname, lev, msg ?: "error");
+  fprintf(stderr, "%s: %s: %s\n", progname, lev, msg ?: "error");
   free(msg);
 }
 
@@ -198,11 +199,55 @@ static void usage(void)
          "  -h, --help      -- this help text\n"
          "  -i, --identify  -- identify input device\n"
          "  -t, --trace     -- trace input events\n"
+	 "\n"
+	 "NOTES\n"
+         "  If no device paths are given, /dev/input/event* is assumed.\n"
+         "  \n"
+         "  Full device path is not required, \"/dev/input/event1\" can\n"
+         "  be shortened to \"event1\" or just \"1\".\n"
          "\n",
          progname);
 }
 
-/** Main entry point */
+/** Resolve device name given at command line to evdev path
+ */
+
+static char *get_device_path(const char *hint)
+{
+  char temp[256];
+
+  // usable as is?
+  if( access(hint, F_OK) == 0 )
+  {
+    goto cleanup;
+  }
+
+  // try couple of prefixes
+  snprintf(temp, sizeof temp, "/dev/input/%s", hint);
+  if( access(temp, F_OK) == 0 )
+  {
+    hint = temp;
+    goto cleanup;
+  }
+
+  snprintf(temp, sizeof temp, "/dev/input/event%s", hint);
+  if( access(temp, F_OK) == 0 )
+  {
+    hint = temp;
+    goto cleanup;
+  }
+
+  // failure
+  mce_log(LL_WARN, "%s: device file not found", hint);
+  hint = 0;
+
+cleanup:
+
+  return hint ? strdup(hint) : 0;
+}
+
+/** Main entry point
+ */
 int
 main(int argc, char **argv)
 {
@@ -257,7 +302,17 @@ main(int argc, char **argv)
 
   if( optind < argc )
   {
-    mainloop(argv+optind, argc-optind, f_identify, f_trace);
+    argc = 0;
+    for( int i = optind; argv[i]; ++i )
+    {
+      char *path = get_device_path(argv[i]);
+      if( path ) argv[argc++] = path;
+    }
+    mainloop(argv, argc, f_identify, f_trace);
+    while( argc > 0 )
+    {
+      free(argv[--argc]);
+    }
   }
   else
   {
