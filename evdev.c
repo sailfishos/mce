@@ -216,6 +216,7 @@ int evdev_identify_device(int fd)
   int cols;
   unsigned long bmap_type[BMAP_SIZE(EV_CNT)];
   unsigned long bmap_code[BMAP_SIZE(KEY_CNT)];
+  unsigned long bmap_stat[BMAP_SIZE(KEY_CNT)];
   char path[256];
   int n;
 
@@ -285,7 +286,7 @@ int evdev_identify_device(int fd)
 
     printf("Type 0x%02x (%s)\n", etype, evdev_get_event_type_name(etype));
 
-    if( etype == EV_SYN )
+    if( etype == EV_SYN || etype == EV_REP )
     {
       // EVIOCGBIT(0, n) returns event types supported, not
       // what SYN_xxx codes are supported ... skip it
@@ -300,22 +301,34 @@ int evdev_identify_device(int fd)
       continue;
     }
 
+    memset(bmap_stat, 0, sizeof(bmap_stat));
+    switch( etype )
+    {
+    case EV_KEY: ioctl(fd, EVIOCGKEY(KEY_CNT), bmap_stat); break;
+    case EV_LED: ioctl(fd, EVIOCGLED(LED_CNT), bmap_stat); break;
+    case EV_SND: ioctl(fd, EVIOCGSND(SND_CNT), bmap_stat); break;
+    case EV_SW:  ioctl(fd, EVIOCGSW(SW_CNT),   bmap_stat); break;
+    default: break;
+    }
+
     int len = 0;
     for( int ecode = 0; ecode < KEY_CNT; ++ecode )
     {
       if( bit_is_set(bmap_code, ecode) )
       {
         const char *tag = evdev_get_event_code_name(etype, ecode);
-        int add = strlen(tag) + 1;
+	int set = bit_is_set(bmap_stat, ecode);
+        int add = strlen(tag) + 1 + set;
 
         if( len == 0 ) printf("\t");
         else if( len+add > cols ) printf("\n\t"), len = 0;
 
-        len += add, printf(" %s", tag);
+        len += add, printf(" %s%s", tag, set ? "*" : "");
       }
     }
     if( len ) printf("\n");
   }
+
 
   err = 0;
 
