@@ -159,7 +159,6 @@ TESTS   += $(TESTSDIR)/mcetorture
 # MCE configuration files
 CONFFILE              := 10mce.ini
 RADIOSTATESCONFFILE   := 20mce-radio-states.ini
-COLORPROFILESCONFFILE := 20mce-color-profiles.ini
 DBUSCONF              := mce.conf
 GCONFSCHEMAS          := display.schemas energymanagement.schemas
 
@@ -307,7 +306,6 @@ MODULE_PKG_CFLAGS := $(shell $(PKG_CONFIG) --cflags $(MODULE_PKG_NAMES))
 MODULE_PKG_LDLIBS := $(shell $(PKG_CONFIG) --libs   $(MODULE_PKG_NAMES))
 
 MODULE_CFLAGS += -DMCE_RADIO_STATES_CONF_FILE=$(CONFDIR)/$(RADIOSTATESCONFFILE)
-MODULE_CFLAGS += -DMCE_COLOR_PROFILES_CONF_FILE=$(CONFDIR)/$(COLORPROFILESCONFFILE)
 
 MODULE_CFLAGS += $(MODULE_PKG_CFLAGS)
 MODULE_LDLIBS += $(MODULE_PKG_LDLIBS)

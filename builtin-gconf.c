@@ -1135,91 +1135,115 @@ typedef struct
 static const setting_t gconf_defaults[] =
 {
   {
+    // MCE_GCONF_PSM_PATH @ modules/powersavemode.h
     .key  = "/system/osso/dsm/energymanagement/enable_power_saving",
     .type = "b",
     .def  = "false",
   },
   {
+    // MCE_GCONF_FORCED_PSM_PATH @ modules/powersavemode.h
     .key  = "/system/osso/dsm/energymanagement/force_power_saving",
     .type = "b",
     .def  = "false",
   },
   {
+    // MCE_GCONF_PSM_THRESHOLD_PATH @ modules/powersavemode.h
     .key  = "/system/osso/dsm/energymanagement/psm_threshold",
     .type = "i",
     .def  = "20",
   },
   {
+    // Hint for settings UI. Not used by MCE itself.
     .key  = "/system/osso/dsm/energymanagement/possible_psm_thresholds",
     .type = "ai",
     .def  = "10,20,30,40,50",
   },
   {
+    // MCE_GCONF_DISPLAY_ALS_ENABLED_PATH @ modules/filter-brightness-als.h
     .key  = "/system/osso/dsm/display/als_enabled",
     .type = "b",
     .def  = "true",
   },
   {
+    // MCE_GCONF_DISPLAY_COLOR_PROFILE_PATH @ modules/filter-brightness-als.h
+    .key  = "/system/osso/dsm/display/color_profile",
+    .type = "s",
+    .def  = "",
+  },
+  {
+    // MCE_GCONF_DISPLAY_DIM_TIMEOUT_PATH @ modules/display.h
     .key  = "/system/osso/dsm/display/display_dim_timeout",
     .type = "i",
     .def  = "30",
   },
   {
+    // MCE_GCONF_DISPLAY_BLANK_TIMEOUT_PATH @ modules/display.h
     .key  = "/system/osso/dsm/display/display_blank_timeout",
     .type = "i",
     .def  = "3",
   },
   {
+    // MCE_GCONF_DISPLAY_BRIGHTNESS_PATH @ modules/display.h
     .key  = "/system/osso/dsm/display/display_brightness",
     .type = "i",
     .def  = "3",
   },
   {
+    // Hint for settings UI. Not used by MCE itself.
     .key  = "/system/osso/dsm/display/display_brightness_level_step",
     .type = "i",
     .def  = "1",
   },
   {
+    // Hint for settings UI. Not used by MCE itself.
     .key  = "/system/osso/dsm/display/max_display_brightness_levels",
     .type = "i",
     .def  = "5",
   },
   {
+    // MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST_PATH @ modules/display.h
     .key  = "/system/osso/dsm/display/possible_display_dim_timeouts",
     .type = "ai",
     .def  = "15,30,60,120,180",
   },
   {
+    // Hint for settings UI. Not used by MCE itself.
     .key  = "/system/osso/dsm/display/possible_display_blank_timeouts",
     .type = "ai",
     .def  = "3,10,15",
   },
   {
+    // MCE_GCONF_DISPLAY_ADAPTIVE_DIMMING_PATH @ modules/display.h
     .key  = "/system/osso/dsm/display/use_adaptive_display_dimming",
     .type = "b",
     .def  = "true",
   },
   {
+    // MCE_GCONF_DISPLAY_ADAPTIVE_DIM_THRESHOLD_PATH @ modules/display.h
     .key  = "/system/osso/dsm/display/adaptive_display_dim_threshold",
     .type = "i",
     .def  = "3000",
   },
   {
+    // MCE_GCONF_USE_LOW_POWER_MODE_PATH @ modules/display.h
     .key  = "/system/osso/dsm/display/use_low_power_mode",
     .type = "b",
     .def  = "true",
   },
   {
+    // MCE_GCONF_TK_AUTOLOCK_ENABLED_PATH @ tklock.h
     .key  = "/system/osso/dsm/locks/touchscreen_keypad_autolock_enabled",
     .type = "b",
     .def  = "true",
   },
   {
+    // MCE_GCONF_TK_DOUBLE_TAP_GESTURE_PATH @ tklock.h
     .key  = "/system/osso/dsm/locks/tklock_double_tap_gesture",
     .type = "i",
     .def  = "1",
   },
   {
+    // MCE_GCONF_BLANKING_INHIBIT_MODE_PATH @ modules/display.h
     .key  = "/system/osso/dsm/display/inhibit_blank_mode",
     .type = "i",
     .def  = "0",
@@ -1267,6 +1291,7 @@ static const setting_t gconf_defaults[] =
   },
 #endif
   {
+    // MCE_GCONF_USE_AUTOSUSPEND_PATH @ modules/display.h
     .key  = "/system/osso/dsm/display/autosuspend_policy",
     .type = "i",
     .def  = "1",
