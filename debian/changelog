@@ -1,3 +1,9 @@
+mce (1.12.9) unstable; urgency=low
+
+  * NOT RELEASED YET
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 22 Mar 2013 12:55:38 +0200
+
 mce (1.12.8) unstable; urgency=low
 
   * Allow disabling of automatic screen blanking from lock screen
