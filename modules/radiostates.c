@@ -129,26 +129,19 @@ static dbus_uint32_t active_radio_states = 0;
  */
 static gint get_default_radio_states(void)
 {
-	GKeyFile *radio_states_conf = NULL;
-	gint default_radio_states = -1;
-	gboolean radio_state = FALSE;
-	gint i = 0;
+	gint default_radio_states = 0;
 
-	if ((radio_states_conf = mce_conf_read_conf_file(G_STRINGIFY(MCE_RADIO_STATES_CONF_FILE))) == NULL)
-		goto EXIT;
-
-	for (i = 0, default_radio_states = 0; i < RADIO_STATES_COUNT; ++i) {
-		radio_state = mce_conf_get_bool(MCE_CONF_RADIO_STATES_GROUP,
-						radio_state_names[i],
-						radio_state_defaults[i],
-						radio_states_conf);
-		default_radio_states |= radio_state_flags[i] *
-					(radio_state == TRUE ? 1 : 0);
+	for( size_t i = 0; i < RADIO_STATES_COUNT; ++i ) {
+		gboolean flag = mce_conf_get_bool(MCE_CONF_RADIO_STATES_GROUP,
+						  radio_state_names[i],
+						  radio_state_defaults[i],
+						  NULL);
+		if( flag ) {
+			default_radio_states |= radio_state_flags[i];
+		}
 	}
 
 	mce_log(LL_DEBUG, "default_radio_states = %x", default_radio_states);
-
-	mce_conf_free_conf_file(radio_states_conf);
 
 EXIT:
 	return default_radio_states;
