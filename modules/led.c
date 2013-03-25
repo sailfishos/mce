@@ -1580,8 +1580,7 @@ static gboolean init_combination_rules(void)
 	/* Get the list of valid LED patttern combination rules */
 	crlist = mce_conf_get_string_list(MCE_CONF_LED_GROUP,
 					  MCE_CONF_LED_COMBINATION_RULES,
-					  &length,
-					  NULL);
+					  &length);
 
 	/* Treat failed conf-value reads as if they were due to invalid keys
 	 * rather than failed allocations; let future allocation attempts fail
@@ -1604,8 +1603,7 @@ static gboolean init_combination_rules(void)
 
 		tmp = mce_conf_get_string_list(led_pattern_group,
 					       crlist[i],
-					       &length,
-					       NULL);
+					       &length);
 
 		if (tmp != NULL) {
 			combination_rule_struct *cr = NULL;
@@ -1685,8 +1683,7 @@ static gboolean init_lysti_patterns(void)
 	/* Get the list of valid LED patterns */
 	patternlist = mce_conf_get_string_list(MCE_CONF_LED_GROUP,
 					       MCE_CONF_LED_PATTERNS,
-					       &length,
-					       NULL);
+					       &length);
 
 	/* Treat failed conf-value reads as if they were due to invalid keys
 	 * rather than failed allocations; let future allocation attempts fail
@@ -1709,8 +1706,7 @@ static gboolean init_lysti_patterns(void)
 
 		tmp = mce_conf_get_string_list(led_pattern_group,
 					       patternlist[i],
-					       &length,
-					       NULL);
+					       &length);
 
 		if (tmp != NULL) {
 			pattern_struct *psp;
@@ -1855,8 +1851,7 @@ static gboolean init_njoy_patterns(void)
 	/* Get the list of valid LED patterns */
 	patternlist = mce_conf_get_string_list(MCE_CONF_LED_GROUP,
 					       MCE_CONF_LED_PATTERNS,
-					       &length,
-					       NULL);
+					       &length);
 
 	/* Treat failed conf-value reads as if they were due to invalid keys
 	 * rather than failed allocations; let future allocation attempts fail
@@ -1879,8 +1874,7 @@ static gboolean init_njoy_patterns(void)
 
 		tmp = mce_conf_get_string_list(led_pattern_group,
 					       patternlist[i],
-					       &length,
-					       NULL);
+					       &length);
 
 		if (tmp != NULL) {
 			pattern_struct *psp;
@@ -1989,8 +1983,7 @@ static gboolean init_mono_patterns(void)
 	/* Get the list of valid LED patterns */
 	patternlist = mce_conf_get_string_list(MCE_CONF_LED_GROUP,
 					       MCE_CONF_LED_PATTERNS,
-					       &length,
-					       NULL);
+					       &length);
 
 	/* Treat failed conf-value reads as if they were due to invalid keys
 	 * rather than failed allocations; let future allocation attempts fail
@@ -2013,8 +2006,7 @@ static gboolean init_mono_patterns(void)
 
 		tmp = mce_conf_get_int_list(led_pattern_group,
 					    patternlist[i],
-					    &length,
-					    NULL);
+					    &length);
 
 		if (tmp != NULL) {
 			pattern_struct *psp;

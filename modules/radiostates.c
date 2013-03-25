@@ -134,8 +134,7 @@ static gint get_default_radio_states(void)
 	for( size_t i = 0; i < RADIO_STATES_COUNT; ++i ) {
 		gboolean flag = mce_conf_get_bool(MCE_CONF_RADIO_STATES_GROUP,
 						  radio_state_names[i],
-						  radio_state_defaults[i],
-						  NULL);
+						  radio_state_defaults[i]);
 		if( flag ) {
 			default_radio_states |= radio_state_flags[i];
 		}
@@ -143,7 +142,6 @@ static gint get_default_radio_states(void)
 
 	mce_log(LL_DEBUG, "default_radio_states = %x", default_radio_states);
 
-EXIT:
 	return default_radio_states;
 }
 

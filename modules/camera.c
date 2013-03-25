@@ -140,8 +140,7 @@ const gchar *g_module_check_init(GModule *module)
 	/* Get configuration options */
 	popout_unlock = mce_conf_get_bool(MCE_CONF_TKLOCK_GROUP,
 					  MCE_CONF_CAMERA_POPOUT_UNLOCK,
-					  DEFAULT_CAMERA_POPOUT_UNLOCK,
-					  NULL);
+					  DEFAULT_CAMERA_POPOUT_UNLOCK);
 
 	/* Register I/O monitors */
 	// FIXME: error handling?

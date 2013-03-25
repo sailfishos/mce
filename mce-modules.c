@@ -169,14 +169,12 @@ gboolean mce_modules_init(void)
 	/* Get the module path */
 	path = mce_conf_get_string(MCE_CONF_MODULES_GROUP,
 				   MCE_CONF_MODULES_PATH,
-				   DEFAULT_MCE_MODULE_PATH,
-				   NULL);
+				   DEFAULT_MCE_MODULE_PATH);
 
 	/* Get the list modules to load */
 	modlist = mce_conf_get_string_list(MCE_CONF_MODULES_GROUP,
 					   MCE_CONF_MODULES_MODULES,
-					   &length,
-					   NULL);
+					   &length);
 
 	if (modlist != NULL) {
 		gint i;

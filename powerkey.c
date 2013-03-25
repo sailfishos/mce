@@ -654,16 +654,13 @@ gboolean mce_powerkey_init(void)
 	/* Get configuration options */
 	longdelay = mce_conf_get_int(MCE_CONF_POWERKEY_GROUP,
 				     MCE_CONF_POWERKEY_LONG_DELAY,
-				     DEFAULT_POWER_LONG_DELAY,
-				     NULL);
+				     DEFAULT_POWER_LONG_DELAY);
 	mediumdelay = mce_conf_get_int(MCE_CONF_POWERKEY_GROUP,
 				       MCE_CONF_POWERKEY_MEDIUM_DELAY,
-				       DEFAULT_POWER_MEDIUM_DELAY,
-				       NULL);
+				       DEFAULT_POWER_MEDIUM_DELAY);
 	tmp = mce_conf_get_string(MCE_CONF_POWERKEY_GROUP,
 				  MCE_CONF_POWERKEY_SHORT_ACTION,
-				  "",
-				  NULL);
+				  "");
 
 	/* Since we've set a default, error handling is unnecessary */
 	(void)parse_action(tmp, &shortpresssignal, &shortpressaction);
@@ -671,8 +668,7 @@ gboolean mce_powerkey_init(void)
 
 	tmp = mce_conf_get_string(MCE_CONF_POWERKEY_GROUP,
 				  MCE_CONF_POWERKEY_LONG_ACTION,
-				  "",
-				  NULL);
+				  "");
 
 	/* Since we've set a default, error handling is unnecessary */
 	(void)parse_action(tmp, &longpresssignal, &longpressaction);
@@ -680,12 +676,10 @@ gboolean mce_powerkey_init(void)
 
 	doublepressdelay = mce_conf_get_int(MCE_CONF_POWERKEY_GROUP,
 					    MCE_CONF_POWERKEY_DOUBLE_DELAY,
-					    DEFAULT_POWER_DOUBLE_DELAY,
-					    NULL);
+					    DEFAULT_POWER_DOUBLE_DELAY);
 	tmp = mce_conf_get_string(MCE_CONF_POWERKEY_GROUP,
 				  MCE_CONF_POWERKEY_DOUBLE_ACTION,
-				  "",
-				  NULL);
+				  "");
 
 	/* Since we've set a default, error handling is unnecessary */
 	(void)parse_action(tmp, &doublepresssignal, &doublepressaction);

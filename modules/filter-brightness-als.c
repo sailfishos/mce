@@ -2270,7 +2270,7 @@ static gchar *read_default_color_profile(void)
 {
 	return mce_conf_get_string(MCE_CONF_COMMON_GROUP,
 				   MCE_CONF_DEFAULT_PROFILE_ID_KEY,
-				   NULL, NULL);
+				   NULL);
 }
 
 /**
@@ -2326,8 +2326,7 @@ static gboolean init_color_profiles(void)
 	group = g_strconcat(MCE_COLOR_PROFILE_GROUP_PREFIX, display_id, NULL);
 
 	color_profile_ids = mce_conf_get_keys(group,
-					      &num_color_profile_ids,
-					      NULL);
+					      &num_color_profile_ids);
 
 	for (i = 0; i < num_color_profile_ids; i++) {
 		cpa_profile_entry *entry = g_new0(cpa_profile_entry, 1);
@@ -2339,8 +2338,7 @@ static gboolean init_color_profiles(void)
 
 		raw_cp = mce_conf_get_int_list(group,
 					       color_profile_ids[i],
-					       &raw_cp_length,
-					       NULL);
+					       &raw_cp_length);
 
 		if (is_raw_color_profile_valid(raw_cp,
 					       raw_cp_length) == FALSE) {
@@ -2561,8 +2559,7 @@ const gchar *g_module_check_init(GModule *module)
 	/* Get configuration options */
 	str = mce_conf_get_string(MCE_CONF_ALS_GROUP,
 				  MCE_CONF_STEP_DOWN_POLICY,
-				  "",
-				  NULL);
+				  "");
 
 	brightness_step_down_policy = mce_translate_string_to_int_with_default(brightness_step_policy_translation, str, DEFAULT_BRIGHTNESS_STEP_DOWN_POLICY);
 	g_free(str);

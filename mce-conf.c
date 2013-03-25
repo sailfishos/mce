@@ -36,9 +36,9 @@ static gpointer keyfile = NULL;
  *
  * @returns non-null keyfile pointer, or aborts
  */
-static gpointer mce_conf_get_keyfile(gpointer keyfileptr)
+static gpointer mce_conf_get_keyfile(void)
 {
-	if( !keyfileptr && !(keyfileptr = keyfile) ) {
+	if( !keyfile ) {
 		/* Earlier it was possible to have mce running with NULL
 		 * keyfile. Now the only reasons that might happen are:
 		 *   1) mce_conf_init() was not called yet
@@ -49,7 +49,7 @@ static gpointer mce_conf_get_keyfile(gpointer keyfileptr)
 			"properly initializing it");
 		mce_abort();
 	}
-	return keyfileptr;
+	return keyfile;
 }
 
 /**
@@ -62,12 +62,12 @@ static gpointer mce_conf_get_keyfile(gpointer keyfileptr)
  * @return The configuration value on success, the default value on failure
  */
 gboolean mce_conf_get_bool(const gchar *group, const gchar *key,
-			   const gboolean defaultval, gpointer keyfileptr)
+			   const gboolean defaultval)
 {
 	gboolean tmp = FALSE;
 	GError *error = NULL;
 
-	keyfileptr = mce_conf_get_keyfile(keyfileptr);
+	gpointer keyfileptr = mce_conf_get_keyfile();
 
 	tmp = g_key_file_get_boolean(keyfileptr, group, key, &error);
 
@@ -94,12 +94,12 @@ gboolean mce_conf_get_bool(const gchar *group, const gchar *key,
  * @return The configuration value on success, the default value on failure
  */
 gint mce_conf_get_int(const gchar *group, const gchar *key,
-		      const gint defaultval, gpointer keyfileptr)
+		      const gint defaultval)
 {
 	gint tmp = -1;
 	GError *error = NULL;
 
-	keyfileptr = mce_conf_get_keyfile(keyfileptr);
+	gpointer keyfileptr = mce_conf_get_keyfile();
 
 	tmp = g_key_file_get_integer(keyfileptr, group, key, &error);
 
@@ -126,12 +126,12 @@ gint mce_conf_get_int(const gchar *group, const gchar *key,
  * @return The configuration value on success, NULL on failure
  */
 gint *mce_conf_get_int_list(const gchar *group, const gchar *key,
-			    gsize *length, gpointer keyfileptr)
+			    gsize *length)
 {
 	gint *tmp = NULL;
 	GError *error = NULL;
 
-	keyfileptr = mce_conf_get_keyfile(keyfileptr);
+	gpointer keyfileptr = mce_conf_get_keyfile();
 
 	tmp = g_key_file_get_integer_list(keyfileptr, group, key,
 					  length, &error);
@@ -159,12 +159,12 @@ gint *mce_conf_get_int_list(const gchar *group, const gchar *key,
  * @return The configuration value on success, the default value on failure
  */
 gchar *mce_conf_get_string(const gchar *group, const gchar *key,
-			   const gchar *defaultval, gpointer keyfileptr)
+			   const gchar *defaultval)
 {
 	gchar *tmp = NULL;
 	GError *error = NULL;
 
-	keyfileptr = mce_conf_get_keyfile(keyfileptr);
+	gpointer keyfileptr = mce_conf_get_keyfile();
 
 	tmp = g_key_file_get_string(keyfileptr, group, key, &error);
 
@@ -195,12 +195,12 @@ gchar *mce_conf_get_string(const gchar *group, const gchar *key,
  * @return The configuration value on success, NULL on failure
  */
 gchar **mce_conf_get_string_list(const gchar *group, const gchar *key,
-				 gsize *length, gpointer keyfileptr)
+				 gsize *length)
 {
 	gchar **tmp = NULL;
 	GError *error = NULL;
 
-	keyfileptr = mce_conf_get_keyfile(keyfileptr);
+	gpointer keyfileptr = mce_conf_get_keyfile();
 
 	tmp = g_key_file_get_string_list(keyfileptr, group, key,
 					 length, &error);
@@ -218,13 +218,12 @@ gchar **mce_conf_get_string_list(const gchar *group, const gchar *key,
 	return tmp;
 }
 
-gchar **mce_conf_get_keys(const gchar *group, gsize *length,
-			  gpointer keyfileptr)
+gchar **mce_conf_get_keys(const gchar *group, gsize *length)
 {
 	gchar **tmp = NULL;
 	GError *error = NULL;
 
-	keyfileptr = mce_conf_get_keyfile(keyfileptr);
+	gpointer keyfileptr = mce_conf_get_keyfile();
 
 	tmp = g_key_file_get_keys(keyfileptr, group, length, &error);
 
@@ -239,47 +238,6 @@ gchar **mce_conf_get_keys(const gchar *group, gsize *length,
 	g_clear_error(&error);
 
 	return tmp;
-}
-
-/**
- * Free configuration file
- *
- * @param keyfileptr A pointer to the keyfile to free
- */
-void mce_conf_free_conf_file(gpointer keyfileptr)
-{
-	if (keyfileptr != NULL) {
-		g_key_file_free(keyfileptr);
-	}
-}
-
-/**
- * Read configuration file
- *
- * @param conffile The full path to the configuration file to read
- * @return A keyfile pointer on success, NULL on failure
- */
-gpointer mce_conf_read_conf_file(const gchar *const conffile)
-{
-	GError *error = NULL;
-	GKeyFile *keyfileptr;
-
-	if ((keyfileptr = g_key_file_new()) == NULL)
-		goto EXIT;
-
-	if (g_key_file_load_from_file(keyfileptr, conffile,
-				      G_KEY_FILE_NONE, &error) == FALSE) {
-		mce_conf_free_conf_file(keyfileptr);
-		keyfileptr = NULL;
-		mce_log(LL_WARN, "Could not load %s; %s",
-			conffile, error->message);
-		goto EXIT;
-	}
-
-EXIT:
-	g_clear_error(&error);
-
-	return keyfileptr;
 }
 
 /** Copy key value key value from one keyfile to another
@@ -644,7 +602,7 @@ void mce_conf_exit(void)
 	g_strfreev(keybd_cached), keybd_cached = 0;
 	g_strfreev(black_cached), black_cached = 0;
 
-	mce_conf_free_conf_file(keyfile), keyfile = 0;
+	if( keyfile ) g_key_file_free(keyfile), keyfile = 0;
 
 	return;
 }

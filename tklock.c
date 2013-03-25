@@ -3329,25 +3329,21 @@ gboolean mce_tklock_init(void)
 	blank_immediately =
 		mce_conf_get_bool(MCE_CONF_TKLOCK_GROUP,
 				  MCE_CONF_BLANK_IMMEDIATELY,
-				  DEFAULT_BLANK_IMMEDIATELY,
-				  NULL);
+				  DEFAULT_BLANK_IMMEDIATELY);
 
 	dim_immediately =
 		mce_conf_get_bool(MCE_CONF_TKLOCK_GROUP,
 				 MCE_CONF_DIM_IMMEDIATELY,
-				 DEFAULT_DIM_IMMEDIATELY,
-				 NULL);
+				 DEFAULT_DIM_IMMEDIATELY);
 
 	dim_delay = mce_conf_get_int(MCE_CONF_TKLOCK_GROUP,
 				     MCE_CONF_DIM_DELAY,
-				     DEFAULT_DIM_DELAY,
-				     NULL);
+				     DEFAULT_DIM_DELAY);
 
 	disable_ts_immediately =
 		mce_conf_get_int(MCE_CONF_TKLOCK_GROUP,
 				 MCE_CONF_TS_OFF_IMMEDIATELY,
-				 DEFAULT_TS_OFF_IMMEDIATELY,
-				 NULL);
+				 DEFAULT_TS_OFF_IMMEDIATELY);
 
 	/* Fallback in case double tap event is not supported */
 	if ((mce_touchscreen_gesture_control_path == NULL) &&
@@ -3358,38 +3354,32 @@ gboolean mce_tklock_init(void)
 	disable_kp_immediately =
 		mce_conf_get_int(MCE_CONF_TKLOCK_GROUP,
 				 MCE_CONF_KP_OFF_IMMEDIATELY,
-				 DEFAULT_KP_OFF_IMMEDIATELY,
-				 NULL);
+				 DEFAULT_KP_OFF_IMMEDIATELY);
 
 	autolock_with_open_slide =
 		mce_conf_get_bool(MCE_CONF_TKLOCK_GROUP,
 				  MCE_CONF_AUTOLOCK_SLIDE_OPEN,
-				  DEFAULT_AUTOLOCK_SLIDE_OPEN,
-				  NULL);
+				  DEFAULT_AUTOLOCK_SLIDE_OPEN);
 
 	proximity_lock_with_open_slide =
 		mce_conf_get_bool(MCE_CONF_TKLOCK_GROUP,
 				  MCE_CONF_PROXIMITY_LOCK_SLIDE_OPEN,
-				  DEFAULT_PROXIMITY_LOCK_SLIDE_OPEN,
-				  NULL);
+				  DEFAULT_PROXIMITY_LOCK_SLIDE_OPEN);
 
 	always_lock_on_slide_close =
 		mce_conf_get_bool(MCE_CONF_TKLOCK_GROUP,
 				  MCE_CONF_LOCK_ON_SLIDE_CLOSE,
-				  DEFAULT_LOCK_ON_SLIDE_CLOSE,
-				  NULL);
+				  DEFAULT_LOCK_ON_SLIDE_CLOSE);
 
 	lens_cover_unlock =
 		mce_conf_get_bool(MCE_CONF_TKLOCK_GROUP,
 				  MCE_CONF_LENS_COVER_UNLOCK,
-				  DEFAULT_LENS_COVER_UNLOCK,
-				  NULL);
+				  DEFAULT_LENS_COVER_UNLOCK);
 
 	volkey_visual_trigger =
 		mce_conf_get_bool(MCE_CONF_TKLOCK_GROUP,
 				  MCE_CONF_VOLKEY_VISUAL_TRIGGER,
-				  DEFAULT_VOLKEY_VISUAL_TRIGGER,
-				  NULL);
+				  DEFAULT_VOLKEY_VISUAL_TRIGGER);
 
 	status = TRUE;
 

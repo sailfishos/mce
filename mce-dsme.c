@@ -658,8 +658,7 @@ gboolean mce_dsme_init(gboolean debug_mode)
 	/* Get configuration options */
 	tmp = mce_conf_get_string(MCE_CONF_SOFTPOWEROFF_GROUP,
 				  MCE_CONF_SOFTPOWEROFF_CHARGER_POLICY_CONNECT,
-				  "",
-				  NULL);
+				  "");
 
 	softoff_charger_connect_policy = mce_translate_string_to_int_with_default(soft_poweroff_charger_connect_translation, tmp, DEFAULT_SOFTOFF_CHARGER_CONNECT);
 	g_free(tmp);
