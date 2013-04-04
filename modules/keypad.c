@@ -758,14 +758,12 @@ const gchar *g_module_check_init(GModule *module)
 	key_backlight_timeout =
 		mce_conf_get_int(MCE_CONF_KEYPAD_GROUP,
 				 MCE_CONF_KEY_BACKLIGHT_TIMEOUT,
-				 DEFAULT_KEY_BACKLIGHT_TIMEOUT,
-				 NULL);
+				 DEFAULT_KEY_BACKLIGHT_TIMEOUT);
 
 	key_backlight_fade_in_time =
 		mce_conf_get_int(MCE_CONF_KEYPAD_GROUP,
 			         MCE_CONF_KEY_BACKLIGHT_FADE_IN_TIME,
-			         DEFAULT_KEY_BACKLIGHT_FADE_IN_TIME,
-			         NULL);
+			         DEFAULT_KEY_BACKLIGHT_FADE_IN_TIME);
 
 	if (((key_backlight_fade_in_time % 125) != 0) &&
 	    (key_backlight_fade_in_time > 1000))
@@ -775,8 +773,7 @@ const gchar *g_module_check_init(GModule *module)
 	key_backlight_fade_out_time =
 		mce_conf_get_int(MCE_CONF_KEYPAD_GROUP,
 			         MCE_CONF_KEY_BACKLIGHT_FADE_OUT_TIME,
-			         DEFAULT_KEY_BACKLIGHT_FADE_OUT_TIME,
-			         NULL);
+			         DEFAULT_KEY_BACKLIGHT_FADE_OUT_TIME);
 
 	if (((key_backlight_fade_out_time % 125) != 0) &&
 	    (key_backlight_fade_out_time > 1000))

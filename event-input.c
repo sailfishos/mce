@@ -1471,8 +1471,7 @@ gboolean mce_input_init(void)
 	/* Get configuration options */
 	longdelay = mce_conf_get_int(MCE_CONF_HOMEKEY_GROUP,
 				     MCE_CONF_HOMEKEY_LONG_DELAY,
-				     DEFAULT_HOME_LONG_DELAY,
-				     NULL);
+				     DEFAULT_HOME_LONG_DELAY);
 
 	update_switch_states();
 

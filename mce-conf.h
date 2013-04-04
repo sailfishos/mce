@@ -24,20 +24,16 @@
 #include <glib.h>
 
 gboolean mce_conf_get_bool(const gchar *group, const gchar *key,
-			   const gboolean defaultval, gpointer keyfileptr);
+			   const gboolean defaultval);
 gint mce_conf_get_int(const gchar *group, const gchar *key,
-		      const gint defaultval, gpointer keyfileptr);
+		      const gint defaultval);
 gint *mce_conf_get_int_list(const gchar *group, const gchar *key,
-			    gsize *length, gpointer keyfileptr);
+			    gsize *length);
 gchar *mce_conf_get_string(const gchar *group, const gchar *key,
-			   const gchar *defaultval, gpointer keyfileptr);
+			   const gchar *defaultval);
 gchar **mce_conf_get_string_list(const gchar *group, const gchar *key,
-				 gsize *length, gpointer keyfileptr);
-gchar **mce_conf_get_keys(const gchar *group, gsize *length,
-			  gpointer keyfileptr);
-
-gpointer mce_conf_read_conf_file(const gchar *const conffile);
-void mce_conf_free_conf_file(gpointer keyfileptr);
+				 gsize *length);
+gchar **mce_conf_get_keys(const gchar *group, gsize *length);
 
 gboolean mce_conf_init(void);
 void mce_conf_exit(void);

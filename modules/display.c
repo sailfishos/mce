@@ -569,7 +569,7 @@ static gboolean get_display_type_from_config(display_type_t *display_type)
 	/* First check if we have a configured brightness directory
 	 * that a) exists and b) contains both brightness and
 	 * max_brightness files */
-	if( (vdir = mce_conf_get_string_list(group, "brightness_dir", 0, 0)) ) {
+	if( (vdir = mce_conf_get_string_list(group, "brightness_dir", 0)) ) {
 		for( size_t i = 0; vdir[i]; ++i ) {
 			if( !*vdir[i] || g_access(vdir[i], F_OK) )
 				continue;
@@ -581,10 +581,10 @@ static gboolean get_display_type_from_config(display_type_t *display_type)
 
 	/* Then check if we can find mathes from possible brightness and
 	 * max_brightness file lists */
-	if( !(vset = mce_conf_get_string_list(group, "brightness", 0, 0)) )
+	if( !(vset = mce_conf_get_string_list(group, "brightness", 0)) )
 		goto EXIT;
 
-	if( !(vmax = mce_conf_get_string_list(group, "max_brightness", 0, 0)) )
+	if( !(vmax = mce_conf_get_string_list(group, "max_brightness", 0)) )
 		goto EXIT;
 
 	for( size_t i = 0; vset[i]; ++i ) {
@@ -3764,16 +3764,14 @@ const gchar *g_module_check_init(GModule *module)
 	/* Get configuration options */
 	str = mce_conf_get_string(MCE_CONF_DISPLAY_GROUP,
 				  MCE_CONF_BRIGHTNESS_INCREASE_POLICY,
-				  "",
-				  NULL);
+				  "");
 
 	brightness_increase_policy = mce_translate_string_to_int_with_default(brightness_change_policy_translation, str, DEFAULT_BRIGHTNESS_INCREASE_POLICY);
 	g_free(str);
 
 	str = mce_conf_get_string(MCE_CONF_DISPLAY_GROUP,
 				  MCE_CONF_BRIGHTNESS_DECREASE_POLICY,
-				  "",
-				  NULL);
+				  "");
 
 	brightness_decrease_policy = mce_translate_string_to_int_with_default(brightness_change_policy_translation, str, DEFAULT_BRIGHTNESS_DECREASE_POLICY);
 	g_free(str);
@@ -3781,26 +3779,22 @@ const gchar *g_module_check_init(GModule *module)
 	brightness_increase_step_time =
 		mce_conf_get_int(MCE_CONF_DISPLAY_GROUP,
 				 MCE_CONF_STEP_TIME_INCREASE,
-				 DEFAULT_BRIGHTNESS_INCREASE_STEP_TIME,
-				 NULL);
+				 DEFAULT_BRIGHTNESS_INCREASE_STEP_TIME);
 
 	brightness_decrease_step_time =
 		mce_conf_get_int(MCE_CONF_DISPLAY_GROUP,
 				 MCE_CONF_STEP_TIME_DECREASE,
-				 DEFAULT_BRIGHTNESS_DECREASE_STEP_TIME,
-				 NULL);
+				 DEFAULT_BRIGHTNESS_DECREASE_STEP_TIME);
 
 	brightness_increase_constant_time =
 		mce_conf_get_int(MCE_CONF_DISPLAY_GROUP,
 				 MCE_CONF_CONSTANT_TIME_INCREASE,
-				 DEFAULT_BRIGHTNESS_INCREASE_CONSTANT_TIME,
-				 NULL);
+				 DEFAULT_BRIGHTNESS_INCREASE_CONSTANT_TIME);
 
 	brightness_decrease_constant_time =
 		mce_conf_get_int(MCE_CONF_DISPLAY_GROUP,
 				 MCE_CONF_CONSTANT_TIME_DECREASE,
-				 DEFAULT_BRIGHTNESS_DECREASE_CONSTANT_TIME,
-				 NULL);
+				 DEFAULT_BRIGHTNESS_DECREASE_CONSTANT_TIME);
 
 	/* Note: Transition to MCE_DISPLAY_OFF can be made already
 	 * here, but the MCE_DISPLAY_ON state is blocked until mCE
