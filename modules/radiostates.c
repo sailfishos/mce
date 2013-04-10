@@ -654,14 +654,11 @@ static gboolean xconnman_set_property_bool(const char *key, gboolean val)
 	if( !dbus_pending_call_set_notify(pc, xconnman_set_property_cb, 0, 0) )
 		goto EXIT;
 
-	// pending call should not be cancelled
-	pc = 0;
-
 	// success
 	res = TRUE;
 
 EXIT:
-	if( pc  ) dbus_pending_call_cancel(pc);
+	if( pc )  dbus_pending_call_unref(pc);
 	if( req ) dbus_message_unref(req);
 
 	return res;
@@ -852,14 +849,11 @@ static gboolean xconnman_get_properties(void)
 	if( !dbus_pending_call_set_notify(pc, xconnman_get_properties_cb, 0, 0) )
 		goto EXIT;
 
-	// pending call should not be cancelled
-	pc = 0;
-
 	// success
 	res = TRUE;
 
 EXIT:
-	if( pc  ) dbus_pending_call_cancel(pc);
+	if( pc )  dbus_pending_call_unref(pc);
 	if( req ) dbus_message_unref(req);
 
 	return res;
@@ -949,14 +943,11 @@ static gboolean xconnman_check_service(void)
 	if( !dbus_pending_call_set_notify(pc, xconnman_check_service_cb, 0, 0) )
 		goto EXIT;
 
-	// pending call should not be cancelled
-	pc = 0;
-
 	// success
 	res = TRUE;
 
 EXIT:
-	if( pc  ) dbus_pending_call_cancel(pc);
+	if( pc )  dbus_pending_call_unref(pc);
 	if( req ) dbus_message_unref(req);
 
 	return res;
