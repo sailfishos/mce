@@ -129,7 +129,7 @@ for brightness adjustment?</long>
       <applyto>/system/osso/dsm/display/use_low_power_mode</applyto>
       <owner>mce</owner>
       <type>bool</type>
-      <default>true</default>
+      <default>false</default>
       <locale name="C">
         <short>Use Low Power Mode for display blank (if supported)</short>
 	<long>Should the Low Power Mode be used after the display blank timeout expires, instead of turning the display off?</long>
