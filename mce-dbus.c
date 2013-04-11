@@ -815,8 +815,14 @@ static gboolean config_get_dbus_cb(DBusMessage *const msg)
 EXIT:
 	/* Send a reply if we have one */
 	if( reply ) {
-		/* dbus_send_message unrefs the reply message */
-		status = dbus_send_message(reply), reply = 0;
+		if( dbus_message_get_no_reply(msg) ) {
+			dbus_message_unref(reply), reply = 0;
+			status = TRUE;
+		}
+		else {
+			/* dbus_send_message unrefs the reply message */
+			status = dbus_send_message(reply), reply = 0;
+		}
 	}
 
 	if( conf )
@@ -1105,8 +1111,14 @@ EXIT:
 
 	/* Send a reply if we have one */
 	if( reply ) {
-		/* dbus_send_message unrefs the reply message */
-		status = dbus_send_message(reply), reply = 0;
+		if( dbus_message_get_no_reply(msg) ) {
+			dbus_message_unref(reply), reply = 0;
+			status = TRUE;
+		}
+		else {
+			/* dbus_send_message unrefs the reply message */
+			status = dbus_send_message(reply), reply = 0;
+		}
 	}
 
 	g_clear_error(&err);
