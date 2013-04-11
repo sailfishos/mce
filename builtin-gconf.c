@@ -128,6 +128,8 @@ typedef struct GConfEntry
 
   // private
 
+  char *def;
+
 } GConfEntry;
 
 typedef struct GConfClient
@@ -1091,6 +1093,7 @@ gconf_entry_init(const char *key, const char *type, const char *data)
 {
   GConfEntry *self = calloc(1, sizeof *self);
   self->key = strdup(key);
+  self->def = data ? strdup(data) : 0;
 
   GConfValueType ltype = GCONF_VALUE_INVALID;
   GConfValueType vtype = gconf_parse_type(type[0]);
@@ -1333,7 +1336,18 @@ static void gconf_client_save_values(GConfClient *self, const char *path)
   {
     GConfEntry *entry = e_iter->data;
     char *str = gconf_value_str(entry->value);
-    fprintf(file, "%s=%s\n", entry->key, str);
+
+    if( !str )
+    {
+      mce_log(LL_WARN, "failed to serialize value of key %s", entry->key);
+      continue;
+    }
+
+    /* Omit values that do not differ from defaults */
+    if( !entry->def || strcmp(entry->def, str) )
+    {
+      fprintf(file, "%s=%s\n", entry->key, str);
+    }
     free(str);
   }
 
