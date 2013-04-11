@@ -67,6 +67,10 @@
 				 * remove_output_trigger_from_datapipe()
 				 */
 
+/* Forward declarations needed to keep connman related static
+ * functions cleanly separated from the legacy mce code */
+static void xconnman_sync_master_to_offline(void);
+
 /** Module name */
 #define MODULE_NAME		"radiostates"
 
@@ -117,10 +121,10 @@ G_MODULE_EXPORT module_info_struct module_info = {
 };
 
 /** Real radio states */
-static dbus_uint32_t radio_states = 0;
+static gulong radio_states = 0;
 
 /** Active radio states (master switch disables all radios) */
-static dbus_uint32_t active_radio_states = 0;
+static gulong active_radio_states = 0;
 
 /**
  * Get default radio states from customisable settings
@@ -157,8 +161,9 @@ static gboolean send_radio_states(DBusMessage *const method_call)
 	DBusMessage *msg = NULL;
 	gboolean status = FALSE;
 
-	mce_log(LL_DEBUG,
-		"Sending radio states: %x", active_radio_states);
+	dbus_uint32_t data = active_radio_states;
+
+	mce_log(LL_DEBUG, "Sending radio states: %x", data);
 
 	/* If method_call is set, send a reply,
 	 * otherwise, send a signal
@@ -173,7 +178,7 @@ static gboolean send_radio_states(DBusMessage *const method_call)
 
 	/* Append the radio states */
 	if (dbus_message_append_args(msg,
-				     DBUS_TYPE_UINT32, &active_radio_states,
+				     DBUS_TYPE_UINT32, &data,
 				     DBUS_TYPE_INVALID) == FALSE) {
 		mce_log(LL_CRIT,
 			"Failed to append %sargument to D-Bus message "
@@ -200,17 +205,17 @@ EXIT:
  * @param states The raw radio states
  * @param mask The raw radio states mask
  */
-static void set_radio_states(const dbus_uint32_t states,
-			     const dbus_uint32_t mask)
+static void set_radio_states(const gulong states, const gulong mask)
 {
 	radio_states = (radio_states & ~mask) | (states & mask);
 
-	if (((mask & MCE_RADIO_STATE_MASTER) != 0) &&
-	    ((states & MCE_RADIO_STATE_MASTER) == 0)) {
+	if( (mask & MCE_RADIO_STATE_MASTER) && !(states & MCE_RADIO_STATE_MASTER) ) {
 		active_radio_states = states & mask;
-	} else if ((radio_states & MCE_RADIO_STATE_MASTER) == 0) {
+	}
+	else if( !(radio_states & MCE_RADIO_STATE_MASTER) ) {
 		active_radio_states = (active_radio_states & ~mask) | (states & mask);
-	} else {
+	}
+	else {
 		active_radio_states = (radio_states & ~mask) | (states & mask);
 	}
 }
@@ -285,14 +290,10 @@ static gboolean restore_radio_states(gulong *online_states,
 				     gulong *offline_states)
 {
 	if (mce_are_settings_locked() == TRUE) {
-		mce_log(LL_INFO,
-			"Removing stale settings lockfile");
+		mce_log(LL_INFO, "Removing stale settings lockfile");
 
 		if (mce_unlock_settings() == FALSE) {
-			mce_log(LL_ERR,
-				"Failed to remove settings lockfile; %s",
-				g_strerror(errno));
-			errno = 0;
+			mce_log(LL_ERR, "Failed to remove settings lockfile; %m");
 		}
 	}
 
@@ -323,8 +324,7 @@ static gboolean restore_default_radio_states(gulong *online_states,
 	if (default_radio_states & MCE_RADIO_STATE_MASTER)
 		*online_states = default_radio_states;
 
-	if (save_radio_states((gulong)*online_states,
-			      (gulong)*offline_states) == FALSE) {
+	if( !save_radio_states(*online_states, *offline_states) ) {
 		mce_log(LL_ERR, "Could not save restored radio states");
 		goto EXIT;
 	}
@@ -345,8 +345,7 @@ static gboolean get_radio_states_dbus_cb(DBusMessage *const msg)
 {
 	gboolean status = FALSE;
 
-	mce_log(LL_DEBUG,
-		"Received get radio states request");
+	mce_log(LL_DEBUG, "Received get radio states request");
 
 	/* Try to send a reply that contains the current radio states */
 	if (send_radio_states(msg) == FALSE)
@@ -355,6 +354,41 @@ static gboolean get_radio_states_dbus_cb(DBusMessage *const msg)
 	status = TRUE;
 
 EXIT:
+	return status;
+}
+
+/** Process radio state change within mce
+ *
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean radio_states_change(gulong states, gulong mask)
+{
+	gboolean status = TRUE;
+	gulong   old_radio_states = active_radio_states;
+
+	set_radio_states(states, mask);
+
+	/* If we fail to write the radio states, restore the old states */
+	if( !save_radio_states(active_radio_states, radio_states) ) {
+		set_radio_states(old_radio_states, ~0);
+		status = FALSE;
+	}
+
+	if (old_radio_states != active_radio_states) {
+		send_radio_states(NULL);
+		gint master = (radio_states & MCE_RADIO_STATE_MASTER) ? 1 : 0;
+
+		/* This is just to make sure that the cache is up to date
+		 * and that all callbacks are called; the trigger inside
+		 * radiostates.c has already had all its actions performed
+		 */
+		execute_datapipe(&master_radio_pipe, GINT_TO_POINTER(master), USE_INDATA, CACHE_INDATA);
+	}
+
+	/* After datapipe execution the radio state should
+	 * be stable - sync connman offline property to it */
+	xconnman_sync_master_to_offline();
+
 	return status;
 }
 
@@ -368,15 +402,11 @@ EXIT:
  */
 static gboolean req_radio_states_change_dbus_cb(DBusMessage *const msg)
 {
-	dbus_bool_t no_reply = dbus_message_get_no_reply(msg);
-	dbus_uint32_t old_radio_states = active_radio_states;
-	gboolean status = FALSE;
-	dbus_uint32_t states;
-	dbus_uint32_t mask;
-	DBusError error;
-
-	/* Register error channel */
-	dbus_error_init(&error);
+	dbus_bool_t   no_reply = dbus_message_get_no_reply(msg);
+	gboolean      status   = FALSE;
+	dbus_uint32_t states   = 0;
+	dbus_uint32_t mask     = 0;
+	DBusError     error    = DBUS_ERROR_INIT;
 
 	mce_log(LL_DEBUG, "Received radio states change request");
 
@@ -393,16 +423,7 @@ static gboolean req_radio_states_change_dbus_cb(DBusMessage *const msg)
 		goto EXIT;
 	}
 
-	set_radio_states(states, mask);
-
-	/* If we fail to write the radio states, restore the old states */
-	if (save_radio_states((gulong)active_radio_states,
-			      (gulong)radio_states) == FALSE)
-		set_radio_states(old_radio_states, ~0);
-
-	/* Once we're here radio_states will hold the new radio states,
-	 * or the fallback value
-	 */
+	radio_states_change(states, mask);
 
 	if (no_reply == FALSE) {
 		DBusMessage *reply = dbus_new_method_reply(msg);
@@ -410,16 +431,6 @@ static gboolean req_radio_states_change_dbus_cb(DBusMessage *const msg)
 		status = dbus_send_message(reply);
 	} else {
 		status = TRUE;
-	}
-
-	if (old_radio_states != active_radio_states) {
-		send_radio_states(NULL);
-
-		/* This is just to make sure that the cache is up to date
-		 * and that all callbacks are called; the trigger inside
-		 * radiostates.c has already had all its actions performed
-		 */
-		execute_datapipe(&master_radio_pipe, GINT_TO_POINTER((gint)(radio_states & MCE_RADIO_STATE_MASTER)), USE_INDATA, CACHE_INDATA);
 	}
 
 EXIT:
@@ -433,7 +444,7 @@ EXIT:
  */
 static void master_radio_trigger(gconstpointer data)
 {
-	dbus_uint32_t new_radio_states;
+	gulong new_radio_states;
 
 	if (GPOINTER_TO_UINT(data) != 0)
 		new_radio_states = (radio_states | MCE_RADIO_STATE_MASTER);
@@ -441,14 +452,602 @@ static void master_radio_trigger(gconstpointer data)
 		new_radio_states = (radio_states & ~MCE_RADIO_STATE_MASTER);
 
 	/* If we fail to write the radio states, use the old states */
-	if (save_radio_states((gulong)active_radio_states,
-			      (gulong)radio_states) == FALSE)
+	if( !save_radio_states(active_radio_states, radio_states) )
 		new_radio_states = radio_states;
 
 	if (radio_states != new_radio_states) {
 		set_radio_states(new_radio_states, MCE_RADIO_STATE_MASTER);
 		send_radio_states(NULL);
 	}
+}
+
+/* ------------------------------------------------------------------------- *
+ * Functionality for keeping MCE Master radio state synchronized with
+ * connman OfflineMode property.
+ *
+ * If OfflineMode property is changed via connman, the mce master radio
+ * state is changed accordingly and legacy mce radio state change signals
+ * are broadcast.
+ *
+ * If MCE master radio switch is toggled, the connman OfflineMode property
+ * is changed accordingly.
+ *
+ * The mce master radio state is preserved over reboots and mce restarts
+ * and will take priority over the OfflineMode setting kept by connman.
+ *
+ * If connman for any reason chooses not to obey OfflineMode property
+ * change, mce will modify master radio state instead.
+ * ------------------------------------------------------------------------- */
+
+/** org.freedesktop.DBus.NameOwnerChanged D-Bus signal */
+#define DBUS_NAME_OWNER_CHANGED_SIG "NameOwnerChanged"
+
+/** Connman D-Bus service name; mce is tracking ownership of this */
+#define CONNMAN_SERVICE         "net.connman"
+
+/** Connman D-Bus interface */
+#define CONNMAN_INTERFACE       "net.connman.Manager"
+
+/** Default connman D-Bus object path */
+#define CONNMAN_OBJECT_PATH     "/"
+
+/** net.connman.Manager.GetProperties D-Bus method call */
+#define CONNMAN_GET_PROPERTIES_REQ   "GetProperties"
+
+/** net.connman.Manager.SetProperty D-Bus method call */
+#define CONNMAN_SET_PROPERTY_REQ     "SetProperty"
+
+/** net.connman.Manager.PropertyChanged D-Bus signal */
+#define CONNMAN_PROPERTY_CHANGED_SIG "PropertyChanged"
+
+/** Placeholder for any basic dbus data type */
+typedef union
+{
+	dbus_int16_t i16;
+	dbus_int32_t i32;
+	dbus_int64_t i64;
+
+	dbus_uint16_t u16;
+	dbus_uint32_t u32;
+	dbus_uint64_t u64;
+
+	dbus_bool_t   b;
+	unsigned char o;
+	const char   *s;
+	double        d;
+
+} dbus_any_t;
+
+/** Initializer for dbus_any_t; largest union member set to zero */
+#define DBUS_ANY_INIT { .i64 = 0 }
+
+/** Rule for matching connman service name owner changes */
+static const char xconnman_name_owner_rule[] =
+"type='signal'"
+",sender='"DBUS_SERVICE_DBUS"'"
+",interface='"DBUS_INTERFACE_DBUS"'"
+",member='"DBUS_NAME_OWNER_CHANGED_SIG"'"
+",path='"DBUS_PATH_DBUS"'"
+",arg0='"CONNMAN_SERVICE"'"
+;
+
+/** Rule for matching connman property value changes */
+static const char xconnman_prop_change_rule[] =
+"type='signal'"
+",sender='"CONNMAN_SERVICE"'"
+",interface='"CONNMAN_INTERFACE"'"
+",member='"CONNMAN_PROPERTY_CHANGED_SIG"'"
+",path='"CONNMAN_OBJECT_PATH"'"
+;
+
+/** D-Bus connection for doing ipc with connman */
+static DBusConnection *connman_bus = 0;
+
+/** Availability of connman D-Bus service */
+static gboolean connman_running = FALSE;
+
+/** Last MCE master radio state sent to connman; initialized to invalid value */
+static gulong connman_master = ~0lu;
+
+/** Flag: query connman properties if no change signal received
+ *
+ * FIXME/HACK: connman might ignore property setting without
+ * complaining a bit -> set a flag when we are expecting a
+ * property changed signal before getting reply to a set property
+ * method call. Note that this will cease to work if connman ever
+ * starts to send replies before signaling the changes */
+static gboolean connman_verify_property_setting = FALSE;
+
+static gboolean xconnman_get_properties(void);
+
+/** Handle reply to asynchronous connman property change D-Bus method call
+ *
+ * @param pc        State data for asynchronous D-Bus method call
+ * @param user_data (not used)
+ */
+static void xconnman_set_property_cb(DBusPendingCall *pc, void *user_data)
+{
+	(void)user_data;
+
+	DBusMessage *rsp   = 0;
+	DBusError    err   = DBUS_ERROR_INIT;
+
+	if( !(rsp = dbus_pending_call_steal_reply(pc)) )
+		goto EXIT;
+
+	if( dbus_set_error_from_message(&err, rsp) ) {
+		mce_log(LL_WARN, "%s: %s", err.name, err.message);
+		goto EXIT;
+	}
+
+	/* NOTE: there is either empty or error reply message, we have
+	 * no clue whether connman actually modified the property */
+
+	mce_log(LL_DEBUG, "set property acked by connman");
+
+	/* Query properties if missing an expected property changed signal */
+	if( connman_verify_property_setting ) {
+		connman_verify_property_setting = FALSE;
+		mce_log(LL_DEBUG, "no change signal seen, querying props");
+		if( !xconnman_get_properties() )
+			mce_log(LL_WARN, "failed to query connman properties");
+	}
+
+EXIT:
+	if( rsp ) dbus_message_unref(rsp);
+	dbus_error_free(&err);
+}
+
+/** Initiate asynchronous connman property change D-Bus method call
+ *
+ * @param key property name
+ * @param val value to set
+ *
+ * @return TRUE if the method call was initiated, or FALSE in case of errors
+ */
+static gboolean xconnman_set_property_bool(const char *key, gboolean val)
+{
+	gboolean         res  = FALSE;
+	DBusMessage     *req  = 0;
+	DBusPendingCall *pc   = 0;
+	dbus_bool_t      dta  = val;
+
+	DBusMessageIter miter, viter;
+
+	mce_log(LL_DEBUG, "%s = %s", key, val ? "true" : "false");
+
+	if( !(req = dbus_message_new_method_call(CONNMAN_SERVICE,
+						 CONNMAN_OBJECT_PATH,
+						 CONNMAN_INTERFACE,
+						 CONNMAN_SET_PROPERTY_REQ)) )
+		goto EXIT;
+
+	dbus_message_iter_init_append(req, &miter);
+	dbus_message_iter_append_basic(&miter, DBUS_TYPE_STRING, &key);
+
+	if( !dbus_message_iter_open_container(&miter, DBUS_TYPE_VARIANT,
+					      DBUS_TYPE_BOOLEAN_AS_STRING,
+					      &viter) ) {
+		mce_log(LL_WARN, "container open failed");
+		goto EXIT;
+	}
+
+	dbus_message_iter_append_basic(&viter, DBUS_TYPE_BOOLEAN, &dta);
+
+	if( !dbus_message_iter_close_container(&miter, &viter) ) {
+		mce_log(LL_WARN, "container close failed");
+		goto EXIT;
+	}
+
+	if( !dbus_connection_send_with_reply(connman_bus, req, &pc, -1) )
+		goto EXIT;
+
+	if( !dbus_pending_call_set_notify(pc, xconnman_set_property_cb, 0, 0) )
+		goto EXIT;
+
+	// success
+	res = TRUE;
+
+EXIT:
+	if( pc )  dbus_pending_call_unref(pc);
+	if( req ) dbus_message_unref(req);
+
+	return res;
+}
+
+/** Synchronize connman OfflineMode -> MCE master radio state
+ */
+static void xconnman_sync_offline_to_master(void)
+{
+	if( (connman_master ^ active_radio_states) & MCE_RADIO_STATE_MASTER ) {
+		mce_log(LL_DEBUG, "sync connman OfflineMode -> mce master");
+		radio_states_change(connman_master, MCE_RADIO_STATE_MASTER);
+	}
+}
+
+/** Synchronize MCE master radio state -> connman OfflineMode
+ */
+static void xconnman_sync_master_to_offline(void)
+{
+	gulong master;
+
+	if( !connman_running )
+		return;
+
+	master = radio_states & MCE_RADIO_STATE_MASTER;
+
+	if( connman_master != master ) {
+		connman_master = master;
+		mce_log(LL_DEBUG, "sync mce master -> connman OfflineMode");
+
+		/* Expect property change signal ... */
+		connman_verify_property_setting = TRUE;
+
+		/* ... before we get reply to set property */
+		xconnman_set_property_bool("OfflineMode", !connman_master);
+	}
+}
+
+/** Process connman property value change
+ *
+ * @param key  property name
+ * @param type dbus type of the property (DBUS_TYPE_BOOLEAN, ...)
+ * @param val  value union; consult type for actual content
+ */
+static void xconnman_property_changed(const char *key, int type,
+				      const dbus_any_t *val)
+{
+	switch( type ) {
+	case DBUS_TYPE_STRING:
+		mce_log(LL_DEBUG, "%s -> '%s'", key, val->s);
+		break;
+
+	case DBUS_TYPE_BOOLEAN:
+		mce_log(LL_DEBUG, "%s -> %s", key, val->b ? "true" : "false");
+		break;
+
+	default:
+		mce_log(LL_DEBUG, "%s -> (unhandled)", key);
+		break;
+	}
+
+	if( !strcmp(key, "OfflineMode") && type == DBUS_TYPE_BOOLEAN ) {
+		/* Got it, no need for explicit query */
+		connman_verify_property_setting = FALSE;
+
+		connman_master = val->b ? 0 : MCE_RADIO_STATE_MASTER;
+		xconnman_sync_offline_to_master();
+	}
+}
+
+/** Handle connman property changed signals
+ *
+ * @param msg net.connman.Manager.PropertyChanged D-Bus signal
+ */
+static void xconnman_handle_property_changed_signal(DBusMessage *msg)
+{
+	const char  *key = 0;
+	dbus_any_t   val = DBUS_ANY_INIT;
+
+	int          vtype;
+
+	DBusMessageIter miter, viter;
+
+	if( !dbus_message_iter_init(msg, &miter) )
+		goto EXIT;
+
+	if( dbus_message_iter_get_arg_type(&miter) != DBUS_TYPE_STRING )
+		goto EXIT;
+
+	dbus_message_iter_get_basic(&miter, &key);
+	dbus_message_iter_next(&miter);
+
+	if( dbus_message_iter_get_arg_type(&miter) != DBUS_TYPE_VARIANT )
+		goto EXIT;
+
+	dbus_message_iter_recurse(&miter, &viter);
+	vtype = dbus_message_iter_get_arg_type(&viter);
+	if( !dbus_type_is_basic(vtype) )
+		goto EXIT;
+
+	dbus_message_iter_get_basic(&viter, &val);
+	xconnman_property_changed(key, vtype, &val);
+
+EXIT:
+	return;
+}
+
+/** Handle reply to asynchronous connman properties query
+ *
+ * @param pc        State data for asynchronous D-Bus method call
+ * @param user_data (not used)
+ */
+static void xconnman_get_properties_cb(DBusPendingCall *pc, void *user_data)
+{
+	(void)user_data;
+
+	DBusMessage *rsp = 0;
+	DBusError    err = DBUS_ERROR_INIT;
+	const char  *key = 0;
+	dbus_any_t   val = DBUS_ANY_INIT;
+
+	int          vtype;
+
+	DBusMessageIter miter, aiter, diter, viter;
+
+	if( !(rsp = dbus_pending_call_steal_reply(pc)) )
+		goto EXIT;
+
+	if( dbus_set_error_from_message(&err, rsp) ) {
+		mce_log(LL_WARN, "%s: %s", err.name, err.message);
+		goto EXIT;
+	}
+
+	if( !dbus_message_iter_init(rsp, &miter) )
+		goto EXIT;
+
+	if( dbus_message_iter_get_arg_type(&miter) != DBUS_TYPE_ARRAY )
+		goto EXIT;
+
+	dbus_message_iter_recurse(&miter, &aiter);
+
+	while( dbus_message_iter_get_arg_type(&aiter) == DBUS_TYPE_DICT_ENTRY ) {
+		dbus_message_iter_recurse(&aiter, &diter);
+		dbus_message_iter_next(&aiter);
+
+		if( dbus_message_iter_get_arg_type(&diter) != DBUS_TYPE_STRING )
+			goto EXIT;
+
+		dbus_message_iter_get_basic(&diter, &key);
+		dbus_message_iter_next(&diter);
+
+		if( dbus_message_iter_get_arg_type(&diter) != DBUS_TYPE_VARIANT )
+			goto EXIT;
+
+		dbus_message_iter_recurse(&diter, &viter);
+		vtype = dbus_message_iter_get_arg_type(&viter);
+		if( !dbus_type_is_basic(vtype) )
+			continue;
+
+		dbus_message_iter_get_basic(&viter, &val);
+		xconnman_property_changed(key, vtype, &val);
+	}
+
+EXIT:
+	if( rsp ) dbus_message_unref(rsp);
+	dbus_error_free(&err);
+}
+
+/** Initiate asynchronous connman properties query
+ *
+ * @return TRUE if the method call was initiated, or FALSE in case of errors
+ */
+static gboolean xconnman_get_properties(void)
+{
+	gboolean         res  = FALSE;
+	DBusMessage     *req  = 0;
+	DBusPendingCall *pc   = 0;
+
+	if( !(req = dbus_message_new_method_call(CONNMAN_SERVICE,
+						 CONNMAN_OBJECT_PATH,
+						 CONNMAN_INTERFACE,
+						 CONNMAN_GET_PROPERTIES_REQ)) )
+		goto EXIT;
+
+	if( !dbus_connection_send_with_reply(connman_bus, req, &pc, -1) )
+		goto EXIT;
+
+	if( !dbus_pending_call_set_notify(pc, xconnman_get_properties_cb, 0, 0) )
+		goto EXIT;
+
+	// success
+	res = TRUE;
+
+EXIT:
+	if( pc )  dbus_pending_call_unref(pc);
+	if( req ) dbus_message_unref(req);
+
+	return res;
+}
+
+/** Process connman D-Bus service availability change
+ *
+ * @param running Reported connman availability state
+ */
+static void xconnman_set_runstate(gboolean running)
+{
+	if( connman_running == running )
+		return;
+
+	connman_running = running;
+	mce_log(LL_NOTICE, "%s: %s", CONNMAN_SERVICE,
+		connman_running ? "available" : "stopped");
+
+	if( connman_running ) {
+		xconnman_sync_master_to_offline();
+	}
+	else {
+		/* force master -> offlinemode sync on connman restart */
+		connman_master = ~0lu;
+	}
+}
+
+/** Handle reply to asynchronous connman service name ownership query
+ *
+ * @param pc        State data for asynchronous D-Bus method call
+ * @param user_data (not used)
+ */
+static void xconnman_check_service_cb(DBusPendingCall *pc, void *user_data)
+{
+	(void)user_data;
+
+	DBusMessage *rsp   = 0;
+	const char  *owner = 0;
+	DBusError    err   = DBUS_ERROR_INIT;
+
+	if( !(rsp = dbus_pending_call_steal_reply(pc)) )
+		goto EXIT;
+
+	if( dbus_set_error_from_message(&err, rsp) ||
+	    !dbus_message_get_args(rsp, &err,
+				   DBUS_TYPE_STRING, &owner,
+				   DBUS_TYPE_INVALID) )
+	{
+		if( strcmp(err.name, DBUS_ERROR_NAME_HAS_NO_OWNER) ) {
+			mce_log(LL_WARN, "%s: %s", err.name, err.message);
+		}
+		goto EXIT;
+	}
+
+	xconnman_set_runstate(owner && *owner);
+
+EXIT:
+	if( rsp ) dbus_message_unref(rsp);
+	dbus_error_free(&err);
+}
+
+/** Initiate asynchronous connman service name ownership query
+ *
+ * @return TRUE if the method call was initiated, or FALSE in case of errors
+ */
+static gboolean xconnman_check_service(void)
+{
+	gboolean         res  = FALSE;
+	DBusMessage     *req  = 0;
+	DBusPendingCall *pc   = 0;
+	const char      *name = CONNMAN_SERVICE;
+
+	if( !(req = dbus_message_new_method_call(DBUS_SERVICE_DBUS,
+					   DBUS_PATH_DBUS,
+					   DBUS_INTERFACE_DBUS,
+					   "GetNameOwner")) )
+		goto EXIT;
+
+	if( !dbus_message_append_args(req,
+				      DBUS_TYPE_STRING, &name,
+				      DBUS_TYPE_INVALID) )
+		goto EXIT;
+
+	if( !dbus_connection_send_with_reply(connman_bus, req, &pc, -1) )
+		goto EXIT;
+
+	if( !dbus_pending_call_set_notify(pc, xconnman_check_service_cb, 0, 0) )
+		goto EXIT;
+
+	// success
+	res = TRUE;
+
+EXIT:
+	if( pc )  dbus_pending_call_unref(pc);
+	if( req ) dbus_message_unref(req);
+
+	return res;
+}
+
+/** Handle connman dbus service name ownership change signals
+ *
+ * @param msg org.freedesktop.DBus.NameOwnerChanged D-Bus signal
+ */
+static void xconnman_handle_name_owner_change(DBusMessage *msg)
+{
+	const char *name = 0;
+	const char *prev = 0;
+	const char *curr = 0;
+	DBusError   err  = DBUS_ERROR_INIT;
+
+	if( !dbus_message_get_args(msg, &err,
+				   DBUS_TYPE_STRING, &name,
+				   DBUS_TYPE_STRING, &prev,
+				   DBUS_TYPE_STRING, &curr,
+				   DBUS_TYPE_INVALID) )
+	{
+		mce_log(LL_WARN, "%s: %s", err.name, err.message);
+		goto EXIT;
+	}
+
+	if( strcmp(name, CONNMAN_SERVICE) )
+		goto EXIT;
+
+	xconnman_set_runstate(curr && *curr);
+
+EXIT:
+	dbus_error_free(&err);
+	return;
+}
+
+/** D-Bus message filter for handling connman related signals
+ *
+ * @param con       dbus connection
+ * @param msg       message to be acted upon
+ * @param user_data (not used)
+ *
+ * @return DBUS_HANDLER_RESULT_NOT_YET_HANDLED (other filters see the msg too)
+ */
+static DBusHandlerResult xconnman_dbus_filter_cb(DBusConnection *con,
+						 DBusMessage *msg,
+						 void *user_data)
+{
+	(void)user_data;
+
+	DBusHandlerResult res = DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
+
+	if( con != connman_bus )
+		goto EXIT;
+
+	if( dbus_message_get_type(msg) != DBUS_MESSAGE_TYPE_SIGNAL )
+		goto EXIT;
+
+	if( dbus_message_is_signal(msg, DBUS_INTERFACE_DBUS,
+				   DBUS_NAME_OWNER_CHANGED_SIG) ) {
+		xconnman_handle_name_owner_change(msg);
+	}
+	else if( dbus_message_is_signal(msg, CONNMAN_INTERFACE,
+					CONNMAN_PROPERTY_CHANGED_SIG) ) {
+		xconnman_handle_property_changed_signal(msg);
+	}
+
+EXIT:
+	return res;
+}
+
+/** Stop connman OfflineMode property mirroring
+ */
+static void xconnman_quit(void)
+{
+	if( connman_bus ) {
+		dbus_connection_remove_filter(connman_bus,
+					      xconnman_dbus_filter_cb, 0);
+
+		dbus_bus_remove_match(connman_bus, xconnman_prop_change_rule, 0);
+		dbus_bus_remove_match(connman_bus, xconnman_name_owner_rule, 0);
+
+		dbus_connection_unref(connman_bus), connman_bus = 0;
+	}
+}
+
+/** Start mirroring connman OfflineMode property
+ */
+static gboolean xconnman_init(void)
+{
+	gboolean ack = FALSE;
+
+	if( !(connman_bus = dbus_connection_get()) ) {
+		mce_log(LL_WARN, "mce has no dbus connection");
+		goto EXIT;
+	}
+
+	dbus_connection_add_filter(connman_bus, xconnman_dbus_filter_cb, 0, 0);
+
+	dbus_bus_add_match(connman_bus, xconnman_prop_change_rule, 0);
+	dbus_bus_add_match(connman_bus, xconnman_name_owner_rule, 0);
+
+	ack = TRUE;
+
+	if( !xconnman_check_service() )
+		ack = FALSE;
+
+EXIT:
+	return ack;
 }
 
 /**
@@ -463,21 +1062,14 @@ G_MODULE_EXPORT const gchar *g_module_check_init(GModule *module);
 const gchar *g_module_check_init(GModule *module)
 {
 	(void)module;
-	gulong tmp, tmp2;
 
 	/* If we fail to restore the radio states, default to offline */
-	if (restore_radio_states(&tmp, &tmp2) == FALSE) {
-		if (restore_default_radio_states(&tmp, &tmp2) == FALSE) {
-			tmp2 = 0;
-			tmp = 0;
-		}
+	if( !restore_radio_states(&active_radio_states, &radio_states) &&
+	    !restore_default_radio_states(&active_radio_states, &radio_states) ) {
+		active_radio_states = radio_states = 0;
 	}
 
-	radio_states = tmp2;
-	active_radio_states = tmp;
-
-	mce_log(LL_DEBUG,
-		"active_radio_states: %x, radio_states: %x",
+	mce_log(LL_DEBUG, "active_radio_states: %lx, radio_states: %lx",
 		active_radio_states, radio_states);
 
 	/* Append triggers/filters to datapipes */
@@ -500,6 +1092,9 @@ const gchar *g_module_check_init(GModule *module)
 				 req_radio_states_change_dbus_cb) == NULL)
 		goto EXIT;
 
+	if( !xconnman_init() )
+		mce_log(LL_WARN, "failed to set up connman mirroring");
+
 EXIT:
 	return NULL;
 }
@@ -515,6 +1110,8 @@ G_MODULE_EXPORT void g_module_unload(GModule *module);
 void g_module_unload(GModule *module)
 {
 	(void)module;
+
+	xconnman_quit();
 
 	/* Remove triggers/filters from datapipes */
 	remove_output_trigger_from_datapipe(&master_radio_pipe,
