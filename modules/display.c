@@ -1014,6 +1014,30 @@ static void update_display_timers(gboolean force_flush)
 #define update_display_timers(x)			do {} while (0)
 #endif /* USE_LIBCAL */
 
+/** Helper for updating high brightness state with bounds checking
+ *
+ * @param number high brightness mode [0 ... 2]
+ */
+static void write_high_brightness_value(int number)
+{
+	int minval = 0;
+	int maxval = 2;
+
+	/* Clip value to valid range */
+	if( number < minval ) {
+		mce_log(LL_ERR, "value=%d vs min=%d", number, minval);
+		number = minval;
+	}
+	else if( number > maxval ) {
+		mce_log(LL_ERR, "value=%d vs max=%d", number, maxval);
+		number = maxval;
+	}
+	else
+		mce_log(LL_DEBUG, "value=%d", number);
+
+	mce_write_number_string_to_file(&high_brightness_mode_output, number);
+}
+
 /**
  * Timeout callback for the high brightness mode
  *
@@ -1027,7 +1051,7 @@ static gboolean hbm_timeout_cb(gpointer data)
 	hbm_timeout_cb_id = 0;
 
 	/* Disable high brightness mode */
-	(void)mce_write_number_string_to_file(&high_brightness_mode_output, 0);
+	write_high_brightness_value(0);
 	set_hbm_level = 0;
 	update_display_timers(FALSE);
 
@@ -1075,12 +1099,12 @@ static void update_high_brightness_mode(gint hbm_level)
 	/* If the display is off or dimmed, disable HBM */
 	if (display_state != MCE_DISPLAY_ON) {
 		if (set_hbm_level != 0) {
-			(void)mce_write_number_string_to_file(&high_brightness_mode_output, 0);
+			write_high_brightness_value(0);
 			set_hbm_level = 0;
 			update_display_timers(FALSE);
 		}
 	} else if (set_hbm_level != hbm_level) {
-		(void)mce_write_number_string_to_file(&high_brightness_mode_output, hbm_level);
+		write_high_brightness_value(hbm_level);
 		set_hbm_level = hbm_level;
 		update_display_timers(FALSE);
 	}

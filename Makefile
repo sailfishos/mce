@@ -117,7 +117,9 @@ CONFDIR               := $(_SYSCONFDIR)/mce
 MODULEDIR             := $(_LIBDIR)/mce/modules
 DBUSDIR               := $(_SYSCONFDIR)/dbus-1/system.d
 LOCALEDIR             := $(_DATADIR)/locale
+ifneq ($(strip $(ENABLE_BUILTIN_GCONF)),y)
 GCONFSCHEMADIR        := $(_SYSCONFDIR)/gconf/schemas
+endif
 BACKUPCONFDIR         := $(_DATADIR)/backup-framework/applications
 HELPERSCRIPTDIR       := $(_DATADIR)/mce
 DEVICECLEARSCRIPTDIR  := $(_SYSCONFDIR)/osso-cud-scripts
@@ -160,7 +162,9 @@ TESTS   += $(TESTSDIR)/mcetorture
 CONFFILE              := 10mce.ini
 RADIOSTATESCONFFILE   := 20mce-radio-states.ini
 DBUSCONF              := mce.conf
+ifneq ($(strip $(ENABLE_BUILTIN_GCONF)),y)
 GCONFSCHEMAS          := display.schemas energymanagement.schemas
+endif
 
 # Backup / Restore
 BACKUPCONF            := mcebackup.conf
@@ -389,8 +393,10 @@ install:: build
 	$(INSTALL_DTA) inifiles/mce.ini $(DESTDIR)$(CONFDIR)/$(CONFFILE)
 	$(INSTALL_DTA) inifiles/mce-radio-states.ini $(DESTDIR)$(CONFDIR)/$(RADIOSTATESCONFFILE)
 
+ifneq ($(strip $(ENABLE_BUILTIN_GCONF)),y)
 	$(INSTALL_DIR) $(DESTDIR)$(GCONFSCHEMADIR)
 	$(INSTALL_DTA) $(GCONFSCHEMAS) $(DESTDIR)$(GCONFSCHEMADIR)/
+endif
 
 ifeq ($(ENABLE_BACKUP_SUPPORT),y)
 install:: install_backup_support
