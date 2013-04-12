@@ -682,7 +682,6 @@ tools/mcetool.o:\
 	modules/filter-brightness-als.h\
 	modules/powersavemode.h\
 	tklock.h\
-	tools/mcetool.h\
 
 tools/mcetool.pic.o:\
 	tools/mcetool.c\
