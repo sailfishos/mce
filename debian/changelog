@@ -1,6 +1,5 @@
 mce (1.12.9) unstable; urgency=low
 
-  * NOT RELEASED YET
   * Allow late suspend only when the device is running in the USER mode
   * Added builtin-gconf key for color profile
   * Removed explicit handling of mce-radio-states.ini file
@@ -13,7 +12,7 @@ mce (1.12.9) unstable; urgency=low
   * The mcetool utility processes command line options in the order given
   * The evdev_trace utility accepts partial input event device paths
 
- -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 22 Mar 2013 12:55:38 +0200
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 15 Apr 2013 15:28:32 +0300
 
 mce (1.12.8) unstable; urgency=low
 
