@@ -1,6 +1,17 @@
 mce (1.12.9) unstable; urgency=low
 
   * NOT RELEASED YET
+  * Allow late suspend only when the device is running in the USER mode
+  * Added builtin-gconf key for color profile
+  * Removed explicit handling of mce-radio-states.ini file
+  * Removed support for explicitly named mce ini-files
+  * Synchronize MCE master radio state with connman OfflineMode property
+  * Fixes NEMO#658: The use_low_power_mode setting defaults to false
+  * Do not install gconf schemas if builtin-gconf is in use
+  * Do not save builtin-gconf keys that still have the default value
+  * Do not send unwanted replies to get/set_config D-Bus method calls
+  * The mcetool utility processes command line options in the order given
+  * The evdev_trace utility accepts partial input event device paths
 
  -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 22 Mar 2013 12:55:38 +0200
 
