@@ -632,14 +632,6 @@ powerkey.pic.o:\
 	mce.h\
 	powerkey.h\
 
-test_inotify.o:\
-	test_inotify.c\
-	filewatcher.h\
-
-test_inotify.pic.o:\
-	test_inotify.c\
-	filewatcher.h\
-
 tklock.o:\
 	tklock.c\
 	datapipe.h\
@@ -689,5 +681,4 @@ tools/mcetool.pic.o:\
 	modules/filter-brightness-als.h\
 	modules/powersavemode.h\
 	tklock.h\
-	tools/mcetool.h\
 
