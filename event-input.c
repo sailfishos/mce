@@ -449,13 +449,20 @@ static evdev_type_t get_evdev_type(int fd)
 		goto cleanup;
 	}
 
-	if( evdevinfo_has_code(feat, EV_KEY, BTN_TOUCH) )	{
-		if( evdevinfo_has_code(feat, EV_ABS, ABS_X) &&
-		    evdevinfo_has_code(feat, EV_ABS, ABS_Y) )
-		{
-			res = EVDEV_TOUCH;
-			goto cleanup;
-		}
+	if( evdevinfo_has_code(feat, EV_KEY, BTN_TOUCH) &&
+	    evdevinfo_has_code(feat, EV_ABS, ABS_X)     &&
+	    evdevinfo_has_code(feat, EV_ABS, ABS_Y) ) {
+		// singletouch protocol
+		res = EVDEV_TOUCH;
+		goto cleanup;
+	}
+
+	if( evdevinfo_has_code(feat, EV_ABS, ABS_MT_TOUCH_MAJOR) &&
+	    evdevinfo_has_code(feat, EV_ABS, ABS_MT_POSITION_X)  &&
+	    evdevinfo_has_code(feat, EV_ABS, ABS_MT_POSITION_Y) ) {
+		// multitouch protocol
+		res = EVDEV_TOUCH;
+		goto cleanup;
 	}
 
 	if( evdevinfo_has_codes(feat, EV_KEY, keypad_lut ) ||
@@ -464,7 +471,7 @@ static evdev_type_t get_evdev_type(int fd)
 		goto cleanup;
 	}
 
-	if( evdevinfo_has_types(feat, misc_lut) )	{
+	if( evdevinfo_has_types(feat, misc_lut) ) {
 		res = EVDEV_ACTIVITY;
 		goto cleanup;
 	}
