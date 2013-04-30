@@ -1,3 +1,9 @@
+mce (1.12.10) unstable; urgency=low
+
+  * NOT RELEASED YET
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 30 Apr 2013 09:31:42 +0300
+
 mce (1.12.9) unstable; urgency=low
 
   * Allow late suspend only when the device is running in the USER mode
