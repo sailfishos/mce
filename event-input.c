@@ -457,8 +457,7 @@ static evdev_type_t get_evdev_type(int fd)
 		goto cleanup;
 	}
 
-	if( evdevinfo_has_code(feat, EV_ABS, ABS_MT_TOUCH_MAJOR) &&
-	    evdevinfo_has_code(feat, EV_ABS, ABS_MT_POSITION_X)  &&
+	if( evdevinfo_has_code(feat, EV_ABS, ABS_MT_POSITION_X) &&
 	    evdevinfo_has_code(feat, EV_ABS, ABS_MT_POSITION_Y) ) {
 		// multitouch protocol
 		res = EVDEV_TOUCH;
