@@ -387,6 +387,7 @@ modules/display.o:\
 	mce.h\
 	filewatcher.h\
 	libwakelock.h\
+	mce-hybris.h\
 	modules/display.h\
 	tklock.h\
 
@@ -403,6 +404,7 @@ modules/display.pic.o:\
 	mce.h\
 	filewatcher.h\
 	libwakelock.h\
+	mce-hybris.h\
 	modules/display.h\
 	tklock.h\
 
