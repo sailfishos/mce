@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <glob.h>
 #include <errno.h>
 
 #include "mce-log.h"
@@ -1444,6 +1445,68 @@ gconf_client_debug(GConfClient *self)
 }
 #endif
 
+/** Callback function for logging errors within glob()
+ *
+ * @param path path to file/dir where error occurred
+ * @param err  errno that occurred
+ *
+ * @return 0 (= do not stop glob)
+ */
+static int gconf_client_glob_error_cb(const char *path, int err)
+{
+  mce_log(LL_WARN, "%s: glob: %s", path, g_strerror(err));
+  return 0;
+}
+
+/** Process config data from /etc/mce/NN.xxx.conf files
+ */
+static void gconf_client_load_overrides(GConfClient *self)
+{
+  static const char pattern[] = MCE_CONF_DIR"/[0-9][0-9]*.conf";
+
+  glob_t gb;
+
+  memset(&gb, 0, sizeof gb);
+
+  if( glob(pattern, 0, gconf_client_glob_error_cb, &gb) != 0 )
+  {
+    mce_log(LL_NOTICE, "no mce config override files found");
+    goto cleanup;
+  }
+
+  for( size_t i = 0; i < gb.gl_pathc; ++i )
+  {
+    const char *path = gb.gl_pathv[i];
+    gconf_client_load_values(self, path);
+  }
+
+cleanup:
+  globfree(&gb);
+}
+
+/** Set default value state based on the current data
+ *
+ * The gconf_client_save_values() function will write only
+ * keys that have changes since this function was called.
+ */
+static void gconf_client_mark_defaults(GConfClient *self)
+{
+
+  for( GSList *e_iter = self->entries; e_iter; e_iter = e_iter->next )
+  {
+    GConfEntry *entry = e_iter->data;
+    char *str = gconf_value_str(entry->value);
+
+    if( !str )
+    {
+      mce_log(LL_WARN, "failed to serialize value of key %s", entry->key);
+      continue;
+    }
+
+    free(entry->def), entry->def = str, str = 0;
+  }
+}
+
 /** See GConf API documentation */
 GConfClient *
 gconf_client_get_default(void)
@@ -1452,6 +1515,7 @@ gconf_client_get_default(void)
   {
     GConfClient *self = calloc(1, sizeof *self);
 
+    // initialize to hard coded defaults
     for( const setting_t *elem = gconf_defaults; elem->key; ++elem )
     {
       GConfEntry *add = gconf_entry_init(elem->key, elem->type, elem->def);
@@ -1462,7 +1526,17 @@ gconf_client_get_default(void)
     // let gconf_client_is_valid() know about this
     default_client = self;
 
+    // override hard coded defaults via /etc/nn.*.conf
+    gconf_client_load_overrides(self);
+
+    // mark down what the state is after hardcoded + overrides
+    gconf_client_mark_defaults(self);
+
+    // load custom values
     gconf_client_load_values(self, VALUES_PATH);
+
+    // save back - will be nop unless defaults have changed since last save
+    gconf_client_save_values(self, VALUES_PATH);
 
 #if GCONF_ENABLE_DEBUG_LOGGING
     if( gconf_log_debug_p() )
