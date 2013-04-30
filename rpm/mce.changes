@@ -1,0 +1,220 @@
+* Mon Apr 15 2013 Simo Piiroinen <simo.piiroinen@jollamobile.com> - 1.12.9
+- Allow late suspend only when the device is running in the USER mode
+- Added builtin-gconf key for color profile
+- Removed explicit handling of mce-radio-states.ini file
+- Removed support for explicitly named mce ini-files
+- Synchronize MCE master radio state with connman OfflineMode property
+- Fixes NEMO#658: The use_low_power_mode setting defaults to false
+- Do not install gconf schemas if builtin-gconf is in use
+- Do not save builtin-gconf keys that still have the default value
+- Do not send unwanted replies to get/set_config D-Bus method calls
+- The mcetool utility processes command line options in the order given
+- The evdev_trace utility accepts partial input event device paths
+
+* Wed Mar 06 2013 Simo Piiroinen <simo.piiroinen@jollamobile.com> - 1.12.8
+- Allow disabling of automatic screen blanking from lock screen
+- System startup ready detection is based on init-done flag file
+- Implement cpu-keepalive plugin for mce
+
+* Mon Feb 18 2013 Simo Piiroinen <simo.piiroinen@jollamobile.com> - 1.12.7
+- Allow user processes to make get_config and set_config method calls
+- Added configuration item for disabling automatic suspend
+
+* Thu Feb 07 2013 Simo Piiroinen <simo.piiroinen@jollamobile.com> - 1.12.6
+- Added evdev_trace utility to mce-tools package
+- Improved mce event input diagnostics
+- More mce settings can be modified via mcetool utility
+- Missing ini-file items not reported in default verbosity
+
+* Thu Jan 24 2013 Simo Piiroinen <simo.piiroinen@jollamobile.com> - 1.12.5
+- MCE uses built-in gconf replacement for handling settings internally
+  and provides a dbus interface for accessing the settings
+- Mcetool uses the mce setting dbus interface instead of gconf
+- Fixes NEMO#525: "mcetool --set-demo-mode=on" disables screen blanking
+- Common mce core functions no longer included in every plugin.so too
+- Fixes NEMO#584: Mce sbin binaries now installed to /usr/sbin/ instead
+  of /sbin/
+- The mce.service and tmpfiles.d hook moved from OBS to mce source tree
+- Wakelock manipulation now enabled by default
+- Logging changes: removed excess whitespace, error levels used by
+  mce conform to syslog priorities, error level indication prefixes
+  used for stderr logging
+- Autosuspend is enabled/disabled based on display state
+- Signals passed via a pipe for processing within the mainloop context
+- Autosuspend is blocked during system startup / when mce exits
+- MCE supports short command line options too (e.g. -v == --verbose)
+- Installing extra ini-files to /etc/mce allows overriding mce.ini
+- Evdev input sources can be configured in /etc/mce/*.ini
+- Support for short mcetool command line options and changes to
+  --set-debug-mode handling
+- Display brightness control paths can be specified in config files
+- MCE ini-files now have <digit><digit> priority prefixes
+- The builtin-gconf values persist over mce restarts
+- Late suspend is blocked when the device is shutting down
+- Wakelock debugging must be explicitly enabled via --trace=wakelocks
+- Autodetect evdev inputs instead of relying on lookup tables
+- Display brightness control paths can be probed from /sys/class/backligt
+
+* Thu Nov 29 2012 Vesa Halttunen <vesa.halttunen@jollamobile.com> - 1.12.4
+- Added logic for holding wakelocks to block autosuspend while display is on or mce is processing evdev input
+- Use unbuffered input channels for chunked data
+- Seek errors are no longer silently ignored
+- Use custom logic for determining if a io channel is really seekable (at least for now glib thinks all character devices are seekable)
+- I/O callbacks for chunked input channels try to read and process multiple chunks in one go
+- MCE now does tklock related D-Bus IPC with Lipstick instead of System UI (from Vesa Halttunen)
+- MCE no longer tries to make Sysinfod related D-Bus queries
+- Various fixes to amount and quality of diagnostic logging in mce & mcetool
+
+* Fri Nov 16  2012 Pekka Lundstrom <pekka.lundstrom@jollamobile.com> - 1.12.3
+- Removed dsme socket location from mce.service
+  Fixes NEMO#576 : mce should not define dsme socket location
+
+* Fri Nov 9  2012 Pekka Lundstrom <pekka.lundstrom@jollamobile.com> - 1.12.3
+- Removed usage of waitfordsme. Systemd takes care on waiting
+  Fixes NEMO#568 : mce should be started after dsme without need for waitfordsme
+- Added mce.conf to handle /run/mce dir creation by using /etc/tmpfiles.d
+
+* Thu Nov 1  2012 Philippe De Swert <philippe.deswert@jollamobile.com> - 1.12.3
+- Fixes NEMO#483: mce wakes up a lot when interacting with touchscreen
+
+* Wed Oct 31 2012 Islam Amer <islam.amer@jollamobile.com> - 1.12.2
+- New git tag
+- Support for locking the touch screen without blanking the display
+- Depends on new mce-dev version
+
+* Wed Oct 31 2012 Islam Amer <islam.amer@jollamobile.com> - 1.12.1
+- Remove DISPLAY from service file, it breaks early framebuffer setup (!)
+- Update URL in spec file to point at nemomobile github fork
+
+* Fri Oct 26 2012 Philippe De Swert <philippe.deswert@jollamobile.com> - 1.12.1
+- Merged everything in git at https://github.com/nemomobile/mce/
+- Adding demo mode to keep screen on
+- Fix display dbus calls
+
+* Wed Aug 01 2012 Dmitry Rozhkov <dmitry.rozhkov@jollamobile.com> - 1.12.0
+- include mce-radio-sates.ini file in the package with initial default radio settings
+- add /var/lib/mce directory to the package to allow it to store current radio states.
+
+* Tue Jul 10 2012 Marko Saukko <marko.saukko@jollamobile.com> - 1.12.0
+- Added 0001-Allow-get_color_profile_ids-dbus-method-usage-and-in.patch
+- Don't stop mce on package updates.
+
+* Tue Jul 10 2012 Markus Lehtonen <markus.lehtonen@iki.fi> - 1.12.0
+- Fixes NEMO#35: Version bump to 1.12.0
+- Patches rebased, displaymeego module removed
+- New Nemo-compatibility patches for the display module:
+  Fix-lock-ui-handling-and-display-blanking-for-nemo.patch
+  Disable-bootup-submode-in-display-module.patch
+
+* Fri Jan 27 2012 Marko Saukko <marko.saukko@cybercom.com> - 1.10.92
+- Added ExecStartPre=/usr/sbin/waitfordsme to systemd service file.
+
+* Thu Nov 17 2011 Marko Saukko <marko.saukko@cybercom.com> - 1.10.92
+- Changed systemd service to multi-user.target.
+
+* Thu Sep 15 2011 Marko Saukko <marko.saukko@cybercom.com> - 1.10.92-17
+- Systemd service file
+- Added yaml and fixed packaging
+- changed the DSME socket file location with env variable in systemd.
+
+* Tue Jul 12 2011 Timo Rongas <timo.rongas@digia.com> - 1.10.92-16
+- Add reference counting for active calls (BMC#17539)
+
+* Wed Jun 29 2011 Mika Laitio <ext-mika.laitio@nokia.com> - 1.10.92-15
+- BMC#19806 fix the periodic display unblank bug which happens if
+  the sysuid process frozes in a way that it does not die but on the
+  other hand does not also respond to anything.
+  mce-1.10.92-bmc19806-do-not-unblank-display-if-dbus-send-fails.patch
+
+* Wed May 11 2011 Mika Laitio <ext-mika.laitio@nokia.com> - 1.10.92-14
+- BMC#17416 fix by checking from the tklock whether the
+  screen lock ui active or not when handling the power button
+  event. Patch is made to updated version of
+  mce-1.10.92-pwr-btn-fix-for-display-blank-and-unblank.patch
+- reorganized the order how patches are applied on spec file
+  as 2 of the patches touches same tklock file
+
+* Wed May 11 2011 Timo Rongas <timo.rongas@digia.com> - 1.10.92-13
+- Added ofono signal listening to call state module. Knowing call
+  state makes it possible to enable screen blanking/locking via
+  proximity sensor during calls (BMC#14990)
+
+* Wed May 11 2011 Mika Laitio <ext-mika.laitio@nokia.com> - 1.10.92-12
+- BMC#17413 fix with patch
+  mce-1.10.92-fix-n900-tsc2005-sysfs-disable-path-for-newer-kernels.patch.
+  Sysfs path for disabling/enabling the touschreen has changed in
+  newer kernels for N900 to /sys/devices/platform/omap2_mcspi.1/spi1.0/disable
+  This patch will make mce to check both the new and old path for finding
+  the correct sysfs file path.
+
+* Mon May 09 2011 Mika Laitio <ext-mika.laitio@nokia.com> - 1.10.92-11
+- BMC#15953 Changed the behaviour of power key in unlock case.
+  When the screen is off(blank) and power key is pressed, screen is unblanked
+  but the "lock ui" application is not disabled. Lock key will work just
+  like with the previous version, so it will unblank the screen and
+  also disable the lock ui application.
+
+* Fri May 06 2011 Mika Laitio <ext-mika.laitio@nokia.com> - 1.10.92-10
+- When the device is booted, the initial blanking delay needs to be
+  longer to prevent the display to be blanked during the device
+  boot-up or immediately after that.
+- Simplified mce-1.10.92-pwr-btn-fix-for-display-blank-and-unblank.patch
+  by taking out MCE_DISPLAY_TOGGLE related code that this patch
+  added, because it was not needed anymore.
+
+* Thu May 05 2011 Mika Laitio <ext-mika.laitio@nokia.com> - 1.10.92-9
+- (BMC#15953) Fixed the usage of lock key for locking the screen.
+- Fixedthe power button usage for blanking the screen to follow the
+  same behaviour with lock/unlock key.
+  When the screen is now blanked, it can not be activated anymore
+  by simply touching the touchscreen. Instead the user can unblank
+  the display either by using the power button or lock/unlock button again.
+- The power button will now blank/unblank the screen after release event
+  instead of press-event. This will allow user to see the shutdown
+  ui, in the case user keeps power button down for a long time in order
+  to shutdown the device.
+- increased the blanking timeout during inactivity from 30 to 60 sec
+
+* Mon Apr 18 2011 Mika Laitio <ext-mika.laitio@nokia.com> - 1.10.92-8
+- (BMC#16313) Added dependency from mce to dsme because mce fails to start
+  if dsme is not running.
+
+* Thu Apr 07 2011 Mika Laitio <ext-mika.laitio@nokia.com> - 1.10.92-7
+- (BMC#15233) Added MCE_DISPLAY_TOGGLE value to mce.h and and
+  send TOGGLE request from the power button keypreses in the event-input.c.
+  Added also the code to meegodisplay.c to handle these display toggle requests.
+
+* Wed Apr 06 2011 Mika Laitio <ext-mika.laitio@nokia.com> - 1.10.92-6
+- (BMC#14738) Additional fix. Sometimes the screen got invoked couple of
+  seconds after blanking it even thought there were not any user activity.
+  This was caused by the code in event-input.c which suspended the event
+  reading for a while in certain situations after sending the activity
+  event. I removed the suspend code and instead use the input events time
+  as a filter so that only one activity event is send in maximum on each
+  second from the touchscreen events.
+
+* Mon Apr 04 2011 Mika Laitio <ext-mika.laitio@nokia.com> - 1.10.92-5
+- (BMC#14738) Add new displaymeego module which simplifies the display blanking
+  code that was used in display module by removing all dimming related
+  functionality that's not needed and had problems.
+- Drop previously used display-module-disabled patch
+
+* Wed Mar 09 2011 Tapio Rantala <ext-tapio.rantala@nokia.com> - 1.10.92-4
+- Add silent-fd-close patch from upstream svn (BMC#14264)
+  + Don't print unnecessary info on startup
+- Add pwr-button-event-name patch from upstream svn
+  + Added event driver name for the power button in various MeeGo devices
+- Refresh display-module-disabled patch
+
+* Mon Feb 28 2011 Tapio Rantala <ext-tapio.rantala@nokia.com> - 1.10.92-3
+- Do not load display module (BMC#13332)
+
+* Wed Jan 26 2011 Tapio Rantala <ext-tapio.rantala@nokia.com> - 1.10.92-2
+- Drop init script, part of fix for (BMC#12898)
+
+* Fri Jan 21 2011 Tapio Rantala <ext-tapio.rantala@nokia.com> - 1.10.92-1
+- New upstream version (BMC#12782)
+- Drop deprecated-names patch, applied upstream
+
+* Fri Jan 14 2011 Tapio Rantala <ext-tapio.rantala@nokia.com> - 1.10.90-1
+- Initial meego packaging (FEA#5525) (FEA#5526) (FEA#5527) (FEA#5528)
