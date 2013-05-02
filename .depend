@@ -162,6 +162,20 @@ mce-hal.pic.o:\
 	mce-lib.h\
 	mce-log.h\
 
+mce-hybris.o:\
+	mce-hybris.c\
+	mce-conf.h\
+	mce-hybris.h\
+	mce-log.h\
+	mce-modules.h\
+
+mce-hybris.pic.o:\
+	mce-hybris.c\
+	mce-conf.h\
+	mce-hybris.h\
+	mce-log.h\
+	mce-modules.h\
+
 mce-io.o:\
 	mce-io.c\
 	datapipe.h\

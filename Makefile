@@ -69,6 +69,9 @@ endif
 endif
 PKG_CONFIG   ?= pkg-config
 
+# Whether to enable support for libhybris plugin
+ENABLE_HYBRIS ?= y
+
 # Whether to enable wakelock compatibility code
 ENABLE_WAKELOCKS ?= y
 
@@ -199,6 +202,10 @@ ifeq ($(strip $(ENABLE_BUILTIN_GCONF)),y)
 CPPFLAGS += -DENABLE_BUILTIN_GCONF
 endif
 
+ifeq ($(ENABLE_HYBRIS),y)
+CPPFLAGS += -DENABLE_HYBRIS
+endif
+
 # C Compiler
 CFLAGS += -std=c99
 
@@ -280,7 +287,9 @@ MCE_CORE += mce-lib.c
 MCE_CORE += median_filter.c
 MCE_CORE += evdev.c
 MCE_CORE += filewatcher.c
-
+ifeq ($(ENABLE_HYBRIS),y)
+MCE_CORE += mce-hybris.c
+endif
 # HACK: do not link against libgconf-2
 ifeq ($(strip $(ENABLE_BUILTIN_GCONF)),y)
 MCE_CORE   += builtin-gconf.c
@@ -293,6 +302,9 @@ endif
 
 mce : CFLAGS += $(MCE_CFLAGS)
 mce : LDLIBS += $(MCE_LDLIBS)
+ifeq ($(ENABLE_HYBRIS),y)
+mce : LDLIBS += -ldl
+endif
 mce : mce.o $(patsubst %.c,%.o,$(MCE_CORE))
 
 # ----------------------------------------------------------------------------
