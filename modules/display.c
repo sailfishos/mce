@@ -123,6 +123,10 @@
 # include "../filewatcher.h"
 #endif
 
+#ifdef ENABLE_HYBRIS
+# include "../mce-hybris.h"
+#endif
+
 /* These defines are taken from devicelock.h, but slightly modified */
 #ifndef DEVICELOCK_H
 
@@ -275,7 +279,7 @@ static guint blank_timeout_cb_id = 0;
 static gboolean charger_connected = FALSE;
 
 /** Maximum display brightness, hw specific */
-static gint maximum_display_brightness = -1;
+static gint maximum_display_brightness = DEFAULT_MAXIMUM_DISPLAY_BRIGHTNESS;
 
 /** File used to set display brightness */
 static output_state_t brightness_output =
@@ -500,6 +504,19 @@ static void update_blanking_inhibit(gboolean timed_inhibit);
 static void cancel_lpm_timeout(void);
 static void cancel_dim_timeout(void);
 
+static void write_brightness_value_default(int number);
+#ifdef ENABLE_HYBRIS
+static void write_brightness_value_hybris(int number);
+#endif
+
+/** Hook for setting brightness
+ *
+ * Note: For use from write_brightness_value() only!
+ *
+ * @param number brightness value; after bounds checking
+ */
+static void (*write_brightness_value_hook)(int number) = write_brightness_value_default;
+
 /**
  * Check whether changing from LPM to blank can be done
  *
@@ -715,6 +732,26 @@ EXIT:
 	return res;
 }
 
+static gboolean get_display_type_from_hybris(display_type_t *display_type)
+{
+	gboolean   res = FALSE;
+
+#ifdef ENABLE_HYBRIS
+	if( !mce_hybris_backlight_init() ) {
+		mce_log(LL_DEBUG, "libhybris brightness controls not available");
+		goto EXIT;
+	}
+
+	mce_log(LL_NOTICE, "using libhybris for display brightness control");
+	write_brightness_value_hook = write_brightness_value_hybris;
+	maximum_display_brightness = 255;
+	*display_type = DISPLAY_TYPE_GENERIC;
+	res = TRUE;
+EXIT:
+#endif
+	return res;
+}
+
 /**
  * Get the display type
  *
@@ -728,7 +765,10 @@ static display_type_t get_display_type(void)
 	if (display_type != DISPLAY_TYPE_UNSET)
 		goto EXIT;
 
-	if( get_display_type_from_config(&display_type) ) {
+	if( get_display_type_from_hybris(&display_type) ) {
+		// nop
+	}
+	else if( get_display_type_from_config(&display_type) ) {
 		// nop
 	}
 	else if (g_access(DISPLAY_BACKLIGHT_PATH DISPLAY_ACX565AKM, W_OK) == 0) {
@@ -1239,6 +1279,20 @@ EXIT:
 	return status;
 }
 
+/** Set display brightness via sysfs write */
+static void write_brightness_value_default(int number)
+{
+	mce_write_number_string_to_file(&brightness_output, number);
+}
+
+#ifdef ENABLE_HYBRIS
+/** Set display brightness via libhybris */
+static void write_brightness_value_hybris(int number)
+{
+	mce_hybris_backlight_set_brightness(number);
+}
+#endif
+
 /** Helper for updating backlight brightness with bounds checking
  *
  * @param number brightness in 0 to maximum_display_brightness range
@@ -1263,7 +1317,7 @@ static void write_brightness_value(int number)
 	else
 		mce_log(LL_DEBUG, "value=%d", number);
 
-	mce_write_number_string_to_file(&brightness_output, number);
+	write_brightness_value_hook(number);
 }
 
 /**
@@ -3540,11 +3594,14 @@ const gchar *g_module_check_init(GModule *module)
 	append_output_trigger_to_datapipe(&alarm_ui_state_pipe,
 					  alarm_ui_state_trigger);
 
-	/* Get maximum brightness */
-	maximum_display_brightness = DEFAULT_MAXIMUM_DISPLAY_BRIGHTNESS;
-
-	if( !mce_read_number_string_from_file(max_brightness_file,
-					      &tmp, NULL, FALSE, TRUE) ) {
+	if( !max_brightness_file ) {
+		mce_log(LL_NOTICE,
+			"No path for maximum brightness file; "
+			"defaulting to %d",
+			maximum_display_brightness);
+	}
+	else if( !mce_read_number_string_from_file(max_brightness_file,
+						   &tmp, NULL, FALSE, TRUE) ) {
 		mce_log(LL_ERR,
 			"Could not read the maximum brightness from %s; "
 			"defaulting to %d",
@@ -3680,9 +3737,15 @@ const gchar *g_module_check_init(GModule *module)
 	/* Use the current brightness as cached brightness on startup,
 	 * and fade from that value
 	 */
-	if (mce_read_number_string_from_file(brightness_output.path,
-					     &tmp, NULL, FALSE,
-					     TRUE) == FALSE) {
+	if( !brightness_output.path ) {
+		mce_log(LL_NOTICE,
+			"No path for brightness file; "
+			"defaulting to %d",
+			cached_brightness);
+	}
+	else if (mce_read_number_string_from_file(brightness_output.path,
+						  &tmp, NULL, FALSE,
+						  TRUE) == FALSE) {
 		mce_log(LL_ERR,
 			"Could not read the current brightness from %s",
 			brightness_output.path);
