@@ -84,6 +84,10 @@
 					 * median_filter_map()
 					 */
 
+#ifdef ENABLE_HYBRIS
+# include "../mce-hybris.h"
+#endif
+
 /** Request enabling of ALS; reference counted */
 #define MCE_REQ_ALS_ENABLE		"req_als_enable"
 
@@ -248,6 +252,86 @@ static als_profile_struct display_als_profiles_rm696[] = {
 		}, { 30, 60, 100, 100 + (2 << 8) }
 	}
 };
+
+/** ALS profile for libhybris use
+ *
+ * Semi-automatically generated from display_als_profiles_rm696.
+ *
+ * FIXME: ok for testing purposes, needs to be revisited
+ */
+#ifdef ENABLE_HYBRIS
+static als_profile_struct display_als_profiles_hybris[] =
+{
+	/* Minimum / brightness=1 */
+	{
+		{
+			{     30,     60 },
+			{     60,    125 },
+			{    125,    500 },
+			{    500,   1100 },
+			{   1100,   2000 },
+			{   2000,   7000 },
+			{   7000,  10000 },
+			{     -1,     -1 },
+		},
+		{   5,  10,  20,  30,  42,  60,  83, 100, },
+	},
+	/* Economy / brightness=2 */
+	{
+		{
+			{     10,     22 },
+			{     22,     50 },
+			{     50,    125 },
+			{    125,    500 },
+			{    500,   1100 },
+			{   1100,   2000 },
+			{   2000,   7000 },
+			{     -1,     -1 },
+		},
+		{   5,  10,  20,  30,  42,  60,  83, 100, },
+	},
+	/* Normal  / brightness=3 */
+	{
+		{
+			{      3,      7 },
+			{      7,     17 },
+			{     17,     40 },
+			{     40,    125 },
+			{    125,    500 },
+			{    500,   1100 },
+			{   1100,   2000 },
+			{     -1,     -1 },
+		},
+		{   5,  10,  20,  30,  42,  60,  83, 100, },
+	},
+	/* Bright  / brightness=4 */
+	{
+		{
+			{      0,      3 },
+			{      3,     10 },
+			{     10,     20 },
+			{     20,     50 },
+			{     50,    100 },
+			{    100,    500 },
+			{    500,   1100 },
+			{   1100,   3000 },
+			{   3000,   8000 },
+			{     -1,     -1 },
+		},
+		{   5,  10,  20,  30,  42,  60,  83, 100, 100, 100, },
+	},
+	/* Maximum / brightness=5 */
+	{
+		{
+			{     20,     40 },
+			{     40,    550 },
+			{    550,   2000 },
+			{     -1,     -1 },
+		},
+		{  30,  60, 100, 100, },
+	},
+};
+#endif /* ENABLE_HYBRIS */
 
 /**
  * ALS profile for the display in:
@@ -602,6 +686,28 @@ static als_profile_struct kbd_als_profiles_rx44[] = {
 /** GConf callback ID for ALS enabled */
 static guint als_enabled_gconf_cb_id = 0;
 
+/** ALS monitoring status
+ *
+ * If TRUE, then either als_poll_timer_cb_id, als_iomon_id or
+ * libhybris is used for monitoring ALS.
+ *
+ * If FALSE, then als_poll_timer_cb_id, als_iomon_id and
+ * libhybris hooks must nor be active.
+ *
+ * All of the above is handled in setup_als_poll_timer()
+ * and cancel_als_poll_timer() functions.
+ */
+static gboolean als_poll_active = FALSE;
+
+/** Last als value received via libhybris
+ *
+ * The latest als value received via libhybris is cached and used
+ * as a substitute for directly reading the current lux value.
+ */
+#ifdef ENABLE_HYBRIS
+static gint hybris_als_last = 0;
+#endif
+
 /** ID for the ALS I/O monitor */
 static gconstpointer als_iomon_id = NULL;
 
@@ -708,7 +814,11 @@ typedef enum {
 	/** Dipro (BH1770GLC/SFH7770) type ALS */
 	ALS_TYPE_DIPRO = 3,
 	/** Avago (APDS990x (QPDS-T900)) type ALS */
-	ALS_TYPE_AVAGO = 4
+	ALS_TYPE_AVAGO = 4,
+	/** Android adaptation via libhybris*/
+#ifdef ENABLE_HYBRIS
+	ALS_TYPE_HYBRIS = 5,
+#endif
 } als_type_t;
 
 static void cancel_als_poll_timer(void);
@@ -870,7 +980,16 @@ static als_type_t get_als_type(void)
 		led_als_profiles = led_als_profiles_rx44;
 		kbd_als_profiles = kbd_als_profiles_rx44;
 		use_median_filter = TRUE;
-	} else {
+	}
+#ifdef ENABLE_HYBRIS
+	else if( mce_hybris_als_init() ) {
+		als_type = ALS_TYPE_HYBRIS;
+
+		// FIXME: uses rm696 profile data, need real ones
+		display_als_profiles = display_als_profiles_hybris;
+	}
+#endif
+	else {
 		als_type = ALS_TYPE_NONE;
 	}
 
@@ -1206,7 +1325,14 @@ static gint als_read_value_filtered(void)
 
 		als = (struct dipro_als *)tmp;
 		lux = als->lux;
-	} else {
+	}
+#ifdef ENABLE_HYBRIS
+	else if( get_als_type() == ALS_TYPE_HYBRIS ) {
+		mce_log(LL_DEBUG, "faking lux read = %d", hybris_als_last);
+		lux = hybris_als_last;
+	}
+#endif
+	else {
 		/* Read lux value from ALS */
 		if (mce_read_number_string_from_file(als_lux_path,
 						     &lux, &als_fp,
@@ -1566,11 +1692,27 @@ EXIT:
 	return FALSE;
 }
 
+/** Libhybris ALS monitor callback
+ *
+ * @param timestamp time of event from android adaptation
+ * @param light     ambient light value in lux
+ */
+#ifdef ENABLE_HYBRIS
+static void als_hybris_iomon_cb(int64_t timestamp, float light)
+{
+	mce_log(LL_DEBUG, "time:%lld lux:%g", timestamp, light);
+	hybris_als_last = (gint)(light + 0.5f);
+	als_iomon_common(hybris_als_last, FALSE);
+}
+#endif
+
 /**
  * Cancel Ambient Light Sensor poll timer
  */
 static void cancel_als_poll_timer(void)
 {
+	mce_log(LL_DEBUG, "disable ALS monitoring");
+
 	/* Unregister ALS I/O monitor */
 	if (als_iomon_id != NULL) {
 		mce_unregister_io_monitor(als_iomon_id);
@@ -1582,6 +1724,17 @@ static void cancel_als_poll_timer(void)
 		g_source_remove(als_poll_timer_cb_id);
 		als_poll_timer_cb_id = 0;
 	}
+
+	/* Remove libhybris ALS hook */
+#ifdef ENABLE_HYBRIS
+	if( get_als_type() == ALS_TYPE_HYBRIS ) {
+		mce_hybris_als_set_callback(0);
+		mce_hybris_als_set_active(0);
+	}
+#endif
+
+	/* No io monitors, timers or hooks in use */
+	als_poll_active = FALSE;
 }
 
 /**
@@ -1589,6 +1742,16 @@ static void cancel_als_poll_timer(void)
  */
 static void setup_als_poll_timer(void)
 {
+	static gint old_poll_interval = 0;
+
+	mce_log(LL_DEBUG, "interval=%d, active=%d",
+		als_poll_interval, als_poll_active);
+
+	/* Already active timer based polling is a special case: we need
+	 * cancel it first for the new polling frequency to take effect */
+	if( als_poll_timer_cb_id && old_poll_interval != als_poll_interval )
+		cancel_als_poll_timer();
+
 	/* If we don't want polling to take place, disable it */
 	if (als_poll_interval == 0) {
 		cancel_als_poll_timer();
@@ -1596,38 +1759,42 @@ static void setup_als_poll_timer(void)
 		/* Close the file pointer when we disable the als polling
 		 * to ensure that the ALS can sleep
 		 */
-		(void)mce_close_file(als_lux_path, &als_fp);
+		if( als_fp )
+			mce_close_file(als_lux_path, &als_fp);
 		goto EXIT;
 	}
 
+	if( als_poll_active )
+		goto EXIT;
+
+	/* We will use io monitor, timer or libhybris hooks for ALS */
+	als_poll_active = TRUE;
+
+	mce_log(LL_DEBUG, "enable ALS monitoring");
+
 	switch (get_als_type()) {
 	case ALS_TYPE_AVAGO:
-		/* If we already have have an I/O monitor registered,
-		 * we can skip this
-		 */
-		if (als_iomon_id != NULL)
-			goto EXIT;
-
 		/* Register ALS I/O monitor */
 		als_iomon_id = mce_register_io_monitor_chunk(-1, als_device_path, MCE_IO_ERROR_POLICY_WARN, G_IO_IN | G_IO_PRI | G_IO_ERR, FALSE, als_avago_iomon_cb, sizeof (struct avago_als));
 		break;
 
 	case ALS_TYPE_DIPRO:
-		/* If we already have have an I/O monitor registered,
-		 * we can skip this
-		 */
-		if (als_iomon_id != NULL)
-			goto EXIT;
-
 		/* Register ALS I/O monitor */
 		als_iomon_id = mce_register_io_monitor_chunk(-1, als_device_path, MCE_IO_ERROR_POLICY_WARN, G_IO_IN | G_IO_PRI | G_IO_ERR, FALSE, als_dipro_iomon_cb, sizeof (struct dipro_als));
 		break;
 
+#ifdef ENABLE_HYBRIS
+	case ALS_TYPE_HYBRIS:
+		mce_hybris_als_set_callback(als_hybris_iomon_cb);
+		mce_hybris_als_set_active(1);
+		break;
+#endif
+
 	default:
 		/* Setup new timer;
-		 * for light sensors that we don't use polling for
+		 * for light sensors that we don't use I/O monitor for
 		 */
-		cancel_als_poll_timer();
+		old_poll_interval = als_poll_interval;
 		als_poll_timer_cb_id = g_timeout_add(als_poll_interval,
 						     als_poll_timer_cb, NULL);
 		break;
@@ -1656,13 +1823,10 @@ static void cancel_brightness_delay_timer(void)
 static void display_state_trigger(gconstpointer data)
 {
 	static display_state_t old_display_state = MCE_DISPLAY_UNDEF;
-	gint old_als_poll_interval = als_poll_interval;
 	display_state = GPOINTER_TO_INT(data);
 
 	if (als_enabled == FALSE)
 		goto EXIT;
-
-	old_als_poll_interval = als_poll_interval;
 
 	/* Update poll timeout */
 	switch (display_state) {
@@ -1732,10 +1896,8 @@ static void display_state_trigger(gconstpointer data)
 			adjust_als_thresholds(0, als_threshold_max);
 	}
 
-	/* Reprogram timer, if needed */
-	if ((als_poll_interval != old_als_poll_interval) ||
-	    ((als_poll_timer_cb_id == 0) && (als_iomon_id == NULL)))
-		setup_als_poll_timer();
+	/* Setup / reprogram, if needed */
+	setup_als_poll_timer();
 
 EXIT:
 	old_display_state = display_state;
