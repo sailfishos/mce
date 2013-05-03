@@ -461,6 +461,7 @@ modules/filter-brightness-als.o:\
 	mce-log.h\
 	mce.h\
 	median_filter.h\
+	mce-hybris.h\
 	modules/filter-brightness-als.h\
 
 modules/filter-brightness-als.pic.o:\
@@ -476,6 +477,7 @@ modules/filter-brightness-als.pic.o:\
 	mce-log.h\
 	mce.h\
 	median_filter.h\
+	mce-hybris.h\
 	modules/filter-brightness-als.h\
 
 modules/filter-brightness-simple.o:\
@@ -593,6 +595,7 @@ modules/proximity.o:\
 	mce-io.h\
 	mce-log.h\
 	mce.h\
+	mce-hybris.h\
 	modules/proximity.h\
 
 modules/proximity.pic.o:\
@@ -604,6 +607,7 @@ modules/proximity.pic.o:\
 	mce-io.h\
 	mce-log.h\
 	mce.h\
+	mce-hybris.h\
 	modules/proximity.h\
 
 modules/radiostates.o:\
