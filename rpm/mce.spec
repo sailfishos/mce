@@ -38,7 +38,7 @@ This package contains tools that can be used to interact with
 the Mode Control Entity and to get mode information.
 
 %prep
-%setup -q -n %{name}
+%setup -q -n %{name}-%{version}
 
 %build
 make %{?jobs:-j%jobs}
