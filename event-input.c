@@ -413,6 +413,7 @@ static evdev_type_t get_evdev_type(int fd)
 
 	evdevinfo_probe(feat, fd);
 
+	/* Key events mce is interested in */
 	static const int keypad_lut[] = {
 		KEY_CAMERA,
 		KEY_CAMERA_FOCUS,
@@ -422,6 +423,8 @@ static evdev_type_t get_evdev_type(int fd)
 		KEY_VOLUMEUP,
 		-1
 	};
+
+	/* Switch events mce is interested in */
 	static const int switch_lut[] = {
 		SW_CAMERA_LENS_COVER,
 		SW_FRONT_PROXIMITY,
@@ -433,6 +436,7 @@ static evdev_type_t get_evdev_type(int fd)
 		-1
 	};
 
+	/* Event classes that could be due to "user activity" */
 	static const int misc_lut[] = {
 		EV_KEY,
 		EV_REL,
@@ -442,6 +446,22 @@ static evdev_type_t get_evdev_type(int fd)
 		-1
 	};
 
+	/* All event classes except EV_ABS */
+	static const int all_but_abs_lut[] = {
+	  EV_KEY,
+	  EV_REL,
+	  EV_MSC,
+	  EV_SW,
+	  EV_LED,
+	  EV_SND,
+	  EV_REP,
+	  EV_FF,
+	  EV_PWR,
+	  EV_FF_STATUS,
+	  -1
+	};
+
+	/* MCE has no use for accelerometers etc */
 	if( evdevinfo_has_code(feat, EV_KEY, BTN_Z) ||
 	    evdevinfo_has_code(feat, EV_ABS, ABS_Z) ) {
 		// 3d sensor like accelorometer/magnetometer
@@ -449,6 +469,10 @@ static evdev_type_t get_evdev_type(int fd)
 		goto cleanup;
 	}
 
+	/* While MCE mostly uses touchscreen inputs only for
+	 * "user activity" monitoring, the touch devices
+	 * generate a lot of events and mce has mechanism in
+	 * place to avoid processing all of them */
 	if( evdevinfo_has_code(feat, EV_KEY, BTN_TOUCH) &&
 	    evdevinfo_has_code(feat, EV_ABS, ABS_X)     &&
 	    evdevinfo_has_code(feat, EV_ABS, ABS_Y) ) {
@@ -456,7 +480,6 @@ static evdev_type_t get_evdev_type(int fd)
 		res = EVDEV_TOUCH;
 		goto cleanup;
 	}
-
 	if( evdevinfo_has_code(feat, EV_ABS, ABS_MT_POSITION_X) &&
 	    evdevinfo_has_code(feat, EV_ABS, ABS_MT_POSITION_Y) ) {
 		// multitouch protocol
@@ -464,12 +487,46 @@ static evdev_type_t get_evdev_type(int fd)
 		goto cleanup;
 	}
 
+	/* Some keys and swithes are processed at mce level */
 	if( evdevinfo_has_codes(feat, EV_KEY, keypad_lut ) ||
 	    evdevinfo_has_codes(feat, EV_SW,  switch_lut ) ) {
 		res = EVDEV_INPUT;
 		goto cleanup;
 	}
 
+	/* Assume that: devices that support only ABS_DISTANCE are
+	 * proximity sensors and devices that support only ABS_MISC
+	 * are ambient light sensors that are handled via libhybris
+	 * in more appropriate place and should not be used for
+	 * "user activity" tracking. */
+	if( evdevinfo_has_type(feat, EV_ABS) &&
+	    !evdevinfo_has_types(feat, all_but_abs_lut) ) {
+		int maybe_als = evdevinfo_has_code(feat, EV_ABS, ABS_MISC);
+		int maybe_ps  = evdevinfo_has_code(feat, EV_ABS, ABS_DISTANCE);
+
+		// supports one of the two, but not both ...
+		if( maybe_als != maybe_ps ) {
+			for( int code = 0; ; ++code ) {
+				switch( code ) {
+				case ABS_CNT:
+					// ... and no other events supported
+					res = EVDEV_REJECT;
+					goto cleanup;
+
+				case ABS_DISTANCE:
+				case ABS_MISC:
+					continue;
+
+				default:
+					break;
+				}
+				if( evdevinfo_has_code(feat, EV_ABS, code) )
+					break;
+			}
+		}
+	}
+
+	/* Track events that can be considered as "user activity" */
 	if( evdevinfo_has_types(feat, misc_lut) ) {
 		res = EVDEV_ACTIVITY;
 		goto cleanup;
