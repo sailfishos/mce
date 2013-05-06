@@ -1,0 +1,36 @@
+#!/bin/sh
+
+# Check that all files that should have the current version agree on it
+
+MAK_PATH=Makefile
+MAK_VERS=$(grep '^VERSION.*:=' $MAK_PATH |sed -e 's/^.*:=[[:space:]]*//')
+
+echo >&2 "$MAK_VERS <-- $MAK_PATH"
+
+DEB_PATH=debian/changelog
+DEB_VERS=$(head -1 $DEB_PATH | sed -e 's/^.*(//' -e 's/).*$//')
+
+echo >&2 "$DEB_VERS <-- $DEB_PATH"
+
+RPM_PATH=rpm/mce.spec
+RPM_VERS=$(grep '^Version:' $RPM_PATH |sed -e 's/^.*:[[:space:]]*//')
+
+echo >&2 "$RPM_VERS <-- $RPM_PATH"
+
+RES=0
+
+if [ "$DEB_VERS" != "$MAK_VERS" ]; then
+  echo >&2 "$MAK_PATH $MAK_VERS vs $DEB_PATH $DEB_VERS"
+  RES=1
+fi
+
+if [ "$RPM_VERS" != "$MAK_VERS" ]; then
+  echo >&2 "$MAK_PATH $MAK_VERS vs $RPM_PATH $DEB_VERS"
+  RES=1
+fi
+
+if [ $RES != 0 ]; then
+  echo >&2 "Conflicting package versions"
+fi
+
+exit $RES
