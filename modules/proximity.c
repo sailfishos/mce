@@ -63,6 +63,10 @@
 					 * remove_input_trigger_from_datapipe()
 					 */
 
+#ifdef ENABLE_HYBRIS
+# include "../mce-hybris.h"
+#endif
+
 /** Request enabling of proximity sensor; reference counted */
 #define MCE_REQ_PS_ENABLE		"req_proximity_sensor_enable"
 
@@ -96,10 +100,16 @@ typedef enum {
 	PS_TYPE_NONE = 0,
 	/** Dipro (BH1770GLC/SFH7770) type sensor */
 	PS_TYPE_DIPRO = 1,
-	/**
-	 * Avago (APDS990x (QPDS-T900)) type sensor */
-	PS_TYPE_AVAGO = 2
+	/** Avago (APDS990x (QPDS-T900)) type sensor */
+	PS_TYPE_AVAGO = 2,
+	/** Android adaptation via libhybris */
+#ifdef ENABLE_HYBRIS
+	PS_TYPE_HYBRIS = 3,
+#endif
 } ps_type_t;
+
+/** State of proximity sensor monitoring */
+static gboolean proximity_monitor_active = FALSE;
 
 /** ID for the proximity sensor I/O monitor */
 static gconstpointer proximity_sensor_iomon_id = NULL;
@@ -171,7 +181,13 @@ static ps_type_t get_ps_type(void)
 		ps_device_path = PS_DEVICE_PATH_DIPRO;
 		ps_calib0_output.path = PS_CALIB_PATH_DIPRO;
 		ps_threshold = &dipro_ps_threshold_dipro;
-	} else {
+	}
+#ifdef ENABLE_HYBRIS
+	else if (mce_hybris_ps_init()) {
+		ps_type = PS_TYPE_HYBRIS;
+	}
+#endif
+	else {
 		/* Device either has no proximity sensor,
 		 * or handles it through gpio-keys
 		 */
@@ -192,8 +208,19 @@ EXIT:
  */
 static void enable_proximity_sensor(void)
 {
-	if (ps_enable_path != NULL)
-		mce_write_string_to_file(ps_enable_path, "1");
+	mce_log(LL_DEBUG, "enable PS input");
+	switch (get_ps_type()) {
+#ifdef ENABLE_HYBRIS
+	case PS_TYPE_HYBRIS:
+		mce_hybris_ps_set_active(1);
+		break;
+#endif
+
+	default:
+		if (ps_enable_path != NULL)
+			mce_write_string_to_file(ps_enable_path, "1");
+		break;
+	}
 }
 
 /**
@@ -201,8 +228,19 @@ static void enable_proximity_sensor(void)
  */
 static void disable_proximity_sensor(void)
 {
-	if (ps_enable_path != NULL)
-		mce_write_string_to_file(ps_enable_path, "0");
+	mce_log(LL_DEBUG, "disable PS input");
+	switch (get_ps_type()) {
+#ifdef ENABLE_HYBRIS
+	case PS_TYPE_HYBRIS:
+		mce_hybris_ps_set_active(0);
+		break;
+#endif
+
+	default:
+		if (ps_enable_path != NULL)
+			mce_write_string_to_file(ps_enable_path, "0");
+		break;
+	}
 }
 
 /**
@@ -362,6 +400,43 @@ EXIT:
 }
 
 /**
+ * I/O monitor callback for the proximity sensor (libhybris)
+ *
+ * @param timestamp event time
+ * @param distance  distance from proximity sensor to object
+ */
+
+#ifdef ENABLE_HYBRIS
+static void ps_hybris_iomon_cb(int64_t timestamp, float distance)
+{
+	static const float minval = 2.0f; // [cm]
+
+	cover_state_t proximity_sensor_state = COVER_UNDEF;
+
+	if( distance <= minval )
+		proximity_sensor_state = COVER_CLOSED;
+	else
+		proximity_sensor_state = COVER_OPEN;
+
+	mce_log(LL_DEBUG, "time:%lld distance:%g state:%d -> %d",
+		timestamp, distance, old_proximity_sensor_state,
+		proximity_sensor_state);
+
+	if (old_proximity_sensor_state == proximity_sensor_state)
+		goto EXIT;
+
+	old_proximity_sensor_state = proximity_sensor_state;
+
+	(void)execute_datapipe(&proximity_sensor_pipe,
+			       GINT_TO_POINTER(proximity_sensor_state),
+			       USE_INDATA, CACHE_INDATA);
+
+EXIT:
+	return;
+}
+#endif /* ENABLE_HYBRIS */
+
+/**
  * Update the proximity state (Avago)
  *
  * @note Only gives reasonable readings when the proximity sensor is enabled
@@ -446,6 +521,94 @@ EXIT:
 	return;
 }
 
+/** Enable the proximity monitoring
+ */
+static void enable_proximity_monitor(void)
+{
+	/* Already enabled? */
+	if( proximity_monitor_active )
+		goto EXIT;
+
+	mce_log(LL_DEBUG, "enable PS monitoring");
+	proximity_monitor_active = TRUE;
+
+	/* install input processing hooks, update current state */
+
+#ifdef ENABLE_HYBRIS
+	if( get_ps_type() == PS_TYPE_HYBRIS ) {
+		/* hook first, then enable */
+		mce_hybris_ps_set_callback(ps_hybris_iomon_cb);
+		enable_proximity_sensor();
+
+		/* FIXME: Is there a way to get immediate reading
+		 *        via Android libhardware? For now we
+		 *        just need to wait for data ... */
+		goto EXIT;
+	}
+#endif
+	if( !proximity_sensor_iomon_id ) {
+		/* enable first, then hook and update current value */
+		enable_proximity_sensor();
+
+		/* Register proximity sensor I/O monitor */
+		/* FIXME: is code forking the only way to do these? */
+		switch (get_ps_type()) {
+		case PS_TYPE_AVAGO:
+			if ((proximity_sensor_iomon_id = mce_register_io_monitor_chunk(-1, ps_device_path, MCE_IO_ERROR_POLICY_WARN, G_IO_IN | G_IO_PRI | G_IO_ERR, FALSE, ps_avago_iomon_cb, sizeof (struct avago_ps))) == NULL)
+				goto EXIT;
+
+			update_proximity_sensor_state_avago();
+			break;
+
+		case PS_TYPE_DIPRO:
+			if ((proximity_sensor_iomon_id = mce_register_io_monitor_chunk(-1, ps_device_path, MCE_IO_ERROR_POLICY_WARN, G_IO_IN | G_IO_PRI | G_IO_ERR, FALSE, ps_dipro_iomon_cb, sizeof (struct dipro_ps))) == NULL)
+				goto EXIT;
+
+			update_proximity_sensor_state_dipro();
+			break;
+		default:
+			break;
+		}
+	}
+EXIT:
+	return;
+
+}
+
+/** Disable the proximity monitoring
+ */
+static void disable_proximity_monitor(void)
+{
+	/* Already disabled? */
+	if( !proximity_monitor_active )
+		goto EXIT;
+
+	mce_log(LL_DEBUG, "disable PS monitoring");
+	proximity_monitor_active = FALSE;
+
+	/* disable input */
+	disable_proximity_sensor();
+
+	/* remove input processing hooks */
+	switch( get_ps_type() ) {
+#ifdef ENABLE_HYBRIS
+	case PS_TYPE_HYBRIS:
+		mce_hybris_ps_set_callback(0);
+		break;
+#endif
+
+	default:
+		/* Unregister proximity sensor I/O monitor */
+		if( proximity_sensor_iomon_id ) {
+			mce_unregister_io_monitor(proximity_sensor_iomon_id);
+			proximity_sensor_iomon_id = NULL;
+		}
+		break;
+	}
+EXIT:
+	return;
+}
+
 /**
  * Update the proximity monitoring
  */
@@ -467,35 +630,9 @@ static void update_proximity_monitor(void)
 	    (call_state == CALL_STATE_ACTIVE) ||
 	    (alarm_ui_state == MCE_ALARM_UI_VISIBLE_INT32) ||
 	    (alarm_ui_state == MCE_ALARM_UI_RINGING_INT32)) {
-		/* Register proximity sensor I/O monitor */
-		if (proximity_sensor_iomon_id == NULL) {
-			(void)enable_proximity_sensor();
-
-			/* FIXME: is code forking the only way to do these? */
-			switch (get_ps_type()) {
-			case PS_TYPE_AVAGO:
-				if ((proximity_sensor_iomon_id = mce_register_io_monitor_chunk(-1, ps_device_path, MCE_IO_ERROR_POLICY_WARN, G_IO_IN | G_IO_PRI | G_IO_ERR, FALSE, ps_avago_iomon_cb, sizeof (struct avago_ps))) == NULL)
-					goto EXIT;
-
-				update_proximity_sensor_state_avago();
-				break;
-
-			case PS_TYPE_DIPRO:
-				if ((proximity_sensor_iomon_id = mce_register_io_monitor_chunk(-1, ps_device_path, MCE_IO_ERROR_POLICY_WARN, G_IO_IN | G_IO_PRI | G_IO_ERR, FALSE, ps_dipro_iomon_cb, sizeof (struct dipro_ps))) == NULL)
-					goto EXIT;
-
-				update_proximity_sensor_state_dipro();
-				break;
-
-			default:
-				break;
-			}
-		}
+		enable_proximity_monitor();
 	} else {
-		/* Unregister proximity sensor I/O monitor */
-		disable_proximity_sensor();
-		mce_unregister_io_monitor(proximity_sensor_iomon_id);
-		proximity_sensor_iomon_id = NULL;
+		disable_proximity_monitor();
 	}
 
 EXIT:

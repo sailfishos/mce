@@ -318,7 +318,7 @@ static void *mce_hybris_lookup_function(const char *name)
     if( !(path = mce_hybris_module_path()) ) {
       mce_log(LL_WARN, "could not locate hybris plugin");
     }
-    else if( !(base = dlopen(path, RTLD_NOW|RTLD_LOCAL)) ) {
+    else if( !(base = dlopen(path, RTLD_NOW|RTLD_LOCAL|RTLD_DEEPBIND)) ) {
       mce_log(LL_WARN, "%s: failed to load: %s", path, dlerror());
     }
     else {
