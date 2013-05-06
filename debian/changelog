@@ -1,8 +1,10 @@
 mce (1.12.12) unstable; urgency=low
 
-  * NOT RELEASED YET
+  * [mce] Support ambient light sensor via mce-plugin-libhybris
+  * [mce] Support proximity sensor via mce-plugin-libhybris
+  * [packaging] Verify that all files that have mce version agree on it
 
- -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 06 May 2013 08:19:55 +0300
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 06 May 2013 15:20:57 +0300
 
 mce (1.12.11) unstable; urgency=low
 
