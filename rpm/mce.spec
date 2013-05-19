@@ -19,7 +19,6 @@ BuildRequires:  pkgconfig(gconf-2.0)
 BuildRequires:  pkgconfig(glib-2.0) >= 2.18.0
 BuildRequires:  pkgconfig(mce) >= 1.12.3
 BuildRequires:  kernel-headers >= 2.6.32
-BuildRequires:  libi2c-devel
 BuildRequires:  systemd
 # systemd has /etc/rpm/macros.systemd
 
