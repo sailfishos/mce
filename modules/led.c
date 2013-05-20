@@ -27,8 +27,13 @@
 #include <string.h>			/* strcmp(), strcpy(), strdup() */
 #include <unistd.h>			/* close(), W_OK */
 #include <sys/ioctl.h>			/* ioctl() */
-#include <libi2c/i2c-dev.h>	/* i2c_smbus_write_byte_data(),
-					 * I2C_SLAVE_FORCE
+#include <linux/i2c-dev.h>		/* I2C_SLAVE_FORCE,
+					 * I2C_SMBUS
+					 */
+#include <linux/i2c.h>			/* i2c_smbus_data,
+					 * I2C_SMBUS_READ,
+					 * I2C_SMBUS_WRITE,
+					 * I2C_SMBUS_BYTE_DATA
 					 */
 
 #include "mce.h"
@@ -350,9 +355,20 @@ static void disable_reno(void)
 		goto EXIT;
 	}
 
-        if (i2c_smbus_write_byte_data(fd, LED_DRIVER_CTRL, LEDC_DISABLE) < 0) {
+	struct i2c_smbus_ioctl_data args;
+	union i2c_smbus_data data;
+
+	data.byte = LEDC_DISABLE;
+	args.read_write = I2C_SMBUS_WRITE;
+	args.command = LED_DRIVER_CTRL;
+	args.size = I2C_SMBUS_BYTE_DATA;
+	args.data = &data;
+
+	if (ioctl(fd, I2C_SMBUS, &args) == -1) {
 		mce_log(LL_ERR,
-			"i2c_smbus_write_byte_data(TWL5031_BCC, ...) failed");
+			"ioctl() I2C_SMBUS (write LED_DRIVER_CTRL %d) failed on `%s'; %s",
+			LEDC_DISABLE, "/dev/i2c-1", g_strerror(errno));
+		errno = 0;
 	}
 
 EXIT:
