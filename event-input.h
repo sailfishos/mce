@@ -32,6 +32,13 @@
 /** Path to the GPIO key disable interface */
 #define GPIO_KEY_DISABLE_PATH		"/sys/devices/platform/gpio-keys/disabled_keys"
 
+/** Path to the GConf settings for the event input */
+#define MCE_GCONF_EVENT_INPUT_PATH	"/system/osso/dsm/event_input"
+
+#ifdef ENABLE_DOUBLETAP_EMULATION
+/** Path to the use Fake Double Tap setting */
+# define MCE_GCONF_USE_FAKE_DOUBLETAP_PATH MCE_GCONF_EVENT_INPUT_PATH "/use_fake_double_tap"
+#endif
 
 /**
  * Delay between I/O monitoring setups and keypress repeats; 1 second

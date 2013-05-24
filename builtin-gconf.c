@@ -1306,6 +1306,14 @@ static const setting_t gconf_defaults[] =
     .type = "i",
     .def  = "0",
   },
+#ifdef ENABLE_DOUBLETAP_EMULATION
+  {
+    // MCE_GCONF_USE_FAKE_DOUBLETAP_PATH @ event-input.h
+    .key  = "/system/osso/dsm/event_input/use_fake_double_tap",
+    .type = "b",
+    .def  = "false",
+  },
+#endif
   {
     .key = NULL,
   }
