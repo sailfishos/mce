@@ -12,7 +12,7 @@ DEB_VERS=$(head -1 $DEB_PATH | sed -e 's/^.*(//' -e 's/).*$//')
 
 echo >&2 "$DEB_VERS <-- $DEB_PATH"
 
-RPM_PATH=rpm/mce.spec
+RPM_PATH=$RPM_SOURCE_DIR/$RPM_PACKAGE_NAME.spec
 RPM_VERS=$(grep '^Version:' $RPM_PATH |sed -e 's/^.*:[[:space:]]*//')
 
 echo >&2 "$RPM_VERS <-- $RPM_PATH"
