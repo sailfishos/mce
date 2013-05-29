@@ -550,6 +550,7 @@ modules/led.o:\
 	mce-lib.h\
 	mce-log.h\
 	mce.h\
+	mce-hybris.h\
 	modules/led.h\
 
 modules/led.pic.o:\
@@ -564,6 +565,7 @@ modules/led.pic.o:\
 	mce-lib.h\
 	mce-log.h\
 	mce.h\
+	mce-hybris.h\
 	modules/led.h\
 
 modules/powersavemode.o:\

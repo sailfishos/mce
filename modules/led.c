@@ -87,6 +87,10 @@
 					 * remove_output_trigger_from_datapipe()
 					 */
 
+#ifdef ENABLE_HYBRIS
+# include "../mce-hybris.h"
+#endif
+
 /** Module name */
 #define MODULE_NAME		"led"
 
@@ -182,6 +186,7 @@ typedef struct {
 	/** Pattern for the B-channel */
 	gchar channel3[CHANNEL_SIZE + 1];
 	guint gconf_cb_id;		/**< Callback ID for GConf entry */
+	guint rgb_color;                /**< RGB24 data for libhybris use */
 } pattern_struct;
 
 /** Pattern combination rule struct; this is also used for cross-referencing */
@@ -236,6 +241,10 @@ typedef enum {
 	LED_TYPE_LYSTI_RGB = 4,
 	/** Monochrome LED, Lysti (LP5523) LED controller */
 	LED_TYPE_LYSTI_MONO = 5,
+#ifdef ENABLE_HYBRIS
+	/** Android adaptation via libhybris */
+	LED_TYPE_HYBRIS = 6,
+#endif
 } led_type_t;
 
 /**
@@ -317,7 +326,13 @@ static gchar *engine2_leds_path = NULL;
 /** Path to engine 3 leds */
 static gchar *engine3_leds_path = NULL;
 
-/** Maximum LED brightness */
+/** Maximum LED brightness
+ *
+ * The led_brightness_pipe is initialized to maximum_led_brightness
+ * value and never modified. There is an ALS based filter for
+ * led_brightness_pipe that converts the led brightness profile
+ * values [%] into 0 ... maximum_led_brightness range. The latter are
+ * then handled by the led_brightness_trigger() function below. */
 static guint maximum_led_brightness = MAXIMUM_LYSTI_MONOCHROME_LED_CURRENT;
 
 static void cancel_pattern_timeout(void);
@@ -395,15 +410,31 @@ EXIT:
  */
 static led_type_t get_led_type(void)
 {
-	product_id_t product_id = get_product_id();
+	product_id_t product_id = PRODUCT_UNKNOWN;
 	static led_type_t led_type = LED_TYPE_UNSET;
 
 	/* If we have the LED type already, return it */
 	if (led_type != LED_TYPE_UNSET)
 		goto EXIT;
 
+#ifdef ENABLE_HYBRIS
+	/* Use mce-plugin-libhybris if available */
+	if( mce_hybris_indicator_init() ) {
+		led_type = LED_TYPE_HYBRIS;
+		led_pattern_group = MCE_CONF_LED_PATTERN_HYBRIS_GROUP;
+		maximum_led_brightness = MAXIMUM_HYBRIS_LED_BRIGHTNESS;
+		goto DONE;
+	}
+#endif
+
+	/* Otherwise use product id for determining led type */
+	product_id = get_product_id();
+
+	// FIXME: The code below is defunct as get_product_id()
+	//        does not work without sysinfod.
+
 	/* First build the paths needed to check */
-	switch (product_id) {
+	switch ( product_id ) {
 	case PRODUCT_RM716:
 	case PRODUCT_RM696:
 		led_type = LED_TYPE_NJOY_MONO;
@@ -513,6 +544,9 @@ static led_type_t get_led_type(void)
 		break;
 	}
 
+#ifdef ENABLE_HYBRIS
+DONE:
+#endif
 	mce_log(LL_DEBUG, "LED-type: %d", led_type);
 
 EXIT:
@@ -706,6 +740,40 @@ static void mono_set_brightness(gint brightness)
 	mce_log(LL_DEBUG, "Brightness set to %d", brightness);
 }
 
+#ifdef ENABLE_HYBRIS
+static void hybris_program_led(const pattern_struct *const pattern);
+
+/**
+ * Set libhybris-LED brightness
+ *
+ * @param brightness The brightness of the LED
+ *                   (0 - maximum_led_brightness),
+ *                   or -1 to reset brightness when the LED has been disabled
+ */
+static void hybris_set_brightness(gint brightness)
+{
+	mce_log(LL_CRIT, "brightness=%d", brightness);
+
+	if (brightness < -1 || brightness > (gint)maximum_led_brightness) {
+		mce_log(LL_WARN, "Invalid brightness value %d", brightness);
+		return;
+	}
+
+	if( active_brightness == brightness )
+		return;
+
+	if( brightness != -1 )
+		active_brightness = brightness;
+
+	mce_log(LL_DEBUG, "Brightness set to %d", active_brightness);
+
+	/* Since there is no separate brightness control when operating
+	 * via libhybris, we need to reprogram the current pattern */
+	if( active_pattern )
+		hybris_program_led(active_pattern);
+}
+#endif /* ENABLE_HYBRIS */
+
 /**
  * Disable the Lysti-LED
  */
@@ -768,6 +836,15 @@ static void mono_disable_led(void)
 	mono_set_brightness(0);
 }
 
+#ifdef ENABLE_HYBRIS
+/** Disable the libhybris-LED
+ */
+static void hybris_disable_led(void)
+{
+	mce_hybris_indicator_set_pattern(0,0,0, 0,0);
+}
+#endif /* ENABLE_HYBRIS */
+
 /**
  * Disable the LED
  */
@@ -789,6 +866,12 @@ static void disable_led(void)
 	case LED_TYPE_DIRECT_MONO:
 		mono_disable_led();
 		break;
+
+#ifdef ENABLE_HYBRIS
+	case LED_TYPE_HYBRIS:
+		hybris_disable_led();
+		break;
+#endif
 
 	default:
 		break;
@@ -978,6 +1061,43 @@ EXIT:
 	return;
 }
 
+#ifdef ENABLE_HYBRIS
+/** Scale RGB channel value according to the current brightness value
+ *
+ * @param value red, green or blue value in 0 to 255 range
+ *
+ * @return scaled rgb value
+ */
+static inline int hybris_tune_brightness(int value)
+{
+	/* Note: active_brightness = 0 ... MAXIMUM_HYBRIS_LED_BRIGHTNESS */
+	int top = MAXIMUM_HYBRIS_LED_BRIGHTNESS;
+	int res = (value * active_brightness + top/2) / top;
+	return (res < 0) ? 0 : (res > 255) ? 255 : res;
+}
+
+/**
+ * Setup and activate a new libhybris-LED pattern
+ *
+ * @param pattern A pointer to a pattern_struct with the new pattern
+ */
+static void hybris_program_led(const pattern_struct *const pattern)
+{
+	int r = (pattern->rgb_color >> 16) & 0xff;
+	int g = (pattern->rgb_color >>  8) & 0xff;
+	int b = (pattern->rgb_color >>  0) & 0xff;
+
+	/* Do als based brightness scaling before use*/
+	r = hybris_tune_brightness(r);
+	g = hybris_tune_brightness(g);
+	b = hybris_tune_brightness(b);
+
+	mce_hybris_indicator_set_pattern(r, g, b,
+					 pattern->on_period,
+					 pattern->off_period);
+}
+#endif /* ENABLE_HYBRIS */
+
 /**
  * Setup and activate a new LED pattern
  *
@@ -999,6 +1119,12 @@ static void program_led(const pattern_struct *const pattern)
 	case LED_TYPE_DIRECT_MONO:
 		mono_program_led(pattern);
 		break;
+
+#ifdef ENABLE_HYBRIS
+	case LED_TYPE_HYBRIS:
+		hybris_program_led(pattern);
+		break;
+#endif
 
 	default:
 		break;
@@ -1327,6 +1453,12 @@ static void led_brightness_trigger(gconstpointer data)
 	case LED_TYPE_NJOY_MONO:
 		njoy_set_brightness(led_brightness);
 		break;
+
+#ifdef ENABLE_HYBRIS
+	case LED_TYPE_HYBRIS:
+		hybris_set_brightness(led_brightness);
+		break;
+#endif
 
 	case LED_TYPE_DIRECT_MONO:
 	case LED_TYPE_UNSET:
@@ -2070,6 +2202,97 @@ EXIT:
 	return status;
 }
 
+#ifdef ENABLE_HYBRIS
+/**
+ * Init patterns for libhybris-LED
+ *
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean init_hybris_patterns(void)
+{
+        enum {
+                IDX_PRIO,       /* Pattern priority field */
+                IDX_SCREEN_ON,  /* Pattern screen display policy field */
+                IDX_TIMEOUT,    /* Pattern timeout field */
+                IDX_ON_PERIOD,  /* On-period field */
+                IDX_OFF_PERIOD, /* Off-period field */
+                IDX_COLOR,      /* LED color field */
+                IDX_NUMOF
+        };
+
+	gboolean  status   = FALSE;
+	gchar   **patterns = NULL;
+	gsize     length   = 0;
+
+	/* Get the list of valid LED patterns */
+	patterns = mce_conf_get_string_list(MCE_CONF_LED_GROUP,
+					    MCE_CONF_LED_PATTERNS,
+					    &length);
+
+	/* Treat failed conf-value reads as if they were due to invalid keys
+	 * rather than failed allocations; let future allocation attempts fail
+	 * instead; otherwise we'll miss the real invalid key failures
+	 */
+	if (patterns == NULL) {
+		mce_log(LL_WARN, "Failed to configure LED patterns");
+		status = TRUE;
+		goto EXIT;
+	}
+
+	/* Used for single-colour LED patterns */
+	for (size_t i = 0; patterns[i]; i++) {
+		gchar **v = mce_conf_get_string_list(led_pattern_group,
+						     patterns[i], &length);
+		if( !v ) {
+			mce_log(LL_WARN,"LED pattern '%s' not configured",
+				patterns[i]);
+		}
+		else if( length != IDX_NUMOF ) {
+			mce_log(LL_ERR,"LED pattern '%s' is invalid",
+				patterns[i]);
+		}
+		else {
+			mce_log(LL_DEBUG,"Getting LED pattern for: %s",
+				patterns[i]);
+
+			pattern_struct *psp = g_slice_new(pattern_struct);
+
+			memset(psp, 0, sizeof *psp);
+
+			psp->name       = strdup(patterns[i]);
+			psp->priority   = strtol(v[IDX_PRIO], 0, 0);
+			psp->policy     = strtol(v[IDX_SCREEN_ON], 0, 0);
+			psp->timeout    = strtol(v[IDX_TIMEOUT], 0, 0) ?: -1;
+			psp->on_period  = strtol(v[IDX_ON_PERIOD], 0, 0);
+			psp->off_period = strtol(v[IDX_OFF_PERIOD], 0, 0);
+			psp->rgb_color  = strtol(v[IDX_COLOR], 0, 16);
+			psp->active     = FALSE;
+			psp->enabled    = pattern_get_enabled(patterns[i],
+							   &psp->gconf_cb_id);
+
+			g_queue_insert_sorted(pattern_stack, psp,
+					      queue_prio_compare,
+					      NULL);
+		}
+		g_strfreev(v);
+	}
+
+	init_combination_rules();
+
+	/* Set the LED brightness */
+	execute_datapipe(&led_brightness_pipe,
+			 GINT_TO_POINTER(maximum_led_brightness),
+			 USE_INDATA, CACHE_INDATA);
+
+	status = TRUE;
+
+EXIT:
+	g_strfreev(patterns);
+
+	return status;
+}
+#endif /* ENABLE_HYBRIS */
+
 /**
  * Init patterns for the LED
  *
@@ -2077,7 +2300,7 @@ EXIT:
  */
 static gboolean init_patterns(void)
 {
-	gboolean status;
+	gboolean status = TRUE;
 
 	switch (get_led_type()) {
 	case LED_TYPE_LYSTI_MONO:
@@ -2094,8 +2317,13 @@ static gboolean init_patterns(void)
 		status = init_mono_patterns();
 		break;
 
+#ifdef ENABLE_HYBRIS
+	case LED_TYPE_HYBRIS:
+		status = init_hybris_patterns();
+		break;
+#endif
+
 	default:
-		status = TRUE;
 		break;
 	}
 
@@ -2249,7 +2477,7 @@ void g_module_unload(GModule *module)
 
 		while ((psp = g_queue_pop_head(pattern_stack)) != NULL) {
 			mce_gconf_notifier_remove(GINT_TO_POINTER(psp->gconf_cb_id), NULL);
-			g_free(psp->name);
+			free(psp->name);
 			psp->name = NULL;
 			g_slice_free(pattern_struct, psp);
 		}

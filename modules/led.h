@@ -68,6 +68,11 @@
  */
 #define MCE_CONF_LED_PATTERN_RM696_GROUP	"LEDPatternNJoyRM696"
 
+/**
+ * Name of LED RGB pattern configuration group for libhybris
+ */
+#define MCE_CONF_LED_PATTERN_HYBRIS_GROUP	"LEDPatternHybris"
+
 /** Path to the GConf settings for the display */
 #define MCE_GCONF_LED_PATH			"/system/osso/dsm/leds"
 
@@ -94,6 +99,8 @@
 /** Maximum Lysti (LP5523)-controlled monochrome LED current */
 #define MAXIMUM_LYSTI_MONOCHROME_LED_CURRENT	100	/* 10.0 mA */
 
+/** Maximum libhybris led brightness */
+#define MAXIMUM_HYBRIS_LED_BRIGHTNESS		100	/* % */
 
 /** Path to the mono LED /sys directory */
 #define MCE_MONO_LED_SYS_PATH			"/sys/class/leds/keypad"
