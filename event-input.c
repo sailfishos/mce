@@ -85,6 +85,10 @@
 					 */
 #include "datapipe.h"			/* execute_datapipe() */
 #include "evdev.h"
+#ifdef ENABLE_DOUBLETAP_EMULATION
+# include "mce-gconf.h"
+#endif
+
 /** ID for touchscreen I/O monitor timeout source */
 static guint touchscreen_io_monitor_timeout_cb_id = 0;
 
@@ -487,6 +491,16 @@ static evdev_type_t get_evdev_type(int fd)
 		goto cleanup;
 	}
 
+	/* In SDK we might bump into mouse devices, track them
+	 * as if they were touch screen devices */
+	if( evdevinfo_has_code(feat, EV_KEY, BTN_MOUSE) &&
+	    evdevinfo_has_code(feat, EV_REL, REL_X) &&
+	    evdevinfo_has_code(feat, EV_REL, REL_Y) ) {
+		// mouse
+		res = EVDEV_TOUCH;
+		goto cleanup;
+	}
+
 	/* Some keys and swithes are processed at mce level */
 	if( evdevinfo_has_codes(feat, EV_KEY, keypad_lut ) ||
 	    evdevinfo_has_codes(feat, EV_SW,  switch_lut ) ) {
@@ -720,6 +734,205 @@ static void setup_touchscreen_io_monitor_timeout(void)
 				      touchscreen_io_monitor_timeout_cb, NULL);
 }
 
+#ifdef ENABLE_DOUBLETAP_EMULATION
+
+/** Fake doubletap policy */
+static gboolean fake_doubletap_enabled = FALSE;
+
+/** GConf callback ID for fake doubletap policy changes */
+static guint fake_doubletap_id = 0;
+
+/** Callback for handling changes to fake doubletap configuration
+ *
+ * @param client (not used)
+ * @param id     (not used)
+ * @param entry  GConf entry that changed
+ * @param data   (not used)
+ */
+static void fake_doubletap_cb(GConfClient *const client, const guint id,
+			      GConfEntry *const entry, gpointer const data)
+{
+	(void)client; (void)id; (void)data;
+
+	gboolean enabled = fake_doubletap_enabled;
+	const GConfValue *value = 0;
+
+	if( entry && (value = gconf_entry_get_value(entry)) ) {
+		if( value->type == GCONF_VALUE_BOOL )
+			enabled = gconf_value_get_bool(value);
+	}
+	if( fake_doubletap_enabled != enabled ) {
+		mce_log(LL_NOTICE, "use fake doubletap change: %d -> %d",
+			fake_doubletap_enabled, enabled);
+		fake_doubletap_enabled = enabled;
+	}
+}
+
+/** Maximum time betweem 1st click and 2nd release, in milliseconds */
+# define DOUBLETAP_TIME_LIMIT 500
+
+/** Maximum distance between 1st and 2nd clicks, in pixels */
+# define DOUBLETAP_DISTANCE_LIMIT 100
+
+/** History data for emulating double tap */
+typedef struct
+{
+	struct timeval time;
+	int x,y;
+	int click;
+} doubletap_t;
+
+/** Check if two double tap history points are close enough in time
+ *
+ * @param e1 event data from the 1st click
+ * @param e2 event data from the 2nd release
+ *
+ * @return TRUE if e1 and e2 times are valid and close enough,
+ *         or FALSE otherwise
+ */
+static int doubletap_time_p(const doubletap_t *e1, const doubletap_t *e2)
+{
+	static const struct timeval limit =
+	{
+		.tv_sec  = (DOUBLETAP_TIME_LIMIT / 1000),
+		.tv_usec = (DOUBLETAP_TIME_LIMIT % 1000) * 1000,
+	};
+
+	struct timeval delta;
+
+	/* Reject empty/reset slots */
+	if( !timerisset(&e1->time) || !timerisset(&e2->time) )
+		return 0;
+
+	timersub(&e2->time, &e1->time, &delta);
+	return timercmp(&delta, &limit, <);
+}
+
+/** Check if two double tap history points are close enough in pixels
+ *
+ * @param e1 event data from the 1st click
+ * @param e2 event data from the 2nd click
+ *
+ * @return TRUE if e1 and e2 positions are close enough, or FALSE otherwise
+ */
+static int doubletap_dist_p(const doubletap_t *e1, const doubletap_t *e2)
+{
+	int x = e2->x - e1->x;
+	int y = e2->y - e1->y;
+	int r = DOUBLETAP_DISTANCE_LIMIT;
+
+	return (x*x + y*y) < (r*r);
+}
+
+/** Process mouse input events to simulate double tap
+ *
+ * Maintain a crude state machine, that will detect double clicks
+ * made with mouse when fed with evdev events from a mouse device.
+ *
+ * @param eve input event
+ *
+ * @return TRUE if double tap sequence was detected, FALSE otherwise
+ */
+static int doubletap_emulate(const struct input_event *eve)
+{
+	static doubletap_t hist[4]; // click/release ring buffer
+
+	static unsigned i0       = 0; // current position
+	static int      x_accum  = 0; // x delta accumulator
+	static int      y_accum  = 0; // y delta accumulator
+	static int      skip_syn = FALSE; // flag: skip SYN_REPORTS
+
+	int result = FALSE; // assume: no doubletap
+
+	unsigned i1, i2, i3; // 3 last positions
+
+	switch( eve->type ) {
+	case EV_REL:
+		/* Ignore EV_SYN unless we see EV_KEY too */
+		skip_syn = TRUE;
+		/* Accumulate X/Y position */
+		switch( eve->code ) {
+		case REL_X: x_accum += eve->value; break;
+		case REL_Y: y_accum += eve->value; break;
+		default: break;
+		}
+		break;
+
+	case EV_KEY:
+		/* Store click/release and position */
+		skip_syn = FALSE;
+		if( eve->code == BTN_MOUSE ) {
+			hist[i0].click += eve->value;
+			hist[i0].x = x_accum;
+			hist[i0].y = y_accum;
+		}
+		break;
+
+	case EV_ABS:
+		/* Do multitouch too while at it */
+		skip_syn = FALSE;
+		switch( eve->code ) {
+		case ABS_MT_TOUCH_MAJOR: hist[i0].click += 1; break;
+		case ABS_MT_POSITION_X:  hist[i0].x = eve->value; break;
+		case ABS_MT_POSITION_Y:  hist[i0].y = eve->value; break;
+		default: break;
+		}
+		break;
+
+	case EV_SYN:
+		if( eve->code != SYN_REPORT )
+			break;
+
+		/* Have we seen button events? */
+		if( skip_syn ) {
+			skip_syn = FALSE;
+			break;
+		}
+		/* Set timestamp from syn event */
+		hist[i0].time = eve->time;
+
+		/* Last event before current */
+		i1 = (i0 + 3) & 3;
+
+		if( hist[i1].click != hist[i0].click ) {
+			/* 2nd and 3rd last events before current */
+			i2 = (i0 + 2) & 3;
+			i3 = (i0 + 1) & 3;
+
+			/* Release after click after release after click,
+			 * within the time and distance limits */
+			if( hist[i0].click == 0 && hist[i1].click == 1 &&
+			    hist[i2].click == 0 && hist[i3].click == 1 &&
+			    doubletap_time_p(&hist[i3], &hist[i0]) &&
+			    doubletap_dist_p(&hist[i3], &hist[i1]) ) {
+				/* Reached DOUBLETAP state */
+				result = TRUE;
+
+				/* Reset history, so that triple click
+				 * will not produce 2 double taps etc */
+				memset(hist, 0, sizeof hist);
+				x_accum = y_accum = 0;
+			}
+
+			/* Move to the next slot */
+			i0 = (i0 + 1) & 3;
+		}
+
+		/* Reset the current position in the ring buffer */
+		memset(&hist[i0], 0, sizeof *hist);
+		break;
+
+	default:
+		/* Unexpected events -> nothing to do at EV_SYN */
+		skip_syn = TRUE;
+		break;
+	}
+
+	return result;
+}
+
+#endif /* ENABLE_DOUBLETAP_EMULATION */
+
 /**
  * I/O monitor callback for the touchscreen
  *
@@ -746,6 +959,25 @@ static gboolean touchscreen_iomon_cb(gpointer data, gsize bytes_read)
 		evdev_get_event_type_name(ev->type),
 		evdev_get_event_code_name(ev->type, ev->code),
 		ev->value);
+
+#ifdef ENABLE_DOUBLETAP_EMULATION
+	if( fake_doubletap_enabled ) {
+		switch( datapipe_get_gint(display_state_pipe) ) {
+		case MCE_DISPLAY_OFF:
+		case MCE_DISPLAY_LPM_OFF:
+		case MCE_DISPLAY_LPM_ON:
+			if( doubletap_emulate(ev) ) {
+				mce_log(LL_NOTICE, "EMULATING DOUBLETAP");
+				ev->type  = EV_MSC;
+				ev->code  = MSC_GESTURE;
+				ev->value = 0x4;
+			}
+			break;
+		default:
+			break;
+		}
+	}
+#endif
 
 	/* Ignore unwanted events */
 	if ((ev->type != EV_ABS) &&
@@ -1497,6 +1729,16 @@ gboolean mce_input_init(void)
 	GError *error = NULL;
 	gboolean status = FALSE;
 
+#ifdef ENABLE_DOUBLETAP_EMULATION
+	/* Get fake doubletap policy configuration & track changes */
+	mce_gconf_notifier_add(MCE_GCONF_EVENT_INPUT_PATH,
+			       MCE_GCONF_USE_FAKE_DOUBLETAP_PATH,
+			       fake_doubletap_cb,
+			       &fake_doubletap_id);
+	mce_gconf_get_bool(MCE_GCONF_USE_FAKE_DOUBLETAP_PATH,
+			   &fake_doubletap_enabled);
+#endif
+
 	/* Append triggers/filters to datapipes */
 	append_output_trigger_to_datapipe(&submode_pipe,
 					  submode_trigger);
@@ -1552,6 +1794,14 @@ EXIT:
  */
 void mce_input_exit(void)
 {
+#ifdef ENABLE_DOUBLETAP_EMULATION
+	/* Remove fake doubletap policy change notifier */
+	if( fake_doubletap_id ) {
+		mce_gconf_notifier_remove(GINT_TO_POINTER(fake_doubletap_id), 0);
+		fake_doubletap_id = 0;
+	}
+#endif
+
 	/* Remove triggers/filters from datapipes */
 	remove_output_trigger_from_datapipe(&submode_pipe,
 					    submode_trigger);

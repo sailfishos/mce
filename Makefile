@@ -94,6 +94,9 @@ ENABLE_RFS_CUD_SUPPORT ?= n
 # Whether to enable backup/restore support
 ENABLE_BACKUP_SUPPORT ?= n
 
+# Whether to enable double-click == double-tap emulation
+ENABLE_DOUBLETAP_EMULATION ?= y
+
 # Install destination
 DESTDIR               ?= /tmp/test-mce-install
 
@@ -204,6 +207,10 @@ endif
 
 ifeq ($(ENABLE_HYBRIS),y)
 CPPFLAGS += -DENABLE_HYBRIS
+endif
+
+ifeq ($(ENABLE_DOUBLETAP_EMULATION),y)
+CPPFLAGS += -DENABLE_DOUBLETAP_EMULATION
 endif
 
 # C Compiler

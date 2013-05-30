@@ -36,10 +36,11 @@
 #include <mce/dbus-names.h>
 #include <mce/mode-names.h>
 
-#include "tklock.h"
-#include "modules/display.h"
-#include "modules/powersavemode.h"
-#include "modules/filter-brightness-als.h"
+#include "../tklock.h"
+#include "../event-input.h"
+#include "../modules/display.h"
+#include "../modules/powersavemode.h"
+#include "../modules/filter-brightness-als.h"
 
 /** Whether to enable development time debugging */
 #define MCETOOL_ENABLE_EXTRA_DEBUG 0
@@ -1204,6 +1205,14 @@ static const symbol_t suspendpol_values[] = {
         { NULL, -1 }
 };
 
+/** Lookup table for fake doubletap policies
+ */
+static const symbol_t fake_doubletap_values[] = {
+        { "disabled",  0 },
+        { "enabled",   1 },
+        { NULL, -1 }
+};
+
 /** Lookup table for tklock autoblank policy values
  *
  * @note These must match the hardcoded values in mce itself.
@@ -2206,6 +2215,35 @@ static void xmce_get_suspend_policy(void)
 }
 
 /* ------------------------------------------------------------------------- *
+ * use mouse clicks to emulate touchscreen doubletap policy
+ * ------------------------------------------------------------------------- */
+
+#ifdef ENABLE_DOUBLETAP_EMULATION
+static void xmce_set_fake_doubletap(const char *args)
+{
+        debugf("%s(%s)\n", __FUNCTION__, args);
+        int val = lookup(fake_doubletap_values, args);
+        if( val < 0 ) {
+                errorf("%s: invalid fake doubletap value\n", args);
+                exit(EXIT_FAILURE);
+        }
+        mcetool_gconf_set_bool(MCE_GCONF_USE_FAKE_DOUBLETAP_PATH, val != 0);
+}
+
+/** Get current fake double tap policy from mce and print it out
+ */
+static void xmce_get_fake_doubletap(void)
+{
+        gboolean    val = 0;
+        const char *txt = 0;
+        if( mcetool_gconf_get_bool(MCE_GCONF_USE_FAKE_DOUBLETAP_PATH, &val) )
+                txt = rlookup(fake_doubletap_values, val);
+        printf("%-40s %s \n", "Use fake doubletap:", txt ?: "unknown");
+}
+#endif /* ENABLE_DOUBLETAP_EMULATION */
+
+
+/* ------------------------------------------------------------------------- *
  * tklock
  * ------------------------------------------------------------------------- */
 
@@ -2328,6 +2366,9 @@ static void xmce_get_status(void)
         xmce_get_als_mode();
         xmce_get_dim_timeouts();
         xmce_get_suspend_policy();
+#ifdef ENABLE_DOUBLETAP_EMULATION
+	xmce_get_fake_doubletap();
+#endif
         xmce_get_tklock_noblank();
 
         printf("\n");
@@ -2450,6 +2491,11 @@ static const char usage_text[] =
 "  -s, --set-suspend-policy=MODE\n"
 "                                  set the autosuspend mode; valid modes are:\n"
 "                                    'enabled', 'disabled' and 'early'\n"
+#ifdef ENABLE_DOUBLETAP_EMULATION
+"  -i, --set-fake-doubletap=MODE\n"
+"                                  set the doubletap emulation mode; valid modes are:\n"
+"                                    'enabled' and 'disabled'\n"
+#endif
 "  -b, --set-display-brightness=BRIGHTNESS\n"
 "                                  set the display brightness to BRIGHTNESS;\n"
 "                                    valid values are: 1-5\n"
@@ -2504,7 +2550,7 @@ PROG_NAME" v"G_STRINGIFY(PRG_VERSION)"\n"
 ;
 
 // Unused short options left ....
-// - - - - - - - - i j - - m - o - q - - - u - w x - z
+// - - - - - - - - - j - - m - o - q - - - u - w x - z
 // - - - - - - - - - - - - - - - - Q - S - - - W X - Z
 
 const char OPT_S[] =
@@ -2546,6 +2592,9 @@ const char OPT_S[] =
 "O:"  // --set-dim-timeouts
 "s:"  // --set-suspend-policy
 "t:"  // --set-tklock-noblank
+#ifdef ENABLE_DOUBLETAP_EMULATION
+"i:"  // --set-fake-doubletap
+#endif
 ;
 
 struct option const OPT_L[] =
@@ -2588,6 +2637,9 @@ struct option const OPT_L[] =
         { "set-doubletap-mode",        1, 0, 'M' }, // xmce_set_doubletap_mode()
         { "set-dim-timeouts",          1, 0, 'O' }, // xmce_set_dim_timeouts()
         { "set-suspend-policy",        1, 0, 's' }, // xmce_set_suspend_policy()
+#ifdef ENABLE_DOUBLETAP_EMULATION
+        { "set-fake-doubletap",        1, 0, 'i' }, // xmce_set_fake_doubletap()
+#endif
         { 0, 0, 0, 0 }
 };
 
@@ -2647,7 +2699,9 @@ int main(int argc, char **argv)
                 case 'E': xmce_set_low_power_mode(optarg);        break;
 
                 case 's': xmce_set_suspend_policy(optarg);        break;
-
+#ifdef ENABLE_DOUBLETAP_EMULATION
+                case 'i': xmce_set_fake_doubletap(optarg);        break;
+#endif
                 case 'b': xmce_set_display_brightness(optarg);    break;
                 case 'g': xmce_set_als_mode(optarg);              break;
 

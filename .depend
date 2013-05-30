@@ -36,6 +36,7 @@ event-input.o:\
 	evdev.h\
 	event-input.h\
 	mce-conf.h\
+	mce-gconf.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
@@ -47,6 +48,7 @@ event-input.pic.o:\
 	evdev.h\
 	event-input.h\
 	mce-conf.h\
+	mce-gconf.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
@@ -690,6 +692,7 @@ tools/evdev_trace.pic.o:\
 
 tools/mcetool.o:\
 	tools/mcetool.c\
+	event-input.h\
 	modules/display.h\
 	modules/filter-brightness-als.h\
 	modules/powersavemode.h\
@@ -697,6 +700,7 @@ tools/mcetool.o:\
 
 tools/mcetool.pic.o:\
 	tools/mcetool.c\
+	event-input.h\
 	modules/display.h\
 	modules/filter-brightness-als.h\
 	modules/powersavemode.h\
