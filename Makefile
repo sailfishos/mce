@@ -43,7 +43,7 @@ distclean:: clean
 # CONFIGURATION
 # ----------------------------------------------------------------------------
 
-VERSION := 1.12.12
+VERSION := 1.12.13
 
 INSTALL_BIN := install --mode=755
 INSTALL_DIR := install -d
