@@ -331,6 +331,30 @@ static als_profile_struct display_als_profiles_hybris[] =
 		{  30,  60, 100, 100, },
 	},
 };
+
+/**
+ * ALS profile for the libhybris LED:
+ */
+static als_profile_struct led_als_profiles_hybris[] = {
+	/* Minimum; unused */
+	{ { { -1, -1 } }, { 100 } },
+	/* Economy; unused */
+	{ { { -1, -1 } }, { 100 } },
+	/* Normal; copied from rm696 */
+	{
+		{
+			{  3,  5 }, // 0
+			{ -1, -1 }, // 1
+		},
+		// 0    1
+		{ 80, 100 }
+	},
+	/* Bright; unused */
+	{ { { -1, -1 } }, { 100 } },
+	/* Maximum; unused */
+	{ { { -1, -1 } }, { 100 } },
+};
+
 #endif /* ENABLE_HYBRIS */
 
 /**
@@ -987,6 +1011,7 @@ static als_type_t get_als_type(void)
 
 		// FIXME: uses rm696 profile data, need real ones
 		display_als_profiles = display_als_profiles_hybris;
+		led_als_profiles     = led_als_profiles_hybris;
 	}
 #endif
 	else {
