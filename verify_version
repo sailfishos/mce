@@ -5,17 +5,11 @@
 MAK_PATH=Makefile
 MAK_VERS=$(grep '^VERSION.*:=' $MAK_PATH |sed -e 's/^.*:=[[:space:]]*//')
 
-echo >&2 "$MAK_VERS <-- $MAK_PATH"
-
 DEB_PATH=debian/changelog
 DEB_VERS=$(head -1 $DEB_PATH | sed -e 's/^.*(//' -e 's/).*$//')
 
-echo >&2 "$DEB_VERS <-- $DEB_PATH"
-
 RPM_PATH=${RPM_SOURCE_DIR:-rpm}/${RPM_PACKAGE_NAME:-mce}.spec
 RPM_VERS=$(grep '^Version:' $RPM_PATH |sed -e 's/^.*:[[:space:]]*//')
-
-echo >&2 "$RPM_VERS <-- $RPM_PATH"
 
 RES=0
 
