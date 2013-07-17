@@ -505,8 +505,12 @@ static void cancel_lpm_timeout(void);
 static void cancel_dim_timeout(void);
 
 static void write_brightness_value_default(int number);
+static gboolean backlight_ioctl_default(int value);
+
 #ifdef ENABLE_HYBRIS
 static void write_brightness_value_hybris(int number);
+static gboolean backlight_ioctl_hybris(int value);
+static gboolean backlight_ioctl_dummy(int value);
 #endif
 
 /** Hook for setting brightness
@@ -516,6 +520,13 @@ static void write_brightness_value_hybris(int number);
  * @param number brightness value; after bounds checking
  */
 static void (*write_brightness_value_hook)(int number) = write_brightness_value_default;
+
+/** Hook for setting the frame buffer power state
+ *
+ * @param value The ioctl value to pass to the backlight
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean (*backlight_ioctl_hook)(int value) = 0;
 
 /**
  * Check whether changing from LPM to blank can be done
@@ -746,6 +757,16 @@ static gboolean get_display_type_from_hybris(display_type_t *display_type)
 	write_brightness_value_hook = write_brightness_value_hybris;
 	maximum_display_brightness = 255;
 	*display_type = DISPLAY_TYPE_GENERIC;
+
+	if( !mce_hybris_framebuffer_init() ) {
+		mce_log(LL_WARN, "libhybris fb power controls not available; using dummy");
+		backlight_ioctl_hook = backlight_ioctl_dummy;
+	}
+	else {
+		mce_log(LL_NOTICE, "using libhybris for fb power control");
+		backlight_ioctl_hook = backlight_ioctl_hybris;
+	}
+
 	res = TRUE;
 EXIT:
 #endif
@@ -858,6 +879,9 @@ static display_type_t get_display_type(void)
 
 	mce_log(LL_DEBUG, "Display type: %d", display_type);
 
+	/* Default to using ioctl() for frame buffer power control */
+	if( !backlight_ioctl_hook )
+		backlight_ioctl_hook = backlight_ioctl_default;
 EXIT:
 	return display_type;
 }
@@ -1216,13 +1240,63 @@ EXIT:
 	return;
 }
 
-/**
- * Call the FBIOBLANK ioctl
+#ifdef ENABLE_HYBRIS
+/** Libhybris backend for backlight_ioctl()
+ *
+ * @param value FB_BLANK_POWERDOWN or FB_BLANK_UNBLANK
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean backlight_ioctl_hybris(int value)
+{
+	static int old_value = -1;
+
+	gboolean result = TRUE;
+
+	if( old_value == value )
+		goto EXIT;
+
+	switch( value ) {
+	case FB_BLANK_POWERDOWN:
+		result = mce_hybris_framebuffer_set_power(false);
+		break;
+
+	case FB_BLANK_UNBLANK:
+		result = mce_hybris_framebuffer_set_power(true);
+		break;
+
+	default:
+		mce_log(LL_WARN, "ignoring unknown ioctl value %d", value);
+		result = FALSE;
+		break;
+	}
+
+	mce_log(LL_DEBUG, "value %d -> %d", old_value, value);
+	old_value = value;
+EXIT:
+
+	return result;
+}
+/** Dummy backend for backlight_ioctl()
+ *
+ * Used in cases where mce should not touch frame buffer
+ * power state.
+ *
+ * @param value (not used)
+ * @return TRUE for faked success
+ */
+static gboolean backlight_ioctl_dummy(int value)
+{
+	(void)value;
+	return TRUE;
+}
+#endif /* ENABLE_HYBRIS */
+
+/** FBIOBLANK backend for backlight_ioctl()
  *
  * @param value The ioctl value to pass to the backlight
  * @return TRUE on success, FALSE on failure
  */
-static gboolean backlight_ioctl(int value)
+static gboolean backlight_ioctl_default(int value)
 {
 	static int old_value = FB_BLANK_UNBLANK;
 	static int fd = -1;
@@ -1279,6 +1353,19 @@ EXIT:
 	return status;
 }
 
+/** Set the frame buffer power state
+ *
+ * @param value The ioctl value to pass to the backlight
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean backlight_ioctl(int value)
+{
+	if( backlight_ioctl_hook )
+		return backlight_ioctl_hook(value);
+
+	mce_log(LL_ERR, "value = %d before initializing hook", value);
+	return FALSE;
+}
 /** Set display brightness via sysfs write */
 static void write_brightness_value_default(int number)
 {
