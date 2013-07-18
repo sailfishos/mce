@@ -1,6 +1,11 @@
+mce (1.12.14) unstable; urgency=low
+
+ * [mce] Support frame buffer power control via mce-plugin-libhybris
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 18 Jul 2013 08:34:23 +0300
+
 mce (1.12.13) unstable; urgency=low
 
-  * WIP
   * [modules/led.c] remove i2c-tools buildrequire and use kernel-headers
     instead
   * [sdk] Support display unblanking via double click with mouse
