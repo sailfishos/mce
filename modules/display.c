@@ -120,8 +120,9 @@
 
 #ifdef ENABLE_WAKELOCKS
 # include "../libwakelock.h"		/* API for wakelocks */
-# include "../filewatcher.h"
 #endif
+
+#include "../filewatcher.h"
 
 #ifdef ENABLE_HYBRIS
 # include "../mce-hybris.h"
@@ -2958,15 +2959,14 @@ static gboolean display_orientation_change_dbus_cb(DBusMessage *const msg)
 	return status;
 }
 
-#ifdef ENABLE_WAKELOCKS
 /** Have we seen shutdown_ind signal from dsme */
 static gboolean shutdown_started = FALSE;
 
 /** Are we already unloading the module? */
-static gboolean suspend_unload = FALSE;
+static gboolean module_unloading = FALSE;
 
-/** Still waiting for desktop ready ?*/
-static guint suspend_timer_id = 0;
+/** Timer for waiting simulated desktop ready state */
+static guint desktop_ready_id = 0;
 
 /** Content change watcher for the init-done flag file */
 static filewatcher_t *init_done_watcher = 0;
@@ -2974,28 +2974,7 @@ static filewatcher_t *init_done_watcher = 0;
 /** Is the init-done flag file present in the file system */
 static gboolean init_done = FALSE;
 
-/** Automatic suspend policy modes */
-enum
-{
-	/** Always stay in on-mode */
-	SUSPEND_POLICY_DISABLED    = 0,
-
-	/** Normal transitions between on, early suspend, and late suspend */
-	SUSPEND_POLICY_ENABLED     = 1,
-
-	/** Allow on and early suspend, but never enter late suspend */
-	SUSPEND_POLICY_EARLY_ONLY  = 2,
-
-	/** Default mode to use if no configuration exists */
-	SUSPEND_POLICY_DEFAULT     = SUSPEND_POLICY_ENABLED,
-};
-
-/** Automatic suspend policy */
-static gint suspend_policy = SUSPEND_POLICY_DEFAULT;
-
-/** GConf callback ID for automatic suspend policy changes */
-static guint suspend_policy_id = 0;
-
+#ifdef ENABLE_CPU_GOVERNOR
 /** CPU scaling governor override; not enabled by default */
 static gint governor_conf = GOVERNOR_UNSET;
 
@@ -3058,7 +3037,7 @@ static governor_setting_t *governor_get_settings(const char *tag)
 		res[used].path = strdup(path);
 		res[used].data = strdup(data);
 		++used;
-		mce_log(LOG_CRIT, "%s[%d]: echo > %s %s", sec, used, path, data);
+		mce_log(LOG_DEBUG, "%s[%d]: echo > %s %s", sec, used, path, data);
 	}
 
 	if( used == 0 ) {
@@ -3211,7 +3190,7 @@ static void governor_rethink(void)
 	}
 
 	/* Use default during bootup */
-	if( suspend_timer_id || !init_done ) {
+	if( desktop_ready_id || !init_done ) {
 		governor_want = GOVERNOR_DEFAULT;
 	}
 
@@ -3221,7 +3200,7 @@ static void governor_rethink(void)
 	}
 
 	/* Restore default on unload / mce exit */
-	if( suspend_unload ) {
+	if( module_unloading ) {
 		governor_want = GOVERNOR_DEFAULT;
 	}
 
@@ -3265,7 +3244,30 @@ static void governor_conf_cb(GConfClient *const client, const guint id,
 		governor_rethink();
 	}
 }
+#endif /* ENABLE_CPU_GOVERNOR */
 
+#ifdef ENABLE_WAKELOCKS
+/** Automatic suspend policy modes */
+enum
+{
+	/** Always stay in on-mode */
+	SUSPEND_POLICY_DISABLED    = 0,
+
+	/** Normal transitions between on, early suspend, and late suspend */
+	SUSPEND_POLICY_ENABLED     = 1,
+
+	/** Allow on and early suspend, but never enter late suspend */
+	SUSPEND_POLICY_EARLY_ONLY  = 2,
+
+	/** Default mode to use if no configuration exists */
+	SUSPEND_POLICY_DEFAULT     = SUSPEND_POLICY_ENABLED,
+};
+
+/** Automatic suspend policy */
+static gint suspend_policy = SUSPEND_POLICY_DEFAULT;
+
+/** GConf callback ID for automatic suspend policy changes */
+static guint suspend_policy_id = 0;
 
 /** Make suspend policy decision
  *
@@ -3309,7 +3311,7 @@ static void suspend_rethink(void)
 	}
 
 	/* no late suspend during bootup */
-	if( suspend_timer_id || !init_done ) {
+	if( desktop_ready_id || !init_done ) {
 		wakelock_want = 1;
 	}
 
@@ -3319,7 +3321,7 @@ static void suspend_rethink(void)
 	}
 
 	/* no more suspend at module unload */
-	if( suspend_unload ) {
+	if( module_unloading ) {
 		suspend_want  = 0;
 		wakelock_want = 0;
 	}
@@ -3337,6 +3339,12 @@ static void suspend_rethink(void)
 	default:
 	case SUSPEND_POLICY_ENABLED:
 		break;
+	}
+
+	if( wakelock_have != wakelock_want || suspend_have != suspend_want ) {
+		mce_log(LL_NOTICE, "power state: %s",
+			!suspend_want ? "no-suspend" :
+			wakelock_want ? "early-suspend" : "late-suspend");
 	}
 
 	/* act if decision has changed */
@@ -3382,6 +3390,7 @@ static void suspend_policy_cb(GConfClient *const client, const guint id,
 		suspend_rethink();
 	}
 }
+#endif /* ENABLE_WAKELOCKS */
 
 /** D-Bus callback for the shutdown notification signal
  *
@@ -3399,23 +3408,31 @@ static gboolean shutdown_dbus_cb(DBusMessage *const msg)
 	shutdown_started = TRUE;
 
 	/* re-evaluate suspend policy */
+#ifdef ENABLE_WAKELOCKS
 	suspend_rethink();
+#endif
 
+#ifdef ENABLE_CPU_GOVERNOR
 	governor_rethink();
+#endif
 
 	return TRUE;
 }
 
 /** Simulated "desktop ready" via uptime based timer
  */
-static gboolean suspend_timer_cb(gpointer user_data)
+static gboolean desktop_ready_cb(gpointer user_data)
 {
 	(void)user_data;
-	if( suspend_timer_id ) {
-		suspend_timer_id = 0;
-		mce_log(LL_NOTICE, "suspend delay ended");
+	if( desktop_ready_id ) {
+		desktop_ready_id = 0;
+		mce_log(LL_NOTICE, "desktop ready delay ended");
+#ifdef ENABLE_WAKELOCKS
 		suspend_rethink();
+#endif
+#ifdef ENABLE_CPU_GOVERNOR
 		governor_rethink();
+#endif
 	}
 	return FALSE;
 }
@@ -3441,32 +3458,18 @@ static void init_done_changed_cb(const char *path,
 		init_done = flag;
 		mce_log(LL_NOTICE, "init_done -> %s",
 			init_done ? "true" : "false");
+#ifdef ENABLE_WAKELOCKS
 		suspend_rethink();
+#endif
+#ifdef ENABLE_CPU_GOVERNOR
 		governor_rethink();
+#endif
 	}
 }
 
-
-/** Cleanup suspend policy
+/** Start tracking of init_done state
  */
-static void suspend_quit(void)
-{
-	suspend_unload = TRUE;
-
-	filewatcher_delete(init_done_watcher), init_done_watcher = 0;
-
-	if( suspend_timer_id ) {
-		g_source_remove(suspend_timer_id);
-		suspend_timer_id = 0;
-	}
-
-	suspend_rethink();
-	governor_rethink();
-}
-
-/** Initialize suspend policy
- */
-static void suspend_init(void)
+static void init_done_start_tracking(void)
 {
 	time_t uptime = 0;  // uptime in seconds
 	time_t ready  = 60; // desktop ready at
@@ -3493,14 +3496,25 @@ static void suspend_init(void)
 	}
 
 	mce_log(LL_NOTICE, "suspend delay %d seconds", (int)delay);
-	suspend_timer_id = g_timeout_add_seconds(delay, suspend_timer_cb, 0);
+	desktop_ready_id = g_timeout_add_seconds(delay, desktop_ready_cb, 0);
 
 	if( init_done_watcher ) {
 		/* evaluate the initial state of init-done flag file */
 		filewatcher_force_trigger(init_done_watcher);
 	}
 }
-#endif /* ENABLE_WAKELOCKS */
+
+/** Stop tracking of init_done state
+ */
+static void init_done_stop_tracking(void)
+{
+	filewatcher_delete(init_done_watcher), init_done_watcher = 0;
+
+	if( desktop_ready_id ) {
+		g_source_remove(desktop_ready_id);
+		desktop_ready_id = 0;
+	}
+}
 
 /**
  * Filter display state changes
@@ -3835,14 +3849,16 @@ static void system_state_trigger(gconstpointer data)
 		break;
 	}
 
-#ifdef ENABLE_WAKELOCKS
 	/* Clear shutting down flag on re-entry to USER state */
 	if( system_state == MCE_STATE_USER && shutdown_started ) {
 		shutdown_started = FALSE;
 		mce_log(LL_NOTICE, "Shutdown canceled");
 	}
+#ifdef ENABLE_WAKELOCKS
 	/* re-evaluate suspend policy */
 	suspend_rethink();
+#endif
+#ifdef ENABLE_CPU_GOVERNOR
 	governor_rethink();
 #endif
 
@@ -3911,7 +3927,7 @@ const gchar *g_module_check_init(GModule *module)
 	/* Initialise the display type and the relevant paths */
 	(void)get_display_type();
 
-#ifdef ENABLE_WAKELOCKS
+#ifdef ENABLE_CPU_GOVERNOR
 	/* Get CPU scaling governor settings from INI-files */
 	governor_default = governor_get_settings("Default");
 	governor_interactive = governor_get_settings("Interactive");
@@ -3924,6 +3940,11 @@ const gchar *g_module_check_init(GModule *module)
 			       governor_conf_cb,
 			       &governor_conf_id);
 
+	/* Evaluate initial state */
+	governor_rethink();
+#endif
+
+#ifdef ENABLE_WAKELOCKS
 	/* Get autosuspend policy configuration & track changes */
 	mce_gconf_get_int(MCE_GCONF_USE_AUTOSUSPEND_PATH,
 			  &suspend_policy);
@@ -3932,9 +3953,11 @@ const gchar *g_module_check_init(GModule *module)
 			       suspend_policy_cb,
 			       &suspend_policy_id);
 
-	/* Initialize suspend policy evaluator */
-	suspend_init();
+	/* Evaluate initial state */
+	suspend_rethink();
 #endif
+	/* Start waiting for init_done state */
+	init_done_start_tracking();
 
 	if ((submode & MCE_TRANSITION_SUBMODE) != 0) {
 		/* Disable bootup submode. It causes tklock problems if we don't */
@@ -4067,7 +4090,6 @@ const gchar *g_module_check_init(GModule *module)
 				 desktop_startup_dbus_cb) == NULL)
 		goto EXIT;
 
-#ifdef ENABLE_WAKELOCKS
 	/* System shutdown signal */
 	if (mce_dbus_handler_add("com.nokia.dsme.signal",
 				 "shutdown_ind",
@@ -4075,7 +4097,6 @@ const gchar *g_module_check_init(GModule *module)
 				 DBUS_MESSAGE_TYPE_SIGNAL,
 				 shutdown_dbus_cb) == NULL)
 		goto EXIT;
-#endif
 
 	/* Display orientation change signal */
 	if (mce_dbus_handler_add(ORIENTATION_SIGNAL_IF,
@@ -4285,14 +4306,32 @@ void g_module_unload(GModule *module)
 {
 	(void)module;
 
+	/* Mark down that we are unloading */
+	module_unloading = TRUE;
+
+	/* Stop waiting for init_done state */
+	init_done_stop_tracking();
+
 #ifdef ENABLE_WAKELOCKS
 	/* Remove suspend policy change notifier */
 	if( suspend_policy_id ) {
 		mce_gconf_notifier_remove(GINT_TO_POINTER(suspend_policy_id), 0);
+		suspend_policy_id = 0;
 	}
 
-	/* Cleanup suspend policy evaluator */
-	suspend_quit();
+	/* Disable autosuspend */
+	suspend_rethink();
+#endif
+
+#ifdef ENABLE_CPU_GOVERNOR
+	/* Remove cpu scaling governor change notifier */
+	if( governor_conf_id ) {
+		mce_gconf_notifier_remove(GINT_TO_POINTER(governor_conf_id), 0);
+		governor_conf_id = 0;
+	}
+
+	/* Switch back to defaults */
+	governor_rethink();
 
 	/* Release CPU scaling governor settings from INI-files */
 	governor_free_settings(governor_default), governor_default = 0;

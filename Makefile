@@ -75,6 +75,9 @@ ENABLE_HYBRIS ?= y
 # Whether to enable wakelock compatibility code
 ENABLE_WAKELOCKS ?= y
 
+# Whether to enable cpu scaling governor policy
+ENABLE_CPU_GOVERNOR ?= y
+
 # Whether to enable sysinfod queries
 ENABLE_SYSINFOD_QUERIES ?= n
 
@@ -195,6 +198,10 @@ CPPFLAGS += -DPRG_VERSION=$(VERSION)
 
 ifeq ($(strip $(ENABLE_WAKELOCKS)),y)
 CPPFLAGS += -DENABLE_WAKELOCKS
+endif
+
+ifeq ($(strip $(ENABLE_CPU_GOVERNOR)),y)
+CPPFLAGS += -DENABLE_CPU_GOVERNOR
 endif
 
 ifeq ($(strip $(ENABLE_SYSINFOD_QUERIES)),y)
