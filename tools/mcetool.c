@@ -1205,6 +1205,16 @@ static const symbol_t suspendpol_values[] = {
         { NULL, -1 }
 };
 
+/** Lookup table for cpu scaling governor overrides
+ */
+static const symbol_t governor_values[] = {
+        { "automatic",    GOVERNOR_UNSET       },
+        { "performance",  GOVERNOR_DEFAULT     },
+        { "interactive",  GOVERNOR_INTERACTIVE },
+        { NULL, -1 }
+};
+
+
 /** Lookup table for fake doubletap policies
  */
 static const symbol_t fake_doubletap_values[] = {
@@ -2189,6 +2199,32 @@ static void xmce_get_inhibit_mode(void)
 }
 
 /* ------------------------------------------------------------------------- *
+ * cpu scaling governor override
+ * ------------------------------------------------------------------------- */
+
+static void xmce_set_cpu_scaling_governor(const char *args)
+{
+        debugf("%s(%s)\n", __FUNCTION__, args);
+        int val = lookup(governor_values, args);
+        if( val < 0 ) {
+                errorf("%s: invalid cpu scaling governor value\n", args);
+                exit(EXIT_FAILURE);
+        }
+        mcetool_gconf_set_int(MCE_GCONF_CPU_SCALING_GOVERNOR_PATH, val);
+}
+
+/** Get current autosuspend policy from mce and print it out
+ */
+static void xmce_get_cpu_scaling_governor(void)
+{
+        gint        val = 0;
+        const char *txt = 0;
+        if( mcetool_gconf_get_int(MCE_GCONF_CPU_SCALING_GOVERNOR_PATH, &val) )
+                txt = rlookup(governor_values, val);
+        printf("%-40s %s \n", "CPU Scaling Governor:", txt ?: "unknown");
+}
+
+/* ------------------------------------------------------------------------- *
  * autosuspend on display blank policy
  * ------------------------------------------------------------------------- */
 
@@ -2366,6 +2402,7 @@ static void xmce_get_status(void)
         xmce_get_als_mode();
         xmce_get_dim_timeouts();
         xmce_get_suspend_policy();
+        xmce_get_cpu_scaling_governor();
 #ifdef ENABLE_DOUBLETAP_EMULATION
 	xmce_get_fake_doubletap();
 #endif
@@ -2491,6 +2528,10 @@ static const char usage_text[] =
 "  -s, --set-suspend-policy=MODE\n"
 "                                  set the autosuspend mode; valid modes are:\n"
 "                                    'enabled', 'disabled' and 'early'\n"
+"  -S, --set-cpu-scaling-governor=MODE\n"
+"                                  set the cpu scaling governor override; valid\n"
+"                                    modes are: 'automatic', 'performance',\n"
+"                                    'interactive'\n"
 #ifdef ENABLE_DOUBLETAP_EMULATION
 "  -i, --set-fake-doubletap=MODE\n"
 "                                  set the doubletap emulation mode; valid modes are:\n"
@@ -2551,7 +2592,7 @@ PROG_NAME" v"G_STRINGIFY(PRG_VERSION)"\n"
 
 // Unused short options left ....
 // - - - - - - - - - j - - m - o - q - - - u - w x - z
-// - - - - - - - - - - - - - - - - Q - S - - - W X - Z
+// - - - - - - - - - - - - - - - - Q - - - - - W X - Z
 
 const char OPT_S[] =
 "B::" // --block,
@@ -2591,6 +2632,7 @@ const char OPT_S[] =
 "M:"  // --set-doubletap-mode
 "O:"  // --set-dim-timeouts
 "s:"  // --set-suspend-policy
+"S:"  // --set-cpu-scaling-governor
 "t:"  // --set-tklock-noblank
 #ifdef ENABLE_DOUBLETAP_EMULATION
 "i:"  // --set-fake-doubletap
@@ -2637,6 +2679,7 @@ struct option const OPT_L[] =
         { "set-doubletap-mode",        1, 0, 'M' }, // xmce_set_doubletap_mode()
         { "set-dim-timeouts",          1, 0, 'O' }, // xmce_set_dim_timeouts()
         { "set-suspend-policy",        1, 0, 's' }, // xmce_set_suspend_policy()
+        { "set-cpu-scaling-governor",  1, 0, 's' }, // xmce_set_cpu_scaling_governor()
 #ifdef ENABLE_DOUBLETAP_EMULATION
         { "set-fake-doubletap",        1, 0, 'i' }, // xmce_set_fake_doubletap()
 #endif
@@ -2699,6 +2742,7 @@ int main(int argc, char **argv)
                 case 'E': xmce_set_low_power_mode(optarg);        break;
 
                 case 's': xmce_set_suspend_policy(optarg);        break;
+		case 'S': xmce_set_cpu_scaling_governor(optarg);  break;
 #ifdef ENABLE_DOUBLETAP_EMULATION
                 case 'i': xmce_set_fake_doubletap(optarg);        break;
 #endif
