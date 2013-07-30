@@ -3078,7 +3078,13 @@ static void governor_free_settings(governor_setting_t *settings)
 	}
 }
 
-/** Write string to an already existing file
+/** Write string to an already existing sysfs file
+ *
+ * Since the path originates from configuration data we make
+ * some checking in order not to write to an obviously bogus
+ * destination, namely:
+ * 1) the path must start with /sys/devices/system/cpu/
+ * 2) the opened file must have the same device id as /sys
  *
  * @param path file to write to
  * @param data text to write
@@ -3087,22 +3093,54 @@ static void governor_free_settings(governor_setting_t *settings)
  */
 static bool governor_write_data(const char *path, const char *data)
 {
-	bool res = false;
-	int todo = strlen(data);
-	int done = 0;
-	int  fd  = -1;
+	static const char subtree[] = "/sys/devices/system/cpu/";
 
-	/* NB: no O_CREAT & co, the file must already exist */
-	if( (fd = TEMP_FAILURE_RETRY(open(path, O_WRONLY))) == -1 ) {
-		mce_log(LL_WARN, "%s: failed to open for writing: %m", path);
+	bool  res  = false;
+	int   todo = strlen(data);
+	int   done = 0;
+	int   fd   = -1;
+	char *dest = 0;
+
+	struct stat st_sys, st_dest;
+
+	/* get canonicalised absolute path */
+	if( !(dest = realpath(path, 0)) ) {
+		mce_log(LL_WARN, "%s: failed to resolve real path: %m", path);
 		goto cleanup;
 	}
 
+	/* check that the destination has more or less expected path */
+	if( strncmp(dest, subtree, sizeof subtree - 1) ) {
+		mce_log(LL_WARN, "%s: not under %s", dest, subtree);
+		goto cleanup;
+	}
+
+	/* NB: no O_CREAT & co, the file must already exist */
+	if( (fd = TEMP_FAILURE_RETRY(open(dest, O_WRONLY))) == -1 ) {
+		mce_log(LL_WARN, "%s: failed to open for writing: %m", dest);
+		goto cleanup;
+	}
+
+	/* check that the file we managed to open actually resides in sysfs */
+	if( stat("/sys", &st_sys) == -1 ) {
+		mce_log(LL_WARN, "%s: failed to stat: %m", "/sys");
+		goto cleanup;
+	}
+	if( fstat(fd, &st_dest) == -1 ) {
+		mce_log(LL_WARN, "%s: failed to stat: %m", dest);
+		goto cleanup;
+	}
+	if( st_sys.st_dev != st_dest.st_dev ) {
+		mce_log(LL_WARN, "%s: not in sysfs", dest);
+		goto cleanup;
+	}
+
+	/* write the content */
 	errno = 0, done = TEMP_FAILURE_RETRY(write(fd, data, todo));
 
 	if( done != todo ) {
 		mce_log(LL_WARN, "%s: wrote %d of %d bytes: %m",
-			path, done, todo);
+			dest, done, todo);
 		goto cleanup;
 	}
 
@@ -3111,6 +3149,7 @@ static bool governor_write_data(const char *path, const char *data)
 cleanup:
 
 	if( fd != -1 ) TEMP_FAILURE_RETRY(close(fd));
+	free(dest);
 
 	return res;
 }
