@@ -2997,6 +2997,9 @@ static governor_setting_t *governor_default = 0;
 /** GOVERNOR_INTERACTIVE CPU scaling governor settings */
 static governor_setting_t *governor_interactive = 0;
 
+/** Limit number of files that can be modified via settings */
+#define GOVERNOR_MAX_SETTINGS 32
+
 /** Obtain arrays of settings from mce ini-files
  *
  * Use governor_free_settings() to release data returned from this
@@ -3018,13 +3021,19 @@ static governor_setting_t *governor_get_settings(const char *tag)
 	char sec[128], key[128], *path, *data;
 
 	snprintf(sec, sizeof sec, "CPUScalingGovernor%s", tag);
-	for( int i = 0; i < 32; ++i ) {
-		snprintf(key, sizeof key, "path%d", i+1);
+	for( size_t i = 0; ; ++i ) {
+		snprintf(key, sizeof key, "path%zd", i+1);
 		path = mce_conf_get_string(sec, key, 0);
 		if( !path || !*path )
 			break;
 
-		snprintf(key, sizeof key, "data%d", i+1);
+		if( i >= GOVERNOR_MAX_SETTINGS ) {
+			mce_log(LL_WARN, "rejecting excess settings;"
+			       " starting from: [%s] %s", sec, key);
+			break;
+		}
+
+		snprintf(key, sizeof key, "data%zd", i+1);
 		data = mce_conf_get_string(sec, key, 0);
 		if( !data )
 			break;
@@ -3037,7 +3046,8 @@ static governor_setting_t *governor_get_settings(const char *tag)
 		res[used].path = strdup(path);
 		res[used].data = strdup(data);
 		++used;
-		mce_log(LOG_DEBUG, "%s[%d]: echo > %s %s", sec, used, path, data);
+		mce_log(LOG_DEBUG, "%s[%zd]: echo > %s %s",
+			sec, used, path, data);
 	}
 
 	if( used == 0 ) {
