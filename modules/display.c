@@ -3017,7 +3017,7 @@ static governor_setting_t *governor_get_settings(const char *tag)
 
 	char sec[128], key[128], *path, *data;
 
-		snprintf(sec, sizeof sec, "CPUScalingGovernor%s", tag);
+	snprintf(sec, sizeof sec, "CPUScalingGovernor%s", tag);
 	for( int i = 0; i < 32; ++i ) {
 		snprintf(key, sizeof key, "path%d", i+1);
 		path = mce_conf_get_string(sec, key, 0);
