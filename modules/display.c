@@ -3194,8 +3194,9 @@ static void governor_rethink(void)
 	 * cpu scaling governor, except ... */
 	int governor_want = GOVERNOR_INTERACTIVE;
 
-	/* Use default when in ACTDEAD etc */
-	if( system_state != MCE_STATE_USER ) {
+	/* Use default when in transitional states */
+	if( system_state != MCE_STATE_USER &&
+	    system_state != MCE_STATE_ACTDEAD ) {
 		governor_want = GOVERNOR_DEFAULT;
 	}
 
