@@ -1,3 +1,9 @@
+mce (1.12.15) unstable; urgency=low
+
+  * [mce] Add cpu scaling governor policy
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 01 Aug 2013 06:43:52 +0300
+
 mce (1.12.14) unstable; urgency=low
 
  * [mce] Support frame buffer power control via mce-plugin-libhybris
