@@ -137,6 +137,8 @@
 #define MCE_GCONF_USE_LOW_POWER_MODE_PATH	MCE_GCONF_DISPLAY_PATH "/use_low_power_mode"
 /** Path to the use autosuspend GConf setting */
 #define MCE_GCONF_USE_AUTOSUSPEND_PATH		MCE_GCONF_DISPLAY_PATH "/autosuspend_policy"
+/** Path to the use cpu scaling governor GConf setting */
+#define MCE_GCONF_CPU_SCALING_GOVERNOR_PATH	MCE_GCONF_DISPLAY_PATH "/cpu_scaling_governor"
 
 /** Default display brightness on a scale from 1-5 */
 #define DEFAULT_DISP_BRIGHTNESS			3	/* 60% */
@@ -174,5 +176,13 @@
 #define DEFAULT_MAXIMUM_DISPLAY_BRIGHTNESS	127
 /** Default dim brightness, in percent */
 #define DEFAULT_DIM_BRIGHTNESS			3
+
+/** CPU scaling covernor policy states */
+enum
+{
+	GOVERNOR_UNSET,
+	GOVERNOR_DEFAULT,
+	GOVERNOR_INTERACTIVE,
+};
 
 #endif /* _DISPLAY_H_ */

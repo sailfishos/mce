@@ -120,8 +120,9 @@
 
 #ifdef ENABLE_WAKELOCKS
 # include "../libwakelock.h"		/* API for wakelocks */
-# include "../filewatcher.h"
 #endif
+
+#include "../filewatcher.h"
 
 #ifdef ENABLE_HYBRIS
 # include "../mce-hybris.h"
@@ -2958,15 +2959,14 @@ static gboolean display_orientation_change_dbus_cb(DBusMessage *const msg)
 	return status;
 }
 
-#ifdef ENABLE_WAKELOCKS
 /** Have we seen shutdown_ind signal from dsme */
 static gboolean shutdown_started = FALSE;
 
 /** Are we already unloading the module? */
-static gboolean suspend_unload = FALSE;
+static gboolean module_unloading = FALSE;
 
-/** Still waiting for desktop ready ?*/
-static guint suspend_timer_id = 0;
+/** Timer for waiting simulated desktop ready state */
+static guint desktop_ready_id = 0;
 
 /** Content change watcher for the init-done flag file */
 static filewatcher_t *init_done_watcher = 0;
@@ -2974,6 +2974,329 @@ static filewatcher_t *init_done_watcher = 0;
 /** Is the init-done flag file present in the file system */
 static gboolean init_done = FALSE;
 
+#ifdef ENABLE_CPU_GOVERNOR
+/** CPU scaling governor override; not enabled by default */
+static gint governor_conf = GOVERNOR_UNSET;
+
+/** GConf callback ID for cpu scaling governor changes */
+static guint governor_conf_id = 0;
+
+/** Content and where to write it */
+typedef struct governor_setting_t
+{
+	/** Path (or rather glob pattern) to file where to write */
+	char *path;
+
+	/** Data to write */
+	char *data;
+} governor_setting_t;
+
+/** GOVERNOR_DEFAULT CPU scaling governor settings */
+static governor_setting_t *governor_default = 0;
+
+/** GOVERNOR_INTERACTIVE CPU scaling governor settings */
+static governor_setting_t *governor_interactive = 0;
+
+/** Limit number of files that can be modified via settings */
+#define GOVERNOR_MAX_SETTINGS 32
+
+/** Obtain arrays of settings from mce ini-files
+ *
+ * Use governor_free_settings() to release data returned from this
+ * function.
+ *
+ * If CPU scaling governor is not defined in mce INI-files, an
+ * empty (=no-op) array of settings is returned.
+ *
+ * @param tag Name of CPU scaling governor state
+ *
+ * @return array of settings
+ */
+static governor_setting_t *governor_get_settings(const char *tag)
+{
+	governor_setting_t *res = 0;
+	size_t              have = 0;
+	size_t              used = 0;
+
+	char sec[128], key[128], *path, *data;
+
+	snprintf(sec, sizeof sec, "CPUScalingGovernor%s", tag);
+	for( size_t i = 0; ; ++i ) {
+		snprintf(key, sizeof key, "path%zd", i+1);
+		path = mce_conf_get_string(sec, key, 0);
+		if( !path || !*path )
+			break;
+
+		if( i >= GOVERNOR_MAX_SETTINGS ) {
+			mce_log(LL_WARN, "rejecting excess settings;"
+			       " starting from: [%s] %s", sec, key);
+			break;
+		}
+
+		snprintf(key, sizeof key, "data%zd", i+1);
+		data = mce_conf_get_string(sec, key, 0);
+		if( !data )
+			break;
+
+		if( used == have ) {
+			have += 8;
+			res = realloc(res, have * sizeof *res);
+		}
+
+		res[used].path = strdup(path);
+		res[used].data = strdup(data);
+		++used;
+		mce_log(LOG_DEBUG, "%s[%zd]: echo > %s %s",
+			sec, used, path, data);
+	}
+
+	if( used == 0 ) {
+		mce_log(LL_WARN, "No items defined for: %s", sec);
+	}
+
+	have = used + 1;
+	res = realloc(res, have * sizeof *res);
+
+	res[used].path = 0;
+	res[used].data = 0;
+
+	return res;
+}
+
+/** Release settings array obtained with governor_get_settings()
+ *
+ * @param settings array of settings, or NULL
+ */
+static void governor_free_settings(governor_setting_t *settings)
+{
+	if( settings ) {
+		for( size_t i = 0; settings[i].path; ++i ) {
+			free(settings[i].path);
+			free(settings[i].data);
+		}
+		free(settings);
+	}
+}
+
+/** Write string to an already existing sysfs file
+ *
+ * Since the path originates from configuration data we make
+ * some checking in order not to write to an obviously bogus
+ * destination, namely:
+ * 1) the path must start with /sys/devices/system/cpu/
+ * 2) the opened file must have the same device id as /sys
+ *
+ * @param path file to write to
+ * @param data text to write
+ *
+ * @returns true on success, false on failure
+ */
+static bool governor_write_data(const char *path, const char *data)
+{
+	static const char subtree[] = "/sys/devices/system/cpu/";
+
+	bool  res  = false;
+	int   todo = strlen(data);
+	int   done = 0;
+	int   fd   = -1;
+	char *dest = 0;
+
+	struct stat st_sys, st_dest;
+
+	/* get canonicalised absolute path */
+	if( !(dest = realpath(path, 0)) ) {
+		mce_log(LL_WARN, "%s: failed to resolve real path: %m", path);
+		goto cleanup;
+	}
+
+	/* check that the destination has more or less expected path */
+	if( strncmp(dest, subtree, sizeof subtree - 1) ) {
+		mce_log(LL_WARN, "%s: not under %s", dest, subtree);
+		goto cleanup;
+	}
+
+	/* NB: no O_CREAT & co, the file must already exist */
+	if( (fd = TEMP_FAILURE_RETRY(open(dest, O_WRONLY))) == -1 ) {
+		mce_log(LL_WARN, "%s: failed to open for writing: %m", dest);
+		goto cleanup;
+	}
+
+	/* check that the file we managed to open actually resides in sysfs */
+	if( stat("/sys", &st_sys) == -1 ) {
+		mce_log(LL_WARN, "%s: failed to stat: %m", "/sys");
+		goto cleanup;
+	}
+	if( fstat(fd, &st_dest) == -1 ) {
+		mce_log(LL_WARN, "%s: failed to stat: %m", dest);
+		goto cleanup;
+	}
+	if( st_sys.st_dev != st_dest.st_dev ) {
+		mce_log(LL_WARN, "%s: not in sysfs", dest);
+		goto cleanup;
+	}
+
+	/* write the content */
+	errno = 0, done = TEMP_FAILURE_RETRY(write(fd, data, todo));
+
+	if( done != todo ) {
+		mce_log(LL_WARN, "%s: wrote %d of %d bytes: %m",
+			dest, done, todo);
+		goto cleanup;
+	}
+
+	res = true;
+
+cleanup:
+
+	if( fd != -1 ) TEMP_FAILURE_RETRY(close(fd));
+	free(dest);
+
+	return res;
+}
+
+/** Write cpu scaling governor parameter to sysfs
+ *
+ * @param setting Content and where to write it
+ */
+static void governor_apply_setting(const governor_setting_t *setting)
+{
+	glob_t gb;
+
+	memset(&gb, 0, sizeof gb);
+
+	switch( glob(setting->path, 0, 0, &gb) )
+	{
+	case 0:
+		// success
+		break;
+
+	case GLOB_NOMATCH:
+		mce_log(LL_WARN, "%s: no matches found", setting->path);
+		goto cleanup;
+
+	case GLOB_NOSPACE:
+	case GLOB_ABORTED:
+	default:
+		mce_log(LL_ERR, "%s: glob() failed", setting->path);
+		goto cleanup;
+	}
+
+	for( size_t i = 0; i < gb.gl_pathc; ++i ) {
+		if( governor_write_data(gb.gl_pathv[i], setting->data) ) {
+			mce_log(LL_DEBUG, "wrote \"%s\" to: %s",
+				setting->data,  gb.gl_pathv[i]);
+		}
+	}
+
+cleanup:
+	globfree(&gb);
+}
+
+/** Switch cpu scaling governor state
+ *
+ * @param state GOVERNOR_DEFAULT, GOVERNOR_DEFAULT, ...
+ */
+static void governor_set_state(int state)
+{
+	const governor_setting_t *settings = 0;
+
+	switch( state )
+	{
+	case GOVERNOR_DEFAULT:
+		settings = governor_default;
+		break;
+	case GOVERNOR_INTERACTIVE:
+		settings = governor_interactive;
+		break;
+
+	default: break;
+	}
+
+	if( !settings ) {
+		mce_log(LL_WARN, "governor state=%d has no mapping", state);
+	}
+	else {
+		for( ; settings->path; ++settings ) {
+			governor_apply_setting(settings);
+		}
+	}
+}
+
+/** Evaluate and apply CPU scaling governor policy */
+static void governor_rethink(void)
+{
+	static int governor_have = GOVERNOR_UNSET;
+
+	system_state_t system_state = datapipe_get_gint(system_state_pipe);
+
+	/* By default we want to use "interactive"
+	 * cpu scaling governor, except ... */
+	int governor_want = GOVERNOR_INTERACTIVE;
+
+	/* Use default when in transitional states */
+	if( system_state != MCE_STATE_USER &&
+	    system_state != MCE_STATE_ACTDEAD ) {
+		governor_want = GOVERNOR_DEFAULT;
+	}
+
+	/* Use default during bootup */
+	if( desktop_ready_id || !init_done ) {
+		governor_want = GOVERNOR_DEFAULT;
+	}
+
+	/* Use default during shutdown */
+	if( shutdown_started  ) {
+		governor_want = GOVERNOR_DEFAULT;
+	}
+
+	/* Restore default on unload / mce exit */
+	if( module_unloading ) {
+		governor_want = GOVERNOR_DEFAULT;
+	}
+
+	/* Config override has been set */
+	if( governor_conf != GOVERNOR_UNSET ) {
+		governor_want = governor_conf;
+	}
+
+	/* Apply new policy state */
+	if( governor_have != governor_want ) {
+		mce_log(LOG_NOTICE, "state: %d -> %d",
+			governor_have,  governor_want);
+		governor_set_state(governor_want);
+		governor_have = governor_want;
+	}
+}
+
+/** Callback for handling changes to cpu scaling governor configuration
+ *
+ * @param client (not used)
+ * @param id     (not used)
+ * @param entry  GConf entry that changed
+ * @param data   (not used)
+ */
+static void governor_conf_cb(GConfClient *const client, const guint id,
+			     GConfEntry *const entry, gpointer const data)
+{
+	(void)client; (void)id; (void)data;
+
+	gint policy = GOVERNOR_UNSET;
+	const GConfValue *value = 0;
+
+	if( entry && (value = gconf_entry_get_value(entry)) ) {
+		if( value->type == GCONF_VALUE_INT )
+			policy = gconf_value_get_int(value);
+	}
+	if( governor_conf != policy ) {
+		mce_log(LL_NOTICE, "cpu scaling governor change: %d -> %d",
+			governor_conf, policy);
+		governor_conf = policy;
+		governor_rethink();
+	}
+}
+#endif /* ENABLE_CPU_GOVERNOR */
+
+#ifdef ENABLE_WAKELOCKS
 /** Automatic suspend policy modes */
 enum
 {
@@ -2995,7 +3318,6 @@ static gint suspend_policy = SUSPEND_POLICY_DEFAULT;
 
 /** GConf callback ID for automatic suspend policy changes */
 static guint suspend_policy_id = 0;
-
 
 /** Make suspend policy decision
  *
@@ -3039,7 +3361,7 @@ static void suspend_rethink(void)
 	}
 
 	/* no late suspend during bootup */
-	if( suspend_timer_id || !init_done ) {
+	if( desktop_ready_id || !init_done ) {
 		wakelock_want = 1;
 	}
 
@@ -3049,7 +3371,7 @@ static void suspend_rethink(void)
 	}
 
 	/* no more suspend at module unload */
-	if( suspend_unload ) {
+	if( module_unloading ) {
 		suspend_want  = 0;
 		wakelock_want = 0;
 	}
@@ -3067,6 +3389,12 @@ static void suspend_rethink(void)
 	default:
 	case SUSPEND_POLICY_ENABLED:
 		break;
+	}
+
+	if( wakelock_have != wakelock_want || suspend_have != suspend_want ) {
+		mce_log(LL_NOTICE, "power state: %s",
+			!suspend_want ? "no-suspend" :
+			wakelock_want ? "early-suspend" : "late-suspend");
 	}
 
 	/* act if decision has changed */
@@ -3112,6 +3440,7 @@ static void suspend_policy_cb(GConfClient *const client, const guint id,
 		suspend_rethink();
 	}
 }
+#endif /* ENABLE_WAKELOCKS */
 
 /** D-Bus callback for the shutdown notification signal
  *
@@ -3129,20 +3458,31 @@ static gboolean shutdown_dbus_cb(DBusMessage *const msg)
 	shutdown_started = TRUE;
 
 	/* re-evaluate suspend policy */
+#ifdef ENABLE_WAKELOCKS
 	suspend_rethink();
+#endif
+
+#ifdef ENABLE_CPU_GOVERNOR
+	governor_rethink();
+#endif
 
 	return TRUE;
 }
 
 /** Simulated "desktop ready" via uptime based timer
  */
-static gboolean suspend_timer_cb(gpointer user_data)
+static gboolean desktop_ready_cb(gpointer user_data)
 {
 	(void)user_data;
-	if( suspend_timer_id ) {
-		suspend_timer_id = 0;
-		mce_log(LL_NOTICE, "suspend delay ended");
+	if( desktop_ready_id ) {
+		desktop_ready_id = 0;
+		mce_log(LL_NOTICE, "desktop ready delay ended");
+#ifdef ENABLE_WAKELOCKS
 		suspend_rethink();
+#endif
+#ifdef ENABLE_CPU_GOVERNOR
+		governor_rethink();
+#endif
 	}
 	return FALSE;
 }
@@ -3168,30 +3508,18 @@ static void init_done_changed_cb(const char *path,
 		init_done = flag;
 		mce_log(LL_NOTICE, "init_done -> %s",
 			init_done ? "true" : "false");
+#ifdef ENABLE_WAKELOCKS
 		suspend_rethink();
+#endif
+#ifdef ENABLE_CPU_GOVERNOR
+		governor_rethink();
+#endif
 	}
 }
 
-
-/** Cleanup suspend policy
+/** Start tracking of init_done state
  */
-static void suspend_quit(void)
-{
-	suspend_unload = TRUE;
-
-	filewatcher_delete(init_done_watcher), init_done_watcher = 0;
-
-	if( suspend_timer_id ) {
-		g_source_remove(suspend_timer_id);
-		suspend_timer_id = 0;
-	}
-
-	suspend_rethink();
-}
-
-/** Initialize suspend policy
- */
-static void suspend_init(void)
+static void init_done_start_tracking(void)
 {
 	time_t uptime = 0;  // uptime in seconds
 	time_t ready  = 60; // desktop ready at
@@ -3218,14 +3546,25 @@ static void suspend_init(void)
 	}
 
 	mce_log(LL_NOTICE, "suspend delay %d seconds", (int)delay);
-	suspend_timer_id = g_timeout_add_seconds(delay, suspend_timer_cb, 0);
+	desktop_ready_id = g_timeout_add_seconds(delay, desktop_ready_cb, 0);
 
 	if( init_done_watcher ) {
 		/* evaluate the initial state of init-done flag file */
 		filewatcher_force_trigger(init_done_watcher);
 	}
 }
-#endif /* ENABLE_WAKELOCKS */
+
+/** Stop tracking of init_done state
+ */
+static void init_done_stop_tracking(void)
+{
+	filewatcher_delete(init_done_watcher), init_done_watcher = 0;
+
+	if( desktop_ready_id ) {
+		g_source_remove(desktop_ready_id);
+		desktop_ready_id = 0;
+	}
+}
 
 /**
  * Filter display state changes
@@ -3560,14 +3899,17 @@ static void system_state_trigger(gconstpointer data)
 		break;
 	}
 
-#ifdef ENABLE_WAKELOCKS
 	/* Clear shutting down flag on re-entry to USER state */
 	if( system_state == MCE_STATE_USER && shutdown_started ) {
 		shutdown_started = FALSE;
 		mce_log(LL_NOTICE, "Shutdown canceled");
 	}
+#ifdef ENABLE_WAKELOCKS
 	/* re-evaluate suspend policy */
 	suspend_rethink();
+#endif
+#ifdef ENABLE_CPU_GOVERNOR
+	governor_rethink();
 #endif
 
 	return;
@@ -3635,6 +3977,23 @@ const gchar *g_module_check_init(GModule *module)
 	/* Initialise the display type and the relevant paths */
 	(void)get_display_type();
 
+#ifdef ENABLE_CPU_GOVERNOR
+	/* Get CPU scaling governor settings from INI-files */
+	governor_default = governor_get_settings("Default");
+	governor_interactive = governor_get_settings("Interactive");
+
+	/* Get cpu scaling governor configuration & track changes */
+	mce_gconf_get_int(MCE_GCONF_CPU_SCALING_GOVERNOR_PATH,
+			  &governor_conf);
+	mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
+			       MCE_GCONF_CPU_SCALING_GOVERNOR_PATH,
+			       governor_conf_cb,
+			       &governor_conf_id);
+
+	/* Evaluate initial state */
+	governor_rethink();
+#endif
+
 #ifdef ENABLE_WAKELOCKS
 	/* Get autosuspend policy configuration & track changes */
 	mce_gconf_get_int(MCE_GCONF_USE_AUTOSUSPEND_PATH,
@@ -3644,9 +4003,11 @@ const gchar *g_module_check_init(GModule *module)
 			       suspend_policy_cb,
 			       &suspend_policy_id);
 
-	/* Initialize suspend policy evaluator */
-	suspend_init();
+	/* Evaluate initial state */
+	suspend_rethink();
 #endif
+	/* Start waiting for init_done state */
+	init_done_start_tracking();
 
 	if ((submode & MCE_TRANSITION_SUBMODE) != 0) {
 		/* Disable bootup submode. It causes tklock problems if we don't */
@@ -3779,7 +4140,6 @@ const gchar *g_module_check_init(GModule *module)
 				 desktop_startup_dbus_cb) == NULL)
 		goto EXIT;
 
-#ifdef ENABLE_WAKELOCKS
 	/* System shutdown signal */
 	if (mce_dbus_handler_add("com.nokia.dsme.signal",
 				 "shutdown_ind",
@@ -3787,7 +4147,6 @@ const gchar *g_module_check_init(GModule *module)
 				 DBUS_MESSAGE_TYPE_SIGNAL,
 				 shutdown_dbus_cb) == NULL)
 		goto EXIT;
-#endif
 
 	/* Display orientation change signal */
 	if (mce_dbus_handler_add(ORIENTATION_SIGNAL_IF,
@@ -3997,14 +4356,36 @@ void g_module_unload(GModule *module)
 {
 	(void)module;
 
+	/* Mark down that we are unloading */
+	module_unloading = TRUE;
+
+	/* Stop waiting for init_done state */
+	init_done_stop_tracking();
+
 #ifdef ENABLE_WAKELOCKS
 	/* Remove suspend policy change notifier */
 	if( suspend_policy_id ) {
 		mce_gconf_notifier_remove(GINT_TO_POINTER(suspend_policy_id), 0);
+		suspend_policy_id = 0;
 	}
 
-	/* Cleanup suspend policy evaluator */
-	suspend_quit();
+	/* Disable autosuspend */
+	suspend_rethink();
+#endif
+
+#ifdef ENABLE_CPU_GOVERNOR
+	/* Remove cpu scaling governor change notifier */
+	if( governor_conf_id ) {
+		mce_gconf_notifier_remove(GINT_TO_POINTER(governor_conf_id), 0);
+		governor_conf_id = 0;
+	}
+
+	/* Switch back to defaults */
+	governor_rethink();
+
+	/* Release CPU scaling governor settings from INI-files */
+	governor_free_settings(governor_default), governor_default = 0;
+	governor_free_settings(governor_interactive), governor_interactive = 0;
 #endif
 
 	/* Write display on timers to CAL */

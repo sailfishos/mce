@@ -1301,6 +1301,12 @@ static const setting_t gconf_defaults[] =
     .def  = "1",
   },
   {
+    // MCE_GCONF_CPU_SCALING_GOVERNOR_PATH @ modules/display.h
+    .key  = "/system/osso/dsm/display/cpu_scaling_governor",
+    .type = "i",
+    .def  = "0", // = GOVERNOR_UNSET = no override
+  },
+  {
     // MCE_GCONF_TK_AUTO_BLANK_DISABLE_PATH @ tklock.h
     .key  = "/system/osso/dsm/locks/tklock_blank_disable",
     .type = "i",
