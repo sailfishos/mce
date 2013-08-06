@@ -1214,6 +1214,13 @@ static const symbol_t governor_values[] = {
         { NULL, -1 }
 };
 
+/** Lookup table for never blank options
+ */
+static const symbol_t never_blank_values[] = {
+        { "enabled",   1 },
+        { "disabled",  0 },
+        { NULL, -1 }
+};
 
 /** Lookup table for fake doubletap policies
  */
@@ -2224,6 +2231,31 @@ static void xmce_get_cpu_scaling_governor(void)
         printf("%-40s %s \n", "CPU Scaling Governor:", txt ?: "unknown");
 }
 
+
+/* ------------------------------------------------------------------------- *
+ * never blank
+ * ------------------------------------------------------------------------- */
+
+static void xmce_set_never_blank(const char *args)
+{
+        debugf("%s(%s)\n", __FUNCTION__, args);
+        int val = lookup(never_blank_values, args);
+        if( val < 0 ) {
+                errorf("%s: invalid never blank value\n", args);
+                exit(EXIT_FAILURE);
+        }
+        mcetool_gconf_set_int(MCE_GCONF_DISPLAY_NEVER_BLANK_PATH, val);
+}
+
+static void xmce_get_never_blank(void)
+{
+        gint        val = 0;
+        const char *txt = 0;
+        if( mcetool_gconf_get_int(MCE_GCONF_DISPLAY_NEVER_BLANK_PATH, &val) )
+                txt = rlookup(never_blank_values, val);
+        printf("%-40s %s \n", "Display never blank:", txt ?: "unknown");
+}
+
 /* ------------------------------------------------------------------------- *
  * autosuspend on display blank policy
  * ------------------------------------------------------------------------- */
@@ -2388,6 +2420,7 @@ static void xmce_get_status(void)
         xmce_get_dim_timeout();
         xmce_get_adaptive_dimming_mode();
         xmce_get_adaptive_dimming_time();
+        xmce_get_never_blank();
         xmce_get_blank_timeout();
         xmce_get_inhibit_mode();
         xmce_get_keyboard_backlight_state();
@@ -2480,6 +2513,9 @@ static const char usage_text[] =
 "                                  set the adaptive dimming threshold\n"
 "  -H, --set-blank-timeout=SECS\n"
 "                                  set the automatic blanking timeout\n"
+"  -j,  --set-never-blank=MODE\n"
+"                                  set never blank mode; valid modes are:\n"
+"                                    'disabled', 'enabled'\n"
 "  -K, --set-autolock-mode=MODE\n"
 "                                  set the autolock mode; valid modes are:\n"
 "                                    'enabled' and 'disabled'\n"
@@ -2591,7 +2627,7 @@ PROG_NAME" v"G_STRINGIFY(PRG_VERSION)"\n"
 ;
 
 // Unused short options left ....
-// - - - - - - - - - j - - m - o - q - - - u - w x - z
+// - - - - - - - - - - - - m - o - q - - - u - w x - z
 // - - - - - - - - - - - - - - - - Q - - - - - W X - Z
 
 const char OPT_S[] =
@@ -2627,6 +2663,7 @@ const char OPT_S[] =
 "g:"  // --set-als-mode
 "G:"  // --set-dim-timeout
 "H:"  // --set-blank-timeout
+"j:"  // --set-never-blank
 "J:"  // --set-adaptive-dimming-time
 "K:"  // --set-autolock-mode
 "M:"  // --set-doubletap-mode
@@ -2674,6 +2711,7 @@ struct option const OPT_L[] =
         { "set-low-power-mode",        1, 0, 'E' }, // xmce_set_low_power_mode()
         { "set-als-mode",              1, 0, 'g' }, // xmce_set_als_mode()
         { "set-dim-timeout",           1, 0, 'G' }, // xmce_set_dim_timeout()
+        { "set-never-blank",           1, 0, 'j' }, // xmce_set_never_blank()
         { "set-blank-timeout",         1, 0, 'H' }, // xmce_set_blank_timeout()
         { "set-autolock-mode",         1, 0, 'K' }, // xmce_set_autolock_mode()
         { "set-doubletap-mode",        1, 0, 'M' }, // xmce_set_doubletap_mode()
@@ -2725,6 +2763,7 @@ int main(int argc, char **argv)
                 case 'f': xmce_set_adaptive_dimming_mode(optarg); break;
                 case 'J': xmce_set_adaptive_dimming_time(optarg); break;
 
+                case 'j': xmce_set_never_blank(optarg);           break;
                 case 'H': xmce_set_blank_timeout(optarg);         break;
 
                 case 'K': xmce_set_autolock_mode(optarg);         break;

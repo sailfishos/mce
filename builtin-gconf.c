@@ -1187,6 +1187,12 @@ static const setting_t gconf_defaults[] =
     .def  = "3",
   },
   {
+    // MCE_GCONF_DISPLAY_NEVER_BLANK_PATH @ modules/display.h
+    .key  = "/system/osso/dsm/display/display_never_blank",
+    .type = "i",
+    .def  = "0",
+  },
+  {
     // MCE_GCONF_DISPLAY_BRIGHTNESS_PATH @ modules/display.h
     .key  = "/system/osso/dsm/display/display_brightness",
     .type = "i",

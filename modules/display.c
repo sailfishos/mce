@@ -199,10 +199,15 @@ static guint disp_dim_timeout_gconf_cb_id = 0;
 
 /** Display blanking timeout setting */
 static gint disp_blank_timeout = DEFAULT_BLANK_TIMEOUT;
+/** Never blank display setting */
+static gint disp_never_blank = 0;
+
 /** Display blank timeout setting when low power mode is supported */
 static gint disp_lpm_blank_timeout = DEFAULT_LPM_BLANK_TIMEOUT;
 /** GConf callback ID for display blanking timeout setting */
 static guint disp_blank_timeout_gconf_cb_id = 0;
+/** GConf callback ID for display never blank setting */
+static guint disp_never_blank_gconf_cb_id = 0;
 
 /** Use low power mode setting */
 static gboolean use_low_power_mode = FALSE;
@@ -2269,6 +2274,9 @@ static void display_gconf_cb(GConfClient *const gcc, const guint id,
 
 		/* Update blank prevent */
 		update_blanking_inhibit(FALSE);
+	} else if( id == disp_never_blank_gconf_cb_id ) {
+		disp_never_blank = gconf_value_get_int(gcv);
+		mce_log(LL_NOTICE, "never_blank = %d", disp_never_blank);
 	} else {
 		mce_log(LL_WARN,
 			"Spurious GConf value received; confused!");
@@ -3582,6 +3590,11 @@ static gpointer display_state_filter(gpointer data)
 	submode_t submode = mce_get_submode_int32();
 	gpointer new_data;
 
+	if( disp_never_blank ) {
+	  display_state = MCE_DISPLAY_ON;
+	  goto UPDATE;
+	}
+
 	/* Ignore display on requests during transition to shutdown
          * and reboot, when in acting dead and when system state is unknown
 	 */
@@ -3615,7 +3628,7 @@ static gpointer display_state_filter(gpointer data)
 		    (system_state == MCE_STATE_USER))
 			display_state = MCE_DISPLAY_LPM_ON;
 	}
-
+UPDATE:
 	new_data = GINT_TO_POINTER(display_state);
 	cached_display_state = display_state;
 
@@ -4223,6 +4236,15 @@ const gchar *g_module_check_init(GModule *module)
 				   display_gconf_cb,
 				   &disp_blank_timeout_gconf_cb_id) == FALSE)
 		goto EXIT;
+
+	/* Never blank */
+	/* Since we've set a default, error handling is unnecessary */
+	mce_gconf_get_int(MCE_GCONF_DISPLAY_NEVER_BLANK_PATH,
+			  &disp_never_blank);
+	mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
+			       MCE_GCONF_DISPLAY_NEVER_BLANK_PATH,
+			       display_gconf_cb,
+			       &disp_never_blank_gconf_cb_id);
 
 	/* Use adaptive display dim timeout */
 	/* Since we've set a default, error handling is unnecessary */

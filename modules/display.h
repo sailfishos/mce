@@ -127,6 +127,8 @@
 #define MCE_GCONF_DISPLAY_DIM_TIMEOUT_PATH	MCE_GCONF_DISPLAY_PATH "/display_dim_timeout"
 /** Path to the blank timeout GConf setting */
 #define MCE_GCONF_DISPLAY_BLANK_TIMEOUT_PATH	MCE_GCONF_DISPLAY_PATH "/display_blank_timeout"
+/** Path to the never blank GConf setting */
+#define MCE_GCONF_DISPLAY_NEVER_BLANK_PATH	MCE_GCONF_DISPLAY_PATH "/display_never_blank"
 /** Path to the adaptive display dimming GConf setting */
 #define MCE_GCONF_DISPLAY_ADAPTIVE_DIMMING_PATH	MCE_GCONF_DISPLAY_PATH "/use_adaptive_display_dimming"
 /** Path to the adaptive display threshold timeout GConf setting */
