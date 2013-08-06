@@ -2438,19 +2438,26 @@ static void xmce_set_demo_mode(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         if( !strcmp(args, "on") ) {
-                // mcetool --unblank-screen --set-inhibit-mode=stay-on --set-tklock-mode=unlocked
+                // mcetool --unblank-screen
+                //         --set-inhibit-mode=stay-on
+                //         --set-tklock-mode=unlocked
+                //         --set-tklock-blank=disabled
                 xmce_set_display_state("on");
                 xmce_set_inhibit_mode("stay-on");
                 xmce_set_tklock_mode("unlocked");
+                xmce_set_tklock_blank("disabled");
         }
         else if( !strcmp(args, "off")) {
                 // mcetool --unblank-screen --dim-screen --blank-screen
-                //         --set-inhibit-mode=disabled --set-tklock-mode=locked
+                //         --set-inhibit-mode=disabled
+                //         --set-tklock-mode=locked
+                //         --set-tklock-blank=enabled
                 xmce_set_display_state("on");
                 xmce_set_display_state("dim");
                 xmce_set_display_state("off");
                 xmce_set_inhibit_mode("disabled");
                 xmce_set_tklock_mode("locked");
+                xmce_set_tklock_blank("enabled");
         }
         else {
                 errorf("%s: invalid demo mode value\n", args);
