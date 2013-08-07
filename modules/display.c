@@ -22,6 +22,8 @@
 #include <gmodule.h>
 #include <glib/gstdio.h>		/* g_access() */
 
+#include <sys/time.h>
+#include <pthread.h>
 #include <stdlib.h>
 #include <glob.h>
 #include <poll.h>
@@ -2286,6 +2288,9 @@ EXIT:
 	return;
 }
 
+/** Last display state that was broadcast as dbus signal */
+static display_state_t signaled_display_state = MCE_DISPLAY_UNDEF;
+
 /**
  * Send a display status reply or signal
  *
@@ -2352,8 +2357,272 @@ static gboolean send_display_status(DBusMessage *const method_call)
 	/* Send the message */
 	status = dbus_send_message(msg);
 
+	if( status && !method_call ) {
+	  signaled_display_state = display_state;
+	}
 EXIT:
 	return status;
+}
+
+
+
+/** Get monotonic time as struct timeval */
+static void monotime(struct timeval *tv)
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	TIMESPEC_TO_TIMEVAL(tv, &ts);
+}
+
+/** State information for frame buffer resume waiting */
+typedef struct
+{
+	/** worker thread id */
+	pthread_t thread;
+
+	/** worker thread done flag */
+	bool finished;
+
+	/** sysfs input file path */
+	const char *wake_path;
+
+	/** sysfs input file descriptor */
+	int wake_fd;
+
+	/** write end of wakeup mainloop pipe */
+	int  pipe_fd;
+
+	/** pipe reader io watch id */
+	guint     pipe_id;
+
+	/** start of wait time stamp */
+	struct timeval t0;
+
+	/** end of wait time stamp */
+	struct timeval  t1;
+} waitfb_t;
+
+/** Wait for fb resume thread
+ *
+ * Does a blocked read from sysfs input, wakes mainloop and then exits.
+ *
+ * @param aptr state data (as void pointer)
+ *
+ * @return 0
+ */
+static void *waitfb_thread(void *aptr)
+{
+	waitfb_t *self = aptr;
+
+	/* allow quick and dirty cancellation */
+	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, 0);
+	pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, 0);
+
+	/* block in sysfs read */
+	char tmp[32];
+	TEMP_FAILURE_RETRY(read(self->wake_fd, tmp, sizeof tmp));
+
+	/* wake mainloop by writing to pipe */
+	TEMP_FAILURE_RETRY(write(self->pipe_fd, "X", 1));
+
+	/* mark thread done and exit */
+	self->finished = true;
+	return 0;
+}
+
+/** Release all dynamic resources related to fb resume waiting
+ *
+ * @param self state data
+ */
+static void waitfb_cancel(waitfb_t *self)
+{
+	/* cancel worker thread */
+	if( self->thread && !self->finished ) {
+		mce_log(LL_DEBUG, "stopping waitfb thread");
+		if( pthread_cancel(self->thread) != 0 ) {
+			mce_log(LL_ERR, "failed to stop waitfb thread");
+		}
+		else {
+			void *status = 0;
+			pthread_join(self->thread, &status);
+			mce_log(LL_DEBUG, "thread stopped, status = %p", status);
+		}
+	}
+	self->thread  = 0;
+
+	/* remove pipe input io watch */
+	if( self->pipe_id ) {
+		mce_log(LL_DEBUG, "remove pipe input watch");
+		g_source_remove(self->pipe_id), self->pipe_id = 0;
+	}
+
+	/* close pipe output fd */
+	if( self->pipe_fd != -1) {
+		mce_log(LL_DEBUG, "close pipe write fd");
+		close(self->pipe_fd), self->pipe_fd = -1;
+	}
+
+	/* close sysfs input fd */
+	if( self->wake_fd != -1 ) {
+		mce_log(LL_DEBUG, "close %s", self->wake_path);
+		close(self->wake_fd), self->wake_fd = -1;
+	}
+}
+
+/** Input watch callback for frame buffer resume waiting
+ *
+ * Gets triggered when worker thread writes to pipe
+ *
+ * @param chn  (not used)
+ * @param cnd  (not used)
+ * @param aptr state data (as void pointer)
+ *
+ * @return FALSE (to disable the input watch)
+ */
+static gboolean waitfb_stopped_cb(GIOChannel *chn,
+				  GIOCondition cnd,
+				  gpointer aptr)
+{
+	// we just want the wakeup
+	(void)chn; (void)cnd;
+
+	waitfb_t *self = aptr;
+
+	if( self->pipe_id ) {
+		/* mark input watch as removed */
+		self->pipe_id = 0;
+
+		/* join thread without cancelling it */
+		mce_log(LL_DEBUG, "wakeup, wait for worker ...");
+		void *status = 0;
+		pthread_join(self->thread, &status);
+		mce_log(LL_DEBUG, "... worker exited");
+		self->thread = 0;
+
+		/* clean up the rest too */
+		waitfb_cancel(self);
+
+		/* log waiting time */
+		if( mce_log_p(LL_NOTICE) ) {
+			struct timeval t;
+			monotime(&self->t1);
+			timersub(&self->t1, &self->t0, &t);
+			mce_log(LL_NOTICE, "delay = %ld.%06ld seconds",
+				(long)t.tv_sec,(long)t.tv_usec);
+		}
+
+		/* broadcast display state change */
+		send_display_status(0);
+	}
+
+	return FALSE;
+}
+
+/** Start delayed display state change broadcast
+ *
+ * @param self state data
+ *
+ * @return TRUE if waiting was initiated succesfully, FALSE otherwise
+ */
+static gboolean waitfb_start(waitfb_t *self)
+{
+	gboolean    res    = FALSE;
+	GIOChannel *chn    = 0;
+	int         pfd[2] = {-1, -1};
+
+	waitfb_cancel(self);
+
+	monotime(&self->t0);
+
+	if( (self->wake_fd = open(self->wake_path, O_RDONLY)) == -1 ) {
+		/* silently fail if sysfs wait file is not present as
+		 * send_display_status_signal() will default to sending
+		 * the signal immediately */
+		if( errno != ENOENT ) {
+			mce_log(LL_ERR, "%s: %m", self->wake_path);
+		}
+		goto EXIT;
+	}
+	if( pipe2(pfd, O_CLOEXEC) == -1 ) {
+		mce_log(LL_ERR, "pipe: %m");
+		goto EXIT;
+	}
+
+	self->pipe_fd = pfd[1], pfd[1] = -1;
+
+	if( !(chn = g_io_channel_unix_new(pfd[0])) ) {
+		goto EXIT;
+	}
+	self->pipe_id = g_io_add_watch(chn, G_IO_IN, waitfb_stopped_cb, self);
+	if( !self->pipe_id ) {
+		goto EXIT;
+	}
+	g_io_channel_set_close_on_unref(chn, TRUE), pfd[0] = -1;
+
+
+	self->finished = false;
+
+	if( pthread_create(&self->thread, 0, waitfb_thread, self) ) {
+		mce_log(LL_ERR, "failed to create waitfb thread");
+		goto EXIT;
+	}
+
+	res = TRUE;
+
+EXIT:
+	if( chn != 0 ) g_io_channel_unref(chn);
+	if( pfd[1] != -1 ) close(pfd[1]);
+	if( pfd[0] != -1 ) close(pfd[0]);
+
+	/* all or nothing */
+	if( !res ) waitfb_cancel(self);
+
+	return res;
+}
+
+/** State information for wait for fb resume thread */
+static waitfb_t waitfb =
+{
+	.thread    = 0,
+	.finished  = false,
+	.wake_path = "/sys/power/wait_for_fb_wake",
+	.wake_fd   = -1,
+	.pipe_fd   = -1,
+	.pipe_id   = 0,
+};
+
+/** Send display status signal
+ *
+ * If the previous state was MCE_DISPLAY_OFF, the signal sending
+ * is delayed until resume from suspend has finished. This allows UI
+ * applications to use the signal as ready-for-rendering trigger.
+ *
+ * Because the frame buffer readines can be evaluated only by making
+ * a blocking read, a worker thread is used for this purpose. When
+ * the read returns, the worker signals mainloop via pipe before
+ * exiting.
+ */
+static gboolean send_display_status_signal(void)
+{
+	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+
+	waitfb_cancel(&waitfb);
+
+	if( display_state == signaled_display_state ) {
+		/* Nothing to do */
+		return TRUE;
+	}
+
+	if( signaled_display_state == MCE_DISPLAY_OFF ) {
+		if( waitfb_start(&waitfb) ) {
+			/* Broadcast happens when fb resume has finished */
+			return TRUE;
+		}
+	}
+
+	/* Broadcast immediately */
+	send_display_status(0);
+	return TRUE;
 }
 
 /**
@@ -3734,7 +4003,7 @@ static void display_state_trigger(gconstpointer data)
 	/* This will send the correct state
 	 * since the pipe contains the new value
 	 */
-	send_display_status(NULL);
+	send_display_status_signal();
 
 	/* Update the cached value */
 	cached_display_state = display_state;
