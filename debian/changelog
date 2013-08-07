@@ -1,3 +1,10 @@
+mce (1.12.16) unstable; urgency=low
+
+  * [mce] Setting demo-mode also disables/enables blanking from lock screen
+  * [mce] Support for never-blank-display mode added
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 07 Aug 2013 10:38:05 +0300
+
 mce (1.12.15) unstable; urgency=low
 
   * [mce] Add cpu scaling governor policy
