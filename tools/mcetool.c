@@ -2310,7 +2310,7 @@ static void xmce_get_tklock_mode(void)
  *
  * @param args string that can be parsed to inhibit mode
  */
-static void xmce_set_tklock_noblank(const char *args)
+static void xmce_set_tklock_blank(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         int val = lookup(tklockblank_values, args);
@@ -2323,7 +2323,7 @@ static void xmce_set_tklock_noblank(const char *args)
 
 /** Get current tklock autoblank inhibit mode from mce and print it out
  */
-static void xmce_get_tklock_noblank(void)
+static void xmce_get_tklock_blank(void)
 {
         gint        val = 0;
         const char *txt = 0;
@@ -2406,7 +2406,7 @@ static void xmce_get_status(void)
 #ifdef ENABLE_DOUBLETAP_EMULATION
 	xmce_get_fake_doubletap();
 #endif
-        xmce_get_tklock_noblank();
+        xmce_get_tklock_blank();
 
         printf("\n");
 }
@@ -2438,19 +2438,26 @@ static void xmce_set_demo_mode(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         if( !strcmp(args, "on") ) {
-                // mcetool --unblank-screen --set-inhibit-mode=stay-on --set-tklock-mode=unlocked
+                // mcetool --unblank-screen
+                //         --set-inhibit-mode=stay-on
+                //         --set-tklock-mode=unlocked
+                //         --set-tklock-blank=disabled
                 xmce_set_display_state("on");
                 xmce_set_inhibit_mode("stay-on");
                 xmce_set_tklock_mode("unlocked");
+                xmce_set_tklock_blank("disabled");
         }
         else if( !strcmp(args, "off")) {
                 // mcetool --unblank-screen --dim-screen --blank-screen
-                //         --set-inhibit-mode=disabled --set-tklock-mode=locked
+                //         --set-inhibit-mode=disabled
+                //         --set-tklock-mode=locked
+                //         --set-tklock-blank=enabled
                 xmce_set_display_state("on");
                 xmce_set_display_state("dim");
                 xmce_set_display_state("off");
                 xmce_set_inhibit_mode("disabled");
                 xmce_set_tklock_mode("locked");
+                xmce_set_tklock_blank("enabled");
         }
         else {
                 errorf("%s: invalid demo mode value\n", args);
@@ -2483,7 +2490,7 @@ static const char usage_text[] =
 "  -K, --set-autolock-mode=MODE\n"
 "                                  set the autolock mode; valid modes are:\n"
 "                                    'enabled' and 'disabled'\n"
-"  -t, --set-tklock-noblank=MODE\n"
+"  -t, --set-tklock-blank=MODE\n"
 "                                  set the touchscreen/keypad autoblank mode;\n"
 "                                    valid modes are: 'enabled' and 'disabled'\n"
 "  -I, --set-inhibit-mode=MODE\n"
@@ -2633,7 +2640,7 @@ const char OPT_S[] =
 "O:"  // --set-dim-timeouts
 "s:"  // --set-suspend-policy
 "S:"  // --set-cpu-scaling-governor
-"t:"  // --set-tklock-noblank
+"t:"  // --set-tklock-blank
 #ifdef ENABLE_DOUBLETAP_EMULATION
 "i:"  // --set-fake-doubletap
 #endif
@@ -2660,7 +2667,7 @@ struct option const OPT_L[] =
         { "set-forced-psm",            1, 0, 'F' }, // xmce_set_forced_psm()
         { "set-psm-threshold",         1, 0, 'T' }, // xmce_set_psm_threshold()
         { "set-tklock-mode",           1, 0, 'k' }, // xmce_set_tklock_mode()
-        { "set-tklock-noblank",        1, 0, 't' }, // xmce_set_tklock_noblank()
+        { "set-tklock-blank",          1, 0, 't' }, // xmce_set_tklock_blank()
         { "enable-led",                0, 0, 'l' }, // set_led_state()
         { "disable-led",               0, 0, 'L' }, // set_led_state()
         { "activate-led-pattern",      1, 0, 'y' }, // set_led_pattern_state()
@@ -2728,7 +2735,7 @@ int main(int argc, char **argv)
                 case 'H': xmce_set_blank_timeout(optarg);         break;
 
                 case 'K': xmce_set_autolock_mode(optarg);         break;
-                case 't': xmce_set_tklock_noblank(optarg);        break;
+                case 't': xmce_set_tklock_blank(optarg);          break;
                 case 'I': xmce_set_inhibit_mode(optarg);          break;
                 case 'k': xmce_set_tklock_mode(optarg);           break;
                 case 'M': xmce_set_doubletap_mode(optarg);        break;
