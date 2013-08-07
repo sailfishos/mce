@@ -2596,6 +2596,11 @@ static waitfb_t waitfb =
  * If the previous state was MCE_DISPLAY_OFF, the signal sending
  * is delayed until resume from suspend has finished. This allows UI
  * applications to use the signal as ready-for-rendering trigger.
+ *
+ * Because the frame buffer readines can be evaluated only by making
+ * a blocking read, a worker thread is used for this purpose. When
+ * the read returns, the worker signals mainloop via pipe before
+ * exiting.
  */
 static gboolean send_display_status_signal(void)
 {
@@ -2610,7 +2615,7 @@ static gboolean send_display_status_signal(void)
 
 	if( signaled_display_state == MCE_DISPLAY_OFF ) {
 		if( waitfb_start(&waitfb) ) {
-			/* Broadcast happens when fb resume has finished*/
+			/* Broadcast happens when fb resume has finished */
 			return TRUE;
 		}
 	}
