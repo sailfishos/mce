@@ -1327,7 +1327,67 @@ static const setting_t gconf_defaults[] =
   },
 #endif
   {
-    .key = NULL,
+    // MCE_LED_PATTERN_BATTERY_CHARGING @ mce.h
+    .key  = "/system/osso/dsm/leds/PatternBatteryCharging",
+    .type = "b",
+    .def  = "true",
+  },
+  {
+    // MCE_LED_PATTERN_BATTERY_FULL @ mce.h
+    .key  = "/system/osso/dsm/leds/PatternBatteryFull",
+    .type = "b",
+    .def  = "true",
+  },
+  {
+    // MCE_LED_PATTERN_COMMUNICATION_EVENT @ mce.h
+    .key  = "/system/osso/dsm/leds/PatternCommunication",
+    .type = "b",
+    .def  = "true",
+  },
+  {
+    // MCE_LED_PATTERN_DEVICE_SOFT_OFF @ mce.h
+    .key  = "/system/osso/dsm/leds/PatternDeviceSoftOff",
+    .type = "b",
+    .def  = "true",
+  },
+  {
+    // MCE_LED_PATTERN_POWER_OFF @ mce.h
+    .key  = "/system/osso/dsm/leds/PatternPowerOff",
+    .type = "b",
+    .def  = "true",
+  },
+  {
+    // MCE_LED_PATTERN_POWER_ON @ mce.h
+    .key  = "/system/osso/dsm/leds/PatternPowerOn",
+    .type = "b",
+    .def  = "true",
+  },
+  {
+    // MCE_LED_PATTERN_CAMERA @ mce.h
+    .key  = "/system/osso/dsm/leds/PatternWebcamActive",
+    .type = "b",
+    .def  = "true",
+  },
+  {
+    // MCE_LED_PATTERN_DEVICE_ON @ mce.h
+    .key  = "/system/osso/dsm/leds/PatternDeviceOn",
+    .type = "b",
+    .def  = "true",
+  },
+  {
+    // MCE_LED_PATTERN_BATTERY_LOW @ mce.h
+    .key  = "/system/osso/dsm/leds/PatternBatteryLow",
+    .type = "b",
+    .def  = "true",
+  },
+  {
+    // MCE_LED_PATTERN_COMMUNICATION_EVENT_BATTERY_FULL @ mce.h
+    .key  = "/system/osso/dsm/leds/PatternCommunicationAndBatteryFull",
+    .type = "b",
+    .def  = "true",
+  },
+  {
+    .key  = NULL,
   }
 };
 
@@ -1605,7 +1665,15 @@ gconf_client_find_entry(GConfClient *self, const gchar *key, GError **err)
 
   if( !res )
   {
+#if 0
+    /* missing key is ok, just return NULL - this is what real
+     * gconf does, but ... */
+    gconf_log_debug("non-existing key '%s' requested", key);
+#else
+    /* since we do not support dynamically adding new keys, it is
+     * better to have visibility to accessing non-existing keys */
     gconf_set_error(err, GCONF_ERROR_FAILED, "%s: does not exist", key);
+#endif
   }
 
 cleanup:
