@@ -1,3 +1,9 @@
+mce (1.12.18) unstable; urgency=low
+
+  * [mce] Add runtime configuration for disabling led patterns
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 09 Aug 2013 08:31:38 +0300
+
 mce (1.12.17) unstable; urgency=low
 
   * [mce] Delay display state signal broadcasting after suspend
