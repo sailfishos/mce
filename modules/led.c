@@ -752,8 +752,6 @@ static void hybris_program_led(const pattern_struct *const pattern);
  */
 static void hybris_set_brightness(gint brightness)
 {
-	mce_log(LL_CRIT, "brightness=%d", brightness);
-
 	if (brightness < -1 || brightness > (gint)maximum_led_brightness) {
 		mce_log(LL_WARN, "Invalid brightness value %d", brightness);
 		return;
