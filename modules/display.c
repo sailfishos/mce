@@ -3298,6 +3298,12 @@ static governor_setting_t *governor_get_settings(const char *tag)
 	char sec[128], key[128], *path, *data;
 
 	snprintf(sec, sizeof sec, "CPUScalingGovernor%s", tag);
+
+	if( !mce_conf_has_group(tag) ) {
+		mce_log(LL_NOTICE, "Not configured: %s", sec);
+		goto EXIT;
+	}
+
 	for( size_t i = 0; ; ++i ) {
 		snprintf(key, sizeof key, "path%zd", i+1);
 		path = mce_conf_get_string(sec, key, 0);
@@ -3331,6 +3337,7 @@ static governor_setting_t *governor_get_settings(const char *tag)
 		mce_log(LL_WARN, "No items defined for: %s", sec);
 	}
 
+EXIT:
 	have = used + 1;
 	res = realloc(res, have * sizeof *res);
 
