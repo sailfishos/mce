@@ -3805,14 +3805,19 @@ static void init_done_changed_cb(const char *path,
  */
 static void init_done_start_tracking(void)
 {
+	static const char flag_dir[]  = "/run/systemd/boot-status";
+	static const char flag_file[] = "init-done";
+
 	time_t uptime = 0;  // uptime in seconds
 	time_t ready  = 60; // desktop ready at
 	time_t delay  = 10; // default wait time
 
-	/* wait for flag file to appear */
-	init_done_watcher = filewatcher_create("/run/systemd/boot-status",
-					       "init-done",
-					       init_done_changed_cb, 0, 0);
+	/* if the status directory exists, wait for flag file to appear */
+	if( access(flag_dir, F_OK) == 0 ) {
+		init_done_watcher = filewatcher_create(flag_dir, flag_file,
+						       init_done_changed_cb,
+						       0, 0);
+	}
 
 	/* or fall back to waiting for uptime to reach some minimum value */
 	if( !init_done_watcher ) {
