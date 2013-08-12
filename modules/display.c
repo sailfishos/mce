@@ -254,7 +254,7 @@ static gint target_brightness = -1;
 static gint set_brightness = -1;
 
 /** Cached high brightness mode; this is the logical value */
-static gint cached_hbm_level = -1;
+static gint cached_hbm_level = 0;
 /** High brightness mode; this is the filtered value */
 static gint set_hbm_level = -1;
 
