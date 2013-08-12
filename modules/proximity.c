@@ -260,7 +260,12 @@ static void calibrate_ps(void)
 
 	/* Retrieve the calibration data from sysinfo */
 	if (get_sysinfo_value(PS_CALIB_IDENTIFIER, &tmp, &len) == FALSE) {
-		mce_log(LL_ERR,
+		mce_log(
+#ifdef ENABLE_SYSINFOD_QUERIES
+			LL_ERR,
+#else
+			LL_NOTICE,
+#endif
 			"Failed to retrieve PS calibration data");
 		goto EXIT;
 	}
