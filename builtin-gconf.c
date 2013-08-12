@@ -1387,6 +1387,12 @@ static const setting_t gconf_defaults[] =
     .def  = "true",
   },
   {
+    // no define; mentioned in mce.ini
+    .key  = "/system/osso/dsm/leds/PatternBatteryChargingFlat",
+    .type = "b",
+    .def  = "true",
+  },
+  {
     .key  = NULL,
   }
 };
