@@ -23,6 +23,9 @@
 
 #include <glib.h>
 
+gboolean mce_conf_has_group(const gchar *group);
+gboolean mce_conf_has_key(const gchar *group, const gchar *key);
+
 gboolean mce_conf_get_bool(const gchar *group, const gchar *key,
 			   const gboolean defaultval);
 gint mce_conf_get_int(const gchar *group, const gchar *key,
