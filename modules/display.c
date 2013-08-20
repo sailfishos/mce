@@ -2317,6 +2317,12 @@ static void renderer_set_state_cb(DBusPendingCall *pending,
 	DBusMessage *rsp = 0;
 	DBusError    err = DBUS_ERROR_INIT;
 
+	/* The user_data pointer is used for storing the boolean
+	 * value that mce sent to lipstick. The reply message
+	 * is just an acknowledgement from ui that it got the
+	 * value and thus has no content. */
+	gboolean enabled = GPOINTER_TO_INT(user_data);
+
 	if( renderer_set_state_pc != pending )
 		goto cleanup;
 
@@ -2325,13 +2331,14 @@ static void renderer_set_state_cb(DBusPendingCall *pending,
 	if( !(rsp = dbus_pending_call_steal_reply(pending)) )
 		goto cleanup;
 
+	/* If we receive error message (due to lipstick not
+	 * running etc), it is treated as if acknowledgement
+	 * were received after emitting a diagnostic message */
 	if( dbus_set_error_from_message(&err, rsp) ) {
 		mce_log(LL_WARN, "%s: %s", err.name, err.message);
-		/* Continue as if the ui side would have
-		 * acknowledged the state change */
 	}
 
-	renderer_is_disabled = !GPOINTER_TO_INT(user_data);
+	renderer_is_disabled = !enabled;
 
 	mce_log(LL_NOTICE, "RENDERER %s", renderer_is_disabled ?
 		"DISABLED" : "ENABLED");
