@@ -2288,6 +2288,151 @@ EXIT:
 	return;
 }
 
+#ifdef ENABLE_WAKELOCKS
+// TODO: These should come from lipstick devel package
+#define RENDERER_SERVICE  "org.nemomobile.lipstick"
+#define RENDERER_PATH     "/"
+#define RENDERER_IFACE    "org.nemomobile.lipstick"
+#define RENDERER_SET_UPDATES_ENABLED "setUpdatesEnabled"
+
+static void suspend_rethink(void);
+
+/** For how long we allow ui side to delay suspending [ms] */
+static int renderer_stop_timeout = 5 * 1000;
+
+/** UI side is no longer rendering flag; no suspend while FALSE */
+static gboolean renderer_is_disabled = FALSE;
+
+/** Currently active setUpdatesEnabled() method call */
+static DBusPendingCall *renderer_set_state_pc = 0;
+
+/** Handle replies to org.nemomobile.lipstick.setUpdatesEnabled() calls
+ *
+ * @param pending   asynchronous dbus call handle
+ * @param user_data enable/disable state as void pointer
+ */
+static void renderer_set_state_cb(DBusPendingCall *pending,
+				  void *user_data)
+{
+	DBusMessage *rsp = 0;
+	DBusError    err = DBUS_ERROR_INIT;
+
+	/* The user_data pointer is used for storing the boolean
+	 * value that mce sent to lipstick. The reply message
+	 * is just an acknowledgement from ui that it got the
+	 * value and thus has no content. */
+	gboolean enabled = GPOINTER_TO_INT(user_data);
+
+	if( renderer_set_state_pc != pending )
+		goto cleanup;
+
+	renderer_set_state_pc = 0;
+
+	if( !(rsp = dbus_pending_call_steal_reply(pending)) )
+		goto cleanup;
+
+	/* If we receive error message (due to lipstick not
+	 * running etc), it is treated as if acknowledgement
+	 * were received after emitting a diagnostic message */
+	if( dbus_set_error_from_message(&err, rsp) ) {
+		mce_log(LL_WARN, "%s: %s", err.name, err.message);
+	}
+
+	renderer_is_disabled = !enabled;
+
+	mce_log(LL_NOTICE, "RENDERER %s", renderer_is_disabled ?
+		"DISABLED" : "ENABLED");
+
+	suspend_rethink();
+
+cleanup:
+	if( rsp ) dbus_message_unref(rsp);
+	dbus_error_free(&err);
+}
+
+/** Cancel pending org.nemomobile.lipstick.setUpdatesEnabled() call
+ *
+ * This is just bookkeeping for mce side, the method call message
+ * has already been sent - we just are no longer interested in
+ * seeing the return message.
+ */
+static void renderer_cancel_state_set(void)
+{
+	if( !renderer_set_state_pc )
+		return;
+
+	mce_log(LL_NOTICE, "RENDERER STATE REQUEST CANCELLED");
+
+	dbus_pending_call_cancel(renderer_set_state_pc),
+		renderer_set_state_pc = 0;
+}
+
+/** Enable/Disable ui updates via dbus ipc with lipstick
+ *
+ * Used at transitions to/from display=off
+ *
+ * Gives time for lipstick to finish rendering activities
+ * before putting frame buffer to sleep via early/late suspend,
+ * and telling when rendering is allowed again.
+ *
+ * @param enabled TRUE for enabling updates, FALSE for disbling updates
+ *
+ * @return TRUE if asynchronous method call was succesfully sent,
+ *         FALSE otherwise
+ */
+static gboolean renderer_set_state(gboolean enabled)
+{
+	gboolean         res = FALSE;
+	DBusConnection  *bus = 0;
+	DBusMessage     *req = 0;
+	dbus_bool_t      dta = enabled;
+
+	renderer_cancel_state_set();
+
+	mce_log(LL_NOTICE, "RENDERER %s REQUESTED",
+		enabled ? "ENABLE" : "DISABLE");
+
+	if( !(bus = dbus_connection_get()) )
+		goto EXIT;
+
+	req = dbus_message_new_method_call(RENDERER_SERVICE,
+					   RENDERER_PATH,
+					   RENDERER_IFACE,
+					   RENDERER_SET_UPDATES_ENABLED);
+	if( !req )
+		goto EXIT;
+
+	if( !dbus_message_append_args(req,
+				      DBUS_TYPE_BOOLEAN, &dta,
+				      DBUS_TYPE_INVALID) )
+		goto EXIT;
+
+	if( !dbus_connection_send_with_reply(bus, req,
+					     &renderer_set_state_pc,
+					     renderer_stop_timeout) )
+		goto EXIT;
+
+	if( !dbus_pending_call_set_notify(renderer_set_state_pc,
+					  renderer_set_state_cb,
+					  GINT_TO_POINTER(enabled), 0) )
+		goto EXIT;
+
+	res = TRUE;
+
+EXIT:
+	if( renderer_set_state_pc  ) {
+		dbus_pending_call_unref(renderer_set_state_pc);
+		// Note: The pending call notification holds the final
+		//       reference. It gets released at cancellation
+		//       or return from notification callback
+	}
+	if( req ) dbus_message_unref(req);
+	if( bus ) dbus_connection_unref(bus);
+
+	return res;
+}
+#endif /* ENABLE_WAKELOCKS */
+
 /** Last display state that was broadcast as dbus signal */
 static display_state_t signaled_display_state = MCE_DISPLAY_UNDEF;
 
@@ -2511,6 +2656,10 @@ static gboolean waitfb_stopped_cb(GIOChannel *chn,
 				(long)t.tv_sec,(long)t.tv_usec);
 		}
 
+#ifdef ENABLE_WAKELOCKS
+		/* Tell UI side that updates can take place again */
+		renderer_set_state(TRUE);
+#endif
 		/* broadcast display state change */
 		send_display_status(0);
 	}
@@ -3580,6 +3729,7 @@ static void governor_conf_cb(GConfClient *const client, const guint id,
 }
 #endif /* ENABLE_CPU_GOVERNOR */
 
+
 #ifdef ENABLE_WAKELOCKS
 /** Automatic suspend policy modes */
 enum
@@ -3658,6 +3808,11 @@ static void suspend_rethink(void)
 	if( module_unloading ) {
 		suspend_want  = 0;
 		wakelock_want = 0;
+	}
+
+	/* do not suspend while ui side might still be drawing */
+	if( !renderer_is_disabled ) {
+		suspend_want = 0;
 	}
 
 	/* adjust based on gconf setting */
@@ -3922,6 +4077,7 @@ UPDATE:
 	return new_data;
 }
 
+
 /**
  * Handle display state change
  *
@@ -4022,6 +4178,12 @@ static void display_state_trigger(gconstpointer data)
 
 	/* Update display on timers */
 	update_display_timers(FALSE);
+
+#ifdef ENABLE_WAKELOCKS
+	/* Give UI side time to finish drawing */
+	if( display_state == MCE_DISPLAY_OFF )
+		renderer_set_state(FALSE);
+#endif
 
 EXIT:
 #ifdef ENABLE_WAKELOCKS
@@ -4741,5 +4903,10 @@ void g_module_unload(GModule *module)
 	cancel_adaptive_dimming_timeout();
 	cancel_blank_timeout();
 
+#ifdef ENABLE_WAKELOCKS
+	/* Cancel active asynchronous dbus method calls to avoid
+	 * callback functions with stale adresses getting invoked */
+	renderer_cancel_state_set();
+#endif
 	return;
 }
