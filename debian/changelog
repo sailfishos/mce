@@ -1,3 +1,10 @@
+mce (1.13.0) unstable; urgency=low
+
+  * [mce] Synchronize display off transitions with lipstick
+  * [mce] Cleanup warnings that occur on mce startup
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 20 Aug 2013 16:11:32 +0300
+
 mce (1.12.18) unstable; urgency=low
 
   * [mce] Add runtime configuration for disabling led patterns
