@@ -52,6 +52,34 @@ static gpointer mce_conf_get_keyfile(void)
 	return keyfile;
 }
 
+/** Check if configuration group is available
+ *
+ * @param group The configuration group
+ *
+ * @return TRUE if group is available, FALSE otherwise
+ */
+gboolean mce_conf_has_group(const gchar *group)
+{
+	gpointer keyfileptr = mce_conf_get_keyfile();
+	return g_key_file_has_group(keyfileptr, group);
+}
+
+/** Check if configuration key is available
+ *
+ * @param group The configuration group
+ * @param key The configuration key
+ *
+ * @return TRUE if key is available, FALSE otherwise
+ */
+gboolean mce_conf_has_key(const gchar *group, const gchar *key)
+{
+	gpointer keyfileptr = mce_conf_get_keyfile();
+	GError *error = NULL;
+	gboolean res = g_key_file_has_key(keyfileptr, group, key, &error);
+	g_clear_error(&error);
+	return res;
+}
+
 /**
  * Get a boolean configuration value
  *

@@ -22,6 +22,8 @@
 
 #include <string.h>			/* strstr() */
 #include <stdlib.h>			/* free() */
+#include <unistd.h>
+#include <fcntl.h>
 
 #include "mce-hal.h"
 
@@ -70,6 +72,64 @@
  */
 static product_id_t product_id = PRODUCT_UNSET;
 
+
+/** Get init process environment value
+ *
+ * If mce is started manually, some environment variables are not
+ * inherited from systemd. This function attempts to retrieve them
+ * from the context of init process itself.
+ *
+ * @param key name of environment value
+ *
+ * @return string, or NULL
+ */
+static char *getenv_from_init_process(const char *key)
+{
+	static const char path[] = "/proc/1/environ";
+
+	char   *res  = 0;
+	int     file = -1;
+	char   *data = 0;
+	int     size = 0x2000;
+
+	if( (file = open(path, O_RDONLY)) == -1 ) {
+		mce_log(LL_WARN, "%s: %m", path);
+		goto EXIT;
+	}
+
+	if( !(data = malloc(size)) )
+		goto EXIT;
+
+	if( (size = read(file, data, size-1)) < 0 ) {
+		mce_log(LL_WARN, "%s: %m", path);
+		goto EXIT;
+	}
+
+	data[size] = 0;
+
+	for( char *now = data; now < data + size;  ) {
+		char *val = strchr(now, '=');
+
+		if( !val )
+			break;
+
+		*val++ = 0;
+
+		if( !strcmp(now, key) ) {
+			res = strdup(val);
+			break;
+		}
+		now = strchr(val, 0) + 1;
+	}
+EXIT:
+	free(data);
+	if( file != -1 ) close(file);
+
+	mce_log(LL_NOTICE, "key=%s -> val=%s", key, res);
+
+	return res;
+}
+
 /**
  * Retrieve a sysinfo value via D-Bus
  *
@@ -112,8 +172,27 @@ gboolean get_sysinfo_value(const gchar *const key, guint8 **array, gulong *len)
 
 	return status;
 #else
-	/* Provide a dummy function that always fails silently */
-	return (void)key, *array = 0, *len = 0, FALSE;
+	/* Try to provide some values from environment */
+	const char *env = 0;
+	const char *val = 0;
+	char       *res = 0;
+	gulong      cnt = 0;
+
+	if( !strcmp(key, PRODUCT_SYSINFO_KEY) )
+		env = "product_name";
+
+	if( env ) {
+		if( (val = getenv(env)) )
+			res = strdup(val);
+		else
+			res = getenv_from_init_process(env);
+	}
+	if( res ) cnt = strlen(res);
+
+	mce_log(LL_INFO, "key=%s, env=%s, val=%s, len=%d",
+		key, env, res, (int)cnt);
+
+	return *array = (guint8*)res, *len = cnt, (res != 0);
 #endif /* ENABLE_SYSINFOD_QUERIES */
 
 }

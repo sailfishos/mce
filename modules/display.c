@@ -254,7 +254,7 @@ static gint target_brightness = -1;
 static gint set_brightness = -1;
 
 /** Cached high brightness mode; this is the logical value */
-static gint cached_hbm_level = -1;
+static gint cached_hbm_level = 0;
 /** High brightness mode; this is the filtered value */
 static gint set_hbm_level = -1;
 
@@ -3298,6 +3298,12 @@ static governor_setting_t *governor_get_settings(const char *tag)
 	char sec[128], key[128], *path, *data;
 
 	snprintf(sec, sizeof sec, "CPUScalingGovernor%s", tag);
+
+	if( !mce_conf_has_group(tag) ) {
+		mce_log(LL_NOTICE, "Not configured: %s", sec);
+		goto EXIT;
+	}
+
 	for( size_t i = 0; ; ++i ) {
 		snprintf(key, sizeof key, "path%zd", i+1);
 		path = mce_conf_get_string(sec, key, 0);
@@ -3331,6 +3337,7 @@ static governor_setting_t *governor_get_settings(const char *tag)
 		mce_log(LL_WARN, "No items defined for: %s", sec);
 	}
 
+EXIT:
 	have = used + 1;
 	res = realloc(res, have * sizeof *res);
 
@@ -3798,14 +3805,19 @@ static void init_done_changed_cb(const char *path,
  */
 static void init_done_start_tracking(void)
 {
+	static const char flag_dir[]  = "/run/systemd/boot-status";
+	static const char flag_file[] = "init-done";
+
 	time_t uptime = 0;  // uptime in seconds
 	time_t ready  = 60; // desktop ready at
 	time_t delay  = 10; // default wait time
 
-	/* wait for flag file to appear */
-	init_done_watcher = filewatcher_create("/run/systemd/boot-status",
-					       "init-done",
-					       init_done_changed_cb, 0, 0);
+	/* if the status directory exists, wait for flag file to appear */
+	if( access(flag_dir, F_OK) == 0 ) {
+		init_done_watcher = filewatcher_create(flag_dir, flag_file,
+						       init_done_changed_cb,
+						       0, 0);
+	}
 
 	/* or fall back to waiting for uptime to reach some minimum value */
 	if( !init_done_watcher ) {

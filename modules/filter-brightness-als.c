@@ -1049,7 +1049,12 @@ static void calibrate_als(void)
 
 	/* Retrieve the calibration data from sysinfo */
 	if (get_sysinfo_value(ALS_CALIB_IDENTIFIER, &tmp, &len) == FALSE) {
-		mce_log(LL_ERR,
+		mce_log(
+#ifdef ENABLE_SYSINFOD_QUERIES
+			LL_ERR,
+#else
+			LL_NOTICE,
+#endif
 			"Failed to retrieve ALS calibration data");
 		goto EXIT;
 	}
@@ -2512,6 +2517,11 @@ static gboolean init_color_profiles(void)
 
 	group = g_strconcat(MCE_COLOR_PROFILE_GROUP_PREFIX, display_id, NULL);
 
+	if( !mce_conf_has_group(group) ) {
+		mce_log(LL_NOTICE, "No color profile config for: %s", group);
+		goto EXIT;
+	}
+
 	color_profile_ids = mce_conf_get_keys(group,
 					      &num_color_profile_ids);
 
@@ -2567,6 +2577,7 @@ static gboolean init_color_profiles(void)
 		g_free(raw_cp);
 	}
 
+EXIT:
 	/* Profile names stolen; safe to shallow-free the array */
 	g_free(color_profile_ids);
 
