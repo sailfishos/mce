@@ -424,7 +424,7 @@ static gboolean doubletap_recal_timeout_cb(gpointer data)
 	/* Otherwise use next delay */
 	doubletap_recal_index++;
 	doubletap_recal_timeout_id =
-	       	g_timeout_add_seconds(doubletap_recal_delays[doubletap_recal_index],
+		g_timeout_add_seconds(doubletap_recal_delays[doubletap_recal_index],
 				      doubletap_recal_timeout_cb, NULL);
 
 	return FALSE;
