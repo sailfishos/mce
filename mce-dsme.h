@@ -23,8 +23,14 @@
 
 #include <glib.h>
 
-/** Default delay before the user can power up the device from acting dead */
-#define TRANSITION_DELAY		1000		/**< 1 second */
+/** How long to delay removal of MCE_TRANSITION_SUBMODE after
+ *  receiving system state change from dsme
+ *
+ * <0 -> immediately
+ *  0 -> from idle callback
+ * >0 -> from timer callback after TRANSITION_DELAY ms
+ */
+#define TRANSITION_DELAY		-1
 
 /** Name of Powerkey configuration group */
 #define MCE_CONF_SOFTPOWEROFF_GROUP	"SoftPowerOff"
