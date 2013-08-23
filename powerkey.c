@@ -153,6 +153,12 @@ static void generic_powerkey_handler(poweraction_t action,
 		break;
 
 	case POWER_TKLOCK_LOCK:
+		/* No tklock in act dead */
+		if( datapipe_get_gint(system_state_pipe) == MCE_STATE_ACTDEAD ) {
+			mce_log(LL_DEBUG, "blocking tklock via power key in act dead");
+			break;
+		}
+
 		/* Request enabling of touchscreen/keypad lock
 		 * if the tklock isn't already active
 		 */

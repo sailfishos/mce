@@ -4202,30 +4202,32 @@ static void submode_trigger(gconstpointer data)
 	system_state_t system_state = datapipe_get_gint(system_state_pipe);
 	alarm_ui_state_t alarm_ui_state =
 				datapipe_get_gint(alarm_ui_state_pipe);
-	static submode_t old_submode = MCE_INVALID_SUBMODE;
-	submode_t submode = GPOINTER_TO_INT(data);
 
-	/* Avoid unnecessary updates:
-	 * Note: this *must* be binary or/and,
-	 *       not logical, else it won't work,
-	 *       for (hopefully) obvious reasons
-	 */
-	if (((old_submode == MCE_INVALID_SUBMODE) &&
-	     ((submode & MCE_TRANSITION_SUBMODE) == 0)) ||
-	    ((old_submode | submode) & MCE_TRANSITION_SUBMODE)) {
-		/* We've reached acting dead -- blank the screen */
-		if ((system_state == MCE_STATE_ACTDEAD) &&
-		    (alarm_ui_state != MCE_ALARM_UI_RINGING_INT32) &&
-		    (alarm_ui_state != MCE_ALARM_UI_VISIBLE_INT32)) {
-			(void)execute_datapipe(&display_state_pipe,
-					       GINT_TO_POINTER(MCE_DISPLAY_OFF),
-					       USE_INDATA, CACHE_INDATA);
+	/* Assume we are in mode transition when mce starts up */
+	static submode_t old_trans = MCE_TRANSITION_SUBMODE;
+
+	/* Check if we are currently in mode transition */
+	submode_t new_trans = GPOINTER_TO_INT(data) & MCE_TRANSITION_SUBMODE;
+
+	if( old_trans && !new_trans ) {
+		/* End of transition; stable state reached */
+		switch( system_state ) {
+		case MCE_STATE_ACTDEAD:
+			/* Blank the screen unless we have alarm ui on */
+			if( alarm_ui_state != MCE_ALARM_UI_RINGING_INT32 &&
+			    alarm_ui_state != MCE_ALARM_UI_VISIBLE_INT32 ) {
+				execute_datapipe(&display_state_pipe,
+						 GINT_TO_POINTER(MCE_DISPLAY_OFF),
+						 USE_INDATA, CACHE_INDATA);
+			}
+			break;
+		default:
+			break;
 		}
-
 		update_blanking_inhibit(FALSE);
 	}
 
-	old_submode = submode;
+	old_trans = new_trans;
 }
 
 /**

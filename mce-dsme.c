@@ -311,9 +311,18 @@ static void setup_transition_timeout(void)
 {
 	cancel_state_transition_timeout();
 
+#if TRANSITION_DELAY > 0
 	/* Setup new timeout */
 	transition_timeout_cb_id =
 		g_timeout_add(TRANSITION_DELAY, transition_timeout_cb, NULL);
+#elif TRANSITION_DELAY == 0
+	/* Set up idle callback */
+	transition_timeout_cb_id =
+		g_idle_add(transition_timeout_cb, NULL);
+#else
+	/* Trigger immediately */
+	transition_timeout_cb(0);
+#endif
 }
 
 /**
