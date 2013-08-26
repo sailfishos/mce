@@ -254,7 +254,7 @@ void request_soft_poweron(void)
 					 USE_INDATA);
 
 	mce_rem_submode_int32(MCE_SOFTOFF_SUBMODE);
-	execute_datapipe(&display_state_pipe,
+	execute_datapipe(&display_state_req_pipe,
 			 GINT_TO_POINTER(MCE_DISPLAY_ON),
 			 USE_INDATA, CACHE_INDATA);
 }
@@ -265,7 +265,7 @@ void request_soft_poweron(void)
 void request_soft_poweroff(void)
 {
 	mce_add_submode_int32(MCE_SOFTOFF_SUBMODE);
-	execute_datapipe(&display_state_pipe,
+	execute_datapipe(&display_state_req_pipe,
 			 GINT_TO_POINTER(MCE_DISPLAY_LPM_OFF),
 			 USE_INDATA, CACHE_INDATA);
 

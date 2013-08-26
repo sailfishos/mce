@@ -1329,7 +1329,7 @@ static gboolean tklock_visual_blank_timeout_cb(gpointer data)
 		saved_tklock_state = MCE_TKLOCK_LOCKED_STATE;
 
 	if (is_tklock_enabled_by_proximity() == FALSE)
-		(void)execute_datapipe(&display_state_pipe,
+		(void)execute_datapipe(&display_state_req_pipe,
 				       GINT_TO_POINTER(MCE_DISPLAY_LPM_ON),
 				       USE_INDATA, CACHE_INDATA);
 
@@ -1389,13 +1389,13 @@ static gboolean tklock_dim_timeout_cb(gpointer data)
 	tklock_dim_timeout_cb_id = 0;
 
 	if (blank_immediately == TRUE) {
-		(void)execute_datapipe(&display_state_pipe,
+		(void)execute_datapipe(&display_state_req_pipe,
 				       GINT_TO_POINTER(MCE_DISPLAY_LPM_ON),
 				       USE_INDATA, CACHE_INDATA);
 		if (saved_tklock_state == MCE_TKLOCK_VISUAL_STATE)
 			saved_tklock_state = MCE_TKLOCK_LOCKED_STATE;
 	} else {
-		(void)execute_datapipe(&display_state_pipe,
+		(void)execute_datapipe(&display_state_req_pipe,
 				       GINT_TO_POINTER(MCE_DISPLAY_DIM),
 				       USE_INDATA, CACHE_INDATA);
 	}
@@ -1469,11 +1469,11 @@ static void setup_dim_blank_timeout_policy(display_state_t force)
 	    (((display_state == MCE_DISPLAY_DIM) ||
 	      (dim_immediately == TRUE)) &&
 	     (blank_immediately == TRUE))) {
-		(void)execute_datapipe(&display_state_pipe,
+		(void)execute_datapipe(&display_state_req_pipe,
 				       GINT_TO_POINTER(MCE_DISPLAY_LPM_ON),
 				       USE_INDATA, CACHE_INDATA);
 	} else if ((force == MCE_DISPLAY_DIM) || (dim_immediately == TRUE)) {
-		(void)execute_datapipe(&display_state_pipe,
+		(void)execute_datapipe(&display_state_req_pipe,
 				       GINT_TO_POINTER(MCE_DISPLAY_DIM),
 				       USE_INDATA, CACHE_INDATA);
 	} else {
@@ -1897,14 +1897,14 @@ static void trigger_visual_tklock(gboolean powerkey)
 	if ((display_state == MCE_DISPLAY_OFF) ||
 	    (display_state == MCE_DISPLAY_LPM_OFF) ||
 	    (display_state == MCE_DISPLAY_LPM_ON)) {
-		(void)execute_datapipe(&display_state_pipe,
+		(void)execute_datapipe(&display_state_req_pipe,
 				       GINT_TO_POINTER(MCE_DISPLAY_ON),
 				       USE_INDATA, CACHE_INDATA);
 	} else if (powerkey == TRUE) {
 		/* XXX: we probably want to make this configurable */
 		/* Blank screen */
 		if (tklock_dim_timeout_cb_id == 0) {
-			(void)execute_datapipe(&display_state_pipe,
+			(void)execute_datapipe(&display_state_req_pipe,
 					       GINT_TO_POINTER(MCE_DISPLAY_LPM_ON),
 					       USE_INDATA, CACHE_INDATA);
 			if (saved_tklock_state == MCE_TKLOCK_VISUAL_STATE)
@@ -2149,7 +2149,7 @@ static void return_from_proximity(void)
 		set_tklock_state(LOCK_ON);
 
 		/* Blank screen */
-		(void)execute_datapipe(&display_state_pipe,
+		(void)execute_datapipe(&display_state_req_pipe,
 				       GINT_TO_POINTER(MCE_DISPLAY_LPM_ON),
 				       USE_INDATA, CACHE_INDATA);
 		break;
@@ -2161,7 +2161,7 @@ static void return_from_proximity(void)
 		trigger_visual_tklock(FALSE);
 
 		/* Unblank screen */
-		(void)execute_datapipe(&display_state_pipe,
+		(void)execute_datapipe(&display_state_req_pipe,
 				       GINT_TO_POINTER(MCE_DISPLAY_ON),
 				       USE_INDATA, CACHE_INDATA);
 
@@ -2230,7 +2230,7 @@ static void process_proximity_state(void)
 		cancel_tklock_dim_timeout();
 
 		/* Unblank screen */
-		(void)execute_datapipe(&display_state_pipe,
+		(void)execute_datapipe(&display_state_req_pipe,
 				       GINT_TO_POINTER(MCE_DISPLAY_ON),
 				       USE_INDATA, CACHE_INDATA);
 
@@ -2749,7 +2749,7 @@ static void alarm_ui_state_trigger(gconstpointer data)
 			cancel_tklock_dim_timeout();
 
 			/* Unblank screen */
-			(void)execute_datapipe(&display_state_pipe,
+			(void)execute_datapipe(&display_state_req_pipe,
 					       GINT_TO_POINTER(MCE_DISPLAY_ON),
 					       USE_INDATA, CACHE_INDATA);
 		} else {
@@ -2836,7 +2836,7 @@ static void lid_cover_trigger(gconstpointer data)
 	case COVER_OPEN:
 		if (system_state == MCE_STATE_USER) {
 			setup_tklock_unlock_timeout();
-			(void)execute_datapipe(&display_state_pipe,
+			(void)execute_datapipe(&display_state_req_pipe,
 					       GINT_TO_POINTER(MCE_DISPLAY_ON),
 					       USE_INDATA, CACHE_INDATA);
 		}
@@ -2849,7 +2849,7 @@ static void lid_cover_trigger(gconstpointer data)
 
 			if (enable_tklock_policy() == TRUE) {
 				/* Blank screen */
-				(void)execute_datapipe(&display_state_pipe,
+				(void)execute_datapipe(&display_state_req_pipe,
 						       GINT_TO_POINTER(MCE_DISPLAY_LPM_OFF),
 						       USE_INDATA, CACHE_INDATA);
 			}
@@ -3044,7 +3044,7 @@ static void call_state_trigger(gconstpointer data)
 			disable_autorelock();
 
 			/* Unblank screen */
-			(void)execute_datapipe(&display_state_pipe,
+			(void)execute_datapipe(&display_state_req_pipe,
 					       GINT_TO_POINTER(MCE_DISPLAY_ON),
 					       USE_INDATA, CACHE_INDATA);
 		}
@@ -3088,7 +3088,7 @@ static void audio_route_trigger(gconstpointer data)
 		/* disable_tklock() resets mode, we are not in this branch if we're
 		 * in LPM/pocket mode or normally tklocked */
 		disable_tklock();
-		(void)execute_datapipe(&display_state_pipe, GINT_TO_POINTER(MCE_DISPLAY_ON), USE_INDATA, CACHE_INDATA);
+		(void)execute_datapipe(&display_state_req_pipe, GINT_TO_POINTER(MCE_DISPLAY_ON), USE_INDATA, CACHE_INDATA);
 	}
 
 	process_proximity_state();
