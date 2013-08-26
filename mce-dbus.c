@@ -1249,8 +1249,6 @@ static DBusHandlerResult msg_handler(DBusConnection *const connection,
 			if (dbus_message_is_error(msg,
 						  handler->name) == TRUE) {
 				handler->callback(msg);
-				status = DBUS_HANDLER_RESULT_HANDLED;
-				goto EXIT;
 			}
 
 			break;
@@ -1261,7 +1259,6 @@ static DBusHandlerResult msg_handler(DBusConnection *const connection,
 						   handler->name) == TRUE) &&
 			    (check_rules(msg, handler->rules) == TRUE)) {
 				handler->callback(msg);
-				status = DBUS_HANDLER_RESULT_HANDLED;
 			}
 
 			break;
