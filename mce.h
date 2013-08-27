@@ -270,6 +270,8 @@ datapipe_struct led_pattern_activate_pipe;
 datapipe_struct led_pattern_deactivate_pipe;
 /** State of display; read only */
 datapipe_struct display_state_pipe;
+/** Desired state of display */
+datapipe_struct display_state_req_pipe;
 /**
  * Display brightness;
  * bits 0-7 is brightness in percent (0-100)

@@ -907,6 +907,8 @@ int main(int argc, char **argv)
 		       0, GINT_TO_POINTER(MCE_NORMAL_SUBMODE));
 	setup_datapipe(&display_state_pipe, READ_WRITE, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(MCE_DISPLAY_UNDEF));
+	setup_datapipe(&display_state_req_pipe, READ_WRITE, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(MCE_DISPLAY_UNDEF));
 	setup_datapipe(&display_brightness_pipe, READ_WRITE, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(0));
 	setup_datapipe(&led_brightness_pipe, READ_WRITE, DONT_FREE_CACHE,

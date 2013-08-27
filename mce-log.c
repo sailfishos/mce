@@ -26,12 +26,30 @@
 #include <stdarg.h>			/* va_start(), va_end(), vfprintf() */
 #include <string.h>			/* strdup() */
 #include <syslog.h>			/* openlog(), closelog(), vsyslog() */
-
+#include <sys/time.h>
 #include "mce-log.h"
 
 static unsigned int logverbosity = LL_WARN;	/**< Log verbosity */
 static int logtype = MCE_LOG_STDERR;		/**< Output for log messages */
 static char *logname = NULL;
+
+/** Get monotonic time as struct timeval */
+static void monotime(struct timeval *tv)
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	TIMESPEC_TO_TIMEVAL(tv, &ts);
+}
+static void timestamp(struct timeval *tv)
+{
+	static struct timeval start, prev;
+	struct timeval diff;
+	monotime(tv);
+	timersub(tv, &prev, &diff);
+	if( diff.tv_sec >= 4 ) start = *tv;
+	prev = *tv;
+	timersub(tv, &start, tv);
+}
 
 /** Make sure loglevel is in the supported range
  *
@@ -99,8 +117,11 @@ void mce_log_file(loglevel_t loglevel, const char *const file,
 		}
 
 		if (logtype == MCE_LOG_STDERR) {
-			fprintf(stderr, "%s: %s: %s\n",
+			struct timeval tv;
+			timestamp(&tv);
+			fprintf(stderr, "%s: T+%ld.%03ld %s: %s\n",
 				logname,
+				(long)tv.tv_sec, (long)(tv.tv_usec/1000),
 				mce_log_level_tag(loglevel),
 				msg);
 		} else {

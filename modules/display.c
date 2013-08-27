@@ -165,6 +165,9 @@ enum LockState {
 };
 #endif /* DEVICELOCK_H */
 
+static void stm_target_set(display_state_t display_state);
+static void stm_rethink_schedule(void);
+
 /** Contextkit D-Bus service */
 #define ORIENTATION_SIGNAL_IF		"org.maemo.contextkit.Property"
 /** Contextkit D-Bus orientation path */
@@ -190,6 +193,9 @@ G_MODULE_EXPORT module_info_struct module_info = {
 	/** Module priority */
 	.priority = 250
 };
+
+/** D-Bus connection */
+static DBusConnection *systembus = 0;
 
 /** GConf callback ID for display brightness setting */
 static guint disp_brightness_gconf_cb_id = 0;
@@ -1413,6 +1419,9 @@ static void write_brightness_value(int number)
 		mce_log(LL_DEBUG, "value=%d", number);
 
 	write_brightness_value_hook(number);
+
+	// TODO: we might want to power off fb at zero brightness
+	//       and power it up at non-zero brightness???
 }
 
 /**
@@ -1428,10 +1437,6 @@ static gboolean brightness_fade_timeout_cb(gpointer data)
 
 	(void)data;
 
-	if ((cached_brightness <= 0) && (target_brightness != 0)) {
-		backlight_ioctl(FB_BLANK_UNBLANK);
-	}
-
 	if ((cached_brightness == -1) ||
 	    (ABS(cached_brightness -
 		 target_brightness) < brightness_fade_steplength)) {
@@ -1444,10 +1449,6 @@ static gboolean brightness_fade_timeout_cb(gpointer data)
 	}
 
 	write_brightness_value(cached_brightness);
-
-	if (cached_brightness == 0) {
-		backlight_ioctl(FB_BLANK_POWERDOWN);
-	}
 
 	if (retval == FALSE)
 		 brightness_fade_timeout_cb_id = 0;
@@ -1508,7 +1509,6 @@ static void update_brightness_fade(gint new_brightness)
 		cancel_brightness_fade_timeout();
 		cached_brightness = new_brightness;
 		target_brightness = new_brightness;
-		backlight_ioctl(FB_BLANK_UNBLANK);
 		write_brightness_value(new_brightness);
 		goto EXIT;
 	}
@@ -1560,7 +1560,6 @@ static void display_blank(void)
 	cached_brightness = 0;
 	target_brightness = 0;
 	write_brightness_value(0);
-	backlight_ioctl(FB_BLANK_POWERDOWN);
 }
 
 /**
@@ -1569,7 +1568,7 @@ static void display_blank(void)
 static void display_lpm(void)
 {
 	cancel_brightness_fade_timeout();
-	backlight_ioctl(FB_BLANK_UNBLANK);
+	// TODO: does LPM display mode need FB_BLANK_POWERDOWN to work?
 }
 
 /**
@@ -1583,7 +1582,6 @@ static void display_dim(void)
 	if (cached_brightness == 0) {
 		cached_brightness = dim_brightness;
 		target_brightness = dim_brightness;
-		backlight_ioctl(FB_BLANK_UNBLANK);
 		write_brightness_value(dim_brightness);
 	} else {
 		update_brightness_fade(dim_brightness);
@@ -1601,7 +1599,6 @@ static void display_unblank(void)
 	if (cached_brightness == 0) {
 		cached_brightness = set_brightness;
 		target_brightness = set_brightness;
-		backlight_ioctl(FB_BLANK_UNBLANK);
 		write_brightness_value(set_brightness);
 	} else {
 		update_brightness_fade(set_brightness);
@@ -1677,7 +1674,7 @@ static gboolean blank_timeout_cb(gpointer data)
 	    (is_dismiss_low_power_mode_enabled() == TRUE))
 		display_off_state = MCE_DISPLAY_OFF;
 
-	(void)execute_datapipe(&display_state_pipe,
+	(void)execute_datapipe(&display_state_req_pipe,
 			       GINT_TO_POINTER(display_off_state),
 			       USE_INDATA, CACHE_INDATA);
 
@@ -1741,7 +1738,7 @@ static gboolean lpm_proximity_blank_timeout_cb(gpointer data)
 
 	lpm_proximity_blank_timeout_cb_id = 0;
 
-	(void)execute_datapipe(&display_state_pipe,
+	(void)execute_datapipe(&display_state_req_pipe,
 			       GINT_TO_POINTER(MCE_DISPLAY_LPM_OFF),
 			       USE_INDATA, CACHE_INDATA);
 
@@ -1795,7 +1792,7 @@ static gboolean lpm_timeout_cb(gpointer data)
 
 	lpm_timeout_cb_id = 0;
 
-	(void)execute_datapipe(&display_state_pipe,
+	(void)execute_datapipe(&display_state_req_pipe,
 			       GINT_TO_POINTER(MCE_DISPLAY_LPM_ON),
 			       USE_INDATA, CACHE_INDATA);
 
@@ -1900,14 +1897,14 @@ static gboolean dim_timeout_cb(gpointer data)
 	dim_timeout_cb_id = 0;
 
 	if ((submode & MCE_MALF_SUBMODE) == 0) {
-		(void)execute_datapipe(&display_state_pipe,
+		(void)execute_datapipe(&display_state_req_pipe,
 				       GINT_TO_POINTER(MCE_DISPLAY_DIM),
 				       USE_INDATA, CACHE_INDATA);
 	} else {
 		/* If device is in MALF state skip dimming since systemui
 		 * isn't working yet
 		 */
-		(void)execute_datapipe(&display_state_pipe,
+		(void)execute_datapipe(&display_state_req_pipe,
 				       GINT_TO_POINTER(MCE_DISPLAY_OFF),
 				       USE_INDATA, CACHE_INDATA);
 	}
@@ -2239,14 +2236,14 @@ static void display_gconf_cb(GConfClient *const gcc, const guint id,
 		    ((low_power_mode_supported == FALSE) ||
 		     (use_low_power_mode == FALSE) ||
 		     (is_dismiss_low_power_mode_enabled() == TRUE))) {
-			(void)execute_datapipe(&display_state_pipe,
+			(void)execute_datapipe(&display_state_req_pipe,
 					       GINT_TO_POINTER(MCE_DISPLAY_OFF),
 					       USE_INDATA, CACHE_INDATA);
 		} else if ((display_state == MCE_DISPLAY_OFF) &&
 		           (use_low_power_mode == TRUE) &&
 			   (is_dismiss_low_power_mode_enabled() == FALSE) &&
 			       (low_power_mode_supported == TRUE)) {
-			(void)execute_datapipe(&display_state_pipe,
+			(void)execute_datapipe(&display_state_req_pipe,
 					       GINT_TO_POINTER(MCE_DISPLAY_LPM_ON),
 					       USE_INDATA, CACHE_INDATA);
 		}
@@ -2288,20 +2285,30 @@ EXIT:
 	return;
 }
 
-#ifdef ENABLE_WAKELOCKS
+/* ------------------------------------------------------------------------- *
+ * ENABLE/DISABLE GFX UPDATES AT UI SIDE
+ * ------------------------------------------------------------------------- */
+
 // TODO: These should come from lipstick devel package
 #define RENDERER_SERVICE  "org.nemomobile.lipstick"
 #define RENDERER_PATH     "/"
 #define RENDERER_IFACE    "org.nemomobile.lipstick"
 #define RENDERER_SET_UPDATES_ENABLED "setUpdatesEnabled"
 
-static void suspend_rethink(void);
+
+typedef enum
+{
+	RENDERER_ERROR    = -2,
+	RENDERER_UNKNOWN  = -1,
+	RENDERER_DISABLED =  0,
+	RENDERER_ENABLED  =  1,
+} renderer_state_t;
 
 /** For how long we allow ui side to delay suspending [ms] */
-static int renderer_stop_timeout = 5 * 1000;
+static int renderer_ipc_timeout = 5 * 1000;
 
-/** UI side is no longer rendering flag; no suspend while FALSE */
-static gboolean renderer_is_disabled = FALSE;
+/** UI side rendering state; no suspend unless RENDERER_ENABLED */
+static renderer_state_t renderer_ui_state = RENDERER_UNKNOWN;
 
 /** Currently active setUpdatesEnabled() method call */
 static DBusPendingCall *renderer_set_state_pc = 0;
@@ -2317,11 +2324,15 @@ static void renderer_set_state_cb(DBusPendingCall *pending,
 	DBusMessage *rsp = 0;
 	DBusError    err = DBUS_ERROR_INIT;
 
-	/* The user_data pointer is used for storing the boolean
-	 * value that mce sent to lipstick. The reply message
-	 * is just an acknowledgement from ui that it got the
-	 * value and thus has no content. */
-	gboolean enabled = GPOINTER_TO_INT(user_data);
+	/* The user_data pointer is used for storing the renderer
+	 * state associated with the async method call sent to
+	 * lipstick. The reply message is just an acknowledgement
+	 * from ui that it got the value and thus has no content. */
+	renderer_state_t state = GPOINTER_TO_INT(user_data);
+
+	mce_log(LL_NOTICE, "%s(%s) - method reply",
+		RENDERER_SET_UPDATES_ENABLED,
+		state ? "ENABLE" : "DISABLE");
 
 	if( renderer_set_state_pc != pending )
 		goto cleanup;
@@ -2331,19 +2342,19 @@ static void renderer_set_state_cb(DBusPendingCall *pending,
 	if( !(rsp = dbus_pending_call_steal_reply(pending)) )
 		goto cleanup;
 
-	/* If we receive error message (due to lipstick not
-	 * running etc), it is treated as if acknowledgement
-	 * were received after emitting a diagnostic message */
 	if( dbus_set_error_from_message(&err, rsp) ) {
+		/* Mark down that the request failed; we can't
+		 * enter suspend without UI side being in the
+		 * loop or we'll risk spectacular crashes */
 		mce_log(LL_WARN, "%s: %s", err.name, err.message);
+		renderer_ui_state = RENDERER_ERROR;
 	}
+	else
+		renderer_ui_state = state;
 
-	renderer_is_disabled = !enabled;
+	mce_log(LL_NOTICE, "RENDERER state=%d", renderer_ui_state);
 
-	mce_log(LL_NOTICE, "RENDERER %s", renderer_is_disabled ?
-		"DISABLED" : "ENABLED");
-
-	suspend_rethink();
+	stm_rethink_schedule();
 
 cleanup:
 	if( rsp ) dbus_message_unref(rsp);
@@ -2380,17 +2391,18 @@ static void renderer_cancel_state_set(void)
  * @return TRUE if asynchronous method call was succesfully sent,
  *         FALSE otherwise
  */
-static gboolean renderer_set_state(gboolean enabled)
+static gboolean renderer_set_state(renderer_state_t state)
 {
 	gboolean         res = FALSE;
 	DBusConnection  *bus = 0;
 	DBusMessage     *req = 0;
-	dbus_bool_t      dta = enabled;
+	dbus_bool_t      dta = (state == RENDERER_ENABLED);
 
 	renderer_cancel_state_set();
 
-	mce_log(LL_NOTICE, "RENDERER %s REQUESTED",
-		enabled ? "ENABLE" : "DISABLE");
+	mce_log(LL_NOTICE, "%s(%s) - method call",
+		RENDERER_SET_UPDATES_ENABLED,
+		state ? "ENABLE" : "DISABLE");
 
 	if( !(bus = dbus_connection_get()) )
 		goto EXIT;
@@ -2409,14 +2421,18 @@ static gboolean renderer_set_state(gboolean enabled)
 
 	if( !dbus_connection_send_with_reply(bus, req,
 					     &renderer_set_state_pc,
-					     renderer_stop_timeout) )
+					     renderer_ipc_timeout) )
 		goto EXIT;
 
 	if( !dbus_pending_call_set_notify(renderer_set_state_pc,
 					  renderer_set_state_cb,
-					  GINT_TO_POINTER(enabled), 0) )
+					  GINT_TO_POINTER(state), 0) )
 		goto EXIT;
 
+	/* The state is unknown until we get eiter ack or error */
+	renderer_ui_state = RENDERER_UNKNOWN;
+
+	/* Success */
 	res = TRUE;
 
 EXIT:
@@ -2431,10 +2447,6 @@ EXIT:
 
 	return res;
 }
-#endif /* ENABLE_WAKELOCKS */
-
-/** Last display state that was broadcast as dbus signal */
-static display_state_t signaled_display_state = MCE_DISPLAY_UNDEF;
 
 /**
  * Send a display status reply or signal
@@ -2445,6 +2457,7 @@ static display_state_t signaled_display_state = MCE_DISPLAY_UNDEF;
  */
 static gboolean send_display_status(DBusMessage *const method_call)
 {
+	static const gchar *prev_state = "";
 	display_state_t display_state = datapipe_get_gint(display_state_pipe);
 	DBusMessage *msg = NULL;
 	const gchar *state = NULL;
@@ -2468,9 +2481,15 @@ static gboolean send_display_status(DBusMessage *const method_call)
 		break;
 	}
 
-	mce_log(LL_DEBUG,
-		"Sending display status: %s",
-		state);
+	if( !method_call ) {
+		if( !strcmp(prev_state, state))
+			goto EXIT;
+		prev_state = state;
+		mce_log(LL_NOTICE, "Sending display status signal: %s", state);
+	}
+	else
+		mce_log(LL_DEBUG, "Sending display status reply: %s", state);
+
 
 	/* If method_call is set, send a reply,
 	 * otherwise, send a signal
@@ -2502,54 +2521,45 @@ static gboolean send_display_status(DBusMessage *const method_call)
 	/* Send the message */
 	status = dbus_send_message(msg);
 
-	if( status && !method_call ) {
-	  signaled_display_state = display_state;
-	}
 EXIT:
 	return status;
-}
-
-
-
-/** Get monotonic time as struct timeval */
-static void monotime(struct timeval *tv)
-{
-	struct timespec ts;
-	clock_gettime(CLOCK_MONOTONIC, &ts);
-	TIMESPEC_TO_TIMEVAL(tv, &ts);
 }
 
 /** State information for frame buffer resume waiting */
 typedef struct
 {
+	/** frame buffer suspended flag */
+	bool suspended;
+
 	/** worker thread id */
 	pthread_t thread;
 
 	/** worker thread done flag */
 	bool finished;
 
-	/** sysfs input file path */
+	/** path to fb wakeup event file */
 	const char *wake_path;
 
-	/** sysfs input file descriptor */
-	int wake_fd;
+	/** wakeup file descriptor */
+	int         wake_fd;
+
+	/** path to fb sleep event file */
+	const char *sleep_path;
+
+	/** sleep file descriptor */
+	int         sleep_fd;
 
 	/** write end of wakeup mainloop pipe */
 	int  pipe_fd;
 
 	/** pipe reader io watch id */
 	guint     pipe_id;
-
-	/** start of wait time stamp */
-	struct timeval t0;
-
-	/** end of wait time stamp */
-	struct timeval  t1;
 } waitfb_t;
 
-/** Wait for fb resume thread
+/** Wait for fb sleep/wakeup thread
  *
- * Does a blocked read from sysfs input, wakes mainloop and then exits.
+ * Alternates between waiting for fb wakeup and sleep.
+ * Signals mainloop about the changes via a pipe.
  *
  * @param aptr state data (as void pointer)
  *
@@ -2565,10 +2575,44 @@ static void *waitfb_thread(void *aptr)
 
 	/* block in sysfs read */
 	char tmp[32];
-	TEMP_FAILURE_RETRY(read(self->wake_fd, tmp, sizeof tmp));
+	int rc;
+	for( ;; ) {
+		// FIXME: check if mce_log() is thread safe
 
-	/* wake mainloop by writing to pipe */
-	TEMP_FAILURE_RETRY(write(self->pipe_fd, "X", 1));
+		/* wait for fb wakeup */
+		self->wake_fd = TEMP_FAILURE_RETRY(open(self->wake_path,
+							O_RDONLY));
+		if( self->wake_fd == -1 ) {
+			fprintf(stderr, "%s: open: %m", self->wake_path);
+			break;
+		}
+		rc = TEMP_FAILURE_RETRY(read(self->wake_fd, tmp, sizeof tmp));
+		if( rc == -1 ) {
+			fprintf(stderr, "%s: %m", self->wake_path);
+			break;
+		}
+		TEMP_FAILURE_RETRY(close(self->wake_fd)), self->wake_fd = -1;
+
+		/* send "woke up" to mainloop */
+		TEMP_FAILURE_RETRY(write(self->pipe_fd, "W", 1));
+
+		/* wait for fb sleep */
+		self->sleep_fd = TEMP_FAILURE_RETRY(open(self->sleep_path,
+							 O_RDONLY));
+		if( self->sleep_fd == -1 ) {
+			fprintf(stderr, "%s: open: %m", self->sleep_path);
+			break;
+		}
+		rc = TEMP_FAILURE_RETRY(read(self->sleep_fd, tmp, sizeof tmp));
+		if( rc == -1 ) {
+			fprintf(stderr, "%s: %m", self->sleep_path);
+			break;
+		}
+		TEMP_FAILURE_RETRY(close(self->sleep_fd)), self->sleep_fd = -1;
+
+		/* send "sleeping" to mainloop */
+		TEMP_FAILURE_RETRY(write(self->pipe_fd, "S", 1));
+	}
 
 	/* mark thread done and exit */
 	self->finished = true;
@@ -2607,7 +2651,11 @@ static void waitfb_cancel(waitfb_t *self)
 		close(self->pipe_fd), self->pipe_fd = -1;
 	}
 
-	/* close sysfs input fd */
+	/* close sysfs input fds */
+	if( self->sleep_fd != -1 ) {
+		mce_log(LL_DEBUG, "close %s", self->sleep_path);
+		close(self->sleep_fd), self->sleep_fd = -1;
+	}
 	if( self->wake_fd != -1 ) {
 		mce_log(LL_DEBUG, "close %s", self->wake_path);
 		close(self->wake_fd), self->wake_fd = -1;
@@ -2624,7 +2672,7 @@ static void waitfb_cancel(waitfb_t *self)
  *
  * @return FALSE (to disable the input watch)
  */
-static gboolean waitfb_stopped_cb(GIOChannel *chn,
+static gboolean waitfb_event_cb(GIOChannel *chn,
 				  GIOCondition cnd,
 				  gpointer aptr)
 {
@@ -2632,39 +2680,40 @@ static gboolean waitfb_stopped_cb(GIOChannel *chn,
 	(void)chn; (void)cnd;
 
 	waitfb_t *self = aptr;
+	gboolean  keep = FALSE;
 
-	if( self->pipe_id ) {
-		/* mark input watch as removed */
-		self->pipe_id = 0;
 
-		/* join thread without cancelling it */
-		mce_log(LL_DEBUG, "wakeup, wait for worker ...");
-		void *status = 0;
-		pthread_join(self->thread, &status);
-		mce_log(LL_DEBUG, "... worker exited");
-		self->thread = 0;
+	if( !self->pipe_id )
+		goto EXIT;
 
-		/* clean up the rest too */
-		waitfb_cancel(self);
+	char tmp[64];
+	int fd = g_io_channel_unix_get_fd(chn);
+	int rc = read(fd, tmp, sizeof tmp);
 
-		/* log waiting time */
-		if( mce_log_p(LL_NOTICE) ) {
-			struct timeval t;
-			monotime(&self->t1);
-			timersub(&self->t1, &self->t0, &t);
-			mce_log(LL_NOTICE, "delay = %ld.%06ld seconds",
-				(long)t.tv_sec,(long)t.tv_usec);
-		}
-
-#ifdef ENABLE_WAKELOCKS
-		/* Tell UI side that updates can take place again */
-		renderer_set_state(TRUE);
-#endif
-		/* broadcast display state change */
-		send_display_status(0);
+	if( rc == -1 ) {
+		if( errno == EINTR || errno == EAGAIN )
+			keep = TRUE;
+		else
+			mce_log(LL_ERR, "read events: %m");
+		goto EXIT;
+	}
+	if( rc == 0 ) {
+		mce_log(LL_ERR, "read events: EOF");
+		goto EXIT;
 	}
 
-	return FALSE;
+	keep = TRUE;
+	self->suspended = (tmp[rc-1] == 'S');
+	mce_log(LL_NOTICE, "read:%d, suspended:%d", rc, self->suspended);
+	stm_rethink_schedule();
+
+EXIT:
+	if( !keep && self->pipe_id ) {
+		self->pipe_id = 0;
+		mce_log(LL_CRIT, "stopping io watch");
+		waitfb_cancel(self);
+	}
+	return keep;
 }
 
 /** Start delayed display state change broadcast
@@ -2681,17 +2730,11 @@ static gboolean waitfb_start(waitfb_t *self)
 
 	waitfb_cancel(self);
 
-	monotime(&self->t0);
-
-	if( (self->wake_fd = open(self->wake_path, O_RDONLY)) == -1 ) {
-		/* silently fail if sysfs wait file is not present as
-		 * send_display_status_signal() will default to sending
-		 * the signal immediately */
-		if( errno != ENOENT ) {
-			mce_log(LL_ERR, "%s: %m", self->wake_path);
-		}
+#ifdef ENABLE_WAKELOCKS
+	if( access(self->wake_path, F_OK) == -1 ||
+	    access(self->sleep_path, F_OK) == -1 )
 		goto EXIT;
-	}
+
 	if( pipe2(pfd, O_CLOEXEC) == -1 ) {
 		mce_log(LL_ERR, "pipe: %m");
 		goto EXIT;
@@ -2702,7 +2745,7 @@ static gboolean waitfb_start(waitfb_t *self)
 	if( !(chn = g_io_channel_unix_new(pfd[0])) ) {
 		goto EXIT;
 	}
-	self->pipe_id = g_io_add_watch(chn, G_IO_IN, waitfb_stopped_cb, self);
+	self->pipe_id = g_io_add_watch(chn, G_IO_IN, waitfb_event_cb, self);
 	if( !self->pipe_id ) {
 		goto EXIT;
 	}
@@ -2717,6 +2760,7 @@ static gboolean waitfb_start(waitfb_t *self)
 	}
 
 	res = TRUE;
+#endif /* ENABLE_WAKELOCKS */
 
 EXIT:
 	if( chn != 0 ) g_io_channel_unref(chn);
@@ -2732,47 +2776,16 @@ EXIT:
 /** State information for wait for fb resume thread */
 static waitfb_t waitfb =
 {
-	.thread    = 0,
-	.finished  = false,
-	.wake_path = "/sys/power/wait_for_fb_wake",
-	.wake_fd   = -1,
-	.pipe_fd   = -1,
-	.pipe_id   = 0,
+	.suspended  = false,
+	.thread     = 0,
+	.finished   = false,
+	.wake_path  = "/sys/power/wait_for_fb_wake",
+	.wake_fd    = -1,
+	.sleep_path = "/sys/power/wait_for_fb_sleep",
+	.sleep_fd   = -1,
+	.pipe_fd    = -1,
+	.pipe_id    = 0,
 };
-
-/** Send display status signal
- *
- * If the previous state was MCE_DISPLAY_OFF, the signal sending
- * is delayed until resume from suspend has finished. This allows UI
- * applications to use the signal as ready-for-rendering trigger.
- *
- * Because the frame buffer readines can be evaluated only by making
- * a blocking read, a worker thread is used for this purpose. When
- * the read returns, the worker signals mainloop via pipe before
- * exiting.
- */
-static gboolean send_display_status_signal(void)
-{
-	display_state_t display_state = datapipe_get_gint(display_state_pipe);
-
-	waitfb_cancel(&waitfb);
-
-	if( display_state == signaled_display_state ) {
-		/* Nothing to do */
-		return TRUE;
-	}
-
-	if( signaled_display_state == MCE_DISPLAY_OFF ) {
-		if( waitfb_start(&waitfb) ) {
-			/* Broadcast happens when fb resume has finished */
-			return TRUE;
-		}
-	}
-
-	/* Broadcast immediately */
-	send_display_status(0);
-	return TRUE;
-}
 
 /**
  * D-Bus callback for the get display status method call
@@ -2826,7 +2839,7 @@ static gboolean display_set_demo_mode_dbus_cb(DBusMessage *const msg)
 		blanking_inhibit_mode = INHIBIT_STAY_ON;
 
 		/* unblank screen */
-		(void)execute_datapipe(&display_state_pipe,
+		(void)execute_datapipe(&display_state_req_pipe,
                                        GINT_TO_POINTER(MCE_DISPLAY_ON),
                                        USE_INDATA, CACHE_INDATA);
 		/* turn off tklock */
@@ -2944,7 +2957,7 @@ static gboolean display_on_req_dbus_cb(DBusMessage *const msg)
 
 	if ((call_state != CALL_STATE_RINGING) &&
 	    ((submode & (MCE_PROXIMITY_TKLOCK_SUBMODE | MCE_POCKET_SUBMODE)) == 0)) {
-		(void)execute_datapipe(&display_state_pipe,
+		(void)execute_datapipe(&display_state_req_pipe,
 				       GINT_TO_POINTER(MCE_DISPLAY_ON),
 				       USE_INDATA, CACHE_INDATA);
 	}
@@ -2974,7 +2987,7 @@ static gboolean display_dim_req_dbus_cb(DBusMessage *const msg)
 	mce_log(LL_DEBUG,
 		"Received display dim request");
 
-	(void)execute_datapipe(&display_state_pipe,
+	(void)execute_datapipe(&display_state_req_pipe,
 			       GINT_TO_POINTER(MCE_DISPLAY_DIM),
 			       USE_INDATA, CACHE_INDATA);
 
@@ -3004,7 +3017,7 @@ static gboolean display_off_req_dbus_cb(DBusMessage *const msg)
 		"Received display off request from %s",
 		dbus_message_get_sender(msg));
 
-	(void)execute_datapipe(&display_state_pipe,
+	(void)execute_datapipe(&display_state_req_pipe,
 			       GINT_TO_POINTER(MCE_DISPLAY_OFF),
 			       USE_INDATA, CACHE_INDATA);
 
@@ -3753,76 +3766,48 @@ static gint suspend_policy = SUSPEND_POLICY_DEFAULT;
 /** GConf callback ID for automatic suspend policy changes */
 static guint suspend_policy_id = 0;
 
-/** Make suspend policy decision
+
+/** Check if suspend policy allows suspending
  *
- * Unless we are still booting up or exiting mce, the policy
- * is based on display state as follows:
- * - full suspend on OFF / LPM_OFF
- * - early suspend on LPM_ON
- * - otherwise block suspend
+ * @return 0 - suspending not allowed
+ *         1 - early suspend allowed
+ *         2 - late suspend allowed
  */
-static void suspend_rethink(void)
+static int suspend_allow_state(void)
 {
-	static int suspend_have  = -1;
-	static int wakelock_have = -1;
+	system_state_t system_state = datapipe_get_gint(system_state_pipe);
 
-	int suspend_want  = 0; // default to block suspend
-	int wakelock_want = 1; //        and hold wakelock
-
-	display_state_t display_state = datapipe_get_gint(display_state_pipe);
-	system_state_t  system_state  = datapipe_get_gint(system_state_pipe);
-
-	/* suspend if display is off/lpm */
-	switch (display_state) {
-	case MCE_DISPLAY_OFF:
-	case MCE_DISPLAY_LPM_OFF:
-		// full suspend
-		suspend_want  = 1;
-		wakelock_want = 0;
-		break;
-	case MCE_DISPLAY_LPM_ON:
-		// early suspend
-		suspend_want  = 1;
-		wakelock_want = 1;
-		break;
-	default:
-		break;
-	}
+	bool block_late  = false;
+	bool block_early = false;
 
 	/* no late suspend in ACTDEAD etc */
-	if( system_state != MCE_STATE_USER ) {
-		wakelock_want = 1;
-	}
+	if( system_state != MCE_STATE_USER )
+		block_late = true;
 
 	/* no late suspend during bootup */
-	if( desktop_ready_id || !init_done ) {
-		wakelock_want = 1;
-	}
+	if( desktop_ready_id || !init_done )
+		block_late = true;
 
 	/* no late suspend during shutdown */
-	if( shutdown_started && suspend_want ) {
-		wakelock_want = 1;
-	}
+	if( shutdown_started )
+		block_late = true;
 
 	/* no more suspend at module unload */
-	if( module_unloading ) {
-		suspend_want  = 0;
-		wakelock_want = 0;
-	}
+	if( module_unloading )
+		block_early = true;
 
 	/* do not suspend while ui side might still be drawing */
-	if( !renderer_is_disabled ) {
-		suspend_want = 0;
-	}
+	if( renderer_ui_state != RENDERER_DISABLED )
+		block_early = true;
 
 	/* adjust based on gconf setting */
 	switch( suspend_policy ) {
 	case SUSPEND_POLICY_DISABLED:
-		suspend_want  = 0;
+		block_early = true;
 		break;
 
 	case SUSPEND_POLICY_EARLY_ONLY:
-		wakelock_want = 1;
+		block_late = true;
 		break;
 
 	default:
@@ -3830,27 +3815,7 @@ static void suspend_rethink(void)
 		break;
 	}
 
-	if( wakelock_have != wakelock_want || suspend_have != suspend_want ) {
-		mce_log(LL_NOTICE, "power state: %s",
-			!suspend_want ? "no-suspend" :
-			wakelock_want ? "early-suspend" : "late-suspend");
-	}
-
-	/* act if decision has changed */
-	if( wakelock_have != wakelock_want && wakelock_want )
-		wakelock_lock("mce_display_on", -1);
-
-	if( suspend_have != suspend_want ) {
-		if( (suspend_have = suspend_want) )
-			wakelock_allow_suspend();
-		else
-			wakelock_block_suspend();
-	}
-
-	if( wakelock_have != wakelock_want && !wakelock_want )
-		wakelock_unlock("mce_display_on");
-
-	wakelock_have = wakelock_want;
+	return block_early ? 0 : block_late ? 1 : 2;
 }
 
 /** Callback for handling changes to autosuspend policy configuration
@@ -3876,7 +3841,7 @@ static void suspend_policy_cb(GConfClient *const client, const guint id,
 		mce_log(LL_NOTICE, "suspend policy change: %d -> %d",
 			suspend_policy, policy);
 		suspend_policy = policy;
-		suspend_rethink();
+		stm_rethink_schedule();
 	}
 }
 #endif /* ENABLE_WAKELOCKS */
@@ -3897,9 +3862,7 @@ static gboolean shutdown_dbus_cb(DBusMessage *const msg)
 	shutdown_started = TRUE;
 
 	/* re-evaluate suspend policy */
-#ifdef ENABLE_WAKELOCKS
-	suspend_rethink();
-#endif
+	stm_rethink_schedule();
 
 #ifdef ENABLE_CPU_GOVERNOR
 	governor_rethink();
@@ -3916,9 +3879,7 @@ static gboolean desktop_ready_cb(gpointer user_data)
 	if( desktop_ready_id ) {
 		desktop_ready_id = 0;
 		mce_log(LL_NOTICE, "desktop ready delay ended");
-#ifdef ENABLE_WAKELOCKS
-		suspend_rethink();
-#endif
+		stm_rethink_schedule();
 #ifdef ENABLE_CPU_GOVERNOR
 		governor_rethink();
 #endif
@@ -3947,9 +3908,7 @@ static void init_done_changed_cb(const char *path,
 		init_done = flag;
 		mce_log(LL_NOTICE, "init_done -> %s",
 			init_done ? "true" : "false");
-#ifdef ENABLE_WAKELOCKS
-		suspend_rethink();
-#endif
+		stm_rethink_schedule();
 #ifdef ENABLE_CPU_GOVERNOR
 		governor_rethink();
 #endif
@@ -4077,7 +4036,15 @@ UPDATE:
 	return new_data;
 }
 
-
+/** Feed the state machine via from display_state_req_pipe data pipe
+ *
+ * @param data Requested display_state_t (as void pointer)
+ */
+static void display_state_req_trigger(gconstpointer data)
+{
+	display_state_t display_state = GPOINTER_TO_INT(data);
+	stm_target_set(display_state);
+}
 /**
  * Handle display state change
  *
@@ -4171,7 +4138,7 @@ static void display_state_trigger(gconstpointer data)
 	/* This will send the correct state
 	 * since the pipe contains the new value
 	 */
-	send_display_status_signal();
+	send_display_status(0);
 
 	/* Update the cached value */
 	cached_display_state = display_state;
@@ -4179,16 +4146,7 @@ static void display_state_trigger(gconstpointer data)
 	/* Update display on timers */
 	update_display_timers(FALSE);
 
-#ifdef ENABLE_WAKELOCKS
-	/* Give UI side time to finish drawing */
-	if( display_state == MCE_DISPLAY_OFF )
-		renderer_set_state(FALSE);
-#endif
-
 EXIT:
-#ifdef ENABLE_WAKELOCKS
-	suspend_rethink();
-#endif
 	return;
 }
 
@@ -4216,7 +4174,7 @@ static void submode_trigger(gconstpointer data)
 			/* Blank the screen unless we have alarm ui on */
 			if( alarm_ui_state != MCE_ALARM_UI_RINGING_INT32 &&
 			    alarm_ui_state != MCE_ALARM_UI_VISIBLE_INT32 ) {
-				execute_datapipe(&display_state_pipe,
+				execute_datapipe(&display_state_req_pipe,
 						 GINT_TO_POINTER(MCE_DISPLAY_OFF),
 						 USE_INDATA, CACHE_INDATA);
 			}
@@ -4278,7 +4236,7 @@ static void device_inactive_trigger(gconstpointer data)
 				adaptive_dimming_index++;
 		}
 
-		(void)execute_datapipe(&display_state_pipe,
+		(void)execute_datapipe(&display_state_req_pipe,
 				       GINT_TO_POINTER(MCE_DISPLAY_ON),
 				       USE_INDATA, CACHE_INDATA);
 	}
@@ -4335,7 +4293,7 @@ static void system_state_trigger(gconstpointer data)
 
 	switch (system_state) {
 	case MCE_STATE_USER:
-		(void)execute_datapipe(&display_state_pipe,
+		(void)execute_datapipe(&display_state_req_pipe,
 				       GINT_TO_POINTER(MCE_DISPLAY_ON),
 				       USE_INDATA, CACHE_INDATA);
 		break;
@@ -4343,7 +4301,7 @@ static void system_state_trigger(gconstpointer data)
 	case MCE_STATE_ACTDEAD:
 		if ((alarm_ui_state == MCE_ALARM_UI_RINGING_INT32) ||
 		    (alarm_ui_state == MCE_ALARM_UI_VISIBLE_INT32)) {
-			(void)execute_datapipe(&display_state_pipe,
+			(void)execute_datapipe(&display_state_req_pipe,
 					       GINT_TO_POINTER(MCE_DISPLAY_ON),
 					       USE_INDATA, CACHE_INDATA);
 		}
@@ -4362,10 +4320,10 @@ static void system_state_trigger(gconstpointer data)
 		shutdown_started = FALSE;
 		mce_log(LL_NOTICE, "Shutdown canceled");
 	}
-#ifdef ENABLE_WAKELOCKS
+
 	/* re-evaluate suspend policy */
-	suspend_rethink();
-#endif
+	stm_rethink_schedule();
+
 #ifdef ENABLE_CPU_GOVERNOR
 	governor_rethink();
 #endif
@@ -4394,7 +4352,7 @@ static void proximity_sensor_trigger(gconstpointer data)
 		cancel_lpm_proximity_blank_timeout();
 
 		if (display_state == MCE_DISPLAY_LPM_OFF) {
-			(void)execute_datapipe(&display_state_pipe,
+			(void)execute_datapipe(&display_state_req_pipe,
 					       GINT_TO_POINTER(MCE_DISPLAY_LPM_ON),
 					       USE_INDATA, CACHE_INDATA);
 		}
@@ -4414,6 +4372,639 @@ static void alarm_ui_state_trigger(gconstpointer data)
 	update_blanking_inhibit(FALSE);
 }
 
+
+/* ------------------------------------------------------------------------- *
+ * COMBINED SUSPEND & DISPLAY STATE MACHINE
+ * ------------------------------------------------------------------------- */
+
+typedef enum
+{
+	STM_UNSET,
+	STM_POWER_ON,
+	STM_SIG_OFF,
+	STM_RENDERER_INIT_STOP,
+	STM_RENDERER_WAIT_STOP,
+	STM_LOGICAL_OFF,
+	STM_RENDERER_INIT_START,
+	STM_RENDERER_WAIT_START,
+	STM_SIG_ON,
+	STM_INIT_SUSPEND,
+	STM_WAIT_SUSPEND,
+	STM_POWER_OFF,
+	STM_INIT_RESUME,
+	STM_WAIT_RESUME,
+
+} stm_state_t;
+
+static guint stm_rethink_id = 0;
+
+static bool stm_lipstick_on_dbus = false;
+
+static display_state_t stm_curr = MCE_DISPLAY_UNDEF;
+static display_state_t stm_next = MCE_DISPLAY_UNDEF;
+static display_state_t stm_want = MCE_DISPLAY_UNDEF;
+
+static stm_state_t dstate = STM_UNSET;
+
+static bool stm_wakelock_acquired = false;
+
+
+static const char *stm_state_name(stm_state_t state)
+{
+	const char *name = "UNKNOWN";
+
+#define DO(tag) case STM_##tag: name = #tag; break;
+	switch( state ) {
+	DO(UNSET)
+	DO(POWER_ON)
+	DO(SIG_OFF)
+	DO(RENDERER_INIT_STOP)
+	DO(RENDERER_WAIT_STOP)
+	DO(LOGICAL_OFF)
+	DO(RENDERER_INIT_START)
+	DO(RENDERER_WAIT_START)
+	DO(SIG_ON)
+	DO(INIT_SUSPEND)
+	DO(WAIT_SUSPEND)
+	DO(POWER_OFF)
+	DO(INIT_RESUME)
+	DO(WAIT_RESUME)
+	default: break;
+	}
+#undef DO
+	return name;
+}
+
+static const char *display_state_name(display_state_t state)
+{
+	const char *name = "UNKNOWN";
+
+#define DO(tag) case MCE_DISPLAY_##tag: name = #tag; break;
+	switch( state ) {
+	DO(UNDEF)
+	DO(OFF)
+	DO(LPM_OFF)
+	DO(LPM_ON)
+	DO(DIM)
+	DO(ON)
+	default: break;
+	}
+#undef DO
+	return name;
+}
+
+static bool stm_suspend_allowed_early(void)
+{
+#ifdef ENABLE_WAKELOCKS
+	bool res = (suspend_allow_state() != 0);
+	mce_log(LL_NOTICE, "res=%s", res ? "true" : "false");
+	return res;
+#else
+	// "early suspend" in state machine transforms in to
+	// fb power control via ioctl without ENABLE_WAKELOCKS
+	return true;
+#endif
+}
+
+static bool stm_suspend_allowed_late(void)
+{
+#ifdef ENABLE_WAKELOCKS
+	bool res = (suspend_allow_state() == 2);
+	mce_log(LL_NOTICE, "res=%s", res ? "true" : "false");
+	return res;
+#else
+	return false;
+#endif
+}
+
+static void stm_suspend_start(void)
+{
+#ifdef ENABLE_WAKELOCKS
+	mce_log(LL_NOTICE, "suspending");
+	if( waitfb.thread )
+		wakelock_allow_suspend();
+	else
+		waitfb.suspended = true, backlight_ioctl(FB_BLANK_POWERDOWN);
+#else
+	mce_log(LL_NOTICE, "power off frame buffer");
+	waitfb.suspended = true, backlight_ioctl(FB_BLANK_POWERDOWN);
+#endif
+}
+static void stm_resume_start(void)
+{
+#ifdef ENABLE_WAKELOCKS
+	mce_log(LL_NOTICE, "resuming");
+	if( waitfb.thread )
+		wakelock_block_suspend();
+	else
+		waitfb.suspended = false, backlight_ioctl(FB_BLANK_UNBLANK);
+#else
+	mce_log(LL_NOTICE, "power off frame buffer");
+	waitfb.suspended = false, backlight_ioctl(FB_BLANK_UNBLANK);
+#endif
+}
+static bool stm_suspend_finished(void)
+{
+	bool res = waitfb.suspended;
+	mce_log(LL_NOTICE, "res=%s", res ? "true" : "false");
+	return res;
+}
+static bool stm_resume_finished(void)
+{
+	bool res = !waitfb.suspended;
+	mce_log(LL_NOTICE, "res=%s", res ? "true" : "false");
+	return res;
+}
+
+static void stm_lipstick_name_owner_changed(const char *name, bool has_owner)
+{
+	(void)name;
+	if( stm_lipstick_on_dbus != has_owner ) {
+		stm_lipstick_on_dbus = has_owner;
+		mce_log(LL_WARN, "lipstick %s system bus",
+			has_owner ? "is on" : "dropped from");
+
+		/* a) Lipstick assumes that updates are allowed when
+		 *    it starts up. Try to arrange that it is so.
+		 * b) Without lipstick in place we must not suspend
+		 *    because there is nobody to communicate the
+		 *    updating is allowed
+		 *
+		 * Turning the display on at lipstick runstate change
+		 * deals with both (a) and (b) */
+		stm_target_set(MCE_DISPLAY_ON);
+	}
+}
+
+static void stm_wakelock_release(void)
+{
+	if( stm_wakelock_acquired ) {
+		stm_wakelock_acquired = false;
+#ifdef ENABLE_WAKELOCKS
+		mce_log(LL_NOTICE, "wakelock released");
+		wakelock_unlock("mce_display_on");
+#endif
+	}
+}
+
+static void stm_wakelock_acquire(void)
+{
+	if( !stm_wakelock_acquired ) {
+		stm_wakelock_acquired = true;
+#ifdef ENABLE_WAKELOCKS
+		wakelock_lock("mce_display_on", -1);
+		mce_log(LL_NOTICE, "wakelock acquired");
+#endif
+	}
+}
+
+
+static void stm_trans(stm_state_t state)
+{
+	if( dstate != state ) {
+		mce_log(LL_NOTICE, "STM: %s -> %s",
+			stm_state_name(dstate),
+			stm_state_name(state));
+		dstate = state;
+	}
+}
+
+static void stm_target_set(display_state_t display_state)
+{
+	if( stm_want != display_state ) {
+		stm_want = display_state;
+		mce_log(LL_NOTICE, "curr=%s, next=%s, want=%s",
+			display_state_name(stm_curr),
+			display_state_name(stm_next),
+			display_state_name(stm_want));
+		stm_rethink_schedule();
+	}
+}
+
+static bool stm_target_changed(void)
+{
+	if( stm_curr == stm_next && stm_next != stm_want ) {
+		mce_log(LL_NOTICE, "display state target: %s -> %s",
+			display_state_name(stm_next),
+			display_state_name(stm_want));
+		stm_next = stm_want;
+	}
+	return stm_curr != stm_next;
+}
+
+static void stm_target_execute(void)
+{
+	stm_curr = stm_next;
+	execute_datapipe(&display_state_pipe, GINT_TO_POINTER(stm_curr),
+			 USE_INDATA, CACHE_INDATA);
+}
+
+static bool stm_renderer_pending(void)
+{
+	return renderer_ui_state == RENDERER_UNKNOWN;
+}
+static bool stm_renderer_disabled(void)
+{
+	return renderer_ui_state == RENDERER_DISABLED;
+}
+static bool stm_renderer_enabled(void)
+{
+	return renderer_ui_state == RENDERER_ENABLED;
+}
+
+static void stm_renderer_disable(void)
+{
+	if( renderer_ui_state != RENDERER_DISABLED ) {
+		mce_log(LL_NOTICE, "stopping renderer");
+		renderer_set_state(RENDERER_DISABLED);
+	}
+}
+
+static void stm_renderer_enable(void)
+{
+	if( !stm_lipstick_on_dbus ) {
+		renderer_ui_state = RENDERER_ENABLED;
+		mce_log(LL_NOTICE, "starting renderer - skipped");
+	}
+	else if( renderer_ui_state != RENDERER_ENABLED ) {
+		mce_log(LL_NOTICE, "starting renderer");
+		renderer_set_state(RENDERER_ENABLED);
+	}
+}
+
+static bool stm_display_state_needs_power(display_state_t display_state)
+{
+	bool power_on = true;
+
+	switch( display_state ) {
+	case MCE_DISPLAY_ON:
+	case MCE_DISPLAY_DIM:
+	case MCE_DISPLAY_LPM_ON:
+	case MCE_DISPLAY_LPM_OFF:
+		break;
+
+	case MCE_DISPLAY_OFF:
+		power_on = false;
+		break;
+
+	case MCE_DISPLAY_UNDEF:
+	default:
+		abort();
+	}
+
+	return power_on;
+}
+
+static void stm_rethink_step(void)
+{
+	switch( dstate ) {
+	case STM_UNSET:
+	default:
+		stm_wakelock_acquire();
+		if( stm_want != MCE_DISPLAY_UNDEF )
+			stm_trans(STM_INIT_RESUME);
+		break;
+
+	case STM_POWER_ON:
+		if( !stm_lipstick_on_dbus && stm_next == MCE_DISPLAY_OFF )
+			stm_next = stm_want;
+		if( !stm_target_changed() )
+			break;
+		if( stm_display_state_needs_power(stm_next) )
+			stm_trans(STM_RENDERER_INIT_START);
+		else if( stm_lipstick_on_dbus )
+			stm_trans(STM_RENDERER_INIT_STOP);
+		break;
+
+	case STM_RENDERER_INIT_STOP:
+		stm_renderer_disable();
+		stm_trans(STM_RENDERER_WAIT_STOP);
+		break;
+
+	case STM_RENDERER_WAIT_STOP:
+		if( stm_renderer_pending() )
+			break;
+		if( stm_renderer_disabled() ) {
+			stm_trans(STM_SIG_OFF);
+			break;
+		}
+		mce_log(LL_ERR, "ui stop failed, reverting %s",
+			display_state_name(stm_next));
+		stm_want = stm_next = stm_curr;
+		stm_trans(STM_SIG_ON);
+		break;
+
+	case STM_SIG_OFF:
+		stm_target_execute();
+		if( stm_suspend_allowed_early() )
+			stm_trans(STM_INIT_SUSPEND);
+		else
+			stm_trans(STM_LOGICAL_OFF);
+		break;
+
+	case STM_LOGICAL_OFF:
+		if( stm_suspend_allowed_early() )
+			stm_trans(STM_INIT_SUSPEND);
+		else if( stm_target_changed() )
+			stm_trans(STM_RENDERER_INIT_START);
+		break;
+
+	case STM_RENDERER_INIT_START:
+		stm_renderer_enable();
+		stm_trans(STM_RENDERER_WAIT_START);
+		break;
+
+	case STM_RENDERER_WAIT_START:
+		if( stm_renderer_pending() )
+			break;
+		if( !stm_renderer_enabled() )
+			mce_log(LL_ERR, "ui start failed, ignoring");
+		stm_trans(STM_SIG_ON);
+		break;
+
+	case STM_SIG_ON:
+		stm_target_execute();
+		stm_trans(STM_POWER_ON);
+		break;
+
+	case STM_INIT_SUSPEND:
+		stm_suspend_start();
+		stm_trans(STM_WAIT_SUSPEND);
+		break;
+		break;
+
+	case STM_WAIT_SUSPEND:
+		if( !stm_suspend_finished() )
+			break;
+		stm_trans(STM_POWER_OFF);
+		break;
+
+	case STM_POWER_OFF:
+		if( !stm_suspend_allowed_early() || stm_target_changed()) {
+			stm_trans(STM_INIT_RESUME);
+			break;
+		}
+		if( !stm_suspend_allowed_late() )
+			stm_wakelock_acquire();
+		else
+			stm_wakelock_release();
+		break;
+
+	case STM_INIT_RESUME:
+		stm_wakelock_acquire();
+		stm_resume_start();
+		stm_trans(STM_WAIT_RESUME);
+		break;
+
+	case STM_WAIT_RESUME:
+		if( !stm_resume_finished() )
+			break;
+		if( stm_target_changed() )
+			stm_trans(STM_RENDERER_INIT_START);
+		else
+			stm_trans(STM_LOGICAL_OFF);
+		break;
+	}
+}
+
+static void stm_rethink(void)
+{
+	stm_state_t prev;
+	mce_log(LL_NOTICE, "ENTER @ %s", stm_state_name(dstate));
+	do {
+		prev = dstate;
+		stm_rethink_step();
+	} while( dstate != prev );
+	mce_log(LL_NOTICE, "LEAVE @ %s", stm_state_name(dstate));
+}
+
+
+static gboolean stm_rethink_cb(gpointer aptr)
+{
+	(void)aptr; // not used
+	if( stm_rethink_id )
+		stm_rethink_id = 0, stm_rethink();
+	return FALSE;
+}
+
+static void stm_rethink_cancel(void)
+{
+	if( stm_rethink_id ) {
+		g_source_remove(stm_rethink_id), stm_rethink_id = 0;
+		mce_log(LL_NOTICE, "cancelled");
+	}
+}
+
+static void stm_rethink_schedule(void)
+{
+	if( !stm_rethink_id ) {
+		mce_log(LL_NOTICE, "scheduled");
+		stm_rethink_id = g_idle_add(stm_rethink_cb, 0);
+	}
+}
+
+
+/* ------------------------------------------------------------------------- *
+ * D-BUS NAME OWNER TRACKING
+ * ------------------------------------------------------------------------- */
+
+/** Format string for constructing name owner lost match rules */
+static const char dbusname_rule_fmt[] =
+"type='signal'"
+",interface='"DBUS_INTERFACE_DBUS"'"
+",member='NameOwnerChanged'"
+",arg0='%s'"
+;
+
+static struct
+{
+	const char *name;
+	char       *rule;
+	void     (*notify)(const char *name, bool has_owner);
+} dbusname_lut[] =
+{
+	{
+		.name = RENDERER_SERVICE,
+		.notify = stm_lipstick_name_owner_changed,
+	},
+	{
+		.name = 0,
+	}
+};
+
+
+static void
+dbusname_owner_changed(const char *name, const char *prev, const char *curr)
+{
+	(void)prev; // not used
+
+	bool has_owner = (*curr != 0);
+
+	for( int i = 0; dbusname_lut[i].name; ++i ) {
+		if( !strcmp(dbusname_lut[i].name, name) )
+			dbusname_lut[i].notify(name, has_owner);
+	}
+}
+
+
+/** Call back for handling asynchronous client verification via GetNameOwner
+ *
+ * @param pending   control structure for asynchronous d-bus methdod call
+ * @param user_data dbus_name of the client as void poiter
+ */
+static
+void
+dbusname_query_cb(DBusPendingCall *pending, void *user_data)
+{
+	const char  *name   = user_data;
+	const char  *owner  = 0;
+	DBusMessage *rsp    = 0;
+	DBusError    err    = DBUS_ERROR_INIT;
+
+	if( !(rsp = dbus_pending_call_steal_reply(pending)) )
+		goto EXIT;
+
+	if( dbus_set_error_from_message(&err, rsp) ||
+	    !dbus_message_get_args(rsp, &err,
+				   DBUS_TYPE_STRING, &owner,
+				   DBUS_TYPE_INVALID) )
+	{
+		if( strcmp(err.name, DBUS_ERROR_NAME_HAS_NO_OWNER) ) {
+			mce_log(LL_WARN, "%s: %s", err.name, err.message);
+		}
+	}
+
+	dbusname_owner_changed(name, "", owner ?: "");
+EXIT:
+	if( rsp ) dbus_message_unref(rsp);
+	dbus_error_free(&err);
+}
+
+/** Verify that a client exists via an asynchronous GetNameOwner method call
+ *
+ * @param name the dbus name who's owner we wish to know
+ */
+static
+void
+dbusname_query(const char *name)
+{
+	DBusMessage     *req = 0;
+	DBusPendingCall *pc  = 0;
+	char            *key = 0;
+
+	req = dbus_message_new_method_call(DBUS_SERVICE_DBUS,
+					   DBUS_PATH_DBUS,
+					   DBUS_INTERFACE_DBUS,
+					   "GetNameOwner");
+	dbus_message_append_args(req,
+				 DBUS_TYPE_STRING, &name,
+				 DBUS_TYPE_INVALID);
+
+	if( !dbus_connection_send_with_reply(systembus, req, &pc, -1) )
+		goto EXIT;
+
+	key = strdup(name);
+
+	if( !dbus_pending_call_set_notify(pc, dbusname_query_cb, key, free) )
+		goto EXIT;
+
+	// key string is owned by pending call
+	key = 0;
+EXIT:
+	free(key);
+
+	if( pc  ) dbus_pending_call_unref(pc);
+	if( req ) dbus_message_unref(req);
+}
+
+/** D-Bus message filter for handling NameOwnerChanged signals
+ *
+ * @param con       (not used)
+ * @param msg       message to be acted upon
+ * @param user_data (not used)
+ *
+ * @return DBUS_HANDLER_RESULT_NOT_YET_HANDLED (other filters see the msg too)
+ */
+static
+DBusHandlerResult
+dbusname_filter_cb(DBusConnection *con, DBusMessage *msg, void *user_data)
+{
+	(void)user_data;
+	(void)con;
+
+	DBusHandlerResult res = DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
+
+	const char *name = 0;
+	const char *prev = 0;
+	const char *curr = 0;
+
+	DBusError err = DBUS_ERROR_INIT;
+
+	if( !dbus_message_is_signal(msg, DBUS_INTERFACE_DBUS,
+				    "NameOwnerChanged") )
+		goto EXIT;
+
+	if( !dbus_message_get_args(msg, &err,
+				   DBUS_TYPE_STRING, &name,
+				   DBUS_TYPE_STRING, &prev,
+				   DBUS_TYPE_STRING, &curr,
+				   DBUS_TYPE_INVALID) ) {
+		mce_log(LL_WARN, "%s: %s", err.name, err.message);
+		goto EXIT;
+	}
+
+	dbusname_owner_changed(name, prev, curr);
+EXIT:
+	dbus_error_free(&err);
+	return res;
+}
+
+static char *
+dbusname_watch(const char *name)
+{
+	char *rule = g_strdup_printf(dbusname_rule_fmt, name);
+	dbus_bus_add_match(systembus, rule, 0);
+	return rule;
+}
+
+static void dbusname_unwatch(char *rule)
+{
+	if( rule ) {
+		dbus_bus_remove_match(systembus, rule, 0);
+		g_free(rule);
+	}
+}
+
+static void
+dbusname_init(void)
+{
+	dbus_connection_add_filter(systembus,
+				   dbusname_filter_cb, 0, 0);
+
+	for( int i = 0; dbusname_lut[i].name; ++i ) {
+		dbusname_lut[i].rule = dbusname_watch(dbusname_lut[i].name);
+		dbusname_query(dbusname_lut[i].name);
+	}
+}
+
+static void
+dbusname_quit(void)
+{
+	// TODO: we should keep track ofasync name owner calls
+	//       and cancel them at this point
+	dbus_connection_remove_filter(systembus,
+				      dbusname_filter_cb, 0);
+
+	for( int i = 0; dbusname_lut[i].name; ++i ) {
+		dbusname_unwatch(dbusname_lut[i].rule),
+			dbusname_lut[i].rule = 0;
+	}
+}
+
+/* ------------------------------------------------------------------------- *
+ * MODULE LOAD/UNLOAD
+ * ------------------------------------------------------------------------- */
+
 /**
  * Init function for the display handling module
  *
@@ -4431,6 +5022,11 @@ const gchar *g_module_check_init(GModule *module)
 	gulong tmp;
 
 	(void)module;
+
+	/* Start dbus name tracking */
+	if( !(systembus = dbus_connection_get()) )
+		goto EXIT;
+	dbusname_init();
 
 	/* Initialise the display type and the relevant paths */
 	(void)get_display_type();
@@ -4462,7 +5058,7 @@ const gchar *g_module_check_init(GModule *module)
 			       &suspend_policy_id);
 
 	/* Evaluate initial state */
-	suspend_rethink();
+	stm_rethink_schedule();
 #endif
 	/* Start waiting for init_done state */
 	init_done_start_tracking();
@@ -4477,7 +5073,7 @@ const gchar *g_module_check_init(GModule *module)
 	}
 
 	/* Append triggers/filters to datapipes */
-	append_filter_to_datapipe(&display_state_pipe,
+	append_filter_to_datapipe(&display_state_req_pipe,
 				  display_state_filter);
 	append_output_trigger_to_datapipe(&system_state_pipe,
 					  system_state_trigger);
@@ -4487,6 +5083,8 @@ const gchar *g_module_check_init(GModule *module)
 					  display_brightness_trigger);
 	append_output_trigger_to_datapipe(&display_state_pipe,
 					  display_state_trigger);
+	append_output_trigger_to_datapipe(&display_state_req_pipe,
+					  display_state_req_trigger);
 	append_output_trigger_to_datapipe(&submode_pipe,
 					  submode_trigger);
 	append_output_trigger_to_datapipe(&device_inactive_pipe,
@@ -4801,12 +5399,14 @@ const gchar *g_module_check_init(GModule *module)
 	 * gets notification from DSME */
 	mce_log(LL_INFO, "initial display mode = %s",
 		display_is_on ? "ON" : "OFF");
-	(void)execute_datapipe(&display_state_pipe,
+	(void)execute_datapipe(&display_state_req_pipe,
 			       GINT_TO_POINTER(display_is_on ?
 					       MCE_DISPLAY_ON :
 					       MCE_DISPLAY_OFF),
 			       USE_INDATA, CACHE_INDATA);
 
+
+	waitfb_start(&waitfb);
 EXIT:
 	return NULL;
 }
@@ -4826,6 +5426,9 @@ void g_module_unload(GModule *module)
 	/* Mark down that we are unloading */
 	module_unloading = TRUE;
 
+	/* Kill the framebuffer sleep/wakeup thread */
+	waitfb_cancel(&waitfb);
+
 	/* Stop waiting for init_done state */
 	init_done_stop_tracking();
 
@@ -4835,9 +5438,6 @@ void g_module_unload(GModule *module)
 		mce_gconf_notifier_remove(GINT_TO_POINTER(suspend_policy_id), 0);
 		suspend_policy_id = 0;
 	}
-
-	/* Disable autosuspend */
-	suspend_rethink();
 #endif
 
 #ifdef ENABLE_CPU_GOVERNOR
@@ -4871,6 +5471,8 @@ void g_module_unload(GModule *module)
 					    device_inactive_trigger);
 	remove_output_trigger_from_datapipe(&submode_pipe,
 					    submode_trigger);
+	remove_output_trigger_from_datapipe(&display_state_req_pipe,
+					    display_state_req_trigger);
 	remove_output_trigger_from_datapipe(&display_state_pipe,
 					    display_state_trigger);
 	remove_output_trigger_from_datapipe(&display_brightness_pipe,
@@ -4879,7 +5481,7 @@ void g_module_unload(GModule *module)
 					    charger_state_trigger);
 	remove_output_trigger_from_datapipe(&system_state_pipe,
 					    system_state_trigger);
-	remove_filter_from_datapipe(&display_state_pipe,
+	remove_filter_from_datapipe(&display_state_req_pipe,
 				    display_state_filter);
 
 	/* Free lists */
@@ -4905,10 +5507,18 @@ void g_module_unload(GModule *module)
 	cancel_adaptive_dimming_timeout();
 	cancel_blank_timeout();
 
-#ifdef ENABLE_WAKELOCKS
 	/* Cancel active asynchronous dbus method calls to avoid
 	 * callback functions with stale adresses getting invoked */
 	renderer_cancel_state_set();
-#endif
+
+	/* Cancel pending state machine updates */
+	stm_rethink_cancel();
+
+	/* Stop dbus name tracking */
+	if( systembus ) {
+		dbusname_quit();
+		dbus_connection_unref(systembus), systembus = 0;
+	}
+
 	return;
 }

@@ -147,7 +147,7 @@ static void system_state_trigger(gconstpointer data)
 		 * blank the screen
 		 */
 		if (old_system_state == MCE_STATE_ACTDEAD) {
-			execute_datapipe(&display_state_pipe,
+			execute_datapipe(&display_state_req_pipe,
 					 GINT_TO_POINTER(MCE_DISPLAY_LPM_OFF),
 					 USE_INDATA, CACHE_INDATA);
 		}
