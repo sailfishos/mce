@@ -1,3 +1,9 @@
+mce (1.13.3) unstable; urgency=low
+
+  * [init] disable mce start before user-session. It causes shutdown problems
+
+ -- Pekka Lundstrom <pekka.lundstrom@jollamobile.com>  Wed, 28 Aug 2013 11:38:40 +0300
+
 mce (1.13.2) unstable; urgency=low
 
   * [init] mce is started before user-session
