@@ -3,7 +3,9 @@ Description=Mode Control Entity (MCE)
 Requires=dsme.service
 Requires=dbus.service
 After=dsme.service
-Before=systemd-user-sessions.service
+# We want following but for some reason it causes shutdown problem
+# disable until we find out why
+# Before=systemd-user-sessions.service
 
 [Service]
 ExecStart=/usr/sbin/mce
