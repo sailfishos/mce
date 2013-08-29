@@ -1,3 +1,10 @@
+mce (1.14.0) unstable; urgency=low
+
+  * [init] Notification sent to systemd when mce has started up
+  * [init] Tune mce.service startup dependencies
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 29 Aug 2013 10:03:36 +0300
+
 mce (1.13.3) unstable; urgency=low
 
   * [init] disable mce start before user-session. It causes shutdown problems
