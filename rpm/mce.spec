@@ -18,6 +18,7 @@ BuildRequires:  pkgconfig(dsme) >= 0.58
 BuildRequires:  pkgconfig(gconf-2.0)
 BuildRequires:  pkgconfig(glib-2.0) >= 2.18.0
 BuildRequires:  pkgconfig(mce) >= 1.12.3
+BuildRequires:  pkgconfig(libsystemd-daemon)
 BuildRequires:  kernel-headers >= 2.6.32
 BuildRequires:  systemd
 # systemd has /etc/rpm/macros.systemd

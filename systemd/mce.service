@@ -8,7 +8,8 @@ After=dsme.service
 # Before=systemd-user-sessions.service
 
 [Service]
-ExecStart=/usr/sbin/mce
+Type=notify
+ExecStart=/usr/sbin/mce --systemd
 Restart=always
 
 [Install]

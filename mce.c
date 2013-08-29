@@ -134,6 +134,8 @@
 # include "libwakelock.h"
 #endif
 
+#include <systemd/sd-daemon.h>
+
 /** Path to the lockfile */
 #define MCE_LOCKFILE			"/var/run/mce.pid"
 /** Name shown by --help etc. */
@@ -169,6 +171,7 @@ static const char usage_fmt[] =
 "Usage: %s [OPTION]...\n"
 "Mode Control Entity\n"
 "\n"
+"  -n, --systemd              notify systemd when started up\n"
 "  -d, --daemonflag           run MCE as a daemon\n"
 "  -s, --force-syslog         log to syslog even when not daemonized\n"
 "  -T, --force-stderr         log to stderr even when daemonized\n"
@@ -753,10 +756,12 @@ int main(int argc, char **argv)
 	gboolean daemonflag = FALSE;
 	gboolean systembus = TRUE;
 	gboolean debugmode = FALSE;
+	gboolean systemd_notify = FALSE;
 
-	const char optline[] = "dsTSMDqvhVt:";
+	const char optline[] = "dsTSMDqvhVt:n";
 
 	struct option const options[] = {
+		{ "systemd",          no_argument,       0, 'n' },
 		{ "daemonflag",       no_argument,       0, 'd' },
 		{ "force-syslog",     no_argument,       0, 's' },
 		{ "force-stderr",     no_argument,       0, 'T' },
@@ -779,6 +784,10 @@ int main(int argc, char **argv)
 	while ((optc = getopt_long(argc, argv, optline,
 				   options, &opt_index)) != -1) {
 		switch (optc) {
+		case 'n':
+			systemd_notify = TRUE;
+			break;
+
 		case 'd':
 			daemonflag = TRUE;
 			break;
@@ -1014,6 +1023,12 @@ int main(int argc, char **argv)
 
 	/* MCE startup succeeded */
 	status = EXIT_SUCCESS;
+
+	/* Tell systemd that we have started up */
+	if( systemd_notify ) {
+		mce_log(LL_NOTICE, "notifying systemd");
+		sd_notify(0, "READY=1");
+	}
 
 	/* Run the main loop */
 	g_main_loop_run(mainloop);
