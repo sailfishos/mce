@@ -3,9 +3,7 @@ Description=Mode Control Entity (MCE)
 Requires=dsme.service
 Requires=dbus.service
 After=dsme.service
-# We want following but for some reason it causes shutdown problem
-# disable until we find out why
-# Before=systemd-user-sessions.service
+Before=start-user-session@USER.service start-user-session@ACT_DEAD.service
 
 [Service]
 Type=notify
