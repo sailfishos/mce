@@ -1180,6 +1180,24 @@ static gboolean open_tklock_ui(dbus_uint32_t mode)
 		goto EXIT;
 	}
 
+	/* FIXME: doing tklock ipc with lipstick while the frame buffer
+	 *        device is suspending/resuming can yield draw requests
+	 *        that can hang the device -> this needs to be fixed at
+	 *        lipstick side, but for now skip ipc and pretend it
+	 *        went as expected */
+	switch( display_state ) {
+	case MCE_DISPLAY_POWER_UP:
+		mce_log(LL_CRIT, "*** SKIPPING LIPSTICK IPC; fb power up");
+		status = TRUE;
+		goto SKIP;
+	case MCE_DISPLAY_POWER_DOWN:
+		mce_log(LL_CRIT, "*** SKIPPING LIPSTICK IPC; fb power down");
+		status = TRUE;
+		goto SKIP;
+	default:
+		break;
+	}
+
 	/* org.nemomobile.lipstick.screenlock.tklock_open */
 	status = dbus_send(SYSTEMUI_SERVICE, SYSTEMUI_REQUEST_PATH,
 			   SYSTEMUI_REQUEST_IF, SYSTEMUI_TKLOCK_OPEN_REQ,
@@ -1192,13 +1210,12 @@ static gboolean open_tklock_ui(dbus_uint32_t mode)
 			   DBUS_TYPE_BOOLEAN, &silent,
 			   DBUS_TYPE_BOOLEAN, &flicker_key,
 			   DBUS_TYPE_INVALID);
-
+SKIP:
 	if (status == FALSE) {
 		mce_log(LL_ERR,
 			"Failed to open tklock UI (mode: %d)", mode);
 		goto EXIT;
 	}
-
 	/* We managed to open the new UI; update accordingly */
 	tklock_ui_state = new_tklock_ui_state;
 
@@ -1216,13 +1233,33 @@ static gboolean close_tklock_ui(void)
 	gboolean silent = TRUE;
 	gboolean status = FALSE;
 
+	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+
+	/* FIXME: doing tklock ipc with lipstick while the frame buffer
+	 *        device is suspending/resuming can yield draw requests
+	 *        that can hang the device -> this needs to be fixed at
+	 *        lipstick side, but for now skip ipc and pretend it
+	 *        went as expected */
+	switch( display_state ) {
+	case MCE_DISPLAY_POWER_UP:
+		mce_log(LL_CRIT, "*** SKIPPING LIPSTICK IPC; fb power up");
+		status = TRUE;
+		goto SKIP;
+	case MCE_DISPLAY_POWER_DOWN:
+		mce_log(LL_CRIT, "*** SKIPPING LIPSTICK IPC; fb power down");
+		status = TRUE;
+		goto SKIP;
+	default:
+		break;
+	}
+
 	/* org.nemomobile.lipstick.screenlock.tklock_close */
 	status = dbus_send(SYSTEMUI_SERVICE, SYSTEMUI_REQUEST_PATH,
 			   SYSTEMUI_REQUEST_IF, SYSTEMUI_TKLOCK_CLOSE_REQ,
 			   NULL,
 			   DBUS_TYPE_BOOLEAN, &silent,
 			   DBUS_TYPE_INVALID);
-
+SKIP:
 	/* Stop monitoring the SystemUI process; there's nothing
 	 * sensible we can do if there's a failure, so remove the
 	 * monitor even if closing the tklock UI failed
