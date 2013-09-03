@@ -23,6 +23,7 @@
 #include <unistd.h>
 #include <getopt.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 #include <time.h>
 #include <math.h>
@@ -41,6 +42,8 @@
 #include "../modules/display.h"
 #include "../modules/powersavemode.h"
 #include "../modules/filter-brightness-als.h"
+#include "../systemui/tklock-dbus-names.h"
+#include "../systemui/dbus-names.h"
 
 /** Whether to enable development time debugging */
 #define MCETOOL_ENABLE_EXTRA_DEBUG 0
@@ -59,7 +62,6 @@
 
 /** Padding used for radio state bits */
 #define PAD2 "20"
-
 
 #if MCETOOL_ENABLE_EXTRA_DEBUG
 # define debugf(FMT, ARGS...) fprintf(stderr, PROG_NAME": D: "FMT, ##ARGS)
@@ -2316,10 +2318,144 @@ static void xmce_get_fake_doubletap(void)
 }
 #endif /* ENABLE_DOUBLETAP_EMULATION */
 
-
 /* ------------------------------------------------------------------------- *
  * tklock
  * ------------------------------------------------------------------------- */
+
+/** Lookup table for tklock open values
+ */
+static const symbol_t tklock_open_values[] = {
+#if 0 // DEPRECATED
+        { "none",     TKLOCK_NONE },
+        { "enable",   TKLOCK_ENABLE },
+        { "help",     TKLOCK_HELP },
+        { "select",   TKLOCK_SELECT },
+#endif
+        { "oneinput", TKLOCK_ONEINPUT },
+        { "visual",   TKLOCK_ENABLE_VISUAL },
+        { "lpm",      TKLOCK_ENABLE_LPM_UI },
+        { "pause",    TKLOCK_PAUSE_UI },
+        { NULL, -1 }
+};
+
+/** Simulate tklock open from mce to lipstick
+ */
+static void xmce_tklock_open(const char *args)
+{
+	debugf("%s(%s)\n", __FUNCTION__, args);
+	int val = lookup(tklock_open_values, args);
+	if( val < 0 ) {
+		errorf("%s: invalid tklock open value\n", args);
+		exit(EXIT_FAILURE);
+	}
+
+        DBusConnection *bus = xdbus_init();
+	DBusMessage    *rsp = 0;
+	DBusMessage    *req = 0;
+        DBusError       err = DBUS_ERROR_INIT;
+
+	const char   *cb_service   = MCE_SERVICE;
+	const char   *cb_path      = MCE_REQUEST_PATH;
+	const char   *cb_interface = MCE_REQUEST_IF;
+	const char   *cb_method    = MCE_TKLOCK_CB_REQ;
+	dbus_uint32_t mode         = (dbus_uint32_t)val;
+	dbus_bool_t   silent       = TRUE;
+	dbus_bool_t   flicker_key  = FALSE;
+
+	req = dbus_message_new_method_call(SYSTEMUI_SERVICE,
+					   SYSTEMUI_REQUEST_PATH,
+					   SYSTEMUI_REQUEST_IF,
+					   SYSTEMUI_TKLOCK_OPEN_REQ);
+	if( !req ) goto EXIT;
+
+	dbus_message_append_args(req,
+				 DBUS_TYPE_STRING, &cb_service,
+				 DBUS_TYPE_STRING, &cb_path,
+				 DBUS_TYPE_STRING, &cb_interface,
+				 DBUS_TYPE_STRING, &cb_method,
+				 DBUS_TYPE_UINT32, &mode,
+				 DBUS_TYPE_BOOLEAN, &silent,
+				 DBUS_TYPE_BOOLEAN, &flicker_key,
+				 DBUS_TYPE_INVALID);
+
+	rsp = dbus_connection_send_with_reply_and_block(bus, req, -1, &err);
+
+	if( !req ) {
+		errorf("no reply to %s; %s: %s\n", SYSTEMUI_TKLOCK_OPEN_REQ,
+		       err.name, err.message);
+		goto EXIT;
+	}
+	printf("got reply to %s\n", SYSTEMUI_TKLOCK_OPEN_REQ);
+
+EXIT:
+	if( rsp ) dbus_message_unref(rsp), rsp = 0;
+	if( req ) dbus_message_unref(req), req = 0;
+	dbus_error_free(&err);
+}
+
+/** Simulate tklock close from mce to lipstick
+ */
+static void xmce_tklock_close(void)
+{
+	debugf("%s(%s)\n", __FUNCTION__, args);
+
+        DBusConnection *bus = xdbus_init();
+	DBusMessage    *rsp = 0;
+	DBusMessage    *req = 0;
+        DBusError       err = DBUS_ERROR_INIT;
+
+	dbus_bool_t silent = TRUE;
+
+	req = dbus_message_new_method_call(SYSTEMUI_SERVICE,
+					   SYSTEMUI_REQUEST_PATH,
+					   SYSTEMUI_REQUEST_IF,
+					   SYSTEMUI_TKLOCK_CLOSE_REQ);
+	if( !req ) goto EXIT;
+
+	dbus_message_append_args(req,
+				 DBUS_TYPE_BOOLEAN, &silent,
+				 DBUS_TYPE_INVALID);
+
+	rsp = dbus_connection_send_with_reply_and_block(bus, req, -1, &err);
+
+	if( !req ) {
+		errorf("no reply to %s; %s: %s\n", SYSTEMUI_TKLOCK_CLOSE_REQ,
+		       err.name, err.message);
+		goto EXIT;
+	}
+	printf("got reply to %s\n", SYSTEMUI_TKLOCK_CLOSE_REQ);
+
+EXIT:
+	if( rsp ) dbus_message_unref(rsp), rsp = 0;
+	if( req ) dbus_message_unref(req), req = 0;
+	dbus_error_free(&err);
+}
+
+/** Lookup table for tklock callback values
+ */
+static const symbol_t tklock_callback_values[] = {
+        { "unlock",  TKLOCK_UNLOCK  },
+        { "retry",   TKLOCK_RETRY   },
+        { "timeout", TKLOCK_TIMEOUT },
+        { "closed",  TKLOCK_CLOSED  },
+        { NULL, -1 }
+};
+
+/** Simulate tklock callback from lipstick to mce
+ */
+static void xmce_tklock_callback(const char *args)
+{
+  debugf("%s(%s)\n", __FUNCTION__, args);
+  dbus_int32_t val = lookup(tklock_callback_values, args);
+  if( val < 0 ) {
+    errorf("%s: invalidt klock callback value\n", args);
+    exit(EXIT_FAILURE);
+  }
+
+  xmce_ipc_no_reply(MCE_TKLOCK_CB_REQ,
+		    DBUS_TYPE_INT32, &val,
+		    DBUS_TYPE_INVALID);
+}
 
 /** Enable/disable the tklock
  *
@@ -2503,133 +2639,208 @@ static void xmce_set_demo_mode(const char *args)
                 exit(EXIT_FAILURE);
         }
 }
-
+#define EXTRA "\t\t"
+#define PARAM "  "
 /** usage information */
 static const char usage_text[] =
 "Usage: "PROG_NAME" [OPTION]\n"
 "Mode Control Entity tool\n"
 "\n"
-"  -U, --unblank-screen            send display on request\n"
-"  -d, --dim-screen                send display dim request\n"
-"  -n, --blank-screen              send display off request\n"
-"  -P, --blank-prevent             send blank prevent request\n"
-"  -v, --cancel-blank-prevent      send cancel blank prevent request\n"
-"  -G, --set-dim-timeout=SECS\n"
-"                                  set the automatic dimming timeout\n"
-"  -O, --set-dim-timeouts=SECS,SECS,...\n"
-"                                  set the allowed dim timeouts; valid list must\n"
-"                                    must have 5 entries, in ascending order\n"
-"  -f, --set-adaptive-dimming-mode=MODE\n"
-"                                  set the adaptive dimming mode; valid modes are:\n"
-"                                    'enabled' and 'disabled'\n"
-"  -J, --set-adaptive-dimming-time=MSEC\n"
-"                                  set the adaptive dimming threshold\n"
-"  -H, --set-blank-timeout=SECS\n"
-"                                  set the automatic blanking timeout\n"
-"  -j,  --set-never-blank=MODE\n"
-"                                  set never blank mode; valid modes are:\n"
-"                                    'disabled', 'enabled'\n"
-"  -K, --set-autolock-mode=MODE\n"
-"                                  set the autolock mode; valid modes are:\n"
-"                                    'enabled' and 'disabled'\n"
-"  -t, --set-tklock-blank=MODE\n"
-"                                  set the touchscreen/keypad autoblank mode;\n"
-"                                    valid modes are: 'enabled' and 'disabled'\n"
-"  -I, --set-inhibit-mode=MODE\n"
-"                                  set the blanking inhibit mode to MODE;\n"
-"                                    valid modes are:\n"
-"                                    'disabled',\n"
-"                                    'stay-on-with-charger', 'stay-on',\n"
-"                                    'stay-dim-with-charger', 'stay-dim'\n"
-"  -k, --set-tklock-mode=MODE\n"
-"                                  set the touchscreen/keypad lock mode;\n"
-"                                    valid modes are:\n"
-"                                    'locked', 'locked-dim',\n"
-"                                    'locked-delay',\n"
-"                                    and 'unlocked'\n"
-"  -M, --set-doubletap-mode=MODE\n"
-"                                  set the autolock mode; valid modes are:\n"
-"                                    'disabled', 'show-unlock-screen', 'unlock'\n"
-"  -r, --enable-radio=RADIO\n"
-"                                  enable the specified radio; valid radios are:\n"
-"                                    'master', 'cellular',\n"
-"                                    'wlan' and 'bluetooth';\n"
-"                                    'master' affects all radios\n"
-"  -R, --disable-radio=RADIO\n"
-"                                  disable the specified radio; valid radios are:\n"
-"                                    'master', 'cellular',\n"
-"                                    'wlan' and 'bluetooth';\n"
-"                                    'master' affects all radios\n"
-"  -p, --set-power-saving-mode=MODE\n"
-"                                  set the power saving mode; valid modes are:\n"
-"                                    'enabled' and 'disabled'\n"
-"  -T, --set-psm-threshold=VALUE\n"
-"                                  set the threshold for the power saving mode;\n"
-"                                    valid values are:\n"
-"                                    10, 20, 30, 40, 50\n"
-"  -F, --set-forced-psm=MODE\n"
-"                                  the forced power saving mode to MODE;\n"
-"                                    valid modes are:\n"
-"                                    'enabled' and 'disabled'\n"
-"  -E, --set-low-power-mode=MODE\n"
-"                                  set the low power mode; valid modes are:\n"
-"                                    'enabled' and 'disabled'\n"
-"  -s, --set-suspend-policy=MODE\n"
-"                                  set the autosuspend mode; valid modes are:\n"
-"                                    'enabled', 'disabled' and 'early'\n"
-"  -S, --set-cpu-scaling-governor=MODE\n"
-"                                  set the cpu scaling governor override; valid\n"
-"                                    modes are: 'automatic', 'performance',\n"
-"                                    'interactive'\n"
+PARAM"-U, --unblank-screen\n"
+EXTRA"send display on request\n"
+PARAM"-d, --dim-screen\n"
+EXTRA"send display dim request\n"
+PARAM"-n, --blank-screen\n"
+EXTRA"send display off request\n"
+PARAM"-P, --blank-prevent\n"
+EXTRA"send blank prevent request\n"
+PARAM"-v, --cancel-blank-prevent\n"
+EXTRA"send cancel blank prevent request\n"
+PARAM"-G, --set-dim-timeout=<secs>\n"
+EXTRA"set the automatic dimming timeout\n"
+PARAM"-O, --set-dim-timeouts=<secs,secs,...>\n"
+EXTRA"set the allowed dim timeouts; valid list must\n"
+EXTRA"  must have 5 entries, in ascending order\n"
+PARAM"-f, --set-adaptive-dimming-mode=<enabled|disabled>\n"
+EXTRA"set the adaptive dimming mode; valid modes are:\n"
+EXTRA"  'enabled' and 'disabled'\n"
+PARAM"-J, --set-adaptive-dimming-time=<secs>\n"
+EXTRA"set the adaptive dimming threshold\n"
+PARAM"-o, --set-blank-timeout=<secs>\n"
+EXTRA"set the automatic blanking timeout\n"
+PARAM"-j, --set-never-blank=<enabled|disabled>\n"
+EXTRA"set never blank mode; valid modes are:\n"
+EXTRA"  'disabled', 'enabled'\n"
+PARAM"-K, --set-autolock-mode=<enabled|disabled>\n"
+EXTRA"set the autolock mode; valid modes are:\n"
+EXTRA"  'enabled' and 'disabled'\n"
+PARAM"-t, --set-tklock-blank=<enabled|disabled>\n"
+EXTRA"set the touchscreen/keypad autoblank mode;\n"
+EXTRA"  valid modes are: 'enabled' and 'disabled'\n"
+PARAM"-I, --set-inhibit-mode=<disabled|stay-on-with-charger|stay-on|stay-dim-with-charger|stay-dim>\n"
+EXTRA"set the blanking inhibit mode to MODE;\n"
+EXTRA"  valid modes are:\n"
+EXTRA"  'disabled',\n"
+EXTRA"  'stay-on-with-charger', 'stay-on',\n"
+EXTRA"  'stay-dim-with-charger', 'stay-dim'\n"
+PARAM"-k, --set-tklock-mode=<locked|locked-dim|locked-delay|unlocked>\n"
+EXTRA"set the touchscreen/keypad lock mode;\n"
+EXTRA"  valid modes are:\n"
+EXTRA"  'locked', 'locked-dim',\n"
+EXTRA"  'locked-delay',\n"
+EXTRA"  and 'unlocked'\n"
+PARAM"-m, --tklock-callback=<unlock|retry|timeout|closed>\n"
+EXTRA"simulate tklock callback from systemui\n"
+PARAM"-q, --tklock-open=<oneinput|visual|lpm|pause>\n"
+EXTRA"simulate tklock open from mce\n"
+PARAM"-Q, --tklock-close\n"
+EXTRA"simulate tklock close from mce\n"
+PARAM"-M, --set-doubletap-mode=<disabled|show-unlock-screen|unlock>\n"
+EXTRA"set the autolock mode; valid modes are:\n"
+EXTRA"  'disabled', 'show-unlock-screen', 'unlock'\n"
+PARAM"-r, --enable-radio=<master|cellular|wlan|bluetooth>\n"
+EXTRA"enable the specified radio; valid radios are:\n"
+EXTRA"  'master', 'cellular',\n"
+EXTRA"  'wlan' and 'bluetooth';\n"
+EXTRA"  'master' affects all radios\n"
+PARAM"-R, --disable-radio=<master|cellular|wlan|bluetooth>\n"
+EXTRA"disable the specified radio; valid radios are:\n"
+EXTRA"  'master', 'cellular',\n"
+EXTRA"  'wlan' and 'bluetooth';\n"
+EXTRA"  'master' affects all radios\n"
+PARAM"-p, --set-power-saving-mode=<enabled|disabled>\n"
+EXTRA"set the power saving mode; valid modes are:\n"
+EXTRA"  'enabled' and 'disabled'\n"
+PARAM"-T, --set-psm-threshold=<10|20|30|40|50>\n"
+EXTRA"set the threshold for the power saving mode;\n"
+EXTRA"  valid values are:\n"
+EXTRA"  10, 20, 30, 40, 50\n"
+PARAM"-F, --set-forced-psm=<enabled|disabled>\n"
+EXTRA"the forced power saving mode to MODE;\n"
+EXTRA"  valid modes are:\n"
+EXTRA"  'enabled' and 'disabled'\n"
+PARAM"-E, --set-low-power-mode=<enabled|disabled>\n"
+EXTRA"set the low power mode; valid modes are:\n"
+EXTRA"  'enabled' and 'disabled'\n"
+PARAM"-s, --set-suspend-policy=<enabled|disabled|early>\n"
+EXTRA"set the autosuspend mode; valid modes are:\n"
+EXTRA"  'enabled', 'disabled' and 'early'\n"
+PARAM"-S, --set-cpu-scaling-governor=<automatic|performance|interactive>\n"
+EXTRA"set the cpu scaling governor override; valid\n"
+EXTRA"  modes are: 'automatic', 'performance',\n"
+EXTRA"  'interactive'\n"
 #ifdef ENABLE_DOUBLETAP_EMULATION
-"  -i, --set-fake-doubletap=MODE\n"
-"                                  set the doubletap emulation mode; valid modes are:\n"
-"                                    'enabled' and 'disabled'\n"
+PARAM"-i, --set-fake-doubletap=<enabled|disabled>\n"
+EXTRA"set the doubletap emulation mode; valid modes are:\n"
+EXTRA"  'enabled' and 'disabled'\n"
 #endif
-"  -b, --set-display-brightness=BRIGHTNESS\n"
-"                                  set the display brightness to BRIGHTNESS;\n"
-"                                    valid values are: 1-5\n"
-"  -g, --set-als-mode=MODE\n"
-"                                  set the als mode; valid modes are:\n"
-"                                    'enabled' and 'disabled'\n"
-"  -a, --get-color-profile-ids\n"
-"                                  get available color profile ids\n"
-"  -A, --set-color-profile=ID\n"
-"                                  set the color profile to ID; valid ID names\n"
-"                                    can be obtained with --get-color-profile-ids\n"
-"  -C, --set-cabc-mode=MODE\n"
-"                                  set the CABC mode to MODE;\n"
-"                                    valid modes are:\n"
-"                                    'off', 'ui',\n"
-"                                    'still-image' and 'moving-image'\n"
-"  -c, --set-call-state=STATE:TYPE\n"
-"                                  set the call state to STATE and the call type\n"
-"                                    to TYPE; valid states are:\n"
-"                                    'none', 'ringing',\n"
-"                                    'active' and 'service'\n"
-"                                    valid types are:\n"
-"                                    'normal' and 'emergency'\n"
-"  -l, --enable-led                enable LED framework\n"
-"  -L, --disable-led               disable LED framework\n"
-"  -y, --activate-led-pattern=PATTERN\n"
-"                                  activate a LED pattern\n"
-"  -Y, --deactivate-led-pattern=PATTERN\n"
-"                                  deactivate a LED pattern\n"
-"  -e, --powerkey-event=TYPE       trigger a powerkey event; valid types are:\n"
-"                                    'short', 'double' and 'long'\n"
-"  -D, --set-demo-mode=STATE\n"
-"                                    set the display demo mode  to STATE;\n"
-"                                       valid states are: 'on' and 'off'\n"
-"  -N, --status                    output MCE status\n"
-"  -B, --block[=SECS]              block after executing commands\n"
-"                                    for D-Bus\n"
-"  -h, --help                      display this help and exit\n"
-"  -V, --version                   output version information and exit\n"
+PARAM"-b, --set-display-brightness=<1|2|3|4|5>\n"
+EXTRA"set the display brightness to BRIGHTNESS;\n"
+EXTRA"  valid values are: 1-5\n"
+PARAM"-g, --set-als-mode=<enabled|disabled>\n"
+EXTRA"set the als mode; valid modes are:\n"
+EXTRA"  'enabled' and 'disabled'\n"
+PARAM"-a, --get-color-profile-ids\n"
+EXTRA"get available color profile ids\n"
+PARAM"-A, --set-color-profile=ID\n"
+EXTRA"set the color profile to ID; valid ID names\n"
+EXTRA"  can be obtained with --get-color-profile-ids\n"
+PARAM"-C, --set-cabc-mode=<off|ui|still-image|moving-image>\n"
+EXTRA"set the CABC mode to MODE;\n"
+EXTRA"  valid modes are:\n"
+EXTRA"  'off', 'ui',\n"
+EXTRA"  'still-image' and 'moving-image'\n"
+PARAM"-c, --set-call-state=<none|ringing|active|service>:<normal|emergency>\n"
+EXTRA"set the call state to STATE and the call type\n"
+EXTRA"  to TYPE; valid states are:\n"
+EXTRA"  'none', 'ringing',\n"
+EXTRA"  'active' and 'service'\n"
+EXTRA"  valid types are:\n"
+EXTRA"  'normal' and 'emergency'\n"
+PARAM"-l, --enable-led\n"
+EXTRA"enable LED framework\n"
+PARAM"-L, --disable-led\n"
+EXTRA"disable LED framework\n"
+PARAM"-y, --activate-led-pattern=PATTERN\n"
+EXTRA"activate a LED pattern\n"
+PARAM"-Y, --deactivate-led-pattern=PATTERN\n"
+EXTRA"deactivate a LED pattern\n"
+PARAM"-e, --powerkey-event=<short|double|long>\n"
+EXTRA"trigger a powerkey event; valid types are:\n"
+EXTRA"  'short', 'double' and 'long'\n"
+PARAM"-D, --set-demo-mode=<on|off>\n"
+EXTRA"  set the display demo mode  to STATE;\n"
+EXTRA"     valid states are: 'on' and 'off'\n"
+PARAM"-N, --status\n"
+EXTRA"output MCE status\n"
+PARAM"-B, --block[=<secs>]\n"
+EXTRA"block after executing commands\n"
+EXTRA"  for D-Bus\n"
+PARAM"-h, --help\n"
+EXTRA"display list of options and exit\n"
+PARAM"-H, --long-help\n"
+EXTRA"display full usage information  and exit\n"
+PARAM"-V, --version\n"
+EXTRA"output version information and exit\n"
 "\n"
-"If no option is specified, the status is output.\n"
+"If no options are specified, the status is output.\n"
+"\n"
+"If non-option arguments are given, matching parts of long help\n"
+"is printed out.\n"
 "\n"
 "Report bugs to <david.weinehall@nokia.com>\n"
 ;
+
+/** Show full usage information
+ */
+static void usage_long(void)
+{
+	printf("%s\n", usage_text);
+}
+
+/** Show only option names
+ */
+static void usage_short(void)
+{
+	char *temp = strdup(usage_text);
+	for( char *zen = temp; zen; )
+	{
+		char *now = zen;
+		if( (zen = strchr(now, '\n')) )
+			*zen++ = 0;
+		if( *now != '\t' )
+			printf("%s\n", now);
+	}
+	free(temp);
+}
+
+/** Show options matching partial strings given at command line
+ */
+static void usage_quick(char **pat)
+{
+	char *temp = strdup(usage_text);
+	bool active = false;
+	for( char *zen = temp; zen; )
+	{
+		char *now = zen;
+		if( (zen = strchr(now, '\n')) )
+			*zen++ = 0;
+		if( *now == ' ' ) {
+			active = false;
+			for( int i = 0; pat[i]; ++i ) {
+				if( !strcasestr(now, pat[i]) )
+					continue;
+				active = true;
+				break;
+			}
+		}
+		if( *now != ' ' && *now != '\t' )
+			continue;
+		if( active )
+			printf("%s\n", now);
+	}
+	free(temp);
+}
 
 /** Version information */
 static const char version_text[] =
@@ -2640,8 +2851,8 @@ PROG_NAME" v"G_STRINGIFY(PRG_VERSION)"\n"
 ;
 
 // Unused short options left ....
-// - - - - - - - - - - - - m - o - q - - - u - w x - z
-// - - - - - - - - - - - - - - - - Q - - - - - W X - Z
+// - - - - - - - - - - - - - - - - - - - - u - w x - z
+// - - - - - - - - - - - - - - - - - - - - - - W X - Z
 
 const char OPT_S[] =
 "B::" // --block,
@@ -2670,12 +2881,13 @@ const char OPT_S[] =
 "e:"  // --powerkey-event,
 "N"   // --status,
 "h"   // --help,
+"H"   // --long-help,
 "V"   // --version,
 "f:"  // --set-adaptive-dimming-mode
 "E:"  // --set-low-power-mode
 "g:"  // --set-als-mode
 "G:"  // --set-dim-timeout
-"H:"  // --set-blank-timeout
+"o:"  // --set-blank-timeout
 "j:"  // --set-never-blank
 "J:"  // --set-adaptive-dimming-time
 "K:"  // --set-autolock-mode
@@ -2684,6 +2896,9 @@ const char OPT_S[] =
 "s:"  // --set-suspend-policy
 "S:"  // --set-cpu-scaling-governor
 "t:"  // --set-tklock-blank
+"m:"  // --tklock-callback
+"q:"  // --tklock-open
+"Q"   // --tklock-close
 #ifdef ENABLE_DOUBLETAP_EMULATION
 "i:"  // --set-fake-doubletap
 #endif
@@ -2710,6 +2925,9 @@ struct option const OPT_L[] =
         { "set-forced-psm",            1, 0, 'F' }, // xmce_set_forced_psm()
         { "set-psm-threshold",         1, 0, 'T' }, // xmce_set_psm_threshold()
         { "set-tklock-mode",           1, 0, 'k' }, // xmce_set_tklock_mode()
+        { "tklock-callback",           1, 0, 'm' }, // xmce_tklock_callback()
+        { "tklock-open",               1, 0, 'q' }, // xmce_tklock_open()
+        { "tklock-close",              0, 0, 'Q' }, // xmce_tklock_close()
         { "set-tklock-blank",          1, 0, 't' }, // xmce_set_tklock_blank()
         { "enable-led",                0, 0, 'l' }, // set_led_state()
         { "disable-led",               0, 0, 'L' }, // set_led_state()
@@ -2718,6 +2936,7 @@ struct option const OPT_L[] =
         { "powerkey-event",            1, 0, 'e' }, // xmce_powerkey_event()
         { "status",                    0, 0, 'N' }, // xmce_get_status()
         { "help",                      0, 0, 'h' }, // N/A
+        { "long-help",                 0, 0, 'H' }, // N/A
         { "version",                   0, 0, 'V' }, // N/A
         { "set-adaptive-dimming-mode", 1, 0, 'f' }, // xmce_set_adaptive_dimming_mode()
         { "set-adaptive-dimming-time", 1, 0, 'J' }, // xmce_set_adaptive_dimming_time()
@@ -2725,7 +2944,7 @@ struct option const OPT_L[] =
         { "set-als-mode",              1, 0, 'g' }, // xmce_set_als_mode()
         { "set-dim-timeout",           1, 0, 'G' }, // xmce_set_dim_timeout()
         { "set-never-blank",           1, 0, 'j' }, // xmce_set_never_blank()
-        { "set-blank-timeout",         1, 0, 'H' }, // xmce_set_blank_timeout()
+        { "set-blank-timeout",         1, 0, 'o' }, // xmce_set_blank_timeout()
         { "set-autolock-mode",         1, 0, 'K' }, // xmce_set_autolock_mode()
         { "set-doubletap-mode",        1, 0, 'M' }, // xmce_set_doubletap_mode()
         { "set-dim-timeouts",          1, 0, 'O' }, // xmce_set_dim_timeouts()
@@ -2777,12 +2996,15 @@ int main(int argc, char **argv)
                 case 'J': xmce_set_adaptive_dimming_time(optarg); break;
 
                 case 'j': xmce_set_never_blank(optarg);           break;
-                case 'H': xmce_set_blank_timeout(optarg);         break;
+                case 'o': xmce_set_blank_timeout(optarg);         break;
 
                 case 'K': xmce_set_autolock_mode(optarg);         break;
                 case 't': xmce_set_tklock_blank(optarg);          break;
                 case 'I': xmce_set_inhibit_mode(optarg);          break;
                 case 'k': xmce_set_tklock_mode(optarg);           break;
+		case 'm': xmce_tklock_callback(optarg);           break;
+		case 'q': xmce_tklock_open(optarg);               break;
+		case 'Q': xmce_tklock_close();                    break;
                 case 'M': xmce_set_doubletap_mode(optarg);        break;
 
                 case 'r': xmce_enable_radio(optarg);              break;
@@ -2820,7 +3042,12 @@ int main(int argc, char **argv)
                 case 'B': mcetool_block(optarg);                  break;
 
                 case 'h':
-                        printf("%s\n", usage_text);
+			usage_short();
+                        exitcode = EXIT_SUCCESS;
+                        goto EXIT;
+
+                case 'H':
+			usage_long();
                         exitcode = EXIT_SUCCESS;
                         goto EXIT;
 
@@ -2834,10 +3061,9 @@ int main(int argc, char **argv)
                 }
         }
 
-        /* Any non-flag arguments is an error */
+        /* Non-flag arguments are quick help patterns */
         if( optind < argc ) {
-                errorf("%s: unhandled parameter\n", argv[optind]);
-                goto EXIT;
+		usage_quick(argv + optind);
         }
 
         exitcode = EXIT_SUCCESS;
@@ -2847,3 +3073,4 @@ EXIT:
 
         return exitcode;
 }
+
