@@ -46,7 +46,14 @@ static void timestamp(struct timeval *tv)
 	struct timeval diff;
 	monotime(tv);
 	timersub(tv, &prev, &diff);
-	if( diff.tv_sec >= 4 ) start = *tv;
+	if( diff.tv_sec >= 4 ) {
+	  timersub(tv, &start, &diff);
+	  fprintf(stderr, "%s: T+%ld.%03ld %s\n\n",
+		  logname,
+		  (long)diff.tv_sec, (long)(diff.tv_usec/1000),
+		  "END OF BURST");
+	  start = *tv;
+	}
 	prev = *tv;
 	timersub(tv, &start, tv);
 }
