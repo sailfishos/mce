@@ -54,6 +54,13 @@
 /** Define set config DBUS method */
 #define MCE_DBUS_SET_CONFIG_REQ                 "set_config"
 
+/** Default padding for left column of status reports */
+#define PAD1 "28"
+
+/** Padding used for radio state bits */
+#define PAD2 "20"
+
+
 #if MCETOOL_ENABLE_EXTRA_DEBUG
 # define debugf(FMT, ARGS...) fprintf(stderr, PROG_NAME": D: "FMT, ##ARGS)
 #else
@@ -1571,7 +1578,7 @@ static void xmce_get_color_profile(void)
 {
         char *str = 0;
         xmce_ipc_string_reply(MCE_COLOR_PROFILE_GET, &str, DBUS_TYPE_INVALID);
-        printf("%-40s %s\n","Color profile:", str ?: "unknown");
+        printf("%-"PAD1"s %s\n","Color profile:", str ?: "unknown");
         free(str);
 }
 
@@ -1624,22 +1631,22 @@ static void xmce_get_radio_states(void)
 
         printf("Radio states:\n");
 
-        printf("\t%-32s %s\n", "Master:",
+        printf("\t%-"PAD2"s %s\n", "Master:",
                 mask & MCE_RADIO_STATE_MASTER ? "enabled (Online)" : "disabled (Offline)");
 
-        printf("\t%-32s %s\n",  "Cellular:",
+        printf("\t%-"PAD2"s %s\n",  "Cellular:",
                 mask & MCE_RADIO_STATE_CELLULAR ? "enabled" : "disabled");
 
-        printf("\t%-32s %s\n", "WLAN:",
+        printf("\t%-"PAD2"s %s\n", "WLAN:",
                 mask & MCE_RADIO_STATE_WLAN ? "enabled" : "disabled");
 
-        printf("\t%-32s %s\n", "Bluetooth:",
+        printf("\t%-"PAD2"s %s\n", "Bluetooth:",
                 mask & MCE_RADIO_STATE_BLUETOOTH ? "enabled" : "disabled");
 
-        printf("\t%-32s %s\n", "NFC:",
+        printf("\t%-"PAD2"s %s\n", "NFC:",
                 mask & MCE_RADIO_STATE_NFC ? "enabled" : "disabled");
 
-        printf("\t%-32s %s\n", "FM transmitter:",
+        printf("\t%-"PAD2"s %s\n", "FM transmitter:",
                 mask & MCE_RADIO_STATE_FMTX ? "enabled" : "disabled");
 }
 
@@ -1701,7 +1708,7 @@ EXIT:
                 dbus_error_free(&err);
         }
 
-        printf("%-40s %s (%s)\n", "Call state (type):",
+        printf("%-"PAD1"s %s (%s)\n", "Call state (type):",
                callstate ?: "unknown",
                calltype ?:  "unknown");
 
@@ -1735,7 +1742,7 @@ static void xmce_get_display_state(void)
 {
         char *str = 0;
         xmce_ipc_string_reply(MCE_DISPLAY_STATUS_GET, &str, DBUS_TYPE_INVALID);
-        printf("%-40s %s\n","Display state:", str ?: "unknown");
+        printf("%-"PAD1"s %s\n","Display state:", str ?: "unknown");
         free(str);
 }
 
@@ -1789,7 +1796,7 @@ static void xmce_get_display_brightness(void)
         strcpy(txt, "unknown");
         if( mcetool_gconf_get_int(MCE_GCONF_DISPLAY_BRIGHTNESS_PATH, &val) )
                 snprintf(txt, sizeof txt, "%d", (int)val);
-        printf("%-40s %s (1-5)\n", "Brightness:", txt);
+        printf("%-"PAD1"s %s (1-5)\n", "Brightness:", txt);
 }
 
 /* ------------------------------------------------------------------------- *
@@ -1832,7 +1839,7 @@ static void xmce_get_cabc_mode(void)
 {
         char *str = 0;
         xmce_ipc_string_reply(MCE_CABC_MODE_GET, &str, DBUS_TYPE_INVALID);
-        printf("%-40s %s\n","CABC mode:", str ?: "unknown");
+        printf("%-"PAD1"s %s\n","CABC mode:", str ?: "unknown");
         free(str);
 }
 
@@ -1861,7 +1868,7 @@ static void xmce_get_dim_timeout(void)
         strcpy(txt, "unknown");
         if( mcetool_gconf_get_int(MCE_GCONF_DISPLAY_DIM_TIMEOUT_PATH, &val) )
                 snprintf(txt, sizeof txt, "%d", (int)val);
-        printf("%-40s %s (seconds)\n", "Dim timeout:", txt);
+        printf("%-"PAD1"s %s (seconds)\n", "Dim timeout:", txt);
 }
 
 /** Set "allowed" display dim timeouts
@@ -1900,7 +1907,7 @@ static void xmce_get_dim_timeouts(void)
 
         mcetool_gconf_get_int_array(MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST_PATH,
                                     &vec, &len);
-        printf("%-40s [", "Allowed dim timeouts");
+        printf("%-"PAD1"s [", "Allowed dim timeouts");
         for( gint i = 0; i < len; ++i )
                 printf(" %d", vec[i]);
         printf(" ]\n");
@@ -1932,7 +1939,7 @@ static void xmce_get_adaptive_dimming_mode(void)
         strcpy(txt, "unknown");
         if( mcetool_gconf_get_bool(MCE_GCONF_DISPLAY_ADAPTIVE_DIMMING_PATH, &val) )
                 snprintf(txt, sizeof txt, "%s", val ? "enabled" : "disabled");
-        printf("%-40s %s\n", "Adaptive dimming:", txt);
+        printf("%-"PAD1"s %s\n", "Adaptive dimming:", txt);
 }
 
 /** Set adaptive dimming time
@@ -1956,7 +1963,7 @@ static void xmce_get_adaptive_dimming_time(void)
         strcpy(txt, "unknown");
         if( mcetool_gconf_get_int(MCE_GCONF_DISPLAY_ADAPTIVE_DIM_THRESHOLD_PATH, &val) )
                 snprintf(txt, sizeof txt, "%d", (int)val);
-        printf("%-40s %s (milliseconds)\n", "Adaptive dimming threshold:", txt);
+        printf("%-"PAD1"s %s (milliseconds)\n", "Adaptive dimming threshold:", txt);
 }
 
 /* ------------------------------------------------------------------------- *
@@ -1983,7 +1990,7 @@ static void xmce_get_als_mode(void)
 
         if( mcetool_gconf_get_bool(MCE_GCONF_DISPLAY_ALS_ENABLED_PATH, &val) )
                 snprintf(txt, sizeof txt, "%s", val ? "enabled" : "disabled");
-        printf("%-40s %s\n", "Use als mode:", txt);
+        printf("%-"PAD1"s %s\n", "Use als mode:", txt);
 }
 
 /* ------------------------------------------------------------------------- *
@@ -2010,7 +2017,7 @@ static void xmce_get_autolock_mode(void)
 
         if( mcetool_gconf_get_bool(MCE_GCONF_TK_AUTOLOCK_ENABLED_PATH, &val) )
                 snprintf(txt, sizeof txt, "%s", val ? "enabled" : "disabled");
-        printf("%-40s %s\n", "Touchscreen/Keypad autolock:", txt);
+        printf("%-"PAD1"s %s\n", "Touchscreen/Keypad autolock:", txt);
 }
 
 /* ------------------------------------------------------------------------- *
@@ -2038,7 +2045,7 @@ static void xmce_get_blank_timeout(void)
         strcpy(txt, "unknown");
         if( mcetool_gconf_get_int(MCE_GCONF_DISPLAY_BLANK_TIMEOUT_PATH, &val) )
                 snprintf(txt, sizeof txt, "%d", (int)val);
-        printf("%-40s %s (seconds)\n", "Blank timeout:", txt);
+        printf("%-"PAD1"s %s (seconds)\n", "Blank timeout:", txt);
 }
 
 /* ------------------------------------------------------------------------- *
@@ -2068,7 +2075,7 @@ static void xmce_get_doubletap_mode(void)
         const char *txt = 0;
         if( mcetool_gconf_get_int(MCE_GCONF_TK_DOUBLE_TAP_GESTURE_PATH, &val) )
                 txt = rlookup(doubletap_values, val);
-        printf("%-40s %s \n", "Double-tap gesture policy:", txt ?: "unknown");
+        printf("%-"PAD1"s %s \n", "Double-tap gesture policy:", txt ?: "unknown");
 }
 
 /* ------------------------------------------------------------------------- *
@@ -2101,7 +2108,7 @@ static void xmce_get_power_saving_mode(void)
         if( xmce_ipc_bool_reply(MCE_PSM_STATE_GET, &state, DBUS_TYPE_INVALID) )
                 snprintf(txt2, sizeof txt2, "%s", state ? "active" : "inactive");
 
-        printf("%-40s %s (%s)\n", "Power saving mode:", txt1, txt2);
+        printf("%-"PAD1"s %s (%s)\n", "Power saving mode:", txt1, txt2);
 }
 
 /** Set power saving mode threshold
@@ -2130,7 +2137,7 @@ static void xmce_get_psm_threshold(void)
         strcpy(txt, "unknown");
         if( mcetool_gconf_get_int(MCE_GCONF_PSM_THRESHOLD_PATH, &val) )
                 snprintf(txt, sizeof txt, "%d", (int)val);
-        printf("%-40s %s (%%)\n", "PSM threshold:", txt);
+        printf("%-"PAD1"s %s (%%)\n", "PSM threshold:", txt);
 }
 
 /* Set forced power saving mode
@@ -2153,7 +2160,7 @@ static void xmce_get_forced_psm(void)
 
         if( mcetool_gconf_get_bool(MCE_GCONF_FORCED_PSM_PATH, &val) )
                 snprintf(txt, sizeof txt, "%s", val ? "enabled" : "disabled");
-        printf("%-40s %s\n", "Forced power saving mode:", txt);
+        printf("%-"PAD1"s %s\n", "Forced power saving mode:", txt);
 }
 
 /* ------------------------------------------------------------------------- *
@@ -2180,7 +2187,7 @@ static void xmce_get_low_power_mode(void)
 
         if( mcetool_gconf_get_bool(MCE_GCONF_USE_LOW_POWER_MODE_PATH, &val) )
                 snprintf(txt, sizeof txt, "%s", val ? "enabled" : "disabled");
-        printf("%-40s %s\n", "Use low power mode:", txt);
+        printf("%-"PAD1"s %s\n", "Use low power mode:", txt);
 }
 
 /* ------------------------------------------------------------------------- *
@@ -2202,7 +2209,7 @@ static void xmce_get_inhibit_mode(void)
         const char *txt = 0;
         if( mcetool_gconf_get_int(MCE_GCONF_BLANKING_INHIBIT_MODE_PATH, &val) )
                 txt = repr_inhibitmode(val);
-        printf("%-40s %s \n", "Blank inhibit:", txt ?: "unknown");
+        printf("%-"PAD1"s %s \n", "Blank inhibit:", txt ?: "unknown");
 }
 
 /* ------------------------------------------------------------------------- *
@@ -2228,9 +2235,8 @@ static void xmce_get_cpu_scaling_governor(void)
         const char *txt = 0;
         if( mcetool_gconf_get_int(MCE_GCONF_CPU_SCALING_GOVERNOR_PATH, &val) )
                 txt = rlookup(governor_values, val);
-        printf("%-40s %s \n", "CPU Scaling Governor:", txt ?: "unknown");
+        printf("%-"PAD1"s %s \n", "CPU Scaling Governor:", txt ?: "unknown");
 }
-
 
 /* ------------------------------------------------------------------------- *
  * never blank
@@ -2253,7 +2259,7 @@ static void xmce_get_never_blank(void)
         const char *txt = 0;
         if( mcetool_gconf_get_int(MCE_GCONF_DISPLAY_NEVER_BLANK_PATH, &val) )
                 txt = rlookup(never_blank_values, val);
-        printf("%-40s %s \n", "Display never blank:", txt ?: "unknown");
+        printf("%-"PAD1"s %s \n", "Display never blank:", txt ?: "unknown");
 }
 
 /* ------------------------------------------------------------------------- *
@@ -2279,7 +2285,7 @@ static void xmce_get_suspend_policy(void)
         const char *txt = 0;
         if( mcetool_gconf_get_int(MCE_GCONF_USE_AUTOSUSPEND_PATH, &val) )
                 txt = rlookup(suspendpol_values, val);
-        printf("%-40s %s \n", "Autosuspend policy:", txt ?: "unknown");
+        printf("%-"PAD1"s %s \n", "Autosuspend policy:", txt ?: "unknown");
 }
 
 /* ------------------------------------------------------------------------- *
@@ -2306,7 +2312,7 @@ static void xmce_get_fake_doubletap(void)
         const char *txt = 0;
         if( mcetool_gconf_get_bool(MCE_GCONF_USE_FAKE_DOUBLETAP_PATH, &val) )
                 txt = rlookup(fake_doubletap_values, val);
-        printf("%-40s %s \n", "Use fake doubletap:", txt ?: "unknown");
+        printf("%-"PAD1"s %s \n", "Use fake doubletap:", txt ?: "unknown");
 }
 #endif /* ENABLE_DOUBLETAP_EMULATION */
 
@@ -2334,7 +2340,7 @@ static void xmce_get_tklock_mode(void)
 {
         char *str = 0;
         xmce_ipc_string_reply(MCE_TKLOCK_MODE_GET, &str, DBUS_TYPE_INVALID);
-        printf("%-40s %s\n", "Touchscreen/Keypad lock:", str ?: "unknown");
+        printf("%-"PAD1"s %s\n", "Touchscreen/Keypad lock:", str ?: "unknown");
         free(str);
 }
 
@@ -2361,7 +2367,7 @@ static void xmce_get_tklock_blank(void)
         const char *txt = 0;
         if( mcetool_gconf_get_int(MCE_GCONF_TK_AUTO_BLANK_DISABLE_PATH, &val) )
                 txt = rlookup(tklockblank_values, val);
-        printf("%-40s %s \n", "Tklock autoblank policy:", txt ?: "unknown");
+        printf("%-"PAD1"s %s \n", "Tklock autoblank policy:", txt ?: "unknown");
 }
 
 /* ------------------------------------------------------------------------- *
@@ -2374,7 +2380,7 @@ static void xmce_get_version(void)
 {
         char *str = 0;
         xmce_ipc_string_reply(MCE_VERSION_GET, &str, DBUS_TYPE_INVALID);
-        printf("%-40s %s\n","MCE version:", str ?: "unknown");
+        printf("%-"PAD1"s %s\n","MCE version:", str ?: "unknown");
         free(str);
 }
 
@@ -2387,7 +2393,7 @@ static void xmce_get_inactivity_state(void)
         strcpy(txt, "unknown");
         if( xmce_ipc_bool_reply(MCE_INACTIVITY_STATUS_GET, &val, DBUS_TYPE_INVALID) )
                 snprintf(txt, sizeof txt, "%s", val ? "inactive" : "active");
-        printf("%-40s %s\n","Inactivity status:", txt);
+        printf("%-"PAD1"s %s\n","Inactivity status:", txt);
 }
 
 /** Get keyboard backlight state from mce and print it out
@@ -2399,7 +2405,7 @@ static void xmce_get_keyboard_backlight_state(void)
         strcpy(txt, "unknown");
         if( xmce_ipc_bool_reply(MCE_KEY_BACKLIGHT_STATE_GET, &val, DBUS_TYPE_INVALID) )
                 snprintf(txt, sizeof txt, "%s", val ? "enabled" : "disabled");
-        printf("%-40s %s\n","Keyboard backlight:", txt);
+        printf("%-"PAD1"s %s\n","Keyboard backlight:", txt);
 }
 
 /** Obtain and print mce status information
