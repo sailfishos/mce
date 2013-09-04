@@ -183,7 +183,9 @@ typedef enum {
 	MCE_DISPLAY_LPM_OFF = 1,	/**< Display is off in low power mode */
 	MCE_DISPLAY_LPM_ON = 2,		/**< Display is on in low power mode */
 	MCE_DISPLAY_DIM = 3,		/**< Display is dimmed */
-	MCE_DISPLAY_ON = 4		/**< Display is on */
+	MCE_DISPLAY_ON = 4,		/**< Display is on */
+	MCE_DISPLAY_POWER_UP,		/**< Display is resuming */
+	MCE_DISPLAY_POWER_DOWN,		/**< Display is suspending */
 } display_state_t;
 
 /** Cover state */

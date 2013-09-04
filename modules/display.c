@@ -165,7 +165,8 @@ enum LockState {
 };
 #endif /* DEVICELOCK_H */
 
-static void stm_target_set(display_state_t display_state);
+static const char *display_state_name(display_state_t state);
+static void stm_target_push_change(display_state_t display_state);
 static void stm_rethink_schedule(void);
 
 /** Contextkit D-Bus service */
@@ -983,6 +984,8 @@ static void update_display_timers(gboolean force_flush)
 
 		break;
 
+	case MCE_DISPLAY_POWER_UP:
+	case MCE_DISPLAY_POWER_DOWN:
 	case MCE_DISPLAY_UNDEF:
 	case MCE_DISPLAY_OFF:
 	case MCE_DISPLAY_LPM_OFF:
@@ -1173,6 +1176,13 @@ static void update_high_brightness_mode(gint hbm_level)
 
 	if (high_brightness_mode_supported == FALSE)
 		goto EXIT;
+
+	/* should not occur, but do nothing while in transition */
+	if( display_state == MCE_DISPLAY_POWER_DOWN ||
+	    display_state == MCE_DISPLAY_POWER_UP ) {
+		mce_log(LL_WARN, "hbm mode setting wile in transition");
+		goto EXIT;
+	}
 
 	/* If the display is off or dimmed, disable HBM */
 	if (display_state != MCE_DISPLAY_ON) {
@@ -1643,14 +1653,21 @@ static void display_brightness_trigger(gconstpointer data)
 	/* The value we have here is for non-dimmed screen only */
 	set_brightness = new_brightness;
 
-	if ((display_state == MCE_DISPLAY_OFF) ||
-	    (display_state == MCE_DISPLAY_LPM_OFF) ||
-	    (display_state == MCE_DISPLAY_LPM_ON) ||
-	    (display_state == MCE_DISPLAY_DIM))
-		goto EXIT;
-
-	update_brightness_fade(new_brightness);
-
+	switch( display_state ) {
+	case MCE_DISPLAY_OFF:
+	case MCE_DISPLAY_LPM_OFF:
+	case MCE_DISPLAY_LPM_ON:
+	case MCE_DISPLAY_DIM:
+		break;
+	case MCE_DISPLAY_POWER_DOWN:
+	case MCE_DISPLAY_POWER_UP:
+		mce_log(LL_WARN, "ignored while in transition");
+		break;
+	case MCE_DISPLAY_ON:
+	default:
+		update_brightness_fade(new_brightness);
+		break;
+	}
 EXIT:
 	return;
 }
@@ -1921,6 +1938,7 @@ static void cancel_dim_timeout(void)
 	if (dim_timeout_cb_id != 0) {
 		g_source_remove(dim_timeout_cb_id);
 		dim_timeout_cb_id = 0;
+		mce_log(LL_DEBUG, "DIM timer canceled");
 	}
 }
 
@@ -1931,15 +1949,33 @@ static void setup_dim_timeout(void)
 {
 	system_state_t system_state = datapipe_get_gint(system_state_pipe);
 	gint dim_timeout = disp_dim_timeout + bootup_dim_additional_timeout;
+	submode_t submode = datapipe_get_gint(submode_pipe);;
+	display_state_t display_state = datapipe_get_gint(display_state_pipe);
 
 	cancel_blank_timeout();
 	cancel_adaptive_dimming_timeout();
 	cancel_lpm_timeout();
 	cancel_dim_timeout();
 
-	if ((dimming_inhibited == TRUE) ||
-	    (system_state == MCE_STATE_ACTDEAD))
+	if( display_state != MCE_DISPLAY_ON ) {
+		mce_log(LL_DEBUG, "DIM timer skipped; not DISPLAY_ON");
 		return;
+	}
+
+	if( submode & MCE_TKLOCK_SUBMODE ) {
+		mce_log(LL_DEBUG, "DIM timer skipped; TKLOCK_SUBMODE");
+		return;
+	}
+
+	if( system_state == MCE_STATE_ACTDEAD ) {
+		mce_log(LL_DEBUG, "DIM timer skipped; STATE_ACTDEAD");
+		return;
+	}
+
+	if( dimming_inhibited ) {
+		mce_log(LL_DEBUG, "DIM timer skipped; dimming_inhibited");
+		return;
+	}
 
 	if (adaptive_dimming_enabled == TRUE) {
 		gpointer *tmp = g_slist_nth_data(possible_dim_timeouts,
@@ -1950,6 +1986,8 @@ static void setup_dim_timeout(void)
 			dim_timeout = GPOINTER_TO_INT(tmp) +
 				      bootup_dim_additional_timeout;
 	}
+
+	mce_log(LL_DEBUG, "DIM timer @ %d seconds", dim_timeout);
 
 	/* Setup new timeout */
 	dim_timeout_cb_id =
@@ -2016,6 +2054,12 @@ static void update_blanking_inhibit(gboolean timed_inhibit)
 	alarm_ui_state_t alarm_ui_state =
 				datapipe_get_gint(alarm_ui_state_pipe);
 	call_state_t call_state = datapipe_get_gint(call_state_pipe);
+
+	if( display_state == MCE_DISPLAY_POWER_UP ||
+	    display_state == MCE_DISPLAY_POWER_DOWN ) {
+		mce_log(LL_WARN, "ignored while in transition");
+		return;
+	}
 
 	if ((system_state == MCE_STATE_ACTDEAD) &&
 	    (charger_connected == TRUE) &&
@@ -2468,6 +2512,8 @@ static gboolean send_display_status(DBusMessage *const method_call)
 	case MCE_DISPLAY_OFF:
 	case MCE_DISPLAY_LPM_OFF:
 	case MCE_DISPLAY_LPM_ON:
+	case MCE_DISPLAY_POWER_DOWN:
+	case MCE_DISPLAY_POWER_UP:
 		state = MCE_DISPLAY_OFF_STRING;
 		break;
 
@@ -4043,8 +4089,23 @@ UPDATE:
 static void display_state_req_trigger(gconstpointer data)
 {
 	display_state_t display_state = GPOINTER_TO_INT(data);
-	stm_target_set(display_state);
+	stm_target_push_change(display_state);
 }
+
+/** Cancel all timers that are display state specific
+ */
+static void cancel_display_timers(void)
+{
+	cancel_dim_timeout();
+	cancel_lpm_timeout();
+	cancel_blank_timeout();
+	cancel_blank_prevent();
+	cancel_lpm_proximity_blank_timeout();
+	//cancel_hbm_timeout();
+	cancel_brightness_fade_timeout();
+	//cancel_adaptive_dimming_timeout();
+}
+
 /**
  * Handle display state change
  *
@@ -4057,7 +4118,6 @@ static void display_state_trigger(gconstpointer data)
 	/** Cached display state */
 	static display_state_t cached_display_state = MCE_DISPLAY_UNDEF;
 	display_state_t display_state = GPOINTER_TO_INT(data);
-	submode_t submode = mce_get_submode_int32();
 
 	cancel_lpm_proximity_blank_timeout();
 
@@ -4098,10 +4158,7 @@ static void display_state_trigger(gconstpointer data)
 		cancel_lpm_timeout();
 		cancel_blank_timeout();
 
-		/* The tklock has its own timeout */
-		if ((submode & MCE_TKLOCK_SUBMODE) == 0) {
-			setup_dim_timeout();
-		}
+		setup_dim_timeout();
 
 		break;
 	}
@@ -4131,7 +4188,16 @@ static void display_state_trigger(gconstpointer data)
 	case MCE_DISPLAY_ON:
 	default:
 		display_unblank();
-		mce_tklock_show_tklock_ui();
+
+		/* Force tklock state; but only on OFF->ON transition */
+		switch( cached_display_state ) {
+		case MCE_DISPLAY_OFF:
+		case MCE_DISPLAY_LPM_OFF:
+			mce_tklock_show_tklock_ui();
+			break;
+		default:
+			break;
+		}
 		break;
 	}
 
@@ -4150,6 +4216,64 @@ EXIT:
 	return;
 }
 
+/** Handle start of display state transition
+ *
+ * @param prev_state    display state before transition
+ * @param display_state target state to transfer to
+ */
+static void display_state_pre_trigger(display_state_t prev_state,
+				      display_state_t display_state)
+{
+	mce_log(LL_INFO, "BEG %s -> %s transition",
+		display_state_name(prev_state),
+		display_state_name(display_state));
+
+	/* Cancel display state specific timers that we do not want to
+	 * trigger while waiting for frame buffer suspend/resume. */
+	cancel_display_timers();
+
+	/* Invalidate display_state_pipe when making transitions
+	 * that need to wait for external parties */
+	if( display_state == MCE_DISPLAY_OFF ) {
+		display_state_pipe.cached_data = GINT_TO_POINTER(MCE_DISPLAY_POWER_DOWN);
+	}
+	else if( prev_state == MCE_DISPLAY_OFF ) {
+		display_state_pipe.cached_data = GINT_TO_POINTER(MCE_DISPLAY_POWER_UP);
+	}
+
+	/* When starting ON -> OFF transition, set brightness to zero */
+	switch( display_state ) {
+	case MCE_DISPLAY_OFF:
+	case MCE_DISPLAY_LPM_OFF:
+		if( prev_state != MCE_DISPLAY_OFF )
+			display_blank();
+		break;
+	default:
+		break;
+	}
+}
+
+/** Handle end of display state transition
+ *
+ * @param prev_state    previous display state
+ * @param display_state state transferred to
+ */
+static void display_state_post_trigger(display_state_t prev_state,
+				       display_state_t display_state)
+{
+	mce_log(LL_INFO, "END %s -> %s transition",
+		display_state_name(prev_state),
+		display_state_name(display_state));
+
+	/* Restore display_state_pipe to valid value */
+	display_state_pipe.cached_data = GINT_TO_POINTER(display_state);
+
+	/* Run display state change triggers */
+	execute_datapipe(&display_state_pipe,
+			 GINT_TO_POINTER(display_state),
+			 USE_INDATA, CACHE_INDATA);
+}
+
 /**
  * Handle submode change
  *
@@ -4157,15 +4281,18 @@ EXIT:
  */
 static void submode_trigger(gconstpointer data)
 {
+	/* Assume we are in mode transition when mce starts up */
+	static submode_t old_submode = MCE_TRANSITION_SUBMODE;
+
 	system_state_t system_state = datapipe_get_gint(system_state_pipe);
 	alarm_ui_state_t alarm_ui_state =
 				datapipe_get_gint(alarm_ui_state_pipe);
 
-	/* Assume we are in mode transition when mce starts up */
-	static submode_t old_trans = MCE_TRANSITION_SUBMODE;
+	/* Current submode is */
+	submode_t submode = GPOINTER_TO_INT(data);
 
-	/* Check if we are currently in mode transition */
-	submode_t new_trans = GPOINTER_TO_INT(data) & MCE_TRANSITION_SUBMODE;
+	submode_t old_trans = old_submode & MCE_TRANSITION_SUBMODE;
+	submode_t new_trans = submode & MCE_TRANSITION_SUBMODE;
 
 	if( old_trans && !new_trans ) {
 		/* End of transition; stable state reached */
@@ -4185,7 +4312,11 @@ static void submode_trigger(gconstpointer data)
 		update_blanking_inhibit(FALSE);
 	}
 
-	old_trans = new_trans;
+	/* Rethink dim/blank timers if tklock state changed */
+	if( (old_submode ^ submode) & MCE_TKLOCK_SUBMODE )
+		update_blanking_inhibit(FALSE);
+
+	old_submode = submode;
 }
 
 /**
@@ -4235,6 +4366,10 @@ static void device_inactive_trigger(gconstpointer data)
 					adaptive_dimming_index + 1) != NULL)
 				adaptive_dimming_index++;
 		}
+		/* Explicitly reset the display dim timer in case the
+		 * display is already on (and the datapipe execution
+		 * below turns into a nop) */
+		setup_dim_timeout();
 
 		(void)execute_datapipe(&display_state_req_pipe,
 				       GINT_TO_POINTER(MCE_DISPLAY_ON),
@@ -4372,7 +4507,6 @@ static void alarm_ui_state_trigger(gconstpointer data)
 	update_blanking_inhibit(FALSE);
 }
 
-
 /* ------------------------------------------------------------------------- *
  * COMBINED SUSPEND & DISPLAY STATE MACHINE
  * ------------------------------------------------------------------------- */
@@ -4380,20 +4514,23 @@ static void alarm_ui_state_trigger(gconstpointer data)
 typedef enum
 {
 	STM_UNSET,
-	STM_POWER_ON,
-	STM_SIG_OFF,
-	STM_RENDERER_INIT_STOP,
-	STM_RENDERER_WAIT_STOP,
-	STM_LOGICAL_OFF,
 	STM_RENDERER_INIT_START,
 	STM_RENDERER_WAIT_START,
-	STM_SIG_ON,
+	STM_ENTER_POWER_ON,
+	STM_STAY_POWER_ON,
+	STM_LEAVE_POWER_ON,
+	STM_RENDERER_INIT_STOP,
+	STM_RENDERER_WAIT_STOP,
 	STM_INIT_SUSPEND,
 	STM_WAIT_SUSPEND,
-	STM_POWER_OFF,
+	STM_ENTER_POWER_OFF,
+	STM_STAY_POWER_OFF,
+	STM_LEAVE_POWER_OFF,
 	STM_INIT_RESUME,
 	STM_WAIT_RESUME,
-
+	STM_ENTER_LOGICAL_OFF,
+	STM_STAY_LOGICAL_OFF,
+	STM_LEAVE_LOGICAL_OFF,
 } stm_state_t;
 
 static guint stm_rethink_id = 0;
@@ -4408,27 +4545,30 @@ static stm_state_t dstate = STM_UNSET;
 
 static bool stm_wakelock_acquired = false;
 
-
 static const char *stm_state_name(stm_state_t state)
 {
 	const char *name = "UNKNOWN";
 
-#define DO(tag) case STM_##tag: name = #tag; break;
+#define DO(tag) case STM_##tag: name = #tag; break
 	switch( state ) {
-	DO(UNSET)
-	DO(POWER_ON)
-	DO(SIG_OFF)
-	DO(RENDERER_INIT_STOP)
-	DO(RENDERER_WAIT_STOP)
-	DO(LOGICAL_OFF)
-	DO(RENDERER_INIT_START)
-	DO(RENDERER_WAIT_START)
-	DO(SIG_ON)
-	DO(INIT_SUSPEND)
-	DO(WAIT_SUSPEND)
-	DO(POWER_OFF)
-	DO(INIT_RESUME)
-	DO(WAIT_RESUME)
+	DO(UNSET);
+	DO(RENDERER_INIT_START);
+	DO(RENDERER_WAIT_START);
+	DO(ENTER_POWER_ON);
+	DO(STAY_POWER_ON);
+	DO(LEAVE_POWER_ON);
+	DO(RENDERER_INIT_STOP);
+	DO(RENDERER_WAIT_STOP);
+	DO(INIT_SUSPEND);
+	DO(WAIT_SUSPEND);
+	DO(ENTER_POWER_OFF);
+	DO(STAY_POWER_OFF);
+	DO(LEAVE_POWER_OFF);
+	DO(INIT_RESUME);
+	DO(WAIT_RESUME);
+	DO(ENTER_LOGICAL_OFF);
+	DO(STAY_LOGICAL_OFF);
+	DO(LEAVE_LOGICAL_OFF);
 	default: break;
 	}
 #undef DO
@@ -4447,6 +4587,8 @@ static const char *display_state_name(display_state_t state)
 	DO(LPM_ON)
 	DO(DIM)
 	DO(ON)
+	DO(POWER_UP)
+	DO(POWER_DOWN)
 	default: break;
 	}
 #undef DO
@@ -4457,7 +4599,7 @@ static bool stm_suspend_allowed_early(void)
 {
 #ifdef ENABLE_WAKELOCKS
 	bool res = (suspend_allow_state() != 0);
-	mce_log(LL_NOTICE, "res=%s", res ? "true" : "false");
+	mce_log(LL_INFO, "res=%s", res ? "true" : "false");
 	return res;
 #else
 	// "early suspend" in state machine transforms in to
@@ -4470,7 +4612,7 @@ static bool stm_suspend_allowed_late(void)
 {
 #ifdef ENABLE_WAKELOCKS
 	bool res = (suspend_allow_state() == 2);
-	mce_log(LL_NOTICE, "res=%s", res ? "true" : "false");
+	mce_log(LL_INFO, "res=%s", res ? "true" : "false");
 	return res;
 #else
 	return false;
@@ -4506,13 +4648,13 @@ static void stm_resume_start(void)
 static bool stm_suspend_finished(void)
 {
 	bool res = waitfb.suspended;
-	mce_log(LL_NOTICE, "res=%s", res ? "true" : "false");
+	mce_log(LL_INFO, "res=%s", res ? "true" : "false");
 	return res;
 }
 static bool stm_resume_finished(void)
 {
 	bool res = !waitfb.suspended;
-	mce_log(LL_NOTICE, "res=%s", res ? "true" : "false");
+	mce_log(LL_INFO, "res=%s", res ? "true" : "false");
 	return res;
 }
 
@@ -4532,7 +4674,7 @@ static void stm_lipstick_name_owner_changed(const char *name, bool has_owner)
 		 *
 		 * Turning the display on at lipstick runstate change
 		 * deals with both (a) and (b) */
-		stm_target_set(MCE_DISPLAY_ON);
+		stm_target_push_change(MCE_DISPLAY_ON);
 	}
 }
 
@@ -4541,7 +4683,7 @@ static void stm_wakelock_release(void)
 	if( stm_wakelock_acquired ) {
 		stm_wakelock_acquired = false;
 #ifdef ENABLE_WAKELOCKS
-		mce_log(LL_NOTICE, "wakelock released");
+		mce_log(LL_INFO, "wakelock released");
 		wakelock_unlock("mce_display_on");
 #endif
 	}
@@ -4553,50 +4695,68 @@ static void stm_wakelock_acquire(void)
 		stm_wakelock_acquired = true;
 #ifdef ENABLE_WAKELOCKS
 		wakelock_lock("mce_display_on", -1);
-		mce_log(LL_NOTICE, "wakelock acquired");
+		mce_log(LL_INFO, "wakelock acquired");
 #endif
 	}
 }
 
-
 static void stm_trans(stm_state_t state)
 {
 	if( dstate != state ) {
-		mce_log(LL_NOTICE, "STM: %s -> %s",
+		mce_log(LL_INFO, "STM: %s -> %s",
 			stm_state_name(dstate),
 			stm_state_name(state));
 		dstate = state;
 	}
 }
 
-static void stm_target_set(display_state_t display_state)
+/** Push new change from pipeline to state machine
+ */
+static void stm_target_push_change(display_state_t display_state)
 {
 	if( stm_want != display_state ) {
 		stm_want = display_state;
-		mce_log(LL_NOTICE, "curr=%s, next=%s, want=%s",
-			display_state_name(stm_curr),
-			display_state_name(stm_next),
-			display_state_name(stm_want));
 		stm_rethink_schedule();
 	}
 }
 
-static bool stm_target_changed(void)
+static bool stm_target_changing(void)
 {
-	if( stm_curr == stm_next && stm_next != stm_want ) {
-		mce_log(LL_NOTICE, "display state target: %s -> %s",
-			display_state_name(stm_next),
-			display_state_name(stm_want));
-		stm_next = stm_want;
-	}
 	return stm_curr != stm_next;
 }
 
-static void stm_target_execute(void)
+/** Pull new change from within the state machine */
+static bool stm_target_pull_change(void)
 {
+	// already in transition?
+	if( stm_curr != stm_next )
+		return true;
+
+	// new transition requested?
+	if( stm_want == MCE_DISPLAY_UNDEF )
+		return false;
+
+	stm_next = stm_want, stm_want = MCE_DISPLAY_UNDEF;
+
+	// transition to new state requested?
+	if( stm_curr == stm_next )
+		return false;
+
+	// do pre-transition actions
+	display_state_pre_trigger(stm_curr, stm_next);
+	return true;
+}
+
+static void stm_target_finish_change(void)
+{
+	// already finished?
+	if( stm_curr == stm_next )
+		return;
+
+	// do post-transition actions
+	display_state_t prev = stm_curr;
 	stm_curr = stm_next;
-	execute_datapipe(&display_state_pipe, GINT_TO_POINTER(stm_curr),
-			 USE_INDATA, CACHE_INDATA);
+	display_state_post_trigger(prev, stm_curr);
 }
 
 static bool stm_renderer_pending(void)
@@ -4644,10 +4804,10 @@ static bool stm_display_state_needs_power(display_state_t display_state)
 		break;
 
 	case MCE_DISPLAY_OFF:
+	case MCE_DISPLAY_UNDEF:
 		power_on = false;
 		break;
 
-	case MCE_DISPLAY_UNDEF:
 	default:
 		abort();
 	}
@@ -4661,57 +4821,18 @@ static void stm_rethink_step(void)
 	case STM_UNSET:
 	default:
 		stm_wakelock_acquire();
-		if( stm_want != MCE_DISPLAY_UNDEF )
-			stm_trans(STM_INIT_RESUME);
-		break;
-
-	case STM_POWER_ON:
-		if( !stm_lipstick_on_dbus && stm_next == MCE_DISPLAY_OFF )
-			stm_next = stm_want;
-		if( !stm_target_changed() )
-			break;
-		if( stm_display_state_needs_power(stm_next) )
-			stm_trans(STM_RENDERER_INIT_START);
-		else if( stm_lipstick_on_dbus )
-			stm_trans(STM_RENDERER_INIT_STOP);
-		break;
-
-	case STM_RENDERER_INIT_STOP:
-		stm_renderer_disable();
-		stm_trans(STM_RENDERER_WAIT_STOP);
-		break;
-
-	case STM_RENDERER_WAIT_STOP:
-		if( stm_renderer_pending() )
-			break;
-		if( stm_renderer_disabled() ) {
-			stm_trans(STM_SIG_OFF);
-			break;
-		}
-		mce_log(LL_ERR, "ui stop failed, reverting %s",
-			display_state_name(stm_next));
-		stm_want = stm_next = stm_curr;
-		stm_trans(STM_SIG_ON);
-		break;
-
-	case STM_SIG_OFF:
-		stm_target_execute();
-		if( stm_suspend_allowed_early() )
-			stm_trans(STM_INIT_SUSPEND);
-		else
-			stm_trans(STM_LOGICAL_OFF);
-		break;
-
-	case STM_LOGICAL_OFF:
-		if( stm_suspend_allowed_early() )
-			stm_trans(STM_INIT_SUSPEND);
-		else if( stm_target_changed() )
+		if( stm_display_state_needs_power(stm_want) )
 			stm_trans(STM_RENDERER_INIT_START);
 		break;
 
 	case STM_RENDERER_INIT_START:
-		stm_renderer_enable();
-		stm_trans(STM_RENDERER_WAIT_START);
+		if( !stm_lipstick_on_dbus ) {
+			stm_trans(STM_ENTER_POWER_ON);
+		}
+		else {
+			stm_renderer_enable();
+			stm_trans(STM_RENDERER_WAIT_START);
+		}
 		break;
 
 	case STM_RENDERER_WAIT_START:
@@ -4719,50 +4840,136 @@ static void stm_rethink_step(void)
 			break;
 		if( !stm_renderer_enabled() )
 			mce_log(LL_ERR, "ui start failed, ignoring");
-		stm_trans(STM_SIG_ON);
+		stm_trans(STM_ENTER_POWER_ON);
 		break;
 
-	case STM_SIG_ON:
-		stm_target_execute();
-		stm_trans(STM_POWER_ON);
+
+	case STM_ENTER_POWER_ON:
+		stm_target_finish_change();
+		stm_trans(STM_STAY_POWER_ON);
+		break;
+
+	case STM_STAY_POWER_ON:
+		if( stm_target_pull_change() )
+			stm_trans(STM_LEAVE_POWER_ON);
+		break;
+
+	case STM_LEAVE_POWER_ON:
+		if( stm_display_state_needs_power(stm_next) )
+			stm_trans(STM_RENDERER_INIT_START);
+		else
+			stm_trans(STM_RENDERER_INIT_STOP);
+		break;
+
+
+	case STM_RENDERER_INIT_STOP:
+		if( !stm_lipstick_on_dbus ) {
+			mce_log(LL_WARN, "no lipstick; reverting %s -> %s",
+				display_state_name(stm_curr),
+				display_state_name(stm_next));
+			stm_next = stm_curr;
+			stm_trans(STM_STAY_POWER_ON);
+		}
+		else {
+			stm_renderer_disable();
+			stm_trans(STM_RENDERER_WAIT_STOP);
+		}
+		break;
+
+	case STM_RENDERER_WAIT_STOP:
+		if( stm_renderer_pending() )
+			break;
+		if( stm_renderer_disabled() ) {
+			stm_trans(STM_INIT_SUSPEND);
+			break;
+		}
+		mce_log(LL_ERR, "ui stop failed, reverting %s -> %s",
+			display_state_name(stm_curr),
+			display_state_name(stm_next));
+		stm_next = stm_curr;
+		stm_trans(STM_INIT_SUSPEND);
 		break;
 
 	case STM_INIT_SUSPEND:
-		stm_suspend_start();
-		stm_trans(STM_WAIT_SUSPEND);
-		break;
+		if( stm_suspend_allowed_early() ) {
+			stm_suspend_start();
+			stm_trans(STM_WAIT_SUSPEND);
+		}
+		else {
+			stm_trans(STM_ENTER_LOGICAL_OFF);
+		}
 		break;
 
 	case STM_WAIT_SUSPEND:
 		if( !stm_suspend_finished() )
 			break;
-		stm_trans(STM_POWER_OFF);
+		stm_trans(STM_ENTER_POWER_OFF);
 		break;
 
-	case STM_POWER_OFF:
-		if( !stm_suspend_allowed_early() || stm_target_changed()) {
-			stm_trans(STM_INIT_RESUME);
+	case STM_ENTER_POWER_OFF:
+		stm_target_finish_change();
+		stm_trans(STM_STAY_POWER_OFF);
+		break;
+
+	case STM_STAY_POWER_OFF:
+		if( stm_target_pull_change() ) {
+			stm_trans(STM_LEAVE_POWER_OFF);
 			break;
 		}
-		if( !stm_suspend_allowed_late() )
-			stm_wakelock_acquire();
-		else
+
+		if( !stm_suspend_allowed_early() ) {
+			stm_trans(STM_LEAVE_POWER_OFF);
+			break;
+		}
+
+		if( stm_suspend_allowed_late() )
 			stm_wakelock_release();
+		else
+			stm_wakelock_acquire();
+		break;
+
+	case STM_LEAVE_POWER_OFF:
+		stm_wakelock_acquire();
+		stm_trans(STM_INIT_RESUME);
 		break;
 
 	case STM_INIT_RESUME:
-		stm_wakelock_acquire();
-		stm_resume_start();
-		stm_trans(STM_WAIT_RESUME);
+		if( stm_display_state_needs_power(stm_next) ) {
+			stm_resume_start();
+			stm_trans(STM_WAIT_RESUME);
+			break;
+		}
+		stm_trans(STM_ENTER_LOGICAL_OFF);
 		break;
 
 	case STM_WAIT_RESUME:
 		if( !stm_resume_finished() )
 			break;
-		if( stm_target_changed() )
+		stm_trans(STM_RENDERER_INIT_START);
+		break;
+
+	case STM_ENTER_LOGICAL_OFF:
+		stm_target_finish_change();
+		stm_trans(STM_STAY_LOGICAL_OFF);
+		break;
+
+	case STM_STAY_LOGICAL_OFF:
+		if( stm_target_pull_change() ) {
+			stm_trans(STM_LEAVE_LOGICAL_OFF);
+			break;
+		}
+
+		if( stm_suspend_allowed_early() ) {
+			stm_trans(STM_LEAVE_LOGICAL_OFF);
+			break;
+		}
+		break;
+
+	case STM_LEAVE_LOGICAL_OFF:
+		if( stm_target_changing() )
 			stm_trans(STM_RENDERER_INIT_START);
 		else
-			stm_trans(STM_LOGICAL_OFF);
+			stm_trans(STM_INIT_SUSPEND);
 		break;
 	}
 }
@@ -4770,20 +4977,29 @@ static void stm_rethink_step(void)
 static void stm_rethink(void)
 {
 	stm_state_t prev;
-	mce_log(LL_NOTICE, "ENTER @ %s", stm_state_name(dstate));
+	mce_log(LL_INFO, "ENTER @ %s", stm_state_name(dstate));
 	do {
 		prev = dstate;
 		stm_rethink_step();
 	} while( dstate != prev );
-	mce_log(LL_NOTICE, "LEAVE @ %s", stm_state_name(dstate));
+	mce_log(LL_INFO, "LEAVE @ %s", stm_state_name(dstate));
 }
-
 
 static gboolean stm_rethink_cb(gpointer aptr)
 {
 	(void)aptr; // not used
-	if( stm_rethink_id )
-		stm_rethink_id = 0, stm_rethink();
+
+	if( stm_rethink_id ) {
+		/* clear pending rethink */
+		stm_rethink_id = 0;
+
+		/* run the state machine */
+		stm_rethink();
+
+		/* remove wakelock if not re-scheduled */
+		if( !stm_rethink_id )
+			wakelock_unlock("mce_display_stm");
+	}
 	return FALSE;
 }
 
@@ -4791,18 +5007,19 @@ static void stm_rethink_cancel(void)
 {
 	if( stm_rethink_id ) {
 		g_source_remove(stm_rethink_id), stm_rethink_id = 0;
-		mce_log(LL_NOTICE, "cancelled");
+		mce_log(LL_INFO, "cancelled");
+		wakelock_unlock("mce_display_stm");
 	}
 }
 
 static void stm_rethink_schedule(void)
 {
 	if( !stm_rethink_id ) {
-		mce_log(LL_NOTICE, "scheduled");
+		wakelock_lock("mce_display_stm", -1);
+		mce_log(LL_INFO, "scheduled");
 		stm_rethink_id = g_idle_add(stm_rethink_cb, 0);
 	}
 }
-
 
 /* ------------------------------------------------------------------------- *
  * D-BUS NAME OWNER TRACKING

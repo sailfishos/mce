@@ -281,6 +281,8 @@ static void mce_cleanup_wakelocks(void)
 
 	wakelock_unlock("mce_display_on");
 	wakelock_unlock("mce_input_handler");
+	wakelock_unlock("mce_cpu_keepalive");
+	wakelock_unlock("mce_display_stm");
 }
 #endif // ENABLE_WAKELOCKS
 
