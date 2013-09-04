@@ -26,6 +26,10 @@
 
 #include <mce/dbus-names.h>
 
+#ifndef BUILTIN_GCONF
+# include <gconf/gconf-client.h>
+#endif
+
 DBusConnection *dbus_connection_get(void);
 
 DBusMessage *dbus_new_signal(const gchar *const path,
@@ -70,5 +74,7 @@ void mce_dbus_owner_monitor_remove_all(GSList **monitor_list);
 
 gboolean mce_dbus_init(const gboolean systembus);
 void mce_dbus_exit(void);
+
+void mce_dbus_send_config_notification(GConfEntry *entry);
 
 #endif /* _MCE_DBUS_H_ */

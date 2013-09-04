@@ -768,6 +768,13 @@ bailout_message:
 	return FALSE;
 }
 
+/* FIXME: Once the constants are in mce-dev these can be removed */
+#ifndef MCE_CONFIG_GET
+# define MCE_CONFIG_GET         "get_config"
+# define MCE_CONFIG_SET         "set_config"
+# define MCE_CONFIG_CHANGE_SIG  "config_change_ind"
+#endif
+
 /**
  * D-Bus callback for the config get method call
  *
@@ -783,15 +790,24 @@ static gboolean config_get_dbus_cb(DBusMessage *const msg)
 	GError *err = NULL;
 	GConfValue *conf = 0;
 
-	DBusError error = DBUS_ERROR_INIT;
+	DBusMessageIter body;
 
 	mce_log(LL_DEBUG, "Received configuration query request");
 
-	if( !dbus_message_get_args(msg, &error,
-				   DBUS_TYPE_OBJECT_PATH, &key,
-				   DBUS_TYPE_INVALID) )	{
-		mce_log(LL_ERR, "%s: %s", error.name, error.message);
-		reply = dbus_message_new_error(msg, error.name, error.message);
+	dbus_message_iter_init(msg, &body);
+
+	/* HACK: The key used to be object path, not string.
+	 *       Allow clients to use either one. */
+	switch( dbus_message_iter_get_arg_type(&body) ) {
+	case DBUS_TYPE_OBJECT_PATH:
+	case DBUS_TYPE_STRING:
+		dbus_message_iter_get_basic(&body, &key);
+		dbus_message_iter_next(&body);
+		break;
+
+	default:
+		reply = dbus_message_new_error(msg, DBUS_ERROR_INVALID_ARGS,
+					       "expected string/object path");
 		goto EXIT;
 	}
 
@@ -829,9 +845,50 @@ EXIT:
 		gconf_value_free(conf);
 
 	g_clear_error(&err);
-	dbus_error_free(&error);
 
 	return status;
+}
+
+/** Send configuration changed notification signal
+ *
+ * @param entry changed setting
+ */
+void mce_dbus_send_config_notification(GConfEntry *entry)
+{
+	const char  *key = 0;
+	GConfValue  *val = 0;
+	DBusMessage *sig = 0;
+
+	if( !entry )
+		goto EXIT;
+
+	if( !(key = gconf_entry_get_key(entry)) )
+		goto EXIT;
+
+	if( !(val = gconf_entry_get_value(entry)) )
+		goto EXIT;
+
+	mce_log(LL_DEBUG, "%s: changed", key);
+
+	sig = dbus_message_new_signal(MCE_SIGNAL_PATH,
+				      MCE_SIGNAL_IF,
+				      MCE_CONFIG_CHANGE_SIG);
+
+	if( !sig ) goto EXIT;
+
+	dbus_message_append_args(sig,
+				 DBUS_TYPE_STRING, &key,
+				 DBUS_TYPE_INVALID);
+
+	append_gconf_value_to_dbus_message(sig, val);
+
+	dbus_send_message(sig), sig = 0;
+
+EXIT:
+
+	if( sig ) dbus_message_unref(sig);
+
+	return;
 }
 
 /** Release GSList of GConfValue objects
@@ -993,13 +1050,20 @@ static gboolean config_set_dbus_cb(DBusMessage *const msg)
 
 	dbus_message_iter_init(msg, &body);
 
-	if( dbus_message_iter_get_arg_type(&body) != DBUS_TYPE_OBJECT_PATH ) {
+	/* HACK: The key used to be object path, not string.
+	 *       Allow clients to use either one. */
+	switch( dbus_message_iter_get_arg_type(&body) ) {
+	case DBUS_TYPE_OBJECT_PATH:
+	case DBUS_TYPE_STRING:
+		dbus_message_iter_get_basic(&body, &key);
+		dbus_message_iter_next(&body);
+		break;
+
+	default:
 		reply = dbus_message_new_error(msg, DBUS_ERROR_INVALID_ARGS,
-					       "expected object path");
+					       "expected string/object path");
 		goto EXIT;
 	}
-	dbus_message_iter_get_basic(&body, &key);
-	dbus_message_iter_next(&body);
 
 	if( dbus_message_iter_get_arg_type(&body) == DBUS_TYPE_VARIANT ) {
 		dbus_message_iter_recurse(&body, &iter);
@@ -1776,7 +1840,7 @@ gboolean mce_dbus_init(const gboolean systembus)
 
 	/* get_config */
 	if (mce_dbus_handler_add(MCE_REQUEST_IF,
-				 "get_config",
+				 MCE_CONFIG_GET,
 				 NULL,
 				 DBUS_MESSAGE_TYPE_METHOD_CALL,
 				 config_get_dbus_cb) == NULL)
@@ -1784,7 +1848,7 @@ gboolean mce_dbus_init(const gboolean systembus)
 
 	/* set_config */
 	if (mce_dbus_handler_add(MCE_REQUEST_IF,
-				 "set_config",
+				 MCE_CONFIG_SET,
 				 NULL,
 				 DBUS_MESSAGE_TYPE_METHOD_CALL,
 				 config_set_dbus_cb) == NULL)

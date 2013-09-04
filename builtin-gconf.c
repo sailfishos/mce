@@ -18,6 +18,9 @@
  * - value types can't be changed
  * ------------------------------------------------------------------------- */
 
+/** Flag for: do not include real gconf headers */
+#define BUILTIN_GCONF
+
 #include <glib.h>
 
 #include <stdio.h>
@@ -168,6 +171,8 @@ typedef struct GConfClientNotify
   GFreeFunc             destroy_notify;
 
 } GConfClientNotify;
+
+#include "mce-dbus.h"
 
 /* ========================================================================= *
  *
@@ -1931,6 +1936,46 @@ gconf_client_notify_new(const gchar           *namespace_section,
   return self;
 }
 
+/** Broadcast value change on D-Bus */
+static
+void
+gconf_signal_value_change(GConfEntry *entry)
+{
+  static GHashTable *sent = 0;
+
+  const char *prev = 0;
+  char       *curr = 0;
+
+  /* HACK: The builtin-gconf does not care if the value actually changes
+   *       or not. To avoid sending "no change" signals we keep track
+   *       of the string representation of the last change that was
+   *       broadcast ... */
+  if( !sent )
+  {
+    sent = g_hash_table_new_full(g_str_hash, g_str_equal, free, free);
+  }
+
+  if( !(curr = gconf_value_str(entry->value)) )
+  {
+    goto EXIT;
+  }
+
+  prev = g_hash_table_lookup(sent, entry->key);
+
+  if( prev && !strcmp(prev, curr) )
+  {
+    goto EXIT;
+  }
+
+  g_hash_table_insert(sent, strdup(entry->key), curr), curr = 0;
+  mce_dbus_send_config_notification(entry);
+
+EXIT:
+  free(curr);
+  return;
+}
+
+
 /** Dispatch change notifications via installed  callbacks */
 static
 void
@@ -1942,6 +1987,7 @@ gconf_client_notify_change(GConfClient           *client,
 
   if( entry )
   {
+    /* handle internal notifications */
     for( GSList *item = client->notify_list; item; item = item->next )
     {
       GConfClientNotify *notify = item->data;
@@ -1957,6 +2003,9 @@ gconf_client_notify_change(GConfClient           *client,
         notify->func(client, notify->id, entry, notify->user_data);
       }
     }
+
+    /* broadcast change also on dbus */
+    gconf_signal_value_change(entry);
   }
 
   g_clear_error(&err);
