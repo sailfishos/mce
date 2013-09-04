@@ -1,3 +1,11 @@
+mce (1.14.1) unstable; urgency=low
+
+ * [mcetool] Options for tklock simulation and short/long/quick help added
+ * [mce] Fixes to display/suspend state machine
+ * [mce] A D-Bus signal is sent on configuration value change
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 04 Sep 2013 13:48:47 +0300
+
 mce (1.14.0) unstable; urgency=low
 
   * [init] Notification sent to systemd when mce has started up
