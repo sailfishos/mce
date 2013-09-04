@@ -4988,8 +4988,18 @@ static void stm_rethink(void)
 static gboolean stm_rethink_cb(gpointer aptr)
 {
 	(void)aptr; // not used
-	if( stm_rethink_id )
-		stm_rethink_id = 0, stm_rethink();
+
+	if( stm_rethink_id ) {
+		/* clear pending rethink */
+		stm_rethink_id = 0;
+
+		/* run the state machine */
+		stm_rethink();
+
+		/* remove wakelock if not re-scheduled */
+		if( !stm_rethink_id )
+			wakelock_unlock("mce_display_stm");
+	}
 	return FALSE;
 }
 
@@ -4998,12 +5008,14 @@ static void stm_rethink_cancel(void)
 	if( stm_rethink_id ) {
 		g_source_remove(stm_rethink_id), stm_rethink_id = 0;
 		mce_log(LL_INFO, "cancelled");
+		wakelock_unlock("mce_display_stm");
 	}
 }
 
 static void stm_rethink_schedule(void)
 {
 	if( !stm_rethink_id ) {
+		wakelock_lock("mce_display_stm", -1);
 		mce_log(LL_INFO, "scheduled");
 		stm_rethink_id = g_idle_add(stm_rethink_cb, 0);
 	}
