@@ -1,10 +1,12 @@
 builtin-gconf.o:\
 	builtin-gconf.c\
+	mce-dbus.h\
 	mce-io.h\
 	mce-log.h\
 
 builtin-gconf.pic.o:\
 	builtin-gconf.c\
+	mce-dbus.h\
 	mce-io.h\
 	mce-log.h\
 
@@ -698,6 +700,8 @@ tools/mcetool.o:\
 	modules/display.h\
 	modules/filter-brightness-als.h\
 	modules/powersavemode.h\
+	systemui/dbus-names.h\
+	systemui/tklock-dbus-names.h\
 	tklock.h\
 
 tools/mcetool.pic.o:\
@@ -706,5 +710,7 @@ tools/mcetool.pic.o:\
 	modules/display.h\
 	modules/filter-brightness-als.h\
 	modules/powersavemode.h\
+	systemui/dbus-names.h\
+	systemui/tklock-dbus-names.h\
 	tklock.h\
 
