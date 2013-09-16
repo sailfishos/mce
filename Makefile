@@ -69,6 +69,9 @@ endif
 endif
 PKG_CONFIG   ?= pkg-config
 
+# Whether to use sensorfw for ALS/PS
+ENABLE_SENSORFW ?= y
+
 # Whether to enable support for libhybris plugin
 ENABLE_HYBRIS ?= y
 
@@ -212,6 +215,10 @@ ifeq ($(strip $(ENABLE_BUILTIN_GCONF)),y)
 CPPFLAGS += -DENABLE_BUILTIN_GCONF
 endif
 
+ifeq ($(ENABLE_SENSORFW),y)
+CPPFLAGS += -DENABLE_SENSORFW
+endif
+
 ifeq ($(ENABLE_HYBRIS),y)
 CPPFLAGS += -DENABLE_HYBRIS
 endif
@@ -297,6 +304,7 @@ MCE_CORE += mce-log.c
 MCE_CORE += mce-conf.c
 MCE_CORE += datapipe.c
 MCE_CORE += mce-modules.c
+MCE_CORE += mce-sensorfw.c
 MCE_CORE += mce-io.c
 MCE_CORE += mce-lib.c
 MCE_CORE += median_filter.c
@@ -304,6 +312,9 @@ MCE_CORE += evdev.c
 MCE_CORE += filewatcher.c
 ifeq ($(ENABLE_HYBRIS),y)
 MCE_CORE += mce-hybris.c
+endif
+ifeq ($(ENABLE_SENSORFW),y)
+MCE_CORE += mce-sensorfw.c
 endif
 # HACK: do not link against libgconf-2
 ifeq ($(strip $(ENABLE_BUILTIN_GCONF)),y)

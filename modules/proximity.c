@@ -67,6 +67,10 @@
 # include "../mce-hybris.h"
 #endif
 
+#ifdef ENABLE_SENSORFW
+# include "mce-sensorfw.h"
+#endif
+
 /** Request enabling of proximity sensor; reference counted */
 #define MCE_REQ_PS_ENABLE		"req_proximity_sensor_enable"
 
@@ -106,6 +110,11 @@ typedef enum {
 #ifdef ENABLE_HYBRIS
 	PS_TYPE_HYBRIS = 3,
 #endif
+#ifdef ENABLE_SENSORFW
+	/* sensors via sensorfw */
+	PS_TYPE_SENSORFW = 4,
+#endif
+
 } ps_type_t;
 
 /** State of proximity sensor monitoring */
@@ -171,6 +180,15 @@ static ps_type_t get_ps_type(void)
 	if (ps_type != PS_TYPE_UNSET)
 		goto EXIT;
 
+#ifdef ENABLE_SENSORFW
+	if( ps_type == PS_TYPE_UNSET ) {
+		// bogus 'if' used to align code flow and keep
+		// static analyzers at least semi-happy ...
+		ps_type = PS_TYPE_SENSORFW;
+	} else
+#endif
+
+
 	if (g_access(PS_DEVICE_PATH_AVAGO, R_OK) == 0) {
 		ps_type = PS_TYPE_AVAGO;
 		ps_device_path = PS_DEVICE_PATH_AVAGO;
@@ -210,6 +228,11 @@ static void enable_proximity_sensor(void)
 {
 	mce_log(LL_DEBUG, "enable PS input");
 	switch (get_ps_type()) {
+#ifdef ENABLE_SENSORFW
+	case PS_TYPE_SENSORFW:
+		mce_sensorfw_ps_enable();
+		break;
+#endif
 #ifdef ENABLE_HYBRIS
 	case PS_TYPE_HYBRIS:
 		mce_hybris_ps_set_active(1);
@@ -230,6 +253,11 @@ static void disable_proximity_sensor(void)
 {
 	mce_log(LL_DEBUG, "disable PS input");
 	switch (get_ps_type()) {
+#ifdef ENABLE_SENSORFW
+	case PS_TYPE_SENSORFW:
+		mce_sensorfw_ps_disable();
+		break;
+#endif
 #ifdef ENABLE_HYBRIS
 	case PS_TYPE_HYBRIS:
 		mce_hybris_ps_set_active(0);
@@ -405,6 +433,37 @@ EXIT:
 }
 
 /**
+ * I/O monitor callback for the proximity sensor (sensorfw)
+ *
+ * @param covered  proximity sensor covered
+ */
+#ifdef ENABLE_SENSORFW
+static void ps_sensorfw_iomon_cb(bool covered)
+{
+	cover_state_t proximity_sensor_state = COVER_UNDEF;
+
+	if( covered )
+		proximity_sensor_state = COVER_CLOSED;
+	else
+		proximity_sensor_state = COVER_OPEN;
+
+	if (old_proximity_sensor_state == proximity_sensor_state)
+		goto EXIT;
+
+	mce_log(LL_DEBUG, "state:%d -> %d", old_proximity_sensor_state,
+		proximity_sensor_state);
+
+	old_proximity_sensor_state = proximity_sensor_state;
+
+	(void)execute_datapipe(&proximity_sensor_pipe,
+			       GINT_TO_POINTER(proximity_sensor_state),
+			       USE_INDATA, CACHE_INDATA);
+EXIT:
+	return;
+}
+#endif /* ENABLE_SENSORFW */
+
+/**
  * I/O monitor callback for the proximity sensor (libhybris)
  *
  * @param timestamp event time
@@ -539,8 +598,15 @@ static void enable_proximity_monitor(void)
 
 	/* install input processing hooks, update current state */
 
+	switch( get_ps_type() ) {
+#ifdef ENABLE_SENSORFW
+	case PS_TYPE_SENSORFW:
+		mce_sensorfw_ps_set_notify(ps_sensorfw_iomon_cb);
+		mce_sensorfw_ps_enable();
+		goto EXIT;
+#endif
 #ifdef ENABLE_HYBRIS
-	if( get_ps_type() == PS_TYPE_HYBRIS ) {
+	case PS_TYPE_HYBRIS:
 		/* hook first, then enable */
 		mce_hybris_ps_set_callback(ps_hybris_iomon_cb);
 		enable_proximity_sensor();
@@ -549,8 +615,10 @@ static void enable_proximity_monitor(void)
 		 *        via Android libhardware? For now we
 		 *        just need to wait for data ... */
 		goto EXIT;
-	}
 #endif
+	default:
+		break;
+	}
 	if( !proximity_sensor_iomon_id ) {
 		/* enable first, then hook and update current value */
 		enable_proximity_sensor();
@@ -596,6 +664,11 @@ static void disable_proximity_monitor(void)
 
 	/* remove input processing hooks */
 	switch( get_ps_type() ) {
+#ifdef ENABLE_SENSORFW
+	case PS_TYPE_SENSORFW:
+		mce_sensorfw_ps_set_notify(0);
+		break;
+#endif
 #ifdef ENABLE_HYBRIS
 	case PS_TYPE_HYBRIS:
 		mce_hybris_ps_set_callback(0);
