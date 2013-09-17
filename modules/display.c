@@ -3142,7 +3142,7 @@ static gboolean blanking_pause_owner_monitor_dbus_cb(DBusMessage *const msg)
 		goto EXIT;
 	}
 
-	remove_blanking_pause(old_name);
+	remove_blanking_pause(service);
 	status = TRUE;
 
 EXIT:

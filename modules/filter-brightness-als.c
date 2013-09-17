@@ -2029,7 +2029,7 @@ static gboolean als_owner_monitor_dbus_cb(DBusMessage *const msg)
 	}
 
 	/* Remove the name monitor for the ALS owner */
-	retval = mce_dbus_owner_monitor_remove(old_name, &als_owner_monitor_list);
+	retval = mce_dbus_owner_monitor_remove(service, &als_owner_monitor_list);
 
 	if (retval == -1) {
 		mce_log(LL_INFO,

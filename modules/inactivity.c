@@ -244,7 +244,7 @@ static gboolean activity_cb_monitor_dbus_cb(DBusMessage *const msg)
 		goto EXIT;
 	}
 
-	remove_activity_cb(old_name);
+	remove_activity_cb(service);
 	status = TRUE;
 
 EXIT:
