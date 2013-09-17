@@ -4887,7 +4887,7 @@ static void stm_rethink_step(void)
 			display_state_name(stm_curr),
 			display_state_name(stm_next));
 		stm_next = stm_curr;
-		stm_trans(STM_INIT_SUSPEND);
+		stm_trans(STM_STAY_POWER_ON);
 		break;
 
 	case STM_INIT_SUSPEND:
