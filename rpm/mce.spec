@@ -37,6 +37,14 @@ Requires:   %{name} = %{version}-%{release}
 This package contains tools that can be used to interact with
 the Mode Control Entity and to get mode information.
 
+%package tests
+Summary:  Test suite for mce
+Group:    System/System Control
+BuildRequires:  pkgconfig(check)
+
+%description tests
+This package contains test suite for mce
+
 %prep
 %setup -q -n %{name}-%{version}
 
@@ -95,3 +103,7 @@ systemctl daemon-reload
 %{_sbindir}/mcetorture
 %{_mandir}/man8/mcetool.8.gz
 %{_mandir}/man8/mcetorture.8.gz
+
+%files tests
+%defattr(-,root,root,-)
+/opt/tests/mce/*

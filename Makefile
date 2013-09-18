@@ -20,7 +20,7 @@
 # TOP LEVEL TARGETS
 # ----------------------------------------------------------------------------
 
-.PHONY: build modules tools doc install clean distclean mostlyclean
+.PHONY: build modules tools check doc install clean distclean mostlyclean
 
 build::
 
@@ -28,12 +28,14 @@ modules::
 
 tools::
 
+check::
+
 doc::
 
 install::
 
 mostlyclean::
-	$(RM) *.o *.bak *~ */*.o */*.bak */*~
+	$(RM) *.o *.bak *~ */*.o */*.bak */*~ */*/*.o */*/*.bak */*/*~
 
 clean:: mostlyclean
 
@@ -103,6 +105,9 @@ ENABLE_BACKUP_SUPPORT ?= n
 # Whether to enable double-click == double-tap emulation
 ENABLE_DOUBLETAP_EMULATION ?= y
 
+# Whether to install unit tests
+ENABLE_UNITTESTS_INSTALL ?= y
+
 # Install destination
 DESTDIR               ?= /tmp/test-mce-install
 
@@ -121,6 +126,7 @@ _INFODIR        ?= $(_DATADIR)/info#             # /usr/share/info
 _DEFAULTDOCDIR  ?= $(_DATADIR)/doc#              # /usr/share/doc
 _LOCALSTATEDIR  ?= /var#                         # /var
 _UNITDIR        ?= /lib/systemd/system#
+_TESTSDIR       ?= /opt/tests#                   # /opt/tests
 
 # Install directories within DESTDIR
 VARDIR                := $(_LOCALSTATEDIR)/lib/mce
@@ -136,11 +142,13 @@ BACKUPCONFDIR         := $(_DATADIR)/backup-framework/applications
 HELPERSCRIPTDIR       := $(_DATADIR)/mce
 DEVICECLEARSCRIPTDIR  := $(_SYSCONFDIR)/osso-cud-scripts
 FACTORYRESETSCRIPTDIR := $(_SYSCONFDIR)/osso-rfs-scripts
+TESTSDESTDIR          := $(_TESTSDIR)/mce
 
 # Source directories
 DOCDIR     := doc
 TOOLDIR    := tools
 TESTSDIR   := tests
+UTESTDIR   := tests/ut
 MODULE_DIR := modules
 
 # Binaries to build
@@ -170,6 +178,13 @@ TOOLS   += $(TOOLDIR)/evdev_trace
 
 # Testapps to build
 TESTS   += $(TESTSDIR)/mcetorture
+
+# Unit tests to build
+UTESTS  += $(UTESTDIR)/ut_display_conf
+UTESTS  += $(UTESTDIR)/ut_display_stm
+UTESTS  += $(UTESTDIR)/ut_display_filter
+UTESTS  += $(UTESTDIR)/ut_display_blanking_inhibit
+UTESTS  += $(UTESTDIR)/ut_display
 
 # MCE configuration files
 CONFFILE              := 10mce.ini
@@ -401,17 +416,60 @@ $(TOOLDIR)/evdev_trace : $(TOOLDIR)/evdev_trace.o evdev.o
 $(TESTSDIR)/mcetorture : $(TESTSDIR)/mcetorture.o
 
 # ----------------------------------------------------------------------------
+# UNIT TESTS
+# ----------------------------------------------------------------------------
+
+UTESTS_PKG_NAMES += check
+UTESTS_PKG_NAMES += dbus-1
+UTESTS_PKG_NAMES += dbus-glib-1
+UTESTS_PKG_NAMES += gconf-2.0
+UTESTS_PKG_NAMES += glib-2.0
+UTESTS_PKG_NAMES += gthread-2.0
+
+UTESTS_PKG_CFLAGS := $(shell $(PKG_CONFIG) --cflags $(UTESTS_PKG_NAMES))
+UTESTS_PKG_LDLIBS := $(shell $(PKG_CONFIG) --libs   $(UTESTS_PKG_NAMES))
+
+UTESTS_CFLAGS += $(UTESTS_PKG_CFLAGS)
+UTESTS_LDLIBS += $(UTESTS_PKG_LDLIBS)
+
+UTESTS_CFLAGS += -fdata-sections -ffunction-sections
+UTESTS_LDLIBS += -Wl,--gc-sections
+
+$(UTESTDIR)/% : CFLAGS += $(UTESTS_CFLAGS)
+$(UTESTDIR)/% : LDLIBS += $(UTESTS_LDLIBS)
+$(UTESTDIR)/% : LDLIBS += $(foreach fn_sym,$(LINK_STUBS),\
+	                            -Wl,--defsym=$(fn_sym)=stub__$(fn_sym))
+$(UTESTDIR)/% : $(UTESTDIR)/%.o
+
+$(UTESTDIR)/ut_display : LINK_STUBS += mce_log_file
+$(UTESTDIR)/ut_display : LINK_STUBS += mce_write_string_to_file
+$(UTESTDIR)/ut_display : datapipe.o
+$(UTESTDIR)/ut_display : mce-lib.o
+$(UTESTDIR)/ut_display : modetransition.o
+
+# ----------------------------------------------------------------------------
 # ACTIONS FOR TOP LEVEL TARGETS
 # ----------------------------------------------------------------------------
 
 build:: $(TARGETS) $(MODULES) $(TOOLS)
 
+ifeq ($(ENABLE_UNITTESTS_INSTALL),y)
+build:: $(UTESTS)
+endif
+
 modules:: $(MODULES)
 
 tools:: $(TOOLS)
 
+check:: $(UTESTS)
+	for utest in $^; do ./$${utest} || exit; done
+
 clean::
 	$(RM) $(TARGETS) $(TOOLS) $(MODULES)
+
+ifeq ($(ENABLE_UNITTESTS_INSTALL),y)
+	$(RM) $(UTESTS)
+endif
 
 install:: build
 	$(INSTALL_DIR) $(DESTDIR)$(VARDIR)
@@ -491,6 +549,15 @@ install_man_pages_sv::
 	$(INSTALL_DTA) man/mcetool.sv.8    $(DESTDIR)/$(_MANDIR)/sv/man8/mcetool.8
 	$(INSTALL_DTA) man/mcetorture.sv.8 $(DESTDIR)/$(_MANDIR)/sv/man8/mcetorture.8
 
+ifeq ($(ENABLE_UNITTESTS_INSTALL),y)
+install:: install_unittests
+endif
+
+install_unittests::
+	$(INSTALL_DIR) $(DESTDIR)$(TESTSDESTDIR)
+	$(INSTALL_BIN) $(UTESTS) $(DESTDIR)$(TESTSDESTDIR)
+	$(INSTALL_DTA) $(UTESTDIR)/tests.xml $(DESTDIR)$(TESTSDESTDIR)
+
 # ----------------------------------------------------------------------------
 # DOCUMENTATION
 # ----------------------------------------------------------------------------
@@ -528,7 +595,7 @@ fixme::
 .PHONY: depend
 depend::
 	@echo "Updating .depend"
-	$(CC) -MM $(CPPFLAGS) $(MCE_CFLAGS) *.c */*.c |\
+	$(CC) -MM $(CPPFLAGS) $(MCE_CFLAGS) *.c */*.c */*/*.c |\
 	./depend_filter.py > .depend
 
 ifneq ($(MAKECMDGOALS),depend) # not while: make depend

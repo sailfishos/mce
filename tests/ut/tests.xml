@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<testdefinition version="0.1">
+
+    <suite name="mce">
+
+        <set name="modules-display">
+
+            <description>MCE's display module tests</description>
+
+            <case name="ut_display_conf">
+                <description>
+                    Isolated test of processing display HW configuration
+                    (rather useless test case originally written as a
+                    proof-of-concept test)
+                </description>
+                <step>/opt/tests/mce/ut_display_conf</step>
+            </case>
+
+            <case name="ut_display_filter">
+                <description>
+                    Isolated test of display_state_filter()
+                </description>
+                <step>/opt/tests/mce/ut_display_filter</step>
+            </case>
+
+            <case name="ut_display_stm">
+                <description>
+                    Isolated test of the combined display + suspend state
+                    machine
+                </description>
+                <step>/opt/tests/mce/ut_display_stm</step>
+            </case>
+
+            <case name="ut_display">
+                <description>
+                    Main test for MCE's display module.
+                </description>
+                <step>/opt/tests/mce/ut_display</step>
+            </case>
+
+        </set>
+
+    </suite>
+
+</testdefinition>
