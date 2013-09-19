@@ -134,6 +134,10 @@
 # include "libwakelock.h"
 #endif
 
+#ifdef ENABLE_SENSORFW
+# include "mce-sensorfw.h"
+#endif
+
 #include <systemd/sd-daemon.h>
 
 /** Path to the lockfile */
@@ -1013,6 +1017,12 @@ int main(int argc, char **argv)
 		goto EXIT;
 	}
 
+#ifdef ENABLE_SENSORFW
+	if( !mce_sensorfw_init() ) {
+		goto EXIT;
+	}
+#endif
+
 	/* Load all modules */
 	if (mce_modules_init() == FALSE) {
 		goto EXIT;
@@ -1043,6 +1053,9 @@ EXIT:
 	mce_modules_exit();
 
 	/* Call the exit function for all components */
+#ifdef ENABLE_SENSORFW
+	mce_sensorfw_quit();
+#endif
 	mce_tklock_exit();
 	mce_switches_exit();
 	mce_input_exit();

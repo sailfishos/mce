@@ -234,6 +234,18 @@ mce-modules.pic.o:\
 	mce-modules.h\
 	mce.h\
 
+mce-sensorfw.o:\
+	mce-sensorfw.c\
+	mce-dbus.h\
+	mce-log.h\
+	mce-sensorfw.h\
+
+mce-sensorfw.pic.o:\
+	mce-sensorfw.c\
+	mce-dbus.h\
+	mce-log.h\
+	mce-sensorfw.h\
+
 mce.o:\
 	mce.c\
 	datapipe.h\
@@ -246,6 +258,7 @@ mce.o:\
 	mce-gconf.h\
 	mce-log.h\
 	mce-modules.h\
+	mce-sensorfw.h\
 	mce.h\
 	modetransition.h\
 	powerkey.h\
@@ -263,6 +276,7 @@ mce.pic.o:\
 	mce-gconf.h\
 	mce-log.h\
 	mce-modules.h\
+	mce-sensorfw.h\
 	mce.h\
 	modetransition.h\
 	powerkey.h\
@@ -463,6 +477,7 @@ modules/filter-brightness-als.o:\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
+	mce-sensorfw.h\
 	mce.h\
 	median_filter.h\
 	mce-hybris.h\
@@ -479,6 +494,7 @@ modules/filter-brightness-als.pic.o:\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
+	mce-sensorfw.h\
 	mce.h\
 	median_filter.h\
 	mce-hybris.h\
@@ -600,6 +616,7 @@ modules/proximity.o:\
 	mce-hal.h\
 	mce-io.h\
 	mce-log.h\
+	mce-sensorfw.h\
 	mce.h\
 	mce-hybris.h\
 	modules/proximity.h\
@@ -612,6 +629,7 @@ modules/proximity.pic.o:\
 	mce-hal.h\
 	mce-io.h\
 	mce-log.h\
+	mce-sensorfw.h\
 	mce.h\
 	mce-hybris.h\
 	modules/proximity.h\

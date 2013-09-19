@@ -88,6 +88,10 @@
 # include "../mce-hybris.h"
 #endif
 
+#ifdef ENABLE_SENSORFW
+# include "mce-sensorfw.h"
+#endif
+
 /** Request enabling of ALS; reference counted */
 #define MCE_REQ_ALS_ENABLE		"req_als_enable"
 
@@ -253,13 +257,13 @@ static als_profile_struct display_als_profiles_rm696[] = {
 	}
 };
 
-/** ALS profile for libhybris use
+/** ALS profile for libhybris and sensorfw use
  *
  * Semi-automatically generated from display_als_profiles_rm696.
  *
  * FIXME: ok for testing purposes, needs to be revisited
  */
-#ifdef ENABLE_HYBRIS
+#if defined(ENABLE_HYBRIS) || defined(ENABLE_SENSORFW)
 static als_profile_struct display_als_profiles_hybris[] =
 {
 	/* Minimum / brightness=1 */
@@ -355,7 +359,7 @@ static als_profile_struct led_als_profiles_hybris[] = {
 	{ { { -1, -1 } }, { 100 } },
 };
 
-#endif /* ENABLE_HYBRIS */
+#endif /* ENABLE_HYBRIS or ENABLE_SENSORFW */
 
 /**
  * ALS profile for the display in:
@@ -732,6 +736,15 @@ static gboolean als_poll_active = FALSE;
 static gint hybris_als_last = 0;
 #endif
 
+/** Last als value received via sensorfw
+ *
+ * The latest als value received via sensorfw is cached and used
+ * as a substitute for directly reading the current lux value.
+ */
+#ifdef ENABLE_SENSORFW
+static gint sensorfw_als_last = 0;
+#endif
+
 /** ID for the ALS I/O monitor */
 static gconstpointer als_iomon_id = NULL;
 
@@ -843,6 +856,10 @@ typedef enum {
 #ifdef ENABLE_HYBRIS
 	ALS_TYPE_HYBRIS = 5,
 #endif
+#ifdef ENABLE_SENSORFW
+	/* sensors via sensorfw */
+	ALS_TYPE_SENSORFW = 6,
+#endif
 } als_type_t;
 
 static void cancel_als_poll_timer(void);
@@ -953,6 +970,17 @@ static als_type_t get_als_type(void)
 	if (als_type != ALS_TYPE_UNSET)
 		goto EXIT;
 
+#ifdef ENABLE_SENSORFW
+	if( als_type == ALS_TYPE_UNSET ) {
+		// bogus 'if' used to align code flow and keep
+		// static analyzers at least semi-happy ...
+		als_type = ALS_TYPE_SENSORFW;
+		// FIXME: uses rm696 profile data, need real ones
+		display_als_profiles = display_als_profiles_hybris;
+		led_als_profiles     = led_als_profiles_hybris;
+	} else
+#endif
+
 	if (g_access(ALS_DEVICE_PATH_AVAGO, R_OK) == 0) {
 		als_type = ALS_TYPE_AVAGO;
 		als_device_path = ALS_DEVICE_PATH_AVAGO;
@@ -1023,7 +1051,6 @@ static als_type_t get_als_type(void)
 		if (g_access(als_threshold_range_path, W_OK) == -1)
 			als_threshold_range_path = NULL;
 	}
-
 	errno = 0;
 
 	mce_log(LL_DEBUG, "ALS-type: %d", als_type);
@@ -1356,10 +1383,16 @@ static gint als_read_value_filtered(void)
 		als = (struct dipro_als *)tmp;
 		lux = als->lux;
 	}
+#ifdef ENABLE_SENSORFW
+	else if( get_als_type() == ALS_TYPE_SENSORFW ) {
+		lux = sensorfw_als_last;
+		mce_log(LL_DEBUG, "faking lux read = %d", (int)lux);
+	}
+#endif
 #ifdef ENABLE_HYBRIS
 	else if( get_als_type() == ALS_TYPE_HYBRIS ) {
-		mce_log(LL_DEBUG, "faking lux read = %d", hybris_als_last);
 		lux = hybris_als_last;
+		mce_log(LL_DEBUG, "faking lux read = %d", (int)lux);
 	}
 #endif
 	else {
@@ -1722,6 +1755,19 @@ EXIT:
 	return FALSE;
 }
 
+/** Sensorfw ALS monitor callback
+ *
+ * @param light     ambient light value in lux
+ */
+#ifdef ENABLE_SENSORFW
+static void als_sensorfw_iomon_cb(unsigned light)
+{
+	mce_log(LL_DEBUG, "lux:%u", light);
+	sensorfw_als_last = (gint)light;
+	als_iomon_common(hybris_als_last, FALSE);
+}
+#endif
+
 /** Libhybris ALS monitor callback
  *
  * @param timestamp time of event from android adaptation
@@ -1730,6 +1776,7 @@ EXIT:
 #ifdef ENABLE_HYBRIS
 static void als_hybris_iomon_cb(int64_t timestamp, float light)
 {
+	(void)timestamp; (void)light;
 	mce_log(LL_DEBUG, "time:%lld lux:%g", timestamp, light);
 	hybris_als_last = (gint)(light + 0.5f);
 	als_iomon_common(hybris_als_last, FALSE);
@@ -1755,6 +1802,13 @@ static void cancel_als_poll_timer(void)
 		als_poll_timer_cb_id = 0;
 	}
 
+	/* Remove sensorfw ALS hook */
+#ifdef ENABLE_SENSORFW
+	if( get_als_type() == ALS_TYPE_SENSORFW ) {
+		mce_sensorfw_als_set_notify(0);
+		mce_sensorfw_als_disable();
+	}
+#endif
 	/* Remove libhybris ALS hook */
 #ifdef ENABLE_HYBRIS
 	if( get_als_type() == ALS_TYPE_HYBRIS ) {
@@ -1813,6 +1867,12 @@ static void setup_als_poll_timer(void)
 		als_iomon_id = mce_register_io_monitor_chunk(-1, als_device_path, MCE_IO_ERROR_POLICY_WARN, G_IO_IN | G_IO_PRI | G_IO_ERR, FALSE, als_dipro_iomon_cb, sizeof (struct dipro_als));
 		break;
 
+#ifdef ENABLE_SENSORFW
+	case ALS_TYPE_SENSORFW:
+		mce_sensorfw_als_set_notify(als_sensorfw_iomon_cb);
+		mce_sensorfw_als_enable();
+		break;
+#endif
 #ifdef ENABLE_HYBRIS
 	case ALS_TYPE_HYBRIS:
 		mce_hybris_als_set_callback(als_hybris_iomon_cb);
