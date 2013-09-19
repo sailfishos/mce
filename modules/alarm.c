@@ -110,7 +110,7 @@ static gboolean alarm_owner_monitor_dbus_cb(DBusMessage *const msg)
 		goto EXIT;
 	}
 
-	retval = mce_dbus_owner_monitor_remove(old_name, &alarm_owner_monitor_list);
+	retval = mce_dbus_owner_monitor_remove(service, &alarm_owner_monitor_list);
 
 	if (retval == 0) {
 		/* We didn't get alarm off from the same service before it

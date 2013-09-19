@@ -243,7 +243,7 @@ static gboolean call_state_owner_monitor_dbus_cb(DBusMessage *const msg)
 	}
 
 	/* Remove the name monitor for the call state requester */
-	if (mce_dbus_owner_monitor_remove(old_name,
+	if (mce_dbus_owner_monitor_remove(service,
 					  &call_state_monitor_list) == 0) {
 		/* Signal the new call state/type */
 		send_call_state(NULL, MCE_CALL_STATE_NONE, MCE_NORMAL_CALL);

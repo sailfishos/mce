@@ -787,12 +787,12 @@ static gboolean proximity_sensor_owner_monitor_dbus_cb(DBusMessage *const msg)
 	}
 
 	/* Remove the name monitor for the proximity sensor owner */
-	retval = mce_dbus_owner_monitor_remove(old_name, &proximity_sensor_owner_monitor_list);
+	retval = mce_dbus_owner_monitor_remove(service, &proximity_sensor_owner_monitor_list);
 
 	if (retval == -1) {
 		mce_log(LL_INFO,
 			"Failed to remove name owner monitoring for `%s'",
-			old_name);
+			service);
 	} else {
 		if ((ps_external_refcount > 0) && (retval == 0)) {
 			if (ps_onoff_mode_output.path != NULL)

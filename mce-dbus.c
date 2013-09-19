@@ -1555,7 +1555,9 @@ static GSList *find_monitored_service(const gchar *service,
 	if (service == NULL)
 		goto EXIT;
 
-	if ((rule = g_strdup_printf("arg1='%s'", service)) == NULL)
+	/* Signal content: arg0=name, arg1=old owner, arg2=new owner.
+	 * In This case  we want to track loss of name owner. */
+	if ((rule = g_strdup_printf("arg0='%s',arg2=''", service)) == NULL)
 		goto EXIT;
 
 	tmp = g_slist_find_custom(monitor_list, rule, monitor_compare);
@@ -1600,6 +1602,8 @@ static gboolean fake_owner_gone(gpointer data)
 				 DBUS_TYPE_INVALID);
 
 	msg_handler(NULL, msg, NULL);
+
+	dbus_message_unref(msg), msg = 0;
 
 	return FALSE;
 }
@@ -1657,7 +1661,9 @@ gssize mce_dbus_owner_monitor_add(const gchar *service,
 	if ((num = g_slist_length(*monitor_list)) == max_num)
 		goto EXIT;
 
-	if ((rule = g_strdup_printf("arg1='%s'", service)) == NULL)
+	/* Signal content: arg0=name, arg1=old owner, arg2=new owner.
+	 * In This case  we want to track loss of name owner. */
+	if ((rule = g_strdup_printf("arg0='%s',arg2=''", service)) == NULL)
 		goto EXIT;
 
 	/* Add ownership monitoring for the service */
