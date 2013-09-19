@@ -1,3 +1,9 @@
+mce (1.15.0) unstable; urgency=low
+
+ * [mce] Use sensorfw for ambient light and proximity sensor input
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 19 Sep 2013 15:08:15 +0300
+
 mce (1.14.1) unstable; urgency=low
 
  * [mcetool] Options for tklock simulation and short/long/quick help added
