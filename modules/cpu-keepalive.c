@@ -565,9 +565,6 @@ cpu_keepalive_verify_name(const char *name)
     goto EXIT;
   }
 
-  // pending call should not be cancelled
-  pc = 0;
-
   // key string is owned by pending call
   key = 0;
 
@@ -578,7 +575,7 @@ EXIT:
 
   g_free(key);
 
-  if( pc  ) dbus_pending_call_cancel(pc);
+  if( pc  ) dbus_pending_call_unref(pc);
   if( req ) dbus_message_unref(req);
 
   return res;
