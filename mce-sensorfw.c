@@ -528,10 +528,8 @@ static bool
 mce_sensorfw_start_sensor(const char *id, const char *iface, int sessionid)
 {
 	bool         res  = false;
-	DBusMessage *msg  = 0;
 	char        *path = 0;
 	dbus_int32_t sid  = sessionid;
-	DBusError    err  = DBUS_ERROR_INIT;
 
 	mce_log(LL_INFO, "start(%s, %d)", id, sessionid);
 
@@ -540,33 +538,15 @@ mce_sensorfw_start_sensor(const char *id, const char *iface, int sessionid)
 		goto EXIT;
 	}
 
-	// FIXME: should not block ...
-
-	msg = dbus_send_with_block(SENSORFW_SERVICE,
-				   path,
-				   iface,
-				   "start",
-				   DBUS_TIMEOUT_USE_DEFAULT,
-				   DBUS_TYPE_INT32, &sid,
-				   DBUS_TYPE_INVALID);
-	if( !msg ) {
-		mce_log(LL_ERR, "start(%s, %d): no reply", id, sessionid);
-		goto EXIT;
-	}
-
-	if( dbus_set_error_from_message(&err, msg) ) {
-		mce_log(LL_ERR, "start(%s, %d): error reply: %s: %s", id,
-			sessionid, err.name, err.message);
-		goto EXIT;
-	}
-
-	res = true;
+	res = dbus_send(SENSORFW_SERVICE,
+			path,
+			iface,
+			"start",
+			NULL,
+			DBUS_TYPE_INT32, &sid,
+			DBUS_TYPE_INVALID);
 
 EXIT:
-	dbus_error_free(&err);
-
-	if( msg ) dbus_message_unref(msg);
-
 	free(path);
 
 	return res;
@@ -584,10 +564,8 @@ static bool
 mce_sensorfw_stop_sensor(const char *id, const char *iface, int sessionid)
 {
 	bool         res  = false;
-	DBusMessage *msg  = 0;
 	char        *path = 0;
 	dbus_int32_t sid  = sessionid;
-	DBusError    err  = DBUS_ERROR_INIT;
 
 	mce_log(LL_INFO, "stop(%s, %d)",id, sessionid);
 
@@ -596,33 +574,15 @@ mce_sensorfw_stop_sensor(const char *id, const char *iface, int sessionid)
 		goto EXIT;
 	}
 
-	// FIXME: should not block ...
-
-	msg = dbus_send_with_block(SENSORFW_SERVICE,
-				   path,
-				   iface,
-				   "stop",
-				   DBUS_TIMEOUT_USE_DEFAULT,
-				   DBUS_TYPE_INT32, &sid,
-				   DBUS_TYPE_INVALID);
-	if( !msg ) {
-		mce_log(LL_ERR, "stop(%s, %d): no reply", id, sessionid);
-		goto EXIT;
-	}
-
-	if( dbus_set_error_from_message(&err, msg) ) {
-		mce_log(LL_ERR, "stop(%s, %d): error reply: %s: %s", id,
-			sessionid, err.name, err.message);
-		goto EXIT;
-	}
-
-	res = true;
+	res = dbus_send(SENSORFW_SERVICE,
+			path,
+			iface,
+			"start",
+			NULL,
+			DBUS_TYPE_INT32, &sid,
+			DBUS_TYPE_INVALID);
 
 EXIT:
-	dbus_error_free(&err);
-
-	if( msg ) dbus_message_unref(msg);
-
 	free(path);
 
 	return res;
@@ -631,6 +591,105 @@ EXIT:
 /* ========================================================================= *
  * ALS
  * ========================================================================= */
+
+/** Handle reply to initial ALS value request
+ *
+ * @param pc  pending call object
+ * @param aptr (not used)
+ */
+static void mce_sensorfw_als_read_cb(DBusPendingCall *pc, void *aptr)
+{
+	(void)aptr;
+
+	mce_log(LL_INFO, "Received intial ALS lux reply");
+
+	bool          res = false;
+	DBusMessage  *rsp = 0;
+	DBusError     err = DBUS_ERROR_INIT;
+	dbus_uint64_t tck = 0;
+	dbus_uint32_t lux = 0;
+
+	DBusMessageIter body, var, rec;
+
+	if( !(rsp = dbus_pending_call_steal_reply(pc)) )
+		goto EXIT;
+
+	if( dbus_set_error_from_message(&err, rsp) ) {
+		mce_log(LL_ERR, "als lux error reply: %s: %s",
+			err.name, err.message);
+		goto EXIT;
+	}
+
+	if( !dbus_message_iter_init(rsp, &body) )
+		goto EXIT;
+
+	if( dbus_message_iter_get_arg_type(&body) != DBUS_TYPE_VARIANT )
+		goto EXIT;
+
+	dbus_message_iter_recurse(&body, &var);
+	dbus_message_iter_next(&body);
+	if( dbus_message_iter_get_arg_type(&var) != DBUS_TYPE_STRUCT )
+		goto EXIT;
+
+	dbus_message_iter_recurse(&var, &rec);
+	dbus_message_iter_next(&var);
+	if( dbus_message_iter_get_arg_type(&rec) !=  DBUS_TYPE_UINT64 )
+		goto EXIT;
+
+	dbus_message_iter_get_basic(&rec, &tck);
+	dbus_message_iter_next(&rec);
+	if( dbus_message_iter_get_arg_type(&rec) !=  DBUS_TYPE_UINT32 )
+		goto EXIT;
+
+	dbus_message_iter_get_basic(&rec, &lux);
+	dbus_message_iter_next(&rec);
+
+	if( als_notify )
+		als_notify(lux);
+	else
+		mce_log(LL_WARN, "ALS enabled without notify cb");
+
+	res = true;
+
+EXIT:
+	if( !res ) mce_log(LL_WARN, "did not get initial lux value");
+	if( rsp ) dbus_message_unref(rsp);
+	dbus_pending_call_unref(pc);
+	dbus_error_free(&err);
+}
+
+/** Issue get ALS value IPC to sensord
+ *
+ * @param id        sensor name
+ * @param iface     D-Bus interface for the sensor
+ * @param sessionid sensord session id from mce_sensorfw_request_sensor()
+ */
+static void
+mce_sensorfw_als_read(const char *id, const char *iface, int sessionid)
+{
+	(void)sessionid;
+
+	char *path = 0;
+	const char *prop = "lux";
+
+	mce_log(LL_INFO, "read(%s, %d)", id, sessionid);
+
+	if( asprintf(&path, "%s/%s", SENSORFW_PATH, id) < 0 ) {
+		path = 0;
+		goto EXIT;
+	}
+
+	dbus_send(SENSORFW_SERVICE,
+		  path,
+		  "org.freedesktop.DBus.Properties",
+		  "Get",
+		  mce_sensorfw_als_read_cb,
+		  DBUS_TYPE_STRING, &iface,
+		  DBUS_TYPE_STRING, &prop,
+		  DBUS_TYPE_INVALID);
+EXIT:
+	free(path);
+}
 
 /** Close ALS session with sensord
  */
@@ -708,6 +767,11 @@ mce_sensorfw_als_rethink(void)
 			goto EXIT;
 		if( !mce_sensorfw_start_sensor(als_name, als_iface, als_sid) )
 			goto EXIT;
+
+		/* There is no quarantee that we get sensor input
+		 * anytime soon, so we make an explicit get current
+		 * value request after starting sensor */
+		mce_sensorfw_als_read(als_name, als_iface, als_sid);
 	}
 	else {
 		if( !mce_sensorfw_als_have_session() )
@@ -755,6 +819,105 @@ void mce_sensorfw_als_set_notify(void (*cb)(unsigned lux))
 /* ========================================================================= *
  * PS
  * ========================================================================= */
+
+/** Handle reply to initial PS value request
+ *
+ * @param pc  pending call object
+ * @param aptr (not used)
+ */
+static void mce_sensorfw_ps_read_cb(DBusPendingCall *pc, void *aptr)
+{
+	(void)aptr;
+
+	mce_log(LL_INFO, "Received intial PS distance reply");
+
+	bool          res = false;
+	DBusMessage  *rsp = 0;
+	DBusError     err = DBUS_ERROR_INIT;
+	dbus_uint64_t tck = 0;
+	dbus_uint32_t dst = 0;
+
+	DBusMessageIter body, var, rec;
+
+	if( !(rsp = dbus_pending_call_steal_reply(pc)) )
+		goto EXIT;
+
+	if( dbus_set_error_from_message(&err, rsp) ) {
+		mce_log(LL_ERR, "proximity error reply: %s: %s",
+			err.name, err.message);
+		goto EXIT;
+	}
+
+	if( !dbus_message_iter_init(rsp, &body) )
+		goto EXIT;
+
+	if( dbus_message_iter_get_arg_type(&body) != DBUS_TYPE_VARIANT )
+		goto EXIT;
+
+	dbus_message_iter_recurse(&body, &var);
+	dbus_message_iter_next(&body);
+	if( dbus_message_iter_get_arg_type(&var) != DBUS_TYPE_STRUCT )
+		goto EXIT;
+
+	dbus_message_iter_recurse(&var, &rec);
+	dbus_message_iter_next(&var);
+	if( dbus_message_iter_get_arg_type(&rec) !=  DBUS_TYPE_UINT64 )
+		goto EXIT;
+
+	dbus_message_iter_get_basic(&rec, &tck);
+	dbus_message_iter_next(&rec);
+	if( dbus_message_iter_get_arg_type(&rec) !=  DBUS_TYPE_UINT32 )
+		goto EXIT;
+
+	dbus_message_iter_get_basic(&rec, &dst);
+	dbus_message_iter_next(&rec);
+
+	if( ps_notify )
+		ps_notify(dst > 0);
+	else
+		mce_log(LL_WARN, "PS enabled without notify cb");
+
+	res = true;
+
+EXIT:
+	if( !res ) mce_log(LL_WARN, "did not get initial proximity value");
+	if( rsp ) dbus_message_unref(rsp);
+	dbus_pending_call_unref(pc);
+	dbus_error_free(&err);
+}
+
+/** Issue get PS value IPC to sensord
+ *
+ * @param id        sensor name
+ * @param iface     D-Bus interface for the sensor
+ * @param sessionid sensord session id from mce_sensorfw_request_sensor()
+ */
+static void
+mce_sensorfw_ps_read(const char *id, const char *iface, int sessionid)
+{
+	(void)sessionid;
+
+	char *path = 0;
+	const char *prop = "proximity";
+
+	mce_log(LL_INFO, "read(%s, %d)", id, sessionid);
+
+	if( asprintf(&path, "%s/%s", SENSORFW_PATH, id) < 0 ) {
+		path = 0;
+		goto EXIT;
+	}
+
+	dbus_send(SENSORFW_SERVICE,
+		  path,
+		  "org.freedesktop.DBus.Properties",
+		  "Get",
+		  mce_sensorfw_ps_read_cb,
+		  DBUS_TYPE_STRING, &iface,
+		  DBUS_TYPE_STRING, &prop,
+		  DBUS_TYPE_INVALID);
+EXIT:
+	free(path);
+}
 
 /** Close PS session with sensord
  */
@@ -835,6 +998,11 @@ mce_sensorfw_ps_rethink(void)
 			goto EXIT;
 		if( !mce_sensorfw_start_sensor(ps_name, ps_iface, ps_sid) )
 			goto EXIT;
+
+		/* There is no quarantee that we get sensor input
+		 * anytime soon, so we make an explicit get current
+		 * value request after starting sensor */
+		mce_sensorfw_ps_read(ps_name, ps_iface, ps_sid);
 	}
 	else {
 		if( !mce_sensorfw_ps_have_session() )
