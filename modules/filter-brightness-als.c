@@ -8,6 +8,7 @@
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Tuomo Tanskanen <ext-tuomo.1.tanskanen@nokia.com>
+ * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
  * mce is free software; you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License
@@ -21,75 +22,28 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include <glib.h>
 #include <gmodule.h>
-#include <glib/gstdio.h>		/* g_access */
-
-#include <errno.h>			/* errno */
-#include <fcntl.h>			/* O_NONBLOCK */
-#include <unistd.h>			/* R_OK */
-#include <stdlib.h>			/* free() */
-#include <string.h>			/* memcpy() */
 
 #include "mce.h"
+#include "mce-io.h"
+#include "mce-log.h"
+#include "mce-conf.h"
+#include "mce-gconf.h"
+#include "mce-dbus.h"
+#include "mce-sensorfw.h"
+
 #include "filter-brightness-als.h"
 
-#include "mce-io.h"			/* mce_close_file(),
-					 * mce_read_chunk_from_file(),
-					 * mce_read_number_string_from_file(),
-					 * mce_write_string_to_file(),
-					 * mce_write_number_string_to_file(),
-					 * mce_register_io_monitor_chunk(),
-					 * mce_unregister_io_monitor()
-					 */
-#include "mce-lib.h"			/* mce_translate_string_to_int_with_default(),
-					 * mce_translation_t
-					 */
-#include "mce-hal.h"			/* get_sysinfo_value() */
-#include "mce-log.h"			/* mce_log(), LL_* */
-#include "mce-conf.h"			/* mce_conf_get_int(),
-					 * mce_conf_get_string()
-					 */
-#include "mce-gconf.h"			/* mce_gconf_get_bool(),
-					 * mce_gconf_notifier_add(),
-					 * gconf_entry_get_key(),
-					 * gconf_value_get_bool(),
-					 * GConfClient, GConfEntry, GConfValue
-					 */
-#include "mce-dbus.h"			/* Direct:
-					 * ---
-					 * mce_dbus_handler_add(),
-					 * dbus_send_message(),
-					 * dbus_new_method_reply(),
-					 * dbus_new_signal(),
-					 * dbus_message_append_args(),
-					 * dbus_message_get_no_reply(),
-					 * dbus_message_unref(),
-					 * DBusMessage,
-					 * DBUS_MESSAGE_TYPE_METHOD_CALL,
-					 * DBUS_TYPE_INVALID,
-					 * dbus_bool_t
-					 *
-					 * Indirect:
-					 * ---
-					 * MCE_REQUEST_IF
-					 */
-#include "datapipe.h"			/* execute_datapipe(),
-					 * append_output_trigger_to_datapipe(),
-					 * append_filter_to_datapipe(),
-					 * remove_filter_from_datapipe(),
-					 * remove_output_trigger_from_datapipe()
-					 */
-#include "median_filter.h"		/* median_filter_init(),
-					 * median_filter_map()
-					 */
-
-#ifdef ENABLE_HYBRIS
-# include "../mce-hybris.h"
-#endif
-
-#ifdef ENABLE_SENSORFW
-# include "mce-sensorfw.h"
+#if 0 // DEBUG: make all logging from this module "critical"
+# undef mce_log
+# define mce_log(LEV, FMT, ARGS...) \
+	mce_log_file(LL_CRIT, __FILE__, __FUNCTION__, FMT , ## ARGS)
 #endif
 
 /** Request enabling of ALS; reference counted */
@@ -102,820 +56,445 @@
 #define ALS_MAX_MONITORED		16
 
 /** Module name */
-#define MODULE_NAME		"filter-brightness-als"
+#define MODULE_NAME			"filter-brightness-als"
 
-/** Functionality provided by this module */
-static const gchar *const provides[] = {
-	"display-brightness-filter",
-	"led-brightness-filter",
-	"key-backlight-brightness-filter",
-	NULL
-};
-
-/** Functionality that this module enhances */
-static const gchar *const enhances[] = {
-	"display-brightness",
-	"led-brightness",
-	"key-backlight-brightness",
-	NULL
-};
-
-/** Module information */
-G_MODULE_EXPORT module_info_struct module_info = {
-	/** Name of the module */
-	.name = MODULE_NAME,
-	/** Module enhances */
-	.enhances = enhances,
-	/** Module provides */
-	.provides = provides,
-	/** Module priority */
-	.priority = 100
-};
-
-/* Colour phase adjustment matrices */
-
-/** Colour phase calibration for RM-696/RM-716 */
-static cpa_profile_struct rm696_phase_profile[] = {
-	{	/* 0-100 lux; */
-		{ 0, 3.3 * 100, 0 },
-		"  199   28   28"
-		"    8  209   38"
-		"    8    8  239"
-	}, {	/* 100-1000 lux; same as previous */
-		{ 3.3 * 100, 3.3 * 1000, 0 },
-		"  199   28   28"
-		"    8  209   38"
-		"    8    8  239"
-	}, {	/* 1000-10000 lux; normal OLED colours */
-		{ 3.3 * 1000, 3.3 * 10000, 0 },
-		"  255    0    0"
-		"    0  255    0"
-		"    0    0  255"
-	}, {	/* 10000-inf lux; slightly boosted colours */
-		{ 3.3 * 10000, -1, 0 },
-		"  275  -10  -10"
-		"  -10  275  -10"
-		"  -10  -10  275"
-	}, {	/* 10000-inf lux, HBM level: 1; more boosted colours */
-		{ 3.3 * 10000, -1, 1 },
-		"  295  -20  -20"
-		"  -20  295  -20"
-		"  -20  -20  295"
-	}, {	/* 10000-inf lux, HBM level: 2; over-saturated colours */
-		{ 3.3 * 10000, -1, 2 },
-		"  315  -30  -30"
-		"  -30  315  -30"
-		"  -30  -30  315"
-	}, {
-		{ -1, -1, -1 },
-		NULL
-	}
-};
-
-/** Colour phase calibration for RM-680/RM-690 */
-static cpa_profile_struct rm680_phase_profile[] = {
-	{	/* 0-inf lux */
-		{ 0, -1, 0 },
-		"  325  -35  -35"
-		"  -30  315  -30"
-		"  -20  -20  295"
-	}, {
-		{ -1, -1, -1 },
-		NULL
-	}
-};
-
-/**
- * ALS profile for the display in:
- * RM-716
- * RM-696
- *
- * [255-212] 100%
- * [211-154] 83%
- * [153-110] 60%
- * [109-77] 42%
- * [76-52] 30%
- * [51-26] 20%
- * [25-13] 10%
- * [12-1] 5%
- * [0] 0%
- */
-static als_profile_struct display_als_profiles_rm696[] = {
-	{       /* Minimum */
-		{
-			{ 3.3 * 30, 3.3 * 50 },
-			{ 3.3 * 70, 3.3 * 100 },
-			{ 3.3 * 150, 3.3 * 200 },
-			{ 3.3 * 800, 3.3 * 1100 },
-			{ 3.3 * 5000, 3.3 * 10000 },
-			{ 3.3 * 10000, 3.3 * 35000 },
-			{ 3.3 * 20000, 3.3 * 50000 },
-			{ -1, -1 },
-		}, { 5, 10, 20, 30, 42, 60, 83, 100 }
-	}, {    /* Economy */
-		{
-			{ 3.3 * 10, 3.3 * 15 },
-			{ 3.3 * 30, 3.3 * 50 },
-			{ 3.3 * 50, 3.3 * 100 },
-			{ 3.3 * 150, 3.3 * 200 },
-			{ 3.3 * 800, 3.3 * 1100 },
-			{ 3.3 * 5000, 3.3 * 10000 },
-			{ 3.3 * 10000, 3.3 * 35000 },
-			{ -1, -1 },
-		}, { 5, 10, 20, 30, 42, 60, 83, 100 }
-	}, {    /* Normal */
-		{
-			{ 3.3 * 3, 3.3 * 5 },
-			{ 3.3 * 10, 3.3 * 15 },
-			{ 3.3 * 20, 3.3 * 30 },
-			{ 3.3 * 50, 3.3 * 100 },
-			{ 3.3 * 150, 3.3 * 200 },
-			{ 3.3 * 800, 3.3 * 1100 },
-			{ 3.3 * 5000, 3.3 * 10000 },
-			{ -1, -1 },
-		}, { 5, 10, 20, 30, 42, 60, 83, 100 }
-	}, {    /* Bright */
-		{
-			{ 3.3 * 0, 3.3 * 3 },
-			{ 3.3 * 3, 3.3 * 10 },
-			{ 3.3 * 10, 3.3 * 20 },
-			{ 3.3 * 20, 3.3 * 50 },
-			{ 3.3 * 50, 3.3 * 100 },
-			{ 3.3 * 100, 3.3 * 200 },
-			{ 3.3 * 800, 3.3 * 1100 },
-			{ 3.3 * 5000, 3.3 * 10000 },
-			{ 3.3 * 20000, 3.3 * 40000 },
-			{ -1, -1 },
-		}, { 5, 10, 20, 30, 42, 60, 83, 100, 100 + (1 << 8), 100 + (2 << 8) }
-	}, {    /* Maximum */
-		{
-			{ 3.3 * 20, 3.3 * 30 },
-			{ 3.3 * 50, 3.3 * 100 },
-			{ 3.3 * 5000, 3.3 * 10000 },
-			{ -1, -1 },
-		}, { 30, 60, 100, 100 + (2 << 8) }
-	}
-};
-
-/** ALS profile for libhybris and sensorfw use
- *
- * Semi-automatically generated from display_als_profiles_rm696.
- *
- * FIXME: ok for testing purposes, needs to be revisited
- */
-#if defined(ENABLE_HYBRIS) || defined(ENABLE_SENSORFW)
-static als_profile_struct display_als_profiles_hybris[] =
+enum
 {
-	/* Minimum / brightness=1 */
-	{
-		{
-			{     30,     60 },
-			{     60,    125 },
-			{    125,    500 },
-			{    500,   1100 },
-			{   1100,   2000 },
-			{   2000,   7000 },
-			{   7000,  10000 },
-			{     -1,     -1 },
-		},
-		{   5,  10,  20,  30,  42,  60,  83, 100, },
-	},
-	/* Economy / brightness=2 */
-	{
-		{
-			{     10,     22 },
-			{     22,     50 },
-			{     50,    125 },
-			{    125,    500 },
-			{    500,   1100 },
-			{   1100,   2000 },
-			{   2000,   7000 },
-			{     -1,     -1 },
-		},
-		{   5,  10,  20,  30,  42,  60,  83, 100, },
-	},
-	/* Normal  / brightness=3 */
-	{
-		{
-			{      3,      7 },
-			{      7,     17 },
-			{     17,     40 },
-			{     40,    125 },
-			{    125,    500 },
-			{    500,   1100 },
-			{   1100,   2000 },
-			{     -1,     -1 },
-		},
-		{   5,  10,  20,  30,  42,  60,  83, 100, },
-	},
-	/* Bright  / brightness=4 */
-	{
-		{
-			{      0,      3 },
-			{      3,     10 },
-			{     10,     20 },
-			{     20,     50 },
-			{     50,    100 },
-			{    100,    500 },
-			{    500,   1100 },
-			{   1100,   3000 },
-			{   3000,   8000 },
-			{     -1,     -1 },
-		},
-		{   5,  10,  20,  30,  42,  60,  83, 100, 100, 100, },
-	},
-	/* Maximum / brightness=5 */
-	{
-		{
-			{     20,     40 },
-			{     40,    550 },
-			{    550,   2000 },
-			{     -1,     -1 },
-		},
-		{  30,  60, 100, 100, },
-	},
+	/** Maximum number of steps ALS ramps can have
+	 *
+	 * Enough to cover 5% to 95% in 5% steps.
+	 */
+	ALS_LUX_STEPS = 19, // 5% steps [5 ... 95]
 };
 
-/**
- * ALS profile for the libhybris LED:
- */
-static als_profile_struct led_als_profiles_hybris[] = {
-	/* Minimum; unused */
-	{ { { -1, -1 } }, { 100 } },
-	/* Economy; unused */
-	{ { { -1, -1 } }, { 100 } },
-	/* Normal; copied from rm696 */
-	{
-		{
-			{  3,  5 }, // 0
-			{ -1, -1 }, // 1
-		},
-		// 0    1
-		{ 80, 100 }
-	},
-	/* Bright; unused */
-	{ { { -1, -1 } }, { 100 } },
-	/* Maximum; unused */
-	{ { { -1, -1 } }, { 100 } },
-};
-
-#endif /* ENABLE_HYBRIS or ENABLE_SENSORFW */
-
-/**
- * ALS profile for the display in:
- * RX-71 (HWID: 3xxx)
- * RM-680
- * RM-690
- */
-static als_profile_struct display_als_profiles_rm680[] = {
-	{       /* Minimum */
-		{
-			{ 3, 5 },
-			{ 20, 30 },
-			{ 50, 100 },
-			{ 150, 200 },
-			{ 800, 1100 },
-			{ 8000, 20000 },
-			{ 10000, 35000 },
-			{ 20000, 50000 },
-			{ -1, -1 },
-		}, { 1, 3, 6, 13, 22, 35, 50, 70, 100 }
-	}, {    /* Economy */
-		{
-                        { 3, 5 },
-                        { 15, 15 },
-                        { 20, 30 },
-                        { 50, 100 },
-                        { 150, 200 },
-                        { 800, 1100 },
-                        { 8000, 20000 },
-                        { 10000, 35000 },
-			{ -1, -1 },
-		}, { 3, 4, 6, 10, 22, 35, 60, 70, 100 }
-	}, {    /* Normal */
-		{
-                        { 3, 5 },
-                        { 10, 15 },
-                        { 20, 30 },
-                        { 50, 100 },
-			{ 150, 200 },
-			{ 800, 1100 },
-			{ 5000, 10000 },
-			{ 8000, 20000 },
-			{ -1, -1 },
-		}, { 4, 6, 10, 16, 30, 50, 70, 83, 100 }
-	}, {    /* Bright */
-		{
-			{ 3, 5 },
-			{ 10, 15 },
-			{ 20, 30 },
-			{ 50, 100 },
-			{ 150, 200 },
-			{ 800, 1100 },
-			{ 5000, 10000 },
-			{ -1, -1 },
-		}, { 5, 10, 16, 22, 35, 60, 83, 100 }
-	}, {    /* Maximum */
-		{
-			{ 20, 30 },
-			{ 50, 100 },
-			{ -1, -1 },
-		}, { 30, 50, 100 }
-	}
-};
-
-/**
- * ALS profile for the display in:
- * RX-51
- */
-static als_profile_struct display_als_profiles_rx51[] = {
-	{       /* Minimum */
-		{
-			{ 24, 32 },
-			{ 160, 320 },
-			{ 720, 1200 },
-			{ 14400, 17600 },
-			{ -1, -1 },
-		}, { 3, 10, 30, 50, 1 }
-	}, {    /* Economy */
-		{
-                        { 24, 40 },
-                        { 100, 200 },
-                        { 300, 500 },
-                        { 720, 1200 },
-			{ -1, -1 },
-		}, { 10, 20, 40, 60, 80 }
-	}, {    /* Normal */
-		{
-                        { 24, 40 },
-                        { 100, 200 },
-                        { 300, 500 },
-                        { 720, 1200 },
-			{ -1, -1 },
-		}, { 17, 30, 60, 90, 100 }
-	}, {    /* Bright */
-		{
-			{ 24, 40 },
-                        { 50, 70 },
-			{ 60, 80 },
-			{ 100, 160 },
-			{ 200, 300 },
-			{ -1, -1 },
-		}, { 25, 40, 60, 75, 90, 100 }
-	}, {    /* Maximum */
-		{
-			{ 32, 64 },
-			{ 160, 320 },
-			{ -1, -1 },
-/* XXX: Insane request from higher management */
-		}, { 100, 100, 100 }
-//		}, { 35, 80, 100 }
-	}
-};
-
-/**
- * ALS profile for the display in:
- * RX-48
- * RX-44
- */
-static als_profile_struct display_als_profiles_rx44[] = {
-	{       /* Minimum */
-		{
-			{ 10000, 13000 },
-			{ -1, -1 },
-		}, { 5, 20 }
-	}, {    /* Economy */
-		{
-			{ 2, 4 },
-			{ 24, 45 },
-			{ 260, 400 },
-			{ 10000, 13000 },
-			{ -1, -1 },
-		}, { 5, 20, 40, 50, 70 }
-	}, {    /* Normal */
-		{
-			{ 2, 4 },
-			{ 24, 45 },
-			{ 260, 400 },
-			{ 10000, 13000 },
-			{ -1, -1 },
-		}, { 10, 20, 50, 80, 100 }
-	}, {    /* Bright */
-		{
-			{ 2, 4 },
-			{ 24, 45 },
-			{ 260, 400 },
-			{ 10000, 13000 },
-			{ -1, -1 },
-		}, { 30, 60, 80, 90, 100 }
-	}, {    /* Maximum */
-		{
-			{ 2, 4 },
-			{ 8, 12 },
-			{ -1, -1 },
-		}, { 50, 80, 100 }
-	}
-};
-
-/**
- * ALS profile for the monochrome LED in:
- * RM-716 - FIXME/TODO: No idea if usable for RM-696, just a copy of RM-680
- * RM-696 - FIXME/TODO: No idea if usable for RM-696, just a copy of RM-680
- */
-static als_profile_struct led_als_profiles_rm696[] = {
-	{	/* Minimum; unused */
-		{ { -1, -1 } },
-		{ }
-	}, {	/* Economy; unused */
-		{ { -1, -1 } },
-		{ }
-	}, {	/* Normal */
-		{
-			{ 3, 5 },
-			{ -1, -1 },
-		}, { 80, 100 }
-	}, {	/* Bright; unused */
-		{ { -1, -1 } },
-		{ }
-	}, {	/* Maximum; unused */
-		{ { -1, -1 } },
-		{ }
-	}
-};
-
-/**
- * ALS profile for the monochrome LED in:
- * RX-71 (HWID: 3xxx)
- * RM-680
- * RM-690
- */
-static als_profile_struct led_als_profiles_rm680[] = {
-	{	/* Minimum; unused */
-		{ { -1, -1 } },
-		{ }
-	}, {	/* Economy; unused */
-		{ { -1, -1 } },
-		{ }
-	}, {	/* Normal */
-		{
-			{ 3, 5 },
-			{ -1, -1 },
-		}, { 80, 100 }
-	}, {	/* Bright; unused */
-		{ { -1, -1 } },
-		{ }
-	}, {	/* Maximum; unused */
-		{ { -1, -1 } },
-		{ }
-	}
-};
-
-/**
- * ALS profile for the RGB LED in:
- * RX-51
- */
-static als_profile_struct led_als_profiles_rx51[] = {
-	{	/* Minimum; unused */
-		{ { -1, -1 } },
-		{ }
-	}, {	/* Economy; unused */
-		{ { -1, -1 } },
-		{ }
-	}, {	/* Normal */
-		{
-			{ 32, 64 },
-			{ 100, 1000 },
-			{ -1, -1 },
-		}, { 5, 5, 0 }
-	}, {	/* Bright; unused */
-		{ { -1, -1 } },
-		{ }
-	}, {	/* Maximum; unused */
-		{ { -1, -1 } },
-		{ }
-	}
-};
-
-/**
- * ALS profile for the RGB LED in:
- * RX-48
- * RX-44
- */
-static als_profile_struct led_als_profiles_rx44[] = {
-	{	/* Minimum; unused */
-		{ { -1, -1 } },
-		{ }
-	}, {	/* Economy; unused */
-		{ { -1, -1 } },
-		{ }
-	}, {	/* Normal */
-		{
-			{ 3, 5 },
-			{ 15, 27 },
-			{ -1, -1 },
-		}, { 10, 30, 50 }
-	}, {	/* Bright */
-		{
-			{ 3, 5 },
-			{ 15, 27 },
-			{ -1, -1 },
-		}, { 30, 50, 100 }
-	}, {	/* Maximum */
-		{
-			{ 3, 5 },
-			{ -1, -1 },
-		}, { 50, 100 }
-	}
-};
-
-/**
- * ALS profile for the keyboard backlight in:
- * RX-71 (HWID: 3xxx)
- * RM-680
- * RM-690
- */
-static als_profile_struct kbd_als_profiles_rm680[] = {
-	{	/* Minimum; unused */
-		{ { -1, -1 } },
-		{ }
-	}, {	/* Economy; unused */
-		{ { -1, -1 } },
-		{ }
-	}, {	/* Normal */
-		{
-			{ 24, 40 },
-			{ 100, 1000 },
-			{ -1, -1 },
-		}, { 25, 50, 0 }
-	}, {	/* Bright */
-		{ { -1, -1 } },
-		{ }
-	}, {	/* Maximum; unused */
-		{ { -1, -1 } },
-		{ }
-	}
-};
-
-/**
- * ALS profile for the keyboard backlight in:
- * RX-51
- */
-static als_profile_struct kbd_als_profiles_rx51[] = {
-	{	/* Minimum; unused */
-		{ { -1, -1 } },
-		{ }
-	}, {	/* Economy; unused */
-		{ { -1, -1 } },
-		{ }
-	}, {	/* Normal */
-		{
-			{ 24, 40 },
-			{ -1, -1 },
-		}, { 50, 0 }
-	}, {	/* Bright */
-		{ { -1, -1 } },
-		{ }
-	}, {	/* Maximum; unused */
-		{ { -1, -1 } },
-		{ }
-	}
-};
-
-/**
- * ALS profile for the keyboard backlight in:
- * RX-48
- * RX-44
- */
-static als_profile_struct kbd_als_profiles_rx44[] = {
-	{	/* Minimum; unused */
-		{ { -1, -1 } },
-		{ }
-	}, {	/* Economy; unused */
-		{ { -1, -1 } },
-		{ }
-	}, {	/* Normal */
-		{
-			{ 3, 5 },
-			{ 15, 27 },
-			{ -1, -1 },
-		}, { 50, 100, 0 }
-	}, {	/* Bright */
-		{
-			{ 3, 5 },
-			{ 15, 27 },
-			{ -1, -1 },
-		}, { 80, 100, 0 }
-	}, {	/* Maximum; unused */
-		{ { -1, -1 } },
-		{ }
-	}
-};
-
-/** GConf callback ID for ALS enabled */
-static guint als_enabled_gconf_cb_id = 0;
-
-/** ALS monitoring status
- *
- * If TRUE, then either als_poll_timer_cb_id, als_iomon_id or
- * libhybris is used for monitoring ALS.
- *
- * If FALSE, then als_poll_timer_cb_id, als_iomon_id and
- * libhybris hooks must nor be active.
- *
- * All of the above is handled in setup_als_poll_timer()
- * and cancel_als_poll_timer() functions.
- */
-static gboolean als_poll_active = FALSE;
-
-/** Last als value received via libhybris
- *
- * The latest als value received via libhybris is cached and used
- * as a substitute for directly reading the current lux value.
- */
-#ifdef ENABLE_HYBRIS
-static gint hybris_als_last = 0;
-#endif
-
-/** Last als value received via sensorfw
- *
- * The latest als value received via sensorfw is cached and used
- * as a substitute for directly reading the current lux value.
- */
-#ifdef ENABLE_SENSORFW
-static gint sensorfw_als_last = 0;
-#endif
-
-/** ID for the ALS I/O monitor */
-static gconstpointer als_iomon_id = NULL;
-
-/** Path to the ALS device file entry */
-static const gchar *als_device_path = NULL;
-/** Path to the ALS lux sysfs entry */
-static const gchar *als_lux_path = NULL;
-/** Path to the first ALS calibration point sysfs entry */
-static output_state_t als_calib0_output =
+/** A step in ALS ramp */
+typedef struct
 {
-  .context = "als_calib0",
-  .truncate_file = TRUE,
-  .close_on_exit = TRUE,
-};
-/** Path to the second ALS calibration point sysfs entry */
-static output_state_t als_calib1_output =
+	int lux; /**< upper lux limit */
+	int val; /**< brightness percentage to use */
+} als_limit_t;
+
+/** ALS filtering state */
+typedef struct
 {
-  .context = "als_calib1",
-  .truncate_file = TRUE,
-  .close_on_exit = TRUE,
-};
-/** Path to the ALS threshold range sysfs entry */
-static const gchar *als_threshold_range_path = NULL;
-/** Maximum als threshold value */
-static gint als_threshold_max = -1;
+	/** Filter name; used for locating configuration data */
+	const char *id;
+
+	/** ALS profiles the filter supports; used when loading config */
+	unsigned mask;
+
+	/** Threshold: lower lux limit */
+	int lux_lo;
+
+	/** Threshold: upper lux limit */
+	int lux_hi;
+
+	/** Threshold: active ALS profile */
+	als_profile_t prof;
+
+	/** Latest brightness percentage result */
+	int val;
+
+	/** Brightness percent from lux value look up table */
+	als_limit_t lut[ALS_PROFILE_COUNT][ALS_LUX_STEPS+1];
+} als_filter_t;
+
 /** Is there an ALS available? */
-static gboolean als_available = TRUE;
-/** Filter things through ALS? */
-static gboolean als_enabled = TRUE;
-/** Pass input through a median filter? */
-static gboolean use_median_filter = FALSE;
-/** Lux reading from the ALS */
-static gint als_lux = -1;
-/** Lux cache for delayed brightness stepdown */
-static gint delayed_lux = -1;
-/** ALS profiles for the display */
-static als_profile_struct *display_als_profiles = NULL;
-/** ALS profiles for the LED */
-static als_profile_struct *led_als_profiles = NULL;
-/** ALS profiles for the keyboard backlight */
-static als_profile_struct *kbd_als_profiles = NULL;
-/** ALS lower threshold for display brightness */
-static gint display_brightness_lower = -1;
-/** ALS upper threshold for display brightness */
-static gint display_brightness_upper = -1;
-/** ALS lower threshold for led brightness */
-static gint led_brightness_lower = -1;
-/** ALS upper threshold for led brightness */
-static gint led_brightness_upper = -1;
-/** ALS lower threshold for keyboard backlight */
-static gint kbd_brightness_lower = -1;
-/** ALS upper threshold for keyboard backlight */
-static gint kbd_brightness_upper = -1;
-/** Pointer to the hardcoded colour profile for the display */
-static cpa_profile_struct *display_cpa_profile_static = NULL;
-/** Pointer to the loaded colour profile for the display */
-static cpa_profile_struct *display_cpa_profile_dynamic = NULL;
-/** GConf callback ID for colour profile */
-static guint cp_setting_gconf_cb_id = 0;
-/** List of colour profiles */
-static GSList *display_cpa_profiles = NULL;
-/** Has colour phase adjustment been enabled */
-static gboolean display_cpa_enabled = FALSE;
-/** Path to the colour phase adjustment enabling sysfs entry */
-static const gchar *display_cpa_enable_path = NULL;
-/** Path to the colour phase adjustment coefficients sysfs entry */
-static const gchar *display_cpa_coefficients_path = NULL;
-/** The current profile id */
-static const gchar *current_color_profile_id = NULL;
-/** The display hardware revision id */
-static gchar *display_id = NULL;
+static gboolean have_als = TRUE;
 
-/** Display state */
+/** Filter things through ALS - config value */
+static gboolean use_als_flag = TRUE;
+
+/** Filter things through ALS - config notification */
+static guint use_als_gconf_id = 0;
+
+/** Cached display state; tracked via display_state_trigger() */
 static display_state_t display_state = MCE_DISPLAY_UNDEF;
 
-/** Median filter */
-static median_filter_struct median_filter;
+/** Latest lux reading from the ALS */
+static gint als_lux_latest = -1;
 
-/** ALS poll interval */
-static gint als_poll_interval = ALS_DISPLAY_ON_POLL_FREQ;
+/** List of monitored external als enablers (legacy D-Bus API) */
+static GSList *ext_als_enablers = NULL;
 
-/** ID for ALS poll timer source */
-static guint als_poll_timer_cb_id = 0;
+/** Currently active color profile (dummy implementation) */
+static char *color_profile_name = 0;
 
-/** Brightness stepdown delay */
-static gint brightness_stepdown_delay = ALS_BRIGHTNESS_STEPDOWN_DELAY;
+/** GConf callback ID for colour profile */
+static guint color_profile_gconf_id = 0;
 
-/** ID for brightness stepdown delay timer */
-static guint brightness_delay_timer_cb_id = 0;
-
-/** FILE * for the ambient_light_sensor */
-static FILE *als_fp = NULL;
-
-/** Ambient Light Sensor type */
-typedef enum {
-	/** ALS type unset */
-	ALS_TYPE_UNSET = -1,
-	/** No ALS available */
-	ALS_TYPE_NONE = 0,
-	/** TSL2562 type ALS */
-	ALS_TYPE_TSL2562 = 1,
-	/** TSL2563 type ALS */
-	ALS_TYPE_TSL2563 = 2,
-	/** Dipro (BH1770GLC/SFH7770) type ALS */
-	ALS_TYPE_DIPRO = 3,
-	/** Avago (APDS990x (QPDS-T900)) type ALS */
-	ALS_TYPE_AVAGO = 4,
-	/** Android adaptation via libhybris*/
-#ifdef ENABLE_HYBRIS
-	ALS_TYPE_HYBRIS = 5,
-#endif
-#ifdef ENABLE_SENSORFW
-	/* sensors via sensorfw */
-	ALS_TYPE_SENSORFW = 6,
-#endif
-} als_type_t;
-
-static void cancel_als_poll_timer(void);
-static void cancel_brightness_delay_timer(void);
-static void als_iomon_common(gint lux, gboolean no_delay);
-static gboolean set_color_profile(const gchar *id);
-static gboolean save_color_profile(const gchar *id);
-static gboolean is_raw_color_profile_valid(const gint *raw_color_profile,
-					   gint raw_color_profile_length);
-
-/** Brightness level step policies */
-typedef enum {
-	/** Policy not set */
-	BRIGHTNESS_STEP_POLICY_INVALID = MCE_INVALID_TRANSLATION,
-	/** Brightness level step instantly */
-	BRIGHTNESS_STEP_DIRECT = 0,
-	/** Only step after a blank->unblank cycle (only for step-down) */
-	BRIGHTNESS_STEP_UNBLANK = 1,
-	/** Default setting when performing brightness level step-down */
-	DEFAULT_BRIGHTNESS_STEP_DOWN_POLICY = BRIGHTNESS_STEP_DIRECT
-} brightness_step_policy_t;
-
-/** Mapping of brightness level step integer <-> policy string */
-static const mce_translation_t brightness_step_policy_translation[] = {
-	{
-		.number = BRIGHTNESS_STEP_DIRECT,
-		.string = "direct",
-	}, {
-		.number = BRIGHTNESS_STEP_UNBLANK,
-		.string = "unblank",
-	}, { /* MCE_INVALID_TRANSLATION marks the end of this array */
-		.number = MCE_INVALID_TRANSLATION,
-		.string = NULL
-	}
+/** List of known color profiles (dummy implementation) */
+static const char * const color_profiles[] =
+{
+  COLOR_PROFILE_ID_HARDCODED,
 };
 
-/** Brightness step-down policy */
-static brightness_step_policy_t brightness_step_down_policy =
-					DEFAULT_BRIGHTNESS_STEP_DOWN_POLICY;
-
-/** External reference count for ALS */
-static guint als_external_refcount = 0;
-
-/** List of monitored als owners */
-static GSList *als_owner_monitor_list = NULL;
-
-/**
- * Get the current color profile
- *
- * @return The pointer to the current color profile or NULL
- */
-static const cpa_profile_struct *display_cpa_profile(void)
+/** ALS filtering state for display backlight brightness */
+static als_filter_t lut_display =
 {
-	return (display_cpa_profile_dynamic != NULL ?
-		display_cpa_profile_dynamic :
-		display_cpa_profile_static);
+	.id = "Display",
+	.mask = (1u << ALS_PROFILE_MINIMUM |
+		 1u << ALS_PROFILE_ECONOMY |
+		 1u << ALS_PROFILE_NORMAL  |
+		 1u << ALS_PROFILE_BRIGHT  |
+		 1u << ALS_PROFILE_MAXIMUM),
+};
+
+/** ALS filtering state for keypad backlight brightness */
+static als_filter_t lut_key =
+{
+	.id = "Keypad",
+	.mask = 1u << ALS_PROFILE_NORMAL,
+};
+
+/** ALS filtering state for indication led brightness */
+static als_filter_t lut_led =
+{
+	.id = "Led",
+	.mask = 1u << ALS_PROFILE_NORMAL,
+};
+
+static gboolean set_color_profile(const gchar *id);
+static gboolean save_color_profile(const gchar *id);
+
+/** Integer minimum helper */
+static inline int imin(int a, int b) { return (a < b) ? a : b; }
+
+/** Check if color profile is supported
+ *
+ * @param id color profile name
+ *
+ * @return TRUE if profile is supported, FALSE otherwise
+ */
+static gboolean color_profile_exists(const char *id)
+{
+	if( !id )
+		return FALSE;
+
+	size_t n = sizeof color_profiles / sizeof *color_profiles;
+	for( size_t i = 0; i < n; ++i ) {
+		if( !strcmp(color_profiles[i], id) )
+			return TRUE;
+	}
+
+	return FALSE;
+}
+
+/** ALS profile id to string
+ *
+ * @param id profile enumeration id
+ *
+ * @return name of profile
+ */
+static const char *
+als_profile_name(als_profile_t id)
+{
+	static const char * const lut[ALS_PROFILE_COUNT] =
+	{
+		[ALS_PROFILE_MINIMUM] = "Minimum",
+		[ALS_PROFILE_ECONOMY] = "Economy",
+		[ALS_PROFILE_NORMAL]  = "Normal",
+		[ALS_PROFILE_BRIGHT]  = "Bright",
+		[ALS_PROFILE_MAXIMUM] = "Maximum",
+	};
+
+	const char *res = 0;
+
+	if( (unsigned)id < (unsigned) ALS_PROFILE_COUNT )
+		res = lut[id];
+
+	return res ?: "Unknown";
+}
+
+
+/** Remove transition thresholds from filtering state
+ *
+ * Set thresholds so that any lux value will be out of bounds.
+ *
+ * @param self ALS filtering state data
+ */
+static void als_filter_clear_threshold(als_filter_t *self)
+{
+	self->lux_lo = INT_MAX;
+	self->lux_hi = 0;
+}
+
+/** Initialize ALS filtering state
+ *
+ * @param self ALS filtering state data
+ */
+static void als_filter_init(als_filter_t *self)
+{
+	/* Reset ramps to a state where any lux value will
+	 * yield 100% brightness */
+	for( int i = 0; i < ALS_PROFILE_COUNT; ++i ) {
+		for( int k = 0; k <= ALS_LUX_STEPS; ++k ) {
+			self->lut[i][k].lux = INT_MAX;
+			self->lut[i][k].val = 100;
+		}
+	}
+
+	/* Default to 100% output */
+	self->val  = 100;
+
+	/* Invalidate thresholds */
+	self->prof = -1;
+	als_filter_clear_threshold(self);
+}
+
+/** Load ALS ramp into filtering state
+ *
+ * @param self ALS filtering state data
+ * @param grp  Configuration group name
+ * @param prof ALS profile id
+ */
+static void
+als_filter_load_profile(als_filter_t *self, const char *grp,
+			als_profile_t prof)
+{
+	gsize lim_cnt = 0;
+	gsize lev_cnt = 0;
+	gint *lim_val = 0;
+	gint *lev_val = 0;
+	char  lim_key[64];
+	char  lev_key[64];
+
+	snprintf(lim_key, sizeof lim_key, "Limits%s",  als_profile_name(prof));
+	snprintf(lev_key, sizeof lev_key, "Levels%s",  als_profile_name(prof));
+
+	lim_val = mce_conf_get_int_list(grp, lim_key, &lim_cnt);
+	lev_val = mce_conf_get_int_list(grp, lev_key, &lev_cnt);
+
+	if( !lim_val || lim_cnt < 1 ) {
+		mce_log(LL_WARN, "[%s] %s: no items", grp, lim_key);
+		goto EXIT;
+	}
+
+	if( !lev_val || lev_cnt != lim_cnt ) {
+		mce_log(LL_WARN, "[%s] %s: must have %zd items",
+			grp, lev_key, lim_cnt);
+		goto EXIT;
+	}
+
+	if( lim_cnt >  ALS_LUX_STEPS ) {
+		lim_cnt = ALS_LUX_STEPS;
+		mce_log(LL_WARN, "[%s] %s: excess items",
+			grp, lim_key);
+	}
+	else if( lim_cnt < ALS_LUX_STEPS ) {
+		mce_log(LL_DEBUG, "[%s] %s: missing items",
+			grp, lim_key);
+	}
+
+	for( gsize k = 0; k < lim_cnt; ++k ) {
+		self->lut[prof][k].lux = lim_val[k];
+		self->lut[prof][k].val = lev_val[k];
+	}
+EXIT:
+	g_free(lim_val);
+	g_free(lev_val);
+}
+
+/** Load ALS ramps into filtering state
+ *
+ * @param self ALS filtering state data
+ */
+static void als_filter_load_config(als_filter_t *self)
+{
+	als_filter_init(self);
+
+	char grp[64];
+	snprintf(grp, sizeof grp, "Brightness%s", self->id);
+
+	if( !mce_conf_has_group(grp) ) {
+		mce_log(LL_WARN, "[%s]: als config missing", grp);
+		goto EXIT;
+	}
+
+	for( int i = 0; i < ALS_PROFILE_COUNT; ++i ) {
+		if( self->mask & (1u << i) )
+			als_filter_load_profile(self, grp, i);
+	}
+EXIT:
+	return;
+}
+
+/** Get lux value for given profile and step in ramp
+ *
+ * @param self ALS filtering state data
+ * @param prof ALS profile id
+ * @param slot position in ramp
+ *
+ * @return lux value
+ */
+static int als_filter_get_lux(als_filter_t *self, als_profile_t prof, int slot)
+{
+	if( slot < 0 )
+		return 0;
+	if( slot < ALS_LUX_STEPS )
+		return self->lut[prof][slot].lux;
+	return INT_MAX;
+}
+
+/** Run ALS filter
+ *
+ * @param self ALS filtering state data
+ * @param prof ALS profile id
+ * @param lux  ambient light value
+ *
+ * @return 0 ... 100 percentage
+ */
+static int als_filter_run(als_filter_t *self, als_profile_t prof, int lux)
+{
+	mce_log(LL_DEBUG, "FILTERING: %s", self->id);
+
+	if( lux < 0 ) {
+		mce_log(LL_DEBUG, "no lux data yet");
+		goto EXIT;
+	}
+
+	if( self->prof != prof ) {
+		mce_log(LL_DEBUG, "profile changed");
+	}
+	else if( self->lux_lo <= lux && lux <= self->lux_hi ) {
+		mce_log(LL_DEBUG, "within thresholds");
+		goto EXIT;
+	}
+
+	int slot;
+
+	for( slot = 0; slot < ALS_LUX_STEPS; ++slot ) {
+		if( lux < self->lut[prof][slot].lux )
+			break;
+	}
+
+	self->prof = prof;
+
+	if( slot < ALS_LUX_STEPS )
+		self->val = self->lut[prof][slot].val;
+	else
+		self->val = 100;
+
+	self->lux_lo = 0;
+	self->lux_hi = INT_MAX;
+
+	/* Add hysteresis to transitions that make the display dimmer
+	 *
+         *                 lux from ALS
+	 *                  |
+         *                  |  configuration slot
+	 *                  |   |
+         *                  v   |
+         *    0----A------B-----C-----> [lux]
+	 *
+         *              |-------|
+	 * threshold    lo      hi
+	 */
+
+	int a = als_filter_get_lux(self, prof, slot-2);
+	int b = als_filter_get_lux(self, prof, slot-1);
+	int c = als_filter_get_lux(self, prof, slot+0);
+
+	self->lux_lo = b - imin(b-a, c-b) / 10;
+	self->lux_hi = c;
+
+	mce_log(LL_DEBUG, "prof=%d, slot=%d, range=%d...%d",
+		prof, slot, self->lux_lo, self->lux_hi);
+
+EXIT:
+	return self->val;
+}
+
+static void run_datapipes(void)
+{
+	/* Re-filter the brightness */
+	execute_datapipe(&display_brightness_pipe, NULL,
+			 USE_CACHE, DONT_CACHE_INDATA);
+	execute_datapipe(&led_brightness_pipe, NULL,
+			 USE_CACHE, DONT_CACHE_INDATA);
+	execute_datapipe(&key_backlight_pipe, NULL,
+			 USE_CACHE, DONT_CACHE_INDATA);
+}
+
+/** Handle lux value changed event
+ *
+ * @param lux ambient light value
+ */
+static void als_lux_changed(unsigned lux)
+{
+	als_lux_latest = (int)lux;
+
+	mce_log(LL_DEBUG, "lux=%d", als_lux_latest);
+	run_datapipes();
+}
+
+/** Check if ALS sensor should be enabled or disabled
+ */
+static void rethink_als_status(void)
+{
+	static gboolean enable_old = FALSE;
+
+	gboolean enable_new = FALSE;
+	gboolean want_data  = FALSE;
+
+	if( !have_als )
+		goto EXIT;
+
+	if( use_als_flag ) {
+		switch( display_state ) {
+		case MCE_DISPLAY_ON:
+		case MCE_DISPLAY_DIM:
+			want_data = TRUE;
+			break;
+
+		default:
+		case MCE_DISPLAY_OFF:
+		case MCE_DISPLAY_LPM_OFF:
+		case MCE_DISPLAY_LPM_ON:
+		case MCE_DISPLAY_UNDEF:
+			want_data = FALSE;
+			break;
+		}
+	}
+
+	if( want_data || ext_als_enablers  )
+		enable_new = TRUE;
+
+	mce_log(LL_DEBUG, "use=%d, want=%d ext=%d -> enable=%d",
+		use_als_flag, want_data, ext_als_enablers ? 1 : 0,
+		enable_new);
+
+	if( want_data )
+		mce_sensorfw_als_set_notify(als_lux_changed);
+	else
+		mce_sensorfw_als_set_notify(0);
+
+	if( enable_old == enable_new )
+		goto EXIT;
+
+	enable_old = enable_new;
+
+	if( enable_new ) {
+		mce_sensorfw_als_enable();
+	}
+	else {
+		mce_sensorfw_als_disable();
+#if 0
+		/* Forget ALS state. This will cause the display
+		 * wakeup to happen via non-adjusted brightness.
+		 * Which may or may not be desirable. */
+		als_lux_latest = -1;
+#endif
+		/* Clear thresholds so that the next reading from
+		 * als will not be affected by previous state */
+		als_filter_clear_threshold(&lut_display);
+		als_filter_clear_threshold(&lut_led);
+		als_filter_clear_threshold(&lut_key);
+	}
+
+	run_datapipes();
+EXIT:
+	return;
 }
 
 /**
@@ -926,7 +505,7 @@ static const cpa_profile_struct *display_cpa_profile(void)
  * @param entry The modified GConf entry
  * @param data Unused
  */
-static void als_gconf_cb(GConfClient *const gcc, const guint id,
+static void use_als_gconf_cb(GConfClient *const gcc, const guint id,
 			 GConfEntry *const entry, gpointer const data)
 {
 	const GConfValue *gcv = gconf_entry_get_value(entry);
@@ -942,12 +521,9 @@ static void als_gconf_cb(GConfClient *const gcc, const guint id,
 		goto EXIT;
 	}
 
-	if (id == als_enabled_gconf_cb_id) {
-		gint tmp = gconf_value_get_bool(gcv);
-
-		/* Only care about the setting if there's an ALS available */
-		if (als_available == TRUE)
-			als_enabled = tmp;
+	if (id == use_als_gconf_id) {
+		use_als_flag = gconf_value_get_bool(gcv);
+		rethink_als_status();
 	} else {
 		mce_log(LL_WARN,
 			"Spurious GConf value received; confused!");
@@ -958,231 +534,6 @@ EXIT:
 }
 
 /**
- * Get the ALS type
- *
- * @return The ALS-type
- */
-static als_type_t get_als_type(void)
-{
-	static als_type_t als_type = ALS_TYPE_UNSET;
-
-	/* If we have the ALS-type already, return it */
-	if (als_type != ALS_TYPE_UNSET)
-		goto EXIT;
-
-#ifdef ENABLE_SENSORFW
-	if( als_type == ALS_TYPE_UNSET ) {
-		// bogus 'if' used to align code flow and keep
-		// static analyzers at least semi-happy ...
-		als_type = ALS_TYPE_SENSORFW;
-		// FIXME: uses rm696 profile data, need real ones
-		display_als_profiles = display_als_profiles_hybris;
-		led_als_profiles     = led_als_profiles_hybris;
-	} else
-#endif
-
-	if (g_access(ALS_DEVICE_PATH_AVAGO, R_OK) == 0) {
-		als_type = ALS_TYPE_AVAGO;
-		als_device_path = ALS_DEVICE_PATH_AVAGO;
-		als_calib0_output.path = ALS_CALIB_PATH_AVAGO;
-		als_threshold_range_path = ALS_THRESHOLD_RANGE_PATH_AVAGO;
-		als_threshold_max = ALS_THRESHOLD_MAX_AVAGO;
-		display_als_profiles = display_als_profiles_rm696;
-		led_als_profiles = led_als_profiles_rm696;
-		use_median_filter = FALSE;
-
-		display_cpa_enable_path = COLOUR_PHASE_ENABLE_PATH;
-		display_cpa_coefficients_path = COLOUR_PHASE_COEFFICIENTS_PATH;
-
-		if (g_access(display_cpa_enable_path, W_OK) == 0) {
-			display_cpa_profile_static = rm696_phase_profile;
-		}
-	} else if (g_access(ALS_DEVICE_PATH_DIPRO, R_OK) == 0) {
-		als_type = ALS_TYPE_DIPRO;
-		als_device_path = ALS_DEVICE_PATH_DIPRO;
-		als_calib0_output.path = ALS_CALIB_PATH_DIPRO;
-		als_threshold_range_path = ALS_THRESHOLD_RANGE_PATH_DIPRO;
-		als_threshold_max = ALS_THRESHOLD_MAX_DIPRO;
-		display_als_profiles = display_als_profiles_rm680;
-		led_als_profiles = led_als_profiles_rm680;
-		kbd_als_profiles = kbd_als_profiles_rm680;
-		use_median_filter = FALSE;
-
-		display_cpa_enable_path = COLOUR_PHASE_ENABLE_PATH;
-		display_cpa_coefficients_path = COLOUR_PHASE_COEFFICIENTS_PATH;
-
-		if (g_access(display_cpa_enable_path, W_OK) == 0) {
-			display_cpa_profile_static = rm680_phase_profile;
-		}
-	} else if (g_access(ALS_LUX_PATH_TSL2563, R_OK) == 0) {
-		als_type = ALS_TYPE_TSL2563;
-		als_lux_path = ALS_LUX_PATH_TSL2563;
-		als_calib0_output.path = ALS_CALIB0_PATH_TSL2563;
-		als_calib1_output.path = ALS_CALIB1_PATH_TSL2563;
-		display_als_profiles = display_als_profiles_rx51;
-		led_als_profiles = led_als_profiles_rx51;
-		kbd_als_profiles = kbd_als_profiles_rx51;
-		use_median_filter = TRUE;
-	} else if (g_access(ALS_LUX_PATH_TSL2562, R_OK) == 0) {
-		als_type = ALS_TYPE_TSL2562;
-		als_lux_path = ALS_LUX_PATH_TSL2562;
-		als_calib0_output.path = ALS_CALIB0_PATH_TSL2562;
-		als_calib1_output.path = ALS_CALIB1_PATH_TSL2562;
-		display_als_profiles = display_als_profiles_rx44;
-		led_als_profiles = led_als_profiles_rx44;
-		kbd_als_profiles = kbd_als_profiles_rx44;
-		use_median_filter = TRUE;
-	}
-#ifdef ENABLE_HYBRIS
-	else if( mce_hybris_als_init() ) {
-		als_type = ALS_TYPE_HYBRIS;
-
-		// FIXME: uses rm696 profile data, need real ones
-		display_als_profiles = display_als_profiles_hybris;
-		led_als_profiles     = led_als_profiles_hybris;
-	}
-#endif
-	else {
-		als_type = ALS_TYPE_NONE;
-	}
-
-	/* If the range path doesn't exist, disable it */
-	if (als_threshold_range_path != NULL) {
-		if (g_access(als_threshold_range_path, W_OK) == -1)
-			als_threshold_range_path = NULL;
-	}
-	errno = 0;
-
-	mce_log(LL_DEBUG, "ALS-type: %d", als_type);
-
-EXIT:
-	return als_type;
-}
-
-/**
- * Calibrate the ALS using calibration values from CAL
- */
-static void calibrate_als(void)
-{
-	guint32 calib0 = 0;
-	guint32 calib1 = 0;
-	guint8 *tmp = NULL;
-	gsize count;
-	gulong len;
-
-	/* If we don't have any calibration points, don't bother */
-	if ((als_calib0_output.path == NULL) && (als_calib1_output.path == NULL))
-		goto EXIT;
-
-	/* Retrieve the calibration data from sysinfo */
-	if (get_sysinfo_value(ALS_CALIB_IDENTIFIER, &tmp, &len) == FALSE) {
-		mce_log(
-#ifdef ENABLE_SYSINFOD_QUERIES
-			LL_ERR,
-#else
-			LL_NOTICE,
-#endif
-			"Failed to retrieve ALS calibration data");
-		goto EXIT;
-	}
-
-	/* Is the memory properly aligned? */
-	if ((len % sizeof (guint32)) != 0) {
-		mce_log(LL_ERR,
-			"Invalid ALS calibration data returned");
-		goto EXIT2;
-	}
-
-	count = len / sizeof (guint32);
-
-	/* We don't have any calibration data */
-	if (count == 0) {
-		mce_log(LL_INFO,
-			"No ALS calibration data available");
-		goto EXIT2;
-	}
-
-	switch (count) {
-	default:
-		mce_log(LL_INFO,
-			"Ignored excess ALS calibration data");
-		/* Fall-through */
-
-	case 2:
-		memcpy(&calib1, tmp, sizeof (calib1));
-		/* Fall-through */
-
-	case 1:
-		memcpy(&calib0, tmp, sizeof (calib0));
-		break;
-	}
-
-	/* Write calibration value 0 */
-	if (als_calib0_output.path != NULL) {
-	  mce_write_number_string_to_file(&als_calib0_output, calib0);
-	}
-
-	/* Write calibration value 1 */
-	if ((als_calib1_output.path != NULL) && (count > 1)) {
-		mce_write_number_string_to_file(&als_calib1_output, calib1);
-	}
-
-EXIT2:
-	free(tmp);
-
-EXIT:
-	return;
-}
-
-/**
- * Use the ALS profiles to calculate proper ALS modified values;
- * also reprogram the sensor thresholds if the sensor supports such
- *
- * @param profiles The profile struct to use for calculations
- * @param profile The profile to use
- * @param lux The lux value
- * @param[in,out] level The old level; will be replaced by the new level
- * @param[out] lower The new lower ALS interrupt threshold
- * @param[out] upper The new upper ALS interrupt threshold
- * @return The brightness in % of maximum
- */
-static gint filter_data(als_profile_struct *profiles, als_profile_t profile,
-			gint lux, gint *level, gint *lower, gint *upper)
-{
-	gint tmp = *level;
-	gint i;
-
-	if (tmp == -1)
-		tmp = 0;
-	else if (tmp > ALS_RANGES)
-		tmp = ALS_RANGES;
-
-	for (i = 0; i < ALS_RANGES; i++) {
-		*level = i;
-
-		if (profiles[profile].range[i][0] == -1)
-			break;
-
-		if (lux < profiles[profile].range[i][(((i + 1) - tmp) > 0) ? 1 : 0])
-			break;
-	}
-
-	*lower = (i == 0) ? 0 : profiles[profile].range[i - 1][0];
-
-	if (i >= ALS_RANGES) {
-		/* This is a programming error! */
-		mce_log(LL_CRIT,
-			"The ALS profile %d lacks terminating { -1, -1 }",
-			profile);
-		*upper = als_threshold_max;
-	} else {
-		*upper = (profiles[profile].range[i][1] == -1) ? als_threshold_max : profiles[profile].range[i][1];
-	}
-
-	return profiles[profile].value[*level];
-}
-
-/**
  * Ambient Light Sensor filter for display brightness
  *
  * @param data The un-processed brightness setting (1-5) stored in a pointer
@@ -1190,45 +541,25 @@ static gint filter_data(als_profile_struct *profiles, als_profile_t profile,
  */
 static gpointer display_brightness_filter(gpointer data)
 {
-	/** Display ALS level */
-	static gint display_als_level = -1;
-	gint raw = GPOINTER_TO_INT(data) - 1;
-	gpointer retval;
+	int setting = GPOINTER_TO_INT(data);
 
-	/* If the display is off or in low power mode,
-	 * don't update its brightness
-	 */
-	if ((display_state == MCE_DISPLAY_OFF) ||
-	    (display_state == MCE_DISPLAY_LPM_OFF) ||
-	    (display_state == MCE_DISPLAY_LPM_ON)) {
-		raw = 0;
+	if( setting < 1 ) setting = 1; else
+	if( setting > 5 ) setting = 5;
+
+	int brightness = setting * 20;
+
+	if( !use_als_flag )
 		goto EXIT;
-	}
 
-	/* Safety net */
-	if (raw < ALS_PROFILE_MINIMUM)
-		raw = ALS_PROFILE_MINIMUM;
-	else if (raw > ALS_PROFILE_MAXIMUM)
-		raw = ALS_PROFILE_MAXIMUM;
+	if( als_lux_latest < 0 )
+		goto EXIT;
 
-	if ((als_enabled == TRUE) && (display_als_profiles != NULL)) {
-		/* Not true percentage,
-		 * since this value may be boosted by high brightness mode
-		 */
-		gint percentage = filter_data(display_als_profiles, raw,
-					      als_lux, &display_als_level,
-					      &display_brightness_lower,
-					      &display_brightness_upper);
-
-		raw = percentage;
-	} else {
-		raw = (raw + 1) * 20;
-	}
+	als_profile_t prof = setting - 1;
+	brightness = als_filter_run(&lut_display, prof, als_lux_latest);
 
 EXIT:
-	retval = GINT_TO_POINTER(raw);
-
-	return retval;
+	mce_log(LL_DEBUG, "in=%d -> out=%d", setting, brightness);
+	return GINT_TO_POINTER(brightness);
 }
 
 /**
@@ -1239,23 +570,16 @@ EXIT:
  */
 static gpointer led_brightness_filter(gpointer data)
 {
-	/** LED ALS level */
-	static gint led_als_level = -1;
-	gint brightness;
+	int value = GPOINTER_TO_INT(data);
+	int scale = 100;
 
-	if ((als_enabled == TRUE) && (led_als_profiles != NULL)) {
-		/* XXX: this always uses the NORMAL profile */
-		gint percentage = filter_data(led_als_profiles,
-					      ALS_PROFILE_NORMAL,
-					      als_lux, &led_als_level,
-					      &led_brightness_lower,
-					      &led_brightness_upper);
-		brightness = (GPOINTER_TO_INT(data) * percentage) / 100;
-	} else {
-		brightness = GPOINTER_TO_INT(data);
-	}
+	if( als_lux_latest < 0 )
+		goto EXIT;
 
-	return GINT_TO_POINTER(brightness);
+	scale = als_filter_run(&lut_led, ALS_PROFILE_NORMAL, als_lux_latest);
+
+EXIT:
+	return GINT_TO_POINTER(value * scale / 100);
 }
 
 /**
@@ -1266,643 +590,16 @@ static gpointer led_brightness_filter(gpointer data)
  */
 static gpointer key_backlight_filter(gpointer data)
 {
-	/** Keyboard ALS level */
-	static gint kbd_als_level = -1;
-	gint brightness = 0;
+	int value = GPOINTER_TO_INT(data);
+	int scale = 100;
 
-	if ((als_enabled == TRUE) && (kbd_als_profiles != NULL)) {
-		/* XXX: this always uses the NORMAL profile */
-		gint percentage = filter_data(kbd_als_profiles,
-					      ALS_PROFILE_NORMAL,
-					      als_lux, &kbd_als_level,
-					      &kbd_brightness_lower,
-					      &kbd_brightness_upper);
-		brightness = (GPOINTER_TO_INT(data) * percentage) / 100;
-	} else {
-		brightness = GPOINTER_TO_INT(data);
-	}
-
-	return GINT_TO_POINTER(brightness);
-}
-
-/**
- * Wrapper function for median_filter_init()
- *
- * @return TRUE on success, FALSE on failure
- */
-static gboolean als_median_filter_init(void)
-{
-	gboolean status = TRUE;
-
-	if (use_median_filter == FALSE)
+	if( als_lux_latest < 0 )
 		goto EXIT;
 
-	/* Re-initialise the median filter */
-	if (median_filter_init(&median_filter,
-			       MEDIAN_FILTER_WINDOW_SIZE) == FALSE) {
-		mce_log(LL_CRIT, "median_filter_init() failed");
-		als_enabled = FALSE;
-		status = FALSE;
-	}
+	scale = als_filter_run(&lut_key, ALS_PROFILE_NORMAL, als_lux_latest);
 
 EXIT:
-	return status;
-}
-
-/**
- * Wrapper function for median_filter_map()
- *
- * @param value The value to insert
- * @return The filtered value
- */
-static gint als_median_filter_map(gint value)
-{
-	return (use_median_filter == TRUE) ?
-		median_filter_map(&median_filter, value) : value;
-}
-
-/**
- * Read a value from the ALS and update the median filter
- *
- * @return the filtered result of the read,
- *         -1 on failure,
- *         -2 if the ALS is disabled
- */
-static gint als_read_value_filtered(void)
-{
-	gint filtered_read = -2;
-	void *tmp = NULL;
-	gulong lux;
-
-	if (als_enabled == FALSE)
-		goto EXIT;
-
-	if (get_als_type() == ALS_TYPE_AVAGO) {
-		struct avago_als *als;
-		gssize len = sizeof (struct avago_als);
-
-		if (mce_read_chunk_from_file(als_device_path, &tmp, &len,
-					     0) == FALSE) {
-			filtered_read = -1;
-			goto EXIT;
-		}
-
-		if (len != sizeof (struct avago_als)) {
-			mce_log(LL_ERR,
-				"Short read from `%s'",
-				als_device_path);
-			filtered_read = -1;
-			goto EXIT;
-		}
-
-		als = (struct avago_als *)tmp;
-
-		if ((als->status & APDS990X_ALS_SATURATED) != 0) {
-			lux = G_MAXINT;
-		} else {
-			lux = als->lux;
-		}
-	} else if (get_als_type() == ALS_TYPE_DIPRO) {
-		struct dipro_als *als;
-		gssize len = sizeof (struct dipro_als);
-
-		if (mce_read_chunk_from_file(als_device_path, &tmp, &len,
-					     0) == FALSE) {
-			filtered_read = -1;
-			goto EXIT;
-		}
-
-		if (len != sizeof (struct dipro_als)) {
-			mce_log(LL_ERR,
-				"Short read from `%s'",
-				als_device_path);
-			filtered_read = -1;
-			goto EXIT;
-		}
-
-		als = (struct dipro_als *)tmp;
-		lux = als->lux;
-	}
-#ifdef ENABLE_SENSORFW
-	else if( get_als_type() == ALS_TYPE_SENSORFW ) {
-		lux = sensorfw_als_last;
-		mce_log(LL_DEBUG, "faking lux read = %d", (int)lux);
-	}
-#endif
-#ifdef ENABLE_HYBRIS
-	else if( get_als_type() == ALS_TYPE_HYBRIS ) {
-		lux = hybris_als_last;
-		mce_log(LL_DEBUG, "faking lux read = %d", (int)lux);
-	}
-#endif
-	else {
-		/* Read lux value from ALS */
-		if (mce_read_number_string_from_file(als_lux_path,
-						     &lux, &als_fp,
-						     TRUE, FALSE) == FALSE) {
-			filtered_read = -1;
-			goto EXIT;
-		}
-	}
-
-	filtered_read = als_median_filter_map(lux);
-
-EXIT:
-	g_free(tmp);
-
-	return filtered_read;
-}
-
-/**
- * Adjust ALS thresholds if supported
- *
- * @note Call with 0, 0 to unconditionally generate interrupts
- *       Call with -1, -1 to use cached thresholds
- * @param lower Lower threshold;
- *              any reading below this will generate interrupts
- * @param upper Upper threshold;
- *              any reading above this will generate interrupts
- */
-static void adjust_als_thresholds(gint lower, gint upper)
-{
-	static gint cached_lower = -1;
-	static gint cached_upper = -1;
-	gchar *str;
-
-	/* Only adjust thresholds if there's support for doing so */
-	if (als_threshold_range_path == NULL)
-		goto EXIT;
-
-	/* Special cases */
-	if ((lower > upper) || ((lower == upper) && (lower == 0))) {
-		/* If the lower threshold is higher than the upper threshold,
-		 * set both to 0 to guarantee that we get a new interupt;
-		 * don't cache
-		 */
-		lower = 0;
-		upper = 0;
-	} else if ((lower == upper) && (lower == -1)) {
-		if (cached_lower == -1) {
-			lower = 0;
-			upper = 0;
-		} else {
-			lower = cached_lower;
-			upper = cached_upper;
-		}
-	} else if ((lower == 0) && (upper == als_threshold_max)) {
-		/* [0, MAX] is used to disable ALS reads;
-		 * do not cache these values
-		 */
-	} else {
-		cached_lower = lower;
-		cached_upper = upper;
-	}
-
-	str = g_strdup_printf("%d %d", lower, upper);
-	mce_write_string_to_file(als_threshold_range_path, str);
-	g_free(str);
-
-EXIT:
-	return;
-}
-
-/**
- * Timer callback for polling of the Ambient Light Sensor
- *
- * @param data Unused
- * @return Always returns TRUE, for continuous polling,
-           unless the ALS is disabled
- */
-static gboolean als_poll_timer_cb(gpointer data)
-{
-	gboolean status = FALSE;
-	gint new_lux;
-	gint lower;
-	gint upper;
-
-	(void)data;
-
-	/* Read lux value from ALS */
-	if ((new_lux = als_read_value_filtered()) == -2)
-		goto EXIT;
-
-	/* There's no point in readjusting the brightness
-	 * if the read failed; also no readjustment is needed
-	 * if the read is identical to the old value, unless
-	 * we've never set the threshold values before
-	 */
-	if ((new_lux == -1) ||
-	    ((als_lux == new_lux) && (display_brightness_lower != -1)))
-		goto EXIT2;
-
-	als_lux = new_lux;
-
-	/* Re-filter the brightness */
-	(void)execute_datapipe(&display_brightness_pipe, NULL,
-			       USE_CACHE, DONT_CACHE_INDATA);
-	(void)execute_datapipe(&led_brightness_pipe, NULL,
-			       USE_CACHE, DONT_CACHE_INDATA);
-	(void)execute_datapipe(&key_backlight_pipe, NULL,
-			       USE_CACHE, DONT_CACHE_INDATA);
-
-	/* Adjust the colour phase coefficients */
-	if (display_cpa_profile() != NULL) {
-		gint level = -1;
-		gint i;
-
-		for (i = 0; display_cpa_profile()[i].range[0] != -1; i++) {
-			if ((als_lux >= display_cpa_profile()[i].range[0]) &&
-			    ((als_lux < display_cpa_profile()[i].range[1]) ||
-			     (display_cpa_profile()[i].range[1] == -1))) {
-				level = i;
-				break;
-			}
-		}
-
-		if (level != -1) {
-			mce_write_string_to_file(display_cpa_coefficients_path, display_cpa_profile()[level].coefficients);
-
-			/* If this is the first time we adjust the colour phase
-			 * coefficients, enable cpa adjustment
-			 */
-			if (display_cpa_enabled == FALSE) {
-				mce_write_string_to_file(display_cpa_enable_path, "1");
-			}
-		}
-	}
-
-	/* The lower threshold is the largest of the lower thresholds */
-	lower = display_brightness_lower;
-
-	if (led_als_profiles != NULL)
-		lower = MAX(lower, led_brightness_lower);
-
-	if (kbd_als_profiles != NULL)
-		lower = MAX(lower, kbd_brightness_lower);
-
-	/* The upper threshold is the smallest of the upper thresholds */
-	upper = display_brightness_upper;
-
-	if (led_als_profiles != NULL)
-		upper = MIN(upper, led_brightness_upper);
-
-	if (kbd_als_profiles != NULL)
-		upper = MIN(upper, kbd_brightness_upper);
-
-	if (als_external_refcount == 0)
-		adjust_als_thresholds(lower, upper);
-
-EXIT2:
-	status = TRUE;
-
-EXIT:
-	if (status == FALSE)
-		als_poll_timer_cb_id = 0;
-
-	return status;
-}
-
-/**
- * Timer callback for brightness stepdown delay
- *
- * @param data Unused
- * @return Always returns FALSE, this is a one-shot cb
- */
-static gboolean brightness_delay_timer_cb(gpointer data)
-{
-	gboolean status = FALSE;
-
-	(void)data;
-
-	brightness_delay_timer_cb_id = 0;
-	/* No delay for lux setting this time, as we already waited. */
-	als_iomon_common(delayed_lux, TRUE);
-
-	return status;
-}
-
-/**
- * I/O monitor callback for the Ambient Light Sensor
- *
- * @param lux The lux value
- * @param no_delay If TRUE, do not use stepdown delay
- */
-static void als_iomon_common(gint lux, gboolean no_delay)
-{
-	cover_state_t proximity_sensor_state =
-				datapipe_get_gint(proximity_sensor_pipe);
-	gint new_lux;
-	gint lower;
-	gint upper;
-
-	new_lux = als_median_filter_map(lux);
-
-	/* There's no point in readjusting the brightness
-	 * if the read failed; also no readjustment is needed
-	 * if the read is identical to the old value, unless
-	 * we've never set the threshold values before
-	 */
-	if ((new_lux == -1) ||
-	    ((als_lux == new_lux) && (display_brightness_lower != -1)))
-		goto EXIT;
-
-	/* Don't readjust the brightness if there's proximity,
-	 * to avoid the backlight from changing if the user
-	 * inadvertently covers the ALS
-	 */
-	if (proximity_sensor_state == COVER_CLOSED)
-		goto EXIT;
-
-	/* Step-down is delayed */
-	if (als_lux > new_lux) {
-		if (no_delay == FALSE) {
-			/* Setup timer if not already active and store lux
-			 * value, then exit
-			 */
-			if (brightness_delay_timer_cb_id == 0) {
-				brightness_delay_timer_cb_id =
-					g_timeout_add_seconds(brightness_stepdown_delay,
-										  brightness_delay_timer_cb, NULL);
-			}
-			delayed_lux = lux;
-			goto EXIT;
-		}
-	} else {
-		/* Remove delay timer when stepping up */
-		cancel_brightness_delay_timer();
-	}
-
-	als_lux = new_lux;
-
-	/* Re-filter the brightness */
-	(void)execute_datapipe(&display_brightness_pipe, NULL,
-			       USE_CACHE, DONT_CACHE_INDATA);
-	(void)execute_datapipe(&led_brightness_pipe, NULL,
-			       USE_CACHE, DONT_CACHE_INDATA);
-	(void)execute_datapipe(&key_backlight_pipe, NULL,
-			       USE_CACHE, DONT_CACHE_INDATA);
-
-	/* Adjust the colour phase coefficients */
-	if (display_cpa_profile() != NULL) {
-		gint level = -1;
-		gint i;
-
-		for (i = 0; display_cpa_profile()[i].range[0] != -1; i++) {
-			if ((als_lux >= display_cpa_profile()[i].range[0]) &&
-			    ((als_lux < display_cpa_profile()[i].range[1]) ||
-			     (display_cpa_profile()[i].range[1] == -1))) {
-				level = i;
-				break;
-			}
-		}
-
-		if (level != -1) {
-			mce_write_string_to_file(display_cpa_coefficients_path, display_cpa_profile()[level].coefficients);
-
-			/* If this is the first time we adjust the colour phase
-			 * coefficients, enable cpa adjustment
-			 */
-			if (display_cpa_enabled == FALSE) {
-				mce_write_string_to_file(display_cpa_enable_path, "1");
-			}
-		}
-	}
-
-	/* The lower threshold is the largest of the lower thresholds */
-	lower = display_brightness_lower;
-
-	if (led_als_profiles != NULL)
-		lower = MAX(lower, led_brightness_lower);
-
-	if (kbd_als_profiles != NULL)
-		lower = MAX(lower, kbd_brightness_lower);
-
-	/* The upper threshold is the smallest of the upper thresholds */
-	upper = display_brightness_upper;
-
-	if (led_als_profiles != NULL)
-		upper = MIN(upper, led_brightness_upper);
-
-	if (kbd_als_profiles != NULL)
-		upper = MIN(upper, kbd_brightness_upper);
-
-	if (als_external_refcount == 0)
-		adjust_als_thresholds(lower, upper);
-
-
-EXIT:
-	return;
-}
-
-
-/**
- * I/O monitor callback for the Dipro Ambient Light Sensor
- *
- * @param data The new data
- * @param bytes_read Unused
- * @return Always returns FALSE to return remaining chunks (if any)
- */
-static gboolean als_dipro_iomon_cb(gpointer data, gsize bytes_read)
-{
-	struct dipro_als *als;
-
-	/* Don't process invalid reads */
-	if (bytes_read != sizeof (struct dipro_als)) {
-		als_poll_timer_cb_id = 0;
-		cancel_als_poll_timer();
-		goto EXIT;
-	}
-
-	als = data;
-
-	als_iomon_common(als->lux, FALSE);
-
-EXIT:
-	return FALSE;
-}
-
-/**
- * I/O monitor callback for the Avago Ambient Light Sensor
- *
- * @param data The new data
- * @param bytes_read Unused
- * @return Always returns FALSE to return remaining chunks (if any)
- */
-static gboolean als_avago_iomon_cb(gpointer data, gsize bytes_read)
-{
-	struct avago_als *als;
-
-	/* Don't process invalid reads */
-	if (bytes_read != sizeof (struct avago_als)) {
-		als_poll_timer_cb_id = 0;
-		cancel_als_poll_timer();
-		goto EXIT;
-	}
-
-	als = data;
-
-	/* The ALS hasn't got anything to offer */
-	if ((als->status & APDS990X_ALS_UPDATED) == 0)
-		goto EXIT;
-
-	if ((als->status & APDS990X_ALS_SATURATED) != 0) {
-		als_iomon_common(G_MAXINT, FALSE);
-	} else {
-		als_iomon_common(als->lux, FALSE);
-	}
-
-EXIT:
-	return FALSE;
-}
-
-/** Sensorfw ALS monitor callback
- *
- * @param light     ambient light value in lux
- */
-#ifdef ENABLE_SENSORFW
-static void als_sensorfw_iomon_cb(unsigned light)
-{
-	mce_log(LL_DEBUG, "lux:%u", light);
-	sensorfw_als_last = (gint)light;
-	als_iomon_common(hybris_als_last, FALSE);
-}
-#endif
-
-/** Libhybris ALS monitor callback
- *
- * @param timestamp time of event from android adaptation
- * @param light     ambient light value in lux
- */
-#ifdef ENABLE_HYBRIS
-static void als_hybris_iomon_cb(int64_t timestamp, float light)
-{
-	(void)timestamp; (void)light;
-	mce_log(LL_DEBUG, "time:%lld lux:%g", timestamp, light);
-	hybris_als_last = (gint)(light + 0.5f);
-	als_iomon_common(hybris_als_last, FALSE);
-}
-#endif
-
-/**
- * Cancel Ambient Light Sensor poll timer
- */
-static void cancel_als_poll_timer(void)
-{
-	mce_log(LL_DEBUG, "disable ALS monitoring");
-
-	/* Unregister ALS I/O monitor */
-	if (als_iomon_id != NULL) {
-		mce_unregister_io_monitor(als_iomon_id);
-		als_iomon_id = NULL;
-	}
-
-	/* Disable old ALS timer */
-	if (als_poll_timer_cb_id != 0) {
-		g_source_remove(als_poll_timer_cb_id);
-		als_poll_timer_cb_id = 0;
-	}
-
-	/* Remove sensorfw ALS hook */
-#ifdef ENABLE_SENSORFW
-	if( get_als_type() == ALS_TYPE_SENSORFW ) {
-		mce_sensorfw_als_set_notify(0);
-		mce_sensorfw_als_disable();
-	}
-#endif
-	/* Remove libhybris ALS hook */
-#ifdef ENABLE_HYBRIS
-	if( get_als_type() == ALS_TYPE_HYBRIS ) {
-		mce_hybris_als_set_callback(0);
-		mce_hybris_als_set_active(0);
-	}
-#endif
-
-	/* No io monitors, timers or hooks in use */
-	als_poll_active = FALSE;
-}
-
-/**
- * Setup Ambient Light Sensor poll timer
- */
-static void setup_als_poll_timer(void)
-{
-	static gint old_poll_interval = 0;
-
-	mce_log(LL_DEBUG, "interval=%d, active=%d",
-		als_poll_interval, als_poll_active);
-
-	/* Already active timer based polling is a special case: we need
-	 * cancel it first for the new polling frequency to take effect */
-	if( als_poll_timer_cb_id && old_poll_interval != als_poll_interval )
-		cancel_als_poll_timer();
-
-	/* If we don't want polling to take place, disable it */
-	if (als_poll_interval == 0) {
-		cancel_als_poll_timer();
-
-		/* Close the file pointer when we disable the als polling
-		 * to ensure that the ALS can sleep
-		 */
-		if( als_fp )
-			mce_close_file(als_lux_path, &als_fp);
-		goto EXIT;
-	}
-
-	if( als_poll_active )
-		goto EXIT;
-
-	/* We will use io monitor, timer or libhybris hooks for ALS */
-	als_poll_active = TRUE;
-
-	mce_log(LL_DEBUG, "enable ALS monitoring");
-
-	switch (get_als_type()) {
-	case ALS_TYPE_AVAGO:
-		/* Register ALS I/O monitor */
-		als_iomon_id = mce_register_io_monitor_chunk(-1, als_device_path, MCE_IO_ERROR_POLICY_WARN, G_IO_IN | G_IO_PRI | G_IO_ERR, FALSE, als_avago_iomon_cb, sizeof (struct avago_als));
-		break;
-
-	case ALS_TYPE_DIPRO:
-		/* Register ALS I/O monitor */
-		als_iomon_id = mce_register_io_monitor_chunk(-1, als_device_path, MCE_IO_ERROR_POLICY_WARN, G_IO_IN | G_IO_PRI | G_IO_ERR, FALSE, als_dipro_iomon_cb, sizeof (struct dipro_als));
-		break;
-
-#ifdef ENABLE_SENSORFW
-	case ALS_TYPE_SENSORFW:
-		mce_sensorfw_als_set_notify(als_sensorfw_iomon_cb);
-		mce_sensorfw_als_enable();
-		break;
-#endif
-#ifdef ENABLE_HYBRIS
-	case ALS_TYPE_HYBRIS:
-		mce_hybris_als_set_callback(als_hybris_iomon_cb);
-		mce_hybris_als_set_active(1);
-		break;
-#endif
-
-	default:
-		/* Setup new timer;
-		 * for light sensors that we don't use I/O monitor for
-		 */
-		old_poll_interval = als_poll_interval;
-		als_poll_timer_cb_id = g_timeout_add(als_poll_interval,
-						     als_poll_timer_cb, NULL);
-		break;
-	}
-
-EXIT:
-	return;
-}
-
-/**
- * Cancel brightness delay timer
- */
-static void cancel_brightness_delay_timer(void)
-{
-	if (brightness_delay_timer_cb_id != 0) {
-		g_source_remove(brightness_delay_timer_cb_id);
-		brightness_delay_timer_cb_id = 0;
-	}
+	return GINT_TO_POINTER(value * scale / 100);
 }
 
 /**
@@ -1915,83 +612,17 @@ static void display_state_trigger(gconstpointer data)
 	static display_state_t old_display_state = MCE_DISPLAY_UNDEF;
 	display_state = GPOINTER_TO_INT(data);
 
-	if (als_enabled == FALSE)
+	if( old_display_state == display_state )
 		goto EXIT;
 
-	/* Update poll timeout */
-	switch (display_state) {
-	case MCE_DISPLAY_OFF:
-	case MCE_DISPLAY_LPM_OFF:
-	case MCE_DISPLAY_LPM_ON:
-		als_poll_interval = ALS_DISPLAY_OFF_POLL_FREQ;
-		break;
+	mce_log(LL_DEBUG, "display: %d -> %d",
+		old_display_state, display_state);
 
-	case MCE_DISPLAY_DIM:
-		als_poll_interval = ALS_DISPLAY_DIM_POLL_FREQ;
-		break;
-
-	case MCE_DISPLAY_UNDEF:
-	case MCE_DISPLAY_ON:
-	default:
-		als_poll_interval = ALS_DISPLAY_ON_POLL_FREQ;
-		break;
-	}
-
-	/* Re-fill the median filter */
-	if (((old_display_state == MCE_DISPLAY_OFF) ||
-	     (old_display_state == MCE_DISPLAY_LPM_OFF) ||
-	     (old_display_state == MCE_DISPLAY_LPM_ON)) &&
-	    ((display_state == MCE_DISPLAY_ON) ||
-	     (display_state == MCE_DISPLAY_DIM))) {
-		gint new_lux;
-
-		cancel_als_poll_timer();
-
-#ifdef ALS_DISPLAY_OFF_FLUSH_FILTER
-		/* Re-initialise the median filter */
-		if (als_median_filter_init() == FALSE)
-			goto EXIT;
-#endif /* ALS_DISPLAY_OFF_FLUSH_FILTER */
-
-		/* Read lux value from ALS */
-		new_lux = als_read_value_filtered();
-
-		/* There's no point in readjusting the brightness
-		 * if the ambient light did not change,
-		 * unless we use the unblank policy for step-downs
-		 */
-		if ((new_lux >= 0) &&
-		    ((als_lux != new_lux) ||
-		     (brightness_step_down_policy ==
-		      BRIGHTNESS_STEP_UNBLANK))) {
-			/* Re-filter the brightness */
-			(void)execute_datapipe(&display_brightness_pipe, NULL, USE_CACHE, DONT_CACHE_INDATA);
-			(void)execute_datapipe(&led_brightness_pipe, NULL, USE_CACHE, DONT_CACHE_INDATA);
-			(void)execute_datapipe(&key_backlight_pipe, NULL, USE_CACHE, DONT_CACHE_INDATA);
-		}
-
-		/* Restore threshold values */
-		if (als_external_refcount == 0)
-			adjust_als_thresholds(-1, -1);
-	} else if (((old_display_state == MCE_DISPLAY_ON) ||
-	            (old_display_state == MCE_DISPLAY_DIM)) &&
-		   ((display_state == MCE_DISPLAY_OFF) ||
-		    (display_state == MCE_DISPLAY_LPM_OFF) ||
-		    (display_state == MCE_DISPLAY_LPM_ON))) {
-		/* Cancel delayed brightness adjustment */
-		cancel_brightness_delay_timer();
-
-		/* Set thresholds to not trigger ALS updates */
-		if (als_external_refcount == 0)
-			adjust_als_thresholds(0, als_threshold_max);
-	}
-
-	/* Setup / reprogram, if needed */
-	setup_als_poll_timer();
-
-EXIT:
 	old_display_state = display_state;
 
+	rethink_als_status();
+
+EXIT:
 	return;
 }
 
@@ -2000,346 +631,244 @@ EXIT:
  * if the requesting process exits, immediately decrease the refcount
  *
  * @param msg The D-Bus message
- * @return TRUE on success, FALSE on failure
+ * @return TRUE
  */
 static gboolean als_owner_monitor_dbus_cb(DBusMessage *const msg)
 {
-	gboolean status = FALSE;
-	const gchar *old_name;
-	const gchar *new_name;
-	const gchar *service;
+	const gchar *old_name = 0;
+	const gchar *new_name = 0;
+	const gchar *service  = 0;
+	DBusError    error    = DBUS_ERROR_INIT;
+
 	gssize retval;
-	DBusError error;
 
-	/* Register error channel */
-	dbus_error_init(&error);
-
-	/* Extract result */
-	if (dbus_message_get_args(msg, &error,
+	if( !dbus_message_get_args(msg, &error,
 				  DBUS_TYPE_STRING, &service,
 				  DBUS_TYPE_STRING, &old_name,
 				  DBUS_TYPE_STRING, &new_name,
-				  DBUS_TYPE_INVALID) == FALSE) {
-		mce_log(LL_ERR,
-			"Failed to get argument from %s.%s; %s",
+				  DBUS_TYPE_INVALID) ) {
+		mce_log(LL_ERR,	"Failed to get argument from %s.%s; %s: %s",
 			"org.freedesktop.DBus", "NameOwnerChanged",
-			error.message);
-		dbus_error_free(&error);
+			error.name, error.message);
 		goto EXIT;
 	}
 
 	/* Remove the name monitor for the ALS owner */
-	retval = mce_dbus_owner_monitor_remove(service, &als_owner_monitor_list);
+	retval = mce_dbus_owner_monitor_remove(service,
+					       &ext_als_enablers);
 
 	if (retval == -1) {
-		mce_log(LL_INFO,
-			"Failed to remove name owner monitoring for `%s'",
-			old_name);
-	} else {
-		als_external_refcount = retval;
-
-		if (als_external_refcount == 0) {
-			if (display_state == MCE_DISPLAY_OFF ||
-			    display_state == MCE_DISPLAY_LPM_OFF ||
-			    display_state == MCE_DISPLAY_LPM_ON)
-				adjust_als_thresholds(0, als_threshold_max);
-			else
-				adjust_als_thresholds(-1, -1);
-		}
+		mce_log(LL_WARN, "Failed to remove name owner monitoring"
+			" for `%s'", service);
+		goto EXIT;
 	}
 
-	status = TRUE;
+	rethink_als_status();
 
 EXIT:
-	return status;
+	dbus_error_free(&error);
+	return TRUE;
 }
 
 /**
  * D-Bus callback for the ALS enabling method call
  *
  * @param msg The D-Bus message
- * @return TRUE on success, FALSE on failure
+ * @return TRUE
  */
 static gboolean als_enable_req_dbus_cb(DBusMessage *const msg)
 {
-	dbus_bool_t no_reply = dbus_message_get_no_reply(msg);
-	const gchar *sender = dbus_message_get_sender(msg);
-	gboolean status = FALSE;
+	const char *sender;
+
 	gssize retval;
-	DBusError error;
 
-	/* Register error channel */
-	dbus_error_init(&error);
+	if( !(sender = dbus_message_get_sender(msg)) )
+		goto EXIT;
 
-	if (sender == NULL) {
-		mce_log(LL_ERR,
-			"Received invalid ALS enable request "
-			"(sender == NULL)");
+	mce_log(LL_DEBUG, "Received ALS enable request from %s", sender);
+
+	retval = mce_dbus_owner_monitor_add(sender, als_owner_monitor_dbus_cb,
+					    &ext_als_enablers,
+					    ALS_MAX_MONITORED);
+	if (retval == -1) {
+		mce_log(LL_WARN, "Failed to add name owner monitoring"
+			" for `%s'", sender);
 		goto EXIT;
 	}
 
-	mce_log(LL_DEBUG,
-		"Received ALS enable request from %s",
-		sender);
-
-	retval = mce_dbus_owner_monitor_add(sender, als_owner_monitor_dbus_cb, &als_owner_monitor_list, ALS_MAX_MONITORED);
-
-	if (retval == -1) {
-		mce_log(LL_INFO,
-			"Failed to add name owner monitoring for `%s'",
-			sender);
-	} else {
-		als_external_refcount = retval;
-
-		if (als_external_refcount == 1)
-			adjust_als_thresholds(0, 0);
-	}
-
-	if (no_reply == FALSE) {
-		DBusMessage *reply = dbus_new_method_reply(msg);
-
-		status = dbus_send_message(reply);
-	} else {
-		status = TRUE;
-	}
+	rethink_als_status();
 
 EXIT:
-	return status;
+	if( !dbus_message_get_no_reply(msg) ) {
+		DBusMessage *reply = dbus_new_method_reply(msg);
+		dbus_send_message(reply), reply = 0;
+	}
+
+	return TRUE;
 }
 
 /**
  * D-Bus callback for the ALS disabling method call
  *
  * @param msg The D-Bus message
- * @return TRUE on success, FALSE on failure
+ * @return TRUE
  */
 static gboolean als_disable_req_dbus_cb(DBusMessage *const msg)
 {
-	dbus_bool_t no_reply = dbus_message_get_no_reply(msg);
-	const gchar *sender = dbus_message_get_sender(msg);
-	gboolean status = FALSE;
+	const char *sender;
+
 	gssize retval;
-	DBusError error;
 
-	/* Register error channel */
-	dbus_error_init(&error);
+	if( !(sender = dbus_message_get_sender(msg)) )
+		goto EXIT;
 
-	if (sender == NULL) {
-		mce_log(LL_ERR,
-			"Received invalid ALS disable request "
-			"(sender == NULL)");
+	mce_log(LL_DEBUG, "Received ALS disable request from %s", sender);
+
+	retval = mce_dbus_owner_monitor_remove(sender,
+					       &ext_als_enablers);
+
+	if (retval == -1) {
+		mce_log(LL_INFO, "Failed to remove name owner monitoring"
+			" for `%s'",sender);
 		goto EXIT;
 	}
 
-	mce_log(LL_DEBUG,
-		"Received ALS disable request from %s",
-		sender);
-
-	retval = mce_dbus_owner_monitor_remove(sender,
-					       &als_owner_monitor_list);
-
-	if (retval == -1) {
-		mce_log(LL_INFO,
-			"Failed to remove name owner monitoring for `%s'",
-			sender);
-	} else {
-		als_external_refcount = retval;
-
-		if (als_external_refcount == 0) {
-			if (display_state == MCE_DISPLAY_OFF ||
-			    display_state == MCE_DISPLAY_LPM_OFF ||
-			    display_state == MCE_DISPLAY_LPM_ON)
-				adjust_als_thresholds(0, als_threshold_max);
-			else
-				adjust_als_thresholds(-1, -1);
-		}
-	}
-
-	if (no_reply == FALSE) {
-		DBusMessage *reply = dbus_new_method_reply(msg);
-
-		status = dbus_send_message(reply);
-	} else {
-		status = TRUE;
-	}
+	rethink_als_status();
 
 EXIT:
-	return status;
+	if( !dbus_message_get_no_reply(msg) ) {
+		DBusMessage *reply = dbus_new_method_reply(msg);
+		dbus_send_message(reply), reply = 0;
+	}
+
+	return TRUE;
 }
 
 /**
  * Send the current profile id
  *
  * @param method_call A DBusMessage to reply to
- * @return TRUE on success, FALSE on failure
+ * @return TRUE
  */
-static gboolean send_current_color_profile(DBusMessage *const method_call)
+static gboolean send_current_color_profile(DBusMessage *method_call)
 {
-	DBusMessage *msg = NULL;
-	gboolean status = FALSE;
-	const gchar *id_to_send = (current_color_profile_id == NULL ?
-				   COLOR_PROFILE_ID_HARDCODED :
-				   current_color_profile_id);
+	DBusMessage *msg = 0;
+	const char  *val = color_profile_name ?: COLOR_PROFILE_ID_HARDCODED;
 
-	if (method_call != NULL)
+	if( method_call )
 		msg = dbus_new_method_reply(method_call);
 	else
-		msg = dbus_new_signal(MCE_SIGNAL_PATH, MCE_SIGNAL_IF,
+		msg = dbus_new_signal(MCE_SIGNAL_PATH,
+				      MCE_SIGNAL_IF,
 				      MCE_COLOR_PROFILE_SIG);
-
-	if (msg == NULL)
+	if( !msg )
 		goto EXIT;
 
-	/* Append the new mode */
-	if (dbus_message_append_args(msg,
-				     DBUS_TYPE_STRING, &id_to_send,
-				     DBUS_TYPE_INVALID) == FALSE) {
-		mce_log(LL_CRIT,
-			"Failed to append reply argument to D-Bus message "
-			"for %s.%s", MCE_REQUEST_IF, MCE_COLOR_PROFILE_GET);
-		dbus_message_unref(msg);
+	if( !dbus_message_append_args(msg,
+				      DBUS_TYPE_STRING, &val,
+				      DBUS_TYPE_INVALID) )
 		goto EXIT;
-	}
 
-	/* Send the message */
-	status = dbus_send_message(msg);
-
+	dbus_send_message(msg), msg = 0;
 EXIT:
-	return status;
+	if( msg ) dbus_message_unref(msg);
+
+	return TRUE;
 }
 
 /**
  * D-Bus callback for the get color profile method call
  *
  * @param msg The D-Bus message
- * @return TRUE on success, FALSE on failure
+ * @return TRUE
  */
 static gboolean color_profile_get_req_dbus_cb(DBusMessage *const msg)
 {
-	gboolean status = FALSE;
+	mce_log(LL_DEBUG, "Received get color profile request");
 
-	mce_log(LL_DEBUG, "Received color profile get request");
-
-	/* Try to send a reply that contains the current color profile id */
-	if (dbus_message_get_no_reply(msg) == FALSE &&
-	    send_current_color_profile(msg) == FALSE)
+	if( dbus_message_get_no_reply(msg) )
 		goto EXIT;
 
-	status = TRUE;
+	send_current_color_profile(msg);
 
 EXIT:
-	return status;
+	return TRUE;
 }
 
-/**
- * D-Bus callback for the get color profile ids method call
+/** D-Bus callback for the get color profile ids method call
  *
  * @param msg The D-Bus message
- * @return TRUE on success, FALSE on failure
+ * @return TRUE
  */
 static gboolean color_profile_ids_get_req_dbus_cb(DBusMessage *const msg)
 {
-	DBusMessage *reply_msg = NULL;
-	const gchar *hardcoded_profile_id = COLOR_PROFILE_ID_HARDCODED;
-	gchar **ids;
-	guint num_ids;
-	gboolean status = FALSE;
+	mce_log(LL_DEBUG, "Received list color profiles request");
 
-	if (display_cpa_profiles == NULL) {
-		mce_log(LL_WARN, "Only hardcoded profile is available");
+	DBusMessage *rsp = 0;
+	int cnt = sizeof color_profiles / sizeof *color_profiles;
+	const char * const * vec = color_profiles;
 
-		ids = (gchar **)&hardcoded_profile_id;
-		num_ids = 1;
-	} else {
-		GSList *iter;
-		guint i;
+	if( dbus_message_get_no_reply(msg) )
+		goto EXIT;
 
-		num_ids = g_slist_length(display_cpa_profiles);
-		ids = g_new0(gchar *, num_ids);
+	if( !(rsp = dbus_message_new_method_return(msg)) )
+		goto EXIT;
 
-		for (iter = display_cpa_profiles, i = 0; iter != NULL;
-		     iter = g_slist_next(iter), i++)
-			ids[i] = ((cpa_profile_entry *)iter->data)->name;
-	}
+	if( !dbus_message_append_args(rsp,
+				      DBUS_TYPE_ARRAY,
+				      DBUS_TYPE_STRING, &vec, cnt,
+				      DBUS_TYPE_INVALID) )
+		goto EXIT;
 
-	reply_msg = dbus_new_method_reply(msg);
+	dbus_send_message(rsp), rsp = 0;
 
-	if (dbus_message_append_args(reply_msg,
-				     DBUS_TYPE_ARRAY, DBUS_TYPE_STRING,
-				     &ids, num_ids,
-				     DBUS_TYPE_INVALID) == FALSE) {
-		mce_log(LL_CRIT,
-			"Failed to append reply argument to D-Bus message "
-			"for %s.%s", MCE_REQUEST_IF, MCE_COLOR_PROFILE_IDS_GET);
-		dbus_message_unref(reply_msg);
-	} else {
-		status = dbus_send_message(reply_msg);
-	}
+EXIT:
+	if( rsp ) dbus_message_unref(rsp);
 
-	if (ids != (gchar **)&hardcoded_profile_id)
-		g_free(ids);
-
-	return status;
+	return TRUE;
 }
 
-/**
- * D-Bus callback for the color profile change method call
+/** D-Bus callback for the color profile change method call
  *
  * @param msg The D-Bus message
- * @return TRUE on success, FALSE on failure
+ * @return TRUE
  */
 static gboolean color_profile_change_req_dbus_cb(DBusMessage *const msg)
 {
-	dbus_bool_t no_reply = dbus_message_get_no_reply(msg);
-	const gchar *id = NULL;
-	gboolean status = FALSE;
-	DBusError error;
+	mce_log(LL_DEBUG, "Received set color profile request");
 
-	/* Register error channel */
-	dbus_error_init(&error);
+	const char  *val = 0;
+	DBusError    err = DBUS_ERROR_INIT;
+	dbus_bool_t  ack = FALSE;
+	DBusMessage *rsp = 0;
 
-	mce_log(LL_DEBUG, "Received color profile change request");
-
-	if (dbus_message_get_args(msg, &error,
-				  DBUS_TYPE_STRING, &id,
-				  DBUS_TYPE_INVALID) == FALSE) {
+	if( !dbus_message_get_args(msg, &err,
+				  DBUS_TYPE_STRING, &val,
+				  DBUS_TYPE_INVALID)) {
 		// XXX: should we return an error instead?
-		mce_log(LL_CRIT,
-			"Failed to get argument from %s.%s: %s",
+		mce_log(LL_ERR,	"Failed to get argument from %s.%s: %s: %s",
 			MCE_REQUEST_IF, MCE_COLOR_PROFILE_CHANGE_REQ,
-			error.message);
-		dbus_error_free(&error);
-		goto EXIT;
+			err.name, err.message);
+	}
+	else {
+		if( set_color_profile(val) )
+			ack = TRUE;
 	}
 
-	if (set_color_profile(id) == FALSE) {
-		mce_log(LL_WARN, "Unknown '%s' is received; ignored", id);
+	if( dbus_message_get_no_reply(msg) )
 		goto EXIT;
-	}
 
-	status = TRUE;
+	if( !(rsp = dbus_message_new_method_return(msg)) )
+		goto EXIT;
 
+	dbus_message_append_args(rsp,
+				 DBUS_TYPE_BOOLEAN, &ack,
+				 DBUS_TYPE_INVALID);
 EXIT:
-	if (no_reply == FALSE) {
-		DBusMessage *reply = dbus_new_method_reply(msg);
+	if( rsp ) dbus_send_message(rsp), rsp = 0;
 
-		if (dbus_message_append_args(msg,
-					     DBUS_TYPE_BOOLEAN, &status,
-					     DBUS_TYPE_INVALID) == FALSE) {
-			mce_log(LL_CRIT,
-				"Failed to append reply argument to D-Bus "
-				"message for %s.%s",
-				MCE_REQUEST_IF, MCE_COLOR_PROFILE_CHANGE_REQ);
-			dbus_message_unref(msg);
-			status = FALSE;
-		} else {
-			status = dbus_send_message(reply);
-		}
-	} else {
-		status = TRUE;
-	}
-
-	return status;
+	dbus_error_free(&err);
+	return TRUE;
 }
 
 /**
@@ -2350,28 +879,34 @@ EXIT:
  * @param entry The modified GConf entry
  * @param data Unused
  */
-static void cp_gconf_cb(GConfClient *const gcc, const guint id,
-			GConfEntry *const entry, gpointer const data)
+static void color_profile_gconf_cb(GConfClient *const gcc, const guint id,
+				   GConfEntry *const entry,
+				   gpointer const data)
 {
 	const GConfValue *gcv = gconf_entry_get_value(entry);
 
 	(void)gcc;
 	(void)data;
 
+	/* FIXME: we are changing the setting from setting changed
+	 *        callback - make sure this does not backfire in
+	 *        some nasty way ...
+	 */
+
 	/* Key is unset */
 	if (gcv == NULL) {
 		mce_log(LL_DEBUG,
 			"GConf Key `%s' has been unset",
 			gconf_entry_get_key(entry));
-		save_color_profile(current_color_profile_id);
+		save_color_profile(color_profile_name);
 		goto EXIT;
 	}
 
-	if (id == cp_setting_gconf_cb_id) {
+	if (id == color_profile_gconf_id) {
 		const gchar *profile = gconf_value_get_string(gcv);
 
 		if (set_color_profile(profile) == FALSE)
-			save_color_profile(current_color_profile_id);
+			save_color_profile(color_profile_name);
 	} else {
 		mce_log(LL_WARN,
 			"Spurious GConf value received; confused!");
@@ -2379,61 +914,6 @@ static void cp_gconf_cb(GConfClient *const gcc, const guint id,
 
 EXIT:
 	return;
-}
-/**
- * Free memory allocated for the loaded color profile
- */
-static void free_dynamic_color_profile(cpa_profile_struct *color_profile)
-{
-	gint i = 0;
-
-	if (color_profile == NULL)
-		return;
-
-	for(i = 0; color_profile[i].coefficients ; ++i) {
-		g_free((void *)color_profile[i].coefficients);
-	}
-
-	g_free(color_profile);
-}
-
-static void free_color_profiles(GSList *profiles)
-{
-	for (; profiles != NULL;
-	     profiles = g_slist_delete_link(profiles, profiles)) {
-		cpa_profile_entry *entry = profiles->data;
-
-		g_free(entry->name);
-		free_dynamic_color_profile(entry->profiles);
-	}
-}
-
-/**
- * Test if color profile read from conf file is valid or not
- *
- * @param raw_color_profile Color profile data
- * @param raw_color_profile_length Length of the data
- * @return TRUE if the profile is valid; FALSE if not
- */
-static gboolean is_raw_color_profile_valid(const gint *raw_color_profile, gint raw_color_profile_length)
-{
-	gboolean status = FALSE;
-
-	if (raw_color_profile == NULL) {
-		mce_log(LL_DEBUG, "Can't read the color profile");
-		goto EXIT;
-	}
-
-	if ((raw_color_profile_length % 12) != 0) {
-		mce_log(LL_DEBUG, "Invalid color profile length %d",
-			raw_color_profile_length);
-		goto EXIT;
-	}
-
-	status = TRUE;
-
-EXIT:
-	return status;
 }
 
 /**
@@ -2444,47 +924,33 @@ EXIT:
  */
 static gboolean set_color_profile(const gchar *id)
 {
-	gboolean status = FALSE;
-	cpa_profile_entry *color_profile = NULL;
-	GSList *iter;
+	// NOTE: color profile support dropped, this just a stub
 
-	if (id == NULL) {
-		mce_log(LL_WARN, "Null sent as color profile id; ignored");
+	gboolean status = FALSE;
+
+	if( !id ) {
 		goto EXIT;
 	}
 
-	if ((current_color_profile_id != NULL) &&
-	    (strcmp(id, current_color_profile_id) == 0)) {
+	if( color_profile_name && !strcmp(color_profile_name, id) ) {
 		mce_log(LL_DEBUG, "No change in color profile, ignoring");
 		status = TRUE;
 		goto EXIT;
 	}
 
-	for (iter = display_cpa_profiles; iter != NULL;
-	     iter = g_slist_next(iter)) {
-		color_profile = iter->data;
-
-		if (strcmp(id, color_profile->name) == 0)
-			break;
+	if( !color_profile_exists(id) ) {
+		mce_log(LL_WARN, "%s: unsupported color profile", id);
+		goto EXIT;
 	}
 
-	if (iter == NULL)
-		goto EXIT;
-
-	status = save_color_profile(id);
-
-	if (status == FALSE) {
+	if( !save_color_profile(id) ) {
 		mce_log(LL_WARN, "The current color profile id can't be saved");
 		goto EXIT;
 	}
 
-	current_color_profile_id = color_profile->name;
-	display_cpa_profile_dynamic = color_profile->profiles;
+	free(color_profile_name), color_profile_name = strdup(id);
 
-	display_brightness_lower = -1; /* To force readjustment */
-	als_iomon_common(als_lux, TRUE);
-
-	send_current_color_profile(NULL);
+	status = TRUE;
 
 EXIT:
 	return status;
@@ -2543,107 +1009,9 @@ static gchar *read_current_color_profile(void)
 	return retval;
 }
 
-/**
- * Initialization of @ref display_id
- */
-static gboolean init_display_id(void)
-{
-	gchar *display_manufacturer = NULL;
-	gchar *dot = NULL;
-
-	if (mce_read_string_from_file(DISPLAY_HARDWARE_REVISION_PATH,
-				      &display_manufacturer) == FALSE)
-		return FALSE;
-
-	if ((dot = strchr(display_manufacturer, '.')) != NULL)
-		*dot = '\0';
-	display_id = g_strndup(display_manufacturer, 2);
-
-	g_free(display_manufacturer);
-
-	return TRUE;
-}
-
 static gboolean init_color_profiles(void)
 {
-	gboolean status = FALSE;
-	gsize num_color_profile_ids = 0;
-	gchar **color_profile_ids = NULL;
-	gchar *group = NULL;
-	guint i;
-
-	if (display_id == NULL)
-		return FALSE;
-
-	group = g_strconcat(MCE_COLOR_PROFILE_GROUP_PREFIX, display_id, NULL);
-
-	if( !mce_conf_has_group(group) ) {
-		mce_log(LL_NOTICE, "No color profile config for: %s", group);
-		goto EXIT;
-	}
-
-	color_profile_ids = mce_conf_get_keys(group,
-					      &num_color_profile_ids);
-
-	for (i = 0; i < num_color_profile_ids; i++) {
-		cpa_profile_entry *entry = g_new0(cpa_profile_entry, 1);
-		guint n_profiles;
-		guint j;
-		gint *raw_cp = NULL;
-		gsize raw_cp_length = 0;
-		gchar **coef_w_p;
-
-		raw_cp = mce_conf_get_int_list(group,
-					       color_profile_ids[i],
-					       &raw_cp_length);
-
-		if (is_raw_color_profile_valid(raw_cp,
-					       raw_cp_length) == FALSE) {
-			g_free(raw_cp);
-			g_free(color_profile_ids[i]);
-			continue;
-		}
-
-		status = TRUE;
-
-		n_profiles = raw_cp_length / 12;
-		entry->profiles = g_new0(cpa_profile_struct, n_profiles + 1);
-
-		for (j = 0; j < n_profiles; j++) {
-			gint *readp = raw_cp + 12 * j;
-			entry->profiles[j].range[0] = readp[0];
-			entry->profiles[j].range[1] = readp[1];
-			entry->profiles[j].range[2] = readp[2];
-
-			coef_w_p = (gchar **)&entry->profiles[j].coefficients;
-
-			*coef_w_p = g_strdup_printf("%d %d %d %d %d %d %d %d %d",
-						    readp[3], readp[4],
-						    readp[5], readp[6],
-						    readp[7], readp[8],
-						    readp[9], readp[10],
-						    readp[11]);
-		}
-
-		entry->profiles[n_profiles].range[0] = -1;
-		entry->profiles[n_profiles].range[1] = -1;
-		entry->profiles[n_profiles].range[2] = -1;
-
-		entry->name = color_profile_ids[i];
-
-		display_cpa_profiles = g_slist_append(display_cpa_profiles,
-						      entry);
-
-		g_free(raw_cp);
-	}
-
-EXIT:
-	/* Profile names stolen; safe to shallow-free the array */
-	g_free(color_profile_ids);
-
-	g_free(group);
-
-	return status;
+	return TRUE;
 }
 
 /**
@@ -2664,14 +1032,19 @@ static gboolean init_current_color_profile(void)
 	if (profile != NULL) {
 		status = set_color_profile(profile);
 		g_free(profile);
-	} else if (display_cpa_profiles != NULL) {
-		profile = ((cpa_profile_entry *)
-			   display_cpa_profiles->data)->name;
-		status = set_color_profile(profile);
 	}
 
 	return status;
 }
+
+static void quit_color_profiles(void)
+{
+	free(color_profile_name), color_profile_name = 0;
+}
+
+/* ========================================================================= *
+ * Module load / unload
+ * ========================================================================= */
 
 /**
  * Init function for the ALS filter
@@ -2684,9 +1057,15 @@ static gboolean init_current_color_profile(void)
 G_MODULE_EXPORT const gchar *g_module_check_init(GModule *module);
 const gchar *g_module_check_init(GModule *module)
 {
-	gchar *str = NULL;
-
 	(void)module;
+
+	/* Read lux ramps from configuration */
+	als_filter_load_config(&lut_display);
+	als_filter_load_config(&lut_led);
+	als_filter_load_config(&lut_key);
+
+	/* Get intial display state */
+	display_state = datapipe_get_gint(display_state_pipe);
 
 	/* Append triggers/filters to datapipes */
 	append_filter_to_datapipe(&display_brightness_pipe,
@@ -2698,131 +1077,55 @@ const gchar *g_module_check_init(GModule *module)
 	append_output_trigger_to_datapipe(&display_state_pipe,
 					  display_state_trigger);
 
-	/* req_als_enable */
-	if (mce_dbus_handler_add(MCE_REQUEST_IF,
-				 MCE_REQ_ALS_ENABLE,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_METHOD_CALL,
-				 als_enable_req_dbus_cb) == NULL)
-		goto EXIT;
+	/* Add dbus method call handlers */
+	mce_dbus_handler_add(MCE_REQUEST_IF,
+			     MCE_REQ_ALS_ENABLE,
+			     NULL,
+			     DBUS_MESSAGE_TYPE_METHOD_CALL,
+			     als_enable_req_dbus_cb);
 
-	/* req_als_disable */
-	if (mce_dbus_handler_add(MCE_REQUEST_IF,
-				 MCE_REQ_ALS_DISABLE,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_METHOD_CALL,
-				 als_disable_req_dbus_cb) == NULL)
-		goto EXIT;
+	mce_dbus_handler_add(MCE_REQUEST_IF,
+			     MCE_REQ_ALS_DISABLE,
+			     NULL,
+			     DBUS_MESSAGE_TYPE_METHOD_CALL,
+			     als_disable_req_dbus_cb);
 
-	/* get_color_profile */
-	if (mce_dbus_handler_add(MCE_REQUEST_IF,
-				 MCE_COLOR_PROFILE_GET,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_METHOD_CALL,
-				 color_profile_get_req_dbus_cb) == NULL)
-		goto EXIT;
+	mce_dbus_handler_add(MCE_REQUEST_IF,
+			     MCE_COLOR_PROFILE_GET,
+			     NULL,
+			     DBUS_MESSAGE_TYPE_METHOD_CALL,
+			     color_profile_get_req_dbus_cb);
 
-	/* get_color_profile_ids */
-	if (mce_dbus_handler_add(MCE_REQUEST_IF,
-				 MCE_COLOR_PROFILE_IDS_GET,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_METHOD_CALL,
-				 color_profile_ids_get_req_dbus_cb) == NULL)
-		goto EXIT;
+	mce_dbus_handler_add(MCE_REQUEST_IF,
+			     MCE_COLOR_PROFILE_IDS_GET,
+			     NULL,
+			     DBUS_MESSAGE_TYPE_METHOD_CALL,
+			     color_profile_ids_get_req_dbus_cb);
 
-	/* req_color_profile_change */
-	if (mce_dbus_handler_add(MCE_REQUEST_IF,
-				 MCE_COLOR_PROFILE_CHANGE_REQ,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_METHOD_CALL,
-				 color_profile_change_req_dbus_cb) == NULL)
-		goto EXIT;
+	mce_dbus_handler_add(MCE_REQUEST_IF,
+			     MCE_COLOR_PROFILE_CHANGE_REQ,
+			     NULL,
+			     DBUS_MESSAGE_TYPE_METHOD_CALL,
+			     color_profile_change_req_dbus_cb);
 
-	als_external_refcount = 0;
+	/* ALS enabled setting */
+	mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
+			       MCE_GCONF_DISPLAY_ALS_ENABLED_PATH,
+			       use_als_gconf_cb,
+			       &use_als_gconf_id);
+	mce_gconf_get_bool(MCE_GCONF_DISPLAY_ALS_ENABLED_PATH,
+			   &use_als_flag);
 
-	/* ALS enabled */
-	/* Since we've set a default, error handling is unnecessary */
-	(void)mce_gconf_get_bool(MCE_GCONF_DISPLAY_ALS_ENABLED_PATH,
-				 &als_enabled);
+	/* Color profile setting */
+	mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
+			       MCE_GCONF_DISPLAY_COLOR_PROFILE_PATH,
+			       color_profile_gconf_cb,
+			       &color_profile_gconf_id);
+	if( init_color_profiles() )
+		init_current_color_profile();
 
-	if (mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-				   MCE_GCONF_DISPLAY_ALS_ENABLED_PATH,
-				   als_gconf_cb,
-				   &als_enabled_gconf_cb_id) == FALSE)
-		goto EXIT;
+	rethink_als_status();
 
-	(void)get_als_type();
-
-	if ((display_cpa_profile_static != NULL) &&
-	    (init_display_id() != FALSE) &&
-	    (init_color_profiles() != FALSE)) {
-		mce_log(LL_DEBUG, "Using color phase profiles for revision %s",
-			display_id);
-
-		if (init_current_color_profile() == FALSE)
-			mce_log(LL_WARN, "Color profile init failed");
-
-		if (current_color_profile_id != NULL)
-			save_color_profile(current_color_profile_id);
-
-		if (mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-					   MCE_GCONF_DISPLAY_COLOR_PROFILE_PATH,
-					   cp_gconf_cb,
-					   &cp_setting_gconf_cb_id) == FALSE)
-			goto EXIT;
-	}
-
-	/* Do we have an ALS at all?
-	 * If so, make an initial read
-	 */
-	if (get_als_type() != ALS_TYPE_NONE) {
-		/* Initialise the median filter */
-		if (als_median_filter_init() == FALSE) {
-			goto EXIT;
-		}
-
-		/* Calibrate the ALS */
-		calibrate_als();
-
-		/* Initial read of lux value from ALS */
-		if ((als_lux = als_read_value_filtered()) >= 0) {
-			/* Set initial polling interval */
-			als_poll_interval = ALS_DISPLAY_ON_POLL_FREQ;
-
-			/* Setup ALS polling */
-			setup_als_poll_timer();
-		} else {
-			/* Reading from the ALS failed */
-			als_lux = -1;
-			als_available = FALSE;
-			als_enabled = FALSE;
-		}
-	} else {
-		/* We don't have an ALS */
-		als_lux = -1;
-		als_available = FALSE;
-		als_enabled = FALSE;
-	}
-
-	/* Re-filter the brightness if we got an ALS-reading */
-	if (als_lux != -1) {
-		(void)execute_datapipe(&display_brightness_pipe, NULL,
-				       USE_CACHE, DONT_CACHE_INDATA);
-		(void)execute_datapipe(&led_brightness_pipe, NULL,
-				       USE_CACHE, DONT_CACHE_INDATA);
-		(void)execute_datapipe(&key_backlight_pipe, NULL,
-				       USE_CACHE, DONT_CACHE_INDATA);
-	}
-
-	/* Get configuration options */
-	str = mce_conf_get_string(MCE_CONF_ALS_GROUP,
-				  MCE_CONF_STEP_DOWN_POLICY,
-				  "");
-
-	brightness_step_down_policy = mce_translate_string_to_int_with_default(brightness_step_policy_translation, str, DEFAULT_BRIGHTNESS_STEP_DOWN_POLICY);
-	g_free(str);
-
-EXIT:
 	return NULL;
 }
 
@@ -2836,19 +1139,6 @@ void g_module_unload(GModule *module)
 {
 	(void)module;
 
-	display_cpa_profile_dynamic = NULL;
-	current_color_profile_id = NULL;
-	free_color_profiles(display_cpa_profiles);
-	display_cpa_profiles = NULL;
-
-	g_free(display_id);
-	display_id = NULL;
-
-	als_enabled = FALSE;
-
-	/* Close the ALS file pointer */
-	(void)mce_close_file(als_lux_path, &als_fp);
-
 	/* Remove triggers/filters from datapipes */
 	remove_output_trigger_from_datapipe(&display_state_pipe,
 					    display_state_trigger);
@@ -2859,9 +1149,6 @@ void g_module_unload(GModule *module)
 	remove_filter_from_datapipe(&display_brightness_pipe,
 				    display_brightness_filter);
 
-	/* Remove all timer sources */
-	cancel_als_poll_timer();
-	cancel_brightness_delay_timer();
-
+	quit_color_profiles();
 	return;
 }
