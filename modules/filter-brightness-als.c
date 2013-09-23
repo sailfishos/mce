@@ -479,12 +479,7 @@ static void rethink_als_status(void)
 	}
 	else {
 		mce_sensorfw_als_disable();
-#if 0
-		/* Forget ALS state. This will cause the display
-		 * wakeup to happen via non-adjusted brightness.
-		 * Which may or may not be desirable. */
-		als_lux_latest = -1;
-#endif
+
 		/* Clear thresholds so that the next reading from
 		 * als will not be affected by previous state */
 		als_filter_clear_threshold(&lut_display);
