@@ -1627,8 +1627,8 @@ static void display_brightness_trigger(gconstpointer data)
 	gint new_brightness = GPOINTER_TO_INT(data) & 0xff;
 	gint new_hbm_level = (GPOINTER_TO_INT(data) >> 8) & 0xff;
 
-	mce_log(LL_DEBUG, "new_brightness=%d, new_hbm_level=%d",
-		new_brightness, new_hbm_level);
+	mce_log(LL_INFO, "hbm_level=%d, brightness=%d",
+		new_hbm_level, new_brightness);
 
 	/* If the pipe is choked, ignore the value */
 	if (new_brightness == 0)
@@ -5452,6 +5452,12 @@ const gchar *g_module_check_init(GModule *module)
 	set_brightness = real_disp_brightness * 100 / 5;
 	set_brightness = set_brightness * maximum_display_brightness / 100;
 	mce_log(LL_INFO, "set_brightness = %d", set_brightness);
+
+	/* Then execute through the brightness pipe too */
+	execute_datapipe(&display_brightness_pipe,
+			 GINT_TO_POINTER(real_disp_brightness),
+			 USE_INDATA, CACHE_INDATA);
+
 
 	/* Use the current brightness as cached brightness on startup,
 	 * and fade from that value
