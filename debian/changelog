@@ -1,3 +1,9 @@
+mce (1.15.2) unstable; urgency=low
+
+ * [mce] Set target brightness before starting frame buffer resume
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 24 Sep 2013 18:05:50 +0300
+
 mce (1.15.1) unstable; urgency=low
 
  * [mce] Read current values when enabling ALS/PS
