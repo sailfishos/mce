@@ -1,3 +1,10 @@
+mce (1.15.1) unstable; urgency=low
+
+ * [mce] Read current values when enabling ALS/PS
+ * [mce] Brightness filtering module supports sensorfw only
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 24 Sep 2013 08:34:50 +0300
+
 mce (1.15.0) unstable; urgency=low
 
  * [mce] Use sensorfw for ambient light and proximity sensor input
