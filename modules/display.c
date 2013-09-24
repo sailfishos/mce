@@ -4241,15 +4241,40 @@ static void display_state_pre_trigger(display_state_t prev_state,
 		display_state_pipe.cached_data = GINT_TO_POINTER(MCE_DISPLAY_POWER_UP);
 	}
 
-	/* When starting ON -> OFF transition, set brightness to zero */
-	switch( display_state ) {
-	case MCE_DISPLAY_OFF:
-	case MCE_DISPLAY_LPM_OFF:
-		if( prev_state != MCE_DISPLAY_OFF )
-			display_blank();
-		break;
-	default:
-		break;
+	if( prev_state != MCE_DISPLAY_OFF ) {
+		/* Start of ON -> OFF transition: set zero brightness */
+		switch( display_state ) {
+		case MCE_DISPLAY_OFF:
+		case MCE_DISPLAY_LPM_OFF:
+			if( prev_state != MCE_DISPLAY_OFF )
+				display_blank();
+			break;
+		default:
+			// NOP
+			break;
+		}
+	}
+	else {
+		/* Start of OFF -> ON transition: set non-zero brightness
+		 *
+		 * Note: These are done directly, book keeping is handled
+		 *       after the resume and lipstick ipc have been done. */
+		switch( display_state ) {
+		case MCE_DISPLAY_DIM:
+			write_brightness_value(dim_brightness);
+			break;
+		case MCE_DISPLAY_ON:
+			write_brightness_value(set_brightness);
+			break;
+		default:
+		case MCE_DISPLAY_LPM_ON:
+		case MCE_DISPLAY_LPM_OFF:
+			write_brightness_value(1);
+			break;
+		case MCE_DISPLAY_OFF:
+			// NOP
+			break;
+		}
 	}
 }
 
