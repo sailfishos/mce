@@ -925,7 +925,7 @@ int main(int argc, char **argv)
 	setup_datapipe(&display_state_req_pipe, READ_WRITE, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(MCE_DISPLAY_UNDEF));
 	setup_datapipe(&display_brightness_pipe, READ_WRITE, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(0));
+		       0, GINT_TO_POINTER(3));
 	setup_datapipe(&led_brightness_pipe, READ_WRITE, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(0));
 	setup_datapipe(&led_pattern_activate_pipe, READ_ONLY, FREE_CACHE,
