@@ -2289,17 +2289,17 @@ static void process_proximity_state(void)
 	/* If there's no incoming or active call, or the audio isn't
 	 * routed to the handset or headset, or if the slide is open, exit
 	 */
-
-	if (((((call_state != CALL_STATE_RINGING) ||
-	       (proximity_lock_when_ringing != TRUE)) &&
-	      (call_state != CALL_STATE_ACTIVE)) ||
-             ((audio_route != AUDIO_ROUTE_HANDSET) &&
-	      ((audio_route != AUDIO_ROUTE_SPEAKER) ||
-	       (call_state != CALL_STATE_RINGING)))) ||
-	    ((proximity_lock_with_open_slide == FALSE) &&
-	     (slide_state == COVER_OPEN))) {
+	if( slide_state == COVER_OPEN && !proximity_lock_with_open_slide )
 		goto EXIT;
-	}
+
+	if( !((call_state == CALL_STATE_ACTIVE) ||
+	      (call_state == CALL_STATE_RINGING && proximity_lock_when_ringing)))
+		goto EXIT;
+
+	if( !((audio_route == AUDIO_ROUTE_HANDSET) ||
+	      (audio_route == AUDIO_ROUTE_UNDEF) ||
+	      (audio_route == AUDIO_ROUTE_SPEAKER && call_state == CALL_STATE_RINGING)))
+		goto EXIT;
 
 	switch (proximity_sensor_state) {
 	case COVER_OPEN:
