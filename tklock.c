@@ -2698,6 +2698,15 @@ static void display_state_trigger(gconstpointer data)
 		    (old_display_state == MCE_DISPLAY_LPM_OFF) ||
 		    (old_display_state == MCE_DISPLAY_LPM_ON)) {
 			ts_kp_enable_policy();
+
+			/* If visual tklock is enabled, reset the timeout,
+			 * and open the visual tklock
+			 */
+			if (is_visual_tklock_enabled() == TRUE) {
+				open_tklock_ui(TKLOCK_ENABLE_VISUAL);
+				saved_tklock_state = MCE_TKLOCK_VISUAL_STATE;
+				setup_tklock_visual_blank_timeout();
+			}
 		}
 
 		cancel_pocket_mode_timeout();
@@ -2711,18 +2720,6 @@ static void display_state_trigger(gconstpointer data)
 
 EXIT:
 	return;
-}
-
-void mce_tklock_show_tklock_ui(void)
-{
-	/* If visual tklock is enabled, reset the timeout,
-		* and open the visual tklock
-		*/
-	if (is_visual_tklock_enabled() == TRUE) {
-		open_tklock_ui(TKLOCK_ENABLE_VISUAL);
-		saved_tklock_state = MCE_TKLOCK_VISUAL_STATE;
-		setup_tklock_visual_blank_timeout();
-	}
 }
 
 /**
@@ -3305,9 +3302,8 @@ gboolean mce_tklock_init(void)
 
 	/* Touchscreen/keypad autolock */
 	/* Since we've set a default, error handling is unnecessary */
-	/*(void)mce_gconf_get_bool(MCE_GCONF_TK_AUTOLOCK_ENABLED_PATH,
-				 &tk_autolock_enabled);*/
-	tk_autolock_enabled = TRUE;
+	mce_gconf_get_bool(MCE_GCONF_TK_AUTOLOCK_ENABLED_PATH,
+			   &tk_autolock_enabled);
 
 	/* Touchscreen/keypad autolock enabled/disabled */
 	if (mce_gconf_notifier_add(MCE_GCONF_LOCK_PATH,

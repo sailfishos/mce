@@ -184,6 +184,4 @@
 gboolean mce_tklock_init(void);
 void mce_tklock_exit(void);
 
-void mce_tklock_show_tklock_ui(void);
-
 #endif /* _TKLOCK_H_ */
