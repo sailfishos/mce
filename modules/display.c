@@ -3821,9 +3821,20 @@ static guint suspend_policy_id = 0;
 static int suspend_allow_state(void)
 {
 	system_state_t system_state = datapipe_get_gint(system_state_pipe);
+	call_state_t call_state = datapipe_get_gint(call_state_pipe);
 
 	bool block_late  = false;
 	bool block_early = false;
+
+	/* no late suspend when incoming / active call */
+	switch( call_state ) {
+	case CALL_STATE_RINGING:
+	case CALL_STATE_ACTIVE:
+		block_late = true;
+		break;
+	default:
+		break;
+	}
 
 	/* no late suspend in ACTDEAD etc */
 	if( system_state != MCE_STATE_USER )
@@ -4401,6 +4412,7 @@ static void call_state_trigger(gconstpointer data)
 	(void)data;
 
 	update_blanking_inhibit(FALSE);
+	stm_rethink_schedule();
 }
 
 /**
