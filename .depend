@@ -603,6 +603,7 @@ modules/proximity.o:\
 	datapipe.h\
 	datapipe.h\
 	mce-dbus.h\
+	mce-gconf.h\
 	mce-hal.h\
 	mce-io.h\
 	mce-log.h\
@@ -616,6 +617,7 @@ modules/proximity.pic.o:\
 	datapipe.h\
 	datapipe.h\
 	mce-dbus.h\
+	mce-gconf.h\
 	mce-hal.h\
 	mce-io.h\
 	mce-log.h\
@@ -708,6 +710,7 @@ tools/mcetool.o:\
 	modules/display.h\
 	modules/filter-brightness-als.h\
 	modules/powersavemode.h\
+	modules/proximity.h\
 	systemui/dbus-names.h\
 	systemui/tklock-dbus-names.h\
 	tklock.h\
@@ -718,6 +721,7 @@ tools/mcetool.pic.o:\
 	modules/display.h\
 	modules/filter-brightness-als.h\
 	modules/powersavemode.h\
+	modules/proximity.h\
 	systemui/dbus-names.h\
 	systemui/tklock-dbus-names.h\
 	tklock.h\

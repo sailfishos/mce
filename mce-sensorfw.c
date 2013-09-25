@@ -644,6 +644,8 @@ static void mce_sensorfw_als_read_cb(DBusPendingCall *pc, void *aptr)
 	dbus_message_iter_get_basic(&rec, &lux);
 	dbus_message_iter_next(&rec);
 
+	mce_log(LL_INFO, "initial ALS value = %u", lux);
+
 	if( als_notify )
 		als_notify(lux);
 	else
@@ -871,6 +873,8 @@ static void mce_sensorfw_ps_read_cb(DBusPendingCall *pc, void *aptr)
 
 	dbus_message_iter_get_basic(&rec, &dst);
 	dbus_message_iter_next(&rec);
+
+	mce_log(LL_INFO, "initial PS value = %u", dst);
 
 	if( ps_notify )
 		ps_notify(dst > 0);

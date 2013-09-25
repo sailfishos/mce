@@ -32,6 +32,7 @@
 #include "mce.h"
 #include "proximity.h"
 
+#include "mce-gconf.h"
 #include "mce-io.h"			/* mce_read_chunk_from_file(),
 					 * mce_write_string_to_file(),
 					 * mce_write_number_string_to_file(),
@@ -69,6 +70,12 @@
 
 #ifdef ENABLE_SENSORFW
 # include "mce-sensorfw.h"
+#endif
+
+#if 0 // DEBUG: make all logging from this module "critical"
+# undef mce_log
+# define mce_log(LEV, FMT, ARGS...) \
+	mce_log_file(LL_CRIT, __FILE__, __FUNCTION__, FMT , ## ARGS)
 #endif
 
 /** Request enabling of proximity sensor; reference counted */
@@ -161,11 +168,25 @@ static call_state_t call_state = CALL_STATE_INVALID;
 /** Cached alarm UI state */
 static alarm_ui_state_t alarm_ui_state = MCE_ALARM_UI_INVALID_INT32;
 
+/** Cached display state */
+static display_state_t display_state = MCE_DISPLAY_UNDEF;
+
+/** Cached submode state */
+static submode_t submode = MCE_NORMAL_SUBMODE;
+
 /** External reference count for proximity sensor */
 static guint ps_external_refcount = 0;
 
 /** List of monitored proximity sensor owners */
 static GSList *proximity_sensor_owner_monitor_list = NULL;
+
+/** Proximity threshold for the Dipro proximity sensor */
+static hysteresis_t dipro_ps_threshold_dipro = {
+	/** Rising hysteresis threshold for Dipro */
+	.threshold_rising = 80,
+	/** Falling hysteresis threshold for Dipro */
+	.threshold_falling = 70,
+};
 
 /**
  * Get the proximity sensor type
@@ -602,7 +623,7 @@ static void enable_proximity_monitor(void)
 #ifdef ENABLE_SENSORFW
 	case PS_TYPE_SENSORFW:
 		mce_sensorfw_ps_set_notify(ps_sensorfw_iomon_cb);
-		mce_sensorfw_ps_enable();
+		enable_proximity_sensor();
 		goto EXIT;
 #endif
 #ifdef ENABLE_HYBRIS
@@ -687,13 +708,20 @@ EXIT:
 	return;
 }
 
+/** Configuration value for use proximity sensor */
+static gboolean use_ps_conf_value = TRUE;
+
+/** Configuration change id for use proximity sensor */
+static guint use_ps_conf_id = 0;
+
 /**
  * Update the proximity monitoring
  */
 static void update_proximity_monitor(void)
 {
-	display_state_t display_state = datapipe_get_gint(display_state_pipe);
-	submode_t submode = mce_get_submode_int32();
+	static gboolean old_enable = FALSE;
+
+	gboolean enable = FALSE;
 
 	if (get_ps_type() == PS_TYPE_NONE)
 		goto EXIT;
@@ -708,11 +736,53 @@ static void update_proximity_monitor(void)
 	    (call_state == CALL_STATE_ACTIVE) ||
 	    (alarm_ui_state == MCE_ALARM_UI_VISIBLE_INT32) ||
 	    (alarm_ui_state == MCE_ALARM_UI_RINGING_INT32)) {
+		enable = TRUE;
+	}
+
+	if( !use_ps_conf_value )
+		enable = FALSE;
+
+	if( old_enable == enable )
+		goto EXIT;
+
+	if( (old_enable = enable) ) {
 		enable_proximity_monitor();
 	} else {
 		disable_proximity_monitor();
 	}
 
+EXIT:
+	return;
+}
+
+/** GConf callback for use proximity sensor setting
+ *
+ * @param gcc   (not used)
+ * @param id    Connection ID from gconf_client_notify_add()
+ * @param entry The modified GConf entry
+ * @param data  (not used)
+ */
+static void use_ps_conf_cb(GConfClient *const gcc, const guint id,
+			   GConfEntry *const entry, gpointer const data)
+{
+	(void)gcc; (void)data;
+
+	const GConfValue *gcv;
+
+	if( id != use_ps_conf_id ) {
+		mce_log(LL_WARN, "Spurious GConf value received; confused!");
+		goto EXIT;
+	}
+
+	if( !(gcv = gconf_entry_get_value(entry)) ) {
+		// config removed -> use proximity sensor
+		use_ps_conf_value = TRUE;
+	}
+	else {
+		use_ps_conf_value = gconf_value_get_bool(gcv);
+	}
+
+	update_proximity_monitor();
 EXIT:
 	return;
 }
@@ -748,11 +818,21 @@ static void alarm_ui_state_trigger(gconstpointer const data)
  */
 static void display_state_trigger(gconstpointer data)
 {
-	(void)data;
+	display_state = GPOINTER_TO_INT(data);
 
 	update_proximity_monitor();
 }
 
+/** Handle submode change
+ *
+ * @param data The submode stored in a pointer
+ */
+static void submode_trigger(gconstpointer data)
+{
+	submode = GPOINTER_TO_INT(data);
+
+	update_proximity_monitor();
+}
 /**
  * D-Bus callback used for reference counting proximity sensor enabling;
  * if the requesting process exits, immediately decrease the refcount
@@ -937,6 +1017,12 @@ const gchar *g_module_check_init(GModule *module)
 {
 	(void)module;
 
+	/* Get initial state of datapipes */
+	call_state = datapipe_get_gint(call_state_pipe);
+        alarm_ui_state = datapipe_get_gint(alarm_ui_state_pipe);
+        display_state = datapipe_get_gint(display_state_pipe);
+        submode = datapipe_get_gint(submode_pipe);
+
 	/* Append triggers/filters to datapipes */
 	append_input_trigger_to_datapipe(&call_state_pipe,
 					 call_state_trigger);
@@ -944,6 +1030,8 @@ const gchar *g_module_check_init(GModule *module)
 					 alarm_ui_state_trigger);
 	append_output_trigger_to_datapipe(&display_state_pipe,
 					  display_state_trigger);
+	append_output_trigger_to_datapipe(&submode_pipe,
+					  submode_trigger);
 
 	/* req_proximity_sensor_enable */
 	if (mce_dbus_handler_add(MCE_REQUEST_IF,
@@ -961,6 +1049,14 @@ const gchar *g_module_check_init(GModule *module)
 				 proximity_sensor_disable_req_dbus_cb) == NULL)
 		goto EXIT;
 
+	/* PS enabled setting */
+	mce_gconf_notifier_add(MCE_GCONF_PROXIMITY_PATH,
+			       MCE_GCONF_PROXIMITY_PS_ENABLED_PATH,
+			       use_ps_conf_cb,
+			       &use_ps_conf_id);
+	mce_gconf_get_bool(MCE_GCONF_PROXIMITY_PS_ENABLED_PATH,
+			   &use_ps_conf_value);
+
 	if (get_ps_type() != PS_TYPE_NONE) {
 		/* Calibrate the proximity sensor */
 		calibrate_ps();
@@ -971,6 +1067,8 @@ const gchar *g_module_check_init(GModule *module)
 
 	ps_external_refcount = 0;
 
+	/* enable/disable sensor based on initial conditions */
+	update_proximity_monitor();
 EXIT:
 	return NULL;
 }
@@ -992,6 +1090,8 @@ void g_module_unload(GModule *module)
 					   alarm_ui_state_trigger);
 	remove_input_trigger_from_datapipe(&call_state_pipe,
 					   call_state_trigger);
+	remove_output_trigger_from_datapipe(&submode_pipe,
+					    submode_trigger);
 
 	/* Unregister I/O monitors */
 	mce_unregister_io_monitor(proximity_sensor_iomon_id);

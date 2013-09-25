@@ -42,6 +42,7 @@
 #include "../modules/display.h"
 #include "../modules/powersavemode.h"
 #include "../modules/filter-brightness-als.h"
+#include "../modules/proximity.h"
 #include "../systemui/tklock-dbus-names.h"
 #include "../systemui/dbus-names.h"
 
@@ -1969,6 +1970,33 @@ static void xmce_get_adaptive_dimming_time(void)
 }
 
 /* ------------------------------------------------------------------------- *
+ * ps
+ * ------------------------------------------------------------------------- */
+
+/* Set ps use mode
+ *
+ * @param args string suitable for interpreting as enabled/disabled
+ */
+static void xmce_set_ps_mode(const char *args)
+{
+        debugf("%s(%s)\n", __FUNCTION__, args);
+        gboolean val = xmce_parse_enabled(args);
+        mcetool_gconf_set_bool(MCE_GCONF_PROXIMITY_PS_ENABLED_PATH, val);
+}
+
+/** Get current ps mode from mce and print it out
+ */
+static void xmce_get_ps_mode(void)
+{
+        gboolean val = 0;
+        char txt[32] = "unknown";
+
+        if( mcetool_gconf_get_bool(MCE_GCONF_PROXIMITY_PS_ENABLED_PATH, &val) )
+                snprintf(txt, sizeof txt, "%s", val ? "enabled" : "disabled");
+        printf("%-"PAD1"s %s\n", "Use ps mode:", txt);
+}
+
+/* ------------------------------------------------------------------------- *
  * als
  * ------------------------------------------------------------------------- */
 
@@ -2575,6 +2603,7 @@ static void xmce_get_status(void)
         xmce_get_doubletap_mode();
         xmce_get_low_power_mode();
         xmce_get_als_mode();
+        xmce_get_ps_mode();
         xmce_get_dim_timeouts();
         xmce_get_suspend_policy();
         xmce_get_cpu_scaling_governor();
@@ -2740,6 +2769,9 @@ EXTRA"  valid values are: 1-5\n"
 PARAM"-g, --set-als-mode=<enabled|disabled>\n"
 EXTRA"set the als mode; valid modes are:\n"
 EXTRA"  'enabled' and 'disabled'\n"
+PARAM"-u, --set-ps-mode=<enabled|disabled>\n"
+EXTRA"set the ps mode; valid modes are:\n"
+EXTRA"  'enabled' and 'disabled'\n"
 PARAM"-a, --get-color-profile-ids\n"
 EXTRA"get available color profile ids\n"
 PARAM"-A, --set-color-profile=ID\n"
@@ -2851,7 +2883,7 @@ PROG_NAME" v"G_STRINGIFY(PRG_VERSION)"\n"
 ;
 
 // Unused short options left ....
-// - - - - - - - - - - - - - - - - - - - - u - w x - z
+// - - - - - - - - - - - - - - - - - - - - - - w x - z
 // - - - - - - - - - - - - - - - - - - - - - - W X - Z
 
 const char OPT_S[] =
@@ -2899,6 +2931,7 @@ const char OPT_S[] =
 "m:"  // --tklock-callback
 "q:"  // --tklock-open
 "Q"   // --tklock-close
+"u:"  // --set-ps-mode
 #ifdef ENABLE_DOUBLETAP_EMULATION
 "i:"  // --set-fake-doubletap
 #endif
@@ -2942,6 +2975,7 @@ struct option const OPT_L[] =
         { "set-adaptive-dimming-time", 1, 0, 'J' }, // xmce_set_adaptive_dimming_time()
         { "set-low-power-mode",        1, 0, 'E' }, // xmce_set_low_power_mode()
         { "set-als-mode",              1, 0, 'g' }, // xmce_set_als_mode()
+        { "set-ps-mode",               1, 0, 'u' }, // xmce_set_ps_mode()
         { "set-dim-timeout",           1, 0, 'G' }, // xmce_set_dim_timeout()
         { "set-never-blank",           1, 0, 'j' }, // xmce_set_never_blank()
         { "set-blank-timeout",         1, 0, 'o' }, // xmce_set_blank_timeout()
@@ -3022,6 +3056,7 @@ int main(int argc, char **argv)
 #endif
                 case 'b': xmce_set_display_brightness(optarg);    break;
                 case 'g': xmce_set_als_mode(optarg);              break;
+                case 'u': xmce_set_ps_mode(optarg);               break;
 
                 case 'a': xmce_get_color_profile_ids();           break;
                 case 'A': xmce_set_color_profile(optarg);         break;

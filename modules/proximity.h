@@ -91,15 +91,13 @@ typedef struct {
 	guint threshold_falling;
 } hysteresis_t;
 
-/** Proximity threshold for the Dipro proximity sensor */
-static hysteresis_t dipro_ps_threshold_dipro = {
-	/** Rising hysteresis threshold for Dipro */
-	.threshold_rising = 80,
-	/** Falling hysteresis threshold for Dipro */
-	.threshold_falling = 70,
-};
-
 /** Sysinfo identifier for the proximity sensor calibration values */
 #define PS_CALIB_IDENTIFIER		"/device/ps_calib"
+
+
+/** Path to the GConf settings for the proximity */
+#define MCE_GCONF_PROXIMITY_PATH		"/system/osso/dsm/proximity"
+/** Path to the ALS enabled GConf setting */
+#define MCE_GCONF_PROXIMITY_PS_ENABLED_PATH	MCE_GCONF_PROXIMITY_PATH "/ps_enabled"
 
 #endif /* _PROXIMITY_H_ */
