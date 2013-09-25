@@ -577,7 +577,7 @@ mce_sensorfw_stop_sensor(const char *id, const char *iface, int sessionid)
 	res = dbus_send(SENSORFW_SERVICE,
 			path,
 			iface,
-			"start",
+			"stop",
 			NULL,
 			DBUS_TYPE_INT32, &sid,
 			DBUS_TYPE_INVALID);
