@@ -2448,6 +2448,10 @@ static gboolean renderer_set_state(renderer_state_t state)
 		RENDERER_SET_UPDATES_ENABLED,
 		state ? "ENABLE" : "DISABLE");
 
+	/* Mark the state at lipstick side as unknown until we get
+	 * either ack or error reply */
+	renderer_ui_state = RENDERER_UNKNOWN;
+
 	if( !(bus = dbus_connection_get()) )
 		goto EXIT;
 
@@ -2472,9 +2476,6 @@ static gboolean renderer_set_state(renderer_state_t state)
 					  renderer_set_state_cb,
 					  GINT_TO_POINTER(state), 0) )
 		goto EXIT;
-
-	/* The state is unknown until we get eiter ack or error */
-	renderer_ui_state = RENDERER_UNKNOWN;
 
 	/* Success */
 	res = TRUE;
@@ -4560,7 +4561,11 @@ typedef enum
 
 static guint stm_rethink_id = 0;
 
+/** Does "org.nemomobile.lipstick" have owner on system bus */
 static bool stm_lipstick_on_dbus = false;
+
+/** A setUpdatesEnabled(true) call needs to be made when possible */
+static bool stm_enable_rendering_needed = true;
 
 static display_state_t stm_curr = MCE_DISPLAY_UNDEF;
 static display_state_t stm_next = MCE_DISPLAY_UNDEF;
@@ -4687,6 +4692,10 @@ static void stm_lipstick_name_owner_changed(const char *name, bool has_owner)
 {
 	(void)name;
 	if( stm_lipstick_on_dbus != has_owner ) {
+		/* set setUpdatesEnabled(true) needs to be called flag */
+		stm_enable_rendering_needed = true;
+
+		/* update lipstick runing state */
 		stm_lipstick_on_dbus = has_owner;
 		mce_log(LL_WARN, "lipstick %s system bus",
 			has_owner ? "is on" : "dropped from");
@@ -4811,9 +4820,15 @@ static void stm_renderer_enable(void)
 		renderer_ui_state = RENDERER_ENABLED;
 		mce_log(LL_NOTICE, "starting renderer - skipped");
 	}
-	else if( renderer_ui_state != RENDERER_ENABLED ) {
+	else if( renderer_ui_state != RENDERER_ENABLED ||
+		 stm_enable_rendering_needed ) {
 		mce_log(LL_NOTICE, "starting renderer");
 		renderer_set_state(RENDERER_ENABLED);
+		/* clear setUpdatesEnabled(true) needs to be called flag */
+		stm_enable_rendering_needed = false;
+	}
+	else {
+		mce_log(LL_NOTICE, "renderer already enabled");
 	}
 }
 
@@ -4875,6 +4890,11 @@ static void stm_rethink_step(void)
 		break;
 
 	case STM_STAY_POWER_ON:
+		if( stm_enable_rendering_needed && stm_lipstick_on_dbus ) {
+			mce_log(LL_NOTICE, "handling lipstick startup");
+			stm_trans(STM_LEAVE_POWER_ON);
+			break;
+		}
 		if( stm_target_pull_change() )
 			stm_trans(STM_LEAVE_POWER_ON);
 		break;
