@@ -469,35 +469,25 @@ modules/displaymeego.pic.o:\
 modules/filter-brightness-als.o:\
 	modules/filter-brightness-als.c\
 	datapipe.h\
-	datapipe.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-gconf.h\
-	mce-hal.h\
 	mce-io.h\
-	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce.h\
-	median_filter.h\
-	mce-hybris.h\
 	modules/filter-brightness-als.h\
 
 modules/filter-brightness-als.pic.o:\
 	modules/filter-brightness-als.c\
 	datapipe.h\
-	datapipe.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-gconf.h\
-	mce-hal.h\
 	mce-io.h\
-	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce.h\
-	median_filter.h\
-	mce-hybris.h\
 	modules/filter-brightness-als.h\
 
 modules/filter-brightness-simple.o:\
