@@ -421,7 +421,6 @@ modules/display.o:\
 	libwakelock.h\
 	mce-hybris.h\
 	modules/display.h\
-	tklock.h\
 
 modules/display.pic.o:\
 	modules/display.c\
@@ -438,7 +437,6 @@ modules/display.pic.o:\
 	libwakelock.h\
 	mce-hybris.h\
 	modules/display.h\
-	tklock.h\
 
 modules/displaymeego.o:\
 	modules/displaymeego.c\
