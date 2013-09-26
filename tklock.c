@@ -2215,7 +2215,7 @@ static void process_proximity_state(void)
 	cover_state_t slide_state = datapipe_get_gint(keyboard_slide_pipe);
 	cover_state_t proximity_sensor_state =
 				datapipe_get_gint(proximity_sensor_pipe);
-	/* audio_route_t audio_route = datapipe_get_gint(audio_route_pipe); */
+	audio_route_t audio_route = datapipe_get_gint(audio_route_pipe);
 	alarm_ui_state_t alarm_ui_state =
 				datapipe_get_gint(alarm_ui_state_pipe);
 	call_state_t call_state = datapipe_get_gint(call_state_pipe);
@@ -2288,23 +2288,18 @@ static void process_proximity_state(void)
 
 	/* If there's no incoming or active call, or the audio isn't
 	 * routed to the handset or headset, or if the slide is open, exit
-         *
-         * XXX: Audio routing has been taken out from the condition, as mce
-         * does not currently get the information anywhere.
-         * Condition should be re-enabled once audio routing information
-         * is available.
 	 */
-
-	if (((((call_state != CALL_STATE_RINGING) ||
-	       (proximity_lock_when_ringing != TRUE)) &&
-	      (call_state != CALL_STATE_ACTIVE)) /* ||
-             ((audio_route != AUDIO_ROUTE_HANDSET) &&
-	      ((audio_route != AUDIO_ROUTE_SPEAKER) ||
-	       (call_state != CALL_STATE_RINGING)))*/) ||
-	    ((proximity_lock_with_open_slide == FALSE) &&
-	     (slide_state == COVER_OPEN))) {
+	if( slide_state == COVER_OPEN && !proximity_lock_with_open_slide )
 		goto EXIT;
-	}
+
+	if( !((call_state == CALL_STATE_ACTIVE) ||
+	      (call_state == CALL_STATE_RINGING && proximity_lock_when_ringing)))
+		goto EXIT;
+
+	if( !((audio_route == AUDIO_ROUTE_HANDSET) ||
+	      (audio_route == AUDIO_ROUTE_UNDEF) ||
+	      (audio_route == AUDIO_ROUTE_SPEAKER && call_state == CALL_STATE_RINGING)))
+		goto EXIT;
 
 	switch (proximity_sensor_state) {
 	case COVER_OPEN:
@@ -2698,6 +2693,15 @@ static void display_state_trigger(gconstpointer data)
 		    (old_display_state == MCE_DISPLAY_LPM_OFF) ||
 		    (old_display_state == MCE_DISPLAY_LPM_ON)) {
 			ts_kp_enable_policy();
+
+			/* If visual tklock is enabled, reset the timeout,
+			 * and open the visual tklock
+			 */
+			if (is_visual_tklock_enabled() == TRUE) {
+				open_tklock_ui(TKLOCK_ENABLE_VISUAL);
+				saved_tklock_state = MCE_TKLOCK_VISUAL_STATE;
+				setup_tklock_visual_blank_timeout();
+			}
 		}
 
 		cancel_pocket_mode_timeout();
@@ -2711,18 +2715,6 @@ static void display_state_trigger(gconstpointer data)
 
 EXIT:
 	return;
-}
-
-void mce_tklock_show_tklock_ui(void)
-{
-	/* If visual tklock is enabled, reset the timeout,
-		* and open the visual tklock
-		*/
-	if (is_visual_tklock_enabled() == TRUE) {
-		open_tklock_ui(TKLOCK_ENABLE_VISUAL);
-		saved_tklock_state = MCE_TKLOCK_VISUAL_STATE;
-		setup_tklock_visual_blank_timeout();
-	}
 }
 
 /**
@@ -3305,9 +3297,8 @@ gboolean mce_tklock_init(void)
 
 	/* Touchscreen/keypad autolock */
 	/* Since we've set a default, error handling is unnecessary */
-	/*(void)mce_gconf_get_bool(MCE_GCONF_TK_AUTOLOCK_ENABLED_PATH,
-				 &tk_autolock_enabled);*/
-	tk_autolock_enabled = TRUE;
+	mce_gconf_get_bool(MCE_GCONF_TK_AUTOLOCK_ENABLED_PATH,
+			   &tk_autolock_enabled);
 
 	/* Touchscreen/keypad autolock enabled/disabled */
 	if (mce_gconf_notifier_add(MCE_GCONF_LOCK_PATH,
