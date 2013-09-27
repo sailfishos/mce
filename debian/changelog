@@ -1,36 +1,36 @@
 mce (1.15.3) unstable; urgency=low
 
- * [mce] Sync setUpdatesEnabled() state on mce/lipstick restart
- * [mce] Make proximity sensor usage optional
- * [mce] Assume unknown audio route equals handset for proximity blanking
- * [mce] Block late suspend while there is incoming/active call
+  * [mce] Sync setUpdatesEnabled() state on mce/lipstick restart
+  * [mce] Make proximity sensor usage optional
+  * [mce] Assume unknown audio route equals handset for proximity blanking
+  * [mce] Block late suspend while there is incoming/active call
 
  -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 26 Sep 2013 10:07:33 +0300
 
 mce (1.15.2) unstable; urgency=low
 
- * [mce] Set target brightness before starting frame buffer resume
+  * [mce] Set target brightness before starting frame buffer resume
 
  -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 24 Sep 2013 18:05:50 +0300
 
 mce (1.15.1) unstable; urgency=low
 
- * [mce] Read current values when enabling ALS/PS
- * [mce] Brightness filtering module supports sensorfw only
+  * [mce] Read current values when enabling ALS/PS
+  * [mce] Brightness filtering module supports sensorfw only
 
  -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 24 Sep 2013 08:34:50 +0300
 
 mce (1.15.0) unstable; urgency=low
 
- * [mce] Use sensorfw for ambient light and proximity sensor input
+  * [mce] Use sensorfw for ambient light and proximity sensor input
 
  -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 19 Sep 2013 15:08:15 +0300
 
 mce (1.14.1) unstable; urgency=low
 
- * [mcetool] Options for tklock simulation and short/long/quick help added
- * [mce] Fixes to display/suspend state machine
- * [mce] A D-Bus signal is sent on configuration value change
+  * [mcetool] Options for tklock simulation and short/long/quick help added
+  * [mce] Fixes to display/suspend state machine
+  * [mce] A D-Bus signal is sent on configuration value change
 
  -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 04 Sep 2013 13:48:47 +0300
 
@@ -418,7 +418,7 @@ mce (1.10.128) unstable; urgency=low
 
 mce (1.10.127) unstable; urgency=low
 
-  * Audio route change during call and ending call leaves display 
+  * Audio route change during call and ending call leaves display
     and lock in more sensible state now (Fixes: NB#260078)
 
  -- Jukka Turunen <ext-jukka.t.turunen@nokia.com>  Mon, 30 May 2011 12:43:57 +0300
@@ -443,7 +443,7 @@ mce (1.10.124) unstable; urgency=low
 
 mce (1.10.123) unstable; urgency=low
 
-  * Enable proximity relock during call after powerkey unlock 
+  * Enable proximity relock during call after powerkey unlock
     (Fixes: NB#255573)
   * Tune color calibration (Fixes: NB#258964)
 
