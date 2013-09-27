@@ -64,7 +64,7 @@ enum
 	 *
 	 * Enough to cover 5% to 95% in 5% steps.
 	 */
-	ALS_LUX_STEPS = 19, // 5% steps [5 ... 95]
+	ALS_LUX_STEPS = 20, // allows 5% steps for [5 ... 100] range
 };
 
 /** A step in ALS ramp */
