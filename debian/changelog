@@ -1,3 +1,10 @@
+mce (1.15.4) unstable; urgency=low
+
+  * [mce] All defined by default LED patterns can be disabled at runtime
+  * [mce] Make it easier to configure LED patterns in multiple ini-files
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 27 Sep 2013 13:08:53 +0300
+
 mce (1.15.3) unstable; urgency=low
 
   * [mce] Sync setUpdatesEnabled() state on mce/lipstick restart
