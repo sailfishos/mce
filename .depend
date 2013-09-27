@@ -94,6 +94,7 @@ mce-conf.o:\
 	mce-conf.h\
 	mce-log.h\
 	mce.h\
+	modules/led.h\
 
 mce-conf.pic.o:\
 	mce-conf.c\
@@ -101,6 +102,7 @@ mce-conf.pic.o:\
 	mce-conf.h\
 	mce-log.h\
 	mce.h\
+	modules/led.h\
 
 mce-dbus.o:\
 	mce-dbus.c\

@@ -24,8 +24,8 @@
 
 #include "mce.h"
 #include "mce-conf.h"
-
 #include "mce-log.h"			/* mce_log(), LL_* */
+#include "modules/led.h"
 
 /** Pointer to the keyfile structure where config values are read from */
 static gpointer keyfile = NULL;
@@ -333,9 +333,23 @@ static void mce_conf_merge_key(GKeyFile *dest, GKeyFile *srce,
 		const gchar *grp;
 		const gchar *key; // NULL == every key in the group
 	} lut[] = {
-		{ .grp = "evdev" },
-		{ .grp = "modules/display" },
-		{ .grp = NULL }
+		{
+			.grp = "evdev",
+		},
+		{
+			.grp = "modules/display",
+		},
+		{
+			.grp = MCE_CONF_LED_GROUP,
+			.key = MCE_CONF_LED_PATTERNS_REQUIRED,
+		},
+		{
+			.grp = MCE_CONF_LED_GROUP,
+			.key = MCE_CONF_LED_PATTERNS_DISABLED,
+		},
+		{
+			.grp = NULL,
+		}
 	};
 
 	for( size_t i = 0; ; ++i ) {

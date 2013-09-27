@@ -26,8 +26,11 @@
 /** Name of LED configuration group */
 #define MCE_CONF_LED_GROUP			"LED"
 
-/** Name of configuration key for the list of LED patterns */
-#define MCE_CONF_LED_PATTERNS			"LEDPatterns"
+/** Name of configuration key for the list of required LED patterns */
+#define MCE_CONF_LED_PATTERNS_REQUIRED		"LEDPatternsRequired"
+
+/** Name of configuration key for the list of disabled LED patterns */
+#define MCE_CONF_LED_PATTERNS_DISABLED		"LEDPatternsDisabled"
 
 /** Name of configuration key for the list of LED Pattern combination-rules */
 #define MCE_CONF_LED_COMBINATION_RULES		"CombinationRules"
