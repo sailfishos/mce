@@ -1398,6 +1398,36 @@ static const setting_t gconf_defaults[] =
     .def  = "true",
   },
   {
+    // no define; mentioned in mce.ini
+    .key  = "/system/osso/dsm/leds/PatternCommonNotification",
+    .type = "b",
+    .def  = "true",
+  },
+  {
+    // no define; mentioned in mce.ini
+    .key  = "/system/osso/dsm/leds/PatternCommunicationCall",
+    .type = "b",
+    .def  = "true",
+  },
+  {
+    // no define; mentioned in mce.ini
+    .key  = "/system/osso/dsm/leds/PatternCommunicationEmail",
+    .type = "b",
+    .def  = "true",
+  },
+  {
+    // no define; mentioned in mce.ini
+    .key  = "/system/osso/dsm/leds/PatternCommunicationIM",
+    .type = "b",
+    .def  = "true",
+  },
+  {
+    // no define; mentioned in mce.ini
+    .key  = "/system/osso/dsm/leds/PatternCommunicationSMS",
+    .type = "b",
+    .def  = "true",
+  },
+  {
     // MCE_GCONF_PROXIMITY_PS_ENABLED_PATH @ proximity.h
     .key  = "/system/osso/dsm/proximity/ps_enabled",
     .type = "b",
