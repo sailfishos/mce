@@ -91,6 +91,12 @@
 # include "../mce-hybris.h"
 #endif
 
+#if 0 // DEBUG: make all logging from this module "critical"
+# undef mce_log
+# define mce_log(LEV, FMT, ARGS...) \
+	mce_log_file(LL_CRIT, __FILE__, __FUNCTION__, FMT , ## ARGS)
+#endif
+
 /** Module name */
 #define MODULE_NAME		"led"
 
@@ -1828,7 +1834,7 @@ static gboolean init_lysti_patterns(void)
 
 	/* Get the list of valid LED patterns */
 	patternlist = mce_conf_get_string_list(MCE_CONF_LED_GROUP,
-					       MCE_CONF_LED_PATTERNS,
+					       MCE_CONF_LED_PATTERNS_REQUIRED,
 					       &length);
 
 	/* Treat failed conf-value reads as if they were due to invalid keys
@@ -1996,7 +2002,7 @@ static gboolean init_njoy_patterns(void)
 
 	/* Get the list of valid LED patterns */
 	patternlist = mce_conf_get_string_list(MCE_CONF_LED_GROUP,
-					       MCE_CONF_LED_PATTERNS,
+					       MCE_CONF_LED_PATTERNS_REQUIRED,
 					       &length);
 
 	/* Treat failed conf-value reads as if they were due to invalid keys
@@ -2128,7 +2134,7 @@ static gboolean init_mono_patterns(void)
 
 	/* Get the list of valid LED patterns */
 	patternlist = mce_conf_get_string_list(MCE_CONF_LED_GROUP,
-					       MCE_CONF_LED_PATTERNS,
+					       MCE_CONF_LED_PATTERNS_REQUIRED,
 					       &length);
 
 	/* Treat failed conf-value reads as if they were due to invalid keys
@@ -2201,6 +2207,78 @@ EXIT:
 }
 
 #ifdef ENABLE_HYBRIS
+/** Compare operator for sorting arrays of led pattern names
+ *
+ * @param a pointer to 1st string pointer
+ * @param b pointer to 2nd string pointer
+ *
+ * @return negative, zero or positive if a<b, a==b, or a>b
+ */
+static int list_compare_item(const void *a, const void *b)
+{
+	return strcmp(*(const char **)a, *(const char **)b);
+}
+
+/** Sort array of led pattern names and remove duplicates
+ *
+ * @param list array of led pattern names
+ */
+static void list_remove_duplicates(gchar **list)
+{
+	size_t i,k,n;
+	gchar *s;
+
+	if( !list )
+		goto EXIT;
+
+	/* remove empty strings */
+	for( n = 0, k = 0; (s = list[k]); ++k ) {
+		if( *s )
+			list[n++] = s;
+		else
+			g_free(s);
+	}
+	list[n] = 0;
+
+	if( n < 2 )
+		goto EXIT;
+
+	/* sort elements */
+	qsort(list, n, sizeof *list, list_compare_item);
+
+	/* remove duplicate entries */
+	for( i = 0, k = 1; k < n; ++k ) {
+		s = list[k];
+		if( strcmp(list[i], s) )
+			list[++i] = s;
+		else
+			g_free(s);
+	}
+	list[i+1] = 0;
+EXIT:
+	return;
+}
+
+/** Name exists in array of led pattern names predicate
+ *
+ * @param list array of led pattern names
+ * @param elem led pattern name
+ *
+ * @return TRUE if elem is in the list, FALSE otherwise
+ */
+static gboolean list_includes_item(gchar **list, const gchar *elem)
+{
+	if( !list || !elem )
+		return FALSE;
+
+	for( size_t i = 0; list[i]; ++i ) {
+		if( !strcmp(list[i], elem) )
+			return TRUE;
+	}
+
+	return FALSE;
+}
+
 /**
  * Init patterns for libhybris-LED
  *
@@ -2218,46 +2296,66 @@ static gboolean init_hybris_patterns(void)
                 IDX_NUMOF
         };
 
-	gboolean  status   = FALSE;
-	gchar   **patterns = NULL;
-	gsize     length   = 0;
+	gboolean  status  = FALSE;
+	gchar   **require = NULL;
+	gchar   **disable = NULL;
+	gchar   **pattern = NULL;
 
-	/* Get the list of valid LED patterns */
-	patterns = mce_conf_get_string_list(MCE_CONF_LED_GROUP,
-					    MCE_CONF_LED_PATTERNS,
-					    &length);
+	/* Get the list of required LED patterns */
+	require = mce_conf_get_string_list(MCE_CONF_LED_GROUP,
+					   MCE_CONF_LED_PATTERNS_REQUIRED, 0);
+	list_remove_duplicates(require);
 
-	/* Treat failed conf-value reads as if they were due to invalid keys
-	 * rather than failed allocations; let future allocation attempts fail
-	 * instead; otherwise we'll miss the real invalid key failures
-	 */
-	if (patterns == NULL) {
-		mce_log(LL_WARN, "Failed to configure LED patterns");
-		status = TRUE;
+	/* Get the list of disabled LED patterns */
+	disable = mce_conf_get_string_list(MCE_CONF_LED_GROUP,
+					   MCE_CONF_LED_PATTERNS_DISABLED, 0);
+	list_remove_duplicates(disable);
+
+	/* Get the list of configured patterns */
+	pattern = mce_conf_get_keys(led_pattern_group, 0);
+	list_remove_duplicates(pattern);
+
+	if( !pattern || !*pattern ) {
+		mce_log(LL_WARN, "No LED patterns configured");
 		goto EXIT;
 	}
 
-	/* Used for single-colour LED patterns */
-	for (size_t i = 0; patterns[i]; i++) {
+	/* Check if we have data for required patterns */
+	if( require && *require ) {
+		for( size_t i = 0; require[i]; ++i ) {
+			if( !list_includes_item(pattern, require[i]) )
+				mce_log(LL_WARN, "Required LED pattern "
+					"'%s' not defined", require[i]);
+		}
+	}
+
+	for( size_t i = 0; pattern[i]; i++ ) {
+		const char *name = pattern[i];
+		if( list_includes_item(disable, name) ) {
+			mce_log(LL_NOTICE,"LED pattern '%s' disabled", name);
+			continue;
+		}
+
+		gsize length = 0;
 		gchar **v = mce_conf_get_string_list(led_pattern_group,
-						     patterns[i], &length);
+						     name, &length);
 		if( !v ) {
 			mce_log(LL_WARN,"LED pattern '%s' not configured",
-				patterns[i]);
+				name);
 		}
 		else if( length != IDX_NUMOF ) {
 			mce_log(LL_ERR,"LED pattern '%s' is invalid",
-				patterns[i]);
+				name);
 		}
 		else {
 			mce_log(LL_DEBUG,"Getting LED pattern for: %s",
-				patterns[i]);
+				name);
 
 			pattern_struct *psp = g_slice_new(pattern_struct);
 
 			memset(psp, 0, sizeof *psp);
 
-			psp->name       = strdup(patterns[i]);
+			psp->name       = strdup(name);
 			psp->priority   = strtol(v[IDX_PRIO], 0, 0);
 			psp->policy     = strtol(v[IDX_SCREEN_ON], 0, 0);
 			psp->timeout    = strtol(v[IDX_TIMEOUT], 0, 0) ?: -1;
@@ -2265,7 +2363,7 @@ static gboolean init_hybris_patterns(void)
 			psp->off_period = strtol(v[IDX_OFF_PERIOD], 0, 0);
 			psp->rgb_color  = strtol(v[IDX_COLOR], 0, 16);
 			psp->active     = FALSE;
-			psp->enabled    = pattern_get_enabled(patterns[i],
+			psp->enabled    = pattern_get_enabled(name,
 							   &psp->gconf_cb_id);
 
 			g_queue_insert_sorted(pattern_stack, psp,
@@ -2285,7 +2383,9 @@ static gboolean init_hybris_patterns(void)
 	status = TRUE;
 
 EXIT:
-	g_strfreev(patterns);
+	g_strfreev(pattern);
+	g_strfreev(disable);
+	g_strfreev(require);
 
 	return status;
 }
