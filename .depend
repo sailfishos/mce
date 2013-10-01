@@ -338,8 +338,8 @@ modules/audiorouting.pic.o:\
 	mce-log.h\
 	mce.h\
 
-modules/battery.o:\
-	modules/battery.c\
+modules/battery-bme.o:\
+	modules/battery-bme.c\
 	bme-dbus-names.h\
 	datapipe.h\
 	datapipe.h\
@@ -347,8 +347,8 @@ modules/battery.o:\
 	mce-log.h\
 	mce.h\
 
-modules/battery.pic.o:\
-	modules/battery.c\
+modules/battery-bme.pic.o:\
+	modules/battery-bme.c\
 	bme-dbus-names.h\
 	datapipe.h\
 	datapipe.h\
