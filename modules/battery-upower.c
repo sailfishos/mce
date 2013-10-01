@@ -23,7 +23,6 @@
 #include "../mce-log.h"
 #include "../mce-dbus.h"
 
-#include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
 #include <stdlib.h>
@@ -152,63 +151,6 @@ typedef struct
     int        p_type;
     dbus_any_t p_val;
 } uprop_t;
-
-/** Property to human readable string
- *
- * @param self property
- *
- * @return property name and value as string
- */
-#ifdef DEAD_CODE
-static
-char *
-uprop_repr(const uprop_t *self)
-{
-    char   *data = 0;
-    size_t  size = 0;
-    FILE   *file = 0;
-
-    if( !(file = open_memstream(&data, &size)) ) {
-	goto cleanup;
-    }
-
-    fprintf(file, "%s=", self->p_key);
-
-    switch( self->p_type ) {
-    case DBUS_TYPE_INVALID:     fprintf(file, "NUL"); break;
-    case DBUS_TYPE_BYTE:        fprintf(file, "byte:%d", self->p_val.o); break;
-    case DBUS_TYPE_BOOLEAN:     fprintf(file, "bool:%d", self->p_val.b); break;
-
-    case DBUS_TYPE_INT16:       fprintf(file, "i16:%d", self->p_val.i16); break;
-    case DBUS_TYPE_INT32:       fprintf(file, "i32:%d", self->p_val.i32); break;
-    case DBUS_TYPE_INT64:       fprintf(file, "i64:%lld", self->p_val.i64); break;
-
-    case DBUS_TYPE_UINT16:      fprintf(file, "u16:%u", self->p_val.u16); break;
-    case DBUS_TYPE_UINT32:      fprintf(file, "u32:%u", self->p_val.u32); break;
-    case DBUS_TYPE_UINT64:      fprintf(file, "u64:%llu", self->p_val.u64); break;
-
-    case DBUS_TYPE_DOUBLE:      fprintf(file, "dbl:%g", self->p_val.d); break;
-
-    case DBUS_TYPE_STRING:      fprintf(file, "str:\"%s\"", self->p_val.s); break;
-    case DBUS_TYPE_OBJECT_PATH: fprintf(file, "obj:\"%s\"", self->p_val.s); break;
-    case DBUS_TYPE_SIGNATURE:   fprintf(file, "sig:\"%s\"", self->p_val.s); break;
-
-    default:
-    case DBUS_TYPE_UNIX_FD:
-    case DBUS_TYPE_ARRAY:
-    case DBUS_TYPE_VARIANT:
-    case DBUS_TYPE_STRUCT:
-    case DBUS_TYPE_DICT_ENTRY:
-        fprintf(file, "???"); break;
-        break;
-    }
-
-cleanup:
-    if( file ) fclose(file);
-
-    return data;
-}
-#endif // DEAD_CODE
 
 /** Invalidate property
  *
