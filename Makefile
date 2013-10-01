@@ -156,6 +156,7 @@ MODULES += $(MODULE_DIR)/inactivity.so
 MODULES += $(MODULE_DIR)/camera.so
 MODULES += $(MODULE_DIR)/alarm.so
 MODULES += $(MODULE_DIR)/battery-bme.so
+MODULES += $(MODULE_DIR)/battery-upower.so
 MODULES += $(MODULE_DIR)/display.so
 MODULES += $(MODULE_DIR)/led.so
 MODULES += $(MODULE_DIR)/callstate.so
