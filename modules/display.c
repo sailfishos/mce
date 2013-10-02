@@ -3519,7 +3519,7 @@ static governor_setting_t *governor_get_settings(const char *tag)
 
 	snprintf(sec, sizeof sec, "CPUScalingGovernor%s", tag);
 
-	if( !mce_conf_has_group(tag) ) {
+	if( !mce_conf_has_group(sec) ) {
 		mce_log(LL_NOTICE, "Not configured: %s", sec);
 		goto EXIT;
 	}
