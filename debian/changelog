@@ -1,3 +1,9 @@
+mce (1.16.1) unstable; urgency=low
+
+  * [mce] Fix check for existence of CPUScalingGovernor configuration
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 02 Oct 2013 14:25:20 +0300
+
 mce (1.16.0) unstable; urgency=low
 
   * [mce] Add upower based battery plugin
