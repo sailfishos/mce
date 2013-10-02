@@ -1,3 +1,11 @@
+mce (1.16.0) unstable; urgency=low
+
+  * [mce] Add upower based battery plugin
+  * [mce] Use upower battery plugin by default
+  * [mce] Activate PowerOn LED pattern during startup
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 02 Oct 2013 12:17:23 +0300
+
 mce (1.15.4) unstable; urgency=low
 
   * [mce] All defined by default LED patterns can be disabled at runtime
