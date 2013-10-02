@@ -3458,6 +3458,19 @@ static filewatcher_t *init_done_watcher = 0;
 /** Is the init-done flag file present in the file system */
 static gboolean init_done = FALSE;
 
+/** Content change watcher for the bootstate flag file */
+static filewatcher_t *bootstate_watcher = 0;
+
+/** Possible values for bootstate */
+typedef enum {
+	BOOTSTATE_UNKNOWN,
+	BOOTSTATE_USER,
+	BOOTSTATE_ACT_DEAD,
+} bootstate_t;
+
+/** Are we going to USER or ACT_DEAD */
+static bootstate_t bootstate = BOOTSTATE_UNKNOWN;
+
 #ifdef ENABLE_CPU_GOVERNOR
 /** CPU scaling governor override; not enabled by default */
 static gint governor_conf = GOVERNOR_UNSET;
@@ -3943,6 +3956,52 @@ static gboolean desktop_ready_cb(gpointer user_data)
 	return FALSE;
 }
 
+/** Re-evaluate whether we want POWER_ON led pattern or not
+ */
+static void poweron_led_rethink(void)
+{
+	bool want_led = (!init_done && bootstate == BOOTSTATE_USER);
+
+	execute_datapipe_output_triggers(want_led ?
+					 &led_pattern_activate_pipe :
+					 &led_pattern_deactivate_pipe,
+					 MCE_LED_PATTERN_POWER_ON,
+					 USE_INDATA);
+}
+
+/** Timer id for delayed POWER_ON led state evaluation */
+static guint poweron_led_rethink_id = 0;
+
+/** Timer callback for delayed POWER_ON led state evaluation
+ */
+static gboolean poweron_led_rethink_cb(gpointer aptr)
+{
+	(void)aptr;
+
+	if( poweron_led_rethink_id ) {
+		poweron_led_rethink_id = 0;
+		poweron_led_rethink();
+	}
+	return FALSE;
+}
+
+/** Cancel delayed POWER_ON led state evaluation
+ */
+static void poweron_led_rethink_cancel(void)
+{
+	if( poweron_led_rethink_id )
+		g_source_remove(poweron_led_rethink_id),
+			poweron_led_rethink_id = 0;
+}
+
+/** Schedule delayed POWER_ON led state evaluation
+ */
+static void poweron_led_rethink_schedule(void)
+{
+	if( !poweron_led_rethink_id )
+		poweron_led_rethink_id = g_idle_add(poweron_led_rethink_cb, 0);
+}
+
 /** Content of init-done flag file has changed
  *
  * @param path directory where flag file is
@@ -3968,15 +4027,65 @@ static void init_done_changed_cb(const char *path,
 #ifdef ENABLE_CPU_GOVERNOR
 		governor_rethink();
 #endif
+		poweron_led_rethink();
 	}
 }
 
-/** Start tracking of init_done state
+/** Content of bootstate flag file has changed
+ *
+ * @param path directory where flag file is
+ * @param file name of the flag file
+ * @param data (not used)
+ */
+static void bootstate_changed_cb(const char *path,
+				 const char *file,
+				 gpointer data)
+{
+	(void)data;
+
+	int fd = -1;
+
+	char full[256];
+	char buff[256];
+	int rc;
+
+	snprintf(full, sizeof full, "%s/%s", path, file);
+
+	/* default to unknown */
+	bootstate = BOOTSTATE_UNKNOWN;
+
+	if( (fd = open(full, O_RDONLY)) == -1 ) {
+		if( errno != ENOENT )
+			mce_log(LL_WARN, "%s: %m", full);
+		goto EXIT;
+	}
+
+	if( (rc = read(fd, buff, sizeof buff - 1)) == -1 ) {
+		mce_log(LL_WARN, "%s: %m", full);
+		goto EXIT;
+	}
+
+	buff[rc] = 0;
+	buff[strcspn(buff, "\r\n")] = 0;
+
+	/* for now we only need to differentiate USER and not USER */
+	if( !strcmp(buff, "BOOTSTATE=USER") )
+		bootstate = BOOTSTATE_USER;
+	else
+		bootstate = BOOTSTATE_ACT_DEAD;
+EXIT:
+	if( rc != -1 ) close(fd);
+
+	poweron_led_rethink();
+}
+
+/** Start tracking of init_done and bootstate flag files
  */
 static void init_done_start_tracking(void)
 {
 	static const char flag_dir[]  = "/run/systemd/boot-status";
-	static const char flag_file[] = "init-done";
+	static const char flag_init[] = "init-done";
+	static const char flag_boot[] = "bootstate";
 
 	time_t uptime = 0;  // uptime in seconds
 	time_t ready  = 60; // desktop ready at
@@ -3984,8 +4093,11 @@ static void init_done_start_tracking(void)
 
 	/* if the status directory exists, wait for flag file to appear */
 	if( access(flag_dir, F_OK) == 0 ) {
-		init_done_watcher = filewatcher_create(flag_dir, flag_file,
+		init_done_watcher = filewatcher_create(flag_dir, flag_init,
 						       init_done_changed_cb,
+						       0, 0);
+		bootstate_watcher = filewatcher_create(flag_dir, flag_boot,
+						       bootstate_changed_cb,
 						       0, 0);
 	}
 
@@ -4011,6 +4123,15 @@ static void init_done_start_tracking(void)
 		/* evaluate the initial state of init-done flag file */
 		filewatcher_force_trigger(init_done_watcher);
 	}
+
+	if( bootstate_watcher ) {
+		/* evaluate the initial state of bootstate flag file */
+		filewatcher_force_trigger(bootstate_watcher);
+	}
+	else {
+		/* or assume ACT_DEAD & co are not supported */
+		bootstate = BOOTSTATE_USER;
+	}
 }
 
 /** Stop tracking of init_done state
@@ -4018,6 +4139,8 @@ static void init_done_start_tracking(void)
 static void init_done_stop_tracking(void)
 {
 	filewatcher_delete(init_done_watcher), init_done_watcher = 0;
+
+	filewatcher_delete(bootstate_watcher), bootstate_watcher = 0;
 
 	if( desktop_ready_id ) {
 		g_source_remove(desktop_ready_id);
@@ -5675,6 +5798,10 @@ const gchar *g_module_check_init(GModule *module)
 
 
 	waitfb_start(&waitfb);
+
+	/* Re-evaluate the power on LED state from idle callback
+	 * i.e. when the led plugin is loaded and operational */
+	poweron_led_rethink_schedule();
 EXIT:
 	return NULL;
 }
@@ -5787,6 +5914,7 @@ void g_module_unload(GModule *module)
 		dbusname_quit();
 		dbus_connection_unref(systembus), systembus = 0;
 	}
+	poweron_led_rethink_cancel();
 
 	return;
 }
