@@ -1890,8 +1890,8 @@ static void setup_adaptive_dimming_timeout(void)
 
 	/* Setup new timeout */
 	adaptive_dimming_timeout_cb_id =
-		g_timeout_add_seconds(adaptive_dimming_threshold,
-				      adaptive_dimming_timeout_cb, NULL);
+		g_timeout_add(adaptive_dimming_threshold,
+			      adaptive_dimming_timeout_cb, NULL);
 
 EXIT:
 	return;
