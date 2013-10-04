@@ -2346,8 +2346,8 @@ typedef enum
 	RENDERER_ENABLED  =  1,
 } renderer_state_t;
 
-/** For how long we allow ui side to delay suspending [ms] */
-static int renderer_ipc_timeout = 5 * 1000;
+/** For how long we allow ui side to delay suspending [ms]; -1 = use default */
+static int renderer_ipc_timeout = -1;
 
 /** UI side rendering state; no suspend unless RENDERER_ENABLED */
 static renderer_state_t renderer_ui_state = RENDERER_UNKNOWN;
