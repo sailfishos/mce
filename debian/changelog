@@ -1,3 +1,10 @@
+mce (1.16.2) unstable; urgency=low
+
+  * [mce] Fix adaptive dimming timeout
+  * [mce] Use default timeout for setUpdatesEnabled() method call
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 04 Oct 2013 16:53:56 +0300
+
 mce (1.16.1) unstable; urgency=low
 
   * [mce] Fix check for existence of CPUScalingGovernor configuration
