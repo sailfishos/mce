@@ -1574,25 +1574,6 @@ EXIT:
 	return retval;
 }
 
-/** LED Patterns that should be controlled by mce only
- *
- * FIXME: This should be removed once lipstick stops
- *        issuing charger related pattern requests.
- */
-static const char * const patterns_owned_by_mce[] =
-{
-  "PatternDeviceOn",
-  "PatternDeviceSoftOff",
-  "PatternPowerOn",
-  "PatternPowerOff",
-  "PatternWebcamActive",
-  "PatternBatteryCharging",
-  "PatternBatteryFull",
-  0
-};
-static gboolean list_includes_item(gchar **list, const gchar *elem);
-
-
 /**
  * D-Bus callback for the activate LED pattern method call
  *
@@ -1623,10 +1604,7 @@ static gboolean led_activate_pattern_dbus_cb(DBusMessage *const msg)
 		goto EXIT;
 	}
 
-	if( list_includes_item((gchar**)patterns_owned_by_mce, pattern) )
-		mce_log(LL_WARN, "ignoring %s request", pattern);
-	else
-		led_activate_pattern(pattern);
+	led_activate_pattern(pattern);
 
 	if (no_reply == FALSE) {
 		DBusMessage *reply = dbus_new_method_reply(msg);
@@ -1670,11 +1648,7 @@ static gboolean led_deactivate_pattern_dbus_cb(DBusMessage *const msg)
 		goto EXIT;
 	}
 
-
-	if( list_includes_item((gchar**)patterns_owned_by_mce, pattern) )
-		mce_log(LL_WARN, "ignoring %s request", pattern);
-	else
-		led_deactivate_pattern(pattern);
+	led_deactivate_pattern(pattern);
 
 	if (no_reply == FALSE) {
 		DBusMessage *reply = dbus_new_method_reply(msg);
