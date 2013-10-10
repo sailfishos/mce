@@ -682,6 +682,194 @@ powerkey.pic.o:\
 	mce.h\
 	powerkey.h\
 
+tests/ut/ut_display.o:\
+	tests/ut/ut_display.c\
+	datapipe.h\
+	datapipe.h\
+	mce-conf.h\
+	mce-dbus.h\
+	mce-gconf.h\
+	mce-io.h\
+	mce-lib.h\
+	mce-log.h\
+	mce.h\
+	mce-log.h\
+	filewatcher.h\
+	libwakelock.h\
+	modules/display.c\
+	modules/display.h\
+	tests/ut/common.h\
+
+tests/ut/ut_display.pic.o:\
+	tests/ut/ut_display.c\
+	datapipe.h\
+	datapipe.h\
+	mce-conf.h\
+	mce-dbus.h\
+	mce-gconf.h\
+	mce-io.h\
+	mce-lib.h\
+	mce-log.h\
+	mce.h\
+	mce-log.h\
+	filewatcher.h\
+	libwakelock.h\
+	modules/display.c\
+	modules/display.h\
+	tests/ut/common.h\
+
+tests/ut/ut_display_blanking_inhibit.o:\
+	tests/ut/ut_display_blanking_inhibit.c\
+	datapipe.h\
+	datapipe.h\
+	mce-conf.h\
+	mce-dbus.h\
+	mce-gconf.h\
+	mce-io.h\
+	mce-lib.h\
+	mce-log.h\
+	mce.h\
+	mce-log.h\
+	filewatcher.h\
+	libwakelock.h\
+	mce-hybris.h\
+	modules/display.c\
+	modules/display.h\
+	tests/ut/common.h\
+
+tests/ut/ut_display_blanking_inhibit.pic.o:\
+	tests/ut/ut_display_blanking_inhibit.c\
+	datapipe.h\
+	datapipe.h\
+	mce-conf.h\
+	mce-dbus.h\
+	mce-gconf.h\
+	mce-io.h\
+	mce-lib.h\
+	mce-log.h\
+	mce.h\
+	mce-log.h\
+	filewatcher.h\
+	libwakelock.h\
+	mce-hybris.h\
+	modules/display.c\
+	modules/display.h\
+	tests/ut/common.h\
+
+tests/ut/ut_display_conf.o:\
+	tests/ut/ut_display_conf.c\
+	datapipe.h\
+	datapipe.h\
+	mce-conf.h\
+	mce-dbus.h\
+	mce-gconf.h\
+	mce-io.h\
+	mce-lib.h\
+	mce-log.h\
+	mce.h\
+	mce-log.h\
+	filewatcher.h\
+	libwakelock.h\
+	mce-hybris.h\
+	modules/display.c\
+	modules/display.h\
+	tests/ut/common.h\
+
+tests/ut/ut_display_conf.pic.o:\
+	tests/ut/ut_display_conf.c\
+	datapipe.h\
+	datapipe.h\
+	mce-conf.h\
+	mce-dbus.h\
+	mce-gconf.h\
+	mce-io.h\
+	mce-lib.h\
+	mce-log.h\
+	mce.h\
+	mce-log.h\
+	filewatcher.h\
+	libwakelock.h\
+	mce-hybris.h\
+	modules/display.c\
+	modules/display.h\
+	tests/ut/common.h\
+
+tests/ut/ut_display_filter.o:\
+	tests/ut/ut_display_filter.c\
+	datapipe.h\
+	datapipe.h\
+	mce-conf.h\
+	mce-dbus.h\
+	mce-gconf.h\
+	mce-io.h\
+	mce-lib.h\
+	mce-log.h\
+	mce.h\
+	mce-log.h\
+	filewatcher.h\
+	libwakelock.h\
+	mce-hybris.h\
+	modules/display.c\
+	modules/display.h\
+	tests/ut/common.h\
+
+tests/ut/ut_display_filter.pic.o:\
+	tests/ut/ut_display_filter.c\
+	datapipe.h\
+	datapipe.h\
+	mce-conf.h\
+	mce-dbus.h\
+	mce-gconf.h\
+	mce-io.h\
+	mce-lib.h\
+	mce-log.h\
+	mce.h\
+	mce-log.h\
+	filewatcher.h\
+	libwakelock.h\
+	mce-hybris.h\
+	modules/display.c\
+	modules/display.h\
+	tests/ut/common.h\
+
+tests/ut/ut_display_stm.o:\
+	tests/ut/ut_display_stm.c\
+	datapipe.h\
+	datapipe.h\
+	mce-conf.h\
+	mce-dbus.h\
+	mce-gconf.h\
+	mce-io.h\
+	mce-lib.h\
+	mce-log.h\
+	mce.h\
+	mce-log.h\
+	filewatcher.h\
+	libwakelock.h\
+	mce-hybris.h\
+	modules/display.c\
+	modules/display.h\
+	tests/ut/common.h\
+
+tests/ut/ut_display_stm.pic.o:\
+	tests/ut/ut_display_stm.c\
+	datapipe.h\
+	datapipe.h\
+	mce-conf.h\
+	mce-dbus.h\
+	mce-gconf.h\
+	mce-io.h\
+	mce-lib.h\
+	mce-log.h\
+	mce.h\
+	mce-log.h\
+	filewatcher.h\
+	libwakelock.h\
+	mce-hybris.h\
+	modules/display.c\
+	modules/display.h\
+	tests/ut/common.h\
+
 tklock.o:\
 	tklock.c\
 	datapipe.h\
