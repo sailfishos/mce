@@ -758,9 +758,8 @@ EXIT:
 
 static gboolean get_display_type_from_hybris(display_type_t *display_type)
 {
-	gboolean   res = FALSE;
-
 #ifdef ENABLE_HYBRIS
+	gboolean   res = FALSE;
 	if( !mce_hybris_backlight_init() ) {
 		mce_log(LL_DEBUG, "libhybris brightness controls not available");
 		goto EXIT;
@@ -782,8 +781,11 @@ static gboolean get_display_type_from_hybris(display_type_t *display_type)
 
 	res = TRUE;
 EXIT:
-#endif
 	return res;
+#else
+	(void)display_type;
+	return FALSE;
+#endif
 }
 
 /**
