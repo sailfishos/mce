@@ -4090,7 +4090,7 @@ static void bootstate_changed_cb(const char *path,
 	else
 		bootstate = BOOTSTATE_ACT_DEAD;
 EXIT:
-	if( rc != -1 ) close(fd);
+	if( fd != -1 ) close(fd);
 
 	poweron_led_rethink();
 }
