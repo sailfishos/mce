@@ -1,3 +1,9 @@
+mce (1.17.0) unstable; urgency=low
+
+  * [tests] Unit tests: initial commit
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 11 Oct 2013 11:08:38 +0300
+
 mce (1.16.2) unstable; urgency=low
 
   * [mce] Fix adaptive dimming timeout
