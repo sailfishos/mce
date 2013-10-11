@@ -40,7 +40,7 @@
 
 /* Support for stubs for static functions */
 
-#if defined(__i386__)
+#if defined(__i386__) || defined(__x86_64__)
 
 # define _LOCAL_STUB_DECL_JMP_ASM_FIELDS				     \
 	unsigned char jmp;						     \
