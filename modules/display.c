@@ -128,6 +128,8 @@
 # include "../mce-hybris.h"
 #endif
 
+#include "mce-sensorfw.h"
+
 /* These defines are taken from devicelock.h, but slightly modified */
 #ifndef DEVICELOCK_H
 
@@ -5092,14 +5094,22 @@ static void stm_rethink_step(void)
 			break;
 		}
 
-		if( stm_suspend_allowed_late() )
+		/* FIXME: Need separate states for stopping/starting
+		 *        sensors during suspend/resume */
+
+		if( stm_suspend_allowed_late() ) {
+			mce_sensorfw_suspend();
 			stm_wakelock_release();
-		else
+		}
+		else {
 			stm_wakelock_acquire();
+			mce_sensorfw_resume();
+		}
 		break;
 
 	case STM_LEAVE_POWER_OFF:
 		stm_wakelock_acquire();
+		mce_sensorfw_resume();
 		stm_trans(STM_INIT_RESUME);
 		break;
 

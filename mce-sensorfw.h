@@ -12,6 +12,9 @@ extern "C" {
 bool mce_sensorfw_init(void);
 void mce_sensorfw_quit(void);
 
+void mce_sensorfw_suspend(void);
+void mce_sensorfw_resume(void);
+
 void mce_sensorfw_als_set_notify(void (*cb)(unsigned lux));
 void mce_sensorfw_als_enable(void);
 void mce_sensorfw_als_disable(void);
