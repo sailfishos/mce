@@ -106,4 +106,4 @@ systemctl daemon-reload
 
 %files tests
 %defattr(-,root,root,-)
-/opt/tests/mce/*
+#/opt/tests/mce/*
