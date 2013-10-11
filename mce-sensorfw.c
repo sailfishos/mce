@@ -55,6 +55,9 @@ static DBusConnection *systembus = 0;
 /** Flag for sensord is on system bus */
 static bool       sensord_running = false;
 
+/** Flag for system is suspended */
+static bool       system_suspended = false;
+
 /** Sensord name for ALS */
 static const char als_name[]  = "alssensor";
 
@@ -74,7 +77,8 @@ static bool       als_want    = false;
 static bool       als_have    = false;
 
 /** Callback for sending ALS data to where it is needed */
-static void     (*als_notify)(unsigned lux) = 0;
+static void     (*als_notify_cb)(unsigned lux) = 0;
+static void     als_notify(unsigned lux);
 
 /** Sensord name for PS */
 static const char ps_name[]  = "proximitysensor";
@@ -95,7 +99,8 @@ static bool       ps_want    = false;
 static bool       ps_have    = false;
 
 /** Callback for sending PS data to where it is needed */
-static void     (*ps_notify)(bool covered) = 0;
+static void     (*ps_notify_cb)(bool covered) = 0;
+static void     ps_notify(bool covered);
 
 /* ========================================================================= *
  * COMMON
@@ -166,10 +171,7 @@ als_input_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
 	}
 
 	mce_log(LL_DEBUG, "last ALS value = %u", data.value);
-	if( als_notify )
-		als_notify(data.value);
-	else
-		mce_log(LL_WARN, "ALS enabled without notify cb");
+	als_notify(data.value);
 
 	keep_going = TRUE;
 
@@ -248,10 +250,7 @@ ps_input_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
 	mce_log(LL_DEBUG, "last PS value = %u / %d", data.value,
 		data.withinProximity);
 
-	if( ps_notify )
-		ps_notify(data.withinProximity != 0);
-	else
-		mce_log(LL_WARN, "PS enabled without notify cb");
+	ps_notify(data.withinProximity != 0);
 
 	keep_going = TRUE;
 
@@ -592,6 +591,19 @@ EXIT:
  * ALS
  * ========================================================================= */
 
+/** Wrapper for als_notify_cb hook
+ */
+static void
+als_notify(unsigned lux)
+{
+	mce_log(LL_DEBUG, "ambient light: %u lux", lux);
+
+	if( als_notify_cb )
+		als_notify_cb(lux);
+	else
+		mce_log(LL_WARN, "ALS enabled without notify cb");
+}
+
 /** Handle reply to initial ALS value request
  *
  * @param pc  pending call object
@@ -645,11 +657,7 @@ static void mce_sensorfw_als_read_cb(DBusPendingCall *pc, void *aptr)
 	dbus_message_iter_next(&rec);
 
 	mce_log(LL_INFO, "initial ALS value = %u", lux);
-
-	if( als_notify )
-		als_notify(lux);
-	else
-		mce_log(LL_WARN, "ALS enabled without notify cb");
+	als_notify(lux);
 
 	res = true;
 
@@ -749,6 +757,46 @@ EXIT:
 	return als_wid != 0;
 }
 
+/** Enable ALS via sensord
+ */
+static void mce_sensorfw_als_start_sensor(void)
+{
+	if( als_have )
+		goto EXIT;
+
+	if( !mce_sensorfw_als_start_session() )
+		goto EXIT;
+
+	if( !mce_sensorfw_start_sensor(als_name, als_iface, als_sid) )
+		goto EXIT;
+
+	als_have = true;
+
+	/* There is no quarantee that we get sensor input
+	 * anytime soon, so we make an explicit get current
+	 * value request after starting sensor */
+	mce_sensorfw_als_read(als_name, als_iface, als_sid);
+
+EXIT:
+	return;
+}
+
+/** Disable ALS via sensord
+ */
+static void mce_sensorfw_als_stop_sensor(void)
+{
+	if( !als_have )
+		goto EXIT;
+
+	if( mce_sensorfw_als_have_session() )
+		mce_sensorfw_stop_sensor(als_name, als_iface, als_sid);
+
+	als_have = false;
+
+EXIT:
+	return;
+}
+
 /** Rethink ALS enabled state
  */
 static void
@@ -764,26 +812,16 @@ mce_sensorfw_als_rethink(void)
 	if( als_want == als_have )
 		goto EXIT;
 
-	if( als_want ) {
-		if( !mce_sensorfw_als_start_session() )
-			goto EXIT;
-		if( !mce_sensorfw_start_sensor(als_name, als_iface, als_sid) )
-			goto EXIT;
-
-		/* There is no quarantee that we get sensor input
-		 * anytime soon, so we make an explicit get current
-		 * value request after starting sensor */
-		mce_sensorfw_als_read(als_name, als_iface, als_sid);
-	}
-	else {
-		if( !mce_sensorfw_als_have_session() )
-			goto EXIT;
-
-		if( !mce_sensorfw_stop_sensor(als_name, als_iface, als_sid) )
-			goto EXIT;
+	if( system_suspended ) {
+		mce_log(LL_NOTICE, "skipping als enable/disable;"
+			" should be suspended");
+		goto EXIT;
 	}
 
-	als_have = als_want;
+	if( als_want )
+		mce_sensorfw_als_start_sensor();
+	else
+		mce_sensorfw_als_stop_sensor();
 EXIT:
 	return;
 }
@@ -815,12 +853,25 @@ mce_sensorfw_als_disable(void)
 void mce_sensorfw_als_set_notify(void (*cb)(unsigned lux))
 {
 	mce_log(LL_DEBUG, "@%s(%p)", __FUNCTION__, cb);
-	als_notify = cb;
+	als_notify_cb = cb;
 }
 
 /* ========================================================================= *
  * PS
  * ========================================================================= */
+
+/** Wrapper for ps_notify_cb hook
+ */
+static void
+ps_notify(bool covered)
+{
+	mce_log(LL_DEBUG, "proximity: %scovered", covered ? "" : "not ");
+
+	if( ps_notify_cb )
+		ps_notify_cb(covered);
+	else
+		mce_log(LL_WARN, "PS enabled without notify cb");
+}
 
 /** Handle reply to initial PS value request
  *
@@ -876,10 +927,7 @@ static void mce_sensorfw_ps_read_cb(DBusPendingCall *pc, void *aptr)
 
 	mce_log(LL_INFO, "initial PS value = %u", dst);
 
-	if( ps_notify )
-		ps_notify(dst > 0);
-	else
-		mce_log(LL_WARN, "PS enabled without notify cb");
+	ps_notify(dst < 1);
 
 	res = true;
 
@@ -982,6 +1030,44 @@ EXIT:
 	return ps_wid != 0;
 }
 
+/** Enable PS via sensord
+ */
+static void mce_sensorfw_ps_start_sensor(void)
+{
+	if( ps_have )
+		goto EXIT;
+
+	if( !mce_sensorfw_ps_start_session() )
+		goto EXIT;
+
+	if( !mce_sensorfw_start_sensor(ps_name, ps_iface, ps_sid) )
+		goto EXIT;
+
+	ps_have = true;
+
+	/* There is no quarantee that we get sensor input
+	 * anytime soon, so we make an explicit get current
+	 * value request after starting sensor */
+	mce_sensorfw_ps_read(ps_name, ps_iface, ps_sid);
+EXIT:
+	return;
+}
+
+/** Disable PS via sensord
+ */
+static void mce_sensorfw_ps_stop_sensor(void)
+{
+	if( !ps_have )
+		goto EXIT;
+
+	if( mce_sensorfw_ps_have_session() )
+		mce_sensorfw_stop_sensor(ps_name, ps_iface, ps_sid);
+
+	ps_have = false;
+EXIT:
+	return;
+}
+
 /** Rethink PS enabled state
  */
 static void
@@ -997,26 +1083,17 @@ mce_sensorfw_ps_rethink(void)
 	if( ps_want == ps_have )
 		goto EXIT;
 
-	if( ps_want ) {
-		if( !mce_sensorfw_ps_start_session() )
-			goto EXIT;
-		if( !mce_sensorfw_start_sensor(ps_name, ps_iface, ps_sid) )
-			goto EXIT;
-
-		/* There is no quarantee that we get sensor input
-		 * anytime soon, so we make an explicit get current
-		 * value request after starting sensor */
-		mce_sensorfw_ps_read(ps_name, ps_iface, ps_sid);
-	}
-	else {
-		if( !mce_sensorfw_ps_have_session() )
-			goto EXIT;
-
-		if( !mce_sensorfw_stop_sensor(ps_name, ps_iface, ps_sid) )
-			goto EXIT;
+	if( system_suspended ) {
+		mce_log(LL_NOTICE, "skipping ps enable/disable;"
+			" should be suspended");
+		goto EXIT;
 	}
 
-	ps_have = ps_want;
+	if( ps_want )
+		mce_sensorfw_ps_start_sensor();
+	else
+		mce_sensorfw_ps_stop_sensor();
+
 EXIT:
 	return;
 }
@@ -1048,12 +1125,49 @@ mce_sensorfw_ps_disable(void)
 void mce_sensorfw_ps_set_notify(void (*cb)(bool covered))
 {
 	mce_log(LL_DEBUG, "@%s(%p)", __FUNCTION__, cb);
-	ps_notify = cb;
+	ps_notify_cb = cb;
 }
 
 /* ========================================================================= *
  * SENSORD
  * ========================================================================= */
+
+/* FIXME: Re-enabling proximity sensor while it is covered
+ *        produces bogus data -> can't disable PS yet. This
+ *        hack allows testing without mce recompilation
+ */
+static bool stop_ps_on_suspend(void)
+{
+	return access("/var/lib/mce/stop-ps", F_OK) == 0;
+}
+
+static void xsensord_rethink(void)
+{
+	static bool was_suspended = false;
+
+	if( !sensord_running ) {
+		mce_sensorfw_als_stop_session();
+		mce_sensorfw_ps_stop_session();
+	}
+	else if( system_suspended ) {
+		mce_sensorfw_als_stop_sensor();
+		if( stop_ps_on_suspend() )
+			mce_sensorfw_ps_stop_sensor();
+	}
+	else {
+		mce_sensorfw_als_rethink();
+		mce_sensorfw_ps_rethink();
+	}
+	if( system_suspended && !was_suspended ) {
+		/* test callback pointer here too to avoid warning */
+		if( stop_ps_on_suspend() && ps_notify_cb  ) {
+			mce_log(LL_DEBUG, "faking proximity closed");
+			ps_notify(true);
+		}
+	}
+
+	was_suspended = system_suspended;
+}
 
 /** React to sensord presense on D-Bus system bus
  *
@@ -1072,14 +1186,7 @@ xsensord_set_runstate(bool running)
 		sensord_running = running;
 		mce_log(LL_NOTICE, "sensord is %savailable on dbus",
 			sensord_running ? "" : "NOT ");
-		if( !sensord_running ) {
-			mce_sensorfw_als_stop_session();
-			mce_sensorfw_ps_stop_session();
-		}
-		else {
-			mce_sensorfw_als_rethink();
-			mce_sensorfw_ps_rethink();
-		}
+		xsensord_rethink();
 	}
 }
 
@@ -1267,5 +1374,35 @@ mce_sensorfw_quit(void)
 		dbus_bus_remove_match(systembus, xsensord_name_owner_rule, 0);
 
 		dbus_connection_unref(systembus), systembus = 0;
+	}
+}
+
+/** Prepare sensors for suspending
+ */
+void
+mce_sensorfw_suspend(void)
+{
+	if( !system_suspended ) {
+		system_suspended = true;
+		mce_log(LL_INFO, "@%s()", __FUNCTION__);
+		xsensord_rethink();
+
+		/* FIXME: This neither blocks nor is immediate,
+		 *        so need to add asynchronous notification
+		 *        when the dbus roundtrip to sensord has
+		 *        been done.
+		 */
+	}
+}
+
+/** Rethink sensors after resuming
+ */
+void
+mce_sensorfw_resume(void)
+{
+	if( system_suspended ) {
+		system_suspended = false;
+		mce_log(LL_INFO, "@%s()", __FUNCTION__);
+		xsensord_rethink();
 	}
 }
