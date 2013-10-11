@@ -1,3 +1,9 @@
+mce (1.17.1) unstable; urgency=low
+
+  * [tests] Unit tests: fix compilation on x86_64
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 11 Oct 2013 13:01:55 +0300
+
 mce (1.17.0) unstable; urgency=low
 
   * [tests] Unit tests: initial commit
