@@ -1,11 +1,17 @@
 #ifndef MCE_TESTS_UT_COMMON_H
 #define MCE_TESTS_UT_COMMON_H
 
+#include <check.h>
 #include <glib/gprintf.h>
 #include <sys/cdefs.h>
 #include <sys/mman.h>
 #include <stdint.h>
 #include <unistd.h>
+
+#if CHECK_MAJOR_VERSION < 0 || CHECK_MINOR_VERSION < 9 || CHECK_MICRO_VERSION < 9
+#define _ck_assert_msg ck_assert_msg
+#define ck_assert_int_lt(X, Y) ck_assert((X) < (Y))
+#endif
 
 /* ------------------------------------------------------------------------- *
  * UTILITIES FOR WRITING FUNCTION STUBS
