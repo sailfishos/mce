@@ -80,6 +80,9 @@ static bool       als_have    = false;
 static void     (*als_notify_cb)(unsigned lux) = 0;
 static void     als_notify(unsigned lux);
 
+/** Ambient light value to report when sensord is not available */
+#define ALS_VALUE_WHEN_SENSORD_IS_DOWN 400
+
 /** Sensord name for PS */
 static const char ps_name[]  = "proximitysensor";
 
@@ -101,6 +104,9 @@ static bool       ps_have    = false;
 /** Callback for sending PS data to where it is needed */
 static void     (*ps_notify_cb)(bool covered) = 0;
 static void     ps_notify(bool covered);
+
+/** Proximity state to report when sensord is not available */
+#define PS_STATE_WHEN_SENSORD_IS_DOWN false
 
 /* ========================================================================= *
  * COMMON
@@ -715,6 +721,9 @@ static void mce_sensorfw_als_stop_session(void)
 
 	if( als_wid ) {
 		g_source_remove(als_wid), als_wid = 0;
+
+		if( als_notify_cb )
+			als_notify(ALS_VALUE_WHEN_SENSORD_IS_DOWN);
 	}
 
 	als_have = false;
@@ -854,6 +863,9 @@ void mce_sensorfw_als_set_notify(void (*cb)(unsigned lux))
 {
 	mce_log(LL_DEBUG, "@%s(%p)", __FUNCTION__, cb);
 	als_notify_cb = cb;
+
+	if( als_notify_cb && !sensord_running )
+		als_notify(ALS_VALUE_WHEN_SENSORD_IS_DOWN);
 }
 
 /* ========================================================================= *
@@ -985,6 +997,9 @@ static void mce_sensorfw_ps_stop_session(void)
 
 	if( ps_wid ) {
 		g_source_remove(ps_wid), ps_wid = 0;
+
+		if( ps_notify_cb )
+			ps_notify(PS_STATE_WHEN_SENSORD_IS_DOWN);
 	}
 	ps_have = false;
 }
@@ -1126,6 +1141,8 @@ void mce_sensorfw_ps_set_notify(void (*cb)(bool covered))
 {
 	mce_log(LL_DEBUG, "@%s(%p)", __FUNCTION__, cb);
 	ps_notify_cb = cb;
+	if( ps_notify_cb && !sensord_running )
+		ps_notify(PS_STATE_WHEN_SENSORD_IS_DOWN);
 }
 
 /* ========================================================================= *
