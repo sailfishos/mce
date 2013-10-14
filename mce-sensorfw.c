@@ -587,6 +587,91 @@ EXIT:
 	return res;
 }
 
+/** Callback for handling replies to setStandbyOverride requests
+ *
+ * This is used only for logging possible error replies we
+ * might get from trying to set the standby override property.
+ *
+ * @param pc   pending call object
+ * @param aptr (not used)
+ */
+static void
+mce_sensorfw_set_standby_override_cb(DBusPendingCall *pc, void *aptr)
+{
+	(void)aptr;
+
+	static const char method[] = "setStandbyOverride";
+
+	DBusMessage  *rsp = 0;
+	DBusError     err = DBUS_ERROR_INIT;
+	dbus_bool_t   val = FALSE;
+
+	mce_log(LL_INFO, "Received %s() reply", method);
+
+	if( !(rsp = dbus_pending_call_steal_reply(pc)) )
+		goto EXIT;
+
+	if( dbus_set_error_from_message(&err, rsp) ) {
+		mce_log(LL_ERR, "%s(): %s: %s", method, err.name, err.message);
+		goto EXIT;
+	}
+	if( !dbus_message_get_args(rsp, &err,
+				   DBUS_TYPE_BOOLEAN, &val,
+				   DBUS_TYPE_INVALID) ) {
+		mce_log(LL_ERR, "%s(): %s: %s", method, err.name, err.message);
+		goto EXIT;
+	}
+
+	mce_log(LL_INFO, "%s() -> %s", method, val ? "success" : "failure");
+
+EXIT:
+	if( rsp ) dbus_message_unref(rsp);
+	dbus_pending_call_unref(pc);
+	dbus_error_free(&err);
+}
+
+
+/** Issue sensor standby override request to sensord
+ *
+ * @param id        sensor name
+ * @param iface     D-Bus interface for the sensor
+ * @param sessionid sensord session id from mce_sensorfw_request_sensor()
+ * @param value     true to enable standby override, false to disable
+ *
+ * @return true on success, or false in case of errors
+ */
+static bool
+mce_sensorfw_set_standby_override(const char *id, const char *iface,
+				  int sessionid, bool value)
+{
+	bool         res  = false;
+	char        *path = 0;
+	dbus_int32_t sid  = sessionid;
+	dbus_bool_t  val  = value;
+
+	mce_log(LL_INFO, "setStandbyOverride(%s, %d, %d)",
+		id, sessionid, val);
+
+	if( asprintf(&path, "%s/%s", SENSORFW_PATH, id) < 0 ) {
+		path = 0;
+		goto EXIT;
+	}
+
+	res = dbus_send(SENSORFW_SERVICE,
+			path,
+			iface,
+			"setStandbyOverride",
+			mce_sensorfw_set_standby_override_cb,
+			DBUS_TYPE_INT32, &sid,
+			DBUS_TYPE_BOOLEAN, &val,
+			DBUS_TYPE_INVALID);
+
+EXIT:
+	free(path);
+
+	return res;
+}
+
 /* ========================================================================= *
  * ALS
  * ========================================================================= */
@@ -1043,6 +1128,10 @@ static void mce_sensorfw_ps_start_sensor(void)
 	if( !mce_sensorfw_start_sensor(ps_name, ps_iface, ps_sid) )
 		goto EXIT;
 
+	/* No error checking here; failures will be logged when
+	 * we get reply message from sensord */
+	mce_sensorfw_set_standby_override(ps_name, ps_iface, ps_sid, true);
+
 	ps_have = true;
 
 	/* There is no quarantee that we get sensor input
@@ -1060,8 +1149,11 @@ static void mce_sensorfw_ps_stop_sensor(void)
 	if( !ps_have )
 		goto EXIT;
 
-	if( mce_sensorfw_ps_have_session() )
+	if( mce_sensorfw_ps_have_session() ) {
+		mce_sensorfw_set_standby_override(ps_name, ps_iface, ps_sid,
+						  false);
 		mce_sensorfw_stop_sensor(ps_name, ps_iface, ps_sid);
+	}
 
 	ps_have = false;
 EXIT:
