@@ -1399,7 +1399,7 @@ mce_sensorfw_quit(void)
 void
 mce_sensorfw_suspend(void)
 {
-	if( !system_suspended ) {
+	if( !system_suspended && stop_ps_on_suspend() ) {
 		system_suspended = true;
 		mce_log(LL_INFO, "@%s()", __FUNCTION__);
 		xsensord_rethink();
