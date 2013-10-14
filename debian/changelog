@@ -1,3 +1,9 @@
+mce (1.17.3) unstable; urgency=low
+
+  * [mce] Send fake sensor inputs on loss of sensord connection
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 14 Oct 2013 14:42:46 +0300
+
 mce (1.17.2) unstable; urgency=low
 
   * [mce] Add enablers for stopping sensors in suspend
