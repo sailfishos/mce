@@ -1096,5 +1096,8 @@ void g_module_unload(GModule *module)
 	/* Unregister I/O monitors */
 	mce_unregister_io_monitor(proximity_sensor_iomon_id);
 
+	/* Disable proximity monitoring to remove callbacks
+	 * to unloaded module */
+	disable_proximity_monitor();
 	return;
 }
