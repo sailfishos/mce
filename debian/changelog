@@ -1,3 +1,9 @@
+mce (1.17.6) unstable; urgency=low
+
+  * [mce] PowerOn led pattern color is grey75
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 16 Oct 2013 18:26:38 +0300
+
 mce (1.17.5) unstable; urgency=low
 
   * [mce] Ignore double tap events when proximity sensor is covered
