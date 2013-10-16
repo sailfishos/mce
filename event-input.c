@@ -388,6 +388,8 @@ typedef enum {
 	EVDEV_ACTIVITY,
 	/** The rest, mce does not track these */
 	EVDEV_IGNORE,
+	/** Button like touch device */
+	EVDEV_DBLTAP,
 
 } evdev_type_t;
 
@@ -400,8 +402,8 @@ static const char * const evdev_class[] =
 	[EVDEV_INPUT]    = "KEY, BUTTON or SWITCH",
 	[EVDEV_ACTIVITY] = "USER ACTIVITY ONLY",
 	[EVDEV_IGNORE]   = "IGNORE",
+	[EVDEV_DBLTAP]   = "DOUBLE TAP",
 };
-
 
 /** Use heuristics to determine what mce should do with an evdev device node
  *
@@ -417,6 +419,14 @@ static evdev_type_t get_evdev_type(int fd)
 
 	evdevinfo_probe(feat, fd);
 
+	/* key events pseudo button device might support in
+	 * addition to power key */
+	static const int pseudo_lut[] = {
+		KEY_MENU,
+		KEY_BACK,
+		KEY_HOMEPAGE,
+		-1
+	};
 	/* Key events mce is interested in */
 	static const int keypad_lut[] = {
 		KEY_CAMERA,
@@ -498,6 +508,13 @@ static evdev_type_t get_evdev_type(int fd)
 	    evdevinfo_has_code(feat, EV_REL, REL_Y) ) {
 		// mouse
 		res = EVDEV_TOUCH;
+		goto cleanup;
+	}
+
+	/* Touchscreen that emits power key events on double tap */
+	if( evdevinfo_has_code(feat, EV_KEY, KEY_POWER) &&
+	    evdevinfo_has_codes(feat, EV_KEY, pseudo_lut) ) {
+		res = EVDEV_DBLTAP;
 		goto cleanup;
 	}
 
@@ -1035,6 +1052,45 @@ EXIT:
 	return flush;
 }
 
+static gboolean doubletap_iomon_cb(gpointer data, gsize bytes_read)
+{
+	struct input_event *ev = data;
+	gboolean flush = FALSE;
+
+	/* Don't process invalid reads */
+	if (bytes_read != sizeof (*ev)) {
+		goto EXIT;
+	}
+
+	/* Power key up event -> double tap gesture event */
+	if( ev->type == EV_KEY &&
+	    ev->code == KEY_POWER &&
+	    ev->value == 0 ) {
+		cover_state_t proximity_sensor_state =
+			datapipe_get_gint(proximity_sensor_pipe);
+
+		if( proximity_sensor_state == COVER_CLOSED ) {
+			/* As we should disable double tap detector rather
+			 * than filtering the events with proximity state.
+			 * Emit one warning then switch to debug logging */
+			static loglevel_t lev =	LL_WARN;
+			mce_log(lev, "IGNORING DOUBLETAP");
+			lev = LL_DEBUG;
+		}
+		else {
+			mce_log(LL_NOTICE, "FORWARDING DOUBLETAP");
+			/* Mimic N9 style gesture event for which we
+			 * already have logic in place */
+			ev->type  = EV_MSC;
+			ev->code  = MSC_GESTURE;
+			ev->value = 0x4;
+			flush = touchscreen_iomon_cb(ev, sizeof *ev);
+		}
+	}
+EXIT:
+	return flush;
+}
+
 /**
  * Timeout function for keypress repeats
  * @note Empty function; we check the callback id
@@ -1463,6 +1519,14 @@ static void match_and_register_io_monitor(const gchar *filename)
 	case EVDEV_TOUCH:
 		iomon = mce_register_io_monitor_chunk(fd, filename, MCE_IO_ERROR_POLICY_WARN,
 						      G_IO_IN | G_IO_ERR, FALSE, touchscreen_iomon_cb,
+						      sizeof (struct input_event));
+		if( iomon )
+			touchscreen_dev_list = g_slist_prepend(touchscreen_dev_list, (gpointer)iomon);
+		break;
+
+	case EVDEV_DBLTAP:
+		iomon = mce_register_io_monitor_chunk(fd, filename, MCE_IO_ERROR_POLICY_WARN,
+						      G_IO_IN | G_IO_ERR, FALSE, doubletap_iomon_cb,
 						      sizeof (struct input_event));
 		if( iomon )
 			touchscreen_dev_list = g_slist_prepend(touchscreen_dev_list, (gpointer)iomon);
