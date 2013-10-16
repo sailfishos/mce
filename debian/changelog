@@ -1,3 +1,10 @@
+mce (1.17.5) unstable; urgency=low
+
+  * [mce] Ignore double tap events when proximity sensor is covered
+  * [mce] Plugins remove sensor input callbacks when unloaded
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 16 Oct 2013 15:20:41 +0300
+
 mce (1.17.4) unstable; urgency=low
 
   * [mce] Use standby override property for proximity sensor
