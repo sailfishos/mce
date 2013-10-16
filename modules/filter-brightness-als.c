@@ -1145,5 +1145,9 @@ void g_module_unload(GModule *module)
 				    display_brightness_filter);
 
 	quit_color_profiles();
+
+	/* Remove callbacks pointing to unloaded module */
+	mce_sensorfw_als_set_notify(0);
+
 	return;
 }
