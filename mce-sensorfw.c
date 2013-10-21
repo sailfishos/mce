@@ -1235,6 +1235,419 @@ void mce_sensorfw_ps_set_notify(void (*cb)(bool covered))
 }
 
 /* ========================================================================= *
+ * Orientation
+ * ========================================================================= */
+
+/** Orientation data block as sensord sends them */
+typedef struct orient_data {
+	uint64_t timestamp; /* microseconds, monotonic */
+	int32_t  state;
+} orient_data_t;
+
+static const char * const orient_state_lut[] =
+{
+       [MCE_ORIENTATION_UNDEFINED]   = "Undefined",
+       [MCE_ORIENTATION_LEFT_UP]     = "LeftUp",
+       [MCE_ORIENTATION_RIGHT_UP]    = "RightUp",
+       [MCE_ORIENTATION_BOTTOM_UP]   = "BottomUp",
+       [MCE_ORIENTATION_BOTTOM_DOWN] = "BottomDown",
+       [MCE_ORIENTATION_FACE_DOWN]   = "FaceDown",
+       [MCE_ORIENTATION_FACE_UP]     = "FaceUp",
+};
+static const char *orient_state_name(int state)
+{
+	const char *res = 0;
+
+	size_t count = sizeof orient_state_lut / sizeof *orient_state_lut;
+
+	if( (size_t) state < count )
+		res = orient_state_lut[state];
+
+	return res ?: "Unknown";
+}
+
+/** Sensord name for Orientation */
+static const char orient_name[]  = "orientationsensor";
+
+/** Sensord D-Bus interface for Orientation */
+static const char orient_iface[] = "local.OrientationSensor";
+
+/** Sensord session id for Orientation */
+static int        orient_sid     = -1;
+
+/** Input watch for Orientation data */
+static guint      orient_wid     = 0;
+
+/** Flag for MCE wants to enable Orientation */
+static bool       orient_want    = false;
+
+/** Flag for Orientation enabled at sensord */
+static bool       orient_have    = false;
+
+/** Callback for sending Orientation data to where it is needed */
+static void     (*orient_notify_cb)(int state) = 0;
+
+/** Orientation state to report when sensord is not available */
+#define ORIENT_STATE_WHEN_SENSORD_IS_DOWN MCE_ORIENTATION_FACE_UP
+
+/** Wrapper for orient_notify_cb hook
+ */
+static void
+orient_notify(int state, bool synthetic)
+{
+	mce_log(LL_DEBUG, "orientation: %d / %s%s", state,
+		orient_state_name(state),
+		synthetic ? " (fake event)" : "");
+
+	if( orient_notify_cb )
+		orient_notify_cb(state);
+	else if( !synthetic )
+		mce_log(LL_WARN, "orientation enabled without notify cb");
+}
+
+/** Handle Orientation input from sensord
+ *
+ * @param chn  io channel
+ * @param cnd  (not used)
+ * @param aptr (not used)
+ *
+ * @return TRUE to keep io watch, or FALSE to remove it
+ */
+static gboolean
+orient_input_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
+{
+	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
+
+	(void)cnd; (void)aptr; // unused
+
+	gboolean keep_going = FALSE;
+	uint32_t count = 0;
+
+	int fd;
+	int rc;
+	orient_data_t data;
+
+	memset(&data, 0, sizeof data);
+
+	if( (fd = g_io_channel_unix_get_fd(chn)) < 0 ) {
+		mce_log(LL_ERR, "io channel has no fd");
+		goto EXIT;
+	}
+
+	// FIXME: there should be only one read() ...
+
+	rc = read(fd, &count, sizeof count);
+	if( rc == -1 ) {
+		if( errno == EINTR || errno == EAGAIN )
+			keep_going = TRUE;
+		else
+			mce_log(LL_ERR, "read sample count: %m");
+		goto EXIT;
+	}
+	if( rc == 0 ) {
+		mce_log(LL_ERR, "read sample count: EOF");
+		goto EXIT;
+	}
+	if( rc != (int)sizeof count) {
+		mce_log(LL_ERR, "read sample count: got %d of %d bytes",
+			rc, (int)sizeof count);
+		goto EXIT;
+	}
+
+	mce_log(LL_DEBUG, "Got %u orientation values", (unsigned)count);
+
+	if( count < 1 ) {
+		keep_going = TRUE;
+		goto EXIT;
+	}
+
+	for( unsigned i = 0; i < count; ++i ) {
+		errno = 0, rc = read(fd, &data, sizeof data);
+		if( rc != sizeof data ) {
+			mce_log(LL_ERR, "failed to read sample: %m");
+			goto EXIT;
+		}
+	}
+
+	mce_log(LL_DEBUG, "last orientation value = %u", data.state);
+	orient_notify(data.state, false);
+
+	keep_going = TRUE;
+
+EXIT:
+	if( !keep_going ) {
+		mce_log(LL_CRIT, "disabling io watch");
+		orient_wid = 0;
+	}
+	return keep_going;
+}
+
+/** Handle reply to initial Orientation value request
+ *
+ * @param pc  pending call object
+ * @param aptr (not used)
+ */
+static void mce_sensorfw_orient_read_cb(DBusPendingCall *pc, void *aptr)
+{
+	(void)aptr;
+
+	mce_log(LL_INFO, "Received intial Orientation distance reply");
+
+	bool          res = false;
+	DBusMessage  *rsp = 0;
+	DBusError     err = DBUS_ERROR_INIT;
+	dbus_uint64_t tck = 0;
+	dbus_uint32_t val = 0;
+
+	DBusMessageIter body, var, rec;
+
+	if( !(rsp = dbus_pending_call_steal_reply(pc)) )
+		goto EXIT;
+
+	if( dbus_set_error_from_message(&err, rsp) ) {
+		mce_log(LL_ERR, "orientation error reply: %s: %s",
+			err.name, err.message);
+		goto EXIT;
+	}
+
+	if( !dbus_message_iter_init(rsp, &body) )
+		goto EXIT;
+
+	if( dbus_message_iter_get_arg_type(&body) != DBUS_TYPE_VARIANT )
+		goto EXIT;
+
+	dbus_message_iter_recurse(&body, &var);
+	dbus_message_iter_next(&body);
+	if( dbus_message_iter_get_arg_type(&var) != DBUS_TYPE_STRUCT )
+		goto EXIT;
+
+	dbus_message_iter_recurse(&var, &rec);
+	dbus_message_iter_next(&var);
+	if( dbus_message_iter_get_arg_type(&rec) !=  DBUS_TYPE_UINT64 )
+		goto EXIT;
+
+	dbus_message_iter_get_basic(&rec, &tck);
+	dbus_message_iter_next(&rec);
+	if( dbus_message_iter_get_arg_type(&rec) !=  DBUS_TYPE_UINT32 )
+		goto EXIT;
+
+	dbus_message_iter_get_basic(&rec, &val);
+	dbus_message_iter_next(&rec);
+
+	mce_log(LL_INFO, "initial orientation value = %u", val);
+
+	orient_notify(val, false);
+
+	res = true;
+
+EXIT:
+	if( !res ) mce_log(LL_WARN, "did not get initial orientation value");
+	if( rsp ) dbus_message_unref(rsp);
+	dbus_pending_call_unref(pc);
+	dbus_error_free(&err);
+}
+
+/** Issue get Orientation value IPC to sensord
+ *
+ * @param id        sensor name
+ * @param iface     D-Bus interface for the sensor
+ * @param sessionid sensord session id from mce_sensorfw_request_sensor()
+ */
+static void
+mce_sensorfw_orient_read(const char *id, const char *iface, int sessionid)
+{
+	(void)sessionid;
+
+	char *path = 0;
+	const char *prop = "orientation";
+
+	mce_log(LL_INFO, "read(%s, %d)", id, sessionid);
+
+	if( asprintf(&path, "%s/%s", SENSORFW_PATH, id) < 0 ) {
+		path = 0;
+		goto EXIT;
+	}
+
+	dbus_send(SENSORFW_SERVICE,
+		  path,
+		  "org.freedesktop.DBus.Properties",
+		  "Get",
+		  mce_sensorfw_orient_read_cb,
+		  DBUS_TYPE_STRING, &iface,
+		  DBUS_TYPE_STRING, &prop,
+		  DBUS_TYPE_INVALID);
+EXIT:
+	free(path);
+}
+
+/** Close Orientation session with sensord
+ */
+static void mce_sensorfw_orient_stop_session(void)
+{
+	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
+
+	if( orient_sid != -1 ) {
+		if( sensord_running )
+			mce_sensorfw_release_sensor(orient_name, orient_sid);
+		orient_sid = -1;
+	}
+
+	if( orient_wid ) {
+		g_source_remove(orient_wid), orient_wid = 0;
+		orient_notify(ORIENT_STATE_WHEN_SENSORD_IS_DOWN, true);
+	}
+	orient_have = false;
+}
+
+/** Have Orientation session with sensord predicate
+ *
+ * @return true if session exists, or false if not
+ */
+static bool mce_sensorfw_orient_have_session(void)
+{
+	return orient_wid != 0;
+}
+
+/** Open Orientation session with sensord
+ *
+ * @return true on success, or false in case of errors
+ */
+static bool mce_sensorfw_orient_start_session(void)
+{
+	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
+
+	if( orient_wid ) {
+		goto EXIT;
+	}
+
+	if( !mce_sensorfw_load_sensor(orient_name) ) {
+		goto EXIT;
+	}
+
+	orient_sid = mce_sensorfw_request_sensor(orient_name);
+	if( orient_sid < 0 )
+		goto EXIT;
+
+	orient_wid = mce_sensorfw_add_io_watch(orient_sid, orient_input_cb);
+	if( !orient_wid )
+		goto EXIT;
+
+EXIT:
+	if( !orient_wid ) {
+		// all or nothing
+		mce_sensorfw_orient_stop_session();
+	}
+	return orient_wid != 0;
+}
+
+/** Enable Orientation via sensord
+ */
+static void mce_sensorfw_orient_start_sensor(void)
+{
+	if( orient_have )
+		goto EXIT;
+
+	if( !mce_sensorfw_orient_start_session() )
+		goto EXIT;
+
+	if( !mce_sensorfw_start_sensor(orient_name, orient_iface, orient_sid) )
+		goto EXIT;
+
+	/* No error checking here; failures will be logged when
+	 * we get reply message from sensord */
+	mce_sensorfw_set_standby_override(orient_name, orient_iface, orient_sid, true);
+
+	orient_have = true;
+
+	/* There is no quarantee that we get sensor input
+	 * anytime soon, so we make an explicit get current
+	 * value request after starting sensor */
+	mce_sensorfw_orient_read(orient_name, orient_iface, orient_sid);
+EXIT:
+	return;
+}
+
+/** Disable Orientation via sensord
+ */
+static void mce_sensorfw_orient_stop_sensor(void)
+{
+	if( !orient_have )
+		goto EXIT;
+
+	if( mce_sensorfw_orient_have_session() ) {
+		mce_sensorfw_set_standby_override(orient_name, orient_iface, orient_sid,
+						  false);
+		mce_sensorfw_stop_sensor(orient_name, orient_iface, orient_sid);
+	}
+
+	orient_have = false;
+EXIT:
+	return;
+}
+
+/** Rethink Orientation enabled state
+ */
+static void
+mce_sensorfw_orient_rethink(void)
+{
+	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
+	if( !sensord_running ) {
+		mce_log(LL_WARN, "sensord not on dbus;"
+			" skipping ps enable/disable for now");
+		goto EXIT;
+	}
+
+	if( orient_want == orient_have )
+		goto EXIT;
+
+	if( system_suspended ) {
+		mce_log(LL_NOTICE, "skipping ps enable/disable;"
+			" should be suspended");
+		goto EXIT;
+	}
+
+	if( orient_want )
+		mce_sensorfw_orient_start_sensor();
+	else
+		mce_sensorfw_orient_stop_sensor();
+
+EXIT:
+	return;
+}
+
+/** Try to enable Orientation input
+ */
+void
+mce_sensorfw_orient_enable(void)
+{
+	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
+	orient_want = true;
+	mce_sensorfw_orient_rethink();
+}
+
+/** Try to disable Orientation input
+ */
+void
+mce_sensorfw_orient_disable(void)
+{
+	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
+	orient_want = false;
+	mce_sensorfw_orient_rethink();
+}
+
+/** Set Orientation notification callback
+ *
+ * @param cb function to call when Orientation events are received
+ */
+void mce_sensorfw_orient_set_notify(void (*cb)(int covered))
+{
+	mce_log(LL_DEBUG, "@%s(%p)", __FUNCTION__, cb);
+	orient_notify_cb = cb;
+	if( !sensord_running )
+		orient_notify(ORIENT_STATE_WHEN_SENSORD_IS_DOWN, true);
+}
+
+/* ========================================================================= *
  * SENSORD
  * ========================================================================= */
 
@@ -1252,10 +1665,12 @@ static void xsensord_rethink(void)
 	static bool was_suspended = false;
 
 	if( !sensord_running ) {
+		mce_sensorfw_orient_stop_session();
 		mce_sensorfw_als_stop_session();
 		mce_sensorfw_ps_stop_session();
 	}
 	else if( system_suspended ) {
+		mce_sensorfw_orient_stop_sensor();
 		mce_sensorfw_als_stop_sensor();
 		if( stop_ps_on_suspend() )
 			mce_sensorfw_ps_stop_sensor();
@@ -1263,6 +1678,7 @@ static void xsensord_rethink(void)
 	else {
 		mce_sensorfw_als_rethink();
 		mce_sensorfw_ps_rethink();
+		mce_sensorfw_orient_rethink();
 	}
 	if( system_suspended && !was_suspended ) {
 		/* test callback pointer here too to avoid warning */
@@ -1472,6 +1888,7 @@ mce_sensorfw_quit(void)
 
 	mce_sensorfw_ps_stop_session();
 	mce_sensorfw_als_stop_session();
+	mce_sensorfw_orient_stop_session();
 
 	if( systembus ) {
 		dbus_connection_remove_filter(systembus,
