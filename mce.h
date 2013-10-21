@@ -296,6 +296,8 @@ datapipe_struct lid_cover_pipe;
 datapipe_struct lens_cover_pipe;
 /** Proximity sensor; read only */
 datapipe_struct proximity_sensor_pipe;
+/** Orientation sensor; read only */
+datapipe_struct orientation_sensor_pipe;
 /** The alarm UI state */
 datapipe_struct alarm_ui_state_pipe;
 /** The device state */
