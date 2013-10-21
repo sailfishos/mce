@@ -58,215 +58,9 @@ static bool       sensord_running = false;
 /** Flag for system is suspended */
 static bool       system_suspended = false;
 
-/** Sensord name for ALS */
-static const char als_name[]  = "alssensor";
-
-/** Sensord D-Bus interface for ALS */
-static const char als_iface[] = "local.ALSSensor";
-
-/** Sensord session id for ALS */
-static int        als_sid     = -1;
-
-/** Input watch for ALS data */
-static guint      als_wid     = 0;
-
-/** Flag for MCE wants to enable ALS */
-static bool       als_want    = false;
-
-/** Flag for ALS enabled at sensord */
-static bool       als_have    = false;
-
-/** Callback for sending ALS data to where it is needed */
-static void     (*als_notify_cb)(unsigned lux) = 0;
-static void     als_notify(unsigned lux);
-
-/** Ambient light value to report when sensord is not available */
-#define ALS_VALUE_WHEN_SENSORD_IS_DOWN 400
-
-/** Sensord name for PS */
-static const char ps_name[]  = "proximitysensor";
-
-/** Sensord D-Bus interface for PS */
-static const char ps_iface[] = "local.ProximitySensor";
-
-/** Sensord session id for PS */
-static int        ps_sid     = -1;
-
-/** Input watch for PS data */
-static guint      ps_wid     = 0;
-
-/** Flag for MCE wants to enable PS */
-static bool       ps_want    = false;
-
-/** Flag for PS enabled at sensord */
-static bool       ps_have    = false;
-
-/** Callback for sending PS data to where it is needed */
-static void     (*ps_notify_cb)(bool covered) = 0;
-static void     ps_notify(bool covered);
-
-/** Proximity state to report when sensord is not available */
-#define PS_STATE_WHEN_SENSORD_IS_DOWN false
-
 /* ========================================================================= *
  * COMMON
  * ========================================================================= */
-
-/** Handle ALS input from sensord
- *
- * @param chn  io channel
- * @param cnd  (not used)
- * @param aptr (not used)
- *
- * @return TRUE to keep io watch, or FALSE to remove it
- */
-static gboolean
-als_input_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
-{
-	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
-
-	(void)cnd; (void)aptr; // unused
-
-	gboolean keep_going = FALSE;
-	uint32_t count = 0;
-
-	int fd;
-	int rc;
-	als_data_t data;
-
-	memset(&data, 0, sizeof data);
-
-	if( (fd = g_io_channel_unix_get_fd(chn)) < 0 ) {
-		mce_log(LL_ERR, "io channel has no fd");
-		goto EXIT;
-	}
-
-	// FIXME: there should be only one read() ...
-
-	rc = read(fd, &count, sizeof count);
-	if( rc == -1 ) {
-		if( errno == EINTR || errno == EAGAIN )
-			keep_going = TRUE;
-		else
-			mce_log(LL_ERR, "read sample count: %m");
-		goto EXIT;
-	}
-	if( rc == 0 ) {
-		mce_log(LL_ERR, "read sample count: EOF");
-		goto EXIT;
-	}
-	if( rc != (int)sizeof count) {
-		mce_log(LL_ERR, "read sample count: got %d of %d bytes",
-			rc, (int)sizeof count);
-		goto EXIT;
-	}
-
-	mce_log(LL_DEBUG, "got %u ALS values", (unsigned)count);
-
-	if( count < 1 ) {
-		keep_going = TRUE;
-		goto EXIT;
-	}
-
-	for( unsigned i = 0; i < count; ++i ) {
-		errno = 0, rc = read(fd, &data, sizeof data);
-		if( rc != sizeof data ) {
-			mce_log(LL_ERR, "failed to read sample: %m");
-			goto EXIT;
-		}
-	}
-
-	mce_log(LL_DEBUG, "last ALS value = %u", data.value);
-	als_notify(data.value);
-
-	keep_going = TRUE;
-
-EXIT:
-	if( !keep_going ) {
-		mce_log(LL_CRIT, "disabling io watch");
-		als_wid = 0;
-	}
-	return keep_going;
-}
-
-/** Handle PS input from sensord
- *
- * @param chn  io channel
- * @param cnd  (not used)
- * @param aptr (not used)
- *
- * @return TRUE to keep io watch, or FALSE to remove it
- */
-static gboolean
-ps_input_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
-{
-	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
-
-	(void)cnd; (void)aptr; // unused
-
-	gboolean keep_going = FALSE;
-	uint32_t count = 0;
-
-	int fd;
-	int rc;
-	ps_data_t data;
-
-	memset(&data, 0, sizeof data);
-
-	if( (fd = g_io_channel_unix_get_fd(chn)) < 0 ) {
-		mce_log(LL_ERR, "io channel has no fd");
-		goto EXIT;
-	}
-
-	// FIXME: there should be only one read() ...
-
-	rc = read(fd, &count, sizeof count);
-	if( rc == -1 ) {
-		if( errno == EINTR || errno == EAGAIN )
-			keep_going = TRUE;
-		else
-			mce_log(LL_ERR, "read sample count: %m");
-		goto EXIT;
-	}
-	if( rc == 0 ) {
-		mce_log(LL_ERR, "read sample count: EOF");
-		goto EXIT;
-	}
-	if( rc != (int)sizeof count) {
-		mce_log(LL_ERR, "read sample count: got %d of %d bytes",
-			rc, (int)sizeof count);
-		goto EXIT;
-	}
-
-	mce_log(LL_DEBUG, "Got %u PS values", (unsigned)count);
-
-	if( count < 1 ) {
-		keep_going = TRUE;
-		goto EXIT;
-	}
-
-	for( unsigned i = 0; i < count; ++i ) {
-		errno = 0, rc = read(fd, &data, sizeof data);
-		if( rc != sizeof data ) {
-			mce_log(LL_ERR, "failed to read sample: %m");
-			goto EXIT;
-		}
-	}
-
-	mce_log(LL_DEBUG, "last PS value = %u / %d", data.value,
-		data.withinProximity);
-
-	ps_notify(data.withinProximity != 0);
-
-	keep_going = TRUE;
-
-EXIT:
-	if( !keep_going ) {
-		mce_log(LL_CRIT, "disabling io watch");
-		ps_wid = 0;
-	}
-	return keep_going;
-}
 
 /** Add input watch for sensord session
  *
@@ -636,7 +430,6 @@ EXIT:
 	dbus_error_free(&err);
 }
 
-
 /** Issue sensor standby override request to sensord
  *
  * @param id        sensor name
@@ -682,6 +475,30 @@ EXIT:
  * ALS
  * ========================================================================= */
 
+/** Sensord name for ALS */
+static const char als_name[]  = "alssensor";
+
+/** Sensord D-Bus interface for ALS */
+static const char als_iface[] = "local.ALSSensor";
+
+/** Sensord session id for ALS */
+static int        als_sid     = -1;
+
+/** Input watch for ALS data */
+static guint      als_wid     = 0;
+
+/** Flag for MCE wants to enable ALS */
+static bool       als_want    = false;
+
+/** Flag for ALS enabled at sensord */
+static bool       als_have    = false;
+
+/** Callback for sending ALS data to where it is needed */
+static void     (*als_notify_cb)(unsigned lux) = 0;
+
+/** Ambient light value to report when sensord is not available */
+#define ALS_VALUE_WHEN_SENSORD_IS_DOWN 400
+
 /** Wrapper for als_notify_cb hook
  */
 static void
@@ -693,6 +510,83 @@ als_notify(unsigned lux)
 		als_notify_cb(lux);
 	else
 		mce_log(LL_WARN, "ALS enabled without notify cb");
+}
+
+/** Handle ALS input from sensord
+ *
+ * @param chn  io channel
+ * @param cnd  (not used)
+ * @param aptr (not used)
+ *
+ * @return TRUE to keep io watch, or FALSE to remove it
+ */
+static gboolean
+als_input_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
+{
+	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
+
+	(void)cnd; (void)aptr; // unused
+
+	gboolean keep_going = FALSE;
+	uint32_t count = 0;
+
+	int fd;
+	int rc;
+	als_data_t data;
+
+	memset(&data, 0, sizeof data);
+
+	if( (fd = g_io_channel_unix_get_fd(chn)) < 0 ) {
+		mce_log(LL_ERR, "io channel has no fd");
+		goto EXIT;
+	}
+
+	// FIXME: there should be only one read() ...
+
+	rc = read(fd, &count, sizeof count);
+	if( rc == -1 ) {
+		if( errno == EINTR || errno == EAGAIN )
+			keep_going = TRUE;
+		else
+			mce_log(LL_ERR, "read sample count: %m");
+		goto EXIT;
+	}
+	if( rc == 0 ) {
+		mce_log(LL_ERR, "read sample count: EOF");
+		goto EXIT;
+	}
+	if( rc != (int)sizeof count) {
+		mce_log(LL_ERR, "read sample count: got %d of %d bytes",
+			rc, (int)sizeof count);
+		goto EXIT;
+	}
+
+	mce_log(LL_DEBUG, "got %u ALS values", (unsigned)count);
+
+	if( count < 1 ) {
+		keep_going = TRUE;
+		goto EXIT;
+	}
+
+	for( unsigned i = 0; i < count; ++i ) {
+		errno = 0, rc = read(fd, &data, sizeof data);
+		if( rc != sizeof data ) {
+			mce_log(LL_ERR, "failed to read sample: %m");
+			goto EXIT;
+		}
+	}
+
+	mce_log(LL_DEBUG, "last ALS value = %u", data.value);
+	als_notify(data.value);
+
+	keep_going = TRUE;
+
+EXIT:
+	if( !keep_going ) {
+		mce_log(LL_CRIT, "disabling io watch");
+		als_wid = 0;
+	}
+	return keep_going;
 }
 
 /** Handle reply to initial ALS value request
@@ -957,6 +851,30 @@ void mce_sensorfw_als_set_notify(void (*cb)(unsigned lux))
  * PS
  * ========================================================================= */
 
+/** Sensord name for PS */
+static const char ps_name[]  = "proximitysensor";
+
+/** Sensord D-Bus interface for PS */
+static const char ps_iface[] = "local.ProximitySensor";
+
+/** Sensord session id for PS */
+static int        ps_sid     = -1;
+
+/** Input watch for PS data */
+static guint      ps_wid     = 0;
+
+/** Flag for MCE wants to enable PS */
+static bool       ps_want    = false;
+
+/** Flag for PS enabled at sensord */
+static bool       ps_have    = false;
+
+/** Callback for sending PS data to where it is needed */
+static void     (*ps_notify_cb)(bool covered) = 0;
+
+/** Proximity state to report when sensord is not available */
+#define PS_STATE_WHEN_SENSORD_IS_DOWN false
+
 /** Wrapper for ps_notify_cb hook
  */
 static void
@@ -968,6 +886,85 @@ ps_notify(bool covered)
 		ps_notify_cb(covered);
 	else
 		mce_log(LL_WARN, "PS enabled without notify cb");
+}
+
+/** Handle PS input from sensord
+ *
+ * @param chn  io channel
+ * @param cnd  (not used)
+ * @param aptr (not used)
+ *
+ * @return TRUE to keep io watch, or FALSE to remove it
+ */
+static gboolean
+ps_input_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
+{
+	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
+
+	(void)cnd; (void)aptr; // unused
+
+	gboolean keep_going = FALSE;
+	uint32_t count = 0;
+
+	int fd;
+	int rc;
+	ps_data_t data;
+
+	memset(&data, 0, sizeof data);
+
+	if( (fd = g_io_channel_unix_get_fd(chn)) < 0 ) {
+		mce_log(LL_ERR, "io channel has no fd");
+		goto EXIT;
+	}
+
+	// FIXME: there should be only one read() ...
+
+	rc = read(fd, &count, sizeof count);
+	if( rc == -1 ) {
+		if( errno == EINTR || errno == EAGAIN )
+			keep_going = TRUE;
+		else
+			mce_log(LL_ERR, "read sample count: %m");
+		goto EXIT;
+	}
+	if( rc == 0 ) {
+		mce_log(LL_ERR, "read sample count: EOF");
+		goto EXIT;
+	}
+	if( rc != (int)sizeof count) {
+		mce_log(LL_ERR, "read sample count: got %d of %d bytes",
+			rc, (int)sizeof count);
+		goto EXIT;
+	}
+
+	mce_log(LL_DEBUG, "Got %u PS values", (unsigned)count);
+
+	if( count < 1 ) {
+		keep_going = TRUE;
+		goto EXIT;
+	}
+
+	for( unsigned i = 0; i < count; ++i ) {
+		errno = 0, rc = read(fd, &data, sizeof data);
+		if( rc != sizeof data ) {
+			mce_log(LL_ERR, "failed to read sample: %m");
+			goto EXIT;
+		}
+	}
+
+	mce_log(LL_DEBUG, "last PS value = %u / %d", data.value,
+		data.withinProximity);
+
+	ps_notify(data.withinProximity != 0);
+
+	keep_going = TRUE;
+
+EXIT:
+	if( !keep_going ) {
+		mce_log(LL_CRIT, "disabling io watch");
+		ps_wid = 0;
+	}
+	return keep_going;
 }
 
 /** Handle reply to initial PS value request
