@@ -950,6 +950,8 @@ int main(int argc, char **argv)
 		       0, GINT_TO_POINTER(0));
 	setup_datapipe(&proximity_sensor_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(COVER_OPEN));
+	setup_datapipe(&ambient_light_sensor_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(400));
 	setup_datapipe(&orientation_sensor_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(0));
 	setup_datapipe(&tk_lock_pipe, READ_ONLY, DONT_FREE_CACHE,
@@ -1077,6 +1079,7 @@ EXIT:
 	free_datapipe(&charger_state_pipe);
 	free_datapipe(&tk_lock_pipe);
 	free_datapipe(&proximity_sensor_pipe);
+	free_datapipe(&ambient_light_sensor_pipe);
 	free_datapipe(&orientation_sensor_pipe);
 	free_datapipe(&lens_cover_pipe);
 	free_datapipe(&lid_cover_pipe);
