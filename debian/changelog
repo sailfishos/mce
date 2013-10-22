@@ -1,3 +1,9 @@
+mce (1.17.9) unstable; urgency=low
+
+  * [evdev_trace] The evdev_trace optionally emits local time of day
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 22 Oct 2013 20:11:17 +0300
+
 mce (1.17.8) unstable; urgency=low
 
   * [mce] Update hybris LED colors for communication patterns
