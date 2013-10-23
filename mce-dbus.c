@@ -6,6 +6,7 @@
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Ismo Laitinen <ismo.laitinen@nokia.com>
+ * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
  * mce is free software; you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License
@@ -1787,6 +1788,276 @@ static gboolean dbus_init_message_handler(void)
 
 EXIT:
 	return status;
+}
+
+/** Get dbus data type to human readable form
+ *
+ * @param type type id (DBUS_TYPE_BOOLEAN etc)
+ *
+ * @return name of the type, without the DBUS_TYPE_ prefix
+ */
+const char *
+mce_dbus_type_repr(int type)
+{
+    const char *res = "UNKNOWN";
+    switch( type ) {
+    case DBUS_TYPE_INVALID:     res = "INVALID";     break;
+    case DBUS_TYPE_BYTE:        res = "BYTE";        break;
+    case DBUS_TYPE_BOOLEAN:     res = "BOOLEAN";     break;
+    case DBUS_TYPE_INT16:       res = "INT16";       break;
+    case DBUS_TYPE_UINT16:      res = "UINT16";      break;
+    case DBUS_TYPE_INT32:       res = "INT32";       break;
+    case DBUS_TYPE_UINT32:      res = "UINT32";      break;
+    case DBUS_TYPE_INT64:       res = "INT64";       break;
+    case DBUS_TYPE_UINT64:      res = "UINT64";      break;
+    case DBUS_TYPE_DOUBLE:      res = "DOUBLE";      break;
+    case DBUS_TYPE_STRING:      res = "STRING";      break;
+    case DBUS_TYPE_OBJECT_PATH: res = "OBJECT_PATH"; break;
+    case DBUS_TYPE_SIGNATURE:   res = "SIGNATURE";   break;
+    case DBUS_TYPE_UNIX_FD:     res = "UNIX_FD";     break;
+    case DBUS_TYPE_ARRAY:       res = "ARRAY";       break;
+    case DBUS_TYPE_VARIANT:     res = "VARIANT";     break;
+    case DBUS_TYPE_STRUCT:      res = "STRUCT";      break;
+    case DBUS_TYPE_DICT_ENTRY:  res = "DICT_ENTRY";  break;
+    default: break;
+    }
+    return res;
+}
+
+/** End of iterator reached predicate
+ *
+ * @param iter dbus message iterator
+ *
+ * @return true if no more iterms can be read, false otherwise
+ */
+bool
+mce_dbus_iter_at_end(DBusMessageIter *iter)
+{
+    return dbus_message_iter_get_arg_type(iter) == DBUS_TYPE_INVALID;
+}
+
+/** Iterator points to expected data type predicate
+ *
+ * If not, error diagnostic is emitted
+ *
+ * @param iter dbus message iterator
+ * @param want dbus type id
+ *
+ * @return true if iterator points to expected type, false otherwise
+ */
+static bool
+mce_dbus_iter_req_type(DBusMessageIter *iter, int want)
+{
+    int have = dbus_message_iter_get_arg_type(iter);
+
+    if( have == want ) {
+        return true;
+    }
+
+    mce_log(LL_ERR, "expected: %s, got: %s",
+            mce_dbus_type_repr(want),
+            mce_dbus_type_repr(have));
+
+    return false;
+}
+
+/** Iterator points to expected data type predicate
+ *
+ * If not, error diagnostic is emitted
+ *
+ * @param iter dbus message iterator
+ * @param want dbus type id
+ *
+ * @return true if iterator points to expected type, false otherwise
+ */
+static bool
+mce_dbus_iter_get_basic(DBusMessageIter *iter, void *pval, int type)
+{
+    if( !dbus_type_is_basic(type) ) {
+        mce_log(LL_ERR, "%s: is not basic dbus type",
+                mce_dbus_type_repr(type));
+        return false;
+    }
+
+    if( !mce_dbus_iter_req_type(iter, type) )
+        return false;
+
+    dbus_message_iter_get_basic(iter, pval);
+    dbus_message_iter_next(iter);
+    return true;
+}
+
+/** Get object path string from dbus message iterator
+ *
+ * @param iter dbus message iterator
+ * @param pval where to store the result
+ *
+ * @return true if *pval was modified, false otherwise
+ */
+bool
+mce_dbus_iter_get_object(DBusMessageIter *iter, const char **pval)
+{
+    return mce_dbus_iter_get_basic(iter, pval, DBUS_TYPE_OBJECT_PATH);
+}
+
+/** Get string from dbus message iterator
+ *
+ * @param iter dbus message iterator
+ * @param pval where to store the result
+ *
+ * @return true if *pval was modified, false otherwise
+ */
+bool
+mce_dbus_iter_get_string(DBusMessageIter *iter, const char **pval)
+{
+    return mce_dbus_iter_get_basic(iter, pval, DBUS_TYPE_STRING);
+}
+
+/** Get bool from dbus message iterator
+ *
+ * @param iter dbus message iterator
+ * @param pval where to store the result
+ *
+ * @return true if *pval was modified, false otherwise
+ */
+bool
+mce_dbus_iter_get_bool(DBusMessageIter *iter, bool *pval)
+{
+    dbus_bool_t val = 0;
+    bool        res = mce_dbus_iter_get_basic(iter, &val, DBUS_TYPE_BOOLEAN);
+    if( res )
+        *pval = (val != 0);
+    return res;
+}
+
+/** Get sub iterator from dbus message iterator
+ *
+ * @param iter dbus message iterator
+ * @param sub dbus message iterator
+ * @param type expected container type id
+ *
+ * @return true if sub was modified, false otherwise
+ */
+static bool
+mce_dbus_iter_get_container(DBusMessageIter *iter, DBusMessageIter *sub,
+                            int type)
+{
+    if( !dbus_type_is_container(type) ) {
+        mce_log(LL_ERR, "%s: is not container dbus type",
+                mce_dbus_type_repr(type));
+        return false;
+    }
+
+    if( !mce_dbus_iter_req_type(iter, type) )
+        return false;
+
+    dbus_message_iter_recurse(iter, sub);
+    dbus_message_iter_next(iter);
+    return true;
+}
+
+/** Get array sub iterator from dbus message iterator
+ *
+ * @param iter dbus message iterator
+ * @param sub dbus message iterator
+ *
+ * @return true if sub was modified, false otherwise
+ */
+bool
+mce_dbus_iter_get_array(DBusMessageIter *iter, DBusMessageIter *sub)
+{
+    return mce_dbus_iter_get_container(iter, sub, DBUS_TYPE_ARRAY);
+}
+
+/** Get struct sub iterator from dbus message iterator
+ *
+ * @param iter dbus message iterator
+ * @param sub dbus message iterator
+ *
+ * @return true if sub was modified, false otherwise
+ */
+bool
+mce_dbus_iter_get_struct(DBusMessageIter *iter, DBusMessageIter *sub)
+{
+    return mce_dbus_iter_get_container(iter, sub, DBUS_TYPE_STRUCT);
+}
+
+/** Get dict entry sub iterator from dbus message iterator
+ *
+ * @param iter dbus message iterator
+ * @param sub dbus message iterator
+ *
+ * @return true if sub was modified, false otherwise
+ */
+bool
+mce_dbus_iter_get_entry(DBusMessageIter *iter, DBusMessageIter *sub)
+{
+    return mce_dbus_iter_get_container(iter, sub, DBUS_TYPE_DICT_ENTRY);
+}
+
+/** Get variant sub iterator from dbus message iterator
+ *
+ * @param iter dbus message iterator
+ * @param sub dbus message iterator
+ *
+ * @return true if sub was modified, false otherwise
+ */
+bool
+mce_dbus_iter_get_variant(DBusMessageIter *iter, DBusMessageIter *sub)
+{
+    return mce_dbus_iter_get_container(iter, sub, DBUS_TYPE_VARIANT);
+}
+
+/** Register D-Bus message handler
+ *
+ * @param self handler data
+ */
+void
+mce_dbus_handler_register(mce_dbus_handler_t *self)
+{
+    if( !self->cookie ) {
+        self->cookie = mce_dbus_handler_add(self->interface,
+                                            self->name,
+                                            self->rules,
+                                            self->type,
+                                            self->callback);
+        if( !self->cookie )
+            mce_log(LL_ERR, "%s.%s: failed to add handler",
+                    self->interface, self->name);
+    }
+}
+
+/** Unregister D-Bus message handler
+ *
+ * @param self handler data
+ */
+void
+mce_dbus_handler_unregister(mce_dbus_handler_t *self)
+{
+    if( self->cookie )
+        mce_dbus_handler_remove(self->cookie), self->cookie = 0;
+}
+
+/** Register an array of D-Bus message handlers
+ *
+ * @param array handler data array, terminated with .interface=NULL
+ */
+void
+mce_dbus_handler_register_array(mce_dbus_handler_t *array)
+{
+    for( ; array && array->interface; ++array )
+        mce_dbus_handler_register(array);
+}
+
+/** Unregister an array of D-Bus message handlers
+ *
+ * @param array handler data array, terminated with .interface=NULL
+ */
+void
+mce_dbus_handler_unregister_array(mce_dbus_handler_t *array)
+{
+    for( ; array && array->interface; ++array )
+        mce_dbus_handler_unregister(array);
 }
 
 /**
