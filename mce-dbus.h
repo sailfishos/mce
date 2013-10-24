@@ -21,6 +21,7 @@
 #ifndef _MCE_DBUS_H_
 #define _MCE_DBUS_H_
 
+#include <stdbool.h>
 #include <glib.h>
 #include <dbus/dbus.h>
 
@@ -76,5 +77,35 @@ gboolean mce_dbus_init(const gboolean systembus);
 void mce_dbus_exit(void);
 
 void mce_dbus_send_config_notification(GConfEntry *entry);
+
+/** D-Bus message handler data
+ *
+ * For use with mce_dbus_handler_register() etc
+ */
+typedef struct
+{
+  const gchar *const interface;
+  const gchar *const name;
+  const gchar *const rules;
+  const guint type;
+  gboolean (*callback)(DBusMessage *const msg);
+
+  gconstpointer cookie;
+} mce_dbus_handler_t;
+
+
+const char *mce_dbus_type_repr(int type);
+bool mce_dbus_iter_at_end(DBusMessageIter *iter);
+bool mce_dbus_iter_get_object(DBusMessageIter *iter, const char **pval);
+bool mce_dbus_iter_get_string(DBusMessageIter *iter, const char **pval);
+bool mce_dbus_iter_get_bool(DBusMessageIter *iter, bool *pval);
+bool mce_dbus_iter_get_array(DBusMessageIter *iter, DBusMessageIter *sub);
+bool mce_dbus_iter_get_struct(DBusMessageIter *iter, DBusMessageIter *sub);
+bool mce_dbus_iter_get_entry(DBusMessageIter *iter, DBusMessageIter *sub);
+bool mce_dbus_iter_get_variant(DBusMessageIter *iter, DBusMessageIter *sub);
+void mce_dbus_handler_register(mce_dbus_handler_t *self);
+void mce_dbus_handler_unregister(mce_dbus_handler_t *self);
+void mce_dbus_handler_register_array(mce_dbus_handler_t *array);
+void mce_dbus_handler_unregister_array(mce_dbus_handler_t *array);
 
 #endif /* _MCE_DBUS_H_ */
