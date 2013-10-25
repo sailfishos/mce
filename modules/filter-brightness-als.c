@@ -566,7 +566,7 @@ EXIT:
 static gpointer led_brightness_filter(gpointer data)
 {
 	int value = GPOINTER_TO_INT(data);
-	int scale = 100;
+	int scale = 40;
 
 	if( als_lux_latest < 0 )
 		goto EXIT;
