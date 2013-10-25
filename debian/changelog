@@ -1,3 +1,10 @@
+mce (1.17.11) unstable; urgency=low
+
+  * [mce] Do not skip tklock ipc during frame buffer suspend/resume
+  * [mce] Use 40% led brightness if als tuning is not enabled
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 25 Oct 2013 12:59:40 +0300
+
 mce (1.17.10) unstable; urgency=low
 
   * [mce] Improve oFono voice call state tracking
