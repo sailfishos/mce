@@ -168,6 +168,7 @@ enum LockState {
 static const char *display_state_name(display_state_t state);
 static void stm_target_push_change(display_state_t display_state);
 static void stm_rethink_schedule(void);
+static void stm_rethink_force(void);
 
 /** Contextkit D-Bus service */
 #define ORIENTATION_SIGNAL_IF		"org.maemo.contextkit.Property"
@@ -4218,7 +4219,7 @@ UPDATE:
 	 *      being read a lot, we need to alter it to avoid too much
 	 *      special casing
 	 */
-	display_state_pipe.cached_data = new_data;
+	//display_state_pipe.cached_data = new_data;
 
 	return new_data;
 }
@@ -4862,7 +4863,11 @@ static void stm_target_push_change(display_state_t display_state)
 {
 	if( stm_want != display_state ) {
 		stm_want = display_state;
-		stm_rethink_schedule();
+		/* Try to initiate state transitions immediately
+		 * to make the in-transition transient states
+		 * visible to code that polls the display state
+		 * instead of using output triggers */
+		stm_rethink_force();
 	}
 }
 
@@ -5021,11 +5026,8 @@ static void stm_rethink_step(void)
 
 	case STM_RENDERER_INIT_STOP:
 		if( !stm_lipstick_on_dbus ) {
-			mce_log(LL_WARN, "no lipstick; reverting %s -> %s",
-				display_state_name(stm_curr),
-				display_state_name(stm_next));
-			stm_next = stm_curr;
-			stm_trans(STM_STAY_POWER_ON);
+			mce_log(LL_WARN, "no lipstick; going to logical off");
+			stm_trans(STM_ENTER_LOGICAL_OFF);
 		}
 		else {
 			stm_renderer_disable();
@@ -5124,10 +5126,19 @@ static void stm_rethink_step(void)
 			break;
 		}
 
+		if( !stm_lipstick_on_dbus )
+			break;
+
 		if( stm_suspend_allowed_early() ) {
 			stm_trans(STM_LEAVE_LOGICAL_OFF);
 			break;
 		}
+
+		if( stm_enable_rendering_needed ) {
+			stm_trans(STM_RENDERER_INIT_STOP);
+			break;
+		}
+
 		break;
 
 	case STM_LEAVE_LOGICAL_OFF:
@@ -5184,6 +5195,16 @@ static void stm_rethink_schedule(void)
 		mce_log(LL_INFO, "scheduled");
 		stm_rethink_id = g_idle_add(stm_rethink_cb, 0);
 	}
+}
+
+static void stm_rethink_force(void)
+{
+	wakelock_lock("mce_display_stm", -1);
+	if( stm_rethink_id )
+		g_source_remove(stm_rethink_id), stm_rethink_id = 0;
+	stm_rethink();
+	if( !stm_rethink_id )
+		wakelock_unlock("mce_display_stm");
 }
 
 /* ------------------------------------------------------------------------- *
