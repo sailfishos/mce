@@ -4454,6 +4454,10 @@ static void submode_trigger(gconstpointer data)
 	if( old_trans && !new_trans ) {
 		/* End of transition; stable state reached */
 		switch( system_state ) {
+		case MCE_STATE_USER:
+		case MCE_STATE_ACTDEAD:
+			bootup_dim_additional_timeout = 0;
+			break;
 		default:
 			break;
 		}
