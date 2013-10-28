@@ -353,4 +353,10 @@ gboolean mce_rem_submode_int32(const submode_t submode);
 void mce_abort(void) __attribute__((noreturn));
 void mce_quit_mainloop(void);
 
+#define display_state_get() ({\
+	gint res = GPOINTER_TO_INT(display_state_pipe.cached_data);\
+	mce_log(LL_DEBUG, "display_state=%d", res);\
+	res;\
+})
+
 #endif /* _MCE_H_ */

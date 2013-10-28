@@ -823,7 +823,7 @@ EXIT:
  */
 static void ts_kp_disable_policy(void)
 {
-	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+	display_state_t display_state = display_state_get();
 	system_state_t system_state = datapipe_get_gint(system_state_pipe);
 	alarm_ui_state_t alarm_ui_state =
 				datapipe_get_gint(alarm_ui_state_pipe);
@@ -1132,7 +1132,7 @@ EXIT:
  */
 static gboolean open_tklock_ui(dbus_uint32_t mode)
 {
-	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+	display_state_t display_state = display_state_get();
 	const gchar *const cb_service = MCE_SERVICE;
 	const gchar *const cb_path = MCE_REQUEST_PATH;
 	const gchar *const cb_interface = MCE_REQUEST_IF;
@@ -1445,7 +1445,7 @@ static void setup_tklock_dim_timeout(void)
  */
 static void setup_dim_blank_timeout_policy(display_state_t force)
 {
-	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+	display_state_t display_state = display_state_get();
 
 	cancel_tklock_visual_blank_timeout();
 	cancel_tklock_unlock_timeout();
@@ -1873,7 +1873,7 @@ static void trigger_visual_tklock(gboolean powerkey)
 	alarm_ui_state_t alarm_ui_state =
 				datapipe_get_gint(alarm_ui_state_pipe);
 	system_state_t system_state = datapipe_get_gint(system_state_pipe);
-	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+	display_state_t display_state = display_state_get();
 	submode_t submode = mce_get_submode_int32();
 
 	if ((is_malf_state_enabled() == TRUE) ||
@@ -2173,7 +2173,7 @@ static void return_from_proximity(void)
  */
 static void process_proximity_state(void)
 {
-	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+	display_state_t display_state = display_state_get();
 	cover_state_t slide_state = datapipe_get_gint(keyboard_slide_pipe);
 	cover_state_t proximity_sensor_state =
 				datapipe_get_gint(proximity_sensor_pipe);
@@ -2325,7 +2325,7 @@ static void device_inactive_trigger(gconstpointer const data)
  */
 static void keyboard_slide_trigger(gconstpointer const data)
 {
-	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+	display_state_t display_state = display_state_get();
 	system_state_t system_state = datapipe_get_gint(system_state_pipe);
 	cover_state_t kbd_slide_state = GPOINTER_TO_INT(data);
 
@@ -2404,7 +2404,7 @@ static void lockkey_trigger(gconstpointer const data)
  */
 static void keypress_trigger(gconstpointer const data)
 {
-	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+	display_state_t display_state = display_state_get();
 	static gboolean skip_release = FALSE;
 	struct input_event const *const *evp;
 	struct input_event const *ev;
@@ -2967,7 +2967,7 @@ static void call_state_trigger(gconstpointer data)
 {
 	static call_state_t old_call_state = CALL_STATE_INVALID;
 	call_state_t call_state = GPOINTER_TO_INT(data);
-	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+	display_state_t display_state = display_state_get();
 	/* Saving the state for not to interfere with old call paths */
 	gboolean proximity_locked = is_tklock_enabled_by_proximity();
 

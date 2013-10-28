@@ -949,7 +949,7 @@ GTimer *hbm_timer;
  */
 static void update_display_timers(gboolean force_flush)
 {
-	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+	display_state_t display_state = display_state_get();
 	gdouble display_elapsed = 0;
 	gdouble hbm_elapsed = 0;
 	gboolean flush_cal = FALSE;
@@ -1174,7 +1174,7 @@ static void setup_hbm_timeout(void)
  */
 static void update_high_brightness_mode(gint hbm_level)
 {
-	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+	display_state_t display_state = display_state_get();
 
 	if (high_brightness_mode_supported == FALSE)
 		goto EXIT;
@@ -1625,7 +1625,7 @@ static void display_unblank(void)
  */
 static void display_brightness_trigger(gconstpointer data)
 {
-	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+	display_state_t display_state = display_state_get();
 	gint new_brightness = GPOINTER_TO_INT(data) & 0xff;
 	gint new_hbm_level = (GPOINTER_TO_INT(data) >> 8) & 0xff;
 
@@ -1952,7 +1952,7 @@ static void setup_dim_timeout(void)
 	system_state_t system_state = datapipe_get_gint(system_state_pipe);
 	gint dim_timeout = disp_dim_timeout + bootup_dim_additional_timeout;
 	submode_t submode = datapipe_get_gint(submode_pipe);;
-	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+	display_state_t display_state = display_state_get();
 
 	cancel_blank_timeout();
 	cancel_adaptive_dimming_timeout();
@@ -2046,7 +2046,7 @@ static void request_display_blanking_pause(void)
  */
 static void update_blanking_inhibit(gboolean timed_inhibit)
 {
-	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+	display_state_t display_state = display_state_get();
 	system_state_t system_state = datapipe_get_gint(system_state_pipe);
 	alarm_ui_state_t alarm_ui_state =
 				datapipe_get_gint(alarm_ui_state_pipe);
@@ -2268,7 +2268,7 @@ static void display_gconf_cb(GConfClient *const gcc, const guint id,
 				       USE_INDATA, CACHE_INDATA);
 	} else if (id == use_low_power_mode_gconf_cb_id) {
 		display_state_t display_state =
-			datapipe_get_gint(display_state_pipe);
+			display_state_get();
 
 		use_low_power_mode = gconf_value_get_bool(gcv);
 
@@ -2500,7 +2500,7 @@ EXIT:
 static gboolean send_display_status(DBusMessage *const method_call)
 {
 	static const gchar *prev_state = "";
-	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+	display_state_t display_state = display_state_get();
 	DBusMessage *msg = NULL;
 	const gchar *state = NULL;
 	gboolean status = FALSE;
@@ -3415,7 +3415,7 @@ static gboolean desktop_startup_dbus_cb(DBusMessage *const msg)
  */
 static gboolean display_orientation_change_dbus_cb(DBusMessage *const msg)
 {
-	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+	display_state_t display_state = display_state_get();
 	gboolean status = FALSE;
 
 	(void)msg;
@@ -4609,7 +4609,7 @@ static void system_state_trigger(gconstpointer data)
  */
 static void proximity_sensor_trigger(gconstpointer data)
 {
-	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+	display_state_t display_state = display_state_get();
 	cover_state_t proximity_sensor_state = GPOINTER_TO_INT(data);
 
 	/* If the display is on in low power mode,
