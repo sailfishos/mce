@@ -1240,6 +1240,12 @@ static gboolean keypress_iomon_cb(gpointer data, gsize bytes_read)
 		}
 	}
 
+	/* Power key events are handled in powerkey module */
+	if( ev->type == EV_KEY && ev->code == KEY_POWER ) {
+		mce_log(LL_DEBUG, "ignore power key event");
+		goto EXIT;
+	}
+
 	/* Generate activity:
 	 * 0 - release (always)
 	 * 1 - press (always)
