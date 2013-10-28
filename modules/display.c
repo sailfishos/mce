@@ -5807,6 +5807,9 @@ const gchar *g_module_check_init(GModule *module)
 				 MCE_CONF_CONSTANT_TIME_DECREASE,
 				 DEFAULT_BRIGHTNESS_DECREASE_CONSTANT_TIME);
 
+	/* Set display brightness to minimal value */
+	write_brightness_value(1);
+
 	/* Note: Transition to MCE_DISPLAY_OFF can be made already
 	 * here, but the MCE_DISPLAY_ON state is blocked until mCE
 	 * gets notification from DSME */
