@@ -73,6 +73,12 @@
 					 * remove_input_trigger_from_datapipe()
 					 */
 
+#if 0 // DEBUG: make all logging from this module "critical"
+# undef mce_log
+# define mce_log(LEV, FMT, ARGS...) \
+	mce_log_file(LL_CRIT, __FILE__, __FUNCTION__, FMT , ## ARGS)
+#endif
+
 /**
  * The ID of the timeout used when determining
  * whether the key press was short or long

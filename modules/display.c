@@ -130,6 +130,12 @@
 
 #include "mce-sensorfw.h"
 
+#if 0 // DEBUG: make all logging from this module "critical"
+# undef mce_log
+# define mce_log(LEV, FMT, ARGS...) \
+	mce_log_file(LL_CRIT, __FILE__, __FUNCTION__, FMT , ## ARGS)
+#endif
+
 /* These defines are taken from devicelock.h, but slightly modified */
 #ifndef DEVICELOCK_H
 
