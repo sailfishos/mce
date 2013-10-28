@@ -2423,6 +2423,12 @@ static void keypress_trigger(gconstpointer const data)
 		goto EXIT;
 
 	if (ev->code == KEY_POWER) {
+		/* No tklock in act dead */
+		if( datapipe_get_gint(system_state_pipe) == MCE_STATE_ACTDEAD ) {
+			mce_log(LL_DEBUG, "in act dead; skip power key event");
+			goto EXIT;
+		}
+
 		if ((skip_release == TRUE) && (ev->value == 0)) {
 			cancel_powerkey_repeat_emulation_timeout();
 			skip_release = FALSE;
