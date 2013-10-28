@@ -1950,7 +1950,6 @@ static void cancel_dim_timeout(void)
  */
 static void setup_dim_timeout(void)
 {
-	system_state_t system_state = datapipe_get_gint(system_state_pipe);
 	gint dim_timeout = disp_dim_timeout + bootup_dim_additional_timeout;
 	submode_t submode = datapipe_get_gint(submode_pipe);;
 	display_state_t display_state = display_state_get();
@@ -4168,8 +4167,6 @@ static void init_done_stop_tracking(void)
  */
 static gpointer display_state_filter(gpointer data)
 {
-	alarm_ui_state_t alarm_ui_state =
-				datapipe_get_gint(alarm_ui_state_pipe);
 	system_state_t system_state = datapipe_get_gint(system_state_pipe);
 	static display_state_t cached_display_state = MCE_DISPLAY_UNDEF;
 	display_state_t display_state = GPOINTER_TO_INT(data);
@@ -4442,8 +4439,6 @@ static void submode_trigger(gconstpointer data)
 	static submode_t old_submode = MCE_TRANSITION_SUBMODE;
 
 	system_state_t system_state = datapipe_get_gint(system_state_pipe);
-	alarm_ui_state_t alarm_ui_state =
-				datapipe_get_gint(alarm_ui_state_pipe);
 
 	/* Current submode is */
 	submode_t submode = GPOINTER_TO_INT(data);
@@ -4494,8 +4489,6 @@ static void charger_state_trigger(gconstpointer data)
 static void device_inactive_trigger(gconstpointer data)
 {
 	system_state_t system_state = datapipe_get_gint(system_state_pipe);
-	alarm_ui_state_t alarm_ui_state =
-				datapipe_get_gint(alarm_ui_state_pipe);
 	gboolean device_inactive = GPOINTER_TO_INT(data);
 	submode_t submode = mce_get_submode_int32();
 
@@ -4572,8 +4565,6 @@ static void power_saving_mode_trigger(gconstpointer data)
  */
 static void system_state_trigger(gconstpointer data)
 {
-	alarm_ui_state_t alarm_ui_state =
-				datapipe_get_gint(alarm_ui_state_pipe);
 	system_state_t system_state = GPOINTER_TO_INT(data);
 
 	switch (system_state) {
