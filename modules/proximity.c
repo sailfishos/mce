@@ -378,7 +378,7 @@ static void report_proximity(cover_state_t state)
 
 	/* Execute datapipe if state has changed */
 	if( old_state != state ) {
-		mce_log(LL_CRIT, "state: %d -> %d", old_state, state);
+		mce_log(LL_DEBUG, "state: %d -> %d", old_state, state);
 		execute_datapipe(&proximity_sensor_pipe,
 				 GINT_TO_POINTER(state),
 				 USE_INDATA, CACHE_INDATA);
