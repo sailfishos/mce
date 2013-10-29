@@ -40,6 +40,7 @@
 #include "../tklock.h"
 #include "../event-input.h"
 #include "../modules/display.h"
+#include "../modules/doubletap.h"
 #include "../modules/powersavemode.h"
 #include "../modules/filter-brightness-als.h"
 #include "../modules/proximity.h"
@@ -1193,17 +1194,6 @@ static const char *rlookup(const symbol_t *stab, int val)
         }
 }
 
-/** Lookup table for doubletap gesture policies
- *
- * @note These must match the hardcoded values in mce itself.
- */
-static const symbol_t doubletap_values[] = {
-        { "disabled",           0 },
-        { "show-unlock-screen", 1 },
-        { "unlock",             2 },
-        { NULL, -1 }
-};
-
 /** Lookup table for autosuspend policies
  *
  * @note These must match the hardcoded values in mce itself.
@@ -2082,6 +2072,17 @@ static void xmce_get_blank_timeout(void)
  * doubletab
  * ------------------------------------------------------------------------- */
 
+/** Lookup table for doubletap gesture policies
+ *
+ * @note These must match the hardcoded values in mce itself.
+ */
+static const symbol_t doubletap_values[] = {
+        { "disabled",           0 },
+        { "show-unlock-screen", 1 },
+        { "unlock",             2 },
+        { NULL, -1 }
+};
+
 /** Set doubletap mode
  *
  * @param args string that can be parsed to doubletap mode
@@ -2106,6 +2107,43 @@ static void xmce_get_doubletap_mode(void)
         if( mcetool_gconf_get_int(MCE_GCONF_TK_DOUBLE_TAP_GESTURE_PATH, &val) )
                 txt = rlookup(doubletap_values, val);
         printf("%-"PAD1"s %s \n", "Double-tap gesture policy:", txt ?: "unknown");
+}
+
+/** Lookup table for doubletap wakeup policies
+ *
+ * @note These must match the hardcoded values in mce itself.
+ */
+static const symbol_t doubletap_wakeup[] = {
+        { "never",     DBLTAP_ENABLE_NEVER },
+        { "always",    DBLTAP_ENABLE_ALWAYS },
+        { "proximity", DBLTAP_ENABLE_NO_PROXIMITY },
+        { NULL, -1 }
+};
+
+/** Set doubletap wakeup mode
+ *
+ * @param args string that can be parsed to doubletap wakeup mode
+ */
+static void xmce_set_doubletap_wakeup(const char *args)
+{
+        debugf("%s(%s)\n", __FUNCTION__, args);
+        int val = lookup(doubletap_wakeup, args);
+        if( val < 0 ) {
+                errorf("%s: invalid doubletap policy value\n", args);
+                exit(EXIT_FAILURE);
+        }
+        mcetool_gconf_set_int(MCE_GCONF_DOUBLETAP_MODE, val);
+}
+
+/** Get current doubletap wakeup mode from mce and print it out
+ */
+static void xmce_get_doubletap_wakeup(void)
+{
+        gint        val = 0;
+        const char *txt = 0;
+        if( mcetool_gconf_get_int(MCE_GCONF_DOUBLETAP_MODE, &val) )
+                txt = rlookup(doubletap_wakeup, val);
+        printf("%-"PAD1"s %s \n", "Double-tap wakeup policy:", txt ?: "unknown");
 }
 
 /* ------------------------------------------------------------------------- *
@@ -2601,6 +2639,7 @@ static void xmce_get_status(void)
         xmce_get_tklock_mode();
         xmce_get_autolock_mode();
         xmce_get_doubletap_mode();
+        xmce_get_doubletap_wakeup();
         xmce_get_low_power_mode();
         xmce_get_als_mode();
         xmce_get_ps_mode();
@@ -2727,6 +2766,9 @@ EXTRA"simulate tklock close from mce\n"
 PARAM"-M, --set-doubletap-mode=<disabled|show-unlock-screen|unlock>\n"
 EXTRA"set the autolock mode; valid modes are:\n"
 EXTRA"  'disabled', 'show-unlock-screen', 'unlock'\n"
+PARAM"-z, --set-doubletap-wakeup=<never|always|proximity>\n"
+EXTRA"set the doubletap wakeup mode; valid modes are:\n"
+EXTRA"  'never', 'always', 'proximity'\n"
 PARAM"-r, --enable-radio=<master|cellular|wlan|bluetooth>\n"
 EXTRA"enable the specified radio; valid radios are:\n"
 EXTRA"  'master', 'cellular',\n"
@@ -2883,7 +2925,7 @@ PROG_NAME" v"G_STRINGIFY(PRG_VERSION)"\n"
 ;
 
 // Unused short options left ....
-// - - - - - - - - - - - - - - - - - - - - - - w x - z
+// - - - - - - - - - - - - - - - - - - - - - - w x - -
 // - - - - - - - - - - - - - - - - - - - - - - W X - Z
 
 const char OPT_S[] =
@@ -2924,6 +2966,7 @@ const char OPT_S[] =
 "J:"  // --set-adaptive-dimming-time
 "K:"  // --set-autolock-mode
 "M:"  // --set-doubletap-mode
+"z:"  // --set-doubletap-wakeup
 "O:"  // --set-dim-timeouts
 "s:"  // --set-suspend-policy
 "S:"  // --set-cpu-scaling-governor
@@ -2981,6 +3024,7 @@ struct option const OPT_L[] =
         { "set-blank-timeout",         1, 0, 'o' }, // xmce_set_blank_timeout()
         { "set-autolock-mode",         1, 0, 'K' }, // xmce_set_autolock_mode()
         { "set-doubletap-mode",        1, 0, 'M' }, // xmce_set_doubletap_mode()
+        { "set-doubletap-wakeup",      1, 0, 'z' }, // xmce_set_doubletap_wakeup()
         { "set-dim-timeouts",          1, 0, 'O' }, // xmce_set_dim_timeouts()
         { "set-suspend-policy",        1, 0, 's' }, // xmce_set_suspend_policy()
         { "set-cpu-scaling-governor",  1, 0, 's' }, // xmce_set_cpu_scaling_governor()
@@ -3040,6 +3084,7 @@ int main(int argc, char **argv)
 		case 'q': xmce_tklock_open(optarg);               break;
 		case 'Q': xmce_tklock_close();                    break;
                 case 'M': xmce_set_doubletap_mode(optarg);        break;
+                case 'z': xmce_set_doubletap_wakeup(optarg);        break;
 
                 case 'r': xmce_enable_radio(optarg);              break;
                 case 'R': xmce_disable_radio(optarg);             break;

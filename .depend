@@ -940,6 +940,7 @@ tools/mcetool.o:\
 	tools/mcetool.c\
 	event-input.h\
 	modules/display.h\
+	modules/doubletap.h\
 	modules/filter-brightness-als.h\
 	modules/powersavemode.h\
 	modules/proximity.h\
@@ -951,6 +952,7 @@ tools/mcetool.pic.o:\
 	tools/mcetool.c\
 	event-input.h\
 	modules/display.h\
+	modules/doubletap.h\
 	modules/filter-brightness-als.h\
 	modules/powersavemode.h\
 	modules/proximity.h\
