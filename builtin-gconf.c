@@ -1434,6 +1434,12 @@ static const setting_t gconf_defaults[] =
     .def  = "true",
   },
   {
+    // MCE_GCONF_DOUBLETAP_MODE @ doubletap.h
+    .key  = "/system/osso/dsm/doubletap/mode",
+    .type = "i",
+    .def  = "2",
+  },
+  {
     .key  = NULL,
   }
 };
