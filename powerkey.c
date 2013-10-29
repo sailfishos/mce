@@ -73,6 +73,12 @@
 					 * remove_input_trigger_from_datapipe()
 					 */
 
+#if 0 // DEBUG: make all logging from this module "critical"
+# undef mce_log
+# define mce_log(LEV, FMT, ARGS...) \
+	mce_log_file(LL_CRIT, __FILE__, __FUNCTION__, FMT , ## ARGS)
+#endif
+
 /**
  * The ID of the timeout used when determining
  * whether the key press was short or long
@@ -153,9 +159,26 @@ static void generic_powerkey_handler(poweraction_t action,
 		break;
 
 	case POWER_TKLOCK_LOCK:
-		/* No tklock in act dead */
+		/* No tklock in act dead; just toggle the display on/off */
 		if( datapipe_get_gint(system_state_pipe) == MCE_STATE_ACTDEAD ) {
-			mce_log(LL_DEBUG, "blocking tklock via power key in act dead");
+			display_state_t display_state = display_state_get();
+			switch( display_state ) {
+			case MCE_DISPLAY_ON:
+			case MCE_DISPLAY_POWER_UP:
+				mce_log(LL_DEBUG, "act dead display on -> off");
+				execute_datapipe(&display_state_req_pipe,
+						 GINT_TO_POINTER(MCE_DISPLAY_OFF),
+						 USE_INDATA, CACHE_INDATA);
+				break;
+
+			default:
+			case MCE_DISPLAY_POWER_DOWN:
+				mce_log(LL_DEBUG, "act dead display *** -> on");
+				execute_datapipe(&device_inactive_pipe,
+						 GINT_TO_POINTER(FALSE),
+						 USE_INDATA, CACHE_INDATA);
+				break;
+			}
 			break;
 		}
 

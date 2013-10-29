@@ -130,6 +130,12 @@
 
 #include "mce-sensorfw.h"
 
+#if 0 // DEBUG: make all logging from this module "critical"
+# undef mce_log
+# define mce_log(LEV, FMT, ARGS...) \
+	mce_log_file(LL_CRIT, __FILE__, __FUNCTION__, FMT , ## ARGS)
+#endif
+
 /* These defines are taken from devicelock.h, but slightly modified */
 #ifndef DEVICELOCK_H
 
@@ -168,6 +174,7 @@ enum LockState {
 static const char *display_state_name(display_state_t state);
 static void stm_target_push_change(display_state_t display_state);
 static void stm_rethink_schedule(void);
+static void stm_rethink_force(void);
 
 /** Contextkit D-Bus service */
 #define ORIENTATION_SIGNAL_IF		"org.maemo.contextkit.Property"
@@ -949,7 +956,7 @@ GTimer *hbm_timer;
  */
 static void update_display_timers(gboolean force_flush)
 {
-	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+	display_state_t display_state = display_state_get();
 	gdouble display_elapsed = 0;
 	gdouble hbm_elapsed = 0;
 	gboolean flush_cal = FALSE;
@@ -1174,7 +1181,7 @@ static void setup_hbm_timeout(void)
  */
 static void update_high_brightness_mode(gint hbm_level)
 {
-	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+	display_state_t display_state = display_state_get();
 
 	if (high_brightness_mode_supported == FALSE)
 		goto EXIT;
@@ -1625,7 +1632,7 @@ static void display_unblank(void)
  */
 static void display_brightness_trigger(gconstpointer data)
 {
-	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+	display_state_t display_state = display_state_get();
 	gint new_brightness = GPOINTER_TO_INT(data) & 0xff;
 	gint new_hbm_level = (GPOINTER_TO_INT(data) >> 8) & 0xff;
 
@@ -1949,10 +1956,9 @@ static void cancel_dim_timeout(void)
  */
 static void setup_dim_timeout(void)
 {
-	system_state_t system_state = datapipe_get_gint(system_state_pipe);
 	gint dim_timeout = disp_dim_timeout + bootup_dim_additional_timeout;
 	submode_t submode = datapipe_get_gint(submode_pipe);;
-	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+	display_state_t display_state = display_state_get();
 
 	cancel_blank_timeout();
 	cancel_adaptive_dimming_timeout();
@@ -1966,11 +1972,6 @@ static void setup_dim_timeout(void)
 
 	if( submode & MCE_TKLOCK_SUBMODE ) {
 		mce_log(LL_DEBUG, "DIM timer skipped; TKLOCK_SUBMODE");
-		return;
-	}
-
-	if( system_state == MCE_STATE_ACTDEAD ) {
-		mce_log(LL_DEBUG, "DIM timer skipped; STATE_ACTDEAD");
 		return;
 	}
 
@@ -2051,7 +2052,7 @@ static void request_display_blanking_pause(void)
  */
 static void update_blanking_inhibit(gboolean timed_inhibit)
 {
-	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+	display_state_t display_state = display_state_get();
 	system_state_t system_state = datapipe_get_gint(system_state_pipe);
 	alarm_ui_state_t alarm_ui_state =
 				datapipe_get_gint(alarm_ui_state_pipe);
@@ -2273,7 +2274,7 @@ static void display_gconf_cb(GConfClient *const gcc, const guint id,
 				       USE_INDATA, CACHE_INDATA);
 	} else if (id == use_low_power_mode_gconf_cb_id) {
 		display_state_t display_state =
-			datapipe_get_gint(display_state_pipe);
+			display_state_get();
 
 		use_low_power_mode = gconf_value_get_bool(gcv);
 
@@ -2505,7 +2506,7 @@ EXIT:
 static gboolean send_display_status(DBusMessage *const method_call)
 {
 	static const gchar *prev_state = "";
-	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+	display_state_t display_state = display_state_get();
 	DBusMessage *msg = NULL;
 	const gchar *state = NULL;
 	gboolean status = FALSE;
@@ -3420,7 +3421,7 @@ static gboolean desktop_startup_dbus_cb(DBusMessage *const msg)
  */
 static gboolean display_orientation_change_dbus_cb(DBusMessage *const msg)
 {
-	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+	display_state_t display_state = display_state_get();
 	gboolean status = FALSE;
 
 	(void)msg;
@@ -4172,8 +4173,6 @@ static void init_done_stop_tracking(void)
  */
 static gpointer display_state_filter(gpointer data)
 {
-	alarm_ui_state_t alarm_ui_state =
-				datapipe_get_gint(alarm_ui_state_pipe);
 	system_state_t system_state = datapipe_get_gint(system_state_pipe);
 	static display_state_t cached_display_state = MCE_DISPLAY_UNDEF;
 	display_state_t display_state = GPOINTER_TO_INT(data);
@@ -4186,7 +4185,7 @@ static gpointer display_state_filter(gpointer data)
 	}
 
 	/* Ignore display on requests during transition to shutdown
-         * and reboot, when in acting dead and when system state is unknown
+         * and reboot, and when system state is unknown
 	 */
 	if (((cached_display_state == MCE_DISPLAY_UNDEF) ||
 	     (cached_display_state == MCE_DISPLAY_OFF) ||
@@ -4195,14 +4194,11 @@ static gpointer display_state_filter(gpointer data)
 	     (display_state != MCE_DISPLAY_OFF)) &&
 	    ((system_state == MCE_STATE_UNDEF) ||
 	     ((submode & MCE_TRANSITION_SUBMODE) &&
-	      (((system_state == MCE_STATE_SHUTDOWN) ||
-	       (system_state == MCE_STATE_REBOOT)) ||
-	      ((system_state == MCE_STATE_ACTDEAD) &&
-	      ((alarm_ui_state != MCE_ALARM_UI_VISIBLE_INT32) &&
-	       (alarm_ui_state != MCE_ALARM_UI_RINGING_INT32))))))) {
+	      ((system_state == MCE_STATE_SHUTDOWN) ||
+	       (system_state == MCE_STATE_REBOOT))))) {
 		mce_log(LL_DEBUG,
 			"Ignoring display state change request %d "
-			"due to shutdown/reboot/acting dead",
+			"due to shutdown/reboot",
 			display_state);
 		display_state = cached_display_state;
 	} else if ((use_low_power_mode == FALSE) ||
@@ -4226,7 +4222,7 @@ UPDATE:
 	 *      being read a lot, we need to alter it to avoid too much
 	 *      special casing
 	 */
-	display_state_pipe.cached_data = new_data;
+	//display_state_pipe.cached_data = new_data;
 
 	return new_data;
 }
@@ -4449,8 +4445,6 @@ static void submode_trigger(gconstpointer data)
 	static submode_t old_submode = MCE_TRANSITION_SUBMODE;
 
 	system_state_t system_state = datapipe_get_gint(system_state_pipe);
-	alarm_ui_state_t alarm_ui_state =
-				datapipe_get_gint(alarm_ui_state_pipe);
 
 	/* Current submode is */
 	submode_t submode = GPOINTER_TO_INT(data);
@@ -4461,14 +4455,9 @@ static void submode_trigger(gconstpointer data)
 	if( old_trans && !new_trans ) {
 		/* End of transition; stable state reached */
 		switch( system_state ) {
+		case MCE_STATE_USER:
 		case MCE_STATE_ACTDEAD:
-			/* Blank the screen unless we have alarm ui on */
-			if( alarm_ui_state != MCE_ALARM_UI_RINGING_INT32 &&
-			    alarm_ui_state != MCE_ALARM_UI_VISIBLE_INT32 ) {
-				execute_datapipe(&display_state_req_pipe,
-						 GINT_TO_POINTER(MCE_DISPLAY_OFF),
-						 USE_INDATA, CACHE_INDATA);
-			}
+			bootup_dim_additional_timeout = 0;
 			break;
 		default:
 			break;
@@ -4506,19 +4495,14 @@ static void charger_state_trigger(gconstpointer data)
 static void device_inactive_trigger(gconstpointer data)
 {
 	system_state_t system_state = datapipe_get_gint(system_state_pipe);
-	alarm_ui_state_t alarm_ui_state =
-				datapipe_get_gint(alarm_ui_state_pipe);
 	gboolean device_inactive = GPOINTER_TO_INT(data);
 	submode_t submode = mce_get_submode_int32();
 
 	/* Unblank screen on device activity,
-	 * unless the device is in acting dead and no alarm is visible
-	 * or if the tklock is active
+	 * unless the tklock is active
 	 */
 	if (((system_state == MCE_STATE_USER) ||
-	     ((system_state == MCE_STATE_ACTDEAD) &&
-	      ((alarm_ui_state == MCE_ALARM_UI_VISIBLE_INT32) ||
-	       (alarm_ui_state == MCE_ALARM_UI_RINGING_INT32)))) &&
+	     (system_state == MCE_STATE_ACTDEAD)) &&
 	    (device_inactive == FALSE) &&
 	    ((submode & MCE_TKLOCK_SUBMODE) == 0)) {
 		/* Adjust the adaptive dimming timeouts,
@@ -4587,25 +4571,14 @@ static void power_saving_mode_trigger(gconstpointer data)
  */
 static void system_state_trigger(gconstpointer data)
 {
-	alarm_ui_state_t alarm_ui_state =
-				datapipe_get_gint(alarm_ui_state_pipe);
 	system_state_t system_state = GPOINTER_TO_INT(data);
 
 	switch (system_state) {
+	case MCE_STATE_ACTDEAD:
 	case MCE_STATE_USER:
-		(void)execute_datapipe(&display_state_req_pipe,
+ 		(void)execute_datapipe(&display_state_req_pipe,
 				       GINT_TO_POINTER(MCE_DISPLAY_ON),
 				       USE_INDATA, CACHE_INDATA);
-		break;
-
-	case MCE_STATE_ACTDEAD:
-		if ((alarm_ui_state == MCE_ALARM_UI_RINGING_INT32) ||
-		    (alarm_ui_state == MCE_ALARM_UI_VISIBLE_INT32)) {
-			(void)execute_datapipe(&display_state_req_pipe,
-					       GINT_TO_POINTER(MCE_DISPLAY_ON),
-					       USE_INDATA, CACHE_INDATA);
-		}
-
 		break;
 
 	case MCE_STATE_SHUTDOWN:
@@ -4638,7 +4611,7 @@ static void system_state_trigger(gconstpointer data)
  */
 static void proximity_sensor_trigger(gconstpointer data)
 {
-	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+	display_state_t display_state = display_state_get();
 	cover_state_t proximity_sensor_state = GPOINTER_TO_INT(data);
 
 	/* If the display is on in low power mode,
@@ -4891,7 +4864,11 @@ static void stm_target_push_change(display_state_t display_state)
 {
 	if( stm_want != display_state ) {
 		stm_want = display_state;
-		stm_rethink_schedule();
+		/* Try to initiate state transitions immediately
+		 * to make the in-transition transient states
+		 * visible to code that polls the display state
+		 * instead of using output triggers */
+		stm_rethink_force();
 	}
 }
 
@@ -5050,11 +5027,8 @@ static void stm_rethink_step(void)
 
 	case STM_RENDERER_INIT_STOP:
 		if( !stm_lipstick_on_dbus ) {
-			mce_log(LL_WARN, "no lipstick; reverting %s -> %s",
-				display_state_name(stm_curr),
-				display_state_name(stm_next));
-			stm_next = stm_curr;
-			stm_trans(STM_STAY_POWER_ON);
+			mce_log(LL_WARN, "no lipstick; going to logical off");
+			stm_trans(STM_ENTER_LOGICAL_OFF);
 		}
 		else {
 			stm_renderer_disable();
@@ -5153,10 +5127,19 @@ static void stm_rethink_step(void)
 			break;
 		}
 
+		if( !stm_lipstick_on_dbus )
+			break;
+
 		if( stm_suspend_allowed_early() ) {
 			stm_trans(STM_LEAVE_LOGICAL_OFF);
 			break;
 		}
+
+		if( stm_enable_rendering_needed ) {
+			stm_trans(STM_RENDERER_INIT_STOP);
+			break;
+		}
+
 		break;
 
 	case STM_LEAVE_LOGICAL_OFF:
@@ -5213,6 +5196,16 @@ static void stm_rethink_schedule(void)
 		mce_log(LL_INFO, "scheduled");
 		stm_rethink_id = g_idle_add(stm_rethink_cb, 0);
 	}
+}
+
+static void stm_rethink_force(void)
+{
+	wakelock_lock("mce_display_stm", -1);
+	if( stm_rethink_id )
+		g_source_remove(stm_rethink_id), stm_rethink_id = 0;
+	stm_rethink();
+	if( !stm_rethink_id )
+		wakelock_unlock("mce_display_stm");
 }
 
 /* ------------------------------------------------------------------------- *
@@ -5810,6 +5803,9 @@ const gchar *g_module_check_init(GModule *module)
 		mce_conf_get_int(MCE_CONF_DISPLAY_GROUP,
 				 MCE_CONF_CONSTANT_TIME_DECREASE,
 				 DEFAULT_BRIGHTNESS_DECREASE_CONSTANT_TIME);
+
+	/* Set display brightness to minimal value */
+	write_brightness_value(1);
 
 	/* Note: Transition to MCE_DISPLAY_OFF can be made already
 	 * here, but the MCE_DISPLAY_ON state is blocked until mCE

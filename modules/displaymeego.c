@@ -751,7 +751,7 @@ static void request_display_blanking_pause(void)
  */
 static void update_blanking_inhibit(gboolean timed_inhibit)
 {
-	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+	display_state_t display_state = display_state_get();
 	system_state_t system_state = datapipe_get_gint(system_state_pipe);
 	alarm_ui_state_t alarm_ui_state =
 				datapipe_get_gint(alarm_ui_state_pipe);
@@ -949,7 +949,7 @@ EXIT:
  */
 static gboolean send_display_status(DBusMessage *const method_call)
 {
-	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+	display_state_t display_state = display_state_get();
 	DBusMessage *msg = NULL;
 	const gchar *state = NULL;
 	gboolean status = FALSE;
