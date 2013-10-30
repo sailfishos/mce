@@ -367,6 +367,27 @@ EXIT:
 	return;
 }
 
+/** Broadcast proximity state within MCE
+ *
+ * @param state COVER_CLOSED or COVER_OPEN
+ */
+static void report_proximity(cover_state_t state)
+{
+	/* Get current proximity datapipe value */
+	cover_state_t old_state = datapipe_get_gint(proximity_sensor_pipe);
+
+	/* Execute datapipe if state has changed */
+	if( old_state != state ) {
+		mce_log(LL_DEBUG, "state: %d -> %d", old_state, state);
+		execute_datapipe(&proximity_sensor_pipe,
+				 GINT_TO_POINTER(state),
+				 USE_INDATA, CACHE_INDATA);
+	}
+
+	/* Update last-seen proximity state */
+	old_proximity_sensor_state = state;
+}
+
 /**
  * I/O monitor callback for the proximity sensor (Avago)
  *
@@ -394,14 +415,7 @@ static gboolean ps_avago_iomon_cb(gpointer data, gsize bytes_read)
 	else
 		proximity_sensor_state = COVER_OPEN;
 
-	if (old_proximity_sensor_state == proximity_sensor_state)
-		goto EXIT;
-
-	old_proximity_sensor_state = proximity_sensor_state;
-
-	(void)execute_datapipe(&proximity_sensor_pipe,
-			       GINT_TO_POINTER(proximity_sensor_state),
-			       USE_INDATA, CACHE_INDATA);
+	report_proximity(proximity_sensor_state);
 
 EXIT:
 	return FALSE;
@@ -436,18 +450,10 @@ static gboolean ps_dipro_iomon_cb(gpointer data, gsize bytes_read)
 	} else if (ps->led1 < ps_threshold->threshold_falling) {
 		proximity_sensor_state = COVER_OPEN;
 	} else {
-		proximity_sensor_state = old_proximity_sensor_state;
 		goto EXIT;
 	}
 
-	if (old_proximity_sensor_state == proximity_sensor_state)
-		goto EXIT;
-
-	old_proximity_sensor_state = proximity_sensor_state;
-
-	(void)execute_datapipe(&proximity_sensor_pipe,
-			       GINT_TO_POINTER(proximity_sensor_state),
-			       USE_INDATA, CACHE_INDATA);
+	report_proximity(proximity_sensor_state);
 
 EXIT:
 	return FALSE;
@@ -468,18 +474,8 @@ static void ps_sensorfw_iomon_cb(bool covered)
 	else
 		proximity_sensor_state = COVER_OPEN;
 
-	if (old_proximity_sensor_state == proximity_sensor_state)
-		goto EXIT;
+	report_proximity(proximity_sensor_state);
 
-	mce_log(LL_DEBUG, "state:%d -> %d", old_proximity_sensor_state,
-		proximity_sensor_state);
-
-	old_proximity_sensor_state = proximity_sensor_state;
-
-	(void)execute_datapipe(&proximity_sensor_pipe,
-			       GINT_TO_POINTER(proximity_sensor_state),
-			       USE_INDATA, CACHE_INDATA);
-EXIT:
 	return;
 }
 #endif /* ENABLE_SENSORFW */
@@ -494,6 +490,8 @@ EXIT:
 #ifdef ENABLE_HYBRIS
 static void ps_hybris_iomon_cb(int64_t timestamp, float distance)
 {
+	(void)timestamp;
+
 	static const float minval = 2.0f; // [cm]
 
 	cover_state_t proximity_sensor_state = COVER_UNDEF;
@@ -503,20 +501,8 @@ static void ps_hybris_iomon_cb(int64_t timestamp, float distance)
 	else
 		proximity_sensor_state = COVER_OPEN;
 
-	mce_log(LL_DEBUG, "time:%lld distance:%g state:%d -> %d",
-		timestamp, distance, old_proximity_sensor_state,
-		proximity_sensor_state);
+	report_proximity(proximity_sensor_state);
 
-	if (old_proximity_sensor_state == proximity_sensor_state)
-		goto EXIT;
-
-	old_proximity_sensor_state = proximity_sensor_state;
-
-	(void)execute_datapipe(&proximity_sensor_pipe,
-			       GINT_TO_POINTER(proximity_sensor_state),
-			       USE_INDATA, CACHE_INDATA);
-
-EXIT:
 	return;
 }
 #endif /* ENABLE_HYBRIS */
@@ -553,11 +539,7 @@ static void update_proximity_sensor_state_avago(void)
 	else
 		proximity_sensor_state = COVER_OPEN;
 
-	old_proximity_sensor_state = proximity_sensor_state;
-
-	(void)execute_datapipe(&proximity_sensor_pipe,
-			       GINT_TO_POINTER(proximity_sensor_state),
-			       USE_INDATA, CACHE_INDATA);
+	report_proximity(proximity_sensor_state);
 
 EXIT:
 	g_free(tmp);
@@ -594,11 +576,7 @@ static void update_proximity_sensor_state_dipro(void)
 	else
 		proximity_sensor_state = COVER_CLOSED;
 
-	old_proximity_sensor_state = proximity_sensor_state;
-
-	(void)execute_datapipe(&proximity_sensor_pipe,
-			       GINT_TO_POINTER(proximity_sensor_state),
-			       USE_INDATA, CACHE_INDATA);
+	report_proximity(proximity_sensor_state);
 
 EXIT:
 	g_free(tmp);
@@ -708,11 +686,14 @@ EXIT:
 	return;
 }
 
+
 /** Configuration value for use proximity sensor */
 static gboolean use_ps_conf_value = TRUE;
 
 /** Configuration change id for use proximity sensor */
 static guint use_ps_conf_id = 0;
+
+
 
 /**
  * Update the proximity monitoring
@@ -722,9 +703,13 @@ static void update_proximity_monitor(void)
 	static gboolean old_enable = FALSE;
 
 	gboolean enable = FALSE;
+	gboolean fake_open = FALSE;
 
-	if (get_ps_type() == PS_TYPE_NONE)
+
+	if (get_ps_type() == PS_TYPE_NONE) {
+		fake_open = TRUE;
 		goto EXIT;
+	}
 
 	if ((display_state == MCE_DISPLAY_ON) ||
 	    (display_state == MCE_DISPLAY_LPM_ON) ||
@@ -739,8 +724,10 @@ static void update_proximity_monitor(void)
 		enable = TRUE;
 	}
 
-	if( !use_ps_conf_value )
+	if( !use_ps_conf_value ) {
+		fake_open = TRUE;
 		enable = FALSE;
+	}
 
 	if( old_enable == enable )
 		goto EXIT;
@@ -752,6 +739,8 @@ static void update_proximity_monitor(void)
 	}
 
 EXIT:
+	if( !enable && fake_open )
+		report_proximity(COVER_OPEN);
 	return;
 }
 
@@ -1069,6 +1058,7 @@ const gchar *g_module_check_init(GModule *module)
 
 	/* enable/disable sensor based on initial conditions */
 	update_proximity_monitor();
+
 EXIT:
 	return NULL;
 }
