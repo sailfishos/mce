@@ -1089,7 +1089,7 @@ ps_notify(bool covered, input_source_t srce)
 			goto EXIT;
 	}
 
-	mce_log(LL_CRIT, "PS: %scovered (%s)",
+	mce_log(LL_NOTICE, "PS: %scovered (%s)",
 		covered ? "" : "not-", input_source_name[srce]);
 
 	if( ps_notify_cb )
@@ -1231,7 +1231,7 @@ static void mce_sensorfw_ps_read_cb(DBusPendingCall *pc, void *aptr)
 	dbus_message_iter_get_basic(&rec, &dst);
 	dbus_message_iter_next(&rec);
 
-	mce_log(LL_CRIT, "initial PS value = %u", dst);
+	mce_log(LL_NOTICE, "initial PS value = %u", dst);
 
 	ps_notify(dst < 1, DS_SENSORD);
 
@@ -2078,7 +2078,7 @@ static const char xsensord_name_owner_rule[] =
 static void ambient_light_sensor_trigger(gconstpointer data)
 {
   int lux = GPOINTER_TO_INT(data);
-  mce_log(LL_CRIT, "AMBIENT_LIGHT=%d", lux);
+  mce_log(LL_NOTICE, "AMBIENT_LIGHT=%d", lux);
 }
 #endif
 
@@ -2094,7 +2094,7 @@ static void proximity_sensor_trigger(gconstpointer data)
 	case COVER_OPEN:   tag = "NOT-COVERED"; break;
 	default: break;
 	}
-	mce_log(LL_CRIT, "PROXIMITY=%s", tag);
+	mce_log(LL_NOTICE, "PROXIMITY=%s", tag);
 }
 #endif
 
@@ -2221,7 +2221,7 @@ void mce_sensorfw_als_attach(int fd)
 	if( ioctl(fd, EVIOCGABS(ABS_MISC), &info) == -1 )
 		mce_log(LL_ERR, "EVIOCGABS(%s): %m", "ABS_MISC");
 	else {
-		mce_log(LL_CRIT, "ALS: %d (initial)", info.value);
+		mce_log(LL_INFO, "ALS: %d (initial)", info.value);
 		als_notify(info.value, DS_EVDEV);
 	}
 

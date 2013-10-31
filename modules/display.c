@@ -4542,7 +4542,7 @@ static void device_inactive_trigger(gconstpointer data)
 	setup_dim_timeout();
 
 	if( display_state_get() != MCE_DISPLAY_ON )
-		mce_log(LL_CRIT, "display on due to activity");
+		mce_log(LL_NOTICE, "display on due to activity");
 
 	(void)execute_datapipe(&display_state_req_pipe,
 			       GINT_TO_POINTER(MCE_DISPLAY_ON),
