@@ -15,10 +15,12 @@ void mce_sensorfw_quit(void);
 void mce_sensorfw_suspend(void);
 void mce_sensorfw_resume(void);
 
+void mce_sensorfw_als_attach(int fd);
 void mce_sensorfw_als_set_notify(void (*cb)(unsigned lux));
 void mce_sensorfw_als_enable(void);
 void mce_sensorfw_als_disable(void);
 
+void mce_sensorfw_ps_attach(int fd);
 void mce_sensorfw_ps_set_notify(void (*cb)(bool covered));
 void mce_sensorfw_ps_enable(void);
 void mce_sensorfw_ps_disable(void);
