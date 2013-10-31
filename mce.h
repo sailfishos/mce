@@ -296,6 +296,10 @@ datapipe_struct lid_cover_pipe;
 datapipe_struct lens_cover_pipe;
 /** Proximity sensor; read only */
 datapipe_struct proximity_sensor_pipe;
+/** Ambient light sensor; read only */
+datapipe_struct ambient_light_sensor_pipe;
+/** Orientation sensor; read only */
+datapipe_struct orientation_sensor_pipe;
 /** The alarm UI state */
 datapipe_struct alarm_ui_state_pipe;
 /** The device state */
@@ -356,6 +360,12 @@ void mce_quit_mainloop(void);
 #define display_state_get() ({\
 	gint res = GPOINTER_TO_INT(display_state_pipe.cached_data);\
 	mce_log(LL_DEBUG, "display_state=%d", res);\
+	res;\
+})
+
+#define proximity_state_get() ({\
+	gint res = GPOINTER_TO_INT(proximity_sensor_pipe.cached_data);\
+	mce_log(LL_DEBUG, "proximity_state=%d", res);\
 	res;\
 })
 

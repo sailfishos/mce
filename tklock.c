@@ -1180,6 +1180,15 @@ static gboolean open_tklock_ui(dbus_uint32_t mode)
 		goto EXIT;
 	}
 
+	/* FIXME: re-issuing tklock causes problems at lipstick side */
+	submode_t submode = mce_get_submode_int32();
+	if( (tklock_ui_state == new_tklock_ui_state) ||
+	    (submode & MCE_TKLOCK_SUBMODE) ) {
+		mce_log(LL_WARN, "skipping tklock ipc; tklock already set");
+		status = TRUE;
+		goto EXIT;
+	}
+
 	/* org.nemomobile.lipstick.screenlock.tklock_open */
 	status = dbus_send(SYSTEMUI_SERVICE, SYSTEMUI_REQUEST_PATH,
 			   SYSTEMUI_REQUEST_IF, SYSTEMUI_TKLOCK_OPEN_REQ,

@@ -89,6 +89,8 @@
 # include "mce-gconf.h"
 #endif
 
+#include "mce-sensorfw.h"
+
 /** ID for touchscreen I/O monitor timeout source */
 static guint touchscreen_io_monitor_timeout_cb_id = 0;
 
@@ -353,6 +355,59 @@ static int evdevinfo_has_codes(const evdevinfo_t *self, int type, const int *cod
 	return res;
 }
 
+/** Helper for checking if array of integers contains a particular value
+ *
+ * @param list  array of ints, terminated with -1
+ * @param entry value to check
+ *
+ * @return 1 if value is present in the list, 0 if not
+ */
+static int list_has_entry(const int *list, int entry)
+{
+	for( int i = 0; list[i] != -1; ++i ) {
+		if( list[i] == entry )
+			return 1;
+	}
+	return 0;
+}
+
+/** Check if all of the listed types and only the listed types are supported
+ *
+ * @param self  evdevinfo_t object
+ * @param types array of evdev event types, terminated with -1
+ *
+ * @return 1 if all of types and only types are supported, 0 otherwise
+ */
+static int evdevinfo_match_types(const evdevinfo_t *self, const int *types)
+{
+	for( int etype = 1; etype < EV_CNT; ++etype ) {
+		int have = evdevinfo_has_type(self, etype);
+		int want = list_has_entry(types, etype);
+		if( have != want )
+			return 0;
+	}
+	return 1;
+}
+
+/** Check if all of the listed codes and only the listed codes are supported
+ *
+ * @param self  evdevinfo_t object
+ * @param types evdev event type
+ * @param codes array of evdev event codes, terminated with -1
+ *
+ * @return 1 if all of codes and only codes are supported, 0 otherwise
+ */
+static int evdevinfo_match_codes(const evdevinfo_t *self, int type, const int *codes)
+{
+	for( int ecode = 0; ecode < KEY_CNT; ++ecode ) {
+		int have = evdevinfo_has_code(self, type, ecode);
+		int want = list_has_entry(codes, ecode);
+		if( have != want )
+			return 0;
+	}
+	return 1;
+}
+
 /** Fill in evdev data by probing file descriptor
  *
  * @param self evdevinfo_t object
@@ -390,6 +445,10 @@ typedef enum {
 	EVDEV_IGNORE,
 	/** Button like touch device */
 	EVDEV_DBLTAP,
+	/** Proximity sensor */
+	EVDEV_PS,
+	/** Ambient light sensor */
+	EVDEV_ALS,
 
 } evdev_type_t;
 
@@ -403,6 +462,8 @@ static const char * const evdev_class[] =
 	[EVDEV_ACTIVITY] = "USER ACTIVITY ONLY",
 	[EVDEV_IGNORE]   = "IGNORE",
 	[EVDEV_DBLTAP]   = "DOUBLE TAP",
+	[EVDEV_PS]       = "PROXIMITY SENSOR",
+	[EVDEV_ALS]      = "AMBIENT LIGHT SENSOR",
 };
 
 /** Use heuristics to determine what mce should do with an evdev device node
@@ -418,6 +479,11 @@ static evdev_type_t get_evdev_type(int fd)
 	evdevinfo_t *feat = evdevinfo_create();
 
 	evdevinfo_probe(feat, fd);
+
+	/* EV_ABS probing arrays for ALS/PS detection */
+	static const int abs_only[]  = { EV_ABS, -1 };
+	static const int misc_only[] = { ABS_MISC, -1 };
+	static const int dist_only[] = { ABS_DISTANCE, -1 };
 
 	/* key events pseudo button device might support in
 	 * addition to power key */
@@ -474,6 +540,21 @@ static evdev_type_t get_evdev_type(int fd)
 	  EV_FF_STATUS,
 	  -1
 	};
+
+	/* Ambient light and proximity sensor inputs */
+	if( evdevinfo_match_types(feat, abs_only) ) {
+		if( evdevinfo_match_codes(feat, EV_ABS, misc_only) ) {
+			// only EV_ABS:ABS_MISC -> ALS
+			res = EVDEV_ALS;
+			goto cleanup;
+		}
+		if( evdevinfo_match_codes(feat, EV_ABS, dist_only) ) {
+			// only EV_ABS:ABS_DISTANCE -> PS
+			res = EVDEV_PS;
+			goto cleanup;
+		}
+	}
+
 
 	/* MCE has no use for accelerometers etc */
 	if( evdevinfo_has_code(feat, EV_KEY, BTN_Z) ||
@@ -1556,6 +1637,16 @@ static void match_and_register_io_monitor(const gchar *filename)
 			mce_set_io_monitor_err_cb(iomon, misc_err_cb);
 			misc_dev_list = g_slist_prepend(misc_dev_list, (gpointer)iomon);
 		}
+		break;
+
+	case EVDEV_ALS:
+		/* Hook wakelockable ALS input source */
+		mce_sensorfw_als_attach(fd), fd = -1;
+		break;
+
+	case EVDEV_PS:
+		/* Hook wakelockable PS input source */
+		mce_sensorfw_ps_attach(fd), fd = -1;
 		break;
 	}
 
