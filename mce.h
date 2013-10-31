@@ -363,4 +363,10 @@ void mce_quit_mainloop(void);
 	res;\
 })
 
+#define proximity_state_get() ({\
+	gint res = GPOINTER_TO_INT(proximity_sensor_pipe.cached_data);\
+	mce_log(LL_DEBUG, "proximity_state=%d", res);\
+	res;\
+})
+
 #endif /* _MCE_H_ */
