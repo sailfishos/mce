@@ -1,3 +1,11 @@
+mce (1.20.0) unstable; urgency=low
+
+  * [mce] Use sensorfw for detecting orientation changes
+  * [evdev_trace] Show current values and ranges for EV_ABS type inputs
+  * [mce] If possible, use evdev inputs for PS and ALS data
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 31 Oct 2013 20:36:40 +0200
+
 mce (1.19.0) unstable; urgency=low
 
   * [mce] Add plugin for enabling/disabling doubletap wakeups
