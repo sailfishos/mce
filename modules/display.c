@@ -4517,35 +4517,38 @@ static void charger_state_trigger(gconstpointer data)
  */
 static void device_inactive_trigger(gconstpointer data)
 {
-	system_state_t system_state = datapipe_get_gint(system_state_pipe);
 	gboolean device_inactive = GPOINTER_TO_INT(data);
-	submode_t submode = mce_get_submode_int32();
 
-	/* Unblank screen on device activity,
-	 * unless the tklock is active
+	if( device_inactive )
+		goto EXIT;
+
+	/* Unblank screen on device activity
 	 */
-	if (((system_state == MCE_STATE_USER) ||
-	     (system_state == MCE_STATE_ACTDEAD)) &&
-	    (device_inactive == FALSE) &&
-	    ((submode & MCE_TKLOCK_SUBMODE) == 0)) {
-		/* Adjust the adaptive dimming timeouts,
-		 * even if we don't use them
-		 */
-		if (adaptive_dimming_timeout_cb_id != 0) {
-			if (g_slist_nth(possible_dim_timeouts,
-					dim_timeout_index +
-					adaptive_dimming_index + 1) != NULL)
-				adaptive_dimming_index++;
-		}
-		/* Explicitly reset the display dim timer in case the
-		 * display is already on (and the datapipe execution
-		 * below turns into a nop) */
-		setup_dim_timeout();
 
-		(void)execute_datapipe(&display_state_req_pipe,
-				       GINT_TO_POINTER(MCE_DISPLAY_ON),
-				       USE_INDATA, CACHE_INDATA);
+
+	/* Adjust the adaptive dimming timeouts,
+	 * even if we don't use them
+	 */
+	if (adaptive_dimming_timeout_cb_id != 0) {
+		if (g_slist_nth(possible_dim_timeouts,
+				dim_timeout_index +
+				adaptive_dimming_index + 1) != NULL)
+			adaptive_dimming_index++;
 	}
+
+	/* Explicitly reset the display dim timer in case the
+	 * display is already on (and the datapipe execution
+	 * below turns into a nop) */
+	setup_dim_timeout();
+
+	if( display_state_get() != MCE_DISPLAY_ON )
+		mce_log(LL_CRIT, "display on due to activity");
+
+	(void)execute_datapipe(&display_state_req_pipe,
+			       GINT_TO_POINTER(MCE_DISPLAY_ON),
+			       USE_INDATA, CACHE_INDATA);
+EXIT:
+	return;
 }
 
 /**
