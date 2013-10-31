@@ -589,6 +589,40 @@ static void inactivity_timeout_trigger(gconstpointer data)
 	setup_inactivity_timeout();
 }
 
+/** Generate activity from proximity sensor uncover
+ *
+ * @param data proximity sensor state as void pointer
+ */
+static void proximity_sensor_trigger(gconstpointer data)
+{
+	static cover_state_t old_proximity_state = COVER_OPEN;
+
+	cover_state_t proximity_state = GPOINTER_TO_INT(data);
+
+	/* generate activity if proximity sensor is
+	 * uncovered and there is a incoming call */
+
+	if( old_proximity_state == proximity_state )
+		goto EXIT;
+
+	old_proximity_state = proximity_state;
+
+	if( proximity_state != COVER_OPEN )
+		goto EXIT;
+
+	call_state_t call_state = datapipe_get_gint(call_state_pipe);
+
+	if( call_state != CALL_STATE_RINGING )
+		goto EXIT;
+
+	mce_log(LL_INFO, "proximity -> uncovered, call = ringing");
+	execute_datapipe(&device_inactive_pipe, GINT_TO_POINTER(FALSE),
+			 USE_INDATA, CACHE_INDATA);
+
+EXIT:
+	return;
+}
+
 /**
  * Init function for the inactivity module
  *
@@ -605,6 +639,8 @@ const gchar *g_module_check_init(GModule *module)
 	/* Append triggers/filters to datapipes */
 	append_filter_to_datapipe(&device_inactive_pipe,
 				  device_inactive_filter);
+	append_output_trigger_to_datapipe(&proximity_sensor_pipe,
+					  proximity_sensor_trigger);
 	append_output_trigger_to_datapipe(&inactivity_timeout_pipe,
 					  inactivity_timeout_trigger);
 
@@ -653,6 +689,8 @@ void g_module_unload(GModule *module)
 	/* Remove triggers/filters from datapipes */
 	remove_output_trigger_from_datapipe(&inactivity_timeout_pipe,
 					    inactivity_timeout_trigger);
+	remove_output_trigger_from_datapipe(&proximity_sensor_pipe,
+					    proximity_sensor_trigger);
 	remove_filter_from_datapipe(&device_inactive_pipe,
 				    device_inactive_filter);
 
