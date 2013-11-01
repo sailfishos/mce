@@ -1,3 +1,9 @@
+mce (1.20.1) unstable; urgency=low
+
+  * [mce] Adjust led blinking periods
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 01 Nov 2013 13:36:55 +0200
+
 mce (1.20.0) unstable; urgency=low
 
   * [mce] Use sensorfw for detecting orientation changes
