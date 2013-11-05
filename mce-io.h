@@ -114,9 +114,12 @@ gboolean mce_are_settings_locked(void);
 gboolean mce_unlock_settings(void);
 
 void *mce_io_load_file(const char *path, size_t *psize);
+void *mce_io_load_file_until_eof(const char *path, size_t *psize);
 gboolean mce_io_save_file(const char *path,
 			  const void *data, size_t size,
 			  mode_t mode);
+gboolean mce_io_save_to_existing_file(const char *path,
+				      const void *data, size_t size);
 gboolean mce_io_save_file_atomic(const char *path,
 				 const void *data, size_t size,
 				 mode_t mode, gboolean keep_backup);
