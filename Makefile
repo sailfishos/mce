@@ -165,6 +165,7 @@ MODULES += $(MODULE_DIR)/camera.so
 MODULES += $(MODULE_DIR)/alarm.so
 MODULES += $(MODULE_DIR)/battery-bme.so
 MODULES += $(MODULE_DIR)/battery-upower.so
+MODULES += $(MODULE_DIR)/device_wd.so
 MODULES += $(MODULE_DIR)/display.so
 MODULES += $(MODULE_DIR)/doubletap.so
 MODULES += $(MODULE_DIR)/led.so

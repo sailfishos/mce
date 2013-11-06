@@ -1567,6 +1567,65 @@ EXIT:
 	return res;
 }
 
+/** Load contents of a file, ignoring the reported file size
+ *
+ * @param path file to read from
+ * @param psize where to store size of the loaded file, or NULL if not needed
+ *
+ * @return Zero terminated contents of the file, or NULL in case of errors
+ */
+void *mce_io_load_file_until_eof(const char *path, size_t *psize)
+{
+	void   *res  = 0;
+	char   *data = 0;
+	size_t  used = 0;
+	size_t  size = 0;
+	int     fd   = -1;
+	ssize_t rc;
+
+	if( (fd = TEMP_FAILURE_RETRY(open(path, O_RDONLY))) == -1 ) {
+		if( errno != ENOENT )
+			mce_log(LL_WARN, "open(%s): %m", path);
+		goto EXIT;
+	}
+
+	size = 1024;
+	data = g_malloc(size);
+
+	for( ;; ) {
+		rc = TEMP_FAILURE_RETRY(read(fd, data + used, size - used));;
+
+		if( rc == 0 )
+			break;
+
+		if( rc == -1 ) {
+			mce_log(LL_WARN, "read(%s): %m", path);
+			goto EXIT;
+		}
+
+		used += (size_t)rc;
+		if( size - used < 512 ) {
+			size = size * 2;
+			data = g_realloc(data, size);
+		}
+	}
+
+	data = g_realloc(data, used + 1);
+	data[used] = 0;
+	res = data, data = 0;
+
+EXIT:
+	g_free(data);
+
+	if( fd != -1 && TEMP_FAILURE_RETRY(close(fd)) == -1 )
+		mce_log(LL_WARN, "close(%s): %m", path);
+
+	if( psize )
+		*psize = res ? used : 0;
+
+	return res;
+}
+
 /** Write datablock to a file
  *
  * @param path file to write to
@@ -1599,6 +1658,40 @@ gboolean mce_io_save_file(const char *path,
 
 	if( fchmod(fd, mode) == -1 ) {
 		mce_log(LL_WARN, "chmod(%s, %03o): %m", path, (int)mode);
+		goto EXIT;
+	}
+
+	res = TRUE;
+
+EXIT:
+	if( fd != -1 && TEMP_FAILURE_RETRY(close(fd)) == -1 )
+		mce_log(LL_WARN, "close(%s): %m", path);
+
+	return res;
+}
+
+/** Write datablock to an existing file
+ *
+ * @param path file to write to
+ * @param data start of the data to write
+ * @param size length of the data to write
+ *
+ * @return TRUE on success, FALSE on errors
+ */
+gboolean mce_io_save_to_existing_file(const char *path,
+				      const void *data, size_t size)
+{
+	gboolean res = FALSE;
+	int      fd  = -1;
+
+	fd = TEMP_FAILURE_RETRY(open(path, O_WRONLY|O_TRUNC));
+	if( fd == -1 ) {
+		mce_log(LL_WARN, "open(%s): %m", path);
+		goto EXIT;
+	}
+
+	if( !mce_io_write_all(fd, data, size, 0) ) {
+		mce_log(LL_WARN, "write(%s): %m", path);
 		goto EXIT;
 	}
 
