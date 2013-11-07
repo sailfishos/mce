@@ -367,6 +367,24 @@ EXIT:
 	return;
 }
 
+/** Helper for getting cover_state_t in human readable form
+ *
+ * @param state cover state enum value
+ *
+ * @return enum name without "COVER_" prefix
+ */
+static const char *cover_state_repr(cover_state_t state)
+{
+	const char *res = "UNKNOWN";
+	switch( state ) {
+	case COVER_UNDEF:  res = "UNDEF";  break;
+	case COVER_CLOSED: res = "CLOSED"; break;
+	case COVER_OPEN:   res = "OPEN";   break;
+	default: break;
+	}
+	return res;
+}
+
 /** Broadcast proximity state within MCE
  *
  * @param state COVER_CLOSED or COVER_OPEN
@@ -382,7 +400,9 @@ static void report_proximity(cover_state_t state)
 	 * omit the non-change datapipe execute ... */
 	//if( old_state != state )
 	{
-		mce_log(LL_INFO, "state: %d -> %d", old_state, state);
+		mce_log(LL_NOTICE, "state: %s -> %s",
+			cover_state_repr(old_state),
+			cover_state_repr(state));
 		execute_datapipe(&proximity_sensor_pipe,
 				 GINT_TO_POINTER(state),
 				 USE_INDATA, CACHE_INDATA);
@@ -715,18 +735,8 @@ static void update_proximity_monitor(void)
 		goto EXIT;
 	}
 
-	if ((display_state == MCE_DISPLAY_ON) ||
-	    (display_state == MCE_DISPLAY_LPM_ON) ||
-	    (((submode & MCE_TKLOCK_SUBMODE) != 0) &&
-	     ((display_state == MCE_DISPLAY_OFF) ||
-	      (display_state == MCE_DISPLAY_LPM_OFF))) ||
-	    (ps_external_refcount > 0) ||
-	    (call_state == CALL_STATE_RINGING) ||
-	    (call_state == CALL_STATE_ACTIVE) ||
-	    (alarm_ui_state == MCE_ALARM_UI_VISIBLE_INT32) ||
-	    (alarm_ui_state == MCE_ALARM_UI_RINGING_INT32)) {
-		enable = TRUE;
-	}
+	/* Default to keeping the proximity sensor always enabled. */
+	enable = TRUE;
 
 	if( !use_ps_conf_value ) {
 		fake_open = TRUE;

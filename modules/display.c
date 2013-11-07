@@ -2051,12 +2051,6 @@ static void update_blanking_inhibit(gboolean timed_inhibit)
 				datapipe_get_gint(alarm_ui_state_pipe);
 	call_state_t call_state = datapipe_get_gint(call_state_pipe);
 
-	if( display_state == MCE_DISPLAY_POWER_UP ||
-	    display_state == MCE_DISPLAY_POWER_DOWN ) {
-		mce_log(LL_WARN, "ignored while in transition");
-		return;
-	}
-
 	if ((system_state == MCE_STATE_ACTDEAD) &&
 	    (charger_connected == TRUE) &&
 	    ((alarm_ui_state == MCE_ALARM_UI_OFF_INT32) ||
@@ -2101,12 +2095,29 @@ static void update_blanking_inhibit(gboolean timed_inhibit)
 	}
 
 	/* Reprogram timeouts, if necessary */
-	if (display_state == MCE_DISPLAY_ON)
+	switch( display_state ) {
+	case MCE_DISPLAY_ON:
 		setup_dim_timeout();
-	else if (display_state == MCE_DISPLAY_DIM)
+		break;
+	case MCE_DISPLAY_DIM:
 		setup_lpm_timeout();
-	else if (display_state == MCE_DISPLAY_LPM_ON)
+		break;
+	case MCE_DISPLAY_LPM_ON:
 		setup_blank_timeout();
+		break;
+
+	case MCE_DISPLAY_POWER_DOWN:
+	case MCE_DISPLAY_POWER_UP:
+		mce_log(LL_WARN, "skip blank/dim timers in transition");
+		break;
+
+	case MCE_DISPLAY_UNDEF:
+	case MCE_DISPLAY_OFF:
+	case MCE_DISPLAY_LPM_OFF:
+	default:
+		break;
+
+	}
 }
 
 /**
@@ -2982,6 +2993,81 @@ EXIT:
 	return status;
 }
 
+/** Helper for deciding if external display on/dim request are allowed
+ *
+ * There are state machines handling display on/off during
+ * calls and alarms. We do not want external requests to interfere
+ * with them.
+ *
+ * @return reason to block, or NULL if allowed
+ */
+static const char *display_on_blocked(void)
+{
+	const char *reason = 0;
+
+
+	/* display off? */
+	display_state_t display_state = display_state_get();
+	switch( display_state ) {
+	default:
+	case MCE_DISPLAY_OFF:
+	case MCE_DISPLAY_LPM_OFF:
+	case MCE_DISPLAY_LPM_ON:
+	case MCE_DISPLAY_POWER_UP:
+	case MCE_DISPLAY_POWER_DOWN:
+	case MCE_DISPLAY_UNDEF:
+		break;
+
+	case MCE_DISPLAY_DIM:
+	case MCE_DISPLAY_ON:
+		// it is already powered on, nothing to block
+		goto EXIT;
+	}
+
+	/* system state must be USER or ACT DEAD */
+	system_state_t system_state = datapipe_get_gint(system_state_pipe);
+	switch( system_state ) {
+	case MCE_STATE_USER:
+	case MCE_STATE_ACTDEAD:
+		break;
+	default:
+		reason = "system_state != USER|ACTDEAD";
+		goto EXIT;
+	}
+
+	/* active calls? */
+	call_state_t call_state = datapipe_get_gint(call_state_pipe);
+	switch( call_state ) {
+	case CALL_STATE_RINGING:
+	case CALL_STATE_ACTIVE:
+		reason = "call ringing|active";
+		goto EXIT;
+	default:
+		break;
+	}
+
+	/* active alarms? */
+	alarm_ui_state_t alarm_ui_state = datapipe_get_gint(alarm_ui_state_pipe);
+	switch( alarm_ui_state ) {
+	case MCE_ALARM_UI_RINGING_INT32:
+	case MCE_ALARM_UI_VISIBLE_INT32:
+		reason = "active alarm";
+		goto EXIT;
+	default:
+		break;
+	}
+
+	/* proximity covered? */
+	cover_state_t proximity_state = proximity_state_get();
+	if( proximity_state == COVER_CLOSED ) {
+		reason = "proximity covered";
+		goto EXIT;
+	}
+EXIT:
+
+	return reason;
+}
+
 /**
  * D-Bus callback for the display on method call
  *
@@ -2990,16 +3076,19 @@ EXIT:
  */
 static gboolean display_on_req_dbus_cb(DBusMessage *const msg)
 {
-	call_state_t call_state = datapipe_get_gint(call_state_pipe);
 	dbus_bool_t no_reply = dbus_message_get_no_reply(msg);
-	submode_t submode = mce_get_submode_int32();
 	gboolean status = FALSE;
 
-	mce_log(LL_DEBUG,
-		"Received display on request");
 
-	if ((call_state != CALL_STATE_RINGING) &&
-	    ((submode & (MCE_PROXIMITY_TKLOCK_SUBMODE | MCE_POCKET_SUBMODE)) == 0)) {
+	const char *reason = display_on_blocked();
+
+	if( reason ) {
+		mce_log(LL_WARN, "display ON request from %s denied: %s",
+			dbus_message_get_sender(msg), reason);
+	}
+	else {
+		mce_log(LL_NOTICE,"display ON request from %s",
+			dbus_message_get_sender(msg));
 		(void)execute_datapipe(&display_state_req_pipe,
 				       GINT_TO_POINTER(MCE_DISPLAY_ON),
 				       USE_INDATA, CACHE_INDATA);
@@ -3027,12 +3116,19 @@ static gboolean display_dim_req_dbus_cb(DBusMessage *const msg)
 	dbus_bool_t no_reply = dbus_message_get_no_reply(msg);
 	gboolean status = FALSE;
 
-	mce_log(LL_DEBUG,
-		"Received display dim request");
+	const char *reason = display_on_blocked();
 
-	(void)execute_datapipe(&display_state_req_pipe,
-			       GINT_TO_POINTER(MCE_DISPLAY_DIM),
-			       USE_INDATA, CACHE_INDATA);
+	if( reason ) {
+		mce_log(LL_WARN, "display DIM request from %s denied: %s",
+			dbus_message_get_sender(msg), reason);
+	}
+	else {
+		mce_log(LL_NOTICE,"display DIM request from %s",
+			dbus_message_get_sender(msg));
+		(void)execute_datapipe(&display_state_req_pipe,
+				       GINT_TO_POINTER(MCE_DISPLAY_DIM),
+				       USE_INDATA, CACHE_INDATA);
+	}
 
 	if (no_reply == FALSE) {
 		DBusMessage *reply = dbus_new_method_reply(msg);
@@ -3056,8 +3152,7 @@ static gboolean display_off_req_dbus_cb(DBusMessage *const msg)
 	dbus_bool_t no_reply = dbus_message_get_no_reply(msg);
 	gboolean status = FALSE;
 
-	mce_log(LL_DEBUG,
-		"Received display off request from %s",
+	mce_log(LL_NOTICE, "display off request from %s",
 		dbus_message_get_sender(msg));
 
 	(void)execute_datapipe(&display_state_req_pipe,
@@ -4602,7 +4697,7 @@ static void system_state_trigger(gconstpointer data)
 	switch (system_state) {
 	case MCE_STATE_ACTDEAD:
 	case MCE_STATE_USER:
- 		(void)execute_datapipe(&display_state_req_pipe,
+		(void)execute_datapipe(&display_state_req_pipe,
 				       GINT_TO_POINTER(MCE_DISPLAY_ON),
 				       USE_INDATA, CACHE_INDATA);
 		break;
