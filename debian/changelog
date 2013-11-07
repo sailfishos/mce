@@ -1,3 +1,12 @@
+mce (1.21.1) unstable; urgency=low
+
+  * [mce] Update blanking inhibit also during frame buffer suspend/resume
+  * [mce] Block display ON/DIM D-Bus requests during call/alarm/proximity
+  * [mce] Keep proximity sensor always enabled
+  * [mce] Do not turn display on after call ends
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 07 Nov 2013 11:34:24 +0200
+
 mce (1.21.0) unstable; urgency=low
 
   * [mce] Add watchdog plugin
