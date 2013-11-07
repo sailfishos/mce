@@ -2051,12 +2051,6 @@ static void update_blanking_inhibit(gboolean timed_inhibit)
 				datapipe_get_gint(alarm_ui_state_pipe);
 	call_state_t call_state = datapipe_get_gint(call_state_pipe);
 
-	if( display_state == MCE_DISPLAY_POWER_UP ||
-	    display_state == MCE_DISPLAY_POWER_DOWN ) {
-		mce_log(LL_WARN, "ignored while in transition");
-		return;
-	}
-
 	if ((system_state == MCE_STATE_ACTDEAD) &&
 	    (charger_connected == TRUE) &&
 	    ((alarm_ui_state == MCE_ALARM_UI_OFF_INT32) ||
@@ -2101,12 +2095,29 @@ static void update_blanking_inhibit(gboolean timed_inhibit)
 	}
 
 	/* Reprogram timeouts, if necessary */
-	if (display_state == MCE_DISPLAY_ON)
+	switch( display_state ) {
+	case MCE_DISPLAY_ON:
 		setup_dim_timeout();
-	else if (display_state == MCE_DISPLAY_DIM)
+		break;
+	case MCE_DISPLAY_DIM:
 		setup_lpm_timeout();
-	else if (display_state == MCE_DISPLAY_LPM_ON)
+		break;
+	case MCE_DISPLAY_LPM_ON:
 		setup_blank_timeout();
+		break;
+
+	case MCE_DISPLAY_POWER_DOWN:
+	case MCE_DISPLAY_POWER_UP:
+		mce_log(LL_WARN, "skip blank/dim timers in transition");
+		break;
+
+	case MCE_DISPLAY_UNDEF:
+	case MCE_DISPLAY_OFF:
+	case MCE_DISPLAY_LPM_OFF:
+	default:
+		break;
+
+	}
 }
 
 /**
