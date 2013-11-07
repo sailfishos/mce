@@ -3048,11 +3048,6 @@ static void call_state_trigger(gconstpointer data)
 		} else if (is_tklock_enabled() == FALSE) {
 			/* Disable autorelock */
 			disable_autorelock();
-
-			/* Unblank screen */
-			(void)execute_datapipe(&display_state_req_pipe,
-					       GINT_TO_POINTER(MCE_DISPLAY_ON),
-					       USE_INDATA, CACHE_INDATA);
 		}
 
 		break;
