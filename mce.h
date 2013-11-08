@@ -270,6 +270,8 @@ datapipe_struct device_inactive_pipe;
 datapipe_struct led_pattern_activate_pipe;
 /** LED pattern to deactivate; read only */
 datapipe_struct led_pattern_deactivate_pipe;
+/** Non-synthetized user activity; read only */
+datapipe_struct user_activity_pipe;
 /** State of display; read only */
 datapipe_struct display_state_pipe;
 /** Desired state of display */

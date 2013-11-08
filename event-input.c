@@ -1090,6 +1090,10 @@ static gboolean touchscreen_iomon_cb(gpointer data, gsize bytes_read)
 	(void)execute_datapipe(&device_inactive_pipe, GINT_TO_POINTER(FALSE),
 			       USE_INDATA, CACHE_INDATA);
 
+	/* Signal actual non-synthetized user activity */
+	execute_datapipe_output_triggers(&user_activity_pipe, 0, USE_INDATA);
+
+
 	/* If the display is on/dim and visual tklock is active
 	 * or autorelock isn't active, suspend I/O monitors
 	 */
@@ -1321,8 +1325,13 @@ static gboolean keypress_iomon_cb(gpointer data, gsize bytes_read)
 		}
 	}
 
-	/* Power key events are handled in powerkey module */
+	/* Power key events ... */
 	if( ev->type == EV_KEY && ev->code == KEY_POWER ) {
+		/* .. count as actual non-synthetized user activity */
+		execute_datapipe_output_triggers(&user_activity_pipe,
+						 0, USE_INDATA);
+
+		/* but otherwise are handled in powerkey module */
 		mce_log(LL_DEBUG, "ignore power key event");
 		goto EXIT;
 	}
