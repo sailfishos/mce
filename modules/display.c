@@ -773,7 +773,7 @@ static gboolean get_display_type_from_hybris(display_type_t *display_type)
 	*display_type = DISPLAY_TYPE_GENERIC;
 
 	if( !mce_hybris_framebuffer_init() ) {
-		mce_log(LL_WARN, "libhybris fb power controls not available; using dummy");
+		mce_log(LL_NOTICE, "libhybris fb power controls not available; using dummy");
 		backlight_ioctl_hook = backlight_ioctl_dummy;
 	}
 	else {

@@ -1428,6 +1428,12 @@ static const setting_t gconf_defaults[] =
     .def  = "true",
   },
   {
+    // no define; used by the CSD app
+    .key  = "/system/osso/dsm/leds/PatternCsdWhite",
+    .type = "b",
+    .def  = "true",
+  },
+  {
     // MCE_GCONF_PROXIMITY_PS_ENABLED_PATH @ proximity.h
     .key  = "/system/osso/dsm/proximity/ps_enabled",
     .type = "b",

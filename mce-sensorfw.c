@@ -965,7 +965,7 @@ mce_sensorfw_als_rethink(void)
 {
 	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
 	if( !sensord_running ) {
-		mce_log(LL_WARN, "skipping als enable/disable;"
+		mce_log(LL_NOTICE, "skipping als enable/disable;"
 			" sensord not available");
 		goto EXIT;
 	}
@@ -1390,8 +1390,8 @@ mce_sensorfw_ps_rethink(void)
 {
 	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
 	if( !sensord_running ) {
-		mce_log(LL_WARN, "sensord not on dbus;"
-			" skipping ps enable/disable for now");
+		mce_log(LL_NOTICE, "skipping ps enable/disable;"
+			" sensord not available");
 		goto EXIT;
 	}
 
@@ -1808,8 +1808,8 @@ mce_sensorfw_orient_rethink(void)
 {
 	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
 	if( !sensord_running ) {
-		mce_log(LL_WARN, "sensord not on dbus;"
-			" skipping ps enable/disable for now");
+		mce_log(LL_NOTICE, "skipping ps enable/disable;"
+			" sensord not available");
 		goto EXIT;
 	}
 

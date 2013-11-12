@@ -503,7 +503,7 @@ static gpointer device_inactive_filter(gpointer data)
 	case MCE_STATE_ACTDEAD:
 		break;
 	default:
-		mce_log(LL_WARN, "system_state != USER|ACTDEAD"
+		mce_log(LL_DEBUG, "system_state != USER|ACTDEAD"
 			"; ignoring activity");
 		device_inactive = TRUE;
 		goto EXIT;
@@ -532,7 +532,7 @@ static gpointer device_inactive_filter(gpointer data)
 		}
 
 		if( !have_alarms && !have_calls ) {
-			mce_log(LL_WARN, "tklock enabled, no alarms or calls;"
+			mce_log(LL_DEBUG, "tklock enabled, no alarms or calls;"
 				" ignoring activity");
 			device_inactive = TRUE;
 			goto EXIT;
@@ -547,7 +547,7 @@ static gpointer device_inactive_filter(gpointer data)
 		case MCE_DISPLAY_LPM_ON:
 		case MCE_DISPLAY_POWER_UP:
 		case MCE_DISPLAY_POWER_DOWN:
-			mce_log(LL_WARN, "display=off, proximity=covered; ignoring activity");
+			mce_log(LL_DEBUG, "display=off, proximity=covered; ignoring activity");
 			device_inactive = TRUE;
 			goto EXIT;
 
