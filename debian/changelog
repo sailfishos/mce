@@ -1,3 +1,10 @@
+mce (1.22.0) unstable; urgency=low
+
+  * [mce] Add support for led patterns that auto-disable on display on
+  * [mce] Communication LED patterns use auto-disable policy
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 12 Nov 2013 13:56:13 +0200
+
 mce (1.21.1) unstable; urgency=low
 
   * [mce] Update blanking inhibit also during frame buffer suspend/resume
