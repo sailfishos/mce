@@ -1489,8 +1489,9 @@ START_TEST (ut_check_basic_state_change_no_lpm)
 	};
 
 	for( int i = 0; state_changes[i].required != MCE_DISPLAY_UNDEF; ++i ) {
+		gint current = display_state_get(); /* needed */
 		mce_log(LL_DEBUG, "%d: %s -> %s, expect %s", i,
-			display_state_name(display_state_get()),
+			display_state_name(current),
 			display_state_name(state_changes[i].required),
 			display_state_name(state_changes[i].expected));
 
@@ -1537,8 +1538,9 @@ START_TEST (ut_check_basic_state_change)
 	};
 
 	for( int i = 0; state_changes[i].required != MCE_DISPLAY_UNDEF; ++i ) {
+		gint current = display_state_get(); /* needed */
 		mce_log(LL_DEBUG, "%d: %s -> %s, expect %s", i,
-			display_state_name(display_state_get()),
+			display_state_name(current),
 			display_state_name(state_changes[i].required),
 			display_state_name(state_changes[i].expected));
 
