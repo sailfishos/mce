@@ -5200,7 +5200,8 @@ static void stm_rethink_schedule(void)
 
 static void stm_rethink_force(void)
 {
-	wakelock_lock("mce_display_stm", -1);
+	if( !stm_rethink_id )
+		wakelock_lock("mce_display_stm", -1);
 	if( stm_rethink_id )
 		g_source_remove(stm_rethink_id), stm_rethink_id = 0;
 	stm_rethink();
