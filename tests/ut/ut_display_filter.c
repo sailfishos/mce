@@ -118,15 +118,15 @@ static struct ut_check_display_state_filter_data
 
 } ut_check_display_state_filter_data[] = {
 	/* Ignore display-on requests during transition to shutdown
-         * and reboot, when in acting dead and when system state is unknown */
+	 * and reboot, and when system state is unknown */
 	DATA( SHUTDOWN, 1, OFF    , 0, 0, OFF, ON     , OFF     ),
 	DATA( REBOOT  , 1, OFF    , 0, 0, OFF, ON     , OFF     ),
-	DATA( ACTDEAD , 1, OFF    , 0, 0, OFF, ON     , OFF     ),
 	DATA( UNDEF   , 1, OFF    , 0, 0, OFF, ON     , OFF     ),
 	/* Do not ignore display-on request during transition when in acting
-	 * dead and alarm is ringing or alarm UI is visible */
+	 * dead */
 	DATA( SHUTDOWN, 1, RINGING, 0, 0, OFF, ON     , OFF     ),
 	DATA( REBOOT  , 1, VISIBLE, 0, 0, OFF, ON     , OFF     ),
+	DATA( ACTDEAD , 1, OFF,     0, 0, OFF, ON     , ON      ),
 	DATA( ACTDEAD , 1, RINGING, 0, 0, OFF, ON     , ON      ),
 	DATA( ACTDEAD , 1, VISIBLE, 0, 0, OFF, ON     , ON      ),
 	/* Above mentioned only applies during transition */
