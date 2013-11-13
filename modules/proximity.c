@@ -1020,7 +1020,7 @@ const gchar *g_module_check_init(GModule *module)
 	/* Get initial state of datapipes */
 	call_state = datapipe_get_gint(call_state_pipe);
         alarm_ui_state = datapipe_get_gint(alarm_ui_state_pipe);
-        display_state = datapipe_get_gint(display_state_pipe);
+        display_state = display_state_get();
         submode = datapipe_get_gint(submode_pipe);
 
 	/* Append triggers/filters to datapipes */

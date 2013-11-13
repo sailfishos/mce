@@ -1,3 +1,9 @@
+mce (1.18.0) unstable; urgency=low
+
+  * [display] enable display on/off handling in actdead
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 29 Oct 2013 14:41:21 +0200
+
 mce (1.17.11) unstable; urgency=low
 
   * [mce] Do not skip tklock ipc during frame buffer suspend/resume

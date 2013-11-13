@@ -960,7 +960,7 @@ static int doubletap_emulate(const struct input_event *eve)
  */
 static gboolean touchscreen_iomon_cb(gpointer data, gsize bytes_read)
 {
-	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+	display_state_t display_state = display_state_get();
 	submode_t submode = mce_get_submode_int32();
 	struct input_event *ev;
 	gboolean flush = FALSE;
@@ -979,7 +979,7 @@ static gboolean touchscreen_iomon_cb(gpointer data, gsize bytes_read)
 
 #ifdef ENABLE_DOUBLETAP_EMULATION
 	if( fake_doubletap_enabled ) {
-		switch( datapipe_get_gint(display_state_pipe) ) {
+		switch( display_state ) {
 		case MCE_DISPLAY_OFF:
 		case MCE_DISPLAY_LPM_OFF:
 		case MCE_DISPLAY_LPM_ON:
@@ -991,6 +991,8 @@ static gboolean touchscreen_iomon_cb(gpointer data, gsize bytes_read)
 			}
 			break;
 		default:
+		case MCE_DISPLAY_POWER_UP:
+		case MCE_DISPLAY_POWER_DOWN:
 			break;
 		}
 	}
@@ -1236,6 +1238,12 @@ static gboolean keypress_iomon_cb(gpointer data, gsize bytes_read)
 		default:
 			break;
 		}
+	}
+
+	/* Power key events are handled in powerkey module */
+	if( ev->type == EV_KEY && ev->code == KEY_POWER ) {
+		mce_log(LL_DEBUG, "ignore power key event");
+		goto EXIT;
 	}
 
 	/* Generate activity:

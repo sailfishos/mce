@@ -1140,7 +1140,7 @@ static void program_led(const pattern_struct *const pattern)
  */
 static void led_update_active_pattern(void)
 {
-	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+	display_state_t display_state = display_state_get();
 	system_state_t system_state = datapipe_get_gint(system_state_pipe);
 	pattern_struct *new_active_pattern;
 	gint i = 0;

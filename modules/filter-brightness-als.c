@@ -1060,7 +1060,7 @@ const gchar *g_module_check_init(GModule *module)
 	als_filter_load_config(&lut_key);
 
 	/* Get intial display state */
-	display_state = datapipe_get_gint(display_state_pipe);
+	display_state = display_state_get();
 
 	/* Append triggers/filters to datapipes */
 	append_filter_to_datapipe(&display_brightness_pipe,
