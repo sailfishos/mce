@@ -189,8 +189,9 @@ START_TEST (ut_check_display_state_filter)
 
 	ck_assert_int_eq(GPOINTER_TO_INT(input2_filtered),
 			 data[_i].expected_output);
-	ck_assert_int_eq(GPOINTER_TO_INT(display_state_pipe.cached_data),
-			 data[_i].expected_output);
+	// The ugly hack has been commented out in display_state_filter()
+	//ck_assert_int_eq(GPOINTER_TO_INT(display_state_pipe.cached_data),
+	//		 data[_i].expected_output);
 }
 END_TEST
 
