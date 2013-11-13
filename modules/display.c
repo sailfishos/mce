@@ -128,6 +128,8 @@
 # include "../mce-hybris.h"
 #endif
 
+#include "mce-sensorfw.h"
+
 /* These defines are taken from devicelock.h, but slightly modified */
 #ifndef DEVICELOCK_H
 
@@ -3837,6 +3839,8 @@ static int suspend_allow_state(void)
 {
 	system_state_t system_state = datapipe_get_gint(system_state_pipe);
 	call_state_t call_state = datapipe_get_gint(call_state_pipe);
+	alarm_ui_state_t alarm_ui_state =
+				datapipe_get_gint(alarm_ui_state_pipe);
 
 	bool block_late  = false;
 	bool block_early = false;
@@ -3845,6 +3849,16 @@ static int suspend_allow_state(void)
 	switch( call_state ) {
 	case CALL_STATE_RINGING:
 	case CALL_STATE_ACTIVE:
+		block_late = true;
+		break;
+	default:
+		break;
+	}
+
+	/* no late suspend when alarm on screen */
+	switch( alarm_ui_state ) {
+	case MCE_ALARM_UI_RINGING_INT32:
+	case MCE_ALARM_UI_VISIBLE_INT32:
 		block_late = true;
 		break;
 	default:
@@ -4076,7 +4090,7 @@ static void bootstate_changed_cb(const char *path,
 	else
 		bootstate = BOOTSTATE_ACT_DEAD;
 EXIT:
-	if( rc != -1 ) close(fd);
+	if( fd != -1 ) close(fd);
 
 	poweron_led_rethink();
 }
@@ -4656,6 +4670,8 @@ static void alarm_ui_state_trigger(gconstpointer data)
 
 	/* Update blank prevent */
 	update_blanking_inhibit(FALSE);
+
+	stm_rethink_schedule();
 }
 
 /* ------------------------------------------------------------------------- *
@@ -5092,14 +5108,22 @@ static void stm_rethink_step(void)
 			break;
 		}
 
-		if( stm_suspend_allowed_late() )
+		/* FIXME: Need separate states for stopping/starting
+		 *        sensors during suspend/resume */
+
+		if( stm_suspend_allowed_late() ) {
+			mce_sensorfw_suspend();
 			stm_wakelock_release();
-		else
+		}
+		else {
 			stm_wakelock_acquire();
+			mce_sensorfw_resume();
+		}
 		break;
 
 	case STM_LEAVE_POWER_OFF:
 		stm_wakelock_acquire();
+		mce_sensorfw_resume();
 		stm_trans(STM_INIT_RESUME);
 		break;
 

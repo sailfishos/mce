@@ -45,7 +45,7 @@ distclean:: clean
 # CONFIGURATION
 # ----------------------------------------------------------------------------
 
-VERSION := 1.17.1
+VERSION := 1.17.2
 
 INSTALL_BIN := install --mode=755
 INSTALL_DIR := install -d
@@ -106,7 +106,7 @@ ENABLE_BACKUP_SUPPORT ?= n
 ENABLE_DOUBLETAP_EMULATION ?= y
 
 # Whether to install unit tests
-ENABLE_UNITTESTS_INSTALL ?= y
+ENABLE_UNITTESTS_INSTALL ?= n
 
 # Install destination
 DESTDIR               ?= /tmp/test-mce-install
