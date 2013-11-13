@@ -795,6 +795,20 @@ void, mce_dbus_owner_monitor_remove_all, (GSList **monitor_list))
 }
 
 /*
+ * mce-sensorfw.c stubs {{{1
+ */
+
+EXTERN_STUB (
+void, mce_sensorfw_suspend, (void))
+{
+}
+
+EXTERN_STUB (
+void, mce_sensorfw_resume, (void))
+{
+}
+
+/*
  * tklock.c stubs {{{1
  */
 

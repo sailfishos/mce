@@ -23,6 +23,18 @@ gconstpointer, execute_datapipe, (datapipe_struct *const datapipe,
 				  const data_source_t use_cache,
 				  const caching_policy_t cache_indata));
 
+/* mce-sensorfw.c stubs */
+
+EXTERN_STUB (
+void, mce_sensorfw_suspend, (void))
+{
+}
+
+EXTERN_STUB (
+void, mce_sensorfw_resume, (void))
+{
+}
+
 /* libwakelock stub */
 
 static GHashTable *stub__wakelock_locks = NULL;
