@@ -5,6 +5,7 @@
  * Copyright © 2008-2009 Nokia Corporation and/or its subsidiary(-ies).
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
+ * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
  * mce is free software; you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License
@@ -19,127 +20,1153 @@
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include <glib.h>
+#include <stdlib.h>
 #include <gmodule.h>
-
-#include <string.h>			/* strncmp(), strlen() */
-
+#include <stdbool.h>
+#include <string.h>
 #include "mce.h"
 #include "callstate.h"
+#include <mce/mode-names.h>
+#include "mce.h"
+#include "mce-lib.h"
+#include "mce-log.h"
+#include "mce-dbus.h"
+#include "datapipe.h"
 
-#include "ofono-dbus-names.h"
+#if 0 // DEBUG: make all logging from this module "critical"
+# undef mce_log
+# define mce_log(LEV, FMT, ARGS...) \
+        mce_log_file(LL_CRIT, __FILE__, __FUNCTION__, FMT , ## ARGS)
+#endif
 
-#include <mce/mode-names.h>		/* MCE_CALL_STATE_NONE,
-					 * MCE_CALL_STATE_ACTIVE,
-					 * MCE_CALL_STATE_SERVICE,
-					 * MCE_NORMAL_CALL,
-					 * MCE_EMERGENCY_CALL
-					 */
+/* ========================================================================= *
+ * OFONO DBUS CONSTANTS
+ * ========================================================================= */
 
-#include "mce.h"			/* FIXME
-					 * CALL_STATE_INVALID,
-					 * CALL_STATE_NONE,
-					 * CALL_STATE_RINGING,
-					 * CALL_STATE_ACTIVE,
-					 * CALL_STATE_SERVICE,
-					 * INVALID_CALL,
-					 * NORMAL_CALL,
-					 * EMERGENCY_CALL,
-					 * call_state_t,
-					 * call_type_t
-					 */
+#define OFONO_SERVICE                       "org.ofono"
 
-#include "mce-lib.h"			/* mce_translate_int_to_string(),
-					 * mce_translate_string_to_int(),
-					 * mce_translation_t
-					 */
-#include "mce-log.h"			/* mce_log(), LL_* */
-#include "mce-dbus.h"			/* Direct:
-					 * ---
-					 * mce_dbus_handler_add(),
-					 * dbus_send_message(),
-					 * dbus_new_signal(),
-					 * dbus_new_method_reply(),
-					 * dbus_message_get_args(),
-					 * dbus_message_get_no_reply(),
-					 * dbus_message_append_args(),
-					 * dbus_message_unref(),
-					 * dbus_error_init(),
-					 * dbus_error_free(),
-					 * DBUS_MESSAGE_TYPE_METHOD_CALL,
-					 * DBUS_TYPE_STRING,
-					 * DBUS_TYPE_INVALID,
-					 * DBusMessage, DBusError,
-					 * dbus_bool_t
-					 *
-					 * Indirect:
-					 * ---
-					 * MCE_SIGNAL_IF,
-					 * MCE_SIGNAL_PATH,
-					 * MCE_REQUEST_IF,
-					 * MCE_CALL_STATE_GET,
-					 * MCE_CALL_STATE_CHANGE_REQ,
-					 * MCE_CALL_STATE_SIG
-					 */
-#include "datapipe.h"			/* FIXME execute_datapipe() */
+#define OFONO_MANAGER_INTERFACE             "org.ofono.Manager"
+#define OFONO_MANAGER_OBJECT                "/"
+#define OFONO_MANAGER_REQ_GET_MODEMS        "GetModems"
+#define OFONO_MANAGER_SIG_MODEM_ADDED       "ModemAdded"
+#define OFONO_MANAGER_SIG_MODEM_REMOVED     "ModemRemoved"
+
+#define OFONO_MODEM_INTERFACE               "org.ofono.Modem"
+#define OFONO_MODEM_SIG_PROPERTY_CHANGED    "PropertyChanged"
+
+#define OFONO_VCALLMANAGER_INTERFACE        "org.ofono.VoiceCallManager"
+#define OFONO_VCALLMANAGER_REQ_GET_CALLS    "GetCalls"
+#define OFONO_VCALLMANAGER_SIG_CALL_ADDED   "CallAdded"
+#define OFONO_VCALLMANAGER_SIG_CALL_REMOVED "CallRemoved"
+
+#define OFONO_VCALL_INTERFACE               "org.ofono.VoiceCall"
+#define OFONO_VCALL_SIG_PROPERTY_CHANGED    "PropertyChanged"
+
+/* ========================================================================= *
+ * MODULE DETAILS
+ * ========================================================================= */
 
 /** Module name */
-#define MODULE_NAME		"callstate"
+#define MODULE_NAME             "callstate"
 
 /** Functionality provided by this module */
 static const gchar *const provides[] = { MODULE_NAME, NULL };
 
 /** Module information */
 G_MODULE_EXPORT module_info_struct module_info = {
-	/** Name of the module */
-	.name = MODULE_NAME,
-	/** Module provides */
-	.provides = provides,
-	/** Module priority */
-	.priority = 250
+        /** Name of the module */
+        .name = MODULE_NAME,
+        /** Module provides */
+        .provides = provides,
+        /** Module priority */
+        .priority = 250
 };
+
+/* ========================================================================= *
+ * MCE CALL STATE / TYPE UTILS
+ * ========================================================================= */
 
 /** Mapping of call state integer <-> call state string */
 static const mce_translation_t call_state_translation[] = {
-	{
-		.number = CALL_STATE_NONE,
-		.string = MCE_CALL_STATE_NONE
-	}, {
-		.number = CALL_STATE_RINGING,
-		.string = MCE_CALL_STATE_RINGING,
-	}, {
-		.number = CALL_STATE_ACTIVE,
-		.string = MCE_CALL_STATE_ACTIVE,
-	}, {
-		.number = CALL_STATE_SERVICE,
-		.string = MCE_CALL_STATE_SERVICE
-	}, { /* MCE_INVALID_TRANSLATION marks the end of this array */
-		.number = MCE_INVALID_TRANSLATION,
-		.string = MCE_CALL_STATE_NONE
-	}
+        {
+                .number = CALL_STATE_NONE,
+                .string = MCE_CALL_STATE_NONE
+        }, {
+                .number = CALL_STATE_RINGING,
+                .string = MCE_CALL_STATE_RINGING,
+        }, {
+                .number = CALL_STATE_ACTIVE,
+                .string = MCE_CALL_STATE_ACTIVE,
+        }, {
+                .number = CALL_STATE_SERVICE,
+                .string = MCE_CALL_STATE_SERVICE
+        }, { /* MCE_INVALID_TRANSLATION marks the end of this array */
+                .number = MCE_INVALID_TRANSLATION,
+                .string = MCE_CALL_STATE_NONE
+        }
 };
+
+/** MCE call state number to string
+ */
+static const char *call_state_repr(call_state_t state)
+{
+    return mce_translate_int_to_string(call_state_translation, state);
+}
+
+/** String to MCE call state number */
+static call_state_t call_state_parse(const char *name)
+{
+    return mce_translate_string_to_int(call_state_translation, name);
+}
 
 /** Mapping of call type integer <-> call type string */
 static const mce_translation_t call_type_translation[] = {
-	{
-		.number = NORMAL_CALL,
-		.string = MCE_NORMAL_CALL
-	}, {
-		.number = EMERGENCY_CALL,
-		.string = MCE_EMERGENCY_CALL
-	}, { /* MCE_INVALID_TRANSLATION marks the end of this array */
-		.number = MCE_INVALID_TRANSLATION,
-		.string = MCE_NORMAL_CALL
-	}
+        {
+                .number = NORMAL_CALL,
+                .string = MCE_NORMAL_CALL
+        }, {
+                .number = EMERGENCY_CALL,
+                .string = MCE_EMERGENCY_CALL
+        }, { /* MCE_INVALID_TRANSLATION marks the end of this array */
+                .number = MCE_INVALID_TRANSLATION,
+                .string = MCE_NORMAL_CALL
+        }
 };
+
+/** MCE call type number to string
+ */
+static const char *call_type_repr(call_type_t type)
+{
+    return mce_translate_int_to_string(call_type_translation, type);
+}
+
+/** String to MCE call type number
+ */
+static call_type_t call_type_parse(const char *name)
+{
+    return mce_translate_string_to_int(call_type_translation, name);
+}
+
+/* ========================================================================= *
+ * MODULE DATA
+ * ========================================================================= */
 
 /** List of monitored call state requesters; holds zero or one entries */
 static GSList *call_state_monitor_list = NULL;
 
-/** Keep track of whether call state is monitored */
-static gboolean call_state_is_monitored = FALSE;
+static void call_state_rethink_schedule(void);
+static bool call_state_rethink_forced(void);
 
-/** Reference counter for number of active calls */
-static unsigned char num_of_active_calls = 0;
+/* ========================================================================= *
+ * OFONO CALL STATE HELPERS
+ * ========================================================================= */
+
+/** Enumeration of oFono voice call states */
+typedef enum
+{
+    OFONO_CALL_STATE_UNKNOWN,
+    OFONO_CALL_STATE_ACTIVE,
+    OFONO_CALL_STATE_HELD,
+    OFONO_CALL_STATE_DIALING,
+    OFONO_CALL_STATE_ALERTING,
+    OFONO_CALL_STATE_INCOMING,
+    OFONO_CALL_STATE_WAITING,
+    OFONO_CALL_STATE_DISCONNECTED,
+
+    OFONO_CALL_STATE_COUNT
+} ofono_callstate_t;
+
+/** Lookup table for oFono voice call states */
+static const char * const ofono_callstate_lut[OFONO_CALL_STATE_COUNT] =
+{
+    [OFONO_CALL_STATE_UNKNOWN]      = "unknown",
+    [OFONO_CALL_STATE_ACTIVE]       = "active",
+    [OFONO_CALL_STATE_HELD]         = "held",
+    [OFONO_CALL_STATE_DIALING]      = "dialing",
+    [OFONO_CALL_STATE_ALERTING]     = "alerting",
+    [OFONO_CALL_STATE_INCOMING]     = "incoming",
+    [OFONO_CALL_STATE_WAITING]      = "waiting",
+    [OFONO_CALL_STATE_DISCONNECTED] = "disconnected",
+};
+
+/** oFono call state number to name
+ */
+#ifdef DEAD_CODE
+static const char *
+ofono_callstate_name(ofono_callstate_t callstate)
+{
+    if( callstate < OFONO_CALL_STATE_COUNT )
+        return ofono_callstate_lut[callstate];
+    return ofono_callstate_lut[OFONO_CALL_STATE_UNKNOWN];
+}
+#endif
+
+/** oFono call state name to number
+ */
+static ofono_callstate_t
+ofono_callstate_lookup(const char *name)
+{
+    ofono_callstate_t res = OFONO_CALL_STATE_UNKNOWN;
+
+    for( int i = 0; i < OFONO_CALL_STATE_COUNT; ++i ) {
+        if( !strcmp(ofono_callstate_lut[i], name) ) {
+            res = i;
+            break;
+        }
+    }
+
+    return res;
+}
+
+/** oFono call state name to mce call state number
+ */
+static call_state_t
+ofono_callstate_to_mce(const char *name)
+{
+    ofono_callstate_t ofono = ofono_callstate_lookup(name);
+    call_state_t   mce = CALL_STATE_INVALID;
+
+    switch( ofono ) {
+    default:
+    case OFONO_CALL_STATE_UNKNOWN:
+    case OFONO_CALL_STATE_DISCONNECTED:
+        mce = CALL_STATE_NONE;
+        break;
+
+    case OFONO_CALL_STATE_INCOMING:
+        mce = CALL_STATE_RINGING;
+        break;
+
+    case OFONO_CALL_STATE_DIALING:
+    case OFONO_CALL_STATE_ALERTING:
+    case OFONO_CALL_STATE_ACTIVE:
+    case OFONO_CALL_STATE_HELD:
+    case OFONO_CALL_STATE_WAITING:
+        mce = CALL_STATE_ACTIVE;
+        break;
+    }
+
+    return mce;
+}
+
+/** oFono emergency flag to mce call type number
+ */
+static call_type_t ofono_calltype_to_mce(bool emergency)
+{
+    return emergency ? EMERGENCY_CALL : NORMAL_CALL;
+}
+
+/* ========================================================================= *
+ * OFONO VOICECALL OBJECTS
+ * ========================================================================= */
+
+/** oFono voice call state data
+ */
+typedef struct
+{
+    char *name;
+    bool probed;
+
+    call_state_t state;
+    call_type_t  type;
+} ofono_vcall_t;
+
+/** Merge emergency data to oFono voice call object
+ *
+ * @param self      oFono voice call object
+ * @param emergency emergency state to merge
+ */
+static void
+ofono_vcall_merge_emergency(ofono_vcall_t *self, bool emergency)
+{
+    if( emergency )
+        self->type = EMERGENCY_CALL;
+}
+
+/** Merge state data from oFono voice call object to another
+ *
+ * @param self      oFono voice call object
+ * @param emergency emergency state to merge
+ */
+static void
+ofono_vcall_merge_vcall(ofono_vcall_t *self, const ofono_vcall_t *that)
+{
+    /* if any call is active, we have active call.
+     * otherwise we can have incoming call too */
+    switch( that->state ) {
+    case CALL_STATE_ACTIVE:
+        self->state = CALL_STATE_ACTIVE;
+        break;
+
+    case CALL_STATE_RINGING:
+        if( self->state != CALL_STATE_ACTIVE )
+            self->state = CALL_STATE_RINGING;
+        break;
+
+    default:
+        break;
+    }
+
+    /* if any call is emergency, we have emergency call */
+    if( that->type == EMERGENCY_CALL )
+        self->type = EMERGENCY_CALL;
+}
+
+/** Create oFono voice call object
+ *
+ * @param name D-Bus object path
+ *
+ * @return oFono voice call object
+ */
+static ofono_vcall_t *
+ofono_vcall_create(const char *path)
+{
+    ofono_vcall_t *self = calloc(1, sizeof *self);
+
+    self->name   = g_strdup(path);
+    self->probed = false;
+    self->state  = CALL_STATE_INVALID;
+    self->type   = NORMAL_CALL;
+
+    mce_log(LL_DEBUG, "vcall=%s", self->name);
+    return self;
+}
+
+/** Delete oFono voice call object
+ *
+ * @param self oFono voice call object
+ */
+static void
+ofono_vcall_delete(ofono_vcall_t *self)
+{
+    if( self ) {
+        mce_log(LL_DEBUG, "vcall=%s", self->name);
+        g_free(self->name);
+        free(self);
+    }
+}
+
+/** Type agnostic callback function for deleting oFono voice call objects
+ *
+ * @param self oFono voice call object
+ */
+static void
+ofono_vcall_delete_cb(gpointer self)
+{
+    ofono_vcall_delete(self);
+}
+
+/** Update oFono voice call object from key string and variant
+ *
+ * @param self oFono voice call object
+ */
+static void
+ofono_vcall_update_1(ofono_vcall_t *self, DBusMessageIter *iter)
+{
+    const char *key = 0;
+    DBusMessageIter var;
+
+    if( !mce_dbus_iter_get_string(iter, &key) )
+        goto EXIT;
+
+    if( !mce_dbus_iter_get_variant(iter, &var) )
+        goto EXIT;
+
+    if( !strcmp(key, "Emergency") ) {
+        bool emergency = false;
+        if( !mce_dbus_iter_get_bool(&var, &emergency) )
+            goto EXIT;
+        self->type = ofono_calltype_to_mce(emergency);
+
+        mce_log(LL_DEBUG, "* %s = ofono:%s -> mce:%s", key,
+                emergency ? "true" : "false",
+                call_type_repr(self->type));
+    }
+    else if( !strcmp(key, "State") ) {
+        const char *str = 0;
+        if( !mce_dbus_iter_get_string(&var, &str) )
+            goto EXIT;
+        self->state = ofono_callstate_to_mce(str);
+        mce_log(LL_DEBUG, "* %s = ofono:%s -> mce:%s", key,str,
+                call_state_repr(self->state));
+    }
+#if 0
+    else {
+        mce_log(LL_DEBUG, "* %s = %s", key, "...");
+    }
+#endif
+
+EXIT:
+    return;
+}
+
+/** Update oFono voice call object from array of dict entries
+ *
+ * @param self oFono voice call object
+ */
+static void
+ofono_vcall_update_N(ofono_vcall_t *self, DBusMessageIter *iter)
+{
+    DBusMessageIter arr2, dict;
+
+    // <arg name="properties" type="a{sv}"/>
+
+    self->probed = true;
+
+    if( !mce_dbus_iter_get_array(iter, &arr2) )
+        goto EXIT;
+
+    while( !mce_dbus_iter_at_end(&arr2) ) {
+        if( !mce_dbus_iter_get_entry(&arr2, &dict) )
+            goto EXIT;
+
+        ofono_vcall_update_1(self, &dict);
+    }
+EXIT:
+    return;
+}
+
+/* ========================================================================= *
+ * MANAGE VOICE CALL OBJECTS
+ * ========================================================================= */
+
+/** Lookup table for tracked voice call objects */
+static GHashTable *vcalls_lut = 0;
+
+/** Lookup a voice call objects by name
+ *
+ * @param name D-Bus object path
+ *
+ * @return object pointer, or NULL if not found
+ */
+static ofono_vcall_t *
+vcalls_get_call(const char *name)
+{
+    ofono_vcall_t *self = 0;
+
+    if( !vcalls_lut )
+        goto EXIT;
+
+    self = g_hash_table_lookup(vcalls_lut, name);
+
+EXIT:
+    return self;
+}
+
+/** Lookup or create a voice call objects by name
+ *
+ * @param name D-Bus object path
+ *
+ * @return object pointer, or NULL on errors
+ */
+static ofono_vcall_t *
+vcalls_add_call(const char *name)
+{
+    ofono_vcall_t *self = 0;
+
+    if( !vcalls_lut )
+        goto EXIT;
+
+    if( !(self = g_hash_table_lookup(vcalls_lut, name)) ) {
+        self = ofono_vcall_create(name);
+        g_hash_table_replace(vcalls_lut, g_strdup(name), self);
+    }
+
+EXIT:
+    return self;
+}
+
+/** Remove a voice call objects by name
+ *
+ * @param name D-Bus object path
+ */
+static void
+vcalls_rem_call(const char *name)
+{
+    if( !vcalls_lut )
+        goto EXIT;
+
+    g_hash_table_remove(vcalls_lut, name);
+
+EXIT:
+    return;
+}
+
+/** Remove all tracked voice call objects
+ *
+ * @param name D-Bus object path
+ */
+static void
+vcalls_rem_calls(void)
+{
+    if( vcalls_lut )
+        g_hash_table_remove_all(vcalls_lut);
+}
+
+/** Initialize voice call object look up table */
+static void
+vcalls_init(void)
+{
+    if( !vcalls_lut )
+        vcalls_lut = g_hash_table_new_full(g_str_hash, g_str_equal,
+                                          g_free, ofono_vcall_delete_cb);
+}
+
+/** Delete voice call object look up table */
+static void
+vcalls_quit(void)
+{
+    if( vcalls_lut )
+        g_hash_table_unref(vcalls_lut), vcalls_lut = 0;
+}
+
+/* ========================================================================= *
+ * MODEM OBJECTS
+ * ========================================================================= */
+
+/** oFono modem tracking data
+ */
+typedef struct
+{
+    char *name;
+    bool probed;
+
+    bool emergency;
+
+} ofono_modem_t;
+
+/** Create oFono modem tracking object
+ *
+ * @param name D-Bus object path
+ *
+ * @return object pointer
+ */
+static ofono_modem_t *
+ofono_modem_create(const char *path)
+{
+    ofono_modem_t *self = calloc(1, sizeof *self);
+
+    self->name      = g_strdup(path);
+    self->probed    = false;
+    self->emergency = false;
+
+    mce_log(LL_DEBUG, "modem=%s", self->name);
+    return self;
+}
+
+/** Delete oFono modem tracking object
+ *
+ * @param self object pointer, or NULL
+ */
+static void
+ofono_modem_delete(ofono_modem_t *self)
+{
+    if( self ) {
+        mce_log(LL_DEBUG, "modem=%s", self->name);
+        g_free(self->name);
+        free(self);
+    }
+}
+
+/** Type agnostic delete callback function for  oFono modem tracking objects
+ *
+ * @param self object pointer, or NULL
+ */
+static void
+ofono_modem_delete_cb(gpointer self)
+{
+    ofono_modem_delete(self);
+}
+
+/** Update oFono modem tracking object from key + variant data
+ *
+ * @param self object pointer
+ * @param iter dbus message iterator pointing to key string + variant data
+ */
+static void
+ofono_modem_update_1(ofono_modem_t *self, DBusMessageIter *iter)
+{
+    const char *key = 0;
+    DBusMessageIter var;
+
+    if( !mce_dbus_iter_get_string(iter, &key) )
+        goto EXIT;
+
+    if( !mce_dbus_iter_get_variant(iter, &var) )
+        goto EXIT;
+
+    if( !strcmp(key, "Emergency") ) {
+        if( !mce_dbus_iter_get_bool(&var, &self->emergency) )
+            goto EXIT;
+        mce_log(LL_DEBUG, "* %s = %s", key,
+                self->emergency ? "true" : "false");
+    }
+#if 0
+    else {
+        mce_log(LL_DEBUG, "* %s = %s", key, "...");
+    }
+#endif
+EXIT:
+    return;
+}
+
+/** Update oFono modem tracking object from array of dict entries
+ *
+ * @param self object pointer
+ * @param iter dbus message iterator pointing to array of dict entries
+ */
+static void
+ofono_modem_update_N(ofono_modem_t *self, DBusMessageIter *iter)
+{
+    DBusMessageIter arr2, dict;
+
+    self->probed = true;
+
+    // <arg name="properties" type="a{sv}"/>
+
+    if( !mce_dbus_iter_get_array(iter, &arr2) )
+        goto EXIT;
+
+    while( !mce_dbus_iter_at_end(&arr2) ) {
+        if( !mce_dbus_iter_get_entry(&arr2, &dict) )
+            goto EXIT;
+        ofono_modem_update_1(self, &dict);
+    }
+EXIT:
+    return;
+}
+
+/* ========================================================================= *
+ * MODEMS
+ * ========================================================================= */
+
+/** Lookup table for tracked oFono modem objects */
+static GHashTable *modems_lut = 0;
+
+/** Lookup modem object by name
+ *
+ * @param name D-Bus object path
+ *
+ * @return object pointer, or NULL
+ */
+static ofono_modem_t *
+modems_get_modem(const char *name)
+{
+    ofono_modem_t *self = 0;
+
+    if( !modems_lut )
+        goto EXIT;
+
+    self = g_hash_table_lookup(modems_lut, name);
+
+EXIT:
+    return self;
+}
+
+/** Lookup existing / insert new modem object by name
+ *
+ * @param name D-Bus object path
+ *
+ * @return object pointer, or NULL
+ */
+static ofono_modem_t *
+modems_add_modem(const char *name)
+{
+    ofono_modem_t *self = 0;
+
+    if( !modems_lut )
+        goto EXIT;
+
+    if( !(self = g_hash_table_lookup(modems_lut, name)) ) {
+        self = ofono_modem_create(name);
+        g_hash_table_replace(modems_lut, g_strdup(name), self);
+    }
+
+EXIT:
+    return self;
+}
+
+/** Remove modem object by name
+ *
+ * @param name D-Bus object path
+ */
+static void
+modems_rem_modem(const char *name)
+{
+    if( !modems_lut )
+        goto EXIT;
+
+    g_hash_table_remove(modems_lut, name);
+
+EXIT:
+    return;
+}
+
+/** Remove all tracked modem objects
+ */
+static void
+modems_rem_all_modems(void)
+{
+    if( modems_lut )
+        g_hash_table_remove_all(modems_lut);
+}
+
+/** Initialize lookup table for oFono modem tracking objects
+ */
+static void
+modems_init(void)
+{
+    if( !modems_lut )
+        modems_lut = g_hash_table_new_full(g_str_hash, g_str_equal,
+                                          g_free, ofono_modem_delete_cb);
+}
+
+/** Delete lookup table for oFono modem tracking objects
+ */
+static void
+modems_quit(void)
+{
+    if( modems_lut )
+        g_hash_table_unref(modems_lut), modems_lut = 0;
+}
+
+/* ========================================================================= *
+ * OFONO DBUS GLUE
+ * ========================================================================= */
+
+/** Get voice calls associated with a modem [sync]
+ *
+ * Populate voice call lookup table with the reply data
+ *
+ * @param modem D-Bus object path
+ */
+static void
+xofono_get_vcalls(const char *modem)
+{
+    DBusMessage *rsp = 0;
+    DBusError    err = DBUS_ERROR_INIT;
+    int          cnt = 0;
+
+    /* FIXME: mce-dbus not have a async method call with
+     * context data pointer -> using sync call for now ... */
+    rsp = dbus_send_with_block(OFONO_SERVICE,
+                               modem,
+                               OFONO_VCALLMANAGER_INTERFACE,
+                               OFONO_VCALLMANAGER_REQ_GET_CALLS,
+                               -1,
+                               DBUS_TYPE_INVALID);
+    if( !rsp )
+        goto EXIT;
+
+    if( dbus_set_error_from_message(&err, rsp) ) {
+        mce_log(LL_ERR, "%s: %s", err.name, err.message);
+        goto EXIT;
+    }
+
+    // <arg name="calls_with_properties" type="a(oa{sv})" direction="out"/>
+
+    DBusMessageIter body, arr1, mod;
+    dbus_message_iter_init(rsp, &body);
+    if( !mce_dbus_iter_get_array(&body, &arr1) )
+        goto EXIT;
+
+    while( !mce_dbus_iter_at_end(&arr1) ) {
+        const char *name = 0;
+
+        if( !mce_dbus_iter_get_struct(&arr1, &mod) )
+            goto EXIT;
+        if( !mce_dbus_iter_get_object(&mod, &name) )
+            goto EXIT;
+
+        ofono_vcall_t *vcall = vcalls_add_call(name);
+        if( !vcall )
+            continue;
+        ofono_vcall_update_N(vcall, &mod);
+        ++cnt;
+    }
+    call_state_rethink_schedule();
+
+EXIT:
+    mce_log(LL_DEBUG, "added %d calls", cnt);
+    if( rsp ) dbus_message_unref(rsp);
+    dbus_error_free(&err);
+    return;
+}
+
+/** Handle voice call changed signal
+ *
+ * Update voice call lookup table with the content
+ *
+ * @param msg property changed signal
+ */
+static gboolean
+xofono_vcall_changed_cb(DBusMessage *const msg)
+{
+    (void)msg;
+
+    DBusMessageIter body;
+    dbus_message_iter_init(msg, &body);
+
+    const char *name = dbus_message_get_path(msg);
+    if( !name )
+        goto EXIT;
+
+    ofono_vcall_t *vcall = vcalls_get_call(name);
+    if( !vcall )
+        goto EXIT;
+
+    ofono_vcall_update_1(vcall, &body);
+    call_state_rethink_schedule();
+
+EXIT:
+    return TRUE;
+}
+
+/** Handle voice call added signal
+ *
+ * Update voice call lookup table with the content
+ *
+ * @param msg call added signal
+ */
+static gboolean
+xofono_vcall_added_cb(DBusMessage *const msg)
+{
+    (void)msg;
+
+    DBusMessageIter body;
+    dbus_message_iter_init(msg, &body);
+
+    const char *name = 0;
+
+    if( !mce_dbus_iter_get_object(&body, &name) )
+        goto EXIT;
+
+    ofono_vcall_t *vcall = vcalls_add_call(name);
+    if( vcall )
+        ofono_vcall_update_N(vcall, &body);
+
+    call_state_rethink_schedule();
+
+EXIT:
+    return TRUE;
+}
+
+/** Handle voice call removed signal
+ *
+ * Update voice call lookup table with the content
+ *
+ * @param msg call removed signal
+ */
+static gboolean
+xofono_vcall_removed_cb(DBusMessage *const msg)
+{
+    (void)msg;
+
+    DBusMessageIter body;
+    dbus_message_iter_init(msg, &body);
+
+    const char *name = 0;
+
+    if( !mce_dbus_iter_get_object(&body, &name) )
+        goto EXIT;
+
+    vcalls_rem_call(name);
+    call_state_rethink_schedule();
+
+EXIT:
+    return TRUE;
+}
+
+/** Handle reply to xofono_get_modems()
+ *
+ * @param pc   pending call object
+ * @param aptr (not used)
+ */
+static void
+xofono_get_modems_cb(DBusPendingCall *pc, void *aptr)
+{
+    (void)aptr;
+
+    mce_log(LL_DEBUG, "%s.%s %s", OFONO_MANAGER_INTERFACE,
+            OFONO_MANAGER_REQ_GET_MODEMS, "reply");
+
+    DBusMessage *rsp = 0;
+    DBusError    err = DBUS_ERROR_INIT;
+    int          cnt = 0;
+
+    if( !(rsp = dbus_pending_call_steal_reply(pc)) )
+        goto EXIT;
+
+    if( dbus_set_error_from_message(&err, rsp) ) {
+        mce_log(LL_ERR, "%s: %s", err.name, err.message);
+        goto EXIT;
+    }
+
+    // <arg name="modems" type="a(oa{sv})" direction="out"/>
+
+    DBusMessageIter body, arr1, mod;
+    dbus_message_iter_init(rsp, &body);
+    if( !mce_dbus_iter_get_array(&body, &arr1) )
+        goto EXIT;
+
+    while( !mce_dbus_iter_at_end(&arr1) ) {
+        const char *name = 0;
+
+        if( !mce_dbus_iter_get_struct(&arr1, &mod) )
+            goto EXIT;
+        if( !mce_dbus_iter_get_object(&mod, &name) )
+            goto EXIT;
+
+        ofono_modem_t *modem = modems_add_modem(name);
+        if( !modem )
+            continue;
+
+        if( !modem->probed )
+            xofono_get_vcalls(modem->name);
+
+        ofono_modem_update_N(modem, &mod);
+        ++cnt;
+    }
+    call_state_rethink_schedule();
+
+EXIT:
+    mce_log(LL_DEBUG, "added %d modems", cnt);
+    if( rsp ) dbus_message_unref(rsp);
+    dbus_pending_call_unref(pc);
+    dbus_error_free(&err);
+}
+
+/** Get list of modems [async]
+ *
+ * Populate modem lookup table with the reply data
+ */
+static void
+xofono_get_modems(void)
+{
+  bool res = dbus_send(OFONO_SERVICE,
+                       OFONO_MANAGER_OBJECT,
+                       OFONO_MANAGER_INTERFACE,
+                       OFONO_MANAGER_REQ_GET_MODEMS,
+                       xofono_get_modems_cb,
+                       DBUS_TYPE_INVALID);
+
+  mce_log(LL_DEBUG, "%s.%s %s", OFONO_MANAGER_INTERFACE,
+          OFONO_MANAGER_REQ_GET_MODEMS, res ? "sent ..." : "failed");
+}
+
+/** Handle modem changed signal
+ *
+ * Update modem lookup table with the content
+ *
+ * @param msg property changed signal
+ */
+static gboolean
+xofono_modem_changed_cb(DBusMessage *const msg)
+{
+    DBusMessageIter body;
+    dbus_message_iter_init(msg, &body);
+
+    const char *name = dbus_message_get_path(msg);
+    if( !name )
+        goto EXIT;
+
+    mce_log(LL_NOTICE, "modem=%s", name);
+
+    ofono_modem_t *modem = modems_get_modem(name);
+    if( modem ) {
+        ofono_modem_update_1(modem, &body);
+    }
+    call_state_rethink_schedule();
+
+EXIT:
+    return TRUE;
+}
+
+/** Handle modem added signal
+ *
+ * Update modem lookup table with the content
+ *
+ * @param msg modem added signal
+ */
+static gboolean
+xofono_modem_added_cb(DBusMessage *const msg)
+{
+    DBusMessageIter body;
+    dbus_message_iter_init(msg, &body);
+
+    const char *name = 0;
+
+    if( !mce_dbus_iter_get_object(&body, &name) )
+        goto EXIT;
+
+    mce_log(LL_NOTICE, "modem=%s", name);
+
+    ofono_modem_t *modem = modems_add_modem(name);
+    if( modem ) {
+        if( !modem->probed )
+            xofono_get_vcalls(modem->name);
+
+        ofono_modem_update_N(modem, &body);
+    }
+    call_state_rethink_schedule();
+
+EXIT:
+    return TRUE;
+}
+
+/** Handle modem removed signal
+ *
+ * Update modem lookup table with the content
+ *
+ * @param msg modem removed signal
+ */
+static gboolean
+xofono_modem_removed_cb(DBusMessage *const msg)
+{
+    DBusMessageIter body;
+    dbus_message_iter_init(msg, &body);
+
+    const char *name = 0;
+
+    if( !mce_dbus_iter_get_object(&body, &name) )
+        goto EXIT;
+
+    mce_log(LL_NOTICE, "modem=%s", name);
+    modems_rem_modem(name);
+    call_state_rethink_schedule();
+
+EXIT:
+    return TRUE;
+}
+
+/* ========================================================================= *
+ * OFONO TRACKING
+ * ========================================================================= */
+
+/** Flag for "org.ofono" D-Bus name has owner */
+static bool xofono_is_available = false;
+
+/** Handle "org.ofono" D-Bus name owner changes
+ *
+ * Flush tracked modems and voice calls when name owner changes.
+ *
+ * Re-enumerate modems and calls when there is a new owner.
+ *
+ * @param available true if ofono name has an owner, false if not
+ */
+static void
+xofono_availability_set(bool available)
+{
+    if( xofono_is_available != available ) {
+
+        mce_log(LL_DEBUG, "%s is %savailable", OFONO_SERVICE,
+                available ? "" : "not ");
+
+        vcalls_rem_calls();
+        modems_rem_all_modems();
+
+        call_state_rethink_schedule();
+
+        if( (xofono_is_available = available) ) {
+            /* start enumerating modems (async) */
+            xofono_get_modems();
+	}
+    }
+}
+
+/** Handle D-Bus name owner changed signals for "org.ofono"
+ */
+static gboolean
+xofono_name_owner_changed_cb(DBusMessage *rsp)
+{
+    const gchar *name = 0;
+    const gchar *prev = 0;
+    const gchar *curr = 0;
+    DBusError    err  = DBUS_ERROR_INIT;
+
+    if( dbus_set_error_from_message(&err, rsp) ) {
+        mce_log(LL_ERR, "%s: %s", err.name, err.message);
+        goto EXIT;
+    }
+
+    if( !dbus_message_get_args(rsp, &err,
+                              DBUS_TYPE_STRING, &name,
+                              DBUS_TYPE_STRING, &prev,
+                              DBUS_TYPE_STRING, &curr,
+                              DBUS_TYPE_INVALID) ) {
+        mce_log(LL_ERR, "%s: %s", err.name, err.message);
+        goto EXIT;
+    }
+
+    if( !name || strcmp(name, OFONO_SERVICE) )
+        goto EXIT;
+
+    xofono_availability_set(curr && *curr != 0 );
+
+EXIT:
+    dbus_error_free(&err);
+    return TRUE;
+}
+
+/** Handle reply to asynchronous ofono service name ownership query
+ *
+ * @param pc        State data for asynchronous D-Bus method call
+ * @param user_data (not used)
+ */
+static void
+xofono_name_owner_get_cb(DBusPendingCall *pc, void *user_data)
+{
+    (void)user_data;
+
+    DBusMessage *rsp   = 0;
+    const char  *owner = 0;
+    DBusError    err   = DBUS_ERROR_INIT;
+
+    if( !(rsp = dbus_pending_call_steal_reply(pc)) )
+        goto EXIT;
+
+    if( dbus_set_error_from_message(&err, rsp) ||
+        !dbus_message_get_args(rsp, &err,
+                               DBUS_TYPE_STRING, &owner,
+                               DBUS_TYPE_INVALID) )
+    {
+        if( strcmp(err.name, DBUS_ERROR_NAME_HAS_NO_OWNER) ) {
+            mce_log(LL_WARN, "%s: %s", err.name, err.message);
+            goto EXIT;
+	}
+    }
+
+    xofono_availability_set(owner && *owner);
+
+EXIT:
+    if( rsp ) dbus_message_unref(rsp);
+    if( pc  ) dbus_pending_call_unref(pc);
+    dbus_error_free(&err);
+}
+
+/** Initiate asynchronous ofono service name ownership query
+ *
+ * @return TRUE if the method call was initiated, or FALSE in case of errors
+ */
+static gboolean
+xofono_name_owner_get(void)
+{
+    gboolean         res  = FALSE;
+    const char      *name = OFONO_SERVICE;
+
+    res = dbus_send(DBUS_SERVICE_DBUS,
+                    DBUS_PATH_DBUS,
+                    DBUS_INTERFACE_DBUS,
+                    "GetNameOwner",
+                    xofono_name_owner_get_cb,
+                    DBUS_TYPE_STRING, &name,
+                    DBUS_TYPE_INVALID);
+    return res;
+}
+
+/* ========================================================================= *
+ * SIMULATED CALL STATE (for debugging purposes)
+ * ========================================================================= */
 
 /**
  * Send the call state and type
@@ -152,9 +1179,10 @@ static unsigned char num_of_active_calls = 0;
  *                  to send instead of the real call type
  * @return TRUE on success, FALSE on failure
  */
-static gboolean send_call_state(DBusMessage *const method_call,
-				const gchar *const call_state,
-				const gchar *const call_type)
+static gboolean
+send_call_state(DBusMessage *const method_call,
+                const gchar *const call_state,
+                const gchar *const call_type)
 {
 	DBusMessage *msg = NULL;
 	gboolean status = FALSE;
@@ -165,14 +1193,12 @@ static gboolean send_call_state(DBusMessage *const method_call,
 	if (call_state != NULL)
 		sstate = call_state;
 	else
-		sstate = mce_translate_int_to_string(call_state_translation,
-						     datapipe_get_gint(call_state_pipe));
+                sstate = call_state_repr(datapipe_get_gint(call_state_pipe));
 
 	if (call_type != NULL)
 		stype = call_type;
 	else
-		stype = mce_translate_int_to_string(call_type_translation,
-						    datapipe_get_gint(call_type_pipe));
+                stype = call_type_repr(datapipe_get_gint(call_type_pipe));
 
 	/* If method_call is set, send a reply,
 	 * otherwise, send a signal
@@ -208,6 +1234,13 @@ static gboolean send_call_state(DBusMessage *const method_call,
 EXIT:
 	return status;
 }
+
+/** Simulated call state */
+static ofono_vcall_t simulated =
+{
+    .state = CALL_STATE_NONE,
+    .type  = NORMAL_CALL,
+};
 
 /**
  * D-Bus callback used for monitoring the process that requested
@@ -245,18 +1278,9 @@ static gboolean call_state_owner_monitor_dbus_cb(DBusMessage *const msg)
 	/* Remove the name monitor for the call state requester */
 	if (mce_dbus_owner_monitor_remove(service,
 					  &call_state_monitor_list) == 0) {
-		/* Signal the new call state/type */
-		send_call_state(NULL, MCE_CALL_STATE_NONE, MCE_NORMAL_CALL);
-
-		(void)execute_datapipe(&call_state_pipe,
-				       GINT_TO_POINTER(CALL_STATE_NONE),
-				       USE_INDATA, CACHE_INDATA);
-
-		(void)execute_datapipe(&call_type_pipe,
-				       GINT_TO_POINTER(NORMAL_CALL),
-				       USE_INDATA, CACHE_INDATA);
-
-		call_state_is_monitored = FALSE;
+            simulated.state = CALL_STATE_NONE;
+            simulated.type  = NORMAL_CALL;
+            call_state_rethink_schedule();
 	}
 
 	status = TRUE;
@@ -271,178 +1295,115 @@ EXIT:
  * @param msg The D-Bus message
  * @return TRUE on success, FALSE on failure
  */
-static gboolean change_call_state_dbus_cb(DBusMessage *const msg)
+static gboolean
+change_call_state_dbus_cb(DBusMessage *const msg)
 {
-	call_state_t old_call_state = datapipe_get_gint(call_state_pipe);
-	call_state_t old_call_type = datapipe_get_gint(call_type_pipe);
-	const gchar *sender = dbus_message_get_sender(msg);
-	call_state_t call_state = CALL_STATE_NONE;
-	dbus_bool_t monitored_owner_ok = FALSE;
-	call_type_t call_type = NORMAL_CALL;
-	dbus_bool_t state_changed = FALSE;
-	DBusMessage *reply = NULL;
-	const gchar *state = NULL;
-	const gchar *type = NULL;
-	gboolean status = FALSE;
-	DBusError error;
+    gboolean     status = FALSE;
+    const char  *state  = 0;
+    const char  *type   = 0;
+    const gchar *sender = dbus_message_get_sender(msg);
 
-	/* Register error channel */
-	dbus_error_init(&error);
+    call_state_t call_state = CALL_STATE_NONE;
+    call_type_t  call_type = NORMAL_CALL;
+    DBusMessage *reply = NULL;
+    DBusError    error = DBUS_ERROR_INIT;
+    dbus_bool_t changed = false;
 
+    mce_log(LL_DEBUG, "Received set call state request");
+
+    if (dbus_message_get_args(msg, &error,
+                              DBUS_TYPE_STRING, &state,
+                              DBUS_TYPE_STRING, &type,
+                              DBUS_TYPE_INVALID) == FALSE) {
+        // XXX: return an error!
+        mce_log(LL_CRIT, "Failed to get argument from %s.%s: %s",
+                MCE_REQUEST_IF, MCE_CALL_STATE_CHANGE_REQ,
+                error.message);
+        dbus_error_free(&error);
+        goto EXIT;
+    }
+
+    /* Convert call state to enum */
+    call_state = call_state_parse(state);
+    if (call_state == MCE_INVALID_TRANSLATION) {
 	mce_log(LL_DEBUG,
-		"Received set call state request");
+                "Invalid call state received; request ignored");
+        goto EXIT;
+    }
 
-	if (dbus_message_get_args(msg, &error,
-				  DBUS_TYPE_STRING, &state,
-				  DBUS_TYPE_STRING, &type,
-				  DBUS_TYPE_INVALID) == FALSE) {
-		// XXX: return an error!
-		mce_log(LL_CRIT,
-			"Failed to get argument from %s.%s: %s",
-			MCE_REQUEST_IF, MCE_CALL_STATE_CHANGE_REQ,
-			error.message);
-		dbus_error_free(&error);
-		goto EXIT;
-	}
+    /* Convert call type to enum */
+    call_type = call_type_parse(type);
+    if (call_type == MCE_INVALID_TRANSLATION) {
+        mce_log(LL_DEBUG,
+                "Invalid call type received; request ignored");
+        goto EXIT;
+    }
 
-	/* Convert call state to enum */
-	call_state = mce_translate_string_to_int(call_state_translation,
-						 state);
+    /* reject no-call emergency calls ... */
+    if( call_state == CALL_STATE_NONE )
+        call_type = NORMAL_CALL;
 
-	if (call_state == MCE_INVALID_TRANSLATION) {
-		mce_log(LL_DEBUG,
-			"Invalid call state received; request ignored");
-		goto EXIT;
-	}
+    /* If call state isn't monitored or if the request comes from
+     * the owner of the current state, then some additional changes
+     * are ok
+     */
+    if( call_state_monitor_list &&
+        !mce_dbus_is_owner_monitored(sender,
+                                     call_state_monitor_list) ) {
+        mce_log(LL_DEBUG, "Call state already has owner; ignoring request");
+        goto EXIT;
+    }
 
-	/* Convert call type to enum */
-	call_type = mce_translate_string_to_int(call_type_translation,
-						type);
+    /* Only transitions to/from "none" are allowed,
+     * and from "ringing" to "active",
+     * to avoid race conditions; except when new tuple
+     * is active:emergency
+     */
+    if( call_state == CALL_STATE_ACTIVE &&
+        simulated.state != CALL_STATE_RINGING &&
+        call_type != EMERGENCY_CALL )
+    {
+        mce_log(LL_INFO,
+                "Call state change vetoed.  Requested: %i:%i "
+                "(current: %i:%i)",
+                call_state, call_type,
+                simulated.state, simulated.type);
+        goto EXIT;
+    }
 
-	if (call_type == MCE_INVALID_TRANSLATION) {
-		mce_log(LL_DEBUG,
-			"Invalid call type received; request ignored");
-		goto EXIT;
-	}
+    if( call_state != CALL_STATE_NONE &&
+        mce_dbus_owner_monitor_add(sender, call_state_owner_monitor_dbus_cb,
+                                   &call_state_monitor_list, 1) != -1 ) {
 
-	/* If call state isn't monitored or if the request comes from
-	 * the owner of the current state, then some additional changes
-	 * are ok
-	 */
-	if ((call_state_is_monitored == FALSE) ||
-	    (call_state_monitor_list == NULL) ||
-	    ((mce_dbus_is_owner_monitored(sender,
-					  call_state_monitor_list) == TRUE))) {
-		monitored_owner_ok = TRUE;
-	}
-
-	/* Only transitions to/from "none" are allowed,
-	 * and from "ringing" to "active",
-	 * to avoid race conditions; except when new tuple
-	 * is active:emergency
-	 */
-	if ((call_state != CALL_STATE_NONE) &&
-	    (old_call_state != CALL_STATE_NONE) &&
-	    ((call_state != CALL_STATE_ACTIVE) ||
-	     (old_call_state != CALL_STATE_RINGING)) &&
-	    ((call_state != CALL_STATE_RINGING) ||
-	     (old_call_state != CALL_STATE_ACTIVE) ||
-	     (monitored_owner_ok == FALSE)) &&
-	    ((call_state != CALL_STATE_ACTIVE) ||
-	     (call_type != EMERGENCY_CALL))) {
-		mce_log(LL_INFO,
-		        "Call state change vetoed.  Requested: %i:%i "
-			"(current: %i:%i)",
-			call_state, call_type,
-			old_call_state, old_call_type);
-		goto EXIT;
-	}
-
-#ifdef STRICT_CALL_STATE_OWNER_POLICY
-	/* We always allow changes to the call state
-	 * if the new type is emergency, or if the old call state is none,
-	 * but otherwise we only allow them if the requester of
-	 * the change is the owner of the current call state
-	 */
-	if ((old_call_state != CALL_STATE_NONE) &&
-	    (call_type != EMERGENCY_CALL) &&
-	    (monitored_owner_ok == FALSE)) {
-			mce_log(LL_ERR,
-				"Call state change vetoed.  "
-				"`%s' request the new call state (%i:%i), "
-				"but does not own current call state (%i:%i)",
-				sender,
-				call_state, call_type,
-				old_call_state, old_call_type);
-			goto EXIT;
-	}
-#endif /* STRICT_CALL_STATE_OWNER_POLICY */
-
-	if (call_state != CALL_STATE_NONE) {
-		if (mce_dbus_owner_monitor_add(sender,
-					       call_state_owner_monitor_dbus_cb,
-					       &call_state_monitor_list, 1) == -1) {
-			/* This is dangerous, but calls are our priority */
-			mce_log(LL_ERR,
-				"Failed to add a D-Bus service owner monitor "
-				"for the call state; "
-				"call state will not be monitored!");
-			call_state_is_monitored = FALSE;
-		} else {
-			call_state_is_monitored = TRUE;
-		}
-	} else {
-		(void)mce_dbus_owner_monitor_remove(sender,
-						    &call_state_monitor_list);
-		call_state_is_monitored = FALSE;
-	}
-
-	state_changed = TRUE;
+        simulated.state = call_state;
+        simulated.type  = call_type;
+    }
+    else {
+        mce_dbus_owner_monitor_remove(sender, &call_state_monitor_list);
+        simulated.state = CALL_STATE_NONE;
+        simulated.type  = NORMAL_CALL;
+    }
+    changed = call_state_rethink_forced();
 
 EXIT:
-	/* Setup the reply */
-	reply = dbus_new_method_reply(msg);
+    /* Setup the reply */
+    reply = dbus_new_method_reply(msg);
 
-	/* Append the result */
-	if (dbus_message_append_args(reply,
-				     DBUS_TYPE_BOOLEAN, &state_changed,
-				     DBUS_TYPE_INVALID) == FALSE) {
-		mce_log(LL_CRIT,
-			"Failed to append reply arguments to D-Bus "
-			"message for %s.%s",
-			MCE_REQUEST_IF, MCE_CALL_STATE_CHANGE_REQ);
-		dbus_message_unref(reply);
+    /* Append the result */
+    if (dbus_message_append_args(reply,
+                                 DBUS_TYPE_BOOLEAN, &changed,
+                                 DBUS_TYPE_INVALID) == FALSE) {
+        mce_log(LL_CRIT,
+                "Failed to append reply arguments to D-Bus "
+                "message for %s.%s",
+                MCE_REQUEST_IF, MCE_CALL_STATE_CHANGE_REQ);
+        dbus_message_unref(reply);
+    } else {
+        /* Send the message */
+        status = dbus_send_message(reply);
+    }
 
-		/* If we cannot send the reply,
-		 * we have to abort the state change
-		 */
-		state_changed = FALSE;
-	} else {
-		/* Send the message */
-		status = dbus_send_message(reply);
-	}
-
-	/* If the state changed, signal the new state;
-	 * first externally, then internally
-	 *
-	 * The reason we do it externally first is to
-	 * make sure that the camera application doesn't
-	 * grab audio, otherwise the ring tone might go missing
-	 */
-	if (state_changed == TRUE) {
-		/* Signal the new call state/type */
-		send_call_state(NULL, state, type);
-
-		(void)execute_datapipe(&call_state_pipe,
-				       GINT_TO_POINTER(call_state),
-				       USE_INDATA, CACHE_INDATA);
-
-		(void)execute_datapipe(&call_type_pipe,
-				       GINT_TO_POINTER(call_type),
-				       USE_INDATA, CACHE_INDATA);
-	}
-
-	return status;
+    return status;
 }
 
 /**
@@ -451,7 +1412,8 @@ EXIT:
  * @param msg The D-Bus message
  * @return TRUE on success, FALSE on failure
  */
-static gboolean get_call_state_dbus_cb(DBusMessage *const msg)
+static gboolean
+get_call_state_dbus_cb(DBusMessage *const msg)
 {
 	gboolean status = FALSE;
 
@@ -467,191 +1429,218 @@ EXIT:
 	return status;
 }
 
-/**
- * Parses an ofono property message from given iterator.
- *
- * Actions related to the property are done.
- *
- * @param it Iterator to ofono property.
- * @return TRUE on success, FALSE on failure.
+/* ========================================================================= *
+ * MANAGE CALL STATE TRANSITIONS
+ * ========================================================================= */
+
+/** Callback for merging voice call stats
  */
-static gboolean ofono_handle_call_property(DBusMessageIter *it)
+static void
+call_state_merge_vcall_cb(gpointer key, gpointer value, gpointer aptr)
 {
-	gboolean status = FALSE;
-	gboolean call_state_changed = FALSE;
-	DBusMessageIter varit;
-	gchar *propname;
-	gchar *prop_value_str;
-	gboolean prop_value_bool;
-	call_state_t old_call_state = datapipe_get_gint(call_state_pipe);
-	call_type_t old_call_type = datapipe_get_gint(call_type_pipe);
-	call_state_t call_state = old_call_state;
-	call_type_t call_type = old_call_type;
+    (void)key; //const char *name  = key;
+    ofono_vcall_t *vcall = value;
+    ofono_vcall_t *stats = aptr;
 
-	if (dbus_message_iter_get_arg_type(it) != DBUS_TYPE_STRING) {
-		mce_log(LL_WARN, "Parsing failure with ofono signal");
-		goto EXIT;
-	}
-	dbus_message_iter_get_basic(it, (void *)&propname);
-	mce_log(LL_DEBUG, "Handling call property '%s' from ofono", propname);
-
-	dbus_message_iter_next(it);
-
-	if (dbus_message_iter_get_arg_type(it) != DBUS_TYPE_VARIANT) {
-		mce_log(LL_WARN, "Parsing failure with ofono signal");
-		goto EXIT;
-	}
-	dbus_message_iter_recurse(it, &varit);
-
-	if (!strcmp(propname, "State")) {
-		if (dbus_message_iter_get_arg_type(&varit) != DBUS_TYPE_STRING) {
-			mce_log(LL_WARN, "Parsing failure with ofono signal");
-			goto EXIT;
-		}
-		dbus_message_iter_get_basic(&varit, (void *)&prop_value_str);
-
-		if (!strcmp(prop_value_str, "incoming") ||
-		    !strcmp(prop_value_str, "dialing")) {
-			num_of_active_calls += 1;
-			call_state = CALL_STATE_RINGING;
-		} else if (!strcmp(prop_value_str, "disconnected")) {
-			num_of_active_calls -= 1;
-            /* Only set state to NONE if there are no remaining calls.
-             * This information could also be verified from ofono if
-             * some dbus signals are expected to go missing. */
-			if (num_of_active_calls <= 0) {
-				num_of_active_calls = 0;
-				call_state = CALL_STATE_NONE;
-			}
-		} else {
-			call_state = CALL_STATE_ACTIVE;
-		}
-
-		if (old_call_state != call_state)
-			call_state_changed = TRUE;
-
-	} else if (!strcmp(propname, "Emergency")) {
-		if (dbus_message_iter_get_arg_type(&varit) != DBUS_TYPE_BOOLEAN) {
-			mce_log(LL_WARN, "Parsing failure with ofono signal");
-			goto EXIT;
-		}
-		dbus_message_iter_get_basic(&varit, (void *)&prop_value_bool);
-
-		if (prop_value_bool) {
-			call_type = EMERGENCY_CALL;
-		} else {
-			call_type = NORMAL_CALL;
-		}
-
-		if (old_call_type != call_type)
-			call_state_changed = TRUE;
-
-	} else {
-		mce_log(LL_DEBUG,
-		        "No handling for property '%s' from ofono", propname);
-	}
-
-	if (call_state_changed) {
-		(void)execute_datapipe(&call_state_pipe,
-					   GINT_TO_POINTER(call_state),
-					   USE_INDATA, CACHE_INDATA);
-
-		(void)execute_datapipe(&call_type_pipe,
-					   GINT_TO_POINTER(call_type),
-					   USE_INDATA, CACHE_INDATA);
-	}
-
-	status = TRUE;
-EXIT:
-	return status;
+    ofono_vcall_merge_vcall(stats, vcall);
 }
 
-/**
- * D-Bus callback for ofono call added signal.
- *
- * @param msg The D-Bus message.
- * @return TRUE on success, FALSE on failure.
+/** Callback for merging merging modem emergency data to voice call state
  */
- static gboolean ofono_call_added_dbus_cb(DBusMessage *const msg)
- {
-	gboolean status = FALSE;
-	DBusMessageIter msgit;
-	DBusMessageIter arrit;
-	DBusMessageIter entit;
-	DBusError error;
+static void
+call_state_merge_modem_cb(gpointer key, gpointer value, gpointer aptr)
+{
+    (void)key; //const char *name  = key;
+    ofono_modem_t *modem = value;
+    ofono_vcall_t *stats = aptr;
 
-	/* Register error channel */
-	dbus_error_init(&error);
-
-	mce_log(LL_DEBUG,
-		"Received call added signal from ofono");
-
-	dbus_message_iter_init(msg, &msgit);
-
-	/* Message correctness checking */
-	if (dbus_message_iter_get_arg_type(&msgit) != DBUS_TYPE_OBJECT_PATH) {
-		mce_log(LL_WARN, "Parsing failure with ofono signal");
-		goto EXIT;
-	}
-
-	if (!dbus_message_iter_next(&msgit) ||
-	    dbus_message_iter_get_arg_type(&msgit) != DBUS_TYPE_ARRAY) {
-		mce_log(LL_WARN, "Parsing failure with ofono signal");
-		goto EXIT;
-	}
-
-	dbus_message_iter_recurse(&msgit, &arrit);
-
-	if (dbus_message_iter_get_arg_type(&arrit) != DBUS_TYPE_DICT_ENTRY) {
-		mce_log(LL_WARN, "Parsing failure with ofono signal");
-		goto EXIT;
-	}
-
-	dbus_message_iter_recurse(&arrit, &entit);
-
-	do {
-		if (!ofono_handle_call_property(&entit)) {
-			mce_log(LL_WARN,
-			        "Failed to parse call property change from ofono");
-		}
-		goto EXIT;
-	} while (dbus_message_iter_next(&entit));
-
-	status = TRUE;
-EXIT:
-	return status;
- }
-
-/**
- * D-Bus callback for ofono call property changed signal.
- *
- * @param msg The D-Bus message.
- * @return TRUE on success, FALSE on failure.
- */
- static gboolean ofono_call_props_changed_dbus_cb(DBusMessage *const msg)
- {
-	gboolean status = FALSE;
-	DBusMessageIter msgit;
-	DBusError error;
-
-	/* Register error channel */
-	dbus_error_init(&error);
-
-	mce_log(LL_DEBUG,
-		"Received call property changed signal from ofono");
-
-	dbus_message_iter_init(msg, &msgit);
-
-	if (!ofono_handle_call_property(&msgit)) {
-		mce_log(LL_WARN,
-		        "Failed to parse call property change from ofono");
-		goto EXIT;
-	}
-
-	status = TRUE;
-EXIT:
-	return status;
+    ofono_vcall_merge_emergency(stats, modem->emergency);
 }
+
+/** Evaluate mce call state
+ *
+ * Emit signals and update data pipes as needed
+ *
+ * @return true if call state / type changed, false otherwise
+ */
+static bool
+call_state_rethink_now(void)
+{
+    bool         changed    = false;
+
+    static ofono_vcall_t previous =
+    {
+        .state = CALL_STATE_INVALID,
+        .type  = NORMAL_CALL,
+    };
+
+    ofono_vcall_t combined =
+    {
+        .state = CALL_STATE_NONE,
+        .type  = NORMAL_CALL,
+    };
+
+    /* consider simulated call state */
+    ofono_vcall_merge_vcall(&combined, &simulated);
+
+    /* consider ofono modem emergency properties */
+    if( modems_lut )
+       g_hash_table_foreach(modems_lut, call_state_merge_modem_cb, &combined);
+
+    /* consider ofono voice call properties */
+    if( vcalls_lut )
+       g_hash_table_foreach(vcalls_lut, call_state_merge_vcall_cb, &combined);
+
+    /* skip broadcast if no change */
+    if( !memcmp(&previous, &combined, sizeof combined) )
+        goto EXIT;
+
+    changed = true;
+    previous = combined;
+
+    call_state_t call_state = combined.state;
+    call_type_t  call_type  = combined.type;
+    const char   *state_str = call_state_repr(call_state);
+    const char   *type_str  = call_type_repr(call_type);
+
+    mce_log(LL_DEBUG, "call_state=%s, call_type=%s", state_str, type_str);
+
+    /* If the state changed, signal the new state;
+     * first externally, then internally
+     *
+     * The reason we do it externally first is to
+     * make sure that the camera application doesn't
+     * grab audio, otherwise the ring tone might go missing
+     */
+
+    // TODO: is the above legacy statement still valid?
+
+    send_call_state(NULL, state_str, type_str);
+
+    execute_datapipe(&call_state_pipe,
+                     GINT_TO_POINTER(call_state),
+                     USE_INDATA, CACHE_INDATA);
+
+    execute_datapipe(&call_type_pipe,
+                     GINT_TO_POINTER(call_type),
+                     USE_INDATA, CACHE_INDATA);
+
+EXIT:
+    return changed;
+}
+
+/** Timer id for evaluating call state */
+static guint call_state_rethink_id = 0;
+
+/** Timer callback for evaluating call state */
+static gboolean
+call_state_rethink_cb(gpointer aptr)
+{
+    (void)aptr;
+
+    if( !call_state_rethink_id )
+        goto EXIT;
+    call_state_rethink_id = 0;
+
+    call_state_rethink_now();
+
+EXIT:
+    return G_SOURCE_REMOVE;
+}
+
+/** Cancel delayed call state evaluation */
+static void
+call_state_rethink_cancel(void)
+{
+    if( call_state_rethink_id )
+        g_source_remove(call_state_rethink_id), call_state_rethink_id = 0;
+}
+
+/** Request delayed call state evaluation */
+static void
+call_state_rethink_schedule(void)
+{
+    if( !call_state_rethink_id )
+        call_state_rethink_id = g_idle_add(call_state_rethink_cb, 0);
+}
+
+/** Request immediate call state evaluation */
+static bool
+call_state_rethink_forced(void)
+{
+    call_state_rethink_cancel();
+    return call_state_rethink_now();
+}
+
+/* ========================================================================= *
+ * MODULE LOAD / UNLOAD
+ * ========================================================================= */
+
+/** Array of dbus message handlers */
+static mce_dbus_handler_t handlers[] =
+{
+    /* method calls */
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_CALL_STATE_CHANGE_REQ,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = change_call_state_dbus_cb,
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_CALL_STATE_GET,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = get_call_state_dbus_cb,
+    },
+    /* signals */
+    {
+        .interface = OFONO_MANAGER_INTERFACE,
+        .name      = OFONO_MANAGER_SIG_MODEM_ADDED,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .callback  = xofono_modem_added_cb,
+    },
+    {
+        .interface = OFONO_MANAGER_INTERFACE,
+        .name      = OFONO_MANAGER_SIG_MODEM_REMOVED,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .callback  = xofono_modem_removed_cb,
+    },
+    {
+        .interface = OFONO_MODEM_INTERFACE,
+        .name      = OFONO_MODEM_SIG_PROPERTY_CHANGED,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .callback  = xofono_modem_changed_cb,
+    },
+    {
+        .interface = OFONO_VCALLMANAGER_INTERFACE,
+        .name      = OFONO_VCALLMANAGER_SIG_CALL_ADDED,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .callback  = xofono_vcall_added_cb,
+    },
+    {
+        .interface = OFONO_VCALLMANAGER_INTERFACE,
+        .name      = OFONO_VCALLMANAGER_SIG_CALL_REMOVED,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .callback  = xofono_vcall_removed_cb,
+    },
+    {
+        .interface = OFONO_VCALL_INTERFACE,
+        .name      = OFONO_VCALL_SIG_PROPERTY_CHANGED,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .callback  = xofono_vcall_changed_cb,
+    },
+    {
+        .interface = DBUS_INTERFACE_DBUS,
+        .name      = "NameOwnerChanged",
+        .rules     = "arg0='"OFONO_SERVICE"'",
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .callback  = xofono_name_owner_changed_cb,
+    },
+    /* sentinel */
+    {
+        .interface = 0
+    }
+};
 
 /**
  * Init function for the call state module
@@ -664,42 +1653,19 @@ EXIT:
 G_MODULE_EXPORT const gchar *g_module_check_init(GModule *module);
 const gchar *g_module_check_init(GModule *module)
 {
-	(void)module;
+    (void)module;
 
-	/* req_call_state_change */
-	if (mce_dbus_handler_add(MCE_REQUEST_IF,
-				 MCE_CALL_STATE_CHANGE_REQ,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_METHOD_CALL,
-				 change_call_state_dbus_cb) == NULL)
-		goto EXIT;
+    /* create look up tables */
+    vcalls_init();
+    modems_init();
 
-	/* get_call_state */
-	if (mce_dbus_handler_add(MCE_REQUEST_IF,
-				 MCE_CALL_STATE_GET,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_METHOD_CALL,
-				 get_call_state_dbus_cb) == NULL)
-		goto EXIT;
+    /* install dbus message handlers */
+    mce_dbus_handler_register_array(handlers);
 
-	//~ /* Listen to call added signal from ofono */
-	if (mce_dbus_handler_add(OFONO_VOICEMGR_SIGNAL_IF,
-				 OFONO_CALL_ADDED_SIG,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_SIGNAL,
-				 ofono_call_added_dbus_cb) == NULL)
-		goto EXIT;
+    /* initiate async query to find out current state of ofono */
+    xofono_name_owner_get();
 
-	/* Listen to call property change signal from ofono */
-	if (mce_dbus_handler_add(OFONO_VOICE_SIGNAL_IF,
-				 OFONO_VOICE_PROP_CHANGED_SIG,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_SIGNAL,
-				 ofono_call_props_changed_dbus_cb) == NULL)
-		goto EXIT;
-
-EXIT:
-	return NULL;
+    return NULL;
 }
 
 /**
@@ -712,7 +1678,17 @@ EXIT:
 G_MODULE_EXPORT void g_module_unload(GModule *module);
 void g_module_unload(GModule *module)
 {
-	(void)module;
+    (void)module;
 
-	return;
+    /* remove dbus message handlers */
+    mce_dbus_handler_unregister_array(handlers);
+
+    /* remove all timers & callbacks */
+    call_state_rethink_cancel();
+
+    /* delete look up tables */
+    modems_quit();
+    vcalls_quit();
+
+    return;
 }

@@ -1,3 +1,59 @@
+mce (1.17.11) unstable; urgency=low
+
+  * [mce] Do not skip tklock ipc during frame buffer suspend/resume
+  * [mce] Use 40% led brightness if als tuning is not enabled
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 25 Oct 2013 12:59:40 +0300
+
+mce (1.17.10) unstable; urgency=low
+
+  * [mce] Improve oFono voice call state tracking
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 24 Oct 2013 09:52:08 +0300
+
+mce (1.17.9) unstable; urgency=low
+
+  * [evdev_trace] The evdev_trace optionally emits local time of day
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 22 Oct 2013 20:11:17 +0300
+
+mce (1.17.8) unstable; urgency=low
+
+  * [mce] Update hybris LED colors for communication patterns
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 17 Oct 2013 18:12:57 +0300
+
+mce (1.17.7) unstable; urgency=low
+
+  * [mce] Make the 5 different als profiles more distinct
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 17 Oct 2013 13:42:23 +0300
+
+mce (1.17.6) unstable; urgency=low
+
+  * [mce] PowerOn led pattern color is grey75
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 16 Oct 2013 18:26:38 +0300
+
+mce (1.17.5) unstable; urgency=low
+
+  * [mce] Ignore double tap events when proximity sensor is covered
+  * [mce] Plugins remove sensor input callbacks when unloaded
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 16 Oct 2013 15:20:41 +0300
+
+mce (1.17.4) unstable; urgency=low
+
+  * [mce] Use standby override property for proximity sensor
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 16 Oct 2013 11:09:26 +0300
+
+mce (1.17.3) unstable; urgency=low
+
+  * [mce] Send fake sensor inputs on loss of sensord connection
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 14 Oct 2013 14:42:46 +0300
+
 mce (1.17.2) unstable; urgency=low
 
   * [mce] Add enablers for stopping sensors in suspend

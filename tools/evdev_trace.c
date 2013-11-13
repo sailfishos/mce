@@ -7,11 +7,13 @@
 #include "../evdev.h"
 #include "../mce-log.h"
 #include <linux/input.h>
+#include <sys/time.h>
 
 #include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <stdbool.h>
 #include <stdarg.h>
 #include <limits.h>
 #include <poll.h>
@@ -19,6 +21,14 @@
 #include <stdlib.h>
 #include <glob.h>
 #include <getopt.h>
+#include <time.h>
+
+/** Flag for: emit event time stamps */
+static bool emit_event_time  = true;
+
+/** Flag for: emit time of day (of event read time) */
+static bool emit_time_of_day = false;
+
 
 /** Read and show input events
  *
@@ -32,6 +42,7 @@ int
 process_events(int fd, const char *title)
 {
   struct input_event eve[256];
+  char tod[64], toe[64];
 
   errno = 0;
   int n = read(fd, eve, sizeof eve);
@@ -49,14 +60,42 @@ process_events(int fd, const char *title)
 
   n /= sizeof *eve;
 
+  *tod = 0;
+  if( emit_time_of_day )
+  {
+    struct timeval tv;
+    struct tm tm;
+    memset(&tv, 0, sizeof tv);
+    memset(&tm, 0, sizeof tm);
+
+    /* Caveat emptor: time of day = event read time ... */
+    gettimeofday(&tv, 0);
+    localtime_r(&tv.tv_sec, &tm);
+
+    snprintf(tod, sizeof tod, "%04d-%02d-%02d %02d:%02d:%02d.%03ld - ",
+	     tm.tm_year + 1900,
+	     tm.tm_mon + 1,
+	     tm.tm_mday,
+	     tm.tm_hour,
+	     tm.tm_min,
+	     tm.tm_sec,
+	     (long)(tv.tv_usec / 1000));
+  }
+
   for( int i = 0; i < n; ++i )
   {
     struct input_event *e = &eve[i];
 
-    printf("%s: %ld.%03ld - 0x%02x/%s - 0x%03x/%s - %d\n",
-           title,
-           (long)e->time.tv_sec,
-           (long)e->time.tv_usec / 1000,
+    *toe = 0;
+    if( emit_event_time )
+    {
+      snprintf(toe, sizeof toe, "%ld.%03ld - ",
+	       (long)e->time.tv_sec,
+	       (long)e->time.tv_usec / 1000);
+    }
+
+    printf("%s: %s%s0x%02x/%s - 0x%03x/%s - %d\n",
+           title, tod, toe,
            e->type,
            evdev_get_event_type_name(e->type),
            e->code,
@@ -136,9 +175,11 @@ cleanup:
 /** Configuration table for long command line options */
 static struct option optL[] =
 {
-  { "help",     0, 0, 'h' },
-  { "trace",    0, 0, 'i' },
-  { "identify", 0, 0, 't' },
+  { "help",          0, 0, 'h' },
+  { "trace",         0, 0, 'i' },
+  { "identify",      0, 0, 't' },
+  { "emit-also-tod", 0, 0, 'e' },
+  { "emit-only-tod", 0, 0, 'E' },
   { 0,0,0,0 }
 };
 
@@ -147,6 +188,8 @@ static const char optS[] =
 "h" // --help
 "t" // --trace
 "i" // --identify
+"e" // --emit-also-tod
+"E" // --emit-only-tod
 ;
 
 /** Program name string */
@@ -196,9 +239,11 @@ static void usage(void)
          "  %s [options] [devicepath] ...\n"
          "\n"
          "OPTIONS\n"
-         "  -h, --help      -- this help text\n"
-         "  -i, --identify  -- identify input device\n"
-         "  -t, --trace     -- trace input events\n"
+         "  -h, --help           -- this help text\n"
+         "  -i, --identify       -- identify input device\n"
+         "  -t, --trace          -- trace input events\n"
+         "  -e, --emit-also-tod  -- emit also time of day\n"
+         "  -E, --emit-only-tod  -- emit only time of day\n"
 	 "\n"
 	 "NOTES\n"
          "  If no device paths are given, /dev/input/event* is assumed.\n"
@@ -283,6 +328,15 @@ main(int argc, char **argv)
 
     case 'i':
       f_identify = 1;
+      break;
+
+    case 'e':
+      emit_time_of_day = true;
+      break;
+
+    case 'E':
+      emit_time_of_day = true;
+      emit_event_time  = false;
       break;
 
     case '?':

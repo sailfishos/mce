@@ -379,7 +379,6 @@ modules/callstate.o:\
 	mce-log.h\
 	mce.h\
 	modules/callstate.h\
-	ofono-dbus-names.h\
 
 modules/callstate.pic.o:\
 	modules/callstate.c\
@@ -390,7 +389,6 @@ modules/callstate.pic.o:\
 	mce-log.h\
 	mce.h\
 	modules/callstate.h\
-	ofono-dbus-names.h\
 
 modules/camera.o:\
 	modules/camera.c\
@@ -432,6 +430,7 @@ modules/display.o:\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
+	mce-sensorfw.h\
 	mce.h\
 	filewatcher.h\
 	libwakelock.h\
@@ -448,6 +447,7 @@ modules/display.pic.o:\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
+	mce-sensorfw.h\
 	mce.h\
 	filewatcher.h\
 	libwakelock.h\
@@ -692,6 +692,7 @@ tests/ut/ut_display.o:\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
+	mce-sensorfw.h\
 	mce.h\
 	mce-log.h\
 	filewatcher.h\
@@ -710,6 +711,7 @@ tests/ut/ut_display.pic.o:\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
+	mce-sensorfw.h\
 	mce.h\
 	mce-log.h\
 	filewatcher.h\
@@ -728,6 +730,7 @@ tests/ut/ut_display_blanking_inhibit.o:\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
+	mce-sensorfw.h\
 	mce.h\
 	mce-log.h\
 	filewatcher.h\
@@ -747,6 +750,7 @@ tests/ut/ut_display_blanking_inhibit.pic.o:\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
+	mce-sensorfw.h\
 	mce.h\
 	mce-log.h\
 	filewatcher.h\
@@ -766,6 +770,7 @@ tests/ut/ut_display_conf.o:\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
+	mce-sensorfw.h\
 	mce.h\
 	mce-log.h\
 	filewatcher.h\
@@ -785,6 +790,7 @@ tests/ut/ut_display_conf.pic.o:\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
+	mce-sensorfw.h\
 	mce.h\
 	mce-log.h\
 	filewatcher.h\
@@ -804,6 +810,7 @@ tests/ut/ut_display_filter.o:\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
+	mce-sensorfw.h\
 	mce.h\
 	mce-log.h\
 	filewatcher.h\
@@ -823,6 +830,7 @@ tests/ut/ut_display_filter.pic.o:\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
+	mce-sensorfw.h\
 	mce.h\
 	mce-log.h\
 	filewatcher.h\
@@ -842,6 +850,7 @@ tests/ut/ut_display_stm.o:\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
+	mce-sensorfw.h\
 	mce.h\
 	mce-log.h\
 	filewatcher.h\
@@ -861,6 +870,7 @@ tests/ut/ut_display_stm.pic.o:\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
+	mce-sensorfw.h\
 	mce.h\
 	mce-log.h\
 	filewatcher.h\

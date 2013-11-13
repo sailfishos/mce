@@ -566,7 +566,7 @@ EXIT:
 static gpointer led_brightness_filter(gpointer data)
 {
 	int value = GPOINTER_TO_INT(data);
-	int scale = 100;
+	int scale = 40;
 
 	if( als_lux_latest < 0 )
 		goto EXIT;
@@ -1145,5 +1145,9 @@ void g_module_unload(GModule *module)
 				    display_brightness_filter);
 
 	quit_color_profiles();
+
+	/* Remove callbacks pointing to unloaded module */
+	mce_sensorfw_als_set_notify(0);
+
 	return;
 }
