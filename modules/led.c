@@ -18,6 +18,10 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
+
+#include <sys/time.h>
+#include <time.h>
+
 #include <glib.h>
 #include <gmodule.h>
 
@@ -193,6 +197,7 @@ typedef struct {
 	gchar channel3[CHANNEL_SIZE + 1];
 	guint gconf_cb_id;		/**< Callback ID for GConf entry */
 	guint rgb_color;                /**< RGB24 data for libhybris use */
+	gboolean undecided;		/**< Flag for policy=6 lock in */
 } pattern_struct;
 
 /** Pattern combination rule struct; this is also used for cross-referencing */
@@ -1349,6 +1354,8 @@ static void led_activate_pattern(const gchar *const name)
 	}
 
 	if ((psp = find_pattern_struct(name)) != NULL) {
+		if( !psp->active && psp->policy == 6 )
+			psp->undecided = TRUE;
 		psp->active = TRUE;
 		update_combination_rules(name);
 		led_update_active_pattern();
@@ -1418,6 +1425,114 @@ static void system_state_trigger(gconstpointer data)
 	led_update_active_pattern();
 }
 
+/** Monotonic time stamp helper
+ *
+ * @param tv where to store the time stamp
+ */
+static void get_monotime(struct timeval *tv)
+{
+	struct timespec ts;
+
+#ifdef CLOCK_BOOTTIME
+	if( clock_gettime(CLOCK_BOOTTIME, &ts) == 0 )
+		goto CONVERT;
+#endif
+
+#ifdef CLOCK_MONOTIME
+	if( clock_gettime(CLOCK_MONOTIME, &ts) == 0 )
+		goto CONVERT;
+#endif
+	if( gettimeofday(tv, 0) != 0 )
+		timerclear(tv);
+
+	goto EXIT;
+
+CONVERT:
+	TIMESPEC_TO_TIMEVAL(tv, &ts);
+EXIT:
+	return;
+}
+
+/** Timestamp for latest user activity */
+static struct timeval       activity_time  = { .tv_sec = 0, .tv_usec = 0 };
+
+/** Timelimit for the activity_time to be considered recent */
+static const struct timeval activity_limit = { .tv_sec = 2, .tv_usec = 0 };
+
+/** Lock in undecided policy=6 led patterns
+ *
+ * For use with led_pattern_op()
+ */
+static void type6_lock_in_cb(void *data, void *aptr)
+{
+	(void)aptr;
+
+	pattern_struct *psp = data;
+
+	if( psp->undecided && psp->active && psp->policy == 6 ) {
+		mce_log(LL_DEBUG, "LED pattern %s: locked in", psp->name);
+	}
+	psp->undecided = FALSE;
+}
+
+/** Revert undecided policy=6 led patterns
+ *
+ * For use with led_pattern_op()
+ */
+static void type6_revert_cb(void *data, void *aptr)
+{
+	(void)aptr;
+
+	pattern_struct *psp = data;
+
+	if( psp->undecided && psp->active && psp->policy == 6 ) {
+		psp->active = FALSE;
+		update_combination_rules(psp->name);
+		mce_log(LL_DEBUG, "LED pattern %s: reverted", psp->name);
+	}
+	psp->undecided = FALSE;
+
+}
+
+/** De-activate all policy=6 led patterns
+ *
+ * For use with led_pattern_op()
+ */
+static void type6_deactivate_cb(void *data, void *aptr)
+{
+	(void)aptr;
+
+	pattern_struct *psp = data;
+
+	if( psp->active && psp->policy == 6 ) {
+		psp->active = FALSE;
+		update_combination_rules(psp->name);
+		mce_log(LL_DEBUG, "LED pattern %s: deactivated", psp->name);
+	}
+	psp->undecided = FALSE;
+}
+
+/** Apply callback on all led patterns
+ */
+static void led_pattern_op(GFunc cb)
+{
+	g_queue_foreach(pattern_stack, cb, 0);
+}
+
+
+/** Handle real user activity
+ *
+ * @param data Unused
+ */
+static void user_activity_trigger(gconstpointer data)
+{
+	(void)data; // the data is irrelevant
+
+	if( display_state_get() == MCE_DISPLAY_ON )
+		led_pattern_op(type6_revert_cb);
+	get_monotime(&activity_time);
+}
+
 /**
  * Handle display state change
  *
@@ -1427,9 +1542,33 @@ static void display_state_trigger(gconstpointer data)
 {
 	static display_state_t old_display_state = MCE_DISPLAY_UNDEF;
 	display_state_t display_state = GPOINTER_TO_INT(data);
+	struct timeval tv;
 
 	if (old_display_state == display_state)
 		goto EXIT;
+
+	get_monotime(&tv);
+	timersub(&tv, &activity_time, &tv);
+
+	switch( display_state ) {
+	case MCE_DISPLAY_ON:
+		if( timercmp(&tv, &activity_limit, <) )
+			led_pattern_op(type6_deactivate_cb);
+		timerclear(&activity_time);
+		break;
+
+	case MCE_DISPLAY_OFF:
+	case MCE_DISPLAY_LPM_OFF:
+	case MCE_DISPLAY_LPM_ON:
+		if( timercmp(&tv, &activity_limit, <) )
+			led_pattern_op(type6_revert_cb);
+		else
+			led_pattern_op(type6_lock_in_cb);
+		timerclear(&activity_time);
+		break;
+	default:
+		break;
+	}
 
 	led_update_active_pattern();
 	old_display_state = display_state;
@@ -1590,8 +1729,6 @@ static gboolean led_activate_pattern_dbus_cb(DBusMessage *const msg)
 	/* Register error channel */
 	dbus_error_init(&error);
 
-	mce_log(LL_DEBUG, "Received activate LED pattern request");
-
 	if (dbus_message_get_args(msg, &error,
 				  DBUS_TYPE_STRING, &pattern,
 				  DBUS_TYPE_INVALID) == FALSE) {
@@ -1603,6 +1740,9 @@ static gboolean led_activate_pattern_dbus_cb(DBusMessage *const msg)
 		dbus_error_free(&error);
 		goto EXIT;
 	}
+
+	mce_log(LL_DEBUG, "activate LED pattern %s request from %s",
+		pattern, dbus_message_get_sender(msg));
 
 	led_activate_pattern(pattern);
 
@@ -1634,8 +1774,6 @@ static gboolean led_deactivate_pattern_dbus_cb(DBusMessage *const msg)
 	/* Register error channel */
 	dbus_error_init(&error);
 
-	mce_log(LL_DEBUG, "Received deactivate LED pattern request");
-
 	if (dbus_message_get_args(msg, &error,
 				  DBUS_TYPE_STRING, &pattern,
 				  DBUS_TYPE_INVALID) == FALSE) {
@@ -1647,6 +1785,9 @@ static gboolean led_deactivate_pattern_dbus_cb(DBusMessage *const msg)
 		dbus_error_free(&error);
 		goto EXIT;
 	}
+
+	mce_log(LL_DEBUG, "de-activate LED pattern %s request from %s",
+		pattern, dbus_message_get_sender(msg));
 
 	led_deactivate_pattern(pattern);
 
@@ -2444,6 +2585,8 @@ const gchar *g_module_check_init(GModule *module)
 	(void)module;
 
 	/* Append triggers/filters to datapipes */
+	append_output_trigger_to_datapipe(&user_activity_pipe,
+					  user_activity_trigger);
 	append_output_trigger_to_datapipe(&system_state_pipe,
 					  system_state_trigger);
 	append_output_trigger_to_datapipe(&display_state_pipe,
@@ -2538,6 +2681,8 @@ void g_module_unload(GModule *module)
 					    display_state_trigger);
 	remove_output_trigger_from_datapipe(&system_state_pipe,
 					    system_state_trigger);
+	remove_output_trigger_from_datapipe(&user_activity_pipe,
+					    user_activity_trigger);
 
 	/* Don't disable the LED on shutdown/reboot/acting dead */
 	if ((system_state != MCE_STATE_ACTDEAD) &&

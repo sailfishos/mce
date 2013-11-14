@@ -1184,7 +1184,7 @@ static gboolean open_tklock_ui(dbus_uint32_t mode)
 	submode_t submode = mce_get_submode_int32();
 	if( (tklock_ui_state == new_tklock_ui_state) ||
 	    (submode & MCE_TKLOCK_SUBMODE) ) {
-		mce_log(LL_WARN, "skipping tklock ipc; tklock already set");
+		mce_log(LL_DEBUG, "skipping tklock ipc; tklock already set");
 		status = TRUE;
 		goto EXIT;
 	}
@@ -3048,11 +3048,6 @@ static void call_state_trigger(gconstpointer data)
 		} else if (is_tklock_enabled() == FALSE) {
 			/* Disable autorelock */
 			disable_autorelock();
-
-			/* Unblank screen */
-			(void)execute_datapipe(&display_state_req_pipe,
-					       GINT_TO_POINTER(MCE_DISPLAY_ON),
-					       USE_INDATA, CACHE_INDATA);
 		}
 
 		break;

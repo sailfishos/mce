@@ -42,6 +42,7 @@ event-input.o:\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
+	mce-sensorfw.h\
 	mce.h\
 
 event-input.pic.o:\
@@ -54,6 +55,7 @@ event-input.pic.o:\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
+	mce-sensorfw.h\
 	mce.h\
 
 event-switches.o:\
@@ -238,15 +240,21 @@ mce-modules.pic.o:\
 
 mce-sensorfw.o:\
 	mce-sensorfw.c\
+	datapipe.h\
+	libwakelock.h\
 	mce-dbus.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce.h\
 
 mce-sensorfw.pic.o:\
 	mce-sensorfw.c\
+	datapipe.h\
+	libwakelock.h\
 	mce-dbus.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce.h\
 
 mce.o:\
 	mce.c\
@@ -419,6 +427,24 @@ modules/cpu-keepalive.pic.o:\
 	mce-dbus.h\
 	mce-log.h\
 	libwakelock.h\
+
+modules/device_wd.o:\
+	modules/device_wd.c\
+	datapipe.h\
+	mce-conf.h\
+	mce-io.h\
+	mce-log.h\
+	mce.h\
+	modules/device_wd.h\
+
+modules/device_wd.pic.o:\
+	modules/device_wd.c\
+	datapipe.h\
+	mce-conf.h\
+	mce-io.h\
+	mce-log.h\
+	mce.h\
+	modules/device_wd.h\
 
 modules/display.o:\
 	modules/display.c\

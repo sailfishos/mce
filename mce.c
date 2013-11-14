@@ -932,6 +932,8 @@ int main(int argc, char **argv)
 		       0, NULL);
 	setup_datapipe(&led_pattern_deactivate_pipe, READ_ONLY, FREE_CACHE,
 		       0, NULL);
+	setup_datapipe(&user_activity_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, NULL);
 	setup_datapipe(&key_backlight_pipe, READ_WRITE, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(0));
 	setup_datapipe(&keypress_pipe, READ_ONLY, FREE_CACHE,
@@ -1089,6 +1091,7 @@ EXIT:
 	free_datapipe(&touchscreen_pipe);
 	free_datapipe(&keypress_pipe);
 	free_datapipe(&key_backlight_pipe);
+	free_datapipe(&user_activity_pipe);
 	free_datapipe(&led_pattern_deactivate_pipe);
 	free_datapipe(&led_pattern_activate_pipe);
 	free_datapipe(&led_brightness_pipe);
