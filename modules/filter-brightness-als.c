@@ -426,6 +426,10 @@ static void als_lux_changed(unsigned lux)
 
 	mce_log(LL_DEBUG, "lux=%d", als_lux_latest);
 	run_datapipes();
+
+	execute_datapipe(&ambient_light_sensor_pipe,
+			 GINT_TO_POINTER(lux),
+			 USE_INDATA, CACHE_INDATA);
 }
 
 /** Check if ALS sensor should be enabled or disabled

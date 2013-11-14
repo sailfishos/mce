@@ -1,6 +1,12 @@
 #include "mce-sensorfw.h"
+#include "mce.h"
 #include "mce-log.h"
 #include "mce-dbus.h"
+#include "libwakelock.h"
+
+#include <linux/input.h>
+
+#include <sys/ioctl.h>
 
 #include <stdio.h>
 #include <stdint.h>
@@ -45,6 +51,27 @@ typedef struct ps_data {
 	uint8_t  withinProximity;
 } ps_data_t;
 
+/** We need to differentiate multiple real and synthetic input sources */
+typedef enum {
+	/** Synthetic input, for example when sensord is not running */
+	DS_FAKED,
+	/** Data read directly from kernel */
+	DS_EVDEV,
+	/** Data received from sensord */
+	DS_SENSORD,
+	/** Dummy data, use the last known good value instead */
+	DS_RESTORE,
+} input_source_t;
+
+/** Names of input sources; for debuggging purposes */
+static const char * const input_source_name[] =
+{
+	[DS_FAKED]   = "SYNTH",
+	[DS_EVDEV]   = "EVDEV",
+	[DS_SENSORD] = "SENSORD",
+	[DS_RESTORE] = "RESTORE",
+};
+
 /* ========================================================================= *
  * STATE DATA
  * ========================================================================= */
@@ -58,215 +85,123 @@ static bool       sensord_running = false;
 /** Flag for system is suspended */
 static bool       system_suspended = false;
 
-/** Sensord name for ALS */
-static const char als_name[]  = "alssensor";
+static void als_notify(unsigned lux, input_source_t srce);
+static void ps_notify(bool covered, input_source_t srce);
 
-/** Sensord D-Bus interface for ALS */
-static const char als_iface[] = "local.ALSSensor";
+/* ========================================================================= *
+ * EVDEV HOOKS
+ * ========================================================================= */
 
-/** Sensord session id for ALS */
-static int        als_sid     = -1;
+/** Callback function for processing evdev events
+ *
+ * @param chn  io channel
+ * @param cnd  (not used)
+ * @param aptr pointer to io watch
+ *
+ * @return TRUE to keep io watch active, FALSE to stop it
+ */
+static gboolean
+mce_sensorfw_evdev_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
+{
+	// we just want the wakeup
+	(void)cnd;
 
-/** Input watch for ALS data */
-static guint      als_wid     = 0;
+	gboolean  keep = FALSE;
+	int      *id   = aptr;
+	int       fd   = g_io_channel_unix_get_fd(chn);
+	int       als  = -1;
+	int       ps   = -1;
+	int       rc;
 
-/** Flag for MCE wants to enable ALS */
-static bool       als_want    = false;
+	struct input_event eve[256];
 
-/** Flag for ALS enabled at sensord */
-static bool       als_have    = false;
+	/* wakelock must be taken before reading the data */
+	wakelock_lock("mce_input_handler", -1);
 
-/** Callback for sending ALS data to where it is needed */
-static void     (*als_notify_cb)(unsigned lux) = 0;
-static void     als_notify(unsigned lux);
+	rc = read(fd, eve, sizeof eve);
 
-/** Ambient light value to report when sensord is not available */
-#define ALS_VALUE_WHEN_SENSORD_IS_DOWN 400
+	if( rc == -1 ) {
+		if( errno == EINTR || errno == EAGAIN )
+			keep = TRUE;
+		else
+			mce_log(LL_ERR, "read events: %m");
+		goto EXIT;
+	}
 
-/** Sensord name for PS */
-static const char ps_name[]  = "proximitysensor";
+	if( rc == 0 ) {
+		mce_log(LL_ERR, "read events: EOF");
+		goto EXIT;
+	}
 
-/** Sensord D-Bus interface for PS */
-static const char ps_iface[] = "local.ProximitySensor";
+	keep = TRUE;
 
-/** Sensord session id for PS */
-static int        ps_sid     = -1;
+	size_t n = rc / sizeof *eve;
+	for( size_t i = 0; i < n; ++i ) {
+		if( eve[i].type != EV_ABS )
+			continue;
 
-/** Input watch for PS data */
-static guint      ps_wid     = 0;
+		switch( eve[i].code ) {
+		case ABS_MISC:
+			als = eve[i].value;
+			break;
+		case ABS_DISTANCE:
+			ps = eve[i].value;
+			break;
+		default:
+			break;
+		}
+	}
 
-/** Flag for MCE wants to enable PS */
-static bool       ps_want    = false;
+	if( als != -1 )
+		als_notify(als, DS_EVDEV);
+	if( ps != -1 )
+		ps_notify(ps < 1, DS_EVDEV);
 
-/** Flag for PS enabled at sensord */
-static bool       ps_have    = false;
+EXIT:
+	if( !keep && *id ) {
+		*id = 0;
+		mce_log(LL_CRIT, "stopping io watch");
+	}
 
-/** Callback for sending PS data to where it is needed */
-static void     (*ps_notify_cb)(bool covered) = 0;
-static void     ps_notify(bool covered);
+	/* wakelock must be released when we are done with the data */
+	wakelock_unlock("mce_input_handler");
 
-/** Proximity state to report when sensord is not available */
-#define PS_STATE_WHEN_SENSORD_IS_DOWN false
+	return keep;
+}
+
+/** Helper function for registering io watch
+ *
+ * @param fd   file descriptor to watch
+ * @param cb   io watch callback function
+ * @param aptr context to pass to the callback
+ *
+ * @return source id, or 0 in case of errors
+ */
+static guint
+mce_sensorfw_start_iomon(int fd, GIOFunc cb, void *aptr)
+{
+	GIOChannel *chn = 0;
+	guint       id  = 0;
+
+	if( !(chn = g_io_channel_unix_new(fd)) ) {
+		goto EXIT;
+	}
+
+	if( !(id = g_io_add_watch(chn, G_IO_IN, cb, aptr)) )
+		goto EXIT;
+
+	g_io_channel_set_close_on_unref(chn, TRUE), fd = -1;
+
+EXIT:
+	if( chn != 0 ) g_io_channel_unref(chn);
+	if( fd != -1 ) close(fd);
+
+	return id;
+}
 
 /* ========================================================================= *
  * COMMON
  * ========================================================================= */
-
-/** Handle ALS input from sensord
- *
- * @param chn  io channel
- * @param cnd  (not used)
- * @param aptr (not used)
- *
- * @return TRUE to keep io watch, or FALSE to remove it
- */
-static gboolean
-als_input_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
-{
-	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
-
-	(void)cnd; (void)aptr; // unused
-
-	gboolean keep_going = FALSE;
-	uint32_t count = 0;
-
-	int fd;
-	int rc;
-	als_data_t data;
-
-	memset(&data, 0, sizeof data);
-
-	if( (fd = g_io_channel_unix_get_fd(chn)) < 0 ) {
-		mce_log(LL_ERR, "io channel has no fd");
-		goto EXIT;
-	}
-
-	// FIXME: there should be only one read() ...
-
-	rc = read(fd, &count, sizeof count);
-	if( rc == -1 ) {
-		if( errno == EINTR || errno == EAGAIN )
-			keep_going = TRUE;
-		else
-			mce_log(LL_ERR, "read sample count: %m");
-		goto EXIT;
-	}
-	if( rc == 0 ) {
-		mce_log(LL_ERR, "read sample count: EOF");
-		goto EXIT;
-	}
-	if( rc != (int)sizeof count) {
-		mce_log(LL_ERR, "read sample count: got %d of %d bytes",
-			rc, (int)sizeof count);
-		goto EXIT;
-	}
-
-	mce_log(LL_DEBUG, "got %u ALS values", (unsigned)count);
-
-	if( count < 1 ) {
-		keep_going = TRUE;
-		goto EXIT;
-	}
-
-	for( unsigned i = 0; i < count; ++i ) {
-		errno = 0, rc = read(fd, &data, sizeof data);
-		if( rc != sizeof data ) {
-			mce_log(LL_ERR, "failed to read sample: %m");
-			goto EXIT;
-		}
-	}
-
-	mce_log(LL_DEBUG, "last ALS value = %u", data.value);
-	als_notify(data.value);
-
-	keep_going = TRUE;
-
-EXIT:
-	if( !keep_going ) {
-		mce_log(LL_CRIT, "disabling io watch");
-		als_wid = 0;
-	}
-	return keep_going;
-}
-
-/** Handle PS input from sensord
- *
- * @param chn  io channel
- * @param cnd  (not used)
- * @param aptr (not used)
- *
- * @return TRUE to keep io watch, or FALSE to remove it
- */
-static gboolean
-ps_input_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
-{
-	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
-
-	(void)cnd; (void)aptr; // unused
-
-	gboolean keep_going = FALSE;
-	uint32_t count = 0;
-
-	int fd;
-	int rc;
-	ps_data_t data;
-
-	memset(&data, 0, sizeof data);
-
-	if( (fd = g_io_channel_unix_get_fd(chn)) < 0 ) {
-		mce_log(LL_ERR, "io channel has no fd");
-		goto EXIT;
-	}
-
-	// FIXME: there should be only one read() ...
-
-	rc = read(fd, &count, sizeof count);
-	if( rc == -1 ) {
-		if( errno == EINTR || errno == EAGAIN )
-			keep_going = TRUE;
-		else
-			mce_log(LL_ERR, "read sample count: %m");
-		goto EXIT;
-	}
-	if( rc == 0 ) {
-		mce_log(LL_ERR, "read sample count: EOF");
-		goto EXIT;
-	}
-	if( rc != (int)sizeof count) {
-		mce_log(LL_ERR, "read sample count: got %d of %d bytes",
-			rc, (int)sizeof count);
-		goto EXIT;
-	}
-
-	mce_log(LL_DEBUG, "Got %u PS values", (unsigned)count);
-
-	if( count < 1 ) {
-		keep_going = TRUE;
-		goto EXIT;
-	}
-
-	for( unsigned i = 0; i < count; ++i ) {
-		errno = 0, rc = read(fd, &data, sizeof data);
-		if( rc != sizeof data ) {
-			mce_log(LL_ERR, "failed to read sample: %m");
-			goto EXIT;
-		}
-	}
-
-	mce_log(LL_DEBUG, "last PS value = %u / %d", data.value,
-		data.withinProximity);
-
-	ps_notify(data.withinProximity != 0);
-
-	keep_going = TRUE;
-
-EXIT:
-	if( !keep_going ) {
-		mce_log(LL_CRIT, "disabling io watch");
-		ps_wid = 0;
-	}
-	return keep_going;
-}
 
 /** Add input watch for sensord session
  *
@@ -636,7 +571,6 @@ EXIT:
 	dbus_error_free(&err);
 }
 
-
 /** Issue sensor standby override request to sensord
  *
  * @param id        sensor name
@@ -682,17 +616,152 @@ EXIT:
  * ALS
  * ========================================================================= */
 
+/** io watch id for ALS evdev file descriptor*/
+static guint als_evdev_id = 0;
+
+/** Sensord name for ALS */
+static const char als_name[]  = "alssensor";
+
+/** Sensord D-Bus interface for ALS */
+static const char als_iface[] = "local.ALSSensor";
+
+/** Sensord session id for ALS */
+static int        als_sid     = -1;
+
+/** Input watch for ALS data */
+static guint      als_wid     = 0;
+
+/** Flag for MCE wants to enable ALS */
+static bool       als_want    = false;
+
+/** Flag for ALS enabled at sensord */
+static bool       als_have    = false;
+
+/** Callback for sending ALS data to where it is needed */
+static void     (*als_notify_cb)(unsigned lux) = 0;
+
+/** Ambient light value to report when sensord is not available */
+#define ALS_VALUE_WHEN_SENSORD_IS_DOWN 400
+
 /** Wrapper for als_notify_cb hook
+ *
+ * @param lux  ambient light value
+ * @param srce where does to value originate from
  */
 static void
-als_notify(unsigned lux)
+als_notify(unsigned lux, input_source_t srce)
 {
-	mce_log(LL_DEBUG, "ambient light: %u lux", lux);
+	static unsigned als_lux_last = ALS_VALUE_WHEN_SENSORD_IS_DOWN;
+
+	if( srce == DS_RESTORE )
+		lux = als_lux_last;
+
+	/* If we have evdev source, prefer that over sensord input */
+	if( als_evdev_id ) {
+		if( srce == DS_EVDEV )
+			als_lux_last = lux;
+
+		if( srce == DS_SENSORD ) {
+			if( lux != als_lux_last )
+				mce_log(LL_WARN, "sensord=%u vs evdev=%u",
+					lux, als_lux_last);
+			goto EXIT;
+		}
+
+	}
+	else {
+		if( srce == DS_SENSORD )
+			als_lux_last = lux;
+
+		if( srce == DS_EVDEV )
+			goto EXIT;
+	}
+
+	mce_log(LL_DEBUG, "ALS: %u lux (%s)", lux,input_source_name[srce]);
 
 	if( als_notify_cb )
 		als_notify_cb(lux);
-	else
-		mce_log(LL_WARN, "ALS enabled without notify cb");
+	else if( srce != DS_FAKED )
+		mce_log(LL_INFO, "ALS data without notify cb");
+EXIT:
+	return;
+}
+
+/** Handle ALS input from sensord
+ *
+ * @param chn  io channel
+ * @param cnd  (not used)
+ * @param aptr (not used)
+ *
+ * @return TRUE to keep io watch, or FALSE to remove it
+ */
+static gboolean
+als_input_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
+{
+	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
+
+	(void)cnd; (void)aptr; // unused
+
+	gboolean keep_going = FALSE;
+	uint32_t count = 0;
+
+	int fd;
+	int rc;
+	als_data_t data;
+
+	memset(&data, 0, sizeof data);
+
+	if( (fd = g_io_channel_unix_get_fd(chn)) < 0 ) {
+		mce_log(LL_ERR, "io channel has no fd");
+		goto EXIT;
+	}
+
+	// FIXME: there should be only one read() ...
+
+	rc = read(fd, &count, sizeof count);
+	if( rc == -1 ) {
+		if( errno == EINTR || errno == EAGAIN )
+			keep_going = TRUE;
+		else
+			mce_log(LL_ERR, "read sample count: %m");
+		goto EXIT;
+	}
+	if( rc == 0 ) {
+		mce_log(LL_ERR, "read sample count: EOF");
+		goto EXIT;
+	}
+	if( rc != (int)sizeof count) {
+		mce_log(LL_ERR, "read sample count: got %d of %d bytes",
+			rc, (int)sizeof count);
+		goto EXIT;
+	}
+
+	mce_log(LL_DEBUG, "Got %u ALS values", (unsigned)count);
+
+	if( count < 1 ) {
+		keep_going = TRUE;
+		goto EXIT;
+	}
+
+	for( unsigned i = 0; i < count; ++i ) {
+		errno = 0, rc = read(fd, &data, sizeof data);
+		if( rc != sizeof data ) {
+			mce_log(LL_ERR, "failed to read sample: %m");
+			goto EXIT;
+		}
+	}
+
+	mce_log(LL_DEBUG, "last ALS value = %u", data.value);
+	als_notify(data.value, DS_SENSORD);
+
+	keep_going = TRUE;
+
+EXIT:
+	if( !keep_going ) {
+		mce_log(LL_CRIT, "disabling io watch");
+		als_wid = 0;
+	}
+	return keep_going;
 }
 
 /** Handle reply to initial ALS value request
@@ -748,7 +817,7 @@ static void mce_sensorfw_als_read_cb(DBusPendingCall *pc, void *aptr)
 	dbus_message_iter_next(&rec);
 
 	mce_log(LL_INFO, "initial ALS value = %u", lux);
-	als_notify(lux);
+	als_notify(lux, DS_SENSORD);
 
 	res = true;
 
@@ -806,9 +875,7 @@ static void mce_sensorfw_als_stop_session(void)
 
 	if( als_wid ) {
 		g_source_remove(als_wid), als_wid = 0;
-
-		if( als_notify_cb )
-			als_notify(ALS_VALUE_WHEN_SENSORD_IS_DOWN);
+		als_notify(ALS_VALUE_WHEN_SENSORD_IS_DOWN, DS_FAKED);
 	}
 
 	als_have = false;
@@ -912,8 +979,10 @@ mce_sensorfw_als_rethink(void)
 		goto EXIT;
 	}
 
-	if( als_want )
+	if( als_want ) {
+		als_notify(0, DS_RESTORE);
 		mce_sensorfw_als_start_sensor();
+	}
 	else
 		mce_sensorfw_als_stop_sensor();
 EXIT:
@@ -947,27 +1016,167 @@ mce_sensorfw_als_disable(void)
 void mce_sensorfw_als_set_notify(void (*cb)(unsigned lux))
 {
 	mce_log(LL_DEBUG, "@%s(%p)", __FUNCTION__, cb);
-	als_notify_cb = cb;
 
-	if( als_notify_cb && !sensord_running )
-		als_notify(ALS_VALUE_WHEN_SENSORD_IS_DOWN);
+	if( (als_notify_cb = cb) ) {
+		if( !sensord_running )
+			als_notify(ALS_VALUE_WHEN_SENSORD_IS_DOWN, DS_FAKED);
+		else
+			als_notify(0, DS_RESTORE);
+	}
 }
 
 /* ========================================================================= *
  * PS
  * ========================================================================= */
 
+/** io watch id for PS evdev file descriptor*/
+static guint ps_evdev_id = 0;
+
+/** Sensord name for PS */
+static const char ps_name[]  = "proximitysensor";
+
+/** Sensord D-Bus interface for PS */
+static const char ps_iface[] = "local.ProximitySensor";
+
+/** Sensord session id for PS */
+static int        ps_sid     = -1;
+
+/** Input watch for PS data */
+static guint      ps_wid     = 0;
+
+/** Flag for MCE wants to enable PS */
+static bool       ps_want    = false;
+
+/** Flag for PS enabled at sensord */
+static bool       ps_have    = false;
+
+/** Callback for sending PS data to where it is needed */
+static void     (*ps_notify_cb)(bool covered) = 0;
+
+/** Proximity state to report when sensord is not available */
+#define PS_STATE_WHEN_SENSORD_IS_DOWN false
 /** Wrapper for ps_notify_cb hook
+ *
+ * @param covered proximity sensor state
+ * @param srce    where does to value originate from
  */
 static void
-ps_notify(bool covered)
+ps_notify(bool covered, input_source_t srce)
 {
-	mce_log(LL_DEBUG, "proximity: %scovered", covered ? "" : "not ");
+	static bool ps_covered_last = PS_STATE_WHEN_SENSORD_IS_DOWN;
+
+	if( srce == DS_RESTORE )
+		covered = ps_covered_last;
+
+	/* If we have evdev source, prefer that over sensord input */
+	if( ps_evdev_id ) {
+		if( srce == DS_EVDEV )
+			ps_covered_last = covered;
+
+		if( srce == DS_SENSORD ) {
+			if( covered != ps_covered_last )
+				mce_log(LL_WARN, "sensord=%u vs evdev=%u",
+					covered, ps_covered_last);
+			goto EXIT;
+		}
+
+	}
+	else {
+		if( srce == DS_SENSORD )
+			ps_covered_last = covered;
+
+		if( srce == DS_EVDEV )
+			goto EXIT;
+	}
+
+	mce_log(LL_NOTICE, "PS: %scovered (%s)",
+		covered ? "" : "not-", input_source_name[srce]);
 
 	if( ps_notify_cb )
 		ps_notify_cb(covered);
-	else
-		mce_log(LL_WARN, "PS enabled without notify cb");
+	else if( srce != DS_FAKED )
+		mce_log(LL_INFO, "PS data without notify cb");
+EXIT:
+	return;
+}
+
+/** Handle PS input from sensord
+ *
+ * @param chn  io channel
+ * @param cnd  (not used)
+ * @param aptr (not used)
+ *
+ * @return TRUE to keep io watch, or FALSE to remove it
+ */
+static gboolean
+ps_input_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
+{
+	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
+
+	(void)cnd; (void)aptr; // unused
+
+	gboolean keep_going = FALSE;
+	uint32_t count = 0;
+
+	int fd;
+	int rc;
+	ps_data_t data;
+
+	memset(&data, 0, sizeof data);
+
+	if( (fd = g_io_channel_unix_get_fd(chn)) < 0 ) {
+		mce_log(LL_ERR, "io channel has no fd");
+		goto EXIT;
+	}
+
+	// FIXME: there should be only one read() ...
+
+	rc = read(fd, &count, sizeof count);
+	if( rc == -1 ) {
+		if( errno == EINTR || errno == EAGAIN )
+			keep_going = TRUE;
+		else
+			mce_log(LL_ERR, "read sample count: %m");
+		goto EXIT;
+	}
+	if( rc == 0 ) {
+		mce_log(LL_ERR, "read sample count: EOF");
+		goto EXIT;
+	}
+	if( rc != (int)sizeof count) {
+		mce_log(LL_ERR, "read sample count: got %d of %d bytes",
+			rc, (int)sizeof count);
+		goto EXIT;
+	}
+
+	mce_log(LL_DEBUG, "Got %u PS values", (unsigned)count);
+
+	if( count < 1 ) {
+		keep_going = TRUE;
+		goto EXIT;
+	}
+
+	for( unsigned i = 0; i < count; ++i ) {
+		errno = 0, rc = read(fd, &data, sizeof data);
+		if( rc != sizeof data ) {
+			mce_log(LL_ERR, "failed to read sample: %m");
+			goto EXIT;
+		}
+	}
+
+	mce_log(LL_DEBUG, "last PS value = %u / %d", data.value,
+		data.withinProximity);
+
+	ps_notify(data.withinProximity != 0, DS_SENSORD);
+
+	keep_going = TRUE;
+
+EXIT:
+	if( !keep_going ) {
+		mce_log(LL_CRIT, "disabling io watch");
+		ps_wid = 0;
+	}
+	return keep_going;
 }
 
 /** Handle reply to initial PS value request
@@ -1022,9 +1231,9 @@ static void mce_sensorfw_ps_read_cb(DBusPendingCall *pc, void *aptr)
 	dbus_message_iter_get_basic(&rec, &dst);
 	dbus_message_iter_next(&rec);
 
-	mce_log(LL_INFO, "initial PS value = %u", dst);
+	mce_log(LL_NOTICE, "initial PS value = %u", dst);
 
-	ps_notify(dst < 1);
+	ps_notify(dst < 1, DS_SENSORD);
 
 	res = true;
 
@@ -1083,8 +1292,7 @@ static void mce_sensorfw_ps_stop_session(void)
 	if( ps_wid ) {
 		g_source_remove(ps_wid), ps_wid = 0;
 
-		if( ps_notify_cb )
-			ps_notify(PS_STATE_WHEN_SENSORD_IS_DOWN);
+		ps_notify(PS_STATE_WHEN_SENSORD_IS_DOWN, DS_FAKED);
 	}
 	ps_have = false;
 }
@@ -1196,8 +1404,10 @@ mce_sensorfw_ps_rethink(void)
 		goto EXIT;
 	}
 
-	if( ps_want )
+	if( ps_want ) {
+		ps_notify(0, DS_RESTORE);
 		mce_sensorfw_ps_start_sensor();
+	}
 	else
 		mce_sensorfw_ps_stop_sensor();
 
@@ -1232,9 +1442,425 @@ mce_sensorfw_ps_disable(void)
 void mce_sensorfw_ps_set_notify(void (*cb)(bool covered))
 {
 	mce_log(LL_DEBUG, "@%s(%p)", __FUNCTION__, cb);
-	ps_notify_cb = cb;
-	if( ps_notify_cb && !sensord_running )
-		ps_notify(PS_STATE_WHEN_SENSORD_IS_DOWN);
+	if( (ps_notify_cb = cb) ) {
+		if( !sensord_running )
+			ps_notify(PS_STATE_WHEN_SENSORD_IS_DOWN, DS_FAKED);
+		else
+			ps_notify(0, DS_RESTORE);
+	}
+}
+
+/* ========================================================================= *
+ * Orientation
+ * ========================================================================= */
+
+/** Orientation data block as sensord sends them */
+typedef struct orient_data {
+	uint64_t timestamp; /* microseconds, monotonic */
+	int32_t  state;
+} orient_data_t;
+
+static const char * const orient_state_lut[] =
+{
+       [MCE_ORIENTATION_UNDEFINED]   = "Undefined",
+       [MCE_ORIENTATION_LEFT_UP]     = "LeftUp",
+       [MCE_ORIENTATION_RIGHT_UP]    = "RightUp",
+       [MCE_ORIENTATION_BOTTOM_UP]   = "BottomUp",
+       [MCE_ORIENTATION_BOTTOM_DOWN] = "BottomDown",
+       [MCE_ORIENTATION_FACE_DOWN]   = "FaceDown",
+       [MCE_ORIENTATION_FACE_UP]     = "FaceUp",
+};
+static const char *orient_state_name(int state)
+{
+	const char *res = 0;
+
+	size_t count = sizeof orient_state_lut / sizeof *orient_state_lut;
+
+	if( (size_t) state < count )
+		res = orient_state_lut[state];
+
+	return res ?: "Unknown";
+}
+
+/** Sensord name for Orientation */
+static const char orient_name[]  = "orientationsensor";
+
+/** Sensord D-Bus interface for Orientation */
+static const char orient_iface[] = "local.OrientationSensor";
+
+/** Sensord session id for Orientation */
+static int        orient_sid     = -1;
+
+/** Input watch for Orientation data */
+static guint      orient_wid     = 0;
+
+/** Flag for MCE wants to enable Orientation */
+static bool       orient_want    = false;
+
+/** Flag for Orientation enabled at sensord */
+static bool       orient_have    = false;
+
+/** Callback for sending Orientation data to where it is needed */
+static void     (*orient_notify_cb)(int state) = 0;
+
+/** Orientation state to report when sensord is not available */
+#define ORIENT_STATE_WHEN_SENSORD_IS_DOWN MCE_ORIENTATION_FACE_UP
+
+/** Wrapper for orient_notify_cb hook
+ */
+static void
+orient_notify(int state, bool synthetic)
+{
+	mce_log(LL_DEBUG, "orientation: %d / %s%s", state,
+		orient_state_name(state),
+		synthetic ? " (fake event)" : "");
+
+	if( orient_notify_cb )
+		orient_notify_cb(state);
+	else if( !synthetic )
+		mce_log(LL_WARN, "orientation enabled without notify cb");
+}
+
+/** Handle Orientation input from sensord
+ *
+ * @param chn  io channel
+ * @param cnd  (not used)
+ * @param aptr (not used)
+ *
+ * @return TRUE to keep io watch, or FALSE to remove it
+ */
+static gboolean
+orient_input_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
+{
+	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
+
+	(void)cnd; (void)aptr; // unused
+
+	gboolean keep_going = FALSE;
+	uint32_t count = 0;
+
+	int fd;
+	int rc;
+	orient_data_t data;
+
+	memset(&data, 0, sizeof data);
+
+	if( (fd = g_io_channel_unix_get_fd(chn)) < 0 ) {
+		mce_log(LL_ERR, "io channel has no fd");
+		goto EXIT;
+	}
+
+	// FIXME: there should be only one read() ...
+
+	rc = read(fd, &count, sizeof count);
+	if( rc == -1 ) {
+		if( errno == EINTR || errno == EAGAIN )
+			keep_going = TRUE;
+		else
+			mce_log(LL_ERR, "read sample count: %m");
+		goto EXIT;
+	}
+	if( rc == 0 ) {
+		mce_log(LL_ERR, "read sample count: EOF");
+		goto EXIT;
+	}
+	if( rc != (int)sizeof count) {
+		mce_log(LL_ERR, "read sample count: got %d of %d bytes",
+			rc, (int)sizeof count);
+		goto EXIT;
+	}
+
+	mce_log(LL_DEBUG, "Got %u orientation values", (unsigned)count);
+
+	if( count < 1 ) {
+		keep_going = TRUE;
+		goto EXIT;
+	}
+
+	for( unsigned i = 0; i < count; ++i ) {
+		errno = 0, rc = read(fd, &data, sizeof data);
+		if( rc != sizeof data ) {
+			mce_log(LL_ERR, "failed to read sample: %m");
+			goto EXIT;
+		}
+	}
+
+	mce_log(LL_DEBUG, "last orientation value = %u", data.state);
+	orient_notify(data.state, false);
+
+	keep_going = TRUE;
+
+EXIT:
+	if( !keep_going ) {
+		mce_log(LL_CRIT, "disabling io watch");
+		orient_wid = 0;
+	}
+	return keep_going;
+}
+
+/** Handle reply to initial Orientation value request
+ *
+ * @param pc  pending call object
+ * @param aptr (not used)
+ */
+static void mce_sensorfw_orient_read_cb(DBusPendingCall *pc, void *aptr)
+{
+	(void)aptr;
+
+	mce_log(LL_INFO, "Received intial Orientation distance reply");
+
+	bool          res = false;
+	DBusMessage  *rsp = 0;
+	DBusError     err = DBUS_ERROR_INIT;
+	dbus_uint64_t tck = 0;
+	dbus_uint32_t val = 0;
+
+	DBusMessageIter body, var, rec;
+
+	if( !(rsp = dbus_pending_call_steal_reply(pc)) )
+		goto EXIT;
+
+	if( dbus_set_error_from_message(&err, rsp) ) {
+		mce_log(LL_ERR, "orientation error reply: %s: %s",
+			err.name, err.message);
+		goto EXIT;
+	}
+
+	if( !dbus_message_iter_init(rsp, &body) )
+		goto EXIT;
+
+	if( dbus_message_iter_get_arg_type(&body) != DBUS_TYPE_VARIANT )
+		goto EXIT;
+
+	dbus_message_iter_recurse(&body, &var);
+	dbus_message_iter_next(&body);
+	if( dbus_message_iter_get_arg_type(&var) != DBUS_TYPE_STRUCT )
+		goto EXIT;
+
+	dbus_message_iter_recurse(&var, &rec);
+	dbus_message_iter_next(&var);
+	if( dbus_message_iter_get_arg_type(&rec) !=  DBUS_TYPE_UINT64 )
+		goto EXIT;
+
+	dbus_message_iter_get_basic(&rec, &tck);
+	dbus_message_iter_next(&rec);
+	if( dbus_message_iter_get_arg_type(&rec) !=  DBUS_TYPE_UINT32 )
+		goto EXIT;
+
+	dbus_message_iter_get_basic(&rec, &val);
+	dbus_message_iter_next(&rec);
+
+	mce_log(LL_INFO, "initial orientation value = %u", val);
+
+	orient_notify(val, false);
+
+	res = true;
+
+EXIT:
+	if( !res ) mce_log(LL_WARN, "did not get initial orientation value");
+	if( rsp ) dbus_message_unref(rsp);
+	dbus_pending_call_unref(pc);
+	dbus_error_free(&err);
+}
+
+/** Issue get Orientation value IPC to sensord
+ *
+ * @param id        sensor name
+ * @param iface     D-Bus interface for the sensor
+ * @param sessionid sensord session id from mce_sensorfw_request_sensor()
+ */
+static void
+mce_sensorfw_orient_read(const char *id, const char *iface, int sessionid)
+{
+	(void)sessionid;
+
+	char *path = 0;
+	const char *prop = "orientation";
+
+	mce_log(LL_INFO, "read(%s, %d)", id, sessionid);
+
+	if( asprintf(&path, "%s/%s", SENSORFW_PATH, id) < 0 ) {
+		path = 0;
+		goto EXIT;
+	}
+
+	dbus_send(SENSORFW_SERVICE,
+		  path,
+		  "org.freedesktop.DBus.Properties",
+		  "Get",
+		  mce_sensorfw_orient_read_cb,
+		  DBUS_TYPE_STRING, &iface,
+		  DBUS_TYPE_STRING, &prop,
+		  DBUS_TYPE_INVALID);
+EXIT:
+	free(path);
+}
+
+/** Close Orientation session with sensord
+ */
+static void mce_sensorfw_orient_stop_session(void)
+{
+	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
+
+	if( orient_sid != -1 ) {
+		if( sensord_running )
+			mce_sensorfw_release_sensor(orient_name, orient_sid);
+		orient_sid = -1;
+	}
+
+	if( orient_wid ) {
+		g_source_remove(orient_wid), orient_wid = 0;
+		orient_notify(ORIENT_STATE_WHEN_SENSORD_IS_DOWN, true);
+	}
+	orient_have = false;
+}
+
+/** Have Orientation session with sensord predicate
+ *
+ * @return true if session exists, or false if not
+ */
+static bool mce_sensorfw_orient_have_session(void)
+{
+	return orient_wid != 0;
+}
+
+/** Open Orientation session with sensord
+ *
+ * @return true on success, or false in case of errors
+ */
+static bool mce_sensorfw_orient_start_session(void)
+{
+	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
+
+	if( orient_wid ) {
+		goto EXIT;
+	}
+
+	if( !mce_sensorfw_load_sensor(orient_name) ) {
+		goto EXIT;
+	}
+
+	orient_sid = mce_sensorfw_request_sensor(orient_name);
+	if( orient_sid < 0 )
+		goto EXIT;
+
+	orient_wid = mce_sensorfw_add_io_watch(orient_sid, orient_input_cb);
+	if( !orient_wid )
+		goto EXIT;
+
+EXIT:
+	if( !orient_wid ) {
+		// all or nothing
+		mce_sensorfw_orient_stop_session();
+	}
+	return orient_wid != 0;
+}
+
+/** Enable Orientation via sensord
+ */
+static void mce_sensorfw_orient_start_sensor(void)
+{
+	if( orient_have )
+		goto EXIT;
+
+	if( !mce_sensorfw_orient_start_session() )
+		goto EXIT;
+
+	if( !mce_sensorfw_start_sensor(orient_name, orient_iface, orient_sid) )
+		goto EXIT;
+
+	/* No error checking here; failures will be logged when
+	 * we get reply message from sensord */
+	mce_sensorfw_set_standby_override(orient_name, orient_iface, orient_sid, true);
+
+	orient_have = true;
+
+	/* There is no quarantee that we get sensor input
+	 * anytime soon, so we make an explicit get current
+	 * value request after starting sensor */
+	mce_sensorfw_orient_read(orient_name, orient_iface, orient_sid);
+EXIT:
+	return;
+}
+
+/** Disable Orientation via sensord
+ */
+static void mce_sensorfw_orient_stop_sensor(void)
+{
+	if( !orient_have )
+		goto EXIT;
+
+	if( mce_sensorfw_orient_have_session() ) {
+		mce_sensorfw_set_standby_override(orient_name, orient_iface, orient_sid,
+						  false);
+		mce_sensorfw_stop_sensor(orient_name, orient_iface, orient_sid);
+	}
+
+	orient_have = false;
+EXIT:
+	return;
+}
+
+/** Rethink Orientation enabled state
+ */
+static void
+mce_sensorfw_orient_rethink(void)
+{
+	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
+	if( !sensord_running ) {
+		mce_log(LL_WARN, "sensord not on dbus;"
+			" skipping ps enable/disable for now");
+		goto EXIT;
+	}
+
+	if( orient_want == orient_have )
+		goto EXIT;
+
+	if( system_suspended ) {
+		mce_log(LL_NOTICE, "skipping ps enable/disable;"
+			" should be suspended");
+		goto EXIT;
+	}
+
+	if( orient_want )
+		mce_sensorfw_orient_start_sensor();
+	else
+		mce_sensorfw_orient_stop_sensor();
+
+EXIT:
+	return;
+}
+
+/** Try to enable Orientation input
+ */
+void
+mce_sensorfw_orient_enable(void)
+{
+	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
+	orient_want = true;
+	mce_sensorfw_orient_rethink();
+}
+
+/** Try to disable Orientation input
+ */
+void
+mce_sensorfw_orient_disable(void)
+{
+	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
+	orient_want = false;
+	mce_sensorfw_orient_rethink();
+}
+
+/** Set Orientation notification callback
+ *
+ * @param cb function to call when Orientation events are received
+ */
+void mce_sensorfw_orient_set_notify(void (*cb)(int covered))
+{
+	mce_log(LL_DEBUG, "@%s(%p)", __FUNCTION__, cb);
+	orient_notify_cb = cb;
+	if( !sensord_running )
+		orient_notify(ORIENT_STATE_WHEN_SENSORD_IS_DOWN, true);
 }
 
 /* ========================================================================= *
@@ -1255,10 +1881,12 @@ static void xsensord_rethink(void)
 	static bool was_suspended = false;
 
 	if( !sensord_running ) {
+		mce_sensorfw_orient_stop_session();
 		mce_sensorfw_als_stop_session();
 		mce_sensorfw_ps_stop_session();
 	}
 	else if( system_suspended ) {
+		mce_sensorfw_orient_stop_sensor();
 		mce_sensorfw_als_stop_sensor();
 		if( stop_ps_on_suspend() )
 			mce_sensorfw_ps_stop_sensor();
@@ -1266,12 +1894,13 @@ static void xsensord_rethink(void)
 	else {
 		mce_sensorfw_als_rethink();
 		mce_sensorfw_ps_rethink();
+		mce_sensorfw_orient_rethink();
 	}
 	if( system_suspended && !was_suspended ) {
 		/* test callback pointer here too to avoid warning */
 		if( stop_ps_on_suspend() && ps_notify_cb  ) {
 			mce_log(LL_DEBUG, "faking proximity closed");
-			ps_notify(true);
+			ps_notify(true, DS_FAKED);
 		}
 	}
 
@@ -1441,6 +2070,34 @@ static const char xsensord_name_owner_rule[] =
  * MODULE
  * ========================================================================= */
 
+#define TRACK_ALS_DATAPIPE 0
+#define TRACK_PS_DATAPIPE  1
+
+#if TRACK_ALS_DATAPIPE
+/** Debug: how ALS shows up in mce state machines */
+static void ambient_light_sensor_trigger(gconstpointer data)
+{
+  int lux = GPOINTER_TO_INT(data);
+  mce_log(LL_NOTICE, "AMBIENT_LIGHT=%d", lux);
+}
+#endif
+
+#if TRACK_PS_DATAPIPE
+/** Debug: how PS shows up in mce state machines */
+static void proximity_sensor_trigger(gconstpointer data)
+{
+	cover_state_t proximity_sensor_state = GPOINTER_TO_INT(data);
+
+	const char *tag = "UNKNOWN";
+	switch( proximity_sensor_state ) {
+	case COVER_CLOSED: tag = "COVERED";     break;
+	case COVER_OPEN:   tag = "NOT-COVERED"; break;
+	default: break;
+	}
+	mce_log(LL_NOTICE, "PROXIMITY=%s", tag);
+}
+#endif
+
 /** Initialize mce sensorfw module
  */
 bool
@@ -1449,6 +2106,16 @@ mce_sensorfw_init(void)
 	mce_log(LL_INFO, "@%s()", __FUNCTION__);
 
 	bool res = false;
+
+#if TRACK_ALS_DATAPIPE
+	append_output_trigger_to_datapipe(&ambient_light_sensor_pipe,
+					  ambient_light_sensor_trigger);
+#endif
+
+#if TRACK_PS_DATAPIPE
+	append_output_trigger_to_datapipe(&proximity_sensor_pipe,
+					  proximity_sensor_trigger);
+#endif
 
 	if( !(systembus = dbus_connection_get()) )
 		goto EXIT;
@@ -1473,8 +2140,28 @@ mce_sensorfw_quit(void)
 {
 	mce_log(LL_INFO, "@%s()", __FUNCTION__);
 
+	/* release evdev inputs */
+	if( ps_evdev_id )
+		g_source_remove(ps_evdev_id), ps_evdev_id = 0;
+
+	if( als_evdev_id )
+		g_source_remove(als_evdev_id), als_evdev_id = 0;
+
+	/* remove datapipe triggers */
+#if TRACK_ALS_DATAPIPE
+	remove_output_trigger_from_datapipe(&ambient_light_sensor_pipe,
+					    ambient_light_sensor_trigger);
+#endif
+
+#if TRACK_PS_DATAPIPE
+	remove_output_trigger_from_datapipe(&proximity_sensor_pipe,
+					    proximity_sensor_trigger);
+#endif
+
+	/* clean up sensord connection */
 	mce_sensorfw_ps_stop_session();
 	mce_sensorfw_als_stop_session();
+	mce_sensorfw_orient_stop_session();
 
 	if( systembus ) {
 		dbus_connection_remove_filter(systembus,
@@ -1514,4 +2201,52 @@ mce_sensorfw_resume(void)
 		mce_log(LL_INFO, "@%s()", __FUNCTION__);
 		xsensord_rethink();
 	}
+}
+
+/** Use evdev file descriptor as ALS data source
+ *
+ * Called from evdev probing if ALS device node is detected
+ *
+ * @param fd file descriptor
+ */
+void mce_sensorfw_als_attach(int fd)
+{
+	struct input_absinfo info;
+	memset(&info, 0, sizeof info);
+
+	/* Note: als_evdev_id must be set before calling als_notify() */
+	als_evdev_id = mce_sensorfw_start_iomon(fd, mce_sensorfw_evdev_cb,
+						&als_evdev_id);
+
+	if( ioctl(fd, EVIOCGABS(ABS_MISC), &info) == -1 )
+		mce_log(LL_ERR, "EVIOCGABS(%s): %m", "ABS_MISC");
+	else {
+		mce_log(LL_INFO, "ALS: %d (initial)", info.value);
+		als_notify(info.value, DS_EVDEV);
+	}
+
+}
+
+/** Use evdev file descriptor as PS data source
+ *
+ * Called from evdev probing if PS device node is detected
+ *
+ * @param fd file descriptor
+ */
+void mce_sensorfw_ps_attach(int fd)
+{
+	struct input_absinfo info;
+	memset(&info, 0, sizeof info);
+
+	/* Note: ps_evdev_id must be set before calling ps_notify() */
+	ps_evdev_id = mce_sensorfw_start_iomon(fd, mce_sensorfw_evdev_cb,
+					       &ps_evdev_id);
+
+	if( ioctl(fd, EVIOCGABS(ABS_DISTANCE), &info) == -1 )
+		mce_log(LL_ERR, "EVIOCGABS(%s): %m", "ABS_DISTANCE");
+	else {
+		mce_log(LL_CRIT, "PS: %d (initial)", info.value);
+		ps_notify(info.value < 1, DS_EVDEV);
+	}
+
 }

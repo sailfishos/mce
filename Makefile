@@ -45,7 +45,7 @@ distclean:: clean
 # CONFIGURATION
 # ----------------------------------------------------------------------------
 
-VERSION := 1.18.0
+VERSION := 1.20.0
 
 INSTALL_BIN := install --mode=755
 INSTALL_DIR := install -d
@@ -166,6 +166,7 @@ MODULES += $(MODULE_DIR)/alarm.so
 MODULES += $(MODULE_DIR)/battery-bme.so
 MODULES += $(MODULE_DIR)/battery-upower.so
 MODULES += $(MODULE_DIR)/display.so
+MODULES += $(MODULE_DIR)/doubletap.so
 MODULES += $(MODULE_DIR)/led.so
 MODULES += $(MODULE_DIR)/callstate.so
 MODULES += $(MODULE_DIR)/audiorouting.so

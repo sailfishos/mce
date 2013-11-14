@@ -176,13 +176,6 @@ static void stm_target_push_change(display_state_t display_state);
 static void stm_rethink_schedule(void);
 static void stm_rethink_force(void);
 
-/** Contextkit D-Bus service */
-#define ORIENTATION_SIGNAL_IF		"org.maemo.contextkit.Property"
-/** Contextkit D-Bus orientation path */
-#define ORIENTATION_SIGNAL_PATH		"/org/maemo/contextkit/Screen/TopEdge"
-/** Contextkit D-Bus orientation changed signal */
-#define ORIENTATION_VALUE_CHANGE_SIG	"ValueChanged"
-
 /** Module name */
 #define MODULE_NAME		"display"
 
@@ -3413,41 +3406,6 @@ static gboolean desktop_startup_dbus_cb(DBusMessage *const msg)
 	return status;
 }
 
-/**
- * D-Bus callback for the display orientation change signal
- *
- * @param msg The D-Bus message
- * @return TRUE on success, FALSE on failure
- */
-static gboolean display_orientation_change_dbus_cb(DBusMessage *const msg)
-{
-	display_state_t display_state = display_state_get();
-	gboolean status = FALSE;
-
-	(void)msg;
-
-	mce_log(LL_DEBUG,
-		"Received display orientation change notification");
-
-	/* Since there are two signals using the same interface,
-	 * the dbus_message_has_path() function is called
-	 * to check if the signal is the required one
-	 */
-	if (dbus_message_has_path(msg, ORIENTATION_SIGNAL_PATH) == TRUE) {
-		/* Generate activity if the display is on/dim */
-		if ((display_state == MCE_DISPLAY_ON) ||
-		    (display_state == MCE_DISPLAY_DIM)) {
-			(void)execute_datapipe(&device_inactive_pipe,
-					       GINT_TO_POINTER(FALSE),
-					       USE_INDATA, CACHE_INDATA);
-		}
-	}
-
-	status = TRUE;
-
-	return status;
-}
-
 /** Have we seen shutdown_ind signal from dsme */
 static gboolean shutdown_started = FALSE;
 
@@ -4251,6 +4209,57 @@ static void cancel_display_timers(void)
 	//cancel_adaptive_dimming_timeout();
 }
 
+/** Cached Orientation Sensor value */
+static orientation_state_t orientation_state = MCE_ORIENTATION_UNDEFINED;
+
+/** Callback for handling orientation change notifications
+ *
+ * @param state orientation sensor state
+ */
+static void orientation_changed_cb(int state)
+{
+	execute_datapipe(&orientation_sensor_pipe,
+			 GINT_TO_POINTER(state),
+			 USE_INDATA, CACHE_INDATA);
+}
+
+/** Generate user activity from orientation sensor input
+ */
+static void orientation_generate_activity(void)
+{
+	static orientation_state_t prev_orientation_state = MCE_ORIENTATION_UNDEFINED;
+	display_state_t display_state = datapipe_get_gint(display_state_pipe);
+
+
+	/* Generate activity if the display is on/dim */
+	if( prev_orientation_state != orientation_state ) {
+		prev_orientation_state = orientation_state;
+
+		switch( display_state ) {
+		case MCE_DISPLAY_ON:
+		case MCE_DISPLAY_DIM:
+			mce_log(LL_DEBUG, "generate activity"
+				"; orientation change");
+			execute_datapipe(&device_inactive_pipe,
+					 GINT_TO_POINTER(FALSE),
+					 USE_INDATA, CACHE_INDATA);
+			break;
+		default:
+			break;
+		}
+	}
+}
+
+/** Handle orientation sensor state change
+ *
+ * @param data The orientation state stored in a pointer
+ */
+static void orientation_state_trigger(gconstpointer data)
+{
+	orientation_state = GPOINTER_TO_INT(data);
+	orientation_generate_activity();
+}
+
 /**
  * Handle display state change
  *
@@ -4265,6 +4274,20 @@ static void display_state_trigger(gconstpointer data)
 	display_state_t display_state = GPOINTER_TO_INT(data);
 
 	cancel_lpm_proximity_blank_timeout();
+
+	/* Enable orientation sensor in ON|DIM */
+	switch( display_state ) {
+	case MCE_DISPLAY_DIM:
+	case MCE_DISPLAY_ON:
+		mce_sensorfw_orient_set_notify(orientation_changed_cb);
+		mce_sensorfw_orient_enable();
+		break;
+
+	default:
+		mce_sensorfw_orient_set_notify(0);
+		mce_sensorfw_orient_disable();
+		break;
+	}
 
 	switch (display_state) {
 	case MCE_DISPLAY_OFF:
@@ -4494,35 +4517,38 @@ static void charger_state_trigger(gconstpointer data)
  */
 static void device_inactive_trigger(gconstpointer data)
 {
-	system_state_t system_state = datapipe_get_gint(system_state_pipe);
 	gboolean device_inactive = GPOINTER_TO_INT(data);
-	submode_t submode = mce_get_submode_int32();
 
-	/* Unblank screen on device activity,
-	 * unless the tklock is active
+	if( device_inactive )
+		goto EXIT;
+
+	/* Unblank screen on device activity
 	 */
-	if (((system_state == MCE_STATE_USER) ||
-	     (system_state == MCE_STATE_ACTDEAD)) &&
-	    (device_inactive == FALSE) &&
-	    ((submode & MCE_TKLOCK_SUBMODE) == 0)) {
-		/* Adjust the adaptive dimming timeouts,
-		 * even if we don't use them
-		 */
-		if (adaptive_dimming_timeout_cb_id != 0) {
-			if (g_slist_nth(possible_dim_timeouts,
-					dim_timeout_index +
-					adaptive_dimming_index + 1) != NULL)
-				adaptive_dimming_index++;
-		}
-		/* Explicitly reset the display dim timer in case the
-		 * display is already on (and the datapipe execution
-		 * below turns into a nop) */
-		setup_dim_timeout();
 
-		(void)execute_datapipe(&display_state_req_pipe,
-				       GINT_TO_POINTER(MCE_DISPLAY_ON),
-				       USE_INDATA, CACHE_INDATA);
+
+	/* Adjust the adaptive dimming timeouts,
+	 * even if we don't use them
+	 */
+	if (adaptive_dimming_timeout_cb_id != 0) {
+		if (g_slist_nth(possible_dim_timeouts,
+				dim_timeout_index +
+				adaptive_dimming_index + 1) != NULL)
+			adaptive_dimming_index++;
 	}
+
+	/* Explicitly reset the display dim timer in case the
+	 * display is already on (and the datapipe execution
+	 * below turns into a nop) */
+	setup_dim_timeout();
+
+	if( display_state_get() != MCE_DISPLAY_ON )
+		mce_log(LL_NOTICE, "display on due to activity");
+
+	(void)execute_datapipe(&display_state_req_pipe,
+			       GINT_TO_POINTER(MCE_DISPLAY_ON),
+			       USE_INDATA, CACHE_INDATA);
+EXIT:
+	return;
 }
 
 /**
@@ -5488,6 +5514,8 @@ const gchar *g_module_check_init(GModule *module)
 					  display_brightness_trigger);
 	append_output_trigger_to_datapipe(&display_state_pipe,
 					  display_state_trigger);
+	append_output_trigger_to_datapipe(&orientation_sensor_pipe,
+					  orientation_state_trigger);
 	append_output_trigger_to_datapipe(&display_state_req_pipe,
 					  display_state_req_trigger);
 	append_output_trigger_to_datapipe(&submode_pipe,
@@ -5607,14 +5635,6 @@ const gchar *g_module_check_init(GModule *module)
 				 NULL,
 				 DBUS_MESSAGE_TYPE_SIGNAL,
 				 shutdown_dbus_cb) == NULL)
-		goto EXIT;
-
-	/* Display orientation change signal */
-	if (mce_dbus_handler_add(ORIENTATION_SIGNAL_IF,
-				 ORIENTATION_VALUE_CHANGE_SIG,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_SIGNAL,
-				 display_orientation_change_dbus_cb) == NULL)
 		goto EXIT;
 
 	/* Turning demo mode on/off */
@@ -5895,6 +5915,8 @@ void g_module_unload(GModule *module)
 					    display_state_req_trigger);
 	remove_output_trigger_from_datapipe(&display_state_pipe,
 					    display_state_trigger);
+	remove_output_trigger_from_datapipe(&orientation_sensor_pipe,
+					    orientation_state_trigger);
 	remove_output_trigger_from_datapipe(&display_brightness_pipe,
 					    display_brightness_trigger);
 	remove_output_trigger_from_datapipe(&charger_state_pipe,
@@ -5940,6 +5962,9 @@ void g_module_unload(GModule *module)
 		dbus_connection_unref(systembus), systembus = 0;
 	}
 	poweron_led_rethink_cancel();
+
+	/* Remove callbacks on module unload */
+	mce_sensorfw_orient_set_notify(0);
 
 	return;
 }
