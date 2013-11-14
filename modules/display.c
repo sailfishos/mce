@@ -5807,6 +5807,8 @@ const gchar *g_module_check_init(GModule *module)
 
 	/* Set display brightness to minimal value */
 	write_brightness_value(1);
+	cached_brightness = 1;
+	target_brightness = 1;
 
 	/* Note: Transition to MCE_DISPLAY_OFF can be made already
 	 * here, but the MCE_DISPLAY_ON state is blocked until mCE
