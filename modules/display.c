@@ -2356,9 +2356,9 @@ typedef enum
 } renderer_state_t;
 
 /** For how long we allow ui side to delay suspending [ms]; -1 = use default */
-static int renderer_ipc_timeout = -1;
+static int renderer_ipc_timeout = 30 * 1000;
 
-/** UI side rendering state; no suspend unless RENDERER_ENABLED */
+/** UI side rendering state; no suspend unless RENDERER_DISABLED */
 static renderer_state_t renderer_ui_state = RENDERER_UNKNOWN;
 
 /** Currently active setUpdatesEnabled() method call */
@@ -5022,10 +5022,6 @@ static bool stm_target_pull_change(void)
 
 static void stm_target_finish_change(void)
 {
-	// already finished?
-	if( stm_curr == stm_next )
-		return;
-
 	// do post-transition actions
 	display_state_t prev = stm_curr;
 	stm_curr = stm_next;
@@ -5117,9 +5113,15 @@ static void stm_rethink_step(void)
 	case STM_RENDERER_WAIT_START:
 		if( stm_renderer_pending() )
 			break;
-		if( !stm_renderer_enabled() )
-			mce_log(LL_ERR, "ui start failed, ignoring");
-		stm_trans(STM_ENTER_POWER_ON);
+		if( stm_renderer_enabled() ) {
+			stm_trans(STM_ENTER_POWER_ON);
+			break;
+		}
+		/* If lipstick is not responsive, we must keep trying
+		 * until we get a reply - or lipstick dies and drops
+		 * from system bus */
+		mce_log(LL_CRIT, "ui start failed, retrying");
+		stm_trans(STM_RENDERER_INIT_START);
 		break;
 
 
@@ -5164,11 +5166,11 @@ static void stm_rethink_step(void)
 			stm_trans(STM_INIT_SUSPEND);
 			break;
 		}
-		mce_log(LL_ERR, "ui stop failed, reverting %s -> %s",
-			display_state_name(stm_curr),
-			display_state_name(stm_next));
-		stm_next = stm_curr;
-		stm_trans(STM_STAY_POWER_ON);
+		/* If lipstick is not responsive, we must keep trying
+		 * until we get a reply - or lipstick dies and drops
+		 * from system bus */
+		mce_log(LL_CRIT, "ui stop failed, retrying");
+		stm_trans(STM_RENDERER_INIT_STOP);
 		break;
 
 	case STM_INIT_SUSPEND:
@@ -5223,18 +5225,17 @@ static void stm_rethink_step(void)
 		break;
 
 	case STM_INIT_RESUME:
-		if( stm_display_state_needs_power(stm_next) ) {
-			stm_resume_start();
-			stm_trans(STM_WAIT_RESUME);
-			break;
-		}
-		stm_trans(STM_ENTER_LOGICAL_OFF);
+		stm_resume_start();
+		stm_trans(STM_WAIT_RESUME);
 		break;
 
 	case STM_WAIT_RESUME:
 		if( !stm_resume_finished() )
 			break;
-		stm_trans(STM_RENDERER_INIT_START);
+		if( stm_display_state_needs_power(stm_next) )
+			stm_trans(STM_RENDERER_INIT_START);
+		else
+			stm_trans(STM_ENTER_LOGICAL_OFF);
 		break;
 
 	case STM_ENTER_LOGICAL_OFF:
