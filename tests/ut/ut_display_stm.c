@@ -23,6 +23,18 @@ gconstpointer, execute_datapipe, (datapipe_struct *const datapipe,
 				  const data_source_t use_cache,
 				  const caching_policy_t cache_indata));
 
+/* mce-sensorfw.c stubs */
+
+EXTERN_STUB (
+void, mce_sensorfw_suspend, (void))
+{
+}
+
+EXTERN_STUB (
+void, mce_sensorfw_resume, (void))
+{
+}
+
 /* libwakelock stub */
 
 static GHashTable *stub__wakelock_locks = NULL;
@@ -288,8 +300,8 @@ START_TEST (ut_check_on_to_off_no_lipstick)
 	ck_assert_int_eq(stub__wakelock_suspend_allowed_wanted,
 			 UT_TRISTATE_UNDEF);
 
-	ck_assert_int_eq(dstate, STM_STAY_POWER_ON);
-	ck_assert_int_eq(stm_curr, MCE_DISPLAY_ON);
+	ck_assert_int_eq(dstate, STM_STAY_LOGICAL_OFF);
+	ck_assert_int_eq(stm_curr, MCE_DISPLAY_OFF);
 	ck_assert(!stub__wakelock_locked("mce_display_on"));
 }
 END_TEST
@@ -488,6 +500,7 @@ START_TEST (ut_check_disable_suspend_while_off)
 	dstate = STM_STAY_POWER_OFF;
 
 	stm_lipstick_on_dbus = true;
+	stm_enable_rendering_needed = false;
 	waitfb.thread = (pthread_t)-1;
 	waitfb.suspended = true;
 	renderer_ui_state = RENDERER_DISABLED;

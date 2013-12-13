@@ -5321,7 +5321,8 @@ static void stm_rethink_schedule(void)
 
 static void stm_rethink_force(void)
 {
-	wakelock_lock("mce_display_stm", -1);
+	if( !stm_rethink_id )
+		wakelock_lock("mce_display_stm", -1);
 	if( stm_rethink_id )
 		g_source_remove(stm_rethink_id), stm_rethink_id = 0;
 	stm_rethink();
@@ -5921,6 +5922,8 @@ const gchar *g_module_check_init(GModule *module)
 
 	/* Set display brightness to minimal value */
 	write_brightness_value(1);
+	cached_brightness = 1;
+	target_brightness = 1;
 
 	/* Note: Transition to MCE_DISPLAY_OFF can be made already
 	 * here, but the MCE_DISPLAY_ON state is blocked until mCE

@@ -795,6 +795,36 @@ void, mce_dbus_owner_monitor_remove_all, (GSList **monitor_list))
 }
 
 /*
+ * mce-sensorfw.c stubs {{{1
+ */
+
+EXTERN_STUB (
+void, mce_sensorfw_suspend, (void))
+{
+}
+
+EXTERN_STUB (
+void, mce_sensorfw_resume, (void))
+{
+}
+
+EXTERN_STUB (
+void, mce_sensorfw_orient_enable, (void))
+{
+}
+
+EXTERN_STUB (
+void, mce_sensorfw_orient_disable, (void))
+{
+}
+
+EXTERN_STUB (
+void, mce_sensorfw_orient_set_notify, (void (*cb)(int state)))
+{
+	(void)cb;
+}
+
+/*
  * tklock.c stubs {{{1
  */
 
@@ -1475,8 +1505,9 @@ START_TEST (ut_check_basic_state_change_no_lpm)
 	};
 
 	for( int i = 0; state_changes[i].required != MCE_DISPLAY_UNDEF; ++i ) {
+		gint current = display_state_get(); /* needed */
 		mce_log(LL_DEBUG, "%d: %s -> %s, expect %s", i,
-			display_state_name(display_state_get()),
+			display_state_name(current),
 			display_state_name(state_changes[i].required),
 			display_state_name(state_changes[i].expected));
 
@@ -1523,8 +1554,9 @@ START_TEST (ut_check_basic_state_change)
 	};
 
 	for( int i = 0; state_changes[i].required != MCE_DISPLAY_UNDEF; ++i ) {
+		gint current = display_state_get(); /* needed */
 		mce_log(LL_DEBUG, "%d: %s -> %s, expect %s", i,
-			display_state_name(display_state_get()),
+			display_state_name(current),
 			display_state_name(state_changes[i].required),
 			display_state_name(state_changes[i].expected));
 
