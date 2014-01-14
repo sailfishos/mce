@@ -66,8 +66,8 @@ static void timestamp(struct timeval *tv)
  */
 static loglevel_t mce_log_level_normalize(loglevel_t loglevel)
 {
-	if( loglevel < LL_CRIT ) {
-		loglevel = LL_CRIT;
+	if( loglevel < LL_ALERT ) {
+		loglevel = LL_ALERT;
 	}
 	else if( loglevel > LL_DEBUG ) {
 		loglevel = LL_DEBUG;
@@ -85,6 +85,7 @@ static const char *mce_log_level_tag(loglevel_t loglevel)
 {
 	const char *res = "?";
 	switch( loglevel ) {
+        case LL_ALERT:  res = "A"; break;
         case LL_CRIT:   res = "C"; break;
         case LL_ERR:    res = "E"; break;
         case LL_WARN:   res = "W"; break;
@@ -110,7 +111,7 @@ void mce_log_file(loglevel_t loglevel, const char *const file,
 
 	loglevel = mce_log_level_normalize(loglevel);
 
-	if (logverbosity >= loglevel) {
+	if( mce_log_p(loglevel) ) {
 		gchar *msg = 0;
 
 		va_start(args, fmt);
@@ -192,6 +193,8 @@ void mce_log_close(void)
  */
 int mce_log_p(const loglevel_t loglevel)
 {
+	if( loglevel < LL_CRIT )
+		return logverbosity >= LL_NOTICE;
 	return logverbosity >= loglevel;
 }
 
