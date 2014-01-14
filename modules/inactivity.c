@@ -513,6 +513,7 @@ static gpointer device_inactive_filter(gpointer data)
 	if( submode & MCE_TKLOCK_SUBMODE ) {
 		gboolean have_alarms = FALSE;
 		gboolean have_calls  = FALSE;
+		gboolean display_on  = FALSE;
 
 		switch( alarm_ui_state ) {
 		case MCE_ALARM_UI_RINGING_INT32:
@@ -531,7 +532,10 @@ static gpointer device_inactive_filter(gpointer data)
 			break;
 		}
 
-		if( !have_alarms && !have_calls ) {
+		if( display_state == MCE_DISPLAY_ON )
+			display_on = TRUE;
+
+		if( !display_on && !have_alarms && !have_calls ) {
 			mce_log(LL_DEBUG, "tklock enabled, no alarms or calls;"
 				" ignoring activity");
 			device_inactive = TRUE;

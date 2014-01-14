@@ -924,6 +924,8 @@ int main(int argc, char **argv)
 		       0, GINT_TO_POINTER(MCE_DISPLAY_UNDEF));
 	setup_datapipe(&display_state_req_pipe, READ_WRITE, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(MCE_DISPLAY_UNDEF));
+	setup_datapipe(&exception_state_pipe, READ_WRITE, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(UIEXC_NONE));
 	setup_datapipe(&display_brightness_pipe, READ_WRITE, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(3));
 	setup_datapipe(&led_brightness_pipe, READ_WRITE, DONT_FREE_CACHE,
@@ -980,6 +982,9 @@ int main(int argc, char **argv)
 		       0, GINT_TO_POINTER(THERMAL_STATE_UNDEF));
 	setup_datapipe(&heartbeat_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(0));
+	setup_datapipe(&lipstick_available_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(FALSE));
+
 
 	/* Initialise mode management
 	 * pre-requisite: mce_gconf_init()
@@ -1097,6 +1102,8 @@ EXIT:
 	free_datapipe(&led_brightness_pipe);
 	free_datapipe(&display_brightness_pipe);
 	free_datapipe(&display_state_pipe);
+	free_datapipe(&display_state_req_pipe);
+	free_datapipe(&exception_state_pipe);
 	free_datapipe(&submode_pipe);
 	free_datapipe(&alarm_ui_state_pipe);
 	free_datapipe(&call_type_pipe);
@@ -1104,6 +1111,7 @@ EXIT:
 	free_datapipe(&master_radio_pipe);
 	free_datapipe(&system_state_pipe);
 	free_datapipe(&heartbeat_pipe);
+	free_datapipe(&lipstick_available_pipe);
 
 	/* Call the exit function for all subsystems */
 	mce_gconf_exit();

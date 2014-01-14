@@ -492,6 +492,7 @@ install:: build
 	$(INSTALL_DTA) inifiles/mce.ini $(DESTDIR)$(CONFDIR)/$(CONFFILE)
 	$(INSTALL_DTA) inifiles/mce-radio-states.ini $(DESTDIR)$(CONFDIR)/$(RADIOSTATESCONFFILE)
 	$(INSTALL_DTA) inifiles/hybris-led.ini $(DESTDIR)$(CONFDIR)/20hybris-led.ini
+	$(INSTALL_DTA) inifiles/debug-led.ini $(DESTDIR)$(CONFDIR)/20debug-led.ini
 	$(INSTALL_DTA) inifiles/als-defaults.ini $(DESTDIR)$(CONFDIR)/20als-defaults.ini
 
 ifneq ($(strip $(ENABLE_BUILTIN_GCONF)),y)

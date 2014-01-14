@@ -159,42 +159,37 @@ static void generic_powerkey_handler(poweraction_t action,
 		break;
 
 	case POWER_TKLOCK_LOCK:
-		/* No tklock in act dead; just toggle the display on/off */
-		if( datapipe_get_gint(system_state_pipe) == MCE_STATE_ACTDEAD ) {
-			display_state_t display_state = display_state_get();
-			switch( display_state ) {
-			case MCE_DISPLAY_ON:
-			case MCE_DISPLAY_POWER_UP:
-				mce_log(LL_DEBUG, "act dead display on -> off");
-				execute_datapipe(&display_state_req_pipe,
-						 GINT_TO_POINTER(MCE_DISPLAY_OFF),
-						 USE_INDATA, CACHE_INDATA);
-				break;
+		/* FIXME: This just happens to be the default place to
+		 *        get hit when processing power key events.
+		 *        The rest should also be adjusted... */
 
-			default:
-			case MCE_DISPLAY_POWER_DOWN:
-				mce_log(LL_DEBUG, "act dead display *** -> on");
-				execute_datapipe(&device_inactive_pipe,
-						 GINT_TO_POINTER(FALSE),
-						 USE_INDATA, CACHE_INDATA);
-				break;
-			}
-			break;
-		}
+		switch( display_state_get() ) {
+		case MCE_DISPLAY_ON:
+		case MCE_DISPLAY_DIM:
+		case MCE_DISPLAY_POWER_UP:
+			mce_log(LL_DEBUG, "display -> off + lock");
 
-		/* Request enabling of touchscreen/keypad lock
-		 * if the tklock isn't already active
-		 */
-		if ((submode & MCE_TKLOCK_SUBMODE) == 0) {
+			/* Do the locking before turning display off.
+			 *
+			 * The tklock requests get ignored in act dead
+			 * etc, so we can just blindly request it.
+			 */
 			execute_datapipe(&tk_lock_pipe,
 					 GINT_TO_POINTER(LOCK_ON),
 					 USE_INDATA, CACHE_INDATA);
-		} else if ((submode & MCE_MALF_SUBMODE) != 0) {
-			execute_datapipe(&tk_lock_pipe,
-					 GINT_TO_POINTER(LOCK_OFF),
-					 USE_INDATA, CACHE_INDATA);
-		}
 
+			execute_datapipe(&display_state_req_pipe,
+					 GINT_TO_POINTER(MCE_DISPLAY_OFF),
+					 USE_INDATA, CACHE_INDATA);
+			break;
+
+		default:
+			mce_log(LL_DEBUG, "display -> on");
+			execute_datapipe(&display_state_req_pipe,
+					 GINT_TO_POINTER(MCE_DISPLAY_ON),
+					 USE_INDATA, CACHE_INDATA);
+			break;
+		}
 		break;
 
 	case POWER_TKLOCK_UNLOCK:
