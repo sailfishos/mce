@@ -106,7 +106,7 @@ ENABLE_BACKUP_SUPPORT ?= n
 ENABLE_DOUBLETAP_EMULATION ?= y
 
 # Whether to install unit tests
-ENABLE_UNITTESTS_INSTALL ?= y
+ENABLE_UNITTESTS_INSTALL ?= n
 
 # Install destination
 DESTDIR               ?= /tmp/test-mce-install

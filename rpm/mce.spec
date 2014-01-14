@@ -107,4 +107,4 @@ systemctl daemon-reload
 
 %files tests
 %defattr(-,root,root,-)
-/opt/tests/mce/*
+## QUARANTINE /opt/tests/mce/*
