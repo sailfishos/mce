@@ -188,7 +188,7 @@ void wakelock_lock(const char *name, long long ns)
 		if( ns < 0 ) {
 			lwl_concat(tmp, sizeof tmp, name, "\n", NULL);
 		} else {
-			lwl_concat(tmp, sizeof tmp, name,
+			lwl_concat(tmp, sizeof tmp, name, " ",
 				   lwl_number(num, sizeof num, ns),
 				   "\n", NULL);
 		}
