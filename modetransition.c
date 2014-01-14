@@ -25,6 +25,7 @@
 #include <errno.h>			/* errno, ENOENT */
 #include <stdlib.h>			/* exit(), EXIT_FAILURE */
 #include <unistd.h>			/* access(), F_OK */
+#include <string.h>
 
 #include <mce/mode-names.h>
 
@@ -53,6 +54,52 @@
 					 * remove_output_trigger_from_datapipe()
 					 */
 
+/** Submode change in human readable form
+ */
+static char *mce_submode_change(const submode_t prev, const submode_t curr)
+{
+	static const struct {
+		submode_t bit; const char *name;
+	} lut[] = {
+		{ MCE_INVALID_SUBMODE,          "INVALID"          },
+		{ MCE_TKLOCK_SUBMODE,           "TKLOCK"           },
+		{ MCE_EVEATER_SUBMODE,          "EVEATER"          },
+		{ MCE_SOFTOFF_SUBMODE,          "SOFTOFF"          },
+		{ MCE_BOOTUP_SUBMODE,           "BOOTUP"           },
+		{ MCE_TRANSITION_SUBMODE,       "TRANSITION"       },
+		{ MCE_AUTORELOCK_SUBMODE,       "AUTORELOCK"       },
+		{ MCE_VISUAL_TKLOCK_SUBMODE,    "VISUAL_TKLOCK"    },
+		{ MCE_POCKET_SUBMODE,           "POCKET"           },
+		{ MCE_PROXIMITY_TKLOCK_SUBMODE, "PROXIMITY_TKLOCK" },
+		{ MCE_MALF_SUBMODE,             "MALF"             },
+		{ 0,0 }
+	};
+
+	char temp[256], *pos = temp;
+
+	*pos = 0;
+	for( int i = 0; lut[i].name; ++i ) {
+		const char *tag = 0;
+
+		if( curr & lut[i].bit ) {
+			tag = (prev & lut[i].bit) ? "" : "+";
+		}
+		else if( prev & lut[i].bit ) {
+			tag = "-";
+		}
+		if( tag ) {
+			if( pos > temp ) *pos++ = ' ';
+			pos = stpcpy(pos, tag);
+			pos = stpcpy(pos, lut[i].name);
+		}
+	}
+	if( pos == temp ) {
+		pos = stpcpy(pos, "NORMAL");
+	}
+	*pos = 0;
+	return strdup(temp);
+}
+
 /**
  * Set the MCE submode flags
  *
@@ -66,10 +113,14 @@ static gboolean mce_set_submode_int32(const submode_t submode)
 	if (old_submode == submode)
 		goto EXIT;
 
+	if( mce_log_p(LL_NOTICE) ) {
+		char *delta = mce_submode_change(old_submode, submode);
+		mce_log(LL_NOTICE, "submode change: %s", delta ?: "???");
+		free(delta);
+	}
+
 	execute_datapipe(&submode_pipe, GINT_TO_POINTER(submode),
 			 USE_INDATA, CACHE_INDATA);
-	mce_log(LL_DEBUG, "Submode changed to %d", submode);
-
 EXIT:
 	return TRUE;
 }
