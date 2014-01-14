@@ -18,6 +18,7 @@
 
 #define MCE_HYBRIS_INTERNAL 1
 #include "mce-hybris.h"
+#include "mce.h"
 #include "mce-log.h"
 #include "mce-conf.h"
 #include "mce-modules.h"
@@ -163,7 +164,7 @@ static void evepipe_send(int64_t timestamp, int32_t type, float data)
     // TODO: since this happens from separate thread, we might want
     //       to do something bit more clever in case the sensor data
     //       overflows the pipe ...
-    abort();
+    mce_abort();
   }
 }
 
