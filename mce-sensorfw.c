@@ -300,12 +300,12 @@ mce_sensorfw_load_sensor(const char *id)
 				   DBUS_TYPE_STRING, &id,
 				   DBUS_TYPE_INVALID);
 	if( !msg ) {
-		mce_log(LOG_ERR, "loadPlugin(%s): no reply", id);
+		mce_log(LL_ERR, "loadPlugin(%s): no reply", id);
 		goto EXIT;
 	}
 
 	if( dbus_set_error_from_message(&err, msg) ) {
-		mce_log(LOG_ERR, "loadPlugin(%s): error reply: %s: %s",
+		mce_log(LL_ERR, "loadPlugin(%s): error reply: %s: %s",
 			id, err.name, err.message);
 		goto EXIT;
 	}
@@ -313,13 +313,13 @@ mce_sensorfw_load_sensor(const char *id)
 	if( !dbus_message_get_args(msg, &err,
 				   DBUS_TYPE_BOOLEAN, &ack,
 				   DBUS_TYPE_INVALID) ) {
-		mce_log(LOG_ERR, "loadPlugin(%s): parse reply: %s: %s",
+		mce_log(LL_ERR, "loadPlugin(%s): parse reply: %s: %s",
 			id, err.name, err.message);
 		goto EXIT;
 	}
 
 	if( !ack ) {
-		mce_log(LOG_WARNING, "loadPlugin(%s): request denied", id);
+		mce_log(LL_WARN, "loadPlugin(%s): request denied", id);
 		goto EXIT;
 	}
 
@@ -2245,7 +2245,7 @@ void mce_sensorfw_ps_attach(int fd)
 	if( ioctl(fd, EVIOCGABS(ABS_DISTANCE), &info) == -1 )
 		mce_log(LL_ERR, "EVIOCGABS(%s): %m", "ABS_DISTANCE");
 	else {
-		mce_log(LL_CRIT, "PS: %d (initial)", info.value);
+		mce_log(LL_NOTICE, "PS: %d (initial)", info.value);
 		ps_notify(info.value < 1, DS_EVDEV);
 	}
 
