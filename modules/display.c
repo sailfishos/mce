@@ -1094,7 +1094,11 @@ static void mdy_datapipe_exception_state_cb(gconstpointer data)
 
     mce_log(LL_DEBUG, "exception_state = %d", exception_state);
 
+    // normal on->dim->blank might not be applicable
     mdy_blanking_rethink_timers(false);
+
+    // notification exception state blocks suspend
+    mdy_stm_schedule_rethink();
 
 EXIT:
     return;

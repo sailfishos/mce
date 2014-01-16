@@ -76,6 +76,11 @@ enum
     EXCEPTION_LENGTH_VOLUME   = 2000, // [ms]
 #endif
 
+    EXCEPTION_LENGTH_ACTIVITY = 2000, // [ms]
+
+    /* Note: the notification durations and lengthening via
+     *       activity must be long enough not to be cut off
+     *       by periodic stopping of touch monitoring */
 };
 
 /* ========================================================================= *
@@ -133,6 +138,7 @@ static void     tklock_datapipe_heartbeat_cb(gconstpointer data);
 static void     tklock_datapipe_keyboard_slide_cb(gconstpointer const data);
 static void     tklock_datapipe_lid_cover_cb(gconstpointer data);
 static void     tklock_datapipe_lens_cover_cb(gconstpointer data);
+static void     tklock_datapipe_user_activity_cb(gconstpointer data);
 
 static bool     tklock_datapipe_have_tklock_submode(void);
 
@@ -986,77 +992,139 @@ EXIT:
     return;
 }
 
+/** Handle user_activity_pipe notifications
+ *
+ * @param data input_event as void pointer
+ */
+static void tklock_datapipe_user_activity_cb(gconstpointer data)
+{
+    const struct input_event *ev = data;
+
+    if( !ev )
+        goto EXIT;
+
+    /* touchscreen activity makes notification exceptions to last longer */
+
+    if( !(exception_state & UIEXC_NOTIF) )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "type: %s, code: %s, value: %d",
+            evdev_get_event_type_name(ev->type),
+            evdev_get_event_code_name(ev->type, ev->code),
+            ev->value);
+
+    bool touched = false;
+    switch( ev->type ) {
+    case EV_SYN:
+        switch( ev->code ) {
+        case SYN_MT_REPORT:
+            touched = true;
+            break;
+        default:
+            break;
+        }
+        break;
+
+    case EV_ABS:
+        switch( ev->code ) {
+        case ABS_MT_POSITION_X:
+        case ABS_MT_POSITION_Y:
+        case ABS_MT_PRESSURE:
+            touched = true;
+            break;
+        default:
+            break;
+        }
+        break;
+    default:
+        break;
+    }
+
+    if( touched ) {
+        mce_log(LL_DEBUG, "touch event; lengthen notification exception");
+        tklock_uiexcept_begin(UIEXC_NOTIF, EXCEPTION_LENGTH_ACTIVITY);
+    }
+
+EXIT:
+    return;
+}
+
 /** Array of datapipe bindings */
 static datapipe_binding_t tklock_datapipe_triggers[] =
 {
     // output triggers
     {
         .datapipe = &lipstick_available_pipe,
-        .output_cb = tklock_datapipe_lipstick_available_cb
+        .output_cb = tklock_datapipe_lipstick_available_cb,
     },
     {
         .datapipe = &display_state_pipe,
-        .output_cb = tklock_datapipe_display_state_cb
+        .output_cb = tklock_datapipe_display_state_cb,
     },
     {
         .datapipe = &tk_lock_pipe,
-        .output_cb = tklock_datapipe_tk_lock_cb
+        .output_cb = tklock_datapipe_tk_lock_cb,
     },
     {
         .datapipe = &proximity_sensor_pipe,
-        .output_cb = tklock_datapipe_proximity_sensor_cb
+        .output_cb = tklock_datapipe_proximity_sensor_cb,
     },
     {
         .datapipe = &call_state_pipe,
-        .output_cb = tklock_datapipe_call_state_cb
+        .output_cb = tklock_datapipe_call_state_cb,
     },
     {
         .datapipe = &alarm_ui_state_pipe,
-        .output_cb = tklock_datapipe_alarm_ui_state_cb
+        .output_cb = tklock_datapipe_alarm_ui_state_cb,
     },
     {
         .datapipe = &charger_state_pipe,
-        .output_cb = tklock_datapipe_charger_state_cb
+        .output_cb = tklock_datapipe_charger_state_cb,
     },
     {
         .datapipe = &battery_status_pipe,
-        .output_cb = tklock_datapipe_battery_status_cb
+        .output_cb = tklock_datapipe_battery_status_cb,
     },
     {
         .datapipe = &exception_state_pipe,
-        .output_cb = tklock_datapipe_exception_state_cb
+        .output_cb = tklock_datapipe_exception_state_cb,
     },
     {
         .datapipe = &audio_route_pipe,
-        .output_cb = tklock_datapipe_audio_route_cb
+        .output_cb = tklock_datapipe_audio_route_cb,
     },
     {
         .datapipe = &system_state_pipe,
-        .output_cb = tklock_datapipe_system_state_cb
+        .output_cb = tklock_datapipe_system_state_cb,
     },
     {
         .datapipe = &usb_cable_pipe,
-        .output_cb = tklock_datapipe_usb_cable_cb
+        .output_cb = tklock_datapipe_usb_cable_cb,
     },
     {
         .datapipe = &jack_sense_pipe,
-        .output_cb = tklock_datapipe_jack_sense_cb
+        .output_cb = tklock_datapipe_jack_sense_cb,
     },
     {
         .datapipe = &heartbeat_pipe,
-        .output_cb = tklock_datapipe_heartbeat_cb
+        .output_cb = tklock_datapipe_heartbeat_cb,
     },
     {
         .datapipe = &submode_pipe,
-        .output_cb = tklock_datapipe_submode_cb
+        .output_cb = tklock_datapipe_submode_cb,
     },
     {
         .datapipe = &lid_cover_pipe,
-        .output_cb = tklock_datapipe_lid_cover_cb
+        .output_cb = tklock_datapipe_lid_cover_cb,
     },
     {
         .datapipe = &lens_cover_pipe,
-        .output_cb = tklock_datapipe_lens_cover_cb
+        .output_cb = tklock_datapipe_lens_cover_cb,
+    },
+    {
+        .datapipe = &user_activity_pipe,
+        .output_cb = tklock_datapipe_user_activity_cb,
+
     },
 
     // input triggers

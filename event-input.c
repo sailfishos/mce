@@ -1091,7 +1091,7 @@ static gboolean touchscreen_iomon_cb(gpointer data, gsize bytes_read)
 			       USE_INDATA, CACHE_INDATA);
 
 	/* Signal actual non-synthetized user activity */
-	execute_datapipe_output_triggers(&user_activity_pipe, 0, USE_INDATA);
+	execute_datapipe_output_triggers(&user_activity_pipe, ev, USE_INDATA);
 
 
 	/* If the display is on/dim and visual tklock is active
@@ -1329,7 +1329,7 @@ static gboolean keypress_iomon_cb(gpointer data, gsize bytes_read)
 	if( ev->type == EV_KEY && ev->code == KEY_POWER ) {
 		/* .. count as actual non-synthetized user activity */
 		execute_datapipe_output_triggers(&user_activity_pipe,
-						 0, USE_INDATA);
+						 ev, USE_INDATA);
 
 		/* but otherwise are handled in powerkey module */
 		mce_log(LL_DEBUG, "ignore power key event");
