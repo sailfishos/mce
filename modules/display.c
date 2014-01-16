@@ -4241,7 +4241,7 @@ static void mdy_fbsusp_led_start_timer(mdy_fbsusp_led_state_t req)
 {
     mdy_fbsusp_led_set(FBDEV_LED_OFF);
 
-    int delay = 500;
+    int delay = 1000;
 
     if( mdy_fbsusp_led_timer_id != 0 )
         g_source_remove(mdy_fbsusp_led_timer_id);
