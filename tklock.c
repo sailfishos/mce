@@ -40,6 +40,7 @@
 
 #include "mce.h"
 #include "tklock.h"
+#include "evdev.h"
 #include "mce-io.h"
 #include "mce-log.h"
 #include "datapipe.h"
@@ -343,6 +344,7 @@ static bool tklock_ui_enabled = false;
 /** Current tklock ui state that has been sent to lipstick */
 static int  tklock_ui_sent    = -1; // does not match bool values
 
+/** System state; is undefined at bootup, can't assume anything */
 static system_state_t system_state = MCE_STATE_UNDEF;
 
 /** Change notifications for system_state
@@ -352,10 +354,10 @@ static void tklock_datapipe_system_state_cb(gconstpointer data)
     system_state_t prev = system_state;
     system_state = GPOINTER_TO_INT(data);
 
-    mce_log(LL_DEBUG, "system_state: %d -> %d", prev, system_state);
-
     if( prev == system_state )
         goto EXIT;
+
+    mce_log(LL_DEBUG, "system_state: %d -> %d", prev, system_state);
 
     tklock_ui_set(false);
 
@@ -363,34 +365,44 @@ EXIT:
     return;
 }
 
+/** Lipstick dbus name is reserved; assume false */
 static bool lipstick_available = false;
 
 /** Change notifications for lipstick_available
  */
 static void tklock_datapipe_lipstick_available_cb(gconstpointer data)
 {
+    bool prev = lipstick_available;
     lipstick_available = GPOINTER_TO_INT(data);
-    mce_log(LL_DEBUG, "lipstick_available = %d", lipstick_available);
+
+    if( lipstick_available == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "lipstick_available = %d -> %d", prev,
+            lipstick_available);
 
     // force tklock ipc
     tklock_ui_sent = -1;
     tklock_ui_set(false);
+
+EXIT:
+    return;
 }
 
+/** Display state; undefined initially, can't assume anything */
 static display_state_t display_state = MCE_DISPLAY_UNDEF;
 
 /** Change notifications for display_state
  */
 static void tklock_datapipe_display_state_cb(gconstpointer data)
 {
-    display_state_t old_state = display_state;
-
+    display_state_t prev = display_state;
     display_state = GPOINTER_TO_INT(data);
 
-    if( old_state == display_state )
+    if( display_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "display_state = %d", display_state);
+    mce_log(LL_DEBUG, "display_state = %d -> %d", prev, display_state);
 
     if( display_state == MCE_DISPLAY_DIM )
         tklock_ui_eat_event();
@@ -405,25 +417,36 @@ EXIT:
     return;
 }
 
-//static cover_state_t proximity_state = COVER_UNDEF;
+/** Proximity state; assume not covered */
 static cover_state_t proximity_state = COVER_OPEN;
 
 /** Change notifications for proximity_state
  */
 static void tklock_datapipe_proximity_sensor_cb(gconstpointer data)
 {
+    cover_state_t prev = proximity_state;
     proximity_state = GPOINTER_TO_INT(data);
 
-    mce_log(LL_DEBUG, "proximity_state = %d", proximity_state);
+    if( proximity_state == COVER_UNDEF )
+        proximity_state = COVER_OPEN;
+
+    if( proximity_state == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "proximity_state = %d -> %d", prev, proximity_state);
 
     tklock_uiexcept_rethink();
 
     tklock_proxlock_rethink();
 
     tklock_evctrl_rethink();
+
+EXIT:
+    return;
 }
 
-static call_state_t call_state = CALL_STATE_INVALID;
+/** Call state; assume no active calls */
+static call_state_t call_state = CALL_STATE_NONE;
 
 /** Change notifications for call_state
  */
@@ -432,10 +455,13 @@ static void tklock_datapipe_call_state_cb(gconstpointer data)
     call_state_t prev = call_state;
     call_state = GPOINTER_TO_INT(data);
 
+    if( call_state == CALL_STATE_INVALID )
+        call_state = CALL_STATE_NONE;
+
     if( call_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "call_state = %d", call_state);
+    mce_log(LL_DEBUG, "call_state = %d -> %d", prev, call_state);
 
     switch( call_state ) {
     case CALL_STATE_RINGING:
@@ -456,7 +482,8 @@ EXIT:
     return;
 }
 
-static alarm_ui_state_t alarm_ui_state = MCE_ALARM_UI_INVALID_INT32;
+/** Alarm state; assume no active alarms */
+static alarm_ui_state_t alarm_ui_state = MCE_ALARM_UI_OFF_INT32;
 
 /** Change notifications for alarm_ui_state
  */
@@ -465,10 +492,13 @@ static void tklock_datapipe_alarm_ui_state_cb(gconstpointer data)
     alarm_ui_state_t prev = alarm_ui_state;
     alarm_ui_state = GPOINTER_TO_INT(data);
 
+    if( alarm_ui_state == MCE_ALARM_UI_INVALID_INT32 )
+        alarm_ui_state = MCE_ALARM_UI_OFF_INT32;
+
     if( alarm_ui_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "alarm_ui_state = %d", alarm_ui_state);
+    mce_log(LL_DEBUG, "alarm_ui_state = %d -> %d", prev, alarm_ui_state);
 
     switch( alarm_ui_state ) {
     case MCE_ALARM_UI_RINGING_INT32:
@@ -486,6 +516,7 @@ EXIT:
     return;
 }
 
+/** Charger state; assume not charging */
 static bool charger_state = false;
 
 /** Change notifications for charger_state
@@ -498,9 +529,8 @@ static void tklock_datapipe_charger_state_cb(gconstpointer data)
     if( charger_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "charger_state = %d", charger_state);
-
     tklock_uiexcept_begin(UIEXC_NOTIF, 3000);
+    mce_log(LL_DEBUG, "charger_state = %d -> %d", prev, charger_state);
 
     tklock_uiexcept_rethink();
 
@@ -508,6 +538,7 @@ EXIT:
     return;
 }
 
+/** Battery status; not known initially, can't assume anything */
 static battery_status_t battery_status = BATTERY_STATUS_UNDEF;
 
 /** Change notifications for battery_status
@@ -520,7 +551,7 @@ static void tklock_datapipe_battery_status_cb(gconstpointer data)
     if( battery_status == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "battery_status = %d", battery_status);
+    mce_log(LL_DEBUG, "battery_status = %d -> %d", prev, battery_status);
 
     if( battery_status == BATTERY_STATUS_FULL ) {
         tklock_uiexcept_begin(UIEXC_NOTIF, 3000);
@@ -531,7 +562,8 @@ EXIT:
     return;
 }
 
-static usb_cable_state_t usb_cable_state = USB_CABLE_UNDEF;
+/** USB cable status; assume disconnected */
+static usb_cable_state_t usb_cable_state = USB_CABLE_DISCONNECTED;
 
 /** Change notifications for usb_cable_state
  */
@@ -540,10 +572,13 @@ static void tklock_datapipe_usb_cable_cb(gconstpointer data)
     usb_cable_state_t prev = usb_cable_state;
     usb_cable_state = GPOINTER_TO_INT(data);
 
+    if( usb_cable_state == USB_CABLE_UNDEF )
+        usb_cable_state = USB_CABLE_DISCONNECTED;
+
     if( prev == usb_cable_state )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "usb_cable_state = %d", usb_cable_state);
+    mce_log(LL_DEBUG, "usb_cable_state = %d -> %d", prev, usb_cable_state);
 
     tklock_uiexcept_begin(UIEXC_NOTIF, 3000);
     tklock_uiexcept_rethink();
@@ -552,7 +587,8 @@ EXIT:
         return;
 }
 
-static cover_state_t jack_sense_state = COVER_UNDEF;
+/** Audio jack state; assume not inserted */
+static cover_state_t jack_sense_state = COVER_OPEN;
 
 /** Change notifications for jack_sense_state
  */
@@ -561,10 +597,13 @@ static void tklock_datapipe_jack_sense_cb(gconstpointer data)
     cover_state_t prev = jack_sense_state;
     jack_sense_state = GPOINTER_TO_INT(data);
 
+    if( jack_sense_state == COVER_UNDEF )
+        jack_sense_state = COVER_OPEN;
+
     if( prev == jack_sense_state )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "jack_sense_state = %d", jack_sense_state);
+    mce_log(LL_DEBUG, "jack_sense_state = %d -> %d", prev, jack_sense_state);
 
     tklock_uiexcept_begin(UIEXC_NOTIF, 3000);
     tklock_uiexcept_rethink();
@@ -631,6 +670,7 @@ EXIT:
     return;
 }
 
+/** UI exception state; initialized to none */
 static uiexctype_t exception_state = UIEXC_NONE;
 
 /** Change notifications for exception_state
@@ -643,7 +683,7 @@ static void tklock_datapipe_exception_state_cb(gconstpointer data)
     if( exception_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "exception_state = %d", exception_state);
+    mce_log(LL_DEBUG, "exception_state = %d -> %d", prev, exception_state);
 
     tklock_autolock_rethink();
     tklock_proxlock_rethink();
@@ -652,6 +692,7 @@ EXIT:
     return;
 }
 
+/** Audio routing state; assume handset */
 static audio_route_t audio_route = AUDIO_ROUTE_HANDSET;
 
 /** Change notifications for audio_route
@@ -661,10 +702,13 @@ static void tklock_datapipe_audio_route_cb(gconstpointer data)
     audio_route_t prev = audio_route;
     audio_route = GPOINTER_TO_INT(data);
 
+    if( audio_route == AUDIO_ROUTE_UNDEF )
+        audio_route = AUDIO_ROUTE_HANDSET;
+
     if( audio_route == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "audio_route = %d", audio_route);
+    mce_log(LL_DEBUG, "audio_route = %d -> %d", prev, audio_route);
     tklock_uiexcept_rethink();
 
 EXIT:
@@ -703,7 +747,6 @@ static void tklock_datapipe_tk_lock_cb(gconstpointer data)
     tklock_ui_set(enable);
 }
 
-//static submode_t submode = MCE_NORMAL_SUBMODE;
 static submode_t submode = MCE_INVALID_SUBMODE;
 
 /** Change notifications for submode
@@ -848,7 +891,8 @@ static void tklock_datapipe_heartbeat_cb(gconstpointer data)
     tklock_dtcalib_from_heartbeat();
 }
 
-static cover_state_t kbd_slide_state = COVER_UNDEF;
+/** Keypad slide; assume closed */
+static cover_state_t kbd_slide_state = COVER_CLOSED;
 
 /** Change notifications from keyboard_slide_pipe
  */
@@ -857,10 +901,13 @@ static void tklock_datapipe_keyboard_slide_cb(gconstpointer const data)
     cover_state_t prev = kbd_slide_state;
     kbd_slide_state = GPOINTER_TO_INT(data);
 
+    if( kbd_slide_state == COVER_UNDEF )
+        kbd_slide_state = COVER_CLOSED;
+
     if( kbd_slide_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "kbd_slide_state = %d", kbd_slide_state);
+    mce_log(LL_DEBUG, "kbd_slide_state = %d -> %d", prev, kbd_slide_state);
 
     // TODO: COVER_OPEN  -> display on, unlock, reason=AUTORELOCK_KBD_SLIDE
     // TODO: COVER_CLOSE -> display off, lock if reason==AUTORELOCK_KBD_SLIDE
@@ -869,7 +916,8 @@ EXIT:
     return;
 }
 
-static cover_state_t lid_cover_state = COVER_UNDEF;
+/** Lid cover state (N770); assume open */
+static cover_state_t lid_cover_state = COVER_OPEN;
 
 /** Change notifications from lid_cover_pipe
  */
@@ -878,10 +926,13 @@ static void tklock_datapipe_lid_cover_cb(gconstpointer data)
     cover_state_t prev = lid_cover_state;
     lid_cover_state = GPOINTER_TO_INT(data);
 
+    if( lid_cover_state == COVER_UNDEF )
+        lid_cover_state = COVER_OPEN;
+
     if( lid_cover_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "lid_cover_state = %d", lid_cover_state);
+    mce_log(LL_DEBUG, "lid_cover_state = %d -> %d", prev, lid_cover_state);
 
     // TODO: COVER_OPEN -> display on, unlock
     // TODO: COVER_CLOSE -> display off lock
@@ -890,7 +941,8 @@ EXIT:
     return;
 }
 
-static cover_state_t lens_cover_state = COVER_UNDEF;
+/** Camera lens cover state; assume closed */
+static cover_state_t lens_cover_state = COVER_CLOSED;
 
 /** Change notifications from lens_cover_pipe
  */
@@ -899,10 +951,13 @@ static void tklock_datapipe_lens_cover_cb(gconstpointer data)
     cover_state_t prev = lens_cover_state;
     lens_cover_state = GPOINTER_TO_INT(data);
 
+    if( lens_cover_state == COVER_UNDEF )
+        lens_cover_state = COVER_CLOSED;
+
     if( lens_cover_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "lens_cover_state = %d", lens_cover_state);
+    mce_log(LL_DEBUG, "lens_cover_state = %d -> %d", prev, lens_cover_state);
 
     // TODO: COVER_OPEN  -> display on, unlock, reason=AUTORELOCK_KBD_SLIDE
     // TODO: COVER_CLOSE -> display off, lock if reason==AUTORELOCK_KBD_SLIDE
