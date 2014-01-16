@@ -262,6 +262,15 @@ typedef enum {
 	THERMAL_STATE_OVERHEATED = 1,
 } thermal_state_t;
 
+/** Exceptional UI status */
+typedef enum {
+    UIEXC_NONE   = 0,
+    UIEXC_LINGER = 1<<0,
+    UIEXC_CALL   = 1<<1,
+    UIEXC_ALARM  = 1<<2,
+    UIEXC_NOTIF  = 1<<3,
+} uiexctype_t;
+
 /** LED brightness */
 datapipe_struct led_brightness_pipe;
 /** State of device; read only */
@@ -274,8 +283,10 @@ datapipe_struct led_pattern_deactivate_pipe;
 datapipe_struct user_activity_pipe;
 /** State of display; read only */
 datapipe_struct display_state_pipe;
-/** Desired state of display */
+/** Desired state of display; write only */
 datapipe_struct display_state_req_pipe;
+/** exceptional ui state; read write */
+datapipe_struct exception_state_pipe;
 /**
  * Display brightness;
  * bits 0-7 is brightness in percent (0-100)
@@ -338,6 +349,9 @@ datapipe_struct power_saving_mode_pipe;
 datapipe_struct thermal_state_pipe;
 /** Heartbeat; read only */
 datapipe_struct heartbeat_pipe;
+
+/** lipstick availability; read only */
+datapipe_struct lipstick_available_pipe;
 
 /* XXX: use HAL */
 /** Does the device have a flicker key? */

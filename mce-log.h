@@ -29,7 +29,7 @@
 /** Severity of loglevels (subset of syslog priorities) */
 typedef enum {
 	LL_NONE    = 0,			/**< No logging at all */
-
+	LL_ALERT   = 1,			/**< Alert */
 	LL_CRIT    = 2,			/**< Critical error */
 	LL_ERR     = 3,			/**< Error */
 	LL_WARN    = 4,			/**< Warning */
@@ -40,6 +40,8 @@ typedef enum {
 	LL_DEFAULT = LL_WARN,		/**< Default log level */
 } loglevel_t;
 
+void mce_log_add_pattern(const char *pat);
+
 #ifdef OSSOLOG_COMPILE
 void mce_log_file(loglevel_t loglevel, const char *const file,
 		  const char *const function, const char *const fmt, ...)
@@ -49,7 +51,8 @@ void mce_log_file(loglevel_t loglevel, const char *const file,
 void mce_log_set_verbosity(const int verbosity);
 void mce_log_open(const char *const name, const int facility, const int type);
 void mce_log_close(void);
-int mce_log_p(const loglevel_t loglevel);
+int mce_log_p_(const loglevel_t loglevel, const char *const file, const char *const function);
+#define mce_log_p(LEV_) mce_log_p_(LEV_,__FILE__,__FUNCTION__)
 #else
 /** Dummy version used when logging is disabled at compile time */
 #define mce_log(_loglevel, _fmt, ...)			do {} while (0)
@@ -62,5 +65,4 @@ int mce_log_p(const loglevel_t loglevel);
 /** Dummy version used when logging is disabled at compile time */
 #define mce_log_p(_loglevel)				0
 #endif /* OSSOLOG_COMPILE */
-
 #endif /* _MCE_LOG_H_ */

@@ -1091,7 +1091,7 @@ static gboolean touchscreen_iomon_cb(gpointer data, gsize bytes_read)
 			       USE_INDATA, CACHE_INDATA);
 
 	/* Signal actual non-synthetized user activity */
-	execute_datapipe_output_triggers(&user_activity_pipe, 0, USE_INDATA);
+	execute_datapipe_output_triggers(&user_activity_pipe, ev, USE_INDATA);
 
 
 	/* If the display is on/dim and visual tklock is active
@@ -1329,7 +1329,7 @@ static gboolean keypress_iomon_cb(gpointer data, gsize bytes_read)
 	if( ev->type == EV_KEY && ev->code == KEY_POWER ) {
 		/* .. count as actual non-synthetized user activity */
 		execute_datapipe_output_triggers(&user_activity_pipe,
-						 0, USE_INDATA);
+						 ev, USE_INDATA);
 
 		/* but otherwise are handled in powerkey module */
 		mce_log(LL_DEBUG, "ignore power key event");
@@ -1513,6 +1513,26 @@ static void get_switch_state(gpointer io_monitor, gpointer user_data)
 
 		(void)execute_datapipe(&proximity_sensor_pipe, GINT_TO_POINTER(state ? COVER_CLOSED : COVER_OPEN), USE_INDATA, CACHE_INDATA);
 	}
+
+	/* Need to consider more than one switch state when setting the
+	 * initial value of the jack_sense_pipe */
+
+	bool have = false;
+	state = 0;
+
+	if( test_bit(SW_HEADPHONE_INSERT, featurelist) )
+		have = true, state |= test_bit(SW_HEADPHONE_INSERT, statelist);
+	if( test_bit(SW_MICROPHONE_INSERT, featurelist) )
+		have = true, state |= test_bit(SW_MICROPHONE_INSERT, statelist);
+	if( test_bit(SW_LINEOUT_INSERT, featurelist) )
+		have = true, state |= test_bit(SW_LINEOUT_INSERT, statelist);
+	if( test_bit(SW_VIDEOOUT_INSERT, featurelist) )
+		have = true, state |= test_bit(SW_VIDEOOUT_INSERT, statelist);
+
+	if( have )
+		execute_datapipe(&jack_sense_pipe,
+				 GINT_TO_POINTER(state ? COVER_CLOSED : COVER_OPEN),
+				 USE_INDATA, CACHE_INDATA);
 
 EXIT:
 	g_free(statelist);

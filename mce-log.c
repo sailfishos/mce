@@ -18,6 +18,11 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
+
+#include <stdlib.h>
+#include <stdbool.h>
+#include <fnmatch.h>
+
 #include <glib.h>
 #include <glib/gprintf.h>
 
@@ -66,8 +71,8 @@ static void timestamp(struct timeval *tv)
  */
 static loglevel_t mce_log_level_normalize(loglevel_t loglevel)
 {
-	if( loglevel < LL_CRIT ) {
-		loglevel = LL_CRIT;
+	if( loglevel < LL_ALERT ) {
+		loglevel = LL_ALERT;
 	}
 	else if( loglevel > LL_DEBUG ) {
 		loglevel = LL_DEBUG;
@@ -85,6 +90,7 @@ static const char *mce_log_level_tag(loglevel_t loglevel)
 {
 	const char *res = "?";
 	switch( loglevel ) {
+        case LL_ALERT:  res = "A"; break;
         case LL_CRIT:   res = "C"; break;
         case LL_ERR:    res = "E"; break;
         case LL_WARN:   res = "W"; break;
@@ -110,7 +116,7 @@ void mce_log_file(loglevel_t loglevel, const char *const file,
 
 	loglevel = mce_log_level_normalize(loglevel);
 
-	if (logverbosity >= loglevel) {
+	if( mce_log_p_(loglevel, file, function) ) {
 		gchar *msg = 0;
 
 		va_start(args, fmt);
@@ -180,6 +186,45 @@ void mce_log_close(void)
 		closelog();
 }
 
+static GSList     *mce_log_patterns = 0;
+static GHashTable *mce_log_functions = 0;
+
+void mce_log_add_pattern(const char *pat)
+{
+    // NB these are never released by desing
+
+    mce_log_patterns = g_slist_prepend(mce_log_patterns, strdup(pat));
+
+    if( !mce_log_functions )
+	mce_log_functions = g_hash_table_new_full(g_str_hash, g_str_equal,
+						  free, 0);
+}
+
+static bool mce_log_check_pattern(const char *func)
+{
+    gpointer hit = 0;
+
+    if( !mce_log_functions )
+	goto EXIT;
+
+    if( (hit = g_hash_table_lookup(mce_log_functions, func)) )
+	goto EXIT;
+
+    hit = GINT_TO_POINTER(1);
+
+    for( GSList *item = mce_log_patterns; item; item = item->next ) {
+	const char *pat = item->data;
+	if( fnmatch(pat, func, 0) != 0 )
+	    continue;
+	hit = GINT_TO_POINTER(2);
+	break;
+    }
+    g_hash_table_replace(mce_log_functions, strdup(func), hit);
+
+EXIT:
+    return GPOINTER_TO_INT(hit) > 1;
+}
+
 /**
  * Log level testing predicate
  *
@@ -190,9 +235,21 @@ void mce_log_close(void)
  *
  * @return 1 if logging at givel level is enabled, 0 if not
  */
-int mce_log_p(const loglevel_t loglevel)
+int mce_log_p_(const loglevel_t loglevel,
+	       const char *const file,
+	       const char *const func)
 {
-	return logverbosity >= loglevel;
+    if( mce_log_functions && file && func ) {
+	char temp[256];
+	snprintf(temp, sizeof temp, "%s:%s", file, func);
+	if( mce_log_check_pattern(temp) )
+	    return true;
+    }
+
+    if( loglevel < LL_CRIT )
+	return logverbosity >= LL_NOTICE;
+
+    return logverbosity >= loglevel;
 }
 
 #endif /* OSSOLOG_COMPILE */

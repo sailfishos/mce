@@ -322,7 +322,7 @@ gboolean mce_gconf_notifier_add(const gchar *path, const gchar *key,
 			     GCONF_CLIENT_PRELOAD_NONE, &error);
 
 	if (error != NULL) {
-		mce_log(LL_CRIT,
+		mce_log(LL_WARN,
 			"Could not add %s to directories watched by "
 			"GConf client setting from GConf; %s",
 			path, error->message);
@@ -334,7 +334,7 @@ gboolean mce_gconf_notifier_add(const gchar *path, const gchar *key,
 	*cb_id = gconf_client_notify_add(gconf_client, key, callback,
 					 NULL, NULL, &error);
 	if (error != NULL) {
-		mce_log(LL_CRIT,
+		mce_log(LL_WARN,
 			"Could not register notifier for %s; %s",
 			key, error->message);
 		//goto EXIT;

@@ -1237,7 +1237,7 @@ static const setting_t gconf_defaults[] =
     // MCE_GCONF_DISPLAY_ADAPTIVE_DIM_THRESHOLD_PATH @ modules/display.h
     .key  = "/system/osso/dsm/display/adaptive_display_dim_threshold",
     .type = "i",
-    .def  = "3000",
+    .def  = "10000",
   },
   {
     // MCE_GCONF_USE_LOW_POWER_MODE_PATH @ modules/display.h
@@ -1430,6 +1430,30 @@ static const setting_t gconf_defaults[] =
   {
     // no define; used by the CSD app
     .key  = "/system/osso/dsm/leds/PatternCsdWhite",
+    .type = "b",
+    .def  = "true",
+  },
+  {
+    // no define; used by mce display module
+    .key  = "/system/osso/dsm/leds/PatternBatteryDisplayBlank",
+    .type = "b",
+    .def  = "true",
+  },
+  {
+    // no define; used by mce display module
+    .key  = "/system/osso/dsm/leds/PatternBatteryDisplayUnblank",
+    .type = "b",
+    .def  = "true",
+  },
+  {
+    // no define; used by mce display module
+    .key  = "/system/osso/dsm/leds/PatternBatteryDisplaySuspend",
+    .type = "b",
+    .def  = "true",
+  },
+  {
+    // no define; used by mce display module
+    .key  = "/system/osso/dsm/leds/PatternBatteryDisplayResume",
     .type = "b",
     .def  = "true",
   },
