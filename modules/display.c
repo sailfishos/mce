@@ -3817,6 +3817,11 @@ static int mdy_autosuspend_get_allowed_level(void)
         break;
     }
 
+    /* Exceptional situations without separate state
+     * management block late suspend */
+    if( exception_state & (UIEXC_NOTIF|UIEXC_LINGER) )
+        block_late = true;
+
     /* no late suspend in ACTDEAD etc */
     if( system_state != MCE_STATE_USER )
         block_late = true;
