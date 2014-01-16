@@ -61,6 +61,23 @@
 # define AUTORELOCK_ON_PROXIMITY (1 << 2)
 #endif
 
+/** Duration of exceptional UI states, in milliseconds */
+enum
+{
+    EXCEPTION_LENGTH_CALL     = 3000, // [ms]
+    EXCEPTION_LENGTH_ALARM    =  500, // [ms]
+    EXCEPTION_LENGTH_CHARGER  = 3000, // [ms]
+    EXCEPTION_LENGTH_BATTERY  = 1000, // [ms]
+    EXCEPTION_LENGTH_JACK     = 3000, // [ms]
+    EXCEPTION_LENGTH_CAMERA   = 3000, // [ms]
+#if 0 // debug
+    EXCEPTION_LENGTH_VOLUME   = 9999, // [ms]
+#else
+    EXCEPTION_LENGTH_VOLUME   = 2000, // [ms]
+#endif
+
+};
+
 /* ========================================================================= *
  * CONSTANTS
  * ========================================================================= */
@@ -466,10 +483,10 @@ static void tklock_datapipe_call_state_cb(gconstpointer data)
     switch( call_state ) {
     case CALL_STATE_RINGING:
     case CALL_STATE_ACTIVE:
-        tklock_uiexcept_begin(UIEXC_CALL, 3000);
+        tklock_uiexcept_begin(UIEXC_CALL, EXCEPTION_LENGTH_CALL);
         break;
     default:
-        tklock_uiexcept_end(UIEXC_CALL, 3000);
+        tklock_uiexcept_end(UIEXC_CALL, EXCEPTION_LENGTH_CALL);
         break;
     }
 
@@ -503,10 +520,10 @@ static void tklock_datapipe_alarm_ui_state_cb(gconstpointer data)
     switch( alarm_ui_state ) {
     case MCE_ALARM_UI_RINGING_INT32:
     case MCE_ALARM_UI_VISIBLE_INT32:
-        tklock_uiexcept_begin(UIEXC_ALARM, 1000);
+        tklock_uiexcept_begin(UIEXC_ALARM, EXCEPTION_LENGTH_ALARM);
         break;
     default:
-        tklock_uiexcept_end(UIEXC_ALARM, 1000);
+        tklock_uiexcept_end(UIEXC_ALARM, EXCEPTION_LENGTH_ALARM);
         break;
     }
 
@@ -529,9 +546,9 @@ static void tklock_datapipe_charger_state_cb(gconstpointer data)
     if( charger_state == prev )
         goto EXIT;
 
-    tklock_uiexcept_begin(UIEXC_NOTIF, 3000);
     mce_log(LL_DEBUG, "charger_state = %d -> %d", prev, charger_state);
 
+    tklock_uiexcept_begin(UIEXC_NOTIF, EXCEPTION_LENGTH_CHARGER);
     tklock_uiexcept_rethink();
 
 EXIT:
@@ -554,7 +571,7 @@ static void tklock_datapipe_battery_status_cb(gconstpointer data)
     mce_log(LL_DEBUG, "battery_status = %d -> %d", prev, battery_status);
 
     if( battery_status == BATTERY_STATUS_FULL ) {
-        tklock_uiexcept_begin(UIEXC_NOTIF, 3000);
+        tklock_uiexcept_begin(UIEXC_NOTIF, EXCEPTION_LENGTH_BATTERY);
         tklock_uiexcept_rethink();
     }
 
@@ -580,7 +597,7 @@ static void tklock_datapipe_usb_cable_cb(gconstpointer data)
 
     mce_log(LL_DEBUG, "usb_cable_state = %d -> %d", prev, usb_cable_state);
 
-    tklock_uiexcept_begin(UIEXC_NOTIF, 3000);
+    tklock_uiexcept_begin(UIEXC_NOTIF, EXCEPTION_LENGTH_CHARGER);
     tklock_uiexcept_rethink();
 
 EXIT:
@@ -605,7 +622,7 @@ static void tklock_datapipe_jack_sense_cb(gconstpointer data)
 
     mce_log(LL_DEBUG, "jack_sense_state = %d -> %d", prev, jack_sense_state);
 
-    tklock_uiexcept_begin(UIEXC_NOTIF, 3000);
+    tklock_uiexcept_begin(UIEXC_NOTIF, EXCEPTION_LENGTH_JACK);
     tklock_uiexcept_rethink();
 
 EXIT:
@@ -619,7 +636,7 @@ static void tklock_datapipe_camera_button_cb(gconstpointer const data)
     /* TODO: This might make no sense, need to check on HW that has
      *       dedicated camera button ... */
     (void)data;
-    tklock_uiexcept_begin(UIEXC_NOTIF, 3000);
+    tklock_uiexcept_begin(UIEXC_NOTIF, EXCEPTION_LENGTH_CAMERA);
     tklock_uiexcept_rethink();
 }
 
@@ -651,14 +668,14 @@ static void tklock_datapipe_keypress_cb(gconstpointer const data)
 
     case KEY_CAMERA:
         mce_log(LL_DEBUG, "camera key");
-        tklock_uiexcept_begin(UIEXC_NOTIF, 3000);
+        tklock_uiexcept_begin(UIEXC_NOTIF, EXCEPTION_LENGTH_CAMERA);
         tklock_uiexcept_rethink();
         break;
 
     case KEY_VOLUMEDOWN:
     case KEY_VOLUMEUP:
         mce_log(LL_DEBUG, "volume key");
-        tklock_uiexcept_begin(UIEXC_NOTIF, 1000);
+        tklock_uiexcept_begin(UIEXC_NOTIF, EXCEPTION_LENGTH_VOLUME);
         tklock_uiexcept_rethink();
         break;
 
