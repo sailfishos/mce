@@ -355,6 +355,11 @@ static gboolean handle_longpress(void)
 		break;
 
 	case MCE_STATE_ACTDEAD:
+		/* activate power on led pattern and power up to user mode*/
+		mce_log(LL_CRIT, "ENABLE MCE_LED_PATTERN_POWER_ON");
+		execute_datapipe_output_triggers(&led_pattern_activate_pipe,
+						 MCE_LED_PATTERN_POWER_ON,
+						 USE_INDATA);
 		request_powerup();
 		break;
 
@@ -565,8 +570,7 @@ static void powerkey_trigger(gconstpointer const data)
 				handle_shortpress();
 			} else if ((system_state == MCE_STATE_ACTDEAD) ||
 			           ((submode & MCE_SOFTOFF_SUBMODE) != 0)) {
-			/* Setup new timeout */
-				execute_datapipe_output_triggers(&led_pattern_activate_pipe, MCE_LED_PATTERN_POWER_ON, USE_INDATA);
+				/* Setup new timeout */
 
 				/* Shorter delay for startup
 				 * than for shutdown
@@ -581,11 +585,6 @@ static void powerkey_trigger(gconstpointer const data)
 			/* Short key press */
 			if (powerkey_timeout_cb_id != 0) {
 				handle_shortpress();
-
-				if ((system_state == MCE_STATE_ACTDEAD) ||
-				    ((submode & MCE_SOFTOFF_SUBMODE) != 0)) {
-					execute_datapipe_output_triggers(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_POWER_ON, USE_INDATA);
-				}
 			}
 		}
 	}

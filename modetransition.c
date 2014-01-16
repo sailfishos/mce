@@ -176,10 +176,6 @@ static void system_state_trigger(gconstpointer data)
 
 	switch (system_state) {
 	case MCE_STATE_USER:
-		if (old_system_state == MCE_STATE_ACTDEAD) {
-			execute_datapipe_output_triggers(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_POWER_ON, USE_INDATA);
-		}
-
 		break;
 
 	case MCE_STATE_SHUTDOWN:

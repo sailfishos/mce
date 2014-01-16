@@ -5935,9 +5935,6 @@ static gboolean mdy_dbus_handle_desktop_started_sig(DBusMessage *const msg)
 
     mce_log(LL_DEBUG, "Received desktop startup notification");
 
-    execute_datapipe_output_triggers(&led_pattern_deactivate_pipe,
-                                     MCE_LED_PATTERN_POWER_ON, USE_INDATA);
-
     mce_rem_submode_int32(MCE_BOOTUP_SUBMODE);
 
     mce_rem_submode_int32(MCE_MALF_SUBMODE);
