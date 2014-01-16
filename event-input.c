@@ -1514,6 +1514,26 @@ static void get_switch_state(gpointer io_monitor, gpointer user_data)
 		(void)execute_datapipe(&proximity_sensor_pipe, GINT_TO_POINTER(state ? COVER_CLOSED : COVER_OPEN), USE_INDATA, CACHE_INDATA);
 	}
 
+	/* Need to consider more than one switch state when setting the
+	 * initial value of the jack_sense_pipe */
+
+	bool have = false;
+	state = 0;
+
+	if( test_bit(SW_HEADPHONE_INSERT, featurelist) )
+		have = true, state |= test_bit(SW_HEADPHONE_INSERT, statelist);
+	if( test_bit(SW_MICROPHONE_INSERT, featurelist) )
+		have = true, state |= test_bit(SW_MICROPHONE_INSERT, statelist);
+	if( test_bit(SW_LINEOUT_INSERT, featurelist) )
+		have = true, state |= test_bit(SW_LINEOUT_INSERT, statelist);
+	if( test_bit(SW_VIDEOOUT_INSERT, featurelist) )
+		have = true, state |= test_bit(SW_VIDEOOUT_INSERT, statelist);
+
+	if( have )
+		execute_datapipe(&jack_sense_pipe,
+				 GINT_TO_POINTER(state ? COVER_CLOSED : COVER_OPEN),
+				 USE_INDATA, CACHE_INDATA);
+
 EXIT:
 	g_free(statelist);
 	g_free(featurelist);

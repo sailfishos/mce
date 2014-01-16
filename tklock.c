@@ -2807,9 +2807,6 @@ gboolean mce_tklock_init(void)
     /* set up dbus message handlers */
     mce_tklock_init_dbus();
 
-    // FIXME: check that initial state is sane, both
-    //        after bootup and mce restart
-
     status = TRUE;
 
     return status;
