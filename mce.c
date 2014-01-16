@@ -187,6 +187,7 @@ static const char usage_fmt[] =
 "  -v, --verbose              increase debug message verbosity\n"
 "  -t, --trace=<what>         enable domain specific debug logging;\n"
 "                               supported values: \"wakelocks\"\n"
+"  -l, --log-function=<file:func>  add function logging override\n"
 "  -h, --help                 display this help and exit\n"
 "  -V, --version              output version information and exit\n"
 "\n"
@@ -764,7 +765,7 @@ int main(int argc, char **argv)
 	gboolean debugmode = FALSE;
 	gboolean systemd_notify = FALSE;
 
-	const char optline[] = "dsTSMDqvhVt:n";
+	const char optline[] = "dsTSMDqvhVt:l:n";
 
 	struct option const options[] = {
 		{ "systemd",          no_argument,       0, 'n' },
@@ -779,6 +780,7 @@ int main(int argc, char **argv)
 		{ "help",             no_argument,       0, 'h' },
 		{ "version",          no_argument,       0, 'V' },
 		{ "trace",            required_argument, 0, 't' },
+		{ "log-function",     required_argument, 0, 'l' },
 		{ 0, 0, 0, 0 }
         };
 
@@ -838,6 +840,9 @@ int main(int argc, char **argv)
 		case 't':
 			if( !mce_enable_trace(optarg) )
 				exit(EXIT_FAILURE);
+			break;
+		case 'l':
+			mce_log_add_pattern(optarg);
 			break;
 		default:
 			usage();
