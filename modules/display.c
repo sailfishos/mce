@@ -228,6 +228,16 @@ typedef enum
     STM_LEAVE_LOGICAL_OFF,
 } stm_state_t;
 
+/** Delays for display blank/unblank related debug led patterns [ms] */
+enum
+{
+    /** How long to wait for framebuffer sleep/wake event from kernel */
+    LED_DELAY_FB_SUSPEND_RESUME = 1000,
+
+    /** How long to wait dbus method call reply from lipstick */
+    LED_DELAY_UI_DISABLE_ENABLE = 1500,
+};
+
 /* ========================================================================= *
  * PROTOTYPES
  * ========================================================================= */
@@ -2017,7 +2027,7 @@ static void mdy_poweron_led_rethink(void)
     bool want_led = (!mdy_init_done && mdy_bootstate == BOOTSTATE_USER);
 
     mce_log(LL_DEBUG, "%s MCE_LED_PATTERN_POWER_ON",
-	    want_led ? "activate" : "deactivate");
+            want_led ? "activate" : "deactivate");
 
     execute_datapipe_output_triggers(want_led ?
                                      &led_pattern_activate_pipe :
@@ -3623,9 +3633,10 @@ static void mdy_renderer_led_cancel_timer(void)
  */
 static void mdy_renderer_led_start_timer(renderer_state_t req)
 {
-    /* The 1st method call happens during bootup.
-     * Allow it to take a bit longer to finish */
-    static int delay = 5000;
+    /* During bootup it is more or less expected that lipstick is
+     * unable to answer immediately. So we initially allow longer
+     * delay and bring it down gradually to target level. */
+    static int delay = LED_DELAY_UI_DISABLE_ENABLE * 10;
 
     mdy_renderer_led_set(RENDERER_UNKNOWN);
 
@@ -3637,7 +3648,10 @@ static void mdy_renderer_led_start_timer(renderer_state_t req)
                                               GINT_TO_POINTER(req));
 
     mce_log(LL_DEBUG, "renderer led timer sheduled @ %d ms", delay);
-    delay = 1000;
+
+    delay = delay * 3 / 4;
+    if( delay < LED_DELAY_UI_DISABLE_ENABLE )
+        delay = LED_DELAY_UI_DISABLE_ENABLE;
 }
 
 /** Handle replies to org.nemomobile.lipstick.setUpdatesEnabled() calls
@@ -4241,7 +4255,7 @@ static void mdy_fbsusp_led_start_timer(mdy_fbsusp_led_state_t req)
 {
     mdy_fbsusp_led_set(FBDEV_LED_OFF);
 
-    int delay = 1000;
+    int delay = LED_DELAY_FB_SUSPEND_RESUME;
 
     if( mdy_fbsusp_led_timer_id != 0 )
         g_source_remove(mdy_fbsusp_led_timer_id);
