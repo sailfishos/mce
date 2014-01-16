@@ -778,6 +778,9 @@ static void tklock_datapipe_submode_cb(gconstpointer data)
 
     mce_log(LL_DEBUG, "submode = 0x%x", submode);
 
+    // out of sync tklock state blocks state restore
+    tklock_uiexcept_rethink();
+
     tklock_evctrl_rethink();
 EXIT:
     return;
@@ -1429,6 +1432,8 @@ typedef struct
     uiexctype_t     mask;
     display_state_t display;
     bool            tklock;
+    bool            insync;
+    bool            restore;
     int64_t         linger_tick;
     guint           linger_id;
     int64_t         notif_tick;
@@ -1440,38 +1445,16 @@ static exception_t exdata =
     .mask        = UIEXC_NONE,
     .display     = MCE_DISPLAY_UNDEF,
     .tklock      = false,
+    .insync      = true,
+    .restore     = true,
     .linger_tick = MIN_TICK,
     .linger_id   = 0,
     .notif_tick  = MIN_TICK,
     .notif_id    = 0,
 };
 
-static void  tklock_uiexcept_sync_to_datapipe(void)
+static uiexctype_t topmost_active(uiexctype_t mask)
 {
-    uiexctype_t in_pipe = datapipe_get_gint(exception_state_pipe);
-
-    if( in_pipe != exdata.mask ) {
-        execute_datapipe(&exception_state_pipe,
-                         GINT_TO_POINTER(exdata.mask),
-                         USE_INDATA, CACHE_INDATA);
-    }
-}
-
-static void tklock_uiexcept_rethink(void)
-{
-    static display_state_t display_prev = MCE_DISPLAY_UNDEF;
-    static bool insync = true;
-
-    bool activate = false;
-    bool blank = false;
-
-    if( display_prev != display_state ) {
-        mce_log(LL_DEBUG, "display state: %d -> %d",
-                display_prev, display_state);
-        if( display_state == MCE_DISPLAY_ON )
-            insync = true;
-    }
-
     /* Assume UI side priority is:
      * 1. notification dialogs
      * 2. alarm ui
@@ -1479,22 +1462,122 @@ static void tklock_uiexcept_rethink(void)
      * 4. rest
      */
 
-    if( exdata.mask & UIEXC_NOTIF )
-        activate = true;
-    else if( exdata.mask & UIEXC_ALARM )
-        activate = true;
-    else if( exdata.mask & UIEXC_CALL ) {
-        if( call_state == CALL_STATE_RINGING )
-            activate = true;
-        else if( audio_route != AUDIO_ROUTE_HANDSET )
-            activate = true;
-        else if( proximity_state == COVER_CLOSED )
-            blank = true;
-        else
-            activate = true;
+    static const uiexctype_t pri[] = {
+        UIEXC_NOTIF,
+        UIEXC_ALARM,
+        UIEXC_CALL,
+        UIEXC_LINGER,
+        0
+    };
+
+    for( size_t i = 0; pri[i]; ++i ) {
+        if( mask & pri[i] )
+            return pri[i];
     }
-    else if( exdata.mask )
+
+    return UIEXC_NONE;
+}
+
+static void  tklock_uiexcept_sync_to_datapipe(void)
+{
+    uiexctype_t in_pipe = datapipe_get_gint(exception_state_pipe);
+    uiexctype_t active  = topmost_active(exdata.mask);
+
+    if( in_pipe != active ) {
+        execute_datapipe(&exception_state_pipe,
+                         GINT_TO_POINTER(active),
+                         USE_INDATA, CACHE_INDATA);
+    }
+}
+
+static void tklock_uiexcept_rethink(void)
+{
+    static display_state_t display_prev = MCE_DISPLAY_UNDEF;
+
+    static uiexctype_t active_prev = UIEXC_NONE;
+
+    bool        activate = false;
+    bool        blank    = false;
+    uiexctype_t active   = topmost_active(exdata.mask);
+
+    if( !active ) {
+        mce_log(LL_DEBUG, "UIEXC_NONE");
+        goto EXIT;
+    }
+
+    if( exdata.tklock != tklock_datapipe_have_tklock_submode() ) {
+        if( exdata.restore )
+            mce_log(LL_NOTICE, "DISABLING STATE RESTORE; tklock out of sync");
+        exdata.restore = false;
+    }
+
+    // re-sync on display on transition
+    if( display_prev != display_state ) {
+        mce_log(LL_DEBUG, "display state: %d -> %d",
+                display_prev, display_state);
+        if( display_state == MCE_DISPLAY_ON ) {
+            if( !exdata.insync )
+                mce_log(LL_NOTICE, "display unblanked; assuming in sync again");
+            exdata.insync = true;
+        }
+    }
+
+    // re-sync on active exception change
+    if( active_prev != active ) {
+        active_prev = active;
+        if( !exdata.insync )
+            mce_log(LL_NOTICE, "exception state changed; assuming in sync again");
+        exdata.insync = true;
+    }
+
+    switch( active ) {
+    case UIEXC_NOTIF:
+        mce_log(LL_DEBUG, "UIEXC_NOTIF");
         activate = true;
+        break;
+
+    case UIEXC_ALARM:
+        mce_log(LL_DEBUG, "UIEXC_ALARM");
+        activate = true;
+        break;
+
+    case UIEXC_CALL:
+        mce_log(LL_DEBUG, "UIEXC_CALL");
+        if( call_state == CALL_STATE_RINGING ) {
+            mce_log(LL_DEBUG, "call=RINGING; activate");
+            activate = true;
+        }
+        else if( audio_route != AUDIO_ROUTE_HANDSET ) {
+            mce_log(LL_DEBUG, "audio!=HANDSET; activate");
+            activate = true;
+        }
+        else if( proximity_state == COVER_CLOSED ) {
+            mce_log(LL_DEBUG, "proximity=COVERED; blank");
+            blank = true;
+        }
+        else {
+            mce_log(LL_DEBUG, "proximity=NOT-COVERED; activate");
+            activate = true;
+        }
+        break;
+
+    case UIEXC_LINGER:
+        mce_log(LL_DEBUG, "UIEXC_LINGER");
+        activate = true;
+        break;
+
+    case UIEXC_NONE:
+        // we should not get here
+        break;
+
+    default:
+        // added new states and forgot to update state machine?
+        mce_log(LL_CRIT, "unknown ui exception %d; have to ignore", active);
+        mce_abort();
+        break;
+    }
+
+    mce_log(LL_DEBUG, "blank=%d, activate=%d", blank, activate);
 
     if( blank ) {
         if( display_state != MCE_DISPLAY_OFF ) {
@@ -1503,18 +1586,27 @@ static void tklock_uiexcept_rethink(void)
                              GINT_TO_POINTER(MCE_DISPLAY_OFF),
                              USE_INDATA, CACHE_INDATA);
         }
+        else {
+            mce_log(LL_DEBUG, "display already blanked");
+        }
     }
     else if( activate ) {
         if( display_prev == MCE_DISPLAY_ON &&
             display_state != MCE_DISPLAY_ON ) {
-            mce_log(LL_NOTICE, "NOT UNBLANKING; got out of sync");
-
             /* Assume: dim/blank timer took over the blanking.
              * Disable this state machine until display gets
              * turned back on */
-            insync = false;
+          mce_log(LL_NOTICE, "AUTO UNBLANK DISABLED; display out of sync");
+            exdata.insync = false;
+
+            /* Disable state restore, unless we went out of
+             * sync during call ui handling */
+            if( exdata.restore && active != UIEXC_CALL ) {
+                exdata.restore = false;
+                mce_log(LL_NOTICE, "DISABLING STATE RESTORE; display out of sync");
+            }
         }
-        else if( !insync ) {
+        else if( !exdata.insync ) {
             mce_log(LL_NOTICE, "NOT UNBLANKING; still out of sync");
         }
         else if( proximity_state == COVER_CLOSED ) {
@@ -1528,7 +1620,10 @@ static void tklock_uiexcept_rethink(void)
         }
     }
 
+EXIT:
     display_prev = display_state;
+
+    return;
 }
 
 static void tklock_uiexcept_cancel(void)
@@ -1546,6 +1641,8 @@ static void tklock_uiexcept_cancel(void)
     exdata.mask        = UIEXC_NONE;
     exdata.display     = MCE_DISPLAY_UNDEF;
     exdata.tklock      = false;
+    exdata.insync      = true;
+    exdata.restore     = true;
     exdata.linger_tick = MIN_TICK;
     exdata.linger_id   = 0;
     exdata.notif_tick  = MIN_TICK,
@@ -1572,7 +1669,12 @@ static gboolean tklock_uiexcept_linger_cb(gpointer aptr)
     /* update exception data pipe first */
     tklock_uiexcept_sync_to_datapipe();
 
-    /* then flip the tklock data pipe */
+    /* check if restoring has been blocked */
+    if( !exx.restore )
+        goto EXIT;
+
+    /* then flip the tklock  back on? Note that we
+     * we do not unlock no matter what. */
     if( exx.tklock ) {
         execute_datapipe(&tk_lock_pipe,
                          GINT_TO_POINTER(LOCK_ON),
@@ -1584,6 +1686,8 @@ static gboolean tklock_uiexcept_linger_cb(gpointer aptr)
     case MCE_DISPLAY_OFF:
     case MCE_DISPLAY_LPM_OFF:
     case MCE_DISPLAY_LPM_ON:
+    case MCE_DISPLAY_DIM:
+    case MCE_DISPLAY_ON:
       execute_datapipe(&display_state_req_pipe,
                        GINT_TO_POINTER(exx.display),
                        USE_INDATA, CACHE_INDATA);
@@ -1652,6 +1756,10 @@ static void tklock_uiexcept_begin(uiexctype_t type, int64_t linger)
         /* save display and tklock state */
         exdata.tklock  = tklock_datapipe_have_tklock_submode();
         exdata.display = display_state;
+
+        /* initially insync, restore state at end */
+        exdata.insync      = true;
+        exdata.restore     = true;
 
         /* deal with transitional display states */
         switch( exdata.display ) {
