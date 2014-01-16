@@ -436,6 +436,23 @@ static void                mdy_display_state_enter_pre(display_state_t prev_stat
 static void                mdy_display_state_leave(display_state_t prev_state, display_state_t next_state);
 
 /* ------------------------------------------------------------------------- *
+ * FRAMEBUFFER_SUSPEND_RESUME
+ * ------------------------------------------------------------------------- */
+
+/** Framebuffer suspend/resume failure led patterns */
+typedef enum
+{
+    FBDEV_LED_OFF,
+    FBDEV_LED_SUSPENDING,
+    FBDEV_LED_RESUMING,
+} mdy_fbsusp_led_state_t;
+
+static void                mdy_fbsusp_led_set(mdy_fbsusp_led_state_t req);
+static gboolean            mdy_fbsusp_led_timer_cb(gpointer aptr);
+static void                mdy_fbsusp_led_cancel_timer(void);
+static void                mdy_fbsusp_led_start_timer(mdy_fbsusp_led_state_t req);
+
+/* ------------------------------------------------------------------------- *
  * DISPLAY_STATE_MACHINE
  * ------------------------------------------------------------------------- */
 
@@ -3350,6 +3367,8 @@ static void *mdy_waitfb_thread_entry(void *aptr)
     for( ;; ) {
         // FIXME: check if mce_log() is thread safe
 
+        //fprintf(stderr, "READ <<<< %s\n", self->wake_path);
+
         /* wait for fb wakeup */
         self->wake_fd = TEMP_FAILURE_RETRY(open(self->wake_path, O_RDONLY));
         if( self->wake_fd == -1 ) {
@@ -3365,6 +3384,8 @@ static void *mdy_waitfb_thread_entry(void *aptr)
 
         /* send "woke up" to mainloop */
         TEMP_FAILURE_RETRY(write(self->pipe_fd, "W", 1));
+
+        //fprintf(stderr, "READ <<<< %s\n", self->sleep_path);
 
         /* wait for fb sleep */
         self->sleep_fd = TEMP_FAILURE_RETRY(open(self->sleep_path, O_RDONLY));
@@ -3496,9 +3517,16 @@ static waitfb_t mdy_waitfb_data =
     .suspended  = false,
     .thread     = 0,
     .finished   = false,
+#if 0
+    // debug kernel delay handling via fifos
+    .wake_path  = "/tmp/wait_for_fb_wake",
+    .sleep_path = "/tmp/wait_for_fb_sleep",
+#else
+    // real sysfs paths
     .wake_path  = "/sys/power/wait_for_fb_wake",
-    .wake_fd    = -1,
     .sleep_path = "/sys/power/wait_for_fb_sleep",
+#endif
+    .wake_fd    = -1,
     .sleep_fd   = -1,
     .pipe_fd    = -1,
     .pipe_id    = 0,
@@ -4136,6 +4164,93 @@ static void mdy_display_state_leave(display_state_t prev_state,
 }
 
 /* ========================================================================= *
+ * FRAMEBUFFER_SUSPEND_RESUME
+ * ========================================================================= */
+
+/** Framebuffer suspend/resume failure led patterns
+ */
+static void mdy_fbsusp_led_set(mdy_fbsusp_led_state_t req)
+{
+    bool blanking = false;
+    bool unblanking = false;
+
+    switch( req ) {
+    case FBDEV_LED_SUSPENDING:
+        blanking = true;
+        break;
+    case FBDEV_LED_RESUMING:
+        unblanking = true;
+        break;
+    default:
+        break;
+    }
+
+    execute_datapipe_output_triggers(blanking ?
+                                     &led_pattern_activate_pipe :
+                                     &led_pattern_deactivate_pipe,
+                                     "PatternBatteryDisplaySuspend",
+                                     USE_INDATA);
+
+    execute_datapipe_output_triggers(unblanking ?
+                                     &led_pattern_activate_pipe :
+                                     &led_pattern_deactivate_pipe,
+                                     "PatternBatteryDisplayResume",
+                                     USE_INDATA);
+}
+
+/** Timer id for fbdev suspend/resume is taking too long */
+static guint mdy_fbsusp_led_timer_id = 0;
+
+/** Timer callback for fbdev suspend/resume is taking too long
+ */
+static gboolean mdy_fbsusp_led_timer_cb(gpointer aptr)
+{
+    mdy_fbsusp_led_state_t req = GPOINTER_TO_INT(aptr);
+
+    if( !mdy_fbsusp_led_timer_id )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "fbdev led timer triggered");
+
+    mdy_fbsusp_led_timer_id = 0;
+    mdy_fbsusp_led_set(req);
+
+EXIT:
+    return FALSE;
+}
+
+/* Cancel fbdev suspend/resume is taking too long timer
+ */
+static void mdy_fbsusp_led_cancel_timer(void)
+{
+    mdy_fbsusp_led_set(FBDEV_LED_OFF);
+
+    if( mdy_fbsusp_led_timer_id != 0 ) {
+        mce_log(LL_DEBUG, "fbdev led timer cancelled");
+        g_source_remove(mdy_fbsusp_led_timer_id),
+            mdy_fbsusp_led_timer_id = 0;
+    }
+}
+
+/* Schedule fbdev suspend/resume is taking too long timer
+ */
+static void mdy_fbsusp_led_start_timer(mdy_fbsusp_led_state_t req)
+{
+    mdy_fbsusp_led_set(FBDEV_LED_OFF);
+
+    int delay = 500;
+
+    if( mdy_fbsusp_led_timer_id != 0 )
+        g_source_remove(mdy_fbsusp_led_timer_id);
+
+    mdy_fbsusp_led_timer_id = g_timeout_add(delay,
+                                           mdy_fbsusp_led_timer_cb,
+                                           GINT_TO_POINTER(req));
+
+    mce_log(LL_DEBUG, "fbdev led timer sheduled @ %d ms", delay);
+}
+
+/* ========================================================================= *
  * DISPLAY_STATE_MACHINE
  * ========================================================================= */
 
@@ -4300,6 +4415,8 @@ static bool mdy_stm_is_late_suspend_allowed(void)
  */
 static void mdy_stm_start_fb_suspend(void)
 {
+    mdy_fbsusp_led_start_timer(FBDEV_LED_SUSPENDING);
+
 #ifdef ENABLE_WAKELOCKS
     mce_log(LL_NOTICE, "suspending");
     if( mdy_waitfb_data.thread )
@@ -4316,6 +4433,8 @@ static void mdy_stm_start_fb_suspend(void)
  */
 static void mdy_stm_start_fb_resume(void)
 {
+    mdy_fbsusp_led_start_timer(FBDEV_LED_RESUMING);
+
 #ifdef ENABLE_WAKELOCKS
     mce_log(LL_NOTICE, "resuming");
     if( mdy_waitfb_data.thread )
@@ -4333,6 +4452,10 @@ static void mdy_stm_start_fb_resume(void)
 static bool mdy_stm_is_fb_suspend_finished(void)
 {
     bool res = mdy_waitfb_data.suspended;
+
+    if( res )
+        mdy_fbsusp_led_cancel_timer();
+
     mce_log(LL_INFO, "res=%s", res ? "true" : "false");
     return res;
 }
@@ -4342,6 +4465,10 @@ static bool mdy_stm_is_fb_suspend_finished(void)
 static bool mdy_stm_is_fb_resume_finished(void)
 {
     bool res = !mdy_waitfb_data.suspended;
+
+    if( res )
+        mdy_fbsusp_led_cancel_timer();
+
     mce_log(LL_INFO, "res=%s", res ? "true" : "false");
     return res;
 }
