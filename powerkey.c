@@ -356,7 +356,7 @@ static gboolean handle_longpress(void)
 
 	case MCE_STATE_ACTDEAD:
 		/* activate power on led pattern and power up to user mode*/
-		mce_log(LL_CRIT, "ENABLE MCE_LED_PATTERN_POWER_ON");
+		mce_log(LL_DEBUG, "activate MCE_LED_PATTERN_POWER_ON");
 		execute_datapipe_output_triggers(&led_pattern_activate_pipe,
 						 MCE_LED_PATTERN_POWER_ON,
 						 USE_INDATA);

@@ -2016,6 +2016,9 @@ static void mdy_poweron_led_rethink(void)
 {
     bool want_led = (!mdy_init_done && mdy_bootstate == BOOTSTATE_USER);
 
+    mce_log(LL_DEBUG, "%s MCE_LED_PATTERN_POWER_ON",
+	    want_led ? "activate" : "deactivate");
+
     execute_datapipe_output_triggers(want_led ?
                                      &led_pattern_activate_pipe :
                                      &led_pattern_deactivate_pipe,
@@ -6062,6 +6065,7 @@ static gboolean mdy_dbus_handle_desktop_started_sig(DBusMessage *const msg)
 
     mce_log(LL_DEBUG, "Received desktop startup notification");
 
+    mce_log(LL_DEBUG, "deactivate MCE_LED_PATTERN_POWER_ON");
     execute_datapipe_output_triggers(&led_pattern_deactivate_pipe,
                                      MCE_LED_PATTERN_POWER_ON, USE_INDATA);
 
