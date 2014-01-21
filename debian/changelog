@@ -1,3 +1,10 @@
+mce (1.23.1) unstable; urgency=low
+
+  * [mce] Allow toggling debug verbosity with SIGUSR1 and SIGUSR2
+  * [mce] Do not blank screen if touch events are seen after alarm ends
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 21 Jan 2014 13:04:46 +0200
+
 mce (1.23.0) unstable; urgency=low
 
   * [mce] Reimplementation of touch screen and keypad locking subsystem
