@@ -3773,6 +3773,9 @@ static gboolean mdy_renderer_set_state_req(renderer_state_t state)
                                          mdy_renderer_ipc_timeout) )
         goto EXIT;
 
+    if( !mdy_renderer_set_state_pc )
+	goto EXIT;
+
     if( !dbus_pending_call_set_notify(mdy_renderer_set_state_pc,
                                       mdy_renderer_set_state_cb,
                                       GINT_TO_POINTER(state), 0) )
@@ -5332,6 +5335,9 @@ mdy_nameowner_query_req(const char *name)
 
     if( !dbus_connection_send_with_reply(mdy_nameowner_bus, req, &pc, -1) )
         goto EXIT;
+
+    if( !pc )
+	goto EXIT;
 
     key = strdup(name);
 

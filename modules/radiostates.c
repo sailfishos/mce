@@ -649,6 +649,9 @@ static gboolean xconnman_set_property_bool(const char *key, gboolean val)
 	if( !dbus_connection_send_with_reply(connman_bus, req, &pc, -1) )
 		goto EXIT;
 
+	if( !pc )
+		goto EXIT;
+
 	if( !dbus_pending_call_set_notify(pc, xconnman_set_property_cb, 0, 0) )
 		goto EXIT;
 
@@ -844,6 +847,9 @@ static gboolean xconnman_get_properties(void)
 	if( !dbus_connection_send_with_reply(connman_bus, req, &pc, -1) )
 		goto EXIT;
 
+	if( !pc )
+		goto EXIT;
+
 	if( !dbus_pending_call_set_notify(pc, xconnman_get_properties_cb, 0, 0) )
 		goto EXIT;
 
@@ -936,6 +942,9 @@ static gboolean xconnman_check_service(void)
 		goto EXIT;
 
 	if( !dbus_connection_send_with_reply(connman_bus, req, &pc, -1) )
+		goto EXIT;
+
+	if( !pc )
 		goto EXIT;
 
 	if( !dbus_pending_call_set_notify(pc, xconnman_check_service_cb, 0, 0) )

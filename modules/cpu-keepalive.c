@@ -557,6 +557,11 @@ cpu_keepalive_verify_name(const char *name)
     goto EXIT;
   }
 
+  if( !pc )
+  {
+    goto EXIT;
+  }
+
   key = g_strdup(name);
 
   if( !dbus_pending_call_set_notify(pc, cpu_keepalive_verify_name_cb,
