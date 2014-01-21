@@ -340,7 +340,16 @@ static void signal_handler(const gint signr)
 {
 	switch (signr) {
 	case SIGUSR1:
-		/* We'll probably want some way to communicate with MCE */
+		/* switch to debug verbosity */
+		mce_log_set_verbosity(LL_DEBUG);
+		mce_log(LL_DEBUG, "switching to DEBUG verbosity level");
+		break;
+
+	case SIGUSR2:
+		/* switch to normal verbosity */
+		mce_log_set_verbosity(LL_DEBUG);
+		mce_log(LL_DEBUG, "switching to WARNING verbosity level");
+		mce_log_set_verbosity(LL_WARN);
 		break;
 
 	case SIGHUP:
@@ -374,6 +383,7 @@ static void install_signal_handlers(void)
 {
 	static const int sig[] = {
 		SIGUSR1,
+		SIGUSR2,
 		SIGHUP,
 
 		SIGINT,

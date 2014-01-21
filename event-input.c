@@ -799,6 +799,7 @@ static gboolean touchscreen_io_monitor_timeout_cb(gpointer data)
 
 	touchscreen_io_monitor_timeout_cb_id = 0;
 
+	mce_log(LL_DEBUG, "resume touch event monitoring");
 	/* Resume I/O monitors */
 	if (touchscreen_dev_list != NULL) {
 		g_slist_foreach(touchscreen_dev_list,
@@ -1031,6 +1032,37 @@ static int doubletap_emulate(const struct input_event *eve)
 
 #endif /* ENABLE_DOUBLETAP_EMULATION */
 
+/** UI exception state; initialized to none */
+static uiexctype_t exception_state = UIEXC_NONE;
+
+/** Change notifications for exception_state datapipe
+ */
+static void exception_state_cb(gconstpointer data)
+{
+	uiexctype_t prev = exception_state;
+	exception_state = GPOINTER_TO_INT(data);
+
+	if( exception_state == prev )
+		goto EXIT;
+
+	mce_log(LL_DEBUG, "exception_state = %d -> %d", prev, exception_state);
+
+	/* We need touch events while handling notifications and linger.
+	 * Resume touch event monitoring immediately if we are handling
+	 * either one of those. */
+	if( exception_state & (UIEXC_LINGER | UIEXC_NOTIF) ) {
+		if( touchscreen_io_monitor_timeout_cb_id ) {
+			mce_log(LL_DEBUG, "restart touch event monitoring");
+			cancel_touchscreen_io_monitor_timeout();
+			g_slist_foreach(touchscreen_dev_list,
+					(GFunc)resume_io_monitor, NULL);
+		}
+	}
+
+EXIT:
+    return;
+}
+
 /**
  * I/O monitor callback for the touchscreen
  *
@@ -1097,19 +1129,28 @@ static gboolean touchscreen_iomon_cb(gpointer data, gsize bytes_read)
 	/* If the display is on/dim and visual tklock is active
 	 * or autorelock isn't active, suspend I/O monitors
 	 */
-	if (((display_state == MCE_DISPLAY_ON) ||
-	     (display_state == MCE_DISPLAY_DIM)) &&
-	    (((submode & MCE_VISUAL_TKLOCK_SUBMODE) != 0) ||
-	     ((submode & MCE_AUTORELOCK_SUBMODE) == 0))) {
-		if (touchscreen_dev_list != NULL) {
-			g_slist_foreach(touchscreen_dev_list,
-					(GFunc)suspend_io_monitor, NULL);
-		}
+	switch( display_state ) {
+	case MCE_DISPLAY_ON:
+	case MCE_DISPLAY_DIM:
+		/* One event should be enough both for generating activity
+		 * and exceptional ui handling, flush the rest anyway */
+		flush = TRUE;
 
-		/* Setup a timeout I/O monitor reprogramming */
+		/* handling linger or notification -> keep monitoring */
+		if( exception_state & (UIEXC_LINGER | UIEXC_NOTIF) )
+			break;
+
+		/* Stop touch event monitoring */
+		mce_log(LL_DEBUG, "stop touch event monitoring");
+		g_slist_foreach(touchscreen_dev_list,
+				(GFunc)suspend_io_monitor, NULL);
+
+		/* Setup a timeout to resume monitoring */
 		setup_touchscreen_io_monitor_timeout();
 
-		flush = TRUE;
+		break;
+	default:
+		break;
 	}
 
 	/* Only send pressure and gesture events */
@@ -1932,6 +1973,8 @@ gboolean mce_input_init(void)
 #endif
 
 	/* Append triggers/filters to datapipes */
+	append_output_trigger_to_datapipe(&exception_state_pipe,
+					  exception_state_cb);
 	append_output_trigger_to_datapipe(&submode_pipe,
 					  submode_trigger);
 
@@ -1995,6 +2038,8 @@ void mce_input_exit(void)
 #endif
 
 	/* Remove triggers/filters from datapipes */
+	remove_output_trigger_from_datapipe(&exception_state_pipe,
+					    exception_state_cb);
 	remove_output_trigger_from_datapipe(&submode_pipe,
 					    submode_trigger);
 

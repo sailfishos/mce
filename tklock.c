@@ -65,7 +65,7 @@
 enum
 {
     EXCEPTION_LENGTH_CALL     = 3000, // [ms]
-    EXCEPTION_LENGTH_ALARM    =  500, // [ms]
+    EXCEPTION_LENGTH_ALARM    = 2500, // [ms]
     EXCEPTION_LENGTH_CHARGER  = 3000, // [ms]
     EXCEPTION_LENGTH_BATTERY  = 1000, // [ms]
     EXCEPTION_LENGTH_JACK     = 3000, // [ms]
@@ -173,6 +173,7 @@ static gboolean tklock_uiexcept_notif_cb(gpointer aptr);
 static void     tklock_uiexcept_begin(uiexctype_t type, int64_t linger);
 static void     tklock_uiexcept_end(uiexctype_t type, int64_t linger);
 static void     tklock_uiexcept_cancel(void);
+static void     tklock_uiexcept_deny_state_restore(void);
 static void     tklock_uiexcept_rethink(void);
 
 // legacy hw event input enable/disable state machine
@@ -1003,9 +1004,8 @@ static void tklock_datapipe_user_activity_cb(gconstpointer data)
     if( !ev )
         goto EXIT;
 
-    /* touchscreen activity makes notification exceptions to last longer */
-
-    if( !(exception_state & UIEXC_NOTIF) )
+    /* Touch events relevant unly when handling notification & linger */
+    if( !(exception_state & (UIEXC_NOTIF | UIEXC_LINGER)) )
         goto EXIT;
 
     mce_log(LL_DEBUG, "type: %s, code: %s, value: %d",
@@ -1040,9 +1040,26 @@ static void tklock_datapipe_user_activity_cb(gconstpointer data)
         break;
     }
 
-    if( touched ) {
+    if( !touched )
+        goto EXIT;
+
+    /* N.B. the exception_state is bitmask, but only bit at time is
+     *      visible in the exception_state datapipe */
+    switch( exception_state ) {
+    case UIEXC_LINGER:
+        /* touch events during linger -> do not restore display state */
+        mce_log(LL_DEBUG, "touch event; do not restore display/tklock state");
+        tklock_uiexcept_deny_state_restore();
+        break;
+
+    case UIEXC_NOTIF:
+        /* touchscreen activity makes notification exceptions to last longer */
         mce_log(LL_DEBUG, "touch event; lengthen notification exception");
         tklock_uiexcept_begin(UIEXC_NOTIF, EXCEPTION_LENGTH_ACTIVITY);
+        break;
+
+    default:
+        break;
     }
 
 EXIT:
@@ -1556,6 +1573,16 @@ static void  tklock_uiexcept_sync_to_datapipe(void)
                          GINT_TO_POINTER(active),
                          USE_INDATA, CACHE_INDATA);
     }
+}
+
+/** Do not restore display/tklock state at the end of exceptional ui state
+ */
+static void tklock_uiexcept_deny_state_restore(void)
+{
+  if( exdata.mask && exdata.restore ) {
+    exdata.restore = false;
+    mce_log(LL_NOTICE, "DISABLING STATE RESTORE");
+  }
 }
 
 static void tklock_uiexcept_rethink(void)

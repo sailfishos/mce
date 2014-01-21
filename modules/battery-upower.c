@@ -822,6 +822,9 @@ static void xup_properties_get_all(const char *path)
     if( !dbus_connection_send_with_reply(bus, req, &pc, -1) )
 	goto EXIT;
 
+    if( !pc )
+	goto EXIT;
+
     if( !dbus_pending_call_set_notify(pc, xup_properties_get_all_cb,
 				      strdup(path), free) )
 	goto EXIT;

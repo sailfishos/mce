@@ -1987,6 +1987,9 @@ static gboolean xsensord_get_name_owner(void)
 	if( !dbus_connection_send_with_reply(systembus, req, &pc, -1) )
 		goto EXIT;
 
+	if( !pc )
+		goto EXIT;
+
 	if( !dbus_pending_call_set_notify(pc, xsensord_get_name_owner_cb, 0, 0) )
 		goto EXIT;
 
