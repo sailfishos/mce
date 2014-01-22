@@ -102,6 +102,52 @@ static const char *mce_log_level_tag(loglevel_t loglevel)
 	return res;
 }
 
+/** Looking at white (ascii) character predicate
+ */
+static inline bool mce_log_white_p(const char *str)
+{
+	int c = (unsigned char)*str;
+	return (c > 0x00) && (c <= 0x20);
+}
+
+/** Looking at non-white (ascii) character predicate
+ */
+static inline bool mce_log_black_p(const char *str)
+{
+	int c = (unsigned char)*str;
+	return c > 0x20;
+}
+
+/** Strip whitespace from log string, similarly to what syslog does
+ */
+static char *mce_log_strip_string(char *str)
+{
+	if( !str )
+		goto EXIT;
+
+	char *src = str;
+	char *dst = str;
+
+	// skip leading white space
+	while( mce_log_white_p(src) ) ++src;
+
+	for( ;; ) {
+		// copy non-white as-is
+		while( mce_log_black_p(src) ) *dst++ = *src++;
+
+		// skip internal / trailing white space
+		while( mce_log_white_p(src) ) ++src;
+
+		if( !*src ) break;
+
+		// compress internal whitespace to single space
+		*dst++ = ' ';
+	}
+	*dst = 0;
+EXIT:
+	return str;
+}
+
 /**
  * Log debug message with optional filename and function name attached
  *
@@ -125,7 +171,7 @@ void mce_log_file(loglevel_t loglevel, const char *const file,
 
 		if( file && function ) {
 			gchar *tmp = g_strconcat(file, ": ", function, "(): ",
-						 msg, NULL);
+						 mce_log_strip_string(msg), NULL);
 			g_free(msg), msg = tmp;
 		}
 
