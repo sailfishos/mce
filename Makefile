@@ -172,6 +172,7 @@ MODULES += $(MODULE_DIR)/callstate.so
 MODULES += $(MODULE_DIR)/audiorouting.so
 MODULES += $(MODULE_DIR)/powersavemode.so
 MODULES += $(MODULE_DIR)/cpu-keepalive.so
+MODULES += $(MODULE_DIR)/packagekit.so
 
 # Tools to build
 TOOLS   += $(TOOLDIR)/mcetool
