@@ -353,6 +353,9 @@ datapipe_struct heartbeat_pipe;
 /** lipstick availability; read only */
 datapipe_struct lipstick_available_pipe;
 
+/** PackageKit Locked status; read only */
+datapipe_struct packagekit_locked_pipe;
+
 /* XXX: use HAL */
 /** Does the device have a flicker key? */
 extern gboolean has_flicker_key;

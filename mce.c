@@ -999,6 +999,9 @@ int main(int argc, char **argv)
 		       0, GINT_TO_POINTER(0));
 	setup_datapipe(&lipstick_available_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(FALSE));
+	setup_datapipe(&packagekit_locked_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(FALSE));
+
 
 
 	/* Initialise mode management
@@ -1127,6 +1130,7 @@ EXIT:
 	free_datapipe(&system_state_pipe);
 	free_datapipe(&heartbeat_pipe);
 	free_datapipe(&lipstick_available_pipe);
+	free_datapipe(&packagekit_locked_pipe);
 
 	/* Call the exit function for all subsystems */
 	mce_gconf_exit();
