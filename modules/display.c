@@ -3421,8 +3421,8 @@ static waitfb_t mdy_waitfb_data =
 #define RENDERER_IFACE    "org.nemomobile.lipstick"
 #define RENDERER_SET_UPDATES_ENABLED "setUpdatesEnabled"
 
-/** For how long we allow ui side to delay suspending [ms]; -1 = use default */
-static int mdy_renderer_ipc_timeout = 30 * 1000;
+/** Timeout to use for setUpdatesEnabled method calls [ms]; -1 = use default */
+static int mdy_renderer_ipc_timeout = 2 * 60 * 1000; /* 2 minutes */
 
 /** UI side rendering state; no suspend unless RENDERER_DISABLED */
 static renderer_state_t mdy_renderer_ui_state = RENDERER_UNKNOWN;
