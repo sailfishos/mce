@@ -783,8 +783,6 @@ static
 gboolean
 cpu_keepalive_period_cb(DBusMessage *const msg)
 {
-  mce_log(LL_DEBUG, "got keepalive period query");
-
   gboolean success = FALSE;
 
   DBusError   err     = DBUS_ERROR_INIT;
@@ -795,6 +793,8 @@ cpu_keepalive_period_cb(DBusMessage *const msg)
   {
     goto EXIT;
   }
+
+  mce_log(LL_DEBUG, "got keepalive period query from %s", sender);
 
   if( !dbus_message_get_args(msg, &err,
 			     DBUS_TYPE_STRING, &context,
@@ -833,8 +833,6 @@ static
 gboolean
 cpu_keepalive_start_cb(DBusMessage *const msg)
 {
-  mce_log(LL_DEBUG, "got keepalive start");
-
   gboolean success = FALSE;
 
   DBusError  err      = DBUS_ERROR_INIT;
@@ -845,6 +843,8 @@ cpu_keepalive_start_cb(DBusMessage *const msg)
   {
     goto EXIT;
   }
+
+  mce_log(LL_DEBUG, "got keepalive start from %s", sender);
 
   if( !dbus_message_get_args(msg, &err,
 			     DBUS_TYPE_STRING, &context,
@@ -882,8 +882,6 @@ static
 gboolean
 cpu_keepalive_stop_cb(DBusMessage *const msg)
 {
-  mce_log(LL_DEBUG, "got keepalive stop");
-
   gboolean success = FALSE;
 
   DBusError  err      = DBUS_ERROR_INIT;
@@ -894,6 +892,8 @@ cpu_keepalive_stop_cb(DBusMessage *const msg)
   {
     goto EXIT;
   }
+
+  mce_log(LL_DEBUG, "got keepalive stop from %s", sender);
 
   if( !dbus_message_get_args(msg, &err,
 			     DBUS_TYPE_STRING, &context,
@@ -932,14 +932,22 @@ static
 gboolean
 cpu_keepalive_wakeup_cb(DBusMessage *const msg)
 {
-  mce_log(LL_DEBUG, "got keepalive wakeup");
-
   gboolean success = FALSE;
 
-  cpu_keepalive_wakeup(dbus_message_get_sender(msg));
+  const char *sender =  0;
+
+  if( !(sender = dbus_message_get_sender(msg)) )
+  {
+    goto EXIT;
+  }
+
+  mce_log(LL_DEBUG, "got keepalive wakeup from %s", sender);
+
+  cpu_keepalive_wakeup(sender);
 
   success = cpu_keepalive_reply_bool(msg, TRUE);
 
+EXIT:
   return success;
 }
 
