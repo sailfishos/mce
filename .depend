@@ -172,17 +172,21 @@ mce-hal.pic.o:\
 
 mce-hybris.o:\
 	mce-hybris.c\
+	datapipe.h\
 	mce-conf.h\
 	mce-hybris.h\
 	mce-log.h\
 	mce-modules.h\
+	mce.h\
 
 mce-hybris.pic.o:\
 	mce-hybris.c\
+	datapipe.h\
 	mce-conf.h\
 	mce-hybris.h\
 	mce-log.h\
 	mce-modules.h\
+	mce.h\
 
 mce-io.o:\
 	mce-io.c\
@@ -462,32 +466,6 @@ modules/display.pic.o:\
 	mce-hybris.h\
 	modules/display.h\
 
-modules/displaymeego.o:\
-	modules/displaymeego.c\
-	datapipe.h\
-	datapipe.h\
-	mce-conf.h\
-	mce-dbus.h\
-	mce-gconf.h\
-	mce-io.h\
-	mce-lib.h\
-	mce-log.h\
-	mce.h\
-	modules/displaymeego.h\
-
-modules/displaymeego.pic.o:\
-	modules/displaymeego.c\
-	datapipe.h\
-	datapipe.h\
-	mce-conf.h\
-	mce-dbus.h\
-	mce-gconf.h\
-	mce-io.h\
-	mce-lib.h\
-	mce-log.h\
-	mce.h\
-	modules/displaymeego.h\
-
 modules/doubletap.o:\
 	modules/doubletap.c\
 	datapipe.h\
@@ -619,6 +597,22 @@ modules/led.pic.o:\
 	mce.h\
 	mce-hybris.h\
 	modules/led.h\
+
+modules/packagekit.o:\
+	modules/packagekit.c\
+	datapipe.h\
+	datapipe.h\
+	mce-dbus.h\
+	mce-log.h\
+	mce.h\
+
+modules/packagekit.pic.o:\
+	modules/packagekit.c\
+	datapipe.h\
+	datapipe.h\
+	mce-dbus.h\
+	mce-log.h\
+	mce.h\
 
 modules/powersavemode.o:\
 	modules/powersavemode.c\
@@ -911,6 +905,7 @@ tests/ut/ut_display_stm.pic.o:\
 tklock.o:\
 	tklock.c\
 	datapipe.h\
+	evdev.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-gconf.h\
@@ -924,6 +919,7 @@ tklock.o:\
 tklock.pic.o:\
 	tklock.c\
 	datapipe.h\
+	evdev.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-gconf.h\
