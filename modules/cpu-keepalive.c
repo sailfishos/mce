@@ -37,6 +37,13 @@
 # include "../libwakelock.h"
 #endif
 
+
+/** Fallback context to use when clients make query keepalive period */
+#define CONTEXT_INITIAL "initial"
+
+/** Fallback context to use when clients start/stop keepalive period */
+#define CONTEXT_DEFAULT "undefined"
+
 typedef struct client_t client_t;
 
 G_MODULE_EXPORT const gchar *g_module_check_init(GModule *module);
@@ -95,7 +102,7 @@ time_t
 cpu_keepalive_get_time(void)
 {
   struct timespec ts;
-  clock_gettime(CLOCK_MONOTONIC, &ts);
+  clock_gettime(CLOCK_BOOTTIME, &ts);
   return ts.tv_sec;
 }
 
@@ -262,7 +269,48 @@ struct client_t
 
   /** Upper bound for reneval of cpu keepalive for this client */
   time_t  timeout;
+
+  /** One client can have several keepalive objects */
+  GHashTable *contexts; // [string] -> (gpointer)time_t
 };
+
+/** Iterator function for use from client_scan_timeout()
+ */
+static
+void
+client_scan_timeout_cb(gpointer key, gpointer val, gpointer aptr)
+{
+  (void)key;
+  client_t *self = aptr;
+  time_t    when = GPOINTER_TO_INT(val);
+
+  mce_log(LOG_DEBUG, "keepalive client=%s context=%s: T%+ld",
+	  self->dbus_name, (const char *)key,
+	  (long)(cpu_keepalive_get_time() - when));
+
+  if( self->timeout < when )
+  {
+    self->timeout = when;
+  }
+}
+
+/** Update client timeout to be maximum of context timeouts
+ */
+static
+void
+client_scan_timeout(client_t *self)
+{
+  time_t now  = cpu_keepalive_get_time();
+
+  self->timeout = now;
+
+  g_hash_table_foreach(self->contexts,
+		       client_scan_timeout_cb,
+		       self);
+
+  mce_log(LOG_DEBUG, "keepalive client=%s: T%+ld",
+	  self->dbus_name, (long)(now - self->timeout));
+}
 
 /** Clear client cpu-keepalive timeout
  *
@@ -270,9 +318,14 @@ struct client_t
  */
 static
 void
-client_clear_timeout(client_t *self)
+client_clear_timeout(client_t *self, const char *context)
 {
-  self->timeout = 0;
+  if( g_hash_table_remove(self->contexts, context) )
+  {
+    mce_log(LOG_DEBUG, "keepalive client=%s context=%s: cleared",
+	    self->dbus_name, context);
+    client_scan_timeout(self);
+  }
 }
 
 
@@ -283,12 +336,15 @@ client_clear_timeout(client_t *self)
  */
 static
 void
-client_update_timeout(client_t *self, time_t when)
+client_update_timeout(client_t *self, const char *context, time_t when)
 {
-  if( self->timeout < when )
-  {
-    self->timeout = when;
-  }
+  mce_log(LOG_DEBUG, "keepalive client=%s context=%s: T%+ld",
+	  self->dbus_name, context,
+	  (long)(cpu_keepalive_get_time() - when));
+
+  g_hash_table_replace(self->contexts, g_strdup(context),
+		       GINT_TO_POINTER(when));
+  client_scan_timeout(self);
 }
 
 
@@ -310,6 +366,10 @@ client_create(const char *dbus_name)
   self->dbus_name  = g_strdup(dbus_name);
   self->match_rule = g_strdup_printf(client_match_fmt, self->dbus_name);
   self->timeout    = 0;
+
+  self->contexts   = g_hash_table_new_full(g_str_hash, g_str_equal,
+					   g_free, NULL);
+
 
   mce_log(LL_NOTICE, "added cpu-keepalive client %s", self->dbus_name);
 
@@ -338,6 +398,7 @@ client_delete(client_t *self)
     /* NULL error -> match will be removed asynchronously */
     dbus_bus_remove_match(systembus, self->match_rule, 0);
 
+    g_hash_table_unref(self->contexts);
     g_free(self->dbus_name);
     g_free(self->match_rule);
     g_free(self);
@@ -624,13 +685,13 @@ cpu_keepalive_add_client(const gchar *dbus_name)
  */
 static
 void
-cpu_keepalive_register(const gchar *dbus_name)
+cpu_keepalive_register(const gchar *dbus_name, const char *context)
 {
   client_t *client = cpu_keepalive_add_client(dbus_name);
 
   time_t when = cpu_keepalive_get_time() + 2;
 
-  client_update_timeout(client, when);
+  client_update_timeout(client, context, when);
 
   cpu_keepalive_rethink();
 }
@@ -643,13 +704,14 @@ cpu_keepalive_register(const gchar *dbus_name)
  */
 static
 void
-cpu_keepalive_start(const gchar *dbus_name)
+cpu_keepalive_start(const gchar *dbus_name, const gchar *context)
 {
   client_t *client = cpu_keepalive_add_client(dbus_name);
 
   time_t when = cpu_keepalive_get_time() + MCE_CPU_KEEPALIVE_PERIOD_SECONDS;
 
-  client_update_timeout(client, when);
+  client_clear_timeout(client, CONTEXT_INITIAL);
+  client_update_timeout(client, context, when);
 
   /* We got at least one keep alive request, extend the minimum
    * alive time a bit to give other clients time to get scheduled */
@@ -664,13 +726,14 @@ cpu_keepalive_start(const gchar *dbus_name)
  */
 static
 void
-cpu_keepalive_stop(const gchar *dbus_name)
+cpu_keepalive_stop(const gchar *dbus_name, const char *context)
 {
   client_t *client = cpu_keepalive_get_client(dbus_name);
 
   if( client )
   {
-    client_clear_timeout(client);
+    client_clear_timeout(client, CONTEXT_INITIAL);
+    client_clear_timeout(client, context);
     cpu_keepalive_rethink();
   }
   else
@@ -720,14 +783,43 @@ static
 gboolean
 cpu_keepalive_period_cb(DBusMessage *const msg)
 {
-  mce_log(LL_INFO, "got method call");
-
   gboolean success = FALSE;
 
-  cpu_keepalive_register(dbus_message_get_sender(msg));
+  DBusError   err     = DBUS_ERROR_INIT;
+  const char *sender  = 0;
+  const char *context = 0;
+
+  if( !(sender = dbus_message_get_sender(msg)) )
+  {
+    goto EXIT;
+  }
+
+  mce_log(LL_DEBUG, "got keepalive period query from %s", sender);
+
+  if( !dbus_message_get_args(msg, &err,
+			     DBUS_TYPE_STRING, &context,
+			     DBUS_TYPE_INVALID) )
+  {
+    // initial dbus interface did not include context string
+    if( strcmp(err.name, DBUS_ERROR_INVALID_ARGS) )
+    {
+      mce_log(LL_WARN, "%s: %s", err.name, err.message);
+      goto EXIT;
+    }
+
+    context = CONTEXT_INITIAL;
+    mce_log(LL_DEBUG, "sender did not supply context string; using '%s'", context);
+  }
+
+  mce_log(LL_DEBUG, "sender=%s, context=%s", sender, context);
+
+
+  cpu_keepalive_register(sender, context);
 
   success = cpu_keepalive_reply_int(msg, MCE_CPU_KEEPALIVE_PERIOD_SECONDS);
 
+EXIT:
+  dbus_error_free(&err);
   return success;
 }
 
@@ -741,14 +833,44 @@ static
 gboolean
 cpu_keepalive_start_cb(DBusMessage *const msg)
 {
-  mce_log(LL_INFO, "got method call");
-
   gboolean success = FALSE;
 
-  cpu_keepalive_start(dbus_message_get_sender(msg));
+  DBusError  err      = DBUS_ERROR_INIT;
+  const char *sender  = 0;
+  const char *context = 0;
 
-  success = cpu_keepalive_reply_bool(msg, TRUE);
+  if( !(sender = dbus_message_get_sender(msg)) )
+  {
+    goto EXIT;
+  }
 
+  mce_log(LL_DEBUG, "got keepalive start from %s", sender);
+
+  if( !dbus_message_get_args(msg, &err,
+			     DBUS_TYPE_STRING, &context,
+			     DBUS_TYPE_INVALID) )
+  {
+    // initial dbus interface did not include context string
+    if( strcmp(err.name, DBUS_ERROR_INVALID_ARGS) )
+    {
+      mce_log(LL_WARN, "%s: %s", err.name, err.message);
+      goto EXIT;
+    }
+
+    context = CONTEXT_DEFAULT;
+    mce_log(LL_DEBUG, "sender did not supply context string; using '%s'", context);
+  }
+
+  mce_log(LL_DEBUG, "sender=%s, context=%s", sender, context);
+
+  cpu_keepalive_start(sender, context);
+
+  success = TRUE;
+
+EXIT:
+  cpu_keepalive_reply_bool(msg, success);
+
+  dbus_error_free(&err);
   return success;
 }
 
@@ -762,14 +884,45 @@ static
 gboolean
 cpu_keepalive_stop_cb(DBusMessage *const msg)
 {
-  mce_log(LL_INFO, "got method call");
-
   gboolean success = FALSE;
 
-  cpu_keepalive_stop(dbus_message_get_sender(msg));
+  DBusError  err      = DBUS_ERROR_INIT;
+  const char *sender  =  0;
+  const char *context = 0;
 
-  success = cpu_keepalive_reply_bool(msg, TRUE);
+  if( !(sender = dbus_message_get_sender(msg)) )
+  {
+    goto EXIT;
+  }
 
+  mce_log(LL_DEBUG, "got keepalive stop from %s", sender);
+
+  if( !dbus_message_get_args(msg, &err,
+			     DBUS_TYPE_STRING, &context,
+			     DBUS_TYPE_INVALID) )
+  {
+    // initial dbus interface did not include context string
+    if( strcmp(err.name, DBUS_ERROR_INVALID_ARGS) )
+    {
+      mce_log(LL_WARN, "%s: %s", err.name, err.message);
+      goto EXIT;
+    }
+
+    context = CONTEXT_DEFAULT;
+    mce_log(LL_DEBUG, "sender did not supply context string; using '%s'", context);
+  }
+
+
+  mce_log(LL_DEBUG, "sender=%s, context=%s", sender, context);
+
+  cpu_keepalive_stop(sender, context);
+
+  success = TRUE;
+
+EXIT:
+  cpu_keepalive_reply_bool(msg, success);
+
+  dbus_error_free(&err);
   return success;
 }
 
@@ -783,13 +936,23 @@ static
 gboolean
 cpu_keepalive_wakeup_cb(DBusMessage *const msg)
 {
-  mce_log(LL_INFO, "got method call");
-
   gboolean success = FALSE;
 
-  cpu_keepalive_wakeup(dbus_message_get_sender(msg));
+  const char *sender =  0;
 
-  success = cpu_keepalive_reply_bool(msg, TRUE);
+  if( !(sender = dbus_message_get_sender(msg)) )
+  {
+    goto EXIT;
+  }
+
+  mce_log(LL_DEBUG, "got keepalive wakeup from %s", sender);
+
+  cpu_keepalive_wakeup(sender);
+
+  success = TRUE;
+
+EXIT:
+  cpu_keepalive_reply_bool(msg, success);
 
   return success;
 }
@@ -837,13 +1000,13 @@ cpu_keepalive_dbus_filter_cb(DBusConnection *con, DBusMessage *msg,
   }
 
   sender = dbus_message_get_sender(msg);
-  if( strcmp(sender, DBUS_SERVICE_DBUS) )
+  if( !sender || strcmp(sender, DBUS_SERVICE_DBUS) )
   {
     goto EXIT;
   }
 
   object = dbus_message_get_path(msg);
-  if( strcmp(object, DBUS_PATH_DBUS) )
+  if( !object || strcmp(object, DBUS_PATH_DBUS) )
   {
     goto EXIT;
   }
