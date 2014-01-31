@@ -994,13 +994,13 @@ cpu_keepalive_dbus_filter_cb(DBusConnection *con, DBusMessage *msg,
   }
 
   sender = dbus_message_get_sender(msg);
-  if( strcmp(sender, DBUS_SERVICE_DBUS) )
+  if( !sender || strcmp(sender, DBUS_SERVICE_DBUS) )
   {
     goto EXIT;
   }
 
   object = dbus_message_get_path(msg);
-  if( strcmp(object, DBUS_PATH_DBUS) )
+  if( !object || strcmp(object, DBUS_PATH_DBUS) )
   {
     goto EXIT;
   }
