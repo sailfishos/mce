@@ -108,4 +108,7 @@ void mce_dbus_handler_unregister(mce_dbus_handler_t *self);
 void mce_dbus_handler_register_array(mce_dbus_handler_t *array);
 void mce_dbus_handler_unregister_array(mce_dbus_handler_t *array);
 
+char *mce_dbus_message_repr(DBusMessage *const msg);
+char *mce_dbus_message_iter_repr(DBusMessageIter *iter);
+
 #endif /* _MCE_DBUS_H_ */

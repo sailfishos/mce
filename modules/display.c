@@ -831,6 +831,31 @@ static gint mdy_brightness_decrease_constant_time =
  * DATAPIPE_TRACKING
  * ========================================================================= */
 
+/** PackageKit Locked property is set to true */
+static bool packagekit_locked = false;
+
+/**
+ * Handle packagekit_locked_pipe notifications
+ *
+ * @param data The locked state stored in a pointer
+ */
+static void mdy_packagekit_locked_cb(gconstpointer data)
+{
+    bool prev = packagekit_locked;
+    packagekit_locked = GPOINTER_TO_INT(data);
+
+    if( packagekit_locked == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "packagekit_locked = %d", packagekit_locked);
+
+    /* re-evaluate suspend policy */
+    mdy_stm_schedule_rethink();
+
+EXIT:
+    return;
+}
+
 /* Cached system state */
 static system_state_t system_state = MCE_STATE_UNDEF;
 
@@ -1364,7 +1389,8 @@ static void mdy_datapipe_init(void)
                                       mdy_datapipe_exception_state_cb);
     append_output_trigger_to_datapipe(&audio_route_pipe,
                                       mdy_datapipe_audio_route_cb);
-
+    append_output_trigger_to_datapipe(&packagekit_locked_pipe,
+                                      mdy_packagekit_locked_cb);
 }
 
 /** Remove triggers/filters from datapipes */
@@ -1372,6 +1398,8 @@ static void mdy_datapipe_quit(void)
 {
     // triggers
 
+    remove_output_trigger_from_datapipe(&packagekit_locked_pipe,
+                                        mdy_packagekit_locked_cb);
     remove_output_trigger_from_datapipe(&alarm_ui_state_pipe,
                                         mdy_datapipe_alarm_ui_state_cb);
     remove_output_trigger_from_datapipe(&proximity_sensor_pipe,
@@ -3746,6 +3774,10 @@ static int mdy_autosuspend_get_allowed_level(void)
 
     /* no late suspend during shutdown */
     if( mdy_shutdown_started )
+        block_late = true;
+
+    /* no late suspend while PackageKit is in Locked state */
+    if( packagekit_locked )
         block_late = true;
 
     /* no more suspend at module unload */

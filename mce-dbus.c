@@ -22,6 +22,7 @@
  */
 #include <glib.h>
 
+#include <stdio.h>
 #include <stdarg.h>			/* va_start(), va_end() */
 #include <stdlib.h>			/* exit(), EXIT_FAILURE */
 #include <string.h>			/* strcmp() */
@@ -35,6 +36,185 @@
 #include "mce-log.h"			/* mce_log(), LL_* */
 
 #include "mce-gconf.h"
+
+/** Placeholder for any basic dbus data type */
+typedef union
+{
+	dbus_int16_t i16;
+	dbus_int32_t i32;
+	dbus_int64_t i64;
+
+	dbus_uint16_t u16;
+	dbus_uint32_t u32;
+	dbus_uint64_t u64;
+
+	dbus_bool_t   b;
+	unsigned char o;
+	const char   *s;
+	double        d;
+
+} dbus_any_t;
+
+/** Emit one iterm from dbus message iterator to file
+ *
+ * @param file output file
+ * @param iter dbus message parse position
+ *
+ * @return TRUE if more items can be parsed, FALSE otherwise
+ */
+static dbus_bool_t
+mce_dbus_message_repr_any(FILE *file, DBusMessageIter *iter)
+{
+	dbus_any_t val = { .u64 = 0 };
+	DBusMessageIter sub;
+
+	switch( dbus_message_iter_get_arg_type(iter) ) {
+	case DBUS_TYPE_INVALID:
+		return FALSE;
+	default:
+	case DBUS_TYPE_UNIX_FD:
+		fprintf(file, " ???");
+		return FALSE;
+	case DBUS_TYPE_BYTE:
+		dbus_message_iter_get_basic(iter, &val.o);
+		fprintf(file, " byte:%d", val.o);
+		break;
+	case DBUS_TYPE_BOOLEAN:
+		dbus_message_iter_get_basic(iter, &val.b);
+		fprintf(file, " bool:%d", val.b);
+		break;
+	case DBUS_TYPE_INT16:
+		dbus_message_iter_get_basic(iter, &val.i16);
+		fprintf(file, " i16:%d", val.i16);
+		break;
+	case DBUS_TYPE_INT32:
+		dbus_message_iter_get_basic(iter, &val.i32);
+		fprintf(file, " i32:%d", val.i32);
+		break;
+	case DBUS_TYPE_INT64:
+		dbus_message_iter_get_basic(iter, &val.i64);
+		fprintf(file, " i64:%lld", (long long)val.i64);
+		break;
+	case DBUS_TYPE_UINT16:
+		dbus_message_iter_get_basic(iter, &val.u16);
+		fprintf(file, " u16:%u", val.u16);
+		break;
+	case DBUS_TYPE_UINT32:
+		dbus_message_iter_get_basic(iter, &val.u32);
+		fprintf(file, " u32:%u", val.u32);
+		break;
+	case DBUS_TYPE_UINT64:
+		dbus_message_iter_get_basic(iter, &val.u64);
+		fprintf(file, " u64:%llu", (unsigned long long)val.u64);
+		break;
+	case DBUS_TYPE_DOUBLE:
+		dbus_message_iter_get_basic(iter, &val.d);
+		fprintf(file, " dbl:%g", val.d);
+		break;
+	case DBUS_TYPE_STRING:
+		dbus_message_iter_get_basic(iter, &val.s);
+		fprintf(file, " str:\"%s\"", val.s);
+		break;
+	case DBUS_TYPE_OBJECT_PATH:
+		dbus_message_iter_get_basic(iter, &val.s);
+		fprintf(file, " obj:\"%s\"", val.s);
+		break;
+	case DBUS_TYPE_SIGNATURE:
+		dbus_message_iter_get_basic(iter, &val.s);
+		fprintf(file, " sgn:\"%s\"", val.s);
+		break;
+	case DBUS_TYPE_ARRAY:
+		dbus_message_iter_recurse(iter, &sub);
+		fprintf(file, " [");
+		while( mce_dbus_message_repr_any(file, &sub) ) {}
+		fprintf(file, " ]");
+		break;
+	case DBUS_TYPE_VARIANT:
+		dbus_message_iter_recurse(iter, &sub);
+		fprintf(file, " var");
+		mce_dbus_message_repr_any(file, &sub);
+		break;
+	case DBUS_TYPE_STRUCT:
+		dbus_message_iter_recurse(iter, &sub);
+		fprintf(file, " {");
+		while( mce_dbus_message_repr_any(file, &sub) ) {}
+		fprintf(file, " }");
+		break;
+	case DBUS_TYPE_DICT_ENTRY:
+		dbus_message_iter_recurse(iter, &sub);
+		fprintf(file, " key");
+		mce_dbus_message_repr_any(file, &sub);
+		fprintf(file, " val");
+		mce_dbus_message_repr_any(file, &sub);
+		break;
+	}
+
+	return dbus_message_iter_next(iter);
+}
+
+/** Convert dbus message read iterator to string
+ *
+ * Caller must release returned string with free().
+ *
+ * @param iter dbus message iterator
+ *
+ * @returns representation of the iterator, or NULL
+ */
+char *
+mce_dbus_message_iter_repr(DBusMessageIter *iter)
+{
+	size_t  size = 0;
+	char   *data = 0;
+	FILE   *file = open_memstream(&data, &size);
+
+	if( !iter )
+		goto EXIT;
+
+	while( mce_dbus_message_repr_any(file, iter) ) {}
+EXIT:
+	fclose(file);
+	return data;
+}
+
+/** Convert dbus message to string
+ *
+ * Caller must release returned string with free().
+ *
+ * @param msg dbus message
+ *
+ * @returns representation of the dbus message, or NULL
+ */
+char *
+mce_dbus_message_repr(DBusMessage *const msg)
+{
+	size_t  size = 0;
+	char   *data = 0;
+	FILE   *file = open_memstream(&data, &size);
+
+	const char *iface = dbus_message_get_interface(msg);
+	const char *member = dbus_message_get_member(msg);
+	int type = dbus_message_get_type(msg);
+	const char *tname = dbus_message_type_to_string(type);
+	const char *sender = dbus_message_get_sender(msg);
+
+	fprintf(file, "%s", tname);
+
+	if( sender ) fprintf(file, " from %s", sender);
+	if( iface )  fprintf(file, " %s", iface);
+	if( member ) fprintf(file, " %s", member);
+
+	DBusMessageIter iter;
+	dbus_message_iter_init(msg, &iter);
+	if( dbus_message_iter_get_arg_type(&iter) == DBUS_TYPE_INVALID )
+		goto EXIT;
+
+	fprintf(file, ":");
+
+	while( mce_dbus_message_repr_any(file, &iter) ) {}
+EXIT:
+	fclose(file);
+	return data;
+}
 
 /** List of all D-Bus handlers */
 static GSList *dbus_handlers = NULL;
