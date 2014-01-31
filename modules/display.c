@@ -5979,18 +5979,10 @@ static gboolean mdy_dbus_handle_desktop_started_sig(DBusMessage *const msg)
     return status;
 }
 
-/** D-Bus callback for the shutdown notification signal
- *
- * @param msg The D-Bus message
- * @return TRUE on success, FALSE on failure
+/** Common code for thermal, battery empty and normal shutdown handling
  */
-
-static gboolean mdy_dbus_handle_shutdown_started_sig(DBusMessage *const msg)
+static void mdy_dbus_handle_shutdown_started(void)
 {
-    (void)msg;
-
-    mce_log(LL_WARN, "Received shutdown notification");
-
     /* mark that we're shutting down */
     mdy_shutdown_started = TRUE;
 
@@ -6000,6 +5992,51 @@ static gboolean mdy_dbus_handle_shutdown_started_sig(DBusMessage *const msg)
 #ifdef ENABLE_CPU_GOVERNOR
     mdy_governor_rethink();
 #endif
+}
+
+/** D-Bus callback for the shutdown notification signal
+ *
+ * @param msg The D-Bus message
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean mdy_dbus_handle_shutdown_started_sig(DBusMessage *const msg)
+{
+    (void)msg;
+
+    mce_log(LL_WARN, "Received shutdown notification");
+    mdy_dbus_handle_shutdown_started();
+
+    return TRUE;
+}
+
+/** D-Bus callback for the thermal shutdown notification signal
+ *
+ * @param msg The D-Bus message
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean
+mdy_dbus_handle_thermal_shutdown_started_sig(DBusMessage *const msg)
+{
+    (void)msg;
+
+    mce_log(LL_WARN, "Received thermal shutdown notification");
+    mdy_dbus_handle_shutdown_started();
+
+    return TRUE;
+}
+
+/** D-Bus callback for the battery empty shutdown notification signal
+ *
+ * @param msg The D-Bus message
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean
+mdy_dbus_handle_battery_empty_shutdown_started_sig(DBusMessage *const msg)
+{
+    (void)msg;
+
+    mce_log(LL_WARN, "Received battery empty shutdown notification");
+    mdy_dbus_handle_shutdown_started();
 
     return TRUE;
 }
@@ -6077,6 +6114,20 @@ static void mdy_dbus_init(void)
                          NULL,
                          DBUS_MESSAGE_TYPE_SIGNAL,
                          mdy_dbus_handle_shutdown_started_sig);
+
+    /* Thermal shutdown signal */
+    mce_dbus_handler_add("com.nokia.dsme.signal",
+                         "thermal_shutdown_ind",
+                         NULL,
+                         DBUS_MESSAGE_TYPE_SIGNAL,
+                         mdy_dbus_handle_thermal_shutdown_started_sig);
+
+    /* Battery empty shutdown signal */
+    mce_dbus_handler_add("com.nokia.dsme.signal",
+                         "battery_empty_ind",
+                         NULL,
+                         DBUS_MESSAGE_TYPE_SIGNAL,
+                         mdy_dbus_handle_battery_empty_shutdown_started_sig);
 
     /* Turning demo mode on/off */
     mce_dbus_handler_add(MCE_REQUEST_IF,
