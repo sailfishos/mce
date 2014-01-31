@@ -865,9 +865,11 @@ cpu_keepalive_start_cb(DBusMessage *const msg)
 
   cpu_keepalive_start(sender, context);
 
-  success = cpu_keepalive_reply_bool(msg, TRUE);
+  success = TRUE;
 
 EXIT:
+  cpu_keepalive_reply_bool(msg, success);
+
   dbus_error_free(&err);
   return success;
 }
@@ -915,9 +917,11 @@ cpu_keepalive_stop_cb(DBusMessage *const msg)
 
   cpu_keepalive_stop(sender, context);
 
-  success = cpu_keepalive_reply_bool(msg, TRUE);
+  success = TRUE;
 
 EXIT:
+  cpu_keepalive_reply_bool(msg, success);
+
   dbus_error_free(&err);
   return success;
 }
@@ -945,9 +949,11 @@ cpu_keepalive_wakeup_cb(DBusMessage *const msg)
 
   cpu_keepalive_wakeup(sender);
 
-  success = cpu_keepalive_reply_bool(msg, TRUE);
+  success = TRUE;
 
 EXIT:
+  cpu_keepalive_reply_bool(msg, success);
+
   return success;
 }
 
