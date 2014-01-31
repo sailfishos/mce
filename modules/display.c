@@ -320,13 +320,6 @@ static void                mdy_poweron_led_rethink_cancel(void);
 static void                mdy_poweron_led_rethink_schedule(void);
 
 /* ------------------------------------------------------------------------- *
- * DEVICELOCK_INHIBIT (defunct harmattan version)
- * ------------------------------------------------------------------------- */
-
-static void                mdy_devlock_inhibit_rsp(DBusPendingCall *pending_call, void *data);
-static void                mdy_devlock_inhibit_req(void);
-
-/* ------------------------------------------------------------------------- *
  * AUTOMATIC_BLANKING
  * ------------------------------------------------------------------------- */
 
@@ -2070,132 +2063,6 @@ static void mdy_poweron_led_rethink_schedule(void)
 }
 
 /* ========================================================================= *
- * DEVICELOCK_INHIBIT (defunct harmattan version)
- * ========================================================================= */
-
-/* These defines are taken from devicelock.h, but slightly modified */
-#ifndef DEVICELOCK_H
-
-/** Devicelock D-Bus service */
-#define DEVLOCK_SERVICE                 "com.nokia.devicelock"
-/** Devicelock D-Bus service */
-#define DEVLOCK_PATH                    "/request"
-/** Set devicelock state */
-#define DEVLOCK_SET                     "setState"
-
-/** Enumeration of the valid locks on the device */
-enum LockType {
-    /** TouchAndKeyboard -- The touch screen and keypad lock */
-    TouchAndKeyboard = 0,
-    /** Device -- The device lock, password protected lock screen */
-    Device
-};
-
-/** Enumeration of the valid states that a lock can be in */
-enum LockState {
-    /** Unlocked - The lock is unlocked */
-    Unlocked = 0,
-    /** Locked - The lock is being used */
-    Locked,
-    /** Configuration - Open the locks configuration settings */
-    Configuration,
-    /** WipeMMC - Secure wipe of the device */
-    WipeMMC,
-    /** Inhibit - Stop the lock ui(s) from being displayed */
-    Inhibit,
-    /** Undefined - Lock state is unknown or the lock does not exist */
-    Undefined
-};
-#endif /* DEVICELOCK_H */
-
-/**
- * D-Bus reply handler for device lock inhibit
- *
- * @param pending_call The DBusPendingCall
- * @param data Unused
- */
-static void mdy_devlock_inhibit_rsp(DBusPendingCall *pending_call, void *data)
-{
-    DBusMessage *reply;
-    dbus_int32_t retval;
-    DBusError error;
-
-    /* Register error channel */
-    dbus_error_init(&error);
-
-    (void)data;
-
-    mce_log(LL_DEBUG, "Received device lock inhibit reply");
-
-    if ((reply = dbus_pending_call_steal_reply(pending_call)) == NULL) {
-        mce_log(LL_ERR, "Device lock inhibit reply callback invoked, "
-                "but no pending call available");
-        goto EXIT;
-    }
-
-    /* Make sure we didn't get an error message */
-    if (dbus_message_get_type(reply) == DBUS_MESSAGE_TYPE_ERROR) {
-        char *error_msg;
-
-        /* If we got an error, it's a string */
-        if (dbus_message_get_args(reply, &error,
-                                  DBUS_TYPE_STRING, &error_msg,
-                                  DBUS_TYPE_INVALID) == FALSE) {
-            mce_log(LL_ERR, "Failed to get error reply argument "
-                    "from %s.%s: %s",
-                    DEVLOCK_SERVICE, DEVLOCK_SET,
-                    error.message);
-            dbus_error_free(&error);
-        } else {
-            mce_log(LL_ERR, "D-Bus call to %s.%s failed: %s",
-                    DEVLOCK_SERVICE, DEVLOCK_SET,
-                    error_msg);
-        }
-
-        goto EXIT2;
-    }
-
-    /* Extract reply */
-    if (dbus_message_get_args(reply, &error,
-                              DBUS_TYPE_BOOLEAN, &retval,
-                              DBUS_TYPE_INVALID) == FALSE) {
-        mce_log(LL_ERR, "Failed to get reply argument from %s.%s: %s",
-                DEVLOCK_SERVICE, DEVLOCK_SET,
-                error.message);
-        dbus_error_free(&error);
-        goto EXIT2;
-    }
-
-    mce_log(LL_DEBUG, "Return value: %d", retval);
-
-EXIT2:
-    dbus_message_unref(reply);
-
-EXIT:
-    dbus_pending_call_unref(pending_call);
-
-    return;
-}
-
-/**
- * Inhibit device lock
- */
-static void mdy_devlock_inhibit_req(void)
-{
-    dbus_int32_t lock_type  = Device;
-    dbus_int32_t lock_state = Inhibit;
-
-    mce_log(LL_DEBUG, "Requesting device lock inhibit");
-
-    dbus_send(DEVLOCK_SERVICE, DEVLOCK_PATH,
-              DEVLOCK_SERVICE, DEVLOCK_SET,
-              mdy_devlock_inhibit_rsp,
-              DBUS_TYPE_INT32, &lock_type,
-              DBUS_TYPE_INT32, &lock_state,
-              DBUS_TYPE_INVALID);
-}
-
-/* ========================================================================= *
  * AUTOMATIC_BLANKING
  * ========================================================================= */
 
@@ -2613,7 +2480,6 @@ static void mdy_blanking_add_pause_client(const gchar *name)
     }
 
     mdy_blanking_start_pause_period();
-    mdy_devlock_inhibit_req();
     mdy_blanking_rethink_timers(true);
 
 EXIT:
