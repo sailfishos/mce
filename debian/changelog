@@ -1,3 +1,15 @@
+mce (1.23.2) unstable; urgency=low
+
+  * [mce] Support multiple cpu-keepalive contexts for single process
+  * [mce] Remove calls to non-existing com.nokia.devicelock D-Bus service
+  * [mce] Block late suspend on battery empty and thermal shutdown
+  * [mce] Also shutdown from act dead activates power off led pattern
+  * [mce] Allow more time for setUpdatesEnabled ipc roundtrip
+  * [mce] Do not queue display off if power key is pressed during fb wakeup
+  * [mce] Add module for tracking PackageKit D-Bus service and Locked property
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 31 Jan 2014 17:07:00 +0200
+
 mce (1.23.1) unstable; urgency=low
 
   * [mce] Allow toggling debug verbosity with SIGUSR1 and SIGUSR2
