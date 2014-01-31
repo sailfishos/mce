@@ -166,7 +166,13 @@ static void generic_powerkey_handler(poweraction_t action,
 		switch( display_state_get() ) {
 		case MCE_DISPLAY_ON:
 		case MCE_DISPLAY_DIM:
-		case MCE_DISPLAY_POWER_UP:
+			/* MCE_DISPLAY_OFF requests must be queued only
+			 * from fully powered up display states.
+			 * Otherwise we create a situation where multiple
+			 * power key presses done while the display is off
+			 * or powering up will bounce back to display off
+			 * once initial the off->on transition finishes */
+
 			mce_log(LL_DEBUG, "display -> off + lock");
 
 			/* Do the locking before turning display off.
@@ -184,6 +190,9 @@ static void generic_powerkey_handler(poweraction_t action,
 			break;
 
 		default:
+			/* If the display is not fully powered on, always
+			 * request MCE_DISPLAY_ON */
+
 			mce_log(LL_DEBUG, "display -> on");
 			execute_datapipe(&display_state_req_pipe,
 					 GINT_TO_POINTER(MCE_DISPLAY_ON),
