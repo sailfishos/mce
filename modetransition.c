@@ -181,13 +181,18 @@ static void system_state_trigger(gconstpointer data)
 	case MCE_STATE_SHUTDOWN:
 	case MCE_STATE_REBOOT:
 		/* Actions to perform when shutting down/rebooting
-		 * from anything else than acting dead
 		 */
-		if ((old_system_state == MCE_STATE_USER) ||
-		    (old_system_state == MCE_STATE_BOOT) ||
-		    (old_system_state == MCE_STATE_UNDEF)) {
+		switch( old_system_state ) {
+		case MCE_STATE_USER:
+		case MCE_STATE_BOOT:
+		case MCE_STATE_UNDEF:
+		case MCE_STATE_ACTDEAD:
 			execute_datapipe_output_triggers(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_DEVICE_ON, USE_INDATA);
 			execute_datapipe_output_triggers(&led_pattern_activate_pipe, MCE_LED_PATTERN_POWER_OFF, USE_INDATA);
+			break;
+
+		default:
+			break;
 		}
 
 		/* If we're shutting down/rebooting from acting dead,
