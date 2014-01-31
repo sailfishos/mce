@@ -428,24 +428,6 @@ modules/cpu-keepalive.pic.o:\
 	mce-log.h\
 	libwakelock.h\
 
-modules/device_wd.o:\
-	modules/device_wd.c\
-	datapipe.h\
-	mce-conf.h\
-	mce-io.h\
-	mce-log.h\
-	mce.h\
-	modules/device_wd.h\
-
-modules/device_wd.pic.o:\
-	modules/device_wd.c\
-	datapipe.h\
-	mce-conf.h\
-	mce-io.h\
-	mce-log.h\
-	mce.h\
-	modules/device_wd.h\
-
 modules/display.o:\
 	modules/display.c\
 	datapipe.h\
