@@ -1,3 +1,10 @@
+mce (1.23.3) unstable; urgency=low
+
+  * [mce] Treat "ihfforcall" audio sink as an alias for "ihf"
+  * [mce] Hold wakelock while there are active power key related timers
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 04 Feb 2014 14:18:06 +0200
+
 mce (1.23.2) unstable; urgency=low
 
   * [mce] Support multiple cpu-keepalive contexts for single process
