@@ -235,7 +235,8 @@ static gboolean audio_route_parser(DBusMessageIter *data)
 
 		if (!strcmp(args.device, "null")) {
 			full_audio_route = FULL_AUDIO_ROUTE_NULL;
-		} else if (!strcmp(args.device, "ihf")) {
+		} else if (!strcmp(args.device, "ihf") ||
+			   !strcmp(args.device, "ihfforcall")) {
 			full_audio_route = FULL_AUDIO_ROUTE_IHF;
 		} else if (!strcmp(args.device, "fmtx")) {
 			full_audio_route = FULL_AUDIO_ROUTE_FMTX;
@@ -269,6 +270,8 @@ static gboolean audio_route_parser(DBusMessageIter *data)
 			full_audio_route = FULL_AUDIO_ROUTE_TVOUT_AND_BTA2DP;
 		} else {
 			full_audio_route = FULL_AUDIO_ROUTE_OTHER;
+			mce_log(LL_WARN, "unknown audio sink device = '%s'",
+				args.device);
 		}
 	} while (dbus_message_iter_next(data));
 
