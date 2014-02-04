@@ -73,6 +73,10 @@
 					 * remove_input_trigger_from_datapipe()
 					 */
 
+#ifdef ENABLE_WAKELOCKS
+# include "libwakelock.h"
+#endif
+
 #if 0 // DEBUG: make all logging from this module "critical"
 # undef mce_log
 # define mce_log(LEV, FMT, ARGS...) \
@@ -112,6 +116,43 @@ static gchar *longpresssignal = NULL;
 static gchar *doublepresssignal = NULL;
 
 static void cancel_powerkey_timeout(void);
+
+/** Check if we need to hold a wakelock for power key handling
+ *
+ * Effectively wakelock can be acquired only due to power key
+ * pressed handling in powerkey_trigger().
+ *
+ * Releasing wakelock happens after power key is released
+ * and/or long/double tap timeouts get triggered.
+ *
+ * Timer re-programming does not affect wakelock status on purpose.
+ */
+static void powerkey_wakelock_rethink(void)
+{
+#ifdef ENABLE_WAKELOCKS
+	static bool have_lock = false;
+
+	bool want_lock = false;
+
+	/* hold wakelock while we have active power key timers */
+	if( powerkey_timeout_cb_id || doublepress_timeout_cb_id ) {
+		want_lock = true;
+	}
+	if( have_lock == want_lock )
+		goto EXIT;
+
+	if( (have_lock = want_lock) ) {
+		wakelock_lock("mce_powerkey_stm", -1);
+		mce_log(LL_DEBUG, "acquire wakelock");
+	}
+	else {
+		mce_log(LL_DEBUG, "release wakelock");
+		wakelock_unlock("mce_powerkey_stm");
+	}
+EXIT:
+	return;
+#endif
+}
 
 /**
  * Generic logic for key presses
@@ -262,6 +303,9 @@ static gboolean doublepress_timeout_cb(gpointer data)
 	if (system_state == MCE_STATE_USER)
 		generic_powerkey_handler(shortpressaction,
 					 shortpresssignal);
+
+	/* Release wakelock if all timers are inactive */
+	powerkey_wakelock_rethink();
 
 	return FALSE;
 }
@@ -414,6 +458,9 @@ static gboolean powerkey_timeout_cb(gpointer data)
 	powerkey_timeout_cb_id = 0;
 
 	handle_longpress();
+
+	/* Release wakelock if all timers are inactive */
+	powerkey_wakelock_rethink();
 
 	return FALSE;
 }
@@ -596,6 +643,10 @@ static void powerkey_trigger(gconstpointer const data)
 				handle_shortpress();
 			}
 		}
+
+		/* Acquire/release a wakelock depending on whether
+		 * there are active powerkey timers or not */
+		powerkey_wakelock_rethink();
 	}
 
 EXIT:
@@ -741,6 +792,9 @@ void mce_powerkey_exit(void)
 	g_free(doublepresssignal);
 	g_free(longpresssignal);
 	g_free(shortpresssignal);
+
+	/* Release wakelock */
+	powerkey_wakelock_rethink();
 
 	return;
 }

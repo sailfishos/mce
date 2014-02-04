@@ -687,6 +687,7 @@ modules/radiostates.pic.o:\
 powerkey.o:\
 	powerkey.c\
 	datapipe.h\
+	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-dsme.h\
@@ -697,6 +698,7 @@ powerkey.o:\
 powerkey.pic.o:\
 	powerkey.c\
 	datapipe.h\
+	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-dsme.h\
