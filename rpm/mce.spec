@@ -50,7 +50,7 @@ This package contains test suite for mce
 
 %build
 ./verify_version
-make %{?jobs:-j%jobs}
+make %{?jobs:-j%jobs} %{!?qa_stage_devel:ENABLE_DEVEL_LOGGING=n}
 
 %install
 rm -rf %{buildroot}

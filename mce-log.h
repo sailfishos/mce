@@ -38,6 +38,13 @@ typedef enum {
 	LL_DEBUG   = 7,			/**< Useful when debugging */
 
 	LL_DEFAULT = LL_WARN,		/**< Default log level */
+
+#ifdef ENABLE_DEVEL_LOGGING
+	LL_DEVEL   = LL_CRIT,		/**< Log by default on devel build */
+#else
+	LL_DEVEL   = LL_NOTICE,		/**< Otherwise verbose mode needed */
+#endif
+
 } loglevel_t;
 
 void mce_log_add_pattern(const char *pat);
