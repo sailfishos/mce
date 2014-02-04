@@ -1180,6 +1180,21 @@ EXIT:
 	return flush;
 }
 
+/** Proximity state enum to human readable string
+ */
+static const char *proximity_state_repr(cover_state_t state)
+{
+	const char *repr = "unknown";
+	switch( state ) {
+	case COVER_UNDEF:  repr = "undefined";   break;
+	case COVER_CLOSED: repr = "covered";     break;
+	case COVER_OPEN:   repr = "not covered"; break;
+	default:
+		break;
+	}
+	return repr;
+}
+
 static gboolean doubletap_iomon_cb(gpointer data, gsize bytes_read)
 {
 	struct input_event *ev = data;
@@ -1197,16 +1212,14 @@ static gboolean doubletap_iomon_cb(gpointer data, gsize bytes_read)
 		cover_state_t proximity_sensor_state =
 			datapipe_get_gint(proximity_sensor_pipe);
 
+		mce_log(LL_DEVEL, "[doubletap] while proximity=%s",
+			proximity_state_repr(proximity_sensor_state));
+
 		if( proximity_sensor_state == COVER_CLOSED ) {
-			/* As we should disable double tap detector rather
-			 * than filtering the events with proximity state.
-			 * Emit one warning then switch to debug logging */
-			static loglevel_t lev =	LL_WARN;
-			mce_log(lev, "IGNORING DOUBLETAP");
-			lev = LL_DEBUG;
+			mce_log(LL_DEVEL, "[doubletap] ignored");
 		}
 		else {
-			mce_log(LL_NOTICE, "FORWARDING DOUBLETAP");
+			mce_log(LL_DEVEL, "[doubletap] forwarded");
 			/* Mimic N9 style gesture event for which we
 			 * already have logic in place */
 			ev->type  = EV_MSC;

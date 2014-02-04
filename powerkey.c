@@ -163,6 +163,9 @@ EXIT:
 static void generic_powerkey_handler(poweraction_t action,
 				     gchar *dbus_signal)
 {
+	mce_log(LL_DEVEL, "action=%d, signal=%s", (int)action,
+		dbus_signal ?: "n/a");
+
 	alarm_ui_state_t alarm_ui_state =
 				datapipe_get_gint(alarm_ui_state_pipe);
 	submode_t submode = mce_get_submode_int32();
@@ -182,13 +185,9 @@ static void generic_powerkey_handler(poweraction_t action,
 		 * or if we're in alarm state
 		 */
 		if ((submode & MCE_TKLOCK_SUBMODE) == 0) {
-			mce_log(LL_WARN,
-				"Requesting shutdown (action: %d)",
-				action);
-
+			mce_log(LL_DEVEL, "Requesting shutdown");
 			request_normal_shutdown();
 		}
-
 		break;
 
 	case POWER_SOFT_POWEROFF:
@@ -214,7 +213,7 @@ static void generic_powerkey_handler(poweraction_t action,
 			 * or powering up will bounce back to display off
 			 * once initial the off->on transition finishes */
 
-			mce_log(LL_DEBUG, "display -> off + lock");
+			mce_log(LL_DEVEL, "display -> off, ui -> locked");
 
 			/* Do the locking before turning display off.
 			 *
@@ -234,7 +233,7 @@ static void generic_powerkey_handler(poweraction_t action,
 			/* If the display is not fully powered on, always
 			 * request MCE_DISPLAY_ON */
 
-			mce_log(LL_DEBUG, "display -> on");
+			mce_log(LL_DEVEL, "display -> on");
 			execute_datapipe(&display_state_req_pipe,
 					 GINT_TO_POINTER(MCE_DISPLAY_ON),
 					 USE_INDATA, CACHE_INDATA);
@@ -619,7 +618,7 @@ static void powerkey_trigger(gconstpointer const data)
 	if ((ev != NULL) && (ev->code == KEY_POWER)) {
 		/* If set, the [power] key was pressed */
 		if (ev->value == 1) {
-			mce_log(LL_DEBUG, "[power] pressed");
+			mce_log(LL_DEVEL, "[powerkey] pressed");
 
 			/* Are we waiting for a doublepress? */
 			if (doublepress_timeout_cb_id != 0) {
@@ -636,7 +635,7 @@ static void powerkey_trigger(gconstpointer const data)
 				setup_powerkey_timeout(longdelay);
 			}
 		} else if (ev->value == 0) {
-			mce_log(LL_DEBUG, "[power] released");
+			mce_log(LL_DEVEL, "[powerkey] released");
 
 			/* Short key press */
 			if (powerkey_timeout_cb_id != 0) {

@@ -71,6 +71,9 @@ endif
 endif
 PKG_CONFIG   ?= pkg-config
 
+# Whether to enable DEVEL release logging
+ENABLE_DEVEL_LOGGING ?= y
+
 # Whether to use sensorfw for ALS/PS
 ENABLE_SENSORFW ?= y
 
@@ -243,6 +246,10 @@ endif
 
 ifeq ($(ENABLE_DOUBLETAP_EMULATION),y)
 CPPFLAGS += -DENABLE_DOUBLETAP_EMULATION
+endif
+
+ifeq ($(ENABLE_DEVEL_LOGGING),y)
+CPPFLAGS += -DENABLE_DEVEL_LOGGING
 endif
 
 # C Compiler
