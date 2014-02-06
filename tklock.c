@@ -169,6 +169,7 @@ static void     tklock_proxlock_rethink(void);
 
 // ui exception handling state machine
 
+static uiexctype_t topmost_active(uiexctype_t mask);
 static void     tklock_uiexcept_sync_to_datapipe(void);
 static gboolean tklock_uiexcept_linger_cb(gpointer aptr);
 static gboolean tklock_uiexcept_notif_cb(gpointer aptr);
