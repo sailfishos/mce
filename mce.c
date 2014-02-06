@@ -1002,8 +1002,8 @@ int main(int argc, char **argv)
 		       0, GINT_TO_POINTER(FALSE));
 	setup_datapipe(&packagekit_locked_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(FALSE));
-
-
+	setup_datapipe(&device_lock_active_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(FALSE));
 
 	/* Initialise mode management
 	 * pre-requisite: mce_gconf_init()
@@ -1132,6 +1132,7 @@ EXIT:
 	free_datapipe(&heartbeat_pipe);
 	free_datapipe(&lipstick_available_pipe);
 	free_datapipe(&packagekit_locked_pipe);
+	free_datapipe(&device_lock_active_pipe);
 
 	/* Call the exit function for all subsystems */
 	mce_gconf_exit();
