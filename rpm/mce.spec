@@ -59,15 +59,15 @@ make install DESTDIR=%{buildroot} _UNITDIR=%{_unitdir}
 
 %preun
 if [ "$1" -eq 0 ]; then
-  systemctl stop %{name}.service
+  systemctl stop %{name}.service || :
 fi
 
 %post
-systemctl daemon-reload
-systemctl reload-or-try-restart %{name}.service
+systemctl daemon-reload || :
+systemctl reload-or-try-restart %{name}.service || :
 
 %postun
-systemctl daemon-reload
+systemctl daemon-reload || :
 
 %files
 %defattr(-,root,root,-)
