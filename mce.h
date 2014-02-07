@@ -356,6 +356,9 @@ datapipe_struct lipstick_available_pipe;
 /** PackageKit Locked status; read only */
 datapipe_struct packagekit_locked_pipe;
 
+/** Device Lock active status; read only */
+datapipe_struct device_lock_active_pipe;
+
 /* XXX: use HAL */
 /** Does the device have a flicker key? */
 extern gboolean has_flicker_key;

@@ -117,6 +117,7 @@ static int64_t  tklock_monotick_get(void);
 // datapipe values and triggers
 
 static void     tklock_datapipe_system_state_cb(gconstpointer data);
+static void     tklock_datapipe_device_lock_active_cb(gconstpointer data);
 static void     tklock_datapipe_lipstick_available_cb(gconstpointer data);
 static void     tklock_datapipe_display_state_cb(gconstpointer data);
 static void     tklock_datapipe_proximity_sensor_cb(gconstpointer data);
@@ -141,6 +142,7 @@ static void     tklock_datapipe_lens_cover_cb(gconstpointer data);
 static void     tklock_datapipe_user_activity_cb(gconstpointer data);
 
 static bool     tklock_datapipe_have_tklock_submode(void);
+static void     tklock_datapipe_set_device_lock_active(int state);
 
 static void     tklock_datapipe_append_triggers(datapipe_binding_t *bindings);
 static void     tklock_datapipe_initialize_triggers(datapipe_binding_t *bindings);
@@ -167,6 +169,7 @@ static void     tklock_proxlock_rethink(void);
 
 // ui exception handling state machine
 
+static uiexctype_t topmost_active(uiexctype_t mask);
 static void     tklock_uiexcept_sync_to_datapipe(void);
 static gboolean tklock_uiexcept_linger_cb(gpointer aptr);
 static gboolean tklock_uiexcept_notif_cb(gpointer aptr);
@@ -215,6 +218,9 @@ static void     tklock_ui_open(void);
 static void     tklock_ui_close(void);
 static void     tklock_ui_set(bool enable);
 
+static void     tklock_ui_get_device_lock_cb(DBusPendingCall *pc, void *aptr);
+static void     tklock_ui_get_device_lock(void);
+
 // dbus ipc
 
 static gboolean tklock_dbus_send_tklock_mode(DBusMessage *const method_call);
@@ -222,6 +228,8 @@ static gboolean tklock_dbus_send_tklock_mode(DBusMessage *const method_call);
 static gboolean tklock_dbus_mode_get_req_cb(DBusMessage *const msg);
 static gboolean tklock_dbus_mode_change_req_cb(DBusMessage *const msg);
 static gboolean tklock_dbus_systemui_callback_cb(DBusMessage *const msg);
+
+static gboolean tklock_dbus_device_lock_changed_cb(DBusMessage *const msg);
 
 static void     mce_tklock_init_dbus(void);
 static void     mce_tklock_quit_dbus(void);
@@ -389,6 +397,43 @@ EXIT:
     return;
 }
 
+/** Device lock is active; assume false */
+static bool device_lock_active = false;
+
+/** Push device lock state value into device_lock_active_pipe datapipe
+ */
+static void tklock_datapipe_set_device_lock_active(int state)
+{
+    bool locked = (state != 0);
+
+    if( device_lock_active != locked ) {
+	execute_datapipe(&device_lock_active_pipe,
+			 GINT_TO_POINTER(locked),
+			 USE_INDATA, CACHE_INDATA);
+    }
+}
+
+/** Change notifications for device_lock_active
+ */
+static void tklock_datapipe_device_lock_active_cb(gconstpointer data)
+{
+    bool prev = device_lock_active;
+    device_lock_active = GPOINTER_TO_INT(data);
+
+    if( device_lock_active == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "device_lock_active = %d -> %d", prev,
+            device_lock_active);
+
+    /* if device is locked, lock ui too */
+    if( device_lock_active ) {
+	tklock_ui_set(true);
+    }
+EXIT:
+    return;
+}
+
 /** Lipstick dbus name is reserved; assume false */
 static bool lipstick_available = false;
 
@@ -408,6 +453,15 @@ static void tklock_datapipe_lipstick_available_cb(gconstpointer data)
     // force tklock ipc
     tklock_ui_sent = -1;
     tklock_ui_set(false);
+
+    if( lipstick_available ) {
+	/* query initial device lock state on lipstick/mce startup */
+	tklock_ui_get_device_lock();
+    }
+    else {
+	/* assume device lock is off if lipstick exits */
+	tklock_datapipe_set_device_lock_active(false);
+    }
 
 EXIT:
     return;
@@ -1073,6 +1127,10 @@ static datapipe_binding_t tklock_datapipe_triggers[] =
     {
         .datapipe = &lipstick_available_pipe,
         .output_cb = tklock_datapipe_lipstick_available_cb,
+    },
+    {
+        .datapipe = &device_lock_active_pipe,
+        .output_cb = tklock_datapipe_device_lock_active_cb,
     },
     {
         .datapipe = &display_state_pipe,
@@ -2598,6 +2656,52 @@ static void tklock_ui_set(bool enable)
     }
 }
 
+/** Handle reply to device lock state query
+ */
+static void tklock_ui_get_device_lock_cb(DBusPendingCall *pc, void *aptr)
+{
+    (void)aptr;
+
+    DBusMessage  *rsp = 0;
+    DBusError     err = DBUS_ERROR_INIT;
+    dbus_int32_t  val = 0;
+
+    if( !(rsp = dbus_pending_call_steal_reply(pc)) )
+	goto EXIT;
+
+    if( dbus_set_error_from_message(&err, rsp) ) {
+	mce_log(LL_ERR, "%s: %s", err.name, err.message);
+	goto EXIT;
+    }
+    if( !dbus_message_get_args(rsp, &err,
+			       DBUS_TYPE_INT32, &val,
+			       DBUS_TYPE_INVALID) ) {
+	mce_log(LL_ERR, "%s: %s", err.name, err.message);
+	goto EXIT;
+    }
+
+    mce_log(LL_INFO, "device lock status reply: state=%d", val);
+    tklock_datapipe_set_device_lock_active(val);
+
+EXIT:
+    if( rsp ) dbus_message_unref(rsp);
+    dbus_pending_call_unref(pc);
+    dbus_error_free(&err);
+}
+
+/** Initiate asynchronous device lock state query
+ */
+static void tklock_ui_get_device_lock(void)
+{
+    mce_log(LL_DEBUG, "query device lock status");
+    dbus_send(SYSTEMUI_SERVICE,
+	      "/devicelock",
+	      "org.nemomobile.lipstick.devicelock",
+	      "state",
+	      tklock_ui_get_device_lock_cb,
+	      DBUS_TYPE_INVALID);
+}
+
 /* ========================================================================= *
  * DBUS MESSAGE HANDLERS
  * ========================================================================= */
@@ -2763,9 +2867,48 @@ EXIT:
     return status;
 }
 
+/** D-Bus callback for handling device lock state changed signals
+ *
+ * @param msg The D-Bus message
+ *
+ * @return TRUE
+ */
+static gboolean tklock_dbus_device_lock_changed_cb(DBusMessage *const msg)
+{
+    DBusError    err = DBUS_ERROR_INIT;
+    dbus_int32_t val = 0;
+
+    if( !msg )
+	goto EXIT;
+
+    if( !dbus_message_get_args(msg, &err,
+                               DBUS_TYPE_INT32, &val,
+                               DBUS_TYPE_INVALID) ) {
+	mce_log(LL_ERR, "Failed to parse device lock signal: %s: %s",
+		err.name, err.message);
+        goto EXIT;
+    }
+
+    mce_log(LL_DEBUG, "received device lock signal: state=%d", val);
+    tklock_datapipe_set_device_lock_active(val);
+
+EXIT:
+    dbus_error_free(&err);
+
+    return TRUE;
+}
+
 /** Array of dbus message handlers */
 static mce_dbus_handler_t handlers[] =
 {
+    /* signals */
+    {
+        .interface = "org.nemomobile.lipstick.devicelock",
+        .name      = "stateChanged",
+        .rules     = "path='/devicelock'",
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .callback  = tklock_dbus_device_lock_changed_cb,
+    },
     /* method calls */
     {
         .interface = MCE_REQUEST_IF,
