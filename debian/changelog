@@ -1,3 +1,10 @@
+mce (1.23.4) unstable; urgency=low
+
+  * [mce] Enable tklock if device lock gets activated
+  * [packaging] Fix rpm preun/post/postun scripts.
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 07 Feb 2014 12:01:32 +0200
+
 mce (1.23.3) unstable; urgency=low
 
   * [mce] Treat "ihfforcall" audio sink as an alias for "ihf"
