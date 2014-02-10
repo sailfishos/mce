@@ -1,3 +1,9 @@
+mce (1.23.5) unstable; urgency=low
+
+  * [mce] Lock ui when device lock is active and display off
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 10 Feb 2014 15:57:22 +0200
+
 mce (1.23.4) unstable; urgency=low
 
   * [mce] Enable tklock if device lock gets activated
