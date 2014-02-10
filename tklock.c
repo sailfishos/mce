@@ -426,10 +426,8 @@ static void tklock_datapipe_device_lock_active_cb(gconstpointer data)
     mce_log(LL_DEBUG, "device_lock_active = %d -> %d", prev,
             device_lock_active);
 
-    /* if device is locked, lock ui too */
-    if( device_lock_active ) {
-	tklock_ui_set(true);
-    }
+    tklock_autolock_rethink();
+
 EXIT:
     return;
 }
@@ -1419,7 +1417,9 @@ static void tklock_autolock_rethink(void)
     case MCE_DISPLAY_LPM_OFF:
     case MCE_DISPLAY_LPM_ON:
     case MCE_DISPLAY_POWER_DOWN:
-        if( !was_off )
+        if( device_lock_active )
+            tklock_ui_set(true);
+        else if( !was_off )
             tklock_autolock_schedule(AUTOLOCK_DELAY_MS);
         break;
 
