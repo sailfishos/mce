@@ -1089,7 +1089,7 @@ ps_notify(bool covered, input_source_t srce)
 			goto EXIT;
 	}
 
-	mce_log(LL_NOTICE, "PS: %scovered (%s)",
+	mce_log(LL_DEVEL, "PS: %scovered (%s)",
 		covered ? "" : "not-", input_source_name[srce]);
 
 	if( ps_notify_cb )

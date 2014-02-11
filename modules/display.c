@@ -1055,6 +1055,9 @@ static void mdy_datapipe_display_state_cb(gconstpointer data)
     if( display_state == prev )
         goto EXIT;
 
+    mce_log(LL_DEVEL, "display state = %s",
+	    mdy_display_state_name(display_state));
+
     mdy_display_state_enter_post();
 
 EXIT:
@@ -2422,7 +2425,7 @@ static gboolean mdy_blanking_pause_period_cb(gpointer data)
     (void)data;
 
     if( mdy_blanking_pause_period_cb_id ) {
-        mce_log(LL_DEBUG, "BLANKING PAUSE timeout");
+        mce_log(LL_DEVEL, "BLANKING PAUSE timeout");
         mdy_blanking_pause_period_cb_id = 0;
         mdy_blanking_remove_pause_clients();
     }
@@ -2436,7 +2439,7 @@ static gboolean mdy_blanking_pause_period_cb(gpointer data)
 static void mdy_blanking_stop_pause_period(void)
 {
     if( mdy_blanking_pause_period_cb_id ) {
-        mce_log(LL_DEBUG, "BLANKING PAUSE cancelled");
+        mce_log(LL_DEVEL, "BLANKING PAUSE cancelled");
         g_source_remove(mdy_blanking_pause_period_cb_id),
             mdy_blanking_pause_period_cb_id = 0;
     }
@@ -3468,9 +3471,11 @@ static void mdy_renderer_led_set(renderer_state_t req)
     switch( req ) {
     case RENDERER_DISABLED:
         blanking = true;
+	mce_log(LL_DEVEL, "start alert led pattern for: failed ui stop");
         break;
     case RENDERER_ENABLED:
         unblanking = true;
+	mce_log(LL_DEVEL, "start alert led pattern for: failed ui start");
         break;
     default:
         break;
@@ -4095,9 +4100,11 @@ static void mdy_fbsusp_led_set(mdy_fbsusp_led_state_t req)
     switch( req ) {
     case FBDEV_LED_SUSPENDING:
         blanking = true;
+	mce_log(LL_DEVEL, "start alert led pattern for: failed fb suspend");
         break;
     case FBDEV_LED_RESUMING:
         unblanking = true;
+	mce_log(LL_DEVEL, "start alert led pattern for: failed fb resume");
         break;
     default:
         break;
@@ -5546,7 +5553,7 @@ static gboolean mdy_dbus_handle_display_on_req(DBusMessage *const msg)
                 dbus_message_get_sender(msg), reason);
     }
     else {
-        mce_log(LL_NOTICE,"display ON request from %s",
+        mce_log(LL_DEVEL,"display ON request from %s",
                 dbus_message_get_sender(msg));
         execute_datapipe(&display_state_req_pipe,
                          GINT_TO_POINTER(MCE_DISPLAY_ON),
@@ -5582,7 +5589,7 @@ static gboolean mdy_dbus_handle_display_dim_req(DBusMessage *const msg)
                 dbus_message_get_sender(msg), reason);
     }
     else {
-        mce_log(LL_NOTICE,"display DIM request from %s",
+        mce_log(LL_DEVEL,"display DIM request from %s",
                 dbus_message_get_sender(msg));
         execute_datapipe(&display_state_req_pipe,
                          GINT_TO_POINTER(MCE_DISPLAY_DIM),
@@ -5611,7 +5618,7 @@ static gboolean mdy_dbus_handle_display_off_req(DBusMessage *const msg)
     dbus_bool_t no_reply = dbus_message_get_no_reply(msg);
     gboolean status = FALSE;
 
-    mce_log(LL_NOTICE, "display off request from %s",
+    mce_log(LL_DEVEL, "display off request from %s",
             dbus_message_get_sender(msg));
 
     execute_datapipe(&tk_lock_pipe,
@@ -5864,7 +5871,7 @@ static gboolean mdy_dbus_handle_blanking_pause_start_req(DBusMessage *const msg)
         goto EXIT;
     }
 
-    mce_log(LL_DEBUG, "blanking pause request from %s", sender);
+    mce_log(LL_DEVEL, "blanking pause request from %s", sender);
 
     mdy_blanking_add_pause_client(sender);
 
@@ -5896,7 +5903,7 @@ static gboolean mdy_dbus_handle_blanking_pause_cancel_req(DBusMessage *const msg
         goto EXIT;
     }
 
-    mce_log(LL_DEBUG, "cancel blanking pause request from %s", sender);
+    mce_log(LL_DEVEL, "cancel blanking pause request from %s", sender);
 
     mdy_blanking_remove_pause_client(sender);
 

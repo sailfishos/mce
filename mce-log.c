@@ -42,7 +42,7 @@ static char *logname = NULL;
 static void monotime(struct timeval *tv)
 {
 	struct timespec ts;
-	clock_gettime(CLOCK_MONOTONIC, &ts);
+	clock_gettime(CLOCK_BOOTTIME, &ts);
 	TIMESPEC_TO_TIMEVAL(tv, &ts);
 }
 static void timestamp(struct timeval *tv)
@@ -50,6 +50,8 @@ static void timestamp(struct timeval *tv)
 	static struct timeval start, prev;
 	struct timeval diff;
 	monotime(tv);
+	if( !timerisset(&start) )
+		prev = start = *tv;
 	timersub(tv, &prev, &diff);
 	if( diff.tv_sec >= 4 ) {
 	  timersub(tv, &start, &diff);

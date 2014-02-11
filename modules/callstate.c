@@ -1209,6 +1209,7 @@ send_call_state(DBusMessage *const method_call,
 		/* sig_call_state_ind */
 		msg = dbus_new_signal(MCE_SIGNAL_PATH, MCE_SIGNAL_IF,
 				      MCE_CALL_STATE_SIG);
+		mce_log(LL_DEVEL, "call state = %s / %s", sstate, stype);
 	}
 
 	/* Append the call state and call type */
