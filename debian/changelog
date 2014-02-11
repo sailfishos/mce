@@ -1,3 +1,9 @@
+mce (1.23.6) unstable; urgency=low
+
+  * [mce] Make devel build of mce log important external triggers by default
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 11 Feb 2014 10:57:30 +0200
+
 mce (1.23.5) unstable; urgency=low
 
   * [mce] Lock ui when device lock is active and display off
