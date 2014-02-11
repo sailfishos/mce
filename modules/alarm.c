@@ -78,6 +78,36 @@ G_MODULE_EXPORT module_info_struct module_info = {
 	.priority = 250
 };
 
+
+static const char *alarm_state_repr(alarm_ui_state_t state)
+{
+	const char *res = "UNKNOWN";
+
+	switch( state )	{
+	case MCE_ALARM_UI_INVALID_INT32: res = "INVALID"; break;
+	case MCE_ALARM_UI_OFF_INT32:     res = "OFF";     break;
+	case MCE_ALARM_UI_RINGING_INT32: res = "RINGING"; break;
+	case MCE_ALARM_UI_VISIBLE_INT32: res = "VISIBLE"; break;
+	default: break;
+	}
+
+	return res;
+}
+
+static void alarm_sync_state_to_datapipe(alarm_ui_state_t state)
+{
+	if( datapipe_get_gint(alarm_ui_state_pipe) == state )
+		goto EXIT;
+
+	mce_log(LL_DEVEL, "alarm sate = %s", alarm_state_repr(state));
+	execute_datapipe(&alarm_ui_state_pipe,
+			 GINT_TO_POINTER(state),
+			 USE_INDATA, CACHE_INDATA);
+
+EXIT:
+	return;
+}
+
 /**
  * Alarm D-Bus service monitor callback.
  *
@@ -119,9 +149,7 @@ static gboolean alarm_owner_monitor_dbus_cb(DBusMessage *const msg)
 		 */
 		mce_log(LL_DEBUG, "visual reminder service died, "
 				"turning off alarm state");
-		(void)execute_datapipe(&alarm_ui_state_pipe,
-							   GINT_TO_POINTER(MCE_ALARM_UI_OFF_INT32),
-							   USE_INDATA, CACHE_INDATA);
+		alarm_sync_state_to_datapipe(MCE_ALARM_UI_OFF_INT32);
 	}
 
 	status = TRUE;
@@ -206,9 +234,7 @@ static gboolean alarm_dialog_status_dbus_cb(DBusMessage *const msg)
 		break;
 	}
 
-	(void)execute_datapipe(&alarm_ui_state_pipe,
-			       GINT_TO_POINTER(alarm_ui_state),
-			       USE_INDATA, CACHE_INDATA);
+	alarm_sync_state_to_datapipe(alarm_ui_state);
 
 	status = TRUE;
 

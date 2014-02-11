@@ -407,6 +407,7 @@ static void tklock_datapipe_set_device_lock_active(int state)
     bool locked = (state != 0);
 
     if( device_lock_active != locked ) {
+	mce_log(LL_DEVEL, "device lock state = %s", locked ? "locked" : "unlocked");
 	execute_datapipe(&device_lock_active_pipe,
 			 GINT_TO_POINTER(locked),
 			 USE_INDATA, CACHE_INDATA);
@@ -2642,6 +2643,8 @@ static void tklock_ui_set(bool enable)
     }
 
     if( tklock_ui_sent != enable ) {
+	mce_log(LL_DEVEL, "tklock state = %s", enable ? "locked" : "unlocked");
+
         if( (tklock_ui_sent = tklock_ui_enabled = enable) ) {
             if( lipstick_available )
                 tklock_ui_open();
@@ -2760,7 +2763,8 @@ static gboolean tklock_dbus_mode_get_req_cb(DBusMessage *const msg)
 {
     gboolean status = FALSE;
 
-    mce_log(LL_DEBUG, "Received tklock mode get request");
+    mce_log(LL_DEVEL, "Received tklock mode get request from %s",
+	    dbus_message_get_sender(msg) ?: "unknown");
 
     /* Try to send a reply that contains the current tklock mode */
     if( !tklock_dbus_send_tklock_mode(msg) )
@@ -2785,8 +2789,6 @@ static gboolean tklock_dbus_mode_change_req_cb(DBusMessage *const msg)
     gboolean status = FALSE;
     DBusError error = DBUS_ERROR_INIT;
 
-    mce_log(LL_DEBUG, "Received tklock mode change request");
-
     if( !dbus_message_get_args(msg, &error,
                                DBUS_TYPE_STRING, &mode,
                                DBUS_TYPE_INVALID) ) {
@@ -2795,6 +2797,10 @@ static gboolean tklock_dbus_mode_change_req_cb(DBusMessage *const msg)
                 error.message);
         goto EXIT;
     }
+
+    mce_log(LL_DEVEL, "Received tklock mode change request '%s' from %s",
+	    mode, dbus_message_get_sender(msg) ?: "unknown");
+
 
     int state = LOCK_UNDEF;
 
@@ -2848,7 +2854,8 @@ static gboolean tklock_dbus_systemui_callback_cb(DBusMessage *const msg)
         goto EXIT;
     }
 
-    mce_log(LL_DEBUG, "tklock callback value: %d", result);
+    mce_log(LL_DEVEL, "tklock callback value: %d, from %s", result,
+	    dbus_message_get_sender(msg) ?: "unknown");
 
     switch( result ) {
     case TKLOCK_UNLOCK:

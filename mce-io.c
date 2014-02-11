@@ -30,7 +30,7 @@
 #include <stdlib.h>			/* exit(), strtoul(), EXIT_FAILURE */
 #include <string.h>			/* strlen() */
 #include <unistd.h>			/* close(), read(), ftruncate() */
-
+#include <inttypes.h>
 #include "mce.h"
 #include "mce-io.h"
 
@@ -730,6 +730,65 @@ static const char *io_status_name(GIOStatus io_status)
 	return status_name;
 }
 
+static int64_t io_get_boot_tick(void)
+{
+	int64_t res = 0;
+
+	struct timespec ts;
+
+	if( clock_gettime(CLOCK_BOOTTIME, &ts) == 0 ) {
+		res = ts.tv_sec;
+		res *= 1000;
+		res += ts.tv_nsec / 1000000;
+	}
+
+	return res;
+}
+
+static int64_t io_get_mono_tick(void)
+{
+	int64_t res = 0;
+
+	struct timespec ts;
+
+	if( clock_gettime(CLOCK_MONOTONIC, &ts) == 0 ) {
+		res = ts.tv_sec;
+		res *= 1000;
+		res += ts.tv_nsec / 1000000;
+	}
+
+	return res;
+}
+
+static void io_detect_resume(void)
+{
+	static int64_t prev = 0;
+
+	int64_t boot = io_get_boot_tick();
+	int64_t mono = io_get_mono_tick();
+	int64_t diff = boot - mono;
+
+	int64_t skip = diff - prev;
+
+	// small jitter can be due to scheduling too
+	if( skip < 100 )
+		goto EXIT;
+
+	prev = diff;
+
+	// no logging from the 1st time skip
+	if( prev == skip )
+		goto EXIT;
+
+	mce_log(LL_DEVEL, "time skip: assume %"PRId64".%03"PRId64"s suspend",
+		skip / 1000, skip % 1000);
+
+EXIT:
+	return;
+}
+
+
+
 /**
  * Callback for successful chunk I/O
  *
@@ -755,6 +814,9 @@ static gboolean io_chunk_cb(GIOChannel *source,
 
 	/* Silence warnings */
 	(void)condition;
+
+	/* we get input from evdev nodes at resume */
+	io_detect_resume();
 
 	if (iomon == NULL) {
 		mce_log(LL_CRIT, "iomon == NULL!");

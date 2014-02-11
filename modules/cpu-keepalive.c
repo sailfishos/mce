@@ -439,7 +439,7 @@ cpu_keepalive_timer_cb(gpointer data)
 
   if( timer_id != 0 )
   {
-    mce_log(LL_NOTICE, "cpu-keepalive ended");
+    mce_log(LL_DEVEL, "cpu-keepalive ended");
     timer_id = 0;
 
 #ifdef ENABLE_WAKELOCKS
@@ -794,7 +794,7 @@ cpu_keepalive_period_cb(DBusMessage *const msg)
     goto EXIT;
   }
 
-  mce_log(LL_DEBUG, "got keepalive period query from %s", sender);
+  mce_log(LL_DEVEL, "got keepalive period query from %s", sender);
 
   if( !dbus_message_get_args(msg, &err,
 			     DBUS_TYPE_STRING, &context,
@@ -844,7 +844,7 @@ cpu_keepalive_start_cb(DBusMessage *const msg)
     goto EXIT;
   }
 
-  mce_log(LL_DEBUG, "got keepalive start from %s", sender);
+  mce_log(LL_DEVEL, "got keepalive start from %s", sender);
 
   if( !dbus_message_get_args(msg, &err,
 			     DBUS_TYPE_STRING, &context,
@@ -895,7 +895,7 @@ cpu_keepalive_stop_cb(DBusMessage *const msg)
     goto EXIT;
   }
 
-  mce_log(LL_DEBUG, "got keepalive stop from %s", sender);
+  mce_log(LL_DEVEL, "got keepalive stop from %s", sender);
 
   if( !dbus_message_get_args(msg, &err,
 			     DBUS_TYPE_STRING, &context,
