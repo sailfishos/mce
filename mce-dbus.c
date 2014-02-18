@@ -221,24 +221,82 @@ EXIT:
 	return data;
 }
 
-/** List of all D-Bus handlers */
-static GSList *dbus_handlers = NULL;
-/** List iterator for msg_handler */
-static GSList *msg_handler_iter = NULL;
-
-/** D-Bus handler structure */
-typedef struct {
-	gboolean (*callback)(DBusMessage *const msg);	/**< Handler callback */
-	gchar *interface;		/**< The interface to listen on */
-	gchar *rules;			/**< Additional matching rules */
-	gchar *name;			/**< Method call or signal name */
-	guint type;			/**< DBUS_MESSAGE_TYPE */
-} handler_struct;
-
 /** Pointer to the DBusConnection */
 static DBusConnection *dbus_connection = NULL;
 
+/** List of all D-Bus handlers */
+static GSList *dbus_handlers = NULL;
 
+/** D-Bus handler callback function */
+typedef gboolean (*handler_callback_t)(DBusMessage *const msg);
+
+/** D-Bus handler structure */
+typedef struct
+{
+        handler_callback_t  callback;   /**< Handler callback */
+        gchar              *interface;  /**< The interface to listen on */
+        gchar              *rules;      /**< Additional matching rules */
+        gchar              *name;       /**< Method call or signal name */
+        int                 type;       /**< DBUS_MESSAGE_TYPE */
+} handler_struct_t;
+
+/** Set handler type for D-Bus handler structure */
+static inline void handler_struct_set_type(handler_struct_t *self, int val)
+{
+	self->type = val;
+}
+
+/** Set interface name for D-Bus handler structure */
+static inline void handler_struct_set_interface(handler_struct_t *self, const char *val)
+{
+	g_free(self->interface), self->interface = val ? g_strdup(val) : 0;
+}
+
+/** Set member name for D-Bus handler structure */
+static inline void handler_struct_set_name(handler_struct_t *self, const char *val)
+{
+	g_free(self->name), self->name = val ? g_strdup(val) : 0;
+}
+
+/** Set custom rules for D-Bus handler structure */
+static inline void handler_struct_set_rules(handler_struct_t *self, const char *val)
+{
+	g_free(self->rules), self->rules = val ? g_strdup(val) : 0;
+}
+
+/** Set callback function for D-Bus handler structure */
+static inline void handler_struct_set_callback(handler_struct_t *self,
+					       handler_callback_t val)
+{
+	self->callback = val;
+}
+
+/** Release D-Bus handler structure */
+static void handler_struct_delete(handler_struct_t *self)
+{
+	if( !self )
+		goto EXIT;
+
+	g_free(self->name);
+	g_free(self->rules);
+	g_free(self->interface);
+	g_free(self);
+
+EXIT:
+	return;
+}
+
+/** Allocate D-Bus handler structure */
+static handler_struct_t *handler_struct_create(void)
+{
+	handler_struct_t *self = g_malloc0(sizeof *self);
+
+	self->interface = 0;
+	self->rules     = 0;
+	self->name      = 0;
+	self->type      = DBUS_MESSAGE_TYPE_INVALID;
+	return self;
+}
 
 /** Return reference to dbus connection cached at mce-dbus module
  *
@@ -1547,6 +1605,72 @@ static gboolean check_rules(DBusMessage *const msg,
 	return TRUE;
 }
 
+/** Build a dbus signal match string
+ *
+ * For use from mce_dbus_handler_add() and mce_dbus_handler_remove()
+ */
+static gchar *mce_dbus_build_signal_match(const gchar *interface,
+					  const gchar *name,
+					  const gchar *rules)
+{
+	gchar *match = 0;
+
+	gchar *match_member = 0;
+	gchar *match_iface  = 0;
+	gchar *match_extra  = 0;
+
+	if( name )
+		match_member = g_strdup_printf(",member='%s'", name);
+
+	if( interface )
+		match_iface = g_strdup_printf(",interface='%s'", interface);
+
+	if( rules )
+		match_extra = g_strdup_printf(",%s", rules);
+
+	match = g_strdup_printf("type='signal'%s%s%s",
+				match_iface  ?: "",
+				match_member ?: "",
+				match_extra  ?: "");
+	g_free(match_extra);
+	g_free(match_iface);
+	g_free(match_member);
+
+	return match;
+}
+
+/** Remove links with NULL data from GSList */
+static void mce_dbus_squeeze_slist(GSList **list)
+{
+	GSList *now, *zen;
+
+	if( !list || !*list )
+		goto EXIT;
+
+	/* Move null links to trash, keep the rest in the original order
+	 *
+	 * Note: This is now one pass O(N) complexity. Using the singly
+	 *       linked list api from glib would not allow that. */
+
+	GSList *trash = 0;
+
+	for( now = *list; now; now = zen ) {
+		zen = now->next;
+		if( now->data )
+			*list = now, list = &now->next;
+		else
+			now->next = trash, trash = now;
+	}
+	*list = 0;
+
+	/* Release the empty slices */
+	g_slist_free(trash);
+
+EXIT:
+
+	return;
+}
+
 /**
  * D-Bus message handler
  *
@@ -1560,53 +1684,59 @@ static DBusHandlerResult msg_handler(DBusConnection *const connection,
 				     DBusMessage *const msg,
 				     gpointer const user_data)
 {
-	guint status = DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
-
 	(void)connection;
 	(void)user_data;
 
-	for (msg_handler_iter = dbus_handlers;
-	     msg_handler_iter != NULL;
-	     msg_handler_iter = g_slist_next(msg_handler_iter)) {
-		handler_struct *handler = msg_handler_iter->data;
+	guint status = DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
+	int   type   = dbus_message_get_type(msg);
 
-		switch (handler->type) {
+	for( GSList *now = dbus_handlers; now; now = now->next ) {
+
+		handler_struct_t *handler = now->data;
+
+		/* Skip half removed handlers */
+		if( !handler )
+			continue;
+
+		/* Skip not applicable handlers */
+		if( handler->type != type )
+			continue;
+
+		switch( handler->type ) {
 		case DBUS_MESSAGE_TYPE_METHOD_CALL:
-			if (dbus_message_is_method_call(msg,
+			if( dbus_message_is_method_call(msg,
 							handler->interface,
-							handler->name) == TRUE) {
+							handler->name) ) {
 				handler->callback(msg);
 				status = DBUS_HANDLER_RESULT_HANDLED;
 				goto EXIT;
 			}
-
 			break;
 
 		case DBUS_MESSAGE_TYPE_ERROR:
-			if (dbus_message_is_error(msg,
-						  handler->name) == TRUE) {
+			if( dbus_message_is_error(msg, handler->name) ) {
 				handler->callback(msg);
 			}
-
 			break;
 
 		case DBUS_MESSAGE_TYPE_SIGNAL:
-			if ((dbus_message_is_signal(msg,
+			if( dbus_message_is_signal(msg,
 						   handler->interface,
-						   handler->name) == TRUE) &&
-			    (check_rules(msg, handler->rules) == TRUE)) {
-				handler->callback(msg);
+						   handler->name) ) {
+				if( check_rules(msg, handler->rules) )
+					handler->callback(msg);
 			}
-
 			break;
 
 		default:
-			mce_log(LL_ERR,
-				"There's a bug somewhere in MCE; something "
+			mce_log(LL_ERR, "There's a bug somewhere in MCE; something "
 				"has registered an invalid D-Bus handler");
 			break;
 		}
 	}
+
+	/* Purge half removed handlers */
+	mce_dbus_squeeze_slist(&dbus_handlers);
 
 EXIT:
 	return status;
@@ -1623,99 +1753,48 @@ EXIT:
  * @return A D-Bus handler cookie on success, NULL on failure
  */
 gconstpointer mce_dbus_handler_add(const gchar *const interface,
-				    const gchar *const name,
-				    const gchar *const rules,
-				    const guint type,
-				    gboolean (*callback)(DBusMessage *const msg))
+				   const gchar *const name,
+				   const gchar *const rules,
+				   const guint type,
+				   gboolean (*callback)(DBusMessage *const msg))
 {
-	handler_struct *h = NULL;
-	gchar *match = NULL;
-	DBusError error;
+	handler_struct_t *handler = 0;
+	gchar            *match   = 0;
 
-	/* Register error channel */
-	dbus_error_init(&error);
+	if( !name )
+		goto EXIT;
 
-	if (type == DBUS_MESSAGE_TYPE_SIGNAL) {
-		if ((match = g_strdup_printf("type='signal'"
-					     "%s%s%s"
-					     ", member='%s'"
-					     "%s%s",
-					     interface ? ", interface='" : "",
-					     interface ? interface : "",
-					     interface ? "'" : "",
-					     name,
-					     rules ? ", " : "",
-					     rules ? rules : "")) == NULL) {
-			mce_log(LL_CRIT,
-				"Failed to allocate memory for match");
+	if( type == DBUS_MESSAGE_TYPE_SIGNAL ) {
+		match = mce_dbus_build_signal_match(interface, name, rules);
+		if( !match ) {
+			mce_log(LL_CRIT, "Failed to allocate memory for match");
 			goto EXIT;
 		}
-	} else if (type != DBUS_MESSAGE_TYPE_METHOD_CALL) {
-		mce_log(LL_CRIT,
-			"There's definitely a programming error somewhere; "
+
+	}
+	else if( type != DBUS_MESSAGE_TYPE_METHOD_CALL ) {
+		mce_log(LL_CRIT, "There's definitely a programming error somewhere; "
 			"MCE is trying to register an invalid message type");
 		goto EXIT;
 	}
 
-	if ((h = g_try_malloc(sizeof (*h))) == NULL) {
-		mce_log(LL_CRIT, "Failed to allocate memory for h");
-		goto EXIT;
-	}
-
-	h->interface = NULL;
-
-	if (interface && (h->interface = g_strdup(interface)) == NULL) {
-		mce_log(LL_CRIT, "Failed to allocate memory for h->interface");
-		g_free(h);
-		h = NULL;
-		goto EXIT;
-	}
-
-	h->rules = NULL;
-
-	if (rules && (h->rules = g_strdup(rules)) == NULL) {
-		mce_log(LL_CRIT, "Failed to allocate memory for h->rules");
-		g_free(h->interface);
-		g_free(h);
-		h = NULL;
-		goto EXIT;
-	}
-
-	if ((h->name = g_strdup(name)) == NULL) {
-		mce_log(LL_CRIT, "Failed to allocate memory for h->name");
-		g_free(h->interface);
-		g_free(h->rules);
-		g_free(h);
-		h = NULL;
-		goto EXIT;
-	}
-
-	h->type = type;
-	h->callback = callback;
+	handler = handler_struct_create();
+	handler_struct_set_type(handler, type);
+	handler_struct_set_interface(handler, interface);
+	handler_struct_set_name(handler, name);
+	handler_struct_set_rules(handler, rules);
+	handler_struct_set_callback(handler, callback);
 
 	/* Only register D-Bus matches for signals */
-	if (match != NULL) {
-		dbus_bus_add_match(dbus_connection, match, &error);
+	if( match )
+		dbus_bus_add_match(dbus_connection, match, 0);
 
-		if (dbus_error_is_set(&error) == TRUE) {
-			mce_log(LL_CRIT,
-				"Failed to add D-Bus match '%s' for '%s'; %s",
-				match, h->interface, error.message);
-			dbus_error_free(&error);
-			g_free(h->interface);
-			g_free(h->rules);
-			g_free(h);
-			h = NULL;
-			goto EXIT;
-		}
-	}
-
-	dbus_handlers = g_slist_prepend(dbus_handlers, h);
+	dbus_handlers = g_slist_prepend(dbus_handlers, handler);
 
 EXIT:
 	g_free(match);
 
-	return h;
+	return handler;
 }
 
 /**
@@ -1726,57 +1805,46 @@ EXIT:
  */
 void mce_dbus_handler_remove(gconstpointer cookie)
 {
-	handler_struct *h = (handler_struct *)cookie;
-	gchar *match = NULL;
-	DBusError error;
-	GSList *iter;
+	handler_struct_t *handler = (handler_struct_t *)cookie;
+	gchar            *match   = 0;
+	GSList           *item    = 0;
 
-	/* Register error channel */
-	dbus_error_init(&error);
+	if( !handler )
+		goto EXIT;
 
-	if (h->type == DBUS_MESSAGE_TYPE_SIGNAL) {
-		match = g_strdup_printf("type='signal'"
-					"%s%s%s"
-					", member='%s'"
-					"%s%s",
-					h->interface ? ", interface='" : "",
-					h->interface ? h->interface : "",
-					h->interface ? "'" : "",
-					h->name,
-					h->rules ? ", " : "",
-					h->rules ? h->rules : "");
+	if( !(item = g_slist_find(dbus_handlers, handler)) ) {
+		mce_log(LL_CRIT, "removing unregistered dbus handler");
+	}
+	else {
+		/* Detach from containing list. The list itself is
+		 * not modified so that possible ongoing iteration
+		 * is not adversely affected. List cleanup happens
+		 * at msg_handler() and mce_dbus_exit().
+		 */
+		item->data = 0;
+	}
 
-		if (match != NULL) {
-			dbus_bus_remove_match(dbus_connection, match, &error);
+	if( handler->type == DBUS_MESSAGE_TYPE_SIGNAL ) {
+		match = mce_dbus_build_signal_match(handler->interface,
+						    handler->name,
+						    handler->rules);
 
-			if (dbus_error_is_set(&error) == TRUE) {
-				mce_log(LL_CRIT,
-					"Failed to remove D-Bus match "
-					"'%s' for '%s': %s",
-					match, h->interface, error.message);
-				dbus_error_free(&error);
-			}
-		} else {
-			mce_log(LL_CRIT,
-				"Failed to allocate memory for match");
+		if( !match ) {
+			mce_log(LL_CRIT, "Failed to allocate memory for match");
 		}
-	} else if (h->type != DBUS_MESSAGE_TYPE_METHOD_CALL) {
-		mce_log(LL_ERR,
-			"There's definitely a programming error somewhere; "
+		else if( dbus_connection_get_is_connected(dbus_connection) ) {
+			dbus_bus_remove_match(dbus_connection, match, 0);
+		}
+	}
+	else if( handler->type != DBUS_MESSAGE_TYPE_METHOD_CALL ) {
+		mce_log(LL_ERR, "There's definitely a programming error somewhere; "
 			"MCE is trying to unregister an invalid message type");
 		/* Don't abort here, since we want to unregister it anyway */
 	}
 
-	if ((iter = g_slist_find(dbus_handlers, h))) {
-		if (iter == msg_handler_iter)
-			msg_handler_iter = iter->next;
-		dbus_handlers = g_slist_remove_link(dbus_handlers, iter);
-	}
+	handler_struct_delete(handler);
 
-	g_free(h->interface);
-	g_free(h->rules);
-	g_free(h->name);
-	g_free(h);
+EXIT:
 	g_free(match);
 }
 
@@ -1787,8 +1855,7 @@ void mce_dbus_handler_remove(gconstpointer cookie)
  * @param handler A pointer to the handler struct that should be removed
  * @param user_data Unused
  */
-static void mce_dbus_handler_remove_foreach(gpointer handler,
-					    gpointer user_data)
+static void mce_dbus_handler_remove_cb(gpointer handler, gpointer user_data)
 {
 	(void)user_data;
 
@@ -1806,7 +1873,7 @@ static void mce_dbus_handler_remove_foreach(gpointer handler,
  */
 static gint monitor_compare(gconstpointer owner_id, gconstpointer name)
 {
-	handler_struct *hs = (handler_struct *)owner_id;
+	handler_struct_t *hs = (handler_struct_t *)owner_id;
 
 	return strcmp(hs->rules, name);
 }
@@ -1952,6 +2019,7 @@ gssize mce_dbus_owner_monitor_add(const gchar *service,
 	*monitor_list = g_slist_prepend(*monitor_list, (gpointer)cookie);
 	retval = num + 1;
 
+	// FIXME: does synchronous roundtrip to dbus-daemon and back
 	if (dbus_bus_name_has_owner(dbus_connection, service, NULL) == FALSE)
 		g_idle_add_full(G_PRIORITY_DEFAULT_IDLE,
 				fake_owner_gone, g_strdup(service),
@@ -2003,9 +2071,8 @@ EXIT:
  */
 void mce_dbus_owner_monitor_remove_all(GSList **monitor_list)
 {
-	if ((monitor_list != NULL) && (*monitor_list != NULL)) {
-		g_slist_foreach(*monitor_list,
-				(GFunc)mce_dbus_handler_remove_foreach, NULL);
+	if( monitor_list && *monitor_list ) {
+		g_slist_foreach(*monitor_list, mce_dbus_handler_remove_cb, 0);
 		g_slist_free(*monitor_list);
 		*monitor_list = NULL;
 	}
@@ -2747,11 +2814,10 @@ EXIT:
 void mce_dbus_exit(void)
 {
 	/* Unregister D-Bus handlers */
-	if (dbus_handlers != NULL) {
-		g_slist_foreach(dbus_handlers,
-				(GFunc)mce_dbus_handler_remove_foreach, NULL);
+	if( dbus_handlers ) {
+		g_slist_foreach(dbus_handlers, mce_dbus_handler_remove_cb, 0);
 		g_slist_free(dbus_handlers);
-		dbus_handlers = NULL;
+		dbus_handlers = 0;
 	}
 
 	/* If there is an established D-Bus connection, unreference it */
