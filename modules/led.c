@@ -1741,8 +1741,8 @@ static gboolean led_activate_pattern_dbus_cb(DBusMessage *const msg)
 		goto EXIT;
 	}
 
-	mce_log(LL_DEBUG, "activate LED pattern %s request from %s",
-		pattern, dbus_message_get_sender(msg));
+	mce_log(LL_DEVEL, "activate LED pattern %s request from %s",
+		pattern, mce_dbus_get_message_sender_ident(msg));
 
 	led_activate_pattern(pattern);
 
@@ -1786,8 +1786,8 @@ static gboolean led_deactivate_pattern_dbus_cb(DBusMessage *const msg)
 		goto EXIT;
 	}
 
-	mce_log(LL_DEBUG, "de-activate LED pattern %s request from %s",
-		pattern, dbus_message_get_sender(msg));
+	mce_log(LL_DEVEL, "de-activate LED pattern %s request from %s",
+		pattern, mce_dbus_get_message_sender_ident(msg));
 
 	led_deactivate_pattern(pattern);
 
@@ -1814,7 +1814,8 @@ static gboolean led_enable_dbus_cb(DBusMessage *const msg)
 	dbus_bool_t no_reply = dbus_message_get_no_reply(msg);
 	gboolean status = FALSE;
 
-	mce_log(LL_DEBUG, "Received LED enable request");
+	mce_log(LL_DEVEL, "Received LED enable request from %s",
+		mce_dbus_get_message_sender_ident(msg));
 
 	led_enable();
 
@@ -1841,7 +1842,8 @@ static gboolean led_disable_dbus_cb(DBusMessage *const msg)
 	dbus_bool_t no_reply = dbus_message_get_no_reply(msg);
 	gboolean status = FALSE;
 
-	mce_log(LL_DEBUG, "Received LED disable request");
+	mce_log(LL_DEVEL, "Received LED disable request from %s",
+		mce_dbus_get_message_sender_ident(msg));
 
 	led_disable();
 	active_pattern = NULL;

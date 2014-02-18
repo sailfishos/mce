@@ -2764,7 +2764,7 @@ static gboolean tklock_dbus_mode_get_req_cb(DBusMessage *const msg)
     gboolean status = FALSE;
 
     mce_log(LL_DEVEL, "Received tklock mode get request from %s",
-	    dbus_message_get_sender(msg) ?: "unknown");
+	    mce_dbus_get_message_sender_ident(msg));
 
     /* Try to send a reply that contains the current tklock mode */
     if( !tklock_dbus_send_tklock_mode(msg) )
@@ -2799,7 +2799,7 @@ static gboolean tklock_dbus_mode_change_req_cb(DBusMessage *const msg)
     }
 
     mce_log(LL_DEVEL, "Received tklock mode change request '%s' from %s",
-	    mode, dbus_message_get_sender(msg) ?: "unknown");
+	    mode, mce_dbus_get_message_sender_ident(msg));
 
 
     int state = LOCK_UNDEF;
@@ -2855,7 +2855,7 @@ static gboolean tklock_dbus_systemui_callback_cb(DBusMessage *const msg)
     }
 
     mce_log(LL_DEVEL, "tklock callback value: %d, from %s", result,
-	    dbus_message_get_sender(msg) ?: "unknown");
+	    mce_dbus_get_message_sender_ident(msg));
 
     switch( result ) {
     case TKLOCK_UNLOCK:

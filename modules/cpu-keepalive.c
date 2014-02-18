@@ -794,7 +794,8 @@ cpu_keepalive_period_cb(DBusMessage *const msg)
     goto EXIT;
   }
 
-  mce_log(LL_DEVEL, "got keepalive period query from %s", sender);
+  mce_log(LL_DEVEL, "got keepalive period query from %s",
+	  mce_dbus_get_name_owner_ident(sender));
 
   if( !dbus_message_get_args(msg, &err,
 			     DBUS_TYPE_STRING, &context,
@@ -844,7 +845,8 @@ cpu_keepalive_start_cb(DBusMessage *const msg)
     goto EXIT;
   }
 
-  mce_log(LL_DEVEL, "got keepalive start from %s", sender);
+  mce_log(LL_DEVEL, "got keepalive start from %s",
+	  mce_dbus_get_name_owner_ident(sender));
 
   if( !dbus_message_get_args(msg, &err,
 			     DBUS_TYPE_STRING, &context,
@@ -895,7 +897,8 @@ cpu_keepalive_stop_cb(DBusMessage *const msg)
     goto EXIT;
   }
 
-  mce_log(LL_DEVEL, "got keepalive stop from %s", sender);
+  mce_log(LL_DEVEL, "got keepalive stop from %s",
+	  mce_dbus_get_name_owner_ident(sender));
 
   if( !dbus_message_get_args(msg, &err,
 			     DBUS_TYPE_STRING, &context,
@@ -945,7 +948,8 @@ cpu_keepalive_wakeup_cb(DBusMessage *const msg)
     goto EXIT;
   }
 
-  mce_log(LL_DEBUG, "got keepalive wakeup from %s", sender);
+  mce_log(LL_DEVEL, "got keepalive wakeup from %s",
+	  mce_dbus_get_name_owner_ident(sender));
 
   cpu_keepalive_wakeup(sender);
 

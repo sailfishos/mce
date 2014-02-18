@@ -160,7 +160,8 @@ static gboolean inactivity_status_get_dbus_cb(DBusMessage *const msg)
 {
 	gboolean status = FALSE;
 
-	mce_log(LL_DEBUG, "Received inactivity status get request");
+	mce_log(LL_DEVEL, "Received inactivity status get request from %s",
+	       mce_dbus_get_message_sender_ident(msg));
 
 	/* Try to send a reply that contains the current inactivity status */
 	if (send_inactivity_status(msg) == FALSE)
@@ -280,9 +281,8 @@ static gboolean add_activity_callback_dbus_cb(DBusMessage *const msg)
 		goto EXIT;
 	}
 
-	mce_log(LL_DEBUG,
-		"Received add activity callback request from %s",
-		sender);
+	mce_log(LL_DEVEL, "Received add activity callback request from %s",
+		mce_dbus_get_name_owner_ident(sender));
 
 	/* Extract result */
 	if (dbus_message_get_args(msg, &error,
@@ -366,9 +366,8 @@ static gboolean remove_activity_callback_dbus_cb(DBusMessage *const msg)
 		goto EXIT;
 	}
 
-	mce_log(LL_DEBUG,
-		"Received remove activity callback request from %s",
-		sender);
+	mce_log(LL_DEVEL, "Received remove activity callback request from %s",
+		mce_dbus_get_name_owner_ident(sender));
 
 	status = TRUE;
 
