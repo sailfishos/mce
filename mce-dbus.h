@@ -43,13 +43,20 @@ DBusMessage *dbus_new_method_call(const gchar *const service,
 DBusMessage *dbus_new_method_reply(DBusMessage *const message);
 
 gboolean dbus_send_message(DBusMessage *const msg);
-gboolean dbus_send_message_with_reply_handler(DBusMessage *const msg,
-					      DBusPendingCallNotifyFunction callback);
 
 gboolean dbus_send(const gchar *const service, const gchar *const path,
 		   const gchar *const interface, const gchar *const name,
 		   DBusPendingCallNotifyFunction callback,
 		   int first_arg_type, ...);
+
+gboolean dbus_send_ex(const char *service,
+		      const char *path,
+		      const char *interface,
+		      const char *name,
+		      DBusPendingCallNotifyFunction callback,
+		      void *user_data, DBusFreeFunction user_free,
+		      int first_arg_type, ...);
+
 DBusMessage *dbus_send_with_block(const gchar *const service,
 				  const gchar *const path,
 				  const gchar *const interface,

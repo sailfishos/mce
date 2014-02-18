@@ -386,39 +386,168 @@ EXIT:
  *
  * @param msg The D-Bus message to send
  * @param callback The reply callback
+ * @param user_data Data to pass to callback
+ * @param user_free Delete callback for user_data
  * @return TRUE on success, FALSE on failure
  */
-gboolean dbus_send_message_with_reply_handler(DBusMessage *const msg,
-					      DBusPendingCallNotifyFunction callback)
+static gboolean
+dbus_send_message_with_reply_handler(DBusMessage *const msg,
+				     DBusPendingCallNotifyFunction callback,
+				     void *user_data,
+				     DBusFreeFunction user_free)
 {
-	DBusPendingCall *pending_call;
-	gboolean status = FALSE;
+	gboolean         status = FALSE;
+	DBusPendingCall *pc     = 0;
 
-	if (dbus_connection_send_with_reply(dbus_connection, msg,
-					    &pending_call, -1) == FALSE) {
-		mce_log(LL_CRIT,
-			"Out of memory when sending D-Bus message");
+	if( !msg )
 		goto EXIT;
-	} else if (pending_call == NULL) {
-		mce_log(LL_ERR,
-			"D-Bus connection disconnected");
+
+	if( !dbus_connection_send_with_reply(dbus_connection, msg, &pc, -1) ) {
+		mce_log(LL_CRIT, "Out of memory when sending D-Bus message");
 		goto EXIT;
 	}
 
+	if( !pc ) {
+		mce_log(LL_ERR, "D-Bus connection disconnected");
+		goto EXIT;
+	}
+
+	// FIXME: do we really need the flush?
 	dbus_connection_flush(dbus_connection);
 
-	if (dbus_pending_call_set_notify(pending_call, callback, NULL, NULL) == FALSE) {
-		mce_log(LL_CRIT,
-			"Out of memory when sending D-Bus message");
+	if( !dbus_pending_call_set_notify(pc, callback,
+					  user_data, user_free) ) {
+		mce_log(LL_CRIT, "Out of memory when sending D-Bus message");
 		goto EXIT;
 	}
+
+	/* FIXME: After succesful set_notify the notification holds a ref
+	 *        to the pending call and we could and should always unref
+	 *        within this function. BUT, since the currently existing
+	 *        callbacks do call unref, we can't do that before fixing
+	 *        each and every one of them...
+	 *
+	 *        Instead we do not unref on success, i.e. after getting here
+	 */
+	pc = 0;
+
+	/* Ownership of user_data passed on */
+	user_free = 0, user_data = 0;
 
 	status = TRUE;
 
 EXIT:
-	dbus_message_unref(msg);
+	/* Release user_data if the ownership was not passed on */
+	if( user_free )
+		user_free(user_data);
+
+	if( pc )
+		dbus_pending_call_unref(pc);
+
+	if( msg )
+		dbus_message_unref(msg);
 
 	return status;
+}
+
+static gboolean dbus_send_va(const char *service,
+			     const char *path,
+			     const char *interface,
+			     const char *name,
+			     DBusPendingCallNotifyFunction callback,
+			     void *user_data, DBusFreeFunction user_free,
+			     int first_arg_type, va_list va)
+{
+	gboolean     res = FALSE;
+	DBusMessage *msg = 0;
+
+	/* Method call or signal? */
+	if( service ) {
+		msg = dbus_new_method_call(service, path, interface, name);
+
+		if( !callback )
+			dbus_message_set_no_reply(msg, TRUE);
+	}
+	else if( callback ) {
+		mce_log(LL_ERR, "Programmer snafu! "
+			"dbus_send() called with a DBusPending "
+			"callback for a signal.  Whoopsie!");
+		goto EXIT;
+	}
+	else {
+		msg = dbus_new_signal(path, interface, name);
+	}
+
+	/* Append the arguments, if any */
+	if( first_arg_type != DBUS_TYPE_INVALID  &&
+	    !dbus_message_append_args_valist(msg, first_arg_type, va)) {
+		mce_log(LL_CRIT, "Failed to append arguments to D-Bus message "
+			"for %s.%s", interface, name);
+		goto EXIT;
+	}
+
+	/* Send the signal / call the method */
+	if( !callback ) {
+		res = dbus_send_message(msg);
+		msg = 0;
+	}
+	else {
+		res = dbus_send_message_with_reply_handler(msg, callback,
+							   user_data,
+							   user_free);
+		msg = 0;
+
+		/* Ownership of user_data passed on */
+		user_data = 0, user_free = 0;
+	}
+
+EXIT:
+	/* Release user_data if the ownership was not passed on */
+	if( user_free )
+		user_free(user_data);
+
+	if( msg ) dbus_message_unref(msg);
+
+	return res;
+
+/**
+ * Generic function to send D-Bus messages and signals
+ * to send a signal, call dbus_send with service == NULL
+ *
+ * @todo Make it possible to send D-Bus replies as well
+ *
+ * @param service D-Bus service; for signals, set to NULL
+ * @param path D-Bus path
+ * @param interface D-Bus interface
+ * @param name The D-Bus method or signal name to send to
+ * @param callback A reply callback, or NULL to set no reply;
+ *                 for signals, this is unused, but please use NULL
+ *                 for consistency
+ * @param user_data Data to pass to callback
+ * @param user_free Data release callback for user_data
+ * @param first_arg_type The DBUS_TYPE of the first argument in the list
+ * @param ... The arguments to append to the D-Bus message;
+ *            terminate with DBUS_TYPE_INVALID
+ *            Note: the arguments MUST be passed by reference
+ * @return TRUE on success, FALSE on failure
+ */
+}
+
+gboolean dbus_send_ex(const char *service,
+		      const char *path,
+		      const char *interface,
+		      const char *name,
+		      DBusPendingCallNotifyFunction callback,
+		      void *user_data, DBusFreeFunction user_free,
+		      int first_arg_type, ...)
+{
+	va_list va;
+	va_start(va, first_arg_type);
+	gboolean res = dbus_send_va(service, path, interface, name,
+				    callback, user_data, user_free,
+				    first_arg_type, va);
+	va_end(va);
+	return res;
 }
 
 /**
@@ -445,54 +574,12 @@ gboolean dbus_send(const gchar *const service, const gchar *const path,
 		   DBusPendingCallNotifyFunction callback,
 		   int first_arg_type, ...)
 {
-	DBusMessage *msg;
-	gboolean status = FALSE;
-	va_list var_args;
-
-	if (service != NULL) {
-		msg = dbus_new_method_call(service, path, interface, name);
-
-		if (callback == NULL)
-			dbus_message_set_no_reply(msg, TRUE);
-	} else {
-		if (callback != NULL) {
-			mce_log(LL_ERR,
-				"Programmer snafu! "
-				"dbus_send() called with a DBusPending "
-				"callback for a signal.  Whoopsie!");
-			callback = NULL;
-		}
-
-		msg = dbus_new_signal(path, interface, name);
-	}
-
-	/* Append the arguments, if any */
-	va_start(var_args, first_arg_type);
-
-	if (first_arg_type != DBUS_TYPE_INVALID) {
-		if (dbus_message_append_args_valist(msg,
-						    first_arg_type,
-						    var_args) == FALSE) {
-			mce_log(LL_CRIT,
-				"Failed to append arguments to D-Bus message "
-				"for %s.%s",
-				interface, name);
-			dbus_message_unref(msg);
-			goto EXIT;
-		}
-	}
-
-	/* Send the signal / call the method */
-	if (callback == NULL) {
-		status = dbus_send_message(msg);
-	} else {
-		status = dbus_send_message_with_reply_handler(msg, callback);
-	}
-
-EXIT:
-	va_end(var_args);
-
-	return status;
+	va_list va;
+	va_start(va, first_arg_type);
+	gboolean res = dbus_send_va(service, path, interface, name,
+				    callback, 0, 0, first_arg_type, va);
+	va_end(va);
+	return res;
 }
 
 /**
