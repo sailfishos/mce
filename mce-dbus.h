@@ -91,10 +91,10 @@ void mce_dbus_send_config_notification(GConfEntry *entry);
  */
 typedef struct
 {
-  const gchar *const interface;
-  const gchar *const name;
-  const gchar *const rules;
-  const guint type;
+  const char *interface;
+  const char *name;
+  const char *rules;
+  int         type;
   gboolean (*callback)(DBusMessage *const msg);
 
   gconstpointer cookie;
@@ -117,5 +117,8 @@ void mce_dbus_handler_unregister_array(mce_dbus_handler_t *array);
 
 char *mce_dbus_message_repr(DBusMessage *const msg);
 char *mce_dbus_message_iter_repr(DBusMessageIter *iter);
+
+const char *mce_dbus_get_name_owner_ident(const char *name);
+const char *mce_dbus_get_message_sender_ident(DBusMessage *msg);
 
 #endif /* _MCE_DBUS_H_ */

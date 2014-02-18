@@ -20,6 +20,11 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
+
+#include <unistd.h>
+#include <fcntl.h>
+#include <string.h>
+
 #include <glib.h>
 
 #include <stdio.h>
@@ -2327,6 +2332,338 @@ mce_dbus_handler_unregister_array(mce_dbus_handler_t *array)
         mce_dbus_handler_unregister(array);
 }
 
+/* ========================================================================= *
+ * DBUS NAME INFO
+ * ========================================================================= */
+
+/** Cached D-Bus name owner identification data */
+typedef struct
+{
+    char                ni_repr[64];
+    char               *ni_name;
+    int                 ni_pid;
+    char               *ni_exe;
+    mce_dbus_handler_t  ni_hnd;
+
+} mce_dbus_ident_t;
+
+static void              mce_dbus_rem_ident(const char *name);
+static mce_dbus_ident_t *mce_dbus_get_ident(const char *name);
+static mce_dbus_ident_t *mce_dbus_add_ident(const char *name);
+
+/** Get human readable representation of D-Bus name owner identification data
+ */
+static const char *
+mce_dbus_ident_get_repr(const mce_dbus_ident_t *self)
+{
+    return self->ni_repr;
+}
+
+/** Update human readable representation of D-Bus name owner identification
+ */
+static void
+mce_dbus_ident_update_repr(mce_dbus_ident_t *self)
+{
+    char pid[16];
+
+    if( self->ni_pid < 0 )
+	snprintf(pid, sizeof pid, "???");
+    else
+	snprintf(pid, sizeof pid, "%d", self->ni_pid);
+
+    snprintf(self->ni_repr, sizeof self->ni_repr, "name='%s' pid=%s cmd='%s'",
+	     self->ni_name, pid, self->ni_exe ?: "???");
+}
+
+/** Update executable name in D-Bus name owner identification data
+ */
+static void mce_dbus_ident_update_exe(mce_dbus_ident_t *self)
+{
+    int file = -1;
+    char path[256];
+    unsigned char text[64];
+
+    if( self->ni_exe )
+	goto EXIT;
+
+    snprintf(path, sizeof path, "/proc/%d/cmdline", self->ni_pid);
+    if( (file = open(path, O_RDONLY)) == -1 ) {
+	mce_log(LL_ERR, "%s: open: %m", path);
+	goto EXIT;
+    }
+
+    int n = read(file, text, sizeof text - 1);
+    if( n == -1 ) {
+	mce_log(LL_ERR, "%s: read: %m", path);
+	goto EXIT;
+    }
+    text[n] = 0;
+
+    for( int i = 0; i < n; ++i ) {
+	if( text[i] < 32 )
+	    text[i] = ' ';
+    }
+
+    self->ni_exe = strdup((char *)text);
+
+EXIT:
+    return;
+}
+
+/** Handle reply to asynchronous pid of D-Bus name owner query
+ */
+static void mce_dbus_ident_query_pid_cb(DBusPendingCall *pc, void *aptr)
+{
+    const char   *name = 0;
+    DBusMessage  *rsp  = 0;
+    DBusError     err  = DBUS_ERROR_INIT;
+    dbus_uint32_t dta  = 0;
+
+    mce_dbus_ident_t *self = 0;
+
+    if( !(name = aptr) )
+	goto EXIT;
+
+    if( !pc )
+        goto EXIT;
+
+    if( !(rsp = dbus_pending_call_steal_reply(pc)) )
+        goto EXIT;
+
+    if( dbus_set_error_from_message(&err, rsp) ||
+	!dbus_message_get_args(rsp, &err,
+			       DBUS_TYPE_UINT32, &dta,
+			       DBUS_TYPE_INVALID) ) {
+        mce_log(LL_ERR, "%s: %s", err.name, err.message);
+	mce_dbus_rem_ident(name);
+        goto EXIT;
+    }
+
+    if( !(self = mce_dbus_get_ident(name)) )
+	goto EXIT;
+
+    if( self->ni_pid != 0 )
+	goto EXIT;
+
+    self->ni_pid = (int)dta;
+    mce_dbus_ident_update_exe(self);
+    mce_dbus_ident_update_repr(self);
+    mce_log(LL_DEVEL, "%s", mce_dbus_ident_get_repr(self));
+
+EXIT:
+    if( rsp ) dbus_message_unref(rsp);
+    if( pc )  dbus_pending_call_unref(pc);
+    dbus_error_free(&err);
+
+    return;
+}
+
+/** Start asynchronous pid of D-Bus name owner query
+ */
+static void mce_dbus_ident_query_pid(mce_dbus_ident_t *self)
+{
+    // already done, or in progress
+    if( self->ni_pid >= 0 )
+	goto EXIT;
+
+    // mark as: in progress
+    self->ni_pid = 0;
+
+    const char *name = self->ni_name;
+
+    // start async query
+    dbus_send_ex(DBUS_SERVICE_DBUS,
+		 DBUS_PATH_DBUS,
+		 DBUS_INTERFACE_DBUS,
+		 "GetConnectionUnixProcessID",
+		 // ----------------
+		 mce_dbus_ident_query_pid_cb,
+		 strdup(name),
+		 free,
+		 // ----------------
+		 DBUS_TYPE_STRING, &name,
+		 DBUS_TYPE_INVALID);
+
+EXIT:
+    return;
+}
+
+/** Handle NameOwnerChanged signal for cached name owner tracking
+ */
+static gboolean
+mce_dbus_ident_lost_cb(DBusMessage *sig)
+{
+    const char *name = 0;
+    const char *prev = 0;
+    const char *curr = 0;
+    DBusError   err  = DBUS_ERROR_INIT;
+
+    mce_log(LL_CRIT, "*** BING ***");
+
+    if( dbus_set_error_from_message(&err, sig) ) {
+        mce_log(LL_ERR, "%s: %s", err.name, err.message);
+        goto EXIT;
+    }
+
+    if( !dbus_message_get_args(sig, &err,
+                              DBUS_TYPE_STRING, &name,
+                              DBUS_TYPE_STRING, &prev,
+                              DBUS_TYPE_STRING, &curr,
+                              DBUS_TYPE_INVALID) ) {
+        mce_log(LL_ERR, "%s: %s", err.name, err.message);
+        goto EXIT;
+    }
+
+    if( curr && *curr )
+	goto EXIT;
+
+    mce_dbus_rem_ident(name);
+
+EXIT:
+    dbus_error_free(&err);
+    return TRUE;
+}
+
+/** Allocate cached D-Bus name owner identification data
+ */
+static mce_dbus_ident_t *
+mce_dbus_ident_create(const char *name)
+{
+    mce_dbus_ident_t *self = calloc(1, sizeof *self);
+
+    self->ni_name = strdup(name);
+    self->ni_pid  = -1;
+    self->ni_exe  = 0;
+
+    mce_log(LL_CRIT, "start tracking %s", self->ni_name);
+
+    self->ni_hnd.interface = DBUS_INTERFACE_DBUS;
+    self->ni_hnd.name      = "NameOwnerChanged";
+    self->ni_hnd.rules     = g_strdup_printf("arg0='%s',arg2=''", name);
+    self->ni_hnd.type      = DBUS_MESSAGE_TYPE_SIGNAL;
+    self->ni_hnd.callback  = mce_dbus_ident_lost_cb;
+
+    mce_dbus_handler_register(&self->ni_hnd);
+    mce_dbus_ident_update_repr(self);
+    mce_dbus_ident_query_pid(self);
+
+    return self;
+}
+
+/** Release Cached D-Bus name owner identification data
+ */
+static void
+mce_dbus_ident_delete(mce_dbus_ident_t *self)
+{
+    if( self ) {
+	mce_log(LL_CRIT, "stop tracking %s", self->ni_name);
+	mce_dbus_handler_unregister(&self->ni_hnd);
+	g_free((void *)self->ni_hnd.rules);
+	free(self->ni_exe);
+	free(self);
+    }
+}
+
+/** Type agnostic callback for releasing D-Bus name owner identification data
+ */
+static void
+mce_dbus_ident_delete_cb(gpointer self)
+{
+    mce_dbus_ident_delete(self);
+}
+
+
+/** Lookup table for cached D-Bus name owner identification data */
+static GHashTable *info_lut = 0;
+
+/** Remove D-Bus name owner identification data from cache
+ */
+static void mce_dbus_rem_ident(const char *name)
+{
+    if( !info_lut )
+	goto EXIT;
+
+    g_hash_table_remove(info_lut, name);
+
+EXIT:
+    return;
+}
+
+/** Locate D-Bus name owner identification data from cache
+ */
+static mce_dbus_ident_t *
+mce_dbus_get_ident(const char *name)
+{
+    mce_dbus_ident_t *res = 0;
+
+    if( !info_lut )
+	goto EXIT;
+
+    res = g_hash_table_lookup(info_lut, name);
+
+EXIT:
+    return res;
+}
+
+/** Add D-Bus name owner identification data to cache
+ */
+static mce_dbus_ident_t *
+mce_dbus_add_ident(const char *name)
+{
+    mce_dbus_ident_t *res = 0;
+
+    // have existing value?
+    if( (res = mce_dbus_get_ident(name)) )
+	goto EXIT;
+
+    // have lookup table?
+    if( !info_lut ) {
+	info_lut = g_hash_table_new_full(g_str_hash, g_str_equal, free,
+					 mce_dbus_ident_delete_cb);
+    }
+
+    // insert new entry
+    res = mce_dbus_ident_create(name);
+    g_hash_table_replace(info_lut, strdup(name), res);
+
+EXIT:
+
+    return res;
+}
+
+/** Get identification string of D-Bus name owner
+ */
+const char *mce_dbus_get_name_owner_ident(const char *name)
+{
+    const char *res = 0;
+    const mce_dbus_ident_t *info = 0;
+
+    if( !name )
+	goto EXIT;
+
+    if( !(info = mce_dbus_add_ident(name)) )
+	goto EXIT;
+
+    res = mce_dbus_ident_get_repr(info);
+
+EXIT:
+  return res ?: "unknown";
+}
+
+/** Get identification string of sender of D-Bus message
+ */
+const char *mce_dbus_get_message_sender_ident(DBusMessage *msg)
+{
+    const char *name = 0;
+    if( msg )
+	name = dbus_message_get_sender(msg);
+    return mce_dbus_get_name_owner_ident(name);
+}
+
+/* ========================================================================= *
+ * LOAD/UNLOAD
+ * ========================================================================= */
+
 /**
  * Init function for the mce-dbus component
  * Pre-requisites: glib mainloop registered
@@ -2423,6 +2760,10 @@ void mce_dbus_exit(void)
 		dbus_connection_unref(dbus_connection);
 		dbus_connection = NULL;
 	}
+
+	/* Remove info look up table */
+        if( info_lut )
+		g_hash_table_unref(info_lut), info_lut = 0;
 
 	return;
 }
