@@ -2438,7 +2438,7 @@ mce_dbus_ident_update_repr(mce_dbus_ident_t *self)
     else
 	snprintf(pid, sizeof pid, "%d", self->ni_pid);
 
-    snprintf(self->ni_repr, sizeof self->ni_repr, "name='%s' pid=%s cmd='%s'",
+    snprintf(self->ni_repr, sizeof self->ni_repr, "name=%s pid=%s cmd=%s",
 	     self->ni_name, pid, self->ni_exe ?: "???");
 }
 
