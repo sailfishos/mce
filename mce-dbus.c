@@ -2565,8 +2565,6 @@ mce_dbus_ident_lost_cb(DBusMessage *sig)
     const char *curr = 0;
     DBusError   err  = DBUS_ERROR_INIT;
 
-    mce_log(LL_CRIT, "*** BING ***");
-
     if( dbus_set_error_from_message(&err, sig) ) {
         mce_log(LL_ERR, "%s: %s", err.name, err.message);
         goto EXIT;
@@ -2602,7 +2600,7 @@ mce_dbus_ident_create(const char *name)
     self->ni_pid  = -1;
     self->ni_exe  = 0;
 
-    mce_log(LL_CRIT, "start tracking %s", self->ni_name);
+    mce_log(LL_DEBUG, "start tracking %s", self->ni_name);
 
     self->ni_hnd.interface = DBUS_INTERFACE_DBUS;
     self->ni_hnd.name      = "NameOwnerChanged";
@@ -2623,7 +2621,7 @@ static void
 mce_dbus_ident_delete(mce_dbus_ident_t *self)
 {
     if( self ) {
-	mce_log(LL_CRIT, "stop tracking %s", self->ni_name);
+	mce_log(LL_DEBUG, "stop tracking %s", self->ni_name);
 	mce_dbus_handler_unregister(&self->ni_hnd);
 	g_free((void *)self->ni_hnd.rules);
 	free(self->ni_exe);
