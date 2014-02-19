@@ -2624,6 +2624,7 @@ mce_dbus_ident_delete(mce_dbus_ident_t *self)
 	mce_log(LL_DEBUG, "stop tracking %s", self->ni_name);
 	mce_dbus_handler_unregister(&self->ni_hnd);
 	g_free((void *)self->ni_hnd.rules);
+	free(self->ni_name);
 	free(self->ni_exe);
 	free(self);
     }
