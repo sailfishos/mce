@@ -1,3 +1,9 @@
+mce (1.23.7) unstable; urgency=low
+
+  * [mce] Identify processes that do dbus ipc with mce
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 19 Feb 2014 14:44:57 +0200
+
 mce (1.23.6) unstable; urgency=low
 
   * [mce] Make devel build of mce log important external triggers by default
