@@ -799,6 +799,7 @@ static void gconf_value_set_from_string(GConfValue *self, const char *data)
     break;
 
   case GCONF_VALUE_STRING:
+    free(self->data.s);
     self->data.s = strdup(data);
     break;
 
