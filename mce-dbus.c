@@ -2812,7 +2812,11 @@ EXIT:
  */
 void mce_dbus_exit(void)
 {
-	/* Unregister D-Bus handlers */
+	/* Remove info look up table */
+        if( info_lut )
+		g_hash_table_unref(info_lut), info_lut = 0;
+
+	/* Unregister remaining D-Bus handlers */
 	if( dbus_handlers ) {
 		g_slist_foreach(dbus_handlers, mce_dbus_handler_remove_cb, 0);
 		g_slist_free(dbus_handlers);
@@ -2825,10 +2829,6 @@ void mce_dbus_exit(void)
 		dbus_connection_unref(dbus_connection);
 		dbus_connection = NULL;
 	}
-
-	/* Remove info look up table */
-        if( info_lut )
-		g_hash_table_unref(info_lut), info_lut = 0;
 
 	return;
 }
