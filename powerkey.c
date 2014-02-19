@@ -508,7 +508,8 @@ static gboolean trigger_powerkey_event_req_dbus_cb(DBusMessage *const msg)
 	/* Register error channel */
 	dbus_error_init(&error);
 
-	mce_log(LL_DEBUG, "Received [power] button trigger request");
+	mce_log(LL_DEVEL, "Received [power] button trigger request from %s",
+		mce_dbus_get_message_sender_ident(msg));
 
 	if (dbus_message_iter_init(msg, &iter) == FALSE) {
 		// XXX: should we return an error instead?

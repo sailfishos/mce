@@ -1310,7 +1310,8 @@ change_call_state_dbus_cb(DBusMessage *const msg)
     DBusError    error = DBUS_ERROR_INIT;
     dbus_bool_t changed = false;
 
-    mce_log(LL_DEBUG, "Received set call state request");
+    mce_log(LL_DEVEL, "Received set call state request from %s",
+	    mce_dbus_get_name_owner_ident(sender));
 
     if (dbus_message_get_args(msg, &error,
                               DBUS_TYPE_STRING, &state,

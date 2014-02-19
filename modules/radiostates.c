@@ -352,7 +352,8 @@ static gboolean get_radio_states_dbus_cb(DBusMessage *const msg)
 {
 	gboolean status = FALSE;
 
-	mce_log(LL_DEBUG, "Received get radio states request");
+	mce_log(LL_DEVEL, "Received get radio states request from %s",
+		mce_dbus_get_message_sender_ident(msg));
 
 	/* Try to send a reply that contains the current radio states */
 	if (send_radio_states(msg) == FALSE)
@@ -415,7 +416,8 @@ static gboolean req_radio_states_change_dbus_cb(DBusMessage *const msg)
 	dbus_uint32_t mask     = 0;
 	DBusError     error    = DBUS_ERROR_INIT;
 
-	mce_log(LL_DEBUG, "Received radio states change request");
+	mce_log(LL_DEVEL, "Received radio states change request from %s",
+		mce_dbus_get_message_sender_ident(msg));
 
 	if (dbus_message_get_args(msg, &error,
 				  DBUS_TYPE_UINT32, &states,

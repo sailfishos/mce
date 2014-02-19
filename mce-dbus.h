@@ -43,13 +43,20 @@ DBusMessage *dbus_new_method_call(const gchar *const service,
 DBusMessage *dbus_new_method_reply(DBusMessage *const message);
 
 gboolean dbus_send_message(DBusMessage *const msg);
-gboolean dbus_send_message_with_reply_handler(DBusMessage *const msg,
-					      DBusPendingCallNotifyFunction callback);
 
 gboolean dbus_send(const gchar *const service, const gchar *const path,
 		   const gchar *const interface, const gchar *const name,
 		   DBusPendingCallNotifyFunction callback,
 		   int first_arg_type, ...);
+
+gboolean dbus_send_ex(const char *service,
+		      const char *path,
+		      const char *interface,
+		      const char *name,
+		      DBusPendingCallNotifyFunction callback,
+		      void *user_data, DBusFreeFunction user_free,
+		      int first_arg_type, ...);
+
 DBusMessage *dbus_send_with_block(const gchar *const service,
 				  const gchar *const path,
 				  const gchar *const interface,
@@ -84,10 +91,10 @@ void mce_dbus_send_config_notification(GConfEntry *entry);
  */
 typedef struct
 {
-  const gchar *const interface;
-  const gchar *const name;
-  const gchar *const rules;
-  const guint type;
+  const char *interface;
+  const char *name;
+  const char *rules;
+  int         type;
   gboolean (*callback)(DBusMessage *const msg);
 
   gconstpointer cookie;
@@ -110,5 +117,8 @@ void mce_dbus_handler_unregister_array(mce_dbus_handler_t *array);
 
 char *mce_dbus_message_repr(DBusMessage *const msg);
 char *mce_dbus_message_iter_repr(DBusMessageIter *iter);
+
+const char *mce_dbus_get_name_owner_ident(const char *name);
+const char *mce_dbus_get_message_sender_ident(DBusMessage *msg);
 
 #endif /* _MCE_DBUS_H_ */

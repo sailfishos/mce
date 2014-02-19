@@ -917,9 +917,8 @@ static gboolean proximity_sensor_enable_req_dbus_cb(DBusMessage *const msg)
 		goto EXIT;
 	}
 
-	mce_log(LL_DEBUG,
-		"Received proximity sensor enable request from %s",
-		sender);
+	mce_log(LL_DEVEL, "Received proximity sensor enable request from %s",
+		mce_dbus_get_name_owner_ident(sender));
 
 	retval = mce_dbus_owner_monitor_add(sender, proximity_sensor_owner_monitor_dbus_cb, &proximity_sensor_owner_monitor_list, PS_MAX_MONITORED);
 
@@ -973,9 +972,8 @@ static gboolean proximity_sensor_disable_req_dbus_cb(DBusMessage *const msg)
 		goto EXIT;
 	}
 
-	mce_log(LL_DEBUG,
-		"Received proximity sensor disable request from %s",
-		sender);
+	mce_log(LL_DEVEL, "Received proximity sensor disable request from %s",
+		mce_dbus_get_name_owner_ident(sender));
 
 	retval = mce_dbus_owner_monitor_remove(sender,
 					       &proximity_sensor_owner_monitor_list);

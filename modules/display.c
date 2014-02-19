@@ -5550,11 +5550,11 @@ static gboolean mdy_dbus_handle_display_on_req(DBusMessage *const msg)
 
     if( reason ) {
         mce_log(LL_WARN, "display ON request from %s denied: %s",
-                dbus_message_get_sender(msg), reason);
+                mce_dbus_get_message_sender_ident(msg), reason);
     }
     else {
         mce_log(LL_DEVEL,"display ON request from %s",
-                dbus_message_get_sender(msg));
+                mce_dbus_get_message_sender_ident(msg));
         execute_datapipe(&display_state_req_pipe,
                          GINT_TO_POINTER(MCE_DISPLAY_ON),
                          USE_INDATA, CACHE_INDATA);
@@ -5586,11 +5586,11 @@ static gboolean mdy_dbus_handle_display_dim_req(DBusMessage *const msg)
 
     if( reason ) {
         mce_log(LL_WARN, "display DIM request from %s denied: %s",
-                dbus_message_get_sender(msg), reason);
+                mce_dbus_get_message_sender_ident(msg), reason);
     }
     else {
         mce_log(LL_DEVEL,"display DIM request from %s",
-                dbus_message_get_sender(msg));
+                mce_dbus_get_message_sender_ident(msg));
         execute_datapipe(&display_state_req_pipe,
                          GINT_TO_POINTER(MCE_DISPLAY_DIM),
                          USE_INDATA, CACHE_INDATA);
@@ -5619,7 +5619,7 @@ static gboolean mdy_dbus_handle_display_off_req(DBusMessage *const msg)
     gboolean status = FALSE;
 
     mce_log(LL_DEVEL, "display off request from %s",
-            dbus_message_get_sender(msg));
+            mce_dbus_get_message_sender_ident(msg));
 
     execute_datapipe(&tk_lock_pipe,
                      GINT_TO_POINTER(LOCK_ON),
@@ -5649,7 +5649,8 @@ static gboolean mdy_dbus_handle_display_status_get_req(DBusMessage *const msg)
 {
     gboolean status = FALSE;
 
-    mce_log(LL_DEBUG, "Received display status get request");
+    mce_log(LL_DEVEL, "Received display status get request from %s",
+	    mce_dbus_get_message_sender_ident(msg));
 
     /* Try to send a reply that contains the current display status */
     if (mdy_dbus_send_display_status(msg) == FALSE)
@@ -5758,7 +5759,8 @@ static gboolean mdy_dbus_handle_cabc_mode_get_req(DBusMessage *const msg)
 {
     gboolean status = FALSE;
 
-    mce_log(LL_DEBUG, "Received CABC mode get request");
+    mce_log(LL_DEVEL, "Received CABC mode get request from %s",
+	    mce_dbus_get_message_sender_ident(msg));
 
     /* Try to send a reply that contains the current CABC mode */
     if (mdy_dbus_send_cabc_mode(msg) == FALSE)
@@ -5794,7 +5796,8 @@ static gboolean mdy_dbus_handle_cabc_mode_set_req(DBusMessage *const msg)
         goto EXIT;
     }
 
-    mce_log(LL_DEBUG, "Received set CABC mode request from %s", sender);
+    mce_log(LL_DEVEL, "Received set CABC mode request from %s", 
+	    mce_dbus_get_name_owner_ident(sender));
 
     /* Extract result */
     if (dbus_message_get_args(msg, &error,
@@ -5830,7 +5833,7 @@ static gboolean mdy_dbus_handle_cabc_mode_set_req(DBusMessage *const msg)
                                    &mdy_cabc_mode_monitor_list,
                                    1) == -1) {
         mce_log(LL_INFO, "Failed to add name owner monitoring for `%s'",
-                sender);
+                mce_dbus_get_name_owner_ident(sender));
     }
 
     /* If reply is wanted, send the current CABC mode */
@@ -5871,7 +5874,8 @@ static gboolean mdy_dbus_handle_blanking_pause_start_req(DBusMessage *const msg)
         goto EXIT;
     }
 
-    mce_log(LL_DEVEL, "blanking pause request from %s", sender);
+    mce_log(LL_DEVEL, "blanking pause request from %s",
+	    mce_dbus_get_name_owner_ident(sender));
 
     mdy_blanking_add_pause_client(sender);
 
@@ -5903,7 +5907,8 @@ static gboolean mdy_dbus_handle_blanking_pause_cancel_req(DBusMessage *const msg
         goto EXIT;
     }
 
-    mce_log(LL_DEVEL, "cancel blanking pause request from %s", sender);
+    mce_log(LL_DEVEL, "cancel blanking pause request from %s",
+	    mce_dbus_get_name_owner_ident(sender));
 
     mdy_blanking_remove_pause_client(sender);
 
@@ -5931,7 +5936,10 @@ static gboolean mdy_dbus_handle_set_demo_mode_req(DBusMessage *const msg)
     DBusMessage *reply = NULL;
     char *use = 0;
 
-    mce_log(LL_DEBUG, "Recieved demo mode change request");
+    // FIXME: this is defunct code and should be removed
+
+    mce_log(LL_DEVEL, "Recieved demo mode change request from %s",
+	    mce_dbus_get_message_sender_ident(msg));
 
     dbus_error_init(&error);
 

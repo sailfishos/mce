@@ -217,17 +217,21 @@ void gconf_value_set_list_type(GConfValue *self, GConfValueType list_type);
 GSList *gconf_value_get_list(const GConfValue *self);
 void gconf_value_set_list(GConfValue *self, GSList *list);
 static GConfEntry *gconf_entry_init(const char *key, const char *type, const char *data);
+static void gconf_entry_free(GConfEntry *self);
+static void gconf_entry_free_cb(gpointer self);
 const char *gconf_entry_get_key(const GConfEntry *entry);
 GConfValue *gconf_entry_get_value(const GConfEntry *entry);
 #if GCONF_ENABLE_DEBUG_LOGGING
 static void gconf_client_debug(GConfClient *self);
 #endif
 GConfClient *gconf_client_get_default(void);
+static void gconf_client_free_default(void);
 void gconf_client_add_dir(GConfClient *client, const gchar *dir, GConfClientPreloadType preload, GError **err);
 static GConfEntry *gconf_client_find_entry(GConfClient *self, const gchar *key, GError **err);
 static GConfValue *gconf_client_find_value(GConfClient *self, const gchar *key, GError **err);
 GConfValue *gconf_client_get(GConfClient *self, const gchar *key, GError **err);
 static void gconf_client_notify_free(GConfClientNotify *self);
+static void gconf_client_notify_free_cb(gpointer self);
 static GConfClientNotify *gconf_client_notify_new(const gchar *namespace_section, GConfClientNotifyFunc func, gpointer user_data, GFreeFunc destroy_notify);
 static void gconf_client_notify_change(GConfClient *client, const gchar *namespace_section);
 guint gconf_client_notify_add(GConfClient *client, const gchar *namespace_section, GConfClientNotifyFunc func, gpointer user_data, GFreeFunc destroy_notify, GError **err);
@@ -799,6 +803,7 @@ static void gconf_value_set_from_string(GConfValue *self, const char *data)
     break;
 
   case GCONF_VALUE_STRING:
+    free(self->data.s);
     self->data.s = strdup(data);
     break;
 
@@ -1091,6 +1096,26 @@ gconf_value_set_list(GConfValue *self, GSList *list)
  * GConfEntry
  *
  * ========================================================================= */
+
+static
+void
+gconf_entry_free(GConfEntry *self)
+{
+  if( self )
+  {
+    gconf_value_free(self->value);
+    free(self->key);
+    free(self->def);
+    free(self);
+  }
+}
+
+static
+void
+gconf_entry_free_cb(gpointer self)
+{
+  gconf_entry_free(self);
+}
 
 /** Create a GConfEntry object */
 static
@@ -1670,6 +1695,20 @@ static void gconf_client_mark_defaults(GConfClient *self)
   }
 }
 
+static void gconf_client_free_default(void)
+{
+  if( default_client )
+  {
+    g_slist_free_full(default_client->entries,
+		      gconf_entry_free_cb);
+
+    g_slist_free_full(default_client->notify_list,
+		      gconf_client_notify_free_cb);
+
+    free(default_client), default_client = 0;
+  }
+}
+
 /** See GConf API documentation */
 GConfClient *
 gconf_client_get_default(void)
@@ -1688,6 +1727,7 @@ gconf_client_get_default(void)
 
     // let gconf_client_is_valid() know about this
     default_client = self;
+    atexit(gconf_client_free_default);
 
     // override hard coded defaults via /etc/nn.*.conf
     gconf_client_load_overrides(self);
@@ -1983,6 +2023,13 @@ gconf_client_notify_free(GConfClientNotify *self)
 
     free(self);
   }
+}
+
+static
+void
+gconf_client_notify_free_cb(gpointer self)
+{
+  gconf_client_notify_free(self);
 }
 
 /** Create GConfClientNotify object */

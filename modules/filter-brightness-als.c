@@ -684,7 +684,8 @@ static gboolean als_enable_req_dbus_cb(DBusMessage *const msg)
 	if( !(sender = dbus_message_get_sender(msg)) )
 		goto EXIT;
 
-	mce_log(LL_DEBUG, "Received ALS enable request from %s", sender);
+	mce_log(LL_DEVEL, "Received ALS enable request from %s",
+		mce_dbus_get_name_owner_ident(sender));
 
 	retval = mce_dbus_owner_monitor_add(sender, als_owner_monitor_dbus_cb,
 					    &ext_als_enablers,
@@ -721,7 +722,8 @@ static gboolean als_disable_req_dbus_cb(DBusMessage *const msg)
 	if( !(sender = dbus_message_get_sender(msg)) )
 		goto EXIT;
 
-	mce_log(LL_DEBUG, "Received ALS disable request from %s", sender);
+	mce_log(LL_DEVEL, "Received ALS disable request from %s",
+		mce_dbus_get_name_owner_ident(sender));
 
 	retval = mce_dbus_owner_monitor_remove(sender,
 					       &ext_als_enablers);
@@ -783,7 +785,8 @@ EXIT:
  */
 static gboolean color_profile_get_req_dbus_cb(DBusMessage *const msg)
 {
-	mce_log(LL_DEBUG, "Received get color profile request");
+	mce_log(LL_DEVEL, "Received get color profile request from %s",
+		mce_dbus_get_message_sender_ident(msg));
 
 	if( dbus_message_get_no_reply(msg) )
 		goto EXIT;
@@ -801,7 +804,8 @@ EXIT:
  */
 static gboolean color_profile_ids_get_req_dbus_cb(DBusMessage *const msg)
 {
-	mce_log(LL_DEBUG, "Received list color profiles request");
+	mce_log(LL_DEVEL, "Received list color profiles request from %s",
+		mce_dbus_get_message_sender_ident(msg));
 
 	DBusMessage *rsp = 0;
 	int cnt = sizeof color_profiles / sizeof *color_profiles;
@@ -834,7 +838,8 @@ EXIT:
  */
 static gboolean color_profile_change_req_dbus_cb(DBusMessage *const msg)
 {
-	mce_log(LL_DEBUG, "Received set color profile request");
+	mce_log(LL_DEVEL, "Received set color profile request from %s",
+		mce_dbus_get_message_sender_ident(msg));
 
 	const char  *val = 0;
 	DBusError    err = DBUS_ERROR_INIT;

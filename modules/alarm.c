@@ -193,8 +193,8 @@ static gboolean alarm_dialog_status_dbus_cb(DBusMessage *const msg)
 	/* Register error channel */
 	dbus_error_init(&error);
 
-	mce_log(LL_DEBUG,
-		"Received alarm dialog status signal");
+	mce_log(LL_DEVEL, "Received alarm dialog status signal from %s",
+		mce_dbus_get_name_owner_ident(sender));
 
 	if (dbus_message_get_args(msg, &error,
 				  DBUS_TYPE_INT32, &dialog_status,
