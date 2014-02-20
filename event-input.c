@@ -485,9 +485,11 @@ static evdev_type_t get_evdev_type(int fd)
 	static const int misc_only[] = { ABS_MISC, -1 };
 	static const int dist_only[] = { ABS_DISTANCE, -1 };
 
-	/* key events pseudo button device might support in
-	 * addition to power key */
-	static const int pseudo_lut[] = {
+	/* EV_KEY probing arrays for detecting input devices
+	 * that report double tap gestures as power key events */
+	static const int key_only[]   = { EV_KEY, -1 };
+	static const int dbltap_lut[] = {
+		KEY_POWER,
 		KEY_MENU,
 		KEY_BACK,
 		KEY_HOMEPAGE,
@@ -593,8 +595,8 @@ static evdev_type_t get_evdev_type(int fd)
 	}
 
 	/* Touchscreen that emits power key events on double tap */
-	if( evdevinfo_has_code(feat, EV_KEY, KEY_POWER) &&
-	    evdevinfo_has_codes(feat, EV_KEY, pseudo_lut) ) {
+	if( evdevinfo_match_types(feat, key_only) &&
+	    evdevinfo_match_codes(feat, EV_KEY, dbltap_lut) ) {
 		res = EVDEV_DBLTAP;
 		goto cleanup;
 	}
