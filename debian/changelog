@@ -1,3 +1,9 @@
+mce (1.23.8) unstable; urgency=low
+
+  * [mce] Enhance detection of evdev nodes that report double tap as power key
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 20 Feb 2014 08:57:12 +0200
+
 mce (1.23.7) unstable; urgency=low
 
   * [mce] Identify processes that do dbus ipc with mce
