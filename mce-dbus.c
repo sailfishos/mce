@@ -2474,6 +2474,8 @@ static void mce_dbus_ident_update_exe(mce_dbus_ident_t *self)
     self->ni_exe = strdup((char *)text);
 
 EXIT:
+    if( file != -1 ) close(file);
+
     return;
 }
 
