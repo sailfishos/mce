@@ -1,3 +1,9 @@
+mce (1.23.9) unstable; urgency=low
+
+  * [mce] Fix file descriptor leak
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 05 Mar 2014 14:53:21 +0200
+
 mce (1.23.8) unstable; urgency=low
 
   * [mce] Enhance detection of evdev nodes that report double tap as power key
