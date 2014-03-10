@@ -19,6 +19,7 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <stdlib.h>
 #include <glib.h>
 #include <gio/gio.h>
 #include <glib/gstdio.h>		/* g_access() */
@@ -1014,6 +1015,293 @@ EXIT:
 	return;
 }
 
+/* ========================================================================= *
+ * TOUCHSCREEN EVDEV INPUT GRAB
+ * ========================================================================= */
+
+/** Low level helper for input grab debug led pattern activate/deactivate
+ */
+static void ts_grab_set_led_raw(bool enabled)
+{
+	execute_datapipe_output_triggers(enabled ?
+					 &led_pattern_activate_pipe :
+					 &led_pattern_deactivate_pipe,
+					 "PatternTouchInputBlocked",
+					 USE_INDATA);
+}
+
+/** Handle delayed input grab led pattern activation
+ */
+static gboolean ts_grab_set_led_cb(gpointer aptr)
+{
+	guint *id = aptr;
+
+	if( !*id )
+		goto EXIT;
+
+	*id = 0;
+	ts_grab_set_led_raw(true);
+EXIT:
+	return FALSE;
+}
+
+/** Handle grab led pattern activation/deactivation
+ *
+ * Deactivation happens immediately.
+ * Activation after brief delay
+ */
+static void ts_grab_set_led(bool enabled)
+{
+	static guint id = 0;
+
+	static bool prev = false;
+
+	if( prev == enabled )
+		goto EXIT;
+
+	if( id )
+		g_source_remove(id), id = 0;
+
+	if( enabled )
+		id = g_timeout_add(200, ts_grab_set_led_cb, &id);
+	else
+		ts_grab_set_led_raw(false);
+
+
+	prev = enabled;
+EXIT:
+	return;
+}
+
+
+/** Grab/ungrab all monitored touch input devices
+ */
+static void ts_grab_set_active(gboolean grab)
+{
+	static gboolean old_grab = FALSE;
+
+	if( old_grab == grab )
+		goto EXIT;
+
+	old_grab = grab;
+	g_slist_foreach(touchscreen_dev_list,
+			input_grab_iomon_cb,
+			GINT_TO_POINTER(grab));
+
+	// STATE MACHINE -> OUTPUT DATAPIPE
+	execute_datapipe(&touch_grab_active_pipe,
+			 GINT_TO_POINTER(grab),
+			 USE_INDATA, CACHE_INDATA);
+
+	/* disable led pattern if grab ended */
+	if( !grab )
+		ts_grab_set_led(false);
+
+EXIT:
+	return;
+}
+
+/** Query palm detection state
+ *
+ * Used to keep touch input in unreleased state even if finger touch
+ * events are not coming in.
+ */
+static bool ts_grab_poll_palm_detect(input_grab_t *ctrl)
+{
+	(void)ctrl;
+
+	static const char path[] = "/sys/devices/i2c-3/3-0020/palm_status";
+
+	bool released = true;
+
+	int fd = -1;
+	char buf[32];
+	if( (fd = open(path, O_RDONLY)) == -1 ) {
+		if( errno != ENOENT )
+			mce_log(LL_ERR, "can't open %s: %m", path);
+		goto EXIT;
+	}
+
+	int rc = read(fd, buf, sizeof buf - 1);
+	if( rc < 0 ) {
+		mce_log(LL_ERR, "can't read %s: %m", path);
+		goto EXIT;
+	}
+
+	buf[rc] = 0;
+	released = (strtol(buf, 0, 0) == 0);
+
+EXIT:
+	if( fd != -1 && close(fd) == -1 )
+		mce_log(LL_WARN, "can't close %s: %m", path);
+
+	return released;
+}
+
+/** Handle grab state notifications from generic input grab state machine
+ */
+static void ts_grab_changed(input_grab_t *ctrl, bool grab)
+{
+	(void)ctrl;
+
+	ts_grab_set_active(grab);
+}
+
+enum
+{
+	TS_RELEASE_DELAY_DEFAULT = 200,
+	TS_RELEASE_DELAY_BLANK   = 100,
+	TS_RELEASE_DELAY_UNBLANK = 600,
+};
+
+
+/** State data for touch input grab state machine */
+static input_grab_t ts_grab_state =
+{
+	.ig_name      = "ts",
+
+	.ig_touching  = false,
+	.ig_touched   = false,
+
+	.ig_want_grab = false,
+	.ig_have_grab = false,
+
+	.ig_release_id = 0,
+	.ig_release_ms = TS_RELEASE_DELAY_DEFAULT,
+
+	.ig_grab_changed_cb = ts_grab_changed,
+	.ig_release_verify_cb = ts_grab_poll_palm_detect,
+};
+
+/** Event filter for determining finger on screen state
+ */
+static void ts_grab_event_filter_cb(struct input_event *ev)
+{
+	static bool x = false, y = false, p = false, r = false;
+
+	switch( ev->type ) {
+	case EV_SYN:
+		switch( ev->code ) {
+		case SYN_MT_REPORT:
+			r = true;
+			break;
+
+		case SYN_REPORT:
+			if( r ) {
+				input_grab_set_touching(&ts_grab_state,
+							x && y && p);
+				x = y = p = r = false;
+			}
+			break;
+
+		default:
+			break;
+		}
+		break;
+
+	case EV_ABS:
+		switch( ev->code ) {
+		case ABS_MT_POSITION_X:
+		  x = true;
+		  break;
+
+		case ABS_MT_POSITION_Y:
+		  y = true;
+		  break;
+
+		case ABS_MT_TOUCH_MAJOR:
+		case ABS_MT_PRESSURE:
+		  p = true;
+		  break;
+
+		default:
+			break;
+		}
+		break;
+
+	default:
+		break;
+	}
+}
+
+
+/** feed desired touch grab state from datapipe to state machine
+ *
+ * @param data The grab wanted boolean as a pointer
+ */
+static void ts_grab_wanted_cb(gconstpointer data)
+{
+	bool required = GPOINTER_TO_INT(data);
+
+	// INPUT DATAPIPE -> STATE MACHINE
+
+	input_grab_request_grab(&ts_grab_state, required);
+}
+
+static void ts_grab_display_state_cb(gconstpointer data)
+{
+	static display_state_t prev = MCE_DISPLAY_UNDEF;
+
+	display_state_t display_state = GPOINTER_TO_INT(data);
+
+	mce_log(LL_DEBUG, "display_state=%d", display_state);
+
+	switch( display_state ) {
+	case MCE_DISPLAY_POWER_DOWN:
+		/* Deactivate debug led pattern once we start to
+		 * power off display and touch panel. */
+		ts_grab_set_led(false);
+		break;
+
+	case MCE_DISPLAY_OFF:
+		/* When display and touch are powered off the
+		 * touch should get explicitly terminated by
+		 * the kernel side. To keep the state machine
+		 * sane in case that does not happen, fake a
+		 * touch release anyway.
+		 *
+		 * Note: Display state machine keeps the device
+		 * wakelocked for a second after reaching display
+		 * off state -> short delays here work without
+		 * explicit wakelocking. */
+		ts_grab_state.ig_release_ms = TS_RELEASE_DELAY_BLANK;
+		input_grab_set_touching(&ts_grab_state, false);
+		break;
+
+	case MCE_DISPLAY_POWER_UP:
+		/* Fake a touch to keep statemachine from releasing
+		 * the input grab before we have a change to get
+		 * actual input from the touch panel. */
+		ts_grab_state.ig_release_ms = TS_RELEASE_DELAY_UNBLANK;
+		input_grab_set_touching(&ts_grab_state, true);
+
+	case MCE_DISPLAY_ON:
+	case MCE_DISPLAY_DIM:
+		ts_grab_state.ig_release_ms = TS_RELEASE_DELAY_DEFAULT;
+		if( prev == MCE_DISPLAY_POWER_UP ) {
+			/* End the faked touch once the display is
+			 * fully on. If there is a finger on the
+			 * screen we will get more input events
+			 * before the delay from artificial touch
+			 * release ends. */
+			input_grab_set_touching(&ts_grab_state, false);
+		}
+		/* Activate (delayed) debug led pattern if we reach
+		 * display on with input grabbed */
+		if( datapipe_get_gint(touch_grab_active_pipe) ) {
+			ts_grab_set_led(true);
+		}
+		break;
+
+	default:
+	case MCE_DISPLAY_LPM_ON:
+	case MCE_DISPLAY_UNDEF:
+	case MCE_DISPLAY_LPM_OFF:
+		break;
+	}
+
+	prev = display_state;
+}
 /**
  * Cancel timeout for touchscreen I/O monitor reprogramming
  */
@@ -1278,6 +1566,8 @@ EXIT:
  */
 static gboolean touchscreen_iomon_cb(gpointer data, gsize bytes_read)
 {
+	static time_t last_activity = 0;
+
 	display_state_t display_state = display_state_get();
 	submode_t submode = mce_get_submode_int32();
 	struct input_event *ev;
@@ -1295,8 +1585,12 @@ static gboolean touchscreen_iomon_cb(gpointer data, gsize bytes_read)
 		evdev_get_event_code_name(ev->type, ev->code),
 		ev->value);
 
+	ts_grab_event_filter_cb(ev);
+
+	bool grabbed = datapipe_get_gint(touch_grab_active_pipe);
+
 #ifdef ENABLE_DOUBLETAP_EMULATION
-	if( fake_doubletap_enabled ) {
+	if( grabbed || fake_doubletap_enabled ) {
 		switch( display_state ) {
 		case MCE_DISPLAY_OFF:
 		case MCE_DISPLAY_LPM_OFF:
@@ -1323,40 +1617,28 @@ static gboolean touchscreen_iomon_cb(gpointer data, gsize bytes_read)
 		goto EXIT;
 	}
 
-	/* Generate activity */
-	(void)execute_datapipe(&device_inactive_pipe, GINT_TO_POINTER(FALSE),
-			       USE_INDATA, CACHE_INDATA);
+	/* Do not generate activity if ts input is grabbed */
+	if( !grabbed ) {
+		/* For generic activity once/second is more than enough
+		 * ... unless we need to disable event eater */
+		if( last_activity != ev->time.tv_sec ||
+		    (submode & MCE_EVEATER_SUBMODE) ) {
+			last_activity = ev->time.tv_sec;
 
-	/* Signal actual non-synthetized user activity */
-	execute_datapipe_output_triggers(&user_activity_pipe, ev, USE_INDATA);
+			/* Generate activity */
+			execute_datapipe(&device_inactive_pipe,
+					 GINT_TO_POINTER(FALSE),
+					 USE_INDATA, CACHE_INDATA);
+		}
 
-
-	/* If the display is on/dim and visual tklock is active
-	 * or autorelock isn't active, suspend I/O monitors
-	 */
-	switch( display_state ) {
-	case MCE_DISPLAY_ON:
-	case MCE_DISPLAY_DIM:
-		/* One event should be enough both for generating activity
-		 * and exceptional ui handling, flush the rest anyway */
-		flush = TRUE;
-
-		/* handling linger or notification -> keep monitoring */
-		if( exception_state & (UIEXC_LINGER | UIEXC_NOTIF) )
-			break;
-
-		/* Stop touch event monitoring */
-		mce_log(LL_DEBUG, "stop touch event monitoring");
-		g_slist_foreach(touchscreen_dev_list,
-				(GFunc)suspend_io_monitor, NULL);
-
-		/* Setup a timeout to resume monitoring */
-		setup_touchscreen_io_monitor_timeout();
-
-		break;
-	default:
-		break;
+		/* Signal actual non-synthetized user activity */
+		execute_datapipe_output_triggers(&user_activity_pipe,
+							 ev, USE_INDATA);
 	}
+
+	/* If the event eater is active, don't send anything */
+	if( submode & MCE_EVEATER_SUBMODE )
+		goto EXIT;
 
 	/* Only send pressure and gesture events */
 	if (((ev->type != EV_ABS) || (ev->code != ABS_PRESSURE)) &&
@@ -1365,21 +1647,9 @@ static gboolean touchscreen_iomon_cb(gpointer data, gsize bytes_read)
 		goto EXIT;
 	}
 
-	/* If we get a double tap gesture, flush the remaining data */
-	if ((ev->type == EV_MSC) &&
-	    (ev->code == MSC_GESTURE) &&
-	    (ev->value == 0x4)) {
-		flush = TRUE;
-	}
-
-	/* For now there's no reason to cache the value
-	 *
-	 * If the event eater is active, don't send anything
-	 */
-	if ((submode & MCE_EVEATER_SUBMODE) == 0) {
-		(void)execute_datapipe(&touchscreen_pipe, &ev,
-				       USE_INDATA, DONT_CACHE_INDATA);
-	}
+	/* For now there's no reason to cache the value */
+	execute_datapipe(&touchscreen_pipe, &ev,
+			 USE_INDATA, DONT_CACHE_INDATA);
 
 EXIT:
 	return flush;
@@ -2195,6 +2465,10 @@ gboolean mce_input_init(void)
 					  exception_state_cb);
 	append_output_trigger_to_datapipe(&submode_pipe,
 					  submode_trigger);
+	append_output_trigger_to_datapipe(&display_state_pipe,
+					  ts_grab_display_state_cb);
+	append_output_trigger_to_datapipe(&touch_grab_wanted_pipe,
+					  ts_grab_wanted_cb);
 
 	/* Retrieve a GFile pointer to the directory to monitor */
 	dev_input_gfp = g_file_new_for_path(DEV_INPUT_PATH);
@@ -2260,6 +2534,10 @@ void mce_input_exit(void)
 					    exception_state_cb);
 	remove_output_trigger_from_datapipe(&submode_pipe,
 					    submode_trigger);
+	remove_output_trigger_from_datapipe(&display_state_pipe,
+					    ts_grab_display_state_cb);
+	remove_output_trigger_from_datapipe(&touch_grab_wanted_pipe,
+					    ts_grab_wanted_cb);
 
 	if (dev_input_gfmp != NULL) {
 		g_signal_handler_disconnect(G_OBJECT(dev_input_gfmp),
@@ -2275,5 +2553,6 @@ void mce_input_exit(void)
 	cancel_keypress_repeat_timeout();
 	cancel_misc_io_monitor_timeout();
 
+	input_grab_reset(&ts_grab_state);
 	return;
 }

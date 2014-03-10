@@ -2205,6 +2205,42 @@ static void tklock_evctrl_rethink(void)
     tklock_evctrl_set_kp_state(enable_kp);
     tklock_evctrl_set_dt_state(enable_dt);
     tklock_evctrl_set_ts_state(enable_ts);
+
+    /* - - - - - - - - - - - - - - - - - - - *
+     * in case emitting of touch events can't
+     * be controlled, we use evdev input grab
+     * to block ui from seeing them while the
+     * display is off
+     * - - - - - - - - - - - - - - - - - - - */
+
+    bool grab_ts = datapipe_get_gint(touch_grab_wanted_pipe);
+
+    switch( display_state ) {
+    default:
+    case MCE_DISPLAY_OFF:
+    case MCE_DISPLAY_POWER_DOWN:
+    case MCE_DISPLAY_UNDEF:
+    case MCE_DISPLAY_LPM_ON:
+    case MCE_DISPLAY_LPM_OFF:
+	// want grab
+	grab_ts = true;
+	break;
+
+    case MCE_DISPLAY_POWER_UP:
+	// keep grab state
+	break;
+
+    case MCE_DISPLAY_ON:
+    case MCE_DISPLAY_DIM:
+	// release grab
+	grab_ts = false;
+	break;
+    }
+
+    execute_datapipe(&touch_grab_wanted_pipe,
+		     GINT_TO_POINTER(grab_ts),
+		     USE_INDATA, CACHE_INDATA);
+
     return;
 }
 

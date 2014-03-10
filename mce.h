@@ -359,6 +359,12 @@ datapipe_struct packagekit_locked_pipe;
 /** Device Lock active status; read only */
 datapipe_struct device_lock_active_pipe;
 
+/** touchscreen input grab required; read/write */
+datapipe_struct touch_grab_wanted_pipe;
+
+/** touchscreen input grab active; read only */
+datapipe_struct touch_grab_active_pipe;
+
 /* XXX: use HAL */
 /** Does the device have a flicker key? */
 extern gboolean has_flicker_key;
