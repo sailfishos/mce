@@ -811,6 +811,209 @@ static gboolean touchscreen_io_monitor_timeout_cb(gpointer data)
 	return FALSE;
 }
 
+/* ========================================================================= *
+ * GENERIC EVDEV INPUT GRAB STATE MACHINE
+ * ========================================================================= */
+
+typedef struct input_grab_t input_grab_t;
+
+/** State information for generic input grabbing state machine */
+struct input_grab_t
+{
+	/** State machine instance name */
+	const char *ig_name;
+
+	/** Currently touched/down */
+	bool        ig_touching;
+
+	/** Was touched/down, delaying release */
+	bool        ig_touched;
+
+	/** Input grab is wanted */
+	bool        ig_want_grab;
+
+	/** Input grab is active */
+	bool        ig_have_grab;
+
+	/** Delayed release timer */
+	guint       ig_release_id;
+
+	/** Delayed release delay */
+	int         ig_release_ms;
+
+	/** Callback for notifying grab status changes */
+	void      (*ig_grab_changed_cb)(input_grab_t *self, bool have_grab);
+
+	/** Callback for additional release polling */
+	bool      (*ig_release_verify_cb)(input_grab_t *self);
+};
+
+
+
+static void     input_grab_reset(input_grab_t *self);
+static gboolean input_grab_release_cb(gpointer aptr);
+static void     input_grab_start_release_timer(input_grab_t *self);
+static void     input_grab_cancel_release_timer(input_grab_t *self);
+static void     input_grab_rethink(input_grab_t *self);
+static void     input_grab_set_touching(input_grab_t *self, bool touching);
+static void     input_grab_request_grab(input_grab_t *self, bool want_grab);
+static void     input_grab_iomon_cb(gpointer data, gpointer user_data);
+
+/** Reset input grab state machine
+ *
+ * Releases any dynamic resources held by the state machine
+ */
+static void input_grab_reset(input_grab_t *self)
+{
+	self->ig_touching = false;
+	self->ig_touched  = false;
+
+	if( self->ig_release_id )
+		g_source_remove(self->ig_release_id),
+		self->ig_release_id = 0;
+}
+
+/** Delayed release timeout callback
+ *
+ * Grab/ungrab happens from this function when touch/press ends
+ */
+static gboolean input_grab_release_cb(gpointer aptr)
+{
+	input_grab_t *self = aptr;
+	gboolean repeat = FALSE;
+
+	if( !self->ig_release_id )
+		goto EXIT;
+
+	if( self->ig_release_verify_cb && !self->ig_release_verify_cb(self) ) {
+		mce_log(LL_DEBUG, "touching(%s) = holding", self->ig_name);
+		repeat = TRUE;
+		goto EXIT;
+	}
+
+
+	// timer no longer active
+	self->ig_release_id = 0;
+
+	// touch release delay has ended
+	self->ig_touched = false;
+
+	mce_log(LL_DEBUG, "touching(%s) = released", self->ig_name);
+
+	// evaluate next state
+	input_grab_rethink(self);
+
+EXIT:
+	return repeat;
+}
+
+/** Start delayed release timer if not already running
+ */
+static void input_grab_start_release_timer(input_grab_t *self)
+{
+	if( !self->ig_release_id )
+		self->ig_release_id = g_timeout_add(self->ig_release_ms,
+						       input_grab_release_cb,
+						       self);
+}
+
+/** Cancel delayed release timer
+ */
+static void input_grab_cancel_release_timer(input_grab_t *self)
+{
+	if( self->ig_release_id )
+		g_source_remove(self->ig_release_id),
+		self->ig_release_id = 0;
+}
+
+/** Re-evaluate input grab state
+ */
+static void input_grab_rethink(input_grab_t *self)
+{
+	// no changes while active touch
+	if( self->ig_touching ) {
+		input_grab_cancel_release_timer(self);
+		goto EXIT;
+	}
+
+	// delay after touch release
+	if( self->ig_touched ) {
+		input_grab_start_release_timer(self);
+		goto EXIT;
+	}
+
+	// do we want to change state?
+	if( self->ig_have_grab == self->ig_want_grab )
+		goto EXIT;
+
+	// make the transition
+	self->ig_have_grab = self->ig_want_grab;
+
+	// and report it
+	if( self->ig_grab_changed_cb )
+		self->ig_grab_changed_cb(self, self->ig_have_grab);
+
+EXIT:
+	return;
+}
+
+/** Feed touching/pressed state to input grab state machine
+ */
+static void input_grab_set_touching(input_grab_t *self, bool touching)
+{
+	if( self->ig_touching == touching )
+		goto EXIT;
+
+	mce_log(LL_DEBUG, "touching(%s) = %s", self->ig_name, touching ? "yes" : "no");
+
+	if( (self->ig_touching = touching) )
+		self->ig_touched = true;
+
+	input_grab_rethink(self);
+
+EXIT:
+	return;
+}
+
+/** Feed desire to grab to input grab state machine
+ */
+static void input_grab_request_grab(input_grab_t *self, bool want_grab)
+{
+    if( self->ig_want_grab == want_grab )
+	goto EXIT;
+
+    self->ig_want_grab = want_grab;
+
+    input_grab_rethink(self);
+
+EXIT:
+    return;
+}
+
+/** Callback for changing iomonitor input grab state
+ */
+static void input_grab_iomon_cb(gpointer data, gpointer user_data)
+{
+	gpointer iomon = data;
+	int grab = GPOINTER_TO_INT(user_data);
+	int fd   = mce_get_io_monitor_fd(iomon);
+
+	if( fd == -1 )
+		goto EXIT;
+
+	const char *path = mce_get_io_monitor_name(iomon) ?: "unknown";
+
+	if( ioctl(fd, EVIOCGRAB, grab) == -1 ) {
+		mce_log(LL_ERR, "EVIOCGRAB(%s, %d): %m", path, grab);
+		goto EXIT;
+	}
+	mce_log(LL_DEBUG, "%sGRABBED fd=%d path=%s",
+		grab ? "" : "UN", fd, path);
+
+EXIT:
+	return;
+}
+
 /**
  * Cancel timeout for touchscreen I/O monitor reprogramming
  */
