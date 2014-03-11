@@ -1724,7 +1724,7 @@ static gboolean touchscreen_iomon_cb(gpointer data, gsize bytes_read)
 		case MCE_DISPLAY_LPM_OFF:
 		case MCE_DISPLAY_LPM_ON:
 			if( doubletap_emulate(ev) ) {
-				mce_log(LL_NOTICE, "EMULATING DOUBLETAP");
+				mce_log(LL_DEVEL, "[doubletap] emulated from touch input");
 				ev->type  = EV_MSC;
 				ev->code  = MSC_GESTURE;
 				ev->value = 0x4;
@@ -1818,18 +1818,14 @@ static gboolean doubletap_iomon_cb(gpointer data, gsize bytes_read)
 		mce_log(LL_DEVEL, "[doubletap] while proximity=%s",
 			proximity_state_repr(proximity_sensor_state));
 
-		if( proximity_sensor_state == COVER_CLOSED ) {
-			mce_log(LL_DEVEL, "[doubletap] ignored");
-		}
-		else {
-			mce_log(LL_DEVEL, "[doubletap] forwarded");
-			/* Mimic N9 style gesture event for which we
-			 * already have logic in place */
-			ev->type  = EV_MSC;
-			ev->code  = MSC_GESTURE;
-			ev->value = 0x4;
-			flush = touchscreen_iomon_cb(ev, sizeof *ev);
-		}
+		/* Mimic N9 style gesture event for which we
+		 * already have logic in place. Possible filtering
+		 * due to proximity state etc happens at tklock.c
+		 */
+		ev->type  = EV_MSC;
+		ev->code  = MSC_GESTURE;
+		ev->value = 0x4;
+		touchscreen_iomon_cb(ev, sizeof *ev);
 	}
 EXIT:
 	return flush;

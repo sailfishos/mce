@@ -52,6 +52,8 @@
 # include "libwakelock.h"
 #endif
 
+#include "modules/doubletap.h"
+
 // FIXME: not used atm, need to implement something similar
 #ifdef DEAD_CODE
 /* Valid triggers for autorelock */
@@ -259,6 +261,12 @@ static guint tk_autolock_enabled_cb_id = 0;
 static gint doubletap_gesture_policy = DEFAULT_DOUBLETAP_GESTURE_POLICY;
 /** GConf callback ID for doubletap_gesture_policy */
 static guint doubletap_gesture_policy_cb_id = 0;
+
+/** Touchscreen double tap gesture mode */
+gint doubletap_enable_mode = DBLTAP_ENABLE_DEFAULT;
+/** GConf callback ID for doubletap_enable_mode */
+static guint doubletap_enable_mode_cb_id = 0;
+
 
 /** Flag: Disable automatic dim/blank from tklock */
 static gint tklock_blank_disable = FALSE;
@@ -594,7 +602,6 @@ static void tklock_datapipe_proximity_sensor_cb(gconstpointer data)
     }
     else {
         tklock_datapipe_proximity_uncover_cancel();
-
         tklock_datapipe_proximity_update();
     }
 
@@ -659,7 +666,6 @@ static void tklock_datapipe_music_playback_cb(gconstpointer data)
 EXIT:
     return;
 }
-
 
 /** Alarm state; assume no active alarms */
 static alarm_ui_state_t alarm_ui_state = MCE_ALARM_UI_OFF_INT32;
@@ -979,8 +985,31 @@ static void tklock_datapipe_touchscreen_cb(gconstpointer const data)
     if( ev->type != EV_MSC || ev->code != MSC_GESTURE || ev->value != 0x4 )
         goto EXIT;
 
-    if( system_state != MCE_STATE_USER )
+    switch( doubletap_enable_mode ) {
+    case DBLTAP_ENABLE_NEVER:
+        mce_log(LL_DEVEL, "[doubletap] ignored due to setting=never");
         goto EXIT;
+
+    case DBLTAP_ENABLE_ALWAYS:
+        break;
+
+    default:
+    case DBLTAP_ENABLE_NO_PROXIMITY:
+        if( proximity_state_actual != COVER_OPEN ) {
+            mce_log(LL_DEVEL, "[doubletap] ignored due to proximity");
+            goto EXIT;
+        }
+        break;
+    }
+
+    switch( system_state ) {
+    case MCE_STATE_USER:
+    case MCE_STATE_ACTDEAD:
+      break;
+    default:
+      mce_log(LL_DEVEL, "[doubletap] ignored due to system state");
+        goto EXIT;
+    }
 
     switch( display_state )
     {
@@ -995,6 +1024,7 @@ static void tklock_datapipe_touchscreen_cb(gconstpointer const data)
     case MCE_DISPLAY_DIM:
     case MCE_DISPLAY_POWER_UP:
     case MCE_DISPLAY_UNDEF:
+        mce_log(LL_DEVEL, "[doubletap] ignored due to display state");
         goto EXIT;
     }
 
@@ -2347,6 +2377,7 @@ static void tklock_evctrl_rethink(void)
      * - - - - - - - - - - - - - - - - - - - */
 
     mce_log(LL_DEBUG, "kp=%d dt=%d ts=%d", enable_kp, enable_dt, enable_ts);
+
     tklock_evctrl_set_kp_state(enable_kp);
     tklock_evctrl_set_dt_state(enable_dt);
     tklock_evctrl_set_ts_state(enable_ts);
@@ -2385,7 +2416,6 @@ static void tklock_evctrl_rethink(void)
     execute_datapipe(&touch_grab_wanted_pipe,
 		     GINT_TO_POINTER(grab_ts),
 		     USE_INDATA, CACHE_INDATA);
-
 
     /* - - - - - - - - - - - - - - - - - - - *
      * in case emitting of keypad events can't
@@ -2564,6 +2594,12 @@ static void tklock_gconf_cb(GConfClient *const gcc, const guint id,
 #endif
 
     }
+    else if( id == doubletap_enable_mode_cb_id ) {
+        gint old = doubletap_enable_mode;
+        doubletap_enable_mode = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "doubletap_enable_mode: %d -> %d",
+                old, doubletap_enable_mode);
+    }
     else {
         mce_log(LL_WARN, "Spurious GConf value received; confused!");
     }
@@ -2608,6 +2644,14 @@ static void tklock_gconf_init(void)
         doubletap_gesture_policy = DEFAULT_DOUBLETAP_GESTURE_POLICY;
     }
 
+    /** Touchscreen double tap gesture mode */
+    mce_gconf_notifier_add(MCE_GCONF_DOUBLETAP_PATH,
+                           MCE_GCONF_DOUBLETAP_MODE,
+                           tklock_gconf_cb,
+                           &doubletap_enable_mode_cb_id);
+    mce_gconf_get_int(MCE_GCONF_DOUBLETAP_MODE, &doubletap_enable_mode);
+
+
     /* Touchscreen/keypad autolock enabled/disabled */
     mce_gconf_notifier_add(MCE_GCONF_LOCK_PATH,
                            MCE_GCONF_TK_DOUBLE_TAP_GESTURE_PATH,
@@ -2627,6 +2671,9 @@ static void tklock_gconf_quit(void)
 
     if( tklock_blank_disable_id )
         mce_gconf_notifier_remove(GINT_TO_POINTER(tklock_blank_disable_id), 0);
+
+    if( doubletap_enable_mode_cb_id )
+        mce_gconf_notifier_remove(GINT_TO_POINTER(doubletap_enable_mode_cb_id), 0);
 }
 
 /* ========================================================================= *
@@ -2995,7 +3042,6 @@ static gboolean tklock_dbus_mode_change_req_cb(DBusMessage *const msg)
 
     mce_log(LL_DEVEL, "Received tklock mode change request '%s' from %s",
 	    mode, mce_dbus_get_message_sender_ident(msg));
-
 
     int state = LOCK_UNDEF;
 
