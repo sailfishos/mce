@@ -92,9 +92,6 @@
 
 #include "mce-sensorfw.h"
 
-/** ID for touchscreen I/O monitor timeout source */
-static guint touchscreen_io_monitor_timeout_cb_id = 0;
-
 /** ID for keypress timeout source */
 static guint keypress_repeat_timeout_cb_id = 0;
 
@@ -813,28 +810,6 @@ static void unregister_io_monitor(gpointer io_monitor, gpointer user_data)
 	}
 }
 
-/**
- * Timeout function for touchscreen I/O monitor reprogramming
- *
- * @param data Unused
- * @return Always returns FALSE, to disable the timeout
- */
-static gboolean touchscreen_io_monitor_timeout_cb(gpointer data)
-{
-	(void)data;
-
-	touchscreen_io_monitor_timeout_cb_id = 0;
-
-	mce_log(LL_DEBUG, "resume touch event monitoring");
-	/* Resume I/O monitors */
-	if (touchscreen_dev_list != NULL) {
-		g_slist_foreach(touchscreen_dev_list,
-				(GFunc)resume_io_monitor, NULL);
-	}
-
-	return FALSE;
-}
-
 /* ========================================================================= *
  * GENERIC EVDEV INPUT GRAB STATE MACHINE
  * ========================================================================= */
@@ -1422,30 +1397,6 @@ static void kp_grab_wanted_cb(gconstpointer data)
 	input_grab_request_grab(&kp_grab_state, required);
 }
 
-/**
- * Cancel timeout for touchscreen I/O monitor reprogramming
- */
-static void cancel_touchscreen_io_monitor_timeout(void)
-{
-	if (touchscreen_io_monitor_timeout_cb_id != 0) {
-		g_source_remove(touchscreen_io_monitor_timeout_cb_id);
-		touchscreen_io_monitor_timeout_cb_id = 0;
-	}
-}
-
-/**
- * Setup timeout for touchscreen I/O monitor reprogramming
- */
-static void setup_touchscreen_io_monitor_timeout(void)
-{
-	cancel_touchscreen_io_monitor_timeout();
-
-	/* Setup new timeout */
-	touchscreen_io_monitor_timeout_cb_id =
-		g_timeout_add_seconds(MONITORING_DELAY,
-				      touchscreen_io_monitor_timeout_cb, NULL);
-}
-
 #ifdef ENABLE_DOUBLETAP_EMULATION
 
 /** Fake doubletap policy */
@@ -1652,37 +1603,6 @@ static int doubletap_emulate(const struct input_event *eve)
 }
 
 #endif /* ENABLE_DOUBLETAP_EMULATION */
-
-/** UI exception state; initialized to none */
-static uiexctype_t exception_state = UIEXC_NONE;
-
-/** Change notifications for exception_state datapipe
- */
-static void exception_state_cb(gconstpointer data)
-{
-	uiexctype_t prev = exception_state;
-	exception_state = GPOINTER_TO_INT(data);
-
-	if( exception_state == prev )
-		goto EXIT;
-
-	mce_log(LL_DEBUG, "exception_state = %d -> %d", prev, exception_state);
-
-	/* We need touch events while handling notifications and linger.
-	 * Resume touch event monitoring immediately if we are handling
-	 * either one of those. */
-	if( exception_state & (UIEXC_LINGER | UIEXC_NOTIF) ) {
-		if( touchscreen_io_monitor_timeout_cb_id ) {
-			mce_log(LL_DEBUG, "restart touch event monitoring");
-			cancel_touchscreen_io_monitor_timeout();
-			g_slist_foreach(touchscreen_dev_list,
-					(GFunc)resume_io_monitor, NULL);
-		}
-	}
-
-EXIT:
-    return;
-}
 
 /**
  * I/O monitor callback for the touchscreen
@@ -2629,8 +2549,6 @@ gboolean mce_input_init(void)
 #endif
 
 	/* Append triggers/filters to datapipes */
-	append_output_trigger_to_datapipe(&exception_state_pipe,
-					  exception_state_cb);
 	append_output_trigger_to_datapipe(&submode_pipe,
 					  submode_trigger);
 	append_output_trigger_to_datapipe(&display_state_pipe,
@@ -2700,8 +2618,6 @@ void mce_input_exit(void)
 #endif
 
 	/* Remove triggers/filters from datapipes */
-	remove_output_trigger_from_datapipe(&exception_state_pipe,
-					    exception_state_cb);
 	remove_output_trigger_from_datapipe(&submode_pipe,
 					    submode_trigger);
 	remove_output_trigger_from_datapipe(&display_state_pipe,
@@ -2721,7 +2637,6 @@ void mce_input_exit(void)
 	unregister_inputdevices();
 
 	/* Remove all timer sources */
-	cancel_touchscreen_io_monitor_timeout();
 	cancel_keypress_repeat_timeout();
 	cancel_misc_io_monitor_timeout();
 
