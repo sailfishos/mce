@@ -1552,7 +1552,7 @@ static int doubletap_emulate(const struct input_event *eve)
 	static unsigned i0       = 0; // current position
 	static int      x_accum  = 0; // x delta accumulator
 	static int      y_accum  = 0; // y delta accumulator
-	static int      skip_syn = FALSE; // flag: skip SYN_REPORTS
+	static bool     skip_syn = true; // flag: ignore SYN_REPORT
 
 	int result = FALSE; // assume: no doubletap
 
@@ -1560,8 +1560,6 @@ static int doubletap_emulate(const struct input_event *eve)
 
 	switch( eve->type ) {
 	case EV_REL:
-		/* Ignore EV_SYN unless we see EV_KEY too */
-		skip_syn = TRUE;
 		/* Accumulate X/Y position */
 		switch( eve->code ) {
 		case REL_X: x_accum += eve->value; break;
@@ -1571,19 +1569,21 @@ static int doubletap_emulate(const struct input_event *eve)
 		break;
 
 	case EV_KEY:
-		/* Store click/release and position */
-		skip_syn = FALSE;
 		if( eve->code == BTN_MOUSE ) {
+			/* Store click/release and position */
 			hist[i0].click += eve->value;
 			hist[i0].x = x_accum;
 			hist[i0].y = y_accum;
+
+			/* We have a mouse click to process */
+			skip_syn = false;
 		}
 		break;
 
 	case EV_ABS:
 		/* Do multitouch too while at it */
-		skip_syn = FALSE;
 		switch( eve->code ) {
+		case ABS_MT_PRESSURE:
 		case ABS_MT_TOUCH_MAJOR: hist[i0].click += 1; break;
 		case ABS_MT_POSITION_X:  hist[i0].x = eve->value; break;
 		case ABS_MT_POSITION_Y:  hist[i0].y = eve->value; break;
@@ -1592,14 +1592,24 @@ static int doubletap_emulate(const struct input_event *eve)
 		break;
 
 	case EV_SYN:
+		if( eve->code == SYN_MT_REPORT ) {
+			/* We have a touch event to process */
+			skip_syn = false;
+			break;
+		}
+
 		if( eve->code != SYN_REPORT )
 			break;
 
 		/* Have we seen button events? */
 		if( skip_syn ) {
-			skip_syn = FALSE;
 			break;
 		}
+
+		/* Next SYN_REPORT will be ignored unless something
+		 * relevant is seen before that */
+		skip_syn = true;
+
 		/* Set timestamp from syn event */
 		hist[i0].time = eve->time;
 
@@ -1635,8 +1645,6 @@ static int doubletap_emulate(const struct input_event *eve)
 		break;
 
 	default:
-		/* Unexpected events -> nothing to do at EV_SYN */
-		skip_syn = TRUE;
 		break;
 	}
 
