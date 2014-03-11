@@ -1760,6 +1760,23 @@ static void tklock_uiexcept_rethink(void)
     bool        blank    = false;
     uiexctype_t active   = topmost_active(exdata.mask);
 
+    bool        proximity_blank = false;
+
+    /* Make sure "proximityblanking" state gets cleared if display
+     * changes to non-off state. */
+    if( display_prev != display_state ) {
+        switch( display_state ) {
+        case MCE_DISPLAY_OFF:
+        case MCE_DISPLAY_POWER_DOWN:
+            break;
+        default:
+            execute_datapipe(&proximity_blank_pipe,
+                             GINT_TO_POINTER(false),
+                             USE_INDATA, CACHE_INDATA);
+            break;
+        }
+    }
+
     if( !active ) {
         mce_log(LL_DEBUG, "UIEXC_NONE");
         goto EXIT;
@@ -1813,7 +1830,8 @@ static void tklock_uiexcept_rethink(void)
         }
         else if( proximity_state_effective == COVER_CLOSED ) {
             mce_log(LL_DEBUG, "proximity=COVERED; blank");
-            blank = true;
+            /* blanking due to proximity sensor */
+            blank = proximity_blank = true;
         }
         else {
             mce_log(LL_DEBUG, "proximity=NOT-COVERED; activate");
@@ -1841,7 +1859,16 @@ static void tklock_uiexcept_rethink(void)
 
     if( blank ) {
         if( display_state != MCE_DISPLAY_OFF ) {
-            mce_log(LL_DEBUG, "display blank");
+            /* expose blanking due to proximity via datapipe */
+            if( proximity_blank ) {
+                mce_log(LL_DEVEL, "display proximity blank");
+                execute_datapipe(&proximity_blank_pipe,
+                                 GINT_TO_POINTER(true),
+                                 USE_INDATA, CACHE_INDATA);
+            }
+            else {
+                mce_log(LL_DEBUG, "display blank");
+            }
             execute_datapipe(&display_state_req_pipe,
                              GINT_TO_POINTER(MCE_DISPLAY_OFF),
                              USE_INDATA, CACHE_INDATA);
@@ -1856,7 +1883,7 @@ static void tklock_uiexcept_rethink(void)
             /* Assume: dim/blank timer took over the blanking.
              * Disable this state machine until display gets
              * turned back on */
-          mce_log(LL_NOTICE, "AUTO UNBLANK DISABLED; display out of sync");
+            mce_log(LL_NOTICE, "AUTO UNBLANK DISABLED; display out of sync");
             exdata.insync = false;
 
             /* Disable state restore, unless we went out of
@@ -1878,6 +1905,14 @@ static void tklock_uiexcept_rethink(void)
                              GINT_TO_POINTER(MCE_DISPLAY_ON),
                              USE_INDATA, CACHE_INDATA);
         }
+    }
+
+    /* Make sure "proximityblanking" state gets cleared if display
+     * state is no longer controlled by this state machine. */
+    if( !exdata.insync ) {
+        execute_datapipe(&proximity_blank_pipe,
+                         GINT_TO_POINTER(false),
+                         USE_INDATA, CACHE_INDATA);
     }
 
 EXIT:

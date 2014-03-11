@@ -22,8 +22,11 @@ extern "C" {
 /** Name of the configuration key for doubletap enable value */
 # define MCE_CONF_DOUBLETAP_ENABLE_VALUE "EnableValue"
 
-/** Name of the configuration key for doubletap disable value */
+/** Name of the configuration key for doubletap disable, touch powered off value */
 # define MCE_CONF_DOUBLETAP_DISABLE_VALUE "DisableValue"
+
+/** Name of the configuration key for doubletap disable, touch powered on value */
+# define MCE_CONF_DOUBLETAP_DISABLE_NO_SLEEP_VALUE "DisableNoSleepValue"
 
 /** Path to the GConf settings for the doubletap module */
 # define MCE_GCONF_DOUBLETAP_PATH       "/system/osso/dsm/doubletap"
