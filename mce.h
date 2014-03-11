@@ -365,6 +365,12 @@ datapipe_struct touch_grab_wanted_pipe;
 /** touchscreen input grab active; read only */
 datapipe_struct touch_grab_active_pipe;
 
+/** keypad input grab required; read/write */
+datapipe_struct keypad_grab_wanted_pipe;
+
+/** keypad input grab active; read only */
+datapipe_struct keypad_grab_active_pipe;
+
 /* XXX: use HAL */
 /** Does the device have a flicker key? */
 extern gboolean has_flicker_key;

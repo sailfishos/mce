@@ -2241,6 +2241,20 @@ static void tklock_evctrl_rethink(void)
 		     GINT_TO_POINTER(grab_ts),
 		     USE_INDATA, CACHE_INDATA);
 
+
+    /* - - - - - - - - - - - - - - - - - - - *
+     * in case emitting of keypad events can't
+     * be controlled, we use evdev input grab
+     * to block ui from seeing them while the
+     * display is off
+     * - - - - - - - - - - - - - - - - - - - */
+
+    bool grab_kp = !enable_kp;
+
+    execute_datapipe(&keypad_grab_wanted_pipe,
+		     GINT_TO_POINTER(grab_kp),
+		     USE_INDATA, CACHE_INDATA);
+
     return;
 }
 

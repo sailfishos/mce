@@ -103,15 +103,22 @@ static guint misc_io_monitor_timeout_cb_id = 0;
 
 /** List of touchscreen input devices */
 static GSList *touchscreen_dev_list = NULL;
+
 /** List of keyboard input devices */
 static GSList *keyboard_dev_list = NULL;
+
+/** List of volume key input devices */
+static GSList *volumekey_dev_list = NULL;
+
 /** List of misc input devices */
 static GSList *misc_dev_list = NULL;
 
 /** GFile pointer for the directory we monitor */
 static GFile *dev_input_gfp = NULL;
+
 /** GFileMonitor pointer for the directory we monitor */
 static GFileMonitor *dev_input_gfmp = NULL;
+
 /** The handler ID for the signal handler */
 static gulong dev_input_handler_id = 0;
 
@@ -450,6 +457,8 @@ typedef enum {
 	EVDEV_PS,
 	/** Ambient light sensor */
 	EVDEV_ALS,
+	/** Volume key device */
+	EVDEV_VOLKEY,
 
 } evdev_type_t;
 
@@ -465,6 +474,7 @@ static const char * const evdev_class[] =
 	[EVDEV_DBLTAP]   = "DOUBLE TAP",
 	[EVDEV_PS]       = "PROXIMITY SENSOR",
 	[EVDEV_ALS]      = "AMBIENT LIGHT SENSOR",
+	[EVDEV_VOLKEY]   = "VOLUME KEYS",
 };
 
 /** Use heuristics to determine what mce should do with an evdev device node
@@ -502,6 +512,12 @@ static evdev_type_t get_evdev_type(int fd)
 		KEY_CAMERA_FOCUS,
 		KEY_POWER,
 		KEY_SCREENLOCK,
+		KEY_VOLUMEDOWN,
+		KEY_VOLUMEUP,
+		-1
+	};
+	/* Volume key events */
+	static const int volkey_lut[] = {
 		KEY_VOLUMEDOWN,
 		KEY_VOLUMEUP,
 		-1
@@ -599,6 +615,13 @@ static evdev_type_t get_evdev_type(int fd)
 	if( evdevinfo_match_types(feat, key_only) &&
 	    evdevinfo_match_codes(feat, EV_KEY, dbltap_lut) ) {
 		res = EVDEV_DBLTAP;
+		goto cleanup;
+	}
+
+	/* Volume keys only input devices can be grabbed */
+	if( evdevinfo_match_types(feat, key_only) &&
+	    evdevinfo_match_codes(feat, EV_KEY, volkey_lut) ) {
+		res = EVDEV_VOLKEY;
 		goto cleanup;
 	}
 
@@ -1302,6 +1325,103 @@ static void ts_grab_display_state_cb(gconstpointer data)
 
 	prev = display_state;
 }
+
+/* ========================================================================= *
+ * KEYPAD IO GRAB
+ * ========================================================================= */
+
+/** Grab/ungrab all monitored volumekey input devices
+ */
+static void kp_grab_set_active(gboolean grab)
+{
+	static gboolean old_grab = FALSE;
+
+	if( old_grab == grab )
+		goto EXIT;
+
+	old_grab = grab;
+	g_slist_foreach(volumekey_dev_list,
+			input_grab_iomon_cb,
+			GINT_TO_POINTER(grab));
+
+	// STATE MACHINE -> OUTPUT DATAPIPE
+	execute_datapipe(&keypad_grab_active_pipe,
+			 GINT_TO_POINTER(grab),
+			 USE_INDATA, CACHE_INDATA);
+
+EXIT:
+	return;
+}
+
+/** Handle grab state notifications from generic input grab state machine
+ */
+static void kp_grab_changed(input_grab_t *ctrl, bool grab)
+{
+	(void)ctrl;
+
+	kp_grab_set_active(grab);
+}
+
+/** State data for volumekey input grab state machine */
+static input_grab_t kp_grab_state =
+{
+	.ig_name      = "kp",
+
+	.ig_touching  = false,
+	.ig_touched   = false,
+
+	.ig_want_grab = false,
+	.ig_have_grab = false,
+
+	.ig_release_id = 0,
+	.ig_release_ms = 200,
+
+	.ig_grab_changed_cb = kp_grab_changed,
+};
+
+/** Event filter for determining volume key pressed state
+ */
+static void kp_grab_event_filter_cb(struct input_event *ev)
+{
+	static bool vol_up = false;
+	static bool vol_dn = false;
+
+	switch( ev->type ) {
+	case EV_KEY:
+		switch( ev->code ) {
+		case KEY_VOLUMEUP:
+			vol_up = (ev->value != 0);
+			break;
+
+		case KEY_VOLUMEDOWN:
+			vol_dn = (ev->value != 0);
+			break;
+
+		default:
+			break;
+		}
+		break;
+
+	default:
+		break;
+	}
+
+	input_grab_set_touching(&kp_grab_state, vol_up || vol_dn);
+}
+
+
+/** Feed desired volumekey grab state from datapipe to state machine
+ *
+ * @param data The grab wanted boolean as a pointer
+ */
+static void kp_grab_wanted_cb(gconstpointer data)
+{
+	bool required = GPOINTER_TO_INT(data);
+
+	// INPUT DATAPIPE -> STATE MACHINE
+	input_grab_request_grab(&kp_grab_state, required);
+}
+
 /**
  * Cancel timeout for touchscreen I/O monitor reprogramming
  */
@@ -1772,12 +1892,24 @@ static gboolean keypress_iomon_cb(gpointer data, gsize bytes_read)
 		evdev_get_event_code_name(ev->type, ev->code),
 		ev->value);
 
+	kp_grab_event_filter_cb(ev);
+
 	/* Ignore non-keypress events */
 	if ((ev->type != EV_KEY) && (ev->type != EV_SW)) {
 		goto EXIT;
 	}
 
 	if (ev->type == EV_KEY) {
+		if( datapipe_get_gint(keypad_grab_active_pipe) ) {
+			switch( ev->code ) {
+			case KEY_VOLUMEUP:
+			case KEY_VOLUMEDOWN:
+				mce_log(LL_DEVEL, "ignore volume key event");
+				goto EXIT;
+			default:
+				break;
+			}
+		}
 		if ((ev->code == KEY_SCREENLOCK) && (ev->value != 2)) {
 			(void)execute_datapipe(&lockkey_pipe,
 					       GINT_TO_POINTER(ev->value),
@@ -2080,6 +2212,8 @@ static void update_switch_states(void)
 		g_slist_foreach(keyboard_dev_list,
 				(GFunc)get_switch_state, NULL);
 	}
+
+	g_slist_foreach(volumekey_dev_list, get_switch_state, 0);
 }
 
 /**
@@ -2187,6 +2321,15 @@ static void match_and_register_io_monitor(const gchar *filename)
 			keyboard_dev_list = g_slist_prepend(keyboard_dev_list, (gpointer)iomon);
 		break;
 
+	case EVDEV_VOLKEY:
+		iomon = mce_register_io_monitor_chunk(fd, filename, MCE_IO_ERROR_POLICY_WARN,
+						      G_IO_IN | G_IO_ERR, FALSE, keypress_iomon_cb,
+						      sizeof (struct input_event));
+		if( iomon )
+			volumekey_dev_list = g_slist_prepend(volumekey_dev_list, (gpointer)iomon);
+		break;
+
+
 	case EVDEV_ACTIVITY:
 		iomon = mce_register_io_monitor_chunk(fd, filename, MCE_IO_ERROR_POLICY_WARN,
 						      G_IO_IN | G_IO_ERR, FALSE, misc_iomon_cb,
@@ -2257,6 +2400,20 @@ static void update_inputdevices(const gchar *device, gboolean add)
 	if (list_entry != NULL) {
 		iomon_id = list_entry->data;
 		keyboard_dev_list = g_slist_remove(keyboard_dev_list,
+						   iomon_id);
+		mce_unregister_io_monitor(iomon_id);
+	}
+
+	/* Try to find a matching volume key I/O monitor */
+	list_entry = g_slist_find_custom(volumekey_dev_list, device,
+					 iomon_name_compare);
+
+	/* If we find one, obtain the iomon ID,
+	 * remove the entry and finally unregister the I/O monitor
+	 */
+	if (list_entry != NULL) {
+		iomon_id = list_entry->data;
+		volumekey_dev_list = g_slist_remove(volumekey_dev_list,
 						   iomon_id);
 		mce_unregister_io_monitor(iomon_id);
 	}
@@ -2355,6 +2512,13 @@ static void unregister_inputdevices(void)
 				(GFunc)unregister_io_monitor, NULL);
 		g_slist_free(keyboard_dev_list);
 		keyboard_dev_list = NULL;
+	}
+
+	if (volumekey_dev_list != NULL) {
+		g_slist_foreach(volumekey_dev_list,
+				(GFunc)unregister_io_monitor, NULL);
+		g_slist_free(volumekey_dev_list);
+		volumekey_dev_list = NULL;
 	}
 
 	if (misc_dev_list != NULL) {
@@ -2469,6 +2633,8 @@ gboolean mce_input_init(void)
 					  ts_grab_display_state_cb);
 	append_output_trigger_to_datapipe(&touch_grab_wanted_pipe,
 					  ts_grab_wanted_cb);
+	append_output_trigger_to_datapipe(&keypad_grab_wanted_pipe,
+					  kp_grab_wanted_cb);
 
 	/* Retrieve a GFile pointer to the directory to monitor */
 	dev_input_gfp = g_file_new_for_path(DEV_INPUT_PATH);
@@ -2538,6 +2704,8 @@ void mce_input_exit(void)
 					    ts_grab_display_state_cb);
 	remove_output_trigger_from_datapipe(&touch_grab_wanted_pipe,
 					    ts_grab_wanted_cb);
+	remove_output_trigger_from_datapipe(&keypad_grab_wanted_pipe,
+					    kp_grab_wanted_cb);
 
 	if (dev_input_gfmp != NULL) {
 		g_signal_handler_disconnect(G_OBJECT(dev_input_gfmp),
@@ -2554,5 +2722,7 @@ void mce_input_exit(void)
 	cancel_misc_io_monitor_timeout();
 
 	input_grab_reset(&ts_grab_state);
+	input_grab_reset(&kp_grab_state);
+
 	return;
 }
