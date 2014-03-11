@@ -908,6 +908,7 @@ tklock.o:\
 	tklock.c\
 	datapipe.h\
 	evdev.h\
+	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-gconf.h\
@@ -922,6 +923,7 @@ tklock.pic.o:\
 	tklock.c\
 	datapipe.h\
 	evdev.h\
+	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-gconf.h\

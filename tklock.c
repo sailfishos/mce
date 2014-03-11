@@ -48,6 +48,10 @@
 #include "mce-dbus.h"
 #include "mce-gconf.h"
 
+#ifdef ENABLE_WAKELOCKS
+# include "libwakelock.h"
+#endif
+
 // FIXME: not used atm, need to implement something similar
 #ifdef DEAD_CODE
 /* Valid triggers for autorelock */
@@ -120,6 +124,10 @@ static void     tklock_datapipe_system_state_cb(gconstpointer data);
 static void     tklock_datapipe_device_lock_active_cb(gconstpointer data);
 static void     tklock_datapipe_lipstick_available_cb(gconstpointer data);
 static void     tklock_datapipe_display_state_cb(gconstpointer data);
+static void     tklock_datapipe_proximity_update(void);
+static gboolean tklock_datapipe_proximity_uncover_cb(gpointer data);
+static void     tklock_datapipe_proximity_uncover_cancel(void);
+static void     tklock_datapipe_proximity_uncover_schedule(void);
 static void     tklock_datapipe_proximity_sensor_cb(gconstpointer data);
 static void     tklock_datapipe_call_state_cb(gconstpointer data);
 static void     tklock_datapipe_alarm_ui_state_cb(gconstpointer data);
@@ -494,29 +502,101 @@ EXIT:
     return;
 }
 
-/** Proximity state; assume not covered */
-static cover_state_t proximity_state = COVER_OPEN;
+/** Actual proximity state; assume not covered */
+static cover_state_t proximity_state_actual = COVER_OPEN;
 
-/** Change notifications for proximity_state
+/** Effective proximity state; assume not covered */
+static cover_state_t proximity_state_effective = COVER_OPEN;
+
+/** Timer id for delayed proximity uncovering */
+static guint tklock_datapipe_proximity_uncover_id = 0;
+
+/** Set effective proximity state from current sensor state
+ */
+static void tklock_datapipe_proximity_update(void)
+{
+    if( proximity_state_effective == proximity_state_actual )
+        goto EXIT;
+
+    mce_log(LL_DEVEL, "proximity_state_effective = %d -> %d",
+            proximity_state_effective, proximity_state_actual);
+
+    proximity_state_effective = proximity_state_actual;
+
+    tklock_uiexcept_rethink();
+    tklock_proxlock_rethink();
+    tklock_evctrl_rethink();
+
+EXIT:
+    return;
+}
+
+/** Timer callback for handling delayed proximity uncover
+ */
+static gboolean tklock_datapipe_proximity_uncover_cb(gpointer data)
+{
+    (void)data;
+
+    if( !tklock_datapipe_proximity_uncover_id )
+        goto EXIT;
+
+    tklock_datapipe_proximity_uncover_id = 0;
+
+    tklock_datapipe_proximity_update();
+
+    wakelock_unlock("mce_proximity_stm");
+
+EXIT:
+    return FALSE;
+}
+
+/** Cancel delayed proximity uncovering
+ */
+static void tklock_datapipe_proximity_uncover_cancel(void)
+{
+    if( tklock_datapipe_proximity_uncover_id ) {
+        g_source_remove(tklock_datapipe_proximity_uncover_id),
+            tklock_datapipe_proximity_uncover_id = 0;
+        wakelock_unlock("mce_proximity_stm");
+    }
+}
+
+/** Schedule delayed proximity uncovering
+ */
+static void tklock_datapipe_proximity_uncover_schedule(void)
+{
+    if( tklock_datapipe_proximity_uncover_id )
+        g_source_remove(tklock_datapipe_proximity_uncover_id);
+    else
+        wakelock_lock("mce_proximity_stm", -1);
+
+    tklock_datapipe_proximity_uncover_id =
+        g_timeout_add(500, tklock_datapipe_proximity_uncover_cb, 0);
+}
+
+/** Change notifications for proximity_state_actual
  */
 static void tklock_datapipe_proximity_sensor_cb(gconstpointer data)
 {
-    cover_state_t prev = proximity_state;
-    proximity_state = GPOINTER_TO_INT(data);
+    cover_state_t prev = proximity_state_actual;
+    proximity_state_actual = GPOINTER_TO_INT(data);
 
-    if( proximity_state == COVER_UNDEF )
-        proximity_state = COVER_OPEN;
+    if( proximity_state_actual == COVER_UNDEF )
+        proximity_state_actual = COVER_OPEN;
 
-    if( proximity_state == prev )
+    if( proximity_state_actual == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "proximity_state = %d -> %d", prev, proximity_state);
+    mce_log(LL_DEVEL, "proximity_state_actual = %d -> %d", prev, proximity_state_actual);
 
-    tklock_uiexcept_rethink();
+    if( proximity_state_actual == COVER_OPEN ) {
+        tklock_datapipe_proximity_uncover_schedule();
+    }
+    else {
+        tklock_datapipe_proximity_uncover_cancel();
 
-    tklock_proxlock_rethink();
-
-    tklock_evctrl_rethink();
+        tklock_datapipe_proximity_update();
+    }
 
 EXIT:
     return;
@@ -1539,8 +1619,8 @@ static void tklock_proxlock_rethink(void)
 
     bool was_off = false;
 
-    bool is_covered  = (proximity_state      == COVER_CLOSED);
-    bool was_covered = (prev_proximity_state == COVER_CLOSED);
+    bool is_covered  = (proximity_state_effective == COVER_CLOSED);
+    bool was_covered = (prev_proximity_state      == COVER_CLOSED);
 
     switch( prev_display_state ) {
     case MCE_DISPLAY_OFF:
@@ -1585,7 +1665,7 @@ static void tklock_proxlock_rethink(void)
         break;
     }
 
-    prev_proximity_state = proximity_state;
+    prev_proximity_state = proximity_state_effective;
     prev_display_state = display_state;
 
 EXIT:
@@ -1731,7 +1811,7 @@ static void tklock_uiexcept_rethink(void)
             mce_log(LL_DEBUG, "audio!=HANDSET; activate");
             activate = true;
         }
-        else if( proximity_state == COVER_CLOSED ) {
+        else if( proximity_state_effective == COVER_CLOSED ) {
             mce_log(LL_DEBUG, "proximity=COVERED; blank");
             blank = true;
         }
@@ -1789,7 +1869,7 @@ static void tklock_uiexcept_rethink(void)
         else if( !exdata.insync ) {
             mce_log(LL_NOTICE, "NOT UNBLANKING; still out of sync");
         }
-        else if( proximity_state == COVER_CLOSED ) {
+        else if( proximity_state_effective == COVER_CLOSED ) {
             mce_log(LL_NOTICE, "NOT UNBLANKING; proximity covered");
         }
         else if( display_state != MCE_DISPLAY_ON ) {
@@ -2105,7 +2185,7 @@ EXIT:
 static void tklock_evctrl_rethink(void)
 {
     /* state variable hooks:
-     *  proximity_state <-- tklock_datapipe_proximity_sensor_cb()
+     *  proximity_state_effective <-- tklock_datapipe_proximity_sensor_cb()
      *  display_state   <-- tklock_datapipe_display_state_cb()
      *  submode         <-- tklock_datapipe_submode_cb()
      *  call_state      <-- tklock_datapipe_call_state_cb()
@@ -2196,7 +2276,7 @@ static void tklock_evctrl_rethink(void)
 #if 0 /* FIXME: check if proximity via sensord works better
        *        with up to date nemomobile image */
     /* proximity sensor must not be covered */
-    if( proximity_state != COVER_OPEN ) {
+    if( proximity_state_effective != COVER_OPEN ) {
         enable_dt = false;
     }
 #endif
@@ -3084,6 +3164,7 @@ void mce_tklock_exit(void)
     tklock_proxlock_cancel();
     tklock_uiexcept_cancel();
     tklock_dtcalib_stop();
+    tklock_datapipe_proximity_uncover_cancel();
 
     // FIXME: check that final state is sane
 
