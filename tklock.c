@@ -559,6 +559,28 @@ EXIT:
     return;
 }
 
+/** Music playback state; assume not playing */
+static bool music_playback = false;
+
+/** Change notifications for music_playback
+ */
+static void tklock_datapipe_music_playback_cb(gconstpointer data)
+{
+    bool prev = music_playback;
+    music_playback = GPOINTER_TO_INT(data);
+
+    if( music_playback == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "music_playback = %d -> %d", prev, music_playback);
+
+    // volume keys during playback
+    tklock_evctrl_rethink();
+EXIT:
+    return;
+}
+
+
 /** Alarm state; assume no active alarms */
 static alarm_ui_state_t alarm_ui_state = MCE_ALARM_UI_OFF_INT32;
 
@@ -1146,6 +1168,10 @@ static datapipe_binding_t tklock_datapipe_triggers[] =
     {
         .datapipe = &call_state_pipe,
         .output_cb = tklock_datapipe_call_state_cb,
+    },
+    {
+        .datapipe = &music_playback_pipe,
+        .output_cb = tklock_datapipe_music_playback_cb,
     },
     {
         .datapipe = &alarm_ui_state_pipe,
@@ -2126,6 +2152,10 @@ static void tklock_evctrl_rethink(void)
     default:
       break;
     }
+
+    /* enable volume keys if music playing */
+    if( music_playback )
+	enable_kp = true;
 
     /* - - - - - - - - - - - - - - - - - - - *
      * touchscreen interrupts

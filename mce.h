@@ -371,6 +371,9 @@ datapipe_struct keypad_grab_wanted_pipe;
 /** keypad input grab active; read only */
 datapipe_struct keypad_grab_active_pipe;
 
+/** music playback active; read only */
+datapipe_struct music_playback_pipe;
+
 /* XXX: use HAL */
 /** Does the device have a flicker key? */
 extern gboolean has_flicker_key;

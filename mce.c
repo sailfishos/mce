@@ -1012,6 +1012,8 @@ int main(int argc, char **argv)
 		       0, GINT_TO_POINTER(FALSE));
 	setup_datapipe(&keypad_grab_active_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(FALSE));
+	setup_datapipe(&music_playback_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(FALSE));
 	/* Initialise mode management
 	 * pre-requisite: mce_gconf_init()
 	 * pre-requisite: mce_dbus_init()
@@ -1144,6 +1146,7 @@ EXIT:
 	free_datapipe(&touch_grab_wanted_pipe);
 	free_datapipe(&keypad_grab_active_pipe);
 	free_datapipe(&keypad_grab_wanted_pipe);
+	free_datapipe(&music_playback_pipe);
 
 	/* Call the exit function for all subsystems */
 	mce_gconf_exit();

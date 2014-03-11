@@ -5,6 +5,7 @@
  * Copyright © 2009-2010 Nokia Corporation and/or its subsidiary(-ies).
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
+ * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
  * mce is free software; you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License
@@ -18,21 +19,13 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <stdio.h>
+#include <string.h>
 #include <glib.h>
 #include <gmodule.h>
-
-#include <string.h>			/* strcmp() */
-
 #include "mce.h"
-
-#include "mce-log.h"			/* mce_log(), LL_* */
-#include "mce-dbus.h"			/* Direct:
-					 * ---
-					 * DBusMessageIter
-					 *
-					 * Indirect:
-					 * ---
-					 */
+#include "mce-log.h"
+#include "mce-dbus.h"
 
 /** Module name */
 #define MODULE_NAME		"audiorouting"
@@ -52,387 +45,554 @@ G_MODULE_EXPORT module_info_struct module_info = {
 
 /** D-Bus interface for the policy framework */
 #define POLICY_DBUS_INTERFACE		"com.nokia.policy"
+
 /** D-Bus signal for actions from the policy framework */
 #define POLICY_AUDIO_ACTIONS		"audio_actions"
 
-/** Macro to access offsets in the action data struct */
-#define STRUCT_OFFSET(s, m)		((char *)&(((s *)0)->m) - (char *)0)
-
-/** audio route arguments */
-struct argrt {
-	gchar *type;			/**< Audio route type */
-	gchar *device;			/**< Device */
-	gchar *mode;			/**< Mode */
-	gchar *hwid;			/**< Hardware ID */
-};
-
-/** argument descriptor for actions */
-struct argdsc {
-	const gchar *name;		/**< Name */
-	gint offs;			/**< Offset */
-	gint type;			/**< Type */
-};
-
-/** Full audio route */
-typedef enum {
-	FULL_AUDIO_ROUTE_UNDEF = -1,		/**< Audio routing not set */
-	/** Audio disabled */
-	FULL_AUDIO_ROUTE_NULL = 0,
-	/** Audio routed through internal stereo speakers */
-	FULL_AUDIO_ROUTE_IHF = 1,
-	/** Audio routed through FM transmitter */
-	FULL_AUDIO_ROUTE_FMTX = 2,
-	/** Audio routed through internal stereo speakers and FM transmitter */
-	FULL_AUDIO_ROUTE_IHF_AND_FMTX = 3,
-	/** Audio routed through earpiece */
-	FULL_AUDIO_ROUTE_EARPIECE = 4,
-	/** Audio routed through earpiece and TV-out */
-	FULL_AUDIO_ROUTE_EARPIECE_AND_TVOUT = 5,
-	/** Audio routed through TV-out */
-	FULL_AUDIO_ROUTE_TVOUT = 6,
-	/** Audio routed through internal stereo speakers and TV-out */
-	FULL_AUDIO_ROUTE_IHF_AND_TVOUT = 7,
-	/** Audio routed through headphone */
-	FULL_AUDIO_ROUTE_HEADPHONE = 8,
-	/** Audio routed through headset */
-	FULL_AUDIO_ROUTE_HEADSET = 9,
-	/** Audio routed through BT HSP */
-	FULL_AUDIO_ROUTE_BTHSP = 10,
-	/** Audio routed through BT A2DP */
-	FULL_AUDIO_ROUTE_BTA2DP = 11,
-	/** Audio routed through internal stereo speakers and headset */
-	FULL_AUDIO_ROUTE_IHF_AND_HEADSET = 12,
-	/** Audio routed through internal stereo speakers and BT HSP */
-	FULL_AUDIO_ROUTE_IHF_AND_BTHSP = 13,
-	/** Audio routed through TV-out and BT HSP */
-	FULL_AUDIO_ROUTE_TVOUT_AND_BTHSP = 14,
-	/** Audio routed through TV-out and BT A2DP */
-	FULL_AUDIO_ROUTE_TVOUT_AND_BTA2DP = 15,
-	/** Audio routed through some other device */
-	FULL_AUDIO_ROUTE_OTHER = 255
-} full_audio_route_t;
-
-/**
- * Parser used to parse the action information
- *
- * @param actit Iterator for the action data
- * @param descs A struct with the argument descriptors
- * @param args The arguments to parse
- * @param len The size of args
- * @return TRUE on success, FALSE on failure
- */
-static gboolean action_parser(DBusMessageIter *actit, struct argdsc *descs,
-			      void *args, gint len)
+/** Bits for members values available in ohm_decision_t */
+enum
 {
-	gboolean status = FALSE;
-	DBusMessageIter cmdit;
-	DBusMessageIter argit;
-	DBusMessageIter valit;
-	struct argdsc *desc;
-	gchar *argname;
-	void *argval;
+    DF_NONE     = 0,
+    DF_TYPE     = 1 << 0,
+    DF_DEVICE   = 1 << 1,
+    DF_MUTE     = 1 << 2,
+    DF_GROUP    = 1 << 3,
+    DF_CORK     = 1 << 4,
+    DF_MODE     = 1 << 5,
+    DF_HWID     = 1 << 6,
+    DF_VARIABLE = 1 << 7,
+    DF_VALUE    = 1 << 8,
+    DF_LIMIT    = 1 << 9,
+};
 
-	dbus_message_iter_recurse(actit, &cmdit);
+/** Generic struct capable of holding any ohm decision data */
+typedef struct
+{
+    unsigned      fields;
+    const char   *type;
+    const char   *device;
+    const char   *mute;
+    const char   *group;
+    const char   *cork;
+    const char   *mode;
+    const char   *hwid;
+    const char   *variable;
+    const char   *value;
+    dbus_int32_t  limit;
+} ohm_decision_t;
 
-	memset(args, 0, len);
+/** Lookup table for parsing/showing ohm_decision_t content */
+static const struct
+{
+    const char *name;
+    unsigned    field;
+    int         type;
+    size_t      offs;
+} field_lut[] =
+{
+    // fields
+    { "type",    DF_TYPE,    's', offsetof(ohm_decision_t, type)     },
+    { "device",  DF_DEVICE,  's', offsetof(ohm_decision_t, device)   },
+    { "mute",    DF_MUTE,    's', offsetof(ohm_decision_t, mute)     },
+    { "group",   DF_GROUP,   's', offsetof(ohm_decision_t, group)    },
+    { "cork",    DF_CORK,    's', offsetof(ohm_decision_t, cork)     },
+    { "mode",    DF_MODE,    's', offsetof(ohm_decision_t, mode)     },
+    { "hwid",    DF_HWID,    's', offsetof(ohm_decision_t, hwid)     },
+    { "variable",DF_VARIABLE,'s', offsetof(ohm_decision_t, variable) },
+    { "value",   DF_VALUE,   's', offsetof(ohm_decision_t, value)    },
+    { "limit",   DF_LIMIT,   'i', offsetof(ohm_decision_t, limit)    },
 
-	do {
-		if (dbus_message_iter_get_arg_type(&cmdit) != DBUS_TYPE_STRUCT)
-			goto EXIT;
+    // sentinel
+    { 0,         DF_NONE,    '-', 0 }
+};
 
-		dbus_message_iter_recurse(&cmdit, &argit);
+/** Lookup table for mce audio route from sink device reported by ohmd */
+static const struct
+{
+    const char        *device;
+    audio_route_t      route;
+} route_lut[] = {
+    { "bta2dp",           AUDIO_ROUTE_HEADSET, },
+    { "bthsp",            AUDIO_ROUTE_HEADSET, },
+    { "earpiece",         AUDIO_ROUTE_HANDSET, },
+    { "earpieceandtvout", AUDIO_ROUTE_HANDSET, },
+    { "fmtx",             AUDIO_ROUTE_UNDEF,   },
+    { "headphone",        AUDIO_ROUTE_UNDEF,   },
+    { "headset",          AUDIO_ROUTE_HEADSET, },
+    { "ihf",              AUDIO_ROUTE_SPEAKER, },
+    { "ihfandbthsp",      AUDIO_ROUTE_SPEAKER, },
+    { "ihfandfmtx",       AUDIO_ROUTE_SPEAKER, },
+    { "ihfandheadset",    AUDIO_ROUTE_HEADSET, },
+    { "ihfandtvout",      AUDIO_ROUTE_SPEAKER, },
+    { "null",             AUDIO_ROUTE_UNDEF,   },
+    { "tvout",            AUDIO_ROUTE_UNDEF,   },
+    { "tvoutandbta2dp",   AUDIO_ROUTE_HEADSET, },
+    { "tvoutandbthsp",    AUDIO_ROUTE_HEADSET, },
+    // sentinel
+    { NULL,               AUDIO_ROUTE_UNDEF,   },
+};
 
-		if (dbus_message_iter_get_arg_type(&argit) != DBUS_TYPE_STRING)
-			goto EXIT;
+/** Audio route; derived from audio sink device name */
+static audio_route_t audio_route = AUDIO_ROUTE_UNDEF;
 
-		dbus_message_iter_get_basic(&argit, (void *)&argname);
+/* Volume limits used for "music playback" heuristics */
+static int volume_limit_player     = 100;
+static int volume_limit_flash      = 100;
+static int volume_limit_inputsound = 100;
 
-		if (!dbus_message_iter_next(&argit))
-			goto EXIT;
+/* Prototypes for local functions */
+static void     audio_mute_cb(ohm_decision_t *ohm);
+static void     audio_cork_cb(ohm_decision_t *ohm);
+static void     audio_route_sink(ohm_decision_t *ohm);
+static void     audio_route_cb(ohm_decision_t *ohm);
+static void     volume_limit_cb(ohm_decision_t *ohm);
+static void     context_cb(ohm_decision_t *ohm);
+static void     ohm_decision_reset_fields(ohm_decision_t *self);
+static void     ohm_decision_show_fields(ohm_decision_t *self);
+static bool     ohm_decision_parse_field(ohm_decision_t *self, const char *field, DBusMessageIter *from);
+static bool     ohm_decision_parse(ohm_decision_t *self, DBusMessageIter *arr);
+static bool     handle_policy_decisions(DBusMessageIter *ent, void (*cb)(ohm_decision_t *));
+static bool     handle_policy(DBusMessageIter *arr);
+static gboolean actions_dbus_cb(DBusMessage *sig);
 
-		if (dbus_message_iter_get_arg_type(&argit) != DBUS_TYPE_VARIANT)
-			goto EXIT;
-
-		dbus_message_iter_recurse(&argit, &valit);
-
-		for (desc = descs; desc->name != NULL; desc++) {
-			if (!strcmp(argname, desc->name)) {
-				if ((desc->offs +
-				     (gint)sizeof (gchar *)) > len) {
-					mce_log(LL_ERR,
-						"%s desc offset %d is "
-						"out of range %d",
-						"action_parser()",
-						desc->offs, len);
-					goto EXIT;
-				} else {
-					if (dbus_message_iter_get_arg_type(&valit) != desc->type)
-						goto EXIT;
-
-					argval = (char *)args + desc->offs;
-
-					dbus_message_iter_get_basic(&valit, argval);
-				}
-
-				break;
-			}
-		}
-
-	} while (dbus_message_iter_next(&cmdit));
-
-	status = TRUE;
-
-EXIT:
-	return status;
+/** Helper for doing base + offset address calculations */
+static inline void *lea(const void *base, off_t offs)
+{
+    return (char *)(base) + offs;
 }
 
-/**
- * Parser for the audio route
- *
- * @param data Iterator for the data
- * @return TRUE on success, FALSE on failure
+/** Handle com.nokia.policy.audio_mute decision
  */
-static gboolean audio_route_parser(DBusMessageIter *data)
+static void audio_mute_cb(ohm_decision_t *ohm)
 {
-	static struct argdsc descs[] = {
-		{
-			"type",
-			STRUCT_OFFSET(struct argrt, type),
-			DBUS_TYPE_STRING
-		}, {
-			"device",
-			STRUCT_OFFSET(struct argrt, device),
-			DBUS_TYPE_STRING
-		}, {
-			"mode",
-			STRUCT_OFFSET(struct argrt, mode),
-			DBUS_TYPE_STRING
-		}, {
-			"hwid",
-			STRUCT_OFFSET(struct argrt, hwid),
-			DBUS_TYPE_STRING
-		}, { NULL, 0, DBUS_TYPE_INVALID }
-	};
+    unsigned want = DF_DEVICE | DF_MUTE;
+    unsigned have = ohm->fields & want;
 
-	full_audio_route_t full_audio_route = FULL_AUDIO_ROUTE_UNDEF;
-	static audio_route_t old_audio_route = AUDIO_ROUTE_UNDEF;
-	audio_route_t audio_route = AUDIO_ROUTE_UNDEF;
-	gboolean status = FALSE;
-	struct argrt args;
+    if( have != want )
+        goto EXIT;
 
-	do {
-		/* If we fail to parse, abort */
-		if (!action_parser(data, descs, &args, sizeof (args)))
-			goto EXIT;
-
-		/* If we don't get the type or device, abort */
-		if ((args.type == NULL) || (args.device == NULL))
-			goto EXIT;
-
-		/* If this isn't the sink, we're not interested */
-		if (strcmp(args.type, "sink"))
-			continue;
-
-		if (!strcmp(args.device, "null")) {
-			full_audio_route = FULL_AUDIO_ROUTE_NULL;
-		} else if (!strcmp(args.device, "ihf") ||
-			   !strcmp(args.device, "ihfforcall")) {
-			full_audio_route = FULL_AUDIO_ROUTE_IHF;
-		} else if (!strcmp(args.device, "fmtx")) {
-			full_audio_route = FULL_AUDIO_ROUTE_FMTX;
-		} else if (!strcmp(args.device, "ihfandfmtx")) {
-			full_audio_route = FULL_AUDIO_ROUTE_IHF_AND_FMTX;
-		} else if (!strcmp(args.device, "earpiece")) {
-			full_audio_route = FULL_AUDIO_ROUTE_EARPIECE;
-		} else if (!strcmp(args.device, "earpieceandtvout")) {
-			full_audio_route = FULL_AUDIO_ROUTE_EARPIECE_AND_TVOUT;
-		} else if (!strcmp(args.device, "tvout")) {
-			full_audio_route = FULL_AUDIO_ROUTE_TVOUT;
-		} else if (!strcmp(args.device, "ihfandtvout")) {
-			full_audio_route = FULL_AUDIO_ROUTE_IHF_AND_TVOUT;
-		} else if (!strcmp(args.device, "headphone")) {
-			full_audio_route = FULL_AUDIO_ROUTE_HEADPHONE;
-		} else if (!strcmp(args.device, "headset")) {
-			full_audio_route = FULL_AUDIO_ROUTE_HEADSET;
-		} else if (!strcmp(args.device, "headsetforcall")) {
-			full_audio_route = FULL_AUDIO_ROUTE_HEADSET;
-		} else if (!strcmp(args.device, "bthsp")) {
-			full_audio_route = FULL_AUDIO_ROUTE_BTHSP;
-		} else if (!strcmp(args.device, "bta2dp")) {
-			full_audio_route = FULL_AUDIO_ROUTE_BTA2DP;
-		} else if (!strcmp(args.device, "ihfandheadset")) {
-			full_audio_route = FULL_AUDIO_ROUTE_IHF_AND_HEADSET;
-		} else if (!strcmp(args.device, "ihfandbthsp")) {
-			full_audio_route = FULL_AUDIO_ROUTE_IHF_AND_BTHSP;
-		} else if (!strcmp(args.device, "tvoutandbthsp")) {
-			full_audio_route = FULL_AUDIO_ROUTE_TVOUT_AND_BTHSP;
-		} else if (!strcmp(args.device, "tvoutandbta2dp")) {
-			full_audio_route = FULL_AUDIO_ROUTE_TVOUT_AND_BTA2DP;
-		} else {
-			full_audio_route = FULL_AUDIO_ROUTE_OTHER;
-			mce_log(LL_WARN, "unknown audio sink device = '%s'",
-				args.device);
-		}
-	} while (dbus_message_iter_next(data));
+    // nothing for mce in here
 
 EXIT:
-	/* Convert the full audio route to a simplified version
-	 * suitable for mass consumption
-	 */
-	switch (full_audio_route) {
-	/* Handset */
-	case FULL_AUDIO_ROUTE_EARPIECE:
-	case FULL_AUDIO_ROUTE_EARPIECE_AND_TVOUT:
-		audio_route = AUDIO_ROUTE_HANDSET;
-		break;
+    return;
+}
 
-	/* Internal stereo speakers */
-	case FULL_AUDIO_ROUTE_IHF:
-	case FULL_AUDIO_ROUTE_IHF_AND_FMTX:
-	case FULL_AUDIO_ROUTE_IHF_AND_TVOUT:
-		audio_route = AUDIO_ROUTE_SPEAKER;
-		break;
+/** Handle com.nokia.policy.audio_cork decision
+ */
+static void audio_cork_cb(ohm_decision_t *ohm)
+{
+    unsigned want = DF_GROUP | DF_CORK;
+    unsigned have = ohm->fields & want;
 
-	/* Headset */
-	case FULL_AUDIO_ROUTE_HEADSET:
-	case FULL_AUDIO_ROUTE_IHF_AND_HEADSET:
-	case FULL_AUDIO_ROUTE_BTHSP:
-	case FULL_AUDIO_ROUTE_BTA2DP:
-	case FULL_AUDIO_ROUTE_TVOUT_AND_BTHSP:
-	case FULL_AUDIO_ROUTE_TVOUT_AND_BTA2DP:
-		audio_route = AUDIO_ROUTE_HEADSET;
-		break;
+    if( have != want )
+        goto EXIT;
 
-	/* If the full audio route didn't change, don't change audio route;
-	 * also ignore NULL routes
-	 */
-	case FULL_AUDIO_ROUTE_NULL:
-	case FULL_AUDIO_ROUTE_UNDEF:
-		audio_route = old_audio_route;
-		break;
+    // nothing for mce in here
 
-	/* For cases that aren't relevant to us anyway, map to undef */
-	default:
-		audio_route = AUDIO_ROUTE_UNDEF;
-		break;
-	}
+EXIT:
+    return;
+}
 
-	if (audio_route != old_audio_route) {
-		execute_datapipe(&audio_route_pipe,
-				 GINT_TO_POINTER(audio_route),
-				 USE_INDATA, CACHE_INDATA);
-		old_audio_route = audio_route;
-	}
+/** Handle com.nokia.policy.audio_route decision for sink device
+ */
+static void audio_route_sink(ohm_decision_t *ohm)
+{
+    /* Lookup audio route id from sink device name.
+     *
+     * Note: For the purposes of mce device names
+     * "xxx" and "xxxforcall" are considered equal.
+     */
+    for( int i = 0; ; ++i ) {
+        if( !route_lut[i].device ) {
+            mce_log(LL_WARN, "unknown audio sink device = '%s'", ohm->device);
+            audio_route = route_lut[i].route;
+            break;
+        }
 
-	if (full_audio_route != FULL_AUDIO_ROUTE_UNDEF) {
-		status = TRUE;
-	}
+        int n = strlen(route_lut[i].device);
 
-	return status;
+        if( strncmp(route_lut[i].device, ohm->device, n) )
+            continue;
+
+        if( ohm->device[n] && strcmp(ohm->device + n, "forcall") )
+            continue;
+
+        audio_route = route_lut[i].route;
+        break;
+    }
+
+    mce_log(LL_DEBUG, "audio sink '%s' -> audio route %d",
+            ohm->device, audio_route);
+}
+
+/** Handle com.nokia.policy.audio_route decision
+ */
+static void audio_route_cb(ohm_decision_t *ohm)
+{
+    unsigned want = DF_TYPE | DF_DEVICE | DF_MODE | DF_HWID;
+    unsigned have = ohm->fields & want;
+
+    if( have != want )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "handling: %s - %s - %s - %s",
+            ohm->type, ohm->device, ohm->mode, ohm->hwid);
+
+    if( !strcmp(ohm->type, "sink") ) {
+        audio_route_sink(ohm);
+    }
+
+EXIT:
+    return;
+}
+
+/** Handle com.nokia.policy.volume_limit decision
+ */
+static void volume_limit_cb(ohm_decision_t *ohm)
+{
+    unsigned want = DF_GROUP | DF_LIMIT;
+    unsigned have = ohm->fields & want;
+
+    if( have != want )
+        goto EXIT;
+
+    if( !strcmp(ohm->group, "player") ) {
+        if( volume_limit_player != ohm->limit ) {
+            mce_log(LL_DEBUG, "volume_limit_player: %d -> %d",
+                    volume_limit_player, ohm->limit);
+            volume_limit_player = ohm->limit;
+        }
+    }
+    else if( !strcmp(ohm->group, "flash") ) {
+        if( volume_limit_flash != ohm->limit ) {
+            mce_log(LL_DEBUG, "volume_limit_flash: %d -> %d",
+                    volume_limit_flash, ohm->limit);
+            volume_limit_flash = ohm->limit;
+        }
+    }
+    else if( !strcmp(ohm->group, "inputsound") ) {
+        if( volume_limit_inputsound != ohm->limit ) {
+            mce_log(LL_DEBUG, "volume_limit_inputsound: %d -> %d",
+                    volume_limit_inputsound, ohm->limit);
+            volume_limit_inputsound = ohm->limit;
+        }
+    }
+EXIT:
+    return;
+}
+
+/** Handle com.nokia.policy.context decision
+ */
+static void context_cb(ohm_decision_t *ohm)
+{
+    unsigned want = DF_VARIABLE | DF_VALUE;
+    unsigned have = ohm->fields & want;
+
+    if( have != want )
+        goto EXIT;
+
+EXIT:
+    return;
+}
+
+/** Reset ohm_decision_t fields
+ */
+static void ohm_decision_reset_fields(ohm_decision_t *self)
+{
+    self->fields   = DF_NONE;
+
+    self->type     = 0;
+    self->device   = 0;
+    self->mute     = 0;
+    self->group    = 0;
+    self->cork     = 0;
+    self->mode     = 0;
+    self->hwid     = 0;
+    self->variable = 0;
+    self->value    = 0;
+
+    self->limit    = -1;
+}
+
+/** Show ohm_decision_t fields
+ */
+static void ohm_decision_show_fields(ohm_decision_t *self)
+{
+    char buf[1024];
+
+    *buf = 0;
+
+    for( int i = 0; field_lut[i].name; ++i ) {
+        if( !(self->fields & field_lut[i].field) )
+            continue;
+        switch( field_lut[i].type ) {
+        case 's':
+            sprintf(strchr(buf,0), " %s='%s'",
+                    field_lut[i].name,
+                    *(const char **)lea(self, field_lut[i].offs));
+            break;
+        case 'i':
+            sprintf(strchr(buf,0), " %s=%ld",
+                    field_lut[i].name,
+                    (long)*(dbus_int32_t *)lea(self, field_lut[i].offs));
+            break;
+        default:
+            sprintf(strchr(buf,0), " %s=???", field_lut[i].name);
+            break;
+        }
+    }
+
+    if( *buf )
+        mce_log(LL_DEBUG, "%s", buf+1);
+}
+
+/** Parse one named field from dbus message iterator
+ */
+static bool ohm_decision_parse_field(ohm_decision_t *self,
+                                     const char *field,
+                                     DBusMessageIter *from)
+{
+
+    bool ack = false;
+
+    for( int i = 0; ; ++i ) {
+        if( !field_lut[i].name ) {
+            mce_log(LL_WARN, "unhandled ohm field '%s'", field);
+            break;
+        }
+
+        if( strcmp(field, field_lut[i].name) )
+            continue;
+
+        switch( field_lut[i].type ) {
+        case 's':
+            ack = mce_dbus_iter_get_string(from, lea(self, field_lut[i].offs));
+            break;
+        case 'i':
+            ack = mce_dbus_iter_get_int32(from, lea(self, field_lut[i].offs));
+            break;
+        default:
+            ack = true;
+            break;
+        }
+
+        self->fields |= field_lut[i].field;
+        break;
+    }
+
+    return ack;
+}
+
+/** Parse all decision fields from dbus message iterator
+ */
+static bool ohm_decision_parse(ohm_decision_t *self, DBusMessageIter *arr)
+{
+    bool ack = false;
+
+    DBusMessageIter str, var;
+
+    while( !mce_dbus_iter_at_end(arr) ) {
+        const char *key  = 0;
+        if( !mce_dbus_iter_get_struct(arr, &str) )
+            goto EXIT;
+        if( !mce_dbus_iter_get_string(&str, &key) )
+            goto EXIT;
+        if( !mce_dbus_iter_get_variant(&str, &var) )
+            goto EXIT;
+        if( !ohm_decision_parse_field(self, key, &var) )
+            goto EXIT;
+    }
+
+    ack = true;
+EXIT:
+    return ack;
+}
+
+/** Handle policy decision blocks within audio_actions signal */
+static bool handle_policy_decisions(DBusMessageIter *ent, void (*cb)(ohm_decision_t *))
+{
+    bool ack = false;
+
+    DBusMessageIter arr1, arr2;
+
+    if( !mce_dbus_iter_get_array(ent, &arr1) )
+        goto EXIT;
+
+    while( !mce_dbus_iter_at_end(&arr1) ) {
+        if( !mce_dbus_iter_get_array(&arr1, &arr2) )
+            goto EXIT;
+
+        ohm_decision_t ohm;
+        ohm_decision_reset_fields(&ohm);
+
+        if( !ohm_decision_parse(&ohm, &arr2) )
+            goto EXIT;
+
+        if( mce_log_p(LL_DEBUG) )
+            ohm_decision_show_fields(&ohm);
+
+        cb(&ohm);
+    }
+
+    ack = true;
+EXIT:
+    return ack;
+}
+
+/** Handle policy block within audio_actions signal
+ */
+static bool handle_policy(DBusMessageIter *arr)
+{
+    bool ack = false;
+
+    const char *name = 0;
+
+    DBusMessageIter ent;
+
+    if( !mce_dbus_iter_get_entry(arr, &ent) )
+        goto EXIT;
+
+    if( !mce_dbus_iter_get_string(&ent, &name) )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "policy name = %s", name);
+
+    void (*cb)(ohm_decision_t *) = 0;
+
+    /* com.nokia.policy.audio_mute
+     *  device - mute
+     *
+     * com.nokia.policy.audio_cork
+     *  group - cork
+     *
+     * com.nokia.policy.audio_route
+     *  type - device - mode - hwid
+     *
+     * com.nokia.policy.volume_limit
+     *  group - limit
+     *
+     * com.nokia.policy.context
+     *  variable - value
+     */
+
+    if( !strcmp(name, "com.nokia.policy.audio_mute") )
+        cb = audio_mute_cb;
+    else if( !strcmp(name, "com.nokia.policy.audio_cork") )
+        cb = audio_cork_cb;
+    else if( !strcmp(name, "com.nokia.policy.audio_route") )
+        cb = audio_route_cb;
+    else if( !strcmp(name, "com.nokia.policy.volume_limit") )
+        cb = volume_limit_cb;
+    else if( !strcmp(name, "com.nokia.policy.context") )
+        cb = context_cb;
+    else
+        mce_log(LL_WARN, "unknown policy '%s'", name);
+
+    if( cb && !handle_policy_decisions(&ent, cb) )
+        goto EXIT;
+
+    ack = true;
+EXIT:
+    return ack;
 }
 
 /**
  * D-Bus callback for the actions signal
  *
  * @param msg The D-Bus message
- * @return TRUE on success, FALSE on failure
+ *
+ * @return TRUE
  */
-static gboolean actions_dbus_cb(DBusMessage *msg)
+static gboolean actions_dbus_cb(DBusMessage *sig)
 {
-	gboolean status = FALSE;
-	DBusMessageIter msgit;
-	DBusMessageIter arrit;
-	DBusMessageIter entit;
-	DBusMessageIter actit;
-	dbus_uint32_t txid;
-	gchar *actname;
+    bool playback = false;
 
-	mce_log(LL_DEBUG, "Received policy actions");
+    DBusMessageIter body, arr;
 
-	dbus_message_iter_init(msg, &msgit);
+    mce_log(LL_DEVEL, "Received audio policy actions from %s",
+            mce_dbus_get_message_sender_ident(sig));
 
-	if (dbus_message_iter_get_arg_type(&msgit) != DBUS_TYPE_UINT32)
-		goto EXIT;
+    dbus_message_iter_init(sig, &body);
 
-	dbus_message_iter_get_basic(&msgit, (void *)&txid);
+    dbus_uint32_t unused = 0;
 
-	mce_log(LL_DEBUG, "got actions; txid: %d", txid);
+    if( !mce_dbus_iter_get_uint32(&body, &unused) )
+        goto EXIT;
 
-	if (!dbus_message_iter_next(&msgit) ||
-	    dbus_message_iter_get_arg_type(&msgit) != DBUS_TYPE_ARRAY)
-		goto EXIT;
+    if( !mce_dbus_iter_get_array(&body, &arr) )
+        goto EXIT;
 
-	dbus_message_iter_recurse(&msgit, &arrit);
+    while( !mce_dbus_iter_at_end(&arr) ) {
+        if( !handle_policy(&arr) )
+            goto EXIT;
+    }
 
-	do {
-		if (dbus_message_iter_get_arg_type(&arrit) != DBUS_TYPE_DICT_ENTRY)
-			continue;
-
-		dbus_message_iter_recurse(&arrit, &entit);
-
-		do {
-			if (dbus_message_iter_get_arg_type(&entit) != DBUS_TYPE_STRING)
-				continue;
-
-			dbus_message_iter_get_basic(&entit, (void *)&actname);
-
-			if (!dbus_message_iter_next(&entit) ||
-			    dbus_message_iter_get_arg_type(&entit) != DBUS_TYPE_ARRAY)
-				continue;
-
-			dbus_message_iter_recurse(&entit, &actit);
-
-			if (dbus_message_iter_get_arg_type(&actit) != DBUS_TYPE_ARRAY)
-				continue;
-
-			if (!strcmp("com.nokia.policy.audio_route", actname))
-				if (audio_route_parser(&actit) == TRUE)
-					break;
-		} while (dbus_message_iter_next(&entit));
-	} while (dbus_message_iter_next(&arrit));
-
-	status = TRUE;
+    playback = (volume_limit_player > 0 &&
+                volume_limit_flash <= 0 &&
+                volume_limit_inputsound <= 0);
 
 EXIT:
-	return status;
+    if( datapipe_get_gint(music_playback_pipe) != playback ) {
+        mce_log(LL_DEVEL, "music playback: %d", playback);
+        execute_datapipe(&music_playback_pipe,
+                         GINT_TO_POINTER(playback),
+                         USE_INDATA, CACHE_INDATA);
+    }
+
+    if( datapipe_get_gint(audio_route_pipe) != audio_route ) {
+        mce_log(LL_DEVEL, "audio route: %d", audio_route);
+        execute_datapipe(&audio_route_pipe,
+                         GINT_TO_POINTER(audio_route),
+                         USE_INDATA, CACHE_INDATA);
+    }
+
+    return TRUE;
 }
+
+/** Array of dbus message handlers */
+static mce_dbus_handler_t handlers[] =
+{
+    /* signals */
+    {
+        .interface = POLICY_DBUS_INTERFACE,
+        .name      = POLICY_AUDIO_ACTIONS,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .callback  = actions_dbus_cb,
+    },
+    /* sentinel */
+    {
+        .interface = 0
+    }
+};
 
 /**
  * Init function for the audio routing module
  *
- * @todo XXX status needs to be set on error!
- *
  * @param module Unused
+ *
  * @return NULL on success, a string with an error message on failure
  */
 G_MODULE_EXPORT const gchar *g_module_check_init(GModule *module);
 const gchar *g_module_check_init(GModule *module)
 {
-	(void)module;
+    (void)module;
 
-	/* actions */
-	if (mce_dbus_handler_add(POLICY_DBUS_INTERFACE,
-				 POLICY_AUDIO_ACTIONS,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_SIGNAL,
-				 actions_dbus_cb) == NULL)
-		goto EXIT;
+    mce_dbus_handler_register_array(handlers);
 
-EXIT:
-	return NULL;
+    return NULL;
 }
 
 /**
  * Exit function for the audio routing module
- *
- * @todo D-Bus unregistration
  *
  * @param module Unused
  */
 G_MODULE_EXPORT void g_module_unload(GModule *module);
 void g_module_unload(GModule *module)
 {
-	(void)module;
+    (void)module;
 
-	return;
+    mce_dbus_handler_unregister_array(handlers);
+
+    return;
 }
