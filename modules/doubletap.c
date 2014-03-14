@@ -219,7 +219,7 @@ const gchar *g_module_check_init(GModule *module)
 
         dbltap_nosleep_val = mce_conf_get_string(MCE_CONF_DOUBLETAP_GROUP,
                                                  MCE_CONF_DOUBLETAP_DISABLE_NO_SLEEP_VALUE,
-                                                 "2");
+                                                 NULL);
 
         if( !dbltap_ctrl_path || !dbltap_enable_val || !dbltap_disable_val ) {
                 mce_log(LL_NOTICE, "no double tap wakeup controls defined");
