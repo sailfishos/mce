@@ -886,9 +886,6 @@ int main(int argc, char **argv)
 	if (daemonflag == TRUE)
 		daemonize();
 
-	/* Initialise GType system */
-	g_type_init();
-
 	/* Register a mainloop */
 	mainloop = g_main_loop_new(NULL, FALSE);
 

@@ -3044,9 +3044,6 @@ int main(int argc, char **argv)
 {
         int exitcode = EXIT_FAILURE;
 
-        /* Init GType */
-        g_type_init();
-
         /* No args -> show mce status */
         if( argc < 2 )
                 xmce_get_status();
