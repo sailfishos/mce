@@ -6,6 +6,7 @@
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Ismo Laitinen <ismo.laitinen@nokia.com>
+ * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
  * mce is free software; you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License
@@ -98,17 +99,169 @@ static guint keypress_repeat_timeout_cb_id = 0;
 /** ID for misc timeout source */
 static guint misc_io_monitor_timeout_cb_id = 0;
 
+/* ========================================================================= *
+ * TOUCH INPUT DEVICE MONITORING
+ * ========================================================================= */
+
 /** List of touchscreen input devices */
 static GSList *touchscreen_dev_list = NULL;
+
+/** Handle touch device iomon delete notification
+ *
+ * @param iomon I/O monitor that is about to get deleted
+ */
+static void touchscreen_dev_rem_cb(gconstpointer iomon)
+{
+	touchscreen_dev_list = g_slist_remove(touchscreen_dev_list, iomon);
+}
+
+/** Add touch device I/O monitor
+ *
+ * @param fd        File descriptor
+ * @param path      File path
+ * @param callback  Input event handler
+ */
+static void touchscreen_dev_add(int fd, const char *path, iomon_cb callback)
+{
+	gconstpointer iomon =
+		mce_register_io_monitor_chunk(fd, path, MCE_IO_ERROR_POLICY_WARN,
+					      FALSE, callback,
+					      touchscreen_dev_rem_cb,
+					      sizeof (struct input_event));
+	if( iomon )
+		touchscreen_dev_list = g_slist_prepend(touchscreen_dev_list,
+						       (gpointer)iomon);
+}
+
+/** Remove all touch device I/O monitors
+ */
+static void touchscreen_dev_rem_all(void)
+{
+	mce_unregister_io_monitor_list(touchscreen_dev_list);
+}
+
+/* ========================================================================= *
+ * KEYPAD INPUT DEVICE MONITORING
+ * ========================================================================= */
 
 /** List of keyboard input devices */
 static GSList *keyboard_dev_list = NULL;
 
+/** Handle keyboard device iomon delete notification
+ *
+ * @param iomon I/O monitor that is about to get deleted
+ */
+static void keyboard_dev_rem_cb(gconstpointer iomon)
+{
+	keyboard_dev_list = g_slist_remove(keyboard_dev_list, iomon);
+}
+
+/** Add keyboard device I/O monitor
+ *
+ * @param fd        File descriptor
+ * @param path      File path
+ * @param callback  Input event handler
+ */
+static void keyboard_dev_add(int fd, const char *path, iomon_cb callback)
+{
+	gconstpointer iomon =
+		mce_register_io_monitor_chunk(fd, path, MCE_IO_ERROR_POLICY_WARN,
+					      FALSE, callback,
+					      keyboard_dev_rem_cb,
+					      sizeof (struct input_event));
+	if( iomon )
+		keyboard_dev_list = g_slist_prepend(keyboard_dev_list,
+						    (gpointer)iomon);
+}
+
+/** Remove all keyboard device I/O monitors
+ */
+static void keyboard_dev_rem_all(void)
+{
+	mce_unregister_io_monitor_list(keyboard_dev_list);
+}
+
+/* ========================================================================= *
+ * VOLUMEKEY INPUT DEVICE MONITORING
+ * ========================================================================= */
+
 /** List of volume key input devices */
 static GSList *volumekey_dev_list = NULL;
 
+/** Handle volumekey device iomon delete notification
+ *
+ * @param iomon I/O monitor that is about to get deleted
+ */
+static void volumekey_dev_rem_cb(gconstpointer iomon)
+{
+	volumekey_dev_list = g_slist_remove(volumekey_dev_list, iomon);
+}
+
+/** Add volumekey device I/O monitor
+ *
+ * @param fd        File descriptor
+ * @param path      File path
+ * @param callback  Input event handler
+ */
+static void volumekey_dev_add(int fd, const char *path, iomon_cb callback)
+{
+	gconstpointer iomon =
+		mce_register_io_monitor_chunk(fd, path, MCE_IO_ERROR_POLICY_WARN,
+					      FALSE, callback,
+					      volumekey_dev_rem_cb,
+					      sizeof (struct input_event));
+	if( iomon )
+		volumekey_dev_list = g_slist_prepend(volumekey_dev_list,
+						    (gpointer)iomon);
+}
+
+/** Remove all volumekey device I/O monitors
+ */
+static void volumekey_dev_rem_all(void)
+{
+	mce_unregister_io_monitor_list(volumekey_dev_list);
+}
+
+/* ========================================================================= *
+ * MISC INPUT DEVICE MONITORING
+ * ========================================================================= */
+
 /** List of misc input devices */
 static GSList *misc_dev_list = NULL;
+
+/** Handle misc device iomon delete notification
+ *
+ * @param iomon I/O monitor that is about to get deleted
+ */
+static void misc_dev_rem_cb(gconstpointer iomon)
+{
+	misc_dev_list = g_slist_remove(misc_dev_list, iomon);
+}
+
+/** Add misc device I/O monitor
+ *
+ * @param fd        File descriptor
+ * @param path      File path
+ * @param callback  Input event handler
+ */
+static void misc_dev_add(int fd, const char *path, iomon_cb callback)
+{
+	gconstpointer iomon =
+		mce_register_io_monitor_chunk(fd, path, MCE_IO_ERROR_POLICY_WARN,
+					      FALSE, callback,
+					      misc_dev_rem_cb,
+					      sizeof (struct input_event));
+	if( iomon )
+		misc_dev_list = g_slist_prepend(misc_dev_list,
+						(gpointer)iomon);
+}
+
+/** Remove all misc device I/O monitors
+ */
+static void misc_dev_rem_all(void)
+{
+	mce_unregister_io_monitor_list(misc_dev_list);
+}
 
 /** GFile pointer for the directory we monitor */
 static GFile *dev_input_gfp = NULL;
@@ -571,7 +724,6 @@ static evdev_type_t get_evdev_type(int fd)
 		}
 	}
 
-
 	/* MCE has no use for accelerometers etc */
 	if( evdevinfo_has_code(feat, EV_KEY, BTN_Z) ||
 	    evdevinfo_has_code(feat, EV_ABS, ABS_Z) ) {
@@ -778,38 +930,6 @@ static void resume_io_monitor(gpointer io_monitor, gpointer user_data)
 	mce_resume_io_monitor(io_monitor);
 }
 
-/**
- * Wrapper function to call mce_unregister_io_monitor() from g_slist_foreach()
- *
- * @param io_monitor The I/O monitor to unregister
- * @param user_data Unused
- */
-static void unregister_io_monitor(gpointer io_monitor, gpointer user_data)
-{
-	const gchar *filename = mce_get_io_monitor_name(io_monitor);
-
-	/* If we opened an fd to monitor, retrieve it to ensure
-	 * that we can close it after unregistering the I/O monitor
-	 */
-	int fd = mce_get_io_monitor_fd(io_monitor);
-
-	(void)user_data;
-
-	mce_unregister_io_monitor(io_monitor);
-
-	/* Close the fd if there is one */
-	if (fd != -1) {
-		if (close(fd) == -1) {
-			mce_log(LL_ERR,
-				"Failed to close `%s'; %s",
-				filename, g_strerror(errno));
-			errno = 0;
-		}
-
-		fd = -1;
-	}
-}
-
 /* ========================================================================= *
  * GENERIC EVDEV INPUT GRAB STATE MACHINE
  * ========================================================================= */
@@ -846,8 +966,6 @@ struct input_grab_t
 	/** Callback for additional release polling */
 	bool      (*ig_release_verify_cb)(input_grab_t *self);
 };
-
-
 
 static void     input_grab_reset(input_grab_t *self);
 static gboolean input_grab_release_cb(gpointer aptr);
@@ -889,7 +1007,6 @@ static gboolean input_grab_release_cb(gpointer aptr)
 		repeat = TRUE;
 		goto EXIT;
 	}
-
 
 	// timer no longer active
 	self->ig_release_id = 0;
@@ -1065,12 +1182,10 @@ static void ts_grab_set_led(bool enabled)
 	else
 		ts_grab_set_led_raw(false);
 
-
 	prev = enabled;
 EXIT:
 	return;
 }
-
 
 /** Grab/ungrab all monitored touch input devices
  */
@@ -1152,7 +1267,6 @@ enum
 	TS_RELEASE_DELAY_UNBLANK = 600,
 };
 
-
 /** State data for touch input grab state machine */
 static input_grab_t ts_grab_state =
 {
@@ -1221,7 +1335,6 @@ static void ts_grab_event_filter_cb(struct input_event *ev)
 		break;
 	}
 }
-
 
 /** feed desired touch grab state from datapipe to state machine
  *
@@ -1383,7 +1496,6 @@ static void kp_grab_event_filter_cb(struct input_event *ev)
 
 	input_grab_set_touching(&kp_grab_state, vol_up || vol_dn);
 }
-
 
 /** Feed desired volumekey grab state from datapipe to state machine
  *
@@ -1954,10 +2066,7 @@ static gboolean misc_io_monitor_timeout_cb(gpointer data)
 	misc_io_monitor_timeout_cb_id = 0;
 
 	/* Resume I/O monitors */
-	if (misc_dev_list != NULL) {
-		g_slist_foreach(misc_dev_list,
-				(GFunc)resume_io_monitor, NULL);
-	}
+	g_slist_foreach(misc_dev_list, resume_io_monitor, 0);
 
 	return FALSE;
 }
@@ -2032,10 +2141,7 @@ static gboolean misc_iomon_cb(gpointer data, gsize bytes_read)
 			       USE_INDATA, CACHE_INDATA);
 
 	/* Suspend I/O monitors */
-	if (misc_dev_list != NULL) {
-		g_slist_foreach(misc_dev_list,
-				(GFunc)suspend_io_monitor, NULL);
-	}
+	g_slist_foreach(misc_dev_list, suspend_io_monitor, 0);
 
 	/* Setup a timeout I/O monitor reprogramming */
 	setup_misc_io_monitor_timeout();
@@ -2131,46 +2237,8 @@ EXIT:
  */
 static void update_switch_states(void)
 {
-
-	if (keyboard_dev_list != NULL) {
-		g_slist_foreach(keyboard_dev_list,
-				(GFunc)get_switch_state, NULL);
-	}
-
+	g_slist_foreach(keyboard_dev_list, get_switch_state, 0);
 	g_slist_foreach(volumekey_dev_list, get_switch_state, 0);
-}
-
-/**
- * Custom compare function used to find I/O monitor entries
- *
- * @param iomon_id An I/O monitor cookie
- * @param name The name to search for
- * @return Less than, equal to, or greater than zero depending
- *         whether the name of the I/O monitor with the id iomon_id
- *         is less than, equal to, or greater than name
- */
-static gint iomon_name_compare(gconstpointer iomon_id,
-			       gconstpointer name)
-{
-	const gchar *iomon_name = mce_get_io_monitor_name(iomon_id);
-
-	return strcmp(iomon_name, name);
-}
-
-/**
- * I/O monitor error callback for misc devices. Removes device
- * if suitable error condition.
- *
- * @param iomon An I/O monitor cookie
- * @param condition I/O condition
- */
-static void misc_err_cb(gpointer iomon, GIOCondition condition)
-{
-	if (condition == G_IO_HUP) {
-		mce_log(LL_DEBUG, "removing monitor for misc device %s", mce_get_io_monitor_name(iomon));
-		misc_dev_list = g_slist_remove(misc_dev_list, iomon);
-		mce_unregister_io_monitor(iomon);
-	}
 }
 
 /**
@@ -2178,7 +2246,6 @@ static void misc_err_cb(gpointer iomon, GIOCondition condition)
  */
 static void match_and_register_io_monitor(const gchar *filename)
 {
-	gconstpointer iomon = NULL;
 	int           fd    = -1;
 	int           type  = -1;
 
@@ -2222,46 +2289,23 @@ static void match_and_register_io_monitor(const gchar *filename)
 		break;
 
 	case EVDEV_TOUCH:
-		iomon = mce_register_io_monitor_chunk(fd, filename, MCE_IO_ERROR_POLICY_WARN,
-						      G_IO_IN | G_IO_ERR, FALSE, touchscreen_iomon_cb,
-						      sizeof (struct input_event));
-		if( iomon )
-			touchscreen_dev_list = g_slist_prepend(touchscreen_dev_list, (gpointer)iomon);
+		touchscreen_dev_add(fd, filename, touchscreen_iomon_cb), fd = -1;
 		break;
 
 	case EVDEV_DBLTAP:
-		iomon = mce_register_io_monitor_chunk(fd, filename, MCE_IO_ERROR_POLICY_WARN,
-						      G_IO_IN | G_IO_ERR, FALSE, doubletap_iomon_cb,
-						      sizeof (struct input_event));
-		if( iomon )
-			touchscreen_dev_list = g_slist_prepend(touchscreen_dev_list, (gpointer)iomon);
+		touchscreen_dev_add(fd, filename, doubletap_iomon_cb), fd = -1;
 		break;
 
 	case EVDEV_INPUT:
-		iomon = mce_register_io_monitor_chunk(fd, filename, MCE_IO_ERROR_POLICY_WARN,
-						      G_IO_IN | G_IO_ERR, FALSE, keypress_iomon_cb,
-						      sizeof (struct input_event));
-		if( iomon )
-			keyboard_dev_list = g_slist_prepend(keyboard_dev_list, (gpointer)iomon);
+		keyboard_dev_add(fd, filename, keypress_iomon_cb), fd = -1;
 		break;
 
 	case EVDEV_VOLKEY:
-		iomon = mce_register_io_monitor_chunk(fd, filename, MCE_IO_ERROR_POLICY_WARN,
-						      G_IO_IN | G_IO_ERR, FALSE, keypress_iomon_cb,
-						      sizeof (struct input_event));
-		if( iomon )
-			volumekey_dev_list = g_slist_prepend(volumekey_dev_list, (gpointer)iomon);
+		volumekey_dev_add(fd, filename, keypress_iomon_cb), fd = -1;
 		break;
 
-
 	case EVDEV_ACTIVITY:
-		iomon = mce_register_io_monitor_chunk(fd, filename, MCE_IO_ERROR_POLICY_WARN,
-						      G_IO_IN | G_IO_ERR, FALSE, misc_iomon_cb,
-						      sizeof (struct input_event));
-		if( iomon ) {
-			mce_set_io_monitor_err_cb(iomon, misc_err_cb);
-			misc_dev_list = g_slist_prepend(misc_dev_list, (gpointer)iomon);
-		}
+		misc_dev_add(fd, filename, misc_iomon_cb), fd = -1;
 		break;
 
 	case EVDEV_ALS:
@@ -2277,13 +2321,8 @@ static void match_and_register_io_monitor(const gchar *filename)
 
 EXIT:
 	/* Close unmonitored file descriptors */
-	if( !iomon && fd != -1 ) {
-		if(close(fd) == -1) {
-			mce_log(LL_ERR,
-				"Failed to close `%s'; %s",
-				filename, g_strerror(errno));
-		}
-	}
+	if( fd != -1 && TEMP_FAILURE_RETRY(close(fd)) )
+		mce_log(LL_ERR, "Failed to close `%s'; %m", filename);
 }
 
 /**
@@ -2297,66 +2336,11 @@ EXIT:
  */
 static void update_inputdevices(const gchar *device, gboolean add)
 {
-	gconstpointer iomon_id = NULL;
-	GSList *list_entry = NULL;
+	/* remove existing io monitor */
+	mce_unregister_io_monitor_at_path(device);
 
-	/* Try to find a matching touchscreen I/O monitor */
-	list_entry = g_slist_find_custom(touchscreen_dev_list, device,
-					 iomon_name_compare);
-
-	/* If we find one, obtain the iomon ID,
-	 * remove the entry and finally unregister the I/O monitor
-	 */
-	if (list_entry != NULL) {
-		iomon_id = list_entry->data;
-		touchscreen_dev_list = g_slist_remove(touchscreen_dev_list,
-						      iomon_id);
-		mce_unregister_io_monitor(iomon_id);
-	}
-
-	/* Try to find a matching keyboard I/O monitor */
-	list_entry = g_slist_find_custom(keyboard_dev_list, device,
-					 iomon_name_compare);
-
-	/* If we find one, obtain the iomon ID,
-	 * remove the entry and finally unregister the I/O monitor
-	 */
-	if (list_entry != NULL) {
-		iomon_id = list_entry->data;
-		keyboard_dev_list = g_slist_remove(keyboard_dev_list,
-						   iomon_id);
-		mce_unregister_io_monitor(iomon_id);
-	}
-
-	/* Try to find a matching volume key I/O monitor */
-	list_entry = g_slist_find_custom(volumekey_dev_list, device,
-					 iomon_name_compare);
-
-	/* If we find one, obtain the iomon ID,
-	 * remove the entry and finally unregister the I/O monitor
-	 */
-	if (list_entry != NULL) {
-		iomon_id = list_entry->data;
-		volumekey_dev_list = g_slist_remove(volumekey_dev_list,
-						   iomon_id);
-		mce_unregister_io_monitor(iomon_id);
-	}
-
-	/* Try to find a matching touchscreen I/O monitor */
-	list_entry = g_slist_find_custom(misc_dev_list, device,
-					 iomon_name_compare);
-
-	/* If we find one, obtain the iomon ID,
-	 * remove the entry and finally unregister the I/O monitor
-	 */
-	if (list_entry != NULL) {
-		iomon_id = list_entry->data;
-		misc_dev_list = g_slist_remove(misc_dev_list,
-					       iomon_id);
-		mce_unregister_io_monitor(iomon_id);
-	}
-
-	if (add == TRUE)
+	/* add new io monitor if so requested */
+	if( add )
 		match_and_register_io_monitor(device);
 }
 
@@ -2368,54 +2352,37 @@ static void update_inputdevices(const gchar *device, gboolean add)
  */
 static gboolean scan_inputdevices(void)
 {
-	DIR *dir = NULL;
-	struct dirent *direntry = NULL;
-	gboolean status = FALSE;
+	gboolean       status = FALSE;
 
-	if ((dir = opendir(DEV_INPUT_PATH)) == NULL) {
-		mce_log(LL_ERR, "opendir() failed; %s", g_strerror(errno));
-		errno = 0;
+	DIR           *dir = NULL;
+	struct dirent *de = NULL;
+
+	static const char pfix[] = EVENT_FILE_PREFIX;
+
+	if( !(dir = opendir(DEV_INPUT_PATH)) ) {
+		mce_log(LL_ERR, "opendir() failed; %m");
 		goto EXIT;
 	}
 
-	for (direntry = readdir(dir);
-	     (direntry != NULL && telldir(dir));
-	     direntry = readdir(dir)) {
-		gchar *filename = NULL;
-
-		if (strncmp(direntry->d_name, EVENT_FILE_PREFIX,
-			    strlen(EVENT_FILE_PREFIX)) != 0) {
-			mce_log(LL_DEBUG,
-				"`%s/%s' skipped",
-				DEV_INPUT_PATH,
-				direntry->d_name);
-			continue;
+	while( (de = readdir(dir)) != 0 ) {
+		if( strncmp(de->d_name, pfix, sizeof pfix - 1) ) {
+			mce_log(LL_DEBUG, "`%s/%s' skipped",
+				DEV_INPUT_PATH, de->d_name);
 		}
-
-		filename = g_strconcat(DEV_INPUT_PATH, "/",
-				       direntry->d_name, NULL);
-		match_and_register_io_monitor(filename);
-		g_free(filename);
-	}
-
-	if ((direntry == NULL) && (errno != 0)) {
-		mce_log(LL_ERR,
-			"readdir() failed; %s",
-			g_strerror(errno));
-		errno = 0;
-	}
-
-	/* Report, but ignore, errors when closing directory */
-	if (closedir(dir) == -1) {
-		mce_log(LL_ERR,
-			"closedir() failed; %s",
-			g_strerror(errno));
-		errno = 0;
+		else {
+			gchar *path = g_strconcat(DEV_INPUT_PATH, "/",
+						  de->d_name, NULL);
+			match_and_register_io_monitor(path);
+			g_free(path);
+		}
 	}
 
 	status = TRUE;
 
 EXIT:
+	if( dir && closedir(dir) == -1 )
+		mce_log(LL_ERR, "closedir() failed; %m");
+
 	return status;
 }
 
@@ -2424,33 +2391,10 @@ EXIT:
  */
 static void unregister_inputdevices(void)
 {
-	if (touchscreen_dev_list != NULL) {
-		g_slist_foreach(touchscreen_dev_list,
-				(GFunc)unregister_io_monitor, NULL);
-		g_slist_free(touchscreen_dev_list);
-		touchscreen_dev_list = NULL;
-	}
-
-	if (keyboard_dev_list != NULL) {
-		g_slist_foreach(keyboard_dev_list,
-				(GFunc)unregister_io_monitor, NULL);
-		g_slist_free(keyboard_dev_list);
-		keyboard_dev_list = NULL;
-	}
-
-	if (volumekey_dev_list != NULL) {
-		g_slist_foreach(volumekey_dev_list,
-				(GFunc)unregister_io_monitor, NULL);
-		g_slist_free(volumekey_dev_list);
-		volumekey_dev_list = NULL;
-	}
-
-	if (misc_dev_list != NULL) {
-		g_slist_foreach(misc_dev_list,
-				(GFunc)unregister_io_monitor, NULL);
-		g_slist_free(misc_dev_list);
-		misc_dev_list = NULL;
-	}
+	touchscreen_dev_rem_all();
+	keyboard_dev_rem_all();
+	volumekey_dev_rem_all();
+	misc_dev_rem_all();
 }
 
 /**

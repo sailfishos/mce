@@ -106,10 +106,9 @@ static const mce_translation_t soft_poweroff_charger_connect_translation[] = {
 
 /** dsme I/O channel */
 static GIOChannel *dsme_iochan = NULL;
+
 /** dsme data channel GSource ID */
 static guint dsme_data_source_id;
-/** dsme error channel GSource ID */
-static guint dsme_error_source_id;
 
 static gboolean init_dsmesock(void);
 
@@ -121,7 +120,7 @@ static gboolean init_dsmesock(void);
  */
 static void mce_dsme_send(gpointer msg)
 {
-	if (dsme_disabled == TRUE)
+	if( dsme_disabled )
 		goto EXIT;
 
 	if (dsme_conn == NULL) {
@@ -423,8 +422,12 @@ static gboolean io_data_ready_cb(GIOChannel *source,
 	(void)condition;
 	(void)data;
 
-	if (dsme_disabled == TRUE)
-		goto EXIT;
+	if( condition & (G_IO_ERR | G_IO_HUP | G_IO_NVAL) ) {
+		mce_log(LL_CRIT, "DSME socket closed/error, exiting...");
+		// FIXME: this is not how one should exit from mainloop
+		mce_quit_mainloop();
+		exit(EXIT_FAILURE);
+	}
 
 	if ((msg = (dsmemsg_generic_t *)dsmesock_receive(dsme_conn)) == NULL)
 		goto EXIT;
@@ -488,35 +491,6 @@ static gboolean io_data_ready_cb(GIOChannel *source,
 
 EXIT:
 	return TRUE;
-}
-
-/**
- * Callback for I/O errors from dsmesock
- *
- * @param source Unused
- * @param condition Unused
- * @param data Unused
- * @return Will never return; if there is an I/O-error we exit the mainloop
- */
-static gboolean io_error_cb(GIOChannel *source,
-			    GIOCondition condition,
-			    gpointer data) G_GNUC_NORETURN;
-
-static gboolean io_error_cb(GIOChannel *source,
-			    GIOCondition condition,
-			    gpointer data)
-{
-	/* Silence warnings */
-	(void)source;
-	(void)condition;
-	(void)data;
-
-	/* DSME socket closed/error */
-	mce_log(LL_CRIT,
-		"DSME socket closed/error, exiting...");
-	// FIXME: this is not how one should exit from mainloop
-	mce_quit_mainloop();
-	exit(EXIT_FAILURE);
 }
 
 /**
@@ -587,11 +561,8 @@ static gboolean init_dsmesock(void)
 	}
 
 	dsme_data_source_id = g_io_add_watch(dsme_iochan,
-					     G_IO_IN | G_IO_PRI,
+					     G_IO_IN | G_IO_ERR | G_IO_HUP | G_IO_NVAL,
 					     io_data_ready_cb, NULL);
-	dsme_error_source_id = g_io_add_watch(dsme_iochan,
-					      G_IO_ERR | G_IO_HUP,
-					      io_error_cb, NULL);
 
 	/* Query the current system state; if the mainloop isn't running,
 	 * this will trigger an update when the mainloop starts
@@ -612,19 +583,26 @@ static void close_dsmesock(void)
 	mce_log(LL_DEBUG,
 		"Shutting down dsmesock I/O channel");
 
-	if (dsme_iochan != NULL) {
-		GError *error = NULL;
+	if( dsme_data_source_id ) {
 		g_source_remove(dsme_data_source_id);
-		g_source_remove(dsme_error_source_id);
+		dsme_data_source_id = 0;
+	}
+
+	if( dsme_iochan ) {
+		GError *error = NULL;
 		g_io_channel_shutdown(dsme_iochan, FALSE, &error);
 		g_io_channel_unref(dsme_iochan);
+		dsme_iochan = 0;
 		g_clear_error(&error);
 	}
 
 	mce_log(LL_DEBUG,
 		"Closing DSME sock");
 
-	dsmesock_close(dsme_conn);
+	if( dsme_conn ) {
+		dsmesock_close(dsme_conn);
+		dsme_conn = 0;
+	}
 }
 
 /**
@@ -645,12 +623,11 @@ gboolean mce_dsme_init(gboolean debug_mode)
 	mce_log(LL_DEBUG,
 		"Connecting to DSME sock");
 
-	if (init_dsmesock() == FALSE) {
-		if (debug_mode == TRUE) {
-			dsme_disabled = TRUE;
-		} else {
+	if( !init_dsmesock() ) {
+		if( !debug_mode )
 			goto EXIT;
-		}
+
+		dsme_disabled = TRUE;
 	}
 
 	/* Register with DSME's process watchdog */

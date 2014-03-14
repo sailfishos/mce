@@ -341,14 +341,27 @@ filewatcher_input_cb(GIOChannel *source,
                      GIOCondition condition,
                      gpointer data)
 {
-  (void)source; (void)condition;
+  (void)source;
 
   filewatcher_t *self = data;
-  gboolean keep_going = filewatcher_process_events(self);
+  gboolean keep_going = TRUE;
+
+  if( condition & (G_IO_ERR | G_IO_HUP | G_IO_NVAL) )
+  {
+    keep_going = FALSE;
+  }
+
+  if( !filewatcher_process_events(self) )
+  {
+    keep_going = FALSE;
+  }
 
   if( !keep_going )
   {
-    mce_log(LL_WARN, "stopping inotify event io watch");
+    /* Note: This /should/ never happen, but if it does
+     *       we must not leave the io watch in a state
+     *       where it gets triggered forever. */
+    mce_log(LL_CRIT, "stopping inotify event io watch");
     self->watch_id = 0;
   }
 
@@ -435,7 +448,9 @@ filewatcher_setup_iowatch(filewatcher_t *self)
   }
   g_io_channel_set_buffered(chan, FALSE);
 
-  self->watch_id = g_io_add_watch(chan, G_IO_IN, filewatcher_input_cb, self);
+  self->watch_id = g_io_add_watch(chan,
+				  G_IO_IN | G_IO_ERR | G_IO_HUP | G_IO_NVAL,
+				  filewatcher_input_cb, self);
 
   if( !self->watch_id )
   {
