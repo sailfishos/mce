@@ -297,6 +297,7 @@ static void                mdy_brightness_set_level_hybris(int number);
 #endif
 static void                mdy_brightness_set_level_default(int number);
 static void                mdy_brightness_set_level(int number);
+static void                mdy_brightness_force_level(int number);
 
 static gboolean            mdy_brightness_fade_timer_cb(gpointer data);
 static void                mdy_brightness_stop_fade_timer(void);
@@ -430,10 +431,6 @@ static void                mdy_orientation_generate_activity(void);
  * DISPLAY_STATE
  * ------------------------------------------------------------------------- */
 
-static void                mdy_display_state_enter_blank(void);
-static void                mdy_display_state_enter_lpm(void);
-static void                mdy_display_state_enter_dim(void);
-static void                mdy_display_state_enter_unblank(void);
 static void                mdy_display_state_enter_post(void);
 static void                mdy_display_state_enter_pre(display_state_t prev_state, display_state_t next_state);
 static void                mdy_display_state_leave(display_state_t prev_state, display_state_t next_state);
@@ -1693,6 +1690,9 @@ static gint mdy_brightness_level_display_on = -1;
 /** Dim brightness; [0, mdy_brightness_level_maximum] */
 static gint mdy_brightness_level_display_dim = -1;
 
+/** Brightness to use on display wakeup; [0, mdy_brightness_level_maximum] */
+static int mdy_brightness_level_display_resume = 1;
+
 /** File used to set display brightness */
 static output_state_t mdy_brightness_level_output =
 {
@@ -1769,6 +1769,18 @@ static void mdy_brightness_set_level(int number)
 
     // TODO: we might want to power off fb at zero brightness
     //       and power it up at non-zero brightness???
+}
+
+/** Helper for cancelling brightness fade and forcing a brightness level
+ *
+ * @param number brightness in 0 to mdy_brightness_level_maximum range
+ */
+static void mdy_brightness_force_level(int number)
+{
+    mdy_brightness_stop_fade_timer();
+    mdy_brightness_level_cached = number;
+    mdy_brightness_level_target = number;
+    mdy_brightness_set_level(number);
 }
 
 /**
@@ -1853,10 +1865,7 @@ static void mdy_brightness_set_fade_target(gint new_brightness)
             (increase == TRUE)) ||
         ((mdy_brightness_decrease_policy == BRIGHTNESS_CHANGE_DIRECT) &&
             (increase == FALSE))) {
-        mdy_brightness_stop_fade_timer();
-        mdy_brightness_level_cached = new_brightness;
-        mdy_brightness_level_target = new_brightness;
-        mdy_brightness_set_level(new_brightness);
+        mdy_brightness_force_level(new_brightness);
         goto EXIT;
     }
 
@@ -3882,56 +3891,6 @@ static void mdy_orientation_generate_activity(void)
  * DISPLAY_STATE
  * ========================================================================= */
 
-/** Blank display
- */
-static void mdy_display_state_enter_blank(void)
-{
-    mdy_brightness_stop_fade_timer();
-    mdy_brightness_level_cached = 0;
-    mdy_brightness_level_target = 0;
-    mdy_brightness_set_level(0);
-}
-
-/** Enable low power mode
- */
-static void mdy_display_state_enter_lpm(void)
-{
-    mdy_brightness_stop_fade_timer();
-    // TODO: does LPM display mode need FB_BLANK_POWERDOWN to work?
-}
-
-/** Dim display
- */
-static void mdy_display_state_enter_dim(void)
-{
-    /* If we unblank, switch on display immediately;
-     * no matter what we keep the previous low power mode
-     */
-    if (mdy_brightness_level_cached == 0) {
-        mdy_brightness_level_cached = mdy_brightness_level_display_dim;
-        mdy_brightness_level_target = mdy_brightness_level_display_dim;
-        mdy_brightness_set_level(mdy_brightness_level_display_dim);
-    } else {
-        mdy_brightness_set_fade_target(mdy_brightness_level_display_dim);
-    }
-}
-
-/** Unblank display
- */
-static void mdy_display_state_enter_unblank(void)
-{
-    /* If we unblank, switch on display immediately;
-     * no matter what we disable the low power mode
-     */
-    if (mdy_brightness_level_cached == 0) {
-        mdy_brightness_level_cached = mdy_brightness_level_display_on;
-        mdy_brightness_level_target = mdy_brightness_level_display_on;
-        mdy_brightness_set_level(mdy_brightness_level_display_on);
-    } else {
-        mdy_brightness_set_fade_target(mdy_brightness_level_display_on);
-    }
-}
-
 /* React to new display state (via display state datapipe)
  */
 static void mdy_display_state_enter_post(void)
@@ -3960,21 +3919,41 @@ static void mdy_display_state_enter_post(void)
     mdy_hbm_rethink();
 
     switch( display_state ) {
+    case MCE_DISPLAY_POWER_DOWN:
     case MCE_DISPLAY_OFF:
     case MCE_DISPLAY_LPM_OFF:
-        mdy_display_state_enter_blank();
+        /* Blanking or already blanked -> set zero brightness */
+        mdy_brightness_force_level(0);
+        break;
+
+    case MCE_DISPLAY_POWER_UP:
+        /* Unblanking; brightness depends on the next state */
+        mdy_brightness_force_level(mdy_brightness_level_display_resume);
         break;
 
     case MCE_DISPLAY_LPM_ON:
-        mdy_display_state_enter_lpm();
+        /* TODO: the lpm mode is not really supported */
+        mdy_brightness_stop_fade_timer();
         break;
 
     case MCE_DISPLAY_DIM:
-        mdy_display_state_enter_dim();
+        if (mdy_brightness_level_cached == 0) {
+            /* If we unblank, switch on display immediately */
+            mdy_brightness_force_level(mdy_brightness_level_display_dim);
+        } else {
+            /* Gradually fade in/out to target level */
+            mdy_brightness_set_fade_target(mdy_brightness_level_display_dim);
+        }
         break;
 
     case MCE_DISPLAY_ON:
-        mdy_display_state_enter_unblank();
+        if (mdy_brightness_level_cached == 0) {
+            /* If we unblank, switch on display immediately */
+            mdy_brightness_force_level(mdy_brightness_level_display_on);
+        } else {
+            /* Gradually fade in/out to target level */
+            mdy_brightness_set_fade_target(mdy_brightness_level_display_on);
+        }
         break;
 
     default:
@@ -4008,6 +3987,11 @@ static void mdy_display_state_enter_pre(display_state_t prev_state,
 
     /* Restore display_state_pipe to valid value */
     display_state_pipe.cached_data = GINT_TO_POINTER(next_state);
+
+    if( next_state == MCE_DISPLAY_DIM )
+        mdy_brightness_level_display_resume = mdy_brightness_level_display_dim;
+    else
+        mdy_brightness_level_display_resume = mdy_brightness_level_display_on;
 
     /* Run display state change triggers */
     execute_datapipe(&display_state_pipe,
@@ -4047,42 +4031,6 @@ static void mdy_display_state_leave(display_state_t prev_state,
         execute_datapipe(&display_state_pipe,
                          display_state_pipe.cached_data,
                          USE_INDATA, CACHE_INDATA);
-    }
-
-    if( prev_state != MCE_DISPLAY_OFF ) {
-        /* Start of ON -> OFF transition: set zero brightness */
-        switch( next_state ) {
-        case MCE_DISPLAY_OFF:
-        case MCE_DISPLAY_LPM_OFF:
-            if( prev_state != MCE_DISPLAY_OFF )
-                mdy_display_state_enter_blank();
-            break;
-        default:
-            // NOP
-            break;
-        }
-    }
-    else {
-        /* Start of OFF -> ON transition: set non-zero brightness
-         *
-         * Note: These are done directly, book keeping is handled
-         *       after the resume and lipstick ipc have been done. */
-        switch( next_state ) {
-        case MCE_DISPLAY_DIM:
-            mdy_brightness_set_level(mdy_brightness_level_display_dim);
-            break;
-        case MCE_DISPLAY_ON:
-            mdy_brightness_set_level(mdy_brightness_level_display_on);
-            break;
-        default:
-        case MCE_DISPLAY_LPM_ON:
-        case MCE_DISPLAY_LPM_OFF:
-            mdy_brightness_set_level(1);
-            break;
-        case MCE_DISPLAY_OFF:
-            // NOP
-            break;
-        }
     }
 }
 
@@ -5796,7 +5744,7 @@ static gboolean mdy_dbus_handle_cabc_mode_set_req(DBusMessage *const msg)
         goto EXIT;
     }
 
-    mce_log(LL_DEVEL, "Received set CABC mode request from %s", 
+    mce_log(LL_DEVEL, "Received set CABC mode request from %s",
 	    mce_dbus_get_name_owner_ident(sender));
 
     /* Extract result */
@@ -6774,9 +6722,7 @@ const gchar *g_module_check_init(GModule *module)
 
     /* If display is on, set display brightness to minimal value */
     if (mdy_brightness_level_cached > 0) {
-        mdy_brightness_set_level(1);
-        mdy_brightness_level_cached = 1;
-        mdy_brightness_level_target = 1;
+        mdy_brightness_force_level(1);
 
         /* Ensure that internal display state is in sync with reality */
         display_is_on = TRUE;

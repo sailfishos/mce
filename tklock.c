@@ -48,6 +48,12 @@
 #include "mce-dbus.h"
 #include "mce-gconf.h"
 
+#ifdef ENABLE_WAKELOCKS
+# include "libwakelock.h"
+#endif
+
+#include "modules/doubletap.h"
+
 // FIXME: not used atm, need to implement something similar
 #ifdef DEAD_CODE
 /* Valid triggers for autorelock */
@@ -120,6 +126,10 @@ static void     tklock_datapipe_system_state_cb(gconstpointer data);
 static void     tklock_datapipe_device_lock_active_cb(gconstpointer data);
 static void     tklock_datapipe_lipstick_available_cb(gconstpointer data);
 static void     tklock_datapipe_display_state_cb(gconstpointer data);
+static void     tklock_datapipe_proximity_update(void);
+static gboolean tklock_datapipe_proximity_uncover_cb(gpointer data);
+static void     tklock_datapipe_proximity_uncover_cancel(void);
+static void     tklock_datapipe_proximity_uncover_schedule(void);
 static void     tklock_datapipe_proximity_sensor_cb(gconstpointer data);
 static void     tklock_datapipe_call_state_cb(gconstpointer data);
 static void     tklock_datapipe_alarm_ui_state_cb(gconstpointer data);
@@ -251,6 +261,12 @@ static guint tk_autolock_enabled_cb_id = 0;
 static gint doubletap_gesture_policy = DEFAULT_DOUBLETAP_GESTURE_POLICY;
 /** GConf callback ID for doubletap_gesture_policy */
 static guint doubletap_gesture_policy_cb_id = 0;
+
+/** Touchscreen double tap gesture mode */
+gint doubletap_enable_mode = DBLTAP_ENABLE_DEFAULT;
+/** GConf callback ID for doubletap_enable_mode */
+static guint doubletap_enable_mode_cb_id = 0;
+
 
 /** Flag: Disable automatic dim/blank from tklock */
 static gint tklock_blank_disable = FALSE;
@@ -494,29 +510,100 @@ EXIT:
     return;
 }
 
-/** Proximity state; assume not covered */
-static cover_state_t proximity_state = COVER_OPEN;
+/** Actual proximity state; assume not covered */
+static cover_state_t proximity_state_actual = COVER_OPEN;
 
-/** Change notifications for proximity_state
+/** Effective proximity state; assume not covered */
+static cover_state_t proximity_state_effective = COVER_OPEN;
+
+/** Timer id for delayed proximity uncovering */
+static guint tklock_datapipe_proximity_uncover_id = 0;
+
+/** Set effective proximity state from current sensor state
+ */
+static void tklock_datapipe_proximity_update(void)
+{
+    if( proximity_state_effective == proximity_state_actual )
+        goto EXIT;
+
+    mce_log(LL_DEVEL, "proximity_state_effective = %d -> %d",
+            proximity_state_effective, proximity_state_actual);
+
+    proximity_state_effective = proximity_state_actual;
+
+    tklock_uiexcept_rethink();
+    tklock_proxlock_rethink();
+    tklock_evctrl_rethink();
+
+EXIT:
+    return;
+}
+
+/** Timer callback for handling delayed proximity uncover
+ */
+static gboolean tklock_datapipe_proximity_uncover_cb(gpointer data)
+{
+    (void)data;
+
+    if( !tklock_datapipe_proximity_uncover_id )
+        goto EXIT;
+
+    tklock_datapipe_proximity_uncover_id = 0;
+
+    tklock_datapipe_proximity_update();
+
+    wakelock_unlock("mce_proximity_stm");
+
+EXIT:
+    return FALSE;
+}
+
+/** Cancel delayed proximity uncovering
+ */
+static void tklock_datapipe_proximity_uncover_cancel(void)
+{
+    if( tklock_datapipe_proximity_uncover_id ) {
+        g_source_remove(tklock_datapipe_proximity_uncover_id),
+            tklock_datapipe_proximity_uncover_id = 0;
+        wakelock_unlock("mce_proximity_stm");
+    }
+}
+
+/** Schedule delayed proximity uncovering
+ */
+static void tklock_datapipe_proximity_uncover_schedule(void)
+{
+    if( tklock_datapipe_proximity_uncover_id )
+        g_source_remove(tklock_datapipe_proximity_uncover_id);
+    else
+        wakelock_lock("mce_proximity_stm", -1);
+
+    tklock_datapipe_proximity_uncover_id =
+        g_timeout_add(500, tklock_datapipe_proximity_uncover_cb, 0);
+}
+
+/** Change notifications for proximity_state_actual
  */
 static void tklock_datapipe_proximity_sensor_cb(gconstpointer data)
 {
-    cover_state_t prev = proximity_state;
-    proximity_state = GPOINTER_TO_INT(data);
+    cover_state_t prev = proximity_state_actual;
+    proximity_state_actual = GPOINTER_TO_INT(data);
 
-    if( proximity_state == COVER_UNDEF )
-        proximity_state = COVER_OPEN;
+    if( proximity_state_actual == COVER_UNDEF )
+        proximity_state_actual = COVER_OPEN;
 
-    if( proximity_state == prev )
+    if( proximity_state_actual == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "proximity_state = %d -> %d", prev, proximity_state);
+    mce_log(LL_DEVEL, "proximity_state_actual = %d -> %d", prev, proximity_state_actual);
 
-    tklock_uiexcept_rethink();
-
-    tklock_proxlock_rethink();
-
-    tklock_evctrl_rethink();
+    if( proximity_state_actual == COVER_OPEN ) {
+        tklock_datapipe_proximity_uncover_schedule();
+    }
+    else {
+        tklock_datapipe_proximity_uncover_cancel();
+        tklock_datapipe_proximity_update();
+    }
 
 EXIT:
     return;
@@ -554,6 +641,27 @@ static void tklock_datapipe_call_state_cb(gconstpointer data)
     tklock_uiexcept_rethink();
 
     // volume keys during call
+    tklock_evctrl_rethink();
+EXIT:
+    return;
+}
+
+/** Music playback state; assume not playing */
+static bool music_playback = false;
+
+/** Change notifications for music_playback
+ */
+static void tklock_datapipe_music_playback_cb(gconstpointer data)
+{
+    bool prev = music_playback;
+    music_playback = GPOINTER_TO_INT(data);
+
+    if( music_playback == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "music_playback = %d -> %d", prev, music_playback);
+
+    // volume keys during playback
     tklock_evctrl_rethink();
 EXIT:
     return;
@@ -877,8 +985,31 @@ static void tklock_datapipe_touchscreen_cb(gconstpointer const data)
     if( ev->type != EV_MSC || ev->code != MSC_GESTURE || ev->value != 0x4 )
         goto EXIT;
 
-    if( system_state != MCE_STATE_USER )
+    switch( doubletap_enable_mode ) {
+    case DBLTAP_ENABLE_NEVER:
+        mce_log(LL_DEVEL, "[doubletap] ignored due to setting=never");
         goto EXIT;
+
+    case DBLTAP_ENABLE_ALWAYS:
+        break;
+
+    default:
+    case DBLTAP_ENABLE_NO_PROXIMITY:
+        if( proximity_state_actual != COVER_OPEN ) {
+            mce_log(LL_DEVEL, "[doubletap] ignored due to proximity");
+            goto EXIT;
+        }
+        break;
+    }
+
+    switch( system_state ) {
+    case MCE_STATE_USER:
+    case MCE_STATE_ACTDEAD:
+      break;
+    default:
+      mce_log(LL_DEVEL, "[doubletap] ignored due to system state");
+        goto EXIT;
+    }
 
     switch( display_state )
     {
@@ -893,6 +1024,7 @@ static void tklock_datapipe_touchscreen_cb(gconstpointer const data)
     case MCE_DISPLAY_DIM:
     case MCE_DISPLAY_POWER_UP:
     case MCE_DISPLAY_UNDEF:
+        mce_log(LL_DEVEL, "[doubletap] ignored due to display state");
         goto EXIT;
     }
 
@@ -1146,6 +1278,10 @@ static datapipe_binding_t tklock_datapipe_triggers[] =
     {
         .datapipe = &call_state_pipe,
         .output_cb = tklock_datapipe_call_state_cb,
+    },
+    {
+        .datapipe = &music_playback_pipe,
+        .output_cb = tklock_datapipe_music_playback_cb,
     },
     {
         .datapipe = &alarm_ui_state_pipe,
@@ -1513,8 +1649,8 @@ static void tklock_proxlock_rethink(void)
 
     bool was_off = false;
 
-    bool is_covered  = (proximity_state      == COVER_CLOSED);
-    bool was_covered = (prev_proximity_state == COVER_CLOSED);
+    bool is_covered  = (proximity_state_effective == COVER_CLOSED);
+    bool was_covered = (prev_proximity_state      == COVER_CLOSED);
 
     switch( prev_display_state ) {
     case MCE_DISPLAY_OFF:
@@ -1559,7 +1695,7 @@ static void tklock_proxlock_rethink(void)
         break;
     }
 
-    prev_proximity_state = proximity_state;
+    prev_proximity_state = proximity_state_effective;
     prev_display_state = display_state;
 
 EXIT:
@@ -1654,6 +1790,23 @@ static void tklock_uiexcept_rethink(void)
     bool        blank    = false;
     uiexctype_t active   = topmost_active(exdata.mask);
 
+    bool        proximity_blank = false;
+
+    /* Make sure "proximityblanking" state gets cleared if display
+     * changes to non-off state. */
+    if( display_prev != display_state ) {
+        switch( display_state ) {
+        case MCE_DISPLAY_OFF:
+        case MCE_DISPLAY_POWER_DOWN:
+            break;
+        default:
+            execute_datapipe(&proximity_blank_pipe,
+                             GINT_TO_POINTER(false),
+                             USE_INDATA, CACHE_INDATA);
+            break;
+        }
+    }
+
     if( !active ) {
         mce_log(LL_DEBUG, "UIEXC_NONE");
         goto EXIT;
@@ -1705,9 +1858,10 @@ static void tklock_uiexcept_rethink(void)
             mce_log(LL_DEBUG, "audio!=HANDSET; activate");
             activate = true;
         }
-        else if( proximity_state == COVER_CLOSED ) {
+        else if( proximity_state_effective == COVER_CLOSED ) {
             mce_log(LL_DEBUG, "proximity=COVERED; blank");
-            blank = true;
+            /* blanking due to proximity sensor */
+            blank = proximity_blank = true;
         }
         else {
             mce_log(LL_DEBUG, "proximity=NOT-COVERED; activate");
@@ -1735,7 +1889,16 @@ static void tklock_uiexcept_rethink(void)
 
     if( blank ) {
         if( display_state != MCE_DISPLAY_OFF ) {
-            mce_log(LL_DEBUG, "display blank");
+            /* expose blanking due to proximity via datapipe */
+            if( proximity_blank ) {
+                mce_log(LL_DEVEL, "display proximity blank");
+                execute_datapipe(&proximity_blank_pipe,
+                                 GINT_TO_POINTER(true),
+                                 USE_INDATA, CACHE_INDATA);
+            }
+            else {
+                mce_log(LL_DEBUG, "display blank");
+            }
             execute_datapipe(&display_state_req_pipe,
                              GINT_TO_POINTER(MCE_DISPLAY_OFF),
                              USE_INDATA, CACHE_INDATA);
@@ -1750,7 +1913,7 @@ static void tklock_uiexcept_rethink(void)
             /* Assume: dim/blank timer took over the blanking.
              * Disable this state machine until display gets
              * turned back on */
-          mce_log(LL_NOTICE, "AUTO UNBLANK DISABLED; display out of sync");
+            mce_log(LL_NOTICE, "AUTO UNBLANK DISABLED; display out of sync");
             exdata.insync = false;
 
             /* Disable state restore, unless we went out of
@@ -1763,7 +1926,7 @@ static void tklock_uiexcept_rethink(void)
         else if( !exdata.insync ) {
             mce_log(LL_NOTICE, "NOT UNBLANKING; still out of sync");
         }
-        else if( proximity_state == COVER_CLOSED ) {
+        else if( proximity_state_effective == COVER_CLOSED ) {
             mce_log(LL_NOTICE, "NOT UNBLANKING; proximity covered");
         }
         else if( display_state != MCE_DISPLAY_ON ) {
@@ -1772,6 +1935,14 @@ static void tklock_uiexcept_rethink(void)
                              GINT_TO_POINTER(MCE_DISPLAY_ON),
                              USE_INDATA, CACHE_INDATA);
         }
+    }
+
+    /* Make sure "proximityblanking" state gets cleared if display
+     * state is no longer controlled by this state machine. */
+    if( !exdata.insync ) {
+        execute_datapipe(&proximity_blank_pipe,
+                         GINT_TO_POINTER(false),
+                         USE_INDATA, CACHE_INDATA);
     }
 
 EXIT:
@@ -2079,7 +2250,7 @@ EXIT:
 static void tklock_evctrl_rethink(void)
 {
     /* state variable hooks:
-     *  proximity_state <-- tklock_datapipe_proximity_sensor_cb()
+     *  proximity_state_effective <-- tklock_datapipe_proximity_sensor_cb()
      *  display_state   <-- tklock_datapipe_display_state_cb()
      *  submode         <-- tklock_datapipe_submode_cb()
      *  call_state      <-- tklock_datapipe_call_state_cb()
@@ -2127,6 +2298,10 @@ static void tklock_evctrl_rethink(void)
       break;
     }
 
+    /* enable volume keys if music playing */
+    if( music_playback )
+	enable_kp = true;
+
     /* - - - - - - - - - - - - - - - - - - - *
      * touchscreen interrupts
      * - - - - - - - - - - - - - - - - - - - */
@@ -2166,7 +2341,7 @@ static void tklock_evctrl_rethink(void)
 #if 0 /* FIXME: check if proximity via sensord works better
        *        with up to date nemomobile image */
     /* proximity sensor must not be covered */
-    if( proximity_state != COVER_OPEN ) {
+    if( proximity_state_effective != COVER_OPEN ) {
         enable_dt = false;
     }
 #endif
@@ -2202,9 +2377,59 @@ static void tklock_evctrl_rethink(void)
      * - - - - - - - - - - - - - - - - - - - */
 
     mce_log(LL_DEBUG, "kp=%d dt=%d ts=%d", enable_kp, enable_dt, enable_ts);
+
     tklock_evctrl_set_kp_state(enable_kp);
     tklock_evctrl_set_dt_state(enable_dt);
     tklock_evctrl_set_ts_state(enable_ts);
+
+    /* - - - - - - - - - - - - - - - - - - - *
+     * in case emitting of touch events can't
+     * be controlled, we use evdev input grab
+     * to block ui from seeing them while the
+     * display is off
+     * - - - - - - - - - - - - - - - - - - - */
+
+    bool grab_ts = datapipe_get_gint(touch_grab_wanted_pipe);
+
+    switch( display_state ) {
+    default:
+    case MCE_DISPLAY_OFF:
+    case MCE_DISPLAY_POWER_DOWN:
+    case MCE_DISPLAY_UNDEF:
+    case MCE_DISPLAY_LPM_ON:
+    case MCE_DISPLAY_LPM_OFF:
+	// want grab
+	grab_ts = true;
+	break;
+
+    case MCE_DISPLAY_POWER_UP:
+	// keep grab state
+	break;
+
+    case MCE_DISPLAY_ON:
+    case MCE_DISPLAY_DIM:
+	// release grab
+	grab_ts = false;
+	break;
+    }
+
+    execute_datapipe(&touch_grab_wanted_pipe,
+		     GINT_TO_POINTER(grab_ts),
+		     USE_INDATA, CACHE_INDATA);
+
+    /* - - - - - - - - - - - - - - - - - - - *
+     * in case emitting of keypad events can't
+     * be controlled, we use evdev input grab
+     * to block ui from seeing them while the
+     * display is off
+     * - - - - - - - - - - - - - - - - - - - */
+
+    bool grab_kp = !enable_kp;
+
+    execute_datapipe(&keypad_grab_wanted_pipe,
+		     GINT_TO_POINTER(grab_kp),
+		     USE_INDATA, CACHE_INDATA);
+
     return;
 }
 
@@ -2369,6 +2594,12 @@ static void tklock_gconf_cb(GConfClient *const gcc, const guint id,
 #endif
 
     }
+    else if( id == doubletap_enable_mode_cb_id ) {
+        gint old = doubletap_enable_mode;
+        doubletap_enable_mode = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "doubletap_enable_mode: %d -> %d",
+                old, doubletap_enable_mode);
+    }
     else {
         mce_log(LL_WARN, "Spurious GConf value received; confused!");
     }
@@ -2413,6 +2644,14 @@ static void tklock_gconf_init(void)
         doubletap_gesture_policy = DEFAULT_DOUBLETAP_GESTURE_POLICY;
     }
 
+    /** Touchscreen double tap gesture mode */
+    mce_gconf_notifier_add(MCE_GCONF_DOUBLETAP_PATH,
+                           MCE_GCONF_DOUBLETAP_MODE,
+                           tklock_gconf_cb,
+                           &doubletap_enable_mode_cb_id);
+    mce_gconf_get_int(MCE_GCONF_DOUBLETAP_MODE, &doubletap_enable_mode);
+
+
     /* Touchscreen/keypad autolock enabled/disabled */
     mce_gconf_notifier_add(MCE_GCONF_LOCK_PATH,
                            MCE_GCONF_TK_DOUBLE_TAP_GESTURE_PATH,
@@ -2432,6 +2671,9 @@ static void tklock_gconf_quit(void)
 
     if( tklock_blank_disable_id )
         mce_gconf_notifier_remove(GINT_TO_POINTER(tklock_blank_disable_id), 0);
+
+    if( doubletap_enable_mode_cb_id )
+        mce_gconf_notifier_remove(GINT_TO_POINTER(doubletap_enable_mode_cb_id), 0);
 }
 
 /* ========================================================================= *
@@ -2801,7 +3043,6 @@ static gboolean tklock_dbus_mode_change_req_cb(DBusMessage *const msg)
     mce_log(LL_DEVEL, "Received tklock mode change request '%s' from %s",
 	    mode, mce_dbus_get_message_sender_ident(msg));
 
-
     int state = LOCK_UNDEF;
 
     if (!strcmp(MCE_TK_LOCKED, mode))
@@ -3004,6 +3245,7 @@ void mce_tklock_exit(void)
     tklock_proxlock_cancel();
     tklock_uiexcept_cancel();
     tklock_dtcalib_stop();
+    tklock_datapipe_proximity_uncover_cancel();
 
     // FIXME: check that final state is sane
 

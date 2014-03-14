@@ -106,6 +106,8 @@ bool mce_dbus_iter_at_end(DBusMessageIter *iter);
 bool mce_dbus_iter_get_object(DBusMessageIter *iter, const char **pval);
 bool mce_dbus_iter_get_string(DBusMessageIter *iter, const char **pval);
 bool mce_dbus_iter_get_bool(DBusMessageIter *iter, bool *pval);
+bool mce_dbus_iter_get_int32(DBusMessageIter *iter, dbus_int32_t *pval);
+bool mce_dbus_iter_get_uint32(DBusMessageIter *iter, dbus_uint32_t *val);
 bool mce_dbus_iter_get_array(DBusMessageIter *iter, DBusMessageIter *sub);
 bool mce_dbus_iter_get_struct(DBusMessageIter *iter, DBusMessageIter *sub);
 bool mce_dbus_iter_get_entry(DBusMessageIter *iter, DBusMessageIter *sub);

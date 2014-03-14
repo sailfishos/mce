@@ -2269,6 +2269,33 @@ mce_dbus_iter_get_bool(DBusMessageIter *iter, bool *pval)
     return res;
 }
 
+/** Get int32 from dbus message iterator
+ *
+ * @param iter dbus message iterator
+ * @param pval where to store the result
+ *
+ * @return true if *pval was modified, false otherwise
+ */
+bool
+mce_dbus_iter_get_int32(DBusMessageIter *iter, dbus_int32_t *pval)
+{
+    return mce_dbus_iter_get_basic(iter, pval, DBUS_TYPE_INT32);
+}
+
+/** Get uint32 from dbus message iterator
+ *
+ * @param iter dbus message iterator
+ * @param pval where to store the result
+ *
+ * @return true if *pval was modified, false otherwise
+ */
+bool
+mce_dbus_iter_get_uint32(DBusMessageIter *iter, dbus_uint32_t *pval)
+{
+    return mce_dbus_iter_get_basic(iter, pval, DBUS_TYPE_UINT32);
+}
+
+
 /** Get sub iterator from dbus message iterator
  *
  * @param iter dbus message iterator

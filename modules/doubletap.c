@@ -25,6 +25,9 @@ static guint dbltap_mode_gconf_id = 0;
 /** Latest reported proximity sensor state */
 static cover_state_t dbltap_ps_state = COVER_UNDEF;
 
+/** Latest reported proximity blanking */
+static bool dbltap_ps_blank = false;
+
 /** Path to doubletap wakeup control file */
 static char *dbltap_ctrl_path = 0;
 
@@ -34,24 +37,58 @@ static char *dbltap_enable_val = 0;
 /** String to write when disabling double tap wakeups */
 static char *dbltap_disable_val = 0;
 
+/** String to write when disabling double tap wakeups,
+ *  without powering off the touch detection [optional]
+ */
+static char *dbltap_nosleep_val = 0;
+
+typedef enum {
+        DT_UNDEF = -1,
+        DT_DISABLED,
+        DT_ENABLED,
+        DT_DISABLED_NOSLEEP,
+} dt_state_t;
+
+static const char * const dt_state_name[] =
+{
+        "disabled",
+        "enabled",
+        "disabled-no-sleep",
+};
+
 /** Enable/disable doubletap wakeups
  *
- * @param enable true to enable wakeups, false to disable
+ * @param state disable/enable/disable-without-powering-off
  */
-static void dbltap_enable(bool enable)
+static void dbltap_set_state(dt_state_t state)
 {
-        static int was_enabled = -1;
+        static dt_state_t prev_state = DT_UNDEF;
 
-        if( was_enabled == enable )
+        if( prev_state == state )
                 goto EXIT;
 
-        was_enabled = enable;
+        prev_state = state;
 
-        mce_log(LL_DEBUG, "%s double tap wakeups",
-                enable ? "enable" : "disable");
+        mce_log(LL_DEBUG, "double tap wakeups: %s", dt_state_name[state]);
 
-        const char *val = enable ? dbltap_enable_val : dbltap_disable_val;
-        mce_write_string_to_file(dbltap_ctrl_path, val);
+        const char *val = 0;
+
+        switch( state ) {
+        case DT_DISABLED:
+                val = dbltap_disable_val;
+                break;
+        case DT_ENABLED:
+                val = dbltap_enable_val;
+                break;
+        case DT_DISABLED_NOSLEEP:
+                val = dbltap_nosleep_val ?: dbltap_disable_val;
+                break;
+        default:
+                break;
+        }
+
+        if( val )
+                mce_write_string_to_file(dbltap_ctrl_path, val);
 EXIT:
         return;
 }
@@ -60,12 +97,12 @@ EXIT:
  */
 static void dbltap_rethink(void)
 {
-        bool enable = false;
+        dt_state_t state = DT_DISABLED;
 
         switch( dbltap_mode ) {
         default:
         case DBLTAP_ENABLE_ALWAYS:
-                enable = true;
+                state = DT_ENABLED;
                 break;
 
         case DBLTAP_ENABLE_NEVER:
@@ -74,17 +111,19 @@ static void dbltap_rethink(void)
         case DBLTAP_ENABLE_NO_PROXIMITY:
                 switch( dbltap_ps_state ) {
                 case COVER_CLOSED:
+                        if( dbltap_ps_blank )
+                                state = DT_DISABLED_NOSLEEP;
                         break;
 
                 default:
                 case COVER_OPEN:
                 case COVER_UNDEF:
-                        enable = true;
+                        state = DT_ENABLED;
                         break;
                 }
                 break;
         }
-        dbltap_enable(enable);
+        dbltap_set_state(state);
 }
 
 /** Set doubletap wakeup policy
@@ -109,6 +148,20 @@ static void dbltap_proximity_trigger(gconstpointer data)
 
         if( dbltap_ps_state != state ) {
                 dbltap_ps_state = state;
+                dbltap_rethink();
+        }
+}
+
+/** Proximity blank changed callback
+ *
+ * @param data proximity blank as void pointer
+ */
+static void dbltap_proximity_blank_trigger(gconstpointer data)
+{
+        cover_state_t state = GPOINTER_TO_INT(data);
+
+        if( dbltap_ps_blank != state ) {
+                dbltap_ps_blank = state;
                 dbltap_rethink();
         }
 }
@@ -164,6 +217,10 @@ const gchar *g_module_check_init(GModule *module)
                                                  MCE_CONF_DOUBLETAP_DISABLE_VALUE,
                                                  "0");
 
+        dbltap_nosleep_val = mce_conf_get_string(MCE_CONF_DOUBLETAP_GROUP,
+                                                 MCE_CONF_DOUBLETAP_DISABLE_NO_SLEEP_VALUE,
+                                                 NULL);
+
         if( !dbltap_ctrl_path || !dbltap_enable_val || !dbltap_disable_val ) {
                 mce_log(LL_NOTICE, "no double tap wakeup controls defined");
                 goto EXIT;
@@ -185,6 +242,10 @@ const gchar *g_module_check_init(GModule *module)
         append_output_trigger_to_datapipe(&proximity_sensor_pipe,
                                           dbltap_proximity_trigger);
 
+        dbltap_ps_blank = datapipe_get_gint(proximity_blank_pipe);
+        append_output_trigger_to_datapipe(&proximity_blank_pipe,
+                                          dbltap_proximity_blank_trigger);
+
         /* enable/disable double tap wakeups based on initial conditions */
         dbltap_rethink();
 EXIT:
@@ -203,11 +264,14 @@ void g_module_unload(GModule *module)
         /* Remove triggers/filters from datapipes */
         remove_output_trigger_from_datapipe(&proximity_sensor_pipe,
                                             dbltap_proximity_trigger);
+        remove_output_trigger_from_datapipe(&proximity_blank_pipe,
+                                            dbltap_proximity_blank_trigger);
 
         /* Free config strings */
         g_free(dbltap_ctrl_path);
         g_free(dbltap_enable_val);
         g_free(dbltap_disable_val);
+        g_free(dbltap_nosleep_val);
 
         return;
 }
