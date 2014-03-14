@@ -1,3 +1,14 @@
+mce (1.24.0) unstable; urgency=low
+
+  * [mce] Grab touch input while display is off
+  * [mce] Grab volume key input while display is off
+  * [mce] Ungrab volume keys when music playback is active
+  * [mce] Delay automatic unblanking after proximity sensor is uncovered
+  * [mce] Leave touch panel active during in-call proximity blanking
+  * [mce] Make doubletap filtering obey the doubletap wakeup setting
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 14 Mar 2014 11:04:43 +0200
+
 mce (1.23.9) unstable; urgency=low
 
   * [mce] Fix file descriptor leak
