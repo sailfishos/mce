@@ -1,3 +1,9 @@
+mce (1.24.1) unstable; urgency=low
+
+  * [mce] Handle io watch error conditions gracefully
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 17 Mar 2014 14:56:45 +0200
+
 mce (1.24.0) unstable; urgency=low
 
   * [mce] Grab touch input while display is off
