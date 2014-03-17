@@ -424,6 +424,47 @@ static void submode_trigger(gconstpointer data)
 	old_submode = submode;
 }
 
+/** List of active io monitors for switches */
+static GSList *switch_iomon_list = NULL;
+
+/** I/O monitor delete callback
+ *
+ * @param iomon io monitor that is about to get deleted
+ */
+static void mce_switches_rem_iomon_cb(gconstpointer iomon)
+{
+	switch_iomon_list = g_slist_remove(switch_iomon_list, iomon);
+}
+
+/** Helper for adding io monitor for switch device
+ *
+ * @param path     device path
+ * @param input_cb input handler callback
+ *
+ * @return io monitor id, or NULL in case of errors
+ */
+static gconstpointer mce_switches_add_iomon(const char *path, iomon_cb input_cb)
+{
+	gconstpointer iomon =
+		mce_register_io_monitor_string(-1, path,
+					       MCE_IO_ERROR_POLICY_IGNORE,
+					       TRUE,
+					       input_cb,
+					       mce_switches_rem_iomon_cb);
+	if( iomon )
+		switch_iomon_list = g_slist_prepend(switch_iomon_list,
+						    (gpointer)iomon);
+
+	return iomon;
+}
+
+/** Unregister all active io monitors for switches
+ */
+static void mce_switches_rem_iomon_all(void)
+{
+	mce_unregister_io_monitor_list(switch_iomon_list);
+}
+
 /**
  * Init function for the switches component
  *
@@ -447,73 +488,49 @@ gboolean mce_switches_init(void)
 			       USE_INDATA, CACHE_INDATA);
 
 	/* Register I/O monitors */
-	// FIXME: error handling?
 	lockkey_iomon_id =
-		mce_register_io_monitor_string(-1,
-					       MCE_FLICKER_KEY_STATE_PATH,
-					       MCE_IO_ERROR_POLICY_IGNORE,
-					       G_IO_PRI | G_IO_ERR,
-					       TRUE, lockkey_iomon_cb);
+		mce_switches_add_iomon(MCE_FLICKER_KEY_STATE_PATH,
+				       lockkey_iomon_cb);
+
 	kbd_slide_iomon_id =
-		mce_register_io_monitor_string(-1,
-					       MCE_KBD_SLIDE_STATE_PATH,
-					       MCE_IO_ERROR_POLICY_IGNORE,
-					       G_IO_PRI | G_IO_ERR,
-					       TRUE, kbd_slide_iomon_cb);
+		mce_switches_add_iomon(MCE_KBD_SLIDE_STATE_PATH,
+				       kbd_slide_iomon_cb);
+
 	cam_focus_iomon_id =
-		mce_register_io_monitor_string(-1,
-					       MCE_CAM_FOCUS_STATE_PATH,
-					       MCE_IO_ERROR_POLICY_IGNORE,
-					       G_IO_PRI | G_IO_ERR,
-					       TRUE, generic_activity_iomon_cb);
+		mce_switches_add_iomon(MCE_CAM_FOCUS_STATE_PATH,
+				       generic_activity_iomon_cb);
+
 	cam_launch_iomon_id =
-		mce_register_io_monitor_string(-1,
-					       MCE_CAM_LAUNCH_STATE_PATH,
-					       MCE_IO_ERROR_POLICY_IGNORE,
-					       G_IO_PRI | G_IO_ERR,
-					       TRUE, camera_launch_button_iomon_cb);
+		mce_switches_add_iomon(MCE_CAM_LAUNCH_STATE_PATH,
+				       camera_launch_button_iomon_cb);
+
 	lid_cover_iomon_id =
-		mce_register_io_monitor_string(-1,
-					       MCE_LID_COVER_STATE_PATH,
-					       MCE_IO_ERROR_POLICY_IGNORE,
-					       G_IO_PRI | G_IO_ERR,
-					       TRUE, lid_cover_iomon_cb);
+		mce_switches_add_iomon(MCE_LID_COVER_STATE_PATH,
+				       lid_cover_iomon_cb);
+
 	proximity_sensor_iomon_id =
-		mce_register_io_monitor_string(-1,
-					       MCE_PROXIMITY_SENSOR_STATE_PATH,
-					       MCE_IO_ERROR_POLICY_IGNORE,
-					       G_IO_PRI | G_IO_ERR,
-					       TRUE, proximity_sensor_iomon_cb);
+		mce_switches_add_iomon(MCE_PROXIMITY_SENSOR_STATE_PATH,
+				       proximity_sensor_iomon_cb);
+
 	musb_omap3_usb_cable_iomon_id =
-		mce_register_io_monitor_string(-1,
-					       MCE_MUSB_OMAP3_USB_CABLE_STATE_PATH,
-					       MCE_IO_ERROR_POLICY_IGNORE,
-					       G_IO_PRI | G_IO_ERR,
-					       TRUE, usb_cable_iomon_cb);
+		mce_switches_add_iomon(MCE_MUSB_OMAP3_USB_CABLE_STATE_PATH,
+				       usb_cable_iomon_cb);
+
 	lens_cover_iomon_id =
-		mce_register_io_monitor_string(-1,
-					       MCE_LENS_COVER_STATE_PATH,
-					       MCE_IO_ERROR_POLICY_IGNORE,
-					       G_IO_PRI | G_IO_ERR,
-					       TRUE, lens_cover_iomon_cb);
+		mce_switches_add_iomon(MCE_LENS_COVER_STATE_PATH,
+				       lens_cover_iomon_cb);
+
 	mmc0_cover_iomon_id =
-		mce_register_io_monitor_string(-1,
-					       MCE_MMC0_COVER_STATE_PATH,
-					       MCE_IO_ERROR_POLICY_IGNORE,
-					       G_IO_PRI | G_IO_ERR,
-					       TRUE, generic_activity_iomon_cb);
+		mce_switches_add_iomon(MCE_MMC0_COVER_STATE_PATH,
+				       generic_activity_iomon_cb);
+
 	mmc_cover_iomon_id =
-		mce_register_io_monitor_string(-1,
-					       MCE_MMC_COVER_STATE_PATH,
-					       MCE_IO_ERROR_POLICY_IGNORE,
-					       G_IO_PRI | G_IO_ERR,
-					       TRUE, generic_activity_iomon_cb);
+		mce_switches_add_iomon(MCE_MMC_COVER_STATE_PATH,
+				       generic_activity_iomon_cb);
+
 	bat_cover_iomon_id =
-		mce_register_io_monitor_string(-1,
-					       MCE_BATTERY_COVER_STATE_PATH,
-					       MCE_IO_ERROR_POLICY_IGNORE,
-					       G_IO_PRI | G_IO_ERR,
-					       TRUE, generic_activity_iomon_cb);
+		mce_switches_add_iomon(MCE_BATTERY_COVER_STATE_PATH,
+				       generic_activity_iomon_cb);
 
 	update_proximity_monitor();
 
@@ -547,17 +564,7 @@ void mce_switches_exit(void)
 					   call_state_trigger);
 
 	/* Unregister I/O monitors */
-	mce_unregister_io_monitor(bat_cover_iomon_id);
-	mce_unregister_io_monitor(mmc_cover_iomon_id);
-	mce_unregister_io_monitor(mmc0_cover_iomon_id);
-	mce_unregister_io_monitor(lens_cover_iomon_id);
-	mce_unregister_io_monitor(musb_omap3_usb_cable_iomon_id);
-	mce_unregister_io_monitor(proximity_sensor_iomon_id);
-	mce_unregister_io_monitor(lid_cover_iomon_id);
-	mce_unregister_io_monitor(cam_launch_iomon_id);
-	mce_unregister_io_monitor(cam_focus_iomon_id);
-	mce_unregister_io_monitor(kbd_slide_iomon_id);
-	mce_unregister_io_monitor(lockkey_iomon_id);
+	mce_switches_rem_iomon_all();
 
 	return;
 }

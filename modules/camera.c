@@ -69,6 +69,26 @@ static gconstpointer camera_active_state_iomon_id = NULL;
 /** ID for the camera pop-out state I/O monitor */
 static gconstpointer camera_popout_state_iomon_id = NULL;
 
+/** Camera pop-out state I/O monitor deleted callback
+ *
+ * @param iomon io monitor that is about to get deleted
+ */
+static void camera_popout_state_iomon_delete_cb(gconstpointer iomon)
+{
+	if( iomon == camera_popout_state_iomon_id )
+		camera_popout_state_iomon_id = 0;
+}
+
+/** Camera active state I/O monitor deleted callback
+ *
+ * @param iomon io monitor that is about to get deleted
+ */
+static void camera_active_state_iomon_delete_cb(gconstpointer iomon)
+{
+	if( iomon == camera_active_state_iomon_id )
+		camera_active_state_iomon_id = 0;
+}
+
 /**
  * I/O monitor callback for the camera active state
  *
@@ -76,7 +96,7 @@ static gconstpointer camera_popout_state_iomon_id = NULL;
  * @param bytes_read Unused
  * @return Always returns FALSE to return remaining chunks (if any)
  */
-static gboolean camera_active_state_iomon_cb(gpointer data, gsize bytes_read)
+static gboolean camera_active_state_iomon_input_cb(gpointer data, gsize bytes_read)
 {
 	(void)bytes_read;
 
@@ -100,7 +120,7 @@ static gboolean camera_active_state_iomon_cb(gpointer data, gsize bytes_read)
  * @param bytes_read Unused
  * @return Always returns FALSE to return remaining chunks (if any)
  */
-static gboolean camera_popout_state_iomon_cb(gpointer data, gsize bytes_read)
+static gboolean camera_popout_state_iomon_input_cb(gpointer data, gsize bytes_read)
 {
 	(void)bytes_read;
 
@@ -143,22 +163,19 @@ const gchar *g_module_check_init(GModule *module)
 					  DEFAULT_CAMERA_POPOUT_UNLOCK);
 
 	/* Register I/O monitors */
-	// FIXME: error handling?
 	camera_active_state_iomon_id =
 		mce_register_io_monitor_string(-1, CAMERA_ACTIVE_STATE_PATH,
 					       MCE_IO_ERROR_POLICY_IGNORE,
-					       G_IO_PRI | G_IO_ERR,
 					       TRUE,
-					       camera_active_state_iomon_cb);
+					       camera_active_state_iomon_input_cb,
+					       camera_active_state_iomon_delete_cb);
 
 	camera_popout_state_iomon_id =
 		mce_register_io_monitor_string(-1, CAMERA_POPOUT_STATE_PATH,
 					       MCE_IO_ERROR_POLICY_IGNORE,
-					       G_IO_PRI | G_IO_ERR,
 					       TRUE,
-					       camera_popout_state_iomon_cb);
-
-//EXIT:
+					       camera_popout_state_iomon_input_cb,
+					       camera_popout_state_iomon_delete_cb);
 	return NULL;
 }
 

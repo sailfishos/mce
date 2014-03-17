@@ -130,6 +130,16 @@ static gboolean proximity_monitor_active = FALSE;
 /** ID for the proximity sensor I/O monitor */
 static gconstpointer proximity_sensor_iomon_id = NULL;
 
+/** Callback for handling proximity sensor I/O monitor removal
+ *
+ * @param iomon I/O monitor that is about to get deleted
+ */
+static void proximity_sensor_iomon_delete_cb(gconstpointer iomon)
+{
+	if( iomon == proximity_sensor_iomon_id )
+		proximity_sensor_iomon_id = 0;
+}
+
 /** Path to the proximity sensor device file entry */
 static const gchar *ps_device_path = NULL;
 /** Path to the proximity sensor enable/disable file entry */
@@ -642,6 +652,7 @@ static void enable_proximity_monitor(void)
 	default:
 		break;
 	}
+
 	if( !proximity_sensor_iomon_id ) {
 		/* enable first, then hook and update current value */
 		enable_proximity_sensor();
@@ -650,14 +661,27 @@ static void enable_proximity_monitor(void)
 		/* FIXME: is code forking the only way to do these? */
 		switch (get_ps_type()) {
 		case PS_TYPE_AVAGO:
-			if ((proximity_sensor_iomon_id = mce_register_io_monitor_chunk(-1, ps_device_path, MCE_IO_ERROR_POLICY_WARN, G_IO_IN | G_IO_PRI | G_IO_ERR, FALSE, ps_avago_iomon_cb, sizeof (struct avago_ps))) == NULL)
+			proximity_sensor_iomon_id =
+				mce_register_io_monitor_chunk(-1, ps_device_path,
+							      MCE_IO_ERROR_POLICY_WARN,
+							      FALSE,
+							      ps_avago_iomon_cb,
+							      proximity_sensor_iomon_delete_cb,
+							      sizeof (struct avago_ps));
+			if( !proximity_sensor_iomon_id )
 				goto EXIT;
 
 			update_proximity_sensor_state_avago();
 			break;
 
 		case PS_TYPE_DIPRO:
-			if ((proximity_sensor_iomon_id = mce_register_io_monitor_chunk(-1, ps_device_path, MCE_IO_ERROR_POLICY_WARN, G_IO_IN | G_IO_PRI | G_IO_ERR, FALSE, ps_dipro_iomon_cb, sizeof (struct dipro_ps))) == NULL)
+			proximity_sensor_iomon_id =
+				mce_register_io_monitor_chunk(-1, ps_device_path,
+							      MCE_IO_ERROR_POLICY_WARN,
+							      FALSE, ps_dipro_iomon_cb,
+							      proximity_sensor_iomon_delete_cb,
+							      sizeof (struct dipro_ps));
+			if( !proximity_sensor_iomon_id )
 				goto EXIT;
 
 			update_proximity_sensor_state_dipro();

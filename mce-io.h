@@ -73,56 +73,94 @@ typedef struct {
 
 /** Function pointer for I/O monitor callback */
 typedef gboolean (*iomon_cb)(gpointer data, gsize bytes_read);
+
 /** Function pointer for I/O monitor error callback */
 typedef void (*iomon_err_cb)(gpointer data, GIOCondition condition);
 
+typedef void (*iomon_delete_cb)(gconstpointer io_monitor);
+
+
+/* iomon functions */
+
+gconstpointer mce_register_io_monitor_string(const gint fd,
+					     const gchar *const file,
+					     error_policy_t error_policy,
+					     gboolean rewind_policy,
+					     iomon_cb callback,
+					     iomon_delete_cb delete_cb);
+
+gconstpointer mce_register_io_monitor_chunk(const gint fd,
+					    const gchar *const file,
+					    error_policy_t error_policy,
+					    gboolean rewind_policy,
+					    iomon_cb callback,
+					    iomon_delete_cb delete_cb,
+					    gulong chunk_size);
+
+void mce_unregister_io_monitor(gconstpointer io_monitor);
+
+void mce_unregister_io_monitor_list(GSList *list);
+
+void mce_unregister_io_monitor_at_path(const char *path);
+
+
+void mce_suspend_io_monitor(gconstpointer io_monitor);
+
+void mce_resume_io_monitor(gconstpointer io_monitor);
+
+
+const gchar *mce_get_io_monitor_name(gconstpointer io_monitor);
+
+int mce_get_io_monitor_fd(gconstpointer io_monitor);
+
+
+/* output_state_t funtions */
+
+void mce_close_output(output_state_t *output);
+
+gboolean mce_write_number_string_to_file(output_state_t *output, const gulong number);
+
+
+/* misc utils */
+
 gboolean mce_close_file(const gchar *const file, FILE **fp);
+
 gboolean mce_read_chunk_from_file(const gchar *const file, void **data,
 				  gssize *len, int flags);
+
 gboolean mce_read_string_from_file(const gchar *const file, gchar **string);
+
 gboolean mce_read_number_string_from_file(const gchar *const file,
 					  gulong *number, FILE **fp,
 					  gboolean rewind,
 					  gboolean close_on_exit);
+
 gboolean mce_write_string_to_file(const gchar *const file,
 				  const gchar *const string);
-void mce_close_output(output_state_t *output);
-gboolean mce_write_number_string_to_file(output_state_t *output, const gulong number);
+
 gboolean mce_write_number_string_to_file_atomic(const gchar *const file,
 						const gulong number);
-void mce_suspend_io_monitor(gconstpointer io_monitor);
-void mce_resume_io_monitor(gconstpointer io_monitor);
-gconstpointer mce_register_io_monitor_string(const gint fd,
-					     const gchar *const file,
-					     error_policy_t error_policy,
-					     GIOCondition monitored_conditions,
-					     gboolean rewind_policy,
-					     iomon_cb callback);
-gconstpointer mce_register_io_monitor_chunk(const gint fd,
-					    const gchar *const file,
-					    error_policy_t error_policy,
-					    GIOCondition monitored_conditions,
-					    gboolean rewind_policy,
-					    iomon_cb callback,
-					    gulong chunk_size);
-void mce_set_io_monitor_err_cb(gconstpointer io_monitor, iomon_err_cb err_cb);
-void mce_unregister_io_monitor(gconstpointer io_monitor);
-const gchar *mce_get_io_monitor_name(gconstpointer io_monitor);
-int mce_get_io_monitor_fd(gconstpointer io_monitor);
+
 
 gboolean mce_are_settings_locked(void);
+
 gboolean mce_unlock_settings(void);
 
 void *mce_io_load_file(const char *path, size_t *psize);
+
 void *mce_io_load_file_until_eof(const char *path, size_t *psize);
+
 gboolean mce_io_save_file(const char *path,
 			  const void *data, size_t size,
 			  mode_t mode);
+
 gboolean mce_io_save_to_existing_file(const char *path,
 				      const void *data, size_t size);
+
 gboolean mce_io_save_file_atomic(const char *path,
 				 const void *data, size_t size,
 				 mode_t mode, gboolean keep_backup);
+
 gboolean mce_io_update_file_atomic(const char *path,
 				   const void *data, size_t size,
 				   mode_t mode, gboolean keep_backup);

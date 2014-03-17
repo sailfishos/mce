@@ -525,7 +525,9 @@ static gboolean mce_init_signal_pipe(void)
 	if( (channel = g_io_channel_unix_new(signal_pipe[0])) == 0 )
 		goto EXIT;
 
-	if( !g_io_add_watch(channel, G_IO_IN, mce_rx_signal_cb, 0) )
+	if( !g_io_add_watch(channel,
+			    G_IO_IN | G_IO_ERR | G_IO_HUP | G_IO_NVAL,
+			    mce_rx_signal_cb, 0) )
 		goto EXIT;
 
 	result = TRUE;
@@ -883,9 +885,6 @@ int main(int argc, char **argv)
 	/* Daemonize if requested */
 	if (daemonflag == TRUE)
 		daemonize();
-
-	/* Initialise GType system */
-	g_type_init();
 
 	/* Register a mainloop */
 	mainloop = g_main_loop_new(NULL, FALSE);

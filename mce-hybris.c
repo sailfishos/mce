@@ -96,6 +96,11 @@ static gboolean evepipe_recv_cb(GIOChannel *channel,
 
   evepipe_t eve[64];
 
+  if( condition & (G_IO_ERR | G_IO_HUP | G_IO_NVAL) )
+  {
+    keep_going = FALSE;
+  }
+
   int rc = read(evepipe_fd[0], eve, sizeof eve);
 
   if( rc < 0 ) {
@@ -227,7 +232,9 @@ static bool evepipe_init(void)
     goto EXIT;
   }
 
-  evepipe_id = g_io_add_watch(chn, G_IO_IN, evepipe_recv_cb, 0);
+  evepipe_id = g_io_add_watch(chn,
+			      G_IO_IN | G_IO_ERR | G_IO_HUP | G_IO_NVAL,
+			      evepipe_recv_cb, 0);
 
   if( !evepipe_id ) {
     goto EXIT;

@@ -3219,17 +3219,20 @@ EXIT:
  */
 #ifdef ENABLE_WAKELOCKS
 static gboolean mdy_waitfb_event_cb(GIOChannel *chn,
-                                  GIOCondition cnd,
-                                  gpointer aptr)
+				    GIOCondition cnd,
+				    gpointer aptr)
 {
-    // we just want the wakeup
-    (void)chn; (void)cnd;
+    (void)chn;
 
     waitfb_t *self = aptr;
     gboolean  keep = FALSE;
 
     if( !self->pipe_id )
         goto EXIT;
+
+    if( cnd & (G_IO_ERR | G_IO_HUP | G_IO_NVAL) ) {
+	goto EXIT;
+    }
 
     char tmp[64];
     int fd = g_io_channel_unix_get_fd(chn);
@@ -3359,7 +3362,9 @@ static gboolean mdy_waitfb_thread_start(waitfb_t *self)
     if( !(chn = g_io_channel_unix_new(pfd[0])) ) {
         goto EXIT;
     }
-    self->pipe_id = g_io_add_watch(chn, G_IO_IN, mdy_waitfb_event_cb, self);
+    self->pipe_id = g_io_add_watch(chn,
+				   G_IO_IN | G_IO_ERR | G_IO_HUP | G_IO_NVAL,
+				   mdy_waitfb_event_cb, self);
     if( !self->pipe_id ) {
         goto EXIT;
     }

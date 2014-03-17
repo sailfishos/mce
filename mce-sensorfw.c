@@ -103,9 +103,6 @@ static void ps_notify(bool covered, input_source_t srce);
 static gboolean
 mce_sensorfw_evdev_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
 {
-	// we just want the wakeup
-	(void)cnd;
-
 	gboolean  keep = FALSE;
 	int      *id   = aptr;
 	int       fd   = g_io_channel_unix_get_fd(chn);
@@ -114,6 +111,10 @@ mce_sensorfw_evdev_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
 	int       rc;
 
 	struct input_event eve[256];
+
+	if( cnd & (G_IO_ERR | G_IO_HUP | G_IO_NVAL) ) {
+		goto EXIT;
+	}
 
 	/* wakelock must be taken before reading the data */
 	wakelock_lock("mce_input_handler", -1);
@@ -187,7 +188,9 @@ mce_sensorfw_start_iomon(int fd, GIOFunc cb, void *aptr)
 		goto EXIT;
 	}
 
-	if( !(id = g_io_add_watch(chn, G_IO_IN, cb, aptr)) )
+	if( !(id = g_io_add_watch(chn,
+				  G_IO_IN | G_IO_ERR | G_IO_HUP | G_IO_NVAL,
+				  cb, aptr)) )
 		goto EXIT;
 
 	g_io_channel_set_close_on_unref(chn, TRUE), fd = -1;
@@ -260,7 +263,9 @@ mce_sensorfw_add_io_watch(int sessionid, GIOFunc datafunc)
 		goto EXIT;
 	}
 
-	if( !(wid = g_io_add_watch(chn, G_IO_IN, datafunc, 0)) ) {
+	if( !(wid = g_io_add_watch(chn,
+				   G_IO_IN | G_IO_ERR | G_IO_HUP | G_IO_NVAL,
+				   datafunc, 0)) ) {
 		goto EXIT;
 	}
 
@@ -700,7 +705,7 @@ als_input_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
 {
 	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
 
-	(void)cnd; (void)aptr; // unused
+	(void)aptr; // unused
 
 	gboolean keep_going = FALSE;
 	uint32_t count = 0;
@@ -708,6 +713,10 @@ als_input_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
 	int fd;
 	int rc;
 	als_data_t data;
+
+	if( cnd & (G_IO_ERR | G_IO_HUP | G_IO_NVAL) ) {
+		goto EXIT;
+	}
 
 	memset(&data, 0, sizeof data);
 
@@ -1113,7 +1122,7 @@ ps_input_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
 {
 	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
 
-	(void)cnd; (void)aptr; // unused
+	(void)aptr; // unused
 
 	gboolean keep_going = FALSE;
 	uint32_t count = 0;
@@ -1121,6 +1130,10 @@ ps_input_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
 	int fd;
 	int rc;
 	ps_data_t data;
+
+	if( cnd & (G_IO_ERR | G_IO_HUP | G_IO_NVAL) ) {
+		goto EXIT;
+	}
 
 	memset(&data, 0, sizeof data);
 
@@ -1534,7 +1547,7 @@ orient_input_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
 {
 	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
 
-	(void)cnd; (void)aptr; // unused
+	(void)aptr; // unused
 
 	gboolean keep_going = FALSE;
 	uint32_t count = 0;
@@ -1542,6 +1555,10 @@ orient_input_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
 	int fd;
 	int rc;
 	orient_data_t data;
+
+	if( cnd & (G_IO_ERR | G_IO_HUP | G_IO_NVAL) ) {
+		goto EXIT;
+	}
 
 	memset(&data, 0, sizeof data);
 
