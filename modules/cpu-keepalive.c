@@ -74,12 +74,16 @@ static time_t wakeup_timeout  = 0;
 /** Timer for releasing cpu-keepalive wakelock */
 static guint timer_id = 0;
 
-/** Maximum delay between MCE_CPU_KEEPALIVE_START_REQ method calls */
+/** Suggested delay between MCE_CPU_KEEPALIVE_START_REQ method calls [s] */
 #ifdef ENABLE_WAKELOCKS
-# define MCE_CPU_KEEPALIVE_PERIOD_SECONDS 60         // 1 minute
+# define MCE_CPU_KEEPALIVE_SUGGESTED_PERIOD 60         // 1 minute
 #else
-# define MCE_CPU_KEEPALIVE_PERIOD_SECONDS (60*60*24) // 1 day
+# define MCE_CPU_KEEPALIVE_SUGGESTED_PERIOD (60*60*24) // 1 day
 #endif
+
+/** Maximum delay between MCE_CPU_KEEPALIVE_START_REQ method calls [s] */
+# define MCE_CPU_KEEPALIVE_MAXIMUM_PERIOD \
+   (MCE_CPU_KEEPALIVE_SUGGESTED_PERIOD + 15)
 
 /** Maximum delay between rtc wakeup and the 1st keep alive request */
 #define MCE_RTC_WAKEUP_1ST_TIMEOUT_SECONDS   2
@@ -708,7 +712,7 @@ cpu_keepalive_start(const gchar *dbus_name, const gchar *context)
 {
   client_t *client = cpu_keepalive_add_client(dbus_name);
 
-  time_t when = cpu_keepalive_get_time() + MCE_CPU_KEEPALIVE_PERIOD_SECONDS;
+  time_t when = cpu_keepalive_get_time() + MCE_CPU_KEEPALIVE_MAXIMUM_PERIOD;
 
   client_clear_timeout(client, CONTEXT_INITIAL);
   client_update_timeout(client, context, when);
@@ -817,7 +821,7 @@ cpu_keepalive_period_cb(DBusMessage *const msg)
 
   cpu_keepalive_register(sender, context);
 
-  success = cpu_keepalive_reply_int(msg, MCE_CPU_KEEPALIVE_PERIOD_SECONDS);
+  success = cpu_keepalive_reply_int(msg, MCE_CPU_KEEPALIVE_SUGGESTED_PERIOD);
 
 EXIT:
   dbus_error_free(&err);
