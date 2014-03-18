@@ -1,3 +1,11 @@
+mce (1.25.0) unstable; urgency=low
+
+  * [mce] Use longer maximum cpu keepalive renew time within mce
+  * [mce] Tune debug led pattern priorities
+  * [mce] Send led pattern activated/deactivated D-Bus signals
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 18 Mar 2014 18:22:05 +0200
+
 mce (1.24.1) unstable; urgency=low
 
   * [mce] Handle io watch error conditions gracefully
