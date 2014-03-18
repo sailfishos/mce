@@ -3498,13 +3498,13 @@ static void mdy_renderer_led_set(renderer_state_t req)
     execute_datapipe_output_triggers(blanking ?
                                      &led_pattern_activate_pipe :
                                      &led_pattern_deactivate_pipe,
-                                     "PatternBatteryDisplayBlank",
+                                     "PatternDisplayBlankFailed",
                                      USE_INDATA);
 
     execute_datapipe_output_triggers(unblanking ?
                                      &led_pattern_activate_pipe :
                                      &led_pattern_deactivate_pipe,
-                                     "PatternBatteryDisplayUnblank",
+                                     "PatternDisplayUnblankFailed",
                                      USE_INDATA);
 }
 
@@ -4066,13 +4066,13 @@ static void mdy_fbsusp_led_set(mdy_fbsusp_led_state_t req)
     execute_datapipe_output_triggers(blanking ?
                                      &led_pattern_activate_pipe :
                                      &led_pattern_deactivate_pipe,
-                                     "PatternBatteryDisplaySuspend",
+                                     "PatternDisplaySuspendFailed",
                                      USE_INDATA);
 
     execute_datapipe_output_triggers(unblanking ?
                                      &led_pattern_activate_pipe :
                                      &led_pattern_deactivate_pipe,
-                                     "PatternBatteryDisplayResume",
+                                     "PatternDisplayResumeFailed",
                                      USE_INDATA);
 }
 
