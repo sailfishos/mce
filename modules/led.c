@@ -887,6 +887,58 @@ static void disable_led(void)
 	}
 }
 
+/** Setter for led pattern active property
+ *
+ * Apart from initialization to FALSE state, all active
+ * property changes must go through this function.
+ *
+ * If the active property actually changes and the pattern
+ * is not disabled an appropriate D-Bus signal is broadcast
+ * over the system bus.
+ *
+ * @param self    pattern object
+ * @param active  new value for active property
+ */
+static void led_pattern_set_active(pattern_struct *self, gboolean active)
+{
+	DBusMessage *msg = NULL;
+
+	if( !self )
+		goto EXIT;
+
+	if( self->active == active )
+		goto EXIT;
+
+	self->active = active;
+
+	if( !self->enabled )
+		goto EXIT;
+
+	mce_log(LL_DEVEL, "led pattern %s %sactivated",
+		self->name, self->active ? "" : "de");
+
+	const char *member = (self->active ?
+			      MCE_LED_PATTERN_ACTIVATED_SIG :
+			      MCE_LED_PATTERN_DEACTIVATED_SIG);
+
+	msg = dbus_new_signal(MCE_SIGNAL_PATH, MCE_SIGNAL_IF, member);
+
+	if( !dbus_message_append_args(msg,
+				     DBUS_TYPE_STRING, &self->name,
+				     DBUS_TYPE_INVALID) ) {
+		mce_log(LL_ERR, "failed to construct %s signal", member);
+		goto EXIT;
+	}
+
+	dbus_send_message(msg), msg = 0;
+
+EXIT:
+	if( msg )
+		dbus_message_unref(msg);
+
+	return;
+}
+
 /**
  * Timeout callback for LED patterns
  *
@@ -899,7 +951,7 @@ static gboolean led_pattern_timeout_cb(gpointer data)
 
 	led_pattern_timeout_cb_id = 0;
 
-	active_pattern->active = FALSE;
+	led_pattern_set_active(active_pattern, FALSE);
 	led_update_active_pattern();
 
 	return FALSE;
@@ -1304,7 +1356,7 @@ static void update_combination_rule(gpointer name, gpointer data)
 	if ((psp = find_pattern_struct(name)) == NULL)
 		goto EXIT;
 
-	psp->active = enabled;
+	led_pattern_set_active(psp, enabled);
 
 EXIT:
 	return;
@@ -1356,7 +1408,7 @@ static void led_activate_pattern(const gchar *const name)
 	if ((psp = find_pattern_struct(name)) != NULL) {
 		if( !psp->active && psp->policy == 6 )
 			psp->undecided = TRUE;
-		psp->active = TRUE;
+		led_pattern_set_active(psp, TRUE);
 		update_combination_rules(name);
 		led_update_active_pattern();
 		mce_log(LL_DEBUG,
@@ -1382,7 +1434,7 @@ static void led_deactivate_pattern(const gchar *const name)
 	pattern_struct *psp;
 
 	if ((psp = find_pattern_struct(name)) != NULL) {
-		psp->active = FALSE;
+		led_pattern_set_active(psp, FALSE);
 		update_combination_rules(name);
 		led_update_active_pattern();
 		mce_log(LL_DEBUG,
@@ -1486,7 +1538,7 @@ static void type6_revert_cb(void *data, void *aptr)
 	pattern_struct *psp = data;
 
 	if( psp->undecided && psp->active && psp->policy == 6 ) {
-		psp->active = FALSE;
+		led_pattern_set_active(psp, FALSE);
 		update_combination_rules(psp->name);
 		mce_log(LL_DEBUG, "LED pattern %s: reverted", psp->name);
 	}
@@ -1505,7 +1557,7 @@ static void type6_deactivate_cb(void *data, void *aptr)
 	pattern_struct *psp = data;
 
 	if( psp->active && psp->policy == 6 ) {
-		psp->active = FALSE;
+		led_pattern_set_active(psp, FALSE);
 		update_combination_rules(psp->name);
 		mce_log(LL_DEBUG, "LED pattern %s: deactivated", psp->name);
 	}
@@ -2099,7 +2151,7 @@ static gboolean init_lysti_patterns(void)
 				       CHANNEL_SIZE);
 			}
 
-			psp->active = FALSE;
+			led_pattern_set_active(psp, FALSE);
 
 			psp->enabled = pattern_get_enabled(patternlist[i],
 							   &(psp->gconf_cb_id));
@@ -2234,7 +2286,7 @@ static gboolean init_njoy_patterns(void)
 				       CHANNEL_SIZE);
 			}
 
-			psp->active = FALSE;
+			led_pattern_set_active(psp, FALSE);
 
 			psp->enabled = pattern_get_enabled(patternlist[i],
 							   &(psp->gconf_cb_id));
