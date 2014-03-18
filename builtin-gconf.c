@@ -1460,25 +1460,25 @@ static const setting_t gconf_defaults[] =
   },
   {
     // no define; used by mce display module
-    .key  = "/system/osso/dsm/leds/PatternBatteryDisplayBlank",
+    .key  = "/system/osso/dsm/leds/PatternDisplayBlankFailed",
     .type = "b",
     .def  = "true",
   },
   {
     // no define; used by mce display module
-    .key  = "/system/osso/dsm/leds/PatternBatteryDisplayUnblank",
+    .key  = "/system/osso/dsm/leds/PatternDisplayUnblankFailed",
     .type = "b",
     .def  = "true",
   },
   {
     // no define; used by mce display module
-    .key  = "/system/osso/dsm/leds/PatternBatteryDisplaySuspend",
+    .key  = "/system/osso/dsm/leds/PatternDisplaySuspendFailed",
     .type = "b",
     .def  = "true",
   },
   {
     // no define; used by mce display module
-    .key  = "/system/osso/dsm/leds/PatternBatteryDisplayResume",
+    .key  = "/system/osso/dsm/leds/PatternDisplayResumeFailed",
     .type = "b",
     .def  = "true",
   },
