@@ -1501,6 +1501,12 @@ static const setting_t gconf_defaults[] =
     .def  = "2",
   },
   {
+    // MCE_GCONF_POWERKEY_MODE @ powerkey.h
+    .key  = "/system/osso/dsm/powerkey/mode",
+    .type = "i",
+    .def  = "1",
+  },
+  {
     .key  = NULL,
   }
 };

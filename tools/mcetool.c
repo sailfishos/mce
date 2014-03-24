@@ -38,6 +38,7 @@
 #include <mce/mode-names.h>
 
 #include "../tklock.h"
+#include "../powerkey.h"
 #include "../event-input.h"
 #include "../modules/display.h"
 #include "../modules/doubletap.h"
@@ -2069,6 +2070,45 @@ static void xmce_get_blank_timeout(void)
 }
 
 /* ------------------------------------------------------------------------- *
+ * powerkey
+ * ------------------------------------------------------------------------- */
+
+/** Lookup table for powerkey wakeup policies
+ */
+static const symbol_t powerkey_action[] = {
+        { "never",     PWRKEY_ENABLE_NEVER        },
+        { "always",    PWRKEY_ENABLE_ALWAYS       },
+        { "proximity", PWRKEY_ENABLE_NO_PROXIMITY },
+        { NULL,        -1                         }
+};
+
+/** Set powerkey wakeup mode
+ *
+ * @param args string that can be parsed to powerkey wakeup mode
+ */
+static void xmce_set_powerkey_action(const char *args)
+{
+        debugf("%s(%s)\n", __FUNCTION__, args);
+        int val = lookup(powerkey_action, args);
+        if( val < 0 ) {
+                errorf("%s: invalid powerkey policy value\n", args);
+                exit(EXIT_FAILURE);
+        }
+        mcetool_gconf_set_int(MCE_GCONF_POWERKEY_MODE, val);
+}
+
+/** Get current powerkey wakeup mode from mce and print it out
+ */
+static void xmce_get_powerkey_action(void)
+{
+        gint        val = 0;
+        const char *txt = 0;
+        if( mcetool_gconf_get_int(MCE_GCONF_POWERKEY_MODE, &val) )
+                txt = rlookup(powerkey_action, val);
+        printf("%-"PAD1"s %s \n", "Powerkey wakeup policy:", txt ?: "unknown");
+}
+
+/* ------------------------------------------------------------------------- *
  * doubletab
  * ------------------------------------------------------------------------- */
 
@@ -2640,6 +2680,7 @@ static void xmce_get_status(void)
         xmce_get_autolock_mode();
         xmce_get_doubletap_mode();
         xmce_get_doubletap_wakeup();
+        xmce_get_powerkey_action();
         xmce_get_low_power_mode();
         xmce_get_als_mode();
         xmce_get_ps_mode();
@@ -2767,6 +2808,9 @@ PARAM"-M, --set-doubletap-mode=<disabled|show-unlock-screen|unlock>\n"
 EXTRA"set the autolock mode; valid modes are:\n"
 EXTRA"  'disabled', 'show-unlock-screen', 'unlock'\n"
 PARAM"-z, --set-doubletap-wakeup=<never|always|proximity>\n"
+EXTRA"set the doubletap wakeup mode; valid modes are:\n"
+EXTRA"  'never', 'always', 'proximity'\n"
+PARAM"-Z, --set-powerkey-action=<never|always|proximity>\n"
 EXTRA"set the doubletap wakeup mode; valid modes are:\n"
 EXTRA"  'never', 'always', 'proximity'\n"
 PARAM"-r, --enable-radio=<master|cellular|wlan|bluetooth>\n"
@@ -2926,7 +2970,7 @@ PROG_NAME" v"G_STRINGIFY(PRG_VERSION)"\n"
 
 // Unused short options left ....
 // - - - - - - - - - - - - - - - - - - - - - - w x - -
-// - - - - - - - - - - - - - - - - - - - - - - W X - Z
+// - - - - - - - - - - - - - - - - - - - - - - W X - -
 
 const char OPT_S[] =
 "B::" // --block,
@@ -2967,6 +3011,7 @@ const char OPT_S[] =
 "K:"  // --set-autolock-mode
 "M:"  // --set-doubletap-mode
 "z:"  // --set-doubletap-wakeup
+"Z:"  // --set-powerkey-action
 "O:"  // --set-dim-timeouts
 "s:"  // --set-suspend-policy
 "S:"  // --set-cpu-scaling-governor
@@ -3025,6 +3070,7 @@ struct option const OPT_L[] =
         { "set-autolock-mode",         1, 0, 'K' }, // xmce_set_autolock_mode()
         { "set-doubletap-mode",        1, 0, 'M' }, // xmce_set_doubletap_mode()
         { "set-doubletap-wakeup",      1, 0, 'z' }, // xmce_set_doubletap_wakeup()
+        { "set-powerkey-action",       1, 0, 'Z' }, // xmce_set_powerkey_action()
         { "set-dim-timeouts",          1, 0, 'O' }, // xmce_set_dim_timeouts()
         { "set-suspend-policy",        1, 0, 's' }, // xmce_set_suspend_policy()
         { "set-cpu-scaling-governor",  1, 0, 's' }, // xmce_set_cpu_scaling_governor()
@@ -3081,7 +3127,8 @@ int main(int argc, char **argv)
 		case 'q': xmce_tklock_open(optarg);               break;
 		case 'Q': xmce_tklock_close();                    break;
                 case 'M': xmce_set_doubletap_mode(optarg);        break;
-                case 'z': xmce_set_doubletap_wakeup(optarg);        break;
+                case 'z': xmce_set_doubletap_wakeup(optarg);      break;
+                case 'Z': xmce_set_powerkey_action(optarg);       break;
 
                 case 'r': xmce_enable_radio(optarg);              break;
                 case 'R': xmce_disable_radio(optarg);             break;

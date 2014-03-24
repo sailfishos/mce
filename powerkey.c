@@ -37,6 +37,7 @@
 #include "powerkey.h"
 
 #include "mce-log.h"			/* mce_log(), LL_* */
+#include "mce-gconf.h"
 #include "mce-conf.h"			/* mce_conf_get_int(),
 					 * mce_conf_get_string()
 					 */
@@ -154,6 +155,118 @@ EXIT:
 #endif
 }
 
+/** Power key press actions mode */
+static gint powerkey_action_mode = PWRKEY_ENABLE_DEFAULT;
+
+/** GConf callback ID for powerkey_action_mode */
+static guint powerkey_action_mode_cb_id = 0;
+
+/** GConf callback for powerkey related settings
+ *
+ * @param gcc    (not used)
+ * @param id     Connection ID from gconf_client_notify_add()
+ * @param entry  The modified GConf entry
+ * @param data   (not used)
+ */
+static void powerkey_gconf_cb(GConfClient *const gcc, const guint id,
+			      GConfEntry *const entry, gpointer const data)
+{
+	(void)gcc;
+	(void)data;
+	(void)id;
+
+	const GConfValue *gcv = gconf_entry_get_value(entry);
+
+	if( !gcv ) {
+		mce_log(LL_DEBUG, "GConf Key `%s' has been unset",
+			gconf_entry_get_key(entry));
+		goto EXIT;
+	}
+
+	if( id == powerkey_action_mode_cb_id ) {
+		gint old = powerkey_action_mode;
+		powerkey_action_mode = gconf_value_get_int(gcv);
+		mce_log(LL_NOTICE, "powerkey_action_mode: %d -> %d",
+			old, powerkey_action_mode);
+	}
+	else {
+		mce_log(LL_WARN, "Spurious GConf value received; confused!");
+	}
+
+EXIT:
+	return;
+}
+
+/** Get gconf values and add change notifiers
+ */
+static void powerkey_gconf_init(void)
+{
+	/* Power key press handling mode */
+	mce_gconf_notifier_add(MCE_GCONF_POWERKEY_PATH,
+			       MCE_GCONF_POWERKEY_MODE,
+			       powerkey_gconf_cb,
+			       &powerkey_action_mode_cb_id);
+	mce_gconf_get_int(MCE_GCONF_POWERKEY_MODE, &powerkey_action_mode);
+}
+
+/** Remove gconf change notifiers
+ */
+static void powerkey_gconf_quit(void)
+{
+	/* Power key press handling mode */
+	if( powerkey_action_mode_cb_id ) {
+		mce_gconf_notifier_remove(GINT_TO_POINTER(powerkey_action_mode_cb_id), 0);
+		powerkey_action_mode_cb_id = 0;
+	}
+}
+
+/** Should power key action be ignored predicate
+ */
+static bool powerkey_ignore_action(void)
+{
+	/* Assume that power key action should be ignored */
+	bool ignore_powerkey = true;
+
+	alarm_ui_state_t alarm_ui_state =
+		datapipe_get_gint(alarm_ui_state_pipe);
+	cover_state_t proximity_sensor_state =
+		datapipe_get_gint(proximity_sensor_pipe);
+
+
+	/* Ignore keypress if the alarm UI is visible */
+	if ((alarm_ui_state == MCE_ALARM_UI_VISIBLE_INT32) ||
+	    (alarm_ui_state == MCE_ALARM_UI_RINGING_INT32)) {
+		mce_log(LL_DEVEL, "[powerkey] ignored due to alarm state");
+		goto EXIT;
+	}
+
+
+	/* Proximity sensor state vs power key press handling mode */
+	switch( powerkey_action_mode ) {
+	case PWRKEY_ENABLE_NEVER:
+		mce_log(LL_DEVEL, "[powerkey] ignored due to setting=never");
+		goto EXIT;
+
+	case PWRKEY_ENABLE_ALWAYS:
+		break;
+
+	default:
+	case PWRKEY_ENABLE_NO_PROXIMITY:
+		if( proximity_sensor_state != COVER_CLOSED )
+			break;
+
+		mce_log(LL_DEVEL, "[powerkey] ignored due to proximity");
+		goto EXIT;
+	}
+
+	/* There was no reason to ignore the powere key action */
+	ignore_powerkey = false;
+
+EXIT:
+
+	return ignore_powerkey;
+}
+
 /**
  * Generic logic for key presses
  *
@@ -166,13 +279,9 @@ static void generic_powerkey_handler(poweraction_t action,
 	mce_log(LL_DEVEL, "action=%d, signal=%s", (int)action,
 		dbus_signal ?: "n/a");
 
-	alarm_ui_state_t alarm_ui_state =
-				datapipe_get_gint(alarm_ui_state_pipe);
 	submode_t submode = mce_get_submode_int32();
 
-	/* Ignore keypress if the alarm UI is visible */
-	if ((alarm_ui_state == MCE_ALARM_UI_VISIBLE_INT32) ||
-	    (alarm_ui_state == MCE_ALARM_UI_RINGING_INT32))
+	if( powerkey_ignore_action() )
 		goto EXIT;
 
 	switch (action) {
@@ -768,6 +877,9 @@ gboolean mce_powerkey_init(void)
 	(void)parse_action(tmp, &doublepresssignal, &doublepressaction);
 	g_free(tmp);
 
+	/* Setup gconf tracking */
+	powerkey_gconf_init();
+
 	status = TRUE;
 
 EXIT:
@@ -781,6 +893,9 @@ EXIT:
  */
 void mce_powerkey_exit(void)
 {
+	/* Remove gconf tracking */
+	powerkey_gconf_quit();
+
 	/* Remove triggers/filters from datapipes */
 	remove_input_trigger_from_datapipe(&keypress_pipe,
 					   powerkey_trigger);
