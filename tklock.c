@@ -1032,6 +1032,12 @@ static void tklock_datapipe_touchscreen_cb(gconstpointer const data)
     case 1: // unblank
     case 2: // unblank + unlock (= TODO)
         mce_log(LL_DEBUG, "double tap -> display on");
+        /* Double tap event that is about to be used for unblanking
+         * the display counts as non-syntetized user activity */
+        execute_datapipe_output_triggers(&user_activity_pipe,
+                                         ev, USE_INDATA);
+
+        /* Turn the display on */
         execute_datapipe(&display_state_req_pipe,
                        GINT_TO_POINTER(MCE_DISPLAY_ON),
                        USE_INDATA, CACHE_INDATA);
