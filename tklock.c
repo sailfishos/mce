@@ -738,10 +738,13 @@ static void tklock_datapipe_battery_status_cb(gconstpointer data)
 
     mce_log(LL_DEBUG, "battery_status = %d -> %d", prev, battery_status);
 
+#if 0 /* At the moment there is no notification associated with
+       * battery full -> no need to turn the display on */
     if( battery_status == BATTERY_STATUS_FULL ) {
         tklock_uiexcept_begin(UIEXC_NOTIF, EXCEPTION_LENGTH_BATTERY);
         tklock_uiexcept_rethink();
     }
+#endif
 
 EXIT:
     return;
