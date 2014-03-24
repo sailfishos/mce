@@ -1,3 +1,10 @@
+mce (1.25.1) unstable; urgency=low
+
+  * [mce] Make double tap wakeup cancel notification leds again. Fixes JB#17389
+  * [mce] Do not turn display on battery full
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 24 Mar 2014 14:07:20 +0200
+
 mce (1.25.0) unstable; urgency=low
 
   * [mce] Use longer maximum cpu keepalive renew time within mce
