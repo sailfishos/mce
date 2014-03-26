@@ -1,3 +1,9 @@
+mce (1.25.3) unstable; urgency=low
+
+  * [packaging] Add runtime dependency to glib2 >= 2.36.0. Fixes JB#17710
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 26 Mar 2014 18:39:29 +0200
+
 mce (1.25.2) unstable; urgency=low
 
   * [mce] Make shutdown led pattern have priority over powerup pattern. Fixes JB#17671
