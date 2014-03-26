@@ -1,3 +1,9 @@
+mce (1.25.2) unstable; urgency=low
+
+  * [mce] Make shutdown led pattern have priority over powerup pattern. Fixes JB#17671
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 26 Mar 2014 14:41:41 +0200
+
 mce (1.25.1) unstable; urgency=low
 
   * [mce] Make double tap wakeup cancel notification leds again. Fixes JB#17389
