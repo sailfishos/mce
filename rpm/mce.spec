@@ -22,6 +22,8 @@ BuildRequires:  pkgconfig(libsystemd-daemon)
 BuildRequires:  kernel-headers >= 2.6.32
 BuildRequires:  systemd
 # systemd has /etc/rpm/macros.systemd
+# Automatically genereted libglib-2.0.so.0 dependency is not enough
+Requires: glib2 >= 2.36.0
 
 %description
 This package contains the Mode Control Entity which provides
@@ -32,6 +34,8 @@ for many features on Nokia's mobile computers.
 Summary:    Tools for interacting with mce
 Group:      Development/Tools
 Requires:   %{name} = %{version}-%{release}
+# Automatically genereted libglib-2.0.so.0 dependency is not enough
+Requires: glib2 >= 2.36.0
 
 %description tools
 This package contains tools that can be used to interact with
@@ -41,6 +45,8 @@ the Mode Control Entity and to get mode information.
 Summary:  Test suite for mce
 Group:    System/System Control
 BuildRequires:  pkgconfig(check)
+# Automatically genereted libglib-2.0.so.0 dependency is not enough
+Requires: glib2 >= 2.36.0
 
 %description tests
 This package contains test suite for mce
