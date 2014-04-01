@@ -3901,9 +3901,18 @@ static void mdy_orientation_generate_activity(void)
 static void mdy_orientation_sensor_rethink(void)
 {
     /* Enable orientation sensor in ON|DIM */
+
+    /* Start the orientation sensor already when powering up
+     * to ON|DIM states -> we have valid sensor state about the
+     * same time as display transition finishes.
+     *
+     * FIXME: This needs to be revisited when LPM display states
+     *         are taken in use.
+     */
     switch( display_state ) {
     case MCE_DISPLAY_DIM:
     case MCE_DISPLAY_ON:
+    case MCE_DISPLAY_POWER_UP:
         mce_sensorfw_orient_set_notify(mdy_orientation_changed_cb);
         mce_sensorfw_orient_enable();
         break;
