@@ -170,6 +170,7 @@ MODULES += $(MODULE_DIR)/battery-bme.so
 MODULES += $(MODULE_DIR)/battery-upower.so
 MODULES += $(MODULE_DIR)/display.so
 MODULES += $(MODULE_DIR)/doubletap.so
+MODULES += $(MODULE_DIR)/sensor-gestures.so
 MODULES += $(MODULE_DIR)/led.so
 MODULES += $(MODULE_DIR)/callstate.so
 MODULES += $(MODULE_DIR)/audiorouting.so
