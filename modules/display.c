@@ -3909,8 +3909,8 @@ static void mdy_display_state_enter_post(void)
         break;
 
     default:
-        mce_sensorfw_orient_set_notify(0);
         mce_sensorfw_orient_disable();
+        mce_sensorfw_orient_set_notify(0);
         break;
     }
 

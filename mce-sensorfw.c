@@ -1517,7 +1517,7 @@ static bool       orient_have    = false;
 static void     (*orient_notify_cb)(int state) = 0;
 
 /** Orientation state to report when sensord is not available */
-#define ORIENT_STATE_WHEN_SENSORD_IS_DOWN MCE_ORIENTATION_FACE_UP
+#define ORIENT_STATE_WHEN_SENSORD_IS_DOWN MCE_ORIENTATION_UNDEFINED
 
 /** Wrapper for orient_notify_cb hook
  */
@@ -1814,6 +1814,7 @@ static void mce_sensorfw_orient_stop_sensor(void)
 	}
 
 	orient_have = false;
+	orient_notify(ORIENT_STATE_WHEN_SENSORD_IS_DOWN, true);
 EXIT:
 	return;
 }
