@@ -3896,9 +3896,9 @@ static void mdy_orientation_generate_activity(void)
  * DISPLAY_STATE
  * ========================================================================= */
 
-/* React to new display state (via display state datapipe)
+/** Start/stop orientation sensor based on display state
  */
-static void mdy_display_state_enter_post(void)
+static void mdy_orientation_sensor_rethink(void)
 {
     /* Enable orientation sensor in ON|DIM */
     switch( display_state ) {
@@ -3913,7 +3913,12 @@ static void mdy_display_state_enter_post(void)
         mce_sensorfw_orient_set_notify(0);
         break;
     }
+}
 
+/* React to new display state (via display state datapipe)
+ */
+static void mdy_display_state_enter_post(void)
+{
     /* Disable blanking pause if display != ON */
     if( display_state != MCE_DISPLAY_ON )
         mdy_blanking_remove_pause_clients();
@@ -3922,6 +3927,7 @@ static void mdy_display_state_enter_post(void)
     mdy_blanking_rethink_timers(false);
 
     mdy_hbm_rethink();
+    mdy_orientation_sensor_rethink();
 
     switch( display_state ) {
     case MCE_DISPLAY_POWER_DOWN:
@@ -6752,6 +6758,9 @@ const gchar *g_module_check_init(GModule *module)
     /* Re-evaluate the power on LED state from idle callback
      * i.e. when the led plugin is loaded and operational */
     mdy_poweron_led_rethink_schedule();
+
+    /* Evaluate initial orientation sensor enable state */
+    mdy_orientation_sensor_rethink();
 
     return failure;
 }
