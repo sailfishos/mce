@@ -684,6 +684,24 @@ modules/radiostates.pic.o:\
 	mce.h\
 	modules/radiostates.h\
 
+modules/sensor-gestures.o:\
+	modules/sensor-gestures.c\
+	datapipe.h\
+	datapipe.h\
+	mce-dbus.h\
+	mce-log.h\
+	mce-sensorfw.h\
+	mce.h\
+
+modules/sensor-gestures.pic.o:\
+	modules/sensor-gestures.c\
+	datapipe.h\
+	datapipe.h\
+	mce-dbus.h\
+	mce-log.h\
+	mce-sensorfw.h\
+	mce.h\
+
 powerkey.o:\
 	powerkey.c\
 	datapipe.h\
