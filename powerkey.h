@@ -23,6 +23,27 @@
 
 #include <glib.h>
 
+/** Path to the GConf settings for the powerkey module */
+# define MCE_GCONF_POWERKEY_PATH       "/system/osso/dsm/powerkey"
+
+/** Path to the powerkey  mode GConf setting */
+# define MCE_GCONF_POWERKEY_MODE       MCE_GCONF_POWERKEY_PATH "/mode"
+
+/** Power key action enable modes */
+typedef enum
+{
+        /** Power key actions disabled */
+        PWRKEY_ENABLE_NEVER,
+
+        /** Power key actions always enabled */
+        PWRKEY_ENABLE_ALWAYS,
+
+        /** Power key actions enabled when PS is not covered */
+        PWRKEY_ENABLE_NO_PROXIMITY,
+
+        PWRKEY_ENABLE_DEFAULT = PWRKEY_ENABLE_ALWAYS,
+} pwrkey_mode_t;
+
 /** Configuration value used for the disabled policy */
 #define POWER_DISABLED_STR				"disabled"
 /** Configuration value used for the device menu policy */
