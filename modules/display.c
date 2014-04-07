@@ -3761,10 +3761,10 @@ static int mdy_autosuspend_get_allowed_level(void)
     /* no late suspend when incoming / active call */
     switch( call_state ) {
     case CALL_STATE_RINGING:
-    case CALL_STATE_ACTIVE:
         block_late = true;
         break;
     default:
+    case CALL_STATE_ACTIVE:
         break;
     }
 
