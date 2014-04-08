@@ -220,31 +220,74 @@ static void powerkey_gconf_quit(void)
 	}
 }
 
+/** Helper for sending powerkey feedback dbus signal
+ *
+ * @param sig name of the signal to send
+ */
+static void powerkey_send_feedback_signal(const char *sig)
+{
+	const char *arg = "powerkey";
+	mce_log(LL_DEVEL, "sending dbus signal: %s %s", sig, arg);
+	dbus_send(0, MCE_SIGNAL_PATH, MCE_SIGNAL_IF,  sig, 0,
+		  DBUS_TYPE_STRING, &arg, DBUS_TYPE_INVALID);
+}
+
 /** Should power key action be ignored predicate
  */
 static bool powerkey_ignore_action(void)
 {
-	/* Assume that power key action should be ignored */
-	bool ignore_powerkey = true;
+	/* Assume that power key action should not be ignored */
+	bool ignore_powerkey = false;
 
 	alarm_ui_state_t alarm_ui_state =
 		datapipe_get_gint(alarm_ui_state_pipe);
 	cover_state_t proximity_sensor_state =
 		datapipe_get_gint(proximity_sensor_pipe);
-
+	call_state_t call_state =
+		datapipe_get_gint(call_state_pipe);
 
 	/* Ignore keypress if the alarm UI is visible */
-	if ((alarm_ui_state == MCE_ALARM_UI_VISIBLE_INT32) ||
-	    (alarm_ui_state == MCE_ALARM_UI_RINGING_INT32)) {
-		mce_log(LL_DEVEL, "[powerkey] ignored due to alarm state");
-		goto EXIT;
+	switch( alarm_ui_state ) {
+	case MCE_ALARM_UI_VISIBLE_INT32:
+	case MCE_ALARM_UI_RINGING_INT32:
+		mce_log(LL_DEVEL, "[powerkey] ignored due to active alarm");
+		ignore_powerkey = true;
+		powerkey_send_feedback_signal("alarm_ui_feedback_ind");
+		break;
+
+	default:
+	case MCE_ALARM_UI_OFF_INT32:
+	case MCE_ALARM_UI_INVALID_INT32:
+		// dontcare
+		break;
 	}
 
+	/* Ignore keypress if we have incoming call */
+	switch( call_state ) {
+	case CALL_STATE_RINGING:
+		mce_log(LL_DEVEL, "[powerkey] ignored due to incoming call");
+		ignore_powerkey = true;
+		powerkey_send_feedback_signal("call_ui_feedback_ind");
+		break;
+
+	default:
+	case CALL_STATE_INVALID:
+	case CALL_STATE_NONE:
+	case CALL_STATE_ACTIVE:
+	case CALL_STATE_SERVICE:
+		// dontcare
+		break;
+	}
+
+	/* Skip rest if already desided to ignore */
+	if( ignore_powerkey )
+		goto EXIT;
 
 	/* Proximity sensor state vs power key press handling mode */
 	switch( powerkey_action_mode ) {
 	case PWRKEY_ENABLE_NEVER:
 		mce_log(LL_DEVEL, "[powerkey] ignored due to setting=never");
+		ignore_powerkey = true;
 		goto EXIT;
 
 	case PWRKEY_ENABLE_ALWAYS:
@@ -256,11 +299,9 @@ static bool powerkey_ignore_action(void)
 			break;
 
 		mce_log(LL_DEVEL, "[powerkey] ignored due to proximity");
+		ignore_powerkey = true;
 		goto EXIT;
 	}
-
-	/* There was no reason to ignore the powere key action */
-	ignore_powerkey = false;
 
 EXIT:
 
