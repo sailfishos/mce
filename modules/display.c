@@ -402,6 +402,7 @@ static void                mdy_waitfb_thread_stop(waitfb_t *self);
  * LIPSTICK_KILLER
  * ------------------------------------------------------------------------- */
 
+static void                mdy_lipstick_killer_enable_led(bool enable);
 static gboolean            mdy_lipstick_killer_verify_cb(gpointer aptr);
 static gboolean            mdy_lipstick_killer_kill_cb(gpointer aptr);
 static gboolean            mdy_lipstick_killer_core_cb(gpointer aptr);
@@ -3488,6 +3489,27 @@ static int mdy_lipstick_killer_pid = -1;
 /** Currently active lipstick killer timer id */
 static guint mdy_lipstick_killer_id  = 0;
 
+/** Enable/Disable lipstick killer led pattern
+ *
+ * @param enable true to start the led, false to stop it
+ */
+static void mdy_lipstick_killer_enable_led(bool enable)
+{
+    static bool enabled = false;
+
+    if( enabled == enable )
+        goto EXIT;
+
+    enabled = enable;
+    execute_datapipe_output_triggers(enabled ?
+                                     &led_pattern_activate_pipe :
+                                     &led_pattern_deactivate_pipe,
+                                     "PatternKillingLipstick",
+                                     USE_INDATA);
+EXIT:
+    return;
+}
+
 /** Timer for verifying that lipstick has exited after kill signal
  *
  * @param aptr Process identifier as void pointer
@@ -3509,6 +3531,9 @@ static gboolean mdy_lipstick_killer_verify_cb(gpointer aptr)
     mce_log(LL_ERR, "lipstick is not responsive and killing it failed");
 
 EXIT:
+    /* Stop the led pattern even if we can't kill lipstick process */
+    mdy_lipstick_killer_enable_led(false);
+
     return FALSE;
 }
 
@@ -3557,6 +3582,9 @@ static gboolean mdy_lipstick_killer_kill_cb(gpointer aptr)
     }
 
 EXIT:
+    /* Keep led pattern active if verify timer was scheduled */
+    mdy_lipstick_killer_enable_led(mdy_lipstick_killer_id != 0);
+
     return FALSE;
 }
 
@@ -3610,6 +3638,10 @@ SKIP:
                                            mdy_lipstick_killer_kill_cb,
                                            GINT_TO_POINTER(pid));
 EXIT:
+
+    /* Start led pattern active if kill timer was scheduled */
+    mdy_lipstick_killer_enable_led(mdy_lipstick_killer_id != 0);
+
     return FALSE;
 }
 
@@ -3658,6 +3690,9 @@ static void mdy_lipstick_killer_cancel(void)
             mdy_lipstick_killer_id = 0;
         mce_log(LL_DEBUG, "cancelled lipstick killer");
     }
+
+    /* In any case stop the led pattern */
+    mdy_lipstick_killer_enable_led(false);
 }
 
 /* ========================================================================= *

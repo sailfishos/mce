@@ -1483,6 +1483,12 @@ static const setting_t gconf_defaults[] =
     .def  = "true",
   },
   {
+    // no define; used by mce display module
+    .key  = "/system/osso/dsm/leds/PatternKillingLipstick",
+    .type = "b",
+    .def  = "true",
+  },
+  {
     // no define; used by mce event input
     .key  = "/system/osso/dsm/leds/PatternTouchInputBlocked",
     .type = "b",
