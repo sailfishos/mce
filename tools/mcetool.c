@@ -2321,6 +2321,28 @@ static void xmce_get_inhibit_mode(void)
 }
 
 /* ------------------------------------------------------------------------- *
+ * lipstick killer
+ * ------------------------------------------------------------------------- */
+
+static void xmce_set_lipstick_core_delay(const char *args)
+{
+        debugf("%s(%s)\n", __FUNCTION__, args);
+        int val = xmce_parse_integer(args);
+        mcetool_gconf_set_int(MCE_GCONF_LIPSTICK_CORE_DELAY_PATH, val);
+}
+
+static void xmce_get_lipstick_core_delay(void)
+{
+        gint val = 0;
+        char txt[32];
+
+        strcpy(txt, "unknown");
+        if( mcetool_gconf_get_int(MCE_GCONF_LIPSTICK_CORE_DELAY_PATH, &val) )
+                snprintf(txt, sizeof txt, "%d", (int)val);
+        printf("%-"PAD1"s %s (seconds)\n", "Lipstick core delay:", txt);
+}
+
+/* ------------------------------------------------------------------------- *
  * cpu scaling governor override
  * ------------------------------------------------------------------------- */
 
@@ -2691,6 +2713,7 @@ static void xmce_get_status(void)
 	xmce_get_fake_doubletap();
 #endif
         xmce_get_tklock_blank();
+        xmce_get_lipstick_core_delay();
 
         printf("\n");
 }
@@ -2889,6 +2912,8 @@ EXTRA"  'short', 'double' and 'long'\n"
 PARAM"-D, --set-demo-mode=<on|off>\n"
 EXTRA"  set the display demo mode  to STATE;\n"
 EXTRA"     valid states are: 'on' and 'off'\n"
+PARAM"--set-lipstick-core-delay=<secs>\n"
+EXTRA"set the delay for dumping core from unresponsive lipstick\n"
 PARAM"-N, --status\n"
 EXTRA"output MCE status\n"
 PARAM"-B, --block[=<secs>]\n"
@@ -3077,6 +3102,7 @@ struct option const OPT_L[] =
 #ifdef ENABLE_DOUBLETAP_EMULATION
         { "set-fake-doubletap",        1, 0, 'i' }, // xmce_set_fake_doubletap()
 #endif
+        { "set-lipstick-core-delay",   1, 0, 900 }, // xmce_set_lipstick_core_delay()
         { 0, 0, 0, 0 }
 };
 
@@ -3164,6 +3190,8 @@ int main(int argc, char **argv)
 
                 case 'N': xmce_get_status();                      break;
                 case 'B': mcetool_block(optarg);                  break;
+
+                case 900: xmce_set_lipstick_core_delay(optarg);   break;
 
                 case 'h':
 			usage_short();

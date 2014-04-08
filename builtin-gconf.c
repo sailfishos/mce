@@ -1343,6 +1343,12 @@ static const setting_t gconf_defaults[] =
     .def  = "0", // = GOVERNOR_UNSET = no override
   },
   {
+    // MCE_GCONF_LIPSTICK_CORE_DELAY_PATH @ modules/display.h
+    .key  = "/system/osso/dsm/display/lipstick_core_dump_delay",
+    .type = "i",
+    .def  = "30",
+  },
+  {
     // MCE_GCONF_TK_AUTO_BLANK_DISABLE_PATH @ tklock.h
     .key  = "/system/osso/dsm/locks/tklock_blank_disable",
     .type = "i",

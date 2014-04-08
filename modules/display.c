@@ -3474,6 +3474,9 @@ static waitfb_t mdy_waitfb_data =
 /** Delay [s] from setUpdatesEnabled() to attempting lipstick core dump */
 static gint mdy_lipstick_killer_core_delay = 30;
 
+/** GConf callback ID for mdy_lipstick_killer_core_delay setting */
+static guint mdy_lipstick_killer_core_delay_gconf_cb_id = 0;
+
 /* Delay [s] from attempting lipstick core dump to killing lipstick */
 static gint mdy_lipstick_killer_kill_delay = 25;
 
@@ -3655,6 +3658,10 @@ static void mdy_lipstick_killer_schedule(void)
     /* The lipstick killer is not used unless we have "devel" flavor
      * mce, or normal mce running in verbose mode */
     if( !mce_log_p(LL_DEVEL) )
+        goto EXIT;
+
+    /* Setting the core dump delay to zero disables killing too. */
+    if( mdy_lipstick_killer_core_delay <= 0 )
         goto EXIT;
 
     /* Note: Initially we might not yet know the lipstick PID. But once
@@ -6692,6 +6699,10 @@ static void mdy_gconf_cb(GConfClient *const gcc, const guint id,
         mdy_disp_never_blank = gconf_value_get_int(gcv);
         mce_log(LL_NOTICE, "never_blank = %d", mdy_disp_never_blank);
     }
+    else if( id == mdy_lipstick_killer_core_delay_gconf_cb_id ) {
+        mdy_lipstick_killer_core_delay = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "lipstick kill delay = %d", mdy_lipstick_killer_core_delay);
+    }
     else {
         mce_log(LL_WARN, "Spurious GConf value received; confused!");
     }
@@ -6837,6 +6848,14 @@ static void mdy_gconf_init(void)
                            MCE_GCONF_BLANKING_INHIBIT_MODE_PATH,
                            mdy_gconf_cb,
                            &mdy_blanking_inhibit_mode_gconf_cb_id);
+
+    /* Delay for killing unresponsive lipstick */
+    mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
+                           MCE_GCONF_LIPSTICK_CORE_DELAY_PATH,
+                           mdy_gconf_cb,
+                           &mdy_lipstick_killer_core_delay_gconf_cb_id);
+    mce_gconf_get_int(MCE_GCONF_LIPSTICK_CORE_DELAY_PATH,
+                      &mdy_lipstick_killer_core_delay);
 }
 
 static void mdy_gconf_quit(void)
