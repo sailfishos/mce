@@ -1,3 +1,14 @@
+mce (1.26.0) unstable; urgency=low
+
+  * [mce] Add option for disabling power key when proximity is covered
+  * [mce] Detect and broadcast device flip over gestures. Fixes JB#17820
+  * [mce] Allow late suspend during active call. Fixes JB#11399
+  * [mce] Send dbus signal if powerkey is pressed during alarm /
+          incoming call. Fixes JB#17794
+  * [systemd] Fixed mce start dependency. JB#15511
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 08 Apr 2014 09:48:24 +0300
+
 mce (1.25.3) unstable; urgency=low
 
   * [packaging] Add runtime dependency to glib2 >= 2.36.0. Fixes JB#17710
