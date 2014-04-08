@@ -709,6 +709,7 @@ powerkey.o:\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-dsme.h\
+	mce-gconf.h\
 	mce-log.h\
 	mce.h\
 	powerkey.h\
@@ -720,6 +721,7 @@ powerkey.pic.o:\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-dsme.h\
+	mce-gconf.h\
 	mce-log.h\
 	mce.h\
 	powerkey.h\
@@ -972,6 +974,7 @@ tools/mcetool.o:\
 	modules/filter-brightness-als.h\
 	modules/powersavemode.h\
 	modules/proximity.h\
+	powerkey.h\
 	systemui/dbus-names.h\
 	systemui/tklock-dbus-names.h\
 	tklock.h\
@@ -984,6 +987,7 @@ tools/mcetool.pic.o:\
 	modules/filter-brightness-als.h\
 	modules/powersavemode.h\
 	modules/proximity.h\
+	powerkey.h\
 	systemui/dbus-names.h\
 	systemui/tklock-dbus-names.h\
 	tklock.h\
