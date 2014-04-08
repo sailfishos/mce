@@ -2756,6 +2756,122 @@ const char *mce_dbus_get_message_sender_ident(DBusMessage *msg)
 }
 
 /* ========================================================================= *
+ * ASYNC PID QUERY
+ * ========================================================================= */
+
+typedef struct mce_dbus_pid_query_t mce_dbus_pid_query_t;
+
+struct mce_dbus_pid_query_t
+{
+    gchar                 *name;
+    mce_dbus_pid_notify_t  notify;
+};
+
+static mce_dbus_pid_query_t *
+mce_dbus_pid_query_create(const char *name, mce_dbus_pid_notify_t cb)
+{
+    mce_dbus_pid_query_t *self = calloc(1, sizeof *self);
+    self->name = strdup(name);
+    self->notify = cb;
+    return self;
+}
+
+static void
+mce_dbus_pid_query_delete(mce_dbus_pid_query_t *self)
+{
+  if( self )
+  {
+      free(self->name);
+      free(self);
+  }
+}
+
+static void
+mce_dbus_pid_query_delete_cb(gpointer self)
+{
+    mce_dbus_pid_query_delete(self);
+}
+
+static void
+mce_dbus_pid_query_notify(const mce_dbus_pid_query_t *self, int pid)
+{
+    if( self && self->notify )
+        self->notify(self->name, pid);
+}
+
+/** Handle reply to asynchronous pid of D-Bus name owner query
+ *
+ * @param pc   pending call object
+ * @param aptr pid query state object as void pointer
+ */
+static void
+mce_dbus_get_pid_async_cb(DBusPendingCall *pc, void *aptr)
+{
+    mce_dbus_pid_query_t  *self = aptr;
+    DBusMessage  *rsp  = 0;
+    DBusError     err  = DBUS_ERROR_INIT;
+    dbus_uint32_t dta  = 0;
+    int           pid  = -1;
+
+    if( !self )
+        goto EXIT;
+
+    if( !pc )
+        goto EXIT;
+
+    if( !(rsp = dbus_pending_call_steal_reply(pc)) )
+        goto EXIT;
+
+    if( dbus_set_error_from_message(&err, rsp) ||
+        !dbus_message_get_args(rsp, &err,
+                               DBUS_TYPE_UINT32, &dta,
+                               DBUS_TYPE_INVALID) ) {
+        mce_log(LL_ERR, "%s: %s", err.name, err.message);
+    }
+    else {
+        pid = (int)dta;
+    }
+
+    mce_log(LL_DEVEL, "name: %s, owner.pid: %d", self->name, pid);
+    mce_dbus_pid_query_notify(self, pid);
+
+EXIT:
+
+    if( rsp ) dbus_message_unref(rsp);
+    if( pc )  dbus_pending_call_unref(pc);
+    dbus_error_free(&err);
+
+    return;
+}
+
+/** Start asynchronous pid of D-Bus name owner query
+ *
+ * @param name D-Bus name, whose owner pid we want to know
+ * @param cb   Function to call when async pid query is finished
+ */
+void
+mce_dbus_get_pid_async(const char *name, mce_dbus_pid_notify_t cb)
+{
+    if( !name || !*name )
+        goto EXIT;
+
+    dbus_send_ex(DBUS_SERVICE_DBUS,
+                 DBUS_PATH_DBUS,
+                 DBUS_INTERFACE_DBUS,
+                 "GetConnectionUnixProcessID",
+                 // ----------------
+                 mce_dbus_get_pid_async_cb,
+                 mce_dbus_pid_query_create(name, cb),
+                 mce_dbus_pid_query_delete_cb,
+                 // ----------------
+                 DBUS_TYPE_STRING, &name,
+                 DBUS_TYPE_INVALID);
+
+EXIT:
+    return;
+}
+
+/* ========================================================================= *
  * LOAD/UNLOAD
  * ========================================================================= */
 
