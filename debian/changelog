@@ -1,3 +1,11 @@
+mce (1.27.0) unstable; urgency=low
+
+  * [mce] Kill lipstick if it does not respond to setUpdatesEnabled ipc. Fixes JB#18090
+  * [mce] Start led pattern when killing lipstick
+  * [mce] Add runtime setting for unresponsive lipstick killing delay
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 09 Apr 2014 14:31:19 +0300
+
 mce (1.26.0) unstable; urgency=low
 
   * [mce] Add option for disabling power key when proximity is covered
