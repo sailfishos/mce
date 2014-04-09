@@ -36,6 +36,7 @@
 #include <linux/fb.h>
 
 #include <sys/ioctl.h>
+#include <sys/ptrace.h>
 
 #include <mce/mode-names.h>
 
@@ -3616,6 +3617,19 @@ static gboolean mdy_lipstick_killer_core_cb(gpointer aptr)
             mce_log(LL_WARN, "pid of lipstick not know yet; skip core dump");
             goto SKIP;
         }
+    }
+
+    /* We do not want to kill lipstick if debugger is attached to it.
+     * Since there can be only one attacher at one time, we can use dummy
+     * attach + detach cycle to determine debugger presence. */
+    if( ptrace(PTRACE_ATTACH, pid, 0, 0) == -1 ) {
+        mce_log(LL_WARN, "could not attach to lipstick: %m");
+        mce_log(LL_WARN, "assuming debugger is attached; skip killing");
+        goto EXIT;
+    }
+
+    if( ptrace(PTRACE_DETACH, pid, 0,0) == -1 ) {
+        mce_log(LL_WARN, "could not detach from lipstick: %m");
     }
 
     /* We need to send some signal that a) leads to core dump b) is not
