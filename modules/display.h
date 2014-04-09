@@ -142,6 +142,9 @@
 /** Path to the use cpu scaling governor GConf setting */
 #define MCE_GCONF_CPU_SCALING_GOVERNOR_PATH	MCE_GCONF_DISPLAY_PATH "/cpu_scaling_governor"
 
+/** Path to the unresponsive lipstick core dump delay */
+#define MCE_GCONF_LIPSTICK_CORE_DELAY_PATH	MCE_GCONF_DISPLAY_PATH "/lipstick_core_dump_delay"
+
 /** Default display brightness on a scale from 1-5 */
 #define DEFAULT_DISP_BRIGHTNESS			3	/* 60% */
 /** Default display brightness (power save mode active) on a scale from 1-5 */

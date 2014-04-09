@@ -36,6 +36,7 @@
 #include <linux/fb.h>
 
 #include <sys/ioctl.h>
+#include <sys/ptrace.h>
 
 #include <mce/mode-names.h>
 
@@ -399,6 +400,17 @@ static void                mdy_waitfb_thread_stop(waitfb_t *self);
 #endif
 
 /* ------------------------------------------------------------------------- *
+ * LIPSTICK_KILLER
+ * ------------------------------------------------------------------------- */
+
+static void                mdy_lipstick_killer_enable_led(bool enable);
+static gboolean            mdy_lipstick_killer_verify_cb(gpointer aptr);
+static gboolean            mdy_lipstick_killer_kill_cb(gpointer aptr);
+static gboolean            mdy_lipstick_killer_core_cb(gpointer aptr);
+static void                mdy_lipstick_killer_schedule(void);
+static void                mdy_lipstick_killer_cancel(void);
+
+/* ------------------------------------------------------------------------- *
  * RENDERING_ENABLE_DISABLE
  * ------------------------------------------------------------------------- */
 
@@ -461,7 +473,7 @@ static const char         *mdy_stm_state_name(stm_state_t state);
 static const char         *mdy_display_state_name(display_state_t state);
 
 // react to systemui availability changes
-static void                mdy_stm_lipstick_name_owner_changed(const char *name, bool has_owner);
+static void mdy_stm_lipstick_name_owner_changed(const char *name, const char *prev, const char *curr);
 
 // whether to power on/off the frame buffer
 static bool                mdy_stm_display_state_needs_power(display_state_t state);
@@ -3457,6 +3469,254 @@ static waitfb_t mdy_waitfb_data =
 };
 
 /* ========================================================================= *
+ * LIPSTICK_KILLER
+ * ========================================================================= */
+
+/** Delay [s] from setUpdatesEnabled() to attempting lipstick core dump */
+static gint mdy_lipstick_killer_core_delay = 30;
+
+/** GConf callback ID for mdy_lipstick_killer_core_delay setting */
+static guint mdy_lipstick_killer_core_delay_gconf_cb_id = 0;
+
+/* Delay [s] from attempting lipstick core dump to killing lipstick */
+static gint mdy_lipstick_killer_kill_delay = 25;
+
+/* Delay [s] for verifying whether lipstick did exit after kill attempt */
+static gint mdy_lipstick_killer_verify_delay = 5;
+
+/** Owner of lipstick dbus name */
+static gchar *mdy_lipstick_killer_name = 0;
+
+/** PID to kill when lipstick does not react to setUpdatesEnabled() ipc  */
+static int mdy_lipstick_killer_pid = -1;
+
+/** Currently active lipstick killer timer id */
+static guint mdy_lipstick_killer_id  = 0;
+
+/** Enable/Disable lipstick killer led pattern
+ *
+ * @param enable true to start the led, false to stop it
+ */
+static void mdy_lipstick_killer_enable_led(bool enable)
+{
+    static bool enabled = false;
+
+    if( enabled == enable )
+        goto EXIT;
+
+    enabled = enable;
+    execute_datapipe_output_triggers(enabled ?
+                                     &led_pattern_activate_pipe :
+                                     &led_pattern_deactivate_pipe,
+                                     "PatternKillingLipstick",
+                                     USE_INDATA);
+EXIT:
+    return;
+}
+
+/** Timer for verifying that lipstick has exited after kill signal
+ *
+ * @param aptr Process identifier as void pointer
+ *
+ * @return FALSE to stop the timer from repeating
+ */
+static gboolean mdy_lipstick_killer_verify_cb(gpointer aptr)
+{
+    int pid = GPOINTER_TO_INT(aptr);
+
+    if( !mdy_lipstick_killer_id )
+        goto EXIT;
+
+    mdy_lipstick_killer_id = 0;
+
+    if( kill(pid, 0) == -1 && errno == ESRCH )
+        goto EXIT;
+
+    mce_log(LL_ERR, "lipstick is not responsive and killing it failed");
+
+EXIT:
+    /* Stop the led pattern even if we can't kill lipstick process */
+    mdy_lipstick_killer_enable_led(false);
+
+    return FALSE;
+}
+
+/** Timer for killing lipstick in case core dump attempt did not make it exit
+ *
+ * @param aptr Process identifier as void pointer
+ *
+ * @return FALSE to stop the timer from repeating
+ */
+static gboolean mdy_lipstick_killer_kill_cb(gpointer aptr)
+{
+    int pid = GPOINTER_TO_INT(aptr);
+
+    if( !mdy_lipstick_killer_id )
+        goto EXIT;
+
+    mdy_lipstick_killer_id = 0;
+
+    /* In the unlikely event that asynchronous pid query is not finished
+     * at the kill timeout, abandon the quest */
+    if( pid == -1 ) {
+        if( (pid = mdy_lipstick_killer_pid) == -1 ) {
+            mce_log(LL_WARN, "pid of lipstick not know yet; can't kill it");
+            goto EXIT;
+        }
+    }
+
+    /* If lipstick is already gone after core dump attempt, no further
+     * actions are needed */
+    if( kill(pid, 0) == -1 && errno == ESRCH )
+        goto EXIT;
+
+    mce_log(LL_WARN, "lipstick is not responsive; attempting to kill it");
+
+    /* Send SIGKILL to lipstick; if that succeeded, verify after brief
+     * delay if the process is really gone */
+
+    if( kill(pid, SIGKILL) == -1 ) {
+        mce_log(LL_ERR, "failed to SIGKILL lipstick: %m");
+    }
+    else {
+        mdy_lipstick_killer_id =
+            g_timeout_add(1000 * mdy_lipstick_killer_verify_delay,
+                          mdy_lipstick_killer_verify_cb,
+                          GINT_TO_POINTER(pid));
+    }
+
+EXIT:
+    /* Keep led pattern active if verify timer was scheduled */
+    mdy_lipstick_killer_enable_led(mdy_lipstick_killer_id != 0);
+
+    return FALSE;
+}
+
+
+/** Timer for dumping lipstick core if setUpdatesEnabled() goes without reply
+ *
+ * @param aptr Process identifier as void pointer
+ *
+ * @return FALSE to stop the timer from repeating
+ */
+static gboolean mdy_lipstick_killer_core_cb(gpointer aptr)
+{
+    int pid = GPOINTER_TO_INT(aptr);
+
+    if( !mdy_lipstick_killer_id )
+        goto EXIT;
+
+    mdy_lipstick_killer_id = 0;
+
+    mce_log(LL_WARN, "lipstick is not responsive; attempting to core dump it");
+
+    /* In the unlikely event that asynchronous pid query is not finished
+     * at the core dump timeout, wait a while longer and just kill it */
+    if( pid == -1 ) {
+        if( (pid = mdy_lipstick_killer_pid) == -1 ) {
+            mce_log(LL_WARN, "pid of lipstick not know yet; skip core dump");
+            goto SKIP;
+        }
+    }
+
+    /* We do not want to kill lipstick if debugger is attached to it.
+     * Since there can be only one attacher at one time, we can use dummy
+     * attach + detach cycle to determine debugger presence. */
+    if( ptrace(PTRACE_ATTACH, pid, 0, 0) == -1 ) {
+        mce_log(LL_WARN, "could not attach to lipstick: %m");
+        mce_log(LL_WARN, "assuming debugger is attached; skip killing");
+        goto EXIT;
+    }
+
+    if( ptrace(PTRACE_DETACH, pid, 0,0) == -1 ) {
+        mce_log(LL_WARN, "could not detach from lipstick: %m");
+    }
+
+    /* We need to send some signal that a) leads to core dump b) is not
+     * handled "nicely" by lipstick. SIGXCPU fits that description and
+     * is also c) somewhat relevant "CPU time limit exceeded" d) easily
+     * distinguishable from other "normal" crash reports. */
+
+    if( kill(pid, SIGXCPU) == -1 ) {
+        mce_log(LL_ERR, "failed to SIGXCPU lipstick: %m");
+        goto EXIT;
+    }
+
+    /* Just in case lipstick process was stopped, make it continue - and
+     * hopefully dump a core. */
+
+    if( kill(pid, SIGCONT) == -1 )
+        mce_log(LL_ERR, "failed to SIGCONT lipstick: %m");
+
+SKIP:
+
+    /* Allow some time for core dump to take place, then just kill it */
+    mdy_lipstick_killer_id = g_timeout_add(1000 * mdy_lipstick_killer_kill_delay,
+                                           mdy_lipstick_killer_kill_cb,
+                                           GINT_TO_POINTER(pid));
+EXIT:
+
+    /* Start led pattern active if kill timer was scheduled */
+    mdy_lipstick_killer_enable_led(mdy_lipstick_killer_id != 0);
+
+    return FALSE;
+}
+
+/** Shedule lipstick core dump + kill
+ *
+ * This should be called when initiating asynchronous setUpdatesEnabled()
+ * D-Bus method call.
+ */
+static void mdy_lipstick_killer_schedule(void)
+{
+    /* The lipstick killer is not used unless we have "devel" flavor
+     * mce, or normal mce running in verbose mode */
+    if( !mce_log_p(LL_DEVEL) )
+        goto EXIT;
+
+    /* Setting the core dump delay to zero disables killing too. */
+    if( mdy_lipstick_killer_core_delay <= 0 )
+        goto EXIT;
+
+    /* Note: Initially we might not yet know the lipstick PID. But once
+     *       it gets known, the kill timer chain will lock in to it.
+     *       If lipstick name owner changes, the timer chain is cancelled
+     *       and pid reset again. This should make sure we can do the
+     *       killing even if the async pid query does not finish before
+     *       we need to make the 1st setUpdatesEnabled() ipc and we do not
+     *       kill freshly restarted lipstick because the previous instance
+     *       got stuck. */
+
+    if( !mdy_lipstick_killer_id ) {
+        mce_log(LL_DEBUG, "scheduled lipstick killer");
+        mdy_lipstick_killer_id =
+            g_timeout_add(1000 * mdy_lipstick_killer_core_delay,
+                          mdy_lipstick_killer_core_cb,
+                          GINT_TO_POINTER(mdy_lipstick_killer_pid));
+    }
+
+EXIT:
+    return;
+}
+
+/** Cancel any pending lipstick killing timers
+ *
+ * This should be called when non-error reply is received for
+ * setUpdatesEnabled() D-Bus method call.
+ */
+static void mdy_lipstick_killer_cancel(void)
+{
+    if( mdy_lipstick_killer_id ) {
+        g_source_remove(mdy_lipstick_killer_id),
+            mdy_lipstick_killer_id = 0;
+        mce_log(LL_DEBUG, "cancelled lipstick killer");
+    }
+
+    /* In any case stop the led pattern */
+    mdy_lipstick_killer_enable_led(false);
+}
+
+/* ========================================================================= *
  * RENDERING_ENABLE_DISABLE
  * ========================================================================= */
 
@@ -3605,8 +3865,10 @@ static void mdy_renderer_set_state_cb(DBusPendingCall *pending,
         mce_log(LL_WARN, "%s: %s", err.name, err.message);
         mdy_renderer_ui_state = RENDERER_ERROR;
     }
-    else
+    else {
         mdy_renderer_ui_state = state;
+        mdy_lipstick_killer_cancel();
+    }
 
     mce_log(LL_NOTICE, "RENDERER state=%d", mdy_renderer_ui_state);
 
@@ -3699,6 +3961,10 @@ static gboolean mdy_renderer_set_state_req(renderer_state_t state)
 
     /* If we do not get reply in a short while, start led pattern */
     mdy_renderer_led_start_timer(state);
+
+    /* And after waiting a bit longer, assume that lipstick i
+     * process stuck and kill it */
+    mdy_lipstick_killer_schedule();
 
 EXIT:
     if( mdy_renderer_set_state_pc  ) {
@@ -4222,11 +4488,23 @@ static const char *mdy_stm_state_name(stm_state_t state)
     return name;
 }
 
+static void mdy_stm_lipstick_name_owner_pid(const char *name, int pid)
+{
+    if( mdy_lipstick_killer_name && !strcmp(mdy_lipstick_killer_name, name) )
+        mdy_lipstick_killer_pid = pid;
+}
+
 /** react to systemui availability changes
  */
-static void mdy_stm_lipstick_name_owner_changed(const char *name, bool has_owner)
+static void mdy_stm_lipstick_name_owner_changed(const char *name,
+                                                const char *prev,
+                                                const char *curr)
 {
     (void)name;
+    (void)prev;
+
+    bool has_owner = (curr && *curr);
+
     if( mdy_stm_lipstick_on_dbus != has_owner ) {
         /* set setUpdatesEnabled(true) needs to be called flag */
         mdy_stm_enable_rendering_needed = true;
@@ -4246,6 +4524,16 @@ static void mdy_stm_lipstick_name_owner_changed(const char *name, bool has_owner
          * deals with both (a) and (b) */
         mdy_stm_push_target_change(MCE_DISPLAY_ON);
     }
+
+    g_free(mdy_lipstick_killer_name), mdy_lipstick_killer_name = 0;
+    mdy_lipstick_killer_pid = -1;
+    mdy_lipstick_killer_cancel();
+
+    if( curr && *curr ) {
+        mdy_lipstick_killer_name = g_strdup(curr);
+        mce_dbus_get_pid_async(curr, mdy_stm_lipstick_name_owner_pid);
+    }
+
     execute_datapipe(&lipstick_available_pipe,
                      GINT_TO_POINTER(has_owner),
                      USE_INDATA, CACHE_INDATA);
@@ -5121,7 +5409,7 @@ static struct
 {
     const char *name;
     char       *rule;
-    void     (*notify)(const char *name, bool has_owner);
+    void     (*notify)(const char *name, const char *prev, const char *curr);
 } mdy_nameowner_lut[] =
 {
     {
@@ -5142,13 +5430,9 @@ static struct
 static void
 mdy_nameowner_changed(const char *name, const char *prev, const char *curr)
 {
-    (void)prev; // not used
-
-    bool has_owner = (*curr != 0);
-
     for( int i = 0; mdy_nameowner_lut[i].name; ++i ) {
         if( !strcmp(mdy_nameowner_lut[i].name, name) )
-            mdy_nameowner_lut[i].notify(name, has_owner);
+            mdy_nameowner_lut[i].notify(name, prev, curr);
     }
 }
 
@@ -6429,6 +6713,10 @@ static void mdy_gconf_cb(GConfClient *const gcc, const guint id,
         mdy_disp_never_blank = gconf_value_get_int(gcv);
         mce_log(LL_NOTICE, "never_blank = %d", mdy_disp_never_blank);
     }
+    else if( id == mdy_lipstick_killer_core_delay_gconf_cb_id ) {
+        mdy_lipstick_killer_core_delay = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "lipstick kill delay = %d", mdy_lipstick_killer_core_delay);
+    }
     else {
         mce_log(LL_WARN, "Spurious GConf value received; confused!");
     }
@@ -6574,6 +6862,14 @@ static void mdy_gconf_init(void)
                            MCE_GCONF_BLANKING_INHIBIT_MODE_PATH,
                            mdy_gconf_cb,
                            &mdy_blanking_inhibit_mode_gconf_cb_id);
+
+    /* Delay for killing unresponsive lipstick */
+    mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
+                           MCE_GCONF_LIPSTICK_CORE_DELAY_PATH,
+                           mdy_gconf_cb,
+                           &mdy_lipstick_killer_core_delay_gconf_cb_id);
+    mce_gconf_get_int(MCE_GCONF_LIPSTICK_CORE_DELAY_PATH,
+                      &mdy_lipstick_killer_core_delay);
 }
 
 static void mdy_gconf_quit(void)
@@ -6849,6 +7145,7 @@ void g_module_unload(GModule *module)
     mdy_blanking_cancel_dim();
     mdy_blanking_stop_adaptive_dimming();
     mdy_blanking_cancel_off();
+    mdy_lipstick_killer_cancel();
 
     /* Cancel active asynchronous dbus method calls to avoid
      * callback functions with stale adresses getting invoked */
@@ -6863,6 +7160,8 @@ void g_module_unload(GModule *module)
 
     /* Remove callbacks on module unload */
     mce_sensorfw_orient_set_notify(0);
+
+    g_free(mdy_lipstick_killer_name), mdy_lipstick_killer_name = 0;
 
     return;
 }
