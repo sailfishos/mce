@@ -64,7 +64,7 @@ enum
 	 *
 	 * Enough to cover 5% to 95% in 5% steps.
 	 */
-	ALS_LUX_STEPS = 20, // allows 5% steps for [5 ... 100] range
+	ALS_LUX_STEPS = 21, // allows 5% steps for [5 ... 100] range
 };
 
 /** A step in ALS ramp */
@@ -80,8 +80,8 @@ typedef struct
 	/** Filter name; used for locating configuration data */
 	const char *id;
 
-	/** ALS profiles the filter supports; used when loading config */
-	unsigned mask;
+	/* Number of profiles available */
+	int profiles;
 
 	/** Threshold: lower lux limit */
 	int lux_lo;
@@ -133,25 +133,18 @@ static const char * const color_profiles[] =
 static als_filter_t lut_display =
 {
 	.id = "Display",
-	.mask = (1u << ALS_PROFILE_MINIMUM |
-		 1u << ALS_PROFILE_ECONOMY |
-		 1u << ALS_PROFILE_NORMAL  |
-		 1u << ALS_PROFILE_BRIGHT  |
-		 1u << ALS_PROFILE_MAXIMUM),
 };
 
 /** ALS filtering state for keypad backlight brightness */
 static als_filter_t lut_key =
 {
 	.id = "Keypad",
-	.mask = 1u << ALS_PROFILE_NORMAL,
 };
 
 /** ALS filtering state for indication led brightness */
 static als_filter_t lut_led =
 {
 	.id = "Led",
-	.mask = 1u << ALS_PROFILE_NORMAL,
 };
 
 static gboolean set_color_profile(const gchar *id);
@@ -179,33 +172,6 @@ static gboolean color_profile_exists(const char *id)
 
 	return FALSE;
 }
-
-/** ALS profile id to string
- *
- * @param id profile enumeration id
- *
- * @return name of profile
- */
-static const char *
-als_profile_name(als_profile_t id)
-{
-	static const char * const lut[ALS_PROFILE_COUNT] =
-	{
-		[ALS_PROFILE_MINIMUM] = "Minimum",
-		[ALS_PROFILE_ECONOMY] = "Economy",
-		[ALS_PROFILE_NORMAL]  = "Normal",
-		[ALS_PROFILE_BRIGHT]  = "Bright",
-		[ALS_PROFILE_MAXIMUM] = "Maximum",
-	};
-
-	const char *res = 0;
-
-	if( (unsigned)id < (unsigned) ALS_PROFILE_COUNT )
-		res = lut[id];
-
-	return res ?: "Unknown";
-}
-
 
 /** Remove transition thresholds from filtering state
  *
@@ -248,10 +214,11 @@ static void als_filter_init(als_filter_t *self)
  * @param grp  Configuration group name
  * @param prof ALS profile id
  */
-static void
+static bool
 als_filter_load_profile(als_filter_t *self, const char *grp,
 			als_profile_t prof)
 {
+	bool  success = false;
 	gsize lim_cnt = 0;
 	gsize lev_cnt = 0;
 	gint *lim_val = 0;
@@ -259,14 +226,15 @@ als_filter_load_profile(als_filter_t *self, const char *grp,
 	char  lim_key[64];
 	char  lev_key[64];
 
-	snprintf(lim_key, sizeof lim_key, "Limits%s",  als_profile_name(prof));
-	snprintf(lev_key, sizeof lev_key, "Levels%s",  als_profile_name(prof));
+	snprintf(lim_key, sizeof lim_key, "LimitsProfile%d",  prof);
+	snprintf(lev_key, sizeof lev_key, "LevelsProfile%d",  prof);
 
 	lim_val = mce_conf_get_int_list(grp, lim_key, &lim_cnt);
 	lev_val = mce_conf_get_int_list(grp, lev_key, &lev_cnt);
 
 	if( !lim_val || lim_cnt < 1 ) {
-		mce_log(LL_WARN, "[%s] %s: no items", grp, lim_key);
+		if( prof == 0 )
+			mce_log(LL_WARN, "[%s] %s: no items", grp, lim_key);
 		goto EXIT;
 	}
 
@@ -290,9 +258,13 @@ als_filter_load_profile(als_filter_t *self, const char *grp,
 		self->lut[prof][k].lux = lim_val[k];
 		self->lut[prof][k].val = lev_val[k];
 	}
+
+	success = true;
 EXIT:
 	g_free(lim_val);
 	g_free(lev_val);
+
+	return success;
 }
 
 /** Load ALS ramps into filtering state
@@ -311,10 +283,13 @@ static void als_filter_load_config(als_filter_t *self)
 		goto EXIT;
 	}
 
-	for( int i = 0; i < ALS_PROFILE_COUNT; ++i ) {
-		if( self->mask & (1u << i) )
-			als_filter_load_profile(self, grp, i);
+	for( self->profiles = 0; self->profiles < ALS_PROFILE_COUNT; ++self->profiles ) {
+		if( !als_filter_load_profile(self, grp, self->profiles) )
+			break;
 	}
+
+	if( self->profiles < 1 )
+		mce_log(LL_WARN, "[%s]: als config broken", grp);
 EXIT:
 	return;
 }
@@ -542,10 +517,15 @@ static gpointer display_brightness_filter(gpointer data)
 {
 	int setting = GPOINTER_TO_INT(data);
 
-	if( setting < 1 ) setting = 1; else
-	if( setting > 5 ) setting = 5;
+	if( setting < 1 )   setting =   1; else
+	if( setting > 100 ) setting = 100;
 
-	int brightness = setting * 20;
+	int brightness = setting;
+
+	int max_prof = lut_display.profiles - 1;
+
+	if( max_prof < 0 )
+		goto EXIT;
 
 	if( !use_als_flag )
 		goto EXIT;
@@ -553,7 +533,8 @@ static gpointer display_brightness_filter(gpointer data)
 	if( als_lux_latest < 0 )
 		goto EXIT;
 
-	als_profile_t prof = setting - 1;
+	als_profile_t prof = mce_xlat_int(1,100, 0,max_prof, setting);
+
 	brightness = als_filter_run(&lut_display, prof, als_lux_latest);
 
 EXIT:
@@ -572,10 +553,13 @@ static gpointer led_brightness_filter(gpointer data)
 	int value = GPOINTER_TO_INT(data);
 	int scale = 40;
 
+	if( lut_led.profiles < 1 )
+		goto EXIT;
+
 	if( als_lux_latest < 0 )
 		goto EXIT;
 
-	scale = als_filter_run(&lut_led, ALS_PROFILE_NORMAL, als_lux_latest);
+	scale = als_filter_run(&lut_led, 0, als_lux_latest);
 
 EXIT:
 	return GINT_TO_POINTER(value * scale / 100);
@@ -592,10 +576,13 @@ static gpointer key_backlight_filter(gpointer data)
 	int value = GPOINTER_TO_INT(data);
 	int scale = 100;
 
+	if( lut_key.profiles < 1 )
+		goto EXIT;
+
 	if( als_lux_latest < 0 )
 		goto EXIT;
 
-	scale = als_filter_run(&lut_key, ALS_PROFILE_NORMAL, als_lux_latest);
+	scale = als_filter_run(&lut_key, 0, als_lux_latest);
 
 EXIT:
 	return GINT_TO_POINTER(value * scale / 100);

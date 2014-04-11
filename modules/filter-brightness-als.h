@@ -212,12 +212,7 @@ typedef struct {
 
 /** ALS profiles */
 typedef enum {
-	ALS_PROFILE_MINIMUM = 0,		/**< Minimum profile */
-	ALS_PROFILE_ECONOMY,			/**< Economy profile */
-	ALS_PROFILE_NORMAL,			/**< Normal profile */
-	ALS_PROFILE_BRIGHT,			/**< Bright profile */
-	ALS_PROFILE_MAXIMUM,			/**< Maximum profile */
-	ALS_PROFILE_COUNT,			/**< Number of profiles */
+	ALS_PROFILE_COUNT  = 21,		/**< Number of profiles */
 } als_profile_t;
 
 #endif /* _FILTER_BRIGHTNESS_ALS_H_ */
