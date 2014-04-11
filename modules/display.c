@@ -1954,6 +1954,16 @@ static void mdy_brightness_set_dim_level(void)
                 mdy_brightness_level_display_dim, new_brightness);
         mdy_brightness_level_display_dim = new_brightness;
     }
+
+    int delta = (mdy_brightness_level_display_on -
+                 mdy_brightness_level_display_dim);
+    int limit = mdy_brightness_level_maximum * 10 / 100;
+
+    execute_datapipe_output_triggers(delta < limit ?
+                                     &led_pattern_activate_pipe :
+                                     &led_pattern_deactivate_pipe,
+                                     "PatternDisplayDimmed",
+                                     USE_INDATA);
 }
 
 static void mdy_brightness_set_on_level(gint hbm_and_level)

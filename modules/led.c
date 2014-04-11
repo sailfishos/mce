@@ -1235,6 +1235,11 @@ static void led_update_active_pattern(void)
 		    (new_active_pattern->policy == 5))
 			break;
 
+		/* Show pattern with visibility 7 if display is dimmed */
+		if( new_active_pattern->policy == 7 &&
+		    display_state == MCE_DISPLAY_DIM )
+			break;
+
 		/* Acting dead behaviour */
 		if (system_state == MCE_STATE_ACTDEAD) {
 			/* If we're in acting dead,

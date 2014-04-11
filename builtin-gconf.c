@@ -1501,6 +1501,12 @@ static const setting_t gconf_defaults[] =
     .def  = "false",
   },
   {
+    // no define; used by mce display module
+    .key  = "/system/osso/dsm/leds/PatternDisplayDimmed",
+    .type = "b",
+    .def  = "true",
+  },
+  {
     // MCE_GCONF_PROXIMITY_PS_ENABLED_PATH @ proximity.h
     .key  = "/system/osso/dsm/proximity/ps_enabled",
     .type = "b",
