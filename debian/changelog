@@ -1,3 +1,9 @@
+mce (1.28.0) unstable; urgency=low
+
+  * [mce] Support 100 brightness levels and 21 ALS profiles. Fixes JB#13670
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 14 Apr 2014 10:31:20 +0300
+
 mce (1.27.0) unstable; urgency=low
 
   * [mce] Kill lipstick if it does not respond to setUpdatesEnabled ipc. Fixes JB#18090
