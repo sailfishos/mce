@@ -63,38 +63,18 @@ static display_state_t display_state = MCE_DISPLAY_UNDEF;
 /**
  * Simple level adjustment filter for display brightness
  *
- * @param data The un-processed brightness setting (1-5) stored in a pointer
+ * @param data The un-processed brightness setting (1-100) stored in a pointer
  * @return The processed brightness value (percentage)
  */
 static gpointer display_brightness_filter(gpointer data) G_GNUC_PURE;
 static gpointer display_brightness_filter(gpointer data)
 {
-	gint raw = GPOINTER_TO_INT(data);
-	gpointer retval;
+	gint retval = GPOINTER_TO_INT(data);
 
-	/* If the display is off or in low power mode,
-	 * don't update its brightness
-	 */
-	if ((display_state == MCE_DISPLAY_OFF) ||
-	    (display_state == MCE_DISPLAY_LPM_OFF) ||
-	    (display_state == MCE_DISPLAY_LPM_ON)) {
-		raw = 0;
-		goto EXIT;
-	}
+	if( retval <   1 ) retval =   1; else
+	if( retval > 100 ) retval = 100;
 
-	/* Safety net */
-	if (raw < DISPLAY_BRIGHTNESS_MINIMUM)
-		raw = DISPLAY_BRIGHTNESS_MINIMUM;
-	else if (raw > DISPLAY_BRIGHTNESS_MAXIMUM)
-		raw = DISPLAY_BRIGHTNESS_MAXIMUM;
-
-	/* Convert to percentage */
-	raw *= 20;
-
-EXIT:
-	retval = GINT_TO_POINTER(raw);
-
-	return retval;
+	return GINT_TO_POINTER(retval);
 }
 
 /**

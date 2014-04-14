@@ -1226,19 +1226,19 @@ static const setting_t gconf_defaults[] =
     // MCE_GCONF_DISPLAY_BRIGHTNESS_PATH @ modules/display.h
     .key  = "/system/osso/dsm/display/display_brightness",
     .type = "i",
-    .def  = "3",
+    .def  = "3", // Note: Legacy value, migrated at mce startup
   },
   {
-    // Hint for settings UI. Not used by MCE itself.
+    // MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_SIZE_PATH @ modules/display.h
     .key  = "/system/osso/dsm/display/display_brightness_level_step",
     .type = "i",
-    .def  = "1",
+    .def  = "1", // Note: Legacy value, migrated at mce startup
   },
   {
-    // Hint for settings UI. Not used by MCE itself.
+    // MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_COUNT_PATH @ modules/display.h
     .key  = "/system/osso/dsm/display/max_display_brightness_levels",
     .type = "i",
-    .def  = "5",
+    .def  = "5", // Note: Legacy value, migrated at mce startup
   },
   {
     // MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST_PATH @ modules/display.h
@@ -1499,6 +1499,12 @@ static const setting_t gconf_defaults[] =
     .key  = "/system/osso/dsm/leds/PatternTouchInputBlocked",
     .type = "b",
     .def  = "false",
+  },
+  {
+    // no define; used by mce display module
+    .key  = "/system/osso/dsm/leds/PatternDisplayDimmed",
+    .type = "b",
+    .def  = "true",
   },
   {
     // MCE_GCONF_PROXIMITY_PS_ENABLED_PATH @ proximity.h

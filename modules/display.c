@@ -586,6 +586,7 @@ static void                mdy_flagfiles_stop_tracking(void);
 static void                mdy_gconf_cb(GConfClient *const gcc, const guint id, GConfEntry *const entry, gpointer const data);
 static void                mdy_gconf_init(void);
 static void                mdy_gconf_quit(void);
+static void                mdy_gconf_sanitize_brightness_settings(void);
 
 /* ------------------------------------------------------------------------- *
  * INIFILE_SETTINGS
@@ -756,16 +757,29 @@ static gint mdy_disp_blank_timeout = DEFAULT_BLANK_TIMEOUT;
 /** GConf callback ID for mdy_disp_blank_timeout */
 static guint mdy_disp_blank_timeout_gconf_cb_id = 0;
 
-/** Real display brightness setting; [1, 5] */
-static gint mdy_real_disp_brightness = DEFAULT_DISP_BRIGHTNESS;
+/** Number of brightness steps */
+static gint mdy_brightness_step_count = DEFAULT_DISP_BRIGHTNESS_STEP_COUNT;
 
-/** GConf callback ID for mdy_real_disp_brightness */
-static guint mdy_disp_brightness_gconf_cb_id = 0;
+/** Size of one brightness step */
+static gint mdy_brightness_step_size  = DEFAULT_DISP_BRIGHTNESS_STEP_SIZE;
+
+/** display brightness setting; [1, mdy_brightness_step_count] */
+static gint mdy_brightness_setting = DEFAULT_DISP_BRIGHTNESS;
+
+/** GConf callback ID for mdy_brightness_step_count */
+static guint mdy_brightness_step_count_gconf_id = 0;
+
+/** GConf callback ID for mdy_brightness_step_size */
+static guint mdy_brightness_step_size_gconf_id = 0;
+
+/** GConf callback ID for mdy_brightness_setting */
+static guint mdy_brightness_setting_gconf_id = 0;
+
 
 /** PSM display brightness setting; [1, 5]
  *  or -1 when power save mode is not active
  *
- * (not in gconf, but kept close to mdy_real_disp_brightness)
+ * (not in gconf, but kept close to mdy_brightness_setting)
  */
 static gint mdy_psm_disp_brightness = -1;
 
@@ -1230,7 +1244,8 @@ static void mdy_datapipe_power_saving_mode_cb(gconstpointer data)
     if( power_saving_mode ) {
         /* Override the CABC mode and brightness setting */
         mdy_psm_cabc_mode = DEFAULT_PSM_CABC_MODE;
-        mdy_psm_disp_brightness = DEFAULT_PSM_DISP_BRIGHTNESS;
+        mdy_psm_disp_brightness = mce_xlat_int(1,100, 1,20,
+                                               mdy_brightness_setting);
 
         execute_datapipe(&display_brightness_pipe,
                          GINT_TO_POINTER(mdy_psm_disp_brightness),
@@ -1242,7 +1257,7 @@ static void mdy_datapipe_power_saving_mode_cb(gconstpointer data)
         mdy_psm_disp_brightness = -1;
 
         execute_datapipe(&display_brightness_pipe,
-                         GINT_TO_POINTER(mdy_real_disp_brightness),
+                         GINT_TO_POINTER(mdy_brightness_setting),
                          USE_INDATA, CACHE_INDATA);
         mdy_cabc_mode_set(mdy_cabc_mode);
     }
@@ -1919,6 +1934,38 @@ EXIT:
     return;
 }
 
+static void mdy_brightness_set_dim_level(void)
+{
+    /* default is: X percent of maximum */
+    int new_brightness = (mdy_brightness_level_maximum *
+                          DEFAULT_DIM_BRIGHTNESS) / 100;
+
+    /* or, at maximum half of DISPLAY_ON level */
+    if( new_brightness > mdy_brightness_level_display_on / 2 )
+        new_brightness = mdy_brightness_level_display_on / 2;
+
+    /* but do not allow zero value */
+    if( new_brightness < 1 )
+        new_brightness = 1;
+
+    /* The value we have here is for non-dimmed screen only */
+    if( mdy_brightness_level_display_dim != new_brightness ) {
+        mce_log(LL_DEBUG, "brightness.dim: %d -> %d",
+                mdy_brightness_level_display_dim, new_brightness);
+        mdy_brightness_level_display_dim = new_brightness;
+    }
+
+    int delta = (mdy_brightness_level_display_on -
+                 mdy_brightness_level_display_dim);
+    int limit = mdy_brightness_level_maximum * 10 / 100;
+
+    execute_datapipe_output_triggers(delta < limit ?
+                                     &led_pattern_activate_pipe :
+                                     &led_pattern_deactivate_pipe,
+                                     "PatternDisplayDimmed",
+                                     USE_INDATA);
+}
+
 static void mdy_brightness_set_on_level(gint hbm_and_level)
 {
     gint new_brightness = (hbm_and_level >> 0) & 0xff;
@@ -1948,13 +1995,24 @@ static void mdy_brightness_set_on_level(gint hbm_and_level)
         goto EXIT;
 
     /* The value we have here is for non-dimmed screen only */
-    mdy_brightness_level_display_on = new_brightness;
+    if( mdy_brightness_level_display_on != new_brightness ) {
+        mce_log(LL_DEBUG, "brightness.on: %d -> %d",
+                mdy_brightness_level_display_on, new_brightness);
+        mdy_brightness_level_display_on = new_brightness;
+    }
 
+    /* Re-evaluate dim brightness too */
+    mdy_brightness_set_dim_level();
+
+    /* Take updated values in use */
     switch( display_state ) {
     case MCE_DISPLAY_OFF:
     case MCE_DISPLAY_LPM_OFF:
     case MCE_DISPLAY_LPM_ON:
+        break;
+
     case MCE_DISPLAY_DIM:
+        mdy_brightness_set_fade_target(mdy_brightness_level_display_dim);
         break;
 
     default:
@@ -1963,7 +2021,7 @@ static void mdy_brightness_set_on_level(gint hbm_and_level)
         break;
 
     case MCE_DISPLAY_ON:
-        mdy_brightness_set_fade_target(new_brightness);
+        mdy_brightness_set_fade_target(mdy_brightness_level_display_on);
         break;
     }
 
@@ -6636,13 +6694,33 @@ static void mdy_gconf_cb(GConfClient *const gcc, const guint id,
         goto EXIT;
     }
 
-    if (id == mdy_disp_brightness_gconf_cb_id) {
-        mdy_real_disp_brightness = gconf_value_get_int(gcv);
-
-        if (mdy_psm_disp_brightness == -1) {
-            execute_datapipe(&display_brightness_pipe,
-                             GINT_TO_POINTER(mdy_real_disp_brightness),
-                             USE_INDATA, CACHE_INDATA);
+    if( id == mdy_brightness_setting_gconf_id ) {
+        gint val = gconf_value_get_int(gcv);
+        if( mdy_brightness_setting != val ) {
+            mce_log(LL_NOTICE, "mdy_brightness_setting: %d -> %d",
+                    mdy_brightness_setting, val);
+            mdy_brightness_setting = val;
+            mdy_gconf_sanitize_brightness_settings();
+        }
+    }
+    else if( id == mdy_brightness_step_size_gconf_id ) {
+        // NOTE: This is not supposed to be changed at runtime
+        gint val = gconf_value_get_int(gcv);
+        if( mdy_brightness_step_size != val ) {
+            mce_log(LL_WARN, "mdy_brightness_step_size: %d -> %d",
+                    mdy_brightness_step_size, val);
+            mdy_brightness_step_size = val;
+            mdy_gconf_sanitize_brightness_settings();
+        }
+    }
+    else if( id == mdy_brightness_step_count_gconf_id ) {
+        // NOTE: This is not supposed to be changed at runtime
+        gint val = gconf_value_get_int(gcv);
+        if( mdy_brightness_step_count != val ) {
+            mce_log(LL_WARN, "mdy_brightness_step_count: %d -> %d",
+                    mdy_brightness_step_count, val);
+            mdy_brightness_step_count = val;
+            mdy_gconf_sanitize_brightness_settings();
         }
     }
     else if (id == mdy_disp_blank_timeout_gconf_cb_id) {
@@ -6725,55 +6803,94 @@ EXIT:
     return;
 }
 
+static void mdy_gconf_sanitize_brightness_settings(void)
+{
+    /* Migrate configuration ranges */
+    if( mdy_brightness_step_count == 5 && mdy_brightness_step_size == 1 ) {
+        /* Legacy 5 step control -> convert to percentage */
+        mdy_brightness_step_count = 100;
+        mdy_brightness_step_size  = 1;
+        mdy_brightness_setting    = 20 * mdy_brightness_setting;
+    }
+    else if( mdy_brightness_step_count != 100 || mdy_brightness_step_size != 1 ) {
+        /* Unsupported config -> force to 60 percent */
+        mdy_brightness_step_count = 100;
+        mdy_brightness_step_size  = 1;
+        mdy_brightness_setting    = 60;
+    }
+
+    /* Clip brightness to supported range */
+    if( mdy_brightness_setting > 100 )
+        mdy_brightness_setting = 100;
+    else if( mdy_brightness_setting < 1 )
+        mdy_brightness_setting = 1;
+
+    /* Update config; signals will be emitted and config notifiers
+     * called - mdy_gconf_cb() must ignore no-change notifications
+     * to avoid recursive sanitation. */
+    mce_gconf_set_int(MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_SIZE_PATH,
+                      mdy_brightness_step_size);
+    mce_gconf_set_int(MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_COUNT_PATH,
+                      mdy_brightness_step_count);
+    mce_gconf_set_int(MCE_GCONF_DISPLAY_BRIGHTNESS_PATH,
+                      mdy_brightness_setting);
+
+    mce_log(LL_DEBUG, "mdy_brightness_setting=%d", mdy_brightness_setting);
+
+    /* Then execute through the brightness pipe too; this will update
+     * the mdy_brightness_level_display_on & mdy_brightness_level_display_dim
+     * values. */
+    execute_datapipe(&display_brightness_pipe,
+                     GINT_TO_POINTER(mdy_brightness_setting),
+                     USE_INDATA, CACHE_INDATA);
+
+    mce_log(LL_DEBUG, "mdy_brightness_level_display_on = %d",
+            mdy_brightness_level_display_on);
+    mce_log(LL_DEBUG, "mdy_brightness_level_display_dim = %d",
+            mdy_brightness_level_display_dim);
+}
+
 /** Get initial gconf valus and start tracking changes
  */
 static void mdy_gconf_init(void)
 {
     gulong tmp = 0;
 
-    /* Display brightness from configuration
-     * Since we've set a default, error handling is unnecessary */
-    mce_gconf_get_int(MCE_GCONF_DISPLAY_BRIGHTNESS_PATH,
-                      &mdy_real_disp_brightness);
-    mce_log(LL_INFO, "mdy_real_disp_brightness=%d", mdy_real_disp_brightness);
+    /* Display brightness settings */
 
-    /* Simulate display_brightness_pipe behavior and calulate the
-     * display brightness we ought to have (when display is not off)
-     * 1) translate brightness setting to percentage
-     * 2) translate percentage to hw scale */
-
-    mdy_brightness_level_display_on = mdy_real_disp_brightness * 100 / 5;
-    mdy_brightness_level_display_on = mdy_brightness_level_display_on * mdy_brightness_level_maximum / 100;
-    mce_log(LL_INFO, "mdy_brightness_level_display_on = %d", mdy_brightness_level_display_on);
-
-    /* Then execute through the brightness pipe too */
-    execute_datapipe(&display_brightness_pipe,
-                     GINT_TO_POINTER(mdy_real_disp_brightness),
-                     USE_INDATA, CACHE_INDATA);
-
-    /* Use the current brightness as cached brightness on startup,
-     * and fade from that value */
-    if( !mdy_brightness_level_output.path ) {
-        mce_log(LL_NOTICE, "No path for brightness file; "
-                "defaulting to %d",
-                mdy_brightness_level_cached);
-    }
-    else if (mce_read_number_string_from_file(mdy_brightness_level_output.path,
-                                              &tmp, NULL, FALSE,
-                                              TRUE) == FALSE) {
-        mce_log(LL_ERR, "Could not read the current brightness from %s",
-                mdy_brightness_level_output.path);
-        mdy_brightness_level_cached = -1;
-    }
-    else {
-        mdy_brightness_level_cached = tmp;
-    }
-    mce_log(LL_INFO, "mdy_brightness_level_cached=%d", mdy_brightness_level_cached);
-
+    mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
+                           MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_COUNT_PATH,
+                           mdy_gconf_cb,
+                           &mdy_brightness_step_count_gconf_id);
+    mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
+                           MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_SIZE_PATH,
+                           mdy_gconf_cb,
+                           &mdy_brightness_step_size_gconf_id);
     mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
                            MCE_GCONF_DISPLAY_BRIGHTNESS_PATH,
                            mdy_gconf_cb,
-                           &mdy_disp_brightness_gconf_cb_id);
+                           &mdy_brightness_setting_gconf_id);
+
+    mce_gconf_get_int(MCE_GCONF_DISPLAY_BRIGHTNESS_PATH,
+                      &mdy_brightness_setting);
+    mce_gconf_get_int(MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_SIZE_PATH,
+                      &mdy_brightness_step_size);
+    mce_gconf_get_int(MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_COUNT_PATH,
+                      &mdy_brightness_step_count);
+
+    /* Migrate ranges, update hw dim/on brightness levels */
+    mdy_gconf_sanitize_brightness_settings();
+
+    /* If we can read the current hw brightness level, update the
+     * cached brightness so we can do soft transitions from the
+     * initial state */
+    if( mdy_brightness_level_output.path &&
+        mce_read_number_string_from_file(mdy_brightness_level_output.path,
+                                              &tmp, NULL, FALSE, TRUE) ) {
+        mdy_brightness_level_cached = tmp;
+    }
+    mce_log(LL_DEBUG, "mdy_brightness_level_cached=%d",
+            mdy_brightness_level_cached);
 
     /* Display blank
      * Since we've set a default, error handling is unnecessary */
@@ -6947,7 +7064,7 @@ const gchar *g_module_check_init(GModule *module)
 {
     const gchar *failure = 0;
 
-    gboolean display_is_on = FALSE;
+    gboolean display_is_on = TRUE;
     submode_t submode_fixme = mce_get_submode_int32();
     gulong tmp = 0;
 
@@ -7019,10 +7136,7 @@ const gchar *g_module_check_init(GModule *module)
         mdy_brightness_level_maximum = tmp;
     mce_log(LL_INFO, "max_brightness = %d", mdy_brightness_level_maximum);
 
-    mdy_brightness_level_display_dim = (mdy_brightness_level_maximum *
-                                        DEFAULT_DIM_BRIGHTNESS) / 100;
-    if( mdy_brightness_level_display_dim < 1 )
-        mdy_brightness_level_display_dim = 1;
+    mdy_brightness_set_dim_level();
     mce_log(LL_INFO, "mdy_brightness_level_display_dim = %d", mdy_brightness_level_display_dim);
 
     mdy_cabc_mode_set(DEFAULT_CABC_MODE);
@@ -7036,13 +7150,11 @@ const gchar *g_module_check_init(GModule *module)
     /* Fetch configuration values from mce.ini files */
     mdy_config_init();
 
-    /* If display is on, set display brightness to minimal value */
-    if (mdy_brightness_level_cached > 0) {
-        mdy_brightness_force_level(1);
-
-        /* Ensure that internal display state is in sync with reality */
-        display_is_on = TRUE;
-    }
+    /* if we have brightness control file and initial brightness
+     * is zero -> start from display off */
+    if( mdy_brightness_level_output.path &&
+        mdy_brightness_level_cached <= 0 )
+        display_is_on = FALSE;
 
     /* Note: Transition to MCE_DISPLAY_OFF can be made already
      * here, but the MCE_DISPLAY_ON state is blocked until mCE

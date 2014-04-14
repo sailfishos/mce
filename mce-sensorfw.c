@@ -668,7 +668,7 @@ als_notify(unsigned lux, input_source_t srce)
 
 		if( srce == DS_SENSORD ) {
 			if( lux != als_lux_last )
-				mce_log(LL_WARN, "sensord=%u vs evdev=%u",
+				mce_log(LL_DEBUG, "sensord=%u vs evdev=%u",
 					lux, als_lux_last);
 			goto EXIT;
 		}

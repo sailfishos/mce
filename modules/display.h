@@ -119,8 +119,17 @@
 #ifndef MCE_GCONF_DISPLAY_PATH
 #define MCE_GCONF_DISPLAY_PATH			"/system/osso/dsm/display"
 #endif /* MCE_GCONF_DISPLAY_PATH */
+
 /** Path to the display brightness GConf setting */
 #define MCE_GCONF_DISPLAY_BRIGHTNESS_PATH	MCE_GCONF_DISPLAY_PATH "/display_brightness"
+
+/** Path to the display brightness level count GConf setting */
+#define MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_COUNT_PATH	MCE_GCONF_DISPLAY_PATH "/max_display_brightness_levels"
+
+/** Path to the display brightness level size GConf setting */
+#define MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_SIZE_PATH	MCE_GCONF_DISPLAY_PATH "/display_brightness_level_step"
+
+
 /** Path to the list of possible dim timeouts GConf setting */
 #define MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST_PATH	MCE_GCONF_DISPLAY_PATH "/possible_display_dim_timeouts"
 /** Path to the dim timeout GConf setting */
@@ -145,10 +154,22 @@
 /** Path to the unresponsive lipstick core dump delay */
 #define MCE_GCONF_LIPSTICK_CORE_DELAY_PATH	MCE_GCONF_DISPLAY_PATH "/lipstick_core_dump_delay"
 
+/* NOTE: The following defines the legacy mce brightness scale. It is
+ *       carved in stone for the sake of backwards compatibility. On
+ *       startup mce will migrate existing, possibly modified by user
+ *       brightness settings to 1-100 range - Which is then used for
+ *       actual brightness control.
+ */
+
 /** Default display brightness on a scale from 1-5 */
 #define DEFAULT_DISP_BRIGHTNESS			3	/* 60% */
-/** Default display brightness (power save mode active) on a scale from 1-5 */
-#define DEFAULT_PSM_DISP_BRIGHTNESS		1	/* 20% */
+
+/** Number of display brightness steps */
+#define DEFAULT_DISP_BRIGHTNESS_STEP_COUNT	5
+
+/** Logical size of each step; not sure if this has ever been used */
+#define DEFAULT_DISP_BRIGHTNESS_STEP_SIZE	1
+
 /** Default blank timeout, in seconds */
 #define DEFAULT_BLANK_TIMEOUT			3	/* 3 seconds */
 /**

@@ -409,4 +409,40 @@ void mce_quit_mainloop(void);
 	res;\
 })
 
+/** Translate integer value from one range to another
+ *
+ * Linear conversion of a value in [src_lo, src_hi] range
+ * to [dst_lo, dst_hi] range.
+ *
+ * Uses rounding, so that 55 [0,100] -> 6 [0, 10].
+ *
+ * @param src_lo lower bound for source range
+ * @param src_hi upper bound for source range
+ * @param dst_lo lower bound for destination range
+ * @param dst_hi upper bound for destination range
+ * @param val    value in source range to be translated
+ *
+ * @return input value mapped to destination range
+ */
+static inline int
+mce_xlat_int(int src_lo, int src_hi, int dst_lo, int dst_hi, int val)
+{
+        /* Deal with empty ranges first; assume that the
+         * low bound is sanest choise available */
+        if( src_lo >= src_hi || dst_lo >= dst_hi )
+                return dst_lo;
+
+        int src_range = src_hi - src_lo;
+        int dst_range = dst_hi - dst_lo;
+
+        val -= src_lo;
+        val = (val * dst_range + src_range / 2) / src_range;
+        val += dst_lo;
+
+        if( val > dst_hi ) val = dst_hi; else
+        if( val < dst_lo ) val = dst_lo;
+
+        return val;
+}
+
 #endif /* _MCE_H_ */

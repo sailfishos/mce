@@ -239,7 +239,7 @@ product_id_t get_product_id(void)
 	free(tmp);
 
 	if ( product_id == PRODUCT_UNKNOWN ) {
-		mce_log(LL_ERR,	"Failed to get the product ID");
+		mce_log(LL_NOTICE, "Failed to get the product ID");
 	}
 
 EXIT:

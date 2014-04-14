@@ -1773,7 +1773,7 @@ static void xmce_set_display_brightness(const char *args)
         debugf("%s(%s)\n", __FUNCTION__, args);
         int val = xmce_parse_integer(args);
 
-        if( val < 1 || val > 5 ) {
+        if( val < 1 || val > 100 ) {
                 errorf("%d: invalid brightness value\n", val);
                 exit(EXIT_FAILURE);
         }
@@ -1790,7 +1790,7 @@ static void xmce_get_display_brightness(void)
         strcpy(txt, "unknown");
         if( mcetool_gconf_get_int(MCE_GCONF_DISPLAY_BRIGHTNESS_PATH, &val) )
                 snprintf(txt, sizeof txt, "%d", (int)val);
-        printf("%-"PAD1"s %s (1-5)\n", "Brightness:", txt);
+        printf("%-"PAD1"s %s (1-100)\n", "Brightness:", txt);
 }
 
 /* ------------------------------------------------------------------------- *
@@ -2872,9 +2872,9 @@ PARAM"-i, --set-fake-doubletap=<enabled|disabled>\n"
 EXTRA"set the doubletap emulation mode; valid modes are:\n"
 EXTRA"  'enabled' and 'disabled'\n"
 #endif
-PARAM"-b, --set-display-brightness=<1|2|3|4|5>\n"
+PARAM"-b, --set-display-brightness=<1...100>\n"
 EXTRA"set the display brightness to BRIGHTNESS;\n"
-EXTRA"  valid values are: 1-5\n"
+EXTRA"  valid values are: 1-100\n"
 PARAM"-g, --set-als-mode=<enabled|disabled>\n"
 EXTRA"set the als mode; valid modes are:\n"
 EXTRA"  'enabled' and 'disabled'\n"
