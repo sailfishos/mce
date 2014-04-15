@@ -99,6 +99,9 @@ enum
 /** Min valid time_t value in milliseconds */
 #define MIN_TICK  0
 
+/** Maximum number of concurrent notification ui exceptions */
+#define TKLOCK_NOTIF_SLOTS 32
+
 /* ========================================================================= *
  * DATATYPES
  * ========================================================================= */
@@ -110,6 +113,32 @@ typedef struct
     void (*input_cb)(gconstpointer data);
     bool bound;
 } datapipe_binding_t;
+
+typedef struct
+{
+    /** BOOTTIME tick when notification autostops */
+    int64_t  ns_until;
+
+    /** Amount of ms autostop extends from user input */
+    int64_t  ns_renew;
+
+    /** Assumed unique identification string */
+    gchar   *ns_name;
+
+} tklock_notif_slot_t;
+
+typedef struct
+{
+    /** Array of notification slots */
+    tklock_notif_slot_t tn_slot[TKLOCK_NOTIF_SLOTS];
+
+    /** BOOTTIME linger tick from deactivated slots */
+    int64_t             tn_linger;
+
+    /** Timer id for autostopping notification slots */
+    guint               tn_autostop_id;
+
+} tklock_notif_state_t;
 
 /* ========================================================================= *
  * PROTOTYPES
@@ -182,7 +211,6 @@ static void     tklock_proxlock_rethink(void);
 static uiexctype_t topmost_active(uiexctype_t mask);
 static void     tklock_uiexcept_sync_to_datapipe(void);
 static gboolean tklock_uiexcept_linger_cb(gpointer aptr);
-static gboolean tklock_uiexcept_notif_cb(gpointer aptr);
 static void     tklock_uiexcept_begin(uiexctype_t type, int64_t linger);
 static void     tklock_uiexcept_end(uiexctype_t type, int64_t linger);
 static void     tklock_uiexcept_cancel(void);
@@ -241,8 +269,36 @@ static gboolean tklock_dbus_systemui_callback_cb(DBusMessage *const msg);
 
 static gboolean tklock_dbus_device_lock_changed_cb(DBusMessage *const msg);
 
+static gboolean tklock_dbus_notification_beg_cb(DBusMessage *const msg);
+static gboolean tklock_dbus_notification_end_cb(DBusMessage *const msg);
+
 static void     mce_tklock_init_dbus(void);
 static void     mce_tklock_quit_dbus(void);
+
+// NOTIFICATION_SLOTS
+
+static void     tklock_notif_slot_init(tklock_notif_slot_t *self);
+static void     tklock_notif_slot_free(tklock_notif_slot_t *self);
+static void     tklock_notif_slot_set(tklock_notif_slot_t *self, const char *name, int64_t until, int64_t renew);
+static bool     tklock_notif_slot_is_free(const tklock_notif_slot_t *self);
+static bool     tklock_notif_slot_has_name(const tklock_notif_slot_t *self, const char *name);
+static bool     tklock_notif_slot_validate(tklock_notif_slot_t *self, int64_t now);
+static bool     tklock_notif_slot_renew(tklock_notif_slot_t *self, int64_t now);
+
+// NOTIFICATION_API
+
+static void     tklock_notif_init(void);
+static void     tklock_notif_quit(void);
+static gboolean tklock_notif_autostop_cb(gpointer aptr);
+static void     tklock_notif_cancel_autostop(void);
+static void     tklock_notif_schedule_autostop(gint delay);
+static void     tklock_notif_update_state(void);
+static void     tklock_notif_extend_by_renew(void);
+static void     tklock_notif_vacate_slot(const char *name, int64_t linger);
+static void     tklock_notif_reserve_slot(const char *name, int64_t length, int64_t renew);
+
+static void     mce_tklock_begin_notification(const char *name, int64_t length, int64_t renew);
+static void     mce_tklock_end_notification(const char *name, int64_t linger);
 
 // "module" load/unload
 extern gboolean mce_tklock_init(void);
@@ -266,7 +322,6 @@ static guint doubletap_gesture_policy_cb_id = 0;
 gint doubletap_enable_mode = DBLTAP_ENABLE_DEFAULT;
 /** GConf callback ID for doubletap_enable_mode */
 static guint doubletap_enable_mode_cb_id = 0;
-
 
 /** Flag: Disable automatic dim/blank from tklock */
 static gint tklock_blank_disable = FALSE;
@@ -716,8 +771,8 @@ static void tklock_datapipe_charger_state_cb(gconstpointer data)
 
     mce_log(LL_DEBUG, "charger_state = %d -> %d", prev, charger_state);
 
-    tklock_uiexcept_begin(UIEXC_NOTIF, EXCEPTION_LENGTH_CHARGER);
-    tklock_uiexcept_rethink();
+    mce_tklock_begin_notification("mce_charger_state",
+                                  EXCEPTION_LENGTH_CHARGER, -1);
 
 EXIT:
     return;
@@ -741,8 +796,8 @@ static void tklock_datapipe_battery_status_cb(gconstpointer data)
 #if 0 /* At the moment there is no notification associated with
        * battery full -> no need to turn the display on */
     if( battery_status == BATTERY_STATUS_FULL ) {
-        tklock_uiexcept_begin(UIEXC_NOTIF, EXCEPTION_LENGTH_BATTERY);
-        tklock_uiexcept_rethink();
+        mce_tklock_begin_notification("mce_battery_full",
+                                      EXCEPTION_LENGTH_BATTERY, -1);
     }
 #endif
 
@@ -768,11 +823,11 @@ static void tklock_datapipe_usb_cable_cb(gconstpointer data)
 
     mce_log(LL_DEBUG, "usb_cable_state = %d -> %d", prev, usb_cable_state);
 
-    tklock_uiexcept_begin(UIEXC_NOTIF, EXCEPTION_LENGTH_CHARGER);
-    tklock_uiexcept_rethink();
+    mce_tklock_begin_notification("mce_usb_cable_state",
+                                  EXCEPTION_LENGTH_CHARGER, -1);
 
 EXIT:
-        return;
+    return;
 }
 
 /** Audio jack state; assume not inserted */
@@ -793,8 +848,7 @@ static void tklock_datapipe_jack_sense_cb(gconstpointer data)
 
     mce_log(LL_DEBUG, "jack_sense_state = %d -> %d", prev, jack_sense_state);
 
-    tklock_uiexcept_begin(UIEXC_NOTIF, EXCEPTION_LENGTH_JACK);
-    tklock_uiexcept_rethink();
+    mce_tklock_begin_notification("mce_jack_sense", EXCEPTION_LENGTH_JACK, -1);
 
 EXIT:
     return;
@@ -807,8 +861,9 @@ static void tklock_datapipe_camera_button_cb(gconstpointer const data)
     /* TODO: This might make no sense, need to check on HW that has
      *       dedicated camera button ... */
     (void)data;
-    tklock_uiexcept_begin(UIEXC_NOTIF, EXCEPTION_LENGTH_CAMERA);
-    tklock_uiexcept_rethink();
+
+    mce_tklock_begin_notification("mce_camera_button",
+                                  EXCEPTION_LENGTH_CAMERA, -1);
 }
 
 /** Change notifications for keypress
@@ -839,15 +894,15 @@ static void tklock_datapipe_keypress_cb(gconstpointer const data)
 
     case KEY_CAMERA:
         mce_log(LL_DEBUG, "camera key");
-        tklock_uiexcept_begin(UIEXC_NOTIF, EXCEPTION_LENGTH_CAMERA);
-        tklock_uiexcept_rethink();
+        mce_tklock_begin_notification("mce_camera_key",
+                                      EXCEPTION_LENGTH_CAMERA, -1);
         break;
 
     case KEY_VOLUMEDOWN:
     case KEY_VOLUMEUP:
         mce_log(LL_DEBUG, "volume key");
-        tklock_uiexcept_begin(UIEXC_NOTIF, EXCEPTION_LENGTH_VOLUME);
-        tklock_uiexcept_rethink();
+        mce_tklock_begin_notification("mce_volume_key",
+                                      EXCEPTION_LENGTH_VOLUME, -1);
         break;
 
     default:
@@ -1193,6 +1248,8 @@ EXIT:
  */
 static void tklock_datapipe_user_activity_cb(gconstpointer data)
 {
+    static int64_t last_time = 0;
+
     const struct input_event *ev = data;
 
     if( !ev )
@@ -1201,11 +1258,6 @@ static void tklock_datapipe_user_activity_cb(gconstpointer data)
     /* Touch events relevant unly when handling notification & linger */
     if( !(exception_state & (UIEXC_NOTIF | UIEXC_LINGER)) )
         goto EXIT;
-
-    mce_log(LL_DEBUG, "type: %s, code: %s, value: %d",
-            evdev_get_event_type_name(ev->type),
-            evdev_get_event_code_name(ev->type, ev->code),
-            ev->value);
 
     bool touched = false;
     switch( ev->type ) {
@@ -1237,6 +1289,18 @@ static void tklock_datapipe_user_activity_cb(gconstpointer data)
     if( !touched )
         goto EXIT;
 
+    int64_t now = tklock_monotick_get();
+
+    if( last_time + 200 > now )
+        goto EXIT;
+
+    last_time = now;
+
+    mce_log(LL_DEBUG, "type: %s, code: %s, value: %d",
+            evdev_get_event_type_name(ev->type),
+            evdev_get_event_code_name(ev->type, ev->code),
+            ev->value);
+
     /* N.B. the exception_state is bitmask, but only bit at time is
      *      visible in the exception_state datapipe */
     switch( exception_state ) {
@@ -1249,7 +1313,7 @@ static void tklock_datapipe_user_activity_cb(gconstpointer data)
     case UIEXC_NOTIF:
         /* touchscreen activity makes notification exceptions to last longer */
         mce_log(LL_DEBUG, "touch event; lengthen notification exception");
-        tklock_uiexcept_begin(UIEXC_NOTIF, EXCEPTION_LENGTH_ACTIVITY);
+        tklock_notif_extend_by_renew();
         break;
 
     default:
@@ -2063,24 +2127,6 @@ EXIT:
     return;
 }
 
-static gboolean tklock_uiexcept_notif_cb(gpointer aptr)
-{
-    (void) aptr;
-
-    if( !exdata.notif_id )
-        goto EXIT;
-
-    mce_log(LL_DEBUG, "cancel notification exception");
-
-    exdata.notif_id   = 0;
-    exdata.notif_tick = MIN_TICK;
-    tklock_uiexcept_end(UIEXC_NOTIF, 0);
-
-EXIT:
-    return FALSE;
-
-}
-
 static void tklock_uiexcept_begin(uiexctype_t type, int64_t linger)
 {
     if( !exdata.mask ) {
@@ -2113,19 +2159,6 @@ static void tklock_uiexcept_begin(uiexctype_t type, int64_t linger)
 
     if( exdata.linger_tick < linger )
         exdata.linger_tick = linger;
-
-    if( type & UIEXC_NOTIF ) {
-        mce_log(LL_DEBUG, "setup notification exception");
-        if( exdata.notif_id )
-            g_source_remove(exdata.notif_id);
-        if( exdata.notif_tick < linger )
-            exdata.notif_tick = linger;
-        int delay = (int)(exdata.notif_tick - now);
-        if( delay <= 0 )
-            exdata.notif_id = g_idle_add(tklock_uiexcept_notif_cb, 0);
-        else
-            exdata.notif_id = g_timeout_add(delay, tklock_uiexcept_notif_cb, 0);
-    }
 
     tklock_uiexcept_sync_to_datapipe();
 }
@@ -2660,7 +2693,6 @@ static void tklock_gconf_init(void)
                            &doubletap_enable_mode_cb_id);
     mce_gconf_get_int(MCE_GCONF_DOUBLETAP_MODE, &doubletap_enable_mode);
 
-
     /* Touchscreen/keypad autolock enabled/disabled */
     mce_gconf_notifier_add(MCE_GCONF_LOCK_PATH,
                            MCE_GCONF_TK_DOUBLE_TAP_GESTURE_PATH,
@@ -3124,6 +3156,80 @@ EXIT:
     return status;
 }
 
+/** D-Bus callback for notification begin request
+ *
+ * @param msg D-Bus message with the notification name and duration
+ *
+ * @return TRUE
+ */
+static gboolean tklock_dbus_notification_beg_cb(DBusMessage *const msg)
+{
+    DBusError     err  = DBUS_ERROR_INIT;
+    const char   *name = 0;
+    dbus_int32_t  dur  = 0;
+    dbus_int32_t  add  = 0;
+
+    if( !dbus_message_get_args(msg, &err,
+                              DBUS_TYPE_STRING,&name,
+                              DBUS_TYPE_INT32, &dur,
+                              DBUS_TYPE_INT32, &add,
+                              DBUS_TYPE_INVALID) ) {
+        mce_log(LL_ERR, "Failed to get arguments: %s: %s",
+                err.name, err.message);
+        goto EXIT;
+    }
+
+    mce_log(LL_DEVEL, "notification begin from %s",
+            mce_dbus_get_message_sender_ident(msg));
+
+    mce_tklock_begin_notification(name, dur, add);
+
+    // TODO: cancel if sender drops from system bus
+
+EXIT:
+    /* Send dummy reply if requested */
+    if( !dbus_message_get_no_reply(msg) )
+        dbus_send_message(dbus_new_method_reply(msg));
+
+    dbus_error_free(&err);
+    return TRUE;
+}
+
+/** D-Bus callback for notification end request
+ *
+ * @param msg D-Bus message with the notification name and duration
+ *
+ * @return TRUE
+ */
+static gboolean tklock_dbus_notification_end_cb(DBusMessage *const msg)
+{
+    DBusError     err  = DBUS_ERROR_INIT;
+    const char   *name = 0;
+    dbus_int32_t  dur  = 0;
+
+    if( !dbus_message_get_args(msg, &err,
+                              DBUS_TYPE_STRING,&name,
+                              DBUS_TYPE_INT32, &dur,
+                              DBUS_TYPE_INVALID) ) {
+        mce_log(LL_ERR, "Failed to get arguments: %s: %s",
+                err.name, err.message);
+        goto EXIT;
+    }
+
+    mce_log(LL_DEVEL, "notification end from %s",
+            mce_dbus_get_message_sender_ident(msg));
+
+    mce_tklock_end_notification(name, dur);
+
+EXIT:
+    /* Send dummy reply if requested */
+    if( !dbus_message_get_no_reply(msg) )
+        dbus_send_message(dbus_new_method_reply(msg));
+
+    dbus_error_free(&err);
+    return TRUE;
+}
+
 /** D-Bus callback for handling device lock state changed signals
  *
  * @param msg The D-Bus message
@@ -3185,6 +3291,18 @@ static mce_dbus_handler_t handlers[] =
         .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
         .callback  = tklock_dbus_systemui_callback_cb,
     },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = "notification_begin_req",
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = tklock_dbus_notification_beg_cb,
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = "notification_end_req",
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = tklock_dbus_notification_end_cb,
+    },
     /* sentinel */
     {
         .interface = 0
@@ -3206,6 +3324,305 @@ static void mce_tklock_quit_dbus(void)
 }
 
 /* ========================================================================= *
+ * NOTIFICATION_SLOTS
+ * ========================================================================= */
+
+static void
+tklock_notif_slot_init(tklock_notif_slot_t *self)
+{
+    self->ns_name  = 0;
+    self->ns_until = 0;
+    self->ns_renew = 0;
+}
+
+static void
+tklock_notif_slot_free(tklock_notif_slot_t *self)
+{
+    g_free(self->ns_name), self->ns_name = 0;
+    self->ns_until = 0;
+    self->ns_renew = 0;
+}
+
+static void
+tklock_notif_slot_set(tklock_notif_slot_t *self,
+                                  const char *name,
+                                  int64_t until,
+                                  int64_t renew)
+{
+    tklock_notif_slot_free(self);
+
+    self->ns_name  = g_strdup(name);
+    self->ns_until = until;
+    self->ns_renew = renew;
+}
+
+static bool
+tklock_notif_slot_is_free(const tklock_notif_slot_t *self)
+{
+    return self->ns_name == 0;
+}
+
+static bool
+tklock_notif_slot_has_name(const tklock_notif_slot_t *self, const char *name)
+{
+    return self->ns_name && !strcmp(self->ns_name, name);
+}
+
+static bool
+tklock_notif_slot_validate(tklock_notif_slot_t *self, int64_t now)
+{
+    if( now <= self->ns_until )
+        return true;
+
+    tklock_notif_slot_free(self);
+    return false;
+}
+
+static bool
+tklock_notif_slot_renew(tklock_notif_slot_t *self, int64_t now)
+{
+    int64_t tmo = now + self->ns_renew;
+
+    if( tmo <= self->ns_until )
+        return false;
+
+    self->ns_until = tmo;
+    return true;
+}
+
+/* ========================================================================= *
+ * NOTIFICATION_API
+ * ========================================================================= */
+
+static tklock_notif_state_t tklock_notif_state;
+
+static void
+tklock_notif_init(void)
+{
+    tklock_notif_state.tn_linger = MIN_TICK;
+    tklock_notif_state.tn_autostop_id = 0;
+
+    for( size_t i = 0; i < TKLOCK_NOTIF_SLOTS; ++i ) {
+        tklock_notif_slot_t *slot = tklock_notif_state.tn_slot + i;
+        tklock_notif_slot_init(slot);
+    }
+}
+
+static void
+tklock_notif_quit(void)
+{
+    tklock_notif_cancel_autostop();
+
+    for( size_t i = 0; i < TKLOCK_NOTIF_SLOTS; ++i ) {
+        tklock_notif_slot_t *slot = tklock_notif_state.tn_slot + i;
+        tklock_notif_slot_free(slot);
+    }
+}
+
+static gboolean tklock_notif_autostop_cb(gpointer aptr)
+{
+    (void)aptr;
+
+    if( !tklock_notif_state.tn_autostop_id )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "triggered");
+
+    tklock_notif_state.tn_autostop_id = 0;
+
+    tklock_notif_update_state();
+
+EXIT:
+    return FALSE;
+}
+
+static void
+tklock_notif_cancel_autostop(void)
+{
+    if( tklock_notif_state.tn_autostop_id ) {
+        mce_log(LL_DEBUG, "cancelled");
+        g_source_remove(tklock_notif_state.tn_autostop_id),
+            tklock_notif_state.tn_autostop_id = 0;
+    }
+}
+
+static void
+tklock_notif_schedule_autostop(gint delay)
+{
+    tklock_notif_cancel_autostop();
+    mce_log(LL_DEBUG, "scheduled in %d ms", delay);
+    tklock_notif_state.tn_autostop_id =
+        g_timeout_add(delay, tklock_notif_autostop_cb, 0);
+}
+
+static void
+tklock_notif_update_state(void)
+{
+    int64_t now = tklock_monotick_get();
+    int64_t tmo = 0;
+
+    for( size_t i = 0; i < TKLOCK_NOTIF_SLOTS; ++i ) {
+        tklock_notif_slot_t *slot = tklock_notif_state.tn_slot + i;
+
+        if( tklock_notif_slot_is_free(slot) )
+            continue;
+
+        if( !tklock_notif_slot_validate(slot, now) )
+            continue;
+
+        if( tmo < slot->ns_until )
+            tmo = slot->ns_until;
+    }
+
+    tklock_notif_cancel_autostop();
+
+    if( tmo > now ) {
+        tklock_notif_schedule_autostop((gint)(tmo - now));
+
+        tklock_uiexcept_begin(UIEXC_NOTIF, 0);
+        tklock_uiexcept_rethink();
+    }
+    else {
+        if( (tmo = tklock_notif_state.tn_linger - now) < 0 )
+            tmo = 0;
+        tklock_uiexcept_end(UIEXC_NOTIF, tmo);
+        tklock_uiexcept_rethink();
+    }
+}
+
+static void
+tklock_notif_extend_by_renew(void)
+{
+    int64_t now = tklock_monotick_get();
+
+    bool changed = false;
+
+    for( size_t i = 0; i < TKLOCK_NOTIF_SLOTS; ++i ) {
+        tklock_notif_slot_t *slot = tklock_notif_state.tn_slot + i;
+
+        if( tklock_notif_slot_is_free(slot) )
+            continue;
+
+        if( !tklock_notif_slot_validate(slot, now) )
+            changed = true;
+        else if( tklock_notif_slot_renew(slot, now) )
+            changed = true;
+    }
+    if( changed )
+        tklock_notif_update_state();
+}
+
+static void
+tklock_notif_vacate_slot(const char *name, int64_t linger)
+{
+    for( size_t i = 0; i < TKLOCK_NOTIF_SLOTS; ++i ) {
+        tklock_notif_slot_t *slot = tklock_notif_state.tn_slot + i;
+
+        if( !tklock_notif_slot_has_name(slot, name) )
+            continue;
+
+        tklock_notif_slot_free(slot);
+
+        int64_t now = tklock_monotick_get();
+        int64_t tmo = now + linger;
+
+        if( tklock_notif_state.tn_linger < tmo )
+            tklock_notif_state.tn_linger = tmo;
+
+        tklock_notif_update_state();
+        goto EXIT;
+    }
+
+    mce_log(LL_WARN, "attempt to end non-existing notification");
+
+EXIT:
+
+    return;
+}
+
+static void
+tklock_notif_reserve_slot(const char *name, int64_t length, int64_t renew)
+{
+    int64_t now = tklock_monotick_get();
+    int64_t tmo = now + length;
+
+    /* first check if slot is already reserved */
+
+    for( size_t i = 0; i < TKLOCK_NOTIF_SLOTS; ++i ) {
+        tklock_notif_slot_t *slot = tklock_notif_state.tn_slot + i;
+
+        if( !tklock_notif_slot_has_name(slot, name) )
+            continue;
+
+        tklock_notif_slot_set(slot, name, tmo, renew);
+        tklock_notif_update_state();
+        goto EXIT;
+    }
+
+    /* then try to find unused slot */
+
+    for( size_t i = 0; i < TKLOCK_NOTIF_SLOTS; ++i ) {
+        tklock_notif_slot_t *slot = tklock_notif_state.tn_slot + i;
+
+        if( !tklock_notif_slot_is_free(slot) )
+            continue;
+
+        tklock_notif_slot_set(slot, name, tmo, renew);
+        tklock_notif_update_state();
+        goto EXIT;
+    }
+
+    mce_log(LL_WARN, "too many concurrent notifications");
+
+EXIT:
+    return;
+}
+
+/** Interface for registering notification state
+ *
+ * @param name   assumed unique notification identifier
+ * @param length minimum length of notification [ms]
+ * @param renew  extend length on user input [ms]
+ */
+static void
+mce_tklock_begin_notification(const char *name, int64_t length, int64_t renew)
+{
+    /* cap length to [1,30] second range */
+    if( length > 30000 )
+        length = 30000;
+    else if( length < 1000 )
+        length = 1000;
+
+    /* cap renew to [0,5] second range, negative means use default */
+    if( renew > 5000 )
+        renew = 5000;
+    else if( renew < 0 )
+        renew = EXCEPTION_LENGTH_ACTIVITY;
+
+    mce_log(LL_DEBUG, "name: %s, length: %d, renew: %d",
+            name, (int)length, (int)renew);
+    tklock_notif_reserve_slot(name, length, renew);
+}
+
+/** Interface for removing notification state
+ *
+ * @param name   assumed unique notification identifier
+ * @param linger duration to keep display on [ms]
+ */
+static void
+mce_tklock_end_notification(const char *name, int64_t linger)
+{
+    /* cap linger to [0, 10] second range */
+    if( linger > 10000 )
+        linger = 10000;
+    else if( linger < 0 )
+        linger = 0;
+
+    mce_log(LL_DEBUG, "name: %s, linger: %d", name, (int)linger);
+    tklock_notif_vacate_slot(name, linger);
+}
+
+/* ========================================================================= *
  * MODULE LOAD/UNLOAD
  * ========================================================================= */
 
@@ -3217,6 +3634,9 @@ static void mce_tklock_quit_dbus(void)
 gboolean mce_tklock_init(void)
 {
     gboolean status = FALSE;
+
+    /* initialize notification book keeping */
+    tklock_notif_init();
 
     /* paths must be probed 1st, the results are used
      * to validate configuration and settings */
@@ -3255,6 +3675,7 @@ void mce_tklock_exit(void)
     tklock_uiexcept_cancel();
     tklock_dtcalib_stop();
     tklock_datapipe_proximity_uncover_cancel();
+    tklock_notif_quit();
 
     // FIXME: check that final state is sane
 
