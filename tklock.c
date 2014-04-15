@@ -122,6 +122,9 @@ typedef struct
     /** Amount of ms autostop extends from user input */
     int64_t  ns_renew;
 
+    /** Private D-Bus name of the slot owner */
+    gchar   *ns_owner;
+
     /** Assumed unique identification string */
     gchar   *ns_name;
 
@@ -137,6 +140,9 @@ typedef struct
 
     /** Timer id for autostopping notification slots */
     guint               tn_autostop_id;
+
+    /** Slot owner D-Bus name monitoring list */
+    GSList             *tn_monitor_list;
 
 } tklock_notif_state_t;
 
@@ -279,11 +285,13 @@ static void     mce_tklock_quit_dbus(void);
 
 static void     tklock_notif_slot_init(tklock_notif_slot_t *self);
 static void     tklock_notif_slot_free(tklock_notif_slot_t *self);
-static void     tklock_notif_slot_set(tklock_notif_slot_t *self, const char *name, int64_t until, int64_t renew);
+static void     tklock_notif_slot_set(tklock_notif_slot_t *self, const char *owner, const char *name, int64_t until, int64_t renew);
 static bool     tklock_notif_slot_is_free(const tklock_notif_slot_t *self);
 static bool     tklock_notif_slot_has_name(const tklock_notif_slot_t *self, const char *name);
 static bool     tklock_notif_slot_validate(tklock_notif_slot_t *self, int64_t now);
 static bool     tklock_notif_slot_renew(tklock_notif_slot_t *self, int64_t now);
+static bool     tklock_notif_slot_has_owner(const tklock_notif_slot_t *self, const char *owner);
+static gchar   *tklock_notif_slot_steal_owner(tklock_notif_slot_t *self);
 
 // NOTIFICATION_API
 
@@ -294,11 +302,17 @@ static void     tklock_notif_cancel_autostop(void);
 static void     tklock_notif_schedule_autostop(gint delay);
 static void     tklock_notif_update_state(void);
 static void     tklock_notif_extend_by_renew(void);
-static void     tklock_notif_vacate_slot(const char *name, int64_t linger);
-static void     tklock_notif_reserve_slot(const char *name, int64_t length, int64_t renew);
+static void     tklock_notif_vacate_slot(const char *owner, const char *name, int64_t linger);
+static void     tklock_notif_reserve_slot(const char *owner, const char *name, int64_t length, int64_t renew);
+static void     tklock_notif_vacate_slots_from(const char *owner);
+static size_t   tklock_notif_count_slots_from(const char *owner);
 
-static void     mce_tklock_begin_notification(const char *name, int64_t length, int64_t renew);
-static void     mce_tklock_end_notification(const char *name, int64_t linger);
+static gboolean tklock_notif_owner_dropped_cb(DBusMessage *const msg);
+static void     tklock_notif_add_owner_monitor(const char *owner);
+static void     tklock_notif_remove_owner_monitor(const char *owner);
+
+static void     mce_tklock_begin_notification(const char *owner, const char *name, int64_t length, int64_t renew);
+static void     mce_tklock_end_notification(const char *owner, const char *name, int64_t linger);
 
 // "module" load/unload
 extern gboolean mce_tklock_init(void);
@@ -771,7 +785,7 @@ static void tklock_datapipe_charger_state_cb(gconstpointer data)
 
     mce_log(LL_DEBUG, "charger_state = %d -> %d", prev, charger_state);
 
-    mce_tklock_begin_notification("mce_charger_state",
+    mce_tklock_begin_notification(0, "mce_charger_state",
                                   EXCEPTION_LENGTH_CHARGER, -1);
 
 EXIT:
@@ -796,7 +810,7 @@ static void tklock_datapipe_battery_status_cb(gconstpointer data)
 #if 0 /* At the moment there is no notification associated with
        * battery full -> no need to turn the display on */
     if( battery_status == BATTERY_STATUS_FULL ) {
-        mce_tklock_begin_notification("mce_battery_full",
+        mce_tklock_begin_notification(0, "mce_battery_full",
                                       EXCEPTION_LENGTH_BATTERY, -1);
     }
 #endif
@@ -823,7 +837,7 @@ static void tklock_datapipe_usb_cable_cb(gconstpointer data)
 
     mce_log(LL_DEBUG, "usb_cable_state = %d -> %d", prev, usb_cable_state);
 
-    mce_tklock_begin_notification("mce_usb_cable_state",
+    mce_tklock_begin_notification(0, "mce_usb_cable_state",
                                   EXCEPTION_LENGTH_CHARGER, -1);
 
 EXIT:
@@ -848,7 +862,7 @@ static void tklock_datapipe_jack_sense_cb(gconstpointer data)
 
     mce_log(LL_DEBUG, "jack_sense_state = %d -> %d", prev, jack_sense_state);
 
-    mce_tklock_begin_notification("mce_jack_sense", EXCEPTION_LENGTH_JACK, -1);
+    mce_tklock_begin_notification(0, "mce_jack_sense", EXCEPTION_LENGTH_JACK, -1);
 
 EXIT:
     return;
@@ -862,7 +876,7 @@ static void tklock_datapipe_camera_button_cb(gconstpointer const data)
      *       dedicated camera button ... */
     (void)data;
 
-    mce_tklock_begin_notification("mce_camera_button",
+    mce_tklock_begin_notification(0, "mce_camera_button",
                                   EXCEPTION_LENGTH_CAMERA, -1);
 }
 
@@ -894,14 +908,14 @@ static void tklock_datapipe_keypress_cb(gconstpointer const data)
 
     case KEY_CAMERA:
         mce_log(LL_DEBUG, "camera key");
-        mce_tklock_begin_notification("mce_camera_key",
+        mce_tklock_begin_notification(0, "mce_camera_key",
                                       EXCEPTION_LENGTH_CAMERA, -1);
         break;
 
     case KEY_VOLUMEDOWN:
     case KEY_VOLUMEUP:
         mce_log(LL_DEBUG, "volume key");
-        mce_tklock_begin_notification("mce_volume_key",
+        mce_tklock_begin_notification(0, "mce_volume_key",
                                       EXCEPTION_LENGTH_VOLUME, -1);
         break;
 
@@ -3168,6 +3182,10 @@ static gboolean tklock_dbus_notification_beg_cb(DBusMessage *const msg)
     const char   *name = 0;
     dbus_int32_t  dur  = 0;
     dbus_int32_t  add  = 0;
+    const char   *from = dbus_message_get_sender(msg);
+
+    if( !from )
+        goto EXIT;
 
     if( !dbus_message_get_args(msg, &err,
                               DBUS_TYPE_STRING,&name,
@@ -3182,9 +3200,7 @@ static gboolean tklock_dbus_notification_beg_cb(DBusMessage *const msg)
     mce_log(LL_DEVEL, "notification begin from %s",
             mce_dbus_get_message_sender_ident(msg));
 
-    mce_tklock_begin_notification(name, dur, add);
-
-    // TODO: cancel if sender drops from system bus
+    mce_tklock_begin_notification(from, name, dur, add);
 
 EXIT:
     /* Send dummy reply if requested */
@@ -3206,6 +3222,10 @@ static gboolean tklock_dbus_notification_end_cb(DBusMessage *const msg)
     DBusError     err  = DBUS_ERROR_INIT;
     const char   *name = 0;
     dbus_int32_t  dur  = 0;
+    const char   *from = dbus_message_get_sender(msg);
+
+    if( !from )
+        goto EXIT;
 
     if( !dbus_message_get_args(msg, &err,
                               DBUS_TYPE_STRING,&name,
@@ -3219,7 +3239,7 @@ static gboolean tklock_dbus_notification_end_cb(DBusMessage *const msg)
     mce_log(LL_DEVEL, "notification end from %s",
             mce_dbus_get_message_sender_ident(msg));
 
-    mce_tklock_end_notification(name, dur);
+    mce_tklock_end_notification(from, name, dur);
 
 EXIT:
     /* Send dummy reply if requested */
@@ -3330,6 +3350,7 @@ static void mce_tklock_quit_dbus(void)
 static void
 tklock_notif_slot_init(tklock_notif_slot_t *self)
 {
+    self->ns_owner = 0;
     self->ns_name  = 0;
     self->ns_until = 0;
     self->ns_renew = 0;
@@ -3338,22 +3359,35 @@ tklock_notif_slot_init(tklock_notif_slot_t *self)
 static void
 tklock_notif_slot_free(tklock_notif_slot_t *self)
 {
+    gchar *owner = tklock_notif_slot_steal_owner(self);
+
+    if( self->ns_name )
+        mce_log(LL_DEVEL, "notification '%s' removed", self->ns_name);
+
     g_free(self->ns_name), self->ns_name = 0;
     self->ns_until = 0;
     self->ns_renew = 0;
+
+    tklock_notif_remove_owner_monitor(owner);
+    g_free(owner);
 }
 
 static void
 tklock_notif_slot_set(tklock_notif_slot_t *self,
-                                  const char *name,
-                                  int64_t until,
-                                  int64_t renew)
+                      const char *owner, const char *name,
+                      int64_t until, int64_t renew)
 {
     tklock_notif_slot_free(self);
 
+    self->ns_owner = owner ? g_strdup(owner) : 0;
     self->ns_name  = g_strdup(name);
     self->ns_until = until;
     self->ns_renew = renew;
+
+    if( self->ns_name )
+        mce_log(LL_DEVEL, "notification '%s' added", self->ns_name);
+
+    tklock_notif_add_owner_monitor(owner);
 }
 
 static bool
@@ -3390,6 +3424,25 @@ tklock_notif_slot_renew(tklock_notif_slot_t *self, int64_t now)
     return true;
 }
 
+static inline bool eq(const char *s1, const char *s2)
+{
+    return (s1 && s2) ? !strcmp(s1, s2) : (s1 == s2);
+}
+
+static bool
+tklock_notif_slot_has_owner(const tklock_notif_slot_t *self, const char *owner)
+{
+    return eq(self->ns_owner, owner);
+}
+
+static gchar *
+tklock_notif_slot_steal_owner(tklock_notif_slot_t *self)
+{
+    gchar *owner = self->ns_owner;
+    self->ns_owner = 0;
+    return owner;
+}
+
 /* ========================================================================= *
  * NOTIFICATION_API
  * ========================================================================= */
@@ -3401,6 +3454,7 @@ tklock_notif_init(void)
 {
     tklock_notif_state.tn_linger = MIN_TICK;
     tklock_notif_state.tn_autostop_id = 0;
+    tklock_notif_state.tn_monitor_list = 0;
 
     for( size_t i = 0; i < TKLOCK_NOTIF_SLOTS; ++i ) {
         tklock_notif_slot_t *slot = tklock_notif_state.tn_slot + i;
@@ -3417,6 +3471,11 @@ tklock_notif_quit(void)
         tklock_notif_slot_t *slot = tklock_notif_state.tn_slot + i;
         tklock_notif_slot_free(slot);
     }
+
+    /* Make sure the above loop removed all the monitoring callbacks */
+    if( tklock_notif_state.tn_monitor_list )
+        mce_log(LL_WARN, "entries left in owner monitor list");
+    mce_dbus_owner_monitor_remove_all(&tklock_notif_state.tn_monitor_list);
 }
 
 static gboolean tklock_notif_autostop_cb(gpointer aptr)
@@ -3459,7 +3518,7 @@ static void
 tklock_notif_update_state(void)
 {
     int64_t now = tklock_monotick_get();
-    int64_t tmo = 0;
+    int64_t tmo = MAX_TICK;
 
     for( size_t i = 0; i < TKLOCK_NOTIF_SLOTS; ++i ) {
         tklock_notif_slot_t *slot = tklock_notif_state.tn_slot + i;
@@ -3470,13 +3529,13 @@ tklock_notif_update_state(void)
         if( !tklock_notif_slot_validate(slot, now) )
             continue;
 
-        if( tmo < slot->ns_until )
+        if( tmo > slot->ns_until )
             tmo = slot->ns_until;
     }
 
     tklock_notif_cancel_autostop();
 
-    if( tmo > now ) {
+    if( tmo < MAX_TICK ) {
         tklock_notif_schedule_autostop((gint)(tmo - now));
 
         tklock_uiexcept_begin(UIEXC_NOTIF, 0);
@@ -3513,12 +3572,15 @@ tklock_notif_extend_by_renew(void)
 }
 
 static void
-tklock_notif_vacate_slot(const char *name, int64_t linger)
+tklock_notif_vacate_slot(const char *owner, const char *name, int64_t linger)
 {
     for( size_t i = 0; i < TKLOCK_NOTIF_SLOTS; ++i ) {
         tklock_notif_slot_t *slot = tklock_notif_state.tn_slot + i;
 
         if( !tklock_notif_slot_has_name(slot, name) )
+            continue;
+
+        if( !tklock_notif_slot_has_owner(slot, owner) )
             continue;
 
         tklock_notif_slot_free(slot);
@@ -3541,7 +3603,7 @@ EXIT:
 }
 
 static void
-tklock_notif_reserve_slot(const char *name, int64_t length, int64_t renew)
+tklock_notif_reserve_slot(const char *owner, const char *name, int64_t length, int64_t renew)
 {
     int64_t now = tklock_monotick_get();
     int64_t tmo = now + length;
@@ -3554,7 +3616,7 @@ tklock_notif_reserve_slot(const char *name, int64_t length, int64_t renew)
         if( !tklock_notif_slot_has_name(slot, name) )
             continue;
 
-        tklock_notif_slot_set(slot, name, tmo, renew);
+        tklock_notif_slot_set(slot, owner, name, tmo, renew);
         tklock_notif_update_state();
         goto EXIT;
     }
@@ -3567,7 +3629,7 @@ tklock_notif_reserve_slot(const char *name, int64_t length, int64_t renew)
         if( !tklock_notif_slot_is_free(slot) )
             continue;
 
-        tklock_notif_slot_set(slot, name, tmo, renew);
+        tklock_notif_slot_set(slot, owner, name, tmo, renew);
         tklock_notif_update_state();
         goto EXIT;
     }
@@ -3578,6 +3640,97 @@ EXIT:
     return;
 }
 
+static void
+tklock_notif_vacate_slots_from(const char *owner)
+{
+    bool changed = false;
+    for( size_t i = 0; i < TKLOCK_NOTIF_SLOTS; ++i ) {
+        tklock_notif_slot_t *slot = tklock_notif_state.tn_slot + i;
+
+        if( tklock_notif_slot_is_free(slot) )
+            continue;
+
+        if( !tklock_notif_slot_has_owner(slot, owner) )
+            continue;
+
+        tklock_notif_slot_free(slot);
+        changed = true;
+
+    }
+    if( changed )
+        tklock_notif_update_state();
+}
+
+static size_t
+tklock_notif_count_slots_from(const char *owner)
+{
+    size_t count = 0;
+    for( size_t i = 0; i < TKLOCK_NOTIF_SLOTS; ++i ) {
+        tklock_notif_slot_t *slot = tklock_notif_state.tn_slot + i;
+        if( tklock_notif_slot_has_owner(slot, owner) )
+            ++count;
+    }
+    return count;
+}
+
+static gboolean
+tklock_notif_owner_dropped_cb(DBusMessage *const msg)
+{
+    const char *name = 0;
+    const char *prev = 0;
+    const char *curr = 0;
+    DBusError   err  = DBUS_ERROR_INIT;
+
+    if( !dbus_message_get_args(msg, &err,
+                               DBUS_TYPE_STRING, &name,
+                               DBUS_TYPE_STRING, &prev,
+                               DBUS_TYPE_STRING, &curr,
+                               DBUS_TYPE_INVALID) ) {
+        mce_log(LL_ERR, "failed to get args: %s: %s",
+                err.name, err.message);
+        goto EXIT;
+    }
+
+    if( !*curr )
+        tklock_notif_vacate_slots_from(name);
+
+EXIT:
+    dbus_error_free(&err);
+    return TRUE;
+
+}
+
+static void
+tklock_notif_add_owner_monitor(const char *owner)
+{
+    if( !owner )
+        return;
+
+    if( tklock_notif_count_slots_from(owner) != 1 )
+        return;
+
+    /* first slot added */
+    mce_log(LL_DEBUG, "adding dbus monitor for: %s" ,owner);
+    mce_dbus_owner_monitor_add(owner, tklock_notif_owner_dropped_cb,
+                               &tklock_notif_state.tn_monitor_list,
+                               TKLOCK_NOTIF_SLOTS);
+}
+
+static void
+tklock_notif_remove_owner_monitor(const char *owner)
+{
+    if( !owner )
+        return;
+
+    if( tklock_notif_count_slots_from(owner) != 0 )
+        return;
+
+    /* last slot removed */
+    mce_log(LL_DEBUG, "removing dbus monitor for: %s" ,owner);
+    mce_dbus_owner_monitor_remove(owner,
+                                  &tklock_notif_state.tn_monitor_list);
+}
+
 /** Interface for registering notification state
  *
  * @param name   assumed unique notification identifier
@@ -3585,7 +3738,7 @@ EXIT:
  * @param renew  extend length on user input [ms]
  */
 static void
-mce_tklock_begin_notification(const char *name, int64_t length, int64_t renew)
+mce_tklock_begin_notification(const char *owner, const char *name, int64_t length, int64_t renew)
 {
     /* cap length to [1,30] second range */
     if( length > 30000 )
@@ -3601,7 +3754,7 @@ mce_tklock_begin_notification(const char *name, int64_t length, int64_t renew)
 
     mce_log(LL_DEBUG, "name: %s, length: %d, renew: %d",
             name, (int)length, (int)renew);
-    tklock_notif_reserve_slot(name, length, renew);
+    tklock_notif_reserve_slot(owner, name, length, renew);
 }
 
 /** Interface for removing notification state
@@ -3610,7 +3763,7 @@ mce_tklock_begin_notification(const char *name, int64_t length, int64_t renew)
  * @param linger duration to keep display on [ms]
  */
 static void
-mce_tklock_end_notification(const char *name, int64_t linger)
+mce_tklock_end_notification(const char *owner, const char *name, int64_t linger)
 {
     /* cap linger to [0, 10] second range */
     if( linger > 10000 )
@@ -3619,7 +3772,7 @@ mce_tklock_end_notification(const char *name, int64_t linger)
         linger = 0;
 
     mce_log(LL_DEBUG, "name: %s, linger: %d", name, (int)linger);
-    tklock_notif_vacate_slot(name, linger);
+    tklock_notif_vacate_slot(owner, name, linger);
 }
 
 /* ========================================================================= *
