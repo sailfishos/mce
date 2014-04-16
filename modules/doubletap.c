@@ -1,5 +1,5 @@
 /* ------------------------------------------------------------------------- *
- * Copyright (C) 2013 Jolla Ltd.
+ * Copyright (C) 2013-2014 Jolla Ltd.
  * Contact: Simo Piiroinen <simo.piiroinen@jollamobile.com>
  * License: LGPLv2
  * ------------------------------------------------------------------------- */
@@ -13,6 +13,7 @@
 #include "../mce-gconf.h"
 
 #include <stdbool.h>
+#include <unistd.h>
 
 #include <glib.h>
 #include <gmodule.h>
@@ -37,11 +38,6 @@ static char *dbltap_enable_val = 0;
 /** String to write when disabling double tap wakeups */
 static char *dbltap_disable_val = 0;
 
-/** String to write when disabling double tap wakeups,
- *  without powering off the touch detection [optional]
- */
-static char *dbltap_nosleep_val = 0;
-
 typedef enum {
         DT_UNDEF = -1,
         DT_DISABLED,
@@ -56,6 +52,52 @@ static const char * const dt_state_name[] =
         "disabled-no-sleep",
 };
 
+/** Path to touchpanel sleep blocking control file */
+static char *sleep_mode_ctrl_path = 0;
+
+/** Value to write when touch panel is allowed to enter sleep mode */
+static char *sleep_mode_allow_val = 0;
+
+/** Value to write when touch panel is not allowed to enter sleep mode */
+static char *sleep_mode_deny_val  = 0;
+
+/** Allow/deny touch panel to enter sleep mode
+ *
+ * @param allow true to allow touch to sleep, false to deny
+ */
+static void dbltap_allow_sleep_mode(bool allow)
+{
+        /* Initialized not to match any bool value  */
+        static int allowed = -1;
+
+        /* Whether or not this function gets called depends on the
+         * availability of dbltap_ctrl_path, so we need to check that
+         * sleep_mode_ctrl_path and related values are also configured
+         * and available */
+
+        if( !sleep_mode_ctrl_path )
+                goto EXIT;
+
+        if( !sleep_mode_allow_val || !sleep_mode_deny_val )
+                goto EXIT;
+
+        if( allowed == allow )
+                goto EXIT;
+
+        allowed = allow;
+
+        mce_log(LL_DEBUG, "touch panel sleep mode %s",
+                allowed ? "allowed" : "denied");
+
+        mce_write_string_to_file(sleep_mode_ctrl_path,
+                                 allowed ?
+                                 sleep_mode_allow_val :
+                                 sleep_mode_deny_val);
+
+EXIT:
+        return;
+}
+
 /** Enable/disable doubletap wakeups
  *
  * @param state disable/enable/disable-without-powering-off
@@ -63,6 +105,8 @@ static const char * const dt_state_name[] =
 static void dbltap_set_state(dt_state_t state)
 {
         static dt_state_t prev_state = DT_UNDEF;
+
+        bool allow_sleep_mode = true;
 
         if( prev_state == state )
                 goto EXIT;
@@ -81,14 +125,17 @@ static void dbltap_set_state(dt_state_t state)
                 val = dbltap_enable_val;
                 break;
         case DT_DISABLED_NOSLEEP:
-                val = dbltap_nosleep_val ?: dbltap_disable_val;
+                val = dbltap_disable_val;
+                allow_sleep_mode = false;
                 break;
         default:
                 break;
         }
 
-        if( val )
+        if( val ) {
+                dbltap_allow_sleep_mode(allow_sleep_mode);
                 mce_write_string_to_file(dbltap_ctrl_path, val);
+        }
 EXIT:
         return;
 }
@@ -111,7 +158,7 @@ static void dbltap_rethink(void)
         case DBLTAP_ENABLE_NO_PROXIMITY:
                 switch( dbltap_ps_state ) {
                 case COVER_CLOSED:
-                        if( dbltap_ps_blank )
+                  if( dbltap_ps_blank )
                                 state = DT_DISABLED_NOSLEEP;
                         break;
 
@@ -193,6 +240,53 @@ EXIT:
         return;
 }
 
+/** Check if touch panel sleep mode controls are available
+ */
+static void dbltap_probe_sleep_mode_controls(void)
+{
+        static const char def_ctrl[] =
+                "/sys/class/i2c-adapter/i2c-3/3-0020/block_sleep_mode";
+        static const char def_allow[] = "0";
+        static const char def_deny[]  = "1";
+
+        bool success = false;
+
+        sleep_mode_ctrl_path =
+                mce_conf_get_string(MCE_CONF_TPSLEEP_GROUP,
+                                    MCE_CONF_TPSLEEP_CONTROL_PATH,
+                                    def_ctrl);
+
+        if( !sleep_mode_ctrl_path || access(sleep_mode_ctrl_path, F_OK) == -1 )
+                goto EXIT;
+
+        sleep_mode_allow_val =
+                mce_conf_get_string(MCE_CONF_TPSLEEP_GROUP,
+                                    MCE_CONF_TPSLEEP_ALLOW_VALUE,
+                                    def_allow);
+        sleep_mode_deny_val =
+                mce_conf_get_string(MCE_CONF_TPSLEEP_GROUP,
+                                    MCE_CONF_TPSLEEP_DENY_VALUE,
+                                    def_deny);
+
+        if( !sleep_mode_allow_val || !sleep_mode_deny_val )
+                goto EXIT;
+
+        /* Start from kernel boot time default */
+        dbltap_allow_sleep_mode(true);
+
+        success = true;
+
+EXIT:
+
+        /* All or nothing */
+        if( !success ) {
+                g_free(sleep_mode_ctrl_path), sleep_mode_ctrl_path = 0;
+                g_free(sleep_mode_allow_val), sleep_mode_allow_val = 0;
+                g_free(sleep_mode_deny_val),  sleep_mode_deny_val  = 0;;
+        }
+        return;
+}
+
 /** Init function for the doubletap module
  *
  * @param module (not used)
@@ -217,14 +311,12 @@ const gchar *g_module_check_init(GModule *module)
                                                  MCE_CONF_DOUBLETAP_DISABLE_VALUE,
                                                  "0");
 
-        dbltap_nosleep_val = mce_conf_get_string(MCE_CONF_DOUBLETAP_GROUP,
-                                                 MCE_CONF_DOUBLETAP_DISABLE_NO_SLEEP_VALUE,
-                                                 NULL);
-
         if( !dbltap_ctrl_path || !dbltap_enable_val || !dbltap_disable_val ) {
                 mce_log(LL_NOTICE, "no double tap wakeup controls defined");
                 goto EXIT;
         }
+
+        dbltap_probe_sleep_mode_controls();
 
         /* Runtime configuration settings */
         mce_gconf_notifier_add(MCE_GCONF_DOUBLETAP_PATH,
@@ -271,7 +363,10 @@ void g_module_unload(GModule *module)
         g_free(dbltap_ctrl_path);
         g_free(dbltap_enable_val);
         g_free(dbltap_disable_val);
-        g_free(dbltap_nosleep_val);
+
+        g_free(sleep_mode_ctrl_path);
+        g_free(sleep_mode_allow_val);
+        g_free(sleep_mode_deny_val);
 
         return;
 }
