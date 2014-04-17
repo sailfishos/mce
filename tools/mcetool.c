@@ -1464,6 +1464,35 @@ static gboolean mcetool_parse_timspec(struct timespec *ts, const char *args)
         return ack;
 }
 
+/** Parse comma separated value from give parse position
+ *
+ * The buffer parse position points to is cut from the
+ * next comma (',') character. Parse position is updated
+ * to the character following the comma, or to end of string.
+ *
+ * The parse position is neved moved beyond end of string,
+ * thus the return value is always valid c-string.
+ *
+ * @param ppos pointer to parse position
+ *
+ * @return parse position
+ */
+static char *mcetool_parse_token(char **ppos)
+{
+        char *pos = *ppos;
+        char *end = strchr(pos, ',');
+
+        if( end )
+                *end++ = 0;
+        else
+                end = strchr(pos, 0);
+
+        *ppos = end;
+
+        return pos;
+
+}
+
 /* ------------------------------------------------------------------------- *
  * leds
  * ------------------------------------------------------------------------- */
@@ -1574,6 +1603,87 @@ static void xmce_get_color_profile(void)
         xmce_ipc_string_reply(MCE_COLOR_PROFILE_GET, &str, DBUS_TYPE_INVALID);
         printf("%-"PAD1"s %s\n","Color profile:", str ?: "unknown");
         free(str);
+}
+
+/* ------------------------------------------------------------------------- *
+ * notification states
+ * ------------------------------------------------------------------------- */
+
+/** Parse notification parameters from command line argument
+ *
+ * Expected input format is: "<delay>[,<name>[,<renew>]]"
+ *
+ * @param args   command line argument string
+ * @param title  where to store name string
+ * @param delay  where to store delay string converted to integer
+ * @param renew  where to store delay string converted to integer, or NULL
+ */
+static void
+xmce_parse_notification_args(const char   *args,
+                             char        **title,
+                             dbus_int32_t *delay,
+                             dbus_int32_t *renew)
+{
+        char *work = 0;
+        char *pos  = 0;
+        char *arg;
+
+        pos = work = strdup(args);
+
+        arg = mcetool_parse_token(&pos);
+        *title = strdup(*arg ? arg : "mcetool");
+
+        arg = mcetool_parse_token(&pos);
+        if( delay && *arg )
+                *delay = xmce_parse_integer(arg);
+
+        arg = mcetool_parse_token(&pos);
+        if( renew && *arg )
+                *renew = xmce_parse_integer(arg);
+
+        free(work);
+}
+
+/** Start notification ui exception state
+ */
+static void xmce_notification_begin(const char *args)
+{
+        debugf("%s(%s)\n", __FUNCTION__, args);
+
+        char         *title  = 0;
+        dbus_int32_t  length = 2000;
+        dbus_int32_t  renew  = -1;
+
+        xmce_parse_notification_args(args, &title, &length, &renew);
+
+        /* Note: length and limit ranges are enforced at mce side */
+
+        xmce_ipc_no_reply("notification_begin_req",
+                          DBUS_TYPE_STRING, &title,
+                          DBUS_TYPE_INT32 , &length,
+                          DBUS_TYPE_INT32 , &renew,
+                          DBUS_TYPE_INVALID);
+        free(title);
+}
+
+/** Stop notification ui exception state
+ */
+static void xmce_notification_end(const char *args)
+{
+        debugf("%s(%s)\n", __FUNCTION__, args);
+
+        char         *title  = 0;
+        dbus_int32_t  linger = 0;
+
+        xmce_parse_notification_args(args, &title, &linger, 0);
+
+        /* Note: linger range is enforced at mce side */
+
+        xmce_ipc_no_reply("notification_end_req",
+                          DBUS_TYPE_STRING, &title,
+                          DBUS_TYPE_INT32 , &linger,
+                          DBUS_TYPE_INVALID);
+        free(title);
 }
 
 /* ------------------------------------------------------------------------- *
@@ -2914,6 +3024,10 @@ EXTRA"  set the display demo mode  to STATE;\n"
 EXTRA"     valid states are: 'on' and 'off'\n"
 PARAM"--set-lipstick-core-delay=<secs>\n"
 EXTRA"set the delay for dumping core from unresponsive lipstick\n"
+PARAM"--begin-notification=[name][,<duration_ms>[,<renew_ms>]]\n"
+EXTRA"start notification ui exception\n"
+PARAM"--end-notification=[name][,<linger_ms>]\n"
+EXTRA"start notification ui exception\n"
 PARAM"-N, --status\n"
 EXTRA"output MCE status\n"
 PARAM"-B, --block[=<secs>]\n"
@@ -3103,6 +3217,8 @@ struct option const OPT_L[] =
         { "set-fake-doubletap",        1, 0, 'i' }, // xmce_set_fake_doubletap()
 #endif
         { "set-lipstick-core-delay",   1, 0, 900 }, // xmce_set_lipstick_core_delay()
+        { "begin-notification",        1, 0, 910 }, // xmce_notification_begin()
+        { "end-notification",          1, 0, 911 }, // xmce_notification_end()
         { 0, 0, 0, 0 }
 };
 
@@ -3192,6 +3308,9 @@ int main(int argc, char **argv)
                 case 'B': mcetool_block(optarg);                  break;
 
                 case 900: xmce_set_lipstick_core_delay(optarg);   break;
+
+                case 910: xmce_notification_begin(optarg);        break;
+                case 911: xmce_notification_end(optarg);          break;
 
                 case 'h':
 			usage_short();
