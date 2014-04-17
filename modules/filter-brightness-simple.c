@@ -57,9 +57,6 @@ G_MODULE_EXPORT module_info_struct module_info = {
 	.priority = 250
 };
 
-/** Display state */
-static display_state_t display_state = MCE_DISPLAY_UNDEF;
-
 /**
  * Simple level adjustment filter for display brightness
  *
