@@ -1,3 +1,10 @@
+mce (1.29.0) unstable; urgency=low
+
+  * [mce] Add dbus interface to allow notification state manipulation from
+    ui. Fixes JB#17383
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 17 Apr 2014 08:08:16 +0300
+
 mce (1.28.0) unstable; urgency=low
 
   * [mce] Support 100 brightness levels and 21 ALS profiles. Fixes JB#13670
