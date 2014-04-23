@@ -1,3 +1,12 @@
+mce (1.29.1) unstable; urgency=low
+
+  * [mce] Leave touch panel powered on during incall proximity blanking.
+    Fixes JB#17155
+  * [mce] Allow calling notification_begin_req and notification_end_req
+  | Thanks to Martin Jones for patch
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 23 Apr 2014 08:47:07 +0300
+
 mce (1.29.0) unstable; urgency=low
 
   * [mce] Add dbus interface to allow notification state manipulation from
