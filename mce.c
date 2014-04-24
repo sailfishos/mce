@@ -290,6 +290,7 @@ static void mce_cleanup_wakelocks(void)
 	wakelock_unlock("mce_display_stm");
 	wakelock_unlock("mce_powerkey_stm");
 	wakelock_unlock("mce_proximity_stm");
+	wakelock_unlock("mce_bluez_wait");
 }
 #endif // ENABLE_WAKELOCKS
 
