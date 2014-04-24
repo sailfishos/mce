@@ -157,6 +157,11 @@ static mce_dbus_handler_t bluetooth_dbus_handlers[] =
         .callback  = bluetooth_dbus_bluez_signal_cb,
     },
     {
+        .interface = "org.bluez.Audio",
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .callback  = bluetooth_dbus_bluez_signal_cb,
+    },
+    {
         .interface = "org.bluez.SerialProxyManager",
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
         .callback  = bluetooth_dbus_bluez_signal_cb,
