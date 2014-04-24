@@ -1671,6 +1671,26 @@ EXIT:
 	return;
 }
 
+/** Check if message attribute value matches handler attribute value
+ *
+ * @return true on match, false otherwise
+ */
+static bool mce_dbus_match(const char *msg_val, const char *hnd_val)
+{
+        /* Special case 1: If message attribute has null value,
+         *                 no handler value can be a match */
+        if( !msg_val )
+                return false;
+
+        /* Special case 2: If handler attribyte has null value,
+         *                 it mathes any non-null message value. */
+        if( !hnd_val )
+                return true;
+
+        /* Normally we just test for string equality */
+        return !strcmp(msg_val, hnd_val);
+}
+
 /**
  * D-Bus message handler
  *
@@ -1690,6 +1710,9 @@ static DBusHandlerResult msg_handler(DBusConnection *const connection,
 	guint status = DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 	int   type   = dbus_message_get_type(msg);
 
+	const char *interface = dbus_message_get_interface(msg);
+	const char *member    = dbus_message_get_member(msg);
+
 	for( GSList *now = dbus_handlers; now; now = now->next ) {
 
 		handler_struct_t *handler = now->data;
@@ -1704,28 +1727,34 @@ static DBusHandlerResult msg_handler(DBusConnection *const connection,
 
 		switch( handler->type ) {
 		case DBUS_MESSAGE_TYPE_METHOD_CALL:
-			if( dbus_message_is_method_call(msg,
-							handler->interface,
-							handler->name) ) {
-				handler->callback(msg);
-				status = DBUS_HANDLER_RESULT_HANDLED;
-				goto EXIT;
-			}
-			break;
+			if( !mce_dbus_match(interface, handler->interface) )
+				break;
+
+			if( !mce_dbus_match(member, handler->name) )
+				break;
+
+			handler->callback(msg);
+			status = DBUS_HANDLER_RESULT_HANDLED;
+			goto EXIT;
 
 		case DBUS_MESSAGE_TYPE_ERROR:
-			if( dbus_message_is_error(msg, handler->name) ) {
-				handler->callback(msg);
-			}
+			if( !mce_dbus_match(member, handler->name) )
+				break;
+
+			handler->callback(msg);
 			break;
 
 		case DBUS_MESSAGE_TYPE_SIGNAL:
-			if( dbus_message_is_signal(msg,
-						   handler->interface,
-						   handler->name) ) {
-				if( check_rules(msg, handler->rules) )
-					handler->callback(msg);
-			}
+			if( !mce_dbus_match(interface, handler->interface) )
+				break;
+
+			if( !mce_dbus_match(member, handler->name) )
+				break;
+
+			if( !check_rules(msg, handler->rules) )
+				break;
+
+			handler->callback(msg);
 			break;
 
 		default:
@@ -1761,18 +1790,28 @@ gconstpointer mce_dbus_handler_add(const gchar *const interface,
 	handler_struct_t *handler = 0;
 	gchar            *match   = 0;
 
-	if( !name )
+	if( !interface ) {
+		mce_log(LL_CRIT, "D-Bus handler must specify interface");
 		goto EXIT;
+	}
 
-	if( type == DBUS_MESSAGE_TYPE_SIGNAL ) {
+	switch( type ) {
+	case DBUS_MESSAGE_TYPE_SIGNAL:
 		match = mce_dbus_build_signal_match(interface, name, rules);
 		if( !match ) {
 			mce_log(LL_CRIT, "Failed to allocate memory for match");
 			goto EXIT;
 		}
+		break;
 
-	}
-	else if( type != DBUS_MESSAGE_TYPE_METHOD_CALL ) {
+	case DBUS_MESSAGE_TYPE_METHOD_CALL:
+		if( !name ) {
+			mce_log(LL_CRIT, "D-Bus method call handler must specify name");
+			goto EXIT;
+		}
+		break;
+
+	default:
 		mce_log(LL_CRIT, "There's definitely a programming error somewhere; "
 			"MCE is trying to register an invalid message type");
 		goto EXIT;

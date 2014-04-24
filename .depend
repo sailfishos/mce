@@ -382,6 +382,18 @@ modules/battery-upower.pic.o:\
 	mce-log.h\
 	mce.h\
 
+modules/bluetooth.o:\
+	modules/bluetooth.c\
+	libwakelock.h\
+	mce-dbus.h\
+	mce-log.h\
+
+modules/bluetooth.pic.o:\
+	modules/bluetooth.c\
+	libwakelock.h\
+	mce-dbus.h\
+	mce-log.h\
+
 modules/callstate.o:\
 	modules/callstate.c\
 	datapipe.h\
