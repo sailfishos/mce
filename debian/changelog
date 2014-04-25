@@ -1,3 +1,9 @@
+mce (1.29.3) unstable; urgency=low
+
+  * [mce] Tune ALS profiles. Fixes JB#12301
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 25 Apr 2014 09:47:55 +0300
+
 mce (1.29.2) unstable; urgency=low
 
   * [mce] Block late suspend while bluetooth activity is seen on D-Bus.
