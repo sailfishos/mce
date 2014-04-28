@@ -2564,18 +2564,18 @@ static void tklock_lpmui_rethink(void)
     if( proximity_state_effective != COVER_OPEN )
         goto EXIT;
 
-    /* triggering depends on proximity sensor history */
-    if( !tklock_lpmui_probe() )
-        goto EXIT;
+    /* Switch to lpm mode if the proximity sensor history matches activity
+     * we expect to see when "the device is taken from pocket" etc */
+    if( tklock_lpmui_probe() ) {
+        mce_log(LL_DEBUG, "switching to LPM UI");
 
-    // TODO: should check "use lpm" setting too, but that is in
-    //       display module and the MCE_DISPLAY_LPM_ON is not
-    //       honored unless it is set
-
-    mce_log(LL_DEBUG, "switching to LPM UI");
-    execute_datapipe(&display_state_req_pipe,
-                     GINT_TO_POINTER(MCE_DISPLAY_LPM_ON),
-                     USE_INDATA, CACHE_INDATA);
+        /* Note: Display plugin handles MCE_DISPLAY_LPM_ON request as
+         *       MCE_DISPLAY_OFF unless lpm mode is both supported
+         *       and enabled. */
+        execute_datapipe(&display_state_req_pipe,
+                         GINT_TO_POINTER(MCE_DISPLAY_LPM_ON),
+                         USE_INDATA, CACHE_INDATA);
+    }
 
 EXIT:
 
