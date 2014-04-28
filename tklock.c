@@ -2527,21 +2527,6 @@ static bool tklock_lpmui_probe(void)
 {
     bool glance = false;
 
-#if 0 // TODO: remove devel time debug
-    int64_t now = tklock_monotick_get();
-    for( size_t i = 0; i < numof(tklock_lpmui_hist); ++i ) {
-        const char *tag = "UNDEF";
-        switch( tklock_lpmui_hist[i].state ) {
-        case COVER_OPEN:   tag = "OPEN"; break;
-        case COVER_CLOSED: tag = "CLOSED"; break;
-        default: break;
-        }
-        int64_t zen = tklock_lpmui_hist[i].tick;
-        mce_log(LL_CRIT, "[%zd] %+lld %s", i, now-zen, tag);
-        now = zen;
-    }
-#endif
-
     if( tklock_lpmui_probe_from_pocket() ) {
         mce_log(LL_DEBUG, "from pocket");
         glance = true;
