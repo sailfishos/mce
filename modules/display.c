@@ -646,10 +646,10 @@ static guint mdy_blanking_adaptive_dimming_cb_id = 0;
 static guint mdy_adaptive_dimming_index = 0;
 
 /** Display blank timeout setting when low power mode is supported */
-static gint mdy_lpm_blank_timeout = DEFAULT_LPM_BLANK_TIMEOUT;
+static gint mdy_disp_lpm_off_timeout = DEFAULT_LPM_BLANK_TIMEOUT;
 
 /** Display low power mode timeout setting */
-static gint mdy_lpm_timeout = DEFAULT_BLANK_TIMEOUT;
+static gint mdy_disp_lpm_on_timeout = DEFAULT_BLANK_TIMEOUT;
 
 /** Display blank prevention timer */
 static gint mdy_blank_prevent_timeout = BLANK_PREVENT_TIMEOUT;
@@ -983,8 +983,10 @@ static display_state_t display_state = MCE_DISPLAY_UNDEF;
  */
 static gpointer mdy_datapipe_display_state_filter_cb(gpointer data)
 {
-    display_state_t next_state = GPOINTER_TO_INT(data);
+    display_state_t want_state = GPOINTER_TO_INT(data);
+    display_state_t next_state = want_state;
 
+    /* Handle never-blank override */
     if( mdy_disp_never_blank ) {
         next_state = MCE_DISPLAY_ON;
         goto UPDATE;
@@ -993,62 +995,51 @@ static gpointer mdy_datapipe_display_state_filter_cb(gpointer data)
     /* Validate requested display state */
     switch( next_state ) {
     case MCE_DISPLAY_OFF:
-    case MCE_DISPLAY_LPM_OFF:
-    case MCE_DISPLAY_LPM_ON:
     case MCE_DISPLAY_DIM:
     case MCE_DISPLAY_ON:
         break;
+
+    case MCE_DISPLAY_LPM_OFF:
+    case MCE_DISPLAY_LPM_ON:
+        if( mdy_use_low_power_mode && mdy_low_power_mode_supported )
+            break;
+
+        mce_log(LL_WARN, "reject low power mode display request");
+        next_state = MCE_DISPLAY_OFF;
+        goto UPDATE;
+
     default:
     case MCE_DISPLAY_UNDEF:
     case MCE_DISPLAY_POWER_UP:
     case MCE_DISPLAY_POWER_DOWN:
-        mce_log(LL_DEBUG, "invalid display state %d requested", next_state);
+        mce_log(LL_WARN, "reject invalid display mode request");
         next_state = MCE_DISPLAY_OFF;
-        break;
+        goto UPDATE;
     }
 
-    /* Ignore display on requests during transition to shutdown
-     * and reboot, and when system state is unknown
-     */
-    if( ( display_state == MCE_DISPLAY_UNDEF ||
-          display_state == MCE_DISPLAY_OFF   ||
-          display_state == MCE_DISPLAY_LPM_OFF
-        )
-        &&
-        ( next_state != MCE_DISPLAY_LPM_OFF &&
-          next_state != MCE_DISPLAY_OFF
-        )
-        &&
-        ( system_state == MCE_STATE_UNDEF ||
-          ( (submode & MCE_TRANSITION_SUBMODE) &&
-            ( system_state == MCE_STATE_SHUTDOWN ||
-              system_state == MCE_STATE_REBOOT
-            )
-          )
-        )
-      )
-    {
-        mce_log(LL_DEBUG, "Ignoring display state change request %d due "
-                "to shutdown/reboot", next_state);
+    /* Allow display off / no change */
+    if( next_state == MCE_DISPLAY_OFF || next_state == display_state )
+        goto UPDATE;
+
+    /* Keep existing state if display on requests are made during
+     * mce/device startup and device shutdown/reboot. */
+    if( system_state == MCE_STATE_UNDEF ) {
+        mce_log(LL_DEBUG, "reject display mode request at start up");
         next_state = display_state;
     }
-    else if( !mdy_use_low_power_mode ||
-             !mdy_low_power_mode_supported ||
-             mdy_blanking_can_blank_from_low_power_mode() )
-    {
-        /* If we don't use low power mode, use OFF instead */
-        if( next_state == MCE_DISPLAY_LPM_OFF ||
-            next_state == MCE_DISPLAY_LPM_ON )
-            next_state = MCE_DISPLAY_OFF;
+    else if( (submode & MCE_TRANSITION_SUBMODE) &&
+             ( system_state == MCE_STATE_SHUTDOWN ||
+               system_state == MCE_STATE_REBOOT ) ) {
+        mce_log(LL_WARN, "reject display mode request at shutdown/reboot");
+        next_state = display_state;
     }
-    else
-    {
-        /* If we're in user state, use LPM instead of OFF */
-        if( next_state == MCE_DISPLAY_OFF &&
-            system_state == MCE_STATE_USER )
-            next_state = MCE_DISPLAY_LPM_ON;
-    }
+
 UPDATE:
+    if( want_state != next_state ) {
+        mce_log(LL_WARN, "requested: %s, granted: %s",
+                mdy_display_state_name(want_state),
+                mdy_display_state_name(next_state));
+    }
     return GINT_TO_POINTER(next_state);
 }
 
@@ -1349,6 +1340,11 @@ static void mdy_datapipe_device_inactive_cb(gconstpointer data)
         break;
 
     default:
+    case MCE_DISPLAY_UNDEF:
+    case MCE_DISPLAY_LPM_OFF:
+    case MCE_DISPLAY_LPM_ON:
+    case MCE_DISPLAY_POWER_UP:
+    case MCE_DISPLAY_POWER_DOWN:
         break;
     }
 
@@ -1717,6 +1713,9 @@ static gint mdy_brightness_level_display_on = -1;
 /** Dim brightness; [0, mdy_brightness_level_maximum] */
 static gint mdy_brightness_level_display_dim = -1;
 
+/** LPM brightness; [0, mdy_brightness_level_maximum] */
+static gint mdy_brightness_level_display_lpm = 1;
+
 /** Brightness to use on display wakeup; [0, mdy_brightness_level_maximum] */
 static int mdy_brightness_level_display_resume = 1;
 
@@ -2004,11 +2003,17 @@ static void mdy_brightness_set_on_level(gint hbm_and_level)
     /* Re-evaluate dim brightness too */
     mdy_brightness_set_dim_level();
 
+    /* Re-evaluate lpm brightness too */
+    // TODO: ALS config & sensor input processing
+
     /* Take updated values in use */
     switch( display_state ) {
     case MCE_DISPLAY_OFF:
     case MCE_DISPLAY_LPM_OFF:
+        break;
+
     case MCE_DISPLAY_LPM_ON:
+        mdy_brightness_set_fade_target(mdy_brightness_level_display_lpm);
         break;
 
     case MCE_DISPLAY_DIM:
@@ -2018,6 +2023,7 @@ static void mdy_brightness_set_on_level(gint hbm_and_level)
     default:
     case MCE_DISPLAY_POWER_DOWN:
     case MCE_DISPLAY_POWER_UP:
+    case MCE_DISPLAY_UNDEF:
         break;
 
     case MCE_DISPLAY_ON:
@@ -2315,20 +2321,21 @@ static gboolean mdy_blanking_off_cb(gpointer data)
 {
     (void)data;
 
-    mce_log(LL_DEBUG, "BLANK timer triggered");
+    if( !mdy_blanking_off_cb_id )
+        goto EXIT;
 
-    display_state_t display_off_state = MCE_DISPLAY_LPM_OFF;
+    mce_log(LL_DEBUG, "BLANK timer triggered");
 
     mdy_blanking_off_cb_id = 0;
 
-    if( !mdy_use_low_power_mode ||
-        !mdy_low_power_mode_supported ||
-        mdy_blanking_can_blank_from_low_power_mode() )
-        display_off_state = MCE_DISPLAY_OFF;
-
     execute_datapipe(&display_state_req_pipe,
-                     GINT_TO_POINTER(display_off_state),
+                     GINT_TO_POINTER(MCE_DISPLAY_OFF),
                      USE_INDATA, CACHE_INDATA);
+
+    /* Remove wakelock unless the timer got re-programmed */
+    if( !mdy_blanking_off_cb_id  )
+        wakelock_unlock("mce_lpm_off");
+EXIT:
 
     return FALSE;
 }
@@ -2343,32 +2350,41 @@ static void mdy_blanking_cancel_off(void)
         mce_log(LL_DEBUG, "BLANK timer cancelled");
         g_source_remove(mdy_blanking_off_cb_id);
         mdy_blanking_off_cb_id = 0;
+
+        /* unlock on cancellation */
+        wakelock_unlock("mce_lpm_off");
     }
 }
 
 /**
  * Setup blank timeout
+ *
+ * This needs to use a wakelock so that the device will not
+ * suspend when LPM_OFF -> OFF transition is scheduled.
  */
 static void mdy_blanking_schedule_off(void)
 {
-    mdy_blanking_cancel_off();
-
     gint timeout = mdy_disp_blank_timeout;
 
-    if( mdy_low_power_mode_supported &&
-        mdy_use_low_power_mode &&
-        mdy_blanking_can_blank_from_low_power_mode() )
-        timeout = mdy_lpm_blank_timeout;
+    if( display_state == MCE_DISPLAY_LPM_OFF )
+        timeout = mdy_disp_lpm_off_timeout;
 
-    if( timeout == 0 )
-        goto EXIT;
+    if( mdy_blanking_off_cb_id ) {
+        g_source_remove(mdy_blanking_off_cb_id);
+        mce_log(LL_DEBUG, "BLANK timer rescheduled @ %d secs", timeout);
+    }
+    else {
+        wakelock_lock("mce_lpm_off", -1);
+        mce_log(LL_DEBUG, "BLANK timer scheduled @ %d secs", timeout);
+    }
 
-    /* Setup new timeout */
-    mce_log(LL_DEBUG, "BLANK timer scheduled @ %d secs", timeout);
-    mdy_blanking_off_cb_id = g_timeout_add_seconds(timeout,
-                                                  mdy_blanking_off_cb, NULL);
+    /* Use idle callback for zero timeout */
+    if( timeout > 0 )
+        mdy_blanking_off_cb_id = g_timeout_add(timeout * 1000,
+                                               mdy_blanking_off_cb, 0);
+    else
+        mdy_blanking_off_cb_id = g_idle_add(mdy_blanking_off_cb, 0);
 
-EXIT:
     return;
 }
 
@@ -2418,13 +2434,12 @@ static void mdy_blanking_schedule_lpm_on(void)
 {
     mdy_blanking_cancel_lpm_on();
 
-    if ((mdy_low_power_mode_supported == TRUE) &&
-        ((mdy_use_low_power_mode == TRUE) &&
-            (mdy_blanking_can_blank_from_low_power_mode() == FALSE))) {
+    if( mdy_use_low_power_mode && mdy_low_power_mode_supported ) {
         /* Setup new timeout */
-        mce_log(LL_DEBUG, "LPM timer scheduled @ %d secs", mdy_lpm_timeout);
+        mce_log(LL_DEBUG, "LPM timer scheduled @ %d secs",
+		mdy_disp_lpm_on_timeout);
         mdy_blanking_lpm_on_cb_id =
-            g_timeout_add_seconds(mdy_lpm_timeout,
+            g_timeout_add_seconds(mdy_disp_lpm_on_timeout,
                                   mdy_blanking_lpm_on_cb, NULL);
     } else {
         mdy_blanking_schedule_off();
@@ -2782,6 +2797,12 @@ static void mdy_blanking_rethink_timers(bool force)
         // handle adaptive blanking states
         switch( display_state ) {
         default:
+        case MCE_DISPLAY_UNDEF:
+        case MCE_DISPLAY_OFF:
+        case MCE_DISPLAY_LPM_OFF:
+        case MCE_DISPLAY_LPM_ON:
+        case MCE_DISPLAY_POWER_UP:
+        case MCE_DISPLAY_POWER_DOWN:
             mdy_blanking_stop_adaptive_dimming();
             mdy_adaptive_dimming_index = 0;
             break;
@@ -2814,12 +2835,14 @@ static void mdy_blanking_rethink_timers(bool force)
 
     switch( display_state ) {
     case MCE_DISPLAY_OFF:
+        break;
+
     case MCE_DISPLAY_LPM_OFF:
+        mdy_blanking_schedule_off();
         break;
 
     case MCE_DISPLAY_LPM_ON:
-        if( proximity_state == COVER_CLOSED )
-            mdy_blanking_schedule_lpm_off();
+        mdy_blanking_schedule_lpm_off();
         break;
 
     case MCE_DISPLAY_DIM:
@@ -2866,6 +2889,9 @@ static void mdy_blanking_rethink_timers(bool force)
         break;
 
     default:
+    case MCE_DISPLAY_UNDEF:
+    case MCE_DISPLAY_POWER_UP:
+    case MCE_DISPLAY_POWER_DOWN:
         break;
     }
 
@@ -2887,21 +2913,29 @@ static void mdy_blanking_rethink_proximity(void)
     switch( display_state ) {
     case MCE_DISPLAY_LPM_ON:
         if( proximity_state == COVER_CLOSED )
-            mdy_blanking_schedule_lpm_off();
+            execute_datapipe(&display_state_req_pipe,
+                             GINT_TO_POINTER(MCE_DISPLAY_LPM_OFF),
+                             USE_INDATA, CACHE_INDATA);
         else
-            mdy_blanking_cancel_lpm_off();
+            mdy_blanking_schedule_lpm_off();
         break;
 
     case MCE_DISPLAY_LPM_OFF:
-        if( proximity_state == COVER_CLOSED )
-            break;
-
-        execute_datapipe(&display_state_req_pipe,
-                         GINT_TO_POINTER(MCE_DISPLAY_LPM_ON),
-                         USE_INDATA, CACHE_INDATA);
+        if( proximity_state == COVER_OPEN )
+            execute_datapipe(&display_state_req_pipe,
+                             GINT_TO_POINTER(MCE_DISPLAY_LPM_ON),
+                             USE_INDATA, CACHE_INDATA);
+        else
+            mdy_blanking_schedule_off();
         break;
 
     default:
+    case MCE_DISPLAY_ON:
+    case MCE_DISPLAY_DIM:
+    case MCE_DISPLAY_UNDEF:
+    case MCE_DISPLAY_OFF:
+    case MCE_DISPLAY_POWER_UP:
+    case MCE_DISPLAY_POWER_DOWN:
         break;
     }
 }
@@ -3167,7 +3201,8 @@ static display_type_t mdy_display_type_get(void)
         goto EXIT;
 
     if( mdy_display_type_get_from_hybris(&display_type) ) {
-        // nop
+        /* allow proximity based lpm ui */
+        mdy_low_power_mode_supported = TRUE;
     }
     else if( mdy_display_type_get_from_config(&display_type) ) {
         // nop
@@ -4211,7 +4246,14 @@ static void mdy_orientation_generate_activity(void)
                          GINT_TO_POINTER(FALSE),
                          USE_INDATA, CACHE_INDATA);
         break;
+
     default:
+    case MCE_DISPLAY_UNDEF:
+    case MCE_DISPLAY_OFF:
+    case MCE_DISPLAY_LPM_OFF:
+    case MCE_DISPLAY_LPM_ON:
+    case MCE_DISPLAY_POWER_UP:
+    case MCE_DISPLAY_POWER_DOWN:
         break;
     }
 }
@@ -4242,6 +4284,11 @@ static void mdy_orientation_sensor_rethink(void)
         break;
 
     default:
+    case MCE_DISPLAY_UNDEF:
+    case MCE_DISPLAY_OFF:
+    case MCE_DISPLAY_LPM_OFF:
+    case MCE_DISPLAY_LPM_ON:
+    case MCE_DISPLAY_POWER_DOWN:
         mce_sensorfw_orient_disable();
         mce_sensorfw_orient_set_notify(0);
         break;
@@ -4276,12 +4323,12 @@ static void mdy_display_state_enter_post(void)
         break;
 
     case MCE_DISPLAY_LPM_ON:
-        /* TODO: the lpm mode is not really supported */
-        mdy_brightness_stop_fade_timer();
+        /* LPM UI active; use lpm brightness */
+        mdy_brightness_force_level(mdy_brightness_level_display_lpm);
         break;
 
     case MCE_DISPLAY_DIM:
-        if (mdy_brightness_level_cached == 0) {
+        if( mdy_brightness_level_cached <= mdy_brightness_level_display_lpm ) {
             /* If we unblank, switch on display immediately */
             mdy_brightness_force_level(mdy_brightness_level_display_dim);
         } else {
@@ -4291,7 +4338,7 @@ static void mdy_display_state_enter_post(void)
         break;
 
     case MCE_DISPLAY_ON:
-        if (mdy_brightness_level_cached == 0) {
+        if( mdy_brightness_level_cached <= mdy_brightness_level_display_lpm ) {
             /* If we unblank, switch on display immediately */
             mdy_brightness_force_level(mdy_brightness_level_display_on);
         } else {
@@ -4301,6 +4348,7 @@ static void mdy_display_state_enter_post(void)
         break;
 
     default:
+    case MCE_DISPLAY_UNDEF:
         break;
     }
 
@@ -4332,10 +4380,28 @@ static void mdy_display_state_enter_pre(display_state_t prev_state,
     /* Restore display_state_pipe to valid value */
     display_state_pipe.cached_data = GINT_TO_POINTER(next_state);
 
-    if( next_state == MCE_DISPLAY_DIM )
-        mdy_brightness_level_display_resume = mdy_brightness_level_display_dim;
-    else
+    switch( next_state ) {
+    case MCE_DISPLAY_ON:
         mdy_brightness_level_display_resume = mdy_brightness_level_display_on;
+        break;
+
+    case MCE_DISPLAY_DIM:
+        mdy_brightness_level_display_resume = mdy_brightness_level_display_dim;
+        break;
+
+    case MCE_DISPLAY_LPM_ON:
+        mdy_brightness_level_display_resume = mdy_brightness_level_display_lpm;
+        break;
+
+    default:
+    case MCE_DISPLAY_UNDEF:
+    case MCE_DISPLAY_OFF:
+    case MCE_DISPLAY_LPM_OFF:
+    case MCE_DISPLAY_POWER_UP:
+    case MCE_DISPLAY_POWER_DOWN:
+        mdy_brightness_level_display_resume = 1;
+        break;
+    }
 
     /* Run display state change triggers */
     execute_datapipe(&display_state_pipe,
@@ -4349,7 +4415,7 @@ static void mdy_display_state_enter_pre(display_state_t prev_state,
  * @param display_state target state to transfer to
  */
 static void mdy_display_state_leave(display_state_t prev_state,
-                                      display_state_t next_state)
+				    display_state_t next_state)
 {
     mce_log(LL_INFO, "BEG %s -> %s transition",
             mdy_display_state_name(prev_state),
@@ -4358,6 +4424,13 @@ static void mdy_display_state_leave(display_state_t prev_state,
     /* Cancel display state specific timers that we do not want to
      * trigger while waiting for frame buffer suspend/resume. */
     mdy_blanking_cancel_timers();
+
+    /* Broadcast the final target of this transition; note that this
+     * happens while display_state_pipe still holds the previous
+     * (non-transitional) state */
+    execute_datapipe(&display_state_next_pipe,
+                     GINT_TO_POINTER(next_state),
+                     USE_INDATA, CACHE_INDATA);
 
     /* Invalidate display_state_pipe when making transitions
      * that need to wait for external parties */
@@ -4607,15 +4680,17 @@ static bool mdy_stm_display_state_needs_power(display_state_t state)
     case MCE_DISPLAY_ON:
     case MCE_DISPLAY_DIM:
     case MCE_DISPLAY_LPM_ON:
-    case MCE_DISPLAY_LPM_OFF:
         break;
 
+    case MCE_DISPLAY_LPM_OFF:
     case MCE_DISPLAY_OFF:
     case MCE_DISPLAY_UNDEF:
         power_on = false;
         break;
 
     default:
+    case MCE_DISPLAY_POWER_UP:
+    case MCE_DISPLAY_POWER_DOWN:
         mce_abort();
     }
 
@@ -4988,7 +5063,10 @@ static void mdy_stm_step(void)
     case STM_LEAVE_POWER_OFF:
         mdy_stm_acquire_wakelock();
         mce_sensorfw_resume();
-        mdy_stm_trans(STM_INIT_RESUME);
+        if( mdy_stm_display_state_needs_power(mdy_stm_next) )
+            mdy_stm_trans(STM_INIT_RESUME);
+        else
+            mdy_stm_trans(STM_ENTER_POWER_OFF);
         break;
 
     case STM_INIT_RESUME:
@@ -6725,7 +6803,7 @@ static void mdy_gconf_cb(GConfClient *const gcc, const guint id,
     }
     else if (id == mdy_disp_blank_timeout_gconf_cb_id) {
         mdy_disp_blank_timeout = gconf_value_get_int(gcv);
-        mdy_lpm_timeout = mdy_disp_blank_timeout;
+        mdy_disp_lpm_on_timeout = mdy_disp_blank_timeout;
 
         /* Reprogram blanking timers */
         mdy_blanking_rethink_timers(true);
@@ -6897,7 +6975,7 @@ static void mdy_gconf_init(void)
     mce_gconf_get_int(MCE_GCONF_DISPLAY_BLANK_TIMEOUT_PATH,
                       &mdy_disp_blank_timeout);
 
-    mdy_lpm_timeout = mdy_disp_blank_timeout;
+    mdy_disp_lpm_on_timeout = mdy_disp_blank_timeout;
 
     mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
                            MCE_GCONF_DISPLAY_BLANK_TIMEOUT_PATH,

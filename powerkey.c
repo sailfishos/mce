@@ -380,6 +380,12 @@ static void generic_powerkey_handler(poweraction_t action,
 			break;
 
 		default:
+		case MCE_DISPLAY_UNDEF:
+		case MCE_DISPLAY_OFF:
+		case MCE_DISPLAY_LPM_OFF:
+		case MCE_DISPLAY_LPM_ON:
+		case MCE_DISPLAY_POWER_UP:
+		case MCE_DISPLAY_POWER_DOWN:
 			/* If the display is not fully powered on, always
 			 * request MCE_DISPLAY_ON */
 

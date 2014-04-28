@@ -691,6 +691,8 @@ static void display_state_trigger(gconstpointer data)
 	case MCE_DISPLAY_LPM_OFF:
 	case MCE_DISPLAY_LPM_ON:
 	case MCE_DISPLAY_DIM:
+	case MCE_DISPLAY_POWER_UP:
+	case MCE_DISPLAY_POWER_DOWN:
 		disable_key_backlight();
 		break;
 

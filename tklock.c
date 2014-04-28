@@ -89,6 +89,9 @@ enum
      *       by periodic stopping of touch monitoring */
 };
 
+/** Helper for evaluation number of items in an array */
+#define numof(a) (sizeof(a)/sizeof*(a))
+
 /* ========================================================================= *
  * CONSTANTS
  * ========================================================================= */
@@ -101,6 +104,9 @@ enum
 
 /** Maximum number of concurrent notification ui exceptions */
 #define TKLOCK_NOTIF_SLOTS 32
+
+/** Signal to send when lpm ui state changes */
+#define MCE_LPM_UI_MODE_SIG "lpm_ui_mode_ind"
 
 /* ========================================================================= *
  * DATATYPES
@@ -145,6 +151,18 @@ typedef struct
     GSList             *tn_monitor_list;
 
 } tklock_notif_state_t;
+
+
+/** Proximity sensor history */
+typedef struct
+{
+    /** Monotonic timestamp, ms resolution */
+    int64_t       tick;
+
+    /** Proximity sensor state */
+    cover_state_t state;
+
+} ps_history_t;
 
 /* ========================================================================= *
  * PROTOTYPES
@@ -203,6 +221,7 @@ static bool     tklock_autolock_exceeded(void);
 static void     tklock_autolock_schedule(int delay);
 static void     tklock_autolock_cancel(void);
 static void     tklock_autolock_rethink(void);
+static void     tklock_autolock_pre_transition_actions(void);
 
 // proximity locking state machine
 
@@ -222,6 +241,17 @@ static void     tklock_uiexcept_end(uiexctype_t type, int64_t linger);
 static void     tklock_uiexcept_cancel(void);
 static void     tklock_uiexcept_deny_state_restore(void);
 static void     tklock_uiexcept_rethink(void);
+
+// low power mode ui state machine
+
+static void     tklock_lpmui_set_state(bool enable);
+static void     tklock_lpmui_reset_history(void);
+static void     tklock_lpmui_update_history(cover_state_t state);
+static bool     tklock_lpmui_probe_from_pocket(void);
+static bool     tklock_lpmui_probe_on_table(void);
+static bool     tklock_lpmui_probe(void);
+static void     tklock_lpmui_rethink(void);
+static void     tklock_lpmui_pre_transition_actions(void);
 
 // legacy hw event input enable/disable state machine
 
@@ -264,6 +294,10 @@ static void     tklock_ui_set(bool enable);
 
 static void     tklock_ui_get_device_lock_cb(DBusPendingCall *pc, void *aptr);
 static void     tklock_ui_get_device_lock(void);
+
+static void     tklock_ui_send_lpm_signal(bool enabled);
+static void     tklock_ui_enable_lpm(void);
+static void     tklock_ui_disable_lpm(void);
 
 // dbus ipc
 
@@ -455,6 +489,9 @@ static int64_t tklock_monotick_get(void)
  * DATAPIPE VALUES AND TRIGGERS
  * ========================================================================= */
 
+/** Proximity state history for triggering low power mode ui */
+static ps_history_t tklock_lpmui_hist[8];
+
 /** Current tklock ui state */
 static bool tklock_ui_enabled = false;
 
@@ -554,6 +591,9 @@ EXIT:
 /** Display state; undefined initially, can't assume anything */
 static display_state_t display_state = MCE_DISPLAY_UNDEF;
 
+/** Next Display state; undefined initially, can't assume anything */
+static display_state_t display_state_next = MCE_DISPLAY_UNDEF;
+
 /** Change notifications for display_state
  */
 static void tklock_datapipe_display_state_cb(gconstpointer data)
@@ -577,6 +617,23 @@ static void tklock_datapipe_display_state_cb(gconstpointer data)
     tklock_evctrl_rethink();
 EXIT:
     return;
+}
+
+/** Pre-change notifications for display_state
+ */
+static void tklock_datapipe_display_state_next_cb(gconstpointer data)
+{
+    display_state_next = GPOINTER_TO_INT(data);
+
+    if( display_state_next == display_state )
+        goto EXIT;
+
+    tklock_autolock_pre_transition_actions();
+    tklock_lpmui_pre_transition_actions();
+
+EXIT:
+    return;
+
 }
 
 /** Actual proximity state; assume not covered */
@@ -603,6 +660,9 @@ static void tklock_datapipe_proximity_update(void)
     tklock_uiexcept_rethink();
     tklock_proxlock_rethink();
     tklock_evctrl_rethink();
+
+    /* consider moving to lpm ui */
+    tklock_lpmui_rethink();
 
 EXIT:
     return;
@@ -665,6 +725,9 @@ static void tklock_datapipe_proximity_sensor_cb(gconstpointer data)
         goto EXIT;
 
     mce_log(LL_DEVEL, "proximity_state_actual = %d -> %d", prev, proximity_state_actual);
+
+    /* update lpm ui proximity history using raw data */
+    tklock_lpmui_update_history(proximity_state_actual);
 
     if( proximity_state_actual == COVER_OPEN ) {
         tklock_datapipe_proximity_uncover_schedule();
@@ -942,6 +1005,10 @@ static void tklock_datapipe_exception_state_cb(gconstpointer data)
 
     mce_log(LL_DEBUG, "exception_state = %d -> %d", prev, exception_state);
 
+    /* Forget lpm ui triggering history
+     * whenever exception state changes */
+    tklock_lpmui_reset_history();
+
     tklock_autolock_rethink();
     tklock_proxlock_rethink();
 
@@ -1160,6 +1227,11 @@ static void tklock_datapipe_lockkey_cb(gconstpointer const data)
         break;
 
     default:
+    case MCE_DISPLAY_UNDEF:
+    case MCE_DISPLAY_OFF:
+    case MCE_DISPLAY_LPM_OFF:
+    case MCE_DISPLAY_LPM_ON:
+    case MCE_DISPLAY_POWER_DOWN:
         mce_log(LL_DEBUG, "display -> on");
         execute_datapipe(&display_state_req_pipe,
                          GINT_TO_POINTER(MCE_DISPLAY_ON),
@@ -1353,6 +1425,10 @@ static datapipe_binding_t tklock_datapipe_triggers[] =
     {
         .datapipe = &display_state_pipe,
         .output_cb = tklock_datapipe_display_state_cb,
+    },
+    {
+        .datapipe = &display_state_next_pipe,
+        .output_cb = tklock_datapipe_display_state_next_cb,
     },
     {
         .datapipe = &tk_lock_pipe,
@@ -1608,6 +1684,58 @@ static void tklock_autolock_schedule(int delay)
     mce_log(LL_DEBUG, "autolock timer started");
 }
 
+/** React to display state transitios that are about to be made
+ */
+static void tklock_autolock_pre_transition_actions(void)
+{
+    mce_log(LL_DEBUG, "prev=%d, next=%d", display_state, display_state_next);
+
+    /* Check if we are about to start off -> on/dim transition */
+
+    switch( display_state ) {
+    default:
+    case MCE_DISPLAY_UNDEF:
+    case MCE_DISPLAY_OFF:
+    case MCE_DISPLAY_LPM_OFF:
+    case MCE_DISPLAY_LPM_ON:
+    case MCE_DISPLAY_POWER_UP:
+    case MCE_DISPLAY_POWER_DOWN:
+        break;
+
+    case MCE_DISPLAY_ON:
+    case MCE_DISPLAY_DIM:
+        // was already on -> dontcare
+        goto EXIT;
+    }
+
+    switch( display_state_next ) {
+    case MCE_DISPLAY_ON:
+    case MCE_DISPLAY_DIM:
+        break;
+
+    default:
+    case MCE_DISPLAY_UNDEF:
+    case MCE_DISPLAY_OFF:
+    case MCE_DISPLAY_LPM_OFF:
+    case MCE_DISPLAY_LPM_ON:
+    case MCE_DISPLAY_POWER_UP:
+    case MCE_DISPLAY_POWER_DOWN:
+        // going to off -> dontcare
+        goto EXIT;
+    }
+
+    /* Apply ui autolock before the transition begins */
+    if( tklock_autolock_exceeded() ) {
+        tklock_ui_set(true);
+    }
+
+    /* Cancel autolock timeout */
+    tklock_autolock_cancel();
+
+EXIT:
+    return;
+}
+
 static void tklock_autolock_rethink(void)
 {
     static display_state_t prev_display_state = MCE_DISPLAY_UNDEF;
@@ -1632,7 +1760,12 @@ static void tklock_autolock_rethink(void)
     case MCE_DISPLAY_POWER_DOWN:
          was_off = true;
         break;
+
     default:
+    case MCE_DISPLAY_ON:
+    case MCE_DISPLAY_DIM:
+    case MCE_DISPLAY_UNDEF:
+    case MCE_DISPLAY_POWER_UP:
         break;
     }
 
@@ -1746,7 +1879,12 @@ static void tklock_proxlock_rethink(void)
     case MCE_DISPLAY_POWER_DOWN:
         was_off = true;
         break;
+
     default:
+    case MCE_DISPLAY_ON:
+    case MCE_DISPLAY_DIM:
+    case MCE_DISPLAY_UNDEF:
+    case MCE_DISPLAY_POWER_UP:
         break;
     }
 
@@ -1886,7 +2024,14 @@ static void tklock_uiexcept_rethink(void)
         case MCE_DISPLAY_OFF:
         case MCE_DISPLAY_POWER_DOWN:
             break;
+
         default:
+        case MCE_DISPLAY_ON:
+        case MCE_DISPLAY_DIM:
+        case MCE_DISPLAY_UNDEF:
+        case MCE_DISPLAY_LPM_OFF:
+        case MCE_DISPLAY_LPM_ON:
+        case MCE_DISPLAY_POWER_UP:
             execute_datapipe(&proximity_blank_pipe,
                              GINT_TO_POINTER(false),
                              USE_INDATA, CACHE_INDATA);
@@ -2110,7 +2255,11 @@ static gboolean tklock_uiexcept_linger_cb(gpointer aptr)
                        GINT_TO_POINTER(exx.display),
                        USE_INDATA, CACHE_INDATA);
       break;
+
     default:
+    case MCE_DISPLAY_UNDEF:
+    case MCE_DISPLAY_POWER_UP:
+    case MCE_DISPLAY_POWER_DOWN:
         break;
     }
 
@@ -2158,20 +2307,27 @@ static void tklock_uiexcept_begin(uiexctype_t type, int64_t linger)
 
         /* save display and tklock state */
         exdata.tklock  = tklock_datapipe_have_tklock_submode();
-        exdata.display = display_state;
+
+        switch( display_state ) {
+        case MCE_DISPLAY_ON:
+        case MCE_DISPLAY_DIM:
+        case MCE_DISPLAY_POWER_UP:
+        case MCE_DISPLAY_UNDEF:
+            exdata.display = MCE_DISPLAY_ON;
+            break;
+
+        default:
+        case MCE_DISPLAY_OFF:
+        case MCE_DISPLAY_LPM_OFF:
+        case MCE_DISPLAY_LPM_ON:
+        case MCE_DISPLAY_POWER_DOWN:
+            exdata.display = MCE_DISPLAY_OFF;
+            break;
+        }
 
         /* initially insync, restore state at end */
         exdata.insync      = true;
         exdata.restore     = true;
-
-        /* deal with transitional display states */
-        switch( exdata.display ) {
-        case MCE_DISPLAY_POWER_DOWN:
-            exdata.display = MCE_DISPLAY_OFF;
-            break;
-        default:
-            break;
-        }
     }
 
     exdata.mask &= ~UIEXC_LINGER;
@@ -2188,6 +2344,302 @@ static void tklock_uiexcept_begin(uiexctype_t type, int64_t linger)
         g_source_remove(exdata.linger_id), exdata.linger_id = 0;
 
     tklock_uiexcept_sync_to_datapipe();
+}
+
+/* ========================================================================= *
+ * LOW POWER MODE UI STATE MACHINE
+ * ========================================================================= */
+
+/* Proximity change time limits for low power mode triggering */
+enum
+{
+    /** Minimum time [ms] the proximity needs to be in stable state */
+    LPMUI_LIM_STABLE = 3000,
+
+    /** Maximum time [ms] in between proximity changes */
+    LPMUI_LIM_CHANGE = 1500,
+};
+
+/** Set lpm ui state
+ *
+ * Broadcast changes over D-Bus
+ *
+ * @param enable true if lpm ui should be enabled, false otherwise
+ */
+static void tklock_lpmui_set_state(bool enable)
+{
+    static bool enabled = false;
+
+    if( !enable ) {
+        // nop
+    }
+    else if( enable && system_state != MCE_STATE_USER ) {
+        mce_log(LL_DEBUG, "deny lpm; not in user mode");
+        enable = false;
+    }
+    else if( !lipstick_available ) {
+        mce_log(LL_DEBUG, "deny lpm; lipstick not running");
+        enable = false;
+    }
+
+    if( enabled == enable )
+        goto EXIT;
+
+    enabled = enable;
+
+    if( enabled ) {
+        /* make sure ui is locked before we enter LPM display modes */
+        execute_datapipe(&tk_lock_pipe,
+                         GINT_TO_POINTER(LOCK_ON),
+                         USE_INDATA, CACHE_INDATA);
+
+        /* Tell lipstick that we are in lpm mode */
+        tklock_ui_enable_lpm();
+    }
+    else {
+        /* Tell lipstick that we are out of lpm mode */
+        tklock_ui_disable_lpm();
+    }
+
+    /* Broadcast a signal too */
+    tklock_ui_send_lpm_signal(enabled);
+EXIT:
+    return;
+}
+
+/** Reset LPM UI proximity sensor history
+ *
+ * Triggering LPM UI is not possible until stable state is
+ * reached again.
+ */
+static void tklock_lpmui_reset_history(void)
+{
+    int64_t now = tklock_monotick_get();
+
+    for( size_t i = 0; i < numof(tklock_lpmui_hist); ++i ) {
+        tklock_lpmui_hist[i].tick  = now;
+        tklock_lpmui_hist[i].state = proximity_state_actual;
+    }
+}
+
+/** Update LPM UI proximity sensor history
+ *
+ * @param state proximity sensor state (raw, undelayed)
+ */
+static void tklock_lpmui_update_history(cover_state_t state)
+{
+    if( state == tklock_lpmui_hist[0].state )
+        goto EXIT;
+
+    memmove(tklock_lpmui_hist+1, tklock_lpmui_hist+0,
+            sizeof tklock_lpmui_hist - sizeof *tklock_lpmui_hist);
+
+    tklock_lpmui_hist[0].tick  = tklock_monotick_get();
+    tklock_lpmui_hist[0].state = state;
+
+EXIT:
+    return;
+}
+
+/** Check if LPM UI proximity sensor history equals "out of pocket" state
+ *
+ * Proximity was covered for LPMUI_LIM_STABLE ms, then uncovered less
+ * than LPMUI_LIM_CHANGE ms ago.
+ *
+ * @return true if conditions met, false otherwise
+ */
+static bool tklock_lpmui_probe_from_pocket(void)
+{
+    bool    res = false;
+    int64_t now = tklock_monotick_get();
+    int64_t t;
+
+    /* Uncovered < LPMUI_LIM_CHANGE ms ago ? */
+    if( tklock_lpmui_hist[0].state != COVER_OPEN )
+        goto EXIT;
+    t = now - tklock_lpmui_hist[0].tick;
+    if( t > LPMUI_LIM_CHANGE )
+        goto EXIT;
+
+    /* After being covered for LPMUI_LIM_STABLE ms ? */
+    if( tklock_lpmui_hist[1].state != COVER_CLOSED )
+        goto EXIT;
+    t = tklock_lpmui_hist[0].tick - tklock_lpmui_hist[1].tick;
+    if( t < LPMUI_LIM_STABLE )
+        goto EXIT;
+
+    res = true;
+EXIT:
+
+    return res;
+}
+
+/** Check if LPM UI proximity sensor history equals "covered on table" state
+ *
+ * Proximity was uncovered for LPMUI_LIM_STABLE ms, them covered and
+ * uncovered within LPMUI_LIM_CHANGE ms, possibly several times.
+ *
+ * @return true if conditions met, false otherwise
+ */
+static bool tklock_lpmui_probe_on_table(void)
+{
+    bool    res  = false;
+    int64_t t = tklock_monotick_get();
+
+    for( size_t i = 0; ; i += 2 ) {
+
+        /* Need to check 3 slots: OPEN, CLOSED, OPEN */
+        if( i + 3 > numof(tklock_lpmui_hist) )
+            goto EXIT;
+
+        /* Covered and uncovered within LPMUI_LIM_CHANGE ms? */
+        if( tklock_lpmui_hist[i+0].state != COVER_OPEN )
+            goto EXIT;
+        if( t - tklock_lpmui_hist[i+0].tick > LPMUI_LIM_CHANGE )
+            goto EXIT;
+
+        if( tklock_lpmui_hist[i+1].state != COVER_CLOSED )
+            goto EXIT;
+        if( t - tklock_lpmui_hist[i+1].tick > LPMUI_LIM_CHANGE )
+            goto EXIT;
+
+        /* After being uncovered longer than LPMUI_LIM_STABLE ms? */
+        if( tklock_lpmui_hist[i+2].state != COVER_OPEN )
+            goto EXIT;
+        t = tklock_lpmui_hist[i+1].tick - tklock_lpmui_hist[i+2].tick;
+        if( t > LPMUI_LIM_STABLE )
+            break;
+
+        t = tklock_lpmui_hist[i+1].tick;
+    }
+
+    res = true;
+
+EXIT:
+
+    return res;
+}
+/** Check if proximity sensor history should trigger LPM UI mode
+ *
+ * @return true if LPM UI can be enabled, false otherwise
+ */
+static bool tklock_lpmui_probe(void)
+{
+    bool glance = false;
+
+#if 0 // TODO: remove devel time debug
+    int64_t now = tklock_monotick_get();
+    for( size_t i = 0; i < numof(tklock_lpmui_hist); ++i ) {
+        const char *tag = "UNDEF";
+        switch( tklock_lpmui_hist[i].state ) {
+        case COVER_OPEN:   tag = "OPEN"; break;
+        case COVER_CLOSED: tag = "CLOSED"; break;
+        default: break;
+        }
+        int64_t zen = tklock_lpmui_hist[i].tick;
+        mce_log(LL_CRIT, "[%zd] %+lld %s", i, now-zen, tag);
+        now = zen;
+    }
+#endif
+
+    if( tklock_lpmui_probe_from_pocket() ) {
+        mce_log(LL_DEBUG, "from pocket");
+        glance = true;
+    }
+    else if( tklock_lpmui_probe_on_table() ) {
+        mce_log(LL_DEBUG, "hovering over");
+        glance = true;
+    }
+    else {
+        mce_log(LL_DEBUG, "proximity noise");
+    }
+
+    return glance;
+}
+
+/** Check if LPM UI mode should be enabled
+ */
+static void tklock_lpmui_rethink(void)
+{
+    /* prerequisites: in user state, lipstick running and display off */
+    if( system_state != MCE_STATE_USER )
+        goto EXIT;
+
+    if( !lipstick_available )
+        goto EXIT;
+
+    if( display_state != MCE_DISPLAY_OFF )
+        goto EXIT;
+
+    /* but not during calls, alarms, etc */
+    if( exception_state != UIEXC_NONE )
+        goto EXIT;
+
+    /* or when proximity is covered */
+    if( proximity_state_effective != COVER_OPEN )
+        goto EXIT;
+
+    /* triggering depends on proximity sensor history */
+    if( !tklock_lpmui_probe() )
+        goto EXIT;
+
+    // TODO: should check "use lpm" setting too, but that is in
+    //       display module and the MCE_DISPLAY_LPM_ON is not
+    //       honored unless it is set
+
+    mce_log(LL_DEBUG, "switching to LPM UI");
+    execute_datapipe(&display_state_req_pipe,
+                     GINT_TO_POINTER(MCE_DISPLAY_LPM_ON),
+                     USE_INDATA, CACHE_INDATA);
+
+EXIT:
+
+    return;
+}
+
+/** LPM UI related actions that should be done before display state transition
+ */
+static void tklock_lpmui_pre_transition_actions(void)
+{
+    mce_log(LL_DEBUG, "prev=%d, next=%d", display_state, display_state_next);
+
+    switch( display_state_next ) {
+    case MCE_DISPLAY_LPM_ON:
+    case MCE_DISPLAY_LPM_OFF:
+        /* We are about to make transition to LPM state */
+        tklock_lpmui_set_state(true);
+        break;
+
+    case MCE_DISPLAY_OFF:
+        switch( display_state ) {
+        case MCE_DISPLAY_ON:
+        case MCE_DISPLAY_DIM:
+            /* We are about to power off from ON/DIM */
+
+            /* If display is turned off via pull from top gesture
+             * it is highly likely that the proximity sensor gets
+             * covered -> to avoid immediate bounce back to lpm
+             * state we need to reset proximity state history */
+            tklock_lpmui_reset_history();
+            break;
+        default:
+            break;
+        }
+        break;
+
+    case MCE_DISPLAY_ON:
+    case MCE_DISPLAY_DIM:
+        /* We are about to make transition to ON/DIM state */
+        tklock_lpmui_set_state(false);
+        break;
+
+    default:
+    case MCE_DISPLAY_UNDEF:
+    case MCE_DISPLAY_POWER_UP:
+    case MCE_DISPLAY_POWER_DOWN:
+        // dontcare
+        break;
+    }
 }
 
 /* ========================================================================= *
@@ -2338,7 +2790,14 @@ static void tklock_evctrl_rethink(void)
     case MCE_DISPLAY_ON:
     case MCE_DISPLAY_DIM:
         break;
+
     default:
+    case MCE_DISPLAY_UNDEF:
+    case MCE_DISPLAY_OFF:
+    case MCE_DISPLAY_LPM_OFF:
+    case MCE_DISPLAY_LPM_ON:
+    case MCE_DISPLAY_POWER_UP:
+    case MCE_DISPLAY_POWER_DOWN:
         enable_kp = false;
         break;
     }
@@ -2380,7 +2839,14 @@ static void tklock_evctrl_rethink(void)
     case MCE_DISPLAY_ON:
     case MCE_DISPLAY_DIM:
         break;
+
     default:
+    case MCE_DISPLAY_UNDEF:
+    case MCE_DISPLAY_OFF:
+    case MCE_DISPLAY_LPM_OFF:
+    case MCE_DISPLAY_LPM_ON:
+    case MCE_DISPLAY_POWER_UP:
+    case MCE_DISPLAY_POWER_DOWN:
         enable_ts = false;
         break;
     }
@@ -2397,7 +2863,13 @@ static void tklock_evctrl_rethink(void)
     case MCE_DISPLAY_LPM_OFF:
     case MCE_DISPLAY_LPM_ON:
       break;
+
     default:
+    case MCE_DISPLAY_ON:
+    case MCE_DISPLAY_DIM:
+    case MCE_DISPLAY_UNDEF:
+    case MCE_DISPLAY_POWER_UP:
+    case MCE_DISPLAY_POWER_DOWN:
       enable_dt = false;
       break;
     }
@@ -3013,6 +3485,56 @@ static void tklock_ui_get_device_lock(void)
 	      "state",
 	      tklock_ui_get_device_lock_cb,
 	      DBUS_TYPE_INVALID);
+}
+
+/** Broadcast LPM UI state over D-Bus
+ *
+ * @param enabled
+ */
+static void tklock_ui_send_lpm_signal(bool enabled)
+{
+    const char *sig = MCE_LPM_UI_MODE_SIG;
+    const char *arg = enabled ? "enabled" : "disabled";
+    mce_log(LL_DEVEL, "sending dbus signal: %s %s", sig, arg);
+    dbus_send(0, MCE_SIGNAL_PATH, MCE_SIGNAL_IF,  sig, 0,
+              DBUS_TYPE_STRING, &arg, DBUS_TYPE_INVALID);
+}
+
+/** Tell lipstick that lpm ui mode is enabled
+ */
+static void tklock_ui_enable_lpm(void)
+{
+    /* Use the N9 legacy D-Bus method call */
+
+    const char   *cb_service   = MCE_SERVICE;
+    const char   *cb_path      = MCE_REQUEST_PATH;
+    const char   *cb_interface = MCE_REQUEST_IF;
+    const char   *cb_method    = MCE_TKLOCK_CB_REQ;
+    dbus_bool_t   flicker_key  = has_flicker_key;
+    dbus_uint32_t mode         = TKLOCK_ENABLE_LPM_UI;
+    dbus_bool_t   silent       = TRUE;
+
+    mce_log(LL_DEBUG, "sending tklock ui lpm enable");
+
+    /* org.nemomobile.lipstick.screenlock.tklock_open */
+    dbus_send(SYSTEMUI_SERVICE, SYSTEMUI_REQUEST_PATH,
+              SYSTEMUI_REQUEST_IF, SYSTEMUI_TKLOCK_OPEN_REQ,
+              NULL,
+              DBUS_TYPE_STRING, &cb_service,
+              DBUS_TYPE_STRING, &cb_path,
+              DBUS_TYPE_STRING, &cb_interface,
+              DBUS_TYPE_STRING, &cb_method,
+              DBUS_TYPE_UINT32, &mode,
+              DBUS_TYPE_BOOLEAN, &silent,
+              DBUS_TYPE_BOOLEAN, &flicker_key,
+              DBUS_TYPE_INVALID);
+}
+
+/** Tell lipstick that lpm ui mode is disabled
+ */
+static void tklock_ui_disable_lpm(void)
+{
+    // FIXME: we do not have method call for cancelling lpm state
 }
 
 /* ========================================================================= *
@@ -3803,6 +4325,9 @@ gboolean mce_tklock_init(void)
 
     /* initialize notification book keeping */
     tklock_notif_init();
+
+    /* initialize proximity history to sane state */
+    tklock_lpmui_reset_history();
 
     /* paths must be probed 1st, the results are used
      * to validate configuration and settings */

@@ -1308,6 +1308,35 @@ EXIT:
 	return;
 }
 
+/** Display state is close enough to "off" predicate
+ *
+ * @param state display state
+ *
+ * @return TRUE if display is off, otherwise FALSE
+ */
+static gboolean display_off_p(display_state_t state)
+{
+	gboolean is_off = TRUE;
+
+	switch( state ) {
+	case MCE_DISPLAY_ON:
+	case MCE_DISPLAY_DIM:
+	case MCE_DISPLAY_UNDEF:
+		is_off = FALSE;
+		break;
+
+	default:
+	case MCE_DISPLAY_OFF:
+	case MCE_DISPLAY_LPM_OFF:
+	case MCE_DISPLAY_LPM_ON:
+	case MCE_DISPLAY_POWER_UP:
+	case MCE_DISPLAY_POWER_DOWN:
+		break;
+	}
+
+	return is_off;
+}
+
 /**
  * Recalculate active pattern and update the pattern timer
  */
@@ -1372,7 +1401,7 @@ static void led_update_active_pattern(void)
 			/* If we're in acting dead
 			 * and the display is off, show pattern
 			 */
-			if ((display_state == MCE_DISPLAY_OFF) &&
+			if (display_off_p(display_state) &&
 			    (new_active_pattern->policy == 2))
 				break;
 
@@ -1385,9 +1414,7 @@ static void led_update_active_pattern(void)
 		/* If the display is off or in low power mode,
 		 * we can use any active pattern
 		 */
-		if ((display_state == MCE_DISPLAY_OFF) ||
-		    (display_state == MCE_DISPLAY_LPM_OFF) ||
-		    (display_state == MCE_DISPLAY_LPM_ON))
+		if( display_off_p(display_state) )
 			break;
 
 		/* If the pattern should be shown with screen on, use it */
@@ -1722,7 +1749,12 @@ static void display_state_trigger(gconstpointer data)
 			led_pattern_op(type6_lock_in_cb);
 		timerclear(&activity_time);
 		break;
+
 	default:
+	case MCE_DISPLAY_DIM:
+	case MCE_DISPLAY_UNDEF:
+	case MCE_DISPLAY_POWER_UP:
+	case MCE_DISPLAY_POWER_DOWN:
 		break;
 	}
 

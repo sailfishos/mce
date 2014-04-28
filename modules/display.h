@@ -178,7 +178,7 @@
  */
 #define DEFAULT_LPM_PROXIMITY_BLANK_TIMEOUT	5	/* 5 seconds */
 /** Default blank timeout, in seconds, when low power mode is active */
-#define DEFAULT_LPM_BLANK_TIMEOUT		0	/* disabled */
+#define DEFAULT_LPM_BLANK_TIMEOUT		3	/* 3 seconds */
 /** Default adaptive dimming threshold, in milliseconds */
 #define DEFAULT_ADAPTIVE_DIMMING_ENABLED	TRUE	/* TRUE */
 /** Default adaptive dimming threshold, in milliseconds */
