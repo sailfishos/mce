@@ -108,7 +108,7 @@ gboolean mce_gconf_get_bool(const gchar *const key, gboolean *value)
 {
 	gboolean status = FALSE;
 	GError *error = NULL;
-	GConfValue *gcv;
+	GConfValue *gcv = 0;
 
 	if( gconf_disabled ) {
 		mce_log(LL_DEBUG, "blocked %s query", key);
@@ -132,11 +132,12 @@ gboolean mce_gconf_get_bool(const gchar *const key, gboolean *value)
 	}
 
 	*value = gconf_value_get_bool(gcv);
-	gconf_value_free(gcv);
 
 	status = TRUE;
 
 EXIT:
+	if( gcv )
+		gconf_value_free(gcv);
 	g_clear_error(&error);
 
 	return status;
@@ -153,7 +154,7 @@ gboolean mce_gconf_get_int(const gchar *const key, gint *value)
 {
 	gboolean status = FALSE;
 	GError *error = NULL;
-	GConfValue *gcv;
+	GConfValue *gcv = 0;
 
 	if( gconf_disabled ) {
 		mce_log(LL_DEBUG, "blocked %s query", key);
@@ -177,11 +178,12 @@ gboolean mce_gconf_get_int(const gchar *const key, gint *value)
 	}
 
 	*value = gconf_value_get_int(gcv);
-	gconf_value_free(gcv);
 
 	status = TRUE;
 
 EXIT:
+	if( gcv )
+		gconf_value_free(gcv);
 	g_clear_error(&error);
 
 	return status;
@@ -198,7 +200,8 @@ gboolean mce_gconf_get_int_list(const gchar *const key, GSList **values)
 {
 	gboolean status = FALSE;
 	GError *error = NULL;
-	GConfValue *gcv, *gcv2;
+	GConfValue *gcv = 0;
+	GConfValue *gcv2;
 	GSList *list;
 	gint i;
 
@@ -238,11 +241,12 @@ gboolean mce_gconf_get_int_list(const gchar *const key, GSList **values)
 
 	/* Reverse the list, since we want the entries in the right order */
 	*values = g_slist_reverse(*values);
-	gconf_value_free(gcv);
 
 	status = TRUE;
 
 EXIT:
+	if( gcv )
+		gconf_value_free(gcv);
 	g_clear_error(&error);
 
 	return status;
@@ -259,7 +263,7 @@ gboolean mce_gconf_get_string(const gchar *const key, gchar **value)
 {
 	gboolean status = FALSE;
 	GError *error = NULL;
-	GConfValue *gcv;
+	GConfValue *gcv = 0;
 
 	if( gconf_disabled ) {
 		mce_log(LL_DEBUG, "blocked %s query", key);
@@ -283,11 +287,12 @@ gboolean mce_gconf_get_string(const gchar *const key, gchar **value)
 	}
 
 	*value = g_strdup(gconf_value_get_string(gcv));
-	gconf_value_free(gcv);
 
 	status = TRUE;
 
 EXIT:
+	if( gcv )
+		gconf_value_free(gcv);
 	g_clear_error(&error);
 
 	return status;
