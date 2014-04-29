@@ -3212,7 +3212,7 @@ struct option const OPT_L[] =
         { "set-powerkey-action",       1, 0, 'Z' }, // xmce_set_powerkey_action()
         { "set-dim-timeouts",          1, 0, 'O' }, // xmce_set_dim_timeouts()
         { "set-suspend-policy",        1, 0, 's' }, // xmce_set_suspend_policy()
-        { "set-cpu-scaling-governor",  1, 0, 's' }, // xmce_set_cpu_scaling_governor()
+        { "set-cpu-scaling-governor",  1, 0, 'S' }, // xmce_set_cpu_scaling_governor()
 #ifdef ENABLE_DOUBLETAP_EMULATION
         { "set-fake-doubletap",        1, 0, 'i' }, // xmce_set_fake_doubletap()
 #endif
