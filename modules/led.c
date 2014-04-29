@@ -95,6 +95,8 @@
 # include "../mce-hybris.h"
 #endif
 
+#include "../libwakelock.h"
+
 #if 0 // DEBUG: make all logging from this module "critical"
 # undef mce_log
 # define mce_log(LEV, FMT, ARGS...) \
@@ -210,6 +212,7 @@ typedef struct {
 
 /** Pointer to the top pattern */
 static pattern_struct *active_pattern = NULL;
+
 /** The active brightness */
 static gint active_brightness = -1;
 
@@ -348,6 +351,7 @@ static guint maximum_led_brightness = MAXIMUM_LYSTI_MONOCHROME_LED_CURRENT;
 
 static void cancel_pattern_timeout(void);
 static void led_update_active_pattern(void);
+static void sw_breathing_rethink(void);
 
 /**
  * Disable the Reno LED controller
@@ -1094,7 +1098,6 @@ static void mono_program_led(const pattern_struct *const pattern)
 		.path = MCE_LED_OFF_PERIOD_PATH,
 	};
 
-
 	/* This shouldn't happen; disable the LED instead */
 	if (pattern->on_period == 0) {
 		mono_disable_led();
@@ -1192,6 +1195,64 @@ static void program_led(const pattern_struct *const pattern)
 	}
 }
 
+/** Enable/disable led breathing via software
+ *
+ * @param pattern A pointer to a pattern_struct with the new pattern
+ */
+static void allow_sw_breathing(bool enable)
+{
+	static bool current = false;
+
+	if( current == enable )
+		goto EXIT;
+
+	current = enable;
+
+	switch (get_led_type()) {
+#ifdef ENABLE_HYBRIS
+	case LED_TYPE_HYBRIS:
+		if( enable )
+			wakelock_lock("mce_led_breathing", -1);
+		mce_hybris_indicator_enable_breathing(enable);
+		if( !enable )
+			wakelock_unlock("mce_led_breathing");
+		break;
+#endif
+
+	default:
+		break;
+	}
+EXIT:
+	return;
+}
+
+/** Setter function for active_pattern
+ *
+ * @param pattern The led pattern to activate, or NULL to disable
+ */
+static void led_set_active_pattern(pattern_struct *pattern)
+{
+	if( active_pattern == pattern )
+		goto EXIT;
+
+	cancel_pattern_timeout();
+
+	active_pattern = pattern;
+
+	if( active_pattern ) {
+		if( active_pattern->timeout != -1 )
+			setup_pattern_timeout(active_pattern->timeout);
+		program_led(active_pattern);
+	}
+	else {
+		disable_led();
+	}
+
+	sw_breathing_rethink();
+EXIT:
+	return;
+}
+
 /**
  * Recalculate active pattern and update the pattern timer
  */
@@ -1199,16 +1260,19 @@ static void led_update_active_pattern(void)
 {
 	display_state_t display_state = display_state_get();
 	system_state_t system_state = datapipe_get_gint(system_state_pipe);
-	pattern_struct *new_active_pattern;
-	gint i = 0;
+	pattern_struct *new_active_pattern = 0;
 
-	if (g_queue_is_empty(pattern_stack) == TRUE) {
-		disable_led();
+	if( !pattern_stack )
 		goto EXIT;
-	}
 
-	while ((new_active_pattern = g_queue_peek_nth(pattern_stack,
-						      i++)) != NULL) {
+	for( GList *iter = pattern_stack->head; ; iter = iter->next ) {
+		if( !iter ) {
+			new_active_pattern = 0;
+			break;
+		}
+
+		new_active_pattern = iter->data;
+
 		mce_log(LL_DEBUG,
 			"pattern: %s, active: %d, enabled: %d",
 			new_active_pattern->name,
@@ -1276,29 +1340,8 @@ static void led_update_active_pattern(void)
 			break;
 	}
 
-	if ((new_active_pattern == NULL) ||
-	    ((led_enabled == FALSE) &&
-	     (new_active_pattern->policy != 5))) {
-		active_pattern = NULL;
-		disable_led();
-		cancel_pattern_timeout();
-		goto EXIT;
-	}
-
-	/* Only reprogram the pattern and timer if the pattern changed */
-	if (new_active_pattern != active_pattern) {
-		disable_led();
-
-		if (new_active_pattern->timeout != -1) {
-			setup_pattern_timeout(new_active_pattern->timeout);
-		}
-
-		program_led(new_active_pattern);
-	}
-
-	active_pattern = new_active_pattern;
-
 EXIT:
+	led_set_active_pattern(new_active_pattern);
 	return;
 }
 
@@ -1469,7 +1512,7 @@ static void led_enable(void)
 static void led_disable(void)
 {
 	led_enabled = FALSE;
-	disable_led();
+	led_update_active_pattern();
 }
 
 /**
@@ -1577,7 +1620,6 @@ static void led_pattern_op(GFunc cb)
 {
 	g_queue_foreach(pattern_stack, cb, 0);
 }
-
 
 /** Handle real user activity
  *
@@ -1905,7 +1947,6 @@ static gboolean led_disable_dbus_cb(DBusMessage *const msg)
 		mce_dbus_get_message_sender_ident(msg));
 
 	led_disable();
-	active_pattern = NULL;
 
 	if (no_reply == FALSE) {
 		DBusMessage *reply = dbus_new_method_reply(msg);
@@ -2630,6 +2671,155 @@ static gboolean init_patterns(void)
 	return status;
 }
 
+/** Flag for: charger connected */
+static bool charger_state = false;
+
+/** Current battery percent level */
+static int battery_level = 0;
+
+/** Setting: sw breathing allowed */
+static gboolean sw_breathing_enabled = FALSE;
+
+/** Setting: battery level at which sw breathing is disabled */
+static gint sw_breathing_battery_limit = 90;
+
+/** GConf notification callback id for sw_breathing_enabled */
+static guint sw_breathing_enabled_gconf_id = 0;
+
+/** GConf notification callback id for sw_breathing_battery_limit */
+static guint sw_breathing_battery_limit_gconf_id = 0;
+
+/** Re-evaluate sw breathing enable state
+ */
+static void sw_breathing_rethink(void)
+{
+	bool breathe = false;
+
+	/* Check breathing configuration */
+	if( sw_breathing_enabled ) {
+		breathe = (charger_state ||
+			   battery_level >= sw_breathing_battery_limit);
+	}
+
+	/* Check if active pattern can utilize breathing */
+	if( !active_pattern ) {
+		breathe = false;
+	}
+	else {
+		/* Battery full breathes by default */
+		if( !strcmp(active_pattern->name,
+			    MCE_LED_PATTERN_BATTERY_FULL) )
+			breathe = true;
+
+		/* Do no breathe static colors and rapid blinkers */
+		if( active_pattern->on_period < 200 ||
+		    active_pattern->off_period < 200 )
+			breathe = false;
+	}
+
+	allow_sw_breathing(breathe);
+}
+
+/** Gconf notification callback function
+ */
+static void sw_breathing_gconf_cb(GConfClient *const gcc, const guint id,
+				  GConfEntry *const entry, gpointer const data)
+{
+	(void)gcc;
+	(void)data;
+	(void)id;
+
+	const GConfValue *gcv = gconf_entry_get_value(entry);
+
+	if( !gcv ) {
+		mce_log(LL_DEBUG, "GConf Key `%s' has been unset",
+			gconf_entry_get_key(entry));
+		goto EXIT;
+	}
+
+	if( id == sw_breathing_enabled_gconf_id ) {
+		sw_breathing_enabled = gconf_value_get_bool(gcv) ? 1 : 0;
+		sw_breathing_rethink();
+	}
+	else if( id == sw_breathing_battery_limit_gconf_id ) {
+		sw_breathing_battery_limit = gconf_value_get_int(gcv);
+		sw_breathing_rethink();
+	}
+	else {
+		mce_log(LL_WARN, "Spurious GConf value received; confused!");
+	}
+
+EXIT:
+	return;
+}
+
+/** De-initialize sw breathing state data
+ */
+static void sw_breathing_quit(void)
+{
+	if( sw_breathing_battery_limit_gconf_id ) {
+		mce_gconf_notifier_remove(GINT_TO_POINTER(sw_breathing_battery_limit_gconf_id), 0);
+		sw_breathing_battery_limit_gconf_id = 0;
+	}
+
+	if( sw_breathing_enabled_gconf_id ) {
+		mce_gconf_notifier_remove(GINT_TO_POINTER(sw_breathing_enabled_gconf_id), 0);
+		sw_breathing_enabled_gconf_id = 0;
+	}
+	allow_sw_breathing(false);
+}
+
+/** Initialize sw breathing state data
+ */
+static void sw_breathing_init(void)
+{
+	/* sw_breath_enabled */
+	mce_gconf_notifier_add("/system/osso/dsm/leds",
+			       "/system/osso/dsm/leds/sw_breath_enabled",
+			       sw_breathing_gconf_cb,
+			       &sw_breathing_enabled_gconf_id);
+	mce_gconf_get_bool("/system/osso/dsm/leds/sw_breath_enabled",
+			   &sw_breathing_enabled);
+
+	/* sw_breath_battery_limit */
+	mce_gconf_notifier_add("/system/osso/dsm/leds",
+			       "/system/osso/dsm/leds/sw_breath_battery_limit",
+			       sw_breathing_gconf_cb,
+			       &sw_breathing_battery_limit_gconf_id);
+	mce_gconf_get_int("/system/osso/dsm/leds/sw_breath_battery_limit",
+			  &sw_breathing_battery_limit);
+}
+
+/** Notification callback function for charger_state_pipe
+ */
+static void charger_state_trigger(gconstpointer data)
+{
+	bool prev = charger_state;
+	charger_state = GPOINTER_TO_INT(data);
+
+	if( charger_state == prev )
+		goto EXIT;
+
+	sw_breathing_rethink();
+EXIT:
+	return;
+}
+
+/** Notification callback function for battery_level_pipe
+ */
+static void battery_level_trigger(gconstpointer data)
+{
+	int prev = battery_level;
+	battery_level = GPOINTER_TO_INT(data);
+
+	if( battery_level == prev )
+		goto EXIT;
+
+	sw_breathing_rethink();
+EXIT:
+	return;
+}
+
 /**
  * Init function for the LED logic module
  *
@@ -2658,6 +2848,10 @@ const gchar *g_module_check_init(GModule *module)
 					  led_pattern_activate_trigger);
 	append_output_trigger_to_datapipe(&led_pattern_deactivate_pipe,
 					  led_pattern_deactivate_trigger);
+	append_output_trigger_to_datapipe(&charger_state_pipe,
+					  charger_state_trigger);
+	append_output_trigger_to_datapipe(&battery_level_pipe,
+					  battery_level_trigger);
 
 	/* Setup a pattern stack,
 	 * a combination rule stack and a cross-refernce for said stack
@@ -2702,6 +2896,12 @@ const gchar *g_module_check_init(GModule *module)
 				 led_disable_dbus_cb) == NULL)
 		goto EXIT;
 
+	/* Initialize sw breathing state data */
+	sw_breathing_init();
+	charger_state_trigger(charger_state_pipe.cached_data);
+	battery_level_trigger(battery_level_pipe.cached_data);
+
+	/* Evaluate initial active pattern state */
 	led_enable();
 
 EXIT:
@@ -2744,16 +2944,36 @@ void g_module_unload(GModule *module)
 					    system_state_trigger);
 	remove_output_trigger_from_datapipe(&user_activity_pipe,
 					    user_activity_trigger);
+	remove_output_trigger_from_datapipe(&charger_state_pipe,
+					    charger_state_trigger);
+	remove_output_trigger_from_datapipe(&battery_level_pipe,
+					    battery_level_trigger);
+
+	/* Remove breathing timers and wakelocks */
+	sw_breathing_quit();
 
 	/* Don't disable the LED on shutdown/reboot/acting dead */
 	if ((system_state != MCE_STATE_ACTDEAD) &&
 	    (system_state != MCE_STATE_SHUTDOWN) &&
 	    (system_state != MCE_STATE_REBOOT)) {
-		led_disable();
+		led_set_active_pattern(0);
+
+		switch (get_led_type()) {
+#ifdef ENABLE_HYBRIS
+		case LED_TYPE_HYBRIS:
+			/* The hybris plugin reprograms the led asynchronously
+			 * after some delay. In this case we want to block
+			 * until the led is actually turned off. */
+			mce_hybris_indicator_quit();
+			break;
+#endif
+		default:
+			break;
+		}
 	}
 
-	/* Free path strings; this has to be done after led_disable(),
-	 * since it uses these paths
+	/* Free path strings; this has to be done after
+	 * led_set_active_pattern(0), since it uses these paths
 	 */
 	g_free((void*)led_current_rm_output.path);
 	g_free((void*)led_current_g_output.path);

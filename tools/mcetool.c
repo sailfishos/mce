@@ -1497,6 +1497,55 @@ static char *mcetool_parse_token(char **ppos)
  * leds
  * ------------------------------------------------------------------------- */
 
+/** Enable/Disable sw based led breathing
+ */
+static void set_led_breathing_enabled(const char *args)
+{
+        debugf("%s(%s)\n", __FUNCTION__, args);
+        gboolean val = xmce_parse_enabled(args);
+        mcetool_gconf_set_bool("/system/osso/dsm/leds/sw_breath_enabled", val);
+}
+
+/** Show current sw based led breathing enable setting
+ */
+static void get_led_breathing_enabled(void)
+{
+        gboolean val = 0;
+        char txt[32];
+
+        strcpy(txt, "unknown");
+        if( mcetool_gconf_get_bool("/system/osso/dsm/leds/sw_breath_enabled", &val) )
+                snprintf(txt, sizeof txt, "%s", val ? "enabled" : "disabled");
+        printf("%-"PAD1"s %s\n", "Led breathing:", txt);
+}
+
+/** Set battery limit for sw based led breathing
+ */
+static void set_led_breathing_limit(const char *args)
+{
+        debugf("%s(%s)\n", __FUNCTION__, args);
+        int val = xmce_parse_integer(args);
+
+        if( val < 0 || val > 100 ) {
+                errorf("%d: invalid battery limit value\n", val);
+                exit(EXIT_FAILURE);
+        }
+        mcetool_gconf_set_int("/system/osso/dsm/leds/sw_breath_battery_limit", val);
+}
+
+/** Show current battery limit for sw based led breathing
+ */
+static void get_led_breathing_limit(void)
+{
+        gint val = 0;
+        char txt[32];
+
+        strcpy(txt, "unknown");
+        if( mcetool_gconf_get_int("/system/osso/dsm/leds/sw_breath_battery_limit", &val) )
+                snprintf(txt, sizeof txt, "%d", (int)val);
+        printf("%-"PAD1"s %s (%%)\n", "Led breathing battery limit:", txt);
+}
+
 /** Enable/Disable the LED
  *
  * @param enable TRUE to enable the LED, FALSE to disable the LED
@@ -1507,6 +1556,7 @@ static void set_led_state(const gboolean enable)
         xmce_ipc_no_reply(enable ? MCE_ENABLE_LED : MCE_DISABLE_LED,
                           DBUS_TYPE_INVALID);
 }
+
 
 /** Trigger a powerkey event
  *
@@ -2825,6 +2875,8 @@ static void xmce_get_status(void)
         xmce_get_tklock_blank();
         xmce_get_lipstick_core_delay();
 
+        get_led_breathing_enabled();
+        get_led_breathing_limit();
         printf("\n");
 }
 
@@ -3016,6 +3068,15 @@ PARAM"-y, --activate-led-pattern=PATTERN\n"
 EXTRA"activate a LED pattern\n"
 PARAM"-Y, --deactivate-led-pattern=PATTERN\n"
 EXTRA"deactivate a LED pattern\n"
+PARAM"--set-sw-breathing=<enabled|disabled>\n"
+EXTRA"Allow/deny using smooth timer based led transitions instead of just\n"
+EXTRA"HW based blinkin. Note that enabling this feature means that the\n"
+EXTRA"device can't suspend while the led is breathing which will increase\n"
+EXTRA"the battery consumption significantly.\n"
+PARAM"--set-sw-breathing-limit=<0 ... 100>\n"
+EXTRA"If charger is not connected, the led breathing is enabled only if\n"
+EXTRA"battery level is greater than the limit given. Setting limit to 100%\n"
+EXTRA"allows breathing only when charger is connected.\n"
 PARAM"-e, --powerkey-event=<short|double|long>\n"
 EXTRA"trigger a powerkey event; valid types are:\n"
 EXTRA"  'short', 'double' and 'long'\n"
@@ -3213,6 +3274,9 @@ struct option const OPT_L[] =
         { "set-dim-timeouts",          1, 0, 'O' }, // xmce_set_dim_timeouts()
         { "set-suspend-policy",        1, 0, 's' }, // xmce_set_suspend_policy()
         { "set-cpu-scaling-governor",  1, 0, 'S' }, // xmce_set_cpu_scaling_governor()
+        { "set-sw-breathing",          1, 0, 901 }, // set_led_breathing_enabled()
+        { "set-sw-breathing-limit",    1, 0, 902 }, // set_led_breathing_limit()
+
 #ifdef ENABLE_DOUBLETAP_EMULATION
         { "set-fake-doubletap",        1, 0, 'i' }, // xmce_set_fake_doubletap()
 #endif
@@ -3299,6 +3363,8 @@ int main(int argc, char **argv)
                 case 'L': set_led_state(FALSE);                   break;
                 case 'y': set_led_pattern_state(optarg, TRUE);    break;
                 case 'Y': set_led_pattern_state(optarg, FALSE);   break;
+                case 901: set_led_breathing_enabled(optarg);      break;
+                case 902: set_led_breathing_limit(optarg);        break;
 
                 case 'e': xmce_powerkey_event(optarg);            break;
 
