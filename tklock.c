@@ -2068,10 +2068,16 @@ static gboolean tklock_uiexcept_linger_cb(gpointer aptr)
     if( !exdata.linger_id )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "linger timeout");
-
     /* mark timer inactive */
     exdata.linger_id = 0;
+
+    /* Ignore unless linger bit and only linger bit is set */
+    if( exdata.mask != UIEXC_LINGER ) {
+        mce_log(LL_WARN, "spurious linger timeout");
+        goto EXIT;
+    }
+
+    mce_log(LL_DEBUG, "linger timeout");
 
     /* operate on copy of data, in case the data
      * pipe operations cause feedback */
@@ -2126,6 +2132,9 @@ static void tklock_uiexcept_end(uiexctype_t type, int64_t linger)
     if( exdata.linger_tick < linger )
         exdata.linger_tick = linger;
 
+    if( exdata.linger_id )
+        g_source_remove(exdata.linger_id), exdata.linger_id = 0;
+
     if( !exdata.mask ) {
         exdata.mask |= UIEXC_LINGER;
         int delay = (int)(exdata.linger_tick - now);
@@ -2165,6 +2174,7 @@ static void tklock_uiexcept_begin(uiexctype_t type, int64_t linger)
         }
     }
 
+    exdata.mask &= ~UIEXC_LINGER;
     exdata.mask |= type;
 
     int64_t now = tklock_monotick_get();
@@ -2173,6 +2183,9 @@ static void tklock_uiexcept_begin(uiexctype_t type, int64_t linger)
 
     if( exdata.linger_tick < linger )
         exdata.linger_tick = linger;
+
+    if( exdata.linger_id )
+        g_source_remove(exdata.linger_id), exdata.linger_id = 0;
 
     tklock_uiexcept_sync_to_datapipe();
 }
