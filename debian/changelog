@@ -1,3 +1,10 @@
+mce (1.29.4) unstable; urgency=low
+
+  * [mce] Cancel display on linger timeout if exceptional ui state is
+    restarted. Fixes JB#18788
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 02 May 2014 09:31:18 +0300
+
 mce (1.29.3) unstable; urgency=low
 
   * [mce] Tune ALS profiles. Fixes JB#12301
