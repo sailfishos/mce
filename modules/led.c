@@ -943,6 +943,58 @@ EXIT:
 	return;
 }
 
+/** Check if pattern is breathable
+ *
+ * @param self led pattern object
+ *
+ * @return true if pattern should be breathed, false otherwise
+ */
+static bool led_pattern_can_breathe(const pattern_struct *self)
+{
+	/* FIXME: This should be directly available in the pattern
+	 *        configuration. But until we know better what is
+	 *        needed and how to configure it, heuristics are
+	 *        used to determine whether a pattern should be
+	 *        turned in to breathing kind or not. */
+
+	/* Assume no pattern is breathable */
+	bool breathe = false;
+
+	/* What we want to breathe are the normal blinking indicator
+	 * patterns. By default thse have the following characteristics */
+
+	int normal_pattern_minimum_on_period  =  500; // [ms]
+	int normal_pattern_maximum_on_period  =  500; // [ms]
+
+	int normal_pattern_minimum_off_period = 1500; // [ms]
+	int normal_pattern_maximum_off_period = 2500; // [ms]
+
+	/* Extend the above bounds in case the users have edited the
+	 * defaults, or added new patterns. Use half the minimum and
+	 * double the maximum should - then assume anything out of those
+	 * limits probably
+	 * a) is unbreathable static pattern
+	 * b) is rapid panic pattern
+	 * c) is custom beacon with short on, long off cycle
+	 * d) has too short rise time for timer based adjustments
+	 * e) has so long fall time that breathing is unnoticeable
+	 * and should not be made to breathe.
+	 */
+
+	if( self->on_period  < normal_pattern_minimum_on_period  / 2 ||
+	    self->on_period  > normal_pattern_maximum_on_period  * 2 ||
+	    self->off_period < normal_pattern_minimum_off_period / 2 ||
+	    self->off_period > normal_pattern_maximum_off_period * 2 )
+		goto EXIT;
+
+	/* There is no reason not to breathe */
+	breathe = true;
+
+EXIT:
+
+	return breathe;
+}
+
 /**
  * Timeout callback for LED patterns
  *
@@ -2703,17 +2755,21 @@ static void sw_breathing_rethink(void)
 
 	/* Check if active pattern can utilize breathing */
 	if( !active_pattern ) {
+		/* If there is no active pattern, breathing must
+		 * be disabled so that suspend does not get blocked */
 		breathe = false;
 	}
 	else {
-		/* Battery full breathes by default */
+		/* Battery full breathes by default. If user has tuned
+		 * the pattern config to disable battery full blinking,
+		 * the led_pattern_can_breathe() below should catch it. */
 		if( !strcmp(active_pattern->name,
 			    MCE_LED_PATTERN_BATTERY_FULL) )
 			breathe = true;
 
-		/* Do no breathe static colors and rapid blinkers */
-		if( active_pattern->on_period < 200 ||
-		    active_pattern->off_period < 200 )
+		/* If pattern is configured not to breathe, we should
+		 * not breathe even if it were allowed */
+		if( !led_pattern_can_breathe(active_pattern) )
 			breathe = false;
 	}
 
