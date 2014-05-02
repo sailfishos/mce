@@ -1510,12 +1510,12 @@ static void set_led_breathing_enabled(const char *args)
  */
 static void get_led_breathing_enabled(void)
 {
-        gboolean val = 0;
-        char txt[32];
+        gboolean    val = FALSE;
+        const char *txt = "unknown";
 
-        strcpy(txt, "unknown");
         if( mcetool_gconf_get_bool("/system/osso/dsm/leds/sw_breath_enabled", &val) )
-                snprintf(txt, sizeof txt, "%s", val ? "enabled" : "disabled");
+                txt = val ? "enabled" : "disabled";
+
         printf("%-"PAD1"s %s\n", "Led breathing:", txt);
 }
 
