@@ -592,6 +592,7 @@ modules/led.o:\
 	mce-lib.h\
 	mce-log.h\
 	mce.h\
+	libwakelock.h\
 	mce-hybris.h\
 	modules/led.h\
 
@@ -607,6 +608,7 @@ modules/led.pic.o:\
 	mce-lib.h\
 	mce-log.h\
 	mce.h\
+	libwakelock.h\
 	mce-hybris.h\
 	modules/led.h\
 
