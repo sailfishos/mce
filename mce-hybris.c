@@ -530,6 +530,17 @@ bool mce_hybris_indicator_set_pattern(int r, int g, int b, int ms_on, int ms_off
   return !real ? false : real(r,g,b, ms_on, ms_off);
 }
 
+/** Enable/disable timer based led breathing
+ *
+ * @param enable true for smooth sw transitions, false for hw blinking only
+ */
+void mce_hybris_indicator_enable_breathing(bool enable)
+{
+  static void (*real)(bool) = 0;
+  RESOLVE;
+  if( real ) real(enable);
+}
+
 /* ------------------------------------------------------------------------- *
  * proximity sensor
  * ------------------------------------------------------------------------- */
