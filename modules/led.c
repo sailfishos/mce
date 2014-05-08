@@ -961,18 +961,15 @@ static bool led_pattern_can_breathe(const pattern_struct *self)
 	bool breathe = false;
 
 	/* What we want to breathe are the normal blinking indicator
-	 * patterns. By default thse have the following characteristics */
-
-	int normal_pattern_minimum_on_period  =  500; // [ms]
-	int normal_pattern_maximum_on_period  =  500; // [ms]
-
-	int normal_pattern_minimum_off_period = 1500; // [ms]
-	int normal_pattern_maximum_off_period = 2500; // [ms]
-
-	/* Extend the above bounds in case the users have edited the
-	 * defaults, or added new patterns. Use half the minimum and
-	 * double the maximum should - then assume anything out of those
-	 * limits probably
+	 * patterns. By default these have the following characteristics
+	 *  - "on_period"  = 500 ms
+	 *  - "off_period" = 1500 ... 2500 ms
+	 *
+	 * Extend these bounds in case the users have edited the
+	 * defaults, or added new patterns.
+	 *
+	 * Use half the minimum and double the maximum - then assume
+	 * anything out of those limits probably
 	 * a) is unbreathable static pattern
 	 * b) is rapid panic pattern
 	 * c) is custom beacon with short on, long off cycle
@@ -981,10 +978,16 @@ static bool led_pattern_can_breathe(const pattern_struct *self)
 	 * and should not be made to breathe.
 	 */
 
-	if( self->on_period  < normal_pattern_minimum_on_period  / 2 ||
-	    self->on_period  > normal_pattern_maximum_on_period  * 2 ||
-	    self->off_period < normal_pattern_minimum_off_period / 2 ||
-	    self->off_period > normal_pattern_maximum_off_period * 2 )
+	int normal_pattern_minimum_on_period  =  500 / 2; // [ms]
+	int normal_pattern_maximum_on_period  =  500 * 2; // [ms]
+
+	int normal_pattern_minimum_off_period = 1500 / 2; // [ms]
+	int normal_pattern_maximum_off_period = 2500 * 2; // [ms]
+
+	if( self->on_period  < normal_pattern_minimum_on_period  ||
+	    self->on_period  > normal_pattern_maximum_on_period  ||
+	    self->off_period < normal_pattern_minimum_off_period ||
+	    self->off_period > normal_pattern_maximum_off_period )
 		goto EXIT;
 
 	/* There is no reason not to breathe */
