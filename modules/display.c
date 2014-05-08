@@ -2851,7 +2851,7 @@ static void mdy_blanking_rethink_timers(bool force)
         if( charger_connected &&
             mdy_blanking_inhibit_mode == INHIBIT_STAY_DIM_WITH_CHARGER )
             break;
-        mdy_blanking_schedule_lpm_on();
+        mdy_blanking_schedule_off();
         break;
 
     case MCE_DISPLAY_ON:
