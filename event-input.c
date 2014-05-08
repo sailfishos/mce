@@ -1763,6 +1763,9 @@ static gboolean touchscreen_iomon_cb(gpointer data, gsize bytes_read)
 			}
 			break;
 		default:
+		case MCE_DISPLAY_ON:
+		case MCE_DISPLAY_DIM:
+		case MCE_DISPLAY_UNDEF:
 		case MCE_DISPLAY_POWER_UP:
 		case MCE_DISPLAY_POWER_DOWN:
 			break;

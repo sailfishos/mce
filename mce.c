@@ -292,6 +292,7 @@ static void mce_cleanup_wakelocks(void)
 	wakelock_unlock("mce_proximity_stm");
 	wakelock_unlock("mce_bluez_wait");
 	wakelock_unlock("mce_led_breathing");
+	wakelock_unlock("mce_lpm_off");
 }
 #endif // ENABLE_WAKELOCKS
 
@@ -942,6 +943,8 @@ int main(int argc, char **argv)
 		       0, GINT_TO_POINTER(MCE_DISPLAY_UNDEF));
 	setup_datapipe(&display_state_req_pipe, READ_WRITE, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(MCE_DISPLAY_UNDEF));
+	setup_datapipe(&display_state_next_pipe, READ_WRITE, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(MCE_DISPLAY_UNDEF));
 	setup_datapipe(&exception_state_pipe, READ_WRITE, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(UIEXC_NONE));
 	setup_datapipe(&display_brightness_pipe, READ_WRITE, DONT_FREE_CACHE,
@@ -1135,6 +1138,7 @@ EXIT:
 	free_datapipe(&display_brightness_pipe);
 	free_datapipe(&display_state_pipe);
 	free_datapipe(&display_state_req_pipe);
+	free_datapipe(&display_state_next_pipe);
 	free_datapipe(&exception_state_pipe);
 	free_datapipe(&submode_pipe);
 	free_datapipe(&alarm_ui_state_pipe);

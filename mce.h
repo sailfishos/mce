@@ -281,10 +281,16 @@ datapipe_struct led_pattern_activate_pipe;
 datapipe_struct led_pattern_deactivate_pipe;
 /** Non-synthetized user activity; read only */
 datapipe_struct user_activity_pipe;
+
 /** State of display; read only */
 datapipe_struct display_state_pipe;
+
 /** Desired state of display; write only */
 datapipe_struct display_state_req_pipe;
+
+/** Next (non-transitional) state of display; read only */
+datapipe_struct display_state_next_pipe;
+
 /** exceptional ui state; read write */
 datapipe_struct exception_state_pipe;
 /**

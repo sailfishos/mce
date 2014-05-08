@@ -423,13 +423,15 @@ static void rethink_als_status(void)
 		switch( display_state ) {
 		case MCE_DISPLAY_ON:
 		case MCE_DISPLAY_DIM:
-			want_data = TRUE;
+		case MCE_DISPLAY_POWER_UP:
+                case MCE_DISPLAY_LPM_OFF:
+                case MCE_DISPLAY_LPM_ON:
+                        want_data = TRUE;
 			break;
 
 		default:
+		case MCE_DISPLAY_POWER_DOWN:
 		case MCE_DISPLAY_OFF:
-		case MCE_DISPLAY_LPM_OFF:
-		case MCE_DISPLAY_LPM_ON:
 		case MCE_DISPLAY_UNDEF:
 			want_data = FALSE;
 			break;
