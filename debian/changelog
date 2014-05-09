@@ -1,3 +1,10 @@
+mce (1.30.1) unstable; urgency=low
+
+  * [mce] Enter display off state after dimming. Fixes JB#19192
+  * [mce] Disable automatic dimming/blanking during incoming call. Fixes JB#19194
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 09 May 2014 10:14:20 +0300
+
 mce (1.30.0) unstable; urgency=low
 
   * [mce] Add option to use breathing led patterns. Contributes to JB#17229
