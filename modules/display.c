@@ -2754,6 +2754,7 @@ static void mdy_blanking_rethink_timers(bool force)
     // audio_route       <- mdy_datapipe_audio_route_cb()
     // charger_connected <- mdy_datapipe_charger_state_cb()
     // exception_state   <- mdy_datapipe_exception_state_cb()
+    // call_state        <- mdy_datapipe_call_state_trigger_cb()
     //
     // INPUTS:
     // proximity_state   <- mdy_datapipe_proximity_sensor_cb()
@@ -2765,6 +2766,8 @@ static void mdy_blanking_rethink_timers(bool force)
     static cover_state_t prev_proximity_state = COVER_UNDEF;
 
     static uiexctype_t prev_exception_state = UIEXC_NONE;
+
+    static call_state_t prev_call_state = CALL_STATE_NONE;
 
     static gboolean prev_charger_connected = false;
 
@@ -2783,6 +2786,9 @@ static void mdy_blanking_rethink_timers(bool force)
         force = true;
 
     if( prev_exception_state != exception_state )
+        force = true;
+
+    if( prev_call_state != call_state )
         force = true;
 
     if( prev_proximity_state != proximity_state )
@@ -2860,6 +2866,10 @@ static void mdy_blanking_rethink_timers(bool force)
         }
 
         if( exception_state & UIEXC_CALL ) {
+            // do not dim-blank when handling incoming call
+            if( call_state == CALL_STATE_RINGING )
+                break;
+
             // no dim-blank timers with handset audio
             // ... while proximity covered
             if( audio_route == AUDIO_ROUTE_HANDSET  &&
@@ -2899,6 +2909,7 @@ EXIT:
     prev_display_state = display_state;
     prev_proximity_state = proximity_state;
     prev_exception_state = exception_state;
+    prev_call_state = call_state;
     prev_charger_connected = charger_connected;
     prev_audio_route = audio_route;
     prev_tklock_mode = tklock_mode;
