@@ -138,6 +138,8 @@
 # include "mce-sensorfw.h"
 #endif
 
+#include "mce-command-line.h"
+
 #include <systemd/sd-daemon.h>
 
 /** Path to the lockfile */
@@ -169,50 +171,6 @@ static void no_error_check_write(int fd, const void *data, size_t size)
 	// try to silence static analyzers by doing /something/ with rc
 	if( rc == -1 )
 		rc = rc;
-}
-
-static const char usage_fmt[] =
-"Usage: %s [OPTION]...\n"
-"Mode Control Entity\n"
-"\n"
-"  -n, --systemd              notify systemd when started up\n"
-"  -d, --daemonflag           run MCE as a daemon\n"
-"  -s, --force-syslog         log to syslog even when not daemonized\n"
-"  -T, --force-stderr         log to stderr even when daemonized\n"
-"  -S, --session              use the session bus instead of the system\n"
-"                               bus for D-Bus\n"
-"  -M, --show-module-info     show information about loaded modules\n"
-"  -D, --debug-mode           run even if dsme fails\n"
-"  -q, --quiet                decrease debug message verbosity\n"
-"  -v, --verbose              increase debug message verbosity\n"
-"  -t, --trace=<what>         enable domain specific debug logging;\n"
-"                               supported values: \"wakelocks\"\n"
-"  -l, --log-function=<file:func>  add function logging override\n"
-"  -h, --help                 display this help and exit\n"
-"  -V, --version              output version information and exit\n"
-"\n"
-"Report bugs to <david.weinehall@nokia.com>\n"
-;
-/**
- * Display usage information
- */
-static void usage(void)
-{
-  fprintf(stdout, usage_fmt, progname);
-}
-
-/**
- * Display version information
- */
-static void version(void)
-{
-	fprintf(stdout, _("%s v%s\n%s"),
-		progname,
-		G_STRINGIFY(PRG_VERSION),
-		_("Written by David Weinehall.\n"
-		  "\n"
-		  "Copyright (C) 2004-2010 Nokia Corporation.  "
-		  "All rights reserved.\n"));
 }
 
 /**
@@ -760,6 +718,267 @@ static gboolean mce_enable_trace(const char *flags)
 	return res;
 }
 
+/* ========================================================================= *
+ * COMMAND LINE OPTIONS
+ * ========================================================================= */
+
+static struct
+{
+	bool daemonflag;
+	bool debugmode;
+	int  logtype;
+	int  verbosity;
+	bool systembus;
+	bool show_module_info;
+	bool systemd_notify;
+} mce_args =
+{
+	.daemonflag       = false,
+	.debugmode        = false,
+	.logtype          = MCE_LOG_SYSLOG,
+	.verbosity        = LL_DEFAULT,
+	.systembus        = true,
+	.show_module_info = false,
+	.systemd_notify   = false,
+};
+
+static bool mce_do_help(const char *arg);
+static bool mce_do_version(const char *arg);
+
+static bool mce_do_daemonize(const char *arg)
+{
+	(void)arg;
+	mce_args.daemonflag = true;
+	return true;
+}
+
+static bool mce_do_debug_mode(const char *arg)
+{
+	(void)arg;
+	mce_args.debugmode = true;
+	return true;
+}
+
+static bool mce_do_force_stderr(const char *arg)
+{
+	(void)arg;
+	mce_args.logtype = MCE_LOG_STDERR;
+	return true;
+}
+
+static bool mce_do_force_syslog(const char *arg)
+{
+	(void)arg;
+	mce_args.logtype = MCE_LOG_SYSLOG;
+	return true;
+}
+
+static bool mce_do_log_function(const char *arg)
+{
+	mce_log_add_pattern(arg);
+	return true;
+}
+
+static bool mce_do_verbose(const char *arg)
+{
+	(void)arg;
+	if( mce_args.verbosity < LL_DEBUG )
+		mce_args.verbosity++;
+	return true;
+}
+
+static bool mce_do_quiet(const char *arg)
+{
+	(void)arg;
+	if( mce_args.verbosity > LL_NONE )
+		mce_args.verbosity--;
+	return true;
+}
+
+static bool mce_do_session_bus(const char *arg)
+{
+	(void)arg;
+	mce_args.systembus = false;
+	return true;
+}
+
+static bool mce_do_show_module_info(const char *arg)
+{
+	(void)arg;
+	mce_args.show_module_info = true;
+	return true;
+}
+
+static bool mce_do_systemd(const char *arg)
+{
+	(void)arg;
+	mce_args.systemd_notify = true;
+	return true;
+}
+
+static bool mce_do_trace(const char *arg)
+{
+	return mce_enable_trace(arg);
+}
+
+static const mce_opt_t options[] =
+{
+
+	{
+		.name        = "help",
+		.flag        = 'h',
+		.with_arg    = mce_do_help,
+		.without_arg = mce_do_help,
+		.values      = "option|\"all\"",
+		.usage       =
+			"Show usage information\n"
+			"\n"
+			"If the optional argument is given, more detailed information is\n"
+			"given about matching options. Using \"all\" lists all options\n"
+	},
+	{
+		.name        = "version",
+		.flag        = 'V',
+		.without_arg = mce_do_version,
+		.usage       =
+			"Output version information and exit\n"
+
+	},
+
+	{
+		.name        = "verbose",
+		.flag        = 'v',
+		.without_arg = mce_do_verbose,
+		.usage       =
+			"Increase debug message verbosity\n"
+
+	},
+	{
+		.name        = "quiet",
+		.flag        = 'q',
+		.without_arg = mce_do_quiet,
+		.usage       =
+			"Decrease debug message verbosity\n"
+
+	},
+	{
+		.name        = "systemd",
+		.flag        = 'n',
+		.without_arg = mce_do_systemd,
+		.usage       =
+			"Notify systemd when started up\n"
+
+	},
+	{
+		.name        = "daemonflag",
+		.flag        = 'd',
+		.without_arg = mce_do_daemonize,
+		.usage       =
+			"Run MCE as a daemon\n"
+
+	},
+	{
+		.name        = "force-syslog",
+		.flag        = 's',
+		.without_arg = mce_do_force_syslog,
+		.usage       =
+			"Log to syslog even when not daemonized\n"
+
+	},
+	{
+		.name        = "force-stderr",
+		.flag        = 'T',
+		.without_arg = mce_do_force_stderr,
+		.usage       =
+			"Log to stderr even when daemonized\n"
+
+	},
+	{
+		.name        = "session",
+		.flag        = 'S',
+		.without_arg = mce_do_session_bus,
+		.usage       =
+			"Use the session bus instead of the system bus for D-Bus\n"
+	},
+	{
+		.name        = "show-module-info",
+		.flag        = 'M',
+		.without_arg = mce_do_show_module_info,
+		.usage       =
+			"Show information about loaded modules\n"
+	},
+	{
+		.name        = "debug-mode",
+		.flag        = 'D',
+		.without_arg = mce_do_debug_mode,
+		.usage       =
+			"Run even if DSME fails\n"
+	},
+	{
+		.name        = "trace",
+		.flag        = 't',
+		.with_arg    = mce_do_trace,
+		.values      = "what",
+		.usage       =
+			"enable domain specific debug logging; supported values:\n"
+			"  wakelocks\n"
+	},
+	{
+		.name        = "log-function",
+		.flag        = 'l',
+		.with_arg    = mce_do_log_function,
+		.values      = "file:func",
+		.usage       =
+			"Add function logging override"
+	},
+	// sentinel
+	{
+		.name = 0
+	}
+};
+
+static bool mce_do_version(const char *arg)
+{
+	(void)arg;
+
+	static const char vers[] = G_STRINGIFY(PRG_VERSION);
+	static const char info[] =
+		"Written by David Weinehall.\n"
+		"\n"
+		"Copyright (C) 2004-2010 Nokia Corporation.  "
+		"All rights reserved.\n";
+
+	fprintf(stdout,	"%s v%s\n%s", progname, vers, info);
+	exit(EXIT_SUCCESS);
+}
+
+static bool mce_do_help(const char *arg)
+{
+	fprintf(stdout,
+		"Mode Control Entity\n"
+		"\n"
+		"USAGE\n"
+		"\tmce [OPTION] ...\n"
+		"\n"
+		"OPTIONS\n");
+
+	mce_command_line_usage(options, arg);
+
+	if( !arg )
+		goto EXIT;
+
+	fprintf(stdout,
+		"REPORTING BUGS\n"
+		"\tSend e-mail to: <simo.piiroinen@jollamobile.com>\n");
+
+EXIT:
+	exit(EXIT_SUCCESS);
+}
+
+/* ========================================================================= *
+ * MAIN ENTRY POINT
+ * ========================================================================= */
+
 /**
  * Main
  *
@@ -769,103 +988,15 @@ static gboolean mce_enable_trace(const char *flags)
  */
 int main(int argc, char **argv)
 {
-	int optc;
-	int opt_index;
-
-	int verbosity = LL_DEFAULT;
-	int logtype   = MCE_LOG_SYSLOG;
-
-	gint status = EXIT_FAILURE;
-	gboolean show_module_info = FALSE;
-	gboolean daemonflag = FALSE;
-	gboolean systembus = TRUE;
-	gboolean debugmode = FALSE;
-	gboolean systemd_notify = FALSE;
-
-	const char optline[] = "dsTSMDqvhVt:l:n";
-
-	struct option const options[] = {
-		{ "systemd",          no_argument,       0, 'n' },
-		{ "daemonflag",       no_argument,       0, 'd' },
-		{ "force-syslog",     no_argument,       0, 's' },
-		{ "force-stderr",     no_argument,       0, 'T' },
-		{ "session",          no_argument,       0, 'S' },
-		{ "show-module-info", no_argument,       0, 'M' },
-		{ "debug-mode",       no_argument,       0, 'D' },
-		{ "quiet",            no_argument,       0, 'q' },
-		{ "verbose",          no_argument,       0, 'v' },
-		{ "help",             no_argument,       0, 'h' },
-		{ "version",          no_argument,       0, 'V' },
-		{ "trace",            required_argument, 0, 't' },
-		{ "log-function",     required_argument, 0, 'l' },
-		{ 0, 0, 0, 0 }
-        };
+	int status = EXIT_FAILURE;
 
 	/* Initialise support for locales, and set the program-name */
 	if (init_locales(PRG_NAME) != 0)
 		goto EXIT;
 
 	/* Parse the command-line options */
-	while ((optc = getopt_long(argc, argv, optline,
-				   options, &opt_index)) != -1) {
-		switch (optc) {
-		case 'n':
-			systemd_notify = TRUE;
-			break;
-
-		case 'd':
-			daemonflag = TRUE;
-			break;
-
-		case 's':
-			logtype = MCE_LOG_SYSLOG;
-			break;
-
-		case 'T':
-			logtype = MCE_LOG_STDERR;
-			break;
-
-		case 'S':
-			systembus = FALSE;
-			break;
-
-		case 'M':
-			show_module_info = TRUE;
-			break;
-
-		case 'D':
-			debugmode = TRUE;
-			break;
-
-		case 'q':
-			if (verbosity > LL_NONE)
-				verbosity--;
-			break;
-
-		case 'v':
-			if (verbosity < LL_DEBUG)
-				verbosity++;
-			break;
-
-		case 'h':
-			usage();
-			exit(EXIT_SUCCESS);
-
-		case 'V':
-			version();
-			exit(EXIT_SUCCESS);
-		case 't':
-			if( !mce_enable_trace(optarg) )
-				exit(EXIT_FAILURE);
-			break;
-		case 'l':
-			mce_log_add_pattern(optarg);
-			break;
-		default:
-			usage();
-			exit(EXIT_FAILURE);
-		}
-	}
+	if( !mce_command_line_parse(options, argc, argv) )
+		goto EXIT;
 
 	/* We don't take any non-flag arguments */
 	if ((argc - optind) > 0) {
@@ -876,8 +1007,8 @@ int main(int argc, char **argv)
 		exit(EXIT_FAILURE);
 	}
 
-	mce_log_open(PRG_NAME, LOG_DAEMON, logtype);
-	mce_log_set_verbosity(verbosity);
+	mce_log_open(PRG_NAME, LOG_DAEMON, mce_args.logtype);
+	mce_log_set_verbosity(mce_args.verbosity);
 
 #ifdef ENABLE_WAKELOCKS
 	/* Since mce enables automatic suspend, we must try to
@@ -886,7 +1017,7 @@ int main(int argc, char **argv)
 #endif
 
 	/* Daemonize if requested */
-	if (daemonflag == TRUE)
+	if( mce_args.daemonflag )
 		daemonize();
 
 	/* Register a mainloop */
@@ -909,7 +1040,7 @@ int main(int argc, char **argv)
 	}
 
 	/* Initialise D-Bus */
-	if (mce_dbus_init(systembus) == FALSE) {
+	if( !mce_dbus_init(mce_args.systembus) ) {
 		mce_log(LL_CRIT,
 			"Failed to initialise D-Bus");
 		mce_log_close();
@@ -1034,8 +1165,8 @@ int main(int argc, char **argv)
 	 * pre-requisite: mce_dbus_init()
 	 * pre-requisite: mce_mce_init()
 	 */
-	if (mce_dsme_init(debugmode) == FALSE) {
-		if (debugmode == FALSE) {
+	if( !mce_dsme_init(mce_args.debugmode) ) {
+		if( !mce_args.debugmode ) {
 			mce_log(LL_CRIT, "Cannot connect to DSME");
 			goto EXIT;
 		}
@@ -1074,7 +1205,7 @@ int main(int argc, char **argv)
 		goto EXIT;
 	}
 
-	if (show_module_info == TRUE) {
+	if( mce_args.show_module_info ) {
 		mce_modules_dump_info();
 		goto EXIT;
 	}
@@ -1083,7 +1214,7 @@ int main(int argc, char **argv)
 	status = EXIT_SUCCESS;
 
 	/* Tell systemd that we have started up */
-	if( systemd_notify ) {
+	if( mce_args.systemd_notify ) {
 		mce_log(LL_NOTICE, "notifying systemd");
 		sd_notify(0, "READY=1");
 	}

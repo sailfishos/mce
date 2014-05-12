@@ -90,6 +90,14 @@ libwakelock.pic.o:\
 	libwakelock.c\
 	libwakelock.h\
 
+mce-command-line.o:\
+	mce-command-line.c\
+	mce-command-line.h\
+
+mce-command-line.pic.o:\
+	mce-command-line.c\
+	mce-command-line.h\
+
 mce-conf.o:\
 	mce-conf.c\
 	datapipe.h\
@@ -266,6 +274,7 @@ mce.o:\
 	event-input.h\
 	event-switches.h\
 	libwakelock.h\
+	mce-command-line.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-dsme.h\
@@ -284,6 +293,7 @@ mce.pic.o:\
 	event-input.h\
 	event-switches.h\
 	libwakelock.h\
+	mce-command-line.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-dsme.h\
@@ -983,6 +993,7 @@ tools/evdev_trace.pic.o:\
 tools/mcetool.o:\
 	tools/mcetool.c\
 	event-input.h\
+	mce-command-line.h\
 	modules/display.h\
 	modules/doubletap.h\
 	modules/filter-brightness-als.h\
@@ -996,6 +1007,7 @@ tools/mcetool.o:\
 tools/mcetool.pic.o:\
 	tools/mcetool.c\
 	event-input.h\
+	mce-command-line.h\
 	modules/display.h\
 	modules/doubletap.h\
 	modules/filter-brightness-als.h\

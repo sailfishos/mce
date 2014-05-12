@@ -328,6 +328,7 @@ MCE_CORE += event-input.c
 MCE_CORE += event-switches.c
 MCE_CORE += mce-hal.c
 MCE_CORE += mce-log.c
+MCE_CORE += mce-command-line.c
 MCE_CORE += mce-conf.c
 MCE_CORE += datapipe.c
 MCE_CORE += mce-modules.c
@@ -414,7 +415,7 @@ endif
 
 $(TOOLDIR)/mcetool : CFLAGS += $(TOOLS_CFLAGS)
 $(TOOLDIR)/mcetool : LDLIBS += $(TOOLS_LDLIBS)
-$(TOOLDIR)/mcetool : $(TOOLDIR)/mcetool.o
+$(TOOLDIR)/mcetool : $(TOOLDIR)/mcetool.o mce-command-line.o
 
 $(TOOLDIR)/evdev_trace : CFLAGS += $(TOOLS_CFLAGS)
 $(TOOLDIR)/evdev_trace : LDLIBS += $(TOOLS_LDLIBS)
