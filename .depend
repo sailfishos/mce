@@ -274,6 +274,7 @@ mce.o:\
 	event-input.h\
 	event-switches.h\
 	libwakelock.h\
+	mce-command-line.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-dsme.h\
@@ -292,6 +293,7 @@ mce.pic.o:\
 	event-input.h\
 	event-switches.h\
 	libwakelock.h\
+	mce-command-line.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-dsme.h\

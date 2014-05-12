@@ -328,6 +328,7 @@ MCE_CORE += event-input.c
 MCE_CORE += event-switches.c
 MCE_CORE += mce-hal.c
 MCE_CORE += mce-log.c
+MCE_CORE += mce-command-line.c
 MCE_CORE += mce-conf.c
 MCE_CORE += datapipe.c
 MCE_CORE += mce-modules.c
