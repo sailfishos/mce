@@ -47,6 +47,7 @@
 #include "../modules/proximity.h"
 #include "../systemui/tklock-dbus-names.h"
 #include "../systemui/dbus-names.h"
+#include "../mce-command-line.h"
 
 /** Whether to enable development time debugging */
 #define MCETOOL_ENABLE_EXTRA_DEBUG 0
@@ -1499,11 +1500,12 @@ static char *mcetool_parse_token(char **ppos)
 
 /** Enable/Disable sw based led breathing
  */
-static void set_led_breathing_enabled(const char *args)
+static bool set_led_breathing_enabled(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         gboolean val = xmce_parse_enabled(args);
         mcetool_gconf_set_bool("/system/osso/dsm/leds/sw_breath_enabled", val);
+        return true;
 }
 
 /** Show current sw based led breathing enable setting
@@ -1521,7 +1523,7 @@ static void get_led_breathing_enabled(void)
 
 /** Set battery limit for sw based led breathing
  */
-static void set_led_breathing_limit(const char *args)
+static bool set_led_breathing_limit(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         int val = xmce_parse_integer(args);
@@ -1531,6 +1533,7 @@ static void set_led_breathing_limit(const char *args)
                 exit(EXIT_FAILURE);
         }
         mcetool_gconf_set_int("/system/osso/dsm/leds/sw_breath_battery_limit", val);
+        return true;
 }
 
 /** Show current battery limit for sw based led breathing
@@ -1557,13 +1560,12 @@ static void set_led_state(const gboolean enable)
                           DBUS_TYPE_INVALID);
 }
 
-
 /** Trigger a powerkey event
  *
  * @param type The type of event to trigger; valid types:
  *             "short", "double", "long"
  */
-static void xmce_powerkey_event(const char *args)
+static bool xmce_powerkey_event(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         int val = xmce_parse_powerkeyevent(args);
@@ -1576,6 +1578,7 @@ static void xmce_powerkey_event(const char *args)
         xmce_ipc_no_reply(MCE_TRIGGER_POWERKEY_EVENT_REQ,
                           DBUS_TYPE_UINT32, &data,
                           DBUS_TYPE_INVALID);
+        return true;
 }
 
 /** Activate/Deactivate a LED pattern
@@ -1599,8 +1602,10 @@ static void set_led_pattern_state(const gchar *const pattern,
 
 /** Get and print available color profile ids
  */
-static void xmce_get_color_profile_ids(void)
+static bool xmce_get_color_profile_ids(const char *arg)
 {
+        (void)arg;
+
         DBusMessage *rsp = NULL;
         DBusError    err = DBUS_ERROR_INIT;
         char       **arr = 0;
@@ -1628,6 +1633,8 @@ EXIT:
 
         if( arr ) dbus_free_string_array(arr);
         if( rsp ) dbus_message_unref(rsp);
+
+        return true;
 }
 
 /** Set color profile id
@@ -1637,12 +1644,13 @@ EXIT:
  *
  * @param id The color profile id;
  */
-static void xmce_set_color_profile(const char *args)
+static bool xmce_set_color_profile(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         xmce_ipc_no_reply(MCE_COLOR_PROFILE_CHANGE_REQ,
                           DBUS_TYPE_STRING, &args,
                           DBUS_TYPE_INVALID);
+        return true;
 }
 
 /** Get current color profile from mce and print it out
@@ -1696,7 +1704,7 @@ xmce_parse_notification_args(const char   *args,
 
 /** Start notification ui exception state
  */
-static void xmce_notification_begin(const char *args)
+static bool xmce_notification_begin(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
 
@@ -1714,11 +1722,12 @@ static void xmce_notification_begin(const char *args)
                           DBUS_TYPE_INT32 , &renew,
                           DBUS_TYPE_INVALID);
         free(title);
+        return true;
 }
 
 /** Stop notification ui exception state
  */
-static void xmce_notification_end(const char *args)
+static bool xmce_notification_end(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
 
@@ -1734,6 +1743,7 @@ static void xmce_notification_end(const char *args)
                           DBUS_TYPE_INT32 , &linger,
                           DBUS_TYPE_INVALID);
         free(title);
+        return true;
 }
 
 /* ------------------------------------------------------------------------- *
@@ -1744,7 +1754,7 @@ static void xmce_notification_end(const char *args)
  *
  * @param args string of comma separated radio state names
  */
-static void xmce_enable_radio(const char *args)
+static bool xmce_enable_radio(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         dbus_uint32_t mask = xmce_parse_radio_states(args);
@@ -1754,13 +1764,15 @@ static void xmce_enable_radio(const char *args)
                    DBUS_TYPE_UINT32, &data,
                    DBUS_TYPE_UINT32, &mask,
                    DBUS_TYPE_INVALID);
+
+        return true;
 }
 
 /** Disable radios
  *
  * @param args string of comma separated radio state names
  */
-static void xmce_disable_radio(const char *args)
+static bool xmce_disable_radio(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         dbus_uint32_t mask = xmce_parse_radio_states(args);
@@ -1770,6 +1782,8 @@ static void xmce_disable_radio(const char *args)
                    DBUS_TYPE_UINT32, &data,
                    DBUS_TYPE_UINT32, &mask,
                    DBUS_TYPE_INVALID);
+
+        return true;
 }
 
 /** Get current radio state from mce and print it out
@@ -1816,7 +1830,7 @@ static void xmce_get_radio_states(void)
  *
  * @param args string with callstate and calltype separated with ':'
  */
-static void xmce_set_call_state(const char *args)
+static bool xmce_set_call_state(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
 
@@ -1836,6 +1850,7 @@ static void xmce_set_call_state(const char *args)
                           DBUS_TYPE_INVALID);
 
         free(callstate);
+        return true;
 }
 
 /** Get current call state from mce and print it out
@@ -1877,17 +1892,17 @@ EXIT:
  *
  * @param args display state; "on", "dim" or "off"
  */
-static void xmce_set_display_state(const char *args)
+static void xmce_set_display_state(const char *state)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
-        if( !strcmp(args, "on") )
+        debugf("%s(%s)\n", __FUNCTION__, state);
+        if( !strcmp(state, "on") )
                 xmce_ipc_no_reply(MCE_DISPLAY_ON_REQ, DBUS_TYPE_INVALID);
-        else if( !strcmp(args, "dim") )
+        else if( !strcmp(state, "dim") )
                 xmce_ipc_no_reply(MCE_DISPLAY_DIM_REQ, DBUS_TYPE_INVALID);
-        else if( !strcmp(args, "off") )
+        else if( !strcmp(state, "off") )
                 xmce_ipc_no_reply(MCE_DISPLAY_OFF_REQ, DBUS_TYPE_INVALID);
         else
-                errorf("%s: invalid display state\n", args);
+                errorf("%s: invalid display state\n", state);
 }
 
 /** Get current display state from mce and print it out
@@ -1906,18 +1921,24 @@ static void xmce_get_display_state(void)
 
 /** Request display keepalive
  */
-static void xmce_prevent_display_blanking(void)
+static bool xmce_prevent_display_blanking(const char *arg)
 {
+        (void) arg;
+
         debugf("%s()\n", __FUNCTION__);
         xmce_ipc_no_reply(MCE_PREVENT_BLANK_REQ, DBUS_TYPE_INVALID);
+        return true;
 }
 
 /** Cancel display keepalive
  */
-static void xmce_allow_display_blanking(void)
+static bool xmce_allow_display_blanking(const char *arg)
 {
+        (void) arg;
+
         debugf("%s()\n", __FUNCTION__);
         xmce_ipc_no_reply(MCE_CANCEL_PREVENT_BLANK_REQ, DBUS_TYPE_INVALID);
+        return true;
 }
 
 /* ------------------------------------------------------------------------- *
@@ -1928,7 +1949,7 @@ static void xmce_allow_display_blanking(void)
  *
  * @param args string that can be parsed to integer in [1 ... 5] range
  */
-static void xmce_set_display_brightness(const char *args)
+static bool xmce_set_display_brightness(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         int val = xmce_parse_integer(args);
@@ -1938,6 +1959,7 @@ static void xmce_set_display_brightness(const char *args)
                 exit(EXIT_FAILURE);
         }
         mcetool_gconf_set_int(MCE_GCONF_DISPLAY_BRIGHTNESS_PATH, val);
+        return true;
 }
 
 /** Get current display brightness from mce and print it out
@@ -1961,30 +1983,31 @@ static void xmce_get_display_brightness(void)
  *
  * @param args cabc mode name
  */
-static void xmce_set_cabc_mode(const char *args)
+static bool xmce_set_cabc_mode(const char *args)
 {
-	static const char * const lut[] = {
-		MCE_CABC_MODE_OFF,
-		MCE_CABC_MODE_UI,
-		MCE_CABC_MODE_STILL_IMAGE,
-		MCE_CABC_MODE_MOVING_IMAGE,
-		0
-	};
+        static const char * const lut[] = {
+                MCE_CABC_MODE_OFF,
+                MCE_CABC_MODE_UI,
+                MCE_CABC_MODE_STILL_IMAGE,
+                MCE_CABC_MODE_MOVING_IMAGE,
+                0
+        };
 
         debugf("%s(%s)\n", __FUNCTION__, args);
 
-	for( size_t i = 0; ; ++i ) {
-		if( !lut[i] ) {
-			errorf("%s: invalid cabc mode\n", args);
-			exit(EXIT_FAILURE);
-		}
-		if( !strcmp(lut[i], args) )
-			break;
-	}
+        for( size_t i = 0; ; ++i ) {
+                if( !lut[i] ) {
+                        errorf("%s: invalid cabc mode\n", args);
+                        exit(EXIT_FAILURE);
+                }
+                if( !strcmp(lut[i], args) )
+                        break;
+        }
 
         xmce_ipc_no_reply(MCE_CABC_MODE_REQ,
                           DBUS_TYPE_STRING, &args,
                           DBUS_TYPE_INVALID);
+        return true;
 }
 
 /** Get current cabc mode from mce and print it out
@@ -2005,11 +2028,12 @@ static void xmce_get_cabc_mode(void)
  *
  * @param args string that can be parsed to integer
  */
-static void xmce_set_dim_timeout(const char *args)
+static bool xmce_set_dim_timeout(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         int val = xmce_parse_integer(args);
         mcetool_gconf_set_int(MCE_GCONF_DISPLAY_DIM_TIMEOUT_PATH, val);
+        return true;
 }
 
 /** Get current dim timeout from mce and print it out
@@ -2030,7 +2054,7 @@ static void xmce_get_dim_timeout(void)
  * @param args string of comma separated integer numbers
  */
 
-static void xmce_set_dim_timeouts(const char *args)
+static bool xmce_set_dim_timeouts(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         gint  len = 0;
@@ -2040,16 +2064,17 @@ static void xmce_set_dim_timeouts(const char *args)
                 errorf("%s: invalid dim timeout list\n", args);
                 exit(EXIT_FAILURE);
         }
-	for( gint i = 1; i < len; ++i ) {
-		if( arr[i] <= arr[i-1] ) {
-			errorf("%s: dim timeout list not in ascending order\n", args);
-			exit(EXIT_FAILURE);
-		}
-	}
+        for( gint i = 1; i < len; ++i ) {
+                if( arr[i] <= arr[i-1] ) {
+                        errorf("%s: dim timeout list not in ascending order\n", args);
+                        exit(EXIT_FAILURE);
+                }
+        }
 
         mcetool_gconf_set_int_array(MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST_PATH,
                                     arr, len);
         g_free(arr);
+        return true;
 }
 
 /** Get list of "allowed" dim timeouts from mce and print them out
@@ -2076,11 +2101,12 @@ static void xmce_get_dim_timeouts(void)
  *
  * @param args string suitable for interpreting as enabled/disabled
  */
-static void xmce_set_adaptive_dimming_mode(const char *args)
+static bool xmce_set_adaptive_dimming_mode(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         gboolean val = xmce_parse_enabled(args);
         mcetool_gconf_set_bool(MCE_GCONF_DISPLAY_ADAPTIVE_DIMMING_PATH, val);
+        return true;
 }
 
 /** Get current adaptive dimming mode from mce and print it out
@@ -2100,11 +2126,12 @@ static void xmce_get_adaptive_dimming_mode(void)
  *
  * @param args string that can be parsed to integer
  */
-static void xmce_set_adaptive_dimming_time(const char *args)
+static bool xmce_set_adaptive_dimming_time(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         int val = xmce_parse_integer(args);
         mcetool_gconf_set_int(MCE_GCONF_DISPLAY_ADAPTIVE_DIM_THRESHOLD_PATH, val);
+        return true;
 }
 
 /** Get current adaptive dimming time from mce and print it out
@@ -2128,11 +2155,12 @@ static void xmce_get_adaptive_dimming_time(void)
  *
  * @param args string suitable for interpreting as enabled/disabled
  */
-static void xmce_set_ps_mode(const char *args)
+static bool xmce_set_ps_mode(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         gboolean val = xmce_parse_enabled(args);
         mcetool_gconf_set_bool(MCE_GCONF_PROXIMITY_PS_ENABLED_PATH, val);
+        return true;
 }
 
 /** Get current ps mode from mce and print it out
@@ -2155,11 +2183,12 @@ static void xmce_get_ps_mode(void)
  *
  * @param args string suitable for interpreting as enabled/disabled
  */
-static void xmce_set_als_mode(const char *args)
+static bool xmce_set_als_mode(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         gboolean val = xmce_parse_enabled(args);
         mcetool_gconf_set_bool(MCE_GCONF_DISPLAY_ALS_ENABLED_PATH, val);
+        return true;
 }
 
 /** Get current als mode from mce and print it out
@@ -2182,11 +2211,12 @@ static void xmce_get_als_mode(void)
  *
  * @param args string suitable for interpreting as enabled/disabled
  */
-static void xmce_set_autolock_mode(const char *args)
+static bool xmce_set_autolock_mode(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         gboolean val = xmce_parse_enabled(args);
         mcetool_gconf_set_bool(MCE_GCONF_TK_AUTOLOCK_ENABLED_PATH, val);
+        return true;
 }
 
 /** Get current autolock mode from mce and print it out
@@ -2209,11 +2239,12 @@ static void xmce_get_autolock_mode(void)
  *
  * @param args string that can be parsed to integer
  */
-static void xmce_set_blank_timeout(const char *args)
+static bool xmce_set_blank_timeout(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         int val = xmce_parse_integer(args);
         mcetool_gconf_set_int(MCE_GCONF_DISPLAY_BLANK_TIMEOUT_PATH, val);
+        return true;
 }
 
 /** Get current blank timeout from mce and print it out
@@ -2246,7 +2277,7 @@ static const symbol_t powerkey_action[] = {
  *
  * @param args string that can be parsed to powerkey wakeup mode
  */
-static void xmce_set_powerkey_action(const char *args)
+static bool xmce_set_powerkey_action(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         int val = lookup(powerkey_action, args);
@@ -2255,6 +2286,7 @@ static void xmce_set_powerkey_action(const char *args)
                 exit(EXIT_FAILURE);
         }
         mcetool_gconf_set_int(MCE_GCONF_POWERKEY_MODE, val);
+        return true;
 }
 
 /** Get current powerkey wakeup mode from mce and print it out
@@ -2287,7 +2319,7 @@ static const symbol_t doubletap_values[] = {
  *
  * @param args string that can be parsed to doubletap mode
  */
-static void xmce_set_doubletap_mode(const char *args)
+static bool xmce_set_doubletap_mode(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         int val = lookup(doubletap_values, args);
@@ -2296,6 +2328,7 @@ static void xmce_set_doubletap_mode(const char *args)
                 exit(EXIT_FAILURE);
         }
         mcetool_gconf_set_int(MCE_GCONF_TK_DOUBLE_TAP_GESTURE_PATH, val);
+        return true;
 }
 
 /** Get current doubletap mode from mce and print it out
@@ -2324,7 +2357,7 @@ static const symbol_t doubletap_wakeup[] = {
  *
  * @param args string that can be parsed to doubletap wakeup mode
  */
-static void xmce_set_doubletap_wakeup(const char *args)
+static bool xmce_set_doubletap_wakeup(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         int val = lookup(doubletap_wakeup, args);
@@ -2333,6 +2366,7 @@ static void xmce_set_doubletap_wakeup(const char *args)
                 exit(EXIT_FAILURE);
         }
         mcetool_gconf_set_int(MCE_GCONF_DOUBLETAP_MODE, val);
+        return true;
 }
 
 /** Get current doubletap wakeup mode from mce and print it out
@@ -2354,11 +2388,12 @@ static void xmce_get_doubletap_wakeup(void)
  *
  * @param args string suitable for interpreting as enabled/disabled
  */
-static void xmce_set_power_saving_mode(const char *args)
+static bool xmce_set_power_saving_mode(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         gboolean val = xmce_parse_enabled(args);
         mcetool_gconf_set_bool(MCE_GCONF_PSM_PATH, val);
+        return true;
 }
 
 /** Get current power saving mode from mce and print it out
@@ -2383,7 +2418,7 @@ static void xmce_get_power_saving_mode(void)
  *
  * @param args string that can be parsed to integer
  */
-static void xmce_set_psm_threshold(const char *args)
+static bool xmce_set_psm_threshold(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         int val = xmce_parse_integer(args);
@@ -2393,6 +2428,7 @@ static void xmce_set_psm_threshold(const char *args)
                 exit(EXIT_FAILURE);
         }
         mcetool_gconf_set_int(MCE_GCONF_PSM_THRESHOLD_PATH, val);
+        return true;
 }
 
 /** Get current power saving threshold from mce and print it out
@@ -2412,11 +2448,12 @@ static void xmce_get_psm_threshold(void)
  *
  * @param args string suitable for interpreting as enabled/disabled
  */
-static void xmce_set_forced_psm(const char *args)
+static bool xmce_set_forced_psm(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         gboolean val = xmce_parse_enabled(args);
         mcetool_gconf_set_bool(MCE_GCONF_FORCED_PSM_PATH, val);
+        return true;
 }
 
 /** Get current forced power saving mode from mce and print it out
@@ -2439,11 +2476,12 @@ static void xmce_get_forced_psm(void)
  *
  * @param args string suitable for interpreting as enabled/disabled
  */
-static void xmce_set_low_power_mode(const char *args)
+static bool xmce_set_low_power_mode(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         gboolean val = xmce_parse_enabled(args);
         mcetool_gconf_set_bool(MCE_GCONF_USE_LOW_POWER_MODE_PATH, val);
+        return true;
 }
 
 /** Get current low power mode state from mce and print it out
@@ -2462,11 +2500,12 @@ static void xmce_get_low_power_mode(void)
  * blanking inhibit
  * ------------------------------------------------------------------------- */
 
-static void xmce_set_inhibit_mode(const char *args)
+static bool xmce_set_inhibit_mode(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         int val = parse_inhibitmode(args);
         mcetool_gconf_set_int(MCE_GCONF_BLANKING_INHIBIT_MODE_PATH, val);
+        return true;
 }
 
 /** Get current blanking inhibit mode from mce and print it out
@@ -2484,11 +2523,13 @@ static void xmce_get_inhibit_mode(void)
  * lipstick killer
  * ------------------------------------------------------------------------- */
 
-static void xmce_set_lipstick_core_delay(const char *args)
+static bool xmce_set_lipstick_core_delay(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         int val = xmce_parse_integer(args);
         mcetool_gconf_set_int(MCE_GCONF_LIPSTICK_CORE_DELAY_PATH, val);
+
+        return true;
 }
 
 static void xmce_get_lipstick_core_delay(void)
@@ -2506,7 +2547,7 @@ static void xmce_get_lipstick_core_delay(void)
  * cpu scaling governor override
  * ------------------------------------------------------------------------- */
 
-static void xmce_set_cpu_scaling_governor(const char *args)
+static bool xmce_set_cpu_scaling_governor(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         int val = lookup(governor_values, args);
@@ -2515,6 +2556,7 @@ static void xmce_set_cpu_scaling_governor(const char *args)
                 exit(EXIT_FAILURE);
         }
         mcetool_gconf_set_int(MCE_GCONF_CPU_SCALING_GOVERNOR_PATH, val);
+        return true;
 }
 
 /** Get current autosuspend policy from mce and print it out
@@ -2532,7 +2574,7 @@ static void xmce_get_cpu_scaling_governor(void)
  * never blank
  * ------------------------------------------------------------------------- */
 
-static void xmce_set_never_blank(const char *args)
+static bool xmce_set_never_blank(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         int val = lookup(never_blank_values, args);
@@ -2541,6 +2583,7 @@ static void xmce_set_never_blank(const char *args)
                 exit(EXIT_FAILURE);
         }
         mcetool_gconf_set_int(MCE_GCONF_DISPLAY_NEVER_BLANK_PATH, val);
+        return true;
 }
 
 static void xmce_get_never_blank(void)
@@ -2556,7 +2599,7 @@ static void xmce_get_never_blank(void)
  * autosuspend on display blank policy
  * ------------------------------------------------------------------------- */
 
-static void xmce_set_suspend_policy(const char *args)
+static bool xmce_set_suspend_policy(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         int val = lookup(suspendpol_values, args);
@@ -2565,6 +2608,7 @@ static void xmce_set_suspend_policy(const char *args)
                 exit(EXIT_FAILURE);
         }
         mcetool_gconf_set_int(MCE_GCONF_USE_AUTOSUSPEND_PATH, val);
+        return true;
 }
 
 /** Get current autosuspend policy from mce and print it out
@@ -2583,7 +2627,7 @@ static void xmce_get_suspend_policy(void)
  * ------------------------------------------------------------------------- */
 
 #ifdef ENABLE_DOUBLETAP_EMULATION
-static void xmce_set_fake_doubletap(const char *args)
+static bool xmce_set_fake_doubletap(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         int val = lookup(fake_doubletap_values, args);
@@ -2592,6 +2636,7 @@ static void xmce_set_fake_doubletap(const char *args)
                 exit(EXIT_FAILURE);
         }
         mcetool_gconf_set_bool(MCE_GCONF_USE_FAKE_DOUBLETAP_PATH, val != 0);
+        return true;
 }
 
 /** Get current fake double tap policy from mce and print it out
@@ -2628,95 +2673,99 @@ static const symbol_t tklock_open_values[] = {
 
 /** Simulate tklock open from mce to lipstick
  */
-static void xmce_tklock_open(const char *args)
+static bool xmce_tklock_open(const char *args)
 {
-	debugf("%s(%s)\n", __FUNCTION__, args);
-	int val = lookup(tklock_open_values, args);
-	if( val < 0 ) {
-		errorf("%s: invalid tklock open value\n", args);
-		exit(EXIT_FAILURE);
-	}
+        debugf("%s(%s)\n", __FUNCTION__, args);
+        int val = lookup(tklock_open_values, args);
+        if( val < 0 ) {
+                errorf("%s: invalid tklock open value\n", args);
+                exit(EXIT_FAILURE);
+        }
 
         DBusConnection *bus = xdbus_init();
-	DBusMessage    *rsp = 0;
-	DBusMessage    *req = 0;
+        DBusMessage    *rsp = 0;
+        DBusMessage    *req = 0;
         DBusError       err = DBUS_ERROR_INIT;
 
-	const char   *cb_service   = MCE_SERVICE;
-	const char   *cb_path      = MCE_REQUEST_PATH;
-	const char   *cb_interface = MCE_REQUEST_IF;
-	const char   *cb_method    = MCE_TKLOCK_CB_REQ;
-	dbus_uint32_t mode         = (dbus_uint32_t)val;
-	dbus_bool_t   silent       = TRUE;
-	dbus_bool_t   flicker_key  = FALSE;
+        const char   *cb_service   = MCE_SERVICE;
+        const char   *cb_path      = MCE_REQUEST_PATH;
+        const char   *cb_interface = MCE_REQUEST_IF;
+        const char   *cb_method    = MCE_TKLOCK_CB_REQ;
+        dbus_uint32_t mode         = (dbus_uint32_t)val;
+        dbus_bool_t   silent       = TRUE;
+        dbus_bool_t   flicker_key  = FALSE;
 
-	req = dbus_message_new_method_call(SYSTEMUI_SERVICE,
-					   SYSTEMUI_REQUEST_PATH,
-					   SYSTEMUI_REQUEST_IF,
-					   SYSTEMUI_TKLOCK_OPEN_REQ);
-	if( !req ) goto EXIT;
+        req = dbus_message_new_method_call(SYSTEMUI_SERVICE,
+                                           SYSTEMUI_REQUEST_PATH,
+                                           SYSTEMUI_REQUEST_IF,
+                                           SYSTEMUI_TKLOCK_OPEN_REQ);
+        if( !req ) goto EXIT;
 
-	dbus_message_append_args(req,
-				 DBUS_TYPE_STRING, &cb_service,
-				 DBUS_TYPE_STRING, &cb_path,
-				 DBUS_TYPE_STRING, &cb_interface,
-				 DBUS_TYPE_STRING, &cb_method,
-				 DBUS_TYPE_UINT32, &mode,
-				 DBUS_TYPE_BOOLEAN, &silent,
-				 DBUS_TYPE_BOOLEAN, &flicker_key,
-				 DBUS_TYPE_INVALID);
+        dbus_message_append_args(req,
+                                 DBUS_TYPE_STRING, &cb_service,
+                                 DBUS_TYPE_STRING, &cb_path,
+                                 DBUS_TYPE_STRING, &cb_interface,
+                                 DBUS_TYPE_STRING, &cb_method,
+                                 DBUS_TYPE_UINT32, &mode,
+                                 DBUS_TYPE_BOOLEAN, &silent,
+                                 DBUS_TYPE_BOOLEAN, &flicker_key,
+                                 DBUS_TYPE_INVALID);
 
-	rsp = dbus_connection_send_with_reply_and_block(bus, req, -1, &err);
+        rsp = dbus_connection_send_with_reply_and_block(bus, req, -1, &err);
 
-	if( !req ) {
-		errorf("no reply to %s; %s: %s\n", SYSTEMUI_TKLOCK_OPEN_REQ,
-		       err.name, err.message);
-		goto EXIT;
-	}
-	printf("got reply to %s\n", SYSTEMUI_TKLOCK_OPEN_REQ);
+        if( !req ) {
+                errorf("no reply to %s; %s: %s\n", SYSTEMUI_TKLOCK_OPEN_REQ,
+                       err.name, err.message);
+                goto EXIT;
+        }
+        printf("got reply to %s\n", SYSTEMUI_TKLOCK_OPEN_REQ);
 
 EXIT:
-	if( rsp ) dbus_message_unref(rsp), rsp = 0;
-	if( req ) dbus_message_unref(req), req = 0;
-	dbus_error_free(&err);
+        if( rsp ) dbus_message_unref(rsp), rsp = 0;
+        if( req ) dbus_message_unref(req), req = 0;
+        dbus_error_free(&err);
+        return true;
 }
 
 /** Simulate tklock close from mce to lipstick
  */
-static void xmce_tklock_close(void)
+static bool xmce_tklock_close(const char *args)
 {
-	debugf("%s(%s)\n", __FUNCTION__, args);
+        (void)args;
+
+        debugf("%s(%s)\n", __FUNCTION__, args);
 
         DBusConnection *bus = xdbus_init();
-	DBusMessage    *rsp = 0;
-	DBusMessage    *req = 0;
+        DBusMessage    *rsp = 0;
+        DBusMessage    *req = 0;
         DBusError       err = DBUS_ERROR_INIT;
 
-	dbus_bool_t silent = TRUE;
+        dbus_bool_t silent = TRUE;
 
-	req = dbus_message_new_method_call(SYSTEMUI_SERVICE,
-					   SYSTEMUI_REQUEST_PATH,
-					   SYSTEMUI_REQUEST_IF,
-					   SYSTEMUI_TKLOCK_CLOSE_REQ);
-	if( !req ) goto EXIT;
+        req = dbus_message_new_method_call(SYSTEMUI_SERVICE,
+                                           SYSTEMUI_REQUEST_PATH,
+                                           SYSTEMUI_REQUEST_IF,
+                                           SYSTEMUI_TKLOCK_CLOSE_REQ);
+        if( !req ) goto EXIT;
 
-	dbus_message_append_args(req,
-				 DBUS_TYPE_BOOLEAN, &silent,
-				 DBUS_TYPE_INVALID);
+        dbus_message_append_args(req,
+                                 DBUS_TYPE_BOOLEAN, &silent,
+                                 DBUS_TYPE_INVALID);
 
-	rsp = dbus_connection_send_with_reply_and_block(bus, req, -1, &err);
+        rsp = dbus_connection_send_with_reply_and_block(bus, req, -1, &err);
 
-	if( !req ) {
-		errorf("no reply to %s; %s: %s\n", SYSTEMUI_TKLOCK_CLOSE_REQ,
-		       err.name, err.message);
-		goto EXIT;
-	}
-	printf("got reply to %s\n", SYSTEMUI_TKLOCK_CLOSE_REQ);
+        if( !req ) {
+                errorf("no reply to %s; %s: %s\n", SYSTEMUI_TKLOCK_CLOSE_REQ,
+                       err.name, err.message);
+                goto EXIT;
+        }
+        printf("got reply to %s\n", SYSTEMUI_TKLOCK_CLOSE_REQ);
 
 EXIT:
-	if( rsp ) dbus_message_unref(rsp), rsp = 0;
-	if( req ) dbus_message_unref(req), req = 0;
-	dbus_error_free(&err);
+        if( rsp ) dbus_message_unref(rsp), rsp = 0;
+        if( req ) dbus_message_unref(req), req = 0;
+        dbus_error_free(&err);
+        return true;
 }
 
 /** Lookup table for tklock callback values
@@ -2731,7 +2780,7 @@ static const symbol_t tklock_callback_values[] = {
 
 /** Simulate tklock callback from lipstick to mce
  */
-static void xmce_tklock_callback(const char *args)
+static bool xmce_tklock_callback(const char *args)
 {
   debugf("%s(%s)\n", __FUNCTION__, args);
   dbus_int32_t val = lookup(tklock_callback_values, args);
@@ -2741,8 +2790,9 @@ static void xmce_tklock_callback(const char *args)
   }
 
   xmce_ipc_no_reply(MCE_TKLOCK_CB_REQ,
-		    DBUS_TYPE_INT32, &val,
-		    DBUS_TYPE_INVALID);
+                    DBUS_TYPE_INT32, &val,
+                    DBUS_TYPE_INVALID);
+        return true;
 }
 
 /** Enable/disable the tklock
@@ -2750,12 +2800,13 @@ static void xmce_tklock_callback(const char *args)
  * @param mode The mode to change to; valid modes:
  *             "locked", "locked-dim", "locked-delay", "unlocked"
  */
-static void xmce_set_tklock_mode(const char *args)
+static bool xmce_set_tklock_mode(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         xmce_ipc_no_reply(MCE_TKLOCK_MODE_CHANGE_REQ,
                           DBUS_TYPE_STRING, &args,
                           DBUS_TYPE_INVALID);
+        return true;
 }
 
 /** Get current tklock mode from mce and print it out
@@ -2772,7 +2823,7 @@ static void xmce_get_tklock_mode(void)
  *
  * @param args string that can be parsed to inhibit mode
  */
-static void xmce_set_tklock_blank(const char *args)
+static bool xmce_set_tklock_blank(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         int val = lookup(tklockblank_values, args);
@@ -2781,6 +2832,7 @@ static void xmce_set_tklock_blank(const char *args)
                 exit(EXIT_FAILURE);
         }
         mcetool_gconf_set_int(MCE_GCONF_TK_AUTO_BLANK_DISABLE_PATH, val);
+        return true;
 }
 
 /** Get current tklock autoblank inhibit mode from mce and print it out
@@ -2834,8 +2886,9 @@ static void xmce_get_keyboard_backlight_state(void)
 
 /** Obtain and print mce status information
  */
-static void xmce_get_status(void)
+static bool xmce_get_status(const char *args)
 {
+        (void)args;
         printf("\n"
                 "MCE status:\n"
                 "-----------\n");
@@ -2870,7 +2923,7 @@ static void xmce_get_status(void)
         xmce_get_suspend_policy();
         xmce_get_cpu_scaling_governor();
 #ifdef ENABLE_DOUBLETAP_EMULATION
-	xmce_get_fake_doubletap();
+        xmce_get_fake_doubletap();
 #endif
         xmce_get_tklock_blank();
         xmce_get_lipstick_core_delay();
@@ -2878,6 +2931,8 @@ static void xmce_get_status(void)
         get_led_breathing_enabled();
         get_led_breathing_limit();
         printf("\n");
+
+        return true;
 }
 
 /* ------------------------------------------------------------------------- *
@@ -2888,7 +2943,7 @@ static void xmce_get_status(void)
  *
  * @param args optarg from command line, or NULL
  */
-static void mcetool_block(const char *args)
+static bool mcetool_block(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args ?: "inf");
         struct timespec ts;
@@ -2897,14 +2952,17 @@ static void mcetool_block(const char *args)
                 TEMP_FAILURE_RETRY(nanosleep(&ts, &ts));
         else
                 pause();
+
+        return true;
 }
 
 /** Handle --demo-mode command line option
  *
  * @param args optarg from command line
  */
-static void xmce_set_demo_mode(const char *args)
+static bool xmce_set_demo_mode(const char *args)
 {
+        bool res = true;
         debugf("%s(%s)\n", __FUNCTION__, args);
         if( !strcmp(args, "on") ) {
                 // mcetool --unblank-screen
@@ -2930,235 +2988,542 @@ static void xmce_set_demo_mode(const char *args)
         }
         else {
                 errorf("%s: invalid demo mode value\n", args);
-                exit(EXIT_FAILURE);
+                res = false;
         }
+
+        return res;
 }
-#define EXTRA "\t\t"
-#define PARAM "  "
-/** usage information */
-static const char usage_text[] =
-"Usage: "PROG_NAME" [OPTION]\n"
-"Mode Control Entity tool\n"
-"\n"
-PARAM"-U, --unblank-screen\n"
-EXTRA"send display on request\n"
-PARAM"-d, --dim-screen\n"
-EXTRA"send display dim request\n"
-PARAM"-n, --blank-screen\n"
-EXTRA"send display off request\n"
-PARAM"-P, --blank-prevent\n"
-EXTRA"send blank prevent request\n"
-PARAM"-v, --cancel-blank-prevent\n"
-EXTRA"send cancel blank prevent request\n"
-PARAM"-G, --set-dim-timeout=<secs>\n"
-EXTRA"set the automatic dimming timeout\n"
-PARAM"-O, --set-dim-timeouts=<secs,secs,...>\n"
-EXTRA"set the allowed dim timeouts; valid list must\n"
-EXTRA"  must have 5 entries, in ascending order\n"
-PARAM"-f, --set-adaptive-dimming-mode=<enabled|disabled>\n"
-EXTRA"set the adaptive dimming mode; valid modes are:\n"
-EXTRA"  'enabled' and 'disabled'\n"
-PARAM"-J, --set-adaptive-dimming-time=<secs>\n"
-EXTRA"set the adaptive dimming threshold\n"
-PARAM"-o, --set-blank-timeout=<secs>\n"
-EXTRA"set the automatic blanking timeout\n"
-PARAM"-j, --set-never-blank=<enabled|disabled>\n"
-EXTRA"set never blank mode; valid modes are:\n"
-EXTRA"  'disabled', 'enabled'\n"
-PARAM"-K, --set-autolock-mode=<enabled|disabled>\n"
-EXTRA"set the autolock mode; valid modes are:\n"
-EXTRA"  'enabled' and 'disabled'\n"
-PARAM"-t, --set-tklock-blank=<enabled|disabled>\n"
-EXTRA"set the touchscreen/keypad autoblank mode;\n"
-EXTRA"  valid modes are: 'enabled' and 'disabled'\n"
-PARAM"-I, --set-inhibit-mode=<disabled|stay-on-with-charger|stay-on|stay-dim-with-charger|stay-dim>\n"
-EXTRA"set the blanking inhibit mode to MODE;\n"
-EXTRA"  valid modes are:\n"
-EXTRA"  'disabled',\n"
-EXTRA"  'stay-on-with-charger', 'stay-on',\n"
-EXTRA"  'stay-dim-with-charger', 'stay-dim'\n"
-PARAM"-k, --set-tklock-mode=<locked|locked-dim|locked-delay|unlocked>\n"
-EXTRA"set the touchscreen/keypad lock mode;\n"
-EXTRA"  valid modes are:\n"
-EXTRA"  'locked', 'locked-dim',\n"
-EXTRA"  'locked-delay',\n"
-EXTRA"  and 'unlocked'\n"
-PARAM"-m, --tklock-callback=<unlock|retry|timeout|closed>\n"
-EXTRA"simulate tklock callback from systemui\n"
-PARAM"-q, --tklock-open=<oneinput|visual|lpm|pause>\n"
-EXTRA"simulate tklock open from mce\n"
-PARAM"-Q, --tklock-close\n"
-EXTRA"simulate tklock close from mce\n"
-PARAM"-M, --set-doubletap-mode=<disabled|show-unlock-screen|unlock>\n"
-EXTRA"set the autolock mode; valid modes are:\n"
-EXTRA"  'disabled', 'show-unlock-screen', 'unlock'\n"
-PARAM"-z, --set-doubletap-wakeup=<never|always|proximity>\n"
-EXTRA"set the doubletap wakeup mode; valid modes are:\n"
-EXTRA"  'never', 'always', 'proximity'\n"
-PARAM"-Z, --set-powerkey-action=<never|always|proximity>\n"
-EXTRA"set the doubletap wakeup mode; valid modes are:\n"
-EXTRA"  'never', 'always', 'proximity'\n"
-PARAM"-r, --enable-radio=<master|cellular|wlan|bluetooth>\n"
-EXTRA"enable the specified radio; valid radios are:\n"
-EXTRA"  'master', 'cellular',\n"
-EXTRA"  'wlan' and 'bluetooth';\n"
-EXTRA"  'master' affects all radios\n"
-PARAM"-R, --disable-radio=<master|cellular|wlan|bluetooth>\n"
-EXTRA"disable the specified radio; valid radios are:\n"
-EXTRA"  'master', 'cellular',\n"
-EXTRA"  'wlan' and 'bluetooth';\n"
-EXTRA"  'master' affects all radios\n"
-PARAM"-p, --set-power-saving-mode=<enabled|disabled>\n"
-EXTRA"set the power saving mode; valid modes are:\n"
-EXTRA"  'enabled' and 'disabled'\n"
-PARAM"-T, --set-psm-threshold=<10|20|30|40|50>\n"
-EXTRA"set the threshold for the power saving mode;\n"
-EXTRA"  valid values are:\n"
-EXTRA"  10, 20, 30, 40, 50\n"
-PARAM"-F, --set-forced-psm=<enabled|disabled>\n"
-EXTRA"the forced power saving mode to MODE;\n"
-EXTRA"  valid modes are:\n"
-EXTRA"  'enabled' and 'disabled'\n"
-PARAM"-E, --set-low-power-mode=<enabled|disabled>\n"
-EXTRA"set the low power mode; valid modes are:\n"
-EXTRA"  'enabled' and 'disabled'\n"
-PARAM"-s, --set-suspend-policy=<enabled|disabled|early>\n"
-EXTRA"set the autosuspend mode; valid modes are:\n"
-EXTRA"  'enabled', 'disabled' and 'early'\n"
-PARAM"-S, --set-cpu-scaling-governor=<automatic|performance|interactive>\n"
-EXTRA"set the cpu scaling governor override; valid\n"
-EXTRA"  modes are: 'automatic', 'performance',\n"
-EXTRA"  'interactive'\n"
+
+/* ========================================================================= *
+ * COMMAND LINE OPTIONS
+ * ========================================================================= */
+
+static bool mcetool_do_help(const char *arg);
+static bool mcetool_do_long_help(const char *arg);
+static bool mcetool_do_version(const char *arg);
+
+static bool mcetool_do_disable_led(const char *arg)
+{
+    (void)arg;
+    set_led_state(FALSE);
+    return true;
+}
+static bool mcetool_do_enable_led(const char *arg)
+{
+    (void)arg;
+    set_led_state(TRUE);
+    return true;
+}
+static bool mcetool_do_activate_pattern(const char *arg)
+{
+    set_led_pattern_state(arg, TRUE);
+    return true;
+}
+static bool mcetool_do_deactivate_pattern(const char *arg)
+{
+    set_led_pattern_state(arg, FALSE);
+    return true;
+}
+static bool mcetool_do_unblank_screen(const char *arg)
+{
+    (void)arg;
+    xmce_set_display_state("on");
+    return true;
+}
+static bool mcetool_do_dim_screen(const char *arg)
+{
+    (void)arg;
+    xmce_set_display_state("dim");
+    return true;
+}
+static bool mcetool_do_blank_screen(const char *arg)
+{
+    (void)arg;
+    xmce_set_display_state("off");
+    return true;
+}
+
+// Unused short options left ....
+// - - - - - - - - - - - - - - - - - - - - - - w x - -
+// - - - - - - - - - - - - - - - - - - - - - - W X - -
+
+static const mce_opt_t options[] =
+{
+    {
+        .name        = "unblank-screen",
+        .flag        = 'U',
+        .without_arg = mcetool_do_unblank_screen,
+        .usage       =
+            "send display on request\n"
+    },
+    {
+        .name        = "dim-screen",
+        .flag        = 'd',
+        .without_arg = mcetool_do_dim_screen,
+        .usage       =
+            "send display dim request\n"
+    },
+    {
+        .name        = "blank-screen",
+        .flag        = 'n',
+        .without_arg = mcetool_do_blank_screen,
+        .usage       =
+            "send display off request\n"
+    },
+    {
+        .name        = "blank-prevent",
+        .flag        = 'P',
+        .without_arg = xmce_prevent_display_blanking,
+        .usage       =
+            "send blank prevent request\n"
+    },
+    {
+        .name        = "cancel-blank-prevent",
+        .flag        = 'v',
+        .without_arg = xmce_allow_display_blanking,
+        .usage       =
+            "send cancel blank prevent request\n"
+    },
+    {
+        .name        = "set-dim-timeout",
+        .flag        = 'G',
+        .with_arg    = xmce_set_dim_timeout,
+        .values      = "secs",
+        .usage       =
+            "set the automatic dimming timeout\n"
+    },
+    {
+        .name        = "set-dim-timeouts",
+        .flag        = 'O',
+        .with_arg    = xmce_set_dim_timeouts,
+        .values      = "secs,secs,...",
+        .usage       =
+            "set the allowed dim timeouts; valid list must\n"
+            "must have 5 entries, in ascending order\n"
+    },
+    {
+        .name        = "set-adaptive-dimming-mode",
+        .flag        = 'f',
+        .with_arg    = xmce_set_adaptive_dimming_mode,
+        .values      = "enabled|disabled",
+        .usage       =
+        "set the adaptive dimming mode; valid modes are:\n"
+        "  'enabled' and 'disabled'\n"
+    },
+    {
+        .name        = "set-adaptive-dimming-time",
+        .flag        = 'J',
+        .with_arg    = xmce_set_adaptive_dimming_time,
+        .values      = "secs",
+        .usage       =
+            "set the adaptive dimming threshold\n"
+    },
+    {
+        .name        = "set-blank-timeout",
+        .flag        = 'o',
+        .with_arg    = xmce_set_blank_timeout,
+        .values      = "secs",
+        .usage       =
+            "set the automatic blanking timeout\n"
+    },
+    {
+        .name        = "set-never-blank",
+        .flag        = 'j',
+        .with_arg    = xmce_set_never_blank,
+        .values      = "enabled|disabled",
+        .usage       =
+            "set never blank mode; valid modes are:\n"
+            "'disabled', 'enabled'\n"
+    },
+    {
+        .name        = "set-autolock-mode",
+        .flag        = 'K',
+        .with_arg    = xmce_set_autolock_mode,
+        .values      = "enabled|disabled",
+        .usage       =
+            "set the autolock mode; valid modes are:\n"
+            "'enabled' and 'disabled'\n"
+    },
+    {
+        .name        = "set-tklock-blank",
+        .flag        = 't',
+        .with_arg    = xmce_set_tklock_blank,
+        .values      = "enabled|disabled",
+        .usage       =
+            "set the touchscreen/keypad autoblank mode;\n"
+            "valid modes are: 'enabled' and 'disabled'\n"
+    },
+    {
+        .name        = "set-inhibit-mode",
+        .flag        = 'I',
+        .with_arg    = xmce_set_inhibit_mode,
+        .values      = "disabled|stay-on-with-charger|stay-on|stay-dim-with-charger|stay-dim",
+        .usage       =
+            "set the blanking inhibit mode to MODE;\n"
+            "valid modes are:\n"
+            "'disabled',\n"
+            "'stay-on-with-charger', 'stay-on',\n"
+            "'stay-dim-with-charger', 'stay-dim'\n"
+    },
+    {
+        .name        = "set-tklock-mode",
+        .flag        = 'k',
+        .with_arg    = xmce_set_tklock_mode,
+        .values      = "locked|locked-dim|locked-delay|unlocked",
+        .usage       =
+            "set the touchscreen/keypad lock mode;\n"
+            "valid modes are:\n"
+            "'locked', 'locked-dim',\n"
+            "'locked-delay',\n"
+            "and 'unlocked'\n"
+    },
+    {
+        .name        = "tklock-callback",
+        .flag        = 'm',
+        .with_arg    = xmce_tklock_callback,
+        .values      = "unlock|retry|timeout|closed",
+        .usage       =
+            "simulate tklock callback from systemui\n"
+    },
+    {
+        .name        = "tklock-open",
+        .flag        = 'q',
+        .with_arg    = xmce_tklock_open,
+        .values      = "oneinput|visual|lpm|pause",
+        .usage       =
+            "simulate tklock open from mce\n"
+    },
+    {
+        .name        = "tklock-close",
+        .flag        = 'Q',
+        .without_arg = xmce_tklock_close,
+        .usage       =
+        "simulate tklock close from mce\n"
+    },
+    {
+        .name        = "set-doubletap-mode",
+        .flag        = 'M',
+        .with_arg    = xmce_set_doubletap_mode,
+        .values      = "disabled|show-unlock-screen|unlock",
+        .usage       =
+            "set the autolock mode; valid modes are:\n"
+            "'disabled', 'show-unlock-screen', 'unlock'\n"
+    },
+    {
+        .name        = "set-doubletap-wakeup",
+        .flag        = 'z',
+        .with_arg    = xmce_set_doubletap_wakeup,
+        .values      = "never|always|proximity",
+        .usage       =
+            "set the doubletap wakeup mode; valid modes are:\n"
+            "'never', 'always', 'proximity'\n"
+    },
+    {
+        .name        = "set-powerkey-action",
+        .flag        = 'Z',
+        .with_arg    = xmce_set_powerkey_action,
+        .values      = "never|always|proximity",
+        .usage       =
+            "set the doubletap wakeup mode; valid modes are:\n"
+            "'never', 'always', 'proximity'\n"
+    },
+    {
+        .name        = "enable-radio",
+        .flag        = 'r',
+        .with_arg    = xmce_enable_radio,
+        .values      = "master|cellular|wlan|bluetooth",
+        .usage       =
+            "enable the specified radio; valid radios are:\n"
+            "'master', 'cellular',\n"
+            "'wlan' and 'bluetooth';\n"
+            "'master' affects all radios\n"
+    },
+    {
+        .name        = "disable-radio",
+        .flag        = 'R',
+        .with_arg    = xmce_disable_radio,
+        .values      = "master|cellular|wlan|bluetooth",
+        .usage       =
+            "disable the specified radio; valid radios are:\n"
+            "'master', 'cellular',\n"
+            "'wlan' and 'bluetooth';\n"
+            "'master' affects all radios\n"
+    },
+    {
+        .name        = "set-power-saving-mode",
+        .flag        = 'p',
+        .with_arg    = xmce_set_power_saving_mode,
+        .values      = "enabled|disabled",
+        .usage       =
+            "set the power saving mode; valid modes are:\n"
+            "'enabled' and 'disabled'\n"
+    },
+    {
+        .name        = "set-psm-threshold",
+        .flag        = 'T',
+        .with_arg    = xmce_set_psm_threshold,
+        .values      = "10|20|30|40|50",
+        .usage       =
+            "set the threshold for the power saving mode;\n"
+            "valid values are:\n"
+            "10, 20, 30, 40, 50\n"
+    },
+    {
+        .name        = "set-forced-psm",
+        .flag        = 'F',
+        .with_arg    = xmce_set_forced_psm,
+        .values      = "enabled|disabled",
+        .usage       =
+            "the forced power saving mode to MODE;\n"
+            "valid modes are:\n"
+            "'enabled' and 'disabled'\n"
+    },
+    {
+        .name        = "set-low-power-mode",
+        .flag        = 'E',
+        .with_arg    = xmce_set_low_power_mode,
+        .values      = "enabled|disabled",
+        .usage       =
+            "set the low power mode; valid modes are:\n"
+            "'enabled' and 'disabled'\n"
+    },
+    {
+        .name        = "set-suspend-policy",
+        .flag        = 's',
+        .with_arg    = xmce_set_suspend_policy,
+        .values      = "enabled|disabled|early",
+        .usage       =
+            "set the autosuspend mode; valid modes are:\n"
+            "'enabled', 'disabled' and 'early'\n"
+    },
+    {
+        .name        = "set-cpu-scaling-governor",
+        .flag        = 'S',
+        .with_arg    = xmce_set_cpu_scaling_governor,
+        .values      = "automatic|performance|interactive",
+        .usage       =
+            "set the cpu scaling governor override; valid\n"
+            "modes are: 'automatic', 'performance',\n"
+            "'interactive'\n"
+    },
 #ifdef ENABLE_DOUBLETAP_EMULATION
-PARAM"-i, --set-fake-doubletap=<enabled|disabled>\n"
-EXTRA"set the doubletap emulation mode; valid modes are:\n"
-EXTRA"  'enabled' and 'disabled'\n"
+    {
+        .name        = "set-fake-doubletap",
+        .flag        = 'i',
+        .with_arg    = xmce_set_fake_doubletap,
+        .values      = "enabled|disabled",
+        .usage       =
+        "set the doubletap emulation mode; valid modes are:\n"
+        "  'enabled' and 'disabled'\n"
+    },
 #endif
-PARAM"-b, --set-display-brightness=<1...100>\n"
-EXTRA"set the display brightness to BRIGHTNESS;\n"
-EXTRA"  valid values are: 1-100\n"
-PARAM"-g, --set-als-mode=<enabled|disabled>\n"
-EXTRA"set the als mode; valid modes are:\n"
-EXTRA"  'enabled' and 'disabled'\n"
-PARAM"-u, --set-ps-mode=<enabled|disabled>\n"
-EXTRA"set the ps mode; valid modes are:\n"
-EXTRA"  'enabled' and 'disabled'\n"
-PARAM"-a, --get-color-profile-ids\n"
-EXTRA"get available color profile ids\n"
-PARAM"-A, --set-color-profile=ID\n"
-EXTRA"set the color profile to ID; valid ID names\n"
-EXTRA"  can be obtained with --get-color-profile-ids\n"
-PARAM"-C, --set-cabc-mode=<off|ui|still-image|moving-image>\n"
-EXTRA"set the CABC mode to MODE;\n"
-EXTRA"  valid modes are:\n"
-EXTRA"  'off', 'ui',\n"
-EXTRA"  'still-image' and 'moving-image'\n"
-PARAM"-c, --set-call-state=<none|ringing|active|service>:<normal|emergency>\n"
-EXTRA"set the call state to STATE and the call type\n"
-EXTRA"  to TYPE; valid states are:\n"
-EXTRA"  'none', 'ringing',\n"
-EXTRA"  'active' and 'service'\n"
-EXTRA"  valid types are:\n"
-EXTRA"  'normal' and 'emergency'\n"
-PARAM"-l, --enable-led\n"
-EXTRA"enable LED framework\n"
-PARAM"-L, --disable-led\n"
-EXTRA"disable LED framework\n"
-PARAM"-y, --activate-led-pattern=PATTERN\n"
-EXTRA"activate a LED pattern\n"
-PARAM"-Y, --deactivate-led-pattern=PATTERN\n"
-EXTRA"deactivate a LED pattern\n"
-PARAM"--set-sw-breathing=<enabled|disabled>\n"
-EXTRA"Allow/deny using smooth timer based led transitions instead of just\n"
-EXTRA"HW based blinking. Note that enabling this feature means that the\n"
-EXTRA"device can't suspend while the led is breathing which will increase\n"
-EXTRA"the battery consumption significantly.\n"
-PARAM"--set-sw-breathing-limit=<0 ... 100>\n"
-EXTRA"If charger is not connected, the led breathing is enabled only if\n"
-EXTRA"battery level is greater than the limit given. Setting limit to 100%\n"
-EXTRA"allows breathing only when charger is connected.\n"
-PARAM"-e, --powerkey-event=<short|double|long>\n"
-EXTRA"trigger a powerkey event; valid types are:\n"
-EXTRA"  'short', 'double' and 'long'\n"
-PARAM"-D, --set-demo-mode=<on|off>\n"
-EXTRA"  set the display demo mode  to STATE;\n"
-EXTRA"     valid states are: 'on' and 'off'\n"
-PARAM"--set-lipstick-core-delay=<secs>\n"
-EXTRA"set the delay for dumping core from unresponsive lipstick\n"
-PARAM"--begin-notification=[name][,<duration_ms>[,<renew_ms>]]\n"
-EXTRA"start notification ui exception\n"
-PARAM"--end-notification=[name][,<linger_ms>]\n"
-EXTRA"start notification ui exception\n"
-PARAM"-N, --status\n"
-EXTRA"output MCE status\n"
-PARAM"-B, --block[=<secs>]\n"
-EXTRA"block after executing commands\n"
-EXTRA"  for D-Bus\n"
-PARAM"-h, --help\n"
-EXTRA"display list of options and exit\n"
-PARAM"-H, --long-help\n"
-EXTRA"display full usage information  and exit\n"
-PARAM"-V, --version\n"
-EXTRA"output version information and exit\n"
-"\n"
-"If no options are specified, the status is output.\n"
-"\n"
-"If non-option arguments are given, matching parts of long help\n"
-"is printed out.\n"
-"\n"
-"Report bugs to <david.weinehall@nokia.com>\n"
-;
+    {
+        .name        = "set-display-brightness",
+        .flag        = 'b',
+        .with_arg    = xmce_set_display_brightness,
+        .values      = "1...100",
+        .usage       =
+            "set the display brightness to BRIGHTNESS;\n"
+            "valid values are: 1-100\n"
+    },
+    {
+        .name        = "set-als-mode",
+        .flag        = 'g',
+        .with_arg    = xmce_set_als_mode,
+        .values      = "enabled|disabled",
+        .usage       =
+            "set the als mode; valid modes are:\n"
+            "'enabled' and 'disabled'\n"
+    },
+    {
+        .name        = "set-ps-mode",
+        .flag        = 'u',
+        .with_arg    = xmce_set_ps_mode,
+        .values      = "enabled|disabled",
+            "set the ps mode; valid modes are:\n"
+            "'enabled' and 'disabled'\n"
+    },
+    {
+        .name        = "get-color-profile-ids",
+        .flag        = 'a',
+        .without_arg = xmce_get_color_profile_ids,
+        .usage       =
+            "get available color profile ids\n"
+    },
+    {
+        .name        = "set-color-profile",
+        .flag        = 'A',
+        .with_arg    = xmce_set_color_profile,
+        .values      = "ID",
+        .usage       =
+            "set the color profile to ID; valid ID names\n"
+            "can be obtained with --get-color-profile-ids\n"
+    },
+    {
+        .name        = "set-cabc-mode",
+        .flag        = 'C',
+        .with_arg    = xmce_set_cabc_mode,
+        .values      = "off|ui|still-image|moving-image",
+        .usage       =
+            "set the CABC mode\n"
+            "valid modes are:\n"
+            "'off', 'ui', 'still-image' and 'moving-image'\n"
+    },
+    {
+        .name        = "set-call-state",
+        .flag        = 'c',
+        .with_arg    = xmce_set_call_state,
+        .values      = "none|ringing|active|service>:<normal|emergency",
+        .usage       =
+            "set the call state and type\n"
+            "Valid states are: none, ringing, active and service.\n"
+            "Valid types are: normal and emergency.\n"
+    },
+    {
+        .name        = "enable-led",
+        .flag        = 'l',
+        .without_arg = mcetool_do_enable_led,
+        .usage       =
+            "enable LED framework\n"
+    },
+    {
+        .name        = "disable-led",
+        .flag        = 'L',
+        .without_arg = mcetool_do_disable_led,
+        .usage       =
+            "disable LED framework\n"
+    },
+    {
+        .name        = "activate-led-pattern",
+        .flag        = 'y',
+        .with_arg    = mcetool_do_activate_pattern,
+        .values      = "PATTERN",
+        .usage       =
+        "activate a LED pattern\n"
+    },
+    {
+        .name        = "deactivate-led-pattern",
+        .flag        = 'Y',
+        .with_arg    = mcetool_do_deactivate_pattern,
+        .values      = "PATTERN",
+        .usage       =
+        "deactivate a LED pattern\n"
+    },
+    {
+        .name        = "set-sw-breathing",
+        .with_arg    = set_led_breathing_enabled,
+        .values      = "enabled|disabled",
+        .usage       =
+            "Allow/deny using smooth timer based led transitions instead of just\n"
+            "HW based blinking. Note that enabling this feature means that the\n"
+            "device can't suspend while the led is breathing which will increase\n"
+            "the battery consumption significantly.\n"
+    },
+    {
+        .name        = "set-sw-breathing-limit",
+        .with_arg    = set_led_breathing_limit,
+        .values      = "0 ... 100",
+        .usage       =
+            "If charger is not connected, the led breathing is enabled only if\n"
+            "battery level is greater than the limit given. Setting limit to 100%\n"
+            "allows breathing only when charger is connected.\n"
+    },
+    {
+        .name        = "powerkey-event",
+        .flag        = 'e',
+        .with_arg    = xmce_powerkey_event,
+        .values      = "short|double|long",
+        .usage       =
+            "trigger a powerkey event; valid types are:\n"
+            "'short', 'double' and 'long'\n"
+    },
+    {
+        .name        = "set-demo-mode",
+        .flag        = 'D',
+        .with_arg    = xmce_set_demo_mode,
+        .values      = "on|off",
+        .usage       =
+            "set the display demo mode  to STATE;\n"
+            "valid states are: 'on' and 'off'\n"
+    },
+    {
+        .name        = "set-lipstick-core-delay",
+        .with_arg    = xmce_set_lipstick_core_delay,
+        .values      = "secs",
+        .usage       =
+            "set the delay for dumping core from unresponsive lipstick\n"
+    },
+    {
+        .name        = "begin-notification",
+        .with_arg    = xmce_notification_begin,
+        .without_arg = xmce_notification_begin,
+        .values      = "name[,duration_ms[,renew_ms]]",
+        .usage       =
+            "start notification ui exception\n"
+    },
+    {
+        .name        = "end-notification",
+        .with_arg    = xmce_notification_end,
+        .without_arg = xmce_notification_end,
+        .values      = "name[,linger_ms]",
+        .usage       =
+            "end notification ui exception\n"
+    },
+    {
+        .name        = "status",
+        .flag        = 'N',
+        .without_arg = xmce_get_status,
+        .usage       =
+            "output MCE status\n"
+    },
+    {
+        .name        = "block",
+        .flag        = 'B',
+        .with_arg    = mcetool_block,
+        .without_arg = mcetool_block,
+        .values      = "secs",
+        .usage       =
+            "Block after executing commands\n"
+            "for D-Bus\n"
+    },
+    {
+        .name        = "help",
+        .flag        = 'h',
+        .with_arg    = mcetool_do_help,
+        .without_arg = mcetool_do_help,
+        .values      = "OPTION|\"all\"",
+        .usage       =
+            "display list of options and exit\n"
+            "\n"
+            "If the optional argument is given, more detailed information is\n"
+            "given about matching options. Using \"all\" lists all options\n"
+    },
+    {
+        .name        = "long-help",
+        .flag        = 'H',
+        .with_arg    = mcetool_do_long_help,
+        .without_arg = mcetool_do_long_help,
+        .values      = "OPTION",
+        .usage       =
+            "display full usage information  and exit\n"
+            "\n"
+            "If the optional argument is given, information is given only\n"
+            "about matching options.\n"
+    },
+    {
+        .name        = "version",
+        .flag        = 'V',
+        .without_arg = mcetool_do_version,
+        .usage       =
+            "output version information and exit\n"
 
-/** Show full usage information
- */
-static void usage_long(void)
-{
-	printf("%s\n", usage_text);
-}
+    },
 
-/** Show only option names
- */
-static void usage_short(void)
-{
-	char *temp = strdup(usage_text);
-	for( char *zen = temp; zen; )
-	{
-		char *now = zen;
-		if( (zen = strchr(now, '\n')) )
-			*zen++ = 0;
-		if( *now != '\t' )
-			printf("%s\n", now);
-	}
-	free(temp);
-}
-
-/** Show options matching partial strings given at command line
- */
-static void usage_quick(char **pat)
-{
-	char *temp = strdup(usage_text);
-	bool active = false;
-	for( char *zen = temp; zen; )
-	{
-		char *now = zen;
-		if( (zen = strchr(now, '\n')) )
-			*zen++ = 0;
-		if( *now == ' ' ) {
-			active = false;
-			for( int i = 0; pat[i]; ++i ) {
-				if( !strcasestr(now, pat[i]) )
-					continue;
-				active = true;
-				break;
-			}
-		}
-		if( *now != ' ' && *now != '\t' )
-			continue;
-		if( active )
-			printf("%s\n", now);
-	}
-	free(temp);
-}
+    // sentinel
+    {
+        .name = 0
+    }
+};
 
 /** Version information */
 static const char version_text[] =
@@ -3168,123 +3533,50 @@ PROG_NAME" v"G_STRINGIFY(PRG_VERSION)"\n"
 "Copyright (C) 2005-2011 Nokia Corporation.  All rights reserved.\n"
 ;
 
-// Unused short options left ....
-// - - - - - - - - - - - - - - - - - - - - - - w x - -
-// - - - - - - - - - - - - - - - - - - - - - - W X - -
-
-const char OPT_S[] =
-"B::" // --block,
-"P"   // --blank-prevent,
-"v"   // --cancel-blank-prevent,
-"U"   // --unblank-screen,
-"d"   // --dim-screen,
-"n"   // --blank-screen,
-"b:"  // --set-display-brightness,
-"I:"  // --set-inhibit-mode,
-"D:"  // --set-demo-mode,
-"C:"  // --set-cabc-mode,
-"a"   // --get-color-profile-ids,
-"A:"  // --set-color-profile,
-"c:"  // --set-call-state,
-"r:"  // --enable-radio,
-"R:"  // --disable-radio,
-"p:"  // --set-power-saving-mode,
-"F:"  // --set-forced-psm,
-"T:"  // --set-psm-threshold,
-"k:"  // --set-tklock-mode,
-"l"   // --enable-led,
-"L"   // --disable-led,
-"y:"  // --activate-led-pattern,
-"Y:"  // --deactivate-led-pattern,
-"e:"  // --powerkey-event,
-"N"   // --status,
-"h"   // --help,
-"H"   // --long-help,
-"V"   // --version,
-"f:"  // --set-adaptive-dimming-mode
-"E:"  // --set-low-power-mode
-"g:"  // --set-als-mode
-"G:"  // --set-dim-timeout
-"o:"  // --set-blank-timeout
-"j:"  // --set-never-blank
-"J:"  // --set-adaptive-dimming-time
-"K:"  // --set-autolock-mode
-"M:"  // --set-doubletap-mode
-"z:"  // --set-doubletap-wakeup
-"Z:"  // --set-powerkey-action
-"O:"  // --set-dim-timeouts
-"s:"  // --set-suspend-policy
-"S:"  // --set-cpu-scaling-governor
-"t:"  // --set-tklock-blank
-"m:"  // --tklock-callback
-"q:"  // --tklock-open
-"Q"   // --tklock-close
-"u:"  // --set-ps-mode
-#ifdef ENABLE_DOUBLETAP_EMULATION
-"i:"  // --set-fake-doubletap
-#endif
-;
-
-struct option const OPT_L[] =
+static bool mcetool_do_version(const char *arg)
 {
-        { "block",                     2, 0, 'B' }, // N/A
-        { "blank-prevent",             0, 0, 'P' }, // xmce_prevent_display_blanking()
-        { "cancel-blank-prevent",      0, 0, 'v' }, // xmce_allow_display_blanking()
-        { "unblank-screen",            0, 0, 'U' }, // xmce_set_display_state("on")
-        { "dim-screen",                0, 0, 'd' }, // xmce_set_display_state("dim")
-        { "blank-screen",              0, 0, 'n' }, // xmce_set_display_state("off")
-        { "set-display-brightness",    1, 0, 'b' }, // xmce_set_display_brightness()
-        { "set-inhibit-mode",          1, 0, 'I' }, // xmce_set_inhibit_mode()
-        { "set-demo-mode",             1, 0, 'D' }, // xmce_set_demo_mode()
-        { "set-cabc-mode",             1, 0, 'C' }, // xmce_set_cabc_mode()
-        { "get-color-profile-ids",     0, 0, 'a' }, // xmce_get_color_profile_ids()
-        { "set-color-profile",         1, 0, 'A' }, // xmce_set_color_profile()
-        { "set-call-state",            1, 0, 'c' }, // xmce_set_call_state()
-        { "enable-radio",              1, 0, 'r' }, // xmce_enable_radio()
-        { "disable-radio",             1, 0, 'R' }, // xmce_disable_radio()
-        { "set-power-saving-mode",     1, 0, 'p' }, // xmce_set_power_saving_mode()
-        { "set-forced-psm",            1, 0, 'F' }, // xmce_set_forced_psm()
-        { "set-psm-threshold",         1, 0, 'T' }, // xmce_set_psm_threshold()
-        { "set-tklock-mode",           1, 0, 'k' }, // xmce_set_tklock_mode()
-        { "tklock-callback",           1, 0, 'm' }, // xmce_tklock_callback()
-        { "tklock-open",               1, 0, 'q' }, // xmce_tklock_open()
-        { "tklock-close",              0, 0, 'Q' }, // xmce_tklock_close()
-        { "set-tklock-blank",          1, 0, 't' }, // xmce_set_tklock_blank()
-        { "enable-led",                0, 0, 'l' }, // set_led_state()
-        { "disable-led",               0, 0, 'L' }, // set_led_state()
-        { "activate-led-pattern",      1, 0, 'y' }, // set_led_pattern_state()
-        { "deactivate-led-pattern",    1, 0, 'Y' }, // set_led_pattern_state()
-        { "powerkey-event",            1, 0, 'e' }, // xmce_powerkey_event()
-        { "status",                    0, 0, 'N' }, // xmce_get_status()
-        { "help",                      0, 0, 'h' }, // N/A
-        { "long-help",                 0, 0, 'H' }, // N/A
-        { "version",                   0, 0, 'V' }, // N/A
-        { "set-adaptive-dimming-mode", 1, 0, 'f' }, // xmce_set_adaptive_dimming_mode()
-        { "set-adaptive-dimming-time", 1, 0, 'J' }, // xmce_set_adaptive_dimming_time()
-        { "set-low-power-mode",        1, 0, 'E' }, // xmce_set_low_power_mode()
-        { "set-als-mode",              1, 0, 'g' }, // xmce_set_als_mode()
-        { "set-ps-mode",               1, 0, 'u' }, // xmce_set_ps_mode()
-        { "set-dim-timeout",           1, 0, 'G' }, // xmce_set_dim_timeout()
-        { "set-never-blank",           1, 0, 'j' }, // xmce_set_never_blank()
-        { "set-blank-timeout",         1, 0, 'o' }, // xmce_set_blank_timeout()
-        { "set-autolock-mode",         1, 0, 'K' }, // xmce_set_autolock_mode()
-        { "set-doubletap-mode",        1, 0, 'M' }, // xmce_set_doubletap_mode()
-        { "set-doubletap-wakeup",      1, 0, 'z' }, // xmce_set_doubletap_wakeup()
-        { "set-powerkey-action",       1, 0, 'Z' }, // xmce_set_powerkey_action()
-        { "set-dim-timeouts",          1, 0, 'O' }, // xmce_set_dim_timeouts()
-        { "set-suspend-policy",        1, 0, 's' }, // xmce_set_suspend_policy()
-        { "set-cpu-scaling-governor",  1, 0, 'S' }, // xmce_set_cpu_scaling_governor()
-        { "set-sw-breathing",          1, 0, 901 }, // set_led_breathing_enabled()
-        { "set-sw-breathing-limit",    1, 0, 902 }, // set_led_breathing_limit()
+    (void)arg;
 
-#ifdef ENABLE_DOUBLETAP_EMULATION
-        { "set-fake-doubletap",        1, 0, 'i' }, // xmce_set_fake_doubletap()
-#endif
-        { "set-lipstick-core-delay",   1, 0, 900 }, // xmce_set_lipstick_core_delay()
-        { "begin-notification",        1, 0, 910 }, // xmce_notification_begin()
-        { "end-notification",          1, 0, 911 }, // xmce_notification_end()
-        { 0, 0, 0, 0 }
-};
+    printf("%s\n", version_text);
+    exit(EXIT_SUCCESS);
+}
+
+static bool mcetool_do_help(const char *arg)
+{
+        fprintf(stdout,
+                "Mode Control Entity Tool\n"
+                "\n"
+                "USAGE\n"
+                "\t"PROG_NAME" [OPTION] ...\n"
+                "\n"
+                "OPTIONS\n");
+
+        mce_command_line_usage(options, arg);
+
+        fprintf(stdout,
+                "\n"
+                "NOTES\n"
+                "\tIf no options are specified, the status is output.\n"
+                "\n"
+                "\tIf non-option arguments are given, matching parts of long help\n"
+                "\tis printed out.\n");
+
+        fprintf(stdout,
+                "\n"
+                "REPORTING BUGS\n"
+                "\tSend e-mail to: <simo.piiroinen@jollamobile.com>\n");
+
+        exit(EXIT_SUCCESS);
+}
+
+static bool mcetool_do_long_help(const char *arg)
+{
+        return mcetool_do_help(arg ?: "all");
+}
+
+/* ========================================================================= *
+ * MCETOOL ENTRY POINT
+ * ========================================================================= */
 
 /** Main
  *
@@ -3298,109 +3590,15 @@ int main(int argc, char **argv)
 
         /* No args -> show mce status */
         if( argc < 2 )
-                xmce_get_status();
+                xmce_get_status(0);
 
         /* Parse the command-line options */
-        for( ;; )
-        {
-                int opt = getopt_long(argc, argv, OPT_S, OPT_L, 0);
-
-                if( opt < 0 )
-                        break;
-
-                switch( opt )
-                {
-                case 'U': xmce_set_display_state("on");           break;
-                case 'd': xmce_set_display_state("dim");          break;
-                case 'n': xmce_set_display_state("off");          break;
-
-                case 'P': xmce_prevent_display_blanking();        break;
-                case 'v': xmce_allow_display_blanking();          break;
-
-                case 'G': xmce_set_dim_timeout(optarg);           break;
-                case 'O': xmce_set_dim_timeouts(optarg);          break;
-                case 'f': xmce_set_adaptive_dimming_mode(optarg); break;
-                case 'J': xmce_set_adaptive_dimming_time(optarg); break;
-
-                case 'j': xmce_set_never_blank(optarg);           break;
-                case 'o': xmce_set_blank_timeout(optarg);         break;
-
-                case 'K': xmce_set_autolock_mode(optarg);         break;
-                case 't': xmce_set_tklock_blank(optarg);          break;
-                case 'I': xmce_set_inhibit_mode(optarg);          break;
-                case 'k': xmce_set_tklock_mode(optarg);           break;
-		case 'm': xmce_tklock_callback(optarg);           break;
-		case 'q': xmce_tklock_open(optarg);               break;
-		case 'Q': xmce_tklock_close();                    break;
-                case 'M': xmce_set_doubletap_mode(optarg);        break;
-                case 'z': xmce_set_doubletap_wakeup(optarg);      break;
-                case 'Z': xmce_set_powerkey_action(optarg);       break;
-
-                case 'r': xmce_enable_radio(optarg);              break;
-                case 'R': xmce_disable_radio(optarg);             break;
-
-                case 'p': xmce_set_power_saving_mode(optarg);     break;
-                case 'T': xmce_set_psm_threshold(optarg);         break;
-                case 'F': xmce_set_forced_psm(optarg);            break;
-                case 'E': xmce_set_low_power_mode(optarg);        break;
-
-                case 's': xmce_set_suspend_policy(optarg);        break;
-		case 'S': xmce_set_cpu_scaling_governor(optarg);  break;
-#ifdef ENABLE_DOUBLETAP_EMULATION
-                case 'i': xmce_set_fake_doubletap(optarg);        break;
-#endif
-                case 'b': xmce_set_display_brightness(optarg);    break;
-                case 'g': xmce_set_als_mode(optarg);              break;
-                case 'u': xmce_set_ps_mode(optarg);               break;
-
-                case 'a': xmce_get_color_profile_ids();           break;
-                case 'A': xmce_set_color_profile(optarg);         break;
-                case 'C': xmce_set_cabc_mode(optarg);             break;
-
-                case 'c': xmce_set_call_state(optarg);            break;
-
-                case 'l': set_led_state(TRUE);                    break;
-                case 'L': set_led_state(FALSE);                   break;
-                case 'y': set_led_pattern_state(optarg, TRUE);    break;
-                case 'Y': set_led_pattern_state(optarg, FALSE);   break;
-                case 901: set_led_breathing_enabled(optarg);      break;
-                case 902: set_led_breathing_limit(optarg);        break;
-
-                case 'e': xmce_powerkey_event(optarg);            break;
-
-                case 'D': xmce_set_demo_mode(optarg);             break;
-
-                case 'N': xmce_get_status();                      break;
-                case 'B': mcetool_block(optarg);                  break;
-
-                case 900: xmce_set_lipstick_core_delay(optarg);   break;
-
-                case 910: xmce_notification_begin(optarg);        break;
-                case 911: xmce_notification_end(optarg);          break;
-
-                case 'h':
-			usage_short();
-                        exitcode = EXIT_SUCCESS;
-                        goto EXIT;
-
-                case 'H':
-			usage_long();
-                        exitcode = EXIT_SUCCESS;
-                        goto EXIT;
-
-                case 'V':
-                        printf("%s\n", version_text);
-                        exitcode = EXIT_SUCCESS;
-                        goto EXIT;
-
-                default:
-                        goto EXIT;
-                }
-        }
+        if( !mce_command_line_parse(options, argc, argv) )
+                goto EXIT;
 
         /* Non-flag arguments are quick help patterns */
         if( optind < argc ) {
-		usage_quick(argv + optind);
+            mce_command_line_usage_keys(options, argv + optind);
         }
 
         exitcode = EXIT_SUCCESS;
@@ -3410,4 +3608,3 @@ EXIT:
 
         return exitcode;
 }
-

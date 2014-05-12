@@ -415,7 +415,7 @@ endif
 
 $(TOOLDIR)/mcetool : CFLAGS += $(TOOLS_CFLAGS)
 $(TOOLDIR)/mcetool : LDLIBS += $(TOOLS_LDLIBS)
-$(TOOLDIR)/mcetool : $(TOOLDIR)/mcetool.o
+$(TOOLDIR)/mcetool : $(TOOLDIR)/mcetool.o mce-command-line.o
 
 $(TOOLDIR)/evdev_trace : CFLAGS += $(TOOLS_CFLAGS)
 $(TOOLDIR)/evdev_trace : LDLIBS += $(TOOLS_LDLIBS)

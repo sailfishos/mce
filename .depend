@@ -993,6 +993,7 @@ tools/evdev_trace.pic.o:\
 tools/mcetool.o:\
 	tools/mcetool.c\
 	event-input.h\
+	mce-command-line.h\
 	modules/display.h\
 	modules/doubletap.h\
 	modules/filter-brightness-als.h\
@@ -1006,6 +1007,7 @@ tools/mcetool.o:\
 tools/mcetool.pic.o:\
 	tools/mcetool.c\
 	event-input.h\
+	mce-command-line.h\
 	modules/display.h\
 	modules/doubletap.h\
 	modules/filter-brightness-als.h\
