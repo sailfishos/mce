@@ -90,6 +90,14 @@ libwakelock.pic.o:\
 	libwakelock.c\
 	libwakelock.h\
 
+mce-command-line.o:\
+	mce-command-line.c\
+	mce-command-line.h\
+
+mce-command-line.pic.o:\
+	mce-command-line.c\
+	mce-command-line.h\
+
 mce-conf.o:\
 	mce-conf.c\
 	datapipe.h\
