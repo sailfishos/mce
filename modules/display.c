@@ -2184,20 +2184,40 @@ static void mdy_poweron_led_rethink_schedule(void)
 /**
  * Find the dim timeout index from a dim timeout
  *
+ * If list of possible dim timeouts is not available, zero is returned.
+ *
+ * If the given dim_timeout is larger than the largest entry int the
+ * possible timeouts list, the index to the largest entry is returned.
+ *
+ * Otherwise the index to the first entry that is greater or equal
+ * to specified dim_timeout is returned.
+ *
  * @param dim_timeout The dim timeout to find the index for
+ *
  * @return The closest dim timeout index
  */
 static guint mdy_blanking_find_dim_timeout_index(gint dim_timeout)
 {
-    gpointer tmp;
-    guint i;
+    guint   res  = 0;
+    GSList *iter = mdy_possible_dim_timeouts;
 
-    for (i = 0;
-         ((tmp = g_slist_nth_data(mdy_possible_dim_timeouts, i)) != NULL) &&
-         GPOINTER_TO_INT(tmp) < dim_timeout; i++)
-        /* Do nothing */;
+    if( !iter )
+        goto EXIT;
 
-    return i;
+    for( ;; ) {
+        gint allowed_timeout = GPOINTER_TO_INT(iter->data);
+
+        if( dim_timeout <= allowed_timeout) )
+            break;
+
+        if( !(iter = iter->next) )
+            break;
+
+        ++res;
+    }
+
+EXIT:
+    return res;
 }
 
 /**
