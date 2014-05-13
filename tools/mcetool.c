@@ -2782,16 +2782,16 @@ static const symbol_t tklock_callback_values[] = {
  */
 static bool xmce_tklock_callback(const char *args)
 {
-  debugf("%s(%s)\n", __FUNCTION__, args);
-  dbus_int32_t val = lookup(tklock_callback_values, args);
-  if( val < 0 ) {
-    errorf("%s: invalidt klock callback value\n", args);
-    exit(EXIT_FAILURE);
-  }
+        debugf("%s(%s)\n", __FUNCTION__, args);
+        dbus_int32_t val = lookup(tklock_callback_values, args);
+        if( val < 0 ) {
+                errorf("%s: invalidt klock callback value\n", args);
+                exit(EXIT_FAILURE);
+        }
 
-  xmce_ipc_no_reply(MCE_TKLOCK_CB_REQ,
-                    DBUS_TYPE_INT32, &val,
-                    DBUS_TYPE_INVALID);
+        xmce_ipc_no_reply(MCE_TKLOCK_CB_REQ,
+                          DBUS_TYPE_INT32, &val,
+                          DBUS_TYPE_INVALID);
         return true;
 }
 
@@ -3004,43 +3004,43 @@ static bool mcetool_do_version(const char *arg);
 
 static bool mcetool_do_disable_led(const char *arg)
 {
-    (void)arg;
-    set_led_state(FALSE);
-    return true;
+        (void)arg;
+        set_led_state(FALSE);
+        return true;
 }
 static bool mcetool_do_enable_led(const char *arg)
 {
-    (void)arg;
-    set_led_state(TRUE);
-    return true;
+        (void)arg;
+        set_led_state(TRUE);
+        return true;
 }
 static bool mcetool_do_activate_pattern(const char *arg)
 {
-    set_led_pattern_state(arg, TRUE);
-    return true;
+        set_led_pattern_state(arg, TRUE);
+        return true;
 }
 static bool mcetool_do_deactivate_pattern(const char *arg)
 {
-    set_led_pattern_state(arg, FALSE);
-    return true;
+        set_led_pattern_state(arg, FALSE);
+        return true;
 }
 static bool mcetool_do_unblank_screen(const char *arg)
 {
-    (void)arg;
-    xmce_set_display_state("on");
-    return true;
+        (void)arg;
+        xmce_set_display_state("on");
+        return true;
 }
 static bool mcetool_do_dim_screen(const char *arg)
 {
-    (void)arg;
-    xmce_set_display_state("dim");
-    return true;
+        (void)arg;
+        xmce_set_display_state("dim");
+        return true;
 }
 static bool mcetool_do_blank_screen(const char *arg)
 {
-    (void)arg;
-    xmce_set_display_state("off");
-    return true;
+        (void)arg;
+        xmce_set_display_state("off");
+        return true;
 }
 
 // Unused short options left ....
@@ -3049,480 +3049,480 @@ static bool mcetool_do_blank_screen(const char *arg)
 
 static const mce_opt_t options[] =
 {
-    {
-        .name        = "unblank-screen",
-        .flag        = 'U',
-        .without_arg = mcetool_do_unblank_screen,
-        .usage       =
-            "send display on request\n"
-    },
-    {
-        .name        = "dim-screen",
-        .flag        = 'd',
-        .without_arg = mcetool_do_dim_screen,
-        .usage       =
-            "send display dim request\n"
-    },
-    {
-        .name        = "blank-screen",
-        .flag        = 'n',
-        .without_arg = mcetool_do_blank_screen,
-        .usage       =
-            "send display off request\n"
-    },
-    {
-        .name        = "blank-prevent",
-        .flag        = 'P',
-        .without_arg = xmce_prevent_display_blanking,
-        .usage       =
-            "send blank prevent request\n"
-    },
-    {
-        .name        = "cancel-blank-prevent",
-        .flag        = 'v',
-        .without_arg = xmce_allow_display_blanking,
-        .usage       =
-            "send cancel blank prevent request\n"
-    },
-    {
-        .name        = "set-dim-timeout",
-        .flag        = 'G',
-        .with_arg    = xmce_set_dim_timeout,
-        .values      = "secs",
-        .usage       =
-            "set the automatic dimming timeout\n"
-    },
-    {
-        .name        = "set-dim-timeouts",
-        .flag        = 'O',
-        .with_arg    = xmce_set_dim_timeouts,
-        .values      = "secs,secs,...",
-        .usage       =
-            "set the allowed dim timeouts; valid list must\n"
-            "must have 5 entries, in ascending order\n"
-    },
-    {
-        .name        = "set-adaptive-dimming-mode",
-        .flag        = 'f',
-        .with_arg    = xmce_set_adaptive_dimming_mode,
-        .values      = "enabled|disabled",
-        .usage       =
-        "set the adaptive dimming mode; valid modes are:\n"
-        "  'enabled' and 'disabled'\n"
-    },
-    {
-        .name        = "set-adaptive-dimming-time",
-        .flag        = 'J',
-        .with_arg    = xmce_set_adaptive_dimming_time,
-        .values      = "secs",
-        .usage       =
-            "set the adaptive dimming threshold\n"
-    },
-    {
-        .name        = "set-blank-timeout",
-        .flag        = 'o',
-        .with_arg    = xmce_set_blank_timeout,
-        .values      = "secs",
-        .usage       =
-            "set the automatic blanking timeout\n"
-    },
-    {
-        .name        = "set-never-blank",
-        .flag        = 'j',
-        .with_arg    = xmce_set_never_blank,
-        .values      = "enabled|disabled",
-        .usage       =
-            "set never blank mode; valid modes are:\n"
-            "'disabled', 'enabled'\n"
-    },
-    {
-        .name        = "set-autolock-mode",
-        .flag        = 'K',
-        .with_arg    = xmce_set_autolock_mode,
-        .values      = "enabled|disabled",
-        .usage       =
-            "set the autolock mode; valid modes are:\n"
-            "'enabled' and 'disabled'\n"
-    },
-    {
-        .name        = "set-tklock-blank",
-        .flag        = 't',
-        .with_arg    = xmce_set_tklock_blank,
-        .values      = "enabled|disabled",
-        .usage       =
-            "set the touchscreen/keypad autoblank mode;\n"
-            "valid modes are: 'enabled' and 'disabled'\n"
-    },
-    {
-        .name        = "set-inhibit-mode",
-        .flag        = 'I',
-        .with_arg    = xmce_set_inhibit_mode,
-        .values      = "disabled|stay-on-with-charger|stay-on|stay-dim-with-charger|stay-dim",
-        .usage       =
-            "set the blanking inhibit mode to MODE;\n"
-            "valid modes are:\n"
-            "'disabled',\n"
-            "'stay-on-with-charger', 'stay-on',\n"
-            "'stay-dim-with-charger', 'stay-dim'\n"
-    },
-    {
-        .name        = "set-tklock-mode",
-        .flag        = 'k',
-        .with_arg    = xmce_set_tklock_mode,
-        .values      = "locked|locked-dim|locked-delay|unlocked",
-        .usage       =
-            "set the touchscreen/keypad lock mode;\n"
-            "valid modes are:\n"
-            "'locked', 'locked-dim',\n"
-            "'locked-delay',\n"
-            "and 'unlocked'\n"
-    },
-    {
-        .name        = "tklock-callback",
-        .flag        = 'm',
-        .with_arg    = xmce_tklock_callback,
-        .values      = "unlock|retry|timeout|closed",
-        .usage       =
-            "simulate tklock callback from systemui\n"
-    },
-    {
-        .name        = "tklock-open",
-        .flag        = 'q',
-        .with_arg    = xmce_tklock_open,
-        .values      = "oneinput|visual|lpm|pause",
-        .usage       =
-            "simulate tklock open from mce\n"
-    },
-    {
-        .name        = "tklock-close",
-        .flag        = 'Q',
-        .without_arg = xmce_tklock_close,
-        .usage       =
-        "simulate tklock close from mce\n"
-    },
-    {
-        .name        = "set-doubletap-mode",
-        .flag        = 'M',
-        .with_arg    = xmce_set_doubletap_mode,
-        .values      = "disabled|show-unlock-screen|unlock",
-        .usage       =
-            "set the autolock mode; valid modes are:\n"
-            "'disabled', 'show-unlock-screen', 'unlock'\n"
-    },
-    {
-        .name        = "set-doubletap-wakeup",
-        .flag        = 'z',
-        .with_arg    = xmce_set_doubletap_wakeup,
-        .values      = "never|always|proximity",
-        .usage       =
-            "set the doubletap wakeup mode; valid modes are:\n"
-            "'never', 'always', 'proximity'\n"
-    },
-    {
-        .name        = "set-powerkey-action",
-        .flag        = 'Z',
-        .with_arg    = xmce_set_powerkey_action,
-        .values      = "never|always|proximity",
-        .usage       =
-            "set the doubletap wakeup mode; valid modes are:\n"
-            "'never', 'always', 'proximity'\n"
-    },
-    {
-        .name        = "enable-radio",
-        .flag        = 'r',
-        .with_arg    = xmce_enable_radio,
-        .values      = "master|cellular|wlan|bluetooth",
-        .usage       =
-            "enable the specified radio; valid radios are:\n"
-            "'master', 'cellular',\n"
-            "'wlan' and 'bluetooth';\n"
-            "'master' affects all radios\n"
-    },
-    {
-        .name        = "disable-radio",
-        .flag        = 'R',
-        .with_arg    = xmce_disable_radio,
-        .values      = "master|cellular|wlan|bluetooth",
-        .usage       =
-            "disable the specified radio; valid radios are:\n"
-            "'master', 'cellular',\n"
-            "'wlan' and 'bluetooth';\n"
-            "'master' affects all radios\n"
-    },
-    {
-        .name        = "set-power-saving-mode",
-        .flag        = 'p',
-        .with_arg    = xmce_set_power_saving_mode,
-        .values      = "enabled|disabled",
-        .usage       =
-            "set the power saving mode; valid modes are:\n"
-            "'enabled' and 'disabled'\n"
-    },
-    {
-        .name        = "set-psm-threshold",
-        .flag        = 'T',
-        .with_arg    = xmce_set_psm_threshold,
-        .values      = "10|20|30|40|50",
-        .usage       =
-            "set the threshold for the power saving mode;\n"
-            "valid values are:\n"
-            "10, 20, 30, 40, 50\n"
-    },
-    {
-        .name        = "set-forced-psm",
-        .flag        = 'F',
-        .with_arg    = xmce_set_forced_psm,
-        .values      = "enabled|disabled",
-        .usage       =
-            "the forced power saving mode to MODE;\n"
-            "valid modes are:\n"
-            "'enabled' and 'disabled'\n"
-    },
-    {
-        .name        = "set-low-power-mode",
-        .flag        = 'E',
-        .with_arg    = xmce_set_low_power_mode,
-        .values      = "enabled|disabled",
-        .usage       =
-            "set the low power mode; valid modes are:\n"
-            "'enabled' and 'disabled'\n"
-    },
-    {
-        .name        = "set-suspend-policy",
-        .flag        = 's',
-        .with_arg    = xmce_set_suspend_policy,
-        .values      = "enabled|disabled|early",
-        .usage       =
-            "set the autosuspend mode; valid modes are:\n"
-            "'enabled', 'disabled' and 'early'\n"
-    },
-    {
-        .name        = "set-cpu-scaling-governor",
-        .flag        = 'S',
-        .with_arg    = xmce_set_cpu_scaling_governor,
-        .values      = "automatic|performance|interactive",
-        .usage       =
-            "set the cpu scaling governor override; valid\n"
-            "modes are: 'automatic', 'performance',\n"
-            "'interactive'\n"
-    },
+        {
+                .name        = "unblank-screen",
+                .flag        = 'U',
+                .without_arg = mcetool_do_unblank_screen,
+                .usage       =
+                        "send display on request\n"
+        },
+        {
+                .name        = "dim-screen",
+                .flag        = 'd',
+                .without_arg = mcetool_do_dim_screen,
+                .usage       =
+                        "send display dim request\n"
+        },
+        {
+                .name        = "blank-screen",
+                .flag        = 'n',
+                .without_arg = mcetool_do_blank_screen,
+                .usage       =
+                        "send display off request\n"
+        },
+        {
+                .name        = "blank-prevent",
+                .flag        = 'P',
+                .without_arg = xmce_prevent_display_blanking,
+                .usage       =
+                        "send blank prevent request\n"
+        },
+        {
+                .name        = "cancel-blank-prevent",
+                .flag        = 'v',
+                .without_arg = xmce_allow_display_blanking,
+                .usage       =
+                        "send cancel blank prevent request\n"
+        },
+        {
+                .name        = "set-dim-timeout",
+                .flag        = 'G',
+                .with_arg    = xmce_set_dim_timeout,
+                .values      = "secs",
+                .usage       =
+                        "set the automatic dimming timeout\n"
+        },
+        {
+                .name        = "set-dim-timeouts",
+                .flag        = 'O',
+                .with_arg    = xmce_set_dim_timeouts,
+                .values      = "secs,secs,...",
+                .usage       =
+                        "set the allowed dim timeouts; valid list must\n"
+                        "must have 5 entries, in ascending order\n"
+        },
+        {
+                .name        = "set-adaptive-dimming-mode",
+                .flag        = 'f',
+                .with_arg    = xmce_set_adaptive_dimming_mode,
+                .values      = "enabled|disabled",
+                .usage       =
+                        "set the adaptive dimming mode; valid modes are:\n"
+                        "  'enabled' and 'disabled'\n"
+        },
+        {
+                .name        = "set-adaptive-dimming-time",
+                .flag        = 'J',
+                .with_arg    = xmce_set_adaptive_dimming_time,
+                .values      = "secs",
+                .usage       =
+                        "set the adaptive dimming threshold\n"
+        },
+        {
+                .name        = "set-blank-timeout",
+                .flag        = 'o',
+                .with_arg    = xmce_set_blank_timeout,
+                .values      = "secs",
+                .usage       =
+                        "set the automatic blanking timeout\n"
+        },
+        {
+                .name        = "set-never-blank",
+                .flag        = 'j',
+                .with_arg    = xmce_set_never_blank,
+                .values      = "enabled|disabled",
+                .usage       =
+                        "set never blank mode; valid modes are:\n"
+                        "'disabled', 'enabled'\n"
+        },
+        {
+                .name        = "set-autolock-mode",
+                .flag        = 'K',
+                .with_arg    = xmce_set_autolock_mode,
+                .values      = "enabled|disabled",
+                .usage       =
+                        "set the autolock mode; valid modes are:\n"
+                        "'enabled' and 'disabled'\n"
+        },
+        {
+                .name        = "set-tklock-blank",
+                .flag        = 't',
+                .with_arg    = xmce_set_tklock_blank,
+                .values      = "enabled|disabled",
+                .usage       =
+                        "set the touchscreen/keypad autoblank mode;\n"
+                        "valid modes are: 'enabled' and 'disabled'\n"
+        },
+        {
+                .name        = "set-inhibit-mode",
+                .flag        = 'I',
+                .with_arg    = xmce_set_inhibit_mode,
+                .values      = "disabled|stay-on-with-charger|stay-on|stay-dim-with-charger|stay-dim",
+                .usage       =
+                        "set the blanking inhibit mode to MODE;\n"
+                        "valid modes are:\n"
+                        "'disabled',\n"
+                        "'stay-on-with-charger', 'stay-on',\n"
+                        "'stay-dim-with-charger', 'stay-dim'\n"
+        },
+        {
+                .name        = "set-tklock-mode",
+                .flag        = 'k',
+                .with_arg    = xmce_set_tklock_mode,
+                .values      = "locked|locked-dim|locked-delay|unlocked",
+                .usage       =
+                        "set the touchscreen/keypad lock mode;\n"
+                        "valid modes are:\n"
+                        "'locked', 'locked-dim',\n"
+                        "'locked-delay',\n"
+                        "and 'unlocked'\n"
+        },
+        {
+                .name        = "tklock-callback",
+                .flag        = 'm',
+                .with_arg    = xmce_tklock_callback,
+                .values      = "unlock|retry|timeout|closed",
+                .usage       =
+                        "simulate tklock callback from systemui\n"
+        },
+        {
+                .name        = "tklock-open",
+                .flag        = 'q',
+                .with_arg    = xmce_tklock_open,
+                .values      = "oneinput|visual|lpm|pause",
+                .usage       =
+                        "simulate tklock open from mce\n"
+        },
+        {
+                .name        = "tklock-close",
+                .flag        = 'Q',
+                .without_arg = xmce_tklock_close,
+                .usage       =
+                        "simulate tklock close from mce\n"
+        },
+        {
+                .name        = "set-doubletap-mode",
+                .flag        = 'M',
+                .with_arg    = xmce_set_doubletap_mode,
+                .values      = "disabled|show-unlock-screen|unlock",
+                .usage       =
+                        "set the autolock mode; valid modes are:\n"
+                        "'disabled', 'show-unlock-screen', 'unlock'\n"
+        },
+        {
+                .name        = "set-doubletap-wakeup",
+                .flag        = 'z',
+                .with_arg    = xmce_set_doubletap_wakeup,
+                .values      = "never|always|proximity",
+                .usage       =
+                        "set the doubletap wakeup mode; valid modes are:\n"
+                        "'never', 'always', 'proximity'\n"
+        },
+        {
+                .name        = "set-powerkey-action",
+                .flag        = 'Z',
+                .with_arg    = xmce_set_powerkey_action,
+                .values      = "never|always|proximity",
+                .usage       =
+                        "set the doubletap wakeup mode; valid modes are:\n"
+                        "'never', 'always', 'proximity'\n"
+        },
+        {
+                .name        = "enable-radio",
+                .flag        = 'r',
+                .with_arg    = xmce_enable_radio,
+                .values      = "master|cellular|wlan|bluetooth",
+                .usage       =
+                        "enable the specified radio; valid radios are:\n"
+                        "'master', 'cellular',\n"
+                        "'wlan' and 'bluetooth';\n"
+                        "'master' affects all radios\n"
+        },
+        {
+                .name        = "disable-radio",
+                .flag        = 'R',
+                .with_arg    = xmce_disable_radio,
+                .values      = "master|cellular|wlan|bluetooth",
+                .usage       =
+                        "disable the specified radio; valid radios are:\n"
+                        "'master', 'cellular',\n"
+                        "'wlan' and 'bluetooth';\n"
+                        "'master' affects all radios\n"
+        },
+        {
+                .name        = "set-power-saving-mode",
+                .flag        = 'p',
+                .with_arg    = xmce_set_power_saving_mode,
+                .values      = "enabled|disabled",
+                .usage       =
+                        "set the power saving mode; valid modes are:\n"
+                        "'enabled' and 'disabled'\n"
+        },
+        {
+                .name        = "set-psm-threshold",
+                .flag        = 'T',
+                .with_arg    = xmce_set_psm_threshold,
+                .values      = "10|20|30|40|50",
+                .usage       =
+                        "set the threshold for the power saving mode;\n"
+                        "valid values are:\n"
+                        "10, 20, 30, 40, 50\n"
+        },
+        {
+                .name        = "set-forced-psm",
+                .flag        = 'F',
+                .with_arg    = xmce_set_forced_psm,
+                .values      = "enabled|disabled",
+                .usage       =
+                        "the forced power saving mode to MODE;\n"
+                        "valid modes are:\n"
+                        "'enabled' and 'disabled'\n"
+        },
+        {
+                .name        = "set-low-power-mode",
+                .flag        = 'E',
+                .with_arg    = xmce_set_low_power_mode,
+                .values      = "enabled|disabled",
+                .usage       =
+                        "set the low power mode; valid modes are:\n"
+                        "'enabled' and 'disabled'\n"
+        },
+        {
+                .name        = "set-suspend-policy",
+                .flag        = 's',
+                .with_arg    = xmce_set_suspend_policy,
+                .values      = "enabled|disabled|early",
+                .usage       =
+                        "set the autosuspend mode; valid modes are:\n"
+                        "'enabled', 'disabled' and 'early'\n"
+        },
+        {
+                .name        = "set-cpu-scaling-governor",
+                .flag        = 'S',
+                .with_arg    = xmce_set_cpu_scaling_governor,
+                .values      = "automatic|performance|interactive",
+                .usage       =
+                        "set the cpu scaling governor override; valid\n"
+                        "modes are: 'automatic', 'performance',\n"
+                        "'interactive'\n"
+        },
 #ifdef ENABLE_DOUBLETAP_EMULATION
-    {
-        .name        = "set-fake-doubletap",
-        .flag        = 'i',
-        .with_arg    = xmce_set_fake_doubletap,
-        .values      = "enabled|disabled",
-        .usage       =
-        "set the doubletap emulation mode; valid modes are:\n"
-        "  'enabled' and 'disabled'\n"
-    },
+        {
+                .name        = "set-fake-doubletap",
+                .flag        = 'i',
+                .with_arg    = xmce_set_fake_doubletap,
+                .values      = "enabled|disabled",
+                .usage       =
+                        "set the doubletap emulation mode; valid modes are:\n"
+                        "  'enabled' and 'disabled'\n"
+        },
 #endif
-    {
-        .name        = "set-display-brightness",
-        .flag        = 'b',
-        .with_arg    = xmce_set_display_brightness,
-        .values      = "1...100",
-        .usage       =
-            "set the display brightness to BRIGHTNESS;\n"
-            "valid values are: 1-100\n"
-    },
-    {
-        .name        = "set-als-mode",
-        .flag        = 'g',
-        .with_arg    = xmce_set_als_mode,
-        .values      = "enabled|disabled",
-        .usage       =
-            "set the als mode; valid modes are:\n"
-            "'enabled' and 'disabled'\n"
-    },
-    {
-        .name        = "set-ps-mode",
-        .flag        = 'u',
-        .with_arg    = xmce_set_ps_mode,
-        .values      = "enabled|disabled",
-            "set the ps mode; valid modes are:\n"
-            "'enabled' and 'disabled'\n"
-    },
-    {
-        .name        = "get-color-profile-ids",
-        .flag        = 'a',
-        .without_arg = xmce_get_color_profile_ids,
-        .usage       =
-            "get available color profile ids\n"
-    },
-    {
-        .name        = "set-color-profile",
-        .flag        = 'A',
-        .with_arg    = xmce_set_color_profile,
-        .values      = "ID",
-        .usage       =
-            "set the color profile to ID; valid ID names\n"
-            "can be obtained with --get-color-profile-ids\n"
-    },
-    {
-        .name        = "set-cabc-mode",
-        .flag        = 'C',
-        .with_arg    = xmce_set_cabc_mode,
-        .values      = "off|ui|still-image|moving-image",
-        .usage       =
-            "set the CABC mode\n"
-            "valid modes are:\n"
-            "'off', 'ui', 'still-image' and 'moving-image'\n"
-    },
-    {
-        .name        = "set-call-state",
-        .flag        = 'c',
-        .with_arg    = xmce_set_call_state,
-        .values      = "none|ringing|active|service>:<normal|emergency",
-        .usage       =
-            "set the call state and type\n"
-            "Valid states are: none, ringing, active and service.\n"
-            "Valid types are: normal and emergency.\n"
-    },
-    {
-        .name        = "enable-led",
-        .flag        = 'l',
-        .without_arg = mcetool_do_enable_led,
-        .usage       =
-            "enable LED framework\n"
-    },
-    {
-        .name        = "disable-led",
-        .flag        = 'L',
-        .without_arg = mcetool_do_disable_led,
-        .usage       =
-            "disable LED framework\n"
-    },
-    {
-        .name        = "activate-led-pattern",
-        .flag        = 'y',
-        .with_arg    = mcetool_do_activate_pattern,
-        .values      = "PATTERN",
-        .usage       =
-        "activate a LED pattern\n"
-    },
-    {
-        .name        = "deactivate-led-pattern",
-        .flag        = 'Y',
-        .with_arg    = mcetool_do_deactivate_pattern,
-        .values      = "PATTERN",
-        .usage       =
-        "deactivate a LED pattern\n"
-    },
-    {
-        .name        = "set-sw-breathing",
-        .with_arg    = set_led_breathing_enabled,
-        .values      = "enabled|disabled",
-        .usage       =
-            "Allow/deny using smooth timer based led transitions instead of just\n"
-            "HW based blinking. Note that enabling this feature means that the\n"
-            "device can't suspend while the led is breathing which will increase\n"
-            "the battery consumption significantly.\n"
-    },
-    {
-        .name        = "set-sw-breathing-limit",
-        .with_arg    = set_led_breathing_limit,
-        .values      = "0 ... 100",
-        .usage       =
-            "If charger is not connected, the led breathing is enabled only if\n"
-            "battery level is greater than the limit given. Setting limit to 100%\n"
-            "allows breathing only when charger is connected.\n"
-    },
-    {
-        .name        = "powerkey-event",
-        .flag        = 'e',
-        .with_arg    = xmce_powerkey_event,
-        .values      = "short|double|long",
-        .usage       =
-            "trigger a powerkey event; valid types are:\n"
-            "'short', 'double' and 'long'\n"
-    },
-    {
-        .name        = "set-demo-mode",
-        .flag        = 'D',
-        .with_arg    = xmce_set_demo_mode,
-        .values      = "on|off",
-        .usage       =
-            "set the display demo mode  to STATE;\n"
-            "valid states are: 'on' and 'off'\n"
-    },
-    {
-        .name        = "set-lipstick-core-delay",
-        .with_arg    = xmce_set_lipstick_core_delay,
-        .values      = "secs",
-        .usage       =
-            "set the delay for dumping core from unresponsive lipstick\n"
-    },
-    {
-        .name        = "begin-notification",
-        .with_arg    = xmce_notification_begin,
-        .without_arg = xmce_notification_begin,
-        .values      = "name[,duration_ms[,renew_ms]]",
-        .usage       =
-            "start notification ui exception\n"
-    },
-    {
-        .name        = "end-notification",
-        .with_arg    = xmce_notification_end,
-        .without_arg = xmce_notification_end,
-        .values      = "name[,linger_ms]",
-        .usage       =
-            "end notification ui exception\n"
-    },
-    {
-        .name        = "status",
-        .flag        = 'N',
-        .without_arg = xmce_get_status,
-        .usage       =
-            "output MCE status\n"
-    },
-    {
-        .name        = "block",
-        .flag        = 'B',
-        .with_arg    = mcetool_block,
-        .without_arg = mcetool_block,
-        .values      = "secs",
-        .usage       =
-            "Block after executing commands\n"
-            "for D-Bus\n"
-    },
-    {
-        .name        = "help",
-        .flag        = 'h',
-        .with_arg    = mcetool_do_help,
-        .without_arg = mcetool_do_help,
-        .values      = "OPTION|\"all\"",
-        .usage       =
-            "display list of options and exit\n"
-            "\n"
-            "If the optional argument is given, more detailed information is\n"
-            "given about matching options. Using \"all\" lists all options\n"
-    },
-    {
-        .name        = "long-help",
-        .flag        = 'H',
-        .with_arg    = mcetool_do_long_help,
-        .without_arg = mcetool_do_long_help,
-        .values      = "OPTION",
-        .usage       =
-            "display full usage information  and exit\n"
-            "\n"
-            "If the optional argument is given, information is given only\n"
-            "about matching options.\n"
-    },
-    {
-        .name        = "version",
-        .flag        = 'V',
-        .without_arg = mcetool_do_version,
-        .usage       =
-            "output version information and exit\n"
+        {
+                .name        = "set-display-brightness",
+                .flag        = 'b',
+                .with_arg    = xmce_set_display_brightness,
+                .values      = "1...100",
+                .usage       =
+                        "set the display brightness to BRIGHTNESS;\n"
+                        "valid values are: 1-100\n"
+        },
+        {
+                .name        = "set-als-mode",
+                .flag        = 'g',
+                .with_arg    = xmce_set_als_mode,
+                .values      = "enabled|disabled",
+                .usage       =
+                        "set the als mode; valid modes are:\n"
+                        "'enabled' and 'disabled'\n"
+        },
+        {
+                .name        = "set-ps-mode",
+                .flag        = 'u',
+                .with_arg    = xmce_set_ps_mode,
+                .values      = "enabled|disabled",
+                        "set the ps mode; valid modes are:\n"
+                        "'enabled' and 'disabled'\n"
+        },
+        {
+                .name        = "get-color-profile-ids",
+                .flag        = 'a',
+                .without_arg = xmce_get_color_profile_ids,
+                .usage       =
+                        "get available color profile ids\n"
+        },
+        {
+                .name        = "set-color-profile",
+                .flag        = 'A',
+                .with_arg    = xmce_set_color_profile,
+                .values      = "ID",
+                .usage       =
+                        "set the color profile to ID; valid ID names\n"
+                        "can be obtained with --get-color-profile-ids\n"
+        },
+        {
+                .name        = "set-cabc-mode",
+                .flag        = 'C',
+                .with_arg    = xmce_set_cabc_mode,
+                .values      = "off|ui|still-image|moving-image",
+                .usage       =
+                        "set the CABC mode\n"
+                        "valid modes are:\n"
+                        "'off', 'ui', 'still-image' and 'moving-image'\n"
+        },
+        {
+                .name        = "set-call-state",
+                .flag        = 'c',
+                .with_arg    = xmce_set_call_state,
+                .values      = "none|ringing|active|service>:<normal|emergency",
+                .usage       =
+                        "set the call state and type\n"
+                        "Valid states are: none, ringing, active and service.\n"
+                        "Valid types are: normal and emergency.\n"
+        },
+        {
+                .name        = "enable-led",
+                .flag        = 'l',
+                .without_arg = mcetool_do_enable_led,
+                .usage       =
+                        "enable LED framework\n"
+        },
+        {
+                .name        = "disable-led",
+                .flag        = 'L',
+                .without_arg = mcetool_do_disable_led,
+                .usage       =
+                        "disable LED framework\n"
+        },
+        {
+                .name        = "activate-led-pattern",
+                .flag        = 'y',
+                .with_arg    = mcetool_do_activate_pattern,
+                .values      = "PATTERN",
+                .usage       =
+                        "activate a LED pattern\n"
+        },
+        {
+                .name        = "deactivate-led-pattern",
+                .flag        = 'Y',
+                .with_arg    = mcetool_do_deactivate_pattern,
+                .values      = "PATTERN",
+                .usage       =
+                        "deactivate a LED pattern\n"
+        },
+        {
+                .name        = "set-sw-breathing",
+                .with_arg    = set_led_breathing_enabled,
+                .values      = "enabled|disabled",
+                .usage       =
+                        "Allow/deny using smooth timer based led transitions instead of just\n"
+                        "HW based blinking. Note that enabling this feature means that the\n"
+                        "device can't suspend while the led is breathing which will increase\n"
+                        "the battery consumption significantly.\n"
+        },
+        {
+                .name        = "set-sw-breathing-limit",
+                .with_arg    = set_led_breathing_limit,
+                .values      = "0 ... 100",
+                .usage       =
+                        "If charger is not connected, the led breathing is enabled only if\n"
+                        "battery level is greater than the limit given. Setting limit to 100%\n"
+                        "allows breathing only when charger is connected.\n"
+        },
+        {
+                .name        = "powerkey-event",
+                .flag        = 'e',
+                .with_arg    = xmce_powerkey_event,
+                .values      = "short|double|long",
+                .usage       =
+                        "trigger a powerkey event; valid types are:\n"
+                        "'short', 'double' and 'long'\n"
+        },
+        {
+                .name        = "set-demo-mode",
+                .flag        = 'D',
+                .with_arg    = xmce_set_demo_mode,
+                .values      = "on|off",
+                .usage       =
+                        "set the display demo mode  to STATE;\n"
+                        "valid states are: 'on' and 'off'\n"
+        },
+        {
+                .name        = "set-lipstick-core-delay",
+                .with_arg    = xmce_set_lipstick_core_delay,
+                .values      = "secs",
+                .usage       =
+                        "set the delay for dumping core from unresponsive lipstick\n"
+        },
+        {
+                .name        = "begin-notification",
+                .with_arg    = xmce_notification_begin,
+                .without_arg = xmce_notification_begin,
+                .values      = "name[,duration_ms[,renew_ms]]",
+                .usage       =
+                        "start notification ui exception\n"
+        },
+        {
+                .name        = "end-notification",
+                .with_arg    = xmce_notification_end,
+                .without_arg = xmce_notification_end,
+                .values      = "name[,linger_ms]",
+                .usage       =
+                        "end notification ui exception\n"
+        },
+        {
+                .name        = "status",
+                .flag        = 'N',
+                .without_arg = xmce_get_status,
+                .usage       =
+                        "output MCE status\n"
+        },
+        {
+                .name        = "block",
+                .flag        = 'B',
+                .with_arg    = mcetool_block,
+                .without_arg = mcetool_block,
+                .values      = "secs",
+                .usage       =
+                        "Block after executing commands\n"
+                        "for D-Bus\n"
+        },
+        {
+                .name        = "help",
+                .flag        = 'h',
+                .with_arg    = mcetool_do_help,
+                .without_arg = mcetool_do_help,
+                .values      = "OPTION|\"all\"",
+                .usage       =
+                        "display list of options and exit\n"
+                        "\n"
+                        "If the optional argument is given, more detailed information is\n"
+                        "given about matching options. Using \"all\" lists all options\n"
+        },
+        {
+                .name        = "long-help",
+                .flag        = 'H',
+                .with_arg    = mcetool_do_long_help,
+                .without_arg = mcetool_do_long_help,
+                .values      = "OPTION",
+                .usage       =
+                        "display full usage information  and exit\n"
+                        "\n"
+                        "If the optional argument is given, information is given only\n"
+                        "about matching options.\n"
+        },
+        {
+                .name        = "version",
+                .flag        = 'V',
+                .without_arg = mcetool_do_version,
+                .usage       =
+                        "output version information and exit\n"
 
-    },
+        },
 
-    // sentinel
-    {
-        .name = 0
-    }
+        // sentinel
+        {
+                .name = 0
+        }
 };
 
 /** Version information */
@@ -3535,10 +3535,10 @@ PROG_NAME" v"G_STRINGIFY(PRG_VERSION)"\n"
 
 static bool mcetool_do_version(const char *arg)
 {
-    (void)arg;
+        (void)arg;
 
-    printf("%s\n", version_text);
-    exit(EXIT_SUCCESS);
+        printf("%s\n", version_text);
+        exit(EXIT_SUCCESS);
 }
 
 static bool mcetool_do_help(const char *arg)
@@ -3598,7 +3598,7 @@ int main(int argc, char **argv)
 
         /* Non-flag arguments are quick help patterns */
         if( optind < argc ) {
-            mce_command_line_usage_keys(options, argv + optind);
+                mce_command_line_usage_keys(options, argv + optind);
         }
 
         exitcode = EXIT_SUCCESS;

@@ -100,87 +100,87 @@ static gboolean key_backlight_is_enabled = FALSE;
 /** Key backlight channel 0 LED current path */
 static output_state_t led_current_kb0_output =
 {
-  .context = "led_current_kb0",
-  .truncate_file = TRUE,
-  .close_on_exit = FALSE,
+	.context = "led_current_kb0",
+	.truncate_file = TRUE,
+	.close_on_exit = FALSE,
 };
 /** Key backlight channel 1 LED current path */
 static output_state_t led_current_kb1_output =
 {
-  .context = "led_current_kb1",
-  .truncate_file = TRUE,
-  .close_on_exit = FALSE,
+	.context = "led_current_kb1",
+	.truncate_file = TRUE,
+	.close_on_exit = FALSE,
 };
 /** Key backlight channel 2 LED current path */
 static output_state_t led_current_kb2_output =
 {
-  .context = "led_current_kb2",
-  .truncate_file = TRUE,
-  .close_on_exit = FALSE,
+	.context = "led_current_kb2",
+	.truncate_file = TRUE,
+	.close_on_exit = FALSE,
 };
 /** Key backlight channel 3 LED current path */
 static output_state_t led_current_kb3_output =
 {
-  .context = "led_current_kb3",
-  .truncate_file = TRUE,
-  .close_on_exit = FALSE,
+	.context = "led_current_kb3",
+	.truncate_file = TRUE,
+	.close_on_exit = FALSE,
 };
 /** Key backlight channel 4 LED current path */
 static output_state_t led_current_kb4_output =
 {
-  .context = "led_current_kb4",
-  .truncate_file = TRUE,
-  .close_on_exit = FALSE,
+	.context = "led_current_kb4",
+	.truncate_file = TRUE,
+	.close_on_exit = FALSE,
 };
 /** Key backlight channel 5 LED current path */
 static output_state_t led_current_kb5_output =
 {
-  .context = "led_current_kb5",
-  .truncate_file = TRUE,
-  .close_on_exit = FALSE,
+	.context = "led_current_kb5",
+	.truncate_file = TRUE,
+	.close_on_exit = FALSE,
 };
 
 /** Key backlight channel 0 backlight path */
 static output_state_t led_brightness_kb0_output =
 {
-  .context = "led_brightness_kb0",
-  .truncate_file = TRUE,
-  .close_on_exit = FALSE,
+	.context = "led_brightness_kb0",
+	.truncate_file = TRUE,
+	.close_on_exit = FALSE,
 };
 /** Key backlight channel 1 backlight path */
 static output_state_t led_brightness_kb1_output =
 {
-  .context = "led_brightness_kb1",
-  .truncate_file = TRUE,
-  .close_on_exit = FALSE,
+	.context = "led_brightness_kb1",
+	.truncate_file = TRUE,
+	.close_on_exit = FALSE,
 };
 /** Key backlight channel 2 backlight path */
 static output_state_t led_brightness_kb2_output =
 {
-  .context = "led_brightness_kb2",
-  .truncate_file = TRUE,
-  .close_on_exit = FALSE,
+	.context = "led_brightness_kb2",
+	.truncate_file = TRUE,
+	.close_on_exit = FALSE,
 };
 /** Key backlight channel 3 backlight path */
 static output_state_t led_brightness_kb3_output =
 {
-  .context = "led_brightness_kb3",
-  .truncate_file = TRUE,
-  .close_on_exit = FALSE,
+	.context = "led_brightness_kb3",
+	.truncate_file = TRUE,
+	.close_on_exit = FALSE,
 };
 /** Key backlight channel 4 backlight path */
 static output_state_t led_brightness_kb4_output =
 {
-  .context = "led_brightness_kb4",
-  .truncate_file = TRUE,
-  .close_on_exit = FALSE,
+	.context = "led_brightness_kb4",
+	.truncate_file = TRUE,
+	.close_on_exit = FALSE,
 };
 /** Key backlight channel 5 backlight path */
 static output_state_t led_brightness_kb5_output =
 {
-  .context = "led_brightness_kb5",
-  .truncate_file = TRUE,
-  .close_on_exit = FALSE,
+	.context = "led_brightness_kb5",
+	.truncate_file = TRUE,
+	.close_on_exit = FALSE,
 };
 
 /** Path to engine 3 mode */
@@ -195,21 +195,20 @@ static gchar *engine3_leds_path = NULL;
 /** File pointer for the N810 keypad fadetime */
 static output_state_t n810_keypad_fadetime_output =
 {
-  .context = "n810_keypad_fadetime",
-  .truncate_file = TRUE,
-  .close_on_exit = FALSE,
-  .path = MCE_KEYPAD_BACKLIGHT_FADETIME_SYS_PATH,
+	.context = "n810_keypad_fadetime",
+	.truncate_file = TRUE,
+	.close_on_exit = FALSE,
+	.path = MCE_KEYPAD_BACKLIGHT_FADETIME_SYS_PATH,
 };
 
 /** File pointer for the N810 keyboard fadetime */
 static output_state_t n810_keyboard_fadetime_output =
 {
-  .context = "n810_keyboard_fadetime",
-  .truncate_file = TRUE,
-  .close_on_exit = FALSE,
-  .path = MCE_KEYBOARD_BACKLIGHT_FADETIME_SYS_PATH,
+	.context = "n810_keyboard_fadetime",
+	.truncate_file = TRUE,
+	.close_on_exit = FALSE,
+	.path = MCE_KEYBOARD_BACKLIGHT_FADETIME_SYS_PATH,
 };
-
 
 /** Key backlight mask */
 static guint key_backlight_mask = 0;
@@ -288,8 +287,8 @@ static void setup_key_backlight(void)
  */
 static void set_lysti_backlight_brightness(guint fadetime, guint brightness)
 {
-	                       /* remux|bright| fade | stop
-			        * xxxx   xx            xxxx */
+	/*                        remux|bright| fade | stop
+	 *                        xxxx   xx            xxxx */
 	static gchar pattern[] = "9d80" "4000" "0000" "c000";
 	static gchar convert[] = "0123456789abcdef";
 	static gint old_brightness = 0;
@@ -764,8 +763,8 @@ const gchar *g_module_check_init(GModule *module)
 
 	key_backlight_fade_in_time =
 		mce_conf_get_int(MCE_CONF_KEYPAD_GROUP,
-			         MCE_CONF_KEY_BACKLIGHT_FADE_IN_TIME,
-			         DEFAULT_KEY_BACKLIGHT_FADE_IN_TIME);
+				 MCE_CONF_KEY_BACKLIGHT_FADE_IN_TIME,
+				 DEFAULT_KEY_BACKLIGHT_FADE_IN_TIME);
 
 	if (((key_backlight_fade_in_time % 125) != 0) &&
 	    (key_backlight_fade_in_time > 1000))
@@ -774,8 +773,8 @@ const gchar *g_module_check_init(GModule *module)
 
 	key_backlight_fade_out_time =
 		mce_conf_get_int(MCE_CONF_KEYPAD_GROUP,
-			         MCE_CONF_KEY_BACKLIGHT_FADE_OUT_TIME,
-			         DEFAULT_KEY_BACKLIGHT_FADE_OUT_TIME);
+				 MCE_CONF_KEY_BACKLIGHT_FADE_OUT_TIME,
+				 DEFAULT_KEY_BACKLIGHT_FADE_OUT_TIME);
 
 	if (((key_backlight_fade_out_time % 125) != 0) &&
 	    (key_backlight_fade_out_time > 1000))

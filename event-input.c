@@ -436,11 +436,11 @@ static evdevinfo_t *evdevinfo_create(void)
  */
 static void evdevinfo_delete(evdevinfo_t *self)
 {
-  if( self ) {
-	  for( int i = 0; i < EV_CNT; ++i )
-		  evdevbits_delete(self->mask[i]);
-	  g_free(self);
-  }
+	if( self ) {
+		for( int i = 0; i < EV_CNT; ++i )
+			evdevbits_delete(self->mask[i]);
+		g_free(self);
+	}
 }
 
 /** Check if event type is supported
@@ -452,10 +452,10 @@ static void evdevinfo_delete(evdevinfo_t *self)
  */
 static int evdevinfo_has_type(const evdevinfo_t *self, int type)
 {
-  int res = 0;
-  if( (unsigned)type < EV_CNT )
+	int res = 0;
+	if( (unsigned)type < EV_CNT )
 		res = evdevbits_test(self->mask[0], type);
-  return res;
+	return res;
 }
 
 /** Check if any of given event types are supported
@@ -467,12 +467,12 @@ static int evdevinfo_has_type(const evdevinfo_t *self, int type)
  */
 static int evdevinfo_has_types(const evdevinfo_t *self, const int *types)
 {
-  int res = 0;
-  for( size_t i = 0; types[i] >= 0; ++i ) {
-	  if( (res = evdevinfo_has_type(self, types[i])) )
-		  break;
-  }
-  return res;
+	int res = 0;
+	for( size_t i = 0; types[i] >= 0; ++i ) {
+		if( (res = evdevinfo_has_type(self, types[i])) )
+			break;
+	}
+	return res;
 }
 
 /** Check if event code is supported
@@ -697,17 +697,17 @@ static evdev_type_t get_evdev_type(int fd)
 
 	/* All event classes except EV_ABS */
 	static const int all_but_abs_lut[] = {
-	  EV_KEY,
-	  EV_REL,
-	  EV_MSC,
-	  EV_SW,
-	  EV_LED,
-	  EV_SND,
-	  EV_REP,
-	  EV_FF,
-	  EV_PWR,
-	  EV_FF_STATUS,
-	  -1
+		EV_KEY,
+		EV_REL,
+		EV_MSC,
+		EV_SW,
+		EV_LED,
+		EV_SND,
+		EV_REP,
+		EV_FF,
+		EV_PWR,
+		EV_FF_STATUS,
+		-1
 	};
 
 	/* Ambient light and proximity sensor inputs */
@@ -1095,15 +1095,15 @@ EXIT:
  */
 static void input_grab_request_grab(input_grab_t *self, bool want_grab)
 {
-    if( self->ig_want_grab == want_grab )
-	goto EXIT;
+	if( self->ig_want_grab == want_grab )
+		goto EXIT;
 
-    self->ig_want_grab = want_grab;
+	self->ig_want_grab = want_grab;
 
-    input_grab_rethink(self);
+	input_grab_rethink(self);
 
 EXIT:
-    return;
+	return;
 }
 
 /** Callback for changing iomonitor input grab state
@@ -1314,17 +1314,17 @@ static void ts_grab_event_filter_cb(struct input_event *ev)
 	case EV_ABS:
 		switch( ev->code ) {
 		case ABS_MT_POSITION_X:
-		  x = true;
-		  break;
+			x = true;
+			break;
 
 		case ABS_MT_POSITION_Y:
-		  y = true;
-		  break;
+			y = true;
+			break;
 
 		case ABS_MT_TOUCH_MAJOR:
 		case ABS_MT_PRESSURE:
-		  p = true;
-		  break;
+			p = true;
+			break;
 
 		default:
 			break;
@@ -2264,7 +2264,7 @@ static void match_and_register_io_monitor(const gchar *filename)
 	}
 
 	/* Get name of the evdev node */
-        if (ioctl(fd, EVIOCGNAME(sizeof name), name) < 0) {
+	if (ioctl(fd, EVIOCGNAME(sizeof name), name) < 0) {
 		mce_log(LL_WARN,
 			"ioctl(EVIOCGNAME) failed on `%s'",
 			filename);

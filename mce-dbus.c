@@ -233,11 +233,11 @@ typedef gboolean (*handler_callback_t)(DBusMessage *const msg);
 /** D-Bus handler structure */
 typedef struct
 {
-        handler_callback_t  callback;   /**< Handler callback */
-        gchar              *interface;  /**< The interface to listen on */
-        gchar              *rules;      /**< Additional matching rules */
-        gchar              *name;       /**< Method call or signal name */
-        int                 type;       /**< DBUS_MESSAGE_TYPE */
+	handler_callback_t  callback;   /**< Handler callback */
+	gchar              *interface;  /**< The interface to listen on */
+	gchar              *rules;      /**< Additional matching rules */
+	gchar              *name;       /**< Method call or signal name */
+	int                 type;       /**< DBUS_MESSAGE_TYPE */
 } handler_struct_t;
 
 /** Set handler type for D-Bus handler structure */
@@ -723,11 +723,11 @@ pid_t dbus_get_pid_from_bus_name(const gchar *const bus_name)
 	DBusMessage *reply;
 
 	if ((reply = dbus_send_with_block("org.freedesktop.DBus",
-				          "/org/freedesktop/DBus/Bus",
-				          "org.freedesktop.DBus",
-				          "GetConnectionUnixProcessID", -1,
-				          DBUS_TYPE_STRING, &bus_name,
-				          DBUS_TYPE_INVALID)) != NULL) {
+					  "/org/freedesktop/DBus/Bus",
+					  "org.freedesktop.DBus",
+					  "GetConnectionUnixProcessID", -1,
+					  DBUS_TYPE_STRING, &bus_name,
+					  DBUS_TYPE_INVALID)) != NULL) {
 		dbus_message_get_args(reply, NULL,
 				      DBUS_TYPE_UINT32, &pid,
 				      DBUS_TYPE_INVALID);
@@ -1228,7 +1228,7 @@ EXIT:
  */
 static void value_list_free(GSList *list)
 {
-  g_slist_free_full(list, (GDestroyNotify)gconf_value_free);
+	g_slist_free_full(list, (GDestroyNotify)gconf_value_free);
 }
 
 /** Convert D-Bus string array into GSList of GConfValue objects
@@ -1519,7 +1519,6 @@ EXIT:
 	g_clear_error(&err);
 	dbus_error_free(&error);
 
-
 	return status;
 }
 
@@ -1677,18 +1676,18 @@ EXIT:
  */
 static bool mce_dbus_match(const char *msg_val, const char *hnd_val)
 {
-        /* Special case 1: If message attribute has null value,
-         *                 no handler value can be a match */
-        if( !msg_val )
-                return false;
+	/* Special case 1: If message attribute has null value,
+	 *                 no handler value can be a match */
+	if( !msg_val )
+		return false;
 
-        /* Special case 2: If handler attribyte has null value,
-         *                 it mathes any non-null message value. */
-        if( !hnd_val )
-                return true;
+	/* Special case 2: If handler attribyte has null value,
+	 *                 it mathes any non-null message value. */
+	if( !hnd_val )
+		return true;
 
-        /* Normally we just test for string equality */
-        return !strcmp(msg_val, hnd_val);
+	/* Normally we just test for string equality */
+	return !strcmp(msg_val, hnd_val);
 }
 
 /**
@@ -2177,29 +2176,29 @@ EXIT:
 const char *
 mce_dbus_type_repr(int type)
 {
-    const char *res = "UNKNOWN";
-    switch( type ) {
-    case DBUS_TYPE_INVALID:     res = "INVALID";     break;
-    case DBUS_TYPE_BYTE:        res = "BYTE";        break;
-    case DBUS_TYPE_BOOLEAN:     res = "BOOLEAN";     break;
-    case DBUS_TYPE_INT16:       res = "INT16";       break;
-    case DBUS_TYPE_UINT16:      res = "UINT16";      break;
-    case DBUS_TYPE_INT32:       res = "INT32";       break;
-    case DBUS_TYPE_UINT32:      res = "UINT32";      break;
-    case DBUS_TYPE_INT64:       res = "INT64";       break;
-    case DBUS_TYPE_UINT64:      res = "UINT64";      break;
-    case DBUS_TYPE_DOUBLE:      res = "DOUBLE";      break;
-    case DBUS_TYPE_STRING:      res = "STRING";      break;
-    case DBUS_TYPE_OBJECT_PATH: res = "OBJECT_PATH"; break;
-    case DBUS_TYPE_SIGNATURE:   res = "SIGNATURE";   break;
-    case DBUS_TYPE_UNIX_FD:     res = "UNIX_FD";     break;
-    case DBUS_TYPE_ARRAY:       res = "ARRAY";       break;
-    case DBUS_TYPE_VARIANT:     res = "VARIANT";     break;
-    case DBUS_TYPE_STRUCT:      res = "STRUCT";      break;
-    case DBUS_TYPE_DICT_ENTRY:  res = "DICT_ENTRY";  break;
-    default: break;
-    }
-    return res;
+	const char *res = "UNKNOWN";
+	switch( type ) {
+	case DBUS_TYPE_INVALID:     res = "INVALID";     break;
+	case DBUS_TYPE_BYTE:        res = "BYTE";        break;
+	case DBUS_TYPE_BOOLEAN:     res = "BOOLEAN";     break;
+	case DBUS_TYPE_INT16:       res = "INT16";       break;
+	case DBUS_TYPE_UINT16:      res = "UINT16";      break;
+	case DBUS_TYPE_INT32:       res = "INT32";       break;
+	case DBUS_TYPE_UINT32:      res = "UINT32";      break;
+	case DBUS_TYPE_INT64:       res = "INT64";       break;
+	case DBUS_TYPE_UINT64:      res = "UINT64";      break;
+	case DBUS_TYPE_DOUBLE:      res = "DOUBLE";      break;
+	case DBUS_TYPE_STRING:      res = "STRING";      break;
+	case DBUS_TYPE_OBJECT_PATH: res = "OBJECT_PATH"; break;
+	case DBUS_TYPE_SIGNATURE:   res = "SIGNATURE";   break;
+	case DBUS_TYPE_UNIX_FD:     res = "UNIX_FD";     break;
+	case DBUS_TYPE_ARRAY:       res = "ARRAY";       break;
+	case DBUS_TYPE_VARIANT:     res = "VARIANT";     break;
+	case DBUS_TYPE_STRUCT:      res = "STRUCT";      break;
+	case DBUS_TYPE_DICT_ENTRY:  res = "DICT_ENTRY";  break;
+	default: break;
+	}
+	return res;
 }
 
 /** End of iterator reached predicate
@@ -2211,7 +2210,7 @@ mce_dbus_type_repr(int type)
 bool
 mce_dbus_iter_at_end(DBusMessageIter *iter)
 {
-    return dbus_message_iter_get_arg_type(iter) == DBUS_TYPE_INVALID;
+	return dbus_message_iter_get_arg_type(iter) == DBUS_TYPE_INVALID;
 }
 
 /** Iterator points to expected data type predicate
@@ -2226,17 +2225,17 @@ mce_dbus_iter_at_end(DBusMessageIter *iter)
 static bool
 mce_dbus_iter_req_type(DBusMessageIter *iter, int want)
 {
-    int have = dbus_message_iter_get_arg_type(iter);
+	int have = dbus_message_iter_get_arg_type(iter);
 
-    if( have == want ) {
-        return true;
-    }
+	if( have == want ) {
+		return true;
+	}
 
-    mce_log(LL_ERR, "expected: %s, got: %s",
-            mce_dbus_type_repr(want),
-            mce_dbus_type_repr(have));
+	mce_log(LL_ERR, "expected: %s, got: %s",
+		mce_dbus_type_repr(want),
+		mce_dbus_type_repr(have));
 
-    return false;
+	return false;
 }
 
 /** Iterator points to expected data type predicate
@@ -2251,18 +2250,18 @@ mce_dbus_iter_req_type(DBusMessageIter *iter, int want)
 static bool
 mce_dbus_iter_get_basic(DBusMessageIter *iter, void *pval, int type)
 {
-    if( !dbus_type_is_basic(type) ) {
-        mce_log(LL_ERR, "%s: is not basic dbus type",
-                mce_dbus_type_repr(type));
-        return false;
-    }
+	if( !dbus_type_is_basic(type) ) {
+		mce_log(LL_ERR, "%s: is not basic dbus type",
+			mce_dbus_type_repr(type));
+		return false;
+	}
 
-    if( !mce_dbus_iter_req_type(iter, type) )
-        return false;
+	if( !mce_dbus_iter_req_type(iter, type) )
+		return false;
 
-    dbus_message_iter_get_basic(iter, pval);
-    dbus_message_iter_next(iter);
-    return true;
+	dbus_message_iter_get_basic(iter, pval);
+	dbus_message_iter_next(iter);
+	return true;
 }
 
 /** Get object path string from dbus message iterator
@@ -2275,7 +2274,7 @@ mce_dbus_iter_get_basic(DBusMessageIter *iter, void *pval, int type)
 bool
 mce_dbus_iter_get_object(DBusMessageIter *iter, const char **pval)
 {
-    return mce_dbus_iter_get_basic(iter, pval, DBUS_TYPE_OBJECT_PATH);
+	return mce_dbus_iter_get_basic(iter, pval, DBUS_TYPE_OBJECT_PATH);
 }
 
 /** Get string from dbus message iterator
@@ -2288,7 +2287,7 @@ mce_dbus_iter_get_object(DBusMessageIter *iter, const char **pval)
 bool
 mce_dbus_iter_get_string(DBusMessageIter *iter, const char **pval)
 {
-    return mce_dbus_iter_get_basic(iter, pval, DBUS_TYPE_STRING);
+	return mce_dbus_iter_get_basic(iter, pval, DBUS_TYPE_STRING);
 }
 
 /** Get bool from dbus message iterator
@@ -2301,11 +2300,12 @@ mce_dbus_iter_get_string(DBusMessageIter *iter, const char **pval)
 bool
 mce_dbus_iter_get_bool(DBusMessageIter *iter, bool *pval)
 {
-    dbus_bool_t val = 0;
-    bool        res = mce_dbus_iter_get_basic(iter, &val, DBUS_TYPE_BOOLEAN);
-    if( res )
-        *pval = (val != 0);
-    return res;
+	dbus_bool_t val = 0;
+	bool        res = mce_dbus_iter_get_basic(iter, &val,
+						  DBUS_TYPE_BOOLEAN);
+	if( res )
+		*pval = (val != 0);
+	return res;
 }
 
 /** Get int32 from dbus message iterator
@@ -2318,7 +2318,7 @@ mce_dbus_iter_get_bool(DBusMessageIter *iter, bool *pval)
 bool
 mce_dbus_iter_get_int32(DBusMessageIter *iter, dbus_int32_t *pval)
 {
-    return mce_dbus_iter_get_basic(iter, pval, DBUS_TYPE_INT32);
+	return mce_dbus_iter_get_basic(iter, pval, DBUS_TYPE_INT32);
 }
 
 /** Get uint32 from dbus message iterator
@@ -2331,9 +2331,8 @@ mce_dbus_iter_get_int32(DBusMessageIter *iter, dbus_int32_t *pval)
 bool
 mce_dbus_iter_get_uint32(DBusMessageIter *iter, dbus_uint32_t *pval)
 {
-    return mce_dbus_iter_get_basic(iter, pval, DBUS_TYPE_UINT32);
+	return mce_dbus_iter_get_basic(iter, pval, DBUS_TYPE_UINT32);
 }
-
 
 /** Get sub iterator from dbus message iterator
  *
@@ -2345,20 +2344,20 @@ mce_dbus_iter_get_uint32(DBusMessageIter *iter, dbus_uint32_t *pval)
  */
 static bool
 mce_dbus_iter_get_container(DBusMessageIter *iter, DBusMessageIter *sub,
-                            int type)
+			    int type)
 {
-    if( !dbus_type_is_container(type) ) {
-        mce_log(LL_ERR, "%s: is not container dbus type",
-                mce_dbus_type_repr(type));
-        return false;
-    }
+	if( !dbus_type_is_container(type) ) {
+		mce_log(LL_ERR, "%s: is not container dbus type",
+			mce_dbus_type_repr(type));
+		return false;
+	}
 
-    if( !mce_dbus_iter_req_type(iter, type) )
-        return false;
+	if( !mce_dbus_iter_req_type(iter, type) )
+		return false;
 
-    dbus_message_iter_recurse(iter, sub);
-    dbus_message_iter_next(iter);
-    return true;
+	dbus_message_iter_recurse(iter, sub);
+	dbus_message_iter_next(iter);
+	return true;
 }
 
 /** Get array sub iterator from dbus message iterator
@@ -2371,7 +2370,7 @@ mce_dbus_iter_get_container(DBusMessageIter *iter, DBusMessageIter *sub,
 bool
 mce_dbus_iter_get_array(DBusMessageIter *iter, DBusMessageIter *sub)
 {
-    return mce_dbus_iter_get_container(iter, sub, DBUS_TYPE_ARRAY);
+	return mce_dbus_iter_get_container(iter, sub, DBUS_TYPE_ARRAY);
 }
 
 /** Get struct sub iterator from dbus message iterator
@@ -2384,7 +2383,7 @@ mce_dbus_iter_get_array(DBusMessageIter *iter, DBusMessageIter *sub)
 bool
 mce_dbus_iter_get_struct(DBusMessageIter *iter, DBusMessageIter *sub)
 {
-    return mce_dbus_iter_get_container(iter, sub, DBUS_TYPE_STRUCT);
+	return mce_dbus_iter_get_container(iter, sub, DBUS_TYPE_STRUCT);
 }
 
 /** Get dict entry sub iterator from dbus message iterator
@@ -2397,7 +2396,7 @@ mce_dbus_iter_get_struct(DBusMessageIter *iter, DBusMessageIter *sub)
 bool
 mce_dbus_iter_get_entry(DBusMessageIter *iter, DBusMessageIter *sub)
 {
-    return mce_dbus_iter_get_container(iter, sub, DBUS_TYPE_DICT_ENTRY);
+	return mce_dbus_iter_get_container(iter, sub, DBUS_TYPE_DICT_ENTRY);
 }
 
 /** Get variant sub iterator from dbus message iterator
@@ -2410,7 +2409,7 @@ mce_dbus_iter_get_entry(DBusMessageIter *iter, DBusMessageIter *sub)
 bool
 mce_dbus_iter_get_variant(DBusMessageIter *iter, DBusMessageIter *sub)
 {
-    return mce_dbus_iter_get_container(iter, sub, DBUS_TYPE_VARIANT);
+	return mce_dbus_iter_get_container(iter, sub, DBUS_TYPE_VARIANT);
 }
 
 /** Register D-Bus message handler
@@ -2420,16 +2419,16 @@ mce_dbus_iter_get_variant(DBusMessageIter *iter, DBusMessageIter *sub)
 void
 mce_dbus_handler_register(mce_dbus_handler_t *self)
 {
-    if( !self->cookie ) {
-        self->cookie = mce_dbus_handler_add(self->interface,
-                                            self->name,
-                                            self->rules,
-                                            self->type,
-                                            self->callback);
-        if( !self->cookie )
-            mce_log(LL_ERR, "%s.%s: failed to add handler",
-                    self->interface, self->name);
-    }
+	if( !self->cookie ) {
+		self->cookie = mce_dbus_handler_add(self->interface,
+						    self->name,
+						    self->rules,
+						    self->type,
+						    self->callback);
+		if( !self->cookie )
+			mce_log(LL_ERR, "%s.%s: failed to add handler",
+				self->interface, self->name);
+	}
 }
 
 /** Unregister D-Bus message handler
@@ -2439,8 +2438,8 @@ mce_dbus_handler_register(mce_dbus_handler_t *self)
 void
 mce_dbus_handler_unregister(mce_dbus_handler_t *self)
 {
-    if( self->cookie )
-        mce_dbus_handler_remove(self->cookie), self->cookie = 0;
+	if( self->cookie )
+		mce_dbus_handler_remove(self->cookie), self->cookie = 0;
 }
 
 /** Register an array of D-Bus message handlers
@@ -2450,8 +2449,8 @@ mce_dbus_handler_unregister(mce_dbus_handler_t *self)
 void
 mce_dbus_handler_register_array(mce_dbus_handler_t *array)
 {
-    for( ; array && array->interface; ++array )
-        mce_dbus_handler_register(array);
+	for( ; array && array->interface; ++array )
+		mce_dbus_handler_register(array);
 }
 
 /** Unregister an array of D-Bus message handlers
@@ -2461,8 +2460,8 @@ mce_dbus_handler_register_array(mce_dbus_handler_t *array)
 void
 mce_dbus_handler_unregister_array(mce_dbus_handler_t *array)
 {
-    for( ; array && array->interface; ++array )
-        mce_dbus_handler_unregister(array);
+	for( ; array && array->interface; ++array )
+		mce_dbus_handler_unregister(array);
 }
 
 /* ========================================================================= *
@@ -2472,11 +2471,11 @@ mce_dbus_handler_unregister_array(mce_dbus_handler_t *array)
 /** Cached D-Bus name owner identification data */
 typedef struct
 {
-    char                ni_repr[64];
-    char               *ni_name;
-    int                 ni_pid;
-    char               *ni_exe;
-    mce_dbus_handler_t  ni_hnd;
+	char                ni_repr[64];
+	char               *ni_name;
+	int                 ni_pid;
+	char               *ni_exe;
+	mce_dbus_handler_t  ni_hnd;
 
 } mce_dbus_ident_t;
 
@@ -2489,7 +2488,7 @@ static mce_dbus_ident_t *mce_dbus_add_ident(const char *name);
 static const char *
 mce_dbus_ident_get_repr(const mce_dbus_ident_t *self)
 {
-    return self->ni_repr;
+	return self->ni_repr;
 }
 
 /** Update human readable representation of D-Bus name owner identification
@@ -2497,130 +2496,130 @@ mce_dbus_ident_get_repr(const mce_dbus_ident_t *self)
 static void
 mce_dbus_ident_update_repr(mce_dbus_ident_t *self)
 {
-    char pid[16];
+	char pid[16];
 
-    if( self->ni_pid < 0 )
-	snprintf(pid, sizeof pid, "???");
-    else
-	snprintf(pid, sizeof pid, "%d", self->ni_pid);
+	if( self->ni_pid < 0 )
+		snprintf(pid, sizeof pid, "???");
+	else
+		snprintf(pid, sizeof pid, "%d", self->ni_pid);
 
-    snprintf(self->ni_repr, sizeof self->ni_repr, "name=%s pid=%s cmd=%s",
-	     self->ni_name, pid, self->ni_exe ?: "???");
+	snprintf(self->ni_repr, sizeof self->ni_repr, "name=%s pid=%s cmd=%s",
+		 self->ni_name, pid, self->ni_exe ?: "???");
 }
 
 /** Update executable name in D-Bus name owner identification data
  */
 static void mce_dbus_ident_update_exe(mce_dbus_ident_t *self)
 {
-    int file = -1;
-    char path[256];
-    unsigned char text[64];
+	int file = -1;
+	char path[256];
+	unsigned char text[64];
 
-    if( self->ni_exe )
-	goto EXIT;
+	if( self->ni_exe )
+		goto EXIT;
 
-    snprintf(path, sizeof path, "/proc/%d/cmdline", self->ni_pid);
-    if( (file = open(path, O_RDONLY)) == -1 ) {
-	mce_log(LL_ERR, "%s: open: %m", path);
-	goto EXIT;
-    }
+	snprintf(path, sizeof path, "/proc/%d/cmdline", self->ni_pid);
+	if( (file = open(path, O_RDONLY)) == -1 ) {
+		mce_log(LL_ERR, "%s: open: %m", path);
+		goto EXIT;
+	}
 
-    int n = read(file, text, sizeof text - 1);
-    if( n == -1 ) {
-	mce_log(LL_ERR, "%s: read: %m", path);
-	goto EXIT;
-    }
-    text[n] = 0;
+	int n = read(file, text, sizeof text - 1);
+	if( n == -1 ) {
+		mce_log(LL_ERR, "%s: read: %m", path);
+		goto EXIT;
+	}
+	text[n] = 0;
 
-    for( int i = 0; i < n; ++i ) {
-	if( text[i] < 32 )
-	    text[i] = ' ';
-    }
+	for( int i = 0; i < n; ++i ) {
+		if( text[i] < 32 )
+			text[i] = ' ';
+	}
 
-    self->ni_exe = strdup((char *)text);
+	self->ni_exe = strdup((char *)text);
 
 EXIT:
-    if( file != -1 ) close(file);
+	if( file != -1 ) close(file);
 
-    return;
+	return;
 }
 
 /** Handle reply to asynchronous pid of D-Bus name owner query
  */
 static void mce_dbus_ident_query_pid_cb(DBusPendingCall *pc, void *aptr)
 {
-    const char   *name = 0;
-    DBusMessage  *rsp  = 0;
-    DBusError     err  = DBUS_ERROR_INIT;
-    dbus_uint32_t dta  = 0;
+	const char   *name = 0;
+	DBusMessage  *rsp  = 0;
+	DBusError     err  = DBUS_ERROR_INIT;
+	dbus_uint32_t dta  = 0;
 
-    mce_dbus_ident_t *self = 0;
+	mce_dbus_ident_t *self = 0;
 
-    if( !(name = aptr) )
-	goto EXIT;
+	if( !(name = aptr) )
+		goto EXIT;
 
-    if( !pc )
-        goto EXIT;
+	if( !pc )
+		goto EXIT;
 
-    if( !(rsp = dbus_pending_call_steal_reply(pc)) )
-        goto EXIT;
+	if( !(rsp = dbus_pending_call_steal_reply(pc)) )
+		goto EXIT;
 
-    if( dbus_set_error_from_message(&err, rsp) ||
-	!dbus_message_get_args(rsp, &err,
-			       DBUS_TYPE_UINT32, &dta,
-			       DBUS_TYPE_INVALID) ) {
-        mce_log(LL_ERR, "%s: %s", err.name, err.message);
-	mce_dbus_rem_ident(name);
-        goto EXIT;
-    }
+	if( dbus_set_error_from_message(&err, rsp) ||
+	    !dbus_message_get_args(rsp, &err,
+				   DBUS_TYPE_UINT32, &dta,
+				   DBUS_TYPE_INVALID) ) {
+		mce_log(LL_ERR, "%s: %s", err.name, err.message);
+		mce_dbus_rem_ident(name);
+		goto EXIT;
+	}
 
-    if( !(self = mce_dbus_get_ident(name)) )
-	goto EXIT;
+	if( !(self = mce_dbus_get_ident(name)) )
+		goto EXIT;
 
-    if( self->ni_pid != 0 )
-	goto EXIT;
+	if( self->ni_pid != 0 )
+		goto EXIT;
 
-    self->ni_pid = (int)dta;
-    mce_dbus_ident_update_exe(self);
-    mce_dbus_ident_update_repr(self);
-    mce_log(LL_DEVEL, "%s", mce_dbus_ident_get_repr(self));
+	self->ni_pid = (int)dta;
+	mce_dbus_ident_update_exe(self);
+	mce_dbus_ident_update_repr(self);
+	mce_log(LL_DEVEL, "%s", mce_dbus_ident_get_repr(self));
 
 EXIT:
-    if( rsp ) dbus_message_unref(rsp);
-    if( pc )  dbus_pending_call_unref(pc);
-    dbus_error_free(&err);
+	if( rsp ) dbus_message_unref(rsp);
+	if( pc )  dbus_pending_call_unref(pc);
+	dbus_error_free(&err);
 
-    return;
+	return;
 }
 
 /** Start asynchronous pid of D-Bus name owner query
  */
 static void mce_dbus_ident_query_pid(mce_dbus_ident_t *self)
 {
-    // already done, or in progress
-    if( self->ni_pid >= 0 )
-	goto EXIT;
+	// already done, or in progress
+	if( self->ni_pid >= 0 )
+		goto EXIT;
 
-    // mark as: in progress
-    self->ni_pid = 0;
+	// mark as: in progress
+	self->ni_pid = 0;
 
-    const char *name = self->ni_name;
+	const char *name = self->ni_name;
 
-    // start async query
-    dbus_send_ex(DBUS_SERVICE_DBUS,
-		 DBUS_PATH_DBUS,
-		 DBUS_INTERFACE_DBUS,
-		 "GetConnectionUnixProcessID",
-		 // ----------------
-		 mce_dbus_ident_query_pid_cb,
-		 strdup(name),
-		 free,
-		 // ----------------
-		 DBUS_TYPE_STRING, &name,
-		 DBUS_TYPE_INVALID);
+	// start async query
+	dbus_send_ex(DBUS_SERVICE_DBUS,
+		     DBUS_PATH_DBUS,
+		     DBUS_INTERFACE_DBUS,
+		     "GetConnectionUnixProcessID",
+		     // ----------------
+		     mce_dbus_ident_query_pid_cb,
+		     strdup(name),
+		     free,
+		     // ----------------
+		     DBUS_TYPE_STRING, &name,
+		     DBUS_TYPE_INVALID);
 
 EXIT:
-    return;
+	return;
 }
 
 /** Handle NameOwnerChanged signal for cached name owner tracking
@@ -2628,33 +2627,33 @@ EXIT:
 static gboolean
 mce_dbus_ident_lost_cb(DBusMessage *sig)
 {
-    const char *name = 0;
-    const char *prev = 0;
-    const char *curr = 0;
-    DBusError   err  = DBUS_ERROR_INIT;
+	const char *name = 0;
+	const char *prev = 0;
+	const char *curr = 0;
+	DBusError   err  = DBUS_ERROR_INIT;
 
-    if( dbus_set_error_from_message(&err, sig) ) {
-        mce_log(LL_ERR, "%s: %s", err.name, err.message);
-        goto EXIT;
-    }
+	if( dbus_set_error_from_message(&err, sig) ) {
+		mce_log(LL_ERR, "%s: %s", err.name, err.message);
+		goto EXIT;
+	}
 
-    if( !dbus_message_get_args(sig, &err,
-                              DBUS_TYPE_STRING, &name,
-                              DBUS_TYPE_STRING, &prev,
-                              DBUS_TYPE_STRING, &curr,
-                              DBUS_TYPE_INVALID) ) {
-        mce_log(LL_ERR, "%s: %s", err.name, err.message);
-        goto EXIT;
-    }
+	if( !dbus_message_get_args(sig, &err,
+				   DBUS_TYPE_STRING, &name,
+				   DBUS_TYPE_STRING, &prev,
+				   DBUS_TYPE_STRING, &curr,
+				   DBUS_TYPE_INVALID) ) {
+		mce_log(LL_ERR, "%s: %s", err.name, err.message);
+		goto EXIT;
+	}
 
-    if( curr && *curr )
-	goto EXIT;
+	if( curr && *curr )
+		goto EXIT;
 
-    mce_dbus_rem_ident(name);
+	mce_dbus_rem_ident(name);
 
 EXIT:
-    dbus_error_free(&err);
-    return TRUE;
+	dbus_error_free(&err);
+	return TRUE;
 }
 
 /** Allocate cached D-Bus name owner identification data
@@ -2662,25 +2661,25 @@ EXIT:
 static mce_dbus_ident_t *
 mce_dbus_ident_create(const char *name)
 {
-    mce_dbus_ident_t *self = calloc(1, sizeof *self);
+	mce_dbus_ident_t *self = calloc(1, sizeof *self);
 
-    self->ni_name = strdup(name);
-    self->ni_pid  = -1;
-    self->ni_exe  = 0;
+	self->ni_name = strdup(name);
+	self->ni_pid  = -1;
+	self->ni_exe  = 0;
 
-    mce_log(LL_DEBUG, "start tracking %s", self->ni_name);
+	mce_log(LL_DEBUG, "start tracking %s", self->ni_name);
 
-    self->ni_hnd.interface = DBUS_INTERFACE_DBUS;
-    self->ni_hnd.name      = "NameOwnerChanged";
-    self->ni_hnd.rules     = g_strdup_printf("arg0='%s',arg2=''", name);
-    self->ni_hnd.type      = DBUS_MESSAGE_TYPE_SIGNAL;
-    self->ni_hnd.callback  = mce_dbus_ident_lost_cb;
+	self->ni_hnd.interface = DBUS_INTERFACE_DBUS;
+	self->ni_hnd.name      = "NameOwnerChanged";
+	self->ni_hnd.rules     = g_strdup_printf("arg0='%s',arg2=''", name);
+	self->ni_hnd.type      = DBUS_MESSAGE_TYPE_SIGNAL;
+	self->ni_hnd.callback  = mce_dbus_ident_lost_cb;
 
-    mce_dbus_handler_register(&self->ni_hnd);
-    mce_dbus_ident_update_repr(self);
-    mce_dbus_ident_query_pid(self);
+	mce_dbus_handler_register(&self->ni_hnd);
+	mce_dbus_ident_update_repr(self);
+	mce_dbus_ident_query_pid(self);
 
-    return self;
+	return self;
 }
 
 /** Release Cached D-Bus name owner identification data
@@ -2688,14 +2687,14 @@ mce_dbus_ident_create(const char *name)
 static void
 mce_dbus_ident_delete(mce_dbus_ident_t *self)
 {
-    if( self ) {
-	mce_log(LL_DEBUG, "stop tracking %s", self->ni_name);
-	mce_dbus_handler_unregister(&self->ni_hnd);
-	g_free((void *)self->ni_hnd.rules);
-	free(self->ni_name);
-	free(self->ni_exe);
-	free(self);
-    }
+	if( self ) {
+		mce_log(LL_DEBUG, "stop tracking %s", self->ni_name);
+		mce_dbus_handler_unregister(&self->ni_hnd);
+		g_free((void *)self->ni_hnd.rules);
+		free(self->ni_name);
+		free(self->ni_exe);
+		free(self);
+	}
 }
 
 /** Type agnostic callback for releasing D-Bus name owner identification data
@@ -2703,9 +2702,8 @@ mce_dbus_ident_delete(mce_dbus_ident_t *self)
 static void
 mce_dbus_ident_delete_cb(gpointer self)
 {
-    mce_dbus_ident_delete(self);
+	mce_dbus_ident_delete(self);
 }
-
 
 /** Lookup table for cached D-Bus name owner identification data */
 static GHashTable *info_lut = 0;
@@ -2714,13 +2712,13 @@ static GHashTable *info_lut = 0;
  */
 static void mce_dbus_rem_ident(const char *name)
 {
-    if( !info_lut )
-	goto EXIT;
+	if( !info_lut )
+		goto EXIT;
 
-    g_hash_table_remove(info_lut, name);
+	g_hash_table_remove(info_lut, name);
 
 EXIT:
-    return;
+	return;
 }
 
 /** Locate D-Bus name owner identification data from cache
@@ -2728,15 +2726,15 @@ EXIT:
 static mce_dbus_ident_t *
 mce_dbus_get_ident(const char *name)
 {
-    mce_dbus_ident_t *res = 0;
+	mce_dbus_ident_t *res = 0;
 
-    if( !info_lut )
-	goto EXIT;
+	if( !info_lut )
+		goto EXIT;
 
-    res = g_hash_table_lookup(info_lut, name);
+	res = g_hash_table_lookup(info_lut, name);
 
 EXIT:
-    return res;
+	return res;
 }
 
 /** Add D-Bus name owner identification data to cache
@@ -2744,54 +2742,54 @@ EXIT:
 static mce_dbus_ident_t *
 mce_dbus_add_ident(const char *name)
 {
-    mce_dbus_ident_t *res = 0;
+	mce_dbus_ident_t *res = 0;
 
-    // have existing value?
-    if( (res = mce_dbus_get_ident(name)) )
-	goto EXIT;
+	// have existing value?
+	if( (res = mce_dbus_get_ident(name)) )
+		goto EXIT;
 
-    // have lookup table?
-    if( !info_lut ) {
-	info_lut = g_hash_table_new_full(g_str_hash, g_str_equal, free,
-					 mce_dbus_ident_delete_cb);
-    }
+	// have lookup table?
+	if( !info_lut ) {
+		info_lut = g_hash_table_new_full(g_str_hash, g_str_equal, free,
+						 mce_dbus_ident_delete_cb);
+	}
 
-    // insert new entry
-    res = mce_dbus_ident_create(name);
-    g_hash_table_replace(info_lut, strdup(name), res);
+	// insert new entry
+	res = mce_dbus_ident_create(name);
+	g_hash_table_replace(info_lut, strdup(name), res);
 
 EXIT:
 
-    return res;
+	return res;
 }
 
 /** Get identification string of D-Bus name owner
  */
 const char *mce_dbus_get_name_owner_ident(const char *name)
 {
-    const char *res = 0;
-    const mce_dbus_ident_t *info = 0;
+	const char *res = 0;
+	const mce_dbus_ident_t *info = 0;
 
-    if( !name )
-	goto EXIT;
+	if( !name )
+		goto EXIT;
 
-    if( !(info = mce_dbus_add_ident(name)) )
-	goto EXIT;
+	if( !(info = mce_dbus_add_ident(name)) )
+		goto EXIT;
 
-    res = mce_dbus_ident_get_repr(info);
+	res = mce_dbus_ident_get_repr(info);
 
 EXIT:
-  return res ?: "unknown";
+	return res ?: "unknown";
 }
 
 /** Get identification string of sender of D-Bus message
  */
 const char *mce_dbus_get_message_sender_ident(DBusMessage *msg)
 {
-    const char *name = 0;
-    if( msg )
-	name = dbus_message_get_sender(msg);
-    return mce_dbus_get_name_owner_ident(name);
+	const char *name = 0;
+	if( msg )
+		name = dbus_message_get_sender(msg);
+	return mce_dbus_get_name_owner_ident(name);
 }
 
 /* ========================================================================= *
@@ -2802,40 +2800,40 @@ typedef struct mce_dbus_pid_query_t mce_dbus_pid_query_t;
 
 struct mce_dbus_pid_query_t
 {
-    gchar                 *name;
-    mce_dbus_pid_notify_t  notify;
+	gchar                 *name;
+	mce_dbus_pid_notify_t  notify;
 };
 
 static mce_dbus_pid_query_t *
 mce_dbus_pid_query_create(const char *name, mce_dbus_pid_notify_t cb)
 {
-    mce_dbus_pid_query_t *self = calloc(1, sizeof *self);
-    self->name = strdup(name);
-    self->notify = cb;
-    return self;
+	mce_dbus_pid_query_t *self = calloc(1, sizeof *self);
+	self->name = strdup(name);
+	self->notify = cb;
+	return self;
 }
 
 static void
 mce_dbus_pid_query_delete(mce_dbus_pid_query_t *self)
 {
-  if( self )
-  {
-      free(self->name);
-      free(self);
-  }
+	if( self )
+	{
+		free(self->name);
+		free(self);
+	}
 }
 
 static void
 mce_dbus_pid_query_delete_cb(gpointer self)
 {
-    mce_dbus_pid_query_delete(self);
+	mce_dbus_pid_query_delete(self);
 }
 
 static void
 mce_dbus_pid_query_notify(const mce_dbus_pid_query_t *self, int pid)
 {
-    if( self && self->notify )
-        self->notify(self->name, pid);
+	if( self && self->notify )
+		self->notify(self->name, pid);
 }
 
 /** Handle reply to asynchronous pid of D-Bus name owner query
@@ -2846,41 +2844,41 @@ mce_dbus_pid_query_notify(const mce_dbus_pid_query_t *self, int pid)
 static void
 mce_dbus_get_pid_async_cb(DBusPendingCall *pc, void *aptr)
 {
-    mce_dbus_pid_query_t  *self = aptr;
-    DBusMessage  *rsp  = 0;
-    DBusError     err  = DBUS_ERROR_INIT;
-    dbus_uint32_t dta  = 0;
-    int           pid  = -1;
+	mce_dbus_pid_query_t  *self = aptr;
+	DBusMessage  *rsp  = 0;
+	DBusError     err  = DBUS_ERROR_INIT;
+	dbus_uint32_t dta  = 0;
+	int           pid  = -1;
 
-    if( !self )
-        goto EXIT;
+	if( !self )
+		goto EXIT;
 
-    if( !pc )
-        goto EXIT;
+	if( !pc )
+		goto EXIT;
 
-    if( !(rsp = dbus_pending_call_steal_reply(pc)) )
-        goto EXIT;
+	if( !(rsp = dbus_pending_call_steal_reply(pc)) )
+		goto EXIT;
 
-    if( dbus_set_error_from_message(&err, rsp) ||
-        !dbus_message_get_args(rsp, &err,
-                               DBUS_TYPE_UINT32, &dta,
-                               DBUS_TYPE_INVALID) ) {
-        mce_log(LL_ERR, "%s: %s", err.name, err.message);
-    }
-    else {
-        pid = (int)dta;
-    }
+	if( dbus_set_error_from_message(&err, rsp) ||
+	    !dbus_message_get_args(rsp, &err,
+				   DBUS_TYPE_UINT32, &dta,
+				   DBUS_TYPE_INVALID) ) {
+		mce_log(LL_ERR, "%s: %s", err.name, err.message);
+	}
+	else {
+		pid = (int)dta;
+	}
 
-    mce_log(LL_DEVEL, "name: %s, owner.pid: %d", self->name, pid);
-    mce_dbus_pid_query_notify(self, pid);
+	mce_log(LL_DEVEL, "name: %s, owner.pid: %d", self->name, pid);
+	mce_dbus_pid_query_notify(self, pid);
 
 EXIT:
 
-    if( rsp ) dbus_message_unref(rsp);
-    if( pc )  dbus_pending_call_unref(pc);
-    dbus_error_free(&err);
+	if( rsp ) dbus_message_unref(rsp);
+	if( pc )  dbus_pending_call_unref(pc);
+	dbus_error_free(&err);
 
-    return;
+	return;
 }
 
 /** Start asynchronous pid of D-Bus name owner query
@@ -2891,23 +2889,23 @@ EXIT:
 void
 mce_dbus_get_pid_async(const char *name, mce_dbus_pid_notify_t cb)
 {
-    if( !name || !*name )
-        goto EXIT;
+	if( !name || !*name )
+		goto EXIT;
 
-    dbus_send_ex(DBUS_SERVICE_DBUS,
-                 DBUS_PATH_DBUS,
-                 DBUS_INTERFACE_DBUS,
-                 "GetConnectionUnixProcessID",
-                 // ----------------
-                 mce_dbus_get_pid_async_cb,
-                 mce_dbus_pid_query_create(name, cb),
-                 mce_dbus_pid_query_delete_cb,
-                 // ----------------
-                 DBUS_TYPE_STRING, &name,
-                 DBUS_TYPE_INVALID);
+	dbus_send_ex(DBUS_SERVICE_DBUS,
+		     DBUS_PATH_DBUS,
+		     DBUS_INTERFACE_DBUS,
+		     "GetConnectionUnixProcessID",
+		     // ----------------
+		     mce_dbus_get_pid_async_cb,
+		     mce_dbus_pid_query_create(name, cb),
+		     mce_dbus_pid_query_delete_cb,
+		     // ----------------
+		     DBUS_TYPE_STRING, &name,
+		     DBUS_TYPE_INVALID);
 
 EXIT:
-    return;
+	return;
 }
 
 /* ========================================================================= *
@@ -2997,7 +2995,7 @@ EXIT:
 void mce_dbus_exit(void)
 {
 	/* Remove info look up table */
-        if( info_lut )
+	if( info_lut )
 		g_hash_table_unref(info_lut), info_lut = 0;
 
 	/* Unregister remaining D-Bus handlers */

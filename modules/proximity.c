@@ -147,23 +147,23 @@ static const gchar *ps_enable_path = NULL;
 /** Path to the proximity sensor on/off mode file entry */
 static output_state_t ps_onoff_mode_output =
 {
-  .context = "ps_onoff_mode",
-  .truncate_file = TRUE,
-  .close_on_exit = TRUE,
+	.context = "ps_onoff_mode",
+	.truncate_file = TRUE,
+	.close_on_exit = TRUE,
 };
 /** Path to the first proximity sensor calibration point sysfs entry */
 static output_state_t ps_calib0_output =
 {
-  .context = "ps_calib0",
-  .truncate_file = TRUE,
-  .close_on_exit = TRUE,
+	.context = "ps_calib0",
+	.truncate_file = TRUE,
+	.close_on_exit = TRUE,
 };
 /** Path to the second proximity sensor calibration point sysfs entry */
 static output_state_t ps_calib1_output =
 {
-  .context = "ps_calib1",
-  .truncate_file = TRUE,
-  .close_on_exit = TRUE,
+	.context = "ps_calib1",
+	.truncate_file = TRUE,
+	.close_on_exit = TRUE,
 };
 
 /** Proximity threshold */
@@ -218,7 +218,6 @@ static ps_type_t get_ps_type(void)
 		ps_type = PS_TYPE_SENSORFW;
 	} else
 #endif
-
 
 	if (g_access(PS_DEVICE_PATH_AVAGO, R_OK) == 0) {
 		ps_type = PS_TYPE_AVAGO;
@@ -734,14 +733,11 @@ EXIT:
 	return;
 }
 
-
 /** Configuration value for use proximity sensor */
 static gboolean use_ps_conf_value = TRUE;
 
 /** Configuration change id for use proximity sensor */
 static guint use_ps_conf_id = 0;
-
-
 
 /**
  * Update the proximity monitoring
@@ -752,7 +748,6 @@ static void update_proximity_monitor(void)
 
 	gboolean enable = FALSE;
 	gboolean fake_open = FALSE;
-
 
 	if (get_ps_type() == PS_TYPE_NONE) {
 		fake_open = TRUE;
@@ -1044,9 +1039,9 @@ const gchar *g_module_check_init(GModule *module)
 
 	/* Get initial state of datapipes */
 	call_state = datapipe_get_gint(call_state_pipe);
-        alarm_ui_state = datapipe_get_gint(alarm_ui_state_pipe);
-        display_state = display_state_get();
-        submode = datapipe_get_gint(submode_pipe);
+	alarm_ui_state = datapipe_get_gint(alarm_ui_state_pipe);
+	display_state = display_state_get();
+	submode = datapipe_get_gint(submode_pipe);
 
 	/* Append triggers/filters to datapipes */
 	append_input_trigger_to_datapipe(&call_state_pipe,

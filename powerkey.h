@@ -32,16 +32,16 @@
 /** Power key action enable modes */
 typedef enum
 {
-        /** Power key actions disabled */
-        PWRKEY_ENABLE_NEVER,
+	/** Power key actions disabled */
+	PWRKEY_ENABLE_NEVER,
 
-        /** Power key actions always enabled */
-        PWRKEY_ENABLE_ALWAYS,
+	/** Power key actions always enabled */
+	PWRKEY_ENABLE_ALWAYS,
 
-        /** Power key actions enabled when PS is not covered */
-        PWRKEY_ENABLE_NO_PROXIMITY,
+	/** Power key actions enabled when PS is not covered */
+	PWRKEY_ENABLE_NO_PROXIMITY,
 
-        PWRKEY_ENABLE_DEFAULT = PWRKEY_ENABLE_ALWAYS,
+	PWRKEY_ENABLE_DEFAULT = PWRKEY_ENABLE_ALWAYS,
 } pwrkey_mode_t;
 
 /** Configuration value used for the disabled policy */

@@ -775,7 +775,6 @@ static guint mdy_brightness_step_size_gconf_id = 0;
 /** GConf callback ID for mdy_brightness_setting */
 static guint mdy_brightness_setting_gconf_id = 0;
 
-
 /** PSM display brightness setting; [1, 5]
  *  or -1 when power save mode is not active
  *
@@ -1070,7 +1069,7 @@ static void mdy_datapipe_display_state_cb(gconstpointer data)
         goto EXIT;
 
     mce_log(LL_DEVEL, "display state = %s",
-	    mdy_display_state_name(display_state));
+            mdy_display_state_name(display_state));
 
     mdy_display_state_enter_post();
 
@@ -1322,11 +1321,11 @@ static void mdy_datapipe_device_inactive_cb(gconstpointer data)
         break;
 
     case MCE_DISPLAY_OFF:
-      /* Activity alone will not make OFF->ON transition.
-       * Except in act dead, where display is not really off
-       * and thus double tap detection is not active ... */
+        /* Activity alone will not make OFF->ON transition.
+         * Except in act dead, where display is not really off
+         * and thus double tap detection is not active ... */
 
-      if( system_state != MCE_STATE_ACTDEAD )
+        if( system_state != MCE_STATE_ACTDEAD )
             break;
 
         // fall through
@@ -2185,20 +2184,40 @@ static void mdy_poweron_led_rethink_schedule(void)
 /**
  * Find the dim timeout index from a dim timeout
  *
+ * If list of possible dim timeouts is not available, zero is returned.
+ *
+ * If the given dim_timeout is larger than the largest entry int the
+ * possible timeouts list, the index to the largest entry is returned.
+ *
+ * Otherwise the index to the first entry that is greater or equal
+ * to specified dim_timeout is returned.
+ *
  * @param dim_timeout The dim timeout to find the index for
+ *
  * @return The closest dim timeout index
  */
 static guint mdy_blanking_find_dim_timeout_index(gint dim_timeout)
 {
-    gpointer tmp;
-    guint i;
+    guint   res  = 0;
+    GSList *iter = mdy_possible_dim_timeouts;
 
-    for (i = 0;
-         ((tmp = g_slist_nth_data(mdy_possible_dim_timeouts, i)) != NULL) &&
-         GPOINTER_TO_INT(tmp) < dim_timeout; i++)
-        /* Do nothing */;
+    if( !iter )
+        goto EXIT;
 
-    return i;
+    for( ;; ) {
+        gint allowed_timeout = GPOINTER_TO_INT(iter->data);
+
+        if( dim_timeout <= allowed_timeout) )
+            break;
+
+        if( !(iter = iter->next) )
+            break;
+
+        ++res;
+    }
+
+EXIT:
+    return res;
 }
 
 /**
@@ -2437,7 +2456,7 @@ static void mdy_blanking_schedule_lpm_on(void)
     if( mdy_use_low_power_mode && mdy_low_power_mode_supported ) {
         /* Setup new timeout */
         mce_log(LL_DEBUG, "LPM timer scheduled @ %d secs",
-		mdy_disp_lpm_on_timeout);
+                mdy_disp_lpm_on_timeout);
         mdy_blanking_lpm_on_cb_id =
             g_timeout_add_seconds(mdy_disp_lpm_on_timeout,
                                   mdy_blanking_lpm_on_cb, NULL);
@@ -3335,8 +3354,8 @@ EXIT:
  */
 #ifdef ENABLE_WAKELOCKS
 static gboolean mdy_waitfb_event_cb(GIOChannel *chn,
-				    GIOCondition cnd,
-				    gpointer aptr)
+                                    GIOCondition cnd,
+                                    gpointer aptr)
 {
     (void)chn;
 
@@ -3347,7 +3366,7 @@ static gboolean mdy_waitfb_event_cb(GIOChannel *chn,
         goto EXIT;
 
     if( cnd & (G_IO_ERR | G_IO_HUP | G_IO_NVAL) ) {
-	goto EXIT;
+        goto EXIT;
     }
 
     char tmp[64];
@@ -3479,8 +3498,8 @@ static gboolean mdy_waitfb_thread_start(waitfb_t *self)
         goto EXIT;
     }
     self->pipe_id = g_io_add_watch(chn,
-				   G_IO_IN | G_IO_ERR | G_IO_HUP | G_IO_NVAL,
-				   mdy_waitfb_event_cb, self);
+                                   G_IO_IN | G_IO_ERR | G_IO_HUP | G_IO_NVAL,
+                                   mdy_waitfb_event_cb, self);
     if( !self->pipe_id ) {
         goto EXIT;
     }
@@ -3696,7 +3715,6 @@ EXIT:
     return FALSE;
 }
 
-
 /** Timer for dumping lipstick core if setUpdatesEnabled() goes without reply
  *
  * @param aptr Process identifier as void pointer
@@ -3849,11 +3867,11 @@ static void mdy_renderer_led_set(renderer_state_t req)
     switch( req ) {
     case RENDERER_DISABLED:
         blanking = true;
-	mce_log(LL_DEVEL, "start alert led pattern for: failed ui stop");
+        mce_log(LL_DEVEL, "start alert led pattern for: failed ui stop");
         break;
     case RENDERER_ENABLED:
         unblanking = true;
-	mce_log(LL_DEVEL, "start alert led pattern for: failed ui start");
+        mce_log(LL_DEVEL, "start alert led pattern for: failed ui start");
         break;
     default:
         break;
@@ -4053,7 +4071,7 @@ static gboolean mdy_renderer_set_state_req(renderer_state_t state)
         goto EXIT;
 
     if( !mdy_renderer_set_state_pc )
-	goto EXIT;
+        goto EXIT;
 
     if( !dbus_pending_call_set_notify(mdy_renderer_set_state_pc,
                                       mdy_renderer_set_state_cb,
@@ -4239,9 +4257,9 @@ static void mdy_autosuspend_gconf_cb(GConfClient *const client, const guint id,
  */
 static void mdy_orientation_changed_cb(int state)
 {
-  execute_datapipe(&orientation_sensor_pipe,
-                   GINT_TO_POINTER(state),
-                   USE_INDATA, CACHE_INDATA);
+    execute_datapipe(&orientation_sensor_pipe,
+                     GINT_TO_POINTER(state),
+                     USE_INDATA, CACHE_INDATA);
 }
 
 /** Generate user activity from orientation sensor input
@@ -4426,7 +4444,7 @@ static void mdy_display_state_enter_pre(display_state_t prev_state,
  * @param display_state target state to transfer to
  */
 static void mdy_display_state_leave(display_state_t prev_state,
-				    display_state_t next_state)
+                                    display_state_t next_state)
 {
     mce_log(LL_INFO, "BEG %s -> %s transition",
             mdy_display_state_name(prev_state),
@@ -4476,11 +4494,11 @@ static void mdy_fbsusp_led_set(mdy_fbsusp_led_state_t req)
     switch( req ) {
     case FBDEV_LED_SUSPENDING:
         blanking = true;
-	mce_log(LL_DEVEL, "start alert led pattern for: failed fb suspend");
+        mce_log(LL_DEVEL, "start alert led pattern for: failed fb suspend");
         break;
     case FBDEV_LED_RESUMING:
         unblanking = true;
-	mce_log(LL_DEVEL, "start alert led pattern for: failed fb resume");
+        mce_log(LL_DEVEL, "start alert led pattern for: failed fb resume");
         break;
     default:
         break;
@@ -5641,7 +5659,7 @@ mdy_nameowner_query_req(const char *name)
         goto EXIT;
 
     if( !pc )
-	goto EXIT;
+        goto EXIT;
 
     key = strdup(name);
 
@@ -6049,7 +6067,7 @@ static gboolean mdy_dbus_handle_display_status_get_req(DBusMessage *const msg)
     gboolean status = FALSE;
 
     mce_log(LL_DEVEL, "Received display status get request from %s",
-	    mce_dbus_get_message_sender_ident(msg));
+            mce_dbus_get_message_sender_ident(msg));
 
     /* Try to send a reply that contains the current display status */
     if (mdy_dbus_send_display_status(msg) == FALSE)
@@ -6159,7 +6177,7 @@ static gboolean mdy_dbus_handle_cabc_mode_get_req(DBusMessage *const msg)
     gboolean status = FALSE;
 
     mce_log(LL_DEVEL, "Received CABC mode get request from %s",
-	    mce_dbus_get_message_sender_ident(msg));
+            mce_dbus_get_message_sender_ident(msg));
 
     /* Try to send a reply that contains the current CABC mode */
     if (mdy_dbus_send_cabc_mode(msg) == FALSE)
@@ -6196,7 +6214,7 @@ static gboolean mdy_dbus_handle_cabc_mode_set_req(DBusMessage *const msg)
     }
 
     mce_log(LL_DEVEL, "Received set CABC mode request from %s",
-	    mce_dbus_get_name_owner_ident(sender));
+            mce_dbus_get_name_owner_ident(sender));
 
     /* Extract result */
     if (dbus_message_get_args(msg, &error,
@@ -6274,7 +6292,7 @@ static gboolean mdy_dbus_handle_blanking_pause_start_req(DBusMessage *const msg)
     }
 
     mce_log(LL_DEVEL, "blanking pause request from %s",
-	    mce_dbus_get_name_owner_ident(sender));
+            mce_dbus_get_name_owner_ident(sender));
 
     mdy_blanking_add_pause_client(sender);
 
@@ -6307,7 +6325,7 @@ static gboolean mdy_dbus_handle_blanking_pause_cancel_req(DBusMessage *const msg
     }
 
     mce_log(LL_DEVEL, "cancel blanking pause request from %s",
-	    mce_dbus_get_name_owner_ident(sender));
+            mce_dbus_get_name_owner_ident(sender));
 
     mdy_blanking_remove_pause_client(sender);
 
@@ -6338,7 +6356,7 @@ static gboolean mdy_dbus_handle_set_demo_mode_req(DBusMessage *const msg)
     // FIXME: this is defunct code and should be removed
 
     mce_log(LL_DEVEL, "Recieved demo mode change request from %s",
-	    mce_dbus_get_message_sender_ident(msg));
+            mce_dbus_get_message_sender_ident(msg));
 
     dbus_error_init(&error);
 

@@ -37,10 +37,10 @@
 					 * dsmesock_connection_t
 					 */
 #include <dsme/processwd.h>             /* DSM_MSGTYPE_PROCESSWD_PING,
-                                         * DSM_MSGTYPE_PROCESSWD_PONG,
-                                         * DSM_MSGTYPE_PROCESSWD_CREATE,
-                                         * DSM_MSGTYPE_PROCESSWD_DELETE
-                                         */
+					 * DSM_MSGTYPE_PROCESSWD_PONG,
+					 * DSM_MSGTYPE_PROCESSWD_CREATE,
+					 * DSM_MSGTYPE_PROCESSWD_DELETE
+					 */
 #include <mce/mode-names.h>
 #include "mce.h"			/* mce_add_submode_int32(),
 					 * mce_rem_submode_int32(),
@@ -153,7 +153,7 @@ static void dsme_send_pong(void)
 {
 	/* Set up the message */
 	DSM_MSGTYPE_PROCESSWD_PONG msg =
-          DSME_MSG_INIT(DSM_MSGTYPE_PROCESSWD_PONG);
+	  DSME_MSG_INIT(DSM_MSGTYPE_PROCESSWD_PONG);
 	msg.pid = getpid();
 
 	/* Send the message */
@@ -172,7 +172,7 @@ static void dsme_init_processwd(void)
 {
 	/* Set up the message */
 	DSM_MSGTYPE_PROCESSWD_CREATE msg =
-          DSME_MSG_INIT(DSM_MSGTYPE_PROCESSWD_CREATE);
+	  DSME_MSG_INIT(DSM_MSGTYPE_PROCESSWD_CREATE);
 	msg.pid = getpid();
 
 	/* Send the message */
@@ -191,7 +191,7 @@ static void dsme_exit_processwd(void)
 
 	/* Set up the message */
 	DSM_MSGTYPE_PROCESSWD_DELETE msg =
-          DSME_MSG_INIT(DSM_MSGTYPE_PROCESSWD_DELETE);
+	  DSME_MSG_INIT(DSM_MSGTYPE_PROCESSWD_DELETE);
 	msg.pid = getpid();
 
 	/* Send the message */
@@ -432,7 +432,7 @@ static gboolean io_data_ready_cb(GIOChannel *source,
 	if ((msg = (dsmemsg_generic_t *)dsmesock_receive(dsme_conn)) == NULL)
 		goto EXIT;
 
-        if (DSMEMSG_CAST(DSM_MSGTYPE_CLOSE, msg)) {
+	if (DSMEMSG_CAST(DSM_MSGTYPE_CLOSE, msg)) {
 		/* DSME socket closed: try once to reopen;
 		 * if that fails, exit
 		 */
@@ -444,9 +444,9 @@ static gboolean io_data_ready_cb(GIOChannel *source,
 			mce_quit_mainloop();
 			exit(EXIT_FAILURE);
 		}
-        } else if (DSMEMSG_CAST(DSM_MSGTYPE_PROCESSWD_PING, msg)) {
+	} else if (DSMEMSG_CAST(DSM_MSGTYPE_PROCESSWD_PING, msg)) {
 		dsme_send_pong();
-        } else if ((msg2 = DSMEMSG_CAST(DSM_MSGTYPE_STATE_CHANGE_IND, msg))) {
+	} else if ((msg2 = DSMEMSG_CAST(DSM_MSGTYPE_STATE_CHANGE_IND, msg))) {
 		newstate = normalise_dsme_state(msg2->state);
 		mce_log(LL_DEBUG,
 			"DSME device state change: %d",
@@ -481,7 +481,7 @@ static gboolean io_data_ready_cb(GIOChannel *source,
 		execute_datapipe(&system_state_pipe,
 				 GINT_TO_POINTER(newstate),
 				 USE_INDATA, CACHE_INDATA);
-        } else {
+	} else {
 		mce_log(LL_DEBUG,
 			"Unknown message type (%x) received from DSME!",
 			msg->type_); /* <- unholy access of a private member */

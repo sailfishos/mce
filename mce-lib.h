@@ -55,5 +55,4 @@ gchar *strstr_delim(const gchar *const haystack, const char *needle,
 		    const char *const delimiter);
 gboolean strmemcmp(guint8 *mem, const gchar *str, gulong len);
 
-
 #endif /* _MCE_LIB_H_ */

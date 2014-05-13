@@ -129,7 +129,6 @@
 /** Path to the display brightness level size GConf setting */
 #define MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_SIZE_PATH	MCE_GCONF_DISPLAY_PATH "/display_brightness_level_step"
 
-
 /** Path to the list of possible dim timeouts GConf setting */
 #define MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST_PATH	MCE_GCONF_DISPLAY_PATH "/possible_display_dim_timeouts"
 /** Path to the dim timeout GConf setting */

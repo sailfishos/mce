@@ -29,7 +29,7 @@
 /** Enum of modes used when calling SystemUI */
 typedef enum {
 	/** Disable TKLock; deprecated -- use close call instead */
-        TKLOCK_NONE,
+	TKLOCK_NONE,
 	/** Enable non-slider TKLock; deprecated */
 	TKLOCK_ENABLE,
 	/** Show TKLock help; deprecated */
@@ -38,7 +38,7 @@ typedef enum {
 	TKLOCK_SELECT,
 	/** Enable event eater */
 	TKLOCK_ONEINPUT,
-        /** Enable slider TKLock */
+	/** Enable slider TKLock */
 	TKLOCK_ENABLE_VISUAL,
 	/** Enable low power mode UI */
 	TKLOCK_ENABLE_LPM_UI,

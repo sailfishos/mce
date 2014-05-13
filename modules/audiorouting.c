@@ -35,12 +35,12 @@ static const gchar *const provides[] = { MODULE_NAME, NULL };
 
 /** Module information */
 G_MODULE_EXPORT module_info_struct module_info = {
-	/** Name of the module */
-	.name = MODULE_NAME,
-	/** Module provides */
-	.provides = provides,
-	/** Module priority */
-	.priority = 100
+        /** Name of the module */
+        .name = MODULE_NAME,
+        /** Module provides */
+        .provides = provides,
+        /** Module priority */
+        .priority = 100
 };
 
 /** D-Bus interface for the policy framework */

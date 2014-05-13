@@ -760,7 +760,7 @@ EXIT:
  */
 static void powerkey_trigger(gconstpointer const data)
 {
-        system_state_t system_state = datapipe_get_gint(system_state_pipe);
+	system_state_t system_state = datapipe_get_gint(system_state_pipe);
 	submode_t submode = mce_get_submode_int32();
 	struct input_event const *const *evp;
 	struct input_event const *ev;
@@ -781,7 +781,7 @@ static void powerkey_trigger(gconstpointer const data)
 			if (doublepress_timeout_cb_id != 0) {
 				handle_shortpress();
 			} else if ((system_state == MCE_STATE_ACTDEAD) ||
-			           ((submode & MCE_SOFTOFF_SUBMODE) != 0)) {
+				   ((submode & MCE_SOFTOFF_SUBMODE) != 0)) {
 				/* Setup new timeout */
 
 				/* Shorter delay for startup

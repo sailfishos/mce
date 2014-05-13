@@ -943,15 +943,15 @@ EXIT:
 static void
 xofono_get_modems(void)
 {
-  bool res = dbus_send(OFONO_SERVICE,
-                       OFONO_MANAGER_OBJECT,
-                       OFONO_MANAGER_INTERFACE,
-                       OFONO_MANAGER_REQ_GET_MODEMS,
-                       xofono_get_modems_cb,
-                       DBUS_TYPE_INVALID);
+    bool res = dbus_send(OFONO_SERVICE,
+                         OFONO_MANAGER_OBJECT,
+                         OFONO_MANAGER_INTERFACE,
+                         OFONO_MANAGER_REQ_GET_MODEMS,
+                         xofono_get_modems_cb,
+                         DBUS_TYPE_INVALID);
 
-  mce_log(LL_DEBUG, "%s.%s %s", OFONO_MANAGER_INTERFACE,
-          OFONO_MANAGER_REQ_GET_MODEMS, res ? "sent ..." : "failed");
+    mce_log(LL_DEBUG, "%s.%s %s", OFONO_MANAGER_INTERFACE,
+            OFONO_MANAGER_REQ_GET_MODEMS, res ? "sent ..." : "failed");
 }
 
 /** Handle modem changed signal
@@ -1070,7 +1070,7 @@ xofono_availability_set(bool available)
         if( (xofono_is_available = available) ) {
             /* start enumerating modems (async) */
             xofono_get_modems();
-	}
+        }
     }
 }
 
@@ -1133,7 +1133,7 @@ xofono_name_owner_get_cb(DBusPendingCall *pc, void *user_data)
         if( strcmp(err.name, DBUS_ERROR_NAME_HAS_NO_OWNER) ) {
             mce_log(LL_WARN, "%s: %s", err.name, err.message);
             goto EXIT;
-	}
+        }
     }
 
     xofono_availability_set(owner && *owner);
@@ -1184,56 +1184,56 @@ send_call_state(DBusMessage *const method_call,
                 const gchar *const call_state,
                 const gchar *const call_type)
 {
-	DBusMessage *msg = NULL;
-	gboolean status = FALSE;
-	const gchar *sstate;
-	const gchar *stype;
+        DBusMessage *msg = NULL;
+        gboolean status = FALSE;
+        const gchar *sstate;
+        const gchar *stype;
 
-	/* Allow spoofing */
-	if (call_state != NULL)
-		sstate = call_state;
-	else
+        /* Allow spoofing */
+        if (call_state != NULL)
+                sstate = call_state;
+        else
                 sstate = call_state_repr(datapipe_get_gint(call_state_pipe));
 
-	if (call_type != NULL)
-		stype = call_type;
-	else
+        if (call_type != NULL)
+                stype = call_type;
+        else
                 stype = call_type_repr(datapipe_get_gint(call_type_pipe));
 
-	/* If method_call is set, send a reply,
-	 * otherwise, send a signal
-	 */
-	if (method_call != NULL) {
-		msg = dbus_new_method_reply(method_call);
-	} else {
-		/* sig_call_state_ind */
-		msg = dbus_new_signal(MCE_SIGNAL_PATH, MCE_SIGNAL_IF,
-				      MCE_CALL_STATE_SIG);
-		mce_log(LL_DEVEL, "call state = %s / %s", sstate, stype);
-	}
+        /* If method_call is set, send a reply,
+         * otherwise, send a signal
+         */
+        if (method_call != NULL) {
+                msg = dbus_new_method_reply(method_call);
+        } else {
+                /* sig_call_state_ind */
+                msg = dbus_new_signal(MCE_SIGNAL_PATH, MCE_SIGNAL_IF,
+                                      MCE_CALL_STATE_SIG);
+                mce_log(LL_DEVEL, "call state = %s / %s", sstate, stype);
+        }
 
-	/* Append the call state and call type */
-	if (dbus_message_append_args(msg,
-				     DBUS_TYPE_STRING, &sstate,
-				     DBUS_TYPE_STRING, &stype,
-				     DBUS_TYPE_INVALID) == FALSE) {
-		mce_log(LL_CRIT,
-			"Failed to append %sarguments to D-Bus message "
-			"for %s.%s",
-			method_call ? "reply " : "",
-			method_call ? MCE_REQUEST_IF :
-				      MCE_SIGNAL_IF,
-			method_call ? MCE_CALL_STATE_GET :
-				      MCE_CALL_STATE_SIG);
-		dbus_message_unref(msg);
-		goto EXIT;
-	}
+        /* Append the call state and call type */
+        if (dbus_message_append_args(msg,
+                                     DBUS_TYPE_STRING, &sstate,
+                                     DBUS_TYPE_STRING, &stype,
+                                     DBUS_TYPE_INVALID) == FALSE) {
+                mce_log(LL_CRIT,
+                        "Failed to append %sarguments to D-Bus message "
+                        "for %s.%s",
+                        method_call ? "reply " : "",
+                        method_call ? MCE_REQUEST_IF :
+                                      MCE_SIGNAL_IF,
+                        method_call ? MCE_CALL_STATE_GET :
+                                      MCE_CALL_STATE_SIG);
+                dbus_message_unref(msg);
+                goto EXIT;
+        }
 
-	/* Send the message */
-	status = dbus_send_message(msg);
+        /* Send the message */
+        status = dbus_send_message(msg);
 
 EXIT:
-	return status;
+        return status;
 }
 
 /** Simulated call state */
@@ -1253,41 +1253,41 @@ static ofono_vcall_t simulated =
  */
 static gboolean call_state_owner_monitor_dbus_cb(DBusMessage *const msg)
 {
-	gboolean status = FALSE;
-	const gchar *old_name;
-	const gchar *new_name;
-	const gchar *service;
-	DBusError error;
+        gboolean status = FALSE;
+        const gchar *old_name;
+        const gchar *new_name;
+        const gchar *service;
+        DBusError error;
 
-	/* Register error channel */
-	dbus_error_init(&error);
+        /* Register error channel */
+        dbus_error_init(&error);
 
-	/* Extract result */
-	if (dbus_message_get_args(msg, &error,
-				  DBUS_TYPE_STRING, &service,
-				  DBUS_TYPE_STRING, &old_name,
-				  DBUS_TYPE_STRING, &new_name,
-				  DBUS_TYPE_INVALID) == FALSE) {
-		mce_log(LL_ERR,
-			"Failed to get argument from %s.%s; %s",
-			"org.freedesktop.DBus", "NameOwnerChanged",
-			error.message);
-		dbus_error_free(&error);
-		goto EXIT;
-	}
+        /* Extract result */
+        if (dbus_message_get_args(msg, &error,
+                                  DBUS_TYPE_STRING, &service,
+                                  DBUS_TYPE_STRING, &old_name,
+                                  DBUS_TYPE_STRING, &new_name,
+                                  DBUS_TYPE_INVALID) == FALSE) {
+                mce_log(LL_ERR,
+                        "Failed to get argument from %s.%s; %s",
+                        "org.freedesktop.DBus", "NameOwnerChanged",
+                        error.message);
+                dbus_error_free(&error);
+                goto EXIT;
+        }
 
-	/* Remove the name monitor for the call state requester */
-	if (mce_dbus_owner_monitor_remove(service,
-					  &call_state_monitor_list) == 0) {
+        /* Remove the name monitor for the call state requester */
+        if (mce_dbus_owner_monitor_remove(service,
+                                          &call_state_monitor_list) == 0) {
             simulated.state = CALL_STATE_NONE;
             simulated.type  = NORMAL_CALL;
             call_state_rethink_schedule();
-	}
+        }
 
-	status = TRUE;
+        status = TRUE;
 
 EXIT:
-	return status;
+        return status;
 }
 
 /**
@@ -1311,7 +1311,7 @@ change_call_state_dbus_cb(DBusMessage *const msg)
     dbus_bool_t changed = false;
 
     mce_log(LL_DEVEL, "Received set call state request from %s",
-	    mce_dbus_get_name_owner_ident(sender));
+            mce_dbus_get_name_owner_ident(sender));
 
     if (dbus_message_get_args(msg, &error,
                               DBUS_TYPE_STRING, &state,
@@ -1328,7 +1328,7 @@ change_call_state_dbus_cb(DBusMessage *const msg)
     /* Convert call state to enum */
     call_state = call_state_parse(state);
     if (call_state == MCE_INVALID_TRANSLATION) {
-	mce_log(LL_DEBUG,
+        mce_log(LL_DEBUG,
                 "Invalid call state received; request ignored");
         goto EXIT;
     }
@@ -1417,18 +1417,18 @@ EXIT:
 static gboolean
 get_call_state_dbus_cb(DBusMessage *const msg)
 {
-	gboolean status = FALSE;
+        gboolean status = FALSE;
 
-	mce_log(LL_DEBUG, "Received call state get request");
+        mce_log(LL_DEBUG, "Received call state get request");
 
-	/* Try to send a reply that contains the current call state and type */
-	if (send_call_state(msg, NULL, NULL) == FALSE)
-		goto EXIT;
+        /* Try to send a reply that contains the current call state and type */
+        if (send_call_state(msg, NULL, NULL) == FALSE)
+                goto EXIT;
 
-	status = TRUE;
+        status = TRUE;
 
 EXIT:
-	return status;
+        return status;
 }
 
 /* ========================================================================= *

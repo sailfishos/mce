@@ -233,8 +233,8 @@ static bool evepipe_init(void)
   }
 
   evepipe_id = g_io_add_watch(chn,
-			      G_IO_IN | G_IO_ERR | G_IO_HUP | G_IO_NVAL,
-			      evepipe_recv_cb, 0);
+                              G_IO_IN | G_IO_ERR | G_IO_HUP | G_IO_NVAL,
+                              evepipe_recv_cb, 0);
 
   if( !evepipe_id ) {
     goto EXIT;

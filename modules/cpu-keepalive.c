@@ -37,7 +37,6 @@
 # include "../libwakelock.h"
 #endif
 
-
 /** Fallback context to use when clients make query keepalive period */
 #define CONTEXT_INITIAL "initial"
 
@@ -137,8 +136,8 @@ cpu_keepalive_reply_bool(DBusMessage *const msg, gboolean value)
     dbus_bool_t  data  = value;
     DBusMessage *reply = dbus_new_method_reply(msg);
     dbus_message_append_args(reply,
-			     DBUS_TYPE_BOOLEAN, &data,
-			     DBUS_TYPE_INVALID);
+                             DBUS_TYPE_BOOLEAN, &data,
+                             DBUS_TYPE_INVALID);
 
     /* dbus_send_message() unrefs the message */
     success  = dbus_send_message(reply), reply = 0;
@@ -146,7 +145,7 @@ cpu_keepalive_reply_bool(DBusMessage *const msg, gboolean value)
     if( !success )
     {
       mce_log(LL_WARN, "failed to send reply to %s",
-	      dbus_message_get_member(msg));
+              dbus_message_get_member(msg));
     }
   }
 
@@ -174,8 +173,8 @@ cpu_keepalive_reply_int(DBusMessage *const msg, gint value)
     dbus_int32_t data  = value;
     DBusMessage *reply = dbus_new_method_reply(msg);
     dbus_message_append_args(reply,
-			     DBUS_TYPE_INT32, &data,
-			     DBUS_TYPE_INVALID);
+                             DBUS_TYPE_INT32, &data,
+                             DBUS_TYPE_INVALID);
 
     /* dbus_send_message() unrefs the message */
     success  = dbus_send_message(reply), reply = 0;
@@ -183,7 +182,7 @@ cpu_keepalive_reply_int(DBusMessage *const msg, gint value)
     if( !success )
     {
       mce_log(LL_WARN, "failed to send reply to %s",
-	      dbus_message_get_member(msg));
+              dbus_message_get_member(msg));
     }
   }
 
@@ -207,8 +206,8 @@ cpu_keepalive_create_GetNameOwner_req(const char *name)
                                      DBUS_INTERFACE_DBUS,
                                      "GetNameOwner");
   dbus_message_append_args(req,
-			   DBUS_TYPE_STRING, &name,
-			   DBUS_TYPE_INVALID);
+                           DBUS_TYPE_STRING, &name,
+                           DBUS_TYPE_INVALID);
 
   return req;
 }
@@ -229,11 +228,11 @@ cpu_keepalive_parse_GetNameOwner_rsp(DBusMessage *rsp)
 
   if( dbus_set_error_from_message(&err, rsp) ||
       !dbus_message_get_args(rsp, &err,
-			     DBUS_TYPE_STRING, &dta,
-			     DBUS_TYPE_INVALID) )
+                             DBUS_TYPE_STRING, &dta,
+                             DBUS_TYPE_INVALID) )
   {
       if( strcmp(err.name, DBUS_ERROR_NAME_HAS_NO_OWNER) ) {
-	  mce_log(LL_WARN, "%s: %s", err.name, err.message);
+          mce_log(LL_WARN, "%s: %s", err.name, err.message);
       }
       goto EXIT;
   }
@@ -289,8 +288,8 @@ client_scan_timeout_cb(gpointer key, gpointer val, gpointer aptr)
   time_t    when = GPOINTER_TO_INT(val);
 
   mce_log(LOG_DEBUG, "keepalive client=%s context=%s: T%+ld",
-	  self->dbus_name, (const char *)key,
-	  (long)(cpu_keepalive_get_time() - when));
+          self->dbus_name, (const char *)key,
+          (long)(cpu_keepalive_get_time() - when));
 
   if( self->timeout < when )
   {
@@ -309,11 +308,11 @@ client_scan_timeout(client_t *self)
   self->timeout = now;
 
   g_hash_table_foreach(self->contexts,
-		       client_scan_timeout_cb,
-		       self);
+                       client_scan_timeout_cb,
+                       self);
 
   mce_log(LOG_DEBUG, "keepalive client=%s: T%+ld",
-	  self->dbus_name, (long)(now - self->timeout));
+          self->dbus_name, (long)(now - self->timeout));
 }
 
 /** Clear client cpu-keepalive timeout
@@ -327,11 +326,10 @@ client_clear_timeout(client_t *self, const char *context)
   if( g_hash_table_remove(self->contexts, context) )
   {
     mce_log(LOG_DEBUG, "keepalive client=%s context=%s: cleared",
-	    self->dbus_name, context);
+            self->dbus_name, context);
     client_scan_timeout(self);
   }
 }
-
 
 /** Update client cpu-keepalive timeout
  *
@@ -343,14 +341,13 @@ void
 client_update_timeout(client_t *self, const char *context, time_t when)
 {
   mce_log(LOG_DEBUG, "keepalive client=%s context=%s: T%+ld",
-	  self->dbus_name, context,
-	  (long)(cpu_keepalive_get_time() - when));
+          self->dbus_name, context,
+          (long)(cpu_keepalive_get_time() - when));
 
   g_hash_table_replace(self->contexts, g_strdup(context),
-		       GINT_TO_POINTER(when));
+                       GINT_TO_POINTER(when));
   client_scan_timeout(self);
 }
-
 
 /** Create bookkeeping information for a dbus client
  *
@@ -372,8 +369,7 @@ client_create(const char *dbus_name)
   self->timeout    = 0;
 
   self->contexts   = g_hash_table_new_full(g_str_hash, g_str_equal,
-					   g_free, NULL);
-
+                                           g_free, NULL);
 
   mce_log(LL_NOTICE, "added cpu-keepalive client %s", self->dbus_name);
 
@@ -485,7 +481,7 @@ cpu_keepalive_set_timer(time_t when)
   if( now < when )
   {
     timer_id = g_timeout_add_seconds(when - now,
-				     cpu_keepalive_timer_cb, 0);
+                                     cpu_keepalive_timer_cb, 0);
   }
   else
   {
@@ -630,7 +626,7 @@ cpu_keepalive_verify_name(const char *name)
   key = g_strdup(name);
 
   if( !dbus_pending_call_set_notify(pc, cpu_keepalive_verify_name_cb,
-				    key, g_free) )
+                                    key, g_free) )
   {
     goto EXIT;
   }
@@ -799,11 +795,11 @@ cpu_keepalive_period_cb(DBusMessage *const msg)
   }
 
   mce_log(LL_DEVEL, "got keepalive period query from %s",
-	  mce_dbus_get_name_owner_ident(sender));
+          mce_dbus_get_name_owner_ident(sender));
 
   if( !dbus_message_get_args(msg, &err,
-			     DBUS_TYPE_STRING, &context,
-			     DBUS_TYPE_INVALID) )
+                             DBUS_TYPE_STRING, &context,
+                             DBUS_TYPE_INVALID) )
   {
     // initial dbus interface did not include context string
     if( strcmp(err.name, DBUS_ERROR_INVALID_ARGS) )
@@ -817,7 +813,6 @@ cpu_keepalive_period_cb(DBusMessage *const msg)
   }
 
   mce_log(LL_DEBUG, "sender=%s, context=%s", sender, context);
-
 
   cpu_keepalive_register(sender, context);
 
@@ -850,11 +845,11 @@ cpu_keepalive_start_cb(DBusMessage *const msg)
   }
 
   mce_log(LL_DEVEL, "got keepalive start from %s",
-	  mce_dbus_get_name_owner_ident(sender));
+          mce_dbus_get_name_owner_ident(sender));
 
   if( !dbus_message_get_args(msg, &err,
-			     DBUS_TYPE_STRING, &context,
-			     DBUS_TYPE_INVALID) )
+                             DBUS_TYPE_STRING, &context,
+                             DBUS_TYPE_INVALID) )
   {
     // initial dbus interface did not include context string
     if( strcmp(err.name, DBUS_ERROR_INVALID_ARGS) )
@@ -902,11 +897,11 @@ cpu_keepalive_stop_cb(DBusMessage *const msg)
   }
 
   mce_log(LL_DEVEL, "got keepalive stop from %s",
-	  mce_dbus_get_name_owner_ident(sender));
+          mce_dbus_get_name_owner_ident(sender));
 
   if( !dbus_message_get_args(msg, &err,
-			     DBUS_TYPE_STRING, &context,
-			     DBUS_TYPE_INVALID) )
+                             DBUS_TYPE_STRING, &context,
+                             DBUS_TYPE_INVALID) )
   {
     // initial dbus interface did not include context string
     if( strcmp(err.name, DBUS_ERROR_INVALID_ARGS) )
@@ -918,7 +913,6 @@ cpu_keepalive_stop_cb(DBusMessage *const msg)
     context = CONTEXT_DEFAULT;
     mce_log(LL_DEBUG, "sender did not supply context string; using '%s'", context);
   }
-
 
   mce_log(LL_DEBUG, "sender=%s, context=%s", sender, context);
 
@@ -953,7 +947,7 @@ cpu_keepalive_wakeup_cb(DBusMessage *const msg)
   }
 
   mce_log(LL_DEVEL, "got keepalive wakeup from %s",
-	  mce_dbus_get_name_owner_ident(sender));
+          mce_dbus_get_name_owner_ident(sender));
 
   cpu_keepalive_wakeup(sender);
 
@@ -982,7 +976,7 @@ EXIT:
 static
 DBusHandlerResult
 cpu_keepalive_dbus_filter_cb(DBusConnection *con, DBusMessage *msg,
-			     void *user_data)
+                             void *user_data)
 {
   (void)user_data;
 
@@ -1020,10 +1014,10 @@ cpu_keepalive_dbus_filter_cb(DBusConnection *con, DBusMessage *msg,
   }
 
   if( !dbus_message_get_args(msg, &err,
-			     DBUS_TYPE_STRING, &name,
-			     DBUS_TYPE_STRING, &prev,
-			     DBUS_TYPE_STRING, &curr,
-			     DBUS_TYPE_INVALID) )
+                             DBUS_TYPE_STRING, &name,
+                             DBUS_TYPE_STRING, &prev,
+                             DBUS_TYPE_STRING, &curr,
+                             DBUS_TYPE_INVALID) )
   {
     mce_log(LL_WARN, "%s: %s", err.name, err.message);
     goto EXIT;
@@ -1080,14 +1074,14 @@ static gboolean cpu_keepalive_attach_to_dbus(void)
     mce_log(LL_INFO, "registering handler for: %s", methods[i].member);
 
     methods[i].cookie = mce_dbus_handler_add(MCE_REQUEST_IF,
-					     methods[i].member,
-					     NULL,
-					     DBUS_MESSAGE_TYPE_METHOD_CALL,
-					     methods[i].handler);
+                                             methods[i].member,
+                                             NULL,
+                                             DBUS_MESSAGE_TYPE_METHOD_CALL,
+                                             methods[i].handler);
     if( !methods[i].cookie )
     {
       mce_log(LL_WARN, "failed to add dbus handler for: %s",
-	      methods[i].member);
+              methods[i].member);
       success = FALSE;
     }
   }
@@ -1139,7 +1133,7 @@ const gchar *g_module_check_init(GModule *module)
   }
 
   clients = g_hash_table_new_full(g_str_hash, g_str_equal,
-				  g_free, client_delete_cb);
+                                  g_free, client_delete_cb);
 
 EXIT:
 

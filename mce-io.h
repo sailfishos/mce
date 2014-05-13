@@ -79,7 +79,6 @@ typedef void (*iomon_err_cb)(gpointer data, GIOCondition condition);
 
 typedef void (*iomon_delete_cb)(gconstpointer io_monitor);
 
-
 /* iomon functions */
 
 gconstpointer mce_register_io_monitor_string(const gint fd,
@@ -103,23 +102,19 @@ void mce_unregister_io_monitor_list(GSList *list);
 
 void mce_unregister_io_monitor_at_path(const char *path);
 
-
 void mce_suspend_io_monitor(gconstpointer io_monitor);
 
 void mce_resume_io_monitor(gconstpointer io_monitor);
 
-
 const gchar *mce_get_io_monitor_name(gconstpointer io_monitor);
 
 int mce_get_io_monitor_fd(gconstpointer io_monitor);
-
 
 /* output_state_t funtions */
 
 void mce_close_output(output_state_t *output);
 
 gboolean mce_write_number_string_to_file(output_state_t *output, const gulong number);
-
 
 /* misc utils */
 
@@ -140,7 +135,6 @@ gboolean mce_write_string_to_file(const gchar *const file,
 
 gboolean mce_write_number_string_to_file_atomic(const gchar *const file,
 						const gulong number);
-
 
 gboolean mce_are_settings_locked(void);
 

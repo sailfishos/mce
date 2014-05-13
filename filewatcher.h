@@ -16,8 +16,8 @@ extern "C" {
 # endif
 
 typedef void (*filewatcher_changed_fn)(const char *path,
-				       const char *file,
-				       gpointer user_data);
+                                       const char *file,
+                                       gpointer user_data);
 
 typedef struct filewatcher_t filewatcher_t;
 

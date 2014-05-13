@@ -317,26 +317,25 @@ int evdev_identify_device(int fd)
       if( bit_is_set(bmap_code, ecode) )
       {
         const char *tag = evdev_get_event_code_name(etype, ecode);
-	int set = bit_is_set(bmap_stat, ecode);
+        int set = bit_is_set(bmap_stat, ecode);
         int add = strlen(tag) + 1 + set;
-	char val[32] = "";
+        char val[32] = "";
 
+        if( etype == EV_ABS )
+        {
+          struct input_absinfo info;
+          memset(&info, 0, sizeof info);
 
-	if( etype == EV_ABS )
-	{
-	  struct input_absinfo info;
-	  memset(&info, 0, sizeof info);
-
-	  if( ioctl(fd, EVIOCGABS(ecode), &info) == -1 )
-	  {
-	    mce_log(LL_ERR, "EVIOCGABS(%s): %m", tag);
-	  }
-	  else
-	  {
-	    snprintf(val, sizeof val, "=%d [%d,%d]", info.value, info.minimum, info.maximum);
-	    add += strlen(val);
-	  }
-	}
+          if( ioctl(fd, EVIOCGABS(ecode), &info) == -1 )
+          {
+            mce_log(LL_ERR, "EVIOCGABS(%s): %m", tag);
+          }
+          else
+          {
+            snprintf(val, sizeof val, "=%d [%d,%d]", info.value, info.minimum, info.maximum);
+            add += strlen(val);
+          }
+        }
 
         if( len == 0 ) printf("\t");
         else if( len+add > cols ) printf("\n\t"), len = 0;
@@ -347,7 +346,6 @@ int evdev_identify_device(int fd)
     }
     if( len ) printf("\n");
   }
-
 
   err = 0;
 

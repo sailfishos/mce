@@ -258,5 +258,5 @@ void wakelock_block_suspend_until_exit(void)
  */
 void lwl_enable_logging(void)
 {
-  lwl_debug_enabled = 1;
+	lwl_debug_enabled = 1;
 }

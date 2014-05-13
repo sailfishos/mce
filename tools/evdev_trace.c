@@ -29,7 +29,6 @@ static bool emit_event_time  = true;
 /** Flag for: emit time of day (of event read time) */
 static bool emit_time_of_day = false;
 
-
 /** Read and show input events
  *
  * @param fd   input device file descriptor to read from
@@ -73,13 +72,13 @@ process_events(int fd, const char *title)
     localtime_r(&tv.tv_sec, &tm);
 
     snprintf(tod, sizeof tod, "%04d-%02d-%02d %02d:%02d:%02d.%03ld - ",
-	     tm.tm_year + 1900,
-	     tm.tm_mon + 1,
-	     tm.tm_mday,
-	     tm.tm_hour,
-	     tm.tm_min,
-	     tm.tm_sec,
-	     (long)(tv.tv_usec / 1000));
+             tm.tm_year + 1900,
+             tm.tm_mon + 1,
+             tm.tm_mday,
+             tm.tm_hour,
+             tm.tm_min,
+             tm.tm_sec,
+             (long)(tv.tv_usec / 1000));
   }
 
   for( int i = 0; i < n; ++i )
@@ -90,8 +89,8 @@ process_events(int fd, const char *title)
     if( emit_event_time )
     {
       snprintf(toe, sizeof toe, "%ld.%03ld - ",
-	       (long)e->time.tv_sec,
-	       (long)e->time.tv_usec / 1000);
+               (long)e->time.tv_sec,
+               (long)e->time.tv_usec / 1000);
     }
 
     printf("%s: %s%s0x%02x/%s - 0x%03x/%s - %d\n",
@@ -244,8 +243,8 @@ static void usage(void)
          "  -t, --trace          -- trace input events\n"
          "  -e, --emit-also-tod  -- emit also time of day\n"
          "  -E, --emit-only-tod  -- emit only time of day\n"
-	 "\n"
-	 "NOTES\n"
+         "\n"
+         "NOTES\n"
          "  If no device paths are given, /dev/input/event* is assumed.\n"
          "  \n"
          "  Full device path is not required, \"/dev/input/event1\" can\n"
