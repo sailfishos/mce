@@ -2207,7 +2207,7 @@ static guint mdy_blanking_find_dim_timeout_index(gint dim_timeout)
     for( ;; ) {
         gint allowed_timeout = GPOINTER_TO_INT(iter->data);
 
-        if( dim_timeout <= allowed_timeout) )
+        if( dim_timeout <= allowed_timeout )
             break;
 
         if( !(iter = iter->next) )
