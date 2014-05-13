@@ -89,7 +89,6 @@
 /** Reno command to disable LED */
 #define LEDC_DISABLE				0x08
 
-
 /** Default NJoy (LP5521)-controlled RGB LED current */
 #define MAXIMUM_NJOY_RGB_LED_CURRENT		47	/* 4.7 mA */
 
@@ -121,7 +120,6 @@
 /** No trigger */
 #define MCE_LED_TRIGGER_NONE			"none"
 
-
 /* LED modes */
 /** LED disabled */
 #define MCE_LED_DISABLED_MODE			"disabled"
@@ -132,12 +130,10 @@
 /** LED run mode */
 #define MCE_LED_RUN_MODE			"run"
 
-
 /** Suffix used for LED current */
 #define MCE_LED_CURRENT_SUFFIX			"/led_current"
 /** Suffix used for LED brightness */
 #define MCE_LED_BRIGHTNESS_SUFFIX		"/brightness"
-
 
 /** Path to direct LED control /sys directory */
 #define MCE_LED_DIRECT_SYS_PATH			"/sys/class/leds"
@@ -192,7 +188,6 @@
 #define MCE_LED_LOAD_SUFFIX			"load"
 /** LED leds suffix */
 #define MCE_LED_LEDS_SUFFIX			"leds"
-
 
 /**
  * Lysti LED mask for LED 1 (channel 8);

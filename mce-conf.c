@@ -408,8 +408,8 @@ static void mce_conf_merge_file(GKeyFile *dest, GKeyFile *srce)
  */
 static int mce_conf_glob_error_cb(const char *path, int err)
 {
-  mce_log(LL_WARN, "%s: glob: %s", path, g_strerror(err));
-  return 0;
+	mce_log(LL_WARN, "%s: glob: %s", path, g_strerror(err));
+	return 0;
 }
 
 /** Process config data from /etc/mce/mce.d/xxx.ini files

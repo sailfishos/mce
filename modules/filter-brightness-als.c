@@ -126,7 +126,7 @@ static guint color_profile_gconf_id = 0;
 /** List of known color profiles (dummy implementation) */
 static const char * const color_profiles[] =
 {
-  COLOR_PROFILE_ID_HARDCODED,
+	COLOR_PROFILE_ID_HARDCODED,
 };
 
 /** ALS filtering state for display backlight brightness */
@@ -355,14 +355,14 @@ static int als_filter_run(als_filter_t *self, als_profile_t prof, int lux)
 
 	/* Add hysteresis to transitions that make the display dimmer
 	 *
-         *                 lux from ALS
+	 *                 lux from ALS
 	 *                  |
-         *                  |  configuration slot
+	 *                  |  configuration slot
 	 *                  |   |
-         *                  v   |
-         *    0----A------B-----C-----> [lux]
+	 *                  v   |
+	 *    0----A------B-----C-----> [lux]
 	 *
-         *              |-------|
+	 *              |-------|
 	 * threshold    lo      hi
 	 */
 
@@ -424,9 +424,9 @@ static void rethink_als_status(void)
 		case MCE_DISPLAY_ON:
 		case MCE_DISPLAY_DIM:
 		case MCE_DISPLAY_POWER_UP:
-                case MCE_DISPLAY_LPM_OFF:
-                case MCE_DISPLAY_LPM_ON:
-                        want_data = TRUE;
+		case MCE_DISPLAY_LPM_OFF:
+		case MCE_DISPLAY_LPM_ON:
+			want_data = TRUE;
 			break;
 
 		default:

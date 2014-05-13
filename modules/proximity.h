@@ -32,15 +32,15 @@
 /** Struct for the Avago data */
 struct avago_ps {
 	/** The filtered ambient light in lux */
-        guint32 lux;			/* 10x scale */
+	guint32 lux;			/* 10x scale */
 	/** The raw ambient light in lux */
-        guint32 lux_raw;		/* 10x scale */
+	guint32 lux_raw;		/* 10x scale */
 	/** The filtered proximity */
-        guint16 ps;
+	guint16 ps;
 	/** The raw proximity */
-        guint16 ps_raw;
+	guint16 ps_raw;
 	/** The sensor status */
-        guint16 status;
+	guint16 status;
 } __attribute__((packed));
 
 /** Base path to the Avago proximity sensor */
@@ -93,7 +93,6 @@ typedef struct {
 
 /** Sysinfo identifier for the proximity sensor calibration values */
 #define PS_CALIB_IDENTIFIER		"/device/ps_calib"
-
 
 /** Path to the GConf settings for the proximity */
 #define MCE_GCONF_PROXIMITY_PATH		"/system/osso/dsm/proximity"

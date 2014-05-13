@@ -78,7 +78,6 @@ G_MODULE_EXPORT module_info_struct module_info = {
 	.priority = 250
 };
 
-
 static const char *alarm_state_repr(alarm_ui_state_t state)
 {
 	const char *res = "UNKNOWN";
@@ -154,7 +153,7 @@ static gboolean alarm_owner_monitor_dbus_cb(DBusMessage *const msg)
 
 	status = TRUE;
 
- EXIT:
+EXIT:
 	return status;
 
 }

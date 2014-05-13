@@ -1475,13 +1475,13 @@ typedef struct orient_data {
 
 static const char * const orient_state_lut[] =
 {
-       [MCE_ORIENTATION_UNDEFINED]   = "Undefined",
-       [MCE_ORIENTATION_LEFT_UP]     = "LeftUp",
-       [MCE_ORIENTATION_RIGHT_UP]    = "RightUp",
-       [MCE_ORIENTATION_BOTTOM_UP]   = "BottomUp",
-       [MCE_ORIENTATION_BOTTOM_DOWN] = "BottomDown",
-       [MCE_ORIENTATION_FACE_DOWN]   = "FaceDown",
-       [MCE_ORIENTATION_FACE_UP]     = "FaceUp",
+	[MCE_ORIENTATION_UNDEFINED]   = "Undefined",
+	[MCE_ORIENTATION_LEFT_UP]     = "LeftUp",
+	[MCE_ORIENTATION_RIGHT_UP]    = "RightUp",
+	[MCE_ORIENTATION_BOTTOM_UP]   = "BottomUp",
+	[MCE_ORIENTATION_BOTTOM_DOWN] = "BottomDown",
+	[MCE_ORIENTATION_FACE_DOWN]   = "FaceDown",
+	[MCE_ORIENTATION_FACE_UP]     = "FaceUp",
 };
 static const char *orient_state_name(int state)
 {
@@ -2098,8 +2098,8 @@ static const char xsensord_name_owner_rule[] =
 /** Debug: how ALS shows up in mce state machines */
 static void ambient_light_sensor_trigger(gconstpointer data)
 {
-  int lux = GPOINTER_TO_INT(data);
-  mce_log(LL_NOTICE, "AMBIENT_LIGHT=%d", lux);
+	int lux = GPOINTER_TO_INT(data);
+	mce_log(LL_NOTICE, "AMBIENT_LIGHT=%d", lux);
 }
 #endif
 

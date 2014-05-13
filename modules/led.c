@@ -274,49 +274,49 @@ static const gchar *led_pattern_group = NULL;
 /** Path to monochrome/red channel LED current path  */
 static output_state_t led_current_rm_output =
 {
-  .context = "led_current_rm",
-  .truncate_file = TRUE,
-  .close_on_exit = FALSE,
+	.context = "led_current_rm",
+	.truncate_file = TRUE,
+	.close_on_exit = FALSE,
 };
 
 /** Path to green channel LED current path */
 static output_state_t led_current_g_output =
 {
-  .context = "led_current_g",
-  .truncate_file = TRUE,
-  .close_on_exit = FALSE,
+	.context = "led_current_g",
+	.truncate_file = TRUE,
+	.close_on_exit = FALSE,
 };
 
 /** Path to blue channel LED current path */
 static output_state_t led_current_b_output =
 {
-  .context = "led_current_b",
-  .truncate_file = TRUE,
-  .close_on_exit = FALSE,
+	.context = "led_current_b",
+	.truncate_file = TRUE,
+	.close_on_exit = FALSE,
 };
 
 /** Path to monochrome/red channel LED brightness path  */
 static output_state_t led_brightness_rm_output =
 {
-  .context = "led_brightness_rm",
-  .truncate_file = TRUE,
-  .close_on_exit = FALSE,
+	.context = "led_brightness_rm",
+	.truncate_file = TRUE,
+	.close_on_exit = FALSE,
 };
 
 /** Path to red channel LED brightness path */
 static output_state_t led_brightness_g_output =
 {
-  .context = "led_brightness_g",
-  .truncate_file = TRUE,
-  .close_on_exit = FALSE,
+	.context = "led_brightness_g",
+	.truncate_file = TRUE,
+	.close_on_exit = FALSE,
 };
 
 /** Path to blue channel LED brightness path */
 static output_state_t led_brightness_b_output =
 {
-  .context = "led_brightness_b",
-  .truncate_file = TRUE,
-  .close_on_exit = FALSE,
+	.context = "led_brightness_b",
+	.truncate_file = TRUE,
+	.close_on_exit = FALSE,
 };
 
 /** Path to engine 1 mode */
@@ -1077,13 +1077,13 @@ static void lysti_program_led(const pattern_struct *const pattern)
 	(void)mce_write_string_to_file(engine1_mode_path,
 				       MCE_LED_RUN_MODE);
 
-        /* Save what colors we are driving */
-        current_lysti_led_pattern = pattern->engine1_mux | pattern->engine2_mux;
+	/* Save what colors we are driving */
+	current_lysti_led_pattern = pattern->engine1_mux | pattern->engine2_mux;
 
-        /* Reset brightness and update color hue
+	/* Reset brightness and update color hue
 	 * according what leds are driven
 	 */
-        lysti_set_brightness(-1);
+	lysti_set_brightness(-1);
 }
 
 /**
@@ -1128,7 +1128,7 @@ static void njoy_program_led(const pattern_struct *const pattern)
 				       MCE_LED_RUN_MODE);
 
 	/* Reset brightness */
-        njoy_set_brightness(-1);
+	njoy_set_brightness(-1);
 }
 
 /**
@@ -2616,15 +2616,15 @@ static gboolean list_includes_item(gchar **list, const gchar *elem)
  */
 static gboolean init_hybris_patterns(void)
 {
-        enum {
-                IDX_PRIO,       /* Pattern priority field */
-                IDX_SCREEN_ON,  /* Pattern screen display policy field */
-                IDX_TIMEOUT,    /* Pattern timeout field */
-                IDX_ON_PERIOD,  /* On-period field */
-                IDX_OFF_PERIOD, /* Off-period field */
-                IDX_COLOR,      /* LED color field */
-                IDX_NUMOF
-        };
+	enum {
+		IDX_PRIO,       /* Pattern priority field */
+		IDX_SCREEN_ON,  /* Pattern screen display policy field */
+		IDX_TIMEOUT,    /* Pattern timeout field */
+		IDX_ON_PERIOD,  /* On-period field */
+		IDX_OFF_PERIOD, /* Off-period field */
+		IDX_COLOR,      /* LED color field */
+		IDX_NUMOF
+	};
 
 	gboolean  status  = FALSE;
 	gchar   **require = NULL;

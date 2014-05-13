@@ -72,7 +72,6 @@
  */
 static product_id_t product_id = PRODUCT_UNSET;
 
-
 /** Get init process environment value
  *
  * If mce is started manually, some environment variables are not

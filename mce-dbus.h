@@ -100,7 +100,6 @@ typedef struct
   gconstpointer cookie;
 } mce_dbus_handler_t;
 
-
 const char *mce_dbus_type_repr(int type);
 bool mce_dbus_iter_at_end(DBusMessageIter *iter);
 bool mce_dbus_iter_get_object(DBusMessageIter *iter, const char **pval);

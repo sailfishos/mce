@@ -107,7 +107,6 @@
 /** Value for the battery cover closed state */
 #define MCE_BATTERY_COVER_CLOSED			"closed"
 
-
 /* When MCE is made modular, this will be handled differently */
 gboolean mce_switches_init(void);
 void mce_switches_exit(void);

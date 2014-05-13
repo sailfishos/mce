@@ -152,7 +152,6 @@ typedef struct
 
 } tklock_notif_state_t;
 
-
 /** Proximity sensor history */
 typedef struct
 {
@@ -417,9 +416,9 @@ static gboolean volkey_visual_trigger = DEFAULT_VOLKEY_VISUAL_TRIGGER;
 /** SysFS path to touchscreen event disable */
 static output_state_t mce_touchscreen_sysfs_disable_output =
 {
-  .context = "touchscreen_disable",
-  .truncate_file = TRUE,
-  .close_on_exit = TRUE,
+    .context = "touchscreen_disable",
+    .truncate_file = TRUE,
+    .close_on_exit = TRUE,
 };
 
 /** SysFS path to touchscreen double-tap gesture control */
@@ -431,9 +430,9 @@ static const gchar *mce_touchscreen_calibration_control_path = NULL;
 /** SysFS path to keypad event disable */
 static output_state_t mce_keypad_sysfs_disable_output =
 {
-  .context = "keypad_disable",
-  .truncate_file = TRUE,
-  .close_on_exit = TRUE,
+    .context = "keypad_disable",
+    .truncate_file = TRUE,
+    .close_on_exit = TRUE,
 };
 
 /* ========================================================================= *
@@ -529,10 +528,10 @@ static void tklock_datapipe_set_device_lock_active(int state)
     bool locked = (state != 0);
 
     if( device_lock_active != locked ) {
-	mce_log(LL_DEVEL, "device lock state = %s", locked ? "locked" : "unlocked");
-	execute_datapipe(&device_lock_active_pipe,
-			 GINT_TO_POINTER(locked),
-			 USE_INDATA, CACHE_INDATA);
+        mce_log(LL_DEVEL, "device lock state = %s", locked ? "locked" : "unlocked");
+        execute_datapipe(&device_lock_active_pipe,
+                         GINT_TO_POINTER(locked),
+                         USE_INDATA, CACHE_INDATA);
     }
 }
 
@@ -576,12 +575,12 @@ static void tklock_datapipe_lipstick_available_cb(gconstpointer data)
     tklock_ui_set(false);
 
     if( lipstick_available ) {
-	/* query initial device lock state on lipstick/mce startup */
-	tklock_ui_get_device_lock();
+        /* query initial device lock state on lipstick/mce startup */
+        tklock_ui_get_device_lock();
     }
     else {
-	/* assume device lock is off if lipstick exits */
-	tklock_datapipe_set_device_lock_active(false);
+        /* assume device lock is off if lipstick exits */
+        tklock_datapipe_set_device_lock_active(false);
     }
 
 EXIT:
@@ -1190,7 +1189,7 @@ static void tklock_datapipe_touchscreen_cb(gconstpointer const data)
 
 EXIT:
 
-  return;
+    return;
 }
 
 /** Change notifications for lockkey_pipe
@@ -1999,10 +1998,10 @@ static void  tklock_uiexcept_sync_to_datapipe(void)
  */
 static void tklock_uiexcept_deny_state_restore(void)
 {
-  if( exdata.mask && exdata.restore ) {
-    exdata.restore = false;
-    mce_log(LL_NOTICE, "DISABLING STATE RESTORE");
-  }
+    if( exdata.mask && exdata.restore ) {
+        exdata.restore = false;
+        mce_log(LL_NOTICE, "DISABLING STATE RESTORE");
+    }
 }
 
 static void tklock_uiexcept_rethink(void)
@@ -2251,10 +2250,10 @@ static gboolean tklock_uiexcept_linger_cb(gpointer aptr)
     case MCE_DISPLAY_LPM_ON:
     case MCE_DISPLAY_DIM:
     case MCE_DISPLAY_ON:
-      execute_datapipe(&display_state_req_pipe,
-                       GINT_TO_POINTER(exx.display),
-                       USE_INDATA, CACHE_INDATA);
-      break;
+        execute_datapipe(&display_state_req_pipe,
+                         GINT_TO_POINTER(exx.display),
+                         USE_INDATA, CACHE_INDATA);
+        break;
 
     default:
     case MCE_DISPLAY_UNDEF:
@@ -2805,15 +2804,15 @@ static void tklock_evctrl_rethink(void)
     switch( call_state ) {
     case CALL_STATE_RINGING:
     case CALL_STATE_ACTIVE:
-      enable_kp = true;
-      break;
+        enable_kp = true;
+        break;
     default:
-      break;
+        break;
     }
 
     /* enable volume keys if music playing */
     if( music_playback )
-	enable_kp = true;
+        enable_kp = true;
 
     /* - - - - - - - - - - - - - - - - - - - *
      * touchscreen interrupts
@@ -2847,7 +2846,7 @@ static void tklock_evctrl_rethink(void)
     case MCE_DISPLAY_OFF:
     case MCE_DISPLAY_LPM_OFF:
     case MCE_DISPLAY_LPM_ON:
-      break;
+        break;
 
     default:
     case MCE_DISPLAY_ON:
@@ -2855,13 +2854,13 @@ static void tklock_evctrl_rethink(void)
     case MCE_DISPLAY_UNDEF:
     case MCE_DISPLAY_POWER_UP:
     case MCE_DISPLAY_POWER_DOWN:
-      enable_dt = false;
-      break;
+        enable_dt = false;
+        break;
     }
 
     /* doubletap gesture policy must not be 0/disabled */
     if( doubletap_gesture_policy == 0 ) {
-      enable_dt = false;
+        enable_dt = false;
     }
 
 #if 0 /* FIXME: check if proximity via sensord works better
@@ -2924,24 +2923,24 @@ static void tklock_evctrl_rethink(void)
     case MCE_DISPLAY_UNDEF:
     case MCE_DISPLAY_LPM_ON:
     case MCE_DISPLAY_LPM_OFF:
-	// want grab
-	grab_ts = true;
-	break;
+        // want grab
+        grab_ts = true;
+        break;
 
     case MCE_DISPLAY_POWER_UP:
-	// keep grab state
-	break;
+        // keep grab state
+        break;
 
     case MCE_DISPLAY_ON:
     case MCE_DISPLAY_DIM:
-	// release grab
-	grab_ts = false;
-	break;
+        // release grab
+        grab_ts = false;
+        break;
     }
 
     execute_datapipe(&touch_grab_wanted_pipe,
-		     GINT_TO_POINTER(grab_ts),
-		     USE_INDATA, CACHE_INDATA);
+                     GINT_TO_POINTER(grab_ts),
+                     USE_INDATA, CACHE_INDATA);
 
     /* - - - - - - - - - - - - - - - - - - - *
      * in case emitting of keypad events can't
@@ -2953,8 +2952,8 @@ static void tklock_evctrl_rethink(void)
     bool grab_kp = !enable_kp;
 
     execute_datapipe(&keypad_grab_wanted_pipe,
-		     GINT_TO_POINTER(grab_kp),
-		     USE_INDATA, CACHE_INDATA);
+                     GINT_TO_POINTER(grab_kp),
+                     USE_INDATA, CACHE_INDATA);
 
     return;
 }
@@ -2979,8 +2978,8 @@ static guint tklock_dtcalib_timeout_id = 0;
  */
 static void tklock_dtcalib_now(void)
 {
-  mce_log(LL_DEBUG, "Recalibrating double tap");
-  mce_write_string_to_file(mce_touchscreen_calibration_control_path, "1");
+    mce_log(LL_DEBUG, "Recalibrating double tap");
+    mce_write_string_to_file(mce_touchscreen_calibration_control_path, "1");
 }
 
 /** Kick the double tap recalibrating sysfs file from heartbeat
@@ -3410,7 +3409,7 @@ static void tklock_ui_set(bool enable)
     }
 
     if( tklock_ui_sent != enable ) {
-	mce_log(LL_DEVEL, "tklock state = %s", enable ? "locked" : "unlocked");
+        mce_log(LL_DEVEL, "tklock state = %s", enable ? "locked" : "unlocked");
 
         if( (tklock_ui_sent = tklock_ui_enabled = enable) ) {
             if( lipstick_available )
@@ -3437,17 +3436,17 @@ static void tklock_ui_get_device_lock_cb(DBusPendingCall *pc, void *aptr)
     dbus_int32_t  val = 0;
 
     if( !(rsp = dbus_pending_call_steal_reply(pc)) )
-	goto EXIT;
+        goto EXIT;
 
     if( dbus_set_error_from_message(&err, rsp) ) {
-	mce_log(LL_ERR, "%s: %s", err.name, err.message);
-	goto EXIT;
+        mce_log(LL_ERR, "%s: %s", err.name, err.message);
+        goto EXIT;
     }
     if( !dbus_message_get_args(rsp, &err,
-			       DBUS_TYPE_INT32, &val,
-			       DBUS_TYPE_INVALID) ) {
-	mce_log(LL_ERR, "%s: %s", err.name, err.message);
-	goto EXIT;
+                               DBUS_TYPE_INT32, &val,
+                               DBUS_TYPE_INVALID) ) {
+        mce_log(LL_ERR, "%s: %s", err.name, err.message);
+        goto EXIT;
     }
 
     mce_log(LL_INFO, "device lock status reply: state=%d", val);
@@ -3465,11 +3464,11 @@ static void tklock_ui_get_device_lock(void)
 {
     mce_log(LL_DEBUG, "query device lock status");
     dbus_send(SYSTEMUI_SERVICE,
-	      "/devicelock",
-	      "org.nemomobile.lipstick.devicelock",
-	      "state",
-	      tklock_ui_get_device_lock_cb,
-	      DBUS_TYPE_INVALID);
+              "/devicelock",
+              "org.nemomobile.lipstick.devicelock",
+              "state",
+              tklock_ui_get_device_lock_cb,
+              DBUS_TYPE_INVALID);
 }
 
 /** Broadcast LPM UI state over D-Bus
@@ -3581,7 +3580,7 @@ static gboolean tklock_dbus_mode_get_req_cb(DBusMessage *const msg)
     gboolean status = FALSE;
 
     mce_log(LL_DEVEL, "Received tklock mode get request from %s",
-	    mce_dbus_get_message_sender_ident(msg));
+            mce_dbus_get_message_sender_ident(msg));
 
     /* Try to send a reply that contains the current tklock mode */
     if( !tklock_dbus_send_tklock_mode(msg) )
@@ -3616,7 +3615,7 @@ static gboolean tklock_dbus_mode_change_req_cb(DBusMessage *const msg)
     }
 
     mce_log(LL_DEVEL, "Received tklock mode change request '%s' from %s",
-	    mode, mce_dbus_get_message_sender_ident(msg));
+            mode, mce_dbus_get_message_sender_ident(msg));
 
     int state = LOCK_UNDEF;
 
@@ -3671,7 +3670,7 @@ static gboolean tklock_dbus_systemui_callback_cb(DBusMessage *const msg)
     }
 
     mce_log(LL_DEVEL, "tklock callback value: %d, from %s", result,
-	    mce_dbus_get_message_sender_ident(msg));
+            mce_dbus_get_message_sender_ident(msg));
 
     switch( result ) {
     case TKLOCK_UNLOCK:
@@ -3782,13 +3781,13 @@ static gboolean tklock_dbus_device_lock_changed_cb(DBusMessage *const msg)
     dbus_int32_t val = 0;
 
     if( !msg )
-	goto EXIT;
+        goto EXIT;
 
     if( !dbus_message_get_args(msg, &err,
                                DBUS_TYPE_INT32, &val,
                                DBUS_TYPE_INVALID) ) {
-	mce_log(LL_ERR, "Failed to parse device lock signal: %s: %s",
-		err.name, err.message);
+        mce_log(LL_ERR, "Failed to parse device lock signal: %s: %s",
+                err.name, err.message);
         goto EXIT;
     }
 

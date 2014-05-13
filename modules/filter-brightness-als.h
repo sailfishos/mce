@@ -62,15 +62,15 @@
 /** Struct for the Avago data */
 struct avago_als {
 	/** The filtered ambient light in lux */
-        guint32 lux;			/* 10x scale */
+	guint32 lux;			/* 10x scale */
 	/** The raw ambient light in lux */
-        guint32 lux_raw;		/* 10x scale */
+	guint32 lux_raw;		/* 10x scale */
 	/** The filtered proximity */
-        guint16 ps;
+	guint16 ps;
 	/** The raw proximity */
-        guint16 ps_raw;
+	guint16 ps_raw;
 	/** The sensor status */
-        guint16 status;
+	guint16 status;
 } __attribute__((packed));
 
 /** Base path to the Avago ALS */
@@ -81,7 +81,6 @@ struct avago_als {
 #define ALS_THRESHOLD_RANGE_PATH_AVAGO	ALS_PATH_AVAGO "/als_threshold_range"
 /** Maximun threshold value for the Avago ALS */
 #define ALS_THRESHOLD_MAX_AVAGO		655350
-
 
 /* Paths for the Dipro (BH1770GLC/SFH7770) ALS */
 
@@ -180,7 +179,6 @@ typedef struct {
 	const gint value[ALS_RANGES + 1];
 } als_profile_struct;
 
-
 /** Colour phase adjustment matrix */
 typedef struct {
 	/**
@@ -208,7 +206,6 @@ typedef struct {
 } cpa_profile_entry;
 
 /* Colour phase adjustment matrices in filter-brightness-als.c */
-
 
 /** ALS profiles */
 typedef enum {

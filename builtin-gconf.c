@@ -689,7 +689,7 @@ gconf_value_str(GConfValue *self)
         break;
       }
       if( v_iter->next ) {
-	fprintf(file, ",");
+        fprintf(file, ",");
       }
     }
     break;
@@ -751,7 +751,7 @@ gconf_value_list_validata(GSList *src, GConfValueType type)
     if( val->type != type )
     {
       gconf_log_error("list has %s value, expected %s\n",
-		      gconf_type_repr(val->type), gconf_type_repr(type));
+                      gconf_type_repr(val->type), gconf_type_repr(type));
       return FALSE;
     }
   }
@@ -1628,7 +1628,7 @@ static void gconf_client_load_values(GConfClient *self, const char *path)
       gconf_strip_string(val);
 
       if( (entry = gconf_client_find_entry(self, key, &err)) ) {
-	gconf_value_set_from_string(entry->value, val);
+        gconf_value_set_from_string(entry->value, val);
       }
       g_clear_error(&err);
     }
@@ -1742,10 +1742,10 @@ static void gconf_client_free_default(void)
   if( default_client )
   {
     g_slist_free_full(default_client->entries,
-		      gconf_entry_free_cb);
+                      gconf_entry_free_cb);
 
     g_slist_free_full(default_client->notify_list,
-		      gconf_client_notify_free_cb);
+                      gconf_client_notify_free_cb);
 
     free(default_client), default_client = 0;
   }
@@ -2136,7 +2136,6 @@ EXIT:
   return;
 }
 
-
 /** Dispatch change notifications via installed  callbacks */
 static
 void
@@ -2160,7 +2159,7 @@ gconf_client_notify_change(GConfClient           *client,
 
       if( !strcmp(notify->namespace_section, namespace_section) )
       {
-	gconf_log_debug("id=%u, namespace=%s", notify->id, notify->namespace_section);
+        gconf_log_debug("id=%u, namespace=%s", notify->id, notify->namespace_section);
         notify->func(client, notify->id, entry, notify->user_data);
       }
     }

@@ -449,8 +449,8 @@ filewatcher_setup_iowatch(filewatcher_t *self)
   g_io_channel_set_buffered(chan, FALSE);
 
   self->watch_id = g_io_add_watch(chan,
-				  G_IO_IN | G_IO_ERR | G_IO_HUP | G_IO_NVAL,
-				  filewatcher_input_cb, self);
+                                  G_IO_IN | G_IO_ERR | G_IO_HUP | G_IO_NVAL,
+                                  filewatcher_input_cb, self);
 
   if( !self->watch_id )
   {

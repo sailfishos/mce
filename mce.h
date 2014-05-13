@@ -264,11 +264,11 @@ typedef enum {
 
 /** Exceptional UI status */
 typedef enum {
-    UIEXC_NONE   = 0,
-    UIEXC_LINGER = 1<<0,
-    UIEXC_CALL   = 1<<1,
-    UIEXC_ALARM  = 1<<2,
-    UIEXC_NOTIF  = 1<<3,
+	UIEXC_NONE   = 0,
+	UIEXC_LINGER = 1<<0,
+	UIEXC_CALL   = 1<<1,
+	UIEXC_ALARM  = 1<<2,
+	UIEXC_NOTIF  = 1<<3,
 } uiexctype_t;
 
 /** LED brightness */
@@ -433,22 +433,22 @@ void mce_quit_mainloop(void);
 static inline int
 mce_xlat_int(int src_lo, int src_hi, int dst_lo, int dst_hi, int val)
 {
-        /* Deal with empty ranges first; assume that the
-         * low bound is sanest choise available */
-        if( src_lo >= src_hi || dst_lo >= dst_hi )
-                return dst_lo;
+	/* Deal with empty ranges first; assume that the
+	 * low bound is sanest choise available */
+	if( src_lo >= src_hi || dst_lo >= dst_hi )
+		return dst_lo;
 
-        int src_range = src_hi - src_lo;
-        int dst_range = dst_hi - dst_lo;
+	int src_range = src_hi - src_lo;
+	int dst_range = dst_hi - dst_lo;
 
-        val -= src_lo;
-        val = (val * dst_range + src_range / 2) / src_range;
-        val += dst_lo;
+	val -= src_lo;
+	val = (val * dst_range + src_range / 2) / src_range;
+	val += dst_lo;
 
-        if( val > dst_hi ) val = dst_hi; else
-        if( val < dst_lo ) val = dst_lo;
+	if( val > dst_hi ) val = dst_hi; else
+	if( val < dst_lo ) val = dst_lo;
 
-        return val;
+	return val;
 }
 
 #endif /* _MCE_H_ */
