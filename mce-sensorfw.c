@@ -940,6 +940,14 @@ static void mce_sensorfw_als_start_sensor(void)
 	if( !mce_sensorfw_start_sensor(als_name, als_iface, als_sid) )
 		goto EXIT;
 
+	/* ALS is used in lpm display states; from sensord point of view
+	 * this means display is off and thus we need to set the standby
+	 * override flag */
+
+	/* No error checking here; failures will be logged when
+	 * we get reply message from sensord */
+	mce_sensorfw_set_standby_override(als_name, als_iface, als_sid, true);
+
 	als_have = true;
 
 	/* There is no quarantee that we get sensor input

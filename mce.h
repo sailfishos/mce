@@ -273,6 +273,10 @@ typedef enum {
 
 /** LED brightness */
 datapipe_struct led_brightness_pipe;
+
+/** LPM brightness */
+datapipe_struct lpm_brightness_pipe;
+
 /** State of device; read only */
 datapipe_struct device_inactive_pipe;
 /** LED pattern to activate; read only */

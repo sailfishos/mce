@@ -252,6 +252,7 @@ static void                mdy_datapipe_submode_cb(gconstpointer data);
 static gpointer            mdy_datapipe_display_state_filter_cb(gpointer data);
 static void                mdy_datapipe_display_state_cb(gconstpointer data);
 static void                mdy_datapipe_display_brightness_cb(gconstpointer data);
+static void                mdy_datapipe_lpm_brightness_cb(gconstpointer data);
 static void                mdy_datapipe_display_state_req_cb(gconstpointer data);
 static void                mdy_datapipe_audio_route_cb(gconstpointer data);
 static void                mdy_datapipe_charger_state_cb(gconstpointer data);
@@ -305,6 +306,8 @@ static void                mdy_brightness_stop_fade_timer(void);
 static void                mdy_brightness_start_fade_timer(gint step_time);
 static void                mdy_brightness_set_fade_target(gint new_brightness);
 static void                mdy_brightness_set_on_level(gint hbm_and_level);
+static void                mdy_brightness_set_dim_level(void);
+static void                mdy_brightness_set_lpm_level(gint level);
 
 /* ------------------------------------------------------------------------- *
  * CONTENT_ADAPTIVE_BACKLIGHT_CONTROL
@@ -1098,6 +1101,30 @@ EXIT:
     return;
 }
 
+/** Handle lpm_brightness_pipe notifications
+ *
+ * @note A brightness request is only sent if the value changed
+ *
+ * @param data The display brightness stored in a pointer
+ */
+static void mdy_datapipe_lpm_brightness_cb(gconstpointer data)
+{
+    static gint curr = -1;
+
+    gint prev = curr;
+    curr = GPOINTER_TO_INT(data);
+
+    mce_log(LL_DEBUG, "input: %d -> %d", prev, curr);
+
+    if( curr == prev )
+        goto EXIT;
+
+    mdy_brightness_set_lpm_level(curr);
+
+EXIT:
+    return;
+}
+
 /* Cached audio routing state */
 static audio_route_t audio_route = AUDIO_ROUTE_HANDSET;
 
@@ -1388,6 +1415,8 @@ static void mdy_datapipe_init(void)
                                       mdy_datapipe_display_state_cb);
     append_output_trigger_to_datapipe(&display_brightness_pipe,
                                       mdy_datapipe_display_brightness_cb);
+    append_output_trigger_to_datapipe(&lpm_brightness_pipe,
+                                      mdy_datapipe_lpm_brightness_cb);
 
     append_output_trigger_to_datapipe(&charger_state_pipe,
                                       mdy_datapipe_charger_state_cb);
@@ -1446,6 +1475,8 @@ static void mdy_datapipe_quit(void)
                                         mdy_datapipe_audio_route_cb);
     remove_output_trigger_from_datapipe(&display_brightness_pipe,
                                         mdy_datapipe_display_brightness_cb);
+    remove_output_trigger_from_datapipe(&lpm_brightness_pipe,
+                                        mdy_datapipe_lpm_brightness_cb);
     remove_output_trigger_from_datapipe(&display_state_pipe,
                                         mdy_datapipe_display_state_cb);
     remove_output_trigger_from_datapipe(&display_state_req_pipe,
@@ -1964,6 +1995,38 @@ static void mdy_brightness_set_dim_level(void)
                                      USE_INDATA);
 }
 
+static void mdy_brightness_set_lpm_level(gint level)
+{
+    /* Map from: 1-100% to: 1-hw_max */
+    int brightness = mce_xlat_int(1, 100,
+                                  1, mdy_brightness_level_maximum,
+                                  level);
+
+    mce_log(LL_DEBUG, "mdy_brightness_level_display_lpm: %d -> %d",
+            mdy_brightness_level_display_lpm, brightness);
+
+    mdy_brightness_level_display_lpm = brightness;
+
+    /* Take updated values in use */
+    switch( display_state ) {
+    case MCE_DISPLAY_LPM_ON:
+        mdy_brightness_set_fade_target(mdy_brightness_level_display_lpm);
+        break;
+
+    default:
+    case MCE_DISPLAY_OFF:
+    case MCE_DISPLAY_LPM_OFF:
+    case MCE_DISPLAY_DIM:
+    case MCE_DISPLAY_ON:
+    case MCE_DISPLAY_UNDEF:
+    case MCE_DISPLAY_POWER_DOWN:
+    case MCE_DISPLAY_POWER_UP:
+        break;
+    }
+
+    return;
+}
+
 static void mdy_brightness_set_on_level(gint hbm_and_level)
 {
     gint new_brightness = (hbm_and_level >> 0) & 0xff;
@@ -2002,17 +2065,13 @@ static void mdy_brightness_set_on_level(gint hbm_and_level)
     /* Re-evaluate dim brightness too */
     mdy_brightness_set_dim_level();
 
-    /* Re-evaluate lpm brightness too */
-    // TODO: ALS config & sensor input processing
+    /* Note: The lpm brightness is handled separately */
 
     /* Take updated values in use */
     switch( display_state ) {
     case MCE_DISPLAY_OFF:
     case MCE_DISPLAY_LPM_OFF:
-        break;
-
     case MCE_DISPLAY_LPM_ON:
-        mdy_brightness_set_fade_target(mdy_brightness_level_display_lpm);
         break;
 
     case MCE_DISPLAY_DIM:
@@ -4338,6 +4397,15 @@ static void mdy_display_state_enter_post(void)
     mdy_hbm_rethink();
     mdy_orientation_sensor_rethink();
 
+    /* Determine the minimum brightness level above which to use
+     * smooth transitions. Since both lpm and dimmed brightness
+     * are now dynamic and lpm brightness can be greater than
+     * dimmed brightness, use: limit = min(dimmed_brightness-1, lpm)
+     */
+    gint consider_off_level = mdy_brightness_level_display_dim - 1;
+    if( consider_off_level > mdy_brightness_level_display_lpm )
+        consider_off_level = mdy_brightness_level_display_lpm;
+
     switch( display_state ) {
     case MCE_DISPLAY_POWER_DOWN:
     case MCE_DISPLAY_OFF:
@@ -4357,7 +4425,7 @@ static void mdy_display_state_enter_post(void)
         break;
 
     case MCE_DISPLAY_DIM:
-        if( mdy_brightness_level_cached <= mdy_brightness_level_display_lpm ) {
+        if( mdy_brightness_level_cached <= consider_off_level ) {
             /* If we unblank, switch on display immediately */
             mdy_brightness_force_level(mdy_brightness_level_display_dim);
         } else {
@@ -4367,7 +4435,7 @@ static void mdy_display_state_enter_post(void)
         break;
 
     case MCE_DISPLAY_ON:
-        if( mdy_brightness_level_cached <= mdy_brightness_level_display_lpm ) {
+        if( mdy_brightness_level_cached <= consider_off_level ) {
             /* If we unblank, switch on display immediately */
             mdy_brightness_force_level(mdy_brightness_level_display_on);
         } else {
@@ -6955,6 +7023,13 @@ static void mdy_gconf_sanitize_brightness_settings(void)
             mdy_brightness_level_display_on);
     mce_log(LL_DEBUG, "mdy_brightness_level_display_dim = %d",
             mdy_brightness_level_display_dim);
+
+    /* Drive the initial lpm brightness value through datapipe.
+     * Actual value will change only if sensor is enabled, producing
+     * input and lpm als config is in place. */
+    execute_datapipe(&lpm_brightness_pipe,
+                     GINT_TO_POINTER(mdy_brightness_level_display_lpm),
+                     USE_INDATA, CACHE_INDATA);
 }
 
 /** Get initial gconf valus and start tracking changes
