@@ -147,6 +147,12 @@ static als_filter_t lut_led =
 	.id = "Led",
 };
 
+/** ALS filtering state for low power mode display simulation */
+static als_filter_t lut_lpm =
+{
+	.id = "LPM",
+};
+
 static gboolean set_color_profile(const gchar *id);
 static gboolean save_color_profile(const gchar *id);
 
@@ -387,6 +393,8 @@ static void run_datapipes(void)
 			 USE_CACHE, DONT_CACHE_INDATA);
 	execute_datapipe(&led_brightness_pipe, NULL,
 			 USE_CACHE, DONT_CACHE_INDATA);
+	execute_datapipe(&lpm_brightness_pipe, NULL,
+			 USE_CACHE, DONT_CACHE_INDATA);
 	execute_datapipe(&key_backlight_pipe, NULL,
 			 USE_CACHE, DONT_CACHE_INDATA);
 }
@@ -447,8 +455,10 @@ static void rethink_als_status(void)
 
 	if( want_data )
 		mce_sensorfw_als_set_notify(als_lux_changed);
-	else
+	else {
 		mce_sensorfw_als_set_notify(0);
+		als_lux_changed(-1);
+	}
 
 	if( enable_old == enable_new )
 		goto EXIT;
@@ -466,6 +476,7 @@ static void rethink_als_status(void)
 		als_filter_clear_threshold(&lut_display);
 		als_filter_clear_threshold(&lut_led);
 		als_filter_clear_threshold(&lut_key);
+		als_filter_clear_threshold(&lut_lpm);
 	}
 
 	run_datapipes();
@@ -565,6 +576,29 @@ static gpointer led_brightness_filter(gpointer data)
 
 EXIT:
 	return GINT_TO_POINTER(value * scale / 100);
+}
+
+/** Ambient Light Sensor filter for LPM brightness
+ *
+ * @param data The un-processed brightness setting (1-100) stored in a pointer
+ * @return The processed brightness value
+ */
+static gpointer lpm_brightness_filter(gpointer data)
+{
+	int value = GPOINTER_TO_INT(data);
+
+	if( lut_lpm.profiles < 1 )
+		goto EXIT;
+
+	if( als_lux_latest < 0 )
+		goto EXIT;
+
+	/* Note: Input value is ignored and output is
+	 *       determined only by the als config */
+	value = als_filter_run(&lut_lpm, 0, als_lux_latest);
+
+EXIT:
+	return GINT_TO_POINTER(value);
 }
 
 /**
@@ -1056,6 +1090,7 @@ const gchar *g_module_check_init(GModule *module)
 	als_filter_load_config(&lut_display);
 	als_filter_load_config(&lut_led);
 	als_filter_load_config(&lut_key);
+	als_filter_load_config(&lut_lpm);
 
 	/* Get intial display state */
 	display_state = display_state_get();
@@ -1065,6 +1100,8 @@ const gchar *g_module_check_init(GModule *module)
 				  display_brightness_filter);
 	append_filter_to_datapipe(&led_brightness_pipe,
 				  led_brightness_filter);
+	append_filter_to_datapipe(&lpm_brightness_pipe,
+				  lpm_brightness_filter);
 	append_filter_to_datapipe(&key_backlight_pipe,
 				  key_backlight_filter);
 	append_output_trigger_to_datapipe(&display_state_pipe,
@@ -1139,6 +1176,8 @@ void g_module_unload(GModule *module)
 				    key_backlight_filter);
 	remove_filter_from_datapipe(&led_brightness_pipe,
 				    led_brightness_filter);
+	remove_filter_from_datapipe(&lpm_brightness_pipe,
+				    lpm_brightness_filter);
 	remove_filter_from_datapipe(&display_brightness_pipe,
 				    display_brightness_filter);
 
