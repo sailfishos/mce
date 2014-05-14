@@ -1,3 +1,12 @@
+mce (1.30.3) unstable; urgency=low
+
+  * [mce] Enable led sw breathing by default when charger is connected.
+    Fixes JB#19431
+  * [mce] Use ambient light sensor to tune display brightness in lpm_on state.
+    Fixes JB#18791
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 14 May 2014 15:25:18 +0300
+
 mce (1.30.2) unstable; urgency=low
 
   * [mce] Use mce-command-line for parsing mcetool command line options.
