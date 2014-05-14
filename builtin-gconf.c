@@ -1510,13 +1510,13 @@ static const setting_t gconf_defaults[] =
     // no define; used by led module
     .key  = "/system/osso/dsm/leds/sw_breath_enabled",
     .type = "b",
-    .def  = "false",
+    .def  = "true",
   },
   {
     // no define; used by led module
     .key  = "/system/osso/dsm/leds/sw_breath_battery_limit",
     .type = "i",
-    .def  = "90",
+    .def  = "101", // use > 100 for "only when charger is connected"
   },
   {
     // MCE_GCONF_PROXIMITY_PS_ENABLED_PATH @ proximity.h
