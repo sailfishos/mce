@@ -1372,6 +1372,9 @@ static void mce_sensorfw_ps_start_sensor(void)
 	if( !mce_sensorfw_start_sensor(ps_name, ps_iface, ps_sid) )
 		goto EXIT;
 
+	/* The proximity sensor must stay active also when display is
+	 * off and thus we need to set the standby override flag */
+
 	/* No error checking here; failures will be logged when
 	 * we get reply message from sensord */
 	mce_sensorfw_set_standby_override(ps_name, ps_iface, ps_sid, true);
@@ -1793,6 +1796,11 @@ static void mce_sensorfw_orient_start_sensor(void)
 
 	if( !mce_sensorfw_start_sensor(orient_name, orient_iface, orient_sid) )
 		goto EXIT;
+
+	/* In order to have a upto date orientation state when display
+	 * is fully powered up, mce starts orientation sensor in paralled
+	 * with display power up; from sensord point of view the display
+	 * is still off and thus we need to set the standby override flag */
 
 	/* No error checking here; failures will be logged when
 	 * we get reply message from sensord */
