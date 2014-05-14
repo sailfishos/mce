@@ -343,12 +343,6 @@ static gboolean            mdy_blanking_off_cb(gpointer data);
 static void                mdy_blanking_cancel_off(void);
 static void                mdy_blanking_schedule_off(void);
 
-// display timer: DIM -> LPM_ON
-
-static gboolean            mdy_blanking_lpm_on_cb(gpointer data);
-static void                mdy_blanking_cancel_lpm_on(void);
-static void                mdy_blanking_schedule_lpm_on(void);
-
 // display timer: LPM_ON -> LPM_OFF (when proximity covered)
 
 static gboolean            mdy_blanking_lpm_off_cb(gpointer data);
@@ -2466,64 +2460,6 @@ static void mdy_blanking_schedule_off(void)
     return;
 }
 
-// TIMER: DIM -> LPM_ON
-
-/** Low power mode timeout callback ID */
-static guint mdy_blanking_lpm_on_cb_id = 0;
-
-/**
- * Timeout callback for low power mode
- *
- * @param data Unused
- * @return Always returns FALSE, to disable the timeout
- */
-static gboolean mdy_blanking_lpm_on_cb(gpointer data)
-{
-    (void)data;
-
-    mdy_blanking_lpm_on_cb_id = 0;
-
-    mce_log(LL_DEBUG, "LPM timer triggered");
-
-    execute_datapipe(&display_state_req_pipe,
-                     GINT_TO_POINTER(MCE_DISPLAY_LPM_ON),
-                     USE_INDATA, CACHE_INDATA);
-
-    return FALSE;
-}
-
-/**
- * Cancel the low power mode timeout
- */
-static void mdy_blanking_cancel_lpm_on(void)
-{
-    /* Remove the timeout source for low power mode */
-    if (mdy_blanking_lpm_on_cb_id != 0) {
-        mce_log(LL_DEBUG, "LPM timer cancelled");
-        g_source_remove(mdy_blanking_lpm_on_cb_id);
-        mdy_blanking_lpm_on_cb_id = 0;
-    }
-}
-
-/**
- * Setup low power mode timeout if supported
- */
-static void mdy_blanking_schedule_lpm_on(void)
-{
-    mdy_blanking_cancel_lpm_on();
-
-    if( mdy_use_low_power_mode && mdy_low_power_mode_supported ) {
-        /* Setup new timeout */
-        mce_log(LL_DEBUG, "LPM timer scheduled @ %d secs",
-                mdy_disp_lpm_on_timeout);
-        mdy_blanking_lpm_on_cb_id =
-            g_timeout_add_seconds(mdy_disp_lpm_on_timeout,
-                                  mdy_blanking_lpm_on_cb, NULL);
-    } else {
-        mdy_blanking_schedule_off();
-    }
-}
-
 // TIMER: LPM_ON -> LPM_OFF
 
 /** Low power mode proximity blank timeout callback ID */
@@ -2908,7 +2844,6 @@ static void mdy_blanking_rethink_timers(bool force)
 
     mdy_blanking_cancel_dim();
     mdy_blanking_cancel_off();
-    mdy_blanking_cancel_lpm_on();
     mdy_blanking_cancel_lpm_off();
 
     if( exception_state & ~UIEXC_CALL ) {
@@ -3035,7 +2970,6 @@ static void mdy_blanking_cancel_timers(void)
 {
     mdy_blanking_cancel_dim();
     mdy_blanking_cancel_off();
-    mdy_blanking_cancel_lpm_on();
     mdy_blanking_cancel_lpm_off();
 
     //mdy_blanking_stop_pause_period();
