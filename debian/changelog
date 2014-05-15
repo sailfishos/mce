@@ -1,3 +1,9 @@
+mce (1.30.4) unstable; urgency=low
+
+  * [mce] Enable use_low_power_mode setting by default. Fixes JB#19484
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 15 May 2014 11:37:08 +0300
+
 mce (1.30.3) unstable; urgency=low
 
   * [mce] Enable led sw breathing by default when charger is connected.
