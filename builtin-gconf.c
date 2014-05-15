@@ -1268,7 +1268,7 @@ static const setting_t gconf_defaults[] =
     // MCE_GCONF_USE_LOW_POWER_MODE_PATH @ modules/display.h
     .key  = "/system/osso/dsm/display/use_low_power_mode",
     .type = "b",
-    .def  = "false",
+    .def  = "true",
   },
   {
     // MCE_GCONF_TK_AUTOLOCK_ENABLED_PATH @ tklock.h
