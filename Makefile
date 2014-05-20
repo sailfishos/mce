@@ -95,10 +95,6 @@ ENABLE_SYSTEMD_SUPPORT ?= y
 # Whether to install man pages
 ENABLE_MANPAGE_INSTALL ?= y
 
-# Whether to install restore-factory-settings and
-# clear-user-data control files
-ENABLE_RFS_CUD_SUPPORT ?= n
-
 # Whether to enable backup/restore support
 ENABLE_BACKUP_SUPPORT ?= n
 
@@ -137,8 +133,6 @@ DBUSDIR               := $(_SYSCONFDIR)/dbus-1/system.d
 LOCALEDIR             := $(_DATADIR)/locale
 BACKUPCONFDIR         := $(_DATADIR)/backup-framework/applications
 HELPERSCRIPTDIR       := $(_DATADIR)/mce
-DEVICECLEARSCRIPTDIR  := $(_SYSCONFDIR)/osso-cud-scripts
-FACTORYRESETSCRIPTDIR := $(_SYSCONFDIR)/osso-rfs-scripts
 TESTSDESTDIR          := $(_TESTSDIR)/mce
 
 # Source directories
@@ -192,10 +186,6 @@ DBUSCONF              := mce.conf
 # Backup / Restore
 BACKUPCONF            := mcebackup.conf
 BACKUPSCRIPTS         := mce-backup mce-restore
-
-# Restore factory settings / clear user data
-PRIVILEGEDDEVICECLEARSCRIPT := mce-device-clear
-REGULARDEVICECLEARSCRIPT    := mce-device-clear.sh
 
 # ----------------------------------------------------------------------------
 # DEFAULT FLAGS
@@ -475,20 +465,6 @@ install_backup_support::
 
 	$(INSTALL_DIR) $(DESTDIR)$(HELPERSCRIPTDIR)
 	$(INSTALL_BIN) $(BACKUPSCRIPTS) $(DESTDIR)$(HELPERSCRIPTDIR)/
-
-ifeq ($(ENABLE_RFS_CUD_SUPPORT),y)
-install:: install_rfs_cud_support
-endif
-
-install_rfs_cud_support::
-	$(INSTALL_DIR) $(DESTDIR)$(HELPERSCRIPTDIR)
-	$(INSTALL_BIN) $(PRIVILEGEDDEVICECLEARSCRIPT) $(DESTDIR)$(HELPERSCRIPTDIR)/
-
-	$(INSTALL_DIR) $(DESTDIR)$(DEVICECLEARSCRIPTDIR)
-	$(INSTALL_BIN) $(REGULARDEVICECLEARSCRIPT) $(DESTDIR)$(DEVICECLEARSCRIPTDIR)/
-
-	$(INSTALL_DIR) $(DESTDIR)$(FACTORYRESETSCRIPTDIR)
-	$(INSTALL_BIN) $(REGULARDEVICECLEARSCRIPT) $(DESTDIR)$(FACTORYRESETSCRIPTDIR)/
 
 ifeq ($(ENABLE_SYSTEMD_SUPPORT),y)
 install:: install_systemd_support

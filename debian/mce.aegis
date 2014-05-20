@@ -69,9 +69,4 @@
 		<credential name="GID::root" />
 		<for path="/usr/share/mce/mce-restore" />
 	</request>
-	<request>
-		<credential name="UID::root" />
-		<credential name="GID::root" />
-		<for path="/usr/share/mce/mce-device-clear" />
-	</request>
 </aegis>
