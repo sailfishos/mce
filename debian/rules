@@ -81,7 +81,6 @@ binary-arch: build install
 	dh_installman
 	dh_installchangelogs
 	dh_install -s
-	dh_gconf
 	dh_strip -pmce --dbg-package=mce-dbg
 	dh_strip -pmcetools --dbg-package=mcetools-dbg
 	dh_link
