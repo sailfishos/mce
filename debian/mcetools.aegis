@@ -1,9 +1,0 @@
-<aegis>
-	<request>
-		<credential name="mce::CallStateControl" />
-		<credential name="mce::DeviceModeControl" />
-		<credential name="mce::LEDControl" />
-		<credential name="mce::TKLockControl" />
-		<for path="/usr/sbin/mcetool" />
-	</request>
-</aegis>
