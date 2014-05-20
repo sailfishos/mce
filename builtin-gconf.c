@@ -1,5 +1,5 @@
 /* ------------------------------------------------------------------------- *
- * Copyright (C) 2012 Jolla Ltd.
+ * Copyright (C) 2012-2014 Jolla Ltd.
  * Contact: Simo Piiroinen <simo.piiroinen@jollamobile.com>
  * License: LGPLv2
  * ------------------------------------------------------------------------- */
@@ -59,119 +59,7 @@
 /** Tag unused parameters as such to avoid compilation warnings */
 #define unused(variable) (void)&variable
 
-/* ========================================================================= *
- *
- * TYPES
- *
- * ========================================================================= */
-
-typedef enum
-{
-  GCONF_ERROR_SUCCESS              =  0,
-  GCONF_ERROR_FAILED               =  1,
-
-  GCONF_ERROR_NO_SERVER            =  2,
-  GCONF_ERROR_NO_PERMISSION        =  3,
-  GCONF_ERROR_BAD_ADDRESS          =  4,
-  GCONF_ERROR_BAD_KEY              =  5,
-
-  GCONF_ERROR_PARSE_ERROR          =  6,
-  GCONF_ERROR_CORRUPT              =  7,
-  GCONF_ERROR_TYPE_MISMATCH        =  8,
-  GCONF_ERROR_IS_DIR               =  9,
-  GCONF_ERROR_IS_KEY               = 10,
-  GCONF_ERROR_OVERRIDDEN           = 11,
-  GCONF_ERROR_OAF_ERROR            = 12,
-  GCONF_ERROR_LOCAL_ENGINE         = 13,
-  GCONF_ERROR_LOCK_FAILED          = 14,
-  GCONF_ERROR_NO_WRITABLE_DATABASE = 15,
-  GCONF_ERROR_IN_SHUTDOWN          = 16,
-} GConfError;
-
-typedef enum
-{
-  GCONF_VALUE_INVALID,
-  GCONF_VALUE_STRING,
-  GCONF_VALUE_INT,
-  GCONF_VALUE_FLOAT,
-  GCONF_VALUE_BOOL,
-  GCONF_VALUE_SCHEMA,
-  GCONF_VALUE_LIST,
-  GCONF_VALUE_PAIR
-
-} GConfValueType;
-
-typedef struct GConfValue
-{
-  // public
-
-  GConfValueType type;
-
-  // private
-
-  int refcount;
-
-  union {
-    gboolean b;
-    gint     i;
-    char    *s;
-    double   f;
-  } data;
-
-  GConfValueType  list_type;
-  GSList         *list_head;
-
-} GConfValue;
-
-typedef struct GConfEntry
-{
-  // public
-
-  char *key;
-  GConfValue *value;
-
-  // private
-
-  char *def;
-
-} GConfEntry;
-
-typedef struct GConfClient
-{
-  // public
-
-  // (nothing)
-
-  // private
-
-  GSList  *entries;
-
-  GSList  *notify_list;
-
-} GConfClient;
-
-typedef enum
-{
-  GCONF_CLIENT_PRELOAD_NONE,
-  GCONF_CLIENT_PRELOAD_ONELEVEL,
-  GCONF_CLIENT_PRELOAD_RECURSIVE
-} GConfClientPreloadType;
-
-typedef void (*GConfClientNotifyFunc)(GConfClient *client,
-                                      guint cnxn_id,
-                                      GConfEntry *entry,
-                                      gpointer user_data);
-
-typedef struct GConfClientNotify
-{
-  guint                 id;
-  gchar                *namespace_section;
-  GConfClientNotifyFunc func;
-  gpointer              user_data;
-  GFreeFunc             destroy_notify;
-
-} GConfClientNotify;
-
+#include "builtin-gconf.h"
 #include "mce-dbus.h"
 
 /* ========================================================================= *

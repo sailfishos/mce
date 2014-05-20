@@ -1,11 +1,13 @@
 builtin-gconf.o:\
 	builtin-gconf.c\
+	builtin-gconf.h\
 	mce-dbus.h\
 	mce-io.h\
 	mce-log.h\
 
 builtin-gconf.pic.o:\
 	builtin-gconf.c\
+	builtin-gconf.h\
 	mce-dbus.h\
 	mce-io.h\
 	mce-log.h\
