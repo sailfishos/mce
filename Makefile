@@ -61,6 +61,7 @@ PKG_CONFIG_NOT_REQUIRED += clean
 PKG_CONFIG_NOT_REQUIRED += distclean
 PKG_CONFIG_NOT_REQUIRED += tags
 PKG_CONFIG_NOT_REQUIRED += fixme
+PKG_CONFIG_NOT_REQUIRED += normalize
 PKG_CONFIG_NOT_REQUIRED += tarball
 PKG_CONFIG_NOT_REQUIRED += tarball_from_git
 
@@ -393,7 +394,7 @@ UTESTS_LDLIBS += -Wl,--gc-sections
 $(UTESTDIR)/% : CFLAGS += $(UTESTS_CFLAGS)
 $(UTESTDIR)/% : LDLIBS += $(UTESTS_LDLIBS)
 $(UTESTDIR)/% : LDLIBS += $(foreach fn_sym,$(LINK_STUBS),\
-	                            -Wl,--defsym=$(fn_sym)=stub__$(fn_sym))
+				    -Wl,--defsym=$(fn_sym)=stub__$(fn_sym))
 $(UTESTDIR)/% : $(UTESTDIR)/%.o
 
 $(UTESTDIR)/ut_display : LINK_STUBS += mce_log_file
@@ -528,6 +529,126 @@ endif
 endif
 
 # ----------------------------------------------------------------------------
+# DEVELOPMENT TIME WHITESPACE NORMALIZE
+# ----------------------------------------------------------------------------
+
+NORMALIZE_USES_SPC =\
+	bme-dbus-names.h\
+	builtin-gconf.c\
+	builtin-gconf.h\
+	evdev.c\
+	evdev.h\
+	event-input.h\
+	event-switches.h\
+	filewatcher.c\
+	filewatcher.h\
+	libwakelock.h\
+	mce-command-line.c\
+	mce-command-line.h\
+	mce-hybris.c\
+	mce-hybris.h\
+	mce-modules.h\
+	modetransition.h\
+	modules/audiorouting.c\
+	modules/battery-upower.c\
+	modules/bluetooth.c\
+	modules/callstate.c\
+	modules/callstate.h\
+	modules/camera.h\
+	modules/cpu-keepalive.c\
+	modules/display.c\
+	modules/doubletap.c\
+	modules/doubletap.h\
+	modules/filter-brightness-simple.h\
+	modules/keypad.h\
+	modules/packagekit.c\
+	modules/powersavemode.h\
+	modules/radiostates.h\
+	modules/sensor-gestures.c\
+	ofono-dbus-names.h\
+	systemui/dbus-names.h\
+	tklock.c\
+	tklock.h\
+	tools/evdev_trace.c\
+	tools/mcetool.c\
+
+NORMALIZE_USES_TAB =\
+	datapipe.c\
+	datapipe.h\
+	event-input.c\
+	event-switches.c\
+	libwakelock.c\
+	mce-conf.c\
+	mce-conf.h\
+	mce-dbus.c\
+	mce-dbus.h\
+	mce-dsme.c\
+	mce-dsme.h\
+	mce-gconf.c\
+	mce-gconf.h\
+	mce-hal.c\
+	mce-hal.h\
+	mce-io.c\
+	mce-io.h\
+	mce-lib.c\
+	mce-lib.h\
+	mce-log.c\
+	mce-log.h\
+	mce-modules.c\
+	mce-sensorfw.c\
+	mce-sensorfw.h\
+	mce.c\
+	mce.h\
+	median_filter.c\
+	median_filter.h\
+	modetransition.c\
+	modules/alarm.c\
+	modules/battery-bme.c\
+	modules/camera.c\
+	modules/display.h\
+	modules/filter-brightness-als.c\
+	modules/filter-brightness-als.h\
+	modules/filter-brightness-simple.c\
+	modules/inactivity.c\
+	modules/keypad.c\
+	modules/led.c\
+	modules/led.h\
+	modules/powersavemode.c\
+	modules/proximity.c\
+	modules/proximity.h\
+	modules/radiostates.c\
+	powerkey.c\
+	powerkey.h\
+	systemui/tklock-dbus-names.h\
+
+NORMALIZE_KNOWN := $(NORMALIZE_USES_SPC) $(NORMALIZE_USES_TAB)
+SOURCEFILES_ALL := $(wildcard *.[ch])
+NORMALIZE_UNKNOWN = $(filter-out $(NORMALIZE_KNOWN), $(SOURCEFILES_ALL))
+
+.PHONY: normalize
+
+normalize::
+	normalize_whitespace -M Makefile
+	normalize_whitespace -b -e -s $(NORMALIZE_USES_SPC)
+	normalize_whitespace -T -e -s $(NORMALIZE_USES_TAB)
+ifneq ($(NORMALIZE_UNKNOWN),)
+	@echo "Unknown source files: $(NORMALIZE_UNKNOWN)"
+	false
+endif
+
+# ----------------------------------------------------------------------------
+# DEVELOPMENT TIME PROTOTYPE SCANNING
+# ----------------------------------------------------------------------------
+
+.SUFFIXES: .q .p
+
+%.q : %.c ; $(CC) -o $@ -E $< $(CPPFLAGS) $(MCE_CFLAGS)
+%.p : %.q ; cproto -s < $< | sed -e 's/_Bool/bool/g'
+
+clean::
+	$(RM) -f *.q *.p
+
+# ----------------------------------------------------------------------------
 # LOCAL RPMBUILD (copy mce.* from OBS to rpm subdir)
 # ----------------------------------------------------------------------------
 
@@ -545,7 +666,6 @@ tarball:: distclean
 	tar -cjf $(TARBALL).bz2 -C /tmp $(TARWORK)/
 	$(RM) -r /tmp/$(TARWORK)
 
-
 .PHONY: tarball_from_git
 tarball_from_git::
 	git archive --prefix=mce/ -o $(TARBALL) HEAD
@@ -559,4 +679,3 @@ rpmbuild:: tarball
 	@test -d rpm || (echo "you need rpm/ subdir for this to work" && false)
 	install -m644 $(TARBALL).bz2 rpm/mce.* ~/rpmbuild/SOURCES/
 	rpmbuild -ba ~/rpmbuild/SOURCES/mce.spec
-
