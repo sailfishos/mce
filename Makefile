@@ -89,9 +89,6 @@ ENABLE_CPU_GOVERNOR ?= y
 # Whether to enable sysinfod queries
 ENABLE_SYSINFOD_QUERIES ?= n
 
-# Whether to use builtin-gconf instead of the real thing
-ENABLE_BUILTIN_GCONF ?= y
-
 # Whether to install systemd control files
 ENABLE_SYSTEMD_SUPPORT ?= y
 
@@ -234,10 +231,6 @@ ifeq ($(strip $(ENABLE_SYSINFOD_QUERIES)),y)
 CPPFLAGS += -DENABLE_SYSINFOD_QUERIES
 endif
 
-ifeq ($(strip $(ENABLE_BUILTIN_GCONF)),y)
-CPPFLAGS += -DENABLE_BUILTIN_GCONF
-endif
-
 ifeq ($(ENABLE_SENSORFW),y)
 CPPFLAGS += -DENABLE_SENSORFW
 endif
@@ -305,7 +298,6 @@ MCE_PKG_NAMES += gio-2.0
 MCE_PKG_NAMES += gmodule-2.0
 MCE_PKG_NAMES += dbus-1
 MCE_PKG_NAMES += dbus-glib-1
-MCE_PKG_NAMES += gconf-2.0
 MCE_PKG_NAMES += dsme
 MCE_PKG_NAMES += libsystemd-daemon
 
@@ -344,11 +336,8 @@ endif
 ifeq ($(ENABLE_SENSORFW),y)
 MCE_CORE += mce-sensorfw.c
 endif
-# HACK: do not link against libgconf-2
-ifeq ($(strip $(ENABLE_BUILTIN_GCONF)),y)
+
 MCE_CORE   += builtin-gconf.c
-MCE_LDLIBS := $(filter-out -lgconf-2, $(MCE_LDLIBS))
-endif
 
 ifeq ($(strip $(ENABLE_WAKELOCKS)),y)
 MCE_CORE   += libwakelock.c
@@ -370,18 +359,12 @@ MODULE_PKG_NAMES += glib-2.0
 MODULE_PKG_NAMES += gmodule-2.0
 MODULE_PKG_NAMES += dbus-1
 MODULE_PKG_NAMES += dbus-glib-1
-MODULE_PKG_NAMES += gconf-2.0
 
 MODULE_PKG_CFLAGS := $(shell $(PKG_CONFIG) --cflags $(MODULE_PKG_NAMES))
 MODULE_PKG_LDLIBS := $(shell $(PKG_CONFIG) --libs   $(MODULE_PKG_NAMES))
 
 MODULE_CFLAGS += $(MODULE_PKG_CFLAGS)
 MODULE_LDLIBS += $(MODULE_PKG_LDLIBS)
-
-# HACK: do not link against libgconf-2
-ifeq ($(strip $(ENABLE_BUILTIN_GCONF)),y)
-MODULE_LDLIBS := $(filter-out -lgconf-2, $(MODULE_LDLIBS))
-endif
 
 .PRECIOUS: %.pic.o
 
@@ -400,18 +383,12 @@ $(MODULE_DIR)/%.so : $(MODULE_DIR)/%.pic.o
 TOOLS_PKG_NAMES += gobject-2.0
 TOOLS_PKG_NAMES += glib-2.0
 TOOLS_PKG_NAMES += dbus-1
-TOOLS_PKG_NAMES += gconf-2.0
 
 TOOLS_PKG_CFLAGS := $(shell $(PKG_CONFIG) --cflags $(TOOLS_PKG_NAMES))
 TOOLS_PKG_LDLIBS := $(shell $(PKG_CONFIG) --libs   $(TOOLS_PKG_NAMES))
 
 TOOLS_CFLAGS += $(TOOLS_PKG_CFLAGS)
 TOOLS_LDLIBS += $(TOOLS_PKG_LDLIBS)
-
-# HACK: do not link against libgconf-2
-ifeq ($(strip $(ENABLE_BUILTIN_GCONF)),y)
-TOOLS_LDLIBS := $(filter-out -lgconf-2, $(TOOLS_LDLIBS))
-endif
 
 $(TOOLDIR)/mcetool : CFLAGS += $(TOOLS_CFLAGS)
 $(TOOLDIR)/mcetool : LDLIBS += $(TOOLS_LDLIBS)
@@ -434,7 +411,6 @@ $(TESTSDIR)/mcetorture : $(TESTSDIR)/mcetorture.o
 UTESTS_PKG_NAMES += check
 UTESTS_PKG_NAMES += dbus-1
 UTESTS_PKG_NAMES += dbus-glib-1
-UTESTS_PKG_NAMES += gconf-2.0
 UTESTS_PKG_NAMES += glib-2.0
 UTESTS_PKG_NAMES += gthread-2.0
 

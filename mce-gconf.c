@@ -21,7 +21,7 @@
 #include <glib.h>
 #include <glib-object.h>		/* g_object_unref() */
 
-#include <gconf/gconf-client.h>
+#include "builtin-gconf.h"
 
 #include <stdlib.h>			/* getenv() */
 
@@ -384,23 +384,9 @@ gboolean mce_gconf_init(void)
 {
 	gboolean status = FALSE;
 
-#ifdef ENABLE_BUILTIN_GCONF
-	/* builtin-gconf does not use D-Bus */
-#else
-	/* Trying to use gconf without already existing session
-	 * bus can only yield problems -> disable gconf access
-	 */
-	if( !getenv("DBUS_SESSION_BUS_ADDRESS") ) {
-		mce_log(LL_ERR, "No session bus - disabling gconf accesss");
-		gconf_disabled = TRUE;
-		status = TRUE;
-		goto EXIT;
-	}
-#endif
-
-	/* Get the default GConf client */
-	if ((gconf_client = gconf_client_get_default()) == FALSE) {
-		mce_log(LL_CRIT, "Could not get default GConf client");
+	/* Get the default builtin-gconf client */
+	if( !(gconf_client = gconf_client_get_default()) ) {
+		mce_log(LL_CRIT, "Could not get default builtin-gconf client");
 		goto EXIT;
 	}
 
@@ -415,22 +401,12 @@ EXIT:
  */
 void mce_gconf_exit(void)
 {
-	if (gconf_client != NULL) {
+	if( gconf_client ) {
 		/* Free the list of GConf notifiers */
-		if (gconf_notifiers != NULL) {
-			g_slist_foreach(gconf_notifiers,
-					(GFunc)mce_gconf_notifier_remove, NULL);
-			gconf_notifiers = NULL;
-		}
-#ifdef ENABLE_BUILTIN_GCONF
-		/* FIME: did not notice that gconf clients are GObjects ...
-		 *       now we can't g_object_unref() the client pointers
-		 *       from builtin-gconf
-		 */
-#else
-		/* Unreference GConf client */
-		g_object_unref(gconf_client);
-#endif
+		g_slist_foreach(gconf_notifiers, mce_gconf_notifier_remove, 0);
+		gconf_notifiers = 0;
+
+		/* Forget builtin-gconf client reference */
 		gconf_client = 0;
 	}
 

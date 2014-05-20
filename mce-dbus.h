@@ -27,9 +27,7 @@
 
 #include <mce/dbus-names.h>
 
-#ifndef BUILTIN_GCONF
-# include <gconf/gconf-client.h>
-#endif
+#include "builtin-gconf.h"
 
 DBusConnection *dbus_connection_get(void);
 

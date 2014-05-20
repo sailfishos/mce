@@ -32,7 +32,6 @@
 #include <glib-object.h>
 
 #include <dbus/dbus.h>
-#include <gconf/gconf-client.h>
 
 #include <mce/dbus-names.h>
 #include <mce/mode-names.h>

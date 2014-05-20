@@ -18,9 +18,6 @@
  * - value types can't be changed
  * ------------------------------------------------------------------------- */
 
-/** Flag for: do not include real gconf headers */
-#define BUILTIN_GCONF
-
 #include <glib.h>
 
 #include <stdio.h>
