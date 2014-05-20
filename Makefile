@@ -177,9 +177,6 @@ MODULES += $(MODULE_DIR)/packagekit.so
 TOOLS   += $(TOOLDIR)/mcetool
 TOOLS   += $(TOOLDIR)/evdev_trace
 
-# Testapps to build
-TESTS   += $(TESTSDIR)/mcetorture
-
 # Unit tests to build
 UTESTS  += $(UTESTDIR)/ut_display_conf
 UTESTS  += $(UTESTDIR)/ut_display_stm
@@ -393,12 +390,6 @@ $(TOOLDIR)/evdev_trace : LDLIBS += $(TOOLS_LDLIBS)
 $(TOOLDIR)/evdev_trace : $(TOOLDIR)/evdev_trace.o evdev.o
 
 # ----------------------------------------------------------------------------
-# TESTS
-# ----------------------------------------------------------------------------
-
-$(TESTSDIR)/mcetorture : $(TESTSDIR)/mcetorture.o
-
-# ----------------------------------------------------------------------------
 # UNIT TESTS
 # ----------------------------------------------------------------------------
 
@@ -460,7 +451,6 @@ install:: build
 	$(INSTALL_DIR) $(DESTDIR)$(_SBINDIR)
 	$(INSTALL_BIN) $(TARGETS) $(DESTDIR)$(_SBINDIR)/
 	$(INSTALL_BIN) $(TOOLS)   $(DESTDIR)$(_SBINDIR)/
-	$(INSTALL_BIN) $(TESTS)   $(DESTDIR)$(_SBINDIR)/
 
 	$(INSTALL_DIR) $(DESTDIR)$(MODULEDIR)
 	$(INSTALL_BIN) $(MODULES) $(DESTDIR)$(MODULEDIR)/
@@ -519,13 +509,11 @@ install_man_pages::
 	$(INSTALL_DIR) $(DESTDIR)/$(_MANDIR)/man8
 	$(INSTALL_DTA) man/mce.8        $(DESTDIR)/$(_MANDIR)/man8/mce.8
 	$(INSTALL_DTA) man/mcetool.8    $(DESTDIR)/$(_MANDIR)/man8/mcetool.8
-	$(INSTALL_DTA) man/mcetorture.8 $(DESTDIR)/$(_MANDIR)/man8/mcetorture.8
 
 install_man_pages_sv::
 	$(INSTALL_DIR) $(DESTDIR)/$(_MANDIR)/sv/man8
 	$(INSTALL_DTA) man/mce.sv.8        $(DESTDIR)/$(_MANDIR)/sv/man8/mce.8
 	$(INSTALL_DTA) man/mcetool.sv.8    $(DESTDIR)/$(_MANDIR)/sv/man8/mcetool.8
-	$(INSTALL_DTA) man/mcetorture.sv.8 $(DESTDIR)/$(_MANDIR)/sv/man8/mcetorture.8
 
 ifeq ($(ENABLE_UNITTESTS_INSTALL),y)
 install:: install_unittests

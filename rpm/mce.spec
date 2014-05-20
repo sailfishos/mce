@@ -107,9 +107,7 @@ systemctl daemon-reload || :
 %doc COPYING debian/copyright
 %{_sbindir}/mcetool
 %{_sbindir}/evdev_trace
-%{_sbindir}/mcetorture
 %{_mandir}/man8/mcetool.8.gz
-%{_mandir}/man8/mcetorture.8.gz
 
 %files tests
 %defattr(-,root,root,-)
