@@ -64,9 +64,4 @@
 		<credential name="dsme::DeviceStateControl" />
 		<for path="/usr/sbin/mce" />
 	</request>
-	<request>
-		<credential name="UID::root" />
-		<credential name="GID::root" />
-		<for path="/usr/share/mce/mce-restore" />
-	</request>
 </aegis>

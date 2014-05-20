@@ -95,9 +95,6 @@ ENABLE_SYSTEMD_SUPPORT ?= y
 # Whether to install man pages
 ENABLE_MANPAGE_INSTALL ?= y
 
-# Whether to enable backup/restore support
-ENABLE_BACKUP_SUPPORT ?= n
-
 # Whether to enable double-click == double-tap emulation
 ENABLE_DOUBLETAP_EMULATION ?= y
 
@@ -131,7 +128,6 @@ CONFDIR               := $(_SYSCONFDIR)/mce
 MODULEDIR             := $(_LIBDIR)/mce/modules
 DBUSDIR               := $(_SYSCONFDIR)/dbus-1/system.d
 LOCALEDIR             := $(_DATADIR)/locale
-BACKUPCONFDIR         := $(_DATADIR)/backup-framework/applications
 HELPERSCRIPTDIR       := $(_DATADIR)/mce
 TESTSDESTDIR          := $(_TESTSDIR)/mce
 
@@ -182,10 +178,6 @@ UTESTS  += $(UTESTDIR)/ut_display
 CONFFILE              := 10mce.ini
 RADIOSTATESCONFFILE   := 20mce-radio-states.ini
 DBUSCONF              := mce.conf
-
-# Backup / Restore
-BACKUPCONF            := mcebackup.conf
-BACKUPSCRIPTS         := mce-backup mce-restore
 
 # ----------------------------------------------------------------------------
 # DEFAULT FLAGS
@@ -454,17 +446,6 @@ install:: build
 	$(INSTALL_DTA) inifiles/hybris-led.ini $(DESTDIR)$(CONFDIR)/20hybris-led.ini
 	$(INSTALL_DTA) inifiles/debug-led.ini $(DESTDIR)$(CONFDIR)/20debug-led.ini
 	$(INSTALL_DTA) inifiles/als-defaults.ini $(DESTDIR)$(CONFDIR)/20als-defaults.ini
-
-ifeq ($(ENABLE_BACKUP_SUPPORT),y)
-install:: install_backup_support
-endif
-
-install_backup_support::
-	$(INSTALL_DIR) $(DESTDIR)$(BACKUPCONFDIR)
-	$(INSTALL_DTA) $(BACKUPCONF) $(DESTDIR)$(BACKUPCONFDIR)/
-
-	$(INSTALL_DIR) $(DESTDIR)$(HELPERSCRIPTDIR)
-	$(INSTALL_BIN) $(BACKUPSCRIPTS) $(DESTDIR)$(HELPERSCRIPTDIR)/
 
 ifeq ($(ENABLE_SYSTEMD_SUPPORT),y)
 install:: install_systemd_support
