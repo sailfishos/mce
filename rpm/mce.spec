@@ -15,7 +15,6 @@ Requires(postun): systemd
 BuildRequires:  pkgconfig(dbus-1) >= 1.0.2
 BuildRequires:  pkgconfig(dbus-glib-1)
 BuildRequires:  pkgconfig(dsme) >= 0.58
-BuildRequires:  pkgconfig(gconf-2.0)
 BuildRequires:  pkgconfig(glib-2.0) >= 2.36.0
 BuildRequires:  pkgconfig(mce) >= 1.13.0
 BuildRequires:  pkgconfig(libsystemd-daemon)
@@ -107,9 +106,7 @@ systemctl daemon-reload || :
 %doc COPYING debian/copyright
 %{_sbindir}/mcetool
 %{_sbindir}/evdev_trace
-%{_sbindir}/mcetorture
 %{_mandir}/man8/mcetool.8.gz
-%{_mandir}/man8/mcetorture.8.gz
 
 %files tests
 %defattr(-,root,root,-)

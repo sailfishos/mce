@@ -61,6 +61,7 @@ PKG_CONFIG_NOT_REQUIRED += clean
 PKG_CONFIG_NOT_REQUIRED += distclean
 PKG_CONFIG_NOT_REQUIRED += tags
 PKG_CONFIG_NOT_REQUIRED += fixme
+PKG_CONFIG_NOT_REQUIRED += normalize
 PKG_CONFIG_NOT_REQUIRED += tarball
 PKG_CONFIG_NOT_REQUIRED += tarball_from_git
 
@@ -89,21 +90,11 @@ ENABLE_CPU_GOVERNOR ?= y
 # Whether to enable sysinfod queries
 ENABLE_SYSINFOD_QUERIES ?= n
 
-# Whether to use builtin-gconf instead of the real thing
-ENABLE_BUILTIN_GCONF ?= y
-
 # Whether to install systemd control files
 ENABLE_SYSTEMD_SUPPORT ?= y
 
 # Whether to install man pages
 ENABLE_MANPAGE_INSTALL ?= y
-
-# Whether to install restore-factory-settings and
-# clear-user-data control files
-ENABLE_RFS_CUD_SUPPORT ?= n
-
-# Whether to enable backup/restore support
-ENABLE_BACKUP_SUPPORT ?= n
 
 # Whether to enable double-click == double-tap emulation
 ENABLE_DOUBLETAP_EMULATION ?= y
@@ -138,13 +129,7 @@ CONFDIR               := $(_SYSCONFDIR)/mce
 MODULEDIR             := $(_LIBDIR)/mce/modules
 DBUSDIR               := $(_SYSCONFDIR)/dbus-1/system.d
 LOCALEDIR             := $(_DATADIR)/locale
-ifneq ($(strip $(ENABLE_BUILTIN_GCONF)),y)
-GCONFSCHEMADIR        := $(_SYSCONFDIR)/gconf/schemas
-endif
-BACKUPCONFDIR         := $(_DATADIR)/backup-framework/applications
 HELPERSCRIPTDIR       := $(_DATADIR)/mce
-DEVICECLEARSCRIPTDIR  := $(_SYSCONFDIR)/osso-cud-scripts
-FACTORYRESETSCRIPTDIR := $(_SYSCONFDIR)/osso-rfs-scripts
 TESTSDESTDIR          := $(_TESTSDIR)/mce
 
 # Source directories
@@ -183,9 +168,6 @@ MODULES += $(MODULE_DIR)/packagekit.so
 TOOLS   += $(TOOLDIR)/mcetool
 TOOLS   += $(TOOLDIR)/evdev_trace
 
-# Testapps to build
-TESTS   += $(TESTSDIR)/mcetorture
-
 # Unit tests to build
 UTESTS  += $(UTESTDIR)/ut_display_conf
 UTESTS  += $(UTESTDIR)/ut_display_stm
@@ -197,17 +179,6 @@ UTESTS  += $(UTESTDIR)/ut_display
 CONFFILE              := 10mce.ini
 RADIOSTATESCONFFILE   := 20mce-radio-states.ini
 DBUSCONF              := mce.conf
-ifneq ($(strip $(ENABLE_BUILTIN_GCONF)),y)
-GCONFSCHEMAS          := display.schemas energymanagement.schemas
-endif
-
-# Backup / Restore
-BACKUPCONF            := mcebackup.conf
-BACKUPSCRIPTS         := mce-backup mce-restore
-
-# Restore factory settings / clear user data
-PRIVILEGEDDEVICECLEARSCRIPT := mce-device-clear
-REGULARDEVICECLEARSCRIPT    := mce-device-clear.sh
 
 # ----------------------------------------------------------------------------
 # DEFAULT FLAGS
@@ -232,10 +203,6 @@ endif
 
 ifeq ($(strip $(ENABLE_SYSINFOD_QUERIES)),y)
 CPPFLAGS += -DENABLE_SYSINFOD_QUERIES
-endif
-
-ifeq ($(strip $(ENABLE_BUILTIN_GCONF)),y)
-CPPFLAGS += -DENABLE_BUILTIN_GCONF
 endif
 
 ifeq ($(ENABLE_SENSORFW),y)
@@ -305,7 +272,6 @@ MCE_PKG_NAMES += gio-2.0
 MCE_PKG_NAMES += gmodule-2.0
 MCE_PKG_NAMES += dbus-1
 MCE_PKG_NAMES += dbus-glib-1
-MCE_PKG_NAMES += gconf-2.0
 MCE_PKG_NAMES += dsme
 MCE_PKG_NAMES += libsystemd-daemon
 
@@ -344,11 +310,8 @@ endif
 ifeq ($(ENABLE_SENSORFW),y)
 MCE_CORE += mce-sensorfw.c
 endif
-# HACK: do not link against libgconf-2
-ifeq ($(strip $(ENABLE_BUILTIN_GCONF)),y)
+
 MCE_CORE   += builtin-gconf.c
-MCE_LDLIBS := $(filter-out -lgconf-2, $(MCE_LDLIBS))
-endif
 
 ifeq ($(strip $(ENABLE_WAKELOCKS)),y)
 MCE_CORE   += libwakelock.c
@@ -370,18 +333,12 @@ MODULE_PKG_NAMES += glib-2.0
 MODULE_PKG_NAMES += gmodule-2.0
 MODULE_PKG_NAMES += dbus-1
 MODULE_PKG_NAMES += dbus-glib-1
-MODULE_PKG_NAMES += gconf-2.0
 
 MODULE_PKG_CFLAGS := $(shell $(PKG_CONFIG) --cflags $(MODULE_PKG_NAMES))
 MODULE_PKG_LDLIBS := $(shell $(PKG_CONFIG) --libs   $(MODULE_PKG_NAMES))
 
 MODULE_CFLAGS += $(MODULE_PKG_CFLAGS)
 MODULE_LDLIBS += $(MODULE_PKG_LDLIBS)
-
-# HACK: do not link against libgconf-2
-ifeq ($(strip $(ENABLE_BUILTIN_GCONF)),y)
-MODULE_LDLIBS := $(filter-out -lgconf-2, $(MODULE_LDLIBS))
-endif
 
 .PRECIOUS: %.pic.o
 
@@ -400,18 +357,12 @@ $(MODULE_DIR)/%.so : $(MODULE_DIR)/%.pic.o
 TOOLS_PKG_NAMES += gobject-2.0
 TOOLS_PKG_NAMES += glib-2.0
 TOOLS_PKG_NAMES += dbus-1
-TOOLS_PKG_NAMES += gconf-2.0
 
 TOOLS_PKG_CFLAGS := $(shell $(PKG_CONFIG) --cflags $(TOOLS_PKG_NAMES))
 TOOLS_PKG_LDLIBS := $(shell $(PKG_CONFIG) --libs   $(TOOLS_PKG_NAMES))
 
 TOOLS_CFLAGS += $(TOOLS_PKG_CFLAGS)
 TOOLS_LDLIBS += $(TOOLS_PKG_LDLIBS)
-
-# HACK: do not link against libgconf-2
-ifeq ($(strip $(ENABLE_BUILTIN_GCONF)),y)
-TOOLS_LDLIBS := $(filter-out -lgconf-2, $(TOOLS_LDLIBS))
-endif
 
 $(TOOLDIR)/mcetool : CFLAGS += $(TOOLS_CFLAGS)
 $(TOOLDIR)/mcetool : LDLIBS += $(TOOLS_LDLIBS)
@@ -422,19 +373,12 @@ $(TOOLDIR)/evdev_trace : LDLIBS += $(TOOLS_LDLIBS)
 $(TOOLDIR)/evdev_trace : $(TOOLDIR)/evdev_trace.o evdev.o
 
 # ----------------------------------------------------------------------------
-# TESTS
-# ----------------------------------------------------------------------------
-
-$(TESTSDIR)/mcetorture : $(TESTSDIR)/mcetorture.o
-
-# ----------------------------------------------------------------------------
 # UNIT TESTS
 # ----------------------------------------------------------------------------
 
 UTESTS_PKG_NAMES += check
 UTESTS_PKG_NAMES += dbus-1
 UTESTS_PKG_NAMES += dbus-glib-1
-UTESTS_PKG_NAMES += gconf-2.0
 UTESTS_PKG_NAMES += glib-2.0
 UTESTS_PKG_NAMES += gthread-2.0
 
@@ -450,7 +394,7 @@ UTESTS_LDLIBS += -Wl,--gc-sections
 $(UTESTDIR)/% : CFLAGS += $(UTESTS_CFLAGS)
 $(UTESTDIR)/% : LDLIBS += $(UTESTS_LDLIBS)
 $(UTESTDIR)/% : LDLIBS += $(foreach fn_sym,$(LINK_STUBS),\
-	                            -Wl,--defsym=$(fn_sym)=stub__$(fn_sym))
+				    -Wl,--defsym=$(fn_sym)=stub__$(fn_sym))
 $(UTESTDIR)/% : $(UTESTDIR)/%.o
 
 $(UTESTDIR)/ut_display : LINK_STUBS += mce_log_file
@@ -490,7 +434,6 @@ install:: build
 	$(INSTALL_DIR) $(DESTDIR)$(_SBINDIR)
 	$(INSTALL_BIN) $(TARGETS) $(DESTDIR)$(_SBINDIR)/
 	$(INSTALL_BIN) $(TOOLS)   $(DESTDIR)$(_SBINDIR)/
-	$(INSTALL_BIN) $(TESTS)   $(DESTDIR)$(_SBINDIR)/
 
 	$(INSTALL_DIR) $(DESTDIR)$(MODULEDIR)
 	$(INSTALL_BIN) $(MODULES) $(DESTDIR)$(MODULEDIR)/
@@ -504,36 +447,6 @@ install:: build
 	$(INSTALL_DTA) inifiles/hybris-led.ini $(DESTDIR)$(CONFDIR)/20hybris-led.ini
 	$(INSTALL_DTA) inifiles/debug-led.ini $(DESTDIR)$(CONFDIR)/20debug-led.ini
 	$(INSTALL_DTA) inifiles/als-defaults.ini $(DESTDIR)$(CONFDIR)/20als-defaults.ini
-
-ifneq ($(strip $(ENABLE_BUILTIN_GCONF)),y)
-	$(INSTALL_DIR) $(DESTDIR)$(GCONFSCHEMADIR)
-	$(INSTALL_DTA) $(GCONFSCHEMAS) $(DESTDIR)$(GCONFSCHEMADIR)/
-endif
-
-ifeq ($(ENABLE_BACKUP_SUPPORT),y)
-install:: install_backup_support
-endif
-
-install_backup_support::
-	$(INSTALL_DIR) $(DESTDIR)$(BACKUPCONFDIR)
-	$(INSTALL_DTA) $(BACKUPCONF) $(DESTDIR)$(BACKUPCONFDIR)/
-
-	$(INSTALL_DIR) $(DESTDIR)$(HELPERSCRIPTDIR)
-	$(INSTALL_BIN) $(BACKUPSCRIPTS) $(DESTDIR)$(HELPERSCRIPTDIR)/
-
-ifeq ($(ENABLE_RFS_CUD_SUPPORT),y)
-install:: install_rfs_cud_support
-endif
-
-install_rfs_cud_support::
-	$(INSTALL_DIR) $(DESTDIR)$(HELPERSCRIPTDIR)
-	$(INSTALL_BIN) $(PRIVILEGEDDEVICECLEARSCRIPT) $(DESTDIR)$(HELPERSCRIPTDIR)/
-
-	$(INSTALL_DIR) $(DESTDIR)$(DEVICECLEARSCRIPTDIR)
-	$(INSTALL_BIN) $(REGULARDEVICECLEARSCRIPT) $(DESTDIR)$(DEVICECLEARSCRIPTDIR)/
-
-	$(INSTALL_DIR) $(DESTDIR)$(FACTORYRESETSCRIPTDIR)
-	$(INSTALL_BIN) $(REGULARDEVICECLEARSCRIPT) $(DESTDIR)$(FACTORYRESETSCRIPTDIR)/
 
 ifeq ($(ENABLE_SYSTEMD_SUPPORT),y)
 install:: install_systemd_support
@@ -554,13 +467,11 @@ install_man_pages::
 	$(INSTALL_DIR) $(DESTDIR)/$(_MANDIR)/man8
 	$(INSTALL_DTA) man/mce.8        $(DESTDIR)/$(_MANDIR)/man8/mce.8
 	$(INSTALL_DTA) man/mcetool.8    $(DESTDIR)/$(_MANDIR)/man8/mcetool.8
-	$(INSTALL_DTA) man/mcetorture.8 $(DESTDIR)/$(_MANDIR)/man8/mcetorture.8
 
 install_man_pages_sv::
 	$(INSTALL_DIR) $(DESTDIR)/$(_MANDIR)/sv/man8
 	$(INSTALL_DTA) man/mce.sv.8        $(DESTDIR)/$(_MANDIR)/sv/man8/mce.8
 	$(INSTALL_DTA) man/mcetool.sv.8    $(DESTDIR)/$(_MANDIR)/sv/man8/mcetool.8
-	$(INSTALL_DTA) man/mcetorture.sv.8 $(DESTDIR)/$(_MANDIR)/sv/man8/mcetorture.8
 
 ifeq ($(ENABLE_UNITTESTS_INSTALL),y)
 install:: install_unittests
@@ -618,6 +529,126 @@ endif
 endif
 
 # ----------------------------------------------------------------------------
+# DEVELOPMENT TIME WHITESPACE NORMALIZE
+# ----------------------------------------------------------------------------
+
+NORMALIZE_USES_SPC =\
+	bme-dbus-names.h\
+	builtin-gconf.c\
+	builtin-gconf.h\
+	evdev.c\
+	evdev.h\
+	event-input.h\
+	event-switches.h\
+	filewatcher.c\
+	filewatcher.h\
+	libwakelock.h\
+	mce-command-line.c\
+	mce-command-line.h\
+	mce-hybris.c\
+	mce-hybris.h\
+	mce-modules.h\
+	modetransition.h\
+	modules/audiorouting.c\
+	modules/battery-upower.c\
+	modules/bluetooth.c\
+	modules/callstate.c\
+	modules/callstate.h\
+	modules/camera.h\
+	modules/cpu-keepalive.c\
+	modules/display.c\
+	modules/doubletap.c\
+	modules/doubletap.h\
+	modules/filter-brightness-simple.h\
+	modules/keypad.h\
+	modules/packagekit.c\
+	modules/powersavemode.h\
+	modules/radiostates.h\
+	modules/sensor-gestures.c\
+	ofono-dbus-names.h\
+	systemui/dbus-names.h\
+	tklock.c\
+	tklock.h\
+	tools/evdev_trace.c\
+	tools/mcetool.c\
+
+NORMALIZE_USES_TAB =\
+	datapipe.c\
+	datapipe.h\
+	event-input.c\
+	event-switches.c\
+	libwakelock.c\
+	mce-conf.c\
+	mce-conf.h\
+	mce-dbus.c\
+	mce-dbus.h\
+	mce-dsme.c\
+	mce-dsme.h\
+	mce-gconf.c\
+	mce-gconf.h\
+	mce-hal.c\
+	mce-hal.h\
+	mce-io.c\
+	mce-io.h\
+	mce-lib.c\
+	mce-lib.h\
+	mce-log.c\
+	mce-log.h\
+	mce-modules.c\
+	mce-sensorfw.c\
+	mce-sensorfw.h\
+	mce.c\
+	mce.h\
+	median_filter.c\
+	median_filter.h\
+	modetransition.c\
+	modules/alarm.c\
+	modules/battery-bme.c\
+	modules/camera.c\
+	modules/display.h\
+	modules/filter-brightness-als.c\
+	modules/filter-brightness-als.h\
+	modules/filter-brightness-simple.c\
+	modules/inactivity.c\
+	modules/keypad.c\
+	modules/led.c\
+	modules/led.h\
+	modules/powersavemode.c\
+	modules/proximity.c\
+	modules/proximity.h\
+	modules/radiostates.c\
+	powerkey.c\
+	powerkey.h\
+	systemui/tklock-dbus-names.h\
+
+NORMALIZE_KNOWN := $(NORMALIZE_USES_SPC) $(NORMALIZE_USES_TAB)
+SOURCEFILES_ALL := $(wildcard *.[ch])
+NORMALIZE_UNKNOWN = $(filter-out $(NORMALIZE_KNOWN), $(SOURCEFILES_ALL))
+
+.PHONY: normalize
+
+normalize::
+	normalize_whitespace -M Makefile
+	normalize_whitespace -b -e -s $(NORMALIZE_USES_SPC)
+	normalize_whitespace -T -e -s $(NORMALIZE_USES_TAB)
+ifneq ($(NORMALIZE_UNKNOWN),)
+	@echo "Unknown source files: $(NORMALIZE_UNKNOWN)"
+	false
+endif
+
+# ----------------------------------------------------------------------------
+# DEVELOPMENT TIME PROTOTYPE SCANNING
+# ----------------------------------------------------------------------------
+
+.SUFFIXES: .q .p
+
+%.q : %.c ; $(CC) -o $@ -E $< $(CPPFLAGS) $(MCE_CFLAGS)
+%.p : %.q ; cproto -s < $< | sed -e 's/_Bool/bool/g'
+
+clean::
+	$(RM) -f *.q *.p
+
+# ----------------------------------------------------------------------------
 # LOCAL RPMBUILD (copy mce.* from OBS to rpm subdir)
 # ----------------------------------------------------------------------------
 
@@ -635,7 +666,6 @@ tarball:: distclean
 	tar -cjf $(TARBALL).bz2 -C /tmp $(TARWORK)/
 	$(RM) -r /tmp/$(TARWORK)
 
-
 .PHONY: tarball_from_git
 tarball_from_git::
 	git archive --prefix=mce/ -o $(TARBALL) HEAD
@@ -649,4 +679,3 @@ rpmbuild:: tarball
 	@test -d rpm || (echo "you need rpm/ subdir for this to work" && false)
 	install -m644 $(TARBALL).bz2 rpm/mce.* ~/rpmbuild/SOURCES/
 	rpmbuild -ba ~/rpmbuild/SOURCES/mce.spec
-

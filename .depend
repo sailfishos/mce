@@ -1,11 +1,13 @@
 builtin-gconf.o:\
 	builtin-gconf.c\
+	builtin-gconf.h\
 	mce-dbus.h\
 	mce-io.h\
 	mce-log.h\
 
 builtin-gconf.pic.o:\
 	builtin-gconf.c\
+	builtin-gconf.h\
 	mce-dbus.h\
 	mce-io.h\
 	mce-log.h\
@@ -34,6 +36,7 @@ evdev.pic.o:\
 
 event-input.o:\
 	event-input.c\
+	builtin-gconf.h\
 	datapipe.h\
 	evdev.h\
 	event-input.h\
@@ -47,6 +50,7 @@ event-input.o:\
 
 event-input.pic.o:\
 	event-input.c\
+	builtin-gconf.h\
 	datapipe.h\
 	evdev.h\
 	event-input.h\
@@ -116,6 +120,7 @@ mce-conf.pic.o:\
 
 mce-dbus.o:\
 	mce-dbus.c\
+	builtin-gconf.h\
 	datapipe.h\
 	mce-dbus.h\
 	mce-gconf.h\
@@ -124,6 +129,7 @@ mce-dbus.o:\
 
 mce-dbus.pic.o:\
 	mce-dbus.c\
+	builtin-gconf.h\
 	datapipe.h\
 	mce-dbus.h\
 	mce-gconf.h\
@@ -132,6 +138,7 @@ mce-dbus.pic.o:\
 
 mce-dsme.o:\
 	mce-dsme.c\
+	builtin-gconf.h\
 	datapipe.h\
 	mce-conf.h\
 	mce-dbus.h\
@@ -142,6 +149,7 @@ mce-dsme.o:\
 
 mce-dsme.pic.o:\
 	mce-dsme.c\
+	builtin-gconf.h\
 	datapipe.h\
 	mce-conf.h\
 	mce-dbus.h\
@@ -152,6 +160,7 @@ mce-dsme.pic.o:\
 
 mce-gconf.o:\
 	mce-gconf.c\
+	builtin-gconf.h\
 	datapipe.h\
 	mce-gconf.h\
 	mce-log.h\
@@ -159,6 +168,7 @@ mce-gconf.o:\
 
 mce-gconf.pic.o:\
 	mce-gconf.c\
+	builtin-gconf.h\
 	datapipe.h\
 	mce-gconf.h\
 	mce-log.h\
@@ -166,6 +176,7 @@ mce-gconf.pic.o:\
 
 mce-hal.o:\
 	mce-hal.c\
+	builtin-gconf.h\
 	mce-dbus.h\
 	mce-hal.h\
 	mce-lib.h\
@@ -173,6 +184,7 @@ mce-hal.o:\
 
 mce-hal.pic.o:\
 	mce-hal.c\
+	builtin-gconf.h\
 	mce-dbus.h\
 	mce-hal.h\
 	mce-lib.h\
@@ -252,6 +264,7 @@ mce-modules.pic.o:\
 
 mce-sensorfw.o:\
 	mce-sensorfw.c\
+	builtin-gconf.h\
 	datapipe.h\
 	libwakelock.h\
 	mce-dbus.h\
@@ -261,6 +274,7 @@ mce-sensorfw.o:\
 
 mce-sensorfw.pic.o:\
 	mce-sensorfw.c\
+	builtin-gconf.h\
 	datapipe.h\
 	libwakelock.h\
 	mce-dbus.h\
@@ -270,6 +284,7 @@ mce-sensorfw.pic.o:\
 
 mce.o:\
 	mce.c\
+	builtin-gconf.h\
 	datapipe.h\
 	event-input.h\
 	event-switches.h\
@@ -289,6 +304,7 @@ mce.o:\
 
 mce.pic.o:\
 	mce.c\
+	builtin-gconf.h\
 	datapipe.h\
 	event-input.h\
 	event-switches.h\
@@ -332,6 +348,7 @@ modetransition.pic.o:\
 
 modules/alarm.o:\
 	modules/alarm.c\
+	builtin-gconf.h\
 	datapipe.h\
 	datapipe.h\
 	mce-dbus.h\
@@ -340,6 +357,7 @@ modules/alarm.o:\
 
 modules/alarm.pic.o:\
 	modules/alarm.c\
+	builtin-gconf.h\
 	datapipe.h\
 	datapipe.h\
 	mce-dbus.h\
@@ -348,6 +366,7 @@ modules/alarm.pic.o:\
 
 modules/audiorouting.o:\
 	modules/audiorouting.c\
+	builtin-gconf.h\
 	datapipe.h\
 	mce-dbus.h\
 	mce-log.h\
@@ -355,6 +374,7 @@ modules/audiorouting.o:\
 
 modules/audiorouting.pic.o:\
 	modules/audiorouting.c\
+	builtin-gconf.h\
 	datapipe.h\
 	mce-dbus.h\
 	mce-log.h\
@@ -363,6 +383,7 @@ modules/audiorouting.pic.o:\
 modules/battery-bme.o:\
 	modules/battery-bme.c\
 	bme-dbus-names.h\
+	builtin-gconf.h\
 	datapipe.h\
 	datapipe.h\
 	mce-dbus.h\
@@ -372,6 +393,7 @@ modules/battery-bme.o:\
 modules/battery-bme.pic.o:\
 	modules/battery-bme.c\
 	bme-dbus-names.h\
+	builtin-gconf.h\
 	datapipe.h\
 	datapipe.h\
 	mce-dbus.h\
@@ -380,6 +402,7 @@ modules/battery-bme.pic.o:\
 
 modules/battery-upower.o:\
 	modules/battery-upower.c\
+	builtin-gconf.h\
 	datapipe.h\
 	mce-dbus.h\
 	mce-log.h\
@@ -387,6 +410,7 @@ modules/battery-upower.o:\
 
 modules/battery-upower.pic.o:\
 	modules/battery-upower.c\
+	builtin-gconf.h\
 	datapipe.h\
 	mce-dbus.h\
 	mce-log.h\
@@ -394,18 +418,21 @@ modules/battery-upower.pic.o:\
 
 modules/bluetooth.o:\
 	modules/bluetooth.c\
+	builtin-gconf.h\
 	libwakelock.h\
 	mce-dbus.h\
 	mce-log.h\
 
 modules/bluetooth.pic.o:\
 	modules/bluetooth.c\
+	builtin-gconf.h\
 	libwakelock.h\
 	mce-dbus.h\
 	mce-log.h\
 
 modules/callstate.o:\
 	modules/callstate.c\
+	builtin-gconf.h\
 	datapipe.h\
 	datapipe.h\
 	mce-dbus.h\
@@ -416,6 +443,7 @@ modules/callstate.o:\
 
 modules/callstate.pic.o:\
 	modules/callstate.c\
+	builtin-gconf.h\
 	datapipe.h\
 	datapipe.h\
 	mce-dbus.h\
@@ -444,18 +472,21 @@ modules/camera.pic.o:\
 
 modules/cpu-keepalive.o:\
 	modules/cpu-keepalive.c\
+	builtin-gconf.h\
 	mce-dbus.h\
 	mce-log.h\
 	libwakelock.h\
 
 modules/cpu-keepalive.pic.o:\
 	modules/cpu-keepalive.c\
+	builtin-gconf.h\
 	mce-dbus.h\
 	mce-log.h\
 	libwakelock.h\
 
 modules/display.o:\
 	modules/display.c\
+	builtin-gconf.h\
 	datapipe.h\
 	datapipe.h\
 	mce-conf.h\
@@ -473,6 +504,7 @@ modules/display.o:\
 
 modules/display.pic.o:\
 	modules/display.c\
+	builtin-gconf.h\
 	datapipe.h\
 	datapipe.h\
 	mce-conf.h\
@@ -490,6 +522,7 @@ modules/display.pic.o:\
 
 modules/doubletap.o:\
 	modules/doubletap.c\
+	builtin-gconf.h\
 	datapipe.h\
 	mce-conf.h\
 	mce-gconf.h\
@@ -500,6 +533,7 @@ modules/doubletap.o:\
 
 modules/doubletap.pic.o:\
 	modules/doubletap.c\
+	builtin-gconf.h\
 	datapipe.h\
 	mce-conf.h\
 	mce-gconf.h\
@@ -510,6 +544,7 @@ modules/doubletap.pic.o:\
 
 modules/filter-brightness-als.o:\
 	modules/filter-brightness-als.c\
+	builtin-gconf.h\
 	datapipe.h\
 	mce-conf.h\
 	mce-dbus.h\
@@ -522,6 +557,7 @@ modules/filter-brightness-als.o:\
 
 modules/filter-brightness-als.pic.o:\
 	modules/filter-brightness-als.c\
+	builtin-gconf.h\
 	datapipe.h\
 	mce-conf.h\
 	mce-dbus.h\
@@ -548,6 +584,7 @@ modules/filter-brightness-simple.pic.o:\
 
 modules/inactivity.o:\
 	modules/inactivity.c\
+	builtin-gconf.h\
 	datapipe.h\
 	datapipe.h\
 	mce-dbus.h\
@@ -556,6 +593,7 @@ modules/inactivity.o:\
 
 modules/inactivity.pic.o:\
 	modules/inactivity.c\
+	builtin-gconf.h\
 	datapipe.h\
 	datapipe.h\
 	mce-dbus.h\
@@ -564,6 +602,7 @@ modules/inactivity.pic.o:\
 
 modules/keypad.o:\
 	modules/keypad.c\
+	builtin-gconf.h\
 	datapipe.h\
 	datapipe.h\
 	mce-conf.h\
@@ -578,6 +617,7 @@ modules/keypad.o:\
 
 modules/keypad.pic.o:\
 	modules/keypad.c\
+	builtin-gconf.h\
 	datapipe.h\
 	datapipe.h\
 	mce-conf.h\
@@ -592,6 +632,7 @@ modules/keypad.pic.o:\
 
 modules/led.o:\
 	modules/led.c\
+	builtin-gconf.h\
 	datapipe.h\
 	datapipe.h\
 	mce-conf.h\
@@ -608,6 +649,7 @@ modules/led.o:\
 
 modules/led.pic.o:\
 	modules/led.c\
+	builtin-gconf.h\
 	datapipe.h\
 	datapipe.h\
 	mce-conf.h\
@@ -624,6 +666,7 @@ modules/led.pic.o:\
 
 modules/packagekit.o:\
 	modules/packagekit.c\
+	builtin-gconf.h\
 	datapipe.h\
 	datapipe.h\
 	mce-dbus.h\
@@ -632,6 +675,7 @@ modules/packagekit.o:\
 
 modules/packagekit.pic.o:\
 	modules/packagekit.c\
+	builtin-gconf.h\
 	datapipe.h\
 	datapipe.h\
 	mce-dbus.h\
@@ -640,6 +684,7 @@ modules/packagekit.pic.o:\
 
 modules/powersavemode.o:\
 	modules/powersavemode.c\
+	builtin-gconf.h\
 	datapipe.h\
 	datapipe.h\
 	mce-dbus.h\
@@ -650,6 +695,7 @@ modules/powersavemode.o:\
 
 modules/powersavemode.pic.o:\
 	modules/powersavemode.c\
+	builtin-gconf.h\
 	datapipe.h\
 	datapipe.h\
 	mce-dbus.h\
@@ -660,6 +706,7 @@ modules/powersavemode.pic.o:\
 
 modules/proximity.o:\
 	modules/proximity.c\
+	builtin-gconf.h\
 	datapipe.h\
 	datapipe.h\
 	mce-dbus.h\
@@ -674,6 +721,7 @@ modules/proximity.o:\
 
 modules/proximity.pic.o:\
 	modules/proximity.c\
+	builtin-gconf.h\
 	datapipe.h\
 	datapipe.h\
 	mce-dbus.h\
@@ -688,6 +736,7 @@ modules/proximity.pic.o:\
 
 modules/radiostates.o:\
 	modules/radiostates.c\
+	builtin-gconf.h\
 	datapipe.h\
 	datapipe.h\
 	mce-conf.h\
@@ -699,6 +748,7 @@ modules/radiostates.o:\
 
 modules/radiostates.pic.o:\
 	modules/radiostates.c\
+	builtin-gconf.h\
 	datapipe.h\
 	datapipe.h\
 	mce-conf.h\
@@ -710,6 +760,7 @@ modules/radiostates.pic.o:\
 
 modules/sensor-gestures.o:\
 	modules/sensor-gestures.c\
+	builtin-gconf.h\
 	datapipe.h\
 	datapipe.h\
 	mce-dbus.h\
@@ -719,6 +770,7 @@ modules/sensor-gestures.o:\
 
 modules/sensor-gestures.pic.o:\
 	modules/sensor-gestures.c\
+	builtin-gconf.h\
 	datapipe.h\
 	datapipe.h\
 	mce-dbus.h\
@@ -728,6 +780,7 @@ modules/sensor-gestures.pic.o:\
 
 powerkey.o:\
 	powerkey.c\
+	builtin-gconf.h\
 	datapipe.h\
 	libwakelock.h\
 	mce-conf.h\
@@ -740,6 +793,7 @@ powerkey.o:\
 
 powerkey.pic.o:\
 	powerkey.c\
+	builtin-gconf.h\
 	datapipe.h\
 	libwakelock.h\
 	mce-conf.h\
@@ -752,6 +806,7 @@ powerkey.pic.o:\
 
 tests/ut/ut_display.o:\
 	tests/ut/ut_display.c\
+	builtin-gconf.h\
 	datapipe.h\
 	datapipe.h\
 	mce-conf.h\
@@ -771,6 +826,7 @@ tests/ut/ut_display.o:\
 
 tests/ut/ut_display.pic.o:\
 	tests/ut/ut_display.c\
+	builtin-gconf.h\
 	datapipe.h\
 	datapipe.h\
 	mce-conf.h\
@@ -790,6 +846,7 @@ tests/ut/ut_display.pic.o:\
 
 tests/ut/ut_display_blanking_inhibit.o:\
 	tests/ut/ut_display_blanking_inhibit.c\
+	builtin-gconf.h\
 	datapipe.h\
 	datapipe.h\
 	mce-conf.h\
@@ -810,6 +867,7 @@ tests/ut/ut_display_blanking_inhibit.o:\
 
 tests/ut/ut_display_blanking_inhibit.pic.o:\
 	tests/ut/ut_display_blanking_inhibit.c\
+	builtin-gconf.h\
 	datapipe.h\
 	datapipe.h\
 	mce-conf.h\
@@ -830,6 +888,7 @@ tests/ut/ut_display_blanking_inhibit.pic.o:\
 
 tests/ut/ut_display_conf.o:\
 	tests/ut/ut_display_conf.c\
+	builtin-gconf.h\
 	datapipe.h\
 	datapipe.h\
 	mce-conf.h\
@@ -850,6 +909,7 @@ tests/ut/ut_display_conf.o:\
 
 tests/ut/ut_display_conf.pic.o:\
 	tests/ut/ut_display_conf.c\
+	builtin-gconf.h\
 	datapipe.h\
 	datapipe.h\
 	mce-conf.h\
@@ -870,6 +930,7 @@ tests/ut/ut_display_conf.pic.o:\
 
 tests/ut/ut_display_filter.o:\
 	tests/ut/ut_display_filter.c\
+	builtin-gconf.h\
 	datapipe.h\
 	datapipe.h\
 	mce-conf.h\
@@ -890,6 +951,7 @@ tests/ut/ut_display_filter.o:\
 
 tests/ut/ut_display_filter.pic.o:\
 	tests/ut/ut_display_filter.c\
+	builtin-gconf.h\
 	datapipe.h\
 	datapipe.h\
 	mce-conf.h\
@@ -910,6 +972,7 @@ tests/ut/ut_display_filter.pic.o:\
 
 tests/ut/ut_display_stm.o:\
 	tests/ut/ut_display_stm.c\
+	builtin-gconf.h\
 	datapipe.h\
 	datapipe.h\
 	mce-conf.h\
@@ -930,6 +993,7 @@ tests/ut/ut_display_stm.o:\
 
 tests/ut/ut_display_stm.pic.o:\
 	tests/ut/ut_display_stm.c\
+	builtin-gconf.h\
 	datapipe.h\
 	datapipe.h\
 	mce-conf.h\
@@ -950,6 +1014,7 @@ tests/ut/ut_display_stm.pic.o:\
 
 tklock.o:\
 	tklock.c\
+	builtin-gconf.h\
 	datapipe.h\
 	evdev.h\
 	libwakelock.h\
@@ -966,6 +1031,7 @@ tklock.o:\
 
 tklock.pic.o:\
 	tklock.c\
+	builtin-gconf.h\
 	datapipe.h\
 	evdev.h\
 	libwakelock.h\

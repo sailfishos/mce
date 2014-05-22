@@ -81,7 +81,6 @@ binary-arch: build install
 	dh_installman
 	dh_installchangelogs
 	dh_install -s
-	dh_gconf
 	dh_strip -pmce --dbg-package=mce-dbg
 	dh_strip -pmcetools --dbg-package=mcetools-dbg
 	dh_link
@@ -92,8 +91,6 @@ binary-arch: build install
 	dh_gencontrol
 	dh_md5sums
 	dh_builddeb
-	aegis-deb-add -control debian/mce/DEBIAN/control .. debian/mce.aegis=_aegis
-	aegis-deb-add -control debian/mcetools/DEBIAN/control .. debian/mcetools.aegis=_aegis
 
 .PHONY: binary
 binary: binary-indep binary-arch

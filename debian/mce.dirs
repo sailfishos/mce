@@ -2,7 +2,6 @@ sbin
 etc/mce
 etc/osso-cud-scripts
 etc/osso-rfs-scripts
-etc/gconf/schemas
 var/lib/mce
 usr/lib/mce
 usr/share/mce
