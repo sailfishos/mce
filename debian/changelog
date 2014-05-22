@@ -1,3 +1,9 @@
+mce (1.30.5) unstable; urgency=low
+
+  * [mce] Drop gconf-2 build dependency. Fixes JB#19487
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 22 May 2014 09:20:44 +0300
+
 mce (1.30.4) unstable; urgency=low
 
   * [mce] Enable use_low_power_mode setting by default. Fixes JB#19484
