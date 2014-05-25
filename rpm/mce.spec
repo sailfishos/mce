@@ -1,6 +1,6 @@
 Name:       mce
 Summary:    Mode Control Entity for Nokia mobile computers
-Version:    1.30.4.3
+Version:    1.30.4.4
 Release:    1
 Group:      System/System Control
 License:    LGPLv2
