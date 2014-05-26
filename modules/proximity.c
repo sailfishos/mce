@@ -29,47 +29,22 @@
 #include <stdlib.h>			/* free() */
 #include <string.h>			/* memcpy() */
 
-#include "mce.h"
+#include "../mce.h"
 #include "proximity.h"
 
-#include "mce-gconf.h"
-#include "mce-io.h"			/* mce_read_chunk_from_file(),
-					 * mce_write_string_to_file(),
-					 * mce_write_number_string_to_file(),
-					 * mce_register_io_monitor_chunk(),
-					 * mce_unregister_io_monitor()
-					 */
-#include "mce-hal.h"			/* get_sysinfo_value() */
-#include "mce-log.h"			/* mce_log(), LL_* */
-#include "mce-dbus.h"			/* Direct:
-					 * ---
-					 * mce_dbus_handler_add(),
-					 * dbus_send_message(),
-					 * dbus_new_method_reply(),
-					 * dbus_new_signal(),
-					 * dbus_message_append_args(),
-					 * dbus_message_get_no_reply(),
-					 * dbus_message_unref(),
-					 * DBusMessage,
-					 * DBUS_MESSAGE_TYPE_METHOD_CALL,
-					 * DBUS_TYPE_INVALID,
-					 * dbus_bool_t
-					 *
-					 * Indirect:
-					 * ---
-					 * MCE_REQUEST_IF
-					 */
-#include "datapipe.h"			/* execute_datapipe(),
-					 * append_input_trigger_to_datapipe(),
-					 * remove_input_trigger_from_datapipe()
-					 */
+#include "../mce-gconf.h"
+#include "../mce-io.h"
+#include "../mce-hal.h"
+#include "../mce-log.h"
+#include "../mce-dbus.h"
+#include "../datapipe.h"
 
 #ifdef ENABLE_HYBRIS
 # include "../mce-hybris.h"
 #endif
 
 #ifdef ENABLE_SENSORFW
-# include "mce-sensorfw.h"
+# include "../mce-sensorfw.h"
 #endif
 
 #if 0 // DEBUG: make all logging from this module "critical"

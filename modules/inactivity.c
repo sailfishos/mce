@@ -23,37 +23,10 @@
 
 #include <string.h>			/* strcmp() */
 
-#include "mce.h"
-
-#include "mce-log.h"			/* mce_log(), LL_* */
-#include "mce-dbus.h"			/* Direct:
-					 * ---
-					 * mce_dbus_handler_add(),
-					 * dbus_send_message(),
-					 * dbus_new_method_reply(),
-					 * dbus_new_signal(),
-					 * dbus_message_append_args(),
-					 * dbus_message_unref(),
-					 * DBusMessage,
-					 * DBUS_MESSAGE_TYPE_METHOD_CALL,
-					 * DBUS_TYPE_BOOLEAN,
-					 * DBUS_TYPE_INVALID,
-					 * dbus_bool_t
-					 *
-					 * Indirect:
-					 * ---
-					 * MCE_SIGNAL_IF,
-					 * MCE_SIGNAL_PATH,
-					 * MCE_REQUEST_IF
-					 * MCE_INACTIVITY_STATUS_GET,
-					 * MCE_INACTIVITY_SIG,
-					 * MCE_ADD_ACTIVITY_CALLBACK_REQ,
-					 * MCE_REMOVE_ACTIVITY_CALLBACK_REQ
-					 */
-#include "datapipe.h"			/* datapipe_get_gbool(),
-					 * append_filter_to_datapipe(),
-					 * remove_filter_from_datapipe()
-					 */
+#include "../mce.h"
+#include "../mce-log.h"
+#include "../mce-dbus.h"
+#include "../datapipe.h"
 
 /** Module name */
 #define MODULE_NAME		"inactivity"

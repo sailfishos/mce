@@ -21,51 +21,12 @@
 #include <glib.h>
 #include <gmodule.h>
 
-#include <bme-dbus-names.h>		/* BME_SERVICE, BME_REQUEST_PATH,
-					 * BME_REQUEST_IF, BME_SIGNAL_IF,
-					 * BME_STATUS_INFO_REQ,
-					 * BME_BATTERY_FULL,
-					 * BME_BATTERY_OK,
-					 * BME_BATTERY_LOW,
-					 * BME_BATTERY_EMPTY,
-					 * BME_CHARGER_CHARGING_ON,
-					 * BME_CHARGER_CHARGING_OFF,
-					 * BME_CHARGER_CONNECTED,
-					 * BME_CHARGER_DISCONNECTED
-					 */
+#include "../bme-dbus-names.h"
 
-#include "mce.h"			/*
-					 * MCE_LED_PATTERN_BATTERY_LOW,
-					 * MCE_LED_PATTERN_BATTERY_FULL,
-					 * MCE_LED_PATTERN_BATTERY_CHARGING,
-					 * charger_state_pipe,
-					 * device_inactive_pipe,
-					 * led_pattern_activate_pipe,
-					 * led_pattern_deactivate_pipe,
-					 */
-
-#include "mce-log.h"			/* mce_log(), LL_* */
-#include "mce-dbus.h"			/* Direct:
-					 * ---
-					 * mce_dbus_handler_add(),
-					 * dbus_send(),
-					 *
-					 * Indirect:
-					 * ---
-					 * dbus_message_get_args(),
-					 * dbus_error_init(),
-					 * dbus_error_free(),
-					 * DBusError,
-					 * DBusMessage,
-					 * DBUS_MESSAGE_TYPE_SIGNAL,
-					 * DBUS_TYPE_UINT32,
-					 * DBUS_TYPE_INVALID,
-					 * dbus_bool_t,
-					 * dbus_uint32_t
-					 */
-#include "datapipe.h"			/* execute_datapipe(),
-					 * execute_datapipe_output_triggers()
-					 */
+#include "../mce.h"
+#include "../mce-log.h"
+#include "../mce-dbus.h"
+#include "../datapipe.h"
 
 /** Module name */
 #define MODULE_NAME		"battery"

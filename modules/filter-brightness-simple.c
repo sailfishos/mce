@@ -23,13 +23,10 @@
 #include <glib.h>
 #include <gmodule.h>
 
-#include "mce.h"
+#include "../mce.h"
 #include "filter-brightness-simple.h"
 
-#include "datapipe.h"			/* append_filter_to_datapipe(),
-					 * remove_filter_from_datapipe(),
-					 * execute_datapipe()
-					 */
+#include "../datapipe.h"
 
 /** Module name */
 #define MODULE_NAME		"filter-brightness-simple"

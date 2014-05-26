@@ -35,8 +35,8 @@
 #include <glib/gstdio.h>
 
 #include <mce/mode-names.h>
-#include <systemui/dbus-names.h>
-#include <systemui/tklock-dbus-names.h>
+#include "systemui/dbus-names.h"
+#include "systemui/tklock-dbus-names.h"
 
 #include "mce.h"
 #include "tklock.h"

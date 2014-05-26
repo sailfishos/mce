@@ -30,13 +30,13 @@
 #include <glib.h>
 #include <gmodule.h>
 
-#include "mce.h"
-#include "mce-io.h"
-#include "mce-log.h"
-#include "mce-conf.h"
-#include "mce-gconf.h"
-#include "mce-dbus.h"
-#include "mce-sensorfw.h"
+#include "../mce.h"
+#include "../mce-io.h"
+#include "../mce-log.h"
+#include "../mce-conf.h"
+#include "../mce-gconf.h"
+#include "../mce-dbus.h"
+#include "../mce-sensorfw.h"
 
 #include "filter-brightness-als.h"
 

@@ -40,16 +40,16 @@
 
 #include <mce/mode-names.h>
 
-#include "mce.h"
+#include "../mce.h"
 #include "display.h"
-#include "mce-io.h"
-#include "mce-lib.h"
-#include "mce-log.h"
-#include "mce-conf.h"
-#include "mce-dbus.h"
-#include "mce-gconf.h"
-#include "mce-sensorfw.h"
-#include "datapipe.h"
+#include "../mce-io.h"
+#include "../mce-lib.h"
+#include "../mce-log.h"
+#include "../mce-conf.h"
+#include "../mce-dbus.h"
+#include "../mce-gconf.h"
+#include "../mce-sensorfw.h"
+#include "../datapipe.h"
 
 #include "../filewatcher.h"
 

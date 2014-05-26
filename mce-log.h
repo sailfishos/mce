@@ -21,7 +21,7 @@
 #ifndef _MCE_LOG_H_
 #define _MCE_LOG_H_
 
-#include <syslog.h>	/* LOG_DAEMON, LOG_USER */
+#include <syslog.h>
 
 #define MCE_LOG_SYSLOG			1	/**< Log to syslog */
 #define MCE_LOG_STDERR			0	/**< Log to stderr */

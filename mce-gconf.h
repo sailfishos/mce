@@ -21,9 +21,7 @@
 #ifndef _MCE_GCONF_H_
 #define _MCE_GCONF_H_
 
-#include <glib.h>			/* gboolean, gpointer,
-					 * gchar, guint, gint
-					 */
+#include <glib.h>
 
 #include "builtin-gconf.h"
 

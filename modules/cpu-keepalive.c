@@ -30,8 +30,8 @@
 #include <time.h>
 #include <string.h>
 
-#include "mce-log.h"
-#include "mce-dbus.h"
+#include "../mce-log.h"
+#include "../mce-dbus.h"
 
 #ifdef ENABLE_WAKELOCKS
 # include "../libwakelock.h"

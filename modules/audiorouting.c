@@ -23,9 +23,10 @@
 #include <string.h>
 #include <glib.h>
 #include <gmodule.h>
-#include "mce.h"
-#include "mce-log.h"
-#include "mce-dbus.h"
+
+#include "../mce.h"
+#include "../mce-log.h"
+#include "../mce-dbus.h"
 
 /** Module name */
 #define MODULE_NAME		"audiorouting"
