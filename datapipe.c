@@ -19,11 +19,15 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
+
+#include <linux/input.h>
+
 #include <glib.h>
 
 #include "datapipe.h"
 
-#include "mce-log.h"			/* mce_log(), LL_* */
+#include "mce.h"
+#include "mce-log.h"
 
 /* Available datapipes */
 
@@ -762,4 +766,159 @@ void free_datapipe(datapipe_struct *const datapipe)
 
 EXIT:
 	return;
+}
+
+/** Setup all datapipes
+ */
+void mce_datapipe_init(void)
+{
+	setup_datapipe(&system_state_pipe, READ_WRITE, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(MCE_STATE_UNDEF));
+	setup_datapipe(&master_radio_pipe, READ_WRITE, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(0));
+	setup_datapipe(&call_state_pipe, READ_WRITE, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(CALL_STATE_NONE));
+	setup_datapipe(&call_type_pipe, READ_WRITE, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(NORMAL_CALL));
+	setup_datapipe(&alarm_ui_state_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(MCE_ALARM_UI_INVALID_INT32));
+	setup_datapipe(&submode_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(MCE_NORMAL_SUBMODE));
+	setup_datapipe(&display_state_pipe, READ_WRITE, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(MCE_DISPLAY_UNDEF));
+	setup_datapipe(&display_state_req_pipe, READ_WRITE, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(MCE_DISPLAY_UNDEF));
+	setup_datapipe(&display_state_next_pipe, READ_WRITE, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(MCE_DISPLAY_UNDEF));
+	setup_datapipe(&exception_state_pipe, READ_WRITE, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(UIEXC_NONE));
+	setup_datapipe(&display_brightness_pipe, READ_WRITE, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(3));
+	setup_datapipe(&led_brightness_pipe, READ_WRITE, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(0));
+	setup_datapipe(&lpm_brightness_pipe, READ_WRITE, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(0));
+	setup_datapipe(&led_pattern_activate_pipe, READ_ONLY, FREE_CACHE,
+		       0, NULL);
+	setup_datapipe(&led_pattern_deactivate_pipe, READ_ONLY, FREE_CACHE,
+		       0, NULL);
+	setup_datapipe(&user_activity_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, NULL);
+	setup_datapipe(&key_backlight_pipe, READ_WRITE, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(0));
+	setup_datapipe(&keypress_pipe, READ_ONLY, FREE_CACHE,
+		       sizeof (struct input_event), NULL);
+	setup_datapipe(&touchscreen_pipe, READ_ONLY, FREE_CACHE,
+		       sizeof (struct input_event), NULL);
+	setup_datapipe(&device_inactive_pipe, READ_WRITE, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(FALSE));
+	setup_datapipe(&lockkey_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(0));
+	setup_datapipe(&keyboard_slide_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(0));
+	setup_datapipe(&lid_cover_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(0));
+	setup_datapipe(&lens_cover_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(0));
+	setup_datapipe(&proximity_sensor_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(COVER_OPEN));
+	setup_datapipe(&ambient_light_sensor_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(400));
+	setup_datapipe(&orientation_sensor_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(0));
+	setup_datapipe(&tk_lock_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(LOCK_UNDEF));
+	setup_datapipe(&charger_state_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(0));
+	setup_datapipe(&battery_status_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(BATTERY_STATUS_UNDEF));
+	setup_datapipe(&battery_level_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(100));
+	setup_datapipe(&camera_button_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(CAMERA_BUTTON_UNDEF));
+	setup_datapipe(&inactivity_timeout_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(DEFAULT_INACTIVITY_TIMEOUT));
+	setup_datapipe(&audio_route_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(AUDIO_ROUTE_UNDEF));
+	setup_datapipe(&usb_cable_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(0));
+	setup_datapipe(&jack_sense_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(0));
+	setup_datapipe(&power_saving_mode_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(0));
+	setup_datapipe(&thermal_state_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(THERMAL_STATE_UNDEF));
+	setup_datapipe(&heartbeat_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(0));
+	setup_datapipe(&lipstick_available_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(FALSE));
+	setup_datapipe(&packagekit_locked_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(FALSE));
+	setup_datapipe(&device_lock_active_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(FALSE));
+	setup_datapipe(&touch_grab_wanted_pipe, READ_WRITE, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(FALSE));
+	setup_datapipe(&touch_grab_active_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(FALSE));
+	setup_datapipe(&keypad_grab_wanted_pipe, READ_WRITE, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(FALSE));
+	setup_datapipe(&keypad_grab_active_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(FALSE));
+	setup_datapipe(&music_playback_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(FALSE));
+	setup_datapipe(&proximity_blank_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(FALSE));
+}
+
+/** Free all datapipes
+ */
+void mce_datapipe_quit(void)
+{
+	free_datapipe(&thermal_state_pipe);
+	free_datapipe(&power_saving_mode_pipe);
+	free_datapipe(&jack_sense_pipe);
+	free_datapipe(&usb_cable_pipe);
+	free_datapipe(&audio_route_pipe);
+	free_datapipe(&inactivity_timeout_pipe);
+	free_datapipe(&battery_level_pipe);
+	free_datapipe(&battery_status_pipe);
+	free_datapipe(&charger_state_pipe);
+	free_datapipe(&tk_lock_pipe);
+	free_datapipe(&proximity_sensor_pipe);
+	free_datapipe(&ambient_light_sensor_pipe);
+	free_datapipe(&orientation_sensor_pipe);
+	free_datapipe(&lens_cover_pipe);
+	free_datapipe(&lid_cover_pipe);
+	free_datapipe(&keyboard_slide_pipe);
+	free_datapipe(&lockkey_pipe);
+	free_datapipe(&device_inactive_pipe);
+	free_datapipe(&touchscreen_pipe);
+	free_datapipe(&keypress_pipe);
+	free_datapipe(&key_backlight_pipe);
+	free_datapipe(&user_activity_pipe);
+	free_datapipe(&led_pattern_deactivate_pipe);
+	free_datapipe(&led_pattern_activate_pipe);
+	free_datapipe(&led_brightness_pipe);
+	free_datapipe(&lpm_brightness_pipe);
+	free_datapipe(&display_brightness_pipe);
+	free_datapipe(&display_state_pipe);
+	free_datapipe(&display_state_req_pipe);
+	free_datapipe(&display_state_next_pipe);
+	free_datapipe(&exception_state_pipe);
+	free_datapipe(&submode_pipe);
+	free_datapipe(&alarm_ui_state_pipe);
+	free_datapipe(&call_type_pipe);
+	free_datapipe(&call_state_pipe);
+	free_datapipe(&master_radio_pipe);
+	free_datapipe(&system_state_pipe);
+	free_datapipe(&heartbeat_pipe);
+	free_datapipe(&lipstick_available_pipe);
+	free_datapipe(&packagekit_locked_pipe);
+	free_datapipe(&device_lock_active_pipe);
+	free_datapipe(&touch_grab_active_pipe);
+	free_datapipe(&touch_grab_wanted_pipe);
+	free_datapipe(&keypad_grab_active_pipe);
+	free_datapipe(&keypad_grab_wanted_pipe);
+	free_datapipe(&music_playback_pipe);
+	free_datapipe(&proximity_blank_pipe);
 }

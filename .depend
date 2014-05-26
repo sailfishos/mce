@@ -16,11 +16,13 @@ datapipe.o:\
 	datapipe.c\
 	datapipe.h\
 	mce-log.h\
+	mce.h\
 
 datapipe.pic.o:\
 	datapipe.c\
 	datapipe.h\
 	mce-log.h\
+	mce.h\
 
 evdev.o:\
 	evdev.c\

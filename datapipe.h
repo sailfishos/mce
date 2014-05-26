@@ -147,4 +147,7 @@ void setup_datapipe(datapipe_struct *const datapipe,
 		    const gsize datasize, gpointer initial_data);
 void free_datapipe(datapipe_struct *const datapipe);
 
+void mce_datapipe_init(void);
+void mce_datapipe_quit(void);
+
 #endif /* _DATAPIPE_H_ */
