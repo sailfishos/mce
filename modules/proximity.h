@@ -45,6 +45,7 @@ struct avago_ps {
 
 /** Base path to the Avago proximity sensor */
 #define PS_PATH_AVAGO			"/sys/class/misc/apds990x0/device"
+
 /** Path to the first calibration point for the Avago ALS */
 /* FIXME: There is no calibration sysfs for Avago */
 /* #define PS_CALIB_PATH_AVAGO		PS_PATH_AVAGO "/fixme" */
@@ -56,10 +57,11 @@ struct avago_ps {
 #define PS_PATH_AVAGO_ONOFF_MODE	PS_PATH_AVAGO "/prox_onoff_mode"
 
 /** Proximity Sensor status */
+
 #ifndef APDS990X_PS_UPDATED
 /** Sensor has up to date data */
-#define APDS990X_PS_UPDATED		0x8
-#endif /* APDS990X_PS_UPDATED */
+# define APDS990X_PS_UPDATED		0x8
+#endif
 
 /**
  * Paths for the Dipro (BH1770GLC/SFH7770) proximity sensor
@@ -80,6 +82,7 @@ struct dipro_ps {
 
 /** Base path to the Dipro proximity sensor */
 #define PS_PATH_DIPRO			"/sys/class/misc/bh1770glc_ps/device"
+
 /** Path to the first calibration point for the Dipro ALS */
 #define PS_CALIB_PATH_DIPRO		PS_PATH_DIPRO "/ps_calib"
 
@@ -96,6 +99,7 @@ typedef struct {
 
 /** Path to the GConf settings for the proximity */
 #define MCE_GCONF_PROXIMITY_PATH		"/system/osso/dsm/proximity"
+
 /** Path to the ALS enabled GConf setting */
 #define MCE_GCONF_PROXIMITY_PS_ENABLED_PATH	MCE_GCONF_PROXIMITY_PATH "/ps_enabled"
 

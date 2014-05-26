@@ -46,44 +46,62 @@ typedef enum
 
 /** Configuration value used for the disabled policy */
 #define POWER_DISABLED_STR				"disabled"
+
 /** Configuration value used for the device menu policy */
 #define POWER_MENU_STR					"menu"
+
 /** Configuration value used for poweroff */
 #define POWER_POWEROFF_STR				"poweroff"
+
 /** Configuration value used for soft poweroff */
 #define POWER_SOFT_POWEROFF_STR				"softpoweroff"
+
 /** Configuration value used for tklock lock */
 #define POWER_TKLOCK_UNLOCK_STR				"tklock-unlock"
+
 /** Configuration value used for tklock unlock */
 #define POWER_TKLOCK_LOCK_STR				"tklock-lock"
+
 /** Configuration value used for tklock both */
 #define POWER_TKLOCK_BOTH_STR				"tklock-both"
+
 /** Configuration value used for D-Bus signal */
 #define POWER_DBUS_SIGNAL_STR				"dbus-signal-"
 
 /** Action to perform on [power] keypress */
 typedef enum {
-/** No action */
+
+	/** No action */
 	POWER_DISABLED = 0,
-/** Show device menu */
+
+	/** Show device menu */
 	POWER_MENU = 1,
-/** Default for long press */
+
+	/** Default for long press */
 	DEFAULT_POWERKEY_LONG_ACTION = 2,
-/** Shutdown */
+
+	/** Shutdown */
 	POWER_POWEROFF = 2,
-/** Soft poweroff */
+
+	/** Soft poweroff */
 	POWER_SOFT_POWEROFF = 3,
-/** Default for short press */
+
+	/** Default for short press */
 	DEFAULT_POWERKEY_SHORT_ACTION = 4,
-/** Lock the TKLock if unlocked */
+
+	/** Lock the TKLock if unlocked */
 	POWER_TKLOCK_LOCK = 4,
-/** Unlock the TKLock if locked */
+
+	/** Unlock the TKLock if locked */
 	POWER_TKLOCK_UNLOCK = 5,
-/** Lock the TKLock if unlocked, unlock the TKLock if locked */
+
+	/** Lock the TKLock if unlocked, unlock the TKLock if locked */
 	POWER_TKLOCK_BOTH = 6,
-/** Default for double press */
+
+	/** Default for double press */
 	DEFAULT_POWERKEY_DOUBLE_ACTION = 7,
-/** Send a D-Bus signal */
+
+	/** Send a D-Bus signal */
 	POWER_DBUS_SIGNAL = 7
 } poweraction_t;
 

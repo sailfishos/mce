@@ -27,8 +27,10 @@
 
 /** Path to the input device directory */
 #define DEV_INPUT_PATH			"/dev/input"
+
 /** Prefix for event files */
 #define EVENT_FILE_PREFIX		"event"
+
 /** Path to the GPIO key disable interface */
 #define GPIO_KEY_DISABLE_PATH		"/sys/devices/platform/gpio-keys/disabled_keys"
 

@@ -28,32 +28,43 @@
 
 /** Name of Master radio state configuration key */
 #define MCE_CONF_MASTER_RADIO_STATE	"MasterRadioState"
+
 /** Name of Master radio state configuration key */
 #define MCE_CONF_CELLULAR_RADIO_STATE	"CellularRadioState"
+
 /** Name of WLAN radio state configuration key */
 #define MCE_CONF_WLAN_RADIO_STATE	"WLANRadioState"
+
 /** Name of Bluetooth radio state configuration key */
 #define MCE_CONF_BLUETOOTH_RADIO_STATE	"BluetoothRadioState"
+
 /** Name of NFC radio state configuration key */
 #define MCE_CONF_NFC_RADIO_STATE	"NFCRadioState"
+
 /** Name of FM transmitter radio state configuration key */
 #define MCE_CONF_FMTX_RADIO_STATE	"FMTXRadioState"
 
 /** Default Master radio state */
 #define DEFAULT_MASTER_RADIO_STATE	FALSE
+
 /** Default Cellular radio state */
 #define DEFAULT_CELLULAR_RADIO_STATE	FALSE
+
 /** Default WLAN radio state */
 #define DEFAULT_WLAN_RADIO_STATE	FALSE
+
 /** Default Bluetooth radio state */
 #define DEFAULT_BLUETOOTH_RADIO_STATE	FALSE
+
 /** Default NFC radio state */
 #define DEFAULT_NFC_RADIO_STATE		FALSE
+
 /** Default FM transmitter radio state */
 #define DEFAULT_FMTX_RADIO_STATE	FALSE
 
 /** Path to online radio states file */
 #define MCE_ONLINE_RADIO_STATES_PATH		G_STRINGIFY(MCE_VAR_DIR) "/radio_states.online"
+
 /** Path to offline radio states file */
 #define MCE_OFFLINE_RADIO_STATES_PATH		G_STRINGIFY(MCE_VAR_DIR) "/radio_states.offline"
 

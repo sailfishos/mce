@@ -26,13 +26,15 @@
 
 #ifndef MCE_GCONF_LOCK_PATH
 /** Path to the GConf settings for the touchscreen/keypad lock */
-#define MCE_GCONF_LOCK_PATH		"/system/osso/dsm/locks"
-#endif /* MCE_GCONF_LOCK_PATH */
+# define MCE_GCONF_LOCK_PATH		"/system/osso/dsm/locks"
+#endif
 
 /** SysFS interface to enable/disable RX-51 keyboard IRQs */
 #define MCE_RX51_KEYBOARD_SYSFS_DISABLE_PATH		"/sys/class/i2c-adapter/i2c-1/1-004a/twl4030_keypad/disable_kp"
+
 /** SysFS interface to enable/disable keypad IRQs */
 #define MCE_KEYPAD_SYSFS_DISABLE_PATH			"/sys/devices/platform/omap2_mcspi.1/spi1.0/disable_kp"
+
 /** SysFS interface to enable/disable the RX-44/RX-48 keyboard IRQs */
 #define MCE_RX44_KEYBOARD_SYSFS_DISABLE_PATH		"/sys/devices/platform/i2c_omap.2/i2c-0/0-0045/disable_kp"
 
@@ -90,13 +92,14 @@
 
 /** Name of D-Bus callback to provide to Touchscreen/Keypad Lock SystemUI */
 #define MCE_TKLOCK_CB_REQ		"tklock_callback"
+
 /** Delay before the touchscreen/keypad is unlocked */
 #define MCE_TKLOCK_UNLOCK_DELAY		500		/**< 0.5 seconds */
 
 #ifndef MCE_CONF_TKLOCK_GROUP
 /** Name of Touchscreen/Keypad lock configuration group */
-#define MCE_CONF_TKLOCK_GROUP		"TKLock"
-#endif /* MCE_CONF_TKLOCK_GROUP */
+# define MCE_CONF_TKLOCK_GROUP		"TKLock"
+#endif
 
 /** Name of configuration key for touchscreen/keypad immediate blanking */
 #define MCE_CONF_BLANK_IMMEDIATELY	"BlankImmediately"

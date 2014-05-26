@@ -23,22 +23,26 @@
 
 /** Path to the SysFS interface for the camera active state */
 #define CAMERA_ACTIVE_STATE_PATH			"/sys/devices/platform/omap24xxcam/streaming"
+
 /** Value for the camera active state */
 #define MCE_CAMERA_ACTIVE				"active"
+
 /** Value for the camera inactive state */
 #define MCE_CAMERA_INACTIVE				"inactive"
 
 /** Path to the SysFS interface for the camera pop-out state */
 #define CAMERA_POPOUT_STATE_PATH			"/sys/devices/platform/gpio-switch/cam_act/state"
+
 /** Value for the camera in popped out state */
 #define MCE_CAMERA_POPPED_OUT				"active"
+
 /** Value for the camera in popped in state */
 #define MCE_CAMERA_POPPED_IN				"inactive"
 
 #ifndef MCE_CONF_TKLOCK_GROUP
 /** Name of Touchscreen/Keypad lock configuration group */
-#define MCE_CONF_TKLOCK_GROUP				"TKLock"
-#endif /* MCE_CONF_TKLOCK_GROUP */
+# define MCE_CONF_TKLOCK_GROUP				"TKLock"
+#endif
 
 /** Name of configuration key for camera popout unlock */
 #define MCE_CONF_CAMERA_POPOUT_UNLOCK			"CameraPopoutUnlock"

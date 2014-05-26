@@ -24,6 +24,7 @@
 
 /** Minimum display brightness */
 #define DISPLAY_BRIGHTNESS_MINIMUM		1
+
 /** Maximum display brightness */
 #define DISPLAY_BRIGHTNESS_MAXIMUM		5
 

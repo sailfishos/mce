@@ -21,8 +21,10 @@
 
 /** The System UI service */
 #define SYSTEMUI_SERVICE       "org.nemomobile.lipstick"
+
 /** The System UI request interface. */
 #define SYSTEMUI_REQUEST_IF    "org.nemomobile.lipstick.screenlock"
+
 /** The System UI request path. */
 #define SYSTEMUI_REQUEST_PATH  "/screenlock"
 

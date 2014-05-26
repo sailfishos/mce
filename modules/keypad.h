@@ -31,6 +31,7 @@
 
 /** Path to keyboard backlight /sys directory */
 #define MCE_KEYBOARD_BACKLIGHT_SYS_PATH			"/sys/class/leds/keyboard"
+
 /** Path to the SysFS interface for the keyboard backlight fade-time */
 #define MCE_KEYBOARD_BACKLIGHT_FADETIME_SYS_PATH	MCE_LED_DIRECT_SYS_PATH MCE_LED_KEYBOARD_PREFIX "/time"
 
@@ -51,8 +52,8 @@
 
 #ifndef MCE_CONF_KEYPAD_GROUP
 /** Name of Keypad configuration group */
-#define MCE_CONF_KEYPAD_GROUP		"KeyPad"
-#endif /* MCE_CONF_KEYPAD_GROUP */
+# define MCE_CONF_KEYPAD_GROUP		"KeyPad"
+#endif
 
 /** Name of configuration key for keyboard backlight timeout */
 #define MCE_CONF_KEY_BACKLIGHT_TIMEOUT	"BacklightTimeout"

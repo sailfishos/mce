@@ -63,12 +63,16 @@ int mce_log_p_(const loglevel_t loglevel, const char *const file, const char *co
 #else
 /** Dummy version used when logging is disabled at compile time */
 #define mce_log(_loglevel, _fmt, ...)			do {} while (0)
+
 /** Dummy version used when logging is disabled at compile time */
 #define mce_log_set_verbosity(_verbosity)		do {} while (0)
+
 /** Dummy version used when logging is disabled at compile time */
 #define mce_log_open(_name, _facility, _type)		do {} while (0)
+
 /** Dummy version used when logging is disabled at compile time */
 #define mce_log_close()					do {} while (0)
+
 /** Dummy version used when logging is disabled at compile time */
 #define mce_log_p(_loglevel)				0
 #endif /* OSSOLOG_COMPILE */
