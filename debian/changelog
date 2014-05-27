@@ -1,3 +1,9 @@
+mce (1.30.6) unstable; urgency=low
+
+  * [mce] Move datapipes variables from mce.h to datapipe.c. Fixes JB#18917
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 27 May 2014 12:18:56 +0300
+
 mce (1.30.5) unstable; urgency=low
 
   * [mce] Drop gconf-2 build dependency. Fixes JB#19487
