@@ -18,24 +18,7 @@
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <errno.h>
-#include <stdio.h>
-#include <unistd.h>
-#include <getopt.h>
-#include <stdlib.h>
-#include <stdbool.h>
-#include <string.h>
-#include <time.h>
-#include <math.h>
-
-#include <glib.h>
-#include <glib-object.h>
-
-#include <dbus/dbus.h>
-
-#include <mce/dbus-names.h>
-#include <mce/mode-names.h>
-
+#include "../mce-command-line.h"
 #include "../tklock.h"
 #include "../powerkey.h"
 #include "../event-input.h"
@@ -44,9 +27,20 @@
 #include "../modules/powersavemode.h"
 #include "../modules/filter-brightness-als.h"
 #include "../modules/proximity.h"
-#include "../systemui/tklock-dbus-names.h"
 #include "../systemui/dbus-names.h"
-#include "../mce-command-line.h"
+#include "../systemui/tklock-dbus-names.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <errno.h>
+#include <math.h>
+
+#include <dbus/dbus.h>
+
+#include <mce/dbus-names.h>
+#include <mce/mode-names.h>
 
 /** Whether to enable development time debugging */
 #define MCETOOL_ENABLE_EXTRA_DEBUG 0

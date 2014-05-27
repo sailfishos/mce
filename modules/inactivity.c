@@ -18,15 +18,16 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <glib.h>
-#include <gmodule.h>
-
-#include <string.h>			/* strcmp() */
 
 #include "../mce.h"
 #include "../mce-log.h"
 #include "../mce-dbus.h"
-#include "../datapipe.h"
+
+#include <string.h>
+
+#include <mce/dbus-names.h>
+
+#include <gmodule.h>
 
 /** Module name */
 #define MODULE_NAME		"inactivity"

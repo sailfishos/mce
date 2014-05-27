@@ -19,33 +19,31 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <glib.h>
-#include <gmodule.h>
-#include <glib/gstdio.h>		/* g_access */
 
-#include <errno.h>			/* errno */
-#include <fcntl.h>			/* O_NONBLOCK */
-#include <unistd.h>			/* R_OK */
-#include <stdlib.h>			/* free() */
-#include <string.h>			/* memcpy() */
-
-#include "../mce.h"
 #include "proximity.h"
 
-#include "../mce-gconf.h"
+#include "../mce.h"
+#include "../mce-log.h"
 #include "../mce-io.h"
 #include "../mce-hal.h"
-#include "../mce-log.h"
+#include "../mce-gconf.h"
 #include "../mce-dbus.h"
-#include "../datapipe.h"
-
+#ifdef ENABLE_SENSORFW
+# include "../mce-sensorfw.h"
+#endif
 #ifdef ENABLE_HYBRIS
 # include "../mce-hybris.h"
 #endif
 
-#ifdef ENABLE_SENSORFW
-# include "../mce-sensorfw.h"
-#endif
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <fcntl.h>
+
+#include <mce/dbus-names.h>
+
+#include <glib/gstdio.h>
+#include <gmodule.h>
 
 #if 0 // DEBUG: make all logging from this module "critical"
 # undef mce_log

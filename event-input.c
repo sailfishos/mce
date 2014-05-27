@@ -20,33 +20,31 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <stdlib.h>
-#include <glib.h>
-#include <gio/gio.h>
-#include <glib/gstdio.h>		/* g_access() */
-#include <glib-object.h>		/* g_signal_connect(),
-					 * G_OBJECT(),
-					 * G_CALLBACK()
-					 */
 
-#include <errno.h>			/* errno */
-#include <fcntl.h>			/* open() */
-#include <dirent.h>			/* opendir(), readdir(), telldir() */
-#include <string.h>			/* strcmp() */
-#include <unistd.h>			/* close() */
-#include <sys/ioctl.h>			/* ioctl() */
-#include <sys/types.h>			/* DIR */
-#include <linux/input.h>		/* struct input_event,
-					 * EVIOCGNAME, EVIOCGBIT, EVIOCGSW,
-					 * EV_ABS, EV_KEY, EV_SW,
-					 * ABS_PRESSURE,
-					 * SW_CAMERA_LENS_COVER,
-					 * SW_KEYPAD_SLIDE,
-					 * SW_FRONT_PROXIMITY,
-					 * KEY_SCREENLOCK,
-					 * KEY_CAMERA_FOCUS,
-					 * KEY_CAMERA
-					 */
+#include "event-input.h"
+
+#include "mce.h"
+#include "mce-log.h"
+#include "mce-io.h"
+#include "mce-lib.h"
+#include "mce-conf.h"
+#ifdef ENABLE_DOUBLETAP_EMULATION
+# include "mce-gconf.h"
+#endif
+#include "mce-sensorfw.h"
+#include "evdev.h"
+
+#include <linux/input.h>
+
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <dirent.h>
+
+#include <glib/gstdio.h>
+#include <gio/gio.h>
+
 #ifndef SW_CAMERA_LENS_COVER
 /** Input layer code for the camera lens cover switch */
 #define SW_CAMERA_LENS_COVER		0x09
@@ -63,35 +61,6 @@
 /** Input layer code for the camera focus button */
 #define KEY_CAMERA_FOCUS		0x0210
 #endif /* KEY_CAMERA_FOCUS */
-
-#include "mce.h"
-#include "event-input.h"
-
-#include "mce-io.h"			/* mce_read_string_from_file(),
-					 * mce_write_string_to_file(),
-					 * mce_suspend_io_monitor(),
-					 * mce_resume_io_monitor(),
-					 * mce_register_io_monitor_chunk(),
-					 * mce_unregister_io_monitor(),
-					 * mce_get_io_monitor_name(),
-					 * mce_get_io_monitor_fd()
-					 */
-#include "mce-lib.h"			/* bitsize_of(),
-					 * set_bit(), clear_bit(), test_bit(),
-					 * bitfield_to_string(),
-					 * string_to_bitfield()
-					 */
-#include "mce-log.h"			/* mce_log(), LL_* */
-#include "mce-conf.h"			/* mce_conf_get_int(),
-					 * mce_conf_get_string()
-					 */
-#include "datapipe.h"			/* execute_datapipe() */
-#include "evdev.h"
-#ifdef ENABLE_DOUBLETAP_EMULATION
-# include "mce-gconf.h"
-#endif
-
-#include "mce-sensorfw.h"
 
 /** ID for keypress timeout source */
 static guint keypress_repeat_timeout_cb_id = 0;

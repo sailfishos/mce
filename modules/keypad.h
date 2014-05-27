@@ -21,11 +21,6 @@
 #ifndef _KEYPAD_H_
 #define _KEYPAD_H_
 
-#include <glib.h>
-
-/* XXX: Ewwww, this is soooo ugly */
-#include "led.h"
-
 /** Path to keypad backlight fade-time /sys entry */
 #define MCE_KEYPAD_BACKLIGHT_FADETIME_SYS_PATH		MCE_LED_DIRECT_SYS_PATH MCE_LED_COVER_PREFIX "/time"
 

@@ -7,15 +7,14 @@
 #include "doubletap.h"
 
 #include "../mce.h"
-#include "../mce-io.h"
 #include "../mce-log.h"
+#include "../mce-io.h"
 #include "../mce-conf.h"
 #include "../mce-gconf.h"
 
 #include <stdbool.h>
 #include <unistd.h>
 
-#include <glib.h>
 #include <gmodule.h>
 
 /** Config value for doubletap enable mode */

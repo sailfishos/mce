@@ -19,43 +19,38 @@
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <sys/time.h>
-#include <time.h>
-
-#include <glib.h>
-#include <gmodule.h>
-
-#include <errno.h>                      /* errno, EINVAL, ERANGE */
-#include <fcntl.h>			/* open(), O_RDWR, O_CREAT */
-#include <stdlib.h>			/* strtoul() */
-#include <string.h>			/* strcmp(), strcpy(), strdup() */
-#include <unistd.h>			/* close(), W_OK */
-#include <sys/ioctl.h>			/* ioctl() */
-#include <linux/i2c-dev.h>		/* I2C_SLAVE_FORCE,
-					 * I2C_SMBUS
-					 */
-#include <linux/i2c.h>			/* i2c_smbus_data,
-					 * I2C_SMBUS_READ,
-					 * I2C_SMBUS_WRITE,
-					 * I2C_SMBUS_BYTE_DATA
-					 */
+#include "led.h"
 
 #include "../mce.h"
-#include "led.h"
-#include "../mce-io.h"
-#include "../mce-hal.h"
-#include "../mce-lib.h"
 #include "../mce-log.h"
+#include "../mce-io.h"
+#include "../mce-lib.h"
+#include "../mce-hal.h"
 #include "../mce-conf.h"
-#include "../mce-dbus.h"
 #include "../mce-gconf.h"
-#include "../datapipe.h"
+#include "../mce-dbus.h"
 
 #ifdef ENABLE_HYBRIS
 # include "../mce-hybris.h"
 #endif
 
 #include "../libwakelock.h"
+
+#include <linux/i2c.h>
+#include <linux/i2c-dev.h>
+
+#include <sys/time.h>
+#include <sys/ioctl.h>
+
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <errno.h>
+#include <fcntl.h>
+
+#include <mce/dbus-names.h>
+
+#include <gmodule.h>
 
 #if 0 // DEBUG: make all logging from this module "critical"
 # undef mce_log

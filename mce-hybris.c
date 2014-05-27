@@ -18,6 +18,7 @@
 
 #define MCE_HYBRIS_INTERNAL 1
 #include "mce-hybris.h"
+
 #include "mce.h"
 #include "mce-log.h"
 #include "mce-conf.h"
@@ -28,8 +29,6 @@
 #include <unistd.h>
 #include <errno.h>
 #include <dlfcn.h>
-
-#include <glib.h>
 
 static void mce_hybris_ps_set_hook(mce_hybris_ps_fn cb);
 static void mce_hybris_als_set_hook(mce_hybris_als_fn cb);

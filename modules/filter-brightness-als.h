@@ -23,6 +23,8 @@
 #ifndef _FILTER_BRIGHTNESS_ALS_H_
 #define _FILTER_BRIGHTNESS_ALS_H_
 
+#include <glib.h>
+
 /** Path to get the display manufacturer */
 #define DISPLAY_HARDWARE_REVISION_PATH "/sys/devices/omapdss/display0/hw_revision"
 

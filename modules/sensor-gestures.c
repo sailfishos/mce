@@ -24,9 +24,9 @@
 #include "../mce-log.h"
 #include "../mce-dbus.h"
 #include "../mce-sensorfw.h"
-#include "../datapipe.h"
 
-#include <glib.h>
+#include <mce/dbus-names.h>
+
 #include <gmodule.h>
 
 /** Cached display state */

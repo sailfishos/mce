@@ -18,17 +18,16 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <glib.h>
-#include <gmodule.h>
 
-#include <string.h>			/* strncmp(), strlen() */
-
-#include "../mce.h"
 #include "camera.h"
 
+#include "../mce.h"
 #include "../mce-io.h"
 #include "../mce-conf.h"
-#include "../datapipe.h"
+
+#include <string.h>
+
+#include <gmodule.h>
 
 /** Unlock the tklock if the camera is popped out? */
 static gboolean popout_unlock = DEFAULT_CAMERA_POPOUT_UNLOCK;

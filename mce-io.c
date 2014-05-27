@@ -20,26 +20,23 @@
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <stdbool.h>
-#include <string.h>
-#include <inttypes.h>
-#include <errno.h>
-#include <fcntl.h>
-
-#include <glib.h>
-#include <glib/gstdio.h>
-
-#include "mce.h"
 #include "mce-io.h"
 
+#include "mce.h"
 #include "mce-log.h"
 
 #ifdef ENABLE_WAKELOCKS
 # include "libwakelock.h"
 #endif
+
+#include <stdbool.h>
+#include <unistd.h>
+#include <inttypes.h>
+#include <string.h>
+#include <errno.h>
+#include <fcntl.h>
+
+#include <glib/gstdio.h>
 
 /** List of all file monitors */
 static GSList *file_monitors = NULL;

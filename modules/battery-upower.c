@@ -23,11 +23,9 @@
 #include "../mce-log.h"
 #include "../mce-dbus.h"
 
-#include <stdbool.h>
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
 
-#include <glib.h>
 #include <gmodule.h>
 
 #if 0 // DEBUG: make all logging from this module "critical"

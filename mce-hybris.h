@@ -16,8 +16,8 @@
 #  define MCE_HYBRIS_INTERNAL 0
 # endif
 
-# include <stdbool.h>
 # include <stdint.h>
+# include <stdbool.h>
 
 # ifdef __cplusplus
 extern "C" {

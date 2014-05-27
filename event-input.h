@@ -23,8 +23,6 @@
 
 #include <glib.h>
 
-#include <linux/input.h>
-
 /** Path to the input device directory */
 #define DEV_INPUT_PATH			"/dev/input"
 

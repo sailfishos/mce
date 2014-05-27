@@ -4,17 +4,14 @@
  * License: LGPLv2.1
  * ------------------------------------------------------------------------- */
 
-#include <stdlib.h>
-#include <stdbool.h>
-#include <string.h>
-
-#include <glib.h>
-#include <gmodule.h>
-
 #include "../mce.h"
 #include "../mce-log.h"
 #include "../mce-dbus.h"
-#include "../datapipe.h"
+
+#include <stdlib.h>
+#include <string.h>
+
+#include <gmodule.h>
 
 /* ========================================================================= *
  * D-BUS CONSTANTS

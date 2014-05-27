@@ -19,7 +19,6 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <glib.h>
 
 #include "median_filter.h"
 

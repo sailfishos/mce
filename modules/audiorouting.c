@@ -19,14 +19,15 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <stdio.h>
-#include <string.h>
-#include <glib.h>
-#include <gmodule.h>
 
 #include "../mce.h"
 #include "../mce-log.h"
 #include "../mce-dbus.h"
+
+#include <stdio.h>
+#include <string.h>
+
+#include <gmodule.h>
 
 /** Module name */
 #define MODULE_NAME		"audiorouting"

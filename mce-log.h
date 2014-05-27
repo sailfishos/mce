@@ -29,13 +29,13 @@
 /** Severity of loglevels (subset of syslog priorities) */
 typedef enum {
 	LL_NONE    = 0,			/**< No logging at all */
-	LL_ALERT   = 1,			/**< Alert */
-	LL_CRIT    = 2,			/**< Critical error */
-	LL_ERR     = 3,			/**< Error */
-	LL_WARN    = 4,			/**< Warning */
-	LL_NOTICE  = 5,			/**< Normal but noteworthy */
-	LL_INFO    = 6,			/**< Informational message */
-	LL_DEBUG   = 7,			/**< Useful when debugging */
+	LL_ALERT   = LOG_ALERT,		/**< Alert */
+	LL_CRIT    = LOG_CRIT,		/**< Critical error */
+	LL_ERR     = LOG_ERR,		/**< Error */
+	LL_WARN    = LOG_WARNING,	/**< Warning */
+	LL_NOTICE  = LOG_NOTICE,	/**< Normal but noteworthy */
+	LL_INFO    = LOG_INFO,		/**< Informational message */
+	LL_DEBUG   = LOG_DEBUG,		/**< Useful when debugging */
 
 	LL_DEFAULT = LL_WARN,		/**< Default log level */
 

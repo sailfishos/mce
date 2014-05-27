@@ -25,17 +25,18 @@
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <glib.h>
-#include <gmodule.h>
-#include <time.h>
-#include <string.h>
-
 #include "../mce-log.h"
 #include "../mce-dbus.h"
 
 #ifdef ENABLE_WAKELOCKS
 # include "../libwakelock.h"
 #endif
+
+#include <string.h>
+
+#include <mce/dbus-names.h>
+
+#include <gmodule.h>
 
 /** Fallback context to use when clients make query keepalive period */
 #define CONTEXT_INITIAL "initial"

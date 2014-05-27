@@ -18,127 +18,35 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <glib.h>
-#include <glib-object.h>		/* g_type_init() */
 
-#include <errno.h>			/* errno, ENOMEM */
-#include <fcntl.h>			/* open(), O_RDWR, O_CREAT */
-#include <stdio.h>			/* fprintf(), sprintf(),
-					 * stdout, stderr
-					 */
-#include <getopt.h>			/* getopt_long(),
-					 * struct options
-					 */
-#include <signal.h>			/* signal(),
-					 * SIGTSTP, SIGTTOU, SIGTTIN,
-					 * SIGCHLD, SIGUSR1, SIGHUP,
-					 * SIGTERM, SIG_IGN
-					 */
-#include <stdlib.h>			/* exit(), EXIT_FAILURE, EXIT_SUCCESS */
-#include <string.h>			/* strlen() */
-#include <unistd.h>			/* close(), lockf(), fork(), chdir(),
-					 * getpid(), getppid(), setsid(),
-					 * write(), getdtablesize(), dup(),
-					 * F_TLOCK
-					 */
-#include <sys/stat.h>			/* umask() */
-
-#include "mce.h"			/* _(),
-					 * setlocale() -- indirect,
-					 * bindtextdomain(),
-					 * textdomain(),
-					 * mainloop,
-					 * system_state_pipe,
-					 * master_radio_pipe,
-					 * call_state_pipe,
-					 * call_type_pipe,
-					 * submode_pipe,
-					 * display_state_pipe,
-					 * display_brightness_pipe,
-					 * led_brightness_pipe,
-					 * led_pattern_activate_pipe,
-					 * led_pattern_deactivate_pipe,
-					 * key_backlight_pipe,
-					 * keypress_pipe,
-					 * touchscreen_pipe,
-					 * device_inactive_pipe,
-					 * lockkey_pipe,
-					 * keyboard_slide_pipe,
-					 * lid_cover_pipe,
-					 * lens_cover_pipe,
-					 * proximity_sensor_pipe,
-					 * tk_lock_pipe,
-					 * charger_state_pipe,
-					 * battery_status_pipe,
-					 * battery_level_pipe,
-					 * inactivity_timeout_pipe,
-					 * audio_route_pipe,
-					 * usb_cable_pipe,
-					 * jack_sense_pipe,
-					 * power_saving_mode_pipe,
-					 * thermal_state_pipe,
-					 * MCE_STATE_UNDEF,
-					 * MCE_INVALID_MODE_INT32,
-					 * CALL_STATE_NONE,
-					 * NORMAL_CALL,
-					 * MCE_ALARM_UI_INVALID_INT32,
-					 * MCE_NORMAL_SUBMODE,
-					 * MCE_DISPLAY_UNDEF,
-					 * LOCK_UNDEF,
-					 * BATTERY_STATUS_UNDEF,
-					 * THERMAL_STATE_UNDEF,
-					 * DEFAULT_INACTIVITY_TIMEOUT
-					 */
-
-#include "mce-log.h"			/* mce_log_open(), mce_log_close(),
-					 * mce_log_set_verbosity(), mce_log(),
-					 * LL_*
-					 */
-#include "mce-conf.h"			/* mce_conf_init(),
-					 * mce_conf_exit()
-					 */
-#include "mce-dbus.h"			/* mce_dbus_init(),
-					 * mce_dbus_exit()
-					 */
-#include "mce-dsme.h"			/* mce_dsme_init(),
-					 * mce_dsme_exit()
-					 */
-#include "mce-gconf.h"			/* mce_gconf_init(),
-					 * mce_gconf_exit()
-					 */
-#include "mce-modules.h"		/* mce_modules_dump_info(),
-					 * mce_modules_init(),
-					 * mce_modules_exit()
-					 */
-#include "event-input.h"		/* mce_input_init(),
-					 * mce_input_exit()
-					 */
-#include "event-switches.h"		/* mce_switches_init(),
-					 * mce_switches_exit()
-					 */
-#include "datapipe.h"			/* setup_datapipe(),
-					 * free_datapipe()
-					 */
-#include "modetransition.h"		/* mce_mode_init(),
-					 * mce_mode_exit()
-					 */
-
-/* "TBD" Modules; eventually this should be handled differently */
-#include "tklock.h"			/* mce_tklock_init(),
-					 * mce_tklock_exit()
-					 */
-#include "powerkey.h"			/* mce_powerkey_init(),
-					 * mce_powerkey_exit()
-					 */
+#include "mce.h"
+#include "mce-log.h"
+#include "mce-conf.h"
+#include "mce-gconf.h"
+#include "mce-dbus.h"
+#include "mce-dsme.h"
+#include "mce-modules.h"
+#include "mce-command-line.h"
+#ifdef ENABLE_SENSORFW
+# include "mce-sensorfw.h"
+#endif
+#include "tklock.h"
+#include "powerkey.h"
+#include "event-input.h"
+#include "event-switches.h"
+#include "modetransition.h"
 #ifdef ENABLE_WAKELOCKS
 # include "libwakelock.h"
 #endif
 
-#ifdef ENABLE_SENSORFW
-# include "mce-sensorfw.h"
-#endif
+#include <sys/stat.h>
 
-#include "mce-command-line.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <errno.h>
+#include <fcntl.h>
 
 #include <systemd/sd-daemon.h>
 
@@ -146,9 +54,6 @@
 #define MCE_LOCKFILE			"/var/run/mce.pid"
 /** Name shown by --help etc. */
 #define PRG_NAME			"mce"
-
-extern int optind;			/**< Used by getopt */
-extern char *optarg;			/**< Used by getopt */
 
 static const gchar *progname;	/**< Used to store the name of the program */
 
@@ -1000,9 +905,8 @@ int main(int argc, char **argv)
 
 	/* We don't take any non-flag arguments */
 	if ((argc - optind) > 0) {
-		fprintf(stderr,
-			_("%s: Too many arguments\n"
-			  "Try: `%s --help' for more information.\n"),
+		fprintf(stderr, "%s: Too many arguments\n"
+			"Try: `%s --help' for more information.\n",
 			progname, progname);
 		exit(EXIT_FAILURE);
 	}

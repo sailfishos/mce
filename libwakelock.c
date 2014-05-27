@@ -11,11 +11,11 @@
 
 #include "libwakelock.h"
 
-#include <fcntl.h>
-#include <string.h>
-#include <unistd.h>
 #include <stdarg.h>
+#include <unistd.h>
+#include <string.h>
 #include <errno.h>
+#include <fcntl.h>
 
 /** Whether to write debug logging to stderr
  *

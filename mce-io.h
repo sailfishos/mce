@@ -23,8 +23,9 @@
 
 #include <sys/stat.h>
 
-#include <glib.h>
 #include <stdio.h>
+
+#include <glib.h>
 
 /** Error policies for mce-io */
 typedef enum {

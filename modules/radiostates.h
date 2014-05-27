@@ -21,8 +21,6 @@
 #ifndef _RADIOSTATES_H_
 #define _RADIOSTATES_H_
 
-#include <glib.h>
-
 /** Name of radio states configuration group */
 #define MCE_CONF_RADIO_STATES_GROUP	"RadioStates"
 

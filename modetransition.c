@@ -19,40 +19,19 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <glib.h>
-#include <glib/gstdio.h>		/* g_access() */
 
-#include <errno.h>			/* errno, ENOENT */
-#include <stdlib.h>			/* exit(), EXIT_FAILURE */
-#include <unistd.h>			/* access(), F_OK */
-#include <string.h>
-
-#include <mce/mode-names.h>
-
-#include "mce.h"			/* MCE_LED_PATTERN_POWER_ON,
-					 * MCE_LED_PATTERN_POWER_OFF,
-					 * MCE_LED_PATTERN_DEVICE_ON,
-					 * MCE_STATE_UNDEF,
-					 * submode_t,
-					 * system_state_t,
-					 * MCE_TRANSITION_SUBMODE,
-					 * mainloop,
-					 * display_state_pipe,
-					 * led_pattern_activate_pipe,
-					 * led_pattern_deactivate_pipe,
-					 * submode_pipe,
-					 * system_state_pipe
-					 */
 #include "modetransition.h"
 
-#include "mce-io.h"			/* mce_write_string_to_file() */
-#include "mce-log.h"			/* mce_log(), LL_* */
-#include "datapipe.h"			/* execute_datapipe(),
-					 * execute_datapipe_output_triggers(),
-					 * datapipe_get_gint(),
-					 * append_output_trigger_to_datapipe(),
-					 * remove_output_trigger_from_datapipe()
-					 */
+#include "mce.h"
+#include "mce-log.h"
+#include "mce-io.h"
+
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <errno.h>
+
+#include <glib/gstdio.h>
 
 /** Submode change in human readable form
  */

@@ -20,14 +20,10 @@
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <linux/input.h>
-
-#include <glib.h>
-
-#include "datapipe.h"
-
 #include "mce.h"
 #include "mce-log.h"
+
+#include <linux/input.h>
 
 /* Available datapipes */
 

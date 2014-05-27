@@ -18,25 +18,17 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <glib.h>
-#include <glib/gstdio.h>		/* g_access() */
 
-#include <errno.h>			/* errno */
-#include <string.h>			/* strncmp(), strlen() */
-#include <unistd.h>			/* W_OK */
-
-#include "mce.h"
 #include "event-switches.h"
 
-#include "mce-io.h"			/* mce_read_string_from_file(),
-					 * mce_write_string_to_file(),
-					 * mce_register_io_monitor_string(),
-					 * mce_unregister_io_monitor()
-					 */
-#include "datapipe.h"			/* execute_datapipe(),
-					 * append_input_trigger_to_datapipe(),
-					 * remove_input_trigger_from_datapipe()
-					 */
+#include "mce.h"
+#include "mce-io.h"
+
+#include <unistd.h>
+#include <string.h>
+#include <errno.h>
+
+#include <glib/gstdio.h>
 
 /** ID for the lockkey I/O monitor */
 static gconstpointer lockkey_iomon_id = NULL;

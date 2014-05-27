@@ -21,29 +21,10 @@
 #ifndef _MCE_H_
 #define _MCE_H_
 
-#include <glib.h>
-#include <locale.h>
-
 #include "datapipe.h"
 
-#ifdef ENABLE_NLS
-#include <libintl.h>
-
-/** _() to use when NLS is enabled */
-#define _(__str)		gettext(__str)
-#else
-#undef bindtextdomain
-
-/** Dummy bindtextdomain to use when NLS is disabled */
-#define bindtextdomain(__domain, __directory)
-#undef textdomain
-
-/** Dummy textdomain to use when NLS is disabled */
-#define textdomain(__domain)
-
-/** Dummy _() to use when NLS is disabled */
-#define _(__str)		__str
-#endif /* ENABLE_NLS */
+/** Dummy _() */
+#define _(str_)		str_
 
 /** Indicate enabled (sub)mode */
 #define DISABLED_STRING			"yes"

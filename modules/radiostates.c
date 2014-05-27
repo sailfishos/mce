@@ -18,23 +18,23 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <glib.h>
-#include <gmodule.h>
 
-#include <unistd.h>
-#include <errno.h>		/* errno */
-#include <string.h>		/* strlen(), strncmp() */
-
-#include <mce/mode-names.h>	/* MCE_RADIO_STATE_MASTER */
+#include "radiostates.h"
 
 #include "../mce.h"
-#include "radiostates.h"	/* MCE_RADIO_STATES_PATH */
-
-#include "../mce-io.h"
 #include "../mce-log.h"
+#include "../mce-io.h"
 #include "../mce-conf.h"
 #include "../mce-dbus.h"
-#include "../datapipe.h"
+
+#include <unistd.h>
+#include <string.h>
+#include <errno.h>
+
+#include <mce/dbus-names.h>
+#include <mce/mode-names.h>
+
+#include <gmodule.h>
 
 /* Forward declarations needed to keep connman related static
  * functions cleanly separated from the legacy mce code */

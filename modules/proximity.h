@@ -22,6 +22,8 @@
 #ifndef _PROXIMITY_H_
 #define _PROXIMITY_H_
 
+#include <glib.h>
+
 /**
  * Paths for the Avago (APDS990x (QPDS-T900)) proximity sensor
  */

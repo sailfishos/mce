@@ -5,18 +5,17 @@
  * ------------------------------------------------------------------------- */
 
 #include "evdev.h"
+
 #include "mce-log.h"
 
 #include <linux/input.h>
 
-#include <sys/ioctl.h>
-
-#include <string.h>
-#include <fcntl.h>
-#include <unistd.h>
 #include <stdio.h>
-#include <limits.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <limits.h>
+#include <fcntl.h>
 
 /** Number of elements in array of fixed size */
 #define numof(a) (sizeof(a)/sizeof*(a))

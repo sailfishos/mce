@@ -21,38 +21,34 @@
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <linux/input.h>
-
-#include <sys/time.h>
-
-#include <errno.h>
-#include <string.h>
-#include <unistd.h>
-#include <time.h>
-#include <limits.h>
-
-#include <glib.h>
-#include <glib/gstdio.h>
-
-#include <mce/mode-names.h>
-#include "systemui/dbus-names.h"
-#include "systemui/tklock-dbus-names.h"
+#include "tklock.h"
 
 #include "mce.h"
-#include "tklock.h"
-#include "evdev.h"
-#include "mce-io.h"
 #include "mce-log.h"
-#include "datapipe.h"
+#include "mce-io.h"
 #include "mce-conf.h"
-#include "mce-dbus.h"
 #include "mce-gconf.h"
+#include "mce-dbus.h"
+#include "evdev.h"
 
 #ifdef ENABLE_WAKELOCKS
 # include "libwakelock.h"
 #endif
 
 #include "modules/doubletap.h"
+
+#include "systemui/dbus-names.h"
+#include "systemui/tklock-dbus-names.h"
+
+#include <linux/input.h>
+
+#include <unistd.h>
+#include <string.h>
+
+#include <mce/dbus-names.h>
+#include <mce/mode-names.h>
+
+#include <glib/gstdio.h>
 
 // FIXME: not used atm, need to implement something similar
 #ifdef DEAD_CODE
