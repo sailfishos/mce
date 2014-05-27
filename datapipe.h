@@ -77,12 +77,16 @@ typedef enum {
 
 /** Retrieve a gboolean from a datapipe */
 #define datapipe_get_gbool(_datapipe)	(GPOINTER_TO_INT((_datapipe).cached_data))
+
 /** Retrieve a gint from a datapipe */
 #define datapipe_get_gint(_datapipe)	(GPOINTER_TO_INT((_datapipe).cached_data))
+
 /** Retrieve a guint from a datapipe */
 #define datapipe_get_guint(_datapipe)	(GPOINTER_TO_UINT((_datapipe).cached_data))
+
 /** Retrieve a gsize from a datapipe */
 #define datapipe_get_gsize(_datapipe)	(GPOINTER_TO_SIZE((_datapipe).cached_data))
+
 /** Retrieve a gpointer from a datapipe */
 #define datapipe_get_gpointer(_datapipe)	((_datapipe).cached_data)
 
@@ -90,8 +94,10 @@ typedef enum {
 
 /** Retrieve the filter reference count from a datapipe */
 #define datapipe_get_filter_refcount(_datapipe)	(g_slist_length((_datapipe).filters))
+
 /** Retrieve the input trigger reference count from a datapipe */
 #define datapipe_get_input_trigger_refcount(_datapipe)	(g_slist_length((_datapipe).input_triggers))
+
 /** Retrieve the output trigger reference count from a datapipe */
 #define datapipe_get_output_trigger_refcount(_datapipe)	(g_slist_length((_datapipe).output_triggers))
 
@@ -140,5 +146,8 @@ void setup_datapipe(datapipe_struct *const datapipe,
 		    const cache_free_policy_t free_cache,
 		    const gsize datasize, gpointer initial_data);
 void free_datapipe(datapipe_struct *const datapipe);
+
+void mce_datapipe_init(void);
+void mce_datapipe_quit(void);
 
 #endif /* _DATAPIPE_H_ */

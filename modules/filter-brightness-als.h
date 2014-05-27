@@ -23,6 +23,8 @@
 #ifndef _FILTER_BRIGHTNESS_ALS_H_
 #define _FILTER_BRIGHTNESS_ALS_H_
 
+#include <glib.h>
+
 /** Path to get the display manufacturer */
 #define DISPLAY_HARDWARE_REVISION_PATH "/sys/devices/omapdss/display0/hw_revision"
 
@@ -51,13 +53,13 @@
 
 #ifndef APDS990X_ALS_SATURATED
 /** Read is saturated */
-#define APDS990X_ALS_SATURATED			0x1
-#endif /* APDS990X_ALS_SATURATED */
+# define APDS990X_ALS_SATURATED			0x1
+#endif
 
 #ifndef APDS990X_ALS_UPDATED
 /** Sensor has up to date data */
-#define APDS990X_ALS_UPDATED			0x4
-#endif /* APDS990X_ALS_UPDATED */
+# define APDS990X_ALS_UPDATED			0x4
+#endif
 
 /** Struct for the Avago data */
 struct avago_als {
@@ -75,10 +77,13 @@ struct avago_als {
 
 /** Base path to the Avago ALS */
 #define ALS_PATH_AVAGO			"/sys/class/misc/apds990x0/device"
+
 /** Path to the first calibration point for the Avago ALS */
 #define ALS_CALIB_PATH_AVAGO		ALS_PATH_AVAGO "/als_calib"
+
 /** ALS threshold range for the Avago ALS */
 #define ALS_THRESHOLD_RANGE_PATH_AVAGO	ALS_PATH_AVAGO "/als_threshold_range"
+
 /** Maximun threshold value for the Avago ALS */
 #define ALS_THRESHOLD_MAX_AVAGO		655350
 
@@ -95,11 +100,13 @@ struct dipro_als {
 
 /** Base path to the Dipro ALS */
 #define ALS_PATH_DIPRO			"/sys/class/misc/bh1770glc_als/device"
+
 /** Path to the first calibration point for the Dipro ALS */
 #define ALS_CALIB_PATH_DIPRO		ALS_PATH_DIPRO "/als_calib"
 
 /** ALS threshold range for the Dipro ALS */
 #define ALS_THRESHOLD_RANGE_PATH_DIPRO	ALS_PATH_DIPRO "/als_thres_range"
+
 /** Maximun threshold value for the Dipro ALS */
 #define ALS_THRESHOLD_MAX_DIPRO		65535
 
@@ -107,10 +114,13 @@ struct dipro_als {
 
 /** Base path to the TSL2563 ALS */
 #define ALS_PATH_TSL2563		"/sys/class/i2c-adapter/i2c-2/2-0029"
+
 /** Path to the TSL2563 ALS lux value */
 #define ALS_LUX_PATH_TSL2563		ALS_PATH_TSL2563 "/lux"
+
 /** Path to the first calibration point for the TSL2563 ALS */
 #define ALS_CALIB0_PATH_TSL2563		ALS_PATH_TSL2563 "/calib0"
+
 /** Path to the second calibration point for the TSL2563 ALS */
 #define ALS_CALIB1_PATH_TSL2563		ALS_PATH_TSL2563 "/calib1"
 
@@ -118,26 +128,33 @@ struct dipro_als {
 
 /** Base path to the TSL2562 ALS */
 #define ALS_PATH_TSL2562	"/sys/devices/platform/i2c_omap.2/i2c-0/0-0029"
+
 /** Path to the TSL2562 ALS lux value */
 #define ALS_LUX_PATH_TSL2562		ALS_PATH_TSL2562 "/lux"
+
 /** Path to the first calibration point for the TSL2562 ALS */
 #define ALS_CALIB0_PATH_TSL2562		ALS_PATH_TSL2562 "/calib0"
+
 /** Path to the second calibration point for the TSL2562 ALS */
 #define ALS_CALIB1_PATH_TSL2562		ALS_PATH_TSL2562 "/calib1"
 
-/** Path to the GConf settings for the display */
 #ifndef MCE_GCONF_DISPLAY_PATH
-#define MCE_GCONF_DISPLAY_PATH			"/system/osso/dsm/display"
-#endif /* MCE_GCONF_DISPLAY_PATH */
+/** Path to the GConf settings for the display */
+# define MCE_GCONF_DISPLAY_PATH			"/system/osso/dsm/display"
+#endif
+
 /** Path to the ALS enabled GConf setting */
 #define MCE_GCONF_DISPLAY_ALS_ENABLED_PATH	MCE_GCONF_DISPLAY_PATH "/als_enabled"
+
 /** Path to the color profile GConf setting */
 #define MCE_GCONF_DISPLAY_COLOR_PROFILE_PATH	MCE_GCONF_DISPLAY_PATH "/color_profile"
 
 /** Default ALS polling frequency when the display is on */
 #define ALS_DISPLAY_ON_POLL_FREQ	1500		/* Milliseconds */
+
 /** Default ALS polling frequency when the display is dimmed */
 #define ALS_DISPLAY_DIM_POLL_FREQ	5000		/* Milliseconds */
+
 /**
  * Default ALS polling frequency when the display is off
  *
@@ -146,6 +163,7 @@ struct dipro_als {
  * in a better way, 60000 should be used
  */
 #define ALS_DISPLAY_OFF_POLL_FREQ	0		/* Milliseconds */
+
 /**
  * Define this to re-initialise the median filter on display blank;
  * this will trigger a re-read on wakeup
@@ -166,8 +184,10 @@ struct dipro_als {
 
 /** Path to display manager */
 #define DISPLAY_MANAGER_PATH			"/sys/devices/platform/omapdss/manager0"
+
 /** Colour phase adjustment enable path */
 #define COLOUR_PHASE_ENABLE_PATH		DISPLAY_MANAGER_PATH "/cpr_enable"
+
 /** Colour phase adjustment coefficients path */
 #define COLOUR_PHASE_COEFFICIENTS_PATH		DISPLAY_MANAGER_PATH "/cpr_coef"
 

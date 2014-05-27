@@ -19,11 +19,161 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <glib.h>
 
-#include "datapipe.h"
+#include "mce.h"
+#include "mce-log.h"
 
-#include "mce-log.h"			/* mce_log(), LL_* */
+#include <linux/input.h>
+
+/* Available datapipes */
+
+/** LED brightness */
+datapipe_struct led_brightness_pipe;
+
+/** LPM brightness */
+datapipe_struct lpm_brightness_pipe;
+
+/** State of device; read only */
+datapipe_struct device_inactive_pipe;
+
+/** LED pattern to activate; read only */
+datapipe_struct led_pattern_activate_pipe;
+
+/** LED pattern to deactivate; read only */
+datapipe_struct led_pattern_deactivate_pipe;
+
+/** Non-synthetized user activity; read only */
+datapipe_struct user_activity_pipe;
+
+/** State of display; read only */
+datapipe_struct display_state_pipe;
+
+/** Desired state of display; write only */
+datapipe_struct display_state_req_pipe;
+
+/** Next (non-transitional) state of display; read only */
+datapipe_struct display_state_next_pipe;
+
+/** exceptional ui state; read write */
+datapipe_struct exception_state_pipe;
+
+/**
+ * Display brightness;
+ * bits 0-7 is brightness in percent (0-100)
+ * upper 8 bits is high brightness boost (0-2)
+ */
+datapipe_struct display_brightness_pipe;
+
+/** Key backlight */
+datapipe_struct key_backlight_pipe;
+
+/** A key has been pressed */
+datapipe_struct keypress_pipe;
+
+/** Touchscreen activity took place */
+datapipe_struct touchscreen_pipe;
+
+/** The lock-key has been pressed; read only */
+datapipe_struct lockkey_pipe;
+
+/** Keyboard open/closed; read only */
+datapipe_struct keyboard_slide_pipe;
+
+/** Lid cover open/closed; read only */
+datapipe_struct lid_cover_pipe;
+
+/** Lens cover open/closed; read only */
+datapipe_struct lens_cover_pipe;
+
+/** Proximity sensor; read only */
+datapipe_struct proximity_sensor_pipe;
+
+/** Ambient light sensor; read only */
+datapipe_struct ambient_light_sensor_pipe;
+
+/** Orientation sensor; read only */
+datapipe_struct orientation_sensor_pipe;
+
+/** The alarm UI state */
+datapipe_struct alarm_ui_state_pipe;
+
+/** The device state */
+datapipe_struct system_state_pipe;
+
+/** Enable/disable radios */
+datapipe_struct master_radio_pipe;
+
+/** The device submode */
+datapipe_struct submode_pipe;
+
+/** The call state */
+datapipe_struct call_state_pipe;
+
+/** The call type */
+datapipe_struct call_type_pipe;
+
+/** The touchscreen/keypad lock state */
+datapipe_struct tk_lock_pipe;
+
+/** Charger state; read only */
+datapipe_struct charger_state_pipe;
+
+/** Battery status; read only */
+datapipe_struct battery_status_pipe;
+
+/** Battery charge level; read only */
+datapipe_struct battery_level_pipe;
+
+/** Camera button; read only */
+datapipe_struct camera_button_pipe;
+
+/** The inactivity timeout; read only */
+datapipe_struct inactivity_timeout_pipe;
+
+/** Audio routing state; read only */
+datapipe_struct audio_route_pipe;
+
+/** USB cable has been connected/disconnected; read only */
+datapipe_struct usb_cable_pipe;
+
+/** A jack connector has been connected/disconnected; read only */
+datapipe_struct jack_sense_pipe;
+
+/** Power save mode is active; read only */
+datapipe_struct power_saving_mode_pipe;
+
+/** Thermal state; read only */
+datapipe_struct thermal_state_pipe;
+
+/** Heartbeat; read only */
+datapipe_struct heartbeat_pipe;
+
+/** lipstick availability; read only */
+datapipe_struct lipstick_available_pipe;
+
+/** PackageKit Locked status; read only */
+datapipe_struct packagekit_locked_pipe;
+
+/** Device Lock active status; read only */
+datapipe_struct device_lock_active_pipe;
+
+/** touchscreen input grab required; read/write */
+datapipe_struct touch_grab_wanted_pipe;
+
+/** touchscreen input grab active; read only */
+datapipe_struct touch_grab_active_pipe;
+
+/** keypad input grab required; read/write */
+datapipe_struct keypad_grab_wanted_pipe;
+
+/** keypad input grab active; read only */
+datapipe_struct keypad_grab_active_pipe;
+
+/** music playback active; read only */
+datapipe_struct music_playback_pipe;
+
+/** proximity blanking; read only */
+datapipe_struct proximity_blank_pipe;
 
 /**
  * Execute the input triggers of a datapipe
@@ -612,4 +762,159 @@ void free_datapipe(datapipe_struct *const datapipe)
 
 EXIT:
 	return;
+}
+
+/** Setup all datapipes
+ */
+void mce_datapipe_init(void)
+{
+	setup_datapipe(&system_state_pipe, READ_WRITE, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(MCE_STATE_UNDEF));
+	setup_datapipe(&master_radio_pipe, READ_WRITE, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(0));
+	setup_datapipe(&call_state_pipe, READ_WRITE, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(CALL_STATE_NONE));
+	setup_datapipe(&call_type_pipe, READ_WRITE, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(NORMAL_CALL));
+	setup_datapipe(&alarm_ui_state_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(MCE_ALARM_UI_INVALID_INT32));
+	setup_datapipe(&submode_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(MCE_NORMAL_SUBMODE));
+	setup_datapipe(&display_state_pipe, READ_WRITE, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(MCE_DISPLAY_UNDEF));
+	setup_datapipe(&display_state_req_pipe, READ_WRITE, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(MCE_DISPLAY_UNDEF));
+	setup_datapipe(&display_state_next_pipe, READ_WRITE, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(MCE_DISPLAY_UNDEF));
+	setup_datapipe(&exception_state_pipe, READ_WRITE, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(UIEXC_NONE));
+	setup_datapipe(&display_brightness_pipe, READ_WRITE, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(3));
+	setup_datapipe(&led_brightness_pipe, READ_WRITE, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(0));
+	setup_datapipe(&lpm_brightness_pipe, READ_WRITE, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(0));
+	setup_datapipe(&led_pattern_activate_pipe, READ_ONLY, FREE_CACHE,
+		       0, NULL);
+	setup_datapipe(&led_pattern_deactivate_pipe, READ_ONLY, FREE_CACHE,
+		       0, NULL);
+	setup_datapipe(&user_activity_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, NULL);
+	setup_datapipe(&key_backlight_pipe, READ_WRITE, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(0));
+	setup_datapipe(&keypress_pipe, READ_ONLY, FREE_CACHE,
+		       sizeof (struct input_event), NULL);
+	setup_datapipe(&touchscreen_pipe, READ_ONLY, FREE_CACHE,
+		       sizeof (struct input_event), NULL);
+	setup_datapipe(&device_inactive_pipe, READ_WRITE, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(FALSE));
+	setup_datapipe(&lockkey_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(0));
+	setup_datapipe(&keyboard_slide_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(0));
+	setup_datapipe(&lid_cover_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(0));
+	setup_datapipe(&lens_cover_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(0));
+	setup_datapipe(&proximity_sensor_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(COVER_OPEN));
+	setup_datapipe(&ambient_light_sensor_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(400));
+	setup_datapipe(&orientation_sensor_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(0));
+	setup_datapipe(&tk_lock_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(LOCK_UNDEF));
+	setup_datapipe(&charger_state_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(0));
+	setup_datapipe(&battery_status_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(BATTERY_STATUS_UNDEF));
+	setup_datapipe(&battery_level_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(100));
+	setup_datapipe(&camera_button_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(CAMERA_BUTTON_UNDEF));
+	setup_datapipe(&inactivity_timeout_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(DEFAULT_INACTIVITY_TIMEOUT));
+	setup_datapipe(&audio_route_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(AUDIO_ROUTE_UNDEF));
+	setup_datapipe(&usb_cable_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(0));
+	setup_datapipe(&jack_sense_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(0));
+	setup_datapipe(&power_saving_mode_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(0));
+	setup_datapipe(&thermal_state_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(THERMAL_STATE_UNDEF));
+	setup_datapipe(&heartbeat_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(0));
+	setup_datapipe(&lipstick_available_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(FALSE));
+	setup_datapipe(&packagekit_locked_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(FALSE));
+	setup_datapipe(&device_lock_active_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(FALSE));
+	setup_datapipe(&touch_grab_wanted_pipe, READ_WRITE, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(FALSE));
+	setup_datapipe(&touch_grab_active_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(FALSE));
+	setup_datapipe(&keypad_grab_wanted_pipe, READ_WRITE, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(FALSE));
+	setup_datapipe(&keypad_grab_active_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(FALSE));
+	setup_datapipe(&music_playback_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(FALSE));
+	setup_datapipe(&proximity_blank_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(FALSE));
+}
+
+/** Free all datapipes
+ */
+void mce_datapipe_quit(void)
+{
+	free_datapipe(&thermal_state_pipe);
+	free_datapipe(&power_saving_mode_pipe);
+	free_datapipe(&jack_sense_pipe);
+	free_datapipe(&usb_cable_pipe);
+	free_datapipe(&audio_route_pipe);
+	free_datapipe(&inactivity_timeout_pipe);
+	free_datapipe(&battery_level_pipe);
+	free_datapipe(&battery_status_pipe);
+	free_datapipe(&charger_state_pipe);
+	free_datapipe(&tk_lock_pipe);
+	free_datapipe(&proximity_sensor_pipe);
+	free_datapipe(&ambient_light_sensor_pipe);
+	free_datapipe(&orientation_sensor_pipe);
+	free_datapipe(&lens_cover_pipe);
+	free_datapipe(&lid_cover_pipe);
+	free_datapipe(&keyboard_slide_pipe);
+	free_datapipe(&lockkey_pipe);
+	free_datapipe(&device_inactive_pipe);
+	free_datapipe(&touchscreen_pipe);
+	free_datapipe(&keypress_pipe);
+	free_datapipe(&key_backlight_pipe);
+	free_datapipe(&user_activity_pipe);
+	free_datapipe(&led_pattern_deactivate_pipe);
+	free_datapipe(&led_pattern_activate_pipe);
+	free_datapipe(&led_brightness_pipe);
+	free_datapipe(&lpm_brightness_pipe);
+	free_datapipe(&display_brightness_pipe);
+	free_datapipe(&display_state_pipe);
+	free_datapipe(&display_state_req_pipe);
+	free_datapipe(&display_state_next_pipe);
+	free_datapipe(&exception_state_pipe);
+	free_datapipe(&submode_pipe);
+	free_datapipe(&alarm_ui_state_pipe);
+	free_datapipe(&call_type_pipe);
+	free_datapipe(&call_state_pipe);
+	free_datapipe(&master_radio_pipe);
+	free_datapipe(&system_state_pipe);
+	free_datapipe(&heartbeat_pipe);
+	free_datapipe(&lipstick_available_pipe);
+	free_datapipe(&packagekit_locked_pipe);
+	free_datapipe(&device_lock_active_pipe);
+	free_datapipe(&touch_grab_active_pipe);
+	free_datapipe(&touch_grab_wanted_pipe);
+	free_datapipe(&keypad_grab_active_pipe);
+	free_datapipe(&keypad_grab_wanted_pipe);
+	free_datapipe(&music_playback_pipe);
+	free_datapipe(&proximity_blank_pipe);
 }

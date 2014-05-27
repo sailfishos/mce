@@ -18,30 +18,12 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <glib.h>
+
+#include "../mce.h"
+#include "../mce-log.h"
+#include "../mce-dbus.h"
+
 #include <gmodule.h>
-
-#include <string.h>			/* strcmp() */
-
-#include "mce.h"
-
-#include "mce-log.h"			/* mce_log(), LL_* */
-#include "mce-dbus.h"			/* Direct:
-					 * ---
-					 * mce_dbus_handler_add(),
-					 * dbus_send_message(),
-					 * dbus_new_method_reply(),
-					 * dbus_message_get_args(),
-					 * dbus_message_get_no_reply(),
-					 * dbus_error_init(),
-					 * dbus_error_free(),
-					 * DBUS_MESSAGE_TYPE_METHOD_CALL,
-					 * DBUS_TYPE_INT32,
-					 * DBUS_TYPE_INVALID,
-					 * DBusMessage, DBusError,
-					 * dbus_int32_t
-					 */
-#include "datapipe.h"			/* execute_datapipe() */
 
 #ifndef VISUAL_REMINDERS_SERVICE
 typedef enum {

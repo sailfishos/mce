@@ -21,26 +21,20 @@
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <unistd.h>
-#include <fcntl.h>
-#include <string.h>
-
-#include <glib.h>
-
-#include <stdio.h>
-#include <stdarg.h>			/* va_start(), va_end() */
-#include <stdlib.h>			/* exit(), EXIT_FAILURE */
-#include <string.h>			/* strcmp() */
-#include <dbus/dbus.h>
-#include <dbus/dbus-glib.h>
-#include <dbus/dbus-glib-lowlevel.h>	/* dbus_connection_setup_with_g_main */
-
-#include "mce.h"
 #include "mce-dbus.h"
 
-#include "mce-log.h"			/* mce_log(), LL_* */
+#include "mce.h"
+#include "mce-log.h"
 
-#include "mce-gconf.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <fcntl.h>
+
+#include <dbus/dbus-glib-lowlevel.h>
+
+#include <mce/dbus-names.h>
 
 /** Placeholder for any basic dbus data type */
 typedef union

@@ -18,51 +18,22 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <glib.h>
-#include <gmodule.h>
 
-#include <stdlib.h>			/* exit(), EXIT_FAILURE */
-
-#include "mce.h"
 #include "keypad.h"
 
-#include "mce-io.h"			/* mce_close_file(),
-					 * mce_write_string_to_file(),
-					 * mce_write_number_string_to_file()
-					 */
-#include "mce-hal.h"			/* get_product_id() */
-#include "mce-lib.h"			/* bin_to_string() */
-#include "mce-log.h"			/* mce_log(), LL_* */
-#include "mce-dbus.h"			/* Direct:
-					 * ---
-					 * mce_dbus_handler_add(),
-					 * dbus_send_message(),
-					 * dbus_new_method_reply(),
-					 * dbus_message_append_args(),
-					 * dbus_message_unref(),
-					 * DBusMessage,
-					 * DBUS_MESSAGE_TYPE_METHOD_CALL,
-					 * DBUS_TYPE_BOOLEAN,
-					 * DBUS_TYPE_INVALID,
-					 * dbus_bool_t
-					 *
-					 * Indirect:
-					 * ---
-					 * MCE_REQUEST_IF,
-					 * MCE_KEY_BACKLIGHT_STATE_GET
-					 */
-#include "datapipe.h"			/* execute_datapipe(),
-					 * datapipe_get_gbool(),
-					 * datapipe_get_guint(),
-					 * datapipe_get_old_gint(),
-					 * append_output_trigger_to_datapipe(),
-					 * remove_output_trigger_from_datapipe()
-					 */
-#include "mce-conf.h"			/* mce_conf_get_bool() */
+#include "../mce.h"
+#include "../mce-log.h"
+#include "../mce-io.h"
+#include "../mce-lib.h"
+#include "../mce-hal.h"
+#include "../mce-conf.h"
+#include "../mce-dbus.h"
 
-#include "mce-dbus.h"
+#include "led.h"
+
 #include <mce/dbus-names.h>
-#include <mce/mode-names.h>
+
+#include <gmodule.h>
 
 /** Module name */
 #define MODULE_NAME		"keypad"

@@ -43,6 +43,7 @@
  * when in soft poweroff
  */
 #define SOFTOFF_CHARGER_CONNECT_WAKEUP_STR		"wakeup"
+
 /**
  * Name of configuration value for the "ignore charger" policy
  * when in soft poweroff

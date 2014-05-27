@@ -16,11 +16,13 @@ datapipe.o:\
 	datapipe.c\
 	datapipe.h\
 	mce-log.h\
+	mce.h\
 
 datapipe.pic.o:\
 	datapipe.c\
 	datapipe.h\
 	mce-log.h\
+	mce.h\
 
 evdev.o:\
 	evdev.c\
@@ -123,7 +125,6 @@ mce-dbus.o:\
 	builtin-gconf.h\
 	datapipe.h\
 	mce-dbus.h\
-	mce-gconf.h\
 	mce-log.h\
 	mce.h\
 
@@ -132,7 +133,6 @@ mce-dbus.pic.o:\
 	builtin-gconf.h\
 	datapipe.h\
 	mce-dbus.h\
-	mce-gconf.h\
 	mce-log.h\
 	mce.h\
 
@@ -161,31 +161,23 @@ mce-dsme.pic.o:\
 mce-gconf.o:\
 	mce-gconf.c\
 	builtin-gconf.h\
-	datapipe.h\
 	mce-gconf.h\
 	mce-log.h\
-	mce.h\
 
 mce-gconf.pic.o:\
 	mce-gconf.c\
 	builtin-gconf.h\
-	datapipe.h\
 	mce-gconf.h\
 	mce-log.h\
-	mce.h\
 
 mce-hal.o:\
 	mce-hal.c\
-	builtin-gconf.h\
-	mce-dbus.h\
 	mce-hal.h\
 	mce-lib.h\
 	mce-log.h\
 
 mce-hal.pic.o:\
 	mce-hal.c\
-	builtin-gconf.h\
-	mce-dbus.h\
 	mce-hal.h\
 	mce-lib.h\
 	mce-log.h\
@@ -350,7 +342,6 @@ modules/alarm.o:\
 	modules/alarm.c\
 	builtin-gconf.h\
 	datapipe.h\
-	datapipe.h\
 	mce-dbus.h\
 	mce-log.h\
 	mce.h\
@@ -358,7 +349,6 @@ modules/alarm.o:\
 modules/alarm.pic.o:\
 	modules/alarm.c\
 	builtin-gconf.h\
-	datapipe.h\
 	datapipe.h\
 	mce-dbus.h\
 	mce-log.h\
@@ -385,7 +375,6 @@ modules/battery-bme.o:\
 	bme-dbus-names.h\
 	builtin-gconf.h\
 	datapipe.h\
-	datapipe.h\
 	mce-dbus.h\
 	mce-log.h\
 	mce.h\
@@ -394,7 +383,6 @@ modules/battery-bme.pic.o:\
 	modules/battery-bme.c\
 	bme-dbus-names.h\
 	builtin-gconf.h\
-	datapipe.h\
 	datapipe.h\
 	mce-dbus.h\
 	mce-log.h\
@@ -434,27 +422,22 @@ modules/callstate.o:\
 	modules/callstate.c\
 	builtin-gconf.h\
 	datapipe.h\
-	datapipe.h\
 	mce-dbus.h\
 	mce-lib.h\
 	mce-log.h\
 	mce.h\
-	modules/callstate.h\
 
 modules/callstate.pic.o:\
 	modules/callstate.c\
 	builtin-gconf.h\
 	datapipe.h\
-	datapipe.h\
 	mce-dbus.h\
 	mce-lib.h\
 	mce-log.h\
 	mce.h\
-	modules/callstate.h\
 
 modules/camera.o:\
 	modules/camera.c\
-	datapipe.h\
 	datapipe.h\
 	mce-conf.h\
 	mce-io.h\
@@ -464,7 +447,6 @@ modules/camera.o:\
 modules/camera.pic.o:\
 	modules/camera.c\
 	datapipe.h\
-	datapipe.h\
 	mce-conf.h\
 	mce-io.h\
 	mce.h\
@@ -473,51 +455,49 @@ modules/camera.pic.o:\
 modules/cpu-keepalive.o:\
 	modules/cpu-keepalive.c\
 	builtin-gconf.h\
+	libwakelock.h\
 	mce-dbus.h\
 	mce-log.h\
-	libwakelock.h\
 
 modules/cpu-keepalive.pic.o:\
 	modules/cpu-keepalive.c\
 	builtin-gconf.h\
+	libwakelock.h\
 	mce-dbus.h\
 	mce-log.h\
-	libwakelock.h\
 
 modules/display.o:\
 	modules/display.c\
 	builtin-gconf.h\
 	datapipe.h\
-	datapipe.h\
+	filewatcher.h\
+	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-gconf.h\
+	mce-hybris.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce.h\
-	filewatcher.h\
-	libwakelock.h\
-	mce-hybris.h\
 	modules/display.h\
 
 modules/display.pic.o:\
 	modules/display.c\
 	builtin-gconf.h\
 	datapipe.h\
-	datapipe.h\
+	filewatcher.h\
+	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-gconf.h\
+	mce-hybris.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce.h\
-	filewatcher.h\
-	libwakelock.h\
-	mce-hybris.h\
 	modules/display.h\
 
 modules/doubletap.o:\
@@ -571,21 +551,16 @@ modules/filter-brightness-als.pic.o:\
 modules/filter-brightness-simple.o:\
 	modules/filter-brightness-simple.c\
 	datapipe.h\
-	datapipe.h\
 	mce.h\
-	modules/filter-brightness-simple.h\
 
 modules/filter-brightness-simple.pic.o:\
 	modules/filter-brightness-simple.c\
 	datapipe.h\
-	datapipe.h\
 	mce.h\
-	modules/filter-brightness-simple.h\
 
 modules/inactivity.o:\
 	modules/inactivity.c\
 	builtin-gconf.h\
-	datapipe.h\
 	datapipe.h\
 	mce-dbus.h\
 	mce-log.h\
@@ -595,7 +570,6 @@ modules/inactivity.pic.o:\
 	modules/inactivity.c\
 	builtin-gconf.h\
 	datapipe.h\
-	datapipe.h\
 	mce-dbus.h\
 	mce-log.h\
 	mce.h\
@@ -603,7 +577,6 @@ modules/inactivity.pic.o:\
 modules/keypad.o:\
 	modules/keypad.c\
 	builtin-gconf.h\
-	datapipe.h\
 	datapipe.h\
 	mce-conf.h\
 	mce-dbus.h\
@@ -619,7 +592,6 @@ modules/keypad.pic.o:\
 	modules/keypad.c\
 	builtin-gconf.h\
 	datapipe.h\
-	datapipe.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-hal.h\
@@ -634,40 +606,37 @@ modules/led.o:\
 	modules/led.c\
 	builtin-gconf.h\
 	datapipe.h\
-	datapipe.h\
+	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-gconf.h\
 	mce-hal.h\
+	mce-hybris.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
 	mce.h\
-	libwakelock.h\
-	mce-hybris.h\
 	modules/led.h\
 
 modules/led.pic.o:\
 	modules/led.c\
 	builtin-gconf.h\
 	datapipe.h\
-	datapipe.h\
+	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-gconf.h\
 	mce-hal.h\
+	mce-hybris.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
 	mce.h\
-	libwakelock.h\
-	mce-hybris.h\
 	modules/led.h\
 
 modules/packagekit.o:\
 	modules/packagekit.c\
 	builtin-gconf.h\
-	datapipe.h\
 	datapipe.h\
 	mce-dbus.h\
 	mce-log.h\
@@ -677,7 +646,6 @@ modules/packagekit.pic.o:\
 	modules/packagekit.c\
 	builtin-gconf.h\
 	datapipe.h\
-	datapipe.h\
 	mce-dbus.h\
 	mce-log.h\
 	mce.h\
@@ -685,7 +653,6 @@ modules/packagekit.pic.o:\
 modules/powersavemode.o:\
 	modules/powersavemode.c\
 	builtin-gconf.h\
-	datapipe.h\
 	datapipe.h\
 	mce-dbus.h\
 	mce-gconf.h\
@@ -697,7 +664,6 @@ modules/powersavemode.pic.o:\
 	modules/powersavemode.c\
 	builtin-gconf.h\
 	datapipe.h\
-	datapipe.h\
 	mce-dbus.h\
 	mce-gconf.h\
 	mce-log.h\
@@ -708,36 +674,33 @@ modules/proximity.o:\
 	modules/proximity.c\
 	builtin-gconf.h\
 	datapipe.h\
-	datapipe.h\
 	mce-dbus.h\
 	mce-gconf.h\
 	mce-hal.h\
+	mce-hybris.h\
 	mce-io.h\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce.h\
-	mce-hybris.h\
 	modules/proximity.h\
 
 modules/proximity.pic.o:\
 	modules/proximity.c\
 	builtin-gconf.h\
 	datapipe.h\
-	datapipe.h\
 	mce-dbus.h\
 	mce-gconf.h\
 	mce-hal.h\
+	mce-hybris.h\
 	mce-io.h\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce.h\
-	mce-hybris.h\
 	modules/proximity.h\
 
 modules/radiostates.o:\
 	modules/radiostates.c\
 	builtin-gconf.h\
-	datapipe.h\
 	datapipe.h\
 	mce-conf.h\
 	mce-dbus.h\
@@ -750,7 +713,6 @@ modules/radiostates.pic.o:\
 	modules/radiostates.c\
 	builtin-gconf.h\
 	datapipe.h\
-	datapipe.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-io.h\
@@ -762,7 +724,6 @@ modules/sensor-gestures.o:\
 	modules/sensor-gestures.c\
 	builtin-gconf.h\
 	datapipe.h\
-	datapipe.h\
 	mce-dbus.h\
 	mce-log.h\
 	mce-sensorfw.h\
@@ -771,7 +732,6 @@ modules/sensor-gestures.o:\
 modules/sensor-gestures.pic.o:\
 	modules/sensor-gestures.c\
 	builtin-gconf.h\
-	datapipe.h\
 	datapipe.h\
 	mce-dbus.h\
 	mce-log.h\
@@ -806,9 +766,11 @@ powerkey.pic.o:\
 
 tests/ut/ut_display.o:\
 	tests/ut/ut_display.c\
+	mce-log.h\
 	builtin-gconf.h\
 	datapipe.h\
-	datapipe.h\
+	filewatcher.h\
+	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-gconf.h\
@@ -817,18 +779,17 @@ tests/ut/ut_display.o:\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce.h\
-	mce-log.h\
-	filewatcher.h\
-	libwakelock.h\
 	modules/display.c\
 	modules/display.h\
 	tests/ut/common.h\
 
 tests/ut/ut_display.pic.o:\
 	tests/ut/ut_display.c\
+	mce-log.h\
 	builtin-gconf.h\
 	datapipe.h\
-	datapipe.h\
+	filewatcher.h\
+	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-gconf.h\
@@ -837,177 +798,166 @@ tests/ut/ut_display.pic.o:\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce.h\
-	mce-log.h\
-	filewatcher.h\
-	libwakelock.h\
 	modules/display.c\
 	modules/display.h\
 	tests/ut/common.h\
 
 tests/ut/ut_display_blanking_inhibit.o:\
 	tests/ut/ut_display_blanking_inhibit.c\
+	mce-log.h\
 	builtin-gconf.h\
 	datapipe.h\
-	datapipe.h\
+	filewatcher.h\
+	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-gconf.h\
+	mce-hybris.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce.h\
-	mce-log.h\
-	filewatcher.h\
-	libwakelock.h\
-	mce-hybris.h\
 	modules/display.c\
 	modules/display.h\
 	tests/ut/common.h\
 
 tests/ut/ut_display_blanking_inhibit.pic.o:\
 	tests/ut/ut_display_blanking_inhibit.c\
+	mce-log.h\
 	builtin-gconf.h\
 	datapipe.h\
-	datapipe.h\
+	filewatcher.h\
+	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-gconf.h\
+	mce-hybris.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce.h\
-	mce-log.h\
-	filewatcher.h\
-	libwakelock.h\
-	mce-hybris.h\
 	modules/display.c\
 	modules/display.h\
 	tests/ut/common.h\
 
 tests/ut/ut_display_conf.o:\
 	tests/ut/ut_display_conf.c\
+	mce-log.h\
 	builtin-gconf.h\
 	datapipe.h\
-	datapipe.h\
+	filewatcher.h\
+	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-gconf.h\
+	mce-hybris.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce.h\
-	mce-log.h\
-	filewatcher.h\
-	libwakelock.h\
-	mce-hybris.h\
 	modules/display.c\
 	modules/display.h\
 	tests/ut/common.h\
 
 tests/ut/ut_display_conf.pic.o:\
 	tests/ut/ut_display_conf.c\
+	mce-log.h\
 	builtin-gconf.h\
 	datapipe.h\
-	datapipe.h\
+	filewatcher.h\
+	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-gconf.h\
+	mce-hybris.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce.h\
-	mce-log.h\
-	filewatcher.h\
-	libwakelock.h\
-	mce-hybris.h\
 	modules/display.c\
 	modules/display.h\
 	tests/ut/common.h\
 
 tests/ut/ut_display_filter.o:\
 	tests/ut/ut_display_filter.c\
+	mce-log.h\
 	builtin-gconf.h\
 	datapipe.h\
-	datapipe.h\
+	filewatcher.h\
+	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-gconf.h\
+	mce-hybris.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce.h\
-	mce-log.h\
-	filewatcher.h\
-	libwakelock.h\
-	mce-hybris.h\
 	modules/display.c\
 	modules/display.h\
 	tests/ut/common.h\
 
 tests/ut/ut_display_filter.pic.o:\
 	tests/ut/ut_display_filter.c\
+	mce-log.h\
 	builtin-gconf.h\
 	datapipe.h\
-	datapipe.h\
+	filewatcher.h\
+	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-gconf.h\
+	mce-hybris.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce.h\
-	mce-log.h\
-	filewatcher.h\
-	libwakelock.h\
-	mce-hybris.h\
 	modules/display.c\
 	modules/display.h\
 	tests/ut/common.h\
 
 tests/ut/ut_display_stm.o:\
 	tests/ut/ut_display_stm.c\
+	mce-log.h\
 	builtin-gconf.h\
 	datapipe.h\
-	datapipe.h\
+	filewatcher.h\
+	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-gconf.h\
+	mce-hybris.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce.h\
-	mce-log.h\
-	filewatcher.h\
-	libwakelock.h\
-	mce-hybris.h\
 	modules/display.c\
 	modules/display.h\
 	tests/ut/common.h\
 
 tests/ut/ut_display_stm.pic.o:\
 	tests/ut/ut_display_stm.c\
+	mce-log.h\
 	builtin-gconf.h\
 	datapipe.h\
-	datapipe.h\
+	filewatcher.h\
+	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-gconf.h\
+	mce-hybris.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce.h\
-	mce-log.h\
-	filewatcher.h\
-	libwakelock.h\
-	mce-hybris.h\
 	modules/display.c\
 	modules/display.h\
 	tests/ut/common.h\

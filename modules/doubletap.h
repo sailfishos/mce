@@ -39,6 +39,7 @@ extern "C" {
 
 /** Path to the GConf settings for the doubletap module */
 # define MCE_GCONF_DOUBLETAP_PATH       "/system/osso/dsm/doubletap"
+
 /** Path to the doubletap  mode GConf setting */
 # define MCE_GCONF_DOUBLETAP_MODE       MCE_GCONF_DOUBLETAP_PATH "/mode"
 

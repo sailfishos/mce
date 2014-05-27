@@ -18,14 +18,15 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <glib.h>
-#include <glob.h>
-#include <string.h>
+
+#include "mce-conf.h"
 
 #include "mce.h"
-#include "mce-conf.h"
-#include "mce-log.h"			/* mce_log(), LL_* */
+#include "mce-log.h"
 #include "modules/led.h"
+
+#include <string.h>
+#include <glob.h>
 
 /** Pointer to the keyfile structure where config values are read from */
 static gpointer keyfile = NULL;

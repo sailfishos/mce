@@ -21,7 +21,7 @@
 #ifndef _MCE_LOG_H_
 #define _MCE_LOG_H_
 
-#include <syslog.h>	/* LOG_DAEMON, LOG_USER */
+#include <syslog.h>
 
 #define MCE_LOG_SYSLOG			1	/**< Log to syslog */
 #define MCE_LOG_STDERR			0	/**< Log to stderr */
@@ -29,13 +29,13 @@
 /** Severity of loglevels (subset of syslog priorities) */
 typedef enum {
 	LL_NONE    = 0,			/**< No logging at all */
-	LL_ALERT   = 1,			/**< Alert */
-	LL_CRIT    = 2,			/**< Critical error */
-	LL_ERR     = 3,			/**< Error */
-	LL_WARN    = 4,			/**< Warning */
-	LL_NOTICE  = 5,			/**< Normal but noteworthy */
-	LL_INFO    = 6,			/**< Informational message */
-	LL_DEBUG   = 7,			/**< Useful when debugging */
+	LL_ALERT   = LOG_ALERT,		/**< Alert */
+	LL_CRIT    = LOG_CRIT,		/**< Critical error */
+	LL_ERR     = LOG_ERR,		/**< Error */
+	LL_WARN    = LOG_WARNING,	/**< Warning */
+	LL_NOTICE  = LOG_NOTICE,	/**< Normal but noteworthy */
+	LL_INFO    = LOG_INFO,		/**< Informational message */
+	LL_DEBUG   = LOG_DEBUG,		/**< Useful when debugging */
 
 	LL_DEFAULT = LL_WARN,		/**< Default log level */
 
@@ -63,12 +63,16 @@ int mce_log_p_(const loglevel_t loglevel, const char *const file, const char *co
 #else
 /** Dummy version used when logging is disabled at compile time */
 #define mce_log(_loglevel, _fmt, ...)			do {} while (0)
+
 /** Dummy version used when logging is disabled at compile time */
 #define mce_log_set_verbosity(_verbosity)		do {} while (0)
+
 /** Dummy version used when logging is disabled at compile time */
 #define mce_log_open(_name, _facility, _type)		do {} while (0)
+
 /** Dummy version used when logging is disabled at compile time */
 #define mce_log_close()					do {} while (0)
+
 /** Dummy version used when logging is disabled at compile time */
 #define mce_log_p(_loglevel)				0
 #endif /* OSSOLOG_COMPILE */

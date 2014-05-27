@@ -23,22 +23,22 @@
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <stdio.h>
+#include "filter-brightness-als.h"
+
+#include "../mce.h"
+#include "../mce-log.h"
+#include "../mce-io.h"
+#include "../mce-conf.h"
+#include "../mce-gconf.h"
+#include "../mce-dbus.h"
+#include "../mce-sensorfw.h"
+
 #include <stdlib.h>
 #include <string.h>
 
-#include <glib.h>
+#include <mce/dbus-names.h>
+
 #include <gmodule.h>
-
-#include "mce.h"
-#include "mce-io.h"
-#include "mce-log.h"
-#include "mce-conf.h"
-#include "mce-gconf.h"
-#include "mce-dbus.h"
-#include "mce-sensorfw.h"
-
-#include "filter-brightness-als.h"
 
 #if 0 // DEBUG: make all logging from this module "critical"
 # undef mce_log

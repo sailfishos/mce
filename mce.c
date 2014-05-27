@@ -18,127 +18,35 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <glib.h>
-#include <glib-object.h>		/* g_type_init() */
 
-#include <errno.h>			/* errno, ENOMEM */
-#include <fcntl.h>			/* open(), O_RDWR, O_CREAT */
-#include <stdio.h>			/* fprintf(), sprintf(),
-					 * stdout, stderr
-					 */
-#include <getopt.h>			/* getopt_long(),
-					 * struct options
-					 */
-#include <signal.h>			/* signal(),
-					 * SIGTSTP, SIGTTOU, SIGTTIN,
-					 * SIGCHLD, SIGUSR1, SIGHUP,
-					 * SIGTERM, SIG_IGN
-					 */
-#include <stdlib.h>			/* exit(), EXIT_FAILURE, EXIT_SUCCESS */
-#include <string.h>			/* strlen() */
-#include <unistd.h>			/* close(), lockf(), fork(), chdir(),
-					 * getpid(), getppid(), setsid(),
-					 * write(), getdtablesize(), dup(),
-					 * F_TLOCK
-					 */
-#include <sys/stat.h>			/* umask() */
-
-#include "mce.h"			/* _(),
-					 * setlocale() -- indirect,
-					 * bindtextdomain(),
-					 * textdomain(),
-					 * mainloop,
-					 * system_state_pipe,
-					 * master_radio_pipe,
-					 * call_state_pipe,
-					 * call_type_pipe,
-					 * submode_pipe,
-					 * display_state_pipe,
-					 * display_brightness_pipe,
-					 * led_brightness_pipe,
-					 * led_pattern_activate_pipe,
-					 * led_pattern_deactivate_pipe,
-					 * key_backlight_pipe,
-					 * keypress_pipe,
-					 * touchscreen_pipe,
-					 * device_inactive_pipe,
-					 * lockkey_pipe,
-					 * keyboard_slide_pipe,
-					 * lid_cover_pipe,
-					 * lens_cover_pipe,
-					 * proximity_sensor_pipe,
-					 * tk_lock_pipe,
-					 * charger_state_pipe,
-					 * battery_status_pipe,
-					 * battery_level_pipe,
-					 * inactivity_timeout_pipe,
-					 * audio_route_pipe,
-					 * usb_cable_pipe,
-					 * jack_sense_pipe,
-					 * power_saving_mode_pipe,
-					 * thermal_state_pipe,
-					 * MCE_STATE_UNDEF,
-					 * MCE_INVALID_MODE_INT32,
-					 * CALL_STATE_NONE,
-					 * NORMAL_CALL,
-					 * MCE_ALARM_UI_INVALID_INT32,
-					 * MCE_NORMAL_SUBMODE,
-					 * MCE_DISPLAY_UNDEF,
-					 * LOCK_UNDEF,
-					 * BATTERY_STATUS_UNDEF,
-					 * THERMAL_STATE_UNDEF,
-					 * DEFAULT_INACTIVITY_TIMEOUT
-					 */
-
-#include "mce-log.h"			/* mce_log_open(), mce_log_close(),
-					 * mce_log_set_verbosity(), mce_log(),
-					 * LL_*
-					 */
-#include "mce-conf.h"			/* mce_conf_init(),
-					 * mce_conf_exit()
-					 */
-#include "mce-dbus.h"			/* mce_dbus_init(),
-					 * mce_dbus_exit()
-					 */
-#include "mce-dsme.h"			/* mce_dsme_init(),
-					 * mce_dsme_exit()
-					 */
-#include "mce-gconf.h"			/* mce_gconf_init(),
-					 * mce_gconf_exit()
-					 */
-#include "mce-modules.h"		/* mce_modules_dump_info(),
-					 * mce_modules_init(),
-					 * mce_modules_exit()
-					 */
-#include "event-input.h"		/* mce_input_init(),
-					 * mce_input_exit()
-					 */
-#include "event-switches.h"		/* mce_switches_init(),
-					 * mce_switches_exit()
-					 */
-#include "datapipe.h"			/* setup_datapipe(),
-					 * free_datapipe()
-					 */
-#include "modetransition.h"		/* mce_mode_init(),
-					 * mce_mode_exit()
-					 */
-
-/* "TBD" Modules; eventually this should be handled differently */
-#include "tklock.h"			/* mce_tklock_init(),
-					 * mce_tklock_exit()
-					 */
-#include "powerkey.h"			/* mce_powerkey_init(),
-					 * mce_powerkey_exit()
-					 */
+#include "mce.h"
+#include "mce-log.h"
+#include "mce-conf.h"
+#include "mce-gconf.h"
+#include "mce-dbus.h"
+#include "mce-dsme.h"
+#include "mce-modules.h"
+#include "mce-command-line.h"
+#ifdef ENABLE_SENSORFW
+# include "mce-sensorfw.h"
+#endif
+#include "tklock.h"
+#include "powerkey.h"
+#include "event-input.h"
+#include "event-switches.h"
+#include "modetransition.h"
 #ifdef ENABLE_WAKELOCKS
 # include "libwakelock.h"
 #endif
 
-#ifdef ENABLE_SENSORFW
-# include "mce-sensorfw.h"
-#endif
+#include <sys/stat.h>
 
-#include "mce-command-line.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <errno.h>
+#include <fcntl.h>
 
 #include <systemd/sd-daemon.h>
 
@@ -146,9 +54,6 @@
 #define MCE_LOCKFILE			"/var/run/mce.pid"
 /** Name shown by --help etc. */
 #define PRG_NAME			"mce"
-
-extern int optind;			/**< Used by getopt */
-extern char *optarg;			/**< Used by getopt */
 
 static const gchar *progname;	/**< Used to store the name of the program */
 
@@ -1000,9 +905,8 @@ int main(int argc, char **argv)
 
 	/* We don't take any non-flag arguments */
 	if ((argc - optind) > 0) {
-		fprintf(stderr,
-			_("%s: Too many arguments\n"
-			  "Try: `%s --help' for more information.\n"),
+		fprintf(stderr, "%s: Too many arguments\n"
+			"Try: `%s --help' for more information.\n",
 			progname, progname);
 		exit(EXIT_FAILURE);
 	}
@@ -1058,102 +962,8 @@ int main(int argc, char **argv)
 	}
 
 	/* Setup all datapipes */
-	setup_datapipe(&system_state_pipe, READ_WRITE, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(MCE_STATE_UNDEF));
-	setup_datapipe(&master_radio_pipe, READ_WRITE, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(0));
-	setup_datapipe(&call_state_pipe, READ_WRITE, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(CALL_STATE_NONE));
-	setup_datapipe(&call_type_pipe, READ_WRITE, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(NORMAL_CALL));
-	setup_datapipe(&alarm_ui_state_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(MCE_ALARM_UI_INVALID_INT32));
-	setup_datapipe(&submode_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(MCE_NORMAL_SUBMODE));
-	setup_datapipe(&display_state_pipe, READ_WRITE, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(MCE_DISPLAY_UNDEF));
-	setup_datapipe(&display_state_req_pipe, READ_WRITE, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(MCE_DISPLAY_UNDEF));
-	setup_datapipe(&display_state_next_pipe, READ_WRITE, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(MCE_DISPLAY_UNDEF));
-	setup_datapipe(&exception_state_pipe, READ_WRITE, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(UIEXC_NONE));
-	setup_datapipe(&display_brightness_pipe, READ_WRITE, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(3));
-	setup_datapipe(&led_brightness_pipe, READ_WRITE, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(0));
-	setup_datapipe(&lpm_brightness_pipe, READ_WRITE, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(0));
-	setup_datapipe(&led_pattern_activate_pipe, READ_ONLY, FREE_CACHE,
-		       0, NULL);
-	setup_datapipe(&led_pattern_deactivate_pipe, READ_ONLY, FREE_CACHE,
-		       0, NULL);
-	setup_datapipe(&user_activity_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, NULL);
-	setup_datapipe(&key_backlight_pipe, READ_WRITE, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(0));
-	setup_datapipe(&keypress_pipe, READ_ONLY, FREE_CACHE,
-		       sizeof (struct input_event), NULL);
-	setup_datapipe(&touchscreen_pipe, READ_ONLY, FREE_CACHE,
-		       sizeof (struct input_event), NULL);
-	setup_datapipe(&device_inactive_pipe, READ_WRITE, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(FALSE));
-	setup_datapipe(&lockkey_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(0));
-	setup_datapipe(&keyboard_slide_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(0));
-	setup_datapipe(&lid_cover_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(0));
-	setup_datapipe(&lens_cover_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(0));
-	setup_datapipe(&proximity_sensor_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(COVER_OPEN));
-	setup_datapipe(&ambient_light_sensor_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(400));
-	setup_datapipe(&orientation_sensor_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(0));
-	setup_datapipe(&tk_lock_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(LOCK_UNDEF));
-	setup_datapipe(&charger_state_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(0));
-	setup_datapipe(&battery_status_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(BATTERY_STATUS_UNDEF));
-	setup_datapipe(&battery_level_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(100));
-	setup_datapipe(&camera_button_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(CAMERA_BUTTON_UNDEF));
-	setup_datapipe(&inactivity_timeout_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(DEFAULT_INACTIVITY_TIMEOUT));
-	setup_datapipe(&audio_route_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(AUDIO_ROUTE_UNDEF));
-	setup_datapipe(&usb_cable_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(0));
-	setup_datapipe(&jack_sense_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(0));
-	setup_datapipe(&power_saving_mode_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(0));
-	setup_datapipe(&thermal_state_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(THERMAL_STATE_UNDEF));
-	setup_datapipe(&heartbeat_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(0));
-	setup_datapipe(&lipstick_available_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(FALSE));
-	setup_datapipe(&packagekit_locked_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(FALSE));
-	setup_datapipe(&device_lock_active_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(FALSE));
-	setup_datapipe(&touch_grab_wanted_pipe, READ_WRITE, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(FALSE));
-	setup_datapipe(&touch_grab_active_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(FALSE));
-	setup_datapipe(&keypad_grab_wanted_pipe, READ_WRITE, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(FALSE));
-	setup_datapipe(&keypad_grab_active_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(FALSE));
-	setup_datapipe(&music_playback_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(FALSE));
-	setup_datapipe(&proximity_blank_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(FALSE));
+	mce_datapipe_init();
+
 	/* Initialise mode management
 	 * pre-requisite: mce_gconf_init()
 	 * pre-requisite: mce_dbus_init()
@@ -1243,53 +1053,7 @@ EXIT:
 	mce_mode_exit();
 
 	/* Free all datapipes */
-	free_datapipe(&thermal_state_pipe);
-	free_datapipe(&power_saving_mode_pipe);
-	free_datapipe(&jack_sense_pipe);
-	free_datapipe(&usb_cable_pipe);
-	free_datapipe(&audio_route_pipe);
-	free_datapipe(&inactivity_timeout_pipe);
-	free_datapipe(&battery_level_pipe);
-	free_datapipe(&battery_status_pipe);
-	free_datapipe(&charger_state_pipe);
-	free_datapipe(&tk_lock_pipe);
-	free_datapipe(&proximity_sensor_pipe);
-	free_datapipe(&ambient_light_sensor_pipe);
-	free_datapipe(&orientation_sensor_pipe);
-	free_datapipe(&lens_cover_pipe);
-	free_datapipe(&lid_cover_pipe);
-	free_datapipe(&keyboard_slide_pipe);
-	free_datapipe(&lockkey_pipe);
-	free_datapipe(&device_inactive_pipe);
-	free_datapipe(&touchscreen_pipe);
-	free_datapipe(&keypress_pipe);
-	free_datapipe(&key_backlight_pipe);
-	free_datapipe(&user_activity_pipe);
-	free_datapipe(&led_pattern_deactivate_pipe);
-	free_datapipe(&led_pattern_activate_pipe);
-	free_datapipe(&led_brightness_pipe);
-	free_datapipe(&lpm_brightness_pipe);
-	free_datapipe(&display_brightness_pipe);
-	free_datapipe(&display_state_pipe);
-	free_datapipe(&display_state_req_pipe);
-	free_datapipe(&display_state_next_pipe);
-	free_datapipe(&exception_state_pipe);
-	free_datapipe(&submode_pipe);
-	free_datapipe(&alarm_ui_state_pipe);
-	free_datapipe(&call_type_pipe);
-	free_datapipe(&call_state_pipe);
-	free_datapipe(&master_radio_pipe);
-	free_datapipe(&system_state_pipe);
-	free_datapipe(&heartbeat_pipe);
-	free_datapipe(&lipstick_available_pipe);
-	free_datapipe(&packagekit_locked_pipe);
-	free_datapipe(&device_lock_active_pipe);
-	free_datapipe(&touch_grab_active_pipe);
-	free_datapipe(&touch_grab_wanted_pipe);
-	free_datapipe(&keypad_grab_active_pipe);
-	free_datapipe(&keypad_grab_wanted_pipe);
-	free_datapipe(&music_playback_pipe);
-	free_datapipe(&proximity_blank_pipe);
+	mce_datapipe_quit();
 
 	/* Call the exit function for all subsystems */
 	mce_gconf_exit();

@@ -27,15 +27,17 @@
 /** Default PSM threshold as battery percentage; integer */
 #define DEFAULT_PSM_THRESHOLD			10
 
-/** Path to the GConf settings for energy management */
 #ifndef MCE_GCONF_EM_PATH
-#define MCE_GCONF_EM_PATH			"/system/osso/dsm/energymanagement"
-#endif /* MCE_GCONF_EM_PATH */
+/** Path to the GConf settings for energy management */
+# define MCE_GCONF_EM_PATH			"/system/osso/dsm/energymanagement"
+#endif
 
 /** Path to the power saving mode GConf setting */
 #define MCE_GCONF_PSM_PATH			MCE_GCONF_EM_PATH "/enable_power_saving"
+
 /** Path to the forced power saving mode GConf setting */
 #define MCE_GCONF_FORCED_PSM_PATH		MCE_GCONF_EM_PATH "/force_power_saving"
+
 /** Path to the power save mode threshold GConf setting */
 #define MCE_GCONF_PSM_THRESHOLD_PATH		MCE_GCONF_EM_PATH "/psm_threshold"
 

@@ -18,19 +18,16 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <glib.h>
-#include <gmodule.h>
 
-#include <stdio.h>			/* fprintf(), stdout */
-#include <string.h>			/* strcmp() */
-
-#include "mce.h"			/* module_info_struct */
 #include "mce-modules.h"
 
-#include "mce-log.h"			/* mce_log(), LL_* */
-#include "mce-conf.h"			/* mce_conf_get_string(),
-					 * mce_conf_get_string_list()
-					 */
+#include "mce.h"
+#include "mce-log.h"
+#include "mce-conf.h"
+
+#include <stdio.h>
+
+#include <gmodule.h>
 
 /** List of all loaded modules */
 static GSList *modules = NULL;

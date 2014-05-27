@@ -19,15 +19,14 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <glib.h>
 
-#include <stdio.h>			/* sscanf() */
-#include <string.h>			/* strcmp() */
+#include "mce-lib.h"
 
-#include "mce.h"                        /* MCE_INVALID_TRANSLATION */
-#include "mce-lib.h"                    /* mce_translation_t */
+#include "mce.h"
+#include "mce-log.h"
 
-#include "mce-log.h"			/* mce_log(), LL_* */
+#include <stdio.h>
+#include <string.h>
 
 /**
  * Set a bit

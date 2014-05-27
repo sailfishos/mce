@@ -19,20 +19,18 @@
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#ifdef OSSOLOG_COMPILE
+
+#include "mce-log.h"
+
+#include <sys/time.h>
+
 #include <stdlib.h>
 #include <stdbool.h>
+#include <string.h>
 #include <fnmatch.h>
 
-#include <glib.h>
 #include <glib/gprintf.h>
-
-#ifdef OSSOLOG_COMPILE
-#include <stdio.h>			/* fprintf() */
-#include <stdarg.h>			/* va_start(), va_end(), vfprintf() */
-#include <string.h>			/* strdup() */
-#include <syslog.h>			/* openlog(), closelog(), vsyslog() */
-#include <sys/time.h>
-#include "mce-log.h"
 
 static unsigned int logverbosity = LL_WARN;	/**< Log verbosity */
 static int logtype = MCE_LOG_STDERR;		/**< Output for log messages */

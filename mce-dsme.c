@@ -21,60 +21,22 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <glib.h>
 
-#include <time.h>			/* time(), time_t */
-#include <errno.h>			/* errno */
-#include <stdlib.h>			/* exit(), free(), EXIT_FAILURE */
-#include <unistd.h>			/* getpid() */
-
-#include <dsme/state.h>			/* dsme_state_t */
-#include <dsme/messages.h>		/* DSM_MSGTYPE_* */
-#include <dsme/protocol.h>		/* dsmesock_send(),
-					 * dsmesock_receive(),
-					 * dsmesock_connect(),
-					 * dsmesock_close(),
-					 * dsmesock_connection_t
-					 */
-#include <dsme/processwd.h>             /* DSM_MSGTYPE_PROCESSWD_PING,
-					 * DSM_MSGTYPE_PROCESSWD_PONG,
-					 * DSM_MSGTYPE_PROCESSWD_CREATE,
-					 * DSM_MSGTYPE_PROCESSWD_DELETE
-					 */
-#include <mce/mode-names.h>
-#include "mce.h"			/* mce_add_submode_int32(),
-					 * mce_rem_submode_int32(),
-					 * mce_get_submode_int32(),
-					 * MCE_INVALID_TRANSLATION,
-					 * MCE_LED_PATTERN_DEVICE_ON,
-					 * MCE_LED_PATTERN_DEVICE_SOFT_OFF,
-					 * submode_t,
-					 * system_state_t,
-					 * MCE_SOFTOFF_SUBMODE,
-					 * MCE_TRANSITION_SUBMODE,
-					 * mainloop,
-					 * charger_state_pipe,
-					 * display_state_pipe,
-					 * system_state_pipe,
-					 * led_pattern_activate_pipe,
-					 * led_pattern_deactivate_pipe
-					 */
 #include "mce-dsme.h"
 
-#include "mce-lib.h"		/* mce_translate_string_to_int_with_default(),
-				 * mce_translation_t
-				 */
-#include "mce-log.h"			/* mce_log(), LL_* */
-#include "mce-dbus.h"			/* mce_dbus_handler_add(),
-					 * DBUS_MESSAGE_TYPE_SIGNAL
-					 */
-#include "mce-conf.h"			/* mce_conf_get_string() */
-#include "datapipe.h"			/* execute_datapipe(),
-					 * execute_datapippe_output_triggers(),
-					 * datapipe_get_gint(),
-					 * append_output_trigger_to_datapipe(),
-					 * remove_output_trigger_from_datapipe()
-					 */
+#include "mce.h"
+#include "mce-log.h"
+#include "mce-lib.h"
+#include "mce-conf.h"
+#include "mce-dbus.h"
+
+#include <stdlib.h>
+#include <unistd.h>
+#include <errno.h>
+
+#include <dsme/state.h>
+#include <dsme/protocol.h>
+#include <dsme/processwd.h>
 
 /** Charger state */
 static gboolean charger_connected = FALSE;

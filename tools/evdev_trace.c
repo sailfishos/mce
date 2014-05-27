@@ -4,24 +4,22 @@
  * License: GPLv2
  * ------------------------------------------------------------------------- */
 
-#include "../evdev.h"
 #include "../mce-log.h"
-#include <linux/input.h>
-#include <sys/time.h>
+#include "../evdev.h"
 
-#include <string.h>
-#include <fcntl.h>
-#include <unistd.h>
+#include <linux/input.h>
+
 #include <stdio.h>
-#include <stdbool.h>
-#include <stdarg.h>
-#include <limits.h>
-#include <poll.h>
-#include <errno.h>
 #include <stdlib.h>
+#include <stdarg.h>
+#include <stdbool.h>
+#include <unistd.h>
+#include <string.h>
+#include <errno.h>
+#include <time.h>
+#include <poll.h>
 #include <glob.h>
 #include <getopt.h>
-#include <time.h>
 
 /** Flag for: emit event time stamps */
 static bool emit_event_time  = true;

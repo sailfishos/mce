@@ -21,8 +21,6 @@
 #ifndef _LED_H_
 #define _LED_H_
 
-#include <glib.h>
-
 /** Name of LED configuration group */
 #define MCE_CONF_LED_GROUP			"LED"
 
@@ -84,8 +82,10 @@
 
 /** Reno control channel */
 #define TWL5031_BCC				0x4a
+
 /** Reno LED controller */
 #define LED_DRIVER_CTRL				0xaf
+
 /** Reno command to disable LED */
 #define LEDC_DISABLE				0x08
 
@@ -109,29 +109,38 @@
 
 /** Monochrome LED on period file */
 #define MCE_LED_ON_PERIOD_PATH			MCE_MONO_LED_SYS_PATH "/delay_on"
+
 /** Monochrome LED off period file */
 #define MCE_LED_OFF_PERIOD_PATH			MCE_MONO_LED_SYS_PATH "/delay_off"
+
 /** Monochrome LED trigger file */
 #define MCE_LED_TRIGGER_PATH			MCE_MONO_LED_SYS_PATH "/trigger"
 
 /* Trigger type */
+
 /** Timer based trigger */
 #define MCE_LED_TRIGGER_TIMER			"timer"
+
 /** No trigger */
 #define MCE_LED_TRIGGER_NONE			"none"
 
 /* LED modes */
+
 /** LED disabled */
 #define MCE_LED_DISABLED_MODE			"disabled"
+
 /** LED direct control mode */
 #define MCE_LED_DIRECT_MODE			"direct"
+
 /** LED load mode */
 #define MCE_LED_LOAD_MODE			"load"
+
 /** LED run mode */
 #define MCE_LED_RUN_MODE			"run"
 
 /** Suffix used for LED current */
 #define MCE_LED_CURRENT_SUFFIX			"/led_current"
+
 /** Suffix used for LED brightness */
 #define MCE_LED_BRIGHTNESS_SUFFIX		"/brightness"
 
@@ -155,27 +164,37 @@
 
 /** Name of LED channel 0 */
 #define MCE_LED_CHANNEL0			":channel0"
+
 /** Name of LED channel 1 */
 #define MCE_LED_CHANNEL1			":channel1"
+
 /** Name of LED channel 2 */
 #define MCE_LED_CHANNEL2			":channel2"
+
 /** Name of LED channel 3 */
 #define MCE_LED_CHANNEL3			":channel3"
+
 /** Name of LED channel 4 */
 #define MCE_LED_CHANNEL4			":channel4"
+
 /** Name of LED channel 5 */
 #define MCE_LED_CHANNEL5			":channel5"
+
 /** Name of LED channel 6 */
 #define MCE_LED_CHANNEL6			":channel6"
+
 /** Name of LED channel 7 */
 #define MCE_LED_CHANNEL7			":channel7"
+
 /** Name of LED channel 8 */
 #define MCE_LED_CHANNEL8			":channel8"
 
 /** Name of Engine 1 */
 #define MCE_LED_ENGINE1				"/engine1_"
+
 /** Name of Engine 2 */
 #define MCE_LED_ENGINE2				"/engine2_"
+
 /** Name of Engine 3 */
 #define MCE_LED_ENGINE3				"/engine3_"
 
@@ -184,8 +203,10 @@
 
 /** LED mode suffix */
 #define MCE_LED_MODE_SUFFIX			"mode"
+
 /** LED load suffix */
 #define MCE_LED_LOAD_SUFFIX			"load"
+
 /** LED leds suffix */
 #define MCE_LED_LEDS_SUFFIX			"leds"
 
@@ -195,48 +216,56 @@
  * RX-51 keyboard backlight 6
  */
 #define MCE_LYSTI_LED1_MASK			(1 << 0)
+
 /**
  * Lysti LED mask for LED 2 (channel 7);
  * RM-680/RM-690 Monochrome LED behind model name
  * RX-51 keyboard backlight 5
  */
 #define MCE_LYSTI_LED2_MASK			(1 << 1)
+
 /**
  * Lysti LED mask for LED 3 (channel 6);
  * RM-680/RM-690 Monochrome LED behind model name
  * RX-51 red component of RGB LED
  */
 #define MCE_LYSTI_LED3_MASK			(1 << 2)
+
 /**
  * Lysti LED mask for LED 4 (channel 5);
  * RM-680/RM-690 monochrome keyboard backlight 6
  * RX-51 green component of RGB LED
  */
 #define MCE_LYSTI_LED4_MASK			(1 << 3)
+
 /**
  * Lysti LED mask for LED 5 (channel 4);
  * RM-680/RM-690 monochrome keyboard backlight 5
  * RX-51 blue component of RGB LED
  */
 #define MCE_LYSTI_LED5_MASK			(1 << 4)
+
 /**
  * Lysti LED mask for LED 6 (channel 3);
  * RM-680/RM-690 monochrome keyboard backlight 4
  * RX-51 monochrome keyboard backlight 4
  */
 #define MCE_LYSTI_LED6_MASK			(1 << 5)
+
 /**
  * Lysti LED mask for LED 7 (channel 2);
  * RM-680/RM-690 monochrome keyboard backlight 3
  * RX-51 monochrome keyboard backlight 3
  */
 #define MCE_LYSTI_LED7_MASK			(1 << 6)
+
 /**
  * Lysti LED mask for LED 8 (channel 1);
  * RM-680/RM-690 monochrome keyboard backlight 2
  * RX-51 monochrome keyboard backlight 2
  */
 #define MCE_LYSTI_LED8_MASK			(1 << 7)
+
 /**
  * Lysti LED mask for LED 9 (channel 0);
  * RM-680/RM-690 monochrome keyboard backlight 1

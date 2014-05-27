@@ -18,55 +18,23 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <glib.h>
-#include <gmodule.h>
+
+#include "radiostates.h"
+
+#include "../mce.h"
+#include "../mce-log.h"
+#include "../mce-io.h"
+#include "../mce-conf.h"
+#include "../mce-dbus.h"
 
 #include <unistd.h>
-#include <errno.h>		/* errno */
-#include <string.h>		/* strlen(), strncmp() */
+#include <string.h>
+#include <errno.h>
 
-#include <mce/mode-names.h>	/* MCE_RADIO_STATE_MASTER */
+#include <mce/dbus-names.h>
+#include <mce/mode-names.h>
 
-#include "mce.h"
-#include "radiostates.h"	/* MCE_RADIO_STATES_PATH */
-
-#include "mce-io.h"		/* mce_read_number_string_from_file(),
-				 * mce_write_number_string_to_file_atomic(),
-				 * mce_are_settings_locked(),
-				 * mce_unlock_settings()
-				 */
-#include "mce-log.h"		/* mce_log(), LL_* */
-#include "mce-conf.h"		/* mce_conf_read_conf_file(),
-				 * mce_conf_free_conf_file(),
-				 * mce_conf_get_bool()
-				 */
-#include "mce-dbus.h"		/* Direct:
-				 * ---
-				 * mce_dbus_handler_add(),
-				 * dbus_send_message(),
-				 * dbus_new_method_reply(),
-				 * dbus_new_signal(),
-				 * dbus_message_append_args(),
-				 * dbus_message_unref(),
-				 * DBusMessage,
-				 * DBUS_MESSAGE_TYPE_METHOD_CALL,
-				 * DBUS_TYPE_UINT64,
-				 * DBUS_TYPE_INVALID,
-				 * dbus_uint64_t
-				 *
-				 * Indirect:
-				 * ---
-				 * MCE_SIGNAL_IF,
-				 * MCE_SIGNAL_PATH,
-				 * MCE_REQUEST_IF,
-				 * MCE_RADIO_STATES_GET,
-				 * MCE_RADIO_STATES_CHANGE_REQ,
-				 * MCE_RADIO_STATES_SIG
-				 */
-#include "datapipe.h"		/* execute_datapipe(),
-				 * append_output_trigger_to_datapipe(),
-				 * remove_output_trigger_from_datapipe()
-				 */
+#include <gmodule.h>
 
 /* Forward declarations needed to keep connman related static
  * functions cleanly separated from the legacy mce code */

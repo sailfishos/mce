@@ -21,10 +21,6 @@
 #ifndef _MCE_GCONF_H_
 #define _MCE_GCONF_H_
 
-#include <glib.h>			/* gboolean, gpointer,
-					 * gchar, guint, gint
-					 */
-
 #include "builtin-gconf.h"
 
 gboolean mce_gconf_set_int(const gchar *const key, const gint value);

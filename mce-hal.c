@@ -18,31 +18,16 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <glib.h>
-
-#include <string.h>			/* strstr() */
-#include <stdlib.h>			/* free() */
-#include <unistd.h>
-#include <fcntl.h>
 
 #include "mce-hal.h"
 
-#include "mce-lib.h"			/* strmemcmp() */
-#include "mce-log.h"			/* mce_log(), LL_* */
-#include "mce-dbus.h"			/* dbus_send(),
-					 * dbus_message_iter_init(),
-					 * dbus_message_iter_get_arg_type(),
-					 * dbus_message_iter_get_basic(),
-					 * dbus_message_iter_next(),
-					 * dbus_error_init(),
-					 * dbus_error_free(),
-					 * DBUS_TYPE_BYTE,
-					 * DBUS_TYPE_ARRAY,
-					 * DBUS_TYPE_STRING,
-					 * DBUS_TYPE_INVALID,
-					 * DBusMessage, DBusError,
-					 * dbus_bool_t,
-					 */
+#include "mce-log.h"
+#include "mce-lib.h"
+
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <fcntl.h>
 
 #ifndef SYSINFOD_SERVICE
 /** SYSINFOD D-Bus service */

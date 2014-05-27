@@ -19,45 +19,17 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <glib.h>
-#include <gmodule.h>
 
-#include "mce.h"
 #include "powersavemode.h"
 
-#include "mce-log.h"			/* mce_log(), LL_* */
-#include "mce-dbus.h"			/* Direct:
-					 * ---
-					 * mce_dbus_handler_add(),
-					 * dbus_send_message(),
-					 * dbus_new_method_reply(),
-					 * dbus_new_signal(),
-					 * dbus_message_append_args(),
-					 * dbus_message_unref(),
-					 * DBusMessage,
-					 * DBUS_MESSAGE_TYPE_METHOD_CALL,
-					 * DBUS_TYPE_BOOLEAN,
-					 * DBUS_TYPE_INVALID,
-					 * dbus_bool_t
-					 *
-					 * Indirect:
-					 * ---
-					 * MCE_SIGNAL_IF,
-					 * MCE_SIGNAL_PATH,
-					 * MCE_REQUEST_IF,
-					 * MCE_PSM_STATE_GET,
-					 * MCE_PSM_STATE_SIG
-					 */
-#include "mce-gconf.h"			/* mce_gconf_get_bool(),
-					 * mce_gconf_notifier_add(),
-					 * gconf_entry_get_key(),
-					 * gconf_value_get_bool(),
-					 * GConfClient, GConfEntry, GConfValue
-					 */
-#include "datapipe.h"			/* execute_datapipe(),
-					 * append_output_trigger_to_datapipe(),
-					 * remove_output_trigger_from_datapipe()
-					 */
+#include "../mce.h"
+#include "../mce-log.h"
+#include "../mce-gconf.h"
+#include "../mce-dbus.h"
+
+#include <mce/dbus-names.h>
+
+#include <gmodule.h>
 
 /** Module name */
 #define MODULE_NAME		"powersavemode"

@@ -19,83 +19,38 @@
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <sys/time.h>
-#include <time.h>
-
-#include <glib.h>
-#include <gmodule.h>
-
-#include <errno.h>                      /* errno, EINVAL, ERANGE */
-#include <fcntl.h>			/* open(), O_RDWR, O_CREAT */
-#include <stdlib.h>			/* strtoul() */
-#include <string.h>			/* strcmp(), strcpy(), strdup() */
-#include <unistd.h>			/* close(), W_OK */
-#include <sys/ioctl.h>			/* ioctl() */
-#include <linux/i2c-dev.h>		/* I2C_SLAVE_FORCE,
-					 * I2C_SMBUS
-					 */
-#include <linux/i2c.h>			/* i2c_smbus_data,
-					 * I2C_SMBUS_READ,
-					 * I2C_SMBUS_WRITE,
-					 * I2C_SMBUS_BYTE_DATA
-					 */
-
-#include "mce.h"
 #include "led.h"
 
-#include "mce-io.h"			/* mce_close_file(),
-					 * mce_write_string_to_file(),
-					 * mce_write_number_string_to_file()
-					 */
-#include "mce-hal.h"			/* get_product_id(),
-					 * product_id_t
-					 */
-#include "mce-lib.h"			/* bin_to_string() */
-#include "mce-log.h"			/* mce_log(), LL_* */
-#include "mce-conf.h"			/* mce_conf_get_string_list() */
-#include "mce-dbus.h"			/* Direct:
-					 * ---
-					 * mce_dbus_handler_add(),
-					 * dbus_send_message(),
-					 * dbus_new_method_reply(),
-					 * dbus_message_get_no_reply(),
-					 * dbus_message_get_args(),
-					 * dbus_error_init(),
-					 * dbus_error_free(),
-					 * DBUS_MESSAGE_TYPE_METHOD_CALL,
-					 * DBUS_TYPE_STRING,
-					 * DBUS_TYPE_INVALID,
-					 * DBusMessage, DBusError,
-					 * dbus_bool_t
-					 *
-					 * Indirect:
-					 * ---
-					 * MCE_REQUEST_IF,
-					 * MCE_ACTIVATE_LED_PATTERN,
-					 * MCE_DEACTIVATE_LED_PATTERN,
-					 * MCE_ENABLE_LED,
-					 * MCE_DISABLE_LED
-					 */
-#include "mce-gconf.h"			/* mce_gconf_notifier_add(),
-					 * mce_gconf_notifier_remove(),
-					 * mce_gconf_get_bool(),
-					 * gconf_entry_get_key(),
-					 * gconf_entry_get_value(),
-					 * gconf_value_get_bool(),
-					 * gconf_concat_dir_and_key(),
-					 * GConfClient, GConfEntry, GConfValue
-					 */
-#include "datapipe.h"			/* execute_datapipe(),
-					 * datapipe_get_gint(),
-					 * append_output_trigger_to_datapipe(),
-					 * remove_output_trigger_from_datapipe()
-					 */
+#include "../mce.h"
+#include "../mce-log.h"
+#include "../mce-io.h"
+#include "../mce-lib.h"
+#include "../mce-hal.h"
+#include "../mce-conf.h"
+#include "../mce-gconf.h"
+#include "../mce-dbus.h"
 
 #ifdef ENABLE_HYBRIS
 # include "../mce-hybris.h"
 #endif
 
 #include "../libwakelock.h"
+
+#include <linux/i2c.h>
+#include <linux/i2c-dev.h>
+
+#include <sys/time.h>
+#include <sys/ioctl.h>
+
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <errno.h>
+#include <fcntl.h>
+
+#include <mce/dbus-names.h>
+
+#include <gmodule.h>
 
 #if 0 // DEBUG: make all logging from this module "critical"
 # undef mce_log

@@ -21,13 +21,11 @@
 #ifndef _MCE_DBUS_H_
 #define _MCE_DBUS_H_
 
-#include <stdbool.h>
-#include <glib.h>
-#include <dbus/dbus.h>
-
-#include <mce/dbus-names.h>
-
 #include "builtin-gconf.h"
+
+#include <stdbool.h>
+
+#include <dbus/dbus.h>
 
 DBusConnection *dbus_connection_get(void);
 

@@ -19,19 +19,19 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <glib.h>
+
+#include "../mce.h"
+#include "../mce-log.h"
+#include "../mce-lib.h"
+#include "../mce-dbus.h"
+
 #include <stdlib.h>
-#include <gmodule.h>
-#include <stdbool.h>
 #include <string.h>
-#include "mce.h"
-#include "callstate.h"
+
+#include <mce/dbus-names.h>
 #include <mce/mode-names.h>
-#include "mce.h"
-#include "mce-lib.h"
-#include "mce-log.h"
-#include "mce-dbus.h"
-#include "datapipe.h"
+
+#include <gmodule.h>
 
 #if 0 // DEBUG: make all logging from this module "critical"
 # undef mce_log

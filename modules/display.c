@@ -19,37 +19,20 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <glib.h>
-#include <gmodule.h>
-#include <glib/gstdio.h>
 
-#include <sys/time.h>
-#include <pthread.h>
-#include <stdlib.h>
-#include <glob.h>
-#include <poll.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <stdio.h>
-#include <string.h>
-#include <unistd.h>
-#include <linux/fb.h>
-
-#include <sys/ioctl.h>
-#include <sys/ptrace.h>
-
-#include <mce/mode-names.h>
-
-#include "mce.h"
 #include "display.h"
-#include "mce-io.h"
-#include "mce-lib.h"
-#include "mce-log.h"
-#include "mce-conf.h"
-#include "mce-dbus.h"
-#include "mce-gconf.h"
-#include "mce-sensorfw.h"
-#include "datapipe.h"
+
+#include "../mce.h"
+#include "../mce-log.h"
+#include "../mce-io.h"
+#include "../mce-lib.h"
+#include "../mce-conf.h"
+#include "../mce-gconf.h"
+#include "../mce-dbus.h"
+#include "../mce-sensorfw.h"
+#ifdef ENABLE_HYBRIS
+# include "../mce-hybris.h"
+#endif
 
 #include "../filewatcher.h"
 
@@ -57,9 +40,24 @@
 # include "../libwakelock.h"
 #endif
 
-#ifdef ENABLE_HYBRIS
-# include "../mce-hybris.h"
-#endif
+#include <linux/fb.h>
+
+#include <sys/ptrace.h>
+#include <sys/ioctl.h>
+
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <glob.h>
+#include <pthread.h>
+
+#include <mce/dbus-names.h>
+#include <mce/mode-names.h>
+
+#include <glib/gstdio.h>
+#include <gmodule.h>
 
 #if 0 // DEBUG: make all logging from this module "critical"
 # undef mce_log

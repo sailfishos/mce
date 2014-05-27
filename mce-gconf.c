@@ -18,17 +18,10 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <glib.h>
-#include <glib-object.h>		/* g_object_unref() */
 
-#include "builtin-gconf.h"
-
-#include <stdlib.h>			/* getenv() */
-
-#include "mce.h"
 #include "mce-gconf.h"
 
-#include "mce-log.h"			/* mce_log(), LL_* */
+#include "mce-log.h"
 
 /** Pointer to the GConf client */
 static GConfClient *gconf_client = NULL;

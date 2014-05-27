@@ -21,28 +21,14 @@
 #ifndef _MCE_H_
 #define _MCE_H_
 
-#include <glib.h>
-#include <locale.h>
-
 #include "datapipe.h"
 
-#ifdef ENABLE_NLS
-#include <libintl.h>
-/** _() to use when NLS is enabled */
-#define _(__str)		gettext(__str)
-#else
-#undef bindtextdomain
-/** Dummy bindtextdomain to use when NLS is disabled */
-#define bindtextdomain(__domain, __directory)
-#undef textdomain
-/** Dummy textdomain to use when NLS is disabled */
-#define textdomain(__domain)
-/** Dummy _() to use when NLS is disabled */
-#define _(__str)		__str
-#endif /* ENABLE_NLS */
+/** Dummy _() */
+#define _(str_)		str_
 
 /** Indicate enabled (sub)mode */
 #define DISABLED_STRING			"yes"
+
 /** Indicate disabled (sub)mode */
 #define ENABLED_STRING			"no"
 
@@ -50,52 +36,70 @@
 
 /** LED pattern used when powering on the device */
 #define MCE_LED_PATTERN_POWER_ON		"PatternPowerOn"
+
 /** LED pattern used when powering off the device */
 #define MCE_LED_PATTERN_POWER_OFF		"PatternPowerOff"
+
 /** LED pattern used when camera is active */
 #define MCE_LED_PATTERN_CAMERA			"PatternWebcamActive"
+
 /** LED pattern used to indicate that the device is on when idle */
 #define MCE_LED_PATTERN_DEVICE_ON		"PatternDeviceOn"
+
 /** LED pattern used when the device is in soft poweroff mode */
 #define MCE_LED_PATTERN_DEVICE_SOFT_OFF		"PatternDeviceSoftOff"
+
 /** LED pattern used when charging the battery */
 #define MCE_LED_PATTERN_BATTERY_CHARGING	"PatternBatteryCharging"
+
 /** LED pattern used when the battery is full */
 #define MCE_LED_PATTERN_BATTERY_FULL		"PatternBatteryFull"
+
 /** LED pattern used when the battery is low */
 #define MCE_LED_PATTERN_BATTERY_LOW		"PatternBatteryLow"
+
 /** LED pattern used for communication events */
 #define MCE_LED_PATTERN_COMMUNICATION_EVENT	"PatternCommunication"
+
 /** LED pattern used for communication events when battery is full */
 #define MCE_LED_PATTERN_COMMUNICATION_EVENT_BATTERY_FULL	"PatternCommunicationAndBatteryFull"
 
 /** Persistent lock file for backups */
 #define MCE_SETTINGS_LOCK_FILE_PATH		G_STRINGIFY(MCE_RUN_DIR) "/restored"
+
 /** Path for system MALF state indicator file */
 #define MALF_FILENAME				"/var/malf"
+
 /** Path for MCE MALF state indicator file */
 #define MCE_MALF_FILENAME			G_STRINGIFY(MCE_RUN_DIR) "/malf"
 
 /** Module information */
 typedef struct {
-/** Name of the module */
+	/** Name of the module */
 	const gchar *const name;
-/** Module dependencies */
+
+	/** Module dependencies */
 	const gchar *const *const depends;
-/** Module recommends */
+
+	/** Module recommends */
 	const gchar *const *const recommends;
-/** Module provides */
+
+	/** Module provides */
 	const gchar *const *const provides;
-/** Module provides */
+
+	/** Module provides */
 	const gchar *const *const enhances;
-/** Module conflicts */
+
+	/** Module conflicts */
 	const gchar *const *const conflicts;
-/** Module replaces */
+
+	/** Module replaces */
 	const gchar *const *const replaces;
-/** Module priority:
- * lower value == higher priority
- * This value is only used when modules conflict
- */
+
+	/** Module priority:
+	 * lower value == higher priority
+	 * This value is only used when modules conflict
+	 */
 	const gint priority;
 } module_info_struct;
 
@@ -119,26 +123,37 @@ typedef gint submode_t;
 
 /** Submode invalid */
 #define MCE_INVALID_SUBMODE		(1 << 31)
+
 /** No submodes enabled */
 #define MCE_NORMAL_SUBMODE		0
+
 /** Touchscreen/Keypad lock enabled */
 #define MCE_TKLOCK_SUBMODE		(1 << 0)
+
 /** Event eater enabled */
 #define MCE_EVEATER_SUBMODE		(1 << 1)
+
 /** Device emulates soft poweroff */
 #define MCE_SOFTOFF_SUBMODE		(1 << 2)
+
 /** Bootup in progress */
 #define MCE_BOOTUP_SUBMODE		(1 << 3)
+
 /** State transition in progress */
 #define MCE_TRANSITION_SUBMODE		(1 << 4)
+
 /** Touchscreen/Keypad autorelock active */
 #define MCE_AUTORELOCK_SUBMODE		(1 << 5)
+
 /** Visual Touchscreen/Keypad active */
 #define MCE_VISUAL_TKLOCK_SUBMODE	(1 << 6)
+
 /** Proximity is used to protect from accidental events */
 #define MCE_POCKET_SUBMODE		(1 << 7)
+
 /** Touchscreen/Keypad lock is enabled based on proximity state */
 #define MCE_PROXIMITY_TKLOCK_SUBMODE	(1 << 8)
+
 /** Device is in MALF state */
 #define MCE_MALF_SUBMODE		(1 << 9)
 
@@ -271,123 +286,58 @@ typedef enum {
 	UIEXC_NOTIF  = 1<<3,
 } uiexctype_t;
 
-/** LED brightness */
-datapipe_struct led_brightness_pipe;
-
-/** LPM brightness */
-datapipe_struct lpm_brightness_pipe;
-
-/** State of device; read only */
-datapipe_struct device_inactive_pipe;
-/** LED pattern to activate; read only */
-datapipe_struct led_pattern_activate_pipe;
-/** LED pattern to deactivate; read only */
-datapipe_struct led_pattern_deactivate_pipe;
-/** Non-synthetized user activity; read only */
-datapipe_struct user_activity_pipe;
-
-/** State of display; read only */
-datapipe_struct display_state_pipe;
-
-/** Desired state of display; write only */
-datapipe_struct display_state_req_pipe;
-
-/** Next (non-transitional) state of display; read only */
-datapipe_struct display_state_next_pipe;
-
-/** exceptional ui state; read write */
-datapipe_struct exception_state_pipe;
-/**
- * Display brightness;
- * bits 0-7 is brightness in percent (0-100)
- * upper 8 bits is high brightness boost (0-2)
- */
-datapipe_struct display_brightness_pipe;
-/** Key backlight */
-datapipe_struct key_backlight_pipe;
-/** A key has been pressed */
-datapipe_struct keypress_pipe;
-/** Touchscreen activity took place */
-datapipe_struct touchscreen_pipe;
-/** The lock-key has been pressed; read only */
-datapipe_struct lockkey_pipe;
-/** Keyboard open/closed; read only */
-datapipe_struct keyboard_slide_pipe;
-/** Lid cover open/closed; read only */
-datapipe_struct lid_cover_pipe;
-/** Lens cover open/closed; read only */
-datapipe_struct lens_cover_pipe;
-/** Proximity sensor; read only */
-datapipe_struct proximity_sensor_pipe;
-/** Ambient light sensor; read only */
-datapipe_struct ambient_light_sensor_pipe;
-/** Orientation sensor; read only */
-datapipe_struct orientation_sensor_pipe;
-/** The alarm UI state */
-datapipe_struct alarm_ui_state_pipe;
-/** The device state */
-datapipe_struct system_state_pipe;
-/** Enable/disable radios */
-datapipe_struct master_radio_pipe;
-/** The device submode */
-datapipe_struct submode_pipe;
-/** The call state */
-datapipe_struct call_state_pipe;
-/** The call type */
-datapipe_struct call_type_pipe;
-/** The touchscreen/keypad lock state */
-datapipe_struct tk_lock_pipe;
-/** Charger state; read only */
-datapipe_struct charger_state_pipe;
-/** Battery status; read only */
-datapipe_struct battery_status_pipe;
-/** Battery charge level; read only */
-datapipe_struct battery_level_pipe;
-/** Camera button; read only */
-datapipe_struct camera_button_pipe;
-/** The inactivity timeout; read only */
-datapipe_struct inactivity_timeout_pipe;
-/** Audio routing state; read only */
-datapipe_struct audio_route_pipe;
-/** USB cable has been connected/disconnected; read only */
-datapipe_struct usb_cable_pipe;
-/** A jack connector has been connected/disconnected; read only */
-datapipe_struct jack_sense_pipe;
-/** Power save mode is active; read only */
-datapipe_struct power_saving_mode_pipe;
-/** Thermal state; read only */
-datapipe_struct thermal_state_pipe;
-/** Heartbeat; read only */
-datapipe_struct heartbeat_pipe;
-
-/** lipstick availability; read only */
-datapipe_struct lipstick_available_pipe;
-
-/** PackageKit Locked status; read only */
-datapipe_struct packagekit_locked_pipe;
-
-/** Device Lock active status; read only */
-datapipe_struct device_lock_active_pipe;
-
-/** touchscreen input grab required; read/write */
-datapipe_struct touch_grab_wanted_pipe;
-
-/** touchscreen input grab active; read only */
-datapipe_struct touch_grab_active_pipe;
-
-/** keypad input grab required; read/write */
-datapipe_struct keypad_grab_wanted_pipe;
-
-/** keypad input grab active; read only */
-datapipe_struct keypad_grab_active_pipe;
-
-/** music playback active; read only */
-datapipe_struct music_playback_pipe;
-
-/** proximity blanking; read only */
-datapipe_struct proximity_blank_pipe;
+/* Available datapipes */
+extern datapipe_struct led_brightness_pipe;
+extern datapipe_struct lpm_brightness_pipe;
+extern datapipe_struct device_inactive_pipe;
+extern datapipe_struct led_pattern_activate_pipe;
+extern datapipe_struct led_pattern_deactivate_pipe;
+extern datapipe_struct user_activity_pipe;
+extern datapipe_struct display_state_pipe;
+extern datapipe_struct display_state_req_pipe;
+extern datapipe_struct display_state_next_pipe;
+extern datapipe_struct exception_state_pipe;
+extern datapipe_struct display_brightness_pipe;
+extern datapipe_struct key_backlight_pipe;
+extern datapipe_struct keypress_pipe;
+extern datapipe_struct touchscreen_pipe;
+extern datapipe_struct lockkey_pipe;
+extern datapipe_struct keyboard_slide_pipe;
+extern datapipe_struct lid_cover_pipe;
+extern datapipe_struct lens_cover_pipe;
+extern datapipe_struct proximity_sensor_pipe;
+extern datapipe_struct ambient_light_sensor_pipe;
+extern datapipe_struct orientation_sensor_pipe;
+extern datapipe_struct alarm_ui_state_pipe;
+extern datapipe_struct system_state_pipe;
+extern datapipe_struct master_radio_pipe;
+extern datapipe_struct submode_pipe;
+extern datapipe_struct call_state_pipe;
+extern datapipe_struct call_type_pipe;
+extern datapipe_struct tk_lock_pipe;
+extern datapipe_struct charger_state_pipe;
+extern datapipe_struct battery_status_pipe;
+extern datapipe_struct battery_level_pipe;
+extern datapipe_struct camera_button_pipe;
+extern datapipe_struct inactivity_timeout_pipe;
+extern datapipe_struct audio_route_pipe;
+extern datapipe_struct usb_cable_pipe;
+extern datapipe_struct jack_sense_pipe;
+extern datapipe_struct power_saving_mode_pipe;
+extern datapipe_struct thermal_state_pipe;
+extern datapipe_struct heartbeat_pipe;
+extern datapipe_struct lipstick_available_pipe;
+extern datapipe_struct packagekit_locked_pipe;
+extern datapipe_struct device_lock_active_pipe;
+extern datapipe_struct touch_grab_wanted_pipe;
+extern datapipe_struct touch_grab_active_pipe;
+extern datapipe_struct keypad_grab_wanted_pipe;
+extern datapipe_struct keypad_grab_active_pipe;
+extern datapipe_struct music_playback_pipe;
+extern datapipe_struct proximity_blank_pipe;
 
 /* XXX: use HAL */
+
 /** Does the device have a flicker key? */
 extern gboolean has_flicker_key;
 

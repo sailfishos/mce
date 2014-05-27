@@ -19,13 +19,12 @@
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "../mce-dbus.h"
 #include "../mce-log.h"
+#include "../mce-dbus.h"
 #include "../libwakelock.h"
 
 #include <stdlib.h>
 
-#include <glib.h>
 #include <gmodule.h>
 
 /* ------------------------------------------------------------------------- *

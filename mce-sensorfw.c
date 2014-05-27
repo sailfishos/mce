@@ -1,4 +1,5 @@
 #include "mce-sensorfw.h"
+
 #include "mce.h"
 #include "mce-log.h"
 #include "mce-dbus.h"
@@ -6,22 +7,14 @@
 
 #include <linux/input.h>
 
-#include <sys/ioctl.h>
-
-#include <stdio.h>
-#include <stdint.h>
-#include <stdbool.h>
-#include <stdlib.h>
-#include <string.h>
-
-#include <errno.h>
-#include <unistd.h>
-
-#include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 
-#include <glib.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <unistd.h>
+#include <errno.h>
 
 /** org.freedesktop.DBus.NameOwnerChanged D-Bus signal */
 #define DBUS_NAME_OWNER_CHANGED_SIG "NameOwnerChanged"

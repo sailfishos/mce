@@ -18,65 +18,25 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <glib.h>
 
-#include <stdlib.h>			/* exit(), EXIT_FAILURE */
-#include <string.h>			/* strcmp() */
-#include <linux/input.h>		/* struct input_event */
-
-#include "mce.h"			/* mce_get_submode_int32(),
-					 * mce_add_submode_int32(),
-					 * mce_rem_submode_int32(),
-					 * submode_pipe,
-					 * system_state_pipe,
-					 * tk_lock_pipe,
-					 * keypress_pipe,
-					 * system_state_t,
-					 * submode_t
-					 */
 #include "powerkey.h"
 
-#include "mce-log.h"			/* mce_log(), LL_* */
+#include "mce.h"
+#include "mce-log.h"
+#include "mce-conf.h"
 #include "mce-gconf.h"
-#include "mce-conf.h"			/* mce_conf_get_int(),
-					 * mce_conf_get_string()
-					 */
-#include "mce-dbus.h"			/* mce_dbus_handler_add(),
-					 * dbus_send(),
-					 * dbus_send_message(),
-					 * dbus_new_method_reply(),
-					 * dbus_message_get_no_reply(),
-					 * dbus_message_iter_init(),
-					 * dbus_message_iter_get_arg_type(),
-					 * dbus_message_iter_get_basic(),
-					 * dbus_message_iter_next(),
-					 * dbus_error_init(),
-					 * dbus_error_free(),
-					 * DBUS_MESSAGE_TYPE_METHOD_CALL,
-					 * DBUS_TYPE_BOOLEAN,
-					 * DBUS_TYPE_UINT32,
-					 * DBUS_TYPE_INVALID,
-					 * DBusMessage, DBusMessageIter,
-					 * DBusError,
-					 * dbus_bool_t,
-					 * dbus_uint32_t
-					 */
-#include "mce-dsme.h"			/* request_normal_shutdown(),
-					 * request_soft_poweron(),
-					 * request_soft_poweroff(),
-					 * request_powerup(),
-					 * request_reboot()
-					 */
-#include "datapipe.h"			/* execute_datapipe(),
-					 * execute_datapipipe_output_triggers(),
-					 * datapipe_get_gint(),
-					 * append_input_trigger_to_datapipe(),
-					 * remove_input_trigger_from_datapipe()
-					 */
+#include "mce-dbus.h"
+#include "mce-dsme.h"
 
 #ifdef ENABLE_WAKELOCKS
 # include "libwakelock.h"
 #endif
+
+#include <linux/input.h>
+
+#include <string.h>
+
+#include <mce/dbus-names.h>
 
 #if 0 // DEBUG: make all logging from this module "critical"
 # undef mce_log

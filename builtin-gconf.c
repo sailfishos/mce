@@ -18,16 +18,14 @@
  * - value types can't be changed
  * ------------------------------------------------------------------------- */
 
-#include <glib.h>
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <glob.h>
-#include <errno.h>
-
 #include "mce-log.h"
 #include "mce-io.h"
+#include "mce-dbus.h"
+
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <glob.h>
 
 /* ========================================================================= *
  *
@@ -55,9 +53,6 @@
 
 /** Tag unused parameters as such to avoid compilation warnings */
 #define unused(variable) (void)&variable
-
-#include "builtin-gconf.h"
-#include "mce-dbus.h"
 
 /* ========================================================================= *
  *

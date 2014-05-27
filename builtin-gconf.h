@@ -7,6 +7,8 @@
 #ifndef BUILTIN_GCONF_H_
 # define BUILTIN_GCONF_H_
 
+#include <glib.h>
+
 # ifdef __cplusplus
 extern "C" {
 # elif 0
