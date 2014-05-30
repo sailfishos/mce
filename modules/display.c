@@ -5204,6 +5204,8 @@ static void mdy_stm_step(void)
         mce_sensorfw_resume();
         if( mdy_stm_display_state_needs_power(mdy_stm_next) )
             mdy_stm_trans(STM_INIT_RESUME);
+        else if( !mdy_stm_is_early_suspend_allowed() )
+            mdy_stm_trans(STM_INIT_RESUME);
         else
             mdy_stm_trans(STM_ENTER_POWER_OFF);
         break;
