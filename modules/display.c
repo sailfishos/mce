@@ -245,6 +245,7 @@ enum
  * DATAPIPE_TRACKING
  * ------------------------------------------------------------------------- */
 
+static void                mdy_datapipe_packagekit_locked_cb(gconstpointer data);;
 static void                mdy_datapipe_system_state_cb(gconstpointer data);
 static void                mdy_datapipe_submode_cb(gconstpointer data);
 static gpointer            mdy_datapipe_display_state_filter_cb(gpointer data);
@@ -848,7 +849,7 @@ static gint mdy_brightness_decrease_constant_time =
  * DATAPIPE_TRACKING
  * ========================================================================= */
 
-/** PackageKit Locked property is set to true */
+/** PackageKit Locked property is set to true during sw updates */
 static bool packagekit_locked = false;
 
 /**
@@ -856,7 +857,7 @@ static bool packagekit_locked = false;
  *
  * @param data The locked state stored in a pointer
  */
-static void mdy_packagekit_locked_cb(gconstpointer data)
+static void mdy_datapipe_packagekit_locked_cb(gconstpointer data)
 {
     bool prev = packagekit_locked;
     packagekit_locked = GPOINTER_TO_INT(data);
@@ -1433,7 +1434,7 @@ static void mdy_datapipe_init(void)
     append_output_trigger_to_datapipe(&audio_route_pipe,
                                       mdy_datapipe_audio_route_cb);
     append_output_trigger_to_datapipe(&packagekit_locked_pipe,
-                                      mdy_packagekit_locked_cb);
+                                      mdy_datapipe_packagekit_locked_cb);
 }
 
 /** Remove triggers/filters from datapipes */
@@ -1442,7 +1443,7 @@ static void mdy_datapipe_quit(void)
     // triggers
 
     remove_output_trigger_from_datapipe(&packagekit_locked_pipe,
-                                        mdy_packagekit_locked_cb);
+                                        mdy_datapipe_packagekit_locked_cb);
     remove_output_trigger_from_datapipe(&alarm_ui_state_pipe,
                                         mdy_datapipe_alarm_ui_state_cb);
     remove_output_trigger_from_datapipe(&proximity_sensor_pipe,
