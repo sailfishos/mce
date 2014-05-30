@@ -434,6 +434,7 @@ static void                mdy_autosuspend_gconf_cb(GConfClient *const client, c
 
 static void                mdy_orientation_changed_cb(int state);
 static void                mdy_orientation_generate_activity(void);
+static void                mdy_orientation_sensor_rethink(void);
 
 /* ------------------------------------------------------------------------- *
  * DISPLAY_STATE
@@ -560,7 +561,11 @@ static gboolean            mdy_dbus_handle_blanking_pause_cancel_req(DBusMessage
 static gboolean            mdy_dbus_handle_set_demo_mode_req(DBusMessage *const msg);
 
 static gboolean            mdy_dbus_handle_desktop_started_sig(DBusMessage *const msg);
+
+static void                mdy_dbus_handle_shutdown_started(void);
 static gboolean            mdy_dbus_handle_shutdown_started_sig(DBusMessage *const msg);
+static gboolean            mdy_dbus_handle_thermal_shutdown_started_sig(DBusMessage *const msg);
+static gboolean            mdy_dbus_handle_battery_empty_shutdown_started_sig(DBusMessage *const msg);
 
 static void                mdy_dbus_init(void);
 static void                mdy_dbus_quit(void);
