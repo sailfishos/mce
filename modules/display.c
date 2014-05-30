@@ -241,10 +241,14 @@ enum
  * PROTOTYPES
  * ========================================================================= */
 
+// MISC_UTILS
+static inline bool         mdy_str_eq_p(const char *s1, const char *s2);
+
 /* ------------------------------------------------------------------------- *
  * DATAPIPE_TRACKING
  * ------------------------------------------------------------------------- */
 
+static void                mdy_datapipe_packagekit_locked_cb(gconstpointer data);;
 static void                mdy_datapipe_system_state_cb(gconstpointer data);
 static void                mdy_datapipe_submode_cb(gconstpointer data);
 static gpointer            mdy_datapipe_display_state_filter_cb(gpointer data);
@@ -395,28 +399,40 @@ static void                mdy_waitfb_thread_stop(waitfb_t *self);
 #endif
 
 /* ------------------------------------------------------------------------- *
- * LIPSTICK_KILLER
+ * COMPOSITOR_IPC
  * ------------------------------------------------------------------------- */
 
-static void                mdy_lipstick_killer_enable_led(bool enable);
-static gboolean            mdy_lipstick_killer_verify_cb(gpointer aptr);
-static gboolean            mdy_lipstick_killer_kill_cb(gpointer aptr);
-static gboolean            mdy_lipstick_killer_core_cb(gpointer aptr);
-static void                mdy_lipstick_killer_schedule(void);
-static void                mdy_lipstick_killer_cancel(void);
+static void                mdy_compositor_set_killer_led(bool enable);
+
+static void                mdy_compositor_set_panic_led(renderer_state_t req);
+static gboolean            mdy_compositor_panic_led_cb(gpointer aptr);
+static void                mdy_compositor_cancel_panic_led(void);
+static void                mdy_compositor_schedule_panic_led(renderer_state_t req);
+
+static gboolean            mdy_compositor_kill_verify_cb(gpointer aptr);
+static gboolean            mdy_compositor_kill_kill_cb(gpointer aptr);
+static gboolean            mdy_compositor_kill_core_cb(gpointer aptr);
+
+static void                mdy_compositor_schedule_killer(void);
+static void                mdy_compositor_cancel_killer(void);
+
+static void                mdy_compositor_name_owner_pid_cb(const char *name, int pid);
+
+static bool                mdy_compositor_is_available(void);
+static bool                mdy_compositor_is_lipstick(void);
+
+static void                mdy_compositor_name_owner_set(const char *name, const char *curr);
+
+static void                mdy_compositor_state_req_cb(DBusPendingCall *pending, void *user_data);
+static void                mdy_compositor_cancel_state_req(void);
+static gboolean            mdy_compositor_start_state_req(renderer_state_t state);
 
 /* ------------------------------------------------------------------------- *
- * RENDERING_ENABLE_DISABLE
+ * LIPSTICK_IPC
  * ------------------------------------------------------------------------- */
 
-static void                mdy_renderer_led_set(renderer_state_t req);
-static gboolean            mdy_renderer_led_timer_cb(gpointer aptr);
-static void                mdy_renderer_led_cancel_timer(void);
-static void                mdy_renderer_led_start_timer(renderer_state_t req);
-
-static void                mdy_renderer_set_state_cb(DBusPendingCall *pending, void *user_data);
-static void                mdy_renderer_cancel_state_set(void);
-static gboolean            mdy_renderer_set_state_req(renderer_state_t state);
+static bool                mdy_lipstick_is_available(void);
+static void                mdy_lipstick_name_owner_set(const char *curr);
 
 /* ------------------------------------------------------------------------- *
  * AUTOSUSPEND_POLICY
@@ -433,6 +449,7 @@ static void                mdy_autosuspend_gconf_cb(GConfClient *const client, c
 
 static void                mdy_orientation_changed_cb(int state);
 static void                mdy_orientation_generate_activity(void);
+static void                mdy_orientation_sensor_rethink(void);
 
 /* ------------------------------------------------------------------------- *
  * DISPLAY_STATE
@@ -468,7 +485,8 @@ static const char         *mdy_stm_state_name(stm_state_t state);
 static const char         *mdy_display_state_name(display_state_t state);
 
 // react to systemui availability changes
-static void mdy_stm_lipstick_name_owner_changed(const char *name, const char *prev, const char *curr);
+static void                mdy_stm_compositor_name_owner_changed(const char *name, const char *prev, const char *curr);
+static void                mdy_stm_lipstick_name_owner_changed(const char *name, const char *prev, const char *curr);
 
 // whether to power on/off the frame buffer
 static bool                mdy_stm_display_state_needs_power(display_state_t state);
@@ -559,7 +577,11 @@ static gboolean            mdy_dbus_handle_blanking_pause_cancel_req(DBusMessage
 static gboolean            mdy_dbus_handle_set_demo_mode_req(DBusMessage *const msg);
 
 static gboolean            mdy_dbus_handle_desktop_started_sig(DBusMessage *const msg);
+
+static void                mdy_dbus_handle_shutdown_started(void);
 static gboolean            mdy_dbus_handle_shutdown_started_sig(DBusMessage *const msg);
+static gboolean            mdy_dbus_handle_thermal_shutdown_started_sig(DBusMessage *const msg);
+static gboolean            mdy_dbus_handle_battery_empty_shutdown_started_sig(DBusMessage *const msg);
 
 static void                mdy_dbus_init(void);
 static void                mdy_dbus_quit(void);
@@ -845,10 +867,22 @@ static gint mdy_brightness_decrease_constant_time =
                 DEFAULT_BRIGHTNESS_DECREASE_CONSTANT_TIME;
 
 /* ========================================================================= *
+ * MISC_UTILS
+ * ========================================================================= */
+
+/** Null tolerant string equality predicate
+ */
+static inline bool mdy_str_eq_p(const char *s1, const char *s2)
+{
+    // Note: mdy_str_eq_p(NULL, NULL) -> false on purpose
+    return (s1 && s2) ? !strcmp(s1, s2) : false;
+}
+
+/* ========================================================================= *
  * DATAPIPE_TRACKING
  * ========================================================================= */
 
-/** PackageKit Locked property is set to true */
+/** PackageKit Locked property is set to true during sw updates */
 static bool packagekit_locked = false;
 
 /**
@@ -856,7 +890,7 @@ static bool packagekit_locked = false;
  *
  * @param data The locked state stored in a pointer
  */
-static void mdy_packagekit_locked_cb(gconstpointer data)
+static void mdy_datapipe_packagekit_locked_cb(gconstpointer data)
 {
     bool prev = packagekit_locked;
     packagekit_locked = GPOINTER_TO_INT(data);
@@ -1433,7 +1467,7 @@ static void mdy_datapipe_init(void)
     append_output_trigger_to_datapipe(&audio_route_pipe,
                                       mdy_datapipe_audio_route_cb);
     append_output_trigger_to_datapipe(&packagekit_locked_pipe,
-                                      mdy_packagekit_locked_cb);
+                                      mdy_datapipe_packagekit_locked_cb);
 }
 
 /** Remove triggers/filters from datapipes */
@@ -1442,7 +1476,7 @@ static void mdy_datapipe_quit(void)
     // triggers
 
     remove_output_trigger_from_datapipe(&packagekit_locked_pipe,
-                                        mdy_packagekit_locked_cb);
+                                        mdy_datapipe_packagekit_locked_cb);
     remove_output_trigger_from_datapipe(&alarm_ui_state_pipe,
                                         mdy_datapipe_alarm_ui_state_cb);
     remove_output_trigger_from_datapipe(&proximity_sensor_pipe,
@@ -3583,35 +3617,64 @@ static waitfb_t mdy_waitfb_data =
 };
 
 /* ========================================================================= *
- * LIPSTICK_KILLER
+ * COMPOSITOR_IPC
  * ========================================================================= */
 
-/** Delay [s] from setUpdatesEnabled() to attempting lipstick core dump */
-static gint mdy_lipstick_killer_core_delay = 30;
+// TODO: These should come from lipstick devel package
 
-/** GConf callback ID for mdy_lipstick_killer_core_delay setting */
-static guint mdy_lipstick_killer_core_delay_gconf_cb_id = 0;
+/* Enabling/disabling display updates via compositor service */
+#define COMPOSITOR_SERVICE  "org.nemomobile.compositor"
+#define COMPOSITOR_PATH     "/"
+#define COMPOSITOR_IFACE    "org.nemomobile.compositor"
+#define COMPOSITOR_SET_UPDATES_ENABLED "setUpdatesEnabled"
 
-/* Delay [s] from attempting lipstick core dump to killing lipstick */
-static gint mdy_lipstick_killer_kill_delay = 25;
+/* Assumption for transitional period: lipstick can handle compositor ipc */
+#define LIPSTICK_SERVICE  "org.nemomobile.lipstick"
+#define LIPSTICK_PATH     "/"
+#define LIPSTICK_IFACE    "org.nemomobile.lipstick"
+#define LIPSTICK_SET_UPDATES_ENABLED "setUpdatesEnabled"
 
-/* Delay [s] for verifying whether lipstick did exit after kill attempt */
-static gint mdy_lipstick_killer_verify_delay = 5;
+/** Well known dbus name of the currently used compositor service
+ *
+ * Must be NULL, COMPOSITOR_SERVICE or LIPSTICK_SERVICE
+ */
+static gchar *mdy_compositor_dbus_name = 0;
 
-/** Owner of lipstick dbus name */
-static gchar *mdy_lipstick_killer_name = 0;
+/** Owner of compositor dbus name */
+static gchar *mdy_compositor_priv_name = 0;
 
-/** PID to kill when lipstick does not react to setUpdatesEnabled() ipc  */
-static int mdy_lipstick_killer_pid = -1;
+/** PID to kill when compositor does not react to setUpdatesEnabled() ipc  */
+static int mdy_compositor_pid = -1;
 
-/** Currently active lipstick killer timer id */
-static guint mdy_lipstick_killer_id  = 0;
+/** Delay [s] from setUpdatesEnabled() to attempting compositor core dump */
+static gint mdy_compositor_core_delay = 30;
 
-/** Enable/Disable lipstick killer led pattern
+/** GConf callback ID for mdy_compositor_core_delay setting */
+static guint mdy_compositor_core_delay_gconf_cb_id = 0;
+
+/* Delay [s] from attempting compositor core dump to killing compositor */
+static gint mdy_compositor_kill_delay = 25;
+
+/* Delay [s] for verifying whether compositor did exit after kill attempt */
+static gint mdy_compositor_verify_delay = 5;
+
+/** Currently active compositor killing timer id */
+static guint mdy_compositor_kill_id  = 0;
+
+/** Currently active setUpdatesEnabled() method call */
+static DBusPendingCall *mdy_compositor_state_req_pc = 0;
+
+/** Timeout to use for setUpdatesEnabled method calls [ms]; -1 = use default */
+static int mdy_compositor_ipc_timeout = 2 * 60 * 1000; /* 2 minutes */
+
+/** UI side rendering state; no suspend unless RENDERER_DISABLED */
+static renderer_state_t mdy_compositor_ui_state = RENDERER_UNKNOWN;
+
+/** Enable/Disable compositor killing led pattern
  *
  * @param enable true to start the led, false to stop it
  */
-static void mdy_lipstick_killer_enable_led(bool enable)
+static void mdy_compositor_set_killer_led(bool enable)
 {
     static bool enabled = false;
 
@@ -3628,229 +3691,9 @@ EXIT:
     return;
 }
 
-/** Timer for verifying that lipstick has exited after kill signal
- *
- * @param aptr Process identifier as void pointer
- *
- * @return FALSE to stop the timer from repeating
- */
-static gboolean mdy_lipstick_killer_verify_cb(gpointer aptr)
-{
-    int pid = GPOINTER_TO_INT(aptr);
-
-    if( !mdy_lipstick_killer_id )
-        goto EXIT;
-
-    mdy_lipstick_killer_id = 0;
-
-    if( kill(pid, 0) == -1 && errno == ESRCH )
-        goto EXIT;
-
-    mce_log(LL_ERR, "lipstick is not responsive and killing it failed");
-
-EXIT:
-    /* Stop the led pattern even if we can't kill lipstick process */
-    mdy_lipstick_killer_enable_led(false);
-
-    return FALSE;
-}
-
-/** Timer for killing lipstick in case core dump attempt did not make it exit
- *
- * @param aptr Process identifier as void pointer
- *
- * @return FALSE to stop the timer from repeating
- */
-static gboolean mdy_lipstick_killer_kill_cb(gpointer aptr)
-{
-    int pid = GPOINTER_TO_INT(aptr);
-
-    if( !mdy_lipstick_killer_id )
-        goto EXIT;
-
-    mdy_lipstick_killer_id = 0;
-
-    /* In the unlikely event that asynchronous pid query is not finished
-     * at the kill timeout, abandon the quest */
-    if( pid == -1 ) {
-        if( (pid = mdy_lipstick_killer_pid) == -1 ) {
-            mce_log(LL_WARN, "pid of lipstick not know yet; can't kill it");
-            goto EXIT;
-        }
-    }
-
-    /* If lipstick is already gone after core dump attempt, no further
-     * actions are needed */
-    if( kill(pid, 0) == -1 && errno == ESRCH )
-        goto EXIT;
-
-    mce_log(LL_WARN, "lipstick is not responsive; attempting to kill it");
-
-    /* Send SIGKILL to lipstick; if that succeeded, verify after brief
-     * delay if the process is really gone */
-
-    if( kill(pid, SIGKILL) == -1 ) {
-        mce_log(LL_ERR, "failed to SIGKILL lipstick: %m");
-    }
-    else {
-        mdy_lipstick_killer_id =
-            g_timeout_add(1000 * mdy_lipstick_killer_verify_delay,
-                          mdy_lipstick_killer_verify_cb,
-                          GINT_TO_POINTER(pid));
-    }
-
-EXIT:
-    /* Keep led pattern active if verify timer was scheduled */
-    mdy_lipstick_killer_enable_led(mdy_lipstick_killer_id != 0);
-
-    return FALSE;
-}
-
-/** Timer for dumping lipstick core if setUpdatesEnabled() goes without reply
- *
- * @param aptr Process identifier as void pointer
- *
- * @return FALSE to stop the timer from repeating
- */
-static gboolean mdy_lipstick_killer_core_cb(gpointer aptr)
-{
-    int pid = GPOINTER_TO_INT(aptr);
-
-    if( !mdy_lipstick_killer_id )
-        goto EXIT;
-
-    mdy_lipstick_killer_id = 0;
-
-    mce_log(LL_WARN, "lipstick is not responsive; attempting to core dump it");
-
-    /* In the unlikely event that asynchronous pid query is not finished
-     * at the core dump timeout, wait a while longer and just kill it */
-    if( pid == -1 ) {
-        if( (pid = mdy_lipstick_killer_pid) == -1 ) {
-            mce_log(LL_WARN, "pid of lipstick not know yet; skip core dump");
-            goto SKIP;
-        }
-    }
-
-    /* We do not want to kill lipstick if debugger is attached to it.
-     * Since there can be only one attacher at one time, we can use dummy
-     * attach + detach cycle to determine debugger presence. */
-    if( ptrace(PTRACE_ATTACH, pid, 0, 0) == -1 ) {
-        mce_log(LL_WARN, "could not attach to lipstick: %m");
-        mce_log(LL_WARN, "assuming debugger is attached; skip killing");
-        goto EXIT;
-    }
-
-    if( ptrace(PTRACE_DETACH, pid, 0,0) == -1 ) {
-        mce_log(LL_WARN, "could not detach from lipstick: %m");
-    }
-
-    /* We need to send some signal that a) leads to core dump b) is not
-     * handled "nicely" by lipstick. SIGXCPU fits that description and
-     * is also c) somewhat relevant "CPU time limit exceeded" d) easily
-     * distinguishable from other "normal" crash reports. */
-
-    if( kill(pid, SIGXCPU) == -1 ) {
-        mce_log(LL_ERR, "failed to SIGXCPU lipstick: %m");
-        goto EXIT;
-    }
-
-    /* Just in case lipstick process was stopped, make it continue - and
-     * hopefully dump a core. */
-
-    if( kill(pid, SIGCONT) == -1 )
-        mce_log(LL_ERR, "failed to SIGCONT lipstick: %m");
-
-SKIP:
-
-    /* Allow some time for core dump to take place, then just kill it */
-    mdy_lipstick_killer_id = g_timeout_add(1000 * mdy_lipstick_killer_kill_delay,
-                                           mdy_lipstick_killer_kill_cb,
-                                           GINT_TO_POINTER(pid));
-EXIT:
-
-    /* Start led pattern active if kill timer was scheduled */
-    mdy_lipstick_killer_enable_led(mdy_lipstick_killer_id != 0);
-
-    return FALSE;
-}
-
-/** Shedule lipstick core dump + kill
- *
- * This should be called when initiating asynchronous setUpdatesEnabled()
- * D-Bus method call.
- */
-static void mdy_lipstick_killer_schedule(void)
-{
-    /* The lipstick killer is not used unless we have "devel" flavor
-     * mce, or normal mce running in verbose mode */
-    if( !mce_log_p(LL_DEVEL) )
-        goto EXIT;
-
-    /* Setting the core dump delay to zero disables killing too. */
-    if( mdy_lipstick_killer_core_delay <= 0 )
-        goto EXIT;
-
-    /* Note: Initially we might not yet know the lipstick PID. But once
-     *       it gets known, the kill timer chain will lock in to it.
-     *       If lipstick name owner changes, the timer chain is cancelled
-     *       and pid reset again. This should make sure we can do the
-     *       killing even if the async pid query does not finish before
-     *       we need to make the 1st setUpdatesEnabled() ipc and we do not
-     *       kill freshly restarted lipstick because the previous instance
-     *       got stuck. */
-
-    if( !mdy_lipstick_killer_id ) {
-        mce_log(LL_DEBUG, "scheduled lipstick killer");
-        mdy_lipstick_killer_id =
-            g_timeout_add(1000 * mdy_lipstick_killer_core_delay,
-                          mdy_lipstick_killer_core_cb,
-                          GINT_TO_POINTER(mdy_lipstick_killer_pid));
-    }
-
-EXIT:
-    return;
-}
-
-/** Cancel any pending lipstick killing timers
- *
- * This should be called when non-error reply is received for
- * setUpdatesEnabled() D-Bus method call.
- */
-static void mdy_lipstick_killer_cancel(void)
-{
-    if( mdy_lipstick_killer_id ) {
-        g_source_remove(mdy_lipstick_killer_id),
-            mdy_lipstick_killer_id = 0;
-        mce_log(LL_DEBUG, "cancelled lipstick killer");
-    }
-
-    /* In any case stop the led pattern */
-    mdy_lipstick_killer_enable_led(false);
-}
-
-/* ========================================================================= *
- * RENDERING_ENABLE_DISABLE
- * ========================================================================= */
-
-// TODO: These should come from lipstick devel package
-#define RENDERER_SERVICE  "org.nemomobile.lipstick"
-#define RENDERER_PATH     "/"
-#define RENDERER_IFACE    "org.nemomobile.lipstick"
-#define RENDERER_SET_UPDATES_ENABLED "setUpdatesEnabled"
-
-/** Timeout to use for setUpdatesEnabled method calls [ms]; -1 = use default */
-static int mdy_renderer_ipc_timeout = 2 * 60 * 1000; /* 2 minutes */
-
-/** UI side rendering state; no suspend unless RENDERER_DISABLED */
-static renderer_state_t mdy_renderer_ui_state = RENDERER_UNKNOWN;
-
-/** Currently active setUpdatesEnabled() method call */
-static DBusPendingCall *mdy_renderer_set_state_pc = 0;
-
 /** Enabled/Disable setUpdatesEnabled failure led patterns
  */
-static void mdy_renderer_led_set(renderer_state_t req)
+static void mdy_compositor_set_panic_led(renderer_state_t req)
 {
     bool blanking = false;
     bool unblanking = false;
@@ -3886,17 +3729,17 @@ static guint mdy_renderer_led_timer_id = 0;
 
 /** Timer callback for setUpdatesEnabled is taking too long
  */
-static gboolean mdy_renderer_led_timer_cb(gpointer aptr)
+static gboolean mdy_compositor_panic_led_cb(gpointer aptr)
 {
     renderer_state_t req = GPOINTER_TO_INT(aptr);
 
     if( !mdy_renderer_led_timer_id )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "renderer led timer triggered");
+    mce_log(LL_DEBUG, "compositor panic led timer triggered");
 
     mdy_renderer_led_timer_id = 0;
-    mdy_renderer_led_set(req);
+    mdy_compositor_set_panic_led(req);
 
 EXIT:
     return FALSE;
@@ -3904,12 +3747,12 @@ EXIT:
 
 /* Cancel setUpdatesEnabled is taking too long timer
  */
-static void mdy_renderer_led_cancel_timer(void)
+static void mdy_compositor_cancel_panic_led(void)
 {
-    mdy_renderer_led_set(RENDERER_UNKNOWN);
+    mdy_compositor_set_panic_led(RENDERER_UNKNOWN);
 
     if( mdy_renderer_led_timer_id != 0 ) {
-        mce_log(LL_DEBUG, "renderer led timer cancelled");
+        mce_log(LL_DEBUG, "compositor panic led timer cancelled");
         g_source_remove(mdy_renderer_led_timer_id),
             mdy_renderer_led_timer_id = 0;
     }
@@ -3917,35 +3760,273 @@ static void mdy_renderer_led_cancel_timer(void)
 
 /* Schedule setUpdatesEnabled is taking too long timer
  */
-static void mdy_renderer_led_start_timer(renderer_state_t req)
+static void mdy_compositor_schedule_panic_led(renderer_state_t req)
 {
-    /* During bootup it is more or less expected that lipstick is
+    /* During bootup it is more or less expected that compositor is
      * unable to answer immediately. So we initially allow longer
      * delay and bring it down gradually to target level. */
     static int delay = LED_DELAY_UI_DISABLE_ENABLE * 10;
 
-    mdy_renderer_led_set(RENDERER_UNKNOWN);
+    mdy_compositor_set_panic_led(RENDERER_UNKNOWN);
 
     if( mdy_renderer_led_timer_id != 0 )
         g_source_remove(mdy_renderer_led_timer_id);
 
     mdy_renderer_led_timer_id = g_timeout_add(delay,
-                                              mdy_renderer_led_timer_cb,
+                                              mdy_compositor_panic_led_cb,
                                               GINT_TO_POINTER(req));
 
-    mce_log(LL_DEBUG, "renderer led timer sheduled @ %d ms", delay);
+    mce_log(LL_DEBUG, "compositor panic led timer sheduled @ %d ms", delay);
 
     delay = delay * 3 / 4;
     if( delay < LED_DELAY_UI_DISABLE_ENABLE )
         delay = LED_DELAY_UI_DISABLE_ENABLE;
 }
 
-/** Handle replies to org.nemomobile.lipstick.setUpdatesEnabled() calls
+/** Timer for verifying that compositor has exited after kill signal
+ *
+ * @param aptr Process identifier as void pointer
+ *
+ * @return FALSE to stop the timer from repeating
+ */
+static gboolean mdy_compositor_kill_verify_cb(gpointer aptr)
+{
+    int pid = GPOINTER_TO_INT(aptr);
+
+    if( !mdy_compositor_kill_id )
+        goto EXIT;
+
+    mdy_compositor_kill_id = 0;
+
+    if( kill(pid, 0) == -1 && errno == ESRCH )
+        goto EXIT;
+
+    mce_log(LL_ERR, "compositor is not responsive and killing it failed");
+
+EXIT:
+    /* Stop the led pattern even if we can't kill compositor process */
+    mdy_compositor_set_killer_led(false);
+
+    return FALSE;
+}
+
+/** Timer for killing compositor in case core dump attempt did not make it exit
+ *
+ * @param aptr Process identifier as void pointer
+ *
+ * @return FALSE to stop the timer from repeating
+ */
+static gboolean mdy_compositor_kill_kill_cb(gpointer aptr)
+{
+    int pid = GPOINTER_TO_INT(aptr);
+
+    if( !mdy_compositor_kill_id )
+        goto EXIT;
+
+    mdy_compositor_kill_id = 0;
+
+    /* In the unlikely event that asynchronous pid query is not finished
+     * at the kill timeout, abandon the quest */
+    if( pid == -1 ) {
+        if( (pid = mdy_compositor_pid) == -1 ) {
+            mce_log(LL_WARN, "pid of compositor not know yet; can't kill it");
+            goto EXIT;
+        }
+    }
+
+    /* If compositor is already gone after core dump attempt, no further
+     * actions are needed */
+    if( kill(pid, 0) == -1 && errno == ESRCH )
+        goto EXIT;
+
+    mce_log(LL_WARN, "compositor is not responsive; attempting to kill it");
+
+    /* Send SIGKILL to compositor; if that succeeded, verify after brief
+     * delay if the process is really gone */
+
+    if( kill(pid, SIGKILL) == -1 ) {
+        mce_log(LL_ERR, "failed to SIGKILL compositor: %m");
+    }
+    else {
+        mdy_compositor_kill_id =
+            g_timeout_add(1000 * mdy_compositor_verify_delay,
+                          mdy_compositor_kill_verify_cb,
+                          GINT_TO_POINTER(pid));
+    }
+
+EXIT:
+    /* Keep led pattern active if verify timer was scheduled */
+    mdy_compositor_set_killer_led(mdy_compositor_kill_id != 0);
+
+    return FALSE;
+}
+
+/** Timer for dumping compositor core if setUpdatesEnabled() goes without reply
+ *
+ * @param aptr Process identifier as void pointer
+ *
+ * @return FALSE to stop the timer from repeating
+ */
+static gboolean mdy_compositor_kill_core_cb(gpointer aptr)
+{
+    int pid = GPOINTER_TO_INT(aptr);
+
+    if( !mdy_compositor_kill_id )
+        goto EXIT;
+
+    mdy_compositor_kill_id = 0;
+
+    mce_log(LL_WARN, "compositor is not responsive; attempting to core dump it");
+
+    /* In the unlikely event that asynchronous pid query is not finished
+     * at the core dump timeout, wait a while longer and just kill it */
+    if( pid == -1 ) {
+        if( (pid = mdy_compositor_pid) == -1 ) {
+            mce_log(LL_WARN, "pid of compositor not know yet; skip core dump");
+            goto SKIP;
+        }
+    }
+
+    /* We do not want to kill compositor if debugger is attached to it.
+     * Since there can be only one attacher at one time, we can use dummy
+     * attach + detach cycle to determine debugger presence. */
+    if( ptrace(PTRACE_ATTACH, pid, 0, 0) == -1 ) {
+        mce_log(LL_WARN, "could not attach to compositor: %m");
+        mce_log(LL_WARN, "assuming debugger is attached; skip killing");
+        goto EXIT;
+    }
+
+    if( ptrace(PTRACE_DETACH, pid, 0,0) == -1 ) {
+        mce_log(LL_WARN, "could not detach from compositor: %m");
+    }
+
+    /* We need to send some signal that a) leads to core dump b) is not
+     * handled "nicely" by compositor. SIGXCPU fits that description and
+     * is also c) somewhat relevant "CPU time limit exceeded" d) easily
+     * distinguishable from other "normal" crash reports. */
+
+    if( kill(pid, SIGXCPU) == -1 ) {
+        mce_log(LL_ERR, "failed to SIGXCPU compositor: %m");
+        goto EXIT;
+    }
+
+    /* Just in case compositor process was stopped, make it continue - and
+     * hopefully dump a core. */
+
+    if( kill(pid, SIGCONT) == -1 )
+        mce_log(LL_ERR, "failed to SIGCONT compositor: %m");
+
+SKIP:
+
+    /* Allow some time for core dump to take place, then just kill it */
+    mdy_compositor_kill_id = g_timeout_add(1000 * mdy_compositor_kill_delay,
+                                           mdy_compositor_kill_kill_cb,
+                                           GINT_TO_POINTER(pid));
+EXIT:
+
+    /* Start led pattern active if kill timer was scheduled */
+    mdy_compositor_set_killer_led(mdy_compositor_kill_id != 0);
+
+    return FALSE;
+}
+
+/** Shedule compositor core dump + kill
+ *
+ * This should be called when initiating asynchronous setUpdatesEnabled()
+ * D-Bus method call.
+ */
+static void mdy_compositor_schedule_killer(void)
+{
+    /* The compositor killing is not used unless we have "devel" flavor
+     * mce, or normal mce running in verbose mode */
+    if( !mce_log_p(LL_DEVEL) )
+        goto EXIT;
+
+    /* Setting the core dump delay to zero disables killing too. */
+    if( mdy_compositor_core_delay <= 0 )
+        goto EXIT;
+
+    /* Note: Initially we might not yet know the compositor PID. But once
+     *       it gets known, the kill timer chain will lock in to it.
+     *       If compositor name owner changes, the timer chain is cancelled
+     *       and pid reset again. This should make sure we can do the
+     *       killing even if the async pid query does not finish before
+     *       we need to make the 1st setUpdatesEnabled() ipc and we do not
+     *       kill freshly restarted compositor because the previous instance
+     *       got stuck. */
+
+    if( !mdy_compositor_kill_id ) {
+        mce_log(LL_DEBUG, "scheduled compositor killing");
+        mdy_compositor_kill_id =
+            g_timeout_add(1000 * mdy_compositor_core_delay,
+                          mdy_compositor_kill_core_cb,
+                          GINT_TO_POINTER(mdy_compositor_pid));
+    }
+
+EXIT:
+    return;
+}
+
+/** Cancel any pending compositor killing timers
+ *
+ * This should be called when non-error reply is received for
+ * setUpdatesEnabled() D-Bus method call.
+ */
+static void mdy_compositor_cancel_killer(void)
+{
+    if( mdy_compositor_kill_id ) {
+        g_source_remove(mdy_compositor_kill_id),
+            mdy_compositor_kill_id = 0;
+        mce_log(LL_DEBUG, "cancelled compositor killing");
+    }
+
+    /* In any case stop the led pattern */
+    mdy_compositor_set_killer_led(false);
+}
+
+static void mdy_compositor_name_owner_pid_cb(const char *name, int pid)
+{
+    if( mdy_str_eq_p(mdy_compositor_priv_name, name) )
+        mdy_compositor_pid = pid;
+}
+
+static bool mdy_compositor_is_available(void)
+{
+    return mdy_compositor_dbus_name != 0;
+}
+
+static bool mdy_compositor_is_lipstick(void)
+{
+    return mdy_str_eq_p(mdy_compositor_dbus_name, LIPSTICK_SERVICE);
+}
+
+static void mdy_compositor_name_owner_set(const char *name, const char *curr)
+{
+    bool has_owner = (curr && *curr);
+
+    mce_log(LL_DEVEL, "compositor is %s on system bus",
+            has_owner ? curr : "N/A");
+
+    /* first clear existing data, timers, etc */
+    g_free(mdy_compositor_dbus_name), mdy_compositor_dbus_name = 0;
+    g_free(mdy_compositor_priv_name), mdy_compositor_priv_name = 0;
+    mdy_compositor_pid = -1;
+    mdy_compositor_cancel_killer();
+
+    /* then cache dbus name and start pid query */
+    if( has_owner ) {
+        mdy_compositor_dbus_name = g_strdup(name);
+        mdy_compositor_priv_name = g_strdup(curr);
+        mce_dbus_get_pid_async(curr, mdy_compositor_name_owner_pid_cb);
+    }
+}
+
+/** Handle replies to org.nemomobile.compositor.setUpdatesEnabled() calls
  *
  * @param pending   asynchronous dbus call handle
  * @param user_data enable/disable state as void pointer
  */
-static void mdy_renderer_set_state_cb(DBusPendingCall *pending,
+static void mdy_compositor_state_req_cb(DBusPendingCall *pending,
                                       void *user_data)
 {
     DBusMessage *rsp = 0;
@@ -3953,20 +4034,20 @@ static void mdy_renderer_set_state_cb(DBusPendingCall *pending,
 
     /* The user_data pointer is used for storing the renderer
      * state associated with the async method call sent to
-     * lipstick. The reply message is just an acknowledgement
+     * compositor. The reply message is just an acknowledgement
      * from ui that it got the value and thus has no content. */
     renderer_state_t state = GPOINTER_TO_INT(user_data);
 
     mce_log(LL_NOTICE, "%s(%s) - method reply",
-            RENDERER_SET_UPDATES_ENABLED,
+            COMPOSITOR_SET_UPDATES_ENABLED,
             state ? "ENABLE" : "DISABLE");
 
-    if( mdy_renderer_set_state_pc != pending )
+    if( mdy_compositor_state_req_pc != pending )
         goto cleanup;
 
-    mdy_renderer_led_cancel_timer();
+    mdy_compositor_cancel_panic_led();
 
-    mdy_renderer_set_state_pc = 0;
+    mdy_compositor_state_req_pc = 0;
 
     if( !(rsp = dbus_pending_call_steal_reply(pending)) )
         goto cleanup;
@@ -3976,14 +4057,14 @@ static void mdy_renderer_set_state_cb(DBusPendingCall *pending,
          * enter suspend without UI side being in the
          * loop or we'll risk spectacular crashes */
         mce_log(LL_WARN, "%s: %s", err.name, err.message);
-        mdy_renderer_ui_state = RENDERER_ERROR;
+        mdy_compositor_ui_state = RENDERER_ERROR;
     }
     else {
-        mdy_renderer_ui_state = state;
-        mdy_lipstick_killer_cancel();
+        mdy_compositor_ui_state = state;
+        mdy_compositor_cancel_killer();
     }
 
-    mce_log(LL_NOTICE, "RENDERER state=%d", mdy_renderer_ui_state);
+    mce_log(LL_NOTICE, "RENDERER state=%d", mdy_compositor_ui_state);
 
     mdy_stm_schedule_rethink();
 
@@ -3992,30 +4073,30 @@ cleanup:
     dbus_error_free(&err);
 }
 
-/** Cancel pending org.nemomobile.lipstick.setUpdatesEnabled() call
+/** Cancel pending org.nemomobile.compositor.setUpdatesEnabled() call
  *
  * This is just bookkeeping for mce side, the method call message
  * has already been sent - we just are no longer interested in
  * seeing the return message.
  */
-static void mdy_renderer_cancel_state_set(void)
+static void mdy_compositor_cancel_state_req(void)
 {
-    mdy_renderer_led_cancel_timer();
+    mdy_compositor_cancel_panic_led();
 
-    if( !mdy_renderer_set_state_pc )
+    if( !mdy_compositor_state_req_pc )
         return;
 
     mce_log(LL_NOTICE, "RENDERER STATE REQUEST CANCELLED");
 
-    dbus_pending_call_cancel(mdy_renderer_set_state_pc),
-        mdy_renderer_set_state_pc = 0;
+    dbus_pending_call_cancel(mdy_compositor_state_req_pc),
+        mdy_compositor_state_req_pc = 0;
 }
 
-/** Enable/Disable ui updates via dbus ipc with lipstick
+/** Enable/Disable ui updates via dbus ipc with compositor
  *
  * Used at transitions to/from display=off
  *
- * Gives time for lipstick to finish rendering activities
+ * Gives time for compositor to finish rendering activities
  * before putting frame buffer to sleep via early/late suspend,
  * and telling when rendering is allowed again.
  *
@@ -4024,30 +4105,38 @@ static void mdy_renderer_cancel_state_set(void)
  * @return TRUE if asynchronous method call was succesfully sent,
  *         FALSE otherwise
  */
-static gboolean mdy_renderer_set_state_req(renderer_state_t state)
+static gboolean mdy_compositor_start_state_req(renderer_state_t state)
 {
     gboolean         res = FALSE;
     DBusConnection  *bus = 0;
     DBusMessage     *req = 0;
     dbus_bool_t      dta = (state == RENDERER_ENABLED);
 
-    mdy_renderer_cancel_state_set();
+    mdy_compositor_cancel_state_req();
 
     mce_log(LL_NOTICE, "%s(%s) - method call",
-            RENDERER_SET_UPDATES_ENABLED,
+            COMPOSITOR_SET_UPDATES_ENABLED,
             state ? "ENABLE" : "DISABLE");
 
-    /* Mark the state at lipstick side as unknown until we get
+    /* Mark the state at compositor side as unknown until we get
      * either ack or error reply */
-    mdy_renderer_ui_state = RENDERER_UNKNOWN;
+    mdy_compositor_ui_state = RENDERER_UNKNOWN;
 
     if( !(bus = dbus_connection_get()) )
         goto EXIT;
 
-    req = dbus_message_new_method_call(RENDERER_SERVICE,
-                                       RENDERER_PATH,
-                                       RENDERER_IFACE,
-                                       RENDERER_SET_UPDATES_ENABLED);
+    if( mdy_compositor_is_lipstick() ) {
+        req = dbus_message_new_method_call(LIPSTICK_SERVICE,
+                                           LIPSTICK_PATH,
+                                           LIPSTICK_IFACE,
+                                           LIPSTICK_SET_UPDATES_ENABLED);
+    }
+    else {
+        req = dbus_message_new_method_call(COMPOSITOR_SERVICE,
+                                           COMPOSITOR_PATH,
+                                           COMPOSITOR_IFACE,
+                                           COMPOSITOR_SET_UPDATES_ENABLED);
+    }
     if( !req )
         goto EXIT;
 
@@ -4057,15 +4146,15 @@ static gboolean mdy_renderer_set_state_req(renderer_state_t state)
         goto EXIT;
 
     if( !dbus_connection_send_with_reply(bus, req,
-                                         &mdy_renderer_set_state_pc,
-                                         mdy_renderer_ipc_timeout) )
+                                         &mdy_compositor_state_req_pc,
+                                         mdy_compositor_ipc_timeout) )
         goto EXIT;
 
-    if( !mdy_renderer_set_state_pc )
+    if( !mdy_compositor_state_req_pc )
         goto EXIT;
 
-    if( !dbus_pending_call_set_notify(mdy_renderer_set_state_pc,
-                                      mdy_renderer_set_state_cb,
+    if( !dbus_pending_call_set_notify(mdy_compositor_state_req_pc,
+                                      mdy_compositor_state_req_cb,
                                       GINT_TO_POINTER(state), 0) )
         goto EXIT;
 
@@ -4073,15 +4162,15 @@ static gboolean mdy_renderer_set_state_req(renderer_state_t state)
     res = TRUE;
 
     /* If we do not get reply in a short while, start led pattern */
-    mdy_renderer_led_start_timer(state);
+    mdy_compositor_schedule_panic_led(state);
 
-    /* And after waiting a bit longer, assume that lipstick i
+    /* And after waiting a bit longer, assume that compositor is
      * process stuck and kill it */
-    mdy_lipstick_killer_schedule();
+    mdy_compositor_schedule_killer();
 
 EXIT:
-    if( mdy_renderer_set_state_pc  ) {
-        dbus_pending_call_unref(mdy_renderer_set_state_pc);
+    if( mdy_compositor_state_req_pc  ) {
+        dbus_pending_call_unref(mdy_compositor_state_req_pc);
         // Note: The pending call notification holds the final
         //       reference. It gets released at cancellation
         //       or return from notification callback
@@ -4090,6 +4179,31 @@ EXIT:
     if( bus ) dbus_connection_unref(bus);
 
     return res;
+}
+
+/* ========================================================================= *
+ * LIPSTICK_IPC
+ * ========================================================================= */
+
+/** Owner of lipstick dbus name */
+static gchar *mdy_lipstick_priv_name = 0;
+
+static bool mdy_lipstick_is_available(void)
+{
+    return mdy_lipstick_priv_name != 0;
+}
+
+static void mdy_lipstick_name_owner_set(const char *curr)
+{
+    bool has_owner = (curr && *curr);
+
+    mce_log(LL_DEVEL, "lipstick is %s on system bus",
+            has_owner ? curr : "N/A");
+
+    g_free(mdy_lipstick_priv_name), mdy_lipstick_priv_name = 0;
+
+    if( has_owner )
+        mdy_lipstick_priv_name = g_strdup(curr);
 }
 
 /* ========================================================================= *
@@ -4183,7 +4297,7 @@ static int mdy_autosuspend_get_allowed_level(void)
         block_early = true;
 
     /* do not suspend while ui side might still be drawing */
-    if( mdy_renderer_ui_state != RENDERER_DISABLED )
+    if( mdy_compositor_ui_state != RENDERER_DISABLED )
         block_early = true;
 
     /* adjust based on gconf setting */
@@ -4278,10 +4392,6 @@ static void mdy_orientation_generate_activity(void)
     }
 }
 
-/* ========================================================================= *
- * DISPLAY_STATE
- * ========================================================================= */
-
 /** Start/stop orientation sensor based on display state
  */
 static void mdy_orientation_sensor_rethink(void)
@@ -4314,6 +4424,10 @@ static void mdy_orientation_sensor_rethink(void)
         break;
     }
 }
+
+/* ========================================================================= *
+ * DISPLAY_STATE
+ * ========================================================================= */
 
 /* React to new display state (via display state datapipe)
  */
@@ -4595,9 +4709,6 @@ static const char *mdy_display_state_name(display_state_t state)
     return name;
 }
 
-/** Does "org.nemomobile.lipstick" have owner on system bus */
-static bool mdy_stm_lipstick_on_dbus = false;
-
 /** A setUpdatesEnabled(true) call needs to be made when possible */
 static bool mdy_stm_enable_rendering_needed = true;
 
@@ -4648,10 +4759,30 @@ static const char *mdy_stm_state_name(stm_state_t state)
     return name;
 }
 
-static void mdy_stm_lipstick_name_owner_pid(const char *name, int pid)
+/** react to compositor availability changes
+ */
+static void mdy_stm_compositor_name_owner_changed(const char *name,
+                                                  const char *prev,
+                                                  const char *curr)
 {
-    if( mdy_lipstick_killer_name && !strcmp(mdy_lipstick_killer_name, name) )
-        mdy_lipstick_killer_pid = pid;
+    (void)name;
+    (void)prev;
+
+    /* update caches etc */
+    mdy_compositor_name_owner_set(name, curr);
+
+    /* set setUpdatesEnabled(true) needs to be called flag */
+    mdy_stm_enable_rendering_needed = true;
+
+    /* a) Lipstick assumes that updates are allowed when
+     *    it starts up. Try to arrange that it is so.
+     * b) Without lipstick in place we must not suspend
+     *    because there is nobody to communicate the
+     *    updating is allowed
+     *
+     * Turning the display on at lipstick runstate change
+     * deals with both (a) and (b) */
+    mdy_stm_push_target_change(MCE_DISPLAY_ON);
 }
 
 /** react to systemui availability changes
@@ -4663,39 +4794,18 @@ static void mdy_stm_lipstick_name_owner_changed(const char *name,
     (void)name;
     (void)prev;
 
-    bool has_owner = (curr && *curr);
+    /* first deal with lipstick-only book keeping stuff */
+    mdy_lipstick_name_owner_set(curr);
 
-    if( mdy_stm_lipstick_on_dbus != has_owner ) {
-        /* set setUpdatesEnabled(true) needs to be called flag */
-        mdy_stm_enable_rendering_needed = true;
-
-        /* update lipstick runing state */
-        mdy_stm_lipstick_on_dbus = has_owner;
-        mce_log(LL_WARN, "lipstick %s system bus",
-                has_owner ? "is on" : "dropped from");
-
-        /* a) Lipstick assumes that updates are allowed when
-         *    it starts up. Try to arrange that it is so.
-         * b) Without lipstick in place we must not suspend
-         *    because there is nobody to communicate the
-         *    updating is allowed
-         *
-         * Turning the display on at lipstick runstate change
-         * deals with both (a) and (b) */
-        mdy_stm_push_target_change(MCE_DISPLAY_ON);
+    /* then assumed lipstick==compositor stuff */
+    if( !mdy_compositor_is_available() || mdy_compositor_is_lipstick() ) {
+        mdy_stm_compositor_name_owner_changed(name, prev, curr);
     }
 
-    g_free(mdy_lipstick_killer_name), mdy_lipstick_killer_name = 0;
-    mdy_lipstick_killer_pid = -1;
-    mdy_lipstick_killer_cancel();
-
-    if( curr && *curr ) {
-        mdy_lipstick_killer_name = g_strdup(curr);
-        mce_dbus_get_pid_async(curr, mdy_stm_lipstick_name_owner_pid);
-    }
-
+    /* and finally broadcast within mce */
+    bool available = mdy_lipstick_is_available();
     execute_datapipe(&lipstick_available_pipe,
-                     GINT_TO_POINTER(has_owner),
+                     GINT_TO_POINTER(available),
                      USE_INDATA, CACHE_INDATA);
 }
 
@@ -4914,30 +5024,30 @@ static void mdy_stm_finish_target_change(void)
  */
 static bool mdy_stm_is_renderer_pending(void)
 {
-    return mdy_renderer_ui_state == RENDERER_UNKNOWN;
+    return mdy_compositor_ui_state == RENDERER_UNKNOWN;
 }
 
 /** Predicate for setUpdatesEnabled(false) ipc finished
  */
 static bool mdy_stm_is_renderer_disabled(void)
 {
-    return mdy_renderer_ui_state == RENDERER_DISABLED;
+    return mdy_compositor_ui_state == RENDERER_DISABLED;
 }
 
 /** Predicate for setUpdatesEnabled(true) ipc finished
  */
 static bool mdy_stm_is_renderer_enabled(void)
 {
-    return mdy_renderer_ui_state == RENDERER_ENABLED;
+    return mdy_compositor_ui_state == RENDERER_ENABLED;
 }
 
 /* Start setUpdatesEnabled(false) ipc with systemui
  */
 static void mdy_stm_disable_renderer(void)
 {
-    if( mdy_renderer_ui_state != RENDERER_DISABLED ) {
+    if( mdy_compositor_ui_state != RENDERER_DISABLED ) {
         mce_log(LL_NOTICE, "stopping renderer");
-        mdy_renderer_set_state_req(RENDERER_DISABLED);
+        mdy_compositor_start_state_req(RENDERER_DISABLED);
     }
 }
 
@@ -4945,14 +5055,14 @@ static void mdy_stm_disable_renderer(void)
  */
 static void mdy_stm_enable_renderer(void)
 {
-    if( !mdy_stm_lipstick_on_dbus ) {
-        mdy_renderer_ui_state = RENDERER_ENABLED;
+    if( !mdy_compositor_is_available() ) {
+        mdy_compositor_ui_state = RENDERER_ENABLED;
         mce_log(LL_NOTICE, "starting renderer - skipped");
     }
-    else if( mdy_renderer_ui_state != RENDERER_ENABLED ||
+    else if( mdy_compositor_ui_state != RENDERER_ENABLED ||
              mdy_stm_enable_rendering_needed ) {
         mce_log(LL_NOTICE, "starting renderer");
-        mdy_renderer_set_state_req(RENDERER_ENABLED);
+        mdy_compositor_start_state_req(RENDERER_ENABLED);
         /* clear setUpdatesEnabled(true) needs to be called flag */
         mdy_stm_enable_rendering_needed = false;
     }
@@ -4974,7 +5084,7 @@ static void mdy_stm_step(void)
         break;
 
     case STM_RENDERER_INIT_START:
-        if( !mdy_stm_lipstick_on_dbus ) {
+        if( !mdy_compositor_is_available() ) {
             mdy_stm_trans(STM_ENTER_POWER_ON);
         }
         else {
@@ -4990,8 +5100,8 @@ static void mdy_stm_step(void)
             mdy_stm_trans(STM_ENTER_POWER_ON);
             break;
         }
-        /* If lipstick is not responsive, we must keep trying
-         * until we get a reply - or lipstick dies and drops
+        /* If compositor is not responsive, we must keep trying
+         * until we get a reply - or compositor dies and drops
          * from system bus */
         mce_log(LL_CRIT, "ui start failed, retrying");
         mdy_stm_trans(STM_RENDERER_INIT_START);
@@ -5003,8 +5113,8 @@ static void mdy_stm_step(void)
         break;
 
     case STM_STAY_POWER_ON:
-        if( mdy_stm_enable_rendering_needed && mdy_stm_lipstick_on_dbus ) {
-            mce_log(LL_NOTICE, "handling lipstick startup");
+        if( mdy_stm_enable_rendering_needed && mdy_compositor_is_available() ) {
+            mce_log(LL_NOTICE, "handling compositor startup");
             mdy_stm_trans(STM_LEAVE_POWER_ON);
             break;
         }
@@ -5020,8 +5130,8 @@ static void mdy_stm_step(void)
         break;
 
     case STM_RENDERER_INIT_STOP:
-        if( !mdy_stm_lipstick_on_dbus ) {
-            mce_log(LL_WARN, "no lipstick; going to logical off");
+        if( !mdy_compositor_is_available() ) {
+            mce_log(LL_WARN, "no compositor; going to logical off");
             mdy_stm_trans(STM_ENTER_LOGICAL_OFF);
         }
         else {
@@ -5037,8 +5147,8 @@ static void mdy_stm_step(void)
             mdy_stm_trans(STM_INIT_SUSPEND);
             break;
         }
-        /* If lipstick is not responsive, we must keep trying
-         * until we get a reply - or lipstick dies and drops
+        /* If compositor is not responsive, we must keep trying
+         * until we get a reply - or compositor dies and drops
          * from system bus */
         mce_log(LL_CRIT, "ui stop failed, retrying");
         mdy_stm_trans(STM_RENDERER_INIT_STOP);
@@ -5123,7 +5233,7 @@ static void mdy_stm_step(void)
             break;
         }
 
-        if( !mdy_stm_lipstick_on_dbus )
+        if( !mdy_compositor_is_available() )
             break;
 
         if( mdy_stm_is_early_suspend_allowed() ) {
@@ -5578,7 +5688,13 @@ static struct
 } mdy_nameowner_lut[] =
 {
     {
-        .name = RENDERER_SERVICE,
+        .name = COMPOSITOR_SERVICE,
+        .notify = mdy_stm_compositor_name_owner_changed,
+    },
+    {
+        /* Note: due to lipstick==compositor assumption lipstick
+         *       service name must be probed after compositor */
+        .name = LIPSTICK_SERVICE,
         .notify = mdy_stm_lipstick_name_owner_changed,
     },
     {
@@ -6898,9 +7014,9 @@ static void mdy_gconf_cb(GConfClient *const gcc, const guint id,
         mdy_disp_never_blank = gconf_value_get_int(gcv);
         mce_log(LL_NOTICE, "never_blank = %d", mdy_disp_never_blank);
     }
-    else if( id == mdy_lipstick_killer_core_delay_gconf_cb_id ) {
-        mdy_lipstick_killer_core_delay = gconf_value_get_int(gcv);
-        mce_log(LL_NOTICE, "lipstick kill delay = %d", mdy_lipstick_killer_core_delay);
+    else if( id == mdy_compositor_core_delay_gconf_cb_id ) {
+        mdy_compositor_core_delay = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "compositor kill delay = %d", mdy_compositor_core_delay);
     }
     else {
         mce_log(LL_WARN, "Spurious GConf value received; confused!");
@@ -7094,13 +7210,13 @@ static void mdy_gconf_init(void)
                            mdy_gconf_cb,
                            &mdy_blanking_inhibit_mode_gconf_cb_id);
 
-    /* Delay for killing unresponsive lipstick */
+    /* Delay for killing unresponsive compositor */
     mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
                            MCE_GCONF_LIPSTICK_CORE_DELAY_PATH,
                            mdy_gconf_cb,
-                           &mdy_lipstick_killer_core_delay_gconf_cb_id);
+                           &mdy_compositor_core_delay_gconf_cb_id);
     mce_gconf_get_int(MCE_GCONF_LIPSTICK_CORE_DELAY_PATH,
-                      &mdy_lipstick_killer_core_delay);
+                      &mdy_compositor_core_delay);
 }
 
 static void mdy_gconf_quit(void)
@@ -7371,11 +7487,11 @@ void g_module_unload(GModule *module)
     mdy_blanking_cancel_dim();
     mdy_blanking_stop_adaptive_dimming();
     mdy_blanking_cancel_off();
-    mdy_lipstick_killer_cancel();
+    mdy_compositor_cancel_killer();
 
     /* Cancel active asynchronous dbus method calls to avoid
      * callback functions with stale adresses getting invoked */
-    mdy_renderer_cancel_state_set();
+    mdy_compositor_cancel_state_req();
 
     /* Cancel pending state machine updates */
     mdy_stm_cancel_rethink();
@@ -7387,7 +7503,8 @@ void g_module_unload(GModule *module)
     /* Remove callbacks on module unload */
     mce_sensorfw_orient_set_notify(0);
 
-    g_free(mdy_lipstick_killer_name), mdy_lipstick_killer_name = 0;
+    g_free(mdy_compositor_priv_name), mdy_compositor_priv_name = 0;
+    g_free(mdy_lipstick_priv_name), mdy_lipstick_priv_name = 0;
 
     return;
 }
