@@ -735,10 +735,9 @@ static void hybris_set_brightness(gint brightness)
 
 	mce_log(LL_DEBUG, "Brightness set to %d", active_brightness);
 
-	/* Since there is no separate brightness control when operating
-	 * via libhybris, we need to reprogram the current pattern */
-	if( active_pattern )
-		hybris_program_led(active_pattern);
+	/* Scale from [1...100%] to [1...255] range */
+	brightness = mce_xlat_int(1,maximum_led_brightness, 1,255, brightness);
+	mce_hybris_indicator_set_brightness(brightness);
 }
 #endif /* ENABLE_HYBRIS */
 
@@ -1136,20 +1135,6 @@ EXIT:
 }
 
 #ifdef ENABLE_HYBRIS
-/** Scale RGB channel value according to the current brightness value
- *
- * @param value red, green or blue value in 0 to 255 range
- *
- * @return scaled rgb value
- */
-static inline int hybris_tune_brightness(int value)
-{
-	/* Note: active_brightness = 0 ... MAXIMUM_HYBRIS_LED_BRIGHTNESS */
-	int top = MAXIMUM_HYBRIS_LED_BRIGHTNESS;
-	int res = (value * active_brightness + top/2) / top;
-	return (res < 0) ? 0 : (res > 255) ? 255 : res;
-}
-
 /**
  * Setup and activate a new libhybris-LED pattern
  *
@@ -1160,11 +1145,6 @@ static void hybris_program_led(const pattern_struct *const pattern)
 	int r = (pattern->rgb_color >> 16) & 0xff;
 	int g = (pattern->rgb_color >>  8) & 0xff;
 	int b = (pattern->rgb_color >>  0) & 0xff;
-
-	/* Do als based brightness scaling before use*/
-	r = hybris_tune_brightness(r);
-	g = hybris_tune_brightness(g);
-	b = hybris_tune_brightness(b);
 
 	mce_hybris_indicator_set_pattern(r, g, b,
 					 pattern->on_period,

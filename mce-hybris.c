@@ -540,6 +540,19 @@ void mce_hybris_indicator_enable_breathing(bool enable)
   if( real ) real(enable);
 }
 
+/** Set indicator led brightness
+ *
+ * @param level 1=minimum, 255=maximum
+ *
+ * @return true on success, or false on failure
+ */
+bool mce_hybris_indicator_set_brightness(int level)
+{
+  static bool (*real)(int) = 0;
+  RESOLVE;
+  return !real ? false : real(level);
+}
+
 /* ------------------------------------------------------------------------- *
  * proximity sensor
  * ------------------------------------------------------------------------- */
