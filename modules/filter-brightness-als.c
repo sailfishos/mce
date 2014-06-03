@@ -563,16 +563,26 @@ EXIT:
  */
 static gpointer led_brightness_filter(gpointer data)
 {
+	static int cached_lux = -1;
+
 	int value = GPOINTER_TO_INT(data);
 	int scale = 40;
 
 	if( lut_led.profiles < 1 )
 		goto EXIT;
 
-	if( als_lux_latest < 0 )
+	if( als_lux_latest < 0 ) {
+		if( !have_als || !use_als_flag )
+			cached_lux = -1;
+	}
+	else {
+		cached_lux = als_lux_latest;
+	}
+
+	if( cached_lux < 0 )
 		goto EXIT;
 
-	scale = als_filter_run(&lut_led, 0, als_lux_latest);
+	scale = als_filter_run(&lut_led, 0, cached_lux);
 
 EXIT:
 	return GINT_TO_POINTER(value * scale / 100);
