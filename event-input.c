@@ -1645,6 +1645,52 @@ static int doubletap_dist_p(const doubletap_t *e1, const doubletap_t *e2)
 	return (x*x + y*y) < (r*r);
 }
 
+/** Accumulator steps for counting touch/mouse click events separately
+ *
+ *    2   2   2   1   1   0   0   0
+ *    8   4   0   6   2   8   4   0
+ * --------------------------------
+ *                             mmmm [ 3: 0]  BTN_MOUSE
+ *                         pppp     [ 7: 4]  ABS_MT_PRESSURE
+ *                     tttt         [11: 8]  ABS_MT_TOUCH_MAJOR
+ *                 iiii             [15:12]  ABS_MT_TRACKING_ID
+ * aaaabbbbccccdddd                 [31:16]  (reserved)
+ */
+enum {
+
+	SEEN_EVENT_MOUSE       = 1 <<  0,
+	SEEN_EVENT_PRESSURE    = 1 <<  4,
+	SEEN_EVENT_TOUCH_MAJOR = 1 <<  8,
+	SEEN_EVENT_TRACKING_ID = 1 << 12,
+};
+
+/** Helper for probing no-touch vs single-touch vs multi-touch
+ *
+ * return 0 for no-touch, 1 for single touch, >1 for multi-touch
+ */
+static int doubletap_touch_points(const doubletap_t *e)
+{
+	/* The bit shuffling below calculates maximum number of mouse
+	 * button click / touch point events accumulated to the history
+	 * buffer to produce return value of
+	 *
+	 *   =0 -> no touch
+	 *   =1 -> singletouch
+	 *   >1 -> multitouch
+	 *
+	 * Note: If the event stream happens to report one ABS_MT_PRESSURE
+	 * and two ABS_MT_TOUCH_MAJOR events / something similar it will
+	 * be reported as "triple touch", but we do not need care as long
+	 * as it is not "no touch" or "singletouch".
+	 */
+
+	unsigned m = e->click;
+	m |= (m >> 16);
+	m |= (m >>  8);
+	m |= (m >>  4);
+	return m & 15;
+}
+
 /** Process mouse input events to simulate double tap
  *
  * Maintain a crude state machine, that will detect double clicks
@@ -1680,7 +1726,8 @@ static int doubletap_emulate(const struct input_event *eve)
 	case EV_KEY:
 		if( eve->code == BTN_MOUSE ) {
 			/* Store click/release and position */
-			hist[i0].click += eve->value;
+			if( eve->value )
+				hist[i0].click += SEEN_EVENT_MOUSE;
 			hist[i0].x = x_accum;
 			hist[i0].y = y_accum;
 
@@ -1693,10 +1740,28 @@ static int doubletap_emulate(const struct input_event *eve)
 		/* Do multitouch too while at it */
 		switch( eve->code ) {
 		case ABS_MT_PRESSURE:
-		case ABS_MT_TOUCH_MAJOR: hist[i0].click += 1; break;
-		case ABS_MT_POSITION_X:  hist[i0].x = eve->value; break;
-		case ABS_MT_POSITION_Y:  hist[i0].y = eve->value; break;
-		default: break;
+			hist[i0].click += SEEN_EVENT_PRESSURE;
+			skip_syn = false;
+			break;
+		case ABS_MT_TOUCH_MAJOR:
+			hist[i0].click += SEEN_EVENT_TOUCH_MAJOR;
+			skip_syn = false;
+			break;
+		case ABS_MT_TRACKING_ID:
+			if( eve->value != -1 )
+				hist[i0].click += SEEN_EVENT_TRACKING_ID;
+			skip_syn = false;
+			break;
+		case ABS_MT_POSITION_X:
+			hist[i0].x = eve->value;
+			skip_syn = false;
+			break;
+		case ABS_MT_POSITION_Y:
+			hist[i0].y = eve->value;
+			skip_syn = false;
+			break;
+		default:
+			break;
 		}
 		break;
 
@@ -1711,9 +1776,8 @@ static int doubletap_emulate(const struct input_event *eve)
 			break;
 
 		/* Have we seen button events? */
-		if( skip_syn ) {
+		if( skip_syn )
 			break;
-		}
 
 		/* Next SYN_REPORT will be ignored unless something
 		 * relevant is seen before that */
@@ -1725,15 +1789,20 @@ static int doubletap_emulate(const struct input_event *eve)
 		/* Last event before current */
 		i1 = (i0 + 3) & 3;
 
-		if( hist[i1].click != hist[i0].click ) {
+		int tp0 = doubletap_touch_points(hist+i0);
+		int tp1 = doubletap_touch_points(hist+i1);
+
+		if( tp0 != tp1 ) {
 			/* 2nd and 3rd last events before current */
 			i2 = (i0 + 2) & 3;
 			i3 = (i0 + 1) & 3;
 
+			int tp2 = doubletap_touch_points(hist+i2);
+			int tp3 = doubletap_touch_points(hist+i3);
+
 			/* Release after click after release after click,
 			 * within the time and distance limits */
-			if( hist[i0].click == 0 && hist[i1].click == 1 &&
-			    hist[i2].click == 0 && hist[i3].click == 1 &&
+			if( tp0 == 0 && tp1 == 1 && tp2 == 0 && tp3 == 1 &&
 			    doubletap_time_p(&hist[i3], &hist[i0]) &&
 			    doubletap_dist_p(&hist[i3], &hist[i1]) ) {
 				/* Reached DOUBLETAP state */
