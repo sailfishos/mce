@@ -1243,6 +1243,12 @@ static const setting_t gconf_defaults[] =
   },
 #endif
   {
+    //  MCE_GCONF_TOUCH_UNBLOCK_DELAY_PATH @ event-input.h
+    .key  = "/system/osso/dsm/event_input/touch_unblock_delay",
+    .type = "i",
+    .def  = "100",
+  },
+  {
     // MCE_LED_PATTERN_BATTERY_CHARGING @ mce.h
     .key  = "/system/osso/dsm/leds/PatternBatteryCharging",
     .type = "b",

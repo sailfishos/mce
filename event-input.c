@@ -1231,7 +1231,7 @@ static void ts_grab_changed(input_grab_t *ctrl, bool grab)
 
 enum
 {
-	TS_RELEASE_DELAY_DEFAULT = 200,
+	TS_RELEASE_DELAY_DEFAULT = 100,
 	TS_RELEASE_DELAY_BLANK   = 100,
 	TS_RELEASE_DELAY_UNBLANK = 600,
 };
@@ -1253,6 +1253,52 @@ static input_grab_t ts_grab_state =
 	.ig_grab_changed_cb = ts_grab_changed,
 	.ig_release_verify_cb = ts_grab_poll_palm_detect,
 };
+
+/* Touch unblock delay from settings [ms] */
+static gint ts_grab_release_delay = TS_RELEASE_DELAY_DEFAULT;
+
+/** GConf notification ID for touch unblock delay */
+static guint ts_grab_release_delay_id = 0;
+
+/** Gconf notification callback for touch unblock delay
+ *
+ * @param client (not used)
+ * @param id     (not used)
+ * @param entry  GConf entry that changed
+ * @param data   (not used)
+ */
+static void ts_grab_release_delay_cb(GConfClient *const client,
+				     const guint id,
+				     GConfEntry *const entry,
+				     gpointer const data)
+{
+	(void)client; (void)id; (void)data;
+
+	gint delay = ts_grab_release_delay;
+	const GConfValue *value = 0;
+
+	if( !entry )
+		goto EXIT;
+
+	if( !(value = gconf_entry_get_value(entry)) )
+		goto EXIT;
+
+	if( value->type == GCONF_VALUE_INT )
+		delay = gconf_value_get_int(value);
+
+	if( ts_grab_release_delay == delay )
+		goto EXIT;
+
+	mce_log(LL_NOTICE, "touch unblock delay changed: %d -> %d",
+		ts_grab_release_delay, delay);
+
+	ts_grab_release_delay = delay;
+
+	// NB: currently active timer is not reprogrammed, change
+	//     will take effect on the next unblank
+EXIT:
+	return;
+}
 
 /** Event filter for determining finger on screen state
  */
@@ -1303,6 +1349,37 @@ static void ts_grab_event_filter_cb(struct input_event *ev)
 	default:
 		break;
 	}
+}
+
+/** Initialize touch screen grabbing state machine
+ */
+static void ts_grab_init(void)
+{
+	/* Get touch unblock delay */
+	mce_gconf_notifier_add(MCE_GCONF_EVENT_INPUT_PATH,
+			       MCE_GCONF_TOUCH_UNBLOCK_DELAY_PATH,
+			       ts_grab_release_delay_cb,
+			       &ts_grab_release_delay_id);
+
+	mce_gconf_get_int(MCE_GCONF_TOUCH_UNBLOCK_DELAY_PATH,
+			  &ts_grab_release_delay);
+
+	mce_log(LL_NOTICE, "touch unblock delay config: %d",
+		ts_grab_release_delay);
+
+	ts_grab_state.ig_release_ms = ts_grab_release_delay;
+}
+
+/** De-initialize touch screen grabbing state machine
+ */
+static void ts_grab_quit(void)
+{
+	if( ts_grab_release_delay_id ) {
+		mce_gconf_notifier_remove(GINT_TO_POINTER(ts_grab_release_delay_id), 0);
+		ts_grab_release_delay_id = 0;
+	}
+
+	input_grab_reset(&ts_grab_state);
 }
 
 /** feed desired touch grab state from datapipe to state machine
@@ -1357,7 +1434,7 @@ static void ts_grab_display_state_cb(gconstpointer data)
 
 	case MCE_DISPLAY_ON:
 	case MCE_DISPLAY_DIM:
-		ts_grab_state.ig_release_ms = TS_RELEASE_DELAY_DEFAULT;
+		ts_grab_state.ig_release_ms = ts_grab_release_delay;
 		if( prev == MCE_DISPLAY_POWER_UP ) {
 			/* End the faked touch once the display is
 			 * fully on. If there is a finger on the
@@ -2454,6 +2531,8 @@ gboolean mce_input_init(void)
 	GError *error = NULL;
 	gboolean status = FALSE;
 
+	ts_grab_init();
+
 #ifdef ENABLE_DOUBLETAP_EMULATION
 	/* Get fake doubletap policy configuration & track changes */
 	mce_gconf_notifier_add(MCE_GCONF_EVENT_INPUT_PATH,
@@ -2556,7 +2635,7 @@ void mce_input_exit(void)
 	cancel_keypress_repeat_timeout();
 	cancel_misc_io_monitor_timeout();
 
-	input_grab_reset(&ts_grab_state);
+	ts_grab_quit();
 	input_grab_reset(&kp_grab_state);
 
 	return;

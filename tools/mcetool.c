@@ -2537,6 +2537,36 @@ static void xmce_get_lipstick_core_delay(void)
 }
 
 /* ------------------------------------------------------------------------- *
+ * touch input unblocking
+ * ------------------------------------------------------------------------- */
+
+static bool xmce_set_touch_unblock_delay(const char *args)
+{
+        debugf("%s(%s)\n", __FUNCTION__, args);
+        int val = xmce_parse_integer(args);
+
+        if( val <= 0 ) {
+                errorf("%d: invalid touch unblock delay\n", val);
+                return false;
+        }
+
+        mcetool_gconf_set_int(MCE_GCONF_TOUCH_UNBLOCK_DELAY_PATH, val);
+
+        return true;
+}
+
+static void xmce_get_touch_unblock_delay(void)
+{
+        gint val = 0;
+        char txt[32];
+
+        strcpy(txt, "unknown");
+        if( mcetool_gconf_get_int(MCE_GCONF_TOUCH_UNBLOCK_DELAY_PATH, &val) )
+                snprintf(txt, sizeof txt, "%d", (int)val);
+        printf("%-"PAD1"s %s (milliseconds)\n", "Touch unblock delay:", txt);
+}
+
+/* ------------------------------------------------------------------------- *
  * cpu scaling governor override
  * ------------------------------------------------------------------------- */
 
@@ -2920,6 +2950,7 @@ static bool xmce_get_status(const char *args)
 #endif
         xmce_get_tklock_blank();
         xmce_get_lipstick_core_delay();
+        xmce_get_touch_unblock_delay();
 
         get_led_breathing_enabled();
         get_led_breathing_limit();
@@ -3445,6 +3476,13 @@ static const mce_opt_t options[] =
                 .values      = "secs",
                 .usage       =
                         "set the delay for dumping core from unresponsive lipstick\n"
+        },
+        {
+                .name        = "set-touch-unblock-delay",
+                .with_arg    = xmce_set_touch_unblock_delay,
+                .values      = "msecs",
+                .usage       =
+                        "set the delay for ending touch blocking after unblanking\n"
         },
         {
                 .name        = "begin-notification",
