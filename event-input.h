@@ -40,6 +40,9 @@
 # define MCE_GCONF_USE_FAKE_DOUBLETAP_PATH MCE_GCONF_EVENT_INPUT_PATH "/use_fake_double_tap"
 #endif
 
+/** Path to the touch unblock delay setting */
+#define MCE_GCONF_TOUCH_UNBLOCK_DELAY_PATH MCE_GCONF_EVENT_INPUT_PATH "/touch_unblock_delay"
+
 /**
  * Delay between I/O monitoring setups and keypress repeats; 1 second
  */
