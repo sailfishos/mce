@@ -1,3 +1,13 @@
+mce (1.31.3) unstable; urgency=low
+
+  * [mce] Assume lpm display mode is supported. Fixes JB#19608
+  * [mce] Make double tap simulation less picky about multitouch reporting
+          details. Fixes JB#19916
+  * [mce] Shorten default touch unblock delay and make it configurable.
+          Fixes JB#19833
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 04 Jun 2014 15:48:32 +0300
+
 mce (1.31.2) unstable; urgency=low
 
   * [mce] Control led brightness and color separately. Fixes JB#19788
