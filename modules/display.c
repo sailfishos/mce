@@ -677,8 +677,14 @@ static gint mdy_additional_bootup_dim_timeout = 0;
 /** File used to enable low power mode */
 static gchar *mdy_low_power_mode_file = NULL;
 
-/** Is display low power mode supported */
-static gboolean mdy_low_power_mode_supported = FALSE;
+/** Is display low power mode supported
+ *
+ * Since we now support proximity based fake lpm that does not
+ * require special support from display hw / drivers, the logic
+ * for mdy_low_power_mode_supported can be switched to: enabled
+ * by default and disabled only in special cases.
+ */
+static gboolean mdy_low_power_mode_supported = TRUE;
 
 /** Mapping of brightness change integer <-> policy string */
 static const mce_translation_t mdy_brightness_change_policy_translation[] = {
@@ -3256,8 +3262,7 @@ static display_type_t mdy_display_type_get(void)
         goto EXIT;
 
     if( mdy_display_type_get_from_hybris(&display_type) ) {
-        /* allow proximity based lpm ui */
-        mdy_low_power_mode_supported = TRUE;
+	/* nop */
     }
     else if( mdy_display_type_get_from_config(&display_type) ) {
         // nop
