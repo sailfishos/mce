@@ -3262,7 +3262,7 @@ static display_type_t mdy_display_type_get(void)
         goto EXIT;
 
     if( mdy_display_type_get_from_hybris(&display_type) ) {
-	/* nop */
+        /* nop */
     }
     else if( mdy_display_type_get_from_config(&display_type) ) {
         // nop
