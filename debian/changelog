@@ -1,3 +1,10 @@
+mce (1.31.4) unstable; urgency=low
+
+  * [mce] Fix doubletap handling when powering up display to LPM_ON state.
+    Fixes JB#19862
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 05 Jun 2014 11:47:51 +0300
+
 mce (1.31.3) unstable; urgency=low
 
   * [mce] Assume lpm display mode is supported. Fixes JB#19608
