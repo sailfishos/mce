@@ -1145,7 +1145,11 @@ static void tklock_datapipe_touchscreen_cb(gconstpointer const data)
         goto EXIT;
     }
 
-    switch( display_state )
+    /* Note: In case we happen to be in middle of display state transition
+     *       the double tap blocking must use the next stable display state
+     *       rather than the current - potentially transitional - state.
+     */
+    switch( display_state_next )
     {
     case MCE_DISPLAY_OFF:
     case MCE_DISPLAY_LPM_OFF:

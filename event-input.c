@@ -1843,7 +1843,6 @@ static gboolean touchscreen_iomon_cb(gpointer data, gsize bytes_read)
 {
 	static time_t last_activity = 0;
 
-	display_state_t display_state = display_state_get();
 	submode_t submode = mce_get_submode_int32();
 	struct input_event *ev;
 	gboolean flush = FALSE;
@@ -1866,7 +1865,15 @@ static gboolean touchscreen_iomon_cb(gpointer data, gsize bytes_read)
 
 #ifdef ENABLE_DOUBLETAP_EMULATION
 	if( grabbed || fake_doubletap_enabled ) {
-		switch( display_state ) {
+		/* Note: In case we happen to be in middle of display
+		 *       state transition the double tap simulation must
+		 *       use the next stable display state rather than
+		 *       the current - potentially transitional - state.
+		 */
+		display_state_t display_state_next =
+			datapipe_get_gint(display_state_next_pipe);
+
+		switch( display_state_next ) {
 		case MCE_DISPLAY_OFF:
 		case MCE_DISPLAY_LPM_OFF:
 		case MCE_DISPLAY_LPM_ON:
