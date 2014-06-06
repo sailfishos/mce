@@ -3246,17 +3246,17 @@ static void tklock_gconf_init(void)
  */
 static void tklock_gconf_quit(void)
 {
-    if( doubletap_gesture_policy_cb_id )
-        mce_gconf_notifier_remove(GINT_TO_POINTER(doubletap_gesture_policy_cb_id), 0);
+    mce_gconf_notifier_remove(doubletap_gesture_policy_cb_id),
+        doubletap_gesture_policy_cb_id = 0;
 
-    if( tk_autolock_enabled_cb_id )
-        mce_gconf_notifier_remove(GINT_TO_POINTER(tk_autolock_enabled_cb_id), 0);
+    mce_gconf_notifier_remove(tk_autolock_enabled_cb_id),
+        tk_autolock_enabled_cb_id = 0;
 
-    if( tklock_blank_disable_id )
-        mce_gconf_notifier_remove(GINT_TO_POINTER(tklock_blank_disable_id), 0);
+    mce_gconf_notifier_remove(tklock_blank_disable_id),
+        tklock_blank_disable_id = 0;
 
-    if( doubletap_enable_mode_cb_id )
-        mce_gconf_notifier_remove(GINT_TO_POINTER(doubletap_enable_mode_cb_id), 0);
+    mce_gconf_notifier_remove(doubletap_enable_mode_cb_id),
+        doubletap_enable_mode_cb_id = 0;
 }
 
 /* ========================================================================= *

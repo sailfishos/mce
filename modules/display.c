@@ -7538,18 +7538,14 @@ void g_module_unload(GModule *module)
 
 #ifdef ENABLE_WAKELOCKS
     /* Remove suspend policy change notifier */
-    if( mdy_suspend_policy_id ) {
-        mce_gconf_notifier_remove(GINT_TO_POINTER(mdy_suspend_policy_id), 0);
+    mce_gconf_notifier_remove(mdy_suspend_policy_id),
         mdy_suspend_policy_id = 0;
-    }
 #endif
 
 #ifdef ENABLE_CPU_GOVERNOR
     /* Remove cpu scaling governor change notifier */
-    if( mdy_governor_conf_id ) {
-        mce_gconf_notifier_remove(GINT_TO_POINTER(mdy_governor_conf_id), 0);
+    mce_gconf_notifier_remove(mdy_governor_conf_id),
         mdy_governor_conf_id = 0;
-    }
 
     /* Switch back to defaults */
     mdy_governor_rethink();

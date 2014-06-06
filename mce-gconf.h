@@ -32,7 +32,8 @@ gboolean mce_gconf_set_string(const gchar *const key, const gchar *const value);
 gboolean mce_gconf_notifier_add(const gchar *path, const gchar *key,
 				const GConfClientNotifyFunc callback,
 				guint *cb_id);
-void mce_gconf_notifier_remove(gpointer cb_id, gpointer user_data);
+void mce_gconf_notifier_remove(guint id);
+void mce_gconf_notifier_remove_cb(gpointer cb_id, gpointer user_data);
 
 gboolean mce_gconf_init(void);
 void mce_gconf_exit(void);

@@ -2783,15 +2783,12 @@ EXIT:
  */
 static void sw_breathing_quit(void)
 {
-	if( sw_breathing_battery_limit_gconf_id ) {
-		mce_gconf_notifier_remove(GINT_TO_POINTER(sw_breathing_battery_limit_gconf_id), 0);
+	mce_gconf_notifier_remove(sw_breathing_battery_limit_gconf_id),
 		sw_breathing_battery_limit_gconf_id = 0;
-	}
 
-	if( sw_breathing_enabled_gconf_id ) {
-		mce_gconf_notifier_remove(GINT_TO_POINTER(sw_breathing_enabled_gconf_id), 0);
+	mce_gconf_notifier_remove(sw_breathing_enabled_gconf_id),
 		sw_breathing_enabled_gconf_id = 0;
-	}
+
 	allow_sw_breathing(false);
 }
 
@@ -3026,7 +3023,7 @@ void g_module_unload(GModule *module)
 		pattern_struct *psp;
 
 		while ((psp = g_queue_pop_head(pattern_stack)) != NULL) {
-			mce_gconf_notifier_remove(GINT_TO_POINTER(psp->gconf_cb_id), NULL);
+			mce_gconf_notifier_remove(psp->gconf_cb_id);
 			free(psp->name);
 			psp->name = NULL;
 			g_slice_free(pattern_struct, psp);

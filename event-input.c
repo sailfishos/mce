@@ -1374,10 +1374,8 @@ static void ts_grab_init(void)
  */
 static void ts_grab_quit(void)
 {
-	if( ts_grab_release_delay_id ) {
-		mce_gconf_notifier_remove(GINT_TO_POINTER(ts_grab_release_delay_id), 0);
+	mce_gconf_notifier_remove(ts_grab_release_delay_id),
 		ts_grab_release_delay_id = 0;
-	}
 
 	input_grab_reset(&ts_grab_state);
 }
@@ -2682,10 +2680,8 @@ void mce_input_exit(void)
 {
 #ifdef ENABLE_DOUBLETAP_EMULATION
 	/* Remove fake doubletap policy change notifier */
-	if( fake_doubletap_id ) {
-		mce_gconf_notifier_remove(GINT_TO_POINTER(fake_doubletap_id), 0);
+	mce_gconf_notifier_remove(fake_doubletap_id),
 		fake_doubletap_id = 0;
-	}
 #endif
 
 	/* Remove triggers/filters from datapipes */
