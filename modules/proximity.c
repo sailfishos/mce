@@ -1047,6 +1047,7 @@ const gchar *g_module_check_init(GModule *module)
 			       MCE_GCONF_PROXIMITY_PS_ENABLED_PATH,
 			       use_ps_conf_cb,
 			       &use_ps_conf_id);
+
 	mce_gconf_get_bool(MCE_GCONF_PROXIMITY_PS_ENABLED_PATH,
 			   &use_ps_conf_value);
 

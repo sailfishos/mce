@@ -1824,13 +1824,10 @@ static gboolean pattern_get_enabled(const gchar *const patternname,
 					       patternname);
 
 	/* Since we've set a default, error handling is unnecessary */
-	(void)mce_gconf_get_bool(path, &retval);
+	mce_gconf_notifier_add(MCE_GCONF_LED_PATH, path,
+			       led_gconf_cb, gconf_cb_id);
+	mce_gconf_get_bool(path, &retval);
 
-	if (mce_gconf_notifier_add(MCE_GCONF_LED_PATH, path,
-				   led_gconf_cb, gconf_cb_id) == FALSE)
-		goto EXIT;
-
-EXIT:
 	g_free(path);
 
 	return retval;
@@ -2801,6 +2798,7 @@ static void sw_breathing_init(void)
 			       "/system/osso/dsm/leds/sw_breath_enabled",
 			       sw_breathing_gconf_cb,
 			       &sw_breathing_enabled_gconf_id);
+
 	mce_gconf_get_bool("/system/osso/dsm/leds/sw_breath_enabled",
 			   &sw_breathing_enabled);
 
@@ -2809,6 +2807,7 @@ static void sw_breathing_init(void)
 			       "/system/osso/dsm/leds/sw_breath_battery_limit",
 			       sw_breathing_gconf_cb,
 			       &sw_breathing_battery_limit_gconf_id);
+
 	mce_gconf_get_int("/system/osso/dsm/leds/sw_breath_battery_limit",
 			  &sw_breathing_battery_limit);
 }

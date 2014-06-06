@@ -284,46 +284,41 @@ const gchar *g_module_check_init(GModule *module)
 
 	/* Power saving mode setting */
 	/* Since we've set a default, error handling is unnecessary */
-	(void)mce_gconf_get_bool(MCE_GCONF_PSM_PATH,
-				 &power_saving_mode);
+	mce_gconf_notifier_add(MCE_GCONF_EM_PATH,
+			       MCE_GCONF_PSM_PATH,
+			       psm_gconf_cb,
+			       &psm_gconf_cb_id);
 
-	if (mce_gconf_notifier_add(MCE_GCONF_EM_PATH,
-				   MCE_GCONF_PSM_PATH,
-				   psm_gconf_cb,
-				   &psm_gconf_cb_id) == FALSE)
-		goto EXIT;
+	mce_gconf_get_bool(MCE_GCONF_PSM_PATH,
+			   &power_saving_mode);
 
 	/* Forced power saving mode setting */
 	/* Since we've set a default, error handling is unnecessary */
-	(void)mce_gconf_get_bool(MCE_GCONF_FORCED_PSM_PATH,
-				 &force_psm);
+	mce_gconf_notifier_add(MCE_GCONF_EM_PATH,
+			       MCE_GCONF_FORCED_PSM_PATH,
+			       psm_gconf_cb,
+			       &force_psm_gconf_cb_id);
 
-	if (mce_gconf_notifier_add(MCE_GCONF_EM_PATH,
-				   MCE_GCONF_FORCED_PSM_PATH,
-				   psm_gconf_cb,
-				   &force_psm_gconf_cb_id) == FALSE)
-		goto EXIT;
+	mce_gconf_get_bool(MCE_GCONF_FORCED_PSM_PATH,
+			   &force_psm);
 
 	/* Power saving mode threshold */
 	/* Since we've set a default, error handling is unnecessary */
-	(void)mce_gconf_get_int(MCE_GCONF_PSM_THRESHOLD_PATH,
-				&psm_threshold);
+	mce_gconf_notifier_add(MCE_GCONF_EM_PATH,
+			       MCE_GCONF_PSM_THRESHOLD_PATH,
+			       psm_gconf_cb,
+			       &psm_threshold_gconf_cb_id);
 
-	if (mce_gconf_notifier_add(MCE_GCONF_EM_PATH,
-				   MCE_GCONF_PSM_THRESHOLD_PATH,
-				   psm_gconf_cb,
-				   &psm_threshold_gconf_cb_id) == FALSE)
-		goto EXIT;
+	mce_gconf_get_int(MCE_GCONF_PSM_THRESHOLD_PATH,
+			  &psm_threshold);
 
 	/* get_psm_state */
-	if (mce_dbus_handler_add(MCE_REQUEST_IF,
-				 MCE_PSM_STATE_GET,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_METHOD_CALL,
-				 psm_state_get_dbus_cb) == NULL)
-		goto EXIT;
+	mce_dbus_handler_add(MCE_REQUEST_IF,
+			     MCE_PSM_STATE_GET,
+			     NULL,
+			     DBUS_MESSAGE_TYPE_METHOD_CALL,
+			     psm_state_get_dbus_cb);
 
-EXIT:
 	return NULL;
 }
 

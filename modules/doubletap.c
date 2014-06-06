@@ -322,6 +322,7 @@ const gchar *g_module_check_init(GModule *module)
                                MCE_GCONF_DOUBLETAP_MODE,
                                dbltap_mode_gconf_cb,
                                &dbltap_mode_gconf_id);
+
         gint mode = DBLTAP_ENABLE_DEFAULT;
         mce_gconf_get_int(MCE_GCONF_DOUBLETAP_MODE, &mode);
         dbltap_mode = mode;

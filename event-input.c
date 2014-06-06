@@ -2613,6 +2613,7 @@ gboolean mce_input_init(void)
 			       MCE_GCONF_USE_FAKE_DOUBLETAP_PATH,
 			       fake_doubletap_cb,
 			       &fake_doubletap_id);
+
 	mce_gconf_get_bool(MCE_GCONF_USE_FAKE_DOUBLETAP_PATH,
 			   &fake_doubletap_enabled);
 #endif

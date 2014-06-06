@@ -166,6 +166,7 @@ static void powerkey_gconf_init(void)
 			       MCE_GCONF_POWERKEY_MODE,
 			       powerkey_gconf_cb,
 			       &powerkey_action_mode_cb_id);
+
 	mce_gconf_get_int(MCE_GCONF_POWERKEY_MODE, &powerkey_action_mode);
 }
 

@@ -312,12 +312,13 @@ gboolean mce_gconf_notifier_add(const gchar *path, const gchar *key,
 	if( gconf_disabled ) {
 		mce_log(LL_DEBUG, "blocked %s notifier", key);
 
-		/* Returning failure would result in termination
+		/* Returning failure could result in termination
 		 * of mce process -> return bogus success if we
 		 * have disabled gconf on purpose. */
 		status = TRUE;
 		goto EXIT;
 	}
+
 	gconf_client_add_dir(gconf_client, path,
 			     GCONF_CLIENT_PRELOAD_NONE, &error);
 
@@ -326,10 +327,8 @@ gboolean mce_gconf_notifier_add(const gchar *path, const gchar *key,
 			"Could not add %s to directories watched by "
 			"GConf client setting from GConf; %s",
 			path, error->message);
-		//goto EXIT;
+		goto EXIT;
 	}
-
-	g_clear_error(&error);
 
 	id = gconf_client_notify_add(gconf_client, key, callback,
 				     NULL, NULL, &error);
@@ -337,14 +336,15 @@ gboolean mce_gconf_notifier_add(const gchar *path, const gchar *key,
 		mce_log(LL_WARN,
 			"Could not register notifier for %s; %s",
 			key, error->message);
-		//goto EXIT;
+		goto EXIT;
 	}
 
-	if( id )
-		gconf_notifiers = g_slist_prepend(gconf_notifiers,
-						  GINT_TO_POINTER(id));
+	if( !id )
+		goto EXIT;
 
-	// FIXME: fix the bogus success return
+	gconf_notifiers = g_slist_prepend(gconf_notifiers,
+					  GINT_TO_POINTER(id));
+
 	status = TRUE;
 
 EXIT:
