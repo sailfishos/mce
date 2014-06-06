@@ -1,3 +1,10 @@
+mce (1.31.6) unstable; urgency=low
+
+  * [mce] Make lpm display mode follow the brightness setting in manual
+    mode. Fixes JB#20227
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 06 Jun 2014 11:02:21 +0300
+
 mce (1.31.5) unstable; urgency=low
 
   * [mce] Tune led brightness configuration. Fixes JB#20149
