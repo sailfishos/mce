@@ -1299,6 +1299,11 @@ static void mdy_datapipe_power_saving_mode_cb(gconstpointer data)
         execute_datapipe(&display_brightness_pipe,
                          GINT_TO_POINTER(mdy_psm_disp_brightness),
                          USE_INDATA, CACHE_INDATA);
+
+        execute_datapipe(&lpm_brightness_pipe,
+                         GINT_TO_POINTER(mdy_psm_disp_brightness),
+                         USE_INDATA, CACHE_INDATA);
+
         mdy_cabc_mode_set(mdy_psm_cabc_mode);
     } else {
         /* Restore the CABC mode and brightness setting */
@@ -1308,6 +1313,11 @@ static void mdy_datapipe_power_saving_mode_cb(gconstpointer data)
         execute_datapipe(&display_brightness_pipe,
                          GINT_TO_POINTER(mdy_brightness_setting),
                          USE_INDATA, CACHE_INDATA);
+
+        execute_datapipe(&lpm_brightness_pipe,
+                         GINT_TO_POINTER(mdy_brightness_setting),
+                         USE_INDATA, CACHE_INDATA);
+
         mdy_cabc_mode_set(mdy_cabc_mode);
     }
 EXIT:
@@ -7079,11 +7089,10 @@ static void mdy_gconf_sanitize_brightness_settings(void)
     mce_log(LL_DEBUG, "mdy_brightness_level_display_dim = %d",
             mdy_brightness_level_display_dim);
 
-    /* Drive the initial lpm brightness value through datapipe.
-     * Actual value will change only if sensor is enabled, producing
-     * input and lpm als config is in place. */
+    /* And drive the display brightness setting value through lpm datapipe
+     * too. This will update the mdy_brightness_level_display_lpm value. */
     execute_datapipe(&lpm_brightness_pipe,
-                     GINT_TO_POINTER(mdy_brightness_level_display_lpm),
+                     GINT_TO_POINTER(mdy_brightness_setting),
                      USE_INDATA, CACHE_INDATA);
 }
 
