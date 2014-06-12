@@ -6845,6 +6845,11 @@ static void mdy_flagfiles_update_mode_cb(const char *path,
 
         /* blanking timers need to be started or stopped */
         mdy_blanking_rethink_timers(true);
+
+        /* broadcast change within mce */
+        execute_datapipe(&update_mode_pipe,
+                         GINT_TO_POINTER(mdy_update_mode),
+                         USE_INDATA, CACHE_INDATA);
     }
 }
 

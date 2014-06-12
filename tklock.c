@@ -173,6 +173,7 @@ static int64_t  tklock_monotick_get(void);
 static void     tklock_datapipe_system_state_cb(gconstpointer data);
 static void     tklock_datapipe_device_lock_active_cb(gconstpointer data);
 static void     tklock_datapipe_lipstick_available_cb(gconstpointer data);
+static void     tklock_datapipe_update_mode_cb(gconstpointer data);
 static void     tklock_datapipe_display_state_cb(gconstpointer data);
 static void     tklock_datapipe_proximity_update(void);
 static gboolean tklock_datapipe_proximity_uncover_cb(gpointer data);
@@ -577,6 +578,32 @@ static void tklock_datapipe_lipstick_available_cb(gconstpointer data)
     else {
         /* assume device lock is off if lipstick exits */
         tklock_datapipe_set_device_lock_active(false);
+    }
+
+EXIT:
+    return;
+}
+
+/** Update mode is active; assume false */
+static bool update_mode = false;
+
+/** Change notifications for update_mode
+ */
+static void tklock_datapipe_update_mode_cb(gconstpointer data)
+{
+    bool prev = update_mode;
+    update_mode = GPOINTER_TO_INT(data);
+
+    if( update_mode == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "update_mode = %d -> %d", prev, update_mode);
+
+    if( update_mode ) {
+        /* undo tklock when update mode starts */
+        execute_datapipe(&tk_lock_pipe,
+                         GINT_TO_POINTER(LOCK_OFF),
+                         USE_INDATA, CACHE_INDATA);
     }
 
 EXIT:
@@ -1416,6 +1443,10 @@ static datapipe_binding_t tklock_datapipe_triggers[] =
     {
         .datapipe = &lipstick_available_pipe,
         .output_cb = tklock_datapipe_lipstick_available_cb,
+    },
+    {
+        .datapipe = &update_mode_pipe,
+        .output_cb = tklock_datapipe_update_mode_cb,
     },
     {
         .datapipe = &device_lock_active_pipe,
@@ -3404,6 +3435,10 @@ static void tklock_ui_set(bool enable)
         }
         else if( !lipstick_available ) {
             mce_log(LL_INFO, "deny tklock; lipstick not running");
+            enable = false;
+        }
+        else if( update_mode ) {
+            mce_log(LL_INFO, "deny tklock; os update in progress");
             enable = false;
         }
     }
