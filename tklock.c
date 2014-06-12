@@ -1084,6 +1084,34 @@ static void tklock_datapipe_submode_cb(gconstpointer data)
     tklock_uiexcept_rethink();
 
     tklock_evctrl_rethink();
+
+    // was tklock removed?
+    if( (prev & MCE_TKLOCK_SUBMODE) && !(submode & MCE_TKLOCK_SUBMODE) ) {
+        switch( display_state_next ) {
+        case MCE_DISPLAY_LPM_ON:
+        case MCE_DISPLAY_LPM_OFF:
+            /* We're currently in or transitioning to lpm display state
+             * and tklock just got removed. Normally this should not
+             * happen, so emit error message to journal. */
+            mce_log(LL_ERR, "tklock submode was removed in lpm state");
+
+            /* Nevertheless, removal of tklock means there is something
+             * happening at the ui side - and probably the best course of
+             * action is to cancel lpm state by turning on the display. */
+            execute_datapipe(&display_state_req_pipe,
+                             GINT_TO_POINTER(MCE_DISPLAY_ON),
+                             USE_INDATA, CACHE_INDATA);
+            break;
+
+        default:
+        case MCE_DISPLAY_UNDEF:
+        case MCE_DISPLAY_OFF:
+        case MCE_DISPLAY_DIM:
+        case MCE_DISPLAY_ON:
+            // nop
+            break;
+        }
+    }
 EXIT:
     return;
 }
