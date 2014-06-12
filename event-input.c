@@ -1435,7 +1435,7 @@ static void ts_grab_display_state_cb(gconstpointer data)
 	case MCE_DISPLAY_ON:
 	case MCE_DISPLAY_DIM:
 		ts_grab_state.ig_release_ms = ts_grab_release_delay;
-		if( prev == MCE_DISPLAY_POWER_UP ) {
+		if( prev != MCE_DISPLAY_ON && prev != MCE_DISPLAY_DIM ) {
 			/* End the faked touch once the display is
 			 * fully on. If there is a finger on the
 			 * screen we will get more input events
