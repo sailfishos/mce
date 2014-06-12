@@ -3428,6 +3428,8 @@ static void tklock_ui_close(void)
 
 static void tklock_ui_set(bool enable)
 {
+    bool requested = enable;
+
     if( enable ) {
         if( system_state != MCE_STATE_USER ) {
             mce_log(LL_INFO, "deny tklock; not in user mode");
@@ -3443,7 +3445,7 @@ static void tklock_ui_set(bool enable)
         }
     }
 
-    if( tklock_ui_sent != enable ) {
+    if( tklock_ui_sent != enable || requested != enable ) {
         mce_log(LL_DEVEL, "tklock state = %s", enable ? "locked" : "unlocked");
 
         if( (tklock_ui_sent = tklock_ui_enabled = enable) ) {
