@@ -195,6 +195,11 @@ void request_powerup(void)
  */
 void request_reboot(void)
 {
+	if( datapipe_get_gint(update_mode_pipe) ) {
+		mce_log(LL_WARN, "reboot blocked; os update in progress");
+		goto EXIT;
+	}
+
 	/* Set up the message */
 	DSM_MSGTYPE_REBOOT_REQ msg = DSME_MSG_INIT(DSM_MSGTYPE_REBOOT_REQ);
 
@@ -202,6 +207,8 @@ void request_reboot(void)
 	mce_dsme_send(&msg);
 	mce_log(LL_DEBUG,
 		"DSM_MSGTYPE_REBOOT_REQ sent to DSME");
+EXIT:
+	return;
 }
 
 /**
@@ -291,6 +298,11 @@ static void setup_transition_timeout(void)
  */
 void request_normal_shutdown(void)
 {
+	if( datapipe_get_gint(update_mode_pipe) ) {
+		mce_log(LL_WARN, "shutdown blocked; os update in progress");
+		goto EXIT;
+	}
+
 	/* Set up the message */
 	DSM_MSGTYPE_SHUTDOWN_REQ msg = DSME_MSG_INIT(DSM_MSGTYPE_SHUTDOWN_REQ);
 
@@ -299,6 +311,8 @@ void request_normal_shutdown(void)
 	mce_log(LL_DEBUG,
 		"DSM_MSGTYPE_SHUTDOWN_REQ (DSME_NORMAL_SHUTDOWN) "
 		"sent to DSME");
+EXIT:
+	return;
 }
 
 /**
