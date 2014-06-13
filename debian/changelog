@@ -1,3 +1,11 @@
+mce (1.31.7) unstable; urgency=low
+
+  * [mce] Keep display on and block suspend when os update is in progress.
+    Fixes JB#14675
+  * [mce] Cancel lpm mode if tklock is removed. Fixes JB#20383
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 13 Jun 2014 11:32:34 +0300
+
 mce (1.31.6) unstable; urgency=low
 
   * [mce] Make lpm display mode follow the brightness setting in manual
