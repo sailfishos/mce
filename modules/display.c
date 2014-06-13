@@ -593,6 +593,7 @@ static void                mdy_dbus_quit(void);
 static gboolean            mdy_flagfiles_desktop_ready_cb(gpointer user_data);
 static void                mdy_flagfiles_bootstate_cb(const char *path, const char *file, gpointer data);
 static void                mdy_flagfiles_init_done_cb(const char *path, const char *file, gpointer data);
+static void                mdy_flagfiles_update_mode_cb(const char *path, const char *file, gpointer data);
 static void                mdy_flagfiles_start_tracking(void);
 static void                mdy_flagfiles_stop_tracking(void);
 
@@ -769,6 +770,12 @@ static gboolean mdy_init_done = FALSE;
 
 /** Content change watcher for the init-done flag file */
 static filewatcher_t *mdy_init_done_watcher = 0;
+
+/** Is the update-mode flag file present in the file system */
+static gboolean mdy_update_mode = FALSE;
+
+/** Content change watcher for the update-mode flag file */
+static filewatcher_t *mdy_update_mode_watcher = 0;
 
 /* ------------------------------------------------------------------------- *
  * GCONF_SETTINGS
@@ -1022,6 +1029,12 @@ static gpointer mdy_datapipe_display_state_filter_cb(gpointer data)
 
     /* Handle never-blank override */
     if( mdy_disp_never_blank ) {
+        next_state = MCE_DISPLAY_ON;
+        goto UPDATE;
+    }
+
+    /* Handle update-mode override */
+    if( mdy_update_mode ) {
         next_state = MCE_DISPLAY_ON;
         goto UPDATE;
     }
@@ -2913,6 +2926,8 @@ static void mdy_blanking_rethink_timers(bool force)
         break;
 
     case MCE_DISPLAY_DIM:
+        if( mdy_update_mode )
+            break;
         if( mdy_blanking_inhibit_mode == INHIBIT_STAY_DIM )
             break;
         if( charger_connected &&
@@ -2922,6 +2937,8 @@ static void mdy_blanking_rethink_timers(bool force)
         break;
 
     case MCE_DISPLAY_ON:
+        if( mdy_update_mode )
+            break;
         if( exception_state & ~UIEXC_CALL ) {
             break;
         }
@@ -4309,6 +4326,10 @@ static int mdy_autosuspend_get_allowed_level(void)
 
     /* no more suspend at module unload */
     if( mdy_unloading_module )
+        block_early = true;
+
+    /* no suspend during update mode */
+    if( mdy_update_mode )
         block_early = true;
 
     /* do not suspend while ui side might still be drawing */
@@ -6790,6 +6811,48 @@ static void mdy_flagfiles_init_done_cb(const char *path,
     }
 }
 
+/** Content of update-mode flag file has changed
+ *
+ * @param path directory where flag file is
+ * @param file name of the flag file
+ * @param data (not used)
+ */
+static void mdy_flagfiles_update_mode_cb(const char *path,
+                                         const char *file,
+                                         gpointer data)
+{
+    (void)data;
+
+    char full[256];
+    snprintf(full, sizeof full, "%s/%s", path, file);
+
+    gboolean flag = access(full, F_OK) ? FALSE : TRUE;
+
+    if( mdy_update_mode != flag ) {
+        mdy_update_mode = flag;
+        mce_log(LL_DEVEL, "mdy_update_mode -> %s",
+                mdy_update_mode ? "true" : "false");
+
+        if( mdy_update_mode ) {
+            /* Issue display on request when update mode starts */
+            execute_datapipe(&display_state_req_pipe,
+                             GINT_TO_POINTER(MCE_DISPLAY_ON),
+                             USE_INDATA, CACHE_INDATA);
+        }
+
+        /* suspend policy is affected by update mode */
+        mdy_stm_schedule_rethink();
+
+        /* blanking timers need to be started or stopped */
+        mdy_blanking_rethink_timers(true);
+
+        /* broadcast change within mce */
+        execute_datapipe(&update_mode_pipe,
+                         GINT_TO_POINTER(mdy_update_mode),
+                         USE_INDATA, CACHE_INDATA);
+    }
+}
+
 /** Content of bootstate flag file has changed
  *
  * @param path directory where flag file is
@@ -6842,6 +6905,9 @@ EXIT:
  */
 static void mdy_flagfiles_start_tracking(void)
 {
+    static const char update_dir[] = "/tmp";
+    static const char update_flag[] = "os-update-running";
+
     static const char flag_dir[]  = "/run/systemd/boot-status";
     static const char flag_init[] = "init-done";
     static const char flag_boot[] = "bootstate";
@@ -6849,6 +6915,13 @@ static void mdy_flagfiles_start_tracking(void)
     time_t uptime = 0;  // uptime in seconds
     time_t ready  = 60; // desktop ready at
     time_t delay  = 10; // default wait time
+
+    /* if the update directory exits, track flag file presense */
+    if( access(update_dir, F_OK) == 0 ) {
+        mdy_update_mode_watcher = filewatcher_create(update_dir, update_flag,
+                                                     mdy_flagfiles_update_mode_cb,
+                                                     0, 0);
+    }
 
     /* if the status directory exists, wait for flag file to appear */
     if( access(flag_dir, F_OK) == 0 ) {
@@ -6891,12 +6964,19 @@ static void mdy_flagfiles_start_tracking(void)
         /* or assume ACT_DEAD & co are not supported */
         mdy_bootstate = BOOTSTATE_USER;
     }
+
+    if( mdy_update_mode_watcher ) {
+        /* evaluate the initial state of update-mode flag file */
+        filewatcher_force_trigger(mdy_update_mode_watcher);
+    }
 }
 
 /** Stop tracking of init_done state
  */
 static void mdy_flagfiles_stop_tracking(void)
 {
+    filewatcher_delete(mdy_update_mode_watcher), mdy_update_mode_watcher = 0;
+
     filewatcher_delete(mdy_init_done_watcher), mdy_init_done_watcher = 0;
 
     filewatcher_delete(mdy_bootstate_watcher), mdy_bootstate_watcher = 0;

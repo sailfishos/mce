@@ -73,6 +73,57 @@ typedef enum {
 	CACHE_INDATA = TRUE		/**< Cache the indata */
 } caching_policy_t;
 
+/* Available datapipes */
+extern datapipe_struct led_brightness_pipe;
+extern datapipe_struct lpm_brightness_pipe;
+extern datapipe_struct device_inactive_pipe;
+extern datapipe_struct led_pattern_activate_pipe;
+extern datapipe_struct led_pattern_deactivate_pipe;
+extern datapipe_struct user_activity_pipe;
+extern datapipe_struct display_state_pipe;
+extern datapipe_struct display_state_req_pipe;
+extern datapipe_struct display_state_next_pipe;
+extern datapipe_struct exception_state_pipe;
+extern datapipe_struct display_brightness_pipe;
+extern datapipe_struct key_backlight_pipe;
+extern datapipe_struct keypress_pipe;
+extern datapipe_struct touchscreen_pipe;
+extern datapipe_struct lockkey_pipe;
+extern datapipe_struct keyboard_slide_pipe;
+extern datapipe_struct lid_cover_pipe;
+extern datapipe_struct lens_cover_pipe;
+extern datapipe_struct proximity_sensor_pipe;
+extern datapipe_struct ambient_light_sensor_pipe;
+extern datapipe_struct orientation_sensor_pipe;
+extern datapipe_struct alarm_ui_state_pipe;
+extern datapipe_struct system_state_pipe;
+extern datapipe_struct master_radio_pipe;
+extern datapipe_struct submode_pipe;
+extern datapipe_struct call_state_pipe;
+extern datapipe_struct call_type_pipe;
+extern datapipe_struct tk_lock_pipe;
+extern datapipe_struct charger_state_pipe;
+extern datapipe_struct battery_status_pipe;
+extern datapipe_struct battery_level_pipe;
+extern datapipe_struct camera_button_pipe;
+extern datapipe_struct inactivity_timeout_pipe;
+extern datapipe_struct audio_route_pipe;
+extern datapipe_struct usb_cable_pipe;
+extern datapipe_struct jack_sense_pipe;
+extern datapipe_struct power_saving_mode_pipe;
+extern datapipe_struct thermal_state_pipe;
+extern datapipe_struct heartbeat_pipe;
+extern datapipe_struct lipstick_available_pipe;
+extern datapipe_struct packagekit_locked_pipe;
+extern datapipe_struct update_mode_pipe;
+extern datapipe_struct device_lock_active_pipe;
+extern datapipe_struct touch_grab_wanted_pipe;
+extern datapipe_struct touch_grab_active_pipe;
+extern datapipe_struct keypad_grab_wanted_pipe;
+extern datapipe_struct keypad_grab_active_pipe;
+extern datapipe_struct music_playback_pipe;
+extern datapipe_struct proximity_blank_pipe;
+
 /* Data retrieval */
 
 /** Retrieve a gboolean from a datapipe */
