@@ -904,6 +904,11 @@ int main(int argc, char **argv)
 	atexit(mce_cleanup_wakelocks);
 #endif
 
+	/* Identify mce version & flavor on start up */
+	mce_log(LL_WARN, "MCE %s (%s) starting up",
+		G_STRINGIFY(PRG_VERSION),
+		(LL_DEVEL == LL_CRIT) ? "devel" : "release");
+
 	/* Daemonize if requested */
 	if( mce_args.daemonflag )
 		daemonize();
