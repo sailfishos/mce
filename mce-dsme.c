@@ -41,23 +41,23 @@
 /** Well known dbus name of dsme */
 #define DSME_DBUS_SERVICE "com.nokia.dsme"
 
-/** Charger state */
+/** Charger state; from charger_state_pipe */
 static gboolean charger_connected = FALSE;
 
+/** Availability of dsme; from dsme_available_pipe */
+static bool dsme_available = false;
+
 /** Pointer to the dsmesock connection */
-static dsmesock_connection_t *dsme_conn = NULL;
+static dsmesock_connection_t *mce_dsme_connection = NULL;
 
-/** I/O watch for dsme_conn */
-static guint dsme_data_source_id = 0;
+/** I/O watch for mce_dsme_connection */
+static guint mce_dsme_iowatch_id = 0;
 
-/** ID for state transition timer source */
-static guint transition_timeout_cb_id = 0;
+/** ID for delayed state transition reporting timer */
+static guint mce_dsme_state_report_id = 0;
 
 /** Soft poweroff charger connect policy */
 static gint softoff_charger_connect_policy = DEFAULT_SOFTOFF_CHARGER_CONNECT;
-
-/** Availability of dsme; dbus name com.nokia.dsme has owner */
-static bool dsme_available = false;
 
 /** Mapping of soft poweroff charger connect integer <-> policy string */
 static const mce_translation_t soft_poweroff_charger_connect_translation[] = {
@@ -73,12 +73,40 @@ static const mce_translation_t soft_poweroff_charger_connect_translation[] = {
 	}
 };
 
-static bool dsme_connect(void);
-static void dsme_disconnect(void);
-static void dsme_reconnect(void);
+/* Internal functions */
 
-static bool dsme_get_dbus_name_owner(void);
-static void dsme_set_availability(bool available);
+static bool           mce_dsme_send(gpointer msg, const char *request_name);
+static void           mce_dsme_send_pong(void);
+static void           mce_dsme_init_processwd(void);
+static void           mce_dsme_exit_processwd(void);
+static void           mce_dsme_query_system_state(void);
+
+static gboolean       mce_dsme_state_report_cb(gpointer data);
+static void           mce_dsme_cancel_state_report(void);
+static void           mce_dsme_schedule_state_report(void);
+
+static system_state_t mce_dsme_normalise_system_state(dsme_state_t dsmestate);
+
+static gboolean       mce_dsme_iowatch_cb(GIOChannel *source, GIOCondition condition, gpointer data);
+static gboolean       mce_dsme_init_done_cb(DBusMessage *const msg);
+static void           mce_dsme_charger_state_cb(gconstpointer const data);
+static void           mce_dsme_dsme_available_cb(gconstpointer const data);
+
+static bool           mce_dsme_connect(void);
+static void           mce_dsme_disconnect(void);
+static void           mce_dsme_reconnect(void);
+
+static void           mce_dsme_set_availability(bool available);
+
+static void           mce_dsme_query_name_owner_cb(DBusPendingCall *pc, void *user_data);
+static bool           mce_dsme_query_name_owner(void);
+static gboolean       mce_dsme_name_owner_changed_cb(DBusMessage *const msg);
+
+static void           mce_dsme_init_dbus(void);
+static void           mce_dsme_quit_dbus(void);
+static void           mce_dsme_init_config(void);
+static void           mce_dsme_init_datapipes(void);
+static void           mce_dsme_quit_datapipes(void);
 
 /**
  * Generic send function for dsmesock messages
@@ -89,18 +117,18 @@ static bool mce_dsme_send(gpointer msg, const char *request_name)
 {
 	bool res = false;
 
-	if( !dsme_conn ) {
+	if( !mce_dsme_connection ) {
 		mce_log(LL_WARN, "failed to send %s to dsme; %s",
 			request_name, "not connected");
 		goto EXIT;
 	}
 
-	if( dsmesock_send(dsme_conn, msg) == -1) {
+	if( dsmesock_send(mce_dsme_connection, msg) == -1) {
 		mce_log(LL_ERR, "failed to send %s to dsme; %m",
 			request_name);
 
 		/* close and try to re-connect */
-		dsme_reconnect();
+		mce_dsme_reconnect();
 		goto EXIT;
 	}
 
@@ -115,7 +143,7 @@ EXIT:
 /**
  * Send pong message to the DSME process watchdog
  */
-static void dsme_send_pong(void)
+static void mce_dsme_send_pong(void)
 {
 	/* Set up the message */
 	DSM_MSGTYPE_PROCESSWD_PONG msg =
@@ -133,7 +161,7 @@ static void dsme_send_pong(void)
 /**
  * Register to DSME process watchdog
  */
-static void dsme_init_processwd(void)
+static void mce_dsme_init_processwd(void)
 {
 	/* Set up the message */
 	DSM_MSGTYPE_PROCESSWD_CREATE msg =
@@ -147,7 +175,7 @@ static void dsme_init_processwd(void)
 /**
  * Unregister from DSME process watchdog
  */
-static void dsme_exit_processwd(void)
+static void mce_dsme_exit_processwd(void)
 {
 	mce_log(LL_DEBUG,
 		"Disabling DSME process watchdog");
@@ -164,7 +192,7 @@ static void dsme_exit_processwd(void)
 /**
  * Send system state inquiry
  */
-static void query_system_state(void)
+static void mce_dsme_query_system_state(void)
 {
 	/* Set up the message */
 	DSM_MSGTYPE_STATE_QUERY msg = DSME_MSG_INIT(DSM_MSGTYPE_STATE_QUERY);
@@ -242,11 +270,11 @@ void request_soft_poweroff(void)
  * @param data Unused
  * @return Always returns FALSE, to disable the timeout
  */
-static gboolean transition_timeout_cb(gpointer data)
+static gboolean mce_dsme_state_report_cb(gpointer data)
 {
 	(void)data;
 
-	transition_timeout_cb_id = 0;
+	mce_dsme_state_report_id = 0;
 
 	mce_rem_submode_int32(MCE_TRANSITION_SUBMODE);
 
@@ -256,33 +284,33 @@ static gboolean transition_timeout_cb(gpointer data)
 /**
  * Cancel state transition timeout
  */
-static void cancel_state_transition_timeout(void)
+static void mce_dsme_cancel_state_report(void)
 {
 	/* Remove the timeout source for state transitions */
-	if (transition_timeout_cb_id != 0) {
-		g_source_remove(transition_timeout_cb_id);
-		transition_timeout_cb_id = 0;
+	if (mce_dsme_state_report_id != 0) {
+		g_source_remove(mce_dsme_state_report_id);
+		mce_dsme_state_report_id = 0;
 	}
 }
 
 /**
  * Setup state transition timeout
  */
-static void setup_transition_timeout(void)
+static void mce_dsme_schedule_state_report(void)
 {
-	cancel_state_transition_timeout();
+	mce_dsme_cancel_state_report();
 
 #if TRANSITION_DELAY > 0
 	/* Setup new timeout */
-	transition_timeout_cb_id =
-		g_timeout_add(TRANSITION_DELAY, transition_timeout_cb, NULL);
+	mce_dsme_state_report_id =
+		g_timeout_add(TRANSITION_DELAY, mce_dsme_state_report_cb, NULL);
 #elif TRANSITION_DELAY == 0
 	/* Set up idle callback */
-	transition_timeout_cb_id =
-		g_idle_add(transition_timeout_cb, NULL);
+	mce_dsme_state_report_id =
+		g_idle_add(mce_dsme_state_report_cb, NULL);
 #else
 	/* Trigger immediately */
-	transition_timeout_cb(0);
+	mce_dsme_state_report_cb(0);
 #endif
 }
 
@@ -312,7 +340,7 @@ EXIT:
  * @param dsmestate The DSME dsme_state_t with the value to convert
  * @return the converted value
  */
-static system_state_t normalise_dsme_state(dsme_state_t dsmestate)
+static system_state_t mce_dsme_normalise_system_state(dsme_state_t dsmestate)
 {
 	system_state_t state = MCE_STATE_UNDEF;
 
@@ -375,9 +403,9 @@ static system_state_t normalise_dsme_state(dsme_state_t dsmestate)
  * @param data Unused
  * @return TRUE on success, FALSE on failure
  */
-static gboolean io_data_ready_cb(GIOChannel *source,
-				 GIOCondition condition,
-				 gpointer data)
+static gboolean mce_dsme_iowatch_cb(GIOChannel *source,
+				    GIOCondition condition,
+				    gpointer data)
 {
 	gboolean keep_going = TRUE;
 	dsmemsg_generic_t *msg = 0;
@@ -395,7 +423,7 @@ static gboolean io_data_ready_cb(GIOChannel *source,
 		goto EXIT;
 	}
 
-	if( !(msg = dsmesock_receive(dsme_conn)) )
+	if( !(msg = dsmesock_receive(mce_dsme_connection)) )
 		goto EXIT;
 
 	if( DSMEMSG_CAST(DSM_MSGTYPE_CLOSE, msg) ) {
@@ -403,10 +431,10 @@ static gboolean io_data_ready_cb(GIOChannel *source,
 		keep_going = FALSE;
 	}
 	else if( DSMEMSG_CAST(DSM_MSGTYPE_PROCESSWD_PING, msg) ) {
-		dsme_send_pong();
+		mce_dsme_send_pong();
 	}
 	else if( (msg2 = DSMEMSG_CAST(DSM_MSGTYPE_STATE_CHANGE_IND, msg)) ) {
-		newstate = normalise_dsme_state(msg2->state);
+		newstate = mce_dsme_normalise_system_state(msg2->state);
 		mce_log(LL_DEVEL, "DSME device state change: %d", newstate);
 
 		/* If we're changing to a different state,
@@ -452,10 +480,10 @@ EXIT:
 			" trying to reconnect");
 
 		/* mark notifier as removed */
-		dsme_data_source_id = 0;
+		mce_dsme_iowatch_id = 0;
 
 		/* close and try to re-connect */
-		dsme_reconnect();
+		mce_dsme_reconnect();
 	}
 
 	return keep_going;
@@ -467,17 +495,16 @@ EXIT:
  * @param msg The D-Bus message
  * @return TRUE on success, FALSE on failure
  */
-static gboolean init_done_dbus_cb(DBusMessage *const msg)
+static gboolean mce_dsme_init_done_cb(DBusMessage *const msg)
 {
 	gboolean status = FALSE;
 
 	(void)msg;
 
-	mce_log(LL_DEBUG,
-		"Received init done notification");
+	mce_log(LL_DEVEL, "Received init done notification");
 
 	if ((mce_get_submode_int32() & MCE_TRANSITION_SUBMODE)) {
-		setup_transition_timeout();
+		mce_dsme_schedule_state_report();
 	}
 
 	status = TRUE;
@@ -492,7 +519,7 @@ static gboolean init_done_dbus_cb(DBusMessage *const msg)
  * @param data TRUE if the charger was connected,
  *	       FALSE if the charger was disconnected
  */
-static void charger_state_trigger(gconstpointer const data)
+static void mce_dsme_charger_state_cb(gconstpointer const data)
 {
 	submode_t submode = mce_get_submode_int32();
 
@@ -507,21 +534,21 @@ static void charger_state_trigger(gconstpointer const data)
 
 /** Datapipe trigger for dsme availability
  */
-static void dsme_available_trigger(gconstpointer const data)
+static void mce_dsme_dsme_available_cb(gconstpointer const data)
 {
 	bool prev = dsme_available;
 	dsme_available = GPOINTER_TO_INT(data);
 
-	if( prev == dsme_available )
+	if( dsme_available == prev )
 		goto EXIT;
 
 	mce_log(LL_DEVEL, "DSME is %s",
 		dsme_available ? "running" : "stopped");
 
 	if( dsme_available )
-		dsme_connect();
+		mce_dsme_connect();
 	else
-		dsme_disconnect();
+		mce_dsme_disconnect();
 
 EXIT:
 	return;
@@ -532,39 +559,40 @@ EXIT:
  *
  * @return true on success, false on failure
  */
-static bool dsme_connect(void)
+static bool mce_dsme_connect(void)
 {
 	bool        status = false;
 	GIOChannel *iochan = NULL;
 
 	/* Make sure we start from closed state */
-	dsme_disconnect();
+	mce_dsme_disconnect();
 
 	mce_log(LL_DEBUG, "Opening DSME socket");
 
-	if( !(dsme_conn = dsmesock_connect()) ) {
+	if( !(mce_dsme_connection = dsmesock_connect()) ) {
 		mce_log(LL_ERR, "Failed to open DSME socket");
 		goto EXIT;
 	}
 
-	mce_log(LL_DEBUG, "Adding DSME socket i/o notifier");
+	mce_log(LL_DEBUG, "Adding DSME socket notifier");
 
-	if( !(iochan = g_io_channel_unix_new(dsme_conn->fd)) ) {
+	if( !(iochan = g_io_channel_unix_new(mce_dsme_connection->fd)) ) {
 		mce_log(LL_ERR,"Failed to set up I/O channel for DSME socket");
 		goto EXIT;
 	}
 
-	dsme_data_source_id = g_io_add_watch(iochan,
-					     G_IO_IN | G_IO_ERR | G_IO_HUP | G_IO_NVAL,
-					     io_data_ready_cb, NULL);
+	mce_dsme_iowatch_id =
+		g_io_add_watch(iochan,
+			       G_IO_IN | G_IO_ERR | G_IO_HUP | G_IO_NVAL,
+			       mce_dsme_iowatch_cb, NULL);
 
 	/* Query the current system state; if the mainloop isn't running,
 	 * this will trigger an update when the mainloop starts
 	 */
-	query_system_state();
+	mce_dsme_query_system_state();
 
 	/* Register with DSME's process watchdog */
-	dsme_init_processwd();
+	mce_dsme_init_processwd();
 
 	status = true;
 
@@ -577,18 +605,18 @@ EXIT:
 /**
  * Close dsmesock connection
  */
-static void dsme_disconnect(void)
+static void mce_dsme_disconnect(void)
 {
-	if( dsme_data_source_id ) {
+	if( mce_dsme_iowatch_id ) {
 		mce_log(LL_DEBUG, "Removing DSME socket notifier");
-		g_source_remove(dsme_data_source_id);
-		dsme_data_source_id = 0;
+		g_source_remove(mce_dsme_iowatch_id);
+		mce_dsme_iowatch_id = 0;
 	}
 
-	if( dsme_conn ) {
+	if( mce_dsme_connection ) {
 		mce_log(LL_DEBUG, "Closing DSME socket");
-		dsmesock_close(dsme_conn);
-		dsme_conn = 0;
+		dsmesock_close(mce_dsme_connection);
+		mce_dsme_connection = 0;
 	}
 
 	// FIXME: should we assume something about the system state?
@@ -596,18 +624,18 @@ static void dsme_disconnect(void)
 
 /** Close dsmesock connection and reconnect if/when dsme is available
  */
-static void dsme_reconnect(void)
+static void mce_dsme_reconnect(void)
 {
 	/* set availability to false -> disconnects */
-	dsme_set_availability(false);
+	mce_dsme_set_availability(false);
 
 	/* reconnect if/when dsme has/gets name owner */
-	dsme_get_dbus_name_owner();
+	mce_dsme_query_name_owner();
 }
 
 /** Feed dsme availability to dsme_available_pipe datapipe
  */
-static void dsme_set_availability(bool available)
+static void mce_dsme_set_availability(bool available)
 {
 	execute_datapipe(&dsme_available_pipe,
 			 GINT_TO_POINTER(available),
@@ -619,7 +647,7 @@ static void dsme_set_availability(bool available)
  * @param pc        State data for asynchronous D-Bus method call
  * @param user_data (not used)
  */
-static void dsme_get_dbus_name_owner_cb(DBusPendingCall *pc, void *user_data)
+static void mce_dsme_query_name_owner_cb(DBusPendingCall *pc, void *user_data)
 {
 	(void)user_data;
 
@@ -643,7 +671,7 @@ static void dsme_get_dbus_name_owner_cb(DBusPendingCall *pc, void *user_data)
 		goto EXIT;
 	}
 
-	dsme_set_availability(owner && *owner);
+	mce_dsme_set_availability(owner && *owner);
 
 EXIT:
 	if( rsp ) dbus_message_unref(rsp);
@@ -654,7 +682,7 @@ EXIT:
  *
  * @return true if the method call was initiated, or false in case of errors
  */
-static bool dsme_get_dbus_name_owner(void)
+static bool mce_dsme_query_name_owner(void)
 {
 	bool             res  = false;
 	DBusMessage     *req  = 0;
@@ -685,7 +713,7 @@ static bool dsme_get_dbus_name_owner(void)
 	if( !pc )
 		goto EXIT;
 
-	if( !dbus_pending_call_set_notify(pc, dsme_get_dbus_name_owner_cb, 0, 0) )
+	if( !dbus_pending_call_set_notify(pc, mce_dsme_query_name_owner_cb, 0, 0) )
 		goto EXIT;
 
 	res = true;
@@ -700,7 +728,7 @@ EXIT:
 
 /** Handle name owner changed signals for com.nokia.dsme
  */
-static gboolean dsme_name_owner_changed(DBusMessage *const msg)
+static gboolean mce_dsme_name_owner_changed_cb(DBusMessage *const msg)
 {
 	DBusError   err  = DBUS_ERROR_INIT;
 	const char *name = 0;
@@ -725,7 +753,7 @@ static gboolean dsme_name_owner_changed(DBusMessage *const msg)
 	if( !name || strcmp(name, DSME_DBUS_SERVICE) )
 		goto EXIT;
 
-	dsme_set_availability(curr && *curr);
+	mce_dsme_set_availability(curr && *curr);
 
 EXIT:
 	dbus_error_free(&err);
@@ -734,7 +762,7 @@ EXIT:
 }
 
 /** Array of dbus message handlers */
-static mce_dbus_handler_t handlers[] =
+static mce_dbus_handler_t mce_dsme_dbus_handlers[] =
 {
 	/* signals */
 	{
@@ -742,13 +770,13 @@ static mce_dbus_handler_t handlers[] =
 		.name      = "NameOwnerChanged",
 		.rules     = "arg0='"DSME_DBUS_SERVICE"'",
 		.type      = DBUS_MESSAGE_TYPE_SIGNAL,
-		.callback  = dsme_name_owner_changed,
+		.callback  = mce_dsme_name_owner_changed_cb,
 	},
 	{
 		.interface = "com.nokia.startup.signal",
 		.name      = "init_done",
 		.type      = DBUS_MESSAGE_TYPE_SIGNAL,
-		.callback  = init_done_dbus_cb,
+		.callback  = mce_dsme_init_done_cb,
 	},
 
 	/* sentinel */
@@ -759,21 +787,21 @@ static mce_dbus_handler_t handlers[] =
 
 /** Add dbus handlers
  */
-static void dsme_init_dbus(void)
+static void mce_dsme_init_dbus(void)
 {
-	mce_dbus_handler_register_array(handlers);
+	mce_dbus_handler_register_array(mce_dsme_dbus_handlers);
 }
 
 /** Remove dbus handlers
  */
-static void dsme_quit_dbus(void)
+static void mce_dsme_quit_dbus(void)
 {
-	mce_dbus_handler_unregister_array(handlers);
+	mce_dbus_handler_unregister_array(mce_dsme_dbus_handlers);
 }
 
 /** Get configuration options
  */
-static void dsme_init_config(void)
+static void mce_dsme_init_config(void)
 {
 	gchar *tmp = mce_conf_get_string(MCE_CONF_SOFTPOWEROFF_GROUP,
 					 MCE_CONF_SOFTPOWEROFF_CHARGER_POLICY_CONNECT,
@@ -786,24 +814,24 @@ static void dsme_init_config(void)
 
 /** Append triggers/filters to datapipes
  */
-static void dsme_init_datapipes(void)
+static void mce_dsme_init_datapipes(void)
 {
 	append_output_trigger_to_datapipe(&charger_state_pipe,
-					  charger_state_trigger);
+					  mce_dsme_charger_state_cb);
 
 	append_output_trigger_to_datapipe(&dsme_available_pipe,
-					  dsme_available_trigger);
+					  mce_dsme_dsme_available_cb);
 }
 
 /** Remove triggers/filters from datapipes
  */
-static void dsme_quit_datapipes(void)
+static void mce_dsme_quit_datapipes(void)
 {
 	remove_output_trigger_from_datapipe(&charger_state_pipe,
-					    charger_state_trigger);
+					    mce_dsme_charger_state_cb);
 
 	remove_output_trigger_from_datapipe(&dsme_available_pipe,
-					    dsme_available_trigger);
+					    mce_dsme_dsme_available_cb);
 }
 
 /**
@@ -813,14 +841,14 @@ static void dsme_quit_datapipes(void)
  */
 gboolean mce_dsme_init(void)
 {
-	dsme_init_config();
+	mce_dsme_init_config();
 
-	dsme_init_datapipes();
+	mce_dsme_init_datapipes();
 
-	dsme_init_dbus();
+	mce_dsme_init_dbus();
 
 	/* Start async query to check if dsme is already on dbus */
-	dsme_get_dbus_name_owner();
+	mce_dsme_query_name_owner();
 
 	return TRUE;
 }
@@ -833,15 +861,15 @@ gboolean mce_dsme_init(void)
  */
 void mce_dsme_exit(void)
 {
-	dsme_quit_dbus();
+	mce_dsme_quit_dbus();
 
-	dsme_exit_processwd();
-	dsme_disconnect();
+	mce_dsme_exit_processwd();
+	mce_dsme_disconnect();
 
-	dsme_quit_datapipes();
+	mce_dsme_quit_datapipes();
 
 	/* Remove all timer sources before returning */
-	cancel_state_transition_timeout();
+	mce_dsme_cancel_state_report();
 
 	return;
 }
