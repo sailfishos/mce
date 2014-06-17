@@ -151,6 +151,9 @@ datapipe_struct heartbeat_pipe;
 /** lipstick availability; read only */
 datapipe_struct lipstick_available_pipe;
 
+/** dsme availability; read only */
+datapipe_struct dsme_available_pipe;
+
 /** PackageKit Locked status; read only */
 datapipe_struct packagekit_locked_pipe;
 
@@ -851,6 +854,8 @@ void mce_datapipe_init(void)
 		       0, GINT_TO_POINTER(0));
 	setup_datapipe(&lipstick_available_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(FALSE));
+	setup_datapipe(&dsme_available_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(FALSE));
 	setup_datapipe(&packagekit_locked_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(FALSE));
 	setup_datapipe(&update_mode_pipe, READ_ONLY, DONT_FREE_CACHE,
@@ -914,6 +919,7 @@ void mce_datapipe_quit(void)
 	free_datapipe(&system_state_pipe);
 	free_datapipe(&heartbeat_pipe);
 	free_datapipe(&lipstick_available_pipe);
+	free_datapipe(&dsme_available_pipe);
 	free_datapipe(&packagekit_locked_pipe);
 	free_datapipe(&update_mode_pipe);
 	free_datapipe(&device_lock_active_pipe);

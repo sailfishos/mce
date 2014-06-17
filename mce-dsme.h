@@ -67,7 +67,7 @@ void request_soft_poweroff(void);
 void request_normal_shutdown(void);
 
 /* When MCE is made modular, this will be handled differently */
-gboolean mce_dsme_init(gboolean debug_mode);
+gboolean mce_dsme_init(void);
 void mce_dsme_exit(void);
 
 #endif /* _MCE_DSME_H_ */
