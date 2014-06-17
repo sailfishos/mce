@@ -60,11 +60,11 @@ enum {
 	DEFAULT_SOFTOFF_CHARGER_CONNECT = SOFTOFF_CHARGER_CONNECT_IGNORE,
 };
 
-void request_powerup(void);
-void request_reboot(void);
-void request_soft_poweron(void);
-void request_soft_poweroff(void);
-void request_normal_shutdown(void);
+void mce_dsme_request_powerup(void);
+void mce_dsme_request_reboot(void);
+void mce_dsme_request_soft_poweron(void);
+void mce_dsme_request_soft_poweroff(void);
+void mce_dsme_request_normal_shutdown(void);
 
 /* When MCE is made modular, this will be handled differently */
 gboolean mce_dsme_init(void);

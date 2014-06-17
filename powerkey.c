@@ -295,14 +295,14 @@ static void generic_powerkey_handler(poweraction_t action,
 		 */
 		if ((submode & MCE_TKLOCK_SUBMODE) == 0) {
 			mce_log(LL_DEVEL, "Requesting shutdown");
-			request_normal_shutdown();
+			mce_dsme_request_normal_shutdown();
 		}
 		break;
 
 	case POWER_SOFT_POWEROFF:
 		/* Only soft poweroff if the tklock isn't active */
 		if ((submode & MCE_TKLOCK_SUBMODE) == 0) {
-			request_soft_poweroff();
+			mce_dsme_request_soft_poweroff();
 		}
 
 		break;
@@ -527,7 +527,7 @@ static gboolean handle_longpress(void)
 		execute_datapipe_output_triggers(&led_pattern_activate_pipe,
 						 MCE_LED_PATTERN_POWER_ON,
 						 USE_INDATA);
-		request_powerup();
+		mce_dsme_request_powerup();
 		break;
 
 	case MCE_STATE_USER:
@@ -535,7 +535,7 @@ static gboolean handle_longpress(void)
 		 * Otherwise, perform long press action
 		 */
 		if ((submode & MCE_SOFTOFF_SUBMODE)) {
-			request_soft_poweron();
+			mce_dsme_request_soft_poweron();
 		} else {
 			generic_powerkey_handler(longpressaction,
 						 longpresssignal);
@@ -551,7 +551,7 @@ static gboolean handle_longpress(void)
 			"Requesting shutdown; state: %d",
 			state);
 
-		request_normal_shutdown();
+		mce_dsme_request_normal_shutdown();
 		break;
 	}
 

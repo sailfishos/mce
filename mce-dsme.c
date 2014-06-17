@@ -204,7 +204,7 @@ static void mce_dsme_query_system_state(void)
 /**
  * Request powerup
  */
-void request_powerup(void)
+void mce_dsme_request_powerup(void)
 {
 	/* Set up the message */
 	DSM_MSGTYPE_POWERUP_REQ msg = DSME_MSG_INIT(DSM_MSGTYPE_POWERUP_REQ);
@@ -216,7 +216,7 @@ void request_powerup(void)
 /**
  * Request reboot
  */
-void request_reboot(void)
+void mce_dsme_request_reboot(void)
 {
 	if( datapipe_get_gint(update_mode_pipe) ) {
 		mce_log(LL_WARN, "reboot blocked; os update in progress");
@@ -235,7 +235,7 @@ EXIT:
 /**
  * Request soft poweron
  */
-void request_soft_poweron(void)
+void mce_dsme_request_soft_poweron(void)
 {
 	/* Disable the soft poweroff LED pattern */
 	execute_datapipe_output_triggers(&led_pattern_deactivate_pipe,
@@ -251,7 +251,7 @@ void request_soft_poweron(void)
 /**
  * Request soft poweroff
  */
-void request_soft_poweroff(void)
+void mce_dsme_request_soft_poweroff(void)
 {
 	mce_add_submode_int32(MCE_SOFTOFF_SUBMODE);
 	execute_datapipe(&display_state_req_pipe,
@@ -317,7 +317,7 @@ static void mce_dsme_schedule_state_report(void)
 /**
  * Request normal shutdown
  */
-void request_normal_shutdown(void)
+void mce_dsme_request_normal_shutdown(void)
 {
 	if( datapipe_get_gint(update_mode_pipe) ) {
 		mce_log(LL_WARN, "shutdown blocked; os update in progress");
@@ -527,7 +527,7 @@ static void mce_dsme_charger_state_cb(gconstpointer const data)
 
 	if ((submode & MCE_SOFTOFF_SUBMODE) != 0) {
 		if (softoff_charger_connect_policy == SOFTOFF_CHARGER_CONNECT_WAKEUP) {
-			request_soft_poweron();
+			mce_dsme_request_soft_poweron();
 		}
 	}
 }
