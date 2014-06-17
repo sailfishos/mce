@@ -1823,12 +1823,18 @@ static gboolean pattern_get_enabled(const gchar *const patternname,
 	gchar *path = gconf_concat_dir_and_key(MCE_GCONF_LED_PATH,
 					       patternname);
 
-	/* Since we've set a default, error handling is unnecessary */
-	(void)mce_gconf_get_bool(path, &retval);
-
-	if (mce_gconf_notifier_add(MCE_GCONF_LED_PATH, path,
-				   led_gconf_cb, gconf_cb_id) == FALSE)
+	/* Since custom led patterns do not have persistent toggles
+	 * in configuration, avoid complaining about missing keys
+	 * on default verbosity level. */
+	if( !mce_gconf_has_key(path) ) {
+		mce_log(LL_INFO, "missing led config entry: %s", path);
 		goto EXIT;
+	}
+
+	/* Since we've set a default, error handling is unnecessary */
+	mce_gconf_notifier_add(MCE_GCONF_LED_PATH, path,
+			       led_gconf_cb, gconf_cb_id);
+	mce_gconf_get_bool(path, &retval);
 
 EXIT:
 	g_free(path);
@@ -2783,15 +2789,12 @@ EXIT:
  */
 static void sw_breathing_quit(void)
 {
-	if( sw_breathing_battery_limit_gconf_id ) {
-		mce_gconf_notifier_remove(GINT_TO_POINTER(sw_breathing_battery_limit_gconf_id), 0);
+	mce_gconf_notifier_remove(sw_breathing_battery_limit_gconf_id),
 		sw_breathing_battery_limit_gconf_id = 0;
-	}
 
-	if( sw_breathing_enabled_gconf_id ) {
-		mce_gconf_notifier_remove(GINT_TO_POINTER(sw_breathing_enabled_gconf_id), 0);
+	mce_gconf_notifier_remove(sw_breathing_enabled_gconf_id),
 		sw_breathing_enabled_gconf_id = 0;
-	}
+
 	allow_sw_breathing(false);
 }
 
@@ -2804,6 +2807,7 @@ static void sw_breathing_init(void)
 			       "/system/osso/dsm/leds/sw_breath_enabled",
 			       sw_breathing_gconf_cb,
 			       &sw_breathing_enabled_gconf_id);
+
 	mce_gconf_get_bool("/system/osso/dsm/leds/sw_breath_enabled",
 			   &sw_breathing_enabled);
 
@@ -2812,6 +2816,7 @@ static void sw_breathing_init(void)
 			       "/system/osso/dsm/leds/sw_breath_battery_limit",
 			       sw_breathing_gconf_cb,
 			       &sw_breathing_battery_limit_gconf_id);
+
 	mce_gconf_get_int("/system/osso/dsm/leds/sw_breath_battery_limit",
 			  &sw_breathing_battery_limit);
 }
@@ -3026,7 +3031,7 @@ void g_module_unload(GModule *module)
 		pattern_struct *psp;
 
 		while ((psp = g_queue_pop_head(pattern_stack)) != NULL) {
-			mce_gconf_notifier_remove(GINT_TO_POINTER(psp->gconf_cb_id), NULL);
+			mce_gconf_notifier_remove(psp->gconf_cb_id);
 			free(psp->name);
 			psp->name = NULL;
 			g_slice_free(pattern_struct, psp);

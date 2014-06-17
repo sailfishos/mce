@@ -166,6 +166,7 @@ static void powerkey_gconf_init(void)
 			       MCE_GCONF_POWERKEY_MODE,
 			       powerkey_gconf_cb,
 			       &powerkey_action_mode_cb_id);
+
 	mce_gconf_get_int(MCE_GCONF_POWERKEY_MODE, &powerkey_action_mode);
 }
 
@@ -174,10 +175,8 @@ static void powerkey_gconf_init(void)
 static void powerkey_gconf_quit(void)
 {
 	/* Power key press handling mode */
-	if( powerkey_action_mode_cb_id ) {
-		mce_gconf_notifier_remove(GINT_TO_POINTER(powerkey_action_mode_cb_id), 0);
+	mce_gconf_notifier_remove(powerkey_action_mode_cb_id),
 		powerkey_action_mode_cb_id = 0;
-	}
 }
 
 /** Helper for sending powerkey feedback dbus signal

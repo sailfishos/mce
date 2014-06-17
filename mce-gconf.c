@@ -30,6 +30,31 @@ static gboolean gconf_disabled = FALSE;
 /** List of GConf notifiers */
 static GSList *gconf_notifiers = NULL;
 
+/** Check if gconf-key exists
+ *
+ * @param key Name of value
+ *
+ * @return TRUE if value exits, FALSE otherwise
+ */
+gboolean mce_gconf_has_key(const gchar *const key)
+{
+	gboolean    res = FALSE;
+	GConfValue *val = 0;
+	GError     *err = 0;
+
+	if( gconf_disabled )
+		goto EXIT;
+
+	val = gconf_client_get(gconf_client, key, &err);
+	res = (val != 0);
+
+EXIT:
+	g_clear_error(&err);
+	gconf_value_free(val);
+
+	return res;
+}
+
 /**
  * Set an integer GConf key to the specified value
  *
@@ -297,7 +322,8 @@ EXIT:
  * @param path The GConf directory to watch
  * @param key The GConf key to add the notifier for
  * @param callback The callback function
- * @param[out] cb_id Will contain the callback ID on return
+ * @param[out] cb_id Will contain the callback ID or zero on return
+ *
  * @return TRUE on success, FALSE on failure
  */
 gboolean mce_gconf_notifier_add(const gchar *path, const gchar *key,
@@ -306,16 +332,18 @@ gboolean mce_gconf_notifier_add(const gchar *path, const gchar *key,
 {
 	GError *error = NULL;
 	gboolean status = FALSE;
+	guint id = 0;
 
 	if( gconf_disabled ) {
 		mce_log(LL_DEBUG, "blocked %s notifier", key);
 
-		/* Returning failure would result in termination
+		/* Returning failure could result in termination
 		 * of mce process -> return bogus success if we
 		 * have disabled gconf on purpose. */
 		status = TRUE;
 		goto EXIT;
 	}
+
 	gconf_client_add_dir(gconf_client, path,
 			     GCONF_CLIENT_PRELOAD_NONE, &error);
 
@@ -324,48 +352,64 @@ gboolean mce_gconf_notifier_add(const gchar *path, const gchar *key,
 			"Could not add %s to directories watched by "
 			"GConf client setting from GConf; %s",
 			path, error->message);
-		//goto EXIT;
+		goto EXIT;
 	}
 
-	g_clear_error(&error);
-
-	*cb_id = gconf_client_notify_add(gconf_client, key, callback,
-					 NULL, NULL, &error);
+	id = gconf_client_notify_add(gconf_client, key, callback,
+				     NULL, NULL, &error);
 	if (error != NULL) {
 		mce_log(LL_WARN,
 			"Could not register notifier for %s; %s",
 			key, error->message);
-		//goto EXIT;
+		goto EXIT;
 	}
 
+	if( !id )
+		goto EXIT;
+
 	gconf_notifiers = g_slist_prepend(gconf_notifiers,
-					  GINT_TO_POINTER(*cb_id));
+					  GINT_TO_POINTER(id));
+
 	status = TRUE;
 
 EXIT:
 	g_clear_error(&error);
 
-	return status;
+	return *cb_id = id, status;
 }
 
 /**
  * Remove a GConf notifier
  *
- * @param cb_id The ID of the notifier to remove
- * @param user_data Unused
+ * Calling with zero id is allowed and does nothing
+ *
+ * @param id The ID of the notifier to remove, or zero
  */
-void mce_gconf_notifier_remove(gpointer cb_id, gpointer user_data)
+void mce_gconf_notifier_remove(guint id)
 {
-	(void)user_data;
-
 	if( gconf_disabled )
 		goto EXIT;
 
-	gconf_client_notify_remove(gconf_client, GPOINTER_TO_INT(cb_id));
-	gconf_notifiers = g_slist_remove(gconf_notifiers, cb_id);
+	if( !id )
+		goto EXIT;
+
+	gconf_client_notify_remove(gconf_client, id);
+	gconf_notifiers = g_slist_remove(gconf_notifiers, GINT_TO_POINTER(id));
 
 EXIT:
 	return;
+}
+
+/** Helper callback for removing GConf notifiers with g_slist_foreach
+ *
+ * @param cb_id The ID of the notifier to remove
+ * @param user_data Unused
+ */
+void mce_gconf_notifier_remove_cb(gpointer cb_id, gpointer user_data)
+{
+	(void)user_data;
+
+	mce_gconf_notifier_remove(GPOINTER_TO_INT(cb_id));
 }
 
 /**
@@ -396,7 +440,7 @@ void mce_gconf_exit(void)
 {
 	if( gconf_client ) {
 		/* Free the list of GConf notifiers */
-		g_slist_foreach(gconf_notifiers, mce_gconf_notifier_remove, 0);
+		g_slist_foreach(gconf_notifiers, mce_gconf_notifier_remove_cb, 0);
 		gconf_notifiers = 0;
 
 		/* Forget builtin-gconf client reference */

@@ -3209,16 +3209,20 @@ static void tklock_gconf_init(void)
 
     /* Touchscreen/keypad autolock */
     /* Since we've set a default, error handling is unnecessary */
-    mce_gconf_get_bool(MCE_GCONF_TK_AUTOLOCK_ENABLED_PATH,
-                       &tk_autolock_enabled);
-
-    /* Touchscreen/keypad autolock enabled/disabled */
     mce_gconf_notifier_add(MCE_GCONF_LOCK_PATH,
                            MCE_GCONF_TK_AUTOLOCK_ENABLED_PATH,
                            tklock_gconf_cb,
                            &tk_autolock_enabled_cb_id);
 
+    mce_gconf_get_bool(MCE_GCONF_TK_AUTOLOCK_ENABLED_PATH,
+                       &tk_autolock_enabled);
+
     /* Touchscreen/keypad double-tap gesture policy */
+    mce_gconf_notifier_add(MCE_GCONF_LOCK_PATH,
+                           MCE_GCONF_TK_DOUBLE_TAP_GESTURE_PATH,
+                           tklock_gconf_cb,
+                           &doubletap_gesture_policy_cb_id);
+
     mce_gconf_get_int(MCE_GCONF_TK_DOUBLE_TAP_GESTURE_PATH,
                       &doubletap_gesture_policy);
 
@@ -3233,30 +3237,25 @@ static void tklock_gconf_init(void)
                            MCE_GCONF_DOUBLETAP_MODE,
                            tklock_gconf_cb,
                            &doubletap_enable_mode_cb_id);
-    mce_gconf_get_int(MCE_GCONF_DOUBLETAP_MODE, &doubletap_enable_mode);
 
-    /* Touchscreen/keypad autolock enabled/disabled */
-    mce_gconf_notifier_add(MCE_GCONF_LOCK_PATH,
-                           MCE_GCONF_TK_DOUBLE_TAP_GESTURE_PATH,
-                           tklock_gconf_cb,
-                           &doubletap_gesture_policy_cb_id);
+    mce_gconf_get_int(MCE_GCONF_DOUBLETAP_MODE, &doubletap_enable_mode);
 }
 
 /** Remove gconf change notifiers
  */
 static void tklock_gconf_quit(void)
 {
-    if( doubletap_gesture_policy_cb_id )
-        mce_gconf_notifier_remove(GINT_TO_POINTER(doubletap_gesture_policy_cb_id), 0);
+    mce_gconf_notifier_remove(doubletap_gesture_policy_cb_id),
+        doubletap_gesture_policy_cb_id = 0;
 
-    if( tk_autolock_enabled_cb_id )
-        mce_gconf_notifier_remove(GINT_TO_POINTER(tk_autolock_enabled_cb_id), 0);
+    mce_gconf_notifier_remove(tk_autolock_enabled_cb_id),
+        tk_autolock_enabled_cb_id = 0;
 
-    if( tklock_blank_disable_id )
-        mce_gconf_notifier_remove(GINT_TO_POINTER(tklock_blank_disable_id), 0);
+    mce_gconf_notifier_remove(tklock_blank_disable_id),
+        tklock_blank_disable_id = 0;
 
-    if( doubletap_enable_mode_cb_id )
-        mce_gconf_notifier_remove(GINT_TO_POINTER(doubletap_enable_mode_cb_id), 0);
+    mce_gconf_notifier_remove(doubletap_enable_mode_cb_id),
+        doubletap_enable_mode_cb_id = 0;
 }
 
 /* ========================================================================= *

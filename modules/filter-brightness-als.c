@@ -1153,6 +1153,7 @@ const gchar *g_module_check_init(GModule *module)
 			       MCE_GCONF_DISPLAY_ALS_ENABLED_PATH,
 			       use_als_gconf_cb,
 			       &use_als_gconf_id);
+
 	mce_gconf_get_bool(MCE_GCONF_DISPLAY_ALS_ENABLED_PATH,
 			   &use_als_flag);
 
