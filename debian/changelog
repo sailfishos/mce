@@ -1,3 +1,10 @@
+mce (1.31.8) unstable; urgency=low
+
+  * [mce] Update power up brightness when starting display state transition.
+    Fixes JB#20590
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 17 Jun 2014 11:14:48 +0300
+
 mce (1.31.7) unstable; urgency=low
 
   * [mce] Keep display on and block suspend when os update is in progress.
