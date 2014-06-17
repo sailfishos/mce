@@ -4559,29 +4559,6 @@ static void mdy_display_state_enter_pre(display_state_t prev_state,
     /* Restore display_state_pipe to valid value */
     display_state_pipe.cached_data = GINT_TO_POINTER(next_state);
 
-    switch( next_state ) {
-    case MCE_DISPLAY_ON:
-        mdy_brightness_level_display_resume = mdy_brightness_level_display_on;
-        break;
-
-    case MCE_DISPLAY_DIM:
-        mdy_brightness_level_display_resume = mdy_brightness_level_display_dim;
-        break;
-
-    case MCE_DISPLAY_LPM_ON:
-        mdy_brightness_level_display_resume = mdy_brightness_level_display_lpm;
-        break;
-
-    default:
-    case MCE_DISPLAY_UNDEF:
-    case MCE_DISPLAY_OFF:
-    case MCE_DISPLAY_LPM_OFF:
-    case MCE_DISPLAY_POWER_UP:
-    case MCE_DISPLAY_POWER_DOWN:
-        mdy_brightness_level_display_resume = 1;
-        break;
-    }
-
     /* Run display state change triggers */
     execute_datapipe(&display_state_pipe,
                      GINT_TO_POINTER(next_state),
@@ -4603,6 +4580,34 @@ static void mdy_display_state_leave(display_state_t prev_state,
     /* Cancel display state specific timers that we do not want to
      * trigger while waiting for frame buffer suspend/resume. */
     mdy_blanking_cancel_timers();
+
+    /* Update display brightness that should be used the next time
+     * the display is powered up */
+    switch( next_state ) {
+    case MCE_DISPLAY_ON:
+        mdy_brightness_level_display_resume = mdy_brightness_level_display_on;
+        break;
+
+    case MCE_DISPLAY_DIM:
+        mdy_brightness_level_display_resume = mdy_brightness_level_display_dim;
+        break;
+
+    case MCE_DISPLAY_LPM_ON:
+        mdy_brightness_level_display_resume = mdy_brightness_level_display_lpm;
+        break;
+
+    case MCE_DISPLAY_OFF:
+    case MCE_DISPLAY_LPM_OFF:
+        mdy_brightness_level_display_resume = 1;
+        break;
+
+    default:
+    case MCE_DISPLAY_POWER_DOWN:
+    case MCE_DISPLAY_POWER_UP:
+    case MCE_DISPLAY_UNDEF:
+        // keep existing value
+        break;
+    }
 
     /* Broadcast the final target of this transition; note that this
      * happens while display_state_pipe still holds the previous
