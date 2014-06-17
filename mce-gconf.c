@@ -30,6 +30,31 @@ static gboolean gconf_disabled = FALSE;
 /** List of GConf notifiers */
 static GSList *gconf_notifiers = NULL;
 
+/** Check if gconf-key exists
+ *
+ * @param key Name of value
+ *
+ * @return TRUE if value exits, FALSE otherwise
+ */
+gboolean mce_gconf_has_key(const gchar *const key)
+{
+	gboolean    res = FALSE;
+	GConfValue *val = 0;
+	GError     *err = 0;
+
+	if( gconf_disabled )
+		goto EXIT;
+
+	val = gconf_client_get(gconf_client, key, &err);
+	res = (val != 0);
+
+EXIT:
+	g_clear_error(&err);
+	gconf_value_free(val);
+
+	return res;
+}
+
 /**
  * Set an integer GConf key to the specified value
  *

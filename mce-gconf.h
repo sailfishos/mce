@@ -23,6 +23,7 @@
 
 #include "builtin-gconf.h"
 
+gboolean mce_gconf_has_key(const gchar *const key);
 gboolean mce_gconf_set_int(const gchar *const key, const gint value);
 gboolean mce_gconf_get_bool(const gchar *const key, gboolean *value);
 gboolean mce_gconf_get_int(const gchar *const key, gint *value);

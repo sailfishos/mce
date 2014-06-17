@@ -1823,11 +1823,20 @@ static gboolean pattern_get_enabled(const gchar *const patternname,
 	gchar *path = gconf_concat_dir_and_key(MCE_GCONF_LED_PATH,
 					       patternname);
 
+	/* Since custom led patterns do not have persistent toggles
+	 * in configuration, avoid complaining about missing keys
+	 * on default verbosity level. */
+	if( !mce_gconf_has_key(path) ) {
+		mce_log(LL_INFO, "missing led config entry: %s", path);
+		goto EXIT;
+	}
+
 	/* Since we've set a default, error handling is unnecessary */
 	mce_gconf_notifier_add(MCE_GCONF_LED_PATH, path,
 			       led_gconf_cb, gconf_cb_id);
 	mce_gconf_get_bool(path, &retval);
 
+EXIT:
 	g_free(path);
 
 	return retval;
