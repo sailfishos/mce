@@ -630,7 +630,6 @@ static gboolean mce_enable_trace(const char *flags)
 static struct
 {
 	bool daemonflag;
-	bool debugmode;
 	int  logtype;
 	int  verbosity;
 	bool systembus;
@@ -639,7 +638,6 @@ static struct
 } mce_args =
 {
 	.daemonflag       = false,
-	.debugmode        = false,
 	.logtype          = MCE_LOG_SYSLOG,
 	.verbosity        = LL_DEFAULT,
 	.systembus        = true,
@@ -654,13 +652,6 @@ static bool mce_do_daemonize(const char *arg)
 {
 	(void)arg;
 	mce_args.daemonflag = true;
-	return true;
-}
-
-static bool mce_do_debug_mode(const char *arg)
-{
-	(void)arg;
-	mce_args.debugmode = true;
 	return true;
 }
 
@@ -813,13 +804,6 @@ static const mce_opt_t options[] =
 			"Show information about loaded modules\n"
 	},
 	{
-		.name        = "debug-mode",
-		.flag        = 'D',
-		.without_arg = mce_do_debug_mode,
-		.usage       =
-			"Run even if DSME fails\n"
-	},
-	{
 		.name        = "trace",
 		.flag        = 't',
 		.with_arg    = mce_do_trace,
@@ -920,6 +904,11 @@ int main(int argc, char **argv)
 	atexit(mce_cleanup_wakelocks);
 #endif
 
+	/* Identify mce version & flavor on start up */
+	mce_log(LL_WARN, "MCE %s (%s) starting up",
+		G_STRINGIFY(PRG_VERSION),
+		(LL_DEVEL == LL_CRIT) ? "devel" : "release");
+
 	/* Daemonize if requested */
 	if( mce_args.daemonflag )
 		daemonize();
@@ -977,12 +966,8 @@ int main(int argc, char **argv)
 	 * pre-requisite: mce_dbus_init()
 	 * pre-requisite: mce_mce_init()
 	 */
-	if( !mce_dsme_init(mce_args.debugmode) ) {
-		if( !mce_args.debugmode ) {
-			mce_log(LL_CRIT, "Cannot connect to DSME");
-			goto EXIT;
-		}
-	}
+	if( !mce_dsme_init() )
+		goto EXIT;
 
 	/* Initialise powerkey driver */
 	if (mce_powerkey_init() == FALSE) {

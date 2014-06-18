@@ -1,8 +1,11 @@
 [Unit]
 Description=Mode Control Entity (MCE)
-Requires=dsme.service
-Requires=dbus.service
-After=dsme.service
+DefaultDependencies=no
+Requires=dbus.socket
+After=dbus.socket
+After=local-fs.target
+Before=basic.target
+Conflicts=shutdown.target
 
 [Service]
 Type=notify

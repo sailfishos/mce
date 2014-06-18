@@ -114,6 +114,7 @@ extern datapipe_struct power_saving_mode_pipe;
 extern datapipe_struct thermal_state_pipe;
 extern datapipe_struct heartbeat_pipe;
 extern datapipe_struct lipstick_available_pipe;
+extern datapipe_struct dsme_available_pipe;
 extern datapipe_struct packagekit_locked_pipe;
 extern datapipe_struct update_mode_pipe;
 extern datapipe_struct device_lock_active_pipe;
