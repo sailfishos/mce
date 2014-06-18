@@ -1,3 +1,10 @@
+mce (1.32.0) unstable; urgency=low
+
+  * [mce] Do not required dsme to be running when mce starts up.
+    Fixes JB#11581
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 18 Jun 2014 15:31:44 +0300
+
 mce (1.31.9) unstable; urgency=low
 
   * [mce] Suppress warnings about missing led configuration toggles.
