@@ -66,7 +66,8 @@
 /** Duration of exceptional UI states, in milliseconds */
 enum
 {
-    EXCEPTION_LENGTH_CALL     = 3000, // [ms]
+    EXCEPTION_LENGTH_CALL_IN  = 5000, // [ms]
+    EXCEPTION_LENGTH_CALL_OUT = 2500, // [ms]
     EXCEPTION_LENGTH_ALARM    = 2500, // [ms]
     EXCEPTION_LENGTH_CHARGER  = 3000, // [ms]
     EXCEPTION_LENGTH_BATTERY  = 1000, // [ms]
@@ -770,6 +771,9 @@ static call_state_t call_state = CALL_STATE_NONE;
  */
 static void tklock_datapipe_call_state_cb(gconstpointer data)
 {
+    /* Default to using shorter outgoing call linger time */
+    static int64_t linger_time = EXCEPTION_LENGTH_CALL_OUT;
+
     call_state_t prev = call_state;
     call_state = GPOINTER_TO_INT(data);
 
@@ -783,11 +787,20 @@ static void tklock_datapipe_call_state_cb(gconstpointer data)
 
     switch( call_state ) {
     case CALL_STATE_RINGING:
+        /* Switch to using longer incoming call linger time */
+        linger_time = EXCEPTION_LENGTH_CALL_IN;
+
+        /* Fall through */
+
     case CALL_STATE_ACTIVE:
-        tklock_uiexcept_begin(UIEXC_CALL, EXCEPTION_LENGTH_CALL);
+        tklock_uiexcept_begin(UIEXC_CALL, 0);
         break;
+
     default:
-        tklock_uiexcept_end(UIEXC_CALL, EXCEPTION_LENGTH_CALL);
+        tklock_uiexcept_end(UIEXC_CALL, linger_time);
+
+        /* Restore linger time to default again */
+        linger_time = EXCEPTION_LENGTH_CALL_OUT;
         break;
     }
 
