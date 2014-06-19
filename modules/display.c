@@ -241,8 +241,19 @@ enum
  * PROTOTYPES
  * ========================================================================= */
 
-// MISC_UTILS
+/* ------------------------------------------------------------------------- *
+ * MISC_UTILS
+ * ------------------------------------------------------------------------- */
+
 static inline bool         mdy_str_eq_p(const char *s1, const char *s2);
+static int64_t             mdy_get_boot_tick(void);
+
+/* ------------------------------------------------------------------------- *
+ * SHUTDOWN
+ * ------------------------------------------------------------------------- */
+
+static bool                mdy_shutdown_in_progress(void);
+static void                mdy_shutdown_set_state(bool in_progress);
 
 /* ------------------------------------------------------------------------- *
  * DATAPIPE_TRACKING
@@ -268,6 +279,16 @@ static void                mdy_datapipe_orientation_state_cb(gconstpointer data)
 
 static void                mdy_datapipe_init(void);
 static void                mdy_datapipe_quit(void);
+
+/* ------------------------------------------------------------------------- *
+ * FBDEV_FD
+ * ------------------------------------------------------------------------- */
+
+static bool                fbdev_fd_is_open(void);
+static int                 fbdev_fd_open(void);
+static void                fbdev_fd_close(void);
+static void                fbdev_fd_close_forever(void);
+static void                fbdev_fd_close_after_exit(void);
 
 /* ------------------------------------------------------------------------- *
  * FBDEV_POWER_STATE
@@ -641,17 +662,48 @@ G_MODULE_EXPORT module_info_struct module_info = {
 };
 
 /* ------------------------------------------------------------------------- *
- * MISCELLANEOUS
+ * SHUTDOWN
  * ------------------------------------------------------------------------- */
 
-/** Have we seen shutdown_ind signal from dsme */
-static gboolean mdy_shutdown_started = FALSE;
+/** Have we seen shutdown_ind signal or equivalent from dsme */
+static bool mdy_shutdown_started_flag = false;
+
+/** Start of shutdown timestamp */
+static int64_t mdy_shutdown_started_tick = 0;
 
 /** Are we already unloading the module? */
 static gboolean mdy_unloading_module = FALSE;
 
 /** Timer for waiting simulated desktop ready state */
 static guint mdy_desktop_ready_id = 0;
+
+/** Device is shutting down predicate
+ */
+static bool mdy_shutdown_in_progress(void)
+{
+    return mdy_shutdown_started_flag;
+}
+
+/** Update device is shutting down state
+ */
+static void mdy_shutdown_set_state(bool in_progress)
+{
+    if( mdy_shutdown_started_flag == in_progress )
+        goto EXIT;
+
+    if( (mdy_shutdown_started_flag = in_progress) ) {
+        mce_log(LL_DEVEL, "Shutdown started");
+        mdy_shutdown_started_tick = mdy_get_boot_tick();
+        fbdev_fd_open();
+    }
+    else {
+        mce_log(LL_DEVEL, "Shutdown canceled");
+        fbdev_fd_close();
+    }
+
+EXIT:
+    return;
+}
 
 /* ------------------------------------------------------------------------- *
  * AUTOMATIC_BLANKING
@@ -891,6 +943,23 @@ static inline bool mdy_str_eq_p(const char *s1, const char *s2)
     return (s1 && s2) ? !strcmp(s1, s2) : false;
 }
 
+/** Get CLOCK_BOOTTIME time stamp in milliseconds
+ */
+static int64_t mdy_get_boot_tick(void)
+{
+        int64_t res = 0;
+
+        struct timespec ts;
+
+        if( clock_gettime(CLOCK_BOOTTIME, &ts) == 0 ) {
+                res = ts.tv_sec;
+                res *= 1000;
+                res += ts.tv_nsec / 1000000;
+        }
+
+        return res;
+}
+
 /* ========================================================================= *
  * DATAPIPE_TRACKING
  * ========================================================================= */
@@ -944,19 +1013,25 @@ static void mdy_datapipe_system_state_cb(gconstpointer data)
         execute_datapipe(&display_state_req_pipe,
                          GINT_TO_POINTER(MCE_DISPLAY_ON),
                          USE_INDATA, CACHE_INDATA);
+
+        /* Stable state reached after mce/device startup.
+         * There is ui in place and we can close the fbdev
+         * (even if there is no shutdown to cancel). */
+        fbdev_fd_close();
+
+        /* Re-entry to actdead/user also means shutdown
+         * has been cancelled */
+        mdy_shutdown_set_state(false);
         break;
 
     case MCE_STATE_SHUTDOWN:
     case MCE_STATE_REBOOT:
+        mdy_shutdown_set_state(true);
+        break;
+
     case MCE_STATE_UNDEF:
     default:
             break;
-    }
-
-    /* Clear shutting down flag on re-entry to USER state */
-    if( system_state == MCE_STATE_USER && mdy_shutdown_started ) {
-        mdy_shutdown_started = FALSE;
-        mce_log(LL_NOTICE, "Shutdown canceled");
     }
 
     /* re-evaluate suspend policy */
@@ -1544,6 +1619,134 @@ static void mdy_datapipe_quit(void)
 }
 
 /* ========================================================================= *
+ * FBDEV_FD
+ * ========================================================================= */
+
+/** File descriptor for frame buffer device */
+static int  fbdev_fd_handle = -1;
+
+/** Flag for: Opening frame buffer device is denied */
+static bool fbdev_fd_deny_open = false;
+
+/** Frame buffer is open predicate
+ */
+static bool fbdev_fd_is_open(void)
+{
+    return fbdev_fd_handle != -1;
+}
+
+/** Open frame buffer device unless denied
+ */
+static int fbdev_fd_open(void)
+{
+    if( fbdev_fd_handle != -1 )
+        goto EXIT;
+
+    if( fbdev_fd_deny_open )
+        goto EXIT;
+
+    if( (fbdev_fd_handle = open(FB_DEVICE, O_RDWR)) == -1 ) {
+        mce_log(LL_ERR, "Failed to open %s: %m", FB_DEVICE);
+        goto EXIT;
+    }
+
+    mce_log(LL_DEBUG, "opened frame buffer device");
+
+EXIT:
+    return fbdev_fd_handle;
+}
+
+/** Close frame buffer device
+ */
+static void fbdev_fd_close(void)
+{
+    if( fbdev_fd_handle == -1 )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "closing frame buffer device");
+    close(fbdev_fd_handle), fbdev_fd_handle = -1;
+
+EXIT:
+    return;
+}
+
+/** Close frame buffer device and deny opening again
+ */
+static void fbdev_fd_close_forever(void)
+{
+    fbdev_fd_deny_open = true;
+    fbdev_fd_close();
+}
+
+/** Create a child process to frame buffer device open after mce exits
+ */
+static void fbdev_fd_close_after_exit(void)
+{
+    static const char msg[] = "closing frame buffer device after delay\n";
+
+    /* Fork a child process */
+
+    int child_pid = fork();
+
+    /* Deal with parent side and return to caller */
+
+    if( child_pid != 0 ) {
+        if( child_pid < 0 )
+            mce_log(LL_ERR, "forking fbdev linger child failed: %m");
+        else
+            mce_log(LL_DEBUG, "fbdev linger child: pid %d", child_pid);
+        return;
+    }
+
+    /* Detach from parent so that we will not get killed with it */
+
+    setsid();
+
+    /* Close all files, except fbdev & stderr */
+
+    int nfd = getdtablesize();
+    for( int fd = 0; fd < nfd; ++fd ) {
+        if( fd != fbdev_fd_handle && fd != STDERR_FILENO )
+            close(fd);
+    }
+
+    /* Calculate when to release fbdev file descriptor
+     *
+     * use max(shutdown_started + 6.0 s, current_time + 0.5 s)
+     */
+
+    int64_t delay = mdy_shutdown_started_tick + 6000 - mdy_get_boot_tick();
+
+    if( delay < 500 )
+        delay = 500;
+
+    /* Wait ... */
+
+    struct timespec ts =
+    {
+        .tv_sec  = (time_t)(delay / 1000),
+        .tv_nsec = (long)(delay % 1000) * 1000000,
+    };
+
+    while( nanosleep(&ts, &ts) == -1 && errno == EINTR ) { /* nop */ }
+
+    /* If journald is still up, the end-of-linger message written to stderr
+     * ends up in journal and attributed to parent mce process.
+     *
+     * ... and in case journald has already made an exit, we do not want
+     * to die by SIGPIPE, so it needs to be ignored. */
+
+    signal(SIGPIPE, SIG_IGN);
+
+    if( write(STDERR_FILENO, msg, sizeof msg - 1) < 0 ) { /* dontcare */ }
+
+    /* Exit - the frame buffer device will power off if we
+     * were the last process to have an open file descriptor */
+
+    _exit(EXIT_SUCCESS);
+}
+
+/* ========================================================================= *
  * FBDEV_POWER_STATE
  * ========================================================================= */
 
@@ -1608,17 +1811,12 @@ static void mdy_fbdev_set_power_dummy(int value)
  */
 static void mdy_fbdev_set_power_default(int value)
 {
-    static int fd        = -1;
-    static int old_value = FB_BLANK_UNBLANK;
+    static int old_value = -1;
 
-    if( fd == -1 ) {
-        if( (fd = open(FB_DEVICE, O_RDWR)) == -1 ) {
-            mce_log(LL_ERR, "Failed to open `%s'; %m", FB_DEVICE);
-            goto EXIT;
-        }
+    int fd = fbdev_fd_open();
 
-        old_value = !value; /* force ioctl() */
-    }
+    if( fd == -1 )
+        goto EXIT;
 
     if( old_value == value )
         goto EXIT;
@@ -4317,7 +4515,7 @@ static int mdy_autosuspend_get_allowed_level(void)
         block_late = true;
 
     /* no late suspend during shutdown */
-    if( mdy_shutdown_started )
+    if( mdy_shutdown_in_progress() )
         block_late = true;
 
     /* no late suspend while PackageKit is in Locked state */
@@ -5656,7 +5854,7 @@ static void mdy_governor_rethink(void)
     }
 
     /* Use default during shutdown */
-    if( mdy_shutdown_started  ) {
+    if( mdy_shutdown_in_progress()  ) {
         governor_want = GOVERNOR_DEFAULT;
     }
 
@@ -6607,7 +6805,7 @@ static gboolean mdy_dbus_handle_desktop_started_sig(DBusMessage *const msg)
 static void mdy_dbus_handle_shutdown_started(void)
 {
     /* mark that we're shutting down */
-    mdy_shutdown_started = TRUE;
+    mdy_shutdown_set_state(true);
 
     /* re-evaluate suspend policy */
     mdy_stm_schedule_rethink();
@@ -7407,6 +7605,11 @@ const gchar *g_module_check_init(GModule *module)
 
     (void)module;
 
+    /* Open fbdev and keep it open until actdead / user mode is reached.
+     * This should keep the frame buffer powered on and we should not not
+     * lose content drawn by processes that might exit during startup. */
+    fbdev_fd_open();
+
     /* Start dbus name tracking */
     mdy_nameowner_init();
 
@@ -7610,6 +7813,16 @@ void g_module_unload(GModule *module)
 
     g_free(mdy_compositor_priv_name), mdy_compositor_priv_name = 0;
     g_free(mdy_lipstick_priv_name), mdy_lipstick_priv_name = 0;
+
+    /* If we are shutting down/rebooting and we have fbdev
+     * open, create a detached child process to hold on to
+     * it so that display does not power off after mce & ui
+     * side have been terminated */
+    if( mdy_shutdown_in_progress() && fbdev_fd_is_open() )
+        fbdev_fd_close_after_exit();
+
+    /* Close the fbdev handle mce itself uses for good */
+    fbdev_fd_close_forever();
 
     return;
 }
