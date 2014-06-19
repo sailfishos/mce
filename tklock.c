@@ -2316,22 +2316,24 @@ static gboolean tklock_uiexcept_linger_cb(gpointer aptr)
     }
 
     /* and finally the display data pipe */
-    switch( exx.display ) {
-    case MCE_DISPLAY_OFF:
-    case MCE_DISPLAY_LPM_OFF:
-    case MCE_DISPLAY_LPM_ON:
-    case MCE_DISPLAY_DIM:
-    case MCE_DISPLAY_ON:
+    if( exx.display != MCE_DISPLAY_ON ) {
+        /* If the display was not clearly ON when exception started,
+         * turn it OFF after exceptions are over. */
         execute_datapipe(&display_state_req_pipe,
-                         GINT_TO_POINTER(exx.display),
+                         GINT_TO_POINTER(MCE_DISPLAY_OFF),
                          USE_INDATA, CACHE_INDATA);
-        break;
-
-    default:
-    case MCE_DISPLAY_UNDEF:
-    case MCE_DISPLAY_POWER_UP:
-    case MCE_DISPLAY_POWER_DOWN:
-        break;
+    }
+    else if( proximity_state_actual == COVER_OPEN ) {
+        /* Unblank only if proximity sensor is not covered when
+         * the linger time has passed.
+         *
+         * Note: Because linger times are relatively short,
+         * we use raw sensor data here instead of the filtered
+         * proximity_state_effective that is normally used
+         * with unblanking policies. */
+        execute_datapipe(&display_state_req_pipe,
+                         GINT_TO_POINTER(MCE_DISPLAY_ON),
+                         USE_INDATA, CACHE_INDATA);
     }
 
 EXIT:
@@ -2378,23 +2380,7 @@ static void tklock_uiexcept_begin(uiexctype_t type, int64_t linger)
 
         /* save display and tklock state */
         exdata.tklock  = tklock_datapipe_have_tklock_submode();
-
-        switch( display_state ) {
-        case MCE_DISPLAY_ON:
-        case MCE_DISPLAY_DIM:
-        case MCE_DISPLAY_POWER_UP:
-        case MCE_DISPLAY_UNDEF:
-            exdata.display = MCE_DISPLAY_ON;
-            break;
-
-        default:
-        case MCE_DISPLAY_OFF:
-        case MCE_DISPLAY_LPM_OFF:
-        case MCE_DISPLAY_LPM_ON:
-        case MCE_DISPLAY_POWER_DOWN:
-            exdata.display = MCE_DISPLAY_OFF;
-            break;
-        }
+        exdata.display = display_state;
 
         /* initially insync, restore state at end */
         exdata.insync      = true;
