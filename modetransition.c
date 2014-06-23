@@ -174,15 +174,20 @@ static void system_state_trigger(gconstpointer data)
 			break;
 		}
 
-		/* If we're shutting down/rebooting from acting dead,
-		 * blank the screen
-		 */
-		if (old_system_state == MCE_STATE_ACTDEAD) {
+		/* If we're shutting down/rebooting from actdead or
+		 * user mode, ui side will do shutdown animation.
+		 * Unblank the screen to make it visible. */
+		switch( old_system_state ) {
+		case MCE_STATE_USER:
+		case MCE_STATE_ACTDEAD:
 			execute_datapipe(&display_state_req_pipe,
-					 GINT_TO_POINTER(MCE_DISPLAY_LPM_OFF),
+					 GINT_TO_POINTER(MCE_DISPLAY_ON),
 					 USE_INDATA, CACHE_INDATA);
-		}
+			break;
 
+		default:
+			break;
+		}
 		break;
 
 	case MCE_STATE_ACTDEAD:
