@@ -1,3 +1,11 @@
+mce (1.32.1) unstable; urgency=low
+
+  * [mce] Keep frame buffer device opened to keep display from powering off.
+    Fixes JB#14341
+  * [mce] Adjust display linger times after ending a call. Fixes JB#20810
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 23 Jun 2014 08:57:51 +0300
+
 mce (1.32.0) unstable; urgency=low
 
   * [mce] Do not required dsme to be running when mce starts up.
