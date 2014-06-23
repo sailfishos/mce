@@ -3141,6 +3141,13 @@ static void mdy_blanking_rethink_timers(bool force)
             break;
         }
 
+        if( mdy_blanking_inhibit_mode == INHIBIT_STAY_ON )
+            break;
+
+        if( charger_connected &&
+            mdy_blanking_inhibit_mode == INHIBIT_STAY_ON_WITH_CHARGER )
+            break;
+
         if( exception_state & UIEXC_CALL ) {
             // do not dim-blank when handling incoming call
             if( call_state == CALL_STATE_RINGING )
@@ -3155,13 +3162,6 @@ static void mdy_blanking_rethink_timers(bool force)
             mdy_blanking_schedule_dim();
             break;
         }
-
-        if( mdy_blanking_inhibit_mode == INHIBIT_STAY_ON )
-            break;
-
-        if( charger_connected &&
-            mdy_blanking_inhibit_mode == INHIBIT_STAY_ON_WITH_CHARGER )
-            break;
 
         if( tklock_mode ) {
             mdy_blanking_schedule_off();

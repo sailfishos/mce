@@ -66,7 +66,8 @@
 /** Duration of exceptional UI states, in milliseconds */
 enum
 {
-    EXCEPTION_LENGTH_CALL     = 3000, // [ms]
+    EXCEPTION_LENGTH_CALL_IN  = 5000, // [ms]
+    EXCEPTION_LENGTH_CALL_OUT = 2500, // [ms]
     EXCEPTION_LENGTH_ALARM    = 2500, // [ms]
     EXCEPTION_LENGTH_CHARGER  = 3000, // [ms]
     EXCEPTION_LENGTH_BATTERY  = 1000, // [ms]
@@ -770,6 +771,9 @@ static call_state_t call_state = CALL_STATE_NONE;
  */
 static void tklock_datapipe_call_state_cb(gconstpointer data)
 {
+    /* Default to using shorter outgoing call linger time */
+    static int64_t linger_time = EXCEPTION_LENGTH_CALL_OUT;
+
     call_state_t prev = call_state;
     call_state = GPOINTER_TO_INT(data);
 
@@ -783,11 +787,20 @@ static void tklock_datapipe_call_state_cb(gconstpointer data)
 
     switch( call_state ) {
     case CALL_STATE_RINGING:
+        /* Switch to using longer incoming call linger time */
+        linger_time = EXCEPTION_LENGTH_CALL_IN;
+
+        /* Fall through */
+
     case CALL_STATE_ACTIVE:
-        tklock_uiexcept_begin(UIEXC_CALL, EXCEPTION_LENGTH_CALL);
+        tklock_uiexcept_begin(UIEXC_CALL, 0);
         break;
+
     default:
-        tklock_uiexcept_end(UIEXC_CALL, EXCEPTION_LENGTH_CALL);
+        tklock_uiexcept_end(UIEXC_CALL, linger_time);
+
+        /* Restore linger time to default again */
+        linger_time = EXCEPTION_LENGTH_CALL_OUT;
         break;
     }
 
@@ -2303,22 +2316,24 @@ static gboolean tklock_uiexcept_linger_cb(gpointer aptr)
     }
 
     /* and finally the display data pipe */
-    switch( exx.display ) {
-    case MCE_DISPLAY_OFF:
-    case MCE_DISPLAY_LPM_OFF:
-    case MCE_DISPLAY_LPM_ON:
-    case MCE_DISPLAY_DIM:
-    case MCE_DISPLAY_ON:
+    if( exx.display != MCE_DISPLAY_ON ) {
+        /* If the display was not clearly ON when exception started,
+         * turn it OFF after exceptions are over. */
         execute_datapipe(&display_state_req_pipe,
-                         GINT_TO_POINTER(exx.display),
+                         GINT_TO_POINTER(MCE_DISPLAY_OFF),
                          USE_INDATA, CACHE_INDATA);
-        break;
-
-    default:
-    case MCE_DISPLAY_UNDEF:
-    case MCE_DISPLAY_POWER_UP:
-    case MCE_DISPLAY_POWER_DOWN:
-        break;
+    }
+    else if( proximity_state_actual == COVER_OPEN ) {
+        /* Unblank only if proximity sensor is not covered when
+         * the linger time has passed.
+         *
+         * Note: Because linger times are relatively short,
+         * we use raw sensor data here instead of the filtered
+         * proximity_state_effective that is normally used
+         * with unblanking policies. */
+        execute_datapipe(&display_state_req_pipe,
+                         GINT_TO_POINTER(MCE_DISPLAY_ON),
+                         USE_INDATA, CACHE_INDATA);
     }
 
 EXIT:
@@ -2365,23 +2380,7 @@ static void tklock_uiexcept_begin(uiexctype_t type, int64_t linger)
 
         /* save display and tklock state */
         exdata.tklock  = tklock_datapipe_have_tklock_submode();
-
-        switch( display_state ) {
-        case MCE_DISPLAY_ON:
-        case MCE_DISPLAY_DIM:
-        case MCE_DISPLAY_POWER_UP:
-        case MCE_DISPLAY_UNDEF:
-            exdata.display = MCE_DISPLAY_ON;
-            break;
-
-        default:
-        case MCE_DISPLAY_OFF:
-        case MCE_DISPLAY_LPM_OFF:
-        case MCE_DISPLAY_LPM_ON:
-        case MCE_DISPLAY_POWER_DOWN:
-            exdata.display = MCE_DISPLAY_OFF;
-            break;
-        }
+        exdata.display = display_state;
 
         /* initially insync, restore state at end */
         exdata.insync      = true;
