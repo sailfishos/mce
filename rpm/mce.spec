@@ -51,6 +51,16 @@ Requires: glib2 >= 2.36.0
 %description tests
 This package contains test suite for mce
 
+%package config-legacy
+Summary:  Config files for mce (legacy hw)
+Group:    System/System Control
+
+%description config-legacy
+This package contains mce configuration files for legacy hw
+
+Potentially useful for using Nemomobile version of mce with
+Nokia N770, N800, N810, N900, N9 and N950 devices.
+
 %prep
 %setup -q -n %{name}-%{version}
 
@@ -112,3 +122,7 @@ systemctl daemon-reload || :
 %files tests
 %defattr(-,root,root,-)
 ## QUARANTINE /opt/tests/mce/*
+
+%files config-legacy
+%defattr(-,root,root,-)
+%config %{_sysconfdir}/%{name}/11legacy.ini
