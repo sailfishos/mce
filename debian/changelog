@@ -1,3 +1,9 @@
+mce (1.32.2) unstable; urgency=low
+
+  * [mce] Package legacy configuration items separately. Fixes NEMO#616
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 25 Jun 2014 09:50:06 +0300
+
 mce (1.32.1) unstable; urgency=low
 
   * [mce] Keep frame buffer device opened to keep display from powering off.
