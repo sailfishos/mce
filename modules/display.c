@@ -2658,8 +2658,22 @@ static gboolean mdy_blanking_off_cb(gpointer data)
 
     mdy_blanking_off_cb_id = 0;
 
+    /* Default to: display off */
+    display_state_t next_state = MCE_DISPLAY_OFF;
+
+    /* Use lpm on, if starting from on/dim and tklock is already set */
+    switch( display_state ) {
+    case MCE_DISPLAY_ON:
+    case MCE_DISPLAY_DIM:
+        if( submode & MCE_TKLOCK_SUBMODE )
+            next_state = MCE_DISPLAY_LPM_ON;
+        break;
+    default:
+        break;
+    }
+
     execute_datapipe(&display_state_req_pipe,
-                     GINT_TO_POINTER(MCE_DISPLAY_OFF),
+                     GINT_TO_POINTER(next_state),
                      USE_INDATA, CACHE_INDATA);
 
     /* Remove wakelock unless the timer got re-programmed */
