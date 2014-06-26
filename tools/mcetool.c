@@ -1894,6 +1894,8 @@ static void xmce_set_display_state(const char *state)
                 xmce_ipc_no_reply(MCE_DISPLAY_DIM_REQ, DBUS_TYPE_INVALID);
         else if( !strcmp(state, "off") )
                 xmce_ipc_no_reply(MCE_DISPLAY_OFF_REQ, DBUS_TYPE_INVALID);
+        else if( !strcmp(state, "lpm") )
+                xmce_ipc_no_reply(MCE_DISPLAY_LPM_REQ, DBUS_TYPE_INVALID);
         else
                 errorf("%s: invalid display state\n", state);
 }
@@ -3102,6 +3104,12 @@ static bool mcetool_do_blank_screen(const char *arg)
         xmce_set_display_state("off");
         return true;
 }
+static bool mcetool_do_blank_screen_lpm(const char *arg)
+{
+        (void)arg;
+        xmce_set_display_state("lpm");
+        return true;
+}
 
 // Unused short options left ....
 // - - - - - - - - - - - - - - - - - - - - - - w x - -
@@ -3129,6 +3137,12 @@ static const mce_opt_t options[] =
                 .without_arg = mcetool_do_blank_screen,
                 .usage       =
                         "send display off request\n"
+        },
+        {
+                .name        = "blank-screen-lpm",
+                .without_arg = mcetool_do_blank_screen_lpm,
+                .usage       =
+                        "send display low power mode request\n"
         },
         {
                 .name        = "blank-prevent",
