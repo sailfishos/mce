@@ -2293,6 +2293,41 @@ static void xmce_get_powerkey_action(void)
         printf("%-"PAD1"s %s \n", "Powerkey wakeup policy:", txt ?: "unknown");
 }
 
+/** Lookup table for powerkey blanking modess
+ */
+static const symbol_t powerkey_blanking[] = {
+        { "off", PWRKEY_BLANK_TO_OFF },
+        { "lpm", PWRKEY_BLANK_TO_LPM },
+        { NULL,  -1                  }
+};
+
+/** Set powerkey wakeup mode
+ *
+ * @param args string that can be parsed to powerkey wakeup mode
+ */
+static bool xmce_set_powerkey_blanking(const char *args)
+{
+        debugf("%s(%s)\n", __FUNCTION__, args);
+        int val = lookup(powerkey_blanking, args);
+        if( val < 0 ) {
+                errorf("%s: invalid powerkey blanking value\n", args);
+                exit(EXIT_FAILURE);
+        }
+        mcetool_gconf_set_int(MCE_GCONF_POWERKEY_BLANKING_MODE, val);
+        return true;
+}
+
+/** Get current powerkey wakeup mode from mce and print it out
+ */
+static void xmce_get_powerkey_blanking(void)
+{
+        gint        val = 0;
+        const char *txt = 0;
+        if( mcetool_gconf_get_int(MCE_GCONF_POWERKEY_BLANKING_MODE, &val) )
+                txt = rlookup(powerkey_blanking, val);
+        printf("%-"PAD1"s %s \n", "Powerkey blanking mode:", txt ?: "unknown");
+}
+
 /* ------------------------------------------------------------------------- *
  * doubletab
  * ------------------------------------------------------------------------- */
@@ -2939,6 +2974,7 @@ static bool xmce_get_status(const char *args)
         xmce_get_doubletap_mode();
         xmce_get_doubletap_wakeup();
         xmce_get_powerkey_action();
+        xmce_get_powerkey_blanking();
         xmce_get_low_power_mode();
         xmce_get_als_mode();
         xmce_get_ps_mode();
@@ -3250,6 +3286,14 @@ static const mce_opt_t options[] =
                 .usage       =
                         "set the doubletap wakeup mode; valid modes are:\n"
                         "'never', 'always', 'proximity'\n"
+        },
+        {
+                .name        = "set-powerkey-blanking",
+                .with_arg    = xmce_set_powerkey_blanking,
+                .values      = "off|lpm",
+                .usage       =
+                        "set the doubletap blanking mode; valid modes are:\n"
+                        "'off', 'lpm'\n"
         },
         {
                 .name        = "enable-radio",

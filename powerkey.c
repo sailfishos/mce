@@ -121,6 +121,12 @@ static gint powerkey_action_mode = PWRKEY_ENABLE_DEFAULT;
 /** GConf callback ID for powerkey_action_mode */
 static guint powerkey_action_mode_cb_id = 0;
 
+/** Power key press blanking mode */
+static gint powerkey_blanking_mode = PWRKEY_BLANK_TO_OFF;
+
+/** GConf callback ID for powerkey_blanking_mode */
+static guint powerkey_blanking_mode_cb_id = 0;
+
 /** GConf callback for powerkey related settings
  *
  * @param gcc    (not used)
@@ -149,6 +155,12 @@ static void powerkey_gconf_cb(GConfClient *const gcc, const guint id,
 		mce_log(LL_NOTICE, "powerkey_action_mode: %d -> %d",
 			old, powerkey_action_mode);
 	}
+	else if( id == powerkey_blanking_mode_cb_id ) {
+		gint old = powerkey_blanking_mode;
+		powerkey_blanking_mode = gconf_value_get_int(gcv);
+		mce_log(LL_NOTICE, "powerkey_blanking_mode: %d -> %d",
+			old, powerkey_blanking_mode);
+	}
 	else {
 		mce_log(LL_WARN, "Spurious GConf value received; confused!");
 	}
@@ -168,6 +180,16 @@ static void powerkey_gconf_init(void)
 			       &powerkey_action_mode_cb_id);
 
 	mce_gconf_get_int(MCE_GCONF_POWERKEY_MODE, &powerkey_action_mode);
+
+	/* Power key display blanking mode */
+	mce_gconf_notifier_add(MCE_GCONF_POWERKEY_PATH,
+			       MCE_GCONF_POWERKEY_BLANKING_MODE,
+			       powerkey_gconf_cb,
+			       &powerkey_blanking_mode_cb_id);
+
+	mce_gconf_get_int(MCE_GCONF_POWERKEY_BLANKING_MODE,
+			  &powerkey_blanking_mode);
+
 }
 
 /** Remove gconf change notifiers
@@ -177,6 +199,10 @@ static void powerkey_gconf_quit(void)
 	/* Power key press handling mode */
 	mce_gconf_notifier_remove(powerkey_action_mode_cb_id),
 		powerkey_action_mode_cb_id = 0;
+
+	/* Power key press blanking mode */
+	mce_gconf_notifier_remove(powerkey_blanking_mode_cb_id),
+		powerkey_blanking_mode_cb_id = 0;
 }
 
 /** Helper for sending powerkey feedback dbus signal
@@ -267,6 +293,27 @@ EXIT:
 	return ignore_powerkey;
 }
 
+/** Blank display according to current powerkey_blanking_mode
+ */
+static void powerkey_blank_display(void)
+{
+	display_state_t request = MCE_DISPLAY_OFF;
+
+	switch( powerkey_blanking_mode ) {
+	case PWRKEY_BLANK_TO_LPM:
+		request = MCE_DISPLAY_LPM_ON;
+		break;
+
+	case PWRKEY_BLANK_TO_OFF:
+	default:
+		break;
+	}
+
+	execute_datapipe(&display_state_req_pipe,
+			 GINT_TO_POINTER(request),
+			 USE_INDATA, CACHE_INDATA);
+}
+
 /**
  * Generic logic for key presses
  *
@@ -333,9 +380,7 @@ static void generic_powerkey_handler(poweraction_t action,
 					 GINT_TO_POINTER(LOCK_ON),
 					 USE_INDATA, CACHE_INDATA);
 
-			execute_datapipe(&display_state_req_pipe,
-					 GINT_TO_POINTER(MCE_DISPLAY_OFF),
-					 USE_INDATA, CACHE_INDATA);
+			powerkey_blank_display();
 			break;
 
 		default:
