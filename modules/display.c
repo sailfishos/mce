@@ -20,6 +20,14 @@
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+/** HACK: swipe to lock goes to lpm (if powerkey blanking does too)
+ *
+ * This is a transitional debugging feature that needs to be reverted
+ * as soon as lipstick has been modified to use actual lpm mode dbus
+ * requests.
+ */
+#define ENABLE_LPM_HACK 1
+
 #include "display.h"
 
 #include "../mce.h"
@@ -38,6 +46,10 @@
 
 #ifdef ENABLE_WAKELOCKS
 # include "../libwakelock.h"
+#endif
+
+#if ENABLE_LPM_HACK
+#include "../powerkey.h"
 #endif
 
 #include <linux/fb.h>
@@ -6385,6 +6397,13 @@ static gboolean mdy_dbus_handle_display_dim_req(DBusMessage *const msg)
  */
 static gboolean mdy_dbus_handle_display_off_req(DBusMessage *const msg)
 {
+#if ENABLE_LPM_HACK
+    gint blanking_mode = PWRKEY_BLANK_TO_OFF;
+    mce_gconf_get_int(MCE_GCONF_POWERKEY_BLANKING_MODE, &blanking_mode);
+    if( blanking_mode == PWRKEY_BLANK_TO_LPM )
+        return mdy_dbus_handle_display_lpm_req(msg);
+#endif
+
     dbus_bool_t no_reply = dbus_message_get_no_reply(msg);
     gboolean status = FALSE;
 
