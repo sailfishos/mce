@@ -1,3 +1,10 @@
+mce (1.32.3) unstable; urgency=low
+
+  * [mce] Do not assume lipstick D-Bus service can handle compositor
+    interface. Fixes JB#19572
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 27 Jun 2014 19:18:06 +0300
+
 mce (1.32.2) unstable; urgency=low
 
   * [mce] Package legacy configuration items separately. Fixes NEMO#616
