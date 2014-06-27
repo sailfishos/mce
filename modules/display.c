@@ -440,7 +440,6 @@ static void                mdy_compositor_cancel_killer(void);
 static void                mdy_compositor_name_owner_pid_cb(const char *name, int pid);
 
 static bool                mdy_compositor_is_available(void);
-static bool                mdy_compositor_is_lipstick(void);
 
 static void                mdy_compositor_name_owner_set(const char *name, const char *curr);
 
@@ -4225,11 +4224,6 @@ static bool mdy_compositor_is_available(void)
     return mdy_compositor_dbus_name != 0;
 }
 
-static bool mdy_compositor_is_lipstick(void)
-{
-    return mdy_str_eq_p(mdy_compositor_dbus_name, LIPSTICK_SERVICE);
-}
-
 static void mdy_compositor_name_owner_set(const char *name, const char *curr)
 {
     bool has_owner = (curr && *curr);
@@ -4355,18 +4349,10 @@ static gboolean mdy_compositor_start_state_req(renderer_state_t state)
     if( !(bus = dbus_connection_get()) )
         goto EXIT;
 
-    if( mdy_compositor_is_lipstick() ) {
-        req = dbus_message_new_method_call(LIPSTICK_SERVICE,
-                                           LIPSTICK_PATH,
-                                           LIPSTICK_IFACE,
-                                           LIPSTICK_SET_UPDATES_ENABLED);
-    }
-    else {
-        req = dbus_message_new_method_call(COMPOSITOR_SERVICE,
-                                           COMPOSITOR_PATH,
-                                           COMPOSITOR_IFACE,
-                                           COMPOSITOR_SET_UPDATES_ENABLED);
-    }
+    req = dbus_message_new_method_call(COMPOSITOR_SERVICE,
+                                       COMPOSITOR_PATH,
+                                       COMPOSITOR_IFACE,
+                                       COMPOSITOR_SET_UPDATES_ENABLED);
     if( !req )
         goto EXIT;
 
@@ -5033,13 +5019,8 @@ static void mdy_stm_lipstick_name_owner_changed(const char *name,
     (void)name;
     (void)prev;
 
-    /* first deal with lipstick-only book keeping stuff */
+    /* first deal with lipstick book keeping stuff */
     mdy_lipstick_name_owner_set(curr);
-
-    /* then assumed lipstick==compositor stuff */
-    if( !mdy_compositor_is_available() || mdy_compositor_is_lipstick() ) {
-        mdy_stm_compositor_name_owner_changed(name, prev, curr);
-    }
 
     /* and finally broadcast within mce */
     bool available = mdy_lipstick_is_available();
