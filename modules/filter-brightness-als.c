@@ -112,9 +112,6 @@ static guint use_als_gconf_id = 0;
 static display_state_t display_state = MCE_DISPLAY_UNDEF;
 
 /** Latest lux reading from the ALS */
-static gint als_lux_sensor = -1;
-
-/** Last valid lux reading from the ALS */
 static gint als_lux_latest = -1;
 
 /** List of monitored external als enablers (legacy D-Bus API) */
@@ -408,7 +405,7 @@ static void run_datapipes(void)
  */
 static void als_lux_changed(unsigned lux)
 {
-	als_lux_sensor = (int)lux;
+	gint als_lux_sensor = (gint)lux;
 
 	/* Update / clear cached lux value */
 	if( als_lux_sensor < 0 ) {
