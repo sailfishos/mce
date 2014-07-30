@@ -1,3 +1,10 @@
+mce (1.32.4) unstable; urgency=low
+
+  * [mce] Use last known lux value for all automatic brightness controls.
+    Fixes NB#20910
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 30 Jul 2014 15:11:24 +0300
+
 mce (1.32.3) unstable; urgency=low
 
   * [mce] Do not assume lipstick D-Bus service can handle compositor
