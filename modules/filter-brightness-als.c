@@ -405,13 +405,26 @@ static void run_datapipes(void)
  */
 static void als_lux_changed(unsigned lux)
 {
-	als_lux_latest = (int)lux;
+	gint als_lux_sensor = (gint)lux;
 
-	mce_log(LL_DEBUG, "lux=%d", als_lux_latest);
+	/* Update / clear cached lux value */
+	if( als_lux_sensor < 0 ) {
+		if( !have_als || !use_als_flag )
+			als_lux_latest = -1;
+	}
+	else {
+		als_lux_latest = als_lux_sensor;
+	}
+
+	mce_log(LL_DEBUG, "lux input=%d, using=%d",
+		als_lux_sensor, als_lux_latest);
+
+	/* Run brightness filters */
 	run_datapipes();
 
+	/* Broadcast via datapipe */
 	execute_datapipe(&ambient_light_sensor_pipe,
-			 GINT_TO_POINTER(lux),
+			 GINT_TO_POINTER(als_lux_latest),
 			 USE_INDATA, CACHE_INDATA);
 }
 
@@ -563,26 +576,16 @@ EXIT:
  */
 static gpointer led_brightness_filter(gpointer data)
 {
-	static int cached_lux = -1;
-
 	int value = GPOINTER_TO_INT(data);
 	int scale = 40;
 
 	if( lut_led.profiles < 1 )
 		goto EXIT;
 
-	if( als_lux_latest < 0 ) {
-		if( !have_als || !use_als_flag )
-			cached_lux = -1;
-	}
-	else {
-		cached_lux = als_lux_latest;
-	}
-
-	if( cached_lux < 0 )
+	if( als_lux_latest < 0 )
 		goto EXIT;
 
-	scale = als_filter_run(&lut_led, 0, cached_lux);
+	scale = als_filter_run(&lut_led, 0, als_lux_latest);
 
 EXIT:
 	return GINT_TO_POINTER(value * scale / 100);
