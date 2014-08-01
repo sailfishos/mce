@@ -1,3 +1,9 @@
+mce (1.32.6) unstable; urgency=low
+
+  * [mce] Send lpm state notification on mce startup. Fixes JB#19402
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 01 Aug 2014 13:57:41 +0300
+
 mce (1.32.5) unstable; urgency=low
 
   * [mce] Add logic for detecting hammerhead volume key input device.
