@@ -535,6 +535,77 @@ static int evdevinfo_match_codes(const evdevinfo_t *self, int type, const int *c
 	return 1;
 }
 
+/** Test if input device sends only volume key events
+ *
+ * @param self  evdevinfo_t object
+ *
+ * @return true if info matches volume keys only device, false otherwise
+ */
+static bool evdevinfo_is_volumekey_default(const evdevinfo_t *self)
+{
+	static const int wanted_types[] = {
+		EV_KEY,
+		-1
+	};
+
+	static const int wanted_key_codes[] = {
+		KEY_VOLUMEDOWN,
+		KEY_VOLUMEUP,
+		-1
+	};
+
+	return (evdevinfo_match_types(self, wanted_types) &&
+		evdevinfo_match_codes(self, EV_KEY, wanted_key_codes));
+}
+
+/** Test if input device is exactly like volume key device in Nexus 5
+ *
+ * @param self  evdevinfo_t object
+ *
+ * @return true if info matches Nexus 5 volume key device, false otherwise
+ */
+static bool evdevinfo_is_volumekey_hammerhead(const evdevinfo_t *self)
+{
+	static const int wanted_types[] = {
+		EV_KEY,
+		EV_SW,
+		-1
+	};
+
+	static const int wanted_key_codes[] = {
+		KEY_VOLUMEDOWN,
+		KEY_VOLUMEUP,
+		-1
+	};
+
+	static const int wanted_sw_codes[] = {
+		SW_LID, // magnetic lid cover sensor
+		-1
+	};
+
+	return (evdevinfo_match_types(self, wanted_types) &&
+		evdevinfo_match_codes(self, EV_KEY, wanted_key_codes) &&
+		evdevinfo_match_codes(self, EV_SW, wanted_sw_codes));
+}
+
+/** Test if input device is grabbable volume key device
+ *
+ * @param self  evdevinfo_t object
+ *
+ * @return true if info matches grabbable volume key device, false otherwise
+ */
+static bool evdevinfo_is_volumekey(const evdevinfo_t *self)
+{
+	/* Note: If device node - in addition to volume keys - serves
+	 *       events that should always be made available to other
+	 *       processes too (KEY_POWER, SW_HEADPHONE_INSERT, etc),
+	 *       it should not be detected as grabbable volume key.
+	 */
+
+	return (evdevinfo_is_volumekey_default(self) ||
+		evdevinfo_is_volumekey_hammerhead(self));
+}
+
 /** Fill in evdev data by probing file descriptor
  *
  * @param self evdevinfo_t object
@@ -635,12 +706,6 @@ static evdev_type_t get_evdev_type(int fd)
 		KEY_VOLUMEUP,
 		-1
 	};
-	/* Volume key events */
-	static const int volkey_lut[] = {
-		KEY_VOLUMEDOWN,
-		KEY_VOLUMEUP,
-		-1
-	};
 
 	/* Switch events mce is interested in */
 	static const int switch_lut[] = {
@@ -737,8 +802,7 @@ static evdev_type_t get_evdev_type(int fd)
 	}
 
 	/* Volume keys only input devices can be grabbed */
-	if( evdevinfo_match_types(feat, key_only) &&
-	    evdevinfo_match_codes(feat, EV_KEY, volkey_lut) ) {
+	if( evdevinfo_is_volumekey(feat) ) {
 		res = EVDEV_VOLKEY;
 		goto cleanup;
 	}
