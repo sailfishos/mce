@@ -1,6 +1,6 @@
 mce (1.32.5) unstable; urgency=low
 
-  * [mce] Add logic for detecting hammerhead volume key input device. 
+  * [mce] Add logic for detecting hammerhead volume key input device.
     Fixes JB#21638
 
  -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 01 Aug 2014 09:29:41 +0300
