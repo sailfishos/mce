@@ -2425,7 +2425,10 @@ enum
  */
 static void tklock_lpmui_set_state(bool enable)
 {
-    static bool enabled = false;
+    /* Initialize cached state to a value that will not match true/false
+     * input to ensure that a notification is always sent on mce startup.
+     */
+    static int enabled = -1;
 
     if( !enable ) {
         // nop
