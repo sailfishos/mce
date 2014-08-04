@@ -1426,7 +1426,7 @@ static const setting_t gconf_defaults[] =
     // MCE_GCONF_POWERKEY_BLANKING_MODE @ powerkey.h
     .key  = "/system/osso/dsm/powerkey/blanking_mode",
     .type = "i",
-    .def  = "1", // = PWRKEY_BLANK_TO_LPM
+    .def  = "0", // = PWRKEY_BLANK_TO_OFF
   },
   {
     .key  = NULL,
