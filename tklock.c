@@ -659,6 +659,9 @@ EXIT:
 
 }
 
+/** Call state; assume no active calls */
+static call_state_t call_state = CALL_STATE_NONE;
+
 /** Actual proximity state; assume not covered */
 static cover_state_t proximity_state_actual = COVER_OPEN;
 
@@ -721,6 +724,14 @@ static void tklock_datapipe_proximity_uncover_cancel(void)
     }
 }
 
+enum {
+    /** Default delay for delaying proximity uncovered handling [ms] */
+    PROXIMITY_DELAY_DEFAULT = 100,
+
+    /** Delay for delaying proximity uncovered handling during calls [ms] */
+    PROXIMITY_DELAY_INCALL  = 500,
+};
+
 /** Schedule delayed proximity uncovering
  */
 static void tklock_datapipe_proximity_uncover_schedule(void)
@@ -730,8 +741,13 @@ static void tklock_datapipe_proximity_uncover_schedule(void)
     else
         wakelock_lock("mce_proximity_stm", -1);
 
+    int delay = PROXIMITY_DELAY_DEFAULT;
+
+    if( call_state == CALL_STATE_ACTIVE )
+        delay = PROXIMITY_DELAY_INCALL;
+
     tklock_datapipe_proximity_uncover_id =
-        g_timeout_add(500, tklock_datapipe_proximity_uncover_cb, 0);
+        g_timeout_add(delay, tklock_datapipe_proximity_uncover_cb, 0);
 }
 
 /** Change notifications for proximity_state_actual
@@ -763,9 +779,6 @@ static void tklock_datapipe_proximity_sensor_cb(gconstpointer data)
 EXIT:
     return;
 }
-
-/** Call state; assume no active calls */
-static call_state_t call_state = CALL_STATE_NONE;
 
 /** Change notifications for call_state
  */
