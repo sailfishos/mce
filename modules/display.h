@@ -21,39 +21,6 @@
 #ifndef _DISPLAY_H_
 #define _DISPLAY_H_
 
-/** Name of Display configuration group */
-#define MCE_CONF_DISPLAY_GROUP			"Display"
-
-/** Name of the configuration key for the brightness increase policy */
-#define MCE_CONF_BRIGHTNESS_INCREASE_POLICY	"BrightnessIncreasePolicy"
-
-/** Name of the configuration key for the step-time for brightness increase */
-#define MCE_CONF_STEP_TIME_INCREASE		"StepTimeIncrease"
-
-/** Name of the configuration key for the constant time brightness increase */
-#define MCE_CONF_CONSTANT_TIME_INCREASE		"ConstantTimeIncrease"
-
-/** Name of the configuration key for the brightness decrease policy */
-#define MCE_CONF_BRIGHTNESS_DECREASE_POLICY	"BrightnessDecreasePolicy"
-
-/** Name of the configuration key for the step-time for brightness decrease */
-#define MCE_CONF_STEP_TIME_DECREASE		"StepTimeDecrease"
-
-/** Name of the configuration key for the constant time brightness decrease */
-#define MCE_CONF_CONSTANT_TIME_DECREASE		"ConstantTimeDecrease"
-
-/** Default brightness increase step-time */
-#define DEFAULT_BRIGHTNESS_INCREASE_STEP_TIME		5
-
-/** Default brightness increase constant time */
-#define DEFAULT_BRIGHTNESS_INCREASE_CONSTANT_TIME	2000
-
-/** Default brightness decrease step-time */
-#define DEFAULT_BRIGHTNESS_DECREASE_STEP_TIME		10
-
-/** Default brightness decrease constant time */
-#define DEFAULT_BRIGHTNESS_DECREASE_CONSTANT_TIME	3000
-
 /** Default timeout for the high brightness mode; in seconds */
 #define DEFAULT_HBM_TIMEOUT				1800	/* 30 min */
 
@@ -178,6 +145,21 @@
 
 /** Path to the unresponsive lipstick core dump delay */
 #define MCE_GCONF_LIPSTICK_CORE_DELAY_PATH	MCE_GCONF_DISPLAY_PATH "/lipstick_core_dump_delay"
+
+/** Path to the default brightness fade duration [ms] */
+#define MCE_GCONF_BRIGHTNESS_FADE_DEF           MCE_GCONF_DISPLAY_PATH "/brightness_fade_def"
+
+/** Path to the dimming brightness fade duration [ms] */
+#define MCE_GCONF_BRIGHTNESS_FADE_DIM           MCE_GCONF_DISPLAY_PATH "/brightness_fade_dim"
+
+/** Path to the ALS brightness fade duration [ms] */
+#define MCE_GCONF_BRIGHTNESS_FADE_ALS           MCE_GCONF_DISPLAY_PATH "/brightness_fade_als"
+
+/** Path to the blanking brightness fade duration [ms] */
+#define MCE_GCONF_BRIGHTNESS_FADE_BLANK         MCE_GCONF_DISPLAY_PATH "/brightness_fade_blank"
+
+/** Path to the unblanking brightness fade duration [ms] */
+#define MCE_GCONF_BRIGHTNESS_FADE_UNBLANK       MCE_GCONF_DISPLAY_PATH "/brightness_fade_unblank"
 
 /* NOTE: The following defines the legacy mce brightness scale. It is
  *       carved in stone for the sake of backwards compatibility. On

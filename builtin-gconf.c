@@ -1229,6 +1229,36 @@ static const setting_t gconf_defaults[] =
     .def  = "30",
   },
   {
+    // MCE_GCONF_BRIGHTNESS_FADE_DEF @ modules/display.h
+    .key  = "/system/osso/dsm/display/brightness_fade_def",
+    .type = "i",
+    .def  = "150",
+  },
+  {
+    // MCE_GCONF_BRIGHTNESS_FADE_DIM @ modules/display.h
+    .key  = "/system/osso/dsm/display/brightness_fade_dim",
+    .type = "i",
+    .def  = "1000",
+  },
+  {
+    // MCE_GCONF_BRIGHTNESS_FADE_ALS @ modules/display.h
+    .key  = "/system/osso/dsm/display/brightness_fade_als",
+    .type = "i",
+    .def  = "600",
+  },
+  {
+    // MCE_GCONF_BRIGHTNESS_FADE_BLANK @ modules/display.h
+    .key  = "/system/osso/dsm/display/brightness_fade_blank",
+    .type = "i",
+    .def  = "100",
+  },
+  {
+    // MCE_GCONF_BRIGHTNESS_FADE_UNBLANK @ modules/display.h
+    .key  = "/system/osso/dsm/display/brightness_fade_unblank",
+    .type = "i",
+    .def  = "90",
+  },
+  {
     // MCE_GCONF_TK_AUTO_BLANK_DISABLE_PATH @ tklock.h
     .key  = "/system/osso/dsm/locks/tklock_blank_disable",
     .type = "i",

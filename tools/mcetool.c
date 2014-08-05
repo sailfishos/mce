@@ -2574,6 +2574,70 @@ static void xmce_get_lipstick_core_delay(void)
 }
 
 /* ------------------------------------------------------------------------- *
+ * brightness fade settings
+ * ------------------------------------------------------------------------- */
+
+static bool xmce_set_brightness_fade_def(const char *args)
+{
+        debugf("%s(%s)\n", __FUNCTION__, args);
+        int val = xmce_parse_integer(args);
+        mcetool_gconf_set_int(MCE_GCONF_BRIGHTNESS_FADE_DEF, val);
+        return true;
+}
+static bool xmce_set_brightness_fade_dim(const char *args)
+{
+        debugf("%s(%s)\n", __FUNCTION__, args);
+        int val = xmce_parse_integer(args);
+        mcetool_gconf_set_int(MCE_GCONF_BRIGHTNESS_FADE_DIM, val);
+        return true;
+}
+static bool xmce_set_brightness_fade_als(const char *args)
+{
+        debugf("%s(%s)\n", __FUNCTION__, args);
+        int val = xmce_parse_integer(args);
+        mcetool_gconf_set_int(MCE_GCONF_BRIGHTNESS_FADE_ALS, val);
+        return true;
+}
+static bool xmce_set_brightness_fade_blank(const char *args)
+{
+        debugf("%s(%s)\n", __FUNCTION__, args);
+        int val = xmce_parse_integer(args);
+        mcetool_gconf_set_int(MCE_GCONF_BRIGHTNESS_FADE_BLANK, val);
+        return true;
+}
+static bool xmce_set_brightness_fade_unblank(const char *args)
+{
+        debugf("%s(%s)\n", __FUNCTION__, args);
+        int val = xmce_parse_integer(args);
+        mcetool_gconf_set_int(MCE_GCONF_BRIGHTNESS_FADE_UNBLANK, val);
+        return true;
+}
+
+static void xmce_get_brightness_fade_helper(const char *title, const char *key)
+{
+        gint val = 0;
+        char txt[32];
+        strcpy(txt, "unknown");
+        if( mcetool_gconf_get_int(key, &val) )
+                snprintf(txt, sizeof txt, "%d", (int)val);
+        printf("%-"PAD1"s %s (milliseconds)\n", title, txt);
+}
+
+static void xmce_get_brightness_fade(void)
+{
+        xmce_get_brightness_fade_helper("Brightness fade [def]",
+                                        MCE_GCONF_BRIGHTNESS_FADE_DEF);
+        xmce_get_brightness_fade_helper("Brightness fade [dim]",
+                                        MCE_GCONF_BRIGHTNESS_FADE_DIM);
+        xmce_get_brightness_fade_helper("Brightness fade [als]",
+                                        MCE_GCONF_BRIGHTNESS_FADE_ALS);
+        xmce_get_brightness_fade_helper("Brightness fade [blank]",
+                                        MCE_GCONF_BRIGHTNESS_FADE_BLANK);
+        xmce_get_brightness_fade_helper("Brightness fade [unblank]",
+                                        MCE_GCONF_BRIGHTNESS_FADE_UNBLANK);
+}
+
+/* ------------------------------------------------------------------------- *
  * touch input unblocking
  * ------------------------------------------------------------------------- */
 
@@ -2981,6 +3045,7 @@ static bool xmce_get_status(const char *args)
         xmce_get_als_mode();
         xmce_get_ps_mode();
         xmce_get_dim_timeouts();
+        xmce_get_brightness_fade();
         xmce_get_suspend_policy();
         xmce_get_cpu_scaling_governor();
 #ifdef ENABLE_DOUBLETAP_EMULATION
@@ -3527,6 +3592,41 @@ static const mce_opt_t options[] =
                 .usage       =
                         "set the display demo mode  to STATE;\n"
                         "valid states are: 'on' and 'off'\n"
+        },
+        {
+                .name        = "set-brightness-fade-def",
+                .with_arg    = xmce_set_brightness_fade_def,
+                .values      = "msecs",
+                .usage       =
+                        "set the default brightness fade duration\n"
+        },
+        {
+                .name        = "set-brightness-fade-dim",
+                .with_arg    = xmce_set_brightness_fade_dim,
+                .values      = "msecs",
+                .usage       =
+                        "set the dim brightness fade duration\n"
+        },
+        {
+                .name        = "set-brightness-fade-als",
+                .with_arg    = xmce_set_brightness_fade_als,
+                .values      = "msecs",
+                .usage       =
+                        "set the als brightness fade duration\n"
+        },
+        {
+                .name        = "set-brightness-fade-blank",
+                .with_arg    = xmce_set_brightness_fade_blank,
+                .values      = "msecs",
+                .usage       =
+                        "set the blank brightness fade duration\n"
+        },
+        {
+                .name        = "set-brightness-fade-unblank",
+                .with_arg    = xmce_set_brightness_fade_unblank,
+                .values      = "msecs",
+                .usage       =
+                        "set the unblank brightness fade duration\n"
         },
         {
                 .name        = "set-lipstick-core-delay",

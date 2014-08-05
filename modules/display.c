@@ -113,22 +113,6 @@ typedef enum {
     DISPLAY_TYPE_ACPI_VIDEO0 = 7
 } display_type_t;
 
-/** Brightness change policies */
-typedef enum {
-    /** Policy not set */
-    BRIGHTNESS_CHANGE_POLICY_INVALID = MCE_INVALID_TRANSLATION,
-    /** Brightness changes instantly */
-    BRIGHTNESS_CHANGE_DIRECT = 0,
-    /** Fade with fixed step time */
-    BRIGHTNESS_CHANGE_STEP_TIME = 1,
-    /** Fade time independent of number of steps faded */
-    BRIGHTNESS_CHANGE_CONSTANT_TIME = 2,
-    /** Default setting when brightness increases */
-    DEFAULT_BRIGHTNESS_INCREASE_POLICY = BRIGHTNESS_CHANGE_CONSTANT_TIME,
-    /** Default setting when brightness decreases */
-    DEFAULT_BRIGHTNESS_DECREASE_POLICY = BRIGHTNESS_CHANGE_CONSTANT_TIME
-} brightness_change_policy_t;
-
 /** Inhibit type */
 typedef enum {
     /** Inhibit value invalid */
@@ -227,6 +211,7 @@ typedef enum
     STM_LEAVE_POWER_ON,
     STM_RENDERER_INIT_STOP,
     STM_RENDERER_WAIT_STOP,
+    STM_WAIT_FADE_TO_BLACK,
     STM_INIT_SUSPEND,
     STM_WAIT_SUSPEND,
     STM_ENTER_POWER_OFF,
@@ -276,6 +261,7 @@ static void                mdy_datapipe_system_state_cb(gconstpointer data);
 static void                mdy_datapipe_submode_cb(gconstpointer data);
 static gpointer            mdy_datapipe_display_state_filter_cb(gpointer data);
 static void                mdy_datapipe_display_state_cb(gconstpointer data);
+static void                mdy_datapipe_display_state_next_cb(gconstpointer data);
 static void                mdy_datapipe_display_brightness_cb(gconstpointer data);
 static void                mdy_datapipe_lpm_brightness_cb(gconstpointer data);
 static void                mdy_datapipe_display_state_req_cb(gconstpointer data);
@@ -334,12 +320,23 @@ static void                mdy_brightness_set_level_hybris(int number);
 #endif
 static void                mdy_brightness_set_level_default(int number);
 static void                mdy_brightness_set_level(int number);
+
 static void                mdy_brightness_force_level(int number);
+
+static void                mdy_brightness_boost_fade_priority(bool enable);
 
 static gboolean            mdy_brightness_fade_timer_cb(gpointer data);
 static void                mdy_brightness_stop_fade_timer(void);
 static void                mdy_brightness_start_fade_timer(gint step_time);
-static void                mdy_brightness_set_fade_target(gint new_brightness);
+static bool                mdy_brightness_fade_is_active(void);
+
+static void                mdy_brightness_set_fade_target_ex(gint new_brightness, gint transition_time);
+static void                mdy_brightness_set_fade_target_def(gint new_brightness);
+static void                mdy_brightness_set_fade_target_dim(gint new_brightness);
+static void                mdy_brightness_set_fade_target_als(gint new_brightness);
+static void                mdy_brightness_set_fade_target_blank(void);
+static void                mdy_brightness_set_fade_target_unblank(gint new_brightness);
+
 static void                mdy_brightness_set_on_level(gint hbm_and_level);
 static void                mdy_brightness_set_dim_level(void);
 static void                mdy_brightness_set_lpm_level(gint level);
@@ -487,8 +484,8 @@ static void                mdy_orientation_sensor_rethink(void);
  * DISPLAY_STATE
  * ------------------------------------------------------------------------- */
 
-static void                mdy_display_state_enter_post(void);
-static void                mdy_display_state_enter_pre(display_state_t prev_state, display_state_t next_state);
+static void                mdy_display_state_changed(void);
+static void                mdy_display_state_enter(display_state_t prev_state, display_state_t next_state);
 static void                mdy_display_state_leave(display_state_t prev_state, display_state_t next_state);
 
 /* ------------------------------------------------------------------------- *
@@ -640,12 +637,6 @@ static void                mdy_gconf_quit(void);
 static void                mdy_gconf_sanitize_brightness_settings(void);
 
 /* ------------------------------------------------------------------------- *
- * INIFILE_SETTINGS
- * ------------------------------------------------------------------------- */
-
-static void                mdy_config_init(void);
-
-/* ------------------------------------------------------------------------- *
  * MODULE_LOAD_UNLOAD
  * ------------------------------------------------------------------------- */
 
@@ -750,26 +741,6 @@ static gchar *mdy_low_power_mode_file = NULL;
  * by default and disabled only in special cases.
  */
 static gboolean mdy_low_power_mode_supported = TRUE;
-
-/** Mapping of brightness change integer <-> policy string */
-static const mce_translation_t mdy_brightness_change_policy_translation[] = {
-    {
-        .number = BRIGHTNESS_CHANGE_DIRECT,
-        .string = "direct",
-    },
-    {
-        .number = BRIGHTNESS_CHANGE_STEP_TIME,
-        .string = "steptime",
-    },
-    {
-        .number = BRIGHTNESS_CHANGE_CONSTANT_TIME,
-        .string = "constanttime",
-    },
-    { /* MCE_INVALID_TRANSLATION marks the end of this array */
-        .number = MCE_INVALID_TRANSLATION,
-        .string = NULL
-    }
-};
 
 /** Maximum number of monitored services that calls blanking pause */
 #define BLANKING_PAUSE_MAX_MONITORED    5
@@ -914,34 +885,6 @@ static inhibit_t mdy_blanking_inhibit_mode = DEFAULT_BLANKING_INHIBIT_MODE;
 
 /** GConf callback ID for display blanking inhibit mode setting */
 static guint mdy_blanking_inhibit_mode_gconf_cb_id = 0;
-
-/* ------------------------------------------------------------------------- *
- * INIFILE_SETTINGS
- * ------------------------------------------------------------------------- */
-
-/** Brightness increase policy */
-static brightness_change_policy_t mdy_brightness_increase_policy =
-                                        DEFAULT_BRIGHTNESS_INCREASE_POLICY;
-
-/** Brightness decrease policy */
-static brightness_change_policy_t mdy_brightness_decrease_policy =
-                                        DEFAULT_BRIGHTNESS_DECREASE_POLICY;
-
-/** Brightness increase step-time */
-static gint mdy_brightness_increase_step_time =
-                DEFAULT_BRIGHTNESS_INCREASE_STEP_TIME;
-
-/** Brightness decrease step-time */
-static gint mdy_brightness_decrease_step_time =
-                DEFAULT_BRIGHTNESS_DECREASE_STEP_TIME;
-
-/** Brightness increase constant time */
-static gint mdy_brightness_increase_constant_time =
-                DEFAULT_BRIGHTNESS_INCREASE_CONSTANT_TIME;
-
-/** Brightness decrease constant time */
-static gint mdy_brightness_decrease_constant_time =
-                DEFAULT_BRIGHTNESS_DECREASE_CONSTANT_TIME;
 
 /* ========================================================================= *
  * MISC_UTILS
@@ -1100,8 +1043,11 @@ EXIT:
     return;
 }
 
-/* Cached display state */
+/* Cached current display state */
 static display_state_t display_state = MCE_DISPLAY_UNDEF;
+
+/* Cached target display state */
+static display_state_t display_state_next = MCE_DISPLAY_UNDEF;
 
 /** Filter display_state_req_pipe changes
  *
@@ -1203,10 +1149,29 @@ static void mdy_datapipe_display_state_cb(gconstpointer data)
     if( display_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEVEL, "display state = %s",
+    mce_log(LL_DEVEL, "current display state = %s",
             mdy_display_state_name(display_state));
 
-    mdy_display_state_enter_post();
+EXIT:
+    return;
+}
+
+/** Handle display_state_next_pipe notifications
+ *
+ * This is where display state transition ends
+ *
+ * @param data The display state stored in a pointer
+ */
+static void mdy_datapipe_display_state_next_cb(gconstpointer data)
+{
+    display_state_t prev = display_state_next;
+    display_state_next = GPOINTER_TO_INT(data);
+
+    if( display_state_next == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "target display state = %s",
+            mdy_display_state_name(display_state_next));
 
 EXIT:
     return;
@@ -1555,6 +1520,8 @@ static void mdy_datapipe_init(void)
                                       mdy_datapipe_display_state_req_cb);
     append_output_trigger_to_datapipe(&display_state_pipe,
                                       mdy_datapipe_display_state_cb);
+    append_output_trigger_to_datapipe(&display_state_next_pipe,
+                                      mdy_datapipe_display_state_next_cb);
     append_output_trigger_to_datapipe(&display_brightness_pipe,
                                       mdy_datapipe_display_brightness_cb);
     append_output_trigger_to_datapipe(&lpm_brightness_pipe,
@@ -1621,6 +1588,8 @@ static void mdy_datapipe_quit(void)
                                         mdy_datapipe_lpm_brightness_cb);
     remove_output_trigger_from_datapipe(&display_state_pipe,
                                         mdy_datapipe_display_state_cb);
+    remove_output_trigger_from_datapipe(&display_state_next_pipe,
+                                        mdy_datapipe_display_state_next_cb);
     remove_output_trigger_from_datapipe(&display_state_req_pipe,
                                         mdy_datapipe_display_state_req_cb);
 
@@ -1999,14 +1968,11 @@ static gchar *mdy_brightness_level_maximum_path = NULL;
 /** Cached brightness, last value written; [0, mdy_brightness_level_maximum] */
 static gint mdy_brightness_level_cached = -1;
 
-/** Target brightness; [0, mdy_brightness_level_maximum] */
-static gint mdy_brightness_level_target = -1;
-
 /** Brightness, when display is not off; [0, mdy_brightness_level_maximum] */
-static gint mdy_brightness_level_display_on = -1;
+static gint mdy_brightness_level_display_on = 1;
 
 /** Dim brightness; [0, mdy_brightness_level_maximum] */
-static gint mdy_brightness_level_display_dim = -1;
+static gint mdy_brightness_level_display_dim = 1;
 
 /** LPM brightness; [0, mdy_brightness_level_maximum] */
 static gint mdy_brightness_level_display_lpm = 1;
@@ -2044,10 +2010,63 @@ static output_state_t mdy_brightness_hw_fading_output =
 };
 
 /** Brightness fade timeout callback ID */
-static guint mdy_brightness_fade_timer_cb_id = 0;
+static guint mdy_brightness_fade_timer_id = 0;
 
-/** Fadeout step length */
-static gint mdy_brightness_fade_steplength = 2;
+/** Monotonic time stamp for brightness fade start time */
+static int64_t mdy_brightness_fade_start_time = 0;
+
+/** Monotonic time stamp for brightness fade end time */
+static int64_t mdy_brightness_fade_end_time = 0;
+
+/** Brightness level at the start of brightness fade */
+static int     mdy_brightness_fade_start_level = 0;
+
+/** Brightness level at the end of brightness fade */
+static int     mdy_brightness_fade_end_level = 0;
+
+/** Default brightness fade length during display state transitions [ms] */
+static gint mdy_brightness_fade_duration_def     = 150;
+
+/** GConf change notification id for mdy_brightness_fade_duration_def */
+static guint mdy_brightness_fade_duration_def_gconf_cb_id = 0;
+
+/** Brightness fade length during display dimming [ms] */
+static gint mdy_brightness_fade_duration_dim     = 1000;
+
+/** GConf change notification id for mdy_brightness_fade_duration_dim */
+static guint mdy_brightness_fade_duration_dim_gconf_cb_id = 0;
+
+/** Brightness fade length during ALS tuning [ms] */
+static gint mdy_brightness_fade_duration_als     =  600;
+
+/** GConf change notification id for mdy_brightness_fade_duration_als */
+static guint mdy_brightness_fade_duration_als_gconf_cb_id = 0;
+
+/** Brightness fade length during display power down [ms]
+ *
+ * Note: Fade-to-black delays display power off and thus should be
+ *       kept short enough not to cause irritation.
+ */
+static gint mdy_brightness_fade_duration_blank   = 100;
+
+/** GConf change notification id for mdy_brightness_fade_duration_blank */
+static guint mdy_brightness_fade_duration_blank_gconf_cb_id = 0;
+
+/** Brightness fade length during display power up [ms]
+ *
+ * The fade in starts after frame buffer has been powered up.
+ * However the brightness is acted on only after UI side draws
+ * something on screen. Shortly after that there usually is a lot
+ * of cpu activity and longer fade durations will stutter.
+ *
+ * 90 = 55 (fb wakeup -> 1st draw) + 35 (1st draw -> cpu load)
+ *
+ * Basically we end up seeing the brighter end of the fade in.
+ */
+static gint mdy_brightness_fade_duration_unblank = 90;
+
+/** GConf change notification id for mdy_brightness_fade_duration_unblank */
+static guint mdy_brightness_fade_duration_unblank_gconf_cb_id = 0;
 
 /** Set display brightness via sysfs write */
 static void mdy_brightness_set_level_default(int number)
@@ -2086,10 +2105,67 @@ static void mdy_brightness_set_level(int number)
     else
         mce_log(LL_DEBUG, "value=%d", number);
 
-    mdy_brightness_set_level_hook(number);
+    if( mdy_brightness_level_cached != number ) {
+        mdy_brightness_level_cached = number;
+        mdy_brightness_set_level_hook(number);
+    }
 
     // TODO: we might want to power off fb at zero brightness
     //       and power it up at non-zero brightness???
+}
+
+/** Helper for boosting mce priority during brightness fading
+ *
+ * Any scheduling hiccups during backlight brightness tuning are really
+ * visible. To make it less likely to occur, this function is used to
+ * move mce process to SCHED_FIFO while fade timer is active.
+ */
+static void mdy_brightness_boost_fade_priority(bool enable)
+{
+    static bool enabled = false;
+
+    static int scheduler_old = SCHED_OTHER;
+    static int priority_old  = 0;
+
+    if( enabled == enable )
+        goto EXIT;
+
+    int scheduler = SCHED_OTHER;
+
+    struct sched_param param;
+    memset(&param, 0, sizeof param);
+
+    if( (enabled = enable) ) {
+        /* Cache current scheduling parameters */
+        if( (scheduler = sched_getscheduler(0)) == -1 )
+            mce_log(LL_WARN, "sched_getscheduler: %m");
+        else if( sched_getparam(0, &param) == -1 )
+            mce_log(LL_WARN, "sched_getparam: %m");
+        else {
+            scheduler_old = scheduler;
+            priority_old = param.sched_priority;
+        }
+
+        /* Switch to medium priority fifo scheduling */
+        scheduler = SCHED_FIFO;
+        param.sched_priority = (sched_get_priority_min(scheduler) +
+                                sched_get_priority_max(scheduler)) / 2;
+    }
+    else {
+        /* Switch back to cached scheduling parameters */
+        scheduler = scheduler_old;
+        param.sched_priority = priority_old;
+    }
+
+    mce_log(LL_DEBUG, "sched=%d, prio=%d", scheduler, param.sched_priority);
+
+    if( sched_setscheduler(0, scheduler, &param) == -1 ) {
+        mce_log(LL_WARN, "can't %s high priority mode: %m",
+                enable ? "enter" : "leave");
+    }
+
+EXIT:
+    return;
 }
 
 /** Helper for cancelling brightness fade and forcing a brightness level
@@ -2098,9 +2174,17 @@ static void mdy_brightness_set_level(int number)
  */
 static void mdy_brightness_force_level(int number)
 {
+    mce_log(LL_DEBUG, "brightness from %d to %d",
+            mdy_brightness_level_cached, number);
+
     mdy_brightness_stop_fade_timer();
-    mdy_brightness_level_cached = number;
-    mdy_brightness_level_target = number;
+
+    mdy_brightness_fade_start_level =
+        mdy_brightness_fade_end_level = number;
+
+    mdy_brightness_fade_start_time =
+        mdy_brightness_fade_end_time = mdy_get_boot_tick();
+
     mdy_brightness_set_level(number);
 }
 
@@ -2113,27 +2197,39 @@ static void mdy_brightness_force_level(int number)
  */
 static gboolean mdy_brightness_fade_timer_cb(gpointer data)
 {
-    gboolean retval = TRUE;
-
     (void)data;
 
-    if ((mdy_brightness_level_cached == -1) ||
-        (ABS(mdy_brightness_level_cached -
-             mdy_brightness_level_target) < mdy_brightness_fade_steplength)) {
-        mdy_brightness_level_cached = mdy_brightness_level_target;
-        retval = FALSE;
-    } else if (mdy_brightness_level_target > mdy_brightness_level_cached) {
-        mdy_brightness_level_cached += mdy_brightness_fade_steplength;
-    } else {
-        mdy_brightness_level_cached -= mdy_brightness_fade_steplength;
+    gboolean keep_going = FALSE;
+
+    /* Assume end of transition brightness is to be used */
+    int lev = mdy_brightness_fade_end_level;
+
+    /* Get current time */
+    int64_t now = mdy_get_boot_tick();
+
+    if( mdy_brightness_fade_start_time <= now &&
+        now < mdy_brightness_fade_end_time ) {
+        /* Linear interpolatio */
+        int a = (int)(now - mdy_brightness_fade_start_time);
+        int b = (int)(mdy_brightness_fade_end_time - now);
+        lev = (a * mdy_brightness_fade_end_level +
+               b * mdy_brightness_fade_start_level) / (a + b);
+
+        keep_going = TRUE;
     }
 
-    mdy_brightness_set_level(mdy_brightness_level_cached);
+    mdy_brightness_set_level(lev);
 
-    if (retval == FALSE)
-        mdy_brightness_fade_timer_cb_id = 0;
+    if( !keep_going && mdy_brightness_fade_timer_id ) {
+        mdy_brightness_fade_timer_id = 0;
+        mdy_brightness_boost_fade_priority(false);
+        mce_log(LL_DEBUG, "fader finished");
 
-    return retval;
+        // unblock display off transition
+        mdy_stm_schedule_rethink();
+    }
+
+    return keep_going;
 }
 
 /**
@@ -2142,9 +2238,14 @@ static gboolean mdy_brightness_fade_timer_cb(gpointer data)
 static void mdy_brightness_stop_fade_timer(void)
 {
     /* Remove the timeout source for the display brightness fade */
-    if (mdy_brightness_fade_timer_cb_id != 0) {
-        g_source_remove(mdy_brightness_fade_timer_cb_id);
-        mdy_brightness_fade_timer_cb_id = 0;
+    if (mdy_brightness_fade_timer_id != 0) {
+        mdy_brightness_boost_fade_priority(false);
+        mce_log(LL_DEBUG, "fader stopped");
+        g_source_remove(mdy_brightness_fade_timer_id);
+        mdy_brightness_fade_timer_id = 0;
+
+        // unblock display off transition
+        mdy_stm_schedule_rethink();
     }
 }
 
@@ -2155,11 +2256,24 @@ static void mdy_brightness_stop_fade_timer(void)
  */
 static void mdy_brightness_start_fade_timer(gint step_time)
 {
-    mdy_brightness_stop_fade_timer();
+    if( !mdy_brightness_fade_timer_id ) {
+        mce_log(LL_DEBUG, "fader started");
+        mdy_brightness_boost_fade_priority(true);
+    }
+    else {
+        mce_log(LL_DEBUG, "fader restarted");
+        g_source_remove(mdy_brightness_fade_timer_id),
+            mdy_brightness_fade_timer_id = 0;
+    }
 
     /* Setup new timeout */
-    mdy_brightness_fade_timer_cb_id =
+    mdy_brightness_fade_timer_id =
         g_timeout_add(step_time, mdy_brightness_fade_timer_cb, NULL);
+}
+
+static bool mdy_brightness_fade_is_active(void)
+{
+    return mdy_brightness_fade_timer_id != 0;
 }
 
 /**
@@ -2169,60 +2283,122 @@ static void mdy_brightness_start_fade_timer(gint step_time)
  *
  * @param new_brightness The new brightness to fade to
  */
-static void mdy_brightness_set_fade_target(gint new_brightness)
+static void mdy_brightness_set_fade_target_ex(gint new_brightness,
+                                              gint transition_time)
 {
-    gboolean increase = (new_brightness >= mdy_brightness_level_cached);
-    gint step_time = 10;
+    /* While something like 20-40 ms would suffice for most cases
+     * using smaller 4 ms value allows us to make few steps during
+     * the short time window we have available during unblanking. */
+    const int delay_min = 4;
 
-    /* This should never happen, but just in case */
-    if (mdy_brightness_level_cached == new_brightness)
+    mce_log(LL_DEBUG, "fade from %d to %d in %d ms",
+            mdy_brightness_level_cached,
+            new_brightness, transition_time);
+
+    /* If we're already at the target level, stop any
+     * ongoing fading activity */
+    if( mdy_brightness_level_cached == new_brightness ) {
+        mdy_brightness_stop_fade_timer();
+        goto EXIT;
+    }
+
+    /* If an ongoing fading has the same target level, use it */
+    if( mdy_brightness_fade_is_active() &&
+        mdy_brightness_fade_end_level == new_brightness )
         goto EXIT;
 
-    /* If we have support for HW-fading, or if we're using the direct
-     * brightness change policy, don't bother with any of this
-     */
-    if ((mdy_brightness_hw_fading_is_supported == TRUE) ||
-        ((mdy_brightness_increase_policy == BRIGHTNESS_CHANGE_DIRECT) &&
-            (increase == TRUE)) ||
-        ((mdy_brightness_decrease_policy == BRIGHTNESS_CHANGE_DIRECT) &&
-            (increase == FALSE))) {
+    /* Adjust fading time window */
+    int64_t beg = mdy_get_boot_tick();
+    int64_t end = beg + transition_time;
+
+    /* Move fading start point to current time */
+    mdy_brightness_fade_start_time = beg;
+
+    if( mdy_brightness_fade_end_time < beg ) {
+        /* Previous fading has ended -> set fading end point */
+        mdy_brightness_fade_end_time = end;
+    }
+    else if( mdy_brightness_fade_end_time > end ) {
+        /* Current fading would end later -> adjust end point */
+        mdy_brightness_fade_end_time = end;
+    }
+
+    /* Set up fade start and end brightness levels */
+    mdy_brightness_fade_start_level = mdy_brightness_level_cached;
+    mdy_brightness_fade_end_level   = new_brightness;
+
+    /* If the - possibly adjusted - transition time so short that
+     * only couple of adjustments would be made,  do an immediate
+     * level set instead of fading */
+    transition_time = (int)(mdy_brightness_fade_end_time -
+                            mdy_brightness_fade_start_time);
+
+    if( transition_time < delay_min * 3 ) {
         mdy_brightness_force_level(new_brightness);
         goto EXIT;
     }
 
-    /* If we're already fading towards the right brightness,
-     * don't change anything
+    /* Calculate desired brightness change velocity. */
+    int steps = abs(mdy_brightness_fade_end_level -
+                    mdy_brightness_fade_start_level);
+    int delay = transition_time / steps; // NB steps != 0
+
+    /* Reject insane timer wakeup frequencies. The fade timer
+     * utilizes timestamp based interpolation, so the delay
+     * does not need to be exactly as planned above.
      */
-    if (mdy_brightness_level_target == new_brightness)
+    if( delay < delay_min )
+        delay = delay_min;
+
+    mdy_brightness_start_fade_timer(delay);
+
+EXIT:
+    return;
+}
+
+/** Start brightness fading associated with display state change
+ */
+static void mdy_brightness_set_fade_target_def(gint new_brightness)
+{
+    mdy_brightness_set_fade_target_ex(new_brightness,
+                                      mdy_brightness_fade_duration_def);
+}
+
+/** Start brightness fading after powering up the display
+ */
+static void mdy_brightness_set_fade_target_unblank(gint new_brightness)
+{
+    mdy_brightness_set_fade_target_ex(new_brightness,
+                                      mdy_brightness_fade_duration_unblank);
+}
+
+/** Start fade to black before powering off the display
+ */
+static void mdy_brightness_set_fade_target_blank(void)
+{
+    mdy_brightness_set_fade_target_ex(0,
+                                      mdy_brightness_fade_duration_blank);
+}
+
+/** Start brightness fading associated with display dimmed state
+ */
+static void mdy_brightness_set_fade_target_dim(gint new_brightness)
+{
+    mdy_brightness_set_fade_target_ex(new_brightness,
+                                      mdy_brightness_fade_duration_dim);
+}
+
+/** Start brightness fading due to ALS / brightness setting change
+ */
+static void mdy_brightness_set_fade_target_als(gint new_brightness)
+{
+    if( display_state != display_state_next ) {
+        mce_log(LL_DEBUG, "skip als tuning during display state transition");
         goto EXIT;
-
-    mdy_brightness_level_target = new_brightness;
-
-    if (increase == TRUE) {
-        if (mdy_brightness_increase_policy == BRIGHTNESS_CHANGE_STEP_TIME)
-            step_time = mdy_brightness_increase_step_time;
-        else {
-            step_time = mdy_brightness_increase_constant_time /
-                (new_brightness - mdy_brightness_level_cached);
-        }
-    } else {
-        if (mdy_brightness_decrease_policy == BRIGHTNESS_CHANGE_STEP_TIME)
-            step_time = mdy_brightness_decrease_step_time;
-        else {
-            step_time = mdy_brightness_decrease_constant_time /
-                (mdy_brightness_level_cached - new_brightness);
-        }
     }
 
-    /* Special case */
-    if (step_time == 5) {
-        step_time = 2;
-        mdy_brightness_fade_steplength = 2;
-    } else {
-        mdy_brightness_fade_steplength = 1;
-    }
-
-    mdy_brightness_start_fade_timer(step_time);
+    mdy_brightness_set_fade_target_ex(new_brightness,
+                                      mdy_brightness_fade_duration_als);
 
 EXIT:
     return;
@@ -2249,6 +2425,9 @@ static void mdy_brightness_set_dim_level(void)
         mdy_brightness_level_display_dim = new_brightness;
     }
 
+    /* If the DIM brightness is too close to ON brightness to
+     * be easy to see, use also led pattern to signal dimmed state
+     * to the user. */
     int delta = (mdy_brightness_level_display_on -
                  mdy_brightness_level_display_dim);
     int limit = mdy_brightness_level_maximum * 10 / 100;
@@ -2275,7 +2454,7 @@ static void mdy_brightness_set_lpm_level(gint level)
     /* Take updated values in use */
     switch( display_state ) {
     case MCE_DISPLAY_LPM_ON:
-        mdy_brightness_set_fade_target(mdy_brightness_level_display_lpm);
+        mdy_brightness_set_fade_target_als(mdy_brightness_level_display_lpm);
         break;
 
     default:
@@ -2315,11 +2494,6 @@ static void mdy_brightness_set_on_level(gint hbm_and_level)
      */
     new_brightness = (mdy_brightness_level_maximum * new_brightness) / 100;
 
-    /* If we're just rehashing the same brightness value, don't bother */
-    if ((new_brightness == mdy_brightness_level_cached) &&
-        (mdy_brightness_level_cached != -1))
-        goto EXIT;
-
     /* The value we have here is for non-dimmed screen only */
     if( mdy_brightness_level_display_on != new_brightness ) {
         mce_log(LL_DEBUG, "brightness.on: %d -> %d",
@@ -2340,7 +2514,7 @@ static void mdy_brightness_set_on_level(gint hbm_and_level)
         break;
 
     case MCE_DISPLAY_DIM:
-        mdy_brightness_set_fade_target(mdy_brightness_level_display_dim);
+        mdy_brightness_set_fade_target_als(mdy_brightness_level_display_dim);
         break;
 
     default:
@@ -2350,7 +2524,7 @@ static void mdy_brightness_set_on_level(gint hbm_and_level)
         break;
 
     case MCE_DISPLAY_ON:
-        mdy_brightness_set_fade_target(mdy_brightness_level_display_on);
+        mdy_brightness_set_fade_target_als(mdy_brightness_level_display_on);
         break;
     }
 
@@ -3049,7 +3223,7 @@ static void mdy_blanking_rethink_timers(bool force)
 {
     // TRIGGERS:
     // submode           <- mdy_datapipe_submode_cb()
-    // display_state     <- mdy_display_state_enter_post()
+    // display_state     <- mdy_display_state_changed()
     // audio_route       <- mdy_datapipe_audio_route_cb()
     // charger_connected <- mdy_datapipe_charger_state_cb()
     // exception_state   <- mdy_datapipe_exception_state_cb()
@@ -3512,10 +3686,7 @@ static display_type_t mdy_display_type_get(void)
     if (display_type != DISPLAY_TYPE_UNSET)
         goto EXIT;
 
-    if( mdy_display_type_get_from_hybris(&display_type) ) {
-        /* nop */
-    }
-    else if( mdy_display_type_get_from_config(&display_type) ) {
+    if( mdy_display_type_get_from_config(&display_type) ) {
         // nop
     }
     else if (g_access(DISPLAY_BACKLIGHT_PATH DISPLAY_ACX565AKM, W_OK) == 0) {
@@ -3603,6 +3774,9 @@ static display_type_t mdy_display_type_get(void)
     }
     else if( mdy_display_type_get_from_sysfs_probe(&display_type) ) {
         // nop
+    }
+    else if( mdy_display_type_get_from_hybris(&display_type) ) {
+        /* nop */
     }
     else {
         display_type = DISPLAY_TYPE_NONE;
@@ -4678,7 +4852,7 @@ static void mdy_orientation_sensor_rethink(void)
 
 /* React to new display state (via display state datapipe)
  */
-static void mdy_display_state_enter_post(void)
+static void mdy_display_state_changed(void)
 {
     /* Disable blanking pause if display != ON */
     if( display_state != MCE_DISPLAY_ON )
@@ -4687,58 +4861,44 @@ static void mdy_display_state_enter_post(void)
     /* Program dim/blank timers */
     mdy_blanking_rethink_timers(false);
 
-    mdy_hbm_rethink();
+    /* Start/stop orientation sensor */
     mdy_orientation_sensor_rethink();
 
-    /* Determine the minimum brightness level above which to use
-     * smooth transitions. Since both lpm and dimmed brightness
-     * are now dynamic and lpm brightness can be greater than
-     * dimmed brightness, use: limit = min(dimmed_brightness-1, lpm)
+    /* Enable/disable high brightness mode */
+    mdy_hbm_rethink();
+
+    /* Restart brightness fading in case automatic brightness tuning has
+     * changed the target levels during the display state transition.
+     * Should turn in to big nop if there are no changes.
      */
-    gint consider_off_level = mdy_brightness_level_display_dim - 1;
-    if( consider_off_level > mdy_brightness_level_display_lpm )
-        consider_off_level = mdy_brightness_level_display_lpm;
 
     switch( display_state ) {
-    case MCE_DISPLAY_POWER_DOWN:
     case MCE_DISPLAY_OFF:
     case MCE_DISPLAY_LPM_OFF:
         /* Blanking or already blanked -> set zero brightness */
         mdy_brightness_force_level(0);
         break;
 
-    case MCE_DISPLAY_POWER_UP:
-        /* Unblanking; brightness depends on the next state */
-        mdy_brightness_force_level(mdy_brightness_level_display_resume);
-        break;
-
     case MCE_DISPLAY_LPM_ON:
-        /* LPM UI active; use lpm brightness */
-        mdy_brightness_force_level(mdy_brightness_level_display_lpm);
+        mdy_brightness_set_fade_target_def(mdy_brightness_level_display_lpm);
         break;
 
     case MCE_DISPLAY_DIM:
-        if( mdy_brightness_level_cached <= consider_off_level ) {
-            /* If we unblank, switch on display immediately */
-            mdy_brightness_force_level(mdy_brightness_level_display_dim);
-        } else {
-            /* Gradually fade in/out to target level */
-            mdy_brightness_set_fade_target(mdy_brightness_level_display_dim);
-        }
+        mdy_brightness_set_fade_target_dim(mdy_brightness_level_display_dim);
         break;
 
     case MCE_DISPLAY_ON:
-        if( mdy_brightness_level_cached <= consider_off_level ) {
-            /* If we unblank, switch on display immediately */
-            mdy_brightness_force_level(mdy_brightness_level_display_on);
-        } else {
-            /* Gradually fade in/out to target level */
-            mdy_brightness_set_fade_target(mdy_brightness_level_display_on);
-        }
+        mdy_brightness_set_fade_target_def(mdy_brightness_level_display_on);
+        break;
+
+    case MCE_DISPLAY_UNDEF:
         break;
 
     default:
-    case MCE_DISPLAY_UNDEF:
+    case MCE_DISPLAY_POWER_DOWN:
+    case MCE_DISPLAY_POWER_UP:
+        // these should never show up here
+        mce_abort();
         break;
     }
 
@@ -4755,12 +4915,12 @@ static void mdy_display_state_enter_post(void)
  * via this function.
  *
  * Actions for this will be executed in display_state_pipe
- * output trigger mdy_display_state_enter_post().
+ * output trigger mdy_display_state_changed().
  *
  * @param prev_state    previous display state
  * @param display_state state transferred to
  */
-static void mdy_display_state_enter_pre(display_state_t prev_state,
+static void mdy_display_state_enter(display_state_t prev_state,
                                         display_state_t next_state)
 {
     mce_log(LL_INFO, "END %s -> %s transition",
@@ -4774,6 +4934,9 @@ static void mdy_display_state_enter_pre(display_state_t prev_state,
     execute_datapipe(&display_state_pipe,
                      GINT_TO_POINTER(next_state),
                      USE_INDATA, CACHE_INDATA);
+
+    /* Deal with new stable display state */
+    mdy_display_state_changed();
 }
 
 /** Handle start of display state transition
@@ -4792,31 +4955,47 @@ static void mdy_display_state_leave(display_state_t prev_state,
      * trigger while waiting for frame buffer suspend/resume. */
     mdy_blanking_cancel_timers();
 
+    bool have_power = mdy_stm_display_state_needs_power(prev_state);
+    bool need_power = mdy_stm_display_state_needs_power(next_state);
+
     /* Update display brightness that should be used the next time
-     * the display is powered up */
+     * the display is powered up. Start fader already here if the
+     * display is already powered up (otherwise will be started
+     * after fb power up at STM_WAIT_RESUME / STM_LEAVE_LOGICAL_OFF).
+     */
     switch( next_state ) {
     case MCE_DISPLAY_ON:
         mdy_brightness_level_display_resume = mdy_brightness_level_display_on;
+        if( have_power )
+            mdy_brightness_set_fade_target_def(mdy_brightness_level_display_resume);
         break;
 
     case MCE_DISPLAY_DIM:
         mdy_brightness_level_display_resume = mdy_brightness_level_display_dim;
+        if( have_power )
+            mdy_brightness_set_fade_target_dim(mdy_brightness_level_display_resume);
         break;
 
     case MCE_DISPLAY_LPM_ON:
         mdy_brightness_level_display_resume = mdy_brightness_level_display_lpm;
+        if( have_power )
+            mdy_brightness_set_fade_target_def(mdy_brightness_level_display_resume);
         break;
 
     case MCE_DISPLAY_OFF:
     case MCE_DISPLAY_LPM_OFF:
-        mdy_brightness_level_display_resume = 1;
+        mdy_brightness_level_display_resume = 0;
+        mdy_brightness_set_fade_target_blank();
+        break;
+
+    case MCE_DISPLAY_UNDEF:
         break;
 
     default:
     case MCE_DISPLAY_POWER_DOWN:
     case MCE_DISPLAY_POWER_UP:
-    case MCE_DISPLAY_UNDEF:
-        // keep existing value
+        // these should never show up here
+        mce_abort();
         break;
     }
 
@@ -4829,17 +5008,12 @@ static void mdy_display_state_leave(display_state_t prev_state,
 
     /* Invalidate display_state_pipe when making transitions
      * that need to wait for external parties */
-    if( next_state == MCE_DISPLAY_OFF ) {
-        display_state_pipe.cached_data = GINT_TO_POINTER(MCE_DISPLAY_POWER_DOWN);
-        /* Run display state change triggers */
-        execute_datapipe(&display_state_pipe,
-                         display_state_pipe.cached_data,
-                         USE_INDATA, CACHE_INDATA);
+    if( have_power != need_power ) {
+        if( need_power )
+            display_state_pipe.cached_data = GINT_TO_POINTER(MCE_DISPLAY_POWER_UP);
+        else
+            display_state_pipe.cached_data = GINT_TO_POINTER(MCE_DISPLAY_POWER_DOWN);
 
-    }
-    else if( prev_state == MCE_DISPLAY_OFF ) {
-        display_state_pipe.cached_data = GINT_TO_POINTER(MCE_DISPLAY_POWER_UP);
-        /* Run display state change triggers */
         execute_datapipe(&display_state_pipe,
                          display_state_pipe.cached_data,
                          USE_INDATA, CACHE_INDATA);
@@ -4995,6 +5169,7 @@ static const char *mdy_stm_state_name(stm_state_t state)
         DO(LEAVE_POWER_ON);
         DO(RENDERER_INIT_STOP);
         DO(RENDERER_WAIT_STOP);
+        DO(WAIT_FADE_TO_BLACK);
         DO(INIT_SUSPEND);
         DO(WAIT_SUSPEND);
         DO(ENTER_POWER_OFF);
@@ -5264,7 +5439,7 @@ static void mdy_stm_finish_target_change(void)
     // do post-transition actions
     display_state_t prev = mdy_stm_curr;
     mdy_stm_curr = mdy_stm_next;
-    mdy_display_state_enter_pre(prev, mdy_stm_curr);
+    mdy_display_state_enter(prev, mdy_stm_curr);
 }
 
 /** Predicate for setUpdatesEnabled() ipc not finished yet
@@ -5391,7 +5566,7 @@ static void mdy_stm_step(void)
         if( mdy_stm_is_renderer_pending() )
             break;
         if( mdy_stm_is_renderer_disabled() ) {
-            mdy_stm_trans(STM_INIT_SUSPEND);
+            mdy_stm_trans(STM_WAIT_FADE_TO_BLACK);
             break;
         }
         /* If compositor is not responsive, we must keep trying
@@ -5399,6 +5574,12 @@ static void mdy_stm_step(void)
          * from system bus */
         mce_log(LL_CRIT, "ui stop failed, retrying");
         mdy_stm_trans(STM_RENDERER_INIT_STOP);
+        break;
+
+    case STM_WAIT_FADE_TO_BLACK:
+        if( mdy_brightness_fade_is_active() )
+            break;
+        mdy_stm_trans(STM_INIT_SUSPEND);
         break;
 
     case STM_INIT_SUSPEND:
@@ -5418,6 +5599,7 @@ static void mdy_stm_step(void)
         break;
 
     case STM_ENTER_POWER_OFF:
+
         mdy_stm_finish_target_change();
         mdy_stm_trans(STM_STAY_POWER_OFF);
         break;
@@ -5465,8 +5647,10 @@ static void mdy_stm_step(void)
     case STM_WAIT_RESUME:
         if( !mdy_stm_is_fb_resume_finished() )
             break;
-        if( mdy_stm_display_state_needs_power(mdy_stm_next) )
+        if( mdy_stm_display_state_needs_power(mdy_stm_next) ) {
+            mdy_brightness_set_fade_target_unblank(mdy_brightness_level_display_resume);
             mdy_stm_trans(STM_RENDERER_INIT_START);
+        }
         else
             mdy_stm_trans(STM_ENTER_LOGICAL_OFF);
         break;
@@ -5498,8 +5682,10 @@ static void mdy_stm_step(void)
         break;
 
     case STM_LEAVE_LOGICAL_OFF:
-        if( mdy_stm_is_target_changing() )
+        if( mdy_stm_is_target_changing() ) {
+            mdy_brightness_set_fade_target_unblank(mdy_brightness_level_display_resume);
             mdy_stm_trans(STM_RENDERER_INIT_START);
+        }
         else
             mdy_stm_trans(STM_INIT_SUSPEND);
         break;
@@ -7418,6 +7604,26 @@ static void mdy_gconf_cb(GConfClient *const gcc, const guint id,
         mdy_compositor_core_delay = gconf_value_get_int(gcv);
         mce_log(LL_NOTICE, "compositor kill delay = %d", mdy_compositor_core_delay);
     }
+    else if( id == mdy_brightness_fade_duration_def_gconf_cb_id ) {
+        mdy_brightness_fade_duration_def = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "fade duration / def = %d", mdy_brightness_fade_duration_def);
+    }
+    else if( id == mdy_brightness_fade_duration_dim_gconf_cb_id ) {
+        mdy_brightness_fade_duration_dim = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "fade duration / dim = %d", mdy_brightness_fade_duration_dim);
+    }
+    else if( id == mdy_brightness_fade_duration_als_gconf_cb_id ) {
+        mdy_brightness_fade_duration_als = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "fade duration / als = %d", mdy_brightness_fade_duration_als);
+    }
+    else if( id == mdy_brightness_fade_duration_blank_gconf_cb_id ) {
+        mdy_brightness_fade_duration_blank = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "fade duration / blank = %d", mdy_brightness_fade_duration_blank);
+    }
+    else if( id == mdy_brightness_fade_duration_unblank_gconf_cb_id ) {
+        mdy_brightness_fade_duration_unblank = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "fade duration / unblank = %d", mdy_brightness_fade_duration_unblank);
+    }
     else {
         mce_log(LL_WARN, "Spurious GConf value received; confused!");
     }
@@ -7622,6 +7828,46 @@ static void mdy_gconf_init(void)
 
     mce_gconf_get_int(MCE_GCONF_LIPSTICK_CORE_DELAY_PATH,
                       &mdy_compositor_core_delay);
+
+    /* Brightness fade length: default */
+    mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
+                           MCE_GCONF_BRIGHTNESS_FADE_DEF,
+                           mdy_gconf_cb,
+                           &mdy_brightness_fade_duration_def_gconf_cb_id);
+    mce_gconf_get_int(MCE_GCONF_BRIGHTNESS_FADE_DEF,
+                      &mdy_brightness_fade_duration_def);
+
+    /* Brightness fade length: dim */
+    mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
+                           MCE_GCONF_BRIGHTNESS_FADE_DIM,
+                           mdy_gconf_cb,
+                           &mdy_brightness_fade_duration_dim_gconf_cb_id);
+    mce_gconf_get_int(MCE_GCONF_BRIGHTNESS_FADE_DIM,
+                      &mdy_brightness_fade_duration_dim);
+
+    /* Brightness fade length: als */
+    mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
+                           MCE_GCONF_BRIGHTNESS_FADE_ALS,
+                           mdy_gconf_cb,
+                           &mdy_brightness_fade_duration_als_gconf_cb_id);
+    mce_gconf_get_int(MCE_GCONF_BRIGHTNESS_FADE_ALS,
+                      &mdy_brightness_fade_duration_als);
+
+    /* Brightness fade length: blank */
+    mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
+                           MCE_GCONF_BRIGHTNESS_FADE_BLANK,
+                           mdy_gconf_cb,
+                           &mdy_brightness_fade_duration_blank_gconf_cb_id);
+    mce_gconf_get_int(MCE_GCONF_BRIGHTNESS_FADE_BLANK,
+                      &mdy_brightness_fade_duration_blank);
+
+    /* Brightness fade length: unblank */
+    mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
+                           MCE_GCONF_BRIGHTNESS_FADE_UNBLANK,
+                           mdy_gconf_cb,
+                           &mdy_brightness_fade_duration_unblank_gconf_cb_id);
+    mce_gconf_get_int(MCE_GCONF_BRIGHTNESS_FADE_UNBLANK,
+                      &mdy_brightness_fade_duration_unblank);
 }
 
 static void mdy_gconf_quit(void)
@@ -7629,59 +7875,6 @@ static void mdy_gconf_quit(void)
     // FIXME: actually remove change notifiers
 
     g_slist_free(mdy_possible_dim_timeouts), mdy_possible_dim_timeouts = 0;
-}
-
-/* ========================================================================= *
- * INIFILE_SETTINGS
- * ========================================================================= */
-
-/** Fetch configuration values from mce.ini files
- */
-static void mdy_config_init(void)
-{
-    gchar *str = NULL;
-
-    /* brightness increase policy */
-    str = mce_conf_get_string(MCE_CONF_DISPLAY_GROUP,
-                              MCE_CONF_BRIGHTNESS_INCREASE_POLICY,
-                              "");
-    mdy_brightness_increase_policy =
-        mce_translate_string_to_int_with_default(mdy_brightness_change_policy_translation,
-                                                 str, DEFAULT_BRIGHTNESS_INCREASE_POLICY);
-    g_free(str);
-
-    /* brightness decrease policy */
-    str = mce_conf_get_string(MCE_CONF_DISPLAY_GROUP,
-                              MCE_CONF_BRIGHTNESS_DECREASE_POLICY,
-                              "");
-    mdy_brightness_decrease_policy =
-        mce_translate_string_to_int_with_default(mdy_brightness_change_policy_translation,
-                                                 str, DEFAULT_BRIGHTNESS_DECREASE_POLICY);
-    g_free(str);
-
-    /* brightness increase step time */
-    mdy_brightness_increase_step_time =
-        mce_conf_get_int(MCE_CONF_DISPLAY_GROUP,
-                         MCE_CONF_STEP_TIME_INCREASE,
-                         DEFAULT_BRIGHTNESS_INCREASE_STEP_TIME);
-
-    /* brightness decrease step time */
-    mdy_brightness_decrease_step_time =
-        mce_conf_get_int(MCE_CONF_DISPLAY_GROUP,
-                         MCE_CONF_STEP_TIME_DECREASE,
-                         DEFAULT_BRIGHTNESS_DECREASE_STEP_TIME);
-
-    /* brightness increase constant time */
-    mdy_brightness_increase_constant_time =
-        mce_conf_get_int(MCE_CONF_DISPLAY_GROUP,
-                         MCE_CONF_CONSTANT_TIME_INCREASE,
-                         DEFAULT_BRIGHTNESS_INCREASE_CONSTANT_TIME);
-
-    /* brightness decrease constant time */
-    mdy_brightness_decrease_constant_time =
-        mce_conf_get_int(MCE_CONF_DISPLAY_GROUP,
-                         MCE_CONF_CONSTANT_TIME_DECREASE,
-                         DEFAULT_BRIGHTNESS_DECREASE_CONSTANT_TIME);
 }
 
 /* ========================================================================= *
@@ -7788,9 +7981,6 @@ const gchar *g_module_check_init(GModule *module)
 
     /* Get initial gconf valus and start tracking changes */
     mdy_gconf_init();
-
-    /* Fetch configuration values from mce.ini files */
-    mdy_config_init();
 
     /* if we have brightness control file and initial brightness
      * is zero -> start from display off */
