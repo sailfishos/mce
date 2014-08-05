@@ -29,6 +29,9 @@
 /** Path to the powerkey  mode GConf setting */
 # define MCE_GCONF_POWERKEY_MODE       MCE_GCONF_POWERKEY_PATH "/mode"
 
+/** Path to the powerkey blanking mode GConf setting */
+# define MCE_GCONF_POWERKEY_BLANKING_MODE  MCE_GCONF_POWERKEY_PATH "/blanking_mode"
+
 /** Power key action enable modes */
 typedef enum
 {
@@ -43,6 +46,15 @@ typedef enum
 
 	PWRKEY_ENABLE_DEFAULT = PWRKEY_ENABLE_ALWAYS,
 } pwrkey_mode_t;
+
+typedef enum
+{
+	/** Pressing power key turns display off */
+	PWRKEY_BLANK_TO_OFF,
+
+	/** Pressing power key puts display to lpm state */
+	PWRKEY_BLANK_TO_LPM,
+} pwrkey_blanking_mode_t;
 
 /** Configuration value used for the disabled policy */
 #define POWER_DISABLED_STR				"disabled"

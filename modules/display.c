@@ -20,6 +20,14 @@
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+/** HACK: swipe to lock goes to lpm (if powerkey blanking does too)
+ *
+ * This is a transitional debugging feature that needs to be reverted
+ * as soon as lipstick has been modified to use actual lpm mode dbus
+ * requests.
+ */
+#define ENABLE_LPM_HACK 1
+
 #include "display.h"
 
 #include "../mce.h"
@@ -38,6 +46,10 @@
 
 #ifdef ENABLE_WAKELOCKS
 # include "../libwakelock.h"
+#endif
+
+#if ENABLE_LPM_HACK
+#include "../powerkey.h"
 #endif
 
 #include <linux/fb.h>
@@ -584,6 +596,7 @@ static const char         *mdy_dbus_get_reason_to_block_display_on(void);
 static gboolean            mdy_dbus_handle_display_on_req(DBusMessage *const msg);
 static gboolean            mdy_dbus_handle_display_dim_req(DBusMessage *const msg);
 static gboolean            mdy_dbus_handle_display_off_req(DBusMessage *const msg);
+static gboolean            mdy_dbus_handle_display_lpm_req(DBusMessage *const msg);
 static gboolean            mdy_dbus_handle_display_status_get_req(DBusMessage *const msg);
 
 static gboolean            mdy_dbus_send_cabc_mode(DBusMessage *const method_call);
@@ -2658,8 +2671,22 @@ static gboolean mdy_blanking_off_cb(gpointer data)
 
     mdy_blanking_off_cb_id = 0;
 
+    /* Default to: display off */
+    display_state_t next_state = MCE_DISPLAY_OFF;
+
+    /* Use lpm on, if starting from on/dim and tklock is already set */
+    switch( display_state ) {
+    case MCE_DISPLAY_ON:
+    case MCE_DISPLAY_DIM:
+        if( submode & MCE_TKLOCK_SUBMODE )
+            next_state = MCE_DISPLAY_LPM_ON;
+        break;
+    default:
+        break;
+    }
+
     execute_datapipe(&display_state_req_pipe,
-                     GINT_TO_POINTER(MCE_DISPLAY_OFF),
+                     GINT_TO_POINTER(next_state),
                      USE_INDATA, CACHE_INDATA);
 
     /* Remove wakelock unless the timer got re-programmed */
@@ -6370,6 +6397,13 @@ static gboolean mdy_dbus_handle_display_dim_req(DBusMessage *const msg)
  */
 static gboolean mdy_dbus_handle_display_off_req(DBusMessage *const msg)
 {
+#if ENABLE_LPM_HACK
+    gint blanking_mode = PWRKEY_BLANK_TO_OFF;
+    mce_gconf_get_int(MCE_GCONF_POWERKEY_BLANKING_MODE, &blanking_mode);
+    if( blanking_mode == PWRKEY_BLANK_TO_LPM )
+        return mdy_dbus_handle_display_lpm_req(msg);
+#endif
+
     dbus_bool_t no_reply = dbus_message_get_no_reply(msg);
     gboolean status = FALSE;
 
@@ -6392,6 +6426,85 @@ static gboolean mdy_dbus_handle_display_off_req(DBusMessage *const msg)
     }
 
     return status;
+}
+
+/** D-Bus callback for the display lpm method call
+ *
+ * @param msg The D-Bus message
+ *
+ * @return TRUE
+ */
+static gboolean mdy_dbus_handle_display_lpm_req(DBusMessage *const msg)
+{
+    mce_log(LL_DEVEL, "display lpm request from %s",
+            mce_dbus_get_message_sender_ident(msg));
+
+    /* Assume that the lpm request is applicable */
+    display_state_t request = MCE_DISPLAY_LPM_ON;
+
+    /* Current or next stable display state */
+    display_state_t current = datapipe_get_gint(display_state_next_pipe);
+
+    if( current == MCE_DISPLAY_LPM_ON ) {
+        /* Do nothing if we are already in LPM_ON state */
+        goto EXIT;
+    }
+
+    if( exception_state & (UIEXC_CALL | UIEXC_ALARM) ) {
+        /* Ignore lpm requests altogether if there is active call / alarm */
+        mce_log(LL_WARN, "display LPM request from %s ignored: %s",
+                mce_dbus_get_message_sender_ident(msg),
+                "call or alarm active");
+        goto EXIT;
+    }
+
+    const char *reason = 0;
+
+    if( (reason = mdy_dbus_get_reason_to_block_display_on()) ) {
+        /* If there is any reason to block display on/dim request,
+         * it applies for lpm requests too */
+    }
+    else if( proximity_state == COVER_CLOSED ) {
+        /* Proximity sensor must be uncovered */
+        reason = "proximity covered";
+    }
+    else {
+        /* UI side is allowed only to blank via lpm */
+        switch( datapipe_get_gint(display_state_next_pipe) ) {
+        case MCE_DISPLAY_DIM:
+        case MCE_DISPLAY_ON:
+            /* Ware already in or making transition to on/dim */
+            break;
+
+        default:
+        case MCE_DISPLAY_OFF:
+        case MCE_DISPLAY_LPM_OFF:
+            reason = "display is off";
+            break;
+        }
+    }
+
+    if( reason ) {
+        /* If lpm request can't be applied, do display off instead */
+        mce_log(LL_WARN, "display LPM request from %s denied: %s",
+                mce_dbus_get_message_sender_ident(msg), reason);
+        request = MCE_DISPLAY_OFF;
+    }
+
+    execute_datapipe(&tk_lock_pipe,
+                     GINT_TO_POINTER(LOCK_ON),
+                     USE_INDATA, CACHE_INDATA);
+    execute_datapipe(&display_state_req_pipe,
+                     GINT_TO_POINTER(request),
+                     USE_INDATA, CACHE_INDATA);
+
+EXIT:
+    if( !dbus_message_get_no_reply(msg) ) {
+        DBusMessage *reply = dbus_new_method_reply(msg);
+        dbus_send_message(reply), reply = 0;
+    }
+
+    return TRUE;
 }
 
 /**
@@ -6881,6 +6994,12 @@ static void mdy_dbus_init(void)
                          NULL,
                          DBUS_MESSAGE_TYPE_METHOD_CALL,
                          mdy_dbus_handle_display_off_req);
+
+    mce_dbus_handler_add(MCE_REQUEST_IF,
+                         MCE_DISPLAY_LPM_REQ,
+                         NULL,
+                         DBUS_MESSAGE_TYPE_METHOD_CALL,
+                         mdy_dbus_handle_display_lpm_req);
 
     /* req_display_blanking_pause */
     mce_dbus_handler_add(MCE_REQUEST_IF,

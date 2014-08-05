@@ -18,7 +18,7 @@ BuildRequires:  pkgconfig(dbus-1) >= 1.0.2
 BuildRequires:  pkgconfig(dbus-glib-1)
 BuildRequires:  pkgconfig(dsme) >= 0.58
 BuildRequires:  pkgconfig(glib-2.0) >= 2.36.0
-BuildRequires:  pkgconfig(mce) >= 1.13.0
+BuildRequires:  pkgconfig(mce) >= 1.14.0
 BuildRequires:  pkgconfig(libsystemd-daemon)
 BuildRequires:  kernel-headers >= 2.6.32
 BuildRequires:  systemd
