@@ -1,3 +1,11 @@
+mce (1.33.0) unstable; urgency=low
+
+  * [mce] Allow blanking via lpm when powerkey is pressed
+  * [mce] Timer based blanking from lock screen happens via lpm state
+  * [mce] Implement dbus method for requesting display lpm state. Fixes JB#20906
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 05 Aug 2014 13:03:11 +0300
+
 mce (1.32.6) unstable; urgency=low
 
   * [mce] Send lpm state notification on mce startup. Fixes JB#19402
