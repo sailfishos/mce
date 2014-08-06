@@ -2438,6 +2438,14 @@ static void mdy_brightness_set_fade_target_dimming(gint new_brightness)
 static void mdy_brightness_set_fade_target_als(gint new_brightness)
 {
     if( display_state != display_state_next ) {
+        /* The assumption is that a more suitable fast state change
+         * dependant fading is already going on and we do not want
+         * any jumps to that due to ALS tuning.
+         *
+         * And, if the transition lands up at wrong target level,
+         * another fast transition is done to correct the situation
+         * after stable display state has been reached.
+         */
         mce_log(LL_DEBUG, "skip als tuning during display state transition");
         goto EXIT;
     }
