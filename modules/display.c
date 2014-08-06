@@ -2333,14 +2333,16 @@ static void mdy_brightness_set_fade_target_ex(gint new_brightness,
         goto EXIT;
     }
 
-    /* If an ongoing fading has the same target level, use it */
-    if( mdy_brightness_fade_is_active() &&
-        mdy_brightness_fade_end_level == new_brightness )
-        goto EXIT;
-
-    /* Adjust fading time window */
+    /* Calculate fading time window */
     int64_t beg = mdy_get_boot_tick();
     int64_t end = beg + transition_time;
+
+    /* If an ongoing fading has the same target level and it
+     * will finish before the new one would, use it */
+    if( mdy_brightness_fade_is_active() &&
+        mdy_brightness_fade_end_level == new_brightness &&
+        mdy_brightness_fade_end_time <= end )
+        goto EXIT;
 
     /* Move fading start point to current time */
     mdy_brightness_fade_start_time = beg;
