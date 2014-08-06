@@ -104,47 +104,47 @@
 # define MCE_GCONF_DISPLAY_PATH			"/system/osso/dsm/display"
 #endif
 
-/** Path to the display brightness GConf setting */
-#define MCE_GCONF_DISPLAY_BRIGHTNESS_PATH	MCE_GCONF_DISPLAY_PATH "/display_brightness"
+/** Display brightness GConf setting */
+#define MCE_GCONF_DISPLAY_BRIGHTNESS                    MCE_GCONF_DISPLAY_PATH "/display_brightness"
 
-/** Path to the display brightness level count GConf setting */
-#define MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_COUNT_PATH	MCE_GCONF_DISPLAY_PATH "/max_display_brightness_levels"
+/** Display brightness level count GConf setting */
+#define MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_COUNT        MCE_GCONF_DISPLAY_PATH "/max_display_brightness_levels"
 
-/** Path to the display brightness level size GConf setting */
-#define MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_SIZE_PATH	MCE_GCONF_DISPLAY_PATH "/display_brightness_level_step"
+/** Display brightness level size GConf setting */
+#define MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_SIZE         MCE_GCONF_DISPLAY_PATH "/display_brightness_level_step"
 
-/** Path to the list of possible dim timeouts GConf setting */
-#define MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST_PATH	MCE_GCONF_DISPLAY_PATH "/possible_display_dim_timeouts"
+/** List of possible dim timeouts GConf setting */
+#define MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST              MCE_GCONF_DISPLAY_PATH "/possible_display_dim_timeouts"
 
-/** Path to the dim timeout GConf setting */
-#define MCE_GCONF_DISPLAY_DIM_TIMEOUT_PATH	MCE_GCONF_DISPLAY_PATH "/display_dim_timeout"
+/** Dim timeout GConf setting */
+#define MCE_GCONF_DISPLAY_DIM_TIMEOUT                   MCE_GCONF_DISPLAY_PATH "/display_dim_timeout"
 
-/** Path to the blank timeout GConf setting */
-#define MCE_GCONF_DISPLAY_BLANK_TIMEOUT_PATH	MCE_GCONF_DISPLAY_PATH "/display_blank_timeout"
+/** Blank timeout GConf setting */
+#define MCE_GCONF_DISPLAY_BLANK_TIMEOUT                 MCE_GCONF_DISPLAY_PATH "/display_blank_timeout"
 
-/** Path to the never blank GConf setting */
-#define MCE_GCONF_DISPLAY_NEVER_BLANK_PATH	MCE_GCONF_DISPLAY_PATH "/display_never_blank"
+/** Never blank GConf setting */
+#define MCE_GCONF_DISPLAY_NEVER_BLANK                   MCE_GCONF_DISPLAY_PATH "/display_never_blank"
 
-/** Path to the adaptive display dimming GConf setting */
-#define MCE_GCONF_DISPLAY_ADAPTIVE_DIMMING_PATH	MCE_GCONF_DISPLAY_PATH "/use_adaptive_display_dimming"
+/** Adaptive display dimming GConf setting */
+#define MCE_GCONF_DISPLAY_ADAPTIVE_DIMMING              MCE_GCONF_DISPLAY_PATH "/use_adaptive_display_dimming"
 
-/** Path to the adaptive display threshold timeout GConf setting */
-#define MCE_GCONF_DISPLAY_ADAPTIVE_DIM_THRESHOLD_PATH	MCE_GCONF_DISPLAY_PATH "/adaptive_display_dim_threshold"
+/** Adaptive display threshold timeout GConf setting */
+#define MCE_GCONF_DISPLAY_ADAPTIVE_DIM_THRESHOLD        MCE_GCONF_DISPLAY_PATH "/adaptive_display_dim_threshold"
 
-/** Path to the blanking inhibit GConf setting */
-#define MCE_GCONF_BLANKING_INHIBIT_MODE_PATH	MCE_GCONF_DISPLAY_PATH "/inhibit_blank_mode"
+/** Blanking inhibit GConf setting */
+#define MCE_GCONF_BLANKING_INHIBIT_MODE                 MCE_GCONF_DISPLAY_PATH "/inhibit_blank_mode"
 
-/** Path to the use Low Power Mode GConf setting */
-#define MCE_GCONF_USE_LOW_POWER_MODE_PATH	MCE_GCONF_DISPLAY_PATH "/use_low_power_mode"
+/** Use Low Power Mode GConf setting */
+#define MCE_GCONF_USE_LOW_POWER_MODE                    MCE_GCONF_DISPLAY_PATH "/use_low_power_mode"
 
-/** Path to the use autosuspend GConf setting */
-#define MCE_GCONF_USE_AUTOSUSPEND_PATH		MCE_GCONF_DISPLAY_PATH "/autosuspend_policy"
+/** Use autosuspend GConf setting */
+#define MCE_GCONF_USE_AUTOSUSPEND                       MCE_GCONF_DISPLAY_PATH "/autosuspend_policy"
 
-/** Path to the use cpu scaling governor GConf setting */
-#define MCE_GCONF_CPU_SCALING_GOVERNOR_PATH	MCE_GCONF_DISPLAY_PATH "/cpu_scaling_governor"
+/** Use cpu scaling governor GConf setting */
+#define MCE_GCONF_CPU_SCALING_GOVERNOR                  MCE_GCONF_DISPLAY_PATH "/cpu_scaling_governor"
 
-/** Path to the unresponsive lipstick core dump delay */
-#define MCE_GCONF_LIPSTICK_CORE_DELAY_PATH	MCE_GCONF_DISPLAY_PATH "/lipstick_core_dump_delay"
+/** Unresponsive lipstick core dump delay */
+#define MCE_GCONF_LIPSTICK_CORE_DELAY                   MCE_GCONF_DISPLAY_PATH "/lipstick_core_dump_delay"
 
 /** Default brightness fade duration [ms]
  *

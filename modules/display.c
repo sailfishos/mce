@@ -7657,11 +7657,11 @@ static void mdy_gconf_sanitize_brightness_settings(void)
     /* Update config; signals will be emitted and config notifiers
      * called - mdy_gconf_cb() must ignore no-change notifications
      * to avoid recursive sanitation. */
-    mce_gconf_set_int(MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_SIZE_PATH,
+    mce_gconf_set_int(MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_SIZE,
                       mdy_brightness_step_size);
-    mce_gconf_set_int(MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_COUNT_PATH,
+    mce_gconf_set_int(MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_COUNT,
                       mdy_brightness_step_count);
-    mce_gconf_set_int(MCE_GCONF_DISPLAY_BRIGHTNESS_PATH,
+    mce_gconf_set_int(MCE_GCONF_DISPLAY_BRIGHTNESS,
                       mdy_brightness_setting);
 
     mce_log(LL_DEBUG, "mdy_brightness_setting=%d", mdy_brightness_setting);
@@ -7694,27 +7694,27 @@ static void mdy_gconf_init(void)
     /* Display brightness settings */
 
     mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_COUNT_PATH,
+                           MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_COUNT,
                            mdy_gconf_cb,
                            &mdy_brightness_step_count_gconf_id);
 
-    mce_gconf_get_int(MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_COUNT_PATH,
+    mce_gconf_get_int(MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_COUNT,
                       &mdy_brightness_step_count);
 
     mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_SIZE_PATH,
+                           MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_SIZE,
                            mdy_gconf_cb,
                            &mdy_brightness_step_size_gconf_id);
 
-    mce_gconf_get_int(MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_SIZE_PATH,
+    mce_gconf_get_int(MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_SIZE,
                       &mdy_brightness_step_size);
 
     mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_DISPLAY_BRIGHTNESS_PATH,
+                           MCE_GCONF_DISPLAY_BRIGHTNESS,
                            mdy_gconf_cb,
                            &mdy_brightness_setting_gconf_id);
 
-    mce_gconf_get_int(MCE_GCONF_DISPLAY_BRIGHTNESS_PATH,
+    mce_gconf_get_int(MCE_GCONF_DISPLAY_BRIGHTNESS,
                       &mdy_brightness_setting);
 
     /* Migrate ranges, update hw dim/on brightness levels */
@@ -7734,11 +7734,11 @@ static void mdy_gconf_init(void)
     /* Display blank
      * Since we've set a default, error handling is unnecessary */
     mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_DISPLAY_BLANK_TIMEOUT_PATH,
+                           MCE_GCONF_DISPLAY_BLANK_TIMEOUT,
                            mdy_gconf_cb,
                            &mdy_disp_blank_timeout_gconf_cb_id);
 
-    mce_gconf_get_int(MCE_GCONF_DISPLAY_BLANK_TIMEOUT_PATH,
+    mce_gconf_get_int(MCE_GCONF_DISPLAY_BLANK_TIMEOUT,
                       &mdy_disp_blank_timeout);
 
     mdy_disp_lpm_on_timeout = mdy_disp_blank_timeout;
@@ -7746,25 +7746,25 @@ static void mdy_gconf_init(void)
     /* Never blank
      * Since we've set a default, error handling is unnecessary */
     mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_DISPLAY_NEVER_BLANK_PATH,
+                           MCE_GCONF_DISPLAY_NEVER_BLANK,
                            mdy_gconf_cb,
                            &mdy_disp_never_blank_gconf_cb_id);
 
-    mce_gconf_get_int(MCE_GCONF_DISPLAY_NEVER_BLANK_PATH,
+    mce_gconf_get_int(MCE_GCONF_DISPLAY_NEVER_BLANK,
                       &mdy_disp_never_blank);
 
     /* Use adaptive display dim timeout
      * Since we've set a default, error handling is unnecessary */
     mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_DISPLAY_ADAPTIVE_DIMMING_PATH,
+                           MCE_GCONF_DISPLAY_ADAPTIVE_DIMMING,
                            mdy_gconf_cb,
                            &mdy_adaptive_dimming_enabled_gconf_cb_id);
 
-    mce_gconf_get_bool(MCE_GCONF_DISPLAY_ADAPTIVE_DIMMING_PATH,
+    mce_gconf_get_bool(MCE_GCONF_DISPLAY_ADAPTIVE_DIMMING,
                        &mdy_adaptive_dimming_enabled);
 
     /* Possible dim timeouts */
-    if( !mce_gconf_get_int_list(MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST_PATH,
+    if( !mce_gconf_get_int_list(MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST,
                                 &mdy_possible_dim_timeouts) ) {
         mce_log(LL_WARN, "no dim timeouts defined");
         // FIXME: use some built-in defaults
@@ -7773,21 +7773,21 @@ static void mdy_gconf_init(void)
     /* Adaptive display dimming threshold
      * Since we've set a default, error handling is unnecessary */
     mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_DISPLAY_ADAPTIVE_DIM_THRESHOLD_PATH,
+                           MCE_GCONF_DISPLAY_ADAPTIVE_DIM_THRESHOLD,
                            mdy_gconf_cb,
                            &mdy_adaptive_dimming_threshold_gconf_cb_id);
 
-    mce_gconf_get_int(MCE_GCONF_DISPLAY_ADAPTIVE_DIM_THRESHOLD_PATH,
+    mce_gconf_get_int(MCE_GCONF_DISPLAY_ADAPTIVE_DIM_THRESHOLD,
                       &mdy_adaptive_dimming_threshold);
 
     /* Display dim
      * Since we've set a default, error handling is unnecessary */
     mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_DISPLAY_DIM_TIMEOUT_PATH,
+                           MCE_GCONF_DISPLAY_DIM_TIMEOUT,
                            mdy_gconf_cb,
                            &mdy_disp_dim_timeout_gconf_cb_id);
 
-    mce_gconf_get_int(MCE_GCONF_DISPLAY_DIM_TIMEOUT_PATH,
+    mce_gconf_get_int(MCE_GCONF_DISPLAY_DIM_TIMEOUT,
                       &mdy_disp_dim_timeout);
 
     mdy_dim_timeout_index = mdy_blanking_find_dim_timeout_index(mdy_disp_dim_timeout);
@@ -7803,30 +7803,30 @@ static void mdy_gconf_init(void)
     /* Use low power mode?
      * Since we've set a default, error handling is unnecessary */
     mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_USE_LOW_POWER_MODE_PATH,
+                           MCE_GCONF_USE_LOW_POWER_MODE,
                            mdy_gconf_cb,
                            &mdy_use_low_power_mode_gconf_cb_id);
 
-    mce_gconf_get_bool(MCE_GCONF_USE_LOW_POWER_MODE_PATH,
+    mce_gconf_get_bool(MCE_GCONF_USE_LOW_POWER_MODE,
                        &mdy_use_low_power_mode);
 
     /* Don't blank on charger
      * Since we've set a default, error handling is unnecessary */
     mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_BLANKING_INHIBIT_MODE_PATH,
+                           MCE_GCONF_BLANKING_INHIBIT_MODE,
                            mdy_gconf_cb,
                            &mdy_blanking_inhibit_mode_gconf_cb_id);
 
-    mce_gconf_get_int(MCE_GCONF_BLANKING_INHIBIT_MODE_PATH,
+    mce_gconf_get_int(MCE_GCONF_BLANKING_INHIBIT_MODE,
                       &mdy_blanking_inhibit_mode);
 
     /* Delay for killing unresponsive compositor */
     mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_LIPSTICK_CORE_DELAY_PATH,
+                           MCE_GCONF_LIPSTICK_CORE_DELAY,
                            mdy_gconf_cb,
                            &mdy_compositor_core_delay_gconf_cb_id);
 
-    mce_gconf_get_int(MCE_GCONF_LIPSTICK_CORE_DELAY_PATH,
+    mce_gconf_get_int(MCE_GCONF_LIPSTICK_CORE_DELAY,
                       &mdy_compositor_core_delay);
 
     /* Brightness fade length: default */
@@ -7916,11 +7916,11 @@ const gchar *g_module_check_init(GModule *module)
 
     /* Get cpu scaling governor configuration & track changes */
     mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_CPU_SCALING_GOVERNOR_PATH,
+                           MCE_GCONF_CPU_SCALING_GOVERNOR,
                            mdy_governor_conf_cb,
                            &mdy_governor_conf_id);
 
-    mce_gconf_get_int(MCE_GCONF_CPU_SCALING_GOVERNOR_PATH,
+    mce_gconf_get_int(MCE_GCONF_CPU_SCALING_GOVERNOR,
                       &mdy_governor_conf);
 
     /* Evaluate initial state */
@@ -7930,11 +7930,11 @@ const gchar *g_module_check_init(GModule *module)
 #ifdef ENABLE_WAKELOCKS
     /* Get autosuspend policy configuration & track changes */
     mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_USE_AUTOSUSPEND_PATH,
+                           MCE_GCONF_USE_AUTOSUSPEND,
                            mdy_autosuspend_gconf_cb,
                            &mdy_suspend_policy_id);
 
-    mce_gconf_get_int(MCE_GCONF_USE_AUTOSUSPEND_PATH,
+    mce_gconf_get_int(MCE_GCONF_USE_AUTOSUSPEND,
                       &mdy_suspend_policy);
 
     /* Evaluate initial state */

@@ -1085,43 +1085,43 @@ static const setting_t gconf_defaults[] =
     .def  = "",
   },
   {
-    // MCE_GCONF_DISPLAY_DIM_TIMEOUT_PATH @ modules/display.h
+    // MCE_GCONF_DISPLAY_DIM_TIMEOUT @ modules/display.h
     .key  = "/system/osso/dsm/display/display_dim_timeout",
     .type = "i",
     .def  = "30",
   },
   {
-    // MCE_GCONF_DISPLAY_BLANK_TIMEOUT_PATH @ modules/display.h
+    // MCE_GCONF_DISPLAY_BLANK_TIMEOUT @ modules/display.h
     .key  = "/system/osso/dsm/display/display_blank_timeout",
     .type = "i",
     .def  = "3",
   },
   {
-    // MCE_GCONF_DISPLAY_NEVER_BLANK_PATH @ modules/display.h
+    // MCE_GCONF_DISPLAY_NEVER_BLANK @ modules/display.h
     .key  = "/system/osso/dsm/display/display_never_blank",
     .type = "i",
     .def  = "0",
   },
   {
-    // MCE_GCONF_DISPLAY_BRIGHTNESS_PATH @ modules/display.h
+    // MCE_GCONF_DISPLAY_BRIGHTNESS @ modules/display.h
     .key  = "/system/osso/dsm/display/display_brightness",
     .type = "i",
     .def  = "3", // Note: Legacy value, migrated at mce startup
   },
   {
-    // MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_SIZE_PATH @ modules/display.h
+    // MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_SIZE @ modules/display.h
     .key  = "/system/osso/dsm/display/display_brightness_level_step",
     .type = "i",
     .def  = "1", // Note: Legacy value, migrated at mce startup
   },
   {
-    // MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_COUNT_PATH @ modules/display.h
+    // MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_COUNT @ modules/display.h
     .key  = "/system/osso/dsm/display/max_display_brightness_levels",
     .type = "i",
     .def  = "5", // Note: Legacy value, migrated at mce startup
   },
   {
-    // MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST_PATH @ modules/display.h
+    // MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST @ modules/display.h
     .key  = "/system/osso/dsm/display/possible_display_dim_timeouts",
     .type = "ai",
     .def  = "15,30,60,120,180",
@@ -1133,19 +1133,19 @@ static const setting_t gconf_defaults[] =
     .def  = "3,10,15",
   },
   {
-    // MCE_GCONF_DISPLAY_ADAPTIVE_DIMMING_PATH @ modules/display.h
+    // MCE_GCONF_DISPLAY_ADAPTIVE_DIMMING @ modules/display.h
     .key  = "/system/osso/dsm/display/use_adaptive_display_dimming",
     .type = "b",
     .def  = "true",
   },
   {
-    // MCE_GCONF_DISPLAY_ADAPTIVE_DIM_THRESHOLD_PATH @ modules/display.h
+    // MCE_GCONF_DISPLAY_ADAPTIVE_DIM_THRESHOLD @ modules/display.h
     .key  = "/system/osso/dsm/display/adaptive_display_dim_threshold",
     .type = "i",
     .def  = "10000",
   },
   {
-    // MCE_GCONF_USE_LOW_POWER_MODE_PATH @ modules/display.h
+    // MCE_GCONF_USE_LOW_POWER_MODE @ modules/display.h
     .key  = "/system/osso/dsm/display/use_low_power_mode",
     .type = "b",
     .def  = "true",
@@ -1163,7 +1163,7 @@ static const setting_t gconf_defaults[] =
     .def  = "1",
   },
   {
-    // MCE_GCONF_BLANKING_INHIBIT_MODE_PATH @ modules/display.h
+    // MCE_GCONF_BLANKING_INHIBIT_MODE @ modules/display.h
     .key  = "/system/osso/dsm/display/inhibit_blank_mode",
     .type = "i",
     .def  = "0",
