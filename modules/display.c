@@ -2221,10 +2221,13 @@ static gboolean mdy_brightness_fade_timer_cb(gpointer data)
     if( mdy_brightness_fade_start_time <= now &&
         now < mdy_brightness_fade_end_time ) {
         /* Linear interpolation */
-        int a = (int)(now - mdy_brightness_fade_start_time);
-        int b = (int)(mdy_brightness_fade_end_time - now);
-        lev = (a * mdy_brightness_fade_end_level +
-               b * mdy_brightness_fade_start_level) / (a + b);
+        int weight_end = (int)(now - mdy_brightness_fade_start_time);
+        int weight_beg = (int)(mdy_brightness_fade_end_time - now);
+        int weight_tot = weight_end + weight_beg;
+
+        lev = (weight_end * mdy_brightness_fade_end_level +
+               weight_beg * mdy_brightness_fade_start_level +
+               weight_tot/2) / weight_tot;
 
         keep_going = TRUE;
     }
