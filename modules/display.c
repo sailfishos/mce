@@ -323,7 +323,7 @@ static void                mdy_brightness_set_level(int number);
 
 static void                mdy_brightness_force_level(int number);
 
-static void                mdy_brightness_boost_fade_priority(bool enable);
+static void                mdy_brightness_set_priority_boost(bool enable);
 
 static gboolean            mdy_brightness_fade_timer_cb(gpointer data);
 static void                mdy_brightness_stop_fade_timer(void);
@@ -2115,20 +2115,26 @@ static void mdy_brightness_set_level(int number)
     //       and power it up at non-zero brightness???
 }
 
-/** Helper for boosting mce priority during brightness fading
+/** Helper for boosting mce scheduling priority during brightness fading
  *
  * Any scheduling hiccups during backlight brightness tuning are really
  * visible. To make it less likely to occur, this function is used to
  * move mce process to SCHED_FIFO while fade timer is active.
+ *
+ * Note: Currently this is the only place where mce needs to tweak
+ * the scheduling parameters. If that ever changes, a better interface
+ * needs to be built.
  */
-static void mdy_brightness_boost_fade_priority(bool enable)
+static void mdy_brightness_set_priority_boost(bool enable)
 {
-    static bool enabled = false;
+    /* Initialize cached state to default scheduler */
+    static int normal_scheduler = SCHED_OTHER;
+    static int normal_priority  = 0;
 
-    static int scheduler_old = SCHED_OTHER;
-    static int priority_old  = 0;
+    /* Initially boosted priority is not in use */
+    static bool is_enabled = false;
 
-    if( enabled == enable )
+    if( is_enabled == enable )
         goto EXIT;
 
     int scheduler = SCHED_OTHER;
@@ -2136,15 +2142,15 @@ static void mdy_brightness_boost_fade_priority(bool enable)
     struct sched_param param;
     memset(&param, 0, sizeof param);
 
-    if( (enabled = enable) ) {
+    if( enable ) {
         /* Cache current scheduling parameters */
         if( (scheduler = sched_getscheduler(0)) == -1 )
             mce_log(LL_WARN, "sched_getscheduler: %m");
         else if( sched_getparam(0, &param) == -1 )
             mce_log(LL_WARN, "sched_getparam: %m");
         else {
-            scheduler_old = scheduler;
-            priority_old = param.sched_priority;
+            normal_scheduler = scheduler;
+            normal_priority = param.sched_priority;
         }
 
         /* Switch to medium priority fifo scheduling */
@@ -2154,8 +2160,8 @@ static void mdy_brightness_boost_fade_priority(bool enable)
     }
     else {
         /* Switch back to cached scheduling parameters */
-        scheduler = scheduler_old;
-        param.sched_priority = priority_old;
+        scheduler = normal_scheduler;
+        param.sched_priority = normal_priority;
     }
 
     mce_log(LL_DEBUG, "sched=%d, prio=%d", scheduler, param.sched_priority);
@@ -2164,6 +2170,10 @@ static void mdy_brightness_boost_fade_priority(bool enable)
         mce_log(LL_WARN, "can't %s high priority mode: %m",
                 enable ? "enter" : "leave");
     }
+
+    /* The logical change is made even if we fail to actually change
+     * the scheduling parameters */
+    is_enabled = enable;
 
 EXIT:
     return;
@@ -2223,7 +2233,7 @@ static gboolean mdy_brightness_fade_timer_cb(gpointer data)
 
     if( !keep_going && mdy_brightness_fade_timer_id ) {
         mdy_brightness_fade_timer_id = 0;
-        mdy_brightness_boost_fade_priority(false);
+        mdy_brightness_set_priority_boost(false);
         mce_log(LL_DEBUG, "fader finished");
 
         // unblock display off transition
@@ -2240,7 +2250,7 @@ static void mdy_brightness_stop_fade_timer(void)
 {
     /* Remove the timeout source for the display brightness fade */
     if (mdy_brightness_fade_timer_id != 0) {
-        mdy_brightness_boost_fade_priority(false);
+        mdy_brightness_set_priority_boost(false);
         mce_log(LL_DEBUG, "fader stopped");
         g_source_remove(mdy_brightness_fade_timer_id);
         mdy_brightness_fade_timer_id = 0;
@@ -2259,7 +2269,7 @@ static void mdy_brightness_start_fade_timer(gint step_time)
 {
     if( !mdy_brightness_fade_timer_id ) {
         mce_log(LL_DEBUG, "fader started");
-        mdy_brightness_boost_fade_priority(true);
+        mdy_brightness_set_priority_boost(true);
     }
     else {
         mce_log(LL_DEBUG, "fader restarted");
