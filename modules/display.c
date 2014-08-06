@@ -2360,8 +2360,8 @@ static void mdy_brightness_set_fade_target_ex(gint new_brightness,
     mdy_brightness_fade_start_level = mdy_brightness_level_cached;
     mdy_brightness_fade_end_level   = new_brightness;
 
-    /* If the - possibly adjusted - transition time so short that
-     * only couple of adjustments would be made,  do an immediate
+    /* If the - possibly adjusted - transition time is so short that
+     * only couple of adjustments would be made, do an immediate
      * level set instead of fading */
     transition_time = (int)(mdy_brightness_fade_end_time -
                             mdy_brightness_fade_start_time);
