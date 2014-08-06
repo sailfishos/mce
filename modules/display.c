@@ -2045,7 +2045,8 @@ static guint mdy_brightness_fade_duration_als_ms_gconf_cb_id = 0;
 /** Brightness fade length during display power down [ms]
  *
  * Note: Fade-to-black delays display power off and thus should be
- *       kept short enough not to cause irritation.
+ *       kept short enough not to cause irritation (due to increased
+ *       response time to power key press).
  */
 static gint mdy_brightness_fade_duration_blank_ms = 100;
 
@@ -2376,8 +2377,22 @@ static void mdy_brightness_set_fade_target_unblank(gint new_brightness)
  */
 static void mdy_brightness_set_fade_target_blank(void)
 {
+    if( call_state == CALL_STATE_ACTIVE ) {
+        /* Unlike the other brightness fadings, the fade-to-black blocks
+         * the display state machine and thus delays the whole display
+         * power off sequence.
+         *
+         * Thus it must not be used during active call to avoid stray
+         * touch input from ear/chin when proximity blanking is in use.
+         */
+        mdy_brightness_force_level(0);
+        goto EXIT;
+    }
+
     mdy_brightness_set_fade_target_ex(0,
                                       mdy_brightness_fade_duration_blank_ms);
+EXIT:
+    return;
 }
 
 /** Start brightness fading associated with display dimmed state
