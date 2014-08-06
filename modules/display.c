@@ -331,8 +331,8 @@ static void                mdy_brightness_start_fade_timer(gint step_time);
 static bool                mdy_brightness_fade_is_active(void);
 
 static void                mdy_brightness_set_fade_target_ex(gint new_brightness, gint transition_time);
-static void                mdy_brightness_set_fade_target_def(gint new_brightness);
-static void                mdy_brightness_set_fade_target_dim(gint new_brightness);
+static void                mdy_brightness_set_fade_target_default(gint new_brightness);
+static void                mdy_brightness_set_fade_target_dimming(gint new_brightness);
 static void                mdy_brightness_set_fade_target_als(gint new_brightness);
 static void                mdy_brightness_set_fade_target_blank(void);
 static void                mdy_brightness_set_fade_target_unblank(gint new_brightness);
@@ -2358,7 +2358,7 @@ EXIT:
 
 /** Start brightness fading associated with display state change
  */
-static void mdy_brightness_set_fade_target_def(gint new_brightness)
+static void mdy_brightness_set_fade_target_default(gint new_brightness)
 {
     mdy_brightness_set_fade_target_ex(new_brightness,
                                       mdy_brightness_fade_duration_def);
@@ -2382,7 +2382,7 @@ static void mdy_brightness_set_fade_target_blank(void)
 
 /** Start brightness fading associated with display dimmed state
  */
-static void mdy_brightness_set_fade_target_dim(gint new_brightness)
+static void mdy_brightness_set_fade_target_dimming(gint new_brightness)
 {
     mdy_brightness_set_fade_target_ex(new_brightness,
                                       mdy_brightness_fade_duration_dim);
@@ -4880,15 +4880,15 @@ static void mdy_display_state_changed(void)
         break;
 
     case MCE_DISPLAY_LPM_ON:
-        mdy_brightness_set_fade_target_def(mdy_brightness_level_display_lpm);
+        mdy_brightness_set_fade_target_default(mdy_brightness_level_display_lpm);
         break;
 
     case MCE_DISPLAY_DIM:
-        mdy_brightness_set_fade_target_dim(mdy_brightness_level_display_dim);
+        mdy_brightness_set_fade_target_dimming(mdy_brightness_level_display_dim);
         break;
 
     case MCE_DISPLAY_ON:
-        mdy_brightness_set_fade_target_def(mdy_brightness_level_display_on);
+        mdy_brightness_set_fade_target_default(mdy_brightness_level_display_on);
         break;
 
     case MCE_DISPLAY_UNDEF:
@@ -4967,19 +4967,19 @@ static void mdy_display_state_leave(display_state_t prev_state,
     case MCE_DISPLAY_ON:
         mdy_brightness_level_display_resume = mdy_brightness_level_display_on;
         if( have_power )
-            mdy_brightness_set_fade_target_def(mdy_brightness_level_display_resume);
+            mdy_brightness_set_fade_target_default(mdy_brightness_level_display_resume);
         break;
 
     case MCE_DISPLAY_DIM:
         mdy_brightness_level_display_resume = mdy_brightness_level_display_dim;
         if( have_power )
-            mdy_brightness_set_fade_target_dim(mdy_brightness_level_display_resume);
+            mdy_brightness_set_fade_target_dimming(mdy_brightness_level_display_resume);
         break;
 
     case MCE_DISPLAY_LPM_ON:
         mdy_brightness_level_display_resume = mdy_brightness_level_display_lpm;
         if( have_power )
-            mdy_brightness_set_fade_target_def(mdy_brightness_level_display_resume);
+            mdy_brightness_set_fade_target_default(mdy_brightness_level_display_resume);
         break;
 
     case MCE_DISPLAY_OFF:
