@@ -326,6 +326,7 @@ static void                mdy_brightness_force_level(int number);
 static void                mdy_brightness_set_priority_boost(bool enable);
 
 static gboolean            mdy_brightness_fade_timer_cb(gpointer data);
+static void                mdy_brightness_cleanup_fade_timer(void);
 static void                mdy_brightness_stop_fade_timer(void);
 static void                mdy_brightness_start_fade_timer(gint step_time);
 static bool                mdy_brightness_fade_is_active(void);
@@ -2212,6 +2213,9 @@ static gboolean mdy_brightness_fade_timer_cb(gpointer data)
 
     gboolean keep_going = FALSE;
 
+    if( !mdy_brightness_fade_timer_id )
+        goto EXIT;
+
     /* Assume end of transition brightness is to be used */
     int lev = mdy_brightness_fade_end_level;
 
@@ -2234,16 +2238,36 @@ static gboolean mdy_brightness_fade_timer_cb(gpointer data)
 
     mdy_brightness_set_level(lev);
 
-    if( !keep_going && mdy_brightness_fade_timer_id ) {
+    /* Cleanup if finished */
+    if( !keep_going ) {
         mdy_brightness_fade_timer_id = 0;
-        mdy_brightness_set_priority_boost(false);
+        mdy_brightness_cleanup_fade_timer();
         mce_log(LL_DEBUG, "fader finished");
-
-        // unblock display off transition
-        mdy_stm_schedule_rethink();
     }
 
+EXIT:
     return keep_going;
+}
+
+/** Helper function for cleaning up brightness fade timer
+ *
+ * Common fader timer cancellation logic
+ *
+ * NOTE: For use from mdy_brightness_fade_timer_cb() and
+ * mdy_brightness_stop_fade_timer() functions only.
+ */
+static void mdy_brightness_cleanup_fade_timer(void)
+{
+    /* Remove timer source */
+    if( mdy_brightness_fade_timer_id )
+        g_source_remove(mdy_brightness_fade_timer_id),
+        mdy_brightness_fade_timer_id = 0;
+
+    /* Unblock display off transition */
+    mdy_stm_schedule_rethink();
+
+    /* Cancel scheduling priority boost */
+    mdy_brightness_set_priority_boost(false);
 }
 
 /**
@@ -2251,16 +2275,9 @@ static gboolean mdy_brightness_fade_timer_cb(gpointer data)
  */
 static void mdy_brightness_stop_fade_timer(void)
 {
-    /* Remove the timeout source for the display brightness fade */
-    if (mdy_brightness_fade_timer_id != 0) {
-        mdy_brightness_set_priority_boost(false);
-        mce_log(LL_DEBUG, "fader stopped");
-        g_source_remove(mdy_brightness_fade_timer_id);
-        mdy_brightness_fade_timer_id = 0;
-
-        // unblock display off transition
-        mdy_stm_schedule_rethink();
-    }
+    /* Cleanup if timer is active */
+    if( mdy_brightness_fade_timer_id )
+        mdy_brightness_cleanup_fade_timer();
 }
 
 /**
