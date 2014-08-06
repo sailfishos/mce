@@ -1211,50 +1211,50 @@ static const setting_t gconf_defaults[] =
   },
 #endif
   {
-    // MCE_GCONF_USE_AUTOSUSPEND_PATH @ modules/display.h
+    // MCE_GCONF_USE_AUTOSUSPEND @ modules/display.h
     .key  = "/system/osso/dsm/display/autosuspend_policy",
     .type = "i",
     .def  = "1",
   },
   {
-    // MCE_GCONF_CPU_SCALING_GOVERNOR_PATH @ modules/display.h
+    // MCE_GCONF_CPU_SCALING_GOVERNOR @ modules/display.h
     .key  = "/system/osso/dsm/display/cpu_scaling_governor",
     .type = "i",
     .def  = "0", // = GOVERNOR_UNSET = no override
   },
   {
-    // MCE_GCONF_LIPSTICK_CORE_DELAY_PATH @ modules/display.h
+    // MCE_GCONF_LIPSTICK_CORE_DELAY @ modules/display.h
     .key  = "/system/osso/dsm/display/lipstick_core_dump_delay",
     .type = "i",
     .def  = "30",
   },
   {
-    // MCE_GCONF_BRIGHTNESS_FADE_DEF @ modules/display.h
-    .key  = "/system/osso/dsm/display/brightness_fade_def",
+    // MCE_GCONF_BRIGHTNESS_FADE_DEFAULT_MS @ modules/display.h
+    .key  = "/system/osso/dsm/display/brightness_fade_default_ms",
     .type = "i",
     .def  = "150",
   },
   {
-    // MCE_GCONF_BRIGHTNESS_FADE_DIM @ modules/display.h
-    .key  = "/system/osso/dsm/display/brightness_fade_dim",
+    // MCE_GCONF_BRIGHTNESS_FADE_DIMMING_MS @ modules/display.h
+    .key  = "/system/osso/dsm/display/brightness_fade_dimming_ms",
     .type = "i",
     .def  = "1000",
   },
   {
-    // MCE_GCONF_BRIGHTNESS_FADE_ALS @ modules/display.h
-    .key  = "/system/osso/dsm/display/brightness_fade_als",
+    // MCE_GCONF_BRIGHTNESS_FADE_ALS_MS @ modules/display.h
+    .key  = "/system/osso/dsm/display/brightness_fade_als_ms",
     .type = "i",
     .def  = "600",
   },
   {
-    // MCE_GCONF_BRIGHTNESS_FADE_BLANK @ modules/display.h
-    .key  = "/system/osso/dsm/display/brightness_fade_blank",
+    // MCE_GCONF_BRIGHTNESS_FADE_BLANK_MS @ modules/display.h
+    .key  = "/system/osso/dsm/display/brightness_fade_blank_ms",
     .type = "i",
     .def  = "100",
   },
   {
-    // MCE_GCONF_BRIGHTNESS_FADE_UNBLANK @ modules/display.h
-    .key  = "/system/osso/dsm/display/brightness_fade_unblank",
+    // MCE_GCONF_BRIGHTNESS_FADE_UNBLANK_MS @ modules/display.h
+    .key  = "/system/osso/dsm/display/brightness_fade_unblank_ms",
     .type = "i",
     .def  = "90",
   },

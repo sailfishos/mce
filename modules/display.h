@@ -146,20 +146,38 @@
 /** Path to the unresponsive lipstick core dump delay */
 #define MCE_GCONF_LIPSTICK_CORE_DELAY_PATH	MCE_GCONF_DISPLAY_PATH "/lipstick_core_dump_delay"
 
-/** Path to the default brightness fade duration [ms] */
-#define MCE_GCONF_BRIGHTNESS_FADE_DEF           MCE_GCONF_DISPLAY_PATH "/brightness_fade_def"
+/** Default brightness fade duration [ms]
+ *
+ * Used for all display state changes that do not have
+ * a separate duration speficied, for example DIM->ON
+ */
+#define MCE_GCONF_BRIGHTNESS_FADE_DEFAULT_MS            MCE_GCONF_DISPLAY_PATH "/brightness_fade_default_ms"
 
-/** Path to the dimming brightness fade duration [ms] */
-#define MCE_GCONF_BRIGHTNESS_FADE_DIM           MCE_GCONF_DISPLAY_PATH "/brightness_fade_dim"
+/** Dimming brightness fade duration [ms]
+ *
+ * Used when changing display state changes to DIM
+ * (except from OFF states, which use unblank duration).
+ */
+#define MCE_GCONF_BRIGHTNESS_FADE_DIMMING_MS            MCE_GCONF_DISPLAY_PATH "/brightness_fade_dimming_ms"
 
-/** Path to the ALS brightness fade duration [ms] */
-#define MCE_GCONF_BRIGHTNESS_FADE_ALS           MCE_GCONF_DISPLAY_PATH "/brightness_fade_als"
+/** ALS brightness fade duration [ms]
+ *
+ * Used when brightness changes due to ambient light
+ * sensor input and/or display brightness setting changes.
+ */
+#define MCE_GCONF_BRIGHTNESS_FADE_ALS_MS                MCE_GCONF_DISPLAY_PATH "/brightness_fade_als_ms"
 
-/** Path to the blanking brightness fade duration [ms] */
-#define MCE_GCONF_BRIGHTNESS_FADE_BLANK         MCE_GCONF_DISPLAY_PATH "/brightness_fade_blank"
+/** Blanking brightness fade duration [ms]
+ *
+ * Used when making transition to display OFF states.
+ */
+#define MCE_GCONF_BRIGHTNESS_FADE_BLANK_MS              MCE_GCONF_DISPLAY_PATH "/brightness_fade_blank_ms"
 
-/** Path to the unblanking brightness fade duration [ms] */
-#define MCE_GCONF_BRIGHTNESS_FADE_UNBLANK       MCE_GCONF_DISPLAY_PATH "/brightness_fade_unblank"
+/** Unblanking brightness fade duration [ms]
+ *
+ * Used when making transition from display OFF states.
+ */
+#define MCE_GCONF_BRIGHTNESS_FADE_UNBLANK_MS            MCE_GCONF_DISPLAY_PATH "/brightness_fade_unblank_ms"
 
 /* NOTE: The following defines the legacy mce brightness scale. It is
  *       carved in stone for the sake of backwards compatibility. On

@@ -7831,42 +7831,42 @@ static void mdy_gconf_init(void)
 
     /* Brightness fade length: default */
     mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_BRIGHTNESS_FADE_DEF,
+                           MCE_GCONF_BRIGHTNESS_FADE_DEFAULT_MS,
                            mdy_gconf_cb,
                            &mdy_brightness_fade_duration_def_gconf_cb_id);
-    mce_gconf_get_int(MCE_GCONF_BRIGHTNESS_FADE_DEF,
+    mce_gconf_get_int(MCE_GCONF_BRIGHTNESS_FADE_DEFAULT_MS,
                       &mdy_brightness_fade_duration_def);
 
     /* Brightness fade length: dim */
     mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_BRIGHTNESS_FADE_DIM,
+                           MCE_GCONF_BRIGHTNESS_FADE_DIMMING_MS,
                            mdy_gconf_cb,
                            &mdy_brightness_fade_duration_dim_gconf_cb_id);
-    mce_gconf_get_int(MCE_GCONF_BRIGHTNESS_FADE_DIM,
+    mce_gconf_get_int(MCE_GCONF_BRIGHTNESS_FADE_DIMMING_MS,
                       &mdy_brightness_fade_duration_dim);
 
     /* Brightness fade length: als */
     mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_BRIGHTNESS_FADE_ALS,
+                           MCE_GCONF_BRIGHTNESS_FADE_ALS_MS,
                            mdy_gconf_cb,
                            &mdy_brightness_fade_duration_als_gconf_cb_id);
-    mce_gconf_get_int(MCE_GCONF_BRIGHTNESS_FADE_ALS,
+    mce_gconf_get_int(MCE_GCONF_BRIGHTNESS_FADE_ALS_MS,
                       &mdy_brightness_fade_duration_als);
 
     /* Brightness fade length: blank */
     mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_BRIGHTNESS_FADE_BLANK,
+                           MCE_GCONF_BRIGHTNESS_FADE_BLANK_MS,
                            mdy_gconf_cb,
                            &mdy_brightness_fade_duration_blank_gconf_cb_id);
-    mce_gconf_get_int(MCE_GCONF_BRIGHTNESS_FADE_BLANK,
+    mce_gconf_get_int(MCE_GCONF_BRIGHTNESS_FADE_BLANK_MS,
                       &mdy_brightness_fade_duration_blank);
 
     /* Brightness fade length: unblank */
     mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_BRIGHTNESS_FADE_UNBLANK,
+                           MCE_GCONF_BRIGHTNESS_FADE_UNBLANK_MS,
                            mdy_gconf_cb,
                            &mdy_brightness_fade_duration_unblank_gconf_cb_id);
-    mce_gconf_get_int(MCE_GCONF_BRIGHTNESS_FADE_UNBLANK,
+    mce_gconf_get_int(MCE_GCONF_BRIGHTNESS_FADE_UNBLANK_MS,
                       &mdy_brightness_fade_duration_unblank);
 }
 

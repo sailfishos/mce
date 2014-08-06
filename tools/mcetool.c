@@ -2577,39 +2577,39 @@ static void xmce_get_lipstick_core_delay(void)
  * brightness fade settings
  * ------------------------------------------------------------------------- */
 
-static bool xmce_set_brightness_fade_def(const char *args)
+static bool xmce_set_brightness_fade_default(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         int val = xmce_parse_integer(args);
-        mcetool_gconf_set_int(MCE_GCONF_BRIGHTNESS_FADE_DEF, val);
+        mcetool_gconf_set_int(MCE_GCONF_BRIGHTNESS_FADE_DEFAULT_MS, val);
         return true;
 }
-static bool xmce_set_brightness_fade_dim(const char *args)
+static bool xmce_set_brightness_fade_dimming(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         int val = xmce_parse_integer(args);
-        mcetool_gconf_set_int(MCE_GCONF_BRIGHTNESS_FADE_DIM, val);
+        mcetool_gconf_set_int(MCE_GCONF_BRIGHTNESS_FADE_DIMMING_MS, val);
         return true;
 }
 static bool xmce_set_brightness_fade_als(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         int val = xmce_parse_integer(args);
-        mcetool_gconf_set_int(MCE_GCONF_BRIGHTNESS_FADE_ALS, val);
+        mcetool_gconf_set_int(MCE_GCONF_BRIGHTNESS_FADE_ALS_MS, val);
         return true;
 }
 static bool xmce_set_brightness_fade_blank(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         int val = xmce_parse_integer(args);
-        mcetool_gconf_set_int(MCE_GCONF_BRIGHTNESS_FADE_BLANK, val);
+        mcetool_gconf_set_int(MCE_GCONF_BRIGHTNESS_FADE_BLANK_MS, val);
         return true;
 }
 static bool xmce_set_brightness_fade_unblank(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         int val = xmce_parse_integer(args);
-        mcetool_gconf_set_int(MCE_GCONF_BRIGHTNESS_FADE_UNBLANK, val);
+        mcetool_gconf_set_int(MCE_GCONF_BRIGHTNESS_FADE_UNBLANK_MS, val);
         return true;
 }
 
@@ -2626,15 +2626,15 @@ static void xmce_get_brightness_fade_helper(const char *title, const char *key)
 static void xmce_get_brightness_fade(void)
 {
         xmce_get_brightness_fade_helper("Brightness fade [def]",
-                                        MCE_GCONF_BRIGHTNESS_FADE_DEF);
+                                        MCE_GCONF_BRIGHTNESS_FADE_DEFAULT_MS);
         xmce_get_brightness_fade_helper("Brightness fade [dim]",
-                                        MCE_GCONF_BRIGHTNESS_FADE_DIM);
+                                        MCE_GCONF_BRIGHTNESS_FADE_DIMMING_MS);
         xmce_get_brightness_fade_helper("Brightness fade [als]",
-                                        MCE_GCONF_BRIGHTNESS_FADE_ALS);
+                                        MCE_GCONF_BRIGHTNESS_FADE_ALS_MS);
         xmce_get_brightness_fade_helper("Brightness fade [blank]",
-                                        MCE_GCONF_BRIGHTNESS_FADE_BLANK);
+                                        MCE_GCONF_BRIGHTNESS_FADE_BLANK_MS);
         xmce_get_brightness_fade_helper("Brightness fade [unblank]",
-                                        MCE_GCONF_BRIGHTNESS_FADE_UNBLANK);
+                                        MCE_GCONF_BRIGHTNESS_FADE_UNBLANK_MS);
 }
 
 /* ------------------------------------------------------------------------- *
@@ -3595,14 +3595,14 @@ static const mce_opt_t options[] =
         },
         {
                 .name        = "set-brightness-fade-def",
-                .with_arg    = xmce_set_brightness_fade_def,
+                .with_arg    = xmce_set_brightness_fade_default,
                 .values      = "msecs",
                 .usage       =
                         "set the default brightness fade duration\n"
         },
         {
                 .name        = "set-brightness-fade-dim",
-                .with_arg    = xmce_set_brightness_fade_dim,
+                .with_arg    = xmce_set_brightness_fade_dimming,
                 .values      = "msecs",
                 .usage       =
                         "set the dim brightness fade duration\n"
