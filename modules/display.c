@@ -2025,32 +2025,32 @@ static int     mdy_brightness_fade_start_level = 0;
 static int     mdy_brightness_fade_end_level = 0;
 
 /** Default brightness fade length during display state transitions [ms] */
-static gint mdy_brightness_fade_duration_def     = 150;
+static gint mdy_brightness_fade_duration_def_ms = 150;
 
-/** GConf change notification id for mdy_brightness_fade_duration_def */
-static guint mdy_brightness_fade_duration_def_gconf_cb_id = 0;
+/** GConf change notification id for mdy_brightness_fade_duration_def_ms */
+static guint mdy_brightness_fade_duration_def_ms_gconf_cb_id = 0;
 
 /** Brightness fade length during display dimming [ms] */
-static gint mdy_brightness_fade_duration_dim     = 1000;
+static gint mdy_brightness_fade_duration_dim_ms = 1000;
 
-/** GConf change notification id for mdy_brightness_fade_duration_dim */
-static guint mdy_brightness_fade_duration_dim_gconf_cb_id = 0;
+/** GConf change notification id for mdy_brightness_fade_duration_dim_ms */
+static guint mdy_brightness_fade_duration_dim_ms_gconf_cb_id = 0;
 
 /** Brightness fade length during ALS tuning [ms] */
-static gint mdy_brightness_fade_duration_als     =  600;
+static gint mdy_brightness_fade_duration_als_ms = 600;
 
-/** GConf change notification id for mdy_brightness_fade_duration_als */
-static guint mdy_brightness_fade_duration_als_gconf_cb_id = 0;
+/** GConf change notification id for mdy_brightness_fade_duration_als_ms */
+static guint mdy_brightness_fade_duration_als_ms_gconf_cb_id = 0;
 
 /** Brightness fade length during display power down [ms]
  *
  * Note: Fade-to-black delays display power off and thus should be
  *       kept short enough not to cause irritation.
  */
-static gint mdy_brightness_fade_duration_blank   = 100;
+static gint mdy_brightness_fade_duration_blank_ms = 100;
 
-/** GConf change notification id for mdy_brightness_fade_duration_blank */
-static guint mdy_brightness_fade_duration_blank_gconf_cb_id = 0;
+/** GConf change notification id for mdy_brightness_fade_duration_blank_ms */
+static guint mdy_brightness_fade_duration_blank_ms_gconf_cb_id = 0;
 
 /** Brightness fade length during display power up [ms]
  *
@@ -2063,10 +2063,10 @@ static guint mdy_brightness_fade_duration_blank_gconf_cb_id = 0;
  *
  * Basically we end up seeing the brighter end of the fade in.
  */
-static gint mdy_brightness_fade_duration_unblank = 90;
+static gint mdy_brightness_fade_duration_unblank_ms = 90;
 
-/** GConf change notification id for mdy_brightness_fade_duration_unblank */
-static guint mdy_brightness_fade_duration_unblank_gconf_cb_id = 0;
+/** GConf change notification id for mdy_brightness_fade_duration_unblank_ms */
+static guint mdy_brightness_fade_duration_unblank_ms_gconf_cb_id = 0;
 
 /** Set display brightness via sysfs write */
 static void mdy_brightness_set_level_default(int number)
@@ -2361,7 +2361,7 @@ EXIT:
 static void mdy_brightness_set_fade_target_default(gint new_brightness)
 {
     mdy_brightness_set_fade_target_ex(new_brightness,
-                                      mdy_brightness_fade_duration_def);
+                                      mdy_brightness_fade_duration_def_ms);
 }
 
 /** Start brightness fading after powering up the display
@@ -2369,7 +2369,7 @@ static void mdy_brightness_set_fade_target_default(gint new_brightness)
 static void mdy_brightness_set_fade_target_unblank(gint new_brightness)
 {
     mdy_brightness_set_fade_target_ex(new_brightness,
-                                      mdy_brightness_fade_duration_unblank);
+                                      mdy_brightness_fade_duration_unblank_ms);
 }
 
 /** Start fade to black before powering off the display
@@ -2377,7 +2377,7 @@ static void mdy_brightness_set_fade_target_unblank(gint new_brightness)
 static void mdy_brightness_set_fade_target_blank(void)
 {
     mdy_brightness_set_fade_target_ex(0,
-                                      mdy_brightness_fade_duration_blank);
+                                      mdy_brightness_fade_duration_blank_ms);
 }
 
 /** Start brightness fading associated with display dimmed state
@@ -2385,7 +2385,7 @@ static void mdy_brightness_set_fade_target_blank(void)
 static void mdy_brightness_set_fade_target_dimming(gint new_brightness)
 {
     mdy_brightness_set_fade_target_ex(new_brightness,
-                                      mdy_brightness_fade_duration_dim);
+                                      mdy_brightness_fade_duration_dim_ms);
 }
 
 /** Start brightness fading due to ALS / brightness setting change
@@ -2398,7 +2398,7 @@ static void mdy_brightness_set_fade_target_als(gint new_brightness)
     }
 
     mdy_brightness_set_fade_target_ex(new_brightness,
-                                      mdy_brightness_fade_duration_als);
+                                      mdy_brightness_fade_duration_als_ms);
 
 EXIT:
     return;
@@ -7602,27 +7602,33 @@ static void mdy_gconf_cb(GConfClient *const gcc, const guint id,
     }
     else if( id == mdy_compositor_core_delay_gconf_cb_id ) {
         mdy_compositor_core_delay = gconf_value_get_int(gcv);
-        mce_log(LL_NOTICE, "compositor kill delay = %d", mdy_compositor_core_delay);
+        mce_log(LL_NOTICE, "compositor kill delay = %d",
+                mdy_compositor_core_delay);
     }
-    else if( id == mdy_brightness_fade_duration_def_gconf_cb_id ) {
-        mdy_brightness_fade_duration_def = gconf_value_get_int(gcv);
-        mce_log(LL_NOTICE, "fade duration / def = %d", mdy_brightness_fade_duration_def);
+    else if( id == mdy_brightness_fade_duration_def_ms_gconf_cb_id ) {
+        mdy_brightness_fade_duration_def_ms = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "fade duration / def = %d",
+                mdy_brightness_fade_duration_def_ms);
     }
-    else if( id == mdy_brightness_fade_duration_dim_gconf_cb_id ) {
-        mdy_brightness_fade_duration_dim = gconf_value_get_int(gcv);
-        mce_log(LL_NOTICE, "fade duration / dim = %d", mdy_brightness_fade_duration_dim);
+    else if( id == mdy_brightness_fade_duration_dim_ms_gconf_cb_id ) {
+        mdy_brightness_fade_duration_dim_ms = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "fade duration / dim = %d",
+                mdy_brightness_fade_duration_dim_ms);
     }
-    else if( id == mdy_brightness_fade_duration_als_gconf_cb_id ) {
-        mdy_brightness_fade_duration_als = gconf_value_get_int(gcv);
-        mce_log(LL_NOTICE, "fade duration / als = %d", mdy_brightness_fade_duration_als);
+    else if( id == mdy_brightness_fade_duration_als_ms_gconf_cb_id ) {
+        mdy_brightness_fade_duration_als_ms = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "fade duration / als = %d",
+                mdy_brightness_fade_duration_als_ms);
     }
-    else if( id == mdy_brightness_fade_duration_blank_gconf_cb_id ) {
-        mdy_brightness_fade_duration_blank = gconf_value_get_int(gcv);
-        mce_log(LL_NOTICE, "fade duration / blank = %d", mdy_brightness_fade_duration_blank);
+    else if( id == mdy_brightness_fade_duration_blank_ms_gconf_cb_id ) {
+        mdy_brightness_fade_duration_blank_ms = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "fade duration / blank = %d",
+                mdy_brightness_fade_duration_blank_ms);
     }
-    else if( id == mdy_brightness_fade_duration_unblank_gconf_cb_id ) {
-        mdy_brightness_fade_duration_unblank = gconf_value_get_int(gcv);
-        mce_log(LL_NOTICE, "fade duration / unblank = %d", mdy_brightness_fade_duration_unblank);
+    else if( id == mdy_brightness_fade_duration_unblank_ms_gconf_cb_id ) {
+        mdy_brightness_fade_duration_unblank_ms = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "fade duration / unblank = %d",
+                mdy_brightness_fade_duration_unblank_ms);
     }
     else {
         mce_log(LL_WARN, "Spurious GConf value received; confused!");
@@ -7833,41 +7839,41 @@ static void mdy_gconf_init(void)
     mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
                            MCE_GCONF_BRIGHTNESS_FADE_DEFAULT_MS,
                            mdy_gconf_cb,
-                           &mdy_brightness_fade_duration_def_gconf_cb_id);
+                           &mdy_brightness_fade_duration_def_ms_gconf_cb_id);
     mce_gconf_get_int(MCE_GCONF_BRIGHTNESS_FADE_DEFAULT_MS,
-                      &mdy_brightness_fade_duration_def);
+                      &mdy_brightness_fade_duration_def_ms);
 
     /* Brightness fade length: dim */
     mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
                            MCE_GCONF_BRIGHTNESS_FADE_DIMMING_MS,
                            mdy_gconf_cb,
-                           &mdy_brightness_fade_duration_dim_gconf_cb_id);
+                           &mdy_brightness_fade_duration_dim_ms_gconf_cb_id);
     mce_gconf_get_int(MCE_GCONF_BRIGHTNESS_FADE_DIMMING_MS,
-                      &mdy_brightness_fade_duration_dim);
+                      &mdy_brightness_fade_duration_dim_ms);
 
     /* Brightness fade length: als */
     mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
                            MCE_GCONF_BRIGHTNESS_FADE_ALS_MS,
                            mdy_gconf_cb,
-                           &mdy_brightness_fade_duration_als_gconf_cb_id);
+                           &mdy_brightness_fade_duration_als_ms_gconf_cb_id);
     mce_gconf_get_int(MCE_GCONF_BRIGHTNESS_FADE_ALS_MS,
-                      &mdy_brightness_fade_duration_als);
+                      &mdy_brightness_fade_duration_als_ms);
 
     /* Brightness fade length: blank */
     mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
                            MCE_GCONF_BRIGHTNESS_FADE_BLANK_MS,
                            mdy_gconf_cb,
-                           &mdy_brightness_fade_duration_blank_gconf_cb_id);
+                           &mdy_brightness_fade_duration_blank_ms_gconf_cb_id);
     mce_gconf_get_int(MCE_GCONF_BRIGHTNESS_FADE_BLANK_MS,
-                      &mdy_brightness_fade_duration_blank);
+                      &mdy_brightness_fade_duration_blank_ms);
 
     /* Brightness fade length: unblank */
     mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
                            MCE_GCONF_BRIGHTNESS_FADE_UNBLANK_MS,
                            mdy_gconf_cb,
-                           &mdy_brightness_fade_duration_unblank_gconf_cb_id);
+                           &mdy_brightness_fade_duration_unblank_ms_gconf_cb_id);
     mce_gconf_get_int(MCE_GCONF_BRIGHTNESS_FADE_UNBLANK_MS,
-                      &mdy_brightness_fade_duration_unblank);
+                      &mdy_brightness_fade_duration_unblank_ms);
 }
 
 static void mdy_gconf_quit(void)
