@@ -21,39 +21,6 @@
 #ifndef _DISPLAY_H_
 #define _DISPLAY_H_
 
-/** Name of Display configuration group */
-#define MCE_CONF_DISPLAY_GROUP			"Display"
-
-/** Name of the configuration key for the brightness increase policy */
-#define MCE_CONF_BRIGHTNESS_INCREASE_POLICY	"BrightnessIncreasePolicy"
-
-/** Name of the configuration key for the step-time for brightness increase */
-#define MCE_CONF_STEP_TIME_INCREASE		"StepTimeIncrease"
-
-/** Name of the configuration key for the constant time brightness increase */
-#define MCE_CONF_CONSTANT_TIME_INCREASE		"ConstantTimeIncrease"
-
-/** Name of the configuration key for the brightness decrease policy */
-#define MCE_CONF_BRIGHTNESS_DECREASE_POLICY	"BrightnessDecreasePolicy"
-
-/** Name of the configuration key for the step-time for brightness decrease */
-#define MCE_CONF_STEP_TIME_DECREASE		"StepTimeDecrease"
-
-/** Name of the configuration key for the constant time brightness decrease */
-#define MCE_CONF_CONSTANT_TIME_DECREASE		"ConstantTimeDecrease"
-
-/** Default brightness increase step-time */
-#define DEFAULT_BRIGHTNESS_INCREASE_STEP_TIME		5
-
-/** Default brightness increase constant time */
-#define DEFAULT_BRIGHTNESS_INCREASE_CONSTANT_TIME	2000
-
-/** Default brightness decrease step-time */
-#define DEFAULT_BRIGHTNESS_DECREASE_STEP_TIME		10
-
-/** Default brightness decrease constant time */
-#define DEFAULT_BRIGHTNESS_DECREASE_CONSTANT_TIME	3000
-
 /** Default timeout for the high brightness mode; in seconds */
 #define DEFAULT_HBM_TIMEOUT				1800	/* 30 min */
 
@@ -137,47 +104,80 @@
 # define MCE_GCONF_DISPLAY_PATH			"/system/osso/dsm/display"
 #endif
 
-/** Path to the display brightness GConf setting */
-#define MCE_GCONF_DISPLAY_BRIGHTNESS_PATH	MCE_GCONF_DISPLAY_PATH "/display_brightness"
+/** Display brightness GConf setting */
+#define MCE_GCONF_DISPLAY_BRIGHTNESS                    MCE_GCONF_DISPLAY_PATH "/display_brightness"
 
-/** Path to the display brightness level count GConf setting */
-#define MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_COUNT_PATH	MCE_GCONF_DISPLAY_PATH "/max_display_brightness_levels"
+/** Display brightness level count GConf setting */
+#define MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_COUNT        MCE_GCONF_DISPLAY_PATH "/max_display_brightness_levels"
 
-/** Path to the display brightness level size GConf setting */
-#define MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_SIZE_PATH	MCE_GCONF_DISPLAY_PATH "/display_brightness_level_step"
+/** Display brightness level size GConf setting */
+#define MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_SIZE         MCE_GCONF_DISPLAY_PATH "/display_brightness_level_step"
 
-/** Path to the list of possible dim timeouts GConf setting */
-#define MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST_PATH	MCE_GCONF_DISPLAY_PATH "/possible_display_dim_timeouts"
+/** List of possible dim timeouts GConf setting */
+#define MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST              MCE_GCONF_DISPLAY_PATH "/possible_display_dim_timeouts"
 
-/** Path to the dim timeout GConf setting */
-#define MCE_GCONF_DISPLAY_DIM_TIMEOUT_PATH	MCE_GCONF_DISPLAY_PATH "/display_dim_timeout"
+/** Dim timeout GConf setting */
+#define MCE_GCONF_DISPLAY_DIM_TIMEOUT                   MCE_GCONF_DISPLAY_PATH "/display_dim_timeout"
 
-/** Path to the blank timeout GConf setting */
-#define MCE_GCONF_DISPLAY_BLANK_TIMEOUT_PATH	MCE_GCONF_DISPLAY_PATH "/display_blank_timeout"
+/** Blank timeout GConf setting */
+#define MCE_GCONF_DISPLAY_BLANK_TIMEOUT                 MCE_GCONF_DISPLAY_PATH "/display_blank_timeout"
 
-/** Path to the never blank GConf setting */
-#define MCE_GCONF_DISPLAY_NEVER_BLANK_PATH	MCE_GCONF_DISPLAY_PATH "/display_never_blank"
+/** Never blank GConf setting */
+#define MCE_GCONF_DISPLAY_NEVER_BLANK                   MCE_GCONF_DISPLAY_PATH "/display_never_blank"
 
-/** Path to the adaptive display dimming GConf setting */
-#define MCE_GCONF_DISPLAY_ADAPTIVE_DIMMING_PATH	MCE_GCONF_DISPLAY_PATH "/use_adaptive_display_dimming"
+/** Adaptive display dimming GConf setting */
+#define MCE_GCONF_DISPLAY_ADAPTIVE_DIMMING              MCE_GCONF_DISPLAY_PATH "/use_adaptive_display_dimming"
 
-/** Path to the adaptive display threshold timeout GConf setting */
-#define MCE_GCONF_DISPLAY_ADAPTIVE_DIM_THRESHOLD_PATH	MCE_GCONF_DISPLAY_PATH "/adaptive_display_dim_threshold"
+/** Adaptive display threshold timeout GConf setting */
+#define MCE_GCONF_DISPLAY_ADAPTIVE_DIM_THRESHOLD        MCE_GCONF_DISPLAY_PATH "/adaptive_display_dim_threshold"
 
-/** Path to the blanking inhibit GConf setting */
-#define MCE_GCONF_BLANKING_INHIBIT_MODE_PATH	MCE_GCONF_DISPLAY_PATH "/inhibit_blank_mode"
+/** Blanking inhibit GConf setting */
+#define MCE_GCONF_BLANKING_INHIBIT_MODE                 MCE_GCONF_DISPLAY_PATH "/inhibit_blank_mode"
 
-/** Path to the use Low Power Mode GConf setting */
-#define MCE_GCONF_USE_LOW_POWER_MODE_PATH	MCE_GCONF_DISPLAY_PATH "/use_low_power_mode"
+/** Use Low Power Mode GConf setting */
+#define MCE_GCONF_USE_LOW_POWER_MODE                    MCE_GCONF_DISPLAY_PATH "/use_low_power_mode"
 
-/** Path to the use autosuspend GConf setting */
-#define MCE_GCONF_USE_AUTOSUSPEND_PATH		MCE_GCONF_DISPLAY_PATH "/autosuspend_policy"
+/** Use autosuspend GConf setting */
+#define MCE_GCONF_USE_AUTOSUSPEND                       MCE_GCONF_DISPLAY_PATH "/autosuspend_policy"
 
-/** Path to the use cpu scaling governor GConf setting */
-#define MCE_GCONF_CPU_SCALING_GOVERNOR_PATH	MCE_GCONF_DISPLAY_PATH "/cpu_scaling_governor"
+/** Use cpu scaling governor GConf setting */
+#define MCE_GCONF_CPU_SCALING_GOVERNOR                  MCE_GCONF_DISPLAY_PATH "/cpu_scaling_governor"
 
-/** Path to the unresponsive lipstick core dump delay */
-#define MCE_GCONF_LIPSTICK_CORE_DELAY_PATH	MCE_GCONF_DISPLAY_PATH "/lipstick_core_dump_delay"
+/** Unresponsive lipstick core dump delay */
+#define MCE_GCONF_LIPSTICK_CORE_DELAY                   MCE_GCONF_DISPLAY_PATH "/lipstick_core_dump_delay"
+
+/** Default brightness fade duration [ms]
+ *
+ * Used for all display state changes that do not have
+ * a separate duration speficied, for example DIM->ON
+ */
+#define MCE_GCONF_BRIGHTNESS_FADE_DEFAULT_MS            MCE_GCONF_DISPLAY_PATH "/brightness_fade_default_ms"
+
+/** Dimming brightness fade duration [ms]
+ *
+ * Used when changing display state changes to DIM
+ * (except from OFF states, which use unblank duration).
+ */
+#define MCE_GCONF_BRIGHTNESS_FADE_DIMMING_MS            MCE_GCONF_DISPLAY_PATH "/brightness_fade_dimming_ms"
+
+/** ALS brightness fade duration [ms]
+ *
+ * Used when brightness changes due to ambient light
+ * sensor input and/or display brightness setting changes.
+ */
+#define MCE_GCONF_BRIGHTNESS_FADE_ALS_MS                MCE_GCONF_DISPLAY_PATH "/brightness_fade_als_ms"
+
+/** Blanking brightness fade duration [ms]
+ *
+ * Used when making transition to display OFF states.
+ */
+#define MCE_GCONF_BRIGHTNESS_FADE_BLANK_MS              MCE_GCONF_DISPLAY_PATH "/brightness_fade_blank_ms"
+
+/** Unblanking brightness fade duration [ms]
+ *
+ * Used when making transition from display OFF states.
+ */
+#define MCE_GCONF_BRIGHTNESS_FADE_UNBLANK_MS            MCE_GCONF_DISPLAY_PATH "/brightness_fade_unblank_ms"
 
 /* NOTE: The following defines the legacy mce brightness scale. It is
  *       carved in stone for the sake of backwards compatibility. On

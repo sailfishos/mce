@@ -1953,7 +1953,7 @@ static bool xmce_set_display_brightness(const char *args)
                 errorf("%d: invalid brightness value\n", val);
                 exit(EXIT_FAILURE);
         }
-        mcetool_gconf_set_int(MCE_GCONF_DISPLAY_BRIGHTNESS_PATH, val);
+        mcetool_gconf_set_int(MCE_GCONF_DISPLAY_BRIGHTNESS, val);
         return true;
 }
 
@@ -1965,7 +1965,7 @@ static void xmce_get_display_brightness(void)
         char txt[32];
 
         strcpy(txt, "unknown");
-        if( mcetool_gconf_get_int(MCE_GCONF_DISPLAY_BRIGHTNESS_PATH, &val) )
+        if( mcetool_gconf_get_int(MCE_GCONF_DISPLAY_BRIGHTNESS, &val) )
                 snprintf(txt, sizeof txt, "%d", (int)val);
         printf("%-"PAD1"s %s (1-100)\n", "Brightness:", txt);
 }
@@ -2027,7 +2027,7 @@ static bool xmce_set_dim_timeout(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         int val = xmce_parse_integer(args);
-        mcetool_gconf_set_int(MCE_GCONF_DISPLAY_DIM_TIMEOUT_PATH, val);
+        mcetool_gconf_set_int(MCE_GCONF_DISPLAY_DIM_TIMEOUT, val);
         return true;
 }
 
@@ -2039,7 +2039,7 @@ static void xmce_get_dim_timeout(void)
         char txt[32];
 
         strcpy(txt, "unknown");
-        if( mcetool_gconf_get_int(MCE_GCONF_DISPLAY_DIM_TIMEOUT_PATH, &val) )
+        if( mcetool_gconf_get_int(MCE_GCONF_DISPLAY_DIM_TIMEOUT, &val) )
                 snprintf(txt, sizeof txt, "%d", (int)val);
         printf("%-"PAD1"s %s (seconds)\n", "Dim timeout:", txt);
 }
@@ -2066,7 +2066,7 @@ static bool xmce_set_dim_timeouts(const char *args)
                 }
         }
 
-        mcetool_gconf_set_int_array(MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST_PATH,
+        mcetool_gconf_set_int_array(MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST,
                                     arr, len);
         g_free(arr);
         return true;
@@ -2079,7 +2079,7 @@ static void xmce_get_dim_timeouts(void)
         gint *vec = 0;
         gint  len = 0;
 
-        mcetool_gconf_get_int_array(MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST_PATH,
+        mcetool_gconf_get_int_array(MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST,
                                     &vec, &len);
         printf("%-"PAD1"s [", "Allowed dim timeouts");
         for( gint i = 0; i < len; ++i )
@@ -2100,7 +2100,7 @@ static bool xmce_set_adaptive_dimming_mode(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         gboolean val = xmce_parse_enabled(args);
-        mcetool_gconf_set_bool(MCE_GCONF_DISPLAY_ADAPTIVE_DIMMING_PATH, val);
+        mcetool_gconf_set_bool(MCE_GCONF_DISPLAY_ADAPTIVE_DIMMING, val);
         return true;
 }
 
@@ -2112,7 +2112,7 @@ static void xmce_get_adaptive_dimming_mode(void)
         char txt[32];
 
         strcpy(txt, "unknown");
-        if( mcetool_gconf_get_bool(MCE_GCONF_DISPLAY_ADAPTIVE_DIMMING_PATH, &val) )
+        if( mcetool_gconf_get_bool(MCE_GCONF_DISPLAY_ADAPTIVE_DIMMING, &val) )
                 snprintf(txt, sizeof txt, "%s", val ? "enabled" : "disabled");
         printf("%-"PAD1"s %s\n", "Adaptive dimming:", txt);
 }
@@ -2125,7 +2125,7 @@ static bool xmce_set_adaptive_dimming_time(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         int val = xmce_parse_integer(args);
-        mcetool_gconf_set_int(MCE_GCONF_DISPLAY_ADAPTIVE_DIM_THRESHOLD_PATH, val);
+        mcetool_gconf_set_int(MCE_GCONF_DISPLAY_ADAPTIVE_DIM_THRESHOLD, val);
         return true;
 }
 
@@ -2137,7 +2137,7 @@ static void xmce_get_adaptive_dimming_time(void)
         char txt[32];
 
         strcpy(txt, "unknown");
-        if( mcetool_gconf_get_int(MCE_GCONF_DISPLAY_ADAPTIVE_DIM_THRESHOLD_PATH, &val) )
+        if( mcetool_gconf_get_int(MCE_GCONF_DISPLAY_ADAPTIVE_DIM_THRESHOLD, &val) )
                 snprintf(txt, sizeof txt, "%d", (int)val);
         printf("%-"PAD1"s %s (milliseconds)\n", "Adaptive dimming threshold:", txt);
 }
@@ -2238,7 +2238,7 @@ static bool xmce_set_blank_timeout(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         int val = xmce_parse_integer(args);
-        mcetool_gconf_set_int(MCE_GCONF_DISPLAY_BLANK_TIMEOUT_PATH, val);
+        mcetool_gconf_set_int(MCE_GCONF_DISPLAY_BLANK_TIMEOUT, val);
         return true;
 }
 
@@ -2250,7 +2250,7 @@ static void xmce_get_blank_timeout(void)
         char txt[32];
 
         strcpy(txt, "unknown");
-        if( mcetool_gconf_get_int(MCE_GCONF_DISPLAY_BLANK_TIMEOUT_PATH, &val) )
+        if( mcetool_gconf_get_int(MCE_GCONF_DISPLAY_BLANK_TIMEOUT, &val) )
                 snprintf(txt, sizeof txt, "%d", (int)val);
         printf("%-"PAD1"s %s (seconds)\n", "Blank timeout:", txt);
 }
@@ -2510,7 +2510,7 @@ static bool xmce_set_low_power_mode(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         gboolean val = xmce_parse_enabled(args);
-        mcetool_gconf_set_bool(MCE_GCONF_USE_LOW_POWER_MODE_PATH, val);
+        mcetool_gconf_set_bool(MCE_GCONF_USE_LOW_POWER_MODE, val);
         return true;
 }
 
@@ -2521,7 +2521,7 @@ static void xmce_get_low_power_mode(void)
         gboolean val = 0;
         char txt[32] = "unknown";
 
-        if( mcetool_gconf_get_bool(MCE_GCONF_USE_LOW_POWER_MODE_PATH, &val) )
+        if( mcetool_gconf_get_bool(MCE_GCONF_USE_LOW_POWER_MODE, &val) )
                 snprintf(txt, sizeof txt, "%s", val ? "enabled" : "disabled");
         printf("%-"PAD1"s %s\n", "Use low power mode:", txt);
 }
@@ -2534,7 +2534,7 @@ static bool xmce_set_inhibit_mode(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         int val = parse_inhibitmode(args);
-        mcetool_gconf_set_int(MCE_GCONF_BLANKING_INHIBIT_MODE_PATH, val);
+        mcetool_gconf_set_int(MCE_GCONF_BLANKING_INHIBIT_MODE, val);
         return true;
 }
 
@@ -2544,7 +2544,7 @@ static void xmce_get_inhibit_mode(void)
 {
         gint        val = 0;
         const char *txt = 0;
-        if( mcetool_gconf_get_int(MCE_GCONF_BLANKING_INHIBIT_MODE_PATH, &val) )
+        if( mcetool_gconf_get_int(MCE_GCONF_BLANKING_INHIBIT_MODE, &val) )
                 txt = repr_inhibitmode(val);
         printf("%-"PAD1"s %s \n", "Blank inhibit:", txt ?: "unknown");
 }
@@ -2557,7 +2557,7 @@ static bool xmce_set_lipstick_core_delay(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         int val = xmce_parse_integer(args);
-        mcetool_gconf_set_int(MCE_GCONF_LIPSTICK_CORE_DELAY_PATH, val);
+        mcetool_gconf_set_int(MCE_GCONF_LIPSTICK_CORE_DELAY, val);
 
         return true;
 }
@@ -2568,9 +2568,73 @@ static void xmce_get_lipstick_core_delay(void)
         char txt[32];
 
         strcpy(txt, "unknown");
-        if( mcetool_gconf_get_int(MCE_GCONF_LIPSTICK_CORE_DELAY_PATH, &val) )
+        if( mcetool_gconf_get_int(MCE_GCONF_LIPSTICK_CORE_DELAY, &val) )
                 snprintf(txt, sizeof txt, "%d", (int)val);
         printf("%-"PAD1"s %s (seconds)\n", "Lipstick core delay:", txt);
+}
+
+/* ------------------------------------------------------------------------- *
+ * brightness fade settings
+ * ------------------------------------------------------------------------- */
+
+static bool xmce_set_brightness_fade_default(const char *args)
+{
+        debugf("%s(%s)\n", __FUNCTION__, args);
+        int val = xmce_parse_integer(args);
+        mcetool_gconf_set_int(MCE_GCONF_BRIGHTNESS_FADE_DEFAULT_MS, val);
+        return true;
+}
+static bool xmce_set_brightness_fade_dimming(const char *args)
+{
+        debugf("%s(%s)\n", __FUNCTION__, args);
+        int val = xmce_parse_integer(args);
+        mcetool_gconf_set_int(MCE_GCONF_BRIGHTNESS_FADE_DIMMING_MS, val);
+        return true;
+}
+static bool xmce_set_brightness_fade_als(const char *args)
+{
+        debugf("%s(%s)\n", __FUNCTION__, args);
+        int val = xmce_parse_integer(args);
+        mcetool_gconf_set_int(MCE_GCONF_BRIGHTNESS_FADE_ALS_MS, val);
+        return true;
+}
+static bool xmce_set_brightness_fade_blank(const char *args)
+{
+        debugf("%s(%s)\n", __FUNCTION__, args);
+        int val = xmce_parse_integer(args);
+        mcetool_gconf_set_int(MCE_GCONF_BRIGHTNESS_FADE_BLANK_MS, val);
+        return true;
+}
+static bool xmce_set_brightness_fade_unblank(const char *args)
+{
+        debugf("%s(%s)\n", __FUNCTION__, args);
+        int val = xmce_parse_integer(args);
+        mcetool_gconf_set_int(MCE_GCONF_BRIGHTNESS_FADE_UNBLANK_MS, val);
+        return true;
+}
+
+static void xmce_get_brightness_fade_helper(const char *title, const char *key)
+{
+        gint val = 0;
+        char txt[32];
+        strcpy(txt, "unknown");
+        if( mcetool_gconf_get_int(key, &val) )
+                snprintf(txt, sizeof txt, "%d", (int)val);
+        printf("%-"PAD1"s %s (milliseconds)\n", title, txt);
+}
+
+static void xmce_get_brightness_fade(void)
+{
+        xmce_get_brightness_fade_helper("Brightness fade [def]",
+                                        MCE_GCONF_BRIGHTNESS_FADE_DEFAULT_MS);
+        xmce_get_brightness_fade_helper("Brightness fade [dim]",
+                                        MCE_GCONF_BRIGHTNESS_FADE_DIMMING_MS);
+        xmce_get_brightness_fade_helper("Brightness fade [als]",
+                                        MCE_GCONF_BRIGHTNESS_FADE_ALS_MS);
+        xmce_get_brightness_fade_helper("Brightness fade [blank]",
+                                        MCE_GCONF_BRIGHTNESS_FADE_BLANK_MS);
+        xmce_get_brightness_fade_helper("Brightness fade [unblank]",
+                                        MCE_GCONF_BRIGHTNESS_FADE_UNBLANK_MS);
 }
 
 /* ------------------------------------------------------------------------- *
@@ -2615,7 +2679,7 @@ static bool xmce_set_cpu_scaling_governor(const char *args)
                 errorf("%s: invalid cpu scaling governor value\n", args);
                 exit(EXIT_FAILURE);
         }
-        mcetool_gconf_set_int(MCE_GCONF_CPU_SCALING_GOVERNOR_PATH, val);
+        mcetool_gconf_set_int(MCE_GCONF_CPU_SCALING_GOVERNOR, val);
         return true;
 }
 
@@ -2625,7 +2689,7 @@ static void xmce_get_cpu_scaling_governor(void)
 {
         gint        val = 0;
         const char *txt = 0;
-        if( mcetool_gconf_get_int(MCE_GCONF_CPU_SCALING_GOVERNOR_PATH, &val) )
+        if( mcetool_gconf_get_int(MCE_GCONF_CPU_SCALING_GOVERNOR, &val) )
                 txt = rlookup(governor_values, val);
         printf("%-"PAD1"s %s \n", "CPU Scaling Governor:", txt ?: "unknown");
 }
@@ -2642,7 +2706,7 @@ static bool xmce_set_never_blank(const char *args)
                 errorf("%s: invalid never blank value\n", args);
                 exit(EXIT_FAILURE);
         }
-        mcetool_gconf_set_int(MCE_GCONF_DISPLAY_NEVER_BLANK_PATH, val);
+        mcetool_gconf_set_int(MCE_GCONF_DISPLAY_NEVER_BLANK, val);
         return true;
 }
 
@@ -2650,7 +2714,7 @@ static void xmce_get_never_blank(void)
 {
         gint        val = 0;
         const char *txt = 0;
-        if( mcetool_gconf_get_int(MCE_GCONF_DISPLAY_NEVER_BLANK_PATH, &val) )
+        if( mcetool_gconf_get_int(MCE_GCONF_DISPLAY_NEVER_BLANK, &val) )
                 txt = rlookup(never_blank_values, val);
         printf("%-"PAD1"s %s \n", "Display never blank:", txt ?: "unknown");
 }
@@ -2667,7 +2731,7 @@ static bool xmce_set_suspend_policy(const char *args)
                 errorf("%s: invalid suspend policy value\n", args);
                 exit(EXIT_FAILURE);
         }
-        mcetool_gconf_set_int(MCE_GCONF_USE_AUTOSUSPEND_PATH, val);
+        mcetool_gconf_set_int(MCE_GCONF_USE_AUTOSUSPEND, val);
         return true;
 }
 
@@ -2677,7 +2741,7 @@ static void xmce_get_suspend_policy(void)
 {
         gint        val = 0;
         const char *txt = 0;
-        if( mcetool_gconf_get_int(MCE_GCONF_USE_AUTOSUSPEND_PATH, &val) )
+        if( mcetool_gconf_get_int(MCE_GCONF_USE_AUTOSUSPEND, &val) )
                 txt = rlookup(suspendpol_values, val);
         printf("%-"PAD1"s %s \n", "Autosuspend policy:", txt ?: "unknown");
 }
@@ -2981,6 +3045,7 @@ static bool xmce_get_status(const char *args)
         xmce_get_als_mode();
         xmce_get_ps_mode();
         xmce_get_dim_timeouts();
+        xmce_get_brightness_fade();
         xmce_get_suspend_policy();
         xmce_get_cpu_scaling_governor();
 #ifdef ENABLE_DOUBLETAP_EMULATION
@@ -3527,6 +3592,41 @@ static const mce_opt_t options[] =
                 .usage       =
                         "set the display demo mode  to STATE;\n"
                         "valid states are: 'on' and 'off'\n"
+        },
+        {
+                .name        = "set-brightness-fade-def",
+                .with_arg    = xmce_set_brightness_fade_default,
+                .values      = "msecs",
+                .usage       =
+                        "set the default brightness fade duration\n"
+        },
+        {
+                .name        = "set-brightness-fade-dim",
+                .with_arg    = xmce_set_brightness_fade_dimming,
+                .values      = "msecs",
+                .usage       =
+                        "set the dim brightness fade duration\n"
+        },
+        {
+                .name        = "set-brightness-fade-als",
+                .with_arg    = xmce_set_brightness_fade_als,
+                .values      = "msecs",
+                .usage       =
+                        "set the als brightness fade duration\n"
+        },
+        {
+                .name        = "set-brightness-fade-blank",
+                .with_arg    = xmce_set_brightness_fade_blank,
+                .values      = "msecs",
+                .usage       =
+                        "set the blank brightness fade duration\n"
+        },
+        {
+                .name        = "set-brightness-fade-unblank",
+                .with_arg    = xmce_set_brightness_fade_unblank,
+                .values      = "msecs",
+                .usage       =
+                        "set the unblank brightness fade duration\n"
         },
         {
                 .name        = "set-lipstick-core-delay",
