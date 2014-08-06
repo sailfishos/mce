@@ -2220,7 +2220,7 @@ static gboolean mdy_brightness_fade_timer_cb(gpointer data)
 
     if( mdy_brightness_fade_start_time <= now &&
         now < mdy_brightness_fade_end_time ) {
-        /* Linear interpolatio */
+        /* Linear interpolation */
         int a = (int)(now - mdy_brightness_fade_start_time);
         int b = (int)(mdy_brightness_fade_end_time - now);
         lev = (a * mdy_brightness_fade_end_level +
