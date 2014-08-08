@@ -1358,7 +1358,10 @@ EXIT:
     return;
 }
 
-/** Lid cover state (N770); assume open */
+/** Lid cover state (N770); assume open
+ *
+ * Note that this is used also for hammerhead magnetic lid sensor.
+ */
 static cover_state_t lid_cover_state = COVER_OPEN;
 
 /** Change notifications from lid_cover_pipe
@@ -1376,8 +1379,31 @@ static void tklock_datapipe_lid_cover_cb(gconstpointer data)
 
     mce_log(LL_DEBUG, "lid_cover_state = %d -> %d", prev, lid_cover_state);
 
-    // TODO: COVER_OPEN -> display on, unlock
-    // TODO: COVER_CLOSE -> display off lock
+    switch( lid_cover_state ) {
+    case COVER_CLOSED:
+        /* lock ui + blank display */
+        execute_datapipe(&tk_lock_pipe,
+                         GINT_TO_POINTER(LOCK_ON),
+                         USE_INDATA, CACHE_INDATA);
+        execute_datapipe(&display_state_req_pipe,
+                         GINT_TO_POINTER(MCE_DISPLAY_OFF),
+                         USE_INDATA, CACHE_INDATA);
+        break;
+
+    case COVER_OPEN:
+        /* unblank display */
+        execute_datapipe(&display_state_req_pipe,
+                         GINT_TO_POINTER(MCE_DISPLAY_ON),
+                         USE_INDATA, CACHE_INDATA);
+        break;
+
+    default:
+        break;
+    }
+
+    /* TODO: On devices that have means to detect physically covered
+     *       display, it might be desirable to also power off proximity
+     *       sensor and notification led while lid is on */
 
 EXIT:
     return;

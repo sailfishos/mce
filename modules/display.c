@@ -1061,9 +1061,17 @@ static gpointer mdy_datapipe_display_state_filter_cb(gpointer data)
     display_state_t want_state = GPOINTER_TO_INT(data);
     display_state_t next_state = want_state;
 
+    cover_state_t lid_cover_state = datapipe_get_gint(lid_cover_pipe);
+
     /* Handle never-blank override */
     if( mdy_disp_never_blank ) {
         next_state = MCE_DISPLAY_ON;
+        goto UPDATE;
+    }
+
+    /* Display stays off while lid_cover is on */
+    if( lid_cover_state == COVER_CLOSED ) {
+        next_state = MCE_DISPLAY_OFF;
         goto UPDATE;
     }
 
