@@ -1,3 +1,11 @@
+mce (1.33.2) unstable; urgency=low
+
+  * [mce] Improve upower battery device detection. Fixes JB#21849
+  * [mce] Do not enable led sw breathing if current led backend does not
+    support it. Contributes to JB#21845
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 08 Aug 2014 14:13:09 +0300
+
 mce (1.33.1) unstable; urgency=low
 
   * [mce] Add support for fixed time brightness fading. Fixes JB#21713
