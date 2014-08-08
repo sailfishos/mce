@@ -257,33 +257,6 @@ static bool uprop_get_int(const uprop_t *self, int *val)
     return res;
 }
 
-/** Get property value as double number
- *
- * @param self property
- * @param val  where to store the number
- *
- * @return true on success, false on failure
- */
-static bool uprop_get_double(const uprop_t *self, double *val)
-{
-    bool res = true;
-    switch( self->p_type ) {
-    case DBUS_TYPE_BYTE:    *val = (double)self->p_val.o;   break;
-    case DBUS_TYPE_BOOLEAN: *val = (double)self->p_val.b;   break;
-    case DBUS_TYPE_INT16:   *val = (double)self->p_val.i16; break;
-    case DBUS_TYPE_UINT16:  *val = (double)self->p_val.u16; break;
-    case DBUS_TYPE_INT32:   *val = (double)self->p_val.i32; break;
-    case DBUS_TYPE_UINT32:  *val = (double)self->p_val.u32; break;
-    case DBUS_TYPE_INT64:   *val = (double)self->p_val.i64; break;
-    case DBUS_TYPE_UINT64:  *val = (double)self->p_val.u64; break;
-    case DBUS_TYPE_DOUBLE:  *val = (double)self->p_val.d;   break;
-    default:
-        res = false;
-        break;
-    }
-    return res;
-}
-
 /** Get property value as string
  *
  * @param self property
@@ -455,23 +428,6 @@ static bool updev_get_int(const updev_t *self, const char *key, int *val)
     uprop_t *prop = updev_get_prop(self, key);
     if( prop )
         res = uprop_get_int(prop, val);
-    return res;
-}
-
-/** Get device object property value as double number
- *
- * @param self device object
- * @param key  property name
- * @param val  where to store the double number
- *
- * @return true on success, otherwise false
- */
-static bool updev_get_double(const updev_t *self, const char *key, double *val)
-{
-    bool res = false;
-    uprop_t *prop = updev_get_prop(self, key);
-    if( prop )
-        res = uprop_get_double(prop, val);
     return res;
 }
 
