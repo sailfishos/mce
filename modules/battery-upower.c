@@ -82,6 +82,7 @@ typedef union
  * struct MceBattery holds battery data available via UPower
  * ========================================================================= */
 
+/** Values for upower device State property */
 enum
 {
     UPOWER_STATE_UNKNOWN           = 0,
@@ -93,6 +94,7 @@ enum
     UPOWER_STATE_PENDING_DISCHARGE = 6,
 };
 
+/** Values for upower device Type property */
 enum
 {
     UPOWER_TYPE_UNKNOWN    = 0,
@@ -104,6 +106,18 @@ enum
     UPOWER_TYPE_KEYBOARD   = 6,
     UPOWER_TYPE_PDA        = 7,
     UPOWER_TYPE_PHONE      = 8,
+};
+
+/** Values for upower device Technology property */
+enum
+{
+    UPOWER_TECHNOLOGY_UNKNOWN                = 0,
+    UPOWER_TECHNOLOGY_LITHIUM_ION            = 1,
+    UPOWER_TECHNOLOGY_LITHIUM_POLYMER        = 2,
+    UPOWER_TECHNOLOGY_LITHIUM_IRON_PHOSPHATE = 3,
+    UPOWER_TECHNOLOGY_LEAD_ACID              = 4,
+    UPOWER_TECHNOLOGY_NICKEL_CADMIUM         = 5,
+    UPOWER_TECHNOLOGY_NICKEL_METAL_HYDRIDE   = 6,
 };
 
 /** Battery properties available via upower */
@@ -236,6 +250,33 @@ static bool uprop_get_int(const uprop_t *self, int *val)
     case DBUS_TYPE_INT64:   *val = (int)self->p_val.i64;       break;
     case DBUS_TYPE_UINT64:  *val = (int)self->p_val.u64;       break;
     case DBUS_TYPE_DOUBLE:  *val = (int)(self->p_val.d + 0.5); break;
+    default:
+        res = false;
+        break;
+    }
+    return res;
+}
+
+/** Get property value as double number
+ *
+ * @param self property
+ * @param val  where to store the number
+ *
+ * @return true on success, false on failure
+ */
+static bool uprop_get_double(const uprop_t *self, double *val)
+{
+    bool res = true;
+    switch( self->p_type ) {
+    case DBUS_TYPE_BYTE:    *val = (double)self->p_val.o;   break;
+    case DBUS_TYPE_BOOLEAN: *val = (double)self->p_val.b;   break;
+    case DBUS_TYPE_INT16:   *val = (double)self->p_val.i16; break;
+    case DBUS_TYPE_UINT16:  *val = (double)self->p_val.u16; break;
+    case DBUS_TYPE_INT32:   *val = (double)self->p_val.i32; break;
+    case DBUS_TYPE_UINT32:  *val = (double)self->p_val.u32; break;
+    case DBUS_TYPE_INT64:   *val = (double)self->p_val.i64; break;
+    case DBUS_TYPE_UINT64:  *val = (double)self->p_val.u64; break;
+    case DBUS_TYPE_DOUBLE:  *val = (double)self->p_val.d;   break;
     default:
         res = false;
         break;
@@ -394,6 +435,23 @@ static bool updev_get_int(const updev_t *self, const char *key, int *val)
     return res;
 }
 
+/** Get device object property value as double number
+ *
+ * @param self device object
+ * @param key  property name
+ * @param val  where to store the double number
+ *
+ * @return true on success, otherwise false
+ */
+static bool updev_get_double(const updev_t *self, const char *key, double *val)
+{
+    bool res = false;
+    uprop_t *prop = updev_get_prop(self, key);
+    if( prop )
+        res = uprop_get_double(prop, val);
+    return res;
+}
+
 /** Device object is battery predicate
  *
  * @param self device object
@@ -402,15 +460,30 @@ static bool updev_get_int(const updev_t *self, const char *key, int *val)
  */
 static bool updev_is_battery(const updev_t *self)
 {
-    bool res = false;
+    bool is_battery = false;
 
-    if( self ) {
-        int type = UPOWER_TYPE_UNKNOWN;
-        updev_get_int(self, "Type", &type);
-        res = (type == UPOWER_TYPE_BATTERY);
-    }
+    if( !self )
+        goto EXIT;
 
-    return res;
+    int    type   = UPOWER_TYPE_UNKNOWN;
+    int    tech   = UPOWER_TECHNOLOGY_UNKNOWN;
+    double energy = 0.0; // [Wh]
+
+    if( !updev_get_int(self, "Type", &type) )
+        goto EXIT;
+
+    if( !updev_get_int(self, "Technology", &tech) )
+        goto EXIT;
+
+    if( !updev_get_double(self, "EnergyFull", &energy) )
+        goto EXIT;
+
+    is_battery = (type == UPOWER_TYPE_BATTERY &&
+                  tech != UPOWER_TECHNOLOGY_UNKNOWN &&
+                  energy > 0);
+
+EXIT:
+    return is_battery;
 }
 
 /* ========================================================================= *
