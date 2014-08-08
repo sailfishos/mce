@@ -1,3 +1,9 @@
+mce (1.33.3) unstable; urgency=low
+
+  * [mce] Add support for hammerhead magnetic lid sensor. Fixes JB#21639
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 08 Aug 2014 16:03:16 +0300
+
 mce (1.33.2) unstable; urgency=low
 
   * [mce] Improve upower battery device detection. Fixes JB#21849
