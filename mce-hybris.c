@@ -529,6 +529,22 @@ bool mce_hybris_indicator_set_pattern(int r, int g, int b, int ms_on, int ms_off
   return !real ? false : real(r,g,b, ms_on, ms_off);
 }
 
+/** Query if currently active led backend can support breathing
+ *
+ * @return true if breathing can be requested, false otherwise
+ */
+bool
+mce_hybris_indicator_can_breathe(void)
+{
+  static bool (*real)(void) = 0;
+  RESOLVE;
+
+  /* If the plugin does not have this method, err on the safe side
+   * and assume that breathing is not ok */
+
+  return !real ? false : real();
+}
+
 /** Enable/disable timer based led breathing
  *
  * @param enable true for smooth sw transitions, false for hw blinking only
