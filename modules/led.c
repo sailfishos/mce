@@ -1193,6 +1193,11 @@ static void allow_sw_breathing(bool enable)
 {
 	static bool current = false;
 
+	/* If led backend does not support breathing make sure we do
+	 * not grab a useless wakelock and block suspend unnecessarily */
+	if( !mce_hybris_indicator_can_breathe() )
+		enable = false;
+
 	if( current == enable )
 		goto EXIT;
 
