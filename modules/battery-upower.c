@@ -284,6 +284,29 @@ static bool uprop_get_double(const uprop_t *self, double *val)
     return res;
 }
 
+/** Get property value as string
+ *
+ * @param self property
+ * @param val  where to store the string
+ *
+ * @return true on success, false on failure
+ */
+static bool uprop_get_string(const uprop_t *self, const char **val)
+{
+    bool res = true;
+    switch( self->p_type ) {
+    case DBUS_TYPE_STRING:
+    case DBUS_TYPE_OBJECT_PATH:
+    case DBUS_TYPE_SIGNATURE:
+      *val = self->p_val.s;
+      break;
+    default:
+        res = false;
+        break;
+    }
+    return res;
+}
+
 /** Create propety object
  *
  * @param key property name
@@ -452,6 +475,24 @@ static bool updev_get_double(const updev_t *self, const char *key, double *val)
     return res;
 }
 
+/** Get device object property value as string
+ *
+ * @param self device object
+ * @param key  property name
+ * @param val  where to store the string
+ *
+ * @return true on success, otherwise false
+ */
+static bool updev_get_string(const updev_t *self, const char *key,
+                             const char **val)
+{
+    bool res = false;
+    uprop_t *prop = updev_get_prop(self, key);
+    if( prop )
+        res = uprop_get_string(prop, val);
+    return res;
+}
+
 /** Device object is battery predicate
  *
  * @param self device object
@@ -465,22 +506,15 @@ static bool updev_is_battery(const updev_t *self)
     if( !self )
         goto EXIT;
 
-    int    type   = UPOWER_TYPE_UNKNOWN;
-    int    tech   = UPOWER_TECHNOLOGY_UNKNOWN;
-    double energy = 0.0; // [Wh]
+    const char *native_path = 0;
 
-    if( !updev_get_int(self, "Type", &type) )
+    if( !updev_get_string(self, "NativePath", &native_path) )
         goto EXIT;
 
-    if( !updev_get_int(self, "Technology", &tech) )
+    if( !native_path || strcmp(native_path, "battery") )
         goto EXIT;
 
-    if( !updev_get_double(self, "EnergyFull", &energy) )
-        goto EXIT;
-
-    is_battery = (type == UPOWER_TYPE_BATTERY &&
-                  tech != UPOWER_TECHNOLOGY_UNKNOWN &&
-                  energy > 0);
+    is_battery = true;
 
 EXIT:
     return is_battery;
