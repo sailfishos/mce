@@ -448,7 +448,7 @@ cpu_keepalive_timer_cb(gpointer data)
 
   if( timer_id != 0 )
   {
-    mce_log(LL_DEVEL, "cpu-keepalive ended");
+    mce_log(LL_WARN, "cpu-keepalive ended");
     timer_id = 0;
 
 #ifdef ENABLE_WAKELOCKS
@@ -479,13 +479,19 @@ static
 void
 cpu_keepalive_set_timer(time_t when)
 {
-  cpu_keepalive_cancel_timer();
+  static time_t prev = 0;
 
   time_t now = cpu_keepalive_get_time();
 
   if( when < now ) when = now;
 
-  mce_log(LL_NOTICE, "cpu-keepalive ends at T%+d", (int)(now - when));
+  if( !timer_id || prev != when )
+  {
+    prev = when;
+    mce_log(LL_WARN, "cpu-keepalive ends at T%+d", (int)(now - when));
+  }
+
+  cpu_keepalive_cancel_timer();
 
   if( now < when )
   {
@@ -955,7 +961,7 @@ cpu_keepalive_wakeup_cb(DBusMessage *const msg)
     goto EXIT;
   }
 
-  mce_log(LL_DEVEL, "got keepalive wakeup from %s",
+  mce_log(LL_WARN, "got keepalive wakeup from %s",
           mce_dbus_get_name_owner_ident(sender));
 
   cpu_keepalive_wakeup(sender);
@@ -1146,7 +1152,7 @@ const gchar *g_module_check_init(GModule *module)
 
 EXIT:
 
-  mce_log(LL_NOTICE, "loaded %s, status: %s", module_name, status ?: "ok");
+  mce_log(LL_DEBUG, "loaded %s, status: %s", module_name, status ?: "ok");
 
   return status;
 }
@@ -1172,7 +1178,7 @@ void g_module_unload(GModule *module)
     dbus_connection_unref(systembus), systembus = 0;
   }
 
-  mce_log(LL_NOTICE, "unloaded %s", module_name);
+  mce_log(LL_DEBUG, "unloaded %s", module_name);
 
   return;
 }
