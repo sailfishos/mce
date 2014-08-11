@@ -85,11 +85,19 @@ static guint timer_id = 0;
 # define MCE_CPU_KEEPALIVE_MAXIMUM_PERIOD \
    (MCE_CPU_KEEPALIVE_SUGGESTED_PERIOD + 15)
 
-/** Maximum delay between rtc wakeup and the 1st keep alive request */
-#define MCE_RTC_WAKEUP_1ST_TIMEOUT_SECONDS   2
+/** Maximum delay between rtc wakeup and the 1st keep alive request
+ *
+ * FIXME: The rtc wakeup timeouts need to be tuned once timed and
+ *        alarm-ui are modified to use iphb wakeups + cpu-keepalive.
+ *
+ *        For now we need to delay going back to suspend just in case the wakeup
+ *        is needed for showing an alarm and there are hiccups with starting
+ *        alarm-ui.
+ */
+#define MCE_RTC_WAKEUP_1ST_TIMEOUT_SECONDS   5
 
 /** Extend rtc wakeup timeout if at least one keep alive request is received */
-#define MCE_RTC_WAKEUP_2ND_TIMEOUT_SECONDS   4
+#define MCE_RTC_WAKEUP_2ND_TIMEOUT_SECONDS   5
 
 /* ========================================================================= *
  *
