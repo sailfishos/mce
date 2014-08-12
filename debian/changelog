@@ -1,3 +1,9 @@
+mce (1.33.4) unstable; urgency=low
+
+  * [mce] Do not use lpm display mode by default. Contributes to JB#21920
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 12 Aug 2014 12:51:20 +0300
+
 mce (1.33.3) unstable; urgency=low
 
   * [mce] Add support for hammerhead magnetic lid sensor. Fixes JB#21639
