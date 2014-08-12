@@ -2331,6 +2331,45 @@ static void xmce_get_powerkey_blanking(void)
 }
 
 /* ------------------------------------------------------------------------- *
+ * display off request override
+ * ------------------------------------------------------------------------- */
+
+/** Lookup table for display off request override values
+ */
+static const symbol_t display_off_override[] = {
+        { "disabled", DISPLAY_OFF_OVERRIDE_DISABLED },
+        { "use-lpm",  DISPLAY_OFF_OVERRIDE_USE_LPM  },
+        { NULL,       -1                            }
+};
+
+/** Set display off override
+ *
+ * @param args string that can be parsed to display off override value
+ */
+static bool xmce_set_display_off_override(const char *args)
+{
+        debugf("%s(%s)\n", __FUNCTION__, args);
+        int val = lookup(display_off_override, args);
+        if( val < 0 ) {
+                errorf("%s: invalid display off override value\n", args);
+                exit(EXIT_FAILURE);
+        }
+        mcetool_gconf_set_int(MCE_GCONF_DISPLAY_OFF_OVERRIDE, val);
+        return true;
+}
+
+/** Get current display off override from mce and print it out
+ */
+static void xmce_get_display_off_override(void)
+{
+        gint        val = 0;
+        const char *txt = 0;
+        if( mcetool_gconf_get_int(MCE_GCONF_DISPLAY_OFF_OVERRIDE, &val) )
+                txt = rlookup(display_off_override, val);
+        printf("%-"PAD1"s %s \n", "Display off override mode:", txt ?: "unknown");
+}
+
+/* ------------------------------------------------------------------------- *
  * doubletab
  * ------------------------------------------------------------------------- */
 
@@ -3041,6 +3080,7 @@ static bool xmce_get_status(const char *args)
         xmce_get_doubletap_wakeup();
         xmce_get_powerkey_action();
         xmce_get_powerkey_blanking();
+        xmce_get_display_off_override();
         xmce_get_low_power_mode();
         xmce_get_als_mode();
         xmce_get_ps_mode();
@@ -3373,6 +3413,14 @@ static const mce_opt_t options[] =
                 .usage       =
                         "set the doubletap blanking mode; valid modes are:\n"
                         "'off', 'lpm'\n"
+        },
+        {
+                .name        = "set-display-off-override",
+                .with_arg    = xmce_set_display_off_override,
+                .values      = "disabled|use-lpm",
+                .usage       =
+                        "set the display off request override; valid modes are:\n"
+                        "'disabled', 'use-lpm'\n"
         },
         {
                 .name        = "enable-radio",

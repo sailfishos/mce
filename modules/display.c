@@ -26,8 +26,6 @@
  * as soon as lipstick has been modified to use actual lpm mode dbus
  * requests.
  */
-#define ENABLE_LPM_HACK 1
-
 #include "display.h"
 
 #include "../mce.h"
@@ -46,10 +44,6 @@
 
 #ifdef ENABLE_WAKELOCKS
 # include "../libwakelock.h"
-#endif
-
-#if ENABLE_LPM_HACK
-#include "../powerkey.h"
 #endif
 
 #include <linux/fb.h>
@@ -6638,6 +6632,12 @@ static gboolean mdy_dbus_handle_display_dim_req(DBusMessage *const msg)
     return status;
 }
 
+/** Override mode for display off requests made over D-Bus */
+static gint mdy_dbus_display_off_override = DISPLAY_OFF_OVERRIDE_DISABLED;
+
+/** GConf notifier id for mdy_dbus_display_off_override */
+static guint mdy_dbus_display_off_override_gconf_cb_id = 0;
+
 /**
  * D-Bus callback for the display off method call
  *
@@ -6646,12 +6646,8 @@ static gboolean mdy_dbus_handle_display_dim_req(DBusMessage *const msg)
  */
 static gboolean mdy_dbus_handle_display_off_req(DBusMessage *const msg)
 {
-#if ENABLE_LPM_HACK
-    gint blanking_mode = PWRKEY_BLANK_TO_OFF;
-    mce_gconf_get_int(MCE_GCONF_POWERKEY_BLANKING_MODE, &blanking_mode);
-    if( blanking_mode == PWRKEY_BLANK_TO_LPM )
+    if( mdy_dbus_display_off_override == DISPLAY_OFF_OVERRIDE_USE_LPM )
         return mdy_dbus_handle_display_lpm_req(msg);
-#endif
 
     dbus_bool_t no_reply = dbus_message_get_no_reply(msg);
     gboolean status = FALSE;
@@ -7693,6 +7689,11 @@ static void mdy_gconf_cb(GConfClient *const gcc, const guint id,
         mce_log(LL_NOTICE, "fade duration / unblank = %d",
                 mdy_brightness_fade_duration_unblank_ms);
     }
+    else if( id == mdy_dbus_display_off_override_gconf_cb_id ) {
+        mdy_dbus_display_off_override = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "display off override = %d",
+                mdy_dbus_display_off_override);
+    }
     else {
         mce_log(LL_WARN, "Spurious GConf value received; confused!");
     }
@@ -7937,6 +7938,14 @@ static void mdy_gconf_init(void)
                            &mdy_brightness_fade_duration_unblank_ms_gconf_cb_id);
     mce_gconf_get_int(MCE_GCONF_BRIGHTNESS_FADE_UNBLANK_MS,
                       &mdy_brightness_fade_duration_unblank_ms);
+
+    /* Override mode for display off requests made over D-Bus */
+    mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
+                           MCE_GCONF_DISPLAY_OFF_OVERRIDE,
+                           mdy_gconf_cb,
+                           &mdy_dbus_display_off_override_gconf_cb_id);
+    mce_gconf_get_int(MCE_GCONF_DISPLAY_OFF_OVERRIDE,
+                      &mdy_dbus_display_off_override);
 }
 
 static void mdy_gconf_quit(void)

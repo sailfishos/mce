@@ -1259,6 +1259,12 @@ static const setting_t gconf_defaults[] =
     .def  = "90",
   },
   {
+    // MCE_GCONF_DISPLAY_OFF_OVERRIDE @ modules/display.h
+    .key  = "/system/osso/dsm/display/display_off_override",
+    .type = "i",
+    .def  = "0", // = DISPLAY_OFF_OVERRIDE_DISABLED
+  },
+  {
     // MCE_GCONF_TK_AUTO_BLANK_DISABLE_PATH @ tklock.h
     .key  = "/system/osso/dsm/locks/tklock_blank_disable",
     .type = "i",
