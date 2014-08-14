@@ -1129,6 +1129,12 @@ UPDATE:
                 mdy_display_state_name(want_state),
                 mdy_display_state_name(next_state));
     }
+
+    /* Note: An attempt to keep the current state can lead into this
+     *       datapipe input filter returning transiend power up/down
+     *       or undefined states. These must be ignored at the datapipe
+     *       output handler display_state_req_pipe(). */
+
     return GINT_TO_POINTER(next_state);
 }
 
@@ -1141,7 +1147,25 @@ UPDATE:
 static void mdy_datapipe_display_state_req_cb(gconstpointer data)
 {
     display_state_t next_state = GPOINTER_TO_INT(data);
-    mdy_stm_push_target_change(next_state);
+    switch( next_state ) {
+    case MCE_DISPLAY_OFF:
+    case MCE_DISPLAY_LPM_OFF:
+    case MCE_DISPLAY_LPM_ON:
+    case MCE_DISPLAY_DIM:
+    case MCE_DISPLAY_ON:
+        /* Feed valid stable states into the state machine */
+        mdy_stm_push_target_change(next_state);
+        break;
+
+    default:
+    case MCE_DISPLAY_UNDEF:
+    case MCE_DISPLAY_POWER_UP:
+    case MCE_DISPLAY_POWER_DOWN:
+        /* Ignore transient or otherwise invalid display states */
+        mce_log(LL_WARN, "%s is not valid target state; ignoring",
+                mdy_display_state_name(next_state));
+        break;
+    }
 }
 
 /** Handle display_state_pipe notifications
