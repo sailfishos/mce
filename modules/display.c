@@ -7950,7 +7950,60 @@ static void mdy_gconf_init(void)
 
 static void mdy_gconf_quit(void)
 {
-    // FIXME: actually remove change notifiers
+    /* Remove config change notifiers */
+
+    mce_gconf_notifier_remove(mdy_brightness_step_count_gconf_id),
+        mdy_brightness_step_count_gconf_id = 0;
+
+    mce_gconf_notifier_remove(mdy_brightness_step_size_gconf_id),
+        mdy_brightness_step_size_gconf_id = 0;
+
+    mce_gconf_notifier_remove(mdy_brightness_setting_gconf_id),
+        mdy_brightness_setting_gconf_id = 0;
+
+    mce_gconf_notifier_remove(mdy_disp_blank_timeout_gconf_cb_id),
+        mdy_disp_blank_timeout_gconf_cb_id = 0;
+
+    mce_gconf_notifier_remove(mdy_disp_never_blank_gconf_cb_id),
+        mdy_disp_never_blank_gconf_cb_id = 0;
+
+    mce_gconf_notifier_remove(mdy_adaptive_dimming_enabled_gconf_cb_id),
+        mdy_adaptive_dimming_enabled_gconf_cb_id = 0;
+
+    mce_gconf_notifier_remove(mdy_adaptive_dimming_threshold_gconf_cb_id),
+        mdy_adaptive_dimming_threshold_gconf_cb_id = 0;
+
+    mce_gconf_notifier_remove(mdy_disp_dim_timeout_gconf_cb_id),
+        mdy_disp_dim_timeout_gconf_cb_id = 0;
+
+    mce_gconf_notifier_remove(mdy_use_low_power_mode_gconf_cb_id),
+        mdy_use_low_power_mode_gconf_cb_id = 0;
+
+    mce_gconf_notifier_remove(mdy_blanking_inhibit_mode_gconf_cb_id),
+        mdy_blanking_inhibit_mode_gconf_cb_id = 0;
+
+    mce_gconf_notifier_remove(mdy_compositor_core_delay_gconf_cb_id),
+        mdy_compositor_core_delay_gconf_cb_id = 0;
+
+    mce_gconf_notifier_remove(mdy_brightness_fade_duration_def_ms_gconf_cb_id),
+        mdy_brightness_fade_duration_def_ms_gconf_cb_id = 0;
+
+    mce_gconf_notifier_remove(mdy_brightness_fade_duration_dim_ms_gconf_cb_id),
+        mdy_brightness_fade_duration_dim_ms_gconf_cb_id = 0;
+
+    mce_gconf_notifier_remove(mdy_brightness_fade_duration_als_ms_gconf_cb_id),
+        mdy_brightness_fade_duration_als_ms_gconf_cb_id = 0;
+
+    mce_gconf_notifier_remove(mdy_brightness_fade_duration_blank_ms_gconf_cb_id),
+        mdy_brightness_fade_duration_blank_ms_gconf_cb_id = 0;
+
+    mce_gconf_notifier_remove(mdy_brightness_fade_duration_unblank_ms_gconf_cb_id),
+        mdy_brightness_fade_duration_unblank_ms_gconf_cb_id = 0;
+
+    mce_gconf_notifier_remove(mdy_dbus_display_off_override_gconf_cb_id),
+        mdy_dbus_display_off_override_gconf_cb_id = 0;
+
+    /* Free dynamic data obtained from config */
 
     g_slist_free(mdy_possible_dim_timeouts), mdy_possible_dim_timeouts = 0;
 }
