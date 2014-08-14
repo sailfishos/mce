@@ -2446,6 +2446,12 @@ static void tklock_uiexcept_begin(uiexctype_t type, int64_t linger)
  * LOW POWER MODE UI STATE MACHINE
  * ========================================================================= */
 
+/** Bitmap of automatic lpm triggering modes */
+static gint tklock_lpmui_triggering = LPMUI_TRIGGERING_FROM_POCKET;
+
+/** GConf notifier id for tklock_lpmui_triggering */
+static guint tklock_lpmui_triggering_cb_id = 0;
+
 /* Proximity change time limits for low power mode triggering */
 enum
 {
@@ -2550,6 +2556,10 @@ EXIT:
 static bool tklock_lpmui_probe_from_pocket(void)
 {
     bool    res = false;
+
+    if( !(tklock_lpmui_triggering & LPMUI_TRIGGERING_FROM_POCKET) )
+        goto EXIT;
+
     int64_t now = tklock_monotick_get();
     int64_t t;
 
@@ -2583,6 +2593,10 @@ EXIT:
 static bool tklock_lpmui_probe_on_table(void)
 {
     bool    res  = false;
+
+    if( !(tklock_lpmui_triggering & LPMUI_TRIGGERING_HOVER_OVER) )
+        goto EXIT;
+
     int64_t t = tklock_monotick_get();
 
     for( size_t i = 0; ; i += 2 ) {
@@ -3225,6 +3239,12 @@ static void tklock_gconf_cb(GConfClient *const gcc, const guint id,
         mce_log(LL_NOTICE, "doubletap_enable_mode: %d -> %d",
                 old, doubletap_enable_mode);
     }
+    else if( id == tklock_lpmui_triggering_cb_id ) {
+        gint old = tklock_lpmui_triggering;
+        tklock_lpmui_triggering = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "tklock_lpmui_triggering: %d -> %d",
+                old, tklock_lpmui_triggering);
+    }
     else {
         mce_log(LL_WARN, "Spurious GConf value received; confused!");
     }
@@ -3280,6 +3300,14 @@ static void tklock_gconf_init(void)
                            &doubletap_enable_mode_cb_id);
 
     mce_gconf_get_int(MCE_GCONF_DOUBLETAP_MODE, &doubletap_enable_mode);
+
+    /* Bitmap of automatic lpm triggering modes */
+    mce_gconf_notifier_add(MCE_GCONF_LOCK_PATH,
+                           MCE_GCONF_LPMUI_TRIGGERING,
+                           tklock_gconf_cb,
+                           &tklock_lpmui_triggering_cb_id);
+
+    mce_gconf_get_int(MCE_GCONF_LPMUI_TRIGGERING, &tklock_lpmui_triggering);
 }
 
 /** Remove gconf change notifiers
@@ -3297,6 +3325,9 @@ static void tklock_gconf_quit(void)
 
     mce_gconf_notifier_remove(doubletap_enable_mode_cb_id),
         doubletap_enable_mode_cb_id = 0;
+
+    mce_gconf_notifier_remove(tklock_lpmui_triggering_cb_id),
+        tklock_lpmui_triggering_cb_id = 0;
 }
 
 /* ========================================================================= *

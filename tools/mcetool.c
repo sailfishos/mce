@@ -1487,6 +1487,102 @@ static char *mcetool_parse_token(char **ppos)
 
 }
 
+/** Convert bitmap to human readable string via lookup table
+ *
+ * @param lut  array of symbol_t objects
+ * @param mask mask of bits to convert
+ * @param buff buffer to form string in
+ * @param size size of buff
+ *
+ * @return buff, containing mask in human readable form
+ */
+static char *mcetool_format_bitmask(const symbol_t *lut, int mask,
+                                    char *buff, size_t size)
+{
+        const char *none = rlookup(lut, 0) ?: "none";
+
+        char *pos = buff;
+        char *end = buff + size - 1;
+
+        auto void add(const char *str)
+        {
+                if( pos > buff && pos < end )
+                        *pos++ = ',';
+                while( pos < end && *str )
+                        *pos++ = *str++;
+        }
+
+        if( !mask ) {
+                add(none);
+                goto EXIT;
+        }
+
+        for( int bit = 1; bit > 0; bit <<= 1 ) {
+                if( !(mask & bit) )
+                        continue;
+
+                const char *name = rlookup(lut, bit);
+                if( name ) {
+                        mask &= ~bit;
+                        add(name);
+                }
+        }
+
+        if( mask ) {
+                char hex[32];
+                snprintf(hex, sizeof hex, "0x%u", (unsigned)mask);
+                add(hex);
+        }
+EXIT:
+        *pos = 0;
+
+        return buff;
+}
+
+/** Convert comma separated list of bit names into bitmask
+ *
+ * Note: the function will exit() if unknown bit names are given
+ *
+ * @param lut  array of symbol_t objects
+ * @param args string with comma separated bit names
+ *
+ * @return bitmask of given bit names
+ */
+static unsigned mcetool_parse_bitmask(const symbol_t *lut, const char *args)
+{
+        const char *none = rlookup(lut, 0) ?: "none";
+
+        unsigned  mask = 0;
+        char     *work = 0;
+
+        if( !args || !*args || !strcmp(args, none) )
+                goto EXIT;
+
+        if( !(work = strdup(args)) )
+                goto EXIT;
+
+        int   bit;
+        char *end;
+
+        for( char *pos = work; pos; pos = end )
+        {
+                if( (end = strpbrk(pos, ",|+")) )
+                        *end++ = 0;
+
+                if( !(bit = lookup(lut, pos)) ) {
+                        errorf("%s: not a valid bit name\n", pos);
+                        exit(EXIT_FAILURE);
+                }
+
+                mask |= bit;
+        }
+
+EXIT:
+        free(work);
+
+        return mask;
+}
+
 /* ------------------------------------------------------------------------- *
  * leds
  * ------------------------------------------------------------------------- */
@@ -1809,6 +1905,43 @@ static void xmce_get_radio_states(void)
 
         printf("\t%-"PAD2"s %s\n", "FM transmitter:",
                 mask & MCE_RADIO_STATE_FMTX ? "enabled" : "disabled");
+}
+
+/* ------------------------------------------------------------------------- *
+ * lpmui triggering
+ * ------------------------------------------------------------------------- */
+
+/** Lookuptable for mce radio state bits */
+static const symbol_t lpmui_triggering_lut[] =
+{
+        { "from-pocket",  LPMUI_TRIGGERING_FROM_POCKET },
+        { "hover-over",   LPMUI_TRIGGERING_HOVER_OVER  },
+        { "disabled",     LPMUI_TRIGGERING_NONE        },
+        { 0,              0                            }
+};
+
+/** Set automatic lpm ui triggering mode
+ *
+ * @param args string of comma separated lpm ui triggering names
+ */
+static bool xmce_set_lpmui_triggering(const char *args)
+{
+        int mask = mcetool_parse_bitmask(lpmui_triggering_lut, args);
+        mcetool_gconf_set_int(MCE_GCONF_LPMUI_TRIGGERING, mask);
+        return true;
+}
+
+/** Get current lpm ui triggering mode from mce and print it out
+ */
+static void xmce_get_lpmui_triggering(void)
+{
+        gint mask = 0;
+        char work[64] = "unknown";
+        if( mcetool_gconf_get_int(MCE_GCONF_LPMUI_TRIGGERING, &mask) )
+                mcetool_format_bitmask(lpmui_triggering_lut, mask,
+                                       work, sizeof work);
+
+        printf("%-"PAD1"s %s\n", "LPM UI triggering:", work);
 }
 
 /* ------------------------------------------------------------------------- *
@@ -2689,7 +2822,6 @@ static bool xmce_set_touch_unblock_delay(const char *args)
                 errorf("%d: invalid touch unblock delay\n", val);
                 return false;
         }
-
         mcetool_gconf_set_int(MCE_GCONF_TOUCH_UNBLOCK_DELAY_PATH, val);
 
         return true;
@@ -3082,6 +3214,7 @@ static bool xmce_get_status(const char *args)
         xmce_get_powerkey_blanking();
         xmce_get_display_off_override();
         xmce_get_low_power_mode();
+        xmce_get_lpmui_triggering();
         xmce_get_als_mode();
         xmce_get_ps_mode();
         xmce_get_dim_timeouts();
@@ -3481,6 +3614,14 @@ static const mce_opt_t options[] =
                 .usage       =
                         "set the low power mode; valid modes are:\n"
                         "'enabled' and 'disabled'\n"
+        },
+        {
+                .name        = "set-lpmui-triggering",
+                .with_arg    = xmce_set_lpmui_triggering,
+                .values      = "bit1[,bit2][...]",
+                .usage       =
+                        "set the low power mode ui triggering; valid bits are:\n"
+                        "'disabled', 'from-pocket' and 'hover-over'\n"
         },
         {
                 .name        = "set-suspend-policy",

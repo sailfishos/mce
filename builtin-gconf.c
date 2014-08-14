@@ -1163,6 +1163,12 @@ static const setting_t gconf_defaults[] =
     .def  = "1",
   },
   {
+    // MCE_GCONF_LPMUI_TRIGGERING @ tklock.h
+    .key  = "/system/osso/dsm/locks/lpm_triggering",
+    .type = "i",
+    .def  = "1", // = LPMUI_TRIGGERING_FROM_POCKET
+  },
+  {
     // MCE_GCONF_BLANKING_INHIBIT_MODE @ modules/display.h
     .key  = "/system/osso/dsm/display/inhibit_blank_mode",
     .type = "i",

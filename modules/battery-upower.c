@@ -271,8 +271,8 @@ static bool uprop_get_string(const uprop_t *self, const char **val)
     case DBUS_TYPE_STRING:
     case DBUS_TYPE_OBJECT_PATH:
     case DBUS_TYPE_SIGNATURE:
-      *val = self->p_val.s;
-      break;
+        *val = self->p_val.s;
+        break;
     default:
         res = false;
         break;

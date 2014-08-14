@@ -90,6 +90,22 @@
 /** Path to the automatic tklock dim/blank disable GConf setting */
 #define MCE_GCONF_TK_AUTO_BLANK_DISABLE_PATH	MCE_GCONF_LOCK_PATH "/tklock_blank_disable"
 
+/** Automatic lpm triggering modes GConf setting */
+# define MCE_GCONF_LPMUI_TRIGGERING             MCE_GCONF_LOCK_PATH "/lpm_triggering"
+
+/** Automatic lpm triggering modes */
+enum
+{
+    /** Automatic triggering disabled */
+    LPMUI_TRIGGERING_NONE        = 0,
+
+    /** Proximity sensor based out-of-pocket triggering */
+    LPMUI_TRIGGERING_FROM_POCKET = 1<<0,
+
+    /** Proximity sensor based hover-over triggering */
+    LPMUI_TRIGGERING_HOVER_OVER  = 1<<1,
+};
+
 /** Name of D-Bus callback to provide to Touchscreen/Keypad Lock SystemUI */
 #define MCE_TKLOCK_CB_REQ		"tklock_callback"
 
