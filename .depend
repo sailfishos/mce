@@ -481,7 +481,6 @@ modules/display.o:\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce.h\
-	powerkey.h\
 	modules/display.h\
 
 modules/display.pic.o:\
@@ -499,7 +498,6 @@ modules/display.pic.o:\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce.h\
-	powerkey.h\
 	modules/display.h\
 
 modules/doubletap.o:\
@@ -781,7 +779,6 @@ tests/ut/ut_display.o:\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce.h\
-	powerkey.h\
 	modules/display.c\
 	modules/display.h\
 	tests/ut/common.h\
@@ -801,7 +798,6 @@ tests/ut/ut_display.pic.o:\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce.h\
-	powerkey.h\
 	modules/display.c\
 	modules/display.h\
 	tests/ut/common.h\
@@ -822,7 +818,6 @@ tests/ut/ut_display_blanking_inhibit.o:\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce.h\
-	powerkey.h\
 	modules/display.c\
 	modules/display.h\
 	tests/ut/common.h\
@@ -843,7 +838,6 @@ tests/ut/ut_display_blanking_inhibit.pic.o:\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce.h\
-	powerkey.h\
 	modules/display.c\
 	modules/display.h\
 	tests/ut/common.h\
@@ -864,7 +858,6 @@ tests/ut/ut_display_conf.o:\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce.h\
-	powerkey.h\
 	modules/display.c\
 	modules/display.h\
 	tests/ut/common.h\
@@ -885,7 +878,6 @@ tests/ut/ut_display_conf.pic.o:\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce.h\
-	powerkey.h\
 	modules/display.c\
 	modules/display.h\
 	tests/ut/common.h\
@@ -906,7 +898,6 @@ tests/ut/ut_display_filter.o:\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce.h\
-	powerkey.h\
 	modules/display.c\
 	modules/display.h\
 	tests/ut/common.h\
@@ -927,7 +918,6 @@ tests/ut/ut_display_filter.pic.o:\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce.h\
-	powerkey.h\
 	modules/display.c\
 	modules/display.h\
 	tests/ut/common.h\
@@ -948,7 +938,6 @@ tests/ut/ut_display_stm.o:\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce.h\
-	powerkey.h\
 	modules/display.c\
 	modules/display.h\
 	tests/ut/common.h\
@@ -969,7 +958,6 @@ tests/ut/ut_display_stm.pic.o:\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce.h\
-	powerkey.h\
 	modules/display.c\
 	modules/display.h\
 	tests/ut/common.h\

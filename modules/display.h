@@ -146,6 +146,19 @@
 /** Unresponsive lipstick core dump delay */
 #define MCE_GCONF_LIPSTICK_CORE_DELAY                   MCE_GCONF_DISPLAY_PATH "/lipstick_core_dump_delay"
 
+/** Blanking mode for display off requests GConf setting */
+# define MCE_GCONF_DISPLAY_OFF_OVERRIDE                 MCE_GCONF_DISPLAY_PATH"/display_off_override"
+
+/** Values for MCE_GCONF_DISPLAY_OFF_OVERRIDE setting */
+typedef enum
+{
+	/** Display off request turns display off */
+	DISPLAY_OFF_OVERRIDE_DISABLED,
+
+	/** Display off request puts display to lpm state */
+	DISPLAY_OFF_OVERRIDE_USE_LPM,
+} display_off_blanking_mode_t;
+
 /** Default brightness fade duration [ms]
  *
  * Used for all display state changes that do not have
