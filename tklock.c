@@ -3937,9 +3937,9 @@ EXIT:
 }
 
 /** Array of dbus message handlers */
-static mce_dbus_handler_t handlers[] =
+static mce_dbus_handler_t tklock_dbus_handlers[] =
 {
-    /* signals */
+    /* signals - inbound */
     {
         .interface = "org.nemomobile.lipstick.devicelock",
         .name      = "stateChanged",
@@ -3947,36 +3947,64 @@ static mce_dbus_handler_t handlers[] =
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
         .callback  = tklock_dbus_device_lock_changed_cb,
     },
+    /* signals - outbound (for Introspect purposes only) */
+    {
+        .interface = MCE_SIGNAL_IF,
+        .name      = MCE_TKLOCK_MODE_SIG,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .args      =
+                        "    <arg name=\"tklock_mode\" type=\"s\"/>\n"
+    },
+    {
+        .interface = MCE_SIGNAL_IF,
+        .name      = MCE_LPM_UI_MODE_SIG,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .args      =
+                        "    <arg name=\"lpm_mode\" type=\"s\"/>\n"
+    },
     /* method calls */
     {
         .interface = MCE_REQUEST_IF,
         .name      = MCE_TKLOCK_MODE_GET,
         .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
         .callback  = tklock_dbus_mode_get_req_cb,
+        .args      =
+            "    <arg direction=\"out\" name=\"mode_name\" type=\"s\"/>\n"
     },
     {
         .interface = MCE_REQUEST_IF,
         .name      = MCE_TKLOCK_MODE_CHANGE_REQ,
         .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
         .callback  = tklock_dbus_mode_change_req_cb,
+        .args      =
+            "    <arg direction=\"in\" name=\"mode_name\" type=\"s\"/>\n"
     },
     {
         .interface = MCE_REQUEST_IF,
         .name      = MCE_TKLOCK_CB_REQ,
         .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
         .callback  = tklock_dbus_systemui_callback_cb,
+        .args      =
+            "    <arg direction=\"in\" name=\"lock_status\" type=\"i\"/>\n"
     },
     {
         .interface = MCE_REQUEST_IF,
         .name      = "notification_begin_req",
         .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
         .callback  = tklock_dbus_notification_beg_cb,
+        .args      =
+            "    <arg direction=\"in\" name=\"notification_name\" type=\"s\"/>\n"
+            "    <arg direction=\"in\" name=\"duration_time\" type=\"i\"/>\n"
+            "    <arg direction=\"in\" name=\"activity_extend_time\" type=\"i\"/>\n"
     },
     {
         .interface = MCE_REQUEST_IF,
         .name      = "notification_end_req",
         .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
         .callback  = tklock_dbus_notification_end_cb,
+        .args      =
+            "    <arg direction=\"in\" name=\"notification_name\" type=\"s\"/>\n"
+            "    <arg direction=\"in\" name=\"linger_time\" type=\"i\"/>\n"
     },
     /* sentinel */
     {
@@ -3988,14 +4016,14 @@ static mce_dbus_handler_t handlers[] =
  */
 static void mce_tklock_init_dbus(void)
 {
-    mce_dbus_handler_register_array(handlers);
+    mce_dbus_handler_register_array(tklock_dbus_handlers);
 }
 
 /** Remove dbus handlers
  */
 static void mce_tklock_quit_dbus(void)
 {
-    mce_dbus_handler_unregister_array(handlers);
+    mce_dbus_handler_unregister_array(tklock_dbus_handlers);
 }
 
 /* ========================================================================= *

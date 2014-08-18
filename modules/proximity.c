@@ -997,6 +997,44 @@ EXIT:
 	return status;
 }
 
+/** Array of dbus message handlers */
+static mce_dbus_handler_t proximity_dbus_handlers[] =
+{
+	/* method calls */
+	{
+		.interface = MCE_REQUEST_IF,
+		.name      = MCE_REQ_PS_ENABLE,
+		.type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+		.callback  = proximity_sensor_enable_req_dbus_cb,
+		.args      = ""
+	},
+	{
+		.interface = MCE_REQUEST_IF,
+		.name      = MCE_REQ_PS_DISABLE,
+		.type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+		.callback  = proximity_sensor_disable_req_dbus_cb,
+		.args      = ""
+	},
+	/* sentinel */
+	{
+		.interface = 0
+	}
+};
+
+/** Add dbus handlers
+ */
+static void mce_proximity_init_dbus(void)
+{
+	mce_dbus_handler_register_array(proximity_dbus_handlers);
+}
+
+/** Remove dbus handlers
+ */
+static void mce_proximity_quit_dbus(void)
+{
+	mce_dbus_handler_unregister_array(proximity_dbus_handlers);
+}
+
 /**
  * Init function for the proximity sensor module
  *
@@ -1026,21 +1064,8 @@ const gchar *g_module_check_init(GModule *module)
 	append_output_trigger_to_datapipe(&submode_pipe,
 					  submode_trigger);
 
-	/* req_proximity_sensor_enable */
-	if (mce_dbus_handler_add(MCE_REQUEST_IF,
-				 MCE_REQ_PS_ENABLE,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_METHOD_CALL,
-				 proximity_sensor_enable_req_dbus_cb) == NULL)
-		goto EXIT;
-
-	/* req_proximity_sensor_disable */
-	if (mce_dbus_handler_add(MCE_REQUEST_IF,
-				 MCE_REQ_PS_DISABLE,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_METHOD_CALL,
-				 proximity_sensor_disable_req_dbus_cb) == NULL)
-		goto EXIT;
+	/* Add dbus handlers */
+	mce_proximity_init_dbus();
 
 	/* PS enabled setting */
 	mce_gconf_notifier_add(MCE_GCONF_PROXIMITY_PATH,
@@ -1064,7 +1089,6 @@ const gchar *g_module_check_init(GModule *module)
 	/* enable/disable sensor based on initial conditions */
 	update_proximity_monitor();
 
-EXIT:
 	return NULL;
 }
 
@@ -1077,6 +1101,9 @@ G_MODULE_EXPORT void g_module_unload(GModule *module);
 void g_module_unload(GModule *module)
 {
 	(void)module;
+
+	/* Remove dbus handlers */
+	mce_proximity_quit_dbus();
 
 	/* Remove triggers/filters from datapipes */
 	remove_output_trigger_from_datapipe(&display_state_pipe,

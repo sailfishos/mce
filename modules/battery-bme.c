@@ -420,6 +420,90 @@ static gboolean request_charger_status(void)
 			 BME_STATUS_INFO_REQ, NULL, DBUS_TYPE_INVALID);
 }
 
+/** Array of dbus message handlers */
+static mce_dbus_handler_t battery_bme_dbus_handlers[] =
+{
+	/* signals */
+	{
+		.interface = BME_SIGNAL_IF,
+		.name      = BME_BATTERY_FULL,
+		.type      = DBUS_MESSAGE_TYPE_SIGNAL,
+		.callback  = battery_full_dbus_cb,
+	},
+	{
+		.interface = BME_SIGNAL_IF,
+		.name      = BME_BATTERY_OK,
+		.type      = DBUS_MESSAGE_TYPE_SIGNAL,
+		.callback  = battery_ok_dbus_cb,
+	},
+	{
+		.interface = BME_SIGNAL_IF,
+		.name      = BME_BATTERY_LOW,
+		.type      = DBUS_MESSAGE_TYPE_SIGNAL,
+		.callback  = battery_low_dbus_cb,
+	},
+	{
+		.interface = BME_SIGNAL_IF,
+		.name      = BME_BATTERY_EMPTY,
+		.type      = DBUS_MESSAGE_TYPE_SIGNAL,
+		.callback  = battery_empty_dbus_cb,
+	},
+	{
+		.interface = BME_SIGNAL_IF,
+		.name      = BME_BATTERY_STATE_UPDATE,
+		.type      = DBUS_MESSAGE_TYPE_SIGNAL,
+		.callback  = battery_state_changed_dbus_cb,
+	},
+	{
+		.interface = BME_SIGNAL_IF,
+		.name      = BME_CHARGER_CHARGING_ON,
+		.type      = DBUS_MESSAGE_TYPE_SIGNAL,
+		.callback  = charger_charging_on_dbus_cb,
+	},
+	{
+		.interface = BME_SIGNAL_IF,
+		.name      = BME_CHARGER_CHARGING_OFF,
+		.type      = DBUS_MESSAGE_TYPE_SIGNAL,
+		.callback  = charger_charging_off_dbus_cb,
+	},
+	{
+		.interface = BME_SIGNAL_IF,
+		.name      = BME_CHARGER_CHARGING_FAILED,
+		.type      = DBUS_MESSAGE_TYPE_SIGNAL,
+		.callback  = charger_charging_failed_dbus_cb,
+	},
+	{
+		.interface = BME_SIGNAL_IF,
+		.name      = BME_CHARGER_CONNECTED,
+		.type      = DBUS_MESSAGE_TYPE_SIGNAL,
+		.callback  = charger_connected_dbus_cb,
+	},
+	{
+		.interface = BME_SIGNAL_IF,
+		.name      = BME_CHARGER_DISCONNECTED,
+		.type      = DBUS_MESSAGE_TYPE_SIGNAL,
+		.callback  = charger_disconnected_dbus_cb,
+	},
+	/* sentinel */
+	{
+		.interface = 0
+	}
+};
+
+/** Add dbus handlers
+ */
+static void battery_bme_init_dbus(void)
+{
+	mce_dbus_handler_register_array(battery_bme_dbus_handlers);
+}
+
+/** Remove dbus handlers
+ */
+static void battery_bme_quit_dbus(void)
+{
+	mce_dbus_handler_unregister_array(battery_bme_dbus_handlers);
+}
+
 /**
  * Init function for the battery and charger module
  *
@@ -433,90 +517,12 @@ const gchar *g_module_check_init(GModule *module)
 {
 	(void)module;
 
-	/* battery_full */
-	if (mce_dbus_handler_add(BME_SIGNAL_IF,
-				 BME_BATTERY_FULL,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_SIGNAL,
-				 battery_full_dbus_cb) == NULL)
-		goto EXIT;
-
-	/* battery_ok */
-	if (mce_dbus_handler_add(BME_SIGNAL_IF,
-				 BME_BATTERY_OK,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_SIGNAL,
-				 battery_ok_dbus_cb) == NULL)
-		goto EXIT;
-
-	/* battery_low */
-	if (mce_dbus_handler_add(BME_SIGNAL_IF,
-				 BME_BATTERY_LOW,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_SIGNAL,
-				 battery_low_dbus_cb) == NULL)
-		goto EXIT;
-
-	/* battery_empty */
-	if (mce_dbus_handler_add(BME_SIGNAL_IF,
-				 BME_BATTERY_EMPTY,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_SIGNAL,
-				 battery_empty_dbus_cb) == NULL)
-		goto EXIT;
-
-	/* battery_state_changed */
-	if (mce_dbus_handler_add(BME_SIGNAL_IF,
-				 BME_BATTERY_STATE_UPDATE,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_SIGNAL,
-				 battery_state_changed_dbus_cb) == NULL)
-		goto EXIT;
-
-	/* charger_charging_on */
-	if (mce_dbus_handler_add(BME_SIGNAL_IF,
-				 BME_CHARGER_CHARGING_ON,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_SIGNAL,
-				 charger_charging_on_dbus_cb) == NULL)
-		goto EXIT;
-
-	/* charger_charging_off */
-	if (mce_dbus_handler_add(BME_SIGNAL_IF,
-				 BME_CHARGER_CHARGING_OFF,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_SIGNAL,
-				 charger_charging_off_dbus_cb) == NULL)
-		goto EXIT;
-
-	/* charger_charging_failed */
-	if (mce_dbus_handler_add(BME_SIGNAL_IF,
-				 BME_CHARGER_CHARGING_FAILED,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_SIGNAL,
-				 charger_charging_failed_dbus_cb) == NULL)
-		goto EXIT;
-
-	/* charger_connected */
-	if (mce_dbus_handler_add(BME_SIGNAL_IF,
-				 BME_CHARGER_CONNECTED,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_SIGNAL,
-				 charger_connected_dbus_cb) == NULL)
-		goto EXIT;
-
-	/* charger_disconnected */
-	if (mce_dbus_handler_add(BME_SIGNAL_IF,
-				 BME_CHARGER_DISCONNECTED,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_SIGNAL,
-				 charger_disconnected_dbus_cb) == NULL)
-		goto EXIT;
+	/* Add dbus handlers */
+	battery_bme_init_dbus();
 
 	/* Update charger status */
 	request_charger_status();
 
-EXIT:
 	return NULL;
 }
 
@@ -531,6 +537,9 @@ G_MODULE_EXPORT void g_module_unload(GModule *module);
 void g_module_unload(GModule *module)
 {
 	(void)module;
+
+	/* Remove dbus handlers */
+	battery_bme_quit_dbus();
 
 	return;
 }

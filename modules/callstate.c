@@ -1579,20 +1579,36 @@ call_state_rethink_forced(void)
  * ========================================================================= */
 
 /** Array of dbus message handlers */
-static mce_dbus_handler_t handlers[] =
+static mce_dbus_handler_t callstate_dbus_handlers[] =
 {
+    /* signals - outbound (for Introspect purposes only) */
+    {
+        .interface = MCE_SIGNAL_IF,
+        .name      = MCE_CALL_STATE_SIG,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .args      =
+            "    <arg name=\"call_state\" type=\"s\"/>\n"
+            "    <arg name=\"call_type\" type=\"s\"/>\n"
+    },
     /* method calls */
     {
         .interface = MCE_REQUEST_IF,
         .name      = MCE_CALL_STATE_CHANGE_REQ,
         .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
         .callback  = change_call_state_dbus_cb,
+        .args      =
+            "    <arg direction=\"in\" name=\"call_state\" type=\"s\"/>\n"
+            "    <arg direction=\"in\" name=\"call_type\" type=\"s\"/>\n"
+            "    <arg direction=\"out\" name=\"accepted\" type=\"b\"/>\n"
     },
     {
         .interface = MCE_REQUEST_IF,
         .name      = MCE_CALL_STATE_GET,
         .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
         .callback  = get_call_state_dbus_cb,
+        .args      =
+            "    <arg direction=\"out\" name=\"call_state\" type=\"s\"/>\n"
+            "    <arg direction=\"out\" name=\"call_type\" type=\"s\"/>\n"
     },
     /* signals */
     {
@@ -1644,6 +1660,20 @@ static mce_dbus_handler_t handlers[] =
     }
 };
 
+/** Add dbus handlers
+ */
+static void mce_callstate_init_dbus(void)
+{
+    mce_dbus_handler_register_array(callstate_dbus_handlers);
+}
+
+/** Remove dbus handlers
+ */
+static void mce_callstate_quit_dbus(void)
+{
+    mce_dbus_handler_unregister_array(callstate_dbus_handlers);
+}
+
 /**
  * Init function for the call state module
  *
@@ -1662,7 +1692,7 @@ const gchar *g_module_check_init(GModule *module)
     modems_init();
 
     /* install dbus message handlers */
-    mce_dbus_handler_register_array(handlers);
+    mce_callstate_init_dbus();
 
     /* initiate async query to find out current state of ofono */
     xofono_name_owner_get();
@@ -1683,7 +1713,7 @@ void g_module_unload(GModule *module)
     (void)module;
 
     /* remove dbus message handlers */
-    mce_dbus_handler_unregister_array(handlers);
+    mce_callstate_quit_dbus();
 
     /* remove all timers & callbacks */
     call_state_rethink_cancel();

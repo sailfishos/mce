@@ -2856,6 +2856,77 @@ EXIT:
 	return;
 }
 
+/** Array of dbus message handlers */
+static mce_dbus_handler_t led_dbus_handlers[] =
+{
+	/* signals - outbound (for Introspect purposes only) */
+	{
+		.interface = MCE_SIGNAL_IF,
+		.name      = MCE_LED_PATTERN_ACTIVATED_SIG,
+		.type      = DBUS_MESSAGE_TYPE_SIGNAL,
+		.args      =
+			"    <arg name=\"pattern_name\" type=\"s\"/>\n"
+	},
+	{
+		.interface = MCE_SIGNAL_IF,
+		.name      = MCE_LED_PATTERN_DEACTIVATED_SIG,
+		.type      = DBUS_MESSAGE_TYPE_SIGNAL,
+		.args      =
+			"    <arg name=\"pattern_name\" type=\"s\"/>\n"
+	},
+	/* method calls */
+	{
+		.interface = MCE_REQUEST_IF,
+		.name      = MCE_ACTIVATE_LED_PATTERN,
+		.type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+		.callback  = led_activate_pattern_dbus_cb,
+		.args      =
+			"    <arg direction=\"in\" name=\"pattern_name\" type=\"s\"/>\n"
+	},
+	{
+		.interface = MCE_REQUEST_IF,
+		.name      = MCE_DEACTIVATE_LED_PATTERN,
+		.type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+		.callback  = led_deactivate_pattern_dbus_cb,
+		.args      =
+			"    <arg direction=\"in\" name=\"pattern_name\" type=\"s\"/>\n"
+	},
+	{
+		.interface = MCE_REQUEST_IF,
+		.name      = MCE_ENABLE_LED,
+		.type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+		.callback  = led_enable_dbus_cb,
+		.args      =
+			""
+	},
+	{
+		.interface = MCE_REQUEST_IF,
+		.name      = MCE_DISABLE_LED,
+		.type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+		.callback  = led_disable_dbus_cb,
+		.args      =
+			""
+	},
+	/* sentinel */
+	{
+		.interface = 0
+	}
+};
+
+/** Add dbus handlers
+ */
+static void mce_led_init_dbus(void)
+{
+	mce_dbus_handler_register_array(led_dbus_handlers);
+}
+
+/** Remove dbus handlers
+ */
+static void mce_led_quit_dbus(void)
+{
+	mce_dbus_handler_unregister_array(led_dbus_handlers);
+}
+
 /**
  * Init function for the LED logic module
  *
@@ -2900,37 +2971,8 @@ const gchar *g_module_check_init(GModule *module)
 	if (init_patterns() == FALSE)
 		goto EXIT;
 
-	/* req_led_pattern_activate */
-	if (mce_dbus_handler_add(MCE_REQUEST_IF,
-				 MCE_ACTIVATE_LED_PATTERN,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_METHOD_CALL,
-				 led_activate_pattern_dbus_cb) == NULL)
-		goto EXIT;
-
-	/* req_led_pattern_deactivate */
-	if (mce_dbus_handler_add(MCE_REQUEST_IF,
-				 MCE_DEACTIVATE_LED_PATTERN,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_METHOD_CALL,
-				 led_deactivate_pattern_dbus_cb) == NULL)
-		goto EXIT;
-
-	/* req_led_enable */
-	if (mce_dbus_handler_add(MCE_REQUEST_IF,
-				 MCE_ENABLE_LED,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_METHOD_CALL,
-				 led_enable_dbus_cb) == NULL)
-		goto EXIT;
-
-	/* req_led_disable */
-	if (mce_dbus_handler_add(MCE_REQUEST_IF,
-				 MCE_DISABLE_LED,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_METHOD_CALL,
-				 led_disable_dbus_cb) == NULL)
-		goto EXIT;
+	/* Add dbus handlers */
+	mce_led_init_dbus();
 
 	/* Initialize sw breathing state data */
 	sw_breathing_init();
@@ -2957,6 +2999,9 @@ void g_module_unload(GModule *module)
 	system_state_t system_state = datapipe_get_gint(system_state_pipe);
 
 	(void)module;
+
+	/* Remove dbus handlers */
+	mce_led_quit_dbus();
 
 	/* Close files */
 	mce_close_output(&led_current_rm_output);

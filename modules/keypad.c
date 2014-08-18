@@ -699,6 +699,38 @@ static void system_state_trigger(gconstpointer data)
 		disable_key_backlight();
 }
 
+/** Array of dbus message handlers */
+static mce_dbus_handler_t keypad_dbus_handlers[] =
+{
+	/* method calls */
+	{
+		.interface = MCE_REQUEST_IF,
+		.name      = MCE_KEY_BACKLIGHT_STATE_GET,
+		.type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+		.callback  = key_backlight_state_get_dbus_cb,
+		.args      =
+			"    <arg direction=\"out\" name=\"backlight_state\" type=\"b\"/>\n"
+	},
+	/* sentinel */
+	{
+		.interface = 0
+	}
+};
+
+/** Add dbus handlers
+ */
+static void mce_keypad_init_dbus(void)
+{
+	mce_dbus_handler_register_array(keypad_dbus_handlers);
+}
+
+/** Remove dbus handlers
+ */
+static void mce_keypad_quit_dbus(void)
+{
+	mce_dbus_handler_unregister_array(keypad_dbus_handlers);
+}
+
 /**
  * Init function for the keypad module
  *
@@ -752,17 +784,11 @@ const gchar *g_module_check_init(GModule *module)
 		key_backlight_fade_out_time =
 			DEFAULT_KEY_BACKLIGHT_FADE_OUT_TIME;
 
-	/* get_key_backlight_state */
-	if (mce_dbus_handler_add(MCE_REQUEST_IF,
-				 MCE_KEY_BACKLIGHT_STATE_GET,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_METHOD_CALL,
-				 key_backlight_state_get_dbus_cb) == NULL)
-		goto EXIT;
+	/* Add dbus handlers */
+	mce_keypad_init_dbus();
 
 	setup_key_backlight();
 
-EXIT:
 	return status;
 }
 
@@ -775,6 +801,9 @@ G_MODULE_EXPORT void g_module_unload(GModule *module);
 void g_module_unload(GModule *module)
 {
 	(void)module;
+
+	/* Remove dbus handlers */
+	mce_keypad_quit_dbus();
 
 	/* Close files */
 	mce_close_output(&led_current_kb0_output);

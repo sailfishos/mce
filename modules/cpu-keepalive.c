@@ -1041,21 +1041,49 @@ EXIT:
  *
  * ========================================================================= */
 
-typedef gboolean (*handler_t)(DBusMessage *const msg);
-
-/** Book keeping for dbus method call handler status */
-static struct
+/** Array of dbus message handlers */
+static mce_dbus_handler_t cpu_keepalive_dbus_handlers[] =
 {
-  const char      *member;
-  const handler_t  handler;
-  gconstpointer    cookie;
-} methods[] =
-{
-  { MCE_CPU_KEEPALIVE_PERIOD_REQ, cpu_keepalive_period_cb, 0 },
-  { MCE_CPU_KEEPALIVE_START_REQ,  cpu_keepalive_start_cb,  0 },
-  { MCE_CPU_KEEPALIVE_STOP_REQ,   cpu_keepalive_stop_cb,   0 },
-  { MCE_CPU_KEEPALIVE_WAKEUP_REQ, cpu_keepalive_wakeup_cb, 0 },
-  { 0, 0, 0 }
+  /* method calls */
+  {
+    .interface = MCE_REQUEST_IF,
+    .name      = MCE_CPU_KEEPALIVE_PERIOD_REQ,
+    .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+    .callback  = cpu_keepalive_period_cb,
+    .args      =
+      "    <arg direction=\"in\" name=\"context\" type=\"s\"/>\n"
+      "    <arg direction=\"out\" name=\"period\" type=\"i\"/>\n"
+  },
+  {
+    .interface = MCE_REQUEST_IF,
+    .name      = MCE_CPU_KEEPALIVE_START_REQ,
+    .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+    .callback  = cpu_keepalive_start_cb,
+    .args      =
+      "    <arg direction=\"in\" name=\"context\" type=\"s\"/>\n"
+      "    <arg direction=\"out\" name=\"success\" type=\"b\"/>\n"
+  },
+  {
+    .interface = MCE_REQUEST_IF,
+    .name      = MCE_CPU_KEEPALIVE_STOP_REQ,
+    .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+    .callback  = cpu_keepalive_stop_cb,
+    .args      =
+      "    <arg direction=\"in\" name=\"context\" type=\"s\"/>\n"
+      "    <arg direction=\"out\" name=\"success\" type=\"b\"/>\n"
+  },
+  {
+    .interface = MCE_REQUEST_IF,
+    .name      = MCE_CPU_KEEPALIVE_WAKEUP_REQ,
+    .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+    .callback  = cpu_keepalive_wakeup_cb,
+    .args      =
+      "    <arg direction=\"out\" name=\"success\" type=\"b\"/>\n"
+  },
+  /* sentinel */
+  {
+    .interface = 0
+  }
 };
 
 /** Install signal and method call message handlers
@@ -1070,22 +1098,7 @@ static gboolean cpu_keepalive_attach_to_dbus(void)
   dbus_connection_add_filter(systembus, cpu_keepalive_dbus_filter_cb, 0, 0);
 
   /* Register dbus method call handlers */
-  for( size_t i = 0; methods[i].member; ++i )
-  {
-    mce_log(LL_INFO, "registering handler for: %s", methods[i].member);
-
-    methods[i].cookie = mce_dbus_handler_add(MCE_REQUEST_IF,
-                                             methods[i].member,
-                                             NULL,
-                                             DBUS_MESSAGE_TYPE_METHOD_CALL,
-                                             methods[i].handler);
-    if( !methods[i].cookie )
-    {
-      mce_log(LL_WARN, "failed to add dbus handler for: %s",
-              methods[i].member);
-      success = FALSE;
-    }
-  }
+  mce_dbus_handler_register_array(cpu_keepalive_dbus_handlers);
 
   return success;
 }
@@ -1098,15 +1111,7 @@ static void cpu_keepalive_detach_from_dbus(void)
   dbus_connection_remove_filter(systembus, cpu_keepalive_dbus_filter_cb, 0);
 
   /* Remove dbus method call handlers that we have registered */
-  for( size_t i = 0; methods[i].member; ++i )
-  {
-    if( methods[i].cookie )
-    {
-      mce_log(LL_INFO, "removing handler for: %s", methods[i].member);
-      mce_dbus_handler_remove(methods[i].cookie);
-      methods[i].cookie = 0;
-    }
-  }
+  mce_dbus_handler_unregister_array(cpu_keepalive_dbus_handlers);
 }
 
 /** Init function for the cpu-keepalive module

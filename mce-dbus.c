@@ -36,6 +36,8 @@
 
 #include <mce/dbus-names.h>
 
+static bool introspectable_signal(const char *interface, const char *member);
+
 /** Placeholder for any basic dbus data type */
 typedef union
 {
@@ -231,6 +233,7 @@ typedef struct
 	gchar              *interface;  /**< The interface to listen on */
 	gchar              *rules;      /**< Additional matching rules */
 	gchar              *name;       /**< Method call or signal name */
+	gchar              *args;       /**< Introspect XML data */
 	int                 type;       /**< DBUS_MESSAGE_TYPE */
 } handler_struct_t;
 
@@ -244,6 +247,12 @@ static inline void handler_struct_set_type(handler_struct_t *self, int val)
 static inline void handler_struct_set_interface(handler_struct_t *self, const char *val)
 {
 	g_free(self->interface), self->interface = val ? g_strdup(val) : 0;
+}
+
+/** Set introspect args for D-Bus handler structure */
+static inline void handler_struct_set_args(handler_struct_t *self, const char *val)
+{
+	g_free(self->args), self->args = val ? g_strdup(val) : 0;
 }
 
 /** Set member name for D-Bus handler structure */
@@ -271,6 +280,7 @@ static void handler_struct_delete(handler_struct_t *self)
 	if( !self )
 		goto EXIT;
 
+	g_free(self->args);
 	g_free(self->name);
 	g_free(self->rules);
 	g_free(self->interface);
@@ -288,6 +298,7 @@ static handler_struct_t *handler_struct_create(void)
 	self->interface = 0;
 	self->rules     = 0;
 	self->name      = 0;
+	self->args      = 0;
 	self->type      = DBUS_MESSAGE_TYPE_INVALID;
 	return self;
 }
@@ -323,43 +334,57 @@ DBusMessage *dbus_new_signal(const gchar *const path,
 			     const gchar *const interface,
 			     const gchar *const name)
 {
-	DBusMessage *msg;
+	DBusMessage *msg = dbus_message_new_signal(path, interface, name);
 
-	if ((msg = dbus_message_new_signal(path, interface, name)) == NULL) {
-		mce_log(LL_CRIT, "No memory for new signal!");
-		// FIXME: this is not how one should exit from mainloop
-		mce_quit_mainloop();
-		exit(EXIT_FAILURE);
+	if( !msg )
+		mce_abort();
+
+	if( !introspectable_signal(interface, name) ) {
+		mce_log(LL_ERR, "sending non-introspectable signal: %s.%s",
+			interface, name);
 	}
 
 	return msg;
 }
 
-#if 0
 /**
  * Create a new D-Bus error message, with proper error checking
  * will exit the mainloop if an error occurs
  *
- * @param message The DBusMessage that caused the error message to be sent
- * @param error The message to send
+ * @param req  Method call message for which to create an error reply
+ * @param err  D-Bus error name
+ * @param fmt  Error message format string
+ * @param ...  Arguments required by the format string
+ *
  * @return A new DBusMessage
  */
-static DBusMessage *dbus_new_error(DBusMessage *const message,
-				   const gchar *const error)
+
+static DBusMessage *dbus_new_error(DBusMessage *req,
+				   const char *err,
+				   const char *fmt,
+				   ...) __attribute__((format(printf, 3, 4)));
+
+static DBusMessage *dbus_new_error(DBusMessage *req,
+				   const char *err,
+				   const char *fmt,
+				   ...)
 {
-	DBusMessage *error_msg;
+	char *msg = 0;
 
-	if ((error_msg = dbus_message_new_error(message, error,
-						NULL)) == NULL) {
-		mce_log(LL_CRIT, "No memory for new D-Bus error message!");
-		// FIXME: this is not how one should exit from mainloop
-		mce_quit_mainloop();
-		exit(EXIT_FAILURE);
-	}
+	va_list va;
+	va_start(va, fmt);
+	if( vasprintf(&msg, fmt, va) < 0 )
+		msg = 0;
+	va_end(va);
 
-	return error_msg;
+	DBusMessage *rsp = dbus_message_new_error(req, err, msg);
+
+	if( !rsp )
+		mce_abort();
+
+	free(msg);
+	return rsp;
 }
-#endif
 
 /**
  * Create a new D-Bus method call, with proper error checking
@@ -376,16 +401,10 @@ DBusMessage *dbus_new_method_call(const gchar *const service,
 				  const gchar *const interface,
 				  const gchar *const name)
 {
-	DBusMessage *msg;
-
-	if ((msg = dbus_message_new_method_call(service, path,
-						interface, name)) == NULL) {
-		mce_log(LL_CRIT,
-			"Cannot allocate memory for D-Bus method call!");
-		// FIXME: this is not how one should exit from mainloop
-		mce_quit_mainloop();
-		exit(EXIT_FAILURE);
-	}
+	DBusMessage *msg = dbus_message_new_method_call(service, path,
+							interface, name);
+	if( !msg )
+		mce_abort();
 
 	return msg;
 }
@@ -399,14 +418,10 @@ DBusMessage *dbus_new_method_call(const gchar *const service,
  */
 DBusMessage *dbus_new_method_reply(DBusMessage *const message)
 {
-	DBusMessage *msg;
+	DBusMessage *msg = dbus_message_new_method_return(message);
 
-	if ((msg = dbus_message_new_method_return(message)) == NULL) {
-		mce_log(LL_CRIT, "No memory for new reply!");
-		// FIXME: this is not how one should exit from mainloop
-		mce_quit_mainloop();
-		exit(EXIT_FAILURE);
-	}
+	if( !msg )
+		mce_abort();
 
 	return msg;
 }
@@ -1195,11 +1210,9 @@ void mce_dbus_send_config_notification(GConfEntry *entry)
 
 	mce_log(LL_DEBUG, "%s: changed", key);
 
-	sig = dbus_message_new_signal(MCE_SIGNAL_PATH,
-				      MCE_SIGNAL_IF,
-				      MCE_CONFIG_CHANGE_SIG);
-
-	if( !sig ) goto EXIT;
+	sig = dbus_new_signal(MCE_SIGNAL_PATH,
+			      MCE_SIGNAL_IF,
+			      MCE_CONFIG_CHANGE_SIG);
 
 	dbus_message_append_args(sig,
 				 DBUS_TYPE_STRING, &key,
@@ -1714,6 +1727,10 @@ static DBusHandlerResult msg_handler(DBusConnection *const connection,
 		if( !handler )
 			continue;
 
+		/* Skip introspect only entries */
+		if( !handler->callback )
+			continue;
+
 		/* Skip not applicable handlers */
 		if( handler->type != type )
 			continue;
@@ -1774,11 +1791,12 @@ EXIT:
  * @param callback The callback function
  * @return A D-Bus handler cookie on success, NULL on failure
  */
-gconstpointer mce_dbus_handler_add(const gchar *const interface,
-				   const gchar *const name,
-				   const gchar *const rules,
-				   const guint type,
-				   gboolean (*callback)(DBusMessage *const msg))
+gconstpointer mce_dbus_handler_add_ex(const gchar *const interface,
+				      const gchar *const name,
+				      const gchar *const args,
+				      const gchar *const rules,
+				      const guint type,
+				      gboolean (*callback)(DBusMessage *const msg))
 {
 	handler_struct_t *handler = 0;
 	gchar            *match   = 0;
@@ -1814,11 +1832,12 @@ gconstpointer mce_dbus_handler_add(const gchar *const interface,
 	handler_struct_set_type(handler, type);
 	handler_struct_set_interface(handler, interface);
 	handler_struct_set_name(handler, name);
+	handler_struct_set_args(handler, args);
 	handler_struct_set_rules(handler, rules);
 	handler_struct_set_callback(handler, callback);
 
-	/* Only register D-Bus matches for signals */
-	if( match )
+	/* Only register D-Bus matches for inbound signals */
+	if( match && callback )
 		dbus_bus_add_match(dbus_connection, match, 0);
 
 	dbus_handlers = g_slist_prepend(dbus_handlers, handler);
@@ -1827,6 +1846,18 @@ EXIT:
 	g_free(match);
 
 	return handler;
+}
+
+gconstpointer mce_dbus_handler_add(const gchar *const interface,
+				   const gchar *const name,
+				   const gchar *const rules,
+				   const guint type,
+				   gboolean (*callback)(DBusMessage *const msg))
+{
+	const char *args = 0;
+	return mce_dbus_handler_add_ex(interface, name,
+				       args, rules,
+				       type, callback);
 }
 
 /**
@@ -2414,11 +2445,12 @@ void
 mce_dbus_handler_register(mce_dbus_handler_t *self)
 {
 	if( !self->cookie ) {
-		self->cookie = mce_dbus_handler_add(self->interface,
-						    self->name,
-						    self->rules,
-						    self->type,
-						    self->callback);
+		self->cookie = mce_dbus_handler_add_ex(self->interface,
+						       self->name,
+						       self->args,
+						       self->rules,
+						       self->type,
+						       self->callback);
 		if( !self->cookie )
 			mce_log(LL_ERR, "%s.%s: failed to add handler",
 				self->interface, self->name);
@@ -2903,8 +2935,313 @@ EXIT:
 }
 
 /* ========================================================================= *
+ * INTROSPECT_SUPPORT
+ * ========================================================================= */
+
+/** Format string for Introspect XML prologue */
+#define INTROSPECT_PROLOG_FMT \
+"<!DOCTYPE node PUBLIC" \
+" \"-//freedesktop//DTD D-BUS Object Introspection 1.0//EN\"" \
+" \"http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd\">\n" \
+"<node name=\"%s\">\n"
+
+/** Format string for Introspect XML epilogue */
+#define INTROSPECT_EPILOG_FMT \
+"</node>\n"
+
+/** Emit Introspect XML for registered method call handlers
+ */
+static void introspect_add_methods(FILE *file, const char *interface)
+{
+	fprintf(file, "<interface name=\"%s\">\n", interface);
+	for( GSList *now = dbus_handlers; now; now = now->next ) {
+
+		handler_struct_t *handler = now->data;
+
+		/* Skip half removed handlers */
+		if( !handler )
+			continue;
+
+		/* Skip not applicable handlers */
+		if( handler->type != DBUS_MESSAGE_TYPE_METHOD_CALL )
+			continue;
+		if( !handler->interface || !handler->name )
+			continue;
+		if( strcmp(handler->interface, interface) )
+			continue;
+
+		fprintf(file, "  <method name=\"%s\">\n", handler->name);
+		if( handler->args )
+			fprintf(file, "%s", handler->args);
+		else
+			fprintf(file, "    <!-- NOT DEFINED -->\n");
+		fprintf(file, "  </method>\n");
+	}
+	fprintf(file, "</interface>\n");
+}
+
+/** Emit Introspect XML for registered outbound signals
+ */
+static void introspect_add_signals(FILE *file, const char *interface)
+{
+	fprintf(file, "<interface name=\"%s\">\n", interface);
+	for( GSList *now = dbus_handlers; now; now = now->next ) {
+
+		handler_struct_t *handler = now->data;
+
+		/* Skip half removed handlers */
+		if( !handler )
+			continue;
+
+		/* Skip not applicable handlers */
+		if( handler->type != DBUS_MESSAGE_TYPE_SIGNAL )
+			continue;
+		if( handler->callback )
+			continue;
+		if( !handler->interface || !handler->name )
+			continue;
+		if( strcmp(handler->interface, interface) )
+			continue;
+
+		fprintf(file, "  <signal name=\"%s\">\n", handler->name);
+		if( handler->args )
+			fprintf(file, "%s", handler->args);
+		else
+			fprintf(file, "    <!-- NOT DEFINED -->\n");
+		fprintf(file, "  </signal>\n");
+	}
+	fprintf(file, "</interface>\n");
+}
+
+/** Emit Introspect XML for standard Introspectable and Peer interfaces
+ */
+static void introspect_add_defaults(FILE *file)
+{
+	/* Custom handler for Introspect() is provided */
+	fprintf(file, "%s",
+		"  <interface name=\"org.freedesktop.DBus.Introspectable\">\n"
+		"    <method name=\"Introspect\">\n"
+		"      <arg direction=\"out\" name=\"data\" type=\"s\"/>\n"
+		"    </method>\n"
+		"  </interface>\n");
+
+	/* The Ping() and GetMachineId() method calls are implicitly
+	 * handled in libdbus as long as dbus config for mce allows
+	 * them to be made */
+	fprintf(file, "%s",
+		"  <interface name=\"org.freedesktop.DBus.Peer\">\n"
+		"    <method name=\"Ping\"/>\n"
+		"    <method name=\"GetMachineId\">\n"
+		"      <arg direction=\"out\" name=\"machine_uuid\" type=\"s\" />\n"
+		"    </method>\n"
+		"  </interface>\n");
+
+}
+
+/** Check if outbound D-Bus signal has been registered for Introspection
+ */
+static bool introspectable_signal(const char *interface, const char *member)
+{
+	for( GSList *now = dbus_handlers; now; now = now->next ) {
+
+		handler_struct_t *handler = now->data;
+
+		/* Skip half removed handlers */
+		if( !handler )
+			continue;
+
+		/* Needs to be signal handler without a callback function */
+		if( handler->callback )
+			continue;
+		if( handler->type != DBUS_MESSAGE_TYPE_SIGNAL )
+			continue;
+		if( !handler->interface || !handler->name )
+			continue;
+		if( strcmp(handler->interface, interface) )
+			continue;
+		if( strcmp(handler->name, member) )
+			continue;
+
+		return true;
+	}
+	return false;
+}
+
+static void introspect_com_nokia_mce_request(FILE *file)
+{
+	introspect_add_methods(file, MCE_REQUEST_IF);
+}
+
+static void introspect_com_nokia_mce_signal(FILE *file)
+{
+	introspect_add_signals(file, MCE_SIGNAL_IF);
+}
+
+static void introspect_com_nokia_mce(FILE *file)
+{
+	fprintf(file, "  <node name=\"request\"/>\n");
+	fprintf(file, "  <node name=\"signal\"/>\n");
+}
+
+static void introspect_com_nokia(FILE *file)
+{
+	fprintf(file, "  <node name=\"mce\"/>\n");
+}
+
+static void introspect_com(FILE *file)
+{
+	fprintf(file, "  <node name=\"nokia\"/>\n");
+}
+
+static void introspect_root(FILE *file)
+{
+	fprintf(file, "  <node name=\"com\"/>\n");
+}
+
+static const struct
+{
+	const char *path;
+	void (*func)(FILE *);
+} introspect_lut[] =
+{
+	{ "/",                      introspect_root                  },
+	{ "/com",                   introspect_com                   },
+	{ "/com/nokia",             introspect_com_nokia             },
+	{ "/com/nokia/mce",         introspect_com_nokia_mce         },
+	{ "/com/nokia/mce/request", introspect_com_nokia_mce_request },
+	{ "/com/nokia/mce/signal",  introspect_com_nokia_mce_signal  },
+	{ 0, 0 }
+};
+
+/** D-Bus callback for org.freedesktop.DBus.Introspectable.Introspect
+ *
+ * @param msg The D-Bus message to reply to
+ *
+ * @return TRUE
+ */
+static gboolean introspect_dbus_cb(DBusMessage *const req)
+{
+	DBusMessage *rsp  = NULL;
+	FILE        *file = 0;
+	char        *data = 0;
+	size_t       size = 0;
+
+	mce_log(LL_DEBUG, "Received introspect request");
+
+	const char  *path = dbus_message_get_path(req);
+
+	if( !path ) {
+		/* Should not really be possible, but ... */
+		rsp = dbus_new_error(req, DBUS_ERROR_INVALID_ARGS,
+				     "object path not specified");
+		goto EXIT;
+	}
+
+	if( !(file = open_memstream(&data, &size)) )
+		goto EXIT;
+
+	for( size_t i = 0; ; ++i ) {
+		if( introspect_lut[i].path == 0 ) {
+			rsp = dbus_new_error(req, DBUS_ERROR_UNKNOWN_OBJECT,
+					     "%s is not a valid object path",
+					     path);
+			goto EXIT;
+		}
+		if( !strcmp(introspect_lut[i].path, path) ) {
+			fprintf(file, INTROSPECT_PROLOG_FMT, path);
+			introspect_add_defaults(file);
+			introspect_lut[i].func(file);
+			fprintf(file, INTROSPECT_EPILOG_FMT);
+			break;
+		}
+	}
+
+	// the 'data' pointer gets updated at fclose
+	fclose(file), file = 0;
+
+	if( !data ) {
+		rsp = dbus_new_error(req, DBUS_ERROR_FAILED,
+				     "failed to generate introspect xml data");
+		goto EXIT;
+	}
+
+	/* Create a reply */
+	rsp = dbus_new_method_reply(req);
+
+	if( !dbus_message_append_args(rsp,
+				      DBUS_TYPE_STRING, &data,
+				      DBUS_TYPE_INVALID) ) {
+		mce_log(LL_ERR, "Failed to append reply argument to D-Bus"
+			" message for %s.%s",
+			DBUS_INTERFACE_INTROSPECTABLE,
+			"Introspect");
+	}
+
+EXIT:
+	if( file ) fclose(file);
+	free(data);
+	if( rsp ) dbus_send_message(rsp);
+
+	return TRUE;
+}
+
+/* ========================================================================= *
  * LOAD/UNLOAD
  * ========================================================================= */
+
+/** Array of dbus message handlers */
+static mce_dbus_handler_t mce_dbus_handlers[] =
+{
+	/* Outbound signals (for Introspect support only) */
+	{
+		.interface = MCE_SIGNAL_IF,
+		.name      = MCE_CONFIG_CHANGE_SIG,
+		.type      = DBUS_MESSAGE_TYPE_SIGNAL,
+		.args      =
+			"    <arg name=\"key_name\" type=\"s\"/>\n"
+			"    <arg name=\"key_value\" type=\"v\"/>\n"
+	},
+	/* method calls */
+	{
+		.interface = MCE_REQUEST_IF,
+		.name      = MCE_VERSION_GET,
+		.type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+		.callback  = version_get_dbus_cb,
+		.args      =
+			"    <arg direction=\"out\" name=\"version\" type=\"s\"/>\n"
+	},
+	{
+		.interface = MCE_REQUEST_IF,
+		.name      = MCE_CONFIG_GET,
+		.type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+		.callback  = config_get_dbus_cb,
+		.args      =
+			"    <arg direction=\"in\" name=\"key_name\" type=\"s\"/>\n"
+			"    <arg direction=\"out\" name=\"key_value\" type=\"v\"/>\n"
+	},
+	{
+		.interface = MCE_REQUEST_IF,
+		.name      = MCE_CONFIG_SET,
+		.type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+		.callback  = config_set_dbus_cb,
+		.args      =
+			"    <arg direction=\"in\" name=\"key_name\" type=\"s\"/>\n"
+			"    <arg direction=\"in\" name=\"key_value\" type=\"v\"/>\n"
+			"    <arg direction=\"out\" name=\"success\" type=\"b\"/>\n"
+	},
+	{
+		.interface = DBUS_INTERFACE_INTROSPECTABLE,
+		.name      = "Introspect",
+		.type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+		.callback  = introspect_dbus_cb,
+		.args      =
+			"    <arg direction=\"out\" name=\"xml_data\" type=\"s\"/>\n"
+	},
+	/* sentinel */
+	{
+		.interface = 0
+	}
+};
 
 /**
  * Init function for the mce-dbus component
@@ -2915,24 +3252,19 @@ EXIT:
  */
 gboolean mce_dbus_init(const gboolean systembus)
 {
+	gboolean    status   = FALSE;
 	DBusBusType bus_type = DBUS_BUS_SYSTEM;
-	gboolean status = FALSE;
-	DBusError error;
+	DBusError   error    = DBUS_ERROR_INIT;
 
-	/* Register error channel */
-	dbus_error_init(&error);
-
-	if (systembus == FALSE)
+	if( !systembus )
 		bus_type = DBUS_BUS_SESSION;
 
 	mce_log(LL_DEBUG, "Establishing D-Bus connection");
 
 	/* Establish D-Bus connection */
-	if ((dbus_connection = dbus_bus_get(bus_type,
-					    &error)) == NULL) {
+	if( !(dbus_connection = dbus_bus_get(bus_type, &error)) ) {
 		mce_log(LL_CRIT, "Failed to open connection to message bus; %s",
-			  error.message);
-		dbus_error_free(&error);
+			error.message);
 		goto EXIT;
 	}
 
@@ -2944,42 +3276,20 @@ gboolean mce_dbus_init(const gboolean systembus)
 	mce_log(LL_DEBUG, "Acquiring D-Bus service");
 
 	/* Acquire D-Bus service */
-	if (dbus_acquire_services() == FALSE)
+	if( !dbus_acquire_services() )
 		goto EXIT;
 
 	/* Initialise message handlers */
-	if (dbus_init_message_handler() == FALSE)
+	if( !dbus_init_message_handler() )
 		goto EXIT;
 
 	/* Register callbacks that are handled inside mce-dbus.c */
-
-	/* get_version */
-	if (mce_dbus_handler_add(MCE_REQUEST_IF,
-				 MCE_VERSION_GET,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_METHOD_CALL,
-				 version_get_dbus_cb) == NULL)
-		goto EXIT;
-
-	/* get_config */
-	if (mce_dbus_handler_add(MCE_REQUEST_IF,
-				 MCE_CONFIG_GET,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_METHOD_CALL,
-				 config_get_dbus_cb) == NULL)
-		goto EXIT;
-
-	/* set_config */
-	if (mce_dbus_handler_add(MCE_REQUEST_IF,
-				 MCE_CONFIG_SET,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_METHOD_CALL,
-				 config_set_dbus_cb) == NULL)
-		goto EXIT;
+	mce_dbus_handler_register_array(mce_dbus_handlers);
 
 	status = TRUE;
 
 EXIT:
+	dbus_error_free(&error);
 	return status;
 }
 
@@ -2988,6 +3298,9 @@ EXIT:
  */
 void mce_dbus_exit(void)
 {
+	/* Unregister callbacks that are handled inside mce-dbus.c */
+	mce_dbus_handler_unregister_array(mce_dbus_handlers);
+
 	/* Remove info look up table */
 	if( info_lut )
 		g_hash_table_unref(info_lut), info_lut = 0;

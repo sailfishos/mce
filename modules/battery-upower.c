@@ -1072,6 +1072,56 @@ G_MODULE_EXPORT module_info_struct module_info =
     .priority = 100
 };
 
+/** Array of dbus message handlers */
+static mce_dbus_handler_t battery_upower_dbus_handlers[] =
+{
+    /* signals */
+    {
+        .interface = UPOWER_INTERFACE,
+        .name      = "DeviceAdded",
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .callback  = xup_device_added_cb,
+    },
+    {
+        .interface = UPOWER_INTERFACE,
+        .name      = "DeviceChanged",
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .callback  = xup_device_changed_cb,
+    },
+    {
+        .interface = UPOWER_INTERFACE,
+        .name      = "DeviceRemoved",
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .callback  = xup_device_removed_cb,
+    },
+
+    {
+        .interface = DBUS_INTERFACE_DBUS,
+        .name      = "NameOwnerChanged",
+        .rules     = "arg0='"UPOWER_SERVICE"'",
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .callback  = xup_name_owner_cb,
+    },
+    /* sentinel */
+    {
+        .interface = 0
+    }
+};
+
+/** Add dbus handlers
+ */
+static void mce_battery_init_dbus(void)
+{
+    mce_dbus_handler_register_array(battery_upower_dbus_handlers);
+}
+
+/** Remove dbus handlers
+ */
+static void mce_battery_quit_dbus(void)
+{
+    mce_dbus_handler_unregister_array(battery_upower_dbus_handlers);
+}
+
 /** Init function for the battery and charger module
  *
  * @todo XXX status needs to be set on error!
@@ -1089,18 +1139,8 @@ const gchar *g_module_check_init(GModule *module)
     mcebat_init();
     upowbat_init();
 
-    /* Track device signals from upowerd */
-    mce_dbus_handler_add(UPOWER_INTERFACE, "DeviceAdded", 0,
-                         DBUS_MESSAGE_TYPE_SIGNAL, xup_device_added_cb);
-    mce_dbus_handler_add(UPOWER_INTERFACE, "DeviceChanged", 0,
-                         DBUS_MESSAGE_TYPE_SIGNAL, xup_device_changed_cb);
-    mce_dbus_handler_add(UPOWER_INTERFACE, "DeviceRemoved", 0,
-                         DBUS_MESSAGE_TYPE_SIGNAL, xup_device_removed_cb);
-
-    /* Track availablity of upowerd */
-    mce_dbus_handler_add(DBUS_INTERFACE_DBUS, "NameOwnerChanged",
-                         "arg0='"UPOWER_SERVICE"'",
-                         DBUS_MESSAGE_TYPE_SIGNAL, xup_name_owner_cb);
+    /* Add dbus handlers */
+    mce_battery_init_dbus();
 
     /* Initiate available device objects query.
      * Properties will be probed when reply arrives.
@@ -1119,6 +1159,9 @@ G_MODULE_EXPORT void g_module_unload(GModule *module);
 void g_module_unload(GModule *module)
 {
     (void)module;
+
+    /* Remove dbus handlers */
+    mce_battery_quit_dbus();
 
     devlist_rem_dev_all();
     mcebat_update_cancel();

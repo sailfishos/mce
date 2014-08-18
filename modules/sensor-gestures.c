@@ -92,6 +92,7 @@ static bool sg_have_incoming_call(void)
  */
 static void sg_send_flipover_signal(const char *sig)
 {
+    // NOTE: introspection data shared with powerkey.c
     const char *arg = "flipover";
     mce_log(LL_DEVEL, "sending dbus signal: %s %s", sig, arg);
     dbus_send(0, MCE_SIGNAL_PATH, MCE_SIGNAL_IF,  sig, 0,
