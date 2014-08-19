@@ -87,6 +87,14 @@
 /** Define demo mode DBUS method */
 #define MCE_DBUS_DEMO_MODE_REQ  "display_set_demo_mode"
 
+/** UI side graphics fading percentage
+ *
+ * Controls opacity of the black box rendered on top at the ui when
+ * backlight dimming alone is not enough to make dimmed display state
+ * visible to the user.
+ */
+#define MCE_FADER_OPACITY_PERCENT 70
+
 /* ========================================================================= *
  * TYPEDEFS
  * ========================================================================= */
@@ -2657,7 +2665,7 @@ static void mdy_ui_dimming_rethink(void)
               display_state == MCE_DISPLAY_ON ) ) {
             /* We are in dimmed display state, or making transtion to
              * dimmed state from on state -> signal ui side that it
-             * should do 70% fade to black.
+             * should do MCE_FADER_OPACITY_PERCENT fade to black.
              *
              * Note that we explicitly do not want to
              * a) start ui side fading while powering display up
@@ -2668,7 +2676,7 @@ static void mdy_ui_dimming_rethink(void)
              *    side would start to make display brighter while
              *    mce is ramping down the backlight brightness)
              */
-            dimming_curr = 70;
+            dimming_curr = MCE_FADER_OPACITY_PERCENT;
         }
     }
 
