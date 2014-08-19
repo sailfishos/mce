@@ -129,7 +129,7 @@ void mce_quit_mainloop(void)
 
 	/* Exit immediately if there is no mainloop to terminate */
 	if( !mainloop ) {
-		exit(1);
+		exit(EXIT_FAILURE);
 	}
 
 	/* Terminate mainloop */

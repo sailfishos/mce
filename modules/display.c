@@ -7225,113 +7225,143 @@ mdy_dbus_handle_battery_empty_shutdown_started_sig(DBusMessage *const msg)
     return TRUE;
 }
 
+/** Array of dbus message handlers */
+static mce_dbus_handler_t mdy_dbus_handlers[] =
+{
+    /* signals - outbound (for Introspect purposes only) */
+    {
+        .interface = MCE_SIGNAL_IF,
+        .name      = MCE_DISPLAY_SIG,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .args      =
+            "    <arg name=\"display_state\" type=\"s\"/>\n"
+    },
+    /* signals */
+    {
+        .interface = "com.nokia.startup.signal",
+        .name      = "desktop_visible",
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .callback  = mdy_dbus_handle_desktop_started_sig,
+    },
+    {
+        .interface = "com.nokia.dsme.signal",
+        .name      = "shutdown_ind",
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .callback  = mdy_dbus_handle_shutdown_started_sig,
+    },
+    {
+        .interface = "com.nokia.dsme.signal",
+        .name      = "thermal_shutdown_ind",
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .callback  = mdy_dbus_handle_thermal_shutdown_started_sig,
+    },
+    {
+        .interface = "com.nokia.dsme.signal",
+        .name      = "battery_empty_ind",
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .callback  = mdy_dbus_handle_battery_empty_shutdown_started_sig,
+    },
+    /* method calls */
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_DISPLAY_STATUS_GET,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = mdy_dbus_handle_display_status_get_req,
+        .args      =
+            "    <arg direction=\"out\" name=\"display_state\" type=\"s\"/>\n"
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_CABC_MODE_GET,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = mdy_dbus_handle_cabc_mode_get_req,
+        .args      =
+            "    <arg direction=\"out\" name=\"cabc_mode\" type=\"s\"/>\n"
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_DISPLAY_ON_REQ,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = mdy_dbus_handle_display_on_req,
+        .args      =
+            ""
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_DISPLAY_DIM_REQ,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = mdy_dbus_handle_display_dim_req,
+        .args      =
+            ""
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_DISPLAY_OFF_REQ,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = mdy_dbus_handle_display_off_req,
+        .args      =
+            ""
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_DISPLAY_LPM_REQ,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = mdy_dbus_handle_display_lpm_req,
+        .args      =
+            ""
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_PREVENT_BLANK_REQ,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = mdy_dbus_handle_blanking_pause_start_req,
+        .args      =
+            ""
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_CANCEL_PREVENT_BLANK_REQ,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = mdy_dbus_handle_blanking_pause_cancel_req,
+        .args      =
+            ""
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_CABC_MODE_REQ,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = mdy_dbus_handle_cabc_mode_set_req,
+        .args      =
+            "    <arg direction=\"in\" name=\"requested_cabc_mode\" type=\"s\"/>\n"
+            "    <arg direction=\"out\" name=\"activated_cabc_mode\" type=\"s\"/>\n"
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_DBUS_DEMO_MODE_REQ,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = mdy_dbus_handle_set_demo_mode_req,
+        .args      =
+            "    <arg direction=\"in\" name=\"requested_demo_mode\" type=\"s\"/>\n"
+            "    <arg direction=\"out\" name=\"activated_demo_mode\" type=\"s\"/>\n"
+    },
+    /* sentinel */
+    {
+        .interface = 0
+    }
+};
+
 /** Install dbus message handlers
  */
 static void mdy_dbus_init(void)
 {
-    /* get_display_status */
-    mce_dbus_handler_add(MCE_REQUEST_IF,
-                         MCE_DISPLAY_STATUS_GET,
-                         NULL,
-                         DBUS_MESSAGE_TYPE_METHOD_CALL,
-                         mdy_dbus_handle_display_status_get_req);
-
-    /* get_cabc_mode */
-    mce_dbus_handler_add(MCE_REQUEST_IF,
-                         MCE_CABC_MODE_GET,
-                         NULL,
-                         DBUS_MESSAGE_TYPE_METHOD_CALL,
-                         mdy_dbus_handle_cabc_mode_get_req);
-
-    /* req_display_state_on */
-    mce_dbus_handler_add(MCE_REQUEST_IF,
-                         MCE_DISPLAY_ON_REQ,
-                         NULL,
-                         DBUS_MESSAGE_TYPE_METHOD_CALL,
-                         mdy_dbus_handle_display_on_req);
-
-    /* req_display_state_dim */
-    mce_dbus_handler_add(MCE_REQUEST_IF,
-                         MCE_DISPLAY_DIM_REQ,
-                         NULL,
-                         DBUS_MESSAGE_TYPE_METHOD_CALL,
-                         mdy_dbus_handle_display_dim_req);
-
-    /* req_display_state_off */
-    mce_dbus_handler_add(MCE_REQUEST_IF,
-                         MCE_DISPLAY_OFF_REQ,
-                         NULL,
-                         DBUS_MESSAGE_TYPE_METHOD_CALL,
-                         mdy_dbus_handle_display_off_req);
-
-    mce_dbus_handler_add(MCE_REQUEST_IF,
-                         MCE_DISPLAY_LPM_REQ,
-                         NULL,
-                         DBUS_MESSAGE_TYPE_METHOD_CALL,
-                         mdy_dbus_handle_display_lpm_req);
-
-    /* req_display_blanking_pause */
-    mce_dbus_handler_add(MCE_REQUEST_IF,
-                         MCE_PREVENT_BLANK_REQ,
-                         NULL,
-                         DBUS_MESSAGE_TYPE_METHOD_CALL,
-                         mdy_dbus_handle_blanking_pause_start_req);
-
-    /* req_display_cancel_blanking_pause */
-    mce_dbus_handler_add(MCE_REQUEST_IF,
-                         MCE_CANCEL_PREVENT_BLANK_REQ,
-                         NULL,
-                         DBUS_MESSAGE_TYPE_METHOD_CALL,
-                         mdy_dbus_handle_blanking_pause_cancel_req);
-
-    /* req_cabc_mode */
-    mce_dbus_handler_add(MCE_REQUEST_IF,
-                         MCE_CABC_MODE_REQ,
-                         NULL,
-                         DBUS_MESSAGE_TYPE_METHOD_CALL,
-                         mdy_dbus_handle_cabc_mode_set_req);
-
-    /* Desktop readiness signal */
-    mce_dbus_handler_add("com.nokia.startup.signal",
-                         "desktop_visible",
-                         NULL,
-                         DBUS_MESSAGE_TYPE_SIGNAL,
-                         mdy_dbus_handle_desktop_started_sig);
-
-    /* System shutdown signal */
-    mce_dbus_handler_add("com.nokia.dsme.signal",
-                         "shutdown_ind",
-                         NULL,
-                         DBUS_MESSAGE_TYPE_SIGNAL,
-                         mdy_dbus_handle_shutdown_started_sig);
-
-    /* Thermal shutdown signal */
-    mce_dbus_handler_add("com.nokia.dsme.signal",
-                         "thermal_shutdown_ind",
-                         NULL,
-                         DBUS_MESSAGE_TYPE_SIGNAL,
-                         mdy_dbus_handle_thermal_shutdown_started_sig);
-
-    /* Battery empty shutdown signal */
-    mce_dbus_handler_add("com.nokia.dsme.signal",
-                         "battery_empty_ind",
-                         NULL,
-                         DBUS_MESSAGE_TYPE_SIGNAL,
-                         mdy_dbus_handle_battery_empty_shutdown_started_sig);
-
-    /* Turning demo mode on/off */
-    mce_dbus_handler_add(MCE_REQUEST_IF,
-                         MCE_DBUS_DEMO_MODE_REQ,
-                         NULL,
-                         DBUS_MESSAGE_TYPE_METHOD_CALL,
-                         mdy_dbus_handle_set_demo_mode_req);
+    mce_dbus_handler_register_array(mdy_dbus_handlers);
 }
 
 /** Remove dbus message handlers
  */
 static void mdy_dbus_quit(void)
 {
-    // FIXME: actually remove dbus handlers
+    mce_dbus_handler_unregister_array(mdy_dbus_handlers);
 }
 
 /* ========================================================================= *

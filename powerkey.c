@@ -432,6 +432,7 @@ static void generic_powerkey_handler(poweraction_t action,
 
 	case POWER_DBUS_SIGNAL:
 		/* Send a D-Bus signal */
+		// NOTE: configurable signal name -> no introspection
 		dbus_send(NULL, MCE_REQUEST_PATH,
 			  MCE_REQUEST_IF, dbus_signal,
 			  NULL,
@@ -872,6 +873,53 @@ EXIT:
 	return status;
 }
 
+/** Array of dbus message handlers */
+static mce_dbus_handler_t powerkey_dbus_handlers[] =
+{
+	/* signals - outbound (for Introspect purposes only) */
+	{
+		.interface = MCE_SIGNAL_IF,
+		.name      = "alarm_ui_feedback_ind",
+		.type      = DBUS_MESSAGE_TYPE_SIGNAL,
+		.args      =
+			"    <arg name=\"event\" type=\"s\"/>\n"
+	},
+	{
+		.interface = MCE_SIGNAL_IF,
+		.name      = "call_ui_feedback_ind",
+		.type      = DBUS_MESSAGE_TYPE_SIGNAL,
+		.args      =
+			"    <arg name=\"event\" type=\"s\"/>\n"
+	},
+	/* method calls */
+	{
+		.interface = MCE_REQUEST_IF,
+		.name      = MCE_TRIGGER_POWERKEY_EVENT_REQ,
+		.type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+		.callback  = trigger_powerkey_event_req_dbus_cb,
+		.args      =
+			"    <arg direction=\"in\" name=\"action\" type=\"u\"/>\n"
+	},
+	/* sentinel */
+	{
+		.interface = 0
+	}
+};
+
+/** Add dbus handlers
+ */
+static void mce_powerkey_init_dbus(void)
+{
+	mce_dbus_handler_register_array(powerkey_dbus_handlers);
+}
+
+/** Remove dbus handlers
+ */
+static void mce_powerkey_quit_dbus(void)
+{
+	mce_dbus_handler_unregister_array(powerkey_dbus_handlers);
+}
+
 /**
  * Init function for the powerkey component
  *
@@ -886,13 +934,8 @@ gboolean mce_powerkey_init(void)
 	append_input_trigger_to_datapipe(&keypress_pipe,
 					 powerkey_trigger);
 
-	/* req_trigger_powerkey_event */
-	if (mce_dbus_handler_add(MCE_REQUEST_IF,
-				 MCE_TRIGGER_POWERKEY_EVENT_REQ,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_METHOD_CALL,
-				 trigger_powerkey_event_req_dbus_cb) == NULL)
-		goto EXIT;
+	/* Add dbus handlers */
+	mce_powerkey_init_dbus();
 
 	/* Get configuration options */
 	longdelay = mce_conf_get_int(MCE_CONF_POWERKEY_GROUP,
@@ -933,7 +976,6 @@ gboolean mce_powerkey_init(void)
 
 	status = TRUE;
 
-EXIT:
 	return status;
 }
 
@@ -944,6 +986,9 @@ EXIT:
  */
 void mce_powerkey_exit(void)
 {
+	/* Remove D-Bus handlers */
+	mce_powerkey_quit_dbus();
+
 	/* Remove gconf tracking */
 	powerkey_gconf_quit();
 

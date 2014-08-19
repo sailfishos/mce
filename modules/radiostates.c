@@ -1036,6 +1036,55 @@ EXIT:
 	return ack;
 }
 
+/** Array of dbus message handlers */
+static mce_dbus_handler_t radiostates_dbus_handlers[] =
+{
+	/* signals - outbound (for Introspect purposes only) */
+	{
+		.interface = MCE_SIGNAL_IF,
+		.name      = MCE_RADIO_STATES_SIG,
+		.type      = DBUS_MESSAGE_TYPE_SIGNAL,
+		.args      =
+			"    <arg name=\"radio_states\" type=\"u\"/>\n"
+	},
+	/* method calls */
+	{
+		.interface = MCE_REQUEST_IF,
+		.name      = MCE_RADIO_STATES_GET,
+		.type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+		.callback  = get_radio_states_dbus_cb,
+		.args      =
+			"    <arg direction=\"out\" name=\"radio_states\" type=\"u\"/>\n"
+	},
+	{
+		.interface = MCE_REQUEST_IF,
+		.name      = MCE_RADIO_STATES_CHANGE_REQ,
+		.type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+		.callback  = req_radio_states_change_dbus_cb,
+		.args      =
+			"    <arg direction=\"in\" name=\"radio_states\" type=\"u\"/>\n"
+			"    <arg direction=\"in\" name=\"states_to_chage\" type=\"u\"/>\n"
+	},
+	/* sentinel */
+	{
+		.interface = 0
+	}
+};
+
+/** Add dbus handlers
+ */
+static void mce_radiostates_init_dbus(void)
+{
+	mce_dbus_handler_register_array(radiostates_dbus_handlers);
+}
+
+/** Remove dbus handlers
+ */
+static void mce_radiostates_quit_dbus(void)
+{
+	mce_dbus_handler_unregister_array(radiostates_dbus_handlers);
+}
+
 /**
  * Init function for the radio states module
  *
@@ -1062,26 +1111,12 @@ const gchar *g_module_check_init(GModule *module)
 	append_output_trigger_to_datapipe(&master_radio_pipe,
 					  master_radio_trigger);
 
-	/* get_radio_states */
-	if (mce_dbus_handler_add(MCE_REQUEST_IF,
-				 MCE_RADIO_STATES_GET,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_METHOD_CALL,
-				 get_radio_states_dbus_cb) == NULL)
-		goto EXIT;
-
-	/* req_radio_states_change */
-	if (mce_dbus_handler_add(MCE_REQUEST_IF,
-				 MCE_RADIO_STATES_CHANGE_REQ,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_METHOD_CALL,
-				 req_radio_states_change_dbus_cb) == NULL)
-		goto EXIT;
+	/* Add dbus handlers */
+	mce_radiostates_init_dbus();
 
 	if( !xconnman_init() )
 		mce_log(LL_WARN, "failed to set up connman mirroring");
 
-EXIT:
 	return NULL;
 }
 
@@ -1096,6 +1131,9 @@ G_MODULE_EXPORT void g_module_unload(GModule *module);
 void g_module_unload(GModule *module)
 {
 	(void)module;
+
+	/* Remove dbus handlers */
+	mce_radiostates_quit_dbus();
 
 	xconnman_quit();
 

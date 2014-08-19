@@ -223,6 +223,36 @@ EXIT:
 	return status;
 }
 
+/** Array of dbus message handlers */
+static mce_dbus_handler_t alarm_dbus_handlers[] =
+{
+	/* signals */
+	{
+		.interface = VISUAL_REMINDERS_SIGNAL_IF,
+		.name      = VISUAL_REMINDER_STATUS_SIG,
+		.type      = DBUS_MESSAGE_TYPE_SIGNAL,
+		.callback  = alarm_dialog_status_dbus_cb,
+	},
+	/* sentinel */
+	{
+		.interface = 0
+	}
+};
+
+/** Add dbus handlers
+ */
+static void mce_alarm_init_dbus(void)
+{
+	mce_dbus_handler_register_array(alarm_dbus_handlers);
+}
+
+/** Remove dbus handlers
+ */
+static void mce_alarm_quit_dbus(void)
+{
+	mce_dbus_handler_unregister_array(alarm_dbus_handlers);
+}
+
 /**
  * Init function for the alarm interface module
  *
@@ -236,15 +266,9 @@ const gchar *g_module_check_init(GModule *module)
 {
 	(void)module;
 
-	/* visual_reminders_status */
-	if (mce_dbus_handler_add(VISUAL_REMINDERS_SIGNAL_IF,
-				 VISUAL_REMINDER_STATUS_SIG,
-				 NULL,
-				 DBUS_MESSAGE_TYPE_SIGNAL,
-				 alarm_dialog_status_dbus_cb) == NULL)
-		goto EXIT;
+	/* Add dbus handlers */
+	mce_alarm_init_dbus();
 
-EXIT:
 	return NULL;
 }
 
@@ -259,6 +283,9 @@ G_MODULE_EXPORT void g_module_unload(GModule *module);
 void g_module_unload(GModule *module)
 {
 	(void)module;
+
+	/* Remove dbus handlers */
+	mce_alarm_quit_dbus();
 
 	return;
 }
