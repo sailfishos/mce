@@ -81,6 +81,14 @@
 /** Define demo mode DBUS method */
 #define MCE_DBUS_DEMO_MODE_REQ  "display_set_demo_mode"
 
+/** UI side graphics fading percentage
+ *
+ * Controls opacity of the black box rendered on top at the ui when
+ * backlight dimming alone is not enough to make dimmed display state
+ * visible to the user.
+ */
+#define MCE_FADER_OPACITY_PERCENT 70
+
 /* ========================================================================= *
  * TYPEDEFS
  * ========================================================================= */
@@ -335,6 +343,13 @@ static void                mdy_brightness_set_fade_target_unblank(gint new_brigh
 static void                mdy_brightness_set_on_level(gint hbm_and_level);
 static void                mdy_brightness_set_dim_level(void);
 static void                mdy_brightness_set_lpm_level(gint level);
+
+/* ------------------------------------------------------------------------- *
+ * UI_SIDE_DIMMING
+ * ------------------------------------------------------------------------- */
+
+static void                mdy_ui_dimming_set_needed(bool is_needed);
+static void                mdy_ui_dimming_rethink(void);
 
 /* ------------------------------------------------------------------------- *
  * CONTENT_ADAPTIVE_BACKLIGHT_CONTROL
@@ -1179,6 +1194,8 @@ static void mdy_datapipe_display_state_cb(gconstpointer data)
     mce_log(LL_DEVEL, "current display state = %s",
             mdy_display_state_name(display_state));
 
+    mdy_ui_dimming_rethink();
+
 EXIT:
     return;
 }
@@ -1199,6 +1216,8 @@ static void mdy_datapipe_display_state_next_cb(gconstpointer data)
 
     mce_log(LL_DEBUG, "target display state = %s",
             mdy_display_state_name(display_state_next));
+
+    mdy_ui_dimming_rethink();
 
 EXIT:
     return;
@@ -2513,11 +2532,20 @@ static void mdy_brightness_set_dim_level(void)
                  mdy_brightness_level_display_dim);
     int limit = mdy_brightness_level_maximum * 10 / 100;
 
+    /* Note: The pattern can be activated anytime, it will get
+     *       effective only when display is in dimmed state
+     *
+     * FIXME: When ui side dimming is working, the led pattern
+     *        hack should be removed altogether.
+     */
     execute_datapipe_output_triggers(delta < limit ?
                                      &led_pattern_activate_pipe :
                                      &led_pattern_deactivate_pipe,
                                      "PatternDisplayDimmed",
                                      USE_INDATA);
+
+    /* Update ui side fader opacity value */
+    mdy_ui_dimming_set_needed(delta < limit);
 }
 
 static void mdy_brightness_set_lpm_level(gint level)
@@ -2609,6 +2637,78 @@ static void mdy_brightness_set_on_level(gint hbm_and_level)
         break;
     }
 
+EXIT:
+    return;
+}
+
+/* ========================================================================= *
+ * UI_SIDE_DIMMING
+ * ========================================================================= */
+
+/** Signal to send when ui side fader opacity changes */
+#define MCE_FADER_OPACITY_SIG "fader_opacity_ind"
+
+/** Flag for: backlight brightness alone can't produce visible dimmed state */
+static bool mdy_ui_dimming_is_needed = false;
+
+/** Update mdy_ui_dimming_is_needed state */
+static void mdy_ui_dimming_set_needed(bool is_needed)
+{
+    mdy_ui_dimming_is_needed = is_needed;
+    mdy_ui_dimming_rethink();
+}
+
+/** Re-evaluate target opacity for ui side dimming
+ *
+ * Should be called when:
+ * 1. on/dimmed brightness changes
+ * 2. display state transition starts
+ * 3. display state transition is finished
+ */
+static void mdy_ui_dimming_rethink(void)
+{
+    /* Initialize previous value to invalid state so that initial
+     * evaluation on mce startup forces signal to be sent */
+    static dbus_int32_t dimming_prev = -1;
+
+    /* By default the ui side dimming should not occur */
+    dbus_int32_t dimming_curr = 0;
+
+    if( mdy_ui_dimming_is_needed ) {
+        /* Backlight brightness tuning would not produce visible difference
+         * between ON and DIM display state */
+
+        if( display_state == MCE_DISPLAY_DIM ||
+            ( display_state_next == MCE_DISPLAY_DIM &&
+              display_state == MCE_DISPLAY_ON ) ) {
+            /* We are in dimmed display state, or making transtion to
+             * dimmed state from on state -> signal ui side that it
+             * should do MCE_FADER_OPACITY_PERCENT fade to black.
+             *
+             * Note that we explicitly do not want to
+             * a) start ui side fading while powering display up
+             *    to dimmed state (might cause unwanted ui side cpu
+             *    load and should not occur in normal use anyway)
+             * b) stop ui side fading while powering display down
+             *    from dimmed state (might cause flickering if ui
+             *    side would start to make display brighter while
+             *    mce is ramping down the backlight brightness)
+             */
+            dimming_curr = MCE_FADER_OPACITY_PERCENT;
+        }
+    }
+
+    if( dimming_prev == dimming_curr )
+        goto EXIT;
+
+    dimming_prev = dimming_curr;
+
+    mce_log(LL_DEVEL, "sending dbus signal: %s %d",
+            MCE_FADER_OPACITY_SIG, dimming_curr);
+    dbus_send(0, MCE_SIGNAL_PATH, MCE_SIGNAL_IF,
+              MCE_FADER_OPACITY_SIG, 0,
+              DBUS_TYPE_INT32, &dimming_curr,
+              DBUS_TYPE_INVALID);
 EXIT:
     return;
 }
