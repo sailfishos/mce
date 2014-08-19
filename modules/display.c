@@ -7336,6 +7336,13 @@ static mce_dbus_handler_t mdy_dbus_handlers[] =
         .args      =
             "    <arg name=\"display_state\" type=\"s\"/>\n"
     },
+    {
+        .interface = MCE_SIGNAL_IF,
+        .name      = MCE_FADER_OPACITY_SIG,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .args      =
+            "    <arg name=\"fader_opacity_percent\" type=\"i\"/>\n"
+    },
     /* signals */
     {
         .interface = "com.nokia.startup.signal",
@@ -7913,8 +7920,6 @@ static void mdy_gconf_sanitize_brightness_settings(void)
  */
 static void mdy_gconf_init(void)
 {
-    gulong tmp = 0;
-
     /* Display brightness settings */
 
     mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
@@ -7943,17 +7948,6 @@ static void mdy_gconf_init(void)
 
     /* Migrate ranges, update hw dim/on brightness levels */
     mdy_gconf_sanitize_brightness_settings();
-
-    /* If we can read the current hw brightness level, update the
-     * cached brightness so we can do soft transitions from the
-     * initial state */
-    if( mdy_brightness_level_output.path &&
-        mce_read_number_string_from_file(mdy_brightness_level_output.path,
-                                              &tmp, NULL, FALSE, TRUE) ) {
-        mdy_brightness_level_cached = tmp;
-    }
-    mce_log(LL_DEBUG, "mdy_brightness_level_cached=%d",
-            mdy_brightness_level_cached);
 
     /* Display blank
      * Since we've set a default, error handling is unnecessary */
@@ -8166,6 +8160,41 @@ static void mdy_gconf_quit(void)
  * MODULE_LOAD_UNLOAD
  * ========================================================================= */
 
+/** Probe maximum and current backlight brightness from sysfs
+ */
+static void mdy_brightness_init(void)
+{
+    gulong tmp = 0;
+
+    /* If possible, obtain maximum brightness level */
+    if( !mdy_brightness_level_maximum_path ) {
+        mce_log(LL_NOTICE, "No path for maximum brightness file; "
+                "defaulting to %d",
+                mdy_brightness_level_maximum);
+    }
+    else if( !mce_read_number_string_from_file(mdy_brightness_level_maximum_path,
+                                               &tmp, NULL, FALSE, TRUE) ) {
+        mce_log(LL_ERR, "Could not read the maximum brightness from %s; "
+                "defaulting to %d",
+                mdy_brightness_level_maximum_path, mdy_brightness_level_maximum);
+    }
+    else
+        mdy_brightness_level_maximum = (gint)tmp;
+
+    mce_log(LL_DEBUG, "max_brightness = %d", mdy_brightness_level_maximum);
+
+    /* If we can read the current hw brightness level, update the
+     * cached brightness so we can do soft transitions from the
+     * initial state */
+    if( mdy_brightness_level_output.path &&
+        mce_read_number_string_from_file(mdy_brightness_level_output.path,
+                                              &tmp, NULL, FALSE, TRUE) ) {
+        mdy_brightness_level_cached = (gint)tmp;
+    }
+    mce_log(LL_DEBUG, "mdy_brightness_level_cached=%d",
+            mdy_brightness_level_cached);
+}
+
 /**
  * Init function for the display handling module
  *
@@ -8179,7 +8208,6 @@ const gchar *g_module_check_init(GModule *module)
 
     gboolean display_is_on = TRUE;
     submode_t submode_fixme = mce_get_submode_int32();
-    gulong tmp = 0;
 
     (void)module;
 
@@ -8225,6 +8253,7 @@ const gchar *g_module_check_init(GModule *module)
     /* Evaluate initial state */
     mdy_stm_schedule_rethink();
 #endif
+
     /* Start waiting for init_done state */
     mdy_flagfiles_start_tracking();
 
@@ -8241,31 +8270,16 @@ const gchar *g_module_check_init(GModule *module)
     /* Append triggers/filters to datapipes */
     mdy_datapipe_init();
 
-    if( !mdy_brightness_level_maximum_path ) {
-        mce_log(LL_NOTICE, "No path for maximum brightness file; "
-                "defaulting to %d",
-                mdy_brightness_level_maximum);
-    }
-    else if( !mce_read_number_string_from_file(mdy_brightness_level_maximum_path,
-                                               &tmp, NULL, FALSE, TRUE) ) {
-        mce_log(LL_ERR, "Could not read the maximum brightness from %s; "
-                "defaulting to %d",
-                mdy_brightness_level_maximum_path, mdy_brightness_level_maximum);
-    }
-    else
-        mdy_brightness_level_maximum = tmp;
-    mce_log(LL_INFO, "max_brightness = %d", mdy_brightness_level_maximum);
-
-    mdy_brightness_set_dim_level();
-    mce_log(LL_INFO, "mdy_brightness_level_display_dim = %d", mdy_brightness_level_display_dim);
-
-    mdy_cabc_mode_set(DEFAULT_CABC_MODE);
-
     /* Install dbus message handlers */
     mdy_dbus_init();
 
+    /* Probe maximum and current backlight brightness from sysfs */
+    mdy_brightness_init();
+
     /* Get initial gconf valus and start tracking changes */
     mdy_gconf_init();
+
+    mdy_cabc_mode_set(DEFAULT_CABC_MODE);
 
     /* if we have brightness control file and initial brightness
      * is zero -> start from display off */
