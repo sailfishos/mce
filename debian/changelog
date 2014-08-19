@@ -1,3 +1,12 @@
+mce (1.34.0) unstable; urgency=low
+
+  * [mce] Delay returning to suspend if woken up by rtc alarm. Fixes JB#21702
+  * [mce] Add enablers for ui side dimming. Fixes JB#21683
+  * [mce] Make MCE introspectable over D-Bus. Fixes JB#21034
+  * [mce] Register display plugin dbus handlers earlier. Fixes JB#22091
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 19 Aug 2014 10:32:44 +0300
+
 mce (1.33.5) unstable; urgency=low
 
   * [mce] Allow going to lpm mode when display off request is made over D-Bus.
