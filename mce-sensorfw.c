@@ -3068,14 +3068,14 @@ static sfw_service_t *sfw_service = 0;
  */
 void mce_sensorfw_suspend(void)
 {
-  // DUMMY
+    // DUMMY
 }
 
 /** Rethink sensors after resuming
  */
 void mce_sensorfw_resume(void)
 {
-  // DUMMY
+    // DUMMY
 }
 
 // ----------------------------------------------------------------
