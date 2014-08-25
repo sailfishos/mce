@@ -721,32 +721,6 @@ EXIT:
 }
 
 /**
- * Translate a D-Bus bus name into a pid
- *
- * @param bus_name A string with the bus name
- * @return The pid of the process, or -1 if no process could be identified
- */
-pid_t dbus_get_pid_from_bus_name(const gchar *const bus_name)
-{
-	dbus_uint32_t pid = -1;
-	DBusMessage *reply;
-
-	if ((reply = dbus_send_with_block("org.freedesktop.DBus",
-					  "/org/freedesktop/DBus/Bus",
-					  "org.freedesktop.DBus",
-					  "GetConnectionUnixProcessID", -1,
-					  DBUS_TYPE_STRING, &bus_name,
-					  DBUS_TYPE_INVALID)) != NULL) {
-		dbus_message_get_args(reply, NULL,
-				      DBUS_TYPE_UINT32, &pid,
-				      DBUS_TYPE_INVALID);
-		dbus_message_unref(reply);
-	}
-
-	return (pid_t)pid;
-}
-
-/**
  * D-Bus callback for the version get method call
  *
  * @param msg The D-Bus message to reply to
