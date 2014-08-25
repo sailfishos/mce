@@ -1,0 +1,138 @@
+// -*- mode: c -*-
+
+digraph mce_sensorfw
+{
+  fontsize=6;
+  ranksep=0.2;
+  nodesep=0.2;
+
+  edge[fontsize=6];
+  edge[arrowsize=0.4];
+
+  node[width=0.001]
+  node[height=0.001]
+  node[fontsize=6]
+  node[shape=box];
+  node[style=filled];
+  node[fillcolor=wheat];
+
+  compound = true;
+
+  subgraph clusterREPORTING {
+    REPORTING_IDLE;
+    REPORTING_RETHINK;
+    REPORTING_ENABLING;
+    REPORTING_ENABLED;
+    REPORTING_DISABLING;
+    REPORTING_DISABLED;
+    REPORTING_ERROR;
+    REPORTING_ANY [label="*"];
+
+    REPORTING_ANY       -> REPORTING_ERROR [label="failure"];
+    REPORTING_ANY       -> REPORTING_IDLE  [label="reset()"];
+
+    REPORTING_IDLE      -> REPORTING_RETHINK [label="connected"];
+
+    REPORTING_RETHINK   -> REPORTING_ENABLING;
+    REPORTING_RETHINK   -> REPORTING_DISABLING;
+
+    REPORTING_ENABLING  -> REPORTING_ENABLED;
+    REPORTING_ENABLED   -> REPORTING_RETHINK [label="disable()"];
+
+    REPORTING_DISABLING -> REPORTING_DISABLED;
+    REPORTING_DISABLED  -> REPORTING_RETHINK  [label="enable()"];
+  }
+
+  subgraph clusterOVERRIDE {
+    OVERRIDE_IDLE;
+    OVERRIDE_RETHINK;
+    OVERRIDE_ENABLING;
+    OVERRIDE_ENABLED;
+    OVERRIDE_DISABLING;
+    OVERRIDE_DISABLED;
+    OVERRIDE_ERROR;
+    OVERRIDE_ANY [label="*"];
+
+    OVERRIDE_ANY       -> OVERRIDE_ERROR [label="failure"];
+    OVERRIDE_ANY       -> OVERRIDE_IDLE  [label="reset()"];
+
+    OVERRIDE_IDLE      -> OVERRIDE_RETHINK [label="connected"];
+
+    OVERRIDE_RETHINK   -> OVERRIDE_ENABLING;
+    OVERRIDE_RETHINK   -> OVERRIDE_DISABLING;
+
+    OVERRIDE_ENABLING  -> OVERRIDE_ENABLED;
+    OVERRIDE_ENABLED   -> OVERRIDE_RETHINK [label="disable()"];
+    OVERRIDE_DISABLING -> OVERRIDE_DISABLED;
+    OVERRIDE_DISABLED  -> OVERRIDE_RETHINK  [label="enable()"];
+  }
+
+  subgraph clusterCONNECTION {
+    CONNECTION_IDLE;
+    CONNECTION_CONNECTING;
+    CONNECTION_REGISTERING;
+    CONNECTION_CONNECTED;
+    CONNECTION_ERROR;
+    CONNECTION_ANY [label="*"];
+
+    CONNECTION_ANY           -> CONNECTION_ERROR [label="failure"];
+    CONNECTION_ANY           -> CONNECTION_IDLE  [label="reset()"];
+
+    CONNECTION_IDLE          -> CONNECTION_CONNECTING [label="start()"];
+    CONNECTION_CONNECTING    -> CONNECTION_REGISTERING;
+    CONNECTION_REGISTERING   -> CONNECTION_CONNECTED;
+
+    CONNECTION_CONNECTED -> REPORTING_IDLE [style=dotted, lhead=clusterREPORTING]
+    CONNECTION_CONNECTED -> OVERRIDE_IDLE  [style=dotted, lhead=clusterOVERRIDE]
+
+  }
+  subgraph clusterSESSION {
+    SESSION_IDLE;
+    SESSION_REQUESTING;
+    SESSION_ACTIVE;
+    SESSION_ERROR;
+    SESSION_ANY [label="*"];
+
+    SESSION_ANY        -> SESSION_ERROR      [label="failure"];
+    SESSION_ANY        -> SESSION_IDLE       [label="reset()"];
+
+    SESSION_IDLE       -> SESSION_REQUESTING [label="start()"];
+    SESSION_REQUESTING -> SESSION_ACTIVE;
+
+    SESSION_ACTIVE   -> CONNECTION_IDLE [style=dotted, lhead=clusterCONNECTION]
+
+  }
+
+  subgraph clusterPLUGIN {
+    PLUGIN_IDLE;
+    PLUGIN_LOADING;
+    PLUGIN_LOADED;
+    PLUGIN_ERROR;
+    PLUGIN_ANY [label="*"];
+
+    PLUGIN_ANY  -> PLUGIN_IDLE    [label="reset()"];
+    PLUGIN_IDLE -> PLUGIN_LOADING [label="load()"];
+
+    PLUGIN_LOADING -> PLUGIN_LOADED;
+    PLUGIN_ANY     -> PLUGIN_ERROR [label="failure"];
+
+    PLUGIN_LOADED  -> SESSION_IDLE [style=dotted, lhead=clusterSESSION];
+  }
+
+  subgraph clusterSERVICE {
+    SERVICE_IDLE;
+    SERVICE_QUERYING;
+    SERVICE_RUNNING;
+    SERVICE_STOPPED;
+
+    SERVICE_IDLE -> SERVICE_QUERYING    [label="mce_startup"];
+    SERVICE_QUERYING -> SERVICE_RUNNING [label="has_owner"];
+    SERVICE_QUERYING -> SERVICE_STOPPED [label="no_owner"];
+    SERVICE_RUNNING -> SERVICE_STOPPED  [label="lost_owner"];
+    SERVICE_STOPPED -> SERVICE_RUNNING  [label="gained_owner"];
+
+    SERVICE_RUNNING -> PLUGIN_IDLE [style=dotted, lhead=clusterPLUGIN];
+    SERVICE_STOPPED -> PLUGIN_ANY [style=dotted, lhead=clusterPLUGIN];
+  }
+
+};

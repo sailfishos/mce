@@ -98,6 +98,11 @@
  *   states are reverted to sensord-is-not-available defaults.
  * - At least initially sensord restart is needed for full recovery.
  *
+ * State transitions:
+ * - state transition diagram can be generated from mce-sensorfw.dot
+ *   via installing graphviz package and running from command line
+ *     dot -Tpng mce-sensorfw.dot -o mce-sensorfw.png
+ *
  * ========================================================================= *
  *
  * Rough Data/Control Flow Diagram - Error Handling and EVDEV Input Excluded
