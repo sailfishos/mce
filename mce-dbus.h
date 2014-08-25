@@ -54,12 +54,6 @@ gboolean dbus_send_ex(const char *service,
 		      DBusPendingCall **ppc,
 		      int first_arg_type, ...);
 
-DBusMessage *dbus_send_with_block(const gchar *const service,
-				  const gchar *const path,
-				  const gchar *const interface,
-				  const gchar *const name,
-				  gint timeout, int first_arg_type, ...);
-
 gconstpointer mce_dbus_handler_add_ex(const gchar *const interface,
 				      const gchar *const name,
 				      const gchar *const args,
