@@ -51,6 +51,7 @@ gboolean dbus_send_ex(const char *service,
 		      const char *name,
 		      DBusPendingCallNotifyFunction callback,
 		      void *user_data, DBusFreeFunction user_free,
+		      DBusPendingCall **ppc,
 		      int first_arg_type, ...);
 
 DBusMessage *dbus_send_with_block(const gchar *const service,

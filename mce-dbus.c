@@ -466,7 +466,8 @@ static gboolean
 dbus_send_message_with_reply_handler(DBusMessage *const msg,
 				     DBusPendingCallNotifyFunction callback,
 				     void *user_data,
-				     DBusFreeFunction user_free)
+				     DBusFreeFunction user_free,
+				     DBusPendingCall **ppc)
 {
 	gboolean         status = FALSE;
 	DBusPendingCall *pc     = 0;
@@ -492,6 +493,11 @@ dbus_send_message_with_reply_handler(DBusMessage *const msg,
 		mce_log(LL_CRIT, "Out of memory when sending D-Bus message");
 		goto EXIT;
 	}
+
+	/* If caller asked for pending call handle, increase
+	 * the refcount by one */
+	if( ppc )
+		*ppc = dbus_pending_call_ref(pc);
 
 	/* FIXME: After succesful set_notify the notification holds a ref
 	 *        to the pending call and we could and should always unref
@@ -528,6 +534,7 @@ static gboolean dbus_send_va(const char *service,
 			     const char *name,
 			     DBusPendingCallNotifyFunction callback,
 			     void *user_data, DBusFreeFunction user_free,
+			     DBusPendingCall **ppc,
 			     int first_arg_type, va_list va)
 {
 	gboolean     res = FALSE;
@@ -566,7 +573,8 @@ static gboolean dbus_send_va(const char *service,
 	else {
 		res = dbus_send_message_with_reply_handler(msg, callback,
 							   user_data,
-							   user_free);
+							   user_free,
+							   ppc);
 		msg = 0;
 
 		/* Ownership of user_data passed on */
@@ -581,43 +589,44 @@ EXIT:
 	if( msg ) dbus_message_unref(msg);
 
 	return res;
+}
 
-/**
- * Generic function to send D-Bus messages and signals
+/** Generic function to send D-Bus messages and signals
  * to send a signal, call dbus_send with service == NULL
  *
  * @todo Make it possible to send D-Bus replies as well
  *
- * @param service D-Bus service; for signals, set to NULL
- * @param path D-Bus path
- * @param interface D-Bus interface
- * @param name The D-Bus method or signal name to send to
- * @param callback A reply callback, or NULL to set no reply;
- *                 for signals, this is unused, but please use NULL
- *                 for consistency
- * @param user_data Data to pass to callback
- * @param user_free Data release callback for user_data
+ * @param service        D-Bus service; for signals, set to NULL
+ * @param path           D-Bus path
+ * @param interface      D-Bus interface
+ * @param name The       D-Bus method or signal name to send to
+ * @param callback       A reply callback, or NULL to set no reply;
+ *                       for signals, this is unused, but please use NULL
+ *                       for consistency
+ * @param user_data      Data to pass to callback
+ * @param user_free      Data release callback for user_data
+ * @param ppc            Where to store pending call handle, or NULL
  * @param first_arg_type The DBUS_TYPE of the first argument in the list
- * @param ... The arguments to append to the D-Bus message;
- *            terminate with DBUS_TYPE_INVALID
- *            Note: the arguments MUST be passed by reference
+ * @param ...            The arguments to append to the D-Bus message;
+ *                       terminate with DBUS_TYPE_INVALID
+ *                       Note: the arguments MUST be passed by reference
+ *
  * @return TRUE on success, FALSE on failure
  */
-}
-
 gboolean dbus_send_ex(const char *service,
 		      const char *path,
 		      const char *interface,
 		      const char *name,
 		      DBusPendingCallNotifyFunction callback,
 		      void *user_data, DBusFreeFunction user_free,
+		      DBusPendingCall **ppc,
 		      int first_arg_type, ...)
 {
 	va_list va;
 	va_start(va, first_arg_type);
 	gboolean res = dbus_send_va(service, path, interface, name,
 				    callback, user_data, user_free,
-				    first_arg_type, va);
+				    ppc, first_arg_type, va);
 	va_end(va);
 	return res;
 }
@@ -649,7 +658,7 @@ gboolean dbus_send(const gchar *const service, const gchar *const path,
 	va_list va;
 	va_start(va, first_arg_type);
 	gboolean res = dbus_send_va(service, path, interface, name,
-				    callback, 0, 0, first_arg_type, va);
+				    callback, 0, 0, 0, first_arg_type, va);
 	va_end(va);
 	return res;
 }
@@ -2614,6 +2623,7 @@ static void mce_dbus_ident_query_pid(mce_dbus_ident_t *self)
 		     mce_dbus_ident_query_pid_cb,
 		     strdup(name),
 		     free,
+		     0,
 		     // ----------------
 		     DBUS_TYPE_STRING, &name,
 		     DBUS_TYPE_INVALID);
@@ -2900,10 +2910,10 @@ mce_dbus_get_pid_async(const char *name, mce_dbus_pid_notify_t cb)
 		     mce_dbus_get_pid_async_cb,
 		     mce_dbus_pid_query_create(name, cb),
 		     mce_dbus_pid_query_delete_cb,
+		     0,
 		     // ----------------
 		     DBUS_TYPE_STRING, &name,
 		     DBUS_TYPE_INVALID);
-
 EXIT:
 	return;
 }
