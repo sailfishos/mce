@@ -87,9 +87,6 @@ ENABLE_WAKELOCKS ?= y
 # Whether to enable cpu scaling governor policy
 ENABLE_CPU_GOVERNOR ?= y
 
-# Whether to enable sysinfod queries
-ENABLE_SYSINFOD_QUERIES ?= n
-
 # Whether to install systemd control files
 ENABLE_SYSTEMD_SUPPORT ?= y
 
@@ -198,10 +195,6 @@ endif
 
 ifeq ($(strip $(ENABLE_CPU_GOVERNOR)),y)
 CPPFLAGS += -DENABLE_CPU_GOVERNOR
-endif
-
-ifeq ($(strip $(ENABLE_SYSINFOD_QUERIES)),y)
-CPPFLAGS += -DENABLE_SYSINFOD_QUERIES
 endif
 
 ifeq ($(ENABLE_SENSORFW),y)
