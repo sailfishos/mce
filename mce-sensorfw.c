@@ -2454,10 +2454,6 @@ sfw_plugin_create(const sfw_backend_t *backend)
     self->plg_override   = sfw_override_create(self);
     self->plg_reporting  = sfw_reporting_create(self);
 
-// QUARANTINE     // FIXME: enable stuff to ease debug - remove later
-// QUARANTINE     sfw_override_set_target(self->plg_override, true);
-// QUARANTINE     sfw_reporting_set_target(self->plg_reporting, true);
-
     return self;
 }
 
@@ -2804,11 +2800,6 @@ sfw_service_trans(sfw_service_t *self, sfw_service_state_t state)
         sfw_plugin_do_reset(self->srv_ps);
         sfw_plugin_do_reset(self->srv_als);
         sfw_plugin_do_reset(self->srv_orient);
-
-// QUARANTINE   // handled at reporting error/reset
-// QUARANTINE         sfw_notify_ps(NOTIFY_RESET, SWF_NOTIFY_DUMMY);
-// QUARANTINE         sfw_notify_als(NOTIFY_RESET, SWF_NOTIFY_DUMMY);
-// QUARANTINE         sfw_notify_orient(NOTIFY_RESET, SWF_NOTIFY_DUMMY);
         break;
 
     default:
