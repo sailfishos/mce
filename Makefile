@@ -297,7 +297,6 @@ MCE_CORE += mce-command-line.c
 MCE_CORE += mce-conf.c
 MCE_CORE += datapipe.c
 MCE_CORE += mce-modules.c
-MCE_CORE += mce-sensorfw.c
 MCE_CORE += mce-io.c
 MCE_CORE += mce-lib.c
 MCE_CORE += median_filter.c
