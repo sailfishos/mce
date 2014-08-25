@@ -1325,7 +1325,6 @@ EXIT:
                 sfw_plugin_get_sensor_name(self->rep_plugin));
 
     if( rsp ) dbus_message_unref(rsp);
-    if( pc )  dbus_pending_call_unref(pc);
     dbus_error_free(&err);
 
     return;
@@ -1381,7 +1380,6 @@ EXIT:
     }
 
     if( rsp ) dbus_message_unref(rsp);
-    if( pc )  dbus_pending_call_unref(pc);
     dbus_error_free(&err);
 
     return;
@@ -1602,7 +1600,6 @@ EXIT:
     }
 
     if( rsp ) dbus_message_unref(rsp);
-    if( pc )  dbus_pending_call_unref(pc);
     dbus_error_free(&err);
 
     return;
@@ -2243,7 +2240,6 @@ EXIT:
         sfw_session_trans(self, SESSION_ERROR);
 
     if( rsp ) dbus_message_unref(rsp);
-    if( pc )  dbus_pending_call_unref(pc);
     dbus_error_free(&err);
 
     return;
@@ -2552,7 +2548,6 @@ EXIT:
     }
 
     if( rsp ) dbus_message_unref(rsp);
-    if( pc )  dbus_pending_call_unref(pc);
     dbus_error_free(&err);
 
     return;
@@ -2778,7 +2773,6 @@ EXIT:
     }
 
     if( rsp ) dbus_message_unref(rsp);
-    if( pc ) dbus_pending_call_unref(pc);
     dbus_error_free(&err);
 }
 

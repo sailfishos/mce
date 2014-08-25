@@ -499,16 +499,6 @@ dbus_send_message_with_reply_handler(DBusMessage *const msg,
 	if( ppc )
 		*ppc = dbus_pending_call_ref(pc);
 
-	/* FIXME: After succesful set_notify the notification holds a ref
-	 *        to the pending call and we could and should always unref
-	 *        within this function. BUT, since the currently existing
-	 *        callbacks do call unref, we can't do that before fixing
-	 *        each and every one of them...
-	 *
-	 *        Instead we do not unref on success, i.e. after getting here
-	 */
-	pc = 0;
-
 	/* Ownership of user_data passed on */
 	user_free = 0, user_data = 0;
 
@@ -519,6 +509,9 @@ EXIT:
 	if( user_free )
 		user_free(user_data);
 
+	/* If notification was set succesfully above, it will hold
+	 * one reference to the pending call until a) the callback function
+	 * gets called, or b) the pending call is canceled */
 	if( pc )
 		dbus_pending_call_unref(pc);
 
@@ -2529,7 +2522,6 @@ static void mce_dbus_ident_query_pid_cb(DBusPendingCall *pc, void *aptr)
 
 EXIT:
 	if( rsp ) dbus_message_unref(rsp);
-	if( pc )  dbus_pending_call_unref(pc);
 	dbus_error_free(&err);
 
 	return;
@@ -2819,7 +2811,6 @@ mce_dbus_get_pid_async_cb(DBusPendingCall *pc, void *aptr)
 EXIT:
 
 	if( rsp ) dbus_message_unref(rsp);
-	if( pc )  dbus_pending_call_unref(pc);
 	dbus_error_free(&err);
 
 	return;

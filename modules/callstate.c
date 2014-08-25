@@ -932,7 +932,6 @@ xofono_get_modems_cb(DBusPendingCall *pc, void *aptr)
 EXIT:
     mce_log(LL_DEBUG, "added %d modems", cnt);
     if( rsp ) dbus_message_unref(rsp);
-    dbus_pending_call_unref(pc);
     dbus_error_free(&err);
 }
 
@@ -1140,7 +1139,6 @@ xofono_name_owner_get_cb(DBusPendingCall *pc, void *user_data)
 
 EXIT:
     if( rsp ) dbus_message_unref(rsp);
-    if( pc  ) dbus_pending_call_unref(pc);
     dbus_error_free(&err);
 }
 
