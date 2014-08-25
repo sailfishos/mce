@@ -1260,8 +1260,6 @@ EXIT:
 static void
 sfw_reporting_value_cb(DBusPendingCall *pc, void *aptr)
 {
-    //mce_log(LL_DEBUG, "TRIGGER");
-
     sfw_reporting_t *self = aptr;
 
     DBusMessage  *rsp  = 0;
@@ -1335,8 +1333,6 @@ EXIT:
 static void
 sfw_reporting_change_cb(DBusPendingCall *pc, void *aptr)
 {
-    //mce_log(LL_DEBUG, "TRIGGER");
-
     sfw_reporting_t *self = aptr;
     DBusMessage  *rsp  = 0;
     DBusError     err  = DBUS_ERROR_INIT;
@@ -1550,8 +1546,6 @@ EXIT:
 static void
 sfw_override_start_cb(DBusPendingCall *pc, void *aptr)
 {
-    //mce_log(LL_DEBUG, "TRIGGER");
-
     sfw_override_t *self = aptr;
     DBusMessage  *rsp  = 0;
     DBusError     err  = DBUS_ERROR_INIT;
@@ -1814,8 +1808,6 @@ EXIT:
 static gboolean
 sfw_connection_tx_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
 {
-    //mce_log(LL_DEBUG, "TRIGGER");
-
     (void)chn;
     (void)cnd;
 
@@ -1852,8 +1844,6 @@ EXIT:
 static gboolean
 sfw_connection_rx_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
 {
-    //mce_log(LL_DEBUG, "TRIGGER");
-
     (void)chn;
     (void)cnd;
 
@@ -2196,8 +2186,6 @@ EXIT:
 static void
 sfw_session_start_cb(DBusPendingCall *pc, void *aptr)
 {
-    //mce_log(LL_DEBUG, "TRIGGER");
-
     sfw_session_t *self = aptr;
     DBusMessage  *rsp  = 0;
     DBusError     err  = DBUS_ERROR_INIT;
@@ -2507,8 +2495,6 @@ sfw_plugin_delete(sfw_plugin_t *self)
 static void
 sfw_plugin_load_cb(DBusPendingCall *pc, void *aptr)
 {
-    //mce_log(LL_DEBUG, "TRIGGER");
-
     sfw_plugin_t *self = aptr;
     DBusMessage  *rsp  = 0;
     DBusError     err  = DBUS_ERROR_INIT;
@@ -2735,8 +2721,6 @@ sfw_service_cancel_query(sfw_service_t *self)
 static void
 sfw_service_query_cb(DBusPendingCall *pc, void *aptr)
 {
-    //mce_log(LL_DEBUG, "TRIGGER");
-
     sfw_service_t *self  = aptr;
     DBusMessage   *rsp   = 0;
     const char    *owner = 0;
@@ -3339,14 +3323,10 @@ EXIT:
 static gboolean
 sfw_name_owner_changed_cb(DBusMessage *const msg)
 {
-    //mce_log(LL_DEBUG, "TRIGGER");
-
     DBusError   err  = DBUS_ERROR_INIT;
     const char *name = 0;
     const char *prev = 0;
     const char *curr = 0;
-
-    //mce_log(LL_DEBUG, "got sensorfw name owner change");
 
     if( !msg )
         goto EXIT;
