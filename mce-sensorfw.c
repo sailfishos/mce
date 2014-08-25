@@ -1,3 +1,29 @@
+/**
+ * @file mce-sensorfw.c
+ *
+ * Mode Control Entity - Interprocess communication with sensord
+ *
+ * <p>
+ *
+ * Copyright (C) 2013-2014 Jolla Ltd.
+ *
+ * <p>
+ *
+ * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
+ *
+ * mce is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License
+ * version 2.1 as published by the Free Software Foundation.
+ *
+ * mce is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #include "mce-sensorfw.h"
 
 #include "mce.h"
@@ -14,1010 +40,3062 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <errno.h>
+#include <inttypes.h>
+
+/* ========================================================================= *
+ *
+ * Internal Layering - Top-Down
+ *
+ * ========================================================================= *
+ *
+ * SENSORFW_MODULE:
+ * - implements internal mce interface defined in mce-sensorfw.h
+ *
+ * SENSORFW_SERVICE:
+ * - state machine that tracks availablity of sensord on system bus
+ * - availalibility changes trigger activity in SENSORFW_PLUGIN
+ *
+ * SENSORFW_PLUGIN:
+ * - state machine that takes care of sensord plugin loading ipc
+ * - one instance / sensor
+ * - finishing plugin loading triggers activity in SENSORFW_SESSION
+ *
+ * SENSORFW_SESSION:
+ * - state machine that takes care of data session start ipc
+ * - one instance / sensor
+ * - acquiring a session id triggers activity in SENSORFW_CONNECTION
+ *
+ * SENSORFW_CONNECTION:
+ * - state machine that takes care of data connection with sensord
+ * - one instance / sensor
+ * - establishing a connection triggers activity in SENSORFW_OVERRIDE
+ *   and SENSORFW_REPORTING
+ *
+ * SENSORFW_OVERRIDE:
+ * - state machine that takes care of standby override ipc
+ * - one instance / sensor
+ *
+ *
+ * SENSORFW_REPORTING:
+ * - state machine that takes care of sensor start/stop ipc
+ * - one instance / sensor
+ * - value changes reported via sensor specific SENSORFW_BACKEND
+ *
+ * SENSORFW_BACKEND:
+ * - contains all sensor specific constants and logic
+ *
+ * SENSORFW_NOTIFY:
+ * - manages cached sensor state
+ * - provides default values used when sensord is not available
+ * - feeds sensor data to upper level logic when state changes
+ *   and/or listening callbacks are registered
+ *
+ * Error handling:
+ * - The layer where error occurred makes transition to ERROR state
+ *   and all layers below that are reset to IDLE state and sensor
+ *   states are reverted to sensord-is-not-available defaults.
+ * - At least initially sensord restart is needed for full recovery.
+ *
+ * ========================================================================= *
+ *
+ * Rough Data/Control Flow Diagram - Error Handling and EVDEV Input Excluded
+ *
+ * ========================================================================= *
+ *
+ *             .--------------------.  .--------------------.
+ *             | MCE INIT/EXIT      |  | MCE SENSOR LOGIC   |
+ *             `--------------------'  `--------------------'
+ *                 |                                     |
+ *                 | init/quit            enable/disable |
+ *                 |                                     |
+ *                 v                                     v
+ *             .--------------------------------------------.
+ *             | SENSORFW_MODULE                            |
+ *             `--------------------------------------------'
+ *                 |                                  |
+ *                 | probe/reset       enable/disable |
+ *                 |                                  |
+ *                 v                                  v
+ *             .--------------------------------------------.
+ *             | SENSORFW_SERVICE                           |
+ *             `--------------------------------------------'
+ *                 |                              |      |
+ *                 | load/reset         set/unset |      |
+ *                 |                              |      | start/stop
+ *                 v                              |      |
+ *             .------------------------------.   |      |
+ *             | SENSORFW_PLUGIN              |   |      |
+ *             `------------------------------'   |      |
+ *                 |                              |      |
+ *                 | start/reset                  |      |
+ *                 |                              |      |
+ *                 v                              |      |
+ *             .------------------------------.   |      |
+ *             | SENSORFW_SESSION             |   |      |
+ *             `------------------------------'   |      |
+ *                 |                              |      |
+ *                 | connect/reset                |      |
+ *                 |                              |      |
+ *                 v                              |      |
+ *             .------------------------------.   |      |
+ *             | SENSORFW_CONNECTION          |   |      |
+ *             `------------------------------'   |      |
+ *               |                   |            |      |
+ *               |     rethink/reset |            |      |
+ *               |                   |            |      |
+ *               | rethink/reset     |            |      |
+ *               |                   |            |      |
+ *               |                   v            v      |
+ *               | .--------------------------------.    |
+ *               | | SENSORFW_OVERRIDE              |    |
+ *               | `--------------------------------'    |
+ *               v                                       v
+ *             .--------------------------------------------.
+ *             | SENSORFW_REPORTING                         |
+ *             `--------------------------------------------'
+ *                            |
+ *                            | initial/change/reset
+ *                            |
+ *                            v
+ *             .--------------------------------------------.
+ *             | SENSORFW_BACKEND                           |
+ *             `--------------------------------------------'
+ *                            |
+ *                            | sensor state
+ *                            |
+ *                            v
+ *             .--------------------------------------------.
+ *             | SENSORFW_NOTIFY                            |
+ *             `--------------------------------------------'
+ *                            |
+ *                            | sensor state
+ *                            |
+ *                            v
+ *             .--------------------------------------------.
+ *             | MCE SENSOR LOGIC                           |
+ *             `--------------------------------------------'
+ *
+ * ========================================================================= */
+
+/* ========================================================================= *
+ * D-BUS CONSTANTS FOR D-BUS DAEMON
+ * ========================================================================= */
 
 /** org.freedesktop.DBus.NameOwnerChanged D-Bus signal */
-#define DBUS_NAME_OWNER_CHANGED_SIG "NameOwnerChanged"
+#define DBUS_SIGNAL_NAME_OWNER_CHANGED         "NameOwnerChanged"
 
-#define SENSORFW_SERVICE "com.nokia.SensorService"
-#define SENSORFW_PATH    "/SensorManager"
-#define SENSOR_SOCKET    "/var/run/sensord.sock"
+#define DBUS_METHOD_GET_NAME_OWNER             "GetNameOwner"
 
-#if 0 // DEBUG: make all logging from this module "critical"
-# undef mce_log
-# define mce_log(LEV, FMT, ARGS...) \
-	mce_log_file(LL_CRIT, __FILE__, __FUNCTION__, FMT , ## ARGS)
-#endif
+/* ========================================================================= *
+ * D-BUS CONSTANTS FOR SENSORD SERVICE
+ * ========================================================================= */
+
+/** D-Bus name of the sensord service */
+#define SENSORFW_SERVICE                       "com.nokia.SensorService"
+
+// ----------------------------------------------------------------
+
+/** D-Bus object path for sensord sensor manager */
+#define SENSORFW_MANAGER_OBJECT                "/SensorManager"
+
+/** D-Bus interface used by sensor manager */
+#define SENSORFW_MANAGER_INTEFCACE             "local.SensorManager"
+
+/** D-Bus method for loading sensor plugin */
+#define SENSORFW_MANAGER_METHOD_LOAD_PLUGIN    "loadPlugin"
+
+/** D-Bus method for starting sensor session */
+#define SENSORFW_MANAGER_METHOD_START_SESSION  "requestSensor"
+
+// ----------------------------------------------------------------
+
+/* Note: Every sensor has unique object path & interface */
+
+/** D-Bus interface used by proximity sensor plugin */
+#define SENSORFW_SENSOR_INTERFACE_PS           "local.ProximitySensor"
+
+/** D-Bus interface used by ambient light sensor plugin */
+#define SENSORFW_SENSOR_INTERFACE_ALS          "local.ALSSensor"
+
+/** D-Bus interface used by orientation sensor plugin */
+#define SENSORFW_SENSOR_INTERFACE_ORIENT       "local.OrientationSensor"
+
+/* Common methods supported by all sensor interfaces */
+
+/** D-Bus method for enabling sensor */
+#define SENSORFW_SENSOR_METHOD_START           "start"
+
+/** D-Bus method for disabling sensor */
+#define SENSORFW_SENSOR_METHOD_STOP            "stop"
+
+/** D-Bus method for changing sensor standby override */
+#define SENSORFW_SENSOR_METHOD_SET_OVERRIDE    "setStandbyOverride"
+
+/* Note: The sensor specific methods for reading current state
+ *       differ only by method name, so common logic can stll be
+ *       used for making the queries and processing the replies. */
+
+/** D-Bus method for reading intial proximity state */
+#define SENSORFW_SENSOR_METHOD_READ_PS         "proximity"
+
+/** D-Bus method for reading intial ambient light state */
+#define SENSORFW_SENSOR_METHOD_READ_ALS        "lux"
+
+/** D-Bus method for reading intial orientation state */
+#define SENSORFW_SENSOR_METHOD_READ_ORIENT     "orientation"
+
+// ----------------------------------------------------------------
+
+/** Connect path to sensord data unix domain socket  */
+#define SENSORFW_DATA_SOCKET                   "/var/run/sensord.sock"
+
+// ----------------------------------------------------------------
+
+/** Name of proximity sensor */
+#define SENSORFW_SENSOR_NAME_PS                "proximitysensor"
+
+/** Name of ambient light sensor */
+#define SENSORFW_SENSOR_NAME_ALS               "alssensor"
+
+/** Name of orientation sensor */
+#define SENSORFW_SENSOR_NAME_ORIENT            "orientationsensor"
+
+/* ========================================================================= *
+ * FORWARD_DECLARATIONS
+ * ========================================================================= */
+
+typedef struct sfw_service_t       sfw_service_t;
+
+typedef struct sfw_plugin_t        sfw_plugin_t;
+typedef struct sfw_session_t       sfw_session_t;
+typedef struct sfw_connection_t    sfw_connection_t;
+typedef struct sfw_override_t      sfw_override_t;
+typedef struct sfw_reporting_t     sfw_reporting_t;
+typedef struct sfw_backend_t       sfw_backend_t;
+
+typedef struct sfw_sample_als_t    sfw_sample_als_t;
+typedef struct sfw_sample_ps_t     sfw_sample_ps_t;
+typedef struct sfw_sample_orient_t sfw_sample_orient_t;
+
+/* ========================================================================= *
+ * SENSORD_DATA_TYPES
+ * ========================================================================= */
 
 /** ALS data block as sensord sends them */
-typedef struct als_data {
-	uint64_t timestamp; /* microseconds, monotonic */
-	uint32_t value;
-} als_data_t;
+struct sfw_sample_als_t
+{
+    /** microseconds, monotonic */
+    uint64_t als_timestamp;
+
+    /** amount of light [lux] */
+    uint32_t als_value;
+};
 
 /** PS data block as sensord sends them */
-typedef struct ps_data {
-	uint64_t timestamp; /* microseconds, monotonic */
-	uint32_t value;
-	// This should be the size of a C++ bool on the same platform.
-	// Unfortunately there's no way to find out in a C program
-	uint8_t  withinProximity;
-} ps_data_t;
-
-/** We need to differentiate multiple real and synthetic input sources */
-typedef enum {
-	/** Synthetic input, for example when sensord is not running */
-	DS_FAKED,
-	/** Data read directly from kernel */
-	DS_EVDEV,
-	/** Data received from sensord */
-	DS_SENSORD,
-	/** Dummy data, use the last known good value instead */
-	DS_RESTORE,
-} input_source_t;
-
-/** Names of input sources; for debuggging purposes */
-static const char * const input_source_name[] =
+struct sfw_sample_ps_t
 {
-	[DS_FAKED]   = "SYNTH",
-	[DS_EVDEV]   = "EVDEV",
-	[DS_SENSORD] = "SENSORD",
-	[DS_RESTORE] = "RESTORE",
+    /** microseconds, monotonic */
+    uint64_t ps_timestamp;
+
+    /** distance of blocking object [cm] */
+    uint32_t ps_value;
+
+    /** sensor covered [bool]
+     *
+     * This should be the size of a C++ bool on the same platform.
+     * Unfortunately there's no way to find out in a C program
+     */
+    uint8_t  ps_withinProximity;
+};
+
+/** Orientation data block as sensord sends them */
+struct sfw_sample_orient_t
+{
+    /* microseconds, monotonic */
+    uint64_t orient_timestamp;
+
+    /* orientation [enum orientation_state_t] */
+    int32_t  orient_state;
 };
 
 /* ========================================================================= *
- * STATE DATA
+ * SENSORFW_BACKEND
  * ========================================================================= */
 
-/** D-Bus System Bus connection */
-static DBusConnection *systembus = 0;
+/** Callback function type: initial value reporting */
+typedef void (*sfw_value_fn)(sfw_plugin_t *plugin, unsigned value);
 
-/** Flag for sensord is on system bus */
-static bool       sensord_running = false;
+/** Callback function type: value change reporting */
+typedef void (*sfw_sample_fn)(sfw_plugin_t *plugin, const void *sample);
 
-/** Flag for system is suspended */
-static bool       system_suspended = false;
+/** Callback function type: value reset reporting */
+typedef void (*sfw_reset_fn)(sfw_plugin_t *plugin);
 
-static void als_notify(unsigned lux, input_source_t srce);
-static void ps_notify(bool covered, input_source_t srce);
+/** Sensor specific data and callbacks */
+struct sfw_backend_t
+{
+    /** Name of the sensor as expected by sensord */
+    const char   *be_sensor_name;
+
+    /** D-Bus object path for the sensor, or NULL to construct default one */
+    const char   *be_sensor_object;
+
+    /** D-Bus interface for the sensor */
+    const char   *be_sensor_interface;
+
+    /** Size of sensor data blobs sensord will be sending */
+    size_t        be_sample_size;
+
+    /** Callback for handling sensor data blob */
+    sfw_sample_fn be_sample_cb;
+
+    /** D-Bus method name for querying the initial sensor value */
+    const char   *be_value_method;
+
+    /** Callback for handling received initial sensor value */
+    sfw_value_fn  be_value_cb;
+
+    /** Callback for resetting sensor value back to default */
+    sfw_reset_fn  be_reset_cb;
+};
 
 /* ========================================================================= *
- * EVDEV HOOKS
+ * SENSORFW_HELPERS
  * ========================================================================= */
 
-/** Callback function for processing evdev events
- *
- * @param chn  io channel
- * @param cnd  (not used)
- * @param aptr pointer to io watch
- *
- * @return TRUE to keep io watch active, FALSE to stop it
- */
-static gboolean
-mce_sensorfw_evdev_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
-{
-	gboolean  keep = FALSE;
-	int      *id   = aptr;
-	int       fd   = g_io_channel_unix_get_fd(chn);
-	int       als  = -1;
-	int       ps   = -1;
-	int       rc;
-
-	struct input_event eve[256];
-
-	if( cnd & (G_IO_ERR | G_IO_HUP | G_IO_NVAL) ) {
-		goto EXIT;
-	}
-
-	/* wakelock must be taken before reading the data */
-	wakelock_lock("mce_input_handler", -1);
-
-	rc = read(fd, eve, sizeof eve);
-
-	if( rc == -1 ) {
-		if( errno == EINTR || errno == EAGAIN )
-			keep = TRUE;
-		else
-			mce_log(LL_ERR, "read events: %m");
-		goto EXIT;
-	}
-
-	if( rc == 0 ) {
-		mce_log(LL_ERR, "read events: EOF");
-		goto EXIT;
-	}
-
-	keep = TRUE;
-
-	size_t n = rc / sizeof *eve;
-	for( size_t i = 0; i < n; ++i ) {
-		if( eve[i].type != EV_ABS )
-			continue;
-
-		switch( eve[i].code ) {
-		case ABS_MISC:
-			als = eve[i].value;
-			break;
-		case ABS_DISTANCE:
-			ps = eve[i].value;
-			break;
-		default:
-			break;
-		}
-	}
-
-	if( als != -1 )
-		als_notify(als, DS_EVDEV);
-	if( ps != -1 )
-		ps_notify(ps < 1, DS_EVDEV);
-
-EXIT:
-	if( !keep && *id ) {
-		*id = 0;
-		mce_log(LL_CRIT, "stopping io watch");
-	}
-
-	/* wakelock must be released when we are done with the data */
-	wakelock_unlock("mce_input_handler");
-
-	return keep;
-}
-
-/** Helper function for registering io watch
- *
- * @param fd   file descriptor to watch
- * @param cb   io watch callback function
- * @param aptr context to pass to the callback
- *
- * @return source id, or 0 in case of errors
- */
-static guint
-mce_sensorfw_start_iomon(int fd, GIOFunc cb, void *aptr)
-{
-	GIOChannel *chn = 0;
-	guint       id  = 0;
-
-	if( !(chn = g_io_channel_unix_new(fd)) ) {
-		goto EXIT;
-	}
-
-	if( !(id = g_io_add_watch(chn,
-				  G_IO_IN | G_IO_ERR | G_IO_HUP | G_IO_NVAL,
-				  cb, aptr)) )
-		goto EXIT;
-
-	g_io_channel_set_close_on_unref(chn, TRUE), fd = -1;
-
-EXIT:
-	if( chn != 0 ) g_io_channel_unref(chn);
-	if( fd != -1 ) close(fd);
-
-	return id;
-}
+static bool              sfw_socket_set_blocking        (int fd, bool blocking);
+static int               sfw_socket_open                (void);
+static guint             sfw_socket_add_notify          (int fd, bool close_on_unref, GIOCondition cnd, GIOFunc io_cb, gpointer aptr);
 
 /* ========================================================================= *
- * COMMON
+ * SENSORFW_REPORTING
  * ========================================================================= */
 
-/** Add input watch for sensord session
- *
- * @param sessionid sensord session id from mce_sensorfw_request_sensor()
- * @param datafunc  glib io watch callback
- *
- * @param glib io watch source id, or 0 in case of failure
- */
-static guint
-mce_sensorfw_add_io_watch(int sessionid, GIOFunc datafunc)
+typedef enum
 {
-	guint       wid = 0;
-	int         fd  = -1;
-	int32_t     sid = sessionid;
-	char        ack = 0;
-	GIOChannel *chn = 0;
+    /** Sensord is not available */
+    REPORTING_IDLE,
 
-	struct sockaddr_un sa;
-	socklen_t sa_len;
+    /** Choose between start() and stop() */
+    REPORTING_RETHINK,
 
-	mce_log(LL_INFO, "adding watch for session %d", sessionid);
+    /** Waiting a reply to start() */
+    REPORTING_ENABLING,
 
-	if( (fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1 ) {
-		mce_log(LL_ERR, "could not open local domain socket");
-		goto EXIT;
-	}
+    /** Sensor started succesfully */
+    REPORTING_ENABLED,
 
-	memset(&sa, 0, sizeof sa);
-	sa.sun_family = AF_UNIX;
-	snprintf(sa.sun_path, sizeof sa.sun_path, "%s", SENSOR_SOCKET);
-	sa_len = strchr(sa.sun_path, 0) + 1 - (char *)&sa;
+    /** Waiting a reply to stop() */
+    REPORTING_DISABLING,
 
-	if( connect(fd, (struct sockaddr *) &sa, sa_len) == -1 ) {
-		mce_log(LL_ERR, "could not connect to %s: %m",
-			SENSOR_SOCKET);
-		goto EXIT;
-	}
+    /** Sensor stopped succesfully */
+    REPORTING_DISABLED,
 
-	errno = 0;
-	if( write(fd, &sid, sizeof sid) != sizeof sid ) {
-		mce_log(LL_ERR, "could not initialize reader for"
-			" session %d: %m",
-			sessionid);
-		goto EXIT;
-	}
+    /** Something went wrong */
+    REPORTING_ERROR,
 
-	errno = 0;
-	if( read(fd, &ack, 1) != 1 || ack != '\n' ) {
-		mce_log(LL_ERR, "could not get handshake for"
-			" session %d: %m",
-			sessionid);
-		goto EXIT;
-	}
+    REPORTING_NUMSTATES
+} sfw_reporting_state_t;
 
-	if( !(chn = g_io_channel_unix_new(fd)) ) {
-		goto EXIT;
-	}
+/** State machine for handling sensor start/stop */
+struct sfw_reporting_t
+{
+    /** Pointer to containing plugin object */
+    sfw_plugin_t          *rep_plugin;
 
-	if( !(wid = g_io_add_watch(chn,
-				   G_IO_IN | G_IO_ERR | G_IO_HUP | G_IO_NVAL,
-				   datafunc, 0)) ) {
-		goto EXIT;
-	}
+    /** Current reporting state */
+    sfw_reporting_state_t  rep_state;
 
-	g_io_channel_set_close_on_unref(chn, TRUE), fd = -1;
+    /** Pending start/stop dbus method call */
+    DBusPendingCall       *rep_change_pc;
 
-	mce_log(LL_DEBUG, "io watch for %d = %u", sessionid, wid);
+    /** Pending initial value dbus method call */
+    DBusPendingCall       *rep_value_pc;
 
-EXIT:
-	if( chn != 0 ) g_io_channel_unref(chn);
-	if( fd != -1 ) close(fd);
-	return wid;
+    /** Flag for: MCE wants sensor to be enabled */
+    bool                  rep_target;
+};
+
+static const char       *sfw_reporting_state_name         (sfw_reporting_state_t state);
+
+static sfw_reporting_t  *sfw_reporting_create             (sfw_plugin_t *plugin);
+static void              sfw_reporting_delete             (sfw_reporting_t *self);
+
+static void              sfw_reporting_cancel_change      (sfw_reporting_t *self);
+static void              sfw_reporting_cancel_value       (sfw_reporting_t *self);
+
+static void              sfw_reporting_trans              (sfw_reporting_t *self, sfw_reporting_state_t state);
+
+static void              sfw_reporting_change_cb          (DBusPendingCall *pc, void *aptr);
+static void              sfw_reporting_value_cb           (DBusPendingCall *pc, void *aptr);
+
+static void              sfw_reporting_do_rethink         (sfw_reporting_t *self);
+static void              sfw_reporting_do_start           (sfw_reporting_t *self);
+static void              sfw_reporting_do_reset           (sfw_reporting_t *self);
+
+static void              sfw_reporting_set_target         (sfw_reporting_t *self, bool enable);
+
+/* ========================================================================= *
+ * SENSORFW_OVERRIDE
+ * ========================================================================= */
+
+typedef enum  {
+    /** Sensord is not available */
+    OVERRIDE_IDLE,
+
+    /** Choose between standby override set/unset */
+    OVERRIDE_RETHINK,
+
+    /** Waiting for a reply to set standby override */
+    OVERRIDE_ENABLING,
+
+    /** Standby override succesfully set */
+    OVERRIDE_ENABLED,
+
+    /** Waiting for a reply to unset standby override */
+    OVERRIDE_DISABLING,
+
+    /** Standby override succesfully unset */
+    OVERRIDE_DISABLED,
+
+    /** Something went wrong */
+    OVERRIDE_ERROR,
+
+    OVERRIDE_NUMSTATES
+} sfw_override_state_t;
+
+/** State machine for handling sensor standby override */
+struct sfw_override_t
+{
+    /** Pointer to containing plugin object */
+    sfw_plugin_t         *ovr_plugin;
+
+    /** Current override state */
+    sfw_override_state_t  ovr_state;
+
+    /** Pending standby override set/unset method call */
+    DBusPendingCall      *ovr_start_pc;
+
+    /** Flag for: MCE wants standby override to be set */
+    bool                  ovr_target;
+};
+
+static const char       *sfw_override_state_name         (sfw_override_state_t state);
+
+static sfw_override_t    *sfw_override_create            (sfw_plugin_t *plugin);
+static void              sfw_override_delete             (sfw_override_t *self);
+
+static void              sfw_override_cancel_start       (sfw_override_t *self);
+
+static void              sfw_override_trans              (sfw_override_t *self, sfw_override_state_t state);
+
+static void              sfw_override_start_cb           (DBusPendingCall *pc, void *aptr);
+
+static void              sfw_override_do_rethink         (sfw_override_t *self);
+static void              sfw_override_do_start           (sfw_override_t *self);
+static void              sfw_override_do_reset           (sfw_override_t *self);
+
+static void              sfw_override_set_target         (sfw_override_t *self, bool enable);
+
+/* ========================================================================= *
+ * SENSORFW_CONNECTION
+ * ========================================================================= */
+
+typedef enum
+{
+    /** Sensord is not available */
+    CONNECTION_IDLE,
+
+    /** Waiting for data socket to come writable */
+    CONNECTION_CONNECTING,
+
+    /** Waiting for handshake reply */
+    CONNECTION_REGISTERING,
+
+    /** Waiting for sensor data */
+    CONNECTION_CONNECTED,
+
+    /** Something went wrong */
+    CONNECTION_ERROR,
+
+    CONNECTION_NUMSTATES
+} sfw_connection_state_t;
+
+/** State machine for handling sensor data connection */
+struct sfw_connection_t
+{
+    /** Pointer to containing plugin object */
+    sfw_plugin_t           *con_plugin;
+
+    /** Current connection state */
+    sfw_connection_state_t  con_state;
+
+    /** File descriptor for data socket */
+    int                     con_fd;
+
+    /** I/O watch id id for: ready to write */
+    guint                   con_rx_id;
+
+    /** I/O watch id id for: data available */
+    guint                   con_tx_id;
+};
+
+static const char       *sfw_connection_state_name      (sfw_connection_state_t state);
+
+static sfw_connection_t *sfw_connection_create          (sfw_plugin_t *plugin);
+static void              sfw_connection_delete          (sfw_connection_t *self);
+
+static bool              sfw_connection_handle_samples(sfw_connection_t *self, char *data, size_t size);
+
+static int               sfw_connection_get_session_id  (const sfw_connection_t *self);
+
+static bool              sfw_connection_tx_req          (sfw_connection_t *self);
+static bool              sfw_connection_rx_ack          (sfw_connection_t *self);
+static bool              sfw_connection_rx_dta          (sfw_connection_t *self);
+
+static gboolean          sfw_connection_tx_cb           (GIOChannel *chn, GIOCondition cnd, gpointer aptr);
+static gboolean          sfw_connection_rx_cb           (GIOChannel *chn, GIOCondition cnd, gpointer aptr);
+
+static void              sfw_connection_remove_tx_notify(sfw_connection_t *self);
+static void              sfw_connection_remove_rx_notify(sfw_connection_t *self);
+static void              sfw_connection_close_socket    (sfw_connection_t *self);
+static bool              sfw_connection_open_socket     (sfw_connection_t *self);
+
+static void              sfw_connection_trans           (sfw_connection_t *self, sfw_connection_state_t state);
+
+static void              sfw_connection_do_start        (sfw_connection_t *self);
+static void              sfw_connection_do_reset        (sfw_connection_t *self);
+
+/* ========================================================================= *
+ * SENSORFW_SESSION
+ * ========================================================================= */
+
+typedef enum
+{
+    /** Sensord is not available */
+    SESSION_IDLE,
+
+    /** Waiting for session id reply */
+    SESSION_REQUESTING,
+
+    /** Have a session id */
+    SESSION_ACTIVE,
+
+    /** Something went wrong */
+    SESSION_ERROR,
+
+    SESSION_NUMSTATES
+} sfw_session_state_t;
+
+/** State machine for handling sensor data session */
+struct sfw_session_t
+{
+    /** Pointer to containing plugin object */
+    sfw_plugin_t        *ses_plugin;
+
+    /** Current session state */
+    sfw_session_state_t  ses_state;
+
+    /** Pending session start dbus method call */
+    DBusPendingCall     *ses_start_pc;
+
+    /** Session ID received from sensord */
+    dbus_int32_t         ses_id;
+};
+
+static const char       *sfw_session_state_name         (sfw_session_state_t state);
+
+static sfw_session_t    *sfw_session_create             (sfw_plugin_t *plugin);
+static void              sfw_session_delete             (sfw_session_t *self);
+
+static int               sfw_session_get_id             (const sfw_session_t *self);
+
+static void              sfw_session_cancel_start       (sfw_session_t *self);
+
+static void              sfw_session_trans              (sfw_session_t *self, sfw_session_state_t state);
+
+static void              sfw_session_start_cb           (DBusPendingCall *pc, void *aptr);
+
+static void              sfw_session_do_start           (sfw_session_t *self);
+static void              sfw_session_do_reset           (sfw_session_t *self);
+
+/* ========================================================================= *
+ * SENSORFW_PLUGIN
+ * ========================================================================= */
+
+typedef enum
+{
+    /** Sensord is not available */
+    PLUGIN_IDLE,
+
+    /** Waiting for a reply to plugin load method call */
+    PLUGIN_LOADING,
+
+    /** Sensor plugin is loaded  */
+    PLUGIN_LOADED,
+
+    /** Something went wrong */
+    PLUGIN_ERROR,
+
+    PLUGIN_NUMSTATES
+} sfw_plugin_state_t;
+
+/** State machine for handling sensor plugin loading */
+struct sfw_plugin_t
+{
+    /** Sensor specific backend data & callbacks */
+    const sfw_backend_t  *plg_backend;
+
+    /** Default sensor specific D-BUs object path
+     *
+     * Constructed if backend does not define one explicitly */
+    char                 *plg_sensor_object;
+
+    /** Current plugin state */
+    sfw_plugin_state_t    plg_state;
+
+    /** Pending plugin load dbus method call */
+    DBusPendingCall      *plg_load_pc;
+
+    /** Session state machine object */
+    sfw_session_t        *plg_session;
+
+    /** Connection state machine object */
+    sfw_connection_t     *plg_connection;
+
+    /** Standby override state machine object */
+    sfw_override_t       *plg_override;
+
+    /** Sensor reporting state machine object */
+    sfw_reporting_t      *plg_reporting;
+};
+
+static const char       *sfw_plugin_state_name          (sfw_plugin_state_t state);
+
+static sfw_plugin_t     *sfw_plugin_create              (const sfw_backend_t *backend);
+static void              sfw_plugin_delete              (sfw_plugin_t *self);
+
+static const char       *sfw_plugin_get_sensor_name     (const sfw_plugin_t *self);
+static const char       *sfw_plugin_get_sensor_object   (const sfw_plugin_t *self);
+static const char       *sfw_plugin_get_sensor_interface(const sfw_plugin_t *self);
+static int               sfw_plugin_get_session_id      (const sfw_plugin_t *self);
+static const char       *sfw_plugin_get_value_method    (const sfw_plugin_t *self);
+static size_t            sfw_plugin_get_sample_size     (const sfw_plugin_t *self);
+static void              sfw_plugin_handle_sample       (sfw_plugin_t *self, const void *sample);
+static void              sfw_plugin_handle_value        (sfw_plugin_t *self, unsigned value);
+static void              sfw_plugin_reset_value         (sfw_plugin_t *self);
+
+static void              sfw_plugin_cancel_load         (sfw_plugin_t *self);
+
+static void              sfw_plugin_trans               (sfw_plugin_t *self, sfw_plugin_state_t state);
+
+static void              sfw_plugin_load_cb             (DBusPendingCall *pc, void *aptr);
+static void              sfw_plugin_do_load             (sfw_plugin_t *self);
+static void              sfw_plugin_do_reset            (sfw_plugin_t *self);
+
+static void              sfw_plugin_do_session_start    (sfw_plugin_t *self);
+static void              sfw_plugin_do_session_reset    (sfw_plugin_t *self);
+
+static void              sfw_plugin_do_connection_start (sfw_plugin_t *self);
+static void              sfw_plugin_do_connection_reset (sfw_plugin_t *self);
+
+static void              sfw_plugin_do_override_start   (sfw_plugin_t *self);
+static void              sfw_plugin_do_override_reset   (sfw_plugin_t *self);
+
+static void              sfw_plugin_do_reporting_start  (sfw_plugin_t *self);
+static void              sfw_plugin_do_reporting_reset  (sfw_plugin_t *self);
+
+/* ========================================================================= *
+ * SENSORFW_SERVICE
+ * ========================================================================= */
+
+typedef enum
+{
+    /** Sensord availability is not known */
+    SERVICE_IDLE,
+
+    /** Waiting for a reply to name owner query */
+    SERVICE_QUERYING,
+
+    /** Sensord service is available */
+    SERVICE_RUNNING,
+
+    /** Sensord service is not available */
+    SERVICE_STOPPED,
+
+    SERVICE_NUMSTATES
+} sfw_service_state_t;
+
+/** State machine for handling sensord service availability tracking */
+struct sfw_service_t
+{
+    /** Sensord service tracking state */
+    sfw_service_state_t  srv_state;
+
+    /** Pending name owner dbus method call */
+    DBusPendingCall     *srv_query_pc;
+
+    /** State machine object for proximity sensor */
+    sfw_plugin_t        *srv_ps;
+
+    /** State machine object for ambient light sensor */
+    sfw_plugin_t        *srv_als;
+
+    /** State machine object for orientation sensor */
+    sfw_plugin_t        *srv_orient;
+
+};
+
+static const char       *sfw_service_state_name         (sfw_service_state_t state);
+
+static sfw_service_t    *sfw_service_create             (void);
+static void              sfw_service_delete             (sfw_service_t *self);
+
+static void              sfw_service_cancel_query       (sfw_service_t *self);
+static void              sfw_service_query_cb        (DBusPendingCall *pc, void *aptr);
+
+static void              sfw_service_trans              (sfw_service_t *self, sfw_service_state_t state);
+
+static void              sfw_service_do_start           (sfw_service_t *self);
+static void              sfw_service_do_stop            (sfw_service_t *self);
+static void              sfw_service_do_query           (sfw_service_t *self);
+
+static void              sfw_service_set_ps             (sfw_service_t *self, bool enable);
+static void              sfw_service_set_als            (sfw_service_t *self, bool enable);
+static void              sfw_service_set_orient         (sfw_service_t *self, bool enable);
+
+/* ========================================================================= *
+ * SENSORFW_NOTIFY
+ * ========================================================================= */
+
+/** Proximity state to use when sensor can't be enabled */
+#define SWF_NOTIFY_DEFAULT_PS false
+
+/** Ambient light level [lux] to use when sensor can't be enabled */
+#define SWF_NOTIFY_DEFAULT_ALS 400
+
+/** Orientation state to use when sensor can't be enabled */
+#define SWF_NOTIFY_DEFAULT_ORIENT MCE_ORIENTATION_FACE_UP
+
+/** Dummy sensor value to use when re-sending cached state data */
+#define SWF_NOTIFY_DUMMY 0
+
+typedef enum
+{
+    /** Cached sensor state should be reset to default value */
+    NOTIFY_RESET,
+
+    /** Cached sensor state should be sent again */
+    NOTIFY_REPEAT,
+
+    /** Sensor state was received from evdev source */
+    NOTIFY_EVDEV,
+
+    /** Sensor state was received from sensord */
+    NOTIFY_SENSORD,
+
+    NOTIFY_NUMTYPES
+} sfw_notify_t;
+
+static gboolean          sfw_name_owner_changed_cb      (DBusMessage *const msg);
+
+static void              sfw_notify_ps                  (sfw_notify_t type, bool covered);
+static void              sfw_notify_als                 (sfw_notify_t type, unsigned lux);
+static void              sfw_notify_orient              (sfw_notify_t type, int state);
+
+/* ========================================================================= *
+ * SENSORFW_MODULE
+ * ========================================================================= */
+
+// (exported API defined in "mce-sensorfw.h")
+
+/* ========================================================================= *
+ * SENSORFW_BACKEND
+ * ========================================================================= */
+
+/** Callback for handling ambient light events from sensord */
+static void
+sfw_backend_als_sample_cb(sfw_plugin_t *plugin, const void *sample)
+{
+    (void)plugin;
+
+    const sfw_sample_als_t *self = sample;
+
+    mce_log(LL_DEBUG, "ALS: time=%"PRIu64" light=%"PRIu32"",
+            self->als_timestamp, self->als_value);
+
+    sfw_notify_als(NOTIFY_SENSORD, self->als_value);
 }
 
-/** Issue load sensor IPC to sensord
- *
- * @param id sensor name
- *
- * @return true on success, or false in case of errors
+/** Callback for handling proximity events from sensord */
+static void
+sfw_backend_ps_sample_cb(sfw_plugin_t *plugin, const void *sample)
+{
+    (void)plugin;
+
+    const sfw_sample_ps_t *self = sample;
+
+    mce_log(LL_DEBUG, "PS: time=%"PRIu64" distance=%"PRIu32" proximity=%s",
+            self->ps_timestamp, self->ps_value,
+            self->ps_withinProximity ? "true" : "false");
+
+    sfw_notify_ps(NOTIFY_SENSORD, self->ps_withinProximity);
+}
+
+/** Callback for handling orientation events from sensord */
+static void
+sfw_backend_orient_sample_cb(sfw_plugin_t *plugin, const void *sample)
+{
+    (void)plugin;
+
+    const sfw_sample_orient_t *self = sample;
+
+    mce_log(LL_DEBUG, "ORIENT: time=%"PRIu64" state=%"PRId32"",
+            self->orient_timestamp, self->orient_state);
+
+    sfw_notify_orient(NOTIFY_SENSORD, self->orient_state);
+}
+
+// ----------------------------------------------------------------
+
+/** Callback for handling reply to ambient light query from sensord */
+static void
+sfw_backend_als_value_cb(sfw_plugin_t *plugin, unsigned value)
+{
+    (void)plugin;
+
+    mce_log(LL_DEBUG, "ALS: initial light=%u", value);
+
+    sfw_notify_als(NOTIFY_SENSORD, value);
+}
+
+/** Callback for handling reply to proximity query from sensord */
+static void
+sfw_backend_ps_value_cb(sfw_plugin_t *plugin, unsigned value)
+{
+    (void)plugin;
+
+    bool covered = (value < 1);
+
+    mce_log(LL_DEBUG, "PS: initial distance=%u proximity=%s",
+            value, covered ? "true" : "false");
+
+    sfw_notify_ps(NOTIFY_SENSORD, covered);
+}
+
+/** Callback for handling reply to orientation query from sensord */
+static void
+sfw_backend_orient_value_cb(sfw_plugin_t *plugin, unsigned value)
+{
+    (void)plugin;
+
+    mce_log(LL_DEBUG, "ORIENT: initial state=%u", value);
+
+    sfw_notify_orient(NOTIFY_SENSORD, value);
+}
+
+// ----------------------------------------------------------------
+
+/** Callback for resetting ambient light state to default */
+static void
+sfw_backend_als_reset_cb(sfw_plugin_t *plugin)
+{
+    (void)plugin;
+
+    mce_log(LL_DEBUG, "ALS: light=reset-to-default");
+
+    sfw_notify_als(NOTIFY_RESET, SWF_NOTIFY_DUMMY);
+}
+
+/** Callback for resetting proximity state to default */
+static void
+sfw_backend_ps_reset_cb(sfw_plugin_t *plugin)
+{
+    (void)plugin;
+
+    mce_log(LL_DEBUG, "PS: covered=reset-to-default");
+
+    sfw_notify_ps(NOTIFY_RESET, SWF_NOTIFY_DUMMY);
+}
+
+/** Callback for resetting orientation state to default */
+static void
+sfw_backend_orient_reset_cb(sfw_plugin_t *plugin)
+{
+    (void)plugin;
+
+    mce_log(LL_DEBUG, "ORIENT: state=reset-to-default");
+
+    sfw_notify_orient(NOTIFY_RESET, SWF_NOTIFY_DUMMY);
+}
+
+// ----------------------------------------------------------------
+
+/** Data and callbacks for proximity sensor */
+static const sfw_backend_t sfw_backend_ps =
+{
+    .be_sensor_name      = SENSORFW_SENSOR_NAME_PS,
+    .be_sensor_object    = 0,
+    .be_sensor_interface = SENSORFW_SENSOR_INTERFACE_PS,
+
+    .be_sample_size      = sizeof(sfw_sample_ps_t),
+    .be_sample_cb        = sfw_backend_ps_sample_cb,
+
+    .be_value_method     = SENSORFW_SENSOR_METHOD_READ_PS,
+    .be_value_cb         = sfw_backend_ps_value_cb,
+
+    .be_reset_cb         = sfw_backend_ps_reset_cb,
+};
+
+/** Data and callbacks for ambient light sensor */
+static const sfw_backend_t sfw_backend_als =
+{
+    .be_sensor_name      = SENSORFW_SENSOR_NAME_ALS,
+    .be_sensor_object    = 0,
+    .be_sensor_interface = SENSORFW_SENSOR_INTERFACE_ALS,
+
+    .be_sample_size      = sizeof(sfw_sample_als_t),
+    .be_sample_cb        = sfw_backend_als_sample_cb,
+
+    .be_value_method     = SENSORFW_SENSOR_METHOD_READ_ALS,
+    .be_value_cb         = sfw_backend_als_value_cb,
+
+    .be_reset_cb         = sfw_backend_als_reset_cb,
+};
+
+/** Data and callbacks for orientation sensor */
+static const sfw_backend_t sfw_backend_orient =
+{
+    .be_sensor_name      = SENSORFW_SENSOR_NAME_ORIENT,
+    .be_sensor_object    = 0,
+    .be_sensor_interface = SENSORFW_SENSOR_INTERFACE_ORIENT,
+
+    .be_sample_size      = sizeof(sfw_sample_orient_t),
+    .be_sample_cb        = sfw_backend_orient_sample_cb,
+
+    .be_value_method     = SENSORFW_SENSOR_METHOD_READ_ORIENT,
+    .be_value_cb         = sfw_backend_orient_value_cb,
+
+    .be_reset_cb         = sfw_backend_orient_reset_cb,
+};
+
+/* ========================================================================= *
+ * SENSORFW_HELPERS
+ * ========================================================================= */
+
+/* Set file descriptor to blocking/unblocking state
  */
 static bool
-mce_sensorfw_load_sensor(const char *id)
+sfw_socket_set_blocking(int fd, bool blocking)
 {
-	bool         res = false;
-	DBusError    err = DBUS_ERROR_INIT;
-	DBusMessage *msg = 0;
-	dbus_bool_t  ack = FALSE;
+    bool ok = false;
+    int flags = 0;
 
-	mce_log(LL_INFO, "loadPlugin(%s)", id);
+    if( (flags = fcntl(fd, F_GETFL, 0)) == -1 ) {
+        mce_log(LL_ERR, "could not get socket flags");
+        goto EXIT;
+    }
 
-	// FIXME: should not block ...
+    if( blocking )
+        flags &= ~O_NONBLOCK;
+    else
+        flags |= O_NONBLOCK;
 
-	msg = dbus_send_with_block(SENSORFW_SERVICE,
-				   SENSORFW_PATH,
-				   "local.SensorManager",
-				   "loadPlugin",
-				   DBUS_TIMEOUT_USE_DEFAULT,
-				   DBUS_TYPE_STRING, &id,
-				   DBUS_TYPE_INVALID);
-	if( !msg ) {
-		mce_log(LL_ERR, "loadPlugin(%s): no reply", id);
-		goto EXIT;
-	}
+    if( fcntl(fd, F_SETFL, flags) == -1 ){
+        mce_log(LL_ERR, "could not set socket flags");
+        goto EXIT;
+    }
 
-	if( dbus_set_error_from_message(&err, msg) ) {
-		mce_log(LL_ERR, "loadPlugin(%s): error reply: %s: %s",
-			id, err.name, err.message);
-		goto EXIT;
-	}
+    ok = true;
 
-	if( !dbus_message_get_args(msg, &err,
-				   DBUS_TYPE_BOOLEAN, &ack,
-				   DBUS_TYPE_INVALID) ) {
-		mce_log(LL_ERR, "loadPlugin(%s): parse reply: %s: %s",
-			id, err.name, err.message);
-		goto EXIT;
-	}
-
-	if( !ack ) {
-		mce_log(LL_WARN, "loadPlugin(%s): request denied", id);
-		goto EXIT;
-	}
-
-	res = true;
 EXIT:
-	if( msg ) dbus_message_unref(msg);
-	dbus_error_free(&err);
-	return res;
+    return ok;
 }
 
-/** Issue request sensor IPC to sensord
- *
- * @param id sensor name
- *
- * @return session id, or -1 in case of errors
+/** Get a sensord data socket connection file descriptor
  */
 static int
-mce_sensorfw_request_sensor(const char *id)
+sfw_socket_open(void)
 {
-	int          res = -1;
-	DBusMessage *msg = 0;
-	DBusError    err = DBUS_ERROR_INIT;
-	dbus_int64_t pid = getpid();
-	dbus_int32_t sid = -1;
+    bool ok = false;
+    int  fd = -1;
 
-	mce_log(LL_INFO, "requestSensor(%s)", id);
+    struct sockaddr_un sa;
+    socklen_t sa_len;
 
-	// FIXME: should not block ...
+    /* create socket */
+    if( (fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1 ) {
+        mce_log(LL_ERR, "could not open local domain socket");
+        goto EXIT;
+    }
 
-	msg = dbus_send_with_block(SENSORFW_SERVICE,
-				   SENSORFW_PATH,
-				   "local.SensorManager",
-				   "requestSensor",
-				   DBUS_TIMEOUT_USE_DEFAULT,
-				   DBUS_TYPE_STRING, &id,
-				   DBUS_TYPE_INT64, &pid,
-				   DBUS_TYPE_INVALID);
-	if( !msg ) {
-		mce_log(LL_ERR, "requestSensor(%s): no reply", id);
-		goto EXIT;
-	}
+    /* make it non-blocking -> connect() will return immediately */
+    if( !sfw_socket_set_blocking(fd, false) )
+        goto EXIT;
 
-	if( dbus_set_error_from_message(&err, msg) ) {
-		mce_log(LL_ERR, "requestSensor(%s): error reply: %s: %s",
-			id, err.name, err.message);
-		goto EXIT;
-	}
+    /* connect to daemon */
+    memset(&sa, 0, sizeof sa);
+    sa.sun_family = AF_UNIX;
+    snprintf(sa.sun_path, sizeof sa.sun_path, "%s", SENSORFW_DATA_SOCKET);
+    sa_len = strchr(sa.sun_path, 0) + 1 - (char *)&sa;
 
-	// NOTE: sessionid is an 'int' so we should use DBUS_TYPE_INT64
-	// on a 64-bit platform.
-	if( !dbus_message_get_args(msg, &err,
-				   DBUS_TYPE_INT32, &sid,
-				   DBUS_TYPE_INVALID) ) {
-		mce_log(LL_ERR, "requestSensor(%s): parse reply: %s: %s",
-			id, err.name, err.message);
-		goto EXIT;
-	}
+    if( connect(fd, (struct sockaddr *)&sa, sa_len) == -1 ) {
+        mce_log(LL_ERR, "could not connect to %s: %m",
+                SENSORFW_DATA_SOCKET);
+        goto EXIT;
+    }
 
-	if( sid == -1 ) {
-		mce_log(LL_ERR, "requestSensor(%s): failed", id);
-		goto EXIT;
-	}
-
-	res = (int)sid;
-	mce_log(LL_INFO, "requestSensor(%s): session=%d", id, res);
+    ok = true;
 
 EXIT:
-	if( msg ) dbus_message_unref(msg);
-	return res;
+    /* all or nothing */
+    if( !ok && fd != -1 )
+        close(fd), fd = -1;
+
+    return fd;
 }
 
-/** Issue release sensor IPC to sensord
- *
- * @param id        sensor name
- * @param sessionid sensord session id from mce_sensorfw_request_sensor()
- *
- * @return true on success, or false in case of errors
+/** Add a glib I/O notification for a file descriptor
  */
-static bool
-mce_sensorfw_release_sensor(const char *id, int sessionid)
+static guint
+sfw_socket_add_notify(int fd, bool close_on_unref, GIOCondition cnd, GIOFunc io_cb, gpointer aptr)
 {
-	bool         res = false;
-	DBusMessage *msg = 0;
-	DBusError    err = DBUS_ERROR_INIT;
-	dbus_int64_t pid = getpid();
-	dbus_int32_t sid = sessionid;
-	dbus_bool_t  ack = FALSE;
+    guint         wid = 0;
+    GIOChannel   *chn = 0;
 
-	mce_log(LL_INFO, "releaseSensor(%s, %d)", id, sessionid);
+    if( !(chn = g_io_channel_unix_new(fd)) ) {
+        goto EXIT;
+    }
 
-	// FIXME: should not block ...
+    g_io_channel_set_close_on_unref(chn, close_on_unref);
 
-	msg = dbus_send_with_block(SENSORFW_SERVICE,
-				   SENSORFW_PATH,
-				   "local.SensorManager",
-				   "releaseSensor",
-				   DBUS_TIMEOUT_USE_DEFAULT,
-				   DBUS_TYPE_STRING, &id,
-				   DBUS_TYPE_INT32, &sid,
-				   DBUS_TYPE_INT64, &pid,
-				   DBUS_TYPE_INVALID);
-	if( !msg ) {
-		mce_log(LL_ERR, "releaseSensor(%s, %d): no reply", id,
-			sessionid);
-		goto EXIT;
-	}
+    cnd |= G_IO_ERR | G_IO_HUP | G_IO_NVAL;
 
-	if( dbus_set_error_from_message(&err, msg) ) {
-		mce_log(LL_ERR, "releaseSensor(%s, %d): error reply: %s: %s",
-			id, sessionid, err.name, err.message);
-		goto EXIT;
-	}
-
-	if( !dbus_message_get_args(msg, &err,
-				   DBUS_TYPE_BOOLEAN, &ack,
-				   DBUS_TYPE_INVALID) ) {
-
-		mce_log(LL_ERR, "releaseSensor(%s, %d): parse reply: %s: %s",
-			id, sessionid, err.name, err.message);
-		goto EXIT;
-	}
-
-	if( !ack ) {
-		mce_log(LL_WARN, "releaseSensor(%s, %d): failed", id,
-			sessionid);
-		goto EXIT;
-	}
-
-	res = true;
-	mce_log(LL_DEBUG, "releaseSensor(%s, %d): success", id, sessionid);
+    if( !(wid = g_io_add_watch(chn, cnd, io_cb, aptr)) )
+        goto EXIT;
 
 EXIT:
-	if( msg ) dbus_message_unref(msg);
-	return res;
-}
+    if( chn != 0 ) g_io_channel_unref(chn);
 
-/** Issue start sensor IPC to sensord
- *
- * @param id        sensor name
- * @param iface     D-Bus interface for the sensor
- * @param sessionid sensord session id from mce_sensorfw_request_sensor()
- *
- * @return true on success, or false in case of errors
- */
-static bool
-mce_sensorfw_start_sensor(const char *id, const char *iface, int sessionid)
-{
-	bool         res  = false;
-	char        *path = 0;
-	dbus_int32_t sid  = sessionid;
+    return wid;
 
-	mce_log(LL_INFO, "start(%s, %d)", id, sessionid);
-
-	if( asprintf(&path, "%s/%s", SENSORFW_PATH, id) < 0 ) {
-		path = 0;
-		goto EXIT;
-	}
-
-	res = dbus_send(SENSORFW_SERVICE,
-			path,
-			iface,
-			"start",
-			NULL,
-			DBUS_TYPE_INT32, &sid,
-			DBUS_TYPE_INVALID);
-
-EXIT:
-	free(path);
-
-	return res;
-}
-
-/** Issue stop sensor IPC to sensord
- *
- * @param id        sensor name
- * @param iface     D-Bus interface for the sensor
- * @param sessionid sensord session id from mce_sensorfw_request_sensor()
- *
- * @return true on success, or false in case of errors
- */
-static bool
-mce_sensorfw_stop_sensor(const char *id, const char *iface, int sessionid)
-{
-	bool         res  = false;
-	char        *path = 0;
-	dbus_int32_t sid  = sessionid;
-
-	mce_log(LL_INFO, "stop(%s, %d)",id, sessionid);
-
-	if( asprintf(&path, "%s/%s", SENSORFW_PATH, id) < 0 ) {
-		path = 0;
-		goto EXIT;
-	}
-
-	res = dbus_send(SENSORFW_SERVICE,
-			path,
-			iface,
-			"stop",
-			NULL,
-			DBUS_TYPE_INT32, &sid,
-			DBUS_TYPE_INVALID);
-
-EXIT:
-	free(path);
-
-	return res;
-}
-
-/** Callback for handling replies to setStandbyOverride requests
- *
- * This is used only for logging possible error replies we
- * might get from trying to set the standby override property.
- *
- * @param pc   pending call object
- * @param aptr (not used)
- */
-static void
-mce_sensorfw_set_standby_override_cb(DBusPendingCall *pc, void *aptr)
-{
-	(void)aptr;
-
-	static const char method[] = "setStandbyOverride";
-
-	DBusMessage  *rsp = 0;
-	DBusError     err = DBUS_ERROR_INIT;
-	dbus_bool_t   val = FALSE;
-
-	mce_log(LL_INFO, "Received %s() reply", method);
-
-	if( !(rsp = dbus_pending_call_steal_reply(pc)) )
-		goto EXIT;
-
-	if( dbus_set_error_from_message(&err, rsp) ) {
-		mce_log(LL_ERR, "%s(): %s: %s", method, err.name, err.message);
-		goto EXIT;
-	}
-	if( !dbus_message_get_args(rsp, &err,
-				   DBUS_TYPE_BOOLEAN, &val,
-				   DBUS_TYPE_INVALID) ) {
-		mce_log(LL_ERR, "%s(): %s: %s", method, err.name, err.message);
-		goto EXIT;
-	}
-
-	mce_log(LL_INFO, "%s() -> %s", method, val ? "success" : "failure");
-
-EXIT:
-	if( rsp ) dbus_message_unref(rsp);
-	dbus_pending_call_unref(pc);
-	dbus_error_free(&err);
-}
-
-/** Issue sensor standby override request to sensord
- *
- * @param id        sensor name
- * @param iface     D-Bus interface for the sensor
- * @param sessionid sensord session id from mce_sensorfw_request_sensor()
- * @param value     true to enable standby override, false to disable
- *
- * @return true on success, or false in case of errors
- */
-static bool
-mce_sensorfw_set_standby_override(const char *id, const char *iface,
-				  int sessionid, bool value)
-{
-	bool         res  = false;
-	char        *path = 0;
-	dbus_int32_t sid  = sessionid;
-	dbus_bool_t  val  = value;
-
-	mce_log(LL_INFO, "setStandbyOverride(%s, %d, %d)",
-		id, sessionid, val);
-
-	if( asprintf(&path, "%s/%s", SENSORFW_PATH, id) < 0 ) {
-		path = 0;
-		goto EXIT;
-	}
-
-	res = dbus_send(SENSORFW_SERVICE,
-			path,
-			iface,
-			"setStandbyOverride",
-			mce_sensorfw_set_standby_override_cb,
-			DBUS_TYPE_INT32, &sid,
-			DBUS_TYPE_BOOLEAN, &val,
-			DBUS_TYPE_INVALID);
-
-EXIT:
-	free(path);
-
-	return res;
 }
 
 /* ========================================================================= *
- * ALS
+ * SENSORFW_REPORTING
  * ========================================================================= */
 
-/** io watch id for ALS evdev file descriptor*/
-static guint als_evdev_id = 0;
-
-/** Sensord name for ALS */
-static const char als_name[]  = "alssensor";
-
-/** Sensord D-Bus interface for ALS */
-static const char als_iface[] = "local.ALSSensor";
-
-/** Sensord session id for ALS */
-static int        als_sid     = -1;
-
-/** Input watch for ALS data */
-static guint      als_wid     = 0;
-
-/** Flag for MCE wants to enable ALS */
-static bool       als_want    = false;
-
-/** Flag for ALS enabled at sensord */
-static bool       als_have    = false;
-
-/** Callback for sending ALS data to where it is needed */
-static void     (*als_notify_cb)(unsigned lux) = 0;
-
-/** Ambient light value to report when sensord is not available */
-#define ALS_VALUE_WHEN_SENSORD_IS_DOWN 400
-
-/** Wrapper for als_notify_cb hook
- *
- * @param lux  ambient light value
- * @param srce where does to value originate from
+/** Translate reporting state to human readable form
  */
-static void
-als_notify(unsigned lux, input_source_t srce)
+static const char *
+sfw_reporting_state_name(sfw_reporting_state_t state)
 {
-	static unsigned als_lux_last = ALS_VALUE_WHEN_SENSORD_IS_DOWN;
+    static const char *const lut[REPORTING_NUMSTATES] =
+    {
+        [REPORTING_IDLE]        = "IDLE",
+        [REPORTING_RETHINK]     = "RETHINK",
+        [REPORTING_ENABLING]    = "ENABLING",
+        [REPORTING_ENABLED]     = "ENABLED",
+        [REPORTING_DISABLING]   = "DISABLING",
+        [REPORTING_DISABLED]    = "DISABLED",
+        [REPORTING_ERROR]       = "ERROR",
+    };
 
-	if( srce == DS_RESTORE )
-		lux = als_lux_last;
-
-	/* If we have evdev source, prefer that over sensord input */
-	if( als_evdev_id ) {
-		if( srce == DS_EVDEV )
-			als_lux_last = lux;
-
-		if( srce == DS_SENSORD ) {
-			if( lux != als_lux_last )
-				mce_log(LL_DEBUG, "sensord=%u vs evdev=%u",
-					lux, als_lux_last);
-			goto EXIT;
-		}
-
-	}
-	else {
-		if( srce == DS_SENSORD )
-			als_lux_last = lux;
-
-		if( srce == DS_EVDEV )
-			goto EXIT;
-	}
-
-	mce_log(LL_DEBUG, "ALS: %u lux (%s)", lux,input_source_name[srce]);
-
-	if( als_notify_cb )
-		als_notify_cb(lux);
-	else if( srce != DS_FAKED )
-		mce_log(LL_INFO, "ALS data without notify cb");
-EXIT:
-	return;
+    return (state < REPORTING_NUMSTATES) ? lut[state] : 0;
 }
 
-/** Handle ALS input from sensord
+/** Create sensor start/stop state machine object
+ */
+static sfw_reporting_t *
+sfw_reporting_create(sfw_plugin_t *plugin)
+{
+    sfw_reporting_t *self = calloc(1, sizeof *self);
+
+    self->rep_plugin    = plugin;
+    self->rep_state     = REPORTING_IDLE;
+    self->rep_change_pc = 0;
+    self->rep_value_pc = 0;
+
+    self->rep_target    = false;
+
+    return self;
+}
+
+/** Delete sensor start/stop state machine object
+ */
+static void
+sfw_reporting_delete(sfw_reporting_t *self)
+{
+    // using NULL self pointer explicitly allowed
+
+    if( self ) {
+        sfw_reporting_trans(self, REPORTING_IDLE);
+        self->rep_plugin = 0;
+        free(self);
+    }
+}
+
+/** Set sensor start/stop target state
+ */
+static void sfw_reporting_set_target(sfw_reporting_t *self, bool enable)
+{
+    if( self->rep_target != enable ) {
+        self->rep_target = enable;
+        sfw_reporting_do_rethink(self);
+    }
+}
+
+/** Cancel pending sensor start/stop method call
+ */
+static void
+sfw_reporting_cancel_change(sfw_reporting_t *self)
+{
+    if( self->rep_change_pc ) {
+        dbus_pending_call_cancel(self->rep_change_pc);
+        dbus_pending_call_unref(self->rep_change_pc);
+        self->rep_change_pc = 0;
+    }
+}
+
+/** Cancel pending sensor initial value method call
+ */
+static void
+sfw_reporting_cancel_value(sfw_reporting_t *self)
+{
+    if( self->rep_value_pc ) {
+        dbus_pending_call_cancel(self->rep_value_pc);
+        dbus_pending_call_unref(self->rep_value_pc);
+        self->rep_value_pc = 0;
+    }
+}
+
+/** Make a state transition
+ */
+static void
+sfw_reporting_trans(sfw_reporting_t *self, sfw_reporting_state_t state)
+{
+    dbus_int32_t sid  = sfw_plugin_get_session_id(self->rep_plugin);
+
+    if( self->rep_state == state )
+        goto EXIT;
+
+    sfw_reporting_cancel_change(self);
+    sfw_reporting_cancel_value(self);
+
+    mce_log(LL_DEBUG, "reporting(%s): %s -> %s",
+            sfw_plugin_get_sensor_name(self->rep_plugin),
+            sfw_reporting_state_name(self->rep_state),
+            sfw_reporting_state_name(state));
+
+    self->rep_state = state;
+
+    switch( self->rep_state ) {
+    case REPORTING_RETHINK:
+        if( self->rep_target )
+            sfw_reporting_trans(self, REPORTING_ENABLING);
+        else
+            sfw_reporting_trans(self, REPORTING_DISABLING);
+        break;
+
+    case REPORTING_ENABLING:
+        dbus_send_ex(SENSORFW_SERVICE,
+                     sfw_plugin_get_sensor_object(self->rep_plugin),
+                     sfw_plugin_get_sensor_interface(self->rep_plugin),
+                     SENSORFW_SENSOR_METHOD_START,
+                     sfw_reporting_change_cb,
+                     self, 0, &self->rep_change_pc,
+                     DBUS_TYPE_INT32, &sid,
+                     DBUS_TYPE_INVALID);
+        break;
+
+    case REPORTING_DISABLING:
+        dbus_send_ex(SENSORFW_SERVICE,
+                     sfw_plugin_get_sensor_object(self->rep_plugin),
+                     sfw_plugin_get_sensor_interface(self->rep_plugin),
+                     SENSORFW_SENSOR_METHOD_STOP,
+                     sfw_reporting_change_cb,
+                     self, 0, &self->rep_change_pc,
+                     DBUS_TYPE_INT32, &sid,
+                     DBUS_TYPE_INVALID);
+        break;
+
+    case REPORTING_ENABLED:
+        dbus_send_ex(SENSORFW_SERVICE,
+                     sfw_plugin_get_sensor_object(self->rep_plugin),
+                     sfw_plugin_get_sensor_interface(self->rep_plugin),
+                     sfw_plugin_get_value_method(self->rep_plugin),
+                     sfw_reporting_value_cb,
+                     self, 0, &self->rep_value_pc,
+                     DBUS_TYPE_INVALID);
+
+        break;
+
+    case REPORTING_DISABLED:
+        // NOP
+        break;
+
+    default:
+    case REPORTING_IDLE:
+    case REPORTING_ERROR:
+        // reset sensor value to default state
+        sfw_plugin_reset_value(self->rep_plugin);
+        break;
+
+    }
+
+EXIT:
+
+    return;
+}
+
+/** Handle reply to initial sensor value query
+ */
+static void
+sfw_reporting_value_cb(DBusPendingCall *pc, void *aptr)
+{
+    //mce_log(LL_DEBUG, "TRIGGER");
+
+    sfw_reporting_t *self = aptr;
+
+    DBusMessage  *rsp  = 0;
+    DBusError     err  = DBUS_ERROR_INIT;
+
+    dbus_uint32_t tck  = 0;
+    dbus_uint32_t val  = 0;
+    bool          ack  = true;
+
+    if( !pc || !self || pc != self->rep_value_pc )
+        goto EXIT;
+
+    self->rep_value_pc = 0;
+
+    if( !(rsp = dbus_pending_call_steal_reply(pc)) ) {
+        mce_log(LL_ERR, "reporting(%s): no reply",
+                sfw_plugin_get_sensor_name(self->rep_plugin));
+        goto EXIT;
+    }
+
+    if( dbus_set_error_from_message(&err, rsp) ) {
+        mce_log(LL_ERR, "reporting(%s): error reply: %s: %s",
+                sfw_plugin_get_sensor_name(self->rep_plugin),
+                err.name, err.message);
+        goto EXIT;
+    }
+
+    DBusMessageIter body, data;
+
+    ack = false;
+
+    if( !dbus_message_iter_init(rsp, &body) )
+        goto EXIT;
+
+    if( dbus_message_iter_get_arg_type(&body) != DBUS_TYPE_STRUCT )
+        goto EXIT;
+
+    dbus_message_iter_recurse(&body, &data);
+    dbus_message_iter_next(&body);
+
+    if( dbus_message_iter_get_arg_type(&data) !=  DBUS_TYPE_UINT64 )
+        goto EXIT;
+
+    dbus_message_iter_get_basic(&data, &tck);
+    dbus_message_iter_next(&data);
+
+    if( dbus_message_iter_get_arg_type(&data) !=  DBUS_TYPE_UINT32 )
+        goto EXIT;
+
+    dbus_message_iter_get_basic(&data, &val);
+    dbus_message_iter_next(&data);
+
+    ack = true;
+
+    sfw_plugin_handle_value(self->rep_plugin, val);
+
+EXIT:
+
+    if( !ack )
+        mce_log(LL_ERR, "reporting(%s): parse error",
+                sfw_plugin_get_sensor_name(self->rep_plugin));
+
+    if( rsp ) dbus_message_unref(rsp);
+    if( pc )  dbus_pending_call_unref(pc);
+    dbus_error_free(&err);
+
+    return;
+}
+
+/** Handle reply to start/stop sensor request
+ */
+static void
+sfw_reporting_change_cb(DBusPendingCall *pc, void *aptr)
+{
+    //mce_log(LL_DEBUG, "TRIGGER");
+
+    sfw_reporting_t *self = aptr;
+    DBusMessage  *rsp  = 0;
+    DBusError     err  = DBUS_ERROR_INIT;
+    dbus_bool_t   ack  = FALSE;
+
+    if( !pc || !self || pc != self->rep_change_pc )
+        goto EXIT;
+
+    self->rep_change_pc = 0;
+
+    if( !(rsp = dbus_pending_call_steal_reply(pc)) ) {
+        mce_log(LL_ERR, "reporting(%s): no reply",
+                sfw_plugin_get_sensor_name(self->rep_plugin));
+        goto EXIT;
+    }
+
+    if( dbus_set_error_from_message(&err, rsp) ) {
+        mce_log(LL_ERR, "reporting(%s): error reply: %s: %s",
+                sfw_plugin_get_sensor_name(self->rep_plugin),
+                err.name, err.message);
+        goto EXIT;
+    }
+
+    /* there is no payload in the reply, so if we do not get
+     * an error reply -> assume everything is ok */
+    ack = true;
+
+EXIT:
+    mce_log(LL_DEBUG, "reporting(%s): ack=%d",
+            sfw_plugin_get_sensor_name(self->rep_plugin), ack);
+
+    if( self->rep_state == REPORTING_ENABLING ||
+        self->rep_state == REPORTING_DISABLING ) {
+
+        if( !ack )
+            sfw_reporting_trans(self, REPORTING_ERROR);
+        else if( self->rep_state == REPORTING_ENABLING )
+            sfw_reporting_trans(self, REPORTING_ENABLED);
+        else
+            sfw_reporting_trans(self, REPORTING_DISABLED);
+    }
+
+    if( rsp ) dbus_message_unref(rsp);
+    if( pc )  dbus_pending_call_unref(pc);
+    dbus_error_free(&err);
+
+    return;
+}
+
+/** Choose between sensor start() and stop()
+ */
+static void
+sfw_reporting_do_rethink(sfw_reporting_t *self)
+{
+    if( self->rep_state != REPORTING_IDLE )
+        sfw_reporting_trans(self, REPORTING_RETHINK);
+}
+
+/** Initiate sensor start() request
+ */
+static void
+sfw_reporting_do_start(sfw_reporting_t *self)
+{
+    if( self->rep_state == REPORTING_IDLE )
+        sfw_reporting_trans(self, REPORTING_RETHINK);
+}
+
+/** Initiate sensor stop() request
+ */
+static void
+sfw_reporting_do_reset(sfw_reporting_t *self)
+{
+    sfw_reporting_trans(self, REPORTING_IDLE);
+}
+
+/* ========================================================================= *
+ * SENSORFW_OVERRIDE
+ * ========================================================================= */
+
+/** Translate override state to human readable form
+ */
+static const char *
+sfw_override_state_name(sfw_override_state_t state)
+{
+    static const char *const lut[OVERRIDE_NUMSTATES] =
+    {
+        [OVERRIDE_IDLE]         = "IDLE",
+        [OVERRIDE_RETHINK]      = "RETHINK",
+        [OVERRIDE_ENABLING]     = "ENABLING",
+        [OVERRIDE_ENABLED]      = "ENABLED",
+        [OVERRIDE_DISABLING]    = "DISABLING",
+        [OVERRIDE_DISABLED]     = "DISABLED",
+        [OVERRIDE_ERROR]        = "ERROR",
+    };
+
+    return (state < OVERRIDE_NUMSTATES) ? lut[state] : 0;
+}
+
+/** Create sensor standby set/unset state machine object
+ */
+static sfw_override_t *
+sfw_override_create(sfw_plugin_t *plugin)
+{
+    sfw_override_t *self = calloc(1, sizeof *self);
+
+    self->ovr_plugin   = plugin;
+    self->ovr_state    = OVERRIDE_IDLE;
+    self->ovr_start_pc = 0;
+
+    self->ovr_target   = false;
+
+    return self;
+}
+
+/** Delete sensor standby set/unset state machine object
+ */
+static void
+sfw_override_delete(sfw_override_t *self)
+{
+    // using NULL self pointer explicitly allowed
+
+    if( self ) {
+        sfw_override_trans(self, OVERRIDE_IDLE);
+        self->ovr_plugin = 0;
+        free(self);
+    }
+}
+
+/** Set sensor standby override set/unset target state
+ */
+static void sfw_override_set_target(sfw_override_t *self, bool enable)
+{
+    if( self->ovr_target != enable ) {
+        self->ovr_target = enable;
+        sfw_override_do_rethink(self);
+    }
+}
+
+/** Cancel pending sensor standby override set/unset method call
+ */
+static void
+sfw_override_cancel_start(sfw_override_t *self)
+{
+    if( self->ovr_start_pc ) {
+        dbus_pending_call_cancel(self->ovr_start_pc);
+        dbus_pending_call_unref(self->ovr_start_pc);
+        self->ovr_start_pc = 0;
+    }
+}
+
+/** Make a state transition
+ */
+static void
+sfw_override_trans(sfw_override_t *self, sfw_override_state_t state)
+{
+    dbus_int32_t sid  = sfw_plugin_get_session_id(self->ovr_plugin);
+    dbus_bool_t  val  = self->ovr_target;
+
+    if( self->ovr_state == state )
+        goto EXIT;
+
+    sfw_override_cancel_start(self);
+
+    mce_log(LL_DEBUG, "override(%s): %s -> %s",
+            sfw_plugin_get_sensor_name(self->ovr_plugin),
+            sfw_override_state_name(self->ovr_state),
+            sfw_override_state_name(state));
+
+    self->ovr_state = state;
+
+    switch( self->ovr_state ) {
+    case OVERRIDE_RETHINK:
+        if( self->ovr_target )
+            sfw_override_trans(self, OVERRIDE_ENABLING);
+        else
+            sfw_override_trans(self, OVERRIDE_DISABLING);
+        break;
+
+    case OVERRIDE_ENABLING:
+    case OVERRIDE_DISABLING:
+        dbus_send_ex(SENSORFW_SERVICE,
+                     sfw_plugin_get_sensor_object(self->ovr_plugin),
+                     sfw_plugin_get_sensor_interface(self->ovr_plugin),
+                     SENSORFW_SENSOR_METHOD_SET_OVERRIDE,
+                     sfw_override_start_cb,
+                     self, 0, &self->ovr_start_pc,
+                     DBUS_TYPE_INT32, &sid,
+                     DBUS_TYPE_BOOLEAN, &val,
+                     DBUS_TYPE_INVALID);
+        break;
+
+    case OVERRIDE_ENABLED:
+    case OVERRIDE_DISABLED:
+        // NOP
+        break;
+
+    default:
+    case OVERRIDE_IDLE:
+    case OVERRIDE_ERROR:
+        // NOP
+        break;
+
+    }
+
+EXIT:
+
+    return;
+}
+
+/** Handle reply to sensor standby override set/unset method call
+ */
+static void
+sfw_override_start_cb(DBusPendingCall *pc, void *aptr)
+{
+    //mce_log(LL_DEBUG, "TRIGGER");
+
+    sfw_override_t *self = aptr;
+    DBusMessage  *rsp  = 0;
+    DBusError     err  = DBUS_ERROR_INIT;
+    dbus_bool_t   ack  = FALSE;
+
+    if( !pc || !self || pc != self->ovr_start_pc )
+        goto EXIT;
+
+    self->ovr_start_pc = 0;
+
+    if( !(rsp = dbus_pending_call_steal_reply(pc)) ) {
+        mce_log(LL_ERR, "override(%s): no reply",
+                sfw_plugin_get_sensor_name(self->ovr_plugin));
+        goto EXIT;
+    }
+
+    if( dbus_set_error_from_message(&err, rsp) ) {
+        mce_log(LL_ERR, "override(%s): error reply: %s: %s",
+                sfw_plugin_get_sensor_name(self->ovr_plugin),
+                err.name, err.message);
+        goto EXIT;
+    }
+
+    if( !dbus_message_get_args(rsp, &err,
+                               DBUS_TYPE_BOOLEAN, &ack,
+                               DBUS_TYPE_INVALID) ) {
+        mce_log(LL_ERR, "override(%s): parse error: %s: %s",
+                sfw_plugin_get_sensor_name(self->ovr_plugin),
+                err.name, err.message);
+        goto EXIT;
+    }
+
+EXIT:
+    mce_log(LL_DEBUG, "override(%s): ack=%d",
+            sfw_plugin_get_sensor_name(self->ovr_plugin), ack);
+
+    if( self->ovr_state == OVERRIDE_ENABLING ||
+        self->ovr_state == OVERRIDE_DISABLING ) {
+
+        if( !ack )
+            sfw_override_trans(self, OVERRIDE_ERROR);
+        else if( self->ovr_state == OVERRIDE_ENABLING )
+            sfw_override_trans(self, OVERRIDE_ENABLED);
+        else
+            sfw_override_trans(self, OVERRIDE_DISABLED);
+    }
+
+    if( rsp ) dbus_message_unref(rsp);
+    if( pc )  dbus_pending_call_unref(pc);
+    dbus_error_free(&err);
+
+    return;
+}
+
+/** Choose between sensor standby override set/unset
+ */
+static void
+sfw_override_do_rethink(sfw_override_t *self)
+{
+    if( self->ovr_state != OVERRIDE_IDLE )
+        sfw_override_trans(self, OVERRIDE_RETHINK);
+}
+
+/** Initiate sensor standby override set request
+ */
+static void
+sfw_override_do_start(sfw_override_t *self)
+{
+    if( self->ovr_state == OVERRIDE_IDLE )
+        sfw_override_trans(self, OVERRIDE_RETHINK);
+}
+
+/** Initiate sensor standby override unset request
+ */
+static void
+sfw_override_do_reset(sfw_override_t *self)
+{
+    sfw_override_trans(self, OVERRIDE_IDLE);
+}
+
+/* ========================================================================= *
+ * SENSORFW_CONNECTION
+ * ========================================================================= */
+
+/** Translate connection state to human readable form
+ */
+static const char *
+sfw_connection_state_name(sfw_connection_state_t state)
+{
+    static const char *const lut[CONNECTION_NUMSTATES] =
+    {
+        [CONNECTION_IDLE]          = "IDLE",
+        [CONNECTION_CONNECTING]    = "CONNECTING",
+        [CONNECTION_REGISTERING]   = "REGISTERING",
+        [CONNECTION_CONNECTED]     = "CONNECTED",
+        [CONNECTION_ERROR]         = "ERROR",
+    };
+
+    return (state < CONNECTION_NUMSTATES) ? lut[state] : 0;
+}
+
+/** Get cached session id granted by sensord
+ */
+static int
+sfw_connection_get_session_id(const sfw_connection_t *self)
+{
+    return sfw_plugin_get_session_id(self->con_plugin);
+}
+
+/** Handle array of sensor events sent by sensord
+ */
+static bool
+sfw_connection_handle_samples(sfw_connection_t *self,
+                              char *data, size_t size)
+{
+    bool     res    = false;
+    uint32_t count  = 0;
+    uint32_t block  = sfw_plugin_get_sample_size(self->con_plugin);
+    void    *sample = 0;
+
+    while( size > 0 ) {
+        if( size < sizeof count ) {
+            mce_log(LL_ERR, "connection(%s): received invalid packet",
+                    sfw_plugin_get_sensor_name(self->con_plugin));
+            goto EXIT;
+        }
+
+        memcpy(&count, data, sizeof count);
+        data += sizeof count;
+        size -= sizeof count;
+
+        if( size < count * block ) {
+            mce_log(LL_ERR, "connection(%s): received invalid sample",
+                    sfw_plugin_get_sensor_name(self->con_plugin));
+            goto EXIT;
+        }
+
+        if( count > 0 ) {
+            sample = data + block * (count - 1);
+            data += block * count;
+            size -= block * count;
+        }
+    }
+
+    if( !sample ) {
+            mce_log(LL_ERR, "connection(%s): no sample was received",
+                    sfw_plugin_get_sensor_name(self->con_plugin));
+        goto EXIT;
+    }
+
+    res = true;
+    sfw_plugin_handle_sample(self->con_plugin, sample);
+
+EXIT:
+    return res;
+}
+
+/** Do a handshake with sensord after opening a data connection
+ */
+static bool
+sfw_connection_tx_req(sfw_connection_t *self)
+{
+    bool    res = false;
+    int32_t sid = sfw_connection_get_session_id(self);
+
+    errno = 0;
+    if( write(self->con_fd, &sid, sizeof sid) != sizeof sid ) {
+        mce_log(LL_ERR, "connection(%s): handshake write failed: %m",
+                sfw_plugin_get_sensor_name(self->con_plugin));
+        goto EXIT;
+    }
+
+    res = true;
+
+EXIT:
+    return res;
+}
+
+/** Handle reply to handshake from sensord
+ */
+static bool
+sfw_connection_rx_ack(sfw_connection_t *self)
+{
+    bool    res = false;
+    char    ack = 0;
+
+    errno = 0;
+    if( read(self->con_fd, &ack, sizeof ack) != sizeof ack ) {
+        mce_log(LL_ERR, "connection(%s): handshake read failed: %m",
+                sfw_plugin_get_sensor_name(self->con_plugin));
+        goto EXIT;
+    }
+
+    if( ack != '\n' ) {
+        mce_log(LL_ERR, "connection(%s): invalid handshake received",
+                sfw_plugin_get_sensor_name(self->con_plugin));
+        goto EXIT;
+    }
+
+    res = true;
+
+EXIT:
+    return res;
+}
+
+/** Handle sensor events received over data connection
+ */
+static bool
+sfw_connection_rx_dta(sfw_connection_t *self)
+{
+    bool    res = false;
+
+    char    dta[1024];
+
+    if( self->con_fd == -1 )
+        goto EXIT;
+
+    errno = 0;
+    int rc = read(self->con_fd, dta, sizeof dta);
+
+    if( rc == 0 ) {
+        mce_log(LL_ERR, "connection(%s): received EOF",
+                sfw_plugin_get_sensor_name(self->con_plugin));
+        goto EXIT;
+    }
+
+    if( rc == -1 ) {
+        if( errno != EAGAIN && errno != EINTR )
+            mce_log(LL_ERR, "connection(%s): received ERR; %m",
+                    sfw_plugin_get_sensor_name(self->con_plugin));
+        else
+            res = true;
+        goto EXIT;
+    }
+
+    mce_log(LL_DEBUG, "connection(%s): received %d bytes",
+            sfw_plugin_get_sensor_name(self->con_plugin), rc);
+
+    /* Note: Writing smallish chunks to unix domain socket
+     *       either fully succeeds or fails/sender blocks.
+     *
+     *       With this in mind it is assumed that a succesful
+     *       read will contain fully valid sample data. However,
+     *       depending on how sensord actually does the sending,
+     *       there is a slight hazard point here...
+     *
+     *       It might be that separate state needs to be
+     *       introduced for handling header (sample count)
+     *       and payload (sensor samples) separately.
+     */
+    res = sfw_connection_handle_samples(self, dta, rc);
+
+EXIT:
+    return res;
+}
+
+/** Handle sensor data connection is writable conditions
  *
- * @param chn  io channel
- * @param cnd  (not used)
- * @param aptr (not used)
- *
- * @return TRUE to keep io watch, or FALSE to remove it
+ * Used for initial session handshake only.
  */
 static gboolean
-als_input_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
+sfw_connection_tx_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
 {
-	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
+    //mce_log(LL_DEBUG, "TRIGGER");
 
-	(void)aptr; // unused
+    (void)chn;
+    (void)cnd;
 
-	gboolean keep_going = FALSE;
-	uint32_t count = 0;
+    gboolean keep_going = FALSE;
+    bool success = false;
 
-	int fd;
-	int rc;
-	als_data_t data;
+    sfw_connection_t *self = aptr;
 
-	if( cnd & (G_IO_ERR | G_IO_HUP | G_IO_NVAL) ) {
-		goto EXIT;
-	}
+    if( self->con_state != CONNECTION_CONNECTING )
+        goto EXIT;
 
-	memset(&data, 0, sizeof data);
-
-	if( (fd = g_io_channel_unix_get_fd(chn)) < 0 ) {
-		mce_log(LL_ERR, "io channel has no fd");
-		goto EXIT;
-	}
-
-	// FIXME: there should be only one read() ...
-
-	rc = read(fd, &count, sizeof count);
-	if( rc == -1 ) {
-		if( errno == EINTR || errno == EAGAIN )
-			keep_going = TRUE;
-		else
-			mce_log(LL_ERR, "read sample count: %m");
-		goto EXIT;
-	}
-	if( rc == 0 ) {
-		mce_log(LL_ERR, "read sample count: EOF");
-		goto EXIT;
-	}
-	if( rc != (int)sizeof count) {
-		mce_log(LL_ERR, "read sample count: got %d of %d bytes",
-			rc, (int)sizeof count);
-		goto EXIT;
-	}
-
-	mce_log(LL_DEBUG, "Got %u ALS values", (unsigned)count);
-
-	if( count < 1 ) {
-		keep_going = TRUE;
-		goto EXIT;
-	}
-
-	for( unsigned i = 0; i < count; ++i ) {
-		errno = 0, rc = read(fd, &data, sizeof data);
-		if( rc != sizeof data ) {
-			mce_log(LL_ERR, "failed to read sample: %m");
-			goto EXIT;
-		}
-	}
-
-	mce_log(LL_DEBUG, "last ALS value = %u", data.value);
-	als_notify(data.value, DS_SENSORD);
-
-	keep_going = TRUE;
+    success = sfw_connection_tx_req(self);
 
 EXIT:
-	if( !keep_going ) {
-		mce_log(LL_CRIT, "disabling io watch");
-		als_wid = 0;
-	}
-	return keep_going;
+    if( !keep_going ) {
+        mce_log(LL_DEBUG, "connection(%s): disabling tx notify",
+                sfw_plugin_get_sensor_name(self->con_plugin));
+        self->con_tx_id = 0;
+    }
+
+    if( success )
+        sfw_connection_trans(self, CONNECTION_REGISTERING);
+    else
+        sfw_connection_trans(self, CONNECTION_ERROR);
+
+    return keep_going;
 }
 
-/** Handle reply to initial ALS value request
+/** Handle data available from data connection
  *
- * @param pc  pending call object
- * @param aptr (not used)
+ * Used 1st for handling handshake reply and then for
+ * receiving sensor event packets.
  */
-static void mce_sensorfw_als_read_cb(DBusPendingCall *pc, void *aptr)
+static gboolean
+sfw_connection_rx_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
 {
-	(void)aptr;
+    //mce_log(LL_DEBUG, "TRIGGER");
 
-	mce_log(LL_INFO, "Received intial ALS lux reply");
+    (void)chn;
+    (void)cnd;
 
-	bool          res = false;
-	DBusMessage  *rsp = 0;
-	DBusError     err = DBUS_ERROR_INIT;
-	dbus_uint64_t tck = 0;
-	dbus_uint32_t lux = 0;
+    sfw_connection_t *self = aptr;
 
-	DBusMessageIter body, var, rec;
+    sfw_connection_state_t next_state = self->con_state;
 
-	if( !(rsp = dbus_pending_call_steal_reply(pc)) )
-		goto EXIT;
+    switch( self->con_state )
+    {
+    case CONNECTION_REGISTERING:
+        if( sfw_connection_rx_ack(self) )
+            next_state = CONNECTION_CONNECTED;
+        else
+            next_state = CONNECTION_ERROR;
+        break;
 
-	if( dbus_set_error_from_message(&err, rsp) ) {
-		mce_log(LL_ERR, "als lux error reply: %s: %s",
-			err.name, err.message);
-		goto EXIT;
-	}
+    case CONNECTION_CONNECTED:
+        if( !sfw_connection_rx_dta(self) )
+            next_state = CONNECTION_ERROR;
+        break;
 
-	if( !dbus_message_iter_init(rsp, &body) )
-		goto EXIT;
+    default:
+        next_state = CONNECTION_ERROR;
+        break;
+    }
 
-	if( dbus_message_iter_get_arg_type(&body) != DBUS_TYPE_VARIANT )
-		goto EXIT;
+    bool keep_going = (next_state != CONNECTION_ERROR);
 
-	dbus_message_iter_recurse(&body, &var);
-	dbus_message_iter_next(&body);
-	if( dbus_message_iter_get_arg_type(&var) != DBUS_TYPE_STRUCT )
-		goto EXIT;
+    if( !keep_going ) {
+        mce_log(LL_CRIT, "connection(%s): disabling rx notify",
+                sfw_plugin_get_sensor_name(self->con_plugin));
+        self->con_rx_id = 0;
+    }
 
-	dbus_message_iter_recurse(&var, &rec);
-	dbus_message_iter_next(&var);
-	if( dbus_message_iter_get_arg_type(&rec) !=  DBUS_TYPE_UINT64 )
-		goto EXIT;
+    sfw_connection_trans(self, next_state);
 
-	dbus_message_iter_get_basic(&rec, &tck);
-	dbus_message_iter_next(&rec);
-	if( dbus_message_iter_get_arg_type(&rec) !=  DBUS_TYPE_UINT32 )
-		goto EXIT;
-
-	dbus_message_iter_get_basic(&rec, &lux);
-	dbus_message_iter_next(&rec);
-
-	mce_log(LL_INFO, "initial ALS value = %u", lux);
-	als_notify(lux, DS_SENSORD);
-
-	res = true;
-
-EXIT:
-	if( !res ) mce_log(LL_WARN, "did not get initial lux value");
-	if( rsp ) dbus_message_unref(rsp);
-	dbus_pending_call_unref(pc);
-	dbus_error_free(&err);
+    return keep_going;
 }
 
-/** Issue get ALS value IPC to sensord
- *
- * @param id        sensor name
- * @param iface     D-Bus interface for the sensor
- * @param sessionid sensord session id from mce_sensorfw_request_sensor()
+/** Remove data available glib I/O watch
  */
 static void
-mce_sensorfw_als_read(const char *id, const char *iface, int sessionid)
+sfw_connection_remove_rx_notify(sfw_connection_t *self)
 {
-	(void)sessionid;
-
-	char *path = 0;
-	const char *prop = "lux";
-
-	mce_log(LL_INFO, "read(%s, %d)", id, sessionid);
-
-	if( asprintf(&path, "%s/%s", SENSORFW_PATH, id) < 0 ) {
-		path = 0;
-		goto EXIT;
-	}
-
-	dbus_send(SENSORFW_SERVICE,
-		  path,
-		  "org.freedesktop.DBus.Properties",
-		  "Get",
-		  mce_sensorfw_als_read_cb,
-		  DBUS_TYPE_STRING, &iface,
-		  DBUS_TYPE_STRING, &prop,
-		  DBUS_TYPE_INVALID);
-EXIT:
-	free(path);
+    if( self->con_rx_id ) {
+        mce_log(LL_DEBUG, "connection(%s): removing rx notify",
+                sfw_plugin_get_sensor_name(self->con_plugin));
+        g_source_remove(self->con_rx_id),
+            self->con_rx_id = 0;
+    }
 }
 
-/** Close ALS session with sensord
- */
-static void mce_sensorfw_als_stop_session(void)
-{
-	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
-
-	if( als_sid != -1 ) {
-		if( sensord_running )
-			mce_sensorfw_release_sensor(als_name, als_sid);
-		als_sid = -1;
-	}
-
-	if( als_wid ) {
-		g_source_remove(als_wid), als_wid = 0;
-		als_notify(ALS_VALUE_WHEN_SENSORD_IS_DOWN, DS_FAKED);
-	}
-
-	als_have = false;
-}
-
-/** Have ALS session with sensord predicate
- *
- * @return true if session exists, or false if not
- */
-static bool mce_sensorfw_als_have_session(void)
-{
-	return als_wid != 0;
-}
-
-/** Open ALS session with sensord
- *
- * @return true on success, or false in case of errors
- */
-static bool mce_sensorfw_als_start_session(void)
-{
-	if( als_wid )
-		goto EXIT;
-
-	if( !mce_sensorfw_load_sensor(als_name) )
-		goto EXIT;
-
-	als_sid = mce_sensorfw_request_sensor(als_name);
-	if( als_sid < 0 )
-		goto EXIT;
-
-	als_wid = mce_sensorfw_add_io_watch(als_sid, als_input_cb);
-	if( als_wid == 0 )
-		goto EXIT;
-
-EXIT:
-	if( !als_wid ) {
-		// all or nothing
-		mce_sensorfw_als_stop_session();
-	}
-	return als_wid != 0;
-}
-
-/** Enable ALS via sensord
- */
-static void mce_sensorfw_als_start_sensor(void)
-{
-	if( als_have )
-		goto EXIT;
-
-	if( !mce_sensorfw_als_start_session() )
-		goto EXIT;
-
-	if( !mce_sensorfw_start_sensor(als_name, als_iface, als_sid) )
-		goto EXIT;
-
-	/* ALS is used in lpm display states; from sensord point of view
-	 * this means display is off and thus we need to set the standby
-	 * override flag */
-
-	/* No error checking here; failures will be logged when
-	 * we get reply message from sensord */
-	mce_sensorfw_set_standby_override(als_name, als_iface, als_sid, true);
-
-	als_have = true;
-
-	/* There is no quarantee that we get sensor input
-	 * anytime soon, so we make an explicit get current
-	 * value request after starting sensor */
-	mce_sensorfw_als_read(als_name, als_iface, als_sid);
-
-EXIT:
-	return;
-}
-
-/** Disable ALS via sensord
- */
-static void mce_sensorfw_als_stop_sensor(void)
-{
-	if( !als_have )
-		goto EXIT;
-
-	if( mce_sensorfw_als_have_session() )
-		mce_sensorfw_stop_sensor(als_name, als_iface, als_sid);
-
-	als_have = false;
-
-EXIT:
-	return;
-}
-
-/** Rethink ALS enabled state
+/** Remove ready to send glib I/O watch
  */
 static void
-mce_sensorfw_als_rethink(void)
+sfw_connection_remove_tx_notify(sfw_connection_t *self)
 {
-	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
-	if( !sensord_running ) {
-		mce_log(LL_NOTICE, "skipping als enable/disable;"
-			" sensord not available");
-		goto EXIT;
-	}
+    if( self->con_tx_id ) {
+        mce_log(LL_DEBUG, "connection(%s): removing tx notify",
+                sfw_plugin_get_sensor_name(self->con_plugin));
+        g_source_remove(self->con_tx_id),
+            self->con_tx_id = 0;
+    }
+}
 
-	if( als_want == als_have )
-		goto EXIT;
+/** Close sensord data connection
+ */
+static void
+sfw_connection_close_socket(sfw_connection_t *self)
+{
+    sfw_connection_remove_tx_notify(self);
+    sfw_connection_remove_rx_notify(self);
 
-	if( system_suspended ) {
-		mce_log(LL_NOTICE, "skipping als enable/disable;"
-			" should be suspended");
-		goto EXIT;
-	}
+    if( self->con_fd != -1 ) {
+        mce_log(LL_DEBUG, "connection(%s): closing socket",
+                sfw_plugin_get_sensor_name(self->con_plugin));
+        close(self->con_fd),
+            self->con_fd = -1;
+    }
+}
 
-	if( als_want ) {
-		als_notify(0, DS_RESTORE);
-		mce_sensorfw_als_start_sensor();
-	}
-	else
-		mce_sensorfw_als_stop_sensor();
+/** Open sensord data connection
+ */
+static bool
+sfw_connection_open_socket(sfw_connection_t *self)
+{
+    bool res = false;
+
+    sfw_connection_close_socket(self);
+
+    if( (self->con_fd = sfw_socket_open()) == -1 )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "connection(%s): opened socket",
+            sfw_plugin_get_sensor_name(self->con_plugin));
+
+    self->con_tx_id = sfw_socket_add_notify(self->con_fd, false, G_IO_OUT,
+                                            sfw_connection_tx_cb, self);
+
+    if( !self->con_tx_id )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "connection(%s): added tx notify",
+            sfw_plugin_get_sensor_name(self->con_plugin));
+
+    self->con_rx_id = sfw_socket_add_notify(self->con_fd, false, G_IO_IN,
+                                            sfw_connection_rx_cb, self);
+
+    if( !self->con_rx_id )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "connection(%s): added rx notify",
+            sfw_plugin_get_sensor_name(self->con_plugin));
+
+    res = true;
+
 EXIT:
-	return;
+
+    /* all or nothing */
+    if( !res )
+        sfw_connection_close_socket(self);
+
+    return res;
 }
 
-/** Try to enable ALS input
+/** Make a state transition
  */
-void
-mce_sensorfw_als_enable(void)
+static void
+sfw_connection_trans(sfw_connection_t *self, sfw_connection_state_t state)
 {
-	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
-	als_want = true;
-	mce_sensorfw_als_rethink();
+    if( self->con_state == state )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "connection(%s): %s -> %s",
+            sfw_plugin_get_sensor_name(self->con_plugin),
+            sfw_connection_state_name(self->con_state),
+            sfw_connection_state_name(state));
+
+    self->con_state = state;
+
+    switch( self->con_state ) {
+    case CONNECTION_CONNECTING:
+        if( !sfw_connection_open_socket(self) )
+            sfw_connection_trans(self, CONNECTION_ERROR);
+        break;
+
+    case CONNECTION_REGISTERING:
+        sfw_connection_remove_tx_notify(self);
+        break;
+
+    case CONNECTION_CONNECTED:
+        sfw_plugin_do_override_start(self->con_plugin);
+        sfw_plugin_do_reporting_start(self->con_plugin);
+        break;
+
+    default:
+    case CONNECTION_IDLE:
+    case CONNECTION_ERROR:
+        sfw_plugin_do_reporting_reset(self->con_plugin);
+        sfw_plugin_do_override_reset(self->con_plugin);
+        sfw_connection_close_socket(self);
+        break;
+    }
+
+EXIT:
+    return;
 }
 
-/** Try to disable ALS input
+/** Create sensord data connection state machine object
  */
-void
-mce_sensorfw_als_disable(void)
+static sfw_connection_t *
+sfw_connection_create(sfw_plugin_t *plugin)
 {
-	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
-	als_want = false;
-	mce_sensorfw_als_rethink();
+    sfw_connection_t *self = calloc(1, sizeof *self);
+
+    self->con_plugin  = plugin;
+    self->con_state   = CONNECTION_IDLE;
+    self->con_fd      = -1;
+    self->con_rx_id   = 0;
+    self->con_tx_id   = 0;
+
+    return self;
 }
+
+/** Delete sensord data connection state machine object
+ */
+static void
+sfw_connection_delete(sfw_connection_t *self)
+{
+    // using NULL self pointer explicitly allowed
+
+    if( self ) {
+        sfw_connection_trans(self, CONNECTION_IDLE);
+        self->con_plugin = 0;
+        free(self);
+    }
+}
+
+/** Initiate data connection
+ */
+static void
+sfw_connection_do_start(sfw_connection_t *self)
+{
+    if( self->con_state == CONNECTION_IDLE ) {
+        sfw_connection_trans(self, CONNECTION_CONNECTING);
+    }
+}
+
+/** Close data connection
+ */
+static void
+sfw_connection_do_reset(sfw_connection_t *self)
+{
+    sfw_connection_trans(self, CONNECTION_IDLE);
+}
+
+/* ========================================================================= *
+ * SENSORFW_SESSION
+ * ========================================================================= */
+
+/** Translate session state to human readable form
+ */
+static const char *
+sfw_session_state_name(sfw_session_state_t state)
+{
+    static const char *const lut[SESSION_NUMSTATES] =
+    {
+        [SESSION_IDLE]       = "IDLE",
+        [SESSION_REQUESTING] = "REQUESTING",
+        [SESSION_ACTIVE]     = "ACTIVE",
+        [SESSION_ERROR]      = "ERROR",
+    };
+
+    return (state < SESSION_NUMSTATES) ? lut[state] : 0;
+}
+
+/** Create sensor data session state machine object
+ */
+static sfw_session_t *
+sfw_session_create(sfw_plugin_t *plugin)
+{
+    sfw_session_t *self = calloc(1, sizeof *self);
+
+    self->ses_plugin   = plugin;
+    self->ses_state    = SESSION_IDLE;
+    self->ses_id       = 0;
+    self->ses_start_pc = 0;
+
+    return self;
+}
+
+/** Delete sensor data session state machine object
+ */
+static void
+sfw_session_delete(sfw_session_t *self)
+{
+    // using NULL self pointer explicitly allowed
+
+    if( self ) {
+        sfw_session_trans(self, SESSION_IDLE);
+        self->ses_plugin = 0;
+        free(self);
+    }
+}
+
+/** Get session id granted by sensord
+ */
+static int
+sfw_session_get_id(const sfw_session_t *self)
+{
+    // Explicitly allow NULL self pointer to be used
+    return self ? self->ses_id : 0;
+}
+
+/** Cancel pending session start method call
+ */
+static void
+sfw_session_cancel_start(sfw_session_t *self)
+{
+    if( self->ses_start_pc ) {
+        dbus_pending_call_cancel(self->ses_start_pc);
+        dbus_pending_call_unref(self->ses_start_pc);
+        self->ses_start_pc = 0;
+    }
+}
+
+/** Make a state transition
+ */
+static void
+sfw_session_trans(sfw_session_t *self, sfw_session_state_t state)
+{
+    if( self->ses_state == state )
+        goto EXIT;
+
+    sfw_session_cancel_start(self);
+
+    mce_log(LL_DEBUG, "session(%s): %s -> %s",
+            sfw_plugin_get_sensor_name(self->ses_plugin),
+            sfw_session_state_name(self->ses_state),
+            sfw_session_state_name(state));
+
+    self->ses_state = state;
+
+    switch( self->ses_state ) {
+    case SESSION_REQUESTING:
+        {
+            dbus_int64_t  pid  = getpid();
+            const char   *name = sfw_plugin_get_sensor_name(self->ses_plugin);
+
+            dbus_send_ex(SENSORFW_SERVICE,
+                         SENSORFW_MANAGER_OBJECT,
+                         SENSORFW_MANAGER_INTEFCACE,
+                         SENSORFW_MANAGER_METHOD_START_SESSION,
+                         sfw_session_start_cb,
+                         self, 0, &self->ses_start_pc,
+                         DBUS_TYPE_STRING, &name,
+                         DBUS_TYPE_INT64,  &pid,
+                         DBUS_TYPE_INVALID);
+        }
+        break;
+
+    case SESSION_ACTIVE:
+        sfw_plugin_do_connection_start(self->ses_plugin);
+        break;
+
+    default:
+    case SESSION_IDLE:
+    case SESSION_ERROR:
+        sfw_plugin_do_connection_reset(self->ses_plugin);
+        break;
+    }
+
+EXIT:
+
+    return;
+}
+
+/** Handle reply to data session start request
+ */
+static void
+sfw_session_start_cb(DBusPendingCall *pc, void *aptr)
+{
+    //mce_log(LL_DEBUG, "TRIGGER");
+
+    sfw_session_t *self = aptr;
+    DBusMessage  *rsp  = 0;
+    DBusError     err  = DBUS_ERROR_INIT;
+
+    if( !pc || !self || pc != self->ses_start_pc )
+        goto EXIT;
+
+    self->ses_start_pc = 0;
+
+    if( !(rsp = dbus_pending_call_steal_reply(pc)) ) {
+        mce_log(LL_ERR, "session(%s): no reply",
+                sfw_plugin_get_sensor_name(self->ses_plugin));
+        goto EXIT;
+    }
+
+    if( dbus_set_error_from_message(&err, rsp) ) {
+        mce_log(LL_ERR, "session(%s): error reply: %s: %s",
+                sfw_plugin_get_sensor_name(self->ses_plugin),
+                err.name, err.message);
+        goto EXIT;
+    }
+
+    if( !dbus_message_get_args(rsp, &err,
+                               DBUS_TYPE_INT32, &self->ses_id,
+                               DBUS_TYPE_INVALID) ) {
+        mce_log(LL_ERR, "session(%s): parse error: %s: %s",
+                sfw_plugin_get_sensor_name(self->ses_plugin),
+                err.name, err.message);
+        goto EXIT;
+    }
+
+EXIT:
+    mce_log(LL_DEBUG, "session(%s): sid=%d",
+            sfw_plugin_get_sensor_name(self->ses_plugin),
+            (int)self->ses_id);
+
+    if( self->ses_id )
+        sfw_session_trans(self, SESSION_ACTIVE);
+    else
+        sfw_session_trans(self, SESSION_ERROR);
+
+    if( rsp ) dbus_message_unref(rsp);
+    if( pc )  dbus_pending_call_unref(pc);
+    dbus_error_free(&err);
+
+    return;
+}
+
+/** Initiate data session
+ */
+static void
+sfw_session_do_start(sfw_session_t *self)
+{
+    if( self->ses_state == SESSION_IDLE )
+        sfw_session_trans(self, SESSION_REQUESTING);
+}
+
+/** Close data session
+ */
+static void
+sfw_session_do_reset(sfw_session_t *self)
+{
+    sfw_session_trans(self, SESSION_IDLE);
+}
+
+/* ========================================================================= *
+ * SENSORFW_PLUGIN
+ * ========================================================================= */
+
+/** Translate plugin state to human readable form
+ */
+static const char *
+sfw_plugin_state_name(sfw_plugin_state_t state)
+{
+    static const char *const lut[PLUGIN_NUMSTATES] =
+    {
+        [PLUGIN_IDLE]     = "IDLE",
+        [PLUGIN_LOADING]  = "LOADING",
+        [PLUGIN_LOADED]   = "LOADED",
+        [PLUGIN_ERROR]    = "ERROR",
+    };
+
+    return (state < PLUGIN_NUMSTATES) ? lut[state] : 0;
+}
+
+/** Get sensord compatible name of the sensor
+ */
+static const char *
+sfw_plugin_get_sensor_name(const sfw_plugin_t *self)
+{
+    // Explicitly allow NULL self pointer to be used
+    return self ? self->plg_backend->be_sensor_name : 0;
+}
+
+/** Get sensord compatible D-Bus object path for the sensor
+ */
+static const char *
+sfw_plugin_get_sensor_object(const sfw_plugin_t *self)
+{
+    // Explicitly allow NULL self pointer to be used
+    if( !self )
+        return 0;
+
+    return self->plg_sensor_object ?: self->plg_backend->be_sensor_object;
+}
+
+/** Get sensord compatible D-Bus interface for the sensor
+ */
+static const char *
+sfw_plugin_get_sensor_interface(const sfw_plugin_t *self)
+{
+    // Explicitly allow NULL self pointer to be used
+    return self ? self->plg_backend->be_sensor_interface : 0;
+}
+
+/** Get cached session id granted by sensord
+ */
+static int
+sfw_plugin_get_session_id(const sfw_plugin_t *self)
+{
+    // Explicitly allow NULL self pointer to be used
+    return self ? sfw_session_get_id(self->plg_session) : 0;
+}
+
+/** Handle sensor specific change event received from data connection
+ */
+static void
+sfw_plugin_handle_sample(sfw_plugin_t *self, const void *sample)
+{
+    if( self->plg_backend->be_sample_cb )
+        self->plg_backend->be_sample_cb(self, sample);
+}
+
+/** Handle sensor specific initial value received via dbus query
+ */
+static void
+sfw_plugin_handle_value(sfw_plugin_t *self, unsigned value)
+{
+    mce_log(LL_DEBUG, "plugin(%s): initial=%u",
+            sfw_plugin_get_sensor_name(self), value);
+
+    if( self->plg_backend->be_value_cb )
+        self->plg_backend->be_value_cb(self, value);
+}
+
+/** Reset sensor state to assumed default state
+ *
+ * Used when sensord drops from D-Bus or sensor start() or stop()
+ * ceases to function.
+ */
+static void
+sfw_plugin_reset_value(sfw_plugin_t *self)
+{
+    mce_log(LL_DEBUG, "plugin(%s): reset",
+            sfw_plugin_get_sensor_name(self));
+
+    if( self->plg_backend->be_reset_cb )
+        self->plg_backend->be_reset_cb(self);
+}
+
+/** Get size of sensor specific change event
+ */
+static size_t
+sfw_plugin_get_sample_size(const sfw_plugin_t *self)
+{
+    return self->plg_backend->be_sample_size;
+}
+
+/** Get name of sensor method for querying initial value
+ */
+static const char *
+sfw_plugin_get_value_method(const sfw_plugin_t *self)
+{
+    return self->plg_backend->be_value_method;
+}
+
+/** Cancel pending plugin load() dbus method call
+ */
+static void
+sfw_plugin_cancel_load(sfw_plugin_t *self)
+{
+    if( self->plg_load_pc ) {
+        dbus_pending_call_cancel(self->plg_load_pc);
+        dbus_pending_call_unref(self->plg_load_pc);
+        self->plg_load_pc = 0;
+    }
+}
+
+/** Make a state transition
+ */
+static void
+sfw_plugin_trans(sfw_plugin_t *self, sfw_plugin_state_t state)
+{
+    if( self->plg_state == state )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "plugin(%s): %s -> %s",
+            sfw_plugin_get_sensor_name(self),
+            sfw_plugin_state_name(self->plg_state),
+            sfw_plugin_state_name(state));
+
+    self->plg_state = state;
+
+    sfw_plugin_cancel_load(self);
+
+    switch( self->plg_state ) {
+    case PLUGIN_IDLE:
+    case PLUGIN_ERROR:
+        sfw_plugin_do_session_reset(self);
+        break;
+
+    case PLUGIN_LOADING:
+        {
+            const char *sensor_name = sfw_plugin_get_sensor_name(self);
+
+            dbus_send_ex(SENSORFW_SERVICE,
+                         SENSORFW_MANAGER_OBJECT,
+                         SENSORFW_MANAGER_INTEFCACE,
+                         SENSORFW_MANAGER_METHOD_LOAD_PLUGIN,
+                         sfw_plugin_load_cb,
+                         self, 0, &self->plg_load_pc,
+                         DBUS_TYPE_STRING, &sensor_name,
+                         DBUS_TYPE_INVALID);
+        }
+        break;
+
+    case PLUGIN_LOADED:
+        sfw_plugin_do_session_start(self);
+        break;
+
+    default:
+        break;
+    }
+
+EXIT:
+    return;
+}
+
+/** Create sensor plugin load/unload state machine object
+ */
+static sfw_plugin_t *
+sfw_plugin_create(const sfw_backend_t *backend)
+{
+    sfw_plugin_t *self = calloc(1, sizeof *self);
+
+    self->plg_state = PLUGIN_IDLE;
+
+    self->plg_backend       = backend;
+    self->plg_sensor_object = 0;
+
+    if( !self->plg_backend->be_sensor_object ) {
+        self->plg_sensor_object =
+            g_strdup_printf("%s/%s",
+                            SENSORFW_MANAGER_OBJECT,
+                            self->plg_backend->be_sensor_name);
+    }
+
+    mce_log(LL_DEBUG, "Initializing sensor plugin");
+    mce_log(LL_DEBUG, "sensor:    %s", sfw_plugin_get_sensor_name(self));
+    mce_log(LL_DEBUG, "object:    %s", sfw_plugin_get_sensor_object(self));
+    mce_log(LL_DEBUG, "interface: %s", sfw_plugin_get_sensor_interface(self));
+
+    self->plg_load_pc     = 0;
+
+    self->plg_session    = sfw_session_create(self);
+    self->plg_connection = sfw_connection_create(self);
+    self->plg_override   = sfw_override_create(self);
+    self->plg_reporting  = sfw_reporting_create(self);
+
+// QUARANTINE     // FIXME: enable stuff to ease debug - remove later
+// QUARANTINE     sfw_override_set_target(self->plg_override, true);
+// QUARANTINE     sfw_reporting_set_target(self->plg_reporting, true);
+
+    return self;
+}
+
+/** Delete sensor plugin load/unload state machine object
+ */
+static void
+sfw_plugin_delete(sfw_plugin_t *self)
+{
+    // using NULL self pointer explicitly allowed
+
+    if( self ) {
+        sfw_plugin_trans(self, PLUGIN_IDLE);
+
+        sfw_reporting_delete(self->plg_reporting),
+            self->plg_reporting = 0;
+
+        sfw_override_delete(self->plg_override),
+            self->plg_override = 0;
+
+        sfw_connection_delete(self->plg_connection),
+            self->plg_connection = 0;
+
+        sfw_session_delete(self->plg_session),
+            self->plg_session = 0;
+
+        g_free(self->plg_sensor_object),
+            self->plg_sensor_object = 0;
+
+        free(self);
+    }
+}
+
+/** Handle reply to plugin load() dbus method call
+ */
+static void
+sfw_plugin_load_cb(DBusPendingCall *pc, void *aptr)
+{
+    //mce_log(LL_DEBUG, "TRIGGER");
+
+    sfw_plugin_t *self = aptr;
+    DBusMessage  *rsp  = 0;
+    DBusError     err  = DBUS_ERROR_INIT;
+    dbus_bool_t   ack  = FALSE;
+
+    if( !pc || !self || pc != self->plg_load_pc )
+        goto EXIT;
+
+    self->plg_load_pc = 0;
+
+    if( !(rsp = dbus_pending_call_steal_reply(pc)) ) {
+        mce_log(LL_ERR, "plugin(%s): no reply", sfw_plugin_get_sensor_name(self));
+        goto EXIT;
+    }
+
+    if( dbus_set_error_from_message(&err, rsp) ) {
+        mce_log(LL_ERR, "plugin(%s): error reply: %s: %s",
+                sfw_plugin_get_sensor_name(self), err.name, err.message);
+        goto EXIT;
+    }
+
+    if( !dbus_message_get_args(rsp, &err,
+                               DBUS_TYPE_BOOLEAN, &ack,
+                               DBUS_TYPE_INVALID) ) {
+        mce_log(LL_ERR, "plugin(%s): parse error: %s: %s",
+                sfw_plugin_get_sensor_name(self), err.name, err.message);
+        goto EXIT;
+    }
+
+EXIT:
+
+    if( self->plg_state == PLUGIN_LOADING) {
+        if( ack )
+            sfw_plugin_trans(self, PLUGIN_LOADED);
+        else
+            sfw_plugin_trans(self, PLUGIN_ERROR);
+    }
+
+    if( rsp ) dbus_message_unref(rsp);
+    if( pc )  dbus_pending_call_unref(pc);
+    dbus_error_free(&err);
+
+    return;
+}
+
+/** Initiate plugin loading
+ */
+static void
+sfw_plugin_do_load(sfw_plugin_t *self)
+{
+    if( self->plg_state == PLUGIN_IDLE )
+        sfw_plugin_trans(self, PLUGIN_LOADING);
+}
+
+/** Unload plugin
+ */
+static void
+sfw_plugin_do_reset(sfw_plugin_t *self)
+{
+    sfw_plugin_trans(self, PLUGIN_IDLE);
+}
+
+/** Initiate data session
+ */
+static void
+sfw_plugin_do_session_start(sfw_plugin_t *self)
+{
+    // using NULL self pointer explicitly allowed
+
+    if( self && self->plg_session )
+            sfw_session_do_start(self->plg_session);
+}
+
+/** Close data session
+ */
+static void
+sfw_plugin_do_session_reset(sfw_plugin_t *self)
+{
+    // using NULL self pointer explicitly allowed
+
+    if( self && self->plg_session )
+            sfw_session_do_reset(self->plg_session);
+}
+
+/** Initiate data connection
+ */
+static void
+sfw_plugin_do_connection_start(sfw_plugin_t *self)
+{
+    // using NULL self pointer explicitly allowed
+
+    if( self && self->plg_connection )
+            sfw_connection_do_start(self->plg_connection);
+}
+
+/** Close data connection
+ */
+static void
+sfw_plugin_do_connection_reset(sfw_plugin_t *self)
+{
+    // using NULL self pointer explicitly allowed
+
+    if( self && self->plg_connection )
+            sfw_connection_do_reset(self->plg_connection);
+}
+
+/** Initiate standby override handling
+ */
+static void
+sfw_plugin_do_override_start(sfw_plugin_t *self)
+{
+    // using NULL self pointer explicitly allowed
+
+    if( self && self->plg_override )
+            sfw_override_do_start(self->plg_override);
+}
+
+/** Cease standby override handling
+ */
+static void
+sfw_plugin_do_override_reset(sfw_plugin_t *self)
+{
+    // using NULL self pointer explicitly allowed
+
+    if( self && self->plg_override )
+            sfw_override_do_reset(self->plg_override);
+}
+
+/** Initiate sensor start/stop handling
+ */
+static void
+sfw_plugin_do_reporting_start(sfw_plugin_t *self)
+{
+    // using NULL self pointer explicitly allowed
+
+    if( self && self->plg_reporting )
+            sfw_reporting_do_start(self->plg_reporting);
+}
+
+/** Cease sensor start/stop handling
+ */
+static void
+sfw_plugin_do_reporting_reset(sfw_plugin_t *self)
+{
+    // using NULL self pointer explicitly allowed
+
+    if( self && self->plg_reporting )
+            sfw_reporting_do_reset(self->plg_reporting);
+}
+
+/* ========================================================================= *
+ * SENSORFW_SERVICE
+ * ========================================================================= */
+
+/** Translate service state to human readable form
+ */
+static const char *
+sfw_service_state_name(sfw_service_state_t state)
+{
+    static const char *const lut[SERVICE_NUMSTATES] =
+    {
+        [SERVICE_IDLE]      = "IDLE",
+        [SERVICE_QUERYING]  = "QUERYING",
+        [SERVICE_RUNNING]   = "RUNNING",
+        [SERVICE_STOPPED]   = "STOPPED",
+    };
+
+    return (state < SERVICE_NUMSTATES) ? lut[state] : 0;
+}
+
+/** Create sensord availability tracking state machine object
+ */
+static sfw_service_t *
+sfw_service_create(void)
+{
+    sfw_service_t *self = calloc(1, sizeof *self);
+
+    self->srv_state    = SERVICE_IDLE;
+    self->srv_query_pc = 0;
+
+    self->srv_ps       = sfw_plugin_create(&sfw_backend_ps);
+    self->srv_als      = sfw_plugin_create(&sfw_backend_als);
+    self->srv_orient   = sfw_plugin_create(&sfw_backend_orient);
+
+    return self;
+}
+
+/** Delete sensord availability tracking state machine object
+ */
+static void
+sfw_service_delete(sfw_service_t *self)
+{
+    // using NULL self pointer explicitly allowed
+
+    if( self ) {
+        sfw_service_trans(self, SERVICE_IDLE);
+
+        sfw_plugin_delete(self->srv_ps),
+            self->srv_ps = 0;
+
+        sfw_plugin_delete(self->srv_als),
+            self->srv_als = 0;
+
+        sfw_plugin_delete(self->srv_orient),
+            self->srv_orient = 0;
+
+        free(self);
+    }
+}
+
+/** Cancel pending sensord name owner dbus method call
+ */
+static void
+sfw_service_cancel_query(sfw_service_t *self)
+{
+    if( self->srv_query_pc ) {
+        dbus_pending_call_cancel(self->srv_query_pc);
+        dbus_pending_call_unref(self->srv_query_pc);
+        self->srv_query_pc = 0;
+    }
+}
+
+/** Handle reply to sensord name owner dbus method call
+ */
+static void
+sfw_service_query_cb(DBusPendingCall *pc, void *aptr)
+{
+    //mce_log(LL_DEBUG, "TRIGGER");
+
+    sfw_service_t *self  = aptr;
+    DBusMessage   *rsp   = 0;
+    const char    *owner = 0;
+    DBusError      err   = DBUS_ERROR_INIT;
+
+    if( !pc || !self )
+        goto EXIT;
+
+    if( pc != self->srv_query_pc )
+        goto EXIT;
+
+    self->srv_query_pc = 0;
+
+    if( !(rsp = dbus_pending_call_steal_reply(pc)) )
+        goto EXIT;
+
+    if( dbus_set_error_from_message(&err, rsp) ||
+        !dbus_message_get_args(rsp, &err,
+                               DBUS_TYPE_STRING, &owner,
+                               DBUS_TYPE_INVALID) )
+    {
+        if( strcmp(err.name, DBUS_ERROR_NAME_HAS_NO_OWNER) )
+            mce_log(LL_WARN, "%s: %s", err.name, err.message);
+        owner = 0;
+    }
+
+EXIT:
+
+    if( self->srv_state == SERVICE_QUERYING ) {
+        if( owner && *owner )
+            sfw_service_trans(self, SERVICE_RUNNING);
+        else
+            sfw_service_trans(self, SERVICE_STOPPED);
+    }
+
+    if( rsp ) dbus_message_unref(rsp);
+    if( pc ) dbus_pending_call_unref(pc);
+    dbus_error_free(&err);
+}
+
+/** Make a state transition
+ */
+static void
+sfw_service_trans(sfw_service_t *self, sfw_service_state_t state)
+{
+    static const char *service_name = SENSORFW_SERVICE;
+
+    if( self->srv_state == state )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "service: %s -> %s",
+            sfw_service_state_name(self->srv_state),
+            sfw_service_state_name(state));
+
+    self->srv_state = state;
+
+    sfw_service_cancel_query(self);
+
+    switch( self->srv_state ) {
+    case SERVICE_IDLE:
+        break;
+
+    case SERVICE_QUERYING:
+        dbus_send_ex(DBUS_SERVICE_DBUS,
+                     DBUS_PATH_DBUS,
+                     DBUS_INTERFACE_DBUS,
+                     DBUS_METHOD_GET_NAME_OWNER,
+                     sfw_service_query_cb,
+                     self, 0,
+                     &self->srv_query_pc,
+                     DBUS_TYPE_STRING, &service_name,
+                     DBUS_TYPE_INVALID);
+        break;
+
+    case SERVICE_RUNNING:
+        sfw_plugin_do_load(self->srv_ps);
+        sfw_plugin_do_load(self->srv_als);
+        sfw_plugin_do_load(self->srv_orient);
+        break;
+
+    case SERVICE_STOPPED:
+        sfw_plugin_do_reset(self->srv_ps);
+        sfw_plugin_do_reset(self->srv_als);
+        sfw_plugin_do_reset(self->srv_orient);
+
+// QUARANTINE   // handled at reporting error/reset
+// QUARANTINE         sfw_notify_ps(NOTIFY_RESET, SWF_NOTIFY_DUMMY);
+// QUARANTINE         sfw_notify_als(NOTIFY_RESET, SWF_NOTIFY_DUMMY);
+// QUARANTINE         sfw_notify_orient(NOTIFY_RESET, SWF_NOTIFY_DUMMY);
+        break;
+
+    default:
+        break;
+    }
+
+    // TODO: broadcast sensord status over datapipe?
+
+EXIT:
+    return;
+}
+
+/** Set sensord tracking to available state
+ */
+static void
+sfw_service_do_start(sfw_service_t *self)
+{
+    sfw_service_trans(self, SERVICE_RUNNING);
+}
+
+/** Set sensord tracking to not available state
+ */
+static void
+sfw_service_do_stop(sfw_service_t *self)
+{
+    sfw_service_trans(self, SERVICE_STOPPED);
+}
+
+/** Initiate sensord name owner tracking
+ */
+static void
+sfw_service_do_query(sfw_service_t *self)
+{
+    if( self->srv_state == SERVICE_IDLE )
+        sfw_service_trans(self, SERVICE_QUERYING);
+}
+
+/** Perform actions needed when proximity sensor needed state changes
+ */
+static void sfw_service_set_ps(sfw_service_t *self, bool enable)
+{
+    // using NULL self pointer explicitly allowed
+
+    mce_log(LL_DEBUG, "%s", enable ? "enable" : "disable");
+    if( self && self->srv_ps ) {
+        if( self->srv_ps->plg_override )
+            sfw_override_set_target(self->srv_ps->plg_override, enable);
+        if( self->srv_ps->plg_reporting )
+            sfw_reporting_set_target(self->srv_ps->plg_reporting, enable);
+    }
+}
+
+/** Perform actions needed when ambient light sensor needed state changes
+ */
+static void sfw_service_set_als(sfw_service_t *self, bool enable)
+{
+    // using NULL self pointer explicitly allowed
+
+    mce_log(LL_DEBUG, "%s", enable ? "enable" : "disable");
+    if( self && self->srv_als ) {
+        if( self->srv_als->plg_override )
+            sfw_override_set_target(self->srv_als->plg_override, enable);
+        if( self->srv_als->plg_reporting )
+            sfw_reporting_set_target(self->srv_als->plg_reporting, enable);
+    }
+}
+
+/** Perform actions needed when orientation sensor needed state changes
+ */
+static void sfw_service_set_orient(sfw_service_t *self, bool enable)
+{
+    // using NULL self pointer explicitly allowed
+
+    mce_log(LL_DEBUG, "%s", enable ? "enable" : "disable");
+    if( self && self->srv_orient ) {
+        if( self->srv_orient->plg_override )
+            sfw_override_set_target(self->srv_orient->plg_override, enable);
+        if( self->srv_orient->plg_reporting )
+            sfw_reporting_set_target(self->srv_orient->plg_reporting, enable);
+    }
+}
+
+/* ========================================================================= *
+ * SENSORFW_NOTIFY
+ * ========================================================================= */
+
+/** io watch id for PS evdev file descriptor
+ *
+ * If this is non-zero, proximity data received from sensord is ignored.
+ */
+static guint ps_evdev_id = 0;
+
+/** io watch id for ALS evdev file descriptor
+ *
+ * If this is non-zero, ambient light data received from sensord is ignored.
+ */
+static guint als_evdev_id = 0;
+
+/** Proximity change callback used for notifying upper level logic */
+static void (*sfw_notify_ps_cb)(bool covered) = 0;
+
+/** Ambient light change callback used for notifying upper level logic */
+static void (*sfw_notify_als_cb)(unsigned lux) = 0;
+
+/** Orientation change callback used for notifying upper level logic */
+static void (*sfw_notify_orient_cb)(int state) = 0;
+
+/** Translate orientation state to human readable form */
+static const char *
+orientation_state_name(orientation_state_t state)
+{
+    const char *name = "UNKNOWN";
+    switch( state ) {
+    case MCE_ORIENTATION_UNDEFINED:   name = "UNDEFINED";   break;
+    case MCE_ORIENTATION_LEFT_UP:     name = "LEFT_UP";     break;
+    case MCE_ORIENTATION_RIGHT_UP:    name = "RIGHT_UP";    break;
+    case MCE_ORIENTATION_BOTTOM_UP:   name = "BOTTOM_UP";   break;
+    case MCE_ORIENTATION_BOTTOM_DOWN: name = "BOTTOM_DOWN"; break;
+    case MCE_ORIENTATION_FACE_DOWN:   name = "FACE_DOWN";   break;
+    case MCE_ORIENTATION_FACE_UP:     name = "FACE_UP";     break;
+    default: break;
+    }
+    return name;
+}
+
+/** Translate notification type to human readable form
+ */
+static const char *
+sfw_notify_name(sfw_notify_t type)
+{
+    static const char *const lut[NOTIFY_NUMTYPES] =
+    {
+        [NOTIFY_RESET]   = "RESET",
+        [NOTIFY_REPEAT]  = "REPEAT",
+        [NOTIFY_EVDEV]   = "EVDEV",
+        [NOTIFY_SENSORD] = "SENSORD",
+    };
+
+    return (type < NOTIFY_NUMTYPES) ? lut[type] : 0;
+}
+
+/** Notify proximity state via callback
+ */
+static void sfw_notify_ps(sfw_notify_t type, bool covered)
+{
+    static bool cached_covered = SWF_NOTIFY_DEFAULT_PS;
+
+    switch( type ) {
+    case NOTIFY_REPEAT:
+        covered = cached_covered;
+        break;
+
+    case NOTIFY_RESET:
+        covered = cached_covered = SWF_NOTIFY_DEFAULT_PS;
+        break;
+
+    case NOTIFY_SENSORD:
+        if( ps_evdev_id ) {
+            mce_log(LL_DEBUG, "ignoring PS=%d from sensord", covered);
+            covered = cached_covered;
+        }
+        break;
+
+    default:
+        break;
+    }
+
+    mce_log(LL_DEBUG, "%s %s (%s)",
+            sfw_notify_ps_cb ? "report" : "ignore",
+            covered ? "covered" : "uncovered",
+            sfw_notify_name(type));
+
+    if( sfw_notify_ps_cb )
+        sfw_notify_ps_cb(covered);
+
+    cached_covered = covered;
+}
+
+/** Notify ambient light level via callback
+ */
+static void sfw_notify_als(sfw_notify_t type, unsigned lux)
+{
+    static unsigned cached_lux = SWF_NOTIFY_DEFAULT_ALS;
+
+    switch( type ) {
+    case NOTIFY_REPEAT:
+        lux = cached_lux;
+        break;
+
+    case NOTIFY_RESET:
+        lux = cached_lux = SWF_NOTIFY_DEFAULT_ALS;
+        break;
+
+    case NOTIFY_SENSORD:
+        if( als_evdev_id ) {
+            mce_log(LL_DEBUG, "ignoring ALS=%d from sensord", lux);
+            lux = cached_lux;
+        }
+        break;
+
+    default:
+        break;
+    }
+
+    mce_log(LL_DEBUG, "%s lux=%u (%s)",
+            sfw_notify_als_cb ? "report" : "ignore", lux,
+            sfw_notify_name(type));
+
+    if( sfw_notify_als_cb )
+        sfw_notify_als_cb(lux);
+
+    cached_lux = lux;
+}
+
+/** Notify orientation state via callback
+ */
+static void sfw_notify_orient(sfw_notify_t type, int state)
+{
+    static unsigned cached_state = SWF_NOTIFY_DEFAULT_ORIENT;
+
+    // NOTE: orientation does not have evdev source
+
+    switch( type ) {
+    case NOTIFY_REPEAT:
+        state = cached_state;
+        break;
+
+    case NOTIFY_RESET:
+        state = cached_state = SWF_NOTIFY_DEFAULT_ORIENT;
+        break;
+
+    default:
+        break;
+    }
+
+    mce_log(LL_DEBUG, "%s state=%s (%s)",
+            sfw_notify_orient_cb ? "report" : "ignore",
+            orientation_state_name(state),
+            sfw_notify_name(type));
+
+    if( sfw_notify_orient_cb )
+        sfw_notify_orient_cb(state);
+
+    cached_state = state;
+}
+
+/* ========================================================================= *
+ * SENSORFW_MODULE
+ * ========================================================================= */
+
+/** Sensord availability tracking state machine object */
+static sfw_service_t *sfw_service = 0;
+
+// ----------------------------------------------------------------
+
+/** Prepare sensors for suspending
+ */
+void mce_sensorfw_suspend(void)
+{
+  // DUMMY
+}
+
+/** Rethink sensors after resuming
+ */
+void mce_sensorfw_resume(void)
+{
+  // DUMMY
+}
+
+// ----------------------------------------------------------------
 
 /** Set ALS notification callback
  *
@@ -1025,432 +3103,25 @@ mce_sensorfw_als_disable(void)
  */
 void mce_sensorfw_als_set_notify(void (*cb)(unsigned lux))
 {
-	mce_log(LL_DEBUG, "@%s(%p)", __FUNCTION__, cb);
-
-	if( (als_notify_cb = cb) ) {
-		if( !sensord_running )
-			als_notify(ALS_VALUE_WHEN_SENSORD_IS_DOWN, DS_FAKED);
-		else
-			als_notify(0, DS_RESTORE);
-	}
+    if( (sfw_notify_als_cb = cb) )
+        sfw_notify_als(NOTIFY_REPEAT, 0);
 }
 
-/* ========================================================================= *
- * PS
- * ========================================================================= */
-
-/** io watch id for PS evdev file descriptor*/
-static guint ps_evdev_id = 0;
-
-/** Sensord name for PS */
-static const char ps_name[]  = "proximitysensor";
-
-/** Sensord D-Bus interface for PS */
-static const char ps_iface[] = "local.ProximitySensor";
-
-/** Sensord session id for PS */
-static int        ps_sid     = -1;
-
-/** Input watch for PS data */
-static guint      ps_wid     = 0;
-
-/** Flag for MCE wants to enable PS */
-static bool       ps_want    = false;
-
-/** Flag for PS enabled at sensord */
-static bool       ps_have    = false;
-
-/** Callback for sending PS data to where it is needed */
-static void     (*ps_notify_cb)(bool covered) = 0;
-
-/** Proximity state to report when sensord is not available */
-#define PS_STATE_WHEN_SENSORD_IS_DOWN false
-/** Wrapper for ps_notify_cb hook
- *
- * @param covered proximity sensor state
- * @param srce    where does to value originate from
+/** Try to enable ALS input
  */
-static void
-ps_notify(bool covered, input_source_t srce)
+void mce_sensorfw_als_enable(void)
 {
-	static bool ps_covered_last = PS_STATE_WHEN_SENSORD_IS_DOWN;
-
-	if( srce == DS_RESTORE )
-		covered = ps_covered_last;
-
-	/* If we have evdev source, prefer that over sensord input */
-	if( ps_evdev_id ) {
-		if( srce == DS_EVDEV )
-			ps_covered_last = covered;
-
-		if( srce == DS_SENSORD ) {
-			if( covered != ps_covered_last )
-				mce_log(LL_WARN, "sensord=%u vs evdev=%u",
-					covered, ps_covered_last);
-			goto EXIT;
-		}
-
-	}
-	else {
-		if( srce == DS_SENSORD )
-			ps_covered_last = covered;
-
-		if( srce == DS_EVDEV )
-			goto EXIT;
-	}
-
-	mce_log(LL_DEVEL, "PS: %scovered (%s)",
-		covered ? "" : "not-", input_source_name[srce]);
-
-	if( ps_notify_cb )
-		ps_notify_cb(covered);
-	else if( srce != DS_FAKED )
-		mce_log(LL_INFO, "PS data without notify cb");
-EXIT:
-	return;
+    sfw_service_set_als(sfw_service, true);
 }
 
-/** Handle PS input from sensord
- *
- * @param chn  io channel
- * @param cnd  (not used)
- * @param aptr (not used)
- *
- * @return TRUE to keep io watch, or FALSE to remove it
+/** Try to disable ALS input
  */
-static gboolean
-ps_input_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
+void mce_sensorfw_als_disable(void)
 {
-	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
-
-	(void)aptr; // unused
-
-	gboolean keep_going = FALSE;
-	uint32_t count = 0;
-
-	int fd;
-	int rc;
-	ps_data_t data;
-
-	if( cnd & (G_IO_ERR | G_IO_HUP | G_IO_NVAL) ) {
-		goto EXIT;
-	}
-
-	memset(&data, 0, sizeof data);
-
-	if( (fd = g_io_channel_unix_get_fd(chn)) < 0 ) {
-		mce_log(LL_ERR, "io channel has no fd");
-		goto EXIT;
-	}
-
-	// FIXME: there should be only one read() ...
-
-	rc = read(fd, &count, sizeof count);
-	if( rc == -1 ) {
-		if( errno == EINTR || errno == EAGAIN )
-			keep_going = TRUE;
-		else
-			mce_log(LL_ERR, "read sample count: %m");
-		goto EXIT;
-	}
-	if( rc == 0 ) {
-		mce_log(LL_ERR, "read sample count: EOF");
-		goto EXIT;
-	}
-	if( rc != (int)sizeof count) {
-		mce_log(LL_ERR, "read sample count: got %d of %d bytes",
-			rc, (int)sizeof count);
-		goto EXIT;
-	}
-
-	mce_log(LL_DEBUG, "Got %u PS values", (unsigned)count);
-
-	if( count < 1 ) {
-		keep_going = TRUE;
-		goto EXIT;
-	}
-
-	for( unsigned i = 0; i < count; ++i ) {
-		errno = 0, rc = read(fd, &data, sizeof data);
-		if( rc != sizeof data ) {
-			mce_log(LL_ERR, "failed to read sample: %m");
-			goto EXIT;
-		}
-	}
-
-	mce_log(LL_DEBUG, "last PS value = %u / %d", data.value,
-		data.withinProximity);
-
-	ps_notify(data.withinProximity != 0, DS_SENSORD);
-
-	keep_going = TRUE;
-
-EXIT:
-	if( !keep_going ) {
-		mce_log(LL_CRIT, "disabling io watch");
-		ps_wid = 0;
-	}
-	return keep_going;
+    sfw_service_set_als(sfw_service, false);
 }
 
-/** Handle reply to initial PS value request
- *
- * @param pc  pending call object
- * @param aptr (not used)
- */
-static void mce_sensorfw_ps_read_cb(DBusPendingCall *pc, void *aptr)
-{
-	(void)aptr;
-
-	mce_log(LL_INFO, "Received intial PS distance reply");
-
-	bool          res = false;
-	DBusMessage  *rsp = 0;
-	DBusError     err = DBUS_ERROR_INIT;
-	dbus_uint64_t tck = 0;
-	dbus_uint32_t dst = 0;
-
-	DBusMessageIter body, var, rec;
-
-	if( !(rsp = dbus_pending_call_steal_reply(pc)) )
-		goto EXIT;
-
-	if( dbus_set_error_from_message(&err, rsp) ) {
-		mce_log(LL_ERR, "proximity error reply: %s: %s",
-			err.name, err.message);
-		goto EXIT;
-	}
-
-	if( !dbus_message_iter_init(rsp, &body) )
-		goto EXIT;
-
-	if( dbus_message_iter_get_arg_type(&body) != DBUS_TYPE_VARIANT )
-		goto EXIT;
-
-	dbus_message_iter_recurse(&body, &var);
-	dbus_message_iter_next(&body);
-	if( dbus_message_iter_get_arg_type(&var) != DBUS_TYPE_STRUCT )
-		goto EXIT;
-
-	dbus_message_iter_recurse(&var, &rec);
-	dbus_message_iter_next(&var);
-	if( dbus_message_iter_get_arg_type(&rec) !=  DBUS_TYPE_UINT64 )
-		goto EXIT;
-
-	dbus_message_iter_get_basic(&rec, &tck);
-	dbus_message_iter_next(&rec);
-	if( dbus_message_iter_get_arg_type(&rec) !=  DBUS_TYPE_UINT32 )
-		goto EXIT;
-
-	dbus_message_iter_get_basic(&rec, &dst);
-	dbus_message_iter_next(&rec);
-
-	mce_log(LL_NOTICE, "initial PS value = %u", dst);
-
-	ps_notify(dst < 1, DS_SENSORD);
-
-	res = true;
-
-EXIT:
-	if( !res ) mce_log(LL_WARN, "did not get initial proximity value");
-	if( rsp ) dbus_message_unref(rsp);
-	dbus_pending_call_unref(pc);
-	dbus_error_free(&err);
-}
-
-/** Issue get PS value IPC to sensord
- *
- * @param id        sensor name
- * @param iface     D-Bus interface for the sensor
- * @param sessionid sensord session id from mce_sensorfw_request_sensor()
- */
-static void
-mce_sensorfw_ps_read(const char *id, const char *iface, int sessionid)
-{
-	(void)sessionid;
-
-	char *path = 0;
-	const char *prop = "proximity";
-
-	mce_log(LL_INFO, "read(%s, %d)", id, sessionid);
-
-	if( asprintf(&path, "%s/%s", SENSORFW_PATH, id) < 0 ) {
-		path = 0;
-		goto EXIT;
-	}
-
-	dbus_send(SENSORFW_SERVICE,
-		  path,
-		  "org.freedesktop.DBus.Properties",
-		  "Get",
-		  mce_sensorfw_ps_read_cb,
-		  DBUS_TYPE_STRING, &iface,
-		  DBUS_TYPE_STRING, &prop,
-		  DBUS_TYPE_INVALID);
-EXIT:
-	free(path);
-}
-
-/** Close PS session with sensord
- */
-static void mce_sensorfw_ps_stop_session(void)
-{
-	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
-
-	if( ps_sid != -1 ) {
-		if( sensord_running )
-			mce_sensorfw_release_sensor(ps_name, ps_sid);
-		ps_sid = -1;
-	}
-
-	if( ps_wid ) {
-		g_source_remove(ps_wid), ps_wid = 0;
-
-		ps_notify(PS_STATE_WHEN_SENSORD_IS_DOWN, DS_FAKED);
-	}
-	ps_have = false;
-}
-
-/** Have PS session with sensord predicate
- *
- * @return true if session exists, or false if not
- */
-static bool mce_sensorfw_ps_have_session(void)
-{
-	return ps_wid != 0;
-}
-
-/** Open PS session with sensord
- *
- * @return true on success, or false in case of errors
- */
-static bool mce_sensorfw_ps_start_session(void)
-{
-	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
-
-	if( ps_wid ) {
-		goto EXIT;
-	}
-
-	if( !mce_sensorfw_load_sensor(ps_name) ) {
-		goto EXIT;
-	}
-
-	ps_sid = mce_sensorfw_request_sensor(ps_name);
-	if( ps_sid < 0 )
-		goto EXIT;
-
-	ps_wid = mce_sensorfw_add_io_watch(ps_sid, ps_input_cb);
-	if( !ps_wid )
-		goto EXIT;
-
-EXIT:
-	if( !ps_wid ) {
-		// all or nothing
-		mce_sensorfw_ps_stop_session();
-	}
-	return ps_wid != 0;
-}
-
-/** Enable PS via sensord
- */
-static void mce_sensorfw_ps_start_sensor(void)
-{
-	if( ps_have )
-		goto EXIT;
-
-	if( !mce_sensorfw_ps_start_session() )
-		goto EXIT;
-
-	if( !mce_sensorfw_start_sensor(ps_name, ps_iface, ps_sid) )
-		goto EXIT;
-
-	/* The proximity sensor must stay active also when display is
-	 * off and thus we need to set the standby override flag */
-
-	/* No error checking here; failures will be logged when
-	 * we get reply message from sensord */
-	mce_sensorfw_set_standby_override(ps_name, ps_iface, ps_sid, true);
-
-	ps_have = true;
-
-	/* There is no quarantee that we get sensor input
-	 * anytime soon, so we make an explicit get current
-	 * value request after starting sensor */
-	mce_sensorfw_ps_read(ps_name, ps_iface, ps_sid);
-EXIT:
-	return;
-}
-
-/** Disable PS via sensord
- */
-static void mce_sensorfw_ps_stop_sensor(void)
-{
-	if( !ps_have )
-		goto EXIT;
-
-	if( mce_sensorfw_ps_have_session() ) {
-		mce_sensorfw_set_standby_override(ps_name, ps_iface, ps_sid,
-						  false);
-		mce_sensorfw_stop_sensor(ps_name, ps_iface, ps_sid);
-	}
-
-	ps_have = false;
-EXIT:
-	return;
-}
-
-/** Rethink PS enabled state
- */
-static void
-mce_sensorfw_ps_rethink(void)
-{
-	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
-	if( !sensord_running ) {
-		mce_log(LL_NOTICE, "skipping ps enable/disable;"
-			" sensord not available");
-		goto EXIT;
-	}
-
-	if( ps_want == ps_have )
-		goto EXIT;
-
-	if( system_suspended ) {
-		mce_log(LL_NOTICE, "skipping ps enable/disable;"
-			" should be suspended");
-		goto EXIT;
-	}
-
-	if( ps_want ) {
-		ps_notify(0, DS_RESTORE);
-		mce_sensorfw_ps_start_sensor();
-	}
-	else
-		mce_sensorfw_ps_stop_sensor();
-
-EXIT:
-	return;
-}
-
-/** Try to enable PS input
- */
-void
-mce_sensorfw_ps_enable(void)
-{
-	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
-	ps_want = true;
-	mce_sensorfw_ps_rethink();
-}
-
-/** Try to disable PS input
- */
-void
-mce_sensorfw_ps_disable(void)
-{
-	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
-	ps_want = false;
-	mce_sensorfw_ps_rethink();
-}
+// ----------------------------------------------------------------
 
 /** Set PS notification callback
  *
@@ -1458,825 +3129,297 @@ mce_sensorfw_ps_disable(void)
  */
 void mce_sensorfw_ps_set_notify(void (*cb)(bool covered))
 {
-	mce_log(LL_DEBUG, "@%s(%p)", __FUNCTION__, cb);
-	if( (ps_notify_cb = cb) ) {
-		if( !sensord_running )
-			ps_notify(PS_STATE_WHEN_SENSORD_IS_DOWN, DS_FAKED);
-		else
-			ps_notify(0, DS_RESTORE);
-	}
+    if( (sfw_notify_ps_cb = cb) )
+        sfw_notify_ps(NOTIFY_REPEAT, 0);
 }
 
-/* ========================================================================= *
- * Orientation
- * ========================================================================= */
-
-/** Orientation data block as sensord sends them */
-typedef struct orient_data {
-	uint64_t timestamp; /* microseconds, monotonic */
-	int32_t  state;
-} orient_data_t;
-
-static const char * const orient_state_lut[] =
-{
-	[MCE_ORIENTATION_UNDEFINED]   = "Undefined",
-	[MCE_ORIENTATION_LEFT_UP]     = "LeftUp",
-	[MCE_ORIENTATION_RIGHT_UP]    = "RightUp",
-	[MCE_ORIENTATION_BOTTOM_UP]   = "BottomUp",
-	[MCE_ORIENTATION_BOTTOM_DOWN] = "BottomDown",
-	[MCE_ORIENTATION_FACE_DOWN]   = "FaceDown",
-	[MCE_ORIENTATION_FACE_UP]     = "FaceUp",
-};
-static const char *orient_state_name(int state)
-{
-	const char *res = 0;
-
-	size_t count = sizeof orient_state_lut / sizeof *orient_state_lut;
-
-	if( (size_t) state < count )
-		res = orient_state_lut[state];
-
-	return res ?: "Unknown";
-}
-
-/** Sensord name for Orientation */
-static const char orient_name[]  = "orientationsensor";
-
-/** Sensord D-Bus interface for Orientation */
-static const char orient_iface[] = "local.OrientationSensor";
-
-/** Sensord session id for Orientation */
-static int        orient_sid     = -1;
-
-/** Input watch for Orientation data */
-static guint      orient_wid     = 0;
-
-/** Flag for MCE wants to enable Orientation */
-static bool       orient_want    = false;
-
-/** Flag for Orientation enabled at sensord */
-static bool       orient_have    = false;
-
-/** Callback for sending Orientation data to where it is needed */
-static void     (*orient_notify_cb)(int state) = 0;
-
-/** Orientation state to report when sensord is not available */
-#define ORIENT_STATE_WHEN_SENSORD_IS_DOWN MCE_ORIENTATION_UNDEFINED
-
-/** Wrapper for orient_notify_cb hook
+/** Try to enable PS input
  */
-static void
-orient_notify(int state, bool synthetic)
+void mce_sensorfw_ps_enable(void)
 {
-	mce_log(LL_DEBUG, "orientation: %d / %s%s", state,
-		orient_state_name(state),
-		synthetic ? " (fake event)" : "");
-
-	if( orient_notify_cb )
-		orient_notify_cb(state);
-	else if( !synthetic )
-		mce_log(LL_WARN, "orientation enabled without notify cb");
+    sfw_service_set_ps(sfw_service, true);
 }
 
-/** Handle Orientation input from sensord
- *
- * @param chn  io channel
- * @param cnd  (not used)
- * @param aptr (not used)
- *
- * @return TRUE to keep io watch, or FALSE to remove it
+/** Try to disable PS input
  */
-static gboolean
-orient_input_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
+void mce_sensorfw_ps_disable(void)
 {
-	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
-
-	(void)aptr; // unused
-
-	gboolean keep_going = FALSE;
-	uint32_t count = 0;
-
-	int fd;
-	int rc;
-	orient_data_t data;
-
-	if( cnd & (G_IO_ERR | G_IO_HUP | G_IO_NVAL) ) {
-		goto EXIT;
-	}
-
-	memset(&data, 0, sizeof data);
-
-	if( (fd = g_io_channel_unix_get_fd(chn)) < 0 ) {
-		mce_log(LL_ERR, "io channel has no fd");
-		goto EXIT;
-	}
-
-	// FIXME: there should be only one read() ...
-
-	rc = read(fd, &count, sizeof count);
-	if( rc == -1 ) {
-		if( errno == EINTR || errno == EAGAIN )
-			keep_going = TRUE;
-		else
-			mce_log(LL_ERR, "read sample count: %m");
-		goto EXIT;
-	}
-	if( rc == 0 ) {
-		mce_log(LL_ERR, "read sample count: EOF");
-		goto EXIT;
-	}
-	if( rc != (int)sizeof count) {
-		mce_log(LL_ERR, "read sample count: got %d of %d bytes",
-			rc, (int)sizeof count);
-		goto EXIT;
-	}
-
-	mce_log(LL_DEBUG, "Got %u orientation values", (unsigned)count);
-
-	if( count < 1 ) {
-		keep_going = TRUE;
-		goto EXIT;
-	}
-
-	for( unsigned i = 0; i < count; ++i ) {
-		errno = 0, rc = read(fd, &data, sizeof data);
-		if( rc != sizeof data ) {
-			mce_log(LL_ERR, "failed to read sample: %m");
-			goto EXIT;
-		}
-	}
-
-	mce_log(LL_DEBUG, "last orientation value = %u", data.state);
-	orient_notify(data.state, false);
-
-	keep_going = TRUE;
-
-EXIT:
-	if( !keep_going ) {
-		mce_log(LL_CRIT, "disabling io watch");
-		orient_wid = 0;
-	}
-	return keep_going;
+    sfw_service_set_ps(sfw_service, false);
 }
 
-/** Handle reply to initial Orientation value request
- *
- * @param pc  pending call object
- * @param aptr (not used)
- */
-static void mce_sensorfw_orient_read_cb(DBusPendingCall *pc, void *aptr)
-{
-	(void)aptr;
-
-	mce_log(LL_INFO, "Received intial Orientation distance reply");
-
-	bool          res = false;
-	DBusMessage  *rsp = 0;
-	DBusError     err = DBUS_ERROR_INIT;
-	dbus_uint64_t tck = 0;
-	dbus_uint32_t val = 0;
-
-	DBusMessageIter body, var, rec;
-
-	if( !(rsp = dbus_pending_call_steal_reply(pc)) )
-		goto EXIT;
-
-	if( dbus_set_error_from_message(&err, rsp) ) {
-		mce_log(LL_ERR, "orientation error reply: %s: %s",
-			err.name, err.message);
-		goto EXIT;
-	}
-
-	if( !dbus_message_iter_init(rsp, &body) )
-		goto EXIT;
-
-	if( dbus_message_iter_get_arg_type(&body) != DBUS_TYPE_VARIANT )
-		goto EXIT;
-
-	dbus_message_iter_recurse(&body, &var);
-	dbus_message_iter_next(&body);
-	if( dbus_message_iter_get_arg_type(&var) != DBUS_TYPE_STRUCT )
-		goto EXIT;
-
-	dbus_message_iter_recurse(&var, &rec);
-	dbus_message_iter_next(&var);
-	if( dbus_message_iter_get_arg_type(&rec) !=  DBUS_TYPE_UINT64 )
-		goto EXIT;
-
-	dbus_message_iter_get_basic(&rec, &tck);
-	dbus_message_iter_next(&rec);
-	if( dbus_message_iter_get_arg_type(&rec) !=  DBUS_TYPE_UINT32 )
-		goto EXIT;
-
-	dbus_message_iter_get_basic(&rec, &val);
-	dbus_message_iter_next(&rec);
-
-	mce_log(LL_INFO, "initial orientation value = %u", val);
-
-	orient_notify(val, false);
-
-	res = true;
-
-EXIT:
-	if( !res ) mce_log(LL_WARN, "did not get initial orientation value");
-	if( rsp ) dbus_message_unref(rsp);
-	dbus_pending_call_unref(pc);
-	dbus_error_free(&err);
-}
-
-/** Issue get Orientation value IPC to sensord
- *
- * @param id        sensor name
- * @param iface     D-Bus interface for the sensor
- * @param sessionid sensord session id from mce_sensorfw_request_sensor()
- */
-static void
-mce_sensorfw_orient_read(const char *id, const char *iface, int sessionid)
-{
-	(void)sessionid;
-
-	char *path = 0;
-	const char *prop = "orientation";
-
-	mce_log(LL_INFO, "read(%s, %d)", id, sessionid);
-
-	if( asprintf(&path, "%s/%s", SENSORFW_PATH, id) < 0 ) {
-		path = 0;
-		goto EXIT;
-	}
-
-	dbus_send(SENSORFW_SERVICE,
-		  path,
-		  "org.freedesktop.DBus.Properties",
-		  "Get",
-		  mce_sensorfw_orient_read_cb,
-		  DBUS_TYPE_STRING, &iface,
-		  DBUS_TYPE_STRING, &prop,
-		  DBUS_TYPE_INVALID);
-EXIT:
-	free(path);
-}
-
-/** Close Orientation session with sensord
- */
-static void mce_sensorfw_orient_stop_session(void)
-{
-	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
-
-	if( orient_sid != -1 ) {
-		if( sensord_running )
-			mce_sensorfw_release_sensor(orient_name, orient_sid);
-		orient_sid = -1;
-	}
-
-	if( orient_wid ) {
-		g_source_remove(orient_wid), orient_wid = 0;
-		orient_notify(ORIENT_STATE_WHEN_SENSORD_IS_DOWN, true);
-	}
-	orient_have = false;
-}
-
-/** Have Orientation session with sensord predicate
- *
- * @return true if session exists, or false if not
- */
-static bool mce_sensorfw_orient_have_session(void)
-{
-	return orient_wid != 0;
-}
-
-/** Open Orientation session with sensord
- *
- * @return true on success, or false in case of errors
- */
-static bool mce_sensorfw_orient_start_session(void)
-{
-	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
-
-	if( orient_wid ) {
-		goto EXIT;
-	}
-
-	if( !mce_sensorfw_load_sensor(orient_name) ) {
-		goto EXIT;
-	}
-
-	orient_sid = mce_sensorfw_request_sensor(orient_name);
-	if( orient_sid < 0 )
-		goto EXIT;
-
-	orient_wid = mce_sensorfw_add_io_watch(orient_sid, orient_input_cb);
-	if( !orient_wid )
-		goto EXIT;
-
-EXIT:
-	if( !orient_wid ) {
-		// all or nothing
-		mce_sensorfw_orient_stop_session();
-	}
-	return orient_wid != 0;
-}
-
-/** Enable Orientation via sensord
- */
-static void mce_sensorfw_orient_start_sensor(void)
-{
-	if( orient_have )
-		goto EXIT;
-
-	if( !mce_sensorfw_orient_start_session() )
-		goto EXIT;
-
-	if( !mce_sensorfw_start_sensor(orient_name, orient_iface, orient_sid) )
-		goto EXIT;
-
-	/* In order to have a upto date orientation state when display
-	 * is fully powered up, mce starts orientation sensor in paralled
-	 * with display power up; from sensord point of view the display
-	 * is still off and thus we need to set the standby override flag */
-
-	/* No error checking here; failures will be logged when
-	 * we get reply message from sensord */
-	mce_sensorfw_set_standby_override(orient_name, orient_iface, orient_sid, true);
-
-	orient_have = true;
-
-	/* There is no quarantee that we get sensor input
-	 * anytime soon, so we make an explicit get current
-	 * value request after starting sensor */
-	mce_sensorfw_orient_read(orient_name, orient_iface, orient_sid);
-EXIT:
-	return;
-}
-
-/** Disable Orientation via sensord
- */
-static void mce_sensorfw_orient_stop_sensor(void)
-{
-	if( !orient_have )
-		goto EXIT;
-
-	if( mce_sensorfw_orient_have_session() ) {
-		mce_sensorfw_set_standby_override(orient_name, orient_iface, orient_sid,
-						  false);
-		mce_sensorfw_stop_sensor(orient_name, orient_iface, orient_sid);
-	}
-
-	orient_have = false;
-	orient_notify(ORIENT_STATE_WHEN_SENSORD_IS_DOWN, true);
-EXIT:
-	return;
-}
-
-/** Rethink Orientation enabled state
- */
-static void
-mce_sensorfw_orient_rethink(void)
-{
-	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
-	if( !sensord_running ) {
-		mce_log(LL_NOTICE, "skipping ps enable/disable;"
-			" sensord not available");
-		goto EXIT;
-	}
-
-	if( orient_want == orient_have )
-		goto EXIT;
-
-	if( system_suspended ) {
-		mce_log(LL_NOTICE, "skipping ps enable/disable;"
-			" should be suspended");
-		goto EXIT;
-	}
-
-	if( orient_want )
-		mce_sensorfw_orient_start_sensor();
-	else
-		mce_sensorfw_orient_stop_sensor();
-
-EXIT:
-	return;
-}
-
-/** Try to enable Orientation input
- */
-void
-mce_sensorfw_orient_enable(void)
-{
-	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
-	orient_want = true;
-	mce_sensorfw_orient_rethink();
-}
-
-/** Try to disable Orientation input
- */
-void
-mce_sensorfw_orient_disable(void)
-{
-	mce_log(LL_DEBUG, "@%s()", __FUNCTION__);
-	orient_want = false;
-	mce_sensorfw_orient_rethink();
-}
+// ----------------------------------------------------------------
 
 /** Set Orientation notification callback
  *
  * @param cb function to call when Orientation events are received
  */
-void mce_sensorfw_orient_set_notify(void (*cb)(int covered))
+void mce_sensorfw_orient_set_notify(void (*cb)(int state))
 {
-	mce_log(LL_DEBUG, "@%s(%p)", __FUNCTION__, cb);
-	orient_notify_cb = cb;
-	if( !sensord_running )
-		orient_notify(ORIENT_STATE_WHEN_SENSORD_IS_DOWN, true);
+    if( (sfw_notify_orient_cb = cb) )
+        sfw_notify_orient(NOTIFY_REPEAT, 0);
 }
 
-/* ========================================================================= *
- * SENSORD
- * ========================================================================= */
-
-/* FIXME: Re-enabling proximity sensor while it is covered
- *        produces bogus data -> can't disable PS yet. This
- *        hack allows testing without mce recompilation
+/** Try to enable Orientation input
  */
-static bool stop_ps_on_suspend(void)
+void mce_sensorfw_orient_enable(void)
 {
-	return access("/var/lib/mce/stop-ps", F_OK) == 0;
+    sfw_service_set_orient(sfw_service, true);
 }
 
-static void xsensord_rethink(void)
-{
-	static bool was_suspended = false;
-
-	if( !sensord_running ) {
-		mce_sensorfw_orient_stop_session();
-		mce_sensorfw_als_stop_session();
-		mce_sensorfw_ps_stop_session();
-	}
-	else if( system_suspended ) {
-		mce_sensorfw_orient_stop_sensor();
-		mce_sensorfw_als_stop_sensor();
-		if( stop_ps_on_suspend() )
-			mce_sensorfw_ps_stop_sensor();
-	}
-	else {
-		mce_sensorfw_als_rethink();
-		mce_sensorfw_ps_rethink();
-		mce_sensorfw_orient_rethink();
-	}
-	if( system_suspended && !was_suspended ) {
-		/* test callback pointer here too to avoid warning */
-		if( stop_ps_on_suspend() && ps_notify_cb  ) {
-			mce_log(LL_DEBUG, "faking proximity closed");
-			ps_notify(true, DS_FAKED);
-		}
-	}
-
-	was_suspended = system_suspended;
-}
-
-/** React to sensord presense on D-Bus system bus
- *
- * If sensord has stopped (=lost dbus name), existing sensor
- * sessions are cleaned up.
- *
- * If sensord has started (=has dbus name), sensor sessions
- * are re-established as needed.
- *
- * @param running true if sensord is on dbus, false if not
+/** Try to disable Orientation input
  */
-static void
-xsensord_set_runstate(bool running)
+void mce_sensorfw_orient_disable(void)
 {
-	if( sensord_running != running ) {
-		sensord_running = running;
-		mce_log(LL_NOTICE, "sensord is %savailable on dbus",
-			sensord_running ? "" : "NOT ");
-		xsensord_rethink();
-	}
+    sfw_service_set_orient(sfw_service, false);
 }
 
-/** Handle reply to asynchronous sensord service name ownership query
+// ----------------------------------------------------------------
+
+/** Callback function for processing evdev events
  *
- * @param pc        State data for asynchronous D-Bus method call
- * @param user_data (not used)
+ * @param chn  io channel
+ * @param cnd  conditions to handle
+ * @param aptr pointer to io watch
+ *
+ * @return TRUE to keep io watch active, FALSE to stop it
  */
-static void xsensord_get_name_owner_cb(DBusPendingCall *pc, void *user_data)
+static gboolean
+mce_sensorfw_evdev_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
 {
-	(void)user_data;
+    gboolean  keep = FALSE;
+    int      *id   = aptr;
+    int       fd   = g_io_channel_unix_get_fd(chn);
+    int       als  = -1;
+    int       ps   = -1;
+    int       rc;
 
-	DBusMessage *rsp   = 0;
-	const char  *owner = 0;
-	DBusError    err   = DBUS_ERROR_INIT;
+    struct input_event eve[256];
 
-	if( !(rsp = dbus_pending_call_steal_reply(pc)) )
-		goto EXIT;
+    /* wakelock must be taken before reading the data */
+    wakelock_lock("mce_input_handler", -1);
 
-	if( dbus_set_error_from_message(&err, rsp) ||
-	    !dbus_message_get_args(rsp, &err,
-				   DBUS_TYPE_STRING, &owner,
-				   DBUS_TYPE_INVALID) )
-	{
-		if( strcmp(err.name, DBUS_ERROR_NAME_HAS_NO_OWNER) ) {
-			mce_log(LL_WARN, "%s: %s", err.name, err.message);
-		}
-		goto EXIT;
-	}
+    if( cnd & (G_IO_ERR | G_IO_HUP | G_IO_NVAL) ) {
+        goto EXIT;
+    }
 
-	xsensord_set_runstate(owner && *owner);
+    rc = read(fd, eve, sizeof eve);
+
+    if( rc == -1 ) {
+        if( errno == EINTR || errno == EAGAIN )
+            keep = TRUE;
+        else
+            mce_log(LL_ERR, "read events: %m");
+        goto EXIT;
+    }
+
+    if( rc == 0 ) {
+        mce_log(LL_ERR, "read events: EOF");
+        goto EXIT;
+    }
+
+    keep = TRUE;
+
+    size_t n = rc / sizeof *eve;
+    for( size_t i = 0; i < n; ++i ) {
+        if( eve[i].type != EV_ABS )
+            continue;
+
+        switch( eve[i].code ) {
+        case ABS_MISC:
+            als = eve[i].value;
+            break;
+        case ABS_DISTANCE:
+            ps = eve[i].value;
+            break;
+        default:
+            break;
+        }
+    }
+
+    if( als != -1 )
+        sfw_notify_als(NOTIFY_EVDEV, als);
+
+    if( ps != -1 )
+        sfw_notify_ps(NOTIFY_EVDEV, ps < 1);
 
 EXIT:
-	if( rsp ) dbus_message_unref(rsp);
-	dbus_error_free(&err);
-}
+    if( !keep && *id ) {
+        *id = 0;
+        mce_log(LL_CRIT, "stopping io watch");
+    }
 
-/** Initiate asynchronous sensord service name ownership query
- *
- * @return TRUE if the method call was initiated, or FALSE in case of errors
- */
-static gboolean xsensord_get_name_owner(void)
-{
-	gboolean         res  = FALSE;
-	DBusMessage     *req  = 0;
-	DBusPendingCall *pc   = 0;
-	const char      *name = SENSORFW_SERVICE;
+    /* wakelock must be released when we are done with the data */
+    wakelock_unlock("mce_input_handler");
 
-	if( !(req = dbus_message_new_method_call(DBUS_SERVICE_DBUS,
-						 DBUS_PATH_DBUS,
-						 DBUS_INTERFACE_DBUS,
-						 "GetNameOwner")) )
-		goto EXIT;
-
-	if( !dbus_message_append_args(req,
-				      DBUS_TYPE_STRING, &name,
-				      DBUS_TYPE_INVALID) )
-		goto EXIT;
-
-	if( !dbus_connection_send_with_reply(systembus, req, &pc, -1) )
-		goto EXIT;
-
-	if( !pc )
-		goto EXIT;
-
-	if( !dbus_pending_call_set_notify(pc, xsensord_get_name_owner_cb, 0, 0) )
-		goto EXIT;
-
-	res = TRUE;
-
-EXIT:
-	if( pc )  dbus_pending_call_unref(pc);
-	if( req ) dbus_message_unref(req);
-
-	return res;
-}
-
-/** Handle sensord name owner changed signals
- *
- * @param msg DBUS_NAME_OWNER_CHANGED_SIG from dbus daemon
- */
-static void
-xsensord_name_owner_changed(DBusMessage *msg)
-{
-	const char *name = 0;
-	const char *prev = 0;
-	const char *curr = 0;
-	DBusError   err  = DBUS_ERROR_INIT;
-
-	if( !dbus_message_get_args(msg, &err,
-				   DBUS_TYPE_STRING, &name,
-				   DBUS_TYPE_STRING, &prev,
-				   DBUS_TYPE_STRING, &curr,
-				   DBUS_TYPE_INVALID) )
-	{
-		mce_log(LL_WARN, "%s: %s", err.name, err.message);
-		goto EXIT;
-	}
-
-	if( strcmp(name, SENSORFW_SERVICE) )
-		goto EXIT;
-
-	xsensord_set_runstate(curr && *curr);
-
-EXIT:
-	dbus_error_free(&err);
-	return;
-}
-
-/** D-Bus message filter for handling sensord related signals
- *
- * @param con       (not used)
- * @param msg       message to be acted upon
- * @param user_data (not used)
- *
- * @return DBUS_HANDLER_RESULT_NOT_YET_HANDLED (other filters see the msg too)
- */
-static DBusHandlerResult
-xsensord_dbus_filter_cb(DBusConnection *con,
-			    DBusMessage *msg,
-			    void *user_data)
-{
-	(void)con; (void)user_data;
-
-	DBusHandlerResult res = DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
-
-	if( dbus_message_is_signal(msg, DBUS_INTERFACE_DBUS,
-				   DBUS_NAME_OWNER_CHANGED_SIG) ) {
-		xsensord_name_owner_changed(msg);
-	}
-
-	return res;
-}
-
-/** Rule for matching sensord service name owner changes */
-static const char xsensord_name_owner_rule[] =
-"type='signal'"
-",sender='"DBUS_SERVICE_DBUS"'"
-",interface='"DBUS_INTERFACE_DBUS"'"
-",member='"DBUS_NAME_OWNER_CHANGED_SIG"'"
-",path='"DBUS_PATH_DBUS"'"
-",arg0='"SENSORFW_SERVICE"'"
-;
-
-/* ========================================================================= *
- * MODULE
- * ========================================================================= */
-
-#define TRACK_ALS_DATAPIPE 0
-#define TRACK_PS_DATAPIPE  1
-
-#if TRACK_ALS_DATAPIPE
-/** Debug: how ALS shows up in mce state machines */
-static void ambient_light_sensor_trigger(gconstpointer data)
-{
-	int lux = GPOINTER_TO_INT(data);
-	mce_log(LL_NOTICE, "AMBIENT_LIGHT=%d", lux);
-}
-#endif
-
-#if TRACK_PS_DATAPIPE
-/** Debug: how PS shows up in mce state machines */
-static void proximity_sensor_trigger(gconstpointer data)
-{
-	cover_state_t proximity_sensor_state = GPOINTER_TO_INT(data);
-
-	const char *tag = "UNKNOWN";
-	switch( proximity_sensor_state ) {
-	case COVER_CLOSED: tag = "COVERED";     break;
-	case COVER_OPEN:   tag = "NOT-COVERED"; break;
-	default: break;
-	}
-	mce_log(LL_NOTICE, "PROXIMITY=%s", tag);
-}
-#endif
-
-/** Initialize mce sensorfw module
- */
-bool
-mce_sensorfw_init(void)
-{
-	mce_log(LL_INFO, "@%s()", __FUNCTION__);
-
-	bool res = false;
-
-#if TRACK_ALS_DATAPIPE
-	append_output_trigger_to_datapipe(&ambient_light_sensor_pipe,
-					  ambient_light_sensor_trigger);
-#endif
-
-#if TRACK_PS_DATAPIPE
-	append_output_trigger_to_datapipe(&proximity_sensor_pipe,
-					  proximity_sensor_trigger);
-#endif
-
-	if( !(systembus = dbus_connection_get()) )
-		goto EXIT;
-
-	/* start tracking sensord name ownership changes on system bus */
-	dbus_connection_add_filter(systembus, xsensord_dbus_filter_cb,
-				   0, 0);
-	dbus_bus_add_match(systembus, xsensord_name_owner_rule, 0);
-
-	/* initiate async query to find out current state of sensord */
-	xsensord_get_name_owner();
-
-	res = true;
-EXIT:
-	return res;
-}
-
-/** Cleanup mce sensorfw module
- */
-void
-mce_sensorfw_quit(void)
-{
-	mce_log(LL_INFO, "@%s()", __FUNCTION__);
-
-	/* release evdev inputs */
-	if( ps_evdev_id )
-		g_source_remove(ps_evdev_id), ps_evdev_id = 0;
-
-	if( als_evdev_id )
-		g_source_remove(als_evdev_id), als_evdev_id = 0;
-
-	/* remove datapipe triggers */
-#if TRACK_ALS_DATAPIPE
-	remove_output_trigger_from_datapipe(&ambient_light_sensor_pipe,
-					    ambient_light_sensor_trigger);
-#endif
-
-#if TRACK_PS_DATAPIPE
-	remove_output_trigger_from_datapipe(&proximity_sensor_pipe,
-					    proximity_sensor_trigger);
-#endif
-
-	/* clean up sensord connection */
-	mce_sensorfw_ps_stop_session();
-	mce_sensorfw_als_stop_session();
-	mce_sensorfw_orient_stop_session();
-
-	if( systembus ) {
-		dbus_connection_remove_filter(systembus,
-					      xsensord_dbus_filter_cb, 0);
-
-		dbus_bus_remove_match(systembus, xsensord_name_owner_rule, 0);
-
-		dbus_connection_unref(systembus), systembus = 0;
-	}
-}
-
-/** Prepare sensors for suspending
- */
-void
-mce_sensorfw_suspend(void)
-{
-	if( !system_suspended && stop_ps_on_suspend() ) {
-		system_suspended = true;
-		mce_log(LL_INFO, "@%s()", __FUNCTION__);
-		xsensord_rethink();
-
-		/* FIXME: This neither blocks nor is immediate,
-		 *        so need to add asynchronous notification
-		 *        when the dbus roundtrip to sensord has
-		 *        been done.
-		 */
-	}
-}
-
-/** Rethink sensors after resuming
- */
-void
-mce_sensorfw_resume(void)
-{
-	if( system_suspended ) {
-		system_suspended = false;
-		mce_log(LL_INFO, "@%s()", __FUNCTION__);
-		xsensord_rethink();
-	}
+    return keep;
 }
 
 /** Use evdev file descriptor as ALS data source
  *
- * Called from evdev probing if ALS device node is detected
+ * Called from evdev probing if ALS device node is detected.
+ *
+ * Caller expects the file descriptor to be owned by
+ * sensor module after the call and it must thus be closed
+ * if input monitoring is not succesfully initiated.
  *
  * @param fd file descriptor
  */
 void mce_sensorfw_als_attach(int fd)
 {
-	struct input_absinfo info;
-	memset(&info, 0, sizeof info);
+    if( fd == -1 )
+        goto EXIT;
 
-	/* Note: als_evdev_id must be set before calling als_notify() */
-	als_evdev_id = mce_sensorfw_start_iomon(fd, mce_sensorfw_evdev_cb,
-						&als_evdev_id);
+    struct input_absinfo info;
+    memset(&info, 0, sizeof info);
 
-	if( ioctl(fd, EVIOCGABS(ABS_MISC), &info) == -1 )
-		mce_log(LL_ERR, "EVIOCGABS(%s): %m", "ABS_MISC");
-	else {
-		mce_log(LL_INFO, "ALS: %d (initial)", info.value);
-		als_notify(info.value, DS_EVDEV);
-	}
+    if( ioctl(fd, EVIOCGABS(ABS_MISC), &info) == -1 ) {
+        mce_log(LL_ERR, "EVIOCGABS(%s): %m", "ABS_MISC");
+        goto EXIT;
+    }
 
+    /* Note: als_evdev_id must be set before calling als_notify() */
+    als_evdev_id = sfw_socket_add_notify(fd, true, G_IO_IN,
+                                         mce_sensorfw_evdev_cb,
+                                         &als_evdev_id);
+
+    if( !als_evdev_id )
+        goto EXIT;
+
+    mce_log(LL_INFO, "ALS: %d (initial)", info.value);
+    sfw_notify_als(NOTIFY_EVDEV, info.value);
+
+EXIT:
+    if( !als_evdev_id && fd != -1 )
+        close(fd);
+
+    return;
 }
 
 /** Use evdev file descriptor as PS data source
  *
- * Called from evdev probing if PS device node is detected
+ * Called from evdev probing if PS device node is detected.
+ *
+ * Caller expects the file descriptor to be owned by
+ * sensor module after the call and it must thus be closed
+ * if input monitoring is not succesfully initiated.
  *
  * @param fd file descriptor
  */
 void mce_sensorfw_ps_attach(int fd)
 {
-	struct input_absinfo info;
-	memset(&info, 0, sizeof info);
+    if( fd == -1 )
+        goto EXIT;
 
-	/* Note: ps_evdev_id must be set before calling ps_notify() */
-	ps_evdev_id = mce_sensorfw_start_iomon(fd, mce_sensorfw_evdev_cb,
-					       &ps_evdev_id);
+    struct input_absinfo info;
+    memset(&info, 0, sizeof info);
 
-	if( ioctl(fd, EVIOCGABS(ABS_DISTANCE), &info) == -1 )
-		mce_log(LL_ERR, "EVIOCGABS(%s): %m", "ABS_DISTANCE");
-	else {
-		mce_log(LL_NOTICE, "PS: %d (initial)", info.value);
-		ps_notify(info.value < 1, DS_EVDEV);
-	}
+    if( ioctl(fd, EVIOCGABS(ABS_DISTANCE), &info) == -1 ) {
+        mce_log(LL_ERR, "EVIOCGABS(%s): %m", "ABS_DISTANCE");
+        goto EXIT;
+    }
 
+    /* Note: ps_evdev_id must be set before calling ps_notify() */
+    ps_evdev_id = sfw_socket_add_notify(fd, true, G_IO_IN,
+                                        mce_sensorfw_evdev_cb,
+                                        &ps_evdev_id);
+    if( !ps_evdev_id )
+        goto EXIT;
+
+    mce_log(LL_NOTICE, "PS: %d (initial)", info.value);
+    sfw_notify_ps(NOTIFY_EVDEV, info.value < 1);
+
+EXIT:
+    if( !ps_evdev_id && fd != -1 )
+        close(fd);
+}
+
+// ----------------------------------------------------------------
+
+/** Handle name owner changed signals for SENSORFW_SERVICE
+ */
+static gboolean
+sfw_name_owner_changed_cb(DBusMessage *const msg)
+{
+    //mce_log(LL_DEBUG, "TRIGGER");
+
+    DBusError   err  = DBUS_ERROR_INIT;
+    const char *name = 0;
+    const char *prev = 0;
+    const char *curr = 0;
+
+    //mce_log(LL_DEBUG, "got sensorfw name owner change");
+
+    if( !msg )
+        goto EXIT;
+
+    if( !dbus_message_get_args(msg, &err,
+                               DBUS_TYPE_STRING, &name,
+                               DBUS_TYPE_STRING, &prev,
+                               DBUS_TYPE_STRING, &curr,
+                               DBUS_TYPE_INVALID) ) {
+        mce_log(LL_ERR, "Failed to parse name owner signal: %s: %s",
+                err.name, err.message);
+        goto EXIT;
+    }
+
+    if( !name || strcmp(name, SENSORFW_SERVICE) )
+        goto EXIT;
+
+    if( !sfw_service )
+        goto EXIT;
+
+    if( curr && *curr )
+        sfw_service_do_start(sfw_service);
+    else
+        sfw_service_do_stop(sfw_service);
+
+EXIT:
+    dbus_error_free(&err);
+
+    return TRUE;
+}
+
+/** Array of dbus message handlers */
+static mce_dbus_handler_t sfw_dbus_handlers[] =
+{
+    /* signals */
+    {
+        .interface = DBUS_INTERFACE_DBUS,
+        .name      = DBUS_SIGNAL_NAME_OWNER_CHANGED,
+        .rules     = "arg0='"SENSORFW_SERVICE"'",
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .callback  = sfw_name_owner_changed_cb,
+    },
+
+    /* sentinel */
+    {
+        .interface = 0
+    }
+};
+
+// ----------------------------------------------------------------
+
+/** Initialize mce sensorfw module
+ */
+bool mce_sensorfw_init(void)
+{
+    /* Register D-Bus handlers */
+    mce_dbus_handler_register_array(sfw_dbus_handlers);
+
+    /* Start tracking sensord availablity */
+    sfw_service = sfw_service_create();
+    sfw_service_do_query(sfw_service);
+
+    return true;
+}
+
+/** Cleanup mce sensorfw module
+ */
+void mce_sensorfw_quit(void)
+{
+    /* Remove D-Bus handlers */
+    mce_dbus_handler_unregister_array(sfw_dbus_handlers);
+
+    /* Stop tracking sensord availablity */
+    sfw_service_delete(sfw_service), sfw_service = 0;
 }
