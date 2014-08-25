@@ -548,6 +548,8 @@ NORMALIZE_USES_SPC =\
 	mce-hybris.c\
 	mce-hybris.h\
 	mce-modules.h\
+	mce-sensorfw.c\
+	mce-sensorfw.h\
 	modetransition.h\
 	modules/audiorouting.c\
 	modules/battery-upower.c\
@@ -595,8 +597,6 @@ NORMALIZE_USES_TAB =\
 	mce-log.c\
 	mce-log.h\
 	mce-modules.c\
-	mce-sensorfw.c\
-	mce-sensorfw.h\
 	mce.c\
 	mce.h\
 	median_filter.c\
