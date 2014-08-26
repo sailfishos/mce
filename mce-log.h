@@ -54,7 +54,12 @@ void mce_log_file(loglevel_t loglevel, const char *const file,
 		  const char *const function, const char *const fmt, ...)
 	__attribute__((format(printf, 4, 5)));
 #define mce_log_raw(__loglevel, __fmt, __args...)	mce_log_file(__loglevel, NULL, NULL, __fmt , ## __args)
-#define mce_log(__loglevel, __fmt, __args...)		mce_log_file(__loglevel, __FILE__, __FUNCTION__, __fmt , ## __args)
+#define mce_log(__loglevel, __fmt, __args...) \
+     do {\
+	 if( mce_log_p(__loglevel) )\
+	     mce_log_file(__loglevel, __FILE__, __FUNCTION__, __fmt , ## __args); \
+     } while(0)
+
 void mce_log_set_verbosity(const int verbosity);
 void mce_log_open(const char *const name, const int facility, const int type);
 void mce_log_close(void);
