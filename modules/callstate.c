@@ -734,29 +734,25 @@ modems_quit(void)
  * OFONO DBUS GLUE
  * ========================================================================= */
 
-/** Get voice calls associated with a modem [sync]
+/** Handle reply to voice calls query
  *
- * Populate voice call lookup table with the reply data
- *
- * @param modem D-Bus object path
+ * @param pc   pending call object
+ * @param aptr (not used)
  */
 static void
-xofono_get_vcalls(const char *modem)
+xofono_get_vcalls_cb(DBusPendingCall *pc, void *aptr)
 {
+    (void) aptr;
+
     DBusMessage *rsp = 0;
     DBusError    err = DBUS_ERROR_INIT;
     int          cnt = 0;
 
-    /* FIXME: mce-dbus not have a async method call with
-     * context data pointer -> using sync call for now ... */
-    rsp = dbus_send_with_block(OFONO_SERVICE,
-                               modem,
-                               OFONO_VCALLMANAGER_INTERFACE,
-                               OFONO_VCALLMANAGER_REQ_GET_CALLS,
-                               -1,
-                               DBUS_TYPE_INVALID);
-    if( !rsp )
+    if( !(rsp = dbus_pending_call_steal_reply(pc)) ) {
+        mce_log(LL_ERR, "%s: no reply",
+                OFONO_VCALLMANAGER_REQ_GET_CALLS);
         goto EXIT;
+    }
 
     if( dbus_set_error_from_message(&err, rsp) ) {
         mce_log(LL_ERR, "%s: %s", err.name, err.message);
@@ -791,6 +787,24 @@ EXIT:
     if( rsp ) dbus_message_unref(rsp);
     dbus_error_free(&err);
     return;
+}
+
+/** Get voice calls associated with a modem
+ *
+ * Populate voice call lookup table with the reply data
+ *
+ * @param modem D-Bus object path
+ */
+static void
+xofono_get_vcalls(const char *modem)
+{
+    dbus_send_ex(OFONO_SERVICE,
+                 modem,
+                 OFONO_VCALLMANAGER_INTERFACE,
+                 OFONO_VCALLMANAGER_REQ_GET_CALLS,
+                 xofono_get_vcalls_cb,
+                 0,0,0,
+                 DBUS_TYPE_INVALID);
 }
 
 /** Handle voice call changed signal
