@@ -3254,6 +3254,17 @@ EXIT:
     return keep;
 }
 
+/** Stop I/O watch for als evdev device node
+ */
+static void
+mce_sensorfw_als_detach(void)
+{
+    if( als_evdev_id ) {
+        g_source_remove(als_evdev_id),
+            als_evdev_id = 0;
+    }
+}
+
 /** Use evdev file descriptor as ALS data source
  *
  * Called from evdev probing if ALS device node is detected.
@@ -3269,6 +3280,8 @@ mce_sensorfw_als_attach(int fd)
 {
     if( fd == -1 )
         goto EXIT;
+
+    mce_sensorfw_als_detach();
 
     struct input_absinfo info;
     memset(&info, 0, sizeof info);
@@ -3286,14 +3299,28 @@ mce_sensorfw_als_attach(int fd)
     if( !als_evdev_id )
         goto EXIT;
 
+    /* The I/O watch owns the file descriptor now */
+    fd = -1;
+
     mce_log(LL_INFO, "ALS: %d (initial)", info.value);
     sfw_notify_als(NOTIFY_EVDEV, info.value);
 
 EXIT:
-    if( !als_evdev_id && fd != -1 )
+    if( fd != -1 )
         close(fd);
 
     return;
+}
+
+/** Stop I/O watch for ps evdev device node
+ */
+static void
+mce_sensorfw_ps_detach(void)
+{
+    if( ps_evdev_id ) {
+        g_source_remove(ps_evdev_id),
+            ps_evdev_id = 0;
+    }
 }
 
 /** Use evdev file descriptor as PS data source
@@ -3312,6 +3339,8 @@ mce_sensorfw_ps_attach(int fd)
     if( fd == -1 )
         goto EXIT;
 
+    mce_sensorfw_ps_detach();
+
     struct input_absinfo info;
     memset(&info, 0, sizeof info);
 
@@ -3327,11 +3356,14 @@ mce_sensorfw_ps_attach(int fd)
     if( !ps_evdev_id )
         goto EXIT;
 
+    /* The I/O watch owns the file descriptor now */
+    fd = -1;
+
     mce_log(LL_NOTICE, "PS: %d (initial)", info.value);
     sfw_notify_ps(NOTIFY_EVDEV, info.value < 1);
 
 EXIT:
-    if( !ps_evdev_id && fd != -1 )
+    if( fd != -1 )
         close(fd);
 }
 
@@ -3417,6 +3449,10 @@ mce_sensorfw_init(void)
 void
 mce_sensorfw_quit(void)
 {
+    /* Remove evdev I/O watches */
+    mce_sensorfw_ps_detach();
+    mce_sensorfw_als_detach();
+
     /* Remove D-Bus handlers */
     mce_dbus_handler_unregister_array(sfw_dbus_handlers);
 
