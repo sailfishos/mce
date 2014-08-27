@@ -1272,7 +1272,8 @@ sfw_reporting_value_cb(DBusPendingCall *pc, void *aptr)
     if( !pc || !self || pc != self->rep_value_pc )
         goto EXIT;
 
-    self->rep_value_pc = 0;
+    dbus_pending_call_unref(rep_value_pc),
+        self->rep_value_pc = 0;
 
     if( !(rsp = dbus_pending_call_steal_reply(pc)) ) {
         mce_log(LL_ERR, "reporting(%s): no reply",
@@ -1341,7 +1342,8 @@ sfw_reporting_change_cb(DBusPendingCall *pc, void *aptr)
     if( !pc || !self || pc != self->rep_change_pc )
         goto EXIT;
 
-    self->rep_change_pc = 0;
+    dbus_pending_call_unref(self->rep_change_pc),
+        self->rep_change_pc = 0;
 
     if( !(rsp = dbus_pending_call_steal_reply(pc)) ) {
         mce_log(LL_ERR, "reporting(%s): no reply",
@@ -1554,7 +1556,8 @@ sfw_override_start_cb(DBusPendingCall *pc, void *aptr)
     if( !pc || !self || pc != self->ovr_start_pc )
         goto EXIT;
 
-    self->ovr_start_pc = 0;
+    dbus_pending_call_unref(self->ovr_start_pc),
+        self->ovr_start_pc = 0;
 
     if( !(rsp = dbus_pending_call_steal_reply(pc)) ) {
         mce_log(LL_ERR, "override(%s): no reply",
@@ -2193,7 +2196,8 @@ sfw_session_start_cb(DBusPendingCall *pc, void *aptr)
     if( !pc || !self || pc != self->ses_start_pc )
         goto EXIT;
 
-    self->ses_start_pc = 0;
+    dbus_pending_call_unref(self->ses_start_pc),
+        self->ses_start_pc = 0;
 
     if( !(rsp = dbus_pending_call_steal_reply(pc)) ) {
         mce_log(LL_ERR, "session(%s): no reply",
@@ -2499,7 +2503,8 @@ sfw_plugin_load_cb(DBusPendingCall *pc, void *aptr)
     if( !pc || !self || pc != self->plg_load_pc )
         goto EXIT;
 
-    self->plg_load_pc = 0;
+    dbus_pending_call_unref(self->plg_load_pc),
+        self->plg_load_pc = 0;
 
     if( !(rsp = dbus_pending_call_steal_reply(pc)) ) {
         mce_log(LL_ERR, "plugin(%s): no reply", sfw_plugin_get_sensor_name(self));
@@ -2728,7 +2733,8 @@ sfw_service_query_cb(DBusPendingCall *pc, void *aptr)
     if( pc != self->srv_query_pc )
         goto EXIT;
 
-    self->srv_query_pc = 0;
+    dbus_pending_call_unref(self->srv_query_pc),
+        self->srv_query_pc = 0;
 
     if( !(rsp = dbus_pending_call_steal_reply(pc)) )
         goto EXIT;
