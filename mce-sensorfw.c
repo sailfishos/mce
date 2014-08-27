@@ -552,7 +552,7 @@ static const char       *sfw_connection_state_name      (sfw_connection_state_t 
 static sfw_connection_t *sfw_connection_create          (sfw_plugin_t *plugin);
 static void              sfw_connection_delete          (sfw_connection_t *self);
 
-static bool              sfw_connection_handle_samples(sfw_connection_t *self, char *data, size_t size);
+static bool              sfw_connection_handle_samples  (sfw_connection_t *self, char *data, size_t size);
 
 static int               sfw_connection_get_session_id  (const sfw_connection_t *self);
 
@@ -759,7 +759,7 @@ static sfw_service_t    *sfw_service_create             (void);
 static void              sfw_service_delete             (sfw_service_t *self);
 
 static void              sfw_service_cancel_query       (sfw_service_t *self);
-static void              sfw_service_query_cb        (DBusPendingCall *pc, void *aptr);
+static void              sfw_service_query_cb           (DBusPendingCall *pc, void *aptr);
 
 static void              sfw_service_trans              (sfw_service_t *self, sfw_service_state_t state);
 
@@ -995,8 +995,8 @@ static const sfw_backend_t sfw_backend_orient =
 static bool
 sfw_socket_set_blocking(int fd, bool blocking)
 {
-    bool ok = false;
-    int flags = 0;
+    bool ok    = false;
+    int  flags = 0;
 
     if( (flags = fcntl(fd, F_GETFL, 0)) == -1 ) {
         mce_log(LL_ERR, "could not get socket flags");
@@ -1065,7 +1065,8 @@ EXIT:
 /** Add a glib I/O notification for a file descriptor
  */
 static guint
-sfw_socket_add_notify(int fd, bool close_on_unref, GIOCondition cnd, GIOFunc io_cb, gpointer aptr)
+sfw_socket_add_notify(int fd, bool close_on_unref,
+                      GIOCondition cnd, GIOFunc io_cb, gpointer aptr)
 {
     guint         wid = 0;
     GIOChannel   *chn = 0;
@@ -1121,8 +1122,7 @@ sfw_reporting_create(sfw_plugin_t *plugin)
     self->rep_plugin    = plugin;
     self->rep_state     = REPORTING_IDLE;
     self->rep_change_pc = 0;
-    self->rep_value_pc = 0;
-
+    self->rep_value_pc  = 0;
     self->rep_target    = false;
 
     return self;
@@ -1144,7 +1144,8 @@ sfw_reporting_delete(sfw_reporting_t *self)
 
 /** Set sensor start/stop target state
  */
-static void sfw_reporting_set_target(sfw_reporting_t *self, bool enable)
+static void
+sfw_reporting_set_target(sfw_reporting_t *self, bool enable)
 {
     if( self->rep_target != enable ) {
         self->rep_target = enable;
@@ -1264,7 +1265,6 @@ sfw_reporting_value_cb(DBusPendingCall *pc, void *aptr)
 
     DBusMessage  *rsp  = 0;
     DBusError     err  = DBUS_ERROR_INIT;
-
     dbus_uint32_t tck  = 0;
     dbus_uint32_t val  = 0;
     bool          ack  = true;
@@ -1272,7 +1272,7 @@ sfw_reporting_value_cb(DBusPendingCall *pc, void *aptr)
     if( !pc || !self || pc != self->rep_value_pc )
         goto EXIT;
 
-    dbus_pending_call_unref(rep_value_pc),
+    dbus_pending_call_unref(self->rep_value_pc),
         self->rep_value_pc = 0;
 
     if( !(rsp = dbus_pending_call_steal_reply(pc)) ) {
@@ -1335,9 +1335,10 @@ static void
 sfw_reporting_change_cb(DBusPendingCall *pc, void *aptr)
 {
     sfw_reporting_t *self = aptr;
-    DBusMessage  *rsp  = 0;
-    DBusError     err  = DBUS_ERROR_INIT;
-    dbus_bool_t   ack  = FALSE;
+
+    DBusMessage *rsp = 0;
+    DBusError    err = DBUS_ERROR_INIT;
+    dbus_bool_t  ack = FALSE;
 
     if( !pc || !self || pc != self->rep_change_pc )
         goto EXIT;
@@ -1442,7 +1443,6 @@ sfw_override_create(sfw_plugin_t *plugin)
     self->ovr_plugin   = plugin;
     self->ovr_state    = OVERRIDE_IDLE;
     self->ovr_start_pc = 0;
-
     self->ovr_target   = false;
 
     return self;
@@ -1464,7 +1464,8 @@ sfw_override_delete(sfw_override_t *self)
 
 /** Set sensor standby override set/unset target state
  */
-static void sfw_override_set_target(sfw_override_t *self, bool enable)
+static void
+sfw_override_set_target(sfw_override_t *self, bool enable)
 {
     if( self->ovr_target != enable ) {
         self->ovr_target = enable;
@@ -1549,9 +1550,10 @@ static void
 sfw_override_start_cb(DBusPendingCall *pc, void *aptr)
 {
     sfw_override_t *self = aptr;
-    DBusMessage  *rsp  = 0;
-    DBusError     err  = DBUS_ERROR_INIT;
-    dbus_bool_t   ack  = FALSE;
+
+    DBusMessage *rsp = 0;
+    DBusError    err = DBUS_ERROR_INIT;
+    dbus_bool_t  ack = FALSE;
 
     if( !pc || !self || pc != self->ovr_start_pc )
         goto EXIT;
@@ -1731,8 +1733,8 @@ EXIT:
 static bool
 sfw_connection_rx_ack(sfw_connection_t *self)
 {
-    bool    res = false;
-    char    ack = 0;
+    bool res = false;
+    char ack = 0;
 
     errno = 0;
     if( read(self->con_fd, &ack, sizeof ack) != sizeof ack ) {
@@ -1814,10 +1816,10 @@ sfw_connection_tx_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
     (void)chn;
     (void)cnd;
 
-    gboolean keep_going = FALSE;
-    bool success = false;
-
     sfw_connection_t *self = aptr;
+
+    gboolean keep_going = FALSE;
+    bool     success    = false;
 
     if( self->con_state != CONNECTION_CONNECTING )
         goto EXIT;
@@ -2190,8 +2192,9 @@ static void
 sfw_session_start_cb(DBusPendingCall *pc, void *aptr)
 {
     sfw_session_t *self = aptr;
-    DBusMessage  *rsp  = 0;
-    DBusError     err  = DBUS_ERROR_INIT;
+
+    DBusMessage *rsp = 0;
+    DBusError    err = DBUS_ERROR_INIT;
 
     if( !pc || !self || pc != self->ses_start_pc )
         goto EXIT;
@@ -2434,11 +2437,13 @@ sfw_plugin_create(const sfw_backend_t *backend)
 {
     sfw_plugin_t *self = calloc(1, sizeof *self);
 
-    self->plg_state = PLUGIN_IDLE;
-
+    self->plg_state         = PLUGIN_IDLE;
     self->plg_backend       = backend;
     self->plg_sensor_object = 0;
+    self->plg_load_pc       = 0;
 
+    /* If backend does not define object path, construct it
+     * from manager object path + sensor name */
     if( !self->plg_backend->be_sensor_object ) {
         self->plg_sensor_object =
             g_strdup_printf("%s/%s",
@@ -2450,8 +2455,6 @@ sfw_plugin_create(const sfw_backend_t *backend)
     mce_log(LL_DEBUG, "sensor:    %s", sfw_plugin_get_sensor_name(self));
     mce_log(LL_DEBUG, "object:    %s", sfw_plugin_get_sensor_object(self));
     mce_log(LL_DEBUG, "interface: %s", sfw_plugin_get_sensor_interface(self));
-
-    self->plg_load_pc     = 0;
 
     self->plg_session    = sfw_session_create(self);
     self->plg_connection = sfw_connection_create(self);
@@ -2507,7 +2510,8 @@ sfw_plugin_load_cb(DBusPendingCall *pc, void *aptr)
         self->plg_load_pc = 0;
 
     if( !(rsp = dbus_pending_call_steal_reply(pc)) ) {
-        mce_log(LL_ERR, "plugin(%s): no reply", sfw_plugin_get_sensor_name(self));
+        mce_log(LL_ERR, "plugin(%s): no reply",
+                sfw_plugin_get_sensor_name(self));
         goto EXIT;
     }
 
@@ -2674,7 +2678,6 @@ sfw_service_create(void)
 
     self->srv_state    = SERVICE_IDLE;
     self->srv_query_pc = 0;
-
     self->srv_ps       = sfw_plugin_create(&sfw_backend_ps);
     self->srv_als      = sfw_plugin_create(&sfw_backend_als);
     self->srv_orient   = sfw_plugin_create(&sfw_backend_orient);
@@ -2845,7 +2848,8 @@ sfw_service_do_query(sfw_service_t *self)
 
 /** Perform actions needed when proximity sensor needed state changes
  */
-static void sfw_service_set_ps(sfw_service_t *self, bool enable)
+static void
+sfw_service_set_ps(sfw_service_t *self, bool enable)
 {
     // using NULL self pointer explicitly allowed
 
@@ -2860,7 +2864,8 @@ static void sfw_service_set_ps(sfw_service_t *self, bool enable)
 
 /** Perform actions needed when ambient light sensor needed state changes
  */
-static void sfw_service_set_als(sfw_service_t *self, bool enable)
+static void
+sfw_service_set_als(sfw_service_t *self, bool enable)
 {
     // using NULL self pointer explicitly allowed
 
@@ -2875,7 +2880,8 @@ static void sfw_service_set_als(sfw_service_t *self, bool enable)
 
 /** Perform actions needed when orientation sensor needed state changes
  */
-static void sfw_service_set_orient(sfw_service_t *self, bool enable)
+static void
+sfw_service_set_orient(sfw_service_t *self, bool enable)
 {
     // using NULL self pointer explicitly allowed
 
@@ -2949,7 +2955,8 @@ sfw_notify_name(sfw_notify_t type)
 
 /** Notify proximity state via callback
  */
-static void sfw_notify_ps(sfw_notify_t type, bool covered)
+static void
+sfw_notify_ps(sfw_notify_t type, bool covered)
 {
     static bool cached_covered = SWF_NOTIFY_DEFAULT_PS;
 
@@ -2986,7 +2993,8 @@ static void sfw_notify_ps(sfw_notify_t type, bool covered)
 
 /** Notify ambient light level via callback
  */
-static void sfw_notify_als(sfw_notify_t type, unsigned lux)
+static void
+sfw_notify_als(sfw_notify_t type, unsigned lux)
 {
     static unsigned cached_lux = SWF_NOTIFY_DEFAULT_ALS;
 
@@ -3022,7 +3030,8 @@ static void sfw_notify_als(sfw_notify_t type, unsigned lux)
 
 /** Notify orientation state via callback
  */
-static void sfw_notify_orient(sfw_notify_t type, int state)
+static void
+sfw_notify_orient(sfw_notify_t type, int state)
 {
     static unsigned cached_state = SWF_NOTIFY_DEFAULT_ORIENT;
 
@@ -3063,14 +3072,16 @@ static sfw_service_t *sfw_service = 0;
 
 /** Prepare sensors for suspending
  */
-void mce_sensorfw_suspend(void)
+void
+mce_sensorfw_suspend(void)
 {
     // DUMMY
 }
 
 /** Rethink sensors after resuming
  */
-void mce_sensorfw_resume(void)
+void
+mce_sensorfw_resume(void)
 {
     // DUMMY
 }
@@ -3081,7 +3092,8 @@ void mce_sensorfw_resume(void)
  *
  * @param cb function to call when ALS events are received
  */
-void mce_sensorfw_als_set_notify(void (*cb)(unsigned lux))
+void
+mce_sensorfw_als_set_notify(void (*cb)(unsigned lux))
 {
     if( (sfw_notify_als_cb = cb) )
         sfw_notify_als(NOTIFY_REPEAT, 0);
@@ -3089,14 +3101,16 @@ void mce_sensorfw_als_set_notify(void (*cb)(unsigned lux))
 
 /** Try to enable ALS input
  */
-void mce_sensorfw_als_enable(void)
+void
+mce_sensorfw_als_enable(void)
 {
     sfw_service_set_als(sfw_service, true);
 }
 
 /** Try to disable ALS input
  */
-void mce_sensorfw_als_disable(void)
+void
+mce_sensorfw_als_disable(void)
 {
     sfw_service_set_als(sfw_service, false);
 }
@@ -3107,7 +3121,8 @@ void mce_sensorfw_als_disable(void)
  *
  * @param cb function to call when PS events are received
  */
-void mce_sensorfw_ps_set_notify(void (*cb)(bool covered))
+void
+mce_sensorfw_ps_set_notify(void (*cb)(bool covered))
 {
     if( (sfw_notify_ps_cb = cb) )
         sfw_notify_ps(NOTIFY_REPEAT, 0);
@@ -3115,14 +3130,16 @@ void mce_sensorfw_ps_set_notify(void (*cb)(bool covered))
 
 /** Try to enable PS input
  */
-void mce_sensorfw_ps_enable(void)
+void
+mce_sensorfw_ps_enable(void)
 {
     sfw_service_set_ps(sfw_service, true);
 }
 
 /** Try to disable PS input
  */
-void mce_sensorfw_ps_disable(void)
+void
+mce_sensorfw_ps_disable(void)
 {
     sfw_service_set_ps(sfw_service, false);
 }
@@ -3133,7 +3150,8 @@ void mce_sensorfw_ps_disable(void)
  *
  * @param cb function to call when Orientation events are received
  */
-void mce_sensorfw_orient_set_notify(void (*cb)(int state))
+void
+mce_sensorfw_orient_set_notify(void (*cb)(int state))
 {
     if( (sfw_notify_orient_cb = cb) )
         sfw_notify_orient(NOTIFY_REPEAT, 0);
@@ -3141,14 +3159,16 @@ void mce_sensorfw_orient_set_notify(void (*cb)(int state))
 
 /** Try to enable Orientation input
  */
-void mce_sensorfw_orient_enable(void)
+void
+mce_sensorfw_orient_enable(void)
 {
     sfw_service_set_orient(sfw_service, true);
 }
 
 /** Try to disable Orientation input
  */
-void mce_sensorfw_orient_disable(void)
+void
+mce_sensorfw_orient_disable(void)
 {
     sfw_service_set_orient(sfw_service, false);
 }
@@ -3244,7 +3264,8 @@ EXIT:
  *
  * @param fd file descriptor
  */
-void mce_sensorfw_als_attach(int fd)
+void
+mce_sensorfw_als_attach(int fd)
 {
     if( fd == -1 )
         goto EXIT;
@@ -3285,7 +3306,8 @@ EXIT:
  *
  * @param fd file descriptor
  */
-void mce_sensorfw_ps_attach(int fd)
+void
+mce_sensorfw_ps_attach(int fd)
 {
     if( fd == -1 )
         goto EXIT;
@@ -3377,7 +3399,8 @@ static mce_dbus_handler_t sfw_dbus_handlers[] =
 
 /** Initialize mce sensorfw module
  */
-bool mce_sensorfw_init(void)
+bool
+mce_sensorfw_init(void)
 {
     /* Register D-Bus handlers */
     mce_dbus_handler_register_array(sfw_dbus_handlers);
@@ -3391,7 +3414,8 @@ bool mce_sensorfw_init(void)
 
 /** Cleanup mce sensorfw module
  */
-void mce_sensorfw_quit(void)
+void
+mce_sensorfw_quit(void)
 {
     /* Remove D-Bus handlers */
     mce_dbus_handler_unregister_array(sfw_dbus_handlers);
