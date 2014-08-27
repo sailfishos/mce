@@ -2081,6 +2081,16 @@ EXIT:
 	return status;
 }
 
+/** Remove the message handler used by MCE
+ */
+static void dbus_quit_message_handler(void)
+{
+	if( dbus_connection ) {
+		dbus_connection_remove_filter(dbus_connection,
+					      msg_handler, 0);
+	}
+}
+
 /**
  * Initialise the message handler used by MCE
  *
@@ -3207,6 +3217,9 @@ EXIT:
  */
 void mce_dbus_exit(void)
 {
+	/* Remove message handlers */
+	dbus_quit_message_handler();
+
 	/* Unregister callbacks that are handled inside mce-dbus.c */
 	mce_dbus_handler_unregister_array(mce_dbus_handlers);
 
