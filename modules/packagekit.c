@@ -267,7 +267,6 @@ xpkgkit_get_properties_cb(DBusPendingCall *pc, void *aptr)
 
 EXIT:
     if( rsp ) dbus_message_unref(rsp);
-    if( pc )  dbus_pending_call_unref(pc);
     dbus_error_free(&err);
 }
 
@@ -330,7 +329,6 @@ xpkgkit_check_name_owner_cb(DBusPendingCall *pc, void *aptr)
 
 EXIT:
     if( rsp ) dbus_message_unref(rsp);
-    if( pc  ) dbus_pending_call_unref(pc);
     dbus_error_free(&err);
 }
 

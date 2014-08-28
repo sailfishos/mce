@@ -1484,6 +1484,9 @@ static const setting_t gconf_defaults[] =
 /** The one and only GConfClient we expect to see */
 static GConfClient *default_client = 0;
 
+/** Lookup table for latest change signals sent */
+static GHashTable *gconf_signal_sent = 0;
+
 /** Save values to persistent storage file */
 static void gconf_client_save_values(GConfClient *self, const char *path)
 {
@@ -1682,6 +1685,11 @@ static void gconf_client_free_default(void)
                       gconf_client_notify_free_cb);
 
     free(default_client), default_client = 0;
+  }
+
+  if( gconf_signal_sent )
+  {
+    g_hash_table_unref(gconf_signal_sent),  gconf_signal_sent = 0;
   }
 }
 
@@ -2036,7 +2044,6 @@ static
 void
 gconf_signal_value_change(GConfEntry *entry)
 {
-  static GHashTable *sent = 0;
 
   const char *prev = 0;
   char       *curr = 0;
@@ -2045,9 +2052,9 @@ gconf_signal_value_change(GConfEntry *entry)
    *       or not. To avoid sending "no change" signals we keep track
    *       of the string representation of the last change that was
    *       broadcast ... */
-  if( !sent )
+  if( !gconf_signal_sent )
   {
-    sent = g_hash_table_new_full(g_str_hash, g_str_equal, free, free);
+    gconf_signal_sent = g_hash_table_new_full(g_str_hash, g_str_equal, free, free);
   }
 
   if( !(curr = gconf_value_str(entry->value)) )
@@ -2055,14 +2062,14 @@ gconf_signal_value_change(GConfEntry *entry)
     goto EXIT;
   }
 
-  prev = g_hash_table_lookup(sent, entry->key);
+  prev = g_hash_table_lookup(gconf_signal_sent, entry->key);
 
   if( prev && !strcmp(prev, curr) )
   {
     goto EXIT;
   }
 
-  g_hash_table_insert(sent, strdup(entry->key), curr), curr = 0;
+  g_hash_table_insert(gconf_signal_sent, strdup(entry->key), curr), curr = 0;
   mce_dbus_send_config_notification(entry);
 
 EXIT:

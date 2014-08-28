@@ -280,6 +280,9 @@ static void install_signal_handlers(void)
 /** Pipe used for transferring signals out of signal handler context */
 static int signal_pipe[2] = {-1, -1};
 
+/** I/O watch id for signal_pipe */
+static guint signal_pipe_id = 0;
+
 /** GIO callback for reading signals from pipe
  *
  * @param channel   io channel for signal pipe
@@ -378,6 +381,20 @@ static void mce_tx_signal_cb(int sig)
 	}
 }
 
+/** Remove pipe and io watch for handling signals
+ */
+static void mce_quit_signal_pipe(void)
+{
+	if( signal_pipe_id )
+		g_source_remove(signal_pipe_id), signal_pipe_id = 0;
+
+	if( signal_pipe[0] != -1 )
+		close(signal_pipe[0]), signal_pipe[0] = -1;
+
+	if( signal_pipe[1] != -1 )
+		close(signal_pipe[1]), signal_pipe[1] = -1;
+}
+
 /** Create a pipe and io watch for handling signal from glib mainloop
  */
 static gboolean mce_init_signal_pipe(void)
@@ -391,9 +408,11 @@ static gboolean mce_init_signal_pipe(void)
 	if( (channel = g_io_channel_unix_new(signal_pipe[0])) == 0 )
 		goto EXIT;
 
-	if( !g_io_add_watch(channel,
-			    G_IO_IN | G_IO_ERR | G_IO_HUP | G_IO_NVAL,
-			    mce_rx_signal_cb, 0) )
+	signal_pipe_id =
+		g_io_add_watch(channel,
+			       G_IO_IN | G_IO_ERR | G_IO_HUP | G_IO_NVAL,
+			       mce_rx_signal_cb, 0);
+	if( !signal_pipe_id )
 		goto EXIT;
 
 	result = TRUE;
@@ -1050,6 +1069,9 @@ EXIT:
 		g_main_loop_unref(mainloop);
 		mainloop = 0;
 	}
+
+	/* Close signal pipe & remove io watch for it */
+	mce_quit_signal_pipe();
 
 	/* Log a farewell message and close the log */
 	mce_log(LL_INFO, "Exiting...");

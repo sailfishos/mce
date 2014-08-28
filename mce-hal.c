@@ -117,45 +117,20 @@ EXIT:
 /**
  * Retrieve a sysinfo value via D-Bus
  *
- * @param key The sysinfo key to retrieve
- * @param[out] array A newly allocated byte array with the result;
- *                   this array should to be freed when no longer used
- * @param[out] len The length of the newly allocated string
+ * Note: The sysinfod service is provided proprietary Nokia component
+ *       and is not supported in nemomobile. This function tries to
+ *       handle some queries possibly made by mce on legacy Nokia hw
+ *       by getting relevant information from environment variables.
+ *
+ * @param      key    The sysinfo key to retrieve
+ * @param[out] array  A newly allocated byte array with the result;
+ *                    this array should to be freed when no longer used
+ * @param[out] len    The length of the newly allocated string
+ *
  * @return TRUE on success, FALSE on failure
  */
 gboolean get_sysinfo_value(const gchar *const key, guint8 **array, gulong *len)
 {
-#ifdef ENABLE_SYSINFOD_QUERIES
-	DBusMessage *reply;
-	guint8 *tmp = NULL;
-	gboolean status = FALSE;
-
-	if ((reply = dbus_send_with_block(SYSINFOD_SERVICE, SYSINFOD_PATH,
-					  SYSINFOD_INTERFACE,
-					  SYSINFOD_GET_CONFIG_VALUE,
-					  -1,
-					  DBUS_TYPE_STRING, &key,
-					  DBUS_TYPE_INVALID)) != NULL) {
-		dbus_message_get_args(reply, NULL,
-				      DBUS_TYPE_ARRAY,
-				      DBUS_TYPE_BYTE,
-				      &tmp, len,
-				      DBUS_TYPE_INVALID);
-
-		if (*len > 0) {
-			if ((*array = malloc(*len)) != NULL) {
-				*array = memcpy(*array, tmp, *len);
-			} else {
-				*len = 0;
-			}
-		}
-
-		dbus_message_unref(reply);
-		status = TRUE;
-	}
-
-	return status;
-#else
 	/* Try to provide some values from environment */
 	const char *env = 0;
 	const char *val = 0;
@@ -177,8 +152,6 @@ gboolean get_sysinfo_value(const gchar *const key, guint8 **array, gulong *len)
 		key, env, res, (int)cnt);
 
 	return *array = (guint8*)res, *len = cnt, (res != 0);
-#endif /* ENABLE_SYSINFOD_QUERIES */
-
 }
 
 /**

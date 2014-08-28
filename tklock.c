@@ -3590,7 +3590,6 @@ static void tklock_ui_get_device_lock_cb(DBusPendingCall *pc, void *aptr)
 
 EXIT:
     if( rsp ) dbus_message_unref(rsp);
-    dbus_pending_call_unref(pc);
     dbus_error_free(&err);
 }
 

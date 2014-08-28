@@ -937,7 +937,6 @@ EXIT:
 
     dbus_free_string_array(vec);
     if( rsp ) dbus_message_unref(rsp);
-    dbus_pending_call_unref(pc);
     dbus_error_free(&err);
 }
 

@@ -87,9 +87,6 @@ ENABLE_WAKELOCKS ?= y
 # Whether to enable cpu scaling governor policy
 ENABLE_CPU_GOVERNOR ?= y
 
-# Whether to enable sysinfod queries
-ENABLE_SYSINFOD_QUERIES ?= n
-
 # Whether to install systemd control files
 ENABLE_SYSTEMD_SUPPORT ?= y
 
@@ -200,10 +197,6 @@ ifeq ($(strip $(ENABLE_CPU_GOVERNOR)),y)
 CPPFLAGS += -DENABLE_CPU_GOVERNOR
 endif
 
-ifeq ($(strip $(ENABLE_SYSINFOD_QUERIES)),y)
-CPPFLAGS += -DENABLE_SYSINFOD_QUERIES
-endif
-
 ifeq ($(ENABLE_SENSORFW),y)
 CPPFLAGS += -DENABLE_SENSORFW
 endif
@@ -297,7 +290,6 @@ MCE_CORE += mce-command-line.c
 MCE_CORE += mce-conf.c
 MCE_CORE += datapipe.c
 MCE_CORE += mce-modules.c
-MCE_CORE += mce-sensorfw.c
 MCE_CORE += mce-io.c
 MCE_CORE += mce-lib.c
 MCE_CORE += median_filter.c
@@ -548,6 +540,8 @@ NORMALIZE_USES_SPC =\
 	mce-hybris.c\
 	mce-hybris.h\
 	mce-modules.h\
+	mce-sensorfw.c\
+	mce-sensorfw.h\
 	modetransition.h\
 	modules/audiorouting.c\
 	modules/battery-upower.c\
@@ -595,8 +589,6 @@ NORMALIZE_USES_TAB =\
 	mce-log.c\
 	mce-log.h\
 	mce-modules.c\
-	mce-sensorfw.c\
-	mce-sensorfw.h\
 	mce.c\
 	mce.h\
 	median_filter.c\
