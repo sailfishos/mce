@@ -228,6 +228,18 @@ mce_log_file(loglevel_t loglevel,
   free(msg);
 }
 
+/** Stub for compatibility with mce-log.h
+ */
+int mce_log_p_(const loglevel_t loglevel,
+               const char *const file,
+               const char *const func)
+{
+  (void)loglevel;
+  (void)file;
+  (void)func;
+
+  return true;
+}
 /** Provide runtime usage information
  */
 static void usage(void)
