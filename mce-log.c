@@ -36,6 +36,15 @@ static unsigned int logverbosity = LL_WARN;	/**< Log verbosity */
 static int logtype = MCE_LOG_STDERR;		/**< Output for log messages */
 static char *logname = NULL;
 
+/** Get process identity to use for logging
+ *
+ * Will default to "mce" before mce_log_open() and after mce_log_close().
+ */
+static const char *mce_log_name(void)
+{
+	return logname ?: "mce";
+}
+
 /** Get monotonic time as struct timeval */
 static void monotime(struct timeval *tv)
 {
@@ -54,7 +63,7 @@ static void timestamp(struct timeval *tv)
 	if( diff.tv_sec >= 4 ) {
 		timersub(tv, &start, &diff);
 		fprintf(stderr, "%s: T+%ld.%03ld %s\n\n",
-			logname,
+			mce_log_name(),
 			(long)diff.tv_sec, (long)(diff.tv_usec/1000),
 			"END OF BURST");
 		start = *tv;
@@ -179,7 +188,7 @@ void mce_log_file(loglevel_t loglevel, const char *const file,
 			struct timeval tv;
 			timestamp(&tv);
 			fprintf(stderr, "%s: T+%ld.%03ld %s: %s\n",
-				logname,
+				mce_log_name(),
 				(long)tv.tv_sec, (long)(tv.tv_usec/1000),
 				mce_log_level_tag(loglevel),
 				msg);
@@ -214,11 +223,10 @@ void mce_log_set_verbosity(const int verbosity)
 void mce_log_open(const char *const name, const int facility, const int type)
 {
 	logtype = type;
+	logname = g_strdup(name);
 
 	if (logtype == MCE_LOG_SYSLOG)
 		openlog(name, LOG_PID | LOG_NDELAY, facility);
-	else
-		logname = g_strdup(name);
 }
 
 /**
@@ -226,8 +234,10 @@ void mce_log_open(const char *const name, const int facility, const int type)
  */
 void mce_log_close(void)
 {
+	/* Logging (to stderr) after this will use default identity */
 	g_free(logname), logname = 0;
 
+	/* Any further syslog() calls will automatically reopen */
 	if (logtype == MCE_LOG_SYSLOG)
 		closelog();
 }
