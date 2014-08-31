@@ -443,7 +443,6 @@ gboolean dbus_send_message(DBusMessage *const msg)
 		goto EXIT;
 	}
 
-	dbus_connection_flush(dbus_connection);
 	status = TRUE;
 
 EXIT:
@@ -484,9 +483,6 @@ dbus_send_message_with_reply_handler(DBusMessage *const msg,
 		mce_log(LL_ERR, "D-Bus connection disconnected");
 		goto EXIT;
 	}
-
-	// FIXME: do we really need the flush?
-	dbus_connection_flush(dbus_connection);
 
 	if( !dbus_pending_call_set_notify(pc, callback,
 					  user_data, user_free) ) {
