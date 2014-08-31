@@ -1098,6 +1098,10 @@ void g_module_unload(GModule *module)
 {
 	(void)module;
 
+	/* Remove gconf notifications  */
+	mce_gconf_notifier_remove(use_ps_conf_id),
+		use_ps_conf_id = 0;
+
 	/* Remove dbus handlers */
 	mce_proximity_quit_dbus();
 

@@ -370,6 +370,16 @@ void g_module_unload(GModule *module)
 {
 	(void)module;
 
+	/* Remove gconf notifications  */
+	mce_gconf_notifier_remove(psm_gconf_cb_id),
+		psm_gconf_cb_id = 0;
+
+	mce_gconf_notifier_remove(force_psm_gconf_cb_id),
+		force_psm_gconf_cb_id = 0;
+
+	mce_gconf_notifier_remove(psm_threshold_gconf_cb_id),
+		psm_threshold_gconf_cb_id = 0;
+
 	/* Remove dbus handlers */
 	mce_psm_quit_dbus();
 
