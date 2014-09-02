@@ -1228,6 +1228,13 @@ void g_module_unload(GModule *module)
 {
 	(void)module;
 
+	/* Remove gconf notifications  */
+	mce_gconf_notifier_remove(use_als_gconf_id),
+		use_als_gconf_id = 0;
+
+	mce_gconf_notifier_remove(color_profile_gconf_id),
+		color_profile_gconf_id = 0;
+
 	/* Remove dbus handlers */
 	mce_filter_brightness_quit_dbus();
 

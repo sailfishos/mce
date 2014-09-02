@@ -443,7 +443,6 @@ static gboolean daemonize(void)
 		/* Parent - Failure */
 		mce_log(LL_CRIT, "daemonize: fork failed: %s",
 			g_strerror(errno));
-		mce_log_close();
 		exit(EXIT_FAILURE);
 
 	case 0:
@@ -471,7 +470,6 @@ static gboolean daemonize(void)
 				mce_log(LL_CRIT,
 					"close() was interrupted more than "
 					"10 times. Exiting.");
-				mce_log_close();
 				exit(EXIT_FAILURE);
 			}
 
@@ -489,7 +487,6 @@ static gboolean daemonize(void)
 					"Failed to close() fd %d; %s. "
 					"Exiting.",
 					i + 1, g_strerror(errno));
-				mce_log_close();
 				exit(EXIT_FAILURE);
 			}
 		} else {
@@ -501,7 +498,6 @@ static gboolean daemonize(void)
 		mce_log(LL_CRIT,
 			"Cannot open `/dev/null'; %s. Exiting.",
 			g_strerror(errno));
-		mce_log_close();
 		exit(EXIT_FAILURE);
 	}
 
@@ -509,7 +505,6 @@ static gboolean daemonize(void)
 		mce_log(LL_CRIT,
 			"Failed to dup() `/dev/null'; %s. Exiting.",
 			g_strerror(errno));
-		mce_log_close();
 		exit(EXIT_FAILURE);
 	}
 
@@ -517,7 +512,6 @@ static gboolean daemonize(void)
 		mce_log(LL_CRIT,
 			"Failed to dup() `/dev/null'; %s. Exiting.",
 			g_strerror(errno));
-		mce_log_close();
 		exit(EXIT_FAILURE);
 	}
 
@@ -529,7 +523,6 @@ static gboolean daemonize(void)
 		mce_log(LL_CRIT,
 			"Failed to chdir() to `/tmp'; %s. Exiting.",
 			g_strerror(errno));
-		mce_log_close();
 		exit(EXIT_FAILURE);
 	}
 
@@ -538,13 +531,11 @@ static gboolean daemonize(void)
 		mce_log(LL_CRIT,
 			"Cannot open lockfile; %s. Exiting.",
 			g_strerror(errno));
-		mce_log_close();
 		exit(EXIT_FAILURE);
 	}
 
 	if (lockf(i, F_TLOCK, 0) == -1) {
 		mce_log(LL_CRIT, "Already running. Exiting.");
-		mce_log_close();
 		exit(EXIT_FAILURE);
 	}
 
@@ -955,7 +946,6 @@ int main(int argc, char **argv)
 	if( !mce_dbus_init(mce_args.systembus) ) {
 		mce_log(LL_CRIT,
 			"Failed to initialise D-Bus");
-		mce_log_close();
 		exit(EXIT_FAILURE);
 	}
 
@@ -965,7 +955,6 @@ int main(int argc, char **argv)
 	if (mce_gconf_init() == FALSE) {
 		mce_log(LL_CRIT,
 			"Cannot connect to default GConf engine");
-		mce_log_close();
 		exit(EXIT_FAILURE);
 	}
 
@@ -1076,9 +1065,8 @@ EXIT:
 	/* Log a farewell message and close the log */
 	mce_log(LL_INFO, "Exiting...");
 
-	/* We do not need to explicitly close the log and doing so
-	 * would not allow logging from atexit handlers */
-	//mce_log_close();
+	/* No more logging expected */
+	mce_log_close();
 
 	return status;
 }

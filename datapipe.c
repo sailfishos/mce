@@ -887,6 +887,7 @@ void mce_datapipe_quit(void)
 	free_datapipe(&audio_route_pipe);
 	free_datapipe(&inactivity_timeout_pipe);
 	free_datapipe(&battery_level_pipe);
+	free_datapipe(&camera_button_pipe);
 	free_datapipe(&battery_status_pipe);
 	free_datapipe(&charger_state_pipe);
 	free_datapipe(&tk_lock_pipe);

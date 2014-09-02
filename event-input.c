@@ -2674,6 +2674,75 @@ static void submode_trigger(gconstpointer data)
 	old_submode = submode;
 }
 
+/** Stop tracking changes in input device directory
+ */
+static void
+mce_input_quit_dev_dir_monitoring(void)
+{
+	/* Remove directory monitor */
+	if( dev_input_gfmp ) {
+		if( dev_input_handler_id ) {
+			g_signal_handler_disconnect(G_OBJECT(dev_input_gfmp),
+					    dev_input_handler_id);
+			dev_input_handler_id = 0;
+		}
+		g_object_unref(dev_input_gfmp),
+			dev_input_gfmp = 0;
+	}
+
+	/* Release directory file object */
+	if( dev_input_gfp ) {
+		g_object_unref(dev_input_gfp),
+			dev_input_gfp = 0;
+	}
+}
+
+/** Start tracking changes in input device directory
+ */
+static bool
+mce_input_init_dev_dir_monitoring(void)
+{
+	bool success = false;
+
+	GError *error = NULL;
+
+	/* Retrieve a GFile pointer to the directory to monitor */
+	if( !(dev_input_gfp = g_file_new_for_path(DEV_INPUT_PATH)) )
+		goto EXIT;
+
+	/* Monitor the directory */
+	dev_input_gfmp = g_file_monitor_directory(dev_input_gfp,
+						  G_FILE_MONITOR_NONE,
+						  NULL, &error);
+	if( !dev_input_gfmp ) {
+		mce_log(LL_ERR,
+			"Failed to add monitor for directory `%s'; %s",
+			DEV_INPUT_PATH, error->message);
+		goto EXIT;
+	}
+
+	/* Connect "changed" signal for the directory monitor */
+	dev_input_handler_id =
+		g_signal_connect(G_OBJECT(dev_input_gfmp), "changed",
+				 G_CALLBACK(dir_changed_cb), NULL);
+
+	if( !dev_input_handler_id ) {
+		mce_log(LL_ERR, "Failed to connect to 'changed' signal"
+			" for directory `%s'", DEV_INPUT_PATH);
+		goto EXIT;
+	}
+
+	success = true;
+EXIT:
+	/* All or nothing */
+	if( !success )
+		mce_input_quit_dev_dir_monitoring();
+
+	g_clear_error(&error);
+
+	return success;
+}
+
 /**
  * Init function for the /dev/input event component
  *
@@ -2681,7 +2750,6 @@ static void submode_trigger(gconstpointer data)
  */
 gboolean mce_input_init(void)
 {
-	GError *error = NULL;
 	gboolean status = FALSE;
 
 	ts_grab_init();
@@ -2707,35 +2775,13 @@ gboolean mce_input_init(void)
 	append_output_trigger_to_datapipe(&keypad_grab_wanted_pipe,
 					  kp_grab_wanted_cb);
 
-	/* Retrieve a GFile pointer to the directory to monitor */
-	dev_input_gfp = g_file_new_for_path(DEV_INPUT_PATH);
-
-	/* Monitor the directory */
-	if ((dev_input_gfmp = g_file_monitor_directory(dev_input_gfp,
-						       G_FILE_MONITOR_NONE,
-						       NULL, &error)) == NULL) {
-		mce_log(LL_ERR,
-			"Failed to add monitor for directory `%s'; %s",
-			DEV_INPUT_PATH, error->message);
+	/* Register input device directory monitor */
+	if( !mce_input_init_dev_dir_monitoring() )
 		goto EXIT;
-	}
 
-	/* XXX: There is a race condition here; if a file (dis)appears
-	 *      after this scan, but before we start monitoring,
-	 *      then we'll miss that device.  The race is miniscule though,
-	 *      and any workarounds are likely to be cumbersome
-	 */
 	/* Find the initial set of input devices */
-	if ((status = scan_inputdevices()) == FALSE) {
-		g_file_monitor_cancel(dev_input_gfmp);
-		dev_input_gfmp = NULL;
+	if( !scan_inputdevices() )
 		goto EXIT;
-	}
-
-	/* Connect "changed" signal for the directory monitor */
-	dev_input_handler_id =
-		g_signal_connect(G_OBJECT(dev_input_gfmp), "changed",
-				 G_CALLBACK(dir_changed_cb), NULL);
 
 	/* Get configuration options */
 	longdelay = mce_conf_get_int(MCE_CONF_HOMEKEY_GROUP,
@@ -2746,10 +2792,8 @@ gboolean mce_input_init(void)
 
 	gpio_key_disable_exists = (g_access(GPIO_KEY_DISABLE_PATH, W_OK) == 0);
 
+	status = TRUE;
 EXIT:
-	errno = 0;
-	g_clear_error(&error);
-
 	return status;
 }
 
@@ -2774,12 +2818,8 @@ void mce_input_exit(void)
 	remove_output_trigger_from_datapipe(&keypad_grab_wanted_pipe,
 					    kp_grab_wanted_cb);
 
-	if (dev_input_gfmp != NULL) {
-		g_signal_handler_disconnect(G_OBJECT(dev_input_gfmp),
-					    dev_input_handler_id);
-		dev_input_handler_id = 0;
-		g_file_monitor_cancel(dev_input_gfmp);
-	}
+	/* Remove input device directory monitor */
+	mce_input_quit_dev_dir_monitoring();
 
 	unregister_inputdevices();
 

@@ -353,6 +353,10 @@ void g_module_unload(GModule *module)
 {
         (void)module;
 
+        /* Remove gconf notifications  */
+        mce_gconf_notifier_remove(dbltap_mode_gconf_id),
+                dbltap_mode_gconf_id = 0;
+
         /* Remove triggers/filters from datapipes */
         remove_output_trigger_from_datapipe(&proximity_sensor_pipe,
                                             dbltap_proximity_trigger);

@@ -443,7 +443,6 @@ gboolean dbus_send_message(DBusMessage *const msg)
 		goto EXIT;
 	}
 
-	dbus_connection_flush(dbus_connection);
 	status = TRUE;
 
 EXIT:
@@ -484,9 +483,6 @@ dbus_send_message_with_reply_handler(DBusMessage *const msg,
 		mce_log(LL_ERR, "D-Bus connection disconnected");
 		goto EXIT;
 	}
-
-	// FIXME: do we really need the flush?
-	dbus_connection_flush(dbus_connection);
 
 	if( !dbus_pending_call_set_notify(pc, callback,
 					  user_data, user_free) ) {
@@ -1895,30 +1891,97 @@ gboolean mce_dbus_is_owner_monitored(const gchar *service,
 	return (find_monitored_service(service, monitor_list) != NULL);
 }
 
-/**
- * Generate and handle fake owner gone message
+/** Generate and handle fake owner gone message
  *
- * @param data Name of owner that is gone
+ * @param data Name that no longer has an owner (as a void pointer)
+ *
  * @return Always FALSE
  */
 static gboolean fake_owner_gone(gpointer data)
 {
-	DBusMessage *msg;
-	const char *empty = "";
+	const char  *owner = data;
+	const char  *empty = "";
+	DBusMessage *faked = dbus_new_signal("/org/freedesktop/DBus",
+					     "org.freedesktop.DBus",
+					     "NameOwnerChanged");
 
-	msg = dbus_message_new_signal("/org/freedesktop/DBus",
-				      "org.freedesktop.DBus",
-				      "NameOwnerChanged");
-	dbus_message_append_args(msg, DBUS_TYPE_STRING, &data,
-				 DBUS_TYPE_STRING, &data,
+	/* Since owner monitoring is used for clients that are expected
+	 * to stay on the system bus, emit warning if they drop away
+	 * before verification round trip can be made.
+	 */
+	mce_log(LL_WARN, "simulating name owner loss for: %s", owner);
+
+	dbus_message_append_args(faked,
+				 DBUS_TYPE_STRING, &owner,
+				 DBUS_TYPE_STRING, &owner,
 				 DBUS_TYPE_STRING, &empty,
 				 DBUS_TYPE_INVALID);
 
-	msg_handler(NULL, msg, NULL);
+	/* Run the fake signal through mce message filter
+	 */
+	msg_handler(NULL, faked, NULL);
 
-	dbus_message_unref(msg), msg = 0;
+	dbus_message_unref(faked), faked = 0;
 
 	return FALSE;
+}
+
+/** Handle reply to mce_dbus_owner_monitor_verify
+ *
+ * @param pc    pending call object
+ * @param aptr  name of service checked as void pointer
+ */
+static void
+mce_dbus_owner_monitor_verify_cb(DBusPendingCall *pc, void *aptr)
+{
+	(void) aptr;
+
+	DBusMessage *rsp  = 0;
+	DBusError    err  = DBUS_ERROR_INIT;
+	dbus_bool_t  dta  = FALSE;
+	const char  *name = aptr;
+
+	if( !(rsp = dbus_pending_call_steal_reply(pc)) ) {
+		mce_log(LL_ERR, "%s: no reply", "NameHasOwner");
+		goto EXIT;
+	}
+
+	if( dbus_set_error_from_message(&err, rsp) ) {
+		mce_log(LL_ERR, "%s: %s", err.name, err.message);
+		goto EXIT;
+	}
+
+	if( !dbus_message_get_args(rsp, &err,
+				   DBUS_TYPE_BOOLEAN, &dta,
+				   DBUS_TYPE_INVALID) ) {
+		mce_log(LL_ERR, "%s: %s", err.name, err.message);
+		goto EXIT;
+	}
+
+EXIT:
+	if( !dta )
+		fake_owner_gone(name);
+
+	if( rsp ) dbus_message_unref(rsp);
+	dbus_error_free(&err);
+}
+
+/** Start async query to check that monitored service is alive
+ *
+ * @param name Owner of the service that is being monitored
+ */
+static void
+mce_dbus_owner_monitor_verify(const char *name)
+{
+	dbus_send_ex(DBUS_SERVICE_DBUS,
+		     DBUS_PATH_DBUS,
+		     DBUS_INTERFACE_DBUS,
+		     "NameHasOwner",
+		     mce_dbus_owner_monitor_verify_cb,
+		     g_strdup(name), g_free,
+		     0,
+		     DBUS_TYPE_STRING, &name,
+		     DBUS_TYPE_INVALID);
 }
 
 /**
@@ -1992,11 +2055,8 @@ gssize mce_dbus_owner_monitor_add(const gchar *service,
 	*monitor_list = g_slist_prepend(*monitor_list, (gpointer)cookie);
 	retval = num + 1;
 
-	// FIXME: does synchronous roundtrip to dbus-daemon and back
-	if (dbus_bus_name_has_owner(dbus_connection, service, NULL) == FALSE)
-		g_idle_add_full(G_PRIORITY_DEFAULT_IDLE,
-				fake_owner_gone, g_strdup(service),
-				g_free);
+	/* start async query to verify that the peer is still alive */
+	mce_dbus_owner_monitor_verify(service);
 
 EXIT:
 	g_free(rule);
