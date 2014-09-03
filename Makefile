@@ -148,6 +148,7 @@ MODULES += $(MODULE_DIR)/keypad.so
 MODULES += $(MODULE_DIR)/inactivity.so
 MODULES += $(MODULE_DIR)/camera.so
 MODULES += $(MODULE_DIR)/alarm.so
+MODULES += $(MODULE_DIR)/memnotify.so
 MODULES += $(MODULE_DIR)/battery-bme.so
 MODULES += $(MODULE_DIR)/battery-upower.so
 MODULES += $(MODULE_DIR)/bluetooth.so
@@ -558,6 +559,8 @@ NORMALIZE_USES_SPC =\
 	modules/doubletap.h\
 	modules/filter-brightness-simple.h\
 	modules/keypad.h\
+	modules/memnotify.c\
+	modules/memnotify.h\
 	modules/packagekit.c\
 	modules/powersavemode.h\
 	modules/radiostates.h\
@@ -617,7 +620,7 @@ NORMALIZE_USES_TAB =\
 	systemui/tklock-dbus-names.h\
 
 NORMALIZE_KNOWN := $(NORMALIZE_USES_SPC) $(NORMALIZE_USES_TAB)
-SOURCEFILES_ALL := $(wildcard *.[ch])
+SOURCEFILES_ALL := $(wildcard *.[ch] modules/*.[ch])
 NORMALIZE_UNKNOWN = $(filter-out $(NORMALIZE_KNOWN), $(SOURCEFILES_ALL))
 
 .PHONY: normalize

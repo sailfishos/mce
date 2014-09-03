@@ -27,6 +27,7 @@
 #include "../modules/powersavemode.h"
 #include "../modules/filter-brightness-als.h"
 #include "../modules/proximity.h"
+#include "../modules/memnotify.h"
 #include "../systemui/dbus-names.h"
 #include "../systemui/tklock-dbus-names.h"
 
@@ -55,10 +56,10 @@
 #define MCE_DBUS_SET_CONFIG_REQ                 "set_config"
 
 /** Default padding for left column of status reports */
-#define PAD1 "28"
+#define PAD1 "30"
 
 /** Padding used for radio state bits */
-#define PAD2 "20"
+#define PAD2 "22"
 
 #if MCETOOL_ENABLE_EXTRA_DEBUG
 # define debugf(FMT, ARGS...) fprintf(stderr, PROG_NAME": D: "FMT, ##ARGS)
@@ -2810,6 +2811,75 @@ static void xmce_get_brightness_fade(void)
 }
 
 /* ------------------------------------------------------------------------- *
+ * memnotify limit settings
+ * ------------------------------------------------------------------------- */
+
+static bool xmce_set_memnotify_warning_used(const char *args)
+{
+        mcetool_gconf_set_int(MCE_GCONF_MEMNOTIFY_WARNING_USED,
+                              xmce_parse_integer(args));
+        return true;
+}
+
+static bool xmce_set_memnotify_warning_active(const char *args)
+{
+        mcetool_gconf_set_int(MCE_GCONF_MEMNOTIFY_WARNING_ACTIVE,
+                              xmce_parse_integer(args));
+        return true;
+}
+
+static bool xmce_set_memnotify_critical_used(const char *args)
+{
+        mcetool_gconf_set_int(MCE_GCONF_MEMNOTIFY_CRITICAL_USED,
+                              xmce_parse_integer(args));
+        return true;
+}
+
+static bool xmce_set_memnotify_critical_active(const char *args)
+{
+        mcetool_gconf_set_int(MCE_GCONF_MEMNOTIFY_CRITICAL_ACTIVE,
+                              xmce_parse_integer(args));
+        return true;
+}
+
+static void xmce_get_memnotify_helper(const char *title, const char *key)
+{
+        gint val = 0;
+        if( !mcetool_gconf_get_int(key, &val) )
+                printf("%-"PAD1"s %s\n", title, "unknown");
+        else if( val <= 0 )
+                printf("%-"PAD1"s %s\n", title, "disabled");
+        else {
+                char txt[32];
+                snprintf(txt, sizeof txt, "%d", (int)val);
+                printf("%-"PAD1"s %s (ram pages)\n", title, txt);
+        }
+}
+
+static void xmce_get_memnotify_limits(void)
+{
+        xmce_get_memnotify_helper("Memory use warning [used]:",
+                                  MCE_GCONF_MEMNOTIFY_WARNING_USED);
+
+        xmce_get_memnotify_helper("Memory use warning [active]:",
+                                  MCE_GCONF_MEMNOTIFY_WARNING_ACTIVE);
+
+        xmce_get_memnotify_helper("Memory use critical [used]:",
+                                  MCE_GCONF_MEMNOTIFY_CRITICAL_USED);
+
+        xmce_get_memnotify_helper("Memory use critical [active]:",
+                                  MCE_GCONF_MEMNOTIFY_CRITICAL_ACTIVE);
+}
+
+static void xmce_get_memnotify_level(void)
+{
+        char *str = 0;
+        xmce_ipc_string_reply(MCE_MEMORY_LEVEL_GET, &str, DBUS_TYPE_INVALID);
+        printf("%-"PAD1"s %s\n","Memory use level:", str ?: "unknown");
+        free(str);
+}
+
+/* ------------------------------------------------------------------------- *
  * touch input unblocking
  * ------------------------------------------------------------------------- */
 
@@ -3230,6 +3300,8 @@ static bool xmce_get_status(const char *args)
 
         get_led_breathing_enabled();
         get_led_breathing_limit();
+        xmce_get_memnotify_limits();
+        xmce_get_memnotify_level();
         printf("\n");
 
         return true;
@@ -3895,6 +3967,34 @@ static const mce_opt_t options[] =
                 .usage       =
                         "output version information and exit\n"
 
+        },
+        {
+                .name        = "set-memuse-warning-used",
+                .with_arg    = xmce_set_memnotify_warning_used,
+                .values      = "page_count",
+                .usage       =
+                        "set warning limit for used memory pages; zero=disabled\n"
+        },
+        {
+                .name        = "set-memuse-warning-active",
+                .with_arg    = xmce_set_memnotify_warning_active,
+                .values      = "page_count",
+                .usage       =
+                        "set warning limit for active memory pages; zero=disabled\n"
+        },
+        {
+                .name        = "set-memuse-critical-used",
+                .with_arg    = xmce_set_memnotify_critical_used,
+                .values      = "page_count",
+                .usage       =
+                        "set critical limit for used memory pages; zero=disabled\n"
+        },
+        {
+                .name        = "set-memuse-critical-active",
+                .with_arg    = xmce_set_memnotify_critical_active,
+                .values      = "page_count",
+                .usage       =
+                        "set critical limit for active memory pages; zero=disabled\n"
         },
 
         // sentinel

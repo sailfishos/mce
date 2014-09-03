@@ -4,6 +4,7 @@ builtin-gconf.o:\
 	mce-dbus.h\
 	mce-io.h\
 	mce-log.h\
+	modules/memnotify.h\
 
 builtin-gconf.pic.o:\
 	builtin-gconf.c\
@@ -11,6 +12,7 @@ builtin-gconf.pic.o:\
 	mce-dbus.h\
 	mce-io.h\
 	mce-log.h\
+	modules/memnotify.h\
 
 datapipe.o:\
 	datapipe.c\
@@ -634,6 +636,26 @@ modules/led.pic.o:\
 	mce.h\
 	modules/led.h\
 
+modules/memnotify.o:\
+	modules/memnotify.c\
+	builtin-gconf.h\
+	datapipe.h\
+	mce-dbus.h\
+	mce-gconf.h\
+	mce-log.h\
+	mce.h\
+	modules/memnotify.h\
+
+modules/memnotify.pic.o:\
+	modules/memnotify.c\
+	builtin-gconf.h\
+	datapipe.h\
+	mce-dbus.h\
+	mce-gconf.h\
+	mce-log.h\
+	mce.h\
+	modules/memnotify.h\
+
 modules/packagekit.o:\
 	modules/packagekit.c\
 	builtin-gconf.h\
@@ -1013,6 +1035,7 @@ tools/mcetool.o:\
 	modules/display.h\
 	modules/doubletap.h\
 	modules/filter-brightness-als.h\
+	modules/memnotify.h\
 	modules/powersavemode.h\
 	modules/proximity.h\
 	powerkey.h\
@@ -1027,6 +1050,7 @@ tools/mcetool.pic.o:\
 	modules/display.h\
 	modules/doubletap.h\
 	modules/filter-brightness-als.h\
+	modules/memnotify.h\
 	modules/powersavemode.h\
 	modules/proximity.h\
 	powerkey.h\

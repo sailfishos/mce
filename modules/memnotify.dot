@@ -1,0 +1,85 @@
+// -*- mode: c -*-
+
+digraph modules_memnotify
+{
+  fontsize=6;
+  ranksep=0.2;
+  nodesep=0.2;
+
+  edge[fontsize=6];
+  edge[arrowsize=0.4];
+
+  node[width=0.001]
+  node[height=0.001]
+  node[fontsize=6]
+  node[shape=box];
+  node[style=filled];
+  node[fillcolor=wheat];
+
+  compound = true;
+
+  /* - - - - - - - - - - - - - - - - - - - *
+   * data storage
+   * - - - - - - - - - - - - - - - - - - - */
+
+  node[fillcolor=wheat];
+  MN_DEV;
+  LIMITS;
+  STATUS;
+  LEVEL;
+  DBUS1[label=DBUS];
+  DBUS2[label=DBUS];
+  SETTINGS;
+
+  /* - - - - - - - - - - - - - - - - - - - *
+   * data process
+   * - - - - - - - - - - - - - - - - - - - */
+
+  node[fillcolor=yellow];
+  node[shape=oval];
+
+  KERNEL;
+  IOWATCH [label="handle\ninput\n"];
+  EVALUATE [label="evaluate\nlevel\n"];
+  BROADCAST [label="broadcast\nlevel\nchange\n"];
+  QUERY [label="handle\nlevel\nquery\n"];
+  NOTIFY[label="change\nslimits\n"];
+  GCONF;
+
+  /* - - - - - - - - - - - - - - - - - - - *
+   * data flow
+   * - - - - - - - - - - - - - - - - - - - */
+
+  node[fillcolor=pink];
+  node[shape=box];
+
+  KERNEL -> MN_DEV [dir=both];
+  MN_DEV -> IOWATCH [dir=both];
+  IOWATCH -> STATUS;
+  STATUS -> EVALUATE;
+  LIMITS -> EVALUATE;
+  EVALUATE -> LEVEL;
+  LEVEL -> BROADCAST;
+
+  QUERY -> DBUS2 [dir=both];
+  LEVEL -> QUERY;
+
+  SETTINGS -> NOTIFY;
+  NOTIFY -> LIMITS;
+  NOTIFY -> STATUS;
+  MN_DEV -> NOTIFY;
+  GCONF -> SETTINGS;
+
+  /* - - - - - - - - - - - - - - - - - - - *
+   * control flow
+   * - - - - - - - - - - - - - - - - - - - */
+
+  edge[style=dotted];
+
+  IOWATCH -> EVALUATE;
+  KERNEL -> IOWATCH;
+  EVALUATE -> BROADCAST;
+  BROADCAST -> DBUS1;
+  NOTIFY -> EVALUATE;
+  GCONF -> NOTIFY;
+};

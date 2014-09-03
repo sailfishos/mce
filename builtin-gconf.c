@@ -22,6 +22,8 @@
 #include "mce-io.h"
 #include "mce-dbus.h"
 
+#include "modules/memnotify.h"
+
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
@@ -1469,6 +1471,26 @@ static const setting_t gconf_defaults[] =
     .key  = "/system/osso/dsm/powerkey/blanking_mode",
     .type = "i",
     .def  = "0", // = PWRKEY_BLANK_TO_OFF
+  },
+  {
+    .key = MCE_GCONF_MEMNOTIFY_WARNING_USED,
+    .type = "i",
+    .def  = "0", // = disabled
+  },
+  {
+    .key = MCE_GCONF_MEMNOTIFY_WARNING_ACTIVE,
+    .type = "i",
+    .def  = "0", // = disabled
+  },
+  {
+    .key = MCE_GCONF_MEMNOTIFY_CRITICAL_USED,
+    .type = "i",
+    .def  = "0", // = disabled
+  },
+  {
+    .key = MCE_GCONF_MEMNOTIFY_CRITICAL_ACTIVE,
+    .type = "i",
+    .def  = "0", // = disabled
   },
   {
     .key  = NULL,
