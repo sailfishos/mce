@@ -2798,15 +2798,15 @@ static void xmce_get_brightness_fade_helper(const char *title, const char *key)
 
 static void xmce_get_brightness_fade(void)
 {
-        xmce_get_brightness_fade_helper("Brightness fade [def]",
+        xmce_get_brightness_fade_helper("Brightness fade [def]:",
                                         MCE_GCONF_BRIGHTNESS_FADE_DEFAULT_MS);
-        xmce_get_brightness_fade_helper("Brightness fade [dim]",
+        xmce_get_brightness_fade_helper("Brightness fade [dim]:",
                                         MCE_GCONF_BRIGHTNESS_FADE_DIMMING_MS);
-        xmce_get_brightness_fade_helper("Brightness fade [als]",
+        xmce_get_brightness_fade_helper("Brightness fade [als]:",
                                         MCE_GCONF_BRIGHTNESS_FADE_ALS_MS);
-        xmce_get_brightness_fade_helper("Brightness fade [blank]",
+        xmce_get_brightness_fade_helper("Brightness fade [blank]:",
                                         MCE_GCONF_BRIGHTNESS_FADE_BLANK_MS);
-        xmce_get_brightness_fade_helper("Brightness fade [unblank]",
+        xmce_get_brightness_fade_helper("Brightness fade [unblank]:",
                                         MCE_GCONF_BRIGHTNESS_FADE_UNBLANK_MS);
 }
 
