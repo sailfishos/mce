@@ -425,8 +425,6 @@ memnotify_status_update_level(void)
 {
     memnotify_level_t level = memnotify_status_evaluate_level();
 
-    mce_log(LL_CRIT, "level: %d -> %d", memnotify_level, level);
-
     if( memnotify_level == level )
         goto EXIT;
 
@@ -468,7 +466,7 @@ memnotify_status_show_triggers(void)
     for( size_t i = 0; i < G_N_ELEMENTS(memnotify_limit); ++i ) {
         char tmp[256];
         memnotify_limit_repr(memnotify_limit+i, tmp, sizeof tmp);
-        mce_log(LL_CRIT, "%s: %s", memnotify_level_name(i), tmp);
+        mce_log(LL_DEBUG, "%s: %s", memnotify_level_name(i), tmp);
     }
 }
 
@@ -520,8 +518,7 @@ memnotify_dev_rx_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
     if( !memnotify_dev[lev].mnd_rx_id )
         goto EXIT;
 
-    mce_log(LL_CRIT, "notify trigger (%s)",
-            memnotify_level_name(lev));
+    mce_log(LL_DEBUG, "notify trigger (%s)", memnotify_level_name(lev));
 
     if( cnd & ~G_IO_IN ) {
         mce_log(LL_WARN, "unexpected input watch condition");
@@ -660,7 +657,7 @@ memnotify_dev_set_trigger(memnotify_level_t lev, const memnotify_limit_t *limit)
     if( done != todo )
         goto EXIT;
 
-    mce_log(LL_CRIT, "write %s -> %s", memnotify_level_name(lev), tmp);
+    mce_log(LL_DEBUG, "write %s -> %s", memnotify_level_name(lev), tmp);
 
     res = true;
 
@@ -679,7 +676,7 @@ memnotify_dev_get_status(memnotify_level_t lev, memnotify_limit_t *state)
     char tmp[256];
 
     if( memnotify_dev[lev].mnd_fd == -1 ) {
-        mce_log(LL_ERR, "device not opened");
+        mce_log(LL_WARN, "device not opened");
         goto EXIT;
     }
 
@@ -693,7 +690,7 @@ memnotify_dev_get_status(memnotify_level_t lev, memnotify_limit_t *state)
 
     tmp[done-1] = 0;
 
-    mce_log(LL_CRIT, "read %s <- %s", memnotify_level_name(lev), tmp);
+    mce_log(LL_DEBUG, "read %s <- %s", memnotify_level_name(lev), tmp);
 
     if( !memnotify_limit_parse(state, tmp) )
         goto EXIT;
@@ -874,7 +871,8 @@ memnotify_dbus_broadcast_level(void)
 static gboolean
 memnotify_dbus_get_level_cb(DBusMessage *const req)
 {
-    mce_log(LL_DEBUG, "Received memory level get request");
+    mce_log(LL_DEVEL, "Received memory leve get request from %s",
+            mce_dbus_get_message_sender_ident(req));
 
     DBusMessage *rsp = dbus_new_method_reply(req);
     const char  *arg = memnotify_level_name(memnotify_level);
@@ -955,7 +953,14 @@ const gchar *g_module_check_init(GModule *module)
     /* Do not even attempt to set up tracking if the memnotify
      * device node is not available */
     if( !memnotify_dev_is_available() ) {
-        mce_log(LL_WARN, "memnotify not available");
+        /* Since it is expectional that  /dev/memnotify is present,
+         * we must not complain about it missing in default verbosity
+         * level
+         */
+        mce_log(LL_NOTICE, "memnotify not available");
+
+        /* The plugin stays loaded, but no signals are emitted and
+         * level query will return "unknown". */
         goto EXIT;
     }
 
@@ -964,7 +969,7 @@ const gchar *g_module_check_init(GModule *module)
 
     memnotify_status_update_triggers();
 
-    mce_log(LL_INFO, "memnotify plugin initialized");
+    mce_log(LL_NOTICE, "memnotify plugin active");
 
 EXIT:
 
@@ -979,7 +984,7 @@ void g_module_unload(GModule *module)
 {
     (void)module;
 
-    mce_log(LL_INFO, "unloading memnotify");
+    mce_log(LL_DEBUG, "unloading memnotify plugin");
 
     memnotify_gconf_quit();
     memnotify_dbus_quit();
