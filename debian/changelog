@@ -1,3 +1,10 @@
+mce (1.35.0) unstable; urgency=low
+
+  * [mce] Add memnotify plugin for signaling memory pressure level changes.
+    Fixes JB#22490
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 03 Sep 2014 11:11:53 +0300
+
 mce (1.34.2) unstable; urgency=low
 
   * [mce] Fix minor memory leaks and remove blocking dbus calls.
