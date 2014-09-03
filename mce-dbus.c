@@ -1897,9 +1897,8 @@ gboolean mce_dbus_is_owner_monitored(const gchar *service,
  *
  * @return Always FALSE
  */
-static gboolean fake_owner_gone(gpointer data)
+static gboolean fake_owner_gone(const char *owner)
 {
-	const char  *owner = data;
 	const char  *empty = "";
 	DBusMessage *faked = dbus_new_signal("/org/freedesktop/DBus",
 					     "org.freedesktop.DBus",
