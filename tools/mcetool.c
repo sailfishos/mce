@@ -2396,10 +2396,11 @@ static void xmce_get_blank_timeout(void)
 /** Lookup table for powerkey wakeup policies
  */
 static const symbol_t powerkey_action[] = {
-        { "never",     PWRKEY_ENABLE_NEVER        },
-        { "always",    PWRKEY_ENABLE_ALWAYS       },
-        { "proximity", PWRKEY_ENABLE_NO_PROXIMITY },
-        { NULL,        -1                         }
+        { "never",      PWRKEY_ENABLE_NEVER         },
+        { "always",     PWRKEY_ENABLE_ALWAYS        },
+        { "proximity",  PWRKEY_ENABLE_NO_PROXIMITY  },
+        { "proximity2", PWRKEY_ENABLE_NO_PROXIMITY2 },
+        { NULL,         -1                          }
 };
 
 /** Set powerkey wakeup mode
@@ -3606,10 +3607,13 @@ static const mce_opt_t options[] =
                 .name        = "set-powerkey-action",
                 .flag        = 'Z',
                 .with_arg    = xmce_set_powerkey_action,
-                .values      = "never|always|proximity",
+                .values      = "never|always|proximity|proximity2",
                 .usage       =
-                        "set the doubletap wakeup mode; valid modes are:\n"
-                        "'never', 'always', 'proximity'\n"
+                        "set the power key action mode; valid modes are:\n"
+                        "  never       -  ignore power key presses\n"
+                        "  always      -  always act\n"
+                        "  proximity   -  act if proximity sensor is not covered\n"
+                        "  proximity2  -  act if display is on or PS not covered\n"
         },
         {
                 .name        = "set-powerkey-blanking",

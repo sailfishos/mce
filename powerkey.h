@@ -41,8 +41,11 @@ typedef enum
 	/** Power key actions always enabled */
 	PWRKEY_ENABLE_ALWAYS,
 
-	/** Power key actions enabled when PS is not covered */
+	/** Power key actions enabled if PS is not covered */
 	PWRKEY_ENABLE_NO_PROXIMITY,
+
+	/** Power key actions enabled if PS is not covered or display is on */
+	PWRKEY_ENABLE_NO_PROXIMITY2,
 
 	PWRKEY_ENABLE_DEFAULT = PWRKEY_ENABLE_ALWAYS,
 } pwrkey_mode_t;

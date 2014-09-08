@@ -230,6 +230,8 @@ static bool powerkey_ignore_action(void)
 		datapipe_get_gint(proximity_sensor_pipe);
 	call_state_t call_state =
 		datapipe_get_gint(call_state_pipe);
+	display_state_t display_state =
+		datapipe_get_gint(display_state_pipe);
 
 	/* Ignore keypress if the alarm UI is visible */
 	switch( alarm_ui_state ) {
@@ -278,6 +280,11 @@ static bool powerkey_ignore_action(void)
 	case PWRKEY_ENABLE_ALWAYS:
 		break;
 
+	case PWRKEY_ENABLE_NO_PROXIMITY2:
+		/* do not ignore if display is not off */
+		if( display_state != MCE_DISPLAY_OFF )
+			break;
+		/* fall through */
 	default:
 	case PWRKEY_ENABLE_NO_PROXIMITY:
 		if( proximity_sensor_state != COVER_CLOSED )
