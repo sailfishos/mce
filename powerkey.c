@@ -127,6 +127,18 @@ static gint powerkey_blanking_mode = PWRKEY_BLANK_TO_OFF;
 /** GConf callback ID for powerkey_blanking_mode */
 static guint powerkey_blanking_mode_cb_id = 0;
 
+/** Power key press count for proximity sensor override */
+static gint powerkey_ps_override_count = 3;
+
+/** GConf callback ID for powerkey_ps_override_count */
+static guint powerkey_ps_override_count_cb_id = 0;
+
+/** Maximum time between power key presses for proximity sensor override */
+static gint powerkey_ps_override_timeout = 333;
+
+/** GConf callback ID for powerkey_ps_override_timeout */
+static guint powerkey_ps_override_timeout_cb_id = 0;
+
 /** GConf callback for powerkey related settings
  *
  * @param gcc    (not used)
@@ -161,6 +173,18 @@ static void powerkey_gconf_cb(GConfClient *const gcc, const guint id,
 		mce_log(LL_NOTICE, "powerkey_blanking_mode: %d -> %d",
 			old, powerkey_blanking_mode);
 	}
+	else if( id == powerkey_ps_override_count_cb_id ) {
+		gint old = powerkey_ps_override_count;
+		powerkey_ps_override_count = gconf_value_get_int(gcv);
+		mce_log(LL_NOTICE, "powerkey_ps_override_count: %d -> %d",
+			old, powerkey_ps_override_count);
+	}
+	else if( id == powerkey_ps_override_timeout_cb_id ) {
+		gint old = powerkey_ps_override_timeout;
+		powerkey_ps_override_timeout = gconf_value_get_int(gcv);
+		mce_log(LL_NOTICE, "powerkey_ps_override_timeout: %d -> %d",
+			old, powerkey_ps_override_timeout);
+	}
 	else {
 		mce_log(LL_WARN, "Spurious GConf value received; confused!");
 	}
@@ -190,6 +214,24 @@ static void powerkey_gconf_init(void)
 	mce_gconf_get_int(MCE_GCONF_POWERKEY_BLANKING_MODE,
 			  &powerkey_blanking_mode);
 
+	/* Power key press count for proximity sensor override */
+	mce_gconf_notifier_add(MCE_GCONF_POWERKEY_PATH,
+			       MCE_GCONF_POWERKEY_PS_OVERRIDE_COUNT,
+			       powerkey_gconf_cb,
+			       &powerkey_ps_override_count_cb_id);
+
+	mce_gconf_get_int(MCE_GCONF_POWERKEY_PS_OVERRIDE_COUNT,
+			  &powerkey_ps_override_count);
+
+	/* Maximum time between power key presses for ps override */
+	mce_gconf_notifier_add(MCE_GCONF_POWERKEY_PATH,
+			       MCE_GCONF_POWERKEY_PS_OVERRIDE_TIMEOUT,
+			       powerkey_gconf_cb,
+			       &powerkey_ps_override_timeout_cb_id);
+
+	mce_gconf_get_int(MCE_GCONF_POWERKEY_PS_OVERRIDE_TIMEOUT,
+			  &powerkey_ps_override_timeout);
+
 }
 
 /** Remove gconf change notifiers
@@ -203,6 +245,14 @@ static void powerkey_gconf_quit(void)
 	/* Power key press blanking mode */
 	mce_gconf_notifier_remove(powerkey_blanking_mode_cb_id),
 		powerkey_blanking_mode_cb_id = 0;
+
+	/* Power key press blanking mode */
+	mce_gconf_notifier_remove(powerkey_ps_override_count_cb_id),
+		powerkey_ps_override_count_cb_id = 0;
+
+	/* Power key press blanking mode */
+	mce_gconf_notifier_remove(powerkey_ps_override_timeout_cb_id),
+		powerkey_ps_override_timeout_cb_id = 0;
 }
 
 /** Helper for sending powerkey feedback dbus signal
@@ -215,6 +265,92 @@ static void powerkey_send_feedback_signal(const char *sig)
 	mce_log(LL_DEVEL, "sending dbus signal: %s %s", sig, arg);
 	dbus_send(0, MCE_SIGNAL_PATH, MCE_SIGNAL_IF,  sig, 0,
 		  DBUS_TYPE_STRING, &arg, DBUS_TYPE_INVALID);
+}
+
+/** Get CLOCK_BOOTTIME time stamp in milliseconds
+ */
+static int64_t powerkey_get_boot_tick(void)
+{
+	int64_t res = 0;
+
+	struct timespec ts;
+
+	if( clock_gettime(CLOCK_BOOTTIME, &ts) == 0 ) {
+		res = ts.tv_sec;
+		res *= 1000;
+		res += ts.tv_nsec / 1000000;
+	}
+
+	return res;
+}
+
+/** Provide an emergency way out from stuck proximity sensor
+ *
+ * If the proximity sensor is dirty/faulty and stuck to "covered"
+ * state, it can leave the phone in a state where it is impossible
+ * to do anything about incoming call, ringing alarm.
+ *
+ * To offer somekind of remedy for the situation, this function
+ * allows user to force proximity sensor to "uncovered" state
+ * by rapidly pressing power button several times.
+ */
+static void powerkey_ps_override_evaluate(void)
+{
+	static int64_t t_last  = 0;
+	static gint    count   = 0;
+
+	/* If the feature is disabled, just reset the counter */
+	if( powerkey_ps_override_count   <= 0 ||
+	    powerkey_ps_override_timeout <= 0 ) {
+		t_last = 0, count = 0;
+		goto EXIT;
+	}
+
+	cover_state_t proximity_sensor_state =
+		datapipe_get_gint(proximity_sensor_pipe);
+
+	/* If the sensor is not covered, just reset the counter */
+	if( proximity_sensor_state != COVER_CLOSED ) {
+		t_last = 0, count = 0;
+		goto EXIT;
+	}
+
+	int64_t t_now = powerkey_get_boot_tick();
+
+	/* If the previous power key press was too far in
+	 * the past, start counting from zero again */
+
+	if( t_now > t_last + powerkey_ps_override_timeout ) {
+		mce_log(LL_DEBUG, "ps override count restarted");
+		count = 0;
+	}
+
+	t_last = t_now;
+
+	/* If configured number of power key presses within the time
+	 * limits has been reached, force proximity sensor state to
+	 * "uncovered".
+	 *
+	 * This should allow touch input ungrabbing and turning
+	 * display on during incoming call / alarm.
+	 *
+	 * If sensor gets unstuck and new proximity readings are
+	 * received, this override will be automatically undone.
+	 */
+	if( ++count == powerkey_ps_override_count ) {
+		mce_log(LL_CRIT, "assuming stuck proximity sensor;"
+			" faking uncover event");
+		execute_datapipe(&proximity_sensor_pipe,
+				 GINT_TO_POINTER(COVER_OPEN),
+				 USE_INDATA, CACHE_INDATA);
+		t_last = 0, count = 0;
+	}
+	else
+		mce_log(LL_DEBUG, "ps override count = %d", count);
+
+EXIT:
+
+	return;
 }
 
 /** Should power key action be ignored predicate
@@ -296,7 +432,6 @@ static bool powerkey_ignore_action(void)
 	}
 
 EXIT:
-
 	return ignore_powerkey;
 }
 
@@ -805,6 +940,13 @@ static void powerkey_trigger(gconstpointer const data)
 			}
 		} else if (ev->value == 0) {
 			mce_log(LL_DEVEL, "[powerkey] released");
+
+			/* Detect repeated power key pressing while
+			 * proximity sensor is covered; assume it means
+			 * the sensor is stuck and user wants to be able
+			 * to turn on the display regardless of the sensor
+			 * state */
+			powerkey_ps_override_evaluate();
 
 			/* Short key press */
 			if (powerkey_timeout_cb_id != 0) {

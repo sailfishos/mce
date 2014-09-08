@@ -2465,6 +2465,68 @@ static void xmce_get_powerkey_blanking(void)
         printf("%-"PAD1"s %s \n", "Powerkey blanking mode:", txt ?: "unknown");
 }
 
+/** Set powerkey proximity override press count
+ *
+ * @param args string that can be parsed to number
+ */
+static bool xmce_set_ps_override_count(const char *args)
+{
+        const char *key = MCE_GCONF_POWERKEY_PS_OVERRIDE_COUNT;
+        gint        val = xmce_parse_integer(args);
+        mcetool_gconf_set_int(key, val);
+        return true;
+}
+
+/** Get current powerkey proximity override press count
+ */
+static void xmce_get_ps_override_count(void)
+{
+        const char *tag = "Powerkey ps override count:";
+        const char *key = MCE_GCONF_POWERKEY_PS_OVERRIDE_COUNT;
+        gint        val = 0;
+        char        txt[64];
+
+        if( !mcetool_gconf_get_int(key, &val) )
+                snprintf(txt, sizeof txt, "unknown");
+        else if( val <= 0 )
+                snprintf(txt, sizeof txt, "disabled");
+        else
+                snprintf(txt, sizeof txt, "%d", val);
+
+        printf("%-"PAD1"s %s\n", tag, txt);
+}
+
+/** Set powerkey proximity override press timeout
+ *
+ * @param args string that can be parsed to number
+ */
+static bool xmce_set_ps_override_timeout(const char *args)
+{
+        const char *key = MCE_GCONF_POWERKEY_PS_OVERRIDE_TIMEOUT;
+        gint        val = xmce_parse_integer(args);
+        mcetool_gconf_set_int(key, val);
+        return true;
+}
+
+/** Get current powerkey proximity override press timeout
+ */
+static void xmce_get_ps_override_timeout(void)
+{
+        const char *tag = "Powerkey ps override timeout:";
+        const char *key = MCE_GCONF_POWERKEY_PS_OVERRIDE_TIMEOUT;
+        gint        val = 0;
+        char        txt[64];
+
+        if( !mcetool_gconf_get_int(key, &val) )
+                snprintf(txt, sizeof txt, "unknown");
+        else if( val <= 0 )
+                snprintf(txt, sizeof txt, "disabled");
+        else
+                snprintf(txt, sizeof txt, "%d [ms]", val);
+
+        printf("%-"PAD1"s %s\n", tag, txt);
+}
+
 /* ------------------------------------------------------------------------- *
  * display off request override
  * ------------------------------------------------------------------------- */
@@ -3283,6 +3345,8 @@ static bool xmce_get_status(const char *args)
         xmce_get_doubletap_wakeup();
         xmce_get_powerkey_action();
         xmce_get_powerkey_blanking();
+        xmce_get_ps_override_count();
+        xmce_get_ps_override_timeout();
         xmce_get_display_off_override();
         xmce_get_low_power_mode();
         xmce_get_lpmui_triggering();
@@ -3622,6 +3686,22 @@ static const mce_opt_t options[] =
                 .usage       =
                         "set the doubletap blanking mode; valid modes are:\n"
                         "'off', 'lpm'\n"
+        },
+        {
+                .name        = "set-powerkey-ps-override-count",
+                .with_arg    = xmce_set_ps_override_count,
+                .values      = "press-count",
+                .usage       =
+                        "set number of repeated power key presses needed to\n"
+                        "override stuck proximity sensor; use 0 to disable\n"
+        },
+        {
+                .name        = "set-powerkey-ps-override-timeout",
+                .with_arg    = xmce_set_ps_override_timeout,
+                .values      = "ms",
+                .usage       =
+                        "maximum delay between repeated power key presses that\n"
+                        "can override stuck proximity sensor; use 0 to disable\n"
         },
         {
                 .name        = "set-display-off-override",
