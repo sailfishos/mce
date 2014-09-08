@@ -3052,9 +3052,13 @@ static void tklock_evctrl_rethink(void)
         break;
     }
 
-    execute_datapipe(&touch_grab_wanted_pipe,
-                     GINT_TO_POINTER(grab_ts),
-                     USE_INDATA, CACHE_INDATA);
+    /* Grabbing touch input is always permitted, but ungrabbing
+     * only when proximity sensor is not covered */
+    if( grab_ts || proximity_state_effective == COVER_OPEN ) {
+        execute_datapipe(&touch_grab_wanted_pipe,
+                         GINT_TO_POINTER(grab_ts),
+                         USE_INDATA, CACHE_INDATA);
+    }
 
     /* - - - - - - - - - - - - - - - - - - - *
      * in case emitting of keypad events can't
