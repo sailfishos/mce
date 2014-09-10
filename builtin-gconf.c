@@ -22,6 +22,8 @@
 #include "mce-io.h"
 #include "mce-dbus.h"
 
+#include "powerkey.h"
+
 #include "modules/memnotify.h"
 
 #include <stdlib.h>
@@ -1461,16 +1463,24 @@ static const setting_t gconf_defaults[] =
     .def  = "2",
   },
   {
-    // MCE_GCONF_POWERKEY_MODE @ powerkey.h
-    .key  = "/system/osso/dsm/powerkey/mode",
+    .key  = MCE_GCONF_POWERKEY_MODE,
     .type = "i",
     .def  = "1",
   },
   {
-    // MCE_GCONF_POWERKEY_BLANKING_MODE @ powerkey.h
-    .key  = "/system/osso/dsm/powerkey/blanking_mode",
+    .key  = MCE_GCONF_POWERKEY_BLANKING_MODE,
     .type = "i",
     .def  = "0", // = PWRKEY_BLANK_TO_OFF
+  },
+  {
+    .key  = MCE_GCONF_POWERKEY_PS_OVERRIDE_COUNT,
+    .type = "i",
+    .def  = "3",
+  },
+  {
+    .key  = MCE_GCONF_POWERKEY_PS_OVERRIDE_TIMEOUT,
+    .type = "i",
+    .def  = "333",
   },
   {
     .key = MCE_GCONF_MEMNOTIFY_WARNING_USED,

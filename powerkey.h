@@ -32,6 +32,12 @@
 /** Path to the powerkey blanking mode GConf setting */
 # define MCE_GCONF_POWERKEY_BLANKING_MODE  MCE_GCONF_POWERKEY_PATH "/blanking_mode"
 
+/** Powerkey press count for proximity sensor override */
+# define MCE_GCONF_POWERKEY_PS_OVERRIDE_COUNT  MCE_GCONF_POWERKEY_PATH "/ps_override_count"
+
+/** Maximum delay between powerkey presses for ps override */
+# define MCE_GCONF_POWERKEY_PS_OVERRIDE_TIMEOUT  MCE_GCONF_POWERKEY_PATH "/ps_override_timeout"
+
 /** Power key action enable modes */
 typedef enum
 {
@@ -41,8 +47,11 @@ typedef enum
 	/** Power key actions always enabled */
 	PWRKEY_ENABLE_ALWAYS,
 
-	/** Power key actions enabled when PS is not covered */
+	/** Power key actions enabled if PS is not covered */
 	PWRKEY_ENABLE_NO_PROXIMITY,
+
+	/** Power key actions enabled if PS is not covered or display is on */
+	PWRKEY_ENABLE_NO_PROXIMITY2,
 
 	PWRKEY_ENABLE_DEFAULT = PWRKEY_ENABLE_ALWAYS,
 } pwrkey_mode_t;
