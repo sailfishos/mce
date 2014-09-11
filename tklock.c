@@ -2049,6 +2049,7 @@ typedef struct
     bool            tklock;
     bool            insync;
     bool            restore;
+    bool            was_called;
     int64_t         linger_tick;
     guint           linger_id;
     int64_t         notif_tick;
@@ -2062,6 +2063,7 @@ static exception_t exdata =
     .tklock      = false,
     .insync      = true,
     .restore     = true,
+    .was_called  = false,
     .linger_tick = MIN_TICK,
     .linger_id   = 0,
     .notif_tick  = MIN_TICK,
@@ -2154,10 +2156,42 @@ static void tklock_uiexcept_rethink(void)
         goto EXIT;
     }
 
+    /* If we started from tklocked state ... */
+    if( exdata.tklock  ) {
+        switch( call_state ) {
+        case CALL_STATE_RINGING:
+            /* When UI side is dealing with incoming call, it removes tklock
+             * so that peeking shows home screen instead of lock screen. And
+             * since we do not want that to cancel the state restoration after
+             * the call ends -> we need to ignore it.
+             */
+            if( !exdata.was_called ) {
+                mce_log(LL_NOTICE, "starting to ignore tklock removal");
+                exdata.was_called = true;
+            }
+            break;
+
+        case CALL_STATE_NONE:
+            /* Start paying attention to tklock changes again if it gets
+             * restored after all calls have ended */
+            if( exdata.was_called && tklock_datapipe_have_tklock_submode() ) {
+                mce_log(LL_NOTICE, "stopping to ignore tklock removal");
+                exdata.was_called = false;
+            }
+            break;
+
+        default:
+            break;
+        }
+    }
+
+    /* If tklock state has changed from initial state ... */
     if( exdata.tklock != tklock_datapipe_have_tklock_submode() ) {
-        if( exdata.restore )
+        /* Disable state restore, unless we are handling incoming call */
+        if( exdata.restore && !exdata.was_called ) {
             mce_log(LL_NOTICE, "DISABLING STATE RESTORE; tklock out of sync");
-        exdata.restore = false;
+            exdata.restore = false;
+        }
     }
 
     // re-sync on display on transition
@@ -2310,6 +2344,7 @@ static void tklock_uiexcept_cancel(void)
     exdata.tklock      = false;
     exdata.insync      = true;
     exdata.restore     = true;
+    exdata.was_called  = false;
     exdata.linger_tick = MIN_TICK;
     exdata.linger_id   = 0;
     exdata.notif_tick  = MIN_TICK,
