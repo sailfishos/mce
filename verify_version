@@ -11,6 +11,15 @@ DEB_VERS=$(head -1 $DEB_PATH | sed -e 's/^.*(//' -e 's/).*$//')
 RPM_PATH=${RPM_SOURCE_DIR:-rpm}/${RPM_PACKAGE_NAME:-mce}.spec
 RPM_VERS=$(grep '^Version:' $RPM_PATH |sed -e 's/^.*:[[:space:]]*//')
 
+# Remove initial part of rpm version  that equals with version from Makefile
+RPM_XTRA=${RPM_VERS#$MAK_VERS}
+# From that remove initial part that equals with version from spec-file
+RPM_XTRA=${RPM_XTRA#$RPM_VERS}
+# If the result is non-empty string, then OBS is doing
+# delta-after-matching-tag kind of build, which is ok.
+# But empty string means that spec and Makefile are completely
+# out of sync, which is bad.
+
 RES=0
 
 if [ "$DEB_VERS" != "$MAK_VERS" ]; then
@@ -19,8 +28,12 @@ if [ "$DEB_VERS" != "$MAK_VERS" ]; then
 fi
 
 if [ "$RPM_VERS" != "$MAK_VERS" ]; then
-  echo >&2 "$MAK_PATH $MAK_VERS vs $RPM_PATH $RPM_VERS"
-  RES=1
+  if [ -z "$RPM_XTRA" ]; then
+    echo >&2 "$MAK_PATH $MAK_VERS vs $RPM_PATH $RPM_VERS"
+    RES=1
+  else
+    echo "(ignoring patch level in spec file: $RPM_XTRA)"
+  fi
 fi
 
 if [ $RES != 0 ]; then
