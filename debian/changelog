@@ -1,3 +1,10 @@
+mce (1.36.2) unstable; urgency=low
+
+  * [mce] Cancel display state restore if devicelock state changes.
+    Fixes JB#22743
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 19 Sep 2014 10:12:36 +0300
+
 mce (1.36.1) unstable; urgency=low
 
   * [mce] Expect tklock changes during calls. Fixes JB#20739
