@@ -546,6 +546,8 @@ static void tklock_datapipe_device_lock_active_cb(gconstpointer data)
     mce_log(LL_DEBUG, "device_lock_active = %d -> %d", prev,
             device_lock_active);
 
+    tklock_uiexcept_rethink();
+
     tklock_autolock_rethink();
 
 EXIT:
@@ -2047,6 +2049,7 @@ typedef struct
     uiexctype_t     mask;
     display_state_t display;
     bool            tklock;
+    bool            devicelock;
     bool            insync;
     bool            restore;
     bool            was_called;
@@ -2061,6 +2064,7 @@ static exception_t exdata =
     .mask        = UIEXC_NONE,
     .display     = MCE_DISPLAY_UNDEF,
     .tklock      = false,
+    .devicelock  = false,
     .insync      = true,
     .restore     = true,
     .was_called  = false,
@@ -2192,6 +2196,11 @@ static void tklock_uiexcept_rethink(void)
             mce_log(LL_NOTICE, "DISABLING STATE RESTORE; tklock out of sync");
             exdata.restore = false;
         }
+    }
+
+    if( exdata.restore && exdata.devicelock != device_lock_active ) {
+        mce_log(LL_NOTICE, "DISABLING STATE RESTORE; devicelock out of sync");
+        exdata.restore = false;
     }
 
     // re-sync on display on transition
@@ -2342,6 +2351,7 @@ static void tklock_uiexcept_cancel(void)
     exdata.mask        = UIEXC_NONE;
     exdata.display     = MCE_DISPLAY_UNDEF;
     exdata.tklock      = false;
+    exdata.devicelock  = false;
     exdata.insync      = true;
     exdata.restore     = true;
     exdata.was_called  = false;
@@ -2452,9 +2462,10 @@ static void tklock_uiexcept_begin(uiexctype_t type, int64_t linger)
         /* reset existing stats */
         tklock_uiexcept_cancel();
 
-        /* save display and tklock state */
-        exdata.tklock  = tklock_datapipe_have_tklock_submode();
-        exdata.display = display_state;
+        /* save display, tklock and device lock states */
+        exdata.display    = display_state;
+        exdata.tklock     = tklock_datapipe_have_tklock_submode();
+        exdata.devicelock = device_lock_active;
 
         /* initially insync, restore state at end */
         exdata.insync      = true;
