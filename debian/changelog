@@ -1,3 +1,9 @@
+mce (1.36.1) unstable; urgency=low
+
+  * [mce] Expect tklock changes during calls. Fixes JB#20739
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 19 Sep 2014 08:15:40 +0300
+
 mce (1.36.0) unstable; urgency=low
 
   * [mce] Do not release touch input blocking while proximity sensor is
