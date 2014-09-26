@@ -1,3 +1,9 @@
+mce (1.36.3) unstable; urgency=low
+
+  * [mce] Work around erroneous initial brightness reporting. Fixes JB#23138
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 26 Sep 2014 08:28:52 +0300
+
 mce (1.36.2) unstable; urgency=low
 
   * [mce] Cancel display state restore if devicelock state changes.
