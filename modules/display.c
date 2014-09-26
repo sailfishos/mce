@@ -2378,6 +2378,13 @@ static void mdy_brightness_set_fade_target_ex(gint new_brightness,
         goto EXIT;
     }
 
+    /* Small enough changes are made immediately instead of
+     * using fading timer */
+    if( abs(mdy_brightness_level_cached - new_brightness) <= 1 ) {
+        mdy_brightness_force_level(new_brightness);
+        goto EXIT;
+    }
+
     /* Calculate fading time window */
     int64_t beg = mdy_get_boot_tick();
     int64_t end = beg + transition_time;
@@ -8193,6 +8200,32 @@ static void mdy_brightness_init(void)
     }
     mce_log(LL_DEBUG, "mdy_brightness_level_cached=%d",
             mdy_brightness_level_cached);
+
+    /* On some devices there are multiple ways to control backlight
+     * brightness. We use only one, but after bootup it might contain
+     * a value that does not match the reality.
+     *
+     * The likely scenario is something like:
+     *   lcd-backlight/brightness = 255 (incorrect)
+     *   wled/brightness          =  64 (correct)
+     *
+     * Which leads - if using manual/100% brightness - mce not to
+     * update the brightness because it already is supposed to
+     * be at 255.
+     *
+     * Using "reported_by_kernel minus one" as mce cached value
+     * would make mce to update the sysfs value later on, but then
+     * the kernel can ignore it because it sees no change.
+     *
+     * But by writing the off-by-one value to sysfs:
+     * a) we're still close to the reported value in case it happened
+     *    to be correct (after mce restart)
+     * b) the kernel side sees at least one brightness change even if
+     *    the brightness setting evaluation would lead to the same
+     *    value that was originally reported
+     */
+    if( mdy_brightness_level_cached > 0 )
+        mdy_brightness_force_level(mdy_brightness_level_cached - 1);
 }
 
 /**
