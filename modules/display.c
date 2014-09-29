@@ -5792,6 +5792,15 @@ static void mdy_stm_enable_renderer(void)
 }
 
 /** Execute one state machine step
+ *
+ * The state transition flow implemented by this function is
+ * described in graphviz dot language in display.dot.
+ *
+ * Any changes to state transition logic should be made to
+ * display.dot too.
+ *
+ * As an example: generate PNG image by executing
+ *   dot -Tpng display.dot -o display.png
  */
 static void mdy_stm_step(void)
 {

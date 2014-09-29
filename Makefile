@@ -555,6 +555,7 @@ NORMALIZE_USES_SPC =\
 	modules/camera.h\
 	modules/cpu-keepalive.c\
 	modules/display.c\
+	modules/display.dot\
 	modules/doubletap.c\
 	modules/doubletap.h\
 	modules/filter-brightness-simple.h\

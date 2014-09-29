@@ -1,0 +1,124 @@
+/* -*- mode: c -*- */
+
+/* Extra documentation for state transitions made from
+ * mdy_stm_step() function in the mce display plugin
+ */
+
+digraph display_state_machine {
+  fontsize=12;
+  label = "MCE DISPLAY/SUSPEND STATE MACHINE";
+  nodesep=0.3;
+  ranksep=0.2;
+  node[fontsize=6];
+  edge[fontsize=6];
+  edge[arrowsize=0.3];
+  node[style=filled,fillcolor=skyblue,shape=box];
+  node[width=0.00001];
+  node[height=0.00001];
+  // COMMENTS
+  node[fillcolor=grey90];
+  COMMENTS[label="NB: A wakelock is held all the\ntime except in POWER OFF\nwith late suspend enabled\n"];
+  //
+  // --==( STABLE )==--
+  //
+  node[fillcolor=yellow];
+  STABLE;
+  STM_UNSET;
+  STM_STAY_POWER_OFF;
+  STM_STAY_POWER_ON;
+  STM_STAY_LOGICAL_OFF;
+  //
+  // --==( WAITING )==--
+  //
+  node[fillcolor=skyblue];
+  WAITING;
+  STM_WAIT_RESUME;
+  STM_WAIT_SUSPEND;
+  STM_RENDERER_WAIT_START;
+  STM_RENDERER_WAIT_STOP;
+  //
+  // --==( TRANSIENT )==--
+  //
+  node[fillcolor=wheat];
+  TRANSIENT;
+  STM_LEAVE_POWER_OFF;
+  STM_ENTER_POWER_OFF;
+  STM_INIT_RESUME;
+  STM_ENTER_LOGICAL_OFF;
+  STM_LEAVE_LOGICAL_OFF;
+  STM_INIT_SUSPEND;
+  STM_RENDERER_INIT_START;
+  STM_RENDERER_INIT_STOP;
+  STM_ENTER_POWER_ON;
+  STM_LEAVE_POWER_ON;
+  STM_WAIT_FADE_TO_BLACK;
+  STM_WAIT_FADE_TO_TARGET;
+  //
+  // --==( BRANCHES )==--
+  //
+  node[shape=point];
+  //
+  // --==( TRANSITIONS )==--
+  //
+  node[shape=oval,fillcolor=pink];
+
+  COMMENTS->STABLE[style=invis];
+  STABLE->WAITING[style=invis];
+  WAITING->TRANSIENT[style=invis];
+
+  STM_UNSET -> STM_RENDERER_INIT_START               [label=" on req"];
+
+  STM_RENDERER_INIT_STOP -> STM_ENTER_LOGICAL_OFF    [label=" lipstick not up"];
+  STM_RENDERER_INIT_STOP -> STM_RENDERER_WAIT_STOP   [label=" req ui stop"];
+
+  STM_RENDERER_WAIT_STOP -> STM_INIT_SUSPEND         [label=" ipc ack"];
+  STM_RENDERER_WAIT_STOP -> STM_RENDERER_INIT_STOP   [label=" ipc err"];
+
+  STM_WAIT_FADE_TO_BLACK -> STM_RENDERER_INIT_STOP   [label=" fader finished"];
+
+  STM_INIT_SUSPEND -> STM_WAIT_SUSPEND               [label=" powerstate to mem"];
+  STM_INIT_SUSPEND -> STM_ENTER_LOGICAL_OFF;
+
+  STM_WAIT_SUSPEND -> STM_ENTER_POWER_OFF            [label=" fb sleeping"];
+
+  STM_ENTER_POWER_OFF -> STM_STAY_POWER_OFF          [label=" signal state"];
+
+  STM_STAY_POWER_OFF -> STM_LEAVE_POWER_OFF          [label=" req"];
+  STM_STAY_POWER_OFF -> STM_LEAVE_POWER_OFF          [label=" policy"];
+  STM_STAY_POWER_OFF -> STM_STAY_POWER_OFF           [label=" toggle late\nsuspend\n"];
+
+  STM_LEAVE_POWER_OFF -> STM_INIT_RESUME             [label=" acquire wakelock"];
+  STM_LEAVE_POWER_OFF -> STM_ENTER_POWER_OFF         [label=" policy"];
+
+  STM_INIT_RESUME -> STM_WAIT_RESUME                 [label=" powerstate to on"];
+
+  STM_WAIT_RESUME -> STM_RENDERER_INIT_START         [label=" req"];
+  STM_WAIT_RESUME -> STM_ENTER_LOGICAL_OFF           [label=" policy"];
+
+  STM_RENDERER_INIT_START -> STM_WAIT_FADE_TO_TARGET [label=" lipstick not up"];
+  STM_RENDERER_INIT_START -> STM_RENDERER_WAIT_START [label=" req ui start"];
+
+  STM_RENDERER_WAIT_START -> STM_WAIT_FADE_TO_TARGET [label=" ipc ack"];
+  STM_RENDERER_WAIT_START -> STM_RENDERER_INIT_START [label=" ipc err"];
+
+  STM_WAIT_FADE_TO_TARGET -> STM_ENTER_POWER_ON      [label=" fader finished"];
+
+  STM_ENTER_POWER_ON -> STM_STAY_POWER_ON            [label=" signal state"];
+
+  STM_STAY_POWER_ON -> STM_LEAVE_POWER_ON            [label=" req"];
+
+  STM_LEAVE_POWER_ON -> STM_RENDERER_INIT_START      [label=" need power on"];
+  STM_LEAVE_POWER_ON -> STM_WAIT_FADE_TO_BLACK       [label=" need power off"];
+
+  STM_ENTER_LOGICAL_OFF -> STM_STAY_LOGICAL_OFF      [label=" signal state"];
+
+  STM_STAY_LOGICAL_OFF -> STM_LEAVE_LOGICAL_OFF      [label=" req"];
+  STM_STAY_LOGICAL_OFF -> STM_LEAVE_LOGICAL_OFF      [label=" policy"];
+  STM_STAY_LOGICAL_OFF -> STM_RENDERER_INIT_STOP     [label=" lipstick restart"];
+
+  STM_LEAVE_LOGICAL_OFF -> STM_RENDERER_INIT_START   [label=" *"];
+  STM_LEAVE_LOGICAL_OFF -> STM_INIT_SUSPEND          [label=" policy"];
+
+  // lipstick restart special case (happens outside stm)
+  STM_STAY_POWER_ON -> STM_LEAVE_POWER_ON            [label=" lipstick\n restart\n"];
+}
