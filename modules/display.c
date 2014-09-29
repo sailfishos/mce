@@ -214,6 +214,7 @@ typedef enum
     STM_RENDERER_INIT_STOP,
     STM_RENDERER_WAIT_STOP,
     STM_WAIT_FADE_TO_BLACK,
+    STM_WAIT_FADE_TO_TARGET,
     STM_INIT_SUSPEND,
     STM_WAIT_SUSPEND,
     STM_ENTER_POWER_OFF,
@@ -5360,6 +5361,7 @@ static const char *mdy_stm_state_name(stm_state_t state)
         DO(RENDERER_INIT_STOP);
         DO(RENDERER_WAIT_STOP);
         DO(WAIT_FADE_TO_BLACK);
+        DO(WAIT_FADE_TO_TARGET);
         DO(INIT_SUSPEND);
         DO(WAIT_SUSPEND);
         DO(ENTER_POWER_OFF);
@@ -5697,7 +5699,7 @@ static void mdy_stm_step(void)
 
     case STM_RENDERER_INIT_START:
         if( !mdy_compositor_is_available() ) {
-            mdy_stm_trans(STM_ENTER_POWER_ON);
+            mdy_stm_trans(STM_WAIT_FADE_TO_TARGET);
         }
         else {
             mdy_stm_enable_renderer();
@@ -5709,7 +5711,7 @@ static void mdy_stm_step(void)
         if( mdy_stm_is_renderer_pending() )
             break;
         if( mdy_stm_is_renderer_enabled() ) {
-            mdy_stm_trans(STM_ENTER_POWER_ON);
+            mdy_stm_trans(STM_WAIT_FADE_TO_TARGET);
             break;
         }
         /* If compositor is not responsive, we must keep trying
@@ -5717,6 +5719,16 @@ static void mdy_stm_step(void)
          * from system bus */
         mce_log(LL_CRIT, "ui start failed, retrying");
         mdy_stm_trans(STM_RENDERER_INIT_START);
+        break;
+
+    case STM_WAIT_FADE_TO_TARGET:
+        /* When using sw fader, we need to wait until it is finished.
+         * Otherwise the avalanche of activity resulting from the
+         * display=on signal will starve mce of cpu and the brightness
+         * transition gets really jumpy. */
+        if( mdy_brightness_fade_is_active() )
+            break;
+        mdy_stm_trans(STM_ENTER_POWER_ON);
         break;
 
     case STM_ENTER_POWER_ON:
