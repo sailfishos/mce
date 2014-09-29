@@ -5736,7 +5736,13 @@ static void mdy_stm_step(void)
         if( mdy_stm_display_state_needs_power(mdy_stm_next) )
             mdy_stm_trans(STM_RENDERER_INIT_START);
         else
-            mdy_stm_trans(STM_RENDERER_INIT_STOP);
+            mdy_stm_trans(STM_WAIT_FADE_TO_BLACK);
+        break;
+
+    case STM_WAIT_FADE_TO_BLACK:
+        if( mdy_brightness_fade_is_active() )
+            break;
+        mdy_stm_trans(STM_RENDERER_INIT_STOP);
         break;
 
     case STM_RENDERER_INIT_STOP:
@@ -5754,7 +5760,7 @@ static void mdy_stm_step(void)
         if( mdy_stm_is_renderer_pending() )
             break;
         if( mdy_stm_is_renderer_disabled() ) {
-            mdy_stm_trans(STM_WAIT_FADE_TO_BLACK);
+            mdy_stm_trans(STM_INIT_SUSPEND);
             break;
         }
         /* If compositor is not responsive, we must keep trying
@@ -5762,12 +5768,6 @@ static void mdy_stm_step(void)
          * from system bus */
         mce_log(LL_CRIT, "ui stop failed, retrying");
         mdy_stm_trans(STM_RENDERER_INIT_STOP);
-        break;
-
-    case STM_WAIT_FADE_TO_BLACK:
-        if( mdy_brightness_fade_is_active() )
-            break;
-        mdy_stm_trans(STM_INIT_SUSPEND);
         break;
 
     case STM_INIT_SUSPEND:
