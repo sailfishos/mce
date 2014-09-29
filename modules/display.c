@@ -318,6 +318,44 @@ static void                mdy_hbm_rethink(void);
  * BACKLIGHT_BRIGHTNESS
  * ------------------------------------------------------------------------- */
 
+typedef enum
+{
+    /** No brightness fading */
+    FADER_IDLE,
+
+    /** Normal brightness fading */
+    FADER_DEFAULT,
+
+    /** Fading to MCE_DISPLAY_DIM */
+    FADER_DIMMING,
+
+    /** Fading due to ALS adjustment */
+    FADER_ALS,
+
+    /** Fading to DISPLAY_OFF */
+    FADER_BLANK,
+
+    /** Fading from DISPLAY_OFF */
+    FADER_UNBLANK,
+
+    FADER_NUMOF
+} fader_type_t;
+
+static const char *
+fader_type_name(fader_type_t type)
+{
+    static const char * const lut[FADER_NUMOF] =
+    {
+        [FADER_IDLE]          = "IDLE",
+        [FADER_DEFAULT]       = "DEFAULT",
+        [FADER_DIMMING]       = "DIMMING",
+        [FADER_ALS]           = "ALS",
+        [FADER_BLANK]         = "BLANK",
+        [FADER_UNBLANK]       = "UNBLANK",
+    };
+    return (type < FADER_NUMOF) ? lut[type] : "INVALID";
+}
+
 #ifdef ENABLE_HYBRIS
 static void                mdy_brightness_set_level_hybris(int number);
 #endif
@@ -331,10 +369,10 @@ static void                mdy_brightness_set_priority_boost(bool enable);
 static gboolean            mdy_brightness_fade_timer_cb(gpointer data);
 static void                mdy_brightness_cleanup_fade_timer(void);
 static void                mdy_brightness_stop_fade_timer(void);
-static void                mdy_brightness_start_fade_timer(gint step_time);
+static void                mdy_brightness_start_fade_timer(fader_type_t type, gint step_time);
 static bool                mdy_brightness_fade_is_active(void);
 
-static void                mdy_brightness_set_fade_target_ex(gint new_brightness, gint transition_time);
+static void                mdy_brightness_set_fade_target_ex(fader_type_t type, gint new_brightness, gint transition_time);
 static void                mdy_brightness_set_fade_target_default(gint new_brightness);
 static void                mdy_brightness_set_fade_target_dimming(gint new_brightness);
 static void                mdy_brightness_set_fade_target_als(gint new_brightness);
@@ -2059,6 +2097,9 @@ static output_state_t mdy_brightness_hw_fading_output =
 /** Brightness fade timeout callback ID */
 static guint mdy_brightness_fade_timer_id = 0;
 
+/** Type of ongoing brightness fade */
+static fader_type_t mdy_brightness_fade_type = FADER_IDLE;
+
 /** Monotonic time stamp for brightness fade start time */
 static int64_t mdy_brightness_fade_start_time = 0;
 
@@ -2309,6 +2350,9 @@ static void mdy_brightness_cleanup_fade_timer(void)
         g_source_remove(mdy_brightness_fade_timer_id),
         mdy_brightness_fade_timer_id = 0;
 
+    /* Clear ongoing fade type */
+    mdy_brightness_fade_type = FADER_IDLE;
+
     /* Unblock display off transition */
     mdy_stm_schedule_rethink();
 
@@ -2331,7 +2375,8 @@ static void mdy_brightness_stop_fade_timer(void)
  *
  * @param step_time The time between each brightness step
  */
-static void mdy_brightness_start_fade_timer(gint step_time)
+static void mdy_brightness_start_fade_timer(fader_type_t type,
+                                            gint step_time)
 {
     if( !mdy_brightness_fade_timer_id ) {
         mce_log(LL_DEBUG, "fader started");
@@ -2346,11 +2391,53 @@ static void mdy_brightness_start_fade_timer(gint step_time)
     /* Setup new timeout */
     mdy_brightness_fade_timer_id =
         g_timeout_add(step_time, mdy_brightness_fade_timer_cb, NULL);
+
+    /* Set ongoing fade type */
+    mdy_brightness_fade_type = type;
 }
 
 static bool mdy_brightness_fade_is_active(void)
 {
     return mdy_brightness_fade_timer_id != 0;
+}
+
+/** Check if starting brightness fade of given type is allowed
+ *
+ * @param type fade type to start
+ *
+ * @return true if the fading can start, false otherwise
+ */
+static bool
+mdy_brightness_is_fade_allowed(fader_type_t type)
+{
+    bool allowed = true;
+
+    switch( mdy_brightness_fade_type ) {
+    default:
+    case FADER_IDLE:
+    case FADER_ALS:
+        break;
+
+    case FADER_DEFAULT:
+    case FADER_DIMMING:
+        /* deny als tuning during display state transitions */
+        if( type == FADER_ALS )
+            allowed = false;
+        break;
+
+    case FADER_BLANK:
+        /* ongoing fade to black can't be cancelled */
+        allowed = false;
+        break;
+
+    case FADER_UNBLANK:
+        /* only unblank target level can be changed */
+        if( type != FADER_UNBLANK )
+            allowed = false;
+        break;
+    }
+
+    return allowed;
 }
 
 /**
@@ -2360,7 +2447,8 @@ static bool mdy_brightness_fade_is_active(void)
  *
  * @param new_brightness The new brightness to fade to
  */
-static void mdy_brightness_set_fade_target_ex(gint new_brightness,
+static void mdy_brightness_set_fade_target_ex(fader_type_t type,
+                                              gint new_brightness,
                                               gint transition_time)
 {
     /* While something like 20-40 ms would suffice for most cases
@@ -2368,9 +2456,17 @@ static void mdy_brightness_set_fade_target_ex(gint new_brightness,
      * the short time window we have available during unblanking. */
     const int delay_min = 4;
 
-    mce_log(LL_DEBUG, "fade from %d to %d in %d ms",
+    mce_log(LL_DEBUG, "type %s fade from %d to %d in %d ms",
+            fader_type_name(type),
             mdy_brightness_level_cached,
             new_brightness, transition_time);
+
+    if( !mdy_brightness_is_fade_allowed(type) ) {
+        mce_log(LL_DEBUG, "ignoring fade=%s; ongoing fade=%s",
+                fader_type_name(type),
+                fader_type_name(mdy_brightness_fade_type));
+        goto EXIT;
+    }
 
     /* If we're already at the target level, stop any
      * ongoing fading activity */
@@ -2438,7 +2534,7 @@ static void mdy_brightness_set_fade_target_ex(gint new_brightness,
     if( delay < delay_min )
         delay = delay_min;
 
-    mdy_brightness_start_fade_timer(delay);
+    mdy_brightness_start_fade_timer(type, delay);
 
 EXIT:
     return;
@@ -2448,7 +2544,8 @@ EXIT:
  */
 static void mdy_brightness_set_fade_target_default(gint new_brightness)
 {
-    mdy_brightness_set_fade_target_ex(new_brightness,
+    mdy_brightness_set_fade_target_ex(FADER_DEFAULT,
+                                      new_brightness,
                                       mdy_brightness_fade_duration_def_ms);
 }
 
@@ -2456,7 +2553,8 @@ static void mdy_brightness_set_fade_target_default(gint new_brightness)
  */
 static void mdy_brightness_set_fade_target_unblank(gint new_brightness)
 {
-    mdy_brightness_set_fade_target_ex(new_brightness,
+    mdy_brightness_set_fade_target_ex(FADER_UNBLANK,
+                                      new_brightness,
                                       mdy_brightness_fade_duration_unblank_ms);
 }
 
@@ -2476,7 +2574,8 @@ static void mdy_brightness_set_fade_target_blank(void)
         goto EXIT;
     }
 
-    mdy_brightness_set_fade_target_ex(0,
+    mdy_brightness_set_fade_target_ex(FADER_BLANK,
+                                      0,
                                       mdy_brightness_fade_duration_blank_ms);
 EXIT:
     return;
@@ -2486,7 +2585,8 @@ EXIT:
  */
 static void mdy_brightness_set_fade_target_dimming(gint new_brightness)
 {
-    mdy_brightness_set_fade_target_ex(new_brightness,
+    mdy_brightness_set_fade_target_ex(FADER_DIMMING,
+                                      new_brightness,
                                       mdy_brightness_fade_duration_dim_ms);
 }
 
@@ -2494,23 +2594,27 @@ static void mdy_brightness_set_fade_target_dimming(gint new_brightness)
  */
 static void mdy_brightness_set_fade_target_als(gint new_brightness)
 {
-    if( display_state != display_state_next ) {
-        /* The assumption is that a more suitable fast state change
-         * dependant fading is already going on and we do not want
-         * any jumps to that due to ALS tuning.
-         *
-         * And, if the transition lands up at wrong target level,
-         * another fast transition is done to correct the situation
-         * after stable display state has been reached.
-         */
-        mce_log(LL_DEBUG, "skip als tuning during display state transition");
-        goto EXIT;
+    /* Update wake up brightness level in case we got als data
+     * before unblank fading has been started */
+    mce_log(LL_DEBUG, "resume level: %d -> %d",
+            mdy_brightness_level_display_resume,
+            new_brightness);
+    mdy_brightness_level_display_resume = new_brightness;
+
+    if( mdy_brightness_fade_type == FADER_UNBLANK ) {
+        /* Currently unblanking, adjust the target level */
+        mdy_brightness_set_fade_target_unblank(new_brightness);
+    }
+    else if( display_state == MCE_DISPLAY_POWER_UP ) {
+        /* But do not *start* fading due to als during unblanking */
+        mce_log(LL_DEBUG, "skip als fade; powering up display");
+    }
+    else if( display_state != MCE_DISPLAY_POWER_UP ) {
+        mdy_brightness_set_fade_target_ex(FADER_ALS,
+                                          new_brightness,
+                                          mdy_brightness_fade_duration_als_ms);
     }
 
-    mdy_brightness_set_fade_target_ex(new_brightness,
-                                      mdy_brightness_fade_duration_als_ms);
-
-EXIT:
     return;
 }
 
@@ -2570,8 +2674,9 @@ static void mdy_brightness_set_lpm_level(gint level)
 
     mdy_brightness_level_display_lpm = brightness;
 
-    /* Take updated values in use */
-    switch( display_state ) {
+    /* Take updated values in use - based on non-transitional
+     * display state we are in or transitioning to */
+    switch( display_state_next ) {
     case MCE_DISPLAY_LPM_ON:
         mdy_brightness_set_fade_target_als(mdy_brightness_level_display_lpm);
         break;
@@ -2625,8 +2730,9 @@ static void mdy_brightness_set_on_level(gint hbm_and_level)
 
     /* Note: The lpm brightness is handled separately */
 
-    /* Take updated values in use */
-    switch( display_state ) {
+    /* Take updated values in use - based on non-transitional
+     * display state we are in or transitioning to */
+    switch( display_state_next ) {
     case MCE_DISPLAY_OFF:
     case MCE_DISPLAY_LPM_OFF:
     case MCE_DISPLAY_LPM_ON:
