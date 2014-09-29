@@ -2381,6 +2381,7 @@ static void mdy_brightness_set_fade_target_ex(gint new_brightness,
     /* Small enough changes are made immediately instead of
      * using fading timer */
     if( abs(mdy_brightness_level_cached - new_brightness) <= 1 ) {
+        mce_log(LL_DEBUG, "small change; not using fader");
         mdy_brightness_force_level(new_brightness);
         goto EXIT;
     }
@@ -2399,7 +2400,7 @@ static void mdy_brightness_set_fade_target_ex(gint new_brightness,
     /* Move fading start point to current time */
     mdy_brightness_fade_start_time = beg;
 
-    if( mdy_brightness_fade_end_time < beg ) {
+    if( mdy_brightness_fade_end_time <= beg ) {
         /* Previous fading has ended -> set fading end point */
         mdy_brightness_fade_end_time = end;
     }
@@ -2419,6 +2420,7 @@ static void mdy_brightness_set_fade_target_ex(gint new_brightness,
                             mdy_brightness_fade_start_time);
 
     if( transition_time < delay_min * 3 ) {
+        mce_log(LL_DEBUG, "short transition; not using fader");
         mdy_brightness_force_level(new_brightness);
         goto EXIT;
     }
@@ -5836,6 +5838,12 @@ static void mdy_stm_step(void)
         if( !mdy_stm_is_fb_resume_finished() )
             break;
         if( mdy_stm_display_state_needs_power(mdy_stm_next) ) {
+            /* We must have non-zero brightness in place when ui draws
+             * for the 1st time or the brightness changes will not happen
+             * until ui draws again ... */
+            if( mdy_brightness_level_cached <= 0 )
+                mdy_brightness_force_level(1);
+
             mdy_brightness_set_fade_target_unblank(mdy_brightness_level_display_resume);
             mdy_stm_trans(STM_RENDERER_INIT_START);
         }
