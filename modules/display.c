@@ -5837,6 +5837,16 @@ static void mdy_stm_step(void)
         break;
 
     case STM_WAIT_FADE_TO_TARGET:
+        /* If the display is already powered up and normal ui is
+         * visible, the transition must not be blocked by ongoing
+         * brightness fade. Otherwise the user input processing
+         * would get misinterpreted. */
+        if( mdy_stm_curr == MCE_DISPLAY_ON ||
+            mdy_stm_curr == MCE_DISPLAY_DIM ) {
+            mdy_stm_trans(STM_ENTER_POWER_ON);
+            break;
+        }
+
         /* When using sw fader, we need to wait until it is finished.
          * Otherwise the avalanche of activity resulting from the
          * display=on signal will starve mce of cpu and the brightness
