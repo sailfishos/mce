@@ -1,3 +1,10 @@
+mce (1.36.4) unstable; urgency=low
+
+  * [mce] Wait for fade-to-black to finish before stopping display updates.
+    Fixes JB#21833
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 30 Sep 2014 16:57:54 +0300
+
 mce (1.36.3) unstable; urgency=low
 
   * [mce] Work around erroneous initial brightness reporting. Fixes JB#23138
