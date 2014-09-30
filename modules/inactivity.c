@@ -462,12 +462,23 @@ static gpointer device_inactive_filter(gpointer data)
 	display_state_t display_state   = display_state_get();
 	system_state_t system_state = datapipe_get_gint(system_state_pipe);
 	call_state_t call_state = datapipe_get_gint(call_state_pipe);
-	gpointer retval;
 
 	device_inactive = GPOINTER_TO_INT(data);
 
 	/* nothing to filter if we are already inactive */
 	if( device_inactive )
+		goto EXIT;
+
+	/* Never filter inactivity if display is in dimmed state.
+	 *
+	 * Whether we have arrived to dimmed state via expected or
+	 * unexpected routes, the touch input is active and ui side
+	 * event eater will ignore only the first event. If we do
+	 * not allow activity (and turn on the display) we will get
+	 * ui interaction in odd looking dimmed state that then gets
+	 * abruptly ended by blanking timer.
+	 */
+	if( display_state == MCE_DISPLAY_DIM )
 		goto EXIT;
 
 	/* system state must be USER or ACT DEAD */
@@ -536,22 +547,22 @@ static gpointer device_inactive_filter(gpointer data)
 		}
 	}
 
-	/* We got activity; restart timeouts */
-	if (device_inactive == FALSE) {
+EXIT:
+	/* React to activity */
+	if( !device_inactive ) {
 		call_activity_callbacks();
 		setup_inactivity_timeout();
 	}
-EXIT:
 
-	/* Only send the inactivity status if it changed */
+	/* Handle inactivity state change */
 	if( old_device_inactive != device_inactive ) {
-		send_inactivity_status(NULL);
 		old_device_inactive = device_inactive;
+
+		send_inactivity_status(NULL);
 	}
 
-	retval = GINT_TO_POINTER(device_inactive);
-
-	return retval;
+	/* Return filtered activity state */
+	return GINT_TO_POINTER(device_inactive);
 }
 
 /**
