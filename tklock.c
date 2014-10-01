@@ -236,6 +236,7 @@ static gboolean tklock_uiexcept_linger_cb(gpointer aptr);
 static void     tklock_uiexcept_begin(uiexctype_t type, int64_t linger);
 static void     tklock_uiexcept_end(uiexctype_t type, int64_t linger);
 static void     tklock_uiexcept_cancel(void);
+static void     tklock_uiexcept_finish(void);
 static void     tklock_uiexcept_deny_state_restore(void);
 static void     tklock_uiexcept_rethink(void);
 
@@ -2361,24 +2362,8 @@ static void tklock_uiexcept_cancel(void)
     exdata.notif_id    = 0;
 }
 
-static gboolean tklock_uiexcept_linger_cb(gpointer aptr)
+static void tklock_uiexcept_finish(void)
 {
-    (void) aptr;
-
-    if( !exdata.linger_id )
-        goto EXIT;
-
-    /* mark timer inactive */
-    exdata.linger_id = 0;
-
-    /* Ignore unless linger bit and only linger bit is set */
-    if( exdata.mask != UIEXC_LINGER ) {
-        mce_log(LL_WARN, "spurious linger timeout");
-        goto EXIT;
-    }
-
-    mce_log(LL_DEBUG, "linger timeout");
-
     /* operate on copy of data, in case the data
      * pipe operations cause feedback */
     exception_t exx = exdata;
@@ -2419,6 +2404,28 @@ static gboolean tklock_uiexcept_linger_cb(gpointer aptr)
                          GINT_TO_POINTER(MCE_DISPLAY_ON),
                          USE_INDATA, CACHE_INDATA);
     }
+EXIT:
+    return;
+}
+
+static gboolean tklock_uiexcept_linger_cb(gpointer aptr)
+{
+    (void) aptr;
+
+    if( !exdata.linger_id )
+        goto EXIT;
+
+    /* mark timer inactive */
+    exdata.linger_id = 0;
+
+    /* Ignore unless linger bit and only linger bit is set */
+    if( exdata.mask != UIEXC_LINGER ) {
+        mce_log(LL_WARN, "spurious linger timeout");
+        goto EXIT;
+    }
+
+    mce_log(LL_DEBUG, "linger timeout");
+    tklock_uiexcept_finish();
 
 EXIT:
     return FALSE;
@@ -2442,12 +2449,16 @@ static void tklock_uiexcept_end(uiexctype_t type, int64_t linger)
         g_source_remove(exdata.linger_id), exdata.linger_id = 0;
 
     if( !exdata.mask ) {
-        exdata.mask |= UIEXC_LINGER;
         int delay = (int)(exdata.linger_tick - now);
-        if( delay <= 0 )
-            exdata.linger_id = g_idle_add(tklock_uiexcept_linger_cb, 0);
-        else
+        if( delay > 0 ) {
+            mce_log(LL_DEBUG, "finish after %d ms linger", delay);
+            exdata.mask |= UIEXC_LINGER;
             exdata.linger_id = g_timeout_add(delay, tklock_uiexcept_linger_cb, 0);
+        }
+        else {
+            mce_log(LL_DEBUG, "finish without linger");
+            tklock_uiexcept_finish();
+        }
     }
 
     tklock_uiexcept_sync_to_datapipe();
