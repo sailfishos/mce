@@ -87,7 +87,7 @@
  * backlight dimming alone is not enough to make dimmed display state
  * visible to the user.
  */
-#define MCE_FADER_OPACITY_PERCENT 70
+#define MCE_FADER_OPACITY_PERCENT 50
 
 /* ========================================================================= *
  * TYPEDEFS
@@ -1232,8 +1232,6 @@ static void mdy_datapipe_display_state_cb(gconstpointer data)
 
     mce_log(LL_DEVEL, "current display state = %s",
             mdy_display_state_name(display_state));
-
-    mdy_ui_dimming_rethink();
 
 EXIT:
     return;
@@ -2787,44 +2785,89 @@ static void mdy_ui_dimming_rethink(void)
      * evaluation on mce startup forces signal to be sent */
     static dbus_int32_t dimming_prev = -1;
 
-    /* By default the ui side dimming should not occur */
+    /* This gets a bit hairy because we do not want to restart the
+     * ui side fade animation once it has started and heading to
+     * the correct level -> on display power up we want to make
+     * only one guess when/if the fading target changes and how
+     * fast the change should happen.
+     *
+     * The triggers for calling this function are:
+     * 1) display state transition starts
+     * 2) als tuning changes mdy_ui_dimming_is_needed
+     *
+     * When (1) happens, both display_state and display_state_next
+     * hold stable states.
+     *
+     * If (2) happens during display power up/down, the
+     * display_state variable can hold transitient
+     * MCE_DISPLAY_POWER_UP/DOWN states.
+     */
+
+    /* Assume that ui side dimming should not occur */
     dbus_int32_t dimming_curr = 0;
 
-    if( mdy_ui_dimming_is_needed ) {
-        /* Backlight brightness tuning would not produce visible difference
-         * between ON and DIM display state */
-
-        if( display_state == MCE_DISPLAY_DIM ||
-            ( display_state_next == MCE_DISPLAY_DIM &&
-              display_state == MCE_DISPLAY_ON ) ) {
-            /* We are in dimmed display state, or making transtion to
-             * dimmed state from on state -> signal ui side that it
-             * should do MCE_FADER_OPACITY_PERCENT fade to black.
-             *
-             * Note that we explicitly do not want to
-             * a) start ui side fading while powering display up
-             *    to dimmed state (might cause unwanted ui side cpu
-             *    load and should not occur in normal use anyway)
-             * b) stop ui side fading while powering display down
-             *    from dimmed state (might cause flickering if ui
-             *    side would start to make display brighter while
-             *    mce is ramping down the backlight brightness)
-             */
+    if( display_state == MCE_DISPLAY_POWER_DOWN ||
+        display_state_next == MCE_DISPLAY_OFF   ||
+        display_state_next == MCE_DISPLAY_LPM_OFF ) {
+        /* At or entering powered off state -> keep current state */
+        if( dimming_prev >= 0 )
+            dimming_curr = dimming_prev;
+    }
+    else if( display_state_next == MCE_DISPLAY_DIM ) {
+        /* At or entering dimmed state -> use if needed */
+        if( mdy_ui_dimming_is_needed )
             dimming_curr = MCE_FADER_OPACITY_PERCENT;
-        }
     }
 
+    /* Skip the rest if the target level does not change */
     if( dimming_prev == dimming_curr )
         goto EXIT;
 
     dimming_prev = dimming_curr;
 
-    mce_log(LL_DEVEL, "sending dbus signal: %s %d",
-            MCE_FADER_OPACITY_SIG, dimming_curr);
+    /* Assume the change is due to ALS tuning */
+    dbus_int32_t duration = mdy_brightness_fade_duration_als_ms;
+
+    if( display_state == MCE_DISPLAY_POWER_UP ) {
+        /* Leaving powered off state -> use unblank duration */
+        duration = mdy_brightness_fade_duration_unblank_ms;
+    }
+    else if( display_state == MCE_DISPLAY_POWER_DOWN ) {
+        /* Entering powered off state -> use blank duration */
+        duration = mdy_brightness_fade_duration_blank_ms;
+    }
+    else if( display_state != display_state_next ) {
+        /* Ongoing display state transition that does not need
+         * or has not yet entered transient state */
+        if( display_state == MCE_DISPLAY_OFF ||
+            display_state == MCE_DISPLAY_LPM_OFF ) {
+            /* Leaving powered off state -> use unblank duration */
+            duration = mdy_brightness_fade_duration_unblank_ms;
+        }
+        else if( display_state_next == MCE_DISPLAY_OFF ||
+                 display_state_next == MCE_DISPLAY_LPM_OFF ) {
+            /* Entering powered off state -> use blank duration */
+            duration = mdy_brightness_fade_duration_blank_ms;
+        }
+        else if( display_state_next == MCE_DISPLAY_DIM ) {
+            /* Entering dimmed state -> use dimming duration */
+            duration = mdy_brightness_fade_duration_dim_ms;
+        }
+        else {
+            /* Use default state transition duration */
+            duration = mdy_brightness_fade_duration_def_ms;
+        }
+    }
+
+    mce_log(LL_DEVEL, "sending dbus signal: %s %d %d",
+            MCE_FADER_OPACITY_SIG, dimming_curr, duration);
+
     dbus_send(0, MCE_SIGNAL_PATH, MCE_SIGNAL_IF,
               MCE_FADER_OPACITY_SIG, 0,
               DBUS_TYPE_INT32, &dimming_curr,
+              DBUS_TYPE_INT32, &duration,
               DBUS_TYPE_INVALID);
+
 EXIT:
     return;
 }
@@ -7494,6 +7537,7 @@ static mce_dbus_handler_t mdy_dbus_handlers[] =
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
         .args      =
             "    <arg name=\"fader_opacity_percent\" type=\"i\"/>\n"
+            "    <arg name=\"transition_length\" type=\"i\"/>\n"
     },
     /* signals */
     {
