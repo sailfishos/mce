@@ -270,6 +270,8 @@ static void     tklock_dtcalib_stop(void);
 
 // settings from gconf
 
+static void     tklock_gconf_sanitize_doubletap_gesture_policy(void);
+
 static void     tklock_gconf_cb(GConfClient *const gcc, const guint id, GConfEntry *const entry, gpointer const data);
 
 static void     tklock_gconf_init(void);
@@ -360,12 +362,12 @@ static gboolean tk_autolock_enabled = DEFAULT_TK_AUTOLOCK;
 static guint tk_autolock_enabled_cb_id = 0;
 
 /** Touchscreen double tap gesture policy */
-static gint doubletap_gesture_policy = DEFAULT_DOUBLETAP_GESTURE_POLICY;
+static gint doubletap_gesture_policy = DBLTAP_ACTION_DEFAULT;
 /** GConf callback ID for doubletap_gesture_policy */
 static guint doubletap_gesture_policy_cb_id = 0;
 
-/** Touchscreen double tap gesture mode */
-gint doubletap_enable_mode = DBLTAP_ENABLE_DEFAULT;
+/** Touchscreen double tap gesture enable mode */
+static gint doubletap_enable_mode = DBLTAP_ENABLE_DEFAULT;
 /** GConf callback ID for doubletap_enable_mode */
 static guint doubletap_enable_mode_cb_id = 0;
 
@@ -1251,8 +1253,8 @@ static void tklock_datapipe_touchscreen_cb(gconstpointer const data)
     }
 
     switch( doubletap_gesture_policy ) {
-    case 1: // unblank
-    case 2: // unblank + unlock (= TODO)
+    case DBLTAP_ACTION_UNBLANK:  // unblank
+    case DBLTAP_ACTION_TKUNLOCK: // unblank + unlock
         mce_log(LL_DEBUG, "double tap -> display on");
         /* Double tap event that is about to be used for unblanking
          * the display counts as non-syntetized user activity */
@@ -1263,6 +1265,13 @@ static void tklock_datapipe_touchscreen_cb(gconstpointer const data)
         execute_datapipe(&display_state_req_pipe,
                        GINT_TO_POINTER(MCE_DISPLAY_ON),
                        USE_INDATA, CACHE_INDATA);
+
+        /* Optionally remove tklock */
+        if( doubletap_gesture_policy == DBLTAP_ACTION_TKUNLOCK ) {
+            execute_datapipe(&tk_lock_pipe,
+                             GINT_TO_POINTER(LOCK_OFF),
+                             USE_INDATA, CACHE_INDATA);
+        }
         break;
     default:
         mce_log(LL_ERR, "Got a double tap gesture "
@@ -3030,7 +3039,7 @@ static void tklock_evctrl_rethink(void)
     }
 
     /* doubletap gesture policy must not be 0/disabled */
-    if( doubletap_gesture_policy == 0 ) {
+    if( doubletap_gesture_policy == DBLTAP_ACTION_DISABLED ) {
         enable_dt = false;
     }
 
@@ -3236,6 +3245,22 @@ EXIT:
  * SETTINGS FROM GCONF
  * ========================================================================= */
 
+static void tklock_gconf_sanitize_doubletap_gesture_policy(void)
+{
+    switch( doubletap_gesture_policy ) {
+    case DBLTAP_ACTION_DISABLED:
+    case DBLTAP_ACTION_UNBLANK:
+    case DBLTAP_ACTION_TKUNLOCK:
+        break;
+
+    default:
+        mce_log(LL_WARN, "Double tap gesture has invalid policy: %d; "
+                "using default", doubletap_gesture_policy);
+        doubletap_gesture_policy = DBLTAP_ACTION_DEFAULT;
+        break;
+    }
+}
+
 /** GConf callback for touchscreen/keypad lock related settings
  *
  * @param gcc Unused
@@ -3264,13 +3289,7 @@ static void tklock_gconf_cb(GConfClient *const gcc, const guint id,
     }
     else if( id == doubletap_gesture_policy_cb_id ) {
         doubletap_gesture_policy = gconf_value_get_int(gcv);
-
-        if( doubletap_gesture_policy < 0 || doubletap_gesture_policy > 2 ) {
-            mce_log(LL_WARN, "Double tap gesture has invalid policy: %d; "
-                    "using default", doubletap_gesture_policy);
-            doubletap_gesture_policy = DEFAULT_DOUBLETAP_GESTURE_POLICY;
-        }
-
+        tklock_gconf_sanitize_doubletap_gesture_policy();
         tklock_evctrl_rethink();
     }
     else if( id == tklock_blank_disable_id ) {
@@ -3347,12 +3366,7 @@ static void tklock_gconf_init(void)
 
     mce_gconf_get_int(MCE_GCONF_TK_DOUBLE_TAP_GESTURE_PATH,
                       &doubletap_gesture_policy);
-
-    if( doubletap_gesture_policy < 0 || doubletap_gesture_policy > 2 ) {
-        mce_log(LL_WARN, "Double tap gesture has invalid policy: %d; "
-                "using default", doubletap_gesture_policy);
-        doubletap_gesture_policy = DEFAULT_DOUBLETAP_GESTURE_POLICY;
-    }
+    tklock_gconf_sanitize_doubletap_gesture_policy();
 
     /** Touchscreen double tap gesture mode */
     mce_gconf_notifier_add(MCE_GCONF_DOUBLETAP_PATH,

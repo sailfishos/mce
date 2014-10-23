@@ -2575,9 +2575,9 @@ static void xmce_get_display_off_override(void)
  * @note These must match the hardcoded values in mce itself.
  */
 static const symbol_t doubletap_values[] = {
-        { "disabled",           0 },
-        { "show-unlock-screen", 1 },
-        { "unlock",             2 },
+        { "disabled",           DBLTAP_ACTION_DISABLED },
+        { "show-unlock-screen", DBLTAP_ACTION_UNBLANK  },
+        { "unlock",             DBLTAP_ACTION_TKUNLOCK },
         { NULL, -1 }
 };
 
