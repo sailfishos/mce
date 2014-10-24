@@ -1483,6 +1483,56 @@ static const setting_t gconf_defaults[] =
     .def  = "333",
   },
   {
+    .key  = MCE_GCONF_POWERKEY_LONG_PRESS_DELAY,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_POWERKEY_LONG_DELAY),
+  },
+  {
+    .key  = MCE_GCONF_POWERKEY_DOUBLE_PRESS_DELAY,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_POWERKEY_DOUBLE_DELAY),
+  },
+  {
+    .key  = MCE_GCONF_POWERKEY_ACTIONS_SINGLE_ON,
+    .type = "s",
+    .def  = DEFAULT_POWERKEY_ACTIONS_SINGLE_ON,
+  },
+  {
+    .key  = MCE_GCONF_POWERKEY_ACTIONS_DOUBLE_ON,
+    .type = "s",
+    .def  = DEFAULT_POWERKEY_ACTIONS_DOUBLE_ON,
+  },
+  {
+    .key  = MCE_GCONF_POWERKEY_ACTIONS_LONG_ON,
+    .type = "s",
+    .def  = DEFAULT_POWERKEY_ACTIONS_LONG_ON,
+  },
+  {
+    .key  = MCE_GCONF_POWERKEY_ACTIONS_SINGLE_OFF,
+    .type = "s",
+    .def  = DEFAULT_POWERKEY_ACTIONS_SINGLE_OFF,
+  },
+  {
+    .key  = MCE_GCONF_POWERKEY_ACTIONS_DOUBLE_OFF,
+    .type = "s",
+    .def  = DEFAULT_POWERKEY_ACTIONS_DOUBLE_OFF,
+  },
+  {
+    .key  = MCE_GCONF_POWERKEY_ACTIONS_LONG_OFF,
+    .type = "s",
+    .def  = DEFAULT_POWERKEY_ACTIONS_LONG_OFF,
+  },
+  {
+    .key  = MCE_GCONF_POWERKEY_DBUS_ACTION1,
+    .type = "s",
+    .def  = DEFAULT_POWERKEY_DBUS_ACTION1,
+  },
+  {
+    .key  = MCE_GCONF_POWERKEY_DBUS_ACTION2,
+    .type = "s",
+    .def  = DEFAULT_POWERKEY_DBUS_ACTION2,
+  },
+  {
     .key = MCE_GCONF_MEMNOTIFY_WARNING_USED,
     .type = "i",
     .def  = "0", // = disabled

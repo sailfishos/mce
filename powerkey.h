@@ -26,137 +26,108 @@
 /** Path to the GConf settings for the powerkey module */
 # define MCE_GCONF_POWERKEY_PATH       "/system/osso/dsm/powerkey"
 
-/** Path to the powerkey  mode GConf setting */
-# define MCE_GCONF_POWERKEY_MODE       MCE_GCONF_POWERKEY_PATH "/mode"
+/** Powerkey mode setting */
+# define MCE_GCONF_POWERKEY_MODE                 MCE_GCONF_POWERKEY_PATH "/mode"
 
-/** Path to the powerkey blanking mode GConf setting */
-# define MCE_GCONF_POWERKEY_BLANKING_MODE  MCE_GCONF_POWERKEY_PATH "/blanking_mode"
+/** Powerkey blanking mode setting */
+# define MCE_GCONF_POWERKEY_BLANKING_MODE        MCE_GCONF_POWERKEY_PATH "/blanking_mode"
 
 /** Powerkey press count for proximity sensor override */
-# define MCE_GCONF_POWERKEY_PS_OVERRIDE_COUNT  MCE_GCONF_POWERKEY_PATH "/ps_override_count"
+# define MCE_GCONF_POWERKEY_PS_OVERRIDE_COUNT    MCE_GCONF_POWERKEY_PATH "/ps_override_count"
 
 /** Maximum delay between powerkey presses for ps override */
 # define MCE_GCONF_POWERKEY_PS_OVERRIDE_TIMEOUT  MCE_GCONF_POWERKEY_PATH "/ps_override_timeout"
 
+/** Long press timeout setting */
+# define MCE_GCONF_POWERKEY_LONG_PRESS_DELAY     MCE_GCONF_POWERKEY_PATH "/long_press_delay"
+
+/** Double press timeout setting */
+# define MCE_GCONF_POWERKEY_DOUBLE_PRESS_DELAY   MCE_GCONF_POWERKEY_PATH "/double_press_delay"
+
+/** Setting for single press actions from display on */
+# define MCE_GCONF_POWERKEY_ACTIONS_SINGLE_ON    MCE_GCONF_POWERKEY_PATH "/actions_single_on"
+
+/** Setting for double press actions from display on */
+# define MCE_GCONF_POWERKEY_ACTIONS_DOUBLE_ON    MCE_GCONF_POWERKEY_PATH "/actions_double_on"
+
+/** Setting for long press actions from display on */
+# define MCE_GCONF_POWERKEY_ACTIONS_LONG_ON      MCE_GCONF_POWERKEY_PATH "/actions_long_on"
+
+/** Setting for single press actions from display off */
+# define MCE_GCONF_POWERKEY_ACTIONS_SINGLE_OFF   MCE_GCONF_POWERKEY_PATH "/actions_single_off"
+
+/** Setting for double press actions from display off */
+# define MCE_GCONF_POWERKEY_ACTIONS_DOUBLE_OFF   MCE_GCONF_POWERKEY_PATH "/actions_double_off"
+
+/** Setting for long press actions from display off */
+# define MCE_GCONF_POWERKEY_ACTIONS_LONG_OFF     MCE_GCONF_POWERKEY_PATH "/actions_long_off"
+
+/** Setting for D-Bus action #1 */
+# define MCE_GCONF_POWERKEY_DBUS_ACTION1         MCE_GCONF_POWERKEY_PATH "/dbus_action1"
+
+/** Setting for D-Bus action #2 */
+# define MCE_GCONF_POWERKEY_DBUS_ACTION2         MCE_GCONF_POWERKEY_PATH "/dbus_action2"
+
 /** Power key action enable modes */
 typedef enum
 {
-	/** Power key actions disabled */
-	PWRKEY_ENABLE_NEVER,
+    /** Power key actions disabled */
+    PWRKEY_ENABLE_NEVER,
 
-	/** Power key actions always enabled */
-	PWRKEY_ENABLE_ALWAYS,
+    /** Power key actions always enabled */
+    PWRKEY_ENABLE_ALWAYS,
 
-	/** Power key actions enabled if PS is not covered */
-	PWRKEY_ENABLE_NO_PROXIMITY,
+    /** Power key actions enabled if PS is not covered */
+    PWRKEY_ENABLE_NO_PROXIMITY,
 
-	/** Power key actions enabled if PS is not covered or display is on */
-	PWRKEY_ENABLE_NO_PROXIMITY2,
+    /** Power key actions enabled if PS is not covered or display is on */
+    PWRKEY_ENABLE_NO_PROXIMITY2,
 
-	PWRKEY_ENABLE_DEFAULT = PWRKEY_ENABLE_ALWAYS,
-} pwrkey_mode_t;
+    PWRKEY_ENABLE_DEFAULT = PWRKEY_ENABLE_ALWAYS,
+} pwrkey_enable_mode_t;
 
 typedef enum
 {
-	/** Pressing power key turns display off */
-	PWRKEY_BLANK_TO_OFF,
+    /** Pressing power key turns display off */
+    PWRKEY_BLANK_TO_OFF,
 
-	/** Pressing power key puts display to lpm state */
-	PWRKEY_BLANK_TO_LPM,
+    /** Pressing power key puts display to lpm state */
+    PWRKEY_BLANK_TO_LPM,
 } pwrkey_blanking_mode_t;
 
-/** Configuration value used for the disabled policy */
-#define POWER_DISABLED_STR				"disabled"
+/** Long delay for the [power] button in milliseconds */
+#define DEFAULT_POWERKEY_LONG_DELAY     1500
 
-/** Configuration value used for the device menu policy */
-#define POWER_MENU_STR					"menu"
+/** Double press timeout for the [power] button in milliseconds */
+#define DEFAULT_POWERKEY_DOUBLE_DELAY   400
 
-/** Configuration value used for poweroff */
-#define POWER_POWEROFF_STR				"poweroff"
+/** Default actions for single press while display is on */
+#define DEFAULT_POWERKEY_ACTIONS_SINGLE_ON  "blank,tklock"
 
-/** Configuration value used for soft poweroff */
-#define POWER_SOFT_POWEROFF_STR				"softpoweroff"
+/** Default actions for double press while display is on */
+#define DEFAULT_POWERKEY_ACTIONS_DOUBLE_ON  "blank,tklock,devlock"
 
-/** Configuration value used for tklock lock */
-#define POWER_TKLOCK_UNLOCK_STR				"tklock-unlock"
+/** Default actions for long press while display is on */
+#define DEFAULT_POWERKEY_ACTIONS_LONG_ON    "shutdown"
 
-/** Configuration value used for tklock unlock */
-#define POWER_TKLOCK_LOCK_STR				"tklock-lock"
+/** Default actions for single press while display is off */
+#define DEFAULT_POWERKEY_ACTIONS_SINGLE_OFF "unblank"
 
-/** Configuration value used for tklock both */
-#define POWER_TKLOCK_BOTH_STR				"tklock-both"
+/** Default actions for double press while display is off */
+#define DEFAULT_POWERKEY_ACTIONS_DOUBLE_OFF "unblank,tkunlock"
 
-/** Configuration value used for D-Bus signal */
-#define POWER_DBUS_SIGNAL_STR				"dbus-signal-"
+/** Default actions for long press while display is off
+ *
+ * Note: If kernel side reports immediately power key press + release
+ *       when device is suspended, detecting long presses might not
+ *       work when display is off -> leave unset by default. */
+#define DEFAULT_POWERKEY_ACTIONS_LONG_OFF   ""
 
-/** Action to perform on [power] keypress */
-typedef enum {
+/** Default argument for signal sent due to dbus1 action */
+#define DEFAULT_POWERKEY_DBUS_ACTION1       "event1"
 
-	/** No action */
-	POWER_DISABLED = 0,
-
-	/** Show device menu */
-	POWER_MENU = 1,
-
-	/** Default for long press */
-	DEFAULT_POWERKEY_LONG_ACTION = 2,
-
-	/** Shutdown */
-	POWER_POWEROFF = 2,
-
-	/** Soft poweroff */
-	POWER_SOFT_POWEROFF = 3,
-
-	/** Default for short press */
-	DEFAULT_POWERKEY_SHORT_ACTION = 4,
-
-	/** Lock the TKLock if unlocked */
-	POWER_TKLOCK_LOCK = 4,
-
-	/** Unlock the TKLock if locked */
-	POWER_TKLOCK_UNLOCK = 5,
-
-	/** Lock the TKLock if unlocked, unlock the TKLock if locked */
-	POWER_TKLOCK_BOTH = 6,
-
-	/** Default for double press */
-	DEFAULT_POWERKEY_DOUBLE_ACTION = 7,
-
-	/** Send a D-Bus signal */
-	POWER_DBUS_SIGNAL = 7
-} poweraction_t;
-
-/** Name of Powerkey configuration group */
-#define MCE_CONF_POWERKEY_GROUP		"PowerKey"
-
-/** Name of configuration key for medium [power] press delay */
-#define MCE_CONF_POWERKEY_MEDIUM_DELAY	"PowerKeyMediumDelay"
-
-/** Name of configuration key for long [power] press delay */
-#define MCE_CONF_POWERKEY_LONG_DELAY	"PowerKeyLongDelay"
-
-/** Name of configuration key for double [power] press delay */
-#define MCE_CONF_POWERKEY_DOUBLE_DELAY	"PowerKeyDoubleDelay"
-
-/** Name of configuration key for short [power] press action */
-#define MCE_CONF_POWERKEY_SHORT_ACTION	"PowerKeyShortAction"
-
-/** Name of configuration key for long [power] press action */
-#define MCE_CONF_POWERKEY_LONG_ACTION	"PowerKeyLongAction"
-
-/** Name of configuration key for double [power] press action */
-#define MCE_CONF_POWERKEY_DOUBLE_ACTION	"PowerKeyDoubleAction"
-
-/**
- * Long delay for the [power] button in milliseconds; 1.5 seconds
- */
-#define DEFAULT_POWER_LONG_DELAY	1500
-
-/** Medium delay for the [power] button in milliseconds; 1 second */
-#define DEFAULT_POWER_MEDIUM_DELAY	1000
-
-/** Double press timeout for the [power] button in milliseconds; 0.5 seconds */
-#define DEFAULT_POWER_DOUBLE_DELAY	500
+/** Default argument for signal sent due to dbus2 action */
+#define DEFAULT_POWERKEY_DBUS_ACTION2       "event2"
 
 /* When MCE is made modular, this will be handled differently */
 gboolean mce_powerkey_init(void);
