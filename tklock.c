@@ -230,6 +230,11 @@ static void     tklock_proxlock_schedule(int delay);
 static void     tklock_proxlock_cancel(void);
 static void     tklock_proxlock_rethink(void);
 
+// autolock based on device lock changes
+
+static void     tklock_autolock_on_devlock_prime(void);
+static void     tklock_autolock_on_devlock_trigger(void);
+
 // ui exception handling state machine
 
 static uiexctype_t topmost_active(uiexctype_t mask);
@@ -555,6 +560,9 @@ static void tklock_datapipe_device_lock_active_cb(gconstpointer data)
 
     tklock_autolock_rethink();
 
+    if( device_lock_active )
+        tklock_autolock_on_devlock_trigger();
+
 EXIT:
     return;
 }
@@ -668,8 +676,13 @@ static void tklock_datapipe_display_state_next_cb(gconstpointer data)
 {
     display_state_next = GPOINTER_TO_INT(data);
 
+    mce_log(LL_DEBUG, "display_state_next = %d -> %d",
+            display_state, display_state_next);
+
     if( display_state_next == display_state )
         goto EXIT;
+
+    tklock_autolock_on_devlock_prime();
 
     tklock_autolock_pre_transition_actions();
     tklock_lpmui_pre_transition_actions();
@@ -1772,6 +1785,103 @@ static void tklock_datapipe_quit(void)
 
     /* Remove datapipe callbacks */
     tklock_datapipe_remove_triggers(tklock_datapipe_triggers);
+}
+
+/* ========================================================================= *
+ * AUTOLOCK AFTER DEVICELOCK STATE MACHINE
+ * ========================================================================= */
+
+static int64_t tklock_autolock_on_devlock_limit = 0;
+
+static void tklock_autolock_on_devlock_prime(void)
+{
+    /* While we want to trap only device lock that happens immediately
+     * after unblanking the display, scheduling etc makes it difficult
+     * to specify some exact figure for "immediately".
+     *
+     * Since devicelock timeouts have granularity of 1 minute, assume
+     * that device locking that happens less than 60 seconds after
+     * unblanking was related to what happened during display off time. */
+    const int autolock_limit = 60 * 1000;
+
+    /* Do nothing during startup */
+    if( display_state == MCE_DISPLAY_UNDEF )
+        goto EXIT;
+
+    /* Unprime if we are going to powered off state */
+    switch( display_state_next ) {
+    case MCE_DISPLAY_DIM:
+    case MCE_DISPLAY_ON:
+        break;
+
+    default:
+        if( tklock_autolock_on_devlock_limit )
+            mce_log(LL_DEBUG, "autolock after devicelock: unprimed");
+        tklock_autolock_on_devlock_limit = 0;
+        goto EXIT;
+    }
+
+    /* Prime if we are coming from powered off state */
+    switch( display_state ) {
+    case MCE_DISPLAY_DIM:
+    case MCE_DISPLAY_ON:
+        break;
+
+    default:
+        if( !tklock_autolock_on_devlock_limit )
+            mce_log(LL_DEBUG, "autolock after devicelock: primed");
+        tklock_autolock_on_devlock_limit =
+            tklock_monotick_get() + autolock_limit;
+        break;
+    }
+
+EXIT:
+    return;
+}
+
+static void tklock_autolock_on_devlock_trigger(void)
+{
+    /* Device lock must be active */
+    if( !device_lock_active )
+        goto EXIT;
+
+    /* Not while handling calls or alarms */
+    switch( exception_state ) {
+    case UIEXC_CALL:
+    case UIEXC_ALARM:
+        goto EXIT;
+
+    default:
+        break;
+    }
+
+    /* Autolock time limit must be set and not reached yet */
+    if( !tklock_autolock_on_devlock_limit )
+        goto EXIT;
+
+    if( tklock_monotick_get() >= tklock_autolock_on_devlock_limit )
+        goto EXIT;
+
+    /* We get here if: Device lock got applied right after
+     * display was powered up.
+     *
+     * Most likely the device lock should have been applied
+     * already when the display was off, but the devicelock
+     * timer did not trigger while the device was suspended.
+     *
+     * It is also possible that the last used application
+     * is still visible and active.
+     *
+     * Setting the tklock moves the application to background
+     * and lockscreen / devicelock is shown instead.
+     */
+
+    mce_log(LL_DEBUG, "autolock after devicelock: triggered");
+    execute_datapipe(&tk_lock_pipe,
+                     GINT_TO_POINTER(LOCK_ON),
+                     USE_INDATA, CACHE_INDATA);
+EXIT:
+    return;
 }
 
 /* ========================================================================= *
