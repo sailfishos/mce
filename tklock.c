@@ -498,7 +498,7 @@ static ps_history_t tklock_lpmui_hist[8];
 static bool tklock_ui_enabled = false;
 
 /** Current tklock ui state that has been sent to lipstick */
-static int  tklock_ui_sent    = -1; // does not match bool values
+static int  tklock_ui_notified = -1; // does not match bool values
 
 /** System state; is undefined at bootup, can't assume anything */
 static system_state_t system_state = MCE_STATE_UNDEF;
@@ -589,7 +589,7 @@ static void tklock_datapipe_lipstick_available_cb(gconstpointer data)
             lipstick_available);
 
     // force tklock ipc
-    tklock_ui_sent = -1;
+    tklock_ui_notified = -1;
     tklock_ui_set(false);
 
     if( lipstick_available ) {
@@ -3647,10 +3647,118 @@ static void tklock_ui_close(void)
               DBUS_TYPE_INVALID);
 }
 
+static guint tklock_ui_notify_end_id = 0;
+static guint tklock_ui_notify_beg_id = 0;
+
+static void tklock_ui_notify_rethink_wakelock(void)
+{
+    static bool have_lock = false;
+
+    bool need_lock = (tklock_ui_notify_beg_id || tklock_ui_notify_end_id);
+
+    if( have_lock == need_lock )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "ui notify wakelock: %s",
+            need_lock ? "OBTAIN" : "RELEASE");
+
+    if( (have_lock = need_lock) ) {
+        wakelock_lock("mce_tklock_notify", -1);
+    }
+    else
+        wakelock_unlock("mce_tklock_notify");
+
+EXIT:
+    return;
+}
+
+static gboolean tklock_ui_notify_end_cb(gpointer data)
+{
+    (void) data;
+
+    if( !tklock_ui_notify_end_id )
+        goto EXIT;
+
+    tklock_ui_notify_end_id = 0;
+
+EXIT:
+
+    tklock_ui_notify_rethink_wakelock();
+
+    return FALSE;
+}
+
+static gboolean tklock_ui_notify_beg_cb(gpointer data)
+{
+    (void) data;
+
+    if( !tklock_ui_notify_beg_id )
+        goto EXIT;
+
+    tklock_ui_notify_beg_id = 0;
+
+    bool current = tklock_datapipe_have_tklock_submode();
+
+    if( tklock_ui_notified == current )
+        goto EXIT;
+
+    tklock_ui_notified = current;
+
+    /* do lipstick specific ipc */
+    if( lipstick_available ) {
+        if( current )
+            tklock_ui_open();
+        else
+            tklock_ui_close();
+    }
+
+    /* broadcast signal */
+    tklock_dbus_send_tklock_mode(0);
+
+    /* give ui a chance to see the signal */
+    if( tklock_ui_notify_end_id )
+        g_source_remove(tklock_ui_notify_end_id);
+
+    tklock_ui_notify_end_id = g_timeout_add(2000,
+                                            tklock_ui_notify_end_cb,
+                                            0);
+
+EXIT:
+
+    tklock_ui_notify_rethink_wakelock();
+
+    return FALSE;
+}
+
+static void tklock_ui_notify_cancel(void)
+{
+    if( tklock_ui_notify_end_id ) {
+        g_source_remove(tklock_ui_notify_end_id),
+            tklock_ui_notify_end_id = 0;
+    }
+    if( tklock_ui_notify_beg_id ) {
+        g_source_remove(tklock_ui_notify_beg_id),
+            tklock_ui_notify_beg_id = 0;
+    }
+
+    tklock_ui_notify_rethink_wakelock();
+}
+
+static void tklock_ui_notify_schdule(void)
+{
+    if( tklock_ui_notify_end_id ) {
+        g_source_remove(tklock_ui_notify_end_id),
+            tklock_ui_notify_end_id = 0;
+    }
+    if( !tklock_ui_notify_beg_id ) {
+        tklock_ui_notify_beg_id = g_idle_add(tklock_ui_notify_beg_cb, 0);
+    }
+
+    tklock_ui_notify_rethink_wakelock();
+}
+
 static void tklock_ui_set(bool enable)
 {
-    bool requested = enable;
-
     if( enable ) {
         if( system_state != MCE_STATE_USER ) {
             mce_log(LL_INFO, "deny tklock; not in user mode");
@@ -3666,21 +3774,14 @@ static void tklock_ui_set(bool enable)
         }
     }
 
-    if( tklock_ui_sent != enable || requested != enable ) {
-        mce_log(LL_DEVEL, "tklock state = %s", enable ? "locked" : "unlocked");
-
-        if( (tklock_ui_sent = tklock_ui_enabled = enable) ) {
-            if( lipstick_available )
-                tklock_ui_open();
+    if( tklock_ui_enabled != enable ) {
+        if( (tklock_ui_enabled = enable) )
             mce_add_submode_int32(MCE_TKLOCK_SUBMODE);
-        }
-        else {
-            if( lipstick_available )
-                tklock_ui_close();
+        else
             mce_rem_submode_int32(MCE_TKLOCK_SUBMODE);
-        }
-        tklock_dbus_send_tklock_mode(0);
     }
+
+    tklock_ui_notify_schdule();
 }
 
 /** Handle reply to device lock state query
@@ -3889,8 +3990,10 @@ static gboolean tklock_dbus_mode_change_req_cb(DBusMessage *const msg)
 
     mce_log(LL_DEBUG, "mode: %s/%d", mode, state);
 
-    if( state != LOCK_UNDEF )
+    if( state != LOCK_UNDEF ) {
+        tklock_ui_notified = -1;
         tklock_datapipe_tk_lock_cb(GINT_TO_POINTER(state));
+    }
 
     if( no_reply )
         status = TRUE;
@@ -3931,6 +4034,7 @@ static gboolean tklock_dbus_systemui_callback_cb(DBusMessage *const msg)
 
     switch( result ) {
     case TKLOCK_UNLOCK:
+        tklock_ui_notified = -1;
         tklock_ui_set(false);
         break;
 
@@ -4636,6 +4740,7 @@ void mce_tklock_exit(void)
     tklock_dtcalib_stop();
     tklock_datapipe_proximity_uncover_cancel();
     tklock_notif_quit();
+    tklock_ui_notify_cancel();
 
     // FIXME: check that final state is sane
 

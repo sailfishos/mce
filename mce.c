@@ -156,6 +156,7 @@ static void mce_cleanup_wakelocks(void)
 	wakelock_unlock("mce_bluez_wait");
 	wakelock_unlock("mce_led_breathing");
 	wakelock_unlock("mce_lpm_off");
+	wakelock_unlock("mce_tklock_notify");
 }
 #endif // ENABLE_WAKELOCKS
 
