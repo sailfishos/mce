@@ -42,6 +42,9 @@ datapipe_struct led_pattern_activate_pipe;
 /** LED pattern to deactivate; read only */
 datapipe_struct led_pattern_deactivate_pipe;
 
+/** resumed from suspend notification; read only */
+datapipe_struct device_resumed_pipe;
+
 /** Non-synthetized user activity; read only */
 datapipe_struct user_activity_pipe;
 
@@ -802,6 +805,8 @@ void mce_datapipe_init(void)
 		       0, GINT_TO_POINTER(0));
 	setup_datapipe(&led_pattern_activate_pipe, READ_ONLY, FREE_CACHE,
 		       0, NULL);
+	setup_datapipe(&device_resumed_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, NULL);
 	setup_datapipe(&led_pattern_deactivate_pipe, READ_ONLY, FREE_CACHE,
 		       0, NULL);
 	setup_datapipe(&user_activity_pipe, READ_ONLY, DONT_FREE_CACHE,
@@ -905,6 +910,7 @@ void mce_datapipe_quit(void)
 	free_datapipe(&user_activity_pipe);
 	free_datapipe(&led_pattern_deactivate_pipe);
 	free_datapipe(&led_pattern_activate_pipe);
+	free_datapipe(&device_resumed_pipe);
 	free_datapipe(&led_brightness_pipe);
 	free_datapipe(&lpm_brightness_pipe);
 	free_datapipe(&display_brightness_pipe);

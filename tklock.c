@@ -173,6 +173,7 @@ static int64_t  tklock_monotick_get(void);
 
 static void     tklock_datapipe_system_state_cb(gconstpointer data);
 static void     tklock_datapipe_device_lock_active_cb(gconstpointer data);
+static void     tklock_datapipe_device_resumed_cb(gconstpointer data);
 static void     tklock_datapipe_lipstick_available_cb(gconstpointer data);
 static void     tklock_datapipe_update_mode_cb(gconstpointer data);
 static void     tklock_datapipe_display_state_cb(gconstpointer data);
@@ -215,6 +216,7 @@ static void     tklock_datapipe_quit(void);
 
 static gboolean tklock_autolock_cb(gpointer aptr);
 static bool     tklock_autolock_exceeded(void);
+static void     tklock_autolock_reschedule(void);
 static void     tklock_autolock_schedule(int delay);
 static void     tklock_autolock_cancel(void);
 static void     tklock_autolock_rethink(void);
@@ -555,6 +557,19 @@ static void tklock_datapipe_device_lock_active_cb(gconstpointer data)
 
 EXIT:
     return;
+}
+
+/** Resumed from suspend notification */
+static void tklock_datapipe_device_resumed_cb(gconstpointer data)
+{
+        (void) data;
+
+        /* We do not want to wakeup from suspend just to end the
+         * grace period, so regular timer is used for it. However,
+         * if we happen to resume for some other reason, check if
+         * the timeout has already passed */
+
+        tklock_autolock_reschedule();
 }
 
 /** Lipstick dbus name is reserved; assume false */
@@ -1533,6 +1548,10 @@ static datapipe_binding_t tklock_datapipe_triggers[] =
 {
     // output triggers
     {
+        .datapipe = &device_resumed_pipe,
+        .output_cb = tklock_datapipe_device_resumed_cb,
+    },
+    {
         .datapipe = &lipstick_available_pipe,
         .output_cb = tklock_datapipe_lipstick_available_cb,
     },
@@ -1794,6 +1813,34 @@ static void tklock_autolock_cancel(void)
         g_source_remove(tklock_autolock_id), tklock_autolock_id = 0;
         mce_log(LL_DEBUG, "autolock timer stopped");
     }
+}
+
+static void tklock_autolock_reschedule(void)
+{
+    /* Do we have a timer to re-evaluate? */
+    if( !tklock_autolock_id )
+        goto EXIT;
+
+    /* Clear old timer */
+    g_source_remove(tklock_autolock_id), tklock_autolock_id = 0;
+
+    int64_t now = tklock_monotick_get();
+
+    if( now >= tklock_autolock_tick ) {
+        mce_log(LL_DEBUG, "autolock time passed while suspended; lock now");
+        /* Trigger time passed while suspended */
+        tklock_autolock_tick = MAX_TICK;
+        tklock_ui_set(true);
+    }
+    else {
+        /* Re-calculate wakeup time */
+        mce_log(LL_DEBUG, "adjusting autolock time after resume");
+        int delay = (int)(tklock_autolock_tick - now);
+        tklock_autolock_id = g_timeout_add(delay, tklock_autolock_cb, 0);
+    }
+
+EXIT:
+    return;
 }
 
 static void tklock_autolock_schedule(int delay)

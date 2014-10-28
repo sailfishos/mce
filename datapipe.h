@@ -79,6 +79,7 @@ extern datapipe_struct lpm_brightness_pipe;
 extern datapipe_struct device_inactive_pipe;
 extern datapipe_struct led_pattern_activate_pipe;
 extern datapipe_struct led_pattern_deactivate_pipe;
+extern datapipe_struct device_resumed_pipe;
 extern datapipe_struct user_activity_pipe;
 extern datapipe_struct display_state_pipe;
 extern datapipe_struct display_state_req_pipe;
