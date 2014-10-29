@@ -23,6 +23,9 @@
 
 #include "mce-log.h"
 
+#include <stdlib.h>
+#include <string.h>
+
 /** Pointer to the GConf client */
 static GConfClient *gconf_client = NULL;
 /** Is GConf disabled on purpose */
@@ -410,6 +413,68 @@ void mce_gconf_notifier_remove_cb(gpointer cb_id, gpointer user_data)
 	(void)user_data;
 
 	mce_gconf_notifier_remove(GPOINTER_TO_INT(cb_id));
+}
+
+/** Helper for getting path of gconf key
+ */
+static gchar *mce_gconf_get_path(const gchar *key)
+{
+	gchar       *res = 0;
+	const gchar *end = strrchr(key, '/');
+
+	if( end )
+		res = g_strndup(key, end - key);
+
+	return res;
+}
+
+/** Get initial value of integer setting and start tracking changes
+ *
+ * @param key   key name
+ * @param val   where to store the initial value
+ * @param def   default value to use if getting key value fails;
+ *              or -1 to leave *val unmodified
+ * @param cb    change notification callback
+ * @param cb_id where to store notification callback id
+ */
+void mce_gconf_track_int(const gchar *key, gint *val, gint def,
+			 GConfClientNotifyFunc cb, guint *cb_id)
+{
+	gchar *path = mce_gconf_get_path(key);
+
+	if( path && cb && cb_id )
+		mce_gconf_notifier_add(path, key, cb, cb_id);
+
+	if( !mce_gconf_get_int(key, val) && def != -1 )
+		*val = def;
+
+	g_free(path);
+}
+
+/** Get initial value of integer setting and start tracking changes
+ *
+ * Note: Caller must release returned string with g_free() when it
+ *       is no longer needed.
+ *
+ * @param key   key name
+ * @param val   where to store the initial value
+ * @param def   default value to use if getting key value fails;
+ *              or NULL to leave *val unmodified
+ * @param cb    change notification callback
+ * @param cb_id where to store notification callback id
+ */
+void mce_gconf_track_string(const gchar *key, gchar **val, const gchar *def,
+			    GConfClientNotifyFunc cb, guint *cb_id)
+{
+	gchar *path = mce_gconf_get_path(key);
+
+	if( path && cb && cb_id )
+		mce_gconf_notifier_add(path, key, cb, cb_id);
+
+	if( !mce_gconf_get_string(key, val) && def != 0 )
+		*val = g_strdup(def);
+
+	g_free(path);
 }
 
 /**

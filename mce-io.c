@@ -187,6 +187,11 @@ static void io_detect_resume(void)
 	mce_log(LL_DEVEL, "time skip: assume %"PRId64".%03"PRId64"s suspend",
 		skip / 1000, skip % 1000);
 
+	// notify in case some timers need re-evaluating
+	execute_datapipe_output_triggers(&device_resumed_pipe,
+					 &prev,
+					 USE_INDATA);
+
 EXIT:
 	return;
 }

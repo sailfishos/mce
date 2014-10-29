@@ -567,6 +567,9 @@ NORMALIZE_USES_SPC =\
 	modules/radiostates.h\
 	modules/sensor-gestures.c\
 	ofono-dbus-names.h\
+	powerkey.c\
+	powerkey.h\
+	powerkey.dot\
 	systemui/dbus-names.h\
 	tklock.c\
 	tklock.h\
@@ -616,8 +619,6 @@ NORMALIZE_USES_TAB =\
 	modules/proximity.c\
 	modules/proximity.h\
 	modules/radiostates.c\
-	powerkey.c\
-	powerkey.h\
 	systemui/tklock-dbus-names.h\
 
 NORMALIZE_KNOWN := $(NORMALIZE_USES_SPC) $(NORMALIZE_USES_TAB)

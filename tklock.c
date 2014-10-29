@@ -173,6 +173,7 @@ static int64_t  tklock_monotick_get(void);
 
 static void     tklock_datapipe_system_state_cb(gconstpointer data);
 static void     tklock_datapipe_device_lock_active_cb(gconstpointer data);
+static void     tklock_datapipe_device_resumed_cb(gconstpointer data);
 static void     tklock_datapipe_lipstick_available_cb(gconstpointer data);
 static void     tklock_datapipe_update_mode_cb(gconstpointer data);
 static void     tklock_datapipe_display_state_cb(gconstpointer data);
@@ -215,6 +216,7 @@ static void     tklock_datapipe_quit(void);
 
 static gboolean tklock_autolock_cb(gpointer aptr);
 static bool     tklock_autolock_exceeded(void);
+static void     tklock_autolock_reschedule(void);
 static void     tklock_autolock_schedule(int delay);
 static void     tklock_autolock_cancel(void);
 static void     tklock_autolock_rethink(void);
@@ -227,6 +229,11 @@ static bool     tklock_proxlock_exceeded(void);
 static void     tklock_proxlock_schedule(int delay);
 static void     tklock_proxlock_cancel(void);
 static void     tklock_proxlock_rethink(void);
+
+// autolock based on device lock changes
+
+static void     tklock_autolock_on_devlock_prime(void);
+static void     tklock_autolock_on_devlock_trigger(void);
 
 // ui exception handling state machine
 
@@ -269,6 +276,8 @@ static void     tklock_dtcalib_start(void);
 static void     tklock_dtcalib_stop(void);
 
 // settings from gconf
+
+static void     tklock_gconf_sanitize_doubletap_gesture_policy(void);
 
 static void     tklock_gconf_cb(GConfClient *const gcc, const guint id, GConfEntry *const entry, gpointer const data);
 
@@ -360,12 +369,12 @@ static gboolean tk_autolock_enabled = DEFAULT_TK_AUTOLOCK;
 static guint tk_autolock_enabled_cb_id = 0;
 
 /** Touchscreen double tap gesture policy */
-static gint doubletap_gesture_policy = DEFAULT_DOUBLETAP_GESTURE_POLICY;
+static gint doubletap_gesture_policy = DBLTAP_ACTION_DEFAULT;
 /** GConf callback ID for doubletap_gesture_policy */
 static guint doubletap_gesture_policy_cb_id = 0;
 
-/** Touchscreen double tap gesture mode */
-gint doubletap_enable_mode = DBLTAP_ENABLE_DEFAULT;
+/** Touchscreen double tap gesture enable mode */
+static gint doubletap_enable_mode = DBLTAP_ENABLE_DEFAULT;
 /** GConf callback ID for doubletap_enable_mode */
 static guint doubletap_enable_mode_cb_id = 0;
 
@@ -494,7 +503,7 @@ static ps_history_t tklock_lpmui_hist[8];
 static bool tklock_ui_enabled = false;
 
 /** Current tklock ui state that has been sent to lipstick */
-static int  tklock_ui_sent    = -1; // does not match bool values
+static int  tklock_ui_notified = -1; // does not match bool values
 
 /** System state; is undefined at bootup, can't assume anything */
 static system_state_t system_state = MCE_STATE_UNDEF;
@@ -551,8 +560,24 @@ static void tklock_datapipe_device_lock_active_cb(gconstpointer data)
 
     tklock_autolock_rethink();
 
+    if( device_lock_active )
+        tklock_autolock_on_devlock_trigger();
+
 EXIT:
     return;
+}
+
+/** Resumed from suspend notification */
+static void tklock_datapipe_device_resumed_cb(gconstpointer data)
+{
+        (void) data;
+
+        /* We do not want to wakeup from suspend just to end the
+         * grace period, so regular timer is used for it. However,
+         * if we happen to resume for some other reason, check if
+         * the timeout has already passed */
+
+        tklock_autolock_reschedule();
 }
 
 /** Lipstick dbus name is reserved; assume false */
@@ -572,7 +597,7 @@ static void tklock_datapipe_lipstick_available_cb(gconstpointer data)
             lipstick_available);
 
     // force tklock ipc
-    tklock_ui_sent = -1;
+    tklock_ui_notified = -1;
     tklock_ui_set(false);
 
     if( lipstick_available ) {
@@ -651,8 +676,13 @@ static void tklock_datapipe_display_state_next_cb(gconstpointer data)
 {
     display_state_next = GPOINTER_TO_INT(data);
 
+    mce_log(LL_DEBUG, "display_state_next = %d -> %d",
+            display_state, display_state_next);
+
     if( display_state_next == display_state )
         goto EXIT;
+
+    tklock_autolock_on_devlock_prime();
 
     tklock_autolock_pre_transition_actions();
     tklock_lpmui_pre_transition_actions();
@@ -1251,8 +1281,8 @@ static void tklock_datapipe_touchscreen_cb(gconstpointer const data)
     }
 
     switch( doubletap_gesture_policy ) {
-    case 1: // unblank
-    case 2: // unblank + unlock (= TODO)
+    case DBLTAP_ACTION_UNBLANK:  // unblank
+    case DBLTAP_ACTION_TKUNLOCK: // unblank + unlock
         mce_log(LL_DEBUG, "double tap -> display on");
         /* Double tap event that is about to be used for unblanking
          * the display counts as non-syntetized user activity */
@@ -1263,6 +1293,13 @@ static void tklock_datapipe_touchscreen_cb(gconstpointer const data)
         execute_datapipe(&display_state_req_pipe,
                        GINT_TO_POINTER(MCE_DISPLAY_ON),
                        USE_INDATA, CACHE_INDATA);
+
+        /* Optionally remove tklock */
+        if( doubletap_gesture_policy == DBLTAP_ACTION_TKUNLOCK ) {
+            execute_datapipe(&tk_lock_pipe,
+                             GINT_TO_POINTER(LOCK_OFF),
+                             USE_INDATA, CACHE_INDATA);
+        }
         break;
     default:
         mce_log(LL_ERR, "Got a double tap gesture "
@@ -1524,6 +1561,10 @@ static datapipe_binding_t tklock_datapipe_triggers[] =
 {
     // output triggers
     {
+        .datapipe = &device_resumed_pipe,
+        .output_cb = tklock_datapipe_device_resumed_cb,
+    },
+    {
         .datapipe = &lipstick_available_pipe,
         .output_cb = tklock_datapipe_lipstick_available_cb,
     },
@@ -1747,6 +1788,103 @@ static void tklock_datapipe_quit(void)
 }
 
 /* ========================================================================= *
+ * AUTOLOCK AFTER DEVICELOCK STATE MACHINE
+ * ========================================================================= */
+
+static int64_t tklock_autolock_on_devlock_limit = 0;
+
+static void tklock_autolock_on_devlock_prime(void)
+{
+    /* While we want to trap only device lock that happens immediately
+     * after unblanking the display, scheduling etc makes it difficult
+     * to specify some exact figure for "immediately".
+     *
+     * Since devicelock timeouts have granularity of 1 minute, assume
+     * that device locking that happens less than 60 seconds after
+     * unblanking was related to what happened during display off time. */
+    const int autolock_limit = 60 * 1000;
+
+    /* Do nothing during startup */
+    if( display_state == MCE_DISPLAY_UNDEF )
+        goto EXIT;
+
+    /* Unprime if we are going to powered off state */
+    switch( display_state_next ) {
+    case MCE_DISPLAY_DIM:
+    case MCE_DISPLAY_ON:
+        break;
+
+    default:
+        if( tklock_autolock_on_devlock_limit )
+            mce_log(LL_DEBUG, "autolock after devicelock: unprimed");
+        tklock_autolock_on_devlock_limit = 0;
+        goto EXIT;
+    }
+
+    /* Prime if we are coming from powered off state */
+    switch( display_state ) {
+    case MCE_DISPLAY_DIM:
+    case MCE_DISPLAY_ON:
+        break;
+
+    default:
+        if( !tklock_autolock_on_devlock_limit )
+            mce_log(LL_DEBUG, "autolock after devicelock: primed");
+        tklock_autolock_on_devlock_limit =
+            tklock_monotick_get() + autolock_limit;
+        break;
+    }
+
+EXIT:
+    return;
+}
+
+static void tklock_autolock_on_devlock_trigger(void)
+{
+    /* Device lock must be active */
+    if( !device_lock_active )
+        goto EXIT;
+
+    /* Not while handling calls or alarms */
+    switch( exception_state ) {
+    case UIEXC_CALL:
+    case UIEXC_ALARM:
+        goto EXIT;
+
+    default:
+        break;
+    }
+
+    /* Autolock time limit must be set and not reached yet */
+    if( !tklock_autolock_on_devlock_limit )
+        goto EXIT;
+
+    if( tklock_monotick_get() >= tklock_autolock_on_devlock_limit )
+        goto EXIT;
+
+    /* We get here if: Device lock got applied right after
+     * display was powered up.
+     *
+     * Most likely the device lock should have been applied
+     * already when the display was off, but the devicelock
+     * timer did not trigger while the device was suspended.
+     *
+     * It is also possible that the last used application
+     * is still visible and active.
+     *
+     * Setting the tklock moves the application to background
+     * and lockscreen / devicelock is shown instead.
+     */
+
+    mce_log(LL_DEBUG, "autolock after devicelock: triggered");
+    execute_datapipe(&tk_lock_pipe,
+                     GINT_TO_POINTER(LOCK_ON),
+                     USE_INDATA, CACHE_INDATA);
+EXIT:
+    return;
+}
+
+/* ========================================================================= *
  * AUTOLOCK STATE MACHINE
  * ========================================================================= */
 
@@ -1785,6 +1923,34 @@ static void tklock_autolock_cancel(void)
         g_source_remove(tklock_autolock_id), tklock_autolock_id = 0;
         mce_log(LL_DEBUG, "autolock timer stopped");
     }
+}
+
+static void tklock_autolock_reschedule(void)
+{
+    /* Do we have a timer to re-evaluate? */
+    if( !tklock_autolock_id )
+        goto EXIT;
+
+    /* Clear old timer */
+    g_source_remove(tklock_autolock_id), tklock_autolock_id = 0;
+
+    int64_t now = tklock_monotick_get();
+
+    if( now >= tklock_autolock_tick ) {
+        mce_log(LL_DEBUG, "autolock time passed while suspended; lock now");
+        /* Trigger time passed while suspended */
+        tklock_autolock_tick = MAX_TICK;
+        tklock_ui_set(true);
+    }
+    else {
+        /* Re-calculate wakeup time */
+        mce_log(LL_DEBUG, "adjusting autolock time after resume");
+        int delay = (int)(tklock_autolock_tick - now);
+        tklock_autolock_id = g_timeout_add(delay, tklock_autolock_cb, 0);
+    }
+
+EXIT:
+    return;
 }
 
 static void tklock_autolock_schedule(int delay)
@@ -3030,7 +3196,7 @@ static void tklock_evctrl_rethink(void)
     }
 
     /* doubletap gesture policy must not be 0/disabled */
-    if( doubletap_gesture_policy == 0 ) {
+    if( doubletap_gesture_policy == DBLTAP_ACTION_DISABLED ) {
         enable_dt = false;
     }
 
@@ -3236,6 +3402,22 @@ EXIT:
  * SETTINGS FROM GCONF
  * ========================================================================= */
 
+static void tklock_gconf_sanitize_doubletap_gesture_policy(void)
+{
+    switch( doubletap_gesture_policy ) {
+    case DBLTAP_ACTION_DISABLED:
+    case DBLTAP_ACTION_UNBLANK:
+    case DBLTAP_ACTION_TKUNLOCK:
+        break;
+
+    default:
+        mce_log(LL_WARN, "Double tap gesture has invalid policy: %d; "
+                "using default", doubletap_gesture_policy);
+        doubletap_gesture_policy = DBLTAP_ACTION_DEFAULT;
+        break;
+    }
+}
+
 /** GConf callback for touchscreen/keypad lock related settings
  *
  * @param gcc Unused
@@ -3264,13 +3446,7 @@ static void tklock_gconf_cb(GConfClient *const gcc, const guint id,
     }
     else if( id == doubletap_gesture_policy_cb_id ) {
         doubletap_gesture_policy = gconf_value_get_int(gcv);
-
-        if( doubletap_gesture_policy < 0 || doubletap_gesture_policy > 2 ) {
-            mce_log(LL_WARN, "Double tap gesture has invalid policy: %d; "
-                    "using default", doubletap_gesture_policy);
-            doubletap_gesture_policy = DEFAULT_DOUBLETAP_GESTURE_POLICY;
-        }
-
+        tklock_gconf_sanitize_doubletap_gesture_policy();
         tklock_evctrl_rethink();
     }
     else if( id == tklock_blank_disable_id ) {
@@ -3347,12 +3523,7 @@ static void tklock_gconf_init(void)
 
     mce_gconf_get_int(MCE_GCONF_TK_DOUBLE_TAP_GESTURE_PATH,
                       &doubletap_gesture_policy);
-
-    if( doubletap_gesture_policy < 0 || doubletap_gesture_policy > 2 ) {
-        mce_log(LL_WARN, "Double tap gesture has invalid policy: %d; "
-                "using default", doubletap_gesture_policy);
-        doubletap_gesture_policy = DEFAULT_DOUBLETAP_GESTURE_POLICY;
-    }
+    tklock_gconf_sanitize_doubletap_gesture_policy();
 
     /** Touchscreen double tap gesture mode */
     mce_gconf_notifier_add(MCE_GCONF_DOUBLETAP_PATH,
@@ -3586,10 +3757,118 @@ static void tklock_ui_close(void)
               DBUS_TYPE_INVALID);
 }
 
+static guint tklock_ui_notify_end_id = 0;
+static guint tklock_ui_notify_beg_id = 0;
+
+static void tklock_ui_notify_rethink_wakelock(void)
+{
+    static bool have_lock = false;
+
+    bool need_lock = (tklock_ui_notify_beg_id || tklock_ui_notify_end_id);
+
+    if( have_lock == need_lock )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "ui notify wakelock: %s",
+            need_lock ? "OBTAIN" : "RELEASE");
+
+    if( (have_lock = need_lock) ) {
+        wakelock_lock("mce_tklock_notify", -1);
+    }
+    else
+        wakelock_unlock("mce_tklock_notify");
+
+EXIT:
+    return;
+}
+
+static gboolean tklock_ui_notify_end_cb(gpointer data)
+{
+    (void) data;
+
+    if( !tklock_ui_notify_end_id )
+        goto EXIT;
+
+    tklock_ui_notify_end_id = 0;
+
+EXIT:
+
+    tklock_ui_notify_rethink_wakelock();
+
+    return FALSE;
+}
+
+static gboolean tklock_ui_notify_beg_cb(gpointer data)
+{
+    (void) data;
+
+    if( !tklock_ui_notify_beg_id )
+        goto EXIT;
+
+    tklock_ui_notify_beg_id = 0;
+
+    bool current = tklock_datapipe_have_tklock_submode();
+
+    if( tklock_ui_notified == current )
+        goto EXIT;
+
+    tklock_ui_notified = current;
+
+    /* do lipstick specific ipc */
+    if( lipstick_available ) {
+        if( current )
+            tklock_ui_open();
+        else
+            tklock_ui_close();
+    }
+
+    /* broadcast signal */
+    tklock_dbus_send_tklock_mode(0);
+
+    /* give ui a chance to see the signal */
+    if( tklock_ui_notify_end_id )
+        g_source_remove(tklock_ui_notify_end_id);
+
+    tklock_ui_notify_end_id = g_timeout_add(2000,
+                                            tklock_ui_notify_end_cb,
+                                            0);
+
+EXIT:
+
+    tklock_ui_notify_rethink_wakelock();
+
+    return FALSE;
+}
+
+static void tklock_ui_notify_cancel(void)
+{
+    if( tklock_ui_notify_end_id ) {
+        g_source_remove(tklock_ui_notify_end_id),
+            tklock_ui_notify_end_id = 0;
+    }
+    if( tklock_ui_notify_beg_id ) {
+        g_source_remove(tklock_ui_notify_beg_id),
+            tklock_ui_notify_beg_id = 0;
+    }
+
+    tklock_ui_notify_rethink_wakelock();
+}
+
+static void tklock_ui_notify_schdule(void)
+{
+    if( tklock_ui_notify_end_id ) {
+        g_source_remove(tklock_ui_notify_end_id),
+            tklock_ui_notify_end_id = 0;
+    }
+    if( !tklock_ui_notify_beg_id ) {
+        tklock_ui_notify_beg_id = g_idle_add(tklock_ui_notify_beg_cb, 0);
+    }
+
+    tklock_ui_notify_rethink_wakelock();
+}
+
 static void tklock_ui_set(bool enable)
 {
-    bool requested = enable;
-
     if( enable ) {
         if( system_state != MCE_STATE_USER ) {
             mce_log(LL_INFO, "deny tklock; not in user mode");
@@ -3605,21 +3884,14 @@ static void tklock_ui_set(bool enable)
         }
     }
 
-    if( tklock_ui_sent != enable || requested != enable ) {
-        mce_log(LL_DEVEL, "tklock state = %s", enable ? "locked" : "unlocked");
-
-        if( (tklock_ui_sent = tklock_ui_enabled = enable) ) {
-            if( lipstick_available )
-                tklock_ui_open();
+    if( tklock_ui_enabled != enable ) {
+        if( (tklock_ui_enabled = enable) )
             mce_add_submode_int32(MCE_TKLOCK_SUBMODE);
-        }
-        else {
-            if( lipstick_available )
-                tklock_ui_close();
+        else
             mce_rem_submode_int32(MCE_TKLOCK_SUBMODE);
-        }
-        tklock_dbus_send_tklock_mode(0);
     }
+
+    tklock_ui_notify_schdule();
 }
 
 /** Handle reply to device lock state query
@@ -3828,8 +4100,10 @@ static gboolean tklock_dbus_mode_change_req_cb(DBusMessage *const msg)
 
     mce_log(LL_DEBUG, "mode: %s/%d", mode, state);
 
-    if( state != LOCK_UNDEF )
+    if( state != LOCK_UNDEF ) {
+        tklock_ui_notified = -1;
         tklock_datapipe_tk_lock_cb(GINT_TO_POINTER(state));
+    }
 
     if( no_reply )
         status = TRUE;
@@ -3870,6 +4144,7 @@ static gboolean tklock_dbus_systemui_callback_cb(DBusMessage *const msg)
 
     switch( result ) {
     case TKLOCK_UNLOCK:
+        tklock_ui_notified = -1;
         tklock_ui_set(false);
         break;
 
@@ -4575,6 +4850,7 @@ void mce_tklock_exit(void)
     tklock_dtcalib_stop();
     tklock_datapipe_proximity_uncover_cancel();
     tklock_notif_quit();
+    tklock_ui_notify_cancel();
 
     // FIXME: check that final state is sane
 

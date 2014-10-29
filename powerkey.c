@@ -3,8 +3,10 @@
  * Power key logic for the Mode Control Entity
  * <p>
  * Copyright © 2004-2011 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright © 2014 Jolla Ltd.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
+ * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
  * mce is free software; you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License
@@ -34,255 +36,433 @@
 
 #include <linux/input.h>
 
+#include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
 
 #include <mce/dbus-names.h>
 
-#if 0 // DEBUG: make all logging from this module "critical"
-# undef mce_log
-# define mce_log(LEV, FMT, ARGS...) \
-	mce_log_file(LL_CRIT, __FILE__, __FUNCTION__, FMT , ## ARGS)
-#endif
-
-/**
- * The ID of the timeout used when determining
- * whether the key press was short or long
- */
-static guint powerkey_timeout_cb_id = 0;
-
-/**
- * The ID of the timeout used when determining
- * whether the key press was a double press
- */
-static guint doublepress_timeout_cb_id = 0;
-
-/** Time in milliseconds before the key press is considered medium */
-static gint mediumdelay = DEFAULT_POWER_MEDIUM_DELAY;
-/** Time in milliseconds before the key press is considered long */
-static gint longdelay = DEFAULT_POWER_LONG_DELAY;
-/** Timeout in milliseconds during which key press is considered double */
-static gint doublepressdelay = DEFAULT_POWER_DOUBLE_DELAY;
-/** Action to perform on a short key press */
-static poweraction_t shortpressaction = DEFAULT_POWERKEY_SHORT_ACTION;
-/** Action to perform on a long key press */
-static poweraction_t longpressaction = DEFAULT_POWERKEY_LONG_ACTION;
-/** Action to perform on a double key press */
-static poweraction_t doublepressaction = DEFAULT_POWERKEY_DOUBLE_ACTION;
-
-/** D-Bus signal to send on short [power] press */
-static gchar *shortpresssignal = NULL;
-/** D-Bus signal to send on long [power] press */
-static gchar *longpresssignal = NULL;
-/** D-Bus signal to send on double [power] press */
-static gchar *doublepresssignal = NULL;
-
-static void cancel_powerkey_timeout(void);
-
-/** Check if we need to hold a wakelock for power key handling
+/* ========================================================================= *
+ * OVERVIEW
  *
- * Effectively wakelock can be acquired only due to power key
- * pressed handling in powerkey_trigger().
+ * There is a predefined set of actions. Of these two are dbus actions
+ * that by default make mce broadcast dbus signals, but can be configured
+ * to make any dbus method call with optional string argument.
  *
- * Releasing wakelock happens after power key is released
- * and/or long/double tap timeouts get triggered.
+ * Any combination of these actions can be bound to:
+ * - single power key press
+ * - double power key press
+ * - long power key press
  *
- * Timer re-programming does not affect wakelock status on purpose.
+ * The selected actions are executed in a fixed order and actions that
+ * are common to both single and double press are executed immediately
+ * after powerkey is released. This allows double press configuration
+ * to extend what would be done with single press without causing
+ * delays for single press handling.
+ *
+ * Separate combinations are used depending on whether the
+ * display is on or off during the 1st power key press.
+ *
+ * The build-in defaults are as follows
+ *
+ * From display off:
+ * - single press - turns display on
+ * - double press - turns display on and hides lockscreen (but not device lock)
+ * - long press   - does nothing
+ *
+ * From display on:
+ * - single press - turns display off and activates locksreen
+ * - double press - turns display off, activates locksreen and locks device
+ * - long press   - initiates shutdown (if lockscreen is not active)
+ *
+ * Effectively this is just as before, except for the double press
+ * actions to apply device lock / wake up to home screen.
+ * ========================================================================= */
+
+/* ========================================================================= *
+ * PROTOTYPES
+ * ========================================================================= */
+
+/* ------------------------------------------------------------------------- *
+ * MISC_UTIL
+ * ------------------------------------------------------------------------- */
+
+/* Null tolerant string equality predicate
+ *
+ * @param s1 string
+ * @param s2 string
+ *
+ * @return true if both s1 and s2 are null or same string, false otherwise
  */
-static void powerkey_wakelock_rethink(void)
+static inline bool eq(const char *s1, const char *s2)
 {
-#ifdef ENABLE_WAKELOCKS
-	static bool have_lock = false;
-
-	bool want_lock = false;
-
-	/* hold wakelock while we have active power key timers */
-	if( powerkey_timeout_cb_id || doublepress_timeout_cb_id ) {
-		want_lock = true;
-	}
-	if( have_lock == want_lock )
-		goto EXIT;
-
-	if( (have_lock = want_lock) ) {
-		wakelock_lock("mce_powerkey_stm", -1);
-		mce_log(LL_DEBUG, "acquire wakelock");
-	}
-	else {
-		mce_log(LL_DEBUG, "release wakelock");
-		wakelock_unlock("mce_powerkey_stm");
-	}
-EXIT:
-	return;
-#endif
+    return (s1 && s2) ? !strcmp(s1, s2) : (s1 == s2);
 }
 
-/** Power key press actions mode */
-static gint powerkey_action_mode = PWRKEY_ENABLE_DEFAULT;
+/** String is NULL or empty predicate
+ */
+static inline bool empty(const char *s)
+{
+    return s == 0 || *s == 0;
+}
 
-/** GConf callback ID for powerkey_action_mode */
-static guint powerkey_action_mode_cb_id = 0;
+static int64_t pwrkey_get_boot_tick(void);
+static char   *pwrkey_get_token(char **ppos);
+static bool    pwrkey_create_flagfile(const char *path);
+static bool    pwrkey_delete_flagfile(const char *path);
 
-/** Power key press blanking mode */
-static gint powerkey_blanking_mode = PWRKEY_BLANK_TO_OFF;
-
-/** GConf callback ID for powerkey_blanking_mode */
-static guint powerkey_blanking_mode_cb_id = 0;
-
-/** Power key press count for proximity sensor override */
-static gint powerkey_ps_override_count = 3;
-
-/** GConf callback ID for powerkey_ps_override_count */
-static guint powerkey_ps_override_count_cb_id = 0;
-
-/** Maximum time between power key presses for proximity sensor override */
-static gint powerkey_ps_override_timeout = 333;
-
-/** GConf callback ID for powerkey_ps_override_timeout */
-static guint powerkey_ps_override_timeout_cb_id = 0;
-
-/** GConf callback for powerkey related settings
+/* ------------------------------------------------------------------------- *
+ * PS_OVERRIDE
  *
- * @param gcc    (not used)
- * @param id     Connection ID from gconf_client_notify_add()
- * @param entry  The modified GConf entry
- * @param data   (not used)
- */
-static void powerkey_gconf_cb(GConfClient *const gcc, const guint id,
-			      GConfEntry *const entry, gpointer const data)
-{
-	(void)gcc;
-	(void)data;
-	(void)id;
+ * Provides escape from stuck proximity sensor.
+ * ------------------------------------------------------------------------- */
 
-	const GConfValue *gcv = gconf_entry_get_value(entry);
+/** [setting] Power key press count for proximity sensor override */
+static gint  pwrkey_ps_override_count = 3;
 
-	if( !gcv ) {
-		mce_log(LL_DEBUG, "GConf Key `%s' has been unset",
-			gconf_entry_get_key(entry));
-		goto EXIT;
-	}
+/** GConf callback ID for pwrkey_ps_override_count */
+static guint pwrkey_ps_override_count_gconf_id = 0;
 
-	if( id == powerkey_action_mode_cb_id ) {
-		gint old = powerkey_action_mode;
-		powerkey_action_mode = gconf_value_get_int(gcv);
-		mce_log(LL_NOTICE, "powerkey_action_mode: %d -> %d",
-			old, powerkey_action_mode);
-	}
-	else if( id == powerkey_blanking_mode_cb_id ) {
-		gint old = powerkey_blanking_mode;
-		powerkey_blanking_mode = gconf_value_get_int(gcv);
-		mce_log(LL_NOTICE, "powerkey_blanking_mode: %d -> %d",
-			old, powerkey_blanking_mode);
-	}
-	else if( id == powerkey_ps_override_count_cb_id ) {
-		gint old = powerkey_ps_override_count;
-		powerkey_ps_override_count = gconf_value_get_int(gcv);
-		mce_log(LL_NOTICE, "powerkey_ps_override_count: %d -> %d",
-			old, powerkey_ps_override_count);
-	}
-	else if( id == powerkey_ps_override_timeout_cb_id ) {
-		gint old = powerkey_ps_override_timeout;
-		powerkey_ps_override_timeout = gconf_value_get_int(gcv);
-		mce_log(LL_NOTICE, "powerkey_ps_override_timeout: %d -> %d",
-			old, powerkey_ps_override_timeout);
-	}
-	else {
-		mce_log(LL_WARN, "Spurious GConf value received; confused!");
-	}
+/** [setting] Maximum time between power key presses for proximity sensor override */
+static gint  pwrkey_ps_override_timeout = 333;
 
-EXIT:
-	return;
-}
+/** GConf callback ID for pwrkey_ps_override_timeout */
+static guint pwrkey_ps_override_timeout_gconf_id = 0;
 
-/** Get gconf values and add change notifiers
- */
-static void powerkey_gconf_init(void)
-{
-	/* Power key press handling mode */
-	mce_gconf_notifier_add(MCE_GCONF_POWERKEY_PATH,
-			       MCE_GCONF_POWERKEY_MODE,
-			       powerkey_gconf_cb,
-			       &powerkey_action_mode_cb_id);
+static void  pwrkey_ps_override_evaluate(void);
 
-	mce_gconf_get_int(MCE_GCONF_POWERKEY_MODE, &powerkey_action_mode);
-
-	/* Power key display blanking mode */
-	mce_gconf_notifier_add(MCE_GCONF_POWERKEY_PATH,
-			       MCE_GCONF_POWERKEY_BLANKING_MODE,
-			       powerkey_gconf_cb,
-			       &powerkey_blanking_mode_cb_id);
-
-	mce_gconf_get_int(MCE_GCONF_POWERKEY_BLANKING_MODE,
-			  &powerkey_blanking_mode);
-
-	/* Power key press count for proximity sensor override */
-	mce_gconf_notifier_add(MCE_GCONF_POWERKEY_PATH,
-			       MCE_GCONF_POWERKEY_PS_OVERRIDE_COUNT,
-			       powerkey_gconf_cb,
-			       &powerkey_ps_override_count_cb_id);
-
-	mce_gconf_get_int(MCE_GCONF_POWERKEY_PS_OVERRIDE_COUNT,
-			  &powerkey_ps_override_count);
-
-	/* Maximum time between power key presses for ps override */
-	mce_gconf_notifier_add(MCE_GCONF_POWERKEY_PATH,
-			       MCE_GCONF_POWERKEY_PS_OVERRIDE_TIMEOUT,
-			       powerkey_gconf_cb,
-			       &powerkey_ps_override_timeout_cb_id);
-
-	mce_gconf_get_int(MCE_GCONF_POWERKEY_PS_OVERRIDE_TIMEOUT,
-			  &powerkey_ps_override_timeout);
-
-}
-
-/** Remove gconf change notifiers
- */
-static void powerkey_gconf_quit(void)
-{
-	/* Power key press handling mode */
-	mce_gconf_notifier_remove(powerkey_action_mode_cb_id),
-		powerkey_action_mode_cb_id = 0;
-
-	/* Power key press blanking mode */
-	mce_gconf_notifier_remove(powerkey_blanking_mode_cb_id),
-		powerkey_blanking_mode_cb_id = 0;
-
-	/* Power key press blanking mode */
-	mce_gconf_notifier_remove(powerkey_ps_override_count_cb_id),
-		powerkey_ps_override_count_cb_id = 0;
-
-	/* Power key press blanking mode */
-	mce_gconf_notifier_remove(powerkey_ps_override_timeout_cb_id),
-		powerkey_ps_override_timeout_cb_id = 0;
-}
-
-/** Helper for sending powerkey feedback dbus signal
+/* ------------------------------------------------------------------------- *
+ * ACTION_EXEC
  *
- * @param sig name of the signal to send
- */
-static void powerkey_send_feedback_signal(const char *sig)
+ * Individual actions that can be taken.
+ * ------------------------------------------------------------------------- */
+
+static gint  pwrkey_action_blank_mode = PWRKEY_BLANK_TO_OFF;
+static guint pwrkey_action_blank_mode_gconf_id = 0;
+
+static void  pwrkey_action_shutdown (void);
+static void  pwrkey_action_softoff  (void);
+static void  pwrkey_action_tklock   (void);
+static void  pwrkey_action_blank    (void);
+static void  pwrkey_action_unblank  (void);
+static void  pwrkey_action_tkunlock (void);
+static void  pwrkey_action_devlock  (void);
+static void  pwrkey_action_dbus1    (void);
+static void  pwrkey_action_dbus2    (void);
+
+/* ------------------------------------------------------------------------- *
+ * ACTION_SETS
+ *
+ * Handle sets of individual actions.
+ * ------------------------------------------------------------------------- */
+
+typedef struct
 {
-	const char *arg = "powerkey";
-	mce_log(LL_DEVEL, "sending dbus signal: %s %s", sig, arg);
-	dbus_send(0, MCE_SIGNAL_PATH, MCE_SIGNAL_IF,  sig, 0,
-		  DBUS_TYPE_STRING, &arg, DBUS_TYPE_INVALID);
-}
+    const char *name;
+    void      (*func)(void);
+} pwrkey_bitconf_t;
+
+static void     pwrkey_mask_execute    (uint32_t mask);
+static uint32_t pwrkey_mask_from_name  (const char *name);
+static uint32_t pwrkey_mask_from_names (const char *names);
+static gchar   *pwrkey_mask_to_names   (uint32_t mask);
+
+/* ------------------------------------------------------------------------- *
+ * ACTION_TRIGGERING
+ * ------------------------------------------------------------------------- */
+
+typedef struct
+{
+    /** Actions common to single and double press */
+    uint32_t mask_common;
+
+    /** Actions for single press */
+    uint32_t mask_single;
+
+    /** Actions for double press */
+    uint32_t mask_double;
+
+    /** Actions for long press */
+    uint32_t mask_long;
+} pwrkey_actions_t;
+
+/** Actions when power key is pressed while display is on */
+static pwrkey_actions_t pwrkey_actions_from_display_on  = { 0, 0, 0, 0 };
+
+/** Actions when power key is pressed while display is off */
+static pwrkey_actions_t pwrkey_actions_from_display_off = { 0, 0, 0, 0 };
+
+/** Currently selected power key actions; default to turning display on */
+static pwrkey_actions_t *pwrkey_actions_now =
+    &pwrkey_actions_from_display_off;
+
+static gchar *pwrkey_actions_single_on           = 0;
+static guint  pwrkey_actions_single_on_gconf_id  = 0;
+
+static gchar *pwrkey_actions_double_on           = 0;
+static guint  pwrkey_actions_double_on_gconf_id  = 0;
+
+static gchar *pwrkey_actions_long_on             = 0;
+static guint  pwrkey_actions_long_on_gconf_id    = 0;
+
+static gchar *pwrkey_actions_single_off          = 0;
+static guint  pwrkey_actions_single_off_gconf_id = 0;
+
+static gchar *pwrkey_actions_double_off          = 0;
+static guint  pwrkey_actions_double_off_gconf_id = 0;
+
+static gchar *pwrkey_actions_long_off            = 0;
+static guint  pwrkey_actions_long_off_gconf_id   = 0;
+
+static void pwrkey_actions_parse           (pwrkey_actions_t *self, const char *names_single, const char *names_double, const char *names_long);
+
+static void pwrkey_actions_do_common       (void);
+static void pwrkey_actions_do_single_press (void);
+static void pwrkey_actions_do_double_press (void);
+static void pwrkey_actions_do_long_press   (void);
+
+static bool pwrkey_actions_use_double_press(void);
+
+static void pwrkey_actions_select          (bool display_is_on);
+
+/* ------------------------------------------------------------------------- *
+ * LONG_PRESS_TIMEOUT
+ *
+ * timer for telling apart short and long power key presses
+ * ------------------------------------------------------------------------- */
+
+static gint     pwrkey_long_press_delay          = DEFAULT_POWERKEY_LONG_DELAY;
+static guint    pwrkey_long_press_delay_gconf_id = 0;
+
+static guint    pwrkey_long_press_timer_id       = 0;
+
+static gboolean pwrkey_long_press_timer_cb      (gpointer aptr);
+static void     pwrkey_long_press_timer_start   (void);
+static bool     pwrkey_long_press_timer_pending (void);
+static bool     pwrkey_long_press_timer_cancel  (void);
+
+/* ------------------------------------------------------------------------- *
+ * DOUBLE_PRESS_TIMEOUT
+ *
+ * timer for telling apart single and double power key presses
+ * ------------------------------------------------------------------------- */
+
+static gint     pwrkey_double_press_delay = DEFAULT_POWERKEY_DOUBLE_DELAY;
+static guint    pwrkey_double_press_delay_gconf_id = 0;
+
+static guint    pwrkey_double_press_timer_id = 0;
+
+static gboolean pwrkey_double_press_timer_cb(gpointer aptr);
+static bool     pwrkey_double_press_timer_pending(void);
+static bool     pwrkey_double_press_timer_cancel(void);
+static void     pwrkey_double_press_timer_start(void);
+
+/* ------------------------------------------------------------------------- *
+ * DBUS_ACTIONS
+ *
+ * emitting dbus signal from mce / making dbus method call to some service
+ * ------------------------------------------------------------------------- */
+
+/** Flag file for: Possibly dangerous dbus action in progress
+ *
+ * Used for resetting dbus action config if it causes mce to crash.
+ *
+ * Using tmpfs is problematic from permissions point of view, but we do
+ * not want to cause flash wear by this either.
+ */
+static const char pwrkey_dbus_action_flag[]  =
+    "/tmp/mce-powerkey-dbus-action.flag";
+
+typedef struct
+{
+    char *destination;
+    char *object;
+    char *interface;
+    char *member;
+    char *argument;
+} pwrkey_dbus_action_t;
+
+static pwrkey_dbus_action_t pwrkey_dbus_action[2] = { };
+
+static gchar *pwrkey_dbus_action1            = 0;
+static guint  pwrkey_dbus_action1_gconf_id   = 0;
+
+static gchar *pwrkey_dbus_action2            = 0;
+static guint  pwrkey_dbus_action2_gconf_id   = 0;
+
+static void   pwrkey_dbus_action_clear(pwrkey_dbus_action_t *self);
+static void   pwrkey_dbus_action_reset(pwrkey_dbus_action_t *self, const char *arg);
+static bool   pwrkey_dbus_action_is_methodcall(const pwrkey_dbus_action_t *self);
+static bool   pwrkey_dbus_action_is_signal(const pwrkey_dbus_action_t *self);
+static void   pwrkey_dbus_action_parse(pwrkey_dbus_action_t *self, const char *data);
+static gchar *pwrkey_dbus_action_to_string(const pwrkey_dbus_action_t *self);
+static void   pwrkey_dbus_action_sanitize(pwrkey_dbus_action_t *self, const char *arg);
+static void   pwrkey_dbus_action_execute(size_t index);
+
+/* ------------------------------------------------------------------------- *
+ * STATE_MACHINE
+ *
+ * main logic for tracking power key presses and associated timers
+ *
+ * state transition graph can be generated from "powerkey.dot" file
+ * ------------------------------------------------------------------------- */
+
+/** Diplay state when power key was pressed */
+static display_state_t pwrkey_stm_display_state = MCE_DISPLAY_UNDEF;
+
+/** [setting] Power key press enable mode */
+static gint  pwrkey_stm_enable_mode = PWRKEY_ENABLE_DEFAULT;
+static guint pwrkey_stm_enable_mode_gconf_id = 0;
+
+static void pwrkey_stm_long_press_timeout   (void);
+static void pwrkey_stm_double_press_timeout (void);
+static void pwrkey_stm_powerkey_pressed     (void);
+static void pwrkey_stm_powerkey_released    (void);
+
+static bool pwrkey_stm_ignore_action        (void);
+static bool pwrkey_stm_pending_timers       (void);
+
+static void pwrkey_stm_rethink_wakelock     (void);
+
+static void pwrkey_stm_store_initial_state  (void);
+static void pwrkey_stm_terminate            (void);
+
+/* ------------------------------------------------------------------------- *
+ * DBUS_IPC
+ *
+ * handling incoming and outgoing dbus messages
+ * ------------------------------------------------------------------------- */
+
+static void     pwrkey_dbus_send_signal(const char *sig, const char *arg);
+
+static gboolean pwrkey_dbus_trigger_event_cb(DBusMessage *const req);
+
+static void     pwrkey_dbus_init(void);
+static void     pwrkey_dbus_quit(void);
+
+/* ------------------------------------------------------------------------- *
+ * GCONF_SETTINGS
+ *
+ * tracking powerkey related runtime changeable settings
+ * ------------------------------------------------------------------------- */
+
+static gint     pwrkey_gconf_sanitize_id = 0;
+
+static gboolean pwrkey_gconf_sanitize_cb     (gpointer aptr);
+static void     pwrkey_gconf_sanitize_now    (void);
+static void     pwrkey_gconf_sanitize_later  (void);
+static void     pwrkey_gconf_sanitize_cancel (void);
+
+static void     pwrkey_gconf_cb(GConfClient *const gcc, const guint id, GConfEntry *const entry, gpointer const data);
+
+static void     pwrkey_gconf_init(void);
+static void     pwrkey_gconf_quit(void);
+
+/* ------------------------------------------------------------------------- *
+ * DATAPIPE_HANDLING
+ *
+ * reacting to state changes / input from other mce modules
+ * ------------------------------------------------------------------------- */
+
+static void pwrkey_datapipes_keypress_cb(gconstpointer const data);
+
+static void pwrkey_datapipes_init(void);
+static void pwrkey_datapipes_quit(void);
+
+/* ------------------------------------------------------------------------- *
+ * MODULE_INTEFACE
+ * ------------------------------------------------------------------------- */
+
+gboolean mce_powerkey_init(void);
+void mce_powerkey_exit(void);
+
+/* ========================================================================= *
+ * MISC_UTIL
+ * ========================================================================= */
 
 /** Get CLOCK_BOOTTIME time stamp in milliseconds
  */
-static int64_t powerkey_get_boot_tick(void)
+static int64_t
+pwrkey_get_boot_tick(void)
 {
-	int64_t res = 0;
+    int64_t res = 0;
 
-	struct timespec ts;
+    struct timespec ts;
 
-	if( clock_gettime(CLOCK_BOOTTIME, &ts) == 0 ) {
-		res = ts.tv_sec;
-		res *= 1000;
-		res += ts.tv_nsec / 1000000;
-	}
+    if( clock_gettime(CLOCK_BOOTTIME, &ts) == 0 ) {
+        res = ts.tv_sec;
+        res *= 1000;
+        res += ts.tv_nsec / 1000000;
+    }
 
-	return res;
+    return res;
 }
+
+/** Parse element from comma separated string list
+ */
+static char *
+pwrkey_get_token(char **ppos)
+{
+    char *pos = *ppos;
+    char *beg = pos;
+
+    if( !pos )
+        goto cleanup;
+
+    for( ; *pos; ++pos ) {
+        if( *pos != ',' )
+            continue;
+        *pos++ = 0;
+        break;
+    }
+
+cleanup:
+    return *ppos = pos, beg;
+}
+
+/** Create an empty flag file
+ *
+ * @param path Path to the file to create
+ *
+ * @return true if file was created, false otherwise
+ */
+static bool pwrkey_create_flagfile(const char *path)
+{
+    bool created = false;
+
+    int fd = open(path, O_WRONLY|O_CREAT|O_EXCL|O_TRUNC, 0666);
+    if( fd != -1 ) {
+        close(fd);
+        created = true;
+    }
+
+    return created;
+}
+
+/** Delete a flag file
+ *
+ * @param path Path to the file to create
+ *
+ * @return true if file was removed, false otherwise
+ */
+
+static bool pwrkey_delete_flagfile(const char *path)
+{
+    bool deleted = false;
+
+    if( unlink(path) == 0 ) {
+        deleted = true;
+    }
+
+    return deleted;
+}
+
+/* ========================================================================= *
+ * PS_OVERRIDE
+ * ========================================================================= */
 
 /** Provide an emergency way out from stuck proximity sensor
  *
@@ -294,780 +474,1690 @@ static int64_t powerkey_get_boot_tick(void)
  * allows user to force proximity sensor to "uncovered" state
  * by rapidly pressing power button several times.
  */
-static void powerkey_ps_override_evaluate(void)
+static void
+pwrkey_ps_override_evaluate(void)
 {
-	static int64_t t_last  = 0;
-	static gint    count   = 0;
+    static int64_t t_last  = 0;
+    static gint    count   = 0;
 
-	/* If the feature is disabled, just reset the counter */
-	if( powerkey_ps_override_count   <= 0 ||
-	    powerkey_ps_override_timeout <= 0 ) {
-		t_last = 0, count = 0;
-		goto EXIT;
-	}
+    /* If the feature is disabled, just reset the counter */
+    if( pwrkey_ps_override_count   <= 0 ||
+        pwrkey_ps_override_timeout <= 0 ) {
+        t_last = 0, count = 0;
+        goto EXIT;
+    }
 
-	cover_state_t proximity_sensor_state =
-		datapipe_get_gint(proximity_sensor_pipe);
+    cover_state_t proximity_sensor_state =
+        datapipe_get_gint(proximity_sensor_pipe);
 
-	/* If the sensor is not covered, just reset the counter */
-	if( proximity_sensor_state != COVER_CLOSED ) {
-		t_last = 0, count = 0;
-		goto EXIT;
-	}
+    /* If the sensor is not covered, just reset the counter */
+    if( proximity_sensor_state != COVER_CLOSED ) {
+        t_last = 0, count = 0;
+        goto EXIT;
+    }
 
-	int64_t t_now = powerkey_get_boot_tick();
+    int64_t t_now = pwrkey_get_boot_tick();
 
-	/* If the previous power key press was too far in
-	 * the past, start counting from zero again */
+    /* If the previous power key press was too far in
+     * the past, start counting from zero again */
 
-	if( t_now > t_last + powerkey_ps_override_timeout ) {
-		mce_log(LL_DEBUG, "ps override count restarted");
-		count = 0;
-	}
+    if( t_now > t_last + pwrkey_ps_override_timeout ) {
+        mce_log(LL_DEBUG, "ps override count restarted");
+        count = 0;
+    }
 
-	t_last = t_now;
+    t_last = t_now;
 
-	/* If configured number of power key presses within the time
-	 * limits has been reached, force proximity sensor state to
-	 * "uncovered".
-	 *
-	 * This should allow touch input ungrabbing and turning
-	 * display on during incoming call / alarm.
-	 *
-	 * If sensor gets unstuck and new proximity readings are
-	 * received, this override will be automatically undone.
-	 */
-	if( ++count == powerkey_ps_override_count ) {
-		mce_log(LL_CRIT, "assuming stuck proximity sensor;"
-			" faking uncover event");
-		execute_datapipe(&proximity_sensor_pipe,
-				 GINT_TO_POINTER(COVER_OPEN),
-				 USE_INDATA, CACHE_INDATA);
-		t_last = 0, count = 0;
-	}
-	else
-		mce_log(LL_DEBUG, "ps override count = %d", count);
+    /* If configured number of power key presses within the time
+     * limits has been reached, force proximity sensor state to
+     * "uncovered".
+     *
+     * This should allow touch input ungrabbing and turning
+     * display on during incoming call / alarm.
+     *
+     * If sensor gets unstuck and new proximity readings are
+     * received, this override will be automatically undone.
+     */
+    if( ++count == pwrkey_ps_override_count ) {
+        mce_log(LL_CRIT, "assuming stuck proximity sensor;"
+                " faking uncover event");
+        execute_datapipe(&proximity_sensor_pipe,
+                         GINT_TO_POINTER(COVER_OPEN),
+                         USE_INDATA, CACHE_INDATA);
+        t_last = 0, count = 0;
+    }
+    else
+        mce_log(LL_DEBUG, "ps override count = %d", count);
 
 EXIT:
 
-	return;
+    return;
+}
+
+/* ========================================================================= *
+ * ACTION_EXEC
+ * ========================================================================= */
+
+static void
+pwrkey_action_shutdown(void)
+{
+    submode_t submode = mce_get_submode_int32();
+
+    /* Do not shutdown if the tklock is active */
+    if( submode & MCE_TKLOCK_SUBMODE )
+        goto EXIT;
+
+    mce_log(LL_DEVEL, "Requesting shutdown");
+    mce_dsme_request_normal_shutdown();
+
+EXIT:
+    return;
+}
+
+static void
+pwrkey_action_softoff(void)
+{
+    submode_t submode = mce_get_submode_int32();
+
+    /* Only soft poweroff if the tklock isn't active */
+    if( submode & MCE_TKLOCK_SUBMODE )
+        goto EXIT;
+
+    mce_log(LL_DEVEL, "Requesting soft poweroff");
+    mce_dsme_request_soft_poweroff();
+
+EXIT:
+    return;
+}
+
+static void
+pwrkey_action_tklock(void)
+{
+    mce_log(LL_DEBUG, "Requesting tklock=on");
+    execute_datapipe(&tk_lock_pipe,
+                     GINT_TO_POINTER(LOCK_ON),
+                     USE_INDATA, CACHE_INDATA);
+}
+
+static void
+pwrkey_action_tkunlock(void)
+{
+    display_state_t target = datapipe_get_gint(display_state_next_pipe);
+
+    /* Only unlock if we are in/entering fully powered on display state */
+    switch( target ) {
+    case MCE_DISPLAY_ON:
+    case MCE_DISPLAY_DIM:
+        break;
+
+    default:
+        goto EXIT;
+    }
+
+    mce_log(LL_DEBUG, "Requesting tklock=off");
+    execute_datapipe(&tk_lock_pipe,
+                     GINT_TO_POINTER(LOCK_OFF),
+                     USE_INDATA, CACHE_INDATA);
+EXIT:
+    return;
+}
+
+static void
+pwrkey_action_blank(void)
+{
+    display_state_t request = MCE_DISPLAY_OFF;
+
+    switch( pwrkey_action_blank_mode ) {
+    case PWRKEY_BLANK_TO_LPM:
+        request = MCE_DISPLAY_LPM_ON;
+        break;
+
+    case PWRKEY_BLANK_TO_OFF:
+    default:
+            break;
+    }
+
+    execute_datapipe(&display_state_req_pipe,
+                     GINT_TO_POINTER(request),
+                     USE_INDATA, CACHE_INDATA);
+}
+
+static void
+pwrkey_action_unblank(void)
+{
+    mce_log(LL_DEVEL, "Requesting device_lock=on");
+    execute_datapipe(&display_state_req_pipe,
+                     GINT_TO_POINTER(MCE_DISPLAY_ON),
+                     USE_INDATA, CACHE_INDATA);
+
+}
+
+static void
+pwrkey_action_devlock(void)
+{
+    static const char service[]   = "org.nemomobile.lipstick";
+    static const char object[]    = "/devicelock";
+    static const char interface[] = "org.nemomobile.lipstick.devicelock";
+    static const char method[]    = "setState";
+    dbus_int32_t      locked      = TRUE;
+
+    dbus_send(service, object, interface, method, 0,
+              DBUS_TYPE_INT32, &locked,
+              DBUS_TYPE_INVALID);
+}
+
+static void
+pwrkey_action_dbus1(void)
+{
+    pwrkey_dbus_action_execute(0);
+}
+
+static void
+pwrkey_action_dbus2(void)
+{
+    pwrkey_dbus_action_execute(1);
+}
+
+/* ========================================================================= *
+ * ACTION_SETS
+ * ========================================================================= */
+
+/** Config string to callback function mapping
+ *
+ * The configured actions are executed in order defined by this array.
+ *
+ * This is needed for determining actions that common to both single and
+ * double press handling.
+ */
+static const pwrkey_bitconf_t pwrkey_action_lut[] =
+{
+    // Direction: ON->OFF
+    {
+        .name = "blank",
+        .func = pwrkey_action_blank,
+    },
+    {
+        .name = "tklock",
+        .func = pwrkey_action_tklock,
+    },
+    {
+        .name = "devlock",
+        .func = pwrkey_action_devlock,
+    },
+    {
+        .name = "dbus1",
+        .func = pwrkey_action_dbus1,
+    },
+    {
+        .name = "softoff",
+        .func = pwrkey_action_softoff,
+    },
+    {
+        .name = "shutdown",
+        .func = pwrkey_action_shutdown,
+    },
+
+    // Direction: OFF->ON
+    {
+        .name = "unblank",
+        .func = pwrkey_action_unblank,
+    },
+    {
+        .name = "tkunlock",
+        .func = pwrkey_action_tkunlock,
+    },
+    {
+        .name = "dbus2",
+        .func = pwrkey_action_dbus2,
+    },
+};
+
+static void
+pwrkey_mask_execute(uint32_t mask)
+{
+    for( size_t i = 0; i < G_N_ELEMENTS(pwrkey_action_lut); ++i ) {
+        if( mask & (1u << i) ) {
+            mce_log(LL_DEBUG, "* exec(%s)", pwrkey_action_lut[i].name);
+            pwrkey_action_lut[i].func();
+        }
+    }
+}
+
+static uint32_t
+pwrkey_mask_from_name(const char *name)
+{
+    uint32_t mask = 0;
+    for( size_t i = 0; i < G_N_ELEMENTS(pwrkey_action_lut); ++i ) {
+        if( strcmp(pwrkey_action_lut[i].name, name) )
+            continue;
+        mask |= 1u << i;
+        break;
+    }
+    return mask;
+}
+
+static uint32_t
+pwrkey_mask_from_names(const char *names)
+{
+    uint32_t  mask = 0;
+    char     *work = 0;
+    char     *pos;
+    char     *end;
+
+    if( !names )
+        goto EXIT;
+
+    if( !(work = strdup(names)) )
+        goto EXIT;
+
+    for( pos = work; pos; pos = end ) {
+        if( (end = strchr(pos, ',')) )
+            *end++ = 0;
+        mask |= pwrkey_mask_from_name(pos);
+    }
+
+EXIT:
+    free(work);
+
+    return mask;
+}
+
+static gchar *
+pwrkey_mask_to_names(uint32_t mask)
+{
+    char tmp[256];
+    char *pos = tmp;
+    char *end = tmp + sizeof tmp - 1;
+
+    auto void add(const char *str)
+    {
+        while( pos < end && *str )
+            *pos++ = *str++;
+    };
+
+    for( size_t i = 0; i < G_N_ELEMENTS(pwrkey_action_lut); ++i ) {
+        if( mask & (1u << i) ) {
+            if( pos > tmp )
+                add(",");
+            add(pwrkey_action_lut[i].name);
+        }
+    }
+    *pos = 0;
+
+    return g_strdup(tmp);
+}
+
+/* ========================================================================= *
+ * ACTION_TRIGGERING
+ * ========================================================================= */
+
+static void
+pwrkey_actions_do_common(void)
+{
+    pwrkey_mask_execute(pwrkey_actions_now->mask_common);
+}
+
+static void
+pwrkey_actions_do_single_press(void)
+{
+    pwrkey_mask_execute(pwrkey_actions_now->mask_single);
+}
+
+static bool
+pwrkey_actions_use_double_press(void)
+{
+    return pwrkey_actions_now->mask_double != 0;
+}
+
+static void
+pwrkey_actions_do_double_press(void)
+{
+    pwrkey_mask_execute(pwrkey_actions_now->mask_double);
+}
+
+static void
+pwrkey_actions_do_long_press(void)
+{
+    system_state_t state   = datapipe_get_gint(system_state_pipe);
+    submode_t      submode = mce_get_submode_int32();
+
+    /* The action configuration applies only in the USER mode */
+
+    switch( state ) {
+    case MCE_STATE_SHUTDOWN:
+    case MCE_STATE_REBOOT:
+        /* Ignore if we're already shutting down/rebooting */
+        break;
+
+    case MCE_STATE_ACTDEAD:
+        /* Activate power on led pattern and power up to user mode*/
+        mce_log(LL_DEBUG, "activate MCE_LED_PATTERN_POWER_ON");
+        execute_datapipe_output_triggers(&led_pattern_activate_pipe,
+                                         MCE_LED_PATTERN_POWER_ON,
+                                         USE_INDATA);
+        mce_dsme_request_powerup();
+        break;
+
+    case MCE_STATE_USER:
+        if( submode & MCE_SOFTOFF_SUBMODE ) {
+            /* Wake up from softoff */
+            mce_dsme_request_soft_poweron();
+        } else {
+            /* Apply configured actions */
+            pwrkey_mask_execute(pwrkey_actions_now->mask_long);
+        }
+        break;
+
+    default:
+        /* Default to powering off */
+        mce_log(LL_WARN, "Requesting shutdown; state: %d",state);
+        mce_dsme_request_normal_shutdown();
+        break;
+    }
+}
+
+static bool
+pwrkey_actions_update(const pwrkey_actions_t *self,
+                      gchar **names_single,
+                      gchar **names_double,
+                      gchar **names_long)
+{
+    bool changed = false;
+
+    auto void update(gchar **prev, gchar *curr)
+    {
+        if( !eq(*prev, curr) )
+            changed = true, g_free(*prev), *prev = curr, curr = 0;
+        g_free(curr);
+    }
+
+    update(names_single,
+           pwrkey_mask_to_names(self->mask_single | self->mask_common));
+
+    update(names_double,
+           pwrkey_mask_to_names(self->mask_double | self->mask_common));
+
+    update(names_long,
+           pwrkey_mask_to_names(self->mask_long));
+
+    return changed;
+}
+
+static void
+pwrkey_actions_parse(pwrkey_actions_t *self,
+                     const char *names_single,
+                     const char *names_double,
+                     const char *names_long)
+{
+    /* Parse from configuration strings */
+    self->mask_common = 0;
+    self->mask_single = pwrkey_mask_from_names(names_single);
+    self->mask_double = pwrkey_mask_from_names(names_double);
+    self->mask_long   = pwrkey_mask_from_names(names_long);
+
+    /* Separate leading actions that are common to both
+     * single and double press */
+    uint32_t diff = self->mask_single ^ self->mask_double;
+    uint32_t mask = (diff - 1) & ~diff;
+    uint32_t comm = self->mask_single & self->mask_double & mask;
+
+    self->mask_common |=  comm;
+    self->mask_single &= ~comm;
+    self->mask_double &= ~comm;
+}
+
+static void pwrkey_actions_select(bool display_is_on)
+{
+    if( display_is_on )
+        pwrkey_actions_now = &pwrkey_actions_from_display_on;
+    else
+        pwrkey_actions_now = &pwrkey_actions_from_display_off;
+}
+
+/* ========================================================================= *
+ * LONG_PRESS_TIMEOUT
+ * ========================================================================= */
+
+static gboolean pwrkey_long_press_timer_cb(gpointer aptr)
+{
+    (void) aptr;
+
+    if( !pwrkey_long_press_timer_id )
+        goto EXIT;
+
+    pwrkey_long_press_timer_id = 0;
+
+    pwrkey_stm_long_press_timeout();
+
+    pwrkey_stm_rethink_wakelock();
+
+EXIT:
+
+    return FALSE;
+}
+
+static bool
+pwrkey_long_press_timer_pending(void)
+{
+    return pwrkey_long_press_timer_id != 0;
+}
+
+static bool
+pwrkey_long_press_timer_cancel(void)
+{
+    bool canceled = false;
+    if( pwrkey_long_press_timer_id ) {
+        g_source_remove(pwrkey_long_press_timer_id),
+            pwrkey_long_press_timer_id = 0;
+        canceled = true;
+    }
+    return canceled;
+}
+
+static void
+pwrkey_long_press_timer_start(void)
+{
+    pwrkey_long_press_timer_cancel();
+
+    pwrkey_long_press_timer_id = g_timeout_add(pwrkey_long_press_delay,
+                                               pwrkey_long_press_timer_cb, 0);
+}
+
+/* ========================================================================= *
+ * DOUBLE_PRESS_TIMEOUT
+ * ========================================================================= */
+
+static gboolean pwrkey_double_press_timer_cb(gpointer aptr)
+{
+    (void) aptr;
+
+    if( !pwrkey_double_press_timer_id )
+        goto EXIT;
+
+    pwrkey_double_press_timer_id = 0;
+
+    pwrkey_stm_double_press_timeout();
+
+    pwrkey_stm_rethink_wakelock();
+
+EXIT:
+
+    return FALSE;
+}
+
+static bool
+pwrkey_double_press_timer_pending(void)
+{
+    return pwrkey_double_press_timer_id != 0;
+}
+
+static bool
+pwrkey_double_press_timer_cancel(void)
+{
+    bool canceled = false;
+    if( pwrkey_double_press_timer_id ) {
+        g_source_remove(pwrkey_double_press_timer_id),
+            pwrkey_double_press_timer_id = 0;
+        canceled = true;
+    }
+    return canceled;
+}
+
+static void
+pwrkey_double_press_timer_start(void)
+{
+    pwrkey_double_press_timer_cancel();
+
+    pwrkey_double_press_timer_id = g_timeout_add(pwrkey_double_press_delay,
+                                                 pwrkey_double_press_timer_cb, 0);
+}
+
+/* ========================================================================= *
+ * DBUS_ACTIONS
+ * ========================================================================= */
+
+static void
+pwrkey_dbus_action_clear(pwrkey_dbus_action_t *self)
+{
+    free(self->destination), self->destination = 0;
+    free(self->object),      self->object      = 0;
+    free(self->interface),   self->interface   = 0;
+    free(self->member),      self->member      = 0;
+    free(self->argument),    self->argument    = 0;
+}
+
+static void
+pwrkey_dbus_action_reset(pwrkey_dbus_action_t *self, const char *arg)
+{
+    pwrkey_dbus_action_clear(self);
+    self->argument = strdup(arg);
+}
+
+static bool
+pwrkey_dbus_action_is_methodcall(const pwrkey_dbus_action_t *self)
+{
+    bool valid = false;
+
+    if( empty(self->destination) ||
+        empty(self->object)      ||
+        empty(self->interface)   ||
+        empty(self->member) ) {
+        goto cleanup;
+    }
+
+    if( !dbus_validate_bus_name(self->destination, 0) ||
+        !dbus_validate_path(self->object, 0)          ||
+        !dbus_validate_interface(self->interface, 0)  ||
+        !dbus_validate_member(self->member, 0) ) {
+        goto cleanup;
+    }
+
+    if( !empty(self->argument) && !dbus_validate_utf8(self->argument, 0) )
+        goto cleanup;
+
+    valid = true;
+
+cleanup:
+
+    return valid;
+}
+
+static bool
+pwrkey_dbus_action_is_signal(const pwrkey_dbus_action_t *self)
+{
+    bool valid = false;
+
+    // must have an argument
+    if( empty(self->argument) )
+        goto cleanup;
+
+    // ... and only the argument
+    if( !empty(self->destination) ||
+        !empty(self->object)      ||
+        !empty(self->interface)   ||
+        !empty(self->member) ) {
+        goto cleanup;
+    }
+
+    // which needs to be valid utf8 string
+    if( !dbus_validate_utf8(self->argument, 0) )
+        goto cleanup;
+
+    valid = true;
+
+cleanup:
+
+    return valid;
+}
+
+static gchar *
+pwrkey_dbus_action_to_string(const pwrkey_dbus_action_t *self)
+{
+    gchar *res = 0;
+
+    if( pwrkey_dbus_action_is_signal(self) ) {
+        res = g_strdup(self->argument);
+    }
+    else if( pwrkey_dbus_action_is_methodcall(self) ) {
+        res = g_strdup_printf("%s,%s,%s,%s,%s",
+                              self->destination ?: "",
+                              self->object      ?: "",
+                              self->interface   ?: "",
+                              self->member      ?: "",
+                              self->argument    ?: "");
+    }
+
+    return res;
+}
+
+static void
+pwrkey_dbus_action_parse(pwrkey_dbus_action_t *self, const char *data)
+{
+    char *tmp = 0;
+    char *pos = 0;
+    char *arg = 0;
+
+    pwrkey_dbus_action_clear(self);
+
+    if( empty(data) )
+        goto cleanup;
+
+    pos = tmp = strdup(data);
+    arg = pwrkey_get_token(&pos);
+
+    if( *arg && !*pos ) {
+        self->argument    = strdup(arg);
+    }
+    else {
+        self->destination = strdup(arg);
+        self->object      = strdup(pwrkey_get_token(&pos));
+        self->interface   = strdup(pwrkey_get_token(&pos));
+        self->member      = strdup(pwrkey_get_token(&pos));
+        self->argument    = strdup(pwrkey_get_token(&pos));
+    }
+
+cleanup:
+    free(tmp);
+}
+
+static void
+pwrkey_dbus_action_sanitize(pwrkey_dbus_action_t *self, const char *arg)
+{
+    if( !pwrkey_dbus_action_is_methodcall(self) &&
+        !pwrkey_dbus_action_is_signal(self) ) {
+        pwrkey_dbus_action_reset(self, arg);
+    }
+}
+
+static bool
+pwrkey_dbus_action_configure(size_t action_id, bool force_reset)
+{
+    bool changed = false;
+
+    gchar      **cfg = 0;
+    const char  *def = 0;
+    gchar       *use = 0;
+
+    if( action_id >= G_N_ELEMENTS(pwrkey_dbus_action) )
+        goto cleanup;
+
+    switch( action_id ) {
+    case 0:
+        cfg = &pwrkey_dbus_action1;
+        def = DEFAULT_POWERKEY_DBUS_ACTION1;
+        break;
+    case 1:
+        cfg = &pwrkey_dbus_action2;
+        def = DEFAULT_POWERKEY_DBUS_ACTION2;
+        break;
+    default:
+        goto cleanup;
+    }
+
+    if( !cfg || !def )
+        goto cleanup;
+
+    pwrkey_dbus_action_t *action = pwrkey_dbus_action + action_id;
+
+    if( force_reset ) {
+        pwrkey_dbus_action_reset(action, def);
+    }
+    else {
+        pwrkey_dbus_action_parse(action,  *cfg);
+        pwrkey_dbus_action_sanitize(action, def);
+    }
+
+    use = pwrkey_dbus_action_to_string(action);
+
+    if( !eq(*cfg, use) ) {
+        g_free(*cfg), *cfg = use, use = 0;
+        changed = true;
+    }
+
+cleanup:
+
+    g_free(use);
+
+    return changed;
+}
+
+static void
+pwrkey_dbus_action_execute(size_t action_id)
+{
+    bool flag_created = false;
+
+    if( action_id >= G_N_ELEMENTS(pwrkey_dbus_action) )
+        goto cleanup;
+
+    const pwrkey_dbus_action_t *action = pwrkey_dbus_action + action_id;
+
+    /* We're potentially creating dbus messages using user specified
+     * parameters. Since libdbus will abort the process rather than
+     * returning some error code -> have a flag file around while
+     * doing the hazardous ipc operations -> if abort occurs, the
+     * flag file is left behind -> mce will reset dbus action config
+     * back to default on restart */
+
+    if( !(flag_created = pwrkey_create_flagfile(pwrkey_dbus_action_flag)) ) {
+        mce_log(LL_CRIT, "%s: could not create flagfile: %m",
+                pwrkey_dbus_action_flag);
+        goto cleanup;
+    }
+
+    if( pwrkey_dbus_action_is_signal(action) ) {
+        pwrkey_dbus_send_signal("power_button_trigger",
+                                action->argument);
+        goto cleanup;
+    }
+
+    if( !pwrkey_dbus_action_is_methodcall(action) ) {
+        mce_log(LL_WARN, "dbus%zd action does not have valid configuration",
+                action_id + 1);
+        goto cleanup;
+    }
+
+    if( empty(action->argument) ) {
+        dbus_send(action->destination,
+                  action->object,
+                  action->interface,
+                  action->member,
+                  0,
+                  DBUS_TYPE_INVALID);
+    }
+    else {
+        dbus_send(action->destination,
+                  action->object,
+                  action->interface,
+                  action->member,
+                  0,
+                  DBUS_TYPE_STRING, &action->argument,
+                  DBUS_TYPE_INVALID);
+    }
+
+cleanup:
+
+    if( flag_created && !pwrkey_delete_flagfile(pwrkey_dbus_action_flag) ) {
+        mce_log(LL_CRIT, "%s: could not delete flagfile: %m",
+                pwrkey_dbus_action_flag);
+    }
+
+    return;
+}
+
+/* ========================================================================= *
+ * STATE_MACHINE
+ * ========================================================================= */
+
+/** Check if we need to hold a wakelock for power key handling
+ *
+ * Wakelock is held if there are pending timers.
+ */
+static void
+pwrkey_stm_rethink_wakelock(void)
+{
+#ifdef ENABLE_WAKELOCKS
+    static bool have_lock = false;
+
+    bool want_lock = pwrkey_stm_pending_timers();;
+
+    if( have_lock == want_lock )
+        goto EXIT;
+
+    if( (have_lock = want_lock) ) {
+        wakelock_lock("mce_pwrkey_stm", -1);
+        mce_log(LL_DEBUG, "acquire wakelock");
+    }
+    else {
+        mce_log(LL_DEBUG, "release wakelock");
+        wakelock_unlock("mce_pwrkey_stm");
+    }
+EXIT:
+    return;
+#endif
+}
+
+static bool
+pwrkey_stm_pending_timers(void)
+{
+    return (pwrkey_long_press_timer_pending() ||
+            pwrkey_double_press_timer_pending());
+}
+
+static void
+pwrkey_stm_terminate(void)
+{
+    /* Cancel timers */
+    pwrkey_double_press_timer_cancel();
+    pwrkey_long_press_timer_cancel();
+
+    /* Release wakelock */
+    pwrkey_stm_rethink_wakelock();
+}
+
+static void pwrkey_stm_long_press_timeout(void)
+{
+    // execute long press
+    pwrkey_actions_do_long_press();
+}
+
+static void pwrkey_stm_double_press_timeout(void)
+{
+    // execute single press
+    pwrkey_actions_do_single_press();
+}
+
+static void pwrkey_stm_powerkey_pressed(void)
+{
+    if( pwrkey_double_press_timer_cancel() ) {
+        /* Pressed while we were waiting for double press */
+        pwrkey_actions_do_double_press();
+    }
+    else if( !pwrkey_long_press_timer_pending() ) {
+        /* Pressed while there are no timers active */
+
+        /* Store display state we started from */
+        pwrkey_stm_store_initial_state();
+
+        /* Start short vs long press detection timer */
+        if( !pwrkey_stm_ignore_action() ) {
+            pwrkey_long_press_timer_start();
+        }
+    }
+}
+
+static void pwrkey_stm_powerkey_released(void)
+{
+    if( pwrkey_long_press_timer_cancel() ) {
+        /* Released while we were waiting for long press */
+
+        /* Always do actions that are common to both short and
+         * double press */
+        pwrkey_actions_do_common();
+
+        if( pwrkey_actions_use_double_press() ) {
+            /* There is config for double press -> wait a while
+             * to see if it is double press */
+            pwrkey_double_press_timer_start();
+        }
+        else {
+            /* There is no config for double press -> just do
+             * actions for single press without further delays */
+            pwrkey_actions_do_single_press();
+        }
+    }
+}
+
+static void pwrkey_stm_store_initial_state(void)
+{
+    /* Cache display state */
+
+    pwrkey_stm_display_state = datapipe_get_gint(display_state_pipe);
+
+    /* MCE_DISPLAY_OFF requests must be queued only
+     * from fully powered up display states.
+     * Otherwise we create a situation where multiple
+     * power key presses done while the display is off
+     * or powering up will bounce back to display off
+     * once initial the off->on transition finishes */
+
+    bool display_is_on = false;
+
+    switch( pwrkey_stm_display_state ) {
+    case MCE_DISPLAY_ON:
+    case MCE_DISPLAY_DIM:
+        display_is_on = true;
+        break;
+
+    default:
+        break;
+    }
+
+    pwrkey_actions_select(display_is_on);
 }
 
 /** Should power key action be ignored predicate
  */
-static bool powerkey_ignore_action(void)
+static bool
+pwrkey_stm_ignore_action(void)
 {
-	/* Assume that power key action should not be ignored */
-	bool ignore_powerkey = false;
+    /* Assume that power key action should not be ignored */
+    bool ignore_powerkey = false;
 
-	alarm_ui_state_t alarm_ui_state =
-		datapipe_get_gint(alarm_ui_state_pipe);
-	cover_state_t proximity_sensor_state =
-		datapipe_get_gint(proximity_sensor_pipe);
-	call_state_t call_state =
-		datapipe_get_gint(call_state_pipe);
-	display_state_t display_state =
-		datapipe_get_gint(display_state_pipe);
+    alarm_ui_state_t alarm_ui_state =
+        datapipe_get_gint(alarm_ui_state_pipe);
 
-	/* Ignore keypress if the alarm UI is visible */
-	switch( alarm_ui_state ) {
-	case MCE_ALARM_UI_VISIBLE_INT32:
-	case MCE_ALARM_UI_RINGING_INT32:
-		mce_log(LL_DEVEL, "[powerkey] ignored due to active alarm");
-		ignore_powerkey = true;
-		powerkey_send_feedback_signal("alarm_ui_feedback_ind");
-		break;
+    cover_state_t proximity_sensor_state =
+        datapipe_get_gint(proximity_sensor_pipe);
 
-	default:
-	case MCE_ALARM_UI_OFF_INT32:
-	case MCE_ALARM_UI_INVALID_INT32:
-		// dontcare
-		break;
-	}
+    call_state_t call_state =
+        datapipe_get_gint(call_state_pipe);
 
-	/* Ignore keypress if we have incoming call */
-	switch( call_state ) {
-	case CALL_STATE_RINGING:
-		mce_log(LL_DEVEL, "[powerkey] ignored due to incoming call");
-		ignore_powerkey = true;
-		powerkey_send_feedback_signal("call_ui_feedback_ind");
-		break;
+    /* If alarm dialog is up, power key is used for snoozing */
+    switch( alarm_ui_state ) {
+    case MCE_ALARM_UI_VISIBLE_INT32:
+    case MCE_ALARM_UI_RINGING_INT32:
+        mce_log(LL_DEVEL, "[powerkey] ignored due to active alarm");
+        ignore_powerkey = true;
+        pwrkey_dbus_send_signal("alarm_ui_feedback_ind", "powerkey");
+        break;
 
-	default:
-	case CALL_STATE_INVALID:
-	case CALL_STATE_NONE:
-	case CALL_STATE_ACTIVE:
-	case CALL_STATE_SERVICE:
-		// dontcare
-		break;
-	}
+    default:
+    case MCE_ALARM_UI_OFF_INT32:
+    case MCE_ALARM_UI_INVALID_INT32:
+        // dontcare
+        break;
+    }
 
-	/* Skip rest if already desided to ignore */
-	if( ignore_powerkey )
-		goto EXIT;
+    /* During incoming call power key is used to silence ringing */
+    switch( call_state ) {
+    case CALL_STATE_RINGING:
+        mce_log(LL_DEVEL, "[powerkey] ignored due to incoming call");
+        ignore_powerkey = true;
+        pwrkey_dbus_send_signal("call_ui_feedback_ind", "powerkey");
+        break;
 
-	/* Proximity sensor state vs power key press handling mode */
-	switch( powerkey_action_mode ) {
-	case PWRKEY_ENABLE_NEVER:
-		mce_log(LL_DEVEL, "[powerkey] ignored due to setting=never");
-		ignore_powerkey = true;
-		goto EXIT;
+    default:
+    case CALL_STATE_INVALID:
+    case CALL_STATE_NONE:
+    case CALL_STATE_ACTIVE:
+    case CALL_STATE_SERVICE:
+        // dontcare
+        break;
+    }
 
-	case PWRKEY_ENABLE_ALWAYS:
-		break;
+    /* Skip rest if already desided to ignore */
+    if( ignore_powerkey )
+        goto EXIT;
 
-	case PWRKEY_ENABLE_NO_PROXIMITY2:
-		/* do not ignore if display is not off */
-		if( display_state != MCE_DISPLAY_OFF )
-			break;
-		/* fall through */
-	default:
-	case PWRKEY_ENABLE_NO_PROXIMITY:
-		if( proximity_sensor_state != COVER_CLOSED )
-			break;
+    /* Proximity sensor state vs power key press handling mode */
+    switch( pwrkey_stm_enable_mode ) {
+    case PWRKEY_ENABLE_NEVER:
+        mce_log(LL_DEVEL, "[powerkey] ignored due to setting=never");
+        ignore_powerkey = true;
+        goto EXIT;
 
-		mce_log(LL_DEVEL, "[powerkey] ignored due to proximity");
-		ignore_powerkey = true;
-		goto EXIT;
-	}
+    case PWRKEY_ENABLE_ALWAYS:
+        break;
+
+    case PWRKEY_ENABLE_NO_PROXIMITY2:
+        /* do not ignore if display is on */
+        if( pwrkey_stm_display_state == MCE_DISPLAY_ON  ||
+            pwrkey_stm_display_state == MCE_DISPLAY_DIM ||
+            pwrkey_stm_display_state == MCE_DISPLAY_LPM_ON ) {
+            break;
+        }
+        /* fall through */
+    default:
+    case PWRKEY_ENABLE_NO_PROXIMITY:
+        if( proximity_sensor_state != COVER_CLOSED )
+            break;
+
+        mce_log(LL_DEVEL, "[powerkey] ignored due to proximity");
+        ignore_powerkey = true;
+        goto EXIT;
+    }
 
 EXIT:
-	return ignore_powerkey;
+    return ignore_powerkey;
 }
 
-/** Blank display according to current powerkey_blanking_mode
- */
-static void powerkey_blank_display(void)
-{
-	display_state_t request = MCE_DISPLAY_OFF;
+/* ========================================================================= *
+ * DBUS_IPC
+ * ========================================================================= */
 
-	switch( powerkey_blanking_mode ) {
-	case PWRKEY_BLANK_TO_LPM:
-		request = MCE_DISPLAY_LPM_ON;
-		break;
-
-	case PWRKEY_BLANK_TO_OFF:
-	default:
-		break;
-	}
-
-	execute_datapipe(&display_state_req_pipe,
-			 GINT_TO_POINTER(request),
-			 USE_INDATA, CACHE_INDATA);
-}
-
-/**
- * Generic logic for key presses
+/** Helper for sending powerkey feedback dbus signal
  *
- * @param action The action to take
- * @param dbus_signal A D-Bus signal to send
+ * @param sig name of the signal to send
  */
-static void generic_powerkey_handler(poweraction_t action,
-				     gchar *dbus_signal)
+static void
+pwrkey_dbus_send_signal(const char *sig, const char *arg)
 {
-	mce_log(LL_DEVEL, "action=%d, signal=%s", (int)action,
-		dbus_signal ?: "n/a");
-
-	submode_t submode = mce_get_submode_int32();
-
-	if( powerkey_ignore_action() )
-		goto EXIT;
-
-	switch (action) {
-	case POWER_DISABLED:
-		break;
-
-	case POWER_POWEROFF:
-	default:
-		/* Do not shutdown if the tklock is active
-		 * or if we're in alarm state
-		 */
-		if ((submode & MCE_TKLOCK_SUBMODE) == 0) {
-			mce_log(LL_DEVEL, "Requesting shutdown");
-			mce_dsme_request_normal_shutdown();
-		}
-		break;
-
-	case POWER_SOFT_POWEROFF:
-		/* Only soft poweroff if the tklock isn't active */
-		if ((submode & MCE_TKLOCK_SUBMODE) == 0) {
-			mce_dsme_request_soft_poweroff();
-		}
-
-		break;
-
-	case POWER_TKLOCK_LOCK:
-		/* FIXME: This just happens to be the default place to
-		 *        get hit when processing power key events.
-		 *        The rest should also be adjusted... */
-
-		switch( display_state_get() ) {
-		case MCE_DISPLAY_ON:
-		case MCE_DISPLAY_DIM:
-			/* MCE_DISPLAY_OFF requests must be queued only
-			 * from fully powered up display states.
-			 * Otherwise we create a situation where multiple
-			 * power key presses done while the display is off
-			 * or powering up will bounce back to display off
-			 * once initial the off->on transition finishes */
-
-			mce_log(LL_DEVEL, "display -> off, ui -> locked");
-
-			/* Do the locking before turning display off.
-			 *
-			 * The tklock requests get ignored in act dead
-			 * etc, so we can just blindly request it.
-			 */
-			execute_datapipe(&tk_lock_pipe,
-					 GINT_TO_POINTER(LOCK_ON),
-					 USE_INDATA, CACHE_INDATA);
-
-			powerkey_blank_display();
-			break;
-
-		default:
-		case MCE_DISPLAY_UNDEF:
-		case MCE_DISPLAY_OFF:
-		case MCE_DISPLAY_LPM_OFF:
-		case MCE_DISPLAY_LPM_ON:
-		case MCE_DISPLAY_POWER_UP:
-		case MCE_DISPLAY_POWER_DOWN:
-			/* If the display is not fully powered on, always
-			 * request MCE_DISPLAY_ON */
-
-			mce_log(LL_DEVEL, "display -> on");
-			execute_datapipe(&display_state_req_pipe,
-					 GINT_TO_POINTER(MCE_DISPLAY_ON),
-					 USE_INDATA, CACHE_INDATA);
-			break;
-		}
-		break;
-
-	case POWER_TKLOCK_UNLOCK:
-		/* Request disabling of touchscreen/keypad lock
-		 * if the tklock isn't already inactive
-		 */
-		if ((submode & MCE_TKLOCK_SUBMODE) != 0) {
-			execute_datapipe(&tk_lock_pipe,
-					 GINT_TO_POINTER(LOCK_OFF),
-					 USE_INDATA, CACHE_INDATA);
-		}
-
-		break;
-
-	case POWER_TKLOCK_BOTH:
-		/* Request enabling of touchscreen/keypad lock
-		 * if the tklock isn't active,
-		 * and disabling if the tklock is active
-		 */
-		if ((submode & MCE_TKLOCK_SUBMODE) == 0) {
-			execute_datapipe(&tk_lock_pipe,
-					 GINT_TO_POINTER(LOCK_ON),
-					 USE_INDATA, CACHE_INDATA);
-		} else {
-			execute_datapipe(&tk_lock_pipe,
-					 GINT_TO_POINTER(LOCK_OFF),
-					 USE_INDATA, CACHE_INDATA);
-		}
-
-		break;
-
-	case POWER_DBUS_SIGNAL:
-		/* Send a D-Bus signal */
-		// NOTE: configurable signal name -> no introspection
-		dbus_send(NULL, MCE_REQUEST_PATH,
-			  MCE_REQUEST_IF, dbus_signal,
-			  NULL,
-			  DBUS_TYPE_INVALID);
-	}
-
-EXIT:
-	return;
-}
-
-/**
- * Timeout callback for double key press
- *
- * @param data Unused
- * @return Always returns FALSE, to disable the timeout
- */
-static gboolean doublepress_timeout_cb(gpointer data)
-{
-	system_state_t system_state = datapipe_get_gint(system_state_pipe);
-
-	(void)data;
-
-	doublepress_timeout_cb_id = 0;
-
-	/* doublepress timer expired without any secondary press;
-	 * thus this was a short press
-	 */
-	if (system_state == MCE_STATE_USER)
-		generic_powerkey_handler(shortpressaction,
-					 shortpresssignal);
-
-	/* Release wakelock if all timers are inactive */
-	powerkey_wakelock_rethink();
-
-	return FALSE;
-}
-
-/**
- * Cancel doublepress timeout
- */
-static void cancel_doublepress_timeout(void)
-{
-	/* Remove the timeout source for the [power] double key press handler */
-	if (doublepress_timeout_cb_id != 0) {
-		g_source_remove(doublepress_timeout_cb_id);
-		doublepress_timeout_cb_id = 0;
-	}
-}
-
-/**
- * Setup doublepress timeout
- *
- * @return TRUE if the doublepress action was setup,
- *         FALSE if no action was setup
- */
-static gboolean setup_doublepress_timeout(void)
-{
-	submode_t submode = mce_get_submode_int32();
-	gboolean status = FALSE;
-
-	/* Only setup the doublepress timeout when needed */
-	if (doublepressaction == POWER_DISABLED)
-		goto EXIT;
-
-	cancel_doublepress_timeout();
-
-	/* If the tklock is enabled, but doublepress to unlock is disabled,
-	 * or if the tklock isn't enabled and short press to lock is enabled,
-	 * exit
-	 */
-	if (doublepressaction != POWER_DBUS_SIGNAL) {
-		if ((submode & MCE_TKLOCK_SUBMODE) != 0) {
-			if ((doublepressaction != POWER_TKLOCK_UNLOCK) &&
-			    (doublepressaction != POWER_TKLOCK_BOTH))
-				goto EXIT;
-		} else {
-			if ((shortpressaction == POWER_TKLOCK_LOCK) ||
-			    (shortpressaction == POWER_TKLOCK_BOTH))
-				goto EXIT;
-		}
-	}
-
-	/* Setup new timeout */
-	doublepress_timeout_cb_id =
-		g_timeout_add(doublepressdelay, doublepress_timeout_cb, NULL);
-	status = TRUE;
-
-EXIT:
-	return status;
-}
-
-/**
- * Logic for short key press
- */
-static void handle_shortpress(void)
-{
-	cancel_powerkey_timeout();
-
-	if (doublepress_timeout_cb_id == 0) {
-		if (setup_doublepress_timeout() == FALSE)
-			generic_powerkey_handler(shortpressaction,
-						 shortpresssignal);
-	} else {
-		cancel_doublepress_timeout();
-		generic_powerkey_handler(doublepressaction,
-					 doublepresssignal);
-	}
-}
-
-/**
- * Logic for long key press
- *
- * @return TRUE on success, FALSE on failure
- */
-static gboolean handle_longpress(void)
-{
-	system_state_t state = datapipe_get_gint(system_state_pipe);
-	alarm_ui_state_t alarm_ui_state =
-		datapipe_get_gint(alarm_ui_state_pipe);
-	submode_t submode = mce_get_submode_int32();
-	gboolean status = TRUE;
-
-	/* Ignore keypress if the alarm UI is visible */
-	if ((alarm_ui_state == MCE_ALARM_UI_VISIBLE_INT32) ||
-	    (alarm_ui_state == MCE_ALARM_UI_RINGING_INT32))
-		goto EXIT;
-
-	/* Ignore if we're already shutting down/rebooting */
-	switch (state) {
-	case MCE_STATE_SHUTDOWN:
-	case MCE_STATE_REBOOT:
-		status = FALSE;
-		break;
-
-	case MCE_STATE_ACTDEAD:
-		/* activate power on led pattern and power up to user mode*/
-		mce_log(LL_DEBUG, "activate MCE_LED_PATTERN_POWER_ON");
-		execute_datapipe_output_triggers(&led_pattern_activate_pipe,
-						 MCE_LED_PATTERN_POWER_ON,
-						 USE_INDATA);
-		mce_dsme_request_powerup();
-		break;
-
-	case MCE_STATE_USER:
-		/* If softoff is enabled, wake up
-		 * Otherwise, perform long press action
-		 */
-		if ((submode & MCE_SOFTOFF_SUBMODE)) {
-			mce_dsme_request_soft_poweron();
-		} else {
-			generic_powerkey_handler(longpressaction,
-						 longpresssignal);
-		}
-
-		break;
-
-	default:
-		/* If no special cases are needed,
-		 * just do a regular shutdown
-		 */
-		mce_log(LL_WARN,
-			"Requesting shutdown; state: %d",
-			state);
-
-		mce_dsme_request_normal_shutdown();
-		break;
-	}
-
-EXIT:
-	return status;
-}
-
-/**
- * Timeout callback for long key press
- *
- * @param data Unused
- * @return Always returns FALSE, to disable the timeout
- */
-static gboolean powerkey_timeout_cb(gpointer data)
-{
-	(void)data;
-
-	powerkey_timeout_cb_id = 0;
-
-	handle_longpress();
-
-	/* Release wakelock if all timers are inactive */
-	powerkey_wakelock_rethink();
-
-	return FALSE;
-}
-
-/**
- * Cancel powerkey timeout
- */
-static void cancel_powerkey_timeout(void)
-{
-	/* Remove the timeout source for the [power] long key press handler */
-	if (powerkey_timeout_cb_id != 0) {
-		g_source_remove(powerkey_timeout_cb_id);
-		powerkey_timeout_cb_id = 0;
-	}
-}
-
-/**
- * Setup powerkey timeout
- */
-static void setup_powerkey_timeout(gint powerkeydelay)
-{
-	cancel_powerkey_timeout();
-
-	/* Setup new timeout */
-	powerkey_timeout_cb_id =
-		g_timeout_add(powerkeydelay, powerkey_timeout_cb, NULL);
+    mce_log(LL_DEVEL, "sending dbus signal: %s %s", sig, arg);
+    dbus_send(0, MCE_SIGNAL_PATH, MCE_SIGNAL_IF,  sig, 0,
+              DBUS_TYPE_STRING, &arg, DBUS_TYPE_INVALID);
 }
 
 /**
  * D-Bus callback for powerkey event triggering
  *
  * @param msg D-Bus message
- * @return TRUE on success, FALSE on failure
+ *
+ * @return TRUE
  */
-static gboolean trigger_powerkey_event_req_dbus_cb(DBusMessage *const msg)
+static gboolean pwrkey_dbus_trigger_event_cb(DBusMessage *const req)
 {
-	dbus_bool_t no_reply = dbus_message_get_no_reply(msg);
-	DBusMessageIter iter;
-	dbus_uint32_t uintval;
-	dbus_bool_t boolval;
-	gint argcount = 0;
-	gint argtype;
-	gboolean status = FALSE;
-	DBusError error;
+    DBusMessage   *rsp = 0;
+    dbus_uint32_t  act = 0;
 
-	/* Register error channel */
-	dbus_error_init(&error);
+    DBusMessageIter iter;
 
-	mce_log(LL_DEVEL, "Received [power] button trigger request from %s",
-		mce_dbus_get_message_sender_ident(msg));
+    mce_log(LL_DEVEL, "[power] button trigger request from %s",
+            mce_dbus_get_message_sender_ident(req));
 
-	if (dbus_message_iter_init(msg, &iter) == FALSE) {
-		// XXX: should we return an error instead?
-		mce_log(LL_ERR,
-			"Failed to initialise D-Bus message iterator; "
-			"message has no arguments");
-		goto EXIT;
-	}
+    if( !dbus_message_iter_init(req, &iter) )
+        goto EXIT;
 
-	argtype = dbus_message_iter_get_arg_type(&iter);
-	argcount++;
+    switch( dbus_message_iter_get_arg_type(&iter) ) {
+    case DBUS_TYPE_BOOLEAN:
+        {
+            dbus_bool_t tmp = 0;
+            dbus_message_iter_get_basic(&iter, &tmp);
+            act = tmp ? 1 : 0;
+        }
+        break;
 
-	switch (argtype) {
-	case DBUS_TYPE_BOOLEAN:
-		dbus_message_iter_get_basic(&iter, &boolval);
-		uintval = (boolval == TRUE) ? 1 : 0;
-		break;
+    case DBUS_TYPE_UINT32:
+        dbus_message_iter_get_basic(&iter, &act);
+        break;
 
-	case DBUS_TYPE_UINT32:
-		dbus_message_iter_get_basic(&iter, &uintval);
+    default:
+        mce_log(LL_ERR,	"Argument passed to %s.%s has incorrect type",
+                MCE_REQUEST_IF, MCE_TRIGGER_POWERKEY_EVENT_REQ);
+        goto EXIT;
+    }
 
-		if (uintval > 2) {
-			mce_log(LL_ERR,
-				"Incorrect powerkey event passed to %s.%s; "
-				"ignoring request",
-				MCE_REQUEST_IF, MCE_TRIGGER_POWERKEY_EVENT_REQ);
-			goto EXIT;
-		}
+    if( act > 2 ) {
+        mce_log(LL_ERR, "Incorrect powerkey event passed to %s.%s; "
+                "ignoring request",
+                MCE_REQUEST_IF, MCE_TRIGGER_POWERKEY_EVENT_REQ);
+        goto EXIT;
+    }
 
-		break;
+    mce_log(LL_DEBUG, "[power] button event trigger value: %d", act);
 
-	default:
-		mce_log(LL_ERR,
-			"Argument %d passed to %s.%s has incorrect type",
-			argcount,
-			MCE_REQUEST_IF, MCE_TRIGGER_POWERKEY_EVENT_REQ);
-		goto EXIT;
-	}
+    /* Terminate state machine actions for real power key */
+    pwrkey_stm_terminate();
 
-	while (dbus_message_iter_next(&iter) == TRUE)
-		argcount++;
+    /* Choose actions based on display state */
+    pwrkey_stm_store_initial_state();
 
-	if (argcount > 1) {
-		mce_log(LL_WARN,
-			"Too many arguments passed to %s.%s; "
-			"got %d, expected %d -- ignoring extra arguments",
-			MCE_REQUEST_IF, MCE_TRIGGER_POWERKEY_EVENT_REQ,
-			argcount, 1);
-	}
+    if( pwrkey_stm_ignore_action() )
+        goto EXIT;
 
-	mce_log(LL_DEBUG, "[power] button event trigger value: %d", uintval);
+    switch (act) {
+    default:
+    case 0:
+        /* short press */
+        pwrkey_actions_do_common();
+        pwrkey_actions_do_single_press();
+        break;
 
-	cancel_powerkey_timeout();
-	cancel_doublepress_timeout();
+    case 1:
+        /* long press */
+        pwrkey_actions_do_long_press();
+        break;
 
-	switch (uintval) {
-	default:
-	case 0:
-		/* short press */
-		generic_powerkey_handler(shortpressaction,
-					 shortpresssignal);
-		break;
-
-	case 1:
-		/* long press */
-		handle_longpress();
-		break;
-
-	case 2:
-		/* double press */
-		generic_powerkey_handler(doublepressaction,
-					 doublepresssignal);
-		break;
-	}
-
-	if (no_reply == FALSE) {
-		DBusMessage *reply = dbus_new_method_reply(msg);
-
-		status = dbus_send_message(reply);
-	} else {
-		status = TRUE;
-	}
+    case 2:
+        /* double press */
+        pwrkey_actions_do_common();
+        pwrkey_actions_do_double_press();
+        break;
+    }
 
 EXIT:
-	return status;
+    if( !dbus_message_get_no_reply(req) ) {
+        /* Need to send reply, create a dummy one if we do
+         * not have already existing error reply */
+        if( !rsp )
+            rsp = dbus_new_method_reply(req);
+        dbus_send_message(rsp), rsp = 0;
+    }
+
+    if( rsp )
+        dbus_message_unref(rsp);
+
+    pwrkey_stm_rethink_wakelock();
+
+    return TRUE;
 }
+
+/** Array of dbus message handlers */
+static mce_dbus_handler_t pwrkey_dbus_handlers[] =
+{
+    /* signals - outbound (for Introspect purposes only) */
+    {
+        .interface = MCE_SIGNAL_IF,
+        .name      = "alarm_ui_feedback_ind",
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .args      =
+            "    <arg name=\"event\" type=\"s\"/>\n"
+    },
+    {
+        .interface = MCE_SIGNAL_IF,
+        .name      = "call_ui_feedback_ind",
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .args      =
+            "    <arg name=\"event\" type=\"s\"/>\n"
+    },
+    {
+        .interface = MCE_SIGNAL_IF,
+        .name      = "power_button_trigger",
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .args      =
+            "    <arg name=\"event\" type=\"s\"/>\n"
+    },
+    /* method calls */
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_TRIGGER_POWERKEY_EVENT_REQ,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = pwrkey_dbus_trigger_event_cb,
+        .args      =
+            "    <arg direction=\"in\" name=\"action\" type=\"u\"/>\n"
+    },
+    /* sentinel */
+    {
+        .interface = 0
+    }
+};
+
+/** Add dbus handlers
+ */
+static void
+pwrkey_dbus_init(void)
+{
+    mce_dbus_handler_register_array(pwrkey_dbus_handlers);
+}
+
+/** Remove dbus handlers
+ */
+static void
+pwrkey_dbus_quit(void)
+{
+    mce_dbus_handler_unregister_array(pwrkey_dbus_handlers);
+}
+
+/* ========================================================================= *
+ * GCONF_SETTINGS
+ * ========================================================================= */
+
+static void
+pwrkey_gconf_sanitize_action_masks(void)
+{
+    /* parse settings -> bitmasks */
+    pwrkey_actions_parse(&pwrkey_actions_from_display_on,
+                         pwrkey_actions_single_on,
+                         pwrkey_actions_double_on,
+                         pwrkey_actions_long_on);
+
+    pwrkey_actions_parse(&pwrkey_actions_from_display_off,
+                         pwrkey_actions_single_off,
+                         pwrkey_actions_double_off,
+                         pwrkey_actions_long_off);
+
+    /* bitmasks -> setting strings */
+    bool on_changed =
+        pwrkey_actions_update(&pwrkey_actions_from_display_on,
+                              &pwrkey_actions_single_on,
+                              &pwrkey_actions_double_on,
+                              &pwrkey_actions_long_on);
+
+    bool off_changed =
+        pwrkey_actions_update(&pwrkey_actions_from_display_off,
+                              &pwrkey_actions_single_off,
+                              &pwrkey_actions_double_off,
+                              &pwrkey_actions_long_off);
+
+    /* send notifications if something changed */
+    if( on_changed ) {
+        mce_gconf_set_string(MCE_GCONF_POWERKEY_ACTIONS_SINGLE_ON,
+                             pwrkey_actions_single_on);
+
+        mce_gconf_set_string(MCE_GCONF_POWERKEY_ACTIONS_DOUBLE_ON,
+                             pwrkey_actions_double_on);
+
+        mce_gconf_set_string(MCE_GCONF_POWERKEY_ACTIONS_LONG_ON,
+                             pwrkey_actions_long_on);
+    }
+
+    if( off_changed ) {
+        mce_gconf_set_string(MCE_GCONF_POWERKEY_ACTIONS_SINGLE_OFF,
+                             pwrkey_actions_single_off);
+
+        mce_gconf_set_string(MCE_GCONF_POWERKEY_ACTIONS_DOUBLE_OFF,
+                             pwrkey_actions_double_off);
+
+        mce_gconf_set_string(MCE_GCONF_POWERKEY_ACTIONS_LONG_OFF,
+                             pwrkey_actions_long_off);
+    }
+}
+
+static void
+pwrkey_gconf_sanitize_dbus_actions(void)
+{
+    /* The custom dbus action settings can cause mce to
+     * get aborted by dbus_message_new_xxx().
+     *
+     * Assume having the flag file present means that
+     * mce is restarting after abort and reset the dbus
+     * action config back to defaults to avoid repeating
+     * the abort.
+     */
+    bool force_reset = pwrkey_delete_flagfile(pwrkey_dbus_action_flag);
+    if( force_reset ) {
+        mce_log(LL_CRIT, "%s: flagfile was present; resetting"
+                "dbus action config", pwrkey_dbus_action_flag);
+    }
+    if( pwrkey_dbus_action_configure(0, force_reset) ) {
+        mce_gconf_set_string(MCE_GCONF_POWERKEY_DBUS_ACTION1,
+                             pwrkey_dbus_action1);
+    }
+    if( pwrkey_dbus_action_configure(1, force_reset) ) {
+        mce_gconf_set_string(MCE_GCONF_POWERKEY_DBUS_ACTION2,
+                             pwrkey_dbus_action2);
+    }
+}
+
+static void
+pwrkey_gconf_sanitize_now(void)
+{
+    pwrkey_gconf_sanitize_action_masks();
+    pwrkey_gconf_sanitize_dbus_actions();
+}
+
+static gboolean pwrkey_gconf_sanitize_cb(gpointer aptr)
+{
+    (void)aptr;
+
+    if( !pwrkey_gconf_sanitize_id )
+        goto EXIT;
+
+    pwrkey_gconf_sanitize_id = 0;
+
+    pwrkey_gconf_sanitize_now();
+
+EXIT:
+    return FALSE;
+}
+
+static void pwrkey_gconf_sanitize_later(void)
+{
+    if( !pwrkey_gconf_sanitize_id )
+        pwrkey_gconf_sanitize_id = g_idle_add(pwrkey_gconf_sanitize_cb, 0);
+}
+
+static void pwrkey_gconf_sanitize_cancel(void)
+{
+    if( pwrkey_gconf_sanitize_id ) {
+        g_source_remove(pwrkey_gconf_sanitize_id),
+            pwrkey_gconf_sanitize_id = 0;
+    }
+}
+
+/** GConf callback for powerkey related settings
+ *
+ * @param gcc    (not used)
+ * @param id     Connection ID from gconf_client_notify_add()
+ * @param entry  The modified GConf entry
+ * @param data   (not used)
+ */
+static void
+pwrkey_gconf_cb(GConfClient *const gcc, const guint id,
+                            GConfEntry *const entry, gpointer const data)
+{
+    (void)gcc;
+    (void)data;
+    (void)id;
+
+    const GConfValue *gcv = gconf_entry_get_value(entry);
+
+    if( !gcv ) {
+        mce_log(LL_DEBUG, "GConf Key `%s' has been unset",
+                gconf_entry_get_key(entry));
+        goto EXIT;
+    }
+
+    if( id == pwrkey_stm_enable_mode_gconf_id ) {
+        gint old = pwrkey_stm_enable_mode;
+        pwrkey_stm_enable_mode = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "pwrkey_stm_enable_mode: %d -> %d",
+                old, pwrkey_stm_enable_mode);
+    }
+    else if( id == pwrkey_action_blank_mode_gconf_id ) {
+        gint old = pwrkey_action_blank_mode;
+        pwrkey_action_blank_mode = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "pwrkey_action_blank_mode: %d -> %d",
+                old, pwrkey_action_blank_mode);
+    }
+    else if( id == pwrkey_ps_override_count_gconf_id ) {
+        gint old = pwrkey_ps_override_count;
+        pwrkey_ps_override_count = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "pwrkey_ps_override_count: %d -> %d",
+                old, pwrkey_ps_override_count);
+    }
+    else if( id == pwrkey_ps_override_timeout_gconf_id ) {
+        gint old = pwrkey_ps_override_timeout;
+        pwrkey_ps_override_timeout = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "pwrkey_ps_override_timeout: %d -> %d",
+                old, pwrkey_ps_override_timeout);
+    }
+    else if( id == pwrkey_long_press_delay_gconf_id ) {
+        gint old = pwrkey_long_press_delay;
+        pwrkey_long_press_delay = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "pwrkey_long_press_delay: %d -> %d",
+                old, pwrkey_long_press_delay);
+    }
+    else if( id == pwrkey_double_press_delay_gconf_id ) {
+        gint old = pwrkey_double_press_delay;
+        pwrkey_double_press_delay = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "pwrkey_double_press_delay: %d -> %d",
+                old, pwrkey_double_press_delay);
+    }
+    else if( id == pwrkey_actions_single_on_gconf_id ) {
+        const char *val = gconf_value_get_string(gcv);
+        if( !eq(pwrkey_actions_single_on, val) ) {
+            mce_log(LL_NOTICE, "pwrkey_actions_single_on: '%s' -> '%s'",
+                    pwrkey_actions_single_on, val);
+            g_free(pwrkey_actions_single_on);
+            pwrkey_actions_single_on = g_strdup(val);
+            pwrkey_gconf_sanitize_later();
+        }
+    }
+    else if( id == pwrkey_actions_double_on_gconf_id ) {
+        const char *val = gconf_value_get_string(gcv);
+        if( !eq(pwrkey_actions_double_on, val) ) {
+            mce_log(LL_NOTICE, "pwrkey_actions_double_on: '%s' -> '%s'",
+                    pwrkey_actions_double_on, val);
+            g_free(pwrkey_actions_double_on);
+            pwrkey_actions_double_on = g_strdup(val);
+            pwrkey_gconf_sanitize_later();
+        }
+    }
+    else if( id == pwrkey_actions_long_on_gconf_id ) {
+        const char *val = gconf_value_get_string(gcv);
+        if( !eq(pwrkey_actions_long_on, val) ) {
+            mce_log(LL_NOTICE, "pwrkey_actions_long_on: '%s' -> '%s'",
+                    pwrkey_actions_long_on, val);
+            g_free(pwrkey_actions_long_on);
+            pwrkey_actions_long_on = g_strdup(val);
+            pwrkey_gconf_sanitize_later();
+        }
+    }
+    else if( id == pwrkey_actions_single_off_gconf_id ) {
+        const char *val = gconf_value_get_string(gcv);
+        if( !eq(pwrkey_actions_single_off, val) ) {
+            mce_log(LL_NOTICE, "pwrkey_actions_single_off: '%s' -> '%s'",
+                    pwrkey_actions_single_off, val);
+            g_free(pwrkey_actions_single_off);
+            pwrkey_actions_single_off = g_strdup(val);
+            pwrkey_gconf_sanitize_later();
+        }
+    }
+    else if( id == pwrkey_actions_double_off_gconf_id ) {
+        const char *val = gconf_value_get_string(gcv);
+        if( !eq(pwrkey_actions_double_off, val) ) {
+            mce_log(LL_NOTICE, "pwrkey_actions_double_off: '%s' -> '%s'",
+                    pwrkey_actions_double_off, val);
+            g_free(pwrkey_actions_double_off);
+            pwrkey_actions_double_off = g_strdup(val);
+            pwrkey_gconf_sanitize_later();
+        }
+    }
+    else if( id == pwrkey_actions_long_off_gconf_id ) {
+        const char *val = gconf_value_get_string(gcv);
+        if( !eq(pwrkey_actions_long_off, val) ) {
+            mce_log(LL_NOTICE, "pwrkey_actions_long_off: '%s' -> '%s'",
+                    pwrkey_actions_long_off, val);
+            g_free(pwrkey_actions_long_off);
+            pwrkey_actions_long_off = g_strdup(val);
+            pwrkey_gconf_sanitize_later();
+        }
+    }
+    else if( id == pwrkey_dbus_action1_gconf_id ) {
+        const char *val = gconf_value_get_string(gcv);
+        if( !eq(pwrkey_dbus_action1, val) ) {
+            mce_log(LL_NOTICE, "pwrkey_dbus_action1: '%s' -> '%s'",
+                    pwrkey_dbus_action1, val);
+            g_free(pwrkey_dbus_action1);
+            pwrkey_dbus_action1 = g_strdup(val);
+            pwrkey_gconf_sanitize_later();
+        }
+    }
+    else if( id == pwrkey_dbus_action2_gconf_id ) {
+        const char *val = gconf_value_get_string(gcv);
+        if( !eq(pwrkey_dbus_action2, val) ) {
+            mce_log(LL_NOTICE, "pwrkey_dbus_action2: '%s' -> '%s'",
+                    pwrkey_dbus_action2, val);
+            g_free(pwrkey_dbus_action2);
+            pwrkey_dbus_action2 = g_strdup(val);
+            pwrkey_gconf_sanitize_later();
+        }
+    }
+    else {
+        mce_log(LL_WARN, "Spurious GConf value received; confused!");
+    }
+
+EXIT:
+
+    return;
+}
+
+/** Get gconf values and add change notifiers
+ */
+static void
+pwrkey_gconf_init(void)
+{
+    /* Power key press handling mode */
+    mce_gconf_track_int(MCE_GCONF_POWERKEY_MODE,
+                        &pwrkey_stm_enable_mode, -1,
+                        pwrkey_gconf_cb,
+                        &pwrkey_stm_enable_mode_gconf_id);
+
+    /* Power key display blanking mode */
+    mce_gconf_track_int(MCE_GCONF_POWERKEY_BLANKING_MODE,
+                        &pwrkey_action_blank_mode, -1,
+                        pwrkey_gconf_cb,
+                        &pwrkey_action_blank_mode_gconf_id);
+
+    /* Power key press count for proximity sensor override */
+    mce_gconf_track_int(MCE_GCONF_POWERKEY_PS_OVERRIDE_COUNT,
+                        &pwrkey_ps_override_count, -1,
+                        pwrkey_gconf_cb,
+                        &pwrkey_ps_override_count_gconf_id);
+
+    /* Maximum time between power key presses for ps override */
+    mce_gconf_track_int(MCE_GCONF_POWERKEY_PS_OVERRIDE_TIMEOUT,
+                        &pwrkey_ps_override_timeout, -1,
+                        pwrkey_gconf_cb,
+                        &pwrkey_ps_override_timeout_gconf_id);
+
+    /* Delay for waiting long press */
+    mce_gconf_track_int(MCE_GCONF_POWERKEY_LONG_PRESS_DELAY,
+                        &pwrkey_long_press_delay, -1,
+                        pwrkey_gconf_cb,
+                        &pwrkey_long_press_delay_gconf_id);
+
+    /* Delay for waiting double press */
+    mce_gconf_track_int(MCE_GCONF_POWERKEY_DOUBLE_PRESS_DELAY,
+                        &pwrkey_double_press_delay, -1,
+                        pwrkey_gconf_cb,
+                        &pwrkey_double_press_delay_gconf_id);
+
+    /* Action sets */
+
+    mce_gconf_track_string(MCE_GCONF_POWERKEY_ACTIONS_SINGLE_ON,
+                           &pwrkey_actions_single_on,
+                           DEFAULT_POWERKEY_ACTIONS_SINGLE_ON,
+                           pwrkey_gconf_cb,
+                           &pwrkey_actions_single_on_gconf_id);
+
+    mce_gconf_track_string(MCE_GCONF_POWERKEY_ACTIONS_DOUBLE_ON,
+                           &pwrkey_actions_double_on,
+                           DEFAULT_POWERKEY_ACTIONS_DOUBLE_ON,
+                           pwrkey_gconf_cb,
+                           &pwrkey_actions_double_on_gconf_id);
+
+    mce_gconf_track_string(MCE_GCONF_POWERKEY_ACTIONS_LONG_ON,
+                           &pwrkey_actions_long_on,
+                           DEFAULT_POWERKEY_ACTIONS_LONG_ON,
+                           pwrkey_gconf_cb,
+                           &pwrkey_actions_long_on_gconf_id);
+
+    mce_gconf_track_string(MCE_GCONF_POWERKEY_ACTIONS_SINGLE_OFF,
+                           &pwrkey_actions_single_off,
+                           DEFAULT_POWERKEY_ACTIONS_SINGLE_OFF,
+                           pwrkey_gconf_cb,
+                           &pwrkey_actions_single_off_gconf_id);
+
+    mce_gconf_track_string(MCE_GCONF_POWERKEY_ACTIONS_DOUBLE_OFF,
+                           &pwrkey_actions_double_off,
+                           DEFAULT_POWERKEY_ACTIONS_DOUBLE_OFF,
+                           pwrkey_gconf_cb,
+                           &pwrkey_actions_double_off_gconf_id);
+
+    mce_gconf_track_string(MCE_GCONF_POWERKEY_ACTIONS_LONG_OFF,
+                           &pwrkey_actions_long_off,
+                           DEFAULT_POWERKEY_ACTIONS_LONG_OFF,
+                           pwrkey_gconf_cb,
+                           &pwrkey_actions_long_off_gconf_id);
+
+    /* D-Bus actions */
+
+    mce_gconf_track_string(MCE_GCONF_POWERKEY_DBUS_ACTION1,
+                           &pwrkey_dbus_action1,
+                           DEFAULT_POWERKEY_DBUS_ACTION1,
+                           pwrkey_gconf_cb,
+                           &pwrkey_dbus_action1_gconf_id);
+
+    mce_gconf_track_string(MCE_GCONF_POWERKEY_DBUS_ACTION2,
+                           &pwrkey_dbus_action2,
+                           DEFAULT_POWERKEY_DBUS_ACTION2,
+                           pwrkey_gconf_cb,
+                           &pwrkey_dbus_action2_gconf_id);
+
+    /* Apply sanity checks */
+
+    pwrkey_gconf_sanitize_now();
+}
+
+/** Remove gconf change notifiers
+ */
+static void
+pwrkey_gconf_quit(void)
+{
+    /* Power key press handling mode */
+    mce_gconf_notifier_remove(pwrkey_stm_enable_mode_gconf_id),
+        pwrkey_stm_enable_mode_gconf_id = 0;
+
+    /* Power key press blanking mode */
+    mce_gconf_notifier_remove(pwrkey_action_blank_mode_gconf_id),
+        pwrkey_action_blank_mode_gconf_id = 0;
+
+    /* Power key press blanking mode */
+    mce_gconf_notifier_remove(pwrkey_ps_override_count_gconf_id),
+        pwrkey_ps_override_count_gconf_id = 0;
+
+    /* Power key press blanking mode */
+    mce_gconf_notifier_remove(pwrkey_ps_override_timeout_gconf_id),
+        pwrkey_ps_override_timeout_gconf_id = 0;
+
+    /* Action sets */
+
+    mce_gconf_notifier_remove(pwrkey_actions_single_on_gconf_id),
+        pwrkey_actions_single_on_gconf_id = 0;
+
+    mce_gconf_notifier_remove(pwrkey_actions_double_on_gconf_id),
+        pwrkey_actions_double_on_gconf_id = 0;
+
+    mce_gconf_notifier_remove(pwrkey_actions_long_on_gconf_id),
+        pwrkey_actions_long_on_gconf_id = 0;
+
+    mce_gconf_notifier_remove(pwrkey_actions_single_off_gconf_id),
+        pwrkey_actions_single_off_gconf_id = 0;
+
+    mce_gconf_notifier_remove(pwrkey_actions_double_off_gconf_id),
+        pwrkey_actions_double_off_gconf_id = 0;
+
+    mce_gconf_notifier_remove(pwrkey_actions_long_off_gconf_id),
+        pwrkey_actions_long_off_gconf_id = 0;
+
+    g_free(pwrkey_actions_single_on),
+        pwrkey_actions_single_on = 0;
+
+    g_free(pwrkey_actions_double_on),
+        pwrkey_actions_double_on = 0;
+
+    g_free(pwrkey_actions_long_on),
+        pwrkey_actions_long_on = 0;
+
+    g_free(pwrkey_actions_single_off),
+        pwrkey_actions_single_off = 0;
+
+    g_free(pwrkey_actions_double_off),
+        pwrkey_actions_double_off = 0;
+
+    g_free(pwrkey_actions_long_off),
+        pwrkey_actions_long_off = 0;;
+
+    /* Cancel pending delayed gconf setting sanitizing */
+    pwrkey_gconf_sanitize_cancel();
+
+    /* D-Bus actions */
+
+    mce_gconf_notifier_remove(pwrkey_dbus_action1_gconf_id),
+        pwrkey_dbus_action1_gconf_id = 0;
+
+    mce_gconf_notifier_remove(pwrkey_dbus_action2_gconf_id),
+        pwrkey_dbus_action2_gconf_id = 0;
+
+    g_free(pwrkey_dbus_action1),
+        pwrkey_dbus_action1 = 0;;
+
+    g_free(pwrkey_dbus_action2),
+        pwrkey_dbus_action2 = 0;;
+}
+
+/* ========================================================================= *
+ * DATAPIPE_HANDLING
+ * ========================================================================= */
 
 /**
  * Datapipe trigger for the [power] key
  *
  * @param data A pointer to the input_event struct
  */
-static void powerkey_trigger(gconstpointer const data)
+static void
+pwrkey_datapipes_keypress_cb(gconstpointer const data)
 {
-	system_state_t system_state = datapipe_get_gint(system_state_pipe);
-	submode_t submode = mce_get_submode_int32();
-	struct input_event const *const *evp;
-	struct input_event const *ev;
+    const struct input_event * const *evp;
+    const struct input_event *ev;
 
-	/* Don't dereference until we know it's safe */
-	if (data == NULL)
-		goto EXIT;
+    if( !(evp = data) )
+        goto EXIT;
 
-	evp = data;
-	ev = *evp;
+    if( !(ev = *evp) )
+        goto EXIT;
 
-	if ((ev != NULL) && (ev->code == KEY_POWER)) {
-		/* If set, the [power] key was pressed */
-		if (ev->value == 1) {
-			mce_log(LL_DEVEL, "[powerkey] pressed");
+    if( ev->type != EV_KEY )
+        goto EXIT;
 
-			/* Are we waiting for a doublepress? */
-			if (doublepress_timeout_cb_id != 0) {
-				handle_shortpress();
-			} else if ((system_state == MCE_STATE_ACTDEAD) ||
-				   ((submode & MCE_SOFTOFF_SUBMODE) != 0)) {
-				/* Setup new timeout */
+    if( ev->code != KEY_POWER )
+        goto EXIT;
 
-				/* Shorter delay for startup
-				 * than for shutdown
-				 */
-				setup_powerkey_timeout(mediumdelay);
-			} else {
-				setup_powerkey_timeout(longdelay);
-			}
-		} else if (ev->value == 0) {
-			mce_log(LL_DEVEL, "[powerkey] released");
+    if( ev->value == 1 ) {
+        /* Detect repeated power key pressing while
+         * proximity sensor is covered; assume it means
+         * the sensor is stuck and user wants to be able
+         * to turn on the display regardless of the sensor
+         * state */
+        pwrkey_ps_override_evaluate();
 
-			/* Detect repeated power key pressing while
-			 * proximity sensor is covered; assume it means
-			 * the sensor is stuck and user wants to be able
-			 * to turn on the display regardless of the sensor
-			 * state */
-			powerkey_ps_override_evaluate();
+        /* Power key pressed */
+        pwrkey_stm_powerkey_pressed();
+    }
+    else if( ev->value == 0 ) {
+        /* Power key released */
+        pwrkey_stm_powerkey_released();
 
-			/* Short key press */
-			if (powerkey_timeout_cb_id != 0) {
-				handle_shortpress();
-			}
-		}
+    }
 
-		/* Acquire/release a wakelock depending on whether
-		 * there are active powerkey timers or not */
-		powerkey_wakelock_rethink();
-	}
+    pwrkey_stm_rethink_wakelock();
 
 EXIT:
-	return;
+    return;
 }
 
-/**
- * Parse the [power] action string
- *
- * @todo Implement this using string to enum mappings instead,
- *       to allow for better debugging messages and a generic parser
- *
- * @param string The string to parse
- * @param dbus_signal A D-Bus signal to send
- * @param action A pointer to the variable to store the action in
- * @return TRUE if the string contained a valid action,
- *         FALSE if the action was invalid
+/** Append triggers/filters to datapipes
  */
-static gboolean parse_action(char *string,
-			     char **dbus_signal,
-			     poweraction_t *action)
+static void
+pwrkey_datapipes_init(void)
 {
-	gboolean status = FALSE;
-
-	if (!strcmp(string, POWER_DISABLED_STR)) {
-		*action = POWER_DISABLED;
-	} else if (!strcmp(string, POWER_MENU_STR)) {
-		*action = POWER_MENU;
-	} else if (!strcmp(string, POWER_POWEROFF_STR)) {
-		*action = POWER_POWEROFF;
-	} else if (!strcmp(string, POWER_SOFT_POWEROFF_STR)) {
-		*action = POWER_SOFT_POWEROFF;
-	} else if (!strcmp(string, POWER_TKLOCK_LOCK_STR)) {
-		*action = POWER_TKLOCK_LOCK;
-	} else if (!strcmp(string, POWER_TKLOCK_UNLOCK_STR)) {
-		*action = POWER_TKLOCK_UNLOCK;
-	} else if (!strcmp(string, POWER_TKLOCK_BOTH_STR)) {
-		*action = POWER_TKLOCK_BOTH;
-	} else if (!strncmp(string,
-			    POWER_DBUS_SIGNAL_STR,
-			    strlen(POWER_DBUS_SIGNAL_STR))) {
-		gchar *tmp = string + strlen(POWER_DBUS_SIGNAL_STR);
-
-		if (strlen(tmp) == 0) {
-			mce_log(LL_ERR,
-				"No signal name provided to action "
-				"`dbus-signal-'; ignoring");
-			goto EXIT;
-		}
-
-		*action = POWER_DBUS_SIGNAL;
-		*dbus_signal = g_strdup(tmp);
-	} else {
-		mce_log(LL_WARN,
-			"Unknown [power] action; "
-			"using default");
-		goto EXIT;
-	}
-
-	status = TRUE;
-
-EXIT:
-	return status;
+    append_input_trigger_to_datapipe(&keypress_pipe,
+                                     pwrkey_datapipes_keypress_cb);
 }
 
-/** Array of dbus message handlers */
-static mce_dbus_handler_t powerkey_dbus_handlers[] =
-{
-	/* signals - outbound (for Introspect purposes only) */
-	{
-		.interface = MCE_SIGNAL_IF,
-		.name      = "alarm_ui_feedback_ind",
-		.type      = DBUS_MESSAGE_TYPE_SIGNAL,
-		.args      =
-			"    <arg name=\"event\" type=\"s\"/>\n"
-	},
-	{
-		.interface = MCE_SIGNAL_IF,
-		.name      = "call_ui_feedback_ind",
-		.type      = DBUS_MESSAGE_TYPE_SIGNAL,
-		.args      =
-			"    <arg name=\"event\" type=\"s\"/>\n"
-	},
-	/* method calls */
-	{
-		.interface = MCE_REQUEST_IF,
-		.name      = MCE_TRIGGER_POWERKEY_EVENT_REQ,
-		.type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
-		.callback  = trigger_powerkey_event_req_dbus_cb,
-		.args      =
-			"    <arg direction=\"in\" name=\"action\" type=\"u\"/>\n"
-	},
-	/* sentinel */
-	{
-		.interface = 0
-	}
-};
-
-/** Add dbus handlers
+/** Remove triggers/filters from datapipes
  */
-static void mce_powerkey_init_dbus(void)
+static void
+pwrkey_datapipes_quit(void)
 {
-	mce_dbus_handler_register_array(powerkey_dbus_handlers);
+    remove_input_trigger_from_datapipe(&keypress_pipe,
+                                       pwrkey_datapipes_keypress_cb);
 }
 
-/** Remove dbus handlers
- */
-static void mce_powerkey_quit_dbus(void)
-{
-	mce_dbus_handler_unregister_array(powerkey_dbus_handlers);
-}
+/* ========================================================================= *
+ * MODULE_INTEFACE
+ * ========================================================================= */
 
 /**
  * Init function for the powerkey component
@@ -1076,56 +2166,13 @@ static void mce_powerkey_quit_dbus(void)
  */
 gboolean mce_powerkey_init(void)
 {
-	gboolean status = FALSE;
-	gchar *tmp = NULL;
+    pwrkey_datapipes_init();
 
-	/* Append triggers/filters to datapipes */
-	append_input_trigger_to_datapipe(&keypress_pipe,
-					 powerkey_trigger);
+    pwrkey_dbus_init();
 
-	/* Add dbus handlers */
-	mce_powerkey_init_dbus();
+    pwrkey_gconf_init();
 
-	/* Get configuration options */
-	longdelay = mce_conf_get_int(MCE_CONF_POWERKEY_GROUP,
-				     MCE_CONF_POWERKEY_LONG_DELAY,
-				     DEFAULT_POWER_LONG_DELAY);
-	mediumdelay = mce_conf_get_int(MCE_CONF_POWERKEY_GROUP,
-				       MCE_CONF_POWERKEY_MEDIUM_DELAY,
-				       DEFAULT_POWER_MEDIUM_DELAY);
-	tmp = mce_conf_get_string(MCE_CONF_POWERKEY_GROUP,
-				  MCE_CONF_POWERKEY_SHORT_ACTION,
-				  "");
-
-	/* Since we've set a default, error handling is unnecessary */
-	(void)parse_action(tmp, &shortpresssignal, &shortpressaction);
-	g_free(tmp);
-
-	tmp = mce_conf_get_string(MCE_CONF_POWERKEY_GROUP,
-				  MCE_CONF_POWERKEY_LONG_ACTION,
-				  "");
-
-	/* Since we've set a default, error handling is unnecessary */
-	(void)parse_action(tmp, &longpresssignal, &longpressaction);
-	g_free(tmp);
-
-	doublepressdelay = mce_conf_get_int(MCE_CONF_POWERKEY_GROUP,
-					    MCE_CONF_POWERKEY_DOUBLE_DELAY,
-					    DEFAULT_POWER_DOUBLE_DELAY);
-	tmp = mce_conf_get_string(MCE_CONF_POWERKEY_GROUP,
-				  MCE_CONF_POWERKEY_DOUBLE_ACTION,
-				  "");
-
-	/* Since we've set a default, error handling is unnecessary */
-	(void)parse_action(tmp, &doublepresssignal, &doublepressaction);
-	g_free(tmp);
-
-	/* Setup gconf tracking */
-	powerkey_gconf_init();
-
-	status = TRUE;
-
-	return status;
+    return TRUE;
 }
 
 /**
@@ -1135,26 +2182,14 @@ gboolean mce_powerkey_init(void)
  */
 void mce_powerkey_exit(void)
 {
-	/* Remove D-Bus handlers */
-	mce_powerkey_quit_dbus();
+    pwrkey_dbus_quit();
 
-	/* Remove gconf tracking */
-	powerkey_gconf_quit();
+    pwrkey_gconf_quit();
 
-	/* Remove triggers/filters from datapipes */
-	remove_input_trigger_from_datapipe(&keypress_pipe,
-					   powerkey_trigger);
+    pwrkey_datapipes_quit();
 
-	/* Remove all timer sources */
-	cancel_powerkey_timeout();
-	cancel_doublepress_timeout();
+    /* Remove all timer sources & release wakelock */
+    pwrkey_stm_terminate();
 
-	g_free(doublepresssignal);
-	g_free(longpresssignal);
-	g_free(shortpresssignal);
-
-	/* Release wakelock */
-	powerkey_wakelock_rethink();
-
-	return;
+    return;
 }

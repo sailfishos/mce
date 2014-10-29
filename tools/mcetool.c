@@ -531,6 +531,26 @@ static gboolean dbushelper_read_int(DBusMessageIter *iter, gint *value)
         return *value = data, TRUE;
 }
 
+/** Helper for parsing string value from D-Bus message iterator
+ *
+ * @param iter D-Bus message iterator
+ * @param value Where to store the value (not modified on failure)
+ *
+ * @return TRUE if value could be read, FALSE on failure
+ */
+static gboolean dbushelper_read_string(DBusMessageIter *iter, gchar **value)
+{
+        char *data = 0;
+
+        if( !dbushelper_require_type(iter, DBUS_TYPE_STRING) )
+                return FALSE;
+
+        dbus_message_iter_get_basic(iter, &data);
+        dbus_message_iter_next(iter);
+
+        return *value = g_strdup(data ?: ""), TRUE;
+}
+
 /** Helper for parsing boolean value from D-Bus message iterator
  *
  * @param iter D-Bus message iterator
@@ -663,6 +683,27 @@ static gboolean dbushelper_write_int(DBusMessageIter *iter, gint value)
 {
         dbus_int32_t data = value;
         int          type = DBUS_TYPE_INT32;
+
+        if( !dbus_message_iter_append_basic(iter, type, &data) ) {
+                errorf("failed to add %s data\n",
+                       dbushelper_get_type_name(type));
+                return FALSE;
+        }
+
+        return TRUE;
+}
+
+/** Helper for adding string value to D-Bus iterator
+ *
+ * @param iter Write iterator where to add the value
+ * @param value the value to add
+ *
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean dbushelper_write_string(DBusMessageIter *iter, const char *value)
+{
+        const char *data = value ?: "";
+        int         type = DBUS_TYPE_STRING;
 
         if( !dbus_message_iter_append_basic(iter, type, &data) ) {
                 errorf("failed to add %s data\n",
@@ -935,6 +976,46 @@ EXIT:
         return res;
 }
 
+/** Return a string from the specified GConf key
+ *
+ * @param key The GConf key to get the value from
+ * @param value Will contain the value on return
+ *
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean mcetool_gconf_get_string(const gchar *const key, gchar **value)
+{
+        debugf("@%s(%s)\n", __FUNCTION__, key);
+
+        gboolean     res = FALSE;
+        DBusMessage *req = 0;
+        DBusMessage *rsp = 0;
+
+        DBusMessageIter body, variant;
+
+        if( !(req = mcetool_config_request(MCE_DBUS_GET_CONFIG_REQ)) )
+                goto EXIT;
+        if( !dbushelper_init_write_iterator(req, &body) )
+                goto EXIT;
+        if( !dbushelper_write_path(&body, key) )
+                goto EXIT;
+
+        if( !(rsp = dbushelper_call_method(req)) )
+                goto EXIT;
+        if( !dbushelper_init_read_iterator(rsp, &body) )
+                goto EXIT;
+        if( !dbushelper_read_variant(&body, &variant) )
+                goto EXIT;
+
+        res = dbushelper_read_string(&variant, value);
+
+EXIT:
+        if( rsp ) dbus_message_unref(rsp);
+        if( req ) dbus_message_unref(req);
+
+        return res;
+}
+
 /** Return an integer array from the specified GConf key
  *
  * @param key The GConf key to get the value from
@@ -1059,6 +1140,60 @@ static gboolean mcetool_gconf_set_int(const gchar *const key, const gint value)
         if( !dbushelper_push_variant(&wpos, sig) )
                 goto EXIT;
         if( !dbushelper_write_int(wpos, value) )
+                goto EXIT;
+        if( !dbushelper_pop_container(&wpos) )
+                goto EXIT;
+        if( wpos != stack )
+                abort();
+
+        // get reply and process it
+        if( !(rsp = dbushelper_call_method(req)) )
+                goto EXIT;
+        if( !dbushelper_init_read_iterator(rsp, rpos) )
+                goto EXIT;
+        if( !dbushelper_read_boolean(rpos, &res) )
+                res = FALSE;
+
+EXIT:
+        // make sure write iterator stack is collapsed
+        dbushelper_abandon_stack(stack, wpos);
+
+        if( rsp ) dbus_message_unref(rsp);
+        if( req ) dbus_message_unref(req);
+
+        return res;
+}
+
+/** Set an string GConf key to the specified value
+ *
+ * @param key The GConf key to set the value of
+ * @param value The value to set the key to
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean mcetool_gconf_set_string(const gchar *const key, const char *value)
+{
+        debugf("@%s(%s, %d)\n", __FUNCTION__, key, value);
+
+        static const char sig[] = DBUS_TYPE_STRING_AS_STRING;
+
+        gboolean     res = FALSE;
+        DBusMessage *req = 0;
+        DBusMessage *rsp = 0;
+
+        DBusMessageIter stack[2];
+        DBusMessageIter *wpos = stack;
+        DBusMessageIter *rpos = stack;
+
+        // construct request
+        if( !(req = mcetool_config_request(MCE_DBUS_SET_CONFIG_REQ)) )
+                goto EXIT;
+        if( !dbushelper_init_write_iterator(req, wpos) )
+                goto EXIT;
+        if( !dbushelper_write_path(wpos, key) )
+                goto EXIT;
+        if( !dbushelper_push_variant(&wpos, sig) )
+                goto EXIT;
+        if( !dbushelper_write_string(wpos, value) )
                 goto EXIT;
         if( !dbushelper_pop_container(&wpos) )
                 goto EXIT;
@@ -1648,27 +1783,6 @@ static void set_led_state(const gboolean enable)
         debugf("%s(%s)\n", __FUNCTION__, enable ? "enable" : "disable");
         xmce_ipc_no_reply(enable ? MCE_ENABLE_LED : MCE_DISABLE_LED,
                           DBUS_TYPE_INVALID);
-}
-
-/** Trigger a powerkey event
- *
- * @param type The type of event to trigger; valid types:
- *             "short", "double", "long"
- */
-static bool xmce_powerkey_event(const char *args)
-{
-        debugf("%s(%s)\n", __FUNCTION__, args);
-        int val = xmce_parse_powerkeyevent(args);
-        if( val < 0 ) {
-                errorf("%s: invalid power key event\n", args);
-                exit(EXIT_FAILURE);
-        }
-        /* com.nokia.mce.request.req_trigger_powerkey_event */
-        dbus_uint32_t data = val;
-        xmce_ipc_no_reply(MCE_TRIGGER_POWERKEY_EVENT_REQ,
-                          DBUS_TYPE_UINT32, &data,
-                          DBUS_TYPE_INVALID);
-        return true;
 }
 
 /** Activate/Deactivate a LED pattern
@@ -2393,6 +2507,27 @@ static void xmce_get_blank_timeout(void)
  * powerkey
  * ------------------------------------------------------------------------- */
 
+/** Trigger a powerkey event
+ *
+ * @param type The type of event to trigger; valid types:
+ *             "short", "double", "long"
+ */
+static bool xmce_powerkey_event(const char *args)
+{
+        debugf("%s(%s)\n", __FUNCTION__, args);
+        int val = xmce_parse_powerkeyevent(args);
+        if( val < 0 ) {
+                errorf("%s: invalid power key event\n", args);
+                exit(EXIT_FAILURE);
+        }
+        /* com.nokia.mce.request.req_trigger_powerkey_event */
+        dbus_uint32_t data = val;
+        xmce_ipc_no_reply(MCE_TRIGGER_POWERKEY_EVENT_REQ,
+                          DBUS_TYPE_UINT32, &data,
+                          DBUS_TYPE_INVALID);
+        return true;
+}
+
 /** Lookup table for powerkey wakeup policies
  */
 static const symbol_t powerkey_action[] = {
@@ -2463,6 +2598,363 @@ static void xmce_get_powerkey_blanking(void)
         if( mcetool_gconf_get_int(MCE_GCONF_POWERKEY_BLANKING_MODE, &val) )
                 txt = rlookup(powerkey_blanking, val);
         printf("%-"PAD1"s %s \n", "Powerkey blanking mode:", txt ?: "unknown");
+}
+
+/** Set powerkey long press delay
+ *
+ * @param args string that can be parsed to number
+ */
+static bool xmce_set_powerkey_long_press_delay(const char *args)
+{
+        const char *key = MCE_GCONF_POWERKEY_LONG_PRESS_DELAY;
+        gint        val = xmce_parse_integer(args);
+        mcetool_gconf_set_int(key, val);
+        return true;
+}
+
+/** Get current powerkey long press delay
+ */
+static void xmce_get_powerkey_long_press_delay(void)
+{
+        const char *tag = "Powerkey long press delay:";
+        const char *key = MCE_GCONF_POWERKEY_LONG_PRESS_DELAY;
+        gint        val = 0;
+        char        txt[64];
+
+        if( !mcetool_gconf_get_int(key, &val) )
+                snprintf(txt, sizeof txt, "unknown");
+        else
+                snprintf(txt, sizeof txt, "%d [ms]", val);
+
+        printf("%-"PAD1"s %s\n", tag, txt);
+}
+
+/** Set powerkey double press delay
+ *
+ * @param args string that can be parsed to number
+ */
+static bool xmce_set_powerkey_double_press_delay(const char *args)
+{
+        const char *key = MCE_GCONF_POWERKEY_DOUBLE_PRESS_DELAY;
+        gint        val = xmce_parse_integer(args);
+        mcetool_gconf_set_int(key, val);
+        return true;
+}
+
+/** Get current powerkey double press delay
+ */
+static void xmce_get_powerkey_double_press_delay(void)
+{
+        const char *tag = "Powerkey double press delay:";
+        const char *key = MCE_GCONF_POWERKEY_DOUBLE_PRESS_DELAY;
+        gint        val = 0;
+        char        txt[64];
+
+        if( !mcetool_gconf_get_int(key, &val) )
+                snprintf(txt, sizeof txt, "unknown");
+        else
+                snprintf(txt, sizeof txt, "%d [ms]", val);
+
+        printf("%-"PAD1"s %s\n", tag, txt);
+}
+
+/** Action name is valid predicate
+ */
+static bool xmce_is_powerkey_action(const char *name)
+{
+        static const char * const lut[] =
+        {
+                "blank",
+                "tklock",
+                "devlock",
+                "dbus1",
+                "softoff",
+                "shutdown",
+                "unblank",
+                "tkunlock",
+                "dbus2",
+        };
+
+        for( size_t i = 0; i < G_N_ELEMENTS(lut); ++i ) {
+                if( !strcmp(lut[i], name) )
+                        return true;
+        }
+
+        return false;
+}
+
+/** Comma separated list of action names is valid predicate
+ */
+static bool xmce_is_powerkey_action_mask(const char *names)
+{
+        bool valid = true;
+
+        char *work = strdup(names);
+
+        char *pos = work;
+
+        while( *pos ) {
+                char *name = mcetool_parse_token(&pos);
+                if( xmce_is_powerkey_action(name) )
+                        continue;
+                fprintf(stderr, "invalid powerkey action: '%s'\n", name);
+                valid = false;
+        }
+
+        free(work);
+
+        return valid;
+}
+
+/** Helper for setting powerkey action mask settings
+ */
+static void xmce_set_powerkey_action_mask(const char *key, const char *names)
+{
+        if( names && *names && !xmce_is_powerkey_action_mask(names) )
+                exit(EXIT_FAILURE);
+
+        mcetool_gconf_set_string(key, names);
+}
+
+/** Set actions to perform on single power key press from display off
+ */
+static bool xmce_set_powerkey_actions_while_display_off_single(const char *args)
+{
+        xmce_set_powerkey_action_mask(MCE_GCONF_POWERKEY_ACTIONS_SINGLE_OFF,
+                                      args);
+        return true;
+}
+
+/** Set actions to perform on double power key press from display off
+ */
+static bool xmce_set_powerkey_actions_while_display_off_double(const char *args)
+{
+        xmce_set_powerkey_action_mask(MCE_GCONF_POWERKEY_ACTIONS_DOUBLE_OFF,
+                                      args);
+        return true;
+}
+
+/** Set actions to perform on long power key press from display off
+ */
+static bool xmce_set_powerkey_actions_while_display_off_long(const char *args)
+{
+        xmce_set_powerkey_action_mask(MCE_GCONF_POWERKEY_ACTIONS_LONG_OFF,
+                                      args);
+        return true;
+}
+
+/** Set actions to perform on single power key press from display on
+ */
+static bool xmce_set_powerkey_actions_while_display_on_single(const char *args)
+{
+        xmce_set_powerkey_action_mask(MCE_GCONF_POWERKEY_ACTIONS_SINGLE_ON,
+                                      args);
+        return true;
+}
+
+/** Set actions to perform on double power key press from display on
+ */
+static bool xmce_set_powerkey_actions_while_display_on_double(const char *args)
+{
+        xmce_set_powerkey_action_mask(MCE_GCONF_POWERKEY_ACTIONS_DOUBLE_ON,
+                                      args);
+        return true;
+}
+
+/** Set actions to perform on long power key press from display on
+ */
+static bool xmce_set_powerkey_actions_while_display_on_long(const char *args)
+{
+        xmce_set_powerkey_action_mask(MCE_GCONF_POWERKEY_ACTIONS_LONG_ON,
+                                      args);
+        return true;
+}
+
+/** Helper for getting powerkey action mask settings
+ */
+static void xmce_get_powerkey_action_mask(const char *key, const char *tag)
+{
+        gchar *val = 0;
+        mcetool_gconf_get_string(key, &val);
+        printf("\t%-"PAD2"s %s\n", tag,
+               val ? *val ? val : "(none)" : "unknown");
+        g_free(val);
+}
+
+/* Show current powerkey action mask settings */
+static void xmce_get_powerkey_action_masks(void)
+{
+        printf("Powerkey press from display on:\n");
+        xmce_get_powerkey_action_mask(MCE_GCONF_POWERKEY_ACTIONS_SINGLE_ON,
+                                      "single");
+        xmce_get_powerkey_action_mask(MCE_GCONF_POWERKEY_ACTIONS_DOUBLE_ON,
+                                      "double");
+        xmce_get_powerkey_action_mask(MCE_GCONF_POWERKEY_ACTIONS_LONG_ON,
+                                      "long");
+
+        printf("Powerkey press from display of:\n");
+        xmce_get_powerkey_action_mask(MCE_GCONF_POWERKEY_ACTIONS_SINGLE_OFF,
+                                      "single");
+        xmce_get_powerkey_action_mask(MCE_GCONF_POWERKEY_ACTIONS_DOUBLE_OFF,
+                                      "double");
+        xmce_get_powerkey_action_mask(MCE_GCONF_POWERKEY_ACTIONS_LONG_OFF,
+                                      "long");
+}
+
+/** Validate dbus action parameters given by the user
+ */
+static bool xmce_is_powerkey_dbus_action(const char *conf)
+{
+        bool valid = true;
+
+        char *tmp = strdup(conf);
+        char *pos = tmp;
+
+        const char *arg = mcetool_parse_token(&pos);
+
+        if( *arg && !*pos ) {
+                // single item == argument to use for signal
+        }
+        else {
+                const char *destination = arg;
+                const char *object      = mcetool_parse_token(&pos);
+                const char *interface   = mcetool_parse_token(&pos);
+                const char *member      = mcetool_parse_token(&pos);
+
+                // string argument is optional
+                const char *argument    = mcetool_parse_token(&pos);
+
+                /* NOTE: libdbus will call abort() if invalid parameters are
+                 *       passed to  dbus_message_new_method_call() function.
+                 *       We do not want values that can crash mce to
+                 *       end up in persitently stored settings
+                 */
+
+                /* 1st try to validate given parameters ... */
+
+                if( !dbus_validate_bus_name(destination, 0) ) {
+                        fprintf(stderr, "invalid service name: '%s'\n",
+                               destination);
+                        valid = false;
+                }
+                if( !dbus_validate_path(object, 0) ) {
+                        fprintf(stderr, "invalid object path: '%s'\n",
+                               object);
+                        valid = false;
+                }
+                if( !dbus_validate_interface(interface, 0) ) {
+                        fprintf(stderr, "invalid interface: '%s'\n",
+                               interface);
+                        valid = false;
+                }
+                if( !dbus_validate_member(member, 0) ) {
+                        fprintf(stderr, "invalid method name: '%s'\n",
+                                member);
+                        valid = false;
+                }
+                if( !dbus_validate_utf8(argument, 0) ) {
+                        fprintf(stderr, "invalid argument string: '%s'\n",
+                               argument);
+                        valid = false;
+                }
+
+                /* ... then use the presumed safe parameters to create
+                 * a dbus method call object -> if there is some
+                 * reason for dbus_message_new_method_call() to abort,
+                 * it happens within mcetool, not mce itself.
+                 */
+
+                if( valid ) {
+                        DBusMessage *msg =
+                                dbus_message_new_method_call(destination,
+                                                             object,
+                                                             interface,
+                                                             member);
+                        if( msg )
+                                dbus_message_unref(msg);
+                }
+        }
+
+        free(tmp);
+
+        return valid;
+}
+
+/** Helper for setting dbus action config
+ */
+static void xmce_set_powerkey_dbus_action(const char *key, const char *conf)
+{
+        if( conf && *conf && !xmce_is_powerkey_dbus_action(conf) )
+                exit(EXIT_FAILURE);
+
+        mcetool_gconf_set_string(key, conf);
+}
+
+/** Configure "dbus1" powerkey action
+ */
+static bool xmce_set_powerkey_dbus_action1(const char *args)
+{
+        xmce_set_powerkey_dbus_action(MCE_GCONF_POWERKEY_DBUS_ACTION1, args);
+        return true;
+}
+
+/** Configure "dbus2" powerkey action
+ */
+static bool xmce_set_powerkey_dbus_action2(const char *args)
+{
+        xmce_set_powerkey_dbus_action(MCE_GCONF_POWERKEY_DBUS_ACTION2, args);
+        return true;
+}
+
+/** Helper for showing current dbus action config
+ */
+static void xmce_get_powerkey_dbus_action(const char *key, const char *tag)
+{
+        gchar *val = 0;
+
+        if( !mcetool_gconf_get_string(key, &val) )
+                goto cleanup;
+
+        if( !val )
+                goto cleanup;
+
+        char *pos = val;
+        char *arg = mcetool_parse_token(&pos);
+
+        char tmp[64];
+        snprintf(tmp, sizeof tmp, "Powerkey D-Bus action '%s':", tag);
+
+        if( *arg && !*pos ) {
+                printf("%-"PAD1"s send signal with arg '%s'\n", tmp, arg);
+        }
+        else {
+                const char *destination = arg;
+                const char *object      = mcetool_parse_token(&pos);
+                const char *interface   = mcetool_parse_token(&pos);
+                const char *member      = mcetool_parse_token(&pos);
+                const char *argument    = mcetool_parse_token(&pos);
+
+                printf("%-"PAD1"s make method call\n", tmp);
+                printf("\t%-"PAD2"s %s\n", "destination", destination);
+                printf("\t%-"PAD2"s %s\n", "object", object);
+                printf("\t%-"PAD2"s %s\n", "interface", interface);
+                printf("\t%-"PAD2"s %s\n", "member", member);
+                printf("\t%-"PAD2"s %s\n", "argument",
+                       *argument ? argument : "N/A");;
+        }
+
+cleanup:
+        g_free(val);
+}
+
+/** Show current configuration for powerkey dbus actions
+ */
+static void xmce_get_powerkey_dbus_actions(void)
+{
+        xmce_get_powerkey_dbus_action(MCE_GCONF_POWERKEY_DBUS_ACTION1,
+                                      "dbus1");
+        xmce_get_powerkey_dbus_action(MCE_GCONF_POWERKEY_DBUS_ACTION2,
+                                      "dbus2");
 }
 
 /** Set powerkey proximity override press count
@@ -2575,9 +3067,9 @@ static void xmce_get_display_off_override(void)
  * @note These must match the hardcoded values in mce itself.
  */
 static const symbol_t doubletap_values[] = {
-        { "disabled",           0 },
-        { "show-unlock-screen", 1 },
-        { "unlock",             2 },
+        { "disabled",           DBLTAP_ACTION_DISABLED },
+        { "show-unlock-screen", DBLTAP_ACTION_UNBLANK  },
+        { "unlock",             DBLTAP_ACTION_TKUNLOCK },
         { NULL, -1 }
 };
 
@@ -3345,6 +3837,10 @@ static bool xmce_get_status(const char *args)
         xmce_get_doubletap_wakeup();
         xmce_get_powerkey_action();
         xmce_get_powerkey_blanking();
+        xmce_get_powerkey_long_press_delay();
+        xmce_get_powerkey_double_press_delay();
+        xmce_get_powerkey_action_masks();
+        xmce_get_powerkey_dbus_actions();
         xmce_get_ps_override_count();
         xmce_get_ps_override_timeout();
         xmce_get_display_off_override();
@@ -3686,6 +4182,110 @@ static const mce_opt_t options[] =
                 .usage       =
                         "set the doubletap blanking mode; valid modes are:\n"
                         "'off', 'lpm'\n"
+        },
+        {
+                .name        = "set-powerkey-long-press-delay",
+                .with_arg    = xmce_set_powerkey_long_press_delay,
+                .values      = "ms",
+                .usage       =
+                        "set minimum length of \"long\" power key press.\n"
+        },
+        {
+                .name        = "set-powerkey-double-press-delay",
+                .with_arg    = xmce_set_powerkey_double_press_delay,
+                .values      = "ms",
+                .usage       =
+                        "set maximum delay between \"double\" power key presses.\n"
+        },
+        {
+                .name        = "set-display-on-single-powerkey-press-actions",
+                .with_arg    = xmce_set_powerkey_actions_while_display_on_single,
+                .values      = "actions",
+                .usage       =
+                        "set actions to execute on single power key press from display on state\n"
+                        "\n"
+                        "Valid actions are:\n"
+                        "  blank    - turn display off\n"
+                        "  tklock   - lock ui\n"
+                        "  devlock  - lock device\n"
+                        "  dbus1    - send dbus signal or make method call\n"
+                        "  softoff  - enter softoff mode (legacy, not supported)\n"
+                        "  shutdown - power off device\n"
+                        "  unblank  - turn display on\n"
+                        "  tkunlock - unlock ui\n"
+                        "  dbus2    - send dbus signal or make method call\n"
+                        "\n"
+                        "Comma separated list of actions can be used.\n"
+        },
+        {
+                .name        = "set-display-on-double-powerkey-press-actions",
+                .with_arg    = xmce_set_powerkey_actions_while_display_on_double,
+                .values      = "actions",
+                .usage       =
+                        "set actions to execute on double power key press from display on state\n"
+                        "\n"
+                        "See --set-display-on-single-powerkey-press-actions for details\n"
+        },
+        {
+                .name        = "set-display-on-long-powerkey-press-actions",
+                .with_arg    = xmce_set_powerkey_actions_while_display_on_long,
+                .values      = "actions",
+                .usage       =
+                        "set actions to execute on long power key press from display on state\n"
+                        "\n"
+                        "See --set-display-on-single-powerkey-press-actions for details\n"
+        },
+        {
+                .name        = "set-display-off-single-powerkey-press-actions",
+                .with_arg    = xmce_set_powerkey_actions_while_display_off_single,
+                .values      = "actions",
+                .usage       =
+                        "set actions to execute on single power key press from display off state\n"
+                        "\n"
+                        "See --set-display-on-single-powerkey-press-actions for details\n"
+        },
+        {
+                .name        = "set-display-off-double-powerkey-press-actions",
+                .with_arg    = xmce_set_powerkey_actions_while_display_off_double,
+                .values      = "actions",
+                .usage       =
+                        "set actions to execute on double power key press from display off state\n"
+                        "\n"
+                        "See --set-display-on-single-powerkey-press-actions for details\n"
+        },
+        {
+                .name        = "set-display-off-long-powerkey-press-actions",
+                .with_arg    = xmce_set_powerkey_actions_while_display_off_long,
+                .values      = "actions",
+                .usage       =
+                        "set actions to execute on long power key press from display off state\n"
+                        "\n"
+                        "See --set-display-on-single-powerkey-press-actions for details\n"
+        },
+        {
+                .name        = "set-powerkey-dbus-action1",
+                .with_arg    = xmce_set_powerkey_dbus_action1,
+                .values      = "signal_argument|method_call_details",
+                .usage       =
+                        "define dbus ipc taking place when dbus1 powerkey action is triggered\n"
+                        "\n"
+                        "signal_argument: <argument>\n"
+                        "  MCE will still send a dbus signal, but uses the given string as argument\n"
+                        "  instead of using the built-in default.\n"
+                        "\n"
+                        "methdod_call_details: <service>,<object>,<interface>,<method>[,<argument>]\n"
+                        "  Instead of sending a signal, MCE will make dbus method call as specified.\n"
+                        "  The string argument for the method call is optional.\n"
+        },
+
+        {
+                .name        = "set-powerkey-dbus-action2",
+                .with_arg    = xmce_set_powerkey_dbus_action2,
+                .values      = "signal_argument|method_call_details",
+                .usage       =
+                        "define dbus ipc taking place when dbus2 powerkey action is triggered\n"
+                        "\n"
+                        "See --set-powerkey-dbus-action1 for details.\n"
         },
         {
                 .name        = "set-powerkey-ps-override-count",

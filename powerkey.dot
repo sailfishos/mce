@@ -1,0 +1,39 @@
+/* -*- mode: c -*- */
+
+/* Extra documentation for state transitions made while
+ * handling power key presses.
+ *
+ * To create PNG image, execute:
+ *   dot -Tpng powerkey.dot -o powerkey.png
+ */
+
+digraph display_state_machine {
+  fontsize=10;
+  label = "MCE POWERKEY STATE MACHINE";
+  nodesep=0.3;
+  ranksep=0.2;
+  node[fontsize=6];
+  edge[fontsize=6];
+  edge[arrowsize=0.3];
+  node[style=filled,fillcolor=skyblue,shape=box];
+  node[width=0.00001];
+  node[height=0.00001];
+
+  node[fillcolor=yellow];
+
+  IDLE;
+  PRESSED;
+  RELEASED;
+
+  node[shape=oval,fillcolor=pink];
+
+  IDLE     -> IDLE     [label=" released"];
+  IDLE     -> PRESSED  [label=" pressed:\l start long press timer\l"];
+
+  PRESSED  -> IDLE     [label=" long press timeout:\l execute long press actions\l"];
+
+  PRESSED  -> RELEASED [label=" released:\l stop long press timer\l execute common actions\l start double press timer\l"];
+
+  RELEASED -> IDLE     [label=" double press timeout:\l execute single press actions\l"];
+  RELEASED -> IDLE     [label=" pressed:\l stop double press timer\l execute double press actions\l"];
+}

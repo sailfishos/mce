@@ -38,14 +38,20 @@
 /** SysFS interface to enable/disable the RX-44/RX-48 keyboard IRQs */
 #define MCE_RX44_KEYBOARD_SYSFS_DISABLE_PATH		"/sys/devices/platform/i2c_omap.2/i2c-0/0-0045/disable_kp"
 
-/**
- * Default double tap gesture:
- *
- * 0 - Gesture disabled
- * 1 - Show unlock screen
- * 2 - Unlock tklock
- */
-#define DEFAULT_DOUBLETAP_GESTURE_POLICY		1
+/** Double tap wakeup action modes */
+typedef enum
+{
+    /** Gesture disabled */
+    DBLTAP_ACTION_DISABLED = 0,
+
+    /** Show unlock screen */
+    DBLTAP_ACTION_UNBLANK  = 1,
+
+    /* Unlock tklock */
+    DBLTAP_ACTION_TKUNLOCK = 2,
+
+    DBLTAP_ACTION_DEFAULT  = DBLTAP_ACTION_UNBLANK
+} dbltap_action_t;
 
 /** Proximity timeout for double tap gesture; in seconds */
 #define DEFAULT_POCKET_MODE_PROXIMITY_TIMEOUT		5
