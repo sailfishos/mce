@@ -1,3 +1,14 @@
+mce (1.37.0) unstable; urgency=low
+
+  * [mce] Make unblank and unlock via double tap work again
+  * [mce] Rewrite powerkey handler to allow more flexible configuration.
+    Fixes JB#23653
+  * [mce] Re-evaluate autolock if device wakes up from suspend
+  * [mce] Do not broadcast intermediate tklock changes over D-Bus
+  * [mce] Set tklock if devicelock gets applied immediately after unblanking
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 29 Oct 2014 12:06:24 +0200
+
 mce (1.36.6) unstable; urgency=low
 
   * [mce] Provide transition duration for ui side dimming.
