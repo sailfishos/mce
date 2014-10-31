@@ -1,3 +1,10 @@
+mce (1.37.1) unstable; urgency=low
+
+  * [mce] Consider "undefined" device lock state equal to "unlocked".
+  Fixes JB#24138
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 31 Oct 2014 11:35:12 +0200
+
 mce (1.37.0) unstable; urgency=low
 
   * [mce] Make unblank and unlock via double tap work again
