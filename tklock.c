@@ -529,11 +529,39 @@ EXIT:
 /** Device lock is active; assume false */
 static bool device_lock_active = false;
 
+/** Device lock states */
+enum
+{
+    /** Device lock is not active */
+    DEVICE_LOCK_UNLOCKED  = 0,
+
+    /** Device lock is active */
+    DEVICE_LOCK_LOCKED    = 1,
+
+    /** Initial startup value; from mce p.o.v. equals not active */
+    DEVICE_LOCK_UNDEFINED = 2,
+}  device_lock_state_t;
+
 /** Push device lock state value into device_lock_active_pipe datapipe
  */
 static void tklock_datapipe_set_device_lock_active(int state)
 {
-    bool locked = (state != 0);
+    bool locked = true;
+
+    switch( state ) {
+    case DEVICE_LOCK_UNLOCKED:
+    case DEVICE_LOCK_UNDEFINED:
+        locked = false;
+        break;
+
+    case DEVICE_LOCK_LOCKED:
+        break;
+
+    default:
+        mce_log(LL_WARN, "unknown device lock state=%d; assuming locked",
+                state);
+        break;
+    }
 
     if( device_lock_active != locked ) {
         mce_log(LL_DEVEL, "device lock state = %s", locked ? "locked" : "unlocked");
