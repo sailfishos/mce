@@ -513,6 +513,24 @@ static bool                mdy_lipstick_is_available(void);
 static void                mdy_lipstick_name_owner_set(const char *curr);
 
 /* ------------------------------------------------------------------------- *
+ * CALLSTATE_CHANGES
+ * ------------------------------------------------------------------------- */
+
+enum
+{
+    /** Default duration for blocking suspend after call_state changes */
+    CALLSTATE_CHANGE_BLOCK_SUSPEND_DEFAULT_MS = 5 * 1000,
+
+    /** Duration for blocking suspend after call_state changes to active */
+    CALLSTATE_CHANGE_BLOCK_SUSPEND_ACTIVE_MS  = 60 * 1000,
+};
+
+static gboolean mdy_callstate_end_changed_cb(gpointer aptr);
+static bool     mdy_callstate_changed_recently(void);
+static void     mdy_callstate_clear_changed(void);
+static void     mdy_callstate_set_changed(void);
+
+/* ------------------------------------------------------------------------- *
  * AUTOSUSPEND_POLICY
  * ------------------------------------------------------------------------- */
 
@@ -1492,7 +1510,7 @@ static void mdy_datapipe_call_state_trigger_cb(gconstpointer data)
     mdy_blanking_rethink_timers(false);
 
     // autosuspend policy
-    mdy_stm_schedule_rethink();
+    mdy_callstate_set_changed();
 
 EXIT:
     return;
@@ -4964,6 +4982,77 @@ static void mdy_lipstick_name_owner_set(const char *curr)
 }
 
 /* ========================================================================= *
+ * CALLSTATE_CHANGES
+ * ========================================================================= */
+
+/** Timer id for ending call state was recently changed condition */
+static guint mdy_callstate_end_changed_id = 0;
+
+/** Timer callback for ending call state was recently changed condition */
+static gboolean mdy_callstate_end_changed_cb(gpointer aptr)
+{
+    (void)aptr;
+
+    if( !mdy_callstate_end_changed_id )
+        goto EXIT;
+
+    mdy_callstate_end_changed_id = 0;
+
+    mce_log(LL_DEBUG, "suspend blocking/call state change: ended");
+
+    // autosuspend policy
+    mdy_stm_schedule_rethink();
+
+EXIT:
+    return FALSE;
+}
+
+/** Predicate function for call state was recently changed
+ */
+static bool mdy_callstate_changed_recently(void)
+{
+    return mdy_callstate_end_changed_id != 0;
+}
+
+/** Cancel call state was recently changed condition
+ */
+static void mdy_callstate_clear_changed(void)
+{
+    if( mdy_callstate_end_changed_id ) {
+        mce_log(LL_DEBUG, "suspend blocking/call state change: canceled");
+
+        g_source_remove(mdy_callstate_end_changed_id),
+            mdy_callstate_end_changed_id = 0;
+
+        // autosuspend policy
+        mdy_stm_schedule_rethink();
+    }
+}
+
+/** Start call state was recently changed condition
+ *
+ * How long the condition is kept depends on the call_state.
+ */
+static void mdy_callstate_set_changed(void)
+{
+    int delay = CALLSTATE_CHANGE_BLOCK_SUSPEND_DEFAULT_MS;
+
+    if( call_state == CALL_STATE_ACTIVE )
+        delay = CALLSTATE_CHANGE_BLOCK_SUSPEND_ACTIVE_MS;
+
+    if( mdy_callstate_end_changed_id )
+        g_source_remove(mdy_callstate_end_changed_id);
+    else
+        mce_log(LL_DEBUG, "suspend blocking/call state change: started");
+
+    mdy_callstate_end_changed_id =
+        g_timeout_add(delay, mdy_callstate_end_changed_cb, 0);
+
+    // autosuspend policy
+    mdy_stm_schedule_rethink();
+}
+
+/* ========================================================================= *
  * AUTOSUSPEND_POLICY
  * ========================================================================= */
 
@@ -5017,6 +5106,10 @@ static int mdy_autosuspend_get_allowed_level(void)
     case CALL_STATE_ACTIVE:
         break;
     }
+
+    /* no late suspend immediately after call_state change */
+    if( mdy_callstate_changed_recently() )
+        block_late = true;
 
     /* no late suspend when alarm on screen */
     switch( alarm_ui_state ) {
@@ -8607,6 +8700,7 @@ void g_module_unload(GModule *module)
     mdy_blanking_stop_adaptive_dimming();
     mdy_blanking_cancel_off();
     mdy_compositor_cancel_killer();
+    mdy_callstate_clear_changed();
 
     /* Cancel active asynchronous dbus method calls to avoid
      * callback functions with stale adresses getting invoked */
