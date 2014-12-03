@@ -172,7 +172,7 @@ static int64_t  tklock_monotick_get(void);
 // datapipe values and triggers
 
 static void     tklock_datapipe_system_state_cb(gconstpointer data);
-static void     tklock_datapipe_device_lock_active_cb(gconstpointer data);
+static void     tklock_datapipe_device_lock_state_cb(gconstpointer data);
 static void     tklock_datapipe_device_resumed_cb(gconstpointer data);
 static void     tklock_datapipe_lipstick_available_cb(gconstpointer data);
 static void     tklock_datapipe_update_mode_cb(gconstpointer data);
@@ -203,7 +203,7 @@ static void     tklock_datapipe_lens_cover_cb(gconstpointer data);
 static void     tklock_datapipe_user_activity_cb(gconstpointer data);
 
 static bool     tklock_datapipe_have_tklock_submode(void);
-static void     tklock_datapipe_set_device_lock_active(int state);
+static void     tklock_datapipe_set_device_lock_state(device_lock_state_t state);
 
 static void     tklock_datapipe_append_triggers(datapipe_binding_t *bindings);
 static void     tklock_datapipe_initialize_triggers(datapipe_binding_t *bindings);
@@ -232,6 +232,7 @@ static void     tklock_proxlock_rethink(void);
 
 // autolock based on device lock changes
 
+static void     tklock_autolock_on_devlock_block(int duration_ms);
 static void     tklock_autolock_on_devlock_prime(void);
 static void     tklock_autolock_on_devlock_trigger(void);
 
@@ -526,69 +527,73 @@ EXIT:
     return;
 }
 
-/** Device lock is active; assume false */
-static bool device_lock_active = false;
+/** Device lock state; assume undefined */
+static device_lock_state_t device_lock_state = DEVICE_LOCK_UNDEFINED;
 
-/** Device lock states */
-enum
-{
-    /** Device lock is not active */
-    DEVICE_LOCK_UNLOCKED  = 0,
-
-    /** Device lock is active */
-    DEVICE_LOCK_LOCKED    = 1,
-
-    /** Initial startup value; from mce p.o.v. equals not active */
-    DEVICE_LOCK_UNDEFINED = 2,
-}  device_lock_state_t;
-
-/** Push device lock state value into device_lock_active_pipe datapipe
+/** Push device lock state value into device_lock_state_pipe datapipe
  */
-static void tklock_datapipe_set_device_lock_active(int state)
+static void tklock_datapipe_set_device_lock_state(device_lock_state_t state)
 {
-    bool locked = true;
-
     switch( state ) {
     case DEVICE_LOCK_UNLOCKED:
     case DEVICE_LOCK_UNDEFINED:
-        locked = false;
-        break;
-
     case DEVICE_LOCK_LOCKED:
         break;
 
     default:
         mce_log(LL_WARN, "unknown device lock state=%d; assuming locked",
                 state);
+        state = DEVICE_LOCK_LOCKED;
         break;
     }
 
-    if( device_lock_active != locked ) {
-        mce_log(LL_DEVEL, "device lock state = %s", locked ? "locked" : "unlocked");
-        execute_datapipe(&device_lock_active_pipe,
-                         GINT_TO_POINTER(locked),
+    if( device_lock_state != state ) {
+        execute_datapipe(&device_lock_state_pipe,
+                         GINT_TO_POINTER(state),
                          USE_INDATA, CACHE_INDATA);
     }
 }
 
-/** Change notifications for device_lock_active
+/** Change notifications for device_lock_state
  */
-static void tklock_datapipe_device_lock_active_cb(gconstpointer data)
+static void tklock_datapipe_device_lock_state_cb(gconstpointer data)
 {
-    bool prev = device_lock_active;
-    device_lock_active = GPOINTER_TO_INT(data);
+    device_lock_state_t prev = device_lock_state;
+    device_lock_state = GPOINTER_TO_INT(data);
 
-    if( device_lock_active == prev )
+    if( device_lock_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "device_lock_active = %d -> %d", prev,
-            device_lock_active);
+    mce_log(LL_DEVEL, "device_lock_state = %s -> %s",
+            device_lock_state_repr(prev),
+            device_lock_state_repr(device_lock_state));
 
     tklock_uiexcept_rethink();
 
     tklock_autolock_rethink();
 
-    if( device_lock_active )
+    /* When lipstick is starting up we see device lock
+     * going through undefined -> locked/unlocked change.
+     * We must not trigger autolock due to these initial
+     * device lock transitions */
+    switch( prev ) {
+    case DEVICE_LOCK_UNDEFINED:
+        /* Block autolock for 60 seconds when leaving
+         * undefined state (= lipstick startup) */
+        tklock_autolock_on_devlock_block(60 * 1000);
+        break;
+
+    case DEVICE_LOCK_LOCKED:
+        /* Unblock autolock earlier if we see transition
+         * away from locked state (=unlocked by user) */
+        tklock_autolock_on_devlock_block(0);
+        break;
+
+    default:
+        break;
+    }
+
+    if( device_lock_state == DEVICE_LOCK_LOCKED )
         tklock_autolock_on_devlock_trigger();
 
 EXIT:
@@ -634,7 +639,7 @@ static void tklock_datapipe_lipstick_available_cb(gconstpointer data)
     }
     else {
         /* assume device lock is off if lipstick exits */
-        tklock_datapipe_set_device_lock_active(false);
+        tklock_datapipe_set_device_lock_state(DEVICE_LOCK_UNDEFINED);
     }
 
 EXIT:
@@ -1601,8 +1606,8 @@ static datapipe_binding_t tklock_datapipe_triggers[] =
         .output_cb = tklock_datapipe_update_mode_cb,
     },
     {
-        .datapipe = &device_lock_active_pipe,
-        .output_cb = tklock_datapipe_device_lock_active_cb,
+        .datapipe = &device_lock_state_pipe,
+        .output_cb = tklock_datapipe_device_lock_state_cb,
     },
     {
         .datapipe = &display_state_pipe,
@@ -1819,7 +1824,19 @@ static void tklock_datapipe_quit(void)
  * AUTOLOCK AFTER DEVICELOCK STATE MACHINE
  * ========================================================================= */
 
-static int64_t tklock_autolock_on_devlock_limit = 0;
+/** Time limit for triggering autolock after display on */
+static int64_t tklock_autolock_on_devlock_limit_trigger = 0;
+
+/** Time limit for blocking autolock after lipstick startup */
+static int64_t tklock_autolock_on_devlock_limit_block = 0;
+
+/** Set autolock blocking limit after lipstick startup
+ */
+static void tklock_autolock_on_devlock_block(int duration_ms)
+{
+    tklock_autolock_on_devlock_limit_block =
+        tklock_monotick_get() + duration_ms;
+}
 
 static void tklock_autolock_on_devlock_prime(void)
 {
@@ -1843,9 +1860,9 @@ static void tklock_autolock_on_devlock_prime(void)
         break;
 
     default:
-        if( tklock_autolock_on_devlock_limit )
+        if( tklock_autolock_on_devlock_limit_trigger )
             mce_log(LL_DEBUG, "autolock after devicelock: unprimed");
-        tklock_autolock_on_devlock_limit = 0;
+        tklock_autolock_on_devlock_limit_trigger = 0;
         goto EXIT;
     }
 
@@ -1856,9 +1873,9 @@ static void tklock_autolock_on_devlock_prime(void)
         break;
 
     default:
-        if( !tklock_autolock_on_devlock_limit )
+        if( !tklock_autolock_on_devlock_limit_trigger )
             mce_log(LL_DEBUG, "autolock after devicelock: primed");
-        tklock_autolock_on_devlock_limit =
+        tklock_autolock_on_devlock_limit_trigger =
             tklock_monotick_get() + autolock_limit;
         break;
     }
@@ -1870,7 +1887,7 @@ EXIT:
 static void tklock_autolock_on_devlock_trigger(void)
 {
     /* Device lock must be active */
-    if( !device_lock_active )
+    if( device_lock_state != DEVICE_LOCK_LOCKED )
         goto EXIT;
 
     /* Not while handling calls or alarms */
@@ -1884,10 +1901,16 @@ static void tklock_autolock_on_devlock_trigger(void)
     }
 
     /* Autolock time limit must be set and not reached yet */
-    if( !tklock_autolock_on_devlock_limit )
+    if( !tklock_autolock_on_devlock_limit_trigger )
         goto EXIT;
 
-    if( tklock_monotick_get() >= tklock_autolock_on_devlock_limit )
+    int64_t now = tklock_monotick_get();
+
+    if( now >= tklock_autolock_on_devlock_limit_trigger )
+        goto EXIT;
+
+    /* Autolock must not be blocked by recent lipstick restart */
+    if( now < tklock_autolock_on_devlock_limit_block )
         goto EXIT;
 
     /* We get here if: Device lock got applied right after
@@ -2081,7 +2104,7 @@ static void tklock_autolock_rethink(void)
     case MCE_DISPLAY_LPM_OFF:
     case MCE_DISPLAY_LPM_ON:
     case MCE_DISPLAY_POWER_DOWN:
-        if( device_lock_active )
+        if( device_lock_state == DEVICE_LOCK_LOCKED )
             tklock_ui_set(true);
         else if( !was_off )
             tklock_autolock_schedule(AUTOLOCK_DELAY_MS);
@@ -2241,17 +2264,17 @@ EXIT:
 
 typedef struct
 {
-    uiexctype_t     mask;
-    display_state_t display;
-    bool            tklock;
-    bool            devicelock;
-    bool            insync;
-    bool            restore;
-    bool            was_called;
-    int64_t         linger_tick;
-    guint           linger_id;
-    int64_t         notif_tick;
-    guint           notif_id;
+    uiexctype_t         mask;
+    display_state_t     display;
+    bool                tklock;
+    device_lock_state_t devicelock;
+    bool                insync;
+    bool                restore;
+    bool                was_called;
+    int64_t             linger_tick;
+    guint               linger_id;
+    int64_t             notif_tick;
+    guint               notif_id;
 } exception_t;
 
 static exception_t exdata =
@@ -2259,7 +2282,7 @@ static exception_t exdata =
     .mask        = UIEXC_NONE,
     .display     = MCE_DISPLAY_UNDEF,
     .tklock      = false,
-    .devicelock  = false,
+    .devicelock  = DEVICE_LOCK_UNDEFINED,
     .insync      = true,
     .restore     = true,
     .was_called  = false,
@@ -2393,7 +2416,7 @@ static void tklock_uiexcept_rethink(void)
         }
     }
 
-    if( exdata.restore && exdata.devicelock != device_lock_active ) {
+    if( exdata.restore && exdata.devicelock != device_lock_state ) {
         mce_log(LL_NOTICE, "DISABLING STATE RESTORE; devicelock out of sync");
         exdata.restore = false;
     }
@@ -2546,7 +2569,7 @@ static void tklock_uiexcept_cancel(void)
     exdata.mask        = UIEXC_NONE;
     exdata.display     = MCE_DISPLAY_UNDEF;
     exdata.tklock      = false;
-    exdata.devicelock  = false;
+    exdata.devicelock  = DEVICE_LOCK_UNDEFINED;
     exdata.insync      = true;
     exdata.restore     = true;
     exdata.was_called  = false;
@@ -2670,7 +2693,7 @@ static void tklock_uiexcept_begin(uiexctype_t type, int64_t linger)
         /* save display, tklock and device lock states */
         exdata.display    = display_state;
         exdata.tklock     = tklock_datapipe_have_tklock_submode();
-        exdata.devicelock = device_lock_active;
+        exdata.devicelock = device_lock_state;
 
         /* initially insync, restore state at end */
         exdata.insync      = true;
@@ -3947,7 +3970,7 @@ static void tklock_ui_get_device_lock_cb(DBusPendingCall *pc, void *aptr)
     }
 
     mce_log(LL_INFO, "device lock status reply: state=%d", val);
-    tklock_datapipe_set_device_lock_active(val);
+    tklock_datapipe_set_device_lock_state(val);
 
 EXIT:
     if( rsp ) dbus_message_unref(rsp);
@@ -4291,7 +4314,7 @@ static gboolean tklock_dbus_device_lock_changed_cb(DBusMessage *const msg)
     }
 
     mce_log(LL_DEBUG, "received device lock signal: state=%d", val);
-    tklock_datapipe_set_device_lock_active(val);
+    tklock_datapipe_set_device_lock_state(val);
 
 EXIT:
     dbus_error_free(&err);
