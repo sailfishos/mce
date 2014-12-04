@@ -163,8 +163,8 @@ datapipe_struct packagekit_locked_pipe;
 /** Update mode active status; read only */
 datapipe_struct update_mode_pipe;
 
-/** Device Lock active status; read only */
-datapipe_struct device_lock_active_pipe;
+/** Device Lock state; read only */
+datapipe_struct device_lock_state_pipe;
 
 /** touchscreen input grab required; read/write */
 datapipe_struct touch_grab_wanted_pipe;
@@ -865,8 +865,8 @@ void mce_datapipe_init(void)
 		       0, GINT_TO_POINTER(FALSE));
 	setup_datapipe(&update_mode_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(FALSE));
-	setup_datapipe(&device_lock_active_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(FALSE));
+	setup_datapipe(&device_lock_state_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(DEVICE_LOCK_UNDEFINED));
 	setup_datapipe(&touch_grab_wanted_pipe, READ_WRITE, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(FALSE));
 	setup_datapipe(&touch_grab_active_pipe, READ_ONLY, DONT_FREE_CACHE,
@@ -929,11 +929,31 @@ void mce_datapipe_quit(void)
 	free_datapipe(&dsme_available_pipe);
 	free_datapipe(&packagekit_locked_pipe);
 	free_datapipe(&update_mode_pipe);
-	free_datapipe(&device_lock_active_pipe);
+	free_datapipe(&device_lock_state_pipe);
 	free_datapipe(&touch_grab_active_pipe);
 	free_datapipe(&touch_grab_wanted_pipe);
 	free_datapipe(&keypad_grab_active_pipe);
 	free_datapipe(&keypad_grab_wanted_pipe);
 	free_datapipe(&music_playback_pipe);
 	free_datapipe(&proximity_blank_pipe);
+}
+
+/** Convert device_lock_state_t enum to human readable string
+ *
+ * @param state device_lock_state_t enumeration value
+ *
+ * @return human readable representation of state
+ */
+const char *device_lock_state_repr(device_lock_state_t state)
+{
+	const char *res = "unknown";
+
+	switch( state ) {
+	case DEVICE_LOCK_UNLOCKED:  res = "unlocked";  break;
+	case DEVICE_LOCK_LOCKED:    res = "locked";    break;
+	case DEVICE_LOCK_UNDEFINED: res = "undefined"; break;
+	default: break;
+	}
+
+	return res;
 }
