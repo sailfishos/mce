@@ -1,3 +1,10 @@
+mce (1.37.3) unstable; urgency=low
+
+  * [mce] Do not autolock when device lock is applied due to lipstick
+    startup. Fixes JB#24842
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 04 Dec 2014 10:08:11 +0200
+
 mce (1.37.2) unstable; urgency=low
 
   * [mce] Block late suspend briefly when call state changes. Fixes JB#23614
