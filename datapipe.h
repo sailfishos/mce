@@ -23,6 +23,21 @@
 
 #include <glib.h>
 
+/** Device lock states used in device_lock_state_pipe */
+typedef enum
+{
+    /** Device lock is not active */
+    DEVICE_LOCK_UNLOCKED  = 0,
+
+    /** Device lock is active */
+    DEVICE_LOCK_LOCKED    = 1,
+
+    /** Initial startup value; from mce p.o.v. equals not active */
+    DEVICE_LOCK_UNDEFINED = 2,
+}  device_lock_state_t;
+
+const char *device_lock_state_repr(device_lock_state_t state);
+
 /**
  * Datapipe structure
  *
@@ -118,7 +133,7 @@ extern datapipe_struct lipstick_available_pipe;
 extern datapipe_struct dsme_available_pipe;
 extern datapipe_struct packagekit_locked_pipe;
 extern datapipe_struct update_mode_pipe;
-extern datapipe_struct device_lock_active_pipe;
+extern datapipe_struct device_lock_state_pipe;
 extern datapipe_struct touch_grab_wanted_pipe;
 extern datapipe_struct touch_grab_active_pipe;
 extern datapipe_struct keypad_grab_wanted_pipe;
