@@ -364,6 +364,9 @@ struct sfw_backend_t
 
     /** Callback for resetting sensor value back to default */
     sfw_reset_fn  be_reset_cb;
+
+    /** Callback for restoring sensor value back to last-known */
+    sfw_reset_fn  be_restore_cb;
 };
 
 /* ========================================================================= *
@@ -380,6 +383,9 @@ static guint             sfw_socket_add_notify          (int fd, bool close_on_u
 
 typedef enum
 {
+    /** Initial state used before availability of sensord is known */
+    REPORTING_INITIAL,
+
     /** Sensord is not available */
     REPORTING_IDLE,
 
@@ -447,6 +453,9 @@ static void              sfw_reporting_set_target         (sfw_reporting_t *self
  * ========================================================================= */
 
 typedef enum  {
+    /** Initial state used before availability of sensord is known */
+    OVERRIDE_INITIAL,
+
     /** Sensord is not available */
     OVERRIDE_IDLE,
 
@@ -510,6 +519,9 @@ static void              sfw_override_set_target         (sfw_override_t *self, 
 
 typedef enum
 {
+    /** Initial state used before availability of sensord is known */
+    CONNECTION_INITIAL,
+
     /** Sensord is not available */
     CONNECTION_IDLE,
 
@@ -579,6 +591,9 @@ static void              sfw_connection_do_reset        (sfw_connection_t *self)
 
 typedef enum
 {
+    /** Initial state used before availability of sensord is known */
+    SESSION_INITIAL,
+
     /** Sensord is not available */
     SESSION_IDLE,
 
@@ -632,6 +647,9 @@ static void              sfw_session_do_reset           (sfw_session_t *self);
 
 typedef enum
 {
+    /** Initial state used before availability of sensord is known */
+    PLUGIN_INITIAL,
+
     /** Sensord is not available */
     PLUGIN_IDLE,
 
@@ -691,6 +709,7 @@ static size_t            sfw_plugin_get_sample_size     (const sfw_plugin_t *sel
 static void              sfw_plugin_handle_sample       (sfw_plugin_t *self, const void *sample);
 static void              sfw_plugin_handle_value        (sfw_plugin_t *self, unsigned value);
 static void              sfw_plugin_reset_value         (sfw_plugin_t *self);
+static void              sfw_plugin_restore_value       (sfw_plugin_t *self);
 
 static void              sfw_plugin_cancel_load         (sfw_plugin_t *self);
 
@@ -719,7 +738,7 @@ static void              sfw_plugin_do_reporting_reset  (sfw_plugin_t *self);
 typedef enum
 {
     /** Sensord availability is not known */
-    SERVICE_IDLE,
+    SERVICE_UNKNOWN,
 
     /** Waiting for a reply to name owner query */
     SERVICE_QUERYING,
@@ -791,6 +810,9 @@ typedef enum
 {
     /** Cached sensor state should be reset to default value */
     NOTIFY_RESET,
+
+    /** Cached sensor state should be restored from last-known value */
+    NOTIFY_RESTORE,
 
     /** Cached sensor state should be sent again */
     NOTIFY_REPEAT,
@@ -936,6 +958,39 @@ sfw_backend_orient_reset_cb(sfw_plugin_t *plugin)
     sfw_notify_orient(NOTIFY_RESET, SWF_NOTIFY_DUMMY);
 }
 
+/** Callback for restoring ambient light state to last-known */
+static void
+sfw_backend_als_restore_cb(sfw_plugin_t *plugin)
+{
+    (void)plugin;
+
+    mce_log(LL_DEBUG, "ALS: light=restore-to-last-known");
+
+    sfw_notify_als(NOTIFY_RESTORE, SWF_NOTIFY_DUMMY);
+}
+
+/** Callback for restoring proximity state to last-known */
+static void
+sfw_backend_ps_restore_cb(sfw_plugin_t *plugin)
+{
+    (void)plugin;
+
+    mce_log(LL_DEBUG, "PS: covered=restore-to-last-known");
+
+    sfw_notify_ps(NOTIFY_RESTORE, SWF_NOTIFY_DUMMY);
+}
+
+/** Callback for restoring orientation state to last-known */
+static void
+sfw_backend_orient_restore_cb(sfw_plugin_t *plugin)
+{
+    (void)plugin;
+
+    mce_log(LL_DEBUG, "ORIENT: state=restore-to-last-known");
+
+    sfw_notify_orient(NOTIFY_RESTORE, SWF_NOTIFY_DUMMY);
+}
+
 // ----------------------------------------------------------------
 
 /** Data and callbacks for proximity sensor */
@@ -952,6 +1007,7 @@ static const sfw_backend_t sfw_backend_ps =
     .be_value_cb         = sfw_backend_ps_value_cb,
 
     .be_reset_cb         = sfw_backend_ps_reset_cb,
+    .be_restore_cb       = sfw_backend_ps_restore_cb,
 };
 
 /** Data and callbacks for ambient light sensor */
@@ -968,6 +1024,7 @@ static const sfw_backend_t sfw_backend_als =
     .be_value_cb         = sfw_backend_als_value_cb,
 
     .be_reset_cb         = sfw_backend_als_reset_cb,
+    .be_restore_cb       = sfw_backend_als_restore_cb,
 };
 
 /** Data and callbacks for orientation sensor */
@@ -984,6 +1041,7 @@ static const sfw_backend_t sfw_backend_orient =
     .be_value_cb         = sfw_backend_orient_value_cb,
 
     .be_reset_cb         = sfw_backend_orient_reset_cb,
+    .be_restore_cb       = sfw_backend_orient_restore_cb,
 };
 
 /* ========================================================================= *
@@ -1100,6 +1158,7 @@ sfw_reporting_state_name(sfw_reporting_state_t state)
 {
     static const char *const lut[REPORTING_NUMSTATES] =
     {
+        [REPORTING_INITIAL]     = "INITIAL",
         [REPORTING_IDLE]        = "IDLE",
         [REPORTING_RETHINK]     = "RETHINK",
         [REPORTING_ENABLING]    = "ENABLING",
@@ -1120,7 +1179,7 @@ sfw_reporting_create(sfw_plugin_t *plugin)
     sfw_reporting_t *self = calloc(1, sizeof *self);
 
     self->rep_plugin    = plugin;
-    self->rep_state     = REPORTING_IDLE;
+    self->rep_state     = REPORTING_INITIAL;
     self->rep_change_pc = 0;
     self->rep_value_pc  = 0;
     self->rep_target    = false;
@@ -1136,7 +1195,7 @@ sfw_reporting_delete(sfw_reporting_t *self)
     // using NULL self pointer explicitly allowed
 
     if( self ) {
-        sfw_reporting_trans(self, REPORTING_IDLE);
+        sfw_reporting_trans(self, REPORTING_INITIAL);
         self->rep_plugin = 0;
         free(self);
     }
@@ -1206,6 +1265,9 @@ sfw_reporting_trans(sfw_reporting_t *self, sfw_reporting_state_t state)
         break;
 
     case REPORTING_ENABLING:
+        // resend last known state
+        sfw_plugin_restore_value(self->rep_plugin);
+
         dbus_send_ex(SENSORFW_SERVICE,
                      sfw_plugin_get_sensor_object(self->rep_plugin),
                      sfw_plugin_get_sensor_interface(self->rep_plugin),
@@ -1245,6 +1307,7 @@ sfw_reporting_trans(sfw_reporting_t *self, sfw_reporting_state_t state)
     default:
     case REPORTING_IDLE:
     case REPORTING_ERROR:
+    case REPORTING_INITIAL:
         // reset sensor value to default state
         sfw_plugin_reset_value(self->rep_plugin);
         break;
@@ -1389,8 +1452,16 @@ EXIT:
 static void
 sfw_reporting_do_rethink(sfw_reporting_t *self)
 {
-    if( self->rep_state != REPORTING_IDLE )
+    switch( self->rep_state ) {
+    case REPORTING_IDLE:
+    case REPORTING_INITIAL:
+        // nop
+        break;
+
+    default:
         sfw_reporting_trans(self, REPORTING_RETHINK);
+        break;
+    }
 }
 
 /** Initiate sensor start() request
@@ -1398,8 +1469,16 @@ sfw_reporting_do_rethink(sfw_reporting_t *self)
 static void
 sfw_reporting_do_start(sfw_reporting_t *self)
 {
-    if( self->rep_state == REPORTING_IDLE )
+    switch( self->rep_state ) {
+    case REPORTING_IDLE:
+    case REPORTING_INITIAL:
         sfw_reporting_trans(self, REPORTING_RETHINK);
+        break;
+
+    default:
+        // nop
+        break;
+    }
 }
 
 /** Initiate sensor stop() request
@@ -1421,6 +1500,7 @@ sfw_override_state_name(sfw_override_state_t state)
 {
     static const char *const lut[OVERRIDE_NUMSTATES] =
     {
+        [OVERRIDE_INITIAL]      = "INITIAL",
         [OVERRIDE_IDLE]         = "IDLE",
         [OVERRIDE_RETHINK]      = "RETHINK",
         [OVERRIDE_ENABLING]     = "ENABLING",
@@ -1441,7 +1521,7 @@ sfw_override_create(sfw_plugin_t *plugin)
     sfw_override_t *self = calloc(1, sizeof *self);
 
     self->ovr_plugin   = plugin;
-    self->ovr_state    = OVERRIDE_IDLE;
+    self->ovr_state    = OVERRIDE_INITIAL;
     self->ovr_start_pc = 0;
     self->ovr_target   = false;
 
@@ -1456,7 +1536,7 @@ sfw_override_delete(sfw_override_t *self)
     // using NULL self pointer explicitly allowed
 
     if( self ) {
-        sfw_override_trans(self, OVERRIDE_IDLE);
+        sfw_override_trans(self, OVERRIDE_INITIAL);
         self->ovr_plugin = 0;
         free(self);
     }
@@ -1534,6 +1614,7 @@ sfw_override_trans(sfw_override_t *self, sfw_override_state_t state)
     default:
     case OVERRIDE_IDLE:
     case OVERRIDE_ERROR:
+    case OVERRIDE_INITIAL:
         // NOP
         break;
 
@@ -1609,8 +1690,16 @@ EXIT:
 static void
 sfw_override_do_rethink(sfw_override_t *self)
 {
-    if( self->ovr_state != OVERRIDE_IDLE )
+    switch( self->ovr_state ) {
+    case OVERRIDE_IDLE:
+    case OVERRIDE_INITIAL:
+        // nop
+        break;
+
+    default:
         sfw_override_trans(self, OVERRIDE_RETHINK);
+        break;
+    }
 }
 
 /** Initiate sensor standby override set request
@@ -1618,8 +1707,16 @@ sfw_override_do_rethink(sfw_override_t *self)
 static void
 sfw_override_do_start(sfw_override_t *self)
 {
-    if( self->ovr_state == OVERRIDE_IDLE )
+    switch( self->ovr_state ) {
+    case OVERRIDE_IDLE:
+    case OVERRIDE_INITIAL:
         sfw_override_trans(self, OVERRIDE_RETHINK);
+        break;
+
+    default:
+        // nop
+        break;
+    }
 }
 
 /** Initiate sensor standby override unset request
@@ -1641,6 +1738,7 @@ sfw_connection_state_name(sfw_connection_state_t state)
 {
     static const char *const lut[CONNECTION_NUMSTATES] =
     {
+        [CONNECTION_INITIAL]       = "INITIAL",
         [CONNECTION_IDLE]          = "IDLE",
         [CONNECTION_CONNECTING]    = "CONNECTING",
         [CONNECTION_REGISTERING]   = "REGISTERING",
@@ -2007,6 +2105,7 @@ sfw_connection_trans(sfw_connection_t *self, sfw_connection_state_t state)
     default:
     case CONNECTION_IDLE:
     case CONNECTION_ERROR:
+    case CONNECTION_INITIAL:
         sfw_plugin_do_reporting_reset(self->con_plugin);
         sfw_plugin_do_override_reset(self->con_plugin);
         sfw_connection_close_socket(self);
@@ -2025,7 +2124,7 @@ sfw_connection_create(sfw_plugin_t *plugin)
     sfw_connection_t *self = calloc(1, sizeof *self);
 
     self->con_plugin  = plugin;
-    self->con_state   = CONNECTION_IDLE;
+    self->con_state   = CONNECTION_INITIAL;
     self->con_fd      = -1;
     self->con_rx_id   = 0;
     self->con_tx_id   = 0;
@@ -2041,7 +2140,7 @@ sfw_connection_delete(sfw_connection_t *self)
     // using NULL self pointer explicitly allowed
 
     if( self ) {
-        sfw_connection_trans(self, CONNECTION_IDLE);
+        sfw_connection_trans(self, CONNECTION_INITIAL);
         self->con_plugin = 0;
         free(self);
     }
@@ -2052,8 +2151,15 @@ sfw_connection_delete(sfw_connection_t *self)
 static void
 sfw_connection_do_start(sfw_connection_t *self)
 {
-    if( self->con_state == CONNECTION_IDLE ) {
+    switch( self->con_state ) {
+    case CONNECTION_IDLE:
+    case CONNECTION_INITIAL:
         sfw_connection_trans(self, CONNECTION_CONNECTING);
+        break;
+
+    default:
+        // nop
+        break;
     }
 }
 
@@ -2076,6 +2182,7 @@ sfw_session_state_name(sfw_session_state_t state)
 {
     static const char *const lut[SESSION_NUMSTATES] =
     {
+        [SESSION_INITIAL]    = "INITIAL",
         [SESSION_IDLE]       = "IDLE",
         [SESSION_REQUESTING] = "REQUESTING",
         [SESSION_ACTIVE]     = "ACTIVE",
@@ -2093,7 +2200,7 @@ sfw_session_create(sfw_plugin_t *plugin)
     sfw_session_t *self = calloc(1, sizeof *self);
 
     self->ses_plugin   = plugin;
-    self->ses_state    = SESSION_IDLE;
+    self->ses_state    = SESSION_INITIAL;
     self->ses_id       = 0;
     self->ses_start_pc = 0;
 
@@ -2108,7 +2215,7 @@ sfw_session_delete(sfw_session_t *self)
     // using NULL self pointer explicitly allowed
 
     if( self ) {
-        sfw_session_trans(self, SESSION_IDLE);
+        sfw_session_trans(self, SESSION_INITIAL);
         self->ses_plugin = 0;
         free(self);
     }
@@ -2177,6 +2284,7 @@ sfw_session_trans(sfw_session_t *self, sfw_session_state_t state)
     default:
     case SESSION_IDLE:
     case SESSION_ERROR:
+    case SESSION_INITIAL:
         sfw_plugin_do_connection_reset(self->ses_plugin);
         break;
     }
@@ -2245,8 +2353,15 @@ EXIT:
 static void
 sfw_session_do_start(sfw_session_t *self)
 {
-    if( self->ses_state == SESSION_IDLE )
+    switch( self->ses_state ) {
+    case SESSION_IDLE:
+    case SESSION_INITIAL:
         sfw_session_trans(self, SESSION_REQUESTING);
+        break;
+    default:
+        // nop
+        break;
+    }
 }
 
 /** Close data session
@@ -2268,6 +2383,7 @@ sfw_plugin_state_name(sfw_plugin_state_t state)
 {
     static const char *const lut[PLUGIN_NUMSTATES] =
     {
+        [PLUGIN_INITIAL]  = "INITIAL",
         [PLUGIN_IDLE]     = "IDLE",
         [PLUGIN_LOADING]  = "LOADING",
         [PLUGIN_LOADED]   = "LOADED",
@@ -2352,6 +2468,20 @@ sfw_plugin_reset_value(sfw_plugin_t *self)
         self->plg_backend->be_reset_cb(self);
 }
 
+/** Restore sensor state to last seen state
+ *
+ * Used when sensord comes to D-Bus.
+ */
+static void
+sfw_plugin_restore_value(sfw_plugin_t *self)
+{
+    mce_log(LL_DEBUG, "plugin(%s): restore",
+            sfw_plugin_get_sensor_name(self));
+
+    if( self->plg_backend->be_restore_cb )
+        self->plg_backend->be_restore_cb(self);
+}
+
 /** Get size of sensor specific change event
  */
 static size_t
@@ -2400,6 +2530,7 @@ sfw_plugin_trans(sfw_plugin_t *self, sfw_plugin_state_t state)
     switch( self->plg_state ) {
     case PLUGIN_IDLE:
     case PLUGIN_ERROR:
+    case PLUGIN_INITIAL:
         sfw_plugin_do_session_reset(self);
         break;
 
@@ -2437,7 +2568,7 @@ sfw_plugin_create(const sfw_backend_t *backend)
 {
     sfw_plugin_t *self = calloc(1, sizeof *self);
 
-    self->plg_state         = PLUGIN_IDLE;
+    self->plg_state         = PLUGIN_INITIAL;
     self->plg_backend       = backend;
     self->plg_sensor_object = 0;
     self->plg_load_pc       = 0;
@@ -2549,8 +2680,15 @@ EXIT:
 static void
 sfw_plugin_do_load(sfw_plugin_t *self)
 {
-    if( self->plg_state == PLUGIN_IDLE )
+    switch( self->plg_state ) {
+    case PLUGIN_IDLE:
+    case PLUGIN_INITIAL:
         sfw_plugin_trans(self, PLUGIN_LOADING);
+        break;
+    default:
+        // nop
+        break;
+    }
 }
 
 /** Unload plugin
@@ -2660,7 +2798,7 @@ sfw_service_state_name(sfw_service_state_t state)
 {
     static const char *const lut[SERVICE_NUMSTATES] =
     {
-        [SERVICE_IDLE]      = "IDLE",
+        [SERVICE_UNKNOWN]   = "INITIAL",
         [SERVICE_QUERYING]  = "QUERYING",
         [SERVICE_RUNNING]   = "RUNNING",
         [SERVICE_STOPPED]   = "STOPPED",
@@ -2676,7 +2814,7 @@ sfw_service_create(void)
 {
     sfw_service_t *self = calloc(1, sizeof *self);
 
-    self->srv_state    = SERVICE_IDLE;
+    self->srv_state    = SERVICE_UNKNOWN;
     self->srv_query_pc = 0;
     self->srv_ps       = sfw_plugin_create(&sfw_backend_ps);
     self->srv_als      = sfw_plugin_create(&sfw_backend_als);
@@ -2693,7 +2831,7 @@ sfw_service_delete(sfw_service_t *self)
     // using NULL self pointer explicitly allowed
 
     if( self ) {
-        sfw_service_trans(self, SERVICE_IDLE);
+        sfw_service_trans(self, SERVICE_UNKNOWN);
 
         sfw_plugin_delete(self->srv_ps),
             self->srv_ps = 0;
@@ -2784,9 +2922,6 @@ sfw_service_trans(sfw_service_t *self, sfw_service_state_t state)
     sfw_service_cancel_query(self);
 
     switch( self->srv_state ) {
-    case SERVICE_IDLE:
-        break;
-
     case SERVICE_QUERYING:
         dbus_send_ex(DBUS_SERVICE_DBUS,
                      DBUS_PATH_DBUS,
@@ -2805,6 +2940,7 @@ sfw_service_trans(sfw_service_t *self, sfw_service_state_t state)
         sfw_plugin_do_load(self->srv_orient);
         break;
 
+    case SERVICE_UNKNOWN:
     case SERVICE_STOPPED:
         sfw_plugin_do_reset(self->srv_ps);
         sfw_plugin_do_reset(self->srv_als);
@@ -2842,7 +2978,7 @@ sfw_service_do_stop(sfw_service_t *self)
 static void
 sfw_service_do_query(sfw_service_t *self)
 {
-    if( self->srv_state == SERVICE_IDLE )
+    if( self->srv_state == SERVICE_UNKNOWN )
         sfw_service_trans(self, SERVICE_QUERYING);
 }
 
@@ -2945,6 +3081,7 @@ sfw_notify_name(sfw_notify_t type)
     static const char *const lut[NOTIFY_NUMTYPES] =
     {
         [NOTIFY_RESET]   = "RESET",
+        [NOTIFY_RESTORE] = "RESTORE",
         [NOTIFY_REPEAT]  = "REPEAT",
         [NOTIFY_EVDEV]   = "EVDEV",
         [NOTIFY_SENSORD] = "SENSORD",
@@ -2956,109 +3093,132 @@ sfw_notify_name(sfw_notify_t type)
 /** Notify proximity state via callback
  */
 static void
-sfw_notify_ps(sfw_notify_t type, bool covered)
+sfw_notify_ps(sfw_notify_t type, bool input_value)
 {
-    static bool cached_covered = SWF_NOTIFY_DEFAULT_PS;
+    static bool cached_value    = SWF_NOTIFY_DEFAULT_PS;
+    const  bool default_value   = SWF_NOTIFY_DEFAULT_PS;
+    static bool tracking_active = false;
 
     switch( type ) {
+    default:
     case NOTIFY_REPEAT:
-        covered = cached_covered;
         break;
 
     case NOTIFY_RESET:
-        covered = cached_covered = SWF_NOTIFY_DEFAULT_PS;
+        tracking_active = false;
+        break;
+
+    case NOTIFY_RESTORE:
+        tracking_active = true;
+        break;
+
+    case NOTIFY_EVDEV:
+        cached_value = input_value;
         break;
 
     case NOTIFY_SENSORD:
-        if( ps_evdev_id ) {
-            mce_log(LL_DEBUG, "ignoring PS=%d from sensord", covered);
-            covered = cached_covered;
-        }
-        break;
-
-    default:
+        if( ps_evdev_id )
+            mce_log(LL_DEBUG, "ignoring PS=%d from sensord", input_value);
+        else
+            cached_value = input_value;
         break;
     }
 
-    mce_log(LL_DEBUG, "%s %s (%s)",
-            sfw_notify_ps_cb ? "report" : "ignore",
-            covered ? "covered" : "uncovered",
-            sfw_notify_name(type));
+    bool output_value = tracking_active ? cached_value : default_value ;
+
+    mce_log(LL_DEBUG, "%s: in %s -> out %s / %s",
+            sfw_notify_name(type),
+            input_value ? "covered" : "uncovered",
+            output_value ? "covered" : "uncovered",
+            sfw_notify_ps_cb ? "notify" : "ignore");
 
     if( sfw_notify_ps_cb )
-        sfw_notify_ps_cb(covered);
-
-    cached_covered = covered;
+        sfw_notify_ps_cb(output_value);
 }
 
 /** Notify ambient light level via callback
  */
 static void
-sfw_notify_als(sfw_notify_t type, unsigned lux)
+sfw_notify_als(sfw_notify_t type, unsigned input_value)
 {
-    static unsigned cached_lux = SWF_NOTIFY_DEFAULT_ALS;
+    static unsigned cached_value    = SWF_NOTIFY_DEFAULT_ALS;
+    const  unsigned default_value   = SWF_NOTIFY_DEFAULT_ALS;
+    static bool     tracking_active = false;
 
     switch( type ) {
+    default:
     case NOTIFY_REPEAT:
-        lux = cached_lux;
         break;
 
     case NOTIFY_RESET:
-        lux = cached_lux = SWF_NOTIFY_DEFAULT_ALS;
+        tracking_active = false;
+        break;
+
+    case NOTIFY_RESTORE:
+        tracking_active = true;
+        break;
+
+    case NOTIFY_EVDEV:
+        cached_value = input_value;
         break;
 
     case NOTIFY_SENSORD:
-        if( als_evdev_id ) {
-            mce_log(LL_DEBUG, "ignoring ALS=%d from sensord", lux);
-            lux = cached_lux;
-        }
-        break;
-
-    default:
+        if( als_evdev_id )
+            mce_log(LL_DEBUG, "ignoring ALS=%u from sensord", input_value);
+        else
+            cached_value = input_value;
         break;
     }
 
-    mce_log(LL_DEBUG, "%s lux=%u (%s)",
-            sfw_notify_als_cb ? "report" : "ignore", lux,
-            sfw_notify_name(type));
+    unsigned output_value = tracking_active ? cached_value : default_value ;
+
+    mce_log(LL_DEBUG, "%s: in %u -> out %u / %s",
+            sfw_notify_name(type),
+            input_value, output_value,
+            sfw_notify_als_cb ? "notify" : "ignore");
 
     if( sfw_notify_als_cb )
-        sfw_notify_als_cb(lux);
-
-    cached_lux = lux;
+        sfw_notify_als_cb(output_value);
 }
 
 /** Notify orientation state via callback
  */
 static void
-sfw_notify_orient(sfw_notify_t type, int state)
+sfw_notify_orient(sfw_notify_t type, int input_value)
 {
-    static unsigned cached_state = SWF_NOTIFY_DEFAULT_ORIENT;
-
-    // NOTE: orientation does not have evdev source
+    static unsigned cached_value    = SWF_NOTIFY_DEFAULT_ORIENT;
+    const  unsigned default_value   = SWF_NOTIFY_DEFAULT_ORIENT;
+    static bool     tracking_active = false;
 
     switch( type ) {
+    default:
     case NOTIFY_REPEAT:
-        state = cached_state;
         break;
 
     case NOTIFY_RESET:
-        state = cached_state = SWF_NOTIFY_DEFAULT_ORIENT;
+        tracking_active = false;
         break;
 
-    default:
+    case NOTIFY_RESTORE:
+        tracking_active = true;
+        break;
+
+    case NOTIFY_EVDEV:
+    case NOTIFY_SENSORD:
+        cached_value = input_value;
         break;
     }
 
-    mce_log(LL_DEBUG, "%s state=%s (%s)",
-            sfw_notify_orient_cb ? "report" : "ignore",
-            orientation_state_name(state),
-            sfw_notify_name(type));
+    unsigned output_value = tracking_active ? cached_value : default_value ;
+
+    mce_log(LL_DEBUG, "%s: in %s -> out %s / %s",
+            sfw_notify_name(type),
+            orientation_state_name(input_value),
+            orientation_state_name(output_value),
+            sfw_notify_orient_cb ? "notify" : "ignore");
 
     if( sfw_notify_orient_cb )
-        sfw_notify_orient_cb(state);
-
-    cached_state = state;
+        sfw_notify_orient_cb(output_value);
 }
 
 /* ========================================================================= *
