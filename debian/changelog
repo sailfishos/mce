@@ -1,3 +1,10 @@
+mce (1.37.4) unstable; urgency=low
+
+  * [mce] Improvements to sensor state handling when sensord is not
+    available. Fixes JB#24910
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 12 Dec 2014 08:27:35 +0200
+
 mce (1.37.3) unstable; urgency=low
 
   * [mce] Do not autolock when device lock is applied due to lipstick
