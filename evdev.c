@@ -352,3 +352,107 @@ cleanup:
 
   return err;
 }
+
+static int rlookup(const char * const *lut, size_t cnt, const char *name)
+{
+  int val = -1;
+  for( size_t i = 0; i < cnt; ++i )
+  {
+    if( lut[i] && !strcmp(lut[i], name) )
+    {
+      val = (int)i;
+      break;
+    }
+  }
+  return val;
+}
+
+/* Internal helper functions for looking up event codes by type */
+static int syn_code(const char *ename)
+{
+  return rlookup(lut_syn, numof(lut_syn), ename);
+}
+
+static int key_code(const char *ename)
+{
+  return rlookup(lut_key, numof(lut_key), ename);
+}
+
+static int rel_code(const char *ename)
+{
+  return rlookup(lut_rel, numof(lut_rel), ename);
+}
+
+static int abs_code(const char *ename)
+{
+  return rlookup(lut_abs, numof(lut_abs), ename);
+}
+
+static int msc_code(const char *ename)
+{
+  return rlookup(lut_msc, numof(lut_msc), ename);
+}
+
+static int led_code(const char *ename)
+{
+  return rlookup(lut_led, numof(lut_led), ename);
+}
+
+static int rep_code(const char *ename)
+{
+  return rlookup(lut_rep, numof(lut_rep), ename);
+}
+
+static int snd_code(const char *ename)
+{
+  return rlookup(lut_snd, numof(lut_snd), ename);
+}
+
+static int sw_code(const char *ename)
+{
+  return rlookup(lut_sw, numof(lut_sw), ename);
+}
+
+static int ff_code(const char *ename)
+{
+  return rlookup(lut_ff, numof(lut_ff), ename);
+}
+
+static int pwr_code(const char *ename)
+{
+  (void)ename; // not used
+  return -1;
+}
+
+/** Lookup input event code by name
+ *
+ * @param etype input event type
+ * @param ename input event name
+ *
+ * @return input event code, or -1 in case of errors
+ */
+int evdev_lookup_event_code(int etype, const char *ename)
+{
+  typedef int (*lookup_fn)(const char *);
+
+  static const lookup_fn lut[] =
+  {
+    [EV_SYN] = syn_code,
+    [EV_KEY] = key_code,
+    [EV_REL] = rel_code,
+    [EV_ABS] = abs_code,
+    [EV_MSC] = msc_code,
+    [EV_SW]  = sw_code,
+    [EV_LED] = led_code,
+    [EV_SND] = snd_code,
+    [EV_REP] = rep_code,
+    [EV_FF]  = ff_code,
+    [EV_PWR] = pwr_code,
+  };
+
+  if( (size_t)etype < numof(lut) && lut[etype] )
+  {
+    return lut[etype](ename);
+  }
+  return -1;
+}

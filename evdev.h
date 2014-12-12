@@ -16,6 +16,8 @@ extern "C" {
 const char *evdev_get_event_code_name(int etype, int ecode);
 const char *evdev_get_event_type_name(int etype);
 
+int evdev_lookup_event_code(int etype, const char *ename);
+
 int evdev_open_device(const char *path);
 int evdev_identify_device(int fd);
 
