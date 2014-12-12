@@ -50,18 +50,17 @@
 
 #include <glib/gstdio.h>
 
-// FIXME: not used atm, need to implement something similar
-#ifdef DEAD_CODE
-/* Valid triggers for autorelock */
-/** No autorelock triggers */
-# define AUTORELOCK_NO_TRIGGERS  0
-/** Autorelock on keyboard slide closed */
-# define AUTORELOCK_KBD_SLIDE    (1 << 0)
-/** Autorelock on lens cover */
-# define AUTORELOCK_LENS_COVER   (1 << 1)
-/** Autorelock on proximity sensor */
-# define AUTORELOCK_ON_PROXIMITY (1 << 2)
-#endif
+typedef enum
+{
+    /** No autorelock triggers */
+    AUTORELOCK_NO_TRIGGERS,
+
+    /** Autorelock on keyboard slide closed */
+    AUTORELOCK_KBD_SLIDE,
+
+    /** Autorelock on lens cover */
+    AUTORELOCK_LENS_COVER,
+} autorelock_t;
 
 /** Duration of exceptional UI states, in milliseconds */
 enum
@@ -678,6 +677,9 @@ static display_state_t display_state = MCE_DISPLAY_UNDEF;
 /** Next Display state; undefined initially, can't assume anything */
 static display_state_t display_state_next = MCE_DISPLAY_UNDEF;
 
+/** Autorelock trigger: assume disabled */
+static autorelock_t autorelock_trigger = AUTORELOCK_NO_TRIGGERS;
+
 /** Change notifications for display_state
  */
 static void tklock_datapipe_display_state_cb(gconstpointer data)
@@ -714,6 +716,22 @@ static void tklock_datapipe_display_state_next_cb(gconstpointer data)
 
     if( display_state_next == display_state )
         goto EXIT;
+
+    /* Cancel autorelock on display off */
+    switch( display_state_next ) {
+    case MCE_DISPLAY_ON:
+    case MCE_DISPLAY_DIM:
+        /* display states that use normal ui */
+        break;
+
+    default:
+        /* display powered off, showing lpm, etc */
+        if( autorelock_trigger != AUTORELOCK_NO_TRIGGERS ) {
+            mce_log(LL_DEBUG, "autorelock canceled: display off");
+            autorelock_trigger = AUTORELOCK_NO_TRIGGERS;
+        }
+        break;
+    }
 
     tklock_autolock_on_devlock_prime();
 
@@ -1119,6 +1137,13 @@ static void tklock_datapipe_exception_state_cb(gconstpointer data)
 
     mce_log(LL_DEBUG, "exception_state = %d -> %d", prev, exception_state);
 
+    /* Cancel autorelock if there is a call */
+    if( exception_state == UIEXC_CALL &&
+        autorelock_trigger != AUTORELOCK_NO_TRIGGERS ) {
+        mce_log(LL_DEBUG, "autorelock canceled: handling call");
+        autorelock_trigger = AUTORELOCK_NO_TRIGGERS;
+    }
+
     /* Forget lpm ui triggering history
      * whenever exception state changes */
     tklock_lpmui_reset_history();
@@ -1424,8 +1449,59 @@ static void tklock_datapipe_keyboard_slide_cb(gconstpointer const data)
 
     mce_log(LL_DEBUG, "kbd_slide_state = %d -> %d", prev, kbd_slide_state);
 
-    // TODO: COVER_OPEN  -> display on, unlock, reason=AUTORELOCK_KBD_SLIDE
-    // TODO: COVER_CLOSE -> display off, lock if reason==AUTORELOCK_KBD_SLIDE
+    bool display_on = (display_state_next == MCE_DISPLAY_ON ||
+                       display_state_next == MCE_DISPLAY_DIM);
+
+    switch( kbd_slide_state ) {
+    case COVER_OPEN:
+        /* In any case opening the kbd slide will cancel
+         * other autorelock triggers */
+        if( autorelock_trigger != AUTORELOCK_NO_TRIGGERS ) {
+            mce_log(LL_DEBUG, "autorelock canceled: kbd slide opened");
+            autorelock_trigger = AUTORELOCK_NO_TRIGGERS;
+        }
+
+        if( !display_on && proximity_state_actual == COVER_OPEN ) {
+            mce_log(LL_DEBUG, "autorelock primed: on kbd slide close");
+            autorelock_trigger = AUTORELOCK_KBD_SLIDE;
+
+            mce_log(LL_DEBUG, "display -> on");
+            execute_datapipe(&display_state_req_pipe,
+                             GINT_TO_POINTER(MCE_DISPLAY_ON),
+                             USE_INDATA, CACHE_INDATA);
+            execute_datapipe(&tk_lock_pipe,
+                             GINT_TO_POINTER(LOCK_OFF),
+                             USE_INDATA, CACHE_INDATA);
+        }
+        break;
+
+    case COVER_CLOSED:
+        if( autorelock_trigger == AUTORELOCK_KBD_SLIDE ) {
+            mce_log(LL_DEBUG, "autorelock triggered: kbd slide closed");
+            autorelock_trigger = AUTORELOCK_NO_TRIGGERS;
+
+            mce_log(LL_DEBUG, "display -> off");
+
+            execute_datapipe(&tk_lock_pipe,
+                             GINT_TO_POINTER(LOCK_ON),
+                             USE_INDATA, CACHE_INDATA);
+
+            execute_datapipe(&display_state_req_pipe,
+                             GINT_TO_POINTER(MCE_DISPLAY_OFF),
+                             USE_INDATA, CACHE_INDATA);
+        }
+
+        /* In any case closing the kbd slide will cancel
+         * other autorelock triggers */
+        if( autorelock_trigger != AUTORELOCK_NO_TRIGGERS ) {
+            mce_log(LL_DEBUG, "autorelock canceled: kbd slide closed");
+            autorelock_trigger = AUTORELOCK_NO_TRIGGERS;
+        }
+        break;
+
+    default:
+        break;
+    }
 
 EXIT:
     return;
@@ -1519,6 +1595,30 @@ static void tklock_datapipe_user_activity_cb(gconstpointer data)
 
     if( !ev )
         goto EXIT;
+
+    /* Deal with autorelock cancellation 1st */
+    if( autorelock_trigger != AUTORELOCK_NO_TRIGGERS ) {
+        switch( ev->type ) {
+        case EV_SYN:
+            break;
+
+        case EV_ABS:
+            switch( ev->code ) {
+            case ABS_MT_POSITION_X:
+            case ABS_MT_POSITION_Y:
+            case ABS_MT_PRESSURE:
+                mce_log(LL_DEBUG, "autorelock canceled: touch activity");
+                autorelock_trigger = AUTORELOCK_NO_TRIGGERS;
+                break;
+            default:
+                break;
+            }
+            break;
+
+        default:
+            break;
+        }
+    }
 
     /* Touch events relevant unly when handling notification & linger */
     if( !(exception_state & (UIEXC_NOTIF | UIEXC_LINGER)) )
@@ -1705,6 +1805,11 @@ static datapipe_binding_t tklock_datapipe_triggers[] =
         .input_cb = tklock_datapipe_camera_button_cb,
     },
     {
+        /* Note: Logically we should use output trigger for keypad slide,
+         *       but input triggering is used to avoid turning display
+         *       on if mce happens to restart while keypad is open.
+         *       As long as the slide input is not filtered, there is
+         *       no harm in this. */
         .datapipe = &keyboard_slide_pipe,
         .input_cb = tklock_datapipe_keyboard_slide_cb,
     },
