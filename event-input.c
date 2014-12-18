@@ -1893,6 +1893,294 @@ static int doubletap_emulate(const struct input_event *eve)
 
 #endif /* ENABLE_DOUBLETAP_EMULATION */
 
+/* ------------------------------------------------------------------------- *
+ * Configurable evdev event mapping
+ * ------------------------------------------------------------------------- */
+
+/** Structure for holding evdev event translation data
+ */
+typedef struct
+{
+	/** Event that kernel is emitting */
+	struct input_event em_kernel_emits;
+
+	/** Event mce is expecting to see */
+	struct input_event em_mce_expects;
+
+} event_mapping_t;
+
+static int  event_mapping_guess_event_type (const char *event_code_name);
+static bool event_mapping_parse_event      (struct input_event *ev, const char *event_code_name);
+static bool event_mapping_parse_config     (event_mapping_t *self, const char *kernel_emits, const char *mce_expects);
+static bool event_mapping_apply            (const event_mapping_t *self, struct input_event *ev);
+
+/** Guess event type from name of the event code
+ *
+ * @param event_code_name name of the event e.g. "SW_KEYPAD_SLIDE"
+ *
+ * @return event type id e.g. EV_SW, or -1 if unknown
+ */
+static int event_mapping_guess_event_type(const char *event_code_name)
+{
+	int etype = -1;
+
+	if( !event_code_name )
+		goto EXIT;
+
+	/* We are interested only in EV_KEY and EV_SW events */
+
+	if( !strncmp(event_code_name, "KEY_", 4) )
+		etype = EV_KEY;
+	else if( !strncmp(event_code_name, "BTN_", 4) )
+		etype = EV_KEY;
+	else if( !strncmp(event_code_name, "SW_", 3) )
+		etype = EV_SW;
+
+EXIT:
+	return etype;
+}
+
+/** Fill in event type and code based on name of the event code
+ *
+ * @param event_code_name name of the event e.g. "SW_KEYPAD_SLIDE"
+ *
+ * @return true on success, or false on failure
+ */
+static bool event_mapping_parse_event(struct input_event *ev, const char *event_code_name)
+{
+	bool success = false;
+
+	int etype = event_mapping_guess_event_type(event_code_name);
+	if( etype < 0 )
+		goto EXIT;
+
+	int ecode = evdev_lookup_event_code(etype, event_code_name);
+	if( ecode < 0 )
+		goto EXIT;
+
+	ev->type = etype;
+	ev->code = ecode;
+
+	success  = true;
+
+EXIT:
+	return success;
+}
+
+/** Fill in event mapping structure from source and target event code names
+ *
+ * @param self pointer to a mapping structure to fill in
+ * @param kernel_emits name of the event kernel will be emitting
+ * @param mce_expects  mame of the event mce is expecting instead
+ *
+ * @return true on success, or false on failure
+ */
+static bool event_mapping_parse_config(event_mapping_t *self,
+				       const char *kernel_emits,
+				       const char *mce_expects)
+{
+	bool success = false;
+
+	if( !event_mapping_parse_event(&self->em_kernel_emits, kernel_emits) )
+		goto EXIT;
+
+	if( !event_mapping_parse_event(&self->em_mce_expects, mce_expects) )
+		goto EXIT;
+
+	success  = true;
+
+EXIT:
+	return success;
+}
+
+/** Translate event if applicable
+ *
+ * @param self pointer to a mapping structure to use
+ * @param ev   input event to modify
+ *
+ * @param true if event was modified, false otherwise
+ */
+static bool event_mapping_apply(const event_mapping_t *self, struct input_event *ev)
+{
+	bool applied = false;
+
+	if( self->em_kernel_emits.type != ev->type )
+		goto EXIT;
+
+	if( self->em_kernel_emits.code != ev->code )
+		goto EXIT;
+
+	mce_log(LL_DEBUG, "map: %s:%s -> %s:%s",
+		evdev_get_event_type_name(self->em_kernel_emits.type),
+		evdev_get_event_code_name(self->em_kernel_emits.type,
+					  self->em_kernel_emits.code),
+		evdev_get_event_type_name(self->em_mce_expects.type),
+		evdev_get_event_code_name(self->em_mce_expects.type,
+					  self->em_mce_expects.code));
+
+	ev->type = self->em_mce_expects.type;
+	ev->code = self->em_mce_expects.code;
+
+	applied = true;
+
+EXIT:
+	return applied;
+}
+
+static void event_mapper_init             (void);
+static void event_mapper_quit             (void);
+static void event_mapper_translate_event  (struct input_event *ev);
+static int  event_mapper_rlookup_switch   (int expected_by_mce);
+
+/** Lookup table for translatable events */
+static event_mapping_t *event_mapper_lut = 0;
+
+/** Number of entries in event_mapper_lut */
+static size_t           event_mapper_cnt = 0;
+
+/** Reverse lookup switch kernel is emitting from switch mce is expecting
+ *
+ * Note: For use from event switch initial state evaluation only.
+ *
+ * @param expected_by_mce event code of SW_xxx kind mce expect to see
+ *
+ * @return event code of SW_xxx kind kernel might be sending
+ */
+static int event_mapper_rlookup_switch(int expected_by_mce)
+{
+	/* Assume kernel emits events mce is expecting to see */
+	int emitted_by_kernel = expected_by_mce;
+
+	/* If emitted_by_kernel -> expected_by_mce mapping exist, use it */
+	for( size_t i = 0; i < event_mapper_cnt; ++i ) {
+		event_mapping_t *map = event_mapper_lut + i;
+
+		if( map->em_kernel_emits.type != EV_SW )
+			continue;
+
+		if( map->em_mce_expects.type != EV_SW )
+			continue;
+
+		if( map->em_mce_expects.code != expected_by_mce )
+			continue;
+
+		emitted_by_kernel = map->em_kernel_emits.code;
+		goto EXIT;
+	}
+
+	/* But if there is rule for mapping the event for something
+	 * else, it should be ignored instead of used as is */
+	for( size_t i = 0; i < event_mapper_cnt; ++i ) {
+		event_mapping_t *map = event_mapper_lut + i;
+
+		if( map->em_kernel_emits.type != EV_SW )
+			continue;
+
+		if( map->em_mce_expects.type != EV_SW )
+			continue;
+
+		if( map->em_kernel_emits.code != expected_by_mce )
+			continue;
+
+		/* Assumption: SW_MAX is valid index for ioctl() probing,
+		 *             but is not an alias for anything that kernel
+		 *             would report.
+		 */
+		emitted_by_kernel = SW_MAX;
+		goto EXIT;
+	}
+
+EXIT:
+	return emitted_by_kernel;
+}
+
+/** Translate event emitted by kernel to something mce is expecting to see
+ *
+ * @param ev Input event to translate
+ */
+static void event_mapper_translate_event(struct input_event *ev)
+{
+	if( !ev )
+		goto EXIT;
+
+	/* Skip if there is no translation lookup table */
+	if( !event_mapper_lut )
+		goto EXIT;
+
+	/* We want to process key and switch events, but under all
+	 * potentially high frequency events should be skipped */
+	switch( ev->type ) {
+	case EV_KEY:
+	case EV_SW:
+		break;
+
+	default:
+		goto EXIT;
+	}
+
+	/* Try to find suitable mapping from lookup table */
+	for( size_t i = 0; i < event_mapper_cnt; ++i ) {
+		event_mapping_t *map = event_mapper_lut + i;
+
+		if( event_mapping_apply(map, ev) )
+			break;
+	}
+
+EXIT:
+	return;
+}
+
+/** Initialize event translation lookup table
+ */
+static void event_mapper_init(void)
+{
+	static const char grp[] = "EVDEV";
+
+	gchar **keys  = 0;
+	gsize   count = 0;
+	gsize   valid = 0;
+
+	keys = mce_conf_get_keys(grp, &count);
+
+	if( !keys || !count )
+		goto EXIT;
+
+	event_mapper_lut = calloc(count, sizeof *event_mapper_lut);
+
+	for( gsize i = 0; i < count; ++i ) {
+		event_mapping_t *map = event_mapper_lut + valid;
+		const gchar     *key = keys[i];
+		gchar           *val = mce_conf_get_string(grp, key, 0);
+
+		if( val && event_mapping_parse_config(map, key, val) )
+			++valid;
+
+		g_free(val);
+	}
+
+	event_mapper_cnt = valid;
+
+EXIT:
+	/* Remove also lookup table pointer if there are no entries */
+	if( !event_mapper_cnt )
+		event_mapper_quit();
+
+	g_strfreev(keys);
+
+	mce_log(LL_DEBUG, "EVDEV MAPS: %zd", event_mapper_cnt);
+
+	return;
+}
+
+/** Release event translation lookup table
+ */
+static void event_mapper_quit(void)
+{
+	free(event_mapper_lut),
+		event_mapper_lut = 0,
+		event_mapper_cnt = 0;
+}
+
 /**
  * I/O monitor callback for the touchscreen
  *
@@ -1910,6 +2198,9 @@ static gboolean touchscreen_iomon_cb(gpointer data, gsize bytes_read)
 	gboolean flush = FALSE;
 
 	ev = data;
+
+	/* Map event before processing */
+	event_mapper_translate_event(ev);
 
 	/* Don't process invalid reads */
 	if (bytes_read != sizeof (*ev)) {
@@ -2109,6 +2400,9 @@ static gboolean keypress_iomon_cb(gpointer data, gsize bytes_read)
 	if (bytes_read != sizeof (*ev)) {
 		goto EXIT;
 	}
+
+	/* Map event before processing */
+	event_mapper_translate_event(ev);
 
 	mce_log(LL_DEBUG, "type: %s, code: %s, value: %d",
 		evdev_get_event_type_name(ev->type),
@@ -2365,6 +2659,7 @@ static void get_switch_state(gpointer io_monitor, gpointer user_data)
 	gulong *statelist = NULL;
 	gsize featurelistlen;
 	gint state;
+	int ecode;
 
 	(void)user_data;
 
@@ -2374,58 +2669,68 @@ static void get_switch_state(gpointer io_monitor, gpointer user_data)
 	statelist = g_malloc0(featurelistlen * sizeof (*statelist));
 
 	if (ioctl(fd, EVIOCGBIT(EV_SW, SW_MAX), featurelist) == -1) {
-		mce_log(LL_ERR,
-			"ioctl(EVIOCGBIT(EV_SW, SW_MAX)) failed on `%s'; %s",
-			filename, g_strerror(errno));
-		errno = 0;
+		mce_log(LL_ERR, "%s: EVIOCGBIT(EV_SW, SW_MAX) failed: %m",
+			filename);
 		goto EXIT;
 	}
 
 	if (ioctl(fd, EVIOCGSW(SW_MAX), statelist) == -1) {
-		mce_log(LL_ERR,
-			"ioctl(EVIOCGSW(SW_MAX)) failed on `%s'; %s",
-			filename, g_strerror(errno));
-		errno = 0;
+		mce_log(LL_ERR, "%s: EVIOCGSW(SW_MAX) failed: %m",
+			filename);
 		goto EXIT;
 	}
 
-	if (test_bit(SW_CAMERA_LENS_COVER, featurelist) == TRUE) {
-		state = test_bit(SW_CAMERA_LENS_COVER, statelist);
-
-		(void)execute_datapipe(&lens_cover_pipe, GINT_TO_POINTER(state ? COVER_CLOSED : COVER_OPEN), USE_INDATA, CACHE_INDATA);
+	/* Check initial camera lens cover state */
+	ecode = event_mapper_rlookup_switch(SW_CAMERA_LENS_COVER);
+	if( test_bit(ecode, featurelist) ) {
+		state = test_bit(ecode, statelist) ? COVER_CLOSED : COVER_OPEN;
+		execute_datapipe(&lens_cover_pipe, GINT_TO_POINTER(state),
+				 USE_INDATA, CACHE_INDATA);
 	}
 
-	if (test_bit(SW_KEYPAD_SLIDE, featurelist) == TRUE) {
-		state = test_bit(SW_KEYPAD_SLIDE, statelist);
-
-		(void)execute_datapipe(&keyboard_slide_pipe, GINT_TO_POINTER(state ? COVER_CLOSED : COVER_OPEN), USE_INDATA, CACHE_INDATA);
+	/* Check initial keypad slide state */
+	ecode = event_mapper_rlookup_switch(SW_KEYPAD_SLIDE);
+	if( test_bit(ecode, featurelist) ) {
+		state = test_bit(ecode, statelist) ? COVER_CLOSED : COVER_OPEN;
+		execute_datapipe(&keyboard_slide_pipe, GINT_TO_POINTER(state),
+				 USE_INDATA, CACHE_INDATA);
 	}
 
-	if (test_bit(SW_FRONT_PROXIMITY, featurelist) == TRUE) {
-		state = test_bit(SW_FRONT_PROXIMITY, statelist);
-
-		(void)execute_datapipe(&proximity_sensor_pipe, GINT_TO_POINTER(state ? COVER_CLOSED : COVER_OPEN), USE_INDATA, CACHE_INDATA);
+	/* Check initial front proximity state */
+	ecode = event_mapper_rlookup_switch(SW_FRONT_PROXIMITY);
+	if( test_bit(ecode, featurelist) ) {
+		state = test_bit(ecode, statelist) ? COVER_CLOSED : COVER_OPEN;
+		execute_datapipe(&proximity_sensor_pipe, GINT_TO_POINTER(state),
+				 USE_INDATA, CACHE_INDATA);
 	}
 
 	/* Need to consider more than one switch state when setting the
 	 * initial value of the jack_sense_pipe */
 
-	bool have = false;
-	state = 0;
+	bool have  = false;
+	int  value = 0;
 
-	if( test_bit(SW_HEADPHONE_INSERT, featurelist) )
-		have = true, state |= test_bit(SW_HEADPHONE_INSERT, statelist);
-	if( test_bit(SW_MICROPHONE_INSERT, featurelist) )
-		have = true, state |= test_bit(SW_MICROPHONE_INSERT, statelist);
-	if( test_bit(SW_LINEOUT_INSERT, featurelist) )
-		have = true, state |= test_bit(SW_LINEOUT_INSERT, statelist);
-	if( test_bit(SW_VIDEOOUT_INSERT, featurelist) )
-		have = true, state |= test_bit(SW_VIDEOOUT_INSERT, statelist);
+	ecode = event_mapper_rlookup_switch(SW_HEADPHONE_INSERT);
+	if( test_bit(ecode, featurelist) )
+		have = true, value |= test_bit(ecode, statelist);
 
-	if( have )
-		execute_datapipe(&jack_sense_pipe,
-				 GINT_TO_POINTER(state ? COVER_CLOSED : COVER_OPEN),
+	ecode = event_mapper_rlookup_switch(SW_MICROPHONE_INSERT);
+	if( test_bit(ecode, featurelist) )
+		have = true, value |= test_bit(ecode, statelist);
+
+	ecode = event_mapper_rlookup_switch(SW_LINEOUT_INSERT);
+	if( test_bit(ecode, featurelist) )
+		have = true, value |= test_bit(ecode, statelist);
+
+	ecode = event_mapper_rlookup_switch(SW_VIDEOOUT_INSERT);
+	if( test_bit(ecode, featurelist) )
+		have = true, value |= test_bit(ecode, statelist);
+
+	if( have ) {
+		state = value ? COVER_CLOSED : COVER_OPEN;
+		execute_datapipe(&jack_sense_pipe, GINT_TO_POINTER(state),
 				 USE_INDATA, CACHE_INDATA);
+	}
 
 EXIT:
 	g_free(statelist);
@@ -2752,6 +3057,8 @@ gboolean mce_input_init(void)
 {
 	gboolean status = FALSE;
 
+	event_mapper_init();
+
 	ts_grab_init();
 
 #ifdef ENABLE_DOUBLETAP_EMULATION
@@ -2830,5 +3137,6 @@ void mce_input_exit(void)
 	ts_grab_quit();
 	input_grab_reset(&kp_grab_state);
 
+	event_mapper_quit();
 	return;
 }
