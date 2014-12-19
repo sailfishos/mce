@@ -324,7 +324,6 @@ memnotify_limit_parse(memnotify_limit_t *self, const char *data)
 
         if( end <= val || *end != 0 ) {
             mce_log(LL_WARN, "%s: '%s' is not a number", key, val);
-            res = false;
             continue;
         }
 
@@ -338,8 +337,7 @@ memnotify_limit_parse(memnotify_limit_t *self, const char *data)
             self->mnl_total = num;
         }
         else {
-            mce_log(LL_WARN, "%s: unknown value", key);
-            res = false;
+            mce_log(LL_DEBUG, "%s: unknown value", key);
         }
     }
 
