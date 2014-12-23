@@ -534,6 +534,7 @@ NORMALIZE_USES_SPC =\
 	builtin-gconf.h\
 	evdev.c\
 	evdev.h\
+	event-input.c\
 	event-input.h\
 	event-switches.h\
 	filewatcher.c\
@@ -579,7 +580,6 @@ NORMALIZE_USES_SPC =\
 NORMALIZE_USES_TAB =\
 	datapipe.c\
 	datapipe.h\
-	event-input.c\
 	event-switches.c\
 	libwakelock.c\
 	mce-conf.c\
