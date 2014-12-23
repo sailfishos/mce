@@ -79,7 +79,7 @@ static GSList *touchscreen_dev_list = NULL;
  *
  * @param iomon I/O monitor that is about to get deleted
  */
-static void touchscreen_dev_rem_cb(gconstpointer iomon)
+static void touchscreen_dev_rem_cb(mce_io_mon_t *iomon)
 {
 	touchscreen_dev_list = g_slist_remove(touchscreen_dev_list, iomon);
 }
@@ -90,13 +90,13 @@ static void touchscreen_dev_rem_cb(gconstpointer iomon)
  * @param path      File path
  * @param callback  Input event handler
  */
-static void touchscreen_dev_add(int fd, const char *path, iomon_cb callback)
+static void touchscreen_dev_add(int fd, const char *path, mce_io_mon_notify_cb callback)
 {
-	gconstpointer iomon =
-		mce_register_io_monitor_chunk(fd, path, MCE_IO_ERROR_POLICY_WARN,
-					      FALSE, callback,
-					      touchscreen_dev_rem_cb,
-					      sizeof (struct input_event));
+	mce_io_mon_t *iomon =
+		mce_io_mon_register_chunk(fd, path, MCE_IO_ERROR_POLICY_WARN,
+					  FALSE, callback,
+					  touchscreen_dev_rem_cb,
+					  sizeof (struct input_event));
 	if( iomon )
 		touchscreen_dev_list = g_slist_prepend(touchscreen_dev_list,
 						       (gpointer)iomon);
@@ -106,7 +106,7 @@ static void touchscreen_dev_add(int fd, const char *path, iomon_cb callback)
  */
 static void touchscreen_dev_rem_all(void)
 {
-	mce_unregister_io_monitor_list(touchscreen_dev_list);
+	mce_io_mon_unregister_list(touchscreen_dev_list);
 }
 
 /* ========================================================================= *
@@ -120,7 +120,7 @@ static GSList *keyboard_dev_list = NULL;
  *
  * @param iomon I/O monitor that is about to get deleted
  */
-static void keyboard_dev_rem_cb(gconstpointer iomon)
+static void keyboard_dev_rem_cb(mce_io_mon_t *iomon)
 {
 	keyboard_dev_list = g_slist_remove(keyboard_dev_list, iomon);
 }
@@ -131,13 +131,13 @@ static void keyboard_dev_rem_cb(gconstpointer iomon)
  * @param path      File path
  * @param callback  Input event handler
  */
-static void keyboard_dev_add(int fd, const char *path, iomon_cb callback)
+static void keyboard_dev_add(int fd, const char *path, mce_io_mon_notify_cb callback)
 {
-	gconstpointer iomon =
-		mce_register_io_monitor_chunk(fd, path, MCE_IO_ERROR_POLICY_WARN,
-					      FALSE, callback,
-					      keyboard_dev_rem_cb,
-					      sizeof (struct input_event));
+	mce_io_mon_t *iomon =
+		mce_io_mon_register_chunk(fd, path, MCE_IO_ERROR_POLICY_WARN,
+					  FALSE, callback,
+					  keyboard_dev_rem_cb,
+					  sizeof (struct input_event));
 	if( iomon )
 		keyboard_dev_list = g_slist_prepend(keyboard_dev_list,
 						    (gpointer)iomon);
@@ -147,7 +147,7 @@ static void keyboard_dev_add(int fd, const char *path, iomon_cb callback)
  */
 static void keyboard_dev_rem_all(void)
 {
-	mce_unregister_io_monitor_list(keyboard_dev_list);
+	mce_io_mon_unregister_list(keyboard_dev_list);
 }
 
 /* ========================================================================= *
@@ -161,7 +161,7 @@ static GSList *volumekey_dev_list = NULL;
  *
  * @param iomon I/O monitor that is about to get deleted
  */
-static void volumekey_dev_rem_cb(gconstpointer iomon)
+static void volumekey_dev_rem_cb(mce_io_mon_t *iomon)
 {
 	volumekey_dev_list = g_slist_remove(volumekey_dev_list, iomon);
 }
@@ -172,23 +172,23 @@ static void volumekey_dev_rem_cb(gconstpointer iomon)
  * @param path      File path
  * @param callback  Input event handler
  */
-static void volumekey_dev_add(int fd, const char *path, iomon_cb callback)
+static void volumekey_dev_add(int fd, const char *path, mce_io_mon_notify_cb callback)
 {
-	gconstpointer iomon =
-		mce_register_io_monitor_chunk(fd, path, MCE_IO_ERROR_POLICY_WARN,
-					      FALSE, callback,
-					      volumekey_dev_rem_cb,
-					      sizeof (struct input_event));
+	mce_io_mon_t *iomon =
+		mce_io_mon_register_chunk(fd, path, MCE_IO_ERROR_POLICY_WARN,
+					  FALSE, callback,
+					  volumekey_dev_rem_cb,
+					  sizeof (struct input_event));
 	if( iomon )
 		volumekey_dev_list = g_slist_prepend(volumekey_dev_list,
-						    (gpointer)iomon);
+						     (gpointer)iomon);
 }
 
 /** Remove all volumekey device I/O monitors
  */
 static void volumekey_dev_rem_all(void)
 {
-	mce_unregister_io_monitor_list(volumekey_dev_list);
+	mce_io_mon_unregister_list(volumekey_dev_list);
 }
 
 /* ========================================================================= *
@@ -202,7 +202,7 @@ static GSList *misc_dev_list = NULL;
  *
  * @param iomon I/O monitor that is about to get deleted
  */
-static void misc_dev_rem_cb(gconstpointer iomon)
+static void misc_dev_rem_cb(mce_io_mon_t *iomon)
 {
 	misc_dev_list = g_slist_remove(misc_dev_list, iomon);
 }
@@ -213,13 +213,13 @@ static void misc_dev_rem_cb(gconstpointer iomon)
  * @param path      File path
  * @param callback  Input event handler
  */
-static void misc_dev_add(int fd, const char *path, iomon_cb callback)
+static void misc_dev_add(int fd, const char *path, mce_io_mon_notify_cb callback)
 {
-	gconstpointer iomon =
-		mce_register_io_monitor_chunk(fd, path, MCE_IO_ERROR_POLICY_WARN,
-					      FALSE, callback,
-					      misc_dev_rem_cb,
-					      sizeof (struct input_event));
+	mce_io_mon_t *iomon =
+		mce_io_mon_register_chunk(fd, path, MCE_IO_ERROR_POLICY_WARN,
+					  FALSE, callback,
+					  misc_dev_rem_cb,
+					  sizeof (struct input_event));
 	if( iomon )
 		misc_dev_list = g_slist_prepend(misc_dev_list,
 						(gpointer)iomon);
@@ -229,7 +229,7 @@ static void misc_dev_add(int fd, const char *path, iomon_cb callback)
  */
 static void misc_dev_rem_all(void)
 {
-	mce_unregister_io_monitor_list(misc_dev_list);
+	mce_io_mon_unregister_list(misc_dev_list);
 }
 
 /** GFile pointer for the directory we monitor */
@@ -938,7 +938,7 @@ EXIT:
 }
 
 /**
- * Wrapper function to call mce_suspend_io_monitor() from g_slist_foreach()
+ * Wrapper function to call mce_io_mon_suspend() from g_slist_foreach()
  *
  * @param io_monitor The I/O monitor to suspend
  * @param user_data Unused
@@ -947,11 +947,11 @@ static void suspend_io_monitor(gpointer io_monitor, gpointer user_data)
 {
 	(void)user_data;
 
-	mce_suspend_io_monitor(io_monitor);
+	mce_io_mon_suspend(io_monitor);
 }
 
 /**
- * Wrapper function to call mce_resume_io_monitor() from g_slist_foreach()
+ * Wrapper function to call mce_io_mon_resume() from g_slist_foreach()
  *
  * @param io_monitor The I/O monitor to resume
  * @param user_data Unused
@@ -960,7 +960,7 @@ static void resume_io_monitor(gpointer io_monitor, gpointer user_data)
 {
 	(void)user_data;
 
-	mce_resume_io_monitor(io_monitor);
+	mce_io_mon_resume(io_monitor);
 }
 
 /* ========================================================================= *
@@ -1145,12 +1145,12 @@ static void input_grab_iomon_cb(gpointer data, gpointer user_data)
 {
 	gpointer iomon = data;
 	int grab = GPOINTER_TO_INT(user_data);
-	int fd   = mce_get_io_monitor_fd(iomon);
+	int fd   = mce_io_mon_get_fd(iomon);
 
 	if( fd == -1 )
 		goto EXIT;
 
-	const char *path = mce_get_io_monitor_name(iomon) ?: "unknown";
+	const char *path = mce_io_mon_get_path(iomon) ?: "unknown";
 
 	if( ioctl(fd, EVIOCGRAB, grab) == -1 ) {
 		mce_log(LL_ERR, "EVIOCGRAB(%s, %d): %m", path, grab);
@@ -2653,8 +2653,8 @@ EXIT:
 static void get_switch_state(gpointer io_monitor, gpointer user_data)
 {
 	/* Get the fd of the I/O monitor */
-	const gchar *filename = mce_get_io_monitor_name(io_monitor);
-	int fd = mce_get_io_monitor_fd(io_monitor);
+	const gchar *filename = mce_io_mon_get_path(io_monitor);
+	int fd = mce_io_mon_get_fd(io_monitor);
 	gulong *featurelist = NULL;
 	gulong *statelist = NULL;
 	gsize featurelistlen;
@@ -2844,7 +2844,7 @@ EXIT:
 static void update_inputdevices(const gchar *device, gboolean add)
 {
 	/* remove existing io monitor */
-	mce_unregister_io_monitor_at_path(device);
+	mce_io_mon_unregister_at_path(device);
 
 	/* add new io monitor if so requested */
 	if( add )

@@ -101,13 +101,13 @@ typedef enum {
 static gboolean proximity_monitor_active = FALSE;
 
 /** ID for the proximity sensor I/O monitor */
-static gconstpointer proximity_sensor_iomon_id = NULL;
+static mce_io_mon_t *proximity_sensor_iomon_id = NULL;
 
 /** Callback for handling proximity sensor I/O monitor removal
  *
  * @param iomon I/O monitor that is about to get deleted
  */
-static void proximity_sensor_iomon_delete_cb(gconstpointer iomon)
+static void proximity_sensor_mce_io_mon_delete_cb(mce_io_mon_t *iomon)
 {
 	if( iomon == proximity_sensor_iomon_id )
 		proximity_sensor_iomon_id = 0;
@@ -630,12 +630,12 @@ static void enable_proximity_monitor(void)
 		switch (get_ps_type()) {
 		case PS_TYPE_AVAGO:
 			proximity_sensor_iomon_id =
-				mce_register_io_monitor_chunk(-1, ps_device_path,
-							      MCE_IO_ERROR_POLICY_WARN,
-							      FALSE,
-							      ps_avago_iomon_cb,
-							      proximity_sensor_iomon_delete_cb,
-							      sizeof (struct avago_ps));
+				mce_io_mon_register_chunk(-1, ps_device_path,
+							  MCE_IO_ERROR_POLICY_WARN,
+							  FALSE,
+							  ps_avago_iomon_cb,
+							  proximity_sensor_mce_io_mon_delete_cb,
+							  sizeof (struct avago_ps));
 			if( !proximity_sensor_iomon_id )
 				goto EXIT;
 
@@ -644,11 +644,11 @@ static void enable_proximity_monitor(void)
 
 		case PS_TYPE_DIPRO:
 			proximity_sensor_iomon_id =
-				mce_register_io_monitor_chunk(-1, ps_device_path,
-							      MCE_IO_ERROR_POLICY_WARN,
-							      FALSE, ps_dipro_iomon_cb,
-							      proximity_sensor_iomon_delete_cb,
-							      sizeof (struct dipro_ps));
+				mce_io_mon_register_chunk(-1, ps_device_path,
+							  MCE_IO_ERROR_POLICY_WARN,
+							  FALSE, ps_dipro_iomon_cb,
+							  proximity_sensor_mce_io_mon_delete_cb,
+							  sizeof (struct dipro_ps));
 			if( !proximity_sensor_iomon_id )
 				goto EXIT;
 
@@ -693,7 +693,7 @@ static void disable_proximity_monitor(void)
 	default:
 		/* Unregister proximity sensor I/O monitor */
 		if( proximity_sensor_iomon_id ) {
-			mce_unregister_io_monitor(proximity_sensor_iomon_id);
+			mce_io_mon_unregister(proximity_sensor_iomon_id);
 			proximity_sensor_iomon_id = NULL;
 		}
 		break;
@@ -1116,7 +1116,7 @@ void g_module_unload(GModule *module)
 					    submode_trigger);
 
 	/* Unregister I/O monitors */
-	mce_unregister_io_monitor(proximity_sensor_iomon_id);
+	mce_io_mon_unregister(proximity_sensor_iomon_id);
 
 	/* Disable proximity monitoring to remove callbacks
 	 * to unloaded module */

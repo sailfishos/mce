@@ -38,8 +38,16 @@
 
 #include <glib/gstdio.h>
 
-/** List of all file monitors */
-static GSList *file_monitors = NULL;
+/* ========================================================================= *
+ * CONSTANTS
+ * ========================================================================= */
+
+/** Suffix used for temporary files */
+#define TMP_SUFFIX				".tmp"
+
+/* ========================================================================= *
+ * TYPES
+ * ========================================================================= */
 
 /** I/O monitor type */
 typedef enum {
@@ -49,7 +57,7 @@ typedef enum {
 } iomon_type;
 
 /** I/O monitor structure */
-typedef struct {
+struct mce_io_mon_t {
 	gchar          *path;		/**< Monitored file */
 	iomon_type      type;		/**< Monitor type */
 	gulong          chunk_size;	/**< Read-chunk size */
@@ -60,72 +68,84 @@ typedef struct {
 	GIOChannel     *iochan;		/**< I/O channel */
 	guint           iowatch_id;	/**< GSource ID for input */
 
-	iomon_cb        nofity_cb;	/**< Input handling callback */
-	iomon_delete_cb delete_cb;	/**< Iomon delete callback */
+	mce_io_mon_notify_cb        nofity_cb;	/**< Input handling callback */
+	mce_io_mon_delete_cb delete_cb;	/**< Iomon delete callback */
 
 	error_policy_t  error_policy;	/**< Error policy */
 	gboolean        rewind_policy;	/**< Rewind policy */
 
-} iomon_struct;
+};
 
-/** Suffix used for temporary files */
-#define TMP_SUFFIX				".tmp"
+/* ========================================================================= *
+ * STATE_DATA
+ * ========================================================================= */
+
+/** List of all file monitors */
+static GSList *file_monitors = NULL;
 
 /* ========================================================================= *
  * PROTOTYPES
  * ========================================================================= */
 
-// DETECT RESUME AND ESTIMATE TIME SPENT IN SUSPEND
-static int64_t io_get_boot_tick(void);
-static int64_t io_get_mono_tick(void);
-static void io_detect_resume(void);
+// SUSPEND_DETECTION
 
-// GLIB IO HELPERS
-static const char *io_condition_repr(GIOCondition cond);
-static const char *io_status_name(GIOStatus io_status);
+static int64_t io_get_boot_tick  (void);
+static int64_t io_get_mono_tick  (void);
+static void    io_detect_resume  (void);
 
-// IOMON_STRUCT FUNCTIONS
-static void iomon_probe_seekable(iomon_struct *self);
-static void iomon_delete(iomon_struct *self);
-static iomon_struct *iomon_create(const char *path, iomon_delete_cb delete_cb);
-static gboolean iomon_read_chunks(GIOChannel *source, GIOCondition condition, gpointer data);
-static gboolean iomon_read_string(GIOChannel *source, GIOCondition condition, gpointer data);
-static gboolean iomon_input_cb(GIOChannel *source, GIOCondition condition, gpointer data);
+// GLIB_IO_HELPERS
 
-// I/O MONITOR API
-static iomon_struct *mce_register_io_monitor(gint fd, const gchar *path, error_policy_t error_policy, gboolean rewind_policy, iomon_cb callback, iomon_delete_cb delete_cb);
-void mce_unregister_io_monitor(gconstpointer io_monitor);
-void mce_unregister_io_monitor_list(GSList *list);
-void mce_unregister_io_monitor_at_path(const char *path);
-void mce_suspend_io_monitor(gconstpointer io_monitor);
-void mce_resume_io_monitor(gconstpointer io_monitor);
-gconstpointer mce_register_io_monitor_string(const gint fd, const gchar *const file, error_policy_t error_policy, gboolean rewind_policy, iomon_cb callback, iomon_delete_cb delete_cb);
-gconstpointer mce_register_io_monitor_chunk(const gint fd, const gchar *const file, error_policy_t error_policy, gboolean rewind_policy, iomon_cb callback, iomon_delete_cb delete_cb, gulong chunk_size);
-const gchar *mce_get_io_monitor_name(gconstpointer io_monitor);
-int mce_get_io_monitor_fd(gconstpointer io_monitor);
+static const char *io_condition_repr (GIOCondition cond);
+static const char *io_status_name    (GIOStatus io_status);
 
-// MISC UTILS
-gboolean mce_close_file(const gchar *const file, FILE **fp);
-gboolean mce_read_chunk_from_file(const gchar *const file, void **data, gssize *len, int flags);
-gboolean mce_read_string_from_file(const gchar *const file, gchar **string);
-gboolean mce_read_number_string_from_file(const gchar *const file, gulong *number, FILE **fp, gboolean rewind_file, gboolean close_on_exit);
-gboolean mce_write_string_to_file(const gchar *const file, const gchar *const string);
-void mce_close_output(output_state_t *output);
-gboolean mce_write_number_string_to_file(output_state_t *output, const gulong number);
-gboolean mce_write_number_string_to_file_atomic(const gchar *const file, const gulong number);
-gboolean mce_are_settings_locked(void);
-gboolean mce_unlock_settings(void);
-static gboolean mce_io_read_all(int fd, void *buff, size_t size, size_t *pdone);
-static gboolean mce_io_write_all(int fd, const void *buff, size_t size, size_t *pdone);
-void *mce_io_load_file(const char *path, size_t *psize);
-void *mce_io_load_file_until_eof(const char *path, size_t *psize);
-gboolean mce_io_save_file(const char *path, const void *data, size_t size, mode_t mode);
-gboolean mce_io_save_to_existing_file(const char *path, const void *data, size_t size);
-gboolean mce_io_save_file_atomic(const char *path, const void *data, size_t size, mode_t mode, gboolean keep_backup);
-gboolean mce_io_update_file_atomic(const char *path, const void *data, size_t size, mode_t mode, gboolean keep_backup);
+// IO_MONITOR
+
+static mce_io_mon_t *mce_io_mon_create                  (const char *path, mce_io_mon_delete_cb delete_cb);
+static void          mce_io_mon_delete                  (mce_io_mon_t *self);
+static void          mce_io_mon_probe_seekable          (mce_io_mon_t *self);
+
+static gboolean      mce_io_mon_read_chunks             (GIOChannel *source, GIOCondition condition, gpointer data);
+static gboolean      mce_io_mon_read_string             (GIOChannel *source, GIOCondition condition, gpointer data);
+static gboolean      mce_io_mon_input_cb                (GIOChannel *source, GIOCondition condition, gpointer data);
+
+static mce_io_mon_t *mce_io_mon_register                (gint fd, const gchar *path, error_policy_t error_policy, gboolean rewind_policy, mce_io_mon_notify_cb callback, mce_io_mon_delete_cb delete_cb);
+
+mce_io_mon_t        *mce_io_mon_register_string         (const gint fd, const gchar *const file, error_policy_t error_policy, gboolean rewind_policy, mce_io_mon_notify_cb callback, mce_io_mon_delete_cb delete_cb);
+mce_io_mon_t        *mce_io_mon_register_chunk          (const gint fd, const gchar *const file, error_policy_t error_policy, gboolean rewind_policy, mce_io_mon_notify_cb callback, mce_io_mon_delete_cb delete_cb, gulong chunk_size);
+
+void                 mce_io_mon_unregister              (mce_io_mon_t *iomon);
+void                 mce_io_mon_unregister_list         (GSList *list);
+void                 mce_io_mon_unregister_at_path      (const char *path);
+
+void                 mce_io_mon_suspend                 (mce_io_mon_t *iomon);
+void                 mce_io_mon_resume                  (mce_io_mon_t *iomon);
+
+const gchar         *mce_io_mon_get_path                (const mce_io_mon_t *iomon);
+int                  mce_io_mon_get_fd                  (const mce_io_mon_t *iomon);
+
+// MISC_UTILS
+
+gboolean        mce_close_file                          (const gchar *const file, FILE **fp);
+gboolean        mce_read_chunk_from_file                (const gchar *const file, void **data, gssize *len, int flags);
+gboolean        mce_read_string_from_file               (const gchar *const file, gchar **string);
+gboolean        mce_read_number_string_from_file        (const gchar *const file, gulong *number, FILE **fp, gboolean rewind_file, gboolean close_on_exit);
+gboolean        mce_write_string_to_file                (const gchar *const file, const gchar *const string);
+void            mce_close_output                        (output_state_t *output);
+gboolean        mce_write_number_string_to_file         (output_state_t *output, const gulong number);
+gboolean        mce_write_number_string_to_file_atomic  (const gchar *const file, const gulong number);
+gboolean        mce_are_settings_locked                 (void);
+gboolean        mce_unlock_settings                     (void);
+static gboolean mce_io_read_all                         (int fd, void *buff, size_t size, size_t *pdone);
+static gboolean mce_io_write_all                        (int fd, const void *buff, size_t size, size_t *pdone);
+void           *mce_io_load_file                        (const char *path, size_t *psize);
+void           *mce_io_load_file_until_eof              (const char *path, size_t *psize);
+gboolean        mce_io_save_file                        (const char *path, const void *data, size_t size, mode_t mode);
+gboolean        mce_io_save_to_existing_file            (const char *path, const void *data, size_t size);
+gboolean        mce_io_save_file_atomic                 (const char *path, const void *data, size_t size, mode_t mode, gboolean keep_backup);
+gboolean        mce_io_update_file_atomic               (const char *path, const void *data, size_t size, mode_t mode, gboolean keep_backup);
 
 /* ========================================================================= *
- * DETECT RESUME AND ESTIMATE TIME SPENT IN SUSPEND
+ * SUSPEND_DETECTION
  * ========================================================================= */
 
 /** Get CLOCK_BOOTTIME time stamp in milliseconds
@@ -197,7 +217,7 @@ EXIT:
 }
 
 /* ========================================================================= *
- * GLIB IO HELPERS
+ * GLIB_IO_HELPERS
  * ========================================================================= */
 
 /**
@@ -273,35 +293,63 @@ static const char *io_status_name(GIOStatus io_status)
 }
 
 /* ========================================================================= *
- * IOMON_STRUCT FUNCTIONS
+ * IO_MONITOR
  * ========================================================================= */
 
-/**
- * Check if the monitored io channel is truly seekable
+/** Create I/O monitor object
  *
- * Glib seems to be making guesses based on file type and
- * gets it massively wrong for the files MCE needs to read.
+ * Allocates I/O monitor object and does all initialization that
+ * does not need monitoring type information.
+ *
+ * Specifically the io watch is not activated from within this
+ * function, it needs to be done separately.
+ *
+ * @param path       File path
+ * @param delete_cb  I/O monitor object delete notification callback
+ *
+ * @return I/O monitor object
  */
-
-static void iomon_probe_seekable(iomon_struct *self)
+static mce_io_mon_t *mce_io_mon_create(const char *path, mce_io_mon_delete_cb delete_cb)
 {
-	gboolean glib = FALSE, kernel = FALSE;
+	mce_io_mon_t *self = 0;
 
-	/* glib assumes ... */
-	if (g_io_channel_get_flags(self->iochan) & G_IO_FLAG_IS_SEEKABLE) {
-		glib = TRUE;
-	}
-	/* ... kernel knows */
-	if (lseek64(g_io_channel_unix_get_fd(self->iochan), 0, SEEK_CUR) != -1) {
-		kernel = TRUE;
-	}
-	/* report the difference */
-	if (kernel != glib) {
-		mce_log(LL_DEBUG, "%s: is %sseekable, while glib thinks it is %sseekable",
-			self->path, kernel ? "" : "NOT ", glib ? "" : "NOT ");
+	if( !path ) {
+		mce_log(LL_ERR, "path == NULL!");
+		goto EXIT;
 	}
 
-	self->seekable = kernel;
+	if( !delete_cb ) {
+		mce_log(LL_ERR, "delete_cb == NULL!");
+		goto EXIT;
+	}
+
+	if( !(self = g_slice_new(mce_io_mon_t)) )
+		goto EXIT;
+
+	memset(self, 0, sizeof *self);
+
+	/* Fill in sane default values */
+
+	self->path          = g_strdup(path);
+	self->type          = IOMON_UNSET;
+	self->chunk_size    = 0;
+
+	self->seekable      = FALSE;
+	self->suspended     = TRUE;
+
+	self->iochan        = 0;
+	self->iowatch_id    = 0;
+
+	self->nofity_cb     = 0;
+	self->delete_cb     = delete_cb;
+
+	self->error_policy  = MCE_IO_ERROR_POLICY_WARN;
+	self->rewind_policy = FALSE;
+
+	mce_log(LL_NOTICE, "adding monitor for: %s", self->path);
+
+EXIT:
+	return self;
 }
 
 /** Delete I/O monitor object
@@ -314,7 +362,7 @@ static void iomon_probe_seekable(iomon_struct *self)
  *
  * @param self I/O monitor object
  */
-static void iomon_delete(iomon_struct *self)
+static void mce_io_mon_delete(mce_io_mon_t *self)
 {
 	if( !self )
 		goto EXIT;
@@ -336,7 +384,7 @@ static void iomon_delete(iomon_struct *self)
 	}
 
 	/* Remove I/O watch */
-	mce_suspend_io_monitor(self);
+	mce_io_mon_suspend(self);
 
 	/* Close the I/O channel */
 	if( self->iochan ) {
@@ -371,70 +419,42 @@ static void iomon_delete(iomon_struct *self)
 	 * if it ends up used after freeing ... */
 	memset(self, 0xff, sizeof *self);
 
-	g_slice_free(iomon_struct, self);
+	g_slice_free(mce_io_mon_t, self);
 EXIT:
 	return;
 }
 
-/** Create I/O monitor object
+/**
+ * Check if the monitored io channel is truly seekable
  *
- * Allocates I/O monitor object and does all initialization that
- * does not need monitoring type information.
- *
- * Specifically the io watch is not activated from within this
- * function, it needs to be done separately.
- *
- * @param path       File path
- * @param delete_cb  I/O monitor object delete notification callback
- *
- * @return I/O monitor object
+ * Glib seems to be making guesses based on file type and
+ * gets it massively wrong for the files MCE needs to read.
  */
-static iomon_struct *iomon_create(const char *path, iomon_delete_cb delete_cb)
+
+static void mce_io_mon_probe_seekable(mce_io_mon_t *self)
 {
-	iomon_struct *self = 0;
+	gboolean glib = FALSE, kernel = FALSE;
 
-	if( !path ) {
-		mce_log(LL_ERR, "path == NULL!");
-		goto EXIT;
+	/* glib assumes ... */
+	if (g_io_channel_get_flags(self->iochan) & G_IO_FLAG_IS_SEEKABLE) {
+		glib = TRUE;
+	}
+	/* ... kernel knows */
+	if (lseek64(g_io_channel_unix_get_fd(self->iochan), 0, SEEK_CUR) != -1) {
+		kernel = TRUE;
+	}
+	/* report the difference */
+	if (kernel != glib) {
+		mce_log(LL_DEBUG, "%s: is %sseekable, while glib thinks it is %sseekable",
+			self->path, kernel ? "" : "NOT ", glib ? "" : "NOT ");
 	}
 
-	if( !delete_cb ) {
-		mce_log(LL_ERR, "delete_cb == NULL!");
-		goto EXIT;
-	}
-
-	if( !(self = g_slice_new(iomon_struct)) )
-		goto EXIT;
-
-	memset(self, 0, sizeof *self);
-
-	/* Fill in sane default values */
-
-	self->path          = g_strdup(path);
-	self->type          = IOMON_UNSET;
-	self->chunk_size    = 0;
-
-	self->seekable      = FALSE;
-	self->suspended     = TRUE;
-
-	self->iochan        = 0;
-	self->iowatch_id    = 0;
-
-	self->nofity_cb     = 0;
-	self->delete_cb     = delete_cb;
-
-	self->error_policy  = MCE_IO_ERROR_POLICY_WARN;
-	self->rewind_policy = FALSE;
-
-	mce_log(LL_NOTICE, "adding monitor for: %s", self->path);
-
-EXIT:
-	return self;
+	self->seekable = kernel;
 }
 
 /** Process input for chunked io monitor
  *
- * For use from iomon_input_cb() only.
+ * For use from mce_io_mon_input_cb() only.
  *
  * @param source    The source of the activity
  * @param condition The I/O condition
@@ -442,13 +462,13 @@ EXIT:
  *
  * @return TRUE on success, FALSE on failure
  */
-static gboolean iomon_read_chunks(GIOChannel *source,
-			    GIOCondition condition,
-			    gpointer data)
+static gboolean mce_io_mon_read_chunks(GIOChannel *source,
+				       GIOCondition condition,
+				       gpointer data)
 {
 	gboolean      status      = FALSE;
 
-	iomon_struct *iomon       = data;
+	mce_io_mon_t  *iomon      = data;
 	gchar        *buffer      = NULL;
 	gsize         bytes_want  = 4096;
 	gsize         bytes_have  = 0;
@@ -568,7 +588,7 @@ EXIT:
 
 /** Process input for string io monitor
  *
- * For use from iomon_input_cb() only.
+ * For use from mce_io_mon_input_cb() only.
  *
  * @param source    The source of the activity
  * @param condition The I/O condition
@@ -576,13 +596,13 @@ EXIT:
  *
  * @return TRUE on success, FALSE on failure
  */
-static gboolean iomon_read_string(GIOChannel *source,
-			     GIOCondition condition,
-			     gpointer data)
+static gboolean mce_io_mon_read_string(GIOChannel *source,
+				       GIOCondition condition,
+				       gpointer data)
 {
 	gboolean      status     = FALSE;
 
-	iomon_struct *iomon      = data;
+	mce_io_mon_t *iomon      = data;
 	gchar        *str        = NULL;
 	gsize         bytes_read = 0;
 	GError       *error      = NULL;
@@ -643,13 +663,13 @@ EXIT:
  * @return TRUE to keep iomon active, FALSE to disable it;
  *         may also exit depending on error policy for iomon
  */
-static gboolean iomon_input_cb(GIOChannel *source,
-			       GIOCondition condition,
-			       gpointer data)
+static gboolean mce_io_mon_input_cb(GIOChannel *source,
+				    GIOCondition condition,
+				    gpointer data)
 {
 	(void)source; // unused
 
-	iomon_struct *iomon      = data;
+	mce_io_mon_t *iomon      = data;
 	gboolean      keep_going = TRUE;
 	gboolean      terminate  = FALSE;
 	loglevel_t    loglevel   = LL_DEBUG;
@@ -673,14 +693,14 @@ static gboolean iomon_input_cb(GIOChannel *source,
 	if( condition & G_IO_IN ) {
 		switch (iomon->type) {
 		case IOMON_STRING:
-			if( !iomon_read_string(source, condition, data) ) {
-				mce_log(LL_WARN, "iomon_read_string failed");
+			if( !mce_io_mon_read_string(source, condition, data) ) {
+				mce_log(LL_WARN, "mce_io_mon_read_string failed");
 			}
 			break;
 
 		case IOMON_CHUNK:
-			if( !iomon_read_chunks(source, condition, data) ) {
-				mce_log(LL_WARN, "iomon_read_chunks failed");
+			if( !mce_io_mon_read_chunks(source, condition, data) ) {
+				mce_log(LL_WARN, "mce_io_mon_read_chunks failed");
 			}
 			break;
 
@@ -719,7 +739,7 @@ EXIT:
 		mce_log(loglevel, "disabling io monitor for: %s", iomon->path);
 
 		/* Remove IO monitor */
-		mce_unregister_io_monitor(iomon);
+		mce_io_mon_unregister(iomon);
 	}
 
 	// terminate process
@@ -747,15 +767,15 @@ EXIT:
  * @param callback Function to call with result
  * @return An I/O monitor pointer on success, NULL on failure
  */
-static iomon_struct *mce_register_io_monitor(gint fd,
-					     const gchar *path,
-					     error_policy_t error_policy,
-					     gboolean rewind_policy,
-					     iomon_cb callback,
-					     iomon_delete_cb delete_cb)
+static mce_io_mon_t *mce_io_mon_register(gint fd,
+					 const gchar *path,
+					 error_policy_t error_policy,
+					 gboolean rewind_policy,
+					 mce_io_mon_notify_cb callback,
+					 mce_io_mon_delete_cb delete_cb)
 {
 	bool          success = false;
-	iomon_struct *iomon   = 0;
+	mce_io_mon_t *iomon   = 0;
 	GError       *error   = NULL;
 
 	/* Sanity checks */
@@ -774,7 +794,7 @@ static iomon_struct *mce_register_io_monitor(gint fd,
 		goto EXIT;
 
 	/* Allocate monitor object */
-	if( !(iomon = iomon_create(path, delete_cb)) )
+	if( !(iomon = mce_io_mon_create(path, delete_cb)) )
 		goto EXIT;
 
 	/* Add to monitor list */
@@ -800,7 +820,7 @@ static iomon_struct *mce_register_io_monitor(gint fd,
 	g_io_channel_set_close_on_unref(iomon->iochan, TRUE), fd = -1;
 
 	/* Glib seekability is broken, probe via syscall */
-	iomon_probe_seekable(iomon);
+	mce_io_mon_probe_seekable(iomon);
 
 	/* Set rewind policy */
 	if( iomon->seekable ) {
@@ -816,7 +836,7 @@ EXIT:
 		close(fd);
 
 	if( !success )
-		iomon_delete(iomon), iomon = 0;
+		mce_io_mon_delete(iomon), iomon = 0;
 
 	g_clear_error(&error);
 
@@ -827,22 +847,21 @@ EXIT:
  *
  * @param io_monitor A pointer to the I/O monitor to unregister
  */
-void mce_unregister_io_monitor(gconstpointer io_monitor)
+void mce_io_mon_unregister(mce_io_mon_t *iomon)
 {
-	iomon_struct *iomon = (iomon_struct *)io_monitor;
-	iomon_delete(iomon);
+	mce_io_mon_delete(iomon);
 }
 
 /** Remove all touch device I/O monitors in a list
  *
  * @param list A list of I/O monitors
  */
-void mce_unregister_io_monitor_list(GSList *list)
+void mce_io_mon_unregister_list(GSList *list)
 {
 	GSList *now, *zen;
 	for( now = list; now; now = zen ) {
 		zen = now->next;
-		mce_unregister_io_monitor(now->data);
+		mce_io_mon_unregister(now->data);
 	}
 }
 
@@ -850,7 +869,7 @@ void mce_unregister_io_monitor_list(GSList *list)
  *
  * @param path Path to file for which all monitors should be unregistered
  */
-void mce_unregister_io_monitor_at_path(const char *path)
+void mce_io_mon_unregister_at_path(const char *path)
 {
 	GSList *now, *zen;
 
@@ -860,12 +879,12 @@ void mce_unregister_io_monitor_at_path(const char *path)
 	for( now = file_monitors; now; now = zen ) {
 		zen = now->next;
 
-		iomon_struct *self = now->data;
+		mce_io_mon_t *self = now->data;
 
 		if( !self->path || strcmp(self->path, path) )
 			continue;
 
-		mce_unregister_io_monitor(self);
+		mce_io_mon_unregister(self);
 	}
 EXIT:
 	return;
@@ -876,10 +895,8 @@ EXIT:
  *
  * @param io_monitor A pointer to the I/O monitor to suspend
  */
-void mce_suspend_io_monitor(gconstpointer io_monitor)
+void mce_io_mon_suspend(mce_io_mon_t *iomon)
 {
-	iomon_struct *iomon = (iomon_struct *)io_monitor;
-
 	if( !iomon ) {
 		mce_log(LL_ERR, "iomon == NULL!");
 		goto EXIT;
@@ -902,10 +919,8 @@ EXIT:
  *
  * @param io_monitor A pointer to the I/O monitor to resume
  */
-void mce_resume_io_monitor(gconstpointer io_monitor)
+void mce_io_mon_resume(mce_io_mon_t *iomon)
 {
-	iomon_struct *iomon = (iomon_struct *)io_monitor;
-
 	if( !iomon ) {
 		mce_log(LL_ERR, "iomon == NULL!");
 		goto EXIT;
@@ -935,7 +950,7 @@ void mce_resume_io_monitor(gconstpointer io_monitor)
 	iomon->iowatch_id =
 		g_io_add_watch(iomon->iochan,
 			       G_IO_IN | G_IO_ERR | G_IO_HUP | G_IO_NVAL,
-			       iomon_input_cb, iomon);
+			       mce_io_mon_input_cb, iomon);
 
 	/* Mark as not-suspended */
 	iomon->suspended = FALSE;
@@ -958,25 +973,25 @@ EXIT:
  * @param callback Function to call with result
  * @return An I/O monitor cookie on success, NULL on failure
  */
-gconstpointer mce_register_io_monitor_string(const gint fd,
-					     const gchar *const file,
-					     error_policy_t error_policy,
-					     gboolean rewind_policy,
-					     iomon_cb callback,
-					     iomon_delete_cb delete_cb)
+mce_io_mon_t *mce_io_mon_register_string(const gint fd,
+					 const gchar *const file,
+					 error_policy_t error_policy,
+					 gboolean rewind_policy,
+					 mce_io_mon_notify_cb callback,
+					 mce_io_mon_delete_cb delete_cb)
 {
-	iomon_struct *iomon = NULL;
+	mce_io_mon_t *iomon = NULL;
 
-	iomon = mce_register_io_monitor(fd, file,
-					error_policy, rewind_policy,
-					callback, delete_cb);
+	iomon = mce_io_mon_register(fd, file,
+				    error_policy, rewind_policy,
+				    callback, delete_cb);
 
 	if (iomon == NULL)
 		goto EXIT;
 
 	/* Set the I/O monitor type and call resume to add an I/O watch */
 	iomon->type = IOMON_STRING;
-	mce_resume_io_monitor(iomon);
+	mce_io_mon_resume(iomon);
 
 EXIT:
 	return iomon;
@@ -997,20 +1012,20 @@ EXIT:
  * @param chunk_size The number of bytes to read in each chunk
  * @return An I/O monitor cookie on success, NULL on failure
  */
-gconstpointer mce_register_io_monitor_chunk(const gint fd,
-					    const gchar *const file,
-					    error_policy_t error_policy,
-					    gboolean rewind_policy,
-					    iomon_cb callback,
-					    iomon_delete_cb delete_cb,
-					    gulong chunk_size)
+mce_io_mon_t *mce_io_mon_register_chunk(const gint fd,
+					const gchar *const file,
+					error_policy_t error_policy,
+					gboolean rewind_policy,
+					mce_io_mon_notify_cb callback,
+					mce_io_mon_delete_cb delete_cb,
+					gulong chunk_size)
 {
-	iomon_struct *iomon = NULL;
+	mce_io_mon_t *iomon = NULL;
 	GError *error = NULL;
 
-	iomon = mce_register_io_monitor(fd, file,
-					error_policy, rewind_policy,
-					callback, delete_cb);
+	iomon = mce_io_mon_register(fd, file,
+				    error_policy, rewind_policy,
+				    callback, delete_cb);
 
 	if( !iomon )
 		goto EXIT;
@@ -1033,7 +1048,7 @@ gconstpointer mce_register_io_monitor_chunk(const gint fd,
 	/* Set the I/O monitor type and call resume to add an I/O watch */
 	iomon->type       = IOMON_CHUNK;
 	iomon->chunk_size = chunk_size;
-	mce_resume_io_monitor(iomon);
+	mce_io_mon_resume(iomon);
 
 EXIT:
 	return iomon;
@@ -1045,11 +1060,14 @@ EXIT:
  * @param io_monitor An opaque pointer to the I/O monitor structure
  * @return The name of the monitored file
  */
-const gchar *mce_get_io_monitor_name(gconstpointer io_monitor)
+const gchar *mce_io_mon_get_path(const mce_io_mon_t *iomon)
 {
-	iomon_struct *iomon = (iomon_struct *)io_monitor;
+	const gchar *path = 0;
 
-	return iomon->path;
+	if( iomon )
+		path = iomon->path;
+
+	return path;
 }
 
 /**
@@ -1060,9 +1078,8 @@ const gchar *mce_get_io_monitor_name(gconstpointer io_monitor)
  * @param io_monitor An opaque pointer to the I/O monitor structure
  * @return The file descriptor of the monitored file
  */
-int mce_get_io_monitor_fd(gconstpointer io_monitor)
+int mce_io_mon_get_fd(const mce_io_mon_t *iomon)
 {
-	iomon_struct *iomon = (iomon_struct *)io_monitor;
 	int fd = -1;
 
 	if( iomon && iomon->iochan )
@@ -1072,7 +1089,7 @@ int mce_get_io_monitor_fd(gconstpointer io_monitor)
 }
 
 /* ========================================================================= *
- * MISC UTILS
+ * MISC_UTILS
  * ========================================================================= */
 
 /**
