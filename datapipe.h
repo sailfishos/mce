@@ -106,6 +106,7 @@ extern datapipe_struct keypress_pipe;
 extern datapipe_struct touchscreen_pipe;
 extern datapipe_struct lockkey_pipe;
 extern datapipe_struct keyboard_slide_pipe;
+extern datapipe_struct keyboard_available_pipe;
 extern datapipe_struct lid_cover_pipe;
 extern datapipe_struct lens_cover_pipe;
 extern datapipe_struct proximity_sensor_pipe;

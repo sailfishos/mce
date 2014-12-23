@@ -231,11 +231,13 @@ typedef enum {
     /** Volume key device */
     EVDEV_VOLKEY,
 
+    /** Keyboard device */
+    EVDEV_KEYPAD,
+
 } evin_evdevtype_t;
 
 static const char       *evin_evdevtype_repr                    (evin_evdevtype_t type);
-
-static evin_evdevtype_t  evin_evdevtype_from_fd                 (int fd);
+static evin_evdevtype_t  evin_evdevtype_from_info               (evin_evdevinfo_t *info);
 
 /* ------------------------------------------------------------------------- *
  * DOUBLETAP_EMULATION
@@ -280,6 +282,20 @@ static int          evin_doubletap_emulate                      (const struct in
  * EVDEV_IO_MONITORING
  * ------------------------------------------------------------------------- */
 
+/** Cached capabilities and type of monitored evdev input device */
+typedef struct
+{
+    /** Cached device node capabilities */
+    evin_evdevinfo_t *ex_info;
+
+    /** Device type from mce point of view */
+    evin_evdevtype_t  ex_type;
+
+} evin_iomon_extra_t;
+
+static void                evin_iomon_extra_delete_cb           (void *aptr);
+static evin_iomon_extra_t *evin_iomon_extra_create              (int fd);
+
 // common rate limited activity generation
 
 static void         evin_iomon_generate_activity                (struct input_event *ev, bool cooked, bool raw);
@@ -287,30 +303,14 @@ static void         evin_iomon_generate_activity                (struct input_ev
 // event handling by device type
 
 static gboolean     evin_iomon_touchscreen_cb                   (gpointer data, gsize bytes_read);
-static gboolean     evin_iomon_evin_doubletap_cb                        (gpointer data, gsize bytes_read);
+static gboolean     evin_iomon_evin_doubletap_cb                (gpointer data, gsize bytes_read);
 static gboolean     evin_iomon_keypress_cb                      (gpointer data, gsize bytes_read);
 static gboolean     evin_iomon_activity_cb                      (gpointer data, gsize bytes_read);
 
-// add/remove by device type
+// add/remove devices
 
-static void         evin_iomon_device_touchscreen_delete_cb     (mce_io_mon_t *iomon);
-static void         evin_iomon_device_touchscreen_add           (int fd, const char *path, mce_io_mon_notify_cb callback);
-static void         evin_iomon_device_touchscreen_rem_all       (void);
-
-static void         evin_iomon_device_keyboard_delete_cb        (mce_io_mon_t *iomon);
-static void         evin_iomon_device_keyboard_add              (int fd, const char *path, mce_io_mon_notify_cb callback);
-static void         evin_iomon_device_keyboard_rem_all          (void);
-
-static void         evin_iomon_device_volumekey_delete_cb       (mce_io_mon_t *iomon);
-static void         evin_iomon_device_volumekey_add             (int fd, const char *path, mce_io_mon_notify_cb callback);
-static void         evin_iomon_device_volumekey_rem_all         (void);
-
-static void         evin_iomon_device_activity_delete_cb        (mce_io_mon_t *iomon);
-static void         evin_iomon_device_activity_add              (int fd, const char *path, mce_io_mon_notify_cb callback);
-static void         evin_iomon_device_activity_rem_all          (void);
-
-// add/update by device path
-
+static void         evin_iomon_device_delete_cb                 (mce_io_mon_t *iomon);
+static void         evin_iomon_device_rem_all                   (void);
 static void         evin_iomon_device_add                       (const gchar *path);
 static void         evin_iomon_device_update                    (const gchar *path, gboolean add);
 
@@ -318,6 +318,9 @@ static void         evin_iomon_device_update                    (const gchar *pa
 
 static void         evin_iomon_switch_states_update_iter_cb     (gpointer io_monitor, gpointer user_data);
 static void         evin_iomon_switch_states_update             (void);
+
+static void         evin_iomon_keyboard_state_update_iter_cb    (gpointer io_monitor, gpointer user_data);
+static void         evin_iomon_keyboard_state_update            (void);
 
 // start/stop io monitoring
 
@@ -1182,6 +1185,14 @@ evin_evdevinfo_is_volumekey(const evin_evdevinfo_t *self)
             evin_evdevinfo_is_volumekey_hammerhead(self));
 }
 
+static bool
+evin_evdevinfo_is_keyboard(const evin_evdevinfo_t *self)
+{
+    return (evin_evdevinfo_has_type(self, EV_KEY) &&
+            evin_evdevinfo_has_code(self, EV_KEY, KEY_Q) &&
+            evin_evdevinfo_has_code(self, EV_KEY, KEY_P));
+}
+
 /** Fill in evdev data by probing file descriptor
  *
  * @param self evin_evdevinfo_t object
@@ -1224,6 +1235,7 @@ evin_evdevtype_repr(evin_evdevtype_t type)
         [EVDEV_PS]       = "PROXIMITY SENSOR",
         [EVDEV_ALS]      = "AMBIENT LIGHT SENSOR",
         [EVDEV_VOLKEY]   = "VOLUME KEYS",
+        [EVDEV_KEYPAD]   = "KEYPAD",
     };
 
     return lut[type];
@@ -1231,19 +1243,13 @@ evin_evdevtype_repr(evin_evdevtype_t type)
 
 /** Use heuristics to determine what mce should do with an evdev device node
  *
- * @param fd file descriptor to probe data from
+ * @param info  Event types and codes emitted by a evdev device
  *
  * @return one of EVDEV_TOUCH, EVDEV_INPUT, ...
  */
 static evin_evdevtype_t
-evin_evdevtype_from_fd(int fd)
+evin_evdevtype_from_info(evin_evdevinfo_t *info)
 {
-    int res = EVDEV_IGNORE;
-
-    evin_evdevinfo_t *feat = evin_evdevinfo_create();
-
-    evin_evdevinfo_probe(feat, fd);
-
     /* EV_ABS probing arrays for ALS/PS detection */
     static const int abs_only[]  = { EV_ABS, -1 };
     static const int misc_only[] = { ABS_MISC, -1 };
@@ -1307,14 +1313,16 @@ evin_evdevtype_from_fd(int fd)
         -1
     };
 
+    int res = EVDEV_IGNORE;
+
     /* Ambient light and proximity sensor inputs */
-    if( evin_evdevinfo_match_types(feat, abs_only) ) {
-        if( evin_evdevinfo_match_codes(feat, EV_ABS, misc_only) ) {
+    if( evin_evdevinfo_match_types(info, abs_only) ) {
+        if( evin_evdevinfo_match_codes(info, EV_ABS, misc_only) ) {
             // only EV_ABS:ABS_MISC -> ALS
             res = EVDEV_ALS;
             goto cleanup;
         }
-        if( evin_evdevinfo_match_codes(feat, EV_ABS, dist_only) ) {
+        if( evin_evdevinfo_match_codes(info, EV_ABS, dist_only) ) {
             // only EV_ABS:ABS_DISTANCE -> PS
             res = EVDEV_PS;
             goto cleanup;
@@ -1322,8 +1330,8 @@ evin_evdevtype_from_fd(int fd)
     }
 
     /* MCE has no use for accelerometers etc */
-    if( evin_evdevinfo_has_code(feat, EV_KEY, BTN_Z) ||
-        evin_evdevinfo_has_code(feat, EV_ABS, ABS_Z) ) {
+    if( evin_evdevinfo_has_code(info, EV_KEY, BTN_Z) ||
+        evin_evdevinfo_has_code(info, EV_ABS, ABS_Z) ) {
         // 3d sensor like accelorometer/magnetometer
         res = EVDEV_REJECT;
         goto cleanup;
@@ -1333,15 +1341,15 @@ evin_evdevtype_from_fd(int fd)
      * "user activity" monitoring, the touch devices
      * generate a lot of events and mce has mechanism in
      * place to avoid processing all of them */
-    if( evin_evdevinfo_has_code(feat, EV_KEY, BTN_TOUCH) &&
-        evin_evdevinfo_has_code(feat, EV_ABS, ABS_X)     &&
-        evin_evdevinfo_has_code(feat, EV_ABS, ABS_Y) ) {
+    if( evin_evdevinfo_has_code(info, EV_KEY, BTN_TOUCH) &&
+        evin_evdevinfo_has_code(info, EV_ABS, ABS_X)     &&
+        evin_evdevinfo_has_code(info, EV_ABS, ABS_Y) ) {
         // singletouch protocol
         res = EVDEV_TOUCH;
         goto cleanup;
     }
-    if( evin_evdevinfo_has_code(feat, EV_ABS, ABS_MT_POSITION_X) &&
-        evin_evdevinfo_has_code(feat, EV_ABS, ABS_MT_POSITION_Y) ) {
+    if( evin_evdevinfo_has_code(info, EV_ABS, ABS_MT_POSITION_X) &&
+        evin_evdevinfo_has_code(info, EV_ABS, ABS_MT_POSITION_Y) ) {
         // multitouch protocol
         res = EVDEV_TOUCH;
         goto cleanup;
@@ -1349,30 +1357,36 @@ evin_evdevtype_from_fd(int fd)
 
     /* In SDK we might bump into mouse devices, track them
      * as if they were touch screen devices */
-    if( evin_evdevinfo_has_code(feat, EV_KEY, BTN_MOUSE) &&
-        evin_evdevinfo_has_code(feat, EV_REL, REL_X) &&
-        evin_evdevinfo_has_code(feat, EV_REL, REL_Y) ) {
+    if( evin_evdevinfo_has_code(info, EV_KEY, BTN_MOUSE) &&
+        evin_evdevinfo_has_code(info, EV_REL, REL_X) &&
+        evin_evdevinfo_has_code(info, EV_REL, REL_Y) ) {
         // mouse
         res = EVDEV_TOUCH;
         goto cleanup;
     }
 
     /* Touchscreen that emits power key events on double tap */
-    if( evin_evdevinfo_match_types(feat, key_only) &&
-        evin_evdevinfo_match_codes(feat, EV_KEY, dbltap_lut) ) {
+    if( evin_evdevinfo_match_types(info, key_only) &&
+        evin_evdevinfo_match_codes(info, EV_KEY, dbltap_lut) ) {
         res = EVDEV_DBLTAP;
         goto cleanup;
     }
 
+    /* Presense of keyboard devices needs to be signaled */
+    if( evin_evdevinfo_is_keyboard(info) ) {
+        res = EVDEV_KEYPAD;
+        goto cleanup;
+    }
+
     /* Volume keys only input devices can be grabbed */
-    if( evin_evdevinfo_is_volumekey(feat) ) {
+    if( evin_evdevinfo_is_volumekey(info) ) {
         res = EVDEV_VOLKEY;
         goto cleanup;
     }
 
     /* Some keys and swithes are processed at mce level */
-    if( evin_evdevinfo_has_codes(feat, EV_KEY, keypad_lut ) ||
-        evin_evdevinfo_has_codes(feat, EV_SW,  switch_lut ) ) {
+    if( evin_evdevinfo_has_codes(info, EV_KEY, keypad_lut ) ||
+        evin_evdevinfo_has_codes(info, EV_SW,  switch_lut ) ) {
         res = EVDEV_INPUT;
         goto cleanup;
     }
@@ -1382,10 +1396,10 @@ evin_evdevtype_from_fd(int fd)
      * are ambient light sensors that are handled via libhybris
      * in more appropriate place and should not be used for
      * "user activity" tracking. */
-    if( evin_evdevinfo_has_type(feat, EV_ABS) &&
-        !evin_evdevinfo_has_types(feat, all_but_abs_lut) ) {
-        int maybe_als = evin_evdevinfo_has_code(feat, EV_ABS, ABS_MISC);
-        int maybe_ps  = evin_evdevinfo_has_code(feat, EV_ABS, ABS_DISTANCE);
+    if( evin_evdevinfo_has_type(info, EV_ABS) &&
+        !evin_evdevinfo_has_types(info, all_but_abs_lut) ) {
+        int maybe_als = evin_evdevinfo_has_code(info, EV_ABS, ABS_MISC);
+        int maybe_ps  = evin_evdevinfo_has_code(info, EV_ABS, ABS_DISTANCE);
 
         // supports one of the two, but not both ...
         if( maybe_als != maybe_ps ) {
@@ -1403,21 +1417,19 @@ evin_evdevtype_from_fd(int fd)
                 default:
                     break;
                 }
-                if( evin_evdevinfo_has_code(feat, EV_ABS, code) )
+                if( evin_evdevinfo_has_code(info, EV_ABS, code) )
                     break;
             }
         }
     }
 
     /* Track events that can be considered as "user activity" */
-    if( evin_evdevinfo_has_types(feat, misc_lut) ) {
+    if( evin_evdevinfo_has_types(info, misc_lut) ) {
         res = EVDEV_ACTIVITY;
         goto cleanup;
     }
 
 cleanup:
-
-    evin_evdevinfo_delete(feat);
 
     return res;
 }
@@ -1697,19 +1709,74 @@ evin_doubletap_emulate(const struct input_event *eve)
  * EVDEV_IO_MONITORING
  * ========================================================================= */
 
-// io-monitor lists by device type
+static void
+evin_iomon_extra_delete_cb(void *aptr)
+{
+    evin_iomon_extra_t *self = aptr;
 
-/** List of touchscreen input devices */
-static GSList *evin_iomon_device_touchscreen_list = NULL;
+    if( self ) {
+        evin_evdevinfo_delete(self->ex_info);
+        free(self);
+    }
+}
 
-/** List of keyboard input devices */
-static GSList *evin_iomon_device_keyboard_list    = NULL;
+static evin_iomon_extra_t *
+evin_iomon_extra_create(int fd)
+{
+    evin_iomon_extra_t *self = calloc(1, sizeof *self);
 
-/** List of volume key input devices */
-static GSList *evin_iomon_device_volumekey_list   = NULL;
+    self->ex_info = evin_evdevinfo_create();
 
-/** List of misc input devices */
-static GSList *evin_iomon_device_activity_list    = NULL;
+    evin_evdevinfo_probe(self->ex_info, fd);
+
+    self->ex_type = evin_evdevtype_from_info(self->ex_info);
+
+    return self;
+}
+
+/** List of monitored evdev input devices */
+static GSList *evin_iomon_device_list = NULL;
+
+/** Handle touch device iomon delete notification
+ *
+ * @param iomon I/O monitor that is about to get deleted
+ */
+static void
+evin_iomon_device_delete_cb(mce_io_mon_t *iomon)
+{
+    evin_iomon_device_list = g_slist_remove(evin_iomon_device_list, iomon);
+}
+
+static void
+evin_iomon_device_iterate(evin_evdevtype_t type, GFunc func, gpointer data)
+{
+    GSList *item;
+
+    for( item = evin_iomon_device_list; item; item = item->next ) {
+        mce_io_mon_t *iomon = item->data;
+
+        if( !iomon )
+            continue;
+
+        evin_iomon_extra_t *extra = mce_io_mon_get_user_data(iomon);
+
+        if( !extra )
+            continue;
+
+        if( extra->ex_type == type )
+            func(iomon, data);
+    }
+
+}
+
+/** Remove all touch device I/O monitors
+ */
+static void
+evin_iomon_device_rem_all(void)
+{
+    mce_io_mon_unregister_list(evin_iomon_device_list),
+        evin_iomon_device_list = 0;
+}
 
 /** Handle emitting of generic and/or genuine user activity
  *
@@ -1978,6 +2045,7 @@ evin_iomon_keypress_cb(gpointer data, gsize bytes_read)
         case SW_KEYPAD_SLIDE:
             if (ev->value != 2) {
                 (void)execute_datapipe(&keyboard_slide_pipe, GINT_TO_POINTER(ev->value ? COVER_CLOSED : COVER_OPEN), USE_INDATA, CACHE_INDATA);
+                evin_iomon_keyboard_state_update();
             }
 
             /* Don't generate activity on COVER_CLOSED */
@@ -2083,160 +2151,6 @@ EXIT:
     return FALSE;
 }
 
-/** Handle touch device iomon delete notification
- *
- * @param iomon I/O monitor that is about to get deleted
- */
-static void
-evin_iomon_device_touchscreen_delete_cb(mce_io_mon_t *iomon)
-{
-    evin_iomon_device_touchscreen_list = g_slist_remove(evin_iomon_device_touchscreen_list, iomon);
-}
-
-/** Add touch device I/O monitor
- *
- * @param fd        File descriptor
- * @param path      File path
- * @param callback  Input event handler
- */
-static void
-evin_iomon_device_touchscreen_add(int fd, const char *path, mce_io_mon_notify_cb callback)
-{
-    mce_io_mon_t *iomon =
-        mce_io_mon_register_chunk(fd, path, MCE_IO_ERROR_POLICY_WARN,
-                                  FALSE, callback,
-                                  evin_iomon_device_touchscreen_delete_cb,
-                                  sizeof (struct input_event));
-    if( iomon )
-        evin_iomon_device_touchscreen_list = g_slist_prepend(evin_iomon_device_touchscreen_list,
-                                               (gpointer)iomon);
-}
-
-/** Remove all touch device I/O monitors
- */
-static void
-evin_iomon_device_touchscreen_rem_all(void)
-{
-    mce_io_mon_unregister_list(evin_iomon_device_touchscreen_list);
-}
-
-// keypad devices
-
-/** Handle keyboard device iomon delete notification
- *
- * @param iomon I/O monitor that is about to get deleted
- */
-static void
-evin_iomon_device_keyboard_delete_cb(mce_io_mon_t *iomon)
-{
-    evin_iomon_device_keyboard_list = g_slist_remove(evin_iomon_device_keyboard_list, iomon);
-}
-
-/** Add keyboard device I/O monitor
- *
- * @param fd        File descriptor
- * @param path      File path
- * @param callback  Input event handler
- */
-static void
-evin_iomon_device_keyboard_add(int fd, const char *path, mce_io_mon_notify_cb callback)
-{
-    mce_io_mon_t *iomon =
-        mce_io_mon_register_chunk(fd, path, MCE_IO_ERROR_POLICY_WARN,
-                                  FALSE, callback,
-                                  evin_iomon_device_keyboard_delete_cb,
-                                  sizeof (struct input_event));
-    if( iomon )
-        evin_iomon_device_keyboard_list = g_slist_prepend(evin_iomon_device_keyboard_list,
-                                            (gpointer)iomon);
-}
-
-/** Remove all keyboard device I/O monitors
- */
-static void
-evin_iomon_device_keyboard_rem_all(void)
-{
-    mce_io_mon_unregister_list(evin_iomon_device_keyboard_list);
-}
-
-// volumekey devices
-
-/** Handle volumekey device iomon delete notification
- *
- * @param iomon I/O monitor that is about to get deleted
- */
-static void
-evin_iomon_device_volumekey_delete_cb(mce_io_mon_t *iomon)
-{
-    evin_iomon_device_volumekey_list = g_slist_remove(evin_iomon_device_volumekey_list, iomon);
-}
-
-/** Add volumekey device I/O monitor
- *
- * @param fd        File descriptor
- * @param path      File path
- * @param callback  Input event handler
- */
-static void
-evin_iomon_device_volumekey_add(int fd, const char *path, mce_io_mon_notify_cb callback)
-{
-    mce_io_mon_t *iomon =
-        mce_io_mon_register_chunk(fd, path, MCE_IO_ERROR_POLICY_WARN,
-                                  FALSE, callback,
-                                  evin_iomon_device_volumekey_delete_cb,
-                                  sizeof (struct input_event));
-    if( iomon )
-        evin_iomon_device_volumekey_list = g_slist_prepend(evin_iomon_device_volumekey_list,
-                                             (gpointer)iomon);
-}
-
-/** Remove all volumekey device I/O monitors
- */
-static void
-evin_iomon_device_volumekey_rem_all(void)
-{
-    mce_io_mon_unregister_list(evin_iomon_device_volumekey_list);
-}
-
-// misc input devices
-
-/** Handle misc device iomon delete notification
- *
- * @param iomon I/O monitor that is about to get deleted
- */
-static void
-evin_iomon_device_activity_delete_cb(mce_io_mon_t *iomon)
-{
-    evin_iomon_device_activity_list = g_slist_remove(evin_iomon_device_activity_list, iomon);
-}
-
-/** Add misc device I/O monitor
- *
- * @param fd        File descriptor
- * @param path      File path
- * @param callback  Input event handler
- */
-static void
-evin_iomon_device_activity_add(int fd, const char *path, mce_io_mon_notify_cb callback)
-{
-    mce_io_mon_t *iomon =
-        mce_io_mon_register_chunk(fd, path, MCE_IO_ERROR_POLICY_WARN,
-                                  FALSE, callback,
-                                  evin_iomon_device_activity_delete_cb,
-                                  sizeof (struct input_event));
-    if( iomon )
-        evin_iomon_device_activity_list = g_slist_prepend(evin_iomon_device_activity_list,
-                                        (gpointer)iomon);
-}
-
-/** Remove all misc device I/O monitors
- */
-static void
-evin_iomon_device_activity_rem_all(void)
-{
-    mce_io_mon_unregister_list(evin_iomon_device_activity_list);
-}
-
 /** Match and register I/O monitor
  *
  * @param path  Path to the device to add
@@ -2244,8 +2158,10 @@ evin_iomon_device_activity_rem_all(void)
 static void
 evin_iomon_device_add(const gchar *path)
 {
-    int fd   = -1;
-    int type = -1;
+    int                   fd     = -1;
+    mce_io_mon_notify_cb  notify = 0;
+    evin_iomon_extra_t   *extra  = 0;
+    mce_io_mon_t         *iomon  = 0;
 
     char  name[256];
     const gchar * const *black;
@@ -2262,10 +2178,6 @@ evin_iomon_device_add(const gchar *path)
         goto EXIT;
     }
 
-    /* Probe how mce could use the evdev node */
-    type = evin_evdevtype_from_fd(fd);
-    mce_log(LL_NOTICE, "%s: \"%s\", probe: %s", path, name, evin_evdevtype_repr(type));
-
     /* Check if the device is blacklisted by name in the config files */
     if( (black = mce_conf_get_blacklisted_event_drivers()) ) {
         for( size_t i = 0; black[i]; i++ ) {
@@ -2276,44 +2188,82 @@ evin_iomon_device_add(const gchar *path)
         }
     }
 
-    switch( type ) {
-    default:
-    case EVDEV_IGNORE:
-    case EVDEV_REJECT:
-        break;
+    /* Probe device type */
+    extra = evin_iomon_extra_create(fd);
 
+    mce_log(LL_NOTICE, "%s: name='%s' type=%s", path, name,
+            evin_evdevtype_repr(extra->ex_type));
+
+    /* Choose notification callback function based on device type */
+    switch( extra->ex_type ) {
     case EVDEV_TOUCH:
-        evin_iomon_device_touchscreen_add(fd, path, evin_iomon_touchscreen_cb), fd = -1;
+        notify = evin_iomon_touchscreen_cb;
         break;
 
     case EVDEV_DBLTAP:
-        evin_iomon_device_touchscreen_add(fd, path, evin_iomon_evin_doubletap_cb), fd = -1;
+        notify = evin_iomon_evin_doubletap_cb;
         break;
 
     case EVDEV_INPUT:
-        evin_iomon_device_keyboard_add(fd, path, evin_iomon_keypress_cb), fd = -1;
+    case EVDEV_KEYPAD:
+        notify = evin_iomon_keypress_cb;
         break;
 
     case EVDEV_VOLKEY:
-        evin_iomon_device_volumekey_add(fd, path, evin_iomon_keypress_cb), fd = -1;
+        notify = evin_iomon_keypress_cb;
         break;
 
     case EVDEV_ACTIVITY:
-        evin_iomon_device_activity_add(fd, path, evin_iomon_activity_cb), fd = -1;
+        notify = evin_iomon_activity_cb;
         break;
 
     case EVDEV_ALS:
         /* Hook wakelockable ALS input source */
         mce_sensorfw_als_attach(fd), fd = -1;
-        break;
+        goto EXIT;
 
     case EVDEV_PS:
         /* Hook wakelockable PS input source */
         mce_sensorfw_ps_attach(fd), fd = -1;
+        goto EXIT;
+
+    case EVDEV_REJECT:
+    case EVDEV_IGNORE:
+        goto EXIT;
+
+    default:
         break;
     }
 
+    if( !notify ) {
+        mce_log(LL_ERR, "%s: no iomon notify callback assigned", path);
+        goto EXIT;
+    }
+
+    /* Create io monitor for the device file descriptor */
+    iomon = mce_io_mon_register_chunk(fd, path, MCE_IO_ERROR_POLICY_WARN,
+                                      FALSE, notify,
+                                      evin_iomon_device_delete_cb,
+                                      sizeof (struct input_event));
+    /* After mce_io_mon_register_chunk() returns the fd is either
+     * attached to iomon or closed. */
+    fd = -1;
+
+    if( !iomon )
+        goto EXIT;
+
+    /* Attach device type information to the io monitor */
+    mce_io_mon_set_user_data(iomon, extra, evin_iomon_extra_delete_cb),
+        extra = 0;
+
+    /* Add to list of evdev io monitors */
+    evin_iomon_device_list = g_slist_prepend(evin_iomon_device_list, iomon);
+
 EXIT:
+    /* Release type data if it was not attached to io monitor */
+    if( extra )
+        evin_iomon_extra_delete_cb(extra);
+
     /* Close unmonitored file descriptors */
     if( fd != -1 && TEMP_FAILURE_RETRY(close(fd)) )
         mce_log(LL_ERR, "Failed to close `%s'; %m", path);
@@ -2338,6 +2288,8 @@ evin_iomon_device_update(const gchar *path, gboolean add)
     /* add new io monitor if so requested */
     if( add )
         evin_iomon_device_add(path);
+
+    evin_iomon_keyboard_state_update();
 }
 
 /** Check whether the fd in question supports the switches
@@ -2443,8 +2395,90 @@ EXIT:
 static void
 evin_iomon_switch_states_update(void)
 {
-    g_slist_foreach(evin_iomon_device_keyboard_list, evin_iomon_switch_states_update_iter_cb, 0);
-    g_slist_foreach(evin_iomon_device_volumekey_list, evin_iomon_switch_states_update_iter_cb, 0);
+    evin_iomon_device_iterate(EVDEV_INPUT,
+                              evin_iomon_switch_states_update_iter_cb,
+                              0);
+
+    evin_iomon_device_iterate(EVDEV_VOLKEY,
+                              evin_iomon_switch_states_update_iter_cb,
+                              0);
+}
+
+/** Iterator callback for evaluation availability of keypad input devices
+ *
+ * Note: The iteration is peforming a logical OR operation, so the
+ *       result variable must be modified only to set it true.
+ *
+ * @param io_monitor  io monitor as void pointer
+ * @param user_data   pointer to bool available flag
+ */
+static void
+evin_iomon_keyboard_state_update_iter_cb(gpointer io_monitor, gpointer user_data)
+{
+    const mce_io_mon_t *iomon = io_monitor;
+    evin_iomon_extra_t *extra = mce_io_mon_get_user_data(iomon);
+    bool               *avail = (bool *)user_data;
+
+    /* Whether keypad slide state switch is SW_KEYPAD_SLIDE or something
+     * else depends on configuration. */
+
+    int ecode = evin_event_mapper_rlookup_switch(SW_KEYPAD_SLIDE);
+
+    /* Devices that do not  have keypad slide switch are considered
+     * to be always available. */
+
+    if( !evin_evdevinfo_has_code(extra->ex_info, EV_SW, ecode) ) {
+        *avail = true;
+        goto EXIT;
+    }
+
+    /* Devices that have keypad slide are considered available only
+     * when the slider is in open state */
+
+    int fd = mce_io_mon_get_fd(iomon);
+
+    unsigned long bits[EVIN_EVDEVBITS_LEN(SW_MAX)];
+    memset(bits, 0, sizeof bits);
+
+    if( ioctl(fd, EVIOCGSW(SW_MAX), bits) == -1 ) {
+        mce_log(LL_WARN, "%s: EVIOCGSW(SW_MAX) failed: %m",
+                mce_io_mon_get_path(iomon));
+        goto EXIT;
+    }
+
+    if( !test_bit(ecode, bits) )
+        *avail = true;
+
+EXIT:
+    return;
+}
+
+/** Check if at least one keypad device in usable state exists
+ *
+ * Iterate over monitored input devices to find normal keyboards
+ * or slide in keyboards in open position.
+ *
+ * Update keyboard availablity state based on the scanning result.
+ *
+ * This function should be called when new devices are detected,
+ * old ones disappear or SW_KEYPAD_SLIDE events are seen.
+ */
+static void
+evin_iomon_keyboard_state_update(void)
+{
+    bool available = false;
+
+    evin_iomon_device_iterate(EVDEV_KEYPAD,
+                              evin_iomon_keyboard_state_update_iter_cb,
+                              &available);
+
+    mce_log(LL_DEBUG, "available = %s", available ? "true" : "false");
+
+    cover_state_t state = available ? COVER_OPEN : COVER_CLOSED;
+
+    execute_datapipe(&keyboard_available_pipe,
+                     GINT_TO_POINTER(state),
+                     USE_INDATA, CACHE_INDATA);
 }
 
 /** Scan /dev/input for input event devices
@@ -2491,10 +2525,7 @@ EXIT:
 static void
 evin_iomon_quit(void)
 {
-    evin_iomon_device_touchscreen_rem_all();
-    evin_iomon_device_keyboard_rem_all();
-    evin_iomon_device_volumekey_rem_all();
-    evin_iomon_device_activity_rem_all();
+    evin_iomon_device_rem_all();
 }
 
 /* ========================================================================= *
@@ -2865,9 +2896,10 @@ evin_ts_grab_set_active(gboolean grab)
         goto EXIT;
 
     old_grab = grab;
-    g_slist_foreach(evin_iomon_device_touchscreen_list,
-                    evin_input_grab_iomon_cb,
-                    GINT_TO_POINTER(grab));
+
+    evin_iomon_device_iterate(EVDEV_TOUCH,
+                              evin_input_grab_iomon_cb,
+                              GINT_TO_POINTER(grab));
 
     // STATE MACHINE -> OUTPUT DATAPIPE
     execute_datapipe(&touch_grab_active_pipe,
@@ -3183,9 +3215,9 @@ evin_kp_grab_set_active(gboolean grab)
         goto EXIT;
 
     old_grab = grab;
-    g_slist_foreach(evin_iomon_device_volumekey_list,
-                    evin_input_grab_iomon_cb,
-                    GINT_TO_POINTER(grab));
+    evin_iomon_device_iterate(EVDEV_VOLKEY,
+                              evin_input_grab_iomon_cb,
+                              GINT_TO_POINTER(grab));
 
     // STATE MACHINE -> OUTPUT DATAPIPE
     execute_datapipe(&keypad_grab_active_pipe,
@@ -3316,6 +3348,7 @@ mce_input_init(void)
         goto EXIT;
 
     evin_iomon_switch_states_update();
+    evin_iomon_keyboard_state_update();
 
     status = TRUE;
 EXIT:

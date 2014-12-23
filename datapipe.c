@@ -82,6 +82,9 @@ datapipe_struct lockkey_pipe;
 /** Keyboard open/closed; read only */
 datapipe_struct keyboard_slide_pipe;
 
+/** Keyboard available; read only */
+datapipe_struct keyboard_available_pipe;
+
 /** Lid cover open/closed; read only */
 datapipe_struct lid_cover_pipe;
 
@@ -823,6 +826,8 @@ void mce_datapipe_init(void)
 		       0, GINT_TO_POINTER(0));
 	setup_datapipe(&keyboard_slide_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(COVER_CLOSED));
+	setup_datapipe(&keyboard_available_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(COVER_CLOSED));
 	setup_datapipe(&lid_cover_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(COVER_OPEN));
 	setup_datapipe(&lens_cover_pipe, READ_ONLY, DONT_FREE_CACHE,
@@ -902,6 +907,7 @@ void mce_datapipe_quit(void)
 	free_datapipe(&lens_cover_pipe);
 	free_datapipe(&lid_cover_pipe);
 	free_datapipe(&keyboard_slide_pipe);
+	free_datapipe(&keyboard_available_pipe);
 	free_datapipe(&lockkey_pipe);
 	free_datapipe(&device_inactive_pipe);
 	free_datapipe(&touchscreen_pipe);
