@@ -68,12 +68,14 @@ struct mce_io_mon_t {
 	GIOChannel     *iochan;		/**< I/O channel */
 	guint           iowatch_id;	/**< GSource ID for input */
 
-	mce_io_mon_notify_cb        nofity_cb;	/**< Input handling callback */
+	mce_io_mon_notify_cb nofity_cb;	/**< Input handling callback */
 	mce_io_mon_delete_cb delete_cb;	/**< Iomon delete callback */
 
 	error_policy_t  error_policy;	/**< Error policy */
 	gboolean        rewind_policy;	/**< Rewind policy */
 
+	void              *user_data;   /**< Attached user data block */
+	mce_io_mon_free_cb user_free_cb;/**< Callback for freeing user_data */
 };
 
 /* ========================================================================= *
@@ -346,6 +348,9 @@ static mce_io_mon_t *mce_io_mon_create(const char *path, mce_io_mon_delete_cb de
 	self->error_policy  = MCE_IO_ERROR_POLICY_WARN;
 	self->rewind_policy = FALSE;
 
+	self->user_data     = 0;
+	self->user_free_cb  = 0;
+
 	mce_log(LL_NOTICE, "adding monitor for: %s", self->path);
 
 EXIT:
@@ -373,6 +378,10 @@ static void mce_io_mon_delete(mce_io_mon_t *self)
 	if( self->delete_cb ) {
 		self->delete_cb(self);
 	}
+
+	/* Free attached user data */
+	if( self->user_data && self->user_free_cb )
+		self->user_free_cb(self->user_data);
 
 	/* Unlink from monitor list */
 	if( !g_slist_find(file_monitors, self) ) {
@@ -1086,6 +1095,48 @@ int mce_io_mon_get_fd(const mce_io_mon_t *iomon)
 		fd = g_io_channel_unix_get_fd(iomon->iochan);
 
 	return fd;
+}
+
+/** Attach user data block to io monitor
+ *
+ * If non-null free_cb callback is given, the user_data block will
+ * be released using it when io-monitor itself is deleted.
+ *
+ * Note: The delete notification callback is called before the
+ *       user data is released, i.e. user data is still available
+ *       at that point.
+ *
+ * @param io_monitor An opaque pointer to the I/O monitor structure
+ * @param user_data  Data block to attach to io monitor, or NULL
+ * @param free_cb    Free function to release data block or NULL
+ */
+void mce_io_mon_set_user_data(mce_io_mon_t *iomon,
+			      void *user_data,
+			      mce_io_mon_free_cb free_cb)
+{
+	if( !iomon )
+		goto EXIT;
+
+	/* Clear already existing user data */
+	if( iomon->user_data && iomon->user_free_cb )
+		iomon->user_free_cb(iomon->user_data);
+
+	/* Set user data */
+	iomon->user_data = user_data;
+	iomon->user_free_cb = free_cb;
+EXIT:
+	return;
+}
+
+/** Get user data block attached to io monitor
+ *
+ * @param io_monitor An opaque pointer to the I/O monitor structure
+ *
+ * @return user data block, or NULL if not set
+ */
+void *mce_io_mon_get_user_data(const mce_io_mon_t *iomon)
+{
+	return iomon ? iomon->user_data : 0;
 }
 
 /* ========================================================================= *

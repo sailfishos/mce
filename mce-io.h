@@ -73,10 +73,14 @@ typedef struct {
 
 typedef struct mce_io_mon_t mce_io_mon_t;
 
-/** Function pointer for I/O monitor callback */
+/** Callback function type for I/O monitor input notifications */
 typedef gboolean (*mce_io_mon_notify_cb)(gpointer data, gsize bytes_read);
 
+/** Callback function type for I/O monitor delete notifications */
 typedef void (*mce_io_mon_delete_cb)(mce_io_mon_t *iomon);
+
+/** Callback function type for releasing I/O monitor user data block */
+typedef void (*mce_io_mon_free_cb)(void *user_data);
 
 /* iomon functions */
 
@@ -108,6 +112,12 @@ void mce_io_mon_resume(mce_io_mon_t *iomon);
 const gchar *mce_io_mon_get_path(const mce_io_mon_t *iomon);
 
 int mce_io_mon_get_fd(const mce_io_mon_t *iomon);
+
+void mce_io_mon_set_user_data(mce_io_mon_t *iomon,
+			      void *user_data,
+			      mce_io_mon_free_cb free_cb);
+
+void *mce_io_mon_get_user_data(const mce_io_mon_t *iomon);
 
 /* output_state_t funtions */
 
