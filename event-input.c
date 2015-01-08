@@ -232,7 +232,7 @@ typedef enum {
     EVDEV_VOLKEY,
 
     /** Keyboard device */
-    EVDEV_KEYPAD,
+    EVDEV_KEYBOARD,
 
 } evin_evdevtype_t;
 
@@ -1235,7 +1235,7 @@ evin_evdevtype_repr(evin_evdevtype_t type)
         [EVDEV_PS]       = "PROXIMITY SENSOR",
         [EVDEV_ALS]      = "AMBIENT LIGHT SENSOR",
         [EVDEV_VOLKEY]   = "VOLUME KEYS",
-        [EVDEV_KEYPAD]   = "KEYPAD",
+        [EVDEV_KEYBOARD] = "KEYBOARD",
     };
 
     return lut[type];
@@ -1374,7 +1374,7 @@ evin_evdevtype_from_info(evin_evdevinfo_t *info)
 
     /* Presense of keyboard devices needs to be signaled */
     if( evin_evdevinfo_is_keyboard(info) ) {
-        res = EVDEV_KEYPAD;
+        res = EVDEV_KEYBOARD;
         goto cleanup;
     }
 
@@ -2205,7 +2205,7 @@ evin_iomon_device_add(const gchar *path)
         break;
 
     case EVDEV_INPUT:
-    case EVDEV_KEYPAD:
+    case EVDEV_KEYBOARD:
         notify = evin_iomon_keypress_cb;
         break;
 
@@ -2404,7 +2404,7 @@ evin_iomon_switch_states_update(void)
                               0);
 }
 
-/** Iterator callback for evaluation availability of keypad input devices
+/** Iterator callback for evaluation availability of keyboard input devices
  *
  * Note: The iteration is peforming a logical OR operation, so the
  *       result variable must be modified only to set it true.
@@ -2424,16 +2424,16 @@ evin_iomon_keyboard_state_update_iter_cb(gpointer io_monitor, gpointer user_data
 
     int ecode = evin_event_mapper_rlookup_switch(SW_KEYPAD_SLIDE);
 
-    /* Devices that do not  have keypad slide switch are considered
-     * to be always available. */
+    /* Keyboard devices that do not  have keypad slide switch are
+     * considered to be always available. */
 
     if( !evin_evdevinfo_has_code(extra->ex_info, EV_SW, ecode) ) {
         *avail = true;
         goto EXIT;
     }
 
-    /* Devices that have keypad slide are considered available only
-     * when the slider is in open state */
+    /* Keyboard devices that have keypad slide are considered available
+     * only when the slider is in open state */
 
     int fd = mce_io_mon_get_fd(iomon);
 
@@ -2453,7 +2453,7 @@ EXIT:
     return;
 }
 
-/** Check if at least one keypad device in usable state exists
+/** Check if at least one keyboard device in usable state exists
  *
  * Iterate over monitored input devices to find normal keyboards
  * or slide in keyboards in open position.
@@ -2468,7 +2468,7 @@ evin_iomon_keyboard_state_update(void)
 {
     bool available = false;
 
-    evin_iomon_device_iterate(EVDEV_KEYPAD,
+    evin_iomon_device_iterate(EVDEV_KEYBOARD,
                               evin_iomon_keyboard_state_update_iter_cb,
                               &available);
 
