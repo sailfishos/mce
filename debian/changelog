@@ -1,3 +1,13 @@
+mce (1.39.0) unstable; urgency=low
+
+  * [mce] Refactor mce io monitor interface
+  * [mce] Signal slide in keypad state over D-Bus System Bus
+  * [mce] Allow attaching of context specific user data to mce io monitors
+  * [mce] Signal hw keyboard availability state over D-Bus System Bus.
+    Fixes JB#25232
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 12 Jan 2015 10:08:16 +0200
+
 mce (1.38.1) unstable; urgency=low
 
   * [mce] Do not reject all of memnotify input if unknown data is found from it.
