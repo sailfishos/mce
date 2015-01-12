@@ -423,7 +423,7 @@ static GSList *switch_iomon_list = NULL;
  *
  * @param iomon io monitor that is about to get deleted
  */
-static void mce_switches_rem_iomon_cb(gconstpointer iomon)
+static void mce_switches_rem_iomon_cb(mce_io_mon_t *iomon)
 {
 	switch_iomon_list = g_slist_remove(switch_iomon_list, iomon);
 }
@@ -435,14 +435,14 @@ static void mce_switches_rem_iomon_cb(gconstpointer iomon)
  *
  * @return io monitor id, or NULL in case of errors
  */
-static gconstpointer mce_switches_add_iomon(const char *path, iomon_cb input_cb)
+static gconstpointer mce_switches_add_iomon(const char *path, mce_io_mon_notify_cb input_cb)
 {
-	gconstpointer iomon =
-		mce_register_io_monitor_string(-1, path,
-					       MCE_IO_ERROR_POLICY_IGNORE,
-					       TRUE,
-					       input_cb,
-					       mce_switches_rem_iomon_cb);
+	mce_io_mon_t *iomon =
+		mce_io_mon_register_string(-1, path,
+					   MCE_IO_ERROR_POLICY_IGNORE,
+					   TRUE,
+					   input_cb,
+					   mce_switches_rem_iomon_cb);
 	if( iomon )
 		switch_iomon_list = g_slist_prepend(switch_iomon_list,
 						    (gpointer)iomon);
@@ -454,7 +454,7 @@ static gconstpointer mce_switches_add_iomon(const char *path, iomon_cb input_cb)
  */
 static void mce_switches_rem_iomon_all(void)
 {
-	mce_unregister_io_monitor_list(switch_iomon_list);
+	mce_io_mon_unregister_list(switch_iomon_list);
 }
 
 /**

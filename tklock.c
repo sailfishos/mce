@@ -196,7 +196,9 @@ static void     tklock_datapipe_submode_cb(gconstpointer data);
 static void     tklock_datapipe_touchscreen_cb(gconstpointer const data);
 static void     tklock_datapipe_lockkey_cb(gconstpointer const data);
 static void     tklock_datapipe_heartbeat_cb(gconstpointer data);
-static void     tklock_datapipe_keyboard_slide_cb(gconstpointer const data);
+static void     tklock_datapipe_keyboard_slide_input_cb(gconstpointer const data);
+static void     tklock_datapipe_keyboard_slide_output_cb(gconstpointer const data);
+static void     tklock_datapipe_keyboard_available_cb(gconstpointer const data);
 static void     tklock_datapipe_lid_cover_cb(gconstpointer data);
 static void     tklock_datapipe_lens_cover_cb(gconstpointer data);
 static void     tklock_datapipe_user_activity_cb(gconstpointer data);
@@ -307,6 +309,12 @@ static void     tklock_ui_enable_lpm(void);
 static void     tklock_ui_disable_lpm(void);
 
 // dbus ipc
+
+static void     tklock_dbus_send_keyboard_slide_state(DBusMessage *const req);
+static gboolean tklock_dbus_keyboard_slide_state_get_req_cb(DBusMessage *const msg);
+
+static void     tklock_dbus_send_keyboard_available_state(DBusMessage *const req);
+static gboolean tklock_dbus_keyboard_available_state_get_req_cb(DBusMessage *const msg);
 
 static gboolean tklock_dbus_send_tklock_mode(DBusMessage *const method_call);
 
@@ -1431,28 +1439,28 @@ static void tklock_datapipe_heartbeat_cb(gconstpointer data)
     tklock_dtcalib_from_heartbeat();
 }
 
-/** Keypad slide; assume closed */
-static cover_state_t kbd_slide_state = COVER_CLOSED;
+/** Keypad slide input state; assume closed */
+static cover_state_t kbd_slide_input_state = COVER_CLOSED;
 
 /** Change notifications from keyboard_slide_pipe
  */
-static void tklock_datapipe_keyboard_slide_cb(gconstpointer const data)
+static void tklock_datapipe_keyboard_slide_input_cb(gconstpointer const data)
 {
-    cover_state_t prev = kbd_slide_state;
-    kbd_slide_state = GPOINTER_TO_INT(data);
+    cover_state_t prev = kbd_slide_input_state;
+    kbd_slide_input_state = GPOINTER_TO_INT(data);
 
-    if( kbd_slide_state == COVER_UNDEF )
-        kbd_slide_state = COVER_CLOSED;
+    if( kbd_slide_input_state == COVER_UNDEF )
+        kbd_slide_input_state = COVER_CLOSED;
 
-    if( kbd_slide_state == prev )
+    if( kbd_slide_input_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "kbd_slide_state = %d -> %d", prev, kbd_slide_state);
+    mce_log(LL_DEBUG, "kbd_slide_input_state = %d -> %d", prev, kbd_slide_input_state);
 
     bool display_on = (display_state_next == MCE_DISPLAY_ON ||
                        display_state_next == MCE_DISPLAY_DIM);
 
-    switch( kbd_slide_state ) {
+    switch( kbd_slide_input_state ) {
     case COVER_OPEN:
         /* In any case opening the kbd slide will cancel
          * other autorelock triggers */
@@ -1502,6 +1510,46 @@ static void tklock_datapipe_keyboard_slide_cb(gconstpointer const data)
     default:
         break;
     }
+
+EXIT:
+    return;
+}
+
+/** Keypad slide output state; assume unknown */
+static cover_state_t kbd_slide_output_state = COVER_UNDEF;
+
+static void
+tklock_datapipe_keyboard_slide_output_cb(gconstpointer const data)
+{
+    cover_state_t prev = kbd_slide_output_state;
+    kbd_slide_output_state = GPOINTER_TO_INT(data);
+
+    if( kbd_slide_output_state == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "kbd_slide_output_state = %d -> %d", prev, kbd_slide_output_state);
+
+    tklock_dbus_send_keyboard_slide_state(0);
+
+EXIT:
+    return;
+}
+
+/** Keypad available output state; assume unknown */
+static cover_state_t kbd_available_state = COVER_UNDEF;
+
+static void
+tklock_datapipe_keyboard_available_cb(gconstpointer const data)
+{
+    cover_state_t prev = kbd_available_state;
+    kbd_available_state = GPOINTER_TO_INT(data);
+
+    if( kbd_available_state == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "kbd_available_state = %d -> %d", prev, kbd_available_state);
+
+    tklock_dbus_send_keyboard_available_state(0);
 
 EXIT:
     return;
@@ -1786,6 +1834,18 @@ static datapipe_binding_t tklock_datapipe_triggers[] =
         .output_cb = tklock_datapipe_user_activity_cb,
 
     },
+    {
+        /* Note: Keybaord slide state signaling must reflect
+         *       the actual state -> uses output triggering
+         *       unlike the display state logic that is bound
+         *       to datapipe input. */
+        .datapipe  = &keyboard_slide_pipe,
+        .output_cb = tklock_datapipe_keyboard_slide_output_cb,
+    },
+    {
+        .datapipe  = &keyboard_available_pipe,
+        .output_cb = tklock_datapipe_keyboard_available_cb,
+    },
 
     // input triggers
     {
@@ -1805,13 +1865,13 @@ static datapipe_binding_t tklock_datapipe_triggers[] =
         .input_cb = tklock_datapipe_camera_button_cb,
     },
     {
-        /* Note: Logically we should use output trigger for keypad slide,
+        /* Note: Logically we should use output trigger for keyboard slide,
          *       but input triggering is used to avoid turning display
-         *       on if mce happens to restart while keypad is open.
+         *       on if mce happens to restart while keyboard is open.
          *       As long as the slide input is not filtered, there is
          *       no harm in this. */
         .datapipe = &keyboard_slide_pipe,
-        .input_cb = tklock_datapipe_keyboard_slide_cb,
+        .input_cb = tklock_datapipe_keyboard_slide_input_cb,
     },
 
     // sentinel
@@ -4149,6 +4209,126 @@ static void tklock_ui_disable_lpm(void)
  * DBUS MESSAGE HANDLERS
  * ========================================================================= */
 
+#define MCE_KEYBOARD_SLIDE_STATE_SIG "keyboard_slide_state_ind"
+#define MCE_KEYBOARD_SLIDE_STATE_REQ "keyboard_slide_state_req"
+
+/** Send the keyboard slide open/closed state
+ *
+ * @param req A method call message to be replied, or
+ *            NULL to broadcast a keypad state signal
+ */
+static void
+tklock_dbus_send_keyboard_slide_state(DBusMessage *const req)
+{
+    DBusMessage *rsp = 0;
+
+    if( req )
+        rsp = dbus_new_method_reply(req);
+    else
+        rsp = dbus_new_signal(MCE_SIGNAL_PATH, MCE_SIGNAL_IF,
+                              MCE_KEYBOARD_SLIDE_STATE_SIG);
+    if( !rsp )
+        goto EXIT;
+
+    const char *arg = "undef";
+
+    switch( kbd_slide_output_state ) {
+    case COVER_OPEN:   arg = "open";   break;
+    case COVER_CLOSED: arg = "closed"; break;
+    default: break;
+    }
+
+    mce_log(LL_DEBUG, "send keyboard slide state %s: %s",
+            req ? "reply" : "signal", arg);
+
+    if( !dbus_message_append_args(rsp,
+                                  DBUS_TYPE_STRING, &arg,
+                                  DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    dbus_send_message(rsp), rsp = 0;
+
+EXIT:
+    if( rsp ) dbus_message_unref(rsp);
+}
+
+/** D-Bus callback for the get keyboard slide state method call
+ *
+ * @param msg The D-Bus message
+ *
+ * @return TRUE
+ */
+static gboolean
+tklock_dbus_keyboard_slide_state_get_req_cb(DBusMessage *const msg)
+{
+    mce_log(LL_DEVEL, "Received keyboard slide state get request from %s",
+            mce_dbus_get_message_sender_ident(msg));
+
+    tklock_dbus_send_keyboard_slide_state(msg);
+
+    return TRUE;
+}
+
+#define MCE_KEYBOARD_AVAILABLE_STATE_SIG "keyboard_available_state_ind"
+#define MCE_KEYBOARD_AVAILABLE_STATE_REQ "keyboard_available_state_req"
+
+/** Send the keyboard available state
+ *
+ * @param req A method call message to be replied, or
+ *            NULL to broadcast a keyboard available state signal
+ */
+static void
+tklock_dbus_send_keyboard_available_state(DBusMessage *const req)
+{
+    DBusMessage *rsp = 0;
+
+    if( req )
+        rsp = dbus_new_method_reply(req);
+    else
+        rsp = dbus_new_signal(MCE_SIGNAL_PATH, MCE_SIGNAL_IF,
+                              MCE_KEYBOARD_AVAILABLE_STATE_SIG);
+    if( !rsp )
+        goto EXIT;
+
+    const char *arg = "undef";
+
+    switch( kbd_available_state ) {
+    case COVER_OPEN:   arg = "available";     break;
+    case COVER_CLOSED: arg = "not-available"; break;
+    default: break;
+    }
+
+    mce_log(LL_DEBUG, "send keyboard available state %s: %s",
+            req ? "reply" : "signal", arg);
+
+    if( !dbus_message_append_args(rsp,
+                                  DBUS_TYPE_STRING, &arg,
+                                  DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    dbus_send_message(rsp), rsp = 0;
+
+EXIT:
+    if( rsp ) dbus_message_unref(rsp);
+}
+
+/** D-Bus callback for the get keyboard available state method call
+ *
+ * @param msg The D-Bus message
+ *
+ * @return TRUE
+ */
+static gboolean
+tklock_dbus_keyboard_available_state_get_req_cb(DBusMessage *const msg)
+{
+    mce_log(LL_DEVEL, "Received keyboard available state get request from %s",
+            mce_dbus_get_message_sender_ident(msg));
+
+    tklock_dbus_send_keyboard_available_state(msg);
+
+    return TRUE;
+}
+
 /**
  * Send the touchscreen/keypad lock mode
  *
@@ -4453,6 +4633,20 @@ static mce_dbus_handler_t tklock_dbus_handlers[] =
         .args      =
                         "    <arg name=\"lpm_mode\" type=\"s\"/>\n"
     },
+    {
+        .interface = MCE_SIGNAL_IF,
+        .name      = MCE_KEYBOARD_SLIDE_STATE_SIG,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .args      =
+            "    <arg name=\"slide_state\" type=\"s\"/>\n"
+    },
+    {
+        .interface = MCE_SIGNAL_IF,
+        .name      = MCE_KEYBOARD_AVAILABLE_STATE_SIG,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .args      =
+            "    <arg name=\"keyboard_state\" type=\"s\"/>\n"
+    },
     /* method calls */
     {
         .interface = MCE_REQUEST_IF,
@@ -4496,6 +4690,22 @@ static mce_dbus_handler_t tklock_dbus_handlers[] =
         .args      =
             "    <arg direction=\"in\" name=\"notification_name\" type=\"s\"/>\n"
             "    <arg direction=\"in\" name=\"linger_time\" type=\"i\"/>\n"
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_KEYBOARD_SLIDE_STATE_REQ,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = tklock_dbus_keyboard_slide_state_get_req_cb,
+        .args      =
+            "    <arg direction=\"out\" name=\"slide_state\" type=\"s\"/>\n"
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_KEYBOARD_AVAILABLE_STATE_REQ,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = tklock_dbus_keyboard_available_state_get_req_cb,
+        .args      =
+            "    <arg direction=\"out\" name=\"keyboard_state\" type=\"s\"/>\n"
     },
     /* sentinel */
     {

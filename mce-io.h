@@ -71,44 +71,53 @@ typedef struct {
 	gboolean invalid_config_reported;
 } output_state_t;
 
-/** Function pointer for I/O monitor callback */
-typedef gboolean (*iomon_cb)(gpointer data, gsize bytes_read);
+typedef struct mce_io_mon_t mce_io_mon_t;
 
-/** Function pointer for I/O monitor error callback */
-typedef void (*iomon_err_cb)(gpointer data, GIOCondition condition);
+/** Callback function type for I/O monitor input notifications */
+typedef gboolean (*mce_io_mon_notify_cb)(gpointer data, gsize bytes_read);
 
-typedef void (*iomon_delete_cb)(gconstpointer io_monitor);
+/** Callback function type for I/O monitor delete notifications */
+typedef void (*mce_io_mon_delete_cb)(mce_io_mon_t *iomon);
+
+/** Callback function type for releasing I/O monitor user data block */
+typedef void (*mce_io_mon_free_cb)(void *user_data);
 
 /* iomon functions */
 
-gconstpointer mce_register_io_monitor_string(const gint fd,
-					     const gchar *const file,
-					     error_policy_t error_policy,
-					     gboolean rewind_policy,
-					     iomon_cb callback,
-					     iomon_delete_cb delete_cb);
+mce_io_mon_t *mce_io_mon_register_string(const gint fd,
+					 const gchar *const file,
+					 error_policy_t error_policy,
+					 gboolean rewind_policy,
+					 mce_io_mon_notify_cb callback,
+					 mce_io_mon_delete_cb delete_cb);
 
-gconstpointer mce_register_io_monitor_chunk(const gint fd,
-					    const gchar *const file,
-					    error_policy_t error_policy,
-					    gboolean rewind_policy,
-					    iomon_cb callback,
-					    iomon_delete_cb delete_cb,
-					    gulong chunk_size);
+mce_io_mon_t *mce_io_mon_register_chunk(const gint fd,
+					const gchar *const file,
+					error_policy_t error_policy,
+					gboolean rewind_policy,
+					mce_io_mon_notify_cb callback,
+					mce_io_mon_delete_cb delete_cb,
+					gulong chunk_size);
 
-void mce_unregister_io_monitor(gconstpointer io_monitor);
+void mce_io_mon_unregister(mce_io_mon_t *iomon);
 
-void mce_unregister_io_monitor_list(GSList *list);
+void mce_io_mon_unregister_list(GSList *list);
 
-void mce_unregister_io_monitor_at_path(const char *path);
+void mce_io_mon_unregister_at_path(const char *path);
 
-void mce_suspend_io_monitor(gconstpointer io_monitor);
+void mce_io_mon_suspend(mce_io_mon_t *iomon);
 
-void mce_resume_io_monitor(gconstpointer io_monitor);
+void mce_io_mon_resume(mce_io_mon_t *iomon);
 
-const gchar *mce_get_io_monitor_name(gconstpointer io_monitor);
+const gchar *mce_io_mon_get_path(const mce_io_mon_t *iomon);
 
-int mce_get_io_monitor_fd(gconstpointer io_monitor);
+int mce_io_mon_get_fd(const mce_io_mon_t *iomon);
+
+void mce_io_mon_set_user_data(mce_io_mon_t *iomon,
+			      void *user_data,
+			      mce_io_mon_free_cb free_cb);
+
+void *mce_io_mon_get_user_data(const mce_io_mon_t *iomon);
 
 /* output_state_t funtions */
 

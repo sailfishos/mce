@@ -59,16 +59,16 @@ G_MODULE_EXPORT module_info_struct module_info = {
 };
 
 /** ID for the camera active state I/O monitor */
-static gconstpointer camera_active_state_iomon_id = NULL;
+static mce_io_mon_t *camera_active_state_iomon_id = NULL;
 
 /** ID for the camera pop-out state I/O monitor */
-static gconstpointer camera_popout_state_iomon_id = NULL;
+static mce_io_mon_t *camera_popout_state_iomon_id = NULL;
 
 /** Camera pop-out state I/O monitor deleted callback
  *
  * @param iomon io monitor that is about to get deleted
  */
-static void camera_popout_state_iomon_delete_cb(gconstpointer iomon)
+static void camera_popout_state_iomon_delete_cb(mce_io_mon_t *iomon)
 {
 	if( iomon == camera_popout_state_iomon_id )
 		camera_popout_state_iomon_id = 0;
@@ -78,7 +78,7 @@ static void camera_popout_state_iomon_delete_cb(gconstpointer iomon)
  *
  * @param iomon io monitor that is about to get deleted
  */
-static void camera_active_state_iomon_delete_cb(gconstpointer iomon)
+static void camera_active_state_iomon_delete_cb(mce_io_mon_t *iomon)
 {
 	if( iomon == camera_active_state_iomon_id )
 		camera_active_state_iomon_id = 0;
@@ -159,18 +159,18 @@ const gchar *g_module_check_init(GModule *module)
 
 	/* Register I/O monitors */
 	camera_active_state_iomon_id =
-		mce_register_io_monitor_string(-1, CAMERA_ACTIVE_STATE_PATH,
-					       MCE_IO_ERROR_POLICY_IGNORE,
-					       TRUE,
-					       camera_active_state_iomon_input_cb,
-					       camera_active_state_iomon_delete_cb);
+		mce_io_mon_register_string(-1, CAMERA_ACTIVE_STATE_PATH,
+					   MCE_IO_ERROR_POLICY_IGNORE,
+					   TRUE,
+					   camera_active_state_iomon_input_cb,
+					   camera_active_state_iomon_delete_cb);
 
 	camera_popout_state_iomon_id =
-		mce_register_io_monitor_string(-1, CAMERA_POPOUT_STATE_PATH,
-					       MCE_IO_ERROR_POLICY_IGNORE,
-					       TRUE,
-					       camera_popout_state_iomon_input_cb,
-					       camera_popout_state_iomon_delete_cb);
+		mce_io_mon_register_string(-1, CAMERA_POPOUT_STATE_PATH,
+					   MCE_IO_ERROR_POLICY_IGNORE,
+					   TRUE,
+					   camera_popout_state_iomon_input_cb,
+					   camera_popout_state_iomon_delete_cb);
 	return NULL;
 }
 
@@ -185,8 +185,8 @@ void g_module_unload(GModule *module)
 	(void)module;
 
 	/* Unregister I/O monitors */
-	mce_unregister_io_monitor(camera_popout_state_iomon_id);
-	mce_unregister_io_monitor(camera_active_state_iomon_id);
+	mce_io_mon_unregister(camera_popout_state_iomon_id);
+	mce_io_mon_unregister(camera_active_state_iomon_id);
 
 	return;
 }

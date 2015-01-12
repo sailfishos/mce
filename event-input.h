@@ -43,26 +43,6 @@
 /** Path to the touch unblock delay setting */
 #define MCE_GCONF_TOUCH_UNBLOCK_DELAY_PATH MCE_GCONF_EVENT_INPUT_PATH "/touch_unblock_delay"
 
-/**
- * Delay between I/O monitoring setups and keypress repeats; 1 second
- */
-#define MONITORING_DELAY		1
-
-/** Name of Homekey configuration group */
-#define MCE_CONF_HOMEKEY_GROUP		"HomeKey"
-
-/** Name of configuration key for long [home] press delay */
-#define MCE_CONF_HOMEKEY_LONG_DELAY	"HomeKeyLongDelay"
-
-/** Name of configuration key for short [home] press action */
-#define MCE_CONF_HOMEKEY_SHORT_ACTION	"HomeKeyShortAction"
-
-/** Name of configuration key for long [home] press action */
-#define MCE_CONF_HOMEKEY_LONG_ACTION	"HomeKeyLongAction"
-
-/** Long delay for the [home] button in milliseconds */
-#define DEFAULT_HOME_LONG_DELAY		800		/* 0.8 seconds */
-
 /* When MCE is made modular, this will be handled differently */
 gboolean mce_input_init(void);
 void mce_input_exit(void);
