@@ -2140,6 +2140,9 @@ static void event_mapper_init(void)
 	gsize   count = 0;
 	gsize   valid = 0;
 
+	if( !mce_conf_has_group(grp) )
+		goto EXIT;
+
 	keys = mce_conf_get_keys(grp, &count);
 
 	if( !keys || !count )

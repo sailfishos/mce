@@ -80,8 +80,8 @@ static void timestamp(struct timeval *tv)
  */
 static loglevel_t mce_log_level_normalize(loglevel_t loglevel)
 {
-	if( loglevel < LL_ALERT ) {
-		loglevel = LL_ALERT;
+	if( loglevel < LL_EXTRA ) {
+		loglevel = LL_EXTRA;
 	}
 	else if( loglevel > LL_DEBUG ) {
 		loglevel = LL_DEBUG;
@@ -99,7 +99,7 @@ static const char *mce_log_level_tag(loglevel_t loglevel)
 {
 	const char *res = "?";
 	switch( loglevel ) {
-	case LL_ALERT:  res = "A"; break;
+	case LL_EXTRA:  res = "X"; break;
 	case LL_CRIT:   res = "C"; break;
 	case LL_ERR:    res = "E"; break;
 	case LL_WARN:   res = "W"; break;
@@ -193,6 +193,10 @@ void mce_log_file(loglevel_t loglevel, const char *const file,
 				mce_log_level_tag(loglevel),
 				msg);
 		} else {
+			/* LL_EXTRA = devel flavor notice */
+			if( loglevel == LL_EXTRA )
+				loglevel = LL_NOTICE;
+
 			/* loglevels are subset of syslog priorities, so
 			 * we can use loglevel as is for syslog priority */
 			syslog(loglevel, "%s", msg);
@@ -303,7 +307,7 @@ int mce_log_p_(const loglevel_t loglevel,
 			return true;
 	}
 
-	if( loglevel < LL_CRIT )
+	if( loglevel < LL_EXTRA )
 		return logverbosity >= LL_NOTICE;
 
 	return logverbosity >= loglevel;
