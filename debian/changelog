@@ -1,3 +1,10 @@
+mce (1.39.1) unstable; urgency=low
+
+  * [mce] Assume proximity covered while waiting for sensord to start up.
+    Fixes: JB#25575
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 16 Jan 2015 11:26:08 +0200
+
 mce (1.39.0) unstable; urgency=low
 
   * [mce] Refactor mce io monitor interface
