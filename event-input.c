@@ -1334,6 +1334,7 @@ evin_evdevtype_from_info(evin_evdevinfo_t *info)
 
     /* MCE has no use for accelerometers etc */
     if( evin_evdevinfo_has_code(info, EV_KEY, BTN_Z) ||
+        evin_evdevinfo_has_code(info, EV_REL, REL_Z) ||
         evin_evdevinfo_has_code(info, EV_ABS, ABS_Z) ) {
         // 3d sensor like accelorometer/magnetometer
         res = EVDEV_REJECT;
@@ -1424,6 +1425,18 @@ evin_evdevtype_from_info(evin_evdevinfo_t *info)
                     break;
             }
         }
+    }
+
+    /* Ignore devices that emit only X or Y values */
+    if( (evin_evdevinfo_has_code(info, EV_KEY, BTN_X) !=
+         evin_evdevinfo_has_code(info, EV_KEY, BTN_Y)) ||
+        (evin_evdevinfo_has_code(info, EV_REL, REL_X) !=
+         evin_evdevinfo_has_code(info, EV_REL, REL_Y)) ||
+        (evin_evdevinfo_has_code(info, EV_ABS, ABS_X) !=
+         evin_evdevinfo_has_code(info, EV_ABS, ABS_Y)) ) {
+        // assume unknown 1d sensor like als/proximity
+        res = EVDEV_REJECT;
+        goto cleanup;
     }
 
     /* Track events that can be considered as "user activity" */
@@ -3186,7 +3199,7 @@ evin_ts_grab_init(void)
     mce_gconf_get_int(MCE_GCONF_TOUCH_UNBLOCK_DELAY_PATH,
                       &evin_ts_grab_release_delay);
 
-    mce_log(LL_NOTICE, "touch unblock delay config: %d",
+    mce_log(LL_INFO, "touch unblock delay config: %d",
             evin_ts_grab_release_delay);
 
     evin_ts_grab_state.ig_release_ms = evin_ts_grab_release_delay;
