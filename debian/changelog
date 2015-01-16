@@ -1,3 +1,10 @@
+mce (1.38.1.1) unstable; urgency=low
+
+  * [mce] Assume proximity covered while waiting for sensord to start up.
+    Fixes: JB#25575
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 16 Jan 2015 09:45:12 +0200
+
 mce (1.38.1) unstable; urgency=low
 
   * [mce] Do not reject all of memnotify input if unknown data is found from it.
