@@ -918,7 +918,7 @@ int main(int argc, char **argv)
 	/* Identify mce version & flavor on start up */
 	mce_log(LL_WARN, "MCE %s (%s) starting up",
 		G_STRINGIFY(PRG_VERSION),
-		(LL_DEVEL == LL_CRIT) ? "devel" : "release");
+		(LL_DEVEL == LL_EXTRA) ? "devel" : "release");
 
 	/* Daemonize if requested */
 	if( mce_args.daemonflag )

@@ -116,61 +116,64 @@
  *                 | init/quit            enable/disable |
  *                 |                                     |
  *                 v                                     v
- *             .--------------------------------------------.
- *             | SENSORFW_MODULE                            |
- *             `--------------------------------------------'
- *                 |                                  |
- *                 | probe/reset       enable/disable |
- *                 |                                  |
- *                 v                                  v
- *             .--------------------------------------------.
- *             | SENSORFW_SERVICE                           |
- *             `--------------------------------------------'
- *                 |                              |      |
- *                 | load/reset         set/unset |      |
- *                 |                              |      | start/stop
- *                 v                              |      |
- *             .------------------------------.   |      |
- *             | SENSORFW_PLUGIN              |   |      |
- *             `------------------------------'   |      |
- *                 |                              |      |
- *                 | start/reset                  |      |
- *                 |                              |      |
- *                 v                              |      |
- *             .------------------------------.   |      |
- *             | SENSORFW_SESSION             |   |      |
- *             `------------------------------'   |      |
- *                 |                              |      |
- *                 | connect/reset                |      |
- *                 |                              |      |
- *                 v                              |      |
- *             .------------------------------.   |      |
- *             | SENSORFW_CONNECTION          |   |      |
- *             `------------------------------'   |      |
- *               |                   |            |      |
- *               |     rethink/reset |            |      |
- *               |                   |            |      |
- *               | rethink/reset     |            |      |
- *               |                   |            |      |
- *               |                   v            v      |
- *               | .--------------------------------.    |
- *               | | SENSORFW_OVERRIDE              |    |
- *               | `--------------------------------'    |
- *               v                                       v
- *             .--------------------------------------------.
- *             | SENSORFW_REPORTING                         |
- *             `--------------------------------------------'
- *                            |
- *                            | initial/change/reset
- *                            |
- *                            v
- *             .--------------------------------------------.
- *             | SENSORFW_BACKEND                           |
- *             `--------------------------------------------'
- *                            |
- *                            | sensor state
- *                            |
- *                            v
+ * .--------------------------------------------------------.
+ * | SENSORFW_MODULE                                        |
+ * `--------------------------------------------------------'
+ *   |             |                                  |
+ *   | start       | probe/reset       enable/disable |
+ *   |             |                                  |
+ *   |             v                                  v
+ *   |  .---------------------------------------------------.
+ *   |  | SENSORFW_SERVICE                                  |
+ *   |  `---------------------------------------------------'
+ *   |    |        |                              |      |
+ *   |    | start  | load/reset         set/unset |      |
+ *   |    |        |                              |      | start/stop
+ *   |    |        v                              |      |
+ *   |    |    .------------------------------.   |      |
+ *   |    |    | SENSORFW_PLUGIN              |   |      |
+ *   |    |    `------------------------------'   |      |
+ *   |    |        |                              |      |
+ *   |    |        | start/reset                  |      |
+ *   |    |        |                              |      |
+ *   |    |        v                              |      |
+ *   |    |    .------------------------------.   |      |
+ *   |    |    | SENSORFW_SESSION             |   |      |
+ *   |    |    `------------------------------'   |      |
+ *   |    |        |                              |      |
+ *   |    |        | connect/reset                |      |
+ *   |    |        |                              |      |
+ *   |    |        v                              |      |
+ *   |    |    .------------------------------.   |      |
+ *   |    |    | SENSORFW_CONNECTION          |   |      |
+ *   |    |    `------------------------------'   |      |
+ *   |    |      |                   |            |      |
+ *   |    |      |     rethink/reset |            |      |
+ *   |    |      |                   |            |      |
+ *   |    |      | rethink/reset     |            |      |
+ *   |    |      |                   |            |      |
+ *   |    |      |                   v            v      |
+ *   |    |      | .--------------------------------.    |
+ *   |    |      | | SENSORFW_OVERRIDE              |    |
+ *   |    |      | `--------------------------------'    |
+ *   |    |      v                                       v
+ *   |    |    .--------------------------------------------.
+ *   |    |    | SENSORFW_REPORTING                         |
+ *   |    |    `--------------------------------------------'
+ *   |    |                   |
+ *   |    |                   | initial/change/reset
+ *   |    |                   |
+ *   |    |                   v
+ *   |    |    .--------------------------------------------.
+ *   |    |    | SENSORFW_BACKEND                           |
+ *   |    |    `--------------------------------------------'
+ *   v    v                |
+ * .--------------------.  | sensor state
+ * | SENSORFW_EXCEPTION |  |
+ * `--------------------'  |
+ *               |         |
+ *        active |         |
+ *               v         v
  *             .--------------------------------------------.
  *             | SENSORFW_NOTIFY                            |
  *             `--------------------------------------------'
@@ -794,8 +797,21 @@ static void              sfw_service_set_orient         (sfw_service_t *self, bo
  * SENSORFW_NOTIFY
  * ========================================================================= */
 
-/** Proximity state to use when sensor can't be enabled */
+/** Proximity state to use when sensor can't be enabled
+ *
+ * This must be "uncovered" so that absense of or failures within
+ * sensord do not make the device unusable due to proximity values
+ * blocking display power up and touch input.
+ */
 #define SWF_NOTIFY_DEFAULT_PS false
+
+/** Proximity state to use when waiting for sensord startup
+ *
+ * This must be "covered" so that we do not prematurely unblock
+ * touch input / allow display power up during bootup and during
+ * sensord restarts.
+ */
+#define SWF_NOTIFY_EXCEPTION_PS true
 
 /** Ambient light level [lux] to use when sensor can't be enabled */
 #define SWF_NOTIFY_DEFAULT_ALS 400
@@ -831,6 +847,27 @@ static gboolean          sfw_name_owner_changed_cb      (DBusMessage *const msg)
 static void              sfw_notify_ps                  (sfw_notify_t type, bool covered);
 static void              sfw_notify_als                 (sfw_notify_t type, unsigned lux);
 static void              sfw_notify_orient              (sfw_notify_t type, int state);
+
+/* ========================================================================= *
+ * SENSORFW_EXCEPTION
+ * ========================================================================= */
+
+/** Durations for enforcing use of exceptional sensor values */
+typedef enum {
+    /** Expected time until sensord availability is known */
+     SFW_EXCEPTION_LENGTH_MCE_STARTING_UP = 30 * 1000,
+
+    /** Expected time until data from sensord is available */
+     SFW_EXCEPTION_LENGTH_SENSORD_RUNNING =  2 * 1000,
+
+    /** Expected time until sensord gets (re)started */
+     SFW_EXCEPTION_LENGTH_SENSORD_STOPPED =  5 * 1000,
+} sfw_exception_delay_t;
+
+static gboolean          sfw_exception_timer_cb  (gpointer aptr);
+static void              sfw_exception_cancel    (void);
+static void              sfw_exception_start     (sfw_exception_delay_t delay_ms);
+static bool              sfw_exception_is_active (void);
 
 /* ========================================================================= *
  * SENSORFW_MODULE
@@ -2935,6 +2972,7 @@ sfw_service_trans(sfw_service_t *self, sfw_service_state_t state)
         break;
 
     case SERVICE_RUNNING:
+        sfw_exception_start(SFW_EXCEPTION_LENGTH_SENSORD_RUNNING);
         sfw_plugin_do_load(self->srv_ps);
         sfw_plugin_do_load(self->srv_als);
         sfw_plugin_do_load(self->srv_orient);
@@ -2942,6 +2980,7 @@ sfw_service_trans(sfw_service_t *self, sfw_service_state_t state)
 
     case SERVICE_UNKNOWN:
     case SERVICE_STOPPED:
+        sfw_exception_start(SFW_EXCEPTION_LENGTH_SENSORD_STOPPED);
         sfw_plugin_do_reset(self->srv_ps);
         sfw_plugin_do_reset(self->srv_als);
         sfw_plugin_do_reset(self->srv_orient);
@@ -3099,6 +3138,7 @@ sfw_notify_ps(sfw_notify_t type, bool input_value)
     const  bool default_value   = SWF_NOTIFY_DEFAULT_PS;
     static bool tracking_active = false;
 
+    /* Always update cached state data */
     switch( type ) {
     default:
     case NOTIFY_REPEAT:
@@ -3124,16 +3164,28 @@ sfw_notify_ps(sfw_notify_t type, bool input_value)
         break;
     }
 
+    /* The rest can be skipped if callback function is unset */
+    if( !sfw_notify_ps_cb )
+        goto EXIT;
+
+    /* Default value is used unless we are in fully working state */
     bool output_value = tracking_active ? cached_value : default_value ;
 
-    mce_log(LL_DEBUG, "%s: in %s -> out %s / %s",
+    /* Use separate value while expecting sensord startup */
+    if( sfw_exception_is_active() && !output_value ) {
+        mce_log(LL_DEBUG, "waiting for sensord; using proximity=covered");
+        output_value = SWF_NOTIFY_EXCEPTION_PS;
+    }
+
+    mce_log(LL_DEBUG, "%s: input %s -> notify %s",
             sfw_notify_name(type),
             input_value ? "covered" : "uncovered",
-            output_value ? "covered" : "uncovered",
-            sfw_notify_ps_cb ? "notify" : "ignore");
+            output_value ? "covered" : "uncovered");
 
-    if( sfw_notify_ps_cb )
-        sfw_notify_ps_cb(output_value);
+    sfw_notify_ps_cb(output_value);
+
+EXIT:
+    return;
 }
 
 /** Notify ambient light level via callback
@@ -3145,6 +3197,7 @@ sfw_notify_als(sfw_notify_t type, unsigned input_value)
     const  unsigned default_value   = SWF_NOTIFY_DEFAULT_ALS;
     static bool     tracking_active = false;
 
+    /* Always update cached state data */
     switch( type ) {
     default:
     case NOTIFY_REPEAT:
@@ -3170,15 +3223,21 @@ sfw_notify_als(sfw_notify_t type, unsigned input_value)
         break;
     }
 
+    /* The rest can be skipped if callback function is unset */
+    if( !sfw_notify_als_cb )
+        goto EXIT;
+
+    /* Default value is used unless we are in fully working state */
     unsigned output_value = tracking_active ? cached_value : default_value ;
 
-    mce_log(LL_DEBUG, "%s: in %u -> out %u / %s",
+    mce_log(LL_DEBUG, "%s: input %u -> notify %u",
             sfw_notify_name(type),
-            input_value, output_value,
-            sfw_notify_als_cb ? "notify" : "ignore");
+            input_value, output_value);
 
-    if( sfw_notify_als_cb )
-        sfw_notify_als_cb(output_value);
+    sfw_notify_als_cb(output_value);
+
+EXIT:
+    return;
 }
 
 /** Notify orientation state via callback
@@ -3190,6 +3249,7 @@ sfw_notify_orient(sfw_notify_t type, int input_value)
     const  unsigned default_value   = SWF_NOTIFY_DEFAULT_ORIENT;
     static bool     tracking_active = false;
 
+    /* Always update cached state data */
     switch( type ) {
     default:
     case NOTIFY_REPEAT:
@@ -3209,16 +3269,102 @@ sfw_notify_orient(sfw_notify_t type, int input_value)
         break;
     }
 
+    /* The rest can be skipped if callback function is unset */
+    if( !sfw_notify_orient_cb )
+        goto EXIT;
+
+    /* Default value is used unless we are in fully working state */
     unsigned output_value = tracking_active ? cached_value : default_value ;
 
-    mce_log(LL_DEBUG, "%s: in %s -> out %s / %s",
+    mce_log(LL_DEBUG, "%s: input %s -> notify %s",
             sfw_notify_name(type),
             orientation_state_name(input_value),
-            orientation_state_name(output_value),
-            sfw_notify_orient_cb ? "notify" : "ignore");
+            orientation_state_name(output_value));
 
-    if( sfw_notify_orient_cb )
-        sfw_notify_orient_cb(output_value);
+    sfw_notify_orient_cb(output_value);
+
+EXIT:
+    return;
+}
+
+/* ========================================================================= *
+ * SENSORFW_EXCEPTION
+ * ========================================================================= */
+
+/** Flag for: mce is starting up, use exceptional reporting */
+static bool sfw_exception_inititial = true;
+
+/** Timer id for: end of exceptional reporting state */
+static guint sfw_exception_timer_id = 0;
+
+/** Timer callback for ending exception state
+ *
+ * Switch back to reporting actual or built-in default sensor values
+ *
+ * @return TRUE (to stop timer from repeating)
+ */
+static gboolean sfw_exception_timer_cb(gpointer aptr)
+{
+    (void)aptr;
+
+    if( !sfw_exception_timer_id )
+        goto EXIT;
+
+    sfw_exception_timer_id = 0;
+
+    mce_log(LL_DEBUG, "exceptional reporting ended");
+
+    sfw_notify_ps(NOTIFY_REPEAT, SWF_NOTIFY_DUMMY);
+
+EXIT:
+    return FALSE;
+}
+
+/** Predicate for: exceptional sensor values should be reported
+ *
+ * Currently this should affect only proximity sensor which
+ * 1) needs to be assumed "covered" while we do not know whether
+ *    sensord is going to be available or not (device bootup and
+ *    mce/sensord restarts)
+ * 2) must be considered "uncovered" if it becomes clear that
+ *    sensord will not be available or fails to function (act dead
+ *    mode, unfinished porting to new hw platform, etc)
+ *
+ * @return true if exceptional values should be used, false otherwise
+ */
+static bool sfw_exception_is_active(void)
+{
+    return sfw_exception_timer_id || sfw_exception_inititial;
+}
+
+/** Start exceptional value reporting period
+ *
+ * @delay_ms length of exceptional reporting period
+ */
+static void sfw_exception_start(sfw_exception_delay_t delay_ms)
+{
+    mce_log(LL_DEBUG, "exceptional reporting for %d ms", delay_ms);
+
+    if( sfw_exception_timer_id )
+        g_source_remove(sfw_exception_timer_id);
+
+    sfw_exception_timer_id = g_timeout_add(delay_ms,
+                                 sfw_exception_timer_cb,
+                                 0);
+    sfw_exception_inititial = false;
+
+    sfw_notify_ps(NOTIFY_REPEAT, SWF_NOTIFY_DUMMY);
+}
+
+/** Cancel exceptional value reporting period
+ */
+static void sfw_exception_cancel(void)
+{
+    if( sfw_exception_timer_id ) {
+        g_source_remove(sfw_exception_timer_id),
+            sfw_exception_timer_id = 0;
+        mce_log(LL_DEBUG, "exceptional reporting canceled");
+    }
 }
 
 /* ========================================================================= *
@@ -3594,6 +3740,8 @@ static mce_dbus_handler_t sfw_dbus_handlers[] =
 bool
 mce_sensorfw_init(void)
 {
+    sfw_exception_start(SFW_EXCEPTION_LENGTH_MCE_STARTING_UP);
+
     /* Register D-Bus handlers */
     mce_dbus_handler_register_array(sfw_dbus_handlers);
 
@@ -3618,4 +3766,6 @@ mce_sensorfw_quit(void)
 
     /* Stop tracking sensord availablity */
     sfw_service_delete(sfw_service), sfw_service = 0;
+
+    sfw_exception_cancel();
 }
