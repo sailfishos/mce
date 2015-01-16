@@ -1002,7 +1002,8 @@ static void mdy_datapipe_packagekit_locked_cb(gconstpointer data)
     if( packagekit_locked == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "packagekit_locked = %d", packagekit_locked);
+    /* Log by default as it might help analyzing upgrade problems */
+    mce_log(LL_WARN, "packagekit_locked = %d", packagekit_locked);
 
     /* re-evaluate suspend policy */
     mdy_stm_schedule_rethink();
@@ -1027,7 +1028,7 @@ static void mdy_datapipe_system_state_cb(gconstpointer data)
     if( system_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "system_state = %d", system_state);
+    mce_log(LL_NOTICE, "system_state = %d", system_state);
 
     switch( system_state ) {
     case MCE_STATE_ACTDEAD:
@@ -1159,7 +1160,7 @@ static gpointer mdy_datapipe_display_state_filter_cb(gpointer data)
         if( mdy_use_low_power_mode && mdy_low_power_mode_supported )
             break;
 
-        mce_log(LL_WARN, "reject low power mode display request");
+        mce_log(LL_DEBUG, "reject low power mode display request");
         next_state = MCE_DISPLAY_OFF;
         goto UPDATE;
 
@@ -1191,7 +1192,7 @@ static gpointer mdy_datapipe_display_state_filter_cb(gpointer data)
 
 UPDATE:
     if( want_state != next_state ) {
-        mce_log(LL_WARN, "requested: %s, granted: %s",
+        mce_log(LL_DEBUG, "requested: %s, granted: %s",
                 mdy_display_state_name(want_state),
                 mdy_display_state_name(next_state));
     }
@@ -7521,7 +7522,7 @@ static gboolean mdy_dbus_handle_desktop_started_sig(DBusMessage *const msg)
 
     (void)msg;
 
-    mce_log(LL_DEBUG, "Received desktop startup notification");
+    mce_log(LL_NOTICE, "Received desktop startup notification");
 
     mce_log(LL_DEBUG, "deactivate MCE_LED_PATTERN_POWER_ON");
     execute_datapipe_output_triggers(&led_pattern_deactivate_pipe,
@@ -7799,7 +7800,7 @@ static void mdy_flagfiles_init_done_cb(const char *path,
 
     if( mdy_init_done != flag ) {
         mdy_init_done = flag;
-        mce_log(LL_NOTICE, "mdy_init_done -> %s",
+        mce_log(LL_NOTICE, "init_done flag file present: %s",
                 mdy_init_done ? "true" : "false");
         mdy_stm_schedule_rethink();
 #ifdef ENABLE_CPU_GOVERNOR
@@ -7828,7 +7829,9 @@ static void mdy_flagfiles_update_mode_cb(const char *path,
 
     if( mdy_update_mode != flag ) {
         mdy_update_mode = flag;
-        mce_log(LL_DEVEL, "mdy_update_mode -> %s",
+
+        /* Log by default as it might help analyzing upgrade problems */
+        mce_log(LL_WARN, "update_mode flag file present: %s",
                 mdy_update_mode ? "true" : "false");
 
         if( mdy_update_mode ) {
@@ -7887,6 +7890,8 @@ static void mdy_flagfiles_bootstate_cb(const char *path,
 
     buff[rc] = 0;
     buff[strcspn(buff, "\r\n")] = 0;
+
+    mce_log(LL_NOTICE, "bootstate flag file content: %s", buff);
 
     /* for now we only need to differentiate USER and not USER */
     if( !strcmp(buff, "BOOTSTATE=USER") )

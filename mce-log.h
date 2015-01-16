@@ -29,7 +29,7 @@
 /** Severity of loglevels (subset of syslog priorities) */
 typedef enum {
 	LL_NONE    = 0,			/**< No logging at all */
-	LL_ALERT   = LOG_ALERT,		/**< Alert */
+	LL_EXTRA   = LOG_ALERT,		/**< Placeholder for devel logging */
 	LL_CRIT    = LOG_CRIT,		/**< Critical error */
 	LL_ERR     = LOG_ERR,		/**< Error */
 	LL_WARN    = LOG_WARNING,	/**< Warning */
@@ -40,7 +40,7 @@ typedef enum {
 	LL_DEFAULT = LL_WARN,		/**< Default log level */
 
 # ifdef ENABLE_DEVEL_LOGGING
-	LL_DEVEL   = LL_CRIT,		/**< Log by default on devel build */
+	LL_DEVEL   = LL_EXTRA,		/**< Log by default on devel build */
 # else
 	LL_DEVEL   = LL_NOTICE,		/**< Otherwise verbose mode needed */
 # endif
