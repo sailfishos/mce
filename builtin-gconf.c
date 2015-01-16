@@ -1576,7 +1576,7 @@ static void gconf_client_save_values(GConfClient *self, const char *path)
   size_t  size = 0;
   FILE   *file = 0;
 
-  mce_log(LL_NOTICE, "updating %s", path);
+  mce_log(LL_INFO, "updating %s", path);
 
   if( !(file = open_memstream(&data, &size)) ) {
     goto cleanup;

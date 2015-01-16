@@ -351,7 +351,7 @@ static mce_io_mon_t *mce_io_mon_create(const char *path, mce_io_mon_delete_cb de
 	self->user_data     = 0;
 	self->user_free_cb  = 0;
 
-	mce_log(LL_NOTICE, "adding monitor for: %s", self->path);
+	mce_log(LL_DEBUG, "adding monitor for: %s", self->path);
 
 EXIT:
 	return self;
