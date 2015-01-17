@@ -1634,7 +1634,8 @@ evin_doubletap_emulate(const struct input_event *eve)
             skip_syn = false;
             break;
         case ABS_MT_TOUCH_MAJOR:
-            hist[i0].dt_click += SEEN_EVENT_TOUCH_MAJOR;
+            if( eve->value != 0 )
+                hist[i0].dt_click += SEEN_EVENT_TOUCH_MAJOR;
             skip_syn = false;
             break;
         case ABS_MT_TRACKING_ID:
