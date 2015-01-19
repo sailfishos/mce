@@ -1229,6 +1229,13 @@ static void mdy_datapipe_display_state_req_cb(gconstpointer data)
     case MCE_DISPLAY_POWER_UP:
     case MCE_DISPLAY_POWER_DOWN:
         /* Ignore transient or otherwise invalid display states */
+
+        /* Any "no-change" transient state requests practically
+         * have to be side effects of display state request
+         * filtering - no need to make fuzz about them */
+        if( next_state == display_state )
+            break;
+
         mce_log(LL_WARN, "%s is not valid target state; ignoring",
                 mdy_display_state_name(next_state));
         break;
@@ -6291,7 +6298,7 @@ static governor_setting_t *mdy_governor_get_settings(const char *tag)
     snprintf(sec, sizeof sec, "CPUScalingGovernor%s", tag);
 
     if( !mce_conf_has_group(sec) ) {
-        mce_log(LL_NOTICE, "Not configured: %s", sec);
+        mce_log(LL_INFO, "Not configured: %s", sec);
         goto EXIT;
     }
 
