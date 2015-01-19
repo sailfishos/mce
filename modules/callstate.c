@@ -157,6 +157,8 @@ static GSList *call_state_monitor_list = NULL;
 static void call_state_rethink_schedule(void);
 static bool call_state_rethink_forced(void);
 
+static void xofono_get_vcalls(const char *modem);
+
 /* ========================================================================= *
  * OFONO CALL STATE HELPERS
  * ========================================================================= */
@@ -528,10 +530,20 @@ vcalls_quit(void)
  */
 typedef struct
 {
+    /** D-Bus object path for the modem */
     char *name;
+
+    /** Flag for: Properties for this modem have been processed */
     bool probed;
 
+    /** Flag for: The Emergency call property for the modem is set */
     bool emergency;
+
+    /** Flag for: org.ofono.VoiceCallManager inteface is available */
+    bool vcalls_iface;
+
+    /** Flag for: async dbus query to get vcalls for this modem is made */
+    bool vcalls_probed;
 
 } ofono_modem_t;
 
@@ -549,6 +561,9 @@ ofono_modem_create(const char *path)
     self->name      = g_strdup(path);
     self->probed    = false;
     self->emergency = false;
+
+    self->vcalls_iface  = false;
+    self->vcalls_probed = false;
 
     mce_log(LL_DEBUG, "modem=%s", self->name);
     return self;
@@ -601,6 +616,37 @@ ofono_modem_update_1(ofono_modem_t *self, DBusMessageIter *iter)
         mce_log(LL_DEBUG, "* %s = %s", key,
                 self->emergency ? "true" : "false");
     }
+    else if( !strcmp(key, "Interfaces") ) {
+        DBusMessageIter arr;
+
+        if( !mce_dbus_iter_get_array(&var, &arr) )
+            goto EXIT;
+
+        bool vcalls_iface = false;
+
+        while( !mce_dbus_iter_at_end(&arr) ) {
+            const char *iface = 0;
+
+            if( !mce_dbus_iter_get_string(&arr, &iface) )
+                goto EXIT;
+
+            if( strcmp(iface, OFONO_VCALLMANAGER_INTERFACE) )
+                continue;
+
+            vcalls_iface = true;
+            break;
+        }
+
+        if( self->vcalls_iface != vcalls_iface ) {
+            self->vcalls_iface  = vcalls_iface;
+            self->vcalls_probed = false;
+
+            mce_log(LL_NOTICE, "%s interface %savailable",
+                   OFONO_VCALLMANAGER_INTERFACE,
+                    self->vcalls_iface ? "" : "not ");
+
+        }
+    }
 #if 0
     else {
         mce_log(LL_DEBUG, "* %s = %s", key, "...");
@@ -632,6 +678,35 @@ ofono_modem_update_N(ofono_modem_t *self, DBusMessageIter *iter)
             goto EXIT;
         ofono_modem_update_1(self, &dict);
     }
+EXIT:
+    return;
+}
+
+/** Get voice calls for a modem
+ *
+ * If org.ofono.VoiceCallManager D-Bus interface is available for use,
+ * enumerate voice call objects for the modem to get initial properties
+ * of the calls.
+ *
+ * @param self object pointer
+ */
+static void
+ofono_modem_get_vcalls(ofono_modem_t *self)
+{
+    /* Interface available? */
+    if( !self->vcalls_iface )
+        goto EXIT;
+
+    /* Already done? */
+    if( self->vcalls_probed )
+        goto EXIT;
+
+    /* Mark as done */
+    self->vcalls_probed = true;
+
+    /* Start async D-Bus query */
+    xofono_get_vcalls(self->name);
+
 EXIT:
     return;
 }
@@ -935,10 +1010,8 @@ xofono_get_modems_cb(DBusPendingCall *pc, void *aptr)
         if( !modem )
             continue;
 
-        if( !modem->probed )
-            xofono_get_vcalls(modem->name);
-
         ofono_modem_update_N(modem, &mod);
+        ofono_modem_get_vcalls(modem);
         ++cnt;
     }
     call_state_rethink_schedule();
@@ -988,6 +1061,7 @@ xofono_modem_changed_cb(DBusMessage *const msg)
     ofono_modem_t *modem = modems_get_modem(name);
     if( modem ) {
         ofono_modem_update_1(modem, &body);
+        ofono_modem_get_vcalls(modem);
     }
     call_state_rethink_schedule();
 
@@ -1016,10 +1090,8 @@ xofono_modem_added_cb(DBusMessage *const msg)
 
     ofono_modem_t *modem = modems_add_modem(name);
     if( modem ) {
-        if( !modem->probed )
-            xofono_get_vcalls(modem->name);
-
         ofono_modem_update_N(modem, &body);
+        ofono_modem_get_vcalls(modem);
     }
     call_state_rethink_schedule();
 
