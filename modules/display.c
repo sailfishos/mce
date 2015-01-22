@@ -1615,6 +1615,90 @@ static void mdy_datapipe_orientation_state_cb(gconstpointer data)
 EXIT:
     return;
 }
+/** Array of datapipe handlers */
+static datapipe_handler_t mdy_datapipe_handlers[] =
+{
+    // output triggers
+    {
+        .datapipe  = &display_state_req_pipe,
+        .output_cb = mdy_datapipe_display_state_req_cb,
+    },
+    {
+        .datapipe  = &display_state_pipe,
+        .output_cb = mdy_datapipe_display_state_cb,
+    },
+    {
+        .datapipe  = &display_state_next_pipe,
+        .output_cb = mdy_datapipe_display_state_next_cb,
+    },
+    {
+        .datapipe  = &display_brightness_pipe,
+        .output_cb = mdy_datapipe_display_brightness_cb,
+    },
+    {
+        .datapipe  = &lpm_brightness_pipe,
+        .output_cb = mdy_datapipe_lpm_brightness_cb,
+    },
+    {
+        .datapipe  = &charger_state_pipe,
+        .output_cb = mdy_datapipe_charger_state_cb,
+    },
+    {
+        .datapipe  = &system_state_pipe,
+        .output_cb = mdy_datapipe_system_state_cb,
+    },
+    {
+        .datapipe  = &orientation_sensor_pipe,
+        .output_cb = mdy_datapipe_orientation_state_cb,
+    },
+    {
+        .datapipe  = &submode_pipe,
+        .output_cb = mdy_datapipe_submode_cb,
+    },
+    {
+        .datapipe  = &device_inactive_pipe,
+        .output_cb = mdy_datapipe_device_inactive_cb,
+    },
+    {
+        .datapipe  = &call_state_pipe,
+        .output_cb = mdy_datapipe_call_state_trigger_cb,
+    },
+    {
+        .datapipe  = &power_saving_mode_pipe,
+        .output_cb = mdy_datapipe_power_saving_mode_cb,
+    },
+    {
+        .datapipe  = &proximity_sensor_pipe,
+        .output_cb = mdy_datapipe_proximity_sensor_cb,
+    },
+    {
+        .datapipe  = &alarm_ui_state_pipe,
+        .output_cb = mdy_datapipe_alarm_ui_state_cb,
+    },
+    {
+        .datapipe  = &exception_state_pipe,
+        .output_cb = mdy_datapipe_exception_state_cb,
+    },
+    {
+        .datapipe  = &audio_route_pipe,
+        .output_cb = mdy_datapipe_audio_route_cb,
+    },
+    {
+        .datapipe  = &packagekit_locked_pipe,
+        .output_cb = mdy_datapipe_packagekit_locked_cb,
+    },
+
+    // sentinel
+    {
+        .datapipe = 0,
+    }
+};
+
+static datapipe_bindings_t mdy_datapipe_bindings =
+{
+    .module   = "display",
+    .handlers = mdy_datapipe_handlers,
+};
 
 /** Append triggers/filters to datapipes
  */
@@ -1625,85 +1709,16 @@ static void mdy_datapipe_init(void)
                               mdy_datapipe_display_state_filter_cb);
 
     // triggers
-    append_output_trigger_to_datapipe(&display_state_req_pipe,
-                                      mdy_datapipe_display_state_req_cb);
-    append_output_trigger_to_datapipe(&display_state_pipe,
-                                      mdy_datapipe_display_state_cb);
-    append_output_trigger_to_datapipe(&display_state_next_pipe,
-                                      mdy_datapipe_display_state_next_cb);
-    append_output_trigger_to_datapipe(&display_brightness_pipe,
-                                      mdy_datapipe_display_brightness_cb);
-    append_output_trigger_to_datapipe(&lpm_brightness_pipe,
-                                      mdy_datapipe_lpm_brightness_cb);
-
-    append_output_trigger_to_datapipe(&charger_state_pipe,
-                                      mdy_datapipe_charger_state_cb);
-    append_output_trigger_to_datapipe(&system_state_pipe,
-                                      mdy_datapipe_system_state_cb);
-    append_output_trigger_to_datapipe(&orientation_sensor_pipe,
-                                      mdy_datapipe_orientation_state_cb);
-    append_output_trigger_to_datapipe(&submode_pipe,
-                                      mdy_datapipe_submode_cb);
-    append_output_trigger_to_datapipe(&device_inactive_pipe,
-                                      mdy_datapipe_device_inactive_cb);
-    append_output_trigger_to_datapipe(&call_state_pipe,
-                                      mdy_datapipe_call_state_trigger_cb);
-    append_output_trigger_to_datapipe(&power_saving_mode_pipe,
-                                      mdy_datapipe_power_saving_mode_cb);
-    append_output_trigger_to_datapipe(&proximity_sensor_pipe,
-                                      mdy_datapipe_proximity_sensor_cb);
-    append_output_trigger_to_datapipe(&alarm_ui_state_pipe,
-                                      mdy_datapipe_alarm_ui_state_cb);
-    append_output_trigger_to_datapipe(&exception_state_pipe,
-                                      mdy_datapipe_exception_state_cb);
-    append_output_trigger_to_datapipe(&audio_route_pipe,
-                                      mdy_datapipe_audio_route_cb);
-    append_output_trigger_to_datapipe(&packagekit_locked_pipe,
-                                      mdy_datapipe_packagekit_locked_cb);
+    datapipe_bindings_init(&mdy_datapipe_bindings);
 }
 
 /** Remove triggers/filters from datapipes */
 static void mdy_datapipe_quit(void)
 {
     // triggers
-
-    remove_output_trigger_from_datapipe(&packagekit_locked_pipe,
-                                        mdy_datapipe_packagekit_locked_cb);
-    remove_output_trigger_from_datapipe(&alarm_ui_state_pipe,
-                                        mdy_datapipe_alarm_ui_state_cb);
-    remove_output_trigger_from_datapipe(&proximity_sensor_pipe,
-                                        mdy_datapipe_proximity_sensor_cb);
-    remove_output_trigger_from_datapipe(&power_saving_mode_pipe,
-                                        mdy_datapipe_power_saving_mode_cb);
-    remove_output_trigger_from_datapipe(&call_state_pipe,
-                                        mdy_datapipe_call_state_trigger_cb);
-    remove_output_trigger_from_datapipe(&device_inactive_pipe,
-                                        mdy_datapipe_device_inactive_cb);
-    remove_output_trigger_from_datapipe(&submode_pipe,
-                                        mdy_datapipe_submode_cb);
-    remove_output_trigger_from_datapipe(&orientation_sensor_pipe,
-                                        mdy_datapipe_orientation_state_cb);
-    remove_output_trigger_from_datapipe(&system_state_pipe,
-                                        mdy_datapipe_system_state_cb);
-    remove_output_trigger_from_datapipe(&charger_state_pipe,
-                                        mdy_datapipe_charger_state_cb);
-    remove_output_trigger_from_datapipe(&exception_state_pipe,
-                                        mdy_datapipe_exception_state_cb);
-    remove_output_trigger_from_datapipe(&audio_route_pipe,
-                                        mdy_datapipe_audio_route_cb);
-    remove_output_trigger_from_datapipe(&display_brightness_pipe,
-                                        mdy_datapipe_display_brightness_cb);
-    remove_output_trigger_from_datapipe(&lpm_brightness_pipe,
-                                        mdy_datapipe_lpm_brightness_cb);
-    remove_output_trigger_from_datapipe(&display_state_pipe,
-                                        mdy_datapipe_display_state_cb);
-    remove_output_trigger_from_datapipe(&display_state_next_pipe,
-                                        mdy_datapipe_display_state_next_cb);
-    remove_output_trigger_from_datapipe(&display_state_req_pipe,
-                                        mdy_datapipe_display_state_req_cb);
+    datapipe_bindings_quit(&mdy_datapipe_bindings);
 
     // filters
-
     remove_filter_from_datapipe(&display_state_req_pipe,
                                 mdy_datapipe_display_state_filter_cb);
 }
