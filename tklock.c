@@ -110,14 +110,6 @@ enum
 
 typedef struct
 {
-    datapipe_struct *datapipe;
-    void (*output_cb)(gconstpointer data);
-    void (*input_cb)(gconstpointer data);
-    bool bound;
-} datapipe_binding_t;
-
-typedef struct
-{
     /** BOOTTIME tick when notification autostops */
     int64_t  ns_until;
 
@@ -206,10 +198,6 @@ static void     tklock_datapipe_user_activity_cb(gconstpointer data);
 static bool     tklock_datapipe_have_tklock_submode(void);
 static void     tklock_datapipe_set_device_lock_state(device_lock_state_t state);
 
-static void     tklock_datapipe_append_triggers(datapipe_binding_t *bindings);
-static void     tklock_datapipe_initialize_triggers(datapipe_binding_t *bindings);
-static void     tklock_datapipe_remove_triggers(datapipe_binding_t *bindings);
-static gboolean tklock_datapipe_init_cb(gpointer aptr);
 static void     tklock_datapipe_init(void);
 static void     tklock_datapipe_quit(void);
 
@@ -1737,8 +1725,8 @@ EXIT:
     return;
 }
 
-/** Array of datapipe bindings */
-static datapipe_binding_t tklock_datapipe_triggers[] =
+/** Array of datapipe handlers */
+static datapipe_handler_t tklock_datapipe_handlers[] =
 {
     // output triggers
     {
@@ -1880,109 +1868,24 @@ static datapipe_binding_t tklock_datapipe_triggers[] =
     }
 };
 
-static void tklock_datapipe_append_triggers(datapipe_binding_t *bindings)
+static datapipe_bindings_t tklock_datapipe_bindings =
 {
-    if( !bindings )
-        goto EXIT;
-
-    for( size_t i = 0; bindings[i].datapipe; ++i ) {
-        if( bindings[i].bound )
-            continue;
-
-        if( bindings[i].input_cb )
-            append_input_trigger_to_datapipe(bindings[i].datapipe,
-                                             bindings[i].input_cb);
-
-        if( bindings[i].output_cb )
-            append_output_trigger_to_datapipe(bindings[i].datapipe,
-                                              bindings[i].output_cb);
-        bindings[i].bound = true;
-    }
-
-EXIT:
-    return;
-}
-
-static void tklock_datapipe_initialize_triggers(datapipe_binding_t *bindings)
-{
-    if( !bindings )
-        goto EXIT;
-
-    for( size_t i = 0; bindings[i].datapipe; ++i ) {
-        if( !bindings[i].bound )
-            continue;
-
-        if( bindings[i].output_cb )
-          bindings[i].output_cb(bindings[i].datapipe->cached_data);
-    }
-
-EXIT:
-    return;
-}
-
-static void tklock_datapipe_remove_triggers(datapipe_binding_t *bindings)
-{
-    if( !bindings )
-        goto EXIT;
-
-    for( size_t i = 0; bindings[i].datapipe; ++i ) {
-        if( !bindings[i].bound )
-            continue;
-
-        if( bindings[i].input_cb )
-            remove_input_trigger_from_datapipe(bindings[i].datapipe,
-                                             bindings[i].input_cb);
-
-        if( bindings[i].output_cb )
-            remove_output_trigger_from_datapipe(bindings[i].datapipe,
-                                              bindings[i].output_cb);
-        bindings[i].bound = false;
-    }
-
-EXIT:
-    return;
-}
-
-static guint tklock_datapipe_init_id = 0;
-
-static gboolean tklock_datapipe_init_cb(gpointer aptr)
-{
-    (void)aptr;
-
-    if( !tklock_datapipe_init_id )
-        goto EXIT;
-
-    tklock_datapipe_init_id = 0;
-
-    tklock_datapipe_initialize_triggers(tklock_datapipe_triggers);
-
-EXIT:
-    return FALSE;
-}
+    .module   = "tklock",
+    .handlers = tklock_datapipe_handlers,
+};
 
 /** Append triggers/filters to datapipes
  */
 static void tklock_datapipe_init(void)
 {
-    /* Set up datapipe callbacks */
-    tklock_datapipe_append_triggers(tklock_datapipe_triggers);
-
-    /* Get initial values for output triggers from idle
-     * callback, i.e. when all modules have been loaded */
-    tklock_datapipe_init_id = g_idle_add(tklock_datapipe_init_cb, 0);
+    datapipe_bindings_init(&tklock_datapipe_bindings);
 }
 
 /** Remove triggers/filters from datapipes
  */
 static void tklock_datapipe_quit(void)
 {
-    /* Remove the get initial values timer if still active */
-    if( tklock_datapipe_init_id )
-        g_source_remove(tklock_datapipe_init_id),
-        tklock_datapipe_init_id = 0;
-
-    /* Remove datapipe callbacks */
-    tklock_datapipe_remove_triggers(tklock_datapipe_triggers);
+    datapipe_bindings_quit(&tklock_datapipe_bindings);
 }
 
 /* ========================================================================= *

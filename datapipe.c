@@ -969,3 +969,116 @@ const char *device_lock_state_repr(device_lock_state_t state)
 
 	return res;
 }
+
+void datapipe_handlers_install(datapipe_handler_t *bindings)
+{
+    if( !bindings )
+	goto EXIT;
+
+    for( size_t i = 0; bindings[i].datapipe; ++i ) {
+	if( bindings[i].bound )
+	    continue;
+
+	if( bindings[i].input_cb )
+	    append_input_trigger_to_datapipe(bindings[i].datapipe,
+					     bindings[i].input_cb);
+
+	if( bindings[i].output_cb )
+	    append_output_trigger_to_datapipe(bindings[i].datapipe,
+					      bindings[i].output_cb);
+	bindings[i].bound = true;
+    }
+
+EXIT:
+    return;
+}
+
+void datapipe_handlers_remove(datapipe_handler_t *bindings)
+{
+    if( !bindings )
+	goto EXIT;
+
+    for( size_t i = 0; bindings[i].datapipe; ++i ) {
+	if( !bindings[i].bound )
+	    continue;
+
+	if( bindings[i].input_cb )
+	    remove_input_trigger_from_datapipe(bindings[i].datapipe,
+					     bindings[i].input_cb);
+
+	if( bindings[i].output_cb )
+	    remove_output_trigger_from_datapipe(bindings[i].datapipe,
+					      bindings[i].output_cb);
+	bindings[i].bound = false;
+    }
+
+EXIT:
+    return;
+}
+
+void datapipe_handlers_execute(datapipe_handler_t *bindings)
+{
+    if( !bindings )
+	goto EXIT;
+
+    for( size_t i = 0; bindings[i].datapipe; ++i ) {
+	if( !bindings[i].bound )
+	    continue;
+
+	if( bindings[i].output_cb )
+	  bindings[i].output_cb(bindings[i].datapipe->cached_data);
+    }
+
+EXIT:
+    return;
+}
+
+static gboolean datapipe_handlers_execute_cb(gpointer aptr)
+{
+    datapipe_bindings_t *self = aptr;
+
+    if( !self )
+	goto EXIT;
+
+    if( !self->execute_id )
+	goto EXIT;
+
+    self->execute_id = 0;
+
+    mce_log(LL_CRIT, "module=%s", self->module ?: "unknown");
+    datapipe_handlers_execute(self->handlers);
+
+EXIT:
+    return FALSE;
+}
+
+/** Append triggers/filters to datapipes
+ */
+void datapipe_bindings_init(datapipe_bindings_t *self)
+{
+    mce_log(LL_CRIT, "module=%s", self->module ?: "unknown");
+
+    /* Set up datapipe callbacks */
+    datapipe_handlers_install(self->handlers);
+
+    /* Get initial values for output triggers from idle
+     * callback, i.e. when all modules have been loaded */
+    if( !self->execute_id )
+	self->execute_id = g_idle_add(datapipe_handlers_execute_cb, self);
+}
+
+/** Remove triggers/filters from datapipes
+ */
+void datapipe_bindings_quit(datapipe_bindings_t *self)
+{
+    mce_log(LL_CRIT, "module=%s", self->module ?: "unknown");
+
+    /* Remove the get initial values timer if still active */
+    if( self->execute_id ) {
+	g_source_remove(self->execute_id),
+	    self->execute_id = 0;
+    }
+
+    /* Remove datapipe callbacks */
+    datapipe_handlers_remove(self->handlers);
+}
