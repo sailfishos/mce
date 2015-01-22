@@ -27,6 +27,25 @@
 
 #include <dbus/dbus.h>
 
+/* ========================================================================= *
+ * COMPOSITOR DBUS SERVICE
+ * ========================================================================= */
+
+#define COMPOSITOR_SERVICE  "org.nemomobile.compositor"
+#define COMPOSITOR_PATH     "/"
+#define COMPOSITOR_IFACE    "org.nemomobile.compositor"
+
+/* Enabling/disabling display updates via compositor service */
+#define COMPOSITOR_SET_UPDATES_ENABLED "setUpdatesEnabled"
+
+/* ========================================================================= *
+ * LIPSTICK DBUS SERVICE
+ * ========================================================================= */
+
+#define LIPSTICK_SERVICE  "org.nemomobile.lipstick"
+#define LIPSTICK_PATH     "/"
+#define LIPSTICK_IFACE    "org.nemomobile.lipstick"
+
 DBusConnection *dbus_connection_get(void);
 
 DBusMessage *dbus_new_signal(const gchar *const path,
@@ -123,5 +142,7 @@ const char *mce_dbus_get_message_sender_ident(DBusMessage *msg);
 
 typedef void (*mce_dbus_pid_notify_t)(const char *name, int pid);
 void mce_dbus_get_pid_async(const char *name, mce_dbus_pid_notify_t cb);
+
+const char *mce_dbus_nameowner_get(const char *name);
 
 #endif /* _MCE_DBUS_H_ */
