@@ -646,6 +646,7 @@ static struct
 	bool systembus;
 	bool show_module_info;
 	bool systemd_notify;
+	int  auto_exit;
 } mce_args =
 {
 	.daemonflag       = false,
@@ -654,6 +655,7 @@ static struct
 	.systembus        = true,
 	.show_module_info = false,
 	.systemd_notify   = false,
+	.auto_exit        = -1,
 };
 
 static bool mce_do_help(const char *arg);
@@ -680,6 +682,11 @@ static bool mce_do_force_syslog(const char *arg)
 	return true;
 }
 
+static bool mce_do_auto_exit(const char *arg)
+{
+	mce_args.auto_exit = arg ? strtol(arg, 0, 0) : 5;
+	return true;
+}
 static bool mce_do_log_function(const char *arg)
 {
 	mce_log_add_pattern(arg);
@@ -831,6 +838,16 @@ static const mce_opt_t options[] =
 		.usage       =
 			"Add function logging override"
 	},
+	{
+		.name        = "auto-exit",
+		.values      = "seconds",
+		.with_arg    = mce_do_auto_exit,
+		.without_arg = mce_do_auto_exit,
+		.usage       =
+			"Exit after mainloop gets idle\n"
+			"\n"
+			"This is usefult for mce startup debugging only.\n"
+	},
 	// sentinel
 	{
 		.name = 0
@@ -873,6 +890,22 @@ static bool mce_do_help(const char *arg)
 
 EXIT:
 	exit(EXIT_SUCCESS);
+}
+
+static gboolean mce_auto_exit_cb(gpointer aptr)
+{
+	(void)aptr;
+
+	if( mce_args.auto_exit <= 0 ) {
+		mce_log(LL_WARN, "exit");
+		mce_quit_mainloop();
+	}
+	else {
+		mce_log(LL_WARN, "idle");
+		g_timeout_add_seconds(mce_args.auto_exit, mce_auto_exit_cb, 0);
+		mce_args.auto_exit = 0;
+	}
+	return FALSE;
 }
 
 /* ========================================================================= *
@@ -1023,6 +1056,11 @@ int main(int argc, char **argv)
 	if( mce_args.systemd_notify ) {
 		mce_log(LL_NOTICE, "notifying systemd");
 		sd_notify(0, "READY=1");
+	}
+	/* Debug feature: exit after startup is finished */
+	if( mce_args.auto_exit >= 0 ) {
+		mce_log(LL_WARN, "auto-exit scheduled");
+		g_idle_add(mce_auto_exit_cb, 0);
 	}
 
 	/* Run the main loop */
