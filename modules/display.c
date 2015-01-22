@@ -5652,6 +5652,12 @@ static void mdy_stm_compositor_name_owner_changed(const char *name,
      * Turning the display on at lipstick runstate change
      * deals with both (a) and (b) */
     mdy_stm_push_target_change(MCE_DISPLAY_ON);
+
+    /* and finally broadcast within mce */
+    bool available = mdy_compositor_is_available();
+    execute_datapipe(&compositor_available_pipe,
+                     GINT_TO_POINTER(available),
+                     USE_INDATA, CACHE_INDATA);
 }
 
 /** react to systemui availability changes

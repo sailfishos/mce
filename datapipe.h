@@ -130,6 +130,7 @@ extern datapipe_struct jack_sense_pipe;
 extern datapipe_struct power_saving_mode_pipe;
 extern datapipe_struct thermal_state_pipe;
 extern datapipe_struct heartbeat_pipe;
+extern datapipe_struct compositor_available_pipe;
 extern datapipe_struct lipstick_available_pipe;
 extern datapipe_struct dsme_available_pipe;
 extern datapipe_struct packagekit_locked_pipe;
