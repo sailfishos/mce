@@ -1,3 +1,10 @@
+mce (1.39.4) unstable; urgency=low
+
+  * [mce] Fix USB cable connection related issues in display blanking policy.
+    Fixes JB#25788
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 23 Jan 2015 09:15:31 +0200
+
 mce (1.39.3) unstable; urgency=low
 
   * [mce] Do query voice calls until required dbus interface is available.
