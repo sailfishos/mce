@@ -2705,7 +2705,7 @@ static gboolean init_patterns(void)
 }
 
 /** Flag for: charger connected */
-static bool charger_state = false;
+static charger_state_t charger_state = CHARGER_STATE_UNDEF;
 
 /** Current battery percent level */
 static int battery_level = 0;
@@ -2730,7 +2730,7 @@ static void sw_breathing_rethink(void)
 
 	/* Check breathing configuration */
 	if( sw_breathing_enabled ) {
-		breathe = (charger_state ||
+		breathe = (charger_state == CHARGER_STATE_ON ||
 			   battery_level >= sw_breathing_battery_limit);
 	}
 
@@ -2830,7 +2830,7 @@ static void sw_breathing_init(void)
  */
 static void charger_state_trigger(gconstpointer data)
 {
-	bool prev = charger_state;
+	charger_state_t prev = charger_state;
 	charger_state = GPOINTER_TO_INT(data);
 
 	if( charger_state == prev )

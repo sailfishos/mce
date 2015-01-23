@@ -3185,55 +3185,30 @@ static const char mce_dbus_nameowner_rule_fmt[] =
 ",arg0='%s'"
 ;
 
-/** D-Bus connection */
-static DBusConnection *mce_dbus_nameowner_bus = 0;
-
-static void mdy_stm_compositor_name_owner_changed(const char *name,
-						  const char *prev,
-						  const char *curr)
-{
-    (void)name, (void)prev;
-
-    /* broadcast within mce */
-    bool available = (curr && *curr);
-    execute_datapipe(&compositor_available_pipe,
-		     GINT_TO_POINTER(available),
-		     USE_INDATA, CACHE_INDATA);
-}
-
-/** react to systemui availability changes
- */
-static void mdy_stm_lipstick_name_owner_changed(const char *name,
-						const char *prev,
-						const char *curr)
-{
-    (void)name, (void)prev;
-
-    /* broadcast within mce */
-    bool available = (curr && *curr);
-    execute_datapipe(&lipstick_available_pipe,
-		     GINT_TO_POINTER(available),
-		     USE_INDATA, CACHE_INDATA);
-}
-
 /** Lookup table of D-Bus names to watch */
 static struct
 {
-    const char *name;
-    char       *rule;
-    void     (*notify)(const char *name, const char *prev, const char *curr);
-    char       *owner;
+    const char      *name;
+    char            *rule;
+    void           (*notify)(const char *name, const char *prev, const char *curr);
+    datapipe_struct *datapipe;
+    char            *owner;
+
 } mce_dbus_nameowner_lut[] =
 {
     {
-	.name   = COMPOSITOR_SERVICE,
-	.notify = mdy_stm_compositor_name_owner_changed,
+	.name     = COMPOSITOR_SERVICE,
+	.datapipe = &compositor_available_pipe,
     },
     {
 	/* Note: due to lipstick==compositor assumption lipstick
 	 *       service name must be probed after compositor */
-	.name   = LIPSTICK_SERVICE,
-	.notify = mdy_stm_lipstick_name_owner_changed,
+	.name     = LIPSTICK_SERVICE,
+	.datapipe = &lipstick_available_pipe,
+    },
+    {
+	.name     = USB_MODED_DBUS_SERVICE,
+	.datapipe = &usbmoded_available_pipe,
     },
     {
 	.name = 0,
@@ -3253,6 +3228,8 @@ mce_dbus_nameowner_changed(const char *name, const char *prev, const char *curr)
 	if( strcmp(mce_dbus_nameowner_lut[i].name, name) )
 	    continue;
 
+	mce_log(LL_DEVEL, "%s: owner: '%s' -> '%s'", name, prev, curr);
+
 	// change cached name owner
 	free(mce_dbus_nameowner_lut[i].owner);
 	if( curr && *curr )
@@ -3260,8 +3237,20 @@ mce_dbus_nameowner_changed(const char *name, const char *prev, const char *curr)
 	else
 	    mce_dbus_nameowner_lut[i].owner = 0;
 
-	// notify
-	mce_dbus_nameowner_lut[i].notify(name, prev, curr);
+	// handle notification callback before datapipe
+	if( mce_dbus_nameowner_lut[i].notify )
+	    mce_dbus_nameowner_lut[i].notify(name, prev, curr);
+
+	// update datapipe if defined
+	if( !mce_dbus_nameowner_lut[i].datapipe )
+	    continue;
+
+	service_state_t state =
+	    (curr && *curr) ? SERVICE_STATE_RUNNING : SERVICE_STATE_STOPPED;
+
+	execute_datapipe(mce_dbus_nameowner_lut[i].datapipe,
+			 GINT_TO_POINTER(state),
+			 USE_INDATA, CACHE_INDATA);
     }
 }
 
@@ -3339,7 +3328,7 @@ mce_dbus_nameowner_query_req(const char *name)
 			     DBUS_TYPE_STRING, &name,
 			     DBUS_TYPE_INVALID);
 
-    if( !dbus_connection_send_with_reply(mce_dbus_nameowner_bus, req, &pc, -1) )
+    if( !dbus_connection_send_with_reply(dbus_connection, req, &pc, -1) )
 	goto EXIT;
 
     if( !pc )
@@ -3414,7 +3403,7 @@ static char *
 mce_dbus_nameowner_watch(const char *name)
 {
     char *rule = g_strdup_printf(mce_dbus_nameowner_rule_fmt, name);
-    dbus_bus_add_match(mce_dbus_nameowner_bus, rule, 0);
+    dbus_bus_add_match(dbus_connection, rule, 0);
     return rule;
 }
 
@@ -3425,7 +3414,7 @@ mce_dbus_nameowner_watch(const char *name)
 static void mce_dbus_nameowner_unwatch(char *rule)
 {
     if( rule ) {
-	dbus_bus_remove_match(mce_dbus_nameowner_bus, rule, 0);
+	dbus_bus_remove_match(dbus_connection, rule, 0);
 	g_free(rule);
     }
 }
@@ -3435,18 +3424,17 @@ static void mce_dbus_nameowner_unwatch(char *rule)
 static void
 mce_dbus_nameowner_init(void)
 {
-    /* Get D-Bus system bus connection */
-    if( !(mce_dbus_nameowner_bus = dbus_connection_get()) ) {
+    if( !dbus_connection )
 	goto EXIT;
-    }
 
-    dbus_connection_add_filter(mce_dbus_nameowner_bus,
+    dbus_connection_add_filter(dbus_connection,
 			       mce_dbus_nameowner_filter_cb, 0, 0);
 
     for( int i = 0; mce_dbus_nameowner_lut[i].name; ++i ) {
 	mce_dbus_nameowner_lut[i].rule = mce_dbus_nameowner_watch(mce_dbus_nameowner_lut[i].name);
 	mce_dbus_nameowner_query_req(mce_dbus_nameowner_lut[i].name);
     }
+
 EXIT:
     return;
 }
@@ -3457,11 +3445,11 @@ EXIT:
 static void
 mce_dbus_nameowner_quit(void)
 {
-    if( !mce_dbus_nameowner_bus )
+    if( !dbus_connection )
 	goto EXIT;
 
     /* remove filter callback */
-    dbus_connection_remove_filter(mce_dbus_nameowner_bus,
+    dbus_connection_remove_filter(dbus_connection,
 				  mce_dbus_nameowner_filter_cb, 0);
 
     /* remove name owner matches */
@@ -3475,8 +3463,6 @@ mce_dbus_nameowner_quit(void)
 
     // TODO: we should keep track of async name owner calls
     //       and cancel them at this point
-
-    dbus_connection_unref(mce_dbus_nameowner_bus), mce_dbus_nameowner_bus = 0;
 
 EXIT:
     return;

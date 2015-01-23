@@ -67,6 +67,7 @@ digraph display_state_machine {
   WAITING->TRANSIENT[style=invis];
 
   STM_UNSET -> STM_RENDERER_INIT_START               [label=" on req"];
+  STM_UNSET -> STM_RENDERER_INIT_STOP                [label=" off req"];
 
   STM_RENDERER_INIT_STOP -> STM_ENTER_LOGICAL_OFF    [label=" lipstick not up"];
   STM_RENDERER_INIT_STOP -> STM_RENDERER_WAIT_STOP   [label=" req ui stop"];
@@ -114,9 +115,10 @@ digraph display_state_machine {
 
   STM_STAY_LOGICAL_OFF -> STM_LEAVE_LOGICAL_OFF      [label=" req"];
   STM_STAY_LOGICAL_OFF -> STM_LEAVE_LOGICAL_OFF      [label=" policy"];
-  STM_STAY_LOGICAL_OFF -> STM_RENDERER_INIT_STOP     [label=" lipstick restart"];
+  STM_STAY_LOGICAL_OFF -> STM_LEAVE_LOGICAL_OFF      [label=" lipstick restart"];
 
-  STM_LEAVE_LOGICAL_OFF -> STM_RENDERER_INIT_START   [label=" *"];
+  STM_LEAVE_LOGICAL_OFF -> STM_RENDERER_INIT_STOP    [label=" lipstick restart"];
+  STM_LEAVE_LOGICAL_OFF -> STM_RENDERER_INIT_START   [label=" req"];
   STM_LEAVE_LOGICAL_OFF -> STM_INIT_SUSPEND          [label=" policy"];
 
   // lipstick restart special case (happens outside stm)

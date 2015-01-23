@@ -160,6 +160,9 @@ datapipe_struct compositor_available_pipe;
 /** lipstick availability; read only */
 datapipe_struct lipstick_available_pipe;
 
+/** usbmoded availability; read only */
+datapipe_struct usbmoded_available_pipe;
+
 /** dsme availability; read only */
 datapipe_struct dsme_available_pipe;
 
@@ -844,7 +847,7 @@ void mce_datapipe_init(void)
 	setup_datapipe(&tk_lock_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(LOCK_UNDEF));
 	setup_datapipe(&charger_state_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(0));
+		       0, GINT_TO_POINTER(CHARGER_STATE_UNDEF));
 	setup_datapipe(&battery_status_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(BATTERY_STATUS_UNDEF));
 	setup_datapipe(&battery_level_pipe, READ_ONLY, DONT_FREE_CACHE,
@@ -856,7 +859,7 @@ void mce_datapipe_init(void)
 	setup_datapipe(&audio_route_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(AUDIO_ROUTE_UNDEF));
 	setup_datapipe(&usb_cable_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(0));
+		       0, GINT_TO_POINTER(USB_CABLE_UNDEF));
 	setup_datapipe(&jack_sense_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(0));
 	setup_datapipe(&power_saving_mode_pipe, READ_ONLY, DONT_FREE_CACHE,
@@ -865,10 +868,14 @@ void mce_datapipe_init(void)
 		       0, GINT_TO_POINTER(THERMAL_STATE_UNDEF));
 	setup_datapipe(&heartbeat_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(0));
+
 	setup_datapipe(&compositor_available_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(FALSE));
+		       0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
 	setup_datapipe(&lipstick_available_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(FALSE));
+		       0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
+	setup_datapipe(&usbmoded_available_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
+
 	setup_datapipe(&dsme_available_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(FALSE));
 	setup_datapipe(&packagekit_locked_pipe, READ_ONLY, DONT_FREE_CACHE,
@@ -938,6 +945,7 @@ void mce_datapipe_quit(void)
 	free_datapipe(&heartbeat_pipe);
 	free_datapipe(&compositor_available_pipe);
 	free_datapipe(&lipstick_available_pipe);
+	free_datapipe(&usbmoded_available_pipe);
 	free_datapipe(&dsme_available_pipe);
 	free_datapipe(&packagekit_locked_pipe);
 	free_datapipe(&update_mode_pipe);
@@ -964,6 +972,47 @@ const char *device_lock_state_repr(device_lock_state_t state)
 	case DEVICE_LOCK_UNLOCKED:  res = "unlocked";  break;
 	case DEVICE_LOCK_LOCKED:    res = "locked";    break;
 	case DEVICE_LOCK_UNDEFINED: res = "undefined"; break;
+	default: break;
+	}
+
+	return res;
+}
+
+/** Convert service_state_t enum to human readable string
+ *
+ * @param state service_state_t enumeration value
+ *
+ * @return human readable representation of state
+ */
+const char *service_state_repr(service_state_t state)
+{
+	const char *res = "unknown";
+
+	switch( state ) {
+	case SERVICE_STATE_UNDEF:   res = "undefined"; break;
+	case SERVICE_STATE_STOPPED: res = "stopped";   break;
+	case SERVICE_STATE_RUNNING: res = "running";   break;
+	default: break;
+	}
+
+	return res;
+}
+
+/** Convert usb_cable_state_t enum to human readable string
+ *
+ * @param state usb_cable_state_t enumeration value
+ *
+ * @return human readable representation of state
+ */
+const char *usb_cable_state_repr(usb_cable_state_t state)
+{
+	const char *res = "unknown";
+
+	switch( state ) {
+	case USB_CABLE_UNDEF:        res = "undefined";    break;
+	case USB_CABLE_DISCONNECTED: res = "disconnected"; break;
+	case USB_CABLE_CONNECTED:    res = "connected";    break;
+	case USB_CABLE_ASK_USER:     res = "ask_user";     break;
 	default: break;
 	}
 
@@ -1045,7 +1094,7 @@ static gboolean datapipe_handlers_execute_cb(gpointer aptr)
 
     self->execute_id = 0;
 
-    mce_log(LL_CRIT, "module=%s", self->module ?: "unknown");
+    mce_log(LL_INFO, "module=%s", self->module ?: "unknown");
     datapipe_handlers_execute(self->handlers);
 
 EXIT:
@@ -1056,7 +1105,7 @@ EXIT:
  */
 void datapipe_bindings_init(datapipe_bindings_t *self)
 {
-    mce_log(LL_CRIT, "module=%s", self->module ?: "unknown");
+    mce_log(LL_INFO, "module=%s", self->module ?: "unknown");
 
     /* Set up datapipe callbacks */
     datapipe_handlers_install(self->handlers);
@@ -1071,7 +1120,7 @@ void datapipe_bindings_init(datapipe_bindings_t *self)
  */
 void datapipe_bindings_quit(datapipe_bindings_t *self)
 {
-    mce_log(LL_CRIT, "module=%s", self->module ?: "unknown");
+    mce_log(LL_INFO, "module=%s", self->module ?: "unknown");
 
     /* Remove the get initial values timer if still active */
     if( self->execute_id ) {

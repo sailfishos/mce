@@ -153,6 +153,7 @@ MODULES += $(MODULE_DIR)/battery-bme.so
 MODULES += $(MODULE_DIR)/battery-upower.so
 MODULES += $(MODULE_DIR)/bluetooth.so
 MODULES += $(MODULE_DIR)/display.so
+MODULES += $(MODULE_DIR)/usbmode.so
 MODULES += $(MODULE_DIR)/doubletap.so
 MODULES += $(MODULE_DIR)/sensor-gestures.so
 MODULES += $(MODULE_DIR)/led.so
@@ -567,6 +568,7 @@ NORMALIZE_USES_SPC =\
 	modules/powersavemode.h\
 	modules/radiostates.h\
 	modules/sensor-gestures.c\
+	modules/usbmode.c\
 	ofono-dbus-names.h\
 	powerkey.c\
 	powerkey.h\
@@ -646,7 +648,7 @@ endif
 %.p : %.q ; cproto -s < $< | sed -e 's/_Bool/bool/g'
 
 clean::
-	$(RM) -f *.q *.p
+	$(RM) -f *.[qp] modules/*.[qp]
 
 # ----------------------------------------------------------------------------
 # LOCAL RPMBUILD (copy mce.* from OBS to rpm subdir)

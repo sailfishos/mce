@@ -143,7 +143,7 @@ typedef struct
     int         status;
 
     /** Charger connected; for use with charger_state_pipe */
-    bool        charger;
+    charger_state_t charger;
 } MceBattery;
 
 static void     mcebat_init(void);
@@ -617,7 +617,7 @@ mcebat_init(void)
     memset(&mcebat, 0, sizeof mcebat);
     mcebat.level   = 50;
     mcebat.status  = BATTERY_STATUS_UNDEF;
-    mcebat.charger = false;
+    mcebat.charger = CHARGER_STATE_UNDEF;
 }
 
 /** Update mce battery status from UPower battery data
@@ -627,7 +627,7 @@ mcebat_update_from_upowbat(void)
 {
     mcebat.level   = upowbat.Percentage;
     mcebat.status  = BATTERY_STATUS_OK;
-    mcebat.charger = false;
+    mcebat.charger = CHARGER_STATE_OFF;
 
     // FIXME: hardcoded 5% as low battery limit
     if( mcebat.level < 5 )
@@ -635,10 +635,11 @@ mcebat_update_from_upowbat(void)
 
     switch( upowbat.State ) {
     case UPOWER_STATE_UNKNOWN:
+        mcebat.charger = CHARGER_STATE_UNDEF;
         break;
 
     case UPOWER_STATE_CHARGING:
-        mcebat.charger = true;
+        mcebat.charger = CHARGER_STATE_ON;
         break;
 
     case UPOWER_STATE_DISCHARGING:
@@ -650,11 +651,11 @@ mcebat_update_from_upowbat(void)
 
     case UPOWER_STATE_FULLY_CHARGED:
         mcebat.status  = BATTERY_STATUS_FULL;
-        mcebat.charger = true;
+        mcebat.charger = CHARGER_STATE_ON;
         break;
 
     case UPOWER_STATE_PENDING_CHARGE:
-        mcebat.charger = true;
+        mcebat.charger = CHARGER_STATE_ON;
         break;
 
     case UPOWER_STATE_PENDING_DISCHARGE:
@@ -697,7 +698,7 @@ mcebat_update_cb(gpointer user_data)
                          USE_INDATA, CACHE_INDATA);
 
         /* Charging led pattern */
-        if( mcebat.charger ) {
+        if( mcebat.charger == CHARGER_STATE_ON ) {
             execute_datapipe_output_triggers(&led_pattern_activate_pipe,
                                              MCE_LED_PATTERN_BATTERY_CHARGING,
                                              USE_INDATA);

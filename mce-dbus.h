@@ -46,6 +46,25 @@
 #define LIPSTICK_PATH     "/"
 #define LIPSTICK_IFACE    "org.nemomobile.lipstick"
 
+/* ========================================================================= *
+ * USB_MODED DBUS SERVICE
+ * ========================================================================= */
+
+/** Well known service name for usb_moded */
+#define USB_MODED_DBUS_SERVICE      "com.meego.usb_moded"
+
+/** D-Bus interface name for usb_moded */
+#define USB_MODED_DBUS_INTERFACE    "com.meego.usb_moded"
+
+/** D-Bus object name for usb_moded */
+#define USB_MODED_DBUS_OBJECT       "/com/meego/usb_moded"
+
+/** Query current usb mode method call */
+#define USB_MODED_QUERY_MODE_REQ    "mode_request"
+
+/** Current usb mode changed signal */
+#define USB_MODED_MODE_CHANGED_SIG  "sig_usb_state_ind"
+
 DBusConnection *dbus_connection_get(void);
 
 DBusMessage *dbus_new_signal(const gchar *const path,
