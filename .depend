@@ -762,6 +762,22 @@ modules/sensor-gestures.pic.o:\
 	mce-sensorfw.h\
 	mce.h\
 
+modules/usbmode.o:\
+	modules/usbmode.c\
+	builtin-gconf.h\
+	datapipe.h\
+	mce-dbus.h\
+	mce-log.h\
+	mce.h\
+
+modules/usbmode.pic.o:\
+	modules/usbmode.c\
+	builtin-gconf.h\
+	datapipe.h\
+	mce-dbus.h\
+	mce-log.h\
+	mce.h\
+
 powerkey.o:\
 	powerkey.c\
 	builtin-gconf.h\

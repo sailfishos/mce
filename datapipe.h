@@ -21,6 +21,7 @@
 #ifndef _DATAPIPE_H_
 #define _DATAPIPE_H_
 
+#include <stdbool.h>
 #include <glib.h>
 
 /** Device lock states used in device_lock_state_pipe */
@@ -130,7 +131,9 @@ extern datapipe_struct jack_sense_pipe;
 extern datapipe_struct power_saving_mode_pipe;
 extern datapipe_struct thermal_state_pipe;
 extern datapipe_struct heartbeat_pipe;
+extern datapipe_struct compositor_available_pipe;
 extern datapipe_struct lipstick_available_pipe;
+extern datapipe_struct usbmoded_available_pipe;
 extern datapipe_struct dsme_available_pipe;
 extern datapipe_struct packagekit_locked_pipe;
 extern datapipe_struct update_mode_pipe;
@@ -216,6 +219,31 @@ void setup_datapipe(datapipe_struct *const datapipe,
 		    const gsize datasize, gpointer initial_data);
 void free_datapipe(datapipe_struct *const datapipe);
 
+/* Binding arrays */
+
+typedef struct
+{
+    datapipe_struct *datapipe;
+    void (*output_cb)(gconstpointer data);
+    void (*input_cb)(gconstpointer data);
+    bool bound;
+} datapipe_handler_t;
+
+void datapipe_handlers_install(datapipe_handler_t *bindings);
+void datapipe_handlers_remove(datapipe_handler_t *bindings);
+void datapipe_handlers_execute(datapipe_handler_t *bindings);
+
+typedef struct
+{
+    const char         *module;
+    datapipe_handler_t *handlers;
+    guint               execute_id;
+} datapipe_bindings_t;
+
+void datapipe_bindings_init(datapipe_bindings_t *self);
+void datapipe_bindings_quit(datapipe_bindings_t *self);
+
+/* Startup / exit */
 void mce_datapipe_init(void);
 void mce_datapipe_quit(void);
 

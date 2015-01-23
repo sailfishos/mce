@@ -20,12 +20,6 @@
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/** HACK: swipe to lock goes to lpm (if powerkey blanking does too)
- *
- * This is a transitional debugging feature that needs to be reverted
- * as soon as lipstick has been modified to use actual lpm mode dbus
- * requests.
- */
 #include "display.h"
 
 #include "../mce.h"
@@ -499,18 +493,11 @@ static void                mdy_compositor_name_owner_pid_cb(const char *name, in
 
 static bool                mdy_compositor_is_available(void);
 
-static void                mdy_compositor_name_owner_set(const char *name, const char *curr);
+static void                mdy_compositor_name_owner_set(const char *curr);
 
 static void                mdy_compositor_state_req_cb(DBusPendingCall *pending, void *user_data);
 static void                mdy_compositor_cancel_state_req(void);
 static gboolean            mdy_compositor_start_state_req(renderer_state_t state);
-
-/* ------------------------------------------------------------------------- *
- * LIPSTICK_IPC
- * ------------------------------------------------------------------------- */
-
-static bool                mdy_lipstick_is_available(void);
-static void                mdy_lipstick_name_owner_set(const char *curr);
 
 /* ------------------------------------------------------------------------- *
  * CALLSTATE_CHANGES
@@ -581,8 +568,8 @@ static const char         *mdy_stm_state_name(stm_state_t state);
 static const char         *mdy_display_state_name(display_state_t state);
 
 // react to systemui availability changes
-static void                mdy_stm_compositor_name_owner_changed(const char *name, const char *prev, const char *curr);
-static void                mdy_stm_lipstick_name_owner_changed(const char *name, const char *prev, const char *curr);
+static void                mdy_datapipe_compositor_available_cb(gconstpointer aptr);
+static void                mdy_datapipe_lipstick_available_cb(gconstpointer aptr);
 
 // whether to power on/off the frame buffer
 static bool                mdy_stm_display_state_needs_power(display_state_t state);
@@ -636,19 +623,6 @@ static void                mdy_governor_apply_setting(const governor_setting_t *
 static void                mdy_governor_set_state(int state);
 static void                mdy_governor_rethink(void);
 static void                mdy_governor_conf_cb(GConfClient *const client, const guint id, GConfEntry *const entry, gpointer const data);
-
-/* ------------------------------------------------------------------------- *
- * DBUS_NAME_OWNER_TRACKING
- * ------------------------------------------------------------------------- */
-
-static void                mdy_nameowner_changed(const char *name, const char *prev, const char *curr);
-static DBusHandlerResult   mdy_nameowner_filter_cb(DBusConnection *con, DBusMessage *msg, void *user_data);
-static void                mdy_nameowner_query_rsp(DBusPendingCall *pending, void *user_data);
-static void                mdy_nameowner_query_req(const char *name);
-static char               *mdy_nameowner_watch(const char *name);
-static void                mdy_nameowner_unwatch(char *rule);
-static void                mdy_nameowner_init(void);
-static void                mdy_nameowner_quit(void);
 
 /* ------------------------------------------------------------------------- *
  * DBUS_HANDLERS
@@ -1033,9 +1007,15 @@ static void mdy_datapipe_system_state_cb(gconstpointer data)
     switch( system_state ) {
     case MCE_STATE_ACTDEAD:
     case MCE_STATE_USER:
+        /* TODO: Is there any reason to keep this?
+         * Compositor startup turns display on (which should take care of
+         * lipstick & act-dead charging ui) and act dead alarms should get
+         * display on just because there is an alarm */
+#if 0
         execute_datapipe(&display_state_req_pipe,
                          GINT_TO_POINTER(MCE_DISPLAY_ON),
                          USE_INDATA, CACHE_INDATA);
+#endif
 
         /* Stable state reached after mce/device startup.
          * There is ui in place and we can close the fbdev
@@ -1180,8 +1160,16 @@ static gpointer mdy_datapipe_display_state_filter_cb(gpointer data)
     /* Keep existing state if display on requests are made during
      * mce/device startup and device shutdown/reboot. */
     if( system_state == MCE_STATE_UNDEF ) {
-        mce_log(LL_DEBUG, "reject display mode request at start up");
-        next_state = display_state;
+        /* But initial state = ON/OFF selection at display plugin
+         * initialization must still be allowed */
+        if( display_state == MCE_DISPLAY_UNDEF ) {
+            if( next_state != MCE_DISPLAY_ON )
+                next_state = MCE_DISPLAY_OFF;
+        }
+        else {
+            mce_log(LL_WARN, "reject display mode request at start up");
+            next_state = display_state;
+        }
     }
     else if( (submode & MCE_TRANSITION_SUBMODE) &&
              ( system_state == MCE_STATE_SHUTDOWN ||
@@ -1256,9 +1244,6 @@ static void mdy_datapipe_display_state_cb(gconstpointer data)
     if( display_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEVEL, "current display state = %s",
-            mdy_display_state_name(display_state));
-
 EXIT:
     return;
 }
@@ -1276,9 +1261,6 @@ static void mdy_datapipe_display_state_next_cb(gconstpointer data)
 
     if( display_state_next == prev )
         goto EXIT;
-
-    mce_log(LL_DEBUG, "target display state = %s",
-            mdy_display_state_name(display_state_next));
 
     mdy_ui_dimming_rethink();
 
@@ -1300,6 +1282,8 @@ static void mdy_datapipe_display_brightness_cb(gconstpointer data)
 
     if( curr == prev )
         goto EXIT;
+
+    mce_log(LL_DEBUG, "brightness: %d -> %d", prev, curr);
 
     mdy_brightness_set_on_level(curr);
 
@@ -1352,7 +1336,7 @@ EXIT:
 }
 
 /** Cached charger connection state */
-static gboolean charger_connected = FALSE;
+static charger_state_t charger_state = CHARGER_STATE_UNDEF;
 
 /** Handle charger_state_pipe notifications
  *
@@ -1361,10 +1345,10 @@ static gboolean charger_connected = FALSE;
  */
 static void mdy_datapipe_charger_state_cb(gconstpointer data)
 {
-    gboolean prev = charger_connected;
-    charger_connected = GPOINTER_TO_INT(data);
+    charger_state_t prev = charger_state;
+    charger_state = GPOINTER_TO_INT(data);
 
-    if( charger_connected == prev )
+    if( charger_state == prev )
         goto EXIT;
 
     mdy_blanking_rethink_timers(false);
@@ -1615,6 +1599,99 @@ static void mdy_datapipe_orientation_state_cb(gconstpointer data)
 EXIT:
     return;
 }
+/** Array of datapipe handlers */
+static datapipe_handler_t mdy_datapipe_handlers[] =
+{
+    // output triggers
+    {
+        .datapipe  = &display_state_req_pipe,
+        .output_cb = mdy_datapipe_display_state_req_cb,
+    },
+    {
+        .datapipe  = &display_state_pipe,
+        .output_cb = mdy_datapipe_display_state_cb,
+    },
+    {
+        .datapipe  = &display_state_next_pipe,
+        .output_cb = mdy_datapipe_display_state_next_cb,
+    },
+    {
+        .datapipe  = &display_brightness_pipe,
+        .output_cb = mdy_datapipe_display_brightness_cb,
+    },
+    {
+        .datapipe  = &lpm_brightness_pipe,
+        .output_cb = mdy_datapipe_lpm_brightness_cb,
+    },
+    {
+        .datapipe  = &charger_state_pipe,
+        .output_cb = mdy_datapipe_charger_state_cb,
+    },
+    {
+        .datapipe  = &system_state_pipe,
+        .output_cb = mdy_datapipe_system_state_cb,
+    },
+    {
+        .datapipe  = &orientation_sensor_pipe,
+        .output_cb = mdy_datapipe_orientation_state_cb,
+    },
+    {
+        .datapipe  = &submode_pipe,
+        .output_cb = mdy_datapipe_submode_cb,
+    },
+    {
+        .datapipe  = &device_inactive_pipe,
+        .output_cb = mdy_datapipe_device_inactive_cb,
+    },
+    {
+        .datapipe  = &call_state_pipe,
+        .output_cb = mdy_datapipe_call_state_trigger_cb,
+    },
+    {
+        .datapipe  = &power_saving_mode_pipe,
+        .output_cb = mdy_datapipe_power_saving_mode_cb,
+    },
+    {
+        .datapipe  = &proximity_sensor_pipe,
+        .output_cb = mdy_datapipe_proximity_sensor_cb,
+    },
+    {
+        .datapipe  = &alarm_ui_state_pipe,
+        .output_cb = mdy_datapipe_alarm_ui_state_cb,
+    },
+    {
+        .datapipe  = &exception_state_pipe,
+        .output_cb = mdy_datapipe_exception_state_cb,
+    },
+    {
+        .datapipe  = &audio_route_pipe,
+        .output_cb = mdy_datapipe_audio_route_cb,
+    },
+    {
+        .datapipe  = &packagekit_locked_pipe,
+        .output_cb = mdy_datapipe_packagekit_locked_cb,
+    },
+
+    {
+        .datapipe  = &compositor_available_pipe,
+        .output_cb = mdy_datapipe_compositor_available_cb,
+    },
+    {
+        .datapipe  = &lipstick_available_pipe,
+        .output_cb = mdy_datapipe_lipstick_available_cb,
+    },
+
+    // sentinel
+    {
+        .datapipe = 0,
+    }
+};
+
+static datapipe_bindings_t mdy_datapipe_bindings =
+{
+    .module   = "display",
+    .handlers = mdy_datapipe_handlers,
+};
 
 /** Append triggers/filters to datapipes
  */
@@ -1625,85 +1702,16 @@ static void mdy_datapipe_init(void)
                               mdy_datapipe_display_state_filter_cb);
 
     // triggers
-    append_output_trigger_to_datapipe(&display_state_req_pipe,
-                                      mdy_datapipe_display_state_req_cb);
-    append_output_trigger_to_datapipe(&display_state_pipe,
-                                      mdy_datapipe_display_state_cb);
-    append_output_trigger_to_datapipe(&display_state_next_pipe,
-                                      mdy_datapipe_display_state_next_cb);
-    append_output_trigger_to_datapipe(&display_brightness_pipe,
-                                      mdy_datapipe_display_brightness_cb);
-    append_output_trigger_to_datapipe(&lpm_brightness_pipe,
-                                      mdy_datapipe_lpm_brightness_cb);
-
-    append_output_trigger_to_datapipe(&charger_state_pipe,
-                                      mdy_datapipe_charger_state_cb);
-    append_output_trigger_to_datapipe(&system_state_pipe,
-                                      mdy_datapipe_system_state_cb);
-    append_output_trigger_to_datapipe(&orientation_sensor_pipe,
-                                      mdy_datapipe_orientation_state_cb);
-    append_output_trigger_to_datapipe(&submode_pipe,
-                                      mdy_datapipe_submode_cb);
-    append_output_trigger_to_datapipe(&device_inactive_pipe,
-                                      mdy_datapipe_device_inactive_cb);
-    append_output_trigger_to_datapipe(&call_state_pipe,
-                                      mdy_datapipe_call_state_trigger_cb);
-    append_output_trigger_to_datapipe(&power_saving_mode_pipe,
-                                      mdy_datapipe_power_saving_mode_cb);
-    append_output_trigger_to_datapipe(&proximity_sensor_pipe,
-                                      mdy_datapipe_proximity_sensor_cb);
-    append_output_trigger_to_datapipe(&alarm_ui_state_pipe,
-                                      mdy_datapipe_alarm_ui_state_cb);
-    append_output_trigger_to_datapipe(&exception_state_pipe,
-                                      mdy_datapipe_exception_state_cb);
-    append_output_trigger_to_datapipe(&audio_route_pipe,
-                                      mdy_datapipe_audio_route_cb);
-    append_output_trigger_to_datapipe(&packagekit_locked_pipe,
-                                      mdy_datapipe_packagekit_locked_cb);
+    datapipe_bindings_init(&mdy_datapipe_bindings);
 }
 
 /** Remove triggers/filters from datapipes */
 static void mdy_datapipe_quit(void)
 {
     // triggers
-
-    remove_output_trigger_from_datapipe(&packagekit_locked_pipe,
-                                        mdy_datapipe_packagekit_locked_cb);
-    remove_output_trigger_from_datapipe(&alarm_ui_state_pipe,
-                                        mdy_datapipe_alarm_ui_state_cb);
-    remove_output_trigger_from_datapipe(&proximity_sensor_pipe,
-                                        mdy_datapipe_proximity_sensor_cb);
-    remove_output_trigger_from_datapipe(&power_saving_mode_pipe,
-                                        mdy_datapipe_power_saving_mode_cb);
-    remove_output_trigger_from_datapipe(&call_state_pipe,
-                                        mdy_datapipe_call_state_trigger_cb);
-    remove_output_trigger_from_datapipe(&device_inactive_pipe,
-                                        mdy_datapipe_device_inactive_cb);
-    remove_output_trigger_from_datapipe(&submode_pipe,
-                                        mdy_datapipe_submode_cb);
-    remove_output_trigger_from_datapipe(&orientation_sensor_pipe,
-                                        mdy_datapipe_orientation_state_cb);
-    remove_output_trigger_from_datapipe(&system_state_pipe,
-                                        mdy_datapipe_system_state_cb);
-    remove_output_trigger_from_datapipe(&charger_state_pipe,
-                                        mdy_datapipe_charger_state_cb);
-    remove_output_trigger_from_datapipe(&exception_state_pipe,
-                                        mdy_datapipe_exception_state_cb);
-    remove_output_trigger_from_datapipe(&audio_route_pipe,
-                                        mdy_datapipe_audio_route_cb);
-    remove_output_trigger_from_datapipe(&display_brightness_pipe,
-                                        mdy_datapipe_display_brightness_cb);
-    remove_output_trigger_from_datapipe(&lpm_brightness_pipe,
-                                        mdy_datapipe_lpm_brightness_cb);
-    remove_output_trigger_from_datapipe(&display_state_pipe,
-                                        mdy_datapipe_display_state_cb);
-    remove_output_trigger_from_datapipe(&display_state_next_pipe,
-                                        mdy_datapipe_display_state_next_cb);
-    remove_output_trigger_from_datapipe(&display_state_req_pipe,
-                                        mdy_datapipe_display_state_req_cb);
+    datapipe_bindings_quit(&mdy_datapipe_bindings);
 
     // filters
-
     remove_filter_from_datapipe(&display_state_req_pipe,
                                 mdy_datapipe_display_state_filter_cb);
 }
@@ -2630,8 +2638,12 @@ static void mdy_brightness_set_fade_target_als(gint new_brightness)
         mdy_brightness_set_fade_target_unblank(new_brightness);
     }
     else if( display_state == MCE_DISPLAY_POWER_UP ) {
-        /* But do not *start* fading due to als during unblanking */
+        /* Do not *start* fading due to als during unblanking */
         mce_log(LL_DEBUG, "skip als fade; powering up display");
+    }
+    else if( display_state == MCE_DISPLAY_UNDEF ) {
+        /* Do not *start* fading due to als during startup */
+        mce_log(LL_DEBUG, "skip als fade; undef display state");
     }
     else if( display_state != MCE_DISPLAY_POWER_UP ) {
         mdy_brightness_set_fade_target_ex(FADER_ALS,
@@ -3591,7 +3603,7 @@ static void mdy_blanking_rethink_timers(bool force)
     // submode           <- mdy_datapipe_submode_cb()
     // display_state     <- mdy_display_state_changed()
     // audio_route       <- mdy_datapipe_audio_route_cb()
-    // charger_connected <- mdy_datapipe_charger_state_cb()
+    // charger_state     <- mdy_datapipe_charger_state_cb()
     // exception_state   <- mdy_datapipe_exception_state_cb()
     // call_state        <- mdy_datapipe_call_state_trigger_cb()
     //
@@ -3608,7 +3620,7 @@ static void mdy_blanking_rethink_timers(bool force)
 
     static call_state_t prev_call_state = CALL_STATE_NONE;
 
-    static gboolean prev_charger_connected = false;
+    static charger_state_t prev_charger_state = CHARGER_STATE_UNDEF;
 
     static audio_route_t prev_audio_route = AUDIO_ROUTE_HANDSET;
 
@@ -3621,7 +3633,7 @@ static void mdy_blanking_rethink_timers(bool force)
     if( prev_audio_route != audio_route )
         force = true;
 
-    if( prev_charger_connected != charger_connected )
+    if( prev_charger_state != charger_state )
         force = true;
 
     if( prev_exception_state != exception_state )
@@ -3694,7 +3706,7 @@ static void mdy_blanking_rethink_timers(bool force)
             break;
         if( mdy_blanking_inhibit_mode == INHIBIT_STAY_DIM )
             break;
-        if( charger_connected &&
+        if( charger_state == CHARGER_STATE_ON &&
             mdy_blanking_inhibit_mode == INHIBIT_STAY_DIM_WITH_CHARGER )
             break;
         mdy_blanking_schedule_off();
@@ -3710,7 +3722,7 @@ static void mdy_blanking_rethink_timers(bool force)
         if( mdy_blanking_inhibit_mode == INHIBIT_STAY_ON )
             break;
 
-        if( charger_connected &&
+        if( charger_state == CHARGER_STATE_ON &&
             mdy_blanking_inhibit_mode == INHIBIT_STAY_ON_WITH_CHARGER )
             break;
 
@@ -3752,7 +3764,7 @@ EXIT:
     prev_proximity_state = proximity_state;
     prev_exception_state = exception_state;
     prev_call_state = call_state;
-    prev_charger_connected = charger_connected;
+    prev_charger_state = charger_state;
     prev_audio_route = audio_route;
     prev_tklock_mode = tklock_mode;
 
@@ -4416,26 +4428,6 @@ static waitfb_t mdy_waitfb_data =
  * COMPOSITOR_IPC
  * ========================================================================= */
 
-// TODO: These should come from lipstick devel package
-
-/* Enabling/disabling display updates via compositor service */
-#define COMPOSITOR_SERVICE  "org.nemomobile.compositor"
-#define COMPOSITOR_PATH     "/"
-#define COMPOSITOR_IFACE    "org.nemomobile.compositor"
-#define COMPOSITOR_SET_UPDATES_ENABLED "setUpdatesEnabled"
-
-/* Assumption for transitional period: lipstick can handle compositor ipc */
-#define LIPSTICK_SERVICE  "org.nemomobile.lipstick"
-#define LIPSTICK_PATH     "/"
-#define LIPSTICK_IFACE    "org.nemomobile.lipstick"
-#define LIPSTICK_SET_UPDATES_ENABLED "setUpdatesEnabled"
-
-/** Well known dbus name of the currently used compositor service
- *
- * Must be NULL, COMPOSITOR_SERVICE or LIPSTICK_SERVICE
- */
-static gchar *mdy_compositor_dbus_name = 0;
-
 /** Owner of compositor dbus name */
 static gchar *mdy_compositor_priv_name = 0;
 
@@ -4788,10 +4780,10 @@ static void mdy_compositor_name_owner_pid_cb(const char *name, int pid)
 
 static bool mdy_compositor_is_available(void)
 {
-    return mdy_compositor_dbus_name != 0;
+    return mdy_compositor_priv_name != 0;
 }
 
-static void mdy_compositor_name_owner_set(const char *name, const char *curr)
+static void mdy_compositor_name_owner_set(const char *curr)
 {
     bool has_owner = (curr && *curr);
 
@@ -4799,14 +4791,12 @@ static void mdy_compositor_name_owner_set(const char *name, const char *curr)
             has_owner ? curr : "N/A");
 
     /* first clear existing data, timers, etc */
-    g_free(mdy_compositor_dbus_name), mdy_compositor_dbus_name = 0;
     g_free(mdy_compositor_priv_name), mdy_compositor_priv_name = 0;
     mdy_compositor_pid = -1;
     mdy_compositor_cancel_killer();
 
     /* then cache dbus name and start pid query */
     if( has_owner ) {
-        mdy_compositor_dbus_name = g_strdup(name);
         mdy_compositor_priv_name = g_strdup(curr);
         mce_dbus_get_pid_async(curr, mdy_compositor_name_owner_pid_cb);
     }
@@ -4962,31 +4952,6 @@ EXIT:
     if( bus ) dbus_connection_unref(bus);
 
     return res;
-}
-
-/* ========================================================================= *
- * LIPSTICK_IPC
- * ========================================================================= */
-
-/** Owner of lipstick dbus name */
-static gchar *mdy_lipstick_priv_name = 0;
-
-static bool mdy_lipstick_is_available(void)
-{
-    return mdy_lipstick_priv_name != 0;
-}
-
-static void mdy_lipstick_name_owner_set(const char *curr)
-{
-    bool has_owner = (curr && *curr);
-
-    mce_log(LL_DEVEL, "lipstick is %s on system bus",
-            has_owner ? curr : "N/A");
-
-    g_free(mdy_lipstick_priv_name), mdy_lipstick_priv_name = 0;
-
-    if( has_owner )
-        mdy_lipstick_priv_name = g_strdup(curr);
 }
 
 /* ========================================================================= *
@@ -5372,6 +5337,8 @@ static void mdy_display_state_enter(display_state_t prev_state,
     display_state_pipe.cached_data = GINT_TO_POINTER(next_state);
 
     /* Run display state change triggers */
+    mce_log(LL_DEVEL, "current display state = %s",
+            mdy_display_state_name(next_state));
     execute_datapipe(&display_state_pipe,
                      GINT_TO_POINTER(next_state),
                      USE_INDATA, CACHE_INDATA);
@@ -5443,6 +5410,8 @@ static void mdy_display_state_leave(display_state_t prev_state,
     /* Broadcast the final target of this transition; note that this
      * happens while display_state_pipe still holds the previous
      * (non-transitional) state */
+    mce_log(LL_NOTICE, "target display state = %s",
+            mdy_display_state_name(next_state));
     execute_datapipe(&display_state_next_pipe,
                      GINT_TO_POINTER(next_state),
                      USE_INDATA, CACHE_INDATA);
@@ -5450,11 +5419,12 @@ static void mdy_display_state_leave(display_state_t prev_state,
     /* Invalidate display_state_pipe when making transitions
      * that need to wait for external parties */
     if( have_power != need_power ) {
-        if( need_power )
-            display_state_pipe.cached_data = GINT_TO_POINTER(MCE_DISPLAY_POWER_UP);
-        else
-            display_state_pipe.cached_data = GINT_TO_POINTER(MCE_DISPLAY_POWER_DOWN);
+        display_state_t state =
+            need_power ? MCE_DISPLAY_POWER_UP : MCE_DISPLAY_POWER_DOWN;
 
+        mce_log(LL_DEVEL, "current display state = %s",
+                mdy_display_state_name(state));
+        display_state_pipe.cached_data = GINT_TO_POINTER(state);
         execute_datapipe(&display_state_pipe,
                          display_state_pipe.cached_data,
                          USE_INDATA, CACHE_INDATA);
@@ -5630,47 +5600,73 @@ static const char *mdy_stm_state_name(stm_state_t state)
 
 /** react to compositor availability changes
  */
-static void mdy_stm_compositor_name_owner_changed(const char *name,
-                                                  const char *prev,
-                                                  const char *curr)
+static void mdy_datapipe_compositor_available_cb(gconstpointer aptr)
 {
-    (void)name;
-    (void)prev;
+    static service_state_t service = SERVICE_STATE_UNDEF;
 
-    /* update caches etc */
-    mdy_compositor_name_owner_set(name, curr);
+    service_state_t prev = service;
+    service = GPOINTER_TO_INT(aptr);
+
+    if( service == prev )
+        goto EXIT;
+
+    mce_log(LL_DEVEL, "compositor_available = %s -> %s",
+            service_state_repr(prev),
+            service_state_repr(service));
+
+    /* The private name of the owner is needed when/if
+     * the compositor gets unresponsive and needs to
+     * be killed and restarted */
+
+    const char *curr = 0;
+
+    if( service == SERVICE_STATE_RUNNING )
+        curr = mce_dbus_nameowner_get(COMPOSITOR_SERVICE);
+
+    mdy_compositor_name_owner_set(curr);
 
     /* set setUpdatesEnabled(true) needs to be called flag */
     mdy_stm_enable_rendering_needed = true;
 
     /* a) Lipstick assumes that updates are allowed when
      *    it starts up. Try to arrange that it is so.
+     *
      * b) Without lipstick in place we must not suspend
      *    because there is nobody to communicate the
      *    updating is allowed
      *
      * Turning the display on at lipstick runstate change
-     * deals with both (a) and (b) */
-    mdy_stm_push_target_change(MCE_DISPLAY_ON);
+     * deals with both (a) and (b)
+     *
+     * Exception: When mce restarts while lipstick is
+     *            running, we need to keep the existing
+     *            display state.
+     */
+    if( prev != SERVICE_STATE_UNDEF )
+        mdy_stm_push_target_change(MCE_DISPLAY_ON);
+
+EXIT:
+    return;
 }
 
 /** react to systemui availability changes
  */
-static void mdy_stm_lipstick_name_owner_changed(const char *name,
-                                                const char *prev,
-                                                const char *curr)
+static void mdy_datapipe_lipstick_available_cb(gconstpointer aptr)
 {
-    (void)name;
-    (void)prev;
+    static service_state_t service = SERVICE_STATE_UNDEF;
 
-    /* first deal with lipstick book keeping stuff */
-    mdy_lipstick_name_owner_set(curr);
+    service_state_t prev = service;
+    service = GPOINTER_TO_INT(aptr);
 
-    /* and finally broadcast within mce */
-    bool available = mdy_lipstick_is_available();
-    execute_datapipe(&lipstick_available_pipe,
-                     GINT_TO_POINTER(available),
-                     USE_INDATA, CACHE_INDATA);
+    if( service == prev )
+        goto EXIT;
+
+    mce_log(LL_DEVEL, "lipstick_available = %s -> %s",
+            service_state_repr(prev),
+            service_state_repr(service));
+
+EXIT:
+    return;
 }
 
 /** Predicate for choosing between STM_STAY_POWER_ON|OFF
@@ -5909,9 +5905,16 @@ static bool mdy_stm_is_renderer_enabled(void)
  */
 static void mdy_stm_disable_renderer(void)
 {
-    if( mdy_compositor_ui_state != RENDERER_DISABLED ) {
+    if( mdy_compositor_ui_state != RENDERER_DISABLED ||
+        mdy_stm_enable_rendering_needed ) {
         mce_log(LL_NOTICE, "stopping renderer");
         mdy_compositor_start_state_req(RENDERER_DISABLED);
+
+        /* clear setUpdatesEnabled(true) needs to be called flag */
+        mdy_stm_enable_rendering_needed = false;
+    }
+    else {
+        mce_log(LL_NOTICE, "renderer already disabled");
     }
 }
 
@@ -5919,12 +5922,8 @@ static void mdy_stm_disable_renderer(void)
  */
 static void mdy_stm_enable_renderer(void)
 {
-    if( !mdy_compositor_is_available() ) {
-        mdy_compositor_ui_state = RENDERER_ENABLED;
-        mce_log(LL_NOTICE, "starting renderer - skipped");
-    }
-    else if( mdy_compositor_ui_state != RENDERER_ENABLED ||
-             mdy_stm_enable_rendering_needed ) {
+    if( mdy_compositor_ui_state != RENDERER_ENABLED ||
+        mdy_stm_enable_rendering_needed ) {
         mce_log(LL_NOTICE, "starting renderer");
         mdy_compositor_start_state_req(RENDERER_ENABLED);
         /* clear setUpdatesEnabled(true) needs to be called flag */
@@ -5949,11 +5948,16 @@ static void mdy_stm_enable_renderer(void)
 static void mdy_stm_step(void)
 {
     switch( mdy_stm_dstate ) {
-    case STM_UNSET:
     default:
-            mdy_stm_acquire_wakelock();
-        if( mdy_stm_display_state_needs_power(mdy_stm_want) )
+    case STM_UNSET:
+        mdy_stm_acquire_wakelock();
+        if( !mdy_stm_pull_target_change() )
+            break;
+
+        if( mdy_stm_display_state_needs_power(mdy_stm_next) )
             mdy_stm_trans(STM_RENDERER_INIT_START);
+        else
+            mdy_stm_trans(STM_RENDERER_INIT_STOP);
         break;
 
     case STM_RENDERER_INIT_START:
@@ -6146,8 +6150,21 @@ static void mdy_stm_step(void)
         if( !mdy_compositor_is_available() )
             break;
 
+        if( mdy_stm_enable_rendering_needed ) {
+            mdy_stm_trans(STM_LEAVE_LOGICAL_OFF);
+            break;
+        }
+
         if( mdy_stm_is_early_suspend_allowed() ) {
             mdy_stm_trans(STM_LEAVE_LOGICAL_OFF);
+            break;
+        }
+        break;
+
+    case STM_LEAVE_LOGICAL_OFF:
+        if( mdy_stm_is_target_changing() ) {
+            mdy_brightness_set_fade_target_unblank(mdy_brightness_level_display_resume);
+            mdy_stm_trans(STM_RENDERER_INIT_START);
             break;
         }
 
@@ -6156,15 +6173,7 @@ static void mdy_stm_step(void)
             break;
         }
 
-        break;
-
-    case STM_LEAVE_LOGICAL_OFF:
-        if( mdy_stm_is_target_changing() ) {
-            mdy_brightness_set_fade_target_unblank(mdy_brightness_level_display_resume);
-            mdy_stm_trans(STM_RENDERER_INIT_START);
-        }
-        else
-            mdy_stm_trans(STM_INIT_SUSPEND);
+        mdy_stm_trans(STM_INIT_SUSPEND);
         break;
     }
 }
@@ -6575,254 +6584,6 @@ static void mdy_governor_conf_cb(GConfClient *const client, const guint id,
     }
 }
 #endif /* ENABLE_CPU_GOVERNOR */
-
-/* ========================================================================= *
- * DBUS_NAME_OWNER_TRACKING
- * ========================================================================= */
-
-/** Format string for constructing name owner lost match rules */
-static const char mdy_nameowner_rule_fmt[] =
-"type='signal'"
-",interface='"DBUS_INTERFACE_DBUS"'"
-",member='NameOwnerChanged'"
-",arg0='%s'"
-;
-
-/** D-Bus connection */
-static DBusConnection *mdy_nameowner_bus = 0;
-
-/** Lookup table of D-Bus names to watch */
-static struct
-{
-    const char *name;
-    char       *rule;
-    void     (*notify)(const char *name, const char *prev, const char *curr);
-} mdy_nameowner_lut[] =
-{
-    {
-        .name = COMPOSITOR_SERVICE,
-        .notify = mdy_stm_compositor_name_owner_changed,
-    },
-    {
-        /* Note: due to lipstick==compositor assumption lipstick
-         *       service name must be probed after compositor */
-        .name = LIPSTICK_SERVICE,
-        .notify = mdy_stm_lipstick_name_owner_changed,
-    },
-    {
-        .name = 0,
-    }
-};
-
-/** Call NameOwner changed callback from mdy_nameowner_lut
- *
- * @param name D-Bus name that changed owner
- * @param prev D-Bus name of the previous owner
- * @param curr D-Bus name of the current owner
- */
-static void
-mdy_nameowner_changed(const char *name, const char *prev, const char *curr)
-{
-    for( int i = 0; mdy_nameowner_lut[i].name; ++i ) {
-        if( !strcmp(mdy_nameowner_lut[i].name, name) )
-            mdy_nameowner_lut[i].notify(name, prev, curr);
-    }
-}
-
-/** Call back for handling asynchronous client verification via GetNameOwner
- *
- * @param pending   control structure for asynchronous d-bus methdod call
- * @param user_data dbus_name of the client as void poiter
- */
-static
-void
-mdy_nameowner_query_rsp(DBusPendingCall *pending, void *user_data)
-{
-    const char  *name   = user_data;
-    const char  *owner  = 0;
-    DBusMessage *rsp    = 0;
-    DBusError    err    = DBUS_ERROR_INIT;
-
-    if( !(rsp = dbus_pending_call_steal_reply(pending)) )
-        goto EXIT;
-
-    if( dbus_set_error_from_message(&err, rsp) ||
-        !dbus_message_get_args(rsp, &err,
-                               DBUS_TYPE_STRING, &owner,
-                               DBUS_TYPE_INVALID) )
-    {
-        if( strcmp(err.name, DBUS_ERROR_NAME_HAS_NO_OWNER) ) {
-            mce_log(LL_WARN, "%s: %s", err.name, err.message);
-        }
-    }
-
-    mdy_nameowner_changed(name, "", owner ?: "");
-
-EXIT:
-    if( rsp ) dbus_message_unref(rsp);
-    dbus_error_free(&err);
-}
-
-/** Verify that a client exists via an asynchronous GetNameOwner method call
- *
- * @param name the dbus name who's owner we wish to know
- */
-static
-void
-mdy_nameowner_query_req(const char *name)
-{
-    DBusMessage     *req = 0;
-    DBusPendingCall *pc  = 0;
-    char            *key = 0;
-
-    req = dbus_message_new_method_call(DBUS_SERVICE_DBUS,
-                                       DBUS_PATH_DBUS,
-                                       DBUS_INTERFACE_DBUS,
-                                       "GetNameOwner");
-    dbus_message_append_args(req,
-                             DBUS_TYPE_STRING, &name,
-                             DBUS_TYPE_INVALID);
-
-    if( !dbus_connection_send_with_reply(mdy_nameowner_bus, req, &pc, -1) )
-        goto EXIT;
-
-    if( !pc )
-        goto EXIT;
-
-    key = strdup(name);
-
-    if( !dbus_pending_call_set_notify(pc, mdy_nameowner_query_rsp, key, free) )
-        goto EXIT;
-
-    // key string is owned by pending call
-    key = 0;
-
-EXIT:
-    free(key);
-
-    if( pc  ) dbus_pending_call_unref(pc);
-    if( req ) dbus_message_unref(req);
-}
-
-/** D-Bus message filter for handling NameOwnerChanged signals
- *
- * @param con       (not used)
- * @param msg       message to be acted upon
- * @param user_data (not used)
- *
- * @return DBUS_HANDLER_RESULT_NOT_YET_HANDLED (other filters see the msg too)
- */
-static
-DBusHandlerResult
-mdy_nameowner_filter_cb(DBusConnection *con, DBusMessage *msg, void *user_data)
-{
-    (void)user_data;
-    (void)con;
-
-    DBusHandlerResult res = DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
-
-    const char *name = 0;
-    const char *prev = 0;
-    const char *curr = 0;
-
-    DBusError err = DBUS_ERROR_INIT;
-
-    if( !dbus_message_is_signal(msg, DBUS_INTERFACE_DBUS,
-                                "NameOwnerChanged") )
-        goto EXIT;
-
-    if( !dbus_message_get_args(msg, &err,
-                               DBUS_TYPE_STRING, &name,
-                               DBUS_TYPE_STRING, &prev,
-                               DBUS_TYPE_STRING, &curr,
-                               DBUS_TYPE_INVALID) ) {
-        mce_log(LL_WARN, "%s: %s", err.name, err.message);
-        goto EXIT;
-    }
-
-    mdy_nameowner_changed(name, prev, curr);
-EXIT:
-    dbus_error_free(&err);
-    return res;
-}
-
-/** Create a match rule and add it to D-Bus daemon side
- *
- * Use mdy_nameowner_unwatch() to cancel.
- *
- * @param name D-Bus name that changed owner
- *
- * @return rule that was sent to the D-Bus daemon
- */
-static char *
-mdy_nameowner_watch(const char *name)
-{
-    char *rule = g_strdup_printf(mdy_nameowner_rule_fmt, name);
-    dbus_bus_add_match(mdy_nameowner_bus, rule, 0);
-    return rule;
-}
-
-/** Remove a match rule from D-Bus daemon side and free it
- *
- * @param rule obtained from mdy_nameowner_watch()
- */
-static void mdy_nameowner_unwatch(char *rule)
-{
-    if( rule ) {
-        dbus_bus_remove_match(mdy_nameowner_bus, rule, 0);
-        g_free(rule);
-    }
-}
-
-/** Start D-Bus name owner tracking
- */
-static void
-mdy_nameowner_init(void)
-{
-    /* Get D-Bus system bus connection */
-    if( !(mdy_nameowner_bus = dbus_connection_get()) ) {
-        goto EXIT;
-    }
-
-    dbus_connection_add_filter(mdy_nameowner_bus,
-                               mdy_nameowner_filter_cb, 0, 0);
-
-    for( int i = 0; mdy_nameowner_lut[i].name; ++i ) {
-        mdy_nameowner_lut[i].rule = mdy_nameowner_watch(mdy_nameowner_lut[i].name);
-        mdy_nameowner_query_req(mdy_nameowner_lut[i].name);
-    }
-EXIT:
-    return;
-}
-
-/** Stop D-Bus name owner tracking
- */
-
-static void
-mdy_nameowner_quit(void)
-{
-    if( !mdy_nameowner_bus )
-        goto EXIT;
-
-    /* remove filter callback */
-    dbus_connection_remove_filter(mdy_nameowner_bus,
-                                  mdy_nameowner_filter_cb, 0);
-
-    /* remove name owner matches */
-    for( int i = 0; mdy_nameowner_lut[i].name; ++i ) {
-        mdy_nameowner_unwatch(mdy_nameowner_lut[i].rule),
-            mdy_nameowner_lut[i].rule = 0;
-    }
-
-    // TODO: we should keep track of async name owner calls
-    //       and cancel them at this point
-
-    dbus_connection_unref(mdy_nameowner_bus), mdy_nameowner_bus = 0;
-
-EXIT:
-    return;
-
-}
 
 /* ========================================================================= *
  * DBUS_HANDLERS
@@ -8543,9 +8304,6 @@ const gchar *g_module_check_init(GModule *module)
      * lose content drawn by processes that might exit during startup. */
     fbdev_fd_open();
 
-    /* Start dbus name tracking */
-    mdy_nameowner_init();
-
     /* Initialise the display type and the relevant paths */
     (void)mdy_display_type_get();
 
@@ -8721,15 +8479,12 @@ void g_module_unload(GModule *module)
     /* Cancel pending state machine updates */
     mdy_stm_cancel_rethink();
 
-    mdy_nameowner_quit();
-
     mdy_poweron_led_rethink_cancel();
 
     /* Remove callbacks on module unload */
     mce_sensorfw_orient_set_notify(0);
 
     g_free(mdy_compositor_priv_name), mdy_compositor_priv_name = 0;
-    g_free(mdy_lipstick_priv_name), mdy_lipstick_priv_name = 0;
 
     /* If we are shutting down/rebooting and we have fbdev
      * open, create a detached child process to hold on to

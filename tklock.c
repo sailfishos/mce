@@ -65,20 +65,18 @@ typedef enum
 /** Duration of exceptional UI states, in milliseconds */
 enum
 {
-    EXCEPTION_LENGTH_CALL_IN  = 5000, // [ms]
-    EXCEPTION_LENGTH_CALL_OUT = 2500, // [ms]
-    EXCEPTION_LENGTH_ALARM    = 2500, // [ms]
-    EXCEPTION_LENGTH_CHARGER  = 3000, // [ms]
-    EXCEPTION_LENGTH_BATTERY  = 1000, // [ms]
-    EXCEPTION_LENGTH_JACK     = 3000, // [ms]
-    EXCEPTION_LENGTH_CAMERA   = 3000, // [ms]
-#if 0 // debug
-    EXCEPTION_LENGTH_VOLUME   = 9999, // [ms]
-#else
-    EXCEPTION_LENGTH_VOLUME   = 2000, // [ms]
-#endif
+    EXCEPTION_LENGTH_CALL_IN     =  5000, // [ms]
+    EXCEPTION_LENGTH_CALL_OUT    =  2500, // [ms]
+    EXCEPTION_LENGTH_ALARM       =  2500, // [ms]
+    EXCEPTION_LENGTH_CHARGER     =  3000, // [ms]
+    EXCEPTION_LENGTH_BATTERY     =  1000, // [ms]
+    EXCEPTION_LENGTH_JACK        =  3000, // [ms]
+    EXCEPTION_LENGTH_CAMERA      =  3000, // [ms]
+    EXCEPTION_LENGTH_VOLUME      =  2000, // [ms]
+    EXCEPTION_LENGTH_USB_CONNECT =  5000, // [ms]
+    EXCEPTION_LENGTH_USB_DIALOG  = 10000, // [ms]
 
-    EXCEPTION_LENGTH_ACTIVITY = 2000, // [ms]
+    EXCEPTION_LENGTH_ACTIVITY    =  2000, // [ms]
 
     /* Note: the notification durations and lengthening via
      *       activity must be long enough not to be cut off
@@ -107,14 +105,6 @@ enum
 /* ========================================================================= *
  * DATATYPES
  * ========================================================================= */
-
-typedef struct
-{
-    datapipe_struct *datapipe;
-    void (*output_cb)(gconstpointer data);
-    void (*input_cb)(gconstpointer data);
-    bool bound;
-} datapipe_binding_t;
 
 typedef struct
 {
@@ -206,10 +196,6 @@ static void     tklock_datapipe_user_activity_cb(gconstpointer data);
 static bool     tklock_datapipe_have_tklock_submode(void);
 static void     tklock_datapipe_set_device_lock_state(device_lock_state_t state);
 
-static void     tklock_datapipe_append_triggers(datapipe_binding_t *bindings);
-static void     tklock_datapipe_initialize_triggers(datapipe_binding_t *bindings);
-static void     tklock_datapipe_remove_triggers(datapipe_binding_t *bindings);
-static gboolean tklock_datapipe_init_cb(gpointer aptr);
 static void     tklock_datapipe_init(void);
 static void     tklock_datapipe_quit(void);
 
@@ -621,26 +607,27 @@ static void tklock_datapipe_device_resumed_cb(gconstpointer data)
 }
 
 /** Lipstick dbus name is reserved; assume false */
-static bool lipstick_available = false;
+static service_state_t lipstick_available = SERVICE_STATE_UNDEF;
 
 /** Change notifications for lipstick_available
  */
 static void tklock_datapipe_lipstick_available_cb(gconstpointer data)
 {
-    bool prev = lipstick_available;
+    service_state_t prev = lipstick_available;
     lipstick_available = GPOINTER_TO_INT(data);
 
     if( lipstick_available == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "lipstick_available = %d -> %d", prev,
-            lipstick_available);
+    mce_log(LL_DEBUG, "lipstick_available = %s -> %s",
+            service_state_repr(prev),
+            service_state_repr(lipstick_available));
 
     // force tklock ipc
     tklock_ui_notified = -1;
     tklock_ui_set(false);
 
-    if( lipstick_available ) {
+    if( lipstick_available == SERVICE_STATE_RUNNING ) {
         /* query initial device lock state on lipstick/mce startup */
         tklock_ui_get_device_lock();
     }
@@ -974,13 +961,13 @@ EXIT:
 }
 
 /** Charger state; assume not charging */
-static bool charger_state = false;
+static charger_state_t charger_state = CHARGER_STATE_UNDEF;
 
 /** Change notifications for charger_state
  */
 static void tklock_datapipe_charger_state_cb(gconstpointer data)
 {
-    bool prev = charger_state;
+    charger_state_t prev = charger_state;
     charger_state = GPOINTER_TO_INT(data);
 
     if( charger_state == prev )
@@ -988,8 +975,14 @@ static void tklock_datapipe_charger_state_cb(gconstpointer data)
 
     mce_log(LL_DEBUG, "charger_state = %d -> %d", prev, charger_state);
 
-    mce_tklock_begin_notification(0, "mce_charger_state",
-                                  EXCEPTION_LENGTH_CHARGER, -1);
+    /* No exception on mce startup */
+    if( prev == CHARGER_STATE_UNDEF )
+        goto EXIT;
+
+    /* Notification expected when charging starts */
+    if( charger_state == CHARGER_STATE_ON )
+        mce_tklock_begin_notification(0, "mce_charger_state",
+                                      EXCEPTION_LENGTH_CHARGER, -1);
 
 EXIT:
     return;
@@ -1023,7 +1016,7 @@ EXIT:
 }
 
 /** USB cable status; assume disconnected */
-static usb_cable_state_t usb_cable_state = USB_CABLE_DISCONNECTED;
+static usb_cable_state_t usb_cable_state = USB_CABLE_UNDEF;
 
 /** Change notifications for usb_cable_state
  */
@@ -1032,16 +1025,34 @@ static void tklock_datapipe_usb_cable_cb(gconstpointer data)
     usb_cable_state_t prev = usb_cable_state;
     usb_cable_state = GPOINTER_TO_INT(data);
 
-    if( usb_cable_state == USB_CABLE_UNDEF )
-        usb_cable_state = USB_CABLE_DISCONNECTED;
-
     if( prev == usb_cable_state )
         goto EXIT;
 
     mce_log(LL_DEBUG, "usb_cable_state = %d -> %d", prev, usb_cable_state);
 
-    mce_tklock_begin_notification(0, "mce_usb_cable_state",
-                                  EXCEPTION_LENGTH_CHARGER, -1);
+    /* No exception on mce startup */
+    if( prev == USB_CABLE_UNDEF )
+        goto EXIT;
+
+    switch( usb_cable_state ) {
+    case USB_CABLE_DISCONNECTED:
+        mce_tklock_end_notification(0, "mce_usb_connect", 0);
+        mce_tklock_end_notification(0, "mce_usb_dialog", 0);
+        break;
+
+    case USB_CABLE_CONNECTED:
+        mce_tklock_begin_notification(0, "mce_usb_connect",
+                                      EXCEPTION_LENGTH_USB_CONNECT, -1);
+        break;
+
+    case USB_CABLE_ASK_USER:
+        mce_tklock_begin_notification(0, "mce_usb_dialog",
+                                      EXCEPTION_LENGTH_USB_DIALOG, -1);
+        break;
+
+    default:
+        goto EXIT;
+    }
 
 EXIT:
     return;
@@ -1737,8 +1748,8 @@ EXIT:
     return;
 }
 
-/** Array of datapipe bindings */
-static datapipe_binding_t tklock_datapipe_triggers[] =
+/** Array of datapipe handlers */
+static datapipe_handler_t tklock_datapipe_handlers[] =
 {
     // output triggers
     {
@@ -1880,109 +1891,24 @@ static datapipe_binding_t tklock_datapipe_triggers[] =
     }
 };
 
-static void tklock_datapipe_append_triggers(datapipe_binding_t *bindings)
+static datapipe_bindings_t tklock_datapipe_bindings =
 {
-    if( !bindings )
-        goto EXIT;
-
-    for( size_t i = 0; bindings[i].datapipe; ++i ) {
-        if( bindings[i].bound )
-            continue;
-
-        if( bindings[i].input_cb )
-            append_input_trigger_to_datapipe(bindings[i].datapipe,
-                                             bindings[i].input_cb);
-
-        if( bindings[i].output_cb )
-            append_output_trigger_to_datapipe(bindings[i].datapipe,
-                                              bindings[i].output_cb);
-        bindings[i].bound = true;
-    }
-
-EXIT:
-    return;
-}
-
-static void tklock_datapipe_initialize_triggers(datapipe_binding_t *bindings)
-{
-    if( !bindings )
-        goto EXIT;
-
-    for( size_t i = 0; bindings[i].datapipe; ++i ) {
-        if( !bindings[i].bound )
-            continue;
-
-        if( bindings[i].output_cb )
-          bindings[i].output_cb(bindings[i].datapipe->cached_data);
-    }
-
-EXIT:
-    return;
-}
-
-static void tklock_datapipe_remove_triggers(datapipe_binding_t *bindings)
-{
-    if( !bindings )
-        goto EXIT;
-
-    for( size_t i = 0; bindings[i].datapipe; ++i ) {
-        if( !bindings[i].bound )
-            continue;
-
-        if( bindings[i].input_cb )
-            remove_input_trigger_from_datapipe(bindings[i].datapipe,
-                                             bindings[i].input_cb);
-
-        if( bindings[i].output_cb )
-            remove_output_trigger_from_datapipe(bindings[i].datapipe,
-                                              bindings[i].output_cb);
-        bindings[i].bound = false;
-    }
-
-EXIT:
-    return;
-}
-
-static guint tklock_datapipe_init_id = 0;
-
-static gboolean tklock_datapipe_init_cb(gpointer aptr)
-{
-    (void)aptr;
-
-    if( !tklock_datapipe_init_id )
-        goto EXIT;
-
-    tklock_datapipe_init_id = 0;
-
-    tklock_datapipe_initialize_triggers(tklock_datapipe_triggers);
-
-EXIT:
-    return FALSE;
-}
+    .module   = "tklock",
+    .handlers = tklock_datapipe_handlers,
+};
 
 /** Append triggers/filters to datapipes
  */
 static void tklock_datapipe_init(void)
 {
-    /* Set up datapipe callbacks */
-    tklock_datapipe_append_triggers(tklock_datapipe_triggers);
-
-    /* Get initial values for output triggers from idle
-     * callback, i.e. when all modules have been loaded */
-    tklock_datapipe_init_id = g_idle_add(tklock_datapipe_init_cb, 0);
+    datapipe_bindings_init(&tklock_datapipe_bindings);
 }
 
 /** Remove triggers/filters from datapipes
  */
 static void tklock_datapipe_quit(void)
 {
-    /* Remove the get initial values timer if still active */
-    if( tklock_datapipe_init_id )
-        g_source_remove(tklock_datapipe_init_id),
-        tklock_datapipe_init_id = 0;
-
-    /* Remove datapipe callbacks */
-    tklock_datapipe_remove_triggers(tklock_datapipe_triggers);
+    datapipe_bindings_quit(&tklock_datapipe_bindings);
 }
 
 /* ========================================================================= *
@@ -2921,7 +2847,7 @@ static void tklock_lpmui_set_state(bool enable)
         mce_log(LL_DEBUG, "deny lpm; not in user mode");
         enable = false;
     }
-    else if( !lipstick_available ) {
+    else if( lipstick_available != SERVICE_STATE_RUNNING ) {
         mce_log(LL_DEBUG, "deny lpm; lipstick not running");
         enable = false;
     }
@@ -3102,7 +3028,7 @@ static void tklock_lpmui_rethink(void)
     if( system_state != MCE_STATE_USER )
         goto EXIT;
 
-    if( !lipstick_available )
+    if( lipstick_available != SERVICE_STATE_RUNNING )
         goto EXIT;
 
     if( display_state != MCE_DISPLAY_OFF )
@@ -4031,7 +3957,7 @@ static gboolean tklock_ui_notify_beg_cb(gpointer data)
     tklock_ui_notified = current;
 
     /* do lipstick specific ipc */
-    if( lipstick_available ) {
+    if( lipstick_available == SERVICE_STATE_RUNNING ) {
         if( current )
             tklock_ui_open();
         else
@@ -4090,7 +4016,7 @@ static void tklock_ui_set(bool enable)
             mce_log(LL_INFO, "deny tklock; not in user mode");
             enable = false;
         }
-        else if( !lipstick_available ) {
+        else if( lipstick_available != SERVICE_STATE_RUNNING ) {
             mce_log(LL_INFO, "deny tklock; lipstick not running");
             enable = false;
         }

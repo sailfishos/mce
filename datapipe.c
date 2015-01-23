@@ -154,8 +154,14 @@ datapipe_struct thermal_state_pipe;
 /** Heartbeat; read only */
 datapipe_struct heartbeat_pipe;
 
+/** compositor availability; read only */
+datapipe_struct compositor_available_pipe;
+
 /** lipstick availability; read only */
 datapipe_struct lipstick_available_pipe;
+
+/** usbmoded availability; read only */
+datapipe_struct usbmoded_available_pipe;
 
 /** dsme availability; read only */
 datapipe_struct dsme_available_pipe;
@@ -841,7 +847,7 @@ void mce_datapipe_init(void)
 	setup_datapipe(&tk_lock_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(LOCK_UNDEF));
 	setup_datapipe(&charger_state_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(0));
+		       0, GINT_TO_POINTER(CHARGER_STATE_UNDEF));
 	setup_datapipe(&battery_status_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(BATTERY_STATUS_UNDEF));
 	setup_datapipe(&battery_level_pipe, READ_ONLY, DONT_FREE_CACHE,
@@ -853,7 +859,7 @@ void mce_datapipe_init(void)
 	setup_datapipe(&audio_route_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(AUDIO_ROUTE_UNDEF));
 	setup_datapipe(&usb_cable_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(0));
+		       0, GINT_TO_POINTER(USB_CABLE_UNDEF));
 	setup_datapipe(&jack_sense_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(0));
 	setup_datapipe(&power_saving_mode_pipe, READ_ONLY, DONT_FREE_CACHE,
@@ -862,8 +868,14 @@ void mce_datapipe_init(void)
 		       0, GINT_TO_POINTER(THERMAL_STATE_UNDEF));
 	setup_datapipe(&heartbeat_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(0));
+
+	setup_datapipe(&compositor_available_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
 	setup_datapipe(&lipstick_available_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(FALSE));
+		       0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
+	setup_datapipe(&usbmoded_available_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
+
 	setup_datapipe(&dsme_available_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(FALSE));
 	setup_datapipe(&packagekit_locked_pipe, READ_ONLY, DONT_FREE_CACHE,
@@ -931,7 +943,9 @@ void mce_datapipe_quit(void)
 	free_datapipe(&master_radio_pipe);
 	free_datapipe(&system_state_pipe);
 	free_datapipe(&heartbeat_pipe);
+	free_datapipe(&compositor_available_pipe);
 	free_datapipe(&lipstick_available_pipe);
+	free_datapipe(&usbmoded_available_pipe);
 	free_datapipe(&dsme_available_pipe);
 	free_datapipe(&packagekit_locked_pipe);
 	free_datapipe(&update_mode_pipe);
@@ -962,4 +976,158 @@ const char *device_lock_state_repr(device_lock_state_t state)
 	}
 
 	return res;
+}
+
+/** Convert service_state_t enum to human readable string
+ *
+ * @param state service_state_t enumeration value
+ *
+ * @return human readable representation of state
+ */
+const char *service_state_repr(service_state_t state)
+{
+	const char *res = "unknown";
+
+	switch( state ) {
+	case SERVICE_STATE_UNDEF:   res = "undefined"; break;
+	case SERVICE_STATE_STOPPED: res = "stopped";   break;
+	case SERVICE_STATE_RUNNING: res = "running";   break;
+	default: break;
+	}
+
+	return res;
+}
+
+/** Convert usb_cable_state_t enum to human readable string
+ *
+ * @param state usb_cable_state_t enumeration value
+ *
+ * @return human readable representation of state
+ */
+const char *usb_cable_state_repr(usb_cable_state_t state)
+{
+	const char *res = "unknown";
+
+	switch( state ) {
+	case USB_CABLE_UNDEF:        res = "undefined";    break;
+	case USB_CABLE_DISCONNECTED: res = "disconnected"; break;
+	case USB_CABLE_CONNECTED:    res = "connected";    break;
+	case USB_CABLE_ASK_USER:     res = "ask_user";     break;
+	default: break;
+	}
+
+	return res;
+}
+
+void datapipe_handlers_install(datapipe_handler_t *bindings)
+{
+    if( !bindings )
+	goto EXIT;
+
+    for( size_t i = 0; bindings[i].datapipe; ++i ) {
+	if( bindings[i].bound )
+	    continue;
+
+	if( bindings[i].input_cb )
+	    append_input_trigger_to_datapipe(bindings[i].datapipe,
+					     bindings[i].input_cb);
+
+	if( bindings[i].output_cb )
+	    append_output_trigger_to_datapipe(bindings[i].datapipe,
+					      bindings[i].output_cb);
+	bindings[i].bound = true;
+    }
+
+EXIT:
+    return;
+}
+
+void datapipe_handlers_remove(datapipe_handler_t *bindings)
+{
+    if( !bindings )
+	goto EXIT;
+
+    for( size_t i = 0; bindings[i].datapipe; ++i ) {
+	if( !bindings[i].bound )
+	    continue;
+
+	if( bindings[i].input_cb )
+	    remove_input_trigger_from_datapipe(bindings[i].datapipe,
+					     bindings[i].input_cb);
+
+	if( bindings[i].output_cb )
+	    remove_output_trigger_from_datapipe(bindings[i].datapipe,
+					      bindings[i].output_cb);
+	bindings[i].bound = false;
+    }
+
+EXIT:
+    return;
+}
+
+void datapipe_handlers_execute(datapipe_handler_t *bindings)
+{
+    if( !bindings )
+	goto EXIT;
+
+    for( size_t i = 0; bindings[i].datapipe; ++i ) {
+	if( !bindings[i].bound )
+	    continue;
+
+	if( bindings[i].output_cb )
+	  bindings[i].output_cb(bindings[i].datapipe->cached_data);
+    }
+
+EXIT:
+    return;
+}
+
+static gboolean datapipe_handlers_execute_cb(gpointer aptr)
+{
+    datapipe_bindings_t *self = aptr;
+
+    if( !self )
+	goto EXIT;
+
+    if( !self->execute_id )
+	goto EXIT;
+
+    self->execute_id = 0;
+
+    mce_log(LL_INFO, "module=%s", self->module ?: "unknown");
+    datapipe_handlers_execute(self->handlers);
+
+EXIT:
+    return FALSE;
+}
+
+/** Append triggers/filters to datapipes
+ */
+void datapipe_bindings_init(datapipe_bindings_t *self)
+{
+    mce_log(LL_INFO, "module=%s", self->module ?: "unknown");
+
+    /* Set up datapipe callbacks */
+    datapipe_handlers_install(self->handlers);
+
+    /* Get initial values for output triggers from idle
+     * callback, i.e. when all modules have been loaded */
+    if( !self->execute_id )
+	self->execute_id = g_idle_add(datapipe_handlers_execute_cb, self);
+}
+
+/** Remove triggers/filters from datapipes
+ */
+void datapipe_bindings_quit(datapipe_bindings_t *self)
+{
+    mce_log(LL_INFO, "module=%s", self->module ?: "unknown");
+
+    /* Remove the get initial values timer if still active */
+    if( self->execute_id ) {
+	g_source_remove(self->execute_id),
+	    self->execute_id = 0;
+    }
+
+    /* Remove datapipe callbacks */
+    datapipe_handlers_remove(self->handlers);
 }

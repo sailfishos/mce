@@ -50,7 +50,7 @@ G_MODULE_EXPORT module_info_struct module_info = {
 /** Battery charge level */
 static gint battery_level = 100;
 /** Charger state */
-static gboolean charger_state = FALSE;
+static charger_state_t charger_state = CHARGER_STATE_UNDEF;
 
 /** GConf callback ID for power saving mode setting */
 static guint psm_gconf_cb_id = 0;
@@ -136,7 +136,7 @@ static void update_power_saving_mode(void)
 	if (((((battery_level <= psm_threshold) &&
 	       (power_saving_mode == TRUE)) ||
 	      (force_psm == TRUE)) &&
-	     (charger_state == FALSE)) ||
+	     (charger_state != CHARGER_STATE_ON)) ||
 	    (thermal_state == THERMAL_STATE_OVERHEATED)) {
 		/* If the battery charge level is lower than the threshold,
 		 * and the user has enable power saving mode,
@@ -176,9 +176,7 @@ static void battery_level_trigger(gconstpointer const data)
  */
 static void charger_state_trigger(gconstpointer const data)
 {
-	(void)data;
-
-	charger_state = datapipe_get_gbool(charger_state_pipe);
+	charger_state = GPOINTER_TO_INT(data);
 
 	update_power_saving_mode();
 }

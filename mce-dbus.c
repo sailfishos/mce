@@ -3164,6 +3164,312 @@ EXIT:
 }
 
 /* ========================================================================= *
+ * DBUS_NAME_OWNER_TRACKING
+ * ========================================================================= */
+
+static void                mce_dbus_nameowner_changed(const char *name, const char *prev, const char *curr);
+static DBusHandlerResult   mce_dbus_nameowner_filter_cb(DBusConnection *con, DBusMessage *msg, void *user_data);
+static void                mce_dbus_nameowner_query_rsp(DBusPendingCall *pending, void *user_data);
+static void                mce_dbus_nameowner_query_req(const char *name);
+static char               *mce_dbus_nameowner_watch(const char *name);
+static void                mce_dbus_nameowner_unwatch(char *rule);
+
+static void                mce_dbus_nameowner_init(void);
+static void                mce_dbus_nameowner_quit(void);
+
+/** Format string for constructing name owner lost match rules */
+static const char mce_dbus_nameowner_rule_fmt[] =
+"type='signal'"
+",interface='"DBUS_INTERFACE_DBUS"'"
+",member='NameOwnerChanged'"
+",arg0='%s'"
+;
+
+/** Lookup table of D-Bus names to watch */
+static struct
+{
+    const char      *name;
+    char            *rule;
+    void           (*notify)(const char *name, const char *prev, const char *curr);
+    datapipe_struct *datapipe;
+    char            *owner;
+
+} mce_dbus_nameowner_lut[] =
+{
+    {
+	.name     = COMPOSITOR_SERVICE,
+	.datapipe = &compositor_available_pipe,
+    },
+    {
+	/* Note: due to lipstick==compositor assumption lipstick
+	 *       service name must be probed after compositor */
+	.name     = LIPSTICK_SERVICE,
+	.datapipe = &lipstick_available_pipe,
+    },
+    {
+	.name     = USB_MODED_DBUS_SERVICE,
+	.datapipe = &usbmoded_available_pipe,
+    },
+    {
+	.name = 0,
+    }
+};
+
+/** Call NameOwner changed callback from mce_dbus_nameowner_lut
+ *
+ * @param name D-Bus name that changed owner
+ * @param prev D-Bus name of the previous owner
+ * @param curr D-Bus name of the current owner
+ */
+static void
+mce_dbus_nameowner_changed(const char *name, const char *prev, const char *curr)
+{
+    for( int i = 0; mce_dbus_nameowner_lut[i].name; ++i ) {
+	if( strcmp(mce_dbus_nameowner_lut[i].name, name) )
+	    continue;
+
+	mce_log(LL_DEVEL, "%s: owner: '%s' -> '%s'", name, prev, curr);
+
+	// change cached name owner
+	free(mce_dbus_nameowner_lut[i].owner);
+	if( curr && *curr )
+	    mce_dbus_nameowner_lut[i].owner = strdup(curr);
+	else
+	    mce_dbus_nameowner_lut[i].owner = 0;
+
+	// handle notification callback before datapipe
+	if( mce_dbus_nameowner_lut[i].notify )
+	    mce_dbus_nameowner_lut[i].notify(name, prev, curr);
+
+	// update datapipe if defined
+	if( !mce_dbus_nameowner_lut[i].datapipe )
+	    continue;
+
+	service_state_t state =
+	    (curr && *curr) ? SERVICE_STATE_RUNNING : SERVICE_STATE_STOPPED;
+
+	execute_datapipe(mce_dbus_nameowner_lut[i].datapipe,
+			 GINT_TO_POINTER(state),
+			 USE_INDATA, CACHE_INDATA);
+    }
+}
+
+/** Get current name owner for tracked services
+ *
+ * @param name Well known D-Bus name
+ *
+ * @return owner name or NULL
+ */
+const char *
+mce_dbus_nameowner_get(const char *name)
+{
+    const char *owner = 0;
+    for( int i = 0; mce_dbus_nameowner_lut[i].name; ++i ) {
+	if( strcmp(mce_dbus_nameowner_lut[i].name, name) )
+	    continue;
+
+	owner = mce_dbus_nameowner_lut[i].owner;
+	break;
+    }
+    return owner;
+}
+
+/** Call back for handling asynchronous client verification via GetNameOwner
+ *
+ * @param pending   control structure for asynchronous d-bus methdod call
+ * @param user_data dbus_name of the client as void poiter
+ */
+static
+void
+mce_dbus_nameowner_query_rsp(DBusPendingCall *pending, void *user_data)
+{
+    const char  *name   = user_data;
+    const char  *owner  = 0;
+    DBusMessage *rsp    = 0;
+    DBusError    err    = DBUS_ERROR_INIT;
+
+    if( !(rsp = dbus_pending_call_steal_reply(pending)) )
+	goto EXIT;
+
+    if( dbus_set_error_from_message(&err, rsp) ||
+	!dbus_message_get_args(rsp, &err,
+			       DBUS_TYPE_STRING, &owner,
+			       DBUS_TYPE_INVALID) )
+    {
+	if( strcmp(err.name, DBUS_ERROR_NAME_HAS_NO_OWNER) ) {
+	    mce_log(LL_WARN, "%s: %s", err.name, err.message);
+	}
+    }
+
+    mce_dbus_nameowner_changed(name, "", owner ?: "");
+
+EXIT:
+    if( rsp ) dbus_message_unref(rsp);
+    dbus_error_free(&err);
+}
+
+/** Verify that a client exists via an asynchronous GetNameOwner method call
+ *
+ * @param name the dbus name who's owner we wish to know
+ */
+static
+void
+mce_dbus_nameowner_query_req(const char *name)
+{
+    DBusMessage     *req = 0;
+    DBusPendingCall *pc  = 0;
+    char            *key = 0;
+
+    req = dbus_message_new_method_call(DBUS_SERVICE_DBUS,
+				       DBUS_PATH_DBUS,
+				       DBUS_INTERFACE_DBUS,
+				       "GetNameOwner");
+    dbus_message_append_args(req,
+			     DBUS_TYPE_STRING, &name,
+			     DBUS_TYPE_INVALID);
+
+    if( !dbus_connection_send_with_reply(dbus_connection, req, &pc, -1) )
+	goto EXIT;
+
+    if( !pc )
+	goto EXIT;
+
+    key = strdup(name);
+
+    if( !dbus_pending_call_set_notify(pc, mce_dbus_nameowner_query_rsp, key, free) )
+	goto EXIT;
+
+    // key string is owned by pending call
+    key = 0;
+
+EXIT:
+    free(key);
+
+    if( pc  ) dbus_pending_call_unref(pc);
+    if( req ) dbus_message_unref(req);
+}
+
+/** D-Bus message filter for handling NameOwnerChanged signals
+ *
+ * @param con       (not used)
+ * @param msg       message to be acted upon
+ * @param user_data (not used)
+ *
+ * @return DBUS_HANDLER_RESULT_NOT_YET_HANDLED (other filters see the msg too)
+ */
+static
+DBusHandlerResult
+mce_dbus_nameowner_filter_cb(DBusConnection *con, DBusMessage *msg, void *user_data)
+{
+    (void)user_data;
+    (void)con;
+
+    DBusHandlerResult res = DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
+
+    const char *name = 0;
+    const char *prev = 0;
+    const char *curr = 0;
+
+    DBusError err = DBUS_ERROR_INIT;
+
+    if( !dbus_message_is_signal(msg, DBUS_INTERFACE_DBUS,
+				"NameOwnerChanged") )
+	goto EXIT;
+
+    if( !dbus_message_get_args(msg, &err,
+			       DBUS_TYPE_STRING, &name,
+			       DBUS_TYPE_STRING, &prev,
+			       DBUS_TYPE_STRING, &curr,
+			       DBUS_TYPE_INVALID) ) {
+	mce_log(LL_WARN, "%s: %s", err.name, err.message);
+	goto EXIT;
+    }
+
+    mce_dbus_nameowner_changed(name, prev, curr);
+EXIT:
+    dbus_error_free(&err);
+    return res;
+}
+
+/** Create a match rule and add it to D-Bus daemon side
+ *
+ * Use mce_dbus_nameowner_unwatch() to cancel.
+ *
+ * @param name D-Bus name that changed owner
+ *
+ * @return rule that was sent to the D-Bus daemon
+ */
+static char *
+mce_dbus_nameowner_watch(const char *name)
+{
+    char *rule = g_strdup_printf(mce_dbus_nameowner_rule_fmt, name);
+    dbus_bus_add_match(dbus_connection, rule, 0);
+    return rule;
+}
+
+/** Remove a match rule from D-Bus daemon side and free it
+ *
+ * @param rule obtained from mce_dbus_nameowner_watch()
+ */
+static void mce_dbus_nameowner_unwatch(char *rule)
+{
+    if( rule ) {
+	dbus_bus_remove_match(dbus_connection, rule, 0);
+	g_free(rule);
+    }
+}
+
+/** Start D-Bus name owner tracking
+ */
+static void
+mce_dbus_nameowner_init(void)
+{
+    if( !dbus_connection )
+	goto EXIT;
+
+    dbus_connection_add_filter(dbus_connection,
+			       mce_dbus_nameowner_filter_cb, 0, 0);
+
+    for( int i = 0; mce_dbus_nameowner_lut[i].name; ++i ) {
+	mce_dbus_nameowner_lut[i].rule = mce_dbus_nameowner_watch(mce_dbus_nameowner_lut[i].name);
+	mce_dbus_nameowner_query_req(mce_dbus_nameowner_lut[i].name);
+    }
+
+EXIT:
+    return;
+}
+
+/** Stop D-Bus name owner tracking
+ */
+
+static void
+mce_dbus_nameowner_quit(void)
+{
+    if( !dbus_connection )
+	goto EXIT;
+
+    /* remove filter callback */
+    dbus_connection_remove_filter(dbus_connection,
+				  mce_dbus_nameowner_filter_cb, 0);
+
+    /* remove name owner matches */
+    for( int i = 0; mce_dbus_nameowner_lut[i].name; ++i ) {
+	mce_dbus_nameowner_unwatch(mce_dbus_nameowner_lut[i].rule),
+	    mce_dbus_nameowner_lut[i].rule = 0;
+
+	free(mce_dbus_nameowner_lut[i].owner),
+	    mce_dbus_nameowner_lut[i].owner = 0;
+    }
+
+    // TODO: we should keep track of async name owner calls
+    //       and cancel them at this point
+
+EXIT:
+    return;
+
+}
+
+/* ========================================================================= *
  * LOAD/UNLOAD
  * ========================================================================= */
 
@@ -3264,6 +3570,9 @@ gboolean mce_dbus_init(const gboolean systembus)
 	/* Register callbacks that are handled inside mce-dbus.c */
 	mce_dbus_handler_register_array(mce_dbus_handlers);
 
+	/* Start tracking essential services */
+	mce_dbus_nameowner_init();
+
 	status = TRUE;
 
 EXIT:
@@ -3276,6 +3585,9 @@ EXIT:
  */
 void mce_dbus_exit(void)
 {
+	/* Stop tracking essential services */
+	mce_dbus_nameowner_quit();
+
 	/* Remove message handlers */
 	dbus_quit_message_handler();
 

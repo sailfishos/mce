@@ -42,7 +42,7 @@
 #define DSME_DBUS_SERVICE "com.nokia.dsme"
 
 /** Charger state; from charger_state_pipe */
-static gboolean charger_connected = FALSE;
+static charger_state_t charger_state = CHARGER_STATE_UNDEF;
 
 /** Availability of dsme; from dsme_available_pipe */
 static bool dsme_available = false;
@@ -523,7 +523,7 @@ static void mce_dsme_charger_state_cb(gconstpointer const data)
 {
 	submode_t submode = mce_get_submode_int32();
 
-	charger_connected = GPOINTER_TO_INT(data);
+	charger_state = GPOINTER_TO_INT(data);
 
 	if ((submode & MCE_SOFTOFF_SUBMODE) != 0) {
 		if (softoff_charger_connect_policy == SOFTOFF_CHARGER_CONNECT_WAKEUP) {

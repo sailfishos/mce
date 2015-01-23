@@ -241,6 +241,13 @@ typedef enum {
 	BATTERY_STATUS_EMPTY = 3,	/**< Battery empty */
 } battery_status_t;
 
+/** Charging status */
+typedef enum {
+	CHARGER_STATE_UNDEF = -1,	/**< Not known yet */
+	CHARGER_STATE_OFF   =  0,	/**< Not charging */
+	CHARGER_STATE_ON    =  1,	/**< Charging */
+} charger_state_t;
+
 /** Camera button state */
 typedef enum {
 	CAMERA_BUTTON_UNDEF = -1,	/**< Camera button state not set */
@@ -262,10 +269,13 @@ typedef enum {
 
 /** USB cable state */
 typedef enum {
-	USB_CABLE_UNDEF = -1,		/**< Usb cable state not set */
-	USB_CABLE_DISCONNECTED = 0,	/**< Cable is not connected */
-	USB_CABLE_CONNECTED = 1		/**< Cable is connected */
+	USB_CABLE_UNDEF        = -1,	/**< Usb cable state not set */
+	USB_CABLE_DISCONNECTED =  0,	/**< Cable is not connected */
+	USB_CABLE_CONNECTED    =  1,	/**< Cable is connected */
+	USB_CABLE_ASK_USER     =  2,	/**< Ask mode from user */
 } usb_cable_state_t;
+
+const char *usb_cable_state_repr(usb_cable_state_t state);
 
 /** Thermal status */
 typedef enum {
@@ -285,6 +295,15 @@ typedef enum {
 	UIEXC_ALARM  = 1<<2,
 	UIEXC_NOTIF  = 1<<3,
 } uiexctype_t;
+
+/** D-Bus service availability */
+typedef enum {
+  SERVICE_STATE_UNDEF   = -1,
+  SERVICE_STATE_STOPPED =  0,
+  SERVICE_STATE_RUNNING =  1,
+} service_state_t;
+
+const char *service_state_repr(service_state_t state);
 
 /* XXX: use HAL */
 
