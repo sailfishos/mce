@@ -392,6 +392,18 @@ modules/battery-bme.pic.o:\
 	mce-log.h\
 	mce.h\
 
+modules/battery-statefs.o:\
+	modules/battery-statefs.c\
+	datapipe.h\
+	mce-log.h\
+	mce.h\
+
+modules/battery-statefs.pic.o:\
+	modules/battery-statefs.c\
+	datapipe.h\
+	mce-log.h\
+	mce.h\
+
 modules/battery-upower.o:\
 	modules/battery-upower.c\
 	builtin-gconf.h\
