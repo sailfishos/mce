@@ -973,7 +973,9 @@ static void tklock_datapipe_charger_state_cb(gconstpointer data)
     if( charger_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "charger_state = %d -> %d", prev, charger_state);
+    mce_log(LL_DEBUG, "charger_state = %s -> %s",
+            charger_state_repr(prev),
+            charger_state_repr(charger_state));
 
     /* No exception on mce startup */
     if( prev == CHARGER_STATE_UNDEF )
@@ -1001,7 +1003,9 @@ static void tklock_datapipe_battery_status_cb(gconstpointer data)
     if( battery_status == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "battery_status = %d -> %d", prev, battery_status);
+    mce_log(LL_DEBUG, "battery_status = %s -> %s",
+            battery_status_repr(prev),
+            battery_status_repr(battery_status));
 
 #if 0 /* At the moment there is no notification associated with
        * battery full -> no need to turn the display on */

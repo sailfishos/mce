@@ -691,7 +691,9 @@ mcebat_update_cb(gpointer user_data)
 
     /* Process changes */
     if( mcebat.charger != prev.charger ) {
-        mce_log(LL_INFO, "charger: %d -> %d", prev.charger, mcebat.charger);
+        mce_log(LL_INFO, "charger: %s -> %s",
+                charger_state_repr(prev.charger),
+                charger_state_repr(mcebat.charger));
 
         /* Charger connected state */
         execute_datapipe(&charger_state_pipe, GINT_TO_POINTER(mcebat.charger),
