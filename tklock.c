@@ -4909,7 +4909,7 @@ tklock_notif_vacate_slot(const char *owner, const char *name, int64_t linger)
         goto EXIT;
     }
 
-    mce_log(LL_WARN, "attempt to end non-existing notification");
+    mce_log(LL_DEBUG, "attempt to end non-existing notification");
 
 EXIT:
 
