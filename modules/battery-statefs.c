@@ -249,6 +249,8 @@ static const struct {
     { "discharging", STATEFS_BATTERY_STATE_DISCHARGING },
     { "empty",       STATEFS_BATTERY_STATE_EMPTY       },
     { "full",        STATEFS_BATTERY_STATE_FULL        },
+    { "unknown",     STATEFS_BATTERY_STATE_UNKNOWN     },
+    { "",            STATEFS_BATTERY_STATE_UNKNOWN     },
 };
 
 /** String to sfsbat_state_t helper
@@ -261,18 +263,35 @@ static const struct {
 static bool
 parse_state(const char *data, sfsbat_state_t *res)
 {
-    bool ack = false;
+    static bool lut_miss_reported = false;
 
-    for( size_t i = 0; i < G_N_ELEMENTS(state_lut); ++i ) {
-        if( strcmp(state_lut[i].name, data) )
-            continue;
+    for( size_t i = 0; ; ++i ) {
+        if( i == G_N_ELEMENTS(state_lut) ) {
+            /* Value was not found in the lookup table - handle
+             * as if "unknown" had been reported */
+            *res = STATEFS_BATTERY_STATE_UNKNOWN;
 
-        *res = state_lut[i].state;
-        ack  = true;
-        break;
+            /* Emit warning, but only once to avoid repetitive reporting
+             * due to forced property updates */
+            if( !lut_miss_reported ) {
+                lut_miss_reported = true;
+                mce_log(LL_WARN, "unrecognized Battery.State value '%s';"
+                        " assuming battery state is not known", data);
+            }
+            break;
+        }
+
+        if( !strcmp(state_lut[i].name, data) ) {
+            /* Use the state from the lookup table */
+            *res = state_lut[i].state;
+
+            /* Enable reporting of lookup table misses again */
+            lut_miss_reported = false;
+            break;
+        }
     }
 
-    return ack;
+    return true;
 }
 
 /** String to int helper
