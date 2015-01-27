@@ -24,6 +24,7 @@
  */
 
 #include "filter-brightness-als.h"
+#include "display.h"
 
 #include "../mce.h"
 #include "../mce-log.h"
@@ -1013,7 +1014,7 @@ static gboolean save_color_profile(const gchar *id)
 		goto EXIT;
 	}
 
-	status = mce_gconf_set_string(MCE_GCONF_DISPLAY_COLOR_PROFILE_PATH, id);
+	status = mce_gconf_set_string(MCE_GCONF_DISPLAY_COLOR_PROFILE, id);
 
 EXIT:
 	return status;
@@ -1039,7 +1040,7 @@ static gchar *read_default_color_profile(void)
 static gchar *read_current_color_profile(void)
 {
 	gchar *retval = NULL;
-	(void)mce_gconf_get_string(MCE_GCONF_DISPLAY_COLOR_PROFILE_PATH,
+	(void)mce_gconf_get_string(MCE_GCONF_DISPLAY_COLOR_PROFILE,
 				   &retval);
 
 	/* Treat empty string as NULL */
@@ -1198,16 +1199,16 @@ const gchar *g_module_check_init(GModule *module)
 
 	/* ALS enabled setting */
 	mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-			       MCE_GCONF_DISPLAY_ALS_ENABLED_PATH,
+			       MCE_GCONF_DISPLAY_ALS_ENABLED,
 			       use_als_gconf_cb,
 			       &use_als_gconf_id);
 
-	mce_gconf_get_bool(MCE_GCONF_DISPLAY_ALS_ENABLED_PATH,
+	mce_gconf_get_bool(MCE_GCONF_DISPLAY_ALS_ENABLED,
 			   &use_als_flag);
 
 	/* Color profile setting */
 	mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-			       MCE_GCONF_DISPLAY_COLOR_PROFILE_PATH,
+			       MCE_GCONF_DISPLAY_COLOR_PROFILE,
 			       color_profile_gconf_cb,
 			       &color_profile_gconf_id);
 	if( init_color_profiles() )

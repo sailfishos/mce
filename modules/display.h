@@ -99,10 +99,14 @@
 /** Path to the framebuffer device */
 #define FB_DEVICE				"/dev/fb0"
 
-#ifndef MCE_GCONF_DISPLAY_PATH
 /** Path to the GConf settings for the display */
-# define MCE_GCONF_DISPLAY_PATH			"/system/osso/dsm/display"
-#endif
+#define MCE_GCONF_DISPLAY_PATH			"/system/osso/dsm/display"
+
+/** Path to the ALS enabled GConf setting */
+#define MCE_GCONF_DISPLAY_ALS_ENABLED                   MCE_GCONF_DISPLAY_PATH "/als_enabled"
+
+/** Path to the color profile GConf setting */
+#define MCE_GCONF_DISPLAY_COLOR_PROFILE                 MCE_GCONF_DISPLAY_PATH "/color_profile"
 
 /** Display brightness GConf setting */
 #define MCE_GCONF_DISPLAY_BRIGHTNESS                    MCE_GCONF_DISPLAY_PATH "/display_brightness"

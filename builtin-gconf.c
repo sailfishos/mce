@@ -1077,13 +1077,13 @@ static const setting_t gconf_defaults[] =
     .def  = "10,20,30,40,50",
   },
   {
-    // MCE_GCONF_DISPLAY_ALS_ENABLED_PATH @ modules/filter-brightness-als.h
+    // MCE_GCONF_DISPLAY_ALS_ENABLED @ modules/display.h
     .key  = "/system/osso/dsm/display/als_enabled",
     .type = "b",
     .def  = "true",
   },
   {
-    // MCE_GCONF_DISPLAY_COLOR_PROFILE_PATH @ modules/filter-brightness-als.h
+    // MCE_GCONF_DISPLAY_COLOR_PROFILE @ modules/display.h
     .key  = "/system/osso/dsm/display/color_profile",
     .type = "s",
     .def  = "",
