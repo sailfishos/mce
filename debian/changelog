@@ -1,3 +1,11 @@
+mce (1.40.0) unstable; urgency=low
+
+  * [mce] Add plugin for tracking battery state via statefs. Contributes to
+    JB#6273
+  * [mce] Get battery data from statefs. Fixes JB#6273
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 27 Jan 2015 10:47:53 +0200
+
 mce (1.39.4) unstable; urgency=low
 
   * [mce] Fix USB cable connection related issues in display blanking policy.
