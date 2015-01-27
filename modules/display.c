@@ -83,6 +83,21 @@
  */
 #define MCE_FADER_OPACITY_PERCENT 50
 
+/** Backlight fade animation duration after brightness setting changes */
+#define MCE_FADER_DURATION_SETTINGS_CHANGED 600
+
+/** Minimum duration for direct backlight fade animation */
+#define MCE_FADER_DURATION_HW_MIN    0
+
+/** Maximum duration for direct backlight fade animation */
+#define MCE_FADER_DURATION_HW_MAX 5000
+
+/** Minimum duration for compositor based ui dimming animation */
+#define MCE_FADER_DURATION_UI_MIN  100
+
+/** Maximum duration for compositor based ui dimming animation */
+#define MCE_FADER_DURATION_UI_MAX 5000
+
 /* ========================================================================= *
  * TYPEDEFS
  * ========================================================================= */
@@ -872,6 +887,9 @@ static gint mdy_brightness_step_size  = DEFAULT_DISP_BRIGHTNESS_STEP_SIZE;
 /** display brightness setting; [1, mdy_brightness_step_count] */
 static gint mdy_brightness_setting = DEFAULT_DISP_BRIGHTNESS;
 
+/** timestamp of the latest brightness setting change */
+static int64_t mdy_brightness_setting_change_time = 0;
+
 /** GConf callback ID for mdy_brightness_step_count */
 static guint mdy_brightness_step_count_gconf_id = 0;
 
@@ -880,6 +898,9 @@ static guint mdy_brightness_step_size_gconf_id = 0;
 
 /** GConf callback ID for mdy_brightness_setting */
 static guint mdy_brightness_setting_gconf_id = 0;
+
+/** GConf callback ID for auto-brightness setting */
+static guint mdy_automatic_brightness_setting_gconf_id = 0;
 
 /** PSM display brightness setting; [1, 5]
  *  or -1 when power save mode is not active
@@ -2488,6 +2509,24 @@ static void mdy_brightness_set_fade_target_ex(fader_type_t type,
      * the short time window we have available during unblanking. */
     const int delay_min = 4;
 
+    /* Negative transition time: constant velocity change [%/s] */
+    if( transition_time < 0 ) {
+        int d = abs(new_brightness - mdy_brightness_level_cached);
+        // velocity: percent/sec -> steps/sec
+        int v = mce_xlat_int(1, 100,
+                             1, mdy_brightness_level_maximum,
+                             -transition_time);
+        if( v <= 0 )
+            transition_time = MCE_FADER_DURATION_HW_MAX;
+        else
+            transition_time = (1000 * d + v/2) / v;
+    }
+
+    /* Keep transition time in sane range */
+    transition_time = mce_clip_int(MCE_FADER_DURATION_HW_MIN,
+                                   MCE_FADER_DURATION_HW_MAX,
+                                   transition_time);
+
     mce_log(LL_DEBUG, "type %s fade from %d to %d in %d ms",
             fader_type_name(type),
             mdy_brightness_level_cached,
@@ -2646,9 +2685,20 @@ static void mdy_brightness_set_fade_target_als(gint new_brightness)
         mce_log(LL_DEBUG, "skip als fade; undef display state");
     }
     else if( display_state != MCE_DISPLAY_POWER_UP ) {
-        mdy_brightness_set_fade_target_ex(FADER_ALS,
-                                          new_brightness,
-                                          mdy_brightness_fade_duration_als_ms);
+        int dur = mdy_brightness_fade_duration_als_ms;
+
+        /* To make effects of changing the brightness settings
+         * more clear, override constant time / long als fade durations
+         * that happen immediately after relevant settings changes. */
+        if( dur < 0 || dur > MCE_FADER_DURATION_SETTINGS_CHANGED ) {
+            int64_t now = mdy_get_boot_tick();
+            int64_t end = (mdy_brightness_setting_change_time +
+                           MCE_FADER_DURATION_SETTINGS_CHANGED);
+            if( now <= end )
+                dur = MCE_FADER_DURATION_SETTINGS_CHANGED;
+        }
+
+        mdy_brightness_set_fade_target_ex(FADER_ALS, new_brightness, dur);
     }
 
     return;
@@ -2896,6 +2946,13 @@ static void mdy_ui_dimming_rethink(void)
             duration = mdy_brightness_fade_duration_def_ms;
         }
     }
+
+    /* Keep transition time in sane range. Also takes care
+     * that negative values used to signify constant velocity
+     * change do not get passed to compositor side dimming. */
+    duration = mce_clip_int(MCE_FADER_DURATION_UI_MIN,
+                            MCE_FADER_DURATION_UI_MAX,
+                            duration);
 
     mce_log(LL_DEVEL, "sending dbus signal: %s %d %d",
             MCE_FADER_OPACITY_SIG, dimming_curr, duration);
@@ -7791,8 +7848,16 @@ static void mdy_gconf_cb(GConfClient *const gcc, const guint id,
             mce_log(LL_NOTICE, "mdy_brightness_setting: %d -> %d",
                     mdy_brightness_setting, val);
             mdy_brightness_setting = val;
+
+            /* Save timestamp of the setting change */
+            mdy_brightness_setting_change_time = mdy_get_boot_tick();
+
             mdy_gconf_sanitize_brightness_settings();
         }
+    }
+    else if( id == mdy_automatic_brightness_setting_gconf_id ) {
+        /* Save timestamp of the setting change */
+        mdy_brightness_setting_change_time = mdy_get_boot_tick();
     }
     else if( id == mdy_brightness_step_size_gconf_id ) {
         // NOTE: This is not supposed to be changed at runtime
@@ -8007,6 +8072,14 @@ static void mdy_gconf_init(void)
 
     mce_gconf_get_int(MCE_GCONF_DISPLAY_BRIGHTNESS,
                       &mdy_brightness_setting);
+
+    /* Note: We're only interested in auto-brightness change
+     *       notifications. The value itself is handled in
+     *       filter-brightness-als plugin. */
+    mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
+                           MCE_GCONF_DISPLAY_ALS_ENABLED,
+                           mdy_gconf_cb,
+                           &mdy_automatic_brightness_setting_gconf_id);
 
     /* Migrate ranges, update hw dim/on brightness levels */
     mdy_gconf_sanitize_brightness_settings();
