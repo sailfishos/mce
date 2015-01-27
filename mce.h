@@ -241,12 +241,16 @@ typedef enum {
 	BATTERY_STATUS_EMPTY = 3,	/**< Battery empty */
 } battery_status_t;
 
+const char *battery_status_repr(battery_status_t state);
+
 /** Charging status */
 typedef enum {
 	CHARGER_STATE_UNDEF = -1,	/**< Not known yet */
 	CHARGER_STATE_OFF   =  0,	/**< Not charging */
 	CHARGER_STATE_ON    =  1,	/**< Charging */
 } charger_state_t;
+
+const char *charger_state_repr(charger_state_t state);
 
 /** Camera button state */
 typedef enum {

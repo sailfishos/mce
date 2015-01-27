@@ -1019,6 +1019,46 @@ const char *usb_cable_state_repr(usb_cable_state_t state)
 	return res;
 }
 
+/** Convert charger_state_t enum to human readable string
+ *
+ * @param state charger_state_t enumeration value
+ *
+ * @return human readable representation of state
+ */
+const char *charger_state_repr(charger_state_t state)
+{
+	const char *res = "unknown";
+
+	switch( state ) {
+	case CHARGER_STATE_UNDEF: res = "undefined"; break;
+	case CHARGER_STATE_OFF:   res = "off";       break;
+	case CHARGER_STATE_ON:    res = "on";        break;
+	default: break;
+	}
+
+	return res;
+}
+
+/** Convert battery_status_t enum to human readable string
+ *
+ * @param state battery_status_t enumeration value
+ *
+ * @return human readable representation of state
+ */
+const char *battery_status_repr(battery_status_t state)
+{
+	const char *res = "unknown";
+	switch( state ) {
+	case BATTERY_STATUS_UNDEF: res = "undefined"; break;
+	case BATTERY_STATUS_FULL:  res = "full";      break;
+	case BATTERY_STATUS_OK:    res = "ok";        break;
+	case BATTERY_STATUS_LOW:   res = "low";       break;
+	case BATTERY_STATUS_EMPTY: res = "empty";     break;
+	default: break;
+	}
+	return res;
+}
+
 void datapipe_handlers_install(datapipe_handler_t *bindings)
 {
     if( !bindings )
