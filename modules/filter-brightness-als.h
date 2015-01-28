@@ -138,17 +138,6 @@ struct dipro_als {
 /** Path to the second calibration point for the TSL2562 ALS */
 #define ALS_CALIB1_PATH_TSL2562		ALS_PATH_TSL2562 "/calib1"
 
-#ifndef MCE_GCONF_DISPLAY_PATH
-/** Path to the GConf settings for the display */
-# define MCE_GCONF_DISPLAY_PATH			"/system/osso/dsm/display"
-#endif
-
-/** Path to the ALS enabled GConf setting */
-#define MCE_GCONF_DISPLAY_ALS_ENABLED_PATH	MCE_GCONF_DISPLAY_PATH "/als_enabled"
-
-/** Path to the color profile GConf setting */
-#define MCE_GCONF_DISPLAY_COLOR_PROFILE_PATH	MCE_GCONF_DISPLAY_PATH "/color_profile"
-
 /** Default ALS polling frequency when the display is on */
 #define ALS_DISPLAY_ON_POLL_FREQ	1500		/* Milliseconds */
 

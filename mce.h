@@ -342,6 +342,20 @@ void mce_quit_mainloop(void);
 	res;\
 })
 
+/** Clip integer value to given range
+ *
+ * @param range_lo minimum value
+ * @param range_hi maximum value
+ * @param val      value to clip
+ *
+ * @return val clipped to the range
+ */
+static inline int
+mce_clip_int(int range_lo, int range_hi, int val)
+{
+	return val < range_lo ? range_lo : val > range_hi ? range_hi : val;
+}
+
 /** Translate integer value from one range to another
  *
  * Linear conversion of a value in [src_lo, src_hi] range
@@ -372,10 +386,7 @@ mce_xlat_int(int src_lo, int src_hi, int dst_lo, int dst_hi, int val)
 	val = (val * dst_range + src_range / 2) / src_range;
 	val += dst_lo;
 
-	if( val > dst_hi ) val = dst_hi; else
-	if( val < dst_lo ) val = dst_lo;
-
-	return val;
+	return mce_clip_int(dst_lo, dst_hi, val);
 }
 
 #endif /* _MCE_H_ */

@@ -2430,7 +2430,7 @@ static bool xmce_set_als_mode(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         gboolean val = xmce_parse_enabled(args);
-        mcetool_gconf_set_bool(MCE_GCONF_DISPLAY_ALS_ENABLED_PATH, val);
+        mcetool_gconf_set_bool(MCE_GCONF_DISPLAY_ALS_ENABLED, val);
         return true;
 }
 
@@ -2441,7 +2441,7 @@ static void xmce_get_als_mode(void)
         gboolean val = 0;
         char txt[32] = "unknown";
 
-        if( mcetool_gconf_get_bool(MCE_GCONF_DISPLAY_ALS_ENABLED_PATH, &val) )
+        if( mcetool_gconf_get_bool(MCE_GCONF_DISPLAY_ALS_ENABLED, &val) )
                 snprintf(txt, sizeof txt, "%s", val ? "enabled" : "disabled");
         printf("%-"PAD1"s %s\n", "Use als mode:", txt);
 }
