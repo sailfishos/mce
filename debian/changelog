@@ -1,3 +1,9 @@
+mce (1.40.1) unstable; urgency=low
+
+  * [mce] Add support for constant velocity brightness changes. Fixes JB#25458
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 28 Jan 2015 18:40:07 +0200
+
 mce (1.40.0) unstable; urgency=low
 
   * [mce] Add plugin for tracking battery state via statefs. Contributes to
