@@ -302,9 +302,9 @@ typedef enum {
 
 /** D-Bus service availability */
 typedef enum {
-  SERVICE_STATE_UNDEF   = -1,
-  SERVICE_STATE_STOPPED =  0,
-  SERVICE_STATE_RUNNING =  1,
+	SERVICE_STATE_UNDEF   = -1,
+	SERVICE_STATE_STOPPED =  0,
+	SERVICE_STATE_RUNNING =  1,
 } service_state_t;
 
 const char *service_state_repr(service_state_t state);
