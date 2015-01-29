@@ -25,6 +25,7 @@
 #include "powerkey.h"
 
 #include "modules/memnotify.h"
+#include "modules/filter-brightness-als.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -1081,6 +1082,18 @@ static const setting_t gconf_defaults[] =
     .key  = "/system/osso/dsm/display/als_enabled",
     .type = "b",
     .def  = "true",
+  },
+  {
+    // MCE_GCONF_DISPLAY_ALS_INPUT_FILTER @ modules/display.h
+    .key  = "/system/osso/dsm/display/als_input_filter",
+    .type = "s",
+    .def  = ALS_INPUT_FILTER_DEFAULT,
+  },
+  {
+    // MCE_GCONF_DISPLAY_ALS_SAMPLE_TIME @ modules/display.h
+    .key  = "/system/osso/dsm/display/als_sample_time",
+    .type = "i",
+    .def  = G_STRINGIFY(ALS_SAMPLE_TIME_DEFAULT),
   },
   {
     // MCE_GCONF_DISPLAY_COLOR_PROFILE @ modules/display.h

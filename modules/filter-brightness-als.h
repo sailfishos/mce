@@ -138,6 +138,18 @@ struct dipro_als {
 /** Path to the second calibration point for the TSL2562 ALS */
 #define ALS_CALIB1_PATH_TSL2562		ALS_PATH_TSL2562 "/calib1"
 
+/** Default value for als enabled settings */
+#define ALS_ENABLED_DEFAULT		TRUE
+
+/** Default value for als input filter settings */
+#define ALS_INPUT_FILTER_DEFAULT	"disabled"
+
+/** Default value for als sample time settings */
+#define ALS_SAMPLE_TIME_DEFAULT		125
+
+#define ALS_SAMPLE_TIME_MIN		50
+#define ALS_SAMPLE_TIME_MAX		1000
+
 /** Default ALS polling frequency when the display is on */
 #define ALS_DISPLAY_ON_POLL_FREQ	1500		/* Milliseconds */
 
