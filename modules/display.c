@@ -2178,7 +2178,7 @@ static gint mdy_brightness_fade_duration_dim_ms = 1000;
 static guint mdy_brightness_fade_duration_dim_ms_gconf_cb_id = 0;
 
 /** Brightness fade length during ALS tuning [ms] */
-static gint mdy_brightness_fade_duration_als_ms = 600;
+static gint mdy_brightness_fade_duration_als_ms = 1000;
 
 /** GConf change notification id for mdy_brightness_fade_duration_als_ms */
 static guint mdy_brightness_fade_duration_als_ms_gconf_cb_id = 0;

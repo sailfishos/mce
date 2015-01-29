@@ -1267,7 +1267,7 @@ static const setting_t gconf_defaults[] =
     // MCE_GCONF_BRIGHTNESS_FADE_ALS_MS @ modules/display.h
     .key  = "/system/osso/dsm/display/brightness_fade_als_ms",
     .type = "i",
-    .def  = "600",
+    .def  = "1000",
   },
   {
     // MCE_GCONF_BRIGHTNESS_FADE_BLANK_MS @ modules/display.h

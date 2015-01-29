@@ -142,7 +142,7 @@ struct dipro_als {
 #define ALS_ENABLED_DEFAULT		TRUE
 
 /** Default value for als input filter settings */
-#define ALS_INPUT_FILTER_DEFAULT	"disabled"
+#define ALS_INPUT_FILTER_DEFAULT	"median"
 
 /** Default value for als sample time settings */
 #define ALS_SAMPLE_TIME_DEFAULT		125
