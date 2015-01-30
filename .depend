@@ -6,6 +6,7 @@ builtin-gconf.o:\
 	mce-log.h\
 	modules/memnotify.h\
 	powerkey.h\
+	tklock.h\
 
 builtin-gconf.pic.o:\
 	builtin-gconf.c\
@@ -15,6 +16,7 @@ builtin-gconf.pic.o:\
 	mce-log.h\
 	modules/memnotify.h\
 	powerkey.h\
+	tklock.h\
 
 datapipe.o:\
 	datapipe.c\

@@ -99,6 +99,12 @@ typedef enum
 /** Automatic lpm triggering modes GConf setting */
 # define MCE_GCONF_LPMUI_TRIGGERING             MCE_GCONF_LOCK_PATH "/lpm_triggering"
 
+/** Proximity can block touch input GConf setting */
+# define MCE_GCONF_PROXIMITY_BLOCKS_TOUCH       MCE_GCONF_LOCK_PATH "/proximity_blocks_touch"
+
+/** Default value for can block touch input GConf setting */
+# define PROXIMITY_BLOCKS_TOUCH_DEFAULT         false
+
 /** Automatic lpm triggering modes */
 enum
 {
