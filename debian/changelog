@@ -1,3 +1,10 @@
+mce (1.38.1.2) unstable; urgency=low
+
+  * [mce] Make touch input blocking by proximity sensor optional.
+    Fixes JB#25467
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 30 Jan 2015 16:28:11 +0200
+
 mce (1.38.1.1) unstable; urgency=low
 
   * [mce] Assume proximity covered while waiting for sensord to start up.
