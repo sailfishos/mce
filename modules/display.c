@@ -2178,7 +2178,7 @@ static gint mdy_brightness_fade_duration_dim_ms = 1000;
 static guint mdy_brightness_fade_duration_dim_ms_gconf_cb_id = 0;
 
 /** Brightness fade length during ALS tuning [ms] */
-static gint mdy_brightness_fade_duration_als_ms = 600;
+static gint mdy_brightness_fade_duration_als_ms = 1000;
 
 /** GConf change notification id for mdy_brightness_fade_duration_als_ms */
 static guint mdy_brightness_fade_duration_als_ms_gconf_cb_id = 0;
@@ -2340,6 +2340,62 @@ static void mdy_brightness_force_level(int number)
     mdy_brightness_set_level(number);
 }
 
+/** Helper for re-evaluating need for als-tuning
+ *
+ * Ongoing higher priority fade animations can block als tuning
+ * from taking place. This function is used to re-evaluates the
+ * need for als tuning once the blocking transitions finish.
+ *
+ * @param fade_type type of fade animation that was just finished
+ */
+static void mdy_brightness_fade_continue_with_als(fader_type_t fader_type)
+{
+    /* Only applicable after ending fade animations that
+     * temporarily block als transitions - keep this in
+     * sync with logic in mdy_brightness_is_fade_allowed().
+     */
+    switch( fader_type ) {
+    case FADER_DEFAULT:
+    case FADER_DIMMING:
+        break;
+    default:
+        goto EXIT;
+    }
+
+    /* The display state must be stable too */
+    if( display_state_next != display_state )
+        goto EXIT;
+
+    /* Target level depends on the display state */
+    int level = mdy_brightness_fade_end_level;
+
+    switch( display_state ) {
+    case MCE_DISPLAY_LPM_ON:
+        level = mdy_brightness_level_display_lpm;
+        break;
+
+    case MCE_DISPLAY_DIM:
+        level = mdy_brightness_level_display_dim;
+        break;
+
+    case MCE_DISPLAY_ON:
+        level = mdy_brightness_level_display_on;
+        break;
+
+    default:
+        goto EXIT;
+    }
+
+    /* Apply if change is needed */
+    if( level != mdy_brightness_fade_end_level ) {
+        mce_log(LL_DEBUG, "continue with als tuning");
+        mdy_brightness_set_fade_target_als(level);
+    }
+
+EXIT:
+    return;
+}
+
 /**
  * Timeout callback for the brightness fade
  *
@@ -2380,9 +2436,16 @@ static gboolean mdy_brightness_fade_timer_cb(gpointer data)
 
     /* Cleanup if finished */
     if( !keep_going ) {
+        /* Cache fade type that just finished */
+        fader_type_t fader_type = mdy_brightness_fade_type;
+
+        /* Reset fader state */
         mdy_brightness_fade_timer_id = 0;
         mdy_brightness_cleanup_fade_timer();
         mce_log(LL_DEBUG, "fader finished");
+
+        /* Check if we need to continue with als tuning */
+        mdy_brightness_fade_continue_with_als(fader_type);
     }
 
 EXIT:
@@ -2473,7 +2536,18 @@ mdy_brightness_is_fade_allowed(fader_type_t type)
 
     case FADER_DEFAULT:
     case FADER_DIMMING:
-        /* deny als tuning during display state transitions */
+        /* Deny als tuning during display state transitions.
+         *
+         * The idea here is that fades associated with display
+         * state transitions are kept as uniform as possible
+         * even if lightning conditions change during the
+         * fade.
+         *
+         * After these blocking fade animations are finished,
+         * mdy_brightness_fade_continue_with_als() is used
+         * to re-evaluate the need for possible als tuning
+         * again.
+         */
         if( type == FADER_ALS )
             allowed = false;
         break;

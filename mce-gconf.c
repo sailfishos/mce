@@ -451,6 +451,29 @@ void mce_gconf_track_int(const gchar *key, gint *val, gint def,
 	g_free(path);
 }
 
+/** Get initial value of boolean setting and start tracking changes
+ *
+ * @param key   key name
+ * @param val   where to store the initial value
+ * @param def   default value to use if getting key value fails;
+ *              or -1 to leave *val unmodified
+ * @param cb    change notification callback
+ * @param cb_id where to store notification callback id
+ */
+void mce_gconf_track_bool(const gchar *key, gboolean *val, gint def,
+			  GConfClientNotifyFunc cb, guint *cb_id)
+{
+	gchar *path = mce_gconf_get_path(key);
+
+	if( path && cb && cb_id )
+		mce_gconf_notifier_add(path, key, cb, cb_id);
+
+	if( !mce_gconf_get_bool(key, val) && def != -1 )
+		*val = (def != 0);
+
+	g_free(path);
+}
+
 /** Get initial value of integer setting and start tracking changes
  *
  * Note: Caller must release returned string with g_free() when it

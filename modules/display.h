@@ -105,6 +105,12 @@
 /** Path to the ALS enabled GConf setting */
 #define MCE_GCONF_DISPLAY_ALS_ENABLED                   MCE_GCONF_DISPLAY_PATH "/als_enabled"
 
+/** ALS input filter GConf setting */
+#define MCE_GCONF_DISPLAY_ALS_INPUT_FILTER              MCE_GCONF_DISPLAY_PATH "/als_input_filter"
+
+/** ALS sample time GConf setting */
+#define MCE_GCONF_DISPLAY_ALS_SAMPLE_TIME               MCE_GCONF_DISPLAY_PATH "/als_sample_time"
+
 /** Path to the color profile GConf setting */
 #define MCE_GCONF_DISPLAY_COLOR_PROFILE                 MCE_GCONF_DISPLAY_PATH "/color_profile"
 

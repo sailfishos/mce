@@ -4,6 +4,7 @@ builtin-gconf.o:\
 	mce-dbus.h\
 	mce-io.h\
 	mce-log.h\
+	modules/filter-brightness-als.h\
 	modules/memnotify.h\
 	powerkey.h\
 
@@ -13,6 +14,7 @@ builtin-gconf.pic.o:\
 	mce-dbus.h\
 	mce-io.h\
 	mce-log.h\
+	modules/filter-brightness-als.h\
 	modules/memnotify.h\
 	powerkey.h\
 

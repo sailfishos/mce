@@ -2446,6 +2446,77 @@ static void xmce_get_als_mode(void)
         printf("%-"PAD1"s %s\n", "Use als mode:", txt);
 }
 
+/** Check that given ALS input filter name is valid
+ */
+static bool xmce_is_als_filter_name(const char *name)
+{
+        const char * const lut[] = {
+                "disabled",
+                "median",
+        };
+
+        for( size_t i = 0; i < G_N_ELEMENTS(lut); ++i ) {
+                if( !strcmp(lut[i], name) )
+                        return true;
+        }
+
+        fprintf(stderr, "%s: not a valid als input filter name", name);
+        return false;
+}
+
+/* Set als input filter
+ *
+ * @param args string suitable for interpreting as filter name
+ */
+static bool xmce_set_als_input_filter(const char *args)
+{
+        if( !xmce_is_als_filter_name(args) )
+                return false;
+
+        mcetool_gconf_set_string(MCE_GCONF_DISPLAY_ALS_INPUT_FILTER, args);
+        return true;
+}
+
+/** Get current als input filter from mce and print it out
+ */
+static void xmce_get_als_input_filter(void)
+{
+        gchar *val = 0;
+        char txt[32] = "unknown";
+        if( mcetool_gconf_get_string(MCE_GCONF_DISPLAY_ALS_INPUT_FILTER, &val) )
+                snprintf(txt, sizeof txt, "%s", val);
+        printf("%-"PAD1"s %s\n", "Active als input filter:", txt);
+        g_free(val);
+}
+
+/* Set als sample time
+ *
+ * @param args string suitable for interpreting as filter name
+ */
+static bool xmce_set_als_sample_time(const char *args)
+{
+        int val = xmce_parse_integer(args);
+
+        if( val < ALS_SAMPLE_TIME_MIN || val > ALS_SAMPLE_TIME_MAX ) {
+                errorf("%d: invalid als sample time value\n", val);
+                return false;
+        }
+
+        mcetool_gconf_set_int(MCE_GCONF_DISPLAY_ALS_SAMPLE_TIME, val);
+        return true;
+}
+
+/** Get current als sample time from mce and print it out
+ */
+static void xmce_get_als_sample_time(void)
+{
+        gint val = 0;
+        char txt[32] = "unknown";
+        if( mcetool_gconf_get_int(MCE_GCONF_DISPLAY_ALS_SAMPLE_TIME, &val) )
+                snprintf(txt, sizeof txt, "%d", val);
+        printf("%-"PAD1"s %s\n", "Sample time for als filtering:", txt);
+}
+
 /* ------------------------------------------------------------------------- *
  * autolock
  * ------------------------------------------------------------------------- */
@@ -3847,6 +3918,8 @@ static bool xmce_get_status(const char *args)
         xmce_get_low_power_mode();
         xmce_get_lpmui_triggering();
         xmce_get_als_mode();
+        xmce_get_als_input_filter();
+        xmce_get_als_sample_time();
         xmce_get_ps_mode();
         xmce_get_dim_timeouts();
         xmce_get_brightness_fade();
@@ -4427,6 +4500,23 @@ static const mce_opt_t options[] =
                         "set the als mode; valid modes are:\n"
                         "'enabled' and 'disabled'\n"
         },
+        {
+                .name        = "set-als-input-filter",
+                .with_arg    = xmce_set_als_input_filter,
+                .values      = "disabled|median",
+                .usage       =
+                        "set the als input filter; valid filters are:\n"
+                        "'disabled', 'median'\n"
+        },
+        {
+                .name        = "set-als-sample-time",
+                .with_arg    = xmce_set_als_sample_time,
+                .values      = "50...1000",
+                .usage       =
+                        "set the sample slot size for als input filtering;\n"
+                        "valid values are: 50-1000\n"
+        },
+
         {
                 .name        = "set-ps-mode",
                 .flag        = 'u',
