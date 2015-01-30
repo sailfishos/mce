@@ -2418,6 +2418,29 @@ static void xmce_get_ps_mode(void)
         printf("%-"PAD1"s %s\n", "Use ps mode:", txt);
 }
 
+/** Set ps can block touch input mode
+ *
+ * @param args string suitable for interpreting as enabled/disabled
+ */
+static bool xmce_set_ps_blocks_touch(const char *args)
+{
+        gboolean val = xmce_parse_enabled(args);
+        mcetool_gconf_set_bool(MCE_GCONF_PROXIMITY_BLOCKS_TOUCH, val);
+        return true;
+}
+
+/** Get current ps can block touch input mode and print it out
+ */
+static void xmce_get_ps_blocks_touch(void)
+{
+        gboolean val = 0;
+        char txt[32] = "unknown";
+
+        if( mcetool_gconf_get_bool(MCE_GCONF_PROXIMITY_BLOCKS_TOUCH, &val) )
+                snprintf(txt, sizeof txt, "%s", val ? "enabled" : "disabled");
+        printf("%-"PAD1"s %s\n", "Touch can be blocked by ps:", txt);
+}
+
 /* ------------------------------------------------------------------------- *
  * als
  * ------------------------------------------------------------------------- */
@@ -3921,6 +3944,7 @@ static bool xmce_get_status(const char *args)
         xmce_get_als_input_filter();
         xmce_get_als_sample_time();
         xmce_get_ps_mode();
+        xmce_get_ps_blocks_touch();
         xmce_get_dim_timeouts();
         xmce_get_brightness_fade();
         xmce_get_suspend_policy();
@@ -4523,6 +4547,13 @@ static const mce_opt_t options[] =
                 .with_arg    = xmce_set_ps_mode,
                 .values      = "enabled|disabled",
                         "set the ps mode; valid modes are:\n"
+                        "'enabled' and 'disabled'\n"
+        },
+        {
+                .name        = "set-ps-blocks-touch",
+                .with_arg    = xmce_set_ps_blocks_touch,
+                .values      = "enabled|disabled",
+                        "allow ps to block touch input; valid modes are:\n"
                         "'enabled' and 'disabled'\n"
         },
         {
