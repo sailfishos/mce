@@ -362,6 +362,11 @@ static gboolean tk_autolock_enabled = DEFAULT_TK_AUTOLOCK;
 /** GConf callback ID for tk_autolock_enabled */
 static guint tk_autolock_enabled_cb_id = 0;
 
+/** Flag: Proximity sensor can block touch input */
+static gboolean proximity_blocks_touch = PROXIMITY_BLOCKS_TOUCH_DEFAULT;
+/** GConf callback ID for proximity_blocks_touch */
+static guint proximity_blocks_touch_cb_id = 0;
+
 /** Touchscreen double tap gesture policy */
 static gint doubletap_gesture_policy = DBLTAP_ACTION_DEFAULT;
 /** GConf callback ID for doubletap_gesture_policy */
@@ -3422,8 +3427,11 @@ static void tklock_evctrl_rethink(void)
     }
 
     /* Grabbing touch input is always permitted, but ungrabbing
-     * only when proximity sensor is not covered */
-    if( grab_ts || proximity_state_effective == COVER_OPEN ) {
+     * only when proximity sensor is not covered / proximity
+     * blocks input feature is disabled */
+    if( grab_ts ||
+        !proximity_blocks_touch ||
+        proximity_state_effective == COVER_OPEN ) {
         execute_datapipe(&touch_grab_wanted_pipe,
                          GINT_TO_POINTER(grab_ts),
                          USE_INDATA, CACHE_INDATA);
@@ -3590,6 +3598,10 @@ static void tklock_gconf_cb(GConfClient *const gcc, const guint id,
         tk_autolock_enabled = gconf_value_get_bool(gcv) ? 1 : 0;
         tklock_autolock_rethink();
     }
+    else if( id == proximity_blocks_touch_cb_id ) {
+        proximity_blocks_touch = gconf_value_get_bool(gcv) ? 1 : 0;
+        tklock_evctrl_rethink();
+    }
     else if( id == doubletap_gesture_policy_cb_id ) {
         doubletap_gesture_policy = gconf_value_get_int(gcv);
         tklock_gconf_sanitize_doubletap_gesture_policy();
@@ -3686,6 +3698,14 @@ static void tklock_gconf_init(void)
                            &tklock_lpmui_triggering_cb_id);
 
     mce_gconf_get_int(MCE_GCONF_LPMUI_TRIGGERING, &tklock_lpmui_triggering);
+
+    /* Proximity can block touch input */
+    mce_gconf_notifier_add(MCE_GCONF_LOCK_PATH,
+                           MCE_GCONF_PROXIMITY_BLOCKS_TOUCH,
+                           tklock_gconf_cb,
+                           &proximity_blocks_touch_cb_id);
+    mce_gconf_get_bool(MCE_GCONF_PROXIMITY_BLOCKS_TOUCH,
+                       &proximity_blocks_touch);
 }
 
 /** Remove gconf change notifiers
@@ -3706,6 +3726,9 @@ static void tklock_gconf_quit(void)
 
     mce_gconf_notifier_remove(tklock_lpmui_triggering_cb_id),
         tklock_lpmui_triggering_cb_id = 0;
+
+    mce_gconf_notifier_remove(proximity_blocks_touch_cb_id),
+        proximity_blocks_touch_cb_id = 0;
 }
 
 /* ========================================================================= *

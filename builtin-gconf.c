@@ -23,6 +23,7 @@
 #include "mce-dbus.h"
 
 #include "powerkey.h"
+#include "tklock.h"
 
 #include "modules/memnotify.h"
 #include "modules/filter-brightness-als.h"
@@ -1184,6 +1185,12 @@ static const setting_t gconf_defaults[] =
     .key  = "/system/osso/dsm/locks/lpm_triggering",
     .type = "i",
     .def  = "1", // = LPMUI_TRIGGERING_FROM_POCKET
+  },
+  {
+    // MCE_GCONF_PROXIMITY_BLOCKS_TOUCH @ tklock.h
+    .key  = "/system/osso/dsm/locks/proximity_blocks_touch",
+    .type = "b",
+    .def  = G_STRINGIFY(PROXIMITY_BLOCKS_TOUCH_DEFAULT),
   },
   {
     // MCE_GCONF_BLANKING_INHIBIT_MODE @ modules/display.h
