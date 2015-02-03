@@ -1615,6 +1615,11 @@ static void mdy_datapipe_orientation_state_cb(gconstpointer data)
 
     mce_log(LL_DEBUG, "orientation_state = %d", orientation_state);
 
+    /* No activity from sensor power up/down */
+    if( prev == MCE_ORIENTATION_UNDEFINED ||
+        orientation_state ==  MCE_ORIENTATION_UNDEFINED )
+        goto EXIT;
+
     mdy_orientation_generate_activity();
 EXIT:
     return;
