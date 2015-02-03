@@ -1417,7 +1417,8 @@ static void mdy_datapipe_alarm_ui_state_cb(gconstpointer data)
     if( alarm_ui_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "alarm_ui_state = %d", alarm_ui_state);
+    mce_log(LL_DEBUG, "alarm_ui_state = %s",
+            alarm_state_repr(alarm_ui_state));
 
     mdy_blanking_rethink_timers(false);
 
@@ -1442,7 +1443,8 @@ static void mdy_datapipe_proximity_sensor_cb(gconstpointer data)
     if( proximity_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "proximity_state = %d", proximity_state);
+    mce_log(LL_DEBUG, "proximity_state = %s",
+            proximity_state_repr(proximity_state));
 
     /* handle toggling between LPM_ON and LPM_OFF */
     mdy_blanking_rethink_proximity();
@@ -1517,7 +1519,7 @@ static void mdy_datapipe_call_state_trigger_cb(gconstpointer data)
     if( call_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "call_state = %d", call_state);
+    mce_log(LL_DEBUG, "call_state = %s", call_state_repr(call_state));
 
     mdy_blanking_rethink_timers(false);
 
@@ -1613,7 +1615,8 @@ static void mdy_datapipe_orientation_state_cb(gconstpointer data)
     if( orientation_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "orientation_state = %d", orientation_state);
+    mce_log(LL_DEBUG, "orientation_state = %s",
+            orientation_state_repr(orientation_state));
 
     /* No activity from sensor power up/down */
     if( prev == MCE_ORIENTATION_UNDEFINED ||

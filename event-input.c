@@ -3095,7 +3095,7 @@ evin_ts_grab_display_state_cb(gconstpointer data)
 
     display_state_t display_state = GPOINTER_TO_INT(data);
 
-    mce_log(LL_DEBUG, "display_state=%d", display_state);
+    mce_log(LL_DEBUG, "display_state=%s", display_state_repr(display_state));
 
     switch( display_state ) {
     case MCE_DISPLAY_POWER_DOWN:
