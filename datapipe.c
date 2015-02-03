@@ -22,6 +22,9 @@
 
 #include "mce.h"
 #include "mce-log.h"
+#include "mce-lib.h"
+
+#include <mce/mode-names.h>
 
 #include <linux/input.h>
 
@@ -843,7 +846,7 @@ void mce_datapipe_init(void)
 	setup_datapipe(&ambient_light_sensor_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(400));
 	setup_datapipe(&orientation_sensor_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(0));
+		       0, GINT_TO_POINTER(MCE_ORIENTATION_UNDEFINED));
 	setup_datapipe(&tk_lock_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(LOCK_UNDEF));
 	setup_datapipe(&charger_state_pipe, READ_ONLY, DONT_FREE_CACHE,
@@ -1057,6 +1060,171 @@ const char *battery_status_repr(battery_status_t state)
 	default: break;
 	}
 	return res;
+}
+
+/** Convert alarm_ui_state_t enum to human readable string
+ *
+ * @param state alarm_ui_state_t enumeration value
+ *
+ * @return human readable representation of state
+ */
+const char *alarm_state_repr(alarm_ui_state_t state)
+{
+	const char *res = "UNKNOWN";
+
+	switch( state )	{
+	case MCE_ALARM_UI_INVALID_INT32: res = "INVALID"; break;
+	case MCE_ALARM_UI_OFF_INT32:     res = "OFF";     break;
+	case MCE_ALARM_UI_RINGING_INT32: res = "RINGING"; break;
+	case MCE_ALARM_UI_VISIBLE_INT32: res = "VISIBLE"; break;
+	default: break;
+	}
+
+	return res;
+}
+
+/** Mapping of call state integer <-> call state string */
+static const mce_translation_t call_state_translation[] =
+{
+	{
+		.number = CALL_STATE_NONE,
+		.string = MCE_CALL_STATE_NONE
+	},
+	{
+		.number = CALL_STATE_RINGING,
+		.string = MCE_CALL_STATE_RINGING,
+	},
+	{
+		.number = CALL_STATE_ACTIVE,
+		.string = MCE_CALL_STATE_ACTIVE,
+	},
+	{
+		.number = CALL_STATE_SERVICE,
+		.string = MCE_CALL_STATE_SERVICE
+	},
+	{ /* MCE_INVALID_TRANSLATION marks the end of this array */
+		.number = MCE_INVALID_TRANSLATION,
+		.string = MCE_CALL_STATE_NONE
+	}
+};
+
+/** MCE call state number to string
+ */
+const char *call_state_repr(call_state_t state)
+{
+	return mce_translate_int_to_string(call_state_translation, state);
+}
+
+/** String to MCE call state number */
+call_state_t call_state_parse(const char *name)
+{
+	return mce_translate_string_to_int(call_state_translation, name);
+}
+
+/** Mapping of call type integer <-> call type string */
+static const mce_translation_t call_type_translation[] =
+{
+	{
+		.number = NORMAL_CALL,
+		.string = MCE_NORMAL_CALL
+	},
+	{
+		.number = EMERGENCY_CALL,
+		.string = MCE_EMERGENCY_CALL
+	},
+	{ /* MCE_INVALID_TRANSLATION marks the end of this array */
+		.number = MCE_INVALID_TRANSLATION,
+		.string = MCE_NORMAL_CALL
+	}
+};
+
+/** MCE call type number to string
+ */
+const char *call_type_repr(call_type_t type)
+{
+	return mce_translate_int_to_string(call_type_translation, type);
+}
+
+/** String to MCE call type number
+ */
+call_type_t call_type_parse(const char *name)
+{
+	return mce_translate_string_to_int(call_type_translation, name);
+}
+
+/** Helper for getting cover_state_t in human readable form
+ *
+ * @param state cover state enum value
+ *
+ * @return enum name without "COVER_" prefix
+ */
+const char *cover_state_repr(cover_state_t state)
+{
+	const char *res = "UNKNOWN";
+	switch( state ) {
+	case COVER_UNDEF:  res = "UNDEF";  break;
+	case COVER_CLOSED: res = "CLOSED"; break;
+	case COVER_OPEN:   res = "OPEN";   break;
+	default: break;
+	}
+	return res;
+}
+
+/** Proximity state enum to human readable string
+ *
+ * @param state Cover state enumeration value
+ *
+ * @return cover state as human readable proximity state name
+ */
+const char *proximity_state_repr(cover_state_t state)
+{
+	const char *repr = "unknown";
+	switch( state ) {
+	case COVER_UNDEF:  repr = "undefined";   break;
+	case COVER_CLOSED: repr = "covered";     break;
+	case COVER_OPEN:   repr = "not covered"; break;
+	default:
+		break;
+	}
+	return repr;
+}
+
+/** Display state to human readable string
+ */
+const char *display_state_repr(display_state_t state)
+{
+	const char *repr = "UNKNOWN";
+
+	switch( state ) {
+	case MCE_DISPLAY_UNDEF:      repr = "UNDEF";      break;
+	case MCE_DISPLAY_OFF:        repr = "OFF";        break;
+	case MCE_DISPLAY_LPM_OFF:    repr = "LPM_OFF";    break;
+	case MCE_DISPLAY_LPM_ON:     repr = "LPM_ON";     break;
+	case MCE_DISPLAY_DIM:        repr = "DIM";        break;
+	case MCE_DISPLAY_ON:         repr = "ON";         break;
+	case MCE_DISPLAY_POWER_UP:   repr = "POWER_UP";   break;
+	case MCE_DISPLAY_POWER_DOWN: repr = "POWER_DOWN"; break;
+	default: break;
+	}
+
+	return repr;
+}
+
+/** Translate orientation state to human readable form */
+const char *orientation_state_repr(orientation_state_t state)
+{
+	const char *name = "UNKNOWN";
+	switch( state ) {
+	case MCE_ORIENTATION_UNDEFINED:   name = "UNDEFINED";   break;
+	case MCE_ORIENTATION_LEFT_UP:     name = "LEFT_UP";     break;
+	case MCE_ORIENTATION_RIGHT_UP:    name = "RIGHT_UP";    break;
+	case MCE_ORIENTATION_BOTTOM_UP:   name = "BOTTOM_UP";   break;
+	case MCE_ORIENTATION_BOTTOM_DOWN: name = "BOTTOM_DOWN"; break;
+	case MCE_ORIENTATION_FACE_DOWN:   name = "FACE_DOWN";   break;
+	case MCE_ORIENTATION_FACE_UP:     name = "FACE_UP";     break;
+	default: break;
+	}
+	return name;
 }
 
 void datapipe_handlers_install(datapipe_handler_t *bindings)

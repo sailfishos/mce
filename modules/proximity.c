@@ -345,24 +345,6 @@ EXIT:
 	return;
 }
 
-/** Helper for getting cover_state_t in human readable form
- *
- * @param state cover state enum value
- *
- * @return enum name without "COVER_" prefix
- */
-static const char *cover_state_repr(cover_state_t state)
-{
-	const char *res = "UNKNOWN";
-	switch( state ) {
-	case COVER_UNDEF:  res = "UNDEF";  break;
-	case COVER_CLOSED: res = "CLOSED"; break;
-	case COVER_OPEN:   res = "OPEN";   break;
-	default: break;
-	}
-	return res;
-}
-
 /** Broadcast proximity state within MCE
  *
  * @param state COVER_CLOSED or COVER_OPEN

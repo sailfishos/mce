@@ -3094,24 +3094,6 @@ static void (*sfw_notify_als_cb)(unsigned lux) = 0;
 /** Orientation change callback used for notifying upper level logic */
 static void (*sfw_notify_orient_cb)(int state) = 0;
 
-/** Translate orientation state to human readable form */
-static const char *
-orientation_state_name(orientation_state_t state)
-{
-    const char *name = "UNKNOWN";
-    switch( state ) {
-    case MCE_ORIENTATION_UNDEFINED:   name = "UNDEFINED";   break;
-    case MCE_ORIENTATION_LEFT_UP:     name = "LEFT_UP";     break;
-    case MCE_ORIENTATION_RIGHT_UP:    name = "RIGHT_UP";    break;
-    case MCE_ORIENTATION_BOTTOM_UP:   name = "BOTTOM_UP";   break;
-    case MCE_ORIENTATION_BOTTOM_DOWN: name = "BOTTOM_DOWN"; break;
-    case MCE_ORIENTATION_FACE_DOWN:   name = "FACE_DOWN";   break;
-    case MCE_ORIENTATION_FACE_UP:     name = "FACE_UP";     break;
-    default: break;
-    }
-    return name;
-}
-
 /** Translate notification type to human readable form
  */
 static const char *
@@ -3278,8 +3260,8 @@ sfw_notify_orient(sfw_notify_t type, int input_value)
 
     mce_log(LL_DEBUG, "%s: input %s -> notify %s",
             sfw_notify_name(type),
-            orientation_state_name(input_value),
-            orientation_state_name(output_value));
+            orientation_state_repr(input_value),
+            orientation_state_repr(output_value));
 
     sfw_notify_orient_cb(output_value);
 

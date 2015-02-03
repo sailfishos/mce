@@ -118,6 +118,8 @@ typedef enum {
 	MCE_ALARM_UI_VISIBLE_INT32 = 2,
 } alarm_ui_state_t;
 
+const char *alarm_state_repr(alarm_ui_state_t state);
+
 /** System sub-modes; several of these can be active at once */
 typedef gint submode_t;
 
@@ -181,6 +183,9 @@ typedef enum {
 	CALL_STATE_SERVICE = 3
 } call_state_t;
 
+const char *call_state_repr(call_state_t state);
+call_state_t call_state_parse(const char *name);
+
 /** Call type */
 typedef enum {
 	/** Invalid call type */
@@ -190,6 +195,9 @@ typedef enum {
 	/** The call is an emergency call */
 	EMERGENCY_CALL = 1
 } call_type_t;
+
+const char *call_type_repr(call_type_t type);
+call_type_t call_type_parse(const char *name);
 
 /** Display state */
 typedef enum {
@@ -203,12 +211,17 @@ typedef enum {
 	MCE_DISPLAY_POWER_DOWN,		/**< Display is suspending */
 } display_state_t;
 
+const char *display_state_repr(display_state_t state);
+
 /** Cover state */
 typedef enum {
 	COVER_UNDEF = -1,		/**< Cover state not set */
 	COVER_CLOSED = 0,		/**< Cover is closed */
 	COVER_OPEN = 1			/**< Cover is open */
 } cover_state_t;
+
+const char *cover_state_repr(cover_state_t state);
+const char *proximity_state_repr(cover_state_t state);
 
 /** Lock state */
 typedef enum {
@@ -308,6 +321,20 @@ typedef enum {
 } service_state_t;
 
 const char *service_state_repr(service_state_t state);
+
+/** These must match with what sensorfw uses */
+typedef enum
+{
+    MCE_ORIENTATION_UNDEFINED   = 0,  /**< Orientation is unknown. */
+    MCE_ORIENTATION_LEFT_UP     = 1,  /**< Device left side is up */
+    MCE_ORIENTATION_RIGHT_UP    = 2,  /**< Device right side is up */
+    MCE_ORIENTATION_BOTTOM_UP   = 3,  /**< Device bottom is up */
+    MCE_ORIENTATION_BOTTOM_DOWN = 4,  /**< Device bottom is down */
+    MCE_ORIENTATION_FACE_DOWN   = 5,  /**< Device face is down */
+    MCE_ORIENTATION_FACE_UP     = 6,  /**< Device face is up */
+} orientation_state_t;
+
+const char *orientation_state_repr(orientation_state_t state);
 
 /* XXX: use HAL */
 

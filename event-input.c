@@ -90,12 +90,6 @@
  * ========================================================================= */
 
 /* ------------------------------------------------------------------------- *
- * MISC_UTIL
- * ------------------------------------------------------------------------- */
-
-static const char  *proximity_state_repr                        (cover_state_t state);
-
-/* ------------------------------------------------------------------------- *
  * GPIO_KEYS  --  N900 camera focus key enable/disable policy
  * ------------------------------------------------------------------------- */
 
@@ -421,32 +415,6 @@ static void         evin_kp_grab_wanted_cb                      (gconstpointer d
 
 gboolean            mce_input_init                              (void);
 void                mce_input_exit                              (void);
-
-/* ========================================================================= *
- * MISC_UTIL
- * ========================================================================= */
-
-/** Proximity state enum to human readable string
- *
- * @param state Cover state enumeration value
- *
- * @return cover state as human readable proximity state name
- */
-static const char *
-proximity_state_repr(cover_state_t state)
-{
-    // FIXME: this function should be somewhere else
-
-    const char *repr = "unknown";
-    switch( state ) {
-    case COVER_UNDEF:  repr = "undefined";   break;
-    case COVER_CLOSED: repr = "covered";     break;
-    case COVER_OPEN:   repr = "not covered"; break;
-    default:
-        break;
-    }
-    return repr;
-}
 
 /* ========================================================================= *
  * GPIO_KEYS

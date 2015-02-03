@@ -580,7 +580,6 @@ static void                mdy_fbsusp_led_start_timer(mdy_fbsusp_led_state_t req
 
 // human readable state names
 static const char         *mdy_stm_state_name(stm_state_t state);
-static const char         *mdy_display_state_name(display_state_t state);
 
 // react to systemui availability changes
 static void                mdy_datapipe_compositor_available_cb(gconstpointer aptr);
@@ -1202,8 +1201,8 @@ static gpointer mdy_datapipe_display_state_filter_cb(gpointer data)
 UPDATE:
     if( want_state != next_state ) {
         mce_log(LL_DEBUG, "requested: %s, granted: %s",
-                mdy_display_state_name(want_state),
-                mdy_display_state_name(next_state));
+                display_state_repr(want_state),
+                display_state_repr(next_state));
     }
 
     /* Note: An attempt to keep the current state can lead into this
@@ -1246,7 +1245,7 @@ static void mdy_datapipe_display_state_req_cb(gconstpointer data)
             break;
 
         mce_log(LL_WARN, "%s is not valid target state; ignoring",
-                mdy_display_state_name(next_state));
+                display_state_repr(next_state));
         break;
     }
 }
@@ -5461,15 +5460,15 @@ static void mdy_display_state_enter(display_state_t prev_state,
                                         display_state_t next_state)
 {
     mce_log(LL_INFO, "END %s -> %s transition",
-            mdy_display_state_name(prev_state),
-            mdy_display_state_name(next_state));
+            display_state_repr(prev_state),
+            display_state_repr(next_state));
 
     /* Restore display_state_pipe to valid value */
     display_state_pipe.cached_data = GINT_TO_POINTER(next_state);
 
     /* Run display state change triggers */
     mce_log(LL_DEVEL, "current display state = %s",
-            mdy_display_state_name(next_state));
+            display_state_repr(next_state));
     execute_datapipe(&display_state_pipe,
                      GINT_TO_POINTER(next_state),
                      USE_INDATA, CACHE_INDATA);
@@ -5487,8 +5486,8 @@ static void mdy_display_state_leave(display_state_t prev_state,
                                     display_state_t next_state)
 {
     mce_log(LL_INFO, "BEG %s -> %s transition",
-            mdy_display_state_name(prev_state),
-            mdy_display_state_name(next_state));
+            display_state_repr(prev_state),
+            display_state_repr(next_state));
 
     /* Cancel display state specific timers that we do not want to
      * trigger while waiting for frame buffer suspend/resume. */
@@ -5542,7 +5541,7 @@ static void mdy_display_state_leave(display_state_t prev_state,
      * happens while display_state_pipe still holds the previous
      * (non-transitional) state */
     mce_log(LL_NOTICE, "target display state = %s",
-            mdy_display_state_name(next_state));
+            display_state_repr(next_state));
     execute_datapipe(&display_state_next_pipe,
                      GINT_TO_POINTER(next_state),
                      USE_INDATA, CACHE_INDATA);
@@ -5554,7 +5553,7 @@ static void mdy_display_state_leave(display_state_t prev_state,
             need_power ? MCE_DISPLAY_POWER_UP : MCE_DISPLAY_POWER_DOWN;
 
         mce_log(LL_DEVEL, "current display state = %s",
-                mdy_display_state_name(state));
+                display_state_repr(state));
         display_state_pipe.cached_data = GINT_TO_POINTER(state);
         execute_datapipe(&display_state_pipe,
                          display_state_pipe.cached_data,
@@ -5654,28 +5653,6 @@ static void mdy_fbsusp_led_start_timer(mdy_fbsusp_led_state_t req)
 /* ========================================================================= *
  * DISPLAY_STATE_MACHINE
  * ========================================================================= */
-
-/** Display state to human readable string
- */
-static const char *mdy_display_state_name(display_state_t state)
-{
-    const char *name = "UNKNOWN";
-
-#define DO(tag) case MCE_DISPLAY_##tag: name = #tag; break;
-    switch( state ) {
-        DO(UNDEF)
-        DO(OFF)
-        DO(LPM_OFF)
-        DO(LPM_ON)
-        DO(DIM)
-        DO(ON)
-        DO(POWER_UP)
-        DO(POWER_DOWN)
-    default: break;
-    }
-#undef DO
-    return name;
-}
 
 /** A setUpdatesEnabled(true) call needs to be made when possible */
 static bool mdy_stm_enable_rendering_needed = true;
