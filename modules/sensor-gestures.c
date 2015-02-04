@@ -123,7 +123,14 @@ static void sg_detect_flipover_gesture(void)
         goto EXIT;
     }
 
-    /* Check orientation state */
+    /* Check for undefined orientation state */
+    if( orientation_state_raw == MCE_ORIENTATION_UNDEFINED ||
+        orientation_state_eff == MCE_ORIENTATION_UNDEFINED ) {
+        primed = false;
+        goto EXIT;
+    }
+
+    /* Check effective orientation state */
     if( orientation_state_eff == MCE_ORIENTATION_FACE_UP ) {
         primed = true;
     }
@@ -157,6 +164,10 @@ static void sg_call_state_cb(gconstpointer const data)
     if( call_state == prev )
         goto EXIT;
 
+    mce_log(LL_DEBUG, "call: %s -> %s",
+            call_state_repr(prev),
+            call_state_repr(call_state));
+
     sg_detect_flipover_gesture();
 EXIT:
 
@@ -174,6 +185,10 @@ static void sg_alarm_ui_state_cb(gconstpointer data)
 
     if( alarm_ui_state == prev )
         goto EXIT;
+
+    mce_log(LL_DEBUG, "alarm: %s -> %s",
+            alarm_state_repr(prev),
+            alarm_state_repr(alarm_ui_state));
 
     sg_detect_flipover_gesture();
 
@@ -193,6 +208,10 @@ static void sg_display_state_cb(gconstpointer data)
     if( display_state == prev )
         goto EXIT;
 
+    mce_log(LL_DEBUG, "display: %s -> %s",
+            display_state_repr(prev),
+            display_state_repr(display_state));
+
     sg_detect_flipover_gesture();
 
 EXIT:
@@ -208,6 +227,10 @@ static void sg_orientation_state_update(void)
 
     if( orientation_state_eff == prev )
         goto EXIT;
+
+    mce_log(LL_DEBUG, "orient.eff: %s -> %s",
+            orientation_state_repr(prev),
+            orientation_state_repr(orientation_state_eff));
 
     sg_detect_flipover_gesture();
 
@@ -228,6 +251,8 @@ static gboolean sg_orientation_state_eff_cb(gpointer data)
     if( !orientation_state_eff_id )
         goto EXIT;
 
+    mce_log(LL_DEBUG, "orient.eff: timer triggered");
+
     orientation_state_eff_id = 0;
 
     sg_orientation_state_update();
@@ -245,6 +270,16 @@ static void sg_orientation_state_raw_cb(gconstpointer data)
     orientation_state_t prev = orientation_state_raw;
     orientation_state_raw = GPOINTER_TO_INT(data);
 
+    if( orientation_state_raw == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "orient.raw: %s -> %s",
+            orientation_state_repr(prev),
+            orientation_state_repr(orientation_state_raw));
+
+    /* Unprime if orientation is unknown */
+    sg_detect_flipover_gesture();
+
     /* When the orientation sensor is stopped and restarted,
      * sensord reports initially the last state that was seen
      * before the sensor was stopped.
@@ -258,6 +293,8 @@ static void sg_orientation_state_raw_cb(gconstpointer data)
     if( orientation_state_eff_id ) {
         g_source_remove(orientation_state_eff_id);
         orientation_state_eff_id = 0;
+
+        mce_log(LL_DEBUG, "orient.eff: timer canceled");
     }
 
     if( prev == MCE_ORIENTATION_UNDEFINED &&
@@ -265,15 +302,18 @@ static void sg_orientation_state_raw_cb(gconstpointer data)
         /* Invalidate effective sensor value */
         orientation_state_eff = MCE_ORIENTATION_UNDEFINED;
 
-        /* Schedule re-validation after 500 ms */
+        /* Schedule re-validation after 1000 ms */
         orientation_state_eff_id =
-            g_timeout_add(500, sg_orientation_state_eff_cb, 0);
+            g_timeout_add(1000, sg_orientation_state_eff_cb, 0);
+
+        mce_log(LL_DEBUG, "orient.eff: timer started");
     }
     else {
         /* Update effective sensor value immediately */
         sg_orientation_state_update();
     }
 
+EXIT:
     return;
 }
 

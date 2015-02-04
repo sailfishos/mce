@@ -22,14 +22,12 @@
 
 #include "../mce.h"
 #include "../mce-log.h"
-#include "../mce-lib.h"
 #include "../mce-dbus.h"
 
 #include <stdlib.h>
 #include <string.h>
 
 #include <mce/dbus-names.h>
-#include <mce/mode-names.h>
 
 #include <gmodule.h>
 
@@ -81,71 +79,6 @@ G_MODULE_EXPORT module_info_struct module_info = {
         /** Module priority */
         .priority = 250
 };
-
-/* ========================================================================= *
- * MCE CALL STATE / TYPE UTILS
- * ========================================================================= */
-
-/** Mapping of call state integer <-> call state string */
-static const mce_translation_t call_state_translation[] = {
-        {
-                .number = CALL_STATE_NONE,
-                .string = MCE_CALL_STATE_NONE
-        }, {
-                .number = CALL_STATE_RINGING,
-                .string = MCE_CALL_STATE_RINGING,
-        }, {
-                .number = CALL_STATE_ACTIVE,
-                .string = MCE_CALL_STATE_ACTIVE,
-        }, {
-                .number = CALL_STATE_SERVICE,
-                .string = MCE_CALL_STATE_SERVICE
-        }, { /* MCE_INVALID_TRANSLATION marks the end of this array */
-                .number = MCE_INVALID_TRANSLATION,
-                .string = MCE_CALL_STATE_NONE
-        }
-};
-
-/** MCE call state number to string
- */
-static const char *call_state_repr(call_state_t state)
-{
-    return mce_translate_int_to_string(call_state_translation, state);
-}
-
-/** String to MCE call state number */
-static call_state_t call_state_parse(const char *name)
-{
-    return mce_translate_string_to_int(call_state_translation, name);
-}
-
-/** Mapping of call type integer <-> call type string */
-static const mce_translation_t call_type_translation[] = {
-        {
-                .number = NORMAL_CALL,
-                .string = MCE_NORMAL_CALL
-        }, {
-                .number = EMERGENCY_CALL,
-                .string = MCE_EMERGENCY_CALL
-        }, { /* MCE_INVALID_TRANSLATION marks the end of this array */
-                .number = MCE_INVALID_TRANSLATION,
-                .string = MCE_NORMAL_CALL
-        }
-};
-
-/** MCE call type number to string
- */
-static const char *call_type_repr(call_type_t type)
-{
-    return mce_translate_int_to_string(call_type_translation, type);
-}
-
-/** String to MCE call type number
- */
-static call_type_t call_type_parse(const char *name)
-{
-    return mce_translate_string_to_int(call_type_translation, name);
-}
 
 /* ========================================================================= *
  * MODULE DATA

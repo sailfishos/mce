@@ -580,7 +580,6 @@ static void                mdy_fbsusp_led_start_timer(mdy_fbsusp_led_state_t req
 
 // human readable state names
 static const char         *mdy_stm_state_name(stm_state_t state);
-static const char         *mdy_display_state_name(display_state_t state);
 
 // react to systemui availability changes
 static void                mdy_datapipe_compositor_available_cb(gconstpointer aptr);
@@ -1202,8 +1201,8 @@ static gpointer mdy_datapipe_display_state_filter_cb(gpointer data)
 UPDATE:
     if( want_state != next_state ) {
         mce_log(LL_DEBUG, "requested: %s, granted: %s",
-                mdy_display_state_name(want_state),
-                mdy_display_state_name(next_state));
+                display_state_repr(want_state),
+                display_state_repr(next_state));
     }
 
     /* Note: An attempt to keep the current state can lead into this
@@ -1246,7 +1245,7 @@ static void mdy_datapipe_display_state_req_cb(gconstpointer data)
             break;
 
         mce_log(LL_WARN, "%s is not valid target state; ignoring",
-                mdy_display_state_name(next_state));
+                display_state_repr(next_state));
         break;
     }
 }
@@ -1284,6 +1283,9 @@ static void mdy_datapipe_display_state_next_cb(gconstpointer data)
         goto EXIT;
 
     mdy_ui_dimming_rethink();
+
+    /* Start/stop orientation sensor */
+    mdy_orientation_sensor_rethink();
 
 EXIT:
     return;
@@ -1418,7 +1420,8 @@ static void mdy_datapipe_alarm_ui_state_cb(gconstpointer data)
     if( alarm_ui_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "alarm_ui_state = %d", alarm_ui_state);
+    mce_log(LL_DEBUG, "alarm_ui_state = %s",
+            alarm_state_repr(alarm_ui_state));
 
     mdy_blanking_rethink_timers(false);
 
@@ -1443,7 +1446,8 @@ static void mdy_datapipe_proximity_sensor_cb(gconstpointer data)
     if( proximity_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "proximity_state = %d", proximity_state);
+    mce_log(LL_DEBUG, "proximity_state = %s",
+            proximity_state_repr(proximity_state));
 
     /* handle toggling between LPM_ON and LPM_OFF */
     mdy_blanking_rethink_proximity();
@@ -1518,7 +1522,7 @@ static void mdy_datapipe_call_state_trigger_cb(gconstpointer data)
     if( call_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "call_state = %d", call_state);
+    mce_log(LL_DEBUG, "call_state = %s", call_state_repr(call_state));
 
     mdy_blanking_rethink_timers(false);
 
@@ -1614,7 +1618,13 @@ static void mdy_datapipe_orientation_state_cb(gconstpointer data)
     if( orientation_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "orientation_state = %d", orientation_state);
+    mce_log(LL_DEBUG, "orientation_state = %s",
+            orientation_state_repr(orientation_state));
+
+    /* No activity from sensor power up/down */
+    if( prev == MCE_ORIENTATION_UNDEFINED ||
+        orientation_state ==  MCE_ORIENTATION_UNDEFINED )
+        goto EXIT;
 
     mdy_orientation_generate_activity();
 EXIT:
@@ -5357,16 +5367,15 @@ static void mdy_orientation_sensor_rethink(void)
     /* Enable orientation sensor in ON|DIM */
 
     /* Start the orientation sensor already when powering up
-     * to ON|DIM states -> we have valid sensor state about the
-     * same time as display transition finishes.
-     *
-     * FIXME: This needs to be revisited when LPM display states
-     *         are taken in use.
+     * to ON|DIM|LPM_ON states -> we should have a valid sensor
+     * state before the display transition finishes.
      */
-    switch( display_state ) {
+    switch( display_state_next ) {
     case MCE_DISPLAY_DIM:
     case MCE_DISPLAY_ON:
+    case MCE_DISPLAY_LPM_ON:
     case MCE_DISPLAY_POWER_UP:
+        /* Add notification before enabling to get initial guess */
         mce_sensorfw_orient_set_notify(mdy_orientation_changed_cb);
         mce_sensorfw_orient_enable();
         break;
@@ -5375,8 +5384,8 @@ static void mdy_orientation_sensor_rethink(void)
     case MCE_DISPLAY_UNDEF:
     case MCE_DISPLAY_OFF:
     case MCE_DISPLAY_LPM_OFF:
-    case MCE_DISPLAY_LPM_ON:
     case MCE_DISPLAY_POWER_DOWN:
+        /* Remove notification after disabling to get final state */
         mce_sensorfw_orient_disable();
         mce_sensorfw_orient_set_notify(0);
         break;
@@ -5397,9 +5406,6 @@ static void mdy_display_state_changed(void)
 
     /* Program dim/blank timers */
     mdy_blanking_rethink_timers(false);
-
-    /* Start/stop orientation sensor */
-    mdy_orientation_sensor_rethink();
 
     /* Enable/disable high brightness mode */
     mdy_hbm_rethink();
@@ -5461,15 +5467,15 @@ static void mdy_display_state_enter(display_state_t prev_state,
                                         display_state_t next_state)
 {
     mce_log(LL_INFO, "END %s -> %s transition",
-            mdy_display_state_name(prev_state),
-            mdy_display_state_name(next_state));
+            display_state_repr(prev_state),
+            display_state_repr(next_state));
 
     /* Restore display_state_pipe to valid value */
     display_state_pipe.cached_data = GINT_TO_POINTER(next_state);
 
     /* Run display state change triggers */
     mce_log(LL_DEVEL, "current display state = %s",
-            mdy_display_state_name(next_state));
+            display_state_repr(next_state));
     execute_datapipe(&display_state_pipe,
                      GINT_TO_POINTER(next_state),
                      USE_INDATA, CACHE_INDATA);
@@ -5487,8 +5493,8 @@ static void mdy_display_state_leave(display_state_t prev_state,
                                     display_state_t next_state)
 {
     mce_log(LL_INFO, "BEG %s -> %s transition",
-            mdy_display_state_name(prev_state),
-            mdy_display_state_name(next_state));
+            display_state_repr(prev_state),
+            display_state_repr(next_state));
 
     /* Cancel display state specific timers that we do not want to
      * trigger while waiting for frame buffer suspend/resume. */
@@ -5542,7 +5548,7 @@ static void mdy_display_state_leave(display_state_t prev_state,
      * happens while display_state_pipe still holds the previous
      * (non-transitional) state */
     mce_log(LL_NOTICE, "target display state = %s",
-            mdy_display_state_name(next_state));
+            display_state_repr(next_state));
     execute_datapipe(&display_state_next_pipe,
                      GINT_TO_POINTER(next_state),
                      USE_INDATA, CACHE_INDATA);
@@ -5554,7 +5560,7 @@ static void mdy_display_state_leave(display_state_t prev_state,
             need_power ? MCE_DISPLAY_POWER_UP : MCE_DISPLAY_POWER_DOWN;
 
         mce_log(LL_DEVEL, "current display state = %s",
-                mdy_display_state_name(state));
+                display_state_repr(state));
         display_state_pipe.cached_data = GINT_TO_POINTER(state);
         execute_datapipe(&display_state_pipe,
                          display_state_pipe.cached_data,
@@ -5654,28 +5660,6 @@ static void mdy_fbsusp_led_start_timer(mdy_fbsusp_led_state_t req)
 /* ========================================================================= *
  * DISPLAY_STATE_MACHINE
  * ========================================================================= */
-
-/** Display state to human readable string
- */
-static const char *mdy_display_state_name(display_state_t state)
-{
-    const char *name = "UNKNOWN";
-
-#define DO(tag) case MCE_DISPLAY_##tag: name = #tag; break;
-    switch( state ) {
-        DO(UNDEF)
-        DO(OFF)
-        DO(LPM_OFF)
-        DO(LPM_ON)
-        DO(DIM)
-        DO(ON)
-        DO(POWER_UP)
-        DO(POWER_DOWN)
-    default: break;
-    }
-#undef DO
-    return name;
-}
 
 /** A setUpdatesEnabled(true) call needs to be made when possible */
 static bool mdy_stm_enable_rendering_needed = true;

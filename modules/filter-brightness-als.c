@@ -1014,8 +1014,9 @@ static void display_state_trigger(gconstpointer data)
 	if( prev == display_state )
 		goto EXIT;
 
-	mce_log(LL_DEBUG, "display_state: %d -> %d",
-		prev, display_state);
+	mce_log(LL_DEBUG, "display_state: %s -> %s",
+		display_state_repr(prev),
+		display_state_repr(display_state));
 
 	rethink_als_status();
 
@@ -1031,8 +1032,9 @@ static void display_state_next_trigger(gconstpointer data)
 	if( prev == display_state_next )
 		goto EXIT;
 
-	mce_log(LL_DEBUG, "display_state_next: %d -> %d",
-		prev, display_state_next);
+	mce_log(LL_DEBUG, "display_state_next: %s -> %s",
+		display_state_repr(prev),
+		display_state_repr(display_state_next));
 
 	rethink_als_status();
 

@@ -60,21 +60,6 @@ G_MODULE_EXPORT module_info_struct module_info = {
 	.priority = 250
 };
 
-static const char *alarm_state_repr(alarm_ui_state_t state)
-{
-	const char *res = "UNKNOWN";
-
-	switch( state )	{
-	case MCE_ALARM_UI_INVALID_INT32: res = "INVALID"; break;
-	case MCE_ALARM_UI_OFF_INT32:     res = "OFF";     break;
-	case MCE_ALARM_UI_RINGING_INT32: res = "RINGING"; break;
-	case MCE_ALARM_UI_VISIBLE_INT32: res = "VISIBLE"; break;
-	default: break;
-	}
-
-	return res;
-}
-
 static void alarm_sync_state_to_datapipe(alarm_ui_state_t state)
 {
 	if( datapipe_get_gint(alarm_ui_state_pipe) == state )

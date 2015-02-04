@@ -23,12 +23,14 @@ builtin-gconf.pic.o:\
 datapipe.o:\
 	datapipe.c\
 	datapipe.h\
+	mce-lib.h\
 	mce-log.h\
 	mce.h\
 
 datapipe.pic.o:\
 	datapipe.c\
 	datapipe.h\
+	mce-lib.h\
 	mce-log.h\
 	mce.h\
 
@@ -443,7 +445,6 @@ modules/callstate.o:\
 	builtin-gconf.h\
 	datapipe.h\
 	mce-dbus.h\
-	mce-lib.h\
 	mce-log.h\
 	mce.h\
 
@@ -452,7 +453,6 @@ modules/callstate.pic.o:\
 	builtin-gconf.h\
 	datapipe.h\
 	mce-dbus.h\
-	mce-lib.h\
 	mce-log.h\
 	mce.h\
 

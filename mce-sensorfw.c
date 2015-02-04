@@ -370,6 +370,9 @@ struct sfw_backend_t
 
     /** Callback for restoring sensor value back to last-known */
     sfw_reset_fn  be_restore_cb;
+
+    /** Callback for setting sensor value when stopped */
+    sfw_reset_fn  be_forget_cb;
 };
 
 /* ========================================================================= *
@@ -713,6 +716,7 @@ static void              sfw_plugin_handle_sample       (sfw_plugin_t *self, con
 static void              sfw_plugin_handle_value        (sfw_plugin_t *self, unsigned value);
 static void              sfw_plugin_reset_value         (sfw_plugin_t *self);
 static void              sfw_plugin_restore_value       (sfw_plugin_t *self);
+static void              sfw_plugin_forget_value        (sfw_plugin_t *self);
 
 static void              sfw_plugin_cancel_load         (sfw_plugin_t *self);
 
@@ -817,7 +821,7 @@ static void              sfw_service_set_orient         (sfw_service_t *self, bo
 #define SWF_NOTIFY_DEFAULT_ALS 400
 
 /** Orientation state to use when sensor can't be enabled */
-#define SWF_NOTIFY_DEFAULT_ORIENT MCE_ORIENTATION_FACE_UP
+#define SWF_NOTIFY_DEFAULT_ORIENT MCE_ORIENTATION_UNDEFINED
 
 /** Dummy sensor value to use when re-sending cached state data */
 #define SWF_NOTIFY_DUMMY 0
@@ -1045,6 +1049,7 @@ static const sfw_backend_t sfw_backend_ps =
 
     .be_reset_cb         = sfw_backend_ps_reset_cb,
     .be_restore_cb       = sfw_backend_ps_restore_cb,
+    .be_forget_cb        = 0,
 };
 
 /** Data and callbacks for ambient light sensor */
@@ -1062,6 +1067,7 @@ static const sfw_backend_t sfw_backend_als =
 
     .be_reset_cb         = sfw_backend_als_reset_cb,
     .be_restore_cb       = sfw_backend_als_restore_cb,
+    .be_forget_cb        = 0,
 };
 
 /** Data and callbacks for orientation sensor */
@@ -1079,6 +1085,7 @@ static const sfw_backend_t sfw_backend_orient =
 
     .be_reset_cb         = sfw_backend_orient_reset_cb,
     .be_restore_cb       = sfw_backend_orient_restore_cb,
+    .be_forget_cb        = sfw_backend_orient_reset_cb,
 };
 
 /* ========================================================================= *
@@ -1316,6 +1323,9 @@ sfw_reporting_trans(sfw_reporting_t *self, sfw_reporting_state_t state)
         break;
 
     case REPORTING_DISABLING:
+        // optional: switch to sensor stopped value
+        sfw_plugin_forget_value(self->rep_plugin);
+
         dbus_send_ex(SENSORFW_SERVICE,
                      sfw_plugin_get_sensor_object(self->rep_plugin),
                      sfw_plugin_get_sensor_interface(self->rep_plugin),
@@ -2519,6 +2529,20 @@ sfw_plugin_restore_value(sfw_plugin_t *self)
         self->plg_backend->be_restore_cb(self);
 }
 
+/** Set sensor state when stopped
+ *
+ * Used when sensor tracking is stopped
+ */
+static void
+sfw_plugin_forget_value(sfw_plugin_t *self)
+{
+    mce_log(LL_DEBUG, "plugin(%s): stopped",
+            sfw_plugin_get_sensor_name(self));
+
+    if( self->plg_backend->be_forget_cb )
+        self->plg_backend->be_forget_cb(self);
+}
+
 /** Get size of sensor specific change event
  */
 static size_t
@@ -3094,24 +3118,6 @@ static void (*sfw_notify_als_cb)(unsigned lux) = 0;
 /** Orientation change callback used for notifying upper level logic */
 static void (*sfw_notify_orient_cb)(int state) = 0;
 
-/** Translate orientation state to human readable form */
-static const char *
-orientation_state_name(orientation_state_t state)
-{
-    const char *name = "UNKNOWN";
-    switch( state ) {
-    case MCE_ORIENTATION_UNDEFINED:   name = "UNDEFINED";   break;
-    case MCE_ORIENTATION_LEFT_UP:     name = "LEFT_UP";     break;
-    case MCE_ORIENTATION_RIGHT_UP:    name = "RIGHT_UP";    break;
-    case MCE_ORIENTATION_BOTTOM_UP:   name = "BOTTOM_UP";   break;
-    case MCE_ORIENTATION_BOTTOM_DOWN: name = "BOTTOM_DOWN"; break;
-    case MCE_ORIENTATION_FACE_DOWN:   name = "FACE_DOWN";   break;
-    case MCE_ORIENTATION_FACE_UP:     name = "FACE_UP";     break;
-    default: break;
-    }
-    return name;
-}
-
 /** Translate notification type to human readable form
  */
 static const char *
@@ -3257,6 +3263,7 @@ sfw_notify_orient(sfw_notify_t type, int input_value)
 
     case NOTIFY_RESET:
         tracking_active = false;
+        cached_value = default_value;
         break;
 
     case NOTIFY_RESTORE:
@@ -3278,8 +3285,8 @@ sfw_notify_orient(sfw_notify_t type, int input_value)
 
     mce_log(LL_DEBUG, "%s: input %s -> notify %s",
             sfw_notify_name(type),
-            orientation_state_name(input_value),
-            orientation_state_name(output_value));
+            orientation_state_repr(input_value),
+            orientation_state_repr(output_value));
 
     sfw_notify_orient_cb(output_value);
 

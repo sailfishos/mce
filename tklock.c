@@ -690,7 +690,9 @@ static void tklock_datapipe_display_state_cb(gconstpointer data)
     if( display_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "display_state = %d -> %d", prev, display_state);
+    mce_log(LL_DEBUG, "display_state = %s -> %s",
+            display_state_repr(prev),
+            display_state_repr(display_state));
 
     if( display_state == MCE_DISPLAY_DIM )
         tklock_ui_eat_event();
@@ -711,8 +713,9 @@ static void tklock_datapipe_display_state_next_cb(gconstpointer data)
 {
     display_state_next = GPOINTER_TO_INT(data);
 
-    mce_log(LL_DEBUG, "display_state_next = %d -> %d",
-            display_state, display_state_next);
+    mce_log(LL_DEBUG, "display_state_next = %s -> %s",
+            display_state_repr(display_state),
+            display_state_repr(display_state_next));
 
     if( display_state_next == display_state )
         goto EXIT;
@@ -762,8 +765,9 @@ static void tklock_datapipe_proximity_update(void)
     if( proximity_state_effective == proximity_state_actual )
         goto EXIT;
 
-    mce_log(LL_DEVEL, "proximity_state_effective = %d -> %d",
-            proximity_state_effective, proximity_state_actual);
+    mce_log(LL_DEVEL, "proximity_state_effective = %s -> %s",
+            proximity_state_repr(proximity_state_effective),
+            proximity_state_repr(proximity_state_actual));
 
     proximity_state_effective = proximity_state_actual;
 
@@ -847,7 +851,9 @@ static void tklock_datapipe_proximity_sensor_cb(gconstpointer data)
     if( proximity_state_actual == prev )
         goto EXIT;
 
-    mce_log(LL_DEVEL, "proximity_state_actual = %d -> %d", prev, proximity_state_actual);
+    mce_log(LL_DEVEL, "proximity_state_actual = %s -> %s",
+            proximity_state_repr(prev),
+            proximity_state_repr(proximity_state_actual));
 
     /* update lpm ui proximity history using raw data */
     tklock_lpmui_update_history(proximity_state_actual);
@@ -880,7 +886,9 @@ static void tklock_datapipe_call_state_cb(gconstpointer data)
     if( call_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "call_state = %d -> %d", prev, call_state);
+    mce_log(LL_DEBUG, "call_state = %s -> %s",
+            call_state_repr(prev),
+            call_state_repr(call_state));
 
     switch( call_state ) {
     case CALL_STATE_RINGING:
@@ -947,7 +955,9 @@ static void tklock_datapipe_alarm_ui_state_cb(gconstpointer data)
     if( alarm_ui_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "alarm_ui_state = %d -> %d", prev, alarm_ui_state);
+    mce_log(LL_DEBUG, "alarm_ui_state = %s -> %s",
+            alarm_state_repr(prev),
+            alarm_state_repr(alarm_ui_state));
 
     switch( alarm_ui_state ) {
     case MCE_ALARM_UI_RINGING_INT32:
@@ -1037,7 +1047,9 @@ static void tklock_datapipe_usb_cable_cb(gconstpointer data)
     if( prev == usb_cable_state )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "usb_cable_state = %d -> %d", prev, usb_cable_state);
+    mce_log(LL_DEBUG, "usb_cable_state = %s -> %s",
+            usb_cable_state_repr(prev),
+            usb_cable_state_repr(usb_cable_state));
 
     /* No exception on mce startup */
     if( prev == USB_CABLE_UNDEF )
@@ -1083,7 +1095,9 @@ static void tklock_datapipe_jack_sense_cb(gconstpointer data)
     if( prev == jack_sense_state )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "jack_sense_state = %d -> %d", prev, jack_sense_state);
+    mce_log(LL_DEBUG, "jack_sense_state = %s -> %s",
+            cover_state_repr(prev),
+            cover_state_repr(jack_sense_state));
 
     mce_tklock_begin_notification(0, "mce_jack_sense", EXCEPTION_LENGTH_JACK, -1);
 
@@ -1475,7 +1489,9 @@ static void tklock_datapipe_keyboard_slide_input_cb(gconstpointer const data)
     if( kbd_slide_input_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "kbd_slide_input_state = %d -> %d", prev, kbd_slide_input_state);
+    mce_log(LL_DEBUG, "kbd_slide_input_state = %s -> %s",
+            cover_state_repr(prev),
+            cover_state_repr(kbd_slide_input_state));
 
     bool display_on = (display_state_next == MCE_DISPLAY_ON ||
                        display_state_next == MCE_DISPLAY_DIM);
@@ -1547,7 +1563,9 @@ tklock_datapipe_keyboard_slide_output_cb(gconstpointer const data)
     if( kbd_slide_output_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "kbd_slide_output_state = %d -> %d", prev, kbd_slide_output_state);
+    mce_log(LL_DEBUG, "kbd_slide_output_state = %s -> %s",
+            cover_state_repr(prev),
+            cover_state_repr(kbd_slide_output_state));
 
     tklock_dbus_send_keyboard_slide_state(0);
 
@@ -1567,7 +1585,9 @@ tklock_datapipe_keyboard_available_cb(gconstpointer const data)
     if( kbd_available_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "kbd_available_state = %d -> %d", prev, kbd_available_state);
+    mce_log(LL_DEBUG, "kbd_available_state = %s -> %s",
+            cover_state_repr(prev),
+            cover_state_repr(kbd_available_state));
 
     tklock_dbus_send_keyboard_available_state(0);
 
@@ -1594,7 +1614,9 @@ static void tklock_datapipe_lid_cover_cb(gconstpointer data)
     if( lid_cover_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "lid_cover_state = %d -> %d", prev, lid_cover_state);
+    mce_log(LL_DEBUG, "lid_cover_state = %s -> %s",
+            cover_state_repr(prev),
+            cover_state_repr(lid_cover_state));
 
     switch( lid_cover_state ) {
     case COVER_CLOSED:
@@ -1642,7 +1664,9 @@ static void tklock_datapipe_lens_cover_cb(gconstpointer data)
     if( lens_cover_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "lens_cover_state = %d -> %d", prev, lens_cover_state);
+    mce_log(LL_DEBUG, "lens_cover_state = %s -> %s",
+            cover_state_repr(prev),
+            cover_state_repr(lens_cover_state));
 
     // TODO: COVER_OPEN  -> display on, unlock, reason=AUTORELOCK_KBD_SLIDE
     // TODO: COVER_CLOSE -> display off, lock if reason==AUTORELOCK_KBD_SLIDE
@@ -2170,8 +2194,9 @@ static void tklock_autolock_rethink(void)
 {
     static display_state_t prev_display_state = MCE_DISPLAY_UNDEF;
 
-    mce_log(LL_DEBUG, "display state: %d -> %d", prev_display_state,
-            display_state);
+    mce_log(LL_DEBUG, "display state: %s -> %s",
+            display_state_repr(prev_display_state),
+            display_state_repr(display_state));
 
     /* If we are already tklocked, handling exceptional ui state
      * or autolocking is disabled -> deactivate state machine */
@@ -2286,8 +2311,9 @@ static void tklock_proxlock_rethink(void)
     static cover_state_t prev_proximity_state = COVER_UNDEF;
     static display_state_t prev_display_state = MCE_DISPLAY_UNDEF;
 
-    mce_log(LL_DEBUG, "display state: %d -> %d", prev_display_state,
-            display_state);
+    mce_log(LL_DEBUG, "display state: %s -> %s",
+            display_state_repr(prev_display_state),
+            display_state_repr(display_state));
 
     if( exception_state || tklock_ui_enabled ) {
         //mce_log(LL_DEBUG, "handling exception or already tklocked");
@@ -2523,8 +2549,9 @@ static void tklock_uiexcept_rethink(void)
 
     // re-sync on display on transition
     if( display_prev != display_state ) {
-        mce_log(LL_DEBUG, "display state: %d -> %d",
-                display_prev, display_state);
+        mce_log(LL_DEBUG, "display state: %s -> %s",
+                display_state_repr(display_prev),
+                display_state_repr(display_state));
         if( display_state == MCE_DISPLAY_ON ) {
             if( !exdata.insync )
                 mce_log(LL_NOTICE, "display unblanked; assuming in sync again");
