@@ -1284,6 +1284,9 @@ static void mdy_datapipe_display_state_next_cb(gconstpointer data)
 
     mdy_ui_dimming_rethink();
 
+    /* Start/stop orientation sensor */
+    mdy_orientation_sensor_rethink();
+
 EXIT:
     return;
 }
@@ -5370,10 +5373,11 @@ static void mdy_orientation_sensor_rethink(void)
      * FIXME: This needs to be revisited when LPM display states
      *         are taken in use.
      */
-    switch( display_state ) {
+    switch( display_state_next ) {
     case MCE_DISPLAY_DIM:
     case MCE_DISPLAY_ON:
     case MCE_DISPLAY_POWER_UP:
+        /* Add notification before enabling to get initial guess */
         mce_sensorfw_orient_set_notify(mdy_orientation_changed_cb);
         mce_sensorfw_orient_enable();
         break;
@@ -5384,6 +5388,7 @@ static void mdy_orientation_sensor_rethink(void)
     case MCE_DISPLAY_LPM_OFF:
     case MCE_DISPLAY_LPM_ON:
     case MCE_DISPLAY_POWER_DOWN:
+        /* Remove notification after disabling to get final state */
         mce_sensorfw_orient_disable();
         mce_sensorfw_orient_set_notify(0);
         break;
@@ -5404,9 +5409,6 @@ static void mdy_display_state_changed(void)
 
     /* Program dim/blank timers */
     mdy_blanking_rethink_timers(false);
-
-    /* Start/stop orientation sensor */
-    mdy_orientation_sensor_rethink();
 
     /* Enable/disable high brightness mode */
     mdy_hbm_rethink();
