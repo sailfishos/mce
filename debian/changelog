@@ -1,3 +1,10 @@
+mce (1.41.2) unstable; urgency=low
+
+  * [mce] Stop initial orientation reporting from triggering flip over
+    gestures. Fixes NEMO#786
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 04 Feb 2015 11:58:43 +0200
+
 mce (1.41.1) unstable; urgency=low
 
   * [mce] Make touch input blocking by proximity sensor optional.
