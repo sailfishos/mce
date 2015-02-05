@@ -1553,6 +1553,26 @@ static const setting_t gconf_defaults[] =
     .def  = DEFAULT_POWERKEY_DBUS_ACTION2,
   },
   {
+    .key  = MCE_GCONF_POWERKEY_DBUS_ACTION3,
+    .type = "s",
+    .def  = DEFAULT_POWERKEY_DBUS_ACTION3,
+  },
+  {
+    .key  = MCE_GCONF_POWERKEY_DBUS_ACTION4,
+    .type = "s",
+    .def  = DEFAULT_POWERKEY_DBUS_ACTION4,
+  },
+  {
+    .key  = MCE_GCONF_POWERKEY_DBUS_ACTION5,
+    .type = "s",
+    .def  = DEFAULT_POWERKEY_DBUS_ACTION5,
+  },
+  {
+    .key  = MCE_GCONF_POWERKEY_DBUS_ACTION6,
+    .type = "s",
+    .def  = DEFAULT_POWERKEY_DBUS_ACTION6,
+  },
+  {
     .key = MCE_GCONF_MEMNOTIFY_WARNING_USED,
     .type = "i",
     .def  = "0", // = disabled

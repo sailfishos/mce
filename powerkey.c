@@ -152,6 +152,10 @@ static void  pwrkey_action_tkunlock (void);
 static void  pwrkey_action_devlock  (void);
 static void  pwrkey_action_dbus1    (void);
 static void  pwrkey_action_dbus2    (void);
+static void  pwrkey_action_dbus3    (void);
+static void  pwrkey_action_dbus4    (void);
+static void  pwrkey_action_dbus5    (void);
+static void  pwrkey_action_dbus6    (void);
 
 /* ------------------------------------------------------------------------- *
  * ACTION_SETS
@@ -266,6 +270,8 @@ static void     pwrkey_double_press_timer_start(void);
  * emitting dbus signal from mce / making dbus method call to some service
  * ------------------------------------------------------------------------- */
 
+#define DBUS_ACTIONS_COUNT 6
+
 /** Flag file for: Possibly dangerous dbus action in progress
  *
  * Used for resetting dbus action config if it causes mce to crash.
@@ -278,6 +284,11 @@ static const char pwrkey_dbus_action_flag[]  =
 
 typedef struct
 {
+    const char *gconf_key;
+    const char *gconf_def;
+    gchar      *gconf_val;
+    guint       gconf_id;
+
     char *destination;
     char *object;
     char *interface;
@@ -285,21 +296,53 @@ typedef struct
     char *argument;
 } pwrkey_dbus_action_t;
 
-static pwrkey_dbus_action_t pwrkey_dbus_action[2] = { };
-
-static gchar *pwrkey_dbus_action1            = 0;
-static guint  pwrkey_dbus_action1_gconf_id   = 0;
-
-static gchar *pwrkey_dbus_action2            = 0;
-static guint  pwrkey_dbus_action2_gconf_id   = 0;
+static pwrkey_dbus_action_t pwrkey_dbus_action[DBUS_ACTIONS_COUNT] =
+{
+    {
+        .gconf_key = MCE_GCONF_POWERKEY_DBUS_ACTION1,
+        .gconf_def = DEFAULT_POWERKEY_DBUS_ACTION1,
+        .gconf_val = 0,
+        .gconf_id  = 0,
+    },
+    {
+        .gconf_key = MCE_GCONF_POWERKEY_DBUS_ACTION2,
+        .gconf_def = DEFAULT_POWERKEY_DBUS_ACTION2,
+        .gconf_val = 0,
+        .gconf_id  = 0,
+    },
+    {
+        .gconf_key = MCE_GCONF_POWERKEY_DBUS_ACTION3,
+        .gconf_def = DEFAULT_POWERKEY_DBUS_ACTION3,
+        .gconf_val = 0,
+        .gconf_id  = 0,
+    },
+    {
+        .gconf_key = MCE_GCONF_POWERKEY_DBUS_ACTION4,
+        .gconf_def = DEFAULT_POWERKEY_DBUS_ACTION4,
+        .gconf_val = 0,
+        .gconf_id  = 0,
+    },
+    {
+        .gconf_key = MCE_GCONF_POWERKEY_DBUS_ACTION5,
+        .gconf_def = DEFAULT_POWERKEY_DBUS_ACTION5,
+        .gconf_val = 0,
+        .gconf_id  = 0,
+    },
+    {
+        .gconf_key = MCE_GCONF_POWERKEY_DBUS_ACTION6,
+        .gconf_def = DEFAULT_POWERKEY_DBUS_ACTION6,
+        .gconf_val = 0,
+        .gconf_id  = 0,
+    },
+};
 
 static void   pwrkey_dbus_action_clear(pwrkey_dbus_action_t *self);
-static void   pwrkey_dbus_action_reset(pwrkey_dbus_action_t *self, const char *arg);
+static void   pwrkey_dbus_action_reset(pwrkey_dbus_action_t *self);
 static bool   pwrkey_dbus_action_is_methodcall(const pwrkey_dbus_action_t *self);
 static bool   pwrkey_dbus_action_is_signal(const pwrkey_dbus_action_t *self);
-static void   pwrkey_dbus_action_parse(pwrkey_dbus_action_t *self, const char *data);
+static void   pwrkey_dbus_action_parse(pwrkey_dbus_action_t *self);
 static gchar *pwrkey_dbus_action_to_string(const pwrkey_dbus_action_t *self);
-static void   pwrkey_dbus_action_sanitize(pwrkey_dbus_action_t *self, const char *arg);
+static void   pwrkey_dbus_action_sanitize(pwrkey_dbus_action_t *self);
 static void   pwrkey_dbus_action_execute(size_t index);
 
 /* ------------------------------------------------------------------------- *
@@ -658,6 +701,30 @@ pwrkey_action_dbus2(void)
     pwrkey_dbus_action_execute(1);
 }
 
+static void
+pwrkey_action_dbus3(void)
+{
+    pwrkey_dbus_action_execute(2);
+}
+
+static void
+pwrkey_action_dbus4(void)
+{
+    pwrkey_dbus_action_execute(3);
+}
+
+static void
+pwrkey_action_dbus5(void)
+{
+    pwrkey_dbus_action_execute(4);
+}
+
+static void
+pwrkey_action_dbus6(void)
+{
+    pwrkey_dbus_action_execute(5);
+}
+
 /* ========================================================================= *
  * ACTION_SETS
  * ========================================================================= */
@@ -685,10 +752,6 @@ static const pwrkey_bitconf_t pwrkey_action_lut[] =
         .func = pwrkey_action_devlock,
     },
     {
-        .name = "dbus1",
-        .func = pwrkey_action_dbus1,
-    },
-    {
         .name = "softoff",
         .func = pwrkey_action_softoff,
     },
@@ -706,9 +769,31 @@ static const pwrkey_bitconf_t pwrkey_action_lut[] =
         .name = "tkunlock",
         .func = pwrkey_action_tkunlock,
     },
+
+    // D-Bus actions
+    {
+        .name = "dbus1",
+        .func = pwrkey_action_dbus1,
+    },
     {
         .name = "dbus2",
         .func = pwrkey_action_dbus2,
+    },
+    {
+        .name = "dbus3",
+        .func = pwrkey_action_dbus3,
+    },
+    {
+        .name = "dbus4",
+        .func = pwrkey_action_dbus4,
+    },
+    {
+        .name = "dbus5",
+        .func = pwrkey_action_dbus5,
+    },
+    {
+        .name = "dbus6",
+        .func = pwrkey_action_dbus6,
     },
 };
 
@@ -1027,10 +1112,12 @@ pwrkey_dbus_action_clear(pwrkey_dbus_action_t *self)
 }
 
 static void
-pwrkey_dbus_action_reset(pwrkey_dbus_action_t *self, const char *arg)
+pwrkey_dbus_action_reset(pwrkey_dbus_action_t *self)
 {
     pwrkey_dbus_action_clear(self);
-    self->argument = strdup(arg);
+
+    /* Builtin default is always just a signal arg, no parsing required */
+    self->argument = strdup(self->gconf_def);
 }
 
 static bool
@@ -1111,7 +1198,7 @@ pwrkey_dbus_action_to_string(const pwrkey_dbus_action_t *self)
 }
 
 static void
-pwrkey_dbus_action_parse(pwrkey_dbus_action_t *self, const char *data)
+pwrkey_dbus_action_parse(pwrkey_dbus_action_t *self)
 {
     char *tmp = 0;
     char *pos = 0;
@@ -1119,10 +1206,10 @@ pwrkey_dbus_action_parse(pwrkey_dbus_action_t *self, const char *data)
 
     pwrkey_dbus_action_clear(self);
 
-    if( empty(data) )
+    if( empty(self->gconf_val) )
         goto cleanup;
 
-    pos = tmp = strdup(data);
+    pos = tmp = strdup(self->gconf_val);
     arg = pwrkey_get_token(&pos);
 
     if( *arg && !*pos ) {
@@ -1141,64 +1228,45 @@ cleanup:
 }
 
 static void
-pwrkey_dbus_action_sanitize(pwrkey_dbus_action_t *self, const char *arg)
+pwrkey_dbus_action_sanitize(pwrkey_dbus_action_t *self)
 {
     if( !pwrkey_dbus_action_is_methodcall(self) &&
         !pwrkey_dbus_action_is_signal(self) ) {
-        pwrkey_dbus_action_reset(self, arg);
+        pwrkey_dbus_action_reset(self);
     }
 }
 
-static bool
+static void
 pwrkey_dbus_action_configure(size_t action_id, bool force_reset)
 {
-    bool changed = false;
+    gchar *use = 0;
 
-    gchar      **cfg = 0;
-    const char  *def = 0;
-    gchar       *use = 0;
-
-    if( action_id >= G_N_ELEMENTS(pwrkey_dbus_action) )
-        goto cleanup;
-
-    switch( action_id ) {
-    case 0:
-        cfg = &pwrkey_dbus_action1;
-        def = DEFAULT_POWERKEY_DBUS_ACTION1;
-        break;
-    case 1:
-        cfg = &pwrkey_dbus_action2;
-        def = DEFAULT_POWERKEY_DBUS_ACTION2;
-        break;
-    default:
-        goto cleanup;
-    }
-
-    if( !cfg || !def )
+    if( action_id >= DBUS_ACTIONS_COUNT )
         goto cleanup;
 
     pwrkey_dbus_action_t *action = pwrkey_dbus_action + action_id;
 
     if( force_reset ) {
-        pwrkey_dbus_action_reset(action, def);
+        pwrkey_dbus_action_reset(action);
     }
     else {
-        pwrkey_dbus_action_parse(action,  *cfg);
-        pwrkey_dbus_action_sanitize(action, def);
+        pwrkey_dbus_action_parse(action);
+        pwrkey_dbus_action_sanitize(action);
     }
 
     use = pwrkey_dbus_action_to_string(action);
 
-    if( !eq(*cfg, use) ) {
-        g_free(*cfg), *cfg = use, use = 0;
-        changed = true;
+    if( !eq(action->gconf_val, use) ) {
+        /* Change locally cached value */
+        g_free(action->gconf_val), action->gconf_val = use, use = 0;
+
+        /* Flush change to settings */
+        mce_gconf_set_string(action->gconf_key, action->gconf_val);
     }
 
 cleanup:
 
     g_free(use);
-
-    return changed;
 }
 
 static void
@@ -1206,7 +1274,7 @@ pwrkey_dbus_action_execute(size_t action_id)
 {
     bool flag_created = false;
 
-    if( action_id >= G_N_ELEMENTS(pwrkey_dbus_action) )
+    if( action_id >= DBUS_ACTIONS_COUNT )
         goto cleanup;
 
     const pwrkey_dbus_action_t *action = pwrkey_dbus_action + action_id;
@@ -1714,18 +1782,14 @@ pwrkey_gconf_sanitize_dbus_actions(void)
      * the abort.
      */
     bool force_reset = pwrkey_delete_flagfile(pwrkey_dbus_action_flag);
+
     if( force_reset ) {
         mce_log(LL_CRIT, "%s: flagfile was present; resetting"
                 "dbus action config", pwrkey_dbus_action_flag);
     }
-    if( pwrkey_dbus_action_configure(0, force_reset) ) {
-        mce_gconf_set_string(MCE_GCONF_POWERKEY_DBUS_ACTION1,
-                             pwrkey_dbus_action1);
-    }
-    if( pwrkey_dbus_action_configure(1, force_reset) ) {
-        mce_gconf_set_string(MCE_GCONF_POWERKEY_DBUS_ACTION2,
-                             pwrkey_dbus_action2);
-    }
+
+    for( size_t action_id = 0; action_id < DBUS_ACTIONS_COUNT; ++action_id )
+        pwrkey_dbus_action_configure(action_id, force_reset);
 }
 
 static void
@@ -1883,28 +1947,30 @@ pwrkey_gconf_cb(GConfClient *const gcc, const guint id,
             pwrkey_gconf_sanitize_later();
         }
     }
-    else if( id == pwrkey_dbus_action1_gconf_id ) {
-        const char *val = gconf_value_get_string(gcv);
-        if( !eq(pwrkey_dbus_action1, val) ) {
-            mce_log(LL_NOTICE, "pwrkey_dbus_action1: '%s' -> '%s'",
-                    pwrkey_dbus_action1, val);
-            g_free(pwrkey_dbus_action1);
-            pwrkey_dbus_action1 = g_strdup(val);
-            pwrkey_gconf_sanitize_later();
-        }
-    }
-    else if( id == pwrkey_dbus_action2_gconf_id ) {
-        const char *val = gconf_value_get_string(gcv);
-        if( !eq(pwrkey_dbus_action2, val) ) {
-            mce_log(LL_NOTICE, "pwrkey_dbus_action2: '%s' -> '%s'",
-                    pwrkey_dbus_action2, val);
-            g_free(pwrkey_dbus_action2);
-            pwrkey_dbus_action2 = g_strdup(val);
-            pwrkey_gconf_sanitize_later();
-        }
-    }
     else {
-        mce_log(LL_WARN, "Spurious GConf value received; confused!");
+        for( size_t action_id = 0; ; ++action_id ) {
+            if( action_id >= DBUS_ACTIONS_COUNT ) {
+                mce_log(LL_WARN, "Spurious GConf value received; confused!");
+                goto EXIT;
+            }
+
+            pwrkey_dbus_action_t *action = pwrkey_dbus_action + action_id;
+
+            if( id != action->gconf_id )
+                continue;
+
+            const char *val = gconf_value_get_string(gcv);
+
+            if( eq(action->gconf_val, val) )
+                break;
+
+            mce_log(LL_NOTICE, "pwrkey_dbus_action%zd_val: '%s' -> '%s'",
+                    action_id, action->gconf_val, val);
+
+            g_free(action->gconf_val), action->gconf_val = g_strdup(val);
+            pwrkey_gconf_sanitize_later();
+            break;
+        }
     }
 
 EXIT:
@@ -1993,17 +2059,15 @@ pwrkey_gconf_init(void)
 
     /* D-Bus actions */
 
-    mce_gconf_track_string(MCE_GCONF_POWERKEY_DBUS_ACTION1,
-                           &pwrkey_dbus_action1,
-                           DEFAULT_POWERKEY_DBUS_ACTION1,
-                           pwrkey_gconf_cb,
-                           &pwrkey_dbus_action1_gconf_id);
+    for( size_t action_id = 0; action_id < DBUS_ACTIONS_COUNT; ++action_id ) {
+        pwrkey_dbus_action_t *action = pwrkey_dbus_action + action_id;
 
-    mce_gconf_track_string(MCE_GCONF_POWERKEY_DBUS_ACTION2,
-                           &pwrkey_dbus_action2,
-                           DEFAULT_POWERKEY_DBUS_ACTION2,
-                           pwrkey_gconf_cb,
-                           &pwrkey_dbus_action2_gconf_id);
+        mce_gconf_track_string(action->gconf_key,
+                               &action->gconf_val,
+                               action->gconf_def,
+                               pwrkey_gconf_cb,
+                               &action->gconf_id);
+    }
 
     /* Apply sanity checks */
 
@@ -2074,17 +2138,16 @@ pwrkey_gconf_quit(void)
 
     /* D-Bus actions */
 
-    mce_gconf_notifier_remove(pwrkey_dbus_action1_gconf_id),
-        pwrkey_dbus_action1_gconf_id = 0;
+    for( size_t action_id = 0; action_id < DBUS_ACTIONS_COUNT; ++action_id ) {
+        pwrkey_dbus_action_t *action = pwrkey_dbus_action + action_id;
 
-    mce_gconf_notifier_remove(pwrkey_dbus_action2_gconf_id),
-        pwrkey_dbus_action2_gconf_id = 0;
+        mce_gconf_notifier_remove(action->gconf_id),
+            action->gconf_id = 0;
 
-    g_free(pwrkey_dbus_action1),
-        pwrkey_dbus_action1 = 0;;
+        g_free(action->gconf_val),
+            action->gconf_val = 0;;
 
-    g_free(pwrkey_dbus_action2),
-        pwrkey_dbus_action2 = 0;;
+    }
 }
 
 /* ========================================================================= *

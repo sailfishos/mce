@@ -2761,12 +2761,16 @@ static bool xmce_is_powerkey_action(const char *name)
                 "blank",
                 "tklock",
                 "devlock",
-                "dbus1",
                 "softoff",
                 "shutdown",
                 "unblank",
                 "tkunlock",
+                "dbus1",
                 "dbus2",
+                "dbus3",
+                "dbus4",
+                "dbus5",
+                "dbus6",
         };
 
         for( size_t i = 0; i < G_N_ELEMENTS(lut); ++i ) {
@@ -2974,37 +2978,82 @@ static bool xmce_is_powerkey_dbus_action(const char *conf)
         return valid;
 }
 
+static const char * const powerkey_dbus_action_key[] =
+{
+        MCE_GCONF_POWERKEY_DBUS_ACTION1,
+        MCE_GCONF_POWERKEY_DBUS_ACTION2,
+        MCE_GCONF_POWERKEY_DBUS_ACTION3,
+        MCE_GCONF_POWERKEY_DBUS_ACTION4,
+        MCE_GCONF_POWERKEY_DBUS_ACTION5,
+        MCE_GCONF_POWERKEY_DBUS_ACTION6,
+};
+
 /** Helper for setting dbus action config
  */
-static void xmce_set_powerkey_dbus_action(const char *key, const char *conf)
+static bool xmce_set_powerkey_dbus_action(size_t action_id, const char *conf)
 {
-        if( conf && *conf && !xmce_is_powerkey_dbus_action(conf) )
-                exit(EXIT_FAILURE);
+        if( action_id >= G_N_ELEMENTS(powerkey_dbus_action_key) )
+                return false;
 
-        mcetool_gconf_set_string(key, conf);
+        if( conf && *conf && !xmce_is_powerkey_dbus_action(conf) )
+                return false;
+
+        mcetool_gconf_set_string(powerkey_dbus_action_key[action_id], conf);
+        return true;
 }
 
 /** Configure "dbus1" powerkey action
  */
 static bool xmce_set_powerkey_dbus_action1(const char *args)
 {
-        xmce_set_powerkey_dbus_action(MCE_GCONF_POWERKEY_DBUS_ACTION1, args);
-        return true;
+        return xmce_set_powerkey_dbus_action(0, args);
 }
 
 /** Configure "dbus2" powerkey action
  */
 static bool xmce_set_powerkey_dbus_action2(const char *args)
 {
-        xmce_set_powerkey_dbus_action(MCE_GCONF_POWERKEY_DBUS_ACTION2, args);
-        return true;
+        return xmce_set_powerkey_dbus_action(1, args);
+}
+
+/** Configure "dbus3" powerkey action
+ */
+static bool xmce_set_powerkey_dbus_action3(const char *args)
+{
+        return xmce_set_powerkey_dbus_action(2, args);
+}
+
+/** Configure "dbus4" powerkey action
+ */
+static bool xmce_set_powerkey_dbus_action4(const char *args)
+{
+        return xmce_set_powerkey_dbus_action(3, args);
+}
+
+/** Configure "dbus5" powerkey action
+ */
+static bool xmce_set_powerkey_dbus_action5(const char *args)
+{
+        return xmce_set_powerkey_dbus_action(4, args);
+}
+
+/** Configure "dbus6" powerkey action
+ */
+static bool xmce_set_powerkey_dbus_action6(const char *args)
+{
+        return xmce_set_powerkey_dbus_action(5, args);
 }
 
 /** Helper for showing current dbus action config
  */
-static void xmce_get_powerkey_dbus_action(const char *key, const char *tag)
+static void xmce_get_powerkey_dbus_action(size_t action_id)
 {
         gchar *val = 0;
+
+        if( action_id >= G_N_ELEMENTS(powerkey_dbus_action_key) )
+                goto cleanup;
+
+        const char *key = powerkey_dbus_action_key[action_id];
 
         if( !mcetool_gconf_get_string(key, &val) )
                 goto cleanup;
@@ -3016,7 +3065,8 @@ static void xmce_get_powerkey_dbus_action(const char *key, const char *tag)
         char *arg = mcetool_parse_token(&pos);
 
         char tmp[64];
-        snprintf(tmp, sizeof tmp, "Powerkey D-Bus action '%s':", tag);
+        snprintf(tmp, sizeof tmp, "Powerkey D-Bus action 'dbus%zd':",
+                 action_id + 1);
 
         if( *arg && !*pos ) {
                 printf("%-"PAD1"s send signal with arg '%s'\n", tmp, arg);
@@ -3045,10 +3095,9 @@ cleanup:
  */
 static void xmce_get_powerkey_dbus_actions(void)
 {
-        xmce_get_powerkey_dbus_action(MCE_GCONF_POWERKEY_DBUS_ACTION1,
-                                      "dbus1");
-        xmce_get_powerkey_dbus_action(MCE_GCONF_POWERKEY_DBUS_ACTION2,
-                                      "dbus2");
+        size_t actions = G_N_ELEMENTS(powerkey_dbus_action_key);
+        for( size_t action_id = 0; action_id < actions; ++action_id )
+                xmce_get_powerkey_dbus_action(action_id);
 }
 
 /** Set powerkey proximity override press count
@@ -4374,16 +4423,42 @@ static const mce_opt_t options[] =
                         "  Instead of sending a signal, MCE will make dbus method call as specified.\n"
                         "  The string argument for the method call is optional.\n"
         },
-
         {
                 .name        = "set-powerkey-dbus-action2",
                 .with_arg    = xmce_set_powerkey_dbus_action2,
                 .values      = "signal_argument|method_call_details",
                 .usage       =
                         "define dbus ipc taking place when dbus2 powerkey action is triggered\n"
-                        "\n"
-                        "See --set-powerkey-dbus-action1 for details.\n"
         },
+        {
+                .name        = "set-powerkey-dbus-action3",
+                .with_arg    = xmce_set_powerkey_dbus_action3,
+                .values      = "signal_argument|method_call_details",
+                .usage       =
+                        "define dbus ipc taking place when dbus3 powerkey action is triggered\n"
+        },
+        {
+                .name        = "set-powerkey-dbus-action4",
+                .with_arg    = xmce_set_powerkey_dbus_action4,
+                .values      = "signal_argument|method_call_details",
+                .usage       =
+                        "define dbus ipc taking place when dbus4 powerkey action is triggered\n"
+        },
+        {
+                .name        = "set-powerkey-dbus-action5",
+                .with_arg    = xmce_set_powerkey_dbus_action5,
+                .values      = "signal_argument|method_call_details",
+                .usage       =
+                        "define dbus ipc taking place when dbus5 powerkey action is triggered\n"
+        },
+        {
+                .name        = "set-powerkey-dbus-action6",
+                .with_arg    = xmce_set_powerkey_dbus_action6,
+                .values      = "signal_argument|method_call_details",
+                .usage       =
+                        "define dbus ipc taking place when dbus6 powerkey action is triggered\n"
+        },
+
         {
                 .name        = "set-powerkey-ps-override-count",
                 .with_arg    = xmce_set_ps_override_count,
