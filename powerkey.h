@@ -68,6 +68,18 @@
 /** Setting for D-Bus action #2 */
 # define MCE_GCONF_POWERKEY_DBUS_ACTION2         MCE_GCONF_POWERKEY_PATH "/dbus_action2"
 
+/** Setting for D-Bus action #3 */
+# define MCE_GCONF_POWERKEY_DBUS_ACTION3         MCE_GCONF_POWERKEY_PATH "/dbus_action3"
+
+/** Setting for D-Bus action #4 */
+# define MCE_GCONF_POWERKEY_DBUS_ACTION4         MCE_GCONF_POWERKEY_PATH "/dbus_action4"
+
+/** Setting for D-Bus action #5 */
+# define MCE_GCONF_POWERKEY_DBUS_ACTION5         MCE_GCONF_POWERKEY_PATH "/dbus_action5"
+
+/** Setting for D-Bus action #6 */
+# define MCE_GCONF_POWERKEY_DBUS_ACTION6         MCE_GCONF_POWERKEY_PATH "/dbus_action6"
+
 /** Power key action enable modes */
 typedef enum
 {
@@ -128,6 +140,18 @@ typedef enum
 
 /** Default argument for signal sent due to dbus2 action */
 #define DEFAULT_POWERKEY_DBUS_ACTION2       "event2"
+
+/** Default argument for signal sent due to dbus3 action */
+#define DEFAULT_POWERKEY_DBUS_ACTION3       "event3"
+
+/** Default argument for signal sent due to dbus4 action */
+#define DEFAULT_POWERKEY_DBUS_ACTION4       "event4"
+
+/** Default argument for signal sent due to dbus5 action */
+#define DEFAULT_POWERKEY_DBUS_ACTION5       "event5"
+
+/** Default argument for signal sent due to dbus6 action */
+#define DEFAULT_POWERKEY_DBUS_ACTION6       "event6"
 
 /* When MCE is made modular, this will be handled differently */
 gboolean mce_powerkey_init(void);
