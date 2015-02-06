@@ -1,3 +1,10 @@
+mce (1.41.3) unstable; urgency=low
+
+  * [mce] Increase the amount of configurable power key dbus actions to six.
+    Fixes NEMO#781
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 06 Feb 2015 08:32:43 +0200
+
 mce (1.41.2) unstable; urgency=low
 
   * [mce] Stop initial orientation reporting from triggering flip over
