@@ -1022,7 +1022,9 @@ static void mdy_datapipe_system_state_cb(gconstpointer data)
     if( system_state == prev )
         goto EXIT;
 
-    mce_log(LL_NOTICE, "system_state = %d", system_state);
+    mce_log(LL_DEBUG, "system_state: %s -> %s",
+            system_state_repr(prev),
+            system_state_repr(system_state));
 
     switch( system_state ) {
     case MCE_STATE_ACTDEAD:

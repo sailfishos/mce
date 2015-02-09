@@ -169,6 +169,8 @@ typedef enum {
 	MCE_STATE_BOOT = 9		/**< System is in bootup state */
 } system_state_t;
 
+const char *system_state_repr(system_state_t state);
+
 /** Call state */
 typedef enum {
 	/** Invalid call state */
