@@ -1,3 +1,10 @@
+mce (1.41.4) unstable; urgency=low
+
+  * [mce] Move fbdev control from display plugin to separate mce-fbdev
+    module. Fixes JB#26215
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 10 Feb 2015 17:33:16 +0200
+
 mce (1.41.3) unstable; urgency=low
 
   * [mce] Increase the amount of configurable power key dbus actions to six.
