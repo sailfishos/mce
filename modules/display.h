@@ -96,9 +96,6 @@
 /** Generic maximum brightness file */
 #define DISPLAY_GENERIC_MAX_BRIGHTNESS_FILE	"/backlight_max"
 
-/** Path to the framebuffer device */
-#define FB_DEVICE				"/dev/fb0"
-
 /** Path to the GConf settings for the display */
 #define MCE_GCONF_DISPLAY_PATH			"/system/osso/dsm/display"
 

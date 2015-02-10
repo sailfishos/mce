@@ -961,6 +961,29 @@ void mce_datapipe_quit(void)
 	free_datapipe(&proximity_blank_pipe);
 }
 
+/** Convert system_state_t enum to human readable string
+ *
+ * @param state system_state_t enumeration value
+ *
+ * @return human readable representation of state
+ */
+const char *system_state_repr(system_state_t state)
+{
+	const char *res = "UNKNOWN";
+
+	switch( state ) {
+	case MCE_STATE_UNDEF:    res = "UNDEF";    break;
+	case MCE_STATE_SHUTDOWN: res = "SHUTDOWN"; break;
+	case MCE_STATE_USER:     res = "USER";     break;
+	case MCE_STATE_ACTDEAD:  res = "ACTDEAD";  break;
+	case MCE_STATE_REBOOT:   res = "REBOOT";   break;
+	case MCE_STATE_BOOT:     res = "BOOT";     break;
+	default: break;
+	}
+
+	return res;
+}
+
 /** Convert device_lock_state_t enum to human readable string
  *
  * @param state device_lock_state_t enumeration value

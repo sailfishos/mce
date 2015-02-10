@@ -463,6 +463,10 @@ static gboolean mce_dsme_iowatch_cb(GIOChannel *source,
 			break;
 		}
 
+		mce_log(LL_DEVEL, "system_state: %s -> %s",
+			system_state_repr(oldstate),
+			system_state_repr(newstate));
+
 		execute_datapipe(&system_state_pipe,
 				 GINT_TO_POINTER(newstate),
 				 USE_INDATA, CACHE_INDATA);
