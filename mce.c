@@ -22,6 +22,7 @@
 #include "mce.h"
 #include "mce-log.h"
 #include "mce-conf.h"
+#include "mce-fbdev.h"
 #include "mce-gconf.h"
 #include "mce-dbus.h"
 #include "mce-dsme.h"
@@ -969,6 +970,9 @@ int main(int argc, char **argv)
 
 	/* Initialise subsystems */
 
+	/* Open fbdev as early as possible */
+	mce_fbdev_init();
+
 	/* Get configuration options */
 	if( !mce_conf_init() ) {
 		mce_log(LL_CRIT,
@@ -1091,6 +1095,7 @@ EXIT:
 	mce_gconf_exit();
 	mce_dbus_exit();
 	mce_conf_exit();
+	mce_fbdev_quit();
 
 	/* If the mainloop is initialised, unreference it */
 	if (mainloop != NULL) {

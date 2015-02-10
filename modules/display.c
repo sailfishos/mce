@@ -26,6 +26,7 @@
 #include "../mce-log.h"
 #include "../mce-io.h"
 #include "../mce-lib.h"
+#include "../mce-fbdev.h"
 #include "../mce-conf.h"
 #include "../mce-gconf.h"
 #include "../mce-dbus.h"
@@ -40,10 +41,7 @@
 # include "../libwakelock.h"
 #endif
 
-#include <linux/fb.h>
-
 #include <sys/ptrace.h>
-#include <sys/ioctl.h>
 
 #include <stdlib.h>
 #include <unistd.h>
@@ -294,22 +292,7 @@ static void                mdy_datapipe_quit(void);
  * FBDEV_FD
  * ------------------------------------------------------------------------- */
 
-static bool                fbdev_fd_is_open(void);
-static int                 fbdev_fd_open(void);
-static void                fbdev_fd_close(void);
-static void                fbdev_fd_close_forever(void);
-static void                fbdev_fd_close_after_exit(void);
-
-/* ------------------------------------------------------------------------- *
- * FBDEV_POWER_STATE
- * ------------------------------------------------------------------------- */
-
-#ifdef ENABLE_HYBRIS
-static void                mdy_fbdev_set_power_hybris(int value);
-static void                mdy_fbdev_set_power_dummy(int value);
-#endif
-static void                mdy_fbdev_set_power_default(int value);
-static void                mdy_fbdev_set_power(int value);
+static void                mdy_fbdev_rethink(void);
 
 /* ------------------------------------------------------------------------- *
  * HIGH_BRIGHTNESS_MODE
@@ -752,12 +735,13 @@ static void mdy_shutdown_set_state(bool in_progress)
     if( (mdy_shutdown_started_flag = in_progress) ) {
         mce_log(LL_DEVEL, "Shutdown started");
         mdy_shutdown_started_tick = mdy_get_boot_tick();
-        fbdev_fd_open();
     }
     else {
         mce_log(LL_DEVEL, "Shutdown canceled");
-        fbdev_fd_close();
     }
+
+    /* Framebuffer must be kept open during shutdown */
+    mdy_fbdev_rethink();
 
 EXIT:
     return;
@@ -1039,11 +1023,6 @@ static void mdy_datapipe_system_state_cb(gconstpointer data)
                          USE_INDATA, CACHE_INDATA);
 #endif
 
-        /* Stable state reached after mce/device startup.
-         * There is ui in place and we can close the fbdev
-         * (even if there is no shutdown to cancel). */
-        fbdev_fd_close();
-
         /* Re-entry to actdead/user also means shutdown
          * has been cancelled */
         mdy_shutdown_set_state(false);
@@ -1061,6 +1040,9 @@ static void mdy_datapipe_system_state_cb(gconstpointer data)
 
     /* re-evaluate suspend policy */
     mdy_stm_schedule_rethink();
+
+    /* Deal with ACTDEAD alarms / not in USER mode */
+    mdy_fbdev_rethink();
 
 #ifdef ENABLE_CPU_GOVERNOR
     mdy_governor_rethink();
@@ -1422,8 +1404,14 @@ static void mdy_datapipe_alarm_ui_state_cb(gconstpointer data)
     if( alarm_ui_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "alarm_ui_state = %s",
+    mce_log(LL_DEBUG, "alarm_ui_state: %s -> %s",
+            alarm_state_repr(prev),
             alarm_state_repr(alarm_ui_state));
+
+    /* Act dead alarm ui does not implement compositor service.
+     * Open/close fbdevice as if compositor were started/stopped
+     * based on alarm ui state changes */
+    mdy_fbdev_rethink();
 
     mdy_blanking_rethink_timers(false);
 
@@ -1753,228 +1741,77 @@ static void mdy_datapipe_quit(void)
  * FBDEV_FD
  * ========================================================================= */
 
-/** File descriptor for frame buffer device */
-static int  fbdev_fd_handle = -1;
-
-/** Flag for: Opening frame buffer device is denied */
-static bool fbdev_fd_deny_open = false;
-
-/** Frame buffer is open predicate
+/** Decide whether frame buffer device should be kept open or not
+ *
+ * Having mce keep frame buffer device open during startup makes
+ * it possible to make transition from boot logo to ui without
+ * the display blanking in between.
+ *
+ * And similarly during shutdown/reboot the shutdown logo stays
+ * visible after ui processes that drew it has been terminated.
+ *
+ * However we need to release the device file descriptor if ui
+ * side happens to make unexpected exit, otherwise the stale
+ * unresponsive ui would remain on screen.
+ *
+ * And act dead alarms are a special case, because there we have
+ * ui that does compositor dbus inteface (act dead charging ui)
+ * getting replaced with one that does not (act dead alarms ui).
  */
-static bool fbdev_fd_is_open(void)
+static void mdy_fbdev_rethink(void)
 {
-    return fbdev_fd_handle != -1;
-}
+    // have we seen compositor since mce startup
+    static bool compositor_was_available = false;
 
-/** Open frame buffer device unless denied
- */
-static int fbdev_fd_open(void)
-{
-    if( fbdev_fd_handle != -1 )
-        goto EXIT;
+    // assume framebuffer device should be kept open
+    bool can_close = false;
 
-    if( fbdev_fd_deny_open )
-        goto EXIT;
-
-    if( (fbdev_fd_handle = open(FB_DEVICE, O_RDWR)) == -1 ) {
-        mce_log(LL_ERR, "Failed to open %s: %m", FB_DEVICE);
+    // do not close if compositor is up
+    if( mdy_compositor_is_available() ) {
+        compositor_was_available = true;
         goto EXIT;
     }
 
-    mce_log(LL_DEBUG, "opened frame buffer device");
+    // do not close if compositor has not yet been up
+    if( !compositor_was_available )
+        goto EXIT;
+
+    // do not close during shutdown
+    if( mdy_shutdown_in_progress() )
+        goto EXIT;
+
+    if( system_state == MCE_STATE_ACTDEAD ) {
+        // or when there are act dead alarms
+        switch( alarm_ui_state ) {
+        case MCE_ALARM_UI_RINGING_INT32:
+        case MCE_ALARM_UI_VISIBLE_INT32:
+            goto EXIT;
+        default:
+            break;
+        }
+    }
+    else if( system_state != MCE_STATE_USER ) {
+        // or we are not in USER/ACT_DEAD
+        goto EXIT;
+    }
+
+    // and since the whole close + reopen is needed only to
+    // clear the display when something potentially has left
+    // stale ui on screen - we skip it if the display is not
+    // firmly in powered up state
+    if( display_state != display_state_next )
+        goto EXIT;
+    if( !mdy_stm_display_state_needs_power(display_state) )
+        goto EXIT;
+
+    can_close = true;
 
 EXIT:
-    return fbdev_fd_handle;
-}
 
-/** Close frame buffer device
- */
-static void fbdev_fd_close(void)
-{
-    if( fbdev_fd_handle == -1 )
-        goto EXIT;
-
-    mce_log(LL_DEBUG, "closing frame buffer device");
-    close(fbdev_fd_handle), fbdev_fd_handle = -1;
-
-EXIT:
-    return;
-}
-
-/** Close frame buffer device and deny opening again
- */
-static void fbdev_fd_close_forever(void)
-{
-    fbdev_fd_deny_open = true;
-    fbdev_fd_close();
-}
-
-/** Create a child process to frame buffer device open after mce exits
- */
-static void fbdev_fd_close_after_exit(void)
-{
-    static const char msg[] = "closing frame buffer device after delay\n";
-
-    /* Fork a child process */
-
-    int child_pid = fork();
-
-    /* Deal with parent side and return to caller */
-
-    if( child_pid != 0 ) {
-        if( child_pid < 0 )
-            mce_log(LL_ERR, "forking fbdev linger child failed: %m");
-        else
-            mce_log(LL_DEBUG, "fbdev linger child: pid %d", child_pid);
-        return;
-    }
-
-    /* Detach from parent so that we will not get killed with it */
-
-    setsid();
-
-    /* Close all files, except fbdev & stderr */
-
-    int nfd = getdtablesize();
-    for( int fd = 0; fd < nfd; ++fd ) {
-        if( fd != fbdev_fd_handle && fd != STDERR_FILENO )
-            close(fd);
-    }
-
-    /* Calculate when to release fbdev file descriptor
-     *
-     * use max(shutdown_started + 6.0 s, current_time + 0.5 s)
-     */
-
-    int64_t delay = mdy_shutdown_started_tick + 6000 - mdy_get_boot_tick();
-
-    if( delay < 500 )
-        delay = 500;
-
-    /* Wait ... */
-
-    struct timespec ts =
-    {
-        .tv_sec  = (time_t)(delay / 1000),
-        .tv_nsec = (long)(delay % 1000) * 1000000,
-    };
-
-    while( nanosleep(&ts, &ts) == -1 && errno == EINTR ) { /* nop */ }
-
-    /* If journald is still up, the end-of-linger message written to stderr
-     * ends up in journal and attributed to parent mce process.
-     *
-     * ... and in case journald has already made an exit, we do not want
-     * to die by SIGPIPE, so it needs to be ignored. */
-
-    signal(SIGPIPE, SIG_IGN);
-
-    if( write(STDERR_FILENO, msg, sizeof msg - 1) < 0 ) { /* dontcare */ }
-
-    /* Exit - the frame buffer device will power off if we
-     * were the last process to have an open file descriptor */
-
-    _exit(EXIT_SUCCESS);
-}
-
-/* ========================================================================= *
- * FBDEV_POWER_STATE
- * ========================================================================= */
-
-/** Hook for setting the frame buffer power state
- *
- * For use from mdy_fbdev_set_power() only
- *
- * @param value The ioctl value to pass to the backlight
- */
-static void (*mdy_fbdev_set_power_hook)(int value) = 0;
-
-#ifdef ENABLE_HYBRIS
-/** Libhybris backend for mdy_fbdev_set_power()
- *
- * @param value FB_BLANK_POWERDOWN or FB_BLANK_UNBLANK
- */
-static void mdy_fbdev_set_power_hybris(int value)
-{
-    static int old_value = -1;
-
-    if( old_value == value )
-        goto EXIT;
-
-    switch( value ) {
-    case FB_BLANK_POWERDOWN:
-        mce_hybris_framebuffer_set_power(false);
-        break;
-
-    case FB_BLANK_UNBLANK:
-        mce_hybris_framebuffer_set_power(true);
-        break;
-
-    default:
-        mce_log(LL_WARN, "ignoring unknown ioctl value %d", value);
-        break;
-    }
-
-    mce_log(LL_DEBUG, "value %d -> %d", old_value, value);
-    old_value = value;
-
-EXIT:
-    return;
-}
-/** Dummy backend for mdy_fbdev_set_power()
- *
- * Used in cases where mce should not touch frame buffer
- * power state.
- *
- * @param value (not used)
- * @return TRUE for faked success
- */
-static void mdy_fbdev_set_power_dummy(int value)
-{
-    (void)value;
-}
-#endif /* ENABLE_HYBRIS */
-
-/** FBIOBLANK backend for mdy_fbdev_set_power()
- *
- * @param value The ioctl value to pass to the backlight
- * @return TRUE on success, FALSE on failure
- */
-static void mdy_fbdev_set_power_default(int value)
-{
-    static int old_value = -1;
-
-    int fd = fbdev_fd_open();
-
-    if( fd == -1 )
-        goto EXIT;
-
-    if( old_value == value )
-        goto EXIT;
-
-    if( ioctl(fd, FBIOBLANK, value) == -1 ) {
-        mce_log(LL_ERR, "%s: ioctl(FBIOBLANK,%d): %m", FB_DEVICE, value);
-        close(fd), fd = -1;
-        goto EXIT;
-    }
-
-    old_value = value;
-
-EXIT:
-    return;
-}
-
-/** Set the frame buffer power state
- *
- * @param value The ioctl value to pass to the backlight
- * @return TRUE on success, FALSE on failure
- */
-static void mdy_fbdev_set_power(int value)
-{
-    if( mdy_fbdev_set_power_hook )
-        mdy_fbdev_set_power_hook(value);
+    if( can_close )
+        mce_fbdev_close();
     else
-        mce_log(LL_ERR, "value = %d before initializing hook", value);
+        mce_fbdev_open();
 }
 
 /* ========================================================================= *
@@ -4176,15 +4013,6 @@ static gboolean mdy_display_type_get_from_hybris(display_type_t *display_type)
     mdy_brightness_level_maximum = 255;
     *display_type = DISPLAY_TYPE_GENERIC;
 
-    if( !mce_hybris_framebuffer_init() ) {
-        mce_log(LL_NOTICE, "libhybris fb power controls not available; using dummy");
-        mdy_fbdev_set_power_hook = mdy_fbdev_set_power_dummy;
-    }
-    else {
-        mce_log(LL_NOTICE, "using libhybris for fb power control");
-        mdy_fbdev_set_power_hook = mdy_fbdev_set_power_hybris;
-    }
-
     res = TRUE;
 EXIT:
     return res;
@@ -4307,9 +4135,6 @@ static display_type_t mdy_display_type_get(void)
 
     mce_log(LL_DEBUG, "Display type: %d", display_type);
 
-    /* Default to using ioctl() for frame buffer power control */
-    if( !mdy_fbdev_set_power_hook )
-        mdy_fbdev_set_power_hook = mdy_fbdev_set_power_default;
 EXIT:
     return display_type;
 }
@@ -5742,6 +5567,12 @@ static void mdy_datapipe_compositor_available_cb(gconstpointer aptr)
 
     mdy_compositor_name_owner_set(curr);
 
+    /* If compositor drops from systembus in USER/ACTDEAD mode while
+     * we are not shutting down, assume we are dealing with lipstick
+     * crash / act-dead-charging stop and power cycling the frame
+     buffer is needed to clear zombie ui off the screen. */
+    mdy_fbdev_rethink();
+
     /* set setUpdatesEnabled(true) needs to be called flag */
     mdy_stm_enable_rendering_needed = true;
 
@@ -5852,10 +5683,10 @@ static void mdy_stm_start_fb_suspend(void)
     if( mdy_waitfb_data.thread )
         wakelock_allow_suspend();
     else
-        mdy_waitfb_data.suspended = true, mdy_fbdev_set_power(FB_BLANK_POWERDOWN);
+        mdy_waitfb_data.suspended = true, mce_fbdev_set_power(false);
 #else
     mce_log(LL_NOTICE, "power off frame buffer");
-    mdy_waitfb_data.suspended = true, mdy_fbdev_set_power(FB_BLANK_POWERDOWN);
+    mdy_waitfb_data.suspended = true, mce_fbdev_set_power(false);
 #endif
 }
 
@@ -5870,10 +5701,10 @@ static void mdy_stm_start_fb_resume(void)
     if( mdy_waitfb_data.thread )
         wakelock_block_suspend();
     else
-        mdy_waitfb_data.suspended = false, mdy_fbdev_set_power(FB_BLANK_UNBLANK);
+        mdy_waitfb_data.suspended = false, mce_fbdev_set_power(true);
 #else
     mce_log(LL_NOTICE, "power off frame buffer");
-    mdy_waitfb_data.suspended = false, mdy_fbdev_set_power(FB_BLANK_UNBLANK);
+    mdy_waitfb_data.suspended = false, mce_fbdev_set_power(true);
 #endif
 }
 
@@ -8432,11 +8263,6 @@ const gchar *g_module_check_init(GModule *module)
 
     (void)module;
 
-    /* Open fbdev and keep it open until actdead / user mode is reached.
-     * This should keep the frame buffer powered on and we should not not
-     * lose content drawn by processes that might exit during startup. */
-    fbdev_fd_open();
-
     /* Initialise the display type and the relevant paths */
     (void)mdy_display_type_get();
 
@@ -8623,11 +8449,17 @@ void g_module_unload(GModule *module)
      * open, create a detached child process to hold on to
      * it so that display does not power off after mce & ui
      * side have been terminated */
-    if( mdy_shutdown_in_progress() && fbdev_fd_is_open() )
-        fbdev_fd_close_after_exit();
+    if( mdy_shutdown_in_progress() && mce_fbdev_is_open() ) {
+        /* Calculate when to release fbdev file descriptor
+         *
+         * use shutdown_started + 6.0 s
+         */
 
-    /* Close the fbdev handle mce itself uses for good */
-    fbdev_fd_close_forever();
+        int delay_ms = (int)(mdy_shutdown_started_tick
+                             + 6000
+                             - mdy_get_boot_tick());
+        mce_fbdev_linger_after_exit(delay_ms);
+    }
 
     return;
 }

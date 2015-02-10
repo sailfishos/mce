@@ -282,6 +282,7 @@ MCE_LDLIBS += $(MCE_PKG_LDLIBS)
 MCE_CORE += tklock.c
 MCE_CORE += modetransition.c
 MCE_CORE += powerkey.c
+MCE_CORE += mce-fbdev.c
 MCE_CORE += mce-dbus.c
 MCE_CORE += mce-dsme.c
 MCE_CORE += mce-gconf.c
@@ -542,6 +543,8 @@ NORMALIZE_USES_SPC =\
 	filewatcher.c\
 	filewatcher.h\
 	libwakelock.h\
+	mce-fbdev.c\
+	mce-fbdev.h\
 	mce-command-line.c\
 	mce-command-line.h\
 	mce-hybris.c\

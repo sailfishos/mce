@@ -168,6 +168,18 @@ mce-dsme.pic.o:\
 	mce-log.h\
 	mce.h\
 
+mce-fbdev.o:\
+	mce-fbdev.c\
+	mce-fbdev.h\
+	mce-hybris.h\
+	mce-log.h\
+
+mce-fbdev.pic.o:\
+	mce-fbdev.c\
+	mce-fbdev.h\
+	mce-hybris.h\
+	mce-log.h\
+
 mce-gconf.o:\
 	mce-gconf.c\
 	builtin-gconf.h\
@@ -295,6 +307,7 @@ mce.o:\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-dsme.h\
+	mce-fbdev.h\
 	mce-gconf.h\
 	mce-log.h\
 	mce-modules.h\
@@ -315,6 +328,7 @@ mce.pic.o:\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-dsme.h\
+	mce-fbdev.h\
 	mce-gconf.h\
 	mce-log.h\
 	mce-modules.h\
@@ -494,6 +508,7 @@ modules/display.o:\
 	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
+	mce-fbdev.h\
 	mce-gconf.h\
 	mce-hybris.h\
 	mce-io.h\
@@ -511,6 +526,7 @@ modules/display.pic.o:\
 	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
+	mce-fbdev.h\
 	mce-gconf.h\
 	mce-hybris.h\
 	mce-io.h\
@@ -831,6 +847,7 @@ tests/ut/ut_display.o:\
 	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
+	mce-fbdev.h\
 	mce-gconf.h\
 	mce-io.h\
 	mce-lib.h\
@@ -850,6 +867,7 @@ tests/ut/ut_display.pic.o:\
 	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
+	mce-fbdev.h\
 	mce-gconf.h\
 	mce-io.h\
 	mce-lib.h\
@@ -869,6 +887,7 @@ tests/ut/ut_display_blanking_inhibit.o:\
 	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
+	mce-fbdev.h\
 	mce-gconf.h\
 	mce-hybris.h\
 	mce-io.h\
@@ -889,6 +908,7 @@ tests/ut/ut_display_blanking_inhibit.pic.o:\
 	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
+	mce-fbdev.h\
 	mce-gconf.h\
 	mce-hybris.h\
 	mce-io.h\
@@ -909,6 +929,7 @@ tests/ut/ut_display_conf.o:\
 	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
+	mce-fbdev.h\
 	mce-gconf.h\
 	mce-hybris.h\
 	mce-io.h\
@@ -929,6 +950,7 @@ tests/ut/ut_display_conf.pic.o:\
 	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
+	mce-fbdev.h\
 	mce-gconf.h\
 	mce-hybris.h\
 	mce-io.h\
@@ -949,6 +971,7 @@ tests/ut/ut_display_filter.o:\
 	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
+	mce-fbdev.h\
 	mce-gconf.h\
 	mce-hybris.h\
 	mce-io.h\
@@ -969,6 +992,7 @@ tests/ut/ut_display_filter.pic.o:\
 	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
+	mce-fbdev.h\
 	mce-gconf.h\
 	mce-hybris.h\
 	mce-io.h\
@@ -989,6 +1013,7 @@ tests/ut/ut_display_stm.o:\
 	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
+	mce-fbdev.h\
 	mce-gconf.h\
 	mce-hybris.h\
 	mce-io.h\
@@ -1009,6 +1034,7 @@ tests/ut/ut_display_stm.pic.o:\
 	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
+	mce-fbdev.h\
 	mce-gconf.h\
 	mce-hybris.h\
 	mce-io.h\
