@@ -587,7 +587,6 @@ static void                mdy_stm_acquire_wakelock(void);
 // display_state changing
 static void                mdy_stm_push_target_change(display_state_t next_state);
 static bool                mdy_stm_pull_target_change(void);
-static bool                mdy_stm_is_target_changing(void);
 static void                mdy_stm_finish_target_change(void);
 
 // setUpdatesEnabled() from state machine
@@ -5786,13 +5785,6 @@ static void mdy_stm_push_target_change(display_state_t next_state)
          * instead of using output triggers */
         mdy_stm_force_rethink();
     }
-}
-
-/** Predicate for display state change in progress
- */
-static bool mdy_stm_is_target_changing(void)
-{
-    return mdy_stm_curr != mdy_stm_next;
 }
 
 /** Pull new change from within the state machine
