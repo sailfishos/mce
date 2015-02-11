@@ -6110,7 +6110,7 @@ static void mdy_stm_step(void)
         break;
 
     case STM_LEAVE_LOGICAL_OFF:
-        if( mdy_stm_is_target_changing() ) {
+        if( mdy_stm_display_state_needs_power(mdy_stm_next) ) {
             mdy_brightness_set_fade_target_unblank(mdy_brightness_level_display_resume);
             mdy_stm_trans(STM_RENDERER_INIT_START);
             break;
