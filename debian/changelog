@@ -1,6 +1,13 @@
+mce (1.41.6) unstable; urgency=low
+
+  * [mce] Assume power key event from touch input device is double tap.
+    Fixes JB#26465
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 12 Feb 2015 12:44:36 +0200
+
 mce (1.41.5) unstable; urgency=low
 
-  * [mce] Use target display state to determine updates allowed state. 
+  * [mce] Use target display state to determine updates allowed state.
     Fixes JB#26377
 
  -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 12 Feb 2015 10:23:20 +0200
