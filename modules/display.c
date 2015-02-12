@@ -587,7 +587,6 @@ static void                mdy_stm_acquire_wakelock(void);
 // display_state changing
 static void                mdy_stm_push_target_change(display_state_t next_state);
 static bool                mdy_stm_pull_target_change(void);
-static bool                mdy_stm_is_target_changing(void);
 static void                mdy_stm_finish_target_change(void);
 
 // setUpdatesEnabled() from state machine
@@ -5788,13 +5787,6 @@ static void mdy_stm_push_target_change(display_state_t next_state)
     }
 }
 
-/** Predicate for display state change in progress
- */
-static bool mdy_stm_is_target_changing(void)
-{
-    return mdy_stm_curr != mdy_stm_next;
-}
-
 /** Pull new change from within the state machine
  */
 static bool mdy_stm_pull_target_change(void)
@@ -6110,7 +6102,7 @@ static void mdy_stm_step(void)
         break;
 
     case STM_LEAVE_LOGICAL_OFF:
-        if( mdy_stm_is_target_changing() ) {
+        if( mdy_stm_display_state_needs_power(mdy_stm_next) ) {
             mdy_brightness_set_fade_target_unblank(mdy_brightness_level_display_resume);
             mdy_stm_trans(STM_RENDERER_INIT_START);
             break;
