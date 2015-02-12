@@ -880,7 +880,8 @@ void mce_datapipe_init(void)
 		       0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
 
 	setup_datapipe(&dsme_available_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(FALSE));
+		       0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
+
 	setup_datapipe(&packagekit_locked_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(FALSE));
 	setup_datapipe(&update_mode_pipe, READ_ONLY, DONT_FREE_CACHE,

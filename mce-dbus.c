@@ -3197,6 +3197,10 @@ static struct
 } mce_dbus_nameowner_lut[] =
 {
     {
+	.name     = DSME_DBUS_SERVICE,
+	.datapipe = &dsme_available_pipe,
+    },
+    {
 	.name     = COMPOSITOR_SERVICE,
 	.datapipe = &compositor_available_pipe,
     },
