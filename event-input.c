@@ -1869,6 +1869,23 @@ evin_iomon_touchscreen_cb(gpointer data, gsize bytes_read)
     }
 #endif
 
+    /* Power key up event from touch screen -> double tap gesture event */
+    if( ev->type == EV_KEY && ev->code == KEY_POWER && ev->value == 0 ) {
+        cover_state_t proximity_sensor_state =
+            datapipe_get_gint(proximity_sensor_pipe);
+
+        mce_log(LL_DEVEL, "[doubletap] as power key event; proximity=%s",
+                proximity_state_repr(proximity_sensor_state));
+
+        /* Mimic N9 style gesture event for which we
+         * already have logic in place. Possible filtering
+         * due to proximity state etc happens at tklock.c
+         */
+        ev->type  = EV_MSC;
+        ev->code  = MSC_GESTURE;
+        ev->value = 0x4;
+    }
+
     /* Ignore unwanted events */
     if( ev->type != EV_ABS &&
         ev->type != EV_KEY &&
@@ -1915,23 +1932,9 @@ evin_iomon_evin_doubletap_cb(gpointer data, gsize bytes_read)
     if( bytes_read != sizeof (*ev) )
         goto EXIT;
 
-    /* Power key up event -> double tap gesture event */
-    if( ev->type == EV_KEY &&
-        ev->code == KEY_POWER &&
-        ev->value == 0 ) {
-        cover_state_t proximity_sensor_state =
-            datapipe_get_gint(proximity_sensor_pipe);
-
-        mce_log(LL_DEVEL, "[doubletap] while proximity=%s",
-                proximity_state_repr(proximity_sensor_state));
-
-        /* Mimic N9 style gesture event for which we
-         * already have logic in place. Possible filtering
-         * due to proximity state etc happens at tklock.c
-         */
-        ev->type  = EV_MSC;
-        ev->code  = MSC_GESTURE;
-        ev->value = 0x4;
+    /* Feed power key events to touchscreen handler for
+     * possible double tap gesture event conversion */
+    if( ev->type == EV_KEY && ev->code == KEY_POWER ) {
         evin_iomon_touchscreen_cb(ev, sizeof *ev);
     }
 
