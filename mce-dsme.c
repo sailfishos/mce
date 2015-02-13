@@ -38,14 +38,14 @@
 #include <dsme/protocol.h>
 #include <dsme/processwd.h>
 
-/** Well known dbus name of dsme */
-#define DSME_DBUS_SERVICE "com.nokia.dsme"
-
 /** Charger state; from charger_state_pipe */
 static charger_state_t charger_state = CHARGER_STATE_UNDEF;
 
 /** Availability of dsme; from dsme_available_pipe */
-static bool dsme_available = false;
+static service_state_t dsme_available = SERVICE_STATE_UNDEF;
+
+/** System state from dsme; fed to system_state_pipe */
+static system_state_t system_state = MCE_STATE_UNDEF;
 
 /** Pointer to the dsmesock connection */
 static dsmesock_connection_t *mce_dsme_connection = NULL;
@@ -85,22 +85,19 @@ static gboolean       mce_dsme_state_report_cb(gpointer data);
 static void           mce_dsme_cancel_state_report(void);
 static void           mce_dsme_schedule_state_report(void);
 
+static bool           mce_dsme_shutting_down(void);
 static system_state_t mce_dsme_normalise_system_state(dsme_state_t dsmestate);
 
+static const char    *mce_dsme_msg_type_repr(int type);
 static gboolean       mce_dsme_iowatch_cb(GIOChannel *source, GIOCondition condition, gpointer data);
 static gboolean       mce_dsme_init_done_cb(DBusMessage *const msg);
 static void           mce_dsme_charger_state_cb(gconstpointer const data);
 static void           mce_dsme_dsme_available_cb(gconstpointer const data);
 
+static bool           mce_dsme_connected(void);
 static bool           mce_dsme_connect(void);
 static void           mce_dsme_disconnect(void);
 static void           mce_dsme_reconnect(void);
-
-static void           mce_dsme_set_availability(bool available);
-
-static void           mce_dsme_query_name_owner_cb(DBusPendingCall *pc, void *user_data);
-static bool           mce_dsme_query_name_owner(void);
-static gboolean       mce_dsme_name_owner_changed_cb(DBusMessage *const msg);
 
 static void           mce_dsme_init_dbus(void);
 static void           mce_dsme_quit_dbus(void);
@@ -333,6 +330,31 @@ EXIT:
 	return;
 }
 
+/** Predicate for: device is shutting down
+ *
+ * @return true if shutdown is in progress, false otherwise
+ */
+static bool mce_dsme_shutting_down(void)
+{
+	bool shutting_down = false;
+
+	switch( system_state ) {
+	case MCE_STATE_SHUTDOWN:
+	case MCE_STATE_REBOOT:
+		shutting_down = true;
+		break;
+
+	default:
+	case MCE_STATE_UNDEF:
+	case MCE_STATE_USER:
+	case MCE_STATE_ACTDEAD:
+	case MCE_STATE_BOOT:
+		break;
+	}
+
+	return shutting_down;
+}
+
 /**
  * Convert DSME dsme state
  * to a state enum that we can export to datapipes
@@ -393,6 +415,54 @@ static system_state_t mce_dsme_normalise_system_state(dsme_state_t dsmestate)
 	return state;
 }
 
+/** Lookup dsme message type name by id
+ *
+ * Note: This is ugly hack, but the way these are defined in libdsme and
+ * libiphb makes it difficult to gauge the type without involving the type
+ * conversion macros - and those we *really* do not want to do use just to
+ * report unhandled stuff in debug verbosity.
+ *
+ * @param type private type id from dsme message header
+ *
+ * @return human readable name of the type
+ */
+static const char *mce_dsme_msg_type_repr(int type)
+{
+#define X(name,value) if( type == value ) return #name
+
+	X(CLOSE,                        0x00000001);
+	X(STATE_CHANGE_IND,             0x00000301);
+	X(STATE_QUERY,                  0x00000302);
+	X(SAVE_DATA_IND,                0x00000304);
+	X(POWERUP_REQ,                  0x00000305);
+	X(SHUTDOWN_REQ,                 0x00000306);
+	X(SET_ALARM_STATE,              0x00000307);
+	X(REBOOT_REQ,                   0x00000308);
+	X(STATE_REQ_DENIED_IND,         0x00000309);
+	X(THERMAL_SHUTDOWN_IND,         0x00000310);
+	X(SET_CHARGER_STATE,            0x00000311);
+	X(SET_THERMAL_STATE,            0x00000312);
+	X(SET_EMERGENCY_CALL_STATE,     0x00000313);
+	X(SET_BATTERY_STATE,            0x00000314);
+	X(BATTERY_EMPTY_IND,            0x00000315);
+	X(PROCESSWD_CREATE,             0x00000500);
+	X(PROCESSWD_DELETE,             0x00000501);
+	X(PROCESSWD_CLEAR,              0x00000502);
+	X(PROCESSWD_SET_INTERVAL,       0x00000503);
+	X(PROCESSWD_PING,               0x00000504);
+	X(PROCESSWD_PONG,               0x00000504);
+	X(PROCESSWD_MANUAL_PING,        0x00000505);
+	X(WAIT,                         0x00000600);
+	X(WAKEUP,                       0x00000601);
+	X(GET_VERSION,                  0x00001100);
+	X(DSME_VERSION,                 0x00001101);
+	X(SET_TA_TEST_MODE,             0x00001102);
+
+#undef X
+
+	return "UNKNOWN";
+}
+
 /**
  * Callback for pending I/O from dsmesock
  *
@@ -411,14 +481,13 @@ static gboolean mce_dsme_iowatch_cb(GIOChannel *source,
 	dsmemsg_generic_t *msg = 0;
 
 	DSM_MSGTYPE_STATE_CHANGE_IND *msg2;
-	system_state_t oldstate = datapipe_get_gint(system_state_pipe);
-	system_state_t newstate = MCE_STATE_UNDEF;
 
 	(void)source;
 	(void)data;
 
 	if( condition & (G_IO_ERR | G_IO_HUP | G_IO_NVAL) ) {
-		mce_log(LL_CRIT, "DSME socket hangup/error");
+		if( !mce_dsme_shutting_down() )
+			mce_log(LL_CRIT, "DSME socket hangup/error");
 		keep_going = FALSE;
 		goto EXIT;
 	}
@@ -427,24 +496,26 @@ static gboolean mce_dsme_iowatch_cb(GIOChannel *source,
 		goto EXIT;
 
 	if( DSMEMSG_CAST(DSM_MSGTYPE_CLOSE, msg) ) {
-		mce_log(LL_WARN, "DSME socket closed");
+		if( !mce_dsme_shutting_down() )
+			mce_log(LL_WARN, "DSME socket closed");
 		keep_going = FALSE;
 	}
 	else if( DSMEMSG_CAST(DSM_MSGTYPE_PROCESSWD_PING, msg) ) {
 		mce_dsme_send_pong();
 	}
 	else if( (msg2 = DSMEMSG_CAST(DSM_MSGTYPE_STATE_CHANGE_IND, msg)) ) {
-		newstate = mce_dsme_normalise_system_state(msg2->state);
-		mce_log(LL_DEVEL, "DSME device state change: %d", newstate);
+		system_state_t prev = system_state;
+		system_state = mce_dsme_normalise_system_state(msg2->state);
+		mce_log(LL_DEVEL, "DSME device state change: %d", system_state);
 
 		/* If we're changing to a different state,
 		 * add the transition flag, UNLESS the old state
 		 * was MCE_STATE_UNDEF
 		 */
-		if ((oldstate != newstate) && (oldstate != MCE_STATE_UNDEF))
+		if( system_state != prev && prev != MCE_STATE_UNDEF )
 			mce_add_submode_int32(MCE_TRANSITION_SUBMODE);
 
-		switch (newstate) {
+		switch (system_state) {
 		case MCE_STATE_USER:
 			execute_datapipe_output_triggers(&led_pattern_activate_pipe, MCE_LED_PATTERN_DEVICE_ON, USE_INDATA);
 			break;
@@ -464,15 +535,16 @@ static gboolean mce_dsme_iowatch_cb(GIOChannel *source,
 		}
 
 		mce_log(LL_DEVEL, "system_state: %s -> %s",
-			system_state_repr(oldstate),
-			system_state_repr(newstate));
+			system_state_repr(prev),
+			system_state_repr(system_state));
 
 		execute_datapipe(&system_state_pipe,
-				 GINT_TO_POINTER(newstate),
+				 GINT_TO_POINTER(system_state),
 				 USE_INDATA, CACHE_INDATA);
 	}
 	else {
-		mce_log(LL_DEBUG, "Unknown message type (%x) received from DSME!",
+		mce_log(LL_DEBUG, "Unhandled message type %s (0x%x) received from DSME",
+			mce_dsme_msg_type_repr(msg->type_),
 			msg->type_); /* <- unholy access of a private member */
 	}
 
@@ -480,14 +552,16 @@ EXIT:
 	free(msg);
 
 	if( !keep_going ) {
-		mce_log(LL_WARN, "DSME i/o notifier disabled;"
-			" trying to reconnect");
+		if( !mce_dsme_shutting_down() ) {
+			mce_log(LL_WARN, "DSME i/o notifier disabled;"
+				" assuming dsme was stopped");
+		}
 
 		/* mark notifier as removed */
 		mce_dsme_iowatch_id = 0;
 
-		/* close and try to re-connect */
-		mce_dsme_reconnect();
+		/* close and wait for possible dsme restart */
+		mce_dsme_disconnect();
 	}
 
 	return keep_going;
@@ -540,22 +614,32 @@ static void mce_dsme_charger_state_cb(gconstpointer const data)
  */
 static void mce_dsme_dsme_available_cb(gconstpointer const data)
 {
-	bool prev = dsme_available;
+	service_state_t prev = dsme_available;
 	dsme_available = GPOINTER_TO_INT(data);
 
 	if( dsme_available == prev )
 		goto EXIT;
 
-	mce_log(LL_DEVEL, "DSME is %s",
-		dsme_available ? "running" : "stopped");
+	mce_log(LL_DEVEL, "DSME dbus service: %s -> %s",
+		service_state_repr(prev),
+		service_state_repr(dsme_available));
 
-	if( dsme_available )
+	if( dsme_available == SERVICE_STATE_RUNNING )
 		mce_dsme_connect();
 	else
 		mce_dsme_disconnect();
 
 EXIT:
 	return;
+}
+
+/** Predicate for: socket connection to dsme exists
+ *
+ * @return true if connected, false otherwise
+ */
+static bool mce_dsme_connected(void)
+{
+	return mce_dsme_connection && mce_dsme_iowatch_id;
 }
 
 /**
@@ -565,7 +649,6 @@ EXIT:
  */
 static bool mce_dsme_connect(void)
 {
-	bool        status = false;
 	GIOChannel *iochan = NULL;
 
 	/* Make sure we start from closed state */
@@ -598,12 +681,10 @@ static bool mce_dsme_connect(void)
 	/* Register with DSME's process watchdog */
 	mce_dsme_init_processwd();
 
-	status = true;
-
 EXIT:
 	if( iochan ) g_io_channel_unref(iochan);
 
-	return status;
+	return mce_dsme_connected();
 }
 
 /**
@@ -630,152 +711,16 @@ static void mce_dsme_disconnect(void)
  */
 static void mce_dsme_reconnect(void)
 {
-	/* set availability to false -> disconnects */
-	mce_dsme_set_availability(false);
+	mce_dsme_disconnect();
 
-	/* reconnect if/when dsme has/gets name owner */
-	mce_dsme_query_name_owner();
-}
-
-/** Feed dsme availability to dsme_available_pipe datapipe
- */
-static void mce_dsme_set_availability(bool available)
-{
-	execute_datapipe(&dsme_available_pipe,
-			 GINT_TO_POINTER(available),
-			 USE_INDATA, CACHE_INDATA);
-}
-
-/** Handle reply to asynchronous dsme service name ownership query
- *
- * @param pc        State data for asynchronous D-Bus method call
- * @param user_data (not used)
- */
-static void mce_dsme_query_name_owner_cb(DBusPendingCall *pc, void *user_data)
-{
-	(void)user_data;
-
-	DBusMessage *rsp   = 0;
-	const char  *owner = 0;
-	DBusError    err   = DBUS_ERROR_INIT;
-
-	mce_log(LL_DEBUG, "got dsme name owner reply");
-
-	if( !(rsp = dbus_pending_call_steal_reply(pc)) )
-		goto EXIT;
-
-	if( dbus_set_error_from_message(&err, rsp) ||
-	    !dbus_message_get_args(rsp, &err,
-				   DBUS_TYPE_STRING, &owner,
-				   DBUS_TYPE_INVALID) )
-	{
-		if( strcmp(err.name, DBUS_ERROR_NAME_HAS_NO_OWNER) ) {
-			mce_log(LL_WARN, "%s: %s", err.name, err.message);
-		}
-		goto EXIT;
-	}
-
-	mce_dsme_set_availability(owner && *owner);
-
-EXIT:
-	if( rsp ) dbus_message_unref(rsp);
-	dbus_error_free(&err);
-}
-
-/** Initiate asynchronous dsme service name ownership query
- *
- * @return true if the method call was initiated, or false in case of errors
- */
-static bool mce_dsme_query_name_owner(void)
-{
-	bool             res  = false;
-	DBusMessage     *req  = 0;
-	DBusPendingCall *pc   = 0;
-	const char      *name = DSME_DBUS_SERVICE;
-
-	DBusConnection  *bus  = 0;
-
-	mce_log(LL_DEBUG, "start dsme name owner query");
-
-	if( !(bus = dbus_connection_get()) )
-		goto EXIT;
-
-	if( !(req = dbus_message_new_method_call(DBUS_SERVICE_DBUS,
-						 DBUS_PATH_DBUS,
-						 DBUS_INTERFACE_DBUS,
-						 "GetNameOwner")) )
-		goto EXIT;
-
-	if( !dbus_message_append_args(req,
-				      DBUS_TYPE_STRING, &name,
-				      DBUS_TYPE_INVALID) )
-		goto EXIT;
-
-	if( !dbus_connection_send_with_reply(bus, req, &pc, -1) )
-		goto EXIT;
-
-	if( !pc )
-		goto EXIT;
-
-	if( !dbus_pending_call_set_notify(pc, mce_dsme_query_name_owner_cb, 0, 0) )
-		goto EXIT;
-
-	res = true;
-
-EXIT:
-	if( pc )  dbus_pending_call_unref(pc);
-	if( req ) dbus_message_unref(req);
-	if( bus ) dbus_connection_unref(bus);
-
-	return res;
-}
-
-/** Handle name owner changed signals for com.nokia.dsme
- */
-static gboolean mce_dsme_name_owner_changed_cb(DBusMessage *const msg)
-{
-	DBusError   err  = DBUS_ERROR_INIT;
-	const char *name = 0;
-	const char *prev = 0;
-	const char *curr = 0;
-
-	mce_log(LL_DEBUG, "got dsme name owner change");
-
-	if( !msg )
-		goto EXIT;
-
-	if( !dbus_message_get_args(msg, &err,
-				   DBUS_TYPE_STRING, &name,
-				   DBUS_TYPE_STRING, &prev,
-				   DBUS_TYPE_STRING, &curr,
-				   DBUS_TYPE_INVALID) ) {
-		mce_log(LL_ERR, "Failed to parse name owner signal: %s: %s",
-			err.name, err.message);
-		goto EXIT;
-	}
-
-	if( !name || strcmp(name, DSME_DBUS_SERVICE) )
-		goto EXIT;
-
-	mce_dsme_set_availability(curr && *curr);
-
-EXIT:
-	dbus_error_free(&err);
-
-	return TRUE;
+	if( dsme_available == SERVICE_STATE_RUNNING )
+		mce_dsme_connect();
 }
 
 /** Array of dbus message handlers */
 static mce_dbus_handler_t mce_dsme_dbus_handlers[] =
 {
 	/* signals */
-	{
-		.interface = DBUS_INTERFACE_DBUS,
-		.name      = "NameOwnerChanged",
-		.rules     = "arg0='"DSME_DBUS_SERVICE"'",
-		.type      = DBUS_MESSAGE_TYPE_SIGNAL,
-		.callback  = mce_dsme_name_owner_changed_cb,
-	},
 	{
 		.interface = "com.nokia.startup.signal",
 		.name      = "init_done",
@@ -816,26 +761,42 @@ static void mce_dsme_init_config(void)
 	g_free(tmp);
 }
 
+/** Array of datapipe handlers */
+static datapipe_handler_t mce_dsme_datapipe_handlers[] =
+{
+	// output triggers
+	{
+		.datapipe  = &dsme_available_pipe,
+		.output_cb = mce_dsme_dsme_available_cb,
+	},
+	{
+		.datapipe  = &charger_state_pipe,
+		.output_cb = mce_dsme_charger_state_cb,
+	},
+	// sentinel
+	{
+		.datapipe = 0,
+	}
+};
+
+static datapipe_bindings_t mce_dsme_datapipe_bindings =
+{
+	.module   = "mce-dsme",
+	.handlers = mce_dsme_datapipe_handlers,
+};
+
 /** Append triggers/filters to datapipes
  */
 static void mce_dsme_init_datapipes(void)
 {
-	append_output_trigger_to_datapipe(&charger_state_pipe,
-					  mce_dsme_charger_state_cb);
-
-	append_output_trigger_to_datapipe(&dsme_available_pipe,
-					  mce_dsme_dsme_available_cb);
+	datapipe_bindings_init(&mce_dsme_datapipe_bindings);
 }
 
 /** Remove triggers/filters from datapipes
  */
 static void mce_dsme_quit_datapipes(void)
 {
-	remove_output_trigger_from_datapipe(&charger_state_pipe,
-					    mce_dsme_charger_state_cb);
-
-	remove_output_trigger_from_datapipe(&dsme_available_pipe,
-					    mce_dsme_dsme_available_cb);
+	datapipe_bindings_quit(&mce_dsme_datapipe_bindings);
 }
 
 /**
@@ -851,9 +812,6 @@ gboolean mce_dsme_init(void)
 
 	mce_dsme_init_dbus();
 
-	/* Start async query to check if dsme is already on dbus */
-	mce_dsme_query_name_owner();
-
 	return TRUE;
 }
 
@@ -867,7 +825,9 @@ void mce_dsme_exit(void)
 {
 	mce_dsme_quit_dbus();
 
-	mce_dsme_exit_processwd();
+	if( mce_dsme_connected() )
+		mce_dsme_exit_processwd();
+
 	mce_dsme_disconnect();
 
 	mce_dsme_quit_datapipes();
