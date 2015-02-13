@@ -1,3 +1,10 @@
+mce (1.41.7) unstable; urgency=low
+
+  * [mce] Do not attempt to reconnect if dsme socket connection is closed.
+    Fixes JB#26373
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 13 Feb 2015 09:24:59 +0200
+
 mce (1.41.6) unstable; urgency=low
 
   * [mce] Assume power key event from touch input device is double tap.
