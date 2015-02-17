@@ -7875,6 +7875,24 @@ EXIT:
 
 static void mdy_gconf_sanitize_brightness_settings(void)
 {
+    /* During settings reset operation all affected settings are
+     * first then change notifications are emitted one by one.
+     *
+     * This means the locally cached values do not get updated
+     * simultaneously via notification callbacks. But we can
+     * explicitly update all three brightness related settings
+     * which allows us to see all three values change at once
+     * already when the first notification is received (and the
+     * possible notifications for other two values do not cause
+     * any further activity). */
+
+    mce_gconf_get_int(MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_COUNT,
+                      &mdy_brightness_step_count);
+    mce_gconf_get_int(MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_SIZE,
+                      &mdy_brightness_step_size);
+    mce_gconf_get_int(MCE_GCONF_DISPLAY_BRIGHTNESS,
+                      &mdy_brightness_setting);
+
     /* Migrate configuration ranges */
     if( mdy_brightness_step_count == 5 && mdy_brightness_step_size == 1 ) {
         /* Legacy 5 step control -> convert to percentage */
