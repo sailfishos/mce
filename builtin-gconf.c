@@ -27,6 +27,7 @@
 
 #include "modules/memnotify.h"
 #include "modules/filter-brightness-als.h"
+#include "modules/display.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -1121,20 +1122,17 @@ static const setting_t gconf_defaults[] =
     .def  = "0",
   },
   {
-    // MCE_GCONF_DISPLAY_BRIGHTNESS @ modules/display.h
-    .key  = "/system/osso/dsm/display/display_brightness",
+    .key  = MCE_GCONF_DISPLAY_BRIGHTNESS,
     .type = "i",
     .def  = "3", // Note: Legacy value, migrated at mce startup
   },
   {
-    // MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_SIZE @ modules/display.h
-    .key  = "/system/osso/dsm/display/display_brightness_level_step",
+    .key  = MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_SIZE,
     .type = "i",
     .def  = "1", // Note: Legacy value, migrated at mce startup
   },
   {
-    // MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_COUNT @ modules/display.h
-    .key  = "/system/osso/dsm/display/max_display_brightness_levels",
+    .key  = MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_COUNT,
     .type = "i",
     .def  = "5", // Note: Legacy value, migrated at mce startup
   },
@@ -1794,6 +1792,51 @@ static void gconf_client_mark_defaults(GConfClient *self)
 
     free(entry->def), entry->def = str, str = 0;
   }
+}
+
+/** Reset to configured default values
+ */
+int gconf_client_reset_defaults(GConfClient *self, const char *keyish)
+{
+  int     result  = 0;
+  GSList *changed = 0;
+
+  /* Reset all values first */
+  for( GSList *e_iter = self->entries; e_iter; e_iter = e_iter->next )
+  {
+    GConfEntry *entry = e_iter->data;
+
+    if( keyish && !strstr(entry->key, keyish) )
+    {
+      continue;
+    }
+
+    if( entry->def )
+    {
+      char *str = gconf_value_str(entry->value);
+
+      if( !str || strcmp(str, entry->def) )
+      {
+        mce_log(LL_DEBUG, "%s: %s -> %s", entry->key, str, entry->def);
+
+        gconf_value_set_from_string(entry->value, entry->def);
+        changed = g_slist_prepend(changed, entry->key);
+        ++result;
+      }
+    }
+  }
+
+  /* Then send change notifications */
+
+  changed = g_slist_reverse(changed);
+  for( GSList *item = changed; item; item = item->next )
+  {
+    const char *key = item->data;
+    gconf_client_notify_change(self, key);
+  }
+  g_slist_free(changed);
+
+  return result;
 }
 
 static void gconf_client_free_default(void)

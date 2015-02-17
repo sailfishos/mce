@@ -2264,6 +2264,21 @@ static void xmce_get_cabc_mode(void)
 }
 
 /* ------------------------------------------------------------------------- *
+ * config reset
+ * ------------------------------------------------------------------------- */
+
+static bool xmce_reset_settings(const char *args)
+{
+        if( !args )
+                args = "/";
+
+        xmce_ipc_no_reply(MCE_CONFIG_RESET,
+                          DBUS_TYPE_STRING, &args,
+                          DBUS_TYPE_INVALID);
+        return true;
+}
+
+/* ------------------------------------------------------------------------- *
  * dim timeout
  * ------------------------------------------------------------------------- */
 
@@ -4875,6 +4890,18 @@ static const mce_opt_t options[] =
                 .values      = "page_count",
                 .usage       =
                         "set critical limit for active memory pages; zero=disabled\n"
+        },
+        {
+                .name        = "reset-settings",
+                .without_arg = xmce_reset_settings,
+                .with_arg    = xmce_reset_settings,
+                .values      = "keyish",
+                .usage       =
+                        "reset matching settings back to configuration default.\n"
+                        "\n"
+                        "All settings whose key name contains the given subpart\n"
+                        "will be reset to defaults set in /etc/mce/*.conf files.\n"
+                        "If no keyish is given, all settings are reset.\n"
         },
 
         // sentinel

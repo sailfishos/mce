@@ -153,6 +153,7 @@ void gconf_value_set_list(GConfValue *self, GSList *list);
 const char *gconf_entry_get_key(const GConfEntry *entry);
 GConfValue *gconf_entry_get_value(const GConfEntry *entry);
 GConfClient *gconf_client_get_default(void);
+int gconf_client_reset_defaults(GConfClient *self, const char *keyish);
 void gconf_client_add_dir(GConfClient *client, const gchar *dir, GConfClientPreloadType preload, GError **err);
 GConfValue *gconf_client_get(GConfClient *self, const gchar *key, GError **err);
 gboolean gconf_client_set_bool(GConfClient *client, const gchar *key, gboolean val, GError **err);
