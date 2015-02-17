@@ -1269,6 +1269,62 @@ static GSList *value_list_from_float_array(DBusMessageIter *iter)
 }
 
 /**
+ * D-Bus callback for the config reset method call
+ *
+ * @param msg The D-Bus message to reply to
+ *
+ * @return TRUE
+ */
+static gboolean config_reset_dbus_cb(DBusMessage *const msg)
+{
+	GConfClient  *client = 0;
+	DBusError     error  = DBUS_ERROR_INIT;
+	const char   *keyish = 0;
+	dbus_int32_t  count  = -1;
+	DBusMessage  *reply  = 0;
+
+	mce_log(LL_DEVEL, "Received configuration reset request");
+
+	if( !(client = gconf_client_get_default()) )
+		goto EXIT;
+
+	if( !dbus_message_get_args(msg, &error,
+				   DBUS_TYPE_STRING, &keyish,
+				   DBUS_TYPE_INVALID) ) {
+		mce_log(LL_ERR, "%s: %s", error.name, error.message);
+		goto EXIT;
+	}
+
+	count = gconf_client_reset_defaults(client, keyish);
+
+	/* sync to disk if we changed something */
+	if( count > 0 ) {
+		GError *err = 0;
+		gconf_client_suggest_sync(client, &err);
+		if( err )
+			mce_log(LL_ERR, "gconf_client_suggest_sync: %s",
+				err->message);
+		g_clear_error(&err);
+	}
+
+EXIT:
+	if( dbus_message_get_no_reply(msg) )
+		goto NOREPLY;
+
+	if( !(reply = dbus_new_method_reply(msg)) )
+		goto NOREPLY;
+
+	dbus_message_append_args(reply,
+				 DBUS_TYPE_INT32, &count,
+				 DBUS_TYPE_INVALID);
+
+	dbus_send_message(reply), reply = 0;
+
+NOREPLY:
+	return TRUE;
+}
+
+/**
  * D-Bus callback for the config set method call
  *
  * @param msg The D-Bus message to reply to
@@ -3516,6 +3572,15 @@ static mce_dbus_handler_t mce_dbus_handlers[] =
 			"    <arg direction=\"in\" name=\"key_name\" type=\"s\"/>\n"
 			"    <arg direction=\"in\" name=\"key_value\" type=\"v\"/>\n"
 			"    <arg direction=\"out\" name=\"success\" type=\"b\"/>\n"
+	},
+	{
+		.interface = MCE_REQUEST_IF,
+		.name      = MCE_CONFIG_RESET,
+		.type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+		.callback  = config_reset_dbus_cb,
+		.args      =
+			"    <arg direction=\"in\" name=\"key_part\" type=\"s\"/>\n"
+			"    <arg direction=\"out\" name=\"count\" type=\"i\"/>\n"
 	},
 	{
 		.interface = DBUS_INTERFACE_INTROSPECTABLE,
