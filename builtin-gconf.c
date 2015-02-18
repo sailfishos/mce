@@ -1116,10 +1116,9 @@ static const setting_t gconf_defaults[] =
     .def  = "3",
   },
   {
-    // MCE_GCONF_DISPLAY_NEVER_BLANK @ modules/display.h
-    .key  = "/system/osso/dsm/display/display_never_blank",
+    .key  = MCE_GCONF_DISPLAY_NEVER_BLANK,
     .type = "i",
-    .def  = "0",
+    .def  = G_STRINGIFY(DEFAULT_DISPLAY_NEVER_BLANK),
   },
   {
     .key  = MCE_GCONF_DISPLAY_BRIGHTNESS,
@@ -1161,10 +1160,9 @@ static const setting_t gconf_defaults[] =
     .def  = "10000",
   },
   {
-    // MCE_GCONF_USE_LOW_POWER_MODE @ modules/display.h
-    .key  = "/system/osso/dsm/display/use_low_power_mode",
+    .key  = MCE_GCONF_USE_LOW_POWER_MODE,
     .type = "b",
-    .def  = "false",
+    .def  = G_STRINGIFY(DEFAULT_USE_LOW_POWER_MODE),
   },
   {
     // MCE_GCONF_TK_AUTOLOCK_ENABLED_PATH @ tklock.h
@@ -1251,44 +1249,37 @@ static const setting_t gconf_defaults[] =
     .def  = "0", // = GOVERNOR_UNSET = no override
   },
   {
-    // MCE_GCONF_LIPSTICK_CORE_DELAY @ modules/display.h
-    .key  = "/system/osso/dsm/display/lipstick_core_dump_delay",
+    .key  = MCE_GCONF_LIPSTICK_CORE_DELAY,
     .type = "i",
-    .def  = "30",
+    .def  = G_STRINGIFY(DEFAULT_LIPSTICK_CORE_DELAY),
   },
   {
-    // MCE_GCONF_BRIGHTNESS_FADE_DEFAULT_MS @ modules/display.h
-    .key  = "/system/osso/dsm/display/brightness_fade_default_ms",
+    .key  = MCE_GCONF_BRIGHTNESS_FADE_DEFAULT_MS,
     .type = "i",
-    .def  = "150",
+    .def  = G_STRINGIFY(DEFAULT_BRIGHTNESS_FADE_DEFAULT_MS),
   },
   {
-    // MCE_GCONF_BRIGHTNESS_FADE_DIMMING_MS @ modules/display.h
-    .key  = "/system/osso/dsm/display/brightness_fade_dimming_ms",
+    .key  = MCE_GCONF_BRIGHTNESS_FADE_DIMMING_MS,
     .type = "i",
-    .def  = "1000",
+    .def  = G_STRINGIFY(DEFAULT_BRIGHTNESS_FADE_DIMMING_MS),
   },
   {
-    // MCE_GCONF_BRIGHTNESS_FADE_ALS_MS @ modules/display.h
-    .key  = "/system/osso/dsm/display/brightness_fade_als_ms",
+    .key  = MCE_GCONF_BRIGHTNESS_FADE_ALS_MS,
     .type = "i",
-    .def  = "1000",
+    .def  = G_STRINGIFY(DEFAULT_BRIGHTNESS_FADE_ALS_MS),
   },
   {
-    // MCE_GCONF_BRIGHTNESS_FADE_BLANK_MS @ modules/display.h
-    .key  = "/system/osso/dsm/display/brightness_fade_blank_ms",
+    .key  = MCE_GCONF_BRIGHTNESS_FADE_BLANK_MS,
     .type = "i",
-    .def  = "100",
+    .def  = G_STRINGIFY(DEFAULT_BRIGHTNESS_FADE_BLANK_MS),
   },
   {
-    // MCE_GCONF_BRIGHTNESS_FADE_UNBLANK_MS @ modules/display.h
-    .key  = "/system/osso/dsm/display/brightness_fade_unblank_ms",
+    .key  = MCE_GCONF_BRIGHTNESS_FADE_UNBLANK_MS,
     .type = "i",
-    .def  = "90",
+    .def  = G_STRINGIFY(DEFAULT_BRIGHTNESS_FADE_UNBLANK_MS),
   },
   {
-    // MCE_GCONF_DISPLAY_OFF_OVERRIDE @ modules/display.h
-    .key  = "/system/osso/dsm/display/display_off_override",
+    .key  = MCE_GCONF_DISPLAY_OFF_OVERRIDE,
     .type = "i",
     .def  = "0", // = DISPLAY_OFF_OVERRIDE_DISABLED
   },

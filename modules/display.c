@@ -892,7 +892,7 @@ static guint mdy_automatic_brightness_setting_gconf_id = 0;
 static gint mdy_psm_disp_brightness = -1;
 
 /** Never blank display setting */
-static gint mdy_disp_never_blank = 0;
+static gint mdy_disp_never_blank = DEFAULT_DISPLAY_NEVER_BLANK;
 
 /** GConf callback ID for display never blank setting */
 static guint mdy_disp_never_blank_gconf_cb_id = 0;
@@ -919,7 +919,7 @@ static gint mdy_disp_dim_timeout = DEFAULT_DIM_TIMEOUT;
 static guint mdy_disp_dim_timeout_gconf_cb_id = 0;
 
 /** Use low power mode setting */
-static gboolean mdy_use_low_power_mode = FALSE;
+static gboolean mdy_use_low_power_mode = DEFAULT_USE_LOW_POWER_MODE;
 
 /** GConf callback ID for low power mode setting */
 static guint mdy_use_low_power_mode_gconf_cb_id = 0;
@@ -2014,19 +2014,19 @@ static int     mdy_brightness_fade_start_level = 0;
 static int     mdy_brightness_fade_end_level = 0;
 
 /** Default brightness fade length during display state transitions [ms] */
-static gint mdy_brightness_fade_duration_def_ms = 150;
+static gint mdy_brightness_fade_duration_def_ms = DEFAULT_BRIGHTNESS_FADE_DEFAULT_MS;
 
 /** GConf change notification id for mdy_brightness_fade_duration_def_ms */
 static guint mdy_brightness_fade_duration_def_ms_gconf_cb_id = 0;
 
 /** Brightness fade length during display dimming [ms] */
-static gint mdy_brightness_fade_duration_dim_ms = 1000;
+static gint mdy_brightness_fade_duration_dim_ms = DEFAULT_BRIGHTNESS_FADE_DIMMING_MS;
 
 /** GConf change notification id for mdy_brightness_fade_duration_dim_ms */
 static guint mdy_brightness_fade_duration_dim_ms_gconf_cb_id = 0;
 
 /** Brightness fade length during ALS tuning [ms] */
-static gint mdy_brightness_fade_duration_als_ms = 1000;
+static gint mdy_brightness_fade_duration_als_ms = DEFAULT_BRIGHTNESS_FADE_ALS_MS;
 
 /** GConf change notification id for mdy_brightness_fade_duration_als_ms */
 static guint mdy_brightness_fade_duration_als_ms_gconf_cb_id = 0;
@@ -2037,7 +2037,7 @@ static guint mdy_brightness_fade_duration_als_ms_gconf_cb_id = 0;
  *       kept short enough not to cause irritation (due to increased
  *       response time to power key press).
  */
-static gint mdy_brightness_fade_duration_blank_ms = 100;
+static gint mdy_brightness_fade_duration_blank_ms = DEFAULT_BRIGHTNESS_FADE_BLANK_MS;
 
 /** GConf change notification id for mdy_brightness_fade_duration_blank_ms */
 static guint mdy_brightness_fade_duration_blank_ms_gconf_cb_id = 0;
@@ -2053,7 +2053,7 @@ static guint mdy_brightness_fade_duration_blank_ms_gconf_cb_id = 0;
  *
  * Basically we end up seeing the brighter end of the fade in.
  */
-static gint mdy_brightness_fade_duration_unblank_ms = 90;
+static gint mdy_brightness_fade_duration_unblank_ms = DEFAULT_BRIGHTNESS_FADE_UNBLANK_MS;
 
 /** GConf change notification id for mdy_brightness_fade_duration_unblank_ms */
 static guint mdy_brightness_fade_duration_unblank_ms_gconf_cb_id = 0;
@@ -4402,7 +4402,7 @@ static gchar *mdy_compositor_priv_name = 0;
 static int mdy_compositor_pid = -1;
 
 /** Delay [s] from setUpdatesEnabled() to attempting compositor core dump */
-static gint mdy_compositor_core_delay = 30;
+static gint mdy_compositor_core_delay = DEFAULT_LIPSTICK_CORE_DELAY;
 
 /** GConf callback ID for mdy_compositor_core_delay setting */
 static guint mdy_compositor_core_delay_gconf_cb_id = 0;
@@ -6754,7 +6754,7 @@ static gboolean mdy_dbus_handle_display_dim_req(DBusMessage *const msg)
 }
 
 /** Override mode for display off requests made over D-Bus */
-static gint mdy_dbus_display_off_override = DISPLAY_OFF_OVERRIDE_DISABLED;
+static gint mdy_dbus_display_off_override = DEFAULT_DISPLAY_OFF_OVERRIDE;
 
 /** GConf notifier id for mdy_dbus_display_off_override */
 static guint mdy_dbus_display_off_override_gconf_cb_id = 0;
@@ -7992,7 +7992,7 @@ static void mdy_gconf_init(void)
     /* Never blank toggle */
     mce_gconf_track_int(MCE_GCONF_DISPLAY_NEVER_BLANK,
                         &mdy_disp_never_blank,
-                        0, // FIXME: define and use an default value
+                        DEFAULT_DISPLAY_NEVER_BLANK,
                         mdy_gconf_cb,
                         &mdy_disp_never_blank_gconf_cb_id);
 
@@ -8038,7 +8038,7 @@ static void mdy_gconf_init(void)
     /* Use low power mode toggle */
     mce_gconf_track_bool(MCE_GCONF_USE_LOW_POWER_MODE,
                          &mdy_use_low_power_mode,
-                         FALSE, // FIXME: define and use an default value
+                         DEFAULT_USE_LOW_POWER_MODE,
                          mdy_gconf_cb,
                          &mdy_use_low_power_mode_gconf_cb_id);
 
@@ -8052,49 +8052,49 @@ static void mdy_gconf_init(void)
     /* Delay for killing unresponsive compositor */
     mce_gconf_track_int(MCE_GCONF_LIPSTICK_CORE_DELAY,
                         &mdy_compositor_core_delay,
-                        30,  // FIXME: define and use an default value
+                        DEFAULT_LIPSTICK_CORE_DELAY,
                         mdy_gconf_cb,
                         &mdy_compositor_core_delay_gconf_cb_id);
 
     /* Brightness fade length: default */
     mce_gconf_track_int(MCE_GCONF_BRIGHTNESS_FADE_DEFAULT_MS,
                         &mdy_brightness_fade_duration_def_ms,
-                        150, // FIXME: define and use an default value
+                        DEFAULT_BRIGHTNESS_FADE_DEFAULT_MS,
                         mdy_gconf_cb,
                         &mdy_brightness_fade_duration_def_ms_gconf_cb_id);
 
     /* Brightness fade length: dim */
     mce_gconf_track_int(MCE_GCONF_BRIGHTNESS_FADE_DIMMING_MS,
                         &mdy_brightness_fade_duration_dim_ms,
-                        1000, // FIXME: define and use an default value
+                        DEFAULT_BRIGHTNESS_FADE_DIMMING_MS,
                         mdy_gconf_cb,
                         &mdy_brightness_fade_duration_dim_ms_gconf_cb_id);
 
     /* Brightness fade length: als */
     mce_gconf_track_int(MCE_GCONF_BRIGHTNESS_FADE_ALS_MS,
                         &mdy_brightness_fade_duration_als_ms,
-                        1000, // FIXME: define and use an default value
+                        DEFAULT_BRIGHTNESS_FADE_ALS_MS,
                         mdy_gconf_cb,
                         &mdy_brightness_fade_duration_als_ms_gconf_cb_id);
 
     /* Brightness fade length: blank */
     mce_gconf_track_int(MCE_GCONF_BRIGHTNESS_FADE_BLANK_MS,
                         &mdy_brightness_fade_duration_blank_ms,
-                        100, // FIXME: define and use an default value
+                        DEFAULT_BRIGHTNESS_FADE_BLANK_MS,
                         mdy_gconf_cb,
                         &mdy_brightness_fade_duration_blank_ms_gconf_cb_id);
 
     /* Brightness fade length: unblank */
     mce_gconf_track_int(MCE_GCONF_BRIGHTNESS_FADE_UNBLANK_MS,
                         &mdy_brightness_fade_duration_unblank_ms,
-                        90, // FIXME: define and use an default value
+                        DEFAULT_BRIGHTNESS_FADE_UNBLANK_MS,
                         mdy_gconf_cb,
                         &mdy_brightness_fade_duration_unblank_ms_gconf_cb_id);
 
     /* Override mode for display off requests made over D-Bus */
     mce_gconf_track_int(MCE_GCONF_DISPLAY_OFF_OVERRIDE,
                         &mdy_dbus_display_off_override,
-                        DISPLAY_OFF_OVERRIDE_DISABLED,
+                        DEFAULT_DISPLAY_OFF_OVERRIDE,
                         mdy_gconf_cb,
                         &mdy_dbus_display_off_override_gconf_cb_id);
 }

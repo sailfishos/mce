@@ -263,4 +263,34 @@ enum
 	GOVERNOR_INTERACTIVE,
 };
 
+/** Default value for MCE_GCONF_DISPLAY_NEVER_BLANK setting */
+#define DEFAULT_DISPLAY_NEVER_BLANK		0
+
+/** Default value for MCE_GCONF_USE_LOW_POWER_MODE setting */
+#define DEFAULT_USE_LOW_POWER_MODE		false
+
+/** Default value for MCE_GCONF_LIPSTICK_CORE_DELAY setting */
+#define DEFAULT_LIPSTICK_CORE_DELAY		30
+
+/** Default value for MCE_GCONF_BRIGHTNESS_FADE_DEFAULT_MS setting */
+#define DEFAULT_BRIGHTNESS_FADE_DEFAULT_MS	150
+
+/** Default value for MCE_GCONF_BRIGHTNESS_FADE_DIMMING_MS setting */
+#define DEFAULT_BRIGHTNESS_FADE_DIMMING_MS	1000
+
+/** Default value for MCE_GCONF_BRIGHTNESS_FADE_ALS_MS setting */
+#define DEFAULT_BRIGHTNESS_FADE_ALS_MS		1000
+
+/** Default value for MCE_GCONF_BRIGHTNESS_FADE_BLANK_MS setting */
+#define DEFAULT_BRIGHTNESS_FADE_BLANK_MS	100
+
+/** Default value for MCE_GCONF_BRIGHTNESS_FADE_UNBLANK_MS setting */
+#define DEFAULT_BRIGHTNESS_FADE_UNBLANK_MS	90
+
+/** Default value for MCE_GCONF_DISPLAY_OFF_OVERRIDE setting
+ *
+ * Note: keep in sync with entry in builtin-gconf.c
+ */
+#define DEFAULT_DISPLAY_OFF_OVERRIDE		DISPLAY_OFF_OVERRIDE_DISABLED
+
 #endif /* _DISPLAY_H_ */
