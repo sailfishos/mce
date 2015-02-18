@@ -1053,6 +1053,15 @@ typedef struct
   const char *def;
 } setting_t;
 
+/** Custom stringify macro for comma separated lists
+ *
+ * G_STRINGIFY() uses standard two phase expansion - which
+ * does not work with comma separated lists. Using gcc
+ * pre-prosessor extension allows also those to work.
+ */
+#define CUSTOM_STRINGIFY2(v...) #v
+#define CUSTOM_STRINGIFY(v) CUSTOM_STRINGIFY2(v)
+
 static const setting_t gconf_defaults[] =
 {
   {
@@ -1136,10 +1145,9 @@ static const setting_t gconf_defaults[] =
     .def  = "5", // Note: Legacy value, migrated at mce startup
   },
   {
-    // MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST @ modules/display.h
-    .key  = "/system/osso/dsm/display/possible_display_dim_timeouts",
+    .key  = MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST,
     .type = "ai",
-    .def  = "15,30,60,120,180",
+    .def  = CUSTOM_STRINGIFY(DEFAULT_DISPLAY_DIM_TIMEOUT_LIST),
   },
   {
     // Hint for settings UI. Not used by MCE itself.

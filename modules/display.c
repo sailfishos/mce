@@ -672,6 +672,7 @@ static void                mdy_gconf_cb(GConfClient *const gcc, const guint id, 
 static void                mdy_gconf_init(void);
 static void                mdy_gconf_quit(void);
 static void                mdy_gconf_sanitize_brightness_settings(void);
+static void                mdy_gconf_sanitize_dim_timeouts(bool force_update);
 
 /* ------------------------------------------------------------------------- *
  * MODULE_LOAD_UNLOAD
@@ -905,6 +906,9 @@ static guint mdy_adaptive_dimming_enabled_gconf_cb_id = 0;
 
 /** Array of possible display dim timeouts */
 static GSList *mdy_possible_dim_timeouts = NULL;
+
+/** GConf callback ID for display blanking timeout setting */
+static guint mdy_possible_dim_timeouts_gconf_cb_id = 0;
 
 /** Threshold to use for adaptive timeouts for dimming in milliseconds */
 static gint mdy_adaptive_dimming_threshold = DEFAULT_ADAPTIVE_DIMMING_THRESHOLD;
@@ -7804,21 +7808,20 @@ static void mdy_gconf_cb(GConfClient *const gcc, const guint id,
         mdy_adaptive_dimming_threshold = gconf_value_get_int(gcv);
         mdy_blanking_stop_adaptive_dimming();
     }
-    else if (id == mdy_disp_dim_timeout_gconf_cb_id) {
-        mdy_disp_dim_timeout = gconf_value_get_int(gcv);
-
-        /* Find the closest match in the list of valid dim timeouts */
-        mdy_dim_timeout_index = mdy_blanking_find_dim_timeout_index(mdy_disp_dim_timeout);
-        mdy_adaptive_dimming_index = 0;
+    else if (id == mdy_possible_dim_timeouts_gconf_cb_id )
+    {
+        mdy_gconf_sanitize_dim_timeouts(true);
 
         /* Reprogram blanking timers */
         mdy_blanking_rethink_timers(true);
+    }
+    else if (id == mdy_disp_dim_timeout_gconf_cb_id) {
+        mdy_disp_dim_timeout = gconf_value_get_int(gcv);
 
-        /* Update inactivity timeout */
-        execute_datapipe(&inactivity_timeout_pipe,
-                         GINT_TO_POINTER(mdy_disp_dim_timeout +
-                                         mdy_disp_blank_timeout),
-                         USE_INDATA, CACHE_INDATA);
+        mdy_gconf_sanitize_dim_timeouts(false);
+
+        /* Reprogram blanking timers */
+        mdy_blanking_rethink_timers(true);
     }
     else if (id == mdy_blanking_inhibit_mode_gconf_cb_id) {
         mdy_blanking_inhibit_mode = gconf_value_get_int(gcv);
@@ -7944,6 +7947,43 @@ static void mdy_gconf_sanitize_brightness_settings(void)
                      USE_INDATA, CACHE_INDATA);
 }
 
+static void mdy_gconf_sanitize_dim_timeouts(bool force_update)
+{
+    /* If asked to, flush existing list of allowed timeouts */
+    if( force_update && mdy_possible_dim_timeouts ) {
+        g_slist_free(mdy_possible_dim_timeouts),
+            mdy_possible_dim_timeouts = 0;
+    }
+
+    /* Make sure we have a list of allowed timeouts */
+    if( !mdy_possible_dim_timeouts ) {
+        mce_gconf_get_int_list(MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST,
+                               &mdy_possible_dim_timeouts);
+    }
+
+    if( !mdy_possible_dim_timeouts ) {
+        static const int def[] = { DEFAULT_DISPLAY_DIM_TIMEOUT_LIST };
+
+        GSList *tmp = 0;
+        for( size_t i = 0; i < G_N_ELEMENTS(def); ++i )
+            tmp = g_slist_prepend(tmp, GINT_TO_POINTER(def[i]));
+        mdy_possible_dim_timeouts = g_slist_reverse(tmp);
+    }
+
+    /* Find the closest match in the list of valid dim timeouts */
+    mdy_dim_timeout_index = mdy_blanking_find_dim_timeout_index(mdy_disp_dim_timeout);
+
+    /* Reset adaptive dimming state */
+    mdy_adaptive_dimming_index = 0;
+
+    /* Update inactivity timeout */
+    execute_datapipe(&inactivity_timeout_pipe,
+                     GINT_TO_POINTER(mdy_disp_dim_timeout +
+                                     mdy_disp_blank_timeout +
+                                     mdy_additional_bootup_dim_timeout),
+                     USE_INDATA, CACHE_INDATA);
+}
+
 /** Get initial gconf valus and start tracking changes
  */
 static void mdy_gconf_init(void)
@@ -8003,14 +8043,6 @@ static void mdy_gconf_init(void)
                          mdy_gconf_cb,
                          &mdy_adaptive_dimming_enabled_gconf_cb_id);
 
-    /* Possible dim timeouts */
-    if( !mce_gconf_get_int_list(MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST,
-                                &mdy_possible_dim_timeouts) ) {
-        mce_log(LL_WARN, "no dim timeouts defined");
-        // FIXME: use some built-in defaults
-        // FIXME: CHANGE NOTIFIER IS NOT INSTALLED!!!
-    }
-
     /* Adaptive display dimming threshold timer */
     mce_gconf_track_int(MCE_GCONF_DISPLAY_ADAPTIVE_DIM_THRESHOLD,
                         &mdy_adaptive_dimming_threshold,
@@ -8025,15 +8057,13 @@ static void mdy_gconf_init(void)
                         mdy_gconf_cb,
                         &mdy_disp_dim_timeout_gconf_cb_id);
 
-    mdy_dim_timeout_index = mdy_blanking_find_dim_timeout_index(mdy_disp_dim_timeout);
-    mdy_adaptive_dimming_index = 0;
+    /* Possible dim timeouts */
+    mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
+                           MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST,
+                           mdy_gconf_cb,
+                           &mdy_possible_dim_timeouts_gconf_cb_id);
 
-    /* Update inactivity timeout */
-    execute_datapipe(&inactivity_timeout_pipe,
-                     GINT_TO_POINTER(mdy_disp_dim_timeout +
-                                     mdy_disp_blank_timeout +
-                                     mdy_additional_bootup_dim_timeout),
-                     USE_INDATA, CACHE_INDATA);
+    mdy_gconf_sanitize_dim_timeouts(true);
 
     /* Use low power mode toggle */
     mce_gconf_track_bool(MCE_GCONF_USE_LOW_POWER_MODE,
@@ -8126,6 +8156,9 @@ static void mdy_gconf_quit(void)
 
     mce_gconf_notifier_remove(mdy_disp_dim_timeout_gconf_cb_id),
         mdy_disp_dim_timeout_gconf_cb_id = 0;
+
+    mce_gconf_notifier_remove(mdy_possible_dim_timeouts_gconf_cb_id),
+        mdy_possible_dim_timeouts_gconf_cb_id = 0;
 
     mce_gconf_notifier_remove(mdy_use_low_power_mode_gconf_cb_id),
         mdy_use_low_power_mode_gconf_cb_id = 0;
