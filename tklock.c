@@ -374,7 +374,7 @@ static gint doubletap_enable_mode = DBLTAP_ENABLE_DEFAULT;
 static guint doubletap_enable_mode_cb_id = 0;
 
 /** Flag: Disable automatic dim/blank from tklock */
-static gint tklock_blank_disable = FALSE;
+static gint tklock_blank_disable = DEFAULT_TK_AUTO_BLANK_DISABLE;
 /** GConf notifier id for tracking tklock_blank_disable changes */
 static guint tklock_blank_disable_id = 0;
 
@@ -2810,7 +2810,7 @@ static void tklock_uiexcept_begin(uiexctype_t type, int64_t linger)
  * ========================================================================= */
 
 /** Bitmap of automatic lpm triggering modes */
-static gint tklock_lpmui_triggering = LPMUI_TRIGGERING_FROM_POCKET;
+static gint tklock_lpmui_triggering = DEFAULT_LPMUI_TRIGGERING;
 
 /** GConf notifier id for tklock_lpmui_triggering */
 static guint tklock_lpmui_triggering_cb_id = 0;
@@ -3634,59 +3634,49 @@ EXIT:
 static void tklock_gconf_init(void)
 {
     /* Config tracking for disabling automatic screen dimming/blanking
-     * while showing lockscreen. This is demo/debugging feature, so sane
-     * defaults must be used and no error checking is needed. */
-    mce_gconf_notifier_add(MCE_GCONF_LOCK_PATH,
-                           MCE_GCONF_TK_AUTO_BLANK_DISABLE_PATH,
-                           tklock_gconf_cb,
-                           &tklock_blank_disable_id);
-
-    mce_gconf_get_int(MCE_GCONF_TK_AUTO_BLANK_DISABLE_PATH,
-                      &tklock_blank_disable);
+     * while showing lockscreen. */
+    mce_gconf_track_int(MCE_GCONF_TK_AUTO_BLANK_DISABLE_PATH,
+                        &tklock_blank_disable,
+                        DEFAULT_TK_AUTO_BLANK_DISABLE,
+                        tklock_gconf_cb,
+                        &tklock_blank_disable_id);
 
     /* Touchscreen/keypad autolock */
-    /* Since we've set a default, error handling is unnecessary */
-    mce_gconf_notifier_add(MCE_GCONF_LOCK_PATH,
-                           MCE_GCONF_TK_AUTOLOCK_ENABLED_PATH,
-                           tklock_gconf_cb,
-                           &tk_autolock_enabled_cb_id);
-
-    mce_gconf_get_bool(MCE_GCONF_TK_AUTOLOCK_ENABLED_PATH,
-                       &tk_autolock_enabled);
+    mce_gconf_track_bool(MCE_GCONF_TK_AUTOLOCK_ENABLED_PATH,
+                         &tk_autolock_enabled,
+                         DEFAULT_TK_AUTOLOCK,
+                         tklock_gconf_cb,
+                         &tk_autolock_enabled_cb_id);
 
     /* Touchscreen/keypad double-tap gesture policy */
-    mce_gconf_notifier_add(MCE_GCONF_LOCK_PATH,
-                           MCE_GCONF_TK_DOUBLE_TAP_GESTURE_PATH,
-                           tklock_gconf_cb,
-                           &doubletap_gesture_policy_cb_id);
+    mce_gconf_track_int(MCE_GCONF_TK_DOUBLE_TAP_GESTURE_PATH,
+                        &doubletap_gesture_policy,
+                        DBLTAP_ACTION_DEFAULT,
+                        tklock_gconf_cb,
+                        &doubletap_gesture_policy_cb_id);
 
-    mce_gconf_get_int(MCE_GCONF_TK_DOUBLE_TAP_GESTURE_PATH,
-                      &doubletap_gesture_policy);
     tklock_gconf_sanitize_doubletap_gesture_policy();
 
     /** Touchscreen double tap gesture mode */
-    mce_gconf_notifier_add(MCE_GCONF_DOUBLETAP_PATH,
-                           MCE_GCONF_DOUBLETAP_MODE,
-                           tklock_gconf_cb,
-                           &doubletap_enable_mode_cb_id);
-
-    mce_gconf_get_int(MCE_GCONF_DOUBLETAP_MODE, &doubletap_enable_mode);
+    mce_gconf_track_int(MCE_GCONF_DOUBLETAP_MODE,
+                        &doubletap_enable_mode,
+                        DBLTAP_ENABLE_DEFAULT,
+                        tklock_gconf_cb,
+                        &doubletap_enable_mode_cb_id);
 
     /* Bitmap of automatic lpm triggering modes */
-    mce_gconf_notifier_add(MCE_GCONF_LOCK_PATH,
-                           MCE_GCONF_LPMUI_TRIGGERING,
-                           tklock_gconf_cb,
-                           &tklock_lpmui_triggering_cb_id);
-
-    mce_gconf_get_int(MCE_GCONF_LPMUI_TRIGGERING, &tklock_lpmui_triggering);
+    mce_gconf_track_int(MCE_GCONF_LPMUI_TRIGGERING,
+                        &tklock_lpmui_triggering,
+                        DEFAULT_LPMUI_TRIGGERING,
+                        tklock_gconf_cb,
+                        &tklock_lpmui_triggering_cb_id);
 
     /* Proximity can block touch input */
-    mce_gconf_notifier_add(MCE_GCONF_LOCK_PATH,
-                           MCE_GCONF_PROXIMITY_BLOCKS_TOUCH,
-                           tklock_gconf_cb,
-                           &proximity_blocks_touch_cb_id);
-    mce_gconf_get_bool(MCE_GCONF_PROXIMITY_BLOCKS_TOUCH,
-                       &proximity_blocks_touch);
+    mce_gconf_track_bool(MCE_GCONF_PROXIMITY_BLOCKS_TOUCH,
+                         &proximity_blocks_touch,
+                         PROXIMITY_BLOCKS_TOUCH_DEFAULT,
+                         tklock_gconf_cb,
+                         &proximity_blocks_touch_cb_id);
 }
 
 /** Remove gconf change notifiers

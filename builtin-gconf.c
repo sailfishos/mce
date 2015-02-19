@@ -1199,8 +1199,7 @@ static const setting_t gconf_defaults[] =
     .def  = "1",
   },
   {
-    // MCE_GCONF_LPMUI_TRIGGERING @ tklock.h
-    .key  = "/system/osso/dsm/locks/lpm_triggering",
+    .key  = MCE_GCONF_LPMUI_TRIGGERING,
     .type = "i",
     .def  = "1", // = LPMUI_TRIGGERING_FROM_POCKET
   },
@@ -1306,10 +1305,9 @@ static const setting_t gconf_defaults[] =
     .def  = "0", // = DISPLAY_OFF_OVERRIDE_DISABLED
   },
   {
-    // MCE_GCONF_TK_AUTO_BLANK_DISABLE_PATH @ tklock.h
-    .key  = "/system/osso/dsm/locks/tklock_blank_disable",
+    .key  = MCE_GCONF_TK_AUTO_BLANK_DISABLE_PATH,
     .type = "i",
-    .def  = "0",
+    .def  = G_STRINGIFY(DEFAULT_TK_AUTO_BLANK_DISABLE),
   },
 #ifdef ENABLE_DOUBLETAP_EMULATION
   {
