@@ -108,6 +108,12 @@ typedef enum
 /** Default value for can block touch input GConf setting */
 # define PROXIMITY_BLOCKS_TOUCH_DEFAULT         false
 
+/** Devicelock is in lockscreen GConf setting */
+# define MCE_GCONF_DEVICELOCK_IN_LOCKSCREEN     MCE_GCONF_LOCK_PATH "/devicelock_in_lockscreen"
+
+/** Default value for MCE_GCONF_DEVICELOCK_IN_LOCKSCREEN */
+# define DEFAULT_DEVICELOCK_IN_LOCKSCREEN       false
+
 /** Automatic lpm triggering modes */
 enum
 {

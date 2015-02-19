@@ -1210,6 +1210,11 @@ static const setting_t gconf_defaults[] =
     .def  = G_STRINGIFY(PROXIMITY_BLOCKS_TOUCH_DEFAULT),
   },
   {
+    .key  = MCE_GCONF_DEVICELOCK_IN_LOCKSCREEN,
+    .type = "b",
+    .def  = G_STRINGIFY(DEFAULT_DEVICELOCK_IN_LOCKSCREEN),
+  },
+  {
     // MCE_GCONF_BLANKING_INHIBIT_MODE @ modules/display.h
     .key  = "/system/osso/dsm/display/inhibit_blank_mode",
     .type = "i",

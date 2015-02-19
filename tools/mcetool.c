@@ -2584,6 +2584,68 @@ static void xmce_get_autolock_mode(void)
 }
 
 /* ------------------------------------------------------------------------- *
+ * devicelock_in_lockscreen
+ * ------------------------------------------------------------------------- */
+
+static bool interactive_confirmation(const char *positive)
+{
+        if( !isatty(STDIN_FILENO) ) {
+                printf("\nstdin is not a tty\n");
+                return false;
+        }
+
+        char buff[64];
+
+        fflush(stdout);
+
+        if( !fgets(buff, sizeof buff, stdin) ) {
+                printf("\n");
+                return false;
+        }
+
+        buff[strcspn(buff, "\r\n")] = 0;
+
+        return !strcmp(buff, positive);
+}
+
+/* Set devicelock_in_lockscreen mode
+ *
+ * @param args string suitable for interpreting as enabled/disabled
+ */
+static bool xmce_set_devicelock_in_lockscreen(const char *args)
+{
+        gboolean val = xmce_parse_enabled(args);
+
+        /* Make it a bit more difficult to enable the setting
+         * accidentally */
+        if( val ) {
+                printf("Setting devicelock-in-lockscreen=enabled can make\n"
+                       "the device unlockabe via normal touch interaction\n"
+                       "\n"
+                       "Are you sure you want to continue (yes/NO): ");
+                if( !interactive_confirmation("yes") ) {
+                        printf("operation canceled\n");
+                        return false;
+                }
+        }
+
+        mcetool_gconf_set_bool(MCE_GCONF_DEVICELOCK_IN_LOCKSCREEN, val);
+        return true;
+}
+
+/** Get current devicelock_in_lockscreen mode from mce and print it out
+ */
+static void xmce_get_devicelock_in_lockscreen(void)
+{
+        gboolean val = 0;
+        char txt[32] = "unknown";
+
+        if( mcetool_gconf_get_bool(MCE_GCONF_DEVICELOCK_IN_LOCKSCREEN, &val) )
+                snprintf(txt, sizeof txt, "%s", val ? "enabled" : "disabled");
+        printf("%-"PAD1"s %s\n", "Devicelock is in lockscreen:", txt);
+}
+
+/* ------------------------------------------------------------------------- *
  * blank timeout
  * ------------------------------------------------------------------------- */
 
@@ -4040,6 +4102,7 @@ static bool xmce_get_status(const char *args)
         xmce_get_psm_threshold();
         xmce_get_tklock_mode();
         xmce_get_autolock_mode();
+        xmce_get_devicelock_in_lockscreen();
         xmce_get_doubletap_mode();
         xmce_get_doubletap_wakeup();
         xmce_get_powerkey_action();
@@ -4319,6 +4382,19 @@ static const mce_opt_t options[] =
                 .usage       =
                         "set the autolock mode; valid modes are:\n"
                         "'enabled' and 'disabled'\n"
+        },
+        {
+                .name        = "set-devicelock-in-lockscreen",
+                .with_arg    = xmce_set_devicelock_in_lockscreen,
+                .values      = "READ THE LONG HELP",
+                .usage       =
+                        "DO NOT TOUCH THIS UNLESS YOU KNOWN WHAT YOU ARE DOING\n"
+                        "\n"
+                        "Enabling the toggle on devices where device unlocking\n"
+                        "is not included in the lockscreen makes it impossible to\n"
+                        "unlock the device via touch screen.\n"
+                        "\n"
+                        "Valid modes are: 'enabled' and 'disabled'\n"
         },
         {
                 .name        = "set-tklock-blank",
