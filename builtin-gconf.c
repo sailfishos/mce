@@ -1119,10 +1119,24 @@ static const setting_t gconf_defaults[] =
     .def  = "30",
   },
   {
-    // MCE_GCONF_DISPLAY_BLANK_TIMEOUT @ modules/display.h
-    .key  = "/system/osso/dsm/display/display_blank_timeout",
+    .key  = MCE_GCONF_DISPLAY_BLANK_TIMEOUT,
     .type = "i",
-    .def  = "3",
+    .def  = G_STRINGIFY(DEFAULT_BLANK_TIMEOUT),
+  },
+  {
+    .key  = MCE_GCONF_DISPLAY_BLANK_FROM_LOCKSCREEN_TIMEOUT,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_BLANK_FROM_LOCKSCREEN_TIMEOUT),
+  },
+  {
+    .key  = MCE_GCONF_DISPLAY_BLANK_FROM_LPM_ON_TIMEOUT,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_BLANK_FROM_LPM_ON_TIMEOUT),
+  },
+  {
+    .key  = MCE_GCONF_DISPLAY_BLANK_FROM_LPM_OFF_TIMEOUT,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_BLANK_FROM_LPM_OFF_TIMEOUT),
   },
   {
     .key  = MCE_GCONF_DISPLAY_NEVER_BLANK,
@@ -1868,6 +1882,7 @@ gconf_client_get_default(void)
     // initialize to hard coded defaults
     for( const setting_t *elem = gconf_defaults; elem->key; ++elem )
     {
+      mce_log(LL_DEBUG, "%s = '%s' (%s)", elem->key, elem->def, elem->type);
       GConfEntry *add = gconf_entry_init(elem->key, elem->type, elem->def);
       self->entries = g_slist_prepend(self->entries, add);
     }

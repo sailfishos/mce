@@ -2599,17 +2599,67 @@ static bool xmce_set_blank_timeout(const char *args)
         return true;
 }
 
-/** Get current blank timeout from mce and print it out
+/** Set display blanking from lockscreen timeout
+ *
+ * @param args string that can be parsed to integer
  */
-static void xmce_get_blank_timeout(void)
+static bool xmce_set_blank_from_lockscreen_timeout(const char *args)
+{
+        int val = xmce_parse_integer(args);
+        mcetool_gconf_set_int(MCE_GCONF_DISPLAY_BLANK_FROM_LOCKSCREEN_TIMEOUT, val);
+        return true;
+}
+
+/** Set display blanking from lpm-on timeout
+ *
+ * @param args string that can be parsed to integer
+ */
+static bool xmce_set_blank_from_lpm_on_timeout(const char *args)
+{
+        int val = xmce_parse_integer(args);
+        mcetool_gconf_set_int(MCE_GCONF_DISPLAY_BLANK_FROM_LPM_ON_TIMEOUT, val);
+        return true;
+}
+
+/** Set display blanking from lpm-off timeout
+ *
+ * @param args string that can be parsed to integer
+ */
+static bool xmce_set_blank_from_lpm_off_timeout(const char *args)
+{
+        int val = xmce_parse_integer(args);
+        mcetool_gconf_set_int(MCE_GCONF_DISPLAY_BLANK_FROM_LPM_OFF_TIMEOUT, val);
+        return true;
+}
+
+/** Helper for outputting blank timeout settings
+ */
+static void xmce_get_blank_timeout_sub(const char *tag, const char *key)
 {
         gint val = 0;
         char txt[32];
 
         strcpy(txt, "unknown");
-        if( mcetool_gconf_get_int(MCE_GCONF_DISPLAY_BLANK_TIMEOUT, &val) )
+        if( mcetool_gconf_get_int(key, &val) )
                 snprintf(txt, sizeof txt, "%d", (int)val);
-        printf("%-"PAD1"s %s (seconds)\n", "Blank timeout:", txt);
+        printf("%-"PAD1"s %s (seconds)\n", tag, txt);
+}
+
+/** Get current blank timeouts from mce and print it out
+ */
+static void xmce_get_blank_timeout(void)
+{
+        xmce_get_blank_timeout_sub("Blank timeout:",
+                                   MCE_GCONF_DISPLAY_BLANK_TIMEOUT);
+
+        xmce_get_blank_timeout_sub("Blank from lockscreen:",
+                                   MCE_GCONF_DISPLAY_BLANK_FROM_LOCKSCREEN_TIMEOUT);
+
+        xmce_get_blank_timeout_sub("Blank from lpm-on:",
+                                   MCE_GCONF_DISPLAY_BLANK_FROM_LPM_ON_TIMEOUT);
+
+        xmce_get_blank_timeout_sub("Blank from lpm-off:",
+                                   MCE_GCONF_DISPLAY_BLANK_FROM_LPM_OFF_TIMEOUT);
 }
 
 /* ------------------------------------------------------------------------- *
@@ -4230,7 +4280,28 @@ static const mce_opt_t options[] =
                 .with_arg    = xmce_set_blank_timeout,
                 .values      = "secs",
                 .usage       =
-                        "set the automatic blanking timeout\n"
+                        "set the default automatic blanking timeout\n"
+        },
+        {
+                .name        = "set-blank-from-lockscreen-timeout",
+                .with_arg    = xmce_set_blank_from_lockscreen_timeout,
+                .values      = "secs",
+                .usage       =
+                        "set the automatic blanking timeout from lockscreen\n"
+        },
+        {
+                .name        = "set-blank-from-lpm-on-timeout",
+                .with_arg    = xmce_set_blank_from_lpm_on_timeout,
+                .values      = "secs",
+                .usage       =
+                        "set the automatic blanking timeout from lpm-on\n"
+        },
+        {
+                .name        = "set-blank-from-lpm-off-timeout",
+                .with_arg    = xmce_set_blank_from_lpm_off_timeout,
+                .values      = "secs",
+                .usage       =
+                        "set the automatic blanking timeout from lpm-off\n"
         },
         {
                 .name        = "set-never-blank",
