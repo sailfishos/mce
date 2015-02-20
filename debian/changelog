@@ -1,3 +1,15 @@
+mce (1.43.0) unstable; urgency=low
+
+  * [mce] Use mce_gconf_track_xxx() helpers in display plugin. Contributes
+    to JB#26550
+  * [mce] Do not use hardcoded defaults for display plugin settings.
+    Contributes to JB#26550
+  * [mce] Provide fallback values dim timeouts setting and track changes.
+    Contributes to JB#26550
+  * [mce] Make all blanking timeouts separately configurable. Fixes JB#26550
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 20 Feb 2015 08:14:52 +0200
+
 mce (1.42.0) unstable; urgency=low
 
   * [mce] Add dbus method for requesting settings reset. Fixes JB#24286
