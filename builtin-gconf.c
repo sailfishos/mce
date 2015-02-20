@@ -1053,6 +1053,15 @@ typedef struct
   const char *def;
 } setting_t;
 
+/** Custom stringify macro for comma separated lists
+ *
+ * G_STRINGIFY() uses standard two phase expansion - which
+ * does not work with comma separated lists. Using gcc
+ * pre-prosessor extension allows also those to work.
+ */
+#define CUSTOM_STRINGIFY2(v...) #v
+#define CUSTOM_STRINGIFY(v) CUSTOM_STRINGIFY2(v)
+
 static const setting_t gconf_defaults[] =
 {
   {
@@ -1110,16 +1119,29 @@ static const setting_t gconf_defaults[] =
     .def  = "30",
   },
   {
-    // MCE_GCONF_DISPLAY_BLANK_TIMEOUT @ modules/display.h
-    .key  = "/system/osso/dsm/display/display_blank_timeout",
+    .key  = MCE_GCONF_DISPLAY_BLANK_TIMEOUT,
     .type = "i",
-    .def  = "3",
+    .def  = G_STRINGIFY(DEFAULT_BLANK_TIMEOUT),
   },
   {
-    // MCE_GCONF_DISPLAY_NEVER_BLANK @ modules/display.h
-    .key  = "/system/osso/dsm/display/display_never_blank",
+    .key  = MCE_GCONF_DISPLAY_BLANK_FROM_LOCKSCREEN_TIMEOUT,
     .type = "i",
-    .def  = "0",
+    .def  = G_STRINGIFY(DEFAULT_BLANK_FROM_LOCKSCREEN_TIMEOUT),
+  },
+  {
+    .key  = MCE_GCONF_DISPLAY_BLANK_FROM_LPM_ON_TIMEOUT,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_BLANK_FROM_LPM_ON_TIMEOUT),
+  },
+  {
+    .key  = MCE_GCONF_DISPLAY_BLANK_FROM_LPM_OFF_TIMEOUT,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_BLANK_FROM_LPM_OFF_TIMEOUT),
+  },
+  {
+    .key  = MCE_GCONF_DISPLAY_NEVER_BLANK,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_DISPLAY_NEVER_BLANK),
   },
   {
     .key  = MCE_GCONF_DISPLAY_BRIGHTNESS,
@@ -1137,10 +1159,9 @@ static const setting_t gconf_defaults[] =
     .def  = "5", // Note: Legacy value, migrated at mce startup
   },
   {
-    // MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST @ modules/display.h
-    .key  = "/system/osso/dsm/display/possible_display_dim_timeouts",
+    .key  = MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST,
     .type = "ai",
-    .def  = "15,30,60,120,180",
+    .def  = CUSTOM_STRINGIFY(DEFAULT_DISPLAY_DIM_TIMEOUT_LIST),
   },
   {
     // Hint for settings UI. Not used by MCE itself.
@@ -1161,10 +1182,9 @@ static const setting_t gconf_defaults[] =
     .def  = "10000",
   },
   {
-    // MCE_GCONF_USE_LOW_POWER_MODE @ modules/display.h
-    .key  = "/system/osso/dsm/display/use_low_power_mode",
+    .key  = MCE_GCONF_USE_LOW_POWER_MODE,
     .type = "b",
-    .def  = "false",
+    .def  = G_STRINGIFY(DEFAULT_USE_LOW_POWER_MODE),
   },
   {
     // MCE_GCONF_TK_AUTOLOCK_ENABLED_PATH @ tklock.h
@@ -1251,44 +1271,37 @@ static const setting_t gconf_defaults[] =
     .def  = "0", // = GOVERNOR_UNSET = no override
   },
   {
-    // MCE_GCONF_LIPSTICK_CORE_DELAY @ modules/display.h
-    .key  = "/system/osso/dsm/display/lipstick_core_dump_delay",
+    .key  = MCE_GCONF_LIPSTICK_CORE_DELAY,
     .type = "i",
-    .def  = "30",
+    .def  = G_STRINGIFY(DEFAULT_LIPSTICK_CORE_DELAY),
   },
   {
-    // MCE_GCONF_BRIGHTNESS_FADE_DEFAULT_MS @ modules/display.h
-    .key  = "/system/osso/dsm/display/brightness_fade_default_ms",
+    .key  = MCE_GCONF_BRIGHTNESS_FADE_DEFAULT_MS,
     .type = "i",
-    .def  = "150",
+    .def  = G_STRINGIFY(DEFAULT_BRIGHTNESS_FADE_DEFAULT_MS),
   },
   {
-    // MCE_GCONF_BRIGHTNESS_FADE_DIMMING_MS @ modules/display.h
-    .key  = "/system/osso/dsm/display/brightness_fade_dimming_ms",
+    .key  = MCE_GCONF_BRIGHTNESS_FADE_DIMMING_MS,
     .type = "i",
-    .def  = "1000",
+    .def  = G_STRINGIFY(DEFAULT_BRIGHTNESS_FADE_DIMMING_MS),
   },
   {
-    // MCE_GCONF_BRIGHTNESS_FADE_ALS_MS @ modules/display.h
-    .key  = "/system/osso/dsm/display/brightness_fade_als_ms",
+    .key  = MCE_GCONF_BRIGHTNESS_FADE_ALS_MS,
     .type = "i",
-    .def  = "1000",
+    .def  = G_STRINGIFY(DEFAULT_BRIGHTNESS_FADE_ALS_MS),
   },
   {
-    // MCE_GCONF_BRIGHTNESS_FADE_BLANK_MS @ modules/display.h
-    .key  = "/system/osso/dsm/display/brightness_fade_blank_ms",
+    .key  = MCE_GCONF_BRIGHTNESS_FADE_BLANK_MS,
     .type = "i",
-    .def  = "100",
+    .def  = G_STRINGIFY(DEFAULT_BRIGHTNESS_FADE_BLANK_MS),
   },
   {
-    // MCE_GCONF_BRIGHTNESS_FADE_UNBLANK_MS @ modules/display.h
-    .key  = "/system/osso/dsm/display/brightness_fade_unblank_ms",
+    .key  = MCE_GCONF_BRIGHTNESS_FADE_UNBLANK_MS,
     .type = "i",
-    .def  = "90",
+    .def  = G_STRINGIFY(DEFAULT_BRIGHTNESS_FADE_UNBLANK_MS),
   },
   {
-    // MCE_GCONF_DISPLAY_OFF_OVERRIDE @ modules/display.h
-    .key  = "/system/osso/dsm/display/display_off_override",
+    .key  = MCE_GCONF_DISPLAY_OFF_OVERRIDE,
     .type = "i",
     .def  = "0", // = DISPLAY_OFF_OVERRIDE_DISABLED
   },
@@ -1869,6 +1882,7 @@ gconf_client_get_default(void)
     // initialize to hard coded defaults
     for( const setting_t *elem = gconf_defaults; elem->key; ++elem )
     {
+      mce_log(LL_DEBUG, "%s = '%s' (%s)", elem->key, elem->def, elem->type);
       GConfEntry *add = gconf_entry_init(elem->key, elem->type, elem->def);
       self->entries = g_slist_prepend(self->entries, add);
     }

@@ -401,6 +401,7 @@ static void                mdy_poweron_led_rethink_schedule(void);
  * AUTOMATIC_BLANKING
  * ------------------------------------------------------------------------- */
 
+static void                mdy_blanking_update_inactivity_timeout(void);
 static guint               mdy_blanking_find_dim_timeout_index(gint dim_timeout);
 static gboolean            mdy_blanking_can_blank_from_low_power_mode(void);
 
@@ -672,6 +673,7 @@ static void                mdy_gconf_cb(GConfClient *const gcc, const guint id, 
 static void                mdy_gconf_init(void);
 static void                mdy_gconf_quit(void);
 static void                mdy_gconf_sanitize_brightness_settings(void);
+static void                mdy_gconf_sanitize_dim_timeouts(bool force_update);
 
 /* ------------------------------------------------------------------------- *
  * MODULE_LOAD_UNLOAD
@@ -756,17 +758,11 @@ static guint mdy_blanking_adaptive_dimming_cb_id = 0;
 /** Index for the array of adaptive dimming timeout multipliers */
 static guint mdy_adaptive_dimming_index = 0;
 
-/** Display blank timeout setting when low power mode is supported */
-static gint mdy_disp_lpm_off_timeout = DEFAULT_LPM_BLANK_TIMEOUT;
-
-/** Display low power mode timeout setting */
-static gint mdy_disp_lpm_on_timeout = DEFAULT_BLANK_TIMEOUT;
-
 /** Display blank prevention timer */
 static gint mdy_blank_prevent_timeout = BLANK_PREVENT_TIMEOUT;
 
 /** Bootup dim additional timeout */
-static gint mdy_additional_bootup_dim_timeout = 0;
+static gint mdy_additional_bootup_dim_timeout = BOOTUP_DIM_ADDITIONAL_TIMEOUT;
 
 /** File used to enable low power mode */
 static gchar *mdy_low_power_mode_file = NULL;
@@ -855,10 +851,28 @@ static filewatcher_t *mdy_update_mode_watcher = 0;
  * ------------------------------------------------------------------------- */
 
 /** Display blanking timeout setting */
-static gint mdy_disp_blank_timeout = DEFAULT_BLANK_TIMEOUT;
+static gint mdy_blank_timeout = DEFAULT_BLANK_TIMEOUT;
 
-/** GConf callback ID for mdy_disp_blank_timeout */
-static guint mdy_disp_blank_timeout_gconf_cb_id = 0;
+/** Display blanking timeout from lockscreen setting */
+static gint mdy_blank_from_lockscreen_timeout = DEFAULT_BLANK_FROM_LOCKSCREEN_TIMEOUT;
+
+/** Display blanking timeout from lpm-on setting */
+static gint mdy_blank_from_lpm_on_timeout = DEFAULT_BLANK_FROM_LPM_ON_TIMEOUT;
+
+/** Display blanking timeout from lpm-off setting */
+static gint mdy_blank_from_lpm_off_timeout = DEFAULT_BLANK_FROM_LPM_OFF_TIMEOUT;
+
+/** GConf callback ID for mdy_blank_timeout */
+static guint mdy_blank_timeout_gconf_cb_id = 0;
+
+/** GConf callback ID for mdy_blank_from_lockscreen_timeout */
+static guint mdy_blank_from_lockscreen_timeout_gconf_cb_id = 0;
+
+/** GConf callback ID for mdy_blank_from_lpm_on_timeout */
+static guint mdy_blank_from_lpm_on_timeout_gconf_cb_id = 0;
+
+/** GConf callback ID for mdy_blank_from_lpm_off_timeout */
+static guint mdy_blank_from_lpm_off_timeout_gconf_cb_id = 0;
 
 /** Number of brightness steps */
 static gint mdy_brightness_step_count = DEFAULT_DISP_BRIGHTNESS_STEP_COUNT;
@@ -892,7 +906,7 @@ static guint mdy_automatic_brightness_setting_gconf_id = 0;
 static gint mdy_psm_disp_brightness = -1;
 
 /** Never blank display setting */
-static gint mdy_disp_never_blank = 0;
+static gint mdy_disp_never_blank = DEFAULT_DISPLAY_NEVER_BLANK;
 
 /** GConf callback ID for display never blank setting */
 static guint mdy_disp_never_blank_gconf_cb_id = 0;
@@ -905,6 +919,9 @@ static guint mdy_adaptive_dimming_enabled_gconf_cb_id = 0;
 
 /** Array of possible display dim timeouts */
 static GSList *mdy_possible_dim_timeouts = NULL;
+
+/** GConf callback ID for display blanking timeout setting */
+static guint mdy_possible_dim_timeouts_gconf_cb_id = 0;
 
 /** Threshold to use for adaptive timeouts for dimming in milliseconds */
 static gint mdy_adaptive_dimming_threshold = DEFAULT_ADAPTIVE_DIMMING_THRESHOLD;
@@ -919,7 +936,7 @@ static gint mdy_disp_dim_timeout = DEFAULT_DIM_TIMEOUT;
 static guint mdy_disp_dim_timeout_gconf_cb_id = 0;
 
 /** Use low power mode setting */
-static gboolean mdy_use_low_power_mode = FALSE;
+static gboolean mdy_use_low_power_mode = DEFAULT_USE_LOW_POWER_MODE;
 
 /** GConf callback ID for low power mode setting */
 static guint mdy_use_low_power_mode_gconf_cb_id = 0;
@@ -1082,6 +1099,7 @@ static void mdy_datapipe_submode_cb(gconstpointer data)
         case MCE_STATE_USER:
         case MCE_STATE_ACTDEAD:
             mdy_additional_bootup_dim_timeout = 0;
+            mdy_blanking_update_inactivity_timeout();
             break;
         default:
             break;
@@ -2014,19 +2032,19 @@ static int     mdy_brightness_fade_start_level = 0;
 static int     mdy_brightness_fade_end_level = 0;
 
 /** Default brightness fade length during display state transitions [ms] */
-static gint mdy_brightness_fade_duration_def_ms = 150;
+static gint mdy_brightness_fade_duration_def_ms = DEFAULT_BRIGHTNESS_FADE_DEFAULT_MS;
 
 /** GConf change notification id for mdy_brightness_fade_duration_def_ms */
 static guint mdy_brightness_fade_duration_def_ms_gconf_cb_id = 0;
 
 /** Brightness fade length during display dimming [ms] */
-static gint mdy_brightness_fade_duration_dim_ms = 1000;
+static gint mdy_brightness_fade_duration_dim_ms = DEFAULT_BRIGHTNESS_FADE_DIMMING_MS;
 
 /** GConf change notification id for mdy_brightness_fade_duration_dim_ms */
 static guint mdy_brightness_fade_duration_dim_ms_gconf_cb_id = 0;
 
 /** Brightness fade length during ALS tuning [ms] */
-static gint mdy_brightness_fade_duration_als_ms = 1000;
+static gint mdy_brightness_fade_duration_als_ms = DEFAULT_BRIGHTNESS_FADE_ALS_MS;
 
 /** GConf change notification id for mdy_brightness_fade_duration_als_ms */
 static guint mdy_brightness_fade_duration_als_ms_gconf_cb_id = 0;
@@ -2037,7 +2055,7 @@ static guint mdy_brightness_fade_duration_als_ms_gconf_cb_id = 0;
  *       kept short enough not to cause irritation (due to increased
  *       response time to power key press).
  */
-static gint mdy_brightness_fade_duration_blank_ms = 100;
+static gint mdy_brightness_fade_duration_blank_ms = DEFAULT_BRIGHTNESS_FADE_BLANK_MS;
 
 /** GConf change notification id for mdy_brightness_fade_duration_blank_ms */
 static guint mdy_brightness_fade_duration_blank_ms_gconf_cb_id = 0;
@@ -2053,7 +2071,7 @@ static guint mdy_brightness_fade_duration_blank_ms_gconf_cb_id = 0;
  *
  * Basically we end up seeing the brighter end of the fade in.
  */
-static gint mdy_brightness_fade_duration_unblank_ms = 90;
+static gint mdy_brightness_fade_duration_unblank_ms = DEFAULT_BRIGHTNESS_FADE_UNBLANK_MS;
 
 /** GConf change notification id for mdy_brightness_fade_duration_unblank_ms */
 static guint mdy_brightness_fade_duration_unblank_ms_gconf_cb_id = 0;
@@ -3036,6 +3054,27 @@ static void mdy_poweron_led_rethink_schedule(void)
  * AUTOMATIC_BLANKING
  * ========================================================================= */
 
+/** Re-calculate inactivity timeout
+ *
+ * This function should be called whenever the variables used
+ * in the calculation are changed.
+ */
+static void mdy_blanking_update_inactivity_timeout(void)
+{
+    /* Inactivity should be signaled around the time when the display
+     * should have dimmed and blanked - even if the actual blanking is
+     * blocked by blanking pause and/or blanking inhibit mode. */
+    int inactivity_timeout = (mdy_disp_dim_timeout +
+                              mdy_additional_bootup_dim_timeout +
+                              mdy_blank_timeout);
+
+    mce_log(LL_DEBUG, "inactivity_timeout = %d", inactivity_timeout);
+
+    execute_datapipe(&inactivity_timeout_pipe,
+                     GINT_TO_POINTER(inactivity_timeout),
+                     USE_INDATA, CACHE_INDATA);
+}
+
 /**
  * Find the dim timeout index from a dim timeout
  *
@@ -3252,10 +3291,12 @@ static void mdy_blanking_cancel_off(void)
  */
 static void mdy_blanking_schedule_off(void)
 {
-    gint timeout = mdy_disp_blank_timeout;
+    gint timeout = mdy_blank_timeout;
 
     if( display_state == MCE_DISPLAY_LPM_OFF )
-        timeout = mdy_disp_lpm_off_timeout;
+        timeout = mdy_blank_from_lpm_off_timeout;
+    else if( submode & MCE_TKLOCK_SUBMODE )
+        timeout = mdy_blank_from_lockscreen_timeout;
 
     if( mdy_blanking_off_cb_id ) {
         g_source_remove(mdy_blanking_off_cb_id);
@@ -3320,7 +3361,7 @@ static void mdy_blanking_cancel_lpm_off(void)
  */
 static void mdy_blanking_schedule_lpm_off(void)
 {
-    gint timeout = DEFAULT_LPM_PROXIMITY_BLANK_TIMEOUT;
+    gint timeout = mdy_blank_from_lpm_on_timeout;
 
     mdy_blanking_cancel_lpm_off();
 
@@ -4402,7 +4443,7 @@ static gchar *mdy_compositor_priv_name = 0;
 static int mdy_compositor_pid = -1;
 
 /** Delay [s] from setUpdatesEnabled() to attempting compositor core dump */
-static gint mdy_compositor_core_delay = 30;
+static gint mdy_compositor_core_delay = DEFAULT_LIPSTICK_CORE_DELAY;
 
 /** GConf callback ID for mdy_compositor_core_delay setting */
 static guint mdy_compositor_core_delay_gconf_cb_id = 0;
@@ -6754,7 +6795,7 @@ static gboolean mdy_dbus_handle_display_dim_req(DBusMessage *const msg)
 }
 
 /** Override mode for display off requests made over D-Bus */
-static gint mdy_dbus_display_off_override = DISPLAY_OFF_OVERRIDE_DISABLED;
+static gint mdy_dbus_display_off_override = DEFAULT_DISPLAY_OFF_OVERRIDE;
 
 /** GConf notifier id for mdy_dbus_display_off_override */
 static guint mdy_dbus_display_off_override_gconf_cb_id = 0;
@@ -7243,14 +7284,9 @@ static gboolean mdy_dbus_handle_desktop_started_sig(DBusMessage *const msg)
         g_remove(MCE_MALF_FILENAME);
     }
 
-    /* Restore normal inactivity timeout */
-    execute_datapipe(&inactivity_timeout_pipe,
-                     GINT_TO_POINTER(mdy_disp_dim_timeout +
-                                     mdy_disp_blank_timeout),
-                     USE_INDATA, CACHE_INDATA);
-
     /* Remove the additional timeout */
     mdy_additional_bootup_dim_timeout = 0;
+    mdy_blanking_update_inactivity_timeout();
 
     /* Reprogram blanking timers */
     mdy_blanking_rethink_timers(true);
@@ -7762,18 +7798,33 @@ static void mdy_gconf_cb(GConfClient *const gcc, const guint id,
             mdy_gconf_sanitize_brightness_settings();
         }
     }
-    else if (id == mdy_disp_blank_timeout_gconf_cb_id) {
-        mdy_disp_blank_timeout = gconf_value_get_int(gcv);
-        mdy_disp_lpm_on_timeout = mdy_disp_blank_timeout;
+    else if (id == mdy_blank_timeout_gconf_cb_id) {
+        mdy_blank_timeout = gconf_value_get_int(gcv);
+        mdy_blanking_update_inactivity_timeout();
 
         /* Reprogram blanking timers */
         mdy_blanking_rethink_timers(true);
+    }
+    else if( id == mdy_blank_from_lockscreen_timeout_gconf_cb_id )
+    {
+        mdy_blank_from_lockscreen_timeout = gconf_value_get_int(gcv);
 
-        /* Update inactivity timeout */
-        execute_datapipe(&inactivity_timeout_pipe,
-                         GINT_TO_POINTER(mdy_disp_dim_timeout +
-                                         mdy_disp_blank_timeout),
-                         USE_INDATA, CACHE_INDATA);
+        /* Reprogram blanking timers */
+        mdy_blanking_rethink_timers(true);
+    }
+    else if( id == mdy_blank_from_lpm_on_timeout_gconf_cb_id )
+    {
+        mdy_blank_from_lpm_on_timeout = gconf_value_get_int(gcv);
+
+        /* Reprogram blanking timers */
+        mdy_blanking_rethink_timers(true);
+    }
+    else if( id == mdy_blank_from_lpm_on_timeout_gconf_cb_id )
+    {
+        mdy_blank_from_lpm_on_timeout = gconf_value_get_int(gcv);
+
+        /* Reprogram blanking timers */
+        mdy_blanking_rethink_timers(true);
     }
     else if (id == mdy_use_low_power_mode_gconf_cb_id) {
         mdy_use_low_power_mode = gconf_value_get_bool(gcv);
@@ -7804,21 +7855,19 @@ static void mdy_gconf_cb(GConfClient *const gcc, const guint id,
         mdy_adaptive_dimming_threshold = gconf_value_get_int(gcv);
         mdy_blanking_stop_adaptive_dimming();
     }
-    else if (id == mdy_disp_dim_timeout_gconf_cb_id) {
-        mdy_disp_dim_timeout = gconf_value_get_int(gcv);
-
-        /* Find the closest match in the list of valid dim timeouts */
-        mdy_dim_timeout_index = mdy_blanking_find_dim_timeout_index(mdy_disp_dim_timeout);
-        mdy_adaptive_dimming_index = 0;
+    else if (id == mdy_possible_dim_timeouts_gconf_cb_id )
+    {
+        mdy_gconf_sanitize_dim_timeouts(true);
 
         /* Reprogram blanking timers */
         mdy_blanking_rethink_timers(true);
+    }
+    else if (id == mdy_disp_dim_timeout_gconf_cb_id) {
+        mdy_disp_dim_timeout = gconf_value_get_int(gcv);
+        mdy_gconf_sanitize_dim_timeouts(false);
 
-        /* Update inactivity timeout */
-        execute_datapipe(&inactivity_timeout_pipe,
-                         GINT_TO_POINTER(mdy_disp_dim_timeout +
-                                         mdy_disp_blank_timeout),
-                         USE_INDATA, CACHE_INDATA);
+        /* Reprogram blanking timers */
+        mdy_blanking_rethink_timers(true);
     }
     else if (id == mdy_blanking_inhibit_mode_gconf_cb_id) {
         mdy_blanking_inhibit_mode = gconf_value_get_int(gcv);
@@ -7944,35 +7993,62 @@ static void mdy_gconf_sanitize_brightness_settings(void)
                      USE_INDATA, CACHE_INDATA);
 }
 
+static void mdy_gconf_sanitize_dim_timeouts(bool force_update)
+{
+    /* If asked to, flush existing list of allowed timeouts */
+    if( force_update && mdy_possible_dim_timeouts ) {
+        g_slist_free(mdy_possible_dim_timeouts),
+            mdy_possible_dim_timeouts = 0;
+    }
+
+    /* Make sure we have a list of allowed timeouts */
+    if( !mdy_possible_dim_timeouts ) {
+        mce_gconf_get_int_list(MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST,
+                               &mdy_possible_dim_timeouts);
+    }
+
+    if( !mdy_possible_dim_timeouts ) {
+        static const int def[] = { DEFAULT_DISPLAY_DIM_TIMEOUT_LIST };
+
+        GSList *tmp = 0;
+        for( size_t i = 0; i < G_N_ELEMENTS(def); ++i )
+            tmp = g_slist_prepend(tmp, GINT_TO_POINTER(def[i]));
+        mdy_possible_dim_timeouts = g_slist_reverse(tmp);
+    }
+
+    /* Find the closest match in the list of valid dim timeouts */
+    mdy_dim_timeout_index = mdy_blanking_find_dim_timeout_index(mdy_disp_dim_timeout);
+
+    /* Reset adaptive dimming state */
+    mdy_adaptive_dimming_index = 0;
+
+    /* Update inactivity timeout */
+    mdy_blanking_update_inactivity_timeout();
+}
+
 /** Get initial gconf valus and start tracking changes
  */
 static void mdy_gconf_init(void)
 {
     /* Display brightness settings */
 
-    mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_COUNT,
-                           mdy_gconf_cb,
-                           &mdy_brightness_step_count_gconf_id);
+    mce_gconf_track_int(MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_COUNT,
+                        &mdy_brightness_step_count,
+                        DEFAULT_DISP_BRIGHTNESS_STEP_COUNT,
+                        mdy_gconf_cb,
+                        &mdy_brightness_step_count_gconf_id);
 
-    mce_gconf_get_int(MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_COUNT,
-                      &mdy_brightness_step_count);
+    mce_gconf_track_int(MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_SIZE,
+                        &mdy_brightness_step_size,
+                        DEFAULT_DISP_BRIGHTNESS_STEP_SIZE,
+                        mdy_gconf_cb,
+                        &mdy_brightness_step_size_gconf_id);
 
-    mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_SIZE,
-                           mdy_gconf_cb,
-                           &mdy_brightness_step_size_gconf_id);
-
-    mce_gconf_get_int(MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_SIZE,
-                      &mdy_brightness_step_size);
-
-    mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_DISPLAY_BRIGHTNESS,
-                           mdy_gconf_cb,
-                           &mdy_brightness_setting_gconf_id);
-
-    mce_gconf_get_int(MCE_GCONF_DISPLAY_BRIGHTNESS,
-                      &mdy_brightness_setting);
+    mce_gconf_track_int(MCE_GCONF_DISPLAY_BRIGHTNESS,
+                        &mdy_brightness_setting,
+                        DEFAULT_DISP_BRIGHTNESS,
+                        mdy_gconf_cb,
+                        &mdy_brightness_setting_gconf_id);
 
     /* Note: We're only interested in auto-brightness change
      *       notifications. The value itself is handled in
@@ -7985,151 +8061,134 @@ static void mdy_gconf_init(void)
     /* Migrate ranges, update hw dim/on brightness levels */
     mdy_gconf_sanitize_brightness_settings();
 
-    /* Display blank
-     * Since we've set a default, error handling is unnecessary */
-    mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_DISPLAY_BLANK_TIMEOUT,
-                           mdy_gconf_cb,
-                           &mdy_disp_blank_timeout_gconf_cb_id);
+    /* Display blank timeout */
+    mce_gconf_track_int(MCE_GCONF_DISPLAY_BLANK_TIMEOUT,
+                        &mdy_blank_timeout,
+                        DEFAULT_BLANK_TIMEOUT,
+                        mdy_gconf_cb,
+                        &mdy_blank_timeout_gconf_cb_id);
 
-    mce_gconf_get_int(MCE_GCONF_DISPLAY_BLANK_TIMEOUT,
-                      &mdy_disp_blank_timeout);
+    /* Display blank from lockscreen timeout */
+    mce_gconf_track_int(MCE_GCONF_DISPLAY_BLANK_FROM_LOCKSCREEN_TIMEOUT,
+                        &mdy_blank_from_lockscreen_timeout,
+                        DEFAULT_BLANK_FROM_LOCKSCREEN_TIMEOUT,
+                        mdy_gconf_cb,
+                        &mdy_blank_from_lockscreen_timeout_gconf_cb_id);
 
-    mdy_disp_lpm_on_timeout = mdy_disp_blank_timeout;
+    /* Display blank from lpm on timeout */
+    mce_gconf_track_int(MCE_GCONF_DISPLAY_BLANK_FROM_LPM_ON_TIMEOUT,
+                        &mdy_blank_from_lpm_on_timeout,
+                        DEFAULT_BLANK_FROM_LPM_ON_TIMEOUT,
+                        mdy_gconf_cb,
+                        &mdy_blank_from_lpm_on_timeout_gconf_cb_id);
 
-    /* Never blank
-     * Since we've set a default, error handling is unnecessary */
-    mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_DISPLAY_NEVER_BLANK,
-                           mdy_gconf_cb,
-                           &mdy_disp_never_blank_gconf_cb_id);
+    /* Display blank from lpm off timeout */
+    mce_gconf_track_int(MCE_GCONF_DISPLAY_BLANK_FROM_LPM_OFF_TIMEOUT,
+                        &mdy_blank_from_lpm_off_timeout,
+                        DEFAULT_BLANK_FROM_LPM_OFF_TIMEOUT,
+                        mdy_gconf_cb,
+                        &mdy_blank_from_lpm_off_timeout_gconf_cb_id);
 
-    mce_gconf_get_int(MCE_GCONF_DISPLAY_NEVER_BLANK,
-                      &mdy_disp_never_blank);
+    /* Never blank toggle */
+    mce_gconf_track_int(MCE_GCONF_DISPLAY_NEVER_BLANK,
+                        &mdy_disp_never_blank,
+                        DEFAULT_DISPLAY_NEVER_BLANK,
+                        mdy_gconf_cb,
+                        &mdy_disp_never_blank_gconf_cb_id);
 
-    /* Use adaptive display dim timeout
-     * Since we've set a default, error handling is unnecessary */
-    mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_DISPLAY_ADAPTIVE_DIMMING,
-                           mdy_gconf_cb,
-                           &mdy_adaptive_dimming_enabled_gconf_cb_id);
+    /* Use adaptive display dim timeout toggle */
+    mce_gconf_track_bool(MCE_GCONF_DISPLAY_ADAPTIVE_DIMMING,
+                         &mdy_adaptive_dimming_enabled,
+                         DEFAULT_ADAPTIVE_DIMMING_ENABLED,
+                         mdy_gconf_cb,
+                         &mdy_adaptive_dimming_enabled_gconf_cb_id);
 
-    mce_gconf_get_bool(MCE_GCONF_DISPLAY_ADAPTIVE_DIMMING,
-                       &mdy_adaptive_dimming_enabled);
+    /* Adaptive display dimming threshold timer */
+    mce_gconf_track_int(MCE_GCONF_DISPLAY_ADAPTIVE_DIM_THRESHOLD,
+                        &mdy_adaptive_dimming_threshold,
+                        DEFAULT_ADAPTIVE_DIMMING_THRESHOLD,
+                        mdy_gconf_cb,
+                        &mdy_adaptive_dimming_threshold_gconf_cb_id);
+
+    /* Display dim timer */
+    mce_gconf_track_int(MCE_GCONF_DISPLAY_DIM_TIMEOUT,
+                        &mdy_disp_dim_timeout,
+                        DEFAULT_DIM_TIMEOUT,
+                        mdy_gconf_cb,
+                        &mdy_disp_dim_timeout_gconf_cb_id);
 
     /* Possible dim timeouts */
-    if( !mce_gconf_get_int_list(MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST,
-                                &mdy_possible_dim_timeouts) ) {
-        mce_log(LL_WARN, "no dim timeouts defined");
-        // FIXME: use some built-in defaults
-    }
-
-    /* Adaptive display dimming threshold
-     * Since we've set a default, error handling is unnecessary */
     mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_DISPLAY_ADAPTIVE_DIM_THRESHOLD,
+                           MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST,
                            mdy_gconf_cb,
-                           &mdy_adaptive_dimming_threshold_gconf_cb_id);
+                           &mdy_possible_dim_timeouts_gconf_cb_id);
 
-    mce_gconf_get_int(MCE_GCONF_DISPLAY_ADAPTIVE_DIM_THRESHOLD,
-                      &mdy_adaptive_dimming_threshold);
+    /* After all blanking and dimming settings are fetched, we
+     * need to sanitize them and calculate inactivity timeout */
+    mdy_gconf_sanitize_dim_timeouts(true);
 
-    /* Display dim
-     * Since we've set a default, error handling is unnecessary */
-    mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_DISPLAY_DIM_TIMEOUT,
-                           mdy_gconf_cb,
-                           &mdy_disp_dim_timeout_gconf_cb_id);
+    /* Use low power mode toggle */
+    mce_gconf_track_bool(MCE_GCONF_USE_LOW_POWER_MODE,
+                         &mdy_use_low_power_mode,
+                         DEFAULT_USE_LOW_POWER_MODE,
+                         mdy_gconf_cb,
+                         &mdy_use_low_power_mode_gconf_cb_id);
 
-    mce_gconf_get_int(MCE_GCONF_DISPLAY_DIM_TIMEOUT,
-                      &mdy_disp_dim_timeout);
-
-    mdy_dim_timeout_index = mdy_blanking_find_dim_timeout_index(mdy_disp_dim_timeout);
-    mdy_adaptive_dimming_index = 0;
-
-    /* Update inactivity timeout */
-    execute_datapipe(&inactivity_timeout_pipe,
-                     GINT_TO_POINTER(mdy_disp_dim_timeout +
-                                     mdy_disp_blank_timeout +
-                                     mdy_additional_bootup_dim_timeout),
-                     USE_INDATA, CACHE_INDATA);
-
-    /* Use low power mode?
-     * Since we've set a default, error handling is unnecessary */
-    mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_USE_LOW_POWER_MODE,
-                           mdy_gconf_cb,
-                           &mdy_use_low_power_mode_gconf_cb_id);
-
-    mce_gconf_get_bool(MCE_GCONF_USE_LOW_POWER_MODE,
-                       &mdy_use_low_power_mode);
-
-    /* Don't blank on charger
-     * Since we've set a default, error handling is unnecessary */
-    mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_BLANKING_INHIBIT_MODE,
-                           mdy_gconf_cb,
-                           &mdy_blanking_inhibit_mode_gconf_cb_id);
-
-    mce_gconf_get_int(MCE_GCONF_BLANKING_INHIBIT_MODE,
-                      &mdy_blanking_inhibit_mode);
+    /* Blanking inhibit mode */
+    mce_gconf_track_int(MCE_GCONF_BLANKING_INHIBIT_MODE,
+                        &mdy_blanking_inhibit_mode,
+                        DEFAULT_BLANKING_INHIBIT_MODE,
+                        mdy_gconf_cb,
+                        &mdy_blanking_inhibit_mode_gconf_cb_id);
 
     /* Delay for killing unresponsive compositor */
-    mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_LIPSTICK_CORE_DELAY,
-                           mdy_gconf_cb,
-                           &mdy_compositor_core_delay_gconf_cb_id);
-
-    mce_gconf_get_int(MCE_GCONF_LIPSTICK_CORE_DELAY,
-                      &mdy_compositor_core_delay);
+    mce_gconf_track_int(MCE_GCONF_LIPSTICK_CORE_DELAY,
+                        &mdy_compositor_core_delay,
+                        DEFAULT_LIPSTICK_CORE_DELAY,
+                        mdy_gconf_cb,
+                        &mdy_compositor_core_delay_gconf_cb_id);
 
     /* Brightness fade length: default */
-    mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_BRIGHTNESS_FADE_DEFAULT_MS,
-                           mdy_gconf_cb,
-                           &mdy_brightness_fade_duration_def_ms_gconf_cb_id);
-    mce_gconf_get_int(MCE_GCONF_BRIGHTNESS_FADE_DEFAULT_MS,
-                      &mdy_brightness_fade_duration_def_ms);
+    mce_gconf_track_int(MCE_GCONF_BRIGHTNESS_FADE_DEFAULT_MS,
+                        &mdy_brightness_fade_duration_def_ms,
+                        DEFAULT_BRIGHTNESS_FADE_DEFAULT_MS,
+                        mdy_gconf_cb,
+                        &mdy_brightness_fade_duration_def_ms_gconf_cb_id);
 
     /* Brightness fade length: dim */
-    mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_BRIGHTNESS_FADE_DIMMING_MS,
-                           mdy_gconf_cb,
-                           &mdy_brightness_fade_duration_dim_ms_gconf_cb_id);
-    mce_gconf_get_int(MCE_GCONF_BRIGHTNESS_FADE_DIMMING_MS,
-                      &mdy_brightness_fade_duration_dim_ms);
+    mce_gconf_track_int(MCE_GCONF_BRIGHTNESS_FADE_DIMMING_MS,
+                        &mdy_brightness_fade_duration_dim_ms,
+                        DEFAULT_BRIGHTNESS_FADE_DIMMING_MS,
+                        mdy_gconf_cb,
+                        &mdy_brightness_fade_duration_dim_ms_gconf_cb_id);
 
     /* Brightness fade length: als */
-    mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_BRIGHTNESS_FADE_ALS_MS,
-                           mdy_gconf_cb,
-                           &mdy_brightness_fade_duration_als_ms_gconf_cb_id);
-    mce_gconf_get_int(MCE_GCONF_BRIGHTNESS_FADE_ALS_MS,
-                      &mdy_brightness_fade_duration_als_ms);
+    mce_gconf_track_int(MCE_GCONF_BRIGHTNESS_FADE_ALS_MS,
+                        &mdy_brightness_fade_duration_als_ms,
+                        DEFAULT_BRIGHTNESS_FADE_ALS_MS,
+                        mdy_gconf_cb,
+                        &mdy_brightness_fade_duration_als_ms_gconf_cb_id);
 
     /* Brightness fade length: blank */
-    mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_BRIGHTNESS_FADE_BLANK_MS,
-                           mdy_gconf_cb,
-                           &mdy_brightness_fade_duration_blank_ms_gconf_cb_id);
-    mce_gconf_get_int(MCE_GCONF_BRIGHTNESS_FADE_BLANK_MS,
-                      &mdy_brightness_fade_duration_blank_ms);
+    mce_gconf_track_int(MCE_GCONF_BRIGHTNESS_FADE_BLANK_MS,
+                        &mdy_brightness_fade_duration_blank_ms,
+                        DEFAULT_BRIGHTNESS_FADE_BLANK_MS,
+                        mdy_gconf_cb,
+                        &mdy_brightness_fade_duration_blank_ms_gconf_cb_id);
 
     /* Brightness fade length: unblank */
-    mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_BRIGHTNESS_FADE_UNBLANK_MS,
-                           mdy_gconf_cb,
-                           &mdy_brightness_fade_duration_unblank_ms_gconf_cb_id);
-    mce_gconf_get_int(MCE_GCONF_BRIGHTNESS_FADE_UNBLANK_MS,
-                      &mdy_brightness_fade_duration_unblank_ms);
+    mce_gconf_track_int(MCE_GCONF_BRIGHTNESS_FADE_UNBLANK_MS,
+                        &mdy_brightness_fade_duration_unblank_ms,
+                        DEFAULT_BRIGHTNESS_FADE_UNBLANK_MS,
+                        mdy_gconf_cb,
+                        &mdy_brightness_fade_duration_unblank_ms_gconf_cb_id);
 
     /* Override mode for display off requests made over D-Bus */
-    mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_DISPLAY_OFF_OVERRIDE,
-                           mdy_gconf_cb,
-                           &mdy_dbus_display_off_override_gconf_cb_id);
-    mce_gconf_get_int(MCE_GCONF_DISPLAY_OFF_OVERRIDE,
-                      &mdy_dbus_display_off_override);
+    mce_gconf_track_int(MCE_GCONF_DISPLAY_OFF_OVERRIDE,
+                        &mdy_dbus_display_off_override,
+                        DEFAULT_DISPLAY_OFF_OVERRIDE,
+                        mdy_gconf_cb,
+                        &mdy_dbus_display_off_override_gconf_cb_id);
 }
 
 static void mdy_gconf_quit(void)
@@ -8145,8 +8204,20 @@ static void mdy_gconf_quit(void)
     mce_gconf_notifier_remove(mdy_brightness_setting_gconf_id),
         mdy_brightness_setting_gconf_id = 0;
 
-    mce_gconf_notifier_remove(mdy_disp_blank_timeout_gconf_cb_id),
-        mdy_disp_blank_timeout_gconf_cb_id = 0;
+    mce_gconf_notifier_remove(mdy_automatic_brightness_setting_gconf_id),
+        mdy_automatic_brightness_setting_gconf_id = 0;
+
+    mce_gconf_notifier_remove(mdy_blank_timeout_gconf_cb_id),
+        mdy_blank_timeout_gconf_cb_id = 0;
+
+    mce_gconf_notifier_remove(mdy_blank_from_lockscreen_timeout_gconf_cb_id),
+        mdy_blank_from_lockscreen_timeout_gconf_cb_id = 0;
+
+    mce_gconf_notifier_remove(mdy_blank_from_lpm_on_timeout_gconf_cb_id),
+        mdy_blank_from_lpm_on_timeout_gconf_cb_id = 0;
+
+    mce_gconf_notifier_remove(mdy_blank_from_lpm_off_timeout_gconf_cb_id),
+        mdy_blank_from_lpm_off_timeout_gconf_cb_id = 0;
 
     mce_gconf_notifier_remove(mdy_disp_never_blank_gconf_cb_id),
         mdy_disp_never_blank_gconf_cb_id = 0;
@@ -8159,6 +8230,9 @@ static void mdy_gconf_quit(void)
 
     mce_gconf_notifier_remove(mdy_disp_dim_timeout_gconf_cb_id),
         mdy_disp_dim_timeout_gconf_cb_id = 0;
+
+    mce_gconf_notifier_remove(mdy_possible_dim_timeouts_gconf_cb_id),
+        mdy_possible_dim_timeouts_gconf_cb_id = 0;
 
     mce_gconf_notifier_remove(mdy_use_low_power_mode_gconf_cb_id),
         mdy_use_low_power_mode_gconf_cb_id = 0;
@@ -8269,7 +8343,6 @@ const gchar *g_module_check_init(GModule *module)
     const gchar *failure = 0;
 
     gboolean display_is_on = TRUE;
-    submode_t submode_fixme = mce_get_submode_int32();
 
     (void)module;
 
@@ -8282,13 +8355,11 @@ const gchar *g_module_check_init(GModule *module)
     mdy_governor_interactive = mdy_governor_get_settings("Interactive");
 
     /* Get cpu scaling governor configuration & track changes */
-    mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_CPU_SCALING_GOVERNOR,
-                           mdy_governor_conf_cb,
-                           &mdy_governor_conf_id);
-
-    mce_gconf_get_int(MCE_GCONF_CPU_SCALING_GOVERNOR,
-                      &mdy_governor_conf);
+    mce_gconf_track_int(MCE_GCONF_CPU_SCALING_GOVERNOR,
+                        &mdy_governor_conf,
+                        GOVERNOR_UNSET,
+                        mdy_governor_conf_cb,
+                        &mdy_governor_conf_id);
 
     /* Evaluate initial state */
     mdy_governor_rethink();
@@ -8296,13 +8367,11 @@ const gchar *g_module_check_init(GModule *module)
 
 #ifdef ENABLE_WAKELOCKS
     /* Get autosuspend policy configuration & track changes */
-    mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_USE_AUTOSUSPEND,
-                           mdy_autosuspend_gconf_cb,
-                           &mdy_suspend_policy_id);
-
-    mce_gconf_get_int(MCE_GCONF_USE_AUTOSUSPEND,
-                      &mdy_suspend_policy);
+    mce_gconf_track_int(MCE_GCONF_USE_AUTOSUSPEND,
+                        &mdy_suspend_policy,
+                        SUSPEND_POLICY_DEFAULT,
+                        mdy_autosuspend_gconf_cb,
+                        &mdy_suspend_policy_id);
 
     /* Evaluate initial state */
     mdy_stm_schedule_rethink();
@@ -8311,14 +8380,14 @@ const gchar *g_module_check_init(GModule *module)
     /* Start waiting for init_done state */
     mdy_flagfiles_start_tracking();
 
-    if ((submode_fixme & MCE_TRANSITION_SUBMODE) != 0) {
+    if( mce_get_submode_int32() & MCE_TRANSITION_SUBMODE ) {
         /* Disable bootup submode. It causes tklock problems if we don't */
         /* receive desktop_startup dbus notification */
         //mce_add_submode_int32(MCE_BOOTUP_SUBMODE);
-        mdy_additional_bootup_dim_timeout = BOOTUP_DIM_ADDITIONAL_TIMEOUT;
     }
     else {
         mdy_additional_bootup_dim_timeout = 0;
+        mdy_blanking_update_inactivity_timeout();
     }
 
     /* Append triggers/filters to datapipes */

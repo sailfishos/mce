@@ -129,6 +129,15 @@
 /** Blank timeout GConf setting */
 #define MCE_GCONF_DISPLAY_BLANK_TIMEOUT                 MCE_GCONF_DISPLAY_PATH "/display_blank_timeout"
 
+/** Blank from lockscreen timeout GConf setting */
+#define MCE_GCONF_DISPLAY_BLANK_FROM_LOCKSCREEN_TIMEOUT MCE_GCONF_DISPLAY_PATH "/display_blank_from_locksreen_timeout"
+
+/** Blank from lpm-on timeout GConf setting */
+#define MCE_GCONF_DISPLAY_BLANK_FROM_LPM_ON_TIMEOUT     MCE_GCONF_DISPLAY_PATH "/display_blank_from_lpm_on_timeout"
+
+/** Blank from lpm-off timeout GConf setting */
+#define MCE_GCONF_DISPLAY_BLANK_FROM_LPM_OFF_TIMEOUT    MCE_GCONF_DISPLAY_PATH "/display_blank_from_lpm_off_timeout"
+
 /** Never blank GConf setting */
 #define MCE_GCONF_DISPLAY_NEVER_BLANK                   MCE_GCONF_DISPLAY_PATH "/display_never_blank"
 
@@ -215,17 +224,17 @@ typedef enum
 /** Logical size of each step; not sure if this has ever been used */
 #define DEFAULT_DISP_BRIGHTNESS_STEP_SIZE	1
 
-/** Default blank timeout, in seconds */
-#define DEFAULT_BLANK_TIMEOUT			3	/* 3 seconds */
+/** Default value for MCE_GCONF_DISPLAY_BLANK_TIMEOUT setting */
+#define DEFAULT_BLANK_TIMEOUT			3
 
-/**
- * Default blank timeout, in seconds, when low power mode is active
- * and the proximity sensor indicates proximity
- */
-#define DEFAULT_LPM_PROXIMITY_BLANK_TIMEOUT	5	/* 5 seconds */
+/** Default value for MCE_GCONF_DISPLAY_BLANK_FROM_LOCKSCREEN_TIMEOUT setting */
+#define DEFAULT_BLANK_FROM_LOCKSCREEN_TIMEOUT	10
 
-/** Default blank timeout, in seconds, when low power mode is active */
-#define DEFAULT_LPM_BLANK_TIMEOUT		3	/* 3 seconds */
+/** Default value for MCE_GCONF_DISPLAY_BLANK_FROM_LPM_ON_TIMEOUT setting */
+#define DEFAULT_BLANK_FROM_LPM_ON_TIMEOUT	5
+
+/** Default value for MCE_GCONF_DISPLAY_BLANK_FROM_LPM_OFF_TIMEOUT setting */
+#define DEFAULT_BLANK_FROM_LPM_OFF_TIMEOUT	5
 
 /** Default adaptive dimming threshold, in milliseconds */
 #define DEFAULT_ADAPTIVE_DIMMING_ENABLED	TRUE	/* TRUE */
@@ -262,5 +271,38 @@ enum
 	GOVERNOR_DEFAULT,
 	GOVERNOR_INTERACTIVE,
 };
+
+/** Default value for MCE_GCONF_DISPLAY_NEVER_BLANK setting */
+#define DEFAULT_DISPLAY_NEVER_BLANK		0
+
+/** Default value for MCE_GCONF_USE_LOW_POWER_MODE setting */
+#define DEFAULT_USE_LOW_POWER_MODE		false
+
+/** Default value for MCE_GCONF_LIPSTICK_CORE_DELAY setting */
+#define DEFAULT_LIPSTICK_CORE_DELAY		30
+
+/** Default value for MCE_GCONF_BRIGHTNESS_FADE_DEFAULT_MS setting */
+#define DEFAULT_BRIGHTNESS_FADE_DEFAULT_MS	150
+
+/** Default value for MCE_GCONF_BRIGHTNESS_FADE_DIMMING_MS setting */
+#define DEFAULT_BRIGHTNESS_FADE_DIMMING_MS	1000
+
+/** Default value for MCE_GCONF_BRIGHTNESS_FADE_ALS_MS setting */
+#define DEFAULT_BRIGHTNESS_FADE_ALS_MS		1000
+
+/** Default value for MCE_GCONF_BRIGHTNESS_FADE_BLANK_MS setting */
+#define DEFAULT_BRIGHTNESS_FADE_BLANK_MS	100
+
+/** Default value for MCE_GCONF_BRIGHTNESS_FADE_UNBLANK_MS setting */
+#define DEFAULT_BRIGHTNESS_FADE_UNBLANK_MS	90
+
+/** Default value for MCE_GCONF_DISPLAY_OFF_OVERRIDE setting
+ *
+ * Note: keep in sync with entry in builtin-gconf.c
+ */
+#define DEFAULT_DISPLAY_OFF_OVERRIDE		DISPLAY_OFF_OVERRIDE_DISABLED
+
+/** Default value for MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST setting */
+#define DEFAULT_DISPLAY_DIM_TIMEOUT_LIST	15,30,60,120,180
 
 #endif /* _DISPLAY_H_ */
