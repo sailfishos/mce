@@ -1582,7 +1582,8 @@ evin_doubletap_emulate(const struct input_event *eve)
         break;
 
     case EV_KEY:
-        if( eve->code == BTN_MOUSE ) {
+        switch( eve->code ) {
+        case BTN_MOUSE:
             /* Store click/release and position */
             if( eve->value )
                 hist[i0].dt_click += SEEN_EVENT_MOUSE;
@@ -1591,6 +1592,18 @@ evin_doubletap_emulate(const struct input_event *eve)
 
             /* We have a mouse click to process */
             skip_syn = false;
+            break;
+
+        case BTN_TOUCH:
+            /* Start/end of touch - if these are emitted by the touch
+             * driver, we must not expect to see SYN_MT_REPORT events
+             * on touch release. */
+            if( eve->value == 0 )
+                skip_syn = false;
+            break;
+
+        default:
+            break;
         }
         break;
 
