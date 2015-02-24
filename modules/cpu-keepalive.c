@@ -32,22 +32,17 @@
 # include "../libwakelock.h"
 #endif
 
+#include <stdint.h>
 #include <string.h>
+#include <inttypes.h>
 
 #include <mce/dbus-names.h>
 
 #include <gmodule.h>
 
-/** Fallback context to use when clients make query keepalive period */
-#define CONTEXT_INITIAL "initial"
-
-/** Fallback context to use when clients start/stop keepalive period */
-#define CONTEXT_DEFAULT "undefined"
-
-typedef struct client_t client_t;
-
-G_MODULE_EXPORT const gchar *g_module_check_init(GModule *module);
-G_MODULE_EXPORT void         g_module_unload    (GModule *module);
+/* ========================================================================= *
+ * CONSTANTS
+ * ========================================================================= */
 
 /** The name of this module */
 static const char module_name[] = "cpu-keepalive";
@@ -58,32 +53,27 @@ static const char rtc_wakelock[] = "mce_rtc_wakeup";
 
 /* CPU keepalive wakelock - held by mce while there are active clients */
 static const char cpu_wakelock[] = "mce_cpu_keepalive";
-#endif /* ENABLE_WAKELOCKS */
+#endif
 
-static DBusConnection *systembus = 0;
+/** Fallback session_id to use when clients make query keepalive period */
+#define SESSION_ID_INITIAL "initial"
 
-/** Clients we are tracking over D-Bus */
-static GHashTable *clients = 0;
-
-/** Timestamp of wakeup from dsme */
-static time_t wakeup_started  = 0;
-
-/** Timeout for "clients should have issued keep alive requests" */
-static time_t wakeup_timeout  = 0;
-
-/** Timer for releasing cpu-keepalive wakelock */
-static guint timer_id = 0;
+/** Fallback session_id to use when clients start/stop keepalive period */
+#define SESSION_ID_DEFAULT "undefined"
 
 /** Suggested delay between MCE_CPU_KEEPALIVE_START_REQ method calls [s] */
 #ifdef ENABLE_WAKELOCKS
-# define MCE_CPU_KEEPALIVE_SUGGESTED_PERIOD 60         // 1 minute
+# define MCE_CPU_KEEPALIVE_SUGGESTED_PERIOD_S 60         // 1 minute
 #else
-# define MCE_CPU_KEEPALIVE_SUGGESTED_PERIOD (60*60*24) // 1 day
+# define MCE_CPU_KEEPALIVE_SUGGESTED_PERIOD_S (24*60*60) // 1 day
 #endif
 
 /** Maximum delay between MCE_CPU_KEEPALIVE_START_REQ method calls [s] */
-# define MCE_CPU_KEEPALIVE_MAXIMUM_PERIOD \
-   (MCE_CPU_KEEPALIVE_SUGGESTED_PERIOD + 15)
+# define MCE_CPU_KEEPALIVE_MAXIMUM_PERIOD_S \
+   (MCE_CPU_KEEPALIVE_SUGGESTED_PERIOD_S + 15)
+
+/** Auto blocking after MCE_CPU_KEEPALIVE_PERIOD_REQ method calls [s] */
+# define MCE_CPU_KEEPALIVE_QUERY_PERIOD_S 2
 
 /** Maximum delay between rtc wakeup and the 1st keep alive request
  *
@@ -94,33 +84,237 @@ static guint timer_id = 0;
  *        is needed for showing an alarm and there are hiccups with starting
  *        alarm-ui.
  */
-#define MCE_RTC_WAKEUP_1ST_TIMEOUT_SECONDS   5
+#define MCE_RTC_WAKEUP_1ST_TIMEOUT_S    5
 
 /** Extend rtc wakeup timeout if at least one keep alive request is received */
-#define MCE_RTC_WAKEUP_2ND_TIMEOUT_SECONDS   5
+#define MCE_RTC_WAKEUP_2ND_TIMEOUT_S    5
+
+/** Warning limit for: individual session lasts too long */
+#define KEEPALIVE_SESSION_WARN_LIMIT_MS (3 * 60 * 1000) // 3 minutes
+
+/** Warning limit for: keepalive state is kept active too long */
+#define KEEPALIVE_STATE_WARN_LIMIT_MS   (5 * 60 * 1000) // 5 minutes
+
+/* ========================================================================= *
+ * TYPEDEFS
+ * ========================================================================= */
+
+/** Millisecond resolution time value used for cpu keepalive tracking */
+typedef int64_t tick_t;
+
+typedef struct cka_session_t cka_session_t;
+
+typedef struct cka_client_t cka_client_t;
+
+/* ========================================================================= *
+ * FUNCTION_PROTOTYPES
+ * ========================================================================= */
+
+/* ------------------------------------------------------------------------- *
+ * GENERIC_UTILITIES
+ * ------------------------------------------------------------------------- */
+
+static tick_t cka_tick_get_current (void);
+static tick_t cka_tick_get_timeout (tick_t base_ms, int add_seconds);
+
+/* ------------------------------------------------------------------------- *
+ * DBUS_UTILITIES
+ * ------------------------------------------------------------------------- */
+
+static gboolean     cka_dbusutil_reply_bool             (DBusMessage *const msg, gboolean value);
+static gboolean     cka_dbusutil_reply_int              (DBusMessage *const msg, gint value);
+static DBusMessage *cka_dbusutil_create_GetNameOwner_req(const char *name);
+static gchar       *cka_dbusutil_parse_GetNameOwner_rsp (DBusMessage *rsp);
+
+/* ------------------------------------------------------------------------- *
+ * SESSION_TRACKING
+ * ------------------------------------------------------------------------- */
+
+/** Book keeping information for client sessions we are tracking */
+struct cka_session_t
+{
+  /** Link to containing client object */
+  cka_client_t *ses_client;
+
+  /** Session identifier provided by client via D-Bus API */
+  char         *ses_session;
+
+  /** Internal unique identifier */
+  unsigned      ses_unique;
+
+  /** When the session was started */
+  tick_t        ses_started;
+
+  /** When the session should end */
+  tick_t        ses_timeout;
+
+  /** Number of times timeout has been renewed */
+  unsigned      ses_renewed;
+
+  /** Has "too long session" already been reported */
+  bool          ses_flagged;
+
+  /** Has the session been finished */
+  bool          ses_finished;
+};
+
+static cka_session_t *cka_session_create   (cka_client_t *client, const char *session);
+static void           cka_session_renew    (cka_session_t *self, tick_t timeout);
+static void           cka_session_finish   (cka_session_t *self, tick_t now);
+static void           cka_session_delete   (cka_session_t *self);
+static void           cka_session_delete_cb(void *self);
+
+/* ------------------------------------------------------------------------- *
+ * CLIENT_TRACKING
+ * ------------------------------------------------------------------------- */
+
+/** Book keeping information for clients we are tracking */
+struct cka_client_t
+{
+  /** The (private/sender) name of the dbus client */
+  gchar      *cli_dbus_name;
+
+  /** NameOwnerChanged signal match used for tracking death of client */
+  char       *cli_match_rule;
+
+  /** Upper bound for reneval of cpu keepalive for this client */
+  tick_t      cli_timeout;
+
+  /** One client can have several keepalive objects */
+  GHashTable *cli_sessions; // [string] -> cka_session_t *
+};
+
+/** Format string for constructing name owner lost match rules */
+static const char cka_client_match_fmt[] =
+"type='signal'"
+",sender='"DBUS_SERVICE_DBUS"'"
+",interface='"DBUS_INTERFACE_DBUS"'"
+",member='NameOwnerChanged'"
+",path='"DBUS_PATH_DBUS"'"
+",arg0='%s'"
+",arg2=''"
+;
+
+static cka_session_t *cka_client_get_session   (cka_client_t *self, const char *session_id);
+static cka_session_t *cka_client_add_session   (cka_client_t *self, const char *session_id);
+static void           cka_client_scan_timeout  (cka_client_t *self);
+static void           cka_client_remove_timeout(cka_client_t *self, const char *session_id);
+static void           cka_client_update_timeout(cka_client_t *self, const char *session_id, tick_t when);
+static cka_client_t  *cka_client_create        (const char *dbus_name);
+static const char    *cka_client_identify      (cka_client_t *self);
+
+static void           cka_client_delete        (cka_client_t *self);
+static void           cka_client_delete_cb     (void *self);
+
+/* ------------------------------------------------------------------------- *
+ * KEEPALIVE_STATE
+ * ------------------------------------------------------------------------- */
+
+/** Timer for releasing cpu-keepalive wakelock */
+static guint    cka_state_timer_id = 0;
+
+static void     cka_state_set       (bool active);
+static gboolean cka_state_timer_cb  (gpointer data);
+static void     cka_state_reset     (void);
+static void     cka_state_rethink   (void);
+
+/* ------------------------------------------------------------------------- *
+ * CLIENT_MANAGEMENT
+ * ------------------------------------------------------------------------- */
+
+/** Clients we are tracking over D-Bus */
+static GHashTable   *cka_clients_lut = 0;
+
+/** Timestamp of wakeup from dsme */
+static tick_t        cka_clients_wakeup_started  = 0;
+
+/** Timeout for "clients should have issued keep alive requests" */
+static tick_t        cka_clients_wakeup_timeout  = 0;
+
+static void          cka_clients_verify_name_cb (DBusPendingCall *pending, void *user_data);
+static gboolean      cka_clients_verify_name    (const char *name);
+
+static void          cka_clients_remove_client  (const gchar *dbus_name);
+static cka_client_t *cka_clients_get_client     (const gchar *dbus_name);
+static cka_client_t *cka_clients_add_client     (const gchar *dbus_name);
+
+static void          cka_clients_add_session    (const gchar *dbus_name, const char *session_id);
+static void          cka_clients_start_session  (const gchar *dbus_name, const gchar *session_id);
+static void          cka_clients_stop_session   (const gchar *dbus_name, const char *session_id);
+
+static void          cka_clients_handle_wakeup  (const gchar *dbus_name);
+
+static void          cka_clients_init           (void);
+static void          cka_clients_quit           (void);
+
+/* ------------------------------------------------------------------------- *
+ * DBUS_HANDLERS
+ * ------------------------------------------------------------------------- */
+
+/** D-Bus system bus connection */
+static DBusConnection    *cka_dbus_systembus = 0;
+
+static gboolean           cka_dbus_handle_period_cb  (DBusMessage *const msg);
+static gboolean           cka_dbus_handle_start_cb   (DBusMessage *const msg);
+static gboolean           cka_dbus_handle_stop_cb    (DBusMessage *const msg);
+static gboolean           cka_dbus_handle_wakeup_cb  (DBusMessage *const msg);
+
+static DBusHandlerResult  cka_dbus_filter_message_cb (DBusConnection *con, DBusMessage *msg, void *user_data);
+
+static gboolean           cka_dbus_init              (void);
+static void               cka_dbus_quit              (void);
+
+/* ------------------------------------------------------------------------- *
+ * MODULE_INIT_QUIT
+ * ------------------------------------------------------------------------- */
+
+G_MODULE_EXPORT const gchar *g_module_check_init(GModule *module);
+G_MODULE_EXPORT void         g_module_unload    (GModule *module);
 
 /* ========================================================================= *
  *
- * GENERIC UTILITIES
+ * GENERIC_UTILITIES
  *
  * ========================================================================= */
 
 /** Get monotonic timestamp not affected by system time / timezone changes
  *
- * @return seconds since some reference point in time
+ * @return milliseconds since some reference point in time
  */
 static
-time_t
-cpu_keepalive_get_time(void)
+tick_t
+cka_tick_get_current(void)
 {
+  tick_t ms;
   struct timespec ts;
   clock_gettime(CLOCK_BOOTTIME, &ts);
-  return ts.tv_sec;
+
+  ms  = ts.tv_sec;
+  ms *= 1000;
+  ms += ts.tv_nsec / 1000000;
+
+  return ms;
+}
+
+/** Helper for calculating timeout values from ms base + seconds offset
+ *
+ * @param base_ms      Base time in milliseconds, or -1 to use current time
+ * @param add_Seconds  Offset time in seconds
+ *
+ * @return timeout in millisecond resolution
+ */
+static
+tick_t
+cka_tick_get_timeout(tick_t base_ms, int add_seconds)
+{
+  if( base_ms < 0 ) base_ms = cka_tick_get_current();
+
+  return base_ms + add_seconds * 1000;
 }
 
 /* ========================================================================= *
  *
- * D-BUS UTILITIES
+ * DBUS_UTILITIES
  *
  * ========================================================================= */
 
@@ -129,14 +323,14 @@ cpu_keepalive_get_time(void)
  * Reply will not be sent if no_reply attribute is set
  * in the method call message.
  *
- * @param msg method call message to reply
- * @param value TRUE/FALSE to send
+ * @param msg    method call message to reply
+ * @param value  TRUE/FALSE to send
  *
  * @return TRUE on success, or FALSE if reply could not be sent
  */
 static
 gboolean
-cpu_keepalive_reply_bool(DBusMessage *const msg, gboolean value)
+cka_dbusutil_reply_bool(DBusMessage *const msg, gboolean value)
 {
   gboolean success = TRUE;
 
@@ -166,14 +360,14 @@ cpu_keepalive_reply_bool(DBusMessage *const msg, gboolean value)
  * Reply will not be sent if no_reply attribute is set
  * in the method call message.
  *
- * @param msg method call message to reply
- * @param value integer number to send
+ * @param msg    method call message to reply
+ * @param value  integer number to send
  *
  * @return TRUE on success, or FALSE if reply could not be sent
  */
 static
 gboolean
-cpu_keepalive_reply_int(DBusMessage *const msg, gint value)
+cka_dbusutil_reply_int(DBusMessage *const msg, gint value)
 {
   gboolean success = TRUE;
 
@@ -200,13 +394,13 @@ cpu_keepalive_reply_int(DBusMessage *const msg, gint value)
 
 /** Create a GetNameOwner method call message
  *
- * @param name the dbus name to query
+ * @param name  the dbus name to query
  *
  * @return DBusMessage pointer
  */
 static
 DBusMessage *
-cpu_keepalive_create_GetNameOwner_req(const char *name)
+cka_dbusutil_create_GetNameOwner_req(const char *name)
 {
   DBusMessage *req = 0;
 
@@ -223,13 +417,13 @@ cpu_keepalive_create_GetNameOwner_req(const char *name)
 
 /** Parse a reply message to GetNameOwner method call
  *
- * @param rsp method call reply message
+ * @param rsp  method call reply message
  *
  * @return dbus name of the name owner, or NULL in case of errors
  */
 static
 gchar *
-cpu_keepalive_parse_GetNameOwner_rsp(DBusMessage *rsp)
+cka_dbusutil_parse_GetNameOwner_rsp(DBusMessage *rsp)
 {
   char     *res = 0;
   DBusError err = DBUS_ERROR_INIT;
@@ -240,10 +434,11 @@ cpu_keepalive_parse_GetNameOwner_rsp(DBusMessage *rsp)
                              DBUS_TYPE_STRING, &dta,
                              DBUS_TYPE_INVALID) )
   {
-      if( strcmp(err.name, DBUS_ERROR_NAME_HAS_NO_OWNER) ) {
-          mce_log(LL_WARN, "%s: %s", err.name, err.message);
-      }
-      goto EXIT;
+    if( strcmp(err.name, DBUS_ERROR_NAME_HAS_NO_OWNER) )
+    {
+      mce_log(LL_WARN, "%s: %s", err.name, err.message);
+    }
+    goto EXIT;
   }
 
   res = g_strdup(dta);
@@ -253,109 +448,270 @@ EXIT:
   return res;
 }
 
-/* ========================================================================= *
- *
- * INFORMATION ABOUT ACTIVE CLIENTS
- *
- * ========================================================================= */
+/* ------------------------------------------------------------------------- *
+ * SESSION_TRACKING
+ * ------------------------------------------------------------------------- */
 
-/** Format string for constructing name owner lost match rules */
-static const char client_match_fmt[] =
-"type='signal'"
-",sender='"DBUS_SERVICE_DBUS"'"
-",interface='"DBUS_INTERFACE_DBUS"'"
-",member='NameOwnerChanged'"
-",path='"DBUS_PATH_DBUS"'"
-",arg0='%s'"
-",arg2=''"
-;
-
-/** Book keeping information for clients we are tracking */
-struct client_t
+/** Create bookkeeping information for a keepalive session
+ *
+ * @param client      client object
+ * @param session_id  assumed unique id provided by the client
+ *
+ * @return pointer to cka_session_t structure
+ */
+static
+cka_session_t *
+cka_session_create(cka_client_t *client, const char *session_id)
 {
-  /** The (private/sender) name of the dbus client */
-  gchar  *dbus_name;
+  static unsigned id = 0;
 
-  /** NameOwnerChanged signal match used for tracking death of client */
-  char   *match_rule;
+  cka_session_t *self = g_malloc0(sizeof *self);
 
-  /** Upper bound for reneval of cpu keepalive for this client */
-  time_t  timeout;
+  self->ses_client   = client;
+  self->ses_session  = g_strdup(session_id);
+  self->ses_unique     = ++id;
+  self->ses_timeout  = 0;
+  self->ses_started  = cka_tick_get_current();
+  self->ses_renewed  = 0;
+  self->ses_flagged  = false;
+  self->ses_finished = false;
 
-  /** One client can have several keepalive objects */
-  GHashTable *contexts; // [string] -> (gpointer)time_t
-};
+  mce_log(LL_DEVEL, "session created; id=%u/%s %s",
+          self->ses_unique, self->ses_session,
+          cka_client_identify(self->ses_client));
 
-/** Iterator function for use from client_scan_timeout()
+  return self;
+}
+
+/** Renew timeout for a keepalive session
+ *
+ * @param self     session object
+ * @param timeout  end of session timeout to use
  */
 static
 void
-client_scan_timeout_cb(gpointer key, gpointer val, gpointer aptr)
+cka_session_renew(cka_session_t *self, tick_t timeout)
 {
-  (void)key;
-  client_t *self = aptr;
-  time_t    when = GPOINTER_TO_INT(val);
+  self->ses_timeout  = timeout;
+  self->ses_renewed += 1;
 
-  mce_log(LOG_DEBUG, "keepalive client=%s context=%s: T%+ld",
-          self->dbus_name, (const char *)key,
-          (long)(cpu_keepalive_get_time() - when));
+  tick_t now = cka_tick_get_current();
+  tick_t dur = now - self->ses_started;
 
-  if( self->timeout < when )
+  if( !self->ses_flagged && dur > KEEPALIVE_SESSION_WARN_LIMIT_MS )
   {
-    self->timeout = when;
+    self->ses_flagged = true;
+    mce_log(LL_CRIT, "long session active after %"PRId64" ms; "
+            "id=%u/%s %s",
+            dur, self->ses_unique, self->ses_session,
+            cka_client_identify(self->ses_client));
+  }
+  else
+  {
+    mce_log(LL_DEBUG, "session T%+"PRId64"; id=%u/%s %s",
+            now - self->ses_timeout,
+            self->ses_unique, self->ses_session,
+            cka_client_identify(self->ses_client));
   }
 }
 
-/** Update client timeout to be maximum of context timeouts
+/** Finish a keepalive session
+ *
+ * @param self  session object
+ * @param now   current time
  */
 static
 void
-client_scan_timeout(client_t *self)
+cka_session_finish(cka_session_t *self, tick_t now)
 {
-  time_t now  = cpu_keepalive_get_time();
+  tick_t dur = now - self->ses_started;
 
-  self->timeout = now;
+  if( dur > KEEPALIVE_SESSION_WARN_LIMIT_MS )
+  {
+    mce_log(LL_CRIT, "long session lasted %"PRId64" ms; id=%u/%s %s",
+            dur, self->ses_unique, self->ses_session,
+            cka_client_identify(self->ses_client));
+  }
+  else
+  {
+    mce_log(LL_DEVEL, "session lasted %"PRId64" ms; id=%u/%s %s",
+            dur, self->ses_unique, self->ses_session,
+            cka_client_identify(self->ses_client));
+  }
 
-  g_hash_table_foreach(self->contexts,
-                       client_scan_timeout_cb,
-                       self);
+  self->ses_finished = true;
+}
 
-  mce_log(LOG_DEBUG, "keepalive client=%s: T%+ld",
-          self->dbus_name, (long)(now - self->timeout));
+/** Delete bookkeeping information for a keepalive session
+ *
+ * @param self  session object, or NULL
+ */
+static
+void
+cka_session_delete(cka_session_t *self)
+{
+  if( !self )
+  {
+    goto EXIT;
+  }
+
+  mce_log(LL_DEBUG, "session deleted; id=%u/%s %s",
+          self->ses_unique, self->ses_session,
+          cka_client_identify(self->ses_client));
+
+  g_free(self->ses_session);
+  g_free(self);
+
+EXIT:
+  return;
+}
+
+/** Typeless helper function for use as destroy callback
+ *
+ * @param self  session object, or NULL
+ */
+static
+void
+cka_session_delete_cb(void *self)
+{
+  cka_session_delete(self);
+}
+
+/* ========================================================================= *
+ *
+ * CLIENT_TRACKING
+ *
+ * ========================================================================= */
+
+/** Lookup client session object
+ *
+ * @param self        pointer to cka_client_t structure
+ * @param session_id  client provided session id
+ *
+ * @return session object, or NULL
+ */
+static
+cka_session_t *
+cka_client_get_session(cka_client_t *self, const char *session_id)
+{
+  cka_session_t *session = g_hash_table_lookup(self->cli_sessions, session_id);
+
+  return session;
+}
+
+/** Lookup existing / create new client session object
+ *
+ * @param self        pointer to cka_client_t structure
+ * @param session_id  client provided session id
+ *
+ * @return session object
+ */
+static
+cka_session_t *
+cka_client_add_session(cka_client_t *self, const char *session_id)
+{
+  cka_session_t *session = g_hash_table_lookup(self->cli_sessions, session_id);
+
+  if( !session )
+  {
+    session = cka_session_create(self, session_id);
+    g_hash_table_replace(self->cli_sessions, g_strdup(session_id), session);
+  }
+
+  return session;
+}
+
+/** Update client timeout to be maximum of context timeouts
+ *
+ * @param self pointer to cka_client_t structure
+ */
+static
+void
+cka_client_scan_timeout(cka_client_t *self)
+{
+  tick_t now  = cka_tick_get_current();
+
+  self->cli_timeout = 0;
+
+  /* Expire sessions / update client timeout */
+  GHashTableIter iter;
+  gpointer       val;
+
+  g_hash_table_iter_init(&iter, self->cli_sessions);
+  while( g_hash_table_iter_next(&iter, 0, &val) )
+  {
+    cka_session_t *session = val;
+
+    if( session->ses_timeout <= now )
+    {
+      /* Expire session */
+      cka_session_finish(session, now);
+      g_hash_table_iter_remove(&iter);
+    }
+    else if( self->cli_timeout < session->ses_timeout )
+    {
+      /* Update client timeout */
+      self->cli_timeout = session->ses_timeout;
+    }
+  }
+
+  if( self->cli_timeout > now )
+  {
+    mce_log(LL_DEBUG, "client T%+"PRId64"; %s",
+            now - self->cli_timeout,
+            cka_client_identify(self));
+  }
 }
 
 /** Clear client cpu-keepalive timeout
  *
- * @param self pointer to client_t structure
+ * @param self        pointer to cka_client_t structure
+ * @param session_id  client provided session id
  */
 static
 void
-client_clear_timeout(client_t *self, const char *context)
+cka_client_remove_timeout(cka_client_t *self, const char *session_id)
 {
-  if( g_hash_table_remove(self->contexts, context) )
+  cka_session_t *session = cka_client_get_session(self, session_id);
+
+  if( session )
   {
-    mce_log(LOG_DEBUG, "keepalive client=%s context=%s: cleared",
-            self->dbus_name, context);
-    client_scan_timeout(self);
+    tick_t now = cka_tick_get_current();
+    cka_session_finish(session, now);
+    g_hash_table_remove(self->cli_sessions, session_id);
   }
 }
 
 /** Update client cpu-keepalive timeout
  *
- * @param self pointer to client_t structure
- * @param when end of client cpu-keepalive period
+ * @param self        pointer to cka_client_t structure
+ * @param session_id  client provided session id
+ * @param when        end of client cpu-keepalive period
  */
 static
 void
-client_update_timeout(client_t *self, const char *context, time_t when)
+cka_client_update_timeout(cka_client_t *self, const char *session_id,
+                          tick_t when)
 {
-  mce_log(LOG_DEBUG, "keepalive client=%s context=%s: T%+ld",
-          self->dbus_name, context,
-          (long)(cpu_keepalive_get_time() - when));
+  cka_session_t *session = cka_client_add_session(self, session_id);
 
-  g_hash_table_replace(self->contexts, g_strdup(context),
-                       GINT_TO_POINTER(when));
-  client_scan_timeout(self);
+  if( session )
+  {
+    cka_session_renew(session, when);
+  }
+}
+
+/** Get client identification information
+ *
+ * @param self  pointer to cka_client_t structure
+ *
+ * @return human readable string identifying the client process
+ */
+static
+const char *
+cka_client_identify(cka_client_t *self)
+{
+  return mce_dbus_get_name_owner_ident(self->cli_dbus_name);
 }
 
 /** Create bookkeeping information for a dbus client
@@ -363,27 +719,28 @@ client_update_timeout(client_t *self, const char *context, time_t when)
  * Note: Will also add signal matching rule so that we get notified
  *       when the client loses dbus connection
  *
- * @param dbus_name name of the dbus client to track
+ * @param dbus_name  name of the dbus client to track
  *
- * @return pointer to client_t structure
+ * @return pointer to cka_client_t structure
  */
 static
-client_t *
-client_create(const char *dbus_name)
+cka_client_t *
+cka_client_create(const char *dbus_name)
 {
-  client_t *self = g_malloc0(sizeof *self);
+  cka_client_t *self = g_malloc0(sizeof *self);
 
-  self->dbus_name  = g_strdup(dbus_name);
-  self->match_rule = g_strdup_printf(client_match_fmt, self->dbus_name);
-  self->timeout    = 0;
+  self->cli_dbus_name  = g_strdup(dbus_name);
+  self->cli_match_rule = g_strdup_printf(cka_client_match_fmt,
+                                         self->cli_dbus_name);
+  self->cli_timeout    = 0;
 
-  self->contexts   = g_hash_table_new_full(g_str_hash, g_str_equal,
-                                           g_free, NULL);
+  self->cli_sessions   = g_hash_table_new_full(g_str_hash, g_str_equal,
+                                               g_free, cka_session_delete_cb);
 
-  mce_log(LL_NOTICE, "added cpu-keepalive client %s", self->dbus_name);
+  mce_log(LL_DEBUG, "client created; %s", cka_client_identify(self));
 
   /* NULL error -> match will be added asynchronously */
-  dbus_bus_add_match(systembus, self->match_rule, 0);
+  dbus_bus_add_match(cka_dbus_systembus, self->cli_match_rule, 0);
 
   return self;
 }
@@ -393,67 +750,134 @@ client_create(const char *dbus_name)
  * Note: Will also remove the signal matching rule used for detecting
  *       when the client loses dbus connection
  *
- * @param self pointer to client_t structure
+ * @param self  pointer to cka_client_t structure
  */
 
 static
 void
-client_delete(client_t *self)
+cka_client_delete(cka_client_t *self)
 {
   if( self != 0 )
   {
-    mce_log(LL_NOTICE, "removed cpu-keepalive client %s", self->dbus_name);
+    mce_log(LL_DEBUG, "client deleted; %s", cka_client_identify(self));
+
+    tick_t now = cka_tick_get_current();
+
+    /* Finish all sessions */
+    GHashTableIter iter;
+    gpointer       val;
+
+    g_hash_table_iter_init(&iter, self->cli_sessions);
+    while( g_hash_table_iter_next(&iter, 0, &val) )
+    {
+      cka_session_t *session = val;
+
+      cka_session_finish(session, now);
+    }
 
     /* NULL error -> match will be removed asynchronously */
-    dbus_bus_remove_match(systembus, self->match_rule, 0);
+    dbus_bus_remove_match(cka_dbus_systembus, self->cli_match_rule, 0);
 
-    g_hash_table_unref(self->contexts);
-    g_free(self->dbus_name);
-    g_free(self->match_rule);
+    /* Cleanup */
+    g_hash_table_unref(self->cli_sessions);
+    g_free(self->cli_dbus_name);
+    g_free(self->cli_match_rule);
     g_free(self);
   }
 }
 
 /** Typeless helper function for use as destroy callback
  *
- * @param self pointer to client_t structure
+ * @param self  pointer to cka_client_t structure
  */
 static
 void
-client_delete_cb(void *self)
+cka_client_delete_cb(void *self)
 {
-  client_delete(self);
+  cka_client_delete(self);
 }
 
 /* ========================================================================= *
  *
- * CPU-KEEPALIVE TIMER MANAGEMENT
+ * KEEPALIVE_STATE
  *
  * ========================================================================= */
+
+/** Set keepalive state
+ *
+ * @param active  true to start keepalive, false to end keepalive
+ */
+static void cka_state_set(bool active)
+{
+  static bool keepalive_is_active = false;
+  static bool flagged = false;
+  static tick_t started = 0;
+
+  if( keepalive_is_active != active )
+  {
+    tick_t now = cka_tick_get_current();
+
+    if( (keepalive_is_active = active) )
+    {
+#ifdef ENABLE_WAKELOCKS
+      wakelock_lock(cpu_wakelock, -1);
+#endif
+      started = now;
+      mce_log(LL_DEVEL, "keepalive started");
+    }
+    else
+    {
+      tick_t dur = now - started;
+
+      if( dur > KEEPALIVE_STATE_WARN_LIMIT_MS )
+      {
+        mce_log(LL_CRIT, "long keepalive stopped after %"PRId64" ms", dur);
+      }
+      else
+      {
+        mce_log(LL_DEVEL, "keepalive stopped after %"PRId64" ms", dur);
+      }
+
+      flagged = false;
+
+#ifdef ENABLE_WAKELOCKS
+      wakelock_unlock(cpu_wakelock);
+#endif
+    }
+  }
+  else if( keepalive_is_active && !flagged ) {
+    tick_t now = cka_tick_get_current();
+    tick_t dur = now - started;
+    if( dur > KEEPALIVE_STATE_WARN_LIMIT_MS )
+    {
+      flagged = true;
+      mce_log(LL_CRIT, "long keepalive active after %"PRId64" ms", dur);
+    }
+  }
+}
 
 /** Handle triggering of cpu-keepalive timer
  *
  * Releases cpu keepalive wakelock and thus allows the system to
  * enter late suspend according to other policies.
  *
- * @param data (not used)
+ * @param data  (not used)
  *
  * @return FALSE (to stop then timer from repeating)
  */
 static
 gboolean
-cpu_keepalive_timer_cb(gpointer data)
+cka_state_timer_cb(gpointer data)
 {
   (void)data;
 
-  if( timer_id != 0 )
+  if( cka_state_timer_id != 0 )
   {
-    mce_log(LL_WARN, "cpu-keepalive ended");
-    timer_id = 0;
+    mce_log(LL_DEBUG, "cpu-keepalive timeout triggered");
+    cka_state_timer_id = 0;
 
-#ifdef ENABLE_WAKELOCKS
-    wakelock_unlock(cpu_wakelock);
-#endif
+    /* Do full rethink to expire client sessions */
+    cka_state_rethink();
   }
 
   return FALSE;
@@ -463,45 +887,15 @@ cpu_keepalive_timer_cb(gpointer data)
  */
 static
 void
-cpu_keepalive_cancel_timer(void)
+cka_state_reset(void)
 {
-  if( timer_id != 0 )
+  if( cka_state_timer_id != 0 )
   {
-    g_source_remove(timer_id), timer_id = 0;
-  }
-}
-
-/** Reset cpu-keepalive timer
- *
- * @param when monotonic time of the end of cpu-keepalive period
- */
-static
-void
-cpu_keepalive_set_timer(time_t when)
-{
-  static time_t prev = 0;
-
-  time_t now = cpu_keepalive_get_time();
-
-  if( when < now ) when = now;
-
-  if( !timer_id || prev != when )
-  {
-    prev = when;
-    mce_log(LL_WARN, "cpu-keepalive ends at T%+d", (int)(now - when));
+    mce_log(LL_DEBUG, "cpu-keepalive timeout canceled");
+    g_source_remove(cka_state_timer_id), cka_state_timer_id = 0;
   }
 
-  cpu_keepalive_cancel_timer();
-
-  if( now < when )
-  {
-    timer_id = g_timeout_add_seconds(when - now,
-                                     cpu_keepalive_timer_cb, 0);
-  }
-  else
-  {
-    timer_id = g_idle_add(cpu_keepalive_timer_cb, 0);
-  }
+  cka_state_set(false);
 }
 
 /** Re-evaluate the end of cpu-keepalive period
@@ -511,95 +905,120 @@ cpu_keepalive_set_timer(time_t when)
  */
 static
 void
-cpu_keepalive_rethink(void)
+cka_state_rethink(void)
 {
-  time_t maxtime = wakeup_timeout;
+  tick_t now = cka_tick_get_current();
+
+  /* Find furthest away client renew timeout */
+  tick_t maxtime = cka_clients_wakeup_timeout;
 
   GHashTableIter iter;
-  gpointer key, val;
+  gpointer       val;
 
-#ifdef ENABLE_WAKELOCKS
-  wakelock_lock(cpu_wakelock, -1);
-#endif
-
-  g_hash_table_iter_init(&iter, clients);
-  while( g_hash_table_iter_next (&iter, &key, &val) )
+  g_hash_table_iter_init(&iter, cka_clients_lut);
+  while( g_hash_table_iter_next(&iter, 0, &val) )
   {
-    client_t *client = val;
-    if( maxtime < client->timeout )
+    cka_client_t *client = val;
+
+    cka_client_scan_timeout(client);
+
+    if( maxtime < client->cli_timeout )
     {
-      maxtime = client->timeout;
+      maxtime = client->cli_timeout;
     }
   }
-  cpu_keepalive_set_timer(maxtime);
+
+  /* Remove existing timer */
+  if( cka_state_timer_id != 0 )
+  {
+    g_source_remove(cka_state_timer_id), cka_state_timer_id = 0;
+  }
+
+  /* If needed, program timer */
+  static tick_t oldtime = 0;
+
+  if( now < maxtime )
+  {
+    if( maxtime != oldtime )
+    {
+      mce_log(LL_DEBUG, "cpu-keepalive timeout at T%+"PRId64"",
+              now - maxtime);
+    }
+    cka_state_timer_id = g_timeout_add(maxtime - now,
+                             cka_state_timer_cb, 0);
+  }
+
+  oldtime = maxtime;
+
+  cka_state_set(cka_state_timer_id != 0);
 }
 
 /* ========================================================================= *
  *
- * CLIENT MANAGEMENT
+ * CLIENT_MANAGEMENT
  *
  * ========================================================================= */
 
 /** Remove bookkeeping data for a client and re-evaluate cpu keepalive status
  *
- * @param dbus_name dbus name of the client
+ * @param dbus_name  dbus name of the client
  */
 static
 void
-cpu_keepalive_remove_client(const gchar *dbus_name)
+cka_clients_remove_client(const gchar *dbus_name)
 {
-  if( g_hash_table_remove(clients, dbus_name) )
+  if( g_hash_table_remove(cka_clients_lut, dbus_name) )
   {
-    cpu_keepalive_rethink();
+    cka_state_rethink();
   }
 }
 
 /** Obtain bookkeeping data for a client
  *
- * @param dbus_name dbus name of the client
+ * @param dbus_name  dbus name of the client
  *
  * @return client data, or NULL if dbus_name is not tracked
  */
 static
-client_t *
-cpu_keepalive_get_client(const gchar *dbus_name)
+cka_client_t *
+cka_clients_get_client(const gchar *dbus_name)
 {
-  client_t *client = g_hash_table_lookup(clients, dbus_name);
+  cka_client_t *client = g_hash_table_lookup(cka_clients_lut, dbus_name);
   return client;
 }
 
 /** Call back for handling asynchronous client verification via GetNameOwner
  *
- * @param pending   control structure for asynchronous d-bus methdod call
- * @param user_data dbus_name of the client as void poiter
+ * @param pending    control structure for asynchronous d-bus methdod call
+ * @param user_data  dbus_name of the client as void poiter
  */
 static
 void
-cpu_keepalive_verify_name_cb(DBusPendingCall *pending, void *user_data)
+cka_clients_verify_name_cb(DBusPendingCall *pending, void *user_data)
 {
   const gchar *name   = user_data;
   gchar       *owner  = 0;
   DBusMessage *rsp    = 0;
-  client_t    *client = 0;
+  cka_client_t    *client = 0;
 
   if( !(rsp = dbus_pending_call_steal_reply(pending)) )
   {
     goto EXIT;
   }
 
-  if( !(client = cpu_keepalive_get_client(name)) )
+  if( !(client = cka_clients_get_client(name)) )
   {
     mce_log(LL_WARN, "untracked client %s", name);
   }
 
-  if( !(owner = cpu_keepalive_parse_GetNameOwner_rsp(rsp)) || !*owner )
+  if( !(owner = cka_dbusutil_parse_GetNameOwner_rsp(rsp)) || !*owner )
   {
     mce_log(LL_WARN, "dead client %s", name);
-    cpu_keepalive_remove_client(name), client = 0;
+    cka_clients_remove_client(name), client = 0;
   }
   else
   {
-    mce_log(LL_WARN, "live client %s, owner %s", name, owner);
+    mce_log(LL_DEBUG, "live client %s, owner %s", name, owner);
   }
 
 EXIT:
@@ -610,25 +1029,25 @@ EXIT:
 
 /** Verify that a client exists via an asynchronous GetNameOwner method call
  *
- * @param name the dbus name who's owner we wish to know
+ * @param name  the dbus name who's owner we wish to know
  *
  * @return TRUE if the method call was initiated, or FALSE in case of errors
  */
 static
 gboolean
-cpu_keepalive_verify_name(const char *name)
+cka_clients_verify_name(const char *name)
 {
   gboolean         res = FALSE;
   DBusMessage     *req = 0;
   DBusPendingCall *pc  = 0;
   gchar           *key = 0;
 
-  if( !(req = cpu_keepalive_create_GetNameOwner_req(name)) )
+  if( !(req = cka_dbusutil_create_GetNameOwner_req(name)) )
   {
     goto EXIT;
   }
 
-  if( !dbus_connection_send_with_reply(systembus, req, &pc, -1) )
+  if( !dbus_connection_send_with_reply(cka_dbus_systembus, req, &pc, -1) )
   {
     goto EXIT;
   }
@@ -640,7 +1059,7 @@ cpu_keepalive_verify_name(const char *name)
 
   key = g_strdup(name);
 
-  if( !dbus_pending_call_set_notify(pc, cpu_keepalive_verify_name_cb,
+  if( !dbus_pending_call_set_notify(pc, cka_clients_verify_name_cb,
                                     key, g_free) )
   {
     goto EXIT;
@@ -664,29 +1083,33 @@ EXIT:
 
 /** Find existing / create new client data by dbus name
  *
- * @param dbus_name dbus name of the client
+ * @param dbus_name  dbus name of the client
  *
  * @return client data
  */
 static
-client_t *
-cpu_keepalive_add_client(const gchar *dbus_name)
+cka_client_t *
+cka_clients_add_client(const gchar *dbus_name)
 {
-  client_t *client = g_hash_table_lookup(clients, dbus_name);
+  cka_client_t *client = g_hash_table_lookup(cka_clients_lut, dbus_name);
 
   if( !client )
   {
-    /* The client_create() adds NameOwnerChanged signal match
+    /* Make a dummy peer identification request, so we have it already
+     * cached in case we actually need it later on */
+    mce_dbus_get_name_owner_ident(dbus_name);
+
+    /* The cka_client_create() adds NameOwnerChanged signal match
      * so that we know when/if the client exits, crashes or
      * otherwise loses dbus connection. */
 
-    client = client_create(dbus_name);
-    g_hash_table_insert(clients, g_strdup(dbus_name), client);
+    client = cka_client_create(dbus_name);
+    g_hash_table_insert(cka_clients_lut, g_strdup(dbus_name), client);
 
     /* Then make an explicit GetNameOwner request to verify that
      * the client is still running when we have the signal
      * listening in the place. */
-    cpu_keepalive_verify_name(dbus_name);
+    cka_clients_verify_name(dbus_name);
   }
 
   return client;
@@ -696,60 +1119,62 @@ cpu_keepalive_add_client(const gchar *dbus_name)
  *
  * If needed will add the dbus_name to list of tracked clients.
  *
- * @param dbus_name name of the tracked client
+ * @param dbus_name  name of the tracked client
  */
 static
 void
-cpu_keepalive_register(const gchar *dbus_name, const char *context)
+cka_clients_add_session(const gchar *dbus_name, const char *session_id)
 {
-  client_t *client = cpu_keepalive_add_client(dbus_name);
+  cka_client_t *client = cka_clients_add_client(dbus_name);
 
-  time_t when = cpu_keepalive_get_time() + 2;
+  tick_t when = cka_tick_get_timeout(-1, MCE_CPU_KEEPALIVE_QUERY_PERIOD_S);
 
-  client_update_timeout(client, context, when);
+  cka_client_update_timeout(client, session_id, when);
 
-  cpu_keepalive_rethink();
+  cka_state_rethink();
 }
 
 /** Adjust the cpu-keepalive timeout for dbus client
  *
  * If needed will add the dbus_name to list of tracked clients.
  *
- * @param dbus_name name of the tracked client
+ * @param dbus_name  name of the tracked client
  */
 static
 void
-cpu_keepalive_start(const gchar *dbus_name, const gchar *context)
+cka_clients_start_session(const gchar *dbus_name, const gchar *session_id)
 {
-  client_t *client = cpu_keepalive_add_client(dbus_name);
+  cka_client_t *client = cka_clients_add_client(dbus_name);
 
-  time_t when = cpu_keepalive_get_time() + MCE_CPU_KEEPALIVE_MAXIMUM_PERIOD;
+  tick_t when = cka_tick_get_timeout(-1, MCE_CPU_KEEPALIVE_MAXIMUM_PERIOD_S);
 
-  client_clear_timeout(client, CONTEXT_INITIAL);
-  client_update_timeout(client, context, when);
+  cka_client_remove_timeout(client, SESSION_ID_INITIAL);
+  cka_client_update_timeout(client, session_id, when);
 
   /* We got at least one keep alive request, extend the minimum
    * alive time a bit to give other clients time to get scheduled */
-  wakeup_timeout = wakeup_started + MCE_RTC_WAKEUP_2ND_TIMEOUT_SECONDS;
+  cka_clients_wakeup_timeout =
+    cka_tick_get_timeout(cka_clients_wakeup_started,
+                         MCE_RTC_WAKEUP_2ND_TIMEOUT_S);
 
-  cpu_keepalive_rethink();
+  cka_state_rethink();
 }
 
 /** Remove the cpu-keepalive timeout for dbus client
  *
- * @param dbus_name name of the tracked client
+ * @param dbus_name  name of the tracked client
  */
 static
 void
-cpu_keepalive_stop(const gchar *dbus_name, const char *context)
+cka_clients_stop_session(const gchar *dbus_name, const char *session_id)
 {
-  client_t *client = cpu_keepalive_get_client(dbus_name);
+  cka_client_t *client = cka_clients_get_client(dbus_name);
 
   if( client )
   {
-    client_clear_timeout(client, CONTEXT_INITIAL);
-    client_clear_timeout(client, context);
-    cpu_keepalive_rethink();
+    cka_client_remove_timeout(client, SESSION_ID_INITIAL);
+    cka_client_remove_timeout(client, session_id);
+    cka_state_rethink();
   }
   else
   {
@@ -759,22 +1184,24 @@ cpu_keepalive_stop(const gchar *dbus_name, const char *context)
 
 /** Transfer resume-due-to-rtc-input wakelock from dsme to mce
  *
- * @param dbus_name name of the client issuing the request
+ * @param dbus_name  name of the client issuing the request
  */
 static
 void
-cpu_keepalive_wakeup(const gchar *dbus_name)
+cka_clients_handle_wakeup(const gchar *dbus_name)
 {
   // FIXME: we should check that the dbus_name == DSME
   (void)dbus_name;
 
   /* Time of wakeup received */
-  wakeup_started = cpu_keepalive_get_time();
+  cka_clients_wakeup_started = cka_tick_get_current();
 
   /* Timeout for the 1st keepalive message to come through */
-  wakeup_timeout = wakeup_started + MCE_RTC_WAKEUP_1ST_TIMEOUT_SECONDS;
+  cka_clients_wakeup_timeout =
+    cka_tick_get_timeout(cka_clients_wakeup_started,
+                         MCE_RTC_WAKEUP_1ST_TIMEOUT_S);
 
-  cpu_keepalive_rethink();
+  cka_state_rethink();
 
   mce_log(LL_NOTICE, "rtc wakeup finished");
 #ifdef ENABLE_WAKELOCKS
@@ -782,56 +1209,76 @@ cpu_keepalive_wakeup(const gchar *dbus_name)
 #endif
 }
 
+/** Initialize client tracking
+ */
+static void cka_clients_init(void)
+{
+  if( !cka_clients_lut )
+  {
+    cka_clients_lut = g_hash_table_new_full(g_str_hash, g_str_equal,
+                                            g_free, cka_client_delete_cb);
+  }
+}
+
+/** Cleanup client tracking
+ */
+static void cka_clients_quit(void)
+{
+  if( cka_clients_lut )
+  {
+    g_hash_table_unref(cka_clients_lut), cka_clients_lut = 0;
+  }
+}
+
 /* ========================================================================= *
  *
- * D-BUS METHOD CALL HANDLERS
+ * DBUS_HANDLERS
  *
  * ========================================================================= */
 
 /** D-Bus callback for the MCE_CPU_KEEPALIVE_PERIOD_REQ method call
  *
- * @param msg The D-Bus message
+ * @param msg  The D-Bus message
  *
  * @return TRUE on success, FALSE on failure
  */
 static
 gboolean
-cpu_keepalive_period_cb(DBusMessage *const msg)
+cka_dbus_handle_period_cb(DBusMessage *const msg)
 {
   gboolean success = FALSE;
 
   DBusError   err     = DBUS_ERROR_INIT;
   const char *sender  = 0;
-  const char *context = 0;
+  const char *session_id = 0;
 
   if( !(sender = dbus_message_get_sender(msg)) )
   {
     goto EXIT;
   }
 
-  mce_log(LL_DEVEL, "got keepalive period query from %s",
+  mce_log(LL_NOTICE, "got keepalive period query from %s",
           mce_dbus_get_name_owner_ident(sender));
 
   if( !dbus_message_get_args(msg, &err,
-                             DBUS_TYPE_STRING, &context,
+                             DBUS_TYPE_STRING, &session_id,
                              DBUS_TYPE_INVALID) )
   {
-    // initial dbus interface did not include context string
+    // initial dbus interface did not include session_id string
     if( strcmp(err.name, DBUS_ERROR_INVALID_ARGS) )
     {
       mce_log(LL_WARN, "%s: %s", err.name, err.message);
       goto EXIT;
     }
 
-    context = CONTEXT_INITIAL;
-    mce_log(LL_DEBUG, "sender did not supply context string; using '%s'", context);
+    session_id = SESSION_ID_INITIAL;
+    mce_log(LL_DEBUG, "sender did not supply session_id string; using '%s'",
+            session_id);
   }
 
-  mce_log(LL_DEBUG, "sender=%s, context=%s", sender, context);
+  cka_clients_add_session(sender, session_id);
 
-  cpu_keepalive_register(sender, context);
-
-  success = cpu_keepalive_reply_int(msg, MCE_CPU_KEEPALIVE_SUGGESTED_PERIOD);
+  success = cka_dbusutil_reply_int(msg, MCE_CPU_KEEPALIVE_SUGGESTED_PERIOD_S);
 
 EXIT:
   dbus_error_free(&err);
@@ -840,51 +1287,50 @@ EXIT:
 
 /** D-Bus callback for the MCE_CPU_KEEPALIVE_START_REQ method call
  *
- * @param msg The D-Bus message
+ * @param msg  The D-Bus message
  *
  * @return TRUE on success, FALSE on failure
  */
 static
 gboolean
-cpu_keepalive_start_cb(DBusMessage *const msg)
+cka_dbus_handle_start_cb(DBusMessage *const msg)
 {
   gboolean success = FALSE;
 
-  DBusError  err      = DBUS_ERROR_INIT;
-  const char *sender  = 0;
-  const char *context = 0;
+  DBusError  err         = DBUS_ERROR_INIT;
+  const char *sender     = 0;
+  const char *session_id = 0;
 
   if( !(sender = dbus_message_get_sender(msg)) )
   {
     goto EXIT;
   }
 
-  mce_log(LL_DEVEL, "got keepalive start from %s",
+  mce_log(LL_NOTICE, "got keepalive start from %s",
           mce_dbus_get_name_owner_ident(sender));
 
   if( !dbus_message_get_args(msg, &err,
-                             DBUS_TYPE_STRING, &context,
+                             DBUS_TYPE_STRING, &session_id,
                              DBUS_TYPE_INVALID) )
   {
-    // initial dbus interface did not include context string
+    // initial dbus interface did not include session_id string
     if( strcmp(err.name, DBUS_ERROR_INVALID_ARGS) )
     {
       mce_log(LL_WARN, "%s: %s", err.name, err.message);
       goto EXIT;
     }
 
-    context = CONTEXT_DEFAULT;
-    mce_log(LL_DEBUG, "sender did not supply context string; using '%s'", context);
+    session_id = SESSION_ID_DEFAULT;
+    mce_log(LL_DEBUG, "sender did not supply session_id string; using '%s'",
+            session_id);
   }
 
-  mce_log(LL_DEBUG, "sender=%s, context=%s", sender, context);
-
-  cpu_keepalive_start(sender, context);
+  cka_clients_start_session(sender, session_id);
 
   success = TRUE;
 
 EXIT:
-  cpu_keepalive_reply_bool(msg, success);
+  cka_dbusutil_reply_bool(msg, success);
 
   dbus_error_free(&err);
   return success;
@@ -892,51 +1338,50 @@ EXIT:
 
 /** D-Bus callback for the MCE_CPU_KEEPALIVE_STOP_REQ method call
  *
- * @param msg The D-Bus message
+ * @param msg  The D-Bus message
  *
  * @return TRUE on success, FALSE on failure
  */
 static
 gboolean
-cpu_keepalive_stop_cb(DBusMessage *const msg)
+cka_dbus_handle_stop_cb(DBusMessage *const msg)
 {
   gboolean success = FALSE;
 
   DBusError  err      = DBUS_ERROR_INIT;
   const char *sender  =  0;
-  const char *context = 0;
+  const char *session_id = 0;
 
   if( !(sender = dbus_message_get_sender(msg)) )
   {
     goto EXIT;
   }
 
-  mce_log(LL_DEVEL, "got keepalive stop from %s",
+  mce_log(LL_NOTICE, "got keepalive stop from %s",
           mce_dbus_get_name_owner_ident(sender));
 
   if( !dbus_message_get_args(msg, &err,
-                             DBUS_TYPE_STRING, &context,
+                             DBUS_TYPE_STRING, &session_id,
                              DBUS_TYPE_INVALID) )
   {
-    // initial dbus interface did not include context string
+    // initial dbus interface did not include session_id string
     if( strcmp(err.name, DBUS_ERROR_INVALID_ARGS) )
     {
       mce_log(LL_WARN, "%s: %s", err.name, err.message);
       goto EXIT;
     }
 
-    context = CONTEXT_DEFAULT;
-    mce_log(LL_DEBUG, "sender did not supply context string; using '%s'", context);
+    session_id = SESSION_ID_DEFAULT;
+    mce_log(LL_DEBUG, "sender did not supply session_id string; using '%s'",
+            session_id);
   }
 
-  mce_log(LL_DEBUG, "sender=%s, context=%s", sender, context);
-
-  cpu_keepalive_stop(sender, context);
+  cka_clients_stop_session(sender, session_id);
 
   success = TRUE;
 
 EXIT:
-  cpu_keepalive_reply_bool(msg, success);
+  cka_dbusutil_reply_bool(msg, success);
 
   dbus_error_free(&err);
   return success;
@@ -944,13 +1389,13 @@ EXIT:
 
 /** D-Bus callback for the MCE_CPU_KEEPALIVE_WAKEUP_REQ method call
  *
- * @param msg The D-Bus message
+ * @param msg  The D-Bus message
  *
  * @return TRUE on success, FALSE on failure
  */
 static
 gboolean
-cpu_keepalive_wakeup_cb(DBusMessage *const msg)
+cka_dbus_handle_wakeup_cb(DBusMessage *const msg)
 {
   gboolean success = FALSE;
 
@@ -961,36 +1406,30 @@ cpu_keepalive_wakeup_cb(DBusMessage *const msg)
     goto EXIT;
   }
 
-  mce_log(LL_WARN, "got keepalive wakeup from %s",
+  mce_log(LL_NOTICE, "got keepalive wakeup from %s",
           mce_dbus_get_name_owner_ident(sender));
 
-  cpu_keepalive_wakeup(sender);
+  cka_clients_handle_wakeup(sender);
 
   success = TRUE;
 
 EXIT:
-  cpu_keepalive_reply_bool(msg, success);
+  cka_dbusutil_reply_bool(msg, success);
 
   return success;
 }
 
-/* ========================================================================= *
- *
- * D-BUS SIGNAL HANDLERS
- *
- * ========================================================================= */
-
 /** D-Bus message filter for handling NameOwnerChanged signals
  *
- * @param con       dbus connection
- * @param msg       message to be acted upon
- * @param user_data (not used)
+ * @param con        dbus connection
+ * @param msg        message to be acted upon
+ * @param user_data  (not used)
  *
  * @return DBUS_HANDLER_RESULT_NOT_YET_HANDLED (other filters see the msg too)
  */
 static
 DBusHandlerResult
-cpu_keepalive_dbus_filter_cb(DBusConnection *con, DBusMessage *msg,
+cka_dbus_filter_message_cb(DBusConnection *con, DBusMessage *msg,
                              void *user_data)
 {
   (void)user_data;
@@ -1006,7 +1445,7 @@ cpu_keepalive_dbus_filter_cb(DBusConnection *con, DBusMessage *msg,
 
   DBusError err = DBUS_ERROR_INIT;
 
-  if( con != systembus )
+  if( con != cka_dbus_systembus )
   {
     goto EXIT;
   }
@@ -1040,8 +1479,8 @@ cpu_keepalive_dbus_filter_cb(DBusConnection *con, DBusMessage *msg,
 
   if( !*curr )
   {
-    mce_log(LL_INFO, "name lost owner: %s", name);
-    cpu_keepalive_remove_client(name);
+    mce_log(LL_DEBUG, "name lost owner: %s", name);
+    cka_clients_remove_client(name);
   }
 
 EXIT:
@@ -1049,48 +1488,42 @@ EXIT:
   return res;
 }
 
-/* ========================================================================= *
- *
- * MODULE INIT/QUIT
- *
- * ========================================================================= */
-
 /** Array of dbus message handlers */
-static mce_dbus_handler_t cpu_keepalive_dbus_handlers[] =
+static mce_dbus_handler_t cka_dbus_handlers[] =
 {
   /* method calls */
   {
     .interface = MCE_REQUEST_IF,
     .name      = MCE_CPU_KEEPALIVE_PERIOD_REQ,
     .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
-    .callback  = cpu_keepalive_period_cb,
+    .callback  = cka_dbus_handle_period_cb,
     .args      =
-      "    <arg direction=\"in\" name=\"context\" type=\"s\"/>\n"
+      "    <arg direction=\"in\" name=\"session_id\" type=\"s\"/>\n"
       "    <arg direction=\"out\" name=\"period\" type=\"i\"/>\n"
   },
   {
     .interface = MCE_REQUEST_IF,
     .name      = MCE_CPU_KEEPALIVE_START_REQ,
     .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
-    .callback  = cpu_keepalive_start_cb,
+    .callback  = cka_dbus_handle_start_cb,
     .args      =
-      "    <arg direction=\"in\" name=\"context\" type=\"s\"/>\n"
+      "    <arg direction=\"in\" name=\"session_id\" type=\"s\"/>\n"
       "    <arg direction=\"out\" name=\"success\" type=\"b\"/>\n"
   },
   {
     .interface = MCE_REQUEST_IF,
     .name      = MCE_CPU_KEEPALIVE_STOP_REQ,
     .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
-    .callback  = cpu_keepalive_stop_cb,
+    .callback  = cka_dbus_handle_stop_cb,
     .args      =
-      "    <arg direction=\"in\" name=\"context\" type=\"s\"/>\n"
+      "    <arg direction=\"in\" name=\"session_id\" type=\"s\"/>\n"
       "    <arg direction=\"out\" name=\"success\" type=\"b\"/>\n"
   },
   {
     .interface = MCE_REQUEST_IF,
     .name      = MCE_CPU_KEEPALIVE_WAKEUP_REQ,
     .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
-    .callback  = cpu_keepalive_wakeup_cb,
+    .callback  = cka_dbus_handle_wakeup_cb,
     .args      =
       "    <arg direction=\"out\" name=\"success\" type=\"b\"/>\n"
   },
@@ -1104,33 +1537,59 @@ static mce_dbus_handler_t cpu_keepalive_dbus_handlers[] =
  *
  * @return TRUE on success, or FALSE on failure
  */
-static gboolean cpu_keepalive_attach_to_dbus(void)
+static gboolean cka_dbus_init(void)
 {
-  gboolean success = TRUE;
+  gboolean success = FALSE;
+
+  if( !(cka_dbus_systembus = dbus_connection_get()) )
+  {
+    goto EXIT;
+  }
 
   /* Register signal handling filter */
-  dbus_connection_add_filter(systembus, cpu_keepalive_dbus_filter_cb, 0, 0);
+  dbus_connection_add_filter(cka_dbus_systembus,
+                             cka_dbus_filter_message_cb, 0, 0);
 
   /* Register dbus method call handlers */
-  mce_dbus_handler_register_array(cpu_keepalive_dbus_handlers);
+  mce_dbus_handler_register_array(cka_dbus_handlers);
 
+  success = TRUE;
+
+EXIT:
   return success;
 }
 
 /** Remove signal and method call message handlers
  */
-static void cpu_keepalive_detach_from_dbus(void)
+static void cka_dbus_quit(void)
 {
+  if( !cka_dbus_systembus )
+  {
+    goto EXIT;
+  }
+
   /* Remove signal handling filter */
-  dbus_connection_remove_filter(systembus, cpu_keepalive_dbus_filter_cb, 0);
+  dbus_connection_remove_filter(cka_dbus_systembus,
+                                cka_dbus_filter_message_cb, 0);
 
   /* Remove dbus method call handlers that we have registered */
-  mce_dbus_handler_unregister_array(cpu_keepalive_dbus_handlers);
+  mce_dbus_handler_unregister_array(cka_dbus_handlers);
+
+  dbus_connection_unref(cka_dbus_systembus), cka_dbus_systembus = 0;
+
+EXIT:
+  return;
 }
+
+/* ========================================================================= *
+ *
+ * MODULE_INIT_QUIT
+ *
+ * ========================================================================= */
 
 /** Init function for the cpu-keepalive module
  *
- * @param module (not used)
+ * @param module  (not used)
  *
  * @return NULL on success, a string with an error message on failure
  */
@@ -1140,20 +1599,13 @@ const gchar *g_module_check_init(GModule *module)
 
   const gchar *status = NULL;
 
-  if( !(systembus = dbus_connection_get()) )
+  if( !cka_dbus_init() )
   {
-    status = "mce has no dbus connection";
+    status = "initializing dbus connection failed";
     goto EXIT;
   }
 
-  if( !cpu_keepalive_attach_to_dbus() )
-  {
-    status = "attaching to dbus connection failed";
-    goto EXIT;
-  }
-
-  clients = g_hash_table_new_full(g_str_hash, g_str_equal,
-                                  g_free, client_delete_cb);
+  cka_clients_init();
 
 EXIT:
 
@@ -1164,7 +1616,7 @@ EXIT:
 
 /** Exit function for the cpu-keepalive module
  *
- * @param module (not used)
+ * @param module  (not used)
  */
 void g_module_unload(GModule *module)
 {
@@ -1172,16 +1624,12 @@ void g_module_unload(GModule *module)
 
   /* If we have active clients, removal expects a valid dbus
    * connection -> purge clients first */
-  if( clients )
-  {
-    g_hash_table_unref(clients), clients = 0;
-  }
+  cka_clients_quit();
 
-  if( systembus )
-  {
-    cpu_keepalive_detach_from_dbus();
-    dbus_connection_unref(systembus), systembus = 0;
-  }
+  cka_dbus_quit();
+
+  /* Make sure the wakelock is released */
+  cka_state_reset();
 
   mce_log(LL_DEBUG, "unloaded %s", module_name);
 
