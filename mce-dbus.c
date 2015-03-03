@@ -2769,14 +2769,41 @@ mce_dbus_ident_delete_cb(gpointer self)
 /** Lookup table for cached D-Bus name owner identification data */
 static GHashTable *info_lut = 0;
 
+/** Idle callback for handling delayed dbus name owner purging
+ *
+ * @param aptr  dbus name as void pointer
+ *
+ * @return FALSE to stop handler from repeating
+ */
+static gboolean mce_dbus_rem_ident_cb(gpointer aptr)
+{
+	char *name = aptr;
+
+	if( !info_lut )
+		goto EXIT;
+
+	g_hash_table_remove(info_lut, name);
+
+EXIT:
+	g_free(name);
+
+	return FALSE;
+}
+
 /** Remove D-Bus name owner identification data from cache
+ *
+ * @param name  dbus name to purge from cache
  */
 static void mce_dbus_rem_ident(const char *name)
 {
 	if( !info_lut )
 		goto EXIT;
 
-	g_hash_table_remove(info_lut, name);
+	/* Remove entry via idle callback so that the
+	 * identification information we have is still
+	 * made available for other owner lost handlers
+	 */
+	g_idle_add(mce_dbus_rem_ident_cb, g_strdup(name));
 
 EXIT:
 	return;
