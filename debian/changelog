@@ -1,3 +1,9 @@
+mce (1.43.2) unstable; urgency=low
+
+  * [mce] Improve diagnostic logging from cpu-keepalive plugin. Fixes JB#24905
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 03 Mar 2015 21:24:23 +0200
+
 mce (1.43.1) unstable; urgency=low
 
   * [mce] Interpret BTN_TOUCH event with zero value as touch release. Fixes
