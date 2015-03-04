@@ -1,3 +1,10 @@
+mce (1.43.3) unstable; urgency=low
+
+  * [mce] Stop mce fbdev child process from dumping cores on shutdown.
+    Fixes JB#26832
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 04 Mar 2015 08:18:31 +0200
+
 mce (1.43.2) unstable; urgency=low
 
   * [mce] Improve diagnostic logging from cpu-keepalive plugin. Fixes JB#24905
