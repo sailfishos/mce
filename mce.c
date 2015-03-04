@@ -247,35 +247,46 @@ static void signal_handler(const gint signr)
 	}
 }
 
-/** Install handlers for signals we need to trap
- */
-static void install_signal_handlers(void)
+/** Array of signals that should be trapped */
+static const int mce_signals_to_trap[] =
 {
-	static const int sig[] = {
-		SIGUSR1,
-		SIGUSR2,
-		SIGHUP,
+	SIGUSR1,
+	SIGUSR2,
+	SIGHUP,
 
-		SIGINT,
-		SIGQUIT,
-		SIGTERM,
+	SIGINT,
+	SIGQUIT,
+	SIGTERM,
 
 #ifdef ENABLE_WAKELOCKS
-		SIGABRT,
-		SIGILL,
-		SIGFPE,
-		SIGSEGV,
-		SIGPIPE,
-		SIGALRM,
-		SIGBUS,
-		SIGTSTP,
+	SIGABRT,
+	SIGILL,
+	SIGFPE,
+	SIGSEGV,
+	SIGPIPE,
+	SIGALRM,
+	SIGBUS,
+	SIGTSTP,
 #endif
 
-		-1
-	};
+	-1
+};
 
-	for( size_t i = 0; sig[i] != -1; ++i ) {
-		signal(sig[i], mce_tx_signal_cb);
+/** Install handlers for signals we need to trap
+ */
+static void mce_signal_handlers_install(void)
+{
+	for( size_t i = 0; mce_signals_to_trap[i] != -1; ++i ) {
+		signal(mce_signals_to_trap[i], mce_tx_signal_cb);
+	}
+}
+
+/** Restore default handlers for trapped signals
+ */
+void mce_signal_handlers_remove(void)
+{
+	for( size_t i = 0; mce_signals_to_trap[i] != -1; ++i ) {
+		signal(mce_signals_to_trap[i], SIG_DFL);
 	}
 }
 
@@ -966,7 +977,7 @@ int main(int argc, char **argv)
 		mce_log(LL_CRIT, "Failed to initialise signal pipe");
 		exit(EXIT_FAILURE);
 	}
-	install_signal_handlers();
+	mce_signal_handlers_install();
 
 	/* Initialise subsystems */
 

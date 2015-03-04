@@ -21,6 +21,7 @@
 
 #include "mce-fbdev.h"
 #include "mce-log.h"
+#include "mce.h"
 
 #ifdef ENABLE_HYBRIS
 # include "mce-hybris.h"
@@ -132,6 +133,17 @@ void mce_fbdev_reopen(void)
  * POST_EXIT_LINGER
  * ========================================================================= */
 
+/** Signal handler that just exits
+ *
+ * @param sig signal number (unused)
+ */
+static void mce_fbdev_linger_signal_hander(int sig)
+{
+    (void) sig;
+
+    _exit(EXIT_SUCCESS);
+}
+
 /** Create a child process to keep frame buffer device open after mce exits
  *
  * The frame buffer device powers off automatically when the last open
@@ -164,6 +176,29 @@ void mce_fbdev_linger_after_exit(int delay_ms)
     /* Detach from parent so that we will not get killed with it */
 
     setsid();
+
+    /* The parent process needs to pay special attention to signals
+     * in order not to leave wakelocks active on exit. Also some
+     * signals are transferred to mainloop via a pipe. None of this
+     * should happen if the child process gets signals -> remove
+     * all signal handlers the parent process has installed. */
+
+    mce_signal_handlers_remove();
+
+    /* Since the intent is that the child process exits very close to
+     * power off, it is unlikely that core can be succesfully dumped
+     * and processed -> trap all signals that do core dump by default
+     * and make an _exit() instead. */
+
+    static const int trap[] =
+    {
+        SIGQUIT, SIGILL, SIGABRT, SIGFPE, SIGSEGV,
+        SIGBUS, SIGSYS, SIGTRAP, SIGXCPU, SIGXFSZ,
+        -1
+    };
+
+    for( size_t i = 0; trap[i] != -1; ++i )
+        signal(trap[i], mce_fbdev_linger_signal_hander);
 
     /* Close all files, except fbdev & stderr */
 
