@@ -1,3 +1,9 @@
+mce (1.43.4) unstable; urgency=low
+
+  * [mce] Handle statefs Battery.State = "low" correctly. Fixes JB#27079
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 13 Mar 2015 12:25:29 +0200
+
 mce (1.43.3) unstable; urgency=low
 
   * [mce] Stop mce fbdev child process from dumping cores on shutdown.
