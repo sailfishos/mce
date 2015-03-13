@@ -172,15 +172,19 @@ mce-dsme.pic.o:\
 
 mce-fbdev.o:\
 	mce-fbdev.c\
+	datapipe.h\
 	mce-fbdev.h\
 	mce-hybris.h\
 	mce-log.h\
+	mce.h\
 
 mce-fbdev.pic.o:\
 	mce-fbdev.c\
+	datapipe.h\
 	mce-fbdev.h\
 	mce-hybris.h\
 	mce-log.h\
+	mce.h\
 
 mce-gconf.o:\
 	mce-gconf.c\
@@ -478,6 +482,7 @@ modules/camera.o:\
 	mce-conf.h\
 	mce-io.h\
 	mce.h\
+	tklock.h\
 	modules/camera.h\
 
 modules/camera.pic.o:\
@@ -486,6 +491,7 @@ modules/camera.pic.o:\
 	mce-conf.h\
 	mce-io.h\
 	mce.h\
+	tklock.h\
 	modules/camera.h\
 
 modules/cpu-keepalive.o:\

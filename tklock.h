@@ -53,12 +53,6 @@ typedef enum
     DBLTAP_ACTION_DEFAULT  = DBLTAP_ACTION_UNBLANK
 } dbltap_action_t;
 
-/** Proximity timeout for double tap gesture; in seconds */
-#define DEFAULT_POCKET_MODE_PROXIMITY_TIMEOUT		5
-
-/** Proximity timeout for double tap gesture; in seconds */
-#define DEFAULT_DOUBLETAP_PROXIMITY_TIMEOUT		0
-
 /**
  * SysFS interface to enable/disable
  * RM-680/RM-690/RM-696/RM-716 double tap gesture recognition
@@ -121,94 +115,11 @@ enum
 /** Name of D-Bus callback to provide to Touchscreen/Keypad Lock SystemUI */
 #define MCE_TKLOCK_CB_REQ		"tklock_callback"
 
-/** Delay before the touchscreen/keypad is unlocked */
-#define MCE_TKLOCK_UNLOCK_DELAY		500		/**< 0.5 seconds */
-
-#ifndef MCE_CONF_TKLOCK_GROUP
 /** Name of Touchscreen/Keypad lock configuration group */
-# define MCE_CONF_TKLOCK_GROUP		"TKLock"
-#endif
+#define MCE_CONF_TKLOCK_GROUP		"TKLock"
 
-/** Name of configuration key for touchscreen/keypad immediate blanking */
-#define MCE_CONF_BLANK_IMMEDIATELY	"BlankImmediately"
-
-/** Name of configuration key for touchscreen/keypad immediate dimming */
-#define MCE_CONF_DIM_IMMEDIATELY	"DimImmediately"
-
-/** Name of configuration key for touchscreen/keypad dim timeout */
-#define MCE_CONF_DIM_DELAY		"DimDelay"
-
-/** Name of configuration key for touchscreen immediate disabling */
-#define MCE_CONF_TS_OFF_IMMEDIATELY	"DisableTSImmediately"
-
-/** Name of configuration key for keypad immediate disabling */
-#define MCE_CONF_KP_OFF_IMMEDIATELY	"DisableKPImmediately"
-
-/** Name of configuration key for keyboard slide autolock */
-#define MCE_CONF_AUTOLOCK_SLIDE_OPEN	"AutolockWhenSlideOpen"
-
-/** Name of configuration key for keyboard slide proximity lock */
-#define MCE_CONF_PROXIMITY_LOCK_SLIDE_OPEN	"ProximityLockWhenSlideOpen"
-
-/** Name of configuration key for keyboard slide unconditional lock on close */
-#define MCE_CONF_LOCK_ON_SLIDE_CLOSE	"AlwaysLockOnSlideClose"
-
-/** Name of configuration key for lens cover triggered tklock unlocking */
-#define MCE_CONF_LENS_COVER_UNLOCK	"LensCoverUnlock"
-
-/** Name of configuration key for volume key triggered unlock screen */
-#define MCE_CONF_VOLKEY_VISUAL_TRIGGER	"TriggerUnlockScreenWithVolumeKeys"
-
-/** Double tap timeout for the touchscreen in milliseconds; 0.5 seconds */
-#define DEFAULT_TS_DOUBLE_DELAY		500
-
-/** Default fallback setting for tklock immediate blanking */
-#define DEFAULT_BLANK_IMMEDIATELY	FALSE		/* FALSE / TRUE */
-
-/** Default fallback setting for tklock immediate dimming */
-#define DEFAULT_DIM_IMMEDIATELY		FALSE		/* FALSE / TRUE */
-
-/** Default visual lock blank timeout */
-#define DEFAULT_VISUAL_BLANK_DELAY	5		/* 5 seconds */
-
-/** Default visual lock blank timeout */
-#define DEFAULT_VISUAL_FORCED_BLANK_DELAY	30	/* 30 seconds */
-
-/** Default delay before the display dims */
-#define DEFAULT_DIM_DELAY		3		/* 3 seconds */
-
-/** Default powerkey repeat emulation delay */
-#define DEFAULT_POWERKEY_REPEAT_DELAY	1		/* 1 second */
-
-/** Default powerkey repeat count limit */
-#define DEFAULT_POWERKEY_REPEAT_LIMIT	10
-
-/** Default fallback setting for touchscreen immediate disabling */
-#define DEFAULT_TS_OFF_IMMEDIATELY	2		/* 0 / 1 / _2_ */
-
-/** Default fallback setting for keypad immediate disabling */
-#define DEFAULT_KP_OFF_IMMEDIATELY	2		/* 0 / 1 / _2_ */
-
-/** Default fallback setting for autolock with open keyboard slide */
-#define DEFAULT_AUTOLOCK_SLIDE_OPEN	FALSE		/* FALSE */
-
-/** Default fallback setting for proximity lock with open keyboard slide */
-#define DEFAULT_PROXIMITY_LOCK_SLIDE_OPEN	FALSE		/* FALSE */
-
-/** Default fallback setting for unconditional lock on close keyboard slide */
-#define DEFAULT_LOCK_ON_SLIDE_CLOSE	FALSE		/* FALSE */
-
-/** Default fallback setting for lens cover triggered tklock unlocking */
-#define DEFAULT_LENS_COVER_UNLOCK	TRUE		/* TRUE */
-
-/** Default fallback setting for proximity lock when callstate == ringing */
-#define DEFAULT_PROXIMITY_LOCK_WHEN_RINGING	FALSE		/* FALSE */
-
-/** Default fallback setting for volume key triggered unlock screen */
-#define DEFAULT_VOLKEY_VISUAL_TRIGGER		TRUE		/* TRUE */
-
-/** Default fallback setting for auto lock after call end */
-#define DEFAULT_AUTORELOCK_AFTER_CALL_END	FALSE		/* FALSE */
+/** Name of configuration key for camera popout unlock */
+#define MCE_CONF_CAMERA_POPOUT_UNLOCK			"CameraPopoutUnlock"
 
 /* when MCE is made modular, this will be handled differently
  */

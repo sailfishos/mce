@@ -24,6 +24,7 @@
 #include "../mce.h"
 #include "../mce-io.h"
 #include "../mce-conf.h"
+#include "../tklock.h"
 
 #include <string.h>
 
