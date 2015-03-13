@@ -39,14 +39,6 @@
 /** Value for the camera in popped in state */
 #define MCE_CAMERA_POPPED_IN				"inactive"
 
-#ifndef MCE_CONF_TKLOCK_GROUP
-/** Name of Touchscreen/Keypad lock configuration group */
-# define MCE_CONF_TKLOCK_GROUP				"TKLock"
-#endif
-
-/** Name of configuration key for camera popout unlock */
-#define MCE_CONF_CAMERA_POPOUT_UNLOCK			"CameraPopoutUnlock"
-
 /** Default fallback setting for the touchscreen/keypad autolock */
 #define DEFAULT_CAMERA_POPOUT_UNLOCK			TRUE		/* FALSE / TRUE */
 
