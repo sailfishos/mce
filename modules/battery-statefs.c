@@ -91,9 +91,10 @@ typedef enum
 {
     STATEFS_BATTERY_STATE_UNKNOWN      = -1,
     STATEFS_BATTERY_STATE_EMPTY        =  0,
-    STATEFS_BATTERY_STATE_DISCHARGING  =  1,
-    STATEFS_BATTERY_STATE_CHARGING     =  2,
-    STATEFS_BATTERY_STATE_FULL         =  3,
+    STATEFS_BATTERY_STATE_LOW          =  1,
+    STATEFS_BATTERY_STATE_DISCHARGING  =  2,
+    STATEFS_BATTERY_STATE_CHARGING     =  3,
+    STATEFS_BATTERY_STATE_FULL         =  4,
 } sfsbat_state_t;
 
 /* ========================================================================= *
@@ -248,6 +249,7 @@ static const struct {
     { "charging",    STATEFS_BATTERY_STATE_CHARGING    },
     { "discharging", STATEFS_BATTERY_STATE_DISCHARGING },
     { "empty",       STATEFS_BATTERY_STATE_EMPTY       },
+    { "low",         STATEFS_BATTERY_STATE_LOW         },
     { "full",        STATEFS_BATTERY_STATE_FULL        },
     { "unknown",     STATEFS_BATTERY_STATE_UNKNOWN     },
     { "",            STATEFS_BATTERY_STATE_UNKNOWN     },
@@ -593,6 +595,10 @@ mcebat_update_from_sfsbat(void)
     switch( sfsbat.State ) {
     case STATEFS_BATTERY_STATE_EMPTY:
         mcebat.status = BATTERY_STATUS_EMPTY;
+        break;
+
+    case STATEFS_BATTERY_STATE_LOW:
+        mcebat.status = BATTERY_STATUS_LOW;
         break;
 
     case STATEFS_BATTERY_STATE_DISCHARGING:
