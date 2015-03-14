@@ -1,3 +1,10 @@
+mce (1.43.6) unstable; urgency=low
+
+  * [mce] Remove SoftOff mode. Fixes JB#27285
+  * [mce] Add SW_LID to list of events MCE is interested in. Fixes NEMO#797
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Sat, 14 Mar 2015 18:37:06 +0200
+
 mce (1.43.5) unstable; urgency=low
 
   * [mce] Remove unused mce.ini configuration items. Fixes JB#25531
