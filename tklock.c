@@ -3358,14 +3358,6 @@ static void tklock_evctrl_rethink(void)
      * overrides
      * - - - - - - - - - - - - - - - - - - - */
 
-#if 0 // FIXME: should we pretend soft-off is still supported?
-    if( submode & MCE_SOFTOFF_SUBMODE ) {
-        enable_kp = false;
-        enable_ts = false;
-        enable_dt = false;
-    }
-#endif
-
 #if 0 // FIXME: malf is not really supported yet
     if( submode & MCE_MALF_SUBMODE ) {
         enable_kp = false;

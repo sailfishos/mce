@@ -32,38 +32,8 @@
  */
 #define TRANSITION_DELAY		-1
 
-/** Name of Powerkey configuration group */
-#define MCE_CONF_SOFTPOWEROFF_GROUP	"SoftPowerOff"
-
-/** Name of configuration key for charger connect policy in soft poweroff */
-#define MCE_CONF_SOFTPOWEROFF_CHARGER_POLICY_CONNECT "ChargerPolicyConnect"
-
-/**
- * Name of configuration value for the "wake on charger" policy
- * when in soft poweroff
- */
-#define SOFTOFF_CHARGER_CONNECT_WAKEUP_STR		"wakeup"
-
-/**
- * Name of configuration value for the "ignore charger" policy
- * when in soft poweroff
- */
-#define SOFTOFF_CHARGER_CONNECT_IGNORE_STR		"ignore"
-
-/** Soft poweroff charger connect policy */
-enum {
-	/** Stay in offline mode */
-	SOFTOFF_CHARGER_CONNECT_WAKEUP = 0,
-	/** Restore previous mode */
-	SOFTOFF_CHARGER_CONNECT_IGNORE = 1,
-	/** Default setting */
-	DEFAULT_SOFTOFF_CHARGER_CONNECT = SOFTOFF_CHARGER_CONNECT_IGNORE,
-};
-
 void mce_dsme_request_powerup(void);
 void mce_dsme_request_reboot(void);
-void mce_dsme_request_soft_poweron(void);
-void mce_dsme_request_soft_poweroff(void);
 void mce_dsme_request_normal_shutdown(void);
 
 /* When MCE is made modular, this will be handled differently */

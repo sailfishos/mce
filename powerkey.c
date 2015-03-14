@@ -144,7 +144,6 @@ static gint  pwrkey_action_blank_mode = PWRKEY_BLANK_TO_OFF;
 static guint pwrkey_action_blank_mode_gconf_id = 0;
 
 static void  pwrkey_action_shutdown (void);
-static void  pwrkey_action_softoff  (void);
 static void  pwrkey_action_tklock   (void);
 static void  pwrkey_action_blank    (void);
 static void  pwrkey_action_unblank  (void);
@@ -598,22 +597,6 @@ EXIT:
 }
 
 static void
-pwrkey_action_softoff(void)
-{
-    submode_t submode = mce_get_submode_int32();
-
-    /* Only soft poweroff if the tklock isn't active */
-    if( submode & MCE_TKLOCK_SUBMODE )
-        goto EXIT;
-
-    mce_log(LL_DEVEL, "Requesting soft poweroff");
-    mce_dsme_request_soft_poweroff();
-
-EXIT:
-    return;
-}
-
-static void
 pwrkey_action_tklock(void)
 {
     mce_log(LL_DEBUG, "Requesting tklock=on");
@@ -750,10 +733,6 @@ static const pwrkey_bitconf_t pwrkey_action_lut[] =
     {
         .name = "devlock",
         .func = pwrkey_action_devlock,
-    },
-    {
-        .name = "softoff",
-        .func = pwrkey_action_softoff,
     },
     {
         .name = "shutdown",
@@ -904,7 +883,6 @@ static void
 pwrkey_actions_do_long_press(void)
 {
     system_state_t state   = datapipe_get_gint(system_state_pipe);
-    submode_t      submode = mce_get_submode_int32();
 
     /* The action configuration applies only in the USER mode */
 
@@ -924,13 +902,8 @@ pwrkey_actions_do_long_press(void)
         break;
 
     case MCE_STATE_USER:
-        if( submode & MCE_SOFTOFF_SUBMODE ) {
-            /* Wake up from softoff */
-            mce_dsme_request_soft_poweron();
-        } else {
-            /* Apply configured actions */
-            pwrkey_mask_execute(pwrkey_actions_now->mask_long);
-        }
+        /* Apply configured actions */
+        pwrkey_mask_execute(pwrkey_actions_now->mask_long);
         break;
 
     default:

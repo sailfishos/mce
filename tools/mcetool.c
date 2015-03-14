@@ -2826,7 +2826,6 @@ static bool xmce_is_powerkey_action(const char *name)
                 "blank",
                 "tklock",
                 "devlock",
-                "softoff",
                 "shutdown",
                 "unblank",
                 "tkunlock",
@@ -4441,7 +4440,6 @@ static const mce_opt_t options[] =
                         "  tklock   - lock ui\n"
                         "  devlock  - lock device\n"
                         "  dbus1    - send dbus signal or make method call\n"
-                        "  softoff  - enter softoff mode (legacy, not supported)\n"
                         "  shutdown - power off device\n"
                         "  unblank  - turn display on\n"
                         "  tkunlock - unlock ui\n"
