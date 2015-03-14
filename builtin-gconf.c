@@ -1344,12 +1344,6 @@ static const setting_t gconf_defaults[] =
     .def  = "true",
   },
   {
-    // MCE_LED_PATTERN_DEVICE_SOFT_OFF @ mce.h
-    .key  = "/system/osso/dsm/leds/PatternDeviceSoftOff",
-    .type = "b",
-    .def  = "true",
-  },
-  {
     // MCE_LED_PATTERN_POWER_OFF @ mce.h
     .key  = "/system/osso/dsm/leds/PatternPowerOff",
     .type = "b",

@@ -43,7 +43,6 @@ static char *mce_submode_change(const submode_t prev, const submode_t curr)
 		{ MCE_INVALID_SUBMODE,          "INVALID"          },
 		{ MCE_TKLOCK_SUBMODE,           "TKLOCK"           },
 		{ MCE_EVEATER_SUBMODE,          "EVEATER"          },
-		{ MCE_SOFTOFF_SUBMODE,          "SOFTOFF"          },
 		{ MCE_BOOTUP_SUBMODE,           "BOOTUP"           },
 		{ MCE_TRANSITION_SUBMODE,       "TRANSITION"       },
 		{ MCE_AUTORELOCK_SUBMODE,       "AUTORELOCK"       },

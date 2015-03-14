@@ -38,9 +38,6 @@
 #include <dsme/protocol.h>
 #include <dsme/processwd.h>
 
-/** Charger state; from charger_state_pipe */
-static charger_state_t charger_state = CHARGER_STATE_UNDEF;
-
 /** Availability of dsme; from dsme_available_pipe */
 static service_state_t dsme_available = SERVICE_STATE_UNDEF;
 
@@ -55,23 +52,6 @@ static guint mce_dsme_iowatch_id = 0;
 
 /** ID for delayed state transition reporting timer */
 static guint mce_dsme_state_report_id = 0;
-
-/** Soft poweroff charger connect policy */
-static gint softoff_charger_connect_policy = DEFAULT_SOFTOFF_CHARGER_CONNECT;
-
-/** Mapping of soft poweroff charger connect integer <-> policy string */
-static const mce_translation_t soft_poweroff_charger_connect_translation[] = {
-	{
-		.number = SOFTOFF_CHARGER_CONNECT_WAKEUP,
-		.string = SOFTOFF_CHARGER_CONNECT_WAKEUP_STR
-	}, {
-		.number = SOFTOFF_CHARGER_CONNECT_IGNORE,
-		.string = SOFTOFF_CHARGER_CONNECT_IGNORE_STR
-	}, { /* MCE_INVALID_TRANSLATION marks the end of this array */
-		.number = MCE_INVALID_TRANSLATION,
-		.string = NULL
-	}
-};
 
 /* Internal functions */
 
@@ -91,7 +71,6 @@ static system_state_t mce_dsme_normalise_system_state(dsme_state_t dsmestate);
 static const char    *mce_dsme_msg_type_repr(int type);
 static gboolean       mce_dsme_iowatch_cb(GIOChannel *source, GIOCondition condition, gpointer data);
 static gboolean       mce_dsme_init_done_cb(DBusMessage *const msg);
-static void           mce_dsme_charger_state_cb(gconstpointer const data);
 static void           mce_dsme_dsme_available_cb(gconstpointer const data);
 
 static bool           mce_dsme_connected(void);
@@ -101,7 +80,6 @@ static void           mce_dsme_reconnect(void);
 
 static void           mce_dsme_init_dbus(void);
 static void           mce_dsme_quit_dbus(void);
-static void           mce_dsme_init_config(void);
 static void           mce_dsme_init_datapipes(void);
 static void           mce_dsme_quit_datapipes(void);
 
@@ -227,38 +205,6 @@ void mce_dsme_request_reboot(void)
 	mce_dsme_send(&msg, "DSM_MSGTYPE_REBOOT_REQ");
 EXIT:
 	return;
-}
-
-/**
- * Request soft poweron
- */
-void mce_dsme_request_soft_poweron(void)
-{
-	/* Disable the soft poweroff LED pattern */
-	execute_datapipe_output_triggers(&led_pattern_deactivate_pipe,
-					 MCE_LED_PATTERN_DEVICE_SOFT_OFF,
-					 USE_INDATA);
-
-	mce_rem_submode_int32(MCE_SOFTOFF_SUBMODE);
-	execute_datapipe(&display_state_req_pipe,
-			 GINT_TO_POINTER(MCE_DISPLAY_ON),
-			 USE_INDATA, CACHE_INDATA);
-}
-
-/**
- * Request soft poweroff
- */
-void mce_dsme_request_soft_poweroff(void)
-{
-	mce_add_submode_int32(MCE_SOFTOFF_SUBMODE);
-	execute_datapipe(&display_state_req_pipe,
-			 GINT_TO_POINTER(MCE_DISPLAY_LPM_OFF),
-			 USE_INDATA, CACHE_INDATA);
-
-	/* Enable the soft poweroff LED pattern */
-	execute_datapipe_output_triggers(&led_pattern_activate_pipe,
-					 MCE_LED_PATTERN_DEVICE_SOFT_OFF,
-					 USE_INDATA);
 }
 
 /**
@@ -591,25 +537,6 @@ static gboolean mce_dsme_init_done_cb(DBusMessage *const msg)
 	return status;
 }
 
-/**
- * Datapipe trigger for the charger state
- *
- * @param data TRUE if the charger was connected,
- *	       FALSE if the charger was disconnected
- */
-static void mce_dsme_charger_state_cb(gconstpointer const data)
-{
-	submode_t submode = mce_get_submode_int32();
-
-	charger_state = GPOINTER_TO_INT(data);
-
-	if ((submode & MCE_SOFTOFF_SUBMODE) != 0) {
-		if (softoff_charger_connect_policy == SOFTOFF_CHARGER_CONNECT_WAKEUP) {
-			mce_dsme_request_soft_poweron();
-		}
-	}
-}
-
 /** Datapipe trigger for dsme availability
  */
 static void mce_dsme_dsme_available_cb(gconstpointer const data)
@@ -748,19 +675,6 @@ static void mce_dsme_quit_dbus(void)
 	mce_dbus_handler_unregister_array(mce_dsme_dbus_handlers);
 }
 
-/** Get configuration options
- */
-static void mce_dsme_init_config(void)
-{
-	gchar *tmp = mce_conf_get_string(MCE_CONF_SOFTPOWEROFF_GROUP,
-					 MCE_CONF_SOFTPOWEROFF_CHARGER_POLICY_CONNECT,
-					 "");
-	softoff_charger_connect_policy =
-		mce_translate_string_to_int_with_default(soft_poweroff_charger_connect_translation,
-							 tmp, DEFAULT_SOFTOFF_CHARGER_CONNECT);
-	g_free(tmp);
-}
-
 /** Array of datapipe handlers */
 static datapipe_handler_t mce_dsme_datapipe_handlers[] =
 {
@@ -768,10 +682,6 @@ static datapipe_handler_t mce_dsme_datapipe_handlers[] =
 	{
 		.datapipe  = &dsme_available_pipe,
 		.output_cb = mce_dsme_dsme_available_cb,
-	},
-	{
-		.datapipe  = &charger_state_pipe,
-		.output_cb = mce_dsme_charger_state_cb,
 	},
 	// sentinel
 	{
@@ -806,8 +716,6 @@ static void mce_dsme_quit_datapipes(void)
  */
 gboolean mce_dsme_init(void)
 {
-	mce_dsme_init_config();
-
 	mce_dsme_init_datapipes();
 
 	mce_dsme_init_dbus();

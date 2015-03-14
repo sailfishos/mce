@@ -46,9 +46,6 @@
 /** LED pattern used to indicate that the device is on when idle */
 #define MCE_LED_PATTERN_DEVICE_ON		"PatternDeviceOn"
 
-/** LED pattern used when the device is in soft poweroff mode */
-#define MCE_LED_PATTERN_DEVICE_SOFT_OFF		"PatternDeviceSoftOff"
-
 /** LED pattern used when charging the battery */
 #define MCE_LED_PATTERN_BATTERY_CHARGING	"PatternBatteryCharging"
 
@@ -134,9 +131,6 @@ typedef gint submode_t;
 
 /** Event eater enabled */
 #define MCE_EVEATER_SUBMODE		(1 << 1)
-
-/** Device emulates soft poweroff */
-#define MCE_SOFTOFF_SUBMODE		(1 << 2)
 
 /** Bootup in progress */
 #define MCE_BOOTUP_SUBMODE		(1 << 3)
