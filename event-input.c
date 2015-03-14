@@ -1253,6 +1253,7 @@ evin_evdevtype_from_info(evin_evdevinfo_t *info)
         SW_FRONT_PROXIMITY,
         SW_HEADPHONE_INSERT,
         SW_KEYPAD_SLIDE,
+        SW_LID,
         SW_LINEOUT_INSERT,
         SW_MICROPHONE_INSERT,
         SW_VIDEOOUT_INSERT,
