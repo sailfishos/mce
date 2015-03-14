@@ -125,7 +125,6 @@ RUNDIR                := $(_LOCALSTATEDIR)/run/mce
 CONFDIR               := $(_SYSCONFDIR)/mce
 MODULEDIR             := $(_LIBDIR)/mce/modules
 DBUSDIR               := $(_SYSCONFDIR)/dbus-1/system.d
-LOCALEDIR             := $(_DATADIR)/locale
 HELPERSCRIPTDIR       := $(_DATADIR)/mce
 TESTSDESTDIR          := $(_TESTSDIR)/mce
 
@@ -466,11 +465,6 @@ install_man_pages::
 	$(INSTALL_DIR) $(DESTDIR)/$(_MANDIR)/man8
 	$(INSTALL_DTA) man/mce.8        $(DESTDIR)/$(_MANDIR)/man8/mce.8
 	$(INSTALL_DTA) man/mcetool.8    $(DESTDIR)/$(_MANDIR)/man8/mcetool.8
-
-install_man_pages_sv::
-	$(INSTALL_DIR) $(DESTDIR)/$(_MANDIR)/sv/man8
-	$(INSTALL_DTA) man/mce.sv.8        $(DESTDIR)/$(_MANDIR)/sv/man8/mce.8
-	$(INSTALL_DTA) man/mcetool.sv.8    $(DESTDIR)/$(_MANDIR)/sv/man8/mcetool.8
 
 ifeq ($(ENABLE_UNITTESTS_INSTALL),y)
 install:: install_unittests

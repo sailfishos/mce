@@ -47,9 +47,8 @@ void mce_modules_dump_info(void)
 		gpointer mip;
 
 		fprintf(stdout,
-			_("\n"
-			  "Module: %s\n"),
-			modulename);
+			"\n"
+			"Module: %s\n", modulename);
 
 		if (g_module_symbol(module,
 				    "module_info",
@@ -64,15 +63,15 @@ void mce_modules_dump_info(void)
 
 		fprintf(stdout,
 			"        %-32s %s\n",
-			_("name:"),
-			modinfo->name ? modinfo->name : _("<undefined>"));
+			"name:",
+			modinfo->name ? modinfo->name : "<undefined>");
 
 		if (modinfo->depends != NULL)
 			tmp = g_strjoinv(",", (gchar **)(modinfo->depends));
 
 		fprintf(stdout,
 			"        %-32s %s\n",
-			_("depends:"),
+			"depends:",
 			tmp ? tmp : "");
 
 		g_free(tmp);
@@ -83,7 +82,7 @@ void mce_modules_dump_info(void)
 
 		fprintf(stdout,
 			"        %-32s %s\n",
-			_("recommends:"),
+			"recommends:",
 			tmp ? tmp : "");
 
 		g_free(tmp);
@@ -94,7 +93,7 @@ void mce_modules_dump_info(void)
 
 		fprintf(stdout,
 			"        %-32s %s\n",
-			_("provides:"),
+			"provides:",
 			tmp ? tmp : "");
 
 		g_free(tmp);
@@ -105,7 +104,7 @@ void mce_modules_dump_info(void)
 
 		fprintf(stdout,
 			"        %-32s %s\n",
-			_("enhances:"),
+			"enhances:",
 			tmp ? tmp : "");
 
 		g_free(tmp);
@@ -116,7 +115,7 @@ void mce_modules_dump_info(void)
 
 		fprintf(stdout,
 			"        %-32s %s\n",
-			_("conflicts:"),
+			"conflicts:",
 			tmp ? tmp : "");
 
 		g_free(tmp);
@@ -127,14 +126,13 @@ void mce_modules_dump_info(void)
 
 		fprintf(stdout,
 			"        %-32s %s\n",
-			_("replaces:"),
+			"replaces:",
 			tmp ? tmp : "");
 
 		g_free(tmp);
 
-		fprintf(stdout,
-			"        %-32s %d\n",
-			_("priority:"),
+		fprintf(stdout,	"        %-32s %d\n",
+			"priority:",
 			modinfo->priority);
 	}
 }
