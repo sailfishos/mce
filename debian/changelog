@@ -1,3 +1,12 @@
+mce (1.44.0) unstable; urgency=low
+
+  * [mce] Remove legacy proximity sensor logic. Contributes to JB#27286
+  * [mce] Remove legacy ambient light sensor logic. Contributes to JB#27286
+  * [mce] Using sensorfw for ambient light / proximity sensor control is
+    not optional. Fixes JB#27286
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Sun, 15 Mar 2015 22:54:55 +0200
+
 mce (1.43.7) unstable; urgency=low
 
   * [mce] Remove stale l10n code and data. Fixes NEMO#721
