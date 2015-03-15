@@ -28,9 +28,7 @@
 #include "mce-dsme.h"
 #include "mce-modules.h"
 #include "mce-command-line.h"
-#ifdef ENABLE_SENSORFW
-# include "mce-sensorfw.h"
-#endif
+#include "mce-sensorfw.h"
 #include "tklock.h"
 #include "powerkey.h"
 #include "event-input.h"
@@ -1048,11 +1046,9 @@ int main(int argc, char **argv)
 		goto EXIT;
 	}
 
-#ifdef ENABLE_SENSORFW
 	if( !mce_sensorfw_init() ) {
 		goto EXIT;
 	}
-#endif
 
 	/* Load all modules */
 	if (mce_modules_init() == FALSE) {
@@ -1089,9 +1085,7 @@ EXIT:
 	mce_modules_exit();
 
 	/* Call the exit function for all components */
-#ifdef ENABLE_SENSORFW
 	mce_sensorfw_quit();
-#endif
 	mce_tklock_exit();
 	mce_switches_exit();
 	mce_input_exit();

@@ -25,9 +25,7 @@
 #include "../mce.h"
 #include "../mce-log.h"
 #include "../mce-gconf.h"
-#ifdef ENABLE_SENSORFW
-# include "../mce-sensorfw.h"
-#endif
+#include "../mce-sensorfw.h"
 
 #include <gmodule.h>
 
@@ -97,7 +95,6 @@ static void report_proximity(cover_state_t state)
  *
  * @param covered  proximity sensor covered
  */
-#ifdef ENABLE_SENSORFW
 static void ps_sensorfw_iomon_cb(bool covered)
 {
 	cover_state_t proximity_sensor_state = COVER_UNDEF;
@@ -111,7 +108,6 @@ static void ps_sensorfw_iomon_cb(bool covered)
 
 	return;
 }
-#endif /* ENABLE_SENSORFW */
 
 /** Enable the proximity monitoring
  */
@@ -124,11 +120,9 @@ static void enable_proximity_monitor(void)
 	mce_log(LL_DEBUG, "enable PS monitoring");
 	proximity_monitor_active = TRUE;
 
-#ifdef ENABLE_SENSORFW
 	/* install input processing hooks, update current state */
 	mce_sensorfw_ps_set_notify(ps_sensorfw_iomon_cb);
 	mce_sensorfw_ps_enable();
-#endif
 
 EXIT:
 	return;
@@ -146,13 +140,11 @@ static void disable_proximity_monitor(void)
 	mce_log(LL_DEBUG, "disable PS monitoring");
 	proximity_monitor_active = FALSE;
 
-#ifdef ENABLE_SENSORFW
 	/* disable input */
 	mce_sensorfw_ps_disable();
 
 	/* remove input processing hooks */
 	mce_sensorfw_ps_set_notify(0);
-#endif
 
 EXIT:
 	return;
@@ -169,7 +161,6 @@ static guint use_ps_conf_id = 0;
  */
 static void update_proximity_monitor(void)
 {
-#ifdef ENABLE_SENSORFW
 	static gboolean old_enable = FALSE;
 
 	gboolean enable = FALSE;
@@ -195,9 +186,6 @@ static void update_proximity_monitor(void)
 EXIT:
 	if( !enable && fake_open )
 		report_proximity(COVER_OPEN);
-#else
-	report_proximity(COVER_OPEN);
-#endif
 }
 
 /** GConf callback for use proximity sensor setting
