@@ -1,3 +1,9 @@
+mce (1.43.7) unstable; urgency=low
+
+  * [mce] Remove stale l10n code and data. Fixes NEMO#721
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Sun, 15 Mar 2015 10:23:01 +0200
+
 mce (1.43.6) unstable; urgency=low
 
   * [mce] Remove SoftOff mode. Fixes JB#27285
