@@ -23,9 +23,6 @@
 
 #include "datapipe.h"
 
-/** Dummy _() */
-#define _(str_)		str_
-
 /** Indicate enabled (sub)mode */
 #define DISABLED_STRING			"yes"
 

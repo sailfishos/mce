@@ -79,48 +79,6 @@ static void no_error_check_write(int fd, const void *data, size_t size)
 		rc = rc;
 }
 
-/**
- * Initialise locale support
- *
- * @param name The program name to output in usage/version information
- * @return 0 on success, non-zero on failure
- */
-static gint init_locales(const gchar *const name)
-{
-	gint status = 0;
-
-#ifdef ENABLE_NLS
-	setlocale(LC_ALL, "");
-
-	if ((bindtextdomain(name, LOCALEDIR) == 0) && (errno == ENOMEM)) {
-		status = errno;
-		goto EXIT;
-	}
-
-	if ((textdomain(name) == 0) && (errno == ENOMEM)) {
-		status = errno;
-		goto EXIT;
-	}
-
-EXIT:
-	/* In this error-message we don't use _(), since we don't
-	 * know where the locales failed, and we probably won't
-	 * get a reasonable result if we try to use them.
-	 */
-	if (status != 0) {
-		fprintf(stderr,
-			"%s: `%s' failed; %s. Aborting.\n",
-			name, "init_locales", g_strerror(status));
-	}
-
-	if (errno != ENOMEM)
-		errno = 0;
-#endif /* ENABLE_NLS */
-	progname = name;
-
-	return status;
-}
-
 void mce_quit_mainloop(void)
 {
 #ifdef ENABLE_WAKELOCKS
@@ -935,9 +893,8 @@ int main(int argc, char **argv)
 {
 	int status = EXIT_FAILURE;
 
-	/* Initialise support for locales, and set the program-name */
-	if (init_locales(PRG_NAME) != 0)
-		goto EXIT;
+	/* Set the program-name */
+	progname = PRG_NAME;
 
 	/* Parse the command-line options */
 	if( !mce_command_line_parse(options, argc, argv) )
