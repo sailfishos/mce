@@ -41,21 +41,6 @@
 
 #include <gmodule.h>
 
-#if 0 // DEBUG: make all logging from this module "critical"
-# undef mce_log
-# define mce_log(LEV, FMT, ARGS...) \
-	mce_log_file(LL_CRIT, __FILE__, __FUNCTION__, FMT , ## ARGS)
-#endif
-
-/** Request enabling of ALS; reference counted */
-#define MCE_REQ_ALS_ENABLE		"req_als_enable"
-
-/** Request disabling of ALS; reference counted */
-#define MCE_REQ_ALS_DISABLE		"req_als_disable"
-
-/** Maximum number of monitored ALS owners */
-#define ALS_MAX_MONITORED		16
-
 /** Module name */
 #define MODULE_NAME			"filter-brightness-als"
 
@@ -132,9 +117,6 @@ static gint als_lux_latest = -1;
 
 /** Raw lux value from the ALS */
 static gint als_lux_cached = -1;
-
-/** List of monitored external als enablers (legacy D-Bus API) */
-static GSList *ext_als_enablers = NULL;
 
 /** Currently active color profile (dummy implementation) */
 static char *color_profile_name = 0;
@@ -846,12 +828,11 @@ static void rethink_als_status(void)
 		}
 	}
 
-	if( want_data || ext_als_enablers  )
+	if( want_data )
 		enable_new = TRUE;
 
-	mce_log(LL_DEBUG, "use=%d, want=%d ext=%d -> enable=%d",
-		use_als_flag, want_data, ext_als_enablers ? 1 : 0,
-		enable_new);
+	mce_log(LL_DEBUG, "use=%d, want=%d -> enable=%d",
+		use_als_flag, want_data, enable_new);
 
 	if( want_data ) {
 		/* The sensor has been off for some time, so the
@@ -1040,126 +1021,6 @@ static void display_state_next_trigger(gconstpointer data)
 
 EXIT:
 	return;
-}
-
-/**
- * D-Bus callback used for reference counting ALS enabling;
- * if the requesting process exits, immediately decrease the refcount
- *
- * @param msg The D-Bus message
- * @return TRUE
- */
-static gboolean als_owner_monitor_dbus_cb(DBusMessage *const msg)
-{
-	const gchar *old_name = 0;
-	const gchar *new_name = 0;
-	const gchar *service  = 0;
-	DBusError    error    = DBUS_ERROR_INIT;
-
-	gssize retval;
-
-	if( !dbus_message_get_args(msg, &error,
-				  DBUS_TYPE_STRING, &service,
-				  DBUS_TYPE_STRING, &old_name,
-				  DBUS_TYPE_STRING, &new_name,
-				  DBUS_TYPE_INVALID) ) {
-		mce_log(LL_ERR,	"Failed to get argument from %s.%s; %s: %s",
-			"org.freedesktop.DBus", "NameOwnerChanged",
-			error.name, error.message);
-		goto EXIT;
-	}
-
-	/* Remove the name monitor for the ALS owner */
-	retval = mce_dbus_owner_monitor_remove(service,
-					       &ext_als_enablers);
-
-	if (retval == -1) {
-		mce_log(LL_WARN, "Failed to remove name owner monitoring"
-			" for `%s'", service);
-		goto EXIT;
-	}
-
-	rethink_als_status();
-
-EXIT:
-	dbus_error_free(&error);
-	return TRUE;
-}
-
-/**
- * D-Bus callback for the ALS enabling method call
- *
- * @param msg The D-Bus message
- * @return TRUE
- */
-static gboolean als_enable_req_dbus_cb(DBusMessage *const msg)
-{
-	const char *sender;
-
-	gssize retval;
-
-	if( !(sender = dbus_message_get_sender(msg)) )
-		goto EXIT;
-
-	mce_log(LL_DEVEL, "Received ALS enable request from %s",
-		mce_dbus_get_name_owner_ident(sender));
-
-	retval = mce_dbus_owner_monitor_add(sender, als_owner_monitor_dbus_cb,
-					    &ext_als_enablers,
-					    ALS_MAX_MONITORED);
-	if (retval == -1) {
-		mce_log(LL_WARN, "Failed to add name owner monitoring"
-			" for `%s'", sender);
-		goto EXIT;
-	}
-
-	rethink_als_status();
-
-EXIT:
-	if( !dbus_message_get_no_reply(msg) ) {
-		DBusMessage *reply = dbus_new_method_reply(msg);
-		dbus_send_message(reply), reply = 0;
-	}
-
-	return TRUE;
-}
-
-/**
- * D-Bus callback for the ALS disabling method call
- *
- * @param msg The D-Bus message
- * @return TRUE
- */
-static gboolean als_disable_req_dbus_cb(DBusMessage *const msg)
-{
-	const char *sender;
-
-	gssize retval;
-
-	if( !(sender = dbus_message_get_sender(msg)) )
-		goto EXIT;
-
-	mce_log(LL_DEVEL, "Received ALS disable request from %s",
-		mce_dbus_get_name_owner_ident(sender));
-
-	retval = mce_dbus_owner_monitor_remove(sender,
-					       &ext_als_enablers);
-
-	if (retval == -1) {
-		mce_log(LL_INFO, "Failed to remove name owner monitoring"
-			" for `%s'",sender);
-		goto EXIT;
-	}
-
-	rethink_als_status();
-
-EXIT:
-	if( !dbus_message_get_no_reply(msg) ) {
-		DBusMessage *reply = dbus_new_method_reply(msg);
-		dbus_send_message(reply), reply = 0;
-	}
-
-	return TRUE;
 }
 
 /**
@@ -1429,22 +1290,6 @@ static mce_dbus_handler_t filter_brightness_dbus_handlers[] =
 			"    <arg name=\"active_color_profile\" type=\"s\"/>\n"
 	},
 	/* method calls */
-	{
-		.interface = MCE_REQUEST_IF,
-		.name      = MCE_REQ_ALS_ENABLE,
-		.type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
-		.callback  = als_enable_req_dbus_cb,
-		.args      =
-			""
-	},
-	{
-		.interface = MCE_REQUEST_IF,
-		.name      = MCE_REQ_ALS_DISABLE,
-		.type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
-		.callback  = als_disable_req_dbus_cb,
-		.args      =
-			""
-	},
 	{
 		.interface = MCE_REQUEST_IF,
 		.name      = MCE_COLOR_PROFILE_GET,

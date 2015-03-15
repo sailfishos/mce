@@ -75,9 +75,6 @@ PKG_CONFIG   ?= pkg-config
 # Whether to enable DEVEL release logging
 ENABLE_DEVEL_LOGGING ?= y
 
-# Whether to use sensorfw for ALS/PS
-ENABLE_SENSORFW ?= y
-
 # Whether to enable support for libhybris plugin
 ENABLE_HYBRIS ?= y
 
@@ -199,10 +196,6 @@ ifeq ($(strip $(ENABLE_CPU_GOVERNOR)),y)
 CPPFLAGS += -DENABLE_CPU_GOVERNOR
 endif
 
-ifeq ($(ENABLE_SENSORFW),y)
-CPPFLAGS += -DENABLE_SENSORFW
-endif
-
 ifeq ($(ENABLE_HYBRIS),y)
 CPPFLAGS += -DENABLE_HYBRIS
 endif
@@ -301,11 +294,8 @@ MCE_CORE += filewatcher.c
 ifeq ($(ENABLE_HYBRIS),y)
 MCE_CORE += mce-hybris.c
 endif
-ifeq ($(ENABLE_SENSORFW),y)
 MCE_CORE += mce-sensorfw.c
-endif
-
-MCE_CORE   += builtin-gconf.c
+MCE_CORE += builtin-gconf.c
 
 ifeq ($(strip $(ENABLE_WAKELOCKS)),y)
 MCE_CORE   += libwakelock.c
