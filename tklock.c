@@ -353,6 +353,12 @@ extern void     mce_tklock_exit(void);
  * gconf settings
  * ========================================================================= */
 
+/** Flag: Devicelock is handled in lockscreen */
+static gboolean tklock_devicelock_in_lockscreen = DEFAULT_DEVICELOCK_IN_LOCKSCREEN;
+
+/** GConf callback ID for tklock_devicelock_in_lockscreen */
+static guint tklock_devicelock_in_lockscreen_cb_id = 0;
+
 /** Flag: Automatically lock (after ON->DIM->OFF cycle) */
 static gboolean tk_autolock_enabled = DEFAULT_TK_AUTOLOCK;
 /** GConf callback ID for tk_autolock_enabled */
@@ -374,7 +380,7 @@ static gint doubletap_enable_mode = DBLTAP_ENABLE_DEFAULT;
 static guint doubletap_enable_mode_cb_id = 0;
 
 /** Flag: Disable automatic dim/blank from tklock */
-static gint tklock_blank_disable = FALSE;
+static gint tklock_blank_disable = DEFAULT_TK_AUTO_BLANK_DISABLE;
 /** GConf notifier id for tracking tklock_blank_disable changes */
 static guint tklock_blank_disable_id = 0;
 
@@ -2810,7 +2816,7 @@ static void tklock_uiexcept_begin(uiexctype_t type, int64_t linger)
  * ========================================================================= */
 
 /** Bitmap of automatic lpm triggering modes */
-static gint tklock_lpmui_triggering = LPMUI_TRIGGERING_FROM_POCKET;
+static gint tklock_lpmui_triggering = DEFAULT_LPMUI_TRIGGERING;
 
 /** GConf notifier id for tklock_lpmui_triggering */
 static guint tklock_lpmui_triggering_cb_id = 0;
@@ -3621,6 +3627,12 @@ static void tklock_gconf_cb(GConfClient *const gcc, const guint id,
         mce_log(LL_NOTICE, "tklock_lpmui_triggering: %d -> %d",
                 old, tklock_lpmui_triggering);
     }
+    else if( id == tklock_devicelock_in_lockscreen_cb_id ) {
+        gboolean old = tklock_devicelock_in_lockscreen;
+        tklock_devicelock_in_lockscreen = gconf_value_get_bool(gcv);
+        mce_log(LL_NOTICE, "tklock_devicelock_in_lockscreen: %d -> %d",
+                old, tklock_devicelock_in_lockscreen);
+    }
     else {
         mce_log(LL_WARN, "Spurious GConf value received; confused!");
     }
@@ -3634,59 +3646,56 @@ EXIT:
 static void tklock_gconf_init(void)
 {
     /* Config tracking for disabling automatic screen dimming/blanking
-     * while showing lockscreen. This is demo/debugging feature, so sane
-     * defaults must be used and no error checking is needed. */
-    mce_gconf_notifier_add(MCE_GCONF_LOCK_PATH,
-                           MCE_GCONF_TK_AUTO_BLANK_DISABLE_PATH,
-                           tklock_gconf_cb,
-                           &tklock_blank_disable_id);
-
-    mce_gconf_get_int(MCE_GCONF_TK_AUTO_BLANK_DISABLE_PATH,
-                      &tklock_blank_disable);
+     * while showing lockscreen. */
+    mce_gconf_track_int(MCE_GCONF_TK_AUTO_BLANK_DISABLE_PATH,
+                        &tklock_blank_disable,
+                        DEFAULT_TK_AUTO_BLANK_DISABLE,
+                        tklock_gconf_cb,
+                        &tklock_blank_disable_id);
 
     /* Touchscreen/keypad autolock */
-    /* Since we've set a default, error handling is unnecessary */
-    mce_gconf_notifier_add(MCE_GCONF_LOCK_PATH,
-                           MCE_GCONF_TK_AUTOLOCK_ENABLED_PATH,
-                           tklock_gconf_cb,
-                           &tk_autolock_enabled_cb_id);
-
-    mce_gconf_get_bool(MCE_GCONF_TK_AUTOLOCK_ENABLED_PATH,
-                       &tk_autolock_enabled);
+    mce_gconf_track_bool(MCE_GCONF_TK_AUTOLOCK_ENABLED_PATH,
+                         &tk_autolock_enabled,
+                         DEFAULT_TK_AUTOLOCK,
+                         tklock_gconf_cb,
+                         &tk_autolock_enabled_cb_id);
 
     /* Touchscreen/keypad double-tap gesture policy */
-    mce_gconf_notifier_add(MCE_GCONF_LOCK_PATH,
-                           MCE_GCONF_TK_DOUBLE_TAP_GESTURE_PATH,
-                           tklock_gconf_cb,
-                           &doubletap_gesture_policy_cb_id);
+    mce_gconf_track_int(MCE_GCONF_TK_DOUBLE_TAP_GESTURE_PATH,
+                        &doubletap_gesture_policy,
+                        DBLTAP_ACTION_DEFAULT,
+                        tklock_gconf_cb,
+                        &doubletap_gesture_policy_cb_id);
 
-    mce_gconf_get_int(MCE_GCONF_TK_DOUBLE_TAP_GESTURE_PATH,
-                      &doubletap_gesture_policy);
     tklock_gconf_sanitize_doubletap_gesture_policy();
 
     /** Touchscreen double tap gesture mode */
-    mce_gconf_notifier_add(MCE_GCONF_DOUBLETAP_PATH,
-                           MCE_GCONF_DOUBLETAP_MODE,
-                           tklock_gconf_cb,
-                           &doubletap_enable_mode_cb_id);
-
-    mce_gconf_get_int(MCE_GCONF_DOUBLETAP_MODE, &doubletap_enable_mode);
+    mce_gconf_track_int(MCE_GCONF_DOUBLETAP_MODE,
+                        &doubletap_enable_mode,
+                        DBLTAP_ENABLE_DEFAULT,
+                        tklock_gconf_cb,
+                        &doubletap_enable_mode_cb_id);
 
     /* Bitmap of automatic lpm triggering modes */
-    mce_gconf_notifier_add(MCE_GCONF_LOCK_PATH,
-                           MCE_GCONF_LPMUI_TRIGGERING,
-                           tklock_gconf_cb,
-                           &tklock_lpmui_triggering_cb_id);
-
-    mce_gconf_get_int(MCE_GCONF_LPMUI_TRIGGERING, &tklock_lpmui_triggering);
+    mce_gconf_track_int(MCE_GCONF_LPMUI_TRIGGERING,
+                        &tklock_lpmui_triggering,
+                        DEFAULT_LPMUI_TRIGGERING,
+                        tklock_gconf_cb,
+                        &tklock_lpmui_triggering_cb_id);
 
     /* Proximity can block touch input */
-    mce_gconf_notifier_add(MCE_GCONF_LOCK_PATH,
-                           MCE_GCONF_PROXIMITY_BLOCKS_TOUCH,
-                           tklock_gconf_cb,
-                           &proximity_blocks_touch_cb_id);
-    mce_gconf_get_bool(MCE_GCONF_PROXIMITY_BLOCKS_TOUCH,
-                       &proximity_blocks_touch);
+    mce_gconf_track_bool(MCE_GCONF_PROXIMITY_BLOCKS_TOUCH,
+                         &proximity_blocks_touch,
+                         PROXIMITY_BLOCKS_TOUCH_DEFAULT,
+                         tklock_gconf_cb,
+                         &proximity_blocks_touch_cb_id);
+
+    /* Devicelock is in lockscreen */
+    mce_gconf_track_bool(MCE_GCONF_DEVICELOCK_IN_LOCKSCREEN,
+                         &tklock_devicelock_in_lockscreen,
+                         DEFAULT_DEVICELOCK_IN_LOCKSCREEN,
+                         tklock_gconf_cb,
+                         &tklock_devicelock_in_lockscreen_cb_id);
 }
 
 /** Remove gconf change notifiers
@@ -3710,6 +3719,9 @@ static void tklock_gconf_quit(void)
 
     mce_gconf_notifier_remove(proximity_blocks_touch_cb_id),
         proximity_blocks_touch_cb_id = 0;
+
+    mce_gconf_notifier_remove(tklock_devicelock_in_lockscreen_cb_id),
+        tklock_devicelock_in_lockscreen_cb_id = 0;
 }
 
 /* ========================================================================= *
@@ -3956,6 +3968,7 @@ static void tklock_ui_notify_schdule(void)
 
 static void tklock_ui_set(bool enable)
 {
+    /* Filter request based on device state */
     if( enable ) {
         if( system_state != MCE_STATE_USER ) {
             mce_log(LL_INFO, "deny tklock; not in user mode");
@@ -3971,13 +3984,29 @@ static void tklock_ui_set(bool enable)
         }
     }
 
-    if( tklock_ui_enabled != enable ) {
-        if( (tklock_ui_enabled = enable) )
-            mce_add_submode_int32(MCE_TKLOCK_SUBMODE);
-        else
-            mce_rem_submode_int32(MCE_TKLOCK_SUBMODE);
+    /* Skip if there would be no change */
+    if( tklock_ui_enabled == enable )
+        goto EXIT;
+
+    /* If device lock is handled in lockscreen, we must not
+     * allow *removing* of tklock (=move away from lockscreen)
+     * while device lock is still active. */
+    if( tklock_devicelock_in_lockscreen &&
+        device_lock_state == DEVICE_LOCK_LOCKED && !enable ) {
+        mce_log(LL_WARN, "deny tkunlock; devicelock is active");
+        goto EXIT;
     }
 
+    /* Activate the new tklock state */
+    if( (tklock_ui_enabled = enable) )
+        mce_add_submode_int32(MCE_TKLOCK_SUBMODE);
+    else
+        mce_rem_submode_int32(MCE_TKLOCK_SUBMODE);
+
+EXIT:
+    /* Schedule notification attempt even if there is no change,
+     * so that ui side is not left thinking that a tklock request
+     * it made was accepted. */
     tklock_ui_notify_schdule();
 }
 
