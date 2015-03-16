@@ -114,6 +114,12 @@ typedef enum
 /** Default value for MCE_GCONF_DEVICELOCK_IN_LOCKSCREEN */
 # define DEFAULT_DEVICELOCK_IN_LOCKSCREEN       false
 
+/** Autolock delay GConf setting [ms]*/
+# define MCE_GCONF_AUTOLOCK_DELAY		MCE_GCONF_LOCK_PATH "/autolock_delay"
+# define DEFAULT_AUTOLOCK_DELAY                 30000
+# define MINIMUM_AUTOLOCK_DELAY                 0
+# define MAXIMUM_AUTOLOCK_DELAY                 600000
+
 /** Automatic lpm triggering modes */
 enum
 {

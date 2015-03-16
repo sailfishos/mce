@@ -204,7 +204,7 @@ static void     tklock_datapipe_quit(void);
 static gboolean tklock_autolock_cb(gpointer aptr);
 static bool     tklock_autolock_exceeded(void);
 static void     tklock_autolock_reschedule(void);
-static void     tklock_autolock_schedule(int delay);
+static void     tklock_autolock_schedule(void);
 static void     tklock_autolock_cancel(void);
 static void     tklock_autolock_rethink(void);
 static void     tklock_autolock_pre_transition_actions(void);
@@ -363,6 +363,11 @@ static guint tklock_devicelock_in_lockscreen_cb_id = 0;
 static gboolean tk_autolock_enabled = DEFAULT_TK_AUTOLOCK;
 /** GConf callback ID for tk_autolock_enabled */
 static guint tk_autolock_enabled_cb_id = 0;
+
+/** Delay for automatick locking (after ON->DIM->OFF cycle) */
+static gint    tklock_autolock_delay = DEFAULT_AUTOLOCK_DELAY;
+/** GConf notifier id for tklock_autolock_delay */
+static guint   tklock_autolock_delay_cb_id = 0;
 
 /** Flag: Proximity sensor can block touch input */
 static gboolean proximity_blocks_touch = PROXIMITY_BLOCKS_TOUCH_DEFAULT;
@@ -1239,8 +1244,18 @@ static void tklock_datapipe_submode_cb(gconstpointer data)
 
     tklock_evctrl_rethink();
 
-    // was tklock removed?
-    if( (prev & MCE_TKLOCK_SUBMODE) && !(submode & MCE_TKLOCK_SUBMODE) ) {
+    // skip the rest if tklock did not change
+    if( !((prev ^ submode) & MCE_TKLOCK_SUBMODE) )
+        goto EXIT;
+
+    if( submode & MCE_TKLOCK_SUBMODE ) {
+        // tklock added
+
+        /* Stop autolock timer since we are already locked */
+        tklock_autolock_cancel();
+    }
+    else {
+        // tklock removed
         switch( display_state_next ) {
         case MCE_DISPLAY_LPM_ON:
         case MCE_DISPLAY_LPM_OFF:
@@ -1266,6 +1281,7 @@ static void tklock_datapipe_submode_cb(gconstpointer data)
             break;
         }
     }
+
 EXIT:
     return;
 }
@@ -2031,9 +2047,6 @@ EXIT:
  * AUTOLOCK STATE MACHINE
  * ========================================================================= */
 
-/** Maximum time to delay enabling tklock after display is blanked */
-#define AUTOLOCK_DELAY_MS (30 * 1000)
-
 static int64_t tklock_autolock_tick = MAX_TICK;
 static guint   tklock_autolock_id   = 0;
 
@@ -2096,14 +2109,18 @@ EXIT:
     return;
 }
 
-static void tklock_autolock_schedule(int delay)
+static void tklock_autolock_schedule(void)
 {
+    int delay = mce_clip_int(MINIMUM_AUTOLOCK_DELAY,
+                             MAXIMUM_AUTOLOCK_DELAY,
+                             tklock_autolock_delay);
+
     if( tklock_autolock_id )
         g_source_remove(tklock_autolock_id);
 
     tklock_autolock_id = g_timeout_add(delay, tklock_autolock_cb, 0);
     tklock_autolock_tick = tklock_monotick_get() + delay;
-    mce_log(LL_DEBUG, "autolock timer started");
+    mce_log(LL_DEBUG, "autolock timer started (%d ms)", delay);
 }
 
 /** React to display state transitios that are about to be made
@@ -2200,7 +2217,7 @@ static void tklock_autolock_rethink(void)
         if( device_lock_state == DEVICE_LOCK_LOCKED )
             tklock_ui_set(true);
         else if( !was_off )
-            tklock_autolock_schedule(AUTOLOCK_DELAY_MS);
+            tklock_autolock_schedule();
         break;
 
     case MCE_DISPLAY_ON:
@@ -3585,6 +3602,12 @@ static void tklock_gconf_cb(GConfClient *const gcc, const guint id,
         tk_autolock_enabled = gconf_value_get_bool(gcv) ? 1 : 0;
         tklock_autolock_rethink();
     }
+    else if( id == tklock_autolock_delay_cb_id ) {
+        gint old = tklock_autolock_delay;
+        tklock_autolock_delay = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "tklock_autolock_delay: %d -> %d",
+                old, tklock_autolock_delay);
+    }
     else if( id == proximity_blocks_touch_cb_id ) {
         proximity_blocks_touch = gconf_value_get_bool(gcv) ? 1 : 0;
         tklock_evctrl_rethink();
@@ -3653,12 +3676,19 @@ static void tklock_gconf_init(void)
                         tklock_gconf_cb,
                         &tklock_blank_disable_id);
 
-    /* Touchscreen/keypad autolock */
+    /* Touchscreen/keypad autolock enabled */
     mce_gconf_track_bool(MCE_GCONF_TK_AUTOLOCK_ENABLED_PATH,
                          &tk_autolock_enabled,
                          DEFAULT_TK_AUTOLOCK,
                          tklock_gconf_cb,
                          &tk_autolock_enabled_cb_id);
+
+    /* Touchscreen/keypad autolock delay */
+    mce_gconf_track_int(MCE_GCONF_AUTOLOCK_DELAY,
+                        &tklock_autolock_delay,
+                        DEFAULT_AUTOLOCK_DELAY,
+                        tklock_gconf_cb,
+                        &tklock_autolock_delay_cb_id);
 
     /* Touchscreen/keypad double-tap gesture policy */
     mce_gconf_track_int(MCE_GCONF_TK_DOUBLE_TAP_GESTURE_PATH,
@@ -3707,6 +3737,9 @@ static void tklock_gconf_quit(void)
 
     mce_gconf_notifier_remove(tk_autolock_enabled_cb_id),
         tk_autolock_enabled_cb_id = 0;
+
+    mce_gconf_notifier_remove(tklock_autolock_delay_cb_id),
+        tklock_autolock_delay_cb_id = 0;
 
     mce_gconf_notifier_remove(tklock_blank_disable_id),
         tklock_blank_disable_id = 0;
@@ -4244,14 +4277,15 @@ static gboolean tklock_dbus_send_tklock_mode(DBusMessage *const method_call)
                           MCE_TK_LOCKED : MCE_TK_UNLOCKED);
 
     /* If method_call is set, send a reply. Otherwise, send a signal. */
-    if( method_call )
+    if( method_call ) {
         msg = dbus_new_method_reply(method_call);
-    else
+        mce_log(LL_DEBUG, "send tklock mode reply: %s", mode);
+    }
+    else {
         msg = dbus_new_signal(MCE_SIGNAL_PATH, MCE_SIGNAL_IF,
                               MCE_TKLOCK_MODE_SIG);
-
-    mce_log(LL_DEBUG, "send tklock mode %s: %s",
-            method_call ? "reply" : "signal", mode);
+        mce_log(LL_DEVEL, "send tklock mode signal: %s", mode);
+    }
 
     if( !dbus_message_append_args(msg,
                                   DBUS_TYPE_STRING, &mode,

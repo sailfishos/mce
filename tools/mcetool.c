@@ -56,10 +56,10 @@
 #define MCE_DBUS_SET_CONFIG_REQ                 "set_config"
 
 /** Default padding for left column of status reports */
-#define PAD1 "30"
+#define PAD1 "36"
 
 /** Padding used for radio state bits */
-#define PAD2 "22"
+#define PAD2 "28"
 
 #if MCETOOL_ENABLE_EXTRA_DEBUG
 # define debugf(FMT, ARGS...) fprintf(stderr, PROG_NAME": D: "FMT, ##ARGS)
@@ -1516,8 +1516,25 @@ static int xmce_parse_integer(const char *args)
 {
         char *end = 0;
         int   res = strtol(args, &end, 0);
-        if( end <= args ) {
+        if( end <= args || *end != 0 ) {
                 errorf("%s: not a valid integer value\n", args);
+                exit(EXIT_FAILURE);
+        }
+        return res;
+}
+
+/** Convert string to double
+ *
+ * @param args string from user
+ *
+ * @return double precision floating point number, or terminate on errors
+ */
+static double xmce_parse_double(const char *args)
+{
+        char   *end = 0;
+        double  res = strtod(args, &end);
+        if( end <= args || *end != 0 ) {
+                errorf("%s: not a valid double value\n", args);
                 exit(EXIT_FAILURE);
         }
         return res;
@@ -2581,6 +2598,35 @@ static void xmce_get_autolock_mode(void)
         if( mcetool_gconf_get_bool(MCE_GCONF_TK_AUTOLOCK_ENABLED_PATH, &val) )
                 snprintf(txt, sizeof txt, "%s", val ? "enabled" : "disabled");
         printf("%-"PAD1"s %s\n", "Touchscreen/Keypad autolock:", txt);
+}
+
+/* Set autolock delay
+ *
+ * @param args string suitable for interpreting as time in msec
+ */
+static bool xmce_set_autolock_delay(const char *args)
+{
+        gint val = (int)(xmce_parse_double(args) * 1000.0);
+
+        if( val < MINIMUM_AUTOLOCK_DELAY || val > MAXIMUM_AUTOLOCK_DELAY ) {
+                errorf("%d: invalid autolock delay\n", val);
+                return false;
+        }
+
+        mcetool_gconf_set_int(MCE_GCONF_AUTOLOCK_DELAY, val);
+        return true;
+}
+
+/** Get current autolock delay from mce and print it out
+ */
+static void xmce_get_autolock_delay(void)
+{
+        gint val = 0;
+        char txt[32] = "unknown";
+
+        if( mcetool_gconf_get_int(MCE_GCONF_AUTOLOCK_DELAY, &val) )
+                snprintf(txt, sizeof txt, "%g [s]", val / 1000.0);
+        printf("%-"PAD1"s %s\n", "Touchscreen/Keypad autolock delay:", txt);
 }
 
 /* ------------------------------------------------------------------------- *
@@ -4102,6 +4148,7 @@ static bool xmce_get_status(const char *args)
         xmce_get_psm_threshold();
         xmce_get_tklock_mode();
         xmce_get_autolock_mode();
+        xmce_get_autolock_delay();
         xmce_get_devicelock_in_lockscreen();
         xmce_get_doubletap_mode();
         xmce_get_doubletap_wakeup();
@@ -4382,6 +4429,13 @@ static const mce_opt_t options[] =
                 .usage       =
                         "set the autolock mode; valid modes are:\n"
                         "'enabled' and 'disabled'\n"
+        },
+        {
+                .name        = "set-autolock-delay",
+                .with_arg    = xmce_set_autolock_delay,
+                .values      = "seconds[.fraction]",
+                .usage       =
+                        "set autolock delay after automatic display blanking\n"
         },
         {
                 .name        = "set-devicelock-in-lockscreen",
