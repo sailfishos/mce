@@ -1,3 +1,9 @@
+mce (1.46.0) unstable; urgency=low
+
+  * [mce] Add setting for autolock delay length. Fixes NEMO#787
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 17 Mar 2015 12:09:34 +0200
+
 mce (1.45.0) unstable; urgency=low
 
   * [mce] Add option to ignore tklock removal while device lock is active.
