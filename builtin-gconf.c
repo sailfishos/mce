@@ -1215,6 +1215,11 @@ static const setting_t gconf_defaults[] =
     .def  = G_STRINGIFY(DEFAULT_DEVICELOCK_IN_LOCKSCREEN),
   },
   {
+    .key  = MCE_GCONF_AUTOLOCK_DELAY,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_AUTOLOCK_DELAY),
+  },
+  {
     // MCE_GCONF_BLANKING_INHIBIT_MODE @ modules/display.h
     .key  = "/system/osso/dsm/display/inhibit_blank_mode",
     .type = "i",
