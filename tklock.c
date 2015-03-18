@@ -2423,7 +2423,7 @@ static void tklock_uiexcept_rethink(void)
         goto EXIT;
     }
 
-    /* If we started from tklocked state ... */
+    /* Special case: tklock changes during incoming calls */
     if( exdata.tklock  ) {
         switch( call_state ) {
         case CALL_STATE_RINGING:
@@ -2452,16 +2452,24 @@ static void tklock_uiexcept_rethink(void)
         }
     }
 
-    /* If tklock state has changed from initial state ... */
-    if( exdata.tklock != tklock_datapipe_have_tklock_submode() ) {
-        /* Disable state restore, unless we are handling incoming call */
-        if( exdata.restore && !exdata.was_called ) {
-            mce_log(LL_NOTICE, "DISABLING STATE RESTORE; tklock out of sync");
-            exdata.restore = false;
-        }
+    /* Canceling state restore due to tklock changes */
+    if( tklock_datapipe_have_tklock_submode() ) {
+        // getting locked does not cancel state restore
+        exdata.tklock = true;
+    }
+    else if( exdata.tklock && !exdata.was_called && exdata.restore ) {
+        // but getting unlocked outside incoming call does
+        mce_log(LL_NOTICE, "DISABLING STATE RESTORE; tklock out of sync");
+        exdata.restore = false;
     }
 
-    if( exdata.restore && exdata.devicelock != device_lock_state ) {
+    /* Canceling state restore due to device lock changes */
+    if( device_lock_state == DEVICE_LOCK_LOCKED ) {
+        // getting locked does not cancel state restore
+        exdata.devicelock = device_lock_state;
+    }
+    else if( exdata.devicelock != device_lock_state && exdata.restore ) {
+        // but getting unlocked  does
         mce_log(LL_NOTICE, "DISABLING STATE RESTORE; devicelock out of sync");
         exdata.restore = false;
     }
