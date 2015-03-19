@@ -202,19 +202,19 @@ static void     tklock_datapipe_quit(void);
 // autolock state machine
 
 static gboolean tklock_autolock_cb(gpointer aptr);
-static bool     tklock_autolock_exceeded(void);
-static void     tklock_autolock_reschedule(void);
-static void     tklock_autolock_schedule(void);
-static void     tklock_autolock_cancel(void);
+static void     tklock_autolock_resume(void);
+static void     tklock_autolock_evaluate(void);
+static void     tklock_autolock_enable(void);
+static void     tklock_autolock_disable(void);
 static void     tklock_autolock_rethink(void);
-static void     tklock_autolock_pre_transition_actions(void);
 
 // proximity locking state machine
 
 static gboolean tklock_proxlock_cb(gpointer aptr);
-static bool     tklock_proxlock_exceeded(void);
-static void     tklock_proxlock_schedule(int delay);
-static void     tklock_proxlock_cancel(void);
+static void     tklock_proxlock_resume(void);
+static void     tklock_proxlock_evaluate(void);
+static void     tklock_proxlock_enable(void);
+static void     tklock_proxlock_disable(void);
 static void     tklock_proxlock_rethink(void);
 
 // autolock based on device lock changes
@@ -574,14 +574,18 @@ EXIT:
 /** Resumed from suspend notification */
 static void tklock_datapipe_device_resumed_cb(gconstpointer data)
 {
-        (void) data;
+    (void) data;
 
-        /* We do not want to wakeup from suspend just to end the
-         * grace period, so regular timer is used for it. However,
-         * if we happen to resume for some other reason, check if
-         * the timeout has already passed */
+    /* We do not want to wakeup from suspend just to end the
+     * grace period, so regular timer is used for it. However,
+     * if we happen to resume for some other reason, check if
+     * the timeout has already passed */
 
-        tklock_autolock_reschedule();
+    tklock_autolock_resume();
+
+    /* And the same applies for proximity locking too */
+
+    tklock_proxlock_resume();
 }
 
 /** Lipstick dbus name is reserved; assume false */
@@ -711,7 +715,9 @@ static void tklock_datapipe_display_state_next_cb(gconstpointer data)
 
     tklock_autolock_on_devlock_prime();
 
-    tklock_autolock_pre_transition_actions();
+    tklock_autolock_rethink();
+    tklock_proxlock_rethink();
+
     tklock_lpmui_pre_transition_actions();
 
 EXIT:
@@ -1242,6 +1248,10 @@ static void tklock_datapipe_submode_cb(gconstpointer data)
     // out of sync tklock state blocks state restore
     tklock_uiexcept_rethink();
 
+    // block tklock removal while autolock rules apply
+    tklock_autolock_rethink();
+    tklock_proxlock_rethink();
+
     tklock_evctrl_rethink();
 
     // skip the rest if tklock did not change
@@ -1250,9 +1260,6 @@ static void tklock_datapipe_submode_cb(gconstpointer data)
 
     if( submode & MCE_TKLOCK_SUBMODE ) {
         // tklock added
-
-        /* Stop autolock timer since we are already locked */
-        tklock_autolock_cancel();
     }
     else {
         // tklock removed
@@ -2045,43 +2052,76 @@ EXIT:
 
 /* ========================================================================= *
  * AUTOLOCK STATE MACHINE
+ *
+ * Automatically apply tklock when
+ * 1) display has been off for tklock_autolock_delay ms
+ * 2) autolocking is enabled
+ * 3) we are not handling call/alarm/etc
+ *
  * ========================================================================= */
 
 static int64_t tklock_autolock_tick = MAX_TICK;
 static guint   tklock_autolock_id   = 0;
 
+static void tklock_autolock_evaluate(void)
+{
+    // display must be currently off
+    if( display_state != MCE_DISPLAY_OFF )
+        goto EXIT;
+
+    // tklock unset
+    if( submode & MCE_TKLOCK_SUBMODE )
+        goto EXIT;
+
+    // autolocking enabled
+    if( !tk_autolock_enabled )
+        goto EXIT;
+
+    // not handling calls, alarms, etc
+    if( exception_state != UIEXC_NONE )
+        goto EXIT;
+
+    // if device lock is on, apply tklock immediately
+    if( device_lock_state == DEVICE_LOCK_LOCKED )
+        goto LOCK;
+
+    // autolock delay to passed
+    if( tklock_monotick_get() < tklock_autolock_tick )
+        goto EXIT;
+
+LOCK:
+    mce_log(LL_DEBUG, "autolock applied");
+    tklock_ui_set(true);
+
+EXIT:
+    return;
+}
+
 static gboolean tklock_autolock_cb(gpointer aptr)
 {
     (void)aptr;
 
-    mce_log(LL_DEBUG, "autolock timer triggered");
-
     if( tklock_autolock_id ) {
         tklock_autolock_id = 0;
-        tklock_autolock_tick = MAX_TICK;
-        tklock_ui_set(true);
+        tklock_autolock_tick = MIN_TICK;
+
+        mce_log(LL_DEBUG, "autolock timer triggered");
+        tklock_autolock_evaluate();
     }
     return false;
 }
 
-static bool tklock_autolock_exceeded(void)
+static void tklock_autolock_disable(void)
 {
-    bool res = tklock_monotick_get() > tklock_autolock_tick;
-    if( res )
-        mce_log(LL_DEBUG, "autolock time exceeded");
-    return res;
-}
+    tklock_autolock_tick = MAX_TICK;
 
-static void tklock_autolock_cancel(void)
-{
     if( tklock_autolock_id ) {
-        tklock_autolock_tick = MAX_TICK;
         g_source_remove(tklock_autolock_id), tklock_autolock_id = 0;
         mce_log(LL_DEBUG, "autolock timer stopped");
     }
 }
 
-static void tklock_autolock_reschedule(void)
+static void tklock_autolock_resume(void)
 {
     /* Do we have a timer to re-evaluate? */
     if( !tklock_autolock_id )
@@ -2093,15 +2133,15 @@ static void tklock_autolock_reschedule(void)
     int64_t now = tklock_monotick_get();
 
     if( now >= tklock_autolock_tick ) {
-        mce_log(LL_DEBUG, "autolock time passed while suspended; lock now");
-        /* Trigger time passed while suspended */
-        tklock_autolock_tick = MAX_TICK;
-        tklock_ui_set(true);
+        /* Opportunistic triggering on resume */
+        mce_log(LL_DEBUG, "autolock time passed while suspended");
+        tklock_autolock_tick = MIN_TICK;
+        tklock_autolock_evaluate();
     }
     else {
         /* Re-calculate wakeup time */
-        mce_log(LL_DEBUG, "adjusting autolock time after resume");
         int delay = (int)(tklock_autolock_tick - now);
+        mce_log(LL_DEBUG, "adjusting autolock time after resume (%d ms)", delay);
         tklock_autolock_id = g_timeout_add(delay, tklock_autolock_cb, 0);
     }
 
@@ -2109,139 +2149,43 @@ EXIT:
     return;
 }
 
-static void tklock_autolock_schedule(void)
+static void tklock_autolock_enable(void)
 {
-    int delay = mce_clip_int(MINIMUM_AUTOLOCK_DELAY,
-                             MAXIMUM_AUTOLOCK_DELAY,
-                             tklock_autolock_delay);
+    if( !tklock_autolock_id ) {
+        int delay = mce_clip_int(MINIMUM_AUTOLOCK_DELAY,
+                                 MAXIMUM_AUTOLOCK_DELAY,
+                                 tklock_autolock_delay);
 
-    if( tklock_autolock_id )
-        g_source_remove(tklock_autolock_id);
+        tklock_autolock_tick = tklock_monotick_get() + delay;
 
-    tklock_autolock_id = g_timeout_add(delay, tklock_autolock_cb, 0);
-    tklock_autolock_tick = tklock_monotick_get() + delay;
-    mce_log(LL_DEBUG, "autolock timer started (%d ms)", delay);
-}
-
-/** React to display state transitios that are about to be made
- */
-static void tklock_autolock_pre_transition_actions(void)
-{
-    mce_log(LL_DEBUG, "prev=%d, next=%d", display_state, display_state_next);
-
-    /* Check if we are about to start off -> on/dim transition */
-
-    switch( display_state ) {
-    default:
-    case MCE_DISPLAY_UNDEF:
-    case MCE_DISPLAY_OFF:
-    case MCE_DISPLAY_LPM_OFF:
-    case MCE_DISPLAY_LPM_ON:
-    case MCE_DISPLAY_POWER_UP:
-    case MCE_DISPLAY_POWER_DOWN:
-        break;
-
-    case MCE_DISPLAY_ON:
-    case MCE_DISPLAY_DIM:
-        // was already on -> dontcare
-        goto EXIT;
+        tklock_autolock_id = g_timeout_add(delay, tklock_autolock_cb, 0);
+        mce_log(LL_DEBUG, "autolock timer started (%d ms)", delay);
     }
-
-    switch( display_state_next ) {
-    case MCE_DISPLAY_ON:
-    case MCE_DISPLAY_DIM:
-        break;
-
-    default:
-    case MCE_DISPLAY_UNDEF:
-    case MCE_DISPLAY_OFF:
-    case MCE_DISPLAY_LPM_OFF:
-    case MCE_DISPLAY_LPM_ON:
-    case MCE_DISPLAY_POWER_UP:
-    case MCE_DISPLAY_POWER_DOWN:
-        // going to off -> dontcare
-        goto EXIT;
-    }
-
-    /* Apply ui autolock before the transition begins */
-    if( tklock_autolock_exceeded() ) {
-        tklock_ui_set(true);
-    }
-
-    /* Cancel autolock timeout */
-    tklock_autolock_cancel();
-
-EXIT:
-    return;
 }
 
 static void tklock_autolock_rethink(void)
 {
-    static display_state_t prev_display_state = MCE_DISPLAY_UNDEF;
-
-    mce_log(LL_DEBUG, "display state: %s -> %s",
-            display_state_repr(prev_display_state),
-            display_state_repr(display_state));
-
-    /* If we are already tklocked, handling exceptional ui state
-     * or autolocking is disabled -> deactivate state machine */
-    if( tklock_ui_enabled || exception_state || !tk_autolock_enabled ) {
-        tklock_autolock_cancel();
-        prev_display_state = MCE_DISPLAY_UNDEF;
-        goto EXIT;
+    if( display_state_next != MCE_DISPLAY_OFF ) {
+        // not in OFF or moving away from OFF
+        tklock_autolock_disable();
     }
-
-    bool was_off = false;
-
-    switch( prev_display_state ) {
-    case MCE_DISPLAY_OFF:
-    case MCE_DISPLAY_LPM_OFF:
-    case MCE_DISPLAY_LPM_ON:
-    case MCE_DISPLAY_POWER_DOWN:
-         was_off = true;
-        break;
-
-    default:
-    case MCE_DISPLAY_ON:
-    case MCE_DISPLAY_DIM:
-    case MCE_DISPLAY_UNDEF:
-    case MCE_DISPLAY_POWER_UP:
-        break;
+    else if( display_state_next != display_state ) {
+        // making transition to OFF
+        tklock_autolock_enable();
     }
-
-    switch( display_state ) {
-    case MCE_DISPLAY_OFF:
-    case MCE_DISPLAY_LPM_OFF:
-    case MCE_DISPLAY_LPM_ON:
-    case MCE_DISPLAY_POWER_DOWN:
-        if( device_lock_state == DEVICE_LOCK_LOCKED )
-            tklock_ui_set(true);
-        else if( !was_off )
-            tklock_autolock_schedule();
-        break;
-
-    case MCE_DISPLAY_ON:
-    case MCE_DISPLAY_DIM:
-    case MCE_DISPLAY_POWER_UP:
-        if( was_off && tklock_autolock_exceeded() )
-            tklock_ui_set(true);
-        tklock_autolock_cancel();
-        break;
-
-    default:
-    case MCE_DISPLAY_UNDEF:
-        break;
+    else {
+        // stable display OFF state
+        tklock_autolock_evaluate();
     }
-
-    prev_display_state = display_state;
-
-EXIT:
-
-    return;
 }
 
 /* ========================================================================= *
  * PROXIMITY LOCKING STATE MACHINE
+ *
+ * Automatically apply tklock when
+ * 1) display has been off for PROXLOC_DELAY_MS
+ * 2) proximity sensor is covered
+ * 3) we are not handling call/alarm/etc
  * ========================================================================= */
 
 /** Delay for enabling tklock from display off when proximity is covered */
@@ -2250,123 +2194,113 @@ EXIT:
 static int64_t tklock_proxlock_tick = MAX_TICK;
 static guint   tklock_proxlock_id   = 0;
 
+static void tklock_proxlock_evaluate(void)
+{
+    // display must be currently off
+    if( display_state != MCE_DISPLAY_OFF )
+        goto EXIT;
+
+    // tklock unset
+    if( submode & MCE_TKLOCK_SUBMODE )
+        goto EXIT;
+
+    // proximity covered
+    if( proximity_state_effective != COVER_CLOSED )
+        goto EXIT;
+
+    // not handling call, alarm, etc
+    if( exception_state != UIEXC_NONE )
+        goto EXIT;
+
+    // proximity lock delay passed
+    if( tklock_monotick_get() < tklock_proxlock_tick )
+        goto EXIT;
+
+    // lock
+    mce_log(LL_DEBUG, "proxlock applied");
+    tklock_ui_set(true);
+
+EXIT:
+    return;
+}
+
 static gboolean tklock_proxlock_cb(gpointer aptr)
 {
     (void)aptr;
 
-    mce_log(LL_DEBUG, "proxlock timer triggered");
-
     if( tklock_proxlock_id ) {
         tklock_proxlock_id = 0;
-        tklock_proxlock_tick = MAX_TICK;
-        tklock_ui_set(true);
+        tklock_proxlock_tick = MIN_TICK;
+
+        mce_log(LL_DEBUG, "proxlock timer triggered");
+        tklock_proxlock_evaluate();
     }
     return false;
 }
 
-static bool tklock_proxlock_exceeded(void)
+static void tklock_proxlock_disable(void)
 {
-    bool res = tklock_monotick_get() > tklock_proxlock_tick;
-    if( res )
-        mce_log(LL_DEBUG, "proxlock time exceeded");
-    return res;
-}
+    tklock_proxlock_tick = MAX_TICK;
 
-static void tklock_proxlock_cancel(void)
-{
     if( tklock_proxlock_id ) {
-        tklock_proxlock_tick = MAX_TICK;
         g_source_remove(tklock_proxlock_id), tklock_proxlock_id = 0;
         mce_log(LL_DEBUG, "proxlock timer stopped");
     }
 }
 
-static void tklock_proxlock_schedule(int delay)
+static void tklock_proxlock_enable(void)
 {
-    if( tklock_proxlock_id )
-        g_source_remove(tklock_proxlock_id);
+    int delay = PROXLOC_DELAY_MS;
 
-    tklock_proxlock_id = g_timeout_add(delay, tklock_proxlock_cb, 0);
-    tklock_proxlock_tick = tklock_monotick_get() + delay;
-    mce_log(LL_DEBUG, "proxlock timer restarted");
+    if( !tklock_proxlock_id ) {
+        tklock_proxlock_tick = tklock_monotick_get() + delay;
+        tklock_proxlock_id = g_timeout_add(delay, tklock_proxlock_cb, 0);
+        mce_log(LL_DEBUG, "proxlock timer started (%d ms)", delay);
+    }
+}
+
+static void tklock_proxlock_resume(void)
+{
+    /* Do we have a timer to re-evaluate? */
+    if( !tklock_proxlock_id )
+        goto EXIT;
+
+    /* Clear old timer */
+    g_source_remove(tklock_proxlock_id), tklock_proxlock_id = 0;
+
+    int64_t now = tklock_monotick_get();
+
+    if( now >= tklock_proxlock_tick ) {
+        /* Opportunistic triggering on resume */
+        mce_log(LL_DEBUG, "proxlock time passed while suspended");
+        tklock_proxlock_tick = MIN_TICK;
+        tklock_proxlock_evaluate();
+    }
+    else {
+        /* Re-calculate wakeup time */
+        int delay = (int)(tklock_proxlock_tick - now);
+        mce_log(LL_DEBUG, "adjusting proxlock time after resume (%d ms)", delay);
+        tklock_proxlock_id = g_timeout_add(delay, tklock_proxlock_cb, 0);
+    }
+
+EXIT:
+    return;
 }
 
 static void tklock_proxlock_rethink(void)
 {
-    static cover_state_t prev_proximity_state = COVER_UNDEF;
-    static display_state_t prev_display_state = MCE_DISPLAY_UNDEF;
-
-    mce_log(LL_DEBUG, "display state: %s -> %s",
-            display_state_repr(prev_display_state),
-            display_state_repr(display_state));
-
-    if( exception_state || tklock_ui_enabled ) {
-        //mce_log(LL_DEBUG, "handling exception or already tklocked");
-        tklock_proxlock_cancel();
-        prev_display_state = MCE_DISPLAY_UNDEF;
-        prev_proximity_state = COVER_UNDEF;
-        goto EXIT;
+    if( display_state_next != MCE_DISPLAY_OFF ) {
+        // not in OFF or moving away from OFF
+        tklock_proxlock_disable();
     }
-
-    bool was_off = false;
-
-    bool is_covered  = (proximity_state_effective == COVER_CLOSED);
-    bool was_covered = (prev_proximity_state      == COVER_CLOSED);
-
-    switch( prev_display_state ) {
-    case MCE_DISPLAY_OFF:
-    case MCE_DISPLAY_LPM_OFF:
-    case MCE_DISPLAY_LPM_ON:
-    case MCE_DISPLAY_POWER_DOWN:
-        was_off = true;
-        break;
-
-    default:
-    case MCE_DISPLAY_ON:
-    case MCE_DISPLAY_DIM:
-    case MCE_DISPLAY_UNDEF:
-    case MCE_DISPLAY_POWER_UP:
-        break;
+    else if( display_state_next != display_state ) {
+        // making transition to OFF
+        tklock_proxlock_enable();
     }
-
-    switch( display_state ) {
-    case MCE_DISPLAY_OFF:
-    case MCE_DISPLAY_LPM_OFF:
-    case MCE_DISPLAY_LPM_ON:
-    case MCE_DISPLAY_POWER_DOWN:
-        if( is_covered ) {
-            if( !was_covered ){
-                mce_log(LL_DEBUG, "proximity covered while display off");
-                tklock_ui_set(true);
-            }
-            else if( !was_off ) {
-                tklock_proxlock_schedule(PROXLOC_DELAY_MS);
-            }
-        }
-        else {
-            if( was_covered && tklock_proxlock_exceeded() )
-                tklock_ui_set(true);
-            tklock_proxlock_cancel();
-        }
-        break;
-
-    case MCE_DISPLAY_ON:
-    case MCE_DISPLAY_DIM:
-    case MCE_DISPLAY_POWER_UP:
-        tklock_proxlock_cancel();
-        break;
-
-    default:
-    case MCE_DISPLAY_UNDEF:
-        break;
+    else {
+        // check if proxlock conditions are met
+        tklock_proxlock_evaluate();
     }
-
-    prev_proximity_state = proximity_state_effective;
-    prev_display_state = display_state;
-
-EXIT:
-
-    return;
 }
 
 /* ========================================================================= *
@@ -2489,7 +2423,7 @@ static void tklock_uiexcept_rethink(void)
         goto EXIT;
     }
 
-    /* If we started from tklocked state ... */
+    /* Special case: tklock changes during incoming calls */
     if( exdata.tklock  ) {
         switch( call_state ) {
         case CALL_STATE_RINGING:
@@ -2518,16 +2452,24 @@ static void tklock_uiexcept_rethink(void)
         }
     }
 
-    /* If tklock state has changed from initial state ... */
-    if( exdata.tklock != tklock_datapipe_have_tklock_submode() ) {
-        /* Disable state restore, unless we are handling incoming call */
-        if( exdata.restore && !exdata.was_called ) {
-            mce_log(LL_NOTICE, "DISABLING STATE RESTORE; tklock out of sync");
-            exdata.restore = false;
-        }
+    /* Canceling state restore due to tklock changes */
+    if( tklock_datapipe_have_tklock_submode() ) {
+        // getting locked does not cancel state restore
+        exdata.tklock = true;
+    }
+    else if( exdata.tklock && !exdata.was_called && exdata.restore ) {
+        // but getting unlocked outside incoming call does
+        mce_log(LL_NOTICE, "DISABLING STATE RESTORE; tklock out of sync");
+        exdata.restore = false;
     }
 
-    if( exdata.restore && exdata.devicelock != device_lock_state ) {
+    /* Canceling state restore due to device lock changes */
+    if( device_lock_state == DEVICE_LOCK_LOCKED ) {
+        // getting locked does not cancel state restore
+        exdata.devicelock = device_lock_state;
+    }
+    else if( exdata.devicelock != device_lock_state && exdata.restore ) {
+        // but getting unlocked  does
         mce_log(LL_NOTICE, "DISABLING STATE RESTORE; devicelock out of sync");
         exdata.restore = false;
     }
@@ -3607,6 +3549,7 @@ static void tklock_gconf_cb(GConfClient *const gcc, const guint id,
         tklock_autolock_delay = gconf_value_get_int(gcv);
         mce_log(LL_NOTICE, "tklock_autolock_delay: %d -> %d",
                 old, tklock_autolock_delay);
+        // Note: takes effect the next time display turns off
     }
     else if( id == proximity_blocks_touch_cb_id ) {
         proximity_blocks_touch = gconf_value_get_bool(gcv) ? 1 : 0;
@@ -5141,8 +5084,8 @@ void mce_tklock_exit(void)
     tklock_gconf_quit();
 
     /* cancel all timers */
-    tklock_autolock_cancel();
-    tklock_proxlock_cancel();
+    tklock_autolock_disable();
+    tklock_proxlock_disable();
     tklock_uiexcept_cancel();
     tklock_dtcalib_stop();
     tklock_datapipe_proximity_uncover_cancel();
