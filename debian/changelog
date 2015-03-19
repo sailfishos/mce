@@ -1,3 +1,11 @@
+mce (1.46.1) unstable; urgency=low
+
+  * [mce] Refactor proximity & autolock state machines. Contributes to JB#21182
+  * [mce] Do not cancel display state restore when tklock or devicelock is
+    applied. Fixes JB#21182
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 19 Mar 2015 19:50:42 +0200
+
 mce (1.46.0) unstable; urgency=low
 
   * [mce] Add setting for autolock delay length. Fixes NEMO#787
