@@ -1112,6 +1112,30 @@ EXIT:
     return;
 }
 
+/** Cache Lid cover policy state; assume open
+ */
+static cover_state_t lid_cover_policy_state = COVER_OPEN;
+
+/** Change notifications from lid_cover_policy_pipe
+ */
+static void tklock_datapipe_mdy_datapipe_lid_cover_policy_cb(gconstpointer data)
+{
+    cover_state_t prev = lid_cover_policy_state;
+    lid_cover_policy_state = GPOINTER_TO_INT(data);
+
+    if( lid_cover_policy_state == COVER_UNDEF )
+        lid_cover_policy_state = COVER_OPEN;
+
+    if( lid_cover_policy_state == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "lid_cover_policy_state = %s -> %s",
+            cover_state_repr(prev),
+            cover_state_repr(lid_cover_policy_state));
+EXIT:
+    return;
+}
+
 /* Cached current display state */
 static display_state_t display_state = MCE_DISPLAY_UNDEF;
 
@@ -1129,8 +1153,6 @@ static gpointer mdy_datapipe_display_state_filter_cb(gpointer data)
     display_state_t want_state = GPOINTER_TO_INT(data);
     display_state_t next_state = want_state;
 
-    cover_state_t lid_cover_state = datapipe_get_gint(lid_cover_pipe);
-
     /* Handle never-blank override */
     if( mdy_disp_never_blank ) {
         next_state = MCE_DISPLAY_ON;
@@ -1138,7 +1160,7 @@ static gpointer mdy_datapipe_display_state_filter_cb(gpointer data)
     }
 
     /* Display stays off while lid_cover is on */
-    if( lid_cover_state == COVER_CLOSED ) {
+    if( lid_cover_policy_state == COVER_CLOSED ) {
         next_state = MCE_DISPLAY_OFF;
         goto UPDATE;
     }
@@ -1637,6 +1659,7 @@ static void mdy_datapipe_orientation_state_cb(gconstpointer data)
 EXIT:
     return;
 }
+
 /** Array of datapipe handlers */
 static datapipe_handler_t mdy_datapipe_handlers[] =
 {
@@ -1717,6 +1740,10 @@ static datapipe_handler_t mdy_datapipe_handlers[] =
     {
         .datapipe  = &lipstick_available_pipe,
         .output_cb = mdy_datapipe_lipstick_available_cb,
+    },
+    {
+        .datapipe = &lid_cover_policy_pipe,
+        .output_cb = tklock_datapipe_mdy_datapipe_lid_cover_policy_cb,
     },
 
     // sentinel
