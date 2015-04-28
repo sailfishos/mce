@@ -1,3 +1,9 @@
+mce (1.47.0) unstable; urgency=low
+
+  * [mce] Add setting for ignoring lid/cover sensor. Fixes JB#28108
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 28 Apr 2015 10:20:31 +0300
+
 mce (1.46.1) unstable; urgency=low
 
   * [mce] Refactor proximity & autolock state machines. Contributes to JB#21182
