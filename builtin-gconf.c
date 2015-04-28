@@ -1215,6 +1215,11 @@ static const setting_t gconf_defaults[] =
     .def  = G_STRINGIFY(DEFAULT_DEVICELOCK_IN_LOCKSCREEN),
   },
   {
+    .key  = MCE_GCONF_LID_SENSOR_ENABLED,
+    .type = "b",
+    .def  = G_STRINGIFY(DEFAULT_LID_SENSOR_ENABLED),
+  },
+  {
     .key  = MCE_GCONF_AUTOLOCK_DELAY,
     .type = "i",
     .def  = G_STRINGIFY(DEFAULT_AUTOLOCK_DELAY),

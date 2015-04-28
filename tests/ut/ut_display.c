@@ -1301,7 +1301,7 @@ static void stub_setup_checked(void)
 		       0, GINT_TO_POINTER(0));
 	setup_datapipe(&keyboard_slide_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(0));
-	setup_datapipe(&lid_cover_pipe, READ_ONLY, DONT_FREE_CACHE,
+	setup_datapipe(&lid_cover_input_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(0));
 	setup_datapipe(&lens_cover_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(0));
@@ -1364,7 +1364,7 @@ static void stub_teardown_checked(void)
 	free_datapipe(&tk_lock_pipe);
 	free_datapipe(&proximity_sensor_pipe);
 	free_datapipe(&lens_cover_pipe);
-	free_datapipe(&lid_cover_pipe);
+	free_datapipe(&lid_cover_input_pipe);
 	free_datapipe(&keyboard_slide_pipe);
 	free_datapipe(&lockkey_pipe);
 	free_datapipe(&device_inactive_pipe);

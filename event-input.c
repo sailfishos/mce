@@ -2077,12 +2077,12 @@ evin_iomon_keypress_cb(gpointer data, gsize bytes_read)
             /* hammerhead magnetic lid sensor; Feed in to the
              * same datapipe as N770 sliding cover uses */
             if( ev->value ) {
-                execute_datapipe(&lid_cover_pipe,
+                execute_datapipe(&lid_cover_sensor_pipe,
                                  GINT_TO_POINTER(COVER_CLOSED),
                                  USE_INDATA, CACHE_INDATA);
             }
             else {
-                execute_datapipe(&lid_cover_pipe,
+                execute_datapipe(&lid_cover_sensor_pipe,
                                  GINT_TO_POINTER(COVER_OPEN),
                                  USE_INDATA, CACHE_INDATA);
             }

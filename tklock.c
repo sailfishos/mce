@@ -189,7 +189,8 @@ static void     tklock_datapipe_heartbeat_cb(gconstpointer data);
 static void     tklock_datapipe_keyboard_slide_input_cb(gconstpointer const data);
 static void     tklock_datapipe_keyboard_slide_output_cb(gconstpointer const data);
 static void     tklock_datapipe_keyboard_available_cb(gconstpointer const data);
-static void     tklock_datapipe_lid_cover_cb(gconstpointer data);
+static void     tklock_datapipe_lid_cover_sensor_cb(gconstpointer data);
+static void     tklock_datapipe_lid_cover_policy_cb(gconstpointer data);
 static void     tklock_datapipe_lens_cover_cb(gconstpointer data);
 static void     tklock_datapipe_user_activity_cb(gconstpointer data);
 
@@ -198,6 +199,10 @@ static void     tklock_datapipe_set_device_lock_state(device_lock_state_t state)
 
 static void     tklock_datapipe_init(void);
 static void     tklock_datapipe_quit(void);
+
+// lid cover state machine
+
+static void tklock_lid_sensor_rethink(void);
 
 // autolock state machine
 
@@ -388,6 +393,11 @@ static guint doubletap_enable_mode_cb_id = 0;
 static gint tklock_blank_disable = DEFAULT_TK_AUTO_BLANK_DISABLE;
 /** GConf notifier id for tracking tklock_blank_disable changes */
 static guint tklock_blank_disable_id = 0;
+
+/** Flag: Is the lid sensor used for display blanking */
+static gboolean lid_sensor_enabled = DEFAULT_LID_SENSOR_ENABLED;
+/** GConf callback ID for lid_sensor_enabled */
+static guint lid_sensor_enabled_cb_id = 0;
 
 /* ========================================================================= *
  * probed control file paths
@@ -1586,54 +1596,73 @@ EXIT:
     return;
 }
 
-/** Lid cover state (N770); assume open
+/** Lid cover sensor state; assume open
  *
- * Note that this is used also for hammerhead magnetic lid sensor.
+ * When in covered state, it is assumed that it is not physically
+ * possible to see/interact with the display and thus it should
+ * stay powered off.
+ *
+ * Originally was used to track Nokia N770 slidable cover. Now
+ * it is used also for things like the hammerhead magnetic lid
+ * sensor.
  */
-static cover_state_t lid_cover_state = COVER_OPEN;
+static cover_state_t lid_cover_sensor_state = COVER_OPEN;
 
-/** Change notifications from lid_cover_pipe
+/** Change notifications from lid_cover_sensor_pipe
  */
-static void tklock_datapipe_lid_cover_cb(gconstpointer data)
+static void tklock_datapipe_lid_cover_sensor_cb(gconstpointer data)
 {
-    cover_state_t prev = lid_cover_state;
-    lid_cover_state = GPOINTER_TO_INT(data);
+    cover_state_t prev = lid_cover_sensor_state;
+    lid_cover_sensor_state = GPOINTER_TO_INT(data);
 
-    if( lid_cover_state == COVER_UNDEF )
-        lid_cover_state = COVER_OPEN;
+    if( lid_cover_sensor_state == COVER_UNDEF )
+        lid_cover_sensor_state = COVER_OPEN;
 
-    if( lid_cover_state == prev )
+    if( lid_cover_sensor_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "lid_cover_state = %s -> %s",
+    mce_log(LL_DEBUG, "lid_cover_sensor_state = %s -> %s",
             cover_state_repr(prev),
-            cover_state_repr(lid_cover_state));
+            cover_state_repr(lid_cover_sensor_state));
 
-    switch( lid_cover_state ) {
-    case COVER_CLOSED:
-        /* lock ui + blank display */
-        execute_datapipe(&tk_lock_pipe,
-                         GINT_TO_POINTER(LOCK_ON),
-                         USE_INDATA, CACHE_INDATA);
-        execute_datapipe(&display_state_req_pipe,
-                         GINT_TO_POINTER(MCE_DISPLAY_OFF),
-                         USE_INDATA, CACHE_INDATA);
-        break;
+    tklock_lid_sensor_rethink();
 
-    case COVER_OPEN:
-        /* unblank display */
-        execute_datapipe(&display_state_req_pipe,
-                         GINT_TO_POINTER(MCE_DISPLAY_ON),
-                         USE_INDATA, CACHE_INDATA);
-        break;
+EXIT:
+    return;
+}
 
-    default:
-        break;
-    }
+/** Lid cover policy state; assume open
+ */
+static cover_state_t lid_cover_policy_state = COVER_OPEN;
+
+/** Change notifications from lid_cover_policy_pipe
+ */
+static void tklock_datapipe_lid_cover_policy_cb(gconstpointer data)
+{
+    cover_state_t prev = lid_cover_policy_state;
+    lid_cover_policy_state = GPOINTER_TO_INT(data);
+
+    if( lid_cover_policy_state == COVER_UNDEF )
+        lid_cover_policy_state = COVER_OPEN;
+
+    if( lid_cover_policy_state == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "lid_cover_policy_state = %s -> %s",
+            cover_state_repr(prev),
+            cover_state_repr(lid_cover_policy_state));
 
     /* TODO: On devices that have means to detect physically covered
-     *       display, it might be desirable to also power off proximity
-     *       sensor and notification led while lid is on */
+     *       display, it might be desirable to also power off:
+     *       - proximity sensor
+     *       - notification led
+     *       - double tap detection
+     */
+
+#if 0 /* Note: Logic for volume key control exists, but is not used atm */
+    // volume key disable/enable
+    tklock_evctrl_rethink();
+#endif
 
 EXIT:
     return;
@@ -1857,8 +1886,12 @@ static datapipe_handler_t tklock_datapipe_handlers[] =
         .output_cb = tklock_datapipe_submode_cb,
     },
     {
-        .datapipe = &lid_cover_pipe,
-        .output_cb = tklock_datapipe_lid_cover_cb,
+        .datapipe = &lid_cover_sensor_pipe,
+        .output_cb = tklock_datapipe_lid_cover_sensor_cb,
+    },
+    {
+        .datapipe = &lid_cover_policy_pipe,
+        .output_cb = tklock_datapipe_lid_cover_policy_cb,
     },
     {
         .datapipe = &lens_cover_pipe,
@@ -2048,6 +2081,70 @@ static void tklock_autolock_on_devlock_trigger(void)
                      USE_INDATA, CACHE_INDATA);
 EXIT:
     return;
+}
+
+/* ========================================================================= *
+ * LID COVER STATE MACHINE
+ *
+ * While lid cover sensor use is enabled
+ * 1) lock screen when lid is closed
+ * 2) unblank screen when lid is opened
+ *
+ * When lid cover sensor use gets enabled
+ * 1) lock screen if lid is closed
+ *
+ * Otherwise leave display as is
+ *
+ * ========================================================================= */
+
+static void tklock_lid_sensor_rethink(void)
+{
+    /* Initialize to a value that matches neither TRUE nor FALSE */
+    static int was_enabled = -1;
+
+    /* Assume action is based on sensor state */
+    cover_state_t action = lid_cover_sensor_state;
+
+    /* Filter based on disable/enable toggle */
+    if( !lid_sensor_enabled ) {
+        /* While disabled, do nothing */
+        action = COVER_UNDEF;
+    }
+    else if( was_enabled != lid_sensor_enabled ) {
+        /* On enable: Blank screen if lid is closed. */
+        if( action != COVER_CLOSED )
+            action = COVER_UNDEF;
+    }
+    was_enabled = lid_sensor_enabled;
+
+    /* First make the policy decision known */
+    execute_datapipe(&lid_cover_policy_pipe,
+                     GINT_TO_POINTER(action),
+                     USE_INDATA, CACHE_INDATA);
+
+    /* The execute the required actions */
+    switch( action ) {
+    case COVER_CLOSED:
+        /* lock ui + blank display */
+        execute_datapipe(&tk_lock_pipe,
+                         GINT_TO_POINTER(LOCK_ON),
+                         USE_INDATA, CACHE_INDATA);
+        execute_datapipe(&display_state_req_pipe,
+                         GINT_TO_POINTER(MCE_DISPLAY_OFF),
+                         USE_INDATA, CACHE_INDATA);
+        break;
+
+    case COVER_OPEN:
+        /* unblank display */
+        execute_datapipe(&display_state_req_pipe,
+                         GINT_TO_POINTER(MCE_DISPLAY_ON),
+                         USE_INDATA, CACHE_INDATA);
+        break;
+
+    default:
+        /* NOP */
+        break;
+    }
 }
 
 /* ========================================================================= *
@@ -3234,8 +3331,14 @@ static void tklock_evctrl_rethink(void)
     }
 
     /* If the cover is closed, don't bother */
-#if 0 // TODO: keypad slide state is not tracked
-    if( lid_cover_state == COVER_CLOSED ) {
+#if 0 /* TODO: Lid cover state is tracked, but volume keys should be
+       *       disabled only if they are unlikely to be useful i.e.
+       *       depends on where physical buttons are located and
+       *       whether the cover makes pressing them impossible or not.
+       *
+       *       In absense of such info, better to do nothing.
+       */
+    if( lid_cover_policy_state == COVER_CLOSED ) {
         enable_kp = false;
     }
 #endif
@@ -3544,6 +3647,10 @@ static void tklock_gconf_cb(GConfClient *const gcc, const guint id,
         tk_autolock_enabled = gconf_value_get_bool(gcv) ? 1 : 0;
         tklock_autolock_rethink();
     }
+    else if( id == lid_sensor_enabled_cb_id ) {
+        lid_sensor_enabled = gconf_value_get_bool(gcv) ? 1 : 0;
+        tklock_lid_sensor_rethink();
+    }
     else if( id == tklock_autolock_delay_cb_id ) {
         gint old = tklock_autolock_delay;
         tklock_autolock_delay = gconf_value_get_int(gcv);
@@ -3669,6 +3776,13 @@ static void tklock_gconf_init(void)
                          DEFAULT_DEVICELOCK_IN_LOCKSCREEN,
                          tklock_gconf_cb,
                          &tklock_devicelock_in_lockscreen_cb_id);
+
+    /* Touchscreen/keypad autolock enabled */
+    mce_gconf_track_bool(MCE_GCONF_LID_SENSOR_ENABLED,
+                         &lid_sensor_enabled,
+                         DEFAULT_LID_SENSOR_ENABLED,
+                         tklock_gconf_cb,
+                         &lid_sensor_enabled_cb_id);
 }
 
 /** Remove gconf change notifiers
@@ -3698,6 +3812,9 @@ static void tklock_gconf_quit(void)
 
     mce_gconf_notifier_remove(tklock_devicelock_in_lockscreen_cb_id),
         tklock_devicelock_in_lockscreen_cb_id = 0;
+
+    mce_gconf_notifier_remove(lid_sensor_enabled_cb_id),
+        lid_sensor_enabled_cb_id = 0;
 }
 
 /* ========================================================================= *
@@ -3970,6 +4087,12 @@ static void tklock_ui_set(bool enable)
     if( tklock_devicelock_in_lockscreen &&
         device_lock_state == DEVICE_LOCK_LOCKED && !enable ) {
         mce_log(LL_WARN, "deny tkunlock; devicelock is active");
+        goto EXIT;
+    }
+
+    /* Do not allow unlocking while lid sensor is enabled and covered */
+    if( lid_cover_policy_state == COVER_CLOSED && !enable ) {
+        mce_log(LL_WARN, "deny tkunlock; lid sensor is covered");
         goto EXIT;
     }
 

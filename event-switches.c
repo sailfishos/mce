@@ -211,7 +211,7 @@ static gboolean lid_cover_iomon_cb(gpointer data, gsize bytes_read)
 		lid_cover_state = COVER_CLOSED;
 	}
 
-	(void)execute_datapipe(&lid_cover_pipe,
+	(void)execute_datapipe(&lid_cover_sensor_pipe,
 			       GINT_TO_POINTER(lid_cover_state),
 			       USE_INDATA, CACHE_INDATA);
 
@@ -475,7 +475,7 @@ gboolean mce_switches_init(void)
 					  submode_trigger);
 
 	/* Set default values, in case these are not available */
-	(void)execute_datapipe(&lid_cover_pipe,
+	(void)execute_datapipe(&lid_cover_sensor_pipe,
 			       GINT_TO_POINTER(COVER_OPEN),
 			       USE_INDATA, CACHE_INDATA);
 
