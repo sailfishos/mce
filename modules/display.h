@@ -305,4 +305,10 @@ enum
 /** Default value for MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST setting */
 #define DEFAULT_DISPLAY_DIM_TIMEOUT_LIST	15,30,60,120,180
 
+/** Use Orientation sensor GConf setting */
+# define MCE_GCONF_ORIENTATION_SENSOR_ENABLED   MCE_GCONF_DISPLAY_PATH"/orientation_sensor_enabled"
+
+/** Default value for MCE_GCONF_ORIENTATION_SENSOR_ENABLED setting */
+#define DEFAULT_ORIENTATION_SENSOR_ENABLED      true
+
 #endif /* _DISPLAY_H_ */

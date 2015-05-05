@@ -1164,6 +1164,11 @@ static const setting_t gconf_defaults[] =
     .def  = CUSTOM_STRINGIFY(DEFAULT_DISPLAY_DIM_TIMEOUT_LIST),
   },
   {
+    .key  = MCE_GCONF_ORIENTATION_SENSOR_ENABLED,
+    .type = "b",
+    .def  = G_STRINGIFY(DEFAULT_ORIENTATION_SENSOR_ENABLED),
+  },
+  {
     // Hint for settings UI. Not used by MCE itself.
     .key  = "/system/osso/dsm/display/possible_display_blank_timeouts",
     .type = "ai",
