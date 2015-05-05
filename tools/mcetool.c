@@ -2451,6 +2451,34 @@ static void xmce_get_lid_sensor_mode(void)
 }
 
 /* ------------------------------------------------------------------------- *
+ * orientation sensor
+ * ------------------------------------------------------------------------- */
+
+/* Set orientation_sensor use mode
+ *
+ * @param args string suitable for interpreting as enabled/disabled
+ */
+static bool xmce_set_orientation_sensor_mode(const char *args)
+{
+        debugf("%s(%s)\n", __FUNCTION__, args);
+        gboolean val = xmce_parse_enabled(args);
+        mcetool_gconf_set_bool(MCE_GCONF_ORIENTATION_SENSOR_ENABLED, val);
+        return true;
+}
+
+/** Get current orientation_sensor mode from mce and print it out
+ */
+static void xmce_get_orientation_sensor_mode(void)
+{
+        gboolean val = 0;
+        char txt[32] = "unknown";
+
+        if( mcetool_gconf_get_bool(MCE_GCONF_ORIENTATION_SENSOR_ENABLED, &val) )
+                snprintf(txt, sizeof txt, "%s", val ? "enabled" : "disabled");
+        printf("%-"PAD1"s %s\n", "Use orientation sensor mode:", txt);
+}
+
+/* ------------------------------------------------------------------------- *
  * ps
  * ------------------------------------------------------------------------- */
 
@@ -4194,6 +4222,7 @@ static bool xmce_get_status(const char *args)
         xmce_get_als_mode();
         xmce_get_als_input_filter();
         xmce_get_als_sample_time();
+        xmce_get_orientation_sensor_mode();
         xmce_get_ps_mode();
         xmce_get_ps_blocks_touch();
         xmce_get_lid_sensor_mode();
@@ -4879,6 +4908,13 @@ static const mce_opt_t options[] =
                 .with_arg    = xmce_set_lid_sensor_mode,
                 .values      = "enabled|disabled",
                         "set the lid sensor mode; valid modes are:\n"
+                        "'enabled' and 'disabled'\n"
+        },
+        {
+                .name        = "set-orientation-sensor-mode",
+                .with_arg    = xmce_set_orientation_sensor_mode,
+                .values      = "enabled|disabled",
+                        "set the orientation sensor mode; valid modes are:\n"
                         "'enabled' and 'disabled'\n"
         },
         {

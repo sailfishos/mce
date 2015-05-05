@@ -531,6 +531,7 @@ static void                mdy_autosuspend_gconf_cb(GConfClient *const client, c
 
 static void                mdy_orientation_changed_cb(int state);
 static void                mdy_orientation_generate_activity(void);
+static bool                mdy_orientation_sensor_wanted(void);
 static void                mdy_orientation_sensor_rethink(void);
 
 /* ------------------------------------------------------------------------- *
@@ -2102,6 +2103,12 @@ static gint mdy_brightness_fade_duration_unblank_ms = DEFAULT_BRIGHTNESS_FADE_UN
 
 /** GConf change notification id for mdy_brightness_fade_duration_unblank_ms */
 static guint mdy_brightness_fade_duration_unblank_ms_gconf_cb_id = 0;
+
+/** Use of orientation sensor enabled */
+static gboolean mdy_orientation_sensor_enabled = DEFAULT_ORIENTATION_SENSOR_ENABLED;
+
+/** GConf change notification id for mdy_orientation_sensor_enabled */
+static guint mdy_orientation_sensor_enabled_gconf_cb_id = 0;
 
 /** Set display brightness via sysfs write */
 static void mdy_brightness_set_level_default(int number)
@@ -5254,10 +5261,16 @@ static void mdy_orientation_generate_activity(void)
     }
 }
 
-/** Start/stop orientation sensor based on display state
+/** Check if orientation sensor should be enabled
  */
-static void mdy_orientation_sensor_rethink(void)
+static bool mdy_orientation_sensor_wanted(void)
 {
+    bool wanted = false;
+
+    /* Skip disabled in settings */
+    if( !mdy_orientation_sensor_enabled )
+        goto EXIT;
+
     /* Enable orientation sensor in ON|DIM */
 
     /* Start the orientation sensor already when powering up
@@ -5269,9 +5282,7 @@ static void mdy_orientation_sensor_rethink(void)
     case MCE_DISPLAY_ON:
     case MCE_DISPLAY_LPM_ON:
     case MCE_DISPLAY_POWER_UP:
-        /* Add notification before enabling to get initial guess */
-        mce_sensorfw_orient_set_notify(mdy_orientation_changed_cb);
-        mce_sensorfw_orient_enable();
+      wanted = true;
         break;
 
     default:
@@ -5279,11 +5290,42 @@ static void mdy_orientation_sensor_rethink(void)
     case MCE_DISPLAY_OFF:
     case MCE_DISPLAY_LPM_OFF:
     case MCE_DISPLAY_POWER_DOWN:
+        break;
+    }
+
+EXIT:
+    return wanted;
+}
+
+/** Start/stop orientation sensor based on display state
+ */
+static void mdy_orientation_sensor_rethink(void)
+{
+    static bool was_enabled = false;
+
+    bool enable = mdy_orientation_sensor_wanted();
+
+    if( was_enabled == enable )
+        goto EXIT;
+
+    was_enabled = enable;
+
+    mce_log(LL_DEBUG, "%s orientation sensor", enable ? "enable" : "disable");
+
+    if( enable ) {
+        /* Add notification before enabling to get initial guess */
+        mce_sensorfw_orient_set_notify(mdy_orientation_changed_cb);
+        mce_sensorfw_orient_enable();
+    }
+    else {
         /* Remove notification after disabling to get final state */
         mce_sensorfw_orient_disable();
         mce_sensorfw_orient_set_notify(0);
-        break;
     }
+
+EXIT:
+    return;
+
 }
 
 /* ========================================================================= *
@@ -7941,6 +7983,10 @@ static void mdy_gconf_cb(GConfClient *const gcc, const guint id,
         mce_log(LL_NOTICE, "display off override = %d",
                 mdy_dbus_display_off_override);
     }
+    else if (id == mdy_orientation_sensor_enabled_gconf_cb_id) {
+        mdy_orientation_sensor_enabled = gconf_value_get_bool(gcv);
+        mdy_orientation_sensor_rethink();
+    }
     else {
         mce_log(LL_WARN, "Spurious GConf value received; confused!");
     }
@@ -8216,6 +8262,13 @@ static void mdy_gconf_init(void)
                         DEFAULT_DISPLAY_OFF_OVERRIDE,
                         mdy_gconf_cb,
                         &mdy_dbus_display_off_override_gconf_cb_id);
+
+    /* Use orientation sensor */
+    mce_gconf_track_bool(MCE_GCONF_ORIENTATION_SENSOR_ENABLED,
+                         &mdy_orientation_sensor_enabled,
+                         DEFAULT_ORIENTATION_SENSOR_ENABLED,
+                         mdy_gconf_cb,
+                         &mdy_orientation_sensor_enabled_gconf_cb_id);
 }
 
 static void mdy_gconf_quit(void)
@@ -8287,6 +8340,9 @@ static void mdy_gconf_quit(void)
 
     mce_gconf_notifier_remove(mdy_dbus_display_off_override_gconf_cb_id),
         mdy_dbus_display_off_override_gconf_cb_id = 0;
+
+    mce_gconf_notifier_remove(mdy_orientation_sensor_enabled_gconf_cb_id),
+        mdy_orientation_sensor_enabled_gconf_cb_id = 0;
 
     /* Free dynamic data obtained from config */
 
