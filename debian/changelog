@@ -1,3 +1,9 @@
+mce (1.48.1) unstable; urgency=low
+
+  * [mce] Tweak backlight control path configuration. Fixes MER#977
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 07 May 2015 11:19:26 +0300
+
 mce (1.48.0) unstable; urgency=low
 
   * [mce] Add setting for enabling/disabling orientation sensor use.
