@@ -21,6 +21,18 @@
 #ifndef _DISPLAY_H_
 #define _DISPLAY_H_
 
+/** Name of the display backlight configuration group */
+#define MCE_CONF_DISPLAY_GROUP                  "Display"
+
+/** List of backlight control directories to try */
+#define MCE_CONF_BACKLIGHT_DIRECTORY            "BrightnessDirectory"
+
+/** List of backlight control files to try */
+#define MCE_CONF_BACKLIGHT_PATH                 "BrightnessPath"
+
+/** List of max backlight control files to try */
+#define MCE_CONF_MAX_BACKLIGHT_PATH             "MaxBrightnessPath"
+
 /** Default timeout for the high brightness mode; in seconds */
 #define DEFAULT_HBM_TIMEOUT				1800	/* 30 min */
 

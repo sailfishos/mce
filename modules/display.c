@@ -3918,7 +3918,7 @@ static gboolean mdy_display_type_probe_brightness(const gchar *dirpath,
     return res;
 }
 
-/** Get the display type from [modules/display] config group
+/** Get the display type from MCE_CONF_DISPLAY_GROUP config group
  *
  * @param display_type where to store the selected display type
  *
@@ -3927,8 +3927,6 @@ static gboolean mdy_display_type_probe_brightness(const gchar *dirpath,
 
 static gboolean mdy_display_type_get_from_config(display_type_t *display_type)
 {
-    static const gchar group[] = "modules/display";
-
     gboolean   res = FALSE;
     gchar     *set = 0;
     gchar     *max = 0;
@@ -3936,11 +3934,16 @@ static gboolean mdy_display_type_get_from_config(display_type_t *display_type)
     gchar    **vdir = 0;
     gchar    **vset = 0;
     gchar    **vmax = 0;
+    gsize      nset = 0;
+    gsize      nmax = 0;
 
     /* First check if we have a configured brightness directory
      * that a) exists and b) contains both brightness and
      * max_brightness files */
-    if( (vdir = mce_conf_get_string_list(group, "brightness_dir", 0)) ) {
+
+    vdir = mce_conf_get_string_list(MCE_CONF_DISPLAY_GROUP,
+                                    MCE_CONF_BACKLIGHT_DIRECTORY, 0);
+    if( vdir ) {
         for( size_t i = 0; vdir[i]; ++i ) {
             if( !*vdir[i] || g_access(vdir[i], F_OK) )
                 continue;
@@ -3952,24 +3955,32 @@ static gboolean mdy_display_type_get_from_config(display_type_t *display_type)
 
     /* Then check if we can find mathes from possible brightness and
      * max_brightness file lists */
-    if( !(vset = mce_conf_get_string_list(group, "brightness", 0)) )
-        goto EXIT;
 
-    if( !(vmax = mce_conf_get_string_list(group, "max_brightness", 0)) )
-        goto EXIT;
+    vset = mce_conf_get_string_list(MCE_CONF_DISPLAY_GROUP,
+                                    MCE_CONF_BACKLIGHT_PATH, &nset);
 
-    for( size_t i = 0; vset[i]; ++i ) {
-        if( *vset[i] && !g_access(vset[i], W_OK) ) {
-            set = g_strdup(vset[i]);
-            break;
-        }
+    vmax = mce_conf_get_string_list(MCE_CONF_DISPLAY_GROUP,
+                                    MCE_CONF_MAX_BACKLIGHT_PATH, &nmax);
+
+    if( nset != nmax ) {
+        mce_log(LL_WARN, "%s and %s do not have the same amount of "
+                "configuration entries",
+                MCE_CONF_BACKLIGHT_PATH, MCE_CONF_MAX_BACKLIGHT_PATH);
     }
 
-    for( size_t i = 0; vmax[i]; ++i ) {
-        if( *vmax[i] && !g_access(vmax[i], R_OK) ) {
-            max = g_strdup(vmax[i]);
-            break;
-        }
+    if( nset > nmax )
+        nset = nmax;
+
+    for( gsize i = 0; i < nset; ++i ) {
+        if( *vset[i] == 0 || g_access(vset[i], W_OK) != 0 )
+            continue;
+
+        if( *vmax[i] == 0 || g_access(vmax[i], R_OK) != 0 )
+            continue;
+
+        set = g_strdup(vset[i]);
+        max = g_strdup(vmax[i]);
+        break;
     }
 
 EXIT:
@@ -3979,12 +3990,12 @@ EXIT:
         mce_log(LL_NOTICE, "brightness path = %s", set);
         mce_log(LL_NOTICE, "max_brightness path = %s", max);
 
-        mdy_brightness_level_output.path = set, set = 0;
-        mdy_brightness_level_maximum_path    = max, max = 0;
+        mdy_brightness_level_output.path  = set, set = 0;
+        mdy_brightness_level_maximum_path = max, max = 0;
 
         mdy_cabc_mode_file            = 0;
         mdy_cabc_available_modes_file = 0;
-        mdy_cabc_is_supported            = 0;
+        mdy_cabc_is_supported         = 0;
 
         *display_type = DISPLAY_TYPE_GENERIC;
         res = TRUE;
