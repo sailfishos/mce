@@ -257,8 +257,8 @@ typedef enum
 /** Default dim timeout, in seconds */
 #define DEFAULT_DIM_TIMEOUT			30	/* 30 seconds */
 
-/** Additional dim timeout during bootup, in seconds */
-#define BOOTUP_DIM_ADDITIONAL_TIMEOUT		120	/* 120 seconds */
+/** Minimum blanking delay after bootup, in seconds */
+#define AFTERBOOT_BLANKING_TIMEOUT		30
 
 /**
  * Blank prevent timeout, in seconds;

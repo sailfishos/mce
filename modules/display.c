@@ -447,6 +447,10 @@ static void                mdy_blanking_rethink_timers(bool force);
 static void                mdy_blanking_rethink_proximity(void);
 static void                mdy_blanking_cancel_timers(void);
 
+// after boot blank prevent
+static void                mdy_blanking_rethink_afterboot_delay(void);
+static gint                mdy_blanking_get_afterboot_delay(void);
+
 /* ------------------------------------------------------------------------- *
  * DISPLAY_TYPE_PROBING
  * ------------------------------------------------------------------------- */
@@ -762,9 +766,6 @@ static guint mdy_adaptive_dimming_index = 0;
 /** Display blank prevention timer */
 static gint mdy_blank_prevent_timeout = BLANK_PREVENT_TIMEOUT;
 
-/** Bootup dim additional timeout */
-static gint mdy_additional_bootup_dim_timeout = BOOTUP_DIM_ADDITIONAL_TIMEOUT;
-
 /** File used to enable low power mode */
 static gchar *mdy_low_power_mode_file = NULL;
 
@@ -981,6 +982,9 @@ static int64_t mdy_get_boot_tick(void)
  * DATAPIPE_TRACKING
  * ========================================================================= */
 
+/** Cached lipstick availability; assume unknown */
+static service_state_t lipstick_service_state = SERVICE_STATE_UNDEF;
+
 /** PackageKit Locked property is set to true during sw updates */
 static bool packagekit_locked = false;
 
@@ -1065,6 +1069,8 @@ static void mdy_datapipe_system_state_cb(gconstpointer data)
     mdy_governor_rethink();
 #endif
 
+    mdy_blanking_rethink_afterboot_delay();
+
 EXIT:
     return;
 }
@@ -1096,15 +1102,7 @@ static void mdy_datapipe_submode_cb(gconstpointer data)
 
     if( old_trans && !new_trans ) {
         /* End of transition; stable state reached */
-        switch( system_state ) {
-        case MCE_STATE_USER:
-        case MCE_STATE_ACTDEAD:
-            mdy_additional_bootup_dim_timeout = 0;
-            mdy_blanking_update_inactivity_timeout();
-            break;
-        default:
-            break;
-        }
+
         // force blanking timer reprogramming
         mdy_blanking_rethink_timers(true);
     }
@@ -1310,6 +1308,8 @@ static void mdy_datapipe_display_state_next_cb(gconstpointer data)
 
     /* Start/stop orientation sensor */
     mdy_orientation_sensor_rethink();
+
+    mdy_blanking_rethink_afterboot_delay();
 
 EXIT:
     return;
@@ -3098,9 +3098,8 @@ static void mdy_blanking_update_inactivity_timeout(void)
     /* Inactivity should be signaled around the time when the display
      * should have dimmed and blanked - even if the actual blanking is
      * blocked by blanking pause and/or blanking inhibit mode. */
-    int inactivity_timeout = (mdy_disp_dim_timeout +
-                              mdy_additional_bootup_dim_timeout +
-                              mdy_blank_timeout);
+
+    int inactivity_timeout = mdy_disp_dim_timeout + mdy_blank_timeout;
 
     mce_log(LL_DEBUG, "inactivity_timeout = %d", inactivity_timeout);
 
@@ -3231,7 +3230,10 @@ static void mdy_blanking_cancel_dim(void)
  */
 static void mdy_blanking_schedule_dim(void)
 {
-    gint dim_timeout = mdy_disp_dim_timeout + mdy_additional_bootup_dim_timeout;
+    gint dim_timeout = mdy_blanking_get_afterboot_delay();
+
+    if( dim_timeout < mdy_disp_dim_timeout )
+        dim_timeout = mdy_disp_dim_timeout;
 
     mdy_blanking_cancel_dim();
 
@@ -3240,16 +3242,17 @@ static void mdy_blanking_schedule_dim(void)
                                          mdy_dim_timeout_index +
                                          mdy_adaptive_dimming_index);
 
-        if (tmp != NULL)
-            dim_timeout = GPOINTER_TO_INT(tmp) +
-            mdy_additional_bootup_dim_timeout;
+        gint adaptive_timeout = GPOINTER_TO_INT(tmp);
+
+        if( dim_timeout < adaptive_timeout )
+            dim_timeout = adaptive_timeout;
     }
 
     mce_log(LL_DEBUG, "DIM timer scheduled @ %d secs", dim_timeout);
 
     /* Setup new timeout */
     mdy_blanking_dim_cb_id = g_timeout_add_seconds(dim_timeout,
-                                                  mdy_blanking_dim_cb, NULL);
+                                                   mdy_blanking_dim_cb, NULL);
     return;
 }
 
@@ -3329,8 +3332,15 @@ static void mdy_blanking_schedule_off(void)
 
     if( display_state == MCE_DISPLAY_LPM_OFF )
         timeout = mdy_blank_from_lpm_off_timeout;
-    else if( submode & MCE_TKLOCK_SUBMODE )
-        timeout = mdy_blank_from_lockscreen_timeout;
+    else if( submode & MCE_TKLOCK_SUBMODE ) {
+        /* In case UI boots up to lockscreen, we need to
+         * apply additional after-boot delay also to
+         * blanking timer. */
+        timeout = mdy_blanking_get_afterboot_delay();
+
+        if( timeout < mdy_blank_from_lockscreen_timeout )
+            timeout = mdy_blank_from_lockscreen_timeout;
+    }
 
     if( mdy_blanking_off_cb_id ) {
         g_source_remove(mdy_blanking_off_cb_id);
@@ -3871,6 +3881,83 @@ static void mdy_blanking_cancel_timers(void)
     //mdy_hbm_cancel_timeout();
     mdy_brightness_stop_fade_timer();
     //mdy_blanking_stop_adaptive_dimming();
+}
+
+/** End of after bootup autoblank prevent; initially not active */
+static int64_t mdy_blanking_afterboot_limit = 0;
+
+/** Get delay until end of after boot blank prevent
+ *
+ * @return seconds to end of after boot blank prevent, or
+ *         zero if time limit has been already passed
+ */
+static gint mdy_blanking_get_afterboot_delay(void)
+{
+    gint delay = 0;
+    if( mdy_blanking_afterboot_limit ) {
+        int64_t now = mdy_get_boot_tick();
+        int64_t tmo = mdy_blanking_afterboot_limit - now;
+        if( tmo > 0 )
+            delay = (gint)tmo;
+    }
+    return (delay + 999) / 1000;
+}
+
+/** Evaluate need for longer after-boot blanking delay
+ */
+static void mdy_blanking_rethink_afterboot_delay(void)
+{
+    int64_t want_limit = 0;
+
+    /* Bootup has not yet finished */
+    if( mdy_init_done )
+        goto DONE;
+
+    /* We are booting to USER mode */
+    if( mdy_bootstate != BOOTSTATE_USER )
+        goto DONE;
+
+    if( system_state != MCE_STATE_USER )
+        goto DONE;
+
+    /* Lipstick has started */
+    if( lipstick_service_state != SERVICE_STATE_RUNNING )
+        goto DONE;
+
+    /* Display is/soon will be powered on */
+    if( display_state_next != MCE_DISPLAY_ON )
+        goto DONE;
+
+    /* And limit has not yet been set */
+    if( mdy_blanking_afterboot_limit )
+        goto EXIT;
+
+    /* Set up Use longer after-boot dim timeout */
+    want_limit = (mdy_get_boot_tick() +
+                  AFTERBOOT_BLANKING_TIMEOUT * 1000);
+
+DONE:
+
+    if( mdy_blanking_afterboot_limit == want_limit )
+        goto EXIT;
+
+    /* Enable long delay when needed, but disable only after
+     * display leaves powered on state */
+    if( want_limit || display_state_next != MCE_DISPLAY_ON ) {
+        mce_log(LL_DEBUG, "after boot blank prevent %s",
+                want_limit ? "activated" : "deactivated");
+
+        mdy_blanking_afterboot_limit = want_limit;
+
+        /* If dim/blank timer is running, reprogram it */
+        if( mdy_blanking_dim_cb_id )
+            mdy_blanking_schedule_dim();
+        else if( mdy_blanking_off_cb_id )
+            mdy_blanking_schedule_off();
+    }
+
+EXIT:
+    return;
 }
 
 /* ========================================================================= *
@@ -5721,17 +5808,17 @@ EXIT:
  */
 static void mdy_datapipe_lipstick_available_cb(gconstpointer aptr)
 {
-    static service_state_t service = SERVICE_STATE_UNDEF;
+    service_state_t prev = lipstick_service_state;
+    lipstick_service_state = GPOINTER_TO_INT(aptr);
 
-    service_state_t prev = service;
-    service = GPOINTER_TO_INT(aptr);
-
-    if( service == prev )
+    if( lipstick_service_state == prev )
         goto EXIT;
 
     mce_log(LL_DEVEL, "lipstick_available = %s -> %s",
             service_state_repr(prev),
-            service_state_repr(service));
+            service_state_repr(lipstick_service_state));
+
+    mdy_blanking_rethink_afterboot_delay();
 
 EXIT:
     return;
@@ -7364,10 +7451,6 @@ static gboolean mdy_dbus_handle_desktop_started_sig(DBusMessage *const msg)
         g_remove(MCE_MALF_FILENAME);
     }
 
-    /* Remove the additional timeout */
-    mdy_additional_bootup_dim_timeout = 0;
-    mdy_blanking_update_inactivity_timeout();
-
     /* Reprogram blanking timers */
     mdy_blanking_rethink_timers(true);
 
@@ -7631,6 +7714,7 @@ static void mdy_flagfiles_init_done_cb(const char *path,
         mdy_governor_rethink();
 #endif
         mdy_poweron_led_rethink();
+        mdy_blanking_rethink_afterboot_delay();
     }
 }
 
@@ -7726,6 +7810,7 @@ EXIT:
     if( fd != -1 ) close(fd);
 
     mdy_poweron_led_rethink();
+    mdy_blanking_rethink_afterboot_delay();
 }
 
 /** Start tracking of init_done and bootstate flag files
@@ -8473,16 +8558,6 @@ const gchar *g_module_check_init(GModule *module)
 
     /* Start waiting for init_done state */
     mdy_flagfiles_start_tracking();
-
-    if( mce_get_submode_int32() & MCE_TRANSITION_SUBMODE ) {
-        /* Disable bootup submode. It causes tklock problems if we don't */
-        /* receive desktop_startup dbus notification */
-        //mce_add_submode_int32(MCE_BOOTUP_SUBMODE);
-    }
-    else {
-        mdy_additional_bootup_dim_timeout = 0;
-        mdy_blanking_update_inactivity_timeout();
-    }
 
     /* Append triggers/filters to datapipes */
     mdy_datapipe_init();
