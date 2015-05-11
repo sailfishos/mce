@@ -1,3 +1,9 @@
+mce (1.48.2) unstable; urgency=low
+
+  * [mce] Fix after boot blank delay handling. Fixes JB#26524
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 11 May 2015 08:16:58 +0300
+
 mce (1.48.1) unstable; urgency=low
 
   * [mce] Tweak backlight control path configuration. Fixes MER#977
