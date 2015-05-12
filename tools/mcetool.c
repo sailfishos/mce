@@ -1740,6 +1740,50 @@ EXIT:
  * leds
  * ------------------------------------------------------------------------- */
 
+/** Array of led patterns that can be disabled/enabled */
+static const char * const led_patterns[] =
+{
+        "PatternBatteryCharging",
+        "PatternBatteryFull",
+        "PatternCommunication",
+        "PatternPowerOff",
+        "PatternPowerOn",
+        "PatternWebcamActive",
+        "PatternDeviceOn",
+        "PatternBatteryLow",
+        "PatternCommunicationAndBatteryFull",
+        "PatternBatteryChargingFlat",
+        "PatternCommonNotification",
+        "PatternCommunicationCall",
+        "PatternCommunicationEmail",
+        "PatternCommunicationIM",
+        "PatternCommunicationSMS",
+        "PatternCsdWhite",
+        "PatternDisplayBlankFailed",
+        "PatternDisplayUnblankFailed",
+        "PatternDisplaySuspendFailed",
+        "PatternDisplayResumeFailed",
+        "PatternKillingLipstick",
+        "PatternTouchInputBlocked",
+        "PatternDisplayDimmed",
+        0
+};
+
+/** Predicate for: pattern can be disabled/enabled
+ *
+ * @param pattern  LED pattern name
+ *
+ * @return true if pattern can be enabled/disabled, false otherwise
+ */
+static bool is_configurable_pattern(const char *pattern)
+{
+        for( size_t i = 0; led_patterns[i]; ++i ) {
+                if( !strcmp(led_patterns[i], pattern) )
+                        return true;
+        }
+        return false;
+}
+
 /** Enable/Disable sw based led breathing
  */
 static bool set_led_breathing_enabled(const char *args)
@@ -1791,30 +1835,90 @@ static void get_led_breathing_limit(void)
         printf("%-"PAD1"s %s (%%)\n", "Led breathing battery limit:", txt);
 }
 
-/** Enable/Disable the LED
+/** Enable/Disable builtin mce led pattern
  *
- * @param enable TRUE to enable the LED, FALSE to disable the LED
+ * @param pattern  The name of the pattern to activate/deactivate
+ * @param activate true to activate pattern, false to deactivate pattern
  */
-static void set_led_state(const gboolean enable)
+static bool set_led_pattern_enabled(const char *pattern, bool enable)
 {
-        debugf("%s(%s)\n", __FUNCTION__, enable ? "enable" : "disable");
-        xmce_ipc_no_reply(enable ? MCE_ENABLE_LED : MCE_DISABLE_LED,
-                          DBUS_TYPE_INVALID);
+        char key[256];
+
+        if( !is_configurable_pattern(pattern) ) {
+                errorf("%s: not a configurable led pattern name\n", pattern);
+                return false;
+        }
+
+        snprintf(key, sizeof key, "/system/osso/dsm/leds/%s", pattern);
+        return mcetool_gconf_set_bool(key, enable);
 }
 
-/** Activate/Deactivate a LED pattern
- *
- * @param pattern The name of the pattern to activate/deactivate
- * @param activate TRUE to activate pattern, FALSE to deactivate pattern
+/** Enable LED feature
  */
-static void set_led_pattern_state(const gchar *const pattern,
-                                      const gboolean activate)
+static bool mcetool_do_enable_led(const char *arg)
 {
-        debugf("%s(%s, %s)\n", __FUNCTION__, pattern, activate ? "enable" : "disable");
+        (void)arg;
+        return xmce_ipc_no_reply(MCE_ENABLE_LED, DBUS_TYPE_INVALID);
+}
+/** Disable LED feature
+ */
+static bool mcetool_do_disable_led(const char *arg)
+{
+        (void)arg;
+        return xmce_ipc_no_reply(MCE_DISABLE_LED, DBUS_TYPE_INVALID);
+}
 
-        xmce_ipc_no_reply(activate ? MCE_ACTIVATE_LED_PATTERN : MCE_DEACTIVATE_LED_PATTERN,
-                          DBUS_TYPE_STRING, &pattern,
-                          DBUS_TYPE_INVALID);
+/** Enable a configurable LED pattern
+ */
+static bool mcetool_do_enable_pattern(const char *args)
+{
+        return set_led_pattern_enabled(args, true);
+}
+
+/** Disable a configurable LED pattern
+ */
+static bool mcetool_do_disable_led_pattern(const char *args)
+{
+        return set_led_pattern_enabled(args, false);
+}
+
+/** Show status of all configurable LED patterns
+ */
+static bool mcetool_show_led_patterns(const char *args)
+{
+        (void)args;
+        char key[256];
+
+        for( size_t i = 0; led_patterns[i]; ++i ) {
+                snprintf(key, sizeof key, "/system/osso/dsm/leds/%s",
+                         led_patterns[i]);
+
+                gboolean    val = FALSE;
+                const char *txt = "unknown";
+
+                if( mcetool_gconf_get_bool(key, &val) )
+                        txt = val ? "enabled" : "disabled";
+                printf("%-"PAD1"s %s\n", led_patterns[i], txt);
+        }
+        return true;
+}
+
+/** Activate a LED pattern
+ */
+static bool mcetool_do_activate_pattern(const char *args)
+{
+        return xmce_ipc_no_reply(MCE_ACTIVATE_LED_PATTERN,
+                                 DBUS_TYPE_STRING, &args,
+                                 DBUS_TYPE_INVALID);
+}
+
+/** Deactivate a LED pattern
+ */
+static bool mcetool_do_deactivate_pattern(const char *args)
+{
+        return xmce_ipc_no_reply(MCE_DEACTIVATE_LED_PATTERN,
+                                 DBUS_TYPE_STRING, &args,
+                                 DBUS_TYPE_INVALID);
 }
 
 /* ------------------------------------------------------------------------- *
@@ -4455,28 +4559,6 @@ static bool mcetool_do_help(const char *arg);
 static bool mcetool_do_long_help(const char *arg);
 static bool mcetool_do_version(const char *arg);
 
-static bool mcetool_do_disable_led(const char *arg)
-{
-        (void)arg;
-        set_led_state(FALSE);
-        return true;
-}
-static bool mcetool_do_enable_led(const char *arg)
-{
-        (void)arg;
-        set_led_state(TRUE);
-        return true;
-}
-static bool mcetool_do_activate_pattern(const char *arg)
-{
-        set_led_pattern_state(arg, TRUE);
-        return true;
-}
-static bool mcetool_do_deactivate_pattern(const char *arg)
-{
-        set_led_pattern_state(arg, FALSE);
-        return true;
-}
 static bool mcetool_do_unblank_screen(const char *arg)
 {
         (void)arg;
@@ -5108,6 +5190,26 @@ static const mce_opt_t options[] =
                 .without_arg = mcetool_do_disable_led,
                 .usage       =
                         "disable LED framework\n"
+        },
+        {
+                .name        = "enable-led-pattern",
+                .with_arg    = mcetool_do_enable_pattern,
+                .values      = "PATTERN",
+                .usage       =
+                        "allow activating of a LED pattern\n"
+        },
+        {
+                .name        = "disable-led-pattern",
+                .with_arg    = mcetool_do_disable_led_pattern,
+                .values      = "PATTERN",
+                .usage       =
+                        "deny activating of a LED pattern\n"
+        },
+        {
+                .name        = "show-led-patterns",
+                .without_arg = mcetool_show_led_patterns,
+                .usage       =
+                        "show status of LED patterns that can be disabled/enabled\n"
         },
         {
                 .name        = "activate-led-pattern",
