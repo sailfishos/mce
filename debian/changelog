@@ -1,3 +1,9 @@
+mce (1.48.4) unstable; urgency=low
+
+  * [mce] Cap automatic blanking timeouts in act dead mode. Fixes JB#28709
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 12 May 2015 19:26:21 +0300
+
 mce (1.48.3) unstable; urgency=low
 
   * [mce] Always send indication after display state change is requested
