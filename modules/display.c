@@ -401,6 +401,12 @@ static void                mdy_poweron_led_rethink_schedule(void);
  * AUTOMATIC_BLANKING
  * ------------------------------------------------------------------------- */
 
+/** Maximum dim timeout applicable in ACTDEAD mode [s] */
+#define ACTDEAD_MAX_DIM_TIMEOUT 15
+
+/** Maximum blank timeout applicable in ACTDEAD mode [s] */
+#define ACTDEAD_MAX_OFF_TIMEOUT 3
+
 static void                mdy_blanking_update_inactivity_timeout(void);
 static guint               mdy_blanking_find_dim_timeout_index(gint dim_timeout);
 static gboolean            mdy_blanking_can_blank_from_low_power_mode(void);
@@ -3250,6 +3256,12 @@ static void mdy_blanking_schedule_dim(void)
             dim_timeout = adaptive_timeout;
     }
 
+    /* In act dead mode blanking timeouts are capped */
+    if( system_state == MCE_STATE_ACTDEAD ) {
+        if( dim_timeout > ACTDEAD_MAX_DIM_TIMEOUT )
+            dim_timeout = ACTDEAD_MAX_DIM_TIMEOUT;
+    }
+
     mce_log(LL_DEBUG, "DIM timer scheduled @ %d secs", dim_timeout);
 
     /* Setup new timeout */
@@ -3342,6 +3354,12 @@ static void mdy_blanking_schedule_off(void)
 
         if( timeout < mdy_blank_from_lockscreen_timeout )
             timeout = mdy_blank_from_lockscreen_timeout;
+    }
+
+    /* In act dead mode blanking timeouts are capped */
+    if( system_state == MCE_STATE_ACTDEAD ) {
+        if( timeout > ACTDEAD_MAX_OFF_TIMEOUT )
+            timeout = ACTDEAD_MAX_OFF_TIMEOUT;
     }
 
     if( mdy_blanking_off_cb_id ) {
