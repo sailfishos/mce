@@ -2423,6 +2423,147 @@ static void xmce_get_adaptive_dimming_time(void)
 }
 
 /* ------------------------------------------------------------------------- *
+ * exception lengths
+ * ------------------------------------------------------------------------- */
+
+static bool xmce_set_exception_length_call_in(const char *args)
+{
+        int val = xmce_parse_integer(args);
+        mcetool_gconf_set_int(MCE_GCONF_EXCEPTION_LENGTH_CALL_IN, val);
+        return true;
+}
+
+static bool xmce_set_exception_length_call_out(const char *args)
+{
+        int val = xmce_parse_integer(args);
+        mcetool_gconf_set_int(MCE_GCONF_EXCEPTION_LENGTH_CALL_OUT, val);
+        return true;
+}
+
+static bool xmce_set_exception_length_alarm(const char *args)
+{
+        int val = xmce_parse_integer(args);
+        mcetool_gconf_set_int(MCE_GCONF_EXCEPTION_LENGTH_ALARM, val);
+        return true;
+}
+
+static bool xmce_set_exception_length_usb_connect(const char *args)
+{
+        int val = xmce_parse_integer(args);
+        mcetool_gconf_set_int(MCE_GCONF_EXCEPTION_LENGTH_USB_CONNECT, val);
+        return true;
+}
+
+static bool xmce_set_exception_length_usb_dialog(const char *args)
+{
+        int val = xmce_parse_integer(args);
+        mcetool_gconf_set_int(MCE_GCONF_EXCEPTION_LENGTH_USB_DIALOG, val);
+        return true;
+}
+
+static bool xmce_set_exception_length_charger(const char *args)
+{
+        int val = xmce_parse_integer(args);
+        mcetool_gconf_set_int(MCE_GCONF_EXCEPTION_LENGTH_CHARGER, val);
+        return true;
+}
+
+static bool xmce_set_exception_length_battery(const char *args)
+{
+        int val = xmce_parse_integer(args);
+        mcetool_gconf_set_int(MCE_GCONF_EXCEPTION_LENGTH_BATTERY, val);
+        return true;
+}
+
+static bool xmce_set_exception_length_jack_in(const char *args)
+{
+        int val = xmce_parse_integer(args);
+        mcetool_gconf_set_int(MCE_GCONF_EXCEPTION_LENGTH_JACK_IN, val);
+        return true;
+}
+
+static bool xmce_set_exception_length_jack_out(const char *args)
+{
+        int val = xmce_parse_integer(args);
+        mcetool_gconf_set_int(MCE_GCONF_EXCEPTION_LENGTH_JACK_OUT, val);
+        return true;
+}
+
+static bool xmce_set_exception_length_camera(const char *args)
+{
+        int val = xmce_parse_integer(args);
+        mcetool_gconf_set_int(MCE_GCONF_EXCEPTION_LENGTH_CAMERA, val);
+        return true;
+}
+
+static bool xmce_set_exception_length_volume(const char *args)
+{
+        int val = xmce_parse_integer(args);
+        mcetool_gconf_set_int(MCE_GCONF_EXCEPTION_LENGTH_VOLUME, val);
+        return true;
+}
+
+static bool xmce_set_exception_length_activity(const char *args)
+{
+        int val = xmce_parse_integer(args);
+        mcetool_gconf_set_int(MCE_GCONF_EXCEPTION_LENGTH_ACTIVITY, val);
+        return true;
+}
+
+static void xmce_get_exception_length(const char *tag, const char *key)
+{
+        gint val = 0;
+        char txt[32];
+
+        if( !mcetool_gconf_get_int(key, &val) )
+                strcpy(txt, "unknown");
+        else if( val <= 0 )
+                strcpy(txt, "disabled");
+        else
+                snprintf(txt, sizeof txt, "%d ms", (int)val);
+        printf("%-"PAD1"s %s\n", tag, txt);
+}
+
+static void xmce_get_exception_lengths(void)
+{
+        xmce_get_exception_length("Display on after incoming call",
+                                  MCE_GCONF_EXCEPTION_LENGTH_CALL_IN);
+
+        xmce_get_exception_length("Display on after outgoing call",
+                                  MCE_GCONF_EXCEPTION_LENGTH_CALL_OUT);
+
+        xmce_get_exception_length("Display on after alarm",
+                                  MCE_GCONF_EXCEPTION_LENGTH_ALARM);
+
+        xmce_get_exception_length("Display on at usb connect",
+                                  MCE_GCONF_EXCEPTION_LENGTH_USB_CONNECT);
+
+        xmce_get_exception_length("Display on at usb mode query",
+                                  MCE_GCONF_EXCEPTION_LENGTH_USB_DIALOG);
+
+        xmce_get_exception_length("Display on at charging start",
+                                  MCE_GCONF_EXCEPTION_LENGTH_CHARGER);
+
+        xmce_get_exception_length("Display on at battery full",
+                                  MCE_GCONF_EXCEPTION_LENGTH_BATTERY);
+
+        xmce_get_exception_length("Display on at jack insert",
+                                  MCE_GCONF_EXCEPTION_LENGTH_JACK_IN);
+
+        xmce_get_exception_length("Display on at jack remove",
+                                  MCE_GCONF_EXCEPTION_LENGTH_JACK_OUT);
+
+        xmce_get_exception_length("Display on at camera button",
+                                  MCE_GCONF_EXCEPTION_LENGTH_CAMERA);
+
+        xmce_get_exception_length("Display on at volume button",
+                                  MCE_GCONF_EXCEPTION_LENGTH_VOLUME);
+
+        xmce_get_exception_length("Display on activity extension",
+                                  MCE_GCONF_EXCEPTION_LENGTH_ACTIVITY);
+}
+
+/* ------------------------------------------------------------------------- *
  * lid_sensor
  * ------------------------------------------------------------------------- */
 
@@ -4236,6 +4377,7 @@ static bool xmce_get_status(const char *args)
         xmce_get_tklock_blank();
         xmce_get_lipstick_core_delay();
         xmce_get_touch_unblock_delay();
+        xmce_get_exception_lengths();
 
         get_led_breathing_enabled();
         get_led_breathing_limit();
@@ -5161,6 +5303,92 @@ static const mce_opt_t options[] =
                 .values      = "page_count",
                 .usage       =
                         "set critical limit for active memory pages; zero=disabled\n"
+        },
+        {
+                .name        = "set-exception-length-call-in",
+                .with_arg    = xmce_set_exception_length_call_in,
+                .values      = "msec",
+                .usage       =
+                        "how long to keep display on after incoming call"
+        },
+        {
+                .name        = "set-exception-length-call-out",
+                .with_arg    = xmce_set_exception_length_call_out,
+                .values      = "msec",
+                .usage       =
+                        "how long to keep display on after outgoing call"
+        },
+        {
+                .name        = "set-exception-length-alarm",
+                .with_arg    = xmce_set_exception_length_alarm,
+                .values      = "msec",
+                .usage       =
+                        "how long to keep display on after alarm"
+        },
+        {
+                .name        = "set-exception-length-usb-connect",
+                .with_arg    = xmce_set_exception_length_usb_connect,
+                .values      = "msec",
+                .usage       =
+                        "how long to keep display on at usb connect"
+        },
+        {
+                .name        = "set-exception-length-usb-dialog",
+                .with_arg    = xmce_set_exception_length_usb_dialog,
+                .values      = "msec",
+                .usage       =
+                        "how long to keep display on at usb mode query"
+        },
+        {
+                .name        = "set-exception-length-charger",
+                .with_arg    = xmce_set_exception_length_charger,
+                .values      = "msec",
+                .usage       =
+                        "how long to keep display on at charging start"
+        },
+        {
+                .name        = "set-exception-length-battery",
+                .with_arg    = xmce_set_exception_length_battery,
+                .values      = "msec",
+                .usage       =
+                        "how long to keep display on at battery full"
+        },
+        {
+                .name        = "set-exception-length-jack-in",
+                .with_arg    = xmce_set_exception_length_jack_in,
+                .values      = "msec",
+                .usage       =
+                        "how long to keep display on at jack insert"
+        },
+        {
+                .name        = "set-exception-length-jack-out",
+                .with_arg    = xmce_set_exception_length_jack_out,
+                .values      = "msec",
+                .usage       =
+                        "how long to keep display on at jack remove"
+        },
+        {
+                .name        = "set-exception-length-camera",
+                .with_arg    = xmce_set_exception_length_camera,
+                .values      = "msec",
+                .usage       =
+                        "how long to keep display on at camera button\n"
+                        "\n"
+                        "Note: this is unverified legacy feature.\n"
+        },
+        {
+                .name        = "set-exception-length-volume",
+                .with_arg    = xmce_set_exception_length_volume,
+                .values      = "msec",
+                .usage       =
+                        "how long to keep display on at volume button"
+        },
+        {
+                .name        = "set-exception-length-activity",
+                .with_arg    = xmce_set_exception_length_activity,
+                .values      = "msec",
+                .usage       =
+                        "how much user activity extends display on"
         },
         {
                 .name        = "reset-settings",

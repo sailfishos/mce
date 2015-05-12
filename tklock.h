@@ -139,6 +139,54 @@ enum
     LPMUI_TRIGGERING_HOVER_OVER  = 1<<1,
 };
 
+/** How long to keep display on after incoming call ends [ms] */
+#define MCE_GCONF_EXCEPTION_LENGTH_CALL_IN      MCE_GCONF_LOCK_PATH"/exception_length_call_in"
+#define DEFAULT_EXCEPTION_LENGTH_CALL_IN        5000
+
+/** How long to keep display on after outgoing call ends [ms] */
+#define MCE_GCONF_EXCEPTION_LENGTH_CALL_OUT     MCE_GCONF_LOCK_PATH"/exception_length_call_out"
+#define DEFAULT_EXCEPTION_LENGTH_CALL_OUT       2500
+
+/** How long to keep display on after alarm is handled [ms] */
+#define MCE_GCONF_EXCEPTION_LENGTH_ALARM        MCE_GCONF_LOCK_PATH"/exception_length_alarm"
+#define DEFAULT_EXCEPTION_LENGTH_ALARM          2500
+
+/** How long to keep display on when usb cable is connected [ms] */
+#define MCE_GCONF_EXCEPTION_LENGTH_USB_CONNECT  MCE_GCONF_LOCK_PATH"/exception_length_usb_connect"
+#define DEFAULT_EXCEPTION_LENGTH_USB_CONNECT    5000
+
+/** How long to keep display on when usb mode dialog is shown [ms] */
+#define MCE_GCONF_EXCEPTION_LENGTH_USB_DIALOG   MCE_GCONF_LOCK_PATH"/exception_length_usb_dialog"
+#define DEFAULT_EXCEPTION_LENGTH_USB_DIALOG     10000
+
+/** How long to keep display on when charging starts [ms] */
+#define MCE_GCONF_EXCEPTION_LENGTH_CHARGER      MCE_GCONF_LOCK_PATH"/exception_length_charger"
+#define DEFAULT_EXCEPTION_LENGTH_CHARGER        3000
+
+/** How long to keep display on after battery full [ms] */
+#define MCE_GCONF_EXCEPTION_LENGTH_BATTERY      MCE_GCONF_LOCK_PATH"/exception_length_battery"
+#define DEFAULT_EXCEPTION_LENGTH_BATTERY        0
+
+/** How long to keep display on when audio jack is inserted [ms] */
+#define MCE_GCONF_EXCEPTION_LENGTH_JACK_IN      MCE_GCONF_LOCK_PATH"/exception_length_jack_in"
+#define DEFAULT_EXCEPTION_LENGTH_JACK_IN        3000
+
+/** How long to keep display on when audio jack is removed [ms] */
+#define MCE_GCONF_EXCEPTION_LENGTH_JACK_OUT     MCE_GCONF_LOCK_PATH"/exception_length_jack_out"
+#define DEFAULT_EXCEPTION_LENGTH_JACK_OUT       3000
+
+/** How long to keep display on when camera button is pressed [ms] */
+#define MCE_GCONF_EXCEPTION_LENGTH_CAMERA       MCE_GCONF_LOCK_PATH"/exception_length_camera"
+#define DEFAULT_EXCEPTION_LENGTH_CAMERA         3000
+
+/** How long to keep display on when volume button is pressed [ms] */
+#define MCE_GCONF_EXCEPTION_LENGTH_VOLUME       MCE_GCONF_LOCK_PATH"/exception_length_volume"
+#define DEFAULT_EXCEPTION_LENGTH_VOLUME         2000
+
+/** How long to extend display on when there is user activity [ms] */
+#define MCE_GCONF_EXCEPTION_LENGTH_ACTIVITY     MCE_GCONF_LOCK_PATH"/exception_length_activity"
+#define DEFAULT_EXCEPTION_LENGTH_ACTIVITY       2000
+
 /** Name of D-Bus callback to provide to Touchscreen/Keypad Lock SystemUI */
 #define MCE_TKLOCK_CB_REQ		"tklock_callback"
 
