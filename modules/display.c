@@ -630,9 +630,11 @@ static void                mdy_governor_conf_cb(GConfClient *const client, const
  * DBUS_HANDLERS
  * ------------------------------------------------------------------------- */
 
+static void                mdy_dbus_invalidate_display_status(void);
 static gboolean            mdy_dbus_send_display_status(DBusMessage *const method_call);
 static const char         *mdy_dbus_get_reason_to_block_display_on(void);
 
+static void                mdy_dbus_handle_display_state_req(display_state_t state);
 static gboolean            mdy_dbus_handle_display_on_req(DBusMessage *const msg);
 static gboolean            mdy_dbus_handle_display_dim_req(DBusMessage *const msg);
 static gboolean            mdy_dbus_handle_display_off_req(DBusMessage *const msg);
@@ -6010,8 +6012,13 @@ static bool mdy_stm_pull_target_change(void)
     mdy_stm_next = mdy_stm_want, mdy_stm_want = MCE_DISPLAY_UNDEF;
 
     // transition to new state requested?
-    if( mdy_stm_curr == mdy_stm_next )
+    if( mdy_stm_curr == mdy_stm_next ) {
+        /* No-change requests will be ignored, but we still
+         * need to check if forced display state indication
+         * signal needs to be sent. */
+        mdy_dbus_send_display_status(0);
         return false;
+    }
 
     // do pre-transition actions
     mdy_display_state_leave(mdy_stm_curr, mdy_stm_next);
@@ -6737,6 +6744,16 @@ static void mdy_governor_conf_cb(GConfClient *const client, const guint id,
  * DBUS_HANDLERS
  * ========================================================================= */
 
+/** Latest display state indication that was broadcast over D-Bus */
+static const gchar *mdy_dbus_last_display_state = "";
+
+/** Clear lastest display state sent to force re-broadcasting
+ */
+static void mdy_dbus_invalidate_display_status(void)
+{
+    mdy_dbus_last_display_state = "";
+}
+
 /**
  * Send a display status reply or signal
  *
@@ -6746,27 +6763,35 @@ static void mdy_governor_conf_cb(GConfClient *const client, const guint id,
  */
 static gboolean mdy_dbus_send_display_status(DBusMessage *const method_call)
 {
-    static const gchar *prev_state = "";
-    DBusMessage *msg = NULL;
-    const gchar *state = NULL;
-    gboolean status = FALSE;
+    gboolean     status = FALSE;
+    DBusMessage *msg    = NULL;
+    const gchar *state  = MCE_DISPLAY_OFF_STRING;
 
     switch( display_state ) {
     case MCE_DISPLAY_POWER_DOWN:
     case MCE_DISPLAY_POWER_UP:
-        if( !method_call ) {
-            /* Looks like something in the UI does not survive
-             * getting display off signal before setUpdatesEnabled()
-             * method call... send it afterwards as before*/
+        /* Display state indication signals are not sent on transitional
+         * power up/down states.
+         *
+         * For display power up it is as wanted - the display on/dim
+         * indication is sent once power up has been completed.
+         *
+         * For display power down we'd like to send the display off
+         * indication when power down starts, but looks like something
+         * in the UI does not survive getting display off signal before
+         * setUpdatesEnabled(false) method call... send it too afterwards
+         *
+         * Method call queries return "off" in both cases
+         */
+        if( !method_call )
             goto EXIT;
-        }
-        // fall through
+        break;
+
     default:
     case MCE_DISPLAY_UNDEF:
     case MCE_DISPLAY_OFF:
     case MCE_DISPLAY_LPM_OFF:
     case MCE_DISPLAY_LPM_ON:
-        state = MCE_DISPLAY_OFF_STRING;
         break;
 
     case MCE_DISPLAY_DIM:
@@ -6779,9 +6804,9 @@ static gboolean mdy_dbus_send_display_status(DBusMessage *const method_call)
     }
 
     if( !method_call ) {
-        if( !strcmp(prev_state, state))
+        if( !strcmp(mdy_dbus_last_display_state, state))
             goto EXIT;
-        prev_state = state;
+        mdy_dbus_last_display_state = state;
         mce_log(LL_NOTICE, "Sending display status signal: %s", state);
     }
     else
@@ -6889,18 +6914,34 @@ EXIT:
     return reason;
 }
 
+/** Helper for handling display state requests coming over D-Bus
+ *
+ * @param state  Requested display state
+ */
+static void mdy_dbus_handle_display_state_req(display_state_t state)
+{
+    /* When dealing with display state requests coming over D-Bus,
+     * we need to make sure an indication signal is sent even if
+     * the request gets ignored due to never-blank mode or something
+     * similar -> reset the last indication sent cache */
+    mdy_dbus_invalidate_display_status();
+
+    execute_datapipe(&display_state_req_pipe,
+                     GINT_TO_POINTER(state),
+                     USE_INDATA, CACHE_INDATA);
+}
+
 /**
  * D-Bus callback for the display on method call
  *
  * @param msg The D-Bus message
- * @return TRUE on success, FALSE on failure
+ *
+ * @return TRUE
  */
 static gboolean mdy_dbus_handle_display_on_req(DBusMessage *const msg)
 {
-    dbus_bool_t no_reply = dbus_message_get_no_reply(msg);
-    gboolean status = FALSE;
-
-    const char *reason = mdy_dbus_get_reason_to_block_display_on();
+    display_state_t  request = datapipe_get_gint(display_state_next_pipe);
+    const char      *reason  = mdy_dbus_get_reason_to_block_display_on();
 
     if( reason ) {
         mce_log(LL_WARN, "display ON request from %s denied: %s",
@@ -6909,34 +6950,28 @@ static gboolean mdy_dbus_handle_display_on_req(DBusMessage *const msg)
     else {
         mce_log(LL_DEVEL,"display ON request from %s",
                 mce_dbus_get_message_sender_ident(msg));
-        execute_datapipe(&display_state_req_pipe,
-                         GINT_TO_POINTER(MCE_DISPLAY_ON),
-                         USE_INDATA, CACHE_INDATA);
+        request = MCE_DISPLAY_ON;
     }
 
-    if (no_reply == FALSE) {
-        DBusMessage *reply = dbus_new_method_reply(msg);
+    if( !dbus_message_get_no_reply(msg) )
+        dbus_send_message(dbus_new_method_reply(msg));
 
-        status = dbus_send_message(reply);
-    } else {
-        status = TRUE;
-    }
+    mdy_dbus_handle_display_state_req(request);
 
-    return status;
+    return TRUE;
 }
 
 /**
  * D-Bus callback for the display dim method call
  *
  * @param msg The D-Bus message
- * @return TRUE on success, FALSE on failure
+ *
+ * @return TRUE
  */
 static gboolean mdy_dbus_handle_display_dim_req(DBusMessage *const msg)
 {
-    dbus_bool_t no_reply = dbus_message_get_no_reply(msg);
-    gboolean status = FALSE;
-
-    const char *reason = mdy_dbus_get_reason_to_block_display_on();
+    display_state_t  request = datapipe_get_gint(display_state_next_pipe);
+    const char      *reason  = mdy_dbus_get_reason_to_block_display_on();
 
     if( reason ) {
         mce_log(LL_WARN, "display DIM request from %s denied: %s",
@@ -6945,20 +6980,15 @@ static gboolean mdy_dbus_handle_display_dim_req(DBusMessage *const msg)
     else {
         mce_log(LL_DEVEL,"display DIM request from %s",
                 mce_dbus_get_message_sender_ident(msg));
-        execute_datapipe(&display_state_req_pipe,
-                         GINT_TO_POINTER(MCE_DISPLAY_DIM),
-                         USE_INDATA, CACHE_INDATA);
+        request = MCE_DISPLAY_DIM;
     }
 
-    if (no_reply == FALSE) {
-        DBusMessage *reply = dbus_new_method_reply(msg);
+    if( !dbus_message_get_no_reply(msg) )
+        dbus_send_message(dbus_new_method_reply(msg));
 
-        status = dbus_send_message(reply);
-    } else {
-        status = TRUE;
-    }
+    mdy_dbus_handle_display_state_req(request);
 
-    return status;
+    return TRUE;
 }
 
 /** Override mode for display off requests made over D-Bus */
@@ -6971,35 +7001,27 @@ static guint mdy_dbus_display_off_override_gconf_cb_id = 0;
  * D-Bus callback for the display off method call
  *
  * @param msg The D-Bus message
- * @return TRUE on success, FALSE on failure
+ *
+ * @return TRUE
  */
 static gboolean mdy_dbus_handle_display_off_req(DBusMessage *const msg)
 {
     if( mdy_dbus_display_off_override == DISPLAY_OFF_OVERRIDE_USE_LPM )
         return mdy_dbus_handle_display_lpm_req(msg);
 
-    dbus_bool_t no_reply = dbus_message_get_no_reply(msg);
-    gboolean status = FALSE;
-
     mce_log(LL_DEVEL, "display off request from %s",
             mce_dbus_get_message_sender_ident(msg));
+
+    if( !dbus_message_get_no_reply(msg) )
+        dbus_send_message(dbus_new_method_reply(msg));
 
     execute_datapipe(&tk_lock_pipe,
                      GINT_TO_POINTER(LOCK_ON),
                      USE_INDATA, CACHE_INDATA);
-    execute_datapipe(&display_state_req_pipe,
-                     GINT_TO_POINTER(MCE_DISPLAY_OFF),
-                     USE_INDATA, CACHE_INDATA);
 
-    if (no_reply == FALSE) {
-        DBusMessage *reply = dbus_new_method_reply(msg);
+    mdy_dbus_handle_display_state_req(MCE_DISPLAY_OFF);
 
-        status = dbus_send_message(reply);
-    } else {
-        status = TRUE;
-    }
-
-    return status;
+    return TRUE;
 }
 
 /** D-Bus callback for the display lpm method call
@@ -7010,73 +7032,56 @@ static gboolean mdy_dbus_handle_display_off_req(DBusMessage *const msg)
  */
 static gboolean mdy_dbus_handle_display_lpm_req(DBusMessage *const msg)
 {
+    display_state_t  current = datapipe_get_gint(display_state_next_pipe);
+    display_state_t  request = MCE_DISPLAY_OFF;
+    bool             lock_ui = true;
+    const char      *reason  = 0;
+
     mce_log(LL_DEVEL, "display lpm request from %s",
             mce_dbus_get_message_sender_ident(msg));
 
-    /* Assume that the lpm request is applicable */
-    display_state_t request = MCE_DISPLAY_LPM_ON;
-
-    /* Current or next stable display state */
-    display_state_t current = datapipe_get_gint(display_state_next_pipe);
-
-    if( current == MCE_DISPLAY_LPM_ON ) {
-        /* Do nothing if we are already in LPM_ON state */
-        goto EXIT;
-    }
-
+    /* Ignore lpm requests if there are active calls / alarms */
     if( exception_state & (UIEXC_CALL | UIEXC_ALARM) ) {
-        /* Ignore lpm requests altogether if there is active call / alarm */
-        mce_log(LL_WARN, "display LPM request from %s ignored: %s",
-                mce_dbus_get_message_sender_ident(msg),
-                "call or alarm active");
+        reason  = "call or alarm active";
+        request = current;
+        lock_ui = false;
         goto EXIT;
     }
 
-    const char *reason = 0;
+    /* If there is any reason to block display on/dim request,
+     * it applies for lpm requests too */
+    if( (reason = mdy_dbus_get_reason_to_block_display_on()) )
+        goto EXIT;
 
-    if( (reason = mdy_dbus_get_reason_to_block_display_on()) ) {
-        /* If there is any reason to block display on/dim request,
-         * it applies for lpm requests too */
-    }
-    else if( proximity_state == COVER_CLOSED ) {
-        /* Proximity sensor must be uncovered */
-        reason = "proximity covered";
-    }
-    else {
-        /* UI side is allowed only to blank via lpm */
-        switch( datapipe_get_gint(display_state_next_pipe) ) {
-        case MCE_DISPLAY_DIM:
-        case MCE_DISPLAY_ON:
-            /* Ware already in or making transition to on/dim */
-            break;
+    /* But UI side is allowed only to blank via lpm */
+    switch( current ) {
+    case MCE_DISPLAY_DIM:
+    case MCE_DISPLAY_ON:
+        request = MCE_DISPLAY_LPM_ON;
+        break;
 
-        default:
-        case MCE_DISPLAY_OFF:
-        case MCE_DISPLAY_LPM_OFF:
-            reason = "display is off";
-            break;
-        }
+    default:
+        reason = "display is off";
+        break;
     }
-
-    if( reason ) {
-        /* If lpm request can't be applied, do display off instead */
-        mce_log(LL_WARN, "display LPM request from %s denied: %s",
-                mce_dbus_get_message_sender_ident(msg), reason);
-        request = MCE_DISPLAY_OFF;
-    }
-
-    execute_datapipe(&tk_lock_pipe,
-                     GINT_TO_POINTER(LOCK_ON),
-                     USE_INDATA, CACHE_INDATA);
-    execute_datapipe(&display_state_req_pipe,
-                     GINT_TO_POINTER(request),
-                     USE_INDATA, CACHE_INDATA);
 
 EXIT:
-    if( !dbus_message_get_no_reply(msg) ) {
-        DBusMessage *reply = dbus_new_method_reply(msg);
-        dbus_send_message(reply), reply = 0;
+    if( !dbus_message_get_no_reply(msg) )
+        dbus_send_message(dbus_new_method_reply(msg));
+
+    /* Warn if lpm request can't be applied */
+    if( reason ) {
+        mce_log(LL_WARN, "display LPM request from %s denied: %s",
+                mce_dbus_get_message_sender_ident(msg), reason);
     }
+
+    if( lock_ui ) {
+        execute_datapipe(&tk_lock_pipe,
+                         GINT_TO_POINTER(LOCK_ON),
+                         USE_INDATA, CACHE_INDATA);
+    }
+
+    mdy_dbus_handle_display_state_req(request);
 
     return TRUE;
 }
