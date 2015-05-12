@@ -1,3 +1,10 @@
+mce (1.48.3) unstable; urgency=low
+
+  * [mce] Always send indication after display state change is requested
+    over D-Bus. Fixes JB#28558
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 12 May 2015 08:05:33 +0300
+
 mce (1.48.2) unstable; urgency=low
 
   * [mce] Fix after boot blank delay handling. Fixes JB#26524
