@@ -2887,6 +2887,29 @@ EXIT:
     return;
 }
 
+/** Evaluate need for grab active led notification
+ *
+ * This should be called when display state or
+ * touch screen grab state changes.
+ */
+static void
+evin_ts_grab_rethink_led(void)
+{
+    bool enable = false;
+
+    switch( datapipe_get_gint(display_state_pipe) )
+    {
+    case MCE_DISPLAY_ON:
+    case MCE_DISPLAY_DIM:
+        enable = datapipe_get_gint(touch_grab_active_pipe);
+        break;
+    default:
+        break;
+    }
+
+    evin_ts_grab_set_led(enable);
+}
+
 /** Grab/ungrab all monitored touch input devices
  */
 static void
@@ -2908,9 +2931,7 @@ evin_ts_grab_set_active(gboolean grab)
                      GINT_TO_POINTER(grab),
                      USE_INDATA, CACHE_INDATA);
 
-    /* disable led pattern if grab ended */
-    if( !grab )
-        evin_ts_grab_set_led(false);
+    evin_ts_grab_rethink_led();
 
 EXIT:
     return;
@@ -3108,17 +3129,19 @@ evin_ts_grab_wanted_cb(gconstpointer data)
 static void
 evin_ts_grab_display_state_cb(gconstpointer data)
 {
-    static display_state_t prev = MCE_DISPLAY_UNDEF;
+    static display_state_t display_state = MCE_DISPLAY_UNDEF;
 
-    display_state_t display_state = GPOINTER_TO_INT(data);
+    display_state_t prev = display_state;
+    display_state = GPOINTER_TO_INT(data);
+
+    if( display_state == prev )
+        goto EXIT;
 
     mce_log(LL_DEBUG, "display_state=%s", display_state_repr(display_state));
 
     switch( display_state ) {
     case MCE_DISPLAY_POWER_DOWN:
-        /* Deactivate debug led pattern once we start to
-         * power off display and touch panel. */
-        evin_ts_grab_set_led(false);
+        /* NOP */
         break;
 
     case MCE_DISPLAY_OFF:
@@ -3154,11 +3177,6 @@ evin_ts_grab_display_state_cb(gconstpointer data)
              * release ends. */
             evin_input_grab_set_touching(&evin_ts_grab_state, false);
         }
-        /* Activate (delayed) debug led pattern if we reach
-         * display on with input grabbed */
-        if( datapipe_get_gint(touch_grab_active_pipe) ) {
-            evin_ts_grab_set_led(true);
-        }
         break;
 
     default:
@@ -3168,7 +3186,11 @@ evin_ts_grab_display_state_cb(gconstpointer data)
         break;
     }
 
-    prev = display_state;
+    evin_ts_grab_rethink_led();
+
+EXIT:
+    return;
+
 }
 
 /** Initialize touch screen grabbing state machine

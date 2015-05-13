@@ -754,6 +754,10 @@ static void mdy_shutdown_set_state(bool in_progress)
         mce_log(LL_DEVEL, "Shutdown canceled");
     }
 
+    execute_datapipe(&shutting_down_pipe,
+                     GINT_TO_POINTER(mdy_shutdown_started_flag),
+                     USE_INDATA, CACHE_INDATA);
+
     /* Framebuffer must be kept open during shutdown */
     mdy_fbdev_rethink();
 
