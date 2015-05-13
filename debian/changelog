@@ -1,3 +1,17 @@
+mce (1.49.0) unstable; urgency=low
+
+  * [mce] Add settings for exceptional display on state durations.
+    Fixes JB#27426
+  * [mce] Add mcetool option for enabling/disabling led patterns.
+    Fixes JB#27425
+  * [mce] Allow returning to dim after exceptional display on. Fixes JB#27428
+  * [mce] Block user interaction when shutdown/reboot starts. Fixes JB#26533
+  * [mce] Do not enforce tklock removal while lipstick is running.
+    Fixes JB#28746
+  * [mce] Demote mce proximity logging to debug. Fixes JB#28749
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 13 May 2015 12:45:33 +0300
+
 mce (1.48.4) unstable; urgency=low
 
   * [mce] Cap automatic blanking timeouts in act dead mode. Fixes JB#28709
