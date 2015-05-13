@@ -2804,14 +2804,17 @@ static void tklock_uiexcept_finish(void)
     }
 
     /* and finally the display data pipe */
-    if( exx.display != MCE_DISPLAY_ON ) {
+    switch( exx.display ) {
+    default:
         /* If the display was not clearly ON when exception started,
          * turn it OFF after exceptions are over. */
         execute_datapipe(&display_state_req_pipe,
                          GINT_TO_POINTER(MCE_DISPLAY_OFF),
                          USE_INDATA, CACHE_INDATA);
-    }
-    else if( proximity_state_actual == COVER_OPEN ) {
+        break;
+
+    case MCE_DISPLAY_ON:
+    case MCE_DISPLAY_DIM:
         /* Unblank only if proximity sensor is not covered when
          * the linger time has passed.
          *
@@ -2819,9 +2822,13 @@ static void tklock_uiexcept_finish(void)
          * we use raw sensor data here instead of the filtered
          * proximity_state_effective that is normally used
          * with unblanking policies. */
+        if( proximity_state_actual != COVER_OPEN )
+            break;
+
         execute_datapipe(&display_state_req_pipe,
-                         GINT_TO_POINTER(MCE_DISPLAY_ON),
+                         GINT_TO_POINTER(exx.display),
                          USE_INDATA, CACHE_INDATA);
+        break;
     }
 EXIT:
     return;
