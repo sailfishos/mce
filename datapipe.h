@@ -138,6 +138,7 @@ extern datapipe_struct usbmoded_available_pipe;
 extern datapipe_struct dsme_available_pipe;
 extern datapipe_struct packagekit_locked_pipe;
 extern datapipe_struct update_mode_pipe;
+extern datapipe_struct shutting_down_pipe;
 extern datapipe_struct device_lock_state_pipe;
 extern datapipe_struct touch_grab_wanted_pipe;
 extern datapipe_struct touch_grab_active_pipe;

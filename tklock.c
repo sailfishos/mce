@@ -144,6 +144,7 @@ static void     tklock_datapipe_device_lock_state_cb(gconstpointer data);
 static void     tklock_datapipe_device_resumed_cb(gconstpointer data);
 static void     tklock_datapipe_lipstick_available_cb(gconstpointer data);
 static void     tklock_datapipe_update_mode_cb(gconstpointer data);
+static void     tklock_datapipe_shutting_down_cb(gconstpointer data);
 static void     tklock_datapipe_display_state_cb(gconstpointer data);
 static void     tklock_datapipe_proximity_update(void);
 static gboolean tklock_datapipe_proximity_uncover_cb(gpointer data);
@@ -692,6 +693,27 @@ static void tklock_datapipe_update_mode_cb(gconstpointer data)
                          GINT_TO_POINTER(LOCK_OFF),
                          USE_INDATA, CACHE_INDATA);
     }
+
+EXIT:
+    return;
+}
+
+/** Device is shutting down; assume false */
+static bool shutting_down = false;
+
+/** Change notifications for shutting_down
+ */
+static void tklock_datapipe_shutting_down_cb(gconstpointer data)
+{
+    bool prev = shutting_down;
+    shutting_down = GPOINTER_TO_INT(data);
+
+    if( shutting_down == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "shutting_down = %d -> %d", prev, shutting_down);
+
+    tklock_evctrl_rethink();
 
 EXIT:
     return;
@@ -1867,6 +1889,10 @@ static datapipe_handler_t tklock_datapipe_handlers[] =
     {
         .datapipe = &update_mode_pipe,
         .output_cb = tklock_datapipe_update_mode_cb,
+    },
+    {
+        .datapipe = &shutting_down_pipe,
+        .output_cb = tklock_datapipe_shutting_down_cb,
     },
     {
         .datapipe = &device_lock_state_pipe,
@@ -3492,6 +3518,13 @@ static void tklock_evctrl_rethink(void)
     }
 #endif
 
+    /* No interaction during shutdown */
+    if( shutting_down ) {
+        enable_kp = false;
+        enable_ts = false;
+        enable_dt = false;
+    }
+
     /* - - - - - - - - - - - - - - - - - - - *
      * set updated state
      * - - - - - - - - - - - - - - - - - - - */
@@ -3528,8 +3561,8 @@ static void tklock_evctrl_rethink(void)
 
     case MCE_DISPLAY_ON:
     case MCE_DISPLAY_DIM:
-        // release grab
-        grab_ts = false;
+        // grab/ungrab based on policy
+        grab_ts = !enable_ts;
         break;
     }
 
