@@ -815,7 +815,7 @@ static void tklock_datapipe_proximity_update(void)
     if( proximity_state_effective == proximity_state_actual )
         goto EXIT;
 
-    mce_log(LL_DEVEL, "proximity_state_effective = %s -> %s",
+    mce_log(LL_DEBUG, "proximity_state_effective = %s -> %s",
             proximity_state_repr(proximity_state_effective),
             proximity_state_repr(proximity_state_actual));
 
@@ -901,7 +901,7 @@ static void tklock_datapipe_proximity_sensor_cb(gconstpointer data)
     if( proximity_state_actual == prev )
         goto EXIT;
 
-    mce_log(LL_DEVEL, "proximity_state_actual = %s -> %s",
+    mce_log(LL_DEBUG, "proximity_state_actual = %s -> %s",
             proximity_state_repr(prev),
             proximity_state_repr(proximity_state_actual));
 
