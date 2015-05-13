@@ -1616,6 +1616,66 @@ static const setting_t gconf_defaults[] =
     .def  = "0", // = disabled
   },
   {
+    .key  = MCE_GCONF_EXCEPTION_LENGTH_CALL_IN,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_EXCEPTION_LENGTH_CALL_IN),
+  },
+  {
+    .key  = MCE_GCONF_EXCEPTION_LENGTH_CALL_OUT,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_EXCEPTION_LENGTH_CALL_OUT),
+  },
+  {
+    .key  = MCE_GCONF_EXCEPTION_LENGTH_ALARM,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_EXCEPTION_LENGTH_ALARM),
+  },
+  {
+    .key  = MCE_GCONF_EXCEPTION_LENGTH_USB_CONNECT,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_EXCEPTION_LENGTH_USB_CONNECT),
+  },
+  {
+    .key  = MCE_GCONF_EXCEPTION_LENGTH_USB_DIALOG,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_EXCEPTION_LENGTH_USB_DIALOG),
+  },
+  {
+    .key  = MCE_GCONF_EXCEPTION_LENGTH_CHARGER,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_EXCEPTION_LENGTH_CHARGER),
+  },
+  {
+    .key  = MCE_GCONF_EXCEPTION_LENGTH_BATTERY,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_EXCEPTION_LENGTH_BATTERY),
+  },
+  {
+    .key  = MCE_GCONF_EXCEPTION_LENGTH_JACK_IN,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_EXCEPTION_LENGTH_JACK_IN),
+  },
+  {
+    .key  = MCE_GCONF_EXCEPTION_LENGTH_JACK_OUT,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_EXCEPTION_LENGTH_JACK_OUT),
+  },
+  {
+    .key  = MCE_GCONF_EXCEPTION_LENGTH_CAMERA,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_EXCEPTION_LENGTH_CAMERA),
+  },
+  {
+    .key  = MCE_GCONF_EXCEPTION_LENGTH_VOLUME,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_EXCEPTION_LENGTH_VOLUME),
+  },
+  {
+    .key  = MCE_GCONF_EXCEPTION_LENGTH_ACTIVITY,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_EXCEPTION_LENGTH_ACTIVITY),
+  },
+  {
     .key  = NULL,
   }
 };

@@ -62,27 +62,6 @@ typedef enum
     AUTORELOCK_LENS_COVER,
 } autorelock_t;
 
-/** Duration of exceptional UI states, in milliseconds */
-enum
-{
-    EXCEPTION_LENGTH_CALL_IN     =  5000, // [ms]
-    EXCEPTION_LENGTH_CALL_OUT    =  2500, // [ms]
-    EXCEPTION_LENGTH_ALARM       =  2500, // [ms]
-    EXCEPTION_LENGTH_CHARGER     =  3000, // [ms]
-    EXCEPTION_LENGTH_BATTERY     =  1000, // [ms]
-    EXCEPTION_LENGTH_JACK        =  3000, // [ms]
-    EXCEPTION_LENGTH_CAMERA      =  3000, // [ms]
-    EXCEPTION_LENGTH_VOLUME      =  2000, // [ms]
-    EXCEPTION_LENGTH_USB_CONNECT =  5000, // [ms]
-    EXCEPTION_LENGTH_USB_DIALOG  = 10000, // [ms]
-
-    EXCEPTION_LENGTH_ACTIVITY    =  2000, // [ms]
-
-    /* Note: the notification durations and lengthening via
-     *       activity must be long enough not to be cut off
-     *       by periodic stopping of touch monitoring */
-};
-
 /** Helper for evaluation number of items in an array */
 #define numof(a) (sizeof(a)/sizeof*(a))
 
@@ -398,6 +377,66 @@ static guint tklock_blank_disable_id = 0;
 static gboolean lid_sensor_enabled = DEFAULT_LID_SENSOR_ENABLED;
 /** GConf callback ID for lid_sensor_enabled */
 static guint lid_sensor_enabled_cb_id = 0;
+
+/** How long to keep display on after incoming call ends [ms] */
+static gint exception_length_call_in            = DEFAULT_EXCEPTION_LENGTH_CALL_IN;
+/** GConf callback ID for exception_length_call_in */
+static guint exception_length_call_in_cb_id     = 0;
+
+/** How long to keep display on after outgoing call ends [ms] */
+static gint exception_length_call_out           = DEFAULT_EXCEPTION_LENGTH_CALL_OUT;
+/** GConf callback ID for exception_length_call_out */
+static guint exception_length_call_out_cb_id    = 0;
+
+/** How long to keep display on after alarm is handled [ms] */
+static gint exception_length_alarm              = DEFAULT_EXCEPTION_LENGTH_ALARM;
+/** GConf callback ID for exception_length_alarm */
+static guint exception_length_alarm_cb_id       = 0;
+
+/** How long to keep display on when usb cable is connected [ms] */
+static gint exception_length_usb_connect        = DEFAULT_EXCEPTION_LENGTH_USB_CONNECT;
+/** GConf callback ID for exception_length_usb_connect */
+static guint exception_length_usb_connect_cb_id = 0;
+
+/** How long to keep display on when usb mode dialog is shown [ms] */
+static gint exception_length_usb_dialog         = DEFAULT_EXCEPTION_LENGTH_USB_DIALOG;
+/** GConf callback ID for exception_length_usb_dialog */
+static guint exception_length_usb_dialog_cb_id  = 0;
+
+/** How long to keep display on when charging starts [ms] */
+static gint exception_length_charger            = DEFAULT_EXCEPTION_LENGTH_CHARGER;
+/** GConf callback ID for exception_length_charger */
+static guint exception_length_charger_cb_id     = 0;
+
+/** How long to keep display on after battery full [ms] */
+static gint exception_length_battery            = DEFAULT_EXCEPTION_LENGTH_BATTERY;
+/** GConf callback ID for exception_length_battery */
+static guint exception_length_battery_cb_id     = 0;
+
+/** How long to keep display on when audio jack is inserted [ms] */
+static gint exception_length_jack_in            = DEFAULT_EXCEPTION_LENGTH_JACK_IN;
+/** GConf callback ID for exception_length_jack_in */
+static guint exception_length_jack_in_cb_id     = 0;
+
+/** How long to keep display on when audio jack is removed [ms] */
+static gint exception_length_jack_out           = DEFAULT_EXCEPTION_LENGTH_JACK_OUT;
+/** GConf callback ID for exception_length_jack_out */
+static guint exception_length_jack_out_cb_id    = 0;
+
+/** How long to keep display on when camera button is pressed [ms] */
+static gint exception_length_camera             = DEFAULT_EXCEPTION_LENGTH_CAMERA;
+/** GConf callback ID for exception_length_camera */
+static guint exception_length_camera_cb_id      = 0;
+
+/** How long to keep display on when volume button is pressed [ms] */
+static gint exception_length_volume             = DEFAULT_EXCEPTION_LENGTH_VOLUME;
+/** GConf callback ID for exception_length_volume */
+static guint exception_length_volume_cb_id      = 0;
+
+/** How long to extend display on when there is user activity [ms] */
+static gint exception_length_activity           = DEFAULT_EXCEPTION_LENGTH_ACTIVITY;
+/** GConf callback ID for exception_length_activity */
+static guint exception_length_activity_cb_id    = 0;
 
 /* ========================================================================= *
  * probed control file paths
@@ -864,7 +903,7 @@ EXIT:
 static void tklock_datapipe_call_state_cb(gconstpointer data)
 {
     /* Default to using shorter outgoing call linger time */
-    static int64_t linger_time = EXCEPTION_LENGTH_CALL_OUT;
+    static bool incoming = false;
 
     call_state_t prev = call_state;
     call_state = GPOINTER_TO_INT(data);
@@ -882,7 +921,7 @@ static void tklock_datapipe_call_state_cb(gconstpointer data)
     switch( call_state ) {
     case CALL_STATE_RINGING:
         /* Switch to using longer incoming call linger time */
-        linger_time = EXCEPTION_LENGTH_CALL_IN;
+        incoming = true;
 
         /* Fall through */
 
@@ -891,10 +930,12 @@ static void tklock_datapipe_call_state_cb(gconstpointer data)
         break;
 
     default:
-        tklock_uiexcept_end(UIEXC_CALL, linger_time);
+        tklock_uiexcept_end(UIEXC_CALL, incoming ?
+                            exception_length_call_in :
+                            exception_length_call_out);
 
         /* Restore linger time to default again */
-        linger_time = EXCEPTION_LENGTH_CALL_OUT;
+        incoming = false;
         break;
     }
 
@@ -951,10 +992,10 @@ static void tklock_datapipe_alarm_ui_state_cb(gconstpointer data)
     switch( alarm_ui_state ) {
     case MCE_ALARM_UI_RINGING_INT32:
     case MCE_ALARM_UI_VISIBLE_INT32:
-        tklock_uiexcept_begin(UIEXC_ALARM, EXCEPTION_LENGTH_ALARM);
+        tklock_uiexcept_begin(UIEXC_ALARM, 0);
         break;
     default:
-        tklock_uiexcept_end(UIEXC_ALARM, EXCEPTION_LENGTH_ALARM);
+        tklock_uiexcept_end(UIEXC_ALARM, exception_length_alarm);
         break;
     }
 
@@ -988,7 +1029,7 @@ static void tklock_datapipe_charger_state_cb(gconstpointer data)
     /* Notification expected when charging starts */
     if( charger_state == CHARGER_STATE_ON )
         mce_tklock_begin_notification(0, "mce_charger_state",
-                                      EXCEPTION_LENGTH_CHARGER, -1);
+                                      exception_length_charger, -1);
 
 EXIT:
     return;
@@ -1011,13 +1052,10 @@ static void tklock_datapipe_battery_status_cb(gconstpointer data)
             battery_status_repr(prev),
             battery_status_repr(battery_status));
 
-#if 0 /* At the moment there is no notification associated with
-       * battery full -> no need to turn the display on */
     if( battery_status == BATTERY_STATUS_FULL ) {
         mce_tklock_begin_notification(0, "mce_battery_full",
-                                      EXCEPTION_LENGTH_BATTERY, -1);
+                                      exception_length_battery, -1);
     }
-#endif
 
 EXIT:
     return;
@@ -1052,12 +1090,12 @@ static void tklock_datapipe_usb_cable_cb(gconstpointer data)
 
     case USB_CABLE_CONNECTED:
         mce_tklock_begin_notification(0, "mce_usb_connect",
-                                      EXCEPTION_LENGTH_USB_CONNECT, -1);
+                                      exception_length_usb_connect, -1);
         break;
 
     case USB_CABLE_ASK_USER:
         mce_tklock_begin_notification(0, "mce_usb_dialog",
-                                      EXCEPTION_LENGTH_USB_DIALOG, -1);
+                                      exception_length_usb_dialog, -1);
         break;
 
     default:
@@ -1088,7 +1126,20 @@ static void tklock_datapipe_jack_sense_cb(gconstpointer data)
             cover_state_repr(prev),
             cover_state_repr(jack_sense_state));
 
-    mce_tklock_begin_notification(0, "mce_jack_sense", EXCEPTION_LENGTH_JACK, -1);
+    int64_t length = -1;
+
+    switch( jack_sense_state ) {
+    case COVER_CLOSED:
+        length = exception_length_jack_in;
+        break;
+    case COVER_OPEN:
+        length = exception_length_jack_out;
+        break;
+    default:
+        break;
+    }
+
+    mce_tklock_begin_notification(0, "mce_jack_sense", length, -1);
 
 EXIT:
     return;
@@ -1103,7 +1154,7 @@ static void tklock_datapipe_camera_button_cb(gconstpointer const data)
     (void)data;
 
     mce_tklock_begin_notification(0, "mce_camera_button",
-                                  EXCEPTION_LENGTH_CAMERA, -1);
+                                  exception_length_camera, -1);
 }
 
 /** Change notifications for keypress
@@ -1135,14 +1186,14 @@ static void tklock_datapipe_keypress_cb(gconstpointer const data)
     case KEY_CAMERA:
         mce_log(LL_DEBUG, "camera key");
         mce_tklock_begin_notification(0, "mce_camera_key",
-                                      EXCEPTION_LENGTH_CAMERA, -1);
+                                      exception_length_camera, -1);
         break;
 
     case KEY_VOLUMEDOWN:
     case KEY_VOLUMEUP:
         mce_log(LL_DEBUG, "volume key");
         mce_tklock_begin_notification(0, "mce_volume_key",
-                                      EXCEPTION_LENGTH_VOLUME, -1);
+                                      exception_length_volume, -1);
         break;
 
     default:
@@ -3706,6 +3757,78 @@ static void tklock_gconf_cb(GConfClient *const gcc, const guint id,
         mce_log(LL_NOTICE, "tklock_devicelock_in_lockscreen: %d -> %d",
                 old, tklock_devicelock_in_lockscreen);
     }
+    else if( id == exception_length_call_in_cb_id ) {
+        gint old = exception_length_call_in;
+        exception_length_call_in = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "exception_length_call_in: %d -> %d",
+                old, exception_length_call_in);
+    }
+    else if( id == exception_length_call_out_cb_id ) {
+        gint old = exception_length_call_out;
+        exception_length_call_out = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "exception_length_call_out: %d -> %d",
+                old, exception_length_call_out);
+    }
+    else if( id == exception_length_alarm_cb_id ) {
+        gint old = exception_length_alarm;
+        exception_length_alarm = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "exception_length_alarm: %d -> %d",
+                old, exception_length_alarm);
+    }
+    else if( id == exception_length_usb_connect_cb_id ) {
+        gint old = exception_length_usb_connect;
+        exception_length_usb_connect = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "exception_length_usb_connect: %d -> %d",
+                old, exception_length_usb_connect);
+    }
+    else if( id == exception_length_usb_dialog_cb_id ) {
+        gint old = exception_length_usb_dialog;
+        exception_length_usb_dialog = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "exception_length_usb_dialog: %d -> %d",
+                old, exception_length_usb_dialog);
+    }
+    else if( id == exception_length_charger_cb_id ) {
+        gint old = exception_length_charger;
+        exception_length_charger = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "exception_length_charger: %d -> %d",
+                old, exception_length_charger);
+    }
+    else if( id == exception_length_battery_cb_id ) {
+        gint old = exception_length_battery;
+        exception_length_battery = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "exception_length_battery: %d -> %d",
+                old, exception_length_battery);
+    }
+    else if( id == exception_length_jack_in_cb_id ) {
+        gint old = exception_length_jack_in;
+        exception_length_jack_in = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "exception_length_jack_in: %d -> %d",
+                old, exception_length_jack_in);
+    }
+    else if( id == exception_length_jack_out_cb_id ) {
+        gint old = exception_length_jack_out;
+        exception_length_jack_out = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "exception_length_jack_out: %d -> %d",
+                old, exception_length_jack_out);
+    }
+    else if( id == exception_length_camera_cb_id ) {
+        gint old = exception_length_camera;
+        exception_length_camera = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "exception_length_camera: %d -> %d",
+                old, exception_length_camera);
+    }
+    else if( id == exception_length_volume_cb_id ) {
+        gint old = exception_length_volume;
+        exception_length_volume = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "exception_length_volume: %d -> %d",
+                old, exception_length_volume);
+    }
+    else if( id == exception_length_activity_cb_id ) {
+        gint old = exception_length_activity;
+        exception_length_activity = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "exception_length_activity: %d -> %d",
+                old, exception_length_activity);
+    }
     else {
         mce_log(LL_WARN, "Spurious GConf value received; confused!");
     }
@@ -3783,6 +3906,79 @@ static void tklock_gconf_init(void)
                          DEFAULT_LID_SENSOR_ENABLED,
                          tklock_gconf_cb,
                          &lid_sensor_enabled_cb_id);
+
+    /* Display on exception lengths */
+    mce_gconf_track_int(MCE_GCONF_EXCEPTION_LENGTH_CALL_IN,
+                        &exception_length_call_in,
+                        DEFAULT_EXCEPTION_LENGTH_CALL_IN,
+                        tklock_gconf_cb,
+                        &exception_length_call_in_cb_id);
+
+    mce_gconf_track_int(MCE_GCONF_EXCEPTION_LENGTH_CALL_OUT,
+                        &exception_length_call_out,
+                        DEFAULT_EXCEPTION_LENGTH_CALL_OUT,
+                        tklock_gconf_cb,
+                        &exception_length_call_out_cb_id);
+
+    mce_gconf_track_int(MCE_GCONF_EXCEPTION_LENGTH_ALARM,
+                        &exception_length_alarm,
+                        DEFAULT_EXCEPTION_LENGTH_ALARM,
+                        tklock_gconf_cb,
+                        &exception_length_alarm_cb_id);
+
+    mce_gconf_track_int(MCE_GCONF_EXCEPTION_LENGTH_USB_CONNECT,
+                        &exception_length_usb_connect,
+                        DEFAULT_EXCEPTION_LENGTH_USB_CONNECT,
+                        tklock_gconf_cb,
+                        &exception_length_usb_connect_cb_id);
+
+    mce_gconf_track_int(MCE_GCONF_EXCEPTION_LENGTH_USB_DIALOG,
+                        &exception_length_usb_dialog,
+                        DEFAULT_EXCEPTION_LENGTH_USB_DIALOG,
+                        tklock_gconf_cb,
+                        &exception_length_usb_dialog_cb_id);
+
+    mce_gconf_track_int(MCE_GCONF_EXCEPTION_LENGTH_CHARGER,
+                        &exception_length_charger,
+                        DEFAULT_EXCEPTION_LENGTH_CHARGER,
+                        tklock_gconf_cb,
+                        &exception_length_charger_cb_id);
+
+    mce_gconf_track_int(MCE_GCONF_EXCEPTION_LENGTH_BATTERY,
+                        &exception_length_battery,
+                        DEFAULT_EXCEPTION_LENGTH_BATTERY,
+                        tklock_gconf_cb,
+                        &exception_length_battery_cb_id);
+
+    mce_gconf_track_int(MCE_GCONF_EXCEPTION_LENGTH_JACK_IN,
+                        &exception_length_jack_in,
+                        DEFAULT_EXCEPTION_LENGTH_JACK_IN,
+                        tklock_gconf_cb,
+                        &exception_length_jack_in_cb_id);
+
+    mce_gconf_track_int(MCE_GCONF_EXCEPTION_LENGTH_JACK_OUT,
+                        &exception_length_jack_out,
+                        DEFAULT_EXCEPTION_LENGTH_JACK_OUT,
+                        tklock_gconf_cb,
+                        &exception_length_jack_out_cb_id);
+
+    mce_gconf_track_int(MCE_GCONF_EXCEPTION_LENGTH_CAMERA,
+                        &exception_length_camera,
+                        DEFAULT_EXCEPTION_LENGTH_CAMERA,
+                        tklock_gconf_cb,
+                        &exception_length_camera_cb_id);
+
+    mce_gconf_track_int(MCE_GCONF_EXCEPTION_LENGTH_VOLUME,
+                        &exception_length_volume,
+                        DEFAULT_EXCEPTION_LENGTH_VOLUME,
+                        tklock_gconf_cb,
+                        &exception_length_volume_cb_id);
+
+    mce_gconf_track_int(MCE_GCONF_EXCEPTION_LENGTH_ACTIVITY,
+                        &exception_length_activity,
+                        DEFAULT_EXCEPTION_LENGTH_ACTIVITY,
+                        tklock_gconf_cb,
+                        &exception_length_activity_cb_id);
 }
 
 /** Remove gconf change notifiers
@@ -3815,6 +4011,42 @@ static void tklock_gconf_quit(void)
 
     mce_gconf_notifier_remove(lid_sensor_enabled_cb_id),
         lid_sensor_enabled_cb_id = 0;
+
+    mce_gconf_notifier_remove(exception_length_call_in_cb_id),
+        exception_length_call_in_cb_id = 0;
+
+    mce_gconf_notifier_remove(exception_length_call_out_cb_id),
+        exception_length_call_out_cb_id = 0;
+
+    mce_gconf_notifier_remove(exception_length_alarm_cb_id),
+        exception_length_alarm_cb_id = 0;
+
+    mce_gconf_notifier_remove(exception_length_usb_connect_cb_id),
+        exception_length_usb_connect_cb_id = 0;
+
+    mce_gconf_notifier_remove(exception_length_usb_dialog_cb_id),
+        exception_length_usb_dialog_cb_id = 0;
+
+    mce_gconf_notifier_remove(exception_length_charger_cb_id),
+        exception_length_charger_cb_id = 0;
+
+    mce_gconf_notifier_remove(exception_length_battery_cb_id),
+        exception_length_battery_cb_id = 0;
+
+    mce_gconf_notifier_remove(exception_length_jack_in_cb_id),
+        exception_length_jack_in_cb_id = 0;
+
+    mce_gconf_notifier_remove(exception_length_jack_out_cb_id),
+        exception_length_jack_out_cb_id = 0;
+
+    mce_gconf_notifier_remove(exception_length_camera_cb_id),
+        exception_length_camera_cb_id = 0;
+
+    mce_gconf_notifier_remove(exception_length_volume_cb_id),
+        exception_length_volume_cb_id = 0;
+
+    mce_gconf_notifier_remove(exception_length_activity_cb_id),
+        exception_length_activity_cb_id = 0;
 }
 
 /* ========================================================================= *
@@ -5124,6 +5356,10 @@ tklock_notif_remove_owner_monitor(const char *owner)
 static void
 mce_tklock_begin_notification(const char *owner, const char *name, int64_t length, int64_t renew)
 {
+    /* Ignore zero length notifications */
+    if( length <= 0 )
+        goto EXIT;
+
     /* cap length to [1,30] second range */
     if( length > 30000 )
         length = 30000;
@@ -5134,11 +5370,14 @@ mce_tklock_begin_notification(const char *owner, const char *name, int64_t lengt
     if( renew > 5000 )
         renew = 5000;
     else if( renew < 0 )
-        renew = EXCEPTION_LENGTH_ACTIVITY;
+        renew = exception_length_activity;
 
     mce_log(LL_DEBUG, "name: %s, length: %d, renew: %d",
             name, (int)length, (int)renew);
     tklock_notif_reserve_slot(owner, name, length, renew);
+
+EXIT:
+    return;
 }
 
 /** Interface for removing notification state
