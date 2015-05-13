@@ -4335,16 +4335,15 @@ static void tklock_ui_set(bool enable)
 {
     /* Filter request based on device state */
     if( enable ) {
-        if( system_state != MCE_STATE_USER ) {
-            mce_log(LL_INFO, "deny tklock; not in user mode");
-            enable = false;
-        }
-        else if( lipstick_available != SERVICE_STATE_RUNNING ) {
+        /* Note: As long as lipstick process is running, mce must
+         *       not attempt forced tklock removal as it can lead
+         *       to tklock state ringing if/when lipstick happens
+         *       to require tklock to be set. */
+
+        if( lipstick_available != SERVICE_STATE_RUNNING ) {
+            /* When there is no UI to lock, allowing tklock to
+             * be set can only cause problems */
             mce_log(LL_INFO, "deny tklock; lipstick not running");
-            enable = false;
-        }
-        else if( update_mode ) {
-            mce_log(LL_INFO, "deny tklock; os update in progress");
             enable = false;
         }
     }
