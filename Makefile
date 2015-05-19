@@ -260,6 +260,7 @@ MCE_PKG_NAMES += gmodule-2.0
 MCE_PKG_NAMES += dbus-1
 MCE_PKG_NAMES += dbus-glib-1
 MCE_PKG_NAMES += dsme
+MCE_PKG_NAMES += libiphb
 MCE_PKG_NAMES += libsystemd-daemon
 
 MCE_PKG_CFLAGS := $(shell $(PKG_CONFIG) --cflags $(MCE_PKG_NAMES))
@@ -278,6 +279,7 @@ MCE_CORE += mce-fbdev.c
 MCE_CORE += mce-dbus.c
 MCE_CORE += mce-dsme.c
 MCE_CORE += mce-gconf.c
+MCE_CORE += mce-hbtimer.c
 MCE_CORE += event-input.c
 MCE_CORE += event-switches.c
 MCE_CORE += mce-hal.c
@@ -531,6 +533,8 @@ NORMALIZE_USES_SPC =\
 	mce-fbdev.h\
 	mce-command-line.c\
 	mce-command-line.h\
+	mce-hbtimer.c\
+	mce-hbtimer.h\
 	mce-hybris.c\
 	mce-hybris.h\
 	mce-modules.h\
