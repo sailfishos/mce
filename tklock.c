@@ -29,6 +29,7 @@
 #include "mce-conf.h"
 #include "mce-gconf.h"
 #include "mce-dbus.h"
+#include "mce-hbtimer.h"
 #include "evdev.h"
 
 #ifdef ENABLE_WAKELOCKS
@@ -187,11 +188,12 @@ static void tklock_lid_sensor_rethink(void);
 // autolock state machine
 
 static gboolean tklock_autolock_cb(gpointer aptr);
-static void     tklock_autolock_resume(void);
 static void     tklock_autolock_evaluate(void);
 static void     tklock_autolock_enable(void);
 static void     tklock_autolock_disable(void);
 static void     tklock_autolock_rethink(void);
+static void     tklock_autolock_init(void);
+static void     tklock_autolock_quit(void);
 
 // proximity locking state machine
 
@@ -626,15 +628,8 @@ static void tklock_datapipe_device_resumed_cb(gconstpointer data)
 {
     (void) data;
 
-    /* We do not want to wakeup from suspend just to end the
-     * grace period, so regular timer is used for it. However,
-     * if we happen to resume for some other reason, check if
-     * the timeout has already passed */
-
-    tklock_autolock_resume();
-
-    /* And the same applies for proximity locking too */
-
+    /* Re-evaluate proximity locking after resuming from
+     * suspend. */
     tklock_proxlock_resume();
 }
 
@@ -2235,7 +2230,7 @@ static void tklock_lid_sensor_rethink(void)
  * ========================================================================= */
 
 static int64_t tklock_autolock_tick = MAX_TICK;
-static guint   tklock_autolock_id   = 0;
+static mce_hbtimer_t *tklock_autolock_timer = 0;
 
 static void tklock_autolock_evaluate(void)
 {
@@ -2275,49 +2270,22 @@ static gboolean tklock_autolock_cb(gpointer aptr)
 {
     (void)aptr;
 
-    if( tklock_autolock_id ) {
-        tklock_autolock_id = 0;
-        tklock_autolock_tick = MIN_TICK;
+    tklock_autolock_tick = MIN_TICK;
+    mce_log(LL_DEBUG, "autolock timer triggered");
+    tklock_autolock_evaluate();
 
-        mce_log(LL_DEBUG, "autolock timer triggered");
-        tklock_autolock_evaluate();
-    }
-    return false;
+    return FALSE;
 }
 
 static void tklock_autolock_disable(void)
 {
     tklock_autolock_tick = MAX_TICK;
 
-    if( tklock_autolock_id ) {
-        g_source_remove(tklock_autolock_id), tklock_autolock_id = 0;
-        mce_log(LL_DEBUG, "autolock timer stopped");
-    }
-}
-
-static void tklock_autolock_resume(void)
-{
-    /* Do we have a timer to re-evaluate? */
-    if( !tklock_autolock_id )
+    if( !mce_hbtimer_is_active(tklock_autolock_timer) )
         goto EXIT;
 
-    /* Clear old timer */
-    g_source_remove(tklock_autolock_id), tklock_autolock_id = 0;
-
-    int64_t now = tklock_monotick_get();
-
-    if( now >= tklock_autolock_tick ) {
-        /* Opportunistic triggering on resume */
-        mce_log(LL_DEBUG, "autolock time passed while suspended");
-        tklock_autolock_tick = MIN_TICK;
-        tklock_autolock_evaluate();
-    }
-    else {
-        /* Re-calculate wakeup time */
-        int delay = (int)(tklock_autolock_tick - now);
-        mce_log(LL_DEBUG, "adjusting autolock time after resume (%d ms)", delay);
-        tklock_autolock_id = g_timeout_add(delay, tklock_autolock_cb, 0);
-    }
+    mce_hbtimer_stop(tklock_autolock_timer);
+    mce_log(LL_DEBUG, "autolock timer stopped");
 
 EXIT:
     return;
@@ -2325,16 +2293,21 @@ EXIT:
 
 static void tklock_autolock_enable(void)
 {
-    if( !tklock_autolock_id ) {
-        int delay = mce_clip_int(MINIMUM_AUTOLOCK_DELAY,
-                                 MAXIMUM_AUTOLOCK_DELAY,
-                                 tklock_autolock_delay);
+    if( mce_hbtimer_is_active(tklock_autolock_timer) )
+        goto EXIT;
 
-        tklock_autolock_tick = tklock_monotick_get() + delay;
+    int delay = mce_clip_int(MINIMUM_AUTOLOCK_DELAY,
+                             MAXIMUM_AUTOLOCK_DELAY,
+                             tklock_autolock_delay);
 
-        tklock_autolock_id = g_timeout_add(delay, tklock_autolock_cb, 0);
-        mce_log(LL_DEBUG, "autolock timer started (%d ms)", delay);
-    }
+    tklock_autolock_tick = tklock_monotick_get() + delay;
+
+    mce_hbtimer_set_period(tklock_autolock_timer, delay);
+    mce_hbtimer_start(tklock_autolock_timer);
+    mce_log(LL_DEBUG, "autolock timer started (%d ms)", delay);
+
+EXIT:
+    return;
 }
 
 static void tklock_autolock_rethink(void)
@@ -2351,6 +2324,21 @@ static void tklock_autolock_rethink(void)
         // stable display OFF state
         tklock_autolock_evaluate();
     }
+}
+
+static void
+tklock_autolock_init(void)
+{
+    tklock_autolock_timer = mce_hbtimer_create("autolock-timer",
+                                               tklock_autolock_delay,
+                                               tklock_autolock_cb, 0);
+}
+
+static void
+tklock_autolock_quit(void)
+{
+    mce_hbtimer_delete(tklock_autolock_timer),
+        tklock_autolock_timer = 0;
 }
 
 /* ========================================================================= *
@@ -5463,6 +5451,8 @@ gboolean mce_tklock_init(void)
     /* get dynamic config, install change monitors */
     tklock_gconf_init();
 
+    tklock_autolock_init();
+
     /* attach to internal state variables */
     tklock_datapipe_init();
 
@@ -5492,6 +5482,8 @@ void mce_tklock_exit(void)
     tklock_datapipe_proximity_uncover_cancel();
     tklock_notif_quit();
     tklock_ui_notify_cancel();
+
+    tklock_autolock_quit();
 
     // FIXME: check that final state is sane
 

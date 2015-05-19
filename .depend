@@ -1073,6 +1073,7 @@ tklock.o:\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-gconf.h\
+	mce-hbtimer.h\
 	mce-io.h\
 	mce-log.h\
 	mce.h\
@@ -1090,6 +1091,7 @@ tklock.pic.o:\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-gconf.h\
+	mce-hbtimer.h\
 	mce-io.h\
 	mce-log.h\
 	mce.h\
