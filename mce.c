@@ -23,6 +23,7 @@
 #include "mce-log.h"
 #include "mce-conf.h"
 #include "mce-fbdev.h"
+#include "mce-hbtimer.h"
 #include "mce-gconf.h"
 #include "mce-dbus.h"
 #include "mce-dsme.h"
@@ -114,6 +115,7 @@ static void mce_cleanup_wakelocks(void)
 	wakelock_unlock("mce_led_breathing");
 	wakelock_unlock("mce_lpm_off");
 	wakelock_unlock("mce_tklock_notify");
+	wakelock_unlock("mce_hbtimer_dispatch");
 }
 #endif // ENABLE_WAKELOCKS
 
@@ -965,6 +967,9 @@ int main(int argc, char **argv)
 	/* Setup all datapipes */
 	mce_datapipe_init();
 
+	/* Allow registering of suspend proof timers */
+	mce_hbtimer_init();
+
 	/* Initialise mode management
 	 * pre-requisite: mce_gconf_init()
 	 * pre-requisite: mce_dbus_init()
@@ -1049,6 +1054,7 @@ EXIT:
 	mce_powerkey_exit();
 	mce_dsme_exit();
 	mce_mode_exit();
+	mce_hbtimer_quit();
 
 	/* Free all datapipes */
 	mce_datapipe_quit();

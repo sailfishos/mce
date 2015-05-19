@@ -210,6 +210,22 @@ mce-hal.pic.o:\
 	mce-lib.h\
 	mce-log.h\
 
+mce-hbtimer.o:\
+	mce-hbtimer.c\
+	datapipe.h\
+	libwakelock.h\
+	mce-hbtimer.h\
+	mce-log.h\
+	mce.h\
+
+mce-hbtimer.pic.o:\
+	mce-hbtimer.c\
+	datapipe.h\
+	libwakelock.h\
+	mce-hbtimer.h\
+	mce-log.h\
+	mce.h\
+
 mce-hybris.o:\
 	mce-hybris.c\
 	datapipe.h\
@@ -315,6 +331,7 @@ mce.o:\
 	mce-dsme.h\
 	mce-fbdev.h\
 	mce-gconf.h\
+	mce-hbtimer.h\
 	mce-log.h\
 	mce-modules.h\
 	mce-sensorfw.h\
@@ -336,6 +353,7 @@ mce.pic.o:\
 	mce-dsme.h\
 	mce-fbdev.h\
 	mce-gconf.h\
+	mce-hbtimer.h\
 	mce-log.h\
 	mce-modules.h\
 	mce-sensorfw.h\
