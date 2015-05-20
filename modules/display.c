@@ -417,6 +417,10 @@ static gboolean            mdy_blanking_dim_cb(gpointer data);
 static void                mdy_blanking_cancel_dim(void);
 static void                mdy_blanking_schedule_dim(void);
 
+static gboolean            mdy_blanking_inhibit_broadcast_cb(gpointer aptr);
+static void                mdy_blanking_inhibit_cancel_broadcast(void);
+static void                mdy_blanking_inhibit_schedule_broadcast(void);
+
 // display timer: DIM -> OFF
 
 static gboolean            mdy_blanking_off_cb(gpointer data);
@@ -638,6 +642,9 @@ static void                mdy_governor_conf_cb(GConfClient *const client, const
 
 static gboolean            mdy_dbus_send_blanking_pause_status(DBusMessage *const method_call);
 static gboolean            mdy_dbus_handle_blanking_pause_get_req(DBusMessage *const msg);
+
+static gboolean            mdy_dbus_send_blanking_inhibit_status(DBusMessage *const method_call);
+static gboolean            mdy_dbus_handle_blanking_inhibit_get_req(DBusMessage *const msg);
 
 static void                mdy_dbus_invalidate_display_status(void);
 static gboolean            mdy_dbus_send_display_status(DBusMessage *const method_call);
@@ -1300,6 +1307,8 @@ static void mdy_datapipe_display_state_cb(gconstpointer data)
 
     if( display_state == prev )
         goto EXIT;
+
+    mdy_blanking_inhibit_schedule_broadcast();
 
 EXIT:
     return;
@@ -3216,6 +3225,8 @@ static gboolean mdy_blanking_dim_cb(gpointer data)
 
     mdy_blanking_dim_cb_id = 0;
 
+    mdy_blanking_inhibit_schedule_broadcast();
+
     /* If device is in MALF state skip dimming since systemui
      * isn't working yet */
     if( submode & MCE_MALF_SUBMODE )
@@ -3237,6 +3248,8 @@ static void mdy_blanking_cancel_dim(void)
     if (mdy_blanking_dim_cb_id != 0) {
         mce_log(LL_DEBUG, "DIM timer canceled");
         g_source_remove(mdy_blanking_dim_cb_id), mdy_blanking_dim_cb_id = 0;
+
+        mdy_blanking_inhibit_schedule_broadcast();
     }
 }
 
@@ -3274,6 +3287,65 @@ static void mdy_blanking_schedule_dim(void)
     /* Setup new timeout */
     mdy_blanking_dim_cb_id = g_timeout_add_seconds(dim_timeout,
                                                    mdy_blanking_dim_cb, NULL);
+
+    mdy_blanking_inhibit_schedule_broadcast();
+
+    return;
+}
+
+/** Idle callback id for delayed blanking inhibit signaling */
+static guint mdy_blanking_inhibit_broadcast_id = 0;
+
+/** Idle callback for delayed blanking inhibit signaling
+ *
+ * @param aptr (unused)
+ *
+ * @return FALSE to stop idle callback from repeating
+ */
+static gboolean mdy_blanking_inhibit_broadcast_cb(gpointer aptr)
+{
+    (void)aptr;
+
+    if( !mdy_blanking_inhibit_broadcast_id )
+        goto EXIT;
+
+    mdy_blanking_inhibit_broadcast_id = 0;
+
+    mdy_dbus_send_blanking_inhibit_status(0);
+
+EXIT:
+    return FALSE;
+}
+
+/** Schedule blanking inhibit signaling
+ *
+ * Idle callback is used to delay the sending of the D-Bus
+ * signal so that timer reprogramming etc temporary changes
+ * do not cause swarm of signals to be broadcast.
+ */
+static void mdy_blanking_inhibit_schedule_broadcast(void)
+{
+    if( mdy_blanking_inhibit_broadcast_id )
+        goto EXIT;
+
+    mdy_blanking_inhibit_broadcast_id =
+        g_idle_add(mdy_blanking_inhibit_broadcast_cb, 0);
+
+EXIT:
+    return;
+}
+
+/** Cancel pending delayed blanking inhibit signaling
+ */
+static void mdy_blanking_inhibit_cancel_broadcast(void)
+{
+    if( !mdy_blanking_inhibit_broadcast_id )
+        goto EXIT;
+
+    g_source_remove(mdy_blanking_inhibit_broadcast_id),
+        mdy_blanking_inhibit_broadcast_id = 0;
+
+EXIT:
     return;
 }
 
@@ -3298,6 +3370,8 @@ static gboolean mdy_blanking_off_cb(gpointer data)
     mce_log(LL_DEBUG, "BLANK timer triggered");
 
     mdy_blanking_off_cb_id = 0;
+
+    mdy_blanking_inhibit_schedule_broadcast();
 
     /* Default to: display off */
     display_state_t next_state = MCE_DISPLAY_OFF;
@@ -3335,6 +3409,8 @@ static void mdy_blanking_cancel_off(void)
         mce_log(LL_DEBUG, "BLANK timer cancelled");
         g_source_remove(mdy_blanking_off_cb_id);
         mdy_blanking_off_cb_id = 0;
+
+        mdy_blanking_inhibit_schedule_broadcast();
 
         /* unlock on cancellation */
         wakelock_unlock("mce_lpm_off");
@@ -3384,6 +3460,8 @@ static void mdy_blanking_schedule_off(void)
                                                mdy_blanking_off_cb, 0);
     else
         mdy_blanking_off_cb_id = g_idle_add(mdy_blanking_off_cb, 0);
+
+    mdy_blanking_inhibit_schedule_broadcast();
 
     return;
 }
@@ -6834,6 +6912,94 @@ static gboolean mdy_dbus_handle_blanking_pause_get_req(DBusMessage *const msg)
     return TRUE;
 }
 
+/** Send a blanking inhibit status reply or signal
+ *
+ * @param method_call A DBusMessage to reply to; or NULL to send signal
+ *
+ * @return TRUE
+ */
+static gboolean mdy_dbus_send_blanking_inhibit_status(DBusMessage *const method_call)
+{
+    static int   prev = -1;
+    bool         curr = false;
+
+    /* In display on/dim state we should have either dimming or
+     * blanking timer active. If that is not the case, some form of
+     * blanking inhibit is active. This should catch things like
+     * stay-on inhibit modes, update mode, never-blank mode, etc
+     */
+    if( display_state == MCE_DISPLAY_ON ||
+        display_state == MCE_DISPLAY_DIM ) {
+            curr = !(mdy_blanking_off_cb_id || mdy_blanking_dim_cb_id);
+
+    }
+
+    /* The stay-dim inhibit modes do not prevent dimming, so those need
+     * to be taken into account separately.
+     */
+    if( display_state == MCE_DISPLAY_ON && mdy_blanking_dim_cb_id ) {
+        switch( mdy_blanking_inhibit_mode ) {
+        case INHIBIT_STAY_DIM:
+            curr = true;
+            break;
+        case INHIBIT_STAY_DIM_WITH_CHARGER:
+            if( charger_state == CHARGER_STATE_ON )
+                curr = true;
+            break;
+        default:
+            break;
+        }
+    }
+
+    DBusMessage *msg  = 0;
+    const char  *data = (curr ?
+                         MCE_INHIBIT_BLANK_ACTIVE_STRING :
+                         MCE_INHIBIT_BLANK_INACTIVE_STRING);
+
+    if( method_call ) {
+        msg = dbus_new_method_reply(method_call);
+        mce_log(LL_DEBUG, "Sending blanking inhibit reply: %s", data);
+    }
+    else {
+        if( prev == curr )
+            goto EXIT;
+
+        prev = curr;
+        msg = dbus_new_signal(MCE_SIGNAL_PATH, MCE_SIGNAL_IF,
+                              MCE_BLANKING_INHIBIT_SIG);
+        mce_log(LL_DEVEL, "Sending blanking inhibit signal: %s", data);
+    }
+
+    if( !dbus_message_append_args(msg,
+                                  DBUS_TYPE_STRING, &data,
+                                  DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    dbus_send_message(msg), msg = 0;
+
+EXIT:
+    if( msg )
+        dbus_message_unref(msg);
+
+    return TRUE;
+}
+
+/** D-Bus callback for the get blanking inhibit status method call
+ *
+ * @param msg The D-Bus message
+ *
+ * @return TRUE
+ */
+static gboolean mdy_dbus_handle_blanking_inhibit_get_req(DBusMessage *const msg)
+{
+    mce_log(LL_DEVEL, "Received blanking inhibit status get request from %s",
+            mce_dbus_get_message_sender_ident(msg));
+
+    mdy_dbus_send_blanking_inhibit_status(msg);
+
+    return TRUE;
+}
+
 /** Latest display state indication that was broadcast over D-Bus */
 static const gchar *mdy_dbus_last_display_state = "";
 
@@ -7629,6 +7795,13 @@ static mce_dbus_handler_t mdy_dbus_handlers[] =
     },
     {
         .interface = MCE_SIGNAL_IF,
+        .name      = MCE_BLANKING_INHIBIT_SIG,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .args      =
+            "    <arg name=\"blanking_inhibit\" type=\"s\"/>\n"
+    },
+    {
+        .interface = MCE_SIGNAL_IF,
         .name      = MCE_DISPLAY_SIG,
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
         .args      =
@@ -7675,6 +7848,14 @@ static mce_dbus_handler_t mdy_dbus_handlers[] =
         .callback  = mdy_dbus_handle_blanking_pause_get_req,
         .args      =
             "    <arg direction=\"out\" name=\"blanking_pause\" type=\"s\"/>\n"
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_BLANKING_INHIBIT_GET,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = mdy_dbus_handle_blanking_inhibit_get_req,
+        .args      =
+            "    <arg direction=\"out\" name=\"blanking_inhibit\" type=\"s\"/>\n"
     },
     {
         .interface = MCE_REQUEST_IF,
@@ -8712,8 +8893,9 @@ const gchar *g_module_check_init(GModule *module)
     /* Evaluate initial orientation sensor enable state */
     mdy_orientation_sensor_rethink();
 
-    /* Send initial blanking pause state */
+    /* Send initial blanking pause & inhibit states */
     mdy_dbus_send_blanking_pause_status(0);
+    mdy_dbus_send_blanking_inhibit_status(0);
 
     return failure;
 }
@@ -8791,6 +8973,7 @@ void g_module_unload(GModule *module)
     mdy_blanking_cancel_off();
     mdy_compositor_cancel_killer();
     mdy_callstate_clear_changed();
+    mdy_blanking_inhibit_cancel_broadcast();
 
     /* Cancel active asynchronous dbus method calls to avoid
      * callback functions with stale adresses getting invoked */
