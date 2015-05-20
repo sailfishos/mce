@@ -636,6 +636,9 @@ static void                mdy_governor_conf_cb(GConfClient *const client, const
  * DBUS_HANDLERS
  * ------------------------------------------------------------------------- */
 
+static gboolean            mdy_dbus_send_blanking_pause_status(DBusMessage *const method_call);
+static gboolean            mdy_dbus_handle_blanking_pause_get_req(DBusMessage *const msg);
+
 static void                mdy_dbus_invalidate_display_status(void);
 static gboolean            mdy_dbus_send_display_status(DBusMessage *const method_call);
 static const char         *mdy_dbus_get_reason_to_block_display_on(void);
@@ -3461,6 +3464,8 @@ static gboolean mdy_blanking_pause_period_cb(gpointer data)
         mce_log(LL_DEVEL, "BLANKING PAUSE timeout");
         mdy_blanking_pause_period_cb_id = 0;
         mdy_blanking_remove_pause_clients();
+
+        mdy_dbus_send_blanking_pause_status(0);
     }
 
     return FALSE;
@@ -3475,6 +3480,8 @@ static void mdy_blanking_stop_pause_period(void)
         mce_log(LL_DEVEL, "BLANKING PAUSE cancelled");
         g_source_remove(mdy_blanking_pause_period_cb_id),
             mdy_blanking_pause_period_cb_id = 0;
+
+        mdy_dbus_send_blanking_pause_status(0);
     }
 }
 
@@ -3494,6 +3501,8 @@ static void mdy_blanking_start_pause_period(void)
 
     mce_log(LL_DEBUG, "BLANKING PAUSE started; period = %d",
             mdy_blank_prevent_timeout);
+
+    mdy_dbus_send_blanking_pause_status(0);
 }
 
 /** List of monitored blanking pause clients */
@@ -6766,6 +6775,65 @@ static void mdy_governor_conf_cb(GConfClient *const client, const guint id,
  * DBUS_HANDLERS
  * ========================================================================= */
 
+/** Send a blanking pause status reply or signal
+ *
+ * @param method_call A DBusMessage to reply to; or NULL to send signal
+ *
+ * @return TRUE
+ */
+static gboolean mdy_dbus_send_blanking_pause_status(DBusMessage *const method_call)
+{
+    static int   prev = -1;
+    bool         curr = mdy_blanking_is_paused();
+    const char  *data = (curr ?
+                         MCE_PREVENT_BLANK_ACTIVE_STRING :
+                         MCE_PREVENT_BLANK_INACTIVE_STRING);
+    DBusMessage *msg  = 0;
+
+    if( method_call ) {
+        msg = dbus_new_method_reply(method_call);
+        mce_log(LL_DEBUG, "Sending blanking pause reply: %s", data);
+    }
+    else {
+        if( prev == curr )
+            goto EXIT;
+
+        prev = curr;
+        msg = dbus_new_signal(MCE_SIGNAL_PATH, MCE_SIGNAL_IF,
+                              MCE_PREVENT_BLANK_SIG);
+        mce_log(LL_DEVEL, "Sending blanking pause signal: %s", data);
+    }
+
+    if( !dbus_message_append_args(msg,
+                                  DBUS_TYPE_STRING, &data,
+                                  DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    dbus_send_message(msg), msg = 0;
+
+EXIT:
+    if( msg )
+        dbus_message_unref(msg);
+
+    return TRUE;
+}
+
+/** D-Bus callback for the get blanking pause status method call
+ *
+ * @param msg The D-Bus message
+ *
+ * @return TRUE
+ */
+static gboolean mdy_dbus_handle_blanking_pause_get_req(DBusMessage *const msg)
+{
+    mce_log(LL_DEVEL, "Received blanking pause status get request from %s",
+            mce_dbus_get_message_sender_ident(msg));
+
+    mdy_dbus_send_blanking_pause_status(msg);
+
+    return TRUE;
+}
+
 /** Latest display state indication that was broadcast over D-Bus */
 static const gchar *mdy_dbus_last_display_state = "";
 
@@ -7554,6 +7622,13 @@ static mce_dbus_handler_t mdy_dbus_handlers[] =
     /* signals - outbound (for Introspect purposes only) */
     {
         .interface = MCE_SIGNAL_IF,
+        .name      = MCE_PREVENT_BLANK_SIG,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .args      =
+            "    <arg name=\"blanking_pause\" type=\"s\"/>\n"
+    },
+    {
+        .interface = MCE_SIGNAL_IF,
         .name      = MCE_DISPLAY_SIG,
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
         .args      =
@@ -7593,6 +7668,14 @@ static mce_dbus_handler_t mdy_dbus_handlers[] =
         .callback  = mdy_dbus_handle_battery_empty_shutdown_started_sig,
     },
     /* method calls */
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_PREVENT_BLANK_GET,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = mdy_dbus_handle_blanking_pause_get_req,
+        .args      =
+            "    <arg direction=\"out\" name=\"blanking_pause\" type=\"s\"/>\n"
+    },
     {
         .interface = MCE_REQUEST_IF,
         .name      = MCE_DISPLAY_STATUS_GET,
@@ -8628,6 +8711,9 @@ const gchar *g_module_check_init(GModule *module)
 
     /* Evaluate initial orientation sensor enable state */
     mdy_orientation_sensor_rethink();
+
+    /* Send initial blanking pause state */
+    mdy_dbus_send_blanking_pause_status(0);
 
     return failure;
 }
