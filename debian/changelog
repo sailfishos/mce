@@ -1,3 +1,10 @@
+mce (1.51.0) unstable; urgency=low
+
+  * [mce] Expose active blanking pause on D-Bus. Contributes to JB#28929
+  * [mce] Expose active blanking inhibit on D-Bus. Fixes JB#28929
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 20 May 2015 12:58:58 +0300
+
 mce (1.50.0) unstable; urgency=low
 
   * [mce] Implement iphb based timers for use from within mce. Contributes
