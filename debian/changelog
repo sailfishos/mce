@@ -1,3 +1,9 @@
+mce (1.51.1) unstable; urgency=low
+
+  * [mce] allow policy for blanking states. Contributes to JB#28929
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 21 May 2015 11:46:10 +0300
+
 mce (1.51.0) unstable; urgency=low
 
   * [mce] Expose active blanking pause on D-Bus. Contributes to JB#28929
