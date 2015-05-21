@@ -33,6 +33,9 @@
 # include "libwakelock.h"
 #endif
 
+#include <sys/types.h>
+#include <sys/socket.h>
+
 #include <stdlib.h>
 #include <stdint.h>
 #include <inttypes.h>
@@ -703,6 +706,9 @@ mht_iphb_wakeup_cb(GIOChannel *chn, GIOCondition cnd, gpointer data)
 
     gboolean keep_going = FALSE;
 
+    if( !mht_iphb_wakeup_watch_id )
+        goto cleanup_nak;
+
     int fd = g_io_channel_unix_get_fd(chn);
 
     if( fd < 0 )
@@ -711,9 +717,12 @@ mht_iphb_wakeup_cb(GIOChannel *chn, GIOCondition cnd, gpointer data)
     if( cnd & ~G_IO_IN )
         goto cleanup_nak;
 
+    if( !(cnd & G_IO_IN) )
+        goto cleanup_ack;
+
     char buf[256];
 
-    int rc = read(fd, buf, sizeof buf);
+    int rc = recv(fd, buf, sizeof buf, MSG_DONTWAIT);
 
     if( rc == 0 ) {
         if( !shutting_down )
@@ -722,7 +731,7 @@ mht_iphb_wakeup_cb(GIOChannel *chn, GIOCondition cnd, gpointer data)
     }
 
     if( rc == -1 ) {
-        if( errno == EINTR || errno == EAGAIN )
+        if( errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK )
             goto cleanup_ack;
 
         mce_log(LL_ERR, "read error: %m");
