@@ -265,6 +265,13 @@ static void     tklock_sysfs_probe(void);
 
 // dbus ipc with systemui
 
+static void     tklock_ui_notify_rethink_wakelock(void);
+static bool     tklock_ui_notify_must_be_delayed(void);
+static gboolean tklock_ui_notify_end_cb(gpointer data);
+static gboolean tklock_ui_notify_beg_cb(gpointer data);
+static void     tklock_ui_notify_schdule(void);
+static void     tklock_ui_notify_cancel(void);
+
 static void     tklock_ui_eat_event(void);
 static void     tklock_ui_open(void);
 static void     tklock_ui_close(void);
@@ -746,6 +753,9 @@ static void tklock_datapipe_display_state_cb(gconstpointer data)
     tklock_proxlock_rethink();
 
     tklock_evctrl_rethink();
+
+    tklock_ui_notify_schdule();
+
 EXIT:
     return;
 }
@@ -785,6 +795,8 @@ static void tklock_datapipe_display_state_next_cb(gconstpointer data)
     tklock_proxlock_rethink();
 
     tklock_lpmui_pre_transition_actions();
+
+    tklock_ui_notify_schdule();
 
 EXIT:
     return;
@@ -4234,6 +4246,33 @@ EXIT:
     return;
 }
 
+static bool tklock_ui_notify_must_be_delayed(void)
+{
+    bool delay = false;
+
+    /* We do not want to send tklock changes during display power
+     * off sequence as those might trigger lockscreen related
+     * animations at UI side */
+
+    if( display_state == MCE_DISPLAY_POWER_DOWN ) {
+        /* Powering down the display for any reason */
+        delay = true;
+    }
+    else if( display_state != display_state_next ) {
+        switch( display_state_next ) {
+        case MCE_DISPLAY_OFF:
+        case MCE_DISPLAY_LPM_OFF:
+            /* Making transition to a blanked display state */
+            delay = true;
+            break;
+        default:
+            break;
+        }
+    }
+
+    return delay;
+}
+
 static gboolean tklock_ui_notify_end_cb(gpointer data)
 {
     (void) data;
@@ -4258,6 +4297,9 @@ static gboolean tklock_ui_notify_beg_cb(gpointer data)
         goto EXIT;
 
     tklock_ui_notify_beg_id = 0;
+
+    if( tklock_ui_notify_must_be_delayed() )
+        goto EXIT;
 
     bool current = tklock_datapipe_have_tklock_submode();
 
@@ -4312,10 +4354,15 @@ static void tklock_ui_notify_schdule(void)
         g_source_remove(tklock_ui_notify_end_id),
             tklock_ui_notify_end_id = 0;
     }
+
+    if( tklock_ui_notify_must_be_delayed() )
+        goto EXIT;
+
     if( !tklock_ui_notify_beg_id ) {
         tklock_ui_notify_beg_id = g_idle_add(tklock_ui_notify_beg_cb, 0);
     }
 
+EXIT:
     tklock_ui_notify_rethink_wakelock();
 }
 
