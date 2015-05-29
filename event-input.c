@@ -3141,22 +3141,14 @@ evin_ts_grab_display_state_cb(gconstpointer data)
 
     switch( display_state ) {
     case MCE_DISPLAY_POWER_DOWN:
-        /* NOP */
-        break;
-
     case MCE_DISPLAY_OFF:
-        /* When display and touch are powered off the
-         * touch should get explicitly terminated by
-         * the kernel side. To keep the state machine
-         * sane in case that does not happen, fake a
-         * touch release anyway.
-         *
-         * Note: Display state machine keeps the device
-         * wakelocked for a second after reaching display
-         * off state -> short delays here work without
-         * explicit wakelocking. */
-        evin_ts_grab_state.ig_release_ms = TS_RELEASE_DELAY_BLANK;
-        evin_input_grab_set_touching(&evin_ts_grab_state, false);
+    case MCE_DISPLAY_LPM_ON:
+    case MCE_DISPLAY_LPM_OFF:
+        /* Assume UI can deal with losing touch input mid gesture
+         * and grab touch input already when we just start to power
+         * down the display. */
+        evin_input_grab_reset(&evin_ts_grab_state);
+        evin_input_grab_rethink(&evin_ts_grab_state);
         break;
 
     case MCE_DISPLAY_POWER_UP:
@@ -3180,9 +3172,7 @@ evin_ts_grab_display_state_cb(gconstpointer data)
         break;
 
     default:
-    case MCE_DISPLAY_LPM_ON:
     case MCE_DISPLAY_UNDEF:
-    case MCE_DISPLAY_LPM_OFF:
         break;
     }
 
