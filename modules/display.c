@@ -241,7 +241,10 @@ enum
     LED_DELAY_FB_SUSPEND_RESUME = 1000,
 
     /** How long to wait dbus method call reply from lipstick */
-    LED_DELAY_UI_DISABLE_ENABLE = 1500,
+    LED_DELAY_UI_DISABLE_ENABLE_MINIMUM = 3000,
+
+    /** How long to initially wait dbus method call reply from lipstick */
+    LED_DELAY_UI_DISABLE_ENABLE_MAXIMUM = 15000,
 };
 
 /* ========================================================================= *
@@ -4806,7 +4809,7 @@ static void mdy_compositor_schedule_panic_led(renderer_state_t req)
     /* During bootup it is more or less expected that compositor is
      * unable to answer immediately. So we initially allow longer
      * delay and bring it down gradually to target level. */
-    static int delay = LED_DELAY_UI_DISABLE_ENABLE * 10;
+    static int delay = LED_DELAY_UI_DISABLE_ENABLE_MAXIMUM;
 
     mdy_compositor_set_panic_led(RENDERER_UNKNOWN);
 
@@ -4820,8 +4823,8 @@ static void mdy_compositor_schedule_panic_led(renderer_state_t req)
     mce_log(LL_DEBUG, "compositor panic led timer sheduled @ %d ms", delay);
 
     delay = delay * 3 / 4;
-    if( delay < LED_DELAY_UI_DISABLE_ENABLE )
-        delay = LED_DELAY_UI_DISABLE_ENABLE;
+    if( delay < LED_DELAY_UI_DISABLE_ENABLE_MINIMUM )
+        delay = LED_DELAY_UI_DISABLE_ENABLE_MINIMUM;
 }
 
 /** Timer for verifying that compositor has exited after kill signal
