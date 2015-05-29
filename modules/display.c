@@ -241,7 +241,10 @@ enum
     LED_DELAY_FB_SUSPEND_RESUME = 1000,
 
     /** How long to wait dbus method call reply from lipstick */
-    LED_DELAY_UI_DISABLE_ENABLE = 1500,
+    LED_DELAY_UI_DISABLE_ENABLE_MINIMUM = 3000,
+
+    /** How long to initially wait dbus method call reply from lipstick */
+    LED_DELAY_UI_DISABLE_ENABLE_MAXIMUM = 15000,
 };
 
 /* ========================================================================= *
@@ -1334,6 +1337,8 @@ static void mdy_datapipe_display_state_next_cb(gconstpointer data)
     mdy_orientation_sensor_rethink();
 
     mdy_blanking_rethink_afterboot_delay();
+
+    mdy_dbus_send_display_status(0);
 
 EXIT:
     return;
@@ -4804,7 +4809,7 @@ static void mdy_compositor_schedule_panic_led(renderer_state_t req)
     /* During bootup it is more or less expected that compositor is
      * unable to answer immediately. So we initially allow longer
      * delay and bring it down gradually to target level. */
-    static int delay = LED_DELAY_UI_DISABLE_ENABLE * 10;
+    static int delay = LED_DELAY_UI_DISABLE_ENABLE_MAXIMUM;
 
     mdy_compositor_set_panic_led(RENDERER_UNKNOWN);
 
@@ -4818,8 +4823,8 @@ static void mdy_compositor_schedule_panic_led(renderer_state_t req)
     mce_log(LL_DEBUG, "compositor panic led timer sheduled @ %d ms", delay);
 
     delay = delay * 3 / 4;
-    if( delay < LED_DELAY_UI_DISABLE_ENABLE )
-        delay = LED_DELAY_UI_DISABLE_ENABLE;
+    if( delay < LED_DELAY_UI_DISABLE_ENABLE_MINIMUM )
+        delay = LED_DELAY_UI_DISABLE_ENABLE_MINIMUM;
 }
 
 /** Timer for verifying that compositor has exited after kill signal
@@ -7023,31 +7028,9 @@ static gboolean mdy_dbus_send_display_status(DBusMessage *const method_call)
     DBusMessage *msg    = NULL;
     const gchar *state  = MCE_DISPLAY_OFF_STRING;
 
-    switch( display_state ) {
-    case MCE_DISPLAY_POWER_DOWN:
-    case MCE_DISPLAY_POWER_UP:
-        /* Display state indication signals are not sent on transitional
-         * power up/down states.
-         *
-         * For display power up it is as wanted - the display on/dim
-         * indication is sent once power up has been completed.
-         *
-         * For display power down we'd like to send the display off
-         * indication when power down starts, but looks like something
-         * in the UI does not survive getting display off signal before
-         * setUpdatesEnabled(false) method call... send it too afterwards
-         *
-         * Method call queries return "off" in both cases
-         */
-        if( !method_call )
-            goto EXIT;
-        break;
-
+    /* Evaluate display state name to send */
+    switch( display_state_next ) {
     default:
-    case MCE_DISPLAY_UNDEF:
-    case MCE_DISPLAY_OFF:
-    case MCE_DISPLAY_LPM_OFF:
-    case MCE_DISPLAY_LPM_ON:
         break;
 
     case MCE_DISPLAY_DIM:
@@ -7060,6 +7043,24 @@ static gboolean mdy_dbus_send_display_status(DBusMessage *const method_call)
     }
 
     if( !method_call ) {
+        /* Signal fully powered on states when the transition has
+         * finished, other states when transition starts.
+         *
+         * The intent is that ui sees display state change to off
+         * before setUpdatesEnabled(false) ipc is made and it stays
+         * off until reply to setUpdatesEnabled(true) is received.
+         */
+        switch( display_state_next ) {
+        case MCE_DISPLAY_ON:
+        case MCE_DISPLAY_DIM:
+            if( display_state != display_state_next )
+                goto EXIT;
+            break;
+
+        default:
+            break;
+        }
+
         if( !strcmp(mdy_dbus_last_display_state, state))
             goto EXIT;
         mdy_dbus_last_display_state = state;

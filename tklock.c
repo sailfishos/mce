@@ -265,6 +265,14 @@ static void     tklock_sysfs_probe(void);
 
 // dbus ipc with systemui
 
+static void     tklock_ui_send_tklock_signal(void);
+static void     tklock_ui_notify_rethink_wakelock(void);
+static bool     tklock_ui_notify_must_be_delayed(void);
+static gboolean tklock_ui_notify_end_cb(gpointer data);
+static gboolean tklock_ui_notify_beg_cb(gpointer data);
+static void     tklock_ui_notify_schdule(void);
+static void     tklock_ui_notify_cancel(void);
+
 static void     tklock_ui_eat_event(void);
 static void     tklock_ui_open(void);
 static void     tklock_ui_close(void);
@@ -273,7 +281,7 @@ static void     tklock_ui_set(bool enable);
 static void     tklock_ui_get_device_lock_cb(DBusPendingCall *pc, void *aptr);
 static void     tklock_ui_get_device_lock(void);
 
-static void     tklock_ui_send_lpm_signal(bool enabled);
+static void     tklock_ui_send_lpm_signal(void);
 static void     tklock_ui_enable_lpm(void);
 static void     tklock_ui_disable_lpm(void);
 
@@ -746,6 +754,9 @@ static void tklock_datapipe_display_state_cb(gconstpointer data)
     tklock_proxlock_rethink();
 
     tklock_evctrl_rethink();
+
+    tklock_ui_notify_schdule();
+
 EXIT:
     return;
 }
@@ -785,6 +796,8 @@ static void tklock_datapipe_display_state_next_cb(gconstpointer data)
     tklock_proxlock_rethink();
 
     tklock_lpmui_pre_transition_actions();
+
+    tklock_ui_notify_schdule();
 
 EXIT:
     return;
@@ -2959,6 +2972,12 @@ enum
     LPMUI_LIM_CHANGE = 1500,
 };
 
+/** The latest lpm ui state that was broadcast; initialized to invalid value */
+static int tklock_lpmui_state_signaled = -1;
+
+/** The currently wanted lpm ui state; initialized to invalid value */
+static int tklock_lpmui_state_wanted   = -1;
+
 /** Set lpm ui state
  *
  * Broadcast changes over D-Bus
@@ -2967,44 +2986,31 @@ enum
  */
 static void tklock_lpmui_set_state(bool enable)
 {
-    /* Initialize cached state to a value that will not match true/false
-     * input to ensure that a notification is always sent on mce startup.
-     */
-    static int enabled = -1;
-
-    if( !enable ) {
-        // nop
-    }
-    else if( enable && system_state != MCE_STATE_USER ) {
-        mce_log(LL_DEBUG, "deny lpm; not in user mode");
-        enable = false;
-    }
-    else if( lipstick_available != SERVICE_STATE_RUNNING ) {
-        mce_log(LL_DEBUG, "deny lpm; lipstick not running");
-        enable = false;
-    }
-
-    if( enabled == enable )
+    if( tklock_lpmui_state_wanted == enable )
         goto EXIT;
 
-    enabled = enable;
+    tklock_lpmui_state_wanted = enable;
 
-    if( enabled ) {
-        /* make sure ui is locked before we enter LPM display modes */
+    if( enable ) {
+        /* The LPM lockscreen is activated when both tklock and
+         * lpm state are set. To avoid going through normal
+         * lockscreen state, send lpm indication 1st */
+        tklock_ui_send_lpm_signal();
+
+        /* Make sure ui locking is initiated before we enter LPM
+         * display modes, the dbus signaling happens after some
+         * delay.
+         */
         execute_datapipe(&tk_lock_pipe,
                          GINT_TO_POINTER(LOCK_ON),
                          USE_INDATA, CACHE_INDATA);
-
-        /* Tell lipstick that we are in lpm mode */
-        tklock_ui_enable_lpm();
     }
     else {
-        /* Tell lipstick that we are out of lpm mode */
-        tklock_ui_disable_lpm();
+        /* Do delayed signaling in sync with possible tklock
+         * state changes. */
+        tklock_ui_notify_schdule();
     }
 
-    /* Broadcast a signal too */
-    tklock_ui_send_lpm_signal(enabled);
 EXIT:
     return;
 }
@@ -4212,6 +4218,30 @@ static void tklock_ui_close(void)
 static guint tklock_ui_notify_end_id = 0;
 static guint tklock_ui_notify_beg_id = 0;
 
+static void tklock_ui_send_tklock_signal(void)
+{
+    bool current = tklock_datapipe_have_tklock_submode();
+
+    if( tklock_ui_notified == current )
+        goto EXIT;
+
+    tklock_ui_notified = current;
+
+    /* do lipstick specific ipc */
+    if( lipstick_available == SERVICE_STATE_RUNNING ) {
+        if( current )
+            tklock_ui_open();
+        else
+            tklock_ui_close();
+    }
+
+    /* broadcast signal */
+    tklock_dbus_send_tklock_mode(0);
+
+EXIT:
+    return;
+}
+
 static void tklock_ui_notify_rethink_wakelock(void)
 {
     static bool have_lock = false;
@@ -4232,6 +4262,33 @@ static void tklock_ui_notify_rethink_wakelock(void)
 
 EXIT:
     return;
+}
+
+static bool tklock_ui_notify_must_be_delayed(void)
+{
+    bool delay = false;
+
+    /* We do not want to send tklock changes during display power
+     * off sequence as those might trigger lockscreen related
+     * animations at UI side */
+
+    if( display_state == MCE_DISPLAY_POWER_DOWN ) {
+        /* Powering down the display for any reason */
+        delay = true;
+    }
+    else if( display_state != display_state_next ) {
+        switch( display_state_next ) {
+        case MCE_DISPLAY_OFF:
+        case MCE_DISPLAY_LPM_OFF:
+            /* Making transition to a blanked display state */
+            delay = true;
+            break;
+        default:
+            break;
+        }
+    }
+
+    return delay;
 }
 
 static gboolean tklock_ui_notify_end_cb(gpointer data)
@@ -4259,23 +4316,14 @@ static gboolean tklock_ui_notify_beg_cb(gpointer data)
 
     tklock_ui_notify_beg_id = 0;
 
-    bool current = tklock_datapipe_have_tklock_submode();
-
-    if( tklock_ui_notified == current )
+    if( tklock_ui_notify_must_be_delayed() )
         goto EXIT;
 
-    tklock_ui_notified = current;
+    /* Broadcast tklock state 1st */
+    tklock_ui_send_tklock_signal();
 
-    /* do lipstick specific ipc */
-    if( lipstick_available == SERVICE_STATE_RUNNING ) {
-        if( current )
-            tklock_ui_open();
-        else
-            tklock_ui_close();
-    }
-
-    /* broadcast signal */
-    tklock_dbus_send_tklock_mode(0);
+    /* Deal with possibly ending lpm state */
+    tklock_ui_send_lpm_signal();
 
     /* give ui a chance to see the signal */
     if( tklock_ui_notify_end_id )
@@ -4312,10 +4360,15 @@ static void tklock_ui_notify_schdule(void)
         g_source_remove(tklock_ui_notify_end_id),
             tklock_ui_notify_end_id = 0;
     }
+
+    if( tklock_ui_notify_must_be_delayed() )
+        goto EXIT;
+
     if( !tklock_ui_notify_beg_id ) {
         tklock_ui_notify_beg_id = g_idle_add(tklock_ui_notify_beg_cb, 0);
     }
 
+EXIT:
     tklock_ui_notify_rethink_wakelock();
 }
 
@@ -4414,16 +4467,33 @@ static void tklock_ui_get_device_lock(void)
 }
 
 /** Broadcast LPM UI state over D-Bus
- *
- * @param enabled
  */
-static void tklock_ui_send_lpm_signal(bool enabled)
+static void tklock_ui_send_lpm_signal(void)
 {
+    if( tklock_lpmui_state_signaled == tklock_lpmui_state_wanted )
+        goto EXIT;
+
+    tklock_lpmui_state_signaled = tklock_lpmui_state_wanted;
+
+    bool enabled = (tklock_lpmui_state_wanted > 0);
+
+    /* Do lipstick specific ipc 1st */
+    if( lipstick_available == SERVICE_STATE_RUNNING ) {
+        if( enabled )
+            tklock_ui_enable_lpm();
+        else
+            tklock_ui_disable_lpm();
+    }
+
+    /* then send the signal */
     const char *sig = MCE_LPM_UI_MODE_SIG;
     const char *arg = enabled ? "enabled" : "disabled";
     mce_log(LL_DEVEL, "sending dbus signal: %s %s", sig, arg);
     dbus_send(0, MCE_SIGNAL_PATH, MCE_SIGNAL_IF,  sig, 0,
               DBUS_TYPE_STRING, &arg, DBUS_TYPE_INVALID);
+
+EXIT:
+    return;
 }
 
 /** Tell lipstick that lpm ui mode is enabled
@@ -5458,6 +5528,9 @@ gboolean mce_tklock_init(void)
 
     /* set up dbus message handlers */
     mce_tklock_init_dbus();
+
+    /* Make sure lpm state gets initialized & broadcast */
+    tklock_lpmui_set_state(false);
 
     status = TRUE;
 
