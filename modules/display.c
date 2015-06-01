@@ -456,6 +456,8 @@ static void                mdy_blanking_start_adaptive_dimming(void);
 static void                mdy_blanking_stop_adaptive_dimming(void);
 
 // display timer: all of em
+static bool                mdy_blanking_inhibit_off_p(void);
+static bool                mdy_blanking_inhibit_dim_p(void);
 static void                mdy_blanking_rethink_timers(bool force);
 static void                mdy_blanking_rethink_proximity(void);
 static void                mdy_blanking_cancel_timers(void);
@@ -3775,6 +3777,74 @@ EXIT:
 
 // AUTOMATIC BLANKING STATE MACHINE
 
+/** Check if blanking inhibit mode denies turning display off
+ *
+ * @return true if automatic blanking should not happen, false otherwise
+ */
+static bool mdy_blanking_inhibit_off_p(void)
+{
+    bool inhibit = false;
+
+    switch( system_state ) {
+    case MCE_STATE_ACTDEAD:
+        goto EXIT;
+
+    default:
+        break;
+    }
+
+    switch( mdy_blanking_inhibit_mode ) {
+    case INHIBIT_STAY_DIM:
+        inhibit = true;
+        break;
+
+    case INHIBIT_STAY_DIM_WITH_CHARGER:
+        if( charger_state == CHARGER_STATE_ON )
+            inhibit = true;
+        break;
+
+    default:
+        break;
+    }
+
+EXIT:
+    return inhibit;
+}
+
+/** Check if blanking inhibit mode denies dimming display
+ *
+ * @return true if automatic dimming should not happen, false otherwise
+ */
+static bool mdy_blanking_inhibit_dim_p(void)
+{
+    bool inhibit = false;
+
+    switch( system_state ) {
+    case MCE_STATE_ACTDEAD:
+        goto EXIT;
+
+    default:
+        break;
+    }
+
+    switch( mdy_blanking_inhibit_mode ) {
+    case INHIBIT_STAY_ON:
+        inhibit = true;
+        break;
+
+    case INHIBIT_STAY_ON_WITH_CHARGER:
+        if( charger_state == CHARGER_STATE_ON )
+            inhibit = true;
+        break;
+
+    default:
+        break;
+    }
+
+EXIT:
+    return inhibit;
+}
+
 /** Reprogram blanking timers
  */
 static void mdy_blanking_rethink_timers(bool force)
@@ -3884,10 +3954,7 @@ static void mdy_blanking_rethink_timers(bool force)
     case MCE_DISPLAY_DIM:
         if( mdy_update_mode )
             break;
-        if( mdy_blanking_inhibit_mode == INHIBIT_STAY_DIM )
-            break;
-        if( charger_state == CHARGER_STATE_ON &&
-            mdy_blanking_inhibit_mode == INHIBIT_STAY_DIM_WITH_CHARGER )
+        if( mdy_blanking_inhibit_off_p() )
             break;
         mdy_blanking_schedule_off();
         break;
@@ -3899,11 +3966,7 @@ static void mdy_blanking_rethink_timers(bool force)
             break;
         }
 
-        if( mdy_blanking_inhibit_mode == INHIBIT_STAY_ON )
-            break;
-
-        if( charger_state == CHARGER_STATE_ON &&
-            mdy_blanking_inhibit_mode == INHIBIT_STAY_ON_WITH_CHARGER )
+        if( mdy_blanking_inhibit_dim_p() )
             break;
 
         if( exception_state & UIEXC_CALL ) {
@@ -6935,25 +6998,16 @@ static gboolean mdy_dbus_send_blanking_inhibit_status(DBusMessage *const method_
      */
     if( display_state == MCE_DISPLAY_ON ||
         display_state == MCE_DISPLAY_DIM ) {
-            curr = !(mdy_blanking_off_cb_id || mdy_blanking_dim_cb_id);
-
+        if( !mdy_blanking_off_cb_id && !mdy_blanking_dim_cb_id )
+            curr = true;
     }
 
     /* The stay-dim inhibit modes do not prevent dimming, so those need
      * to be taken into account separately.
      */
     if( display_state == MCE_DISPLAY_ON && mdy_blanking_dim_cb_id ) {
-        switch( mdy_blanking_inhibit_mode ) {
-        case INHIBIT_STAY_DIM:
+        if( mdy_blanking_inhibit_dim_p() )
             curr = true;
-            break;
-        case INHIBIT_STAY_DIM_WITH_CHARGER:
-            if( charger_state == CHARGER_STATE_ON )
-                curr = true;
-            break;
-        default:
-            break;
-        }
     }
 
     DBusMessage *msg  = 0;
