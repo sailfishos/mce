@@ -3403,11 +3403,6 @@ static void tklock_evctrl_rethink(void)
         break;
     }
 
-    /* tklock must be off */
-    if( submode & MCE_TKLOCK_SUBMODE ) {
-        enable_kp = false;
-    }
-
     /* If the cover is closed, don't bother */
 #if 0 /* TODO: Lid cover state is tracked, but volume keys should be
        *       disabled only if they are unlikely to be useful i.e.
