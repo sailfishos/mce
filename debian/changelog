@@ -1,3 +1,10 @@
+mce (1.51.4) unstable; urgency=low
+
+  * [mce] Ignore stay on/dim blanking inhibit modes in actdead state.
+    Fixes JB#28966
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 01 Jun 2015 14:52:23 +0300
+
 mce (1.51.3) unstable; urgency=low
 
   * [mce] Do not activate lockscreen during display power down. Contributes
