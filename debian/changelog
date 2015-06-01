@@ -1,3 +1,9 @@
+mce (1.51.5) unstable; urgency=low
+
+  * [mce] Allow volume keys to be used in the lock screen. Fixes JB#22688
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 01 Jun 2015 17:30:34 +0300
+
 mce (1.51.4) unstable; urgency=low
 
   * [mce] Ignore stay on/dim blanking inhibit modes in actdead state.
