@@ -1,3 +1,10 @@
+mce (1.51.6) unstable; urgency=low
+
+  * [mce] Ignore EV_REP event types when probing volume key devices.
+    Fixes JB#29282
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 02 Jun 2015 08:45:56 +0300
+
 mce (1.51.5) unstable; urgency=low
 
   * [mce] Allow volume keys to be used in the lock screen. Fixes JB#22688
