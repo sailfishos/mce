@@ -113,6 +113,15 @@ static const char *repr_state (sfsbat_state_t state);
 static const char *repr_bool  (bool val);
 
 /* ------------------------------------------------------------------------- *
+ * DATAPIPE_HANDLERS
+ * ------------------------------------------------------------------------- */
+
+static void     bsf_datapipe_shutting_down_cb(gconstpointer data);
+
+static void     bsf_datapipe_init(void);
+static void     bsf_datapipe_quit(void);
+
+/* ------------------------------------------------------------------------- *
  * INPUTSET  --  generic epoll set as glib io watch input listener
  * ------------------------------------------------------------------------- */
 
@@ -201,9 +210,9 @@ static const char *tracker_propdir(void);
 
 static void tracker_init        (tracker_t *self);
 static void tracker_quit        (tracker_t *self);
-static bool tracker_open        (tracker_t *self);
+static bool tracker_open        (tracker_t *self, bool *warned);
 static void tracker_close       (tracker_t *self);
-static bool tracker_start       (tracker_t *self);
+static bool tracker_start       (tracker_t *self, bool *warned);
 static bool tracker_read_data   (tracker_t *self, char *data, size_t size);
 static bool tracker_parse_int   (tracker_t *self, const char *data);
 static bool tracker_parse_bool  (tracker_t *self, const char *data);
@@ -375,6 +384,66 @@ static const char *
 repr_bool(bool val)
 {
     return val ? "true" : "false";
+}
+
+/* ========================================================================= *
+ * DATAPIPE_HANDLERS
+ * ========================================================================= */
+
+/** Device is shutting down; assume false */
+static bool shutting_down = false;
+
+/** Change notifications for shutting_down
+ */
+static void bsf_datapipe_shutting_down_cb(gconstpointer data)
+{
+    bool prev = shutting_down;
+    shutting_down = GPOINTER_TO_INT(data);
+
+    if( shutting_down == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "shutting_down = %d -> %d", prev, shutting_down);
+
+    /* Loss of statefs files is expected during shutdown */
+
+EXIT:
+    return;
+}
+
+/** Array of datapipe handlers */
+static datapipe_handler_t bsf_datapipe_handlers[] =
+{
+    // output triggers
+    {
+        .datapipe  = &shutting_down_pipe,
+        .output_cb = bsf_datapipe_shutting_down_cb,
+    },
+
+    // sentinel
+    {
+        .datapipe = 0,
+    }
+};
+
+static datapipe_bindings_t bsf_datapipe_bindings =
+{
+    .module   = "battery_statefs",
+    .handlers = bsf_datapipe_handlers,
+};
+
+/** Append triggers/filters to datapipes
+ */
+static void bsf_datapipe_init(void)
+{
+    datapipe_bindings_init(&bsf_datapipe_bindings);
+}
+
+/** Remove triggers/filters from datapipes
+ */
+static void bsf_datapipe_quit(void)
+{
+    datapipe_bindings_quit(&bsf_datapipe_bindings);
 }
 
 /* ========================================================================= *
@@ -933,12 +1002,13 @@ cleanup:
 
 /** Open statefs file
  *
- * @param self statefs input file tracking object
+ * @param self   statefs input file tracking object
+ * @param warned pointer to flag holding already-warned status
  *
  * @return true if file is open, false otherwise
  */
 static bool
-tracker_open(tracker_t *self)
+tracker_open(tracker_t *self, bool *warned)
 {
     bool success = false;
 
@@ -949,7 +1019,21 @@ tracker_open(tracker_t *self)
 
     self->fd = open(self->path, O_RDONLY | O_DIRECT);
     if( self->fd == -1 ) {
-        mce_log(LL_ERR, "%s: open: %m", self->path);
+        /* On shutdown it is expected that statefs files
+         * become unaccessible. And to reduce journal
+         * spamming on statefs restart, log only the
+         * first file in the set that we fail to open.
+         */
+
+        int level = LL_WARN;
+
+        if( shutting_down || *warned )
+            level = LL_DEBUG;
+        else
+            *warned = true;
+
+        mce_log(level, "%s: open: %m", self->path);
+
         goto cleanup_failure;
     }
 
@@ -1004,19 +1088,20 @@ tracker_quit(tracker_t *self)
 
 /** Start tracking statefs property file
  *
- * @param self statefs input file tracking object
+ * @param self   statefs input file tracking object
+ * @param warned pointer to flag holding already-warned status
  *
  * @return true if statefs file is open and tracked, false otherwise
  */
 static bool
-tracker_start(tracker_t *self)
+tracker_start(tracker_t *self, bool *warned)
 {
     bool success = false;
 
     if( self->fd != -1 )
         goto cleanup_success;
 
-    if( !tracker_open(self) )
+    if( !tracker_open(self, warned) )
         goto cleanup_failure;
 
     tracker_update(self);
@@ -1112,11 +1197,12 @@ static bool
 sfsctl_start_try(void)
 {
     bool success = true;
+    bool warned  = false;
 
     mce_log(LL_NOTICE, "probe statefs files");
 
     for( tracker_t *prop = sfsctl_props; prop->name; ++prop ) {
-        if( !tracker_start(prop) )
+        if( !tracker_start(prop, &warned) )
             success = false;
     }
 
@@ -1334,6 +1420,8 @@ const gchar *g_module_check_init(GModule *module)
 {
     (void)module;
 
+    bsf_datapipe_init();
+
     if( !battery_init() )
         mce_log(LL_WARN, MODULE_NAME" module initialization failed");
     else
@@ -1349,6 +1437,8 @@ const gchar *g_module_check_init(GModule *module)
 void g_module_unload(GModule *module)
 {
     (void)module;
+
+    bsf_datapipe_quit();
 
     battery_quit();
 }
