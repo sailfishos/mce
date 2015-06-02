@@ -183,6 +183,7 @@ static int               evin_evdevinfo_has_types               (const evin_evde
 static int               evin_evdevinfo_has_code                (const evin_evdevinfo_t *self, int type, int code);
 static int               evin_evdevinfo_has_codes               (const evin_evdevinfo_t *self, int type, const int *codes);
 
+static int               evin_evdevinfo_match_types_ex          (const evin_evdevinfo_t *self, const int *types_req, const int *types_ign);
 static int               evin_evdevinfo_match_types             (const evin_evdevinfo_t *self, const int *types);
 static int               evin_evdevinfo_match_codes             (const evin_evdevinfo_t *self, int type, const int *codes);
 
@@ -933,6 +934,9 @@ evin_evdevbits_test(const evin_evdevbits_t *self, int bit)
 static int
 evin_evdevinfo_list_has_entry(const int *list, int entry)
 {
+    if( !list )
+        return 0;
+
     for( int i = 0; list[i] != -1; ++i ) {
         if( list[i] == entry )
             return 1;
@@ -1045,6 +1049,30 @@ evin_evdevinfo_has_codes(const evin_evdevinfo_t *self, int type, const int *code
 
 /** Check if all of the listed types and only the listed types are supported
  *
+ * @param self      evin_evdevinfo_t object
+ * @param types_req array of required evdev event types, terminated with -1
+ * @param types_ign array event types to ignore, terminated with -1; or null
+ *
+ * @return 1 if all of types and only types are supported, 0 otherwise
+ */
+static int
+evin_evdevinfo_match_types_ex(const evin_evdevinfo_t *self,
+                              const int *types_req, const int *types_ign)
+{
+    for( int etype = 1; etype < EV_CNT; ++etype ) {
+        if( evin_evdevinfo_list_has_entry(types_ign, etype) )
+            continue;
+
+        int have = evin_evdevinfo_has_type(self, etype);
+        int want = evin_evdevinfo_list_has_entry(types_req, etype);
+        if( have != want )
+            return 0;
+    }
+    return 1;
+}
+
+/** Check if all of the listed types and only the listed types are supported
+ *
  * @param self  evin_evdevinfo_t object
  * @param types array of evdev event types, terminated with -1
  *
@@ -1053,13 +1081,7 @@ evin_evdevinfo_has_codes(const evin_evdevinfo_t *self, int type, const int *code
 static int
 evin_evdevinfo_match_types(const evin_evdevinfo_t *self, const int *types)
 {
-    for( int etype = 1; etype < EV_CNT; ++etype ) {
-        int have = evin_evdevinfo_has_type(self, etype);
-        int want = evin_evdevinfo_list_has_entry(types, etype);
-        if( have != want )
-            return 0;
-    }
-    return 1;
+    return evin_evdevinfo_match_types_ex(self, types, 0);
 }
 
 /** Check if all of the listed codes and only the listed codes are supported
@@ -1091,6 +1113,7 @@ evin_evdevinfo_match_codes(const evin_evdevinfo_t *self, int type, const int *co
 static bool
 evin_evdevinfo_is_volumekey_default(const evin_evdevinfo_t *self)
 {
+    /* Emits volume key events, and only volume key events */
     static const int wanted_types[] = {
         EV_KEY,
         -1
@@ -1102,7 +1125,13 @@ evin_evdevinfo_is_volumekey_default(const evin_evdevinfo_t *self)
         -1
     };
 
-    return (evin_evdevinfo_match_types(self, wanted_types) &&
+    /* Except we do not care if autorepeat controls are there or not */
+    static const int ignored_types[] = {
+        EV_REP,
+        -1
+    };
+
+    return (evin_evdevinfo_match_types_ex(self, wanted_types, ignored_types) &&
             evin_evdevinfo_match_codes(self, EV_KEY, wanted_key_codes));
 }
 
