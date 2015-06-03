@@ -6510,10 +6510,16 @@ static void mdy_stm_step(void)
     }
 }
 
+/** Simple re-entrancy counter for mdy_stm_exec() */
+static int mdy_stm_in_exec = 0;
+
 /** Execute state machine steps until wait state is hit
  */
 static void mdy_stm_exec(void)
 {
+    if( ++mdy_stm_in_exec != 1 )
+        goto EXIT;
+
     stm_state_t prev;
     mce_log(LL_INFO, "ENTER @ %s", mdy_stm_state_name(mdy_stm_dstate));
     do {
@@ -6521,6 +6527,9 @@ static void mdy_stm_exec(void)
         mdy_stm_step();
     } while( mdy_stm_dstate != prev );
     mce_log(LL_INFO, "LEAVE @ %s", mdy_stm_state_name(mdy_stm_dstate));
+
+EXIT:
+    --mdy_stm_in_exec;
 }
 
 /** Timer id for state machine execution */
@@ -6580,6 +6589,13 @@ static void mdy_stm_schedule_rethink(void)
  */
 static void mdy_stm_force_rethink(void)
 {
+    /* Datapipe actions from within mdy_stm_exec() can
+     * cause feedback in the form of additional display
+     * state requests. These are expected and ok as long
+     * as they do not cause re-entry to mdy_stm_exec(). */
+    if( mdy_stm_in_exec )
+        goto EXIT;
+
 #ifdef ENABLE_WAKELOCKS
     if( !mdy_stm_rethink_id )
         wakelock_lock("mce_display_stm", -1);
@@ -6594,6 +6610,9 @@ static void mdy_stm_force_rethink(void)
     if( !mdy_stm_rethink_id )
         wakelock_unlock("mce_display_stm");
 #endif
+
+EXIT:
+  return;
 }
 
 /* ========================================================================= *
