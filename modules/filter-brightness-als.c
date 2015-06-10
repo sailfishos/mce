@@ -661,7 +661,7 @@ static void inputflt_sampling_output(int lux)
 
 	run_datapipes();
 
-	execute_datapipe(&ambient_light_sensor_pipe,
+	execute_datapipe(&ambient_light_level_pipe,
 			 GINT_TO_POINTER(als_lux_latest),
 			 USE_INDATA, CACHE_INDATA);
 EXIT:
@@ -795,6 +795,10 @@ static void als_lux_changed(unsigned lux_)
 	}
 
 	inputflt_sampling_input(als_lux_cached);
+
+	execute_datapipe(&ambient_light_sensor_pipe,
+			 GINT_TO_POINTER(als_lux_cached),
+			 USE_INDATA, CACHE_INDATA);
 }
 
 /** Check if ALS sensor should be enabled or disabled
