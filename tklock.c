@@ -170,6 +170,7 @@ static void     tklock_datapipe_heartbeat_cb(gconstpointer data);
 static void     tklock_datapipe_keyboard_slide_input_cb(gconstpointer const data);
 static void     tklock_datapipe_keyboard_slide_output_cb(gconstpointer const data);
 static void     tklock_datapipe_keyboard_available_cb(gconstpointer const data);
+static void     tklock_datapipe_ambient_light_sensor_cb(gconstpointer data);
 static void     tklock_datapipe_lid_cover_sensor_cb(gconstpointer data);
 static void     tklock_datapipe_lid_cover_policy_cb(gconstpointer data);
 static void     tklock_datapipe_lens_cover_cb(gconstpointer data);
@@ -183,7 +184,7 @@ static void     tklock_datapipe_quit(void);
 
 // lid cover state machine
 
-static void tklock_lid_sensor_rethink(void);
+static void     tklock_lid_sensor_rethink(void);
 
 // autolock state machine
 
@@ -1677,6 +1678,28 @@ EXIT:
     return;
 }
 
+/** Raw ambient light sensor state; assume unknown */
+static int ambient_light_sensor_state = -1;
+
+/** Change notifications from ambient_light_sensor_pipe
+ */
+static void tklock_datapipe_ambient_light_sensor_cb(gconstpointer data)
+{
+    cover_state_t prev = ambient_light_sensor_state;
+    ambient_light_sensor_state = GPOINTER_TO_INT(data);
+
+    if( ambient_light_sensor_state == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "ambient_light_sensor_state = %d -> %d",
+            prev, ambient_light_sensor_state);
+
+    tklock_lid_sensor_rethink();
+
+EXIT:
+    return;
+}
+
 /** Lid cover sensor state; assume open
  *
  * When in covered state, it is assumed that it is not physically
@@ -1688,6 +1711,18 @@ EXIT:
  * sensor.
  */
 static cover_state_t lid_cover_sensor_state = COVER_OPEN;
+
+/** ALS lux limit for allowing lid close actions [lux] */
+static gint    lid_cover_close_als_limit = 1;
+
+/** How long to wait for ALS level drop after lid is closed [ms] */
+static gint    lid_cover_close_lo_als_delay = 1000;
+
+/** How long before closing lid ALS level drop is allowed [ms] */
+static gint    lid_cover_close_hi_als_delay = 2500;
+
+/** Timeout for waiting for ALS level drop [ms, CLOCK_BOOTTIME base] */
+static int64_t lid_cover_close_timeout = 0;
 
 /** Change notifications from lid_cover_sensor_pipe
  */
@@ -1705,6 +1740,12 @@ static void tklock_datapipe_lid_cover_sensor_cb(gconstpointer data)
     mce_log(LL_DEBUG, "lid_cover_sensor_state = %s -> %s",
             cover_state_repr(prev),
             cover_state_repr(lid_cover_sensor_state));
+
+    if( lid_cover_sensor_state == COVER_CLOSED )
+        lid_cover_close_timeout = (tklock_monotick_get() +
+                                   lid_cover_close_lo_als_delay);
+    else
+        lid_cover_close_timeout = 0;
 
     tklock_lid_sensor_rethink();
 
@@ -1971,6 +2012,10 @@ static datapipe_handler_t tklock_datapipe_handlers[] =
         .output_cb = tklock_datapipe_submode_cb,
     },
     {
+        .datapipe = &ambient_light_sensor_pipe,
+        .output_cb = tklock_datapipe_ambient_light_sensor_cb,
+    },
+    {
         .datapipe = &lid_cover_sensor_pipe,
         .output_cb = tklock_datapipe_lid_cover_sensor_cb,
     },
@@ -2176,7 +2221,7 @@ EXIT:
  * 2) unblank screen when lid is opened
  *
  * When lid cover sensor use gets enabled
- * 1) lock screen if lid is closed
+ * 1) lock screen if lid is in closed and other conditions still apply
  *
  * Otherwise leave display as is
  *
@@ -2184,32 +2229,84 @@ EXIT:
 
 static void tklock_lid_sensor_rethink(void)
 {
-    /* Initialize to a value that matches neither TRUE nor FALSE */
-    static int was_enabled = -1;
+    static int64_t nonzero_lux_seen_at = 0;
+
+    /* Previous settings toggle; initialize not to match TRUE / FALSE */
+    static int enabled_prev = -1;
+
+    /* Previous action take; initialize to no action taken */
+    static cover_state_t action_prev = COVER_UNDEF;
 
     /* Assume action is based on sensor state */
-    cover_state_t action = lid_cover_sensor_state;
+    cover_state_t action_curr = lid_cover_sensor_state;
 
     /* Filter based on disable/enable toggle */
     if( !lid_sensor_enabled ) {
         /* While disabled, do nothing */
-        action = COVER_UNDEF;
+        action_curr = COVER_UNDEF;
     }
-    else if( was_enabled != lid_sensor_enabled ) {
+    else if( enabled_prev != lid_sensor_enabled ) {
         /* On enable: Blank screen if lid is closed. */
-        if( action != COVER_CLOSED )
-            action = COVER_UNDEF;
+        if( action_curr != COVER_CLOSED )
+            action_curr = COVER_UNDEF;
     }
-    was_enabled = lid_sensor_enabled;
+
+    enabled_prev = lid_sensor_enabled;
+
+    int64_t now = tklock_monotick_get();
+
+    bool high_lux = (ambient_light_sensor_state > lid_cover_close_als_limit);
+
+    if( high_lux ) {
+        mce_log(LL_DEBUG, "non-zero lux seen");
+        nonzero_lux_seen_at = now;
+    }
+
+    /* Ignore the sensor getting to closed position unless ambient
+     * light sensor is also reporting close to zero lux values.
+     *
+     * This is done to avoid false positives with magnetic covers
+     * that might trigger the sensor from below the device when
+     * the cover is folded all the way underneath the device. */
+    if( action_curr == COVER_CLOSED ) {
+        if( display_state_next == MCE_DISPLAY_OFF ) {
+            /* Allow close while already blanked without
+             * paying attention to als level */
+        }
+        else if( now - nonzero_lux_seen_at > lid_cover_close_hi_als_delay ) {
+            /* We've not seen non-zero lux recently */
+            mce_log(LL_DEVEL, "ignoring lid cover due to low als");
+            action_curr = COVER_UNDEF;
+        }
+        else if( now >= lid_cover_close_timeout ) {
+            /* Sufficiently low ALS values was not seen after the
+             * sensor changed to closed position */
+            action_curr = COVER_UNDEF;
+        }
+        else if( high_lux ) {
+            /* Als value is not yet Sufficiently low */
+            mce_log(LL_DEVEL, "ignoring lid cover due to high als");
+            action_curr = COVER_UNDEF;
+        }
+    }
+
+    /* Skip the rest if there are no changes */
+    if( action_prev == action_curr )
+        goto EXIT;
+
+    action_prev = action_curr;
 
     /* First make the policy decision known */
     execute_datapipe(&lid_cover_policy_pipe,
-                     GINT_TO_POINTER(action),
+                     GINT_TO_POINTER(action_curr),
                      USE_INDATA, CACHE_INDATA);
 
-    /* The execute the required actions */
-    switch( action ) {
+    /* Then execute the required actions */
+    switch( action_curr ) {
     case COVER_CLOSED:
+        mce_log(LL_DEVEL, "lid closed - blank");
+        /* need to se non-zero lux before blanking again */
+        nonzero_lux_seen_at = 0;
         /* lock ui + blank display */
         execute_datapipe(&tk_lock_pipe,
                          GINT_TO_POINTER(LOCK_ON),
@@ -2220,6 +2317,7 @@ static void tklock_lid_sensor_rethink(void)
         break;
 
     case COVER_OPEN:
+        mce_log(LL_DEVEL, "lid open - unblank");
         /* unblank display */
         execute_datapipe(&display_state_req_pipe,
                          GINT_TO_POINTER(MCE_DISPLAY_ON),
@@ -2227,9 +2325,13 @@ static void tklock_lid_sensor_rethink(void)
         break;
 
     default:
+        mce_log(LL_DEBUG, "lid ignored");
         /* NOP */
         break;
     }
+
+EXIT:
+    return;
 }
 
 /* ========================================================================= *
