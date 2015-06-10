@@ -1461,6 +1461,9 @@ pwrkey_stm_ignore_action(void)
     cover_state_t proximity_sensor_state =
         datapipe_get_gint(proximity_sensor_pipe);
 
+    cover_state_t lid_cover_policy_state =
+        datapipe_get_gint(lid_cover_policy_pipe);
+
     call_state_t call_state =
         datapipe_get_gint(call_state_pipe);
 
@@ -1521,12 +1524,18 @@ pwrkey_stm_ignore_action(void)
         /* fall through */
     default:
     case PWRKEY_ENABLE_NO_PROXIMITY:
-        if( proximity_sensor_state != COVER_CLOSED )
-            break;
+        if( lid_cover_policy_state == COVER_CLOSED ) {
+            mce_log(LL_DEVEL, "[powerkey] ignored due to lid");
+            ignore_powerkey = true;
+            goto EXIT;
+        }
 
-        mce_log(LL_DEVEL, "[powerkey] ignored due to proximity");
-        ignore_powerkey = true;
-        goto EXIT;
+        if( proximity_sensor_state == COVER_CLOSED ) {
+            mce_log(LL_DEVEL, "[powerkey] ignored due to proximity");
+            ignore_powerkey = true;
+            goto EXIT;
+        }
+        break;
     }
 
 EXIT:

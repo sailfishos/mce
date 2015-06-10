@@ -1182,12 +1182,6 @@ static gpointer mdy_datapipe_display_state_filter_cb(gpointer data)
         goto UPDATE;
     }
 
-    /* Display stays off while lid_cover is on */
-    if( lid_cover_policy_state == COVER_CLOSED ) {
-        next_state = MCE_DISPLAY_OFF;
-        goto UPDATE;
-    }
-
     /* Handle update-mode override */
     if( mdy_update_mode ) {
         next_state = MCE_DISPLAY_ON;
@@ -4026,7 +4020,8 @@ static void mdy_blanking_rethink_proximity(void)
         break;
 
     case MCE_DISPLAY_LPM_OFF:
-        if( proximity_state == COVER_OPEN )
+        if( proximity_state == COVER_OPEN &&
+            lid_cover_policy_state == COVER_OPEN )
             execute_datapipe(&display_state_req_pipe,
                              GINT_TO_POINTER(MCE_DISPLAY_LPM_ON),
                              USE_INDATA, CACHE_INDATA);
@@ -7229,6 +7224,12 @@ static const char *mdy_dbus_get_reason_to_block_display_on(void)
         goto EXIT;
     default:
         break;
+    }
+
+    /* lid closed? */
+    if( lid_cover_policy_state == COVER_CLOSED ) {
+        reason = "lid closed";
+        goto EXIT;
     }
 
     /* proximity covered? */

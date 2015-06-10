@@ -1917,8 +1917,13 @@ evin_iomon_touchscreen_cb(gpointer data, gsize bytes_read)
         cover_state_t proximity_sensor_state =
             datapipe_get_gint(proximity_sensor_pipe);
 
-        mce_log(LL_DEVEL, "[doubletap] as power key event; proximity=%s",
-                proximity_state_repr(proximity_sensor_state));
+        cover_state_t lid_cover_policy_state =
+            datapipe_get_gint(lid_cover_policy_pipe);
+
+        mce_log(LL_DEVEL, "[doubletap] as power key event; "
+                "proximity=%s, lid=%s",
+                proximity_state_repr(proximity_sensor_state),
+                proximity_state_repr(lid_cover_policy_state));
 
         /* Mimic N9 style gesture event for which we
          * already have logic in place. Possible filtering

@@ -186,6 +186,10 @@ static void     tklock_datapipe_quit(void);
 
 static void     tklock_lid_sensor_rethink(void);
 
+// keyboard slide state machine
+
+static void     tklock_keyboard_slide_rethink(void);
+
 // autolock state machine
 
 static gboolean tklock_autolock_cb(gpointer aptr);
@@ -814,6 +818,9 @@ static cover_state_t proximity_state_actual = COVER_OPEN;
 /** Effective proximity state; assume not covered */
 static cover_state_t proximity_state_effective = COVER_OPEN;
 
+/** Lid cover policy state; assume open */
+static cover_state_t lid_cover_policy_state = COVER_OPEN;
+
 /** Timer id for delayed proximity uncovering */
 static guint tklock_datapipe_proximity_uncover_id = 0;
 
@@ -1426,6 +1433,10 @@ static void tklock_datapipe_touchscreen_cb(gconstpointer const data)
 
     default:
     case DBLTAP_ENABLE_NO_PROXIMITY:
+        if( lid_cover_policy_state == COVER_CLOSED ) {
+            mce_log(LL_DEVEL, "[doubletap] ignored due to lid=closed");
+            goto EXIT;
+        }
         if( proximity_state_actual != COVER_OPEN ) {
             mce_log(LL_DEVEL, "[doubletap] ignored due to proximity");
             goto EXIT;
@@ -1572,63 +1583,11 @@ static void tklock_datapipe_keyboard_slide_input_cb(gconstpointer const data)
     if( kbd_slide_input_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "kbd_slide_input_state = %s -> %s",
+    mce_log(LL_DEVEL, "kbd_slide_input_state = %s -> %s",
             cover_state_repr(prev),
             cover_state_repr(kbd_slide_input_state));
 
-    bool display_on = (display_state_next == MCE_DISPLAY_ON ||
-                       display_state_next == MCE_DISPLAY_DIM);
-
-    switch( kbd_slide_input_state ) {
-    case COVER_OPEN:
-        /* In any case opening the kbd slide will cancel
-         * other autorelock triggers */
-        if( autorelock_trigger != AUTORELOCK_NO_TRIGGERS ) {
-            mce_log(LL_DEBUG, "autorelock canceled: kbd slide opened");
-            autorelock_trigger = AUTORELOCK_NO_TRIGGERS;
-        }
-
-        if( !display_on && proximity_state_actual == COVER_OPEN ) {
-            mce_log(LL_DEBUG, "autorelock primed: on kbd slide close");
-            autorelock_trigger = AUTORELOCK_KBD_SLIDE;
-
-            mce_log(LL_DEBUG, "display -> on");
-            execute_datapipe(&display_state_req_pipe,
-                             GINT_TO_POINTER(MCE_DISPLAY_ON),
-                             USE_INDATA, CACHE_INDATA);
-            execute_datapipe(&tk_lock_pipe,
-                             GINT_TO_POINTER(LOCK_OFF),
-                             USE_INDATA, CACHE_INDATA);
-        }
-        break;
-
-    case COVER_CLOSED:
-        if( autorelock_trigger == AUTORELOCK_KBD_SLIDE ) {
-            mce_log(LL_DEBUG, "autorelock triggered: kbd slide closed");
-            autorelock_trigger = AUTORELOCK_NO_TRIGGERS;
-
-            mce_log(LL_DEBUG, "display -> off");
-
-            execute_datapipe(&tk_lock_pipe,
-                             GINT_TO_POINTER(LOCK_ON),
-                             USE_INDATA, CACHE_INDATA);
-
-            execute_datapipe(&display_state_req_pipe,
-                             GINT_TO_POINTER(MCE_DISPLAY_OFF),
-                             USE_INDATA, CACHE_INDATA);
-        }
-
-        /* In any case closing the kbd slide will cancel
-         * other autorelock triggers */
-        if( autorelock_trigger != AUTORELOCK_NO_TRIGGERS ) {
-            mce_log(LL_DEBUG, "autorelock canceled: kbd slide closed");
-            autorelock_trigger = AUTORELOCK_NO_TRIGGERS;
-        }
-        break;
-
-    default:
-        break;
-    }
+    tklock_keyboard_slide_rethink();
 
 EXIT:
     return;
@@ -1646,7 +1605,7 @@ tklock_datapipe_keyboard_slide_output_cb(gconstpointer const data)
     if( kbd_slide_output_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "kbd_slide_output_state = %s -> %s",
+    mce_log(LL_DEVEL, "kbd_slide_output_state = %s -> %s",
             cover_state_repr(prev),
             cover_state_repr(kbd_slide_output_state));
 
@@ -1752,10 +1711,6 @@ static void tklock_datapipe_lid_cover_sensor_cb(gconstpointer data)
 EXIT:
     return;
 }
-
-/** Lid cover policy state; assume open
- */
-static cover_state_t lid_cover_policy_state = COVER_OPEN;
 
 /** Change notifications from lid_cover_policy_pipe
  */
@@ -2335,6 +2290,69 @@ EXIT:
 }
 
 /* ========================================================================= *
+ * KEYBOARD SLIDE STATE MACHINE
+ * ========================================================================= */
+
+static void tklock_keyboard_slide_rethink(void)
+{
+    bool display_on = (display_state_next == MCE_DISPLAY_ON ||
+                       display_state_next == MCE_DISPLAY_DIM);
+
+    switch( kbd_slide_input_state ) {
+    case COVER_OPEN:
+        /* In any case opening the kbd slide will cancel
+         * other autorelock triggers */
+        if( autorelock_trigger != AUTORELOCK_NO_TRIGGERS ) {
+            mce_log(LL_DEBUG, "autorelock canceled: kbd slide opened");
+            autorelock_trigger = AUTORELOCK_NO_TRIGGERS;
+        }
+
+        if( !display_on &&
+            proximity_state_actual == COVER_OPEN &&
+            lid_cover_policy_state == COVER_OPEN ) {
+            mce_log(LL_DEBUG, "autorelock primed: on kbd slide close");
+            autorelock_trigger = AUTORELOCK_KBD_SLIDE;
+
+            mce_log(LL_DEBUG, "display -> on");
+            execute_datapipe(&display_state_req_pipe,
+                             GINT_TO_POINTER(MCE_DISPLAY_ON),
+                             USE_INDATA, CACHE_INDATA);
+            execute_datapipe(&tk_lock_pipe,
+                             GINT_TO_POINTER(LOCK_OFF),
+                             USE_INDATA, CACHE_INDATA);
+        }
+        break;
+
+    case COVER_CLOSED:
+        if( autorelock_trigger == AUTORELOCK_KBD_SLIDE ) {
+            mce_log(LL_DEBUG, "autorelock triggered: kbd slide closed");
+            autorelock_trigger = AUTORELOCK_NO_TRIGGERS;
+
+            mce_log(LL_DEBUG, "display -> off");
+
+            execute_datapipe(&tk_lock_pipe,
+                             GINT_TO_POINTER(LOCK_ON),
+                             USE_INDATA, CACHE_INDATA);
+
+            execute_datapipe(&display_state_req_pipe,
+                             GINT_TO_POINTER(MCE_DISPLAY_OFF),
+                             USE_INDATA, CACHE_INDATA);
+        }
+
+        /* In any case closing the kbd slide will cancel
+         * other autorelock triggers */
+        if( autorelock_trigger != AUTORELOCK_NO_TRIGGERS ) {
+            mce_log(LL_DEBUG, "autorelock canceled: kbd slide closed");
+            autorelock_trigger = AUTORELOCK_NO_TRIGGERS;
+        }
+        break;
+
+    default:
+        break;
+    }
+}
+
+/* ========================================================================= *
  * AUTOLOCK STATE MACHINE
  *
  * Automatically apply tklock when
@@ -2860,6 +2878,9 @@ static void tklock_uiexcept_rethink(void)
         else if( !exdata.insync ) {
             mce_log(LL_NOTICE, "NOT UNBLANKING; still out of sync");
         }
+        else if( lid_cover_policy_state == COVER_CLOSED ) {
+            mce_log(LL_NOTICE, "NOT UNBLANKING; lid covered");
+        }
         else if( proximity_state_effective == COVER_CLOSED ) {
             mce_log(LL_NOTICE, "NOT UNBLANKING; proximity covered");
         }
@@ -2951,7 +2972,8 @@ static void tklock_uiexcept_finish(void)
          * we use raw sensor data here instead of the filtered
          * proximity_state_effective that is normally used
          * with unblanking policies. */
-        if( proximity_state_actual != COVER_OPEN )
+        if( proximity_state_actual != COVER_OPEN ||
+            lid_cover_policy_state != COVER_OPEN )
             break;
 
         execute_datapipe(&display_state_req_pipe,
@@ -3276,6 +3298,10 @@ static void tklock_lpmui_rethink(void)
 
     /* but not during calls, alarms, etc */
     if( exception_state != UIEXC_NONE )
+        goto EXIT;
+
+    /* when lid is closed */
+    if( lid_cover_policy_state != COVER_OPEN )
         goto EXIT;
 
     /* or when proximity is covered */
@@ -3661,8 +3687,9 @@ static void tklock_evctrl_rethink(void)
      * only when proximity sensor is not covered / proximity
      * blocks input feature is disabled */
     if( grab_ts ||
-        !proximity_blocks_touch ||
-        proximity_state_effective == COVER_OPEN ) {
+        ( (proximity_state_effective == COVER_OPEN ||
+           !proximity_blocks_touch) &&
+          (lid_cover_policy_state == COVER_OPEN) ) ) {
         execute_datapipe(&touch_grab_wanted_pipe,
                          GINT_TO_POINTER(grab_ts),
                          USE_INDATA, CACHE_INDATA);

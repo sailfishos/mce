@@ -4805,6 +4805,8 @@ static const mce_opt_t options[] =
                 .usage       =
                         "set the doubletap wakeup mode; valid modes are:\n"
                         "'never', 'always', 'proximity'\n"
+                        "\n"
+                        "Note: proximity setting applies for lid sensor too."
         },
         {
                 .name        = "set-powerkey-action",
@@ -4817,6 +4819,8 @@ static const mce_opt_t options[] =
                         "  always      -  always act\n"
                         "  proximity   -  act if proximity sensor is not covered\n"
                         "  proximity2  -  act if display is on or PS not covered\n"
+                        "\n"
+                        "Note: proximity settings apply for lid sensor too."
         },
         {
                 .name        = "set-powerkey-blanking",
