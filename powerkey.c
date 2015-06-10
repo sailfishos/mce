@@ -599,9 +599,10 @@ EXIT:
 static void
 pwrkey_action_tklock(void)
 {
-    mce_log(LL_DEBUG, "Requesting tklock=on");
+    lock_state_t request = LOCK_ON;
+    mce_log(LL_DEBUG, "Requesting tklock=%s", lock_state_repr(request));
     execute_datapipe(&tk_lock_pipe,
-                     GINT_TO_POINTER(LOCK_ON),
+                     GINT_TO_POINTER(request),
                      USE_INDATA, CACHE_INDATA);
 }
 
@@ -620,9 +621,10 @@ pwrkey_action_tkunlock(void)
         goto EXIT;
     }
 
-    mce_log(LL_DEBUG, "Requesting tklock=off");
+    lock_state_t request = LOCK_OFF;
+    mce_log(LL_DEBUG, "Requesting tklock=%s", lock_state_repr(request));
     execute_datapipe(&tk_lock_pipe,
-                     GINT_TO_POINTER(LOCK_OFF),
+                     GINT_TO_POINTER(request),
                      USE_INDATA, CACHE_INDATA);
 EXIT:
     return;
@@ -643,6 +645,8 @@ pwrkey_action_blank(void)
             break;
     }
 
+    mce_log(LL_DEBUG, "Requesting display=%s",
+            display_state_repr(request));
     execute_datapipe(&display_state_req_pipe,
                      GINT_TO_POINTER(request),
                      USE_INDATA, CACHE_INDATA);
@@ -651,9 +655,11 @@ pwrkey_action_blank(void)
 static void
 pwrkey_action_unblank(void)
 {
-    mce_log(LL_DEVEL, "Requesting device_lock=on");
+    display_state_t request = MCE_DISPLAY_ON;
+    mce_log(LL_DEBUG, "Requesting display=%s",
+            display_state_repr(request));
     execute_datapipe(&display_state_req_pipe,
-                     GINT_TO_POINTER(MCE_DISPLAY_ON),
+                     GINT_TO_POINTER(request),
                      USE_INDATA, CACHE_INDATA);
 
 }
@@ -665,10 +671,13 @@ pwrkey_action_devlock(void)
     static const char object[]    = "/devicelock";
     static const char interface[] = "org.nemomobile.lipstick.devicelock";
     static const char method[]    = "setState";
-    dbus_int32_t      locked      = TRUE;
+    dbus_int32_t      request     = DEVICE_LOCK_LOCKED;
+
+    mce_log(LL_DEBUG, "Requesting devicelock=%s",
+            device_lock_state_repr(request));
 
     dbus_send(service, object, interface, method, 0,
-              DBUS_TYPE_INT32, &locked,
+              DBUS_TYPE_INT32, &request,
               DBUS_TYPE_INVALID);
 }
 
@@ -1249,6 +1258,8 @@ pwrkey_dbus_action_execute(size_t action_id)
 
     if( action_id >= DBUS_ACTIONS_COUNT )
         goto cleanup;
+
+    mce_log(LL_DEBUG, "Executing dbus action %zd", action_id);
 
     const pwrkey_dbus_action_t *action = pwrkey_dbus_action + action_id;
 
