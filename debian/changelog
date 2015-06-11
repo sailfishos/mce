@@ -1,3 +1,10 @@
+mce (1.51.9) unstable; urgency=low
+
+  * [mce] Remove defunct demo-mode dbus method call handler. Fixes JB#29791
+  * [mce] Fixes to diagnostic logging from powerkey handler. Fixes JB#29793
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 11 Jun 2015 15:17:44 +0300
+
 mce (1.51.8) unstable; urgency=low
 
   * [mce] Do not allow re-entry to display state machine execution. Fixes JB#29539
