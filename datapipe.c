@@ -1078,6 +1078,30 @@ const char *charger_state_repr(charger_state_t state)
 	return res;
 }
 
+/** Convert lock_state_t enum to human readable string
+ *
+ * @param state lock_state_t enumeration value
+ *
+ * @return human readable representation of state
+ */
+const char *lock_state_repr(lock_state_t state)
+{
+	const char *res = "unknown";
+	switch( state ) {
+	case LOCK_UNDEF:         res = "undef";         break;
+	case LOCK_OFF:           res = "off";           break;
+	case LOCK_OFF_DELAYED:   res = "off_delayed";   break;
+	case LOCK_OFF_PROXIMITY: res = "off_proximity"; break;
+	case LOCK_ON:            res = "on";            break;
+	case LOCK_ON_DIMMED:     res = "on_dimmed";     break;
+	case LOCK_ON_PROXIMITY:  res = "on_proximity";  break;
+	case LOCK_TOGGLE:        res = "toggle";        break;
+	case LOCK_ON_DELAYED:    res = "on_delayed";    break;
+	default: break;
+	}
+	return res;
+}
+
 /** Convert battery_status_t enum to human readable string
  *
  * @param state battery_status_t enumeration value

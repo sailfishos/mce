@@ -238,6 +238,8 @@ typedef enum {
 	LOCK_ON_DELAYED = 7
 } lock_state_t;
 
+const char *lock_state_repr(lock_state_t state);
+
 /** Battery status */
 typedef enum {
 	BATTERY_STATUS_UNDEF = -1,	/**< Battery status not known */
