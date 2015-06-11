@@ -70,9 +70,6 @@
 /** Module name */
 #define MODULE_NAME             "display"
 
-/** Define demo mode DBUS method */
-#define MCE_DBUS_DEMO_MODE_REQ  "display_set_demo_mode"
-
 /** UI side graphics fading percentage
  *
  * Controls opacity of the black box rendered on top at the ui when
@@ -7701,67 +7698,6 @@ EXIT:
 }
 
 /**
- * D-Bus callback to switch demo mode on or off
- *
- * @param msg The D-Bus message
- * @return TRUE on success, FALSE on failure
- */
-static gboolean mdy_dbus_handle_set_demo_mode_req(DBusMessage *const msg)
-{
-    gboolean status = FALSE;
-    DBusError error;
-    DBusMessage *reply = NULL;
-    char *use = 0;
-
-    // FIXME: this is defunct code and should be removed
-
-    mce_log(LL_DEVEL, "Recieved demo mode change request from %s",
-            mce_dbus_get_message_sender_ident(msg));
-
-    dbus_error_init(&error);
-
-    if(!dbus_message_get_args(msg, &error, DBUS_TYPE_STRING, &use, DBUS_TYPE_INVALID))
-    {
-        dbus_error_free(&error);
-        goto EXIT;
-    }
-
-    if(!strcmp(use, "on"))
-    {
-        mdy_blanking_inhibit_mode = INHIBIT_STAY_ON;
-
-        /* unblank screen */
-        execute_datapipe(&display_state_req_pipe,
-                         GINT_TO_POINTER(MCE_DISPLAY_ON),
-                         USE_INDATA, CACHE_INDATA);
-
-        /* turn off tklock */
-        execute_datapipe(&tk_lock_pipe,
-                         GINT_TO_POINTER(LOCK_OFF_DELAYED),
-                         USE_INDATA, CACHE_INDATA);
-
-        mdy_blanking_rethink_timers(true);
-    }
-    else
-    {
-        mdy_blanking_inhibit_mode = DEFAULT_BLANKING_INHIBIT_MODE;
-        mdy_blanking_rethink_timers(true);
-    }
-
-    if((reply = dbus_message_new_method_return(msg)))
-        if(dbus_message_append_args (reply, DBUS_TYPE_STRING, &use, DBUS_TYPE_INVALID) == FALSE)
-        {
-            dbus_message_unref(reply);
-            goto EXIT;
-        }
-
-    status = dbus_send_message(reply) ;
-
-EXIT:
-    return status;
-}
-
-/**
  * D-Bus callback for the desktop startup notification signal
  *
  * @param msg The D-Bus message
@@ -8003,15 +7939,6 @@ static mce_dbus_handler_t mdy_dbus_handlers[] =
         .args      =
             "    <arg direction=\"in\" name=\"requested_cabc_mode\" type=\"s\"/>\n"
             "    <arg direction=\"out\" name=\"activated_cabc_mode\" type=\"s\"/>\n"
-    },
-    {
-        .interface = MCE_REQUEST_IF,
-        .name      = MCE_DBUS_DEMO_MODE_REQ,
-        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
-        .callback  = mdy_dbus_handle_set_demo_mode_req,
-        .args      =
-            "    <arg direction=\"in\" name=\"requested_demo_mode\" type=\"s\"/>\n"
-            "    <arg direction=\"out\" name=\"activated_demo_mode\" type=\"s\"/>\n"
     },
     /* sentinel */
     {
