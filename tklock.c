@@ -43,8 +43,13 @@
 
 #include <linux/input.h>
 
+#include <sys/types.h>
+#include <sys/stat.h>
+
 #include <unistd.h>
 #include <string.h>
+#include <fcntl.h>
+#include <errno.h>
 
 #include <mce/dbus-names.h>
 #include <mce/mode-names.h>
@@ -171,6 +176,7 @@ static void     tklock_datapipe_keyboard_slide_input_cb(gconstpointer const data
 static void     tklock_datapipe_keyboard_slide_output_cb(gconstpointer const data);
 static void     tklock_datapipe_keyboard_available_cb(gconstpointer const data);
 static void     tklock_datapipe_ambient_light_sensor_cb(gconstpointer data);
+static void     tklock_datapipe_lid_sensor_is_working_cb(gconstpointer data);
 static void     tklock_datapipe_lid_cover_sensor_cb(gconstpointer data);
 static void     tklock_datapipe_lid_cover_policy_cb(gconstpointer data);
 static void     tklock_datapipe_lens_cover_cb(gconstpointer data);
@@ -184,6 +190,7 @@ static void     tklock_datapipe_quit(void);
 
 // lid cover state machine
 
+static void     tklock_lid_sensor_init(void);
 static void     tklock_lid_sensor_rethink(void);
 
 // keyboard slide state machine
@@ -818,8 +825,20 @@ static cover_state_t proximity_state_actual = COVER_OPEN;
 /** Effective proximity state; assume not covered */
 static cover_state_t proximity_state_effective = COVER_OPEN;
 
-/** Lid cover policy state; assume open */
-static cover_state_t lid_cover_policy_state = COVER_OPEN;
+/** Lid cover sensor state; assume unkown
+ *
+ * When in covered state, it is assumed that it is not physically
+ * possible to see/interact with the display and thus it should
+ * stay powered off.
+ *
+ * Originally was used to track Nokia N770 slidable cover. Now
+ * it is used also for things like the hammerhead magnetic lid
+ * sensor.
+ */
+static cover_state_t lid_cover_sensor_state = COVER_UNDEF;
+
+/** Lid cover policy state; assume unknown */
+static cover_state_t lid_cover_policy_state = COVER_UNDEF;
 
 /** Timer id for delayed proximity uncovering */
 static guint tklock_datapipe_proximity_uncover_id = 0;
@@ -1659,18 +1678,6 @@ EXIT:
     return;
 }
 
-/** Lid cover sensor state; assume open
- *
- * When in covered state, it is assumed that it is not physically
- * possible to see/interact with the display and thus it should
- * stay powered off.
- *
- * Originally was used to track Nokia N770 slidable cover. Now
- * it is used also for things like the hammerhead magnetic lid
- * sensor.
- */
-static cover_state_t lid_cover_sensor_state = COVER_OPEN;
-
 /** ALS lux limit for allowing lid close actions [lux] */
 static gint    lid_cover_close_als_limit = 1;
 
@@ -1683,6 +1690,51 @@ static gint    lid_cover_close_hi_als_delay = 2500;
 /** Timeout for waiting for ALS level drop [ms, CLOCK_BOOTTIME base] */
 static int64_t lid_cover_close_timeout = 0;
 
+/** Assume lid sensor is broken until we have seen lid=open event */
+static bool tklock_lid_sensor_is_working = false;
+
+/** Path to the flag file for persistent tklock_lid_sensor_is_working */
+#define LID_SENSOR_IS_WORKING_FLAG_FILE "/var/lib/mce/lid_sensor_is_working"
+
+/** Keep flag file in sync with lid_sensor_is_working_pipe status
+ */
+static void tklock_datapipe_lid_sensor_is_working_cb(gconstpointer data)
+{
+    bool prev = tklock_lid_sensor_is_working;
+    tklock_lid_sensor_is_working = GPOINTER_TO_INT(data);
+
+    if( tklock_lid_sensor_is_working == prev )
+        goto EXIT;
+
+    mce_log(LL_DEVEL, "lid_sensor_is_working = %s -> %s",
+            prev ? "true" : "false",
+            tklock_lid_sensor_is_working ? "true" : "false");
+
+    if( tklock_lid_sensor_is_working ) {
+        /* Create flag file */
+        int fd = open(LID_SENSOR_IS_WORKING_FLAG_FILE, O_WRONLY|O_CREAT, 0644);
+        if( fd == -1 )
+            mce_log(LL_WARN, "%s: could not create flag file: %m",
+                    LID_SENSOR_IS_WORKING_FLAG_FILE);
+        else
+            close(fd);
+    }
+    else {
+        /* Remove flag file */
+        if( unlink(LID_SENSOR_IS_WORKING_FLAG_FILE) == -1 && errno != ENOENT )
+            mce_log(LL_WARN, "%s: could not remove flag file: %m",
+                    LID_SENSOR_IS_WORKING_FLAG_FILE);
+
+        /* Invalidate sensor data */
+        execute_datapipe(&lid_cover_sensor_pipe,
+                         GINT_TO_POINTER(COVER_UNDEF),
+                         USE_INDATA, CACHE_INDATA);
+    }
+
+EXIT:
+    return;
+}
+
 /** Change notifications from lid_cover_sensor_pipe
  */
 static void tklock_datapipe_lid_cover_sensor_cb(gconstpointer data)
@@ -1690,11 +1742,16 @@ static void tklock_datapipe_lid_cover_sensor_cb(gconstpointer data)
     cover_state_t prev = lid_cover_sensor_state;
     lid_cover_sensor_state = GPOINTER_TO_INT(data);
 
-    if( lid_cover_sensor_state == COVER_UNDEF )
-        lid_cover_sensor_state = COVER_OPEN;
-
     if( lid_cover_sensor_state == prev )
         goto EXIT;
+
+    if( lid_cover_sensor_state == COVER_OPEN ) {
+        /* We have seen the sensor flip to open position, so we can
+         * stop assuming it stays forever in the closed position */
+        execute_datapipe(&lid_sensor_is_working_pipe,
+                         GINT_TO_POINTER(true),
+                         USE_INDATA, CACHE_INDATA);
+    }
 
     mce_log(LL_DEBUG, "lid_cover_sensor_state = %s -> %s",
             cover_state_repr(prev),
@@ -1718,9 +1775,6 @@ static void tklock_datapipe_lid_cover_policy_cb(gconstpointer data)
 {
     cover_state_t prev = lid_cover_policy_state;
     lid_cover_policy_state = GPOINTER_TO_INT(data);
-
-    if( lid_cover_policy_state == COVER_UNDEF )
-        lid_cover_policy_state = COVER_OPEN;
 
     if( lid_cover_policy_state == prev )
         goto EXIT;
@@ -1971,6 +2025,10 @@ static datapipe_handler_t tklock_datapipe_handlers[] =
         .output_cb = tklock_datapipe_ambient_light_sensor_cb,
     },
     {
+        .datapipe  = &lid_sensor_is_working_pipe,
+        .output_cb = tklock_datapipe_lid_sensor_is_working_cb,
+    },
+    {
         .datapipe = &lid_cover_sensor_pipe,
         .output_cb = tklock_datapipe_lid_cover_sensor_cb,
     },
@@ -2182,6 +2240,21 @@ EXIT:
  *
  * ========================================================================= */
 
+static void tklock_lid_sensor_init(void)
+{
+    /* Initialize state based on flag file presense */
+    tklock_lid_sensor_is_working =
+        (access(LID_SENSOR_IS_WORKING_FLAG_FILE, F_OK) == 0);
+
+    mce_log(LL_DEVEL, "lid_sensor_is_working = %s",
+            tklock_lid_sensor_is_working ? "true" : "false");
+
+    /* Broadcast initial state */
+    execute_datapipe(&lid_sensor_is_working_pipe,
+                     GINT_TO_POINTER(tklock_lid_sensor_is_working),
+                     USE_INDATA, CACHE_INDATA);
+}
+
 static void tklock_lid_sensor_rethink(void)
 {
     static int64_t nonzero_lux_seen_at = 0;
@@ -2224,7 +2297,12 @@ static void tklock_lid_sensor_rethink(void)
      * that might trigger the sensor from below the device when
      * the cover is folded all the way underneath the device. */
     if( action_curr == COVER_CLOSED ) {
-        if( display_state_next == MCE_DISPLAY_OFF ) {
+        if( !tklock_lid_sensor_is_working ) {
+            /* No blanking based on lid sensor that might not work */
+            mce_log(LL_DEVEL, "ignoring lid cover; not validated");
+            action_curr = COVER_UNDEF;
+        }
+        else if( display_state_next == MCE_DISPLAY_OFF ) {
             /* Allow close while already blanked without
              * paying attention to als level */
         }
@@ -2249,8 +2327,6 @@ static void tklock_lid_sensor_rethink(void)
     if( action_prev == action_curr )
         goto EXIT;
 
-    action_prev = action_curr;
-
     /* First make the policy decision known */
     execute_datapipe(&lid_cover_policy_pipe,
                      GINT_TO_POINTER(action_curr),
@@ -2272,6 +2348,12 @@ static void tklock_lid_sensor_rethink(void)
         break;
 
     case COVER_OPEN:
+        /* No action on initial undef -> open */
+        if( action_prev == COVER_UNDEF ) {
+          mce_log(LL_DEVEL, "lid open - initial state ignored");
+            break;
+        }
+
         mce_log(LL_DEVEL, "lid open - unblank");
         /* unblank display */
         execute_datapipe(&display_state_req_pipe,
@@ -2284,6 +2366,8 @@ static void tklock_lid_sensor_rethink(void)
         /* NOP */
         break;
     }
+
+    action_prev = action_curr;
 
 EXIT:
     return;
@@ -2309,7 +2393,7 @@ static void tklock_keyboard_slide_rethink(void)
 
         if( !display_on &&
             proximity_state_actual == COVER_OPEN &&
-            lid_cover_policy_state == COVER_OPEN ) {
+            lid_cover_policy_state != COVER_CLOSED ) {
             mce_log(LL_DEBUG, "autorelock primed: on kbd slide close");
             autorelock_trigger = AUTORELOCK_KBD_SLIDE;
 
@@ -2973,7 +3057,7 @@ static void tklock_uiexcept_finish(void)
          * proximity_state_effective that is normally used
          * with unblanking policies. */
         if( proximity_state_actual != COVER_OPEN ||
-            lid_cover_policy_state != COVER_OPEN )
+            lid_cover_policy_state == COVER_CLOSED )
             break;
 
         execute_datapipe(&display_state_req_pipe,
@@ -3301,7 +3385,7 @@ static void tklock_lpmui_rethink(void)
         goto EXIT;
 
     /* when lid is closed */
-    if( lid_cover_policy_state != COVER_OPEN )
+    if( lid_cover_policy_state == COVER_CLOSED )
         goto EXIT;
 
     /* or when proximity is covered */
@@ -3689,7 +3773,7 @@ static void tklock_evctrl_rethink(void)
     if( grab_ts ||
         ( (proximity_state_effective == COVER_OPEN ||
            !proximity_blocks_touch) &&
-          (lid_cover_policy_state == COVER_OPEN) ) ) {
+          (lid_cover_policy_state != COVER_CLOSED) ) ) {
         execute_datapipe(&touch_grab_wanted_pipe,
                          GINT_TO_POINTER(grab_ts),
                          USE_INDATA, CACHE_INDATA);
@@ -5647,6 +5731,10 @@ gboolean mce_tklock_init(void)
 
     tklock_autolock_init();
 
+    /* Set initial lid_sensor_is_working_pipe value
+     * before installing datapipe handlers */
+    tklock_lid_sensor_init();
+
     /* attach to internal state variables */
     tklock_datapipe_init();
 
@@ -5655,6 +5743,9 @@ gboolean mce_tklock_init(void)
 
     /* Make sure lpm state gets initialized & broadcast */
     tklock_lpmui_set_state(false);
+
+    /* Evaluate initial lid sensor state */
+    tklock_lid_sensor_rethink();
 
     status = TRUE;
 

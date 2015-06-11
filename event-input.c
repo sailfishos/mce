@@ -2388,6 +2388,14 @@ evin_iomon_switch_states_update_iter_cb(gpointer io_monitor, gpointer user_data)
                          USE_INDATA, CACHE_INDATA);
     }
 
+    /* Check initial lid sensor state */
+    ecode = evin_event_mapper_rlookup_switch(SW_LID);
+    if( test_bit(ecode, featurelist) ) {
+        state = test_bit(ecode, statelist) ? COVER_CLOSED : COVER_OPEN;
+        execute_datapipe(&lid_cover_sensor_pipe, GINT_TO_POINTER(state),
+                         USE_INDATA, CACHE_INDATA);
+    }
+
     /* Need to consider more than one switch state when setting the
      * initial value of the jack_sense_pipe */
 

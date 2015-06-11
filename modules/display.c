@@ -1135,9 +1135,9 @@ EXIT:
     return;
 }
 
-/** Cache Lid cover policy state; assume open
+/** Cache Lid cover policy state; assume unknown
  */
-static cover_state_t lid_cover_policy_state = COVER_OPEN;
+static cover_state_t lid_cover_policy_state = COVER_UNDEF;
 
 /** Change notifications from lid_cover_policy_pipe
  */
@@ -1145,9 +1145,6 @@ static void tklock_datapipe_mdy_datapipe_lid_cover_policy_cb(gconstpointer data)
 {
     cover_state_t prev = lid_cover_policy_state;
     lid_cover_policy_state = GPOINTER_TO_INT(data);
-
-    if( lid_cover_policy_state == COVER_UNDEF )
-        lid_cover_policy_state = COVER_OPEN;
 
     if( lid_cover_policy_state == prev )
         goto EXIT;
@@ -4021,7 +4018,7 @@ static void mdy_blanking_rethink_proximity(void)
 
     case MCE_DISPLAY_LPM_OFF:
         if( proximity_state == COVER_OPEN &&
-            lid_cover_policy_state == COVER_OPEN )
+            lid_cover_policy_state != COVER_CLOSED )
             execute_datapipe(&display_state_req_pipe,
                              GINT_TO_POINTER(MCE_DISPLAY_LPM_ON),
                              USE_INDATA, CACHE_INDATA);
