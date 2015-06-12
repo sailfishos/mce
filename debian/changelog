@@ -1,3 +1,10 @@
+mce (1.52.0) unstable; urgency=low
+
+  * [mce] Allow keyboard input device to get slider state from another input
+    device. Fixes MER#1100
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 12 Jun 2015 20:15:12 +0300
+
 mce (1.51.10) unstable; urgency=low
 
   * [mce] Start dim timer also when blanking pause period ends due to
