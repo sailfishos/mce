@@ -667,8 +667,6 @@ static gboolean            mdy_dbus_handle_cabc_mode_set_req(DBusMessage *const 
 static gboolean            mdy_dbus_handle_blanking_pause_start_req(DBusMessage *const msg);
 static gboolean            mdy_dbus_handle_blanking_pause_cancel_req(DBusMessage *const msg);
 
-static gboolean            mdy_dbus_handle_set_demo_mode_req(DBusMessage *const msg);
-
 static gboolean            mdy_dbus_handle_desktop_started_sig(DBusMessage *const msg);
 
 static void                mdy_dbus_handle_shutdown_started(void);
