@@ -1,3 +1,10 @@
+mce (1.51.10) unstable; urgency=low
+
+  * [mce] Start dim timer also when blanking pause period ends due to
+    timeout. Fixes JB#29826
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 12 Jun 2015 10:47:27 +0300
+
 mce (1.51.9) unstable; urgency=low
 
   * [mce] Remove defunct demo-mode dbus method call handler. Fixes JB#29791
