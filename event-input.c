@@ -280,16 +280,22 @@ static int          evin_doubletap_emulate                      (const struct in
 /** Cached capabilities and type of monitored evdev input device */
 typedef struct
 {
+    /** Device name as reported by the driver */
+    char             *ex_name;
+
     /** Cached device node capabilities */
     evin_evdevinfo_t *ex_info;
 
     /** Device type from mce point of view */
     evin_evdevtype_t  ex_type;
 
+    /** Name of device that provides keypad slide state*/
+    gchar             *ex_sw_keypad_slide;
+
 } evin_iomon_extra_t;
 
 static void                evin_iomon_extra_delete_cb           (void *aptr);
-static evin_iomon_extra_t *evin_iomon_extra_create              (int fd);
+static evin_iomon_extra_t *evin_iomon_extra_create              (int fd, const char *name);
 
 // common rate limited activity generation
 
@@ -1744,20 +1750,30 @@ evin_iomon_extra_delete_cb(void *aptr)
 
     if( self ) {
         evin_evdevinfo_delete(self->ex_info);
+        g_free(self->ex_sw_keypad_slide);
+        free(self->ex_name);
         free(self);
     }
 }
 
 static evin_iomon_extra_t *
-evin_iomon_extra_create(int fd)
+evin_iomon_extra_create(int fd, const char *name)
 {
     evin_iomon_extra_t *self = calloc(1, sizeof *self);
 
+    self->ex_name = strdup(name);
     self->ex_info = evin_evdevinfo_create();
 
     evin_evdevinfo_probe(self->ex_info, fd);
 
     self->ex_type = evin_evdevtype_from_info(self->ex_info);
+
+    self->ex_sw_keypad_slide = 0;
+
+    if( self->ex_type == EVDEV_KEYBOARD ) {
+        self->ex_sw_keypad_slide = mce_conf_get_string("SW_KEYPAD_SLIDE",
+                                                       self->ex_name, 0);
+    }
 
     return self;
 }
@@ -1773,6 +1789,42 @@ static void
 evin_iomon_device_delete_cb(mce_io_mon_t *iomon)
 {
     evin_iomon_device_list = g_slist_remove(evin_iomon_device_list, iomon);
+}
+
+/** Locate I/O monitor object by device name
+ *
+ * @param name Name of the device
+ *
+ * @return iomon object or NULL if not found
+ */
+static mce_io_mon_t *
+evin_iomon_lookup_device(const char *name)
+{
+    mce_io_mon_t *res = 0;
+
+    if( !name )
+        goto EXIT;
+
+    for( GSList *item = evin_iomon_device_list; item; item = item->next ) {
+        mce_io_mon_t *iomon = item->data;
+
+        if( !iomon )
+            continue;
+
+        evin_iomon_extra_t *extra = mce_io_mon_get_user_data(iomon);
+
+        if( !extra )
+            continue;
+
+        if( strcmp(extra->ex_name, name) )
+            continue;
+
+        res = iomon;
+        break;
+    }
+
+EXIT:
+    return res;
 }
 
 static void
@@ -2220,7 +2272,7 @@ evin_iomon_device_add(const gchar *path)
     }
 
     /* Probe device type */
-    extra = evin_iomon_extra_create(fd);
+    extra = evin_iomon_extra_create(fd, name);
 
     mce_log(LL_NOTICE, "%s: name='%s' type=%s", path, name,
             evin_evdevtype_repr(extra->ex_type));
@@ -2447,19 +2499,30 @@ static void
 evin_iomon_keyboard_state_update_iter_cb(gpointer io_monitor, gpointer user_data)
 {
     const mce_io_mon_t *iomon = io_monitor;
+    const mce_io_mon_t *slide = 0;
     evin_iomon_extra_t *extra = mce_io_mon_get_user_data(iomon);
     bool               *avail = (bool *)user_data;
+    const char         *name  = extra->ex_name;
 
     /* Whether keypad slide state switch is SW_KEYPAD_SLIDE or something
      * else depends on configuration. */
 
     int ecode = evin_event_mapper_rlookup_switch(SW_KEYPAD_SLIDE);
 
+    /** Check if another device node is supposed to provide slide status */
+    if( (slide = evin_iomon_lookup_device(extra->ex_sw_keypad_slide)) ) {
+        iomon = slide;
+        extra = mce_io_mon_get_user_data(iomon);
+        mce_log(LL_DEBUG, "'%s' gets slide state from '%s'",
+                name, extra->ex_name);
+    }
+
     /* Keyboard devices that do not  have keypad slide switch are
      * considered to be always available. */
 
     if( !evin_evdevinfo_has_code(extra->ex_info, EV_SW, ecode) ) {
         *avail = true;
+        mce_log(LL_DEBUG, "'%s' is non-sliding keyboard", name);
         goto EXIT;
     }
 
@@ -2477,8 +2540,13 @@ evin_iomon_keyboard_state_update_iter_cb(gpointer io_monitor, gpointer user_data
         goto EXIT;
     }
 
-    if( !test_bit(ecode, bits) )
+    bool is_open = !test_bit(ecode, bits);
+
+    if( is_open )
         *avail = true;
+
+    mce_log(LL_DEBUG, "'%s' is sliding keyboard in %s position",
+            name, is_open ? "open" : "closed");
 
 EXIT:
     return;
