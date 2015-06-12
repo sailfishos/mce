@@ -3674,14 +3674,18 @@ EXIT:
 /** Remove all clients, stop blanking pause */
 static void mdy_blanking_remove_pause_clients(void)
 {
+    /* If there are clients to remove or blanking pause timer to stop,
+     * we need to re-evaluate need for dimming timer before returning */
+    bool rethink = (mdy_blanking_pause_clients || mdy_blanking_is_paused());
+
     /* Remove all name monitors for the blanking pause requester */
     mce_dbus_owner_monitor_remove_all(&mdy_blanking_pause_clients);
 
-    if( mdy_blanking_is_paused() ) {
-        /* Stop blank prevent timer */
-        mdy_blanking_stop_pause_period();
+    /* Stop blank prevent timer */
+    mdy_blanking_stop_pause_period();
+
+    if( rethink )
         mdy_blanking_rethink_timers(true);
-    }
 }
 
 /** Handle blanking pause clients dropping from dbus
