@@ -308,6 +308,9 @@ typedef enum {
 	UIEXC_NOTIF  = 1<<3,
 } uiexctype_t;
 
+const char *uiexctype_repr(uiexctype_t state);
+const char *uiexctype_to_dbus(uiexctype_t state);
+
 /** D-Bus service availability */
 typedef enum {
 	SERVICE_STATE_UNDEF   = -1,
