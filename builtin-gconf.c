@@ -1089,20 +1089,22 @@ static const setting_t gconf_defaults[] =
     .def  = "10,20,30,40,50",
   },
   {
-    // MCE_GCONF_DISPLAY_ALS_ENABLED @ modules/display.h
-    .key  = "/system/osso/dsm/display/als_enabled",
+    .key  = MCE_GCONF_DISPLAY_ALS_ENABLED,
     .type = "b",
-    .def  = "true",
+    .def  = G_STRINGIFY(ALS_ENABLED_DEFAULT),
   },
   {
-    // MCE_GCONF_DISPLAY_ALS_INPUT_FILTER @ modules/display.h
-    .key  = "/system/osso/dsm/display/als_input_filter",
+    .key  = MCE_GCONF_DISPLAY_ALS_AUTOBRIGHTNESS,
+    .type = "b",
+    .def  = G_STRINGIFY(ALS_AUTOBRIGHTNESS_DEFAULT),
+  },
+  {
+    .key  = MCE_GCONF_DISPLAY_ALS_INPUT_FILTER,
     .type = "s",
     .def  = ALS_INPUT_FILTER_DEFAULT,
   },
   {
-    // MCE_GCONF_DISPLAY_ALS_SAMPLE_TIME @ modules/display.h
-    .key  = "/system/osso/dsm/display/als_sample_time",
+    .key  = MCE_GCONF_DISPLAY_ALS_SAMPLE_TIME,
     .type = "i",
     .def  = G_STRINGIFY(ALS_SAMPLE_TIME_DEFAULT),
   },
@@ -1223,6 +1225,11 @@ static const setting_t gconf_defaults[] =
     .key  = MCE_GCONF_LID_SENSOR_ENABLED,
     .type = "b",
     .def  = G_STRINGIFY(DEFAULT_LID_SENSOR_ENABLED),
+  },
+  {
+    .key  = MCE_GCONF_FILTER_LID_WITH_ALS,
+    .type = "b",
+    .def  = G_STRINGIFY(DEFAULT_FILTER_LID_WITH_ALS),
   },
   {
     .key  = MCE_GCONF_AUTOLOCK_DELAY,

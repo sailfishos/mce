@@ -111,14 +111,29 @@
 /** Path to the GConf settings for the display */
 #define MCE_GCONF_DISPLAY_PATH			"/system/osso/dsm/display"
 
-/** Path to the ALS enabled GConf setting */
+/** ALS enabled setting */
 #define MCE_GCONF_DISPLAY_ALS_ENABLED                   MCE_GCONF_DISPLAY_PATH "/als_enabled"
 
-/** ALS input filter GConf setting */
+/** Default value for MCE_GCONF_DISPLAY_ALS_ENABLED */
+#define ALS_ENABLED_DEFAULT                             true
+
+/** ALS constrols brightness setting */
+#define MCE_GCONF_DISPLAY_ALS_AUTOBRIGHTNESS            MCE_GCONF_DISPLAY_PATH "/als_autobrightness"
+
+/** Default value for MCE_GCONF_DISPLAY_ALS_AUTOBRIGHTNESS settings */
+#define ALS_AUTOBRIGHTNESS_DEFAULT                      true
+
+/** ALS input filter setting */
 #define MCE_GCONF_DISPLAY_ALS_INPUT_FILTER              MCE_GCONF_DISPLAY_PATH "/als_input_filter"
+
+/** Default value for MCE_GCONF_DISPLAY_ALS_INPUT_FILTER */
+#define ALS_INPUT_FILTER_DEFAULT                        "median"
 
 /** ALS sample time GConf setting */
 #define MCE_GCONF_DISPLAY_ALS_SAMPLE_TIME               MCE_GCONF_DISPLAY_PATH "/als_sample_time"
+#define ALS_SAMPLE_TIME_DEFAULT                         125
+#define ALS_SAMPLE_TIME_MIN                             50
+#define ALS_SAMPLE_TIME_MAX                             1000
 
 /** Path to the color profile GConf setting */
 #define MCE_GCONF_DISPLAY_COLOR_PROFILE                 MCE_GCONF_DISPLAY_PATH "/color_profile"

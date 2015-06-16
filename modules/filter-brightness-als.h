@@ -34,18 +34,6 @@
 /** Name of the hardcoded color profile */
 #define COLOR_PROFILE_ID_HARDCODED	"hardcoded"
 
-/** Default value for als enabled settings */
-#define ALS_ENABLED_DEFAULT		TRUE
-
-/** Default value for als input filter settings */
-#define ALS_INPUT_FILTER_DEFAULT	"median"
-
-/** Default value for als sample time settings */
-#define ALS_SAMPLE_TIME_DEFAULT		125
-
-#define ALS_SAMPLE_TIME_MIN		50
-#define ALS_SAMPLE_TIME_MAX		1000
-
 /** ALS profiles */
 typedef enum {
 	ALS_PROFILE_COUNT  = 21,		/**< Number of profiles */

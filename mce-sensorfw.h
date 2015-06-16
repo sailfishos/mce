@@ -16,7 +16,7 @@ void mce_sensorfw_suspend(void);
 void mce_sensorfw_resume(void);
 
 void mce_sensorfw_als_attach(int fd);
-void mce_sensorfw_als_set_notify(void (*cb)(unsigned lux));
+void mce_sensorfw_als_set_notify(void (*cb)(int lux));
 void mce_sensorfw_als_enable(void);
 void mce_sensorfw_als_disable(void);
 

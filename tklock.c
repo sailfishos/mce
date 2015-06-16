@@ -37,6 +37,7 @@
 #endif
 
 #include "modules/doubletap.h"
+#include "modules/display.h"
 
 #include "systemui/dbus-names.h"
 #include "systemui/tklock-dbus-names.h"
@@ -400,6 +401,16 @@ static guint tklock_blank_disable_id = 0;
 static gboolean lid_sensor_enabled = DEFAULT_LID_SENSOR_ENABLED;
 /** GConf callback ID for lid_sensor_enabled */
 static guint lid_sensor_enabled_cb_id = 0;
+
+/** Flag for: Using ALS is allowed */
+static gboolean als_enabled = ALS_ENABLED_DEFAULT;
+/** Config notification for als_enabled */
+static guint als_enabled_gconf_id = 0;
+
+/** Flag: Use ALS for lid close filtering */
+static gboolean filter_lid_with_als = DEFAULT_FILTER_LID_WITH_ALS;
+/** Config notification for filter_lid_with_als */
+static guint filter_lid_with_als_gconf_id = 0;
 
 /** How long to keep display on after incoming call ends [ms] */
 static gint exception_length_call_in            = DEFAULT_EXCEPTION_LENGTH_CALL_IN;
@@ -2306,6 +2317,10 @@ static void tklock_lid_sensor_rethink(void)
             /* Allow close while already blanked without
              * paying attention to als level */
         }
+        else if( !filter_lid_with_als || !als_enabled ) {
+            /* ALS is not used or can't be used for validating
+             * LID close events */
+        }
         else if( now - nonzero_lux_seen_at > lid_cover_close_hi_als_delay ) {
             /* We've not seen non-zero lux recently */
             mce_log(LL_DEVEL, "ignoring lid cover due to low als");
@@ -3944,6 +3959,12 @@ static void tklock_gconf_cb(GConfClient *const gcc, const guint id,
         lid_sensor_enabled = gconf_value_get_bool(gcv) ? 1 : 0;
         tklock_lid_sensor_rethink();
     }
+    else if( id == als_enabled_gconf_id ) {
+        als_enabled = gconf_value_get_bool(gcv);
+    }
+    else if( id == filter_lid_with_als_gconf_id ) {
+        filter_lid_with_als = gconf_value_get_bool(gcv);
+    }
     else if( id == tklock_autolock_delay_cb_id ) {
         gint old = tklock_autolock_delay;
         tklock_autolock_delay = gconf_value_get_int(gcv);
@@ -4149,6 +4170,18 @@ static void tklock_gconf_init(void)
                          tklock_gconf_cb,
                          &lid_sensor_enabled_cb_id);
 
+    mce_gconf_track_bool(MCE_GCONF_DISPLAY_ALS_ENABLED,
+                         &als_enabled,
+                         ALS_ENABLED_DEFAULT,
+                         tklock_gconf_cb,
+                         &als_enabled_gconf_id);
+
+    mce_gconf_track_bool(MCE_GCONF_FILTER_LID_WITH_ALS,
+                         &filter_lid_with_als,
+                         DEFAULT_FILTER_LID_WITH_ALS,
+                         tklock_gconf_cb,
+                         &filter_lid_with_als_gconf_id);
+
     /* Display on exception lengths */
     mce_gconf_track_int(MCE_GCONF_EXCEPTION_LENGTH_CALL_IN,
                         &exception_length_call_in,
@@ -4253,6 +4286,12 @@ static void tklock_gconf_quit(void)
 
     mce_gconf_notifier_remove(lid_sensor_enabled_cb_id),
         lid_sensor_enabled_cb_id = 0;
+
+    mce_gconf_notifier_remove(als_enabled_gconf_id),
+        als_enabled_gconf_id = 0;
+
+    mce_gconf_notifier_remove(filter_lid_with_als_gconf_id),
+        filter_lid_with_als_gconf_id = 0;
 
     mce_gconf_notifier_remove(exception_length_call_in_cb_id),
         exception_length_call_in_cb_id = 0;
