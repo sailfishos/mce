@@ -88,6 +88,9 @@ datapipe_struct keyboard_slide_pipe;
 /** Keyboard available; read only */
 datapipe_struct keyboard_available_pipe;
 
+/** Lid sensor is working state; read/write */
+datapipe_struct lid_sensor_is_working_pipe;
+
 /** Lid cover sensor open/closed; read only */
 datapipe_struct lid_cover_sensor_pipe;
 
@@ -102,6 +105,9 @@ datapipe_struct proximity_sensor_pipe;
 
 /** Ambient light sensor; read only */
 datapipe_struct ambient_light_sensor_pipe;
+
+/** Filtered ambient light level; read only */
+datapipe_struct ambient_light_level_pipe;
 
 /** Orientation sensor; read only */
 datapipe_struct orientation_sensor_pipe;
@@ -843,15 +849,19 @@ void mce_datapipe_init(void)
 		       0, GINT_TO_POINTER(COVER_CLOSED));
 	setup_datapipe(&keyboard_available_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(COVER_CLOSED));
+	setup_datapipe(&lid_sensor_is_working_pipe, READ_WRITE,
+		       DONT_FREE_CACHE, 0, GINT_TO_POINTER(FALSE));
 	setup_datapipe(&lid_cover_sensor_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(COVER_OPEN));
+		       0, GINT_TO_POINTER(COVER_UNDEF));
 	setup_datapipe(&lid_cover_policy_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(COVER_OPEN));
+		       0, GINT_TO_POINTER(COVER_UNDEF));
 	setup_datapipe(&lens_cover_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(0));
 	setup_datapipe(&proximity_sensor_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(COVER_OPEN));
 	setup_datapipe(&ambient_light_sensor_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(400));
+	setup_datapipe(&ambient_light_level_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(400));
 	setup_datapipe(&orientation_sensor_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(MCE_ORIENTATION_UNDEFINED));
@@ -929,8 +939,10 @@ void mce_datapipe_quit(void)
 	free_datapipe(&tk_lock_pipe);
 	free_datapipe(&proximity_sensor_pipe);
 	free_datapipe(&ambient_light_sensor_pipe);
+	free_datapipe(&ambient_light_level_pipe);
 	free_datapipe(&orientation_sensor_pipe);
 	free_datapipe(&lens_cover_pipe);
+	free_datapipe(&lid_sensor_is_working_pipe);
 	free_datapipe(&lid_cover_sensor_pipe);
 	free_datapipe(&lid_cover_policy_pipe);
 	free_datapipe(&keyboard_slide_pipe);

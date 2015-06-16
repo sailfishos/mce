@@ -532,8 +532,12 @@ pwrkey_ps_override_evaluate(void)
     cover_state_t proximity_sensor_state =
         datapipe_get_gint(proximity_sensor_pipe);
 
-    /* If the sensor is not covered, just reset the counter */
-    if( proximity_sensor_state != COVER_CLOSED ) {
+    cover_state_t lid_cover_policy_state =
+        datapipe_get_gint(lid_cover_policy_pipe);
+
+    /* If neither sensor is not covered, just reset the counter */
+    if( proximity_sensor_state != COVER_CLOSED &&
+        lid_cover_policy_state != COVER_CLOSED ) {
         t_last = 0, count = 0;
         goto EXIT;
     }
@@ -560,16 +564,33 @@ pwrkey_ps_override_evaluate(void)
      * If sensor gets unstuck and new proximity readings are
      * received, this override will be automatically undone.
      */
-    if( ++count == pwrkey_ps_override_count ) {
+
+    if( ++count != pwrkey_ps_override_count ) {
+        mce_log(LL_DEBUG, "ps override count = %d", count);
+        goto EXIT;
+    }
+
+    if( proximity_sensor_state == COVER_CLOSED ) {
         mce_log(LL_CRIT, "assuming stuck proximity sensor;"
                 " faking uncover event");
+
+        /* Force cached proximity state to "open" */
         execute_datapipe(&proximity_sensor_pipe,
                          GINT_TO_POINTER(COVER_OPEN),
                          USE_INDATA, CACHE_INDATA);
-        t_last = 0, count = 0;
     }
-    else
-        mce_log(LL_DEBUG, "ps override count = %d", count);
+
+    if( lid_cover_policy_state == COVER_CLOSED ) {
+        mce_log(LL_CRIT, "assuming stuck lid sensor;"
+                " resetting validation data");
+
+        /* Reset lid sensor validation data */
+        execute_datapipe(&lid_sensor_is_working_pipe,
+                         GINT_TO_POINTER(false),
+                         USE_INDATA, CACHE_INDATA);
+    }
+
+    t_last = 0, count = 0;
 
 EXIT:
 
@@ -1461,6 +1482,9 @@ pwrkey_stm_ignore_action(void)
     cover_state_t proximity_sensor_state =
         datapipe_get_gint(proximity_sensor_pipe);
 
+    cover_state_t lid_cover_policy_state =
+        datapipe_get_gint(lid_cover_policy_pipe);
+
     call_state_t call_state =
         datapipe_get_gint(call_state_pipe);
 
@@ -1521,12 +1545,18 @@ pwrkey_stm_ignore_action(void)
         /* fall through */
     default:
     case PWRKEY_ENABLE_NO_PROXIMITY:
-        if( proximity_sensor_state != COVER_CLOSED )
-            break;
+        if( lid_cover_policy_state == COVER_CLOSED ) {
+            mce_log(LL_DEVEL, "[powerkey] ignored due to lid");
+            ignore_powerkey = true;
+            goto EXIT;
+        }
 
-        mce_log(LL_DEVEL, "[powerkey] ignored due to proximity");
-        ignore_powerkey = true;
-        goto EXIT;
+        if( proximity_sensor_state == COVER_CLOSED ) {
+            mce_log(LL_DEVEL, "[powerkey] ignored due to proximity");
+            ignore_powerkey = true;
+            goto EXIT;
+        }
+        break;
     }
 
 EXIT:

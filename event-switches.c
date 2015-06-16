@@ -474,11 +474,6 @@ gboolean mce_switches_init(void)
 	append_output_trigger_to_datapipe(&submode_pipe,
 					  submode_trigger);
 
-	/* Set default values, in case these are not available */
-	(void)execute_datapipe(&lid_cover_sensor_pipe,
-			       GINT_TO_POINTER(COVER_OPEN),
-			       USE_INDATA, CACHE_INDATA);
-
 	/* Register I/O monitors */
 	lockkey_iomon_id =
 		mce_switches_add_iomon(MCE_FLICKER_KEY_STATE_PATH,
