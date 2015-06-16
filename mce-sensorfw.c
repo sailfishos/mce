@@ -96,7 +96,9 @@
  * - The layer where error occurred makes transition to ERROR state
  *   and all layers below that are reset to IDLE state and sensor
  *   states are reverted to sensord-is-not-available defaults.
- * - At least initially sensord restart is needed for full recovery.
+ * - The failed operation is reattempted after brief delay until it
+ *   succeeds
+ * - Sensord restart might still be needed for full recovery.
  *
  * State transitions:
  * - state transition diagram can be generated from mce-sensorfw.dot
@@ -199,6 +201,9 @@
 /* ========================================================================= *
  * D-BUS CONSTANTS FOR SENSORD SERVICE
  * ========================================================================= */
+
+/** How long to wait before retrying failed sensorfw dbus requests */
+#define SENSORFW_RETRY_DELAY_MS		       10000
 
 /** D-Bus name of the sensord service */
 #define SENSORFW_SERVICE                       "com.nokia.SensorService"
@@ -433,6 +438,9 @@ struct sfw_reporting_t
 
     /** Flag for: MCE wants sensor to be enabled */
     bool                  rep_target;
+
+    /** Timer for: Retry after ipc error */
+    guint                 rep_retry_id;
 };
 
 static const char       *sfw_reporting_state_name         (sfw_reporting_state_t state);
@@ -442,11 +450,13 @@ static void              sfw_reporting_delete             (sfw_reporting_t *self
 
 static void              sfw_reporting_cancel_change      (sfw_reporting_t *self);
 static void              sfw_reporting_cancel_value       (sfw_reporting_t *self);
+static void              sfw_reporting_cancel_retry       (sfw_reporting_t *self);
 
 static void              sfw_reporting_trans              (sfw_reporting_t *self, sfw_reporting_state_t state);
 
 static void              sfw_reporting_change_cb          (DBusPendingCall *pc, void *aptr);
 static void              sfw_reporting_value_cb           (DBusPendingCall *pc, void *aptr);
+static gboolean          sfw_reporting_retry_cb           (gpointer aptr);
 
 static void              sfw_reporting_do_rethink         (sfw_reporting_t *self);
 static void              sfw_reporting_do_start           (sfw_reporting_t *self);
@@ -500,6 +510,9 @@ struct sfw_override_t
 
     /** Flag for: MCE wants standby override to be set */
     bool                  ovr_target;
+
+    /** Timer for: Retry after ipc error */
+    guint                 ovr_retry_id;
 };
 
 static const char       *sfw_override_state_name         (sfw_override_state_t state);
@@ -508,10 +521,12 @@ static sfw_override_t    *sfw_override_create            (sfw_plugin_t *plugin);
 static void              sfw_override_delete             (sfw_override_t *self);
 
 static void              sfw_override_cancel_start       (sfw_override_t *self);
+static void              sfw_override_cancel_retry       (sfw_override_t *self);
 
 static void              sfw_override_trans              (sfw_override_t *self, sfw_override_state_t state);
 
 static void              sfw_override_start_cb           (DBusPendingCall *pc, void *aptr);
+static gboolean          sfw_override_retry_cb           (gpointer aptr);
 
 static void              sfw_override_do_rethink         (sfw_override_t *self);
 static void              sfw_override_do_start           (sfw_override_t *self);
@@ -563,6 +578,9 @@ struct sfw_connection_t
 
     /** I/O watch id id for: data available */
     guint                   con_tx_id;
+
+    /** Timer for: Retry after ipc error */
+    guint                   con_retry_id;
 };
 
 static const char       *sfw_connection_state_name      (sfw_connection_state_t state);
@@ -585,6 +603,9 @@ static void              sfw_connection_remove_tx_notify(sfw_connection_t *self)
 static void              sfw_connection_remove_rx_notify(sfw_connection_t *self);
 static void              sfw_connection_close_socket    (sfw_connection_t *self);
 static bool              sfw_connection_open_socket     (sfw_connection_t *self);
+
+static gboolean          sfw_connection_retry_cb        (gpointer aptr);
+static void              sfw_connection_cancel_retry    (sfw_connection_t *self);
 
 static void              sfw_connection_trans           (sfw_connection_t *self, sfw_connection_state_t state);
 
@@ -629,6 +650,9 @@ struct sfw_session_t
 
     /** Session ID received from sensord */
     dbus_int32_t         ses_id;
+
+    /** Timer for: Retry after ipc error */
+    guint                ses_retry_id;
 };
 
 static const char       *sfw_session_state_name         (sfw_session_state_t state);
@@ -639,10 +663,12 @@ static void              sfw_session_delete             (sfw_session_t *self);
 static int               sfw_session_get_id             (const sfw_session_t *self);
 
 static void              sfw_session_cancel_start       (sfw_session_t *self);
+static void              sfw_session_cancel_retry       (sfw_session_t *self);
 
 static void              sfw_session_trans              (sfw_session_t *self, sfw_session_state_t state);
 
 static void              sfw_session_start_cb           (DBusPendingCall *pc, void *aptr);
+static gboolean          sfw_session_retry_cb           (gpointer aptr);
 
 static void              sfw_session_do_start           (sfw_session_t *self);
 static void              sfw_session_do_reset           (sfw_session_t *self);
@@ -699,6 +725,9 @@ struct sfw_plugin_t
 
     /** Sensor reporting state machine object */
     sfw_reporting_t      *plg_reporting;
+
+    /** Timer for: Retry after ipc error */
+    guint                 plg_retry_id;
 };
 
 static const char       *sfw_plugin_state_name          (sfw_plugin_state_t state);
@@ -719,10 +748,13 @@ static void              sfw_plugin_restore_value       (sfw_plugin_t *self);
 static void              sfw_plugin_forget_value        (sfw_plugin_t *self);
 
 static void              sfw_plugin_cancel_load         (sfw_plugin_t *self);
+static void              sfw_plugin_cancel_retry        (sfw_plugin_t *self);
 
 static void              sfw_plugin_trans               (sfw_plugin_t *self, sfw_plugin_state_t state);
 
 static void              sfw_plugin_load_cb             (DBusPendingCall *pc, void *aptr);
+static gboolean          sfw_plugin_retry_cb            (gpointer aptr);
+
 static void              sfw_plugin_do_load             (sfw_plugin_t *self);
 static void              sfw_plugin_do_reset            (sfw_plugin_t *self);
 
@@ -1227,6 +1259,7 @@ sfw_reporting_create(sfw_plugin_t *plugin)
     self->rep_change_pc = 0;
     self->rep_value_pc  = 0;
     self->rep_target    = false;
+    self->rep_retry_id  = 0;
 
     return self;
 }
@@ -1280,6 +1313,17 @@ sfw_reporting_cancel_value(sfw_reporting_t *self)
     }
 }
 
+/** Cancel pending ipc retry timer
+ */
+static void
+sfw_reporting_cancel_retry(sfw_reporting_t *self)
+{
+    if( self->rep_retry_id ) {
+        g_source_remove(self->rep_retry_id);
+        self->rep_retry_id = 0;
+    }
+}
+
 /** Make a state transition
  */
 static void
@@ -1292,6 +1336,7 @@ sfw_reporting_trans(sfw_reporting_t *self, sfw_reporting_state_t state)
 
     sfw_reporting_cancel_change(self);
     sfw_reporting_cancel_value(self);
+    sfw_reporting_cancel_retry(self);
 
     mce_log(LL_DEBUG, "reporting(%s): %s -> %s",
             sfw_plugin_get_sensor_name(self->rep_plugin),
@@ -1351,9 +1396,14 @@ sfw_reporting_trans(sfw_reporting_t *self, sfw_reporting_state_t state)
         // NOP
         break;
 
+    case REPORTING_ERROR:
+        self->rep_retry_id = g_timeout_add(SENSORFW_RETRY_DELAY_MS,
+                                           sfw_reporting_retry_cb,
+                                           self);
+        break;
+
     default:
     case REPORTING_IDLE:
-    case REPORTING_ERROR:
     case REPORTING_INITIAL:
         // reset sensor value to default state
         sfw_plugin_reset_value(self->rep_plugin);
@@ -1377,7 +1427,7 @@ sfw_reporting_value_cb(DBusPendingCall *pc, void *aptr)
     DBusError     err  = DBUS_ERROR_INIT;
     dbus_uint32_t tck  = 0;
     dbus_uint32_t val  = 0;
-    bool          ack  = true;
+    bool          ack  = false;
 
     if( !pc || !self || pc != self->rep_value_pc )
         goto EXIT;
@@ -1400,41 +1450,41 @@ sfw_reporting_value_cb(DBusPendingCall *pc, void *aptr)
 
     DBusMessageIter body, data;
 
-    ack = false;
-
     if( !dbus_message_iter_init(rsp, &body) )
-        goto EXIT;
+        goto PARSE_FAILED;
 
     if( dbus_message_iter_get_arg_type(&body) != DBUS_TYPE_STRUCT )
-        goto EXIT;
+        goto PARSE_FAILED;
 
     dbus_message_iter_recurse(&body, &data);
     dbus_message_iter_next(&body);
 
     if( dbus_message_iter_get_arg_type(&data) !=  DBUS_TYPE_UINT64 )
-        goto EXIT;
+        goto PARSE_FAILED;
 
     dbus_message_iter_get_basic(&data, &tck);
     dbus_message_iter_next(&data);
 
     if( dbus_message_iter_get_arg_type(&data) !=  DBUS_TYPE_UINT32 )
-        goto EXIT;
+        goto PARSE_FAILED;
 
     dbus_message_iter_get_basic(&data, &val);
     dbus_message_iter_next(&data);
 
-    ack = true;
-
     sfw_plugin_handle_value(self->rep_plugin, val);
+    ack = true;
+    goto EXIT;
+
+PARSE_FAILED:
+    mce_log(LL_ERR, "reporting(%s): parse error",
+            sfw_plugin_get_sensor_name(self->rep_plugin));
 
 EXIT:
-
-    if( !ack )
-        mce_log(LL_ERR, "reporting(%s): parse error",
-                sfw_plugin_get_sensor_name(self->rep_plugin));
-
     if( rsp ) dbus_message_unref(rsp);
     dbus_error_free(&err);
+
+    if( !ack && self->rep_state == REPORTING_ENABLED )
+        sfw_reporting_trans(self, REPORTING_ERROR);
 
     return;
 }
@@ -1492,6 +1542,29 @@ EXIT:
     dbus_error_free(&err);
 
     return;
+}
+
+/** Handle triggering of start/stop retry timer
+ */
+static gboolean
+sfw_reporting_retry_cb(gpointer aptr)
+{
+    sfw_reporting_t *self = aptr;
+
+    if( !self->rep_retry_id )
+        goto EXIT;
+
+    self->rep_retry_id = 0;
+
+    mce_log(LL_WARN, "reporting(%s): retry",
+            sfw_plugin_get_sensor_name(self->rep_plugin));
+
+    if( self->rep_state == REPORTING_ERROR )
+        sfw_reporting_trans(self, REPORTING_RETHINK);
+
+EXIT:
+
+    return FALSE;
 }
 
 /** Choose between sensor start() and stop()
@@ -1571,6 +1644,7 @@ sfw_override_create(sfw_plugin_t *plugin)
     self->ovr_state    = OVERRIDE_INITIAL;
     self->ovr_start_pc = 0;
     self->ovr_target   = false;
+    self->ovr_retry_id = 0;
 
     return self;
 }
@@ -1612,6 +1686,17 @@ sfw_override_cancel_start(sfw_override_t *self)
     }
 }
 
+/** Cancel pending ipc retry timer
+ */
+static void
+sfw_override_cancel_retry(sfw_override_t *self)
+{
+    if( self->ovr_retry_id ) {
+        g_source_remove(self->ovr_retry_id);
+        self->ovr_retry_id = 0;
+    }
+}
+
 /** Make a state transition
  */
 static void
@@ -1624,6 +1709,7 @@ sfw_override_trans(sfw_override_t *self, sfw_override_state_t state)
         goto EXIT;
 
     sfw_override_cancel_start(self);
+    sfw_override_cancel_retry(self);
 
     mce_log(LL_DEBUG, "override(%s): %s -> %s",
             sfw_plugin_get_sensor_name(self->ovr_plugin),
@@ -1658,9 +1744,14 @@ sfw_override_trans(sfw_override_t *self, sfw_override_state_t state)
         // NOP
         break;
 
+    case OVERRIDE_ERROR:
+        self->ovr_retry_id = g_timeout_add(SENSORFW_RETRY_DELAY_MS,
+                                           sfw_override_retry_cb,
+                                           self);
+        break;
+
     default:
     case OVERRIDE_IDLE:
-    case OVERRIDE_ERROR:
     case OVERRIDE_INITIAL:
         // NOP
         break;
@@ -1730,6 +1821,29 @@ EXIT:
     dbus_error_free(&err);
 
     return;
+}
+
+/** Handle triggering of start/stop retry timer
+ */
+static gboolean
+sfw_override_retry_cb(gpointer aptr)
+{
+    sfw_override_t *self = aptr;
+
+    if( !self->ovr_retry_id )
+        goto EXIT;
+
+    self->ovr_retry_id = 0;
+
+    mce_log(LL_WARN, "override(%s): retry",
+            sfw_plugin_get_sensor_name(self->ovr_plugin));
+
+    if( self->ovr_state == OVERRIDE_ERROR )
+        sfw_override_trans(self, OVERRIDE_RETHINK);
+
+EXIT:
+
+    return FALSE;
 }
 
 /** Choose between sensor standby override set/unset
@@ -2119,6 +2233,40 @@ EXIT:
     return res;
 }
 
+/** Handle triggering of ipc retry timer
+ */
+static gboolean
+sfw_connection_retry_cb(gpointer aptr)
+{
+    sfw_connection_t *self = aptr;
+
+    if( !self->con_retry_id )
+        goto EXIT;
+
+    self->con_retry_id = 0;
+
+    mce_log(LL_WARN, "connection(%s): retry",
+            sfw_plugin_get_sensor_name(self->con_plugin));
+
+    if( self->con_state == CONNECTION_ERROR )
+        sfw_connection_trans(self, CONNECTION_CONNECTING);
+
+EXIT:
+
+    return FALSE;
+}
+
+/** Cancel pending ipc retry timer
+ */
+static void
+sfw_connection_cancel_retry(sfw_connection_t *self)
+{
+    if( self->con_retry_id ) {
+        g_source_remove(self->con_retry_id);
+        self->con_retry_id = 0;
+    }
+}
+
 /** Make a state transition
  */
 static void
@@ -2133,6 +2281,8 @@ sfw_connection_trans(sfw_connection_t *self, sfw_connection_state_t state)
             sfw_connection_state_name(state));
 
     self->con_state = state;
+
+    sfw_connection_cancel_retry(self);
 
     switch( self->con_state ) {
     case CONNECTION_CONNECTING:
@@ -2156,6 +2306,11 @@ sfw_connection_trans(sfw_connection_t *self, sfw_connection_state_t state)
         sfw_plugin_do_reporting_reset(self->con_plugin);
         sfw_plugin_do_override_reset(self->con_plugin);
         sfw_connection_close_socket(self);
+
+        if( self->con_state == CONNECTION_ERROR )
+            self->con_retry_id = g_timeout_add(SENSORFW_RETRY_DELAY_MS,
+                                               sfw_connection_retry_cb,
+                                               self);
         break;
     }
 
@@ -2170,11 +2325,12 @@ sfw_connection_create(sfw_plugin_t *plugin)
 {
     sfw_connection_t *self = calloc(1, sizeof *self);
 
-    self->con_plugin  = plugin;
-    self->con_state   = CONNECTION_INITIAL;
-    self->con_fd      = -1;
-    self->con_rx_id   = 0;
-    self->con_tx_id   = 0;
+    self->con_plugin   = plugin;
+    self->con_state    = CONNECTION_INITIAL;
+    self->con_fd       = -1;
+    self->con_rx_id    = 0;
+    self->con_tx_id    = 0;
+    self->con_retry_id = 0;
 
     return self;
 }
@@ -2250,6 +2406,7 @@ sfw_session_create(sfw_plugin_t *plugin)
     self->ses_state    = SESSION_INITIAL;
     self->ses_id       = 0;
     self->ses_start_pc = 0;
+    self->ses_retry_id = 0;
 
     return self;
 }
@@ -2289,6 +2446,17 @@ sfw_session_cancel_start(sfw_session_t *self)
     }
 }
 
+/** Cancel pending ipc retry timer
+ */
+static void
+sfw_session_cancel_retry(sfw_session_t *self)
+{
+    if( self->ses_retry_id ) {
+        g_source_remove(self->ses_retry_id);
+        self->ses_retry_id = 0;
+    }
+}
+
 /** Make a state transition
  */
 static void
@@ -2298,6 +2466,7 @@ sfw_session_trans(sfw_session_t *self, sfw_session_state_t state)
         goto EXIT;
 
     sfw_session_cancel_start(self);
+    sfw_session_cancel_retry(self);
 
     mce_log(LL_DEBUG, "session(%s): %s -> %s",
             sfw_plugin_get_sensor_name(self->ses_plugin),
@@ -2333,6 +2502,11 @@ sfw_session_trans(sfw_session_t *self, sfw_session_state_t state)
     case SESSION_ERROR:
     case SESSION_INITIAL:
         sfw_plugin_do_connection_reset(self->ses_plugin);
+
+        if( self->ses_state == SESSION_ERROR )
+            self->ses_retry_id = g_timeout_add(SENSORFW_RETRY_DELAY_MS,
+                                               sfw_session_retry_cb,
+                                               self);
         break;
     }
 
@@ -2393,6 +2567,29 @@ EXIT:
     dbus_error_free(&err);
 
     return;
+}
+
+/** Handle triggering of start/stop retry timer
+ */
+static gboolean
+sfw_session_retry_cb(gpointer aptr)
+{
+    sfw_session_t *self = aptr;
+
+    if( !self->ses_retry_id )
+        goto EXIT;
+
+    self->ses_retry_id = 0;
+
+    mce_log(LL_WARN, "session(%s): retry",
+            sfw_plugin_get_sensor_name(self->ses_plugin));
+
+    if( self->ses_state == SESSION_ERROR )
+        sfw_session_trans(self, SESSION_REQUESTING);
+
+EXIT:
+
+    return FALSE;
 }
 
 /** Initiate data session
@@ -2571,6 +2768,17 @@ sfw_plugin_cancel_load(sfw_plugin_t *self)
     }
 }
 
+/** Cancel pending ipc retry timer
+ */
+static void
+sfw_plugin_cancel_retry(sfw_plugin_t *self)
+{
+    if( self->plg_retry_id ) {
+        g_source_remove(self->plg_retry_id);
+        self->plg_retry_id = 0;
+    }
+}
+
 /** Make a state transition
  */
 static void
@@ -2587,12 +2795,18 @@ sfw_plugin_trans(sfw_plugin_t *self, sfw_plugin_state_t state)
     self->plg_state = state;
 
     sfw_plugin_cancel_load(self);
+    sfw_plugin_cancel_retry(self);
 
     switch( self->plg_state ) {
     case PLUGIN_IDLE:
     case PLUGIN_ERROR:
     case PLUGIN_INITIAL:
         sfw_plugin_do_session_reset(self);
+
+        if( self->plg_state == PLUGIN_ERROR )
+            self->plg_retry_id = g_timeout_add(SENSORFW_RETRY_DELAY_MS,
+                                               sfw_plugin_retry_cb,
+                                               self);
         break;
 
     case PLUGIN_LOADING:
@@ -2633,6 +2847,7 @@ sfw_plugin_create(const sfw_backend_t *backend)
     self->plg_backend       = backend;
     self->plg_sensor_object = 0;
     self->plg_load_pc       = 0;
+    self->plg_retry_id      = 0;
 
     /* If backend does not define object path, construct it
      * from manager object path + sensor name */
@@ -2734,6 +2949,29 @@ EXIT:
     dbus_error_free(&err);
 
     return;
+}
+
+/** Handle triggering of ipc retry timer
+ */
+static gboolean
+sfw_plugin_retry_cb(gpointer aptr)
+{
+    sfw_plugin_t *self = aptr;
+
+    if( !self->plg_retry_id )
+        goto EXIT;
+
+    self->plg_retry_id = 0;
+
+    mce_log(LL_WARN, "plugin(%s): retry",
+            sfw_plugin_get_sensor_name(self));
+
+    if( self->plg_state == PLUGIN_ERROR )
+        sfw_plugin_trans(self, PLUGIN_LOADING);
+
+EXIT:
+
+    return FALSE;
 }
 
 /** Initiate plugin loading
