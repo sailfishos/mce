@@ -1,3 +1,17 @@
+mce (1.53.0) unstable; urgency=low
+
+  * [mce] Provide separate datapipes for raw and filtered ALS data.
+    Contributes to JB#29011
+  * [mce] Use ambient light to avoid false positives with magnetic cover
+    sensors. Contributes to JB#29011
+  * [mce] Make lid sensor policy work similarly to proximity sensor. Fixes JB#29011
+  * [mce] Assume lid sensor is broken until it has been switch to open
+    position. Contributes to JB#29011
+  * [mce] Reset lid-sensor-is-working status on triple powerkey press.
+    Contributes to JB#29011
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 16 Jun 2015 11:18:16 +0300
+
 mce (1.52.0) unstable; urgency=low
 
   * [mce] Allow keyboard input device to get slider state from another input
