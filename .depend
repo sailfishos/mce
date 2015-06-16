@@ -595,6 +595,7 @@ modules/filter-brightness-als.o:\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce.h\
+	tklock.h\
 	modules/display.h\
 	modules/filter-brightness-als.h\
 
@@ -609,6 +610,7 @@ modules/filter-brightness-als.pic.o:\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce.h\
+	tklock.h\
 	modules/display.h\
 	modules/filter-brightness-als.h\
 

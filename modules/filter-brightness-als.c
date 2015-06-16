@@ -33,6 +33,7 @@
 #include "../mce-gconf.h"
 #include "../mce-dbus.h"
 #include "../mce-sensorfw.h"
+#include "../tklock.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -85,14 +86,23 @@ typedef struct
 	als_limit_t lut[ALS_PROFILE_COUNT][ALS_LUX_STEPS+1];
 } als_filter_t;
 
-/** Is there an ALS available? */
-static gboolean have_als = TRUE;
+/** Master ALS enabled setting */
+static gboolean als_enabled = ALS_ENABLED_DEFAULT;
 
-/** Filter things through ALS - config value */
-static gboolean use_als_flag = TRUE;
+/** Config notification for als_enabled */
+static guint als_enabled_gconf_id = 0;
 
-/** Filter things through ALS - config notification */
-static guint use_als_gconf_id = 0;
+/** Filter brightness through ALS setting */
+static gboolean als_autobrightness = ALS_AUTOBRIGHTNESS_DEFAULT;
+
+/** Config notification for als_autobrightness */
+static guint als_autobrightness_gconf_id = 0;
+
+/** ALS is used for LID filtering setting */
+static gboolean filter_lid_with_als = DEFAULT_FILTER_LID_WITH_ALS;
+
+/** Config notification for filter_lid_with_als */
+static guint filter_lid_with_als_gconf_id = 0;
 
 /** Input filter to use for ALS sensor - config value */
 static gchar *als_input_filter = 0;
@@ -101,7 +111,7 @@ static gchar *als_input_filter = 0;
 static guint  als_input_filter_gconf_id = 0;
 
 /** Sample time for ALS input filtering  - config value */
-static gint   als_sample_time = 0;
+static gint   als_sample_time = ALS_SAMPLE_TIME_DEFAULT;
 
 /** Sample time for ALS input filtering  - config notification */
 static guint  als_sample_time_gconf_id = 0;
@@ -113,10 +123,10 @@ static display_state_t display_state = MCE_DISPLAY_UNDEF;
 static display_state_t display_state_next = MCE_DISPLAY_UNDEF;
 
 /** Filtered lux value from the ALS */
-static gint als_lux_latest = -1;
+static gint als_lux_from_filter = -1;
 
 /** Raw lux value from the ALS */
-static gint als_lux_cached = -1;
+static gint als_lux_from_sensor = -1;
 
 /** Currently active color profile (dummy implementation) */
 static char *color_profile_name = 0;
@@ -652,17 +662,18 @@ static void inputflt_sampling_output(int lux)
 {
 	lux = inputflt_filter(lux);
 
-	if( als_lux_latest == lux )
+	if( als_lux_from_filter == lux )
 		goto EXIT;
 
-	mce_log(LL_DEBUG, "output: %d -> %d", als_lux_latest, lux);
+	mce_log(LL_DEBUG, "output: %d -> %d", als_lux_from_filter, lux);
 
-	als_lux_latest = lux;
+	als_lux_from_filter = lux;
 
 	run_datapipes();
 
+	/* Feed filtered sensor data to datapipe */
 	execute_datapipe(&ambient_light_level_pipe,
-			 GINT_TO_POINTER(als_lux_latest),
+			 GINT_TO_POINTER(als_lux_from_filter),
 			 USE_INDATA, CACHE_INDATA);
 EXIT:
 	return;
@@ -736,9 +747,9 @@ static void inputflt_sampling_stop(void)
 		mce_log(LL_DEBUG, "stop");
 		g_source_remove(inputflt_sampling_id),
 			inputflt_sampling_id = 0;
-
-		inputflt_sampling_output(inputflt_lux_value);
 	}
+
+	inputflt_sampling_output(inputflt_lux_value);
 }
 
 /** Feed sensor input to filter
@@ -781,64 +792,65 @@ static void inputflt_quit(void)
  *
  * @param lux ambient light value
  */
-static void als_lux_changed(unsigned lux_)
+static void als_lux_changed(int lux)
 {
-	int lux = (int)lux_;
+	if( !als_enabled )
+		als_lux_from_sensor = -1;
+	else
+		als_lux_from_sensor = lux;
 
-	/* Update / clear cached lux value */
-	if( lux < 0 ) {
-		if( !have_als || !use_als_flag )
-			als_lux_cached = -1;
-	}
-	else {
-		als_lux_cached = lux;
-	}
+	/* Filter raw sensor data */
+	inputflt_sampling_input(als_lux_from_sensor);
 
-	inputflt_sampling_input(als_lux_cached);
-
+	/* Feed raw sensor data to datapipe */
 	execute_datapipe(&ambient_light_sensor_pipe,
-			 GINT_TO_POINTER(als_lux_cached),
+			 GINT_TO_POINTER(als_lux_from_sensor),
 			 USE_INDATA, CACHE_INDATA);
+}
+
+static bool als_is_needed(void)
+{
+	bool need_als = false;
+
+	switch( display_state_next ) {
+	case MCE_DISPLAY_ON:
+	case MCE_DISPLAY_DIM:
+	case MCE_DISPLAY_LPM_OFF:
+	case MCE_DISPLAY_LPM_ON:
+		if( als_autobrightness || filter_lid_with_als )
+			need_als = true;
+		break;
+
+	default:
+	case MCE_DISPLAY_OFF:
+	case MCE_DISPLAY_UNDEF:
+		break;
+	}
+
+	return need_als;
 }
 
 /** Check if ALS sensor should be enabled or disabled
  */
 static void rethink_als_status(void)
 {
-	static gboolean enable_old = FALSE;
+	static int old_autobrightness = -1;
 
-	gboolean enable_new = FALSE;
-	gboolean want_data  = FALSE;
+	static int enable_old = -1;
+	bool       enable_new = false;
 
-	if( !have_als )
+	if( als_enabled )
+		enable_new = als_is_needed();
+
+	if( enable_old == enable_new )
 		goto EXIT;
 
-	if( use_als_flag ) {
-		switch( display_state_next ) {
-		case MCE_DISPLAY_ON:
-		case MCE_DISPLAY_DIM:
-		case MCE_DISPLAY_POWER_UP:
-		case MCE_DISPLAY_LPM_OFF:
-		case MCE_DISPLAY_LPM_ON:
-			want_data = TRUE;
-			break;
+	mce_log(LL_DEBUG, "enabled=%d; autobright=%d; filter_lid=%d -> enable=%d",
+		als_enabled, als_autobrightness, filter_lid_with_als, enable_new);
 
-		default:
-		case MCE_DISPLAY_POWER_DOWN:
-		case MCE_DISPLAY_OFF:
-		case MCE_DISPLAY_UNDEF:
-			want_data = FALSE;
-			break;
-		}
-	}
+	enable_old = enable_new;
 
-	if( want_data )
-		enable_new = TRUE;
-
-	mce_log(LL_DEBUG, "use=%d, want=%d -> enable=%d",
-		use_als_flag, want_data, enable_new);
-
-	if( want_data ) {
+	if( enable_new ) {
 		/* The sensor has been off for some time, so the
 		 * history needs to be forgotten when we get fresh
 		 * data */
@@ -846,6 +858,8 @@ static void rethink_als_status(void)
 
 		/* Enable change notifications */
 		mce_sensorfw_als_set_notify(als_lux_changed);
+
+		mce_sensorfw_als_enable();
 	}
 	else {
 		/* Disable change notifications */
@@ -854,19 +868,6 @@ static void rethink_als_status(void)
 		/* Force cached value re-evaluation */
 		als_lux_changed(-1);
 
-		/* Stop sampling timer */
-		inputflt_sampling_stop();
-	}
-
-	if( enable_old == enable_new )
-		goto EXIT;
-
-	enable_old = enable_new;
-
-	if( enable_new ) {
-		mce_sensorfw_als_enable();
-	}
-	else {
 		mce_sensorfw_als_disable();
 
 		/* Clear thresholds so that the next reading from
@@ -877,40 +878,38 @@ static void rethink_als_status(void)
 		als_filter_clear_threshold(&lut_lpm);
 	}
 
-	run_datapipes();
 EXIT:
+	if( old_autobrightness != als_autobrightness ) {
+		old_autobrightness = als_autobrightness;
+		run_datapipes();
+	}
+
 	return;
 }
 
 /**
  * Ambient Light Sensor filter for display brightness
  *
- * @param data The un-processed brightness setting (1-5) stored in a pointer
+ * @param data The un-processed brightness setting (1-100) stored in a pointer
  * @return The processed brightness value (percentage) stored in a pointer
  */
 static gpointer display_brightness_filter(gpointer data)
 {
 	int setting = GPOINTER_TO_INT(data);
 
-	if( setting < 1 )   setting =   1; else
-	if( setting > 100 ) setting = 100;
-
 	int brightness = setting;
+
+	if( !als_autobrightness || als_lux_from_filter < 0 )
+		goto EXIT;
 
 	int max_prof = lut_display.profiles - 1;
 
 	if( max_prof < 0 )
 		goto EXIT;
 
-	if( !use_als_flag )
-		goto EXIT;
-
-	if( als_lux_latest < 0 )
-		goto EXIT;
-
 	als_profile_t prof = mce_xlat_int(1,100, 0,max_prof, setting);
 
-	brightness = als_filter_run(&lut_display, prof, als_lux_latest);
+	brightness = als_filter_run(&lut_display, prof, als_lux_from_filter);
 
 EXIT:
 	mce_log(LL_DEBUG, "in=%d -> out=%d", setting, brightness);
@@ -920,7 +919,7 @@ EXIT:
 /**
  * Ambient Light Sensor filter for LED brightness
  *
- * @param data The un-processed brightness setting (1-5) stored in a pointer
+ * @param data The un-processed brightness setting (1-100) stored in a pointer
  * @return The processed brightness value
  */
 static gpointer led_brightness_filter(gpointer data)
@@ -928,13 +927,13 @@ static gpointer led_brightness_filter(gpointer data)
 	int value = GPOINTER_TO_INT(data);
 	int scale = 40;
 
+	if( !als_autobrightness || als_lux_from_filter < 0 )
+		goto EXIT;
+
 	if( lut_led.profiles < 1 )
 		goto EXIT;
 
-	if( als_lux_latest < 0 )
-		goto EXIT;
-
-	scale = als_filter_run(&lut_led, 0, als_lux_latest);
+	scale = als_filter_run(&lut_led, 0, als_lux_from_filter);
 
 EXIT:
 	return GINT_TO_POINTER(value * scale / 100);
@@ -949,15 +948,15 @@ static gpointer lpm_brightness_filter(gpointer data)
 {
 	int value = GPOINTER_TO_INT(data);
 
-	if( lut_lpm.profiles < 1 )
+	if( !als_autobrightness || als_lux_from_filter < 0 )
 		goto EXIT;
 
-	if( als_lux_latest < 0 )
+	if( lut_lpm.profiles < 1 )
 		goto EXIT;
 
 	/* Note: Input value is ignored and output is
 	 *       determined only by the als config */
-	value = als_filter_run(&lut_lpm, 0, als_lux_latest);
+	value = als_filter_run(&lut_lpm, 0, als_lux_from_filter);
 
 EXIT:
 	return GINT_TO_POINTER(value);
@@ -966,7 +965,7 @@ EXIT:
 /**
  * Ambient Light Sensor filter for keyboard backlight brightness
  *
- * @param data The un-processed brightness setting (1-5) stored in a pointer
+ * @param data The un-processed brightness setting (1-100) stored in a pointer
  * @return The processed brightness value
  */
 static gpointer key_backlight_filter(gpointer data)
@@ -974,13 +973,13 @@ static gpointer key_backlight_filter(gpointer data)
 	int value = GPOINTER_TO_INT(data);
 	int scale = 100;
 
+	if( !als_autobrightness || als_lux_from_filter < 0 )
+		goto EXIT;
+
 	if( lut_key.profiles < 1 )
 		goto EXIT;
 
-	if( als_lux_latest < 0 )
-		goto EXIT;
-
-	scale = als_filter_run(&lut_key, 0, als_lux_latest);
+	scale = als_filter_run(&lut_key, 0, als_lux_from_filter);
 
 EXIT:
 	return GINT_TO_POINTER(value * scale / 100);
@@ -1378,13 +1377,17 @@ fba_gconf_cb(GConfClient *const gcc, const guint id,
 		goto EXIT;
 	}
 
-	if( id == use_als_gconf_id ) {
-		gboolean old = use_als_flag;
-		use_als_flag = gconf_value_get_bool(gcv);
-
-		if( use_als_flag != old ) {
-			rethink_als_status();
-		}
+	if( id == als_enabled_gconf_id ) {
+		als_enabled = gconf_value_get_bool(gcv);
+		rethink_als_status();
+	}
+	else if( id == als_autobrightness_gconf_id ) {
+		als_autobrightness = gconf_value_get_bool(gcv);
+		rethink_als_status();
+	}
+	else if( id == filter_lid_with_als_gconf_id ) {
+		filter_lid_with_als = gconf_value_get_bool(gcv);
+		rethink_als_status();
 	}
 	else if( id == als_input_filter_gconf_id ) {
 		const char *val = gconf_value_get_string(gcv);
@@ -1426,12 +1429,24 @@ EXIT:
  */
 static void fba_gconf_init(void)
 {
-	/* ALS enabled setting */
+	/* ALS enabled settings */
 	mce_gconf_track_bool(MCE_GCONF_DISPLAY_ALS_ENABLED,
-			     &use_als_flag,
+			     &als_enabled,
 			     ALS_ENABLED_DEFAULT,
 			     fba_gconf_cb,
-			     &use_als_gconf_id);
+			     &als_enabled_gconf_id);
+
+	mce_gconf_track_bool(MCE_GCONF_DISPLAY_ALS_AUTOBRIGHTNESS,
+			     &als_autobrightness,
+			     ALS_AUTOBRIGHTNESS_DEFAULT,
+			     fba_gconf_cb,
+			     &als_autobrightness_gconf_id);
+
+	mce_gconf_track_bool(MCE_GCONF_FILTER_LID_WITH_ALS,
+			     &filter_lid_with_als,
+			     DEFAULT_FILTER_LID_WITH_ALS,
+			     fba_gconf_cb,
+			     &filter_lid_with_als_gconf_id);
 
 	/* ALS input filter setting */
 	mce_gconf_track_string(MCE_GCONF_DISPLAY_ALS_INPUT_FILTER,
@@ -1460,8 +1475,14 @@ static void fba_gconf_init(void)
  */
 static void fba_gconf_quit(void)
 {
-	mce_gconf_notifier_remove(use_als_gconf_id),
-		use_als_gconf_id = 0;
+	mce_gconf_notifier_remove(als_enabled_gconf_id),
+		als_enabled_gconf_id = 0;
+
+	mce_gconf_notifier_remove(als_autobrightness_gconf_id),
+		als_autobrightness_gconf_id = 0;
+
+	mce_gconf_notifier_remove(filter_lid_with_als_gconf_id),
+		filter_lid_with_als_gconf_id = 0;
 
 	mce_gconf_notifier_remove(als_input_filter_gconf_id),
 		als_input_filter_gconf_id = 0;

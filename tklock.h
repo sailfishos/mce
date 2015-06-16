@@ -120,6 +120,10 @@ typedef enum
 /** Default value for MCE_GCONF_PROXIMITY_PS_ENABLED_PATH */
 # define DEFAULT_LID_SENSOR_ENABLED             true
 
+/** Whether to use ALS data for LID sensor filtering */
+#define MCE_GCONF_FILTER_LID_WITH_ALS           MCE_GCONF_LOCK_PATH"/filter_lid_with_als"
+#define DEFAULT_FILTER_LID_WITH_ALS             true
+
 /** Autolock delay GConf setting [ms]*/
 # define MCE_GCONF_AUTOLOCK_DELAY		MCE_GCONF_LOCK_PATH "/autolock_delay"
 # define DEFAULT_AUTOLOCK_DELAY                 30000

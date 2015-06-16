@@ -2671,6 +2671,30 @@ static void xmce_get_exception_lengths(void)
  * lid_sensor
  * ------------------------------------------------------------------------- */
 
+/* Set filter lid with als mode
+ *
+ * @param args string suitable for interpreting as enabled/disabled
+ */
+static bool xmce_set_filter_lid_with_als(const char *args)
+{
+        debugf("%s(%s)\n", __FUNCTION__, args);
+        gboolean val = xmce_parse_enabled(args);
+        mcetool_gconf_set_bool(MCE_GCONF_FILTER_LID_WITH_ALS, val);
+        return true;
+}
+
+/* Get current filter lid with als mode from mce and print it out
+ */
+static void xmce_get_filter_lid_with_als(void)
+{
+        gboolean val = 0;
+        char txt[32] = "unknown";
+
+        if( mcetool_gconf_get_bool(MCE_GCONF_FILTER_LID_WITH_ALS, &val) )
+                snprintf(txt, sizeof txt, "%s", val ? "enabled" : "disabled");
+        printf("%-"PAD1"s %s\n", "Filter lid with als:", txt);
+}
+
 /* Set lid_sensor use mode
  *
  * @param args string suitable for interpreting as enabled/disabled
@@ -2777,6 +2801,30 @@ static void xmce_get_ps_blocks_touch(void)
 /* ------------------------------------------------------------------------- *
  * als
  * ------------------------------------------------------------------------- */
+
+/* Set als autobrightness mode
+ *
+ * @param args string suitable for interpreting as enabled/disabled
+ */
+static bool xmce_set_als_autobrightness(const char *args)
+{
+        debugf("%s(%s)\n", __FUNCTION__, args);
+        gboolean val = xmce_parse_enabled(args);
+        mcetool_gconf_set_bool(MCE_GCONF_DISPLAY_ALS_AUTOBRIGHTNESS, val);
+        return true;
+}
+
+/** Get current als autobrightness from mce and print it out
+ */
+static void xmce_get_als_autobrightness(void)
+{
+        gboolean val = 0;
+        char txt[32] = "unknown";
+
+        if( mcetool_gconf_get_bool(MCE_GCONF_DISPLAY_ALS_AUTOBRIGHTNESS, &val) )
+                snprintf(txt, sizeof txt, "%s", val ? "enabled" : "disabled");
+        printf("%-"PAD1"s %s\n", "Use als autobrightness:", txt);
+}
 
 /* Set als use mode
  *
@@ -4465,12 +4513,14 @@ static bool xmce_get_status(const char *args)
         xmce_get_low_power_mode();
         xmce_get_lpmui_triggering();
         xmce_get_als_mode();
+        xmce_get_als_autobrightness();
         xmce_get_als_input_filter();
         xmce_get_als_sample_time();
         xmce_get_orientation_sensor_mode();
         xmce_get_ps_mode();
         xmce_get_ps_blocks_touch();
         xmce_get_lid_sensor_mode();
+        xmce_get_filter_lid_with_als();
         xmce_get_dim_timeouts();
         xmce_get_brightness_fade();
         xmce_get_suspend_policy();
@@ -5096,8 +5146,23 @@ static const mce_opt_t options[] =
                 .with_arg    = xmce_set_als_mode,
                 .values      = "enabled|disabled",
                 .usage       =
-                        "set the als mode; valid modes are:\n"
+                        "set the als master mode; valid modes are:\n"
                         "'enabled' and 'disabled'\n"
+                        "\n"
+                        "If disabled, mce will never power up the ambient light\n"
+                        "sensor. If enabled, ALS is used depending on device.\n"
+                        "state and feature specific settings.\n"
+        },
+        {
+                .name        = "set-als-autobrightness",
+                .with_arg    = xmce_set_als_autobrightness,
+                .values      = "enabled|disabled",
+                .usage       =
+                        "use the als for automatic brightness tuning; valid modes are:\n"
+                        "'enabled' and 'disabled'\n"
+                        "\n"
+                        "When enabled, affects display, notification led and keypad\n"
+                        "backlight brightness.\n"
         },
         {
                 .name        = "set-als-input-filter",
@@ -5137,6 +5202,16 @@ static const mce_opt_t options[] =
                 .values      = "enabled|disabled",
                         "set the lid sensor mode; valid modes are:\n"
                         "'enabled' and 'disabled'\n"
+        },
+        {
+                .name        = "set-filter-lid-with-als",
+                .with_arg    = xmce_set_filter_lid_with_als,
+                .values      = "enabled|disabled",
+                        "set filter lid close events with als mode; valid modes are:\n"
+                        "'enabled' and 'disabled'\n"
+                        "\n"
+                        "When enabled, lid closed events are acted on only if they\n"
+                        "happen in close proximity to light level drop.\n"
         },
         {
                 .name        = "set-orientation-sensor-mode",

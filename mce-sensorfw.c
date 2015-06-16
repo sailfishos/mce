@@ -3113,7 +3113,7 @@ static guint als_evdev_id = 0;
 static void (*sfw_notify_ps_cb)(bool covered) = 0;
 
 /** Ambient light change callback used for notifying upper level logic */
-static void (*sfw_notify_als_cb)(unsigned lux) = 0;
+static void (*sfw_notify_als_cb)(int lux) = 0;
 
 /** Orientation change callback used for notifying upper level logic */
 static void (*sfw_notify_orient_cb)(int state) = 0;
@@ -3406,7 +3406,7 @@ mce_sensorfw_resume(void)
  * @param cb function to call when ALS events are received
  */
 void
-mce_sensorfw_als_set_notify(void (*cb)(unsigned lux))
+mce_sensorfw_als_set_notify(void (*cb)(int lux))
 {
     if( (sfw_notify_als_cb = cb) )
         sfw_notify_als(NOTIFY_REPEAT, 0);
