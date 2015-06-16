@@ -45,7 +45,7 @@ distclean:: clean
 # CONFIGURATION
 # ----------------------------------------------------------------------------
 
-VERSION := 1.53.0
+VERSION := 1.54.0
 
 INSTALL_BIN := install --mode=755
 INSTALL_DIR := install -d

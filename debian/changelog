@@ -1,3 +1,9 @@
+mce (1.54.0) unstable; urgency=low
+
+  * [mce] Allow fine tuning ALS usage via mce settings. Fixes JB#29892
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 16 Jun 2015 15:05:21 +0300
+
 mce (1.53.0) unstable; urgency=low
 
   * [mce] Provide separate datapipes for raw and filtered ALS data.
