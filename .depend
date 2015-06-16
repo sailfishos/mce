@@ -1079,6 +1079,7 @@ tklock.o:\
 	mce-io.h\
 	mce-log.h\
 	mce.h\
+	modules/display.h\
 	modules/doubletap.h\
 	systemui/dbus-names.h\
 	systemui/tklock-dbus-names.h\
@@ -1097,6 +1098,7 @@ tklock.pic.o:\
 	mce-io.h\
 	mce-log.h\
 	mce.h\
+	modules/display.h\
 	modules/doubletap.h\
 	systemui/dbus-names.h\
 	systemui/tklock-dbus-names.h\
