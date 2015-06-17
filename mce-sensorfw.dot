@@ -41,6 +41,8 @@ digraph mce_sensorfw
 
     REPORTING_DISABLING -> REPORTING_DISABLED;
     REPORTING_DISABLED  -> REPORTING_RETHINK  [label="enable()"];
+
+    REPORTING_ERROR     -> REPORTING_RETHINK [label="retry"];
   }
 
   subgraph clusterOVERRIDE {
@@ -65,6 +67,8 @@ digraph mce_sensorfw
     OVERRIDE_ENABLED   -> OVERRIDE_RETHINK [label="disable()"];
     OVERRIDE_DISABLING -> OVERRIDE_DISABLED;
     OVERRIDE_DISABLED  -> OVERRIDE_RETHINK  [label="enable()"];
+
+    OVERRIDE_ERROR     -> OVERRIDE_RETHINK [label="retry"];
   }
 
   subgraph clusterCONNECTION {
@@ -85,6 +89,7 @@ digraph mce_sensorfw
     CONNECTION_CONNECTED -> REPORTING_IDLE [style=dotted, lhead=clusterREPORTING]
     CONNECTION_CONNECTED -> OVERRIDE_IDLE  [style=dotted, lhead=clusterOVERRIDE]
 
+    CONNECTION_ERROR     -> CONNECTION_CONNECTING [label="retry"];
   }
   subgraph clusterSESSION {
     SESSION_IDLE;
@@ -101,6 +106,7 @@ digraph mce_sensorfw
 
     SESSION_ACTIVE   -> CONNECTION_IDLE [style=dotted, lhead=clusterCONNECTION]
 
+    SESSION_ERROR    -> SESSION_REQUESTING [label="retry"];
   }
 
   subgraph clusterPLUGIN {
@@ -117,6 +123,8 @@ digraph mce_sensorfw
     PLUGIN_ANY     -> PLUGIN_ERROR [label="failure"];
 
     PLUGIN_LOADED  -> SESSION_IDLE [style=dotted, lhead=clusterSESSION];
+
+    PLUGIN_ERROR   -> PLUGIN_LOADING [label="retry"];
   }
 
   subgraph clusterSERVICE {
