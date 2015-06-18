@@ -1,3 +1,9 @@
+mce (1.54.2) unstable; urgency=low
+
+  * [mce] Use hbtimer for led pattern auto-deactivation. Fixes JB#29180
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 18 Jun 2015 08:01:36 +0300
+
 mce (1.54.1) unstable; urgency=low
 
   * [mce] Improve handling of sensorfw related ipc failures. Fixes JB#29283
