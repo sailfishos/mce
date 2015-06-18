@@ -1029,6 +1029,71 @@ const char *device_lock_state_repr(device_lock_state_t state)
 	return res;
 }
 
+/** Convert uiexctype_t enum to human readable string
+ *
+ * Note that while uiexctype_t actually is a bitmask
+ * and this function is expected to be used in situations
+ * where at maximum one bit is set.
+ *
+ * @param state uiexctype_t exception stata
+ *
+ * @return human readable representation of state
+ */
+const char *uiexctype_repr(uiexctype_t state)
+{
+	const char *res = "unknown";
+	switch( state ) {
+	case UIEXC_NONE:   res = "none";   break;
+	case UIEXC_LINGER: res = "linger"; break;
+	case UIEXC_CALL:   res = "call";   break;
+	case UIEXC_ALARM:  res = "alarm";  break;
+	case UIEXC_NOTIF:  res = "notif";  break;
+	default: break;
+	}
+	return res;
+}
+
+/** Convert uiexctype_t enum to dbus argument string
+ *
+ * Note that while uiexctype_t actually is a bitmask
+ * and this function is expected to be used in situations
+ * where at maximum one bit is set.
+ *
+ * @param state uiexctype_t exception stata
+ *
+ * @return representation of state for use over dbus
+ */
+const char *uiexctype_to_dbus(uiexctype_t state)
+{
+	const char *res = MCE_BLANKING_POLICY_DEFAULT_STRING;
+
+	switch( state ) {
+	case UIEXC_NOTIF:
+		res = MCE_BLANKING_POLICY_NOTIFICATION_STRING;
+		break;
+
+	case UIEXC_ALARM:
+		res = MCE_BLANKING_POLICY_ALARM_STRING;
+		break;
+
+	case UIEXC_CALL:
+		res = MCE_BLANKING_POLICY_CALL_STRING;
+		break;
+
+	case UIEXC_LINGER:
+		res = MCE_BLANKING_POLICY_LINGER_STRING;
+		break;
+
+	case UIEXC_NONE:
+		break;
+
+	default:
+		mce_log(LL_WARN, "unknown blanking policy; using default");
+		break;
+	}
+	return res;
+}
+
 /** Convert service_state_t enum to human readable string
  *
  * @param state service_state_t enumeration value

@@ -300,6 +300,9 @@ static void     tklock_ui_disable_lpm(void);
 
 // dbus ipc
 
+static void     tklock_dbus_send_display_blanking_policy(DBusMessage *const req);
+static gboolean tklock_dbus_display_blanking_policy_get_cb(DBusMessage *const msg);
+
 static void     tklock_dbus_send_keyboard_slide_state(DBusMessage *const req);
 static gboolean tklock_dbus_keyboard_slide_state_get_req_cb(DBusMessage *const msg);
 
@@ -1285,7 +1288,9 @@ static void tklock_datapipe_exception_state_cb(gconstpointer data)
     if( exception_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "exception_state = %d -> %d", prev, exception_state);
+    mce_log(LL_DEBUG, "exception_state = %s -> %s",
+            uiexctype_repr(prev),
+            uiexctype_repr(exception_state));
 
     /* Cancel autorelock if there is a call */
     if( exception_state == UIEXC_CALL &&
@@ -1300,6 +1305,9 @@ static void tklock_datapipe_exception_state_cb(gconstpointer data)
 
     tklock_autolock_rethink();
     tklock_proxlock_rethink();
+
+    /* Broadcast blanking policy change */
+    tklock_dbus_send_display_blanking_policy(0);
 
 EXIT:
     return;
@@ -4784,6 +4792,57 @@ static void tklock_ui_disable_lpm(void)
  * DBUS MESSAGE HANDLERS
  * ========================================================================= */
 
+/** Send the blanking policy state
+ *
+ * @param req A method call message to be replied, or
+ *            NULL to broadcast a policy change signal
+ */
+static void
+tklock_dbus_send_display_blanking_policy(DBusMessage *const req)
+{
+    DBusMessage *rsp = 0;
+
+    if( req )
+        rsp = dbus_new_method_reply(req);
+    else
+        rsp = dbus_new_signal(MCE_SIGNAL_PATH, MCE_SIGNAL_IF,
+                              MCE_BLANKING_POLICY_SIG);
+    if( !rsp )
+        goto EXIT;
+
+    const char *arg = uiexctype_to_dbus(exception_state);
+
+    mce_log(LL_DEBUG, "send display blanking policy %s: %s",
+            req ? "reply" : "signal", arg);
+
+    if( !dbus_message_append_args(rsp,
+                                  DBUS_TYPE_STRING, &arg,
+                                  DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    dbus_send_message(rsp), rsp = 0;
+
+EXIT:
+    if( rsp ) dbus_message_unref(rsp);
+}
+
+/** D-Bus callback for the get blakng policy state method call
+ *
+ * @param msg The D-Bus message
+ *
+ * @return TRUE
+ */
+static gboolean
+tklock_dbus_display_blanking_policy_get_cb(DBusMessage *const msg)
+{
+    mce_log(LL_DEVEL, "Received blanking policy get from %s",
+            mce_dbus_get_message_sender_ident(msg));
+
+    tklock_dbus_send_display_blanking_policy(msg);
+
+    return TRUE;
+}
+
 #define MCE_KEYBOARD_SLIDE_STATE_SIG "keyboard_slide_state_ind"
 #define MCE_KEYBOARD_SLIDE_STATE_REQ "keyboard_slide_state_req"
 
@@ -5223,6 +5282,13 @@ static mce_dbus_handler_t tklock_dbus_handlers[] =
         .args      =
             "    <arg name=\"keyboard_state\" type=\"s\"/>\n"
     },
+    {
+        .interface = MCE_SIGNAL_IF,
+        .name      = MCE_BLANKING_POLICY_SIG,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .args      =
+            "    <arg name=\"blanking_policy\" type=\"s\"/>\n"
+    },
     /* method calls */
     {
         .interface = MCE_REQUEST_IF,
@@ -5282,6 +5348,14 @@ static mce_dbus_handler_t tklock_dbus_handlers[] =
         .callback  = tklock_dbus_keyboard_available_state_get_req_cb,
         .args      =
             "    <arg direction=\"out\" name=\"keyboard_state\" type=\"s\"/>\n"
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_BLANKING_POLICY_GET,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = tklock_dbus_display_blanking_policy_get_cb,
+        .args      =
+            "    <arg direction=\"out\" name=\"blanking_policy\" type=\"s\"/>\n"
     },
     /* sentinel */
     {
@@ -5782,6 +5856,9 @@ gboolean mce_tklock_init(void)
 
     /* Make sure lpm state gets initialized & broadcast */
     tklock_lpmui_set_state(false);
+
+    /* Broadcast initial blanking policy */
+    tklock_dbus_send_display_blanking_policy(0);
 
     /* Evaluate initial lid sensor state */
     tklock_lid_sensor_rethink();
