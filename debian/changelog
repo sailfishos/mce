@@ -1,3 +1,9 @@
+mce (1.55.0) unstable; urgency=low
+
+  * [mce] Expose active blanking policy on D-Bus. Fixes JB#29675
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 18 Jun 2015 12:36:17 +0300
+
 mce (1.54.2) unstable; urgency=low
 
   * [mce] Use hbtimer for led pattern auto-deactivation. Fixes JB#29180
