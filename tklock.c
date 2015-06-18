@@ -1764,15 +1764,15 @@ static void tklock_datapipe_lid_cover_sensor_cb(gconstpointer data)
     if( lid_cover_sensor_state == prev )
         goto EXIT;
 
-    if( lid_cover_sensor_state == COVER_OPEN ) {
-        /* We have seen the sensor flip to open position, so we can
-         * stop assuming it stays forever in the closed position */
+    if( prev == COVER_CLOSED &&  lid_cover_sensor_state == COVER_OPEN ) {
+        /* We have seen the sensor flip from closed to open position,
+         * so we can stop assuming it stays closed forever */
         execute_datapipe(&lid_sensor_is_working_pipe,
                          GINT_TO_POINTER(true),
                          USE_INDATA, CACHE_INDATA);
     }
 
-    mce_log(LL_DEBUG, "lid_cover_sensor_state = %s -> %s",
+    mce_log(LL_DEVEL, "lid_cover_sensor_state = %s -> %s",
             cover_state_repr(prev),
             cover_state_repr(lid_cover_sensor_state));
 
@@ -1798,7 +1798,7 @@ static void tklock_datapipe_lid_cover_policy_cb(gconstpointer data)
     if( lid_cover_policy_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "lid_cover_policy_state = %s -> %s",
+    mce_log(LL_DEVEL, "lid_cover_policy_state = %s -> %s",
             cover_state_repr(prev),
             cover_state_repr(lid_cover_policy_state));
 
@@ -2373,7 +2373,7 @@ static void tklock_lid_sensor_rethink(void)
     case COVER_OPEN:
         /* No action on initial undef -> open */
         if( action_prev == COVER_UNDEF ) {
-          mce_log(LL_DEVEL, "lid open - initial state ignored");
+            mce_log(LL_DEVEL, "lid open - initial state ignored");
             break;
         }
 
