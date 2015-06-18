@@ -2065,7 +2065,8 @@ evin_iomon_keypress_cb(gpointer data, gsize bytes_read)
     /* Map event before processing */
     evin_event_mapper_translate_event(ev);
 
-    mce_log(LL_DEBUG, "type: %s, code: %s, value: %d",
+    mce_log((ev->type == EV_SW && ev->code == SW_LID) ? LL_DEVEL : LL_DEBUG,
+            "type: %s, code: %s, value: %d",
             evdev_get_event_type_name(ev->type),
             evdev_get_event_code_name(ev->type, ev->code),
             ev->value);
@@ -2444,6 +2445,8 @@ evin_iomon_switch_states_update_iter_cb(gpointer io_monitor, gpointer user_data)
     ecode = evin_event_mapper_rlookup_switch(SW_LID);
     if( test_bit(ecode, featurelist) ) {
         state = test_bit(ecode, statelist) ? COVER_CLOSED : COVER_OPEN;
+        mce_log(LL_DEVEL, "SW_LID initial state = %s",
+                cover_state_repr(state));
         execute_datapipe(&lid_cover_sensor_pipe, GINT_TO_POINTER(state),
                          USE_INDATA, CACHE_INDATA);
     }
