@@ -29,6 +29,7 @@
 #include "../mce-conf.h"
 #include "../mce-gconf.h"
 #include "../mce-dbus.h"
+#include "../mce-hbtimer.h"
 
 #ifdef ENABLE_HYBRIS
 # include "../mce-hybris.h"
@@ -138,7 +139,8 @@ typedef struct {
 	gchar *name;			/**< Pattern name */
 	gint priority;			/**< Pattern priority */
 	gint policy;			/**< Show pattern when screen is on? */
-	gint timeout;			/**< Timeout in seconds */
+	gint timeout;			/**< Auto-deactivate timeout in seconds */
+	mce_hbtimer_t *timeout_id;	/**< Timer for auto-deactivate */
 	gint on_period;			/**< Pattern on-period in ms  */
 	gint off_period;		/**< Pattern off-period in ms  */
 	gint brightness;		/**< Pattern brightness */
@@ -215,11 +217,6 @@ typedef enum {
 	LED_TYPE_HYBRIS = 6,
 #endif
 } led_type_t;
-
-/**
- * The ID of the LED timer
- */
-static guint led_pattern_timeout_cb_id = 0;
 
 /**
  * The configuration group containing the LED pattern
@@ -304,9 +301,79 @@ static gchar *engine3_leds_path = NULL;
  * then handled by the led_brightness_trigger() function below. */
 static guint maximum_led_brightness = MAXIMUM_LYSTI_MONOCHROME_LED_CURRENT;
 
-static void cancel_pattern_timeout(void);
-static void led_update_active_pattern(void);
-static void sw_breathing_rethink(void);
+/* Function prototypes */
+static void              disable_reno                   (void);
+static led_type_t        get_led_type                   (void);
+static gint              queue_find                     (gconstpointer data, gconstpointer userdata);
+static gint              queue_prio_compare             (gconstpointer entry1, gconstpointer entry2, gpointer userdata);
+static void              lysti_set_brightness           (gint brightness);
+static void              njoy_set_brightness            (gint brightness);
+static void              mono_set_brightness            (gint brightness);
+static void              hybris_set_brightness          (gint brightness);
+static void              lysti_disable_led              (void);
+static void              njoy_disable_led               (void);
+static void              mono_disable_led               (void);
+static void              hybris_disable_led             (void);
+static void              disable_led                    (void);
+static pattern_struct   *led_pattern_create             (void);
+static void              led_pattern_delete             (pattern_struct *self);
+static void              led_pattern_set_active         (pattern_struct *self, gboolean active);
+static bool              led_pattern_can_breathe        (const pattern_struct *self);
+static gboolean          led_pattern_timeout_cb         (gpointer data);
+static void              lysti_program_led              (const pattern_struct *const pattern);
+static void              njoy_program_led               (const pattern_struct *const pattern);
+static void              mono_program_led               (const pattern_struct *const pattern);
+static void              hybris_program_led             (const pattern_struct *const pattern);
+static void              program_led                    (const pattern_struct *const pattern);
+static void              allow_sw_breathing             (bool enable);
+static void              led_set_active_pattern         (pattern_struct *pattern);
+static gboolean          display_off_p                  (display_state_t state);
+static void              led_update_active_pattern      (void);
+static pattern_struct   *find_pattern_struct            (const gchar *const name);
+static void              update_combination_rule        (gpointer name, gpointer data);
+static void              update_combination_rules       (const gchar *const name);
+static void              led_activate_pattern           (const gchar *const name);
+static void              led_deactivate_pattern         (const gchar *const name);
+static void              led_enable                     (void);
+static void              led_disable                    (void);
+static void              system_state_trigger           (gconstpointer data);
+static void              get_monotime                   (struct timeval *tv);
+static void              type6_lock_in_cb               (void *data, void *aptr);
+static void              type6_revert_cb                (void *data, void *aptr);
+static void              type6_deactivate_cb            (void *data, void *aptr);
+static void              led_pattern_op                 (GFunc cb);
+static void              user_activity_trigger          (gconstpointer data);
+static void              display_state_trigger          (gconstpointer data);
+static void              led_brightness_trigger         (gconstpointer data);
+static void              led_pattern_activate_trigger   (gconstpointer data);
+static void              led_pattern_deactivate_trigger (gconstpointer data);
+static gint              gconf_cb_find                  (gconstpointer data, gconstpointer userdata);
+static void              led_gconf_cb                   (GConfClient *const gcc, const guint id, GConfEntry *const entry, gpointer const data);
+static gboolean          pattern_get_enabled            (const gchar *const patternname, guint *gconf_cb_id);
+static gboolean          led_activate_pattern_dbus_cb   (DBusMessage *const msg);
+static gboolean          led_deactivate_pattern_dbus_cb (DBusMessage *const msg);
+static gboolean          led_enable_dbus_cb             (DBusMessage *const msg);
+static gboolean          led_disable_dbus_cb            (DBusMessage *const msg);
+static gboolean          init_combination_rules         (void);
+static gboolean          init_lysti_patterns            (void);
+static gboolean          init_njoy_patterns             (void);
+static gboolean          init_mono_patterns             (void);
+static int               list_compare_item              (const void *a, const void *b);
+static void              list_remove_duplicates         (gchar **list);
+static gboolean          list_includes_item             (gchar **list, const gchar *elem);
+static gboolean          init_hybris_patterns           (void);
+static gboolean          init_patterns                  (void);
+static void              sw_breathing_rethink           (void);
+static void              sw_breathing_gconf_cb          (GConfClient *const gcc, const guint id, GConfEntry *const entry, gpointer const data);
+static void              sw_breathing_quit              (void);
+static void              sw_breathing_init              (void);
+static void              charger_state_trigger          (gconstpointer data);
+static void              battery_level_trigger          (gconstpointer data);
+static void              mce_led_init_dbus              (void);
+static void              mce_led_quit_dbus              (void);
+
+G_MODULE_EXPORT const gchar *g_module_check_init        (GModule *module);
+G_MODULE_EXPORT void         g_module_unload            (GModule *module);
 
 /**
  * Disable the Reno LED controller
@@ -817,8 +884,6 @@ static void hybris_disable_led(void)
  */
 static void disable_led(void)
 {
-	cancel_pattern_timeout();
-
 	switch (get_led_type()) {
 	case LED_TYPE_LYSTI_RGB:
 	case LED_TYPE_LYSTI_MONO:
@@ -843,6 +908,44 @@ static void disable_led(void)
 	default:
 		break;
 	}
+}
+
+/** Allocate and initialize led pattern object
+ *
+ * @return initialzied led pattern object, or NULL
+ */
+static pattern_struct *led_pattern_create(void)
+{
+	pattern_struct *self = g_slice_new0(pattern_struct);
+
+	if( !self )
+		goto EXIT;
+
+	self->name        = 0;
+	self->timeout_id  = 0;
+	self->gconf_cb_id = 0;
+
+EXIT:
+	return self;
+}
+
+/** Destroy led pattern object
+ *
+ * @param initialzied led pattern object, or NULL
+ */
+static void led_pattern_delete(pattern_struct *self)
+{
+	if( !self )
+		goto EXIT;
+
+	mce_hbtimer_delete(self->timeout_id);
+	mce_gconf_notifier_remove(self->gconf_cb_id);
+	free(self->name);
+
+	g_slice_free(pattern_struct, self);
+
+EXIT:
+	return;
 }
 
 /** Setter for led pattern active property
@@ -871,6 +974,11 @@ static void led_pattern_set_active(pattern_struct *self, gboolean active)
 
 	if( !self->enabled )
 		goto EXIT;
+
+	if( self->active )
+		mce_hbtimer_start(self->timeout_id);
+	else
+		mce_hbtimer_stop(self->timeout_id);
 
 	mce_log(LL_DEVEL, "led pattern %s %sactivated",
 		self->name, self->active ? "" : "de");
@@ -952,46 +1060,20 @@ EXIT:
 	return breathe;
 }
 
-/**
- * Timeout callback for LED patterns
+/** Timeout callback for LED patterns
  *
- * @param data Unused
+ * @param data led pattern object
+ *
  * @return Always returns FALSE to disable timeout
  */
 static gboolean led_pattern_timeout_cb(gpointer data)
 {
-	(void)data;
+	pattern_struct *psp = data;
 
-	led_pattern_timeout_cb_id = 0;
-
-	led_pattern_set_active(active_pattern, FALSE);
+	led_pattern_set_active(psp, FALSE);
 	led_update_active_pattern();
 
 	return FALSE;
-}
-
-/**
- * Cancel pattern timeout
- */
-static void cancel_pattern_timeout(void)
-{
-	/* Remove old timeout */
-	if (led_pattern_timeout_cb_id != 0) {
-		g_source_remove(led_pattern_timeout_cb_id);
-		led_pattern_timeout_cb_id = 0;
-	}
-}
-
-/**
- * Setup pattern timeout
- */
-static void setup_pattern_timeout(gint timeout)
-{
-	cancel_pattern_timeout();
-
-	/* Setup new timeout */
-	led_pattern_timeout_cb_id =
-		g_timeout_add_seconds(timeout, led_pattern_timeout_cb, NULL);
 }
 
 /**
@@ -1230,13 +1312,9 @@ static void led_set_active_pattern(pattern_struct *pattern)
 	if( active_pattern == pattern )
 		goto EXIT;
 
-	cancel_pattern_timeout();
-
 	active_pattern = pattern;
 
 	if( active_pattern ) {
-		if( active_pattern->timeout != -1 )
-			setup_pattern_timeout(active_pattern->timeout);
 		program_led(active_pattern);
 	}
 	else {
@@ -2190,7 +2268,7 @@ static gboolean init_lysti_patterns(void)
 				continue;
 			}
 
-			psp = g_slice_new(pattern_struct);
+			psp = led_pattern_create();
 
 			if (!psp) {
 				g_strfreev(tmp);
@@ -2212,7 +2290,7 @@ static gboolean init_lysti_patterns(void)
 				 * to avoid false positives further down
 				 */
 				g_strfreev(tmp);
-				g_slice_free(pattern_struct, psp);
+				led_pattern_delete(psp);
 				continue;
 			}
 
@@ -2325,7 +2403,7 @@ static gboolean init_njoy_patterns(void)
 				continue;
 			}
 
-			psp = g_slice_new(pattern_struct);
+			psp = led_pattern_create();
 
 			if (!psp) {
 				g_strfreev(tmp);
@@ -2347,7 +2425,7 @@ static gboolean init_njoy_patterns(void)
 				 * to avoid false positives further down
 				 */
 				g_strfreev(tmp);
-				g_slice_free(pattern_struct, psp);
+				led_pattern_delete(psp);
 				continue;
 			}
 
@@ -2446,7 +2524,7 @@ static gboolean init_mono_patterns(void)
 				continue;
 			}
 
-			psp = g_slice_new(pattern_struct);
+			psp = led_pattern_create();
 
 			if (!psp) {
 				g_free(tmp);
@@ -2627,9 +2705,7 @@ static gboolean init_hybris_patterns(void)
 			mce_log(LL_DEBUG,"Getting LED pattern for: %s",
 				name);
 
-			pattern_struct *psp = g_slice_new(pattern_struct);
-
-			memset(psp, 0, sizeof *psp);
+			pattern_struct *psp = led_pattern_create();
 
 			psp->name       = strdup(name);
 			psp->priority   = strtol(v[IDX_PRIO], 0, 0);
@@ -2676,6 +2752,7 @@ static gboolean init_patterns(void)
 {
 	gboolean status = TRUE;
 
+	/* Type specific pattern configuration */
 	switch (get_led_type()) {
 	case LED_TYPE_LYSTI_MONO:
 	case LED_TYPE_LYSTI_RGB:
@@ -2699,6 +2776,20 @@ static gboolean init_patterns(void)
 
 	default:
 		break;
+	}
+
+	/* Handle common pattern initialization */
+	for( GList *iter = pattern_stack->head; iter; iter = iter->next ) {
+		pattern_struct *psp = iter->data;
+
+		/* Add hbtimers for patterns that use timeout */
+		if( psp->timeout > 0 ) {
+			psp->timeout_id =
+				mce_hbtimer_create(psp->name,
+						   psp->timeout * 1000,
+						   led_pattern_timeout_cb,
+						   psp);
+		}
 	}
 
 	return status;
@@ -2935,7 +3026,6 @@ static void mce_led_quit_dbus(void)
  * @param module Unused
  * @return NULL on success, a string with an error message on failure
  */
-G_MODULE_EXPORT const gchar *g_module_check_init(GModule *module);
 const gchar *g_module_check_init(GModule *module)
 {
 	gchar *status = NULL;
@@ -2993,7 +3083,6 @@ EXIT:
  *
  * @param module Unused
  */
-G_MODULE_EXPORT void g_module_unload(GModule *module);
 void g_module_unload(GModule *module)
 {
 	system_state_t system_state = datapipe_get_gint(system_state_pipe);
@@ -3081,10 +3170,7 @@ void g_module_unload(GModule *module)
 		pattern_struct *psp;
 
 		while ((psp = g_queue_pop_head(pattern_stack)) != NULL) {
-			mce_gconf_notifier_remove(psp->gconf_cb_id);
-			free(psp->name);
-			psp->name = NULL;
-			g_slice_free(pattern_struct, psp);
+			led_pattern_delete(psp);
 		}
 
 		g_queue_free(pattern_stack);
@@ -3125,9 +3211,6 @@ void g_module_unload(GModule *module)
 		g_queue_free(combination_rule_xref_list);
 		combination_rule_xref_list = NULL;
 	}
-
-	/* Remove all timer sources */
-	cancel_pattern_timeout();
 
 	return;
 }

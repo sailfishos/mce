@@ -677,6 +677,7 @@ modules/led.o:\
 	mce-dbus.h\
 	mce-gconf.h\
 	mce-hal.h\
+	mce-hbtimer.h\
 	mce-hybris.h\
 	mce-io.h\
 	mce-lib.h\
@@ -693,6 +694,7 @@ modules/led.pic.o:\
 	mce-dbus.h\
 	mce-gconf.h\
 	mce-hal.h\
+	mce-hbtimer.h\
 	mce-hybris.h\
 	mce-io.h\
 	mce-lib.h\
