@@ -1681,18 +1681,19 @@ EXIT:
 /** Array of datapipe handlers */
 static datapipe_handler_t mdy_datapipe_handlers[] =
 {
+    // input triggers
+    {
+        .datapipe  = &display_state_pipe,
+        .input_cb  = mdy_datapipe_display_state_cb,
+    },
+    {
+        .datapipe  = &display_state_next_pipe,
+        .input_cb  = mdy_datapipe_display_state_next_cb,
+    },
     // output triggers
     {
         .datapipe  = &display_state_req_pipe,
         .output_cb = mdy_datapipe_display_state_req_cb,
-    },
-    {
-        .datapipe  = &display_state_pipe,
-        .output_cb = mdy_datapipe_display_state_cb,
-    },
-    {
-        .datapipe  = &display_state_next_pipe,
-        .output_cb = mdy_datapipe_display_state_next_cb,
     },
     {
         .datapipe  = &display_brightness_pipe,
@@ -2652,6 +2653,9 @@ static void mdy_brightness_set_fade_target_dimming(gint new_brightness)
                                       mdy_brightness_fade_duration_dim_ms);
 }
 
+/** Flag for: Automatic ALS based brightness tuning is allowed */
+bool mdy_brightness_als_fade_allowed = false;
+
 /** Start brightness fading due to ALS / brightness setting change
  */
 static void mdy_brightness_set_fade_target_als(gint new_brightness)
@@ -2663,35 +2667,37 @@ static void mdy_brightness_set_fade_target_als(gint new_brightness)
             new_brightness);
     mdy_brightness_level_display_resume = new_brightness;
 
+    /* If currently unblanking, just adjust the target level */
     if( mdy_brightness_fade_type == FADER_UNBLANK ) {
-        /* Currently unblanking, adjust the target level */
         mdy_brightness_set_fade_target_unblank(new_brightness);
-    }
-    else if( display_state == MCE_DISPLAY_POWER_UP ) {
-        /* Do not *start* fading due to als during unblanking */
-        mce_log(LL_DEBUG, "skip als fade; powering up display");
-    }
-    else if( display_state == MCE_DISPLAY_UNDEF ) {
-        /* Do not *start* fading due to als during startup */
-        mce_log(LL_DEBUG, "skip als fade; undef display state");
-    }
-    else if( display_state != MCE_DISPLAY_POWER_UP ) {
-        int dur = mdy_brightness_fade_duration_als_ms;
-
-        /* To make effects of changing the brightness settings
-         * more clear, override constant time / long als fade durations
-         * that happen immediately after relevant settings changes. */
-        if( dur < 0 || dur > MCE_FADER_DURATION_SETTINGS_CHANGED ) {
-            int64_t now = mdy_get_boot_tick();
-            int64_t end = (mdy_brightness_setting_change_time +
-                           MCE_FADER_DURATION_SETTINGS_CHANGED);
-            if( now <= end )
-                dur = MCE_FADER_DURATION_SETTINGS_CHANGED;
-        }
-
-        mdy_brightness_set_fade_target_ex(FADER_ALS, new_brightness, dur);
+        mce_log(LL_DEBUG, "skip als fade; adjust unblank target");
+        goto EXIT;
     }
 
+    /* Check if main display state machine is blocking ALS tuning */
+    if( !mdy_brightness_als_fade_allowed ) {
+        mce_log(LL_DEBUG, "skip als fade; not allowed");
+        goto EXIT;
+    }
+
+    /* Assume configured fade duration is used */
+    int dur = mdy_brightness_fade_duration_als_ms;
+
+    /* To make effects of changing the brightness settings
+     * more clear, override constant time / long als fade durations
+     * that happen immediately after relevant settings changes. */
+    if( dur < 0 || dur > MCE_FADER_DURATION_SETTINGS_CHANGED ) {
+        int64_t now = mdy_get_boot_tick();
+        int64_t end = (mdy_brightness_setting_change_time +
+                       MCE_FADER_DURATION_SETTINGS_CHANGED);
+        if( now <= end )
+            dur = MCE_FADER_DURATION_SETTINGS_CHANGED;
+    }
+
+    /* Start als brightness fade */
+    mdy_brightness_set_fade_target_ex(FADER_ALS, new_brightness, dur);
+
+EXIT:
     return;
 }
 
@@ -5668,11 +5674,17 @@ static void mdy_display_state_changed(void)
  * @param display_state state transferred to
  */
 static void mdy_display_state_enter(display_state_t prev_state,
-                                        display_state_t next_state)
+                                    display_state_t next_state)
 {
     mce_log(LL_INFO, "END %s -> %s transition",
             display_state_repr(prev_state),
             display_state_repr(next_state));
+
+    /* Allow ALS brightness tuning after entering powered on state */
+    if( mdy_stm_display_state_needs_power(next_state) ) {
+        mce_log(LL_DEBUG, "allow als fade");
+        mdy_brightness_als_fade_allowed = true;
+    }
 
     /* Restore display_state_pipe to valid value */
     display_state_pipe.cached_data = GINT_TO_POINTER(next_state);
@@ -5706,6 +5718,12 @@ static void mdy_display_state_leave(display_state_t prev_state,
 
     bool have_power = mdy_stm_display_state_needs_power(prev_state);
     bool need_power = mdy_stm_display_state_needs_power(next_state);
+
+    /* Deny ALS brightness when heading to powered off state */
+    if( !need_power ) {
+        mce_log(LL_DEBUG, "deny als fade");
+        mdy_brightness_als_fade_allowed = false;
+    }
 
     /* Update display brightness that should be used the next time
      * the display is powered up. Start fader already here if the

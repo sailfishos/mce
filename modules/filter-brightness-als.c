@@ -851,15 +851,15 @@ static void rethink_als_status(void)
 	enable_old = enable_new;
 
 	if( enable_new ) {
-		/* The sensor has been off for some time, so the
-		 * history needs to be forgotten when we get fresh
-		 * data */
-		inputflt_flush_on_change();
-
 		/* Enable change notifications */
 		mce_sensorfw_als_set_notify(als_lux_changed);
 
 		mce_sensorfw_als_enable();
+
+		/* The sensor has been off for some time, so the
+		 * history needs to be forgotten when we get fresh
+		 * data */
+		inputflt_flush_on_change();
 	}
 	else {
 		/* Disable change notifications */
