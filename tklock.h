@@ -153,7 +153,7 @@ enum
 
 /** How long to keep display on after alarm is handled [ms] */
 #define MCE_GCONF_EXCEPTION_LENGTH_ALARM        MCE_GCONF_LOCK_PATH"/exception_length_alarm"
-#define DEFAULT_EXCEPTION_LENGTH_ALARM          2500
+#define DEFAULT_EXCEPTION_LENGTH_ALARM          1250
 
 /** How long to keep display on when usb cable is connected [ms] */
 #define MCE_GCONF_EXCEPTION_LENGTH_USB_CONNECT  MCE_GCONF_LOCK_PATH"/exception_length_usb_connect"
