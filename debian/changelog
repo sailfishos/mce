@@ -1,3 +1,9 @@
+mce (1.55.3) unstable; urgency=low
+
+  * [mce] Make display blank faster after dismissing an alarm. Fixes JB#28552
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 23 Jun 2015 13:14:31 +0300
+
 mce (1.55.2) unstable; urgency=low
 
   * [mce] Explicitly allow/deny als based brightness tuning. Fixes JB#30090
