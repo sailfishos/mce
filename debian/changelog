@@ -1,3 +1,10 @@
+mce (1.55.2) unstable; urgency=low
+
+  * [mce] Explicitly allow/deny als based brightness tuning. Fixes JB#30090
+  * [mce] Reset als history after enabling the sensor. Contributes to JB#30090
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 23 Jun 2015 10:55:31 +0300
+
 mce (1.55.1) unstable; urgency=low
 
   * [mce] Assume lid sensor is broken until closed to open transition is
