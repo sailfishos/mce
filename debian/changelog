@@ -1,3 +1,9 @@
+mce (1.56.0) unstable; urgency=low
+
+  * [mce] Add org.nemomobile.compositor D-Bus config. Contributes to JB#29194
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 24 Jun 2015 09:35:29 +0300
+
 mce (1.55.3) unstable; urgency=low
 
   * [mce] Make display blank faster after dismissing an alarm. Fixes JB#28552
