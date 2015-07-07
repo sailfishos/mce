@@ -1,3 +1,9 @@
+mce (1.56.1) unstable; urgency=low
+
+  * [mce] Handle invalid session id from sensorfwd correctly. Fixes JB#30488
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 07 Jul 2015 13:25:55 +0300
+
 mce (1.56.0) unstable; urgency=low
 
   * [mce] Add org.nemomobile.compositor D-Bus config. Contributes to JB#29194
