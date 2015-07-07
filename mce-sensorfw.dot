@@ -96,13 +96,15 @@ digraph mce_sensorfw
     SESSION_REQUESTING;
     SESSION_ACTIVE;
     SESSION_ERROR;
+    SESSION_INVALID;
     SESSION_ANY [label="*"];
 
     SESSION_ANY        -> SESSION_ERROR      [label="failure"];
     SESSION_ANY        -> SESSION_IDLE       [label="reset()"];
 
     SESSION_IDLE       -> SESSION_REQUESTING [label="start()"];
-    SESSION_REQUESTING -> SESSION_ACTIVE;
+    SESSION_REQUESTING -> SESSION_ACTIVE     [label="success"];
+    SESSION_REQUESTING -> SESSION_INVALID    [label="invalid"];
 
     SESSION_ACTIVE   -> CONNECTION_IDLE [style=dotted, lhead=clusterCONNECTION]
 
