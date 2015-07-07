@@ -633,6 +633,9 @@ typedef enum
     /** Something went wrong */
     SESSION_ERROR,
 
+    /** Sensor is not supported */
+    SESSION_INVALID,
+
     SESSION_NUMSTATES
 } sfw_session_state_t;
 
@@ -654,6 +657,12 @@ struct sfw_session_t
     /** Timer for: Retry after ipc error */
     guint                ses_retry_id;
 };
+
+/** Sensor not supported session id from sensorfwd */
+#define SESSION_ID_INVALID (-1)
+
+/** Placeholder value for session id not parsed yet */
+#define SESSION_ID_UNKNOWN (-2)
 
 static const char       *sfw_session_state_name         (sfw_session_state_t state);
 
@@ -2390,6 +2399,7 @@ sfw_session_state_name(sfw_session_state_t state)
         [SESSION_REQUESTING] = "REQUESTING",
         [SESSION_ACTIVE]     = "ACTIVE",
         [SESSION_ERROR]      = "ERROR",
+        [SESSION_INVALID]    = "INVALID",
     };
 
     return (state < SESSION_NUMSTATES) ? lut[state] : 0;
@@ -2404,7 +2414,7 @@ sfw_session_create(sfw_plugin_t *plugin)
 
     self->ses_plugin   = plugin;
     self->ses_state    = SESSION_INITIAL;
-    self->ses_id       = 0;
+    self->ses_id       = SESSION_ID_INVALID;
     self->ses_start_pc = 0;
     self->ses_retry_id = 0;
 
@@ -2431,7 +2441,7 @@ static int
 sfw_session_get_id(const sfw_session_t *self)
 {
     // Explicitly allow NULL self pointer to be used
-    return self ? self->ses_id : 0;
+    return self ? self->ses_id : SESSION_ID_INVALID;
 }
 
 /** Cancel pending session start method call
@@ -2500,6 +2510,7 @@ sfw_session_trans(sfw_session_t *self, sfw_session_state_t state)
     default:
     case SESSION_IDLE:
     case SESSION_ERROR:
+    case SESSION_INVALID:
     case SESSION_INITIAL:
         sfw_plugin_do_connection_reset(self->ses_plugin);
 
@@ -2524,6 +2535,7 @@ sfw_session_start_cb(DBusPendingCall *pc, void *aptr)
 
     DBusMessage *rsp = 0;
     DBusError    err = DBUS_ERROR_INIT;
+    dbus_int32_t ses = SESSION_ID_UNKNOWN;
 
     if( !pc || !self || pc != self->ses_start_pc )
         goto EXIT;
@@ -2545,7 +2557,7 @@ sfw_session_start_cb(DBusPendingCall *pc, void *aptr)
     }
 
     if( !dbus_message_get_args(rsp, &err,
-                               DBUS_TYPE_INT32, &self->ses_id,
+                               DBUS_TYPE_INT32, &ses,
                                DBUS_TYPE_INVALID) ) {
         mce_log(LL_ERR, "session(%s): parse error: %s: %s",
                 sfw_plugin_get_sensor_name(self->ses_plugin),
@@ -2558,10 +2570,21 @@ EXIT:
             sfw_plugin_get_sensor_name(self->ses_plugin),
             (int)self->ses_id);
 
-    if( self->ses_id )
-        sfw_session_trans(self, SESSION_ACTIVE);
-    else
+    switch( ses ) {
+    case SESSION_ID_INVALID:
+        self->ses_id = SESSION_ID_INVALID;
+        sfw_session_trans(self, SESSION_INVALID);
+        break;
+
+    case SESSION_ID_UNKNOWN:
+        self->ses_id = SESSION_ID_INVALID;
         sfw_session_trans(self, SESSION_ERROR);
+        break;
+
+    default:
+        self->ses_id = ses;
+        sfw_session_trans(self, SESSION_ACTIVE);
+    }
 
     if( rsp ) dbus_message_unref(rsp);
     dbus_error_free(&err);
@@ -2673,7 +2696,7 @@ static int
 sfw_plugin_get_session_id(const sfw_plugin_t *self)
 {
     // Explicitly allow NULL self pointer to be used
-    return self ? sfw_session_get_id(self->plg_session) : 0;
+    return self ? sfw_session_get_id(self->plg_session) : SESSION_ID_INVALID;
 }
 
 /** Handle sensor specific change event received from data connection
