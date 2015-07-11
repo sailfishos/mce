@@ -1845,6 +1845,65 @@ EXIT:
     return;
 }
 
+/** Check if event relates to ongoing user activity on screen
+ *
+ * Detect touch screen events that signify finger on screen
+ * situation.
+ *
+ * To make things work in SDK do mouse click detection too.
+ */
+static bool tklock_touch_activity_event_p(const struct input_event *ev)
+{
+    bool activity = false;
+
+    switch( ev->type ) {
+    case EV_KEY:
+        switch( ev->code ) {
+        case BTN_MOUSE:
+            activity = (ev->value != 0);
+            break;
+
+        case BTN_TOUCH:
+            activity = (ev->value != 0);
+            break;
+
+        default:
+            break;
+        }
+        break;
+
+    case EV_ABS:
+        switch( ev->code ) {
+        case ABS_MT_PRESSURE:
+        case ABS_MT_POSITION_X:
+        case ABS_MT_POSITION_Y:
+            activity = true;
+            break;
+
+        case ABS_MT_TOUCH_MAJOR:
+            activity = (ev->value != 0);
+            break;
+
+        case ABS_MT_WIDTH_MAJOR:
+            activity = (ev->value > 0);
+            break;
+
+        case ABS_MT_TRACKING_ID:
+            activity = (ev->value != -1);
+            break;
+
+        default:
+            break;
+        }
+        break;
+
+    default:
+        break;
+    }
+
+    return activity;
+}
+
 /** Handle user_activity_pipe notifications
  *
  * @param data input_event as void pointer
@@ -1858,62 +1917,18 @@ static void tklock_datapipe_user_activity_cb(gconstpointer data)
     if( !ev )
         goto EXIT;
 
+    /* We are only interested in touch activity */
+    if( !tklock_touch_activity_event_p(ev) )
+        goto EXIT;
+
     /* Deal with autorelock cancellation 1st */
     if( autorelock_trigger != AUTORELOCK_NO_TRIGGERS ) {
-        switch( ev->type ) {
-        case EV_SYN:
-            break;
-
-        case EV_ABS:
-            switch( ev->code ) {
-            case ABS_MT_POSITION_X:
-            case ABS_MT_POSITION_Y:
-            case ABS_MT_PRESSURE:
-                mce_log(LL_DEBUG, "autorelock canceled: touch activity");
-                autorelock_trigger = AUTORELOCK_NO_TRIGGERS;
-                break;
-            default:
-                break;
-            }
-            break;
-
-        default:
-            break;
-        }
+        mce_log(LL_DEBUG, "autorelock canceled: touch activity");
+        autorelock_trigger = AUTORELOCK_NO_TRIGGERS;
     }
 
     /* Touch events relevant unly when handling notification & linger */
     if( !(exception_state & (UIEXC_NOTIF | UIEXC_LINGER)) )
-        goto EXIT;
-
-    bool touched = false;
-    switch( ev->type ) {
-    case EV_SYN:
-        switch( ev->code ) {
-        case SYN_MT_REPORT:
-            touched = true;
-            break;
-        default:
-            break;
-        }
-        break;
-
-    case EV_ABS:
-        switch( ev->code ) {
-        case ABS_MT_POSITION_X:
-        case ABS_MT_POSITION_Y:
-        case ABS_MT_PRESSURE:
-            touched = true;
-            break;
-        default:
-            break;
-        }
-        break;
-    default:
-        break;
-    }
-
-    if( !touched )
         goto EXIT;
 
     int64_t now = tklock_monotick_get();
