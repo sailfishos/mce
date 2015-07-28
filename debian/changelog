@@ -1,3 +1,10 @@
+mce (1.56.2) unstable; urgency=low
+
+  * [mce] Improve touch detection logic used in blanking policy handling.
+    Fixes JB#30661
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 28 Jul 2015 14:17:02 +0300
+
 mce (1.56.1) unstable; urgency=low
 
   * [mce] Handle invalid session id from sensorfwd correctly. Fixes JB#30488
