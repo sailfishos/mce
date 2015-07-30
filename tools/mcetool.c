@@ -2305,6 +2305,41 @@ static bool xmce_allow_display_blanking(const char *arg)
         return true;
 }
 
+/** Lookup table for display blanking pause modes
+ */
+static const symbol_t blanking_pause_modes[] = {
+        { "disabled",  BLANKING_PAUSE_MODE_DISABLED  },
+        { "keep-on",   BLANKING_PAUSE_MODE_KEEP_ON   },
+        { "allow-dim", BLANKING_PAUSE_MODE_ALLOW_DIM },
+        { NULL,        -1                            }
+};
+
+/** Set display blank prevent mode setting
+ *
+ * @param args string that can be parsed to blank prevent mode
+ */
+static bool xmce_set_blank_prevent_mode(const char *args)
+{
+        int val = lookup(blanking_pause_modes, args);
+        if( val < 0 ) {
+                errorf("%s: invalid display blank prevent mode\n", args);
+                exit(EXIT_FAILURE);
+        }
+        mcetool_gconf_set_int(MCE_GCONF_DISPLAY_BLANKING_PAUSE_MODE, val);
+        return true;
+}
+
+/** Get current display blank prevent mode from mce and print it out
+ */
+static void xmce_get_blank_prevent_mode(void)
+{
+        gint        val = 0;
+        const char *txt = 0;
+        if( mcetool_gconf_get_int(MCE_GCONF_DISPLAY_BLANKING_PAUSE_MODE, &val) )
+                txt = rlookup(blanking_pause_modes, val);
+        printf("%-"PAD1"s %s \n", "Display blank prevent mode:", txt ?: "unknown");
+}
+
 /* ------------------------------------------------------------------------- *
  * display brightness
  * ------------------------------------------------------------------------- */
@@ -4490,6 +4525,7 @@ static bool xmce_get_status(const char *args)
         xmce_get_never_blank();
         xmce_get_blank_timeout();
         xmce_get_inhibit_mode();
+        xmce_get_blank_prevent_mode();
         xmce_get_keyboard_backlight_state();
         xmce_get_inactivity_state();
         xmce_get_power_saving_mode();
@@ -4680,6 +4716,16 @@ static const mce_opt_t options[] =
                 .without_arg = xmce_allow_display_blanking,
                 .usage       =
                         "send cancel blank prevent request\n"
+        },
+        {
+                .name        = "set-blank-prevent-mode",
+                .with_arg    = xmce_set_blank_prevent_mode,
+                .values      = "disabled|keep-on|allow-dim",
+                .usage       =
+                        "set blank prevent mode; valid modes are:\n"
+                        "  'disabled'  all blank prevent requests are ignored\n"
+                        "  'keep-on'   display is kept on as requested\n"
+                        "  'allow-dim' display can be dimmed during blank prevent\n"
         },
         {
                 .name        = "set-dim-timeout",
