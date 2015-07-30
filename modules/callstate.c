@@ -1307,6 +1307,39 @@ EXIT:
         return status;
 }
 
+/** Predicate for checking call state change validity
+ *
+ * @param have  current call state
+ * @param want  requested call state
+ * @param type  requested call type
+ *
+ * @return true if transition to requested state is allowed, false otherwise
+ */
+static bool
+call_state_change_allowed(call_state_t have,
+                          call_state_t want, call_type_t type)
+{
+    bool allowed = true;
+
+    /* Transition from/to call not active state */
+    if( have == CALL_STATE_NONE || want == CALL_STATE_NONE )
+        goto EXIT;
+
+    /* Answering a ringing call */
+    if( have == CALL_STATE_RINGING && want == CALL_STATE_ACTIVE )
+        goto EXIT;
+
+    /* Activating emergency call state */
+    if( want == CALL_STATE_ACTIVE && type == EMERGENCY_CALL )
+        goto EXIT;
+
+    /* Everything else is abnormal */
+    allowed = false;
+
+EXIT:
+    return allowed;
+}
+
 /**
  * D-Bus callback for the call state change request method call
  *
@@ -1378,17 +1411,20 @@ change_call_state_dbus_cb(DBusMessage *const msg)
      * to avoid race conditions; except when new tuple
      * is active:emergency
      */
-    if( call_state == CALL_STATE_ACTIVE &&
-        simulated.state != CALL_STATE_RINGING &&
-        call_type != EMERGENCY_CALL )
-    {
-        mce_log(LL_INFO,
-                "Call state change vetoed.  Requested: %i:%i "
-                "(current: %i:%i)",
-                call_state, call_type,
-                simulated.state, simulated.type);
+
+    bool allowed = call_state_change_allowed(simulated.state,
+                                             call_state, call_type);
+
+    mce_log(allowed ? LL_DEBUG : LL_WARN,
+            "Call state change: %s:%s -> %s:%s %s",
+            call_state_repr(simulated.state),
+            call_type_repr(simulated.type),
+            call_state_repr(call_state),
+            call_type_repr(call_type),
+            allowed ? "accepted" : "rejected");
+
+    if( !allowed )
         goto EXIT;
-    }
 
     if( call_state != CALL_STATE_NONE &&
         mce_dbus_owner_monitor_add(sender, call_state_owner_monitor_dbus_cb,
