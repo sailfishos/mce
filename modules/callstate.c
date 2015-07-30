@@ -1230,11 +1230,11 @@ send_call_state(DBusMessage *const method_call,
         }
 
         /* Append the call state and call type */
-        if (dbus_message_append_args(msg,
-                                     DBUS_TYPE_STRING, &sstate,
-                                     DBUS_TYPE_STRING, &stype,
-                                     DBUS_TYPE_INVALID) == FALSE) {
-                mce_log(LL_CRIT,
+        if( !dbus_message_append_args(msg,
+                                      DBUS_TYPE_STRING, &sstate,
+                                      DBUS_TYPE_STRING, &stype,
+                                      DBUS_TYPE_INVALID) ) {
+                mce_log(LL_ERR,
                         "Failed to append %sarguments to D-Bus message "
                         "for %s.%s",
                         method_call ? "reply " : "",
@@ -1280,11 +1280,11 @@ static gboolean call_state_owner_monitor_dbus_cb(DBusMessage *const msg)
         dbus_error_init(&error);
 
         /* Extract result */
-        if (dbus_message_get_args(msg, &error,
-                                  DBUS_TYPE_STRING, &service,
-                                  DBUS_TYPE_STRING, &old_name,
-                                  DBUS_TYPE_STRING, &new_name,
-                                  DBUS_TYPE_INVALID) == FALSE) {
+        if( !dbus_message_get_args(msg, &error,
+                                   DBUS_TYPE_STRING, &service,
+                                   DBUS_TYPE_STRING, &old_name,
+                                   DBUS_TYPE_STRING, &new_name,
+                                   DBUS_TYPE_INVALID) ) {
                 mce_log(LL_ERR,
                         "Failed to get argument from %s.%s; %s",
                         "org.freedesktop.DBus", "NameOwnerChanged",
@@ -1307,6 +1307,39 @@ EXIT:
         return status;
 }
 
+/** Predicate for checking call state change validity
+ *
+ * @param have  current call state
+ * @param want  requested call state
+ * @param type  requested call type
+ *
+ * @return true if transition to requested state is allowed, false otherwise
+ */
+static bool
+call_state_change_allowed(call_state_t have,
+                          call_state_t want, call_type_t type)
+{
+    bool allowed = true;
+
+    /* Transition from/to call not active state */
+    if( have == CALL_STATE_NONE || want == CALL_STATE_NONE )
+        goto EXIT;
+
+    /* Answering a ringing call */
+    if( have == CALL_STATE_RINGING && want == CALL_STATE_ACTIVE )
+        goto EXIT;
+
+    /* Activating emergency call state */
+    if( want == CALL_STATE_ACTIVE && type == EMERGENCY_CALL )
+        goto EXIT;
+
+    /* Everything else is abnormal */
+    allowed = false;
+
+EXIT:
+    return allowed;
+}
+
 /**
  * D-Bus callback for the call state change request method call
  *
@@ -1316,26 +1349,24 @@ EXIT:
 static gboolean
 change_call_state_dbus_cb(DBusMessage *const msg)
 {
-    gboolean     status = FALSE;
-    const char  *state  = 0;
-    const char  *type   = 0;
-    const gchar *sender = dbus_message_get_sender(msg);
-
+    gboolean     status     = FALSE;
+    const char  *state      = 0;
+    const char  *type       = 0;
+    const char  *sender     = dbus_message_get_sender(msg);
     call_state_t call_state = CALL_STATE_NONE;
-    call_type_t  call_type = NORMAL_CALL;
-    DBusMessage *reply = NULL;
-    DBusError    error = DBUS_ERROR_INIT;
-    dbus_bool_t changed = false;
+    call_type_t  call_type  = NORMAL_CALL;
+    DBusMessage *reply      = NULL;
+    DBusError    error      = DBUS_ERROR_INIT;
+    dbus_bool_t  changed    = false;
 
     mce_log(LL_DEVEL, "Received set call state request from %s",
             mce_dbus_get_name_owner_ident(sender));
 
-    if (dbus_message_get_args(msg, &error,
-                              DBUS_TYPE_STRING, &state,
-                              DBUS_TYPE_STRING, &type,
-                              DBUS_TYPE_INVALID) == FALSE) {
-        // XXX: return an error!
-        mce_log(LL_CRIT, "Failed to get argument from %s.%s: %s",
+    if( !dbus_message_get_args(msg, &error,
+                               DBUS_TYPE_STRING, &state,
+                               DBUS_TYPE_STRING, &type,
+                               DBUS_TYPE_INVALID) ) {
+        mce_log(LL_ERR, "Failed to get argument from %s.%s: %s",
                 MCE_REQUEST_IF, MCE_CALL_STATE_CHANGE_REQ,
                 error.message);
         dbus_error_free(&error);
@@ -1344,17 +1375,15 @@ change_call_state_dbus_cb(DBusMessage *const msg)
 
     /* Convert call state to enum */
     call_state = call_state_parse(state);
-    if (call_state == MCE_INVALID_TRANSLATION) {
-        mce_log(LL_DEBUG,
-                "Invalid call state received; request ignored");
+    if( call_state == CALL_STATE_INVALID ) {
+        mce_log(LL_WARN, "Invalid call state received; request ignored");
         goto EXIT;
     }
 
     /* Convert call type to enum */
     call_type = call_type_parse(type);
-    if (call_type == MCE_INVALID_TRANSLATION) {
-        mce_log(LL_DEBUG,
-                "Invalid call type received; request ignored");
+    if( call_type == INVALID_CALL ) {
+        mce_log(LL_WARN, "Invalid call type received; request ignored");
         goto EXIT;
     }
 
@@ -1367,9 +1396,8 @@ change_call_state_dbus_cb(DBusMessage *const msg)
      * are ok
      */
     if( call_state_monitor_list &&
-        !mce_dbus_is_owner_monitored(sender,
-                                     call_state_monitor_list) ) {
-        mce_log(LL_DEBUG, "Call state already has owner; ignoring request");
+        !mce_dbus_is_owner_monitored(sender, call_state_monitor_list) ) {
+        mce_log(LL_WARN, "Call state already has owner; ignoring request");
         goto EXIT;
     }
 
@@ -1378,17 +1406,20 @@ change_call_state_dbus_cb(DBusMessage *const msg)
      * to avoid race conditions; except when new tuple
      * is active:emergency
      */
-    if( call_state == CALL_STATE_ACTIVE &&
-        simulated.state != CALL_STATE_RINGING &&
-        call_type != EMERGENCY_CALL )
-    {
-        mce_log(LL_INFO,
-                "Call state change vetoed.  Requested: %i:%i "
-                "(current: %i:%i)",
-                call_state, call_type,
-                simulated.state, simulated.type);
+
+    bool allowed = call_state_change_allowed(simulated.state,
+                                             call_state, call_type);
+
+    mce_log(allowed ? LL_DEBUG : LL_WARN,
+            "Call state change: %s:%s -> %s:%s %s",
+            call_state_repr(simulated.state),
+            call_type_repr(simulated.type),
+            call_state_repr(call_state),
+            call_type_repr(call_type),
+            allowed ? "accepted" : "rejected");
+
+    if( !allowed )
         goto EXIT;
-    }
 
     if( call_state != CALL_STATE_NONE &&
         mce_dbus_owner_monitor_add(sender, call_state_owner_monitor_dbus_cb,
@@ -1409,11 +1440,10 @@ EXIT:
     reply = dbus_new_method_reply(msg);
 
     /* Append the result */
-    if (dbus_message_append_args(reply,
-                                 DBUS_TYPE_BOOLEAN, &changed,
-                                 DBUS_TYPE_INVALID) == FALSE) {
-        mce_log(LL_CRIT,
-                "Failed to append reply arguments to D-Bus "
+    if( !dbus_message_append_args(reply,
+                                  DBUS_TYPE_BOOLEAN, &changed,
+                                  DBUS_TYPE_INVALID)) {
+        mce_log(LL_ERR,"Failed to append reply arguments to D-Bus "
                 "message for %s.%s",
                 MCE_REQUEST_IF, MCE_CALL_STATE_CHANGE_REQ);
         dbus_message_unref(reply);
@@ -1439,7 +1469,7 @@ get_call_state_dbus_cb(DBusMessage *const msg)
         mce_log(LL_DEBUG, "Received call state get request");
 
         /* Try to send a reply that contains the current call state and type */
-        if (send_call_state(msg, NULL, NULL) == FALSE)
+        if( !send_call_state(msg, NULL, NULL) )
                 goto EXIT;
 
         status = TRUE;
