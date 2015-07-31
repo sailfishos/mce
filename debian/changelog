@@ -1,3 +1,9 @@
+mce (1.57.0) unstable; urgency=low
+
+  * [display] Add setting for blanking pause mode. Fixes JB#27486
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 31 Jul 2015 07:33:49 +0300
+
 mce (1.56.3) unstable; urgency=low
 
   * [callstate] Allow simulating also outgoing calls. Fixes JB#30160
