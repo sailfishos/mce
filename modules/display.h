@@ -338,4 +338,22 @@ enum
 /** Default value for MCE_GCONF_ORIENTATION_SENSOR_ENABLED setting */
 #define DEFAULT_ORIENTATION_SENSOR_ENABLED      true
 
+/** Display blanking pause modes */
+typedef enum {
+    /** Ignore blanking pause requests */
+    BLANKING_PAUSE_MODE_DISABLED  = 0,
+
+    /** Blanking pause keeps display on */
+    BLANKING_PAUSE_MODE_KEEP_ON   = 1,
+
+    /** Display can be dimmed during Blanking pause */
+    BLANKING_PAUSE_MODE_ALLOW_DIM = 2,
+} blanking_pause_mode_t;
+
+/** Blanking pause mode GConf setting */
+#define MCE_GCONF_DISPLAY_BLANKING_PAUSE_MODE  MCE_GCONF_DISPLAY_PATH "/blanking_pause_mode"
+
+/** Default value for MCE_GCONF_DISPLAY_BLANK_FROM_LOCKSCREEN_TIMEOUT setting */
+#define DEFAULT_BLANKING_PAUSE_MODE	1 // = BLANKING_PAUSE_MODE_KEEP_ON
+
 #endif /* _DISPLAY_H_ */

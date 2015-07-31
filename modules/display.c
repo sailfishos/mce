@@ -254,6 +254,7 @@ enum
 
 static inline bool         mdy_str_eq_p(const char *s1, const char *s2);
 static int64_t             mdy_get_boot_tick(void);
+static const char         *blanking_pause_mode_repr(blanking_pause_mode_t mode);
 
 /* ------------------------------------------------------------------------- *
  * SHUTDOWN
@@ -440,6 +441,8 @@ static void                mdy_blanking_stop_pause_period(void);
 static void                mdy_blanking_start_pause_period(void);
 
 static bool                mdy_blanking_is_paused(void);
+static bool                mdy_blanking_pause_can_dim(void);
+static bool                mdy_blanking_pause_is_allowed(void);
 
 static void                mdy_blanking_add_pause_client(const gchar *name);
 static gboolean            mdy_blanking_remove_pause_client(const gchar *name);
@@ -874,6 +877,12 @@ static filewatcher_t *mdy_update_mode_watcher = 0;
  * GCONF_SETTINGS
  * ------------------------------------------------------------------------- */
 
+/** Setting for allowing dimming while blanking is paused */
+static gint mdy_blanking_pause_mode = DEFAULT_BLANKING_PAUSE_MODE;
+
+/** GConf callback ID for mdy_blanking_pause_mode */
+static guint mdy_blanking_pause_mode_gconf_cb_id = 0;
+
 /** Display blanking timeout setting */
 static gint mdy_blank_timeout = DEFAULT_BLANK_TIMEOUT;
 
@@ -998,6 +1007,25 @@ static int64_t mdy_get_boot_tick(void)
         }
 
         return res;
+}
+/** Convert blanking_pause_mode_t enum to human readable string
+ *
+ * @param mode blanking_pause_mode_t enumeration value
+ *
+ * @return human readable representation of mode
+ */
+static const char *blanking_pause_mode_repr(blanking_pause_mode_t mode)
+{
+    const char *res = "unknown";
+
+    switch( mode ) {
+    case BLANKING_PAUSE_MODE_DISABLED:  res = "disabled"; break;
+    case BLANKING_PAUSE_MODE_KEEP_ON:   res = "keep-on";  break;
+    case BLANKING_PAUSE_MODE_ALLOW_DIM: res = "allow-dim"; break;
+    default: break;
+    }
+
+    return res;
 }
 
 /* ========================================================================= *
@@ -3444,6 +3472,14 @@ static void mdy_blanking_schedule_off(void)
             timeout = ACTDEAD_MAX_OFF_TIMEOUT;
     }
 
+    /* Blanking pause can optionally stay in dimmed state */
+    if( display_state == MCE_DISPLAY_DIM &&
+        mdy_blanking_is_paused() &&
+        mdy_blanking_pause_can_dim() ) {
+        mdy_blanking_cancel_off();
+        goto EXIT;
+    }
+
     if( mdy_blanking_off_cb_id ) {
         g_source_remove(mdy_blanking_off_cb_id);
         mce_log(LL_DEBUG, "BLANK timer rescheduled @ %d secs", timeout);
@@ -3462,6 +3498,7 @@ static void mdy_blanking_schedule_off(void)
 
     mdy_blanking_inhibit_schedule_broadcast();
 
+EXIT:
     return;
 }
 
@@ -3595,6 +3632,24 @@ static bool mdy_blanking_is_paused(void)
     //return mdy_blanking_pause_clients != 0;
 }
 
+/** Dimming allowed while blanking is paused predicate
+ *
+ * returns true if dimming is allowed, false otherwise
+ */
+static bool mdy_blanking_pause_can_dim(void)
+{
+    return mdy_blanking_pause_mode == BLANKING_PAUSE_MODE_ALLOW_DIM;
+}
+
+/** Blanking pause is allowed predicate
+ *
+ * returns true if blanking pause is allowed, false otherwise
+ */
+static bool mdy_blanking_pause_is_allowed(void)
+{
+    return mdy_blanking_pause_mode != BLANKING_PAUSE_MODE_DISABLED;
+}
+
 /** Add blanking pause client
  *
  * @param name The private the D-Bus name of the client
@@ -3606,8 +3661,26 @@ static void mdy_blanking_add_pause_client(const gchar *name)
     if( !name )
         goto EXIT;
 
+    // check if the feature is disabled
+    if( !mdy_blanking_pause_is_allowed() ) {
+        mce_log(LL_DEBUG, "blanking pause request from`%s ignored';"
+                " feature is disabled", name);
+        goto EXIT;
+    }
+
     // display must be on
-    if( display_state != MCE_DISPLAY_ON ) {
+    switch( display_state ) {
+    case MCE_DISPLAY_ON:
+        // always allowed
+        break;
+
+    case MCE_DISPLAY_DIM:
+        // optionally allowed
+        if( mdy_blanking_pause_can_dim() )
+            break;
+        // fall through
+
+    default:
         mce_log(LL_WARN, "blanking pause request from`%s ignored';"
                 " display not on", name);
         goto EXIT;
@@ -3894,8 +3967,22 @@ static void mdy_blanking_rethink_timers(bool force)
     if( prev_display_state != display_state ) {
         force = true;
 
-        // always stop blanking pause period
-        mdy_blanking_stop_pause_period();
+        /* Stop blanking pause period, unless toggling between
+         * ON and DIM states while dimming during blanking
+         * pause is allowed */
+
+        if( (prev_display_state == MCE_DISPLAY_ON ||
+             prev_display_state == MCE_DISPLAY_DIM) &&
+            (display_state == MCE_DISPLAY_ON ||
+             display_state == MCE_DISPLAY_DIM) &&
+            mdy_blanking_is_paused() &&
+            mdy_blanking_pause_can_dim() ) {
+            // keep existing blanking pause timer alive
+        }
+        else {
+            // stop blanking pause period
+            mdy_blanking_stop_pause_period();
+        }
 
         // handle adaptive blanking states
         switch( display_state ) {
@@ -3985,7 +4072,7 @@ static void mdy_blanking_rethink_timers(bool force)
             break;
         }
 
-        if( mdy_blanking_is_paused() )
+        if( mdy_blanking_is_paused() && !mdy_blanking_pause_can_dim() )
             break;
 
         mdy_blanking_schedule_dim();
@@ -5611,8 +5698,19 @@ EXIT:
 static void mdy_display_state_changed(void)
 {
     /* Disable blanking pause if display != ON */
-    if( display_state != MCE_DISPLAY_ON )
+    switch( display_state ) {
+    case MCE_DISPLAY_ON:
+        break;
+
+    case MCE_DISPLAY_DIM:
+        if( mdy_blanking_is_paused() && mdy_blanking_pause_can_dim() )
+            break;
+        // fall through
+
+    default:
         mdy_blanking_remove_pause_clients();
+        break;
+    }
 
     /* Program dim/blank timers */
     mdy_blanking_rethink_timers(false);
@@ -7019,6 +7117,10 @@ static gboolean mdy_dbus_send_blanking_inhibit_status(DBusMessage *const method_
     static int   prev = -1;
     bool         curr = false;
 
+    /* Having blanking pause active counts as inhibit active too */
+    if( mdy_blanking_is_paused() )
+        curr = true;
+
     /* In display on/dim state we should have either dimming or
      * blanking timer active. If that is not the case, some form of
      * blanking inhibit is active. This should catch things like
@@ -8389,6 +8491,33 @@ static void mdy_gconf_cb(GConfClient *const gcc, const guint id,
         mce_log(LL_NOTICE, "display off override = %d",
                 mdy_dbus_display_off_override);
     }
+
+    else if( id == mdy_blanking_pause_mode_gconf_cb_id ) {
+        gint old = mdy_blanking_pause_mode;
+        mdy_blanking_pause_mode = gconf_value_get_int(gcv);
+
+        mce_log(LL_NOTICE, "blanking pause mode = %s",
+                blanking_pause_mode_repr(mdy_blanking_pause_mode));
+
+        if( mdy_blanking_pause_mode == old ) {
+            /* nop */
+        }
+        else if( mdy_blanking_pause_is_allowed() ) {
+            /* Reprogram dim timer as needed when toggling between
+             * keep-on and allow-dimming modes.
+             *
+             * Note that re-enabling after disable means that active
+             * client side renew sessions are out of sync and hiccups
+             * can occur (i.e. display can blank once after enabling).
+             */
+            mdy_blanking_rethink_timers(true);
+        }
+        else {
+            /* Flush any active sessions there might be and reprogram
+             * display off timer as needed. */
+            mdy_blanking_remove_pause_clients();
+        }
+    }
     else if (id == mdy_orientation_sensor_enabled_gconf_cb_id) {
         mdy_orientation_sensor_enabled = gconf_value_get_bool(gcv);
         mdy_orientation_sensor_rethink();
@@ -8675,6 +8804,13 @@ static void mdy_gconf_init(void)
                          DEFAULT_ORIENTATION_SENSOR_ENABLED,
                          mdy_gconf_cb,
                          &mdy_orientation_sensor_enabled_gconf_cb_id);
+
+    /* Blanking pause mode */
+    mce_gconf_track_int(MCE_GCONF_DISPLAY_BLANKING_PAUSE_MODE,
+                        &mdy_blanking_pause_mode,
+                        DEFAULT_BLANKING_PAUSE_MODE,
+                        mdy_gconf_cb,
+                        &mdy_blanking_pause_mode_gconf_cb_id);
 }
 
 static void mdy_gconf_quit(void)
@@ -8749,6 +8885,9 @@ static void mdy_gconf_quit(void)
 
     mce_gconf_notifier_remove(mdy_orientation_sensor_enabled_gconf_cb_id),
         mdy_orientation_sensor_enabled_gconf_cb_id = 0;
+
+    mce_gconf_notifier_remove(mdy_blanking_pause_mode_gconf_cb_id),
+        mdy_blanking_pause_mode_gconf_cb_id = 0;
 
     /* Free dynamic data obtained from config */
 

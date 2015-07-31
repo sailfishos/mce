@@ -1171,6 +1171,11 @@ static const setting_t gconf_defaults[] =
     .def  = G_STRINGIFY(DEFAULT_ORIENTATION_SENSOR_ENABLED),
   },
   {
+    .key  = MCE_GCONF_DISPLAY_BLANKING_PAUSE_MODE,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_BLANKING_PAUSE_MODE),
+  },
+  {
     // Hint for settings UI. Not used by MCE itself.
     .key  = "/system/osso/dsm/display/possible_display_blank_timeouts",
     .type = "ai",
