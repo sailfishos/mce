@@ -3197,6 +3197,18 @@ evin_ts_grab_event_filter_cb(struct input_event *ev)
         }
         break;
 
+    case EV_KEY:
+        switch( ev->code ) {
+        case BTN_TOUCH:
+            if( ev->value == 0 )
+                r = true;
+            break;
+
+        default:
+            break;
+        }
+        break;
+
     case EV_ABS:
         switch( ev->code ) {
         case ABS_MT_POSITION_X:
