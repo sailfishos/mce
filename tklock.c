@@ -1807,12 +1807,11 @@ static void tklock_datapipe_lid_cover_policy_cb(gconstpointer data)
      *       - proximity sensor
      *       - notification led
      *       - double tap detection
-     */
+     *
+     * Note: Logic for volume key control exists, but is not used atm */
 
-#if 0 /* Note: Logic for volume key control exists, but is not used atm */
-    // volume key disable/enable
+    /* Re-evaluate need for touch blocking */
     tklock_evctrl_rethink();
-#endif
 
 EXIT:
     return;
@@ -1860,9 +1859,6 @@ static bool tklock_touch_activity_event_p(const struct input_event *ev)
     case EV_KEY:
         switch( ev->code ) {
         case BTN_MOUSE:
-            activity = (ev->value != 0);
-            break;
-
         case BTN_TOUCH:
             activity = (ev->value != 0);
             break;
@@ -1874,16 +1870,13 @@ static bool tklock_touch_activity_event_p(const struct input_event *ev)
 
     case EV_ABS:
         switch( ev->code ) {
-        case ABS_MT_PRESSURE:
         case ABS_MT_POSITION_X:
         case ABS_MT_POSITION_Y:
             activity = true;
             break;
 
+        case ABS_MT_PRESSURE:
         case ABS_MT_TOUCH_MAJOR:
-            activity = (ev->value != 0);
-            break;
-
         case ABS_MT_WIDTH_MAJOR:
             activity = (ev->value > 0);
             break;

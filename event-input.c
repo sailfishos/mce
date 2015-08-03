@@ -1647,11 +1647,12 @@ evin_doubletap_emulate(const struct input_event *eve)
         /* Do multitouch too while at it */
         switch( eve->code ) {
         case ABS_MT_PRESSURE:
-            hist[i0].dt_click += SEEN_EVENT_PRESSURE;
+            if( eve->value > 0 )
+                hist[i0].dt_click += SEEN_EVENT_PRESSURE;
             skip_syn = false;
             break;
         case ABS_MT_TOUCH_MAJOR:
-            if( eve->value != 0 )
+            if( eve->value > 0 )
                 hist[i0].dt_click += SEEN_EVENT_TOUCH_MAJOR;
             skip_syn = false;
             break;
@@ -3187,9 +3188,21 @@ evin_ts_grab_event_filter_cb(struct input_event *ev)
         case SYN_REPORT:
             if( r ) {
                 evin_input_grab_set_touching(&evin_ts_grab_state,
-                                        x && y && p);
+                                             x && y && p);
                 x = y = p = r = false;
             }
+            break;
+
+        default:
+            break;
+        }
+        break;
+
+    case EV_KEY:
+        switch( ev->code ) {
+        case BTN_TOUCH:
+            if( ev->value == 0 )
+                r = true;
             break;
 
         default:
@@ -3209,7 +3222,8 @@ evin_ts_grab_event_filter_cb(struct input_event *ev)
 
         case ABS_MT_TOUCH_MAJOR:
         case ABS_MT_PRESSURE:
-            p = true;
+            if( ev->value > 0 )
+                p = true;
             break;
 
         default:
