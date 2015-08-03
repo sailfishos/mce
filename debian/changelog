@@ -1,3 +1,12 @@
+mce (1.58.1) unstable; urgency=low
+
+  * [lid sensor] Evaluate input enable/disable on sensor change.
+    Contributes to JB#31205
+  * [touchscreen] Improve end of touch detection. Fixes JB#31205
+  * [touchscreen] Unify touch event value evaluation
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 03 Aug 2015 15:36:22 +0300
+
 mce (1.58.0) unstable; urgency=low
 
   * [doubletap] Disable double tap detection when lid is closed. Contributes
