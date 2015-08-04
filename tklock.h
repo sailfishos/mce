@@ -124,6 +124,42 @@ typedef enum
 #define MCE_GCONF_FILTER_LID_WITH_ALS           MCE_GCONF_LOCK_PATH"/filter_lid_with_als"
 #define DEFAULT_FILTER_LID_WITH_ALS             true
 
+/** Lid sensor open actions */
+typedef enum
+{
+    /** Actions disabled */
+    LID_OPEN_ACTION_DISABLED = 0,
+
+    /** Just show lockscreen */
+    LID_OPEN_ACTION_UNBLANK  = 1,
+
+    /* Deactivate lockscreen */
+    LID_OPEN_ACTION_TKUNLOCK = 2,
+
+} lid_open_action_t;
+
+/** Lid sensor open action GConf setting */
+#define MCE_GCONF_TK_LID_OPEN_ACTIONS	MCE_GCONF_LOCK_PATH "/lid_open_actions"
+#define DEFAULT_LID_OPEN_ACTION		1 // = LID_OPEN_ACTION_UNBLANK
+
+/** Lid sensor close actions */
+typedef enum
+{
+    /** Actions disabled */
+    LID_CLOSE_ACTION_DISABLED = 0,
+
+    /** Just blank screen */
+    LID_CLOSE_ACTION_BLANK    = 1,
+
+    /* Activate lockscreen */
+    LID_CLOSE_ACTION_TKLOCK   = 2,
+
+} lid_close_action_t;
+
+/** Lid sensor close action GConf setting */
+#define MCE_GCONF_TK_LID_CLOSE_ACTIONS	MCE_GCONF_LOCK_PATH "/lid_close_actions"
+#define DEFAULT_LID_CLOSE_ACTION	2 // = LID_CLOSE_ACTION_TKLOCK
+
 /** Autolock delay GConf setting [ms]*/
 # define MCE_GCONF_AUTOLOCK_DELAY		MCE_GCONF_LOCK_PATH "/autolock_delay"
 # define DEFAULT_AUTOLOCK_DELAY                 30000

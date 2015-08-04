@@ -266,6 +266,8 @@ static void     tklock_dtcalib_stop(void);
 // settings from gconf
 
 static void     tklock_gconf_sanitize_doubletap_gesture_policy(void);
+static void     tklock_gconf_sanitize_lid_open_actions(void);
+static void     tklock_gconf_sanitize_lid_close_actions(void);
 
 static void     tklock_gconf_cb(GConfClient *const gcc, const guint id, GConfEntry *const entry, gpointer const data);
 
@@ -399,6 +401,16 @@ static guint doubletap_enable_mode_cb_id = 0;
 static gint tklock_blank_disable = DEFAULT_TK_AUTO_BLANK_DISABLE;
 /** GConf notifier id for tracking tklock_blank_disable changes */
 static guint tklock_blank_disable_id = 0;
+
+/** Lid sensor open actions */
+static gint tklock_lid_open_actions = DEFAULT_LID_OPEN_ACTION;
+/** GConf callback ID for tklock_lid_open_actions */
+static guint tklock_lid_open_actions_cb_id = 0;
+
+/** Lid sensor close actions */
+static gint tklock_lid_close_actions = DEFAULT_LID_CLOSE_ACTION;
+/** GConf callback ID for tklock_lid_close_actions */
+static guint tklock_lid_close_actions_cb_id = 0;
 
 /** Flag: Is the lid sensor used for display blanking */
 static gboolean lid_sensor_enabled = DEFAULT_LID_SENSOR_ENABLED;
@@ -2289,11 +2301,12 @@ static void tklock_lid_sensor_rethink(void)
     /* Previous settings toggle; initialize not to match TRUE / FALSE */
     static int enabled_prev = -1;
 
-    /* Previous action take; initialize to no action taken */
-    static cover_state_t action_prev = COVER_UNDEF;
+    /* Previous action taken; initialize to no action taken */
+    static cover_state_t action_curr = COVER_UNDEF;
+    cover_state_t        action_prev = action_curr;
 
     /* Assume action is based on sensor state */
-    cover_state_t action_curr = lid_cover_sensor_state;
+    action_curr = lid_cover_sensor_state;
 
     /* Filter based on disable/enable toggle */
     if( !lid_sensor_enabled ) {
@@ -2366,16 +2379,23 @@ static void tklock_lid_sensor_rethink(void)
     /* Then execute the required actions */
     switch( action_curr ) {
     case COVER_CLOSED:
-        mce_log(LL_DEVEL, "lid closed - blank");
         /* need to se non-zero lux before blanking again */
         nonzero_lux_seen_at = 0;
-        /* lock ui + blank display */
-        execute_datapipe(&tk_lock_pipe,
-                         GINT_TO_POINTER(LOCK_ON),
-                         USE_INDATA, CACHE_INDATA);
-        execute_datapipe(&display_state_req_pipe,
-                         GINT_TO_POINTER(MCE_DISPLAY_OFF),
-                         USE_INDATA, CACHE_INDATA);
+
+        /* Blank display + lock ui */
+        if( tklock_lid_close_actions != LID_CLOSE_ACTION_DISABLED ) {
+            mce_log(LL_DEVEL, "lid closed - blank");
+            execute_datapipe(&display_state_req_pipe,
+                             GINT_TO_POINTER(MCE_DISPLAY_OFF),
+                             USE_INDATA, CACHE_INDATA);
+        }
+
+        if( tklock_lid_close_actions == LID_CLOSE_ACTION_TKLOCK ) {
+            mce_log(LL_DEBUG, "lid closed - tklock");
+            execute_datapipe(&tk_lock_pipe,
+                             GINT_TO_POINTER(LOCK_ON),
+                             USE_INDATA, CACHE_INDATA);
+        }
         break;
 
     case COVER_OPEN:
@@ -2385,11 +2405,20 @@ static void tklock_lid_sensor_rethink(void)
             break;
         }
 
-        mce_log(LL_DEVEL, "lid open - unblank");
-        /* unblank display */
-        execute_datapipe(&display_state_req_pipe,
-                         GINT_TO_POINTER(MCE_DISPLAY_ON),
-                         USE_INDATA, CACHE_INDATA);
+        /* Unblank display + unlock ui */
+        if( tklock_lid_open_actions != LID_OPEN_ACTION_DISABLED ) {
+            mce_log(LL_DEVEL, "lid open - unblank");
+            execute_datapipe(&display_state_req_pipe,
+                             GINT_TO_POINTER(MCE_DISPLAY_ON),
+                             USE_INDATA, CACHE_INDATA);
+        }
+
+        if( tklock_lid_open_actions == LID_OPEN_ACTION_TKUNLOCK ) {
+            mce_log(LL_DEBUG, "lid open - untklock");
+            execute_datapipe(&tk_lock_pipe,
+                             GINT_TO_POINTER(LOCK_OFF),
+                             USE_INDATA, CACHE_INDATA);
+        }
         break;
 
     default:
@@ -2397,8 +2426,6 @@ static void tklock_lid_sensor_rethink(void)
         /* NOP */
         break;
     }
-
-    action_prev = action_curr;
 
 EXIT:
     return;
@@ -3945,6 +3972,38 @@ static void tklock_gconf_sanitize_doubletap_gesture_policy(void)
     }
 }
 
+static void tklock_gconf_sanitize_lid_open_actions(void)
+{
+    switch( tklock_lid_open_actions ) {
+    case LID_OPEN_ACTION_DISABLED:
+    case LID_OPEN_ACTION_UNBLANK:
+    case LID_OPEN_ACTION_TKUNLOCK:
+        break;
+
+    default:
+        mce_log(LL_WARN, "Lid open has invalid policy: %d; "
+                "using default", tklock_lid_open_actions);
+        tklock_lid_open_actions = DEFAULT_LID_OPEN_ACTION;
+        break;
+    }
+}
+
+static void tklock_gconf_sanitize_lid_close_actions(void)
+{
+    switch( tklock_lid_close_actions ) {
+    case LID_CLOSE_ACTION_DISABLED:
+    case LID_CLOSE_ACTION_BLANK:
+    case LID_CLOSE_ACTION_TKLOCK:
+        break;
+
+    default:
+        mce_log(LL_WARN, "Lid close has invalid policy: %d; "
+                "using default", tklock_lid_close_actions);
+        tklock_lid_close_actions = DEFAULT_LID_CLOSE_ACTION;
+        break;
+    }
+}
+
 /** GConf callback for touchscreen/keypad lock related settings
  *
  * @param gcc Unused
@@ -3995,6 +4054,16 @@ static void tklock_gconf_cb(GConfClient *const gcc, const guint id,
     else if( id == doubletap_gesture_policy_cb_id ) {
         doubletap_gesture_policy = gconf_value_get_int(gcv);
         tklock_gconf_sanitize_doubletap_gesture_policy();
+        tklock_evctrl_rethink();
+    }
+    else if( id == tklock_lid_open_actions_cb_id ) {
+        tklock_lid_open_actions = gconf_value_get_int(gcv);
+        tklock_gconf_sanitize_lid_open_actions();
+        tklock_evctrl_rethink();
+    }
+    else if( id == tklock_lid_close_actions_cb_id ) {
+        tklock_lid_close_actions = gconf_value_get_int(gcv);
+        tklock_gconf_sanitize_lid_close_actions();
         tklock_evctrl_rethink();
     }
     else if( id == tklock_blank_disable_id ) {
@@ -4151,6 +4220,24 @@ static void tklock_gconf_init(void)
 
     tklock_gconf_sanitize_doubletap_gesture_policy();
 
+    /* Lid sensor open policy */
+    mce_gconf_track_int(MCE_GCONF_TK_LID_OPEN_ACTIONS,
+                        &tklock_lid_open_actions,
+                        DEFAULT_LID_OPEN_ACTION,
+                        tklock_gconf_cb,
+                        &tklock_lid_open_actions_cb_id);
+
+    tklock_gconf_sanitize_lid_open_actions();
+
+    /* Lid sensor close policy */
+    mce_gconf_track_int(MCE_GCONF_TK_LID_CLOSE_ACTIONS,
+                        &tklock_lid_close_actions,
+                        DEFAULT_LID_CLOSE_ACTION,
+                        tklock_gconf_cb,
+                        &tklock_lid_close_actions_cb_id);
+
+    tklock_gconf_sanitize_lid_close_actions();
+
     /** Touchscreen double tap gesture mode */
     mce_gconf_track_int(MCE_GCONF_DOUBLETAP_MODE,
                         &doubletap_enable_mode,
@@ -4278,6 +4365,12 @@ static void tklock_gconf_quit(void)
 {
     mce_gconf_notifier_remove(doubletap_gesture_policy_cb_id),
         doubletap_gesture_policy_cb_id = 0;
+
+    mce_gconf_notifier_remove(tklock_lid_open_actions_cb_id),
+        tklock_lid_open_actions_cb_id = 0;
+
+    mce_gconf_notifier_remove(tklock_lid_close_actions_cb_id),
+        tklock_lid_close_actions_cb_id = 0;
 
     mce_gconf_notifier_remove(tk_autolock_enabled_cb_id),
         tk_autolock_enabled_cb_id = 0;

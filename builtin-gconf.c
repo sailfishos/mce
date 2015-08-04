@@ -1238,6 +1238,16 @@ static const setting_t gconf_defaults[] =
     .def  = G_STRINGIFY(DEFAULT_FILTER_LID_WITH_ALS),
   },
   {
+    .key  = MCE_GCONF_TK_LID_OPEN_ACTIONS,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_LID_OPEN_ACTION),
+  },
+  {
+    .key  = MCE_GCONF_TK_LID_CLOSE_ACTIONS,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_LID_CLOSE_ACTION),
+  },
+  {
     .key  = MCE_GCONF_AUTOLOCK_DELAY,
     .type = "i",
     .def  = G_STRINGIFY(DEFAULT_AUTOLOCK_DELAY),
