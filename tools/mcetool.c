@@ -2833,6 +2833,29 @@ static void xmce_get_ps_blocks_touch(void)
         printf("%-"PAD1"s %s\n", "Touch can be blocked by ps:", txt);
 }
 
+/** Set ps acts as lid sensor mode
+ *
+ * @param args string suitable for interpreting as enabled/disabled
+ */
+static bool xmce_set_ps_acts_as_lid(const char *args)
+{
+        gboolean val = xmce_parse_enabled(args);
+        mcetool_gconf_set_bool(MCE_GCONF_PROXIMITY_PS_ACTS_AS_LID, val);
+        return true;
+}
+
+/** Get current ps acts as lid mode and print it out
+ */
+static void xmce_get_ps_acts_as_lid(void)
+{
+        gboolean val = 0;
+        char txt[32] = "unknown";
+
+        if( mcetool_gconf_get_bool(MCE_GCONF_PROXIMITY_PS_ACTS_AS_LID, &val) )
+                snprintf(txt, sizeof txt, "%s", val ? "enabled" : "disabled");
+        printf("%-"PAD1"s %s\n", "PS acts as LID sensor:", txt);
+}
+
 /* ------------------------------------------------------------------------- *
  * als
  * ------------------------------------------------------------------------- */
@@ -4555,6 +4578,7 @@ static bool xmce_get_status(const char *args)
         xmce_get_orientation_sensor_mode();
         xmce_get_ps_mode();
         xmce_get_ps_blocks_touch();
+        xmce_get_ps_acts_as_lid();
         xmce_get_lid_sensor_mode();
         xmce_get_filter_lid_with_als();
         xmce_get_dim_timeouts();
@@ -5240,6 +5264,13 @@ static const mce_opt_t options[] =
                 .with_arg    = xmce_set_ps_blocks_touch,
                 .values      = "enabled|disabled",
                         "allow ps to block touch input; valid modes are:\n"
+                        "'enabled' and 'disabled'\n"
+        },
+        {
+                .name        = "set-ps-acts-as-lid",
+                .with_arg    = xmce_set_ps_acts_as_lid,
+                .values      = "enabled|disabled",
+                        "make ps act as lid sensor; valid modes are:\n"
                         "'enabled' and 'disabled'\n"
         },
         {

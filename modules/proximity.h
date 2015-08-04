@@ -25,7 +25,12 @@
 /** Path to the GConf settings for the proximity */
 #define MCE_GCONF_PROXIMITY_PATH		"/system/osso/dsm/proximity"
 
-/** Path to the ALS enabled GConf setting */
-#define MCE_GCONF_PROXIMITY_PS_ENABLED_PATH	MCE_GCONF_PROXIMITY_PATH "/ps_enabled"
+/** Proximity sensor enabled GConf setting */
+#define MCE_GCONF_PROXIMITY_PS_ENABLED_PATH     MCE_GCONF_PROXIMITY_PATH "/ps_enabled"
+#define DEFAULT_PROXIMITY_PS_ENABLED            true
+
+/** Proximity sensor acts as lid sensor setting */
+#define MCE_GCONF_PROXIMITY_PS_ACTS_AS_LID      MCE_GCONF_PROXIMITY_PATH "/ps_acts_as_lid"
+#define DEFAULT_PROXIMITY_PS_ACTS_AS_LID        false
 
 #endif /* _PROXIMITY_H_ */

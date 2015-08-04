@@ -7,6 +7,7 @@ builtin-gconf.o:\
 	modules/display.h\
 	modules/filter-brightness-als.h\
 	modules/memnotify.h\
+	modules/proximity.h\
 	powerkey.h\
 	tklock.h\
 
@@ -19,6 +20,7 @@ builtin-gconf.pic.o:\
 	modules/display.h\
 	modules/filter-brightness-als.h\
 	modules/memnotify.h\
+	modules/proximity.h\
 	powerkey.h\
 	tklock.h\
 
