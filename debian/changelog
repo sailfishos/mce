@@ -1,3 +1,11 @@
+mce (1.59.0) unstable; urgency=low
+
+  * [proximity] Optionally make proximity sensor behave like lid sensor.
+    Fixes MER#1201
+  * [tklock] Add setting for lid open/close actions. Fixes MER#1202
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 05 Aug 2015 07:29:03 +0300
+
 mce (1.58.1) unstable; urgency=low
 
   * [lid sensor] Evaluate input enable/disable on sensor change.
