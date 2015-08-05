@@ -2754,6 +2754,76 @@ static void xmce_get_lid_sensor_mode(void)
         printf("%-"PAD1"s %s\n", "Use lid sensor mode:", txt);
 }
 
+/** Lookup table for lid open actions
+ */
+static const symbol_t lid_open_actions[] = {
+        { "disabled", LID_OPEN_ACTION_DISABLED },
+        { "unblank",  LID_OPEN_ACTION_UNBLANK  },
+        { "tkunlock", LID_OPEN_ACTION_TKUNLOCK },
+        { NULL,       -1                       }
+};
+
+/** Set lid open actions
+ *
+ * @param args string that can be parsed to lid open actions
+ */
+static bool xmce_set_lid_open_actions(const char *args)
+{
+        int val = lookup(lid_open_actions, args);
+        if( val < 0 ) {
+                errorf("%s: invalid lid open actions\n", args);
+                exit(EXIT_FAILURE);
+        }
+        mcetool_gconf_set_int(MCE_GCONF_TK_LID_OPEN_ACTIONS, val);
+        return true;
+}
+
+/** Get current lid open actions from mce and print it out
+ */
+static void xmce_get_lid_open_actions(void)
+{
+        gint        val = 0;
+        const char *txt = 0;
+        if( mcetool_gconf_get_int(MCE_GCONF_TK_LID_OPEN_ACTIONS, &val) )
+                txt = rlookup(lid_open_actions, val);
+        printf("%-"PAD1"s %s \n", "Lid open actions:", txt ?: "unknown");
+}
+
+/** Lookup table for lid close actions
+ */
+static const symbol_t lid_close_actions[] = {
+        { "disabled", LID_CLOSE_ACTION_DISABLED },
+        { "blank",    LID_CLOSE_ACTION_BLANK    },
+        { "tklock",   LID_CLOSE_ACTION_TKLOCK   },
+        { NULL,       -1                        }
+};
+
+/** Set lid close actions
+ *
+ * @param args string that can be parsed to lid close actions
+ */
+static bool xmce_set_lid_close_actions(const char *args)
+{
+        int val = lookup(lid_close_actions, args);
+        if( val < 0 ) {
+                errorf("%s: invalid lid close actions\n", args);
+                exit(EXIT_FAILURE);
+        }
+        mcetool_gconf_set_int(MCE_GCONF_TK_LID_CLOSE_ACTIONS, val);
+        return true;
+}
+
+/** Get current lid close actions from mce and print it out
+ */
+static void xmce_get_lid_close_actions(void)
+{
+        gint        val = 0;
+        const char *txt = 0;
+        if( mcetool_gconf_get_int(MCE_GCONF_TK_LID_CLOSE_ACTIONS, &val) )
+                txt = rlookup(lid_close_actions, val);
+        printf("%-"PAD1"s %s \n", "Lid close actions:", txt ?: "unknown");
+}
+
 /* ------------------------------------------------------------------------- *
  * orientation sensor
  * ------------------------------------------------------------------------- */
@@ -4581,6 +4651,8 @@ static bool xmce_get_status(const char *args)
         xmce_get_ps_acts_as_lid();
         xmce_get_lid_sensor_mode();
         xmce_get_filter_lid_with_als();
+        xmce_get_lid_open_actions();
+        xmce_get_lid_close_actions();
         xmce_get_dim_timeouts();
         xmce_get_brightness_fade();
         xmce_get_suspend_policy();
@@ -5279,6 +5351,24 @@ static const mce_opt_t options[] =
                 .values      = "enabled|disabled",
                         "set the lid sensor mode; valid modes are:\n"
                         "'enabled' and 'disabled'\n"
+        },
+        {
+                .name        = "set-lid-open-actions",
+                .with_arg    = xmce_set_lid_open_actions,
+                .values      = "disabled|unblank|tkunlock",
+                        "set the lid open actions; valid modes are:\n"
+                        "'disabled' ignore lid open\n"
+                        "'unblank'  unblank (and show lockscreen)\n"
+                        "'tkunlock' unblank and deactivate lockscreen (if possible)\n"
+        },
+        {
+                .name        = "set-lid-close-actions",
+                .with_arg    = xmce_set_lid_close_actions,
+                .values      = "disabled|blank|tklock",
+                        "set the lid close actions; valid modes are:\n"
+                        "'disabled' ignore lid close\n"
+                        "'blank'    blank display\n"
+                        "'tklock'   blank display and activate lockscreen\n"
         },
         {
                 .name        = "set-filter-lid-with-als",
