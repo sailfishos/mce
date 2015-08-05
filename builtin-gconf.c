@@ -28,6 +28,7 @@
 #include "modules/memnotify.h"
 #include "modules/filter-brightness-als.h"
 #include "modules/display.h"
+#include "modules/proximity.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -1506,10 +1507,14 @@ static const setting_t gconf_defaults[] =
     .def  = "101", // use > 100 for "only when charger is connected"
   },
   {
-    // MCE_GCONF_PROXIMITY_PS_ENABLED_PATH @ proximity.h
-    .key  = "/system/osso/dsm/proximity/ps_enabled",
+    .key  = MCE_GCONF_PROXIMITY_PS_ENABLED_PATH,
     .type = "b",
-    .def  = "true",
+    .def  = G_STRINGIFY(DEFAULT_PROXIMITY_PS_ENABLED),
+  },
+  {
+    .key  = MCE_GCONF_PROXIMITY_PS_ACTS_AS_LID,
+    .type = "b",
+    .def  = G_STRINGIFY(DEFAULT_PROXIMITY_PS_ACTS_AS_LID),
   },
   {
     // MCE_GCONF_DOUBLETAP_MODE @ doubletap.h

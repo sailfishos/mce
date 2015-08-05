@@ -48,9 +48,6 @@ G_MODULE_EXPORT module_info_struct module_info = {
 /** State of proximity sensor monitoring */
 static gboolean proximity_monitor_active = FALSE;
 
-/** Last proximity sensor state */
-static cover_state_t old_proximity_sensor_state = COVER_UNDEF;
-
 /** Cached call state */
 static call_state_t call_state = CALL_STATE_INVALID;
 
@@ -63,6 +60,18 @@ static display_state_t display_state = MCE_DISPLAY_UNDEF;
 /** Cached submode state */
 static submode_t submode = MCE_NORMAL_SUBMODE;
 
+/** Configuration value for use proximity sensor */
+static gboolean use_ps_conf_value = DEFAULT_PROXIMITY_PS_ENABLED;
+
+/** Configuration change id for use_ps_conf_value */
+static guint use_ps_conf_id = 0;
+
+/** Configuration value for ps acts as lid sensor */
+static gboolean ps_acts_as_lid = DEFAULT_PROXIMITY_PS_ACTS_AS_LID;
+
+/** Configuration change id for ps_acts_as_lid */
+static guint ps_acts_as_lid_conf_id = 0;
+
 /** Broadcast proximity state within MCE
  *
  * @param state COVER_CLOSED or COVER_OPEN
@@ -74,20 +83,35 @@ static void report_proximity(cover_state_t state)
 
 	/* Execute datapipe if state has changed */
 
-	/* FIXME: figure out where things break down if we do not
-	 * omit the non-change datapipe execute ... */
-	//if( old_state != state )
+	if( old_state != state )
 	{
 		mce_log(LL_NOTICE, "state: %s -> %s",
 			cover_state_repr(old_state),
 			cover_state_repr(state));
+
 		execute_datapipe(&proximity_sensor_pipe,
 				 GINT_TO_POINTER(state),
 				 USE_INDATA, CACHE_INDATA);
 	}
+}
 
-	/* Update last-seen proximity state */
-	old_proximity_sensor_state = state;
+/** Broadcast faked lid input state within mce
+ *
+ * @param state COVER_CLOSED, COVER_OPEN or COVER_UNDEF
+ */
+static void report_lid_input(cover_state_t state)
+{
+	cover_state_t old_state = datapipe_get_gint(lid_cover_sensor_pipe);
+
+	if( state != old_state ) {
+		mce_log(LL_NOTICE, "state: %s -> %s",
+			cover_state_repr(old_state),
+			cover_state_repr(state));
+
+		execute_datapipe(&lid_cover_sensor_pipe,
+				 GINT_TO_POINTER(state),
+				 USE_INDATA, CACHE_INDATA);
+	}
 }
 
 /**
@@ -104,7 +128,10 @@ static void ps_sensorfw_iomon_cb(bool covered)
 	else
 		proximity_sensor_state = COVER_OPEN;
 
-	report_proximity(proximity_sensor_state);
+	if( ps_acts_as_lid )
+		report_lid_input(proximity_sensor_state);
+	else
+		report_proximity(proximity_sensor_state);
 
 	return;
 }
@@ -150,12 +177,6 @@ EXIT:
 	return;
 }
 
-/** Configuration value for use proximity sensor */
-static gboolean use_ps_conf_value = TRUE;
-
-/** Configuration change id for use proximity sensor */
-static guint use_ps_conf_id = 0;
-
 /**
  * Update the proximity monitoring
  */
@@ -163,15 +184,16 @@ static void update_proximity_monitor(void)
 {
 	static gboolean old_enable = FALSE;
 
-	gboolean enable = FALSE;
-	gboolean fake_open = FALSE;
-
 	/* Default to keeping the proximity sensor always enabled. */
-	enable = TRUE;
+	gboolean enable = TRUE;
 
 	if( !use_ps_conf_value ) {
-		fake_open = TRUE;
 		enable = FALSE;
+
+		if( ps_acts_as_lid )
+			report_lid_input(COVER_UNDEF);
+		else
+			report_proximity(COVER_OPEN);
 	}
 
 	if( old_enable == enable )
@@ -184,8 +206,7 @@ static void update_proximity_monitor(void)
 	}
 
 EXIT:
-	if( !enable && fake_open )
-		report_proximity(COVER_OPEN);
+	return;
 }
 
 /** GConf callback for use proximity sensor setting
@@ -202,17 +223,38 @@ static void use_ps_conf_cb(GConfClient *const gcc, const guint id,
 
 	const GConfValue *gcv;
 
-	if( id != use_ps_conf_id ) {
-		mce_log(LL_WARN, "Spurious GConf value received; confused!");
+	if( !(gcv = gconf_entry_get_value(entry)) ) {
+		mce_log(LL_WARN, "GConf value removed; confused!");
 		goto EXIT;
 	}
 
-	if( !(gcv = gconf_entry_get_value(entry)) ) {
-		// config removed -> use proximity sensor
-		use_ps_conf_value = TRUE;
+	if( id == use_ps_conf_id ) {
+		gboolean old = use_ps_conf_value;
+		use_ps_conf_value = gconf_value_get_bool(gcv);
+
+		if( use_ps_conf_value == old )
+			goto EXIT;
+
+	}
+	else if( id == ps_acts_as_lid_conf_id ) {
+		gboolean old = ps_acts_as_lid;
+		ps_acts_as_lid = gconf_value_get_bool(gcv);
+
+		if( ps_acts_as_lid == old )
+			goto EXIT;
+
+		if( ps_acts_as_lid ) {
+			// ps is lid now -> set ps to open state
+			report_proximity(COVER_OPEN);
+		}
+		else {
+			// ps is ps again -> invalidate lid state
+			report_lid_input(COVER_UNDEF);
+		}
 	}
 	else {
-		use_ps_conf_value = gconf_value_get_bool(gcv);
+		mce_log(LL_WARN, "Spurious GConf value received; confused!");
+		goto EXIT;
 	}
 
 	update_proximity_monitor();
@@ -297,13 +339,24 @@ const gchar *g_module_check_init(GModule *module)
 					  submode_trigger);
 
 	/* PS enabled setting */
-	mce_gconf_notifier_add(MCE_GCONF_PROXIMITY_PATH,
-			       MCE_GCONF_PROXIMITY_PS_ENABLED_PATH,
-			       use_ps_conf_cb,
-			       &use_ps_conf_id);
+	mce_gconf_track_bool(MCE_GCONF_PROXIMITY_PS_ENABLED_PATH,
+			     &use_ps_conf_value,
+			     DEFAULT_PROXIMITY_PS_ENABLED,
+			     use_ps_conf_cb,
+			     &use_ps_conf_id);
 
-	mce_gconf_get_bool(MCE_GCONF_PROXIMITY_PS_ENABLED_PATH,
-			   &use_ps_conf_value);
+	/* PS acts as LID sensor */
+	mce_gconf_track_bool(MCE_GCONF_PROXIMITY_PS_ACTS_AS_LID,
+			     &ps_acts_as_lid,
+			     DEFAULT_PROXIMITY_PS_ACTS_AS_LID,
+			     use_ps_conf_cb,
+			     &ps_acts_as_lid_conf_id);
+
+	/* If the proximity sensor input is used for toggling
+	 * lid state, we must take care not to leave proximity
+	 * tracking to covered state. */
+	if( ps_acts_as_lid )
+		report_proximity(COVER_OPEN);
 
 	/* enable/disable sensor based on initial conditions */
 	update_proximity_monitor();
@@ -324,6 +377,9 @@ void g_module_unload(GModule *module)
 	/* Remove gconf notifications  */
 	mce_gconf_notifier_remove(use_ps_conf_id),
 		use_ps_conf_id = 0;
+
+	mce_gconf_notifier_remove(ps_acts_as_lid_conf_id),
+		ps_acts_as_lid_conf_id = 0;
 
 	/* Remove triggers/filters from datapipes */
 	remove_output_trigger_from_datapipe(&display_state_pipe,
