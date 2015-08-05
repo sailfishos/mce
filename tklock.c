@@ -232,7 +232,7 @@ static void     tklock_uiexcept_begin(uiexctype_t type, int64_t linger);
 static void     tklock_uiexcept_end(uiexctype_t type, int64_t linger);
 static void     tklock_uiexcept_cancel(void);
 static void     tklock_uiexcept_finish(void);
-static void     tklock_uiexcept_deny_state_restore(void);
+static bool     tklock_uiexcept_deny_state_restore(bool force);
 static void     tklock_uiexcept_rethink(void);
 
 // low power mode ui state machine
@@ -1953,11 +1953,16 @@ static void tklock_datapipe_user_activity_cb(gconstpointer data)
     switch( exception_state ) {
     case UIEXC_LINGER:
         /* touch events during linger -> do not restore display state */
-        mce_log(LL_DEBUG, "touch event; do not restore display/tklock state");
-        tklock_uiexcept_deny_state_restore();
+        if( tklock_uiexcept_deny_state_restore(true) )
+            mce_log(LL_DEBUG, "touch event during linger; do not restore display/tklock state");
         break;
 
     case UIEXC_NOTIF:
+        /* touch events while device is not locked -> do not restore display state */
+        if( tklock_uiexcept_deny_state_restore(false) ) {
+            mce_log(LL_DEBUG, "touch event while unlocked; do not restore display/tklock state");
+            break;
+        }
         /* touchscreen activity makes notification exceptions to last longer */
         mce_log(LL_DEBUG, "touch event; lengthen notification exception");
         tklock_notif_extend_by_renew();
@@ -2812,13 +2817,28 @@ static void  tklock_uiexcept_sync_to_datapipe(void)
 }
 
 /** Do not restore display/tklock state at the end of exceptional ui state
+ *
+ * @param force  true for unconditionally canceling the state restore; or
+ *               false for canceling only if neither tklock nor devicelock
+ *               is active
  */
-static void tklock_uiexcept_deny_state_restore(void)
+static bool tklock_uiexcept_deny_state_restore(bool force)
 {
-    if( exdata.mask && exdata.restore ) {
-        exdata.restore = false;
-        mce_log(LL_NOTICE, "DISABLING STATE RESTORE");
-    }
+    bool changed = false;
+
+    // must have restore to deny
+    if( !exdata.restore || !exdata.mask )
+        goto EXIT;
+
+    // must be forced or unlocked
+    if( !force && (exdata.tklock || exdata.devicelock) )
+        goto EXIT;
+
+    exdata.restore = false;
+    changed = true;
+
+EXIT:
+    return changed;
 }
 
 static void tklock_uiexcept_rethink(void)
