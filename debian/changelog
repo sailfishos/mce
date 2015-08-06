@@ -1,3 +1,9 @@
+mce (1.59.1) unstable; urgency=low
+
+  * [tklock] Tune notification display blanking policy. Fixes JB#31213
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 06 Aug 2015 07:41:43 +0300
+
 mce (1.59.0) unstable; urgency=low
 
   * [proximity] Optionally make proximity sensor behave like lid sensor.
