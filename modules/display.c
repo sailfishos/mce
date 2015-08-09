@@ -72,11 +72,11 @@
 
 /** UI side graphics fading percentage
  *
- * Controls opacity of the black box rendered on top at the ui when
- * backlight dimming alone is not enough to make dimmed display state
- * visible to the user.
+ * Controls maximum opacity of the black box rendered on top at the ui
+ * when backlight dimming alone is not enough to make dimmed display
+ * state visible to the user.
  */
-#define MCE_FADER_OPACITY_PERCENT 50
+#define MCE_FADER_MAXIMUM_OPACITY_PERCENT 50
 
 /** Backlight fade animation duration after brightness setting changes */
 #define MCE_FADER_DURATION_SETTINGS_CHANGED 600
@@ -372,6 +372,11 @@ static void                mdy_brightness_set_fade_target_als(gint new_brightnes
 static void                mdy_brightness_set_fade_target_blank(void);
 static void                mdy_brightness_set_fade_target_unblank(gint new_brightness);
 
+static int                 mdy_brightness_get_dim_static(void);
+static int                 mdy_brightness_get_dim_dynamic(void);
+static int                 mdy_brightness_get_dim_threshold_lo(void);
+static int                 mdy_brightness_get_dim_threshold_hi(void);
+
 static void                mdy_brightness_set_on_level(gint hbm_and_level);
 static void                mdy_brightness_set_dim_level(void);
 static void                mdy_brightness_set_lpm_level(gint level);
@@ -380,7 +385,7 @@ static void                mdy_brightness_set_lpm_level(gint level);
  * UI_SIDE_DIMMING
  * ------------------------------------------------------------------------- */
 
-static void                mdy_ui_dimming_set_needed(bool is_needed);
+static void                mdy_ui_dimming_set_level(int level);
 static void                mdy_ui_dimming_rethink(void);
 
 /* ------------------------------------------------------------------------- *
@@ -876,6 +881,30 @@ static filewatcher_t *mdy_update_mode_watcher = 0;
 /* ------------------------------------------------------------------------- *
  * GCONF_SETTINGS
  * ------------------------------------------------------------------------- */
+
+/** Setting for statically defined dimmed screen brightness */
+static gint mdy_brightness_dim_static = DEFAULT_DISPLAY_DIM_STATIC_BRIGHTNESS;
+
+/** GConf callback ID for mdy_brightness_dim_static */
+static guint mdy_brightness_dim_static_gconf_id = 0;
+
+/** Setting for dimmed screen brightness defined as portion of on brightness*/
+static gint mdy_brightness_dim_dynamic = DEFAULT_DISPLAY_DIM_DYNAMIC_BRIGHTNESS;
+
+/** GConf callback ID for mdy_brightness_dim_dynamic */
+static guint mdy_brightness_dim_dynamic_gconf_id = 0;
+
+/** Setting for start compositor dimming threshold */
+static gint mdy_brightness_dim_compositor_lo = DEFAULT_DISPLAY_DIM_COMPOSITOR_LO;
+
+/** GConf callback ID for mdy_brightness_dim_compositor_lo */
+static guint mdy_brightness_dim_compositor_lo_gconf_id = 0;
+
+/** Setting for use maximum compositor dimming threshold */
+static gint mdy_brightness_dim_compositor_hi= DEFAULT_DISPLAY_DIM_COMPOSITOR_HI;
+
+/** GConf callback ID for mdy_brightness_dim_compositor_hi */
+static guint mdy_brightness_dim_compositor_hi_gconf_id = 0;
 
 /** Setting for allowing dimming while blanking is paused */
 static gint mdy_blanking_pause_mode = DEFAULT_BLANKING_PAUSE_MODE;
@@ -2729,33 +2758,116 @@ EXIT:
     return;
 }
 
+/** Get static display brightness setting in hw units
+ */
+static int mdy_brightness_get_dim_static(void)
+{
+    // N % of hw maximum
+    return mce_xlat_int(1, 100,
+                        1, mdy_brightness_level_maximum,
+                        mdy_brightness_dim_static);
+}
+
+/** Get dynamic display brightness setting in hw units
+ */
+static int mdy_brightness_get_dim_dynamic(void)
+{
+    // N % of display on brightness
+    return mce_xlat_int(1, 100,
+                        1, mdy_brightness_level_display_on,
+                        mdy_brightness_dim_dynamic);
+}
+
+/** Get start of compositor dimming threshold in hw units
+ */
+static int mdy_brightness_get_dim_threshold_lo(void)
+{
+    // N % of hw maximum
+    return mce_xlat_int(1, 100,
+                        1, mdy_brightness_level_maximum,
+                        mdy_brightness_dim_compositor_lo);
+}
+
+/** Get maximal compositor dimming threshold in hw units
+ */
+static int mdy_brightness_get_dim_threshold_hi(void)
+{
+    // N % of hw maximum
+    return mce_xlat_int(1, 100,
+                        1, mdy_brightness_level_maximum,
+                        mdy_brightness_dim_compositor_hi);
+}
+
+/** Map value in one range to another using linear interpolation
+ *
+ * Assumes src_lo < src_hi, if this is not the case
+ * low boundary of the target range is returned.
+ *
+ * If provided value is outside the source range, output
+ * is capped to the given target range.
+ *
+ * @param src_lo  low boundary of the source range
+ * @param src_hi  high boundary of the source range
+ * @param dst_lo  low boundary of the target range
+ * @param dst_hi  high boundary of the target range
+ * @param val     value in [src_lo, src_hi] range
+ *
+ * @return val mapped to [dst_lo, dst_hi] range
+ */
+static inline int
+xlat(int src_lo, int src_hi, int dst_lo, int dst_hi, int val)
+{
+    if( src_lo > src_hi )
+        return dst_lo;
+
+    if( val <= src_lo )
+        return dst_lo;
+
+    if( val >= src_hi )
+        return dst_hi;
+
+    int range = src_hi - src_lo;
+
+    val = (val - src_lo) * dst_hi + (src_hi - val) * dst_lo;
+    val += range/2;
+    val /= range;
+
+    return val;
+}
+
 static void mdy_brightness_set_dim_level(void)
 {
-    /* default is: X percent of maximum */
-    int new_brightness = (mdy_brightness_level_maximum *
-                          DEFAULT_DIM_BRIGHTNESS) / 100;
+    /* Update backlight level to use in dimmed state */
+    int brightness = mdy_brightness_get_dim_static();
+    int dynamic    = mdy_brightness_get_dim_dynamic();
 
-    /* or, at maximum half of DISPLAY_ON level */
-    if( new_brightness > mdy_brightness_level_display_on / 2 )
-        new_brightness = mdy_brightness_level_display_on / 2;
+    if( brightness > dynamic )
+        brightness = dynamic;
 
-    /* but do not allow zero value */
-    if( new_brightness < 1 )
-        new_brightness = 1;
-
-    /* The value we have here is for non-dimmed screen only */
-    if( mdy_brightness_level_display_dim != new_brightness ) {
+    if( mdy_brightness_level_display_dim != brightness ) {
         mce_log(LL_DEBUG, "brightness.dim: %d -> %d",
-                mdy_brightness_level_display_dim, new_brightness);
-        mdy_brightness_level_display_dim = new_brightness;
+                mdy_brightness_level_display_dim, brightness);
+        mdy_brightness_level_display_dim = brightness;
     }
 
-    /* If the DIM brightness is too close to ON brightness to
-     * be easy to see, use also led pattern to signal dimmed state
-     * to the user. */
-    int delta = (mdy_brightness_level_display_on -
-                 mdy_brightness_level_display_dim);
-    int limit = mdy_brightness_level_maximum * 10 / 100;
+    /* Check if compositor side fading needs to be used */
+    int difference = (mdy_brightness_level_display_on -
+                      mdy_brightness_level_display_dim);
+
+    /* Difference level where minimal compositor fading starts */
+    int threshold_lo  = mdy_brightness_get_dim_threshold_lo();
+
+    /* Difference level where maximal compositor fading is reached */
+    int threshold_hi  = mdy_brightness_get_dim_threshold_hi();
+
+    /* If fading start is set beyond the point where maximal fading
+     * is reached, use on/off control at high threshold point */
+    if( threshold_lo <= threshold_hi )
+        threshold_lo = threshold_hi + 1;
+
+    int compositor_fade_level = xlat(threshold_hi, threshold_lo,
+                                     MCE_FADER_MAXIMUM_OPACITY_PERCENT, 0,
+                                     difference);
 
     /* Note: The pattern can be activated anytime, it will get
      *       effective only when display is in dimmed state
@@ -2763,14 +2875,14 @@ static void mdy_brightness_set_dim_level(void)
      * FIXME: When ui side dimming is working, the led pattern
      *        hack should be removed altogether.
      */
-    execute_datapipe_output_triggers(delta < limit ?
+    execute_datapipe_output_triggers(compositor_fade_level > 0 ?
                                      &led_pattern_activate_pipe :
                                      &led_pattern_deactivate_pipe,
                                      "PatternDisplayDimmed",
                                      USE_INDATA);
 
     /* Update ui side fader opacity value */
-    mdy_ui_dimming_set_needed(delta < limit);
+    mdy_ui_dimming_set_level(compositor_fade_level);
 }
 
 static void mdy_brightness_set_lpm_level(gint level)
@@ -2875,13 +2987,15 @@ EXIT:
 /** Signal to send when ui side fader opacity changes */
 #define MCE_FADER_OPACITY_SIG "fader_opacity_ind"
 
-/** Flag for: backlight brightness alone can't produce visible dimmed state */
-static bool mdy_ui_dimming_is_needed = false;
+/** Compositor side fade to black opacity level percentage
+ *
+ * Used when backlight brightness alone can't produce visible dimmed state */
+static int mdy_ui_dimming_level = 0;
 
-/** Update mdy_ui_dimming_is_needed state */
-static void mdy_ui_dimming_set_needed(bool is_needed)
+/** Update mdy_ui_dimming_level state */
+static void mdy_ui_dimming_set_level(int level)
 {
-    mdy_ui_dimming_is_needed = is_needed;
+    mdy_ui_dimming_level = level;
     mdy_ui_dimming_rethink();
 }
 
@@ -2906,7 +3020,7 @@ static void mdy_ui_dimming_rethink(void)
      *
      * The triggers for calling this function are:
      * 1) display state transition starts
-     * 2) als tuning changes mdy_ui_dimming_is_needed
+     * 2) als tuning changes mdy_ui_dimming_level
      *
      * When (1) happens, both display_state and display_state_next
      * hold stable states.
@@ -2928,8 +3042,7 @@ static void mdy_ui_dimming_rethink(void)
     }
     else if( display_state_next == MCE_DISPLAY_DIM ) {
         /* At or entering dimmed state -> use if needed */
-        if( mdy_ui_dimming_is_needed )
-            dimming_curr = MCE_FADER_OPACITY_PERCENT;
+        dimming_curr = mdy_ui_dimming_level;
     }
 
     /* Skip the rest if the target level does not change */
@@ -8351,6 +8464,50 @@ static void mdy_gconf_cb(GConfClient *const gcc, const guint id,
             mdy_gconf_sanitize_brightness_settings();
         }
     }
+    else if( id == mdy_brightness_dim_static_gconf_id ) {
+        gint val = gconf_value_get_int(gcv);
+        if( mdy_brightness_dim_static != val ) {
+            mce_log(LL_NOTICE, "mdy_brightness_dim_static: %d -> %d",
+                    mdy_brightness_dim_static, val);
+            mdy_brightness_dim_static = val;
+
+            mdy_gconf_sanitize_brightness_settings();
+            mdy_brightness_set_dim_level();
+        }
+    }
+    else if( id == mdy_brightness_dim_dynamic_gconf_id ) {
+        gint val = gconf_value_get_int(gcv);
+        if( mdy_brightness_dim_dynamic != val ) {
+            mce_log(LL_NOTICE, "mdy_brightness_dim_dynamic: %d -> %d",
+                    mdy_brightness_dim_dynamic, val);
+            mdy_brightness_dim_dynamic = val;
+
+            mdy_gconf_sanitize_brightness_settings();
+            mdy_brightness_set_dim_level();
+        }
+    }
+    else if( id == mdy_brightness_dim_compositor_lo_gconf_id ) {
+        gint val = gconf_value_get_int(gcv);
+        if( mdy_brightness_dim_compositor_lo != val ) {
+            mce_log(LL_NOTICE, "mdy_brightness_dim_compositor_lo: %d -> %d",
+                    mdy_brightness_dim_compositor_lo, val);
+            mdy_brightness_dim_compositor_lo = val;
+
+            mdy_gconf_sanitize_brightness_settings();
+            mdy_brightness_set_dim_level();
+        }
+    }
+    else if( id == mdy_brightness_dim_compositor_hi_gconf_id ) {
+        gint val = gconf_value_get_int(gcv);
+        if( mdy_brightness_dim_compositor_hi != val ) {
+            mce_log(LL_NOTICE, "mdy_brightness_dim_compositor_hi: %d -> %d",
+                    mdy_brightness_dim_compositor_hi, val);
+            mdy_brightness_dim_compositor_hi = val;
+
+            mdy_gconf_sanitize_brightness_settings();
+            mdy_brightness_set_dim_level();
+        }
+    }
     else if( id == mdy_automatic_brightness_setting_gconf_id ) {
         /* Save timestamp of the setting change */
         mdy_brightness_setting_change_time = mdy_get_boot_tick();
@@ -8570,6 +8727,19 @@ static void mdy_gconf_sanitize_brightness_settings(void)
     else if( mdy_brightness_setting < 1 )
         mdy_brightness_setting = 1;
 
+    /* Clip dimmed brightness settings to supported range */
+    mdy_brightness_dim_static =
+        mce_clip_int(1, 100, mdy_brightness_dim_static);
+
+    mdy_brightness_dim_dynamic =
+        mce_clip_int(1, 100, mdy_brightness_dim_dynamic);
+
+    mdy_brightness_dim_compositor_lo =
+        mce_clip_int(0, 100, mdy_brightness_dim_compositor_lo);
+
+    mdy_brightness_dim_compositor_hi =
+        mce_clip_int(0, 100, mdy_brightness_dim_compositor_hi);
+
     /* Update config; signals will be emitted and config notifiers
      * called - mdy_gconf_cb() must ignore no-change notifications
      * to avoid recursive sanitation. */
@@ -8581,6 +8751,24 @@ static void mdy_gconf_sanitize_brightness_settings(void)
                       mdy_brightness_setting);
 
     mce_log(LL_DEBUG, "mdy_brightness_setting=%d", mdy_brightness_setting);
+
+    mce_gconf_set_int(MCE_GCONF_DISPLAY_DIM_STATIC_BRIGHTNESS,
+                      mdy_brightness_dim_static);
+    mce_gconf_set_int(MCE_GCONF_DISPLAY_DIM_DYNAMIC_BRIGHTNESS,
+                      mdy_brightness_dim_dynamic);
+    mce_gconf_set_int(MCE_GCONF_DISPLAY_DIM_COMPOSITOR_LO,
+                      mdy_brightness_dim_compositor_lo);
+    mce_gconf_set_int(MCE_GCONF_DISPLAY_DIM_COMPOSITOR_HI,
+                      mdy_brightness_dim_compositor_hi);
+
+    mce_log(LL_DEBUG, "mdy_brightness_dim_static=%d",
+            mdy_brightness_dim_static);
+    mce_log(LL_DEBUG, "mdy_brightness_dim_dynamic=%d",
+            mdy_brightness_dim_dynamic);
+    mce_log(LL_DEBUG, "mdy_brightness_dim_compositor_lo=%d",
+            mdy_brightness_dim_compositor_lo);
+    mce_log(LL_DEBUG, "mdy_brightness_dim_compositor_hi=%d",
+            mdy_brightness_dim_compositor_hi);
 
     /* Then execute through the brightness pipe too; this will update
      * the mdy_brightness_level_display_on & mdy_brightness_level_display_dim
@@ -8657,6 +8845,30 @@ static void mdy_gconf_init(void)
                         DEFAULT_DISP_BRIGHTNESS,
                         mdy_gconf_cb,
                         &mdy_brightness_setting_gconf_id);
+
+    mce_gconf_track_int(MCE_GCONF_DISPLAY_DIM_STATIC_BRIGHTNESS,
+                        &mdy_brightness_dim_static,
+                        DEFAULT_DISPLAY_DIM_STATIC_BRIGHTNESS,
+                        mdy_gconf_cb,
+                        &mdy_brightness_dim_static_gconf_id);
+
+    mce_gconf_track_int(MCE_GCONF_DISPLAY_DIM_DYNAMIC_BRIGHTNESS,
+                        &mdy_brightness_dim_dynamic,
+                        DEFAULT_DISPLAY_DIM_DYNAMIC_BRIGHTNESS,
+                        mdy_gconf_cb,
+                        &mdy_brightness_dim_dynamic_gconf_id);
+
+    mce_gconf_track_int(MCE_GCONF_DISPLAY_DIM_COMPOSITOR_LO,
+                        &mdy_brightness_dim_compositor_lo,
+                        DEFAULT_DISPLAY_DIM_COMPOSITOR_LO,
+                        mdy_gconf_cb,
+                        &mdy_brightness_dim_compositor_lo_gconf_id);
+
+    mce_gconf_track_int(MCE_GCONF_DISPLAY_DIM_COMPOSITOR_HI,
+                        &mdy_brightness_dim_compositor_hi,
+                        DEFAULT_DISPLAY_DIM_COMPOSITOR_HI,
+                        mdy_gconf_cb,
+                        &mdy_brightness_dim_compositor_hi_gconf_id);
 
     /* Note: We're only interested in auto-brightness change
      *       notifications. The value itself is handled in
@@ -8825,6 +9037,18 @@ static void mdy_gconf_quit(void)
 
     mce_gconf_notifier_remove(mdy_brightness_setting_gconf_id),
         mdy_brightness_setting_gconf_id = 0;
+
+    mce_gconf_notifier_remove(mdy_brightness_dim_static_gconf_id),
+        mdy_brightness_dim_static_gconf_id = 0;
+
+    mce_gconf_notifier_remove(mdy_brightness_dim_dynamic_gconf_id),
+        mdy_brightness_dim_dynamic_gconf_id = 0;
+
+    mce_gconf_notifier_remove(mdy_brightness_dim_compositor_lo_gconf_id),
+        mdy_brightness_dim_compositor_lo_gconf_id = 0;
+
+    mce_gconf_notifier_remove(mdy_brightness_dim_compositor_hi_gconf_id),
+        mdy_brightness_dim_compositor_hi_gconf_id = 0;
 
     mce_gconf_notifier_remove(mdy_automatic_brightness_setting_gconf_id),
         mdy_automatic_brightness_setting_gconf_id = 0;

@@ -288,8 +288,34 @@ typedef enum
  */
 #define DEFAULT_MAXIMUM_DISPLAY_BRIGHTNESS	127
 
-/** Default dim brightness, in percent */
-#define DEFAULT_DIM_BRIGHTNESS			3
+/** Dimmed display brightness GConf setting, in percent of hw maximum */
+#define MCE_GCONF_DISPLAY_DIM_STATIC_BRIGHTNESS MCE_GCONF_DISPLAY_PATH "/display_dim_static"
+#define DEFAULT_DISPLAY_DIM_STATIC_BRIGHTNESS   3
+
+/** Dimmed display brightness GConf setting, in percent of current on level */
+#define MCE_GCONF_DISPLAY_DIM_DYNAMIC_BRIGHTNESS MCE_GCONF_DISPLAY_PATH "/display_dim_dynamic"
+#define DEFAULT_DISPLAY_DIM_DYNAMIC_BRIGHTNESS   50
+
+/* High compositor dimming threshold setting
+ *
+ * If delta between display on and display dim backlight levels is smaller
+ * than this value, compositor side fade to black animation is used instead.
+ */
+#define MCE_GCONF_DISPLAY_DIM_COMPOSITOR_HI     MCE_GCONF_DISPLAY_PATH "/display_dim_compositor_hi"
+#define DEFAULT_DISPLAY_DIM_COMPOSITOR_HI       10
+
+/** Low compositor dimming threshold setting
+ *
+ * If delta between display on and display dim backlight levels is smaller
+ * than this value but still larger than MCE_GCONF_DISPLAY_DIM_COMPOSITOR_HI,
+ * limited opacity compositor side fade to black animation is used instead.
+ *
+ * If the value is smaller than MCE_GCONF_DISPLAY_DIM_COMPOSITOR_HI, no
+ * opacity interpolation is done i.e. compositor fading uses on/off
+ * control at high threshold point.
+ */
+#define MCE_GCONF_DISPLAY_DIM_COMPOSITOR_LO     MCE_GCONF_DISPLAY_PATH "/display_dim_compositor_lo"
+#define DEFAULT_DISPLAY_DIM_COMPOSITOR_LO       0
 
 /** CPU scaling covernor policy states */
 enum

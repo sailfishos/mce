@@ -1162,6 +1162,26 @@ static const setting_t gconf_defaults[] =
     .def  = "5", // Note: Legacy value, migrated at mce startup
   },
   {
+    .key  = MCE_GCONF_DISPLAY_DIM_STATIC_BRIGHTNESS,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_DISPLAY_DIM_STATIC_BRIGHTNESS)
+  },
+  {
+    .key  = MCE_GCONF_DISPLAY_DIM_DYNAMIC_BRIGHTNESS,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_DISPLAY_DIM_DYNAMIC_BRIGHTNESS)
+  },
+  {
+    .key  = MCE_GCONF_DISPLAY_DIM_COMPOSITOR_LO,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_DISPLAY_DIM_COMPOSITOR_LO)
+  },
+  {
+    .key  = MCE_GCONF_DISPLAY_DIM_COMPOSITOR_HI,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_DISPLAY_DIM_COMPOSITOR_HI)
+  },
+  {
     .key  = MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST,
     .type = "ai",
     .def  = CUSTOM_STRINGIFY(DEFAULT_DISPLAY_DIM_TIMEOUT_LIST),
