@@ -2374,6 +2374,120 @@ static void xmce_get_display_brightness(void)
         printf("%-"PAD1"s %s (1-100)\n", "Brightness:", txt);
 }
 
+/** Set statically defined dimmed display brightness
+ *
+ * @param args string that can be parsed to integer in [1 ... 100] range
+ */
+static bool xmce_set_dimmed_brightness_static(const char *args)
+{
+        int val = xmce_parse_integer(args);
+
+        if( val < 1 || val > 100 ) {
+                errorf("%d: invalid brightness value\n", val);
+                exit(EXIT_FAILURE);
+        }
+        mcetool_gconf_set_int(MCE_GCONF_DISPLAY_DIM_STATIC_BRIGHTNESS, val);
+        return true;
+}
+
+/** Show statically defined dimmed display brightness
+ */
+static void xmce_get_dimmed_brightness_static(void)
+{
+        gint val = 0;
+        char txt[32];
+
+        strcpy(txt, "unknown");
+        if( mcetool_gconf_get_int(MCE_GCONF_DISPLAY_DIM_STATIC_BRIGHTNESS, &val) )
+                snprintf(txt, sizeof txt, "%d", (int)val);
+        printf("%-"PAD1"s %s (1-100 percent of hw maximum)\n", "Dimmed brightness static:", txt);
+}
+
+/** Set dynamically defined dimmed display brightness
+ *
+ * @param args string that can be parsed to integer in [1 ... 100] range
+ */
+static bool xmce_set_dimmed_brightness_dynamic(const char *args)
+{
+        int val = xmce_parse_integer(args);
+
+        if( val < 1 || val > 100 ) {
+                errorf("%d: invalid brightness value\n", val);
+                exit(EXIT_FAILURE);
+        }
+        mcetool_gconf_set_int(MCE_GCONF_DISPLAY_DIM_DYNAMIC_BRIGHTNESS, val);
+        return true;
+}
+
+/** Show dynamically defined dimmed display brightness
+ */
+static void xmce_get_dimmed_brightness_dynamic(void)
+{
+        gint val = 0;
+        char txt[32];
+
+        strcpy(txt, "unknown");
+        if( mcetool_gconf_get_int(MCE_GCONF_DISPLAY_DIM_DYNAMIC_BRIGHTNESS, &val) )
+                snprintf(txt, sizeof txt, "%d", (int)val);
+        printf("%-"PAD1"s %s (1-100)\n", "Dimmed brightness maximum:", txt);
+}
+
+/** Set threshold for maximal dimming display via compositor
+ *
+ * @param args string that can be parsed to integer in [0 ... 100] range
+ */
+static bool xmce_set_compositor_dimming_hi(const char *args)
+{
+        int val = xmce_parse_integer(args);
+
+        if( val < 0 || val > 100 ) {
+                errorf("%d: invalid threshold value\n", val);
+                exit(EXIT_FAILURE);
+        }
+        mcetool_gconf_set_int(MCE_GCONF_DISPLAY_DIM_COMPOSITOR_HI, val);
+        return true;
+}
+
+/** Set threshold for minimal dimming display via compositor
+ *
+ * @param args string that can be parsed to integer in [0 ... 100] range
+ */
+static bool xmce_set_compositor_dimming_lo(const char *args)
+{
+        debugf("%s(%s)\n", __FUNCTION__, args);
+        int val = xmce_parse_integer(args);
+
+        if( val < 0 || val > 100 ) {
+                errorf("%d: invalid threshold value\n", val);
+                exit(EXIT_FAILURE);
+        }
+        mcetool_gconf_set_int(MCE_GCONF_DISPLAY_DIM_COMPOSITOR_LO, val);
+        return true;
+}
+
+/** show thresholds for dimming display via compositor
+ */
+static void xmce_get_compositor_dimming(void)
+{
+        gint hi = 0;
+        gint lo = 0;
+        char txt[32];
+
+        strcpy(txt, "unknown");
+        if( mcetool_gconf_get_int(MCE_GCONF_DISPLAY_DIM_COMPOSITOR_HI, &hi) )
+                snprintf(txt, sizeof txt, "%d%s", (int)hi,
+                         hi <= 0 ? "/disabled" : "");
+        printf("%-"PAD1"s %s (0-100)\n",
+               "Compositor dimming high threshold:", txt);
+
+        strcpy(txt, "unknown");
+        if( mcetool_gconf_get_int(MCE_GCONF_DISPLAY_DIM_COMPOSITOR_LO, &lo) )
+                snprintf(txt, sizeof txt, "%d%s", (int)lo,
+                         (lo <= hi) ? "/disabled" : "");
+        printf("%-"PAD1"s %s (0-100)\n",
+               "Compositor dimming low threshold:", txt);
+}
+
 /* ------------------------------------------------------------------------- *
  * cabc (content adaptive backlight control)
  * ------------------------------------------------------------------------- */
@@ -4611,6 +4725,9 @@ static bool xmce_get_status(const char *args)
         xmce_get_display_state();
         xmce_get_color_profile();
         xmce_get_display_brightness();
+        xmce_get_dimmed_brightness_static();
+        xmce_get_dimmed_brightness_dynamic();
+        xmce_get_compositor_dimming();
         xmce_get_cabc_mode();
         xmce_get_dim_timeout();
         xmce_get_adaptive_dimming_mode();
@@ -5281,6 +5398,55 @@ static const mce_opt_t options[] =
                 .usage       =
                         "set the display brightness to BRIGHTNESS;\n"
                         "valid values are: 1-100\n"
+        },
+
+        {
+                .name        = "set-dimmed-brightness-static",
+                .with_arg    = xmce_set_dimmed_brightness_static,
+                .values      = "1...100",
+                .usage       =
+                        "set the statically defined dimmed display brightness;\n"
+                        "valid values are: 1-100 [%% of hw maximum level]\n"
+                        "\n"
+                        "The affective backlight level used when the display is in\n"
+                        "dimmed state is minimum of dynamic and static levels.\n"
+        },
+        {
+                .name        = "set-dimmed-brightness-dynamic",
+                .with_arg    = xmce_set_dimmed_brightness_dynamic,
+                .values      = "1...100",
+                .usage       =
+                        "set the maximum dimmed display brightness;\n"
+                        "valid values are: 1-100 [%% of on brightness level]\n"
+        },
+        {
+                .name        = "set-compositor-dimming-threshold-hi",
+                .with_arg    = xmce_set_compositor_dimming_hi,
+                .values      = "0...100",
+                .usage       =
+                        "set threshold for maximal dimming via compositor\n"
+                        "valid values are: 0-100 [%% of hw maximum]\n"
+                        "\n"
+                        "If difference between on brightness and dimmed brightness\n"
+                        "derived from default and maximum settings is smaller than\n"
+                        "threshold, fade-to-blank on compositor side is used to make\n"
+                        "the display dimming more visible to the user.\n"
+        },
+        {
+                .name        = "set-compositor-dimming-threshold-lo",
+                .with_arg    = xmce_set_compositor_dimming_lo,
+                .values      = "0...100",
+                .usage       =
+                        "set threshold for minimal dimming via compositor\n"
+                        "valid values are: 0-100 [%% of hw maximum]\n"
+                        "\n"
+                        "If difference between on brightness and dimmed brightness\n"
+                        "derived from default and maximum settings is smaller than\n"
+                        "this threshold, but still larger than the high threshold,\n"
+                        "limited opacity dimming via compositor is used.\n"
+                        "\n"
+                        "If low threshold is set smaller than the high threshold,\n"
+                        "the low threshold is ignored.\n"
         },
         {
                 .name        = "set-als-mode",
