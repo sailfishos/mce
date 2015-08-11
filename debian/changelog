@@ -1,3 +1,9 @@
+mce (1.60.0) unstable; urgency=low
+
+  * [display] Add configurable dimming settings. Contributes to JB#31214
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 11 Aug 2015 10:42:41 +0300
+
 mce (1.59.1) unstable; urgency=low
 
   * [tklock] Tune notification display blanking policy. Fixes JB#31213
