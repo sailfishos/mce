@@ -1,3 +1,10 @@
+mce (1.56.1.1) unstable; urgency=low
+
+  * [activity] Allow both monotonic and realtime input event time stamps.
+    Fixes JB#31540
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 17 Aug 2015 14:25:24 +0300
+
 mce (1.56.1) unstable; urgency=low
 
   * [mce] Handle invalid session id from sensorfwd correctly. Fixes JB#30488
