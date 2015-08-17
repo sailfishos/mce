@@ -1880,7 +1880,7 @@ evin_iomon_generate_activity(struct input_event *ev, bool cooked, bool raw)
 
     /* Actual, never synthetized user activity */
     if( raw ) {
-        if( t_raw < t ) {
+        if( t_raw != t ) {
             t_raw = t;
             execute_datapipe_output_triggers(&user_activity_pipe,
                                              ev, USE_INDATA);
@@ -1891,7 +1891,7 @@ evin_iomon_generate_activity(struct input_event *ev, bool cooked, bool raw)
     if( cooked ) {
         submode_t submode = mce_get_submode_int32();
 
-        if( t_cooked < t || (submode & MCE_EVEATER_SUBMODE) ) {
+        if( t_cooked != t || (submode & MCE_EVEATER_SUBMODE) ) {
             t_cooked = t;
             execute_datapipe(&device_inactive_pipe,
                              GINT_TO_POINTER(FALSE),
