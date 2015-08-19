@@ -377,6 +377,11 @@ static gboolean tk_autolock_enabled = DEFAULT_TK_AUTOLOCK;
 /** GConf callback ID for tk_autolock_enabled */
 static guint tk_autolock_enabled_cb_id = 0;
 
+/** Flag: Grabbing input devices is allowed */
+static gboolean tk_input_policy_enabled = DEFAULT_TK_INPUT_POLICY_ENABLED;
+/** GConf callback ID for tk_input_policy_enabled */
+static guint tk_input_policy_enabled_cb_id = 0;
+
 /** Delay for automatick locking (after ON->DIM->OFF cycle) */
 static gint    tklock_autolock_delay = DEFAULT_AUTOLOCK_DELAY;
 /** GConf notifier id for tklock_autolock_delay */
@@ -3845,6 +3850,9 @@ static void tklock_evctrl_rethink(void)
         break;
     }
 
+    if( !tk_input_policy_enabled )
+        grab_ts = false;
+
     /* Grabbing touch input is always permitted, but ungrabbing
      * only when proximity sensor is not covered / proximity
      * blocks input feature is disabled */
@@ -3865,6 +3873,9 @@ static void tklock_evctrl_rethink(void)
      * - - - - - - - - - - - - - - - - - - - */
 
     bool grab_kp = !enable_kp;
+
+    if( !tk_input_policy_enabled )
+        grab_kp = false;
 
     execute_datapipe(&keypad_grab_wanted_pipe,
                      GINT_TO_POINTER(grab_kp),
@@ -4050,6 +4061,15 @@ static void tklock_gconf_cb(GConfClient *const gcc, const guint id,
         tk_autolock_enabled = gconf_value_get_bool(gcv) ? 1 : 0;
         tklock_autolock_rethink();
     }
+    else if( id == tk_input_policy_enabled_cb_id ) {
+        gboolean old = tk_input_policy_enabled;
+        tk_input_policy_enabled = gconf_value_get_bool(gcv) ? 1 : 0;
+        if( tk_input_policy_enabled != old ) {
+            mce_log(LL_NOTICE, "input grabbing %s",
+                    tk_input_policy_enabled ? "allowed" : "denied");
+            tklock_evctrl_rethink();
+        }
+    }
     else if( id == lid_sensor_enabled_cb_id ) {
         lid_sensor_enabled = gconf_value_get_bool(gcv) ? 1 : 0;
         tklock_lid_sensor_rethink();
@@ -4224,6 +4244,13 @@ static void tklock_gconf_init(void)
                          tklock_gconf_cb,
                          &tk_autolock_enabled_cb_id);
 
+    /* Grabbing input devices allowed */
+    mce_gconf_track_bool(MCE_GCONF_TK_INPUT_POLICY_ENABLED,
+                         &tk_input_policy_enabled,
+                         DEFAULT_TK_INPUT_POLICY_ENABLED,
+                         tklock_gconf_cb,
+                         &tk_input_policy_enabled_cb_id);
+
     /* Touchscreen/keypad autolock delay */
     mce_gconf_track_int(MCE_GCONF_AUTOLOCK_DELAY,
                         &tklock_autolock_delay,
@@ -4394,6 +4421,9 @@ static void tklock_gconf_quit(void)
 
     mce_gconf_notifier_remove(tk_autolock_enabled_cb_id),
         tk_autolock_enabled_cb_id = 0;
+
+    mce_gconf_notifier_remove(tk_input_policy_enabled_cb_id),
+        tk_input_policy_enabled_cb_id = 0;
 
     mce_gconf_notifier_remove(tklock_autolock_delay_cb_id),
         tklock_autolock_delay_cb_id = 0;

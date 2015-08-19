@@ -4341,6 +4341,33 @@ static void xmce_get_memnotify_level(void)
 }
 
 /* ------------------------------------------------------------------------- *
+ * input policy
+ * ------------------------------------------------------------------------- */
+
+/* Set input policy mode
+ *
+ * @param args string suitable for interpreting as enabled/disabled
+ */
+static bool xmce_set_input_policy_mode(const char *args)
+{
+        gboolean val = xmce_parse_enabled(args);
+        mcetool_gconf_set_bool(MCE_GCONF_TK_INPUT_POLICY_ENABLED, val);
+        return true;
+}
+
+/* Show input policy mode
+ */
+static void xmce_get_input_policy_mode(void)
+{
+        gboolean val = 0;
+        char txt[32] = "unknown";
+
+        if( mcetool_gconf_get_bool(MCE_GCONF_TK_INPUT_POLICY_ENABLED, &val) )
+                snprintf(txt, sizeof txt, "%s", val ? "enabled" : "disabled");
+        printf("%-"PAD1"s %s\n", "Input grab policy:", txt);
+}
+
+/* ------------------------------------------------------------------------- *
  * touch input unblocking
  * ------------------------------------------------------------------------- */
 
@@ -4779,6 +4806,7 @@ static bool xmce_get_status(const char *args)
 #endif
         xmce_get_tklock_blank();
         xmce_get_lipstick_core_delay();
+        xmce_get_input_policy_mode();
         xmce_get_touch_unblock_delay();
         xmce_get_exception_lengths();
 
@@ -5717,6 +5745,21 @@ static const mce_opt_t options[] =
                 .values      = "secs",
                 .usage       =
                         "set the delay for dumping core from unresponsive lipstick\n"
+        },
+        {
+                .name        = "set-input-policy-mode",
+                .with_arg    = xmce_set_input_policy_mode,
+                .values      = "enabled|disabled",
+                .usage       =
+                        "allow/deny grabbing of input devices based on input policy\n"
+                        "\n"
+                        "Normally this should be always set to 'enabled'.\n"
+                        "\n"
+                        "Setting to 'disabled' can be useful when debugging things like\n"
+                        "unresponsive touch screen: If the issue goes away when mce is\n"
+                        "allowed to grab input device, problem is likely to reside in\n"
+                        "mce policy logic. If the problem persists, the problem is more\n"
+                        "likely to exist at the ui side input handling logic.\n"
         },
         {
                 .name        = "set-touch-unblock-delay",

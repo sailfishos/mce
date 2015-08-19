@@ -1226,6 +1226,11 @@ static const setting_t gconf_defaults[] =
     .def  = "true",
   },
   {
+    .key  = MCE_GCONF_TK_INPUT_POLICY_ENABLED,
+    .type = "b",
+    .def  = G_STRINGIFY(DEFAULT_TK_INPUT_POLICY_ENABLED),
+  },
+  {
     // MCE_GCONF_TK_DOUBLE_TAP_GESTURE_PATH @ tklock.h
     .key  = "/system/osso/dsm/locks/tklock_double_tap_gesture",
     .type = "i",
