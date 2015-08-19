@@ -1,3 +1,9 @@
+mce (1.61.0) unstable; urgency=low
+
+  * [tklock] Add setting to disable input device grabbing. Fixes MER#1250
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 19 Aug 2015 14:35:53 +0300
+
 mce (1.60.1) unstable; urgency=low
 
   * [activity] Allow both monotonic and realtime input event time stamps.
