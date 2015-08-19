@@ -227,6 +227,10 @@ enum
 #define MCE_GCONF_EXCEPTION_LENGTH_ACTIVITY     MCE_GCONF_LOCK_PATH"/exception_length_activity"
 #define DEFAULT_EXCEPTION_LENGTH_ACTIVITY       2000
 
+/** Is mce allowed to grab input devices */
+#define MCE_GCONF_TK_INPUT_POLICY_ENABLED       MCE_GCONF_LOCK_PATH "/touchscreen_policy_enabled"
+#define DEFAULT_TK_INPUT_POLICY_ENABLED         true
+
 /** Name of D-Bus callback to provide to Touchscreen/Keypad Lock SystemUI */
 #define MCE_TKLOCK_CB_REQ		"tklock_callback"
 
