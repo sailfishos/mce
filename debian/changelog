@@ -1,3 +1,9 @@
+mce (1.56.1.2) unstable; urgency=low
+
+  * [osupdate] Collect system logs while OS update takes place. Fixes JB#31632
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 20 Aug 2015 13:26:50 +0300
+
 mce (1.56.1.1) unstable; urgency=low
 
   * [activity] Allow both monotonic and realtime input event time stamps.
