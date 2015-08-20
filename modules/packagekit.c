@@ -43,6 +43,15 @@
 #define PKGKIT_INTERFACE             "org.freedesktop.PackageKit"
 #define PKGKIT_OBJECT                "/org/freedesktop/PackageKit"
 
+/* ------------------------------------------------------------------------- *
+ * SYSTEMD
+ * ------------------------------------------------------------------------- */
+
+#define SYSTEMD_SERVICE               "org.freedesktop.systemd1"
+#define SYSTEMD_OBJECT                "/org/freedesktop/systemd1"
+#define SYSTEMD_MANAGER_INTERFACE     "org.freedesktop.systemd1.Manager"
+#define SYSTEMD_MANAGER_START_UNIT    "StartUnit"
+
 /* ========================================================================= *
  * PROTOTYPES
  * ========================================================================= */
@@ -64,6 +73,18 @@ static void     xpkgkit_get_properties          (void);
 
 static void     xpkgkit_check_name_owner_cb     (DBusPendingCall *pc, void*aptr);
 static void     xpkgkit_check_name_owner        (void);
+
+// UPDATE_LOGGING
+
+static void     xpkgkit_logging_request_start_cb(DBusPendingCall *pc, void *aptr);
+static void     xpkgkit_logging_request_start   (void);
+static void     xpkgkit_logging_cancel_start    (void);
+
+// DATAPIPE_HANDLERS
+
+static void     xpkgkit_datapipe_update_mode_cb(gconstpointer data);
+static void     xpkgkit_datapipe_init          (void);
+static void     xpkgkit_datapipe_quit          (void);
 
 // DBUS_HANDLERS
 
@@ -351,6 +372,180 @@ xpkgkit_check_name_owner(void)
 }
 
 /* ========================================================================= *
+ * UPDATE_LOGGING
+ * ========================================================================= */
+
+/** Name of the logging unit to start */
+static const char xpkgkit_logging_unit_name[] = "osupdate-logging.service";
+
+/** Stopping other units to fulfill dependencies is not ok */
+static const char xpkgkit_logging_unit_start_mode[] = "fail";
+
+/** Pending unit start request */
+static DBusPendingCall *xpkgkit_logging_request_start_pc = 0;
+
+/** Handle reply to logging unit start request from systemd
+ */
+static void
+xpkgkit_logging_request_start_cb(DBusPendingCall *pc, void *aptr)
+{
+    (void)aptr;
+
+    DBusMessage *rsp = 0;
+    DBusError    err = DBUS_ERROR_INIT;
+    const char  *job = 0;
+
+    if( !pc || pc != xpkgkit_logging_request_start_pc )
+        goto EXIT;
+
+    if( !(rsp = dbus_pending_call_steal_reply(pc)) ) {
+        mce_log(LL_ERR, "%s(%s): no reply",
+                SYSTEMD_MANAGER_START_UNIT,
+                xpkgkit_logging_unit_name);
+        goto EXIT;
+    }
+
+    if( dbus_set_error_from_message(&err, rsp) ) {
+        mce_log(LL_ERR, "%s(%s): %s: %s",
+                SYSTEMD_MANAGER_START_UNIT,
+                xpkgkit_logging_unit_name,
+                err.name, err.message);
+        goto EXIT;
+    }
+
+    if( !dbus_message_get_args(rsp, &err,
+                               DBUS_TYPE_OBJECT_PATH, &job,
+                               DBUS_TYPE_INVALID) ) {
+        mce_log(LL_ERR, "%s(%s): %s: %s",
+                SYSTEMD_MANAGER_START_UNIT,
+                xpkgkit_logging_unit_name,
+                err.name, err.message);
+        goto EXIT;
+    }
+
+    mce_log(LL_DEVEL, "%s(%s): job %s",
+            SYSTEMD_MANAGER_START_UNIT,
+            xpkgkit_logging_unit_name,
+            job ?: "n/a");
+
+EXIT:
+    if( pc && pc == xpkgkit_logging_request_start_pc ) {
+        dbus_pending_call_unref(xpkgkit_logging_request_start_pc),
+            xpkgkit_logging_request_start_pc = 0;
+    }
+
+    if( rsp ) dbus_message_unref(rsp);
+    dbus_error_free(&err);
+
+    return;
+}
+
+/** Send logging unit start request to systemd
+ */
+static void
+xpkgkit_logging_request_start(void)
+{
+    if( xpkgkit_logging_request_start_pc )
+        goto EXIT;
+
+    const char *unit = xpkgkit_logging_unit_name;
+    const char *mode = xpkgkit_logging_unit_start_mode;
+
+    dbus_send_ex(SYSTEMD_SERVICE,
+                 SYSTEMD_OBJECT,
+                 SYSTEMD_MANAGER_INTERFACE,
+                 SYSTEMD_MANAGER_START_UNIT,
+                 xpkgkit_logging_request_start_cb,
+                 0, 0,
+                 &xpkgkit_logging_request_start_pc,
+                 DBUS_TYPE_STRING, &unit,
+                 DBUS_TYPE_STRING, &mode,
+                 DBUS_TYPE_INVALID);
+EXIT:
+    return;
+}
+
+/** Cancel pending logging unit start request
+ */
+static void xpkgkit_logging_cancel_start(void)
+{
+    if( !xpkgkit_logging_request_start_pc )
+        goto EXIT;
+
+    dbus_pending_call_cancel(xpkgkit_logging_request_start_pc);
+    dbus_pending_call_unref(xpkgkit_logging_request_start_pc),
+        xpkgkit_logging_request_start_pc = 0;
+
+EXIT:
+  return;
+}
+
+/* ========================================================================= *
+ * DATAPIPE_HANDLERS
+ * ========================================================================= */
+
+/** Update mode is active; assume false */
+static bool update_mode = false;
+
+/** Change notifications for update_mode
+ */
+static void xpkgkit_datapipe_update_mode_cb(gconstpointer data)
+{
+    bool prev = update_mode;
+    update_mode = GPOINTER_TO_INT(data);
+
+    if( update_mode == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "update_mode = %d -> %d", prev, update_mode);
+
+    if( update_mode ) {
+        /* When update mode gets activated, we start a systemd
+         * service that will store journal to a persistent file
+         * until the next reboot. */
+        xpkgkit_logging_request_start();
+    }
+
+EXIT:
+    return;
+}
+
+/** Array of datapipe handlers */
+static datapipe_handler_t xpkgkit_datapipe_handlers[] =
+{
+    // output triggers
+    {
+        .datapipe  = &update_mode_pipe,
+        .output_cb = xpkgkit_datapipe_update_mode_cb,
+    },
+
+    // sentinel
+    {
+        .datapipe = 0,
+    }
+};
+
+static datapipe_bindings_t xpkgkit_datapipe_bindings =
+{
+    .module   = "xpkgkit",
+    .handlers = xpkgkit_datapipe_handlers,
+};
+
+/** Append triggers/filters to datapipes
+ */
+static void xpkgkit_datapipe_init(void)
+{
+    datapipe_bindings_init(&xpkgkit_datapipe_bindings);
+}
+
+/** Remove triggers/filters from datapipes
+ */
+static void xpkgkit_datapipe_quit(void)
+{
+    datapipe_bindings_quit(&xpkgkit_datapipe_bindings);
+}
+
+/* ========================================================================= *
  * DBUS_HANDLERS
  * ========================================================================= */
 
@@ -453,6 +648,9 @@ const gchar *g_module_check_init(GModule *module)
 {
     (void)module;
 
+    /* install datapipe handlers */
+    xpkgkit_datapipe_init();
+
     /* install dbus message handlers */
     mce_dbus_handler_register_array(handlers);
 
@@ -473,5 +671,10 @@ void g_module_unload(GModule *module)
     /* remove dbus message handlers */
     mce_dbus_handler_unregister_array(handlers);
 
+    /* remove datapipe handlers */
+    xpkgkit_datapipe_quit();
+
+    /* cancel pending dbus requests */
+    xpkgkit_logging_cancel_start();
     return;
 }
