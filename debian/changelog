@@ -1,3 +1,9 @@
+mce (1.62.0) unstable; urgency=low
+
+  * [osupdate] Collect system logs while OS update takes place. Fixes JB#31632
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 20 Aug 2015 13:10:57 +0300
+
 mce (1.61.0) unstable; urgency=low
 
   * [tklock] Add setting to disable input device grabbing. Fixes MER#1250
