@@ -192,6 +192,8 @@ static void     tklock_datapipe_quit(void);
 // lid cover state machine
 
 static void     tklock_lid_sensor_init(void);
+static void     tklock_lid_sensor_override_closed(void);
+static void     tklock_lid_sensor_evaluate_primed(void);
 static void     tklock_lid_sensor_rethink(void);
 
 // keyboard slide state machine
@@ -822,6 +824,12 @@ static void tklock_datapipe_display_state_next_cb(gconstpointer data)
     case MCE_DISPLAY_ON:
     case MCE_DISPLAY_DIM:
         /* display states that use normal ui */
+
+        /* If display gets powered up while lid sensor is in
+         * closed position, it basically means that the user
+         * has pressed power key and we should ignore the
+         * lid is closed state */
+        tklock_lid_sensor_override_closed();
         break;
 
     default:
@@ -832,6 +840,8 @@ static void tklock_datapipe_display_state_next_cb(gconstpointer data)
         }
         break;
     }
+
+    tklock_lid_sensor_evaluate_primed();
 
     tklock_autolock_on_devlock_prime();
 
@@ -1726,8 +1736,14 @@ static gint    lid_cover_close_hi_als_delay = 2500;
 /** Timeout for waiting for ALS level drop [ms, CLOCK_BOOTTIME base] */
 static int64_t lid_cover_close_timeout = 0;
 
+/** Remember display state that was active when lid was closed */
+static display_state_t lid_cover_close_display_state = MCE_DISPLAY_UNDEF;
+
 /** Assume lid sensor is broken until we have seen lid=open event */
 static bool tklock_lid_sensor_is_working = false;
+
+/** Flag for: display=on and lid=open state seen */
+static bool tklock_lid_sensor_is_primed = false;
 
 /** Path to the flag file for persistent tklock_lid_sensor_is_working */
 #define LID_SENSOR_IS_WORKING_FLAG_FILE "/var/lib/mce/lid_sensor_is_working"
@@ -1793,12 +1809,17 @@ static void tklock_datapipe_lid_cover_sensor_cb(gconstpointer data)
             cover_state_repr(prev),
             cover_state_repr(lid_cover_sensor_state));
 
-    if( lid_cover_sensor_state == COVER_CLOSED )
+    if( lid_cover_sensor_state == COVER_CLOSED ) {
         lid_cover_close_timeout = (tklock_monotick_get() +
                                    lid_cover_close_lo_als_delay);
-    else
+        lid_cover_close_display_state = display_state_next;
+    }
+    else {
         lid_cover_close_timeout = 0;
+        lid_cover_close_display_state = MCE_DISPLAY_UNDEF;
+    }
 
+    tklock_lid_sensor_evaluate_primed();
     tklock_lid_sensor_rethink();
 
 EXIT:
@@ -2304,6 +2325,48 @@ static void tklock_lid_sensor_init(void)
                      USE_INDATA, CACHE_INDATA);
 }
 
+/** Allow/deny locking based solely on lid close in display off state
+ */
+static void tklock_lid_sensor_set_primed(bool primed)
+{
+    if( tklock_lid_sensor_is_primed != primed ) {
+        tklock_lid_sensor_is_primed = primed;
+        mce_log(LL_DEBUG, "primed = %s", primed ? "true" : "false");
+    }
+}
+
+/** Check if locking based solely on lid close is allowed after blanking
+ */
+static void tklock_lid_sensor_evaluate_primed(void)
+{
+    /* If lid is open while display is powered on, we can apply
+     * CLOSED policy if display gets blanked first (power key,
+     * auto blank timeout) and lid is closed after that. */
+    switch( display_state_next ) {
+    case MCE_DISPLAY_ON:
+    case MCE_DISPLAY_DIM:
+        tklock_lid_sensor_set_primed(lid_cover_sensor_state == COVER_OPEN);
+        break;
+
+    default:
+        break;
+    }
+}
+
+/** Force ignoring of lid in closed state
+ */
+static void tklock_lid_sensor_override_closed(void)
+{
+    /* If sensor is in closed state, set it to unknown state.
+     * Effectively this means the sensor state is ignored until
+     * the lid is opened again. */
+    if( lid_cover_sensor_state == COVER_CLOSED ) {
+        execute_datapipe(&lid_cover_sensor_pipe,
+                         GINT_TO_POINTER(COVER_UNDEF),
+                         USE_INDATA, CACHE_INDATA);
+    }
+}
+
 static void tklock_lid_sensor_rethink(void)
 {
     static int64_t nonzero_lux_seen_at = 0;
@@ -2353,8 +2416,16 @@ static void tklock_lid_sensor_rethink(void)
             action_curr = COVER_UNDEF;
         }
         else if( display_state_next == MCE_DISPLAY_OFF ) {
-            /* Allow close while already blanked without
-             * paying attention to als level */
+            /* In display off default to: keep current decision */
+            action_curr = action_prev;
+
+            /* Switch to COVER_CLOSED policy, if lid is closed in
+             * display off state after being open in display on state */
+            if( lid_cover_close_display_state == MCE_DISPLAY_OFF &&
+                tklock_lid_sensor_is_primed ) {
+                tklock_lid_sensor_set_primed(false);
+                action_curr = COVER_CLOSED;
+            }
         }
         else if( !filter_lid_with_als || !als_enabled ) {
             /* ALS is not used or can't be used for validating
@@ -2409,9 +2480,28 @@ static void tklock_lid_sensor_rethink(void)
         break;
 
     case COVER_OPEN:
-        /* No action on initial undef -> open */
+        /* Make sure stale permission to autolock on close is not
+         * left active */
+        tklock_lid_sensor_set_primed(false);
+        tklock_lid_sensor_evaluate_primed();
+
+        /* The UNDEF->OPEN transitions occur when
+         *
+         * - mce is starting up and the lid is open -> we must not
+         *   the display to power on if it happens to be off
+         *
+         * - when preceeding lid close was ignored -> if lid close
+         *   did not blank the display, lid open must not unblank it
+         *
+         * The policy decision itself is already broadcast and double
+         * tap detection is enabled even if the unblank / unlock actions
+         * are skipped.
+         */
         if( action_prev == COVER_UNDEF ) {
-            mce_log(LL_DEVEL, "lid open - initial state ignored");
+            static bool initialized = false;
+            mce_log(LL_DEVEL, "lid open - skip actions due to %s",
+                    initialized ? "policy" : "startup");
+            initialized = true;
             break;
         }
 
