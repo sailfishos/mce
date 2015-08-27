@@ -1,3 +1,10 @@
+mce (1.62.2) unstable; urgency=low
+
+  * [tklock] Do not disable double tap if lid close has been ignored.
+    Fixes JB#31794
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 27 Aug 2015 20:54:06 +0300
+
 mce (1.62.1) unstable; urgency=low
 
   * [evdev_trace] Use line buffered mode for stdout. Fixes JB#31852
