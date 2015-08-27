@@ -310,6 +310,8 @@ main(int argc, char **argv)
   int f_trace    = 0;
   int f_identify = 0;
 
+  setlinebuf(stdout);
+
   glob_t gb;
 
   memset(&gb, 0, sizeof gb);
