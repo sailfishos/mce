@@ -173,8 +173,8 @@ cleanup:
 static struct option optL[] =
 {
   { "help",          0, 0, 'h' },
-  { "trace",         0, 0, 'i' },
-  { "identify",      0, 0, 't' },
+  { "trace",         0, 0, 't' },
+  { "identify",      0, 0, 'i' },
   { "emit-also-tod", 0, 0, 'e' },
   { "emit-only-tod", 0, 0, 'E' },
   { 0,0,0,0 }
