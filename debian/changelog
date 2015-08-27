@@ -1,3 +1,10 @@
+mce (1.62.1) unstable; urgency=low
+
+  * [evdev_trace] Use line buffered mode for stdout. Fixes JB#31852
+  * [evdev_trace] Use line buffered mode for stdout. Fixes JB#31852
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 27 Aug 2015 14:07:10 +0300
+
 mce (1.62.0) unstable; urgency=low
 
   * [osupdate] Collect system logs while OS update takes place. Fixes JB#31632
