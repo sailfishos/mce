@@ -916,7 +916,8 @@ static gboolean mia_dbus_send_inactivity_state(DBusMessage *const method_call)
     }
 
     mce_log(method_call ? LL_DEBUG : LL_DEVEL,
-            "Sending inactivity status: %s",
+            "Sending inactivity %s: %s",
+            method_call ? "reply" : "signal",
             mia_inactivity_repr(device_inactive));
 
     /* Append the inactivity status */
