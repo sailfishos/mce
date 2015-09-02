@@ -555,6 +555,7 @@ NORMALIZE_USES_SPC =\
 	modules/doubletap.h\
 	modules/filter-brightness-simple.h\
 	modules/keypad.h\
+	modules/inactivity.c\
 	modules/memnotify.c\
 	modules/memnotify.h\
 	modules/packagekit.c\
@@ -606,7 +607,6 @@ NORMALIZE_USES_TAB =\
 	modules/filter-brightness-als.c\
 	modules/filter-brightness-als.h\
 	modules/filter-brightness-simple.c\
-	modules/inactivity.c\
 	modules/keypad.c\
 	modules/led.c\
 	modules/led.h\

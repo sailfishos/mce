@@ -842,7 +842,7 @@ void mce_datapipe_init(void)
 	setup_datapipe(&touchscreen_pipe, READ_ONLY, FREE_CACHE,
 		       sizeof (struct input_event), NULL);
 	setup_datapipe(&device_inactive_pipe, READ_WRITE, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(FALSE));
+		       0, GINT_TO_POINTER(TRUE));
 	setup_datapipe(&lockkey_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(0));
 	setup_datapipe(&keyboard_slide_pipe, READ_ONLY, DONT_FREE_CACHE,
