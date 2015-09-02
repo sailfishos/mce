@@ -230,6 +230,7 @@ typedef struct
     datapipe_struct *datapipe;
     void (*output_cb)(gconstpointer data);
     void (*input_cb)(gconstpointer data);
+    gpointer (*filter_cb)(gpointer data);
     bool bound;
 } datapipe_handler_t;
 
