@@ -26,6 +26,10 @@
 #include "../mce-dbus.h"
 #include "../mce-hbtimer.h"
 
+#ifdef ENABLE_WAKELOCKS
+# include "../libwakelock.h"
+#endif
+
 #include <string.h>
 
 #include <mce/dbus-names.h>
@@ -56,6 +60,9 @@ G_MODULE_EXPORT module_info_struct module_info = {
 
 /** Maximum amount of monitored activity callbacks */
 #define ACTIVITY_CB_MAX_MONITORED       16
+
+/** Duration of suspend blocking after sending inactivity signals */
+#define MIA_KEEPALIVE_DURATION_MS 5000
 
 /* ========================================================================= *
  * PROTOTYPES
@@ -111,6 +118,17 @@ static void     mia_datapipe_check_initial_state   (void);
 
 static void     mia_datapipe_init(void);
 static void     mia_datapipe_quit(void);
+
+/* ------------------------------------------------------------------------- *
+ * SUSPEND_BLOCK
+ * ------------------------------------------------------------------------- */
+
+#ifdef ENABLE_WAKELOCKS
+static void      mia_keepalive_rethink (void);
+static gboolean  mia_keepalive_cb      (gpointer aptr);
+static void      mia_keepalive_start   (void);
+static void      mia_keepalive_stop    (void);
+#endif
 
 /* ------------------------------------------------------------------------- *
  * DBUS_HANDLERS
@@ -673,6 +691,75 @@ static void mia_datapipe_quit(void)
 }
 
 /* ========================================================================= *
+ * SUSPEND_BLOCK
+ * ========================================================================= */
+
+#ifdef ENABLE_WAKELOCKS
+/** Timer ID for ending suspend blocking */
+static guint mia_keepalive_id = 0;
+
+/** Evaluate need for suspend blocking
+ */
+static void mia_keepalive_rethink(void)
+{
+    static bool have_lock = false;
+
+    bool need_lock = (mia_keepalive_id != 0);
+
+    if( have_lock == need_lock )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "inactivity notify wakelock: %s",
+            need_lock ? "OBTAIN" : "RELEASE");
+
+    if( (have_lock = need_lock) )
+        wakelock_lock("mce_inactivity_notify", -1);
+    else
+        wakelock_unlock("mce_inactivity_notify");
+
+EXIT:
+    return;
+}
+
+/** Timer callback for ending suspend blocking
+ */
+static gboolean mia_keepalive_cb(gpointer aptr)
+{
+    (void)aptr;
+
+    mia_keepalive_id = 0;
+    mia_keepalive_rethink();
+
+    return FALSE;
+}
+
+/** Start/restart temporary suspend blocking
+ */
+static void mia_keepalive_start(void)
+{
+    if( mia_keepalive_id ) {
+        g_source_remove(mia_keepalive_id),
+            mia_keepalive_id = 0;
+    }
+
+    mia_keepalive_id = g_timeout_add(MIA_KEEPALIVE_DURATION_MS,
+                                     mia_keepalive_cb, 0);
+    mia_keepalive_rethink();
+}
+
+/** Cancel suspend blocking
+ */
+static void mia_keepalive_stop(void)
+{
+    if( mia_keepalive_id ) {
+        g_source_remove(mia_keepalive_id),
+            mia_keepalive_id = 0;
+    }
+    mia_keepalive_rethink();
+}
+#endif /* ENABLE_WAKELOCKS */
+
+/* ========================================================================= *
  * DBUS_HANDLERS
  * ========================================================================= */
 
@@ -817,6 +904,13 @@ static gboolean mia_dbus_send_inactivity_state(DBusMessage *const method_call)
     }
     else {
         /* Broadcast state change */
+
+#ifdef ENABLE_WAKELOCKS
+        /* Block suspend for a while to give other processes
+         * a chance to get and process the signal. */
+        mia_keepalive_start();
+#endif
+
         msg = dbus_new_signal(MCE_SIGNAL_PATH, MCE_SIGNAL_IF,
                               MCE_INACTIVITY_SIG);
     }
@@ -1133,6 +1227,10 @@ void g_module_unload(GModule *module)
 
     /* Do not leave any timers active */
     mia_timer_quit();
+
+#ifdef ENABLE_WAKELOCKS
+    mia_keepalive_stop();
+#endif
 
     /* Flush activity actions */
     mia_activity_action_remove_all();

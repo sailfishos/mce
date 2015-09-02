@@ -116,6 +116,7 @@ static void mce_cleanup_wakelocks(void)
 	wakelock_unlock("mce_lpm_off");
 	wakelock_unlock("mce_tklock_notify");
 	wakelock_unlock("mce_hbtimer_dispatch");
+	wakelock_unlock("mce_inactivity_notify");
 }
 #endif // ENABLE_WAKELOCKS
 

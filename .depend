@@ -630,6 +630,7 @@ modules/inactivity.o:\
 	modules/inactivity.c\
 	builtin-gconf.h\
 	datapipe.h\
+	libwakelock.h\
 	mce-dbus.h\
 	mce-hbtimer.h\
 	mce-log.h\
@@ -639,6 +640,7 @@ modules/inactivity.pic.o:\
 	modules/inactivity.c\
 	builtin-gconf.h\
 	datapipe.h\
+	libwakelock.h\
 	mce-dbus.h\
 	mce-hbtimer.h\
 	mce-log.h\
