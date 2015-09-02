@@ -631,6 +631,7 @@ modules/inactivity.o:\
 	builtin-gconf.h\
 	datapipe.h\
 	mce-dbus.h\
+	mce-hbtimer.h\
 	mce-log.h\
 	mce.h\
 
@@ -639,6 +640,7 @@ modules/inactivity.pic.o:\
 	builtin-gconf.h\
 	datapipe.h\
 	mce-dbus.h\
+	mce-hbtimer.h\
 	mce-log.h\
 	mce.h\
 

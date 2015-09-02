@@ -24,6 +24,7 @@
 #include "../mce.h"
 #include "../mce-log.h"
 #include "../mce-dbus.h"
+#include "../mce-hbtimer.h"
 
 #include <string.h>
 
@@ -142,6 +143,9 @@ static gboolean mia_timer_cb    (gpointer data);
 static void     mia_timer_start (void);
 static void     mia_timer_stop  (void);
 
+static void     mia_timer_init  (void);
+static void     mia_timer_quit  (void);
+
 /* ------------------------------------------------------------------------- *
  * MODULE_LOAD_UNLOAD
  * ------------------------------------------------------------------------- */
@@ -159,8 +163,8 @@ static GSList *activity_action_list = NULL;
 /** List of monitored activity requesters */
 static GSList *activity_action_owners = NULL;
 
-/** ID for inactivity timeout source */
-static guint inactivity_timeout_id = 0;
+/** Heartbeat timer for inactivity timeout */
+static mce_hbtimer_t *inactivity_timer_hnd = 0;
 
 /** Cached device inactivity state
  *
@@ -1028,7 +1032,6 @@ static gboolean mia_timer_cb(gpointer data)
     (void)data;
 
     mce_log(LL_DEBUG, "inactivity timeout triggered");
-    inactivity_timeout_id = 0;
 
     mia_generate_inactivity();
 
@@ -1045,8 +1048,9 @@ static void mia_timer_start(void)
         goto EXIT;
 
     mce_log(LL_DEBUG, "inactivity timeout in %d seconds", inactivity_timeout);
-    inactivity_timeout_id = g_timeout_add_seconds(inactivity_timeout,
-                                                  mia_timer_cb, 0);
+    mce_hbtimer_set_period(inactivity_timer_hnd, inactivity_timeout * 1000);
+    mce_hbtimer_start(inactivity_timer_hnd);
+
 EXIT:
     return;
 }
@@ -1055,11 +1059,29 @@ EXIT:
  */
 static void mia_timer_stop(void)
 {
-    if( inactivity_timeout_id ) {
+    if( mce_hbtimer_is_active(inactivity_timer_hnd) ) {
         mce_log(LL_DEBUG, "inactivity timeout canceled");
-        g_source_remove(inactivity_timeout_id),
-            inactivity_timeout_id = 0;
+        mce_hbtimer_stop(inactivity_timer_hnd);
     }
+}
+
+/** Initialize inactivity heartbeat timer
+ */
+static void
+mia_timer_init(void)
+{
+    inactivity_timer_hnd = mce_hbtimer_create("inactivity-timer",
+                                               inactivity_timeout * 1000,
+                                               mia_timer_cb, 0);
+}
+
+/** Cleanup inactivity heartbeat timer
+ */
+static void
+mia_timer_quit(void)
+{
+    mce_hbtimer_delete(inactivity_timer_hnd),
+        inactivity_timer_hnd = 0;
 }
 
 /* ========================================================================= *
@@ -1075,6 +1097,8 @@ static void mia_timer_stop(void)
 const gchar *g_module_check_init(GModule *module)
 {
     (void)module;
+
+    mia_timer_init();
 
     /* Append triggers/filters to datapipes */
     mia_datapipe_init();
@@ -1108,7 +1132,7 @@ void g_module_unload(GModule *module)
     mia_datapipe_quit();
 
     /* Do not leave any timers active */
-    mia_timer_stop();
+    mia_timer_quit();
 
     /* Flush activity actions */
     mia_activity_action_remove_all();
