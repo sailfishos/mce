@@ -3,8 +3,10 @@
  * Inactivity module -- this implements inactivity logic for MCE
  * <p>
  * Copyright © 2007-2011 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright © 2015      Jolla Ltd.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
+ * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
  * mce is free software; you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License
@@ -22,6 +24,11 @@
 #include "../mce.h"
 #include "../mce-log.h"
 #include "../mce-dbus.h"
+#include "../mce-hbtimer.h"
+
+#ifdef ENABLE_WAKELOCKS
+# include "../libwakelock.h"
+#endif
 
 #include <string.h>
 
@@ -29,123 +36,991 @@
 
 #include <gmodule.h>
 
+/* ========================================================================= *
+ * CONSTANTS
+ * ========================================================================= */
+
 /** Module name */
-#define MODULE_NAME		"inactivity"
+#define MODULE_NAME             "inactivity"
 
 /** Functionality provided by this module */
 static const gchar *const provides[] = { MODULE_NAME, NULL };
 
 /** Module information */
 G_MODULE_EXPORT module_info_struct module_info = {
-	/** Name of the module */
-	.name = MODULE_NAME,
-	/** Module provides */
-	.provides = provides,
-	/** Module priority */
-	.priority = 250
+    /** Name of the module */
+    .name = MODULE_NAME,
+
+    /** Module provides */
+    .provides = provides,
+
+    /** Module priority */
+    .priority = 250
 };
 
-/** D-Bus activity callback */
-typedef struct {
-	/** D-Bus activity callback owner */
-	gchar *owner;
-	/** D-Bus service */
-	gchar *service;
-	/** D-Bus path */
-	gchar *path;
-	/** D-Bus interface */
-	gchar *interface;
-	/** D-Bus method name */
-	gchar *method_name;
-} activity_cb_t;
-
 /** Maximum amount of monitored activity callbacks */
-#define ACTIVITY_CB_MAX_MONITORED	16
+#define ACTIVITY_CB_MAX_MONITORED       16
+
+/** Duration of suspend blocking after sending inactivity signals */
+#define MIA_KEEPALIVE_DURATION_MS 5000
+
+/* ========================================================================= *
+ * PROTOTYPES
+ * ========================================================================= */
+
+/* ------------------------------------------------------------------------- *
+ * HELPER_FUNCTIONS
+ * ------------------------------------------------------------------------- */
+
+static const char *mia_inactivity_repr     (bool inactive);
+static void        mia_generate_activity   (void);
+static void        mia_generate_inactivity (void);
+
+/* ------------------------------------------------------------------------- *
+ * DBUS_ACTION
+ * ------------------------------------------------------------------------- */
+
+/** D-Bus action */
+typedef struct {
+    /** D-Bus activity callback owner */
+    gchar *owner;
+
+    /** D-Bus service */
+    gchar *service;
+
+    /** D-Bus path */
+    gchar *path;
+
+    /** D-Bus interface */
+    gchar *interface;
+
+    /** D-Bus method name */
+    gchar *method_name;
+} mia_action_t;
+
+static mia_action_t *mia_action_create (const char *owner, const char *service, const char *path, const char *interface, const char *method);
+static void          mia_action_delete (mia_action_t *self);
+
+/* ------------------------------------------------------------------------- *
+ * DATAPIPE_TRACKING
+ * ------------------------------------------------------------------------- */
+
+static gpointer mia_datapipe_device_inactive_cb    (gpointer data);
+static void     mia_datapipe_proximity_sensor_cb   (gconstpointer data);
+static void     mia_datapipe_inactivity_timeout_cb (gconstpointer data);
+static void     mia_datapipe_submode_cb            (gconstpointer data);
+static void     mia_datapipe_alarm_ui_state_cb     (gconstpointer data);
+static void     mia_datapipe_call_state_cb         (gconstpointer data);
+static void     mia_datapipe_system_state_cb       (gconstpointer data);
+static void     mia_datapipe_display_state_next_cb (gconstpointer data);
+
+static void     mia_datapipe_check_initial_state   (void);
+
+static void     mia_datapipe_init(void);
+static void     mia_datapipe_quit(void);
+
+/* ------------------------------------------------------------------------- *
+ * SUSPEND_BLOCK
+ * ------------------------------------------------------------------------- */
+
+#ifdef ENABLE_WAKELOCKS
+static void      mia_keepalive_rethink (void);
+static gboolean  mia_keepalive_cb      (gpointer aptr);
+static void      mia_keepalive_start   (void);
+static void      mia_keepalive_stop    (void);
+#endif
+
+/* ------------------------------------------------------------------------- *
+ * DBUS_HANDLERS
+ * ------------------------------------------------------------------------- */
+
+static gboolean mia_dbus_activity_action_owner_cb  (DBusMessage *const sig);
+static gboolean mia_dbus_add_activity_action_cb    (DBusMessage *const msg);
+static gboolean mia_dbus_remove_activity_action_cb (DBusMessage *const msg);
+
+static gboolean mia_dbus_send_inactivity_state     (DBusMessage *const method_call);
+static gboolean mia_dbus_get_inactivity_state      (DBusMessage *const req);
+
+static void     mia_dbus_init(void);
+static void     mia_dbus_quit(void);
+
+/* ------------------------------------------------------------------------- *
+ * ACTIVITY_ACTIONS
+ * ------------------------------------------------------------------------- */
+
+static void     mia_activity_action_remove      (const char *owner);
+static bool     mia_activity_action_add         (const char *owner, const char *service, const char *path, const char *interface, const char *method);
+static void     mia_activity_action_remove_all  (void);
+static void     mia_activity_action_execute_all (void);
+
+/* ------------------------------------------------------------------------- *
+ * INACTIVITY_TIMER
+ * ------------------------------------------------------------------------- */
+
+static gboolean mia_timer_cb    (gpointer data);
+static void     mia_timer_start (void);
+static void     mia_timer_stop  (void);
+
+static void     mia_timer_init  (void);
+static void     mia_timer_quit  (void);
+
+/* ------------------------------------------------------------------------- *
+ * MODULE_LOAD_UNLOAD
+ * ------------------------------------------------------------------------- */
+
+G_MODULE_EXPORT const gchar *g_module_check_init (GModule *module);
+G_MODULE_EXPORT void         g_module_unload     (GModule *module);
+
+/* ------------------------------------------------------------------------- *
+ * STATE_DATA
+ * ------------------------------------------------------------------------- */
 
 /** List of activity callbacks */
-static GSList *activity_callbacks = NULL;
+static GSList *activity_action_list = NULL;
 
 /** List of monitored activity requesters */
-static GSList *activity_cb_monitor_list = NULL;
+static GSList *activity_action_owners = NULL;
 
-/** ID for inactivity timeout source */
-static guint inactivity_timeout_cb_id = 0;
+/** Heartbeat timer for inactivity timeout */
+static mce_hbtimer_t *inactivity_timer_hnd = 0;
 
-/** Device inactivity state */
-static gboolean device_inactive = FALSE;
+/** Cached device inactivity state
+ *
+ * Default to inactive. Initial state is evaluated and broadcast over
+ * D-Bus during mce startup - see mia_datapipe_check_initial_state().
+ */
+static gboolean device_inactive = TRUE;
+
+/* Cached submode bitmask; assume in transition at startup */
+static submode_t submode = MCE_TRANSITION_SUBMODE;
+
+/** Cached alarm ui state */
+static alarm_ui_state_t alarm_ui_state = MCE_ALARM_UI_INVALID_INT32;
+
+/** Cached call state */
+static call_state_t call_state = CALL_STATE_INVALID;
+
+/* Cached system state */
+static system_state_t system_state = MCE_STATE_UNDEF;
+
+/** Cached display state */
+static display_state_t display_state_next = MCE_DISPLAY_UNDEF;
+
+/** Cached inactivity timeout delay [s] */
+static gint inactivity_timeout = DEFAULT_INACTIVITY_TIMEOUT;
+
+/** Cached proximity sensor state */
+static cover_state_t proximity_state = COVER_UNDEF;
+
+/* ========================================================================= *
+ * HELPER_FUNCTIONS
+ * ========================================================================= */
+
+/** Inactivity boolean to human readable string helper
+ */
+static const char *mia_inactivity_repr(bool inactive)
+{
+    return inactive ? "inactive" : "active";
+}
+
+/** Helper for attempting to switch to active state
+ */
+static void mia_generate_activity(void)
+{
+    execute_datapipe(&device_inactive_pipe, GINT_TO_POINTER(FALSE),
+                     USE_INDATA, CACHE_INDATA);
+}
+
+/** Helper for switching to inactive state
+ */
+static void mia_generate_inactivity(void)
+{
+    execute_datapipe(&device_inactive_pipe, GINT_TO_POINTER(TRUE),
+                     USE_INDATA, CACHE_INDATA);
+}
+
+/* ========================================================================= *
+ * DBUS_ACTION
+ * ========================================================================= */
+
+/** Create D-Bus action object
+ *
+ * @param owner      Private D-Bus name of the owner of the action
+ * @param service    D-Bus name of the service to send message to
+ * @param path       Object path to use
+ * @param interface  Inteface to use
+ * @param method     Name of the method to invoke
+ *
+ * @return pointer to initialized D-Bus action object
+ */
+static mia_action_t *mia_action_create(const char *owner,
+                                       const char *service,
+                                       const char *path,
+                                       const char *interface,
+                                       const char *method)
+{
+    mia_action_t *self = g_malloc0(sizeof *self);
+
+    self->owner       = g_strdup(owner);
+    self->service     = g_strdup(service);
+    self->path        = g_strdup(path);
+    self->interface   = g_strdup(interface);
+    self->method_name = g_strdup(method);
+
+    return self;
+}
+
+/** Delete D-Bus action object
+ *
+ * @param self Pointer to initialized D-Bus action object, or NULL
+ */
+static void mia_action_delete(mia_action_t *self)
+{
+    if( !self )
+        goto EXIT;
+
+    g_free(self->owner);
+    g_free(self->service);
+    g_free(self->path);
+    g_free(self->interface);
+    g_free(self->method_name);
+    g_free(self);
+
+EXIT:
+    return;
+}
+
+/* ========================================================================= *
+ * DATAPIPE_TRACKING
+ * ========================================================================= */
+
+/** Datapipe filter for inactivity
+ *
+ * @param data The unfiltered inactivity state;
+ *             TRUE if the device is inactive,
+ *             FALSE if the device is active
+ *
+ * @return The filtered inactivity state;
+ *             TRUE if the device is inactive,
+ *             FALSE if the device is active
+ */
+static gpointer mia_datapipe_device_inactive_cb(gpointer data)
+{
+    gboolean prev = device_inactive;
+    device_inactive = GPOINTER_TO_INT(data);
+
+    mce_log(LL_DEBUG, "input = %s",
+            mia_inactivity_repr(device_inactive));
+
+    /* No need to filter inactivity */
+    if( device_inactive )
+        goto EXIT;
+
+    /* Never filter activity if display is in dimmed state.
+     *
+     * Whether we have arrived to dimmed state via expected or
+     * unexpected routes, the touch input is active and ui side
+     * event eater will ignore only the first event. If we do
+     * not allow activity (and turn on the display) we will get
+     * ui interaction in odd looking dimmed state that then gets
+     * abruptly ended by blanking timer.
+     */
+    if( display_state_next == MCE_DISPLAY_DIM )
+        goto EXIT;
+
+    /* Activity tracking applies only to USER and ACT_DEAD modes */
+    switch( system_state ) {
+    case MCE_STATE_USER:
+    case MCE_STATE_ACTDEAD:
+        break;
+
+    default:
+        mce_log(LL_DEBUG, "system_state != USER|ACTDEAD"
+                "; ignoring activity");
+        device_inactive = TRUE;
+        goto EXIT;
+    }
+
+    /* Filter activity when lockscreen is active */
+    if( submode & MCE_TKLOCK_SUBMODE ) {
+
+        /* Default to: inactive */
+        device_inactive = TRUE;
+
+        /* Allow activity if display is already on */
+        switch( display_state_next ) {
+        case MCE_DISPLAY_ON:
+            device_inactive = FALSE;
+            break;
+
+        default:
+            break;
+        }
+
+        /* Allow activity if there is active alarm */
+        switch( alarm_ui_state ) {
+        case MCE_ALARM_UI_RINGING_INT32:
+        case MCE_ALARM_UI_VISIBLE_INT32:
+            device_inactive = FALSE;
+            break;
+
+        default:
+            break;
+        }
+
+        /* Allow activity if there is active call */
+        switch( call_state ) {
+        case CALL_STATE_RINGING:
+        case CALL_STATE_ACTIVE:
+            device_inactive = FALSE;
+
+        default:
+            break;
+        }
+
+        if( device_inactive ) {
+            mce_log(LL_DEBUG, "tklock enabled, no alarms or calls;"
+                    " ignoring activity");
+            goto EXIT;
+        }
+    }
+
+    /* Filter activity when proximity sensor is covered */
+    if( proximity_state == COVER_CLOSED ) {
+
+        /* Allow activity if display is already on */
+        switch( display_state_next ) {
+        case MCE_DISPLAY_DIM:
+        case MCE_DISPLAY_ON:
+            break;
+
+        default:
+            mce_log(LL_DEBUG, "display=off, proximity=covered; ignoring activity");
+            device_inactive = TRUE;
+            goto EXIT;
+        }
+    }
+
+EXIT:
+    /* Handle inactivity state change */
+    if( prev != device_inactive ) {
+        mce_log(LL_DEBUG, "device_inactive: %s -> %s",
+                mia_inactivity_repr(prev),
+                mia_inactivity_repr(device_inactive));
+
+        mia_dbus_send_inactivity_state(NULL);
+
+        /* React to activity */
+        if( !device_inactive )
+            mia_activity_action_execute_all();
+    }
+
+    /* Restart/stop timer */
+    mia_timer_start();
+
+    /* Return filtered activity state */
+    return GINT_TO_POINTER(device_inactive);
+}
+
+/** Generate activity from proximity sensor uncover
+ *
+ * @param data proximity sensor state as void pointer
+ */
+static void mia_datapipe_proximity_sensor_cb(gconstpointer data)
+{
+    cover_state_t prev = proximity_state;
+    proximity_state = GPOINTER_TO_INT(data);
+
+    if( proximity_state == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "proximity_state: %s -> %s",
+            proximity_state_repr(prev),
+            proximity_state_repr(proximity_state));
+
+    /* generate activity if proximity sensor is
+     * uncovered and there is a incoming call */
+
+    if( proximity_state == COVER_OPEN &&
+        call_state == CALL_STATE_RINGING ) {
+        mce_log(LL_INFO, "proximity -> uncovered, call = ringing");
+        mia_generate_activity();
+    }
+
+EXIT:
+        return;
+}
+
+/** React to inactivity timeout change
+ *
+ * @param data inactivity timeout (as void pointer)
+ */
+static void mia_datapipe_inactivity_timeout_cb(gconstpointer data)
+{
+    gint prev = inactivity_timeout;
+    inactivity_timeout = GPOINTER_TO_INT(data);
+
+    /* Sanitise timeout */
+    if( inactivity_timeout <= 0 )
+        inactivity_timeout = 30;
+
+    if( inactivity_timeout == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "inactivity_timeout: %d -> %d",
+            prev, inactivity_timeout);
+
+    /* Reprogram timer */
+    mia_timer_start();
+
+EXIT:
+    return;
+}
+
+/** Handle submode_pipe notifications
+ *
+ * @param data The submode stored in a pointer
+ */
+static void mia_datapipe_submode_cb(gconstpointer data)
+{
+    submode_t prev = submode;
+    submode = GPOINTER_TO_INT(data);
+
+    if( submode == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "submode = %d", submode);
+
+EXIT:
+    return;
+}
+
+/** Handle alarm_ui_state_pipe notifications
+ *
+ * @param data (not used)
+ */
+static void mia_datapipe_alarm_ui_state_cb(gconstpointer data)
+{
+    alarm_ui_state_t prev = alarm_ui_state;
+    alarm_ui_state = GPOINTER_TO_INT(data);
+
+    if( alarm_ui_state == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "alarm_ui_state: %s -> %s",
+            alarm_state_repr(prev),
+            alarm_state_repr(alarm_ui_state));
+
+EXIT:
+    return;
+}
+
+/** Handle call_state_pipe notifications
+ *
+ * @param data (not used)
+ */
+static void mia_datapipe_call_state_cb(gconstpointer data)
+{
+    call_state_t prev = call_state;
+    call_state = GPOINTER_TO_INT(data);
+
+    if( call_state == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "call_state = %s", call_state_repr(call_state));
+
+EXIT:
+    return;
+}
 
 /**
- * Send an inactivity status reply or signal
+ * Handle system_state_pipe notifications
+ *
+ * @param data The system state stored in a pointer
+ */
+static void mia_datapipe_system_state_cb(gconstpointer data)
+{
+    system_state_t prev = system_state;
+    system_state = GPOINTER_TO_INT(data);
+
+    if( system_state == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "system_state: %s -> %s",
+            system_state_repr(prev),
+            system_state_repr(system_state));
+
+    if( prev == MCE_STATE_UNDEF )
+        mia_datapipe_check_initial_state();
+
+EXIT:
+    return;
+}
+
+/** Handle display_state_next_pipe notifications
+ *
+ * @param data Current display_state_t (as void pointer)
+ */
+static void mia_datapipe_display_state_next_cb(gconstpointer data)
+{
+    display_state_t prev = display_state_next;
+    display_state_next = GPOINTER_TO_INT(data);
+
+    if( display_state_next == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "display_state_next: %s -> %s",
+            display_state_repr(prev),
+            display_state_repr(display_state_next));
+
+    if( prev == MCE_DISPLAY_UNDEF )
+        mia_datapipe_check_initial_state();
+
+EXIT:
+    return;
+}
+
+/** Handle initial state evaluation and broadcast
+ */
+static void mia_datapipe_check_initial_state(void)
+{
+    static bool done = false;
+
+    /* This must be done only once */
+    if( done )
+        goto EXIT;
+
+    /* Wait until the initial state transitions on
+     * mce startup are done and the device state
+     * is sufficiently known */
+
+    if( system_state == MCE_STATE_UNDEF )
+        goto EXIT;
+
+    if( display_state_next == MCE_DISPLAY_UNDEF )
+        goto EXIT;
+
+    done = true;
+
+    /* Basically the idea is that mce restarts while the
+     * display is off should leave the device in inactive
+     * state, but booting up / restarting mce while the
+     * display is on should yield active state.
+     *
+     * Once mce startup has progressed so that we known
+     * the system state: Attempt to generate activity.
+     *
+     * The activity filtering rules should take care
+     * of suppressing it in the "mce restart while
+     * display is off" case.
+     */
+
+    mce_log(LL_DEBUG, "device state known");
+    mia_generate_activity();
+
+    /* Make sure the current state gets broadcast even
+     * if the artificial activity gets suppressed. */
+
+    mce_log(LL_DEBUG, "forced broadcast");
+    mia_dbus_send_inactivity_state(0);
+
+EXIT:
+    return;
+}
+
+/** Array of datapipe handlers */
+static datapipe_handler_t mia_datapipe_handlers[] =
+{
+    // input filters
+    {
+        .datapipe  = &device_inactive_pipe,
+        .filter_cb = mia_datapipe_device_inactive_cb,
+    },
+    // output triggers
+    {
+        .datapipe  = &proximity_sensor_pipe,
+        .output_cb = mia_datapipe_proximity_sensor_cb,
+    },
+    {
+        .datapipe  = &inactivity_timeout_pipe,
+        .output_cb = mia_datapipe_inactivity_timeout_cb,
+    },
+    {
+        .datapipe  = &submode_pipe,
+        .output_cb = mia_datapipe_submode_cb,
+    },
+    {
+        .datapipe  = &alarm_ui_state_pipe,
+        .output_cb = mia_datapipe_alarm_ui_state_cb,
+    },
+    {
+        .datapipe  = &call_state_pipe,
+        .output_cb = mia_datapipe_call_state_cb,
+    },
+    {
+        .datapipe  = &system_state_pipe,
+        .output_cb = mia_datapipe_system_state_cb,
+    },
+    {
+        .datapipe  = &display_state_next_pipe,
+        .output_cb = mia_datapipe_display_state_next_cb,
+    },
+    // sentinel
+    {
+        .datapipe = 0,
+    }
+};
+
+static datapipe_bindings_t mia_datapipe_bindings =
+{
+    .module   = "inactivity",
+    .handlers = mia_datapipe_handlers,
+};
+
+/** Append triggers/filters to datapipes
+ */
+static void mia_datapipe_init(void)
+{
+    datapipe_bindings_init(&mia_datapipe_bindings);
+}
+
+/** Remove triggers/filters from datapipes */
+static void mia_datapipe_quit(void)
+{
+    datapipe_bindings_quit(&mia_datapipe_bindings);
+}
+
+/* ========================================================================= *
+ * SUSPEND_BLOCK
+ * ========================================================================= */
+
+#ifdef ENABLE_WAKELOCKS
+/** Timer ID for ending suspend blocking */
+static guint mia_keepalive_id = 0;
+
+/** Evaluate need for suspend blocking
+ */
+static void mia_keepalive_rethink(void)
+{
+    static bool have_lock = false;
+
+    bool need_lock = (mia_keepalive_id != 0);
+
+    if( have_lock == need_lock )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "inactivity notify wakelock: %s",
+            need_lock ? "OBTAIN" : "RELEASE");
+
+    if( (have_lock = need_lock) )
+        wakelock_lock("mce_inactivity_notify", -1);
+    else
+        wakelock_unlock("mce_inactivity_notify");
+
+EXIT:
+    return;
+}
+
+/** Timer callback for ending suspend blocking
+ */
+static gboolean mia_keepalive_cb(gpointer aptr)
+{
+    (void)aptr;
+
+    mia_keepalive_id = 0;
+    mia_keepalive_rethink();
+
+    return FALSE;
+}
+
+/** Start/restart temporary suspend blocking
+ */
+static void mia_keepalive_start(void)
+{
+    if( mia_keepalive_id ) {
+        g_source_remove(mia_keepalive_id),
+            mia_keepalive_id = 0;
+    }
+
+    mia_keepalive_id = g_timeout_add(MIA_KEEPALIVE_DURATION_MS,
+                                     mia_keepalive_cb, 0);
+    mia_keepalive_rethink();
+}
+
+/** Cancel suspend blocking
+ */
+static void mia_keepalive_stop(void)
+{
+    if( mia_keepalive_id ) {
+        g_source_remove(mia_keepalive_id),
+            mia_keepalive_id = 0;
+    }
+    mia_keepalive_rethink();
+}
+#endif /* ENABLE_WAKELOCKS */
+
+/* ========================================================================= *
+ * DBUS_HANDLERS
+ * ========================================================================= */
+
+/** D-Bus name owner changed handler for canceling activity actions
+ *
+ * If a process that has added activity actions drops out from the system
+ * bus, the actions must be canceled.
+ *
+ * @param sig NameOwnerChanged D-Bus signal
+ *
+ * @return TRUE
+ */
+static gboolean mia_dbus_activity_action_owner_cb(DBusMessage *const sig)
+{
+    DBusError   err  = DBUS_ERROR_INIT;
+    const char *name = 0;
+    const char *prev = 0;
+    const char *curr = 0;
+
+    if( !dbus_message_get_args(sig, &err,
+                               DBUS_TYPE_STRING, &name,
+                               DBUS_TYPE_STRING, &prev,
+                               DBUS_TYPE_STRING, &curr,
+                               DBUS_TYPE_INVALID)) {
+        mce_log(LL_ERR, "Failed to get arguments: %s: %s",
+                err.name, err.message);
+        goto EXIT;
+    }
+
+    if( !*curr )
+        mia_activity_action_remove(name);
+
+EXIT:
+    dbus_error_free(&err);
+
+    return TRUE;
+}
+
+/** D-Bus callback for the add activity callback method call
+ *
+ * @param req The D-Bus message
+ *
+ * @return TRUE
+ */
+static gboolean mia_dbus_add_activity_action_cb(DBusMessage *const req)
+{
+    const char *sender    = dbus_message_get_sender(req);
+    DBusError   err       = DBUS_ERROR_INIT;
+    const char *service   = 0;
+    const char *path      = 0;
+    const char *interface = 0;
+    const char *method    = 0;
+    dbus_bool_t res       = false;
+
+    if( !sender )
+        goto EXIT;
+
+    mce_log(LL_DEVEL, "Add activity callback request from %s",
+            mce_dbus_get_name_owner_ident(sender));
+
+    if( !dbus_message_get_args(req, &err,
+                               DBUS_TYPE_STRING, &service,
+                               DBUS_TYPE_STRING, &path,
+                               DBUS_TYPE_STRING, &interface,
+                               DBUS_TYPE_STRING, &method,
+                               DBUS_TYPE_INVALID) ) {
+        mce_log(LL_ERR, "Failed to get arguments: %s: %s",
+                err.name, err.message);
+        goto EXIT;
+    }
+
+    res = mia_activity_action_add(sender, service, path, interface, method);
+
+EXIT:
+    if( !dbus_message_get_no_reply(req) ) {
+        DBusMessage *rsp = dbus_new_method_reply(req);
+
+        if( !dbus_message_append_args(rsp,
+                                      DBUS_TYPE_BOOLEAN, &res,
+                                      DBUS_TYPE_INVALID) ) {
+            mce_log(LL_ERR, "Failed to append reply argument");
+            dbus_message_unref(rsp);
+        }
+        else {
+            dbus_send_message(rsp);
+        }
+    }
+
+    dbus_error_free(&err);
+
+    return TRUE;
+}
+
+/** D-Bus callback for the remove activity callback method call
+ *
+ * @param req The D-Bus message
+ *
+ * @return TRUE
+ */
+static gboolean mia_dbus_remove_activity_action_cb(DBusMessage *const req)
+{
+    const char *sender = dbus_message_get_sender(req);
+
+    if( !sender )
+        goto EXIT;
+
+    mce_log(LL_DEVEL, "Remove activity callback request from %s",
+            mce_dbus_get_name_owner_ident(sender));
+
+    mia_activity_action_remove(sender);
+
+EXIT:
+
+    if( !dbus_message_get_no_reply(req) ) {
+        DBusMessage *reply = dbus_new_method_reply(req);
+        dbus_send_message(reply);
+    }
+
+    return TRUE;
+}
+
+/** Send an inactivity status reply or signal
  *
  * @param method_call A DBusMessage to reply to;
  *                    pass NULL to send an inactivity status signal instead
- * @return TRUE on success, FALSE on failure
+ * @return TRUE
  */
-static gboolean send_inactivity_status(DBusMessage *const method_call)
+static gboolean mia_dbus_send_inactivity_state(DBusMessage *const method_call)
 {
-	DBusMessage *msg = NULL;
-	gboolean status = FALSE;
+    /* Make sure initial state is broadcast; -1 does not match TRUE/FALSE */
+    static int last_sent = -1;
 
-	mce_log(LL_DEBUG,
-		"Sending inactivity status: %s",
-		device_inactive ? "inactive" : "active");
+    DBusMessage *msg = NULL;
 
-	/* If method_call is set, send a reply,
-	 * otherwise, send a signal
-	 */
-	if (method_call != NULL) {
-		msg = dbus_new_method_reply(method_call);
-	} else {
-		/* system_inactivity_ind */
-		msg = dbus_new_signal(MCE_SIGNAL_PATH, MCE_SIGNAL_IF,
-				      MCE_INACTIVITY_SIG);
-	}
+    if( method_call ) {
+        /* Send reply to state query */
+        msg = dbus_new_method_reply(method_call);
+    }
+    else if( last_sent == device_inactive ) {
+        /* Do not repeat broadcasts */
+        goto EXIT;
+    }
+    else {
+        /* Broadcast state change */
 
-	/* Append the inactivity status */
-	if (dbus_message_append_args(msg,
-				     DBUS_TYPE_BOOLEAN, &device_inactive,
-				     DBUS_TYPE_INVALID) == FALSE) {
-		mce_log(LL_CRIT,
-			"Failed to append %sargument to D-Bus message "
-			"for %s.%s",
-			method_call ? "reply " : "",
-			method_call ? MCE_REQUEST_IF :
-				      MCE_SIGNAL_IF,
-			method_call ? MCE_INACTIVITY_STATUS_GET :
-				      MCE_INACTIVITY_SIG);
-		dbus_message_unref(msg);
-		goto EXIT;
-	}
+#ifdef ENABLE_WAKELOCKS
+        /* Block suspend for a while to give other processes
+         * a chance to get and process the signal. */
+        mia_keepalive_start();
+#endif
 
-	/* Send the message */
-	status = dbus_send_message(msg);
+        msg = dbus_new_signal(MCE_SIGNAL_PATH, MCE_SIGNAL_IF,
+                              MCE_INACTIVITY_SIG);
+    }
+
+    mce_log(method_call ? LL_DEBUG : LL_DEVEL,
+            "Sending inactivity %s: %s",
+            method_call ? "reply" : "signal",
+            mia_inactivity_repr(device_inactive));
+
+    /* Append the inactivity status */
+    if( !dbus_message_append_args(msg,
+                                  DBUS_TYPE_BOOLEAN, &device_inactive,
+                                  DBUS_TYPE_INVALID) ) {
+        mce_log(LL_ERR, "Failed to append argument to D-Bus message");
+        goto EXIT;
+    }
+
+    /* Send the message */
+    dbus_send_message(msg), msg = 0;
+
+    if( !method_call )
+        last_sent = device_inactive;
 
 EXIT:
-	return status;
+    if( msg )
+        dbus_message_unref(msg);
+
+    return TRUE;
 }
 
-/**
- * D-Bus callback for the get inactivity status method call
+/** D-Bus callback for the get inactivity status method call
  *
- * @param msg The D-Bus message
- * @return TRUE on success, FALSE on failure
+ * @param req The D-Bus message
+ *
+ * @return TRUE
  */
-static gboolean inactivity_status_get_dbus_cb(DBusMessage *const msg)
+static gboolean mia_dbus_get_inactivity_state(DBusMessage *const req)
 {
-	gboolean status = FALSE;
+        mce_log(LL_DEVEL, "Received inactivity status get request from %s",
+               mce_dbus_get_message_sender_ident(req));
 
-	mce_log(LL_DEVEL, "Received inactivity status get request from %s",
-	       mce_dbus_get_message_sender_ident(msg));
+        /* Try to send a reply that contains the current inactivity status */
+        mia_dbus_send_inactivity_state(req);
 
-	/* Try to send a reply that contains the current inactivity status */
-	if (send_inactivity_status(msg) == FALSE)
-		goto EXIT;
-
-	status = TRUE;
-
-EXIT:
-	return status;
+        return TRUE;
 }
+
+/** Array of dbus message handlers */
+static mce_dbus_handler_t mia_dbus_handlers[] =
+{
+    /* signals - outbound (for Introspect purposes only) */
+    {
+        .interface = MCE_SIGNAL_IF,
+        .name      = MCE_INACTIVITY_SIG,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .args      =
+            "    <arg name=\"device_inactive\" type=\"b\"/>\n"
+    },
+    /* method calls */
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_INACTIVITY_STATUS_GET,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = mia_dbus_get_inactivity_state,
+        .args      =
+            "    <arg direction=\"out\" name=\"device_inactive\" type=\"b\"/>\n"
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_ADD_ACTIVITY_CALLBACK_REQ,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = mia_dbus_add_activity_action_cb,
+        .args      =
+            "    <arg direction=\"in\" name=\"service_name\" type=\"s\"/>\n"
+            "    <arg direction=\"in\" name=\"object_path\" type=\"s\"/>\n"
+            "    <arg direction=\"in\" name=\"interface_name\" type=\"s\"/>\n"
+            "    <arg direction=\"in\" name=\"method_name\" type=\"s\"/>\n"
+            "    <arg direction=\"out\" name=\"added\" type=\"b\"/>\n"
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_REMOVE_ACTIVITY_CALLBACK_REQ,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = mia_dbus_remove_activity_action_cb,
+        .args      =
+            ""
+    },
+    /* sentinel */
+    {
+        .interface = 0
+    }
+};
+
+/** Add dbus handlers
+ */
+static void mia_dbus_init(void)
+{
+    mce_dbus_handler_register_array(mia_dbus_handlers);
+}
+
+/** Remove dbus handlers
+ */
+static void mia_dbus_quit(void)
+{
+    mce_dbus_handler_unregister_array(mia_dbus_handlers);
+}
+
+/* ========================================================================= *
+ * ACTIVITY_ACTIONS
+ * ========================================================================= */
 
 /**
  * Remove an activity cb from the list of monitored processes
@@ -153,578 +1028,212 @@ EXIT:
  *
  * @param owner The D-Bus owner of the callback
  */
-static void remove_activity_cb(const gchar *owner)
+static void mia_activity_action_remove(const char *owner)
 {
-	GSList *tmp = activity_callbacks;
+    /* Remove D-Bus name owner monitor */
+    mce_dbus_owner_monitor_remove(owner,
+                                  &activity_action_owners);
 
-	/* Remove the name monitor for the activity callback
-	 * and the activity callback itself
-	 */
-	(void)mce_dbus_owner_monitor_remove(owner,
-					    &activity_cb_monitor_list);
+    /* Remove the activity callback itself */
+    for( GSList *now = activity_action_list; now; now = now->next ) {
 
-	while (tmp != NULL) {
-		activity_cb_t *cb;
+        mia_action_t *cb = now->data;
 
-		cb = tmp->data;
+        if( strcmp(cb->owner, owner) )
+            continue;
 
-		/* Is this the matching sender? */
-		if (!strcmp(cb->owner, owner)) {
-			g_free(cb->owner);
-			g_free(cb->service);
-			g_free(cb->path);
-			g_free(cb->interface);
-			g_free(cb->method_name);
-			g_free(cb);
-
-			activity_callbacks =
-				g_slist_remove(activity_callbacks,
-					       cb);
-			break;
-		}
-
-		tmp = g_slist_next(tmp);
-	};
+        activity_action_list = g_slist_remove(activity_action_list, cb);
+        mia_action_delete(cb);
+        break;
+    };
 }
 
-/**
- * D-Bus callback used for monitoring processes that add activity callbacks;
- * if the process exits, unregister the callback
- *
- * @param msg The D-Bus message
- * @return TRUE on success, FALSE on failure
- */
-static gboolean activity_cb_monitor_dbus_cb(DBusMessage *const msg)
+static bool mia_activity_action_add(const char *owner,
+                                    const char *service,
+                                    const char *path,
+                                    const char *interface,
+                                    const char *method)
 {
-	gboolean status = FALSE;
-	const gchar *old_name;
-	const gchar *new_name;
-	const gchar *service;
-	DBusError error;
+    bool ack = false;
 
-	/* Register error channel */
-	dbus_error_init(&error);
+    /* Add D-Bus name owner monitor */
+    if( mce_dbus_owner_monitor_add(owner,
+                                   mia_dbus_activity_action_owner_cb,
+                                   &activity_action_owners,
+                                   ACTIVITY_CB_MAX_MONITORED) == -1) {
+        mce_log(LL_ERR, "Failed to add name owner monitoring for `%s'",
+                owner);
+        goto EXIT;
+    }
 
-	/* Extract result */
-	if (dbus_message_get_args(msg, &error,
-				  DBUS_TYPE_STRING, &service,
-				  DBUS_TYPE_STRING, &old_name,
-				  DBUS_TYPE_STRING, &new_name,
-				  DBUS_TYPE_INVALID) == FALSE) {
-		mce_log(LL_ERR,
-			"Failed to get argument from %s.%s; %s",
-			"org.freedesktop.DBus", "NameOwnerChanged",
-			error.message);
-		dbus_error_free(&error);
-		goto EXIT;
-	}
+    /* Add activity callback */
+    mia_action_t *cb = mia_action_create(owner, service, path, interface, method);
 
-	remove_activity_cb(service);
-	status = TRUE;
+    activity_action_list = g_slist_prepend(activity_action_list, cb);
+
+    ack = true;
 
 EXIT:
-	return status;
+    return ack;
 }
 
-/**
- * D-Bus callback for the add activity callback method call
- *
- * @param msg The D-Bus message
- * @return TRUE on success, FALSE on failure
+/** Unregister all activity callbacks
  */
-static gboolean add_activity_callback_dbus_cb(DBusMessage *const msg)
+static void mia_activity_action_remove_all(void)
 {
-	dbus_bool_t no_reply = dbus_message_get_no_reply(msg);
-	const gchar *sender = dbus_message_get_sender(msg);
-	const gchar *service = NULL;
-	const gchar *path = NULL;
-	const gchar *interface = NULL;
-	const gchar *method_name = NULL;
-	activity_cb_t *tmp = NULL;
-	gboolean result = FALSE;
-	gboolean status = FALSE;
-	DBusError error;
+    for( GSList *now = activity_action_list; now; now = now->next ) {
+        mia_action_t *act = now->data;
 
-	/* Register error channel */
-	dbus_error_init(&error);
+        now->data = 0;
+        mia_action_delete(act);
+    }
 
-	if (sender == NULL) {
-		mce_log(LL_ERR,
-			"Received invalid add activity callback request "
-			"(sender == NULL)");
-		goto EXIT;
-	}
+    /* Flush action list */
+    g_slist_free(activity_action_list),
+        activity_action_list = 0;
 
-	mce_log(LL_DEVEL, "Received add activity callback request from %s",
-		mce_dbus_get_name_owner_ident(sender));
-
-	/* Extract result */
-	if (dbus_message_get_args(msg, &error,
-				  DBUS_TYPE_STRING, &service,
-				  DBUS_TYPE_STRING, &path,
-				  DBUS_TYPE_STRING, &interface,
-				  DBUS_TYPE_STRING, &method_name,
-				  DBUS_TYPE_INVALID) == FALSE) {
-		// XXX: should we return an error instead?
-		mce_log(LL_CRIT,
-			"Failed to get argument from %s.%s; %s",
-			MCE_REQUEST_IF, MCE_ADD_ACTIVITY_CALLBACK_REQ,
-			error.message);
-		dbus_error_free(&error);
-		goto EXIT;
-	}
-
-	if (mce_dbus_owner_monitor_add(sender,
-				       activity_cb_monitor_dbus_cb,
-				       &activity_cb_monitor_list,
-				       ACTIVITY_CB_MAX_MONITORED) == -1) {
-		mce_log(LL_ERR,
-			"Failed to add name owner monitoring for `%s'",
-			sender);
-		goto EXIT2;
-	}
-
-	tmp = g_malloc(sizeof (activity_cb_t));
-
-	tmp->owner = g_strdup(sender);
-	tmp->service = g_strdup(service);
-	tmp->path = g_strdup(path);
-	tmp->interface = g_strdup(interface);
-	tmp->method_name = g_strdup(method_name);
-
-	activity_callbacks = g_slist_prepend(activity_callbacks, tmp);
-
-	result = TRUE;
-
-EXIT2:
-	if (no_reply == FALSE) {
-		DBusMessage *reply = dbus_new_method_reply(msg);
-
-		if (dbus_message_append_args(reply,
-					     DBUS_TYPE_BOOLEAN, &result,
-					     DBUS_TYPE_INVALID) == FALSE) {
-			mce_log(LL_CRIT,
-				"Failed to append reply argument to "
-				"D-Bus message for %s.%s",
-				MCE_REQUEST_IF,
-				MCE_ADD_ACTIVITY_CALLBACK_REQ);
-			dbus_message_unref(reply);
-			goto EXIT;
-		}
-
-		status = dbus_send_message(reply);
-	} else {
-		status = TRUE;
-	}
-
-EXIT:
-	return status;
+    /* Remove associated name owner monitors */
+    mce_dbus_owner_monitor_remove_all(&activity_action_owners);
 }
 
-/**
- * D-Bus callback for the remove activity callback method call
- *
- * @param msg The D-Bus message
- * @return TRUE on success, FALSE on failure
+/** Call all activity callbacks, then unregister them
  */
-static gboolean remove_activity_callback_dbus_cb(DBusMessage *const msg)
+static void mia_activity_action_execute_all(void)
 {
-	dbus_bool_t no_reply = dbus_message_get_no_reply(msg);
-	const gchar *sender = dbus_message_get_sender(msg);
-	gboolean status = FALSE;
+    /* Execute D-Bus actions */
+    for( GSList *now = activity_action_list; now; now = now->next ) {
+        mia_action_t *act = now->data;
 
-	if (sender == NULL) {
-		mce_log(LL_ERR,
-			"Received invalid remove activity callback request "
-			"(sender == NULL)");
-		goto EXIT;
-	}
+        dbus_send(act->service, act->path, act->interface, act->method_name,
+                  0, DBUS_TYPE_INVALID);
+    }
 
-	mce_log(LL_DEVEL, "Received remove activity callback request from %s",
-		mce_dbus_get_name_owner_ident(sender));
-
-	status = TRUE;
-
-	remove_activity_cb(sender);
-
-EXIT:
-	if (no_reply == FALSE) {
-		DBusMessage *reply = dbus_new_method_reply(msg);
-
-		status = dbus_send_message(reply);
-	} else {
-		status = TRUE;
-	}
-
-	return status;
+    /* Then unregister them */
+    mia_activity_action_remove_all();
 }
 
-/**
- * Call all activity callbacks, then unregister them
- */
-static void call_activity_callbacks(void)
-{
-	GSList *tmp = activity_callbacks;
+/* ========================================================================= *
+ * INACTIVITY_TIMER
+ * ========================================================================= */
 
-	while (tmp != NULL) {
-		activity_cb_t *cb;
-
-		cb = tmp->data;
-
-		/* Call the calback */
-		(void)dbus_send(cb->service, cb->path,
-				cb->interface, cb->method_name,
-				NULL,
-				DBUS_TYPE_INVALID);
-
-		g_free(cb->owner);
-		g_free(cb->service);
-		g_free(cb->path);
-		g_free(cb->interface);
-		g_free(cb->method_name);
-		g_free(cb);
-
-		tmp = g_slist_next(tmp);
-	}
-
-	g_slist_free(activity_callbacks);
-	activity_callbacks = NULL;
-
-	mce_dbus_owner_monitor_remove_all(&activity_cb_monitor_list);
-}
-
-/**
- * Timeout callback for inactivity
+/** Timer callback to trigger inactivity
  *
- * @param data Unused
+ * @param data (not used)
+ *
  * @return Always returns FALSE, to disable the timeout
  */
-static gboolean inactivity_timeout_cb(gpointer data)
+static gboolean mia_timer_cb(gpointer data)
 {
-	(void)data;
+    (void)data;
 
-	inactivity_timeout_cb_id = 0;
+    mce_log(LL_DEBUG, "inactivity timeout triggered");
 
-	(void)execute_datapipe(&device_inactive_pipe, GINT_TO_POINTER(TRUE),
-			       USE_INDATA, CACHE_INDATA);
+    mia_generate_inactivity();
 
-	return FALSE;
+    return FALSE;
 }
 
-/**
- * Cancel inactivity timeout
+/** Setup inactivity timeout
  */
-static void cancel_inactivity_timeout(void)
+static void mia_timer_start(void)
 {
-	/* Remove inactivity timeout source */
-	if (inactivity_timeout_cb_id != 0) {
-		g_source_remove(inactivity_timeout_cb_id);
-		inactivity_timeout_cb_id = 0;
-	}
-}
+    mia_timer_stop();
 
-/**
- * Setup inactivity timeout
- */
-static void setup_inactivity_timeout(void)
-{
-	gint timeout = datapipe_get_gint(inactivity_timeout_pipe);
+    if( device_inactive )
+        goto EXIT;
 
-	cancel_inactivity_timeout();
-
-	/* Sanitise timeout */
-	if (timeout <= 0)
-		timeout = 30;
-
-	/* Setup new timeout */
-	inactivity_timeout_cb_id =
-		g_timeout_add_seconds(timeout, inactivity_timeout_cb, NULL);
-}
-
-/**
- * Datapipe filter for inactivity
- *
- * @param data The unfiltered inactivity state;
- *             TRUE if the device is inactive,
- *             FALSE if the device is active
- * @return The filtered inactivity state;
- *             TRUE if the device is inactive,
- *             FALSE if the device is active
- */
-static gpointer device_inactive_filter(gpointer data)
-{
-	static gboolean old_device_inactive = FALSE;
-
-	alarm_ui_state_t alarm_ui_state =
-				datapipe_get_gint(alarm_ui_state_pipe);
-	submode_t submode = mce_get_submode_int32();
-	cover_state_t   proximity_state = proximity_state_get();
-	display_state_t display_state   = display_state_get();
-	system_state_t system_state = datapipe_get_gint(system_state_pipe);
-	call_state_t call_state = datapipe_get_gint(call_state_pipe);
-
-	device_inactive = GPOINTER_TO_INT(data);
-
-	/* nothing to filter if we are already inactive */
-	if( device_inactive )
-		goto EXIT;
-
-	/* Never filter inactivity if display is in dimmed state.
-	 *
-	 * Whether we have arrived to dimmed state via expected or
-	 * unexpected routes, the touch input is active and ui side
-	 * event eater will ignore only the first event. If we do
-	 * not allow activity (and turn on the display) we will get
-	 * ui interaction in odd looking dimmed state that then gets
-	 * abruptly ended by blanking timer.
-	 */
-	if( display_state == MCE_DISPLAY_DIM )
-		goto EXIT;
-
-	/* system state must be USER or ACT DEAD */
-	switch( system_state ) {
-	case MCE_STATE_USER:
-	case MCE_STATE_ACTDEAD:
-		break;
-	default:
-		mce_log(LL_DEBUG, "system_state != USER|ACTDEAD"
-			"; ignoring activity");
-		device_inactive = TRUE;
-		goto EXIT;
-	}
-
-	/* tklock must be off, or there must be alarms or calls */
-	if( submode & MCE_TKLOCK_SUBMODE ) {
-		gboolean have_alarms = FALSE;
-		gboolean have_calls  = FALSE;
-		gboolean display_on  = FALSE;
-
-		switch( alarm_ui_state ) {
-		case MCE_ALARM_UI_RINGING_INT32:
-		case MCE_ALARM_UI_VISIBLE_INT32:
-			have_alarms = TRUE;
-			break;
-		default:
-			break;
-		}
-
-		switch( call_state ) {
-		case CALL_STATE_RINGING:
-		case CALL_STATE_ACTIVE:
-			have_calls = TRUE;
-		default:
-			break;
-		}
-
-		if( display_state == MCE_DISPLAY_ON )
-			display_on = TRUE;
-
-		if( !display_on && !have_alarms && !have_calls ) {
-			mce_log(LL_DEBUG, "tklock enabled, no alarms or calls;"
-				" ignoring activity");
-			device_inactive = TRUE;
-			goto EXIT;
-		}
-	}
-
-	/* if proximity is covered, display must not be off */
-	if( proximity_state == COVER_CLOSED ) {
-		switch( display_state ) {
-		case MCE_DISPLAY_OFF:
-		case MCE_DISPLAY_LPM_OFF:
-		case MCE_DISPLAY_LPM_ON:
-		case MCE_DISPLAY_POWER_UP:
-		case MCE_DISPLAY_POWER_DOWN:
-			mce_log(LL_DEBUG, "display=off, proximity=covered; ignoring activity");
-			device_inactive = TRUE;
-			goto EXIT;
-
-		default:
-		case MCE_DISPLAY_UNDEF:
-		case MCE_DISPLAY_DIM:
-		case MCE_DISPLAY_ON:
-			break;
-		}
-	}
+    mce_log(LL_DEBUG, "inactivity timeout in %d seconds", inactivity_timeout);
+    mce_hbtimer_set_period(inactivity_timer_hnd, inactivity_timeout * 1000);
+    mce_hbtimer_start(inactivity_timer_hnd);
 
 EXIT:
-	/* React to activity */
-	if( !device_inactive ) {
-		call_activity_callbacks();
-		setup_inactivity_timeout();
-	}
-
-	/* Handle inactivity state change */
-	if( old_device_inactive != device_inactive ) {
-		old_device_inactive = device_inactive;
-
-		send_inactivity_status(NULL);
-	}
-
-	/* Return filtered activity state */
-	return GINT_TO_POINTER(device_inactive);
+    return;
 }
 
-/**
- * Inactivity timeout trigger
- *
- * @param data Unused
+/** Cancel inactivity timeout
  */
-static void inactivity_timeout_trigger(gconstpointer data)
+static void mia_timer_stop(void)
 {
-	(void)data;
-
-	setup_inactivity_timeout();
+    if( mce_hbtimer_is_active(inactivity_timer_hnd) ) {
+        mce_log(LL_DEBUG, "inactivity timeout canceled");
+        mce_hbtimer_stop(inactivity_timer_hnd);
+    }
 }
 
-/** Generate activity from proximity sensor uncover
- *
- * @param data proximity sensor state as void pointer
+/** Initialize inactivity heartbeat timer
  */
-static void proximity_sensor_trigger(gconstpointer data)
+static void
+mia_timer_init(void)
 {
-	static cover_state_t old_proximity_state = COVER_OPEN;
-
-	cover_state_t proximity_state = GPOINTER_TO_INT(data);
-
-	/* generate activity if proximity sensor is
-	 * uncovered and there is a incoming call */
-
-	if( old_proximity_state == proximity_state )
-		goto EXIT;
-
-	old_proximity_state = proximity_state;
-
-	if( proximity_state != COVER_OPEN )
-		goto EXIT;
-
-	call_state_t call_state = datapipe_get_gint(call_state_pipe);
-
-	if( call_state != CALL_STATE_RINGING )
-		goto EXIT;
-
-	mce_log(LL_INFO, "proximity -> uncovered, call = ringing");
-	execute_datapipe(&device_inactive_pipe, GINT_TO_POINTER(FALSE),
-			 USE_INDATA, CACHE_INDATA);
-
-EXIT:
-	return;
+    inactivity_timer_hnd = mce_hbtimer_create("inactivity-timer",
+                                               inactivity_timeout * 1000,
+                                               mia_timer_cb, 0);
 }
 
-/** Array of dbus message handlers */
-static mce_dbus_handler_t inactivity_dbus_handlers[] =
-{
-	/* signals - outbound (for Introspect purposes only) */
-	{
-		.interface = MCE_SIGNAL_IF,
-		.name      = MCE_INACTIVITY_SIG,
-		.type      = DBUS_MESSAGE_TYPE_SIGNAL,
-		.args      =
-			"    <arg name=\"device_inactive\" type=\"b\"/>\n"
-	},
-	/* method calls */
-	{
-		.interface = MCE_REQUEST_IF,
-		.name      = MCE_INACTIVITY_STATUS_GET,
-		.type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
-		.callback  = inactivity_status_get_dbus_cb,
-		.args      =
-			"    <arg direction=\"out\" name=\"device_inactive\" type=\"b\"/>\n"
-	},
-	{
-		.interface = MCE_REQUEST_IF,
-		.name      = MCE_ADD_ACTIVITY_CALLBACK_REQ,
-		.type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
-		.callback  = add_activity_callback_dbus_cb,
-		.args      =
-			"    <arg direction=\"in\" name=\"service_name\" type=\"s\"/>\n"
-			"    <arg direction=\"in\" name=\"object_path\" type=\"s\"/>\n"
-			"    <arg direction=\"in\" name=\"interface_name\" type=\"s\"/>\n"
-			"    <arg direction=\"in\" name=\"method_name\" type=\"s\"/>\n"
-			"    <arg direction=\"out\" name=\"added\" type=\"b\"/>\n"
-	},
-	{
-		.interface = MCE_REQUEST_IF,
-		.name      = MCE_REMOVE_ACTIVITY_CALLBACK_REQ,
-		.type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
-		.callback  = remove_activity_callback_dbus_cb,
-		.args      =
-			""
-	},
-	/* sentinel */
-	{
-		.interface = 0
-	}
-};
-
-/** Add dbus handlers
+/** Cleanup inactivity heartbeat timer
  */
-static void mce_inactivity_init_dbus(void)
+static void
+mia_timer_quit(void)
 {
-	mce_dbus_handler_register_array(inactivity_dbus_handlers);
+    mce_hbtimer_delete(inactivity_timer_hnd),
+        inactivity_timer_hnd = 0;
 }
 
-/** Remove dbus handlers
- */
-static void mce_inactivity_quit_dbus(void)
-{
-	mce_dbus_handler_unregister_array(inactivity_dbus_handlers);
-}
+/* ========================================================================= *
+ * MODULE_LOAD_UNLOAD
+ * ========================================================================= */
 
-/**
- * Init function for the inactivity module
+/** Init function for the inactivity module
  *
- * @todo XXX status needs to be set on error!
+ * @param module (not used)
  *
- * @param module Unused
  * @return NULL on success, a string with an error message on failure
  */
-G_MODULE_EXPORT const gchar *g_module_check_init(GModule *module);
 const gchar *g_module_check_init(GModule *module)
 {
-	(void)module;
+    (void)module;
 
-	/* Append triggers/filters to datapipes */
-	append_filter_to_datapipe(&device_inactive_pipe,
-				  device_inactive_filter);
-	append_output_trigger_to_datapipe(&proximity_sensor_pipe,
-					  proximity_sensor_trigger);
-	append_output_trigger_to_datapipe(&inactivity_timeout_pipe,
-					  inactivity_timeout_trigger);
+    mia_timer_init();
 
-	/* Add dbus handlers */
-	mce_inactivity_init_dbus();
+    /* Append triggers/filters to datapipes */
+    mia_datapipe_init();
 
-	setup_inactivity_timeout();
+    /* Add dbus handlers */
+    mia_dbus_init();
 
-	return NULL;
+    /* Start timers */
+    mia_timer_start();
+
+    /* The initial inactivity state gets broadcast once the system
+     * and display states are known */
+
+    return NULL;
 }
 
-/**
- * Exit function for the inactivity module
+/** Exit function for the inactivity module
  *
  * @todo D-Bus unregistration
  *
- * @param module Unused
+ * @param module (not used)
  */
-G_MODULE_EXPORT void g_module_unload(GModule *module);
 void g_module_unload(GModule *module)
 {
-	(void)module;
+    (void)module;
 
-	/* Remove dbus handlers */
-	mce_inactivity_quit_dbus();
+    /* Remove dbus handlers */
+    mia_dbus_quit();
 
-	/* Remove triggers/filters from datapipes */
-	remove_output_trigger_from_datapipe(&inactivity_timeout_pipe,
-					    inactivity_timeout_trigger);
-	remove_output_trigger_from_datapipe(&proximity_sensor_pipe,
-					    proximity_sensor_trigger);
-	remove_filter_from_datapipe(&device_inactive_pipe,
-				    device_inactive_filter);
+    /* Remove triggers/filters from datapipes */
+    mia_datapipe_quit();
 
-	/* Remove all timer sources */
-	cancel_inactivity_timeout();
+    /* Do not leave any timers active */
+    mia_timer_quit();
 
-	return;
+#ifdef ENABLE_WAKELOCKS
+    mia_keepalive_stop();
+#endif
+
+    /* Flush activity actions */
+    mia_activity_action_remove_all();
+    return;
 }

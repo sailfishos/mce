@@ -842,7 +842,7 @@ void mce_datapipe_init(void)
 	setup_datapipe(&touchscreen_pipe, READ_ONLY, FREE_CACHE,
 		       sizeof (struct input_event), NULL);
 	setup_datapipe(&device_inactive_pipe, READ_WRITE, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(FALSE));
+		       0, GINT_TO_POINTER(TRUE));
 	setup_datapipe(&lockkey_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(0));
 	setup_datapipe(&keyboard_slide_pipe, READ_ONLY, DONT_FREE_CACHE,
@@ -1373,6 +1373,10 @@ void datapipe_handlers_install(datapipe_handler_t *bindings)
 	if( bindings[i].bound )
 	    continue;
 
+	if( bindings[i].filter_cb )
+	    append_filter_to_datapipe(bindings[i].datapipe,
+				      bindings[i].filter_cb);
+
 	if( bindings[i].input_cb )
 	    append_input_trigger_to_datapipe(bindings[i].datapipe,
 					     bindings[i].input_cb);
@@ -1396,13 +1400,17 @@ void datapipe_handlers_remove(datapipe_handler_t *bindings)
 	if( !bindings[i].bound )
 	    continue;
 
+	if( bindings[i].filter_cb )
+	    remove_filter_from_datapipe(bindings[i].datapipe,
+					bindings[i].filter_cb);
+
 	if( bindings[i].input_cb )
 	    remove_input_trigger_from_datapipe(bindings[i].datapipe,
-					     bindings[i].input_cb);
+					       bindings[i].input_cb);
 
 	if( bindings[i].output_cb )
 	    remove_output_trigger_from_datapipe(bindings[i].datapipe,
-					      bindings[i].output_cb);
+						bindings[i].output_cb);
 	bindings[i].bound = false;
     }
 
