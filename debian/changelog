@@ -1,3 +1,15 @@
+mce (1.62.3) unstable; urgency=low
+
+  * [datapipe] Allow array based setup to install filter callbacks.
+    Contributes to JB#31927
+  * [inactivity] Refactor inactivity module. Contributes to JB#31927
+  * [inactivity] Use heartbeat timer to enter inactive state. Contributes
+    to JB#31927
+  * [inactivity] Block suspend during inactivity broadcast. Fixes JB#31927
+  * [inactivity] Tune debug logging. Contributes to JB#31927
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 03 Sep 2015 19:27:32 +0300
+
 mce (1.62.2) unstable; urgency=low
 
   * [tklock] Do not disable double tap if lid close has been ignored.
