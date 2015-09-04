@@ -608,16 +608,6 @@ modules/filter-brightness-als.pic.o:\
 	modules/display.h\
 	modules/filter-brightness-als.h\
 
-modules/filter-brightness-simple.o:\
-	modules/filter-brightness-simple.c\
-	datapipe.h\
-	mce.h\
-
-modules/filter-brightness-simple.pic.o:\
-	modules/filter-brightness-simple.c\
-	datapipe.h\
-	mce.h\
-
 modules/inactivity.o:\
 	modules/inactivity.c\
 	builtin-gconf.h\
