@@ -30,7 +30,7 @@
  *  0 -> from idle callback
  * >0 -> from timer callback after TRANSITION_DELAY ms
  */
-#define TRANSITION_DELAY		-1
+#define TRANSITION_DELAY                -1
 
 void mce_dsme_request_powerup(void);
 void mce_dsme_request_reboot(void);
