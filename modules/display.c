@@ -261,7 +261,6 @@ static const char         *blanking_pause_mode_repr(blanking_pause_mode_t mode);
  * ------------------------------------------------------------------------- */
 
 static bool                mdy_shutdown_in_progress(void);
-static void                mdy_shutdown_set_state(bool in_progress);
 
 /* ------------------------------------------------------------------------- *
  * DATAPIPE_TRACKING
@@ -285,6 +284,7 @@ static void                mdy_datapipe_power_saving_mode_cb(gconstpointer data)
 static void                mdy_datapipe_call_state_trigger_cb(gconstpointer data);
 static void                mdy_datapipe_device_inactive_cb(gconstpointer data);
 static void                mdy_datapipe_orientation_state_cb(gconstpointer data);
+static void                mdy_datapipe_shutting_down_cb(gconstpointer aptr);
 
 static void                mdy_datapipe_init(void);
 static void                mdy_datapipe_quit(void);
@@ -677,11 +677,6 @@ static gboolean            mdy_dbus_handle_blanking_pause_cancel_req(DBusMessage
 
 static gboolean            mdy_dbus_handle_desktop_started_sig(DBusMessage *const msg);
 
-static void                mdy_dbus_handle_shutdown_started(void);
-static gboolean            mdy_dbus_handle_shutdown_started_sig(DBusMessage *const msg);
-static gboolean            mdy_dbus_handle_thermal_shutdown_started_sig(DBusMessage *const msg);
-static gboolean            mdy_dbus_handle_battery_empty_shutdown_started_sig(DBusMessage *const msg);
-
 static void                mdy_dbus_init(void);
 static void                mdy_dbus_quit(void);
 
@@ -755,32 +750,6 @@ static guint mdy_desktop_ready_id = 0;
 static bool mdy_shutdown_in_progress(void)
 {
     return mdy_shutdown_started_flag;
-}
-
-/** Update device is shutting down state
- */
-static void mdy_shutdown_set_state(bool in_progress)
-{
-    if( mdy_shutdown_started_flag == in_progress )
-        goto EXIT;
-
-    if( (mdy_shutdown_started_flag = in_progress) ) {
-        mce_log(LL_DEVEL, "Shutdown started");
-        mdy_shutdown_started_tick = mdy_get_boot_tick();
-    }
-    else {
-        mce_log(LL_DEVEL, "Shutdown canceled");
-    }
-
-    execute_datapipe(&shutting_down_pipe,
-                     GINT_TO_POINTER(mdy_shutdown_started_flag),
-                     USE_INDATA, CACHE_INDATA);
-
-    /* Framebuffer must be kept open during shutdown */
-    mdy_fbdev_rethink();
-
-EXIT:
-    return;
 }
 
 /* ------------------------------------------------------------------------- *
@@ -1109,34 +1078,6 @@ static void mdy_datapipe_system_state_cb(gconstpointer data)
     mce_log(LL_DEBUG, "system_state: %s -> %s",
             system_state_repr(prev),
             system_state_repr(system_state));
-
-    switch( system_state ) {
-    case MCE_STATE_ACTDEAD:
-    case MCE_STATE_USER:
-        /* TODO: Is there any reason to keep this?
-         * Compositor startup turns display on (which should take care of
-         * lipstick & act-dead charging ui) and act dead alarms should get
-         * display on just because there is an alarm */
-#if 0
-        execute_datapipe(&display_state_req_pipe,
-                         GINT_TO_POINTER(MCE_DISPLAY_ON),
-                         USE_INDATA, CACHE_INDATA);
-#endif
-
-        /* Re-entry to actdead/user also means shutdown
-         * has been cancelled */
-        mdy_shutdown_set_state(false);
-        break;
-
-    case MCE_STATE_SHUTDOWN:
-    case MCE_STATE_REBOOT:
-        mdy_shutdown_set_state(true);
-        break;
-
-    case MCE_STATE_UNDEF:
-    default:
-            break;
-    }
 
     /* re-evaluate suspend policy */
     mdy_stm_schedule_rethink();
@@ -1735,6 +1676,33 @@ EXIT:
     return;
 }
 
+/** React to shutdown-in-progress state changes
+ */
+static void mdy_datapipe_shutting_down_cb(gconstpointer aptr)
+{
+    bool prev = mdy_shutdown_started_flag;
+    mdy_shutdown_started_flag = GPOINTER_TO_INT(aptr);
+
+    if( mdy_shutdown_started_flag == prev )
+        goto EXIT;
+
+    if( mdy_shutdown_started_flag ) {
+        mce_log(LL_DEBUG, "Shutdown started");
+
+        /* Cache start of shutdown time stamp */
+        mdy_shutdown_started_tick = mdy_get_boot_tick();
+    }
+    else {
+        mce_log(LL_DEBUG, "Shutdown canceled");
+    }
+
+    /* Framebuffer must be kept open during shutdown */
+    mdy_fbdev_rethink();
+
+EXIT:
+    return;
+}
+
 /** Array of datapipe handlers */
 static datapipe_handler_t mdy_datapipe_handlers[] =
 {
@@ -1820,6 +1788,10 @@ static datapipe_handler_t mdy_datapipe_handlers[] =
     {
         .datapipe = &lid_cover_policy_pipe,
         .output_cb = tklock_datapipe_mdy_datapipe_lid_cover_policy_cb,
+    },
+    {
+        .datapipe  = &shutting_down_pipe,
+        .output_cb = mdy_datapipe_shutting_down_cb,
     },
 
     // sentinel
@@ -7963,68 +7935,6 @@ static gboolean mdy_dbus_handle_desktop_started_sig(DBusMessage *const msg)
     return status;
 }
 
-/** Common code for thermal, battery empty and normal shutdown handling
- */
-static void mdy_dbus_handle_shutdown_started(void)
-{
-    /* mark that we're shutting down */
-    mdy_shutdown_set_state(true);
-
-    /* re-evaluate suspend policy */
-    mdy_stm_schedule_rethink();
-
-#ifdef ENABLE_CPU_GOVERNOR
-    mdy_governor_rethink();
-#endif
-}
-
-/** D-Bus callback for the shutdown notification signal
- *
- * @param msg The D-Bus message
- * @return TRUE on success, FALSE on failure
- */
-static gboolean mdy_dbus_handle_shutdown_started_sig(DBusMessage *const msg)
-{
-    (void)msg;
-
-    mce_log(LL_WARN, "Received shutdown notification");
-    mdy_dbus_handle_shutdown_started();
-
-    return TRUE;
-}
-
-/** D-Bus callback for the thermal shutdown notification signal
- *
- * @param msg The D-Bus message
- * @return TRUE on success, FALSE on failure
- */
-static gboolean
-mdy_dbus_handle_thermal_shutdown_started_sig(DBusMessage *const msg)
-{
-    (void)msg;
-
-    mce_log(LL_WARN, "Received thermal shutdown notification");
-    mdy_dbus_handle_shutdown_started();
-
-    return TRUE;
-}
-
-/** D-Bus callback for the battery empty shutdown notification signal
- *
- * @param msg The D-Bus message
- * @return TRUE on success, FALSE on failure
- */
-static gboolean
-mdy_dbus_handle_battery_empty_shutdown_started_sig(DBusMessage *const msg)
-{
-    (void)msg;
-
-    mce_log(LL_WARN, "Received battery empty shutdown notification");
-    mdy_dbus_handle_shutdown_started();
-
-    return TRUE;
-}
-
 /** Array of dbus message handlers */
 static mce_dbus_handler_t mdy_dbus_handlers[] =
 {
@@ -8064,24 +7974,6 @@ static mce_dbus_handler_t mdy_dbus_handlers[] =
         .name      = "desktop_visible",
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
         .callback  = mdy_dbus_handle_desktop_started_sig,
-    },
-    {
-        .interface = "com.nokia.dsme.signal",
-        .name      = "shutdown_ind",
-        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
-        .callback  = mdy_dbus_handle_shutdown_started_sig,
-    },
-    {
-        .interface = "com.nokia.dsme.signal",
-        .name      = "thermal_shutdown_ind",
-        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
-        .callback  = mdy_dbus_handle_thermal_shutdown_started_sig,
-    },
-    {
-        .interface = "com.nokia.dsme.signal",
-        .name      = "battery_empty_ind",
-        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
-        .callback  = mdy_dbus_handle_battery_empty_shutdown_started_sig,
     },
     /* method calls */
     {

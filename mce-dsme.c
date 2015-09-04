@@ -53,6 +53,9 @@ static guint mce_dsme_iowatch_id = 0;
 /** ID for delayed state transition reporting timer */
 static guint mce_dsme_state_report_id = 0;
 
+/** Have we seen shutdown_ind signal or equivalent from dsme */
+static bool mce_dsme_shutting_down_flag = false;
+
 /* Internal functions */
 
 static bool           mce_dsme_send(gpointer msg, const char *request_name);
@@ -61,17 +64,29 @@ static void           mce_dsme_init_processwd(void);
 static void           mce_dsme_exit_processwd(void);
 static void           mce_dsme_query_system_state(void);
 
+void                  mce_dsme_request_powerup(void);
+void                  mce_dsme_request_reboot(void);
+void                  mce_dsme_request_normal_shutdown(void);
+
 static gboolean       mce_dsme_state_report_cb(gpointer data);
 static void           mce_dsme_cancel_state_report(void);
 static void           mce_dsme_schedule_state_report(void);
 
-static bool           mce_dsme_shutting_down(void);
+static bool           mce_dsme_is_shutting_down(void);
+static void           mce_dsme_set_shutting_down(bool shutting_down);
+
 static system_state_t mce_dsme_normalise_system_state(dsme_state_t dsmestate);
 
 static const char    *mce_dsme_msg_type_repr(int type);
 static gboolean       mce_dsme_iowatch_cb(GIOChannel *source, GIOCondition condition, gpointer data);
-static gboolean       mce_dsme_init_done_cb(DBusMessage *const msg);
-static void           mce_dsme_dsme_available_cb(gconstpointer const data);
+
+static gboolean       mce_dsme_dbus_init_done_cb              (DBusMessage *const msg);
+static gboolean       mce_dsme_dbus_shutdown_cb               (DBusMessage *const msg);
+static gboolean       mce_dsme_dbus_thermal_shutdown_cb       (DBusMessage *const msg);
+static gboolean       mce_dsme_dbus_battery_empty_shutdown_cb (DBusMessage *const msg);
+
+static void           mce_dsme_dsme_available_cb              (gconstpointer data);
+static gpointer       mce_dsme_datapipe_system_state_cb       (gpointer data);
 
 static bool           mce_dsme_connected(void);
 static bool           mce_dsme_connect(void);
@@ -280,25 +295,31 @@ EXIT:
  *
  * @return true if shutdown is in progress, false otherwise
  */
-static bool mce_dsme_shutting_down(void)
+static bool mce_dsme_is_shutting_down(void)
 {
-	bool shutting_down = false;
+	return mce_dsme_shutting_down_flag;
+}
 
-	switch( system_state ) {
-	case MCE_STATE_SHUTDOWN:
-	case MCE_STATE_REBOOT:
-		shutting_down = true;
-		break;
+/** Update device is shutting down state
+ *
+ * @param shutting_down true if shutdown has started, false otherwise
+ */
+static void mce_dsme_set_shutting_down(bool shutting_down)
+{
+	if( mce_dsme_shutting_down_flag == shutting_down )
+		goto EXIT;
 
-	default:
-	case MCE_STATE_UNDEF:
-	case MCE_STATE_USER:
-	case MCE_STATE_ACTDEAD:
-	case MCE_STATE_BOOT:
-		break;
-	}
+	mce_dsme_shutting_down_flag = shutting_down;
 
-	return shutting_down;
+	mce_log(LL_DEVEL, "Shutdown %s",
+		mce_dsme_shutting_down_flag ? "started" : "canceled");
+
+	execute_datapipe(&shutting_down_pipe,
+			 GINT_TO_POINTER(mce_dsme_shutting_down_flag),
+			 USE_INDATA, CACHE_INDATA);
+
+EXIT:
+	return;
 }
 
 /**
@@ -432,7 +453,7 @@ static gboolean mce_dsme_iowatch_cb(GIOChannel *source,
 	(void)data;
 
 	if( condition & (G_IO_ERR | G_IO_HUP | G_IO_NVAL) ) {
-		if( !mce_dsme_shutting_down() )
+		if( !mce_dsme_is_shutting_down() )
 			mce_log(LL_CRIT, "DSME socket hangup/error");
 		keep_going = FALSE;
 		goto EXIT;
@@ -442,7 +463,7 @@ static gboolean mce_dsme_iowatch_cb(GIOChannel *source,
 		goto EXIT;
 
 	if( DSMEMSG_CAST(DSM_MSGTYPE_CLOSE, msg) ) {
-		if( !mce_dsme_shutting_down() )
+		if( !mce_dsme_is_shutting_down() )
 			mce_log(LL_WARN, "DSME socket closed");
 		keep_going = FALSE;
 	}
@@ -450,42 +471,9 @@ static gboolean mce_dsme_iowatch_cb(GIOChannel *source,
 		mce_dsme_send_pong();
 	}
 	else if( (msg2 = DSMEMSG_CAST(DSM_MSGTYPE_STATE_CHANGE_IND, msg)) ) {
-		system_state_t prev = system_state;
-		system_state = mce_dsme_normalise_system_state(msg2->state);
-		mce_log(LL_DEVEL, "DSME device state change: %d", system_state);
-
-		/* If we're changing to a different state,
-		 * add the transition flag, UNLESS the old state
-		 * was MCE_STATE_UNDEF
-		 */
-		if( system_state != prev && prev != MCE_STATE_UNDEF )
-			mce_add_submode_int32(MCE_TRANSITION_SUBMODE);
-
-		switch (system_state) {
-		case MCE_STATE_USER:
-			execute_datapipe_output_triggers(&led_pattern_activate_pipe, MCE_LED_PATTERN_DEVICE_ON, USE_INDATA);
-			break;
-
-		case MCE_STATE_ACTDEAD:
-		case MCE_STATE_BOOT:
-		case MCE_STATE_UNDEF:
-			break;
-
-		case MCE_STATE_SHUTDOWN:
-		case MCE_STATE_REBOOT:
-			execute_datapipe_output_triggers(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_DEVICE_ON, USE_INDATA);
-			break;
-
-		default:
-			break;
-		}
-
-		mce_log(LL_DEVEL, "system_state: %s -> %s",
-			system_state_repr(prev),
-			system_state_repr(system_state));
-
+		system_state_t state = mce_dsme_normalise_system_state(msg2->state);
 		execute_datapipe(&system_state_pipe,
-				 GINT_TO_POINTER(system_state),
+				 GINT_TO_POINTER(state),
 				 USE_INDATA, CACHE_INDATA);
 	}
 	else {
@@ -498,7 +486,7 @@ EXIT:
 	free(msg);
 
 	if( !keep_going ) {
-		if( !mce_dsme_shutting_down() ) {
+		if( !mce_dsme_is_shutting_down() ) {
 			mce_log(LL_WARN, "DSME i/o notifier disabled;"
 				" assuming dsme was stopped");
 		}
@@ -513,31 +501,79 @@ EXIT:
 	return keep_going;
 }
 
-/**
- * D-Bus callback for the init done notification signal
+/** D-Bus callback for the init done notification signal
  *
  * @param msg The D-Bus message
- * @return TRUE on success, FALSE on failure
+ *
+ * @return TRUE
  */
-static gboolean mce_dsme_init_done_cb(DBusMessage *const msg)
+static gboolean mce_dsme_dbus_init_done_cb(DBusMessage *const msg)
 {
-	gboolean status = FALSE;
-
 	(void)msg;
 
 	mce_log(LL_DEVEL, "Received init done notification");
 
-	if ((mce_get_submode_int32() & MCE_TRANSITION_SUBMODE)) {
+	if( (mce_get_submode_int32() & MCE_TRANSITION_SUBMODE) ) {
+		/* Remove transition submode after brief delay */
 		mce_dsme_schedule_state_report();
 	}
 
-	status = TRUE;
+	return TRUE;
+}
 
-//EXIT:
-	return status;
+/** D-Bus callback for the shutdown notification signal
+ *
+ * @param msg The D-Bus message
+ *
+ * @return TRUE
+ */
+static gboolean mce_dsme_dbus_shutdown_cb(DBusMessage *const msg)
+{
+	(void)msg;
+
+	mce_log(LL_WARN, "Received shutdown notification");
+	mce_dsme_set_shutting_down(true);
+
+	return TRUE;
+}
+
+/** D-Bus callback for the thermal shutdown notification signal
+ *
+ * @param msg The D-Bus message
+ *
+ * @return TRUE
+ */
+static gboolean
+mce_dsme_dbus_thermal_shutdown_cb(DBusMessage *const msg)
+{
+	(void)msg;
+
+	mce_log(LL_WARN, "Received thermal shutdown notification");
+	mce_dsme_set_shutting_down(true);
+
+	return TRUE;
+}
+
+/** D-Bus callback for the battery empty shutdown notification signal
+ *
+ * @param msg The D-Bus message
+ *
+ * @return TRUE
+ */
+static gboolean
+mce_dsme_dbus_battery_empty_shutdown_cb(DBusMessage *const msg)
+{
+	(void)msg;
+
+	mce_log(LL_WARN, "Received battery empty shutdown notification");
+	mce_dsme_set_shutting_down(true);
+
+	return TRUE;
 }
 
 /** Datapipe trigger for dsme availability
+ *
+ * @param data DSME D-Bus service availability (as a void pointer)
  */
 static void mce_dsme_dsme_available_cb(gconstpointer const data)
 {
@@ -558,6 +594,68 @@ static void mce_dsme_dsme_available_cb(gconstpointer const data)
 
 EXIT:
 	return;
+}
+
+/** Handle system_state_pipe notifications
+ *
+ * Implemented as an input filter to ensure this function gets
+ * executed before output triggers from other modules/plugins.
+ *
+ * @param data The system state (as a void pointer)
+ *
+ * @return system state (as a void pointer)
+ */
+static gpointer mce_dsme_datapipe_system_state_cb(gpointer data)
+{
+	system_state_t prev = system_state;
+	system_state = GPOINTER_TO_INT(data);
+
+	if( system_state == prev )
+		goto EXIT;
+
+	mce_log(LL_DEVEL, "system_state: %s -> %s",
+		system_state_repr(prev),
+		system_state_repr(system_state));
+
+	/* Set transition submode unless coming from MCE_STATE_UNDEF */
+	if( prev != MCE_STATE_UNDEF )
+		mce_add_submode_int32(MCE_TRANSITION_SUBMODE);
+
+	/* Handle LED patterns */
+	switch( system_state ) {
+	case MCE_STATE_USER:
+		execute_datapipe_output_triggers(&led_pattern_activate_pipe, MCE_LED_PATTERN_DEVICE_ON, USE_INDATA);
+		break;
+
+	case MCE_STATE_SHUTDOWN:
+	case MCE_STATE_REBOOT:
+		execute_datapipe_output_triggers(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_DEVICE_ON, USE_INDATA);
+		break;
+
+	default:
+		break;
+	}
+
+	/* Handle shutdown flag */
+	switch( system_state ) {
+	case MCE_STATE_ACTDEAD:
+	case MCE_STATE_USER:
+		/* Re-entry to actdead/user also means shutdown
+		 * has been cancelled */
+		mce_dsme_set_shutting_down(false);
+		break;
+
+	case MCE_STATE_SHUTDOWN:
+	case MCE_STATE_REBOOT:
+		mce_dsme_set_shutting_down(true);
+		break;
+
+	default:
+		break;
+	}
+
+EXIT:
+	return GINT_TO_POINTER(system_state);
 }
 
 /** Predicate for: socket connection to dsme exists
@@ -652,9 +750,26 @@ static mce_dbus_handler_t mce_dsme_dbus_handlers[] =
 		.interface = "com.nokia.startup.signal",
 		.name      = "init_done",
 		.type      = DBUS_MESSAGE_TYPE_SIGNAL,
-		.callback  = mce_dsme_init_done_cb,
+		.callback  = mce_dsme_dbus_init_done_cb,
 	},
-
+	{
+		.interface = "com.nokia.dsme.signal",
+		.name      = "shutdown_ind",
+		.type      = DBUS_MESSAGE_TYPE_SIGNAL,
+		.callback  = mce_dsme_dbus_shutdown_cb,
+	},
+	{
+		.interface = "com.nokia.dsme.signal",
+		.name      = "thermal_shutdown_ind",
+		.type      = DBUS_MESSAGE_TYPE_SIGNAL,
+		.callback  = mce_dsme_dbus_thermal_shutdown_cb,
+	},
+	{
+		.interface = "com.nokia.dsme.signal",
+		.name      = "battery_empty_ind",
+		.type      = DBUS_MESSAGE_TYPE_SIGNAL,
+		.callback  = mce_dsme_dbus_battery_empty_shutdown_cb,
+	},
 	/* sentinel */
 	{
 		.interface = 0
@@ -678,6 +793,11 @@ static void mce_dsme_quit_dbus(void)
 /** Array of datapipe handlers */
 static datapipe_handler_t mce_dsme_datapipe_handlers[] =
 {
+	// input filters
+	{
+		.datapipe  = &system_state_pipe,
+		.filter_cb = mce_dsme_datapipe_system_state_cb,
+	},
 	// output triggers
 	{
 		.datapipe  = &dsme_available_pipe,
