@@ -364,14 +364,6 @@ mce.pic.o:\
 	powerkey.h\
 	tklock.h\
 
-median_filter.o:\
-	median_filter.c\
-	median_filter.h\
-
-median_filter.pic.o:\
-	median_filter.c\
-	median_filter.h\
-
 modetransition.o:\
 	modetransition.c\
 	datapipe.h\

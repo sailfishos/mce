@@ -290,7 +290,6 @@ MCE_CORE += datapipe.c
 MCE_CORE += mce-modules.c
 MCE_CORE += mce-io.c
 MCE_CORE += mce-lib.c
-MCE_CORE += median_filter.c
 MCE_CORE += evdev.c
 MCE_CORE += filewatcher.c
 ifeq ($(ENABLE_HYBRIS),y)
@@ -597,8 +596,6 @@ NORMALIZE_USES_TAB =\
 	mce-modules.c\
 	mce.c\
 	mce.h\
-	median_filter.c\
-	median_filter.h\
 	modetransition.c\
 	modules/alarm.c\
 	modules/battery-bme.c\
