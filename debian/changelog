@@ -1,3 +1,10 @@
+mce (1.62.5) unstable; urgency=low
+
+  * [cleanup] Remove unused median_filter module. Contributes to MER#1290
+  * [cleanup] Remove unused filter-brightness-simple plugin. Fixes MER#1290
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Sat, 05 Sep 2015 08:20:29 +0300
+
 mce (1.62.4) unstable; urgency=low
 
   * [cleanup] Remove tests scripts that are not needed or do not work.
