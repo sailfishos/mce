@@ -138,7 +138,6 @@ TARGETS += mce
 # Plugins to build
 MODULES += $(MODULE_DIR)/radiostates.so
 MODULES += $(MODULE_DIR)/filter-brightness-als.so
-MODULES += $(MODULE_DIR)/filter-brightness-simple.so
 MODULES += $(MODULE_DIR)/proximity.so
 MODULES += $(MODULE_DIR)/keypad.so
 MODULES += $(MODULE_DIR)/inactivity.so
@@ -290,7 +289,6 @@ MCE_CORE += datapipe.c
 MCE_CORE += mce-modules.c
 MCE_CORE += mce-io.c
 MCE_CORE += mce-lib.c
-MCE_CORE += median_filter.c
 MCE_CORE += evdev.c
 MCE_CORE += filewatcher.c
 ifeq ($(ENABLE_HYBRIS),y)
@@ -553,7 +551,6 @@ NORMALIZE_USES_SPC =\
 	modules/display.dot\
 	modules/doubletap.c\
 	modules/doubletap.h\
-	modules/filter-brightness-simple.h\
 	modules/keypad.h\
 	modules/inactivity.c\
 	modules/memnotify.c\
@@ -597,8 +594,6 @@ NORMALIZE_USES_TAB =\
 	mce-modules.c\
 	mce.c\
 	mce.h\
-	median_filter.c\
-	median_filter.h\
 	modetransition.c\
 	modules/alarm.c\
 	modules/battery-bme.c\
@@ -606,7 +601,6 @@ NORMALIZE_USES_TAB =\
 	modules/display.h\
 	modules/filter-brightness-als.c\
 	modules/filter-brightness-als.h\
-	modules/filter-brightness-simple.c\
 	modules/keypad.c\
 	modules/led.c\
 	modules/led.h\

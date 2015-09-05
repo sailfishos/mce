@@ -364,14 +364,6 @@ mce.pic.o:\
 	powerkey.h\
 	tklock.h\
 
-median_filter.o:\
-	median_filter.c\
-	median_filter.h\
-
-median_filter.pic.o:\
-	median_filter.c\
-	median_filter.h\
-
 modetransition.o:\
 	modetransition.c\
 	datapipe.h\
@@ -615,16 +607,6 @@ modules/filter-brightness-als.pic.o:\
 	tklock.h\
 	modules/display.h\
 	modules/filter-brightness-als.h\
-
-modules/filter-brightness-simple.o:\
-	modules/filter-brightness-simple.c\
-	datapipe.h\
-	mce.h\
-
-modules/filter-brightness-simple.pic.o:\
-	modules/filter-brightness-simple.c\
-	datapipe.h\
-	mce.h\
 
 modules/inactivity.o:\
 	modules/inactivity.c\
