@@ -1,3 +1,10 @@
+mce (1.62.6) unstable; urgency=low
+
+  * [dsme] Move dsme signal handling to mce-dsme module. Fixes JB#28901
+  * [dsme] Refactor mce-dsme module.Contributes to JB#28901
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 07 Sep 2015 08:23:14 +0300
+
 mce (1.62.5) unstable; urgency=low
 
   * [cleanup] Remove unused median_filter module. Contributes to MER#1290
