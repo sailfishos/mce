@@ -115,7 +115,7 @@ datapipe_struct orientation_sensor_pipe;
 /** The alarm UI state */
 datapipe_struct alarm_ui_state_pipe;
 
-/** The device state */
+/** The device state; read only */
 datapipe_struct system_state_pipe;
 
 /** Enable/disable radios */

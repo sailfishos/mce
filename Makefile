@@ -527,6 +527,8 @@ NORMALIZE_USES_SPC =\
 	filewatcher.c\
 	filewatcher.h\
 	libwakelock.h\
+	mce-dsme.c\
+	mce-dsme.h\
 	mce-fbdev.c\
 	mce-fbdev.h\
 	mce-command-line.c\
@@ -579,8 +581,6 @@ NORMALIZE_USES_TAB =\
 	mce-conf.h\
 	mce-dbus.c\
 	mce-dbus.h\
-	mce-dsme.c\
-	mce-dsme.h\
 	mce-gconf.c\
 	mce-gconf.h\
 	mce-hal.c\
