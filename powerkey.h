@@ -117,7 +117,7 @@ typedef enum
 #define DEFAULT_POWERKEY_ACTIONS_SINGLE_ON  "blank,tklock"
 
 /** Default actions for double press while display is on */
-#define DEFAULT_POWERKEY_ACTIONS_DOUBLE_ON  "blank,tklock,devlock"
+#define DEFAULT_POWERKEY_ACTIONS_DOUBLE_ON  "blank,tklock,devlock,vibrate"
 
 /** Default actions for long press while display is on */
 #define DEFAULT_POWERKEY_ACTIONS_LONG_ON    "shutdown"
