@@ -3526,6 +3526,7 @@ static bool xmce_is_powerkey_action(const char *name)
                 "tklock",
                 "devlock",
                 "shutdown",
+                "vibrate",
                 "unblank",
                 "tkunlock",
                 "dbus1",
@@ -5192,11 +5193,16 @@ static const mce_opt_t options[] =
                         "  blank    - turn display off\n"
                         "  tklock   - lock ui\n"
                         "  devlock  - lock device\n"
-                        "  dbus1    - send dbus signal or make method call\n"
                         "  shutdown - power off device\n"
+                        "  vibrate  - play vibrate event via ngfd\n"
                         "  unblank  - turn display on\n"
                         "  tkunlock - unlock ui\n"
+                        "  dbus1    - send dbus signal or make method call\n"
                         "  dbus2    - send dbus signal or make method call\n"
+                        "  dbus3    - send dbus signal or make method call\n"
+                        "  dbus4    - send dbus signal or make method call\n"
+                        "  dbus5    - send dbus signal or make method call\n"
+                        "  dbus6    - send dbus signal or make method call\n"
                         "\n"
                         "Comma separated list of actions can be used.\n"
         },
