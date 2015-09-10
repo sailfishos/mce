@@ -3298,6 +3298,10 @@ static struct
 	.datapipe = &usbmoded_available_pipe,
     },
     {
+	.name     = "com.nokia.NonGraphicFeedback1.Backend",
+	.datapipe = &ngfd_available_pipe,
+    },
+    {
 	.name = 0,
     }
 };

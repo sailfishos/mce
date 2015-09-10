@@ -3,7 +3,7 @@
  * Power key logic for the Mode Control Entity
  * <p>
  * Copyright © 2004-2011 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright © 2014 Jolla Ltd.
+ * Copyright © 2014-2015 Jolla Ltd.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
@@ -44,6 +44,8 @@
 #include <errno.h>
 
 #include <mce/dbus-names.h>
+
+#include <libngf/ngf.h>
 
 /* ========================================================================= *
  * OVERVIEW
@@ -143,6 +145,7 @@ static void  pwrkey_ps_override_evaluate(void);
 static gint  pwrkey_action_blank_mode = PWRKEY_BLANK_TO_OFF;
 static guint pwrkey_action_blank_mode_gconf_id = 0;
 
+static void  pwrkey_action_vibrate  (void);
 static void  pwrkey_action_shutdown (void);
 static void  pwrkey_action_tklock   (void);
 static void  pwrkey_action_blank    (void);
@@ -262,6 +265,18 @@ static gboolean pwrkey_double_press_timer_cb(gpointer aptr);
 static bool     pwrkey_double_press_timer_pending(void);
 static bool     pwrkey_double_press_timer_cancel(void);
 static void     pwrkey_double_press_timer_start(void);
+
+/* ------------------------------------------------------------------------- *
+ * NGFD_GLUE
+ * ------------------------------------------------------------------------- */
+
+static const char *xngf_state_repr    (NgfEventState state);
+static void        xngf_status_cb     (NgfClient *client, uint32_t event_id, NgfEventState state, void *userdata);
+static bool        xngf_create_client (void);
+static void        xngf_delete_client (void);
+static void        xngf_play_event    (const char *event_name);
+static void        xngf_init          (void);
+static void        xngf_quit          (void);
 
 /* ------------------------------------------------------------------------- *
  * DBUS_ACTIONS
@@ -410,6 +425,7 @@ static void     pwrkey_gconf_quit(void);
  * ------------------------------------------------------------------------- */
 
 static void pwrkey_datapipes_keypress_cb(gconstpointer const data);
+static void pwrkey_datapipe_ngfd_available_cb(gconstpointer data);
 
 static void pwrkey_datapipes_init(void);
 static void pwrkey_datapipes_quit(void);
@@ -602,6 +618,13 @@ EXIT:
  * ========================================================================= */
 
 static void
+pwrkey_action_vibrate(void)
+{
+    mce_log(LL_DEBUG, "Requesting vibrate");
+    xngf_play_event("pwrkey");
+}
+
+static void
 pwrkey_action_shutdown(void)
 {
     submode_t submode = mce_get_submode_int32();
@@ -767,6 +790,10 @@ static const pwrkey_bitconf_t pwrkey_action_lut[] =
     {
         .name = "shutdown",
         .func = pwrkey_action_shutdown,
+    },
+    {
+        .name = "vibrate",
+        .func = pwrkey_action_vibrate,
     },
 
     // Direction: OFF->ON
@@ -2168,6 +2195,33 @@ pwrkey_gconf_quit(void)
  * DATAPIPE_HANDLING
  * ========================================================================= */
 
+/** NGFD availability */
+static service_state_t ngfd_available = SERVICE_STATE_UNDEF;
+
+/** Handle ngfd_available notifications
+ *
+ * @param data service availability (as void pointer)
+ */
+static void
+pwrkey_datapipe_ngfd_available_cb(gconstpointer data)
+{
+    service_state_t prev = ngfd_available;
+    ngfd_available = GPOINTER_TO_INT(data);
+
+    if( ngfd_available == prev )
+        goto EXIT;
+
+    mce_log(LL_NOTICE, "ngfd_available = %s -> %s",
+            service_state_repr(prev),
+            service_state_repr(ngfd_available));
+
+    if( ngfd_available != SERVICE_STATE_RUNNING )
+        xngf_delete_client();
+
+EXIT:
+    return;
+}
+
 /**
  * Datapipe trigger for the [power] key
  *
@@ -2214,13 +2268,37 @@ EXIT:
     return;
 }
 
+/** Array of datapipe handlers */
+static datapipe_handler_t pwrkey_datapipe_handlers[] =
+{
+    // input triggers
+    {
+        .datapipe = &keypress_pipe,
+        .input_cb = pwrkey_datapipes_keypress_cb,
+    },
+    // output triggers
+    {
+        .datapipe  = &ngfd_available_pipe,
+        .output_cb = pwrkey_datapipe_ngfd_available_cb,
+    },
+    // sentinel
+    {
+        .datapipe = 0,
+    }
+};
+
+static datapipe_bindings_t pwrkey_datapipe_bindings =
+{
+    .module   = "powerkey",
+    .handlers = pwrkey_datapipe_handlers,
+};
+
 /** Append triggers/filters to datapipes
  */
 static void
 pwrkey_datapipes_init(void)
 {
-    append_input_trigger_to_datapipe(&keypress_pipe,
-                                     pwrkey_datapipes_keypress_cb);
+    datapipe_bindings_init(&pwrkey_datapipe_bindings);
 }
 
 /** Remove triggers/filters from datapipes
@@ -2228,8 +2306,131 @@ pwrkey_datapipes_init(void)
 static void
 pwrkey_datapipes_quit(void)
 {
-    remove_input_trigger_from_datapipe(&keypress_pipe,
-                                       pwrkey_datapipes_keypress_cb);
+    datapipe_bindings_quit(&pwrkey_datapipe_bindings);
+}
+
+/* ========================================================================= *
+ * NGFD_GLUE
+ * ========================================================================= */
+
+static NgfClient       *ngf_client_hnd = 0;
+static DBusConnection  *ngf_dbus_con   = 0;
+static uint32_t         ngf_event_id   = 0;
+
+static const char *
+xngf_state_repr(NgfEventState state)
+{
+    const char *repr = "unknown";
+
+    switch( state ) {
+    case NGF_EVENT_FAILED:    repr = "failed";    break;
+    case NGF_EVENT_COMPLETED: repr = "completed"; break;
+    case NGF_EVENT_PLAYING:   repr = "playing";   break;
+    case NGF_EVENT_PAUSED:    repr = "paused";    break;
+    default: break;
+    }
+
+    return repr;
+}
+static void
+xngf_status_cb(NgfClient *client, uint32_t event_id, NgfEventState state, void *userdata)
+{
+    (void) client;
+    (void) userdata;
+
+    mce_log(LL_DEBUG, "%s(%d)", xngf_state_repr(state), event_id);
+
+    switch( state ) {
+    default:
+    case NGF_EVENT_PLAYING:
+    case NGF_EVENT_PAUSED:
+        break;
+
+    case NGF_EVENT_COMPLETED:
+        ngf_event_id = 0;
+        break;
+
+    case NGF_EVENT_FAILED:
+        mce_log(LL_ERR, "Failed to play id %d", event_id);
+        ngf_event_id = 0;
+        break;
+
+    }
+}
+
+static bool
+xngf_create_client(void)
+{
+    if( !ngf_dbus_con ) {
+        mce_log(LL_WARN, "can't use ngfd - no dbus connection");
+        goto EXIT;
+    }
+
+    if( ngfd_available != SERVICE_STATE_RUNNING ) {
+        mce_log(LL_WARN, "can't use ngfd - service not running");
+        goto EXIT;
+    }
+
+    if( ngf_client_hnd )
+        goto EXIT;
+
+    ngf_client_hnd = ngf_client_create(NGF_TRANSPORT_DBUS, ngf_dbus_con);
+    if( !ngf_client_hnd ) {
+        mce_log(LL_WARN, "can't use ngfd - failed to create client");
+        goto EXIT;
+    }
+
+    ngf_client_set_callback(ngf_client_hnd, xngf_status_cb, NULL);
+
+    mce_log(LL_DEBUG, "ngfd client created");
+
+EXIT:
+    return ngf_client_hnd != 0;
+}
+
+static void
+xngf_delete_client(void)
+{
+    if( ngf_client_hnd ) {
+        ngf_client_destroy(ngf_client_hnd), ngf_client_hnd = 0;
+        mce_log(LL_DEBUG, "ngfd client deleted");
+    }
+
+    ngf_event_id = 0;
+}
+
+static void
+xngf_play_event(const char *event_name)
+{
+    if( ngf_event_id ) {
+        mce_log(LL_WARN, "previous event not finished yet");
+        goto EXIT;
+    }
+
+    if( !xngf_create_client() )
+        goto EXIT;
+
+    ngf_event_id = ngf_client_play_event (ngf_client_hnd, event_name, NULL);
+
+    mce_log(LL_DEBUG, "event=%s, id=%d", event_name, ngf_event_id);
+
+EXIT:
+    return;
+}
+
+static void
+xngf_init(void)
+{
+    ngf_dbus_con = dbus_connection_get();
+}
+
+static void
+xngf_quit(void)
+{
+    xngf_delete_client();
+
+    if (ngf_dbus_con)
+        dbus_connection_unref(ngf_dbus_con), ngf_dbus_con = 0;
 }
 
 /* ========================================================================= *
@@ -2249,6 +2450,8 @@ gboolean mce_powerkey_init(void)
 
     pwrkey_gconf_init();
 
+    xngf_init();
+
     return TRUE;
 }
 
@@ -2259,6 +2462,8 @@ gboolean mce_powerkey_init(void)
  */
 void mce_powerkey_exit(void)
 {
+    xngf_quit();
+
     pwrkey_dbus_quit();
 
     pwrkey_gconf_quit();
