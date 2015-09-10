@@ -1,3 +1,10 @@
+mce (1.63.0) unstable; urgency=low
+
+  * [powerkey] Add "vibrate" power key action. Contribues to JB#24488
+  * [powerkey] Vibrate when locking device via double powerkey press. Fixes JB#24488
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 10 Sep 2015 18:23:44 +0300
+
 mce (1.62.6) unstable; urgency=low
 
   * [dsme] Move dsme signal handling to mce-dsme module. Fixes JB#28901
