@@ -1665,18 +1665,18 @@ static gboolean pwrkey_dbus_trigger_event_cb(DBusMessage *const req)
 
     switch (act) {
     default:
-    case 0:
+    case MCE_POWERKEY_EVENT_SHORT_PRESS:
         /* short press */
         pwrkey_actions_do_common();
         pwrkey_actions_do_single_press();
         break;
 
-    case 1:
+    case MCE_POWERKEY_EVENT_LONG_PRESS:
         /* long press */
         pwrkey_actions_do_long_press();
         break;
 
-    case 2:
+    case MCE_POWERKEY_EVENT_DOUBLE_PRESS:
         /* double press */
         pwrkey_actions_do_common();
         pwrkey_actions_do_double_press();

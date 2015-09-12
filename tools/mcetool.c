@@ -1377,9 +1377,9 @@ static const symbol_t tklockblank_values[] = {
  */
 static const symbol_t powerkeyevent_lut[] =
 {
-        { "short",  0 },
-        { "long",   1 },
-        { "double", 2 },
+        { "short",  MCE_POWERKEY_EVENT_SHORT_PRESS },
+        { "long",   MCE_POWERKEY_EVENT_LONG_PRESS },
+        { "double", MCE_POWERKEY_EVENT_DOUBLE_PRESS },
         { 0, -1 }
 };
 
