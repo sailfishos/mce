@@ -44,6 +44,7 @@
 #include <errno.h>
 
 #include <mce/dbus-names.h>
+#include <mce/mode-names.h>
 
 #include <libngf/ngf.h>
 
