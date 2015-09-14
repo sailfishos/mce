@@ -1,3 +1,12 @@
+mce (1.63.1) unstable; urgency=low
+
+  * [powerkey] Use powerkey event constants instead of hardcoded values.
+    Contributes to MER#1310
+  * [packaging] Update mce-dev dependency. Contributes to MER#1310
+  * [powerkey] Add missing include file. Contributes to MER#1310
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 14 Sep 2015 12:05:50 +0300
+
 mce (1.63.0) unstable; urgency=low
 
   * [powerkey] Add "vibrate" power key action. Contribues to JB#24488
