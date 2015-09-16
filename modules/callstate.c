@@ -84,8 +84,14 @@ G_MODULE_EXPORT module_info_struct module_info = {
  * MODULE DATA
  * ========================================================================= */
 
-/** List of monitored call state requesters; holds zero or one entries */
-static GSList *call_state_monitor_list = NULL;
+/** Maximum number of concurrent call state requesters */
+#define CLIENTS_MONITOR_COUNT 15
+
+/** List of monitored call state requesters */
+static GSList *clients_monitor_list = NULL;
+
+/** Lookup table for state data / each call state requester */
+static GHashTable *clients_state_lut = 0;
 
 static void call_state_rethink_schedule(void);
 static bool call_state_rethink_forced(void);
@@ -205,6 +211,13 @@ typedef struct
     call_state_t state;
     call_type_t  type;
 } ofono_vcall_t;
+
+static void clients_merge_state_cb(gpointer key, gpointer val, gpointer aptr);
+static void clients_merge_state   (ofono_vcall_t *combined);
+static void clients_set_state     (const char *dbus_name, const ofono_vcall_t *vcall);
+static void clients_get_state     (const char *dbus_name, ofono_vcall_t *vcall);
+static void clients_init          (void);
+static void clients_quit          (void);
 
 /** Merge emergency data to oFono voice call object
  *
@@ -1185,6 +1198,116 @@ xofono_name_owner_get(void)
  * SIMULATED CALL STATE (for debugging purposes)
  * ========================================================================= */
 
+/** Dummy vcall data used for clients that are not tracked */
+static const ofono_vcall_t clients_vcall_def =
+{
+    .state = CALL_STATE_NONE,
+    .type  = NORMAL_CALL,
+};
+
+/** Enumeration callback for evaluating combined dbus client state
+ *
+ * @param key   D-Bus name of the client (as void pointer)
+ * @param val   ofono_vcall_t data of the client (as void pointer)
+ * @param aptr  ofono_vcall_t data to update (as void pointer)
+ */
+static void
+clients_merge_state_cb(gpointer key, gpointer val, gpointer aptr)
+{
+    (void)key;
+
+    ofono_vcall_t *combined  = aptr;
+    ofono_vcall_t *simulated = val;
+
+    ofono_vcall_merge_vcall(combined, simulated);
+}
+
+/** Update overall call state by inspecting all active dbus client states
+ *
+ * @param combined  ofono_vcall_t data to update
+ */
+static void
+clients_merge_state(ofono_vcall_t *combined)
+{
+    if( !clients_state_lut )
+        goto EXIT;
+
+    g_hash_table_foreach(clients_state_lut, clients_merge_state_cb, combined);
+
+EXIT:
+    return;
+}
+
+/** Set state of one dbus client
+ *
+ * @ dbus_name  D-Bus name of the client
+ * @ vcall      call state for the client, or NULL to remove client data
+ */
+static void
+clients_set_state(const char *dbus_name, const ofono_vcall_t *vcall)
+{
+    if( !clients_state_lut || !dbus_name )
+        goto EXIT;
+
+    if( vcall == 0 || vcall->state == CALL_STATE_NONE ) {
+        g_hash_table_remove(clients_state_lut, dbus_name);
+        goto EXIT;
+    }
+
+    ofono_vcall_t *cached = g_hash_table_lookup(clients_state_lut, dbus_name);
+    if( !cached ) {
+        cached = g_malloc0(sizeof *cached);
+        g_hash_table_replace(clients_state_lut, g_strdup(dbus_name), cached);
+    }
+
+    *cached = *vcall;
+
+EXIT:
+    return;
+}
+
+/** Get state of one dbus client
+ *
+ * Note: Untracked clients are assumed to be in none:normal call state.
+ *
+ * @ dbus_name  D-Bus name of the client
+ * @ vcall      call state to fill in
+ */
+static void
+clients_get_state(const char *dbus_name, ofono_vcall_t *vcall)
+{
+    ofono_vcall_t *cached = 0;
+
+    if( clients_state_lut && dbus_name )
+        cached = g_hash_table_lookup(clients_state_lut, dbus_name);
+
+    *vcall = cached ? *cached : clients_vcall_def;
+}
+
+/** Initialize dbus client tracking */
+static void clients_init(void)
+{
+    if( !clients_state_lut ) {
+        clients_state_lut = g_hash_table_new_full(g_str_hash,
+                                                  g_str_equal,
+                                                  g_free, g_free);
+    }
+}
+
+/** Stop dbus client tracking */
+
+static void clients_quit(void)
+{
+    /* Remove name owner monitors */
+    mce_dbus_owner_monitor_remove_all(&clients_monitor_list);
+
+    /* Flush client state data */
+    if( clients_state_lut ) {
+        g_hash_table_unref(clients_state_lut),
+            clients_state_lut = 0;
+    }
+}
+
 /**
  * Send the call state and type
  *
@@ -1253,13 +1376,6 @@ EXIT:
         return status;
 }
 
-/** Simulated call state */
-static ofono_vcall_t simulated =
-{
-    .state = CALL_STATE_NONE,
-    .type  = NORMAL_CALL,
-};
-
 /**
  * D-Bus callback used for monitoring the process that requested
  * the call state; if that process exits, immediately
@@ -1270,41 +1386,31 @@ static ofono_vcall_t simulated =
  */
 static gboolean call_state_owner_monitor_dbus_cb(DBusMessage *const msg)
 {
-        gboolean status = FALSE;
-        const gchar *old_name;
-        const gchar *new_name;
-        const gchar *service;
-        DBusError error;
+    DBusError   error     = DBUS_ERROR_INIT;
+    const char *dbus_name = 0;
+    const char *old_owner = 0;
+    const char *new_owner = 0;
 
-        /* Register error channel */
-        dbus_error_init(&error);
+    if( !dbus_message_get_args(msg, &error,
+                               DBUS_TYPE_STRING, &dbus_name,
+                               DBUS_TYPE_STRING, &old_owner,
+                               DBUS_TYPE_STRING, &new_owner,
+                               DBUS_TYPE_INVALID) ) {
+        mce_log(LL_ERR, "Failed to parse NameOwnerChanged: %s: %s",
+                error.name, error.message);
+        goto EXIT;
+    }
 
-        /* Extract result */
-        if( !dbus_message_get_args(msg, &error,
-                                   DBUS_TYPE_STRING, &service,
-                                   DBUS_TYPE_STRING, &old_name,
-                                   DBUS_TYPE_STRING, &new_name,
-                                   DBUS_TYPE_INVALID) ) {
-                mce_log(LL_ERR,
-                        "Failed to get argument from %s.%s; %s",
-                        "org.freedesktop.DBus", "NameOwnerChanged",
-                        error.message);
-                dbus_error_free(&error);
-                goto EXIT;
-        }
-
-        /* Remove the name monitor for the call state requester */
-        if (mce_dbus_owner_monitor_remove(service,
-                                          &call_state_monitor_list) == 0) {
-            simulated.state = CALL_STATE_NONE;
-            simulated.type  = NORMAL_CALL;
-            call_state_rethink_schedule();
-        }
-
-        status = TRUE;
+    /* Remove the name monitor for the call state requester */
+    if( mce_dbus_owner_monitor_remove(dbus_name,
+                                      &clients_monitor_list) != -1 ) {
+        clients_set_state(dbus_name, 0);
+        call_state_rethink_schedule();
+    }
 
 EXIT:
-        return status;
+    dbus_error_free(&error);
+    return TRUE;
 }
 
 /** Predicate for checking call state change validity
@@ -1349,18 +1455,20 @@ EXIT:
 static gboolean
 change_call_state_dbus_cb(DBusMessage *const msg)
 {
-    gboolean     status     = FALSE;
-    const char  *state      = 0;
-    const char  *type       = 0;
-    const char  *sender     = dbus_message_get_sender(msg);
-    call_state_t call_state = CALL_STATE_NONE;
-    call_type_t  call_type  = NORMAL_CALL;
-    DBusMessage *reply      = NULL;
-    DBusError    error      = DBUS_ERROR_INIT;
-    dbus_bool_t  changed    = false;
+    gboolean       status   = FALSE;
+    const char    *state    = 0;
+    const char    *type     = 0;
+    const char    *sender   = dbus_message_get_sender(msg);
+    DBusMessage   *reply    = NULL;
+    DBusError      error    = DBUS_ERROR_INIT;
+    dbus_bool_t    changed  = false;
+    ofono_vcall_t  prev     = clients_vcall_def;
+    ofono_vcall_t  curr     = clients_vcall_def;
 
     mce_log(LL_DEVEL, "Received set call state request from %s",
             mce_dbus_get_name_owner_ident(sender));
+
+    clients_get_state(sender, &prev);
 
     if( !dbus_message_get_args(msg, &error,
                                DBUS_TYPE_STRING, &state,
@@ -1374,32 +1482,22 @@ change_call_state_dbus_cb(DBusMessage *const msg)
     }
 
     /* Convert call state to enum */
-    call_state = call_state_parse(state);
-    if( call_state == CALL_STATE_INVALID ) {
+    curr.state = call_state_parse(state);
+    if( curr.state == CALL_STATE_INVALID ) {
         mce_log(LL_WARN, "Invalid call state received; request ignored");
         goto EXIT;
     }
 
     /* Convert call type to enum */
-    call_type = call_type_parse(type);
-    if( call_type == INVALID_CALL ) {
+    curr.type = call_type_parse(type);
+    if( curr.type == INVALID_CALL ) {
         mce_log(LL_WARN, "Invalid call type received; request ignored");
         goto EXIT;
     }
 
     /* reject no-call emergency calls ... */
-    if( call_state == CALL_STATE_NONE )
-        call_type = NORMAL_CALL;
-
-    /* If call state isn't monitored or if the request comes from
-     * the owner of the current state, then some additional changes
-     * are ok
-     */
-    if( call_state_monitor_list &&
-        !mce_dbus_is_owner_monitored(sender, call_state_monitor_list) ) {
-        mce_log(LL_WARN, "Call state already has owner; ignoring request");
-        goto EXIT;
-    }
+    if( curr.state == CALL_STATE_NONE )
+        curr.type = NORMAL_CALL;
 
     /* Only transitions to/from "none" are allowed,
      * and from "ringing" to "active",
@@ -1407,31 +1505,29 @@ change_call_state_dbus_cb(DBusMessage *const msg)
      * is active:emergency
      */
 
-    bool allowed = call_state_change_allowed(simulated.state,
-                                             call_state, call_type);
+    bool allowed = call_state_change_allowed(prev.state,
+                                             curr.state, curr.type);
 
     mce_log(allowed ? LL_DEBUG : LL_WARN,
             "Call state change: %s:%s -> %s:%s %s",
-            call_state_repr(simulated.state),
-            call_type_repr(simulated.type),
-            call_state_repr(call_state),
-            call_type_repr(call_type),
+            call_state_repr(prev.state),
+            call_type_repr(prev.type),
+            call_state_repr(curr.state),
+            call_type_repr(curr.type),
             allowed ? "accepted" : "rejected");
 
     if( !allowed )
         goto EXIT;
 
-    if( call_state != CALL_STATE_NONE &&
+    if( curr.state != CALL_STATE_NONE &&
         mce_dbus_owner_monitor_add(sender, call_state_owner_monitor_dbus_cb,
-                                   &call_state_monitor_list, 1) != -1 ) {
-
-        simulated.state = call_state;
-        simulated.type  = call_type;
+                                   &clients_monitor_list,
+                                   CLIENTS_MONITOR_COUNT) != -1 ) {
+        clients_set_state(sender, &curr);
     }
     else {
-        mce_dbus_owner_monitor_remove(sender, &call_state_monitor_list);
-        simulated.state = CALL_STATE_NONE;
-        simulated.type  = NORMAL_CALL;
+        mce_dbus_owner_monitor_remove(sender, &clients_monitor_list);
+        clients_set_state(sender, 0);
     }
     changed = call_state_rethink_forced();
 
@@ -1530,7 +1626,7 @@ call_state_rethink_now(void)
     };
 
     /* consider simulated call state */
-    ofono_vcall_merge_vcall(&combined, &simulated);
+    clients_merge_state(&combined);
 
     /* consider ofono modem emergency properties */
     if( modems_lut )
@@ -1735,6 +1831,7 @@ const gchar *g_module_check_init(GModule *module)
     (void)module;
 
     /* create look up tables */
+    clients_init();
     vcalls_init();
     modems_init();
 
@@ -1768,6 +1865,7 @@ void g_module_unload(GModule *module)
     /* delete look up tables */
     modems_quit();
     vcalls_quit();
+    clients_quit();
 
     return;
 }
