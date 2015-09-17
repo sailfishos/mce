@@ -239,16 +239,18 @@ ofono_vcall_merge_emergency(ofono_vcall_t *self, bool emergency)
 static void
 ofono_vcall_merge_vcall(ofono_vcall_t *self, const ofono_vcall_t *that)
 {
-    /* if any call is active, we have active call.
-     * otherwise we can have incoming call too */
+    /* When evaluating combined call state, we must
+     * give "ringing" state priority over "active"
+     * so that display and suspend policy works in
+     * expected manner. */
     switch( that->state ) {
     case CALL_STATE_ACTIVE:
-        self->state = CALL_STATE_ACTIVE;
+        if( self->state != CALL_STATE_RINGING )
+            self->state = CALL_STATE_ACTIVE;
         break;
 
     case CALL_STATE_RINGING:
-        if( self->state != CALL_STATE_ACTIVE )
-            self->state = CALL_STATE_RINGING;
+        self->state = CALL_STATE_RINGING;
         break;
 
     default:
