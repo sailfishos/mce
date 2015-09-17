@@ -1,3 +1,10 @@
+mce (1.63.3) unstable; urgency=low
+
+  * [tklock] Show device unlock view if tklock removal must be denied.
+    Fixes MER#1324
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 17 Sep 2015 08:10:01 +0300
+
 mce (1.63.2) unstable; urgency=low
 
   * [callstate] Allow multiple D-Bus clients to set call state. Fixes JB#32301
