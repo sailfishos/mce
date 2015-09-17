@@ -135,7 +135,7 @@ usbmode_cable_state_lookup(const char *mode)
      * is included in the lookup table -> any unknown mode name is assumed
      * to mean that cable is connected & charging should be possible */
 
-    mce_log(LL_WARN, "unknown usb mode '%s'; assuming connected", mode);
+    mce_log(LL_INFO, "unknown usb mode '%s'; assuming connected", mode);
     state = USB_CABLE_CONNECTED;
 
 cleanup:
