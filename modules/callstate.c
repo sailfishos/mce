@@ -1415,39 +1415,6 @@ EXIT:
     return TRUE;
 }
 
-/** Predicate for checking call state change validity
- *
- * @param have  current call state
- * @param want  requested call state
- * @param type  requested call type
- *
- * @return true if transition to requested state is allowed, false otherwise
- */
-static bool
-call_state_change_allowed(call_state_t have,
-                          call_state_t want, call_type_t type)
-{
-    bool allowed = true;
-
-    /* Transition from/to call not active state */
-    if( have == CALL_STATE_NONE || want == CALL_STATE_NONE )
-        goto EXIT;
-
-    /* Answering a ringing call */
-    if( have == CALL_STATE_RINGING && want == CALL_STATE_ACTIVE )
-        goto EXIT;
-
-    /* Activating emergency call state */
-    if( want == CALL_STATE_ACTIVE && type == EMERGENCY_CALL )
-        goto EXIT;
-
-    /* Everything else is abnormal */
-    allowed = false;
-
-EXIT:
-    return allowed;
-}
-
 /**
  * D-Bus callback for the call state change request method call
  *
@@ -1501,25 +1468,11 @@ change_call_state_dbus_cb(DBusMessage *const msg)
     if( curr.state == CALL_STATE_NONE )
         curr.type = NORMAL_CALL;
 
-    /* Only transitions to/from "none" are allowed,
-     * and from "ringing" to "active",
-     * to avoid race conditions; except when new tuple
-     * is active:emergency
-     */
-
-    bool allowed = call_state_change_allowed(prev.state,
-                                             curr.state, curr.type);
-
-    mce_log(allowed ? LL_DEBUG : LL_WARN,
-            "Call state change: %s:%s -> %s:%s %s",
+    mce_log(LL_DEBUG, "Client call state changed: %s:%s -> %s:%s",
             call_state_repr(prev.state),
             call_type_repr(prev.type),
             call_state_repr(curr.state),
-            call_type_repr(curr.type),
-            allowed ? "accepted" : "rejected");
-
-    if( !allowed )
-        goto EXIT;
+            call_type_repr(curr.type));
 
     if( curr.state != CALL_STATE_NONE &&
         mce_dbus_owner_monitor_add(sender, call_state_owner_monitor_dbus_cb,
