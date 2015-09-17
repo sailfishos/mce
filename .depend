@@ -793,18 +793,22 @@ modules/sensor-gestures.o:\
 	builtin-gconf.h\
 	datapipe.h\
 	mce-dbus.h\
+	mce-gconf.h\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce.h\
+	modules/display.h\
 
 modules/sensor-gestures.pic.o:\
 	modules/sensor-gestures.c\
 	builtin-gconf.h\
 	datapipe.h\
 	mce-dbus.h\
+	mce-gconf.h\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce.h\
+	modules/display.h\
 
 modules/usbmode.o:\
 	modules/usbmode.c\

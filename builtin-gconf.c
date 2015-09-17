@@ -1192,6 +1192,16 @@ static const setting_t gconf_defaults[] =
     .def  = G_STRINGIFY(DEFAULT_ORIENTATION_SENSOR_ENABLED),
   },
   {
+    .key  = MCE_GCONF_FLIPOVER_GESTURE_ENABLED,
+    .type = "b",
+    .def  = G_STRINGIFY(DEFAULT_FLIPOVER_GESTURE_ENABLED),
+  },
+  {
+    .key  = MCE_GCONF_ORIENTATION_CHANGE_IS_ACTIVITY,
+    .type = "b",
+    .def  = G_STRINGIFY(DEFAULT_ORIENTATION_CHANGE_IS_ACTIVITY),
+  },
+  {
     .key  = MCE_GCONF_DISPLAY_BLANKING_PAUSE_MODE,
     .type = "i",
     .def  = G_STRINGIFY(DEFAULT_BLANKING_PAUSE_MODE),

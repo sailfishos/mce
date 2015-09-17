@@ -364,6 +364,14 @@ enum
 /** Default value for MCE_GCONF_ORIENTATION_SENSOR_ENABLED setting */
 #define DEFAULT_ORIENTATION_SENSOR_ENABLED      true
 
+/** Flipover gesture detection enabled GConf setting */
+# define MCE_GCONF_FLIPOVER_GESTURE_ENABLED     MCE_GCONF_DISPLAY_PATH"/flipover_gesture_enabled"
+# define DEFAULT_FLIPOVER_GESTURE_ENABLED       true
+
+/** Orientation change is user activity GConf setting */
+# define MCE_GCONF_ORIENTATION_CHANGE_IS_ACTIVITY MCE_GCONF_DISPLAY_PATH"/orientation_change_is_activity"
+# define DEFAULT_ORIENTATION_CHANGE_IS_ACTIVITY   true
+
 /** Display blanking pause modes */
 typedef enum {
     /** Ignore blanking pause requests */
