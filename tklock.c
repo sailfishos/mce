@@ -301,6 +301,7 @@ static void     tklock_ui_get_device_lock(void);
 static void     tklock_ui_send_lpm_signal(void);
 static void     tklock_ui_enable_lpm(void);
 static void     tklock_ui_disable_lpm(void);
+static void     tklock_ui_show_device_unlock(void);;
 
 // dbus ipc
 
@@ -370,6 +371,9 @@ extern void     mce_tklock_exit(void);
 
 /** Flag: Devicelock is handled in lockscreen */
 static gboolean tklock_devicelock_in_lockscreen = DEFAULT_DEVICELOCK_IN_LOCKSCREEN;
+
+/** Flag: Convert denied tklock removal attempt to: show device unlock view */
+static bool tklock_devicelock_want_to_unlock = false;
 
 /** GConf callback ID for tklock_devicelock_in_lockscreen */
 static guint tklock_devicelock_in_lockscreen_cb_id = 0;
@@ -4821,6 +4825,19 @@ static gboolean tklock_ui_notify_beg_cb(gpointer data)
     /* Deal with possibly ending lpm state */
     tklock_ui_send_lpm_signal();
 
+    /* Deal with redirection of tkunlock -> show device lock prompt */
+    if( tklock_devicelock_want_to_unlock ) {
+        if( tklock_ui_enabled &&
+            display_state_next == MCE_DISPLAY_ON ) {
+            mce_log(LL_DEBUG, "request: show device lock query");
+            tklock_ui_show_device_unlock();
+        }
+        else {
+            mce_log(LL_WARN, "skipped: show device lock query");
+        }
+        tklock_devicelock_want_to_unlock = false;
+    }
+
     /* give ui a chance to see the signal */
     if( tklock_ui_notify_end_id )
         g_source_remove(tklock_ui_notify_end_id);
@@ -4894,7 +4911,8 @@ static void tklock_ui_set(bool enable)
      * while device lock is still active. */
     if( tklock_devicelock_in_lockscreen &&
         device_lock_state == DEVICE_LOCK_LOCKED && !enable ) {
-        mce_log(LL_WARN, "deny tkunlock; devicelock is active");
+        mce_log(LL_DEVEL, "deny tkunlock; show device lock query");
+        tklock_devicelock_want_to_unlock = true;
         goto EXIT;
     }
 
@@ -5027,6 +5045,25 @@ static void tklock_ui_enable_lpm(void)
 static void tklock_ui_disable_lpm(void)
 {
     // FIXME: we do not have method call for cancelling lpm state
+}
+
+/** Tell lipstick that device unlock prompt should be shown
+ */
+static void tklock_ui_show_device_unlock(void)
+{
+    /* Re-use the signal that lipstick already uses for selecting between
+     * plain lockscreen and showing the device unlock view in the context
+     * of configurable power-button actions.
+     *
+     * The naming of the signal is a bit unfortunate, since
+     * 1) it is now used for other things besides dealing with power key
+     * 2) having the tkunlock redirection available means that it would
+     *    not be needed at all in the power key handler ...
+     */
+    const char *sig = "power_button_trigger";
+    const char *arg = "double-power-key";
+    dbus_send(0, MCE_SIGNAL_PATH, MCE_SIGNAL_IF, sig, 0,
+              DBUS_TYPE_STRING, &arg, DBUS_TYPE_INVALID);
 }
 
 /* ========================================================================= *
