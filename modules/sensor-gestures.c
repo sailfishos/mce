@@ -22,12 +22,18 @@
 
 #include "../mce.h"
 #include "../mce-log.h"
+#include "../mce-gconf.h"
 #include "../mce-dbus.h"
 #include "../mce-sensorfw.h"
+#include "display.h"
 
 #include <mce/dbus-names.h>
 
 #include <gmodule.h>
+
+/* ========================================================================= *
+ * STATE_DATA
+ * ========================================================================= */
 
 /** Cached display state */
 static display_state_t display_state = MCE_DISPLAY_UNDEF;
@@ -47,44 +53,59 @@ static orientation_state_t orientation_state_eff = MCE_ORIENTATION_UNDEFINED;
 /** Timer id for delayed orientation_state_eff updating */
 static gint orientation_state_eff_id = 0;
 
-/** Helper for checking if there is an active alarm dialog
- *
- * @return true if there is alarm, false otherwise
- */
-static bool sg_have_alarm_dialog(void)
-{
-    bool res = false;
+/** Use of flipover gesture enabled */
+static gboolean sg_flipover_gesture_enabled = DEFAULT_FLIPOVER_GESTURE_ENABLED;
 
-    switch( alarm_ui_state ) {
-    case MCE_ALARM_UI_RINGING_INT32:
-    case MCE_ALARM_UI_VISIBLE_INT32:
-        res = true;
-        break;
-    default:
-        break;
-    }
+/** GConf change notification id for sg_flipover_gesture_enabled */
+static guint sg_flipover_gesture_enabled_gconf_cb_id = 0;
 
-    return res;
-}
+/* ========================================================================= *
+ * FUNCTIONS
+ * ========================================================================= */
 
-/** Helper for checking if there is an incoming call
- *
- * @return true if there is incoming call, false otherwise
- */
-static bool sg_have_incoming_call(void)
-{
-    bool res = false;
+/* ------------------------------------------------------------------------- *
+ * FLIPOVER_GESTURE
+ * ------------------------------------------------------------------------- */
 
-    switch( call_state ) {
-    case CALL_STATE_RINGING:
-        res = true;
-        break;
-    default:
-        break;
-    }
+static void     sg_send_flipover_signal     (const char *sig);
+static void     sg_detect_flipover_gesture  (void);
 
-    return res;
-}
+/* ------------------------------------------------------------------------- *
+ * DATAPIPE_TRACKING
+ * ------------------------------------------------------------------------- */
+
+static bool     sg_have_alarm_dialog        (void);
+static bool     sg_have_incoming_call       (void);
+
+static void     sg_call_state_cb            (gconstpointer const data);
+static void     sg_alarm_ui_state_cb        (gconstpointer data);
+static void     sg_display_state_cb         (gconstpointer data);
+static void     sg_orientation_state_update (void);
+static gboolean sg_orientation_state_eff_cb (gpointer data);
+static void     sg_orientation_state_raw_cb (gconstpointer data);
+
+static void     sg_datapipe_init            (void);
+static void     sg_datapipe_quit            (void);
+
+/* ------------------------------------------------------------------------- *
+ * GCONF_SETTINGS
+ * ------------------------------------------------------------------------- */
+
+static void     sg_gconf_cb                 (GConfClient *const gcc, const guint id, GConfEntry *const entry, gpointer const data);
+
+static void     sg_gconf_init               (void);
+static void     sg_gconf_quit               (void);
+
+/* ------------------------------------------------------------------------- *
+ * PLUGIN_LOAD_UNLOAD
+ * ------------------------------------------------------------------------- */
+
+G_MODULE_EXPORT const gchar *g_module_check_init (GModule *module);
+G_MODULE_EXPORT void         g_module_unload     (GModule *module);
+
+/* ========================================================================= *
+ * FLIPOVER_GESTURE
+ * ========================================================================= */
 
 /** Helper for sending flipover dbus signal
  *
@@ -92,11 +113,19 @@ static bool sg_have_incoming_call(void)
  */
 static void sg_send_flipover_signal(const char *sig)
 {
+    /* Do not send the signals if orientation sensor happens to be
+     * powered on for some other reasons than flipover detection */
+    if( !sg_flipover_gesture_enabled )
+        goto EXIT;
+
     // NOTE: introspection data shared with powerkey.c
     const char *arg = "flipover";
     mce_log(LL_DEVEL, "sending dbus signal: %s %s", sig, arg);
     dbus_send(0, MCE_SIGNAL_PATH, MCE_SIGNAL_IF,  sig, 0,
               DBUS_TYPE_STRING, &arg, DBUS_TYPE_INVALID);
+
+EXIT:
+    return;
 }
 
 /** Detect and broadcast device flipover during alarm
@@ -150,6 +179,49 @@ static void sg_detect_flipover_gesture(void)
 EXIT:
 
     return;
+}
+
+/* ========================================================================= *
+ * DATAPIPE_TRACKING
+ * ========================================================================= */
+
+/** Helper for checking if there is an active alarm dialog
+ *
+ * @return true if there is alarm, false otherwise
+ */
+static bool sg_have_alarm_dialog(void)
+{
+    bool res = false;
+
+    switch( alarm_ui_state ) {
+    case MCE_ALARM_UI_RINGING_INT32:
+    case MCE_ALARM_UI_VISIBLE_INT32:
+        res = true;
+        break;
+    default:
+        break;
+    }
+
+    return res;
+}
+
+/** Helper for checking if there is an incoming call
+ *
+ * @return true if there is incoming call, false otherwise
+ */
+static bool sg_have_incoming_call(void)
+{
+    bool res = false;
+
+    switch( call_state ) {
+    case CALL_STATE_RINGING:
+        res = true;
+        break;
+    default:
+        break;
+    }
+
+    return res;
 }
 
 /** Handle call_state_pipe notifications
@@ -317,26 +389,127 @@ EXIT:
     return;
 }
 
+/** Array of datapipe handlers */
+static datapipe_handler_t sg_datapipe_handlers[] =
+{
+    // input triggers
+    {
+        .datapipe  = &call_state_pipe,
+        .input_cb  = sg_call_state_cb,
+    },
+
+    // output triggers
+    {
+        .datapipe  = &orientation_sensor_pipe,
+        .output_cb = sg_orientation_state_raw_cb,
+    },
+    {
+        .datapipe  = &display_state_pipe,
+        .output_cb = sg_display_state_cb,
+    },
+    {
+        .datapipe  = &alarm_ui_state_pipe,
+        .output_cb = sg_alarm_ui_state_cb,
+    },
+
+    // sentinel
+    {
+        .datapipe = 0,
+    }
+};
+
+static datapipe_bindings_t sg_datapipe_bindings =
+{
+    .module   = "sensor-gestures",
+    .handlers = sg_datapipe_handlers,
+};
+
+/** Append triggers/filters to datapipes
+ */
+static void sg_datapipe_init(void)
+{
+    datapipe_bindings_init(&sg_datapipe_bindings);
+}
+
+/** Remove triggers/filters from datapipes */
+static void sg_datapipe_quit(void)
+{
+    datapipe_bindings_quit(&sg_datapipe_bindings);
+}
+
+/* ========================================================================= *
+ * GCONF_SETTINGS
+ * ========================================================================= */
+
+/**
+ * GConf callback for display related settings
+ *
+ * @param gcc Unused
+ * @param id Connection ID from gconf_client_notify_add()
+ * @param entry The modified GConf entry
+ * @param data Unused
+ */
+static void sg_gconf_cb(GConfClient *const gcc, const guint id,
+                        GConfEntry *const entry, gpointer const data)
+{
+    const GConfValue *gcv = gconf_entry_get_value(entry);
+
+    (void)gcc;
+    (void)data;
+
+    /* Key is unset */
+    if (gcv == NULL) {
+        mce_log(LL_DEBUG, "GConf Key `%s' has been unset",
+                gconf_entry_get_key(entry));
+        goto EXIT;
+    }
+
+    if( id == sg_flipover_gesture_enabled_gconf_cb_id ) {
+        sg_flipover_gesture_enabled = gconf_value_get_bool(gcv);
+    }
+    else {
+        mce_log(LL_WARN, "Spurious GConf value received; confused!");
+    }
+
+EXIT:
+    return;
+}
+
+/** Get initial gconf values and start tracking changes
+ */
+static void sg_gconf_init(void)
+{
+    mce_gconf_track_bool(MCE_GCONF_FLIPOVER_GESTURE_ENABLED,
+                         &sg_flipover_gesture_enabled,
+                         DEFAULT_FLIPOVER_GESTURE_ENABLED,
+                         sg_gconf_cb,
+                         &sg_flipover_gesture_enabled_gconf_cb_id);
+}
+
+/** Stop tracking gconf values */
+static void sg_gconf_quit(void)
+{
+    mce_gconf_notifier_remove(sg_flipover_gesture_enabled_gconf_cb_id),
+        sg_flipover_gesture_enabled_gconf_cb_id = 0;
+}
+
+/* ========================================================================= *
+ * PLUGIN_LOAD_UNLOAD
+ * ========================================================================= */
+
 /** Init function for the sensor-gestures module
  *
  * @param module (not used)
  *
  * @return NULL on success, a string with an error message on failure
  */
-G_MODULE_EXPORT const gchar *g_module_check_init(GModule *module);
 const gchar *g_module_check_init(GModule *module)
 {
     (void)module;
 
-    /* Add datapipe triggers */
-    append_output_trigger_to_datapipe(&orientation_sensor_pipe,
-                                      sg_orientation_state_raw_cb);
-    append_output_trigger_to_datapipe(&display_state_pipe,
-                                      sg_display_state_cb);
-    append_output_trigger_to_datapipe(&alarm_ui_state_pipe,
-                                      sg_alarm_ui_state_cb);
-    append_input_trigger_to_datapipe(&call_state_pipe,
-                                     sg_call_state_cb);
+    sg_gconf_init();
+    sg_datapipe_init();
+
     return NULL;
 }
 
@@ -344,19 +517,12 @@ const gchar *g_module_check_init(GModule *module)
  *
  * @param module (not used)
  */
-G_MODULE_EXPORT void g_module_unload(GModule *module);
 void g_module_unload(GModule *module)
 {
     (void)module;
 
-    /* Remove datapipe triggers */
-    remove_output_trigger_from_datapipe(&orientation_sensor_pipe,
-                                        sg_orientation_state_raw_cb);
-    remove_output_trigger_from_datapipe(&display_state_pipe,
-                                        sg_display_state_cb);
-    remove_output_trigger_from_datapipe(&alarm_ui_state_pipe,
-                                        sg_alarm_ui_state_cb);
-    remove_input_trigger_from_datapipe(&call_state_pipe,
-                                       sg_call_state_cb);
+    sg_datapipe_quit();
+    sg_gconf_quit();
+
     return;
 }

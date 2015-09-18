@@ -1666,7 +1666,7 @@ static void mdy_datapipe_orientation_state_cb(gconstpointer data)
     mce_log(LL_DEBUG, "orientation_state = %s",
             orientation_state_repr(orientation_state));
 
-    /* No activity from sensor power up/down */
+    /* Ignore sensor power up/down */
     if( prev == MCE_ORIENTATION_UNDEFINED ||
         orientation_state ==  MCE_ORIENTATION_UNDEFINED )
         goto EXIT;
@@ -2156,6 +2156,18 @@ static gboolean mdy_orientation_sensor_enabled = DEFAULT_ORIENTATION_SENSOR_ENAB
 
 /** GConf change notification id for mdy_orientation_sensor_enabled */
 static guint mdy_orientation_sensor_enabled_gconf_cb_id = 0;
+
+/** Flipover gesture detection enabled */
+static gboolean mdy_flipover_gesture_enabled = DEFAULT_FLIPOVER_GESTURE_ENABLED;
+
+/** GConf change notification id for mdy_flipover_gesture_enabled */
+static guint mdy_flipover_gesture_enabled_gconf_cb_id = 0;
+
+/** Orientation change generates activity enabled */
+static gboolean mdy_orientation_change_is_activity = DEFAULT_ORIENTATION_CHANGE_IS_ACTIVITY;
+
+/** GConf change notification id for mdy_orientation_change_is_activity */
+static guint mdy_orientation_change_is_activity_gconf_cb_id = 0;
 
 /** Set display brightness via sysfs write */
 static void mdy_brightness_set_level_default(int number)
@@ -5686,25 +5698,27 @@ static void mdy_orientation_changed_cb(int state)
  */
 static void mdy_orientation_generate_activity(void)
 {
-    /* Generate activity if the display is on/dim */
+    /* The feature must be enabled */
+    if( !mdy_orientation_change_is_activity )
+        goto EXIT;
+
+    /* Display must be on/dimmed */
     switch( display_state ) {
     case MCE_DISPLAY_ON:
     case MCE_DISPLAY_DIM:
-        mce_log(LL_DEBUG, "orientation change; generate activity");
-        execute_datapipe(&device_inactive_pipe,
-                         GINT_TO_POINTER(FALSE),
-                         USE_INDATA, CACHE_INDATA);
         break;
 
     default:
-    case MCE_DISPLAY_UNDEF:
-    case MCE_DISPLAY_OFF:
-    case MCE_DISPLAY_LPM_OFF:
-    case MCE_DISPLAY_LPM_ON:
-    case MCE_DISPLAY_POWER_UP:
-    case MCE_DISPLAY_POWER_DOWN:
-        break;
+        goto EXIT;
     }
+
+    mce_log(LL_DEBUG, "orientation change; generate activity");
+    execute_datapipe(&device_inactive_pipe,
+                     GINT_TO_POINTER(FALSE),
+                     USE_INDATA, CACHE_INDATA);
+
+EXIT:
+    return;
 }
 
 /** Check if orientation sensor should be enabled
@@ -5713,7 +5727,7 @@ static bool mdy_orientation_sensor_wanted(void)
 {
     bool wanted = false;
 
-    /* Skip disabled in settings */
+    /* Skip if master toggle is disabled */
     if( !mdy_orientation_sensor_enabled )
         goto EXIT;
 
@@ -5728,16 +5742,15 @@ static bool mdy_orientation_sensor_wanted(void)
     case MCE_DISPLAY_ON:
     case MCE_DISPLAY_LPM_ON:
     case MCE_DISPLAY_POWER_UP:
-      wanted = true;
         break;
 
     default:
-    case MCE_DISPLAY_UNDEF:
-    case MCE_DISPLAY_OFF:
-    case MCE_DISPLAY_LPM_OFF:
-    case MCE_DISPLAY_POWER_DOWN:
-        break;
+        goto EXIT;
     }
+
+    /* But only if orientation sensor features are enabled */
+    wanted  = (mdy_flipover_gesture_enabled ||
+               mdy_orientation_change_is_activity);
 
 EXIT:
     return wanted;
@@ -8571,6 +8584,14 @@ static void mdy_gconf_cb(GConfClient *const gcc, const guint id,
         mdy_orientation_sensor_enabled = gconf_value_get_bool(gcv);
         mdy_orientation_sensor_rethink();
     }
+    else if (id == mdy_flipover_gesture_enabled_gconf_cb_id) {
+        mdy_flipover_gesture_enabled = gconf_value_get_bool(gcv);
+        mdy_orientation_sensor_rethink();
+    }
+    else if (id == mdy_orientation_change_is_activity_gconf_cb_id) {
+        mdy_orientation_change_is_activity = gconf_value_get_bool(gcv);
+        mdy_orientation_sensor_rethink();
+    }
     else {
         mce_log(LL_WARN, "Spurious GConf value received; confused!");
     }
@@ -8909,6 +8930,18 @@ static void mdy_gconf_init(void)
                          mdy_gconf_cb,
                          &mdy_orientation_sensor_enabled_gconf_cb_id);
 
+    mce_gconf_track_bool(MCE_GCONF_FLIPOVER_GESTURE_ENABLED,
+                         &mdy_flipover_gesture_enabled,
+                         DEFAULT_FLIPOVER_GESTURE_ENABLED,
+                         mdy_gconf_cb,
+                         &mdy_flipover_gesture_enabled_gconf_cb_id);
+
+    mce_gconf_track_bool(MCE_GCONF_ORIENTATION_CHANGE_IS_ACTIVITY,
+                         &mdy_orientation_change_is_activity,
+                         DEFAULT_ORIENTATION_CHANGE_IS_ACTIVITY,
+                         mdy_gconf_cb,
+                         &mdy_orientation_change_is_activity_gconf_cb_id);
+
     /* Blanking pause mode */
     mce_gconf_track_int(MCE_GCONF_DISPLAY_BLANKING_PAUSE_MODE,
                         &mdy_blanking_pause_mode,
@@ -9001,6 +9034,12 @@ static void mdy_gconf_quit(void)
 
     mce_gconf_notifier_remove(mdy_orientation_sensor_enabled_gconf_cb_id),
         mdy_orientation_sensor_enabled_gconf_cb_id = 0;
+
+    mce_gconf_notifier_remove(mdy_flipover_gesture_enabled_gconf_cb_id),
+        mdy_flipover_gesture_enabled_gconf_cb_id = 0;
+
+    mce_gconf_notifier_remove(mdy_orientation_change_is_activity_gconf_cb_id),
+        mdy_orientation_change_is_activity_gconf_cb_id = 0;
 
     mce_gconf_notifier_remove(mdy_blanking_pause_mode_gconf_cb_id),
         mdy_blanking_pause_mode_gconf_cb_id = 0;

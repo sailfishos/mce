@@ -2942,19 +2942,18 @@ static void xmce_get_lid_close_actions(void)
  * orientation sensor
  * ------------------------------------------------------------------------- */
 
-/* Set orientation_sensor use mode
+/** Set orientation sensor master toggle
  *
  * @param args string suitable for interpreting as enabled/disabled
  */
 static bool xmce_set_orientation_sensor_mode(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
         gboolean val = xmce_parse_enabled(args);
         mcetool_gconf_set_bool(MCE_GCONF_ORIENTATION_SENSOR_ENABLED, val);
         return true;
 }
 
-/** Get current orientation_sensor mode from mce and print it out
+/** Show orientation sensor master toggle
  */
 static void xmce_get_orientation_sensor_mode(void)
 {
@@ -2964,6 +2963,52 @@ static void xmce_get_orientation_sensor_mode(void)
         if( mcetool_gconf_get_bool(MCE_GCONF_ORIENTATION_SENSOR_ENABLED, &val) )
                 snprintf(txt, sizeof txt, "%s", val ? "enabled" : "disabled");
         printf("%-"PAD1"s %s\n", "Use orientation sensor mode:", txt);
+}
+
+/** Set orientation change is activity toggle
+ *
+ * @param args string suitable for interpreting as enabled/disabled
+ */
+static bool xmce_set_orientation_change_is_activity(const char *args)
+{
+        gboolean val = xmce_parse_enabled(args);
+        mcetool_gconf_set_bool(MCE_GCONF_ORIENTATION_CHANGE_IS_ACTIVITY, val);
+        return true;
+}
+
+/** Show orientation change is activity toggle
+ */
+static void xmce_get_orientation_change_is_activity(void)
+{
+        gboolean val = 0;
+        char txt[32] = "unknown";
+
+        if( mcetool_gconf_get_bool(MCE_GCONF_ORIENTATION_CHANGE_IS_ACTIVITY, &val) )
+                snprintf(txt, sizeof txt, "%s", val ? "enabled" : "disabled");
+        printf("%-"PAD1"s %s\n", "Orientation change is activity:", txt);
+}
+
+/** Set flipover gesture detection toggle
+ *
+ * @param args string suitable for interpreting as enabled/disabled
+ */
+static bool xmce_set_flipover_gesture_detection(const char *args)
+{
+        gboolean val = xmce_parse_enabled(args);
+        mcetool_gconf_set_bool(MCE_GCONF_FLIPOVER_GESTURE_ENABLED, val);
+        return true;
+}
+
+/** Show flipover gesture detection toggle
+ */
+static void xmce_get_flipover_gesture_detection(void)
+{
+        gboolean val = 0;
+        char txt[32] = "unknown";
+
+        if( mcetool_gconf_get_bool(MCE_GCONF_FLIPOVER_GESTURE_ENABLED, &val) )
+                snprintf(txt, sizeof txt, "%s", val ? "enabled" : "disabled");
+        printf("%-"PAD1"s %s\n", "Flipover gesture detection:", txt);
 }
 
 /* ------------------------------------------------------------------------- *
@@ -4791,6 +4836,8 @@ static bool xmce_get_status(const char *args)
         xmce_get_als_input_filter();
         xmce_get_als_sample_time();
         xmce_get_orientation_sensor_mode();
+        xmce_get_orientation_change_is_activity();
+        xmce_get_flipover_gesture_detection();
         xmce_get_ps_mode();
         xmce_get_ps_blocks_touch();
         xmce_get_ps_acts_as_lid();
@@ -5584,8 +5631,26 @@ static const mce_opt_t options[] =
                 .name        = "set-orientation-sensor-mode",
                 .with_arg    = xmce_set_orientation_sensor_mode,
                 .values      = "enabled|disabled",
-                        "set the orientation sensor mode; valid modes are:\n"
-                        "'enabled' and 'disabled'\n"
+                        "set the orientation sensor master toggle; valid modes are:\n"
+                        "  'enabled'  mce is allowed to use orientation sensor\n"
+                        "  'disabled' all orientation sensor features are disabled\n"
+        },
+
+        {
+                .name        = "set-orientation-change-is-activity",
+                .with_arg    = xmce_set_orientation_change_is_activity,
+                .values      = "enabled|disabled",
+                        "set the orientation change cancels inactivity toggle; valid modes are:\n"
+                        "  'enabled'  orientation changes keep display on etc\n"
+                        "  'disabled' orientation changes do not affect inactivity state \n"
+        },
+        {
+                .name        = "set-flipover-gesture-detection",
+                .with_arg    = xmce_set_flipover_gesture_detection,
+                .values      = "enabled|disabled",
+                        "set the flipover gesture detection toggle; valid modes are:\n"
+                        "  'enabled'  flipover gestures can be used to silence calls/alarms\n"
+                        "  'disabled' turning device over does not affect calls/alarms\n"
         },
         {
                 .name        = "get-color-profile-ids",
