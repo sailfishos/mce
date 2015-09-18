@@ -1,3 +1,9 @@
+mce (1.64.0) unstable; urgency=low
+
+  * [orientation] Add options for tweaking orientation sensor usage. Fixes MER#1331
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 18 Sep 2015 12:35:50 +0300
+
 mce (1.63.5) unstable; urgency=low
 
   * [callstate] Give "ringing" call state priority over "active". Fixes JB#32373
