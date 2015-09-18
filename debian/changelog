@@ -1,3 +1,11 @@
+mce (1.63.5) unstable; urgency=low
+
+  * [callstate] Give "ringing" call state priority over "active". Fixes JB#32373
+  * [callstate] Do not second guess call state requested by dbus clients.
+    Contibutes to JB#32373
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 18 Sep 2015 12:22:52 +0300
+
 mce (1.63.4) unstable; urgency=low
 
   * [usbmode] Do not report unknown usb modes in default verbosity. Fixes JB#32296
