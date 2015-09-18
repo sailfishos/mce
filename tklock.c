@@ -2943,7 +2943,7 @@ EXIT:
 static void tklock_uiexcept_rethink(void)
 {
     static display_state_t display_prev = MCE_DISPLAY_UNDEF;
-
+    static call_state_t call_state_prev = CALL_STATE_INVALID;
     static uiexctype_t active_prev = UIEXC_NONE;
 
     bool        activate = false;
@@ -3028,6 +3028,15 @@ static void tklock_uiexcept_rethink(void)
         // but getting unlocked  does
         mce_log(LL_NOTICE, "DISABLING STATE RESTORE; devicelock out of sync");
         exdata.restore = false;
+    }
+
+    /* Re-sync on incoming call */
+    if( call_state_prev != call_state ) {
+        if( !exdata.insync && call_state == CALL_STATE_RINGING ) {
+            mce_log(LL_NOTICE, "incoming call; assuming in sync again");
+            exdata.insync = true;
+        }
+        call_state_prev = call_state;
     }
 
     // re-sync on display on transition
