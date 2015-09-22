@@ -25,6 +25,7 @@
 
 #include "mce.h"
 #include "mce-log.h"
+#include "mce-lib.h"
 #include "mce-conf.h"
 #include "mce-gconf.h"
 #include "mce-dbus.h"
@@ -112,7 +113,6 @@ static inline bool empty(const char *s)
     return s == 0 || *s == 0;
 }
 
-static int64_t pwrkey_get_boot_tick(void);
 static char   *pwrkey_get_token(char **ppos);
 static bool    pwrkey_create_flagfile(const char *path);
 static bool    pwrkey_delete_flagfile(const char *path);
@@ -442,24 +442,6 @@ void mce_powerkey_exit(void);
  * MISC_UTIL
  * ========================================================================= */
 
-/** Get CLOCK_BOOTTIME time stamp in milliseconds
- */
-static int64_t
-pwrkey_get_boot_tick(void)
-{
-    int64_t res = 0;
-
-    struct timespec ts;
-
-    if( clock_gettime(CLOCK_BOOTTIME, &ts) == 0 ) {
-        res = ts.tv_sec;
-        res *= 1000;
-        res += ts.tv_nsec / 1000000;
-    }
-
-    return res;
-}
-
 /** Parse element from comma separated string list
  */
 static char *
@@ -559,7 +541,7 @@ pwrkey_ps_override_evaluate(void)
         goto EXIT;
     }
 
-    int64_t t_now = pwrkey_get_boot_tick();
+    int64_t t_now = mce_lib_get_boot_tick();
 
     /* If the previous power key press was too far in
      * the past, start counting from zero again */

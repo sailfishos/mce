@@ -217,6 +217,7 @@ mce-hbtimer.o:\
 	datapipe.h\
 	libwakelock.h\
 	mce-hbtimer.h\
+	mce-lib.h\
 	mce-log.h\
 	mce.h\
 
@@ -225,6 +226,7 @@ mce-hbtimer.pic.o:\
 	datapipe.h\
 	libwakelock.h\
 	mce-hbtimer.h\
+	mce-lib.h\
 	mce-log.h\
 	mce.h\
 
@@ -251,6 +253,7 @@ mce-io.o:\
 	datapipe.h\
 	libwakelock.h\
 	mce-io.h\
+	mce-lib.h\
 	mce-log.h\
 	mce.h\
 
@@ -259,6 +262,7 @@ mce-io.pic.o:\
 	datapipe.h\
 	libwakelock.h\
 	mce-io.h\
+	mce-lib.h\
 	mce-log.h\
 	mce.h\
 
@@ -511,6 +515,7 @@ modules/cpu-keepalive.o:\
 	builtin-gconf.h\
 	libwakelock.h\
 	mce-dbus.h\
+	mce-lib.h\
 	mce-log.h\
 
 modules/cpu-keepalive.pic.o:\
@@ -518,6 +523,7 @@ modules/cpu-keepalive.pic.o:\
 	builtin-gconf.h\
 	libwakelock.h\
 	mce-dbus.h\
+	mce-lib.h\
 	mce-log.h\
 
 modules/display.o:\
@@ -835,6 +841,7 @@ powerkey.o:\
 	mce-dbus.h\
 	mce-dsme.h\
 	mce-gconf.h\
+	mce-lib.h\
 	mce-log.h\
 	mce.h\
 	powerkey.h\
@@ -848,6 +855,7 @@ powerkey.pic.o:\
 	mce-dbus.h\
 	mce-dsme.h\
 	mce-gconf.h\
+	mce-lib.h\
 	mce-log.h\
 	mce.h\
 	powerkey.h\
@@ -1071,6 +1079,7 @@ tklock.o:\
 	mce-gconf.h\
 	mce-hbtimer.h\
 	mce-io.h\
+	mce-lib.h\
 	mce-log.h\
 	mce.h\
 	modules/display.h\
@@ -1090,6 +1099,7 @@ tklock.pic.o:\
 	mce-gconf.h\
 	mce-hbtimer.h\
 	mce-io.h\
+	mce-lib.h\
 	mce-log.h\
 	mce.h\
 	modules/display.h\
