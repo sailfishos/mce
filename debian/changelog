@@ -1,3 +1,10 @@
+mce (1.65.0) unstable; urgency=low
+
+  * [lib] Add utilities for getting 64-bit time stamps. Contibutes to JB#31310
+  * [dbus] Add method for querying uptime and suspend time. Fixes JB#31310
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 22 Sep 2015 09:41:32 +0300
+
 mce (1.64.0) unstable; urgency=low
 
   * [orientation] Add options for tweaking orientation sensor usage. Fixes MER#1331
