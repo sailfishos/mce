@@ -4521,6 +4521,41 @@ static void xmce_get_suspend_policy(void)
         printf("%-"PAD1"s %s \n", "Autosuspend policy:", txt ?: "unknown");
 }
 
+/** Get current uptime and suspend time
+ */
+static bool xmce_get_suspend_stats(const char *args)
+{
+        (void)args;
+
+        DBusMessage *rsp = NULL;
+        DBusError    err = DBUS_ERROR_INIT;
+
+        if( !xmce_ipc_message_reply("get_suspend_stats", &rsp, DBUS_TYPE_INVALID) )
+                goto EXIT;
+
+        dbus_int64_t uptime_ms  = 0;
+        dbus_int64_t suspend_ms = 0;
+
+        if( !dbus_message_get_args(rsp, &err,
+                                   DBUS_TYPE_INT64, &uptime_ms,
+                                   DBUS_TYPE_INT64, &suspend_ms,
+                                   DBUS_TYPE_INVALID) )
+                goto EXIT;
+
+        printf("uptime:       %.3f \n", uptime_ms  * 1e-3);
+        printf("suspend_time: %.3f \n", suspend_ms * 1e-3);
+EXIT:
+
+        if( dbus_error_is_set(&err) ) {
+                errorf("%s: %s: %s\n", "get_suspend_stats", err.name, err.message);
+                dbus_error_free(&err);
+        }
+
+        if( rsp ) dbus_message_unref(rsp);
+
+        return true;
+}
+
 /* ------------------------------------------------------------------------- *
  * use mouse clicks to emulate touchscreen doubletap policy
  * ------------------------------------------------------------------------- */
@@ -5449,6 +5484,12 @@ static const mce_opt_t options[] =
                 .usage       =
                         "set the autosuspend mode; valid modes are:\n"
                         "'enabled', 'disabled' and 'early'\n"
+        },
+        {
+                .name        = "get-suspend-stats",
+                .without_arg = xmce_get_suspend_stats,
+                .usage       =
+                        "get device uptime and time spent in suspend\n"
         },
         {
                 .name        = "set-cpu-scaling-governor",

@@ -26,6 +26,7 @@
  */
 
 #include "../mce-log.h"
+#include "../mce-lib.h"
 #include "../mce-dbus.h"
 
 #ifdef ENABLE_WAKELOCKS
@@ -285,15 +286,7 @@ static
 tick_t
 cka_tick_get_current(void)
 {
-  tick_t ms;
-  struct timespec ts;
-  clock_gettime(CLOCK_BOOTTIME, &ts);
-
-  ms  = ts.tv_sec;
-  ms *= 1000;
-  ms += ts.tv_nsec / 1000000;
-
-  return ms;
+  return mce_lib_get_boot_tick();
 }
 
 /** Helper for calculating timeout values from ms base + seconds offset

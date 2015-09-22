@@ -22,6 +22,8 @@
 #ifndef _MCE_LIB_H_
 #define _MCE_LIB_H_
 
+#include <stdint.h>
+
 #include <glib.h>
 
 /** Find the number of bits of a type */
@@ -54,5 +56,9 @@ gint mce_translate_string_to_int(const mce_translation_t translation[],
 gchar *strstr_delim(const gchar *const haystack, const char *needle,
 		    const char *const delimiter);
 gboolean strmemcmp(guint8 *mem, const gchar *str, gulong len);
+
+int64_t mce_lib_get_boot_tick(void);
+int64_t mce_lib_get_mono_tick(void);
+int64_t mce_lib_get_real_tick(void);
 
 #endif /* _MCE_LIB_H_ */

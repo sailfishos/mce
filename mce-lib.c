@@ -358,3 +358,51 @@ gboolean strmemcmp(guint8 *mem, const gchar *str, gulong len)
 EXIT:
 	return result;
 }
+
+/** Get clock id specific time stamp in milliseconds
+ *
+ * @param id  Clock id such as CLOCK_REALTIME or CLOCK_MONOTONIC
+ *
+ * @return 64-bit timestamp
+ */
+static int64_t mce_lib_get_tick(clockid_t id)
+{
+	int64_t res = 0;
+
+	struct timespec ts;
+
+	if( clock_gettime(id, &ts) == 0 ) {
+		res = ts.tv_sec;
+		res *= 1000;
+		res += ts.tv_nsec / 1000000;
+	}
+
+	return res;
+}
+
+/** Get CLOCK_BOOTTIME time stamp in milliseconds
+ *
+ * @return 64-bit timestamp
+ */
+int64_t mce_lib_get_boot_tick(void)
+{
+	return mce_lib_get_tick(CLOCK_BOOTTIME);
+}
+
+/** Get CLOCK_MONOTONIC time stamp in milliseconds
+ *
+ * @return 64-bit timestamp
+ */
+int64_t mce_lib_get_mono_tick(void)
+{
+	return mce_lib_get_tick(CLOCK_MONOTONIC);
+}
+
+/** Get CLOCK_REALTIME time stamp in milliseconds
+ *
+ * @return 64-bit timestamp
+ */
+int64_t mce_lib_get_real_tick(void)
+{
+	return mce_lib_get_tick(CLOCK_REALTIME);
+}

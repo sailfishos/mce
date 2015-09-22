@@ -25,6 +25,7 @@
 
 #include "mce.h"
 #include "mce-log.h"
+#include "mce-lib.h"
 #include "mce-io.h"
 #include "mce-conf.h"
 #include "mce-gconf.h"
@@ -138,11 +139,6 @@ typedef struct
 /* ========================================================================= *
  * PROTOTYPES
  * ========================================================================= */
-
-// time utilities
-
-static void     tklock_monotime_get(struct timeval *tv);
-static int64_t  tklock_monotick_get(void);
 
 // datapipe values and triggers
 
@@ -523,55 +519,6 @@ static output_state_t mce_keypad_sysfs_disable_output =
     .truncate_file = TRUE,
     .close_on_exit = TRUE,
 };
-
-/* ========================================================================= *
- * TIME UTILITIES
- * ========================================================================= */
-
-/** Get timeval from monotonic source that advances during suspend too
- */
-static void tklock_monotime_get(struct timeval *tv)
-{
-    struct timespec ts;
-
-#ifdef CLOCK_BOOTTIME
-    if( clock_gettime(CLOCK_BOOTTIME, &ts) == 0 )
-        goto convert;
-#endif
-
-#ifdef CLOCK_REALTIME
-    if( clock_gettime(CLOCK_REALTIME, &ts) == 0 )
-        goto convert;
-#endif
-
-#ifdef CLOCK_MONOTONIC
-    if( clock_gettime(CLOCK_MONOTONIC, &ts) == 0 )
-        goto convert;
-#endif
-
-    gettimeofday(tv, 0);
-    goto cleanup;
-
-convert:
-    TIMESPEC_TO_TIMEVAL(tv, &ts);
-
-cleanup:
-    return;
-}
-
-/** Get 64-bit millisecond resolution timestamp from monotonic source
- */
-static int64_t tklock_monotick_get(void)
-{
-    struct timeval tv;
-    tklock_monotime_get(&tv);
-
-    int64_t res = tv.tv_sec;
-    res *= 1000;
-    res += (tv.tv_usec / 1000);
-
-    return res;
-}
 
 /* ========================================================================= *
  * DATAPIPE VALUES AND TRIGGERS
@@ -1814,7 +1761,7 @@ static void tklock_datapipe_lid_cover_sensor_cb(gconstpointer data)
             cover_state_repr(lid_cover_sensor_state));
 
     if( lid_cover_sensor_state == COVER_CLOSED ) {
-        lid_cover_close_timeout = (tklock_monotick_get() +
+        lid_cover_close_timeout = (mce_lib_get_boot_tick() +
                                    lid_cover_close_lo_als_delay);
         lid_cover_close_display_state = display_state_next;
     }
@@ -1966,7 +1913,7 @@ static void tklock_datapipe_user_activity_cb(gconstpointer data)
     if( !(exception_state & (UIEXC_NOTIF | UIEXC_LINGER)) )
         goto EXIT;
 
-    int64_t now = tklock_monotick_get();
+    int64_t now = mce_lib_get_boot_tick();
 
     if( last_time + 200 > now )
         goto EXIT;
@@ -2200,7 +2147,7 @@ static int64_t tklock_autolock_on_devlock_limit_block = 0;
 static void tklock_autolock_on_devlock_block(int duration_ms)
 {
     tklock_autolock_on_devlock_limit_block =
-        tklock_monotick_get() + duration_ms;
+        mce_lib_get_boot_tick() + duration_ms;
 }
 
 static void tklock_autolock_on_devlock_prime(void)
@@ -2241,7 +2188,7 @@ static void tklock_autolock_on_devlock_prime(void)
         if( !tklock_autolock_on_devlock_limit_trigger )
             mce_log(LL_DEBUG, "autolock after devicelock: primed");
         tklock_autolock_on_devlock_limit_trigger =
-            tklock_monotick_get() + autolock_limit;
+            mce_lib_get_boot_tick() + autolock_limit;
         break;
     }
 
@@ -2269,7 +2216,7 @@ static void tklock_autolock_on_devlock_trigger(void)
     if( !tklock_autolock_on_devlock_limit_trigger )
         goto EXIT;
 
-    int64_t now = tklock_monotick_get();
+    int64_t now = mce_lib_get_boot_tick();
 
     if( now >= tklock_autolock_on_devlock_limit_trigger )
         goto EXIT;
@@ -2398,7 +2345,7 @@ static void tklock_lid_sensor_rethink(void)
 
     enabled_prev = lid_sensor_enabled;
 
-    int64_t now = tklock_monotick_get();
+    int64_t now = mce_lib_get_boot_tick();
 
     bool high_lux = (ambient_light_sensor_state > lid_cover_close_als_limit);
 
@@ -2634,7 +2581,7 @@ static void tklock_autolock_evaluate(void)
         goto LOCK;
 
     // autolock delay to passed
-    if( tklock_monotick_get() < tklock_autolock_tick )
+    if( mce_lib_get_boot_tick() < tklock_autolock_tick )
         goto EXIT;
 
 LOCK:
@@ -2679,7 +2626,7 @@ static void tklock_autolock_enable(void)
                              MAXIMUM_AUTOLOCK_DELAY,
                              tklock_autolock_delay);
 
-    tklock_autolock_tick = tklock_monotick_get() + delay;
+    tklock_autolock_tick = mce_lib_get_boot_tick() + delay;
 
     mce_hbtimer_set_period(tklock_autolock_timer, delay);
     mce_hbtimer_start(tklock_autolock_timer);
@@ -2754,7 +2701,7 @@ static void tklock_proxlock_evaluate(void)
         goto EXIT;
 
     // proximity lock delay passed
-    if( tklock_monotick_get() < tklock_proxlock_tick )
+    if( mce_lib_get_boot_tick() < tklock_proxlock_tick )
         goto EXIT;
 
     // lock
@@ -2794,7 +2741,7 @@ static void tklock_proxlock_enable(void)
     int delay = PROXLOC_DELAY_MS;
 
     if( !tklock_proxlock_id ) {
-        tklock_proxlock_tick = tklock_monotick_get() + delay;
+        tklock_proxlock_tick = mce_lib_get_boot_tick() + delay;
         tklock_proxlock_id = g_timeout_add(delay, tklock_proxlock_cb, 0);
         mce_log(LL_DEBUG, "proxlock timer started (%d ms)", delay);
     }
@@ -2809,7 +2756,7 @@ static void tklock_proxlock_resume(void)
     /* Clear old timer */
     g_source_remove(tklock_proxlock_id), tklock_proxlock_id = 0;
 
-    int64_t now = tklock_monotick_get();
+    int64_t now = mce_lib_get_boot_tick();
 
     if( now >= tklock_proxlock_tick ) {
         /* Opportunistic triggering on resume */
@@ -3283,7 +3230,7 @@ static void tklock_uiexcept_end(uiexctype_t type, int64_t linger)
     if( !(exdata.mask & type) )
         goto EXIT;
 
-    int64_t now = tklock_monotick_get();
+    int64_t now = mce_lib_get_boot_tick();
 
     exdata.mask &= ~type;
 
@@ -3333,7 +3280,7 @@ static void tklock_uiexcept_begin(uiexctype_t type, int64_t linger)
     exdata.mask &= ~UIEXC_LINGER;
     exdata.mask |= type;
 
-    int64_t now = tklock_monotick_get();
+    int64_t now = mce_lib_get_boot_tick();
 
     linger += now;
 
@@ -3416,7 +3363,7 @@ EXIT:
  */
 static void tklock_lpmui_reset_history(void)
 {
-    int64_t now = tklock_monotick_get();
+    int64_t now = mce_lib_get_boot_tick();
 
     for( size_t i = 0; i < numof(tklock_lpmui_hist); ++i ) {
         tklock_lpmui_hist[i].tick  = now;
@@ -3436,7 +3383,7 @@ static void tklock_lpmui_update_history(cover_state_t state)
     memmove(tklock_lpmui_hist+1, tklock_lpmui_hist+0,
             sizeof tklock_lpmui_hist - sizeof *tklock_lpmui_hist);
 
-    tklock_lpmui_hist[0].tick  = tklock_monotick_get();
+    tklock_lpmui_hist[0].tick  = mce_lib_get_boot_tick();
     tklock_lpmui_hist[0].state = state;
 
 EXIT:
@@ -3457,7 +3404,7 @@ static bool tklock_lpmui_probe_from_pocket(void)
     if( !(tklock_lpmui_triggering & LPMUI_TRIGGERING_FROM_POCKET) )
         goto EXIT;
 
-    int64_t now = tklock_monotick_get();
+    int64_t now = mce_lib_get_boot_tick();
     int64_t t;
 
     /* Uncovered < LPMUI_LIM_CHANGE ms ago ? */
@@ -3494,7 +3441,7 @@ static bool tklock_lpmui_probe_on_table(void)
     if( !(tklock_lpmui_triggering & LPMUI_TRIGGERING_HOVER_OVER) )
         goto EXIT;
 
-    int64_t t = tklock_monotick_get();
+    int64_t t = mce_lib_get_boot_tick();
 
     for( size_t i = 0; ; i += 2 ) {
 
@@ -5838,7 +5785,7 @@ tklock_notif_schedule_autostop(gint delay)
 static void
 tklock_notif_update_state(void)
 {
-    int64_t now = tklock_monotick_get();
+    int64_t now = mce_lib_get_boot_tick();
     int64_t tmo = MAX_TICK;
 
     for( size_t i = 0; i < TKLOCK_NOTIF_SLOTS; ++i ) {
@@ -5873,7 +5820,7 @@ tklock_notif_update_state(void)
 static void
 tklock_notif_extend_by_renew(void)
 {
-    int64_t now = tklock_monotick_get();
+    int64_t now = mce_lib_get_boot_tick();
 
     bool changed = false;
 
@@ -5906,7 +5853,7 @@ tklock_notif_vacate_slot(const char *owner, const char *name, int64_t linger)
 
         tklock_notif_slot_free(slot);
 
-        int64_t now = tklock_monotick_get();
+        int64_t now = mce_lib_get_boot_tick();
         int64_t tmo = now + linger;
 
         if( tklock_notif_state.tn_linger < tmo )
@@ -5926,7 +5873,7 @@ EXIT:
 static void
 tklock_notif_reserve_slot(const char *owner, const char *name, int64_t length, int64_t renew)
 {
-    int64_t now = tklock_monotick_get();
+    int64_t now = mce_lib_get_boot_tick();
     int64_t tmo = now + length;
 
     /* first check if slot is already reserved */

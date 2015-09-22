@@ -25,6 +25,7 @@
 
 #include "mce.h"
 #include "mce-log.h"
+#include "mce-lib.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -686,6 +687,43 @@ static gboolean version_get_dbus_cb(DBusMessage *const msg)
 
 EXIT:
 	return status;
+}
+
+/** D-Bus callback for the get suspend time statistics method call
+ *
+ * @param req The D-Bus message to reply to
+ *
+ * @return TRUE
+ */
+static gboolean suspend_stats_get_dbus_cb(DBusMessage *const req)
+{
+	DBusMessage *rsp = 0;
+
+	mce_log(LL_DEVEL, "suspend info request from %s",
+		mce_dbus_get_message_sender_ident(req));
+
+	/* get stats */
+	dbus_int64_t uptime_ms  = mce_lib_get_boot_tick();
+	dbus_int64_t suspend_ms = uptime_ms - mce_lib_get_mono_tick();
+
+	/* create and send reply message */
+	rsp = dbus_new_method_reply(req);
+
+	if( !dbus_message_append_args(rsp,
+				      DBUS_TYPE_INT64, &uptime_ms,
+				      DBUS_TYPE_INT64, &suspend_ms,
+				      DBUS_TYPE_INVALID) ) {
+		mce_log(LL_ERR, "Failed to append arguments");
+		goto EXIT;
+	}
+
+	dbus_send_message(rsp), rsp = 0;
+
+EXIT:
+	if( rsp )
+		dbus_message_unref(rsp);
+
+	return TRUE;
 }
 
 /** Helper for appending gconf string list to dbus message
@@ -3612,6 +3650,15 @@ static mce_dbus_handler_t mce_dbus_handlers[] =
 		.args      =
 			"    <arg direction=\"in\" name=\"key_part\" type=\"s\"/>\n"
 			"    <arg direction=\"out\" name=\"count\" type=\"i\"/>\n"
+	},
+	{
+		.interface = MCE_REQUEST_IF,
+		.name      = "get_suspend_stats",
+		.type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+		.callback  = suspend_stats_get_dbus_cb,
+		.args      =
+			"    <arg direction=\"out\" name=\"uptime_ms\" type=\"x\"/>\n"
+			"    <arg direction=\"out\" name=\"suspend_ms\" type=\"x\"/>\n"
 	},
 	{
 		.interface = DBUS_INTERFACE_INTROSPECTABLE,

@@ -253,7 +253,6 @@ enum
  * ------------------------------------------------------------------------- */
 
 static inline bool         mdy_str_eq_p(const char *s1, const char *s2);
-static int64_t             mdy_get_boot_tick(void);
 static const char         *blanking_pause_mode_repr(blanking_pause_mode_t mode);
 
 /* ------------------------------------------------------------------------- *
@@ -990,22 +989,6 @@ static inline bool mdy_str_eq_p(const char *s1, const char *s2)
     return (s1 && s2) ? !strcmp(s1, s2) : false;
 }
 
-/** Get CLOCK_BOOTTIME time stamp in milliseconds
- */
-static int64_t mdy_get_boot_tick(void)
-{
-        int64_t res = 0;
-
-        struct timespec ts;
-
-        if( clock_gettime(CLOCK_BOOTTIME, &ts) == 0 ) {
-                res = ts.tv_sec;
-                res *= 1000;
-                res += ts.tv_nsec / 1000000;
-        }
-
-        return res;
-}
 /** Convert blanking_pause_mode_t enum to human readable string
  *
  * @param mode blanking_pause_mode_t enumeration value
@@ -1690,7 +1673,7 @@ static void mdy_datapipe_shutting_down_cb(gconstpointer aptr)
         mce_log(LL_DEBUG, "Shutdown started");
 
         /* Cache start of shutdown time stamp */
-        mdy_shutdown_started_tick = mdy_get_boot_tick();
+        mdy_shutdown_started_tick = mce_lib_get_boot_tick();
     }
     else {
         mce_log(LL_DEBUG, "Shutdown canceled");
@@ -2294,7 +2277,7 @@ static void mdy_brightness_force_level(int number)
         mdy_brightness_fade_end_level = number;
 
     mdy_brightness_fade_start_time =
-        mdy_brightness_fade_end_time = mdy_get_boot_tick();
+        mdy_brightness_fade_end_time = mce_lib_get_boot_tick();
 
     mdy_brightness_set_level(number);
 }
@@ -2375,7 +2358,7 @@ static gboolean mdy_brightness_fade_timer_cb(gpointer data)
     int lev = mdy_brightness_fade_end_level;
 
     /* Get current time */
-    int64_t now = mdy_get_boot_tick();
+    int64_t now = mce_lib_get_boot_tick();
 
     if( mdy_brightness_fade_start_time <= now &&
         now < mdy_brightness_fade_end_time ) {
@@ -2588,7 +2571,7 @@ static void mdy_brightness_set_fade_target_ex(fader_type_t type,
     }
 
     /* Calculate fading time window */
-    int64_t beg = mdy_get_boot_tick();
+    int64_t beg = mce_lib_get_boot_tick();
     int64_t end = beg + transition_time;
 
     /* If an ongoing fading has the same target level and it
@@ -2728,7 +2711,7 @@ static void mdy_brightness_set_fade_target_als(gint new_brightness)
      * more clear, override constant time / long als fade durations
      * that happen immediately after relevant settings changes. */
     if( dur < 0 || dur > MCE_FADER_DURATION_SETTINGS_CHANGED ) {
-        int64_t now = mdy_get_boot_tick();
+        int64_t now = mce_lib_get_boot_tick();
         int64_t end = (mdy_brightness_setting_change_time +
                        MCE_FADER_DURATION_SETTINGS_CHANGED);
         if( now <= end )
@@ -4255,7 +4238,7 @@ static gint mdy_blanking_get_afterboot_delay(void)
 {
     gint delay = 0;
     if( mdy_blanking_afterboot_limit ) {
-        int64_t now = mdy_get_boot_tick();
+        int64_t now = mce_lib_get_boot_tick();
         int64_t tmo = mdy_blanking_afterboot_limit - now;
         if( tmo > 0 )
             delay = (gint)tmo;
@@ -4293,7 +4276,7 @@ static void mdy_blanking_rethink_afterboot_delay(void)
         goto EXIT;
 
     /* Set up Use longer after-boot dim timeout */
-    want_limit = (mdy_get_boot_tick() +
+    want_limit = (mce_lib_get_boot_tick() +
                   AFTERBOOT_BLANKING_TIMEOUT * 1000);
 
 DONE:
@@ -8364,7 +8347,7 @@ static void mdy_gconf_cb(GConfClient *const gcc, const guint id,
             mdy_brightness_setting = val;
 
             /* Save timestamp of the setting change */
-            mdy_brightness_setting_change_time = mdy_get_boot_tick();
+            mdy_brightness_setting_change_time = mce_lib_get_boot_tick();
 
             mdy_gconf_sanitize_brightness_settings();
         }
@@ -8415,7 +8398,7 @@ static void mdy_gconf_cb(GConfClient *const gcc, const guint id,
     }
     else if( id == mdy_automatic_brightness_setting_gconf_id ) {
         /* Save timestamp of the setting change */
-        mdy_brightness_setting_change_time = mdy_get_boot_tick();
+        mdy_brightness_setting_change_time = mce_lib_get_boot_tick();
     }
     else if( id == mdy_brightness_step_size_gconf_id ) {
         // NOTE: This is not supposed to be changed at runtime
@@ -9314,7 +9297,7 @@ void g_module_unload(GModule *module)
 
         int delay_ms = (int)(mdy_shutdown_started_tick
                              + 6000
-                             - mdy_get_boot_tick());
+                             - mce_lib_get_boot_tick());
         mce_fbdev_linger_after_exit(delay_ms);
     }
 

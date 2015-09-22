@@ -24,6 +24,7 @@
 
 #include "mce.h"
 #include "mce-log.h"
+#include "mce-lib.h"
 
 #ifdef ENABLE_WAKELOCKS
 # include "libwakelock.h"
@@ -91,8 +92,6 @@ static GSList *file_monitors = NULL;
 
 // SUSPEND_DETECTION
 
-static int64_t io_get_boot_tick  (void);
-static int64_t io_get_mono_tick  (void);
 static void    io_detect_resume  (void);
 
 // GLIB_IO_HELPERS
@@ -150,48 +149,14 @@ gboolean        mce_io_update_file_atomic               (const char *path, const
  * SUSPEND_DETECTION
  * ========================================================================= */
 
-/** Get CLOCK_BOOTTIME time stamp in milliseconds
- */
-static int64_t io_get_boot_tick(void)
-{
-	int64_t res = 0;
-
-	struct timespec ts;
-
-	if( clock_gettime(CLOCK_BOOTTIME, &ts) == 0 ) {
-		res = ts.tv_sec;
-		res *= 1000;
-		res += ts.tv_nsec / 1000000;
-	}
-
-	return res;
-}
-
-/** Get CLOCK_MONOTONIC time stamp in milliseconds
- */
-static int64_t io_get_mono_tick(void)
-{
-	int64_t res = 0;
-
-	struct timespec ts;
-
-	if( clock_gettime(CLOCK_MONOTONIC, &ts) == 0 ) {
-		res = ts.tv_sec;
-		res *= 1000;
-		res += ts.tv_nsec / 1000000;
-	}
-
-	return res;
-}
-
 /** Detect suspend/resume cycle from CLOCK_MONOTONIC vs CLOCK_BOOTTIME
  */
 static void io_detect_resume(void)
 {
 	static int64_t prev = 0;
 
-	int64_t boot = io_get_boot_tick();
-	int64_t mono = io_get_mono_tick();
+	int64_t boot = mce_lib_get_boot_tick();
+	int64_t mono = mce_lib_get_mono_tick();
 	int64_t diff = boot - mono;
 
 	int64_t skip = diff - prev;

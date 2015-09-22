@@ -28,6 +28,7 @@
 
 #include "mce.h"
 #include "mce-log.h"
+#include "mce-lib.h"
 
 #ifdef ENABLE_WAKELOCKS
 # include "libwakelock.h"
@@ -95,7 +96,6 @@ static void     mce_hbtimer_set_trigger    (mce_hbtimer_t *self, int64_t trigger
 /** Monotonic tick value used to signify "not-set" */
 #define NO_TICK INT64_MAX
 
-static int64_t  mht_get_monotick           (void);
 static guint    mht_add_iowatch            (int fd, bool close_on_unref, GIOCondition cnd, GIOFunc io_cb, gpointer aptr);
 
 /* ------------------------------------------------------------------------- *
@@ -200,26 +200,6 @@ void            mce_hbtimer_quit          (void);
 /* ========================================================================= *
  * GENERIC_UTILITIES
  * ========================================================================= */
-
-/** Get CLOCK_BOOTTIME time stamp in milliseconds
- *
- * @return current boottime in ms resolution
- */
-static int64_t
-mht_get_monotick(void)
-{
-    int64_t res = 0;
-
-    struct timespec ts;
-
-    if( clock_gettime(CLOCK_BOOTTIME, &ts) == 0 ) {
-        res = ts.tv_sec;
-        res *= 1000;
-        res += ts.tv_nsec / 1000000;
-    }
-
-    return res;
-}
 
 /** Helper for creating I/O watch for file descriptor
  */
@@ -415,7 +395,7 @@ mce_hbtimer_start(mce_hbtimer_t *self)
 
     mce_log(LL_DEBUG, "start %s %d", mce_hbtimer_get_name(self),
             self->hbt_period);
-    int64_t now = mht_get_monotick();
+    int64_t now = mce_lib_get_boot_tick();
     int64_t trigger = now + self->hbt_period;
     mce_hbtimer_set_trigger(self, trigger);
 
@@ -557,7 +537,7 @@ mht_queue_schedule_wakeups(void)
     if( compact )
         mht_queue_garbage_collect();
 
-    int64_t now = mht_get_monotick();
+    int64_t now = mce_lib_get_boot_tick();
 
     if( trigger < now )
         trigger = now;
@@ -591,7 +571,7 @@ mht_queue_dispatch_timers(void)
     wakelock_lock("mce_hbtimer_dispatch", -1);
 #endif
 
-    int64_t now = mht_get_monotick();
+    int64_t now = mce_lib_get_boot_tick();
 
     for( GSList *item = mht_queue_timer_list; item; item = item->next ) {
         mce_hbtimer_t *timer = item->data;
