@@ -139,6 +139,7 @@ mce-dbus.o:\
 	builtin-gconf.h\
 	datapipe.h\
 	mce-dbus.h\
+	mce-lib.h\
 	mce-log.h\
 	mce.h\
 
@@ -147,6 +148,7 @@ mce-dbus.pic.o:\
 	builtin-gconf.h\
 	datapipe.h\
 	mce-dbus.h\
+	mce-lib.h\
 	mce-log.h\
 	mce.h\
 
