@@ -41,6 +41,63 @@
 /** How long to block late suspend when mce is sending dbus messages */
 #define MCE_DBUS_SEND_SUSPEND_BLOCK_MS 1000
 
+/** Pending call callgate slot destry callback function
+ *
+ * Called when pending call ref count drops to zero.
+ *
+ * Releases the ultiplexed wakelock that has been attached
+ * to the pending call object via mdb_callgate_attach().
+ *
+ * @param aptr Name of the attached wakelock
+ */
+static void mdb_callgate_detach_cb(void  *aptr)
+{
+	char *name = aptr;
+
+	mce_log(LL_DEBUG, "detach %s", name);
+	mce_wakelock_release(name);
+	g_free(name);
+}
+
+/** Block suspend while mce is waiting for a reply to a method call
+ *
+ * Take advantage of the fact that custom data attached to a pending
+ * call object gets destroyed along with the object itself and create
+ * unique wakelock that is used for blocking the device from entering
+ * suspend until:
+ *
+ * a) the wait for pending call is canceled
+ * b) mce has received and processed the reply message
+ *
+ * @param pc Pending call object to suspend proof
+ */
+static void mdb_callgate_attach(DBusPendingCall *pc)
+{
+	static dbus_int32_t  slot = -1;
+	static unsigned      uniq = 0;
+
+	gchar               *name = 0;
+
+	if( !pc )
+		goto EXIT;
+
+	if( slot == -1 && !dbus_pending_call_allocate_data_slot(&slot) )
+		goto EXIT;
+
+	if( !(name = g_strdup_printf("dbus_call_%u", ++uniq)) )
+		goto EXIT;
+
+	mce_log(LL_DEBUG, "attach %s", name);
+
+	if( dbus_pending_call_set_data(pc, slot, name, mdb_callgate_detach_cb) ) {
+		mce_wakelock_obtain(name, -1);
+		name = 0;
+	}
+
+EXIT:
+	g_free(name);
+}
+
 static bool introspectable_signal(const char *interface, const char *member);
 
 /** Placeholder for any basic dbus data type */
@@ -481,8 +538,6 @@ dbus_send_message_with_reply_handler(DBusMessage *const msg,
 	if( !msg )
 		goto EXIT;
 
-	mce_wakelock_obtain("dbus_send", MCE_DBUS_SEND_SUSPEND_BLOCK_MS);
-
 	if( !dbus_connection_send_with_reply(dbus_connection, msg, &pc, -1) ) {
 		mce_log(LL_CRIT, "Out of memory when sending D-Bus message");
 		goto EXIT;
@@ -492,6 +547,8 @@ dbus_send_message_with_reply_handler(DBusMessage *const msg,
 		mce_log(LL_ERR, "D-Bus connection disconnected");
 		goto EXIT;
 	}
+
+	mdb_callgate_attach(pc);
 
 	if( !dbus_pending_call_set_notify(pc, callback,
 					  user_data, user_free) ) {
@@ -3547,13 +3604,13 @@ mce_dbus_nameowner_query_req(const char *name)
 			     DBUS_TYPE_STRING, &name,
 			     DBUS_TYPE_INVALID);
 
-    mce_wakelock_obtain("dbus_send", MCE_DBUS_SEND_SUSPEND_BLOCK_MS);
-
     if( !dbus_connection_send_with_reply(dbus_connection, req, &pc, -1) )
 	goto EXIT;
 
     if( !pc )
 	goto EXIT;
+
+    mdb_callgate_attach(pc);
 
     key = strdup(name);
 
