@@ -23,6 +23,7 @@
 #include "../mce.h"
 #include "../mce-log.h"
 #include "../mce-dbus.h"
+#include "../mce-wltimer.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -1629,8 +1630,8 @@ EXIT:
     return changed;
 }
 
-/** Timer id for evaluating call state */
-static guint call_state_rethink_id = 0;
+/** Idle timer for evaluating call state */
+static mce_wltimer_t *call_state_rethink_tmr = 0;
 
 /** Timer callback for evaluating call state */
 static gboolean
@@ -1638,13 +1639,8 @@ call_state_rethink_cb(gpointer aptr)
 {
     (void)aptr;
 
-    if( !call_state_rethink_id )
-        goto EXIT;
-    call_state_rethink_id = 0;
-
     call_state_rethink_now();
 
-EXIT:
     return G_SOURCE_REMOVE;
 }
 
@@ -1652,16 +1648,15 @@ EXIT:
 static void
 call_state_rethink_cancel(void)
 {
-    if( call_state_rethink_id )
-        g_source_remove(call_state_rethink_id), call_state_rethink_id = 0;
+    mce_wltimer_stop(call_state_rethink_tmr);
 }
 
 /** Request delayed call state evaluation */
 static void
 call_state_rethink_schedule(void)
 {
-    if( !call_state_rethink_id )
-        call_state_rethink_id = g_idle_add(call_state_rethink_cb, 0);
+    if( !mce_wltimer_is_active(call_state_rethink_tmr) )
+        mce_wltimer_start(call_state_rethink_tmr);
 }
 
 /** Request immediate call state evaluation */
@@ -1785,6 +1780,9 @@ const gchar *g_module_check_init(GModule *module)
 {
     (void)module;
 
+    call_state_rethink_tmr = mce_wltimer_create("call_state_rethink",
+                                                0, call_state_rethink_cb, 0);
+
     /* create look up tables */
     clients_init();
     vcalls_init();
@@ -1815,7 +1813,8 @@ void g_module_unload(GModule *module)
     mce_callstate_quit_dbus();
 
     /* remove all timers & callbacks */
-    call_state_rethink_cancel();
+    mce_wltimer_delete(call_state_rethink_tmr),
+        call_state_rethink_tmr = 0;
 
     /* delete look up tables */
     modems_quit();

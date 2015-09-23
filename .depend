@@ -522,6 +522,7 @@ modules/callstate.o:\
 	datapipe.h\
 	mce-dbus.h\
 	mce-log.h\
+	mce-wltimer.h\
 	mce.h\
 
 modules/callstate.pic.o:\
@@ -530,6 +531,7 @@ modules/callstate.pic.o:\
 	datapipe.h\
 	mce-dbus.h\
 	mce-log.h\
+	mce-wltimer.h\
 	mce.h\
 
 modules/camera.o:\
