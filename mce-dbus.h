@@ -171,4 +171,6 @@ void mce_dbus_get_pid_async(const char *name, mce_dbus_pid_notify_t cb);
 
 const char *mce_dbus_nameowner_get(const char *name);
 
+void mce_dbus_pending_call_blocks_suspend(DBusPendingCall *pc);
+
 #endif /* _MCE_DBUS_H_ */

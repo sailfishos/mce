@@ -5578,6 +5578,8 @@ static gboolean mdy_compositor_start_state_req(renderer_state_t state)
     if( !mdy_compositor_state_req_pc )
         goto EXIT;
 
+    mce_dbus_pending_call_blocks_suspend(mdy_compositor_state_req_pc);
+
     if( !dbus_pending_call_set_notify(mdy_compositor_state_req_pc,
                                       mdy_compositor_state_req_cb,
                                       GINT_TO_POINTER(state), 0) )

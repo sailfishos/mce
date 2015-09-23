@@ -889,6 +889,8 @@ static void xup_properties_get_all(const char *path)
     if( !pc )
         goto EXIT;
 
+    mce_dbus_pending_call_blocks_suspend(pc);
+
     if( !dbus_pending_call_set_notify(pc, xup_properties_get_all_cb,
                                       strdup(path), free) )
         goto EXIT;

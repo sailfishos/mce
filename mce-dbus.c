@@ -98,6 +98,21 @@ EXIT:
 	g_free(name);
 }
 
+/** Public function for making dbus method calls suspend proof
+ *
+ * NOTE: We would not need this function if all of the mce code base
+ *       would use dbus_send_ex() based method call handling.
+ *
+ * FIXME: Fix all code that uses dbus_connection_send_with_reply()
+ *        so that dbus_send_ex() is used instead.
+ *
+ * @param pc  Pending call object to protect
+ */
+void mce_dbus_pending_call_blocks_suspend(DBusPendingCall *pc)
+{
+	mdb_callgate_attach(pc);
+}
+
 static bool introspectable_signal(const char *interface, const char *member);
 
 /** Placeholder for any basic dbus data type */

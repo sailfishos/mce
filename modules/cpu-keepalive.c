@@ -1050,6 +1050,8 @@ cka_clients_verify_name(const char *name)
     goto EXIT;
   }
 
+  mce_dbus_pending_call_blocks_suspend(pc);
+
   key = g_strdup(name);
 
   if( !dbus_pending_call_set_notify(pc, cka_clients_verify_name_cb,
