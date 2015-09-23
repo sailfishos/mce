@@ -330,6 +330,16 @@ mce-sensorfw.pic.o:\
 	mce-sensorfw.h\
 	mce.h\
 
+mce-wakelock.o:\
+	mce-wakelock.c\
+	mce-log.h\
+	mce-wakelock.h\
+
+mce-wakelock.pic.o:\
+	mce-wakelock.c\
+	mce-log.h\
+	mce-wakelock.h\
+
 mce.o:\
 	mce.c\
 	builtin-gconf.h\
@@ -347,6 +357,7 @@ mce.o:\
 	mce-log.h\
 	mce-modules.h\
 	mce-sensorfw.h\
+	mce-wakelock.h\
 	mce.h\
 	modetransition.h\
 	powerkey.h\
@@ -369,6 +380,7 @@ mce.pic.o:\
 	mce-log.h\
 	mce-modules.h\
 	mce-sensorfw.h\
+	mce-wakelock.h\
 	mce.h\
 	modetransition.h\
 	powerkey.h\
