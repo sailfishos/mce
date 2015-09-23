@@ -145,6 +145,7 @@ mce-dbus.o:\
 	mce-dbus.h\
 	mce-lib.h\
 	mce-log.h\
+	mce-wakelock.h\
 	mce.h\
 
 mce-dbus.pic.o:\
@@ -154,6 +155,7 @@ mce-dbus.pic.o:\
 	mce-dbus.h\
 	mce-lib.h\
 	mce-log.h\
+	mce-wakelock.h\
 	mce.h\
 
 mce-dsme.o:\

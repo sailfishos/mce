@@ -26,6 +26,7 @@
 #include "mce.h"
 #include "mce-log.h"
 #include "mce-lib.h"
+#include "mce-wakelock.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -36,6 +37,9 @@
 #include <dbus/dbus-glib-lowlevel.h>
 
 #include <mce/dbus-names.h>
+
+/** How long to block late suspend when mce is sending dbus messages */
+#define MCE_DBUS_SEND_SUSPEND_BLOCK_MS 1000
 
 static bool introspectable_signal(const char *interface, const char *member);
 
@@ -438,6 +442,8 @@ gboolean dbus_send_message(DBusMessage *const msg)
 {
 	gboolean status = FALSE;
 
+	mce_wakelock_obtain("dbus_send", MCE_DBUS_SEND_SUSPEND_BLOCK_MS);
+
 	if (dbus_connection_send(dbus_connection, msg, NULL) == FALSE) {
 		mce_log(LL_CRIT,
 			"Out of memory when sending D-Bus message");
@@ -474,6 +480,8 @@ dbus_send_message_with_reply_handler(DBusMessage *const msg,
 
 	if( !msg )
 		goto EXIT;
+
+	mce_wakelock_obtain("dbus_send", MCE_DBUS_SEND_SUSPEND_BLOCK_MS);
 
 	if( !dbus_connection_send_with_reply(dbus_connection, msg, &pc, -1) ) {
 		mce_log(LL_CRIT, "Out of memory when sending D-Bus message");
@@ -1792,6 +1800,8 @@ static DBusHandlerResult msg_handler(DBusConnection *const connection,
 	(void)connection;
 	(void)user_data;
 
+	mce_wakelock_obtain("dbus_recv", -1);
+
 	guint status = DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 	int   type   = dbus_message_get_type(msg);
 
@@ -1857,6 +1867,9 @@ static DBusHandlerResult msg_handler(DBusConnection *const connection,
 	mce_dbus_squeeze_slist(&dbus_handlers);
 
 EXIT:
+
+	mce_wakelock_release("dbus_recv");
+
 	return status;
 }
 
@@ -3533,6 +3546,8 @@ mce_dbus_nameowner_query_req(const char *name)
     dbus_message_append_args(req,
 			     DBUS_TYPE_STRING, &name,
 			     DBUS_TYPE_INVALID);
+
+    mce_wakelock_obtain("dbus_send", MCE_DBUS_SEND_SUSPEND_BLOCK_MS);
 
     if( !dbus_connection_send_with_reply(dbus_connection, req, &pc, -1) )
 	goto EXIT;
