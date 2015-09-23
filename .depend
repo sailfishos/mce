@@ -342,6 +342,24 @@ mce-wakelock.pic.o:\
 	mce-log.h\
 	mce-wakelock.h\
 
+mce-wltimer.o:\
+	mce-wltimer.c\
+	datapipe.h\
+	mce-lib.h\
+	mce-log.h\
+	mce-wakelock.h\
+	mce-wltimer.h\
+	mce.h\
+
+mce-wltimer.pic.o:\
+	mce-wltimer.c\
+	datapipe.h\
+	mce-lib.h\
+	mce-log.h\
+	mce-wakelock.h\
+	mce-wltimer.h\
+	mce.h\
+
 mce.o:\
 	mce.c\
 	builtin-gconf.h\
@@ -360,6 +378,7 @@ mce.o:\
 	mce-modules.h\
 	mce-sensorfw.h\
 	mce-wakelock.h\
+	mce-wltimer.h\
 	mce.h\
 	modetransition.h\
 	powerkey.h\
@@ -383,6 +402,7 @@ mce.pic.o:\
 	mce-modules.h\
 	mce-sensorfw.h\
 	mce-wakelock.h\
+	mce-wltimer.h\
 	mce.h\
 	modetransition.h\
 	powerkey.h\

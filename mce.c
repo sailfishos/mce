@@ -24,6 +24,7 @@
 #include "mce-conf.h"
 #include "mce-fbdev.h"
 #include "mce-hbtimer.h"
+#include "mce-wltimer.h"
 #include "mce-gconf.h"
 #include "mce-dbus.h"
 #include "mce-dsme.h"
@@ -976,6 +977,9 @@ int main(int argc, char **argv)
 	/* Allow registering of suspend proof timers */
 	mce_hbtimer_init();
 
+	/* Allow registering of suspend blocking timers */
+	mce_wltimer_init();
+
 	/* Initialise mode management
 	 * pre-requisite: mce_gconf_init()
 	 * pre-requisite: mce_dbus_init()
@@ -1060,6 +1064,7 @@ EXIT:
 	mce_powerkey_exit();
 	mce_dsme_exit();
 	mce_mode_exit();
+	mce_wltimer_quit();
 	mce_hbtimer_quit();
 
 	/* Free all datapipes */
