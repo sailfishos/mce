@@ -2939,6 +2939,132 @@ static void xmce_get_lid_close_actions(void)
 }
 
 /* ------------------------------------------------------------------------- *
+ * kbd slide
+ * ------------------------------------------------------------------------- */
+
+/** Lookup table for kbd slide open triggers
+ */
+static const symbol_t kbd_slide_open_triggers[] = {
+        { "never",        KBD_OPEN_TRIGGER_NEVER        },
+        { "always",       KBD_OPEN_TRIGGER_ALWAYS       },
+        { "no-proximity", KBD_OPEN_TRIGGER_NO_PROXIMITY },
+        { NULL,           -1                            }
+};
+
+/** Lookup table for kbd slide close triggers
+ */
+static const symbol_t kbd_slide_close_triggers[] = {
+        { "never",        KBD_CLOSE_TRIGGER_NEVER      },
+        { "always",       KBD_CLOSE_TRIGGER_ALWAYS     },
+        { "after-open",   KBD_CLOSE_TRIGGER_AFTER_OPEN },
+        { NULL,           -1                           }
+};
+
+/** Set kbd slide open trigger
+ *
+ * @param args trigger name
+ */
+static bool xmce_set_kbd_slide_open_trigger(const char *args)
+{
+        int val = lookup(kbd_slide_open_triggers, args);
+        if( val < 0 ) {
+                errorf("%s: invalid kbd slide open trigger\n", args);
+                return false;
+        }
+        mcetool_gconf_set_int(MCE_GCONF_TK_KBD_OPEN_TRIGGER, val);
+        return true;
+}
+
+/** Show current kbd slide open trigger
+ */
+static void xmce_get_kbd_slide_open_trigger(void)
+{
+        gint        val = 0;
+        const char *txt = 0;
+        if( mcetool_gconf_get_int(MCE_GCONF_TK_KBD_OPEN_TRIGGER, &val) )
+                txt = rlookup(kbd_slide_open_triggers, val);
+        printf("%-"PAD1"s %s \n", "Kbd slide open trigger:", txt ?: "unknown");
+}
+
+/** Set kbd slide open actions
+ *
+ * @param args action name
+ */
+static bool xmce_set_kbd_slide_open_actions(const char *args)
+{
+        int val = lookup(lid_open_actions, args);
+        if( val < 0 ) {
+                errorf("%s: invalid kbd slide open actions\n", args);
+                return false;
+        }
+        mcetool_gconf_set_int(MCE_GCONF_TK_KBD_OPEN_ACTIONS, val);
+        return true;
+}
+
+/** Show current kbd slide open actions
+ */
+static void xmce_get_kbd_slide_open_actions(void)
+{
+        gint        val = 0;
+        const char *txt = 0;
+        if( mcetool_gconf_get_int(MCE_GCONF_TK_KBD_OPEN_ACTIONS, &val) )
+                txt = rlookup(lid_open_actions, val);
+        printf("%-"PAD1"s %s \n", "Kbd slide open actions:", txt ?: "unknown");
+}
+
+/** Set kbd slide close trigger
+ *
+ * @param args trigger name
+ */
+static bool xmce_set_kbd_slide_close_trigger(const char *args)
+{
+        int val = lookup(kbd_slide_close_triggers, args);
+        if( val < 0 ) {
+                errorf("%s: invalid kbd slide close trigger\n", args);
+                return false;
+        }
+        mcetool_gconf_set_int(MCE_GCONF_TK_KBD_CLOSE_TRIGGER, val);
+        return true;
+}
+
+/** Show current kbd slide close trigger
+ */
+static void xmce_get_kbd_slide_close_trigger(void)
+{
+        gint        val = 0;
+        const char *txt = 0;
+        if( mcetool_gconf_get_int(MCE_GCONF_TK_KBD_CLOSE_TRIGGER, &val) )
+                txt = rlookup(kbd_slide_close_triggers, val);
+        printf("%-"PAD1"s %s \n", "Kbd slide close trigger:", txt ?: "unknown");
+}
+
+/** Set kbd slide close actions
+ *
+ * @param args string that can be parsed to kbd slide close actions
+ */
+static bool xmce_set_kbd_slide_close_actions(const char *args)
+{
+        int val = lookup(lid_close_actions, args);
+        if( val < 0 ) {
+                errorf("%s: invalid kbd slide close actions\n", args);
+                return false;
+        }
+        mcetool_gconf_set_int(MCE_GCONF_TK_KBD_CLOSE_ACTIONS, val);
+        return true;
+}
+
+/** Show current kbd slide close actions
+ */
+static void xmce_get_kbd_slide_close_actions(void)
+{
+        gint        val = 0;
+        const char *txt = 0;
+        if( mcetool_gconf_get_int(MCE_GCONF_TK_KBD_CLOSE_ACTIONS, &val) )
+                txt = rlookup(lid_close_actions, val);
+        printf("%-"PAD1"s %s \n", "Kbd slide close actions:", txt ?: "unknown");
+}
+
+/* ------------------------------------------------------------------------- *
  * orientation sensor
  * ------------------------------------------------------------------------- */
 
@@ -4880,6 +5006,10 @@ static bool xmce_get_status(const char *args)
         xmce_get_filter_lid_with_als();
         xmce_get_lid_open_actions();
         xmce_get_lid_close_actions();
+        xmce_get_kbd_slide_open_trigger();
+        xmce_get_kbd_slide_open_actions();
+        xmce_get_kbd_slide_close_trigger();
+        xmce_get_kbd_slide_close_actions();
         xmce_get_dim_timeouts();
         xmce_get_brightness_fade();
         xmce_get_suspend_policy();
@@ -5657,6 +5787,46 @@ static const mce_opt_t options[] =
                         "'disabled' ignore lid close\n"
                         "'blank'    blank display\n"
                         "'tklock'   blank display and activate lockscreen\n"
+        },
+        {
+                .name        = "set-kbd-slide-open-trigger",
+                .with_arg    = xmce_set_kbd_slide_open_trigger,
+                .values      = "never|no-proximity|always",
+                        "When to react to kbd slide opened event:\n"
+                        "  never         never\n"
+                        "  no-proximity  if proximity sensor is not covered\n"
+                        "  always        always\n"
+        },
+        {
+                .name        = "set-kbd-slide-open-actions",
+                .with_arg    = xmce_set_kbd_slide_open_actions,
+                .values      = "disabled|unblank|tkunlock",
+                        "How to react to kbd slide opened event:\n"
+                        "  disabled  do nothing\n"
+                        "  unblank   unblank (and show lockscreen)\n"
+                        "  tkunlock  unblank and deactivate lockscreen (if possible)\n"
+        },
+        {
+                .name        = "set-kbd-slide-close-trigger",
+                .with_arg    = xmce_set_kbd_slide_close_trigger,
+                .values      = "never|after-open|always",
+                        "When to react to kbd slide closed event:\n"
+                        "  never       never\n"
+                        "  after-open  if display was unblanked due to kbd slide open\n"
+                        "  always      always\n"
+                        "\n"
+                        "Note: Display state policy can overrule this setting,\n"
+                        "      so that for example display does not blank during\n"
+                        "      alarms / incoming calls.\n"
+        },
+        {
+                .name        = "set-kbd-slide-close-actions",
+                .with_arg    = xmce_set_kbd_slide_close_actions,
+                .values      = "disabled|blank|tklock",
+                        "How to react to kbd slide closed event:\n"
+                        "  disabled  do nothing\n"
+                        "  blank     blank display\n"
+                        "  tklock    blank display and activate lockscreen\n"
         },
         {
                 .name        = "set-filter-lid-with-als",

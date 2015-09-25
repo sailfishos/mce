@@ -424,6 +424,22 @@ static gboolean lid_sensor_enabled = DEFAULT_LID_SENSOR_ENABLED;
 /** GConf callback ID for lid_sensor_enabled */
 static guint lid_sensor_enabled_cb_id = 0;
 
+/** When to react to keyboard open */
+static gint   tklock_kbd_open_trigger        = DEFAULT_KBD_OPEN_TRIGGER;
+static guint  tklock_kbd_open_trigger_cb_id  = 0;
+
+/** How to react to keyboard open */
+static gint   tklock_kbd_open_actions        = DEFAULT_KBD_OPEN_ACTION;
+static guint  tklock_kbd_open_actions_cb_id  = 0;
+
+/** When to react to keyboard close */
+static gint   tklock_kbd_close_trigger       = DEFAULT_KBD_CLOSE_TRIGGER;
+static guint  tklock_kbd_close_trigger_cb_id = 0;
+
+/** How to react to keyboard close */
+static gint   tklock_kbd_close_actions       = DEFAULT_KBD_CLOSE_ACTION;
+static guint  tklock_kbd_close_actions_cb_id = 0;
+
 /** Flag for: Using ALS is allowed */
 static gboolean als_enabled = ALS_ENABLED_DEFAULT;
 /** Config notification for als_enabled */
@@ -1270,10 +1286,10 @@ static void tklock_datapipe_exception_state_cb(gconstpointer data)
             uiexctype_repr(prev),
             uiexctype_repr(exception_state));
 
-    /* Cancel autorelock if there is a call */
-    if( exception_state == UIEXC_CALL &&
+    /* Cancel autorelock if there is a call or alarm */
+    if( (exception_state & (UIEXC_CALL | UIEXC_ALARM)) &&
         autorelock_trigger != AUTORELOCK_NO_TRIGGERS ) {
-        mce_log(LL_DEBUG, "autorelock canceled: handling call");
+        mce_log(LL_DEBUG, "autorelock canceled: handling call/alarm");
         autorelock_trigger = AUTORELOCK_NO_TRIGGERS;
     }
 
@@ -2486,58 +2502,122 @@ EXIT:
  * KEYBOARD SLIDE STATE MACHINE
  * ========================================================================= */
 
+static void tklock_keyboard_slide_opened(void)
+{
+    /* In any case opening the kbd slide will cancel
+     * other autorelock triggers */
+    if( autorelock_trigger != AUTORELOCK_NO_TRIGGERS ) {
+        mce_log(LL_DEBUG, "autorelock canceled: kbd slide opened");
+        autorelock_trigger = AUTORELOCK_NO_TRIGGERS;
+    }
+
+    /* Display must be off */
+    switch( display_state_next ) {
+    case MCE_DISPLAY_ON:
+    case MCE_DISPLAY_DIM:
+        goto EXIT;
+
+    default:
+        break;
+    }
+
+    /* Check if actions are wanted */
+    switch( tklock_kbd_open_trigger ) {
+    default:
+    case KBD_OPEN_TRIGGER_NEVER:
+        goto EXIT;
+
+    case KBD_OPEN_TRIGGER_ALWAYS:
+        break;
+
+    case KBD_OPEN_TRIGGER_NO_PROXIMITY:
+        if( proximity_state_actual == COVER_CLOSED ||
+            lid_cover_policy_state == COVER_CLOSED )
+            goto EXIT;
+        break;
+    }
+
+    /* Check what actions are wanted */
+    if( tklock_kbd_open_actions != LID_OPEN_ACTION_DISABLED ) {
+        mce_log(LL_DEVEL, "kbd slide open - unblank");
+        execute_datapipe(&display_state_req_pipe,
+                         GINT_TO_POINTER(MCE_DISPLAY_ON),
+                         USE_INDATA, CACHE_INDATA);
+    }
+
+    if( tklock_kbd_open_actions == LID_OPEN_ACTION_TKUNLOCK ) {
+        mce_log(LL_DEBUG, "kbd slide open - untklock");
+        execute_datapipe(&tk_lock_pipe,
+                         GINT_TO_POINTER(LOCK_OFF),
+                         USE_INDATA, CACHE_INDATA);
+    }
+
+    /* Mark down we unblanked due to keyboard open */
+    mce_log(LL_DEBUG, "autorelock primed: on kbd slide close");
+    autorelock_trigger = AUTORELOCK_KBD_SLIDE;
+
+EXIT:
+    return;
+}
+
+static void tklock_keyboard_slide_closed(void)
+{
+    /* Must not blank during active alarms / calls */
+    if( exception_state & (UIEXC_CALL | UIEXC_ALARM) )
+        goto EXIT;
+
+    /* Check if actions are wanted */
+    switch( tklock_kbd_close_trigger ) {
+    default:
+    case KBD_CLOSE_TRIGGER_NEVER:
+        goto EXIT;
+
+    case KBD_CLOSE_TRIGGER_ALWAYS:
+        break;
+
+    case KBD_CLOSE_TRIGGER_AFTER_OPEN:
+        if( autorelock_trigger != AUTORELOCK_KBD_SLIDE )
+            goto EXIT;
+
+        mce_log(LL_DEBUG, "autorelock triggered: kbd slide closed");
+        autorelock_trigger = AUTORELOCK_NO_TRIGGERS;
+        break;
+    }
+
+    /* Check what actions are wanted */
+    if( tklock_kbd_close_actions != LID_CLOSE_ACTION_DISABLED ) {
+        mce_log(LL_DEVEL, "kbd slide closed - blank");
+        execute_datapipe(&display_state_req_pipe,
+                         GINT_TO_POINTER(MCE_DISPLAY_OFF),
+                         USE_INDATA, CACHE_INDATA);
+    }
+
+    if( tklock_kbd_close_actions == LID_CLOSE_ACTION_TKLOCK ) {
+        mce_log(LL_DEBUG, "kbd slide closed - tklock");
+        execute_datapipe(&tk_lock_pipe,
+                         GINT_TO_POINTER(LOCK_ON),
+                         USE_INDATA, CACHE_INDATA);
+    }
+
+EXIT:
+    /* In any case closing the kbd slide will cancel autorelock triggers */
+    if( autorelock_trigger != AUTORELOCK_NO_TRIGGERS ) {
+        mce_log(LL_DEBUG, "autorelock canceled: kbd slide closed");
+        autorelock_trigger = AUTORELOCK_NO_TRIGGERS;
+    }
+
+    return;
+}
+
 static void tklock_keyboard_slide_rethink(void)
 {
-    bool display_on = (display_state_next == MCE_DISPLAY_ON ||
-                       display_state_next == MCE_DISPLAY_DIM);
-
     switch( kbd_slide_input_state ) {
     case COVER_OPEN:
-        /* In any case opening the kbd slide will cancel
-         * other autorelock triggers */
-        if( autorelock_trigger != AUTORELOCK_NO_TRIGGERS ) {
-            mce_log(LL_DEBUG, "autorelock canceled: kbd slide opened");
-            autorelock_trigger = AUTORELOCK_NO_TRIGGERS;
-        }
-
-        if( !display_on &&
-            proximity_state_actual == COVER_OPEN &&
-            lid_cover_policy_state != COVER_CLOSED ) {
-            mce_log(LL_DEBUG, "autorelock primed: on kbd slide close");
-            autorelock_trigger = AUTORELOCK_KBD_SLIDE;
-
-            mce_log(LL_DEBUG, "display -> on");
-            execute_datapipe(&display_state_req_pipe,
-                             GINT_TO_POINTER(MCE_DISPLAY_ON),
-                             USE_INDATA, CACHE_INDATA);
-            execute_datapipe(&tk_lock_pipe,
-                             GINT_TO_POINTER(LOCK_OFF),
-                             USE_INDATA, CACHE_INDATA);
-        }
+        tklock_keyboard_slide_opened();
         break;
 
     case COVER_CLOSED:
-        if( autorelock_trigger == AUTORELOCK_KBD_SLIDE ) {
-            mce_log(LL_DEBUG, "autorelock triggered: kbd slide closed");
-            autorelock_trigger = AUTORELOCK_NO_TRIGGERS;
-
-            mce_log(LL_DEBUG, "display -> off");
-
-            execute_datapipe(&tk_lock_pipe,
-                             GINT_TO_POINTER(LOCK_ON),
-                             USE_INDATA, CACHE_INDATA);
-
-            execute_datapipe(&display_state_req_pipe,
-                             GINT_TO_POINTER(MCE_DISPLAY_OFF),
-                             USE_INDATA, CACHE_INDATA);
-        }
-
-        /* In any case closing the kbd slide will cancel
-         * other autorelock triggers */
-        if( autorelock_trigger != AUTORELOCK_NO_TRIGGERS ) {
-            mce_log(LL_DEBUG, "autorelock canceled: kbd slide closed");
-            autorelock_trigger = AUTORELOCK_NO_TRIGGERS;
-        }
+        tklock_keyboard_slide_closed();
         break;
 
     default:
@@ -4085,6 +4165,70 @@ static void tklock_gconf_sanitize_lid_close_actions(void)
     }
 }
 
+static void tklock_gconf_sanitize_kbd_open_trigger(void)
+{
+    switch( tklock_kbd_open_trigger ) {
+    case KBD_OPEN_TRIGGER_NEVER:
+    case KBD_OPEN_TRIGGER_ALWAYS:
+    case KBD_OPEN_TRIGGER_NO_PROXIMITY:
+        break;
+
+    default:
+        mce_log(LL_WARN, "Invalid kbd open trigger: %d; using default",
+                tklock_kbd_open_trigger);
+        tklock_kbd_open_trigger = DEFAULT_KBD_OPEN_TRIGGER;
+        break;
+    }
+}
+
+static void tklock_gconf_sanitize_kbd_open_actions(void)
+{
+    switch( tklock_kbd_open_actions ) {
+    case LID_OPEN_ACTION_DISABLED:
+    case LID_OPEN_ACTION_UNBLANK:
+    case LID_OPEN_ACTION_TKUNLOCK:
+        break;
+
+    default:
+        mce_log(LL_WARN, "Invalid kbd open actions: %d; using default",
+                tklock_kbd_open_actions);
+        tklock_kbd_open_actions = DEFAULT_KBD_OPEN_ACTION;
+        break;
+    }
+}
+
+static void tklock_gconf_sanitize_kbd_close_trigger(void)
+{
+    switch( tklock_kbd_close_trigger ) {
+    case KBD_CLOSE_TRIGGER_NEVER:
+    case KBD_CLOSE_TRIGGER_ALWAYS:
+    case KBD_CLOSE_TRIGGER_AFTER_OPEN:
+        break;
+
+    default:
+        mce_log(LL_WARN, "Invalid kbd close trigger: %d; using default",
+                tklock_kbd_close_trigger);
+        tklock_kbd_close_trigger = DEFAULT_KBD_CLOSE_TRIGGER;
+        break;
+    }
+}
+
+static void tklock_gconf_sanitize_kbd_close_actions(void)
+{
+    switch( tklock_kbd_close_actions ) {
+    case LID_CLOSE_ACTION_DISABLED:
+    case LID_CLOSE_ACTION_BLANK:
+    case LID_CLOSE_ACTION_TKLOCK:
+        break;
+
+    default:
+        mce_log(LL_WARN, "Invalid kbd close actions: %d; using default",
+                tklock_kbd_close_actions);
+        tklock_kbd_close_actions = DEFAULT_KBD_CLOSE_ACTION;
+        break;
+    }
+}
+
 /** GConf callback for touchscreen/keypad lock related settings
  *
  * @param gcc Unused
@@ -4155,6 +4299,22 @@ static void tklock_gconf_cb(GConfClient *const gcc, const guint id,
         tklock_lid_close_actions = gconf_value_get_int(gcv);
         tklock_gconf_sanitize_lid_close_actions();
         tklock_evctrl_rethink();
+    }
+    else if( id == tklock_kbd_open_trigger_cb_id ) {
+        tklock_kbd_open_trigger = gconf_value_get_int(gcv);
+        tklock_gconf_sanitize_kbd_open_trigger();
+    }
+    else if( id == tklock_kbd_open_actions_cb_id ) {
+        tklock_kbd_open_actions = gconf_value_get_int(gcv);
+        tklock_gconf_sanitize_kbd_open_actions();
+    }
+    else if( id == tklock_kbd_close_trigger_cb_id ) {
+        tklock_kbd_close_trigger = gconf_value_get_int(gcv);
+        tklock_gconf_sanitize_kbd_close_trigger();
+    }
+    else if( id == tklock_kbd_close_actions_cb_id ) {
+        tklock_kbd_close_actions = gconf_value_get_int(gcv);
+        tklock_gconf_sanitize_kbd_close_actions();
     }
     else if( id == tklock_blank_disable_id ) {
         gint old = tklock_blank_disable;
@@ -4335,6 +4495,40 @@ static void tklock_gconf_init(void)
 
     tklock_gconf_sanitize_lid_close_actions();
 
+    /* Kbd slide open policy */
+    mce_gconf_track_int(MCE_GCONF_TK_KBD_OPEN_TRIGGER,
+                        &tklock_kbd_open_trigger,
+                        DEFAULT_KBD_OPEN_TRIGGER,
+                        tklock_gconf_cb,
+                        &tklock_kbd_open_trigger_cb_id);
+
+    tklock_gconf_sanitize_kbd_open_trigger();
+
+    mce_gconf_track_int(MCE_GCONF_TK_KBD_OPEN_ACTIONS,
+                        &tklock_kbd_open_actions,
+                        DEFAULT_KBD_OPEN_ACTION,
+                        tklock_gconf_cb,
+                        &tklock_kbd_open_actions_cb_id);
+
+    tklock_gconf_sanitize_kbd_open_actions();
+
+    /* Kbd slide close policy */
+    mce_gconf_track_int(MCE_GCONF_TK_KBD_CLOSE_TRIGGER,
+                        &tklock_kbd_close_trigger,
+                        DEFAULT_KBD_CLOSE_TRIGGER,
+                        tklock_gconf_cb,
+                        &tklock_kbd_close_trigger_cb_id);
+
+    tklock_gconf_sanitize_kbd_close_trigger();
+
+    mce_gconf_track_int(MCE_GCONF_TK_KBD_CLOSE_ACTIONS,
+                        &tklock_kbd_close_actions,
+                        DEFAULT_KBD_CLOSE_ACTION,
+                        tklock_gconf_cb,
+                        &tklock_kbd_close_actions_cb_id);
+
+    tklock_gconf_sanitize_kbd_close_actions();
+
     /** Touchscreen double tap gesture mode */
     mce_gconf_track_int(MCE_GCONF_DOUBLETAP_MODE,
                         &doubletap_enable_mode,
@@ -4468,6 +4662,18 @@ static void tklock_gconf_quit(void)
 
     mce_gconf_notifier_remove(tklock_lid_close_actions_cb_id),
         tklock_lid_close_actions_cb_id = 0;
+
+    mce_gconf_notifier_remove(tklock_kbd_open_trigger_cb_id),
+        tklock_kbd_open_trigger_cb_id = 0;
+
+    mce_gconf_notifier_remove(tklock_kbd_open_actions_cb_id),
+        tklock_kbd_open_actions_cb_id = 0;
+
+    mce_gconf_notifier_remove(tklock_kbd_close_trigger_cb_id),
+        tklock_kbd_close_trigger_cb_id = 0;
+
+    mce_gconf_notifier_remove(tklock_kbd_close_actions_cb_id),
+        tklock_kbd_close_actions_cb_id = 0;
 
     mce_gconf_notifier_remove(tk_autolock_enabled_cb_id),
         tk_autolock_enabled_cb_id = 0;
