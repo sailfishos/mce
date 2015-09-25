@@ -1313,6 +1313,12 @@ static const setting_t gconf_defaults[] =
     .type = "i",
     .def  = "0",
   },
+  {
+    .key  = MCE_GCONF_KBD_SLIDE_INHIBIT,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_KBD_SLIDE_INHIBIT),
+  },
+
 #if GCONF_ADD_DEBUG_VALUES
   {
     .key  = "/test/string",

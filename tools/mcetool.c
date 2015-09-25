@@ -4355,6 +4355,43 @@ static void xmce_get_inhibit_mode(void)
         printf("%-"PAD1"s %s \n", "Blank inhibit:", txt ?: "unknown");
 }
 
+/** Lookup table kbd slide inhibit modes */
+static const symbol_t kbd_slide_inhibitmode_lut[] =
+{
+        { "disabled",           KBD_SLIDE_INHIBIT_OFF                },
+        { "stay-on-when-open",  KBD_SLIDE_INHIBIT_STAY_ON_WHEN_OPEN  },
+        { "stay-dim-when-open", KBD_SLIDE_INHIBIT_STAY_DIM_WHEN_OPEN },
+        { 0,                    -1                                   }
+
+};
+
+/** Set kbd slide inhibit mode
+ *
+ * @param args name of inhibit mode
+ */
+static bool xmce_set_kbd_slide_inhibit_mode(const char *args)
+{
+        int val = lookup(kbd_slide_inhibitmode_lut, args);
+        if( val < 0 ) {
+                errorf("%s: Invalid kbd slide blank inhibit mode\n", args);
+                return false;
+        }
+
+        mcetool_gconf_set_int(MCE_GCONF_KBD_SLIDE_INHIBIT, val);
+        return true;
+}
+
+/** Show current kbd slide inhibit mode
+ */
+static void xmce_get_kbd_slide_inhibit_mode(void)
+{
+        gint        val = 0;
+        const char *txt = 0;
+        if( mcetool_gconf_get_int(MCE_GCONF_KBD_SLIDE_INHIBIT, &val) )
+                txt = rlookup(kbd_slide_inhibitmode_lut, val);
+        printf("%-"PAD1"s %s \n", "Kbd slide blank inhibit:", txt ?: "unknown");
+}
+
 /* ------------------------------------------------------------------------- *
  * lipstick killer
  * ------------------------------------------------------------------------- */
@@ -4969,6 +5006,7 @@ static bool xmce_get_status(const char *args)
         xmce_get_never_blank();
         xmce_get_blank_timeout();
         xmce_get_inhibit_mode();
+        xmce_get_kbd_slide_inhibit_mode();
         xmce_get_blank_prevent_mode();
         xmce_get_keyboard_backlight_state();
         xmce_get_inactivity_state();
@@ -5302,6 +5340,16 @@ static const mce_opt_t options[] =
                         "'disabled',\n"
                         "'stay-on-with-charger', 'stay-on',\n"
                         "'stay-dim-with-charger', 'stay-dim'\n"
+        },
+        {
+                .name        = "set-kbd-slide-inhibit-mode",
+                .with_arg    = xmce_set_kbd_slide_inhibit_mode,
+                .values      = "disabled|stay-on-when-open|stay-dim-when-open",
+                .usage       =
+                        "Set the kbd slide blanking inhibit mode:\n"
+                        "  disabled            kbd slide status does not prevent blanking\n"
+                        "  stay-on-when-open   prevent dimming while kbd slide is open\n"
+                        "  stay-dim-when-open  prevent blanking while kbd slide is open\n"
         },
         {
                 .name        = "set-tklock-mode",
