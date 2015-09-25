@@ -268,6 +268,7 @@ static bool                mdy_shutdown_in_progress(void);
 static void                mdy_datapipe_packagekit_locked_cb(gconstpointer data);;
 static void                mdy_datapipe_system_state_cb(gconstpointer data);
 static void                mdy_datapipe_submode_cb(gconstpointer data);
+static void                mdy_datapipe_mdy_datapipe_lid_cover_policy_cb(gconstpointer data);
 static gpointer            mdy_datapipe_display_state_filter_cb(gpointer data);
 static void                mdy_datapipe_display_state_cb(gconstpointer data);
 static void                mdy_datapipe_display_state_next_cb(gconstpointer data);
@@ -355,6 +356,7 @@ static void                mdy_brightness_set_level_hybris(int number);
 static void                mdy_brightness_set_level_default(int number);
 static void                mdy_brightness_set_level(int number);
 
+static void                mdy_brightness_fade_continue_with_als(fader_type_t fader_type);
 static void                mdy_brightness_force_level(int number);
 
 static void                mdy_brightness_set_priority_boost(bool enable);
@@ -364,6 +366,7 @@ static void                mdy_brightness_cleanup_fade_timer(void);
 static void                mdy_brightness_stop_fade_timer(void);
 static void                mdy_brightness_start_fade_timer(fader_type_t type, gint step_time);
 static bool                mdy_brightness_fade_is_active(void);
+static bool                mdy_brightness_is_fade_allowed(fader_type_t type);
 
 static void                mdy_brightness_set_fade_target_ex(fader_type_t type, gint new_brightness, gint transition_time);
 static void                mdy_brightness_set_fade_target_default(gint new_brightness);
@@ -380,6 +383,8 @@ static int                 mdy_brightness_get_dim_threshold_hi(void);
 static void                mdy_brightness_set_on_level(gint hbm_and_level);
 static void                mdy_brightness_set_dim_level(void);
 static void                mdy_brightness_set_lpm_level(gint level);
+
+static void                mdy_brightness_init(void);
 
 /* ------------------------------------------------------------------------- *
  * UI_SIDE_DIMMING
@@ -1125,7 +1130,7 @@ static cover_state_t lid_cover_policy_state = COVER_UNDEF;
 
 /** Change notifications from lid_cover_policy_pipe
  */
-static void tklock_datapipe_mdy_datapipe_lid_cover_policy_cb(gconstpointer data)
+static void mdy_datapipe_mdy_datapipe_lid_cover_policy_cb(gconstpointer data)
 {
     cover_state_t prev = lid_cover_policy_state;
     lid_cover_policy_state = GPOINTER_TO_INT(data);
@@ -1805,8 +1810,8 @@ static datapipe_handler_t mdy_datapipe_handlers[] =
         .output_cb = mdy_datapipe_lipstick_available_cb,
     },
     {
-        .datapipe = &lid_cover_policy_pipe,
-        .output_cb = tklock_datapipe_mdy_datapipe_lid_cover_policy_cb,
+        .datapipe  = &lid_cover_policy_pipe,
+        .output_cb = mdy_datapipe_mdy_datapipe_lid_cover_policy_cb,
     },
     {
         .datapipe  = &shutting_down_pipe,
