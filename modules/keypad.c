@@ -33,6 +33,8 @@
 
 #include <mce/dbus-names.h>
 
+#include <unistd.h>
+#include <glib/gstdio.h>
 #include <gmodule.h>
 
 /** Module name */
@@ -154,6 +156,21 @@ static output_state_t led_brightness_kb5_output =
 	.close_on_exit = FALSE,
 };
 
+/** Maximum backlight brightness, hw specific */
+static gint backlight_brightness_level_maximum = DEFAULT_KEY_BACKLIGHT_LEVEL;
+
+/** File used to get maximum display brightness */
+static gchar *backlight_brightness_level_maximum_path = NULL;
+
+/** File used to set backlight brightness */
+static output_state_t backlight_brightness_level_output =
+{
+	.path = NULL,
+	.context = "brightness",
+	.truncate_file = TRUE,
+	.close_on_exit = FALSE,
+};
+
 /** Path to engine 3 mode */
 static gchar *engine3_mode_path = NULL;
 
@@ -185,6 +202,74 @@ static output_state_t n810_keyboard_fadetime_output =
 static guint key_backlight_mask = 0;
 
 static void cancel_key_backlight_timeout(void);
+
+/** Check if sysfs directory contains brightness and max_brightness entries
+ *
+ * @param sysfs directory to probe
+ * @param setpath place to store path to brightness file
+ * @param maxpath place to store path to max_brightness file
+ * @return TRUE if brightness and max_brightness files were found,
+ *         FALSE otherwise
+ */
+static gboolean probe_simple_backlight_directory(const gchar *dirpath,
+                                        char **setpath, char **maxpath)
+{
+	gboolean  res = FALSE;
+
+	gchar *set = g_strdup_printf("%s/brightness", dirpath);
+	gchar *max = g_strdup_printf("%s/max_brightness", dirpath);
+
+	if( set && max && !g_access(set, W_OK) && !g_access(max, R_OK) ) {
+		*setpath = set, set = 0;
+		*maxpath = max, max = 0;
+		res = TRUE;
+	}
+
+	g_free(set);
+	g_free(max);
+
+	return res;
+}
+
+/**
+ * Check if user-defined keyboard backlight exists
+ */
+static void probe_simple_backlight_brightness()
+{
+	gchar *set = 0;
+	gchar *max = 0;
+	gchar **vdir = 0;
+
+	/* Check if we have a configured brightness directory
+	 * that a) exists and b) contains both brightness and
+	 * max_brightness files */
+
+	vdir = mce_conf_get_string_list(MCE_CONF_KEYPAD_GROUP,
+					MCE_CONF_KEY_BACKLIGHT_SYS_PATH, 0);
+	if( vdir ) {
+		for( size_t i = 0; vdir[i]; ++i ) {
+			if( !*vdir[i] || g_access(vdir[i], F_OK) )
+				continue;
+
+			if( probe_simple_backlight_directory(vdir[i], &set, &max) )
+				break;
+		}
+	}
+
+	if( set && max ) {
+		gulong tmp = 0;
+		backlight_brightness_level_output.path  = set, set = 0;
+		backlight_brightness_level_maximum_path = max, max = 0;
+		if( mce_read_number_string_from_file(backlight_brightness_level_maximum_path,
+							&tmp, NULL, FALSE, TRUE) ) {
+			backlight_brightness_level_maximum = (gint)tmp;
+		}
+	}
+
+	g_free(max);
+	g_free(set);
+	g_strfreev(vdir);
+}
 
 /**
  * Setup model specific key backlight values/paths
@@ -245,7 +330,8 @@ static void setup_key_backlight(void)
 		break;
 
 	default:
-		/* No keyboard available */
+		/* Check for user-defined simple keyboard backlight */
+		probe_simple_backlight_brightness();
 		break;
 	}
 }
@@ -390,6 +476,16 @@ static void set_n810_backlight_brightness(guint fadetime, guint brightness)
 }
 
 /**
+ * Key backlight brightness for simple backlight
+ *
+ * @param brightness Backlight brightness
+ */
+static void set_simple_backlight_brightness(guint brightness)
+{
+	(void)mce_write_number_string_to_file(&backlight_brightness_level_output, brightness);
+}
+
+/**
  * Set key backlight brightness
  *
  * @param data Backlight brightness passed as a gconstpointer
@@ -428,6 +524,9 @@ static void set_backlight_brightness(gconstpointer data)
 		break;
 
 	default:
+		if (backlight_brightness_level_output.path) {
+			set_simple_backlight_brightness(new_brightness);
+		}
 		break;
 	}
 
@@ -503,7 +602,7 @@ static void enable_key_backlight(void)
 	/* If the backlight is off, turn it on */
 	if (datapipe_get_guint(key_backlight_pipe) == 0) {
 		execute_datapipe(&key_backlight_pipe,
-				 GINT_TO_POINTER(DEFAULT_KEY_BACKLIGHT_LEVEL),
+				 GINT_TO_POINTER(backlight_brightness_level_maximum),
 				 USE_INDATA, CACHE_INDATA);
 	}
 
@@ -837,6 +936,9 @@ void g_module_unload(GModule *module)
 	g_free((void*)led_brightness_kb3_output.path);
 	g_free((void*)led_brightness_kb4_output.path);
 	g_free((void*)led_brightness_kb5_output.path);
+
+	g_free((void*)backlight_brightness_level_output.path);
+	g_free(backlight_brightness_level_maximum_path);
 
 	g_free(engine3_mode_path);
 	g_free(engine3_load_path);
