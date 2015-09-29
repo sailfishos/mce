@@ -3111,7 +3111,7 @@ mce (1.10.9+nmu1) unstable; urgency=low
     - Added SystemUI attic
     - Added Cita tests
     - Added mce-cabc tool
-    - Dropped Build dependencies on SystemUI and BME
+    - Dropped Build dependencies on SystemUI and BME
     - Added BME header
     - Fixed modules related to SystemUI and BME
     - Dropped useless linking to libcrypt for mce and libdbus-glib for mcetool
