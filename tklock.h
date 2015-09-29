@@ -160,6 +160,36 @@ typedef enum
 #define MCE_GCONF_TK_LID_CLOSE_ACTIONS	MCE_GCONF_LOCK_PATH "/lid_close_actions"
 #define DEFAULT_LID_CLOSE_ACTION	2 // = LID_CLOSE_ACTION_TKLOCK
 
+/** When to react to kbd slide closed events */
+typedef enum {
+    KBD_OPEN_TRIGGER_NEVER         = 0,
+    KBD_OPEN_TRIGGER_ALWAYS        = 1,
+    KBD_OPEN_TRIGGER_NO_PROXIMITY  = 2,
+} kbd_open_trigger_t;
+
+/* When to react to kbd slide opened events */
+typedef enum {
+    KBD_CLOSE_TRIGGER_NEVER        = 0,
+    KBD_CLOSE_TRIGGER_ALWAYS       = 1,
+    KBD_CLOSE_TRIGGER_AFTER_OPEN   = 2,
+} kbd_close_trigger_t;
+
+/** Keypad slide open reaction condition GConf setting */
+#define MCE_GCONF_TK_KBD_OPEN_TRIGGER   MCE_GCONF_LOCK_PATH "/keyboard_open_trigger"
+#define DEFAULT_KBD_OPEN_TRIGGER        2 // = KBD_OPEN_TRIGGER_NO_PROXIMITY
+
+/** Keypad slide open action GConf setting */
+#define MCE_GCONF_TK_KBD_OPEN_ACTIONS   MCE_GCONF_LOCK_PATH "/keyboard_open_actions"
+#define DEFAULT_KBD_OPEN_ACTION         1 // = LID_OPEN_ACTION_UNBLANK
+
+/** Keypad slide close reaction condition GConf setting */
+#define MCE_GCONF_TK_KBD_CLOSE_TRIGGER  MCE_GCONF_LOCK_PATH "/keyboard_close_trigger"
+#define DEFAULT_KBD_CLOSE_TRIGGER       2 // = KBD_CLOSE_TRIGGER_AFTER_OPEN
+
+/** Keypad slide close action GConf setting */
+#define MCE_GCONF_TK_KBD_CLOSE_ACTIONS  MCE_GCONF_LOCK_PATH "/keyboard_close_actions"
+#define DEFAULT_KBD_CLOSE_ACTION        2 // = LID_CLOSE_ACTION_TKLOCK
+
 /** Autolock delay GConf setting [ms]*/
 # define MCE_GCONF_AUTOLOCK_DELAY		MCE_GCONF_LOCK_PATH "/autolock_delay"
 # define DEFAULT_AUTOLOCK_DELAY                 30000

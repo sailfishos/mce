@@ -1283,6 +1283,26 @@ static const setting_t gconf_defaults[] =
     .def  = G_STRINGIFY(DEFAULT_LID_CLOSE_ACTION),
   },
   {
+    .key  = MCE_GCONF_TK_KBD_OPEN_TRIGGER,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_KBD_OPEN_TRIGGER),
+  },
+  {
+    .key  = MCE_GCONF_TK_KBD_OPEN_ACTIONS,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_KBD_OPEN_ACTION),
+  },
+  {
+    .key  = MCE_GCONF_TK_KBD_CLOSE_TRIGGER,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_KBD_CLOSE_TRIGGER),
+  },
+  {
+    .key  = MCE_GCONF_TK_KBD_CLOSE_ACTIONS,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_KBD_CLOSE_ACTION),
+  },
+  {
     .key  = MCE_GCONF_AUTOLOCK_DELAY,
     .type = "i",
     .def  = G_STRINGIFY(DEFAULT_AUTOLOCK_DELAY),
