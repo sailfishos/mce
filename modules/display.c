@@ -244,6 +244,30 @@ enum
     LED_DELAY_UI_DISABLE_ENABLE_MAXIMUM = 15000,
 };
 
+/** Backlight fade types */
+typedef enum
+{
+    /** No brightness fading */
+    FADER_IDLE,
+
+    /** Normal brightness fading */
+    FADER_DEFAULT,
+
+    /** Fading to MCE_DISPLAY_DIM */
+    FADER_DIMMING,
+
+    /** Fading due to ALS adjustment */
+    FADER_ALS,
+
+    /** Fading to DISPLAY_OFF */
+    FADER_BLANK,
+
+    /** Fading from DISPLAY_OFF */
+    FADER_UNBLANK,
+
+    FADER_NUMOF
+} fader_type_t;
+
 /* ========================================================================= *
  * PROTOTYPES
  * ========================================================================= */
@@ -254,6 +278,8 @@ enum
 
 static inline bool         mdy_str_eq_p(const char *s1, const char *s2);
 static const char         *blanking_pause_mode_repr(blanking_pause_mode_t mode);
+static const char         *fader_type_name(fader_type_t type);
+static int                 xlat(int src_lo, int src_hi, int dst_lo, int dst_hi, int val);
 
 /* ------------------------------------------------------------------------- *
  * SHUTDOWN
@@ -311,44 +337,6 @@ static void                mdy_hbm_rethink(void);
 /* ------------------------------------------------------------------------- *
  * BACKLIGHT_BRIGHTNESS
  * ------------------------------------------------------------------------- */
-
-typedef enum
-{
-    /** No brightness fading */
-    FADER_IDLE,
-
-    /** Normal brightness fading */
-    FADER_DEFAULT,
-
-    /** Fading to MCE_DISPLAY_DIM */
-    FADER_DIMMING,
-
-    /** Fading due to ALS adjustment */
-    FADER_ALS,
-
-    /** Fading to DISPLAY_OFF */
-    FADER_BLANK,
-
-    /** Fading from DISPLAY_OFF */
-    FADER_UNBLANK,
-
-    FADER_NUMOF
-} fader_type_t;
-
-static const char *
-fader_type_name(fader_type_t type)
-{
-    static const char * const lut[FADER_NUMOF] =
-    {
-        [FADER_IDLE]          = "IDLE",
-        [FADER_DEFAULT]       = "DEFAULT",
-        [FADER_DIMMING]       = "DIMMING",
-        [FADER_ALS]           = "ALS",
-        [FADER_BLANK]         = "BLANK",
-        [FADER_UNBLANK]       = "UNBLANK",
-    };
-    return (type < FADER_NUMOF) ? lut[type] : "INVALID";
-}
 
 #ifdef ENABLE_HYBRIS
 static void                mdy_brightness_set_level_hybris(int number);
@@ -1017,6 +1005,64 @@ static const char *blanking_pause_mode_repr(blanking_pause_mode_t mode)
     }
 
     return res;
+}
+
+/** Convert fader_type_t enum to human readable string
+ *
+ * @param state fader_type_t enumeration value
+ *
+ * @return human readable representation of the value
+ */
+static const char *
+fader_type_name(fader_type_t type)
+{
+    static const char * const lut[FADER_NUMOF] =
+    {
+        [FADER_IDLE]          = "IDLE",
+        [FADER_DEFAULT]       = "DEFAULT",
+        [FADER_DIMMING]       = "DIMMING",
+        [FADER_ALS]           = "ALS",
+        [FADER_BLANK]         = "BLANK",
+        [FADER_UNBLANK]       = "UNBLANK",
+    };
+    return (type < FADER_NUMOF) ? lut[type] : "INVALID";
+}
+
+/** Map value in one range to another using linear interpolation
+ *
+ * Assumes src_lo < src_hi, if this is not the case
+ * low boundary of the target range is returned.
+ *
+ * If provided value is outside the source range, output
+ * is capped to the given target range.
+ *
+ * @param src_lo  low boundary of the source range
+ * @param src_hi  high boundary of the source range
+ * @param dst_lo  low boundary of the target range
+ * @param dst_hi  high boundary of the target range
+ * @param val     value in [src_lo, src_hi] range
+ *
+ * @return val mapped to [dst_lo, dst_hi] range
+ */
+static int
+xlat(int src_lo, int src_hi, int dst_lo, int dst_hi, int val)
+{
+    if( src_lo > src_hi )
+        return dst_lo;
+
+    if( val <= src_lo )
+        return dst_lo;
+
+    if( val >= src_hi )
+        return dst_hi;
+
+    int range = src_hi - src_lo;
+
+    val = (val - src_lo) * dst_hi + (src_hi - val) * dst_lo;
+    val += range/2;
+    val /= range;
+
+    return val;
 }
 
 /* ========================================================================= *
@@ -2804,43 +2850,6 @@ static int mdy_brightness_get_dim_threshold_hi(void)
     return mce_xlat_int(1, 100,
                         1, mdy_brightness_level_maximum,
                         mdy_brightness_dim_compositor_hi);
-}
-
-/** Map value in one range to another using linear interpolation
- *
- * Assumes src_lo < src_hi, if this is not the case
- * low boundary of the target range is returned.
- *
- * If provided value is outside the source range, output
- * is capped to the given target range.
- *
- * @param src_lo  low boundary of the source range
- * @param src_hi  high boundary of the source range
- * @param dst_lo  low boundary of the target range
- * @param dst_hi  high boundary of the target range
- * @param val     value in [src_lo, src_hi] range
- *
- * @return val mapped to [dst_lo, dst_hi] range
- */
-static inline int
-xlat(int src_lo, int src_hi, int dst_lo, int dst_hi, int val)
-{
-    if( src_lo > src_hi )
-        return dst_lo;
-
-    if( val <= src_lo )
-        return dst_lo;
-
-    if( val >= src_hi )
-        return dst_hi;
-
-    int range = src_hi - src_lo;
-
-    val = (val - src_lo) * dst_hi + (src_hi - val) * dst_lo;
-    val += range/2;
-    val /= range;
-
-    return val;
 }
 
 static void mdy_brightness_set_dim_level(void)
