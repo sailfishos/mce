@@ -1,3 +1,13 @@
+mce (1.66.0) unstable; urgency=low
+
+  * [tklock] Add settings for tuning keyboard slide open/close policy.
+    Contibutes to MER#1321
+  * [display] Add setting for kbd slide inhibit mode. Contributes to MER#1321
+  * [display] Add missing prototypes and fix function name prefix
+  * [build] Remove no-break spaces form debian changelog
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 29 Sep 2015 13:30:14 +0300
+
 mce (1.65.0) unstable; urgency=low
 
   * [lib] Add utilities for getting 64-bit time stamps. Contibutes to JB#31310
