@@ -268,9 +268,11 @@ static bool                mdy_shutdown_in_progress(void);
 static void                mdy_datapipe_packagekit_locked_cb(gconstpointer data);;
 static void                mdy_datapipe_system_state_cb(gconstpointer data);
 static void                mdy_datapipe_submode_cb(gconstpointer data);
+static void                mdy_datapipe_mdy_datapipe_lid_cover_policy_cb(gconstpointer data);
 static gpointer            mdy_datapipe_display_state_filter_cb(gpointer data);
 static void                mdy_datapipe_display_state_cb(gconstpointer data);
 static void                mdy_datapipe_display_state_next_cb(gconstpointer data);
+static void                mdy_datapipe_keyboard_slide_input_cb(gconstpointer const data);
 static void                mdy_datapipe_display_brightness_cb(gconstpointer data);
 static void                mdy_datapipe_lpm_brightness_cb(gconstpointer data);
 static void                mdy_datapipe_display_state_req_cb(gconstpointer data);
@@ -354,6 +356,7 @@ static void                mdy_brightness_set_level_hybris(int number);
 static void                mdy_brightness_set_level_default(int number);
 static void                mdy_brightness_set_level(int number);
 
+static void                mdy_brightness_fade_continue_with_als(fader_type_t fader_type);
 static void                mdy_brightness_force_level(int number);
 
 static void                mdy_brightness_set_priority_boost(bool enable);
@@ -363,6 +366,7 @@ static void                mdy_brightness_cleanup_fade_timer(void);
 static void                mdy_brightness_stop_fade_timer(void);
 static void                mdy_brightness_start_fade_timer(fader_type_t type, gint step_time);
 static bool                mdy_brightness_fade_is_active(void);
+static bool                mdy_brightness_is_fade_allowed(fader_type_t type);
 
 static void                mdy_brightness_set_fade_target_ex(fader_type_t type, gint new_brightness, gint transition_time);
 static void                mdy_brightness_set_fade_target_default(gint new_brightness);
@@ -379,6 +383,8 @@ static int                 mdy_brightness_get_dim_threshold_hi(void);
 static void                mdy_brightness_set_on_level(gint hbm_and_level);
 static void                mdy_brightness_set_dim_level(void);
 static void                mdy_brightness_set_lpm_level(gint level);
+
+static void                mdy_brightness_init(void);
 
 /* ------------------------------------------------------------------------- *
  * UI_SIDE_DIMMING
@@ -974,6 +980,10 @@ static guint mdy_use_low_power_mode_gconf_cb_id = 0;
 /** Display blanking inhibit mode */
 static inhibit_t mdy_blanking_inhibit_mode = DEFAULT_BLANKING_INHIBIT_MODE;
 
+/** Kbd slide display blanking inhibit mode */
+static gint  mdy_kbd_slide_inhibit_mode       = DEFAULT_KBD_SLIDE_INHIBIT;
+static guint mdy_kbd_slide_inhibit_mode_cb_id = 0;
+
 /** GConf callback ID for display blanking inhibit mode setting */
 static guint mdy_blanking_inhibit_mode_gconf_cb_id = 0;
 
@@ -1120,7 +1130,7 @@ static cover_state_t lid_cover_policy_state = COVER_UNDEF;
 
 /** Change notifications from lid_cover_policy_pipe
  */
-static void tklock_datapipe_mdy_datapipe_lid_cover_policy_cb(gconstpointer data)
+static void mdy_datapipe_mdy_datapipe_lid_cover_policy_cb(gconstpointer data)
 {
     cover_state_t prev = lid_cover_policy_state;
     lid_cover_policy_state = GPOINTER_TO_INT(data);
@@ -1308,6 +1318,33 @@ static void mdy_datapipe_display_state_next_cb(gconstpointer data)
     mdy_blanking_rethink_afterboot_delay();
 
     mdy_dbus_send_display_status(0);
+
+EXIT:
+    return;
+}
+
+/** Keypad slide input state; assume closed */
+static cover_state_t kbd_slide_input_state = COVER_CLOSED;
+
+/** Change notifications from keyboard_slide_pipe
+ */
+static void mdy_datapipe_keyboard_slide_input_cb(gconstpointer const data)
+{
+    cover_state_t prev = kbd_slide_input_state;
+    kbd_slide_input_state = GPOINTER_TO_INT(data);
+
+    if( kbd_slide_input_state == COVER_UNDEF )
+        kbd_slide_input_state = COVER_CLOSED;
+
+    if( kbd_slide_input_state == prev )
+        goto EXIT;
+
+    mce_log(LL_DEVEL, "kbd_slide_input_state = %s -> %s",
+            cover_state_repr(prev),
+            cover_state_repr(kbd_slide_input_state));
+
+    /* force blanking reprogramming */
+    mdy_blanking_rethink_timers(true);
 
 EXIT:
     return;
@@ -1698,6 +1735,10 @@ static datapipe_handler_t mdy_datapipe_handlers[] =
         .datapipe  = &display_state_next_pipe,
         .input_cb  = mdy_datapipe_display_state_next_cb,
     },
+    {
+        .datapipe  = &keyboard_slide_pipe,
+        .input_cb  = mdy_datapipe_keyboard_slide_input_cb,
+    },
     // output triggers
     {
         .datapipe  = &display_state_req_pipe,
@@ -1769,8 +1810,8 @@ static datapipe_handler_t mdy_datapipe_handlers[] =
         .output_cb = mdy_datapipe_lipstick_available_cb,
     },
     {
-        .datapipe = &lid_cover_policy_pipe,
-        .output_cb = tklock_datapipe_mdy_datapipe_lid_cover_policy_cb,
+        .datapipe  = &lid_cover_policy_pipe,
+        .output_cb = mdy_datapipe_mdy_datapipe_lid_cover_policy_cb,
     },
     {
         .datapipe  = &shutting_down_pipe,
@@ -3934,6 +3975,7 @@ static bool mdy_blanking_inhibit_off_p(void)
 {
     bool inhibit = false;
 
+    /* Blanking inhibit is explicitly ignored in act dead */
     switch( system_state ) {
     case MCE_STATE_ACTDEAD:
         goto EXIT;
@@ -3942,6 +3984,7 @@ static bool mdy_blanking_inhibit_off_p(void)
         break;
     }
 
+    /* Evaluate charger related blanking inhibit policy */
     switch( mdy_blanking_inhibit_mode ) {
     case INHIBIT_STAY_DIM:
         inhibit = true;
@@ -3949,6 +3992,17 @@ static bool mdy_blanking_inhibit_off_p(void)
 
     case INHIBIT_STAY_DIM_WITH_CHARGER:
         if( charger_state == CHARGER_STATE_ON )
+            inhibit = true;
+        break;
+
+    default:
+        break;
+    }
+
+    /* Evaluate kbd slide related blanking inhibit policy */
+    switch( mdy_kbd_slide_inhibit_mode ) {
+    case KBD_SLIDE_INHIBIT_STAY_DIM_WHEN_OPEN:
+        if( kbd_slide_input_state == COVER_OPEN )
             inhibit = true;
         break;
 
@@ -3968,6 +4022,7 @@ static bool mdy_blanking_inhibit_dim_p(void)
 {
     bool inhibit = false;
 
+    /* Blanking inhibit is explicitly ignored in act dead */
     switch( system_state ) {
     case MCE_STATE_ACTDEAD:
         goto EXIT;
@@ -3976,6 +4031,7 @@ static bool mdy_blanking_inhibit_dim_p(void)
         break;
     }
 
+    /* Evaluate charger related blanking inhibit policy */
     switch( mdy_blanking_inhibit_mode ) {
     case INHIBIT_STAY_ON:
         inhibit = true;
@@ -3983,6 +4039,17 @@ static bool mdy_blanking_inhibit_dim_p(void)
 
     case INHIBIT_STAY_ON_WITH_CHARGER:
         if( charger_state == CHARGER_STATE_ON )
+            inhibit = true;
+        break;
+
+    default:
+        break;
+    }
+
+    /* Evaluate kbd slide related blanking inhibit policy */
+    switch( mdy_kbd_slide_inhibit_mode ) {
+    case KBD_SLIDE_INHIBIT_STAY_ON_WHEN_OPEN:
+        if( kbd_slide_input_state == COVER_OPEN )
             inhibit = true;
         break;
 
@@ -8497,6 +8564,11 @@ static void mdy_gconf_cb(GConfClient *const gcc, const guint id,
         /* force blanking reprogramming */
         mdy_blanking_rethink_timers(true);
     }
+    else if (id == mdy_kbd_slide_inhibit_mode_cb_id) {
+        mdy_kbd_slide_inhibit_mode = gconf_value_get_int(gcv);
+        /* force blanking reprogramming */
+        mdy_blanking_rethink_timers(true);
+    }
     else if( id == mdy_disp_never_blank_gconf_cb_id ) {
         mdy_disp_never_blank = gconf_value_get_int(gcv);
         mce_log(LL_NOTICE, "never_blank = %d", mdy_disp_never_blank);
@@ -8850,12 +8922,18 @@ static void mdy_gconf_init(void)
                          mdy_gconf_cb,
                          &mdy_use_low_power_mode_gconf_cb_id);
 
-    /* Blanking inhibit mode */
+    /* Blanking inhibit modes */
     mce_gconf_track_int(MCE_GCONF_BLANKING_INHIBIT_MODE,
                         &mdy_blanking_inhibit_mode,
                         DEFAULT_BLANKING_INHIBIT_MODE,
                         mdy_gconf_cb,
                         &mdy_blanking_inhibit_mode_gconf_cb_id);
+
+    mce_gconf_track_int(MCE_GCONF_KBD_SLIDE_INHIBIT,
+                        &mdy_kbd_slide_inhibit_mode,
+                        DEFAULT_KBD_SLIDE_INHIBIT,
+                        mdy_gconf_cb,
+                        &mdy_kbd_slide_inhibit_mode_cb_id);
 
     /* Delay for killing unresponsive compositor */
     mce_gconf_track_int(MCE_GCONF_LIPSTICK_CORE_DELAY,
@@ -8993,6 +9071,9 @@ static void mdy_gconf_quit(void)
 
     mce_gconf_notifier_remove(mdy_blanking_inhibit_mode_gconf_cb_id),
         mdy_blanking_inhibit_mode_gconf_cb_id = 0;
+
+    mce_gconf_notifier_remove(mdy_kbd_slide_inhibit_mode_cb_id),
+        mdy_kbd_slide_inhibit_mode_cb_id = 0;
 
     mce_gconf_notifier_remove(mdy_compositor_core_delay_gconf_cb_id),
         mdy_compositor_core_delay_gconf_cb_id = 0;

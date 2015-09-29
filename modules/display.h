@@ -177,6 +177,22 @@
 /** Blanking inhibit GConf setting */
 #define MCE_GCONF_BLANKING_INHIBIT_MODE                 MCE_GCONF_DISPLAY_PATH "/inhibit_blank_mode"
 
+/** Kbd slide inhibit type */
+typedef enum {
+    /** Kbd slide state does not affect display blanking */
+    KBD_SLIDE_INHIBIT_OFF                = 0,
+
+    /** Keep display on while kbd slide is open */
+    KBD_SLIDE_INHIBIT_STAY_ON_WHEN_OPEN  = 1,
+
+    /** Allow dimming but not blanking  while kbd slide is open */
+    KBD_SLIDE_INHIBIT_STAY_DIM_WHEN_OPEN = 2,
+} kbd_slide_inhibit_t;
+
+/** Kbd slide blanking inhibit GConf setting */
+#define MCE_GCONF_KBD_SLIDE_INHIBIT                     MCE_GCONF_DISPLAY_PATH "/kbd_slide_inhibit_blank_mode"
+#define DEFAULT_KBD_SLIDE_INHIBIT                       0 // = KBD_SLIDE_INHIBIT_OFF
+
 /** Use Low Power Mode GConf setting */
 #define MCE_GCONF_USE_LOW_POWER_MODE                    MCE_GCONF_DISPLAY_PATH "/use_low_power_mode"
 
