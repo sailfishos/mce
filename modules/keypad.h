@@ -59,4 +59,7 @@
 /** Name of configuration key for keyboard backlight fade out time */
 #define MCE_CONF_KEY_BACKLIGHT_FADE_OUT_TIME	"BacklightFadeOutTime"
 
+/** Name of configuration key for keyboard backlight path */
+#define MCE_CONF_KEY_BACKLIGHT_SYS_PATH	"BrightnessDirectory"
+
 #endif /* _KEYPAD_H_ */
