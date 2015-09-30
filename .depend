@@ -1,9 +1,11 @@
 builtin-gconf.o:\
 	builtin-gconf.c\
 	builtin-gconf.h\
+	datapipe.h\
 	mce-dbus.h\
 	mce-io.h\
 	mce-log.h\
+	mce.h\
 	modules/display.h\
 	modules/filter-brightness-als.h\
 	modules/memnotify.h\
@@ -14,9 +16,11 @@ builtin-gconf.o:\
 builtin-gconf.pic.o:\
 	builtin-gconf.c\
 	builtin-gconf.h\
+	datapipe.h\
 	mce-dbus.h\
 	mce-io.h\
 	mce-log.h\
+	mce.h\
 	modules/display.h\
 	modules/filter-brightness-als.h\
 	modules/memnotify.h\
@@ -500,6 +504,7 @@ modules/camera.o:\
 	mce-conf.h\
 	mce-io.h\
 	mce.h\
+	mce.h\
 	tklock.h\
 	modules/camera.h\
 
@@ -508,6 +513,7 @@ modules/camera.pic.o:\
 	datapipe.h\
 	mce-conf.h\
 	mce-io.h\
+	mce.h\
 	mce.h\
 	tklock.h\
 	modules/camera.h\
@@ -597,6 +603,7 @@ modules/filter-brightness-als.o:\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce.h\
+	mce.h\
 	tklock.h\
 	modules/display.h\
 	modules/filter-brightness-als.h\
@@ -611,6 +618,7 @@ modules/filter-brightness-als.pic.o:\
 	mce-io.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce.h\
 	mce.h\
 	tklock.h\
 	modules/display.h\
@@ -847,6 +855,7 @@ powerkey.o:\
 	mce-log.h\
 	mce.h\
 	powerkey.h\
+	tklock.h\
 
 powerkey.pic.o:\
 	powerkey.c\
@@ -861,6 +870,7 @@ powerkey.pic.o:\
 	mce-log.h\
 	mce.h\
 	powerkey.h\
+	tklock.h\
 
 tests/ut/ut_display.o:\
 	tests/ut/ut_display.c\
@@ -1122,8 +1132,10 @@ tools/evdev_trace.pic.o:\
 
 tools/mcetool.o:\
 	tools/mcetool.c\
+	datapipe.h\
 	event-input.h\
 	mce-command-line.h\
+	mce.h\
 	modules/display.h\
 	modules/doubletap.h\
 	modules/filter-brightness-als.h\
@@ -1137,8 +1149,10 @@ tools/mcetool.o:\
 
 tools/mcetool.pic.o:\
 	tools/mcetool.c\
+	datapipe.h\
 	event-input.h\
 	mce-command-line.h\
+	mce.h\
 	modules/display.h\
 	modules/doubletap.h\
 	modules/filter-brightness-als.h\
