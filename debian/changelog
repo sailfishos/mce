@@ -1,3 +1,10 @@
+mce (1.69.0) unstable; urgency=low
+
+  * [tklock] Add setting for disabling unblank to lockscreen animation.
+    Contributes to JB#30849
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 30 Sep 2015 21:57:09 +0300
+
 mce (1.68.0) unstable; urgency=low
 
   * [display] Move code / constants to more logical place
