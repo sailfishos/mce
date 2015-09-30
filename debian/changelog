@@ -1,3 +1,9 @@
+mce (1.67.0) unstable; urgency=low
+
+  * [keypad] Add support for simple user-defined keyboard backlight. Fixes MER#1349.
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 30 Sep 2015 07:54:53 +0300
+
 mce (1.66.0) unstable; urgency=low
 
   * [tklock] Add settings for tuning keyboard slide open/close policy.
