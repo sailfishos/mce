@@ -954,6 +954,10 @@ static guint mdy_adaptive_dimming_threshold_gconf_cb_id = 0;
 static gint  mdy_disp_dim_timeout_default = DEFAULT_DIM_TIMEOUT;
 static guint mdy_disp_dim_timeout_default_gconf_cb_id = 0;
 
+/** Display dimming timeout for keyboard available setting */
+static gint  mdy_disp_dim_timeout_keyboard = DEFAULT_DISPLAY_DIM_WITH_KEYBOARD_TIMEOUT;
+static guint mdy_disp_dim_timeout_keyboard_gconf_cb_id = 0;
+
 /** Current adaptive display dimming delay */
 static gint  mdy_disp_dim_timeout_adaptive   = 0;
 
@@ -1394,6 +1398,29 @@ EXIT:
     return;
 }
 
+/** Keypad available output state; assume unknown */
+static cover_state_t kbd_available_state = COVER_UNDEF;
+
+static void
+mdy_datapipe_keyboard_available_cb(gconstpointer const data)
+{
+    cover_state_t prev = kbd_available_state;
+    kbd_available_state = GPOINTER_TO_INT(data);
+
+    if( kbd_available_state == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "kbd_available_state = %s -> %s",
+            cover_state_repr(prev),
+            cover_state_repr(kbd_available_state));
+
+    /* force blanking reprogramming */
+    mdy_blanking_rethink_timers(true);
+
+EXIT:
+    return;
+}
+
 /** Handle display_brightness_pipe notifications
  *
  * @note A brightness request is only sent if the value changed
@@ -1778,6 +1805,10 @@ static datapipe_handler_t mdy_datapipe_handlers[] =
         .input_cb  = mdy_datapipe_keyboard_slide_input_cb,
     },
     // output triggers
+    {
+        .datapipe  = &keyboard_available_pipe,
+        .output_cb = mdy_datapipe_keyboard_available_cb,
+    },
     {
         .datapipe  = &display_state_req_pipe,
         .output_cb = mdy_datapipe_display_state_req_cb,
@@ -3326,7 +3357,14 @@ static gboolean mdy_blanking_can_blank_from_low_power_mode(void)
  */
 static gint mdy_blanking_get_default_dimming_delay(void)
 {
+    /* Assume the normal setting is used */
     gint dim_timeout = mdy_disp_dim_timeout_default;
+
+    /* Use different setting if hw kbd is available */
+    if( kbd_available_state == COVER_OPEN &&
+        mdy_disp_dim_timeout_keyboard > 0 ) {
+        dim_timeout = mdy_disp_dim_timeout_keyboard;
+    }
 
     /* After boot delay */
     gint boot_delay  = mdy_blanking_get_afterboot_delay();
@@ -8623,6 +8661,13 @@ static void mdy_gconf_cb(GConfClient *const gcc, const guint id,
         /* Reprogram blanking timers */
         mdy_blanking_rethink_timers(true);
     }
+    else if (id == mdy_disp_dim_timeout_keyboard_gconf_cb_id) {
+        mdy_disp_dim_timeout_keyboard = gconf_value_get_int(gcv);
+        mdy_gconf_sanitize_dim_timeouts(false);
+
+        /* Reprogram blanking timers */
+        mdy_blanking_rethink_timers(true);
+    }
     else if (id == mdy_blanking_inhibit_mode_gconf_cb_id) {
         mdy_blanking_inhibit_mode = gconf_value_get_int(gcv);
 
@@ -8967,6 +9012,12 @@ static void mdy_gconf_init(void)
                         mdy_gconf_cb,
                         &mdy_disp_dim_timeout_default_gconf_cb_id);
 
+    mce_gconf_track_int(MCE_GCONF_DISPLAY_DIM_WITH_KEYBOARD_TIMEOUT,
+                        &mdy_disp_dim_timeout_keyboard,
+                        DEFAULT_DISPLAY_DIM_WITH_KEYBOARD_TIMEOUT,
+                        mdy_gconf_cb,
+                        &mdy_disp_dim_timeout_keyboard_gconf_cb_id);
+
     /* Possible dim timeouts */
     mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
                            MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST,
@@ -9124,6 +9175,9 @@ static void mdy_gconf_quit(void)
 
     mce_gconf_notifier_remove(mdy_disp_dim_timeout_default_gconf_cb_id),
         mdy_disp_dim_timeout_default_gconf_cb_id = 0;
+
+    mce_gconf_notifier_remove(mdy_disp_dim_timeout_keyboard_gconf_cb_id),
+        mdy_disp_dim_timeout_keyboard_gconf_cb_id = 0;
 
     mce_gconf_notifier_remove(mdy_possible_dim_timeouts_gconf_cb_id),
         mdy_possible_dim_timeouts_gconf_cb_id = 0;
