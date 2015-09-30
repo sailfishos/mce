@@ -1768,6 +1768,11 @@ static const setting_t gconf_defaults[] =
     .def  = G_STRINGIFY(DEFAULT_EXCEPTION_LENGTH_ACTIVITY),
   },
   {
+    .key  = MCE_GCONF_TK_LOCKSCREEN_ANIM_ENABLED,
+    .type = "b",
+    .def  = G_STRINGIFY(DEFAULT_TK_LOCKSCREEN_ANIM_ENABLED),
+  },
+  {
     .key  = NULL,
   }
 };

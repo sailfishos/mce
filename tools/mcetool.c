@@ -3482,6 +3482,33 @@ static void xmce_get_devicelock_in_lockscreen(void)
 }
 
 /* ------------------------------------------------------------------------- *
+ * lock screen animation
+ * ------------------------------------------------------------------------- */
+
+/* Set lock screen animation enabled/disabled
+ *
+ * @param args string suitable for interpreting as enabled/disabled
+ */
+static bool xmce_set_lockscreen_unblank_animation(const char *args)
+{
+        gboolean val = xmce_parse_enabled(args);
+        mcetool_gconf_set_bool(MCE_GCONF_TK_LOCKSCREEN_ANIM_ENABLED, val);
+        return true;
+}
+
+/* Show current lock screen animation enabled/disabled
+ */
+static void xmce_get_lockscreen_unblank_animation(void)
+{
+        gboolean val = 0;
+        char txt[32] = "unknown";
+
+        if( mcetool_gconf_get_bool(MCE_GCONF_TK_LOCKSCREEN_ANIM_ENABLED, &val) )
+                snprintf(txt, sizeof txt, "%s", val ? "enabled" : "disabled");
+        printf("%-"PAD1"s %s\n", "Lockscreen unblank animations:", txt);
+}
+
+/* ------------------------------------------------------------------------- *
  * blank timeout
  * ------------------------------------------------------------------------- */
 
@@ -5046,6 +5073,7 @@ static bool xmce_get_status(const char *args)
         xmce_get_autolock_mode();
         xmce_get_autolock_delay();
         xmce_get_devicelock_in_lockscreen();
+        xmce_get_lockscreen_unblank_animation();
         xmce_get_doubletap_mode();
         xmce_get_doubletap_wakeup();
         xmce_get_powerkey_action();
@@ -5355,6 +5383,13 @@ static const mce_opt_t options[] =
                         "unlock the device via touch screen.\n"
                         "\n"
                         "Valid modes are: 'enabled' and 'disabled'\n"
+        },
+        {
+                .name        = "set-lockscreen-animation",
+                .with_arg    = xmce_set_lockscreen_unblank_animation,
+                .values      = "enabled|disabled",
+                .usage       =
+                        "allow/deny animations during unblanking via powerkey / doubletap\n"
         },
         {
                 .name        = "set-tklock-blank",

@@ -22,6 +22,7 @@
  */
 
 #include "powerkey.h"
+#include "tklock.h"
 
 #include "mce.h"
 #include "mce-log.h"
@@ -685,10 +686,7 @@ pwrkey_action_unblank(void)
     display_state_t request = MCE_DISPLAY_ON;
     mce_log(LL_DEBUG, "Requesting display=%s",
             display_state_repr(request));
-    execute_datapipe(&display_state_req_pipe,
-                     GINT_TO_POINTER(request),
-                     USE_INDATA, CACHE_INDATA);
-
+    mce_tklock_unblank(request);
 }
 
 static void
