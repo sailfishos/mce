@@ -4192,6 +4192,44 @@ static void xmce_get_display_off_override(void)
 }
 
 /* ------------------------------------------------------------------------- *
+ * volkey input policy
+ * ------------------------------------------------------------------------- */
+
+/** Lookup table for volkey input policies
+ */
+static const symbol_t volkey_input_policies[] = {
+        { "default",    VOLKEY_POLICY_DEFAULT    },
+        { "media-only", VOLKEY_POLICY_MEDIA_ONLY },
+        { NULL, -1 }
+};
+
+/** Set volkey input policy
+ *
+ * @param args input policy name
+ */
+static bool xmce_set_volkey_policy(const char *args)
+{
+        int val = lookup(volkey_input_policies, args);
+        if( val < 0 ) {
+                errorf("%s: invalid volkey input policy value\n", args);
+                return false;
+        }
+        mcetool_gconf_set_int(MCE_GCONF_TK_VOLKEY_POLICY, val);
+        return true;
+}
+
+/** Show current volkey input policy
+ */
+static void xmce_get_volkey_policy(void)
+{
+        gint        val = 0;
+        const char *txt = 0;
+        if( mcetool_gconf_get_int(MCE_GCONF_TK_VOLKEY_POLICY, &val) )
+                txt = rlookup(volkey_input_policies, val);
+        printf("%-"PAD1"s %s \n", "Volumekey input policy:", txt ?: "unknown");
+}
+
+/* ------------------------------------------------------------------------- *
  * doubletab
  * ------------------------------------------------------------------------- */
 
@@ -5076,6 +5114,7 @@ static bool xmce_get_status(const char *args)
         xmce_get_lockscreen_unblank_animation();
         xmce_get_doubletap_mode();
         xmce_get_doubletap_wakeup();
+        xmce_get_volkey_policy();
         xmce_get_powerkey_action();
         xmce_get_powerkey_blanking();
         xmce_get_powerkey_long_press_delay();
@@ -5476,6 +5515,19 @@ static const mce_opt_t options[] =
                         "'never', 'always', 'proximity'\n"
                         "\n"
                         "Note: proximity setting applies for lid sensor too."
+        },
+        {
+                .name        = "set-volume-key-policy",
+                .with_arg    = xmce_set_volkey_policy,
+                .values      = "default|media-only",
+                .usage       =
+                        "set the volume key input policy; valid modes are:\n"
+                        "\n"
+                        "  default    - Volume keys are enabled when display is on\n"
+                        "               or audio policy indicates music playback\n"
+                        "\n"
+                        "  media-only - Volume keys are enabled only when there is\n"
+                        "               music playback.\n"
         },
         {
                 .name        = "set-powerkey-action",

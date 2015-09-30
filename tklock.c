@@ -400,6 +400,10 @@ static gint doubletap_gesture_policy = DBLTAP_ACTION_DEFAULT;
 /** GConf callback ID for doubletap_gesture_policy */
 static guint doubletap_gesture_policy_cb_id = 0;
 
+/** Volume key input policy */
+static gint  volkey_policy = DEFAULT_VOLKEY_POLICY;
+static guint volkey_policy_cb_id = 0;
+
 /** Touchscreen double tap gesture enable mode */
 static gint doubletap_enable_mode = DBLTAP_ENABLE_DEFAULT;
 /** GConf callback ID for doubletap_enable_mode */
@@ -4026,6 +4030,16 @@ static void tklock_evctrl_rethink(void)
 
     bool grab_kp = !enable_kp;
 
+    switch( volkey_policy ) {
+    case VOLKEY_POLICY_MEDIA_ONLY:
+        if( !music_playback )
+            grab_kp = true;
+        break;
+
+    default:
+        break;
+    }
+
     if( !tk_input_policy_enabled )
         grab_kp = false;
 
@@ -4315,6 +4329,10 @@ static void tklock_gconf_cb(GConfClient *const gcc, const guint id,
         tklock_gconf_sanitize_doubletap_gesture_policy();
         tklock_evctrl_rethink();
     }
+    else if( id == volkey_policy_cb_id ) {
+        volkey_policy = gconf_value_get_int(gcv);
+        tklock_evctrl_rethink();
+    }
     else if( id == tklock_lid_open_actions_cb_id ) {
         tklock_lid_open_actions = gconf_value_get_int(gcv);
         tklock_gconf_sanitize_lid_open_actions();
@@ -4502,6 +4520,13 @@ static void tklock_gconf_init(void)
 
     tklock_gconf_sanitize_doubletap_gesture_policy();
 
+    /* Volume key input policy */
+    mce_gconf_track_int(MCE_GCONF_TK_VOLKEY_POLICY,
+                        &volkey_policy,
+                        DEFAULT_VOLKEY_POLICY,
+                        tklock_gconf_cb,
+                        &volkey_policy_cb_id);
+
     /* Lid sensor open policy */
     mce_gconf_track_int(MCE_GCONF_TK_LID_OPEN_ACTIONS,
                         &tklock_lid_open_actions,
@@ -4687,6 +4712,9 @@ static void tklock_gconf_quit(void)
 {
     mce_gconf_notifier_remove(doubletap_gesture_policy_cb_id),
         doubletap_gesture_policy_cb_id = 0;
+
+    mce_gconf_notifier_remove(volkey_policy_cb_id),
+        volkey_policy_cb_id = 0;
 
     mce_gconf_notifier_remove(tklock_lid_open_actions_cb_id),
         tklock_lid_open_actions_cb_id = 0;
