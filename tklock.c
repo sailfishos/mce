@@ -360,6 +360,7 @@ static void     mce_tklock_end_notification(const char *owner, const char *name,
 // "module" load/unload
 extern gboolean mce_tklock_init(void);
 extern void     mce_tklock_exit(void);
+extern void     mce_tklock_unblank(display_state_t to_state);
 
 /* ========================================================================= *
  * gconf settings
@@ -509,6 +510,10 @@ static guint exception_length_volume_cb_id      = 0;
 static gint exception_length_activity           = DEFAULT_EXCEPTION_LENGTH_ACTIVITY;
 /** GConf callback ID for exception_length_activity */
 static guint exception_length_activity_cb_id    = 0;
+
+/** Flag for: Allow lockscreen animation during unblanking */
+static gboolean lockscreen_anim_enabled = DEFAULT_TK_LOCKSCREEN_ANIM_ENABLED;
+static guint    lockscreen_anim_enabled_cb_id = 0;
 
 /* ========================================================================= *
  * probed control file paths
@@ -756,6 +761,12 @@ static void tklock_datapipe_display_state_cb(gconstpointer data)
     mce_log(LL_DEBUG, "display_state = %s -> %s",
             display_state_repr(prev),
             display_state_repr(display_state));
+
+    /* Disable "wakeup with fake policy" hack
+     * when any stable display state is reached */
+    if( display_state != MCE_DISPLAY_POWER_UP &&
+        display_state != MCE_DISPLAY_POWER_DOWN )
+        tklock_uiexcept_end(UIEXC_NOANIM, 0);
 
     if( display_state == MCE_DISPLAY_DIM )
         tklock_ui_eat_event();
@@ -1510,15 +1521,14 @@ static void tklock_datapipe_touchscreen_cb(gconstpointer const data)
     case DBLTAP_ACTION_UNBLANK:  // unblank
     case DBLTAP_ACTION_TKUNLOCK: // unblank + unlock
         mce_log(LL_DEBUG, "double tap -> display on");
+
         /* Double tap event that is about to be used for unblanking
          * the display counts as non-syntetized user activity */
         execute_datapipe_output_triggers(&user_activity_pipe,
                                          ev, USE_INDATA);
 
         /* Turn the display on */
-        execute_datapipe(&display_state_req_pipe,
-                       GINT_TO_POINTER(MCE_DISPLAY_ON),
-                       USE_INDATA, CACHE_INDATA);
+        mce_tklock_unblank(MCE_DISPLAY_ON);
 
         /* Optionally remove tklock */
         if( doubletap_gesture_policy == DBLTAP_ACTION_TKUNLOCK ) {
@@ -2919,6 +2929,7 @@ static uiexctype_t topmost_active(uiexctype_t mask)
         UIEXC_ALARM,
         UIEXC_CALL,
         UIEXC_LINGER,
+        UIEXC_NOANIM,
         0
     };
 
@@ -3087,6 +3098,17 @@ static void tklock_uiexcept_rethink(void)
     }
 
     switch( active ) {
+    case UIEXC_NOANIM:
+        /* The noanim exception is used only during display power up.
+         * It also has the lowest priority, which means that if it
+         * ever gets on top of the exception stack, we need to disable
+         * state restore. */
+        if( exdata.restore ) {
+            mce_log(LL_DEBUG, "noanim exception state; disable state restore");
+            exdata.restore = false;
+        }
+        break;
+
     case UIEXC_NOTIF:
         mce_log(LL_DEBUG, "UIEXC_NOTIF");
         activate = true;
@@ -4274,6 +4296,9 @@ static void tklock_gconf_cb(GConfClient *const gcc, const guint id,
     else if( id == filter_lid_with_als_gconf_id ) {
         filter_lid_with_als = gconf_value_get_bool(gcv);
     }
+    else if( id == lockscreen_anim_enabled_cb_id ) {
+        lockscreen_anim_enabled= gconf_value_get_bool(gcv);
+    }
     else if( id == tklock_autolock_delay_cb_id ) {
         gint old = tklock_autolock_delay;
         tklock_autolock_delay = gconf_value_get_int(gcv);
@@ -4648,6 +4673,12 @@ static void tklock_gconf_init(void)
                         DEFAULT_EXCEPTION_LENGTH_ACTIVITY,
                         tklock_gconf_cb,
                         &exception_length_activity_cb_id);
+
+    mce_gconf_track_bool(MCE_GCONF_TK_LOCKSCREEN_ANIM_ENABLED,
+                         &lockscreen_anim_enabled,
+                         DEFAULT_TK_LOCKSCREEN_ANIM_ENABLED,
+                         tklock_gconf_cb,
+                         &lockscreen_anim_enabled_cb_id);
 }
 
 /** Remove gconf change notifiers
@@ -4743,6 +4774,9 @@ static void tklock_gconf_quit(void)
 
     mce_gconf_notifier_remove(exception_length_activity_cb_id),
         exception_length_activity_cb_id = 0;
+
+    mce_gconf_notifier_remove(lockscreen_anim_enabled_cb_id),
+        lockscreen_anim_enabled_cb_id = 0;
 }
 
 /* ========================================================================= *
@@ -6331,5 +6365,28 @@ void mce_tklock_exit(void)
 
     // FIXME: check that final state is sane
 
+    return;
+}
+
+/** Perform display powerup under faked abnormal blanking policy
+ *
+ * @param to_state display state to wake up to
+ */
+void mce_tklock_unblank(display_state_t to_state)
+{
+    if( display_state_next == to_state)
+        goto EXIT;
+
+    if( !lockscreen_anim_enabled ) {
+        /* Disable lockscreen animations by invoking a faked
+         * abnormal display blanking policy for the duration
+         * of the display power up. */
+        tklock_uiexcept_begin(UIEXC_NOANIM, 0);
+    }
+
+    execute_datapipe(&display_state_req_pipe,
+                     GINT_TO_POINTER(to_state),
+                     USE_INDATA, CACHE_INDATA);
+EXIT:
     return;
 }

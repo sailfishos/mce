@@ -22,6 +22,8 @@
 #ifndef _TKLOCK_H_
 #define _TKLOCK_H_
 
+#include "mce.h"
+
 #include <glib.h>
 
 #ifndef MCE_GCONF_LOCK_PATH
@@ -261,6 +263,10 @@ enum
 #define MCE_GCONF_TK_INPUT_POLICY_ENABLED       MCE_GCONF_LOCK_PATH "/touchscreen_policy_enabled"
 #define DEFAULT_TK_INPUT_POLICY_ENABLED         true
 
+/** Allow / try to deny lockscreen animations */
+#define MCE_GCONF_TK_LOCKSCREEN_ANIM_ENABLED    MCE_GCONF_LOCK_PATH "/lockscreen_animation_enabled"
+#define DEFAULT_TK_LOCKSCREEN_ANIM_ENABLED      true
+
 /** Name of D-Bus callback to provide to Touchscreen/Keypad Lock SystemUI */
 #define MCE_TKLOCK_CB_REQ		"tklock_callback"
 
@@ -275,4 +281,5 @@ enum
 gboolean mce_tklock_init(void);
 void mce_tklock_exit(void);
 
+void mce_tklock_unblank(display_state_t to_state);
 #endif /* _TKLOCK_H_ */

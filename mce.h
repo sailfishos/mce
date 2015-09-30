@@ -306,6 +306,7 @@ typedef enum {
 	UIEXC_CALL   = 1<<1,
 	UIEXC_ALARM  = 1<<2,
 	UIEXC_NOTIF  = 1<<3,
+	UIEXC_NOANIM = 1<<4,
 } uiexctype_t;
 
 const char *uiexctype_repr(uiexctype_t state);

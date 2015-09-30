@@ -1054,6 +1054,7 @@ const char *uiexctype_repr(uiexctype_t state)
 	case UIEXC_CALL:   res = "call";   break;
 	case UIEXC_ALARM:  res = "alarm";  break;
 	case UIEXC_NOTIF:  res = "notif";  break;
+	case UIEXC_NOANIM: res = "noanim"; break;
 	default: break;
 	}
 	return res;
@@ -1075,6 +1076,7 @@ const char *uiexctype_to_dbus(uiexctype_t state)
 
 	switch( state ) {
 	case UIEXC_NOTIF:
+	case UIEXC_NOANIM:
 		res = MCE_BLANKING_POLICY_NOTIFICATION_STRING;
 		break;
 
