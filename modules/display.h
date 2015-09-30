@@ -153,6 +153,13 @@
 /** Dim timeout GConf setting */
 #define MCE_GCONF_DISPLAY_DIM_TIMEOUT                   MCE_GCONF_DISPLAY_PATH "/display_dim_timeout"
 
+/** Dim timeout with hw keyboard available GConf setting
+ *
+ * Zero value: Follow MCE_GCONF_DISPLAY_DIM_TIMEOUT setting
+ */
+#define MCE_GCONF_DISPLAY_DIM_WITH_KEYBOARD_TIMEOUT     MCE_GCONF_DISPLAY_PATH "/display_dim_timeout_with_keyboard"
+#define DEFAULT_DISPLAY_DIM_WITH_KEYBOARD_TIMEOUT	0
+
 /** Blank timeout GConf setting */
 #define MCE_GCONF_DISPLAY_BLANK_TIMEOUT                 MCE_GCONF_DISPLAY_PATH "/display_blank_timeout"
 

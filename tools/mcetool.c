@@ -2558,13 +2558,12 @@ static bool xmce_reset_settings(const char *args)
  */
 static bool xmce_set_dim_timeout(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
         int val = xmce_parse_integer(args);
         mcetool_gconf_set_int(MCE_GCONF_DISPLAY_DIM_TIMEOUT, val);
         return true;
 }
 
-/** Get current dim timeout from mce and print it out
+/** Show current dim timeout
  */
 static void xmce_get_dim_timeout(void)
 {
@@ -2575,6 +2574,35 @@ static void xmce_get_dim_timeout(void)
         if( mcetool_gconf_get_int(MCE_GCONF_DISPLAY_DIM_TIMEOUT, &val) )
                 snprintf(txt, sizeof txt, "%d", (int)val);
         printf("%-"PAD1"s %s (seconds)\n", "Dim timeout:", txt);
+}
+
+/** Set display dim with kbd timeout
+ *
+ * @param args string that can be parsed to integer
+ */
+static bool xmce_set_dim_with_kbd_timeout(const char *args)
+{
+        int val = xmce_parse_integer(args);
+        mcetool_gconf_set_int(MCE_GCONF_DISPLAY_DIM_WITH_KEYBOARD_TIMEOUT,
+                              val);
+        return true;
+}
+
+/** Show current dim with kbd timeout
+ */
+static void xmce_get_dim_with_kbd_timeout(void)
+{
+        gint val = 0;
+        char txt[32] = "";
+
+        if( !mcetool_gconf_get_int(MCE_GCONF_DISPLAY_DIM_WITH_KEYBOARD_TIMEOUT, &val) )
+                strcpy(txt, "unknown");
+        else if( val <= 0 )
+                strcpy(txt, "use default");
+        else
+                snprintf(txt, sizeof txt, "%d", (int)val);
+
+        printf("%-"PAD1"s %s (seconds)\n", "Dim with kbd timeout:", txt);
 }
 
 /** Set "allowed" display dim timeouts
@@ -5001,6 +5029,7 @@ static bool xmce_get_status(const char *args)
         xmce_get_compositor_dimming();
         xmce_get_cabc_mode();
         xmce_get_dim_timeout();
+        xmce_get_dim_with_kbd_timeout();
         xmce_get_adaptive_dimming_mode();
         xmce_get_adaptive_dimming_time();
         xmce_get_never_blank();
@@ -5226,6 +5255,13 @@ static const mce_opt_t options[] =
                 .values      = "secs",
                 .usage       =
                         "set the automatic dimming timeout\n"
+        },
+        {
+                .name        = "set-dim-with-kbdtimeout",
+                .with_arg    = xmce_set_dim_with_kbd_timeout,
+                .values      = "secs",
+                .usage       =
+                        "set the automatic dimming timeout when hw kbd is available\n"
         },
         {
                 .name        = "set-dim-timeouts",

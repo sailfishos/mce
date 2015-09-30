@@ -1116,10 +1116,14 @@ static const setting_t gconf_defaults[] =
     .def  = "",
   },
   {
-    // MCE_GCONF_DISPLAY_DIM_TIMEOUT @ modules/display.h
-    .key  = "/system/osso/dsm/display/display_dim_timeout",
+    .key  = MCE_GCONF_DISPLAY_DIM_TIMEOUT,
     .type = "i",
-    .def  = "30",
+    .def  = G_STRINGIFY(DEFAULT_DIM_TIMEOUT),
+  },
+  {
+    .key  = MCE_GCONF_DISPLAY_DIM_WITH_KEYBOARD_TIMEOUT,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_DISPLAY_DIM_WITH_KEYBOARD_TIMEOUT),
   },
   {
     .key  = MCE_GCONF_DISPLAY_BLANK_TIMEOUT,
