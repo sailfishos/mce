@@ -212,7 +212,7 @@ static void cancel_key_backlight_timeout(void);
  *         FALSE otherwise
  */
 static gboolean probe_simple_backlight_directory(const gchar *dirpath,
-                                        char **setpath, char **maxpath)
+					char **setpath, char **maxpath)
 {
 	gboolean  res = FALSE;
 
