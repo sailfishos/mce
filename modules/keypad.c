@@ -234,7 +234,7 @@ static gboolean probe_simple_backlight_directory(const gchar *dirpath,
 /**
  * Check if user-defined keyboard backlight exists
  */
-static void probe_simple_backlight_brightness()
+static void probe_simple_backlight_brightness(void)
 {
 	gchar *set = 0;
 	gchar *max = 0;
