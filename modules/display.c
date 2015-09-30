@@ -407,10 +407,12 @@ static void                mdy_poweron_led_rethink_schedule(void);
 #define ACTDEAD_MAX_OFF_TIMEOUT 3
 
 static void                mdy_blanking_update_inactivity_timeout(void);
-static guint               mdy_blanking_find_dim_timeout_index(gint dim_timeout);
 static gboolean            mdy_blanking_can_blank_from_low_power_mode(void);
 
 // display timer: ON -> DIM
+
+static gint                mdy_blanking_get_default_dimming_delay(void);
+static gint                mdy_blanking_get_dimming_delay(void);
 
 static gboolean            mdy_blanking_dim_cb(gpointer data);
 static void                mdy_blanking_cancel_dim(void);
@@ -449,9 +451,15 @@ static gboolean            mdy_blanking_pause_client_lost_cb(DBusMessage *const 
 
 // adaptive dimming period: dimming timeouts get longer on ON->DIM->ON transitions
 
-static gboolean            mdy_blanking_adaptive_dimming_cb(gpointer data);
-static void                mdy_blanking_start_adaptive_dimming(void);
-static void                mdy_blanking_stop_adaptive_dimming(void);
+static bool                mdy_adaptive_dimming_is_enabled(void);
+static gint                mdy_blanking_get_adaptive_dimming_delay(void);
+static void                mdy_blanking_set_adaptive_dimming_delay(int timeout);
+static void                mdy_blanking_reset_adaptive_dimming_delay(void);
+
+static void                mdy_blanking_trigger_adaptive_dimming(void);
+static gboolean            mdy_blanking_adaptive_dimming_unprime_cb(gpointer data);
+static void                mdy_blanking_unprime_adaptive_dimming(void);
+static void                mdy_blanking_prime_adaptive_dimming(void);
 
 // display timer: all of em
 static bool                mdy_blanking_inhibit_off_p(void);
@@ -749,12 +757,6 @@ static bool mdy_shutdown_in_progress(void)
  * AUTOMATIC_BLANKING
  * ------------------------------------------------------------------------- */
 
-/** ID for adaptive display dimming timer source */
-static guint mdy_blanking_adaptive_dimming_cb_id = 0;
-
-/** Index for the array of adaptive dimming timeout multipliers */
-static guint mdy_adaptive_dimming_index = 0;
-
 /** Display blank prevention timer */
 static gint mdy_blank_prevent_timeout = BLANK_PREVENT_TIMEOUT;
 
@@ -772,11 +774,6 @@ static gboolean mdy_low_power_mode_supported = TRUE;
 
 /** Maximum number of monitored services that calls blanking pause */
 #define BLANKING_PAUSE_MAX_MONITORED    5
-
-/**
- * Index for the array of possible display dim timeouts
- */
-static guint mdy_dim_timeout_index = 0;
 
 /* ------------------------------------------------------------------------- *
  * HIGH_BRIGHTNESS_MODE
@@ -954,10 +951,11 @@ static gint mdy_adaptive_dimming_threshold = DEFAULT_ADAPTIVE_DIMMING_THRESHOLD;
 static guint mdy_adaptive_dimming_threshold_gconf_cb_id = 0;
 
 /** Display dimming timeout setting */
-static gint mdy_disp_dim_timeout = DEFAULT_DIM_TIMEOUT;
+static gint  mdy_disp_dim_timeout_default = DEFAULT_DIM_TIMEOUT;
+static guint mdy_disp_dim_timeout_default_gconf_cb_id = 0;
 
-/** GConf callback ID for display dimming timeout setting */
-static guint mdy_disp_dim_timeout_gconf_cb_id = 0;
+/** Current adaptive display dimming delay */
+static gint  mdy_disp_dim_timeout_adaptive   = 0;
 
 /** Use low power mode setting */
 static gboolean mdy_use_low_power_mode = DEFAULT_USE_LOW_POWER_MODE;
@@ -1667,15 +1665,9 @@ static void mdy_datapipe_device_inactive_cb(gconstpointer data)
     if( device_inactive )
         goto EXIT;
 
-    /* Adjust the adaptive dimming timeouts,
-     * even if we don't use them
-     */
-    if (mdy_blanking_adaptive_dimming_cb_id != 0) {
-        if (g_slist_nth(mdy_possible_dim_timeouts,
-                        mdy_dim_timeout_index +
-                        mdy_adaptive_dimming_index + 1) != NULL)
-            mdy_adaptive_dimming_index++;
-    }
+    /* Activity while adaptive dimming is primed causes
+     * the next on->dim transition to use longer timeout */
+    mdy_blanking_trigger_adaptive_dimming();
 
     switch( display_state ) {
     case MCE_DISPLAY_ON:
@@ -3280,52 +3272,19 @@ static void mdy_blanking_update_inactivity_timeout(void)
      * should have dimmed and blanked - even if the actual blanking is
      * blocked by blanking pause and/or blanking inhibit mode. */
 
-    int inactivity_timeout = mdy_disp_dim_timeout + mdy_blank_timeout;
+    gint inactivity_timeout = (mdy_blanking_get_default_dimming_delay() +
+                               mdy_blank_timeout);
+
+    if( datapipe_get_gint(inactivity_timeout_pipe) == inactivity_timeout )
+        goto EXIT;
 
     mce_log(LL_DEBUG, "inactivity_timeout = %d", inactivity_timeout);
 
     execute_datapipe(&inactivity_timeout_pipe,
                      GINT_TO_POINTER(inactivity_timeout),
                      USE_INDATA, CACHE_INDATA);
-}
-
-/**
- * Find the dim timeout index from a dim timeout
- *
- * If list of possible dim timeouts is not available, zero is returned.
- *
- * If the given dim_timeout is larger than the largest entry int the
- * possible timeouts list, the index to the largest entry is returned.
- *
- * Otherwise the index to the first entry that is greater or equal
- * to specified dim_timeout is returned.
- *
- * @param dim_timeout The dim timeout to find the index for
- *
- * @return The closest dim timeout index
- */
-static guint mdy_blanking_find_dim_timeout_index(gint dim_timeout)
-{
-    guint   res  = 0;
-    GSList *iter = mdy_possible_dim_timeouts;
-
-    if( !iter )
-        goto EXIT;
-
-    for( ;; ) {
-        gint allowed_timeout = GPOINTER_TO_INT(iter->data);
-
-        if( dim_timeout <= allowed_timeout )
-            break;
-
-        if( !(iter = iter->next) )
-            break;
-
-        ++res;
-    }
-
 EXIT:
-    return res;
+    return;
 }
 
 /**
@@ -3362,6 +3321,44 @@ static gboolean mdy_blanking_can_blank_from_low_power_mode(void)
 }
 
 // TIMER: ON -> DIM
+
+/** Get ON->DIM delay excluding adaptive dimming
+ */
+static gint mdy_blanking_get_default_dimming_delay(void)
+{
+    gint dim_timeout = mdy_disp_dim_timeout_default;
+
+    /* After boot delay */
+    gint boot_delay  = mdy_blanking_get_afterboot_delay();
+    if( dim_timeout < boot_delay )
+        dim_timeout = boot_delay;
+
+    /* In act dead mode blanking timeouts are capped */
+    if( system_state == MCE_STATE_ACTDEAD ) {
+        if( dim_timeout > ACTDEAD_MAX_DIM_TIMEOUT )
+            dim_timeout = ACTDEAD_MAX_DIM_TIMEOUT;
+    }
+
+    return dim_timeout;
+}
+
+/** Get ON->DIM delay including adaptive dimming
+ */
+static gint mdy_blanking_get_dimming_delay(void)
+{
+    /* Default to dimming delay setting */
+    gint dim_timeout  = mdy_blanking_get_default_dimming_delay();
+
+    /* Check if adaptive dimming delay applies */
+    if( mdy_adaptive_dimming_is_enabled() ) {
+        gint dim_adaptive = mdy_blanking_get_adaptive_dimming_delay();
+
+        if( dim_timeout < dim_adaptive )
+            dim_timeout = dim_adaptive;
+    }
+
+    return dim_timeout;
+}
 
 /** Display dimming timeout callback ID */
 static guint mdy_blanking_dim_cb_id = 0;
@@ -3415,29 +3412,9 @@ static void mdy_blanking_cancel_dim(void)
  */
 static void mdy_blanking_schedule_dim(void)
 {
-    gint dim_timeout = mdy_blanking_get_afterboot_delay();
-
-    if( dim_timeout < mdy_disp_dim_timeout )
-        dim_timeout = mdy_disp_dim_timeout;
-
     mdy_blanking_cancel_dim();
 
-    if( mdy_adaptive_dimming_enabled ) {
-        gpointer *tmp = g_slist_nth_data(mdy_possible_dim_timeouts,
-                                         mdy_dim_timeout_index +
-                                         mdy_adaptive_dimming_index);
-
-        gint adaptive_timeout = GPOINTER_TO_INT(tmp);
-
-        if( dim_timeout < adaptive_timeout )
-            dim_timeout = adaptive_timeout;
-    }
-
-    /* In act dead mode blanking timeouts are capped */
-    if( system_state == MCE_STATE_ACTDEAD ) {
-        if( dim_timeout > ACTDEAD_MAX_DIM_TIMEOUT )
-            dim_timeout = ACTDEAD_MAX_DIM_TIMEOUT;
-    }
+    gint dim_timeout = mdy_blanking_get_dimming_delay();
 
     mce_log(LL_DEBUG, "DIM timer scheduled @ %d secs", dim_timeout);
 
@@ -3927,48 +3904,129 @@ EXIT:
 
 // PERIOD: ADAPTIVE DIMMING
 
-/**
- * Timeout callback for adaptive dimming timeout
+/** Predicate for: adaptive dimming is enabled and allowed
+ */
+static bool mdy_adaptive_dimming_is_enabled(void)
+{
+    bool enabled = false;
+
+    if( system_state != MCE_STATE_USER )
+        goto EXIT;
+
+    if( !mdy_adaptive_dimming_enabled )
+        goto EXIT;
+
+    if( mdy_adaptive_dimming_threshold <= 0 )
+        goto EXIT;
+
+    enabled = true;
+
+EXIT:
+    return enabled;
+}
+
+/** Get adaptive ON->DIM delay
+ */
+static gint mdy_blanking_get_adaptive_dimming_delay(void)
+{
+    return mdy_disp_dim_timeout_adaptive;
+}
+
+/** Set adaptive ON->DIM delay
+ */
+static void mdy_blanking_set_adaptive_dimming_delay(int timeout)
+{
+    if( mdy_disp_dim_timeout_adaptive != timeout ) {
+        mce_log(LL_DEBUG, "mdy_disp_dim_timeout_adaptive: %d -> %d",
+                mdy_disp_dim_timeout_adaptive, timeout);
+        mdy_disp_dim_timeout_adaptive = timeout;
+    }
+}
+
+/** Reset adaptive ON->DIM delay
+ */
+static void mdy_blanking_reset_adaptive_dimming_delay(void)
+{
+    mdy_blanking_set_adaptive_dimming_delay(0);
+}
+
+/** Timer ID for unpriming adaptive dimming */
+static guint mdy_blanking_adaptive_dimming_unprime_id = 0;
+
+/** Timeout callback for adaptive dimming timeout
  *
  * @param data Unused
+ *
  * @return Always returns FALSE, to disable the timeout
  */
-static gboolean mdy_blanking_adaptive_dimming_cb(gpointer data)
+static gboolean mdy_blanking_adaptive_dimming_unprime_cb(gpointer data)
 {
     (void)data;
 
-    mdy_blanking_adaptive_dimming_cb_id = 0;
-    mdy_adaptive_dimming_index = 0;
+    mdy_blanking_adaptive_dimming_unprime_id = 0;
+    mdy_blanking_reset_adaptive_dimming_delay();
 
     return FALSE;
 }
 
-/**
- * Cancel the adaptive dimming timeout
+/** Cancel the adaptive dimming timeout
  */
-static void mdy_blanking_stop_adaptive_dimming(void)
+static void mdy_blanking_unprime_adaptive_dimming(void)
 {
     /* Remove the timeout source for adaptive dimming */
-    if (mdy_blanking_adaptive_dimming_cb_id != 0) {
-        g_source_remove(mdy_blanking_adaptive_dimming_cb_id);
-        mdy_blanking_adaptive_dimming_cb_id = 0;
+    if( mdy_blanking_adaptive_dimming_unprime_id ) {
+        g_source_remove(mdy_blanking_adaptive_dimming_unprime_id);
+        mdy_blanking_adaptive_dimming_unprime_id = 0;
     }
 }
 
-/**
- * Setup adaptive dimming timeout
+/** When applicable, bump dimming timeout length
  */
-static void mdy_blanking_start_adaptive_dimming(void)
+static void mdy_blanking_trigger_adaptive_dimming(void)
 {
-    mdy_blanking_stop_adaptive_dimming();
+    /* Skip if not primed */
+    if( !mdy_blanking_adaptive_dimming_unprime_id )
+        goto EXIT;
 
-    if (mdy_adaptive_dimming_enabled == FALSE)
+    /* Start with current dim delay */
+    gint current = mdy_blanking_get_dimming_delay();
+
+    /* Find next larger step from list of dim delays */
+    for( GSList *item = mdy_possible_dim_timeouts; item; item = item->next ) {
+        gint timeout = GPOINTER_TO_INT(item->data);
+
+        if( timeout < mdy_disp_dim_timeout_adaptive )
+            continue;
+
+        if( timeout <= current )
+            continue;
+
+        current = timeout;
+        break;
+    }
+
+    /* Update value to be used */
+    mdy_blanking_set_adaptive_dimming_delay(current);
+EXIT:
+    return;
+}
+
+/** Setup adaptive dimming timeout
+ */
+static void mdy_blanking_prime_adaptive_dimming(void)
+{
+    mdy_blanking_unprime_adaptive_dimming();
+
+    if( !mdy_adaptive_dimming_is_enabled() )
+        goto EXIT;
+
+    if( display_state_next != MCE_DISPLAY_DIM )
         goto EXIT;
 
     /* Setup new timeout */
-    mdy_blanking_adaptive_dimming_cb_id =
+    mdy_blanking_adaptive_dimming_unprime_id =
         g_timeout_add(mdy_adaptive_dimming_threshold,
-                      mdy_blanking_adaptive_dimming_cb, NULL);
+                      mdy_blanking_adaptive_dimming_unprime_cb, NULL);
 
 EXIT:
     return;
@@ -4149,16 +4207,16 @@ static void mdy_blanking_rethink_timers(bool force)
         case MCE_DISPLAY_LPM_ON:
         case MCE_DISPLAY_POWER_UP:
         case MCE_DISPLAY_POWER_DOWN:
-            mdy_blanking_stop_adaptive_dimming();
-            mdy_adaptive_dimming_index = 0;
+            mdy_blanking_unprime_adaptive_dimming();
+            mdy_blanking_reset_adaptive_dimming_delay();
             break;
 
         case MCE_DISPLAY_DIM:
-            mdy_blanking_start_adaptive_dimming();
+            mdy_blanking_prime_adaptive_dimming();
             break;
 
         case MCE_DISPLAY_ON:
-            mdy_blanking_stop_adaptive_dimming();
+            mdy_blanking_unprime_adaptive_dimming();
             break;
         }
     }
@@ -4296,10 +4354,7 @@ static void mdy_blanking_cancel_timers(void)
     mdy_blanking_cancel_off();
     mdy_blanking_cancel_lpm_off();
 
-    //mdy_blanking_stop_pause_period();
-    //mdy_hbm_cancel_timeout();
     mdy_brightness_stop_fade_timer();
-    //mdy_blanking_stop_adaptive_dimming();
 }
 
 /** End of after bootup autoblank prevent; initially not active */
@@ -8547,11 +8602,12 @@ static void mdy_gconf_cb(GConfClient *const gcc, const guint id,
     }
     else if (id == mdy_adaptive_dimming_enabled_gconf_cb_id) {
         mdy_adaptive_dimming_enabled = gconf_value_get_bool(gcv);
-        mdy_blanking_stop_adaptive_dimming();
+        mdy_blanking_reset_adaptive_dimming_delay();
+        mdy_blanking_prime_adaptive_dimming();
     }
     else if (id == mdy_adaptive_dimming_threshold_gconf_cb_id) {
         mdy_adaptive_dimming_threshold = gconf_value_get_int(gcv);
-        mdy_blanking_stop_adaptive_dimming();
+        mdy_blanking_prime_adaptive_dimming();
     }
     else if (id == mdy_possible_dim_timeouts_gconf_cb_id )
     {
@@ -8560,8 +8616,8 @@ static void mdy_gconf_cb(GConfClient *const gcc, const guint id,
         /* Reprogram blanking timers */
         mdy_blanking_rethink_timers(true);
     }
-    else if (id == mdy_disp_dim_timeout_gconf_cb_id) {
-        mdy_disp_dim_timeout = gconf_value_get_int(gcv);
+    else if (id == mdy_disp_dim_timeout_default_gconf_cb_id) {
+        mdy_disp_dim_timeout_default = gconf_value_get_int(gcv);
         mdy_gconf_sanitize_dim_timeouts(false);
 
         /* Reprogram blanking timers */
@@ -8789,11 +8845,8 @@ static void mdy_gconf_sanitize_dim_timeouts(bool force_update)
         mdy_possible_dim_timeouts = g_slist_reverse(tmp);
     }
 
-    /* Find the closest match in the list of valid dim timeouts */
-    mdy_dim_timeout_index = mdy_blanking_find_dim_timeout_index(mdy_disp_dim_timeout);
-
     /* Reset adaptive dimming state */
-    mdy_adaptive_dimming_index = 0;
+    mdy_blanking_reset_adaptive_dimming_delay();
 
     /* Update inactivity timeout */
     mdy_blanking_update_inactivity_timeout();
@@ -8909,10 +8962,10 @@ static void mdy_gconf_init(void)
 
     /* Display dim timer */
     mce_gconf_track_int(MCE_GCONF_DISPLAY_DIM_TIMEOUT,
-                        &mdy_disp_dim_timeout,
+                        &mdy_disp_dim_timeout_default,
                         DEFAULT_DIM_TIMEOUT,
                         mdy_gconf_cb,
-                        &mdy_disp_dim_timeout_gconf_cb_id);
+                        &mdy_disp_dim_timeout_default_gconf_cb_id);
 
     /* Possible dim timeouts */
     mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
@@ -9069,8 +9122,8 @@ static void mdy_gconf_quit(void)
     mce_gconf_notifier_remove(mdy_adaptive_dimming_threshold_gconf_cb_id),
         mdy_adaptive_dimming_threshold_gconf_cb_id = 0;
 
-    mce_gconf_notifier_remove(mdy_disp_dim_timeout_gconf_cb_id),
-        mdy_disp_dim_timeout_gconf_cb_id = 0;
+    mce_gconf_notifier_remove(mdy_disp_dim_timeout_default_gconf_cb_id),
+        mdy_disp_dim_timeout_default_gconf_cb_id = 0;
 
     mce_gconf_notifier_remove(mdy_possible_dim_timeouts_gconf_cb_id),
         mdy_possible_dim_timeouts_gconf_cb_id = 0;
@@ -9355,7 +9408,7 @@ void g_module_unload(GModule *module)
     mdy_blanking_stop_pause_period();
     mdy_brightness_stop_fade_timer();
     mdy_blanking_cancel_dim();
-    mdy_blanking_stop_adaptive_dimming();
+    mdy_blanking_unprime_adaptive_dimming();
     mdy_blanking_cancel_off();
     mdy_compositor_cancel_killer();
     mdy_callstate_clear_changed();
