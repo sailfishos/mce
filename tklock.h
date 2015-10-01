@@ -198,6 +198,19 @@ typedef enum {
 # define MINIMUM_AUTOLOCK_DELAY                 0
 # define MAXIMUM_AUTOLOCK_DELAY                 600000
 
+/** Volume key input policy modes */
+typedef enum {
+    /** Default rules apply */
+    VOLKEY_POLICY_DEFAULT    = 0,
+
+    /** Volume keys are enabled only when there is music playback. */
+    VOLKEY_POLICY_MEDIA_ONLY = 1,
+} volkey_policy_t;
+
+/** Volume key input policy setting */
+#define MCE_GCONF_TK_VOLKEY_POLICY      MCE_GCONF_LOCK_PATH "/volume_key_input_policy"
+#define DEFAULT_VOLKEY_POLICY           0 // = VOLKEY_POLICY_DEFAULT
+
 /** Automatic lpm triggering modes */
 enum
 {

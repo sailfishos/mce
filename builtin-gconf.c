@@ -1251,6 +1251,11 @@ static const setting_t gconf_defaults[] =
     .def  = "1",
   },
   {
+    .key  = MCE_GCONF_TK_VOLKEY_POLICY,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_VOLKEY_POLICY),
+  },
+  {
     .key  = MCE_GCONF_LPMUI_TRIGGERING,
     .type = "i",
     .def  = "1", // = LPMUI_TRIGGERING_FROM_POCKET
