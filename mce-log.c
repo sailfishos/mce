@@ -212,9 +212,23 @@ void mce_log_file(loglevel_t loglevel, const char *const file,
  *
  * @param verbosity minimum level for log level
  */
-void mce_log_set_verbosity(const int verbosity)
+void mce_log_set_verbosity(int verbosity)
 {
+	if( verbosity < LL_MINIMUM )
+		verbosity = LL_MINIMUM;
+	else if( verbosity > LL_MAXIMUM )
+		verbosity = LL_MAXIMUM;
+
 	logverbosity = verbosity;
+}
+
+/** Set log verbosity
+ *
+ * @return current verbosity level
+ */
+int mce_log_get_verbosity(void)
+{
+  return logverbosity;
 }
 
 /**

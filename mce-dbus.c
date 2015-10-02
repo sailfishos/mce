@@ -726,6 +726,84 @@ EXIT:
 	return TRUE;
 }
 
+/** D-Bus callback for: get mce verbosity method call
+ *
+ * @param req The D-Bus message to reply to
+ *
+ * @return TRUE
+ */
+static gboolean verbosity_get_dbus_cb(DBusMessage *const req)
+{
+	DBusMessage *rsp = 0;
+
+	mce_log(LL_DEVEL, "verbosity get from %s",
+		mce_dbus_get_message_sender_ident(req));
+
+	dbus_int32_t verbosity = mce_log_get_verbosity();
+
+	rsp = dbus_new_method_reply(req);
+
+	if( !dbus_message_append_args(rsp,
+				      DBUS_TYPE_INT32, &verbosity,
+				      DBUS_TYPE_INVALID) ) {
+		mce_log(LL_ERR, "Failed to append arguments");
+		goto EXIT;
+	}
+
+	dbus_send_message(rsp), rsp = 0;
+
+EXIT:
+	if( rsp )
+		dbus_message_unref(rsp);
+
+	return TRUE;
+}
+
+/** D-Bus callback for: set mce verbosity method call
+ *
+ * @param req The D-Bus message to reply to
+ *
+ * @return TRUE
+ */
+static gboolean verbosity_set_dbus_cb(DBusMessage *const req)
+{
+	dbus_bool_t  ack = false;
+	DBusError    err = DBUS_ERROR_INIT;
+
+	mce_log(LL_DEVEL, "verbosity set from %s",
+		mce_dbus_get_message_sender_ident(req));
+
+	dbus_int32_t verbosity = LL_WARN;
+
+	if( !dbus_message_get_args(req, &err,
+				   DBUS_TYPE_INT32, &verbosity,
+				   DBUS_TYPE_INVALID) ) {
+		mce_log(LL_ERR, "%s: %s", err.name, err.message);
+		goto EXIT;
+	}
+
+	mce_log_set_verbosity(verbosity);
+	ack = true;
+
+EXIT:
+	if( !dbus_message_get_no_reply(req) ) {
+		DBusMessage *rsp = dbus_new_method_reply(req);
+		if( !dbus_message_append_args(rsp,
+					      DBUS_TYPE_BOOLEAN, &ack,
+					      DBUS_TYPE_INVALID) ) {
+			mce_log(LL_ERR, "Failed to append arguments");
+			dbus_message_unref(rsp), rsp = 0;
+		}
+		else {
+			dbus_send_message(rsp), rsp = 0;
+		}
+	}
+
+	dbus_error_free(&err);
+
+	return TRUE;
+}
+
 /** Helper for appending gconf string list to dbus message
  *
  * @param conf GConfValue of string list type
@@ -3659,6 +3737,22 @@ static mce_dbus_handler_t mce_dbus_handlers[] =
 		.args      =
 			"    <arg direction=\"out\" name=\"uptime_ms\" type=\"x\"/>\n"
 			"    <arg direction=\"out\" name=\"suspend_ms\" type=\"x\"/>\n"
+	},
+	{
+		.interface = MCE_REQUEST_IF,
+		.name      = "get_verbosity",
+		.type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+		.callback  = verbosity_get_dbus_cb,
+		.args      =
+			"    <arg direction=\"out\" name=\"level\" type=\"i\"/>\n"
+	},
+	{
+		.interface = MCE_REQUEST_IF,
+		.name      = "set_verbosity",
+		.type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+		.callback  = verbosity_set_dbus_cb,
+		.args      =
+			"    <arg direction=\"in\" name=\"level\" type=\"i\"/>\n"
 	},
 	{
 		.interface = DBUS_INTERFACE_INTROSPECTABLE,

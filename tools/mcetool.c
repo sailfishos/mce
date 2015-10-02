@@ -37,6 +37,7 @@
 #include <string.h>
 #include <errno.h>
 #include <math.h>
+#include <syslog.h>
 
 #include <dbus/dbus.h>
 
@@ -337,6 +338,50 @@ static gboolean xmce_ipc_uint_reply(const gchar *const name,
 
         if( !dbus_message_get_args(rsp, &err,
                                    DBUS_TYPE_UINT32, &dta,
+                                   DBUS_TYPE_INVALID) )
+                goto EXIT;
+
+        *result = dta;
+
+        ack = TRUE;
+EXIT:
+        if( dbus_error_is_set(&err) ) {
+                errorf("%s: %s: %s\n", name, err.name, err.message);
+                dbus_error_free(&err);
+        }
+        if( rsp ) dbus_message_unref(rsp);
+
+        va_end(va);
+        return ack;
+}
+
+/** Wrapper for making synchronous MCE D-Bus method calls that return INT32
+ *
+ * @param name      [IN]  D-Bus method call name
+ * @param reply     [OUT] Where to store int from method return
+ * @param arg_type  [IN]  DBUS_TYPE_STRING etc, as with dbus_message_append_args()
+ * @param ...       [IN]  D-Bus arguments, terminated with DBUS_TYPE_INVALID
+ *
+ * @return TRUE if call was successfully sent and non-error reply received and parsed,
+ *         or FALSE in case of errors
+ */
+static gboolean xmce_ipc_int_reply(const gchar *const name,
+                                   gint *result,
+                                   int arg_type, ...)
+{
+        gboolean      ack = FALSE;
+        DBusMessage  *rsp = 0;
+        DBusError     err = DBUS_ERROR_INIT;
+        dbus_int32_t  dta = 0;
+
+        va_list va;
+        va_start(va, arg_type);
+
+        if( !xmce_ipc_va(name, &rsp, arg_type, va) )
+                goto EXIT;
+
+        if( !dbus_message_get_args(rsp, &err,
+                                   DBUS_TYPE_INT32, &dta,
                                    DBUS_TYPE_INVALID) )
                 goto EXIT;
 
@@ -1919,6 +1964,56 @@ static bool mcetool_do_deactivate_pattern(const char *args)
         return xmce_ipc_no_reply(MCE_DEACTIVATE_LED_PATTERN,
                                  DBUS_TYPE_STRING, &args,
                                  DBUS_TYPE_INVALID);
+}
+/* ------------------------------------------------------------------------- *
+ * mce verbosity
+ * ------------------------------------------------------------------------- */
+
+/** Lookup table for verbosity levels */
+static const symbol_t verbosity_levels[] = {
+        // official
+        { "emerg",     LOG_EMERG   },
+        { "alert",     LOG_ALERT   },
+        { "crit",      LOG_CRIT    },
+        { "err",       LOG_ERR     },
+        { "warning",   LOG_WARNING },
+        { "notice",    LOG_NOTICE  },
+        { "info",      LOG_INFO    },
+        { "debug",     LOG_DEBUG   },
+        // aliases
+        { "emergency", LOG_EMERG   },
+        { "critical",  LOG_CRIT    },
+        { "error",     LOG_ERR     },
+        { "warn",      LOG_WARNING },
+        { NULL,        -1          }
+};
+
+/** Set MCE verbosity level
+ */
+static bool xmce_set_verbosity(const char *arg)
+{
+        dbus_int32_t val = lookup(verbosity_levels, arg);
+        if( val < 0 ) {
+                errorf("%s: invalid verbosity level\n", arg);
+                return false;
+        }
+
+        return xmce_ipc_no_reply("set_verbosity",
+                                 DBUS_TYPE_INT32, &val,
+                                 DBUS_TYPE_INVALID);
+}
+
+/** Show current MCE verbosity level
+ */
+static void xmce_get_verbosity(void)
+{
+        gint        val = 0;
+        const char *txt = 0;
+
+        if( xmce_ipc_int_reply("get_verbosity", &val, DBUS_TYPE_INVALID) )
+                txt = rlookup(verbosity_levels, val);
+
+        printf("%-"PAD1"s %s \n", "Verbosity level:", txt ?: "unknown");
 }
 
 /* ------------------------------------------------------------------------- *
@@ -5084,6 +5179,7 @@ static bool xmce_get_status(const char *args)
                 "-----------\n");
 
         xmce_get_version();
+        xmce_get_verbosity();
         xmce_get_radio_states();
         xmce_get_call_state();
         xmce_get_display_state();
@@ -6285,6 +6381,23 @@ static const mce_opt_t options[] =
                 .usage       =
                         "output version information and exit\n"
 
+        },
+        {
+                .name        = "set-verbosity",
+                .with_arg    = xmce_set_verbosity,
+                .values      = "emerg|alert|crit|err|warning|notice|info|debug",
+                .usage       =
+                        "set the mce verbosity level\n"
+                        "\n"
+                        "Valid levels conform to syslog standard and are:\n"
+                        "  emerg   - Silent (not used by mce)\n"
+                        "  alert   - Silent (not used by mce)\n"
+                        "  crit    - Critical problems that can cause mce to exit\n"
+                        "  err     - Unexpected operational failures\n"
+                        "  warning - Tolerable operational failures\n"
+                        "  notice  - Important status changes, external triggers\n"
+                        "  info    - Status changes relevant in debugging\n"
+                        "  debug   - Low importance changes/often occurring events\n"
         },
         {
                 .name        = "set-memuse-warning-used",
