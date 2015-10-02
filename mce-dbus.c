@@ -1437,6 +1437,7 @@ EXIT:
 	dbus_send_message(reply), reply = 0;
 
 NOREPLY:
+	dbus_error_free(&error);
 	return TRUE;
 }
 
@@ -2290,25 +2291,23 @@ void mce_dbus_owner_monitor_remove_all(GSList **monitor_list)
 static gboolean dbus_acquire_services(void)
 {
 	gboolean status = FALSE;
+	DBusError error = DBUS_ERROR_INIT;
 	int ret;
-	DBusError error;
-
-	/* Register error channel */
-	dbus_error_init(&error);
 
 	ret = dbus_bus_request_name(dbus_connection, MCE_SERVICE, 0, &error);
 
-	if (ret == DBUS_REQUEST_NAME_REPLY_PRIMARY_OWNER) {
-		mce_log(LL_DEBUG, "Service %s acquired", MCE_SERVICE);
-	} else {
-		mce_log(LL_CRIT, "Cannot acquire service: %s", error.message);
-		dbus_error_free(&error);
+	if( ret != DBUS_REQUEST_NAME_REPLY_PRIMARY_OWNER ) {
+		mce_log(LL_CRIT, "Cannot acquire service %s: %s: %s",
+			MCE_SERVICE, error.name, error.message);
 		goto EXIT;
 	}
+
+	mce_log(LL_DEBUG, "Service %s acquired", MCE_SERVICE);
 
 	status = TRUE;
 
 EXIT:
+	dbus_error_free(&error);
 	return status;
 }
 
