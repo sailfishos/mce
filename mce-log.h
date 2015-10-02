@@ -45,11 +45,15 @@ typedef enum {
 	LL_DEVEL   = LL_NOTICE,		/**< Otherwise verbose mode needed */
 # endif
 
+	LL_MAXIMUM = LOG_DEBUG,		/**< Minimum for bounds checking */
+	LL_MINIMUM = LOG_EMERG,		/**< Maximum for bounds checking */
+
 } loglevel_t;
 
 # ifdef OSSOLOG_COMPILE
 void mce_log_add_pattern(const char *pat);
-void mce_log_set_verbosity(const int verbosity);
+void mce_log_set_verbosity(int verbosity);
+int  mce_log_get_verbosity(void);
 
 int  mce_log_p_(const loglevel_t loglevel,
 		const char *const file, const char *const function);
