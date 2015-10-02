@@ -1,3 +1,10 @@
+mce (1.71.0) unstable; urgency=low
+
+  * [dbus] Allow adjusting mce verbosity while it is running. Fixes JB#32492
+  * [dbus] Tune error recovery paths
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 02 Oct 2015 13:08:28 +0300
+
 mce (1.70.0) unstable; urgency=low
 
   * [tklock] Add setting for tweaking volume key input policy.
