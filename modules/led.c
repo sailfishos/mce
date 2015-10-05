@@ -1029,22 +1029,22 @@ static bool led_pattern_can_breathe(const pattern_struct *self)
 	 *
 	 * Extend these bounds in case the users have edited the
 	 * defaults, or added new patterns.
-	 *
-	 * Use half the minimum and double the maximum - then assume
-	 * anything out of those limits probably
+	 */
+
+	int normal_pattern_minimum_on_period  =  250; // [ms]
+	int normal_pattern_maximum_on_period  = 1500; // [ms]
+
+	int normal_pattern_minimum_off_period =  250; // [ms]
+	int normal_pattern_maximum_off_period = 5000; // [ms]
+
+	/* Then assume anything out of those limits probably
 	 * a) is unbreathable static pattern
 	 * b) is rapid panic pattern
 	 * c) is custom beacon with short on, long off cycle
 	 * d) has too short rise time for timer based adjustments
 	 * e) has so long fall time that breathing is unnoticeable
-	 * and should not be made to breathe.
+	 *    and should not be made to breathe.
 	 */
-
-	int normal_pattern_minimum_on_period  =  500 / 2; // [ms]
-	int normal_pattern_maximum_on_period  =  500 * 2; // [ms]
-
-	int normal_pattern_minimum_off_period = 1500 / 2; // [ms]
-	int normal_pattern_maximum_off_period = 2500 * 2; // [ms]
 
 	if( self->on_period  < normal_pattern_minimum_on_period  ||
 	    self->on_period  > normal_pattern_maximum_on_period  ||
