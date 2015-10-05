@@ -1,3 +1,9 @@
+mce (1.71.1) unstable; urgency=low
+
+  * [led] Relax on/off limits for sw breathing. Contributes to JB#31184
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 05 Oct 2015 13:44:57 +0300
+
 mce (1.71.0) unstable; urgency=low
 
   * [dbus] Allow adjusting mce verbosity while it is running. Fixes JB#32492
