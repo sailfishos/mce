@@ -1,3 +1,10 @@
+mce (1.71.2) unstable; urgency=low
+
+  * [powerkey] Do not bypass lockscreen if proximity sensor is covered.
+    Fixes JB#32668
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 06 Oct 2015 22:50:30 +0300
+
 mce (1.71.1) unstable; urgency=low
 
   * [led] Relax on/off limits for sw breathing. Contributes to JB#31184
