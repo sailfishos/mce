@@ -637,6 +637,9 @@ pwrkey_action_tklock(void)
 static void
 pwrkey_action_tkunlock(void)
 {
+    cover_state_t proximity_sensor_state =
+        datapipe_get_gint(proximity_sensor_pipe);
+
     display_state_t target = datapipe_get_gint(display_state_next_pipe);
 
     /* Only unlock if we are in/entering fully powered on display state */
@@ -650,6 +653,16 @@ pwrkey_action_tkunlock(void)
     }
 
     lock_state_t request = LOCK_OFF;
+
+    /* Even if powerkey actions are allowed to work while proximity
+     * sensor is covered, we must not deactivatie the lockscreen */
+    if( proximity_sensor_state != COVER_OPEN ) {
+        mce_log(LL_DEBUG, "Proximity sensor %s; rejecting tklock=%s",
+                proximity_state_repr(proximity_sensor_state),
+                lock_state_repr(request));
+        goto EXIT;
+    }
+
     mce_log(LL_DEBUG, "Requesting tklock=%s", lock_state_repr(request));
     execute_datapipe(&tk_lock_pipe,
                      GINT_TO_POINTER(request),
