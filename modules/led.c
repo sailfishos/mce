@@ -318,6 +318,7 @@ static void              disable_led                    (void);
 static pattern_struct   *led_pattern_create             (void);
 static void              led_pattern_delete             (pattern_struct *self);
 static void              led_pattern_set_active         (pattern_struct *self, gboolean active);
+static bool              led_pattern_should_breathe     (const pattern_struct *self);
 static bool              led_pattern_can_breathe        (const pattern_struct *self);
 static gboolean          led_pattern_timeout_cb         (gpointer data);
 static void              lysti_program_led              (const pattern_struct *const pattern);
@@ -1003,6 +1004,43 @@ EXIT:
 		dbus_message_unref(msg);
 
 	return;
+}
+
+/** Check if a led pattern should always utilize sw breathing
+ *
+ * @param self led pattern object
+ *
+ * @return true if the pattern should always breathe, false otherwise
+ */
+static bool led_pattern_should_breathe(const pattern_struct *self)
+{
+	static const char * const lut[] =
+	{
+		/* Battery full breathes by default. If user has tuned
+		 * the pattern config to disable battery full blinking,
+		 * the led_pattern_can_breathe() should catch it. */
+		MCE_LED_PATTERN_BATTERY_FULL,
+
+		/* The CSD test has a led pattern that should utilize
+		 * breathing regardless of the breathing settings */
+		MCE_LED_PATTERN_CSD_BREATHING,
+	};
+
+	bool breathe = false;
+
+	if( !self || !self->name )
+		goto EXIT;
+
+	for( size_t i = 0; i < G_N_ELEMENTS(lut); ++i ) {
+		if( strcmp(self->name, lut[i]) )
+			continue;
+
+		breathe = true;
+		break;
+	}
+
+EXIT:
+	return breathe;
 }
 
 /** Check if pattern is breathable
@@ -2832,12 +2870,9 @@ static void sw_breathing_rethink(void)
 		breathe = false;
 	}
 	else {
-		/* Battery full breathes by default. If user has tuned
-		 * the pattern config to disable battery full blinking,
-		 * the led_pattern_can_breathe() below should catch it. */
-		if( !strcmp(active_pattern->name,
-			    MCE_LED_PATTERN_BATTERY_FULL) )
-			breathe = true;
+		/* Check for always breathing special cases */
+		if( !breathe )
+			breathe = led_pattern_should_breathe(active_pattern);
 
 		/* If pattern is configured not to breathe, we should
 		 * not breathe even if it were allowed */
