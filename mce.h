@@ -49,6 +49,9 @@
 /** LED pattern used when the battery is full */
 #define MCE_LED_PATTERN_BATTERY_FULL		"PatternBatteryFull"
 
+/** LED pattern used by CSD that should always use sw breathing */
+#define MCE_LED_PATTERN_CSD_BREATHING		"PatternCsdLedBlink"
+
 /** LED pattern used when the battery is low */
 #define MCE_LED_PATTERN_BATTERY_LOW		"PatternBatteryLow"
 
