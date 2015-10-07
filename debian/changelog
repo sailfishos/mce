@@ -1,3 +1,9 @@
+mce (1.72.0) precise; urgency=low
+
+  * [led] Add support for always breathing CSD LED pattern. Fixes JB#32696
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 07 Oct 2015 14:19:23 +0300
+
 mce (1.71.2) unstable; urgency=low
 
   * [powerkey] Do not bypass lockscreen if proximity sensor is covered.
