@@ -24,12 +24,14 @@
 #include "mce-conf.h"
 #include "mce-fbdev.h"
 #include "mce-hbtimer.h"
+#include "mce-wltimer.h"
 #include "mce-gconf.h"
 #include "mce-dbus.h"
 #include "mce-dsme.h"
 #include "mce-modules.h"
 #include "mce-command-line.h"
 #include "mce-sensorfw.h"
+#include "mce-wakelock.h"
 #include "tklock.h"
 #include "powerkey.h"
 #include "event-input.h"
@@ -140,6 +142,7 @@ static void mce_exit_via_signal(int signr)
 #ifdef ENABLE_WAKELOCKS
 	/* Cancel auto suspend */
 	mce_cleanup_wakelocks();
+	mce_wakelock_abort();
 #endif
 	/* Try to exit via default handler */
 	signal(signr, SIG_DFL);
@@ -916,6 +919,9 @@ int main(int argc, char **argv)
 	/* Since mce enables automatic suspend, we must try to
 	 * disable it when mce process exits */
 	atexit(mce_cleanup_wakelocks);
+
+	/* Allow acquiring of multiplexed wakelock */
+	mce_wakelock_init();
 #endif
 
 	/* Identify mce version & flavor on start up */
@@ -970,6 +976,9 @@ int main(int argc, char **argv)
 
 	/* Allow registering of suspend proof timers */
 	mce_hbtimer_init();
+
+	/* Allow registering of suspend blocking timers */
+	mce_wltimer_init();
 
 	/* Initialise mode management
 	 * pre-requisite: mce_gconf_init()
@@ -1055,6 +1064,7 @@ EXIT:
 	mce_powerkey_exit();
 	mce_dsme_exit();
 	mce_mode_exit();
+	mce_wltimer_quit();
 	mce_hbtimer_quit();
 
 	/* Free all datapipes */
@@ -1074,6 +1084,9 @@ EXIT:
 
 	/* Close signal pipe & remove io watch for it */
 	mce_quit_signal_pipe();
+
+	/* Release multiplexed wakelock */
+	mce_wakelock_quit();
 
 	/* Log a farewell message and close the log */
 	mce_log(LL_INFO, "Exiting...");

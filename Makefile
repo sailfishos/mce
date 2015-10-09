@@ -280,6 +280,8 @@ MCE_CORE += mce-dbus.c
 MCE_CORE += mce-dsme.c
 MCE_CORE += mce-gconf.c
 MCE_CORE += mce-hbtimer.c
+MCE_CORE += mce-wltimer.c
+MCE_CORE += mce-wakelock.c
 MCE_CORE += event-input.c
 MCE_CORE += event-switches.c
 MCE_CORE += mce-hal.c
@@ -536,11 +538,15 @@ NORMALIZE_USES_SPC =\
 	mce-command-line.h\
 	mce-hbtimer.c\
 	mce-hbtimer.h\
+	mce-wltimer.c\
+	mce-wltimer.h\
 	mce-hybris.c\
 	mce-hybris.h\
 	mce-modules.h\
 	mce-sensorfw.c\
 	mce-sensorfw.h\
+	mce-wakelock.c\
+	mce-wakelock.h\
 	modetransition.h\
 	modules/audiorouting.c\
 	modules/battery-upower.c\

@@ -26,6 +26,7 @@
 #include "mce.h"
 #include "mce-log.h"
 #include "mce-lib.h"
+#include "mce-wakelock.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -36,6 +37,81 @@
 #include <dbus/dbus-glib-lowlevel.h>
 
 #include <mce/dbus-names.h>
+
+/** How long to block late suspend when mce is sending dbus messages */
+#define MCE_DBUS_SEND_SUSPEND_BLOCK_MS 1000
+
+/** Pending call callgate slot destry callback function
+ *
+ * Called when pending call ref count drops to zero.
+ *
+ * Releases the ultiplexed wakelock that has been attached
+ * to the pending call object via mdb_callgate_attach().
+ *
+ * @param aptr Name of the attached wakelock
+ */
+static void mdb_callgate_detach_cb(void  *aptr)
+{
+	char *name = aptr;
+
+	mce_log(LL_DEBUG, "detach %s", name);
+	mce_wakelock_release(name);
+	g_free(name);
+}
+
+/** Block suspend while mce is waiting for a reply to a method call
+ *
+ * Take advantage of the fact that custom data attached to a pending
+ * call object gets destroyed along with the object itself and create
+ * unique wakelock that is used for blocking the device from entering
+ * suspend until:
+ *
+ * a) the wait for pending call is canceled
+ * b) mce has received and processed the reply message
+ *
+ * @param pc Pending call object to suspend proof
+ */
+static void mdb_callgate_attach(DBusPendingCall *pc)
+{
+	static dbus_int32_t  slot = -1;
+	static unsigned      uniq = 0;
+
+	gchar               *name = 0;
+
+	if( !pc )
+		goto EXIT;
+
+	if( slot == -1 && !dbus_pending_call_allocate_data_slot(&slot) )
+		goto EXIT;
+
+	if( !(name = g_strdup_printf("dbus_call_%u", ++uniq)) )
+		goto EXIT;
+
+	mce_log(LL_DEBUG, "attach %s", name);
+
+	if( dbus_pending_call_set_data(pc, slot, name, mdb_callgate_detach_cb) ) {
+		mce_wakelock_obtain(name, -1);
+		name = 0;
+	}
+
+EXIT:
+	g_free(name);
+}
+
+/** Public function for making dbus method calls suspend proof
+ *
+ * NOTE: We would not need this function if all of the mce code base
+ *       would use dbus_send_ex() based method call handling.
+ *
+ * FIXME: Fix all code that uses dbus_connection_send_with_reply()
+ *        so that dbus_send_ex() is used instead.
+ *
+ * @param pc  Pending call object to protect
+ */
+void mce_dbus_pending_call_blocks_suspend(DBusPendingCall *pc)
+{
+	mdb_callgate_attach(pc);
+}
 
 static bool introspectable_signal(const char *interface, const char *member);
 
@@ -438,6 +514,8 @@ gboolean dbus_send_message(DBusMessage *const msg)
 {
 	gboolean status = FALSE;
 
+	mce_wakelock_obtain("dbus_send", MCE_DBUS_SEND_SUSPEND_BLOCK_MS);
+
 	if (dbus_connection_send(dbus_connection, msg, NULL) == FALSE) {
 		mce_log(LL_CRIT,
 			"Out of memory when sending D-Bus message");
@@ -484,6 +562,8 @@ dbus_send_message_with_reply_handler(DBusMessage *const msg,
 		mce_log(LL_ERR, "D-Bus connection disconnected");
 		goto EXIT;
 	}
+
+	mdb_callgate_attach(pc);
 
 	if( !dbus_pending_call_set_notify(pc, callback,
 					  user_data, user_free) ) {
@@ -1792,6 +1872,8 @@ static DBusHandlerResult msg_handler(DBusConnection *const connection,
 	(void)connection;
 	(void)user_data;
 
+	mce_wakelock_obtain("dbus_recv", -1);
+
 	guint status = DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 	int   type   = dbus_message_get_type(msg);
 
@@ -1857,6 +1939,9 @@ static DBusHandlerResult msg_handler(DBusConnection *const connection,
 	mce_dbus_squeeze_slist(&dbus_handlers);
 
 EXIT:
+
+	mce_wakelock_release("dbus_recv");
+
 	return status;
 }
 
@@ -3539,6 +3624,8 @@ mce_dbus_nameowner_query_req(const char *name)
 
     if( !pc )
 	goto EXIT;
+
+    mdb_callgate_attach(pc);
 
     key = strdup(name);
 
