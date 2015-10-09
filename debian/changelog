@@ -1,3 +1,16 @@
+mce (1.73.0) precise; urgency=low
+
+  * [wakelock] Add module for virtual wakelocks. Contributes to JB#32462
+  * [dbus] Block suspend while sending or dispatching D-Bus messages.
+    Contributes to JB#32462
+  * [wltimer] Add moduled for suspend blocking timers. Contributes to JB#32462
+  * [callstate] Suspend proof delayed call state evaluation. Fixes JB#32462
+  * [dbus] Block suspend while making D-Bus method calls. Contributes to  JB#32462
+  * [dbus] Block suspend also during method calls that bypasses mce-dbus.
+    Contributes to JB#32462
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 09 Oct 2015 19:05:07 +0300
+
 mce (1.72.0) precise; urgency=low
 
   * [led] Add support for always breathing CSD LED pattern. Fixes JB#32696
