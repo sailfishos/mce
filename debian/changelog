@@ -1,3 +1,10 @@
+mce (1.73.1) precise; urgency=low
+
+  * [suspend] Add support for enabling autosleep. Contributes to JB#32356
+  * [display] Enable autosleep when powering off display. Fixes JB#32356
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 14 Oct 2015 13:05:36 +0300
+
 mce (1.73.0) precise; urgency=low
 
   * [wakelock] Add module for virtual wakelocks. Contributes to JB#32462
