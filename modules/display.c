@@ -6425,9 +6425,8 @@ static void mdy_stm_start_fb_suspend(void)
 
 #ifdef ENABLE_WAKELOCKS
     mce_log(LL_NOTICE, "suspending");
-    if( mdy_waitfb_data.thread )
-        wakelock_allow_suspend();
-    else
+    wakelock_allow_suspend();
+    if( !mdy_waitfb_data.thread )
         mdy_waitfb_data.suspended = true, mce_fbdev_set_power(false);
 #else
     mce_log(LL_NOTICE, "power off frame buffer");
@@ -6443,9 +6442,8 @@ static void mdy_stm_start_fb_resume(void)
 
 #ifdef ENABLE_WAKELOCKS
     mce_log(LL_NOTICE, "resuming");
-    if( mdy_waitfb_data.thread )
-        wakelock_block_suspend();
-    else
+    wakelock_block_suspend();
+    if( !mdy_waitfb_data.thread )
         mdy_waitfb_data.suspended = false, mce_fbdev_set_power(true);
 #else
     mce_log(LL_NOTICE, "power off frame buffer");
