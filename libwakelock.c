@@ -12,6 +12,7 @@
 #include "libwakelock.h"
 
 #include <stdarg.h>
+#include <stdbool.h>
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
@@ -136,8 +137,11 @@ static const char lwl_lock_path[]   = "/sys/power/wake_lock";
 /** Sysfs entry for releasing wakelocks */
 static const char lwl_unlock_path[] = "/sys/power/wake_unlock";
 
-/** Sysfs entry for allow/block suspend */
+/** Sysfs entry for allow/block early suspend */
 static const char lwl_state_path[] = "/sys/power/state";
+
+/** Sysfs entry for allow/block autosleep */
+static const char lwl_autosleep_path[] = "/sys/power/autosleep";
 
 /** Helper for writing to sysfs files
  */
@@ -160,18 +164,110 @@ static void lwl_write_file(const char *path, const char *data)
 	}
 }
 
-/** Helper for checking if wakelock interface is supported
- */
-static int lwl_enabled(void)
-{
-	static int checked = 0, enabled = 0;
+/** Suspend model supported by the kernel */
+typedef enum {
+	/* Not known yet */
+	SUSPEND_TYPE_UNKN  = -1,
 
-	if( !checked ) {
-		checked = 1, enabled = !access(lwl_lock_path, F_OK);
-		lwl_debug(enabled ? "enabled" : "disabled", "\n", NULL);
+	/* Suspend not supported */
+	SUSPEND_TYPE_NONE  =  0,
+
+	/* Early suspend model */
+	SUSPEND_TYPE_EARLY =  1,
+
+	/* Autosleep model */
+	SUSPEND_TYPE_AUTO  =  2,
+} suspend_type_t;
+
+/** Structure for holding static text + size */
+typedef struct
+{
+	const char *text;
+	size_t      size;
+} suspend_data_t;
+
+/** Early suspend disable string */
+static const suspend_data_t data_on  = { .text = "on",  .size = 2 };
+
+/** Autosleep disable string */
+static const suspend_data_t data_off = { .text = "off", .size = 3 };
+
+/** Early suspend / autosleep enable string */
+static const suspend_data_t data_mem = { .text = "mem", .size = 3 };
+
+/** Write text to a sysfs file
+ *
+ * @param path file to write
+ * @param data text to write
+ * @param size lenght of text
+ *
+ * @return true if write was successful, false otherwise
+ */
+static bool
+lwl_write_text(const char *path, const char *data, int size)
+{
+	bool res = false;
+	int  fd  = -1;
+
+	if( !path || !data || size <= 0 )
+		goto cleanup;
+
+	lwl_debug(path, " << ", data, "\n", NULL);
+
+	if( (fd = open(path, O_WRONLY)) == -1 )
+		goto cleanup;
+
+	if( write(fd, data, size) == -1 )
+		goto cleanup;
+
+	res = true;
+
+cleanup:
+	if( fd != -1 ) close(fd);
+
+	return res;
+}
+
+/** Write fixed string to a sysfs file
+ *
+ * @param path file to write
+ * @param data text of known size to write
+ *
+ * @return true if write was successful, false otherwise
+ */
+static bool
+lwl_write_data(const char *path, const suspend_data_t *data)
+{
+	return lwl_write_text(path, data->text, data->size);
+}
+
+/** Helper for checking if/what kind of suspend model is supported
+ */
+static suspend_type_t lwl_probe(void)
+{
+	static suspend_type_t suspend_type = SUSPEND_TYPE_UNKN;
+
+	if( suspend_type != SUSPEND_TYPE_UNKN )
+		goto EXIT;
+
+	if( access(lwl_lock_path, W_OK) || access(lwl_unlock_path, W_OK) ) {
+		/* No suspend without wakelock controls */
+		suspend_type = SUSPEND_TYPE_NONE;
+	}
+	else if( lwl_write_data(lwl_state_path, &data_on) ) {
+		/* No error from disabling early suspend */
+		suspend_type = SUSPEND_TYPE_EARLY;
+	}
+	else if( lwl_write_data(lwl_autosleep_path, &data_off) ) {
+		/* No error from disabling autosleep */
+		suspend_type = SUSPEND_TYPE_AUTO;
+	}
+	else  {
+		suspend_type = SUSPEND_TYPE_NONE;
 	}
 
-	return enabled;
+EXIT:
+	return suspend_type;
 }
 
 /** Use sysfs interface to create and enable a wakelock.
@@ -182,7 +278,10 @@ static int lwl_enabled(void)
  */
 void wakelock_lock(const char *name, long long ns)
 {
-	if( lwl_enabled() && !lwl_shutting_down ) {
+	if( lwl_shutting_down )
+		goto EXIT;
+
+	if( lwl_probe() > SUSPEND_TYPE_NONE ) {
 		char tmp[64];
 		char num[64];
 		if( ns < 0 ) {
@@ -194,6 +293,9 @@ void wakelock_lock(const char *name, long long ns)
 		}
 		lwl_write_file(lwl_lock_path, tmp);
 	}
+
+EXIT:
+	return;
 }
 
 /** Use sysfs interface to disable a wakelock.
@@ -204,13 +306,12 @@ void wakelock_lock(const char *name, long long ns)
  */
 void wakelock_unlock(const char *name)
 {
-	if( lwl_enabled() ) {
+	if( lwl_probe() > SUSPEND_TYPE_NONE ) {
 		char tmp[64];
 		lwl_concat(tmp, sizeof tmp, name, "\n", NULL);
 		lwl_write_file(lwl_unlock_path, tmp);
 	}
 }
-
 /** Use sysfs interface to allow automatic entry to suspend
  *
  * After this call the device will enter suspend mode once all
@@ -221,9 +322,22 @@ void wakelock_unlock(const char *name)
  */
 void wakelock_allow_suspend(void)
 {
-	if( lwl_enabled() && !lwl_shutting_down ) {
-		lwl_write_file(lwl_state_path, "mem\n");
+	if( lwl_shutting_down )
+		goto EXIT;
+
+	switch( lwl_probe() ) {
+	case SUSPEND_TYPE_EARLY:
+		lwl_write_data(lwl_state_path, &data_mem);
+		break;
+	case SUSPEND_TYPE_AUTO:
+		lwl_write_data(lwl_autosleep_path, &data_mem);
+		break;
+	default:
+		break;
 	}
+
+EXIT:
+	return;
 }
 
 /** Use sysfs interface to block automatic entry to suspend
@@ -233,8 +347,15 @@ void wakelock_allow_suspend(void)
  */
 void wakelock_block_suspend(void)
 {
-	if( lwl_enabled() ) {
-		lwl_write_file(lwl_state_path, "on\n");
+	switch( lwl_probe() ) {
+	case SUSPEND_TYPE_EARLY:
+		lwl_write_data(lwl_state_path, &data_on);
+		break;
+	case SUSPEND_TYPE_AUTO:
+		lwl_write_data(lwl_autosleep_path, &data_off);
+		break;
+	default:
+		break;
 	}
 }
 
