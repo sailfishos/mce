@@ -115,6 +115,7 @@ extern datapipe_struct lens_cover_pipe;
 extern datapipe_struct proximity_sensor_pipe;
 extern datapipe_struct ambient_light_sensor_pipe;
 extern datapipe_struct ambient_light_level_pipe;
+extern datapipe_struct ambient_light_poll_pipe;
 extern datapipe_struct orientation_sensor_pipe;
 extern datapipe_struct alarm_ui_state_pipe;
 extern datapipe_struct system_state_pipe;

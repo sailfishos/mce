@@ -34,6 +34,7 @@
 #include "../mce-gconf.h"
 #include "../mce-dbus.h"
 #include "../mce-sensorfw.h"
+#include "../mce-wakelock.h"
 #include "../tklock.h"
 
 #include <stdlib.h>
@@ -67,6 +68,9 @@
 
 /** Size of the median filtering window; code expects the value to be odd */
 #define FBA_INPUTFLT_MEDIAN_SIZE        9
+
+/** Duration of temporary ALS enable sessions */
+#define FBA_SENSORPOLL_DURATION_MS      5000
 
 /* ========================================================================= *
  * FUNCTIONALITY
@@ -194,6 +198,7 @@ static gpointer fba_datapipe_display_brightness_filter  (gpointer data);
 static gpointer fba_datapipe_led_brightness_filter      (gpointer data);
 static gpointer fba_datapipe_lpm_brightness_filter      (gpointer data);
 static gpointer fba_datapipe_key_backlight_filter       (gpointer data);
+static gpointer fba_datapipe_ambient_light_poll_filter  (gpointer data);
 
 static void     fba_datapipe_display_state_trigger      (gconstpointer data);
 static void     fba_datapipe_display_state_next_trigger (gconstpointer data);
@@ -226,11 +231,23 @@ static bool fba_status_sensor_is_needed          (void);
 static void fba_status_rethink                   (void);
 
 /* ------------------------------------------------------------------------- *
+ * SENSOR_POLL
+ * ------------------------------------------------------------------------- */
+
+static gboolean fba_sensorpoll_timer_cb  (gpointer aptr);
+static void     fba_sensorpoll_start     (void);
+static void     fba_sensorpoll_stop      (void);
+static void     fba_sensorpoll_rethink   (void);
+
+/* ------------------------------------------------------------------------- *
  * LOAD_UNLOAD
  * ------------------------------------------------------------------------- */
 
 G_MODULE_EXPORT const gchar *g_module_check_init (GModule *module);
 G_MODULE_EXPORT void         g_module_unload     (GModule *module);
+
+/** Flag for: The plugin is about to be unloaded */
+static bool fba_module_unload = false;
 
 /* ========================================================================= *
  * MISC_UTILS
@@ -1216,6 +1233,9 @@ static display_state_t fba_display_state = MCE_DISPLAY_UNDEF;
 /** Cached target display state; tracked via fba_datapipe_display_state_next_trigger() */
 static display_state_t fba_display_state_next = MCE_DISPLAY_UNDEF;
 
+/** Cached als poll state; tracked via fba_datapipe_ambient_light_poll_filter() */
+static bool fba_ambient_light_poll = false;
+
 /**
  * Ambient Light Sensor filter for display brightness
  *
@@ -1319,6 +1339,39 @@ EXIT:
     return GINT_TO_POINTER(value * scale / 100);
 }
 
+/** Ambient Light Sensor filter for temporary sensor enable
+ *
+ * @param data Requested sensor enable/disable bool (as void pointer)
+ *
+ * @return Granted  sensor enable/disable bool (as void pointer)
+ */
+static gpointer
+fba_datapipe_ambient_light_poll_filter(gpointer data)
+{
+    bool prev = fba_ambient_light_poll;
+    fba_ambient_light_poll = GPOINTER_TO_INT(data);
+
+    if( !fba_gconf_als_enabled )
+        fba_ambient_light_poll = FALSE;
+
+    if( fba_ambient_light_poll == prev )
+        goto EXIT;
+
+    mce_log(LL_DEVEL, "ambient_light_poll = %s",
+            fba_ambient_light_poll ? "true" : "false");
+
+    /* Sensor status is affected only if the value changes */
+    fba_status_rethink();
+
+EXIT:
+
+    /* The termination timer must be renewed/stopped even
+     * if the value does not change. */
+    fba_sensorpoll_rethink();
+
+    return GINT_TO_POINTER(fba_ambient_light_poll);
+}
+
 /**
  * Handle display state change
  *
@@ -1395,6 +1448,10 @@ static datapipe_handler_t fba_datapipe_handlers[] =
     {
         .datapipe  = &key_backlight_pipe,
         .filter_cb = fba_datapipe_key_backlight_filter,
+    },
+    {
+        .datapipe  = &ambient_light_poll_pipe,
+        .filter_cb = fba_datapipe_ambient_light_poll_filter,
     },
 
     // output triggers
@@ -1651,6 +1708,8 @@ fba_status_sensor_value_change_cb(int lux)
     else
         fba_status_sensor_lux = lux;
 
+    mce_log(LL_DEBUG, "sensor: %d", fba_status_sensor_lux);
+
     /* Filter raw sensor data */
     fba_inputflt_sampling_input(fba_status_sensor_lux);
 
@@ -1694,7 +1753,11 @@ fba_status_rethink(void)
     bool       enable_new = false;
 
     if( fba_gconf_als_enabled )
-        enable_new = fba_status_sensor_is_needed();
+        enable_new = (fba_ambient_light_poll ||
+                      fba_status_sensor_is_needed());
+
+    if( fba_module_unload )
+        enable_new = false;
 
     if( enable_old == enable_new )
         goto EXIT;
@@ -1738,7 +1801,88 @@ EXIT:
         fba_datapipe_execute_brightness_change();
     }
 
+    /* Block device from suspending while temporary ALS poll is active */
+    if( enable_new && fba_ambient_light_poll )
+        mce_wakelock_obtain("als_poll", -1);
+    else
+        mce_wakelock_release("als_poll");
+
     return;
+}
+
+/* ========================================================================= *
+ * SENSOR_POLL
+ * ========================================================================= */
+
+/** Timer ID: Terminate temporary ALS enable */
+static guint fba_sensorpoll_timer_id = 0;
+
+/** Timer callback: Terminate temporary ALS enable
+ *
+ * @param aptr user data (unused)
+ *
+ * @return FALSE to stop timer from repeating
+ */
+static gboolean
+fba_sensorpoll_timer_cb(gpointer aptr)
+{
+    (void)aptr;
+
+    if( !fba_sensorpoll_timer_id )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "als poll: %s", "timeout");
+
+    fba_sensorpoll_timer_id = 0;
+    execute_datapipe(&ambient_light_poll_pipe,
+                     GINT_TO_POINTER(false),
+                     USE_INDATA, CACHE_INDATA);
+EXIT:
+    return FALSE;
+}
+
+/** Schedule temporary ALS enable termination
+ *
+ * If the timer is already active, the termination time
+ * will be rescheduled.
+ */
+static void
+fba_sensorpoll_start(void)
+{
+    if( fba_sensorpoll_timer_id )
+        g_source_remove(fba_sensorpoll_timer_id);
+    else
+        mce_log(LL_DEBUG, "als poll: %s", "start");
+
+    fba_sensorpoll_timer_id = g_timeout_add(FBA_SENSORPOLL_DURATION_MS,
+                                            fba_sensorpoll_timer_cb, 0);
+}
+
+/** Cancel temporary ALS enable termination
+ */
+static void
+fba_sensorpoll_stop(void)
+{
+    if( !fba_sensorpoll_timer_id )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "als poll: %s", "stop");
+
+    g_source_remove(fba_sensorpoll_timer_id),
+        fba_sensorpoll_timer_id = 0;
+
+EXIT:
+    return;
+}
+
+/** Evaluate need for temporary ALS enable termination
+ */
+static void fba_sensorpoll_rethink(void)
+{
+    if( fba_ambient_light_poll )
+        fba_sensorpoll_start();
+    else
+        fba_sensorpoll_stop();
 }
 
 /* ========================================================================= *
@@ -1780,15 +1924,20 @@ g_module_unload(GModule *module)
 {
     (void)module;
 
+    /* Mark that plugin is about to be unloaded */
+    fba_module_unload = true;
+
     fba_gconf_quit();
 
     fba_dbus_quit();
 
     fba_datapipe_quit();
 
-    /* Remove callbacks pointing to unloaded module */
-    mce_sensorfw_als_set_notify(0);
+    /* Final rethink to release wakelock & detach from sensorfw */
+    fba_status_rethink();
 
+    /* Make sure no timers with invalid callbacks are left active */
+    fba_sensorpoll_stop();
     fba_inputflt_quit();
 
     g_free(fba_gconf_als_input_filter),
