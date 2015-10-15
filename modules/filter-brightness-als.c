@@ -1500,46 +1500,62 @@ static void fba_gconf_quit(void)
  * DATAPIPE_TRIGGERS
  * ========================================================================= */
 
+/** Array of datapipe handlers */
+static datapipe_handler_t fba_datapipe_handlers[] =
+{
+	// input filters
+	{
+		.datapipe  = &display_brightness_pipe,
+		.filter_cb = display_brightness_filter,
+	},
+	{
+		.datapipe  = &led_brightness_pipe,
+		.filter_cb = led_brightness_filter,
+	},
+	{
+		.datapipe  = &lpm_brightness_pipe,
+		.filter_cb = lpm_brightness_filter,
+	},
+	{
+		.datapipe  = &key_backlight_pipe,
+		.filter_cb = key_backlight_filter,
+	},
+
+	// output triggers
+	{
+		.datapipe  = &display_state_next_pipe,
+		.output_cb = display_state_next_trigger,
+	},
+	{
+		.datapipe  = &display_state_pipe,
+		.output_cb = display_state_trigger,
+	},
+
+	// sentinel
+	{
+		.datapipe  = 0,
+	}
+};
+
+static datapipe_bindings_t fba_datapipe_bindings =
+{
+	.module   = MODULE_NAME,
+	.handlers = fba_datapipe_handlers,
+};
+
 /** Install datapipe triggers/filters
  */
 static void fba_datapipe_init(void)
 {
-	/* Get intial display state */
-	display_state = display_state_get();
-
-	/* Append triggers/filters to datapipes */
-	append_filter_to_datapipe(&display_brightness_pipe,
-				  display_brightness_filter);
-	append_filter_to_datapipe(&led_brightness_pipe,
-				  led_brightness_filter);
-	append_filter_to_datapipe(&lpm_brightness_pipe,
-				  lpm_brightness_filter);
-	append_filter_to_datapipe(&key_backlight_pipe,
-				  key_backlight_filter);
-	append_output_trigger_to_datapipe(&display_state_next_pipe,
-					  display_state_next_trigger);
-	append_output_trigger_to_datapipe(&display_state_pipe,
-					  display_state_trigger);
+	datapipe_bindings_init(&fba_datapipe_bindings);
 }
 
 /** Remove datapipe triggers/filters
  */
 static void fba_datapipe_quit(void)
 {
-	remove_output_trigger_from_datapipe(&display_state_next_pipe,
-					    display_state_next_trigger);
-	remove_output_trigger_from_datapipe(&display_state_pipe,
-					    display_state_trigger);
-	remove_filter_from_datapipe(&key_backlight_pipe,
-				    key_backlight_filter);
-	remove_filter_from_datapipe(&led_brightness_pipe,
-				    led_brightness_filter);
-	remove_filter_from_datapipe(&lpm_brightness_pipe,
-				    lpm_brightness_filter);
-	remove_filter_from_datapipe(&display_brightness_pipe,
-				    display_brightness_filter);
+	datapipe_bindings_quit(&fba_datapipe_bindings);
 }
-
 /* ========================================================================= *
  * INI_SETTINGS
  * ========================================================================= */
