@@ -89,6 +89,18 @@ typedef enum
 /** Signal to send when lpm ui state changes */
 #define MCE_LPM_UI_MODE_SIG "lpm_ui_mode_ind"
 
+/** Minimum light level for TKLOCK_LIDLIGHT_HI state [lux] */
+#define TKLOCK_LIDLIGHT_HI_LIMIT                  2
+
+/** How long to wait for lid close after low lux [ms] */
+#define TKLOCK_LIDFILTER_SET_WAIT_FOR_CLOSE_DELAY 1500
+
+/** How long to wait for low lux after lid close [ms] */
+#define TKLOCK_LIDFILTER_SET_WAIT_FOR_DARK_DELAY  1200
+
+/** How long to wait for high lux after lid open [ms] */
+#define TKLOCK_LIDFILTER_SET_WAIT_FOR_LIGHT_DELAY 1200
+
 /* ========================================================================= *
  * DATATYPES
  * ========================================================================= */
@@ -136,6 +148,31 @@ typedef struct
 
 } ps_history_t;
 
+/** Ambient light lux value mapped into enumerated states
+ *
+ * In case the lid sensor can't be trusted for some reason, data from
+ * ambient light sensor heuristics can be used for avoiding incorrect
+ * blank/unblank actions.
+ *
+ * For this purpose the raw data from ambient light sensor is tracked
+ * and mapped in to three states:
+ *
+ * - TKLOCK_LIDLIGHT_NA: The data from als is not applicable for filtering.
+ * - TKLOCK_LIDLIGHT_LO: The als indicates darkness.
+ * - TKLOCK_LIDLIGHT_HI: The als indicates some amount of light.
+ */
+typedef enum
+{
+    /* Light level is not applicable for state evaluation */
+    TKLOCK_LIDLIGHT_NA,
+
+    /* Light level equals complete darkness */
+    TKLOCK_LIDLIGHT_LO,
+
+    /* Light level equals at least some light */
+    TKLOCK_LIDLIGHT_HI,
+} tklock_lidlight_t;
+
 /* ========================================================================= *
  * PROTOTYPES
  * ========================================================================= */
@@ -172,6 +209,7 @@ static void     tklock_datapipe_heartbeat_cb(gconstpointer data);
 static void     tklock_datapipe_keyboard_slide_input_cb(gconstpointer const data);
 static void     tklock_datapipe_keyboard_slide_output_cb(gconstpointer const data);
 static void     tklock_datapipe_keyboard_available_cb(gconstpointer const data);
+static void     tklock_datapipe_ambient_light_poll_cb(gconstpointer const data);
 static void     tklock_datapipe_ambient_light_sensor_cb(gconstpointer data);
 static void     tklock_datapipe_lid_sensor_is_working_cb(gconstpointer data);
 static void     tklock_datapipe_lid_cover_sensor_cb(gconstpointer data);
@@ -185,12 +223,45 @@ static void     tklock_datapipe_set_device_lock_state(device_lock_state_t state)
 static void     tklock_datapipe_init(void);
 static void     tklock_datapipe_quit(void);
 
-// lid cover state machine
+// LID_SENSOR
 
-static void     tklock_lid_sensor_init(void);
-static void     tklock_lid_sensor_override_closed(void);
-static void     tklock_lid_sensor_evaluate_primed(void);
-static void     tklock_lid_sensor_rethink(void);
+static bool              tklock_lidsensor_is_enabled          (void);
+static void              tklock_lidsensor_init                (void);
+
+// LID_LIGHT
+
+static const char       *tklock_lidlight_repr                 (tklock_lidlight_t state);
+static tklock_lidlight_t tklock_lidlight_from_lux             (int lux);
+
+// LID_FILTER
+
+static bool              tklock_lidfilter_is_enabled          (void);
+
+static void              tklock_lidfilter_set_allow_close     (bool allow);
+
+static tklock_lidlight_t tklock_lidfilter_map_als_state       (void);
+static void              tklock_lidfilter_set_als_state       (tklock_lidlight_t state);
+
+static gboolean          tklock_lidfilter_wait_for_close_cb   (gpointer aptr);
+static bool              tklock_lidfilter_get_wait_for_close  (void);
+static void              tklock_lidfilter_set_wait_for_close  (bool state);
+
+static gboolean          tklock_lidfilter_wait_for_dark_cb    (gpointer aptr);
+static bool              tklock_lidfilter_get_wait_for_dark   (void);
+static void              tklock_lidfilter_set_wait_for_dark   (bool state);
+
+static gboolean          tklock_lidfilter_wait_for_light_cb   (gpointer aptr);
+static bool              tklock_lidfilter_get_wait_for_light  (void);
+static void              tklock_lidfilter_set_wait_for_light  (bool state);
+
+static void              tklock_lidfilter_rethink_als_poll    (void);
+static void              tklock_lidfilter_rethink_allow_close (void);
+static void              tklock_lidfilter_rethink_als_state   (void);
+static void              tklock_lidfilter_rethink_lid_state   (void);
+
+// LID_POLICY
+
+static void              tklock_lidpolicy_rethink             (void);
 
 // keyboard slide state machine
 
@@ -766,6 +837,8 @@ static void tklock_datapipe_display_state_cb(gconstpointer data)
             display_state_repr(prev),
             display_state_repr(display_state));
 
+    tklock_lidfilter_rethink_allow_close();
+
     /* Disable "wakeup with fake policy" hack
      * when any stable display state is reached */
     if( display_state != MCE_DISPLAY_POWER_UP &&
@@ -806,12 +879,6 @@ static void tklock_datapipe_display_state_next_cb(gconstpointer data)
     case MCE_DISPLAY_ON:
     case MCE_DISPLAY_DIM:
         /* display states that use normal ui */
-
-        /* If display gets powered up while lid sensor is in
-         * closed position, it basically means that the user
-         * has pressed power key and we should ignore the
-         * lid is closed state */
-        tklock_lid_sensor_override_closed();
         break;
 
     default:
@@ -822,8 +889,6 @@ static void tklock_datapipe_display_state_next_cb(gconstpointer data)
         }
         break;
     }
-
-    tklock_lid_sensor_evaluate_primed();
 
     tklock_autolock_on_devlock_prime();
 
@@ -1683,6 +1748,30 @@ EXIT:
     return;
 }
 
+/** Cached als poll state; tracked via tklock_datapipe_ambient_light_poll_cb() */
+static gboolean ambient_light_poll = FALSE;
+
+/** Ambient Light Sensor filter for temporary sensor enable
+ *
+ * @param data Polling enabled/disabled bool (as void pointer)
+ */
+static void
+tklock_datapipe_ambient_light_poll_cb(gconstpointer const data)
+{
+    gboolean prev = ambient_light_poll;
+    ambient_light_poll = GPOINTER_TO_INT(data) ? TRUE : FALSE;
+
+    mce_log(LL_DEBUG, "ambient_light_poll: %s -> %s",
+            prev ? "true" : "false",
+            ambient_light_poll ? "true" : "false");
+
+    /* Check without comparing to previous state. The poll
+     * request can be denied by datapipe filter at the als
+     * plugin - in which case we see a false->false transition
+     * here at datapipe output trigger callback. */
+    tklock_lidfilter_rethink_als_poll();
+}
+
 /** Raw ambient light sensor state; assume unknown */
 static int ambient_light_sensor_state = -1;
 
@@ -1699,32 +1788,24 @@ static void tklock_datapipe_ambient_light_sensor_cb(gconstpointer data)
     mce_log(LL_DEBUG, "ambient_light_sensor_state = %d -> %d",
             prev, ambient_light_sensor_state);
 
-    tklock_lid_sensor_rethink();
+    tklock_lidfilter_rethink_als_state();
 
 EXIT:
     return;
 }
 
-/** ALS lux limit for allowing lid close actions [lux] */
-static gint    lid_cover_close_als_limit = 1;
-
-/** How long to wait for ALS level drop after lid is closed [ms] */
-static gint    lid_cover_close_lo_als_delay = 1000;
-
-/** How long before closing lid ALS level drop is allowed [ms] */
-static gint    lid_cover_close_hi_als_delay = 2500;
-
-/** Timeout for waiting for ALS level drop [ms, CLOCK_BOOTTIME base] */
-static int64_t lid_cover_close_timeout = 0;
-
-/** Remember display state that was active when lid was closed */
-static display_state_t lid_cover_close_display_state = MCE_DISPLAY_UNDEF;
-
-/** Assume lid sensor is broken until we have seen lid=open event */
+/** Assume lid sensor is broken until we have seen closed->open transition
+ *
+ * If the lid sensor is used for display blanking, a faulty sensor can
+ * cause a lot of problems.
+ *
+ * To avoid this mce tracks persistently whether the sensor on the device
+ * has been seen to function on previous mce invocations.
+ *
+ * This cached state must be recovered before the datapipe callbacks
+ * that depend on it are hooked up.
+ */
 static bool tklock_lid_sensor_is_working = false;
-
-/** Flag for: display=on and lid=open state seen */
-static bool tklock_lid_sensor_is_primed = false;
 
 /** Path to the flag file for persistent tklock_lid_sensor_is_working */
 #define LID_SENSOR_IS_WORKING_FLAG_FILE "/var/lib/mce/lid_sensor_is_working"
@@ -1751,6 +1832,8 @@ static void tklock_datapipe_lid_sensor_is_working_cb(gconstpointer data)
                     LID_SENSOR_IS_WORKING_FLAG_FILE);
         else
             close(fd);
+
+        tklock_lidpolicy_rethink();
     }
     else {
         /* Remove flag file */
@@ -1790,18 +1873,7 @@ static void tklock_datapipe_lid_cover_sensor_cb(gconstpointer data)
             cover_state_repr(prev),
             cover_state_repr(lid_cover_sensor_state));
 
-    if( lid_cover_sensor_state == COVER_CLOSED ) {
-        lid_cover_close_timeout = (mce_lib_get_boot_tick() +
-                                   lid_cover_close_lo_als_delay);
-        lid_cover_close_display_state = display_state_next;
-    }
-    else {
-        lid_cover_close_timeout = 0;
-        lid_cover_close_display_state = MCE_DISPLAY_UNDEF;
-    }
-
-    tklock_lid_sensor_evaluate_primed();
-    tklock_lid_sensor_rethink();
+    tklock_lidfilter_rethink_lid_state();
 
 EXIT:
     return;
@@ -2108,6 +2180,10 @@ static datapipe_handler_t tklock_datapipe_handlers[] =
         .datapipe  = &keyboard_available_pipe,
         .output_cb = tklock_datapipe_keyboard_available_cb,
     },
+    {
+        .datapipe  = &ambient_light_poll_pipe,
+        .output_cb = tklock_datapipe_ambient_light_poll_cb,
+    },
 
     // input triggers
     {
@@ -2278,20 +2354,27 @@ EXIT:
 }
 
 /* ========================================================================= *
- * LID COVER STATE MACHINE
- *
- * While lid cover sensor use is enabled
- * 1) lock screen when lid is closed
- * 2) unblank screen when lid is opened
- *
- * When lid cover sensor use gets enabled
- * 1) lock screen if lid is in closed and other conditions still apply
- *
- * Otherwise leave display as is
- *
+ * LID_SENSOR
  * ========================================================================= */
 
-static void tklock_lid_sensor_init(void)
+/** Predicate for: Lid sensor is enabled
+ *
+ * It is assumed that any lid sensors present on the device are always
+ * enabled by default. The mce setting just makes mce either ignore or
+ * act on the change events that might or might not be coming in.
+ *
+ * @return true if lid state changes should be reacted to, false otherwise
+ */
+static bool tklock_lidsensor_is_enabled(void)
+{
+    return lid_sensor_enabled;
+}
+
+/** Initialize lid sensor tracking
+ *
+ * Note: This must be called before installing datapipe callbacks.
+ */
+static void tklock_lidsensor_init(void)
 {
     /* Initialize state based on flag file presense */
     tklock_lid_sensor_is_working =
@@ -2306,27 +2389,352 @@ static void tklock_lid_sensor_init(void)
                      USE_INDATA, CACHE_INDATA);
 }
 
-/** Allow/deny locking based solely on lid close in display off state
+/* ========================================================================= *
+ * LID_LIGHT
+ * ========================================================================= */
+
+/** Convert lid light state to human readable string
+ *
+ * @param state  lid state value
+ *
+ * @return human readable name of the state
  */
-static void tklock_lid_sensor_set_primed(bool primed)
+static const char *tklock_lidlight_repr(tklock_lidlight_t state)
 {
-    if( tklock_lid_sensor_is_primed != primed ) {
-        tklock_lid_sensor_is_primed = primed;
-        mce_log(LL_DEBUG, "primed = %s", primed ? "true" : "false");
+    const char *repr = "UNKNOWN";
+    switch( state ) {
+    case TKLOCK_LIDLIGHT_NA: repr = "NA"; break;
+    case TKLOCK_LIDLIGHT_LO: repr = "LO"; break;
+    case TKLOCK_LIDLIGHT_HI: repr = "HI"; break;
+    default: break;
+    }
+    return repr;
+}
+
+/** Convert lux value to lid light state
+ *
+ * @param lux  lux value from light sensor
+ *
+ * @return corresponding lid state value
+ */
+static tklock_lidlight_t tklock_lidlight_from_lux(int lux)
+{
+    /* Sensor is off? */
+    if( lux < 0 )
+        return TKLOCK_LIDLIGHT_NA;
+
+    /* Sensor does not see light? */
+    if( lux < TKLOCK_LIDLIGHT_HI_LIMIT )
+        return TKLOCK_LIDLIGHT_LO;
+
+    /* It is not completely dark */
+    return TKLOCK_LIDLIGHT_HI;
+}
+
+/* ========================================================================= *
+ * LID_FILTER
+ * ========================================================================= */
+
+/** Convert last seen lux value to lid light state
+ *
+ * @return lid state value corresponding with the latest reported lux value
+ */
+static tklock_lidlight_t tklock_lidfilter_map_als_state(void)
+{
+    return tklock_lidlight_from_lux(ambient_light_sensor_state);
+}
+
+/** Predicate for: ALS data is used for filtering Lid sensor state
+ *
+ * @return true if filtering should be done, false otherwise
+ */
+static bool tklock_lidfilter_is_enabled(void)
+{
+    return tklock_lidsensor_is_enabled() && als_enabled && filter_lid_with_als;
+}
+
+/** Flag for: lid=closed + lux=low -> blank display */
+static bool tklock_lidfilter_allow_close = false;
+
+/** Allow/deny blanking if lid is closed in low light situation
+ */
+static void tklock_lidfilter_set_allow_close(bool allow)
+{
+    if( tklock_lidfilter_allow_close != allow ) {
+        mce_log(LL_DEBUG, "allow_close: %s -> %s",
+                tklock_lidfilter_allow_close ? "true" : "false",
+                allow ? "true" : "false");
+        tklock_lidfilter_allow_close = allow;
     }
 }
 
-/** Check if locking based solely on lid close is allowed after blanking
+/** Cached light sensor state */
+static tklock_lidlight_t tklock_lidfilter_als_state = TKLOCK_LIDLIGHT_NA;
+
+/** Set light sensor state
+ *
+ * @param state TKLOCK_LIDLIGHT_LO/HI/NA
  */
-static void tklock_lid_sensor_evaluate_primed(void)
+static void tklock_lidfilter_set_als_state(tklock_lidlight_t state)
 {
-    /* If lid is open while display is powered on, we can apply
-     * CLOSED policy if display gets blanked first (power key,
-     * auto blank timeout) and lid is closed after that. */
-    switch( display_state_next ) {
+    if( tklock_lidfilter_als_state != state ) {
+        mce_log(LL_DEBUG, "als_state: %s -> %s",
+                tklock_lidlight_repr(tklock_lidfilter_als_state),
+                tklock_lidlight_repr(state));
+        tklock_lidfilter_als_state = state;
+
+        /* Check if futre lid close should be ignored or acted on */
+        tklock_lidfilter_rethink_allow_close();
+    }
+
+    /* If we know we have lo/hi light, stop waiting for als data */
+    if( tklock_lidfilter_als_state != TKLOCK_LIDLIGHT_NA )
+        tklock_lidfilter_set_wait_for_light(false);
+
+    /* If we know we have hi light, stop waiting for darkness*/
+    if( tklock_lidfilter_als_state == TKLOCK_LIDLIGHT_LO )
+        tklock_lidfilter_set_wait_for_dark(false);
+}
+
+/** Timer ID for: Stop waiting for lid close event */
+static guint tklock_lidfilter_wait_for_close_id = 0;
+
+/** Timer Callback for: Stop waiting for lid close event */
+static gboolean tklock_lidfilter_wait_for_close_cb(gpointer aptr)
+{
+    (void)aptr;
+
+    if( !tklock_lidfilter_wait_for_close_id )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "wait_close: timeout");
+    tklock_lidfilter_wait_for_close_id = 0;
+
+    tklock_lidfilter_set_als_state(TKLOCK_LIDLIGHT_NA);
+    tklock_lidfilter_set_allow_close(false);
+
+    /* Invalidate sensor data */
+    execute_datapipe(&lid_cover_sensor_pipe,
+                     GINT_TO_POINTER(COVER_UNDEF),
+                     USE_INDATA, CACHE_INDATA);
+
+EXIT:
+    return FALSE;
+}
+
+/** Predicate for: Waiting to see lid close event
+ */
+static bool tklock_lidfilter_get_wait_for_close(void)
+{
+    return tklock_lidfilter_wait_for_close_id != 0;
+}
+
+/** Start/stop waiting for lid close event
+ *
+ * @param state true when expecting lid close, false otherwise
+ *
+ * Used when als drop is noticed while lid is not closed.
+ *
+ * If lid closes soon after, blank screen.
+ *
+ * Otherwise disable blanking until some light is seen.
+ */
+static void tklock_lidfilter_set_wait_for_close(bool state)
+{
+    if( lid_cover_sensor_state != COVER_OPEN )
+        state = false;
+
+    if( display_state_next != MCE_DISPLAY_ON &&
+        display_state_next != MCE_DISPLAY_DIM )
+        state = false;
+
+    if( state == tklock_lidfilter_get_wait_for_close() )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "wait_close: %s", state ? "start" : "cancel");
+
+    if( state ) {
+        tklock_lidfilter_wait_for_close_id =
+            g_timeout_add(TKLOCK_LIDFILTER_SET_WAIT_FOR_CLOSE_DELAY,
+                          tklock_lidfilter_wait_for_close_cb, 0);
+    }
+    else {
+        g_source_remove(tklock_lidfilter_wait_for_close_id),
+            tklock_lidfilter_wait_for_close_id = 0;
+    }
+
+EXIT:
+    return;
+
+}
+
+/** Timer ID for: Stop waiting for ALS drop */
+static guint tklock_lidfilter_wait_for_dark_id = 0;
+
+/** Timer Callback for: Stop waiting for ALS drop
+ */
+static gboolean tklock_lidfilter_wait_for_dark_cb(gpointer aptr)
+{
+    (void)aptr;
+
+    if( !tklock_lidfilter_wait_for_dark_id )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "wait_dark: timeout");
+    tklock_lidfilter_wait_for_dark_id = 0;
+
+    tklock_lidfilter_set_als_state(TKLOCK_LIDLIGHT_NA);
+
+    /* Invalidate sensor data */
+    execute_datapipe(&lid_cover_sensor_pipe,
+                     GINT_TO_POINTER(COVER_UNDEF),
+                     USE_INDATA, CACHE_INDATA);
+
+EXIT:
+    return FALSE;
+}
+
+/** Predicate for: Waiting for ALS drop to occur
+ */
+static bool tklock_lidfilter_get_wait_for_dark(void)
+{
+    return tklock_lidfilter_wait_for_dark_id != 0;
+}
+
+/** Start/stop waiting for als drop event
+ *
+ * @param state true when expecting als drop, false otherwise
+ *
+ * Used when lid is closed in non-dark environment.
+ *
+ * If als level drops soon after, blank screen.
+ *
+ * Otherwise ignore lid state until it changes again.
+ */
+static void tklock_lidfilter_set_wait_for_dark(bool state)
+{
+    if( state == tklock_lidfilter_get_wait_for_dark() )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "wait_dark: %s", state ? "start" : "cancel");
+
+    if( state ) {
+        tklock_lidfilter_wait_for_dark_id =
+            g_timeout_add(TKLOCK_LIDFILTER_SET_WAIT_FOR_DARK_DELAY,
+                          tklock_lidfilter_wait_for_dark_cb, 0);
+    }
+    else {
+        g_source_remove(tklock_lidfilter_wait_for_dark_id),
+            tklock_lidfilter_wait_for_dark_id = 0;
+    }
+
+EXIT:
+    return;
+
+}
+
+/** Timer ID for: Stop waiting for ALS data */
+static guint tklock_lidfilter_wait_for_light_id = 0;
+
+/** Timer callback for: Stop waiting for ALS data
+ */
+static gboolean tklock_lidfilter_wait_for_light_cb(gpointer aptr)
+{
+    (void)aptr;
+
+    if( !tklock_lidfilter_wait_for_light_id )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "wait_light: timeout");
+    tklock_lidfilter_wait_for_light_id = 0;
+
+    tklock_lidfilter_set_als_state(tklock_lidfilter_map_als_state());
+
+    tklock_lidpolicy_rethink();
+
+EXIT:
+    return FALSE;
+}
+
+/** Predicate for: Waiting for ALS data
+ */
+static bool tklock_lidfilter_get_wait_for_light(void)
+{
+    return tklock_lidfilter_wait_for_light_id != 0;
+}
+
+/** Start/stop waiting for als change event
+ *
+ * @param state true when expecting als change, false otherwise
+ *
+ * Used when lid is opened and we need to wait for als powerup.
+ *
+ * If als reports light soon after, unblank screen.
+ *
+ * Otherwise leave display state as it were.
+ */
+
+static void tklock_lidfilter_set_wait_for_light(bool state)
+{
+    if( state == tklock_lidfilter_get_wait_for_light() )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "wait_light: %s", state ? "start" : "cancel");
+
+    if( state ) {
+        tklock_lidfilter_wait_for_light_id =
+            g_timeout_add(TKLOCK_LIDFILTER_SET_WAIT_FOR_LIGHT_DELAY,
+                          tklock_lidfilter_wait_for_light_cb, 0);
+        tklock_lidfilter_set_als_state(TKLOCK_LIDLIGHT_NA);
+        tklock_lidpolicy_rethink();
+    }
+    else {
+        g_source_remove(tklock_lidfilter_wait_for_light_id),
+            tklock_lidfilter_wait_for_light_id = 0;
+    }
+
+EXIT:
+    return;
+
+}
+
+/** React to end of temporary als poll periods
+ */
+static void tklock_lidfilter_rethink_als_poll(void)
+{
+    // when als polling stops, we must stop waiting for light level
+    if( !ambient_light_poll ) {
+        tklock_lidfilter_set_wait_for_light(false);
+        tklock_lidfilter_rethink_als_state();
+    }
+}
+
+/** Update allow-close flag based on display state and logical als state
+ */
+static void tklock_lidfilter_rethink_allow_close(void)
+{
+    switch( display_state ) {
+    case MCE_DISPLAY_POWER_UP:
+      /* After display power cycling we  need to see a high lux value
+       * before lid close can be used for display blanking again. */
+      tklock_lidfilter_set_allow_close(false);
+
+      /* Display power up while sensor is in closed state. Assume this
+       * is due to user pressing power key and ignore the lid sensor
+       * state until further changes are received. */
+      if( lid_cover_sensor_state == COVER_CLOSED ) {
+          mce_log(LL_DEVEL, "unblank while lid closed; ignore lid");
+          execute_datapipe(&lid_cover_sensor_pipe,
+                         GINT_TO_POINTER(COVER_UNDEF),
+                         USE_INDATA, CACHE_INDATA);
+      }
+      break;
+
     case MCE_DISPLAY_ON:
     case MCE_DISPLAY_DIM:
-        tklock_lid_sensor_set_primed(lid_cover_sensor_state == COVER_OPEN);
+    case MCE_DISPLAY_LPM_ON:
+      if( tklock_lidfilter_als_state == TKLOCK_LIDLIGHT_HI )
+            tklock_lidfilter_set_allow_close(true);
         break;
 
     default:
@@ -2334,116 +2742,179 @@ static void tklock_lid_sensor_evaluate_primed(void)
     }
 }
 
-/** Force ignoring of lid in closed state
+/** Re-evaluate reaction to lid sensor state
  */
-static void tklock_lid_sensor_override_closed(void)
+static void tklock_lidfilter_rethink_lid_state(void)
 {
-    /* If sensor is in closed state, set it to unknown state.
-     * Effectively this means the sensor state is ignored until
-     * the lid is opened again. */
-    if( lid_cover_sensor_state == COVER_CLOSED ) {
-        execute_datapipe(&lid_cover_sensor_pipe,
-                         GINT_TO_POINTER(COVER_UNDEF),
+    if( !tklock_lidfilter_is_enabled() ) {
+        tklock_lidfilter_set_wait_for_dark(false);
+        tklock_lidfilter_set_wait_for_light(false);
+        tklock_lidfilter_set_wait_for_close(false);
+        goto EXIT;
+    }
+
+    /* Keep ALS powered up for a while after lid state change */
+    if( lid_cover_sensor_state != COVER_UNDEF ) {
+        execute_datapipe(&ambient_light_poll_pipe,
+                         GINT_TO_POINTER(TRUE),
                          USE_INDATA, CACHE_INDATA);
     }
+
+    switch( lid_cover_sensor_state ) {
+    case COVER_OPEN:
+        tklock_lidfilter_set_wait_for_dark(false);
+        tklock_lidfilter_set_wait_for_light(true);
+        break;
+
+    case COVER_CLOSED:
+        tklock_lidfilter_set_wait_for_light(false);
+        if( tklock_lidfilter_get_wait_for_close() )
+            tklock_lidfilter_set_wait_for_close(false);
+        else
+            tklock_lidfilter_set_wait_for_dark(true);
+        break;
+
+    default:
+        tklock_lidfilter_set_wait_for_dark(false);
+        tklock_lidfilter_set_wait_for_light(false);
+        break;
+    }
+EXIT:
+    tklock_lidfilter_rethink_als_state();
 }
 
-static void tklock_lid_sensor_rethink(void)
+/** Re-evaluate reaction to ambient light sensor state
+ *
+ * Augment lid sensor data with als data so that:
+ *
+ * - lid close followed by darkness  -> blank
+ * - darkness followed by lid close  -> blank
+ * - lid open followed by light seen -> unblank
+ *
+ * Timers are used to set maximum wait periods for the "followed by"
+ * events. In case of timeout the lid state is ignored temporarily or
+ * until the next time it changes.
+ */
+static void tklock_lidfilter_rethink_als_state(void)
 {
-    static int64_t nonzero_lux_seen_at = 0;
+    /* Initialize to "ALS is powered down" value */
+    static int prev = -1;
 
-    /* Previous settings toggle; initialize not to match TRUE / FALSE */
-    static int enabled_prev = -1;
+    /* Evaluate sensor state we ought to be in
+     * based on current lux value */
 
-    /* Previous action taken; initialize to no action taken */
-    static cover_state_t action_curr = COVER_UNDEF;
-    cover_state_t        action_prev = action_curr;
+    if( tklock_lidfilter_is_enabled() ) {
+        switch( tklock_lidfilter_map_als_state() ) {
+        default:
+        case TKLOCK_LIDLIGHT_NA:
+            /* Ignore: Sensor down time */
+            break;
 
-    /* Assume action is based on sensor state */
-    action_curr = lid_cover_sensor_state;
-
-    /* Filter based on disable/enable toggle */
-    if( !lid_sensor_enabled ) {
-        /* While disabled, do nothing */
-        action_curr = COVER_UNDEF;
-    }
-    else if( enabled_prev != lid_sensor_enabled ) {
-        /* On enable: Blank screen if lid is closed. */
-        if( action_curr != COVER_CLOSED )
-            action_curr = COVER_UNDEF;
-    }
-
-    enabled_prev = lid_sensor_enabled;
-
-    int64_t now = mce_lib_get_boot_tick();
-
-    bool high_lux = (ambient_light_sensor_state > lid_cover_close_als_limit);
-
-    if( high_lux ) {
-        mce_log(LL_DEBUG, "non-zero lux seen");
-        nonzero_lux_seen_at = now;
-    }
-
-    /* Ignore the sensor getting to closed position unless ambient
-     * light sensor is also reporting close to zero lux values.
-     *
-     * This is done to avoid false positives with magnetic covers
-     * that might trigger the sensor from below the device when
-     * the cover is folded all the way underneath the device. */
-    if( action_curr == COVER_CLOSED ) {
-        if( !tklock_lid_sensor_is_working ) {
-            /* No blanking based on lid sensor that might not work */
-            mce_log(LL_DEVEL, "ignoring lid cover; not validated");
-            action_curr = COVER_UNDEF;
-        }
-        else if( display_state_next == MCE_DISPLAY_OFF ) {
-            /* In display off default to: keep current decision */
-            action_curr = action_prev;
-
-            /* Switch to COVER_CLOSED policy, if lid is closed in
-             * display off state after being open in display on state */
-            if( lid_cover_close_display_state == MCE_DISPLAY_OFF &&
-                tklock_lid_sensor_is_primed ) {
-                tklock_lid_sensor_set_primed(false);
-                action_curr = COVER_CLOSED;
+        case TKLOCK_LIDLIGHT_LO:
+            /* Handle: Darkness */
+            if( tklock_lidfilter_get_wait_for_dark() ) {
+                tklock_lidfilter_set_als_state(TKLOCK_LIDLIGHT_LO);
             }
-        }
-        else if( !filter_lid_with_als || !als_enabled ) {
-            /* ALS is not used or can't be used for validating
-             * LID close events */
-        }
-        else if( now - nonzero_lux_seen_at > lid_cover_close_hi_als_delay ) {
-            /* We've not seen non-zero lux recently */
-            mce_log(LL_DEVEL, "ignoring lid cover due to low als");
-            action_curr = COVER_UNDEF;
-        }
-        else if( now >= lid_cover_close_timeout ) {
-            /* Sufficiently low ALS values was not seen after the
-             * sensor changed to closed position */
-            action_curr = COVER_UNDEF;
-        }
-        else if( high_lux ) {
-            /* Als value is not yet Sufficiently low */
-            mce_log(LL_DEVEL, "ignoring lid cover due to high als");
-            action_curr = COVER_UNDEF;
+            else if( tklock_lidfilter_get_wait_for_light() ) {
+                tklock_lidfilter_set_als_state(TKLOCK_LIDLIGHT_NA);
+            }
+            else {
+                tklock_lidfilter_set_als_state(TKLOCK_LIDLIGHT_LO);
+                tklock_lidfilter_set_wait_for_close(true);
+            }
+            break;
+
+        case TKLOCK_LIDLIGHT_HI:
+            /* Handle: Light */
+            if( tklock_lidfilter_get_wait_for_light() ) {
+                /* During als power up we might see the previously
+                 * seen high light value, but rise in level means
+                 * the sensor is up and sees light -> we can stop
+                 * waiting */
+                if( prev < ambient_light_sensor_state )
+                    tklock_lidfilter_set_als_state(TKLOCK_LIDLIGHT_HI);
+                else
+                    tklock_lidfilter_set_als_state(TKLOCK_LIDLIGHT_NA);
+            }
+            else if( tklock_lidfilter_get_wait_for_dark() ) {
+                tklock_lidfilter_set_als_state(TKLOCK_LIDLIGHT_NA);
+            }
+            else {
+                tklock_lidfilter_set_als_state(TKLOCK_LIDLIGHT_HI);
+            }
+            break;
         }
     }
 
-    /* Skip the rest if there are no changes */
-    if( action_prev == action_curr )
+    /* Update previous value unless ALS is powered down */
+    if( ambient_light_sensor_state >= 0 )
+        prev = ambient_light_sensor_state;
+
+    tklock_lidpolicy_rethink();
+}
+
+/* ========================================================================= *
+ * LID_POLICY
+ * ========================================================================= */
+
+/** Evaluate lid policy state based on lid and light sensor states
+ *
+ * While lid cover sensor use is enabled, by default:
+ *
+ * - Closing lid blanks the screen and activates lockscreen
+ * - Opening lid unblanks the screen
+ *
+ * Settings can be used to:
+ *
+ * - Select whether lid sensor state should be applied as such or
+ *   augmented by tracking ambient light sensor based heuristics
+ *   to avoid possible false positives from the lid sensor itself
+ *
+ * - Select what actions are taken when the policy change occurs
+ */
+static void tklock_lidpolicy_rethink(void)
+{
+    /* Assume lid is neither open nor closed */
+    cover_state_t action = COVER_UNDEF;
+
+    /* Evaluate required policy state */
+    if( !tklock_lidsensor_is_enabled() ) {
+        /* The lid sensor is not used */
+    }
+    else if( !tklock_lid_sensor_is_working ) {
+        /* No policy decisions until the sensor is known to work */
+    }
+    else if( !tklock_lidfilter_is_enabled() )
+    {
+        /* No filtering -> use sensor state as is */
+        action = lid_cover_sensor_state;
+    }
+    else if( lid_cover_sensor_state == COVER_CLOSED &&
+        tklock_lidfilter_als_state == TKLOCK_LIDLIGHT_LO ) {
+        if( tklock_lidfilter_allow_close )
+            action = COVER_CLOSED;
+    }
+    else if( lid_cover_sensor_state == COVER_OPEN &&
+             tklock_lidfilter_als_state == TKLOCK_LIDLIGHT_HI ) {
+        action = COVER_OPEN;
+    }
+
+    /* Skip the rest if there is no change */
+    if( lid_cover_policy_state == action )
         goto EXIT;
+
+    mce_log(LL_DEBUG, "lid policy: %s -> %s",
+            cover_state_repr(lid_cover_policy_state),
+            cover_state_repr(action));
 
     /* First make the policy decision known */
     execute_datapipe(&lid_cover_policy_pipe,
-                     GINT_TO_POINTER(action_curr),
+                     GINT_TO_POINTER(action),
                      USE_INDATA, CACHE_INDATA);
 
     /* Then execute the required actions */
-    switch( action_curr ) {
+    switch( action ) {
     case COVER_CLOSED:
-        /* need to se non-zero lux before blanking again */
-        nonzero_lux_seen_at = 0;
-
         /* Blank display + lock ui */
         if( tklock_lid_close_actions != LID_CLOSE_ACTION_DISABLED ) {
             mce_log(LL_DEVEL, "lid closed - blank");
@@ -2461,31 +2932,6 @@ static void tklock_lid_sensor_rethink(void)
         break;
 
     case COVER_OPEN:
-        /* Make sure stale permission to autolock on close is not
-         * left active */
-        tklock_lid_sensor_set_primed(false);
-        tklock_lid_sensor_evaluate_primed();
-
-        /* The UNDEF->OPEN transitions occur when
-         *
-         * - mce is starting up and the lid is open -> we must not
-         *   the display to power on if it happens to be off
-         *
-         * - when preceeding lid close was ignored -> if lid close
-         *   did not blank the display, lid open must not unblank it
-         *
-         * The policy decision itself is already broadcast and double
-         * tap detection is enabled even if the unblank / unlock actions
-         * are skipped.
-         */
-        if( action_prev == COVER_UNDEF ) {
-            static bool initialized = false;
-            mce_log(LL_DEVEL, "lid open - skip actions due to %s",
-                    initialized ? "policy" : "startup");
-            initialized = true;
-            break;
-        }
-
         /* Unblank display + unlock ui */
         if( tklock_lid_open_actions != LID_OPEN_ACTION_DISABLED ) {
             mce_log(LL_DEVEL, "lid open - unblank");
@@ -4302,13 +4748,15 @@ static void tklock_gconf_cb(GConfClient *const gcc, const guint id,
     }
     else if( id == lid_sensor_enabled_cb_id ) {
         lid_sensor_enabled = gconf_value_get_bool(gcv) ? 1 : 0;
-        tklock_lid_sensor_rethink();
+        tklock_lidfilter_rethink_lid_state();
     }
     else if( id == als_enabled_gconf_id ) {
         als_enabled = gconf_value_get_bool(gcv);
+        tklock_lidfilter_rethink_lid_state();
     }
     else if( id == filter_lid_with_als_gconf_id ) {
         filter_lid_with_als = gconf_value_get_bool(gcv);
+        tklock_lidfilter_rethink_lid_state();
     }
     else if( id == lockscreen_anim_enabled_cb_id ) {
         lockscreen_anim_enabled= gconf_value_get_bool(gcv);
@@ -6348,7 +6796,7 @@ gboolean mce_tklock_init(void)
 
     /* Set initial lid_sensor_is_working_pipe value
      * before installing datapipe handlers */
-    tklock_lid_sensor_init();
+    tklock_lidsensor_init();
 
     /* attach to internal state variables */
     tklock_datapipe_init();
@@ -6363,7 +6811,7 @@ gboolean mce_tklock_init(void)
     tklock_dbus_send_display_blanking_policy(0);
 
     /* Evaluate initial lid sensor state */
-    tklock_lid_sensor_rethink();
+    tklock_lidfilter_rethink_lid_state();
 
     status = TRUE;
 
