@@ -20,23 +20,19 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef _FILTER_BRIGHTNESS_ALS_H_
-#define _FILTER_BRIGHTNESS_ALS_H_
 
-#include <glib.h>
+#ifndef _FILTER_BRIGHTNESS_ALS_H_
+# define _FILTER_BRIGHTNESS_ALS_H_
+
+# include <glib.h>
 
 /** Name of common group in color profiles conf file */
-#define MCE_CONF_COMMON_GROUP	"Common"
+# define MCE_CONF_COMMON_GROUP           "Common"
 
 /** Name of default color profile id key in color profiles conf file */
-#define MCE_CONF_DEFAULT_PROFILE_ID_KEY	"DefaultProfile"
+# define MCE_CONF_DEFAULT_PROFILE_ID_KEY "DefaultProfile"
 
 /** Name of the hardcoded color profile */
-#define COLOR_PROFILE_ID_HARDCODED	"hardcoded"
-
-/** ALS profiles */
-typedef enum {
-	ALS_PROFILE_COUNT  = 21,		/**< Number of profiles */
-} als_profile_t;
+# define COLOR_PROFILE_ID_HARDCODED      "hardcoded"
 
 #endif /* _FILTER_BRIGHTNESS_ALS_H_ */
