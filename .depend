@@ -638,6 +638,7 @@ modules/filter-brightness-als.o:\
 	mce-io.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce-wakelock.h\
 	mce.h\
 	mce.h\
 	tklock.h\
@@ -654,6 +655,7 @@ modules/filter-brightness-als.pic.o:\
 	mce-io.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce-wakelock.h\
 	mce.h\
 	mce.h\
 	tklock.h\

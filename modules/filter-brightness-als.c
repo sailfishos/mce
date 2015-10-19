@@ -5,6 +5,7 @@
  * This file implements a filter module for MCE
  * <p>
  * Copyright © 2007-2011 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright © 2012-2015 Jolla Ltd.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Tuomo Tanskanen <ext-tuomo.1.tanskanen@nokia.com>
@@ -33,6 +34,7 @@
 #include "../mce-gconf.h"
 #include "../mce-dbus.h"
 #include "../mce-sensorfw.h"
+#include "../mce-wakelock.h"
 #include "../tklock.h"
 
 #include <stdlib.h>
@@ -42,1317 +44,266 @@
 
 #include <gmodule.h>
 
+/* ========================================================================= *
+ * CONSTANTS
+ * ========================================================================= */
+
 /** Module name */
-#define MODULE_NAME			"filter-brightness-als"
+#define MODULE_NAME                     "filter-brightness-als"
 
-enum
-{
-	/** Maximum number of steps ALS ramps can have
-	 *
-	 * Enough to cover 5% to 95% in 5% steps.
-	 */
-	ALS_LUX_STEPS = 21, // allows 5% steps for [5 ... 100] range
-};
-
-/** A step in ALS ramp */
-typedef struct
-{
-	int lux; /**< upper lux limit */
-	int val; /**< brightness percentage to use */
-} als_limit_t;
-
-/** ALS filtering state */
-typedef struct
-{
-	/** Filter name; used for locating configuration data */
-	const char *id;
-
-	/* Number of profiles available */
-	int profiles;
-
-	/** Threshold: lower lux limit */
-	int lux_lo;
-
-	/** Threshold: upper lux limit */
-	int lux_hi;
-
-	/** Threshold: active ALS profile */
-	als_profile_t prof;
-
-	/** Latest brightness percentage result */
-	int val;
-
-	/** Brightness percent from lux value look up table */
-	als_limit_t lut[ALS_PROFILE_COUNT][ALS_LUX_STEPS+1];
-} als_filter_t;
-
-/** Master ALS enabled setting */
-static gboolean als_enabled = ALS_ENABLED_DEFAULT;
-
-/** Config notification for als_enabled */
-static guint als_enabled_gconf_id = 0;
-
-/** Filter brightness through ALS setting */
-static gboolean als_autobrightness = ALS_AUTOBRIGHTNESS_DEFAULT;
-
-/** Config notification for als_autobrightness */
-static guint als_autobrightness_gconf_id = 0;
-
-/** ALS is used for LID filtering setting */
-static gboolean filter_lid_with_als = DEFAULT_FILTER_LID_WITH_ALS;
-
-/** Config notification for filter_lid_with_als */
-static guint filter_lid_with_als_gconf_id = 0;
-
-/** Input filter to use for ALS sensor - config value */
-static gchar *als_input_filter = 0;
-
-/** Input filter to use for ALS sensor - config notification */
-static guint  als_input_filter_gconf_id = 0;
-
-/** Sample time for ALS input filtering  - config value */
-static gint   als_sample_time = ALS_SAMPLE_TIME_DEFAULT;
-
-/** Sample time for ALS input filtering  - config notification */
-static guint  als_sample_time_gconf_id = 0;
-
-/** Cached display state; tracked via display_state_trigger() */
-static display_state_t display_state = MCE_DISPLAY_UNDEF;
-
-/** Cached target display state; tracked via display_state_next_trigger() */
-static display_state_t display_state_next = MCE_DISPLAY_UNDEF;
-
-/** Filtered lux value from the ALS */
-static gint als_lux_from_filter = -1;
-
-/** Raw lux value from the ALS */
-static gint als_lux_from_sensor = -1;
-
-/** Currently active color profile (dummy implementation) */
-static char *color_profile_name = 0;
-
-/** GConf callback ID for colour profile */
-static guint color_profile_gconf_id = 0;
-
-/** List of known color profiles (dummy implementation) */
-static const char * const color_profiles[] =
-{
-	COLOR_PROFILE_ID_HARDCODED,
-};
-
-/** ALS filtering state for display backlight brightness */
-static als_filter_t lut_display =
-{
-	.id = "Display",
-};
-
-/** ALS filtering state for keypad backlight brightness */
-static als_filter_t lut_key =
-{
-	.id = "Keypad",
-};
-
-/** ALS filtering state for indication led brightness */
-static als_filter_t lut_led =
-{
-	.id = "Led",
-};
-
-/** ALS filtering state for low power mode display simulation */
-static als_filter_t lut_lpm =
-{
-	.id = "LPM",
-};
-
-static gboolean set_color_profile(const gchar *id);
-static gboolean save_color_profile(const gchar *id);
-
-/** Integer minimum helper */
-static inline int imin(int a, int b) { return (a < b) ? a : b; }
-
-/** Check if color profile is supported
+/** Maximum number of Lux->Brightness curves that can be defined in config
  *
- * @param id color profile name
+ * Using odd number means the brightness setting values 1, 50 and 100 will
+ * be mapped to the 1st, the middle and the last of the profiles available.
  *
- * @return TRUE if profile is supported, FALSE otherwise
+ * Using 21 equals rouhgly: 1 automatic curve / 5 brightness setting steps.
  */
-static gboolean color_profile_exists(const char *id)
-{
-	if( !id )
-		return FALSE;
+#define FBA_PROFILE_COUNT               21
 
-	size_t n = sizeof color_profiles / sizeof *color_profiles;
-	for( size_t i = 0; i < n; ++i ) {
-		if( !strcmp(color_profiles[i], id) )
-			return TRUE;
-	}
-
-	return FALSE;
-}
-
-/** Remove transition thresholds from filtering state
+/** Maximum number of steps Lux->Brightness curves can have
  *
- * Set thresholds so that any lux value will be out of bounds.
- *
- * @param self ALS filtering state data
+ * Using 21 allows: Covering the 1-100% brightness range in < 5% steps.
  */
-static void als_filter_clear_threshold(als_filter_t *self)
-{
-	self->lux_lo = INT_MAX;
-	self->lux_hi = 0;
-}
+#define FBA_PROFILE_STEPS               21
 
-/** Initialize ALS filtering state
- *
- * @param self ALS filtering state data
- */
-static void als_filter_init(als_filter_t *self)
-{
-	/* Reset ramps to a state where any lux value will
-	 * yield 100% brightness */
-	for( int i = 0; i < ALS_PROFILE_COUNT; ++i ) {
-		for( int k = 0; k <= ALS_LUX_STEPS; ++k ) {
-			self->lut[i][k].lux = INT_MAX;
-			self->lut[i][k].val = 100;
-		}
-	}
+/** Size of the median filtering window; code expects the value to be odd */
+#define FBA_INPUTFLT_MEDIAN_SIZE        9
 
-	/* Default to 100% output */
-	self->val  = 100;
-
-	/* Invalidate thresholds */
-	self->prof = -1;
-	als_filter_clear_threshold(self);
-}
-
-/** Load ALS ramp into filtering state
- *
- * @param self ALS filtering state data
- * @param grp  Configuration group name
- * @param prof ALS profile id
- */
-static bool
-als_filter_load_profile(als_filter_t *self, const char *grp,
-			als_profile_t prof)
-{
-	bool  success = false;
-	gsize lim_cnt = 0;
-	gsize lev_cnt = 0;
-	gint *lim_val = 0;
-	gint *lev_val = 0;
-	char  lim_key[64];
-	char  lev_key[64];
-
-	snprintf(lim_key, sizeof lim_key, "LimitsProfile%d",  prof);
-	snprintf(lev_key, sizeof lev_key, "LevelsProfile%d",  prof);
-
-	lim_val = mce_conf_get_int_list(grp, lim_key, &lim_cnt);
-	lev_val = mce_conf_get_int_list(grp, lev_key, &lev_cnt);
-
-	if( !lim_val || lim_cnt < 1 ) {
-		if( prof == 0 )
-			mce_log(LL_WARN, "[%s] %s: no items", grp, lim_key);
-		goto EXIT;
-	}
-
-	if( !lev_val || lev_cnt != lim_cnt ) {
-		mce_log(LL_WARN, "[%s] %s: must have %zd items",
-			grp, lev_key, lim_cnt);
-		goto EXIT;
-	}
-
-	if( lim_cnt >  ALS_LUX_STEPS ) {
-		lim_cnt = ALS_LUX_STEPS;
-		mce_log(LL_WARN, "[%s] %s: excess items",
-			grp, lim_key);
-	}
-	else if( lim_cnt < ALS_LUX_STEPS ) {
-		mce_log(LL_DEBUG, "[%s] %s: missing items",
-			grp, lim_key);
-	}
-
-	for( gsize k = 0; k < lim_cnt; ++k ) {
-		self->lut[prof][k].lux = lim_val[k];
-		self->lut[prof][k].val = lev_val[k];
-	}
-
-	success = true;
-EXIT:
-	g_free(lim_val);
-	g_free(lev_val);
-
-	return success;
-}
-
-/** Load ALS ramps into filtering state
- *
- * @param self ALS filtering state data
- */
-static void als_filter_load_config(als_filter_t *self)
-{
-	als_filter_init(self);
-
-	char grp[64];
-	snprintf(grp, sizeof grp, "Brightness%s", self->id);
-
-	if( !mce_conf_has_group(grp) ) {
-		mce_log(LL_WARN, "[%s]: als config missing", grp);
-		goto EXIT;
-	}
-
-	for( self->profiles = 0; self->profiles < ALS_PROFILE_COUNT; ++self->profiles ) {
-		if( !als_filter_load_profile(self, grp, self->profiles) )
-			break;
-	}
-
-	if( self->profiles < 1 )
-		mce_log(LL_WARN, "[%s]: als config broken", grp);
-EXIT:
-	return;
-}
-
-/** Get lux value for given profile and step in ramp
- *
- * @param self ALS filtering state data
- * @param prof ALS profile id
- * @param slot position in ramp
- *
- * @return lux value
- */
-static int als_filter_get_lux(als_filter_t *self, als_profile_t prof, int slot)
-{
-	if( slot < 0 )
-		return 0;
-	if( slot < ALS_LUX_STEPS )
-		return self->lut[prof][slot].lux;
-	return INT_MAX;
-}
-
-/** Run ALS filter
- *
- * @param self ALS filtering state data
- * @param prof ALS profile id
- * @param lux  ambient light value
- *
- * @return 0 ... 100 percentage
- */
-static int als_filter_run(als_filter_t *self, als_profile_t prof, int lux)
-{
-	mce_log(LL_DEBUG, "FILTERING: %s", self->id);
-
-	if( lux < 0 ) {
-		mce_log(LL_DEBUG, "no lux data yet");
-		goto EXIT;
-	}
-
-	if( self->prof != prof ) {
-		mce_log(LL_DEBUG, "profile changed");
-	}
-	else if( self->lux_lo <= lux && lux <= self->lux_hi ) {
-		mce_log(LL_DEBUG, "within thresholds");
-		goto EXIT;
-	}
-
-	int slot;
-
-	for( slot = 0; slot < ALS_LUX_STEPS; ++slot ) {
-		if( lux < self->lut[prof][slot].lux )
-			break;
-	}
-
-	self->prof = prof;
-
-	if( slot < ALS_LUX_STEPS )
-		self->val = self->lut[prof][slot].val;
-	else
-		self->val = 100;
-
-	self->lux_lo = 0;
-	self->lux_hi = INT_MAX;
-
-	/* Add hysteresis to transitions that make the display dimmer
-	 *
-	 *                 lux from ALS
-	 *                  |
-	 *                  |  configuration slot
-	 *                  |   |
-	 *                  v   |
-	 *    0----A------B-----C-----> [lux]
-	 *
-	 *              |-------|
-	 * threshold    lo      hi
-	 */
-
-	int a = als_filter_get_lux(self, prof, slot-2);
-	int b = als_filter_get_lux(self, prof, slot-1);
-	int c = als_filter_get_lux(self, prof, slot+0);
-
-	self->lux_lo = b - imin(b-a, c-b) / 10;
-	self->lux_hi = c;
-
-	mce_log(LL_DEBUG, "prof=%d, slot=%d, range=%d...%d",
-		prof, slot, self->lux_lo, self->lux_hi);
-
-EXIT:
-	return self->val;
-}
-
-static void run_datapipes(void)
-{
-	/* Re-filter the brightness */
-	execute_datapipe(&display_brightness_pipe, NULL,
-			 USE_CACHE, DONT_CACHE_INDATA);
-	execute_datapipe(&led_brightness_pipe, NULL,
-			 USE_CACHE, DONT_CACHE_INDATA);
-	execute_datapipe(&lpm_brightness_pipe, NULL,
-			 USE_CACHE, DONT_CACHE_INDATA);
-	execute_datapipe(&key_backlight_pipe, NULL,
-			 USE_CACHE, DONT_CACHE_INDATA);
-}
+/** Duration of temporary ALS enable sessions */
+#define FBA_SENSORPOLL_DURATION_MS      5000
 
 /* ========================================================================= *
- * SENSOR_INPUT_FILTERING
+ * FUNCTIONALITY
  * ========================================================================= */
+
+/* ------------------------------------------------------------------------- *
+ * MISC_UTILS
+ * ------------------------------------------------------------------------- */
+
+static int  fba_util_imin   (int a, int b);
+static bool fba_util_streq  (const char *s1, const char *s2);
+
+/* ------------------------------------------------------------------------- *
+ * GCONF_SETTINGS
+ * ------------------------------------------------------------------------- */
+
+static void fba_gconf_cb    (GConfClient *const gcc, const guint id, GConfEntry *const entry, gpointer const data);
+static void fba_gconf_init  (void);
+static void fba_gconf_quit  (void);
+
+/* ------------------------------------------------------------------------- *
+ * COLOR_PROFILE
+ * ------------------------------------------------------------------------- */
+
+static gboolean  fba_color_profile_exists      (const char *id);
+static gboolean  fba_color_profile_set         (const gchar *id);
+static gboolean  fba_color_profile_save        (const gchar *id);
+static gchar    *fba_color_profile_get_default (void);
+static gchar    *fba_color_profile_get_current (void);
+
+static gboolean  fba_color_profile_init        (void);
+static void      fba_color_profile_quit        (void);
+
+/* ------------------------------------------------------------------------- *
+ * SENSOR_INPUT_FILTERING
+ * ------------------------------------------------------------------------- */
 
 /** Hooks that an input filter backend needs to implement */
 typedef struct
 {
-	const char *fi_name;
+    const char *fi_name;
 
-	void      (*fi_reset)(void);
-	int       (*fi_filter)(int);
-	bool      (*fi_stable)(void);
-} inputflt_t;
-
-// INPUT_FILTER_BACKEND_MEDIAN
-static int      inputflt_median_filter(int add);
-static bool     inputflt_median_stable(void);
-static void     inputflt_median_reset(void);
+    void      (*fi_reset)(void);
+    int       (*fi_filter)(int);
+    bool      (*fi_stable)(void);
+} fba_inputflt_t;
 
 // INPUT_FILTER_BACKEND_DUMMY
-static int      inputflt_dummy_filter(int add);
-static bool     inputflt_dummy_stable(void);
-static void     inputflt_dummy_reset(void);
+static int      fba_inputflt_dummy_filter    (int add);
+static bool     fba_inputflt_dummy_stable    (void);
+static void     fba_inputflt_dummy_reset     (void);
+
+// INPUT_FILTER_BACKEND_MEDIAN
+static int      fba_inputflt_median_filter   (int add);
+static bool     fba_inputflt_median_stable   (void);
+static void     fba_inputflt_median_reset    (void);
 
 // INPUT_FILTER_FRONTEND
-static void     inputflt_reset(void);
-static int      inputflt_filter(int lux);
-static bool     inputflt_stable(void);
-static void     inputflt_select(const char *name);
-static void     inputflt_flush_on_change(void);
-static void     inputflt_sampling_output(int lux);
-static gboolean inputflt_sampling_cb(gpointer aptr);
-static void     inputflt_sampling_start(void);
-static void     inputflt_sampling_stop(void);
-static void     inputflt_init(void);
-static void     inputflt_quit(void);
+static void     fba_inputflt_reset           (void);
+static int      fba_inputflt_filter          (int lux);
+static bool     fba_inputflt_stable          (void);
+static void     fba_inputflt_select          (const char *name);
+static void     fba_inputflt_flush_on_change (void);
+static void     fba_inputflt_sampling_output (int lux);
+static gboolean fba_inputflt_sampling_cb     (gpointer aptr);
+static void     fba_inputflt_sampling_start  (void);
+static void     fba_inputflt_sampling_stop   (void);
+
+static int      fba_inputflt_sampling_time   (void);
+static void     fba_inputflt_sampling_input  (int lux);
+
+static void     fba_inputflt_init            (void);
+static void     fba_inputflt_quit            (void);
 
 /* ------------------------------------------------------------------------- *
- * INPUT_FILTER_BACKEND_DUMMY
+ * ALS_FILTER
  * ------------------------------------------------------------------------- */
 
-static int inputflt_dummy_filter(int add)
+/** A step in ALS ramp */
+typedef struct
 {
-	return add;
-}
+    int lux; /**< upper lux limit */
+    int val; /**< brightness percentage to use */
+} fba_als_limit_t;
 
-static bool inputflt_dummy_stable(void)
+/** ALS filtering state */
+typedef struct
 {
-	return true;
-}
+    /** Filter name; used for locating configuration data */
+    const char *id;
 
-static void inputflt_dummy_reset(void)
-{
-}
+    /* Number of profiles available */
+    int profiles;
+
+    /** Threshold: lower lux limit */
+    int lux_lo;
+
+    /** Threshold: upper lux limit */
+    int lux_hi;
+
+    /** Threshold: active ALS profile */
+    int prof;
+
+    /** Latest brightness percentage result */
+    int val;
+
+    /** Brightness percent from lux value look up table */
+    fba_als_limit_t lut[FBA_PROFILE_COUNT][FBA_PROFILE_STEPS+1];
+} fba_als_filter_t;
+
+static void fba_als_filter_clear_threshold (fba_als_filter_t *self);
+static bool fba_als_filter_load_profile    (fba_als_filter_t *self, const char *grp, int prof);
+static void fba_als_filter_reset_profiles  (fba_als_filter_t *self);
+static void fba_als_filter_load_profiles   (fba_als_filter_t *self);
+static int  fba_als_filter_get_lux         (fba_als_filter_t *self, int prof, int slot);
+static int  fba_als_filter_run             (fba_als_filter_t *self, int prof, int lux);
+
+static void fba_als_filter_init            (void);
 
 /* ------------------------------------------------------------------------- *
- * INPUT_FILTER_BACKEND_MEDIAN
+ * DATAPIPE_TRACKING
  * ------------------------------------------------------------------------- */
 
-/** Size of the median filtering window; the value must be odd */
-#define INPUTFLT_MEDIAN_SIZE 9
+static gpointer fba_datapipe_display_brightness_filter  (gpointer data);
+static gpointer fba_datapipe_led_brightness_filter      (gpointer data);
+static gpointer fba_datapipe_lpm_brightness_filter      (gpointer data);
+static gpointer fba_datapipe_key_backlight_filter       (gpointer data);
+static gpointer fba_datapipe_ambient_light_poll_filter  (gpointer data);
 
-/** Moving window of ALS measurements */
-static int  inputflt_median_fifo[INPUTFLT_MEDIAN_SIZE] = {  };
+static void     fba_datapipe_display_state_trigger      (gconstpointer data);
+static void     fba_datapipe_display_state_next_trigger (gconstpointer data);
 
-/** Contents of inputflt_median_fifo in ascending order */
-static int  inputflt_median_stat[INPUTFLT_MEDIAN_SIZE] = {  };;
+static void     fba_datapipe_execute_brightness_change  (void);
 
-static int inputflt_median_filter(int add)
-{
-	/* Adding negative sample values mean the sensor is not
-	 * in use and we should forget any history that exists */
-	if( add < 0 ) {
-		for( int i = 0; i < INPUTFLT_MEDIAN_SIZE; ++i )
-			inputflt_median_fifo[i] = inputflt_median_stat[i] = -1;
-		goto EXIT;
-	}
-
-	/* Value to be removed */
-	int rem = inputflt_median_fifo[0];
-
-	/* If negative value gets shifted out, it means we do not
-	 * have history. Initialize with the value we have */
-	if( rem < 0 ) {
-		for( int i = 0; i < INPUTFLT_MEDIAN_SIZE; ++i )
-			inputflt_median_fifo[i] = inputflt_median_stat[i] = add;
-		goto EXIT;
-	}
-
-	/* Shift the new value to the sample window fifo */
-	for( int i = 1; i < INPUTFLT_MEDIAN_SIZE; ++i )
-		inputflt_median_fifo[i-1] = inputflt_median_fifo[i];
-	inputflt_median_fifo[INPUTFLT_MEDIAN_SIZE-1] = add;
-
-	/* If we shift in the same value as what was shifted out,
-	 * the ordered statistics do not change */
-	if( add == rem )
-		goto EXIT;
-
-	/* Do one pass filtering of ordered statistics:
-	 * Remove the value we shifted out of the fifo
-	 * and insert the new sample to correct place. */
-
-	int src = 0, dst = 0, tmp;
-	int stk = inputflt_median_stat[src++];
-
-	while( dst < INPUTFLT_MEDIAN_SIZE ) {
-		if( stk < add )
-			tmp = stk, stk = add, add = tmp;
-
-		if( add == rem )
-			rem = INT_MAX;
-		else
-			inputflt_median_stat[dst++] = add;
-
-		if( src < INPUTFLT_MEDIAN_SIZE )
-			add = inputflt_median_stat[src++];
-		else
-			add = INT_MAX;
-	}
-
-EXIT:
-	mce_log(LL_DEBUG, "%d - %d - %d",
-		inputflt_median_stat[0],
-		inputflt_median_stat[INPUTFLT_MEDIAN_SIZE/2],
-		inputflt_median_stat[INPUTFLT_MEDIAN_SIZE-1]);
-
-	/* Return median of the history window */
-	return inputflt_median_stat[INPUTFLT_MEDIAN_SIZE/2];
-}
-
-static bool inputflt_median_stable(void)
-{
-	/* The smallest and the largest values in the sorted
-	 * samples buffer are equal */
-	return inputflt_median_stat[0] == inputflt_median_stat[INPUTFLT_MEDIAN_SIZE-1];
-}
-
-static void inputflt_median_reset(void)
-{
-	inputflt_median_filter(-1);
-}
+static void     fba_datapipe_init                       (void);
+static void     fba_datapipe_quit                       (void);
 
 /* ------------------------------------------------------------------------- *
- * INPUT_FILTER_FRONTEND
+ * DBUS_HANDLERS
  * ------------------------------------------------------------------------- */
 
-/** Array of available input filter backendss */
-static const inputflt_t inputflt_lut[] =
-{
-	// NOTE: "disabled" must be in the 1st slot
-	{
-		.fi_name   = "disabled",
-		.fi_reset  = inputflt_dummy_reset,
-		.fi_filter = inputflt_dummy_filter,
-		.fi_stable = inputflt_dummy_stable,
-	},
-	{
-		.fi_name   = "median",
-		.fi_reset  = inputflt_median_reset,
-		.fi_filter = inputflt_median_filter,
-		.fi_stable = inputflt_median_stable,
-	},
-};
+static gboolean fba_dbus_send_current_color_profile  (DBusMessage *method_call);
 
-/** Currently used input filter backend */
-static const inputflt_t *inputflt_cur = inputflt_lut;
+static gboolean fba_dbus_get_color_profile_cb        (DBusMessage *const msg);
+static gboolean fba_dbus_get_color_profiles_cb       (DBusMessage *const msg);
+static gboolean fba_dbus_set_color_profile_cb        (DBusMessage *const msg);
 
-/** Latest sensor value reported */
-static gint inputflt_lux_value = 0;
+static void     fba_dbus_init                        (void);
+static void     fba_dbus_quit                        (void);
 
-/** Flag for: forget history on the next als change */
-static bool inputflt_flush_history = true;
+/* ------------------------------------------------------------------------- *
+ * SENSOR_STATUS
+ * ------------------------------------------------------------------------- */
 
-/** Timer ID for: ALS data sampling */
-static guint inputflt_sampling_id = 0;
+static void fba_status_sensor_value_change_cb    (int lux);
 
-/** Set input filter backend
- *
- * @param name  name of the backend to use
- */
-static void inputflt_select(const char *name)
-{
-	inputflt_reset();
+static bool fba_status_sensor_is_needed          (void);
+static void fba_status_rethink                   (void);
 
-	if( !name ) {
-		inputflt_cur = inputflt_lut;
-		goto EXIT;
-	}
+/* ------------------------------------------------------------------------- *
+ * SENSOR_POLL
+ * ------------------------------------------------------------------------- */
 
-	for( size_t i = 0; ; ++i ) {
-		if( i == G_N_ELEMENTS(inputflt_lut) ) {
-			mce_log(LL_WARN, "filter '%s' is unknown", name);
-			inputflt_cur = inputflt_lut;
-			break;
-		}
-		if( !strcmp(inputflt_lut[i].fi_name, name) ) {
-			inputflt_cur = inputflt_lut + i;
-			break;
-		}
-	}
-EXIT:
-	mce_log(LL_NOTICE, "selected '%s' als filter",
-		inputflt_cur->fi_name);
+static gboolean fba_sensorpoll_timer_cb  (gpointer aptr);
+static void     fba_sensorpoll_start     (void);
+static void     fba_sensorpoll_stop      (void);
+static void     fba_sensorpoll_rethink   (void);
 
-	inputflt_reset();
-}
+/* ------------------------------------------------------------------------- *
+ * LOAD_UNLOAD
+ * ------------------------------------------------------------------------- */
 
-/** Reset history buffer
- *
- * Is used to clear stale history data when powering up the sensor.
- */
-static void inputflt_reset(void)
-{
-	inputflt_cur->fi_reset();
-}
+G_MODULE_EXPORT const gchar *g_module_check_init (GModule *module);
+G_MODULE_EXPORT void         g_module_unload     (GModule *module);
 
-/** Apply filtering backend for als sensor value
- *
- * @param add  sample to shift into the filter history
- *
- * @return filtered value
- */
-static int inputflt_filter(int lux)
-{
-	return inputflt_cur->fi_filter(lux);
-}
-
-/** Check if the whole history buffer is filled with the same value
- *
- * Is used to determine when the pseudo sampling timer can be stopped.
- */
-static bool inputflt_stable(void)
-{
-	return inputflt_cur->fi_stable();
-}
-
-/** Request filter history to be flushed on the next ALS change
- */
-static void inputflt_flush_on_change(void)
-{
-	inputflt_flush_history = true;
-}
-
-/** Get filtered ALS state and feed it to datapipes
- *
- * @param lux  sensor reading, or -1 for no-data
- */
-static void inputflt_sampling_output(int lux)
-{
-	lux = inputflt_filter(lux);
-
-	if( als_lux_from_filter == lux )
-		goto EXIT;
-
-	mce_log(LL_DEBUG, "output: %d -> %d", als_lux_from_filter, lux);
-
-	als_lux_from_filter = lux;
-
-	run_datapipes();
-
-	/* Feed filtered sensor data to datapipe */
-	execute_datapipe(&ambient_light_level_pipe,
-			 GINT_TO_POINTER(als_lux_from_filter),
-			 USE_INDATA, CACHE_INDATA);
-EXIT:
-	return;
-}
-/** Timer callback for: ALS data sampling
- *
- * @param aptr (unused user data pointer)
- *
- * @return TRUE to keep timer repeating, or FALSE to stop it
- */
-static gboolean inputflt_sampling_cb(gpointer aptr)
-{
-	(void)aptr;
-
-	if( !inputflt_sampling_id )
-		return FALSE;
-
-	/* Drive the filter */
-	inputflt_sampling_output(inputflt_lux_value);
-
-	/* Keep timer active while changes come in */
-
-	if( !inputflt_stable() )
-		return TRUE;
-
-	/* Stop sampling activity */
-	mce_log(LL_DEBUG, "stable");
-	inputflt_sampling_id = 0;
-	return FALSE;
-}
-
-static int inputflt_sampling_time(void)
-{
-	return mce_clip_int(ALS_SAMPLE_TIME_MIN,
-			    ALS_SAMPLE_TIME_MAX,
-			    als_sample_time);
-}
-
-/** Start ALS sampling timer
- */
-static void inputflt_sampling_start(void)
-{
-	// check if we need to flush history
-	if( inputflt_flush_history ) {
-		inputflt_flush_history = false;
-
-		mce_log(LL_DEBUG, "reset");
-
-		if( inputflt_sampling_id ) {
-			g_source_remove(inputflt_sampling_id),
-				inputflt_sampling_id = 0;
-		}
-		inputflt_reset();
-	}
-
-	// start collecting history
-	if( !inputflt_sampling_id ) {
-		mce_log(LL_DEBUG, "start");
-		inputflt_sampling_id = g_timeout_add(inputflt_sampling_time(),
-						inputflt_sampling_cb, 0);
-
-		inputflt_sampling_output(inputflt_lux_value);
-	}
-}
-
-/** Stop ALS sampling timer
- */
-static void inputflt_sampling_stop(void)
-{
-	if( inputflt_sampling_id ) {
-		mce_log(LL_DEBUG, "stop");
-		g_source_remove(inputflt_sampling_id),
-			inputflt_sampling_id = 0;
-	}
-
-	inputflt_sampling_output(inputflt_lux_value);
-}
-
-/** Feed sensor input to filter
- *
- * @param lux  sensor reading, or -1 for no-data
- */
-static void inputflt_sampling_input(int lux)
-{
-	if( inputflt_lux_value == lux )
-		goto EXIT;
-
-	mce_log(LL_DEBUG, "input: %d -> %d", inputflt_lux_value, lux);
-	inputflt_lux_value = lux;
-
-	if( inputflt_lux_value < 0 )
-		inputflt_sampling_stop();
-	else
-		inputflt_sampling_start();
-
-EXIT:
-	return;
-}
-
-/** Initialize ALS filtering
- */
-static void inputflt_init(void)
-{
-	inputflt_select(als_input_filter);
-}
-
-/** De-initialize ALS filtering
- */
-static void inputflt_quit(void)
-{
-	/* Stop sampling timer by feeding no-data to filter */
-	inputflt_sampling_input(-1);
-}
-
-/** Handle lux value changed event
- *
- * @param lux ambient light value
- */
-static void als_lux_changed(int lux)
-{
-	if( !als_enabled )
-		als_lux_from_sensor = -1;
-	else
-		als_lux_from_sensor = lux;
-
-	/* Filter raw sensor data */
-	inputflt_sampling_input(als_lux_from_sensor);
-
-	/* Feed raw sensor data to datapipe */
-	execute_datapipe(&ambient_light_sensor_pipe,
-			 GINT_TO_POINTER(als_lux_from_sensor),
-			 USE_INDATA, CACHE_INDATA);
-}
-
-static bool als_is_needed(void)
-{
-	bool need_als = false;
-
-	switch( display_state_next ) {
-	case MCE_DISPLAY_ON:
-	case MCE_DISPLAY_DIM:
-	case MCE_DISPLAY_LPM_OFF:
-	case MCE_DISPLAY_LPM_ON:
-		if( als_autobrightness || filter_lid_with_als )
-			need_als = true;
-		break;
-
-	default:
-	case MCE_DISPLAY_OFF:
-	case MCE_DISPLAY_UNDEF:
-		break;
-	}
-
-	return need_als;
-}
-
-/** Check if ALS sensor should be enabled or disabled
- */
-static void rethink_als_status(void)
-{
-	static int old_autobrightness = -1;
-
-	static int enable_old = -1;
-	bool       enable_new = false;
-
-	if( als_enabled )
-		enable_new = als_is_needed();
-
-	if( enable_old == enable_new )
-		goto EXIT;
-
-	mce_log(LL_DEBUG, "enabled=%d; autobright=%d; filter_lid=%d -> enable=%d",
-		als_enabled, als_autobrightness, filter_lid_with_als, enable_new);
-
-	enable_old = enable_new;
-
-	if( enable_new ) {
-		/* Enable change notifications */
-		mce_sensorfw_als_set_notify(als_lux_changed);
-
-		mce_sensorfw_als_enable();
-
-		/* The sensor has been off for some time, so the
-		 * history needs to be forgotten when we get fresh
-		 * data */
-		inputflt_flush_on_change();
-	}
-	else {
-		/* Disable change notifications */
-		mce_sensorfw_als_set_notify(0);
-
-		/* Force cached value re-evaluation */
-		als_lux_changed(-1);
-
-		mce_sensorfw_als_disable();
-
-		/* Clear thresholds so that the next reading from
-		 * als will not be affected by previous state */
-		als_filter_clear_threshold(&lut_display);
-		als_filter_clear_threshold(&lut_led);
-		als_filter_clear_threshold(&lut_key);
-		als_filter_clear_threshold(&lut_lpm);
-	}
-
-EXIT:
-	if( old_autobrightness != als_autobrightness ) {
-		old_autobrightness = als_autobrightness;
-		run_datapipes();
-	}
-
-	return;
-}
-
-/**
- * Ambient Light Sensor filter for display brightness
- *
- * @param data The un-processed brightness setting (1-100) stored in a pointer
- * @return The processed brightness value (percentage) stored in a pointer
- */
-static gpointer display_brightness_filter(gpointer data)
-{
-	int setting = GPOINTER_TO_INT(data);
-
-	int brightness = setting;
-
-	if( !als_autobrightness || als_lux_from_filter < 0 )
-		goto EXIT;
-
-	int max_prof = lut_display.profiles - 1;
-
-	if( max_prof < 0 )
-		goto EXIT;
-
-	als_profile_t prof = mce_xlat_int(1,100, 0,max_prof, setting);
-
-	brightness = als_filter_run(&lut_display, prof, als_lux_from_filter);
-
-EXIT:
-	mce_log(LL_DEBUG, "in=%d -> out=%d", setting, brightness);
-	return GINT_TO_POINTER(brightness);
-}
-
-/**
- * Ambient Light Sensor filter for LED brightness
- *
- * @param data The un-processed brightness setting (1-100) stored in a pointer
- * @return The processed brightness value
- */
-static gpointer led_brightness_filter(gpointer data)
-{
-	int value = GPOINTER_TO_INT(data);
-	int scale = 40;
-
-	if( !als_autobrightness || als_lux_from_filter < 0 )
-		goto EXIT;
-
-	if( lut_led.profiles < 1 )
-		goto EXIT;
-
-	scale = als_filter_run(&lut_led, 0, als_lux_from_filter);
-
-EXIT:
-	return GINT_TO_POINTER(value * scale / 100);
-}
-
-/** Ambient Light Sensor filter for LPM brightness
- *
- * @param data The un-processed brightness setting (1-100) stored in a pointer
- * @return The processed brightness value
- */
-static gpointer lpm_brightness_filter(gpointer data)
-{
-	int value = GPOINTER_TO_INT(data);
-
-	if( !als_autobrightness || als_lux_from_filter < 0 )
-		goto EXIT;
-
-	if( lut_lpm.profiles < 1 )
-		goto EXIT;
-
-	/* Note: Input value is ignored and output is
-	 *       determined only by the als config */
-	value = als_filter_run(&lut_lpm, 0, als_lux_from_filter);
-
-EXIT:
-	return GINT_TO_POINTER(value);
-}
-
-/**
- * Ambient Light Sensor filter for keyboard backlight brightness
- *
- * @param data The un-processed brightness setting (1-100) stored in a pointer
- * @return The processed brightness value
- */
-static gpointer key_backlight_filter(gpointer data)
-{
-	int value = GPOINTER_TO_INT(data);
-	int scale = 100;
-
-	if( !als_autobrightness || als_lux_from_filter < 0 )
-		goto EXIT;
-
-	if( lut_key.profiles < 1 )
-		goto EXIT;
-
-	scale = als_filter_run(&lut_key, 0, als_lux_from_filter);
-
-EXIT:
-	return GINT_TO_POINTER(value * scale / 100);
-}
-
-/**
- * Handle display state change
- *
- * @param data The display stated stored in a pointer
- */
-static void display_state_trigger(gconstpointer data)
-{
-	display_state_t prev = display_state;
-	display_state = GPOINTER_TO_INT(data);
-
-	if( prev == display_state )
-		goto EXIT;
-
-	mce_log(LL_DEBUG, "display_state: %s -> %s",
-		display_state_repr(prev),
-		display_state_repr(display_state));
-
-	rethink_als_status();
-
-EXIT:
-	return;
-}
-
-static void display_state_next_trigger(gconstpointer data)
-{
-	display_state_t prev = display_state_next;
-	display_state_next = GPOINTER_TO_INT(data);
-
-	if( prev == display_state_next )
-		goto EXIT;
-
-	mce_log(LL_DEBUG, "display_state_next: %s -> %s",
-		display_state_repr(prev),
-		display_state_repr(display_state_next));
-
-	rethink_als_status();
-
-EXIT:
-	return;
-}
-
-/**
- * Send the current profile id
- *
- * @param method_call A DBusMessage to reply to
- * @return TRUE
- */
-static gboolean send_current_color_profile(DBusMessage *method_call)
-{
-	DBusMessage *msg = 0;
-	const char  *val = color_profile_name ?: COLOR_PROFILE_ID_HARDCODED;
-
-	if( method_call )
-		msg = dbus_new_method_reply(method_call);
-	else
-		msg = dbus_new_signal(MCE_SIGNAL_PATH,
-				      MCE_SIGNAL_IF,
-				      MCE_COLOR_PROFILE_SIG);
-	if( !msg )
-		goto EXIT;
-
-	if( !dbus_message_append_args(msg,
-				      DBUS_TYPE_STRING, &val,
-				      DBUS_TYPE_INVALID) )
-		goto EXIT;
-
-	dbus_send_message(msg), msg = 0;
-EXIT:
-	if( msg ) dbus_message_unref(msg);
-
-	return TRUE;
-}
-
-/**
- * D-Bus callback for the get color profile method call
- *
- * @param msg The D-Bus message
- * @return TRUE
- */
-static gboolean color_profile_get_req_dbus_cb(DBusMessage *const msg)
-{
-	mce_log(LL_DEVEL, "Received get color profile request from %s",
-		mce_dbus_get_message_sender_ident(msg));
-
-	if( dbus_message_get_no_reply(msg) )
-		goto EXIT;
-
-	send_current_color_profile(msg);
-
-EXIT:
-	return TRUE;
-}
-
-/** D-Bus callback for the get color profile ids method call
- *
- * @param msg The D-Bus message
- * @return TRUE
- */
-static gboolean color_profile_ids_get_req_dbus_cb(DBusMessage *const msg)
-{
-	mce_log(LL_DEVEL, "Received list color profiles request from %s",
-		mce_dbus_get_message_sender_ident(msg));
-
-	DBusMessage *rsp = 0;
-	int cnt = sizeof color_profiles / sizeof *color_profiles;
-	const char * const * vec = color_profiles;
-
-	if( dbus_message_get_no_reply(msg) )
-		goto EXIT;
-
-	if( !(rsp = dbus_message_new_method_return(msg)) )
-		goto EXIT;
-
-	if( !dbus_message_append_args(rsp,
-				      DBUS_TYPE_ARRAY,
-				      DBUS_TYPE_STRING, &vec, cnt,
-				      DBUS_TYPE_INVALID) )
-		goto EXIT;
-
-	dbus_send_message(rsp), rsp = 0;
-
-EXIT:
-	if( rsp ) dbus_message_unref(rsp);
-
-	return TRUE;
-}
-
-/** D-Bus callback for the color profile change method call
- *
- * @param msg The D-Bus message
- * @return TRUE
- */
-static gboolean color_profile_change_req_dbus_cb(DBusMessage *const msg)
-{
-	mce_log(LL_DEVEL, "Received set color profile request from %s",
-		mce_dbus_get_message_sender_ident(msg));
-
-	const char  *val = 0;
-	DBusError    err = DBUS_ERROR_INIT;
-	dbus_bool_t  ack = FALSE;
-	DBusMessage *rsp = 0;
-
-	if( !dbus_message_get_args(msg, &err,
-				  DBUS_TYPE_STRING, &val,
-				  DBUS_TYPE_INVALID)) {
-		// XXX: should we return an error instead?
-		mce_log(LL_ERR,	"Failed to get argument from %s.%s: %s: %s",
-			MCE_REQUEST_IF, MCE_COLOR_PROFILE_CHANGE_REQ,
-			err.name, err.message);
-	}
-	else {
-		if( set_color_profile(val) )
-			ack = TRUE;
-	}
-
-	if( dbus_message_get_no_reply(msg) )
-		goto EXIT;
-
-	if( !(rsp = dbus_message_new_method_return(msg)) )
-		goto EXIT;
-
-	dbus_message_append_args(rsp,
-				 DBUS_TYPE_BOOLEAN, &ack,
-				 DBUS_TYPE_INVALID);
-EXIT:
-	if( rsp ) dbus_send_message(rsp), rsp = 0;
-
-	dbus_error_free(&err);
-	return TRUE;
-}
-
-/**
- * Set the current color profile according to requested
- *
- * @param id Name of requested color profile
- * @return TRUE on success, FALSE on failure
- */
-static gboolean set_color_profile(const gchar *id)
-{
-	// NOTE: color profile support dropped, this just a stub
-
-	gboolean status = FALSE;
-
-	if( !id ) {
-		goto EXIT;
-	}
-
-	if( color_profile_name && !strcmp(color_profile_name, id) ) {
-		mce_log(LL_DEBUG, "No change in color profile, ignoring");
-		status = TRUE;
-		goto EXIT;
-	}
-
-	if( !color_profile_exists(id) ) {
-		mce_log(LL_WARN, "%s: unsupported color profile", id);
-		goto EXIT;
-	}
-
-	if( !save_color_profile(id) ) {
-		mce_log(LL_WARN, "The current color profile id can't be saved");
-		goto EXIT;
-	}
-
-	free(color_profile_name), color_profile_name = strdup(id);
-
-	status = TRUE;
-
-EXIT:
-	return status;
-}
-
-/**
- * Save the profile id into conf file
- *
- * @param id The profile id to save
- * @return TRUE on success, FALSE on failure
- */
-static gboolean save_color_profile(const gchar *id)
-{
-	gboolean status = FALSE;
-
-	if (mce_are_settings_locked() == TRUE) {
-		mce_log(LL_WARN,
-			"Cannot save current color profile id; backup/restore "
-			"or device clear/factory reset pending");
-		goto EXIT;
-	}
-
-	status = mce_gconf_set_string(MCE_GCONF_DISPLAY_COLOR_PROFILE, id);
-
-EXIT:
-	return status;
-}
-
-/**
- * Read the default color profile id from conf file
- *
- * @return Pointer to allocated string if success; NULL otherwise
- */
-static gchar *read_default_color_profile(void)
-{
-	return mce_conf_get_string(MCE_CONF_COMMON_GROUP,
-				   MCE_CONF_DEFAULT_PROFILE_ID_KEY,
-				   NULL);
-}
-
-/**
- * Read the current color profile id from conf file
- *
- * @return Pointer to allocated string if success; NULL otherwise
- */
-static gchar *read_current_color_profile(void)
-{
-	gchar *retval = NULL;
-	(void)mce_gconf_get_string(MCE_GCONF_DISPLAY_COLOR_PROFILE,
-				   &retval);
-
-	/* Treat empty string as NULL */
-	if( retval && !*retval )
-		g_free(retval), retval = 0;
-
-	return retval;
-}
-
-/**
- * Initialization of saveed color profile during boot
- *
- * @return TRUE on success, FALSE on failure
- */
-static gboolean init_current_color_profile(void)
-{
-	gchar *profile = NULL;
-	gboolean status = FALSE;
-
-	profile = read_current_color_profile();
-
-	if (profile == NULL)
-		profile = read_default_color_profile();
-
-	if (profile != NULL) {
-		status = set_color_profile(profile);
-		g_free(profile);
-	}
-
-	return status;
-}
-
-static void quit_color_profiles(void)
-{
-	free(color_profile_name), color_profile_name = 0;
-}
+/** Flag for: The plugin is about to be unloaded */
+static bool fba_module_unload = false;
 
 /* ========================================================================= *
- * DBUS_HANDLERS
+ * MISC_UTILS
  * ========================================================================= */
 
-/** Array of dbus message handlers */
-static mce_dbus_handler_t filter_brightness_dbus_handlers[] =
-{
-	/* signals - outbound (for Introspect purposes only) */
-	{
-		.interface = MCE_SIGNAL_IF,
-		.name      = MCE_COLOR_PROFILE_SIG,
-		.type      = DBUS_MESSAGE_TYPE_SIGNAL,
-		.args      =
-			"    <arg name=\"active_color_profile\" type=\"s\"/>\n"
-	},
-	/* method calls */
-	{
-		.interface = MCE_REQUEST_IF,
-		.name      = MCE_COLOR_PROFILE_GET,
-		.type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
-		.callback  = color_profile_get_req_dbus_cb,
-		.args      =
-			"    <arg direction=\"out\" name=\"profile_name\" type=\"s\"/>\n"
-	},
-	{
-		.interface = MCE_REQUEST_IF,
-		.name      = MCE_COLOR_PROFILE_IDS_GET,
-		.type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
-		.callback  = color_profile_ids_get_req_dbus_cb,
-		.args      =
-			"    <arg direction=\"out\" name=\"profile_names\" type=\"as\"/>\n"
-	},
-	{
-		.interface = MCE_REQUEST_IF,
-		.name      = MCE_COLOR_PROFILE_CHANGE_REQ,
-		.type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
-		.callback  = color_profile_change_req_dbus_cb,
-		.args      =
-			"    <arg direction=\"in\" name=\"profile_name\" type=\"s\"/>\n"
-			"    <arg direction=\"out\" name=\"success\" type=\"b\"/>\n"
-	},
-	/* sentinel */
-	{
-		.interface = 0
-	}
-};
-
-/** Add dbus handlers
+/** Integer minimum helper in style of fminf()
+ *
+ * @param a  integer value
+ * @param b  integer value
+ *
+ * @return minimum of the two values
  */
-static void fba_init_dbus(void)
+static int fba_util_imin(int a, int b)
 {
-	mce_dbus_handler_register_array(filter_brightness_dbus_handlers);
+    return (a < b) ? a : b;
 }
 
-/** Remove dbus handlers
+/* Null tolerant string equality predicate
+ *
+ * @param s1  string
+ * @param s2  string
+ *
+ * @return true if both s1 and s2 are null or same string, false otherwise
  */
-static void fba_quit_dbus(void)
+static bool fba_util_streq(const char *s1, const char *s2)
 {
-	mce_dbus_handler_unregister_array(filter_brightness_dbus_handlers);
+    return (s1 && s2) ? !strcmp(s1, s2) : (s1 == s2);
 }
 
 /* ========================================================================= *
  * GCONF_SETTINGS
  * ========================================================================= */
 
-/* Null tolerant string equality predicate
- *
- * @param s1 string
- * @param s2 string
- *
- * @return true if both s1 and s2 are null or same string, false otherwise
- */
-static inline bool eq(const char *s1, const char *s2)
-{
-	return (s1 && s2) ? !strcmp(s1, s2) : (s1 == s2);
-}
+/** Master ALS enabled setting */
+static gboolean fba_gconf_als_enabled = ALS_ENABLED_DEFAULT;
+static guint    fba_gconf_als_enabled_id = 0;
+
+/** Filter brightness through ALS setting */
+static gboolean fba_gconf_als_autobrightness = ALS_AUTOBRIGHTNESS_DEFAULT;
+static guint    fba_gconf_als_autobrightness_id = 0;
+
+/** ALS is used for LID filtering setting */
+static gboolean fba_gconf_filter_lid_with_als = DEFAULT_FILTER_LID_WITH_ALS;
+static guint    fba_gconf_filter_lid_with_als_id = 0;
+
+/** Input filter to use for ALS sensor - config value */
+static gchar   *fba_gconf_als_input_filter = 0;
+static guint    fba_gconf_als_input_filter_id = 0;
+
+/** Sample time for ALS input filtering  - config value */
+static gint     fba_gconf_als_sample_time = ALS_SAMPLE_TIME_DEFAULT;
+static guint    fba_gconf_als_sample_time_id = 0;
+
+/** Currently active color profile (dummy implementation) */
+static char    *fba_gconf_color_profile = 0;
+static guint    fba_gconf_color_profile_id = 0;
 
 /** GConf callback for powerkey related settings
  *
@@ -1363,200 +314,1579 @@ static inline bool eq(const char *s1, const char *s2)
  */
 static void
 fba_gconf_cb(GConfClient *const gcc, const guint id,
-			    GConfEntry *const entry, gpointer const data)
+             GConfEntry *const entry, gpointer const data)
 {
-	(void)gcc;
-	(void)data;
-	(void)id;
+    (void)gcc;
+    (void)data;
 
-	const GConfValue *gcv = gconf_entry_get_value(entry);
+    const GConfValue *gcv = gconf_entry_get_value(entry);
 
-	if( !gcv ) {
-		mce_log(LL_DEBUG, "GConf Key `%s' has been unset",
-			gconf_entry_get_key(entry));
-		goto EXIT;
-	}
+    if( !gcv ) {
+        mce_log(LL_DEBUG, "GConf Key `%s' has been unset",
+                gconf_entry_get_key(entry));
+        goto EXIT;
+    }
 
-	if( id == als_enabled_gconf_id ) {
-		als_enabled = gconf_value_get_bool(gcv);
-		rethink_als_status();
-	}
-	else if( id == als_autobrightness_gconf_id ) {
-		als_autobrightness = gconf_value_get_bool(gcv);
-		rethink_als_status();
-	}
-	else if( id == filter_lid_with_als_gconf_id ) {
-		filter_lid_with_als = gconf_value_get_bool(gcv);
-		rethink_als_status();
-	}
-	else if( id == als_input_filter_gconf_id ) {
-		const char *val = gconf_value_get_string(gcv);
+    if( id == fba_gconf_als_enabled_id ) {
+        fba_gconf_als_enabled = gconf_value_get_bool(gcv);
+        fba_status_rethink();
+    }
+    else if( id == fba_gconf_als_autobrightness_id ) {
+        fba_gconf_als_autobrightness = gconf_value_get_bool(gcv);
+        fba_status_rethink();
+    }
+    else if( id == fba_gconf_filter_lid_with_als_id ) {
+        fba_gconf_filter_lid_with_als = gconf_value_get_bool(gcv);
+        fba_status_rethink();
+    }
+    else if( id == fba_gconf_als_input_filter_id ) {
+        const char *val = gconf_value_get_string(gcv);
 
-		if( !eq(als_input_filter, val) ) {
-			g_free(als_input_filter);
-			als_input_filter = g_strdup(val);
-			inputflt_select(als_input_filter);
-		}
-	}
-	else if( id == als_sample_time_gconf_id ) {
-		gint old = als_sample_time;
-		als_sample_time = gconf_value_get_int(gcv);
+        if( !fba_util_streq(fba_gconf_als_input_filter, val) ) {
+            g_free(fba_gconf_als_input_filter);
+            fba_gconf_als_input_filter = g_strdup(val);
+            fba_inputflt_select(fba_gconf_als_input_filter);
+        }
+    }
+    else if( id == fba_gconf_als_sample_time_id ) {
+        gint old = fba_gconf_als_sample_time;
+        fba_gconf_als_sample_time = gconf_value_get_int(gcv);
 
-		if( als_sample_time != old ) {
-			mce_log(LL_NOTICE, "als_sample_time: %d -> %d",
-				old, als_sample_time);
-			// NB: takes effect on the next sample timer restart
-		}
-	}
-	else if (id == color_profile_gconf_id) {
-		const gchar *val = gconf_value_get_string(gcv);
+        if( fba_gconf_als_sample_time != old ) {
+            mce_log(LL_NOTICE, "fba_gconf_als_sample_time: %d -> %d",
+                    old, fba_gconf_als_sample_time);
+            // NB: takes effect on the next sample timer restart
+        }
+    }
+    else if (id == fba_gconf_color_profile_id) {
+        const gchar *val = gconf_value_get_string(gcv);
 
-		if( !eq(color_profile_name, val) ) {
-			if( !set_color_profile(val) )
-				save_color_profile(color_profile_name);
-		}
-	}
-	else {
-		mce_log(LL_WARN, "Spurious GConf value received; confused!");
-	}
+        if( !fba_util_streq(fba_gconf_color_profile, val) ) {
+            if( !fba_color_profile_set(val) )
+                fba_color_profile_save(fba_gconf_color_profile);
+        }
+    }
+    else {
+        mce_log(LL_WARN, "Spurious GConf value received; confused!");
+    }
 
 EXIT:
 
-	return;
+    return;
 }
 
 /** Install gconf notification callbacks
  */
-static void fba_gconf_init(void)
+static void
+fba_gconf_init(void)
 {
-	/* ALS enabled settings */
-	mce_gconf_track_bool(MCE_GCONF_DISPLAY_ALS_ENABLED,
-			     &als_enabled,
-			     ALS_ENABLED_DEFAULT,
-			     fba_gconf_cb,
-			     &als_enabled_gconf_id);
+    /* ALS enabled settings */
+    mce_gconf_track_bool(MCE_GCONF_DISPLAY_ALS_ENABLED,
+                         &fba_gconf_als_enabled,
+                         ALS_ENABLED_DEFAULT,
+                         fba_gconf_cb,
+                         &fba_gconf_als_enabled_id);
 
-	mce_gconf_track_bool(MCE_GCONF_DISPLAY_ALS_AUTOBRIGHTNESS,
-			     &als_autobrightness,
-			     ALS_AUTOBRIGHTNESS_DEFAULT,
-			     fba_gconf_cb,
-			     &als_autobrightness_gconf_id);
+    mce_gconf_track_bool(MCE_GCONF_DISPLAY_ALS_AUTOBRIGHTNESS,
+                         &fba_gconf_als_autobrightness,
+                         ALS_AUTOBRIGHTNESS_DEFAULT,
+                         fba_gconf_cb,
+                         &fba_gconf_als_autobrightness_id);
 
-	mce_gconf_track_bool(MCE_GCONF_FILTER_LID_WITH_ALS,
-			     &filter_lid_with_als,
-			     DEFAULT_FILTER_LID_WITH_ALS,
-			     fba_gconf_cb,
-			     &filter_lid_with_als_gconf_id);
+    mce_gconf_track_bool(MCE_GCONF_FILTER_LID_WITH_ALS,
+                         &fba_gconf_filter_lid_with_als,
+                         DEFAULT_FILTER_LID_WITH_ALS,
+                         fba_gconf_cb,
+                         &fba_gconf_filter_lid_with_als_id);
 
-	/* ALS input filter setting */
-	mce_gconf_track_string(MCE_GCONF_DISPLAY_ALS_INPUT_FILTER,
-			       &als_input_filter,
-			       ALS_INPUT_FILTER_DEFAULT,
-			       fba_gconf_cb,
-			       &als_input_filter_gconf_id);
+    /* ALS input filter setting */
+    mce_gconf_track_string(MCE_GCONF_DISPLAY_ALS_INPUT_FILTER,
+                           &fba_gconf_als_input_filter,
+                           ALS_INPUT_FILTER_DEFAULT,
+                           fba_gconf_cb,
+                           &fba_gconf_als_input_filter_id);
 
-	/* ALS sample time setting */
-	mce_gconf_track_int(MCE_GCONF_DISPLAY_ALS_SAMPLE_TIME,
-			    &als_sample_time,
-			    ALS_SAMPLE_TIME_DEFAULT,
-			    fba_gconf_cb,
-			    &als_sample_time_gconf_id);
+    /* ALS sample time setting */
+    mce_gconf_track_int(MCE_GCONF_DISPLAY_ALS_SAMPLE_TIME,
+                        &fba_gconf_als_sample_time,
+                        ALS_SAMPLE_TIME_DEFAULT,
+                        fba_gconf_cb,
+                        &fba_gconf_als_sample_time_id);
 
-	/* Color profile setting */
-	mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-			       MCE_GCONF_DISPLAY_COLOR_PROFILE,
-			       fba_gconf_cb,
-			       &color_profile_gconf_id);
+    /* Color profile setting */
+    mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
+                           MCE_GCONF_DISPLAY_COLOR_PROFILE,
+                           fba_gconf_cb,
+                           &fba_gconf_color_profile_id);
 
-	init_current_color_profile();
+    fba_color_profile_init();
 }
 
 /** Remove gconf notification callbacks
  */
-static void fba_gconf_quit(void)
+static void
+fba_gconf_quit(void)
 {
-	mce_gconf_notifier_remove(als_enabled_gconf_id),
-		als_enabled_gconf_id = 0;
+    mce_gconf_notifier_remove(fba_gconf_als_enabled_id),
+        fba_gconf_als_enabled_id = 0;
 
-	mce_gconf_notifier_remove(als_autobrightness_gconf_id),
-		als_autobrightness_gconf_id = 0;
+    mce_gconf_notifier_remove(fba_gconf_als_autobrightness_id),
+        fba_gconf_als_autobrightness_id = 0;
 
-	mce_gconf_notifier_remove(filter_lid_with_als_gconf_id),
-		filter_lid_with_als_gconf_id = 0;
+    mce_gconf_notifier_remove(fba_gconf_filter_lid_with_als_id),
+        fba_gconf_filter_lid_with_als_id = 0;
 
-	mce_gconf_notifier_remove(als_input_filter_gconf_id),
-		als_input_filter_gconf_id = 0;
+    mce_gconf_notifier_remove(fba_gconf_als_input_filter_id),
+        fba_gconf_als_input_filter_id = 0;
 
-	mce_gconf_notifier_remove(als_sample_time_gconf_id),
-		als_sample_time_gconf_id = 0;
+    mce_gconf_notifier_remove(fba_gconf_als_sample_time_id),
+        fba_gconf_als_sample_time_id = 0;
 
-	mce_gconf_notifier_remove(color_profile_gconf_id),
-		color_profile_gconf_id = 0;
+    mce_gconf_notifier_remove(fba_gconf_color_profile_id),
+        fba_gconf_color_profile_id = 0;
 
-	quit_color_profiles();
+    fba_color_profile_quit();
 }
 
 /* ========================================================================= *
- * DATAPIPE_TRIGGERS
+ * COLOR_PROFILE
  * ========================================================================= */
+
+/** List of known color profiles (dummy implementation) */
+static const char * const fba_color_profile_names[] =
+{
+    COLOR_PROFILE_ID_HARDCODED,
+};
+
+/** Check if color profile is supported
+ *
+ * @param id color profile name
+ *
+ * @return TRUE if profile is supported, FALSE otherwise
+ */
+static gboolean
+fba_color_profile_exists(const char *id)
+{
+    if( !id )
+        return FALSE;
+
+    size_t n = sizeof fba_color_profile_names / sizeof *fba_color_profile_names;
+    for( size_t i = 0; i < n; ++i ) {
+        if( !strcmp(fba_color_profile_names[i], id) )
+            return TRUE;
+    }
+
+    return FALSE;
+}
+
+/**
+ * Set the current color profile according to requested
+ *
+ * @param id Name of requested color profile
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean
+fba_color_profile_set(const gchar *id)
+{
+    // NOTE: color profile support dropped, this just a stub
+
+    gboolean status = FALSE;
+
+    if( !id ) {
+        goto EXIT;
+    }
+
+    if( fba_gconf_color_profile && !strcmp(fba_gconf_color_profile, id) ) {
+        mce_log(LL_DEBUG, "No change in color profile, ignoring");
+        status = TRUE;
+        goto EXIT;
+    }
+
+    if( !fba_color_profile_exists(id) ) {
+        mce_log(LL_WARN, "%s: unsupported color profile", id);
+        goto EXIT;
+    }
+
+    if( !fba_color_profile_save(id) ) {
+        mce_log(LL_WARN, "The current color profile id can't be saved");
+        goto EXIT;
+    }
+
+    free(fba_gconf_color_profile), fba_gconf_color_profile = strdup(id);
+
+    status = TRUE;
+
+EXIT:
+    return status;
+}
+
+/**
+ * Save the profile id into conf file
+ *
+ * @param id The profile id to save
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean
+fba_color_profile_save(const gchar *id)
+{
+    gboolean status = FALSE;
+
+    if (mce_are_settings_locked() == TRUE) {
+        mce_log(LL_WARN,
+                "Cannot save current color profile id; backup/restore "
+                "or device clear/factory reset pending");
+        goto EXIT;
+    }
+
+    status = mce_gconf_set_string(MCE_GCONF_DISPLAY_COLOR_PROFILE, id);
+
+EXIT:
+    return status;
+}
+
+/**
+ * Read the default color profile id from conf file
+ *
+ * @return Pointer to allocated string if success; NULL otherwise
+ */
+static gchar *
+fba_color_profile_get_default(void)
+{
+    return mce_conf_get_string(MCE_CONF_COMMON_GROUP,
+                               MCE_CONF_DEFAULT_PROFILE_ID_KEY,
+                               NULL);
+}
+
+/**
+ * Read the current color profile id from conf file
+ *
+ * @return Pointer to allocated string if success; NULL otherwise
+ */
+static gchar *
+fba_color_profile_get_current(void)
+{
+    gchar *retval = NULL;
+    (void)mce_gconf_get_string(MCE_GCONF_DISPLAY_COLOR_PROFILE,
+                               &retval);
+
+    /* Treat empty string as NULL */
+    if( retval && !*retval )
+        g_free(retval), retval = 0;
+
+    return retval;
+}
+
+/**
+ * Initialization of saveed color profile during boot
+ *
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean
+fba_color_profile_init(void)
+{
+    gchar *profile = NULL;
+    gboolean status = FALSE;
+
+    profile = fba_color_profile_get_current();
+
+    if (profile == NULL)
+        profile = fba_color_profile_get_default();
+
+    if (profile != NULL) {
+        status = fba_color_profile_set(profile);
+        g_free(profile);
+    }
+
+    return status;
+}
+
+static void
+fba_color_profile_quit(void)
+{
+    free(fba_gconf_color_profile), fba_gconf_color_profile = 0;
+}
+
+/* ========================================================================= *
+ * SENSOR_INPUT_FILTERING
+ * ========================================================================= */
+
+/* ------------------------------------------------------------------------- *
+ * INPUT_FILTER_BACKEND_DUMMY
+ * ------------------------------------------------------------------------- */
+
+static int
+fba_inputflt_dummy_filter(int add)
+{
+    return add;
+}
+
+static bool
+fba_inputflt_dummy_stable(void)
+{
+    return true;
+}
+
+static void
+fba_inputflt_dummy_reset(void)
+{
+}
+
+/* ------------------------------------------------------------------------- *
+ * INPUT_FILTER_BACKEND_MEDIAN
+ * ------------------------------------------------------------------------- */
+
+/** Moving window of ALS measurements */
+static int  fba_inputflt_median_fifo[FBA_INPUTFLT_MEDIAN_SIZE] = {  };
+
+/** Contents of fba_inputflt_median_fifo in ascending order */
+static int  fba_inputflt_median_stat[FBA_INPUTFLT_MEDIAN_SIZE] = {  };;
+
+static int
+fba_inputflt_median_filter(int add)
+{
+    /* Adding negative sample values mean the sensor is not
+     * in use and we should forget any history that exists */
+    if( add < 0 ) {
+        for( int i = 0; i < FBA_INPUTFLT_MEDIAN_SIZE; ++i )
+            fba_inputflt_median_fifo[i] = fba_inputflt_median_stat[i] = -1;
+        goto EXIT;
+    }
+
+    /* Value to be removed */
+    int rem = fba_inputflt_median_fifo[0];
+
+    /* If negative value gets shifted out, it means we do not
+     * have history. Initialize with the value we have */
+    if( rem < 0 ) {
+        for( int i = 0; i < FBA_INPUTFLT_MEDIAN_SIZE; ++i )
+            fba_inputflt_median_fifo[i] = fba_inputflt_median_stat[i] = add;
+        goto EXIT;
+    }
+
+    /* Shift the new value to the sample window fifo */
+    for( int i = 1; i < FBA_INPUTFLT_MEDIAN_SIZE; ++i )
+        fba_inputflt_median_fifo[i-1] = fba_inputflt_median_fifo[i];
+    fba_inputflt_median_fifo[FBA_INPUTFLT_MEDIAN_SIZE-1] = add;
+
+    /* If we shift in the same value as what was shifted out,
+     * the ordered statistics do not change */
+    if( add == rem )
+        goto EXIT;
+
+    /* Do one pass filtering of ordered statistics:
+     * Remove the value we shifted out of the fifo
+     * and insert the new sample to correct place. */
+
+    int src = 0, dst = 0, tmp;
+    int stk = fba_inputflt_median_stat[src++];
+
+    while( dst < FBA_INPUTFLT_MEDIAN_SIZE ) {
+        if( stk < add )
+            tmp = stk, stk = add, add = tmp;
+
+        if( add == rem )
+            rem = INT_MAX;
+        else
+            fba_inputflt_median_stat[dst++] = add;
+
+        if( src < FBA_INPUTFLT_MEDIAN_SIZE )
+            add = fba_inputflt_median_stat[src++];
+        else
+            add = INT_MAX;
+    }
+
+EXIT:
+    mce_log(LL_DEBUG, "%d - %d - %d",
+            fba_inputflt_median_stat[0],
+            fba_inputflt_median_stat[FBA_INPUTFLT_MEDIAN_SIZE/2],
+            fba_inputflt_median_stat[FBA_INPUTFLT_MEDIAN_SIZE-1]);
+
+    /* Return median of the history window */
+    return fba_inputflt_median_stat[FBA_INPUTFLT_MEDIAN_SIZE/2];
+}
+
+static bool
+fba_inputflt_median_stable(void)
+{
+    /* The smallest and the largest values in the sorted
+     * samples buffer are equal */
+    int small = 0;
+    int large = FBA_INPUTFLT_MEDIAN_SIZE-1;
+    return fba_inputflt_median_stat[small] == fba_inputflt_median_stat[large];
+}
+
+static void
+fba_inputflt_median_reset(void)
+{
+    fba_inputflt_median_filter(-1);
+}
+
+/* ------------------------------------------------------------------------- *
+ * INPUT_FILTER_FRONTEND
+ * ------------------------------------------------------------------------- */
+
+/** Array of available input filter backendss */
+static const fba_inputflt_t fba_inputflt_lut[] =
+{
+    // NOTE: "disabled" must be in the 1st slot
+    {
+        .fi_name   = "disabled",
+        .fi_reset  = fba_inputflt_dummy_reset,
+        .fi_filter = fba_inputflt_dummy_filter,
+        .fi_stable = fba_inputflt_dummy_stable,
+    },
+    {
+        .fi_name   = "median",
+        .fi_reset  = fba_inputflt_median_reset,
+        .fi_filter = fba_inputflt_median_filter,
+        .fi_stable = fba_inputflt_median_stable,
+    },
+};
+
+/** Currently used input filter backend */
+static const fba_inputflt_t *fba_inputflt_cur = fba_inputflt_lut;
+
+/** Latest Lux value fed in to the filter */
+static gint fba_inputflt_input_lux = 0;
+
+/** Latest Lux value emitted from the filter */
+static gint fba_inputflt_output_lux = -1;
+
+/** Flag for: forget history on the next als change */
+static bool fba_inputflt_flush_history = true;
+
+/** Timer ID for: ALS data sampling */
+static guint fba_inputflt_sampling_id = 0;
+
+/** Set input filter backend
+ *
+ * @param name  name of the backend to use
+ */
+static void
+fba_inputflt_select(const char *name)
+{
+    fba_inputflt_reset();
+
+    if( !name ) {
+        fba_inputflt_cur = fba_inputflt_lut;
+        goto EXIT;
+    }
+
+    for( size_t i = 0; ; ++i ) {
+        if( i == G_N_ELEMENTS(fba_inputflt_lut) ) {
+            mce_log(LL_WARN, "filter '%s' is unknown", name);
+            fba_inputflt_cur = fba_inputflt_lut;
+            break;
+        }
+        if( !strcmp(fba_inputflt_lut[i].fi_name, name) ) {
+            fba_inputflt_cur = fba_inputflt_lut + i;
+            break;
+        }
+    }
+EXIT:
+    mce_log(LL_NOTICE, "selected '%s' als filter",
+            fba_inputflt_cur->fi_name);
+
+    fba_inputflt_reset();
+}
+
+/** Reset history buffer
+ *
+ * Is used to clear stale history data when powering up the sensor.
+ */
+static void
+fba_inputflt_reset(void)
+{
+    fba_inputflt_cur->fi_reset();
+}
+
+/** Apply filtering backend for als sensor value
+ *
+ * @param add  sample to shift into the filter history
+ *
+ * @return filtered value
+ */
+static int
+fba_inputflt_filter(int lux)
+{
+    return fba_inputflt_cur->fi_filter(lux);
+}
+
+/** Check if the whole history buffer is filled with the same value
+ *
+ * Is used to determine when the pseudo sampling timer can be stopped.
+ */
+static bool
+fba_inputflt_stable(void)
+{
+    return fba_inputflt_cur->fi_stable();
+}
+
+/** Request filter history to be flushed on the next ALS change
+ */
+static void
+fba_inputflt_flush_on_change(void)
+{
+    fba_inputflt_flush_history = true;
+}
+
+/** Get filtered ALS state and feed it to datapipes
+ *
+ * @param lux  sensor reading, or -1 for no-data
+ */
+static void
+fba_inputflt_sampling_output(int lux)
+{
+    lux = fba_inputflt_filter(lux);
+
+    if( fba_inputflt_output_lux == lux )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "output: %d -> %d", fba_inputflt_output_lux, lux);
+
+    fba_inputflt_output_lux = lux;
+
+    fba_datapipe_execute_brightness_change();
+
+    /* Feed filtered sensor data to datapipe */
+    execute_datapipe(&ambient_light_level_pipe,
+                     GINT_TO_POINTER(fba_inputflt_output_lux),
+                     USE_INDATA, CACHE_INDATA);
+EXIT:
+    return;
+}
+/** Timer callback for: ALS data sampling
+ *
+ * @param aptr (unused user data pointer)
+ *
+ * @return TRUE to keep timer repeating, or FALSE to stop it
+ */
+static gboolean
+fba_inputflt_sampling_cb(gpointer aptr)
+{
+    (void)aptr;
+
+    if( !fba_inputflt_sampling_id )
+        return FALSE;
+
+    /* Drive the filter */
+    fba_inputflt_sampling_output(fba_inputflt_input_lux);
+
+    /* Keep timer active while changes come in */
+
+    if( !fba_inputflt_stable() )
+        return TRUE;
+
+    /* Stop sampling activity */
+    mce_log(LL_DEBUG, "stable");
+    fba_inputflt_sampling_id = 0;
+    return FALSE;
+}
+
+static int
+fba_inputflt_sampling_time(void)
+{
+    return mce_clip_int(ALS_SAMPLE_TIME_MIN,
+                        ALS_SAMPLE_TIME_MAX,
+                        fba_gconf_als_sample_time);
+}
+
+/** Start ALS sampling timer
+ */
+static void
+fba_inputflt_sampling_start(void)
+{
+    // check if we need to flush history
+    if( fba_inputflt_flush_history ) {
+        fba_inputflt_flush_history = false;
+
+        mce_log(LL_DEBUG, "reset");
+
+        if( fba_inputflt_sampling_id ) {
+            g_source_remove(fba_inputflt_sampling_id),
+                fba_inputflt_sampling_id = 0;
+        }
+        fba_inputflt_reset();
+    }
+
+    // start collecting history
+    if( !fba_inputflt_sampling_id ) {
+        mce_log(LL_DEBUG, "start");
+        fba_inputflt_sampling_id = g_timeout_add(fba_inputflt_sampling_time(),
+                                             fba_inputflt_sampling_cb, 0);
+
+        fba_inputflt_sampling_output(fba_inputflt_input_lux);
+    }
+}
+
+/** Stop ALS sampling timer
+ */
+static void
+fba_inputflt_sampling_stop(void)
+{
+    if( fba_inputflt_sampling_id ) {
+        mce_log(LL_DEBUG, "stop");
+        g_source_remove(fba_inputflt_sampling_id),
+            fba_inputflt_sampling_id = 0;
+    }
+
+    fba_inputflt_sampling_output(fba_inputflt_input_lux);
+}
+
+/** Feed sensor input to filter
+ *
+ * @param lux  sensor reading, or -1 for no-data
+ */
+static void
+fba_inputflt_sampling_input(int lux)
+{
+    if( fba_inputflt_input_lux == lux )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "input: %d -> %d", fba_inputflt_input_lux, lux);
+    fba_inputflt_input_lux = lux;
+
+    if( fba_inputflt_input_lux < 0 )
+        fba_inputflt_sampling_stop();
+    else
+        fba_inputflt_sampling_start();
+
+EXIT:
+    return;
+}
+
+/** Initialize ALS filtering
+ */
+static void
+fba_inputflt_init(void)
+{
+    fba_inputflt_select(fba_gconf_als_input_filter);
+}
+
+/** De-initialize ALS filtering
+ */
+static void
+fba_inputflt_quit(void)
+{
+    /* Stop sampling timer by feeding no-data to filter */
+    fba_inputflt_sampling_input(-1);
+}
+
+/* ========================================================================= *
+ * ALS_FILTER
+ * ========================================================================= */
+
+/** ALS filtering state for display backlight brightness */
+static fba_als_filter_t lut_display =
+{
+    .id = "Display",
+};
+
+/** ALS filtering state for keypad backlight brightness */
+static fba_als_filter_t lut_key =
+{
+    .id = "Keypad",
+};
+
+/** ALS filtering state for indication led brightness */
+static fba_als_filter_t lut_led =
+{
+    .id = "Led",
+};
+
+/** ALS filtering state for low power mode display simulation */
+static fba_als_filter_t lut_lpm =
+{
+    .id = "LPM",
+};
+
+/** Remove transition thresholds from filtering state
+ *
+ * Set thresholds so that any lux value will be out of bounds.
+ *
+ * @param self ALS filtering state data
+ */
+static void
+fba_als_filter_clear_threshold(fba_als_filter_t *self)
+{
+    self->lux_lo = INT_MAX;
+    self->lux_hi = 0;
+}
+
+/** Load ALS ramp into filtering state
+ *
+ * @param self ALS filtering state data
+ * @param grp  Configuration group name
+ * @param prof ALS profile id
+ */
+static bool
+fba_als_filter_load_profile(fba_als_filter_t *self, const char *grp, int prof)
+{
+    bool  success = false;
+    gsize lim_cnt = 0;
+    gsize lev_cnt = 0;
+    gint *lim_val = 0;
+    gint *lev_val = 0;
+    char  lim_key[64];
+    char  lev_key[64];
+
+    snprintf(lim_key, sizeof lim_key, "LimitsProfile%d",  prof);
+    snprintf(lev_key, sizeof lev_key, "LevelsProfile%d",  prof);
+
+    lim_val = mce_conf_get_int_list(grp, lim_key, &lim_cnt);
+    lev_val = mce_conf_get_int_list(grp, lev_key, &lev_cnt);
+
+    if( !lim_val || lim_cnt < 1 ) {
+        if( prof == 0 )
+            mce_log(LL_WARN, "[%s] %s: no items", grp, lim_key);
+        goto EXIT;
+    }
+
+    if( !lev_val || lev_cnt != lim_cnt ) {
+        mce_log(LL_WARN, "[%s] %s: must have %zd items",
+                grp, lev_key, lim_cnt);
+        goto EXIT;
+    }
+
+    if( lim_cnt >  FBA_PROFILE_STEPS ) {
+        lim_cnt = FBA_PROFILE_STEPS;
+        mce_log(LL_WARN, "[%s] %s: excess items",
+                grp, lim_key);
+    }
+    else if( lim_cnt < FBA_PROFILE_STEPS ) {
+        mce_log(LL_DEBUG, "[%s] %s: missing items",
+                grp, lim_key);
+    }
+
+    for( gsize k = 0; k < lim_cnt; ++k ) {
+        self->lut[prof][k].lux = lim_val[k];
+        self->lut[prof][k].val = lev_val[k];
+    }
+
+    success = true;
+EXIT:
+    g_free(lim_val);
+    g_free(lev_val);
+
+    return success;
+}
+
+/** Initialize ALS filtering state
+ *
+ * @param self ALS filtering state data
+ */
+static void
+fba_als_filter_reset_profiles(fba_als_filter_t *self)
+{
+    /* Reset ramps to a state where any lux value will
+     * yield 100% brightness */
+    for( int i = 0; i < FBA_PROFILE_COUNT; ++i ) {
+        for( int k = 0; k <= FBA_PROFILE_STEPS; ++k ) {
+            self->lut[i][k].lux = INT_MAX;
+            self->lut[i][k].val = 100;
+        }
+    }
+
+    /* Default to 100% output */
+    self->val  = 100;
+
+    /* Invalidate thresholds */
+    self->prof = -1;
+    fba_als_filter_clear_threshold(self);
+}
+
+/** Load ALS ramps into filtering state
+ *
+ * @param self ALS filtering state data
+ */
+static void
+fba_als_filter_load_profiles(fba_als_filter_t *self)
+{
+    fba_als_filter_reset_profiles(self);
+
+    char grp[64];
+    snprintf(grp, sizeof grp, "Brightness%s", self->id);
+
+    if( !mce_conf_has_group(grp) ) {
+        mce_log(LL_WARN, "[%s]: als config missing", grp);
+        goto EXIT;
+    }
+
+    for( self->profiles = 0; self->profiles < FBA_PROFILE_COUNT; ++self->profiles ) {
+        if( !fba_als_filter_load_profile(self, grp, self->profiles) )
+            break;
+    }
+
+    if( self->profiles < 1 )
+        mce_log(LL_WARN, "[%s]: als config broken", grp);
+EXIT:
+    return;
+}
+
+/** Get lux value for given profile and step in ramp
+ *
+ * @param self ALS filtering state data
+ * @param prof ALS profile id
+ * @param slot position in ramp
+ *
+ * @return lux value
+ */
+static int
+fba_als_filter_get_lux(fba_als_filter_t *self, int prof, int slot)
+{
+    if( slot < 0 )
+        return 0;
+    if( slot < FBA_PROFILE_STEPS )
+        return self->lut[prof][slot].lux;
+    return INT_MAX;
+}
+
+/** Run ALS filter
+ *
+ * @param self ALS filtering state data
+ * @param prof ALS profile id
+ * @param lux  ambient light value
+ *
+ * @return 0 ... 100 percentage
+ */
+static int
+fba_als_filter_run(fba_als_filter_t *self, int prof, int lux)
+{
+    mce_log(LL_DEBUG, "FILTERING: %s", self->id);
+
+    if( lux < 0 ) {
+        mce_log(LL_DEBUG, "no lux data yet");
+        goto EXIT;
+    }
+
+    if( self->prof != prof ) {
+        mce_log(LL_DEBUG, "profile changed");
+    }
+    else if( self->lux_lo <= lux && lux <= self->lux_hi ) {
+        mce_log(LL_DEBUG, "within thresholds");
+        goto EXIT;
+    }
+
+    int slot;
+
+    for( slot = 0; slot < FBA_PROFILE_STEPS; ++slot ) {
+        if( lux < self->lut[prof][slot].lux )
+            break;
+    }
+
+    self->prof = prof;
+
+    if( slot < FBA_PROFILE_STEPS )
+        self->val = self->lut[prof][slot].val;
+    else
+        self->val = 100;
+
+    self->lux_lo = 0;
+    self->lux_hi = INT_MAX;
+
+    /* Add hysteresis to transitions that make the display dimmer
+     *
+     *                 lux from ALS
+     *                  |
+     *                  |  configuration slot
+     *                  |   |
+     *                  v   |
+     *    0----A------B-----C-----> [lux]
+     *
+     *              |-------|
+     * threshold    lo      hi
+     */
+
+    int a = fba_als_filter_get_lux(self, prof, slot-2);
+    int b = fba_als_filter_get_lux(self, prof, slot-1);
+    int c = fba_als_filter_get_lux(self, prof, slot+0);
+
+    self->lux_lo = b - fba_util_imin(b-a, c-b) / 10;
+    self->lux_hi = c;
+
+    mce_log(LL_DEBUG, "prof=%d, slot=%d, range=%d...%d",
+            prof, slot, self->lux_lo, self->lux_hi);
+
+EXIT:
+    return self->val;
+}
+
+/** Setup ini-file based config items
+ */
+static void
+fba_als_filter_init(void)
+{
+    /* Read lux ramps from configuration */
+    fba_als_filter_load_profiles(&lut_display);
+    fba_als_filter_load_profiles(&lut_led);
+    fba_als_filter_load_profiles(&lut_key);
+    fba_als_filter_load_profiles(&lut_lpm);
+}
+
+/* ========================================================================= *
+ * DATAPIPE_TRACKING
+ * ========================================================================= */
+
+/** Cached display state; tracked via fba_datapipe_display_state_trigger() */
+static display_state_t fba_display_state = MCE_DISPLAY_UNDEF;
+
+/** Cached target display state; tracked via fba_datapipe_display_state_next_trigger() */
+static display_state_t fba_display_state_next = MCE_DISPLAY_UNDEF;
+
+/** Cached als poll state; tracked via fba_datapipe_ambient_light_poll_filter() */
+static bool fba_ambient_light_poll = false;
+
+/**
+ * Ambient Light Sensor filter for display brightness
+ *
+ * @param data The un-processed brightness setting (1-100) stored in a pointer
+ * @return The processed brightness value (percentage) stored in a pointer
+ */
+static gpointer
+fba_datapipe_display_brightness_filter(gpointer data)
+{
+    int setting = GPOINTER_TO_INT(data);
+
+    int brightness = setting;
+
+    if( !fba_gconf_als_autobrightness || fba_inputflt_output_lux < 0 )
+        goto EXIT;
+
+    int max_prof = lut_display.profiles - 1;
+
+    if( max_prof < 0 )
+        goto EXIT;
+
+    int prof = mce_xlat_int(1,100, 0,max_prof, setting);
+
+    brightness = fba_als_filter_run(&lut_display, prof,
+                                    fba_inputflt_output_lux);
+
+EXIT:
+    mce_log(LL_DEBUG, "in=%d -> out=%d", setting, brightness);
+    return GINT_TO_POINTER(brightness);
+}
+
+/**
+ * Ambient Light Sensor filter for LED brightness
+ *
+ * @param data The un-processed brightness setting (1-100) stored in a pointer
+ * @return The processed brightness value
+ */
+static gpointer
+fba_datapipe_led_brightness_filter(gpointer data)
+{
+    int value = GPOINTER_TO_INT(data);
+    int scale = 40;
+
+    if( !fba_gconf_als_autobrightness || fba_inputflt_output_lux < 0 )
+        goto EXIT;
+
+    if( lut_led.profiles < 1 )
+        goto EXIT;
+
+    scale = fba_als_filter_run(&lut_led, 0, fba_inputflt_output_lux);
+
+EXIT:
+    return GINT_TO_POINTER(value * scale / 100);
+}
+
+/** Ambient Light Sensor filter for LPM brightness
+ *
+ * @param data The un-processed brightness setting (1-100) stored in a pointer
+ * @return The processed brightness value
+ */
+static gpointer
+fba_datapipe_lpm_brightness_filter(gpointer data)
+{
+    int value = GPOINTER_TO_INT(data);
+
+    if( !fba_gconf_als_autobrightness || fba_inputflt_output_lux < 0 )
+        goto EXIT;
+
+    if( lut_lpm.profiles < 1 )
+        goto EXIT;
+
+    /* Note: Input value is ignored and output is
+     *       determined only by the als config */
+    value = fba_als_filter_run(&lut_lpm, 0, fba_inputflt_output_lux);
+
+EXIT:
+    return GINT_TO_POINTER(value);
+}
+
+/**
+ * Ambient Light Sensor filter for keyboard backlight brightness
+ *
+ * @param data The un-processed brightness setting (1-100) stored in a pointer
+ * @return The processed brightness value
+ */
+static gpointer
+fba_datapipe_key_backlight_filter(gpointer data)
+{
+    int value = GPOINTER_TO_INT(data);
+    int scale = 100;
+
+    if( !fba_gconf_als_autobrightness || fba_inputflt_output_lux < 0 )
+        goto EXIT;
+
+    if( lut_key.profiles < 1 )
+        goto EXIT;
+
+    scale = fba_als_filter_run(&lut_key, 0, fba_inputflt_output_lux);
+
+EXIT:
+    return GINT_TO_POINTER(value * scale / 100);
+}
+
+/** Ambient Light Sensor filter for temporary sensor enable
+ *
+ * @param data Requested sensor enable/disable bool (as void pointer)
+ *
+ * @return Granted  sensor enable/disable bool (as void pointer)
+ */
+static gpointer
+fba_datapipe_ambient_light_poll_filter(gpointer data)
+{
+    bool prev = fba_ambient_light_poll;
+    fba_ambient_light_poll = GPOINTER_TO_INT(data);
+
+    if( !fba_gconf_als_enabled )
+        fba_ambient_light_poll = FALSE;
+
+    if( fba_ambient_light_poll == prev )
+        goto EXIT;
+
+    mce_log(LL_DEVEL, "ambient_light_poll = %s",
+            fba_ambient_light_poll ? "true" : "false");
+
+    /* Sensor status is affected only if the value changes */
+    fba_status_rethink();
+
+EXIT:
+
+    /* The termination timer must be renewed/stopped even
+     * if the value does not change. */
+    fba_sensorpoll_rethink();
+
+    return GINT_TO_POINTER(fba_ambient_light_poll);
+}
+
+/**
+ * Handle display state change
+ *
+ * @param data The display stated stored in a pointer
+ */
+static void
+fba_datapipe_display_state_trigger(gconstpointer data)
+{
+    display_state_t prev = fba_display_state;
+    fba_display_state = GPOINTER_TO_INT(data);
+
+    if( prev == fba_display_state )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "display_state: %s -> %s",
+            display_state_repr(prev),
+            display_state_repr(fba_display_state));
+
+    fba_status_rethink();
+
+EXIT:
+    return;
+}
+
+static void
+fba_datapipe_display_state_next_trigger(gconstpointer data)
+{
+    display_state_t prev = fba_display_state_next;
+    fba_display_state_next = GPOINTER_TO_INT(data);
+
+    if( prev == fba_display_state_next )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "display_state_next: %s -> %s",
+            display_state_repr(prev),
+            display_state_repr(fba_display_state_next));
+
+    fba_status_rethink();
+
+EXIT:
+    return;
+}
+
+static void
+fba_datapipe_execute_brightness_change(void)
+{
+    /* Re-filter the brightness */
+    execute_datapipe(&display_brightness_pipe, NULL,
+                     USE_CACHE, DONT_CACHE_INDATA);
+    execute_datapipe(&led_brightness_pipe, NULL,
+                     USE_CACHE, DONT_CACHE_INDATA);
+    execute_datapipe(&lpm_brightness_pipe, NULL,
+                     USE_CACHE, DONT_CACHE_INDATA);
+    execute_datapipe(&key_backlight_pipe, NULL,
+                     USE_CACHE, DONT_CACHE_INDATA);
+}
+
+/** Array of datapipe handlers */
+static datapipe_handler_t fba_datapipe_handlers[] =
+{
+    // input filters
+    {
+        .datapipe  = &display_brightness_pipe,
+        .filter_cb = fba_datapipe_display_brightness_filter,
+    },
+    {
+        .datapipe  = &led_brightness_pipe,
+        .filter_cb = fba_datapipe_led_brightness_filter,
+    },
+    {
+        .datapipe  = &lpm_brightness_pipe,
+        .filter_cb = fba_datapipe_lpm_brightness_filter,
+    },
+    {
+        .datapipe  = &key_backlight_pipe,
+        .filter_cb = fba_datapipe_key_backlight_filter,
+    },
+    {
+        .datapipe  = &ambient_light_poll_pipe,
+        .filter_cb = fba_datapipe_ambient_light_poll_filter,
+    },
+
+    // output triggers
+    {
+        .datapipe  = &display_state_next_pipe,
+        .output_cb = fba_datapipe_display_state_next_trigger,
+    },
+    {
+        .datapipe  = &display_state_pipe,
+        .output_cb = fba_datapipe_display_state_trigger,
+    },
+
+    // sentinel
+    {
+        .datapipe  = 0,
+    }
+};
+
+static datapipe_bindings_t fba_datapipe_bindings =
+{
+    .module   = MODULE_NAME,
+    .handlers = fba_datapipe_handlers,
+};
 
 /** Install datapipe triggers/filters
  */
-static void fba_datapipe_init(void)
+static void
+fba_datapipe_init(void)
 {
-	/* Get intial display state */
-	display_state = display_state_get();
-
-	/* Append triggers/filters to datapipes */
-	append_filter_to_datapipe(&display_brightness_pipe,
-				  display_brightness_filter);
-	append_filter_to_datapipe(&led_brightness_pipe,
-				  led_brightness_filter);
-	append_filter_to_datapipe(&lpm_brightness_pipe,
-				  lpm_brightness_filter);
-	append_filter_to_datapipe(&key_backlight_pipe,
-				  key_backlight_filter);
-	append_output_trigger_to_datapipe(&display_state_next_pipe,
-					  display_state_next_trigger);
-	append_output_trigger_to_datapipe(&display_state_pipe,
-					  display_state_trigger);
+    datapipe_bindings_init(&fba_datapipe_bindings);
 }
 
 /** Remove datapipe triggers/filters
  */
-static void fba_datapipe_quit(void)
+static void
+fba_datapipe_quit(void)
 {
-	remove_output_trigger_from_datapipe(&display_state_next_pipe,
-					    display_state_next_trigger);
-	remove_output_trigger_from_datapipe(&display_state_pipe,
-					    display_state_trigger);
-	remove_filter_from_datapipe(&key_backlight_pipe,
-				    key_backlight_filter);
-	remove_filter_from_datapipe(&led_brightness_pipe,
-				    led_brightness_filter);
-	remove_filter_from_datapipe(&lpm_brightness_pipe,
-				    lpm_brightness_filter);
-	remove_filter_from_datapipe(&display_brightness_pipe,
-				    display_brightness_filter);
+    datapipe_bindings_quit(&fba_datapipe_bindings);
 }
 
 /* ========================================================================= *
- * INI_SETTINGS
+ * DBUS_HANDLERS
  * ========================================================================= */
 
-/** Setup ini-file based config items
+/**
+ * Send the current profile id
+ *
+ * @param method_call A DBusMessage to reply to
+ * @return TRUE
  */
-static void fba_config_init(void)
+static gboolean
+fba_dbus_send_current_color_profile(DBusMessage *method_call)
 {
-	/* Read lux ramps from configuration */
-	als_filter_load_config(&lut_display);
-	als_filter_load_config(&lut_led);
-	als_filter_load_config(&lut_key);
-	als_filter_load_config(&lut_lpm);
+    DBusMessage *msg = 0;
+    const char  *val = fba_gconf_color_profile ?: COLOR_PROFILE_ID_HARDCODED;
+
+    if( method_call )
+        msg = dbus_new_method_reply(method_call);
+    else
+        msg = dbus_new_signal(MCE_SIGNAL_PATH,
+                              MCE_SIGNAL_IF,
+                              MCE_COLOR_PROFILE_SIG);
+    if( !msg )
+        goto EXIT;
+
+    if( !dbus_message_append_args(msg,
+                                  DBUS_TYPE_STRING, &val,
+                                  DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    dbus_send_message(msg), msg = 0;
+EXIT:
+    if( msg ) dbus_message_unref(msg);
+
+    return TRUE;
+}
+
+/**
+ * D-Bus callback for the get color profile method call
+ *
+ * @param msg The D-Bus message
+ * @return TRUE
+ */
+static gboolean
+fba_dbus_get_color_profile_cb(DBusMessage *const msg)
+{
+    mce_log(LL_DEVEL, "Received get color profile request from %s",
+            mce_dbus_get_message_sender_ident(msg));
+
+    if( dbus_message_get_no_reply(msg) )
+        goto EXIT;
+
+    fba_dbus_send_current_color_profile(msg);
+
+EXIT:
+    return TRUE;
+}
+
+/** D-Bus callback for the get color profile ids method call
+ *
+ * @param msg The D-Bus message
+ * @return TRUE
+ */
+static gboolean
+fba_dbus_get_color_profiles_cb(DBusMessage *const msg)
+{
+    mce_log(LL_DEVEL, "Received list color profiles request from %s",
+            mce_dbus_get_message_sender_ident(msg));
+
+    DBusMessage *rsp = 0;
+    int cnt = sizeof fba_color_profile_names / sizeof *fba_color_profile_names;
+    const char * const * vec = fba_color_profile_names;
+
+    if( dbus_message_get_no_reply(msg) )
+        goto EXIT;
+
+    if( !(rsp = dbus_message_new_method_return(msg)) )
+        goto EXIT;
+
+    if( !dbus_message_append_args(rsp,
+                                  DBUS_TYPE_ARRAY,
+                                  DBUS_TYPE_STRING, &vec, cnt,
+                                  DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    dbus_send_message(rsp), rsp = 0;
+
+EXIT:
+    if( rsp ) dbus_message_unref(rsp);
+
+    return TRUE;
+}
+
+/** D-Bus callback for the color profile change method call
+ *
+ * @param msg The D-Bus message
+ * @return TRUE
+ */
+static gboolean
+fba_dbus_set_color_profile_cb(DBusMessage *const msg)
+{
+    mce_log(LL_DEVEL, "Received set color profile request from %s",
+            mce_dbus_get_message_sender_ident(msg));
+
+    const char  *val = 0;
+    DBusError    err = DBUS_ERROR_INIT;
+    dbus_bool_t  ack = FALSE;
+    DBusMessage *rsp = 0;
+
+    if( !dbus_message_get_args(msg, &err,
+                               DBUS_TYPE_STRING, &val,
+                               DBUS_TYPE_INVALID)) {
+        // XXX: should we return an error instead?
+        mce_log(LL_ERR, "Failed to get argument from %s.%s: %s: %s",
+                MCE_REQUEST_IF, MCE_COLOR_PROFILE_CHANGE_REQ,
+                err.name, err.message);
+    }
+    else {
+        if( fba_color_profile_set(val) )
+            ack = TRUE;
+    }
+
+    if( dbus_message_get_no_reply(msg) )
+        goto EXIT;
+
+    if( !(rsp = dbus_message_new_method_return(msg)) )
+        goto EXIT;
+
+    dbus_message_append_args(rsp,
+                             DBUS_TYPE_BOOLEAN, &ack,
+                             DBUS_TYPE_INVALID);
+EXIT:
+    if( rsp ) dbus_send_message(rsp), rsp = 0;
+
+    dbus_error_free(&err);
+    return TRUE;
+}
+
+/** Array of dbus message handlers */
+static mce_dbus_handler_t filter_brightness_dbus_handlers[] =
+{
+    /* signals - outbound (for Introspect purposes only) */
+    {
+        .interface = MCE_SIGNAL_IF,
+        .name      = MCE_COLOR_PROFILE_SIG,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .args      =
+        "    <arg name=\"active_color_profile\" type=\"s\"/>\n"
+    },
+    /* method calls */
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_COLOR_PROFILE_GET,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = fba_dbus_get_color_profile_cb,
+        .args      =
+        "    <arg direction=\"out\" name=\"profile_name\" type=\"s\"/>\n"
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_COLOR_PROFILE_IDS_GET,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = fba_dbus_get_color_profiles_cb,
+        .args      =
+        "    <arg direction=\"out\" name=\"profile_names\" type=\"as\"/>\n"
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_COLOR_PROFILE_CHANGE_REQ,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = fba_dbus_set_color_profile_cb,
+        .args      =
+        "    <arg direction=\"in\" name=\"profile_name\" type=\"s\"/>\n"
+        "    <arg direction=\"out\" name=\"success\" type=\"b\"/>\n"
+    },
+    /* sentinel */
+    {
+        .interface = 0
+    }
+};
+
+/** Add dbus handlers
+ */
+static void
+fba_dbus_init(void)
+{
+    mce_dbus_handler_register_array(filter_brightness_dbus_handlers);
+}
+
+/** Remove dbus handlers
+ */
+static void
+fba_dbus_quit(void)
+{
+    mce_dbus_handler_unregister_array(filter_brightness_dbus_handlers);
 }
 
 /* ========================================================================= *
- * Module load / unload
+ * SENSOR_STATUS
+ * ========================================================================= */
+
+/** Raw lux value from the ALS */
+static gint fba_status_sensor_lux = -1;
+
+/** Handle lux value changed event
+ *
+ * @param lux ambient light value
+ */
+static void
+fba_status_sensor_value_change_cb(int lux)
+{
+    if( !fba_gconf_als_enabled )
+        fba_status_sensor_lux = -1;
+    else
+        fba_status_sensor_lux = lux;
+
+    mce_log(LL_DEBUG, "sensor: %d", fba_status_sensor_lux);
+
+    /* Filter raw sensor data */
+    fba_inputflt_sampling_input(fba_status_sensor_lux);
+
+    /* Feed raw sensor data to datapipe */
+    execute_datapipe(&ambient_light_sensor_pipe,
+                     GINT_TO_POINTER(fba_status_sensor_lux),
+                     USE_INDATA, CACHE_INDATA);
+}
+
+static bool
+fba_status_sensor_is_needed(void)
+{
+    bool need_als = false;
+
+    switch( fba_display_state_next ) {
+    case MCE_DISPLAY_ON:
+    case MCE_DISPLAY_DIM:
+    case MCE_DISPLAY_LPM_OFF:
+    case MCE_DISPLAY_LPM_ON:
+        if( fba_gconf_als_autobrightness || fba_gconf_filter_lid_with_als )
+            need_als = true;
+        break;
+
+    default:
+    case MCE_DISPLAY_OFF:
+    case MCE_DISPLAY_UNDEF:
+        break;
+    }
+
+    return need_als;
+}
+
+/** Check if ALS sensor should be enabled or disabled
+ */
+static void
+fba_status_rethink(void)
+{
+    static int old_autobrightness = -1;
+
+    static int enable_old = -1;
+    bool       enable_new = false;
+
+    if( fba_gconf_als_enabled )
+        enable_new = (fba_ambient_light_poll ||
+                      fba_status_sensor_is_needed());
+
+    if( fba_module_unload )
+        enable_new = false;
+
+    if( enable_old == enable_new )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "enabled=%d; autobright=%d; filter_lid=%d -> enable=%d",
+            fba_gconf_als_enabled, fba_gconf_als_autobrightness, fba_gconf_filter_lid_with_als, enable_new);
+
+    enable_old = enable_new;
+
+    if( enable_new ) {
+        /* Enable change notifications */
+        mce_sensorfw_als_set_notify(fba_status_sensor_value_change_cb);
+
+        mce_sensorfw_als_enable();
+
+        /* The sensor has been off for some time, so the
+         * history needs to be forgotten when we get fresh
+         * data */
+        fba_inputflt_flush_on_change();
+    }
+    else {
+        /* Disable change notifications */
+        mce_sensorfw_als_set_notify(0);
+
+        /* Force cached value re-evaluation */
+        fba_status_sensor_value_change_cb(-1);
+
+        mce_sensorfw_als_disable();
+
+        /* Clear thresholds so that the next reading from
+         * als will not be affected by previous state */
+        fba_als_filter_clear_threshold(&lut_display);
+        fba_als_filter_clear_threshold(&lut_led);
+        fba_als_filter_clear_threshold(&lut_key);
+        fba_als_filter_clear_threshold(&lut_lpm);
+    }
+
+EXIT:
+    if( old_autobrightness != fba_gconf_als_autobrightness ) {
+        old_autobrightness = fba_gconf_als_autobrightness;
+        fba_datapipe_execute_brightness_change();
+    }
+
+    /* Block device from suspending while temporary ALS poll is active */
+    if( enable_new && fba_ambient_light_poll )
+        mce_wakelock_obtain("als_poll", -1);
+    else
+        mce_wakelock_release("als_poll");
+
+    return;
+}
+
+/* ========================================================================= *
+ * SENSOR_POLL
+ * ========================================================================= */
+
+/** Timer ID: Terminate temporary ALS enable */
+static guint fba_sensorpoll_timer_id = 0;
+
+/** Timer callback: Terminate temporary ALS enable
+ *
+ * @param aptr user data (unused)
+ *
+ * @return FALSE to stop timer from repeating
+ */
+static gboolean
+fba_sensorpoll_timer_cb(gpointer aptr)
+{
+    (void)aptr;
+
+    if( !fba_sensorpoll_timer_id )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "als poll: %s", "timeout");
+
+    fba_sensorpoll_timer_id = 0;
+    execute_datapipe(&ambient_light_poll_pipe,
+                     GINT_TO_POINTER(false),
+                     USE_INDATA, CACHE_INDATA);
+EXIT:
+    return FALSE;
+}
+
+/** Schedule temporary ALS enable termination
+ *
+ * If the timer is already active, the termination time
+ * will be rescheduled.
+ */
+static void
+fba_sensorpoll_start(void)
+{
+    if( fba_sensorpoll_timer_id )
+        g_source_remove(fba_sensorpoll_timer_id);
+    else
+        mce_log(LL_DEBUG, "als poll: %s", "start");
+
+    fba_sensorpoll_timer_id = g_timeout_add(FBA_SENSORPOLL_DURATION_MS,
+                                            fba_sensorpoll_timer_cb, 0);
+}
+
+/** Cancel temporary ALS enable termination
+ */
+static void
+fba_sensorpoll_stop(void)
+{
+    if( !fba_sensorpoll_timer_id )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "als poll: %s", "stop");
+
+    g_source_remove(fba_sensorpoll_timer_id),
+        fba_sensorpoll_timer_id = 0;
+
+EXIT:
+    return;
+}
+
+/** Evaluate need for temporary ALS enable termination
+ */
+static void fba_sensorpoll_rethink(void)
+{
+    if( fba_ambient_light_poll )
+        fba_sensorpoll_start();
+    else
+        fba_sensorpoll_stop();
+}
+
+/* ========================================================================= *
+ * LOAD_UNLOAD
  * ========================================================================= */
 
 /** Init function for the ALS filter
@@ -1565,48 +1895,53 @@ static void fba_config_init(void)
  *
  * @return NULL on success, a string with an error message on failure
  */
-G_MODULE_EXPORT const gchar *g_module_check_init(GModule *module);
-const gchar *g_module_check_init(GModule *module)
+const gchar *
+g_module_check_init(GModule *module)
 {
-	(void)module;
+    (void)module;
 
-	fba_config_init();
+    fba_als_filter_init();
 
-	fba_datapipe_init();
+    fba_datapipe_init();
 
-	fba_init_dbus();
+    fba_dbus_init();
 
-	fba_gconf_init();
+    fba_gconf_init();
 
-	inputflt_init();
+    fba_inputflt_init();
 
-	rethink_als_status();
+    fba_status_rethink();
 
-	return NULL;
+    return NULL;
 }
 
 /** Exit function for the ALS filter
  *
  * @param module (Unused)
  */
-G_MODULE_EXPORT void g_module_unload(GModule *module);
-void g_module_unload(GModule *module)
+void
+g_module_unload(GModule *module)
 {
-	(void)module;
+    (void)module;
 
-	fba_gconf_quit();
+    /* Mark that plugin is about to be unloaded */
+    fba_module_unload = true;
 
-	fba_quit_dbus();
+    fba_gconf_quit();
 
-	fba_datapipe_quit();
+    fba_dbus_quit();
 
-	/* Remove callbacks pointing to unloaded module */
-	mce_sensorfw_als_set_notify(0);
+    fba_datapipe_quit();
 
-	inputflt_quit();
+    /* Final rethink to release wakelock & detach from sensorfw */
+    fba_status_rethink();
 
-	g_free(als_input_filter),
-		als_input_filter = 0;
+    /* Make sure no timers with invalid callbacks are left active */
+    fba_sensorpoll_stop();
+    fba_inputflt_quit();
 
-	return;
+    g_free(fba_gconf_als_input_filter),
+        fba_gconf_als_input_filter = 0;
+
+    return;
 }

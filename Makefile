@@ -560,6 +560,8 @@ NORMALIZE_USES_SPC =\
 	modules/display.dot\
 	modules/doubletap.c\
 	modules/doubletap.h\
+	modules/filter-brightness-als.c\
+	modules/filter-brightness-als.h\
 	modules/keypad.h\
 	modules/inactivity.c\
 	modules/memnotify.c\
@@ -606,8 +608,6 @@ NORMALIZE_USES_TAB =\
 	modules/battery-bme.c\
 	modules/camera.c\
 	modules/display.h\
-	modules/filter-brightness-als.c\
-	modules/filter-brightness-als.h\
 	modules/keypad.c\
 	modules/led.c\
 	modules/led.h\

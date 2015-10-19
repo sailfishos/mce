@@ -109,6 +109,9 @@ datapipe_struct ambient_light_sensor_pipe;
 /** Filtered ambient light level; read only */
 datapipe_struct ambient_light_level_pipe;
 
+/** Temporary ambient light sensor enable; read/write */
+datapipe_struct ambient_light_poll_pipe;
+
 /** Orientation sensor; read only */
 datapipe_struct orientation_sensor_pipe;
 
@@ -866,6 +869,8 @@ void mce_datapipe_init(void)
 		       0, GINT_TO_POINTER(400));
 	setup_datapipe(&ambient_light_level_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(400));
+	setup_datapipe(&ambient_light_poll_pipe, READ_WRITE, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(false));
 	setup_datapipe(&orientation_sensor_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(MCE_ORIENTATION_UNDEFINED));
 	setup_datapipe(&tk_lock_pipe, READ_ONLY, DONT_FREE_CACHE,
@@ -945,6 +950,7 @@ void mce_datapipe_quit(void)
 	free_datapipe(&proximity_sensor_pipe);
 	free_datapipe(&ambient_light_sensor_pipe);
 	free_datapipe(&ambient_light_level_pipe);
+	free_datapipe(&ambient_light_poll_pipe);
 	free_datapipe(&orientation_sensor_pipe);
 	free_datapipe(&lens_cover_pipe);
 	free_datapipe(&lid_sensor_is_working_pipe);
