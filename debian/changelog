@@ -1,3 +1,12 @@
+mce (1.73.2) precise; urgency=low
+
+  * [als] Switch to array based datapipe init
+  * [als] Reorganize als plugin code
+  * [als] Add datapipe for temporarily enabling ALS. Contributes to JB#32278
+  * [tklock] Reimplement lid sensor based blanking policy. Fixes JB#32278
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 19 Oct 2015 11:42:08 +0300
+
 mce (1.73.1) precise; urgency=low
 
   * [suspend] Add support for enabling autosleep. Contributes to JB#32356
