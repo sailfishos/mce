@@ -1,3 +1,12 @@
+mce (1.73.3) precise; urgency=low
+
+  * [alarm] Switch indentation to 4 spaces instead of tabs
+  * [alarm] Fix typo in diagnostic message
+  * [alarm] Remove D-Bus monitor callbacks on plugin unload
+  * [alarm] Hold wakelock while expecting alarm ui startup. Fixes JB#33008
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 29 Oct 2015 15:09:08 +0200
+
 mce (1.73.2) precise; urgency=low
 
   * [als] Switch to array based datapipe init
