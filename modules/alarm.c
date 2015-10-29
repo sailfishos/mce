@@ -22,6 +22,7 @@
 #include "../mce.h"
 #include "../mce-log.h"
 #include "../mce-dbus.h"
+#include "../mce-wakelock.h"
 
 #include <gmodule.h>
 
@@ -37,17 +38,37 @@ typedef enum {
 #define VISUAL_REMINDERS_SIGNAL_PATH    "/com/nokia/voland/signal"
 #define VISUAL_REMINDER_STATUS_SIG      "visual_reminders_status"
 
+/* Timed alarm queue related D-Bus constants */
+#define TIMED_DBUS_SERVICE              "com.nokia.time"
+#define TIMED_DBUS_OBJECT               "/com/nokia/time"
+#define TIMED_DBUS_INTERFACE            "com.nokia.time"
+#define TIMED_QUEUE_STATUS_SIG          "next_bootup_event"
+
 /** Module name */
 #define MODULE_NAME                     "alarm"
 
 /** Maximum number of alarm D-Bus objects requesting alarm mode */
 #define ALARM_MAX_MONITORED             5
 
+/** Pseudo-wakelock held while expecting alarm ui to start up */
+#define ALARM_IMMINENT_WAKELOCK_NAME    "alarm_imminent"
+
+/** Maximum time given for alarm ui to start up
+ *
+ * This needs to be long enough to allow timed to make at least one
+ * retry after timeout from  alarm ui invocation D-Bus method call,
+ * i.e. must be longer than 25 seconds.
+ */
+#define ALARM_IMMINENT_TIMEOUT_MS       (60*1000)
+
 /** Functionality provided by this module */
 static const gchar *const provides[] = { MODULE_NAME, NULL };
 
-/** Alarm D-Bus service monitor list */
+/** Alarm UI D-Bus service monitor list */
 static GSList *alarm_owner_monitor_list = NULL;
+
+/** Alarm queue D-Bus service monitor list */
+static GSList *queue_owner_monitor_list = NULL;
 
 /** Module information */
 G_MODULE_EXPORT module_info_struct module_info = {
@@ -58,6 +79,24 @@ G_MODULE_EXPORT module_info_struct module_info = {
     /** Module priority */
     .priority = 250
 };
+
+/* Module functions */
+static void     alarm_sync_state_to_datapipe(alarm_ui_state_t state);
+
+static gboolean alarm_owner_monitor_dbus_cb (DBusMessage *const msg);
+static void     setup_alarm_dbus_monitor    (const gchar *sender);
+
+static gboolean queue_owner_monitor_dbus_cb (DBusMessage *const sig);
+static void     queue_monitor_setup         (const char *sender, bool monitor);
+
+static gboolean alarm_dialog_status_dbus_cb (DBusMessage *const msg);
+static gboolean alarm_queue_status_dbus_cb  (DBusMessage *const sig);
+
+static void     mce_alarm_init_dbus         (void);
+static void     mce_alarm_quit_dbus         (void);
+
+const gchar    *g_module_check_init         (GModule *module);
+void            g_module_unload             (GModule *module);
 
 static void alarm_sync_state_to_datapipe(alarm_ui_state_t state)
 {
@@ -141,6 +180,67 @@ static void setup_alarm_dbus_monitor(const gchar* sender)
                                ALARM_MAX_MONITORED);
 }
 
+/** Callback for handling alarm queue name owner changed signals
+ *
+ * @param sig The D-Bus message
+ *
+ * @return TRUE
+ */
+static gboolean queue_owner_monitor_dbus_cb(DBusMessage *const sig)
+{
+    const char *name  = 0;
+    const char *prev  = 0;
+    const char *curr  = 0;
+    DBusError   error = DBUS_ERROR_INIT;
+
+    if( !dbus_message_get_args(sig, &error,
+                               DBUS_TYPE_STRING, &name,
+                               DBUS_TYPE_STRING, &prev,
+                               DBUS_TYPE_STRING, &curr,
+                               DBUS_TYPE_INVALID) ) {
+        mce_log(LL_ERR, "Failed to parse arguments: %s: %s",
+                error.name, error.message);
+        goto EXIT;
+    }
+
+    queue_monitor_setup(name, false);
+
+EXIT:
+    dbus_error_free(&error);
+    return TRUE;
+
+}
+
+/** Install/remove alarm queue D-Bus name owner monitor
+ *
+ * @param sender   Private D-Bus name to monitor
+ * @param monitor  true/false to start/stop monitoring
+ */
+static void queue_monitor_setup(const char *sender, bool monitor)
+{
+    if( monitor ) {
+        gssize cnt = mce_dbus_owner_monitor_add(sender,
+                                                queue_owner_monitor_dbus_cb,
+                                                &queue_owner_monitor_list,
+                                                ALARM_MAX_MONITORED);
+        if( cnt != -1 ) {
+            /* A owner monitor was added/renewed */
+            mce_log(LL_DEVEL, "monitoring dbus name: %s", sender);
+            mce_wakelock_obtain(ALARM_IMMINENT_WAKELOCK_NAME,
+                                ALARM_IMMINENT_TIMEOUT_MS);
+        }
+    }
+    else {
+        gssize cnt = mce_dbus_owner_monitor_remove(sender,
+                                                   &queue_owner_monitor_list);
+        if( cnt == 0 ) {
+            /* The last monitor was removed */
+            mce_log(LL_DEVEL, "all dbus name monitors removed");
+            mce_wakelock_release(ALARM_IMMINENT_WAKELOCK_NAME);
+        }
+    }
+}
+
 /**
  * D-Bus callback for the alarm dialog status signal
  *
@@ -207,6 +307,48 @@ EXIT:
     return status;
 }
 
+/** D-Bus callback for the alarm queue status signal
+ *
+ * @param sig  The D-Bus signal message
+ *
+ * @return TRUE
+ */
+static gboolean alarm_queue_status_dbus_cb(DBusMessage *const sig)
+{
+        dbus_int32_t  bootup = 0;
+        dbus_int32_t  normal = 0;
+        DBusError     error  = DBUS_ERROR_INIT;
+        const gchar  *sender = dbus_message_get_sender(sig);
+
+        mce_log(LL_DEVEL, "Received alarm queue status signal from %s",
+                mce_dbus_get_name_owner_ident(sender));
+
+        if( !dbus_message_get_args(sig, &error,
+                                   DBUS_TYPE_INT32, &bootup,
+                                   DBUS_TYPE_INT32, &normal,
+                                   DBUS_TYPE_INVALID) ) {
+                mce_log(LL_ERR, "Failed to parse arguments: %s: %s",
+                        error.name, error.message);
+                goto EXIT;
+        }
+
+        /* DSME makes sure the device wakes up from suspend at
+         * the time when timed needs to trigger an alarm. MCE
+         * needs to make sure device does not get back to suspend
+         * before alarm ui has had sufficient time to start up
+         * and signal alarm dialog state.
+         *
+         * Timeds sends alarm queue status signal where the "next
+         * alarm time" has value of one when alarm has been triggered
+         * and alarm ui will be started up.
+         */
+        queue_monitor_setup(sender, bootup == 1 || normal == 1);
+
+EXIT:
+        dbus_error_free(&error);
+        return TRUE;
+}
+
 /** Array of dbus message handlers */
 static mce_dbus_handler_t alarm_dbus_handlers[] =
 {
@@ -216,6 +358,12 @@ static mce_dbus_handler_t alarm_dbus_handlers[] =
         .name      = VISUAL_REMINDER_STATUS_SIG,
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
         .callback  = alarm_dialog_status_dbus_cb,
+    },
+    {
+        .interface = TIMED_DBUS_INTERFACE,
+        .name      = TIMED_QUEUE_STATUS_SIG,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .callback  = alarm_queue_status_dbus_cb,
     },
     /* sentinel */
     {
@@ -245,7 +393,7 @@ static void mce_alarm_quit_dbus(void)
  * @param module Unused
  * @return NULL on success, a string with an error message on failure
  */
-G_MODULE_EXPORT const gchar *g_module_check_init(GModule *module);
+G_MODULE_EXPORT
 const gchar *g_module_check_init(GModule *module)
 {
     (void)module;
@@ -263,13 +411,14 @@ const gchar *g_module_check_init(GModule *module)
  *
  * @param module Unused
  */
-G_MODULE_EXPORT void g_module_unload(GModule *module);
+G_MODULE_EXPORT
 void g_module_unload(GModule *module)
 {
     (void)module;
 
     /* Remove name ownership monitors */
     mce_dbus_owner_monitor_remove_all(&alarm_owner_monitor_list);
+    mce_dbus_owner_monitor_remove_all(&queue_owner_monitor_list);
 
     /* Remove dbus handlers */
     mce_alarm_quit_dbus();

@@ -430,6 +430,7 @@ modules/alarm.o:\
 	datapipe.h\
 	mce-dbus.h\
 	mce-log.h\
+	mce-wakelock.h\
 	mce.h\
 
 modules/alarm.pic.o:\
@@ -438,6 +439,7 @@ modules/alarm.pic.o:\
 	datapipe.h\
 	mce-dbus.h\
 	mce-log.h\
+	mce-wakelock.h\
 	mce.h\
 
 modules/audiorouting.o:\
