@@ -548,6 +548,7 @@ NORMALIZE_USES_SPC =\
 	mce-wakelock.c\
 	mce-wakelock.h\
 	modetransition.h\
+	modules/alarm.c\
 	modules/audiorouting.c\
 	modules/battery-upower.c\
 	modules/battery-statefs.c\
@@ -604,7 +605,6 @@ NORMALIZE_USES_TAB =\
 	mce.c\
 	mce.h\
 	modetransition.c\
-	modules/alarm.c\
 	modules/battery-bme.c\
 	modules/camera.c\
 	modules/display.h\
