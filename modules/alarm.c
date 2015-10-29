@@ -64,7 +64,7 @@ static void alarm_sync_state_to_datapipe(alarm_ui_state_t state)
     if( datapipe_get_gint(alarm_ui_state_pipe) == state )
         goto EXIT;
 
-    mce_log(LL_DEVEL, "alarm sate = %s", alarm_state_repr(state));
+    mce_log(LL_DEVEL, "alarm state = %s", alarm_state_repr(state));
     execute_datapipe(&alarm_ui_state_pipe,
                      GINT_TO_POINTER(state),
                      USE_INDATA, CACHE_INDATA);
