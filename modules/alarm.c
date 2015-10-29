@@ -25,24 +25,23 @@
 
 #include <gmodule.h>
 
-#ifndef VISUAL_REMINDERS_SERVICE
+/* Alarm UI related D-Bus constants */
 typedef enum {
-	VISUAL_REMINDER_ON_SCREEN,
-	VISUAL_REMINDER_NOT_ON_SCREEN,
-	VISUAL_REMINDER_ON_SCREEN_NO_SOUND
+    VISUAL_REMINDER_ON_SCREEN,
+    VISUAL_REMINDER_NOT_ON_SCREEN,
+    VISUAL_REMINDER_ON_SCREEN_NO_SOUND
 } visual_reminders_status;
 
-#define VISUAL_REMINDERS_SERVICE	"com.nokia.voland"
-#define VISUAL_REMINDERS_SIGNAL_IF	"com.nokia.voland.signal"
-#define VISUAL_REMINDERS_SIGNAL_PATH	"/com/nokia/voland/signal"
-#define VISUAL_REMINDER_STATUS_SIG	"visual_reminders_status"
-#endif /* VISUAL_REMINDERS_SERVICE */
+#define VISUAL_REMINDERS_SERVICE        "com.nokia.voland"
+#define VISUAL_REMINDERS_SIGNAL_IF      "com.nokia.voland.signal"
+#define VISUAL_REMINDERS_SIGNAL_PATH    "/com/nokia/voland/signal"
+#define VISUAL_REMINDER_STATUS_SIG      "visual_reminders_status"
 
 /** Module name */
-#define MODULE_NAME		"alarm"
+#define MODULE_NAME                     "alarm"
 
 /** Maximum number of alarm D-Bus objects requesting alarm mode */
-#define ALARM_MAX_MONITORED	5
+#define ALARM_MAX_MONITORED             5
 
 /** Functionality provided by this module */
 static const gchar *const provides[] = { MODULE_NAME, NULL };
@@ -52,26 +51,26 @@ static GSList *alarm_owner_monitor_list = NULL;
 
 /** Module information */
 G_MODULE_EXPORT module_info_struct module_info = {
-	/** Name of the module */
-	.name = MODULE_NAME,
-	/** Module provides */
-	.provides = provides,
-	/** Module priority */
-	.priority = 250
+    /** Name of the module */
+    .name = MODULE_NAME,
+    /** Module provides */
+    .provides = provides,
+    /** Module priority */
+    .priority = 250
 };
 
 static void alarm_sync_state_to_datapipe(alarm_ui_state_t state)
 {
-	if( datapipe_get_gint(alarm_ui_state_pipe) == state )
-		goto EXIT;
+    if( datapipe_get_gint(alarm_ui_state_pipe) == state )
+        goto EXIT;
 
-	mce_log(LL_DEVEL, "alarm sate = %s", alarm_state_repr(state));
-	execute_datapipe(&alarm_ui_state_pipe,
-			 GINT_TO_POINTER(state),
-			 USE_INDATA, CACHE_INDATA);
+    mce_log(LL_DEVEL, "alarm sate = %s", alarm_state_repr(state));
+    execute_datapipe(&alarm_ui_state_pipe,
+                     GINT_TO_POINTER(state),
+                     USE_INDATA, CACHE_INDATA);
 
 EXIT:
-	return;
+    return;
 }
 
 /**
@@ -82,46 +81,46 @@ EXIT:
  */
 static gboolean alarm_owner_monitor_dbus_cb(DBusMessage *const msg)
 {
-	gboolean status = FALSE;
-	const gchar *old_name;
-	const gchar *new_name;
-	const gchar *service;
-	gssize retval;
+    gboolean status = FALSE;
+    const gchar *old_name;
+    const gchar *new_name;
+    const gchar *service;
+    gssize retval;
 
-	DBusError error;
-	/* Register error channel */
-	dbus_error_init(&error);
+    DBusError error;
+    /* Register error channel */
+    dbus_error_init(&error);
 
-	/* Extract result */
-	if (dbus_message_get_args(msg, &error,
-							  DBUS_TYPE_STRING, &service,
-							  DBUS_TYPE_STRING, &old_name,
-							  DBUS_TYPE_STRING, &new_name,
-							  DBUS_TYPE_INVALID) == FALSE) {
-		mce_log(LL_ERR,
-				"Failed to get argument from %s.%s; %s",
-				"org.freedesktop.DBus", "NameOwnerChanged",
-				error.message);
-		dbus_error_free(&error);
-		goto EXIT;
-	}
+    /* Extract result */
+    if (dbus_message_get_args(msg, &error,
+                              DBUS_TYPE_STRING, &service,
+                              DBUS_TYPE_STRING, &old_name,
+                              DBUS_TYPE_STRING, &new_name,
+                              DBUS_TYPE_INVALID) == FALSE) {
+        mce_log(LL_ERR,
+                "Failed to get argument from %s.%s; %s",
+                "org.freedesktop.DBus", "NameOwnerChanged",
+                error.message);
+        dbus_error_free(&error);
+        goto EXIT;
+    }
 
-	retval = mce_dbus_owner_monitor_remove(service, &alarm_owner_monitor_list);
+    retval = mce_dbus_owner_monitor_remove(service, &alarm_owner_monitor_list);
 
-	if (retval == 0) {
-		/* We didn't get alarm off from the same service before it
-		 * unregistered (e.g. due crash), turn alarm state off so at
-		 * least powerkey works again.
-		 */
-		mce_log(LL_DEBUG, "visual reminder service died, "
-				"turning off alarm state");
-		alarm_sync_state_to_datapipe(MCE_ALARM_UI_OFF_INT32);
-	}
+    if (retval == 0) {
+        /* We didn't get alarm off from the same service before it
+         * unregistered (e.g. due crash), turn alarm state off so at
+         * least powerkey works again.
+         */
+        mce_log(LL_DEBUG, "visual reminder service died, "
+                "turning off alarm state");
+        alarm_sync_state_to_datapipe(MCE_ALARM_UI_OFF_INT32);
+    }
 
-	status = TRUE;
+    status = TRUE;
 
 EXIT:
-	return status;
+    return status;
 
 }
 
@@ -132,14 +131,14 @@ EXIT:
  */
 static void setup_alarm_dbus_monitor(const gchar* sender)
 {
-	mce_log(LL_DEBUG, "adding dbus monitor for: '%s'" ,sender);
-	/* No need to check return value, if it does not succeed, not much
-	 * we can do / fall back to
-	 */
-	mce_dbus_owner_monitor_add(sender,
-							   alarm_owner_monitor_dbus_cb,
-							   &alarm_owner_monitor_list,
-							   ALARM_MAX_MONITORED);
+    mce_log(LL_DEBUG, "adding dbus monitor for: '%s'" ,sender);
+    /* No need to check return value, if it does not succeed, not much
+     * we can do / fall back to
+     */
+    mce_dbus_owner_monitor_add(sender,
+                               alarm_owner_monitor_dbus_cb,
+                               &alarm_owner_monitor_list,
+                               ALARM_MAX_MONITORED);
 }
 
 /**
@@ -150,92 +149,92 @@ static void setup_alarm_dbus_monitor(const gchar* sender)
  */
 static gboolean alarm_dialog_status_dbus_cb(DBusMessage *const msg)
 {
-	alarm_ui_state_t alarm_ui_state = MCE_ALARM_UI_INVALID_INT32;
-	gboolean status = FALSE;
-	const gchar *sender = dbus_message_get_sender(msg);
-	DBusError error;
-	dbus_int32_t dialog_status;
+    alarm_ui_state_t alarm_ui_state = MCE_ALARM_UI_INVALID_INT32;
+    gboolean status = FALSE;
+    const gchar *sender = dbus_message_get_sender(msg);
+    DBusError error;
+    dbus_int32_t dialog_status;
 
-	/* Register error channel */
-	dbus_error_init(&error);
+    /* Register error channel */
+    dbus_error_init(&error);
 
-	mce_log(LL_DEVEL, "Received alarm dialog status signal from %s",
-		mce_dbus_get_name_owner_ident(sender));
+    mce_log(LL_DEVEL, "Received alarm dialog status signal from %s",
+            mce_dbus_get_name_owner_ident(sender));
 
-	if (dbus_message_get_args(msg, &error,
-				  DBUS_TYPE_INT32, &dialog_status,
-				  DBUS_TYPE_INVALID) == FALSE) {
-		// XXX: should we return an error instead?
-		mce_log(LL_CRIT,
-			"Failed to get argument from %s.%s: %s",
-			VISUAL_REMINDERS_SIGNAL_IF,
-			VISUAL_REMINDER_STATUS_SIG,
-			error.message);
-		dbus_error_free(&error);
-		goto EXIT;
-	}
+    if (dbus_message_get_args(msg, &error,
+                              DBUS_TYPE_INT32, &dialog_status,
+                              DBUS_TYPE_INVALID) == FALSE) {
+        // XXX: should we return an error instead?
+        mce_log(LL_CRIT,
+                "Failed to get argument from %s.%s: %s",
+                VISUAL_REMINDERS_SIGNAL_IF,
+                VISUAL_REMINDER_STATUS_SIG,
+                error.message);
+        dbus_error_free(&error);
+        goto EXIT;
+    }
 
-	/* Convert alarm dialog status to to MCE alarm ui enum */
-	switch (dialog_status) {
-	case VISUAL_REMINDER_ON_SCREEN:
-		setup_alarm_dbus_monitor(sender);
-		alarm_ui_state = MCE_ALARM_UI_RINGING_INT32;
-		break;
+    /* Convert alarm dialog status to to MCE alarm ui enum */
+    switch (dialog_status) {
+    case VISUAL_REMINDER_ON_SCREEN:
+        setup_alarm_dbus_monitor(sender);
+        alarm_ui_state = MCE_ALARM_UI_RINGING_INT32;
+        break;
 
-	case VISUAL_REMINDER_ON_SCREEN_NO_SOUND:
-		setup_alarm_dbus_monitor(sender);
-		alarm_ui_state = MCE_ALARM_UI_VISIBLE_INT32;
-		break;
+    case VISUAL_REMINDER_ON_SCREEN_NO_SOUND:
+        setup_alarm_dbus_monitor(sender);
+        alarm_ui_state = MCE_ALARM_UI_VISIBLE_INT32;
+        break;
 
-	case VISUAL_REMINDER_NOT_ON_SCREEN:
-		mce_dbus_owner_monitor_remove(sender, &alarm_owner_monitor_list);
-		alarm_ui_state = MCE_ALARM_UI_OFF_INT32;
-		break;
+    case VISUAL_REMINDER_NOT_ON_SCREEN:
+        mce_dbus_owner_monitor_remove(sender, &alarm_owner_monitor_list);
+        alarm_ui_state = MCE_ALARM_UI_OFF_INT32;
+        break;
 
-	default:
-		mce_log(LL_ERR,
-			"Received invalid alarm dialog status; "
-			"defaulting to OFF");
-		alarm_ui_state = MCE_ALARM_UI_OFF_INT32;
-		break;
-	}
+    default:
+        mce_log(LL_ERR,
+                "Received invalid alarm dialog status; "
+                "defaulting to OFF");
+        alarm_ui_state = MCE_ALARM_UI_OFF_INT32;
+        break;
+    }
 
-	alarm_sync_state_to_datapipe(alarm_ui_state);
+    alarm_sync_state_to_datapipe(alarm_ui_state);
 
-	status = TRUE;
+    status = TRUE;
 
 EXIT:
-	return status;
+    return status;
 }
 
 /** Array of dbus message handlers */
 static mce_dbus_handler_t alarm_dbus_handlers[] =
 {
-	/* signals */
-	{
-		.interface = VISUAL_REMINDERS_SIGNAL_IF,
-		.name      = VISUAL_REMINDER_STATUS_SIG,
-		.type      = DBUS_MESSAGE_TYPE_SIGNAL,
-		.callback  = alarm_dialog_status_dbus_cb,
-	},
-	/* sentinel */
-	{
-		.interface = 0
-	}
+    /* signals */
+    {
+        .interface = VISUAL_REMINDERS_SIGNAL_IF,
+        .name      = VISUAL_REMINDER_STATUS_SIG,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .callback  = alarm_dialog_status_dbus_cb,
+    },
+    /* sentinel */
+    {
+        .interface = 0
+    }
 };
 
 /** Add dbus handlers
  */
 static void mce_alarm_init_dbus(void)
 {
-	mce_dbus_handler_register_array(alarm_dbus_handlers);
+    mce_dbus_handler_register_array(alarm_dbus_handlers);
 }
 
 /** Remove dbus handlers
  */
 static void mce_alarm_quit_dbus(void)
 {
-	mce_dbus_handler_unregister_array(alarm_dbus_handlers);
+    mce_dbus_handler_unregister_array(alarm_dbus_handlers);
 }
 
 /**
@@ -249,12 +248,12 @@ static void mce_alarm_quit_dbus(void)
 G_MODULE_EXPORT const gchar *g_module_check_init(GModule *module);
 const gchar *g_module_check_init(GModule *module)
 {
-	(void)module;
+    (void)module;
 
-	/* Add dbus handlers */
-	mce_alarm_init_dbus();
+    /* Add dbus handlers */
+    mce_alarm_init_dbus();
 
-	return NULL;
+    return NULL;
 }
 
 /**
@@ -267,10 +266,10 @@ const gchar *g_module_check_init(GModule *module)
 G_MODULE_EXPORT void g_module_unload(GModule *module);
 void g_module_unload(GModule *module)
 {
-	(void)module;
+    (void)module;
 
-	/* Remove dbus handlers */
-	mce_alarm_quit_dbus();
+    /* Remove dbus handlers */
+    mce_alarm_quit_dbus();
 
-	return;
+    return;
 }
