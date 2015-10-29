@@ -268,6 +268,9 @@ void g_module_unload(GModule *module)
 {
     (void)module;
 
+    /* Remove name ownership monitors */
+    mce_dbus_owner_monitor_remove_all(&alarm_owner_monitor_list);
+
     /* Remove dbus handlers */
     mce_alarm_quit_dbus();
 
