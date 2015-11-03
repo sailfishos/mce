@@ -556,6 +556,18 @@ EXIT:
         return rsp;
 }
 
+/** Helper for detecting end of data from D-Bus message iterator
+ *
+ * @param iter D-Bus message iterator
+ *
+ * @return TRUE if iterator points to DBUS_TYPE_INVALID, FALSE otherwise
+ */
+static gboolean dbushelper_read_at_end(DBusMessageIter *iter)
+{
+        int have_type = dbus_message_iter_get_arg_type(iter);
+        return have_type == DBUS_TYPE_INVALID;
+}
+
 /** Helper for parsing int value from D-Bus message iterator
  *
  * @param iter D-Bus message iterator
@@ -568,6 +580,26 @@ static gboolean dbushelper_read_int(DBusMessageIter *iter, gint *value)
         dbus_int32_t data = 0;
 
         if( !dbushelper_require_type(iter, DBUS_TYPE_INT32) )
+                return FALSE;
+
+        dbus_message_iter_get_basic(iter, &data);
+        dbus_message_iter_next(iter);
+
+        return *value = data, TRUE;
+}
+
+/** Helper for parsing int64 value from D-Bus message iterator
+ *
+ * @param iter D-Bus message iterator
+ * @param value Where to store the value (not modified on failure)
+ *
+ * @return TRUE if value could be read, FALSE on failure
+ */
+static gboolean dbushelper_read_int64(DBusMessageIter *iter, int64_t *value)
+{
+        dbus_int64_t data = 0;
+
+        if( !dbushelper_require_type(iter, DBUS_TYPE_INT64) )
                 return FALSE;
 
         dbus_message_iter_get_basic(iter, &data);
@@ -644,6 +676,42 @@ static gboolean dbushelper_read_variant(DBusMessageIter *iter, DBusMessageIter *
 static gboolean dbushelper_read_array(DBusMessageIter *iter, DBusMessageIter *sub)
 {
         if( !dbushelper_require_type(iter, DBUS_TYPE_ARRAY) )
+                return FALSE;
+
+        dbus_message_iter_recurse(iter, sub);
+        dbus_message_iter_next(iter);
+
+        return TRUE;
+}
+
+/** Helper for entering dict entry container from D-Bus message iterator
+ *
+ * @param iter D-Bus message iterator
+ * @param sub  D-Bus message iterator for dict entry (not modified on failure)
+ *
+ * @return TRUE if container could be entered, FALSE on failure
+ */
+static gboolean dbushelper_read_dict(DBusMessageIter *iter, DBusMessageIter *sub)
+{
+        if( !dbushelper_require_type(iter, DBUS_TYPE_DICT_ENTRY) )
+                return FALSE;
+
+        dbus_message_iter_recurse(iter, sub);
+        dbus_message_iter_next(iter);
+
+        return TRUE;
+}
+
+/** Helper for entering struct container from D-Bus message iterator
+ *
+ * @param iter D-Bus message iterator
+ * @param sub  D-Bus message iterator for struct (not modified on failure)
+ *
+ * @return TRUE if container could be entered, FALSE on failure
+ */
+static gboolean dbushelper_read_struct(DBusMessageIter *iter, DBusMessageIter *sub)
+{
+        if( !dbushelper_require_type(iter, DBUS_TYPE_STRUCT) )
                 return FALSE;
 
         dbus_message_iter_recurse(iter, sub);
