@@ -636,6 +636,12 @@ static void                mdy_stm_schedule_rethink(void);
 static void                mdy_stm_force_rethink(void);
 
 /* ------------------------------------------------------------------------- *
+ * DISPLAY_STATE_STATISTICS
+ * ------------------------------------------------------------------------- */
+
+static void                mdy_statistics_update(void);
+
+/* ------------------------------------------------------------------------- *
  * CPU_SCALING_GOVERNOR
  * ------------------------------------------------------------------------- */
 
@@ -675,6 +681,7 @@ static gboolean            mdy_dbus_handle_cabc_mode_set_req(DBusMessage *const 
 
 static gboolean            mdy_dbus_handle_blanking_pause_start_req(DBusMessage *const msg);
 static gboolean            mdy_dbus_handle_blanking_pause_cancel_req(DBusMessage *const msg);
+static gboolean            mdy_dbus_handle_display_stats_get_req(DBusMessage *const req);
 
 static gboolean            mdy_dbus_handle_desktop_started_sig(DBusMessage *const msg);
 
@@ -1338,6 +1345,7 @@ static void mdy_datapipe_display_state_cb(gconstpointer data)
     if( display_state == prev )
         goto EXIT;
 
+    mdy_statistics_update();
     mdy_blanking_inhibit_schedule_broadcast();
 
 EXIT:
@@ -6973,6 +6981,48 @@ EXIT:
 }
 
 /* ========================================================================= *
+ * DISPLAY_STATE_STATISTICS
+ * ========================================================================= */
+
+/** Statistics: Time spent in each display state */
+static struct
+{
+    int64_t         entries;
+    int64_t         time_ms;
+}
+mdy_statistics_data[MCE_DISPLAY_NUMSTATES] =
+{
+    [MCE_DISPLAY_UNDEF]      = { 0, 0 },
+    [MCE_DISPLAY_OFF]        = { 0, 0 },
+    [MCE_DISPLAY_LPM_OFF]    = { 0, 0 },
+    [MCE_DISPLAY_LPM_ON]     = { 0, 0 },
+    [MCE_DISPLAY_DIM]        = { 0, 0 },
+    [MCE_DISPLAY_ON]         = { 0, 0 },
+    [MCE_DISPLAY_POWER_UP]   = { 0, 0 },
+    [MCE_DISPLAY_POWER_DOWN] = { 0, 0 },
+};
+
+/** Update display state statistics
+ */
+static void mdy_statistics_update(void)
+{
+    /* Uptime until mce display plugin determines initial
+     * display state gets accounted as UNDEF */
+    static display_state_t prev_state  = MCE_DISPLAY_UNDEF;
+    static int64_t         prev_update = 0;
+
+    int64_t now = mce_lib_get_boot_tick();
+
+    mdy_statistics_data[prev_state].time_ms += (now - prev_update);
+
+    if( prev_state != display_state )
+        mdy_statistics_data[display_state].entries += 1;
+
+    prev_state  = display_state;
+    prev_update = now;
+}
+
+/* ========================================================================= *
  * CPU_SCALING_GOVERNOR
  * ========================================================================= */
 
@@ -8067,6 +8117,98 @@ EXIT:
     return status;
 }
 
+/** D-Bus callback for the get display statistics method call
+ *
+ * @param req The D-Bus method call message to be replied
+ *
+ * @return TRUE
+ */
+static gboolean mdy_dbus_handle_display_stats_get_req(DBusMessage *const req)
+{
+    DBusMessage      *rsp = 0;
+    DBusMessageIter  body;
+    DBusMessageIter  array;
+    DBusMessageIter  dict;
+    DBusMessageIter  entry;
+
+    mce_log(LL_DEVEL, "display state statistics req from %s",
+            mce_dbus_get_message_sender_ident(req));
+
+    if( dbus_message_get_no_reply(req) )
+        goto EXIT;
+
+    rsp = dbus_new_method_reply(req);
+
+    dbus_message_iter_init_append(rsp, &body);
+
+    if( !dbus_message_iter_open_container(&body, DBUS_TYPE_ARRAY,
+                                          DBUS_DICT_ENTRY_BEGIN_CHAR_AS_STRING
+                                          DBUS_TYPE_STRING_AS_STRING
+                                          DBUS_STRUCT_BEGIN_CHAR_AS_STRING
+                                          DBUS_TYPE_INT64_AS_STRING
+                                          DBUS_TYPE_INT64_AS_STRING
+                                          DBUS_STRUCT_END_CHAR_AS_STRING
+                                          DBUS_DICT_ENTRY_END_CHAR_AS_STRING,
+                                          &array) )
+        goto EXIT;
+
+    /* Add data accumulated for the current display state
+     * before constructing the reply message */
+    mdy_statistics_update();
+
+    for( size_t i = 0; i < MCE_DISPLAY_NUMSTATES; ++i ) {
+        dbus_any_t dta;
+
+        if( !dbus_message_iter_open_container(&array, DBUS_TYPE_DICT_ENTRY,
+                                              0, &dict) )
+            goto ABANDON_ARRAY;
+
+        dta.s = display_state_repr(i);
+        if( !dbus_message_iter_append_basic(&dict, DBUS_TYPE_STRING, &dta) )
+            goto ABANDON_DICT;
+
+        if( !dbus_message_iter_open_container(&dict, DBUS_TYPE_STRUCT,
+                                              0, &entry) )
+            goto ABANDON_DICT;
+
+        dta.i64 = mdy_statistics_data[i].time_ms;
+        if( !dbus_message_iter_append_basic(&entry, DBUS_TYPE_INT64,  &dta) )
+            goto ABANDON_ENTRY;
+
+        dta.i64 = mdy_statistics_data[i].entries;
+        if( !dbus_message_iter_append_basic(&entry, DBUS_TYPE_INT64,  &dta) )
+            goto ABANDON_ENTRY;
+
+        if( !dbus_message_iter_close_container(&dict, &entry) )
+            goto ABANDON_DICT;
+
+        if( !dbus_message_iter_close_container(&array, &dict) )
+            goto ABANDON_ARRAY;
+    }
+
+    if( !dbus_message_iter_close_container(&body, &array) )
+        goto EXIT;
+
+    dbus_send_message(rsp), rsp = 0;
+
+    goto EXIT;
+
+ABANDON_ENTRY:
+    dbus_message_iter_abandon_container(&dict, &entry);
+
+ABANDON_DICT:
+    dbus_message_iter_abandon_container(&array, &dict);
+
+ABANDON_ARRAY:
+    dbus_message_iter_abandon_container(&body, &array);
+
+EXIT:
+    if( rsp )
+        dbus_message_unref(rsp);
+
+    return TRUE;
+}
+
 /**
  * D-Bus callback for the desktop startup notification signal
  *
@@ -8229,6 +8371,14 @@ static mce_dbus_handler_t mdy_dbus_handlers[] =
         .args      =
             "    <arg direction=\"in\" name=\"requested_cabc_mode\" type=\"s\"/>\n"
             "    <arg direction=\"out\" name=\"activated_cabc_mode\" type=\"s\"/>\n"
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = "get_display_stats",
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = mdy_dbus_handle_display_stats_get_req,
+        .args      =
+            "    <arg direction=\"out\" name=\"display_state_statistics\" type=\"a{s(xx)}\"/>\n"
     },
     /* sentinel */
     {
