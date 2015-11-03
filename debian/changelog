@@ -1,3 +1,9 @@
+mce (1.73.4) precise; urgency=low
+
+  * [dbus] Add configuration for get_suspend_stats method call. Fixes MER#1398
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 03 Nov 2015 09:28:33 +0200
+
 mce (1.73.3) precise; urgency=low
 
   * [alarm] Switch indentation to 4 spaces instead of tabs
