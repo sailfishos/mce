@@ -115,24 +115,6 @@ void mce_dbus_pending_call_blocks_suspend(DBusPendingCall *pc)
 
 static bool introspectable_signal(const char *interface, const char *member);
 
-/** Placeholder for any basic dbus data type */
-typedef union
-{
-	dbus_int16_t i16;
-	dbus_int32_t i32;
-	dbus_int64_t i64;
-
-	dbus_uint16_t u16;
-	dbus_uint32_t u32;
-	dbus_uint64_t u64;
-
-	dbus_bool_t   b;
-	unsigned char o;
-	const char   *s;
-	double        d;
-
-} dbus_any_t;
-
 /** Emit one iterm from dbus message iterator to file
  *
  * @param file output file
