@@ -3826,7 +3826,7 @@ static void tklock_uiexcept_begin(uiexctype_t type, int64_t linger)
 
         /* initially insync, restore state at end */
         exdata.insync      = true;
-        exdata.restore     = true;
+        exdata.restore     = (type != UIEXC_NOANIM);
     }
 
     exdata.mask &= ~UIEXC_LINGER;
