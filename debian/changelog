@@ -1,3 +1,9 @@
+mce (1.74.1) precise; urgency=low
+
+  * [dbus] Allow user processes to call reset_config method. Fixes MER#1406
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 04 Nov 2015 15:17:49 +0200
+
 mce (1.74.0) precise; urgency=low
 
   * [dbus] Move dbus_any_t union declaration to mce-dbus.h
