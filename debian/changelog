@@ -1,3 +1,14 @@
+mce (1.74.0) precise; urgency=low
+
+  * [dbus] Move dbus_any_t union declaration to mce-dbus.h
+  * [display] Make display state enume start from zero. Contributes to MER#1401
+  * [mcetool] Add dbus helpers. Contributes to MER#1401
+  * [display] Add D-Bus method for obtaining display state statistics.
+    Fixes MER#1401
+  * [makefile] Cleanup development time temporary files from tools subdir too
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 04 Nov 2015 13:33:01 +0200
+
 mce (1.73.5) precise; urgency=low
 
   * [tklock] Disable state restore on start of noanim blanking policy.
