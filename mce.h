@@ -197,14 +197,17 @@ call_type_t call_type_parse(const char *name);
 
 /** Display state */
 typedef enum {
-	MCE_DISPLAY_UNDEF = -1,		/**< Display state not set */
-	MCE_DISPLAY_OFF	= 0,		/**< Display is off */
-	MCE_DISPLAY_LPM_OFF = 1,	/**< Display is off in low power mode */
-	MCE_DISPLAY_LPM_ON = 2,		/**< Display is on in low power mode */
-	MCE_DISPLAY_DIM = 3,		/**< Display is dimmed */
-	MCE_DISPLAY_ON = 4,		/**< Display is on */
-	MCE_DISPLAY_POWER_UP,		/**< Display is resuming */
-	MCE_DISPLAY_POWER_DOWN,		/**< Display is suspending */
+	MCE_DISPLAY_UNDEF,       /**< Display state not set */
+	MCE_DISPLAY_OFF,         /**< Display is off */
+	MCE_DISPLAY_LPM_OFF,     /**< Display is off in low power mode */
+	MCE_DISPLAY_LPM_ON,      /**< Display is on in low power mode */
+	MCE_DISPLAY_DIM,         /**< Display is dimmed */
+	MCE_DISPLAY_ON,          /**< Display is on */
+	MCE_DISPLAY_POWER_UP,    /**< Display is resuming */
+	MCE_DISPLAY_POWER_DOWN,  /**< Display is suspending */
+
+	MCE_DISPLAY_NUMSTATES    /**< Number of display states */
+
 } display_state_t;
 
 const char *display_state_repr(display_state_t state);

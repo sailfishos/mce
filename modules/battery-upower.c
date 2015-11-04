@@ -57,7 +57,7 @@
 #define UPOWER_INTERFACE_DEVICE "org.freedesktop.UPower.Device"
 
 /* ========================================================================= *
- * union dbus_any_t
+ * union uval_t
  * ========================================================================= */
 
 /** Placeholder for any basic dbus data type */
@@ -76,7 +76,7 @@ typedef union
     char         *s;
     double        d;
 
-} dbus_any_t;
+} uval_t;
 
 /* ========================================================================= *
  * struct MceBattery holds battery data available via UPower
@@ -159,9 +159,9 @@ static void     mcebat_update_schedule(void);
 /** UPower property object */
 typedef struct
 {
-    char      *p_key;
-    int        p_type;
-    dbus_any_t p_val;
+    char   *p_key;
+    int     p_type;
+    uval_t  p_val;
 } uprop_t;
 
 /** Invalidate property

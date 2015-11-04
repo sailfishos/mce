@@ -642,7 +642,7 @@ endif
 %.p : %.q ; cproto -s < $< | sed -e 's/_Bool/bool/g'
 
 clean::
-	$(RM) -f *.[qp] modules/*.[qp]
+	$(RM) -f *.[qp] modules/*.[qp] tools/*.[qp]
 
 # ----------------------------------------------------------------------------
 # LOCAL RPMBUILD (copy mce.* from OBS to rpm subdir)
