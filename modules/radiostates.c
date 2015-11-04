@@ -477,24 +477,6 @@ static void master_radio_trigger(gconstpointer data)
 /** net.connman.Manager.PropertyChanged D-Bus signal */
 #define CONNMAN_PROPERTY_CHANGED_SIG "PropertyChanged"
 
-/** Placeholder for any basic dbus data type */
-typedef union
-{
-	dbus_int16_t i16;
-	dbus_int32_t i32;
-	dbus_int64_t i64;
-
-	dbus_uint16_t u16;
-	dbus_uint32_t u32;
-	dbus_uint64_t u64;
-
-	dbus_bool_t   b;
-	unsigned char o;
-	const char   *s;
-	double        d;
-
-} dbus_any_t;
-
 /** Initializer for dbus_any_t; largest union member set to zero */
 #define DBUS_ANY_INIT { .i64 = 0 }
 

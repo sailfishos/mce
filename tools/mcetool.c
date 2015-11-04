@@ -33,6 +33,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <inttypes.h>
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
@@ -556,6 +557,18 @@ EXIT:
         return rsp;
 }
 
+/** Helper for detecting end of data from D-Bus message iterator
+ *
+ * @param iter D-Bus message iterator
+ *
+ * @return TRUE if iterator points to DBUS_TYPE_INVALID, FALSE otherwise
+ */
+static gboolean dbushelper_read_at_end(DBusMessageIter *iter)
+{
+        int have_type = dbus_message_iter_get_arg_type(iter);
+        return have_type == DBUS_TYPE_INVALID;
+}
+
 /** Helper for parsing int value from D-Bus message iterator
  *
  * @param iter D-Bus message iterator
@@ -568,6 +581,26 @@ static gboolean dbushelper_read_int(DBusMessageIter *iter, gint *value)
         dbus_int32_t data = 0;
 
         if( !dbushelper_require_type(iter, DBUS_TYPE_INT32) )
+                return FALSE;
+
+        dbus_message_iter_get_basic(iter, &data);
+        dbus_message_iter_next(iter);
+
+        return *value = data, TRUE;
+}
+
+/** Helper for parsing int64 value from D-Bus message iterator
+ *
+ * @param iter D-Bus message iterator
+ * @param value Where to store the value (not modified on failure)
+ *
+ * @return TRUE if value could be read, FALSE on failure
+ */
+static gboolean dbushelper_read_int64(DBusMessageIter *iter, int64_t *value)
+{
+        dbus_int64_t data = 0;
+
+        if( !dbushelper_require_type(iter, DBUS_TYPE_INT64) )
                 return FALSE;
 
         dbus_message_iter_get_basic(iter, &data);
@@ -644,6 +677,42 @@ static gboolean dbushelper_read_variant(DBusMessageIter *iter, DBusMessageIter *
 static gboolean dbushelper_read_array(DBusMessageIter *iter, DBusMessageIter *sub)
 {
         if( !dbushelper_require_type(iter, DBUS_TYPE_ARRAY) )
+                return FALSE;
+
+        dbus_message_iter_recurse(iter, sub);
+        dbus_message_iter_next(iter);
+
+        return TRUE;
+}
+
+/** Helper for entering dict entry container from D-Bus message iterator
+ *
+ * @param iter D-Bus message iterator
+ * @param sub  D-Bus message iterator for dict entry (not modified on failure)
+ *
+ * @return TRUE if container could be entered, FALSE on failure
+ */
+static gboolean dbushelper_read_dict(DBusMessageIter *iter, DBusMessageIter *sub)
+{
+        if( !dbushelper_require_type(iter, DBUS_TYPE_DICT_ENTRY) )
+                return FALSE;
+
+        dbus_message_iter_recurse(iter, sub);
+        dbus_message_iter_next(iter);
+
+        return TRUE;
+}
+
+/** Helper for entering struct container from D-Bus message iterator
+ *
+ * @param iter D-Bus message iterator
+ * @param sub  D-Bus message iterator for struct (not modified on failure)
+ *
+ * @return TRUE if container could be entered, FALSE on failure
+ */
+static gboolean dbushelper_read_struct(DBusMessageIter *iter, DBusMessageIter *sub)
+{
+        if( !dbushelper_require_type(iter, DBUS_TYPE_STRUCT) )
                 return FALSE;
 
         dbus_message_iter_recurse(iter, sub);
@@ -4908,6 +4977,113 @@ EXIT:
 }
 
 /* ------------------------------------------------------------------------- *
+ * display state statistics
+ * ------------------------------------------------------------------------- */
+
+/** Helper for turning 64 bit ms count to human readable elapsed time
+ */
+static char *elapsed_time_repr(char *buff, size_t size, int64_t t)
+{
+        char days[32] = "";
+        const char *sgn = "";
+        if( t < 0 ) sgn="-", t = -t;
+
+        int ms = (int)t % 1000; t /= 1000;
+        int s  = (int)t %   60; t /=   60;
+        int m  = (int)t %   60; t /=   60;
+        int h  = (int)t %   24; t /=   24;
+
+        if( t )	snprintf(days, sizeof days, "%"PRIi64"d ", t);
+
+        snprintf(buff, size, "%s%s%02d:%02d:%02d.%03d",
+                 sgn, days, h, m, s, ms);
+
+        return buff;
+}
+
+/** Get display state statistics
+ */
+static bool xmce_get_display_stats(const char *args)
+{
+        bool human_readable = true;
+
+        if( args ) {
+                if( !strcmp(args, "machine") )
+                        human_readable = false;
+                else if( !strcmp(args, "human") )
+                        human_readable = true;
+                else {
+                        errorf("unkown output mode: %s\n", args);
+                        return false;
+                }
+        }
+
+        DBusMessage *rsp  = NULL;
+        DBusError    err  = DBUS_ERROR_INIT;
+        gchar       *name = 0;
+
+        DBusMessageIter body, array, dict, entry;
+
+        if( !xmce_ipc_message_reply("get_display_stats", &rsp, DBUS_TYPE_INVALID) )
+                goto EXIT;
+
+        if( !dbushelper_init_read_iterator(rsp, &body) )
+                goto EXIT;
+
+        if( !dbushelper_require_array_type(&body, DBUS_TYPE_DICT_ENTRY) )
+                goto EXIT;
+
+        if( !dbushelper_read_array(&body, &array) )
+                goto EXIT;
+
+        while( !dbushelper_read_at_end(&array) ) {
+                g_free(name), name = 0;
+
+                if( !dbushelper_read_dict(&array, &dict) )
+                        goto EXIT;
+
+                if( !dbushelper_read_string(&dict, &name) )
+                        goto EXIT;
+
+                if( !dbushelper_read_struct(&dict, &entry) )
+                        goto EXIT;
+
+                int64_t time_ms = 0;
+                int64_t entries = 0;
+
+                if( !dbushelper_read_int64(&entry, &time_ms) )
+                        goto EXIT;
+
+                if( !dbushelper_read_int64(&entry, &entries) )
+                        goto EXIT;
+
+                if( human_readable ) {
+                        char tmp[64];
+                        printf("%-10s %16s, %"PRIi64" times\n",
+                               name,
+                               elapsed_time_repr(tmp, sizeof tmp, time_ms),
+                               entries);
+                }
+                else {
+                        printf("%-10s %"PRIi64" %"PRIi64"\n",
+                               name, time_ms, entries);
+                }
+
+        }
+EXIT:
+        g_free(name);
+
+        if( dbus_error_is_set(&err) ) {
+                errorf("%s: %s: %s\n", "get_display_stats", err.name, err.message);
+                dbus_error_free(&err);
+        }
+
+        if( rsp ) dbus_message_unref(rsp);
+
+        return true;
+}
+
+/* ------------------------------------------------------------------------- *
  * use mouse clicks to emulate touchscreen doubletap policy
  * ------------------------------------------------------------------------- */
 
@@ -5386,6 +5562,18 @@ static const mce_opt_t options[] =
                 .without_arg = mcetool_do_blank_screen_lpm,
                 .usage       =
                         "send display low power mode request\n"
+        },
+        {
+                .name        = "get-display-stats",
+                .without_arg = xmce_get_display_stats,
+                .with_arg    = xmce_get_display_stats,
+                .values      = "human|machine",
+                .usage       =
+                        "get time spent in various display states\n"
+                        "\n"
+                        "Note that uptime accumulated before the startup of\n"
+                        "the currently running mce process gets accounted\n"
+                        "as UNDEF.\n"
         },
         {
                 .name        = "blank-prevent",
