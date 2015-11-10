@@ -1,3 +1,9 @@
+mce (1.74.2) precise; urgency=low
+
+  * [led] Do not log pattern details when evaluating active pattern. Fixes MER#1412
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 10 Nov 2015 07:55:22 +0200
+
 mce (1.74.1) precise; urgency=low
 
   * [dbus] Allow user processes to call reset_config method. Fixes MER#1406
