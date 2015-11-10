@@ -31,6 +31,7 @@
 #include "mce-lib.h"
 #include "mce-conf.h"
 #include "mce-dbus.h"
+#include "mce-worker.h"
 
 #include <stdlib.h>
 #include <unistd.h>
@@ -72,6 +73,14 @@ static bool mce_dsme_shutting_down_flag = false;
 
 static const char    *mce_dsme_msg_type_repr          (int type);
 static system_state_t mce_dsme_normalise_system_state (dsme_state_t dsmestate);
+
+/* ------------------------------------------------------------------------- *
+ * WORKER_WATCHDOG
+ * ------------------------------------------------------------------------- */
+
+static void           mce_dsme_worker_done_cb  (void *aptr, void *reply);
+static void          *mce_dsme_worker_pong_cb  (void *aptr);
+static void           mce_dsme_worker_ping     (void);;
 
 /* ------------------------------------------------------------------------- *
  * PROCESS_WATCHDOG
@@ -257,6 +266,96 @@ static system_state_t mce_dsme_normalise_system_state(dsme_state_t dsmestate)
 }
 
 /* ========================================================================= *
+ * WORKER_WATCHDOG
+ * ========================================================================= */
+
+/** Validation context for the jobs passed from this module */
+#define MCE_DSME_WORKERWD_JOB_CONTEXT "mce-dsme"
+
+/** Descriptive name for the dummy sanity check worker thread jobs */
+#define MCE_DSME_WORKERWD_JOB_NAME    "ping"
+
+/** Number of worker jobs scheduled */
+static guint mce_dsme_worker_ping_cnt = 0;
+
+/** Number of worker jobs executed */
+static guint mce_dsme_worker_pong_cnt = 0;
+
+/** Number of worker jobs notified */
+static guint mce_dsme_worker_done_cnt = 0;
+
+/** Flag for: worker thread issues noticed */
+static bool  mce_dsme_worker_misbehaving = false;
+
+/** Handle dummy job finished notification
+ *
+ * @param aptr   Ping count passed to the worker thread (as void pointer)
+ * @param reply  Ping count returned from the worker thread (as void pointer)
+ */
+static void mce_dsme_worker_done_cb(void *aptr, void *reply)
+{
+    (void)reply;
+
+    mce_dsme_worker_done_cnt = GPOINTER_TO_INT(aptr);
+
+    /* Check if the last job scheduled matches what got executed
+     * and notified as finished */
+
+    if( mce_dsme_worker_ping_cnt != mce_dsme_worker_pong_cnt ||
+        mce_dsme_worker_ping_cnt != mce_dsme_worker_done_cnt ) {
+        mce_log(LL_CRIT, "worker thread is misbehaving");
+        mce_dsme_worker_misbehaving = true;
+    }
+}
+
+/** Dummy job to be executed by the worker thread
+ *
+ * @param aptr  Ping count (as void pointer)
+ *
+ * @return Ping count (as void pointer)
+ */
+static void *mce_dsme_worker_pong_cb(void *aptr)
+{
+    /* Note: This is executed in the worker thread context */
+
+    mce_dsme_worker_pong_cnt = GPOINTER_TO_INT(aptr);
+
+    /* Check if the job we got to execute is the latest one
+     * scheduled from the main thread */
+
+    if( mce_dsme_worker_ping_cnt != mce_dsme_worker_pong_cnt ) {
+        mce_log(LL_CRIT, "worker thread is misbehaving");
+        mce_dsme_worker_misbehaving = true;
+    }
+
+    return aptr;
+}
+
+/** Run a dummy job through worker thread to make sure it is still functioning
+ */
+static void mce_dsme_worker_ping(void)
+{
+    /* Check if previous job got executed as expected */
+    if( mce_dsme_worker_ping_cnt != mce_dsme_worker_pong_cnt ||
+        mce_dsme_worker_ping_cnt != mce_dsme_worker_done_cnt ) {
+        mce_log(LL_CRIT, "worker thread is possibly stuck");
+        mce_dsme_worker_misbehaving = true;
+    }
+    else if( mce_dsme_worker_misbehaving ) {
+        mce_dsme_worker_misbehaving = false;
+        mce_log(LL_CRIT, "worker thread is working again");
+    }
+
+    mce_dsme_worker_ping_cnt += 1;
+
+    mce_worker_add_job(MCE_DSME_WORKERWD_JOB_CONTEXT,
+                       MCE_DSME_WORKERWD_JOB_NAME,
+                       mce_dsme_worker_pong_cb,
+                       mce_dsme_worker_done_cb,
+                       GINT_TO_POINTER(mce_dsme_worker_ping_cnt));
+}
+
+/* ========================================================================= *
  * PROCESS_WATCHDOG
  * ========================================================================= */
 
@@ -272,6 +371,9 @@ static void mce_dsme_processwd_pong(void)
 
     /* Send the message */
     mce_dsme_socket_send(&msg, "DSM_MSGTYPE_PROCESSWD_PONG");
+
+    /* Run worker thread sanity check */
+    mce_dsme_worker_ping();
 
     /* Execute hearbeat actions even if ping-pong ipc failed */
     execute_datapipe(&heartbeat_pipe, GINT_TO_POINTER(0),
@@ -915,6 +1017,8 @@ static void mce_dsme_datapipe_quit(void)
  */
 gboolean mce_dsme_init(void)
 {
+    mce_worker_add_context(MCE_DSME_WORKERWD_JOB_CONTEXT);
+
     mce_dsme_datapipe_init();
 
     mce_dsme_dbus_init();
@@ -926,6 +1030,8 @@ gboolean mce_dsme_init(void)
  */
 void mce_dsme_exit(void)
 {
+    mce_worker_rem_context(MCE_DSME_WORKERWD_JOB_CONTEXT);
+
     mce_dsme_dbus_quit();
 
     if( mce_dsme_socket_is_connected() )

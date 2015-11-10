@@ -167,6 +167,7 @@ mce-dsme.o:\
 	mce-dsme.h\
 	mce-lib.h\
 	mce-log.h\
+	mce-worker.h\
 	mce.h\
 
 mce-dsme.pic.o:\
@@ -178,6 +179,7 @@ mce-dsme.pic.o:\
 	mce-dsme.h\
 	mce-lib.h\
 	mce-log.h\
+	mce-worker.h\
 	mce.h\
 
 mce-fbdev.o:\
