@@ -34,6 +34,7 @@
 #ifdef ENABLE_HYBRIS
 # include "../mce-hybris.h"
 #endif
+#include "../mce-worker.h"
 
 #include "../filewatcher.h"
 
@@ -597,6 +598,11 @@ static void                mdy_datapipe_lipstick_available_cb(gconstpointer aptr
 
 // whether to power on/off the frame buffer
 static bool                mdy_stm_display_state_needs_power(display_state_t state);
+
+// asynchronous ioctl framebuffer power control
+static void                mdy_stm_fbdev_power_done_cb(void *aptr, void *reply);
+static void               *mdy_stm_fbdev_power_exec_cb(void *aptr);
+static void                mdy_stm_fbdev_set_power(bool poweron);
 
 // early/late suspend and resume
 static bool                mdy_stm_is_early_suspend_allowed(void);
@@ -6397,6 +6403,63 @@ static bool mdy_stm_display_state_needs_power(display_state_t state)
     return power_on;
 }
 
+/** Callback for display power up/down ioctl finished notification
+ *
+ * @param aptr  Requested display power state (as void pointer)
+ * @param reply (Unused) return value from execute callback
+ */
+static void mdy_stm_fbdev_power_done_cb(void *aptr, void *reply)
+{
+    (void)reply;
+
+    /* Note: This is executed in the main thread context */
+
+    bool poweron = GPOINTER_TO_INT(aptr);
+
+    mdy_waitfb_data.suspended = !poweron;
+
+    mce_log(LL_DEBUG, "mdy_waitfb_data.suspended = %s",
+            mdy_waitfb_data.suspended ? "true" : "false");
+
+    mdy_stm_schedule_rethink();
+}
+
+/** Callback for executing display power up/down ioctl in worker thread
+ *
+ * @param aptr  Requested display power state (as void pointer)
+ *
+ * @return Requested display power state (as void pointer)
+ */
+static void *mdy_stm_fbdev_power_exec_cb(void *aptr)
+{
+    /* Note: This is executed in the worker thread context */
+
+    bool poweron = GPOINTER_TO_INT(aptr);
+
+    mce_log(LL_DEBUG, "display.poweron = %s", poweron ? "true" : "false");
+
+    mce_fbdev_set_power(poweron);
+
+    return aptr;
+}
+
+/** Execute display power up/down ioctl in worker thread
+ *
+ * Notification code follows the same logic as is used when tracking
+ * /sys/power/wait_for_fb_wake|sleep files in devices that have kernel
+ * that follows early suspend model.
+ *
+ * @param poweron true to turn display on, false to turn it off
+ */
+
+static void mdy_stm_fbdev_set_power(bool poweron)
+{
+    mce_worker_add_job(MODULE_NAME, "fbdev-ioctl",
+                       mdy_stm_fbdev_power_exec_cb,
+                       mdy_stm_fbdev_power_done_cb,
+                       GINT_TO_POINTER(poweron));
+}
+
 /** Predicate for: policy allows early suspend
  */
 static bool mdy_stm_is_early_suspend_allowed(void)
@@ -6435,7 +6498,7 @@ static void mdy_stm_start_fb_suspend(void)
     mce_log(LL_NOTICE, "suspending");
     wakelock_allow_suspend();
     if( !mdy_waitfb_data.thread )
-        mdy_waitfb_data.suspended = true, mce_fbdev_set_power(false);
+        mdy_stm_fbdev_set_power(false);
 #else
     mce_log(LL_NOTICE, "power off frame buffer");
     mdy_waitfb_data.suspended = true, mce_fbdev_set_power(false);
@@ -6452,7 +6515,7 @@ static void mdy_stm_start_fb_resume(void)
     mce_log(LL_NOTICE, "resuming");
     wakelock_block_suspend();
     if( !mdy_waitfb_data.thread )
-        mdy_waitfb_data.suspended = false, mce_fbdev_set_power(true);
+        mdy_stm_fbdev_set_power(true);
 #else
     mce_log(LL_NOTICE, "power off frame buffer");
     mdy_waitfb_data.suspended = false, mce_fbdev_set_power(true);
@@ -9459,6 +9522,9 @@ const gchar *g_module_check_init(GModule *module)
 
     (void)module;
 
+    /* Allow execution of worker thread jobs from this plugin */
+    mce_worker_add_context(MODULE_NAME);
+
     /* Initialise the display type and the relevant paths */
     (void)mdy_display_type_get();
 
@@ -9556,6 +9622,9 @@ void g_module_unload(GModule *module)
 
     /* Mark down that we are unloading */
     mdy_unloading_module = TRUE;
+
+    /* Deny execution of worker thread jobs from this plugin */
+    mce_worker_rem_context(MODULE_NAME);
 
     /* Kill the framebuffer sleep/wakeup thread */
 #ifdef ENABLE_WAKELOCKS
