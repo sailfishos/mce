@@ -1,3 +1,12 @@
+mce (1.75.0) precise; urgency=low
+
+  * [worker] Add interface for handling blocking tasks asynchronously.
+    Contributes to JB#32840
+  * [worker] Check worker thread sanity periodically. Contributes to JB#32840
+  * [display] Offload fbdev ioctl to the worker thread. Fixes JB#32840
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 11 Nov 2015 13:21:24 +0200
+
 mce (1.74.2) precise; urgency=low
 
   * [led] Do not log pattern details when evaluating active pattern. Fixes MER#1412
