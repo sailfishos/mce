@@ -3036,6 +3036,34 @@ static void xmce_get_filter_lid_with_als(void)
         printf("%-"PAD1"s %s\n", "Filter lid with als:", txt);
 }
 
+/* Set limit for light als should report when lid is closed
+ *
+ * @param args string suitable for interpreting as lux value
+ */
+static bool xmce_set_filter_lid_als_limit(const char *args)
+{
+        int val = xmce_parse_integer(args);
+        if( val < 0 ) {
+                errorf("%d: invalid lux value\n", val);
+                return false;
+        }
+        mcetool_gconf_set_int(MCE_GCONF_FILTER_LID_ALS_LIMIT, val);
+        return true;
+}
+
+/* Get current filter lid als limit from mce and print it out
+ */
+static void xmce_get_filter_lid_als_limit(void)
+{
+        gint val = 0;
+        char txt[32];
+
+        strcpy(txt, "unknown");
+        if( mcetool_gconf_get_int(MCE_GCONF_FILTER_LID_ALS_LIMIT, &val) )
+                snprintf(txt, sizeof txt, "%d", (int)val);
+        printf("%-"PAD1"s %s (lux)\n", "Lid closed als limit:", txt);
+}
+
 /* Set lid_sensor use mode
  *
  * @param args string suitable for interpreting as enabled/disabled
@@ -5410,6 +5438,7 @@ static bool xmce_get_status(const char *args)
         xmce_get_ps_acts_as_lid();
         xmce_get_lid_sensor_mode();
         xmce_get_filter_lid_with_als();
+        xmce_get_filter_lid_als_limit();
         xmce_get_lid_open_actions();
         xmce_get_lid_close_actions();
         xmce_get_kbd_slide_open_trigger();
@@ -6292,6 +6321,18 @@ static const mce_opt_t options[] =
                         "\n"
                         "When enabled, lid closed events are acted on only if they\n"
                         "happen in close proximity to light level drop.\n"
+        },
+        {
+                .name        = "set-filter-lid-als-limit",
+                .with_arg    = xmce_set_filter_lid_als_limit,
+                .values      = "lux",
+                        "set limit for how much light als can report when lid is closed\n"
+                        "\n"
+                        "Lid closed event is ignored unless it is associated with als\n"
+                        "reporting lux>limit -> lux<=limit drop.\n"
+                        "\n"
+                        "Lid opened event is ignored unless it is associated with als\n"
+                        "reporting lux<=limit -> lux>limit raise.\n"
         },
         {
                 .name        = "set-orientation-sensor-mode",
