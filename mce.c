@@ -32,6 +32,7 @@
 #include "mce-command-line.h"
 #include "mce-sensorfw.h"
 #include "mce-wakelock.h"
+#include "mce-worker.h"
 #include "tklock.h"
 #include "powerkey.h"
 #include "event-input.h"
@@ -948,6 +949,10 @@ int main(int argc, char **argv)
 	/* Open fbdev as early as possible */
 	mce_fbdev_init();
 
+	/* Start worker thread */
+	if( !mce_worker_init() )
+		goto EXIT;
+
 	/* Get configuration options */
 	if( !mce_conf_init() ) {
 		mce_log(LL_CRIT,
@@ -1074,6 +1079,7 @@ EXIT:
 	mce_gconf_exit();
 	mce_dbus_exit();
 	mce_conf_exit();
+	mce_worker_quit();
 	mce_fbdev_quit();
 
 	/* If the mainloop is initialised, unreference it */

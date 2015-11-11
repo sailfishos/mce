@@ -167,6 +167,7 @@ mce-dsme.o:\
 	mce-dsme.h\
 	mce-lib.h\
 	mce-log.h\
+	mce-worker.h\
 	mce.h\
 
 mce-dsme.pic.o:\
@@ -178,6 +179,7 @@ mce-dsme.pic.o:\
 	mce-dsme.h\
 	mce-lib.h\
 	mce-log.h\
+	mce-worker.h\
 	mce.h\
 
 mce-fbdev.o:\
@@ -360,6 +362,16 @@ mce-wltimer.pic.o:\
 	mce-wltimer.h\
 	mce.h\
 
+mce-worker.o:\
+	mce-worker.c\
+	mce-log.h\
+	mce-worker.h\
+
+mce-worker.pic.o:\
+	mce-worker.c\
+	mce-log.h\
+	mce-worker.h\
+
 mce.o:\
 	mce.c\
 	builtin-gconf.h\
@@ -379,6 +391,7 @@ mce.o:\
 	mce-sensorfw.h\
 	mce-wakelock.h\
 	mce-wltimer.h\
+	mce-worker.h\
 	mce.h\
 	modetransition.h\
 	powerkey.h\
@@ -403,6 +416,7 @@ mce.pic.o:\
 	mce-sensorfw.h\
 	mce-wakelock.h\
 	mce-wltimer.h\
+	mce-worker.h\
 	mce.h\
 	modetransition.h\
 	powerkey.h\
@@ -587,6 +601,7 @@ modules/display.o:\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce-worker.h\
 	mce.h\
 	modules/display.h\
 
@@ -605,6 +620,7 @@ modules/display.pic.o:\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce-worker.h\
 	mce.h\
 	modules/display.h\
 
@@ -927,6 +943,7 @@ tests/ut/ut_display.o:\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce-worker.h\
 	mce.h\
 	modules/display.c\
 	modules/display.h\
@@ -947,6 +964,7 @@ tests/ut/ut_display.pic.o:\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce-worker.h\
 	mce.h\
 	modules/display.c\
 	modules/display.h\
@@ -968,6 +986,7 @@ tests/ut/ut_display_blanking_inhibit.o:\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce-worker.h\
 	mce.h\
 	modules/display.c\
 	modules/display.h\
@@ -989,6 +1008,7 @@ tests/ut/ut_display_blanking_inhibit.pic.o:\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce-worker.h\
 	mce.h\
 	modules/display.c\
 	modules/display.h\
@@ -1010,6 +1030,7 @@ tests/ut/ut_display_conf.o:\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce-worker.h\
 	mce.h\
 	modules/display.c\
 	modules/display.h\
@@ -1031,6 +1052,7 @@ tests/ut/ut_display_conf.pic.o:\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce-worker.h\
 	mce.h\
 	modules/display.c\
 	modules/display.h\
@@ -1052,6 +1074,7 @@ tests/ut/ut_display_filter.o:\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce-worker.h\
 	mce.h\
 	modules/display.c\
 	modules/display.h\
@@ -1073,6 +1096,7 @@ tests/ut/ut_display_filter.pic.o:\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce-worker.h\
 	mce.h\
 	modules/display.c\
 	modules/display.h\
@@ -1094,6 +1118,7 @@ tests/ut/ut_display_stm.o:\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce-worker.h\
 	mce.h\
 	modules/display.c\
 	modules/display.h\
@@ -1115,6 +1140,7 @@ tests/ut/ut_display_stm.pic.o:\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce-worker.h\
 	mce.h\
 	modules/display.c\
 	modules/display.h\
