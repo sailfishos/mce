@@ -1,3 +1,9 @@
+mce (1.76.0) precise; urgency=low
+
+  * [tklock] Add setting for lid is closed als limit. Fixes JB#33468
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 12 Nov 2015 10:05:13 +0200
+
 mce (1.75.0) precise; urgency=low
 
   * [worker] Add interface for handling blocking tasks asynchronously.
