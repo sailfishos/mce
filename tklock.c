@@ -89,9 +89,6 @@ typedef enum
 /** Signal to send when lpm ui state changes */
 #define MCE_LPM_UI_MODE_SIG "lpm_ui_mode_ind"
 
-/** Minimum light level for TKLOCK_LIDLIGHT_HI state [lux] */
-#define TKLOCK_LIDLIGHT_HI_LIMIT                  2
-
 /** How long to wait for lid close after low lux [ms] */
 #define TKLOCK_LIDFILTER_SET_WAIT_FOR_CLOSE_DELAY 1500
 
@@ -525,6 +522,11 @@ static guint als_enabled_gconf_id = 0;
 static gboolean filter_lid_with_als = DEFAULT_FILTER_LID_WITH_ALS;
 /** Config notification for filter_lid_with_als */
 static guint filter_lid_with_als_gconf_id = 0;
+
+/** Maximum amount of light ALS should report when LID is closed */
+static gint  filter_lid_als_limit               = DEFAULT_FILTER_LID_ALS_LIMIT;
+/** Config notification for filter_lid_als_limit */
+static guint filter_lid_als_limit_gconf_id      = 0;
 
 /** How long to keep display on after incoming call ends [ms] */
 static gint exception_length_call_in            = DEFAULT_EXCEPTION_LENGTH_CALL_IN;
@@ -2424,7 +2426,7 @@ static tklock_lidlight_t tklock_lidlight_from_lux(int lux)
         return TKLOCK_LIDLIGHT_NA;
 
     /* Sensor does not see light? */
-    if( lux < TKLOCK_LIDLIGHT_HI_LIMIT )
+    if( lux <= filter_lid_als_limit )
         return TKLOCK_LIDLIGHT_LO;
 
     /* It is not completely dark */
@@ -4758,6 +4760,10 @@ static void tklock_gconf_cb(GConfClient *const gcc, const guint id,
         filter_lid_with_als = gconf_value_get_bool(gcv);
         tklock_lidfilter_rethink_lid_state();
     }
+    else if( id == filter_lid_als_limit_gconf_id ) {
+        filter_lid_als_limit = gconf_value_get_int(gcv);
+        tklock_lidfilter_rethink_lid_state();
+    }
     else if( id == lockscreen_anim_enabled_cb_id ) {
         lockscreen_anim_enabled= gconf_value_get_bool(gcv);
     }
@@ -5074,6 +5080,12 @@ static void tklock_gconf_init(void)
                          tklock_gconf_cb,
                          &filter_lid_with_als_gconf_id);
 
+    mce_gconf_track_int(MCE_GCONF_FILTER_LID_ALS_LIMIT,
+                        &filter_lid_als_limit,
+                        DEFAULT_FILTER_LID_ALS_LIMIT,
+                        tklock_gconf_cb,
+                        &filter_lid_als_limit_gconf_id);
+
     /* Display on exception lengths */
     mce_gconf_track_int(MCE_GCONF_EXCEPTION_LENGTH_CALL_IN,
                         &exception_length_call_in,
@@ -5214,6 +5226,9 @@ static void tklock_gconf_quit(void)
 
     mce_gconf_notifier_remove(filter_lid_with_als_gconf_id),
         filter_lid_with_als_gconf_id = 0;
+
+    mce_gconf_notifier_remove(filter_lid_als_limit_gconf_id),
+        filter_lid_als_limit_gconf_id = 0;
 
     mce_gconf_notifier_remove(exception_length_call_in_cb_id),
         exception_length_call_in_cb_id = 0;

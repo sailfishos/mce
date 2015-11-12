@@ -1282,6 +1282,11 @@ static const setting_t gconf_defaults[] =
     .def  = G_STRINGIFY(DEFAULT_FILTER_LID_WITH_ALS),
   },
   {
+    .key  = MCE_GCONF_FILTER_LID_ALS_LIMIT,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_FILTER_LID_ALS_LIMIT),
+  },
+  {
     .key  = MCE_GCONF_TK_LID_OPEN_ACTIONS,
     .type = "i",
     .def  = G_STRINGIFY(DEFAULT_LID_OPEN_ACTION),

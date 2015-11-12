@@ -126,6 +126,10 @@ typedef enum
 #define MCE_GCONF_FILTER_LID_WITH_ALS           MCE_GCONF_LOCK_PATH"/filter_lid_with_als"
 #define DEFAULT_FILTER_LID_WITH_ALS             true
 
+/** Maximum amount of light ALS should report when LID is closed */
+#define MCE_GCONF_FILTER_LID_ALS_LIMIT          MCE_GCONF_LOCK_PATH"/filter_lid_als_limit"
+#define DEFAULT_FILTER_LID_ALS_LIMIT            0
+
 /** Lid sensor open actions */
 typedef enum
 {
