@@ -1,3 +1,9 @@
+mce (1.76.2) precise; urgency=low
+
+  * [display] Tune suspend after active use delays. Fixes JB#33366
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 13 Nov 2015 11:39:58 +0200
+
 mce (1.76.1) precise; urgency=low
 
   * [display] Change built-in default dim timeouts. Fixes JB#33492
