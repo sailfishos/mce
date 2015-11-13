@@ -94,6 +94,9 @@
 /** Maximum duration for compositor based ui dimming animation */
 #define MCE_FADER_DURATION_UI_MAX 5000
 
+/** How long to delay entering late suspend after powering down display */
+#define MCE_DISPLAY_STM_SUSPEND_DELAY_NS (5LL * 1000LL * 1000LL * 1000LL)
+
 /* ========================================================================= *
  * TYPEDEFS
  * ========================================================================= */
@@ -531,7 +534,7 @@ static gboolean            mdy_compositor_start_state_req(renderer_state_t state
 enum
 {
     /** Default duration for blocking suspend after call_state changes */
-    CALLSTATE_CHANGE_BLOCK_SUSPEND_DEFAULT_MS = 5 * 1000,
+    CALLSTATE_CHANGE_BLOCK_SUSPEND_DEFAULT_MS = 15 * 1000,
 
     /** Duration for blocking suspend after call_state changes to active */
     CALLSTATE_CHANGE_BLOCK_SUSPEND_ACTIVE_MS  = 60 * 1000,
@@ -6556,9 +6559,7 @@ static void mdy_stm_release_wakelock(void)
         mdy_stm_acquire_wakelockd = false;
 #ifdef ENABLE_WAKELOCKS
         mce_log(LL_INFO, "wakelock released");
-        //wakelock_unlock("mce_display_on");
-        wakelock_lock("mce_display_on",
-                      1000 * 1000 * 1000);
+        wakelock_lock("mce_display_on", MCE_DISPLAY_STM_SUSPEND_DELAY_NS);
 #endif
     }
 }
