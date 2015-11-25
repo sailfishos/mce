@@ -284,6 +284,7 @@ mce_job_delete(mce_job_t *self)
     mce_log(LL_DEBUG, "job(%s:%s) deleted", mce_job_context(self), mce_job_name(self));
 
     free(self->mj_name);
+    free(self->mj_context);
     free(self);
 
 EXIT:
@@ -398,6 +399,8 @@ mce_joblist_delete(mce_joblist_t *self)
 
     while( (job = mce_joblist_pull(self)) )
         mce_job_delete(job);
+
+    free(self);
 
 EXIT:
     return;
