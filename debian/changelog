@@ -1,3 +1,9 @@
+mce (1.76.3) precise; urgency=low
+
+  * [worker] Fix job queue related memory leaks. Fixes MER#1429
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 25 Nov 2015 12:08:27 +0200
+
 mce (1.76.2) precise; urgency=low
 
   * [display] Tune suspend after active use delays. Fixes JB#33366
