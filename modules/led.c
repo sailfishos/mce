@@ -383,6 +383,15 @@ static void disable_reno(void)
 {
 	int fd;
 
+	if (access("/dev/i2c-0", F_OK) == 0) {
+		mce_log(LL_DEBUG, "Skipping Reno disable - suitable kernel detected");
+		/* Reset errno,
+		 * to avoid false positives down the line
+		 */
+		errno = 0;
+		return;
+	}
+
 	mce_log(LL_DEBUG, "Disabling Reno");
 
 	if ((fd = open("/dev/i2c-1", O_RDWR)) == -1) {
