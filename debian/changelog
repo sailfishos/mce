@@ -1,3 +1,9 @@
+mce (1.76.5) precise; urgency=low
+
+  * [evdev] Add event names to lookup tables. Fixes JB#33636
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 02 Dec 2015 14:04:03 +0200
+
 mce (1.76.4) precise; urgency=low
 
   * [led] Skip disabling Reno on supported kernels for N9/N950. Fixes MER#1434
