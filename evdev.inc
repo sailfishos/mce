@@ -23,6 +23,8 @@ static const char * const lut_syn[] =
   [0x0001] = "SYN_CONFIG",
   [0x0002] = "SYN_MT_REPORT",
   [0x0003] = "SYN_DROPPED",
+  [0x0004] = "SYN_TIME_SEC",
+  [0x0005] = "SYN_TIME_NSEC",
 };
 static const char * const lut_key[] =
 {
@@ -268,6 +270,9 @@ static const char * const lut_key[] =
   [0x00f5] = "KEY_DISPLAY_OFF",
   [0x00f6] = "KEY_WIMAX",
   [0x00f7] = "KEY_RFKILL",
+  [0x00f8] = "KEY_MICMUTE",
+  [0x00f9] = "KEY_APP_SWITCH",
+  [0x00fa] = "KEY_WEIBO",
   [0x0100] = "BTN_MISC",
   [0x0101] = "BTN_1",
   [0x0102] = "BTN_2",
@@ -322,6 +327,7 @@ static const char * const lut_key[] =
   [0x0145] = "BTN_TOOL_FINGER",
   [0x0146] = "BTN_TOOL_MOUSE",
   [0x0147] = "BTN_TOOL_LENS",
+  [0x0148] = "BTN_TOOL_QUINTTAP",
   [0x014a] = "BTN_TOUCH",
   [0x014b] = "BTN_STYLUS",
   [0x014c] = "BTN_STYLUS2",
@@ -479,6 +485,15 @@ static const char * const lut_key[] =
   [0x0218] = "KEY_CAMERA_DOWN",
   [0x0219] = "KEY_CAMERA_LEFT",
   [0x021a] = "KEY_CAMERA_RIGHT",
+  [0x021b] = "KEY_ATTENDANT_ON",
+  [0x021c] = "KEY_ATTENDANT_OFF",
+  [0x021d] = "KEY_ATTENDANT_TOGGLE",
+  [0x021e] = "KEY_LIGHTS_TOGGLE",
+  [0x0220] = "BTN_DPAD_UP",
+  [0x0221] = "BTN_DPAD_DOWN",
+  [0x0222] = "BTN_DPAD_LEFT",
+  [0x0223] = "BTN_DPAD_RIGHT",
+  [0x0230] = "KEY_ALS_TOGGLE",
   [0x02c0] = "BTN_TRIGGER_HAPPY",
   [0x02c1] = "BTN_TRIGGER_HAPPY2",
   [0x02c2] = "BTN_TRIGGER_HAPPY3",
@@ -519,6 +534,7 @@ static const char * const lut_key[] =
   [0x02e5] = "BTN_TRIGGER_HAPPY38",
   [0x02e6] = "BTN_TRIGGER_HAPPY39",
   [0x02e7] = "BTN_TRIGGER_HAPPY40",
+  [0x02fe] = "KEY_CAMERA_SNAPSHOT",
 };
 static const char * const lut_rel[] =
 {
@@ -561,6 +577,8 @@ static const char * const lut_abs[] =
   [0x001c] = "ABS_TOOL_WIDTH",
   [0x0020] = "ABS_VOLUME",
   [0x0028] = "ABS_MISC",
+  [0x002a] = "ABS_MT_POSITION",
+  [0x002b] = "ABS_MT_AMPLITUDE",
   [0x002f] = "ABS_MT_SLOT",
   [0x0030] = "ABS_MT_TOUCH_MAJOR",
   [0x0031] = "ABS_MT_TOUCH_MINOR",
@@ -574,6 +592,8 @@ static const char * const lut_abs[] =
   [0x0039] = "ABS_MT_TRACKING_ID",
   [0x003a] = "ABS_MT_PRESSURE",
   [0x003b] = "ABS_MT_DISTANCE",
+  [0x003c] = "ABS_MT_TOOL_X",
+  [0x003d] = "ABS_MT_TOOL_Y",
 };
 static const char * const lut_sw[] =
 {
@@ -590,6 +610,10 @@ static const char * const lut_sw[] =
   [0x000a] = "SW_KEYPAD_SLIDE",
   [0x000b] = "SW_FRONT_PROXIMITY",
   [0x000c] = "SW_ROTATE_LOCK",
+  [0x000d] = "SW_LINEIN_INSERT",
+  [0x000e] = "SW_HPHL_OVERCURRENT",
+  [0x000f] = "SW_HPHR_OVERCURRENT",
+  [0x0010] = "SW_UNSUPPORT_INSERT",
 };
 static const char * const lut_msc[] =
 {
@@ -598,6 +622,7 @@ static const char * const lut_msc[] =
   [0x0002] = "MSC_GESTURE",
   [0x0003] = "MSC_RAW",
   [0x0004] = "MSC_SCAN",
+  [0x0005] = "MSC_TIMESTAMP",
 };
 static const char * const lut_led[] =
 {
