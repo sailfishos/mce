@@ -1190,11 +1190,23 @@ tools/evdev_trace.o:\
 	tools/evdev_trace.c\
 	evdev.h\
 	mce-log.h\
+	tools/fileusers.h\
 
 tools/evdev_trace.pic.o:\
 	tools/evdev_trace.c\
 	evdev.h\
 	mce-log.h\
+	tools/fileusers.h\
+
+tools/fileusers.o:\
+	tools/fileusers.c\
+	mce-log.h\
+	tools/fileusers.h\
+
+tools/fileusers.pic.o:\
+	tools/fileusers.c\
+	mce-log.h\
+	tools/fileusers.h\
 
 tools/mcetool.o:\
 	tools/mcetool.c\
