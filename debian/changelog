@@ -1,3 +1,9 @@
+mce (1.77.1) precise; urgency=low
+
+  * [evdev] Add event names to lookup tables. Fixes JB#33666
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 09 Dec 2015 12:28:34 +0200
+
 mce (1.77.0) precise; urgency=low
 
   * [evdev_trace] Identify processes that have input devices open. Fixes JB#33642
