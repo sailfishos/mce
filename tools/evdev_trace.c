@@ -6,6 +6,7 @@
 
 #include "../mce-log.h"
 #include "../evdev.h"
+#include "fileusers.h"
 
 #include <linux/input.h>
 
@@ -128,7 +129,20 @@ mainloop(char **path, int count, int identify, int trace)
     if( identify )
     {
       printf("----====( %s )====----\n", path[i]);
+
       evdev_identify_device(pfd[i].fd);
+
+      GSList *list = fileusers_get(path[i]);
+      if( list ) {
+        printf("Readers:\n");
+        for( GSList *item = list; item; item = item->next )
+        {
+          fileuser_t *fu = item->data;
+          printf("\t%s(pid=%d,fd=%d)\n", fu->cmd, fu->pid, fu->fd);
+        }
+        g_slist_free(list);
+      }
+
       printf("\n");
     }
   }
@@ -175,6 +189,7 @@ static struct option optL[] =
   { "help",          0, 0, 'h' },
   { "trace",         0, 0, 't' },
   { "identify",      0, 0, 'i' },
+  { "show-readers",  0, 0, 'I' },
   { "emit-also-tod", 0, 0, 'e' },
   { "emit-only-tod", 0, 0, 'E' },
   { 0,0,0,0 }
@@ -185,6 +200,7 @@ static const char optS[] =
 "h" // --help
 "t" // --trace
 "i" // --identify
+"I" // --show-readers
 "e" // --emit-also-tod
 "E" // --emit-only-tod
 ;
@@ -309,6 +325,7 @@ main(int argc, char **argv)
 
   int f_trace    = 0;
   int f_identify = 0;
+  int f_readers  = 0;
 
   setlinebuf(stdout);
 
@@ -341,6 +358,10 @@ main(int argc, char **argv)
       f_identify = 1;
       break;
 
+    case 'I':
+      f_identify = f_readers = 1;
+      break;
+
     case 'e':
       emit_time_of_day = true;
       break;
@@ -363,6 +384,11 @@ main(int argc, char **argv)
   if( !f_identify && !f_trace )
   {
     f_identify = 1;
+  }
+
+  if( f_readers )
+  {
+    fileusers_init();
   }
 
   if( optind < argc )
@@ -397,6 +423,7 @@ main(int argc, char **argv)
 cleanup:
 
   globfree(&gb);
+  fileusers_quit();
 
   return result;
 }

@@ -361,7 +361,7 @@ $(TOOLDIR)/mcetool : $(TOOLDIR)/mcetool.o mce-command-line.o
 
 $(TOOLDIR)/evdev_trace : CFLAGS += $(TOOLS_CFLAGS)
 $(TOOLDIR)/evdev_trace : LDLIBS += $(TOOLS_LDLIBS)
-$(TOOLDIR)/evdev_trace : $(TOOLDIR)/evdev_trace.o evdev.o
+$(TOOLDIR)/evdev_trace : $(TOOLDIR)/evdev_trace.o evdev.o $(TOOLDIR)/fileusers.o
 
 # ----------------------------------------------------------------------------
 # UNIT TESTS
@@ -584,6 +584,8 @@ NORMALIZE_USES_SPC =\
 	tklock.h\
 	tools/evdev_trace.c\
 	tools/mcetool.c\
+	tools/fileusers.c\
+	tools/fileusers.h\
 
 NORMALIZE_USES_TAB =\
 	datapipe.c\
