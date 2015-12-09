@@ -494,6 +494,15 @@ static const char * const lut_key[] =
   [0x0222] = "BTN_DPAD_LEFT",
   [0x0223] = "BTN_DPAD_RIGHT",
   [0x0230] = "KEY_ALS_TOGGLE",
+  [0x0240] = "KEY_BUTTONCONFIG",
+  [0x0241] = "KEY_TASKMANAGER",
+  [0x0242] = "KEY_JOURNAL",
+  [0x0243] = "KEY_CONTROLPANEL",
+  [0x0244] = "KEY_APPSELECT",
+  [0x0245] = "KEY_SCREENSAVER",
+  [0x0246] = "KEY_VOICECOMMAND",
+  [0x0250] = "KEY_BRIGHTNESS_MIN",
+  [0x0251] = "KEY_BRIGHTNESS_MAX",
   [0x02c0] = "BTN_TRIGGER_HAPPY",
   [0x02c1] = "BTN_TRIGGER_HAPPY2",
   [0x02c2] = "BTN_TRIGGER_HAPPY3",
@@ -614,6 +623,8 @@ static const char * const lut_sw[] =
   [0x000e] = "SW_HPHL_OVERCURRENT",
   [0x000f] = "SW_HPHR_OVERCURRENT",
   [0x0010] = "SW_UNSUPPORT_INSERT",
+  [0x0011] = "SW_MICROPHONE2_INSERT",
+  [0x0012] = "SW_MUTE_DEVICE",
 };
 static const char * const lut_msc[] =
 {
