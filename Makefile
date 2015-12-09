@@ -45,7 +45,7 @@ distclean:: clean
 # CONFIGURATION
 # ----------------------------------------------------------------------------
 
-VERSION := 1.76.5
+VERSION := 1.77.0
 
 INSTALL_BIN := install --mode=755
 INSTALL_DIR := install -d
