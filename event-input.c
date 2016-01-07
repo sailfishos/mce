@@ -32,6 +32,7 @@
 # include "mce-gconf.h"
 #endif
 #include "mce-sensorfw.h"
+#include "multitouch.h"
 #include "evdev.h"
 
 #include <linux/input.h>
@@ -291,6 +292,9 @@ typedef struct
 
     /** Name of device that provides keypad slide state*/
     gchar             *ex_sw_keypad_slide;
+
+    /** State data for multitouch/mouse input devices */
+    mt_state_t        *ex_mt_state;
 
 } evin_iomon_extra_t;
 
@@ -1750,6 +1754,9 @@ evin_iomon_extra_delete_cb(void *aptr)
     evin_iomon_extra_t *self = aptr;
 
     if( self ) {
+        mt_state_delete(self->ex_mt_state),
+            self->ex_mt_state = 0;
+
         evin_evdevinfo_delete(self->ex_info);
         g_free(self->ex_sw_keypad_slide);
         free(self->ex_name);
@@ -1770,10 +1777,17 @@ evin_iomon_extra_create(int fd, const char *name)
     self->ex_type = evin_evdevtype_from_info(self->ex_info);
 
     self->ex_sw_keypad_slide = 0;
+    self->ex_mt_state = 0;
 
     if( self->ex_type == EVDEV_KEYBOARD ) {
         self->ex_sw_keypad_slide = mce_conf_get_string("SW_KEYPAD_SLIDE",
                                                        self->ex_name, 0);
+    }
+
+    if( self->ex_type == EVDEV_TOUCH ) {
+        bool protocol_b = evin_evdevinfo_has_code(self->ex_info,
+                                                  EV_ABS, ABS_MT_SLOT);
+        self->ex_mt_state = mt_state_create(protocol_b);
     }
 
     return self;
@@ -1935,6 +1949,13 @@ evin_iomon_touchscreen_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
 
     bool grabbed = datapipe_get_gint(touch_grab_active_pipe);
 
+    bool doubletap = false;
+
+    evin_iomon_extra_t *extra = mce_io_mon_get_user_data(iomon);
+    if( extra && extra->ex_mt_state ) {
+        doubletap = mt_state_handle_event(extra->ex_mt_state, ev);
+    }
+
 #ifdef ENABLE_DOUBLETAP_EMULATION
     if( grabbed || fake_evin_doubletap_enabled ) {
         /* Note: In case we happen to be in middle of display
@@ -1949,7 +1970,7 @@ evin_iomon_touchscreen_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
         case MCE_DISPLAY_OFF:
         case MCE_DISPLAY_LPM_OFF:
         case MCE_DISPLAY_LPM_ON:
-            if( evin_doubletap_emulate(ev) ) {
+            if( doubletap ) {
                 mce_log(LL_DEVEL, "[doubletap] emulated from touch input");
                 ev->type  = EV_MSC;
                 ev->code  = MSC_GESTURE;
