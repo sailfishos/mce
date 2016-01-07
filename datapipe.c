@@ -196,6 +196,9 @@ datapipe_struct shutting_down_pipe;
 /** Device Lock state; read only */
 datapipe_struct device_lock_state_pipe;
 
+/** touchscreen input detected; read only */
+datapipe_struct touch_detected_pipe;
+
 /** touchscreen input grab required; read/write */
 datapipe_struct touch_grab_wanted_pipe;
 
@@ -918,6 +921,8 @@ void mce_datapipe_init(void)
 		       0, GINT_TO_POINTER(FALSE));
 	setup_datapipe(&device_lock_state_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(DEVICE_LOCK_UNDEFINED));
+	setup_datapipe(&touch_detected_pipe, READ_WRITE, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(FALSE));
 	setup_datapipe(&touch_grab_wanted_pipe, READ_WRITE, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(FALSE));
 	setup_datapipe(&touch_grab_active_pipe, READ_ONLY, DONT_FREE_CACHE,
@@ -992,6 +997,7 @@ void mce_datapipe_quit(void)
 	free_datapipe(&device_lock_state_pipe);
 	free_datapipe(&touch_grab_active_pipe);
 	free_datapipe(&touch_grab_wanted_pipe);
+	free_datapipe(&touch_detected_pipe);
 	free_datapipe(&keypad_grab_active_pipe);
 	free_datapipe(&keypad_grab_wanted_pipe);
 	free_datapipe(&music_playback_pipe);
