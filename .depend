@@ -898,6 +898,14 @@ modules/usbmode.pic.o:\
 	mce-log.h\
 	mce.h\
 
+multitouch.o:\
+	multitouch.c\
+	multitouch.h\
+
+multitouch.pic.o:\
+	multitouch.c\
+	multitouch.h\
+
 powerkey.o:\
 	powerkey.c\
 	builtin-gconf.h\

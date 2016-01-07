@@ -291,6 +291,7 @@ MCE_CORE += mce-command-line.c
 MCE_CORE += mce-conf.c
 MCE_CORE += datapipe.c
 MCE_CORE += mce-modules.c
+MCE_CORE += multitouch.c
 MCE_CORE += mce-io.c
 MCE_CORE += mce-lib.c
 MCE_CORE += evdev.c
@@ -575,6 +576,8 @@ NORMALIZE_USES_SPC =\
 	modules/radiostates.h\
 	modules/sensor-gestures.c\
 	modules/usbmode.c\
+	multitouch.c\
+	multitouch.h\
 	ofono-dbus-names.h\
 	powerkey.c\
 	powerkey.h\
