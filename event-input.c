@@ -381,8 +381,6 @@ static bool         evin_ts_grab_poll_palm_detect               (evin_input_grab
 
 static void         evin_ts_grab_changed                        (evin_input_grab_t *ctrl, bool grab);
 
-static void         evin_ts_grab_event_filter_cb                (struct input_event *ev);
-
 static void         evin_ts_grab_wanted_cb                      (gconstpointer data);
 static void         evin_ts_grab_display_state_cb               (gconstpointer data);
 
@@ -1680,8 +1678,6 @@ evin_iomon_touchscreen_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
             evdev_get_event_code_name(ev->type, ev->code),
             ev->value);
 
-    evin_ts_grab_event_filter_cb(ev);
-
     bool grabbed = datapipe_get_gint(touch_grab_active_pipe);
 
     bool doubletap = false;
@@ -2970,6 +2966,9 @@ static evin_input_grab_t evin_ts_grab_state =
     .ig_release_verify_cb = evin_ts_grab_poll_palm_detect,
 };
 
+/** Flag for: finger-on-touchscreen */
+static bool evin_ts_grab_touch_detected = false;
+
 /* Touch unblock delay from settings [ms] */
 static gint evin_ts_grab_release_delay = TS_RELEASE_DELAY_DEFAULT;
 
@@ -3017,70 +3016,6 @@ EXIT:
     return;
 }
 
-/** Event filter for determining finger on screen state
- */
-static void
-evin_ts_grab_event_filter_cb(struct input_event *ev)
-{
-    static bool x = false, y = false, p = false, r = false;
-
-    switch( ev->type ) {
-    case EV_SYN:
-        switch( ev->code ) {
-        case SYN_MT_REPORT:
-            r = true;
-            break;
-
-        case SYN_REPORT:
-            if( r ) {
-                evin_input_grab_set_touching(&evin_ts_grab_state,
-                                             x && y && p);
-                x = y = p = r = false;
-            }
-            break;
-
-        default:
-            break;
-        }
-        break;
-
-    case EV_KEY:
-        switch( ev->code ) {
-        case BTN_TOUCH:
-            if( ev->value == 0 )
-                r = true;
-            break;
-
-        default:
-            break;
-        }
-        break;
-
-    case EV_ABS:
-        switch( ev->code ) {
-        case ABS_MT_POSITION_X:
-            x = true;
-            break;
-
-        case ABS_MT_POSITION_Y:
-            y = true;
-            break;
-
-        case ABS_MT_TOUCH_MAJOR:
-        case ABS_MT_PRESSURE:
-            if( ev->value > 0 )
-                p = true;
-            break;
-
-        default:
-            break;
-        }
-        break;
-
-    default:
-        break;
-    }
-}
 /** Feed desired touch grab state from datapipe to state machine
  *
  * @param data The grab wanted boolean as a pointer
@@ -3093,6 +3028,21 @@ evin_ts_grab_wanted_cb(gconstpointer data)
     // INPUT DATAPIPE -> STATE MACHINE
 
     evin_input_grab_request_grab(&evin_ts_grab_state, required);
+}
+
+/** Feed detected finger-on-screen state from datapipe to state machine
+ *
+ * @param data The touch detected boolean as a pointer
+ */
+static void
+evin_ts_grab_touch_detected_cb(gconstpointer data)
+{
+    bool touching = GPOINTER_TO_INT(data);
+
+    mce_log(LL_DEBUG, "touching = %s", touching ? "true" : "false");
+
+    evin_ts_grab_touch_detected = touching;
+    evin_input_grab_set_touching(&evin_ts_grab_state, touching);
 }
 
 /** Take display state changes in account for touch grab state
@@ -3129,7 +3079,10 @@ evin_ts_grab_display_state_cb(gconstpointer data)
          * the input grab before we have a change to get
          * actual input from the touch panel. */
         evin_ts_grab_state.ig_release_ms = TS_RELEASE_DELAY_UNBLANK;
-        evin_input_grab_set_touching(&evin_ts_grab_state, true);
+        if( !evin_ts_grab_touch_detected ) {
+            evin_input_grab_set_touching(&evin_ts_grab_state, true);
+            evin_input_grab_set_touching(&evin_ts_grab_state, false);
+        }
 
     case MCE_DISPLAY_ON:
     case MCE_DISPLAY_DIM:
@@ -3140,7 +3093,7 @@ evin_ts_grab_display_state_cb(gconstpointer data)
              * screen we will get more input events
              * before the delay from artificial touch
              * release ends. */
-            evin_input_grab_set_touching(&evin_ts_grab_state, false);
+            evin_input_grab_set_touching(&evin_ts_grab_state, evin_ts_grab_touch_detected);
         }
         break;
 
@@ -3321,6 +3274,8 @@ mce_input_init(void)
                                       evin_gpio_submode_trigger);
     append_output_trigger_to_datapipe(&display_state_pipe,
                                       evin_ts_grab_display_state_cb);
+    append_output_trigger_to_datapipe(&touch_detected_pipe,
+                                      evin_ts_grab_touch_detected_cb);
     append_output_trigger_to_datapipe(&touch_grab_wanted_pipe,
                                       evin_ts_grab_wanted_cb);
     append_output_trigger_to_datapipe(&keypad_grab_wanted_pipe,
@@ -3358,6 +3313,8 @@ mce_input_exit(void)
                                         evin_gpio_submode_trigger);
     remove_output_trigger_from_datapipe(&display_state_pipe,
                                         evin_ts_grab_display_state_cb);
+    remove_output_trigger_from_datapipe(&touch_detected_pipe,
+                                        evin_ts_grab_touch_detected_cb);
     remove_output_trigger_from_datapipe(&touch_grab_wanted_pipe,
                                         evin_ts_grab_wanted_cb);
     remove_output_trigger_from_datapipe(&keypad_grab_wanted_pipe,
