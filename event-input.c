@@ -303,10 +303,10 @@ static void         evin_iomon_generate_activity                (struct input_ev
 
 // event handling by device type
 
-static gboolean     evin_iomon_touchscreen_cb                   (gpointer data, gsize bytes_read);
-static gboolean     evin_iomon_evin_doubletap_cb                (gpointer data, gsize bytes_read);
-static gboolean     evin_iomon_keypress_cb                      (gpointer data, gsize bytes_read);
-static gboolean     evin_iomon_activity_cb                      (gpointer data, gsize bytes_read);
+static gboolean     evin_iomon_touchscreen_cb                   (mce_io_mon_t *iomon, gpointer data, gsize bytes_read);
+static gboolean     evin_iomon_evin_doubletap_cb                (mce_io_mon_t *iomon, gpointer data, gsize bytes_read);
+static gboolean     evin_iomon_keypress_cb                      (mce_io_mon_t *iomon, gpointer data, gsize bytes_read);
+static gboolean     evin_iomon_activity_cb                      (mce_io_mon_t *iomon, gpointer data, gsize bytes_read);
 
 // add/remove devices
 
@@ -1913,8 +1913,10 @@ EXIT:
  *         TRUE to flush all remaining chunks
  */
 static gboolean
-evin_iomon_touchscreen_cb(gpointer data, gsize bytes_read)
+evin_iomon_touchscreen_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
 {
+    (void)iomon;
+
     gboolean flush = FALSE;
     struct input_event *ev = data;
 
@@ -2024,7 +2026,7 @@ EXIT:
  * @return Always returns FALSE to return remaining chunks (if any)
  */
 static gboolean
-evin_iomon_evin_doubletap_cb(gpointer data, gsize bytes_read)
+evin_iomon_evin_doubletap_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
 {
     struct input_event *ev = data;
     gboolean flush = FALSE;
@@ -2036,7 +2038,7 @@ evin_iomon_evin_doubletap_cb(gpointer data, gsize bytes_read)
     /* Feed power key events to touchscreen handler for
      * possible double tap gesture event conversion */
     if( ev->type == EV_KEY && ev->code == KEY_POWER ) {
-        evin_iomon_touchscreen_cb(ev, sizeof *ev);
+        evin_iomon_touchscreen_cb(iomon, ev, sizeof *ev);
     }
 
 EXIT:
@@ -2052,8 +2054,10 @@ EXIT:
  * @return Always returns FALSE to return remaining chunks (if any)
  */
 static gboolean
-evin_iomon_keypress_cb(gpointer data, gsize bytes_read)
+evin_iomon_keypress_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
 {
+    (void)iomon;
+
     submode_t submode = mce_get_submode_int32();
     struct input_event *ev;
 
@@ -2206,8 +2210,10 @@ EXIT:
  * @return Always returns FALSE to return remaining chunks (if any)
  */
 static gboolean
-evin_iomon_activity_cb(gpointer data, gsize bytes_read)
+evin_iomon_activity_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
 {
+    (void)iomon;
+
     struct input_event *ev = data;
 
     if( !ev || bytes_read != sizeof (*ev) )
