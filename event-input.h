@@ -43,6 +43,13 @@
 /** Path to the touch unblock delay setting */
 #define MCE_GCONF_TOUCH_UNBLOCK_DELAY_PATH MCE_GCONF_EVENT_INPUT_PATH "/touch_unblock_delay"
 
+/** Input device grabbing allowed setting */
+#define MCE_GCONF_INPUT_GRAB_ALLOWED       MCE_GCONF_EVENT_INPUT_PATH "/input_grab_allowed"
+#define MCE_INPUT_GRAB_ALLOW_NONE          (0)
+#define MCE_INPUT_GRAB_ALLOW_TS            (1<<0)
+#define MCE_INPUT_GRAB_ALLOW_KP            (1<<1)
+#define DEFAULT_INPUT_GRAB_ALLOWED         3 // = MCE_INPUT_GRAB_ALLOW_TS | KP
+
 /* When MCE is made modular, this will be handled differently */
 gboolean mce_input_init(void);
 void mce_input_exit(void);

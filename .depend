@@ -2,6 +2,7 @@ builtin-gconf.o:\
 	builtin-gconf.c\
 	builtin-gconf.h\
 	datapipe.h\
+	event-input.h\
 	mce-dbus.h\
 	mce-io.h\
 	mce-log.h\
@@ -17,6 +18,7 @@ builtin-gconf.pic.o:\
 	builtin-gconf.c\
 	builtin-gconf.h\
 	datapipe.h\
+	event-input.h\
 	mce-dbus.h\
 	mce-io.h\
 	mce-log.h\

@@ -342,6 +342,9 @@ struct evin_input_grab_t
     /** Input grab is wanted */
     bool        ig_want_grab;
 
+    /** Input grab is allowed */
+    bool        ig_allow_grab;
+
     /** Input grab is active */
     bool        ig_have_grab;
 
@@ -365,6 +368,7 @@ static void         evin_input_grab_cancel_release_timer        (evin_input_grab
 static void         evin_input_grab_rethink                     (evin_input_grab_t *self);
 static void         evin_input_grab_set_touching                (evin_input_grab_t *self, bool touching);
 static void         evin_input_grab_request_grab                (evin_input_grab_t *self, bool want_grab);
+static void         evin_input_grab_allow_grab                  (evin_input_grab_t *self, bool allow_grab);
 static void         evin_input_grab_iomon_cb                    (gpointer data, gpointer user_data);
 
 /* ------------------------------------------------------------------------- *
@@ -397,6 +401,15 @@ static void         evin_kp_grab_set_active                     (gboolean grab);
 static void         evin_kp_grab_changed                        (evin_input_grab_t *ctrl, bool grab);
 static void         evin_kp_grab_event_filter_cb                (struct input_event *ev);
 static void         evin_kp_grab_wanted_cb                      (gconstpointer data);
+
+/* ------------------------------------------------------------------------- *
+ * GCONF_SETTINGS
+ * ------------------------------------------------------------------------- */
+
+static void         evin_gconf_input_grab_rethink               (void);
+static void         evin_gconf_cb                               (GConfClient *const gcc, const guint id, GConfEntry *const entry, gpointer const data);
+static void         evin_gconf_init                             (void);
+static void         evin_gconf_quit                             (void);
 
 /* ------------------------------------------------------------------------- *
  * MODULE_INIT
@@ -2709,11 +2722,13 @@ evin_input_grab_rethink(evin_input_grab_t *self)
     }
 
     // do we want to change state?
-    if( self->ig_have_grab == self->ig_want_grab )
+    bool need = self->ig_want_grab && self->ig_allow_grab;
+
+    if( self->ig_have_grab == need )
         goto EXIT;
 
     // make the transition
-    self->ig_have_grab = self->ig_want_grab;
+    self->ig_have_grab = need;
 
     // and report it
     if( self->ig_grab_changed_cb )
@@ -2751,6 +2766,22 @@ evin_input_grab_request_grab(evin_input_grab_t *self, bool want_grab)
         goto EXIT;
 
     self->ig_want_grab = want_grab;
+
+    evin_input_grab_rethink(self);
+
+EXIT:
+    return;
+}
+
+/** Feed allow/deny grab control to input grab state machine
+ */
+static void
+evin_input_grab_allow_grab(evin_input_grab_t *self, bool allow_grab)
+{
+    if( self->ig_allow_grab == allow_grab )
+        goto EXIT;
+
+    self->ig_allow_grab = allow_grab;
 
     evin_input_grab_rethink(self);
 
@@ -2958,6 +2989,7 @@ static evin_input_grab_t evin_ts_grab_state =
 
     .ig_want_grab = false,
     .ig_have_grab = false,
+    .ig_allow_grab = false,
 
     .ig_release_id = 0,
     .ig_release_ms = TS_RELEASE_DELAY_DEFAULT,
@@ -3188,6 +3220,7 @@ static evin_input_grab_t evin_kp_grab_state =
 
     .ig_want_grab = false,
     .ig_have_grab = false,
+    .ig_allow_grab = false,
 
     .ig_release_id = 0,
     .ig_release_ms = 200,
@@ -3240,6 +3273,87 @@ evin_kp_grab_wanted_cb(gconstpointer data)
 }
 
 /* ========================================================================= *
+ * GCONF_SETTINGS
+ * ========================================================================= */
+
+/** Flag: Input device types that can be grabbed */
+static gint evin_gconf_input_grab_allowed = DEFAULT_INPUT_GRAB_ALLOWED;
+/** GConf notifier id for tracking evin_gconf_input_grab_allowed changes */
+static guint evin_gconf_input_grab_allowed_id = 0;
+
+/** Handle changes to the list of grabbable input devices
+ */
+static void evin_gconf_input_grab_rethink(void)
+{
+    bool ts = (evin_gconf_input_grab_allowed & MCE_INPUT_GRAB_ALLOW_TS) != 0;
+    bool kp = (evin_gconf_input_grab_allowed & MCE_INPUT_GRAB_ALLOW_KP) != 0;
+
+    evin_input_grab_allow_grab(&evin_ts_grab_state, ts);
+    evin_input_grab_allow_grab(&evin_kp_grab_state, kp);
+}
+
+/** GConf callback for event input related settings
+ *
+ * @param gcc    Unused
+ * @param id     Connection ID from gconf_client_notify_add()
+ * @param entry  The modified GConf entry
+ * @param data   Unused
+ */
+static void evin_gconf_cb(GConfClient *const gcc, const guint id,
+                          GConfEntry *const entry, gpointer const data)
+{
+    (void)gcc;
+    (void)data;
+    (void)id;
+
+    const GConfValue *gcv = gconf_entry_get_value(entry);
+
+    if( !gcv ) {
+        mce_log(LL_DEBUG, "GConf Key `%s' has been unset",
+                gconf_entry_get_key(entry));
+        goto EXIT;
+    }
+
+    if( id == evin_gconf_input_grab_allowed_id ) {
+        gint old = evin_gconf_input_grab_allowed;
+
+        evin_gconf_input_grab_allowed = gconf_value_get_int(gcv);
+
+        mce_log(LL_NOTICE, "evin_gconf_input_grab_allowed: %d -> %d",
+                old, evin_gconf_input_grab_allowed);
+        evin_gconf_input_grab_rethink();
+    }
+    else {
+        mce_log(LL_WARN, "Spurious GConf value received; confused!");
+    }
+
+EXIT:
+    return;
+}
+
+/** Get intial gconf based settings and add change notifiers
+ */
+static void evin_gconf_init(void)
+{
+    /* Bitmask of input devices that can be grabbed */
+    mce_gconf_track_int(MCE_GCONF_INPUT_GRAB_ALLOWED,
+                        &evin_gconf_input_grab_allowed,
+                        DEFAULT_INPUT_GRAB_ALLOWED,
+                        evin_gconf_cb,
+                        &evin_gconf_input_grab_allowed_id);
+
+    evin_gconf_input_grab_rethink();
+}
+
+/** Remove gconf change notifiers
+ */
+static void evin_gconf_quit(void)
+{
+    mce_gconf_notifier_remove(evin_gconf_input_grab_allowed_id),
+        evin_gconf_input_grab_allowed_id = 0;
+}
+
+/* ========================================================================= *
  * MODULE_INIT
  * ========================================================================= */
 
@@ -3257,6 +3371,8 @@ mce_input_init(void)
     evin_event_mapper_init();
 
     evin_ts_grab_init();
+
+    evin_gconf_init();
 
 #ifdef ENABLE_DOUBLETAP_EMULATION
     /* Get fake doubletap policy configuration & track changes */
@@ -3322,6 +3438,8 @@ mce_input_exit(void)
 
     /* Remove input device directory monitor */
     evin_devdir_monitor_quit();
+
+    evin_gconf_quit();
 
     evin_iomon_quit();
 
