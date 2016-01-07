@@ -313,6 +313,15 @@ static bool         evin_devdir_monitor_init                    (void);
 static void         evin_devdir_monitor_quit                    (void);
 
 /* ------------------------------------------------------------------------- *
+ * TOUCHSTATE_MONITORING
+ * ------------------------------------------------------------------------- */
+
+static void     evin_touchstate_iomon_iter_cb   (gpointer data, gpointer user_data);
+static gboolean evin_touchstate_update_cb       (gpointer aptr);
+static void     evin_touchstate_cancel_update   (void);
+static void     evin_touchstate_schedule_update (void);
+
+/* ------------------------------------------------------------------------- *
  * INPUT_GRAB  --  GENERIC EVDEV INPUT GRAB STATE MACHINE
  * ------------------------------------------------------------------------- */
 
@@ -1679,7 +1688,12 @@ evin_iomon_touchscreen_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
 
     evin_iomon_extra_t *extra = mce_io_mon_get_user_data(iomon);
     if( extra && extra->ex_mt_state ) {
+        bool touching_prev = mt_state_touching(extra->ex_mt_state);
         doubletap = mt_state_handle_event(extra->ex_mt_state, ev);
+        bool touching_curr = mt_state_touching(extra->ex_mt_state);
+
+        if( touching_prev != touching_curr )
+            evin_touchstate_schedule_update();
     }
 
 #ifdef ENABLE_DOUBLETAP_EMULATION
@@ -2529,6 +2543,85 @@ evin_devdir_monitor_quit(void)
 }
 
 /* ========================================================================= *
+ * TOUCHSTATE_MONITORING
+ * ========================================================================= */
+
+/** Iterator callback for finding touch devices in finger-on-screen state
+ *
+ * @param data       iomon object
+ * @param user_data  pointer to bool flag to set if tracked device is touched
+ */
+static void
+evin_touchstate_iomon_iter_cb(gpointer data, gpointer user_data)
+{
+    mce_io_mon_t *iomon    = data;
+    bool         *touching = user_data;
+
+    evin_iomon_extra_t *extra = mce_io_mon_get_user_data(iomon);
+
+    if( extra && mt_state_touching(extra->ex_mt_state) )
+        *touching = true;
+}
+
+/** Idle ID for delayed update of finger-on-screen state */
+static guint  evin_touchstate_update_id = 0;
+
+/** Idle cb function for delayed update of finger-on-screen state
+ *
+ * @param aptr User data pointer (unused)
+ *
+ * @return FALSE to keep idle callback from repeating
+ */
+static gboolean
+evin_touchstate_update_cb(gpointer aptr)
+{
+    (void)aptr;
+
+    if( !evin_touchstate_update_id )
+        goto EXIT;
+
+    evin_touchstate_update_id = 0;
+
+    bool touching = false;
+
+    evin_iomon_device_iterate(EVDEV_TOUCH,
+                              evin_touchstate_iomon_iter_cb,
+                              &touching);
+
+    if( touching == datapipe_get_gint(touch_detected_pipe) )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "touch_detected=%s", touching ? "true" : "false");
+    execute_datapipe(&touch_detected_pipe,
+                     GINT_TO_POINTER(touching),
+                     USE_INDATA, CACHE_INDATA);
+
+EXIT:
+    return FALSE;
+}
+
+/** Cancel delayed update of finger-on-screen state
+ */
+static void
+evin_touchstate_cancel_update(void)
+{
+    if( evin_touchstate_update_id ) {
+        g_source_remove(evin_touchstate_update_id),
+            evin_touchstate_update_id = 0;
+    }
+}
+
+/** Schedule delayed update of finger-on-screen state
+ */
+static void
+evin_touchstate_schedule_update(void)
+{
+    if( !evin_touchstate_update_id ) {
+        evin_touchstate_update_id = g_idle_add(evin_touchstate_update_cb, 0);
+    }
+}
+
+/* ========================================================================= *
  * INPUT_GRAB  --  GENERIC EVDEV INPUT GRAB STATE MACHINE
  * ========================================================================= */
 
@@ -3281,6 +3374,8 @@ mce_input_exit(void)
 
     /* Release event mapping lookup tables */
     evin_event_mapper_quit();
+
+    evin_touchstate_cancel_update();
 
     return;
 }
