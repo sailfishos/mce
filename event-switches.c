@@ -85,8 +85,9 @@ gboolean has_flicker_key = FALSE;
  * @param bytes_read Unused
  * @return Always returns FALSE to return remaining data (if any)
  */
-static gboolean generic_activity_iomon_cb(gpointer data, gsize bytes_read)
+static gboolean generic_activity_iomon_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
 {
+	(void)iomon;
 	(void)data;
 	(void)bytes_read;
 
@@ -104,10 +105,11 @@ static gboolean generic_activity_iomon_cb(gpointer data, gsize bytes_read)
  * @param bytes_read Unused
  * @return Always returns FALSE to return remaining data (if any)
  */
-static gboolean camera_launch_button_iomon_cb(gpointer data, gsize bytes_read)
+static gboolean camera_launch_button_iomon_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
 {
 	camera_button_state_t camera_button_state;
 
+	(void)iomon;
 	(void)bytes_read;
 
 	if (!strncmp(data, MCE_CAM_LAUNCH_ACTIVE,
@@ -136,10 +138,11 @@ static gboolean camera_launch_button_iomon_cb(gpointer data, gsize bytes_read)
  * @param bytes_read Unused
  * @return Always returns FALSE to return remaining data (if any)
  */
-static gboolean lockkey_iomon_cb(gpointer data, gsize bytes_read)
+static gboolean lockkey_iomon_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
 {
 	gint lockkey_state;
 
+	(void)iomon;
 	(void)bytes_read;
 
 	if (!strncmp(data, MCE_FLICKER_KEY_ACTIVE,
@@ -163,10 +166,11 @@ static gboolean lockkey_iomon_cb(gpointer data, gsize bytes_read)
  * @param bytes_read Unused
  * @return Always returns FALSE to return remaining data (if any)
  */
-static gboolean kbd_slide_iomon_cb(gpointer data, gsize bytes_read)
+static gboolean kbd_slide_iomon_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
 {
 	cover_state_t slide_state;
 
+	(void)iomon;
 	(void)bytes_read;
 
 	if (!strncmp(data, MCE_KBD_SLIDE_OPEN, strlen(MCE_KBD_SLIDE_OPEN))) {
@@ -194,10 +198,11 @@ static gboolean kbd_slide_iomon_cb(gpointer data, gsize bytes_read)
  * @param bytes_read Unused
  * @return Always returns FALSE to return remaining data (if any)
  */
-static gboolean lid_cover_iomon_cb(gpointer data, gsize bytes_read)
+static gboolean lid_cover_iomon_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
 {
 	cover_state_t lid_cover_state;
 
+	(void)iomon;
 	(void)bytes_read;
 
 	if (!strncmp(data, MCE_LID_COVER_OPEN, strlen(MCE_LID_COVER_OPEN))) {
@@ -225,10 +230,11 @@ static gboolean lid_cover_iomon_cb(gpointer data, gsize bytes_read)
  * @param bytes_read Unused
  * @return Always returns FALSE to return remaining data (if any)
  */
-static gboolean proximity_sensor_iomon_cb(gpointer data, gsize bytes_read)
+static gboolean proximity_sensor_iomon_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
 {
 	cover_state_t proximity_sensor_state;
 
+	(void)iomon;
 	(void)bytes_read;
 
 	if (!strncmp(data, MCE_PROXIMITY_SENSOR_OPEN,
@@ -252,10 +258,11 @@ static gboolean proximity_sensor_iomon_cb(gpointer data, gsize bytes_read)
  * @param bytes_read Unused
  * @return Always returns FALSE to return remaining data (if any)
  */
-static gboolean usb_cable_iomon_cb(gpointer data, gsize bytes_read)
+static gboolean usb_cable_iomon_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
 {
 	usb_cable_state_t cable_state;
 
+	(void)iomon;
 	(void)bytes_read;
 
 	if (!strncmp(data, MCE_MUSB_OMAP3_USB_CABLE_CONNECTED,
@@ -283,10 +290,11 @@ static gboolean usb_cable_iomon_cb(gpointer data, gsize bytes_read)
  * @param bytes_read Unused
  * @return Always returns FALSE to return remaining data (if any)
  */
-static gboolean lens_cover_iomon_cb(gpointer data, gsize bytes_read)
+static gboolean lens_cover_iomon_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
 {
 	cover_state_t lens_cover_state;
 
+	(void)iomon;
 	(void)bytes_read;
 
 	if (!strncmp(data, MCE_LENS_COVER_OPEN, strlen(MCE_LENS_COVER_OPEN))) {

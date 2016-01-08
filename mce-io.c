@@ -520,7 +520,7 @@ static gboolean mce_io_mon_read_chunks(GIOChannel *source,
 		for( ; chunks_done < chunks_have ; chunk += iomon->chunk_size ) {
 			++chunks_done;
 
-			if( !iomon->nofity_cb(chunk, iomon->chunk_size) ) {
+			if( !iomon->nofity_cb(iomon, chunk, iomon->chunk_size) ) {
 				continue;
 			}
 
@@ -610,7 +610,7 @@ static gboolean mce_io_mon_read_string(GIOChannel *source,
 	if( !bytes_read || !str || !*str )
 		mce_log(LL_ERR, "Empty read from %s",iomon->path);
 	else
-		iomon->nofity_cb(str, bytes_read);
+		iomon->nofity_cb(iomon, str, bytes_read);
 
 	status = TRUE;
 

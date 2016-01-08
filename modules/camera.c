@@ -92,8 +92,9 @@ static void camera_active_state_iomon_delete_cb(mce_io_mon_t *iomon)
  * @param bytes_read Unused
  * @return Always returns FALSE to return remaining chunks (if any)
  */
-static gboolean camera_active_state_iomon_input_cb(gpointer data, gsize bytes_read)
+static gboolean camera_active_state_iomon_input_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
 {
+	(void)iomon;
 	(void)bytes_read;
 
 	if (!strncmp(data, MCE_CAMERA_ACTIVE, strlen(MCE_CAMERA_ACTIVE))) {
@@ -116,8 +117,9 @@ static gboolean camera_active_state_iomon_input_cb(gpointer data, gsize bytes_re
  * @param bytes_read Unused
  * @return Always returns FALSE to return remaining chunks (if any)
  */
-static gboolean camera_popout_state_iomon_input_cb(gpointer data, gsize bytes_read)
+static gboolean camera_popout_state_iomon_input_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
 {
+	(void)iomon;
 	(void)bytes_read;
 
 	/* Generate activity */

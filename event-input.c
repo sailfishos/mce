@@ -32,6 +32,7 @@
 # include "mce-gconf.h"
 #endif
 #include "mce-sensorfw.h"
+#include "multitouch.h"
 #include "evdev.h"
 
 #include <linux/input.h>
@@ -240,36 +241,7 @@ static evin_evdevtype_t  evin_evdevtype_from_info               (evin_evdevinfo_
 
 #ifdef ENABLE_DOUBLETAP_EMULATION
 
-/** Maximum time betweem 1st click and 2nd release, in milliseconds */
-# define EVIN_DOUBLETAP_TIME_LIMIT 500
-
-/** Maximum distance between 1st and 2nd clicks, in pixels */
-# define EVIN_DOUBLETAP_DISTANCE_LIMIT 100
-
-/** History data for emulating double tap */
-typedef struct
-{
-    /** Timestamp from ending EV_SYN event */
-    struct timeval dt_time;
-
-    /** X coordinate accumulated from relative movements */
-    int dt_x;
-
-    /** Y coordinate accumulated from relative movements */
-    int dt_y;
-
-    /** Bitmask for accumulating touch points */
-    int dt_click;
-} evin_doubletap_t;
-
 static void         evin_doubletap_gconf_changed_cb             (GConfClient *const client, const guint id, GConfEntry *const entry, gpointer const data);
-
-static int          evin_doubletap_within_time_limit            (const evin_doubletap_t *e1, const evin_doubletap_t *e2);
-static int          evin_doubletap_within_dist_limit            (const evin_doubletap_t *e1, const evin_doubletap_t *e2);
-
-static int          evin_doubletap_active_touch_points          (const evin_doubletap_t *e);
-
-static int          evin_doubletap_emulate                      (const struct input_event *eve);
 
 #endif // ENABLE_DOUBLETAP_EMULATION
 
@@ -292,6 +264,9 @@ typedef struct
     /** Name of device that provides keypad slide state*/
     gchar             *ex_sw_keypad_slide;
 
+    /** State data for multitouch/mouse input devices */
+    mt_state_t        *ex_mt_state;
+
 } evin_iomon_extra_t;
 
 static void                evin_iomon_extra_delete_cb           (void *aptr);
@@ -303,10 +278,10 @@ static void         evin_iomon_generate_activity                (struct input_ev
 
 // event handling by device type
 
-static gboolean     evin_iomon_touchscreen_cb                   (gpointer data, gsize bytes_read);
-static gboolean     evin_iomon_evin_doubletap_cb                (gpointer data, gsize bytes_read);
-static gboolean     evin_iomon_keypress_cb                      (gpointer data, gsize bytes_read);
-static gboolean     evin_iomon_activity_cb                      (gpointer data, gsize bytes_read);
+static gboolean     evin_iomon_touchscreen_cb                   (mce_io_mon_t *iomon, gpointer data, gsize bytes_read);
+static gboolean     evin_iomon_evin_doubletap_cb                (mce_io_mon_t *iomon, gpointer data, gsize bytes_read);
+static gboolean     evin_iomon_keypress_cb                      (mce_io_mon_t *iomon, gpointer data, gsize bytes_read);
+static gboolean     evin_iomon_activity_cb                      (mce_io_mon_t *iomon, gpointer data, gsize bytes_read);
 
 // add/remove devices
 
@@ -338,6 +313,15 @@ static bool         evin_devdir_monitor_init                    (void);
 static void         evin_devdir_monitor_quit                    (void);
 
 /* ------------------------------------------------------------------------- *
+ * TOUCHSTATE_MONITORING
+ * ------------------------------------------------------------------------- */
+
+static void     evin_touchstate_iomon_iter_cb   (gpointer data, gpointer user_data);
+static gboolean evin_touchstate_update_cb       (gpointer aptr);
+static void     evin_touchstate_cancel_update   (void);
+static void     evin_touchstate_schedule_update (void);
+
+/* ------------------------------------------------------------------------- *
  * INPUT_GRAB  --  GENERIC EVDEV INPUT GRAB STATE MACHINE
  * ------------------------------------------------------------------------- */
 
@@ -357,6 +341,9 @@ struct evin_input_grab_t
 
     /** Input grab is wanted */
     bool        ig_want_grab;
+
+    /** Input grab is allowed */
+    bool        ig_allow_grab;
 
     /** Input grab is active */
     bool        ig_have_grab;
@@ -381,6 +368,7 @@ static void         evin_input_grab_cancel_release_timer        (evin_input_grab
 static void         evin_input_grab_rethink                     (evin_input_grab_t *self);
 static void         evin_input_grab_set_touching                (evin_input_grab_t *self, bool touching);
 static void         evin_input_grab_request_grab                (evin_input_grab_t *self, bool want_grab);
+static void         evin_input_grab_allow_grab                  (evin_input_grab_t *self, bool allow_grab);
 static void         evin_input_grab_iomon_cb                    (gpointer data, gpointer user_data);
 
 /* ------------------------------------------------------------------------- *
@@ -396,8 +384,6 @@ static void         evin_ts_grab_set_active                     (gboolean grab);
 static bool         evin_ts_grab_poll_palm_detect               (evin_input_grab_t *ctrl);
 
 static void         evin_ts_grab_changed                        (evin_input_grab_t *ctrl, bool grab);
-
-static void         evin_ts_grab_event_filter_cb                (struct input_event *ev);
 
 static void         evin_ts_grab_wanted_cb                      (gconstpointer data);
 static void         evin_ts_grab_display_state_cb               (gconstpointer data);
@@ -415,6 +401,15 @@ static void         evin_kp_grab_set_active                     (gboolean grab);
 static void         evin_kp_grab_changed                        (evin_input_grab_t *ctrl, bool grab);
 static void         evin_kp_grab_event_filter_cb                (struct input_event *ev);
 static void         evin_kp_grab_wanted_cb                      (gconstpointer data);
+
+/* ------------------------------------------------------------------------- *
+ * GCONF_SETTINGS
+ * ------------------------------------------------------------------------- */
+
+static void         evin_gconf_input_grab_rethink               (void);
+static void         evin_gconf_cb                               (GConfClient *const gcc, const guint id, GConfEntry *const entry, gpointer const data);
+static void         evin_gconf_init                             (void);
+static void         evin_gconf_quit                             (void);
 
 /* ------------------------------------------------------------------------- *
  * MODULE_INIT
@@ -1493,251 +1488,6 @@ evin_doubletap_gconf_changed_cb(GConfClient *const client, const guint id,
     }
 }
 
-/** Check if two double tap history points are close enough in time
- *
- * @param e1 event data from the 1st click
- * @param e2 event data from the 2nd release
- *
- * @return TRUE if e1 and e2 times are valid and close enough,
- *         or FALSE otherwise
- */
-static int
-evin_doubletap_within_time_limit(const evin_doubletap_t *e1, const evin_doubletap_t *e2)
-{
-    static const struct timeval limit =
-    {
-        .tv_sec  = (EVIN_DOUBLETAP_TIME_LIMIT / 1000),
-        .tv_usec = (EVIN_DOUBLETAP_TIME_LIMIT % 1000) * 1000,
-    };
-
-    struct timeval delta;
-
-    /* Reject empty/reset slots */
-    if( !timerisset(&e1->dt_time) || !timerisset(&e2->dt_time) )
-        return 0;
-
-    timersub(&e2->dt_time, &e1->dt_time, &delta);
-    return timercmp(&delta, &limit, <);
-}
-
-/** Check if two double tap history points are close enough in pixels
- *
- * @param e1 event data from the 1st click
- * @param e2 event data from the 2nd click
- *
- * @return TRUE if e1 and e2 positions are close enough, or FALSE otherwise
- */
-static int
-evin_doubletap_within_dist_limit(const evin_doubletap_t *e1, const evin_doubletap_t *e2)
-{
-    int x = e2->dt_x - e1->dt_x;
-    int y = e2->dt_y - e1->dt_y;
-    int r = EVIN_DOUBLETAP_DISTANCE_LIMIT;
-
-    return (x*x + y*y) < (r*r);
-}
-
-/** Accumulator steps for counting touch/mouse click events separately
- *
- *    2   2   2   1   1   0   0   0
- *    8   4   0   6   2   8   4   0
- * --------------------------------
- *                             mmmm [ 3: 0]  BTN_MOUSE
- *                         pppp     [ 7: 4]  ABS_MT_PRESSURE
- *                     tttt         [11: 8]  ABS_MT_TOUCH_MAJOR
- *                 iiii             [15:12]  ABS_MT_TRACKING_ID
- * aaaabbbbccccdddd                 [31:16]  (reserved)
- */
-enum {
-
-    SEEN_EVENT_MOUSE       = 1 <<  0,
-    SEEN_EVENT_PRESSURE    = 1 <<  4,
-    SEEN_EVENT_TOUCH_MAJOR = 1 <<  8,
-    SEEN_EVENT_TRACKING_ID = 1 << 12,
-};
-
-/** Helper for probing no-touch vs single-touch vs multi-touch
- *
- * return 0 for no-touch, 1 for single touch, >1 for multi-touch
- */
-static int
-evin_doubletap_active_touch_points(const evin_doubletap_t *e)
-{
-    /* The bit shuffling below calculates maximum number of mouse
-     * button click / touch point events accumulated to the history
-     * buffer to produce return value of
-     *
-     *   =0 -> no touch
-     *   =1 -> singletouch
-     *   >1 -> multitouch
-     *
-     * Note: If the event stream happens to report one ABS_MT_PRESSURE
-     * and two ABS_MT_TOUCH_MAJOR events / something similar it will
-     * be reported as "triple touch", but we do not need care as long
-     * as it is not "no touch" or "singletouch".
-     */
-
-    unsigned m = e->dt_click;
-    m |= (m >> 16);
-    m |= (m >>  8);
-    m |= (m >>  4);
-    return m & 15;
-}
-
-/** Process mouse input events to simulate double tap
- *
- * Maintain a crude state machine, that will detect double clicks
- * made with mouse when fed with evdev events from a mouse device.
- *
- * @param eve input event
- *
- * @return TRUE if double tap sequence was detected, FALSE otherwise
- */
-static int
-evin_doubletap_emulate(const struct input_event *eve)
-{
-    static evin_doubletap_t hist[4]; // click/release ring buffer
-
-    static unsigned i0       = 0; // current position
-    static int      x_accum  = 0; // x delta accumulator
-    static int      y_accum  = 0; // y delta accumulator
-    static bool     skip_syn = true; // flag: ignore SYN_REPORT
-
-    int result = FALSE; // assume: no doubletap
-
-    unsigned i1, i2, i3; // 3 last positions
-
-    switch( eve->type ) {
-    case EV_REL:
-        /* Accumulate X/Y position */
-        switch( eve->code ) {
-        case REL_X: x_accum += eve->value; break;
-        case REL_Y: y_accum += eve->value; break;
-        default: break;
-        }
-        break;
-
-    case EV_KEY:
-        switch( eve->code ) {
-        case BTN_MOUSE:
-            /* Store click/release and position */
-            if( eve->value )
-                hist[i0].dt_click += SEEN_EVENT_MOUSE;
-            hist[i0].dt_x = x_accum;
-            hist[i0].dt_y = y_accum;
-
-            /* We have a mouse click to process */
-            skip_syn = false;
-            break;
-
-        case BTN_TOUCH:
-            /* Start/end of touch - if these are emitted by the touch
-             * driver, we must not expect to see SYN_MT_REPORT events
-             * on touch release. */
-            if( eve->value == 0 )
-                skip_syn = false;
-            break;
-
-        default:
-            break;
-        }
-        break;
-
-    case EV_ABS:
-        /* Do multitouch too while at it */
-        switch( eve->code ) {
-        case ABS_MT_PRESSURE:
-            if( eve->value > 0 )
-                hist[i0].dt_click += SEEN_EVENT_PRESSURE;
-            skip_syn = false;
-            break;
-        case ABS_MT_TOUCH_MAJOR:
-            if( eve->value > 0 )
-                hist[i0].dt_click += SEEN_EVENT_TOUCH_MAJOR;
-            skip_syn = false;
-            break;
-        case ABS_MT_TRACKING_ID:
-            if( eve->value != -1 )
-                hist[i0].dt_click += SEEN_EVENT_TRACKING_ID;
-            skip_syn = false;
-            break;
-        case ABS_MT_POSITION_X:
-            hist[i0].dt_x = eve->value;
-            skip_syn = false;
-            break;
-        case ABS_MT_POSITION_Y:
-            hist[i0].dt_y = eve->value;
-            skip_syn = false;
-            break;
-        default:
-            break;
-        }
-        break;
-
-    case EV_SYN:
-        if( eve->code == SYN_MT_REPORT ) {
-            /* We have a touch event to process */
-            skip_syn = false;
-            break;
-        }
-
-        if( eve->code != SYN_REPORT )
-            break;
-
-        /* Have we seen button events? */
-        if( skip_syn )
-            break;
-
-        /* Next SYN_REPORT will be ignored unless something
-         * relevant is seen before that */
-        skip_syn = true;
-
-        /* Set timestamp from syn event */
-        hist[i0].dt_time = eve->time;
-
-        /* Last event before current */
-        i1 = (i0 + 3) & 3;
-
-        int tp0 = evin_doubletap_active_touch_points(hist+i0);
-        int tp1 = evin_doubletap_active_touch_points(hist+i1);
-
-        if( tp0 != tp1 ) {
-            /* 2nd and 3rd last events before current */
-            i2 = (i0 + 2) & 3;
-            i3 = (i0 + 1) & 3;
-
-            int tp2 = evin_doubletap_active_touch_points(hist+i2);
-            int tp3 = evin_doubletap_active_touch_points(hist+i3);
-
-            /* Release after click after release after click,
-             * within the time and distance limits */
-            if( tp0 == 0 && tp1 == 1 && tp2 == 0 && tp3 == 1 &&
-                evin_doubletap_within_time_limit(&hist[i3], &hist[i0]) &&
-                evin_doubletap_within_dist_limit(&hist[i3], &hist[i1]) ) {
-                /* Reached DOUBLETAP state */
-                result = TRUE;
-
-                /* Reset history, so that triple click
-                 * will not produce 2 double taps etc */
-                memset(hist, 0, sizeof hist);
-                x_accum = y_accum = 0;
-            }
-
-            /* Move to the next slot */
-            i0 = (i0 + 1) & 3;
-        }
-
-        /* Reset the current position in the ring buffer */
-        memset(&hist[i0], 0, sizeof *hist);
-        break;
-
-    default:
-        break;
-    }
-
-    return result;
-}
-
 #endif /* ENABLE_DOUBLETAP_EMULATION */
 
 /* ========================================================================= *
@@ -1750,6 +1500,9 @@ evin_iomon_extra_delete_cb(void *aptr)
     evin_iomon_extra_t *self = aptr;
 
     if( self ) {
+        mt_state_delete(self->ex_mt_state),
+            self->ex_mt_state = 0;
+
         evin_evdevinfo_delete(self->ex_info);
         g_free(self->ex_sw_keypad_slide);
         free(self->ex_name);
@@ -1770,10 +1523,17 @@ evin_iomon_extra_create(int fd, const char *name)
     self->ex_type = evin_evdevtype_from_info(self->ex_info);
 
     self->ex_sw_keypad_slide = 0;
+    self->ex_mt_state = 0;
 
     if( self->ex_type == EVDEV_KEYBOARD ) {
         self->ex_sw_keypad_slide = mce_conf_get_string("SW_KEYPAD_SLIDE",
                                                        self->ex_name, 0);
+    }
+
+    if( self->ex_type == EVDEV_TOUCH ) {
+        bool protocol_b = evin_evdevinfo_has_code(self->ex_info,
+                                                  EV_ABS, ABS_MT_SLOT);
+        self->ex_mt_state = mt_state_create(protocol_b);
     }
 
     return self;
@@ -1913,8 +1673,10 @@ EXIT:
  *         TRUE to flush all remaining chunks
  */
 static gboolean
-evin_iomon_touchscreen_cb(gpointer data, gsize bytes_read)
+evin_iomon_touchscreen_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
 {
+    (void)iomon;
+
     gboolean flush = FALSE;
     struct input_event *ev = data;
 
@@ -1929,9 +1691,19 @@ evin_iomon_touchscreen_cb(gpointer data, gsize bytes_read)
             evdev_get_event_code_name(ev->type, ev->code),
             ev->value);
 
-    evin_ts_grab_event_filter_cb(ev);
-
     bool grabbed = datapipe_get_gint(touch_grab_active_pipe);
+
+    bool doubletap = false;
+
+    evin_iomon_extra_t *extra = mce_io_mon_get_user_data(iomon);
+    if( extra && extra->ex_mt_state ) {
+        bool touching_prev = mt_state_touching(extra->ex_mt_state);
+        doubletap = mt_state_handle_event(extra->ex_mt_state, ev);
+        bool touching_curr = mt_state_touching(extra->ex_mt_state);
+
+        if( touching_prev != touching_curr )
+            evin_touchstate_schedule_update();
+    }
 
 #ifdef ENABLE_DOUBLETAP_EMULATION
     if( grabbed || fake_evin_doubletap_enabled ) {
@@ -1947,7 +1719,7 @@ evin_iomon_touchscreen_cb(gpointer data, gsize bytes_read)
         case MCE_DISPLAY_OFF:
         case MCE_DISPLAY_LPM_OFF:
         case MCE_DISPLAY_LPM_ON:
-            if( evin_doubletap_emulate(ev) ) {
+            if( doubletap ) {
                 mce_log(LL_DEVEL, "[doubletap] emulated from touch input");
                 ev->type  = EV_MSC;
                 ev->code  = MSC_GESTURE;
@@ -2024,7 +1796,7 @@ EXIT:
  * @return Always returns FALSE to return remaining chunks (if any)
  */
 static gboolean
-evin_iomon_evin_doubletap_cb(gpointer data, gsize bytes_read)
+evin_iomon_evin_doubletap_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
 {
     struct input_event *ev = data;
     gboolean flush = FALSE;
@@ -2036,7 +1808,7 @@ evin_iomon_evin_doubletap_cb(gpointer data, gsize bytes_read)
     /* Feed power key events to touchscreen handler for
      * possible double tap gesture event conversion */
     if( ev->type == EV_KEY && ev->code == KEY_POWER ) {
-        evin_iomon_touchscreen_cb(ev, sizeof *ev);
+        evin_iomon_touchscreen_cb(iomon, ev, sizeof *ev);
     }
 
 EXIT:
@@ -2052,8 +1824,10 @@ EXIT:
  * @return Always returns FALSE to return remaining chunks (if any)
  */
 static gboolean
-evin_iomon_keypress_cb(gpointer data, gsize bytes_read)
+evin_iomon_keypress_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
 {
+    (void)iomon;
+
     submode_t submode = mce_get_submode_int32();
     struct input_event *ev;
 
@@ -2206,8 +1980,10 @@ EXIT:
  * @return Always returns FALSE to return remaining chunks (if any)
  */
 static gboolean
-evin_iomon_activity_cb(gpointer data, gsize bytes_read)
+evin_iomon_activity_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
 {
+    (void)iomon;
+
     struct input_event *ev = data;
 
     if( !ev || bytes_read != sizeof (*ev) )
@@ -2776,6 +2552,85 @@ evin_devdir_monitor_quit(void)
 }
 
 /* ========================================================================= *
+ * TOUCHSTATE_MONITORING
+ * ========================================================================= */
+
+/** Iterator callback for finding touch devices in finger-on-screen state
+ *
+ * @param data       iomon object
+ * @param user_data  pointer to bool flag to set if tracked device is touched
+ */
+static void
+evin_touchstate_iomon_iter_cb(gpointer data, gpointer user_data)
+{
+    mce_io_mon_t *iomon    = data;
+    bool         *touching = user_data;
+
+    evin_iomon_extra_t *extra = mce_io_mon_get_user_data(iomon);
+
+    if( extra && mt_state_touching(extra->ex_mt_state) )
+        *touching = true;
+}
+
+/** Idle ID for delayed update of finger-on-screen state */
+static guint  evin_touchstate_update_id = 0;
+
+/** Idle cb function for delayed update of finger-on-screen state
+ *
+ * @param aptr User data pointer (unused)
+ *
+ * @return FALSE to keep idle callback from repeating
+ */
+static gboolean
+evin_touchstate_update_cb(gpointer aptr)
+{
+    (void)aptr;
+
+    if( !evin_touchstate_update_id )
+        goto EXIT;
+
+    evin_touchstate_update_id = 0;
+
+    bool touching = false;
+
+    evin_iomon_device_iterate(EVDEV_TOUCH,
+                              evin_touchstate_iomon_iter_cb,
+                              &touching);
+
+    if( touching == datapipe_get_gint(touch_detected_pipe) )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "touch_detected=%s", touching ? "true" : "false");
+    execute_datapipe(&touch_detected_pipe,
+                     GINT_TO_POINTER(touching),
+                     USE_INDATA, CACHE_INDATA);
+
+EXIT:
+    return FALSE;
+}
+
+/** Cancel delayed update of finger-on-screen state
+ */
+static void
+evin_touchstate_cancel_update(void)
+{
+    if( evin_touchstate_update_id ) {
+        g_source_remove(evin_touchstate_update_id),
+            evin_touchstate_update_id = 0;
+    }
+}
+
+/** Schedule delayed update of finger-on-screen state
+ */
+static void
+evin_touchstate_schedule_update(void)
+{
+    if( !evin_touchstate_update_id ) {
+        evin_touchstate_update_id = g_idle_add(evin_touchstate_update_cb, 0);
+    }
+}
+
+/* ========================================================================= *
  * INPUT_GRAB  --  GENERIC EVDEV INPUT GRAB STATE MACHINE
  * ========================================================================= */
 
@@ -2867,11 +2722,13 @@ evin_input_grab_rethink(evin_input_grab_t *self)
     }
 
     // do we want to change state?
-    if( self->ig_have_grab == self->ig_want_grab )
+    bool need = self->ig_want_grab && self->ig_allow_grab;
+
+    if( self->ig_have_grab == need )
         goto EXIT;
 
     // make the transition
-    self->ig_have_grab = self->ig_want_grab;
+    self->ig_have_grab = need;
 
     // and report it
     if( self->ig_grab_changed_cb )
@@ -2909,6 +2766,22 @@ evin_input_grab_request_grab(evin_input_grab_t *self, bool want_grab)
         goto EXIT;
 
     self->ig_want_grab = want_grab;
+
+    evin_input_grab_rethink(self);
+
+EXIT:
+    return;
+}
+
+/** Feed allow/deny grab control to input grab state machine
+ */
+static void
+evin_input_grab_allow_grab(evin_input_grab_t *self, bool allow_grab)
+{
+    if( self->ig_allow_grab == allow_grab )
+        goto EXIT;
+
+    self->ig_allow_grab = allow_grab;
 
     evin_input_grab_rethink(self);
 
@@ -3116,6 +2989,7 @@ static evin_input_grab_t evin_ts_grab_state =
 
     .ig_want_grab = false,
     .ig_have_grab = false,
+    .ig_allow_grab = false,
 
     .ig_release_id = 0,
     .ig_release_ms = TS_RELEASE_DELAY_DEFAULT,
@@ -3123,6 +2997,9 @@ static evin_input_grab_t evin_ts_grab_state =
     .ig_grab_changed_cb = evin_ts_grab_changed,
     .ig_release_verify_cb = evin_ts_grab_poll_palm_detect,
 };
+
+/** Flag for: finger-on-touchscreen */
+static bool evin_ts_grab_touch_detected = false;
 
 /* Touch unblock delay from settings [ms] */
 static gint evin_ts_grab_release_delay = TS_RELEASE_DELAY_DEFAULT;
@@ -3171,70 +3048,6 @@ EXIT:
     return;
 }
 
-/** Event filter for determining finger on screen state
- */
-static void
-evin_ts_grab_event_filter_cb(struct input_event *ev)
-{
-    static bool x = false, y = false, p = false, r = false;
-
-    switch( ev->type ) {
-    case EV_SYN:
-        switch( ev->code ) {
-        case SYN_MT_REPORT:
-            r = true;
-            break;
-
-        case SYN_REPORT:
-            if( r ) {
-                evin_input_grab_set_touching(&evin_ts_grab_state,
-                                             x && y && p);
-                x = y = p = r = false;
-            }
-            break;
-
-        default:
-            break;
-        }
-        break;
-
-    case EV_KEY:
-        switch( ev->code ) {
-        case BTN_TOUCH:
-            if( ev->value == 0 )
-                r = true;
-            break;
-
-        default:
-            break;
-        }
-        break;
-
-    case EV_ABS:
-        switch( ev->code ) {
-        case ABS_MT_POSITION_X:
-            x = true;
-            break;
-
-        case ABS_MT_POSITION_Y:
-            y = true;
-            break;
-
-        case ABS_MT_TOUCH_MAJOR:
-        case ABS_MT_PRESSURE:
-            if( ev->value > 0 )
-                p = true;
-            break;
-
-        default:
-            break;
-        }
-        break;
-
-    default:
-        break;
-    }
-}
 /** Feed desired touch grab state from datapipe to state machine
  *
  * @param data The grab wanted boolean as a pointer
@@ -3247,6 +3060,21 @@ evin_ts_grab_wanted_cb(gconstpointer data)
     // INPUT DATAPIPE -> STATE MACHINE
 
     evin_input_grab_request_grab(&evin_ts_grab_state, required);
+}
+
+/** Feed detected finger-on-screen state from datapipe to state machine
+ *
+ * @param data The touch detected boolean as a pointer
+ */
+static void
+evin_ts_grab_touch_detected_cb(gconstpointer data)
+{
+    bool touching = GPOINTER_TO_INT(data);
+
+    mce_log(LL_DEBUG, "touching = %s", touching ? "true" : "false");
+
+    evin_ts_grab_touch_detected = touching;
+    evin_input_grab_set_touching(&evin_ts_grab_state, touching);
 }
 
 /** Take display state changes in account for touch grab state
@@ -3283,7 +3111,10 @@ evin_ts_grab_display_state_cb(gconstpointer data)
          * the input grab before we have a change to get
          * actual input from the touch panel. */
         evin_ts_grab_state.ig_release_ms = TS_RELEASE_DELAY_UNBLANK;
-        evin_input_grab_set_touching(&evin_ts_grab_state, true);
+        if( !evin_ts_grab_touch_detected ) {
+            evin_input_grab_set_touching(&evin_ts_grab_state, true);
+            evin_input_grab_set_touching(&evin_ts_grab_state, false);
+        }
 
     case MCE_DISPLAY_ON:
     case MCE_DISPLAY_DIM:
@@ -3294,7 +3125,7 @@ evin_ts_grab_display_state_cb(gconstpointer data)
              * screen we will get more input events
              * before the delay from artificial touch
              * release ends. */
-            evin_input_grab_set_touching(&evin_ts_grab_state, false);
+            evin_input_grab_set_touching(&evin_ts_grab_state, evin_ts_grab_touch_detected);
         }
         break;
 
@@ -3389,6 +3220,7 @@ static evin_input_grab_t evin_kp_grab_state =
 
     .ig_want_grab = false,
     .ig_have_grab = false,
+    .ig_allow_grab = false,
 
     .ig_release_id = 0,
     .ig_release_ms = 200,
@@ -3441,6 +3273,87 @@ evin_kp_grab_wanted_cb(gconstpointer data)
 }
 
 /* ========================================================================= *
+ * GCONF_SETTINGS
+ * ========================================================================= */
+
+/** Flag: Input device types that can be grabbed */
+static gint evin_gconf_input_grab_allowed = DEFAULT_INPUT_GRAB_ALLOWED;
+/** GConf notifier id for tracking evin_gconf_input_grab_allowed changes */
+static guint evin_gconf_input_grab_allowed_id = 0;
+
+/** Handle changes to the list of grabbable input devices
+ */
+static void evin_gconf_input_grab_rethink(void)
+{
+    bool ts = (evin_gconf_input_grab_allowed & MCE_INPUT_GRAB_ALLOW_TS) != 0;
+    bool kp = (evin_gconf_input_grab_allowed & MCE_INPUT_GRAB_ALLOW_KP) != 0;
+
+    evin_input_grab_allow_grab(&evin_ts_grab_state, ts);
+    evin_input_grab_allow_grab(&evin_kp_grab_state, kp);
+}
+
+/** GConf callback for event input related settings
+ *
+ * @param gcc    Unused
+ * @param id     Connection ID from gconf_client_notify_add()
+ * @param entry  The modified GConf entry
+ * @param data   Unused
+ */
+static void evin_gconf_cb(GConfClient *const gcc, const guint id,
+                          GConfEntry *const entry, gpointer const data)
+{
+    (void)gcc;
+    (void)data;
+    (void)id;
+
+    const GConfValue *gcv = gconf_entry_get_value(entry);
+
+    if( !gcv ) {
+        mce_log(LL_DEBUG, "GConf Key `%s' has been unset",
+                gconf_entry_get_key(entry));
+        goto EXIT;
+    }
+
+    if( id == evin_gconf_input_grab_allowed_id ) {
+        gint old = evin_gconf_input_grab_allowed;
+
+        evin_gconf_input_grab_allowed = gconf_value_get_int(gcv);
+
+        mce_log(LL_NOTICE, "evin_gconf_input_grab_allowed: %d -> %d",
+                old, evin_gconf_input_grab_allowed);
+        evin_gconf_input_grab_rethink();
+    }
+    else {
+        mce_log(LL_WARN, "Spurious GConf value received; confused!");
+    }
+
+EXIT:
+    return;
+}
+
+/** Get intial gconf based settings and add change notifiers
+ */
+static void evin_gconf_init(void)
+{
+    /* Bitmask of input devices that can be grabbed */
+    mce_gconf_track_int(MCE_GCONF_INPUT_GRAB_ALLOWED,
+                        &evin_gconf_input_grab_allowed,
+                        DEFAULT_INPUT_GRAB_ALLOWED,
+                        evin_gconf_cb,
+                        &evin_gconf_input_grab_allowed_id);
+
+    evin_gconf_input_grab_rethink();
+}
+
+/** Remove gconf change notifiers
+ */
+static void evin_gconf_quit(void)
+{
+    mce_gconf_notifier_remove(evin_gconf_input_grab_allowed_id),
+        evin_gconf_input_grab_allowed_id = 0;
+}
+
+/* ========================================================================= *
  * MODULE_INIT
  * ========================================================================= */
 
@@ -3459,6 +3372,8 @@ mce_input_init(void)
 
     evin_ts_grab_init();
 
+    evin_gconf_init();
+
 #ifdef ENABLE_DOUBLETAP_EMULATION
     /* Get fake doubletap policy configuration & track changes */
     mce_gconf_notifier_add(MCE_GCONF_EVENT_INPUT_PATH,
@@ -3475,6 +3390,8 @@ mce_input_init(void)
                                       evin_gpio_submode_trigger);
     append_output_trigger_to_datapipe(&display_state_pipe,
                                       evin_ts_grab_display_state_cb);
+    append_output_trigger_to_datapipe(&touch_detected_pipe,
+                                      evin_ts_grab_touch_detected_cb);
     append_output_trigger_to_datapipe(&touch_grab_wanted_pipe,
                                       evin_ts_grab_wanted_cb);
     append_output_trigger_to_datapipe(&keypad_grab_wanted_pipe,
@@ -3512,6 +3429,8 @@ mce_input_exit(void)
                                         evin_gpio_submode_trigger);
     remove_output_trigger_from_datapipe(&display_state_pipe,
                                         evin_ts_grab_display_state_cb);
+    remove_output_trigger_from_datapipe(&touch_detected_pipe,
+                                        evin_ts_grab_touch_detected_cb);
     remove_output_trigger_from_datapipe(&touch_grab_wanted_pipe,
                                         evin_ts_grab_wanted_cb);
     remove_output_trigger_from_datapipe(&keypad_grab_wanted_pipe,
@@ -3519,6 +3438,8 @@ mce_input_exit(void)
 
     /* Remove input device directory monitor */
     evin_devdir_monitor_quit();
+
+    evin_gconf_quit();
 
     evin_iomon_quit();
 
@@ -3528,6 +3449,8 @@ mce_input_exit(void)
 
     /* Release event mapping lookup tables */
     evin_event_mapper_quit();
+
+    evin_touchstate_cancel_update();
 
     return;
 }

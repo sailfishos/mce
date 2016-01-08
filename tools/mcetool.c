@@ -2343,6 +2343,42 @@ static void xmce_get_lpmui_triggering(void)
 
         printf("%-"PAD1"s %s\n", "LPM UI triggering:", work);
 }
+/* ------------------------------------------------------------------------- *
+ * input_grab triggering
+ * ------------------------------------------------------------------------- */
+
+/** Lookuptable for mce radio state bits */
+static const symbol_t input_grab_allowed_lut[] =
+{
+        { "ts",    MCE_INPUT_GRAB_ALLOW_TS   },
+        { "kp",    MCE_INPUT_GRAB_ALLOW_KP   },
+        { "none",  MCE_INPUT_GRAB_ALLOW_NONE },
+        { 0,       0                         }
+};
+
+/** Set automatic lpm ui triggering mode
+ *
+ * @param args string of comma separated lpm ui triggering names
+ */
+static bool xmce_set_input_grab_allowed(const char *args)
+{
+        int mask = mcetool_parse_bitmask(input_grab_allowed_lut, args);
+        mcetool_gconf_set_int(MCE_GCONF_INPUT_GRAB_ALLOWED, mask);
+        return true;
+}
+
+/** Get current lpm ui triggering mode from mce and print it out
+ */
+static void xmce_get_input_grab_allowed(void)
+{
+        gint mask = 0;
+        char work[64] = "unknown";
+        if( mcetool_gconf_get_int(MCE_GCONF_INPUT_GRAB_ALLOWED, &mask) )
+                mcetool_format_bitmask(input_grab_allowed_lut, mask,
+                                       work, sizeof work);
+
+        printf("%-"PAD1"s %s\n", "Input grab allowed:", work);
+}
 
 /* ------------------------------------------------------------------------- *
  * call state
@@ -5455,6 +5491,7 @@ static bool xmce_get_status(const char *args)
         xmce_get_tklock_blank();
         xmce_get_lipstick_core_delay();
         xmce_get_input_policy_mode();
+        xmce_get_input_grab_allowed();
         xmce_get_touch_unblock_delay();
         xmce_get_exception_lengths();
 
@@ -6538,6 +6575,18 @@ static const mce_opt_t options[] =
                         "allowed to grab input device, problem is likely to reside in\n"
                         "mce policy logic. If the problem persists, the problem is more\n"
                         "likely to exist at the ui side input handling logic.\n"
+        },
+        {
+                .name        = "set-input-grab-allowed",
+                .with_arg    = xmce_set_input_grab_allowed,
+                .values      = "bit1[,bit2][...]",
+                .usage       =
+                        "set the input devices that mce is allowed to grab based on policy\n"
+                        "\n"
+                        "Valid input device types to use are:\n"
+                        "  none - no input files will be grabbed by mce\n"
+                        "  ts   - allow mce to grab touch screen devices\n"
+                        "  kp   - allow mce to grab keypad devices (with volkeys)\n"
         },
         {
                 .name        = "set-touch-unblock-delay",

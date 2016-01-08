@@ -24,6 +24,7 @@
 
 #include "powerkey.h"
 #include "tklock.h"
+#include "event-input.h"
 
 #include "modules/memnotify.h"
 #include "modules/filter-brightness-als.h"
@@ -1440,6 +1441,11 @@ static const setting_t gconf_defaults[] =
     .key  = "/system/osso/dsm/event_input/touch_unblock_delay",
     .type = "i",
     .def  = "100",
+  },
+  {
+    .key  = MCE_GCONF_INPUT_GRAB_ALLOWED,
+    .type = "i",
+    .def  = G_STRINGIFY(DEFAULT_INPUT_GRAB_ALLOWED),
   },
   {
     // MCE_LED_PATTERN_BATTERY_CHARGING @ mce.h

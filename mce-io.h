@@ -74,7 +74,7 @@ typedef struct {
 typedef struct mce_io_mon_t mce_io_mon_t;
 
 /** Callback function type for I/O monitor input notifications */
-typedef gboolean (*mce_io_mon_notify_cb)(gpointer data, gsize bytes_read);
+typedef gboolean (*mce_io_mon_notify_cb)(mce_io_mon_t *iomon, gpointer data, gsize bytes_read);
 
 /** Callback function type for I/O monitor delete notifications */
 typedef void (*mce_io_mon_delete_cb)(mce_io_mon_t *iomon);
