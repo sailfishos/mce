@@ -6723,6 +6723,7 @@ static void mdy_stm_step(void)
 
     case STM_RENDERER_INIT_START:
         if( !mdy_compositor_is_available() ) {
+            mdy_brightness_set_fade_target_unblank(mdy_brightness_level_display_resume);
             mdy_stm_trans(STM_WAIT_FADE_TO_TARGET);
         }
         else {
@@ -6735,6 +6736,7 @@ static void mdy_stm_step(void)
         if( mdy_stm_is_renderer_pending() )
             break;
         if( mdy_stm_is_renderer_enabled() ) {
+            mdy_brightness_set_fade_target_unblank(mdy_brightness_level_display_resume);
             mdy_stm_trans(STM_WAIT_FADE_TO_TARGET);
             break;
         }
@@ -6890,7 +6892,6 @@ static void mdy_stm_step(void)
             if( mdy_brightness_level_cached <= 0 )
                 mdy_brightness_force_level(1);
 
-            mdy_brightness_set_fade_target_unblank(mdy_brightness_level_display_resume);
             mdy_stm_trans(STM_RENDERER_INIT_START);
         }
         else
@@ -6924,7 +6925,6 @@ static void mdy_stm_step(void)
 
     case STM_LEAVE_LOGICAL_OFF:
         if( mdy_stm_display_state_needs_power(mdy_stm_next) ) {
-            mdy_brightness_set_fade_target_unblank(mdy_brightness_level_display_resume);
             mdy_stm_trans(STM_RENDERER_INIT_START);
             break;
         }
