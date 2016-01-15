@@ -1691,7 +1691,7 @@ evin_iomon_touchscreen_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
             evdev_get_event_code_name(ev->type, ev->code),
             ev->value);
 
-    bool grabbed = datapipe_get_gint(touch_grab_active_pipe);
+    bool grabbed = datapipe_get_gint(touch_grab_wanted_pipe);
 
     bool doubletap = false;
 
