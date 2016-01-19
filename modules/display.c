@@ -6406,6 +6406,9 @@ static bool mdy_stm_display_state_needs_power(display_state_t state)
     return power_on;
 }
 
+/** Flag for: async fbdev power up/down is not finished */
+static bool mdy_stm_fbdev_pending_set_power = false;
+
 /** Callback for display power up/down ioctl finished notification
  *
  * @param aptr  Requested display power state (as void pointer)
@@ -6424,6 +6427,7 @@ static void mdy_stm_fbdev_power_done_cb(void *aptr, void *reply)
     mce_log(LL_DEBUG, "mdy_waitfb_data.suspended = %s",
             mdy_waitfb_data.suspended ? "true" : "false");
 
+    mdy_stm_fbdev_pending_set_power = false;
     mdy_stm_schedule_rethink();
 }
 
@@ -6457,6 +6461,7 @@ static void *mdy_stm_fbdev_power_exec_cb(void *aptr)
 
 static void mdy_stm_fbdev_set_power(bool poweron)
 {
+    mdy_stm_fbdev_pending_set_power = true;
     mce_worker_add_job(MODULE_NAME, "fbdev-ioctl",
                        mdy_stm_fbdev_power_exec_cb,
                        mdy_stm_fbdev_power_done_cb,
@@ -6708,6 +6713,8 @@ static void mdy_stm_enable_renderer(void)
  */
 static void mdy_stm_step(void)
 {
+    static bool force_powerup_in_logical_off = false;
+
     switch( mdy_stm_dstate ) {
     default:
     case STM_UNSET:
@@ -6723,6 +6730,7 @@ static void mdy_stm_step(void)
 
     case STM_RENDERER_INIT_START:
         if( !mdy_compositor_is_available() ) {
+            mdy_brightness_set_fade_target_unblank(mdy_brightness_level_display_resume);
             mdy_stm_trans(STM_WAIT_FADE_TO_TARGET);
         }
         else {
@@ -6735,6 +6743,7 @@ static void mdy_stm_step(void)
         if( mdy_stm_is_renderer_pending() )
             break;
         if( mdy_stm_is_renderer_enabled() ) {
+            mdy_brightness_set_fade_target_unblank(mdy_brightness_level_display_resume);
             mdy_stm_trans(STM_WAIT_FADE_TO_TARGET);
             break;
         }
@@ -6808,6 +6817,13 @@ static void mdy_stm_step(void)
         if( mdy_stm_is_renderer_pending() )
             break;
         if( mdy_stm_is_renderer_disabled() ) {
+            /* Unless we're running on an early-suspend kernel we
+             * have no way of knowing whether compositor has already
+             * powered off the display. Normally it does not matter,
+             * but must be taken into account if heading to logical
+             * display off state. */
+            force_powerup_in_logical_off = !mdy_waitfb_data.thread;
+
             mdy_stm_trans(STM_INIT_SUSPEND);
             break;
         }
@@ -6890,7 +6906,6 @@ static void mdy_stm_step(void)
             if( mdy_brightness_level_cached <= 0 )
                 mdy_brightness_force_level(1);
 
-            mdy_brightness_set_fade_target_unblank(mdy_brightness_level_display_resume);
             mdy_stm_trans(STM_RENDERER_INIT_START);
         }
         else
@@ -6899,10 +6914,17 @@ static void mdy_stm_step(void)
 
     case STM_ENTER_LOGICAL_OFF:
         mdy_stm_finish_target_change();
+        if( force_powerup_in_logical_off ) {
+            force_powerup_in_logical_off = false;
+            mdy_stm_fbdev_set_power(true);
+        }
         mdy_stm_trans(STM_STAY_LOGICAL_OFF);
         break;
 
     case STM_STAY_LOGICAL_OFF:
+        if( mdy_stm_fbdev_pending_set_power )
+            break;
+
         if( mdy_stm_pull_target_change() ) {
             mdy_stm_trans(STM_LEAVE_LOGICAL_OFF);
             break;
@@ -6923,8 +6945,9 @@ static void mdy_stm_step(void)
         break;
 
     case STM_LEAVE_LOGICAL_OFF:
+        force_powerup_in_logical_off = false;
+
         if( mdy_stm_display_state_needs_power(mdy_stm_next) ) {
-            mdy_brightness_set_fade_target_unblank(mdy_brightness_level_display_resume);
             mdy_stm_trans(STM_RENDERER_INIT_START);
             break;
         }
