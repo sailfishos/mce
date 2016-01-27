@@ -1,3 +1,11 @@
+mce (1.78.2) precise; urgency=low
+
+  * [datapipe] Do not assume audio jack is connected. JB#33997
+  * [evdev] Update switch states when input device is added. JB#33997
+  * [tklock] Do not turn display on due to initial jack sense state. Fixes JB#33997
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 27 Jan 2016 13:43:11 +0200
+
 mce (1.78.1) precise; urgency=low
 
   * [display] Start ui before ramping up display backlight. JB#33873
