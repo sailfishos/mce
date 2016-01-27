@@ -893,7 +893,7 @@ void mce_datapipe_init(void)
 	setup_datapipe(&usb_cable_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(USB_CABLE_UNDEF));
 	setup_datapipe(&jack_sense_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(0));
+		       0, GINT_TO_POINTER(COVER_UNDEF));
 	setup_datapipe(&power_saving_mode_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(0));
 	setup_datapipe(&thermal_state_pipe, READ_ONLY, DONT_FREE_CACHE,
