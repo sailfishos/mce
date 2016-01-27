@@ -2155,6 +2155,7 @@ evin_iomon_device_update(const gchar *path, gboolean add)
     if( add )
         evin_iomon_device_add(path);
 
+    evin_iomon_switch_states_update();
     evin_iomon_keyboard_state_update();
 }
 
