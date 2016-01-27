@@ -1253,8 +1253,8 @@ EXIT:
     return;
 }
 
-/** Audio jack state; assume not inserted */
-static cover_state_t jack_sense_state = COVER_OPEN;
+/** Audio jack state; assume not known yet */
+static cover_state_t jack_sense_state = COVER_UNDEF;
 
 /** Change notifications for jack_sense_state
  */
@@ -1263,15 +1263,15 @@ static void tklock_datapipe_jack_sense_cb(gconstpointer data)
     cover_state_t prev = jack_sense_state;
     jack_sense_state = GPOINTER_TO_INT(data);
 
-    if( jack_sense_state == COVER_UNDEF )
-        jack_sense_state = COVER_OPEN;
-
     if( prev == jack_sense_state )
         goto EXIT;
 
     mce_log(LL_DEBUG, "jack_sense_state = %s -> %s",
             cover_state_repr(prev),
             cover_state_repr(jack_sense_state));
+
+    if( prev == COVER_UNDEF )
+        goto EXIT;
 
     int64_t length = -1;
 
