@@ -1,3 +1,9 @@
+mce (1.78.3) precise; urgency=low
+
+  * [display] Power up display on entry to OS update mode. Fixes JB#34088
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 04 Feb 2016 11:26:54 +0200
+
 mce (1.78.2) precise; urgency=low
 
   * [datapipe] Do not assume audio jack is connected. JB#33997
