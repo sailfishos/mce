@@ -109,6 +109,8 @@ digraph display_state_machine {
   STM_STAY_POWER_ON -> STM_LEAVE_POWER_ON            [label=" req"];
 
   STM_LEAVE_POWER_ON -> STM_RENDERER_INIT_START      [label=" need power on"];
+  STM_LEAVE_POWER_ON -> STM_INIT_RESUME              [label=" force fb state"];
+
   STM_LEAVE_POWER_ON -> STM_WAIT_FADE_TO_BLACK       [label=" need power off"];
 
   STM_ENTER_LOGICAL_OFF -> STM_STAY_LOGICAL_OFF      [label=" signal state"];
@@ -119,6 +121,7 @@ digraph display_state_machine {
 
   STM_LEAVE_LOGICAL_OFF -> STM_RENDERER_INIT_STOP    [label=" lipstick restart"];
   STM_LEAVE_LOGICAL_OFF -> STM_RENDERER_INIT_START   [label=" req"];
+  STM_LEAVE_LOGICAL_OFF -> STM_INIT_RESUME           [label=" force fb state"];
   STM_LEAVE_LOGICAL_OFF -> STM_INIT_SUSPEND          [label=" policy"];
 
   // lipstick restart special case (happens outside stm)
