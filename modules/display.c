@@ -599,6 +599,9 @@ static const char         *mdy_stm_state_name(stm_state_t state);
 static void                mdy_datapipe_compositor_available_cb(gconstpointer aptr);
 static void                mdy_datapipe_lipstick_available_cb(gconstpointer aptr);
 
+// whether there is unhandled compositor availability change
+static void                mdy_stm_set_compositor_availability_changed(bool changed);
+
 // whether to power on/off the frame buffer
 static bool                mdy_stm_display_state_needs_power(display_state_t state);
 
@@ -1980,6 +1983,10 @@ static void mdy_fbdev_rethink(void)
 
     // do not close during shutdown
     if( mdy_shutdown_in_progress() )
+        goto EXIT;
+
+    // do not close during os update
+    if( mdy_update_mode )
         goto EXIT;
 
     if( system_state == MCE_STATE_ACTDEAD ) {
@@ -6250,8 +6257,8 @@ static void mdy_fbsusp_led_start_timer(mdy_fbsusp_led_state_t req)
  * DISPLAY_STATE_MACHINE
  * ========================================================================= */
 
-/** A setUpdatesEnabled(true) call needs to be made when possible */
-static bool mdy_stm_enable_rendering_needed = true;
+/** Flag for: unhandled compositor availability change */
+static bool mdy_stm_compositor_availability_changed = true;
 
 /** Display state we are currently in */
 static display_state_t mdy_stm_curr = MCE_DISPLAY_UNDEF;
@@ -6335,8 +6342,8 @@ static void mdy_datapipe_compositor_available_cb(gconstpointer aptr)
      buffer is needed to clear zombie ui off the screen. */
     mdy_fbdev_rethink();
 
-    /* set setUpdatesEnabled(true) needs to be called flag */
-    mdy_stm_enable_rendering_needed = true;
+    /* Mark down we have availability change to handle */
+    mdy_stm_set_compositor_availability_changed(true);
 
     /* a) Lipstick assumes that updates are allowed when
      *    it starts up. Try to arrange that it is so.
@@ -6377,6 +6384,20 @@ static void mdy_datapipe_lipstick_available_cb(gconstpointer aptr)
 
 EXIT:
     return;
+}
+
+/** Setter function for mdy_stm_compositor_availability_changed flag
+ *
+ * @param changed  true for availability change is detected, or
+ *                 false for availability change is handled
+ */
+static void mdy_stm_set_compositor_availability_changed(bool changed)
+{
+    if( mdy_stm_compositor_availability_changed != changed ) {
+        mce_log(LL_DEBUG, "compositor availability change: %s",
+                changed ? "pending" : "handled");
+        mdy_stm_compositor_availability_changed = changed;
+    }
 }
 
 /** Predicate for choosing between STM_STAY_POWER_ON|OFF
@@ -6672,12 +6693,9 @@ static bool mdy_stm_is_renderer_enabled(void)
 static void mdy_stm_disable_renderer(void)
 {
     if( mdy_compositor_ui_state != RENDERER_DISABLED ||
-        mdy_stm_enable_rendering_needed ) {
+        mdy_stm_compositor_availability_changed ) {
         mce_log(LL_NOTICE, "stopping renderer");
         mdy_compositor_start_state_req(RENDERER_DISABLED);
-
-        /* clear setUpdatesEnabled(true) needs to be called flag */
-        mdy_stm_enable_rendering_needed = false;
     }
     else {
         mce_log(LL_NOTICE, "renderer already disabled");
@@ -6689,11 +6707,9 @@ static void mdy_stm_disable_renderer(void)
 static void mdy_stm_enable_renderer(void)
 {
     if( mdy_compositor_ui_state != RENDERER_ENABLED ||
-        mdy_stm_enable_rendering_needed ) {
+        mdy_stm_compositor_availability_changed ) {
         mce_log(LL_NOTICE, "starting renderer");
         mdy_compositor_start_state_req(RENDERER_ENABLED);
-        /* clear setUpdatesEnabled(true) needs to be called flag */
-        mdy_stm_enable_rendering_needed = false;
     }
     else {
         mce_log(LL_NOTICE, "renderer already enabled");
@@ -6737,6 +6753,7 @@ static void mdy_stm_step(void)
             mdy_stm_enable_renderer();
             mdy_stm_trans(STM_RENDERER_WAIT_START);
         }
+        mdy_stm_set_compositor_availability_changed(false);
         break;
 
     case STM_RENDERER_WAIT_START:
@@ -6780,8 +6797,14 @@ static void mdy_stm_step(void)
         break;
 
     case STM_STAY_POWER_ON:
-        if( mdy_stm_enable_rendering_needed && mdy_compositor_is_available() ) {
-            mce_log(LL_NOTICE, "handling compositor startup");
+        if( mdy_stm_compositor_availability_changed ) {
+            if( !mdy_compositor_is_available() ) {
+                /* The compositor process might have powered down
+                 * the display while making exit -> we need to
+                 * invalidate cached backlight brightness level
+                 * and possibly power up the display again */
+                mdy_brightness_level_cached = -1;
+            }
             mdy_stm_trans(STM_LEAVE_POWER_ON);
             break;
         }
@@ -6790,10 +6813,12 @@ static void mdy_stm_step(void)
         break;
 
     case STM_LEAVE_POWER_ON:
-        if( mdy_stm_display_state_needs_power(mdy_stm_next) )
-            mdy_stm_trans(STM_RENDERER_INIT_START);
-        else
+        if( !mdy_stm_display_state_needs_power(mdy_stm_next) )
             mdy_stm_trans(STM_WAIT_FADE_TO_BLACK);
+        else if( mdy_brightness_level_cached < 0 )
+            mdy_stm_trans(STM_INIT_RESUME);
+        else
+            mdy_stm_trans(STM_RENDERER_INIT_START);
         break;
 
     case STM_WAIT_FADE_TO_BLACK:
@@ -6811,6 +6836,7 @@ static void mdy_stm_step(void)
             mdy_stm_disable_renderer();
             mdy_stm_trans(STM_RENDERER_WAIT_STOP);
         }
+        mdy_stm_set_compositor_availability_changed(false);
         break;
 
     case STM_RENDERER_WAIT_STOP:
@@ -6897,6 +6923,8 @@ static void mdy_stm_step(void)
         break;
 
     case STM_WAIT_RESUME:
+        if( mdy_stm_fbdev_pending_set_power )
+            break;
         if( !mdy_stm_is_fb_resume_finished() )
             break;
         if( mdy_stm_display_state_needs_power(mdy_stm_next) ) {
@@ -6925,20 +6953,20 @@ static void mdy_stm_step(void)
         if( mdy_stm_fbdev_pending_set_power )
             break;
 
+        if( mdy_stm_compositor_availability_changed ) {
+            if( !mdy_compositor_is_available() )
+                mdy_brightness_level_cached = -1;
+            mdy_stm_trans(STM_LEAVE_LOGICAL_OFF);
+            break;
+        }
+
         if( mdy_stm_pull_target_change() ) {
             mdy_stm_trans(STM_LEAVE_LOGICAL_OFF);
             break;
         }
 
-        if( !mdy_compositor_is_available() )
-            break;
-
-        if( mdy_stm_enable_rendering_needed ) {
-            mdy_stm_trans(STM_LEAVE_LOGICAL_OFF);
-            break;
-        }
-
-        if( mdy_stm_is_early_suspend_allowed() ) {
+        if( mdy_compositor_is_available() &&
+            mdy_stm_is_early_suspend_allowed() ) {
             mdy_stm_trans(STM_LEAVE_LOGICAL_OFF);
             break;
         }
@@ -6947,12 +6975,17 @@ static void mdy_stm_step(void)
     case STM_LEAVE_LOGICAL_OFF:
         force_powerup_in_logical_off = false;
 
-        if( mdy_stm_display_state_needs_power(mdy_stm_next) ) {
-            mdy_stm_trans(STM_RENDERER_INIT_START);
+        if( mdy_stm_pull_target_change() &&
+            mdy_stm_display_state_needs_power(mdy_stm_next) ) {
+            if( mdy_brightness_level_cached < 0 )
+                mdy_stm_trans(STM_INIT_RESUME);
+            else
+                mdy_stm_trans(STM_RENDERER_INIT_START);
             break;
         }
 
-        if( mdy_stm_enable_rendering_needed ) {
+        if( mdy_stm_compositor_availability_changed ) {
+            force_powerup_in_logical_off = !mdy_waitfb_data.thread;
             mdy_stm_trans(STM_RENDERER_INIT_STOP);
             break;
         }
