@@ -1,3 +1,9 @@
+mce (1.78.4) precise; urgency=low
+
+  * [callstate] Map ofono waiting state to mce ringing state. Fixes JB#31908
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 15 Feb 2016 11:46:44 +0200
+
 mce (1.78.3) precise; urgency=low
 
   * [display] Power up display on entry to OS update mode. Fixes JB#34088
