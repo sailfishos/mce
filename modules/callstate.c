@@ -176,6 +176,7 @@ ofono_callstate_to_mce(const char *name)
         break;
 
     case OFONO_CALL_STATE_INCOMING:
+    case OFONO_CALL_STATE_WAITING:
         mce = CALL_STATE_RINGING;
         break;
 
@@ -183,7 +184,6 @@ ofono_callstate_to_mce(const char *name)
     case OFONO_CALL_STATE_ALERTING:
     case OFONO_CALL_STATE_ACTIVE:
     case OFONO_CALL_STATE_HELD:
-    case OFONO_CALL_STATE_WAITING:
         mce = CALL_STATE_ACTIVE;
         break;
     }
