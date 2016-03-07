@@ -23,6 +23,7 @@
 
 #include "powerkey.h"
 #include "tklock.h"
+#include "evdev.h"
 
 #include "mce.h"
 #include "mce-log.h"
@@ -31,6 +32,8 @@
 #include "mce-gconf.h"
 #include "mce-dbus.h"
 #include "mce-dsme.h"
+
+#include "modules/doubletap.h"
 
 #ifdef ENABLE_WAKELOCKS
 # include "libwakelock.h"
@@ -160,6 +163,10 @@ static void  pwrkey_action_dbus3    (void);
 static void  pwrkey_action_dbus4    (void);
 static void  pwrkey_action_dbus5    (void);
 static void  pwrkey_action_dbus6    (void);
+static void  pwrkey_action_dbus7    (void);
+static void  pwrkey_action_dbus8    (void);
+static void  pwrkey_action_dbus9    (void);
+static void  pwrkey_action_dbus10   (void);
 
 /* ------------------------------------------------------------------------- *
  * ACTION_SETS
@@ -177,6 +184,16 @@ static void     pwrkey_mask_execute    (uint32_t mask);
 static uint32_t pwrkey_mask_from_name  (const char *name);
 static uint32_t pwrkey_mask_from_names (const char *names);
 static gchar   *pwrkey_mask_to_names   (uint32_t mask);
+
+/* ------------------------------------------------------------------------- *
+ * GESTURE_FILTERING
+ * ------------------------------------------------------------------------- */
+
+/** Touchscreen gesture (doubletap etc) enable mode */
+static gint  pwrkey_gestures_enable_mode = DBLTAP_ENABLE_DEFAULT;
+static guint pwrkey_gestures_enable_mode_cb_id = 0;
+
+static bool  pwrkey_gestures_allowed(void);
 
 /* ------------------------------------------------------------------------- *
  * ACTION_TRIGGERING
@@ -203,6 +220,9 @@ static pwrkey_actions_t pwrkey_actions_from_display_on  = { 0, 0, 0, 0 };
 /** Actions when power key is pressed while display is off */
 static pwrkey_actions_t pwrkey_actions_from_display_off = { 0, 0, 0, 0 };
 
+/** Actions on touch screen gestures */
+static pwrkey_actions_t pwrkey_actions_from_gesture[POWERKEY_ACTIONS_GESTURE_COUNT] = {};
+
 /** Currently selected power key actions; default to turning display on */
 static pwrkey_actions_t *pwrkey_actions_now =
     &pwrkey_actions_from_display_off;
@@ -225,8 +245,45 @@ static guint  pwrkey_actions_double_off_gconf_id = 0;
 static gchar *pwrkey_actions_long_off            = 0;
 static guint  pwrkey_actions_long_off_gconf_id   = 0;
 
+/** Array of setting keys for configurable touchscreen gestures */
+static const char * const pwrkey_actions_gesture_key[POWERKEY_ACTIONS_GESTURE_COUNT] =
+{
+    MCE_GCONF_POWERKEY_ACTIONS_GESTURE0,
+    MCE_GCONF_POWERKEY_ACTIONS_GESTURE1,
+    MCE_GCONF_POWERKEY_ACTIONS_GESTURE2,
+    MCE_GCONF_POWERKEY_ACTIONS_GESTURE3,
+    MCE_GCONF_POWERKEY_ACTIONS_GESTURE4,
+    MCE_GCONF_POWERKEY_ACTIONS_GESTURE5,
+    MCE_GCONF_POWERKEY_ACTIONS_GESTURE6,
+    MCE_GCONF_POWERKEY_ACTIONS_GESTURE7,
+    MCE_GCONF_POWERKEY_ACTIONS_GESTURE8,
+    MCE_GCONF_POWERKEY_ACTIONS_GESTURE9,
+    MCE_GCONF_POWERKEY_ACTIONS_GESTURE10,
+};
+
+/** Array of default values for configurable touchscreen gestures */
+static const char * const pwrkey_actions_gesture_val[POWERKEY_ACTIONS_GESTURE_COUNT] =
+{
+    DEFAULT_POWERKEY_ACTIONS_GESTURE0,
+    DEFAULT_POWERKEY_ACTIONS_GESTURE1,
+    DEFAULT_POWERKEY_ACTIONS_GESTURE2,
+    DEFAULT_POWERKEY_ACTIONS_GESTURE3,
+    DEFAULT_POWERKEY_ACTIONS_GESTURE4,
+    DEFAULT_POWERKEY_ACTIONS_GESTURE5,
+    DEFAULT_POWERKEY_ACTIONS_GESTURE6,
+    DEFAULT_POWERKEY_ACTIONS_GESTURE7,
+    DEFAULT_POWERKEY_ACTIONS_GESTURE8,
+    DEFAULT_POWERKEY_ACTIONS_GESTURE9,
+    DEFAULT_POWERKEY_ACTIONS_GESTURE10,
+};
+
+/** Array of current values for configurable touchscreen gestures */
+static gchar *pwrkey_actions_gesture         [POWERKEY_ACTIONS_GESTURE_COUNT] = {};
+static guint  pwrkey_actions_gesture_gconf_id[POWERKEY_ACTIONS_GESTURE_COUNT] = {};
+
 static void pwrkey_actions_parse           (pwrkey_actions_t *self, const char *names_single, const char *names_double, const char *names_long);
 
+static void pwrkey_actions_do_gesture      (size_t gesture);
 static void pwrkey_actions_do_common       (void);
 static void pwrkey_actions_do_single_press (void);
 static void pwrkey_actions_do_double_press (void);
@@ -286,8 +343,6 @@ static void        xngf_quit          (void);
  * emitting dbus signal from mce / making dbus method call to some service
  * ------------------------------------------------------------------------- */
 
-#define DBUS_ACTIONS_COUNT 6
-
 /** Flag file for: Possibly dangerous dbus action in progress
  *
  * Used for resetting dbus action config if it causes mce to crash.
@@ -312,7 +367,7 @@ typedef struct
     char *argument;
 } pwrkey_dbus_action_t;
 
-static pwrkey_dbus_action_t pwrkey_dbus_action[DBUS_ACTIONS_COUNT] =
+static pwrkey_dbus_action_t pwrkey_dbus_action[POWEKEY_DBUS_ACTION_COUNT] =
 {
     {
         .gconf_key = MCE_GCONF_POWERKEY_DBUS_ACTION1,
@@ -347,6 +402,30 @@ static pwrkey_dbus_action_t pwrkey_dbus_action[DBUS_ACTIONS_COUNT] =
     {
         .gconf_key = MCE_GCONF_POWERKEY_DBUS_ACTION6,
         .gconf_def = DEFAULT_POWERKEY_DBUS_ACTION6,
+        .gconf_val = 0,
+        .gconf_id  = 0,
+    },
+    {
+        .gconf_key = MCE_GCONF_POWERKEY_DBUS_ACTION7,
+        .gconf_def = DEFAULT_POWERKEY_DBUS_ACTION7,
+        .gconf_val = 0,
+        .gconf_id  = 0,
+    },
+    {
+        .gconf_key = MCE_GCONF_POWERKEY_DBUS_ACTION8,
+        .gconf_def = DEFAULT_POWERKEY_DBUS_ACTION8,
+        .gconf_val = 0,
+        .gconf_id  = 0,
+    },
+    {
+        .gconf_key = MCE_GCONF_POWERKEY_DBUS_ACTION9,
+        .gconf_def = DEFAULT_POWERKEY_DBUS_ACTION9,
+        .gconf_val = 0,
+        .gconf_id  = 0,
+    },
+    {
+        .gconf_key = MCE_GCONF_POWERKEY_DBUS_ACTION10,
+        .gconf_def = DEFAULT_POWERKEY_DBUS_ACTION10,
         .gconf_val = 0,
         .gconf_id  = 0,
     },
@@ -415,10 +494,11 @@ static void     pwrkey_gconf_sanitize_now    (void);
 static void     pwrkey_gconf_sanitize_later  (void);
 static void     pwrkey_gconf_sanitize_cancel (void);
 
-static void     pwrkey_gconf_cb(GConfClient *const gcc, const guint id, GConfEntry *const entry, gpointer const data);
+static bool     pwrkey_gconf_handle_gesture  (const GConfValue *gcv, guint id);
+static void     pwrkey_gconf_cb              (GConfClient *const gcc, const guint id, GConfEntry *const entry, gpointer const data);
 
-static void     pwrkey_gconf_init(void);
-static void     pwrkey_gconf_quit(void);
+static void     pwrkey_gconf_init            (void);
+static void     pwrkey_gconf_quit            (void);
 
 /* ------------------------------------------------------------------------- *
  * DATAPIPE_HANDLING
@@ -428,6 +508,10 @@ static void     pwrkey_gconf_quit(void);
 
 static void pwrkey_datapipes_keypress_cb(gconstpointer const data);
 static void pwrkey_datapipe_ngfd_available_cb(gconstpointer data);
+static void pwrkey_datapipe_system_state_cb(gconstpointer data);
+static void pwrkey_datapipe_display_state_next_cb(gconstpointer data);
+static void pwrkey_datapipe_lid_cover_policy_cb(gconstpointer data);
+static void pwrkey_datapipe_proximity_sensor_cb(gconstpointer data);
 
 static void pwrkey_datapipes_init(void);
 static void pwrkey_datapipes_quit(void);
@@ -503,6 +587,25 @@ static bool pwrkey_delete_flagfile(const char *path)
 }
 
 /* ========================================================================= *
+ * DATAPIPE_HANDLING
+ * ========================================================================= */
+
+/** System state; is undefined at bootup, can't assume anything */
+static system_state_t system_state = MCE_STATE_UNDEF;
+
+/** Next Display state; undefined initially, can't assume anything */
+static display_state_t display_state_next = MCE_DISPLAY_UNDEF;
+
+/** Lid cover policy state; assume unknown */
+static cover_state_t lid_cover_policy_state = COVER_UNDEF;
+
+/** Actual proximity state; assume not covered */
+static cover_state_t proximity_state_actual = COVER_OPEN;
+
+/** NGFD availability */
+static service_state_t ngfd_available = SERVICE_STATE_UNDEF;
+
+/* ========================================================================= *
  * PS_OVERRIDE
  * ========================================================================= */
 
@@ -529,14 +632,8 @@ pwrkey_ps_override_evaluate(void)
         goto EXIT;
     }
 
-    cover_state_t proximity_sensor_state =
-        datapipe_get_gint(proximity_sensor_pipe);
-
-    cover_state_t lid_cover_policy_state =
-        datapipe_get_gint(lid_cover_policy_pipe);
-
     /* If neither sensor is not covered, just reset the counter */
-    if( proximity_sensor_state != COVER_CLOSED &&
+    if( proximity_state_actual != COVER_CLOSED &&
         lid_cover_policy_state != COVER_CLOSED ) {
         t_last = 0, count = 0;
         goto EXIT;
@@ -570,7 +667,7 @@ pwrkey_ps_override_evaluate(void)
         goto EXIT;
     }
 
-    if( proximity_sensor_state == COVER_CLOSED ) {
+    if( proximity_state_actual == COVER_CLOSED ) {
         mce_log(LL_CRIT, "assuming stuck proximity sensor;"
                 " faking uncover event");
 
@@ -637,13 +734,8 @@ pwrkey_action_tklock(void)
 static void
 pwrkey_action_tkunlock(void)
 {
-    cover_state_t proximity_sensor_state =
-        datapipe_get_gint(proximity_sensor_pipe);
-
-    display_state_t target = datapipe_get_gint(display_state_next_pipe);
-
     /* Only unlock if we are in/entering fully powered on display state */
-    switch( target ) {
+    switch( display_state_next ) {
     case MCE_DISPLAY_ON:
     case MCE_DISPLAY_DIM:
         break;
@@ -656,9 +748,9 @@ pwrkey_action_tkunlock(void)
 
     /* Even if powerkey actions are allowed to work while proximity
      * sensor is covered, we must not deactivatie the lockscreen */
-    if( proximity_sensor_state != COVER_OPEN ) {
+    if( proximity_state_actual != COVER_OPEN ) {
         mce_log(LL_DEBUG, "Proximity sensor %s; rejecting tklock=%s",
-                proximity_state_repr(proximity_sensor_state),
+                proximity_state_repr(proximity_state_actual),
                 lock_state_repr(request));
         goto EXIT;
     }
@@ -755,6 +847,30 @@ pwrkey_action_dbus6(void)
     pwrkey_dbus_action_execute(5);
 }
 
+static void
+pwrkey_action_dbus7(void)
+{
+    pwrkey_dbus_action_execute(6);
+}
+
+static void
+pwrkey_action_dbus8(void)
+{
+    pwrkey_dbus_action_execute(7);
+}
+
+static void
+pwrkey_action_dbus9(void)
+{
+    pwrkey_dbus_action_execute(8);
+}
+
+static void
+pwrkey_action_dbus10(void)
+{
+    pwrkey_dbus_action_execute(9);
+}
+
 /* ========================================================================= *
  * ACTION_SETS
  * ========================================================================= */
@@ -824,6 +940,22 @@ static const pwrkey_bitconf_t pwrkey_action_lut[] =
     {
         .name = "dbus6",
         .func = pwrkey_action_dbus6,
+    },
+    {
+        .name = "dbus7",
+        .func = pwrkey_action_dbus7,
+    },
+    {
+        .name = "dbus8",
+        .func = pwrkey_action_dbus8,
+    },
+    {
+        .name = "dbus9",
+        .func = pwrkey_action_dbus9,
+    },
+    {
+        .name = "dbus10",
+        .func = pwrkey_action_dbus10,
     },
 };
 
@@ -902,9 +1034,96 @@ pwrkey_mask_to_names(uint32_t mask)
     return g_strdup(tmp);
 }
 
+/* ------------------------------------------------------------------------- *
+ * GESTURE_FILTERING
+ * ------------------------------------------------------------------------- */
+
+/** Predicate for: touchscreen gesture actions are allowed
+ */
+static bool
+pwrkey_gestures_allowed(void)
+{
+    bool allowed = false;
+
+    /* Check enable setting */
+    switch( pwrkey_gestures_enable_mode ) {
+    case DBLTAP_ENABLE_NEVER:
+        mce_log(LL_DEVEL, "[gesture] ignored due to setting=never");
+        goto EXIT;
+
+    case DBLTAP_ENABLE_ALWAYS:
+        break;
+
+    default:
+    case DBLTAP_ENABLE_NO_PROXIMITY:
+        if( lid_cover_policy_state == COVER_CLOSED ) {
+            mce_log(LL_DEVEL, "[gesture] ignored due to lid=closed");
+            goto EXIT;
+        }
+        if( proximity_state_actual == COVER_CLOSED ) {
+            mce_log(LL_DEVEL, "[gesture] ignored due to proximity");
+            goto EXIT;
+        }
+        break;
+    }
+
+    switch( system_state ) {
+    case MCE_STATE_USER:
+    case MCE_STATE_ACTDEAD:
+      break;
+    default:
+      mce_log(LL_DEVEL, "[gesture] ignored due to system state");
+        goto EXIT;
+    }
+
+    /* Note: In case we happen to be in middle of display state transition
+     *       the double tap blocking must use the next stable display state
+     *       rather than the current - potentially transitional - state.
+     */
+    switch( display_state_next )
+    {
+    case MCE_DISPLAY_OFF:
+    case MCE_DISPLAY_LPM_OFF:
+    case MCE_DISPLAY_POWER_DOWN:
+    case MCE_DISPLAY_LPM_ON:
+        break;
+
+    default:
+    case MCE_DISPLAY_ON:
+    case MCE_DISPLAY_DIM:
+    case MCE_DISPLAY_POWER_UP:
+    case MCE_DISPLAY_UNDEF:
+        mce_log(LL_DEVEL, "[gesture] ignored due to display state");
+        goto EXIT;
+    }
+
+    allowed = true;
+
+EXIT:
+
+    return allowed;
+}
+
 /* ========================================================================= *
  * ACTION_TRIGGERING
  * ========================================================================= */
+
+static void
+pwrkey_actions_do_gesture(size_t gesture)
+{
+    /* Treat unconfigurable gestures as doubletaps */
+    if( gesture >= POWERKEY_ACTIONS_GESTURE_COUNT )
+        gesture = GESTURE_DOUBLETAP;
+
+    /* Check settings, proximity sensor state, etc */
+    if( !pwrkey_gestures_allowed() )
+        goto EXIT;
+
+    pwrkey_mask_execute(pwrkey_actions_from_gesture[gesture].mask_single);
+
+EXIT:
+    return;
+}
 
 static void
 pwrkey_actions_do_common(void)
@@ -933,11 +1152,9 @@ pwrkey_actions_do_double_press(void)
 static void
 pwrkey_actions_do_long_press(void)
 {
-    system_state_t state   = datapipe_get_gint(system_state_pipe);
-
     /* The action configuration applies only in the USER mode */
 
-    switch( state ) {
+    switch( system_state ) {
     case MCE_STATE_SHUTDOWN:
     case MCE_STATE_REBOOT:
         /* Ignore if we're already shutting down/rebooting */
@@ -959,7 +1176,8 @@ pwrkey_actions_do_long_press(void)
 
     default:
         /* Default to powering off */
-        mce_log(LL_WARN, "Requesting shutdown; state: %d",state);
+        mce_log(LL_WARN, "Requesting shutdown from state: %s",
+                system_state_repr(system_state));
         mce_dsme_request_normal_shutdown();
         break;
     }
@@ -975,7 +1193,7 @@ pwrkey_actions_update(const pwrkey_actions_t *self,
 
     auto void update(gchar **prev, gchar *curr)
     {
-        if( !eq(*prev, curr) )
+        if( prev && !eq(*prev, curr) )
             changed = true, g_free(*prev), *prev = curr, curr = 0;
         g_free(curr);
     }
@@ -1265,7 +1483,7 @@ pwrkey_dbus_action_configure(size_t action_id, bool force_reset)
 {
     gchar *use = 0;
 
-    if( action_id >= DBUS_ACTIONS_COUNT )
+    if( action_id >= POWEKEY_DBUS_ACTION_COUNT )
         goto cleanup;
 
     pwrkey_dbus_action_t *action = pwrkey_dbus_action + action_id;
@@ -1298,7 +1516,7 @@ pwrkey_dbus_action_execute(size_t action_id)
 {
     bool flag_created = false;
 
-    if( action_id >= DBUS_ACTIONS_COUNT )
+    if( action_id >= POWEKEY_DBUS_ACTION_COUNT )
         goto cleanup;
 
     mce_log(LL_DEBUG, "Executing dbus action %zd", action_id);
@@ -1500,12 +1718,6 @@ pwrkey_stm_ignore_action(void)
     alarm_ui_state_t alarm_ui_state =
         datapipe_get_gint(alarm_ui_state_pipe);
 
-    cover_state_t proximity_sensor_state =
-        datapipe_get_gint(proximity_sensor_pipe);
-
-    cover_state_t lid_cover_policy_state =
-        datapipe_get_gint(lid_cover_policy_pipe);
-
     call_state_t call_state =
         datapipe_get_gint(call_state_pipe);
 
@@ -1572,7 +1784,7 @@ pwrkey_stm_ignore_action(void)
             goto EXIT;
         }
 
-        if( proximity_sensor_state == COVER_CLOSED ) {
+        if( proximity_state_actual == COVER_CLOSED ) {
             mce_log(LL_DEVEL, "[powerkey] ignored due to proximity");
             ignore_powerkey = true;
             goto EXIT;
@@ -1803,6 +2015,18 @@ pwrkey_gconf_sanitize_action_masks(void)
         mce_gconf_set_string(MCE_GCONF_POWERKEY_ACTIONS_LONG_OFF,
                              pwrkey_actions_long_off);
     }
+
+    for( size_t i = 0; i < POWERKEY_ACTIONS_GESTURE_COUNT; ++i ) {
+        pwrkey_actions_parse(&pwrkey_actions_from_gesture[i],
+                             pwrkey_actions_gesture[i], 0, 0);
+        bool gesture_changed =
+            pwrkey_actions_update(&pwrkey_actions_from_gesture[i],
+                                  &pwrkey_actions_gesture[i], 0, 0);
+        if( gesture_changed ) {
+            mce_gconf_set_string(pwrkey_actions_gesture_key[i],
+                                 pwrkey_actions_gesture[i]);
+        }
+    }
 }
 
 static void
@@ -1823,7 +2047,7 @@ pwrkey_gconf_sanitize_dbus_actions(void)
                 "dbus action config", pwrkey_dbus_action_flag);
     }
 
-    for( size_t action_id = 0; action_id < DBUS_ACTIONS_COUNT; ++action_id )
+    for( size_t action_id = 0; action_id < POWEKEY_DBUS_ACTION_COUNT; ++action_id )
         pwrkey_dbus_action_configure(action_id, force_reset);
 }
 
@@ -1861,6 +2085,31 @@ static void pwrkey_gconf_sanitize_cancel(void)
         g_source_remove(pwrkey_gconf_sanitize_id),
             pwrkey_gconf_sanitize_id = 0;
     }
+}
+
+static bool
+pwrkey_gconf_handle_gesture(const GConfValue *gcv, guint id)
+{
+    bool handled = false;
+
+    for( size_t i = 0; i < POWERKEY_ACTIONS_GESTURE_COUNT; ++i ) {
+        if( pwrkey_actions_gesture_gconf_id[i] != id )
+            continue;
+
+        const char *val = gconf_value_get_string(gcv);
+        if( !eq(pwrkey_actions_gesture[i], val) ) {
+            mce_log(LL_NOTICE, "pwrkey_actions_gesture[%zu]: '%s' -> '%s'",
+                    i, pwrkey_actions_gesture[i], val);
+            g_free(pwrkey_actions_gesture[i]);
+            pwrkey_actions_gesture[i] = g_strdup(val);
+            pwrkey_gconf_sanitize_later();
+        }
+
+        handled = true;
+        break;
+    }
+
+    return handled;
 }
 
 /** GConf callback for powerkey related settings
@@ -1982,9 +2231,18 @@ pwrkey_gconf_cb(GConfClient *const gcc, const guint id,
             pwrkey_gconf_sanitize_later();
         }
     }
+    else if( id == pwrkey_gestures_enable_mode_cb_id ) {
+        gint old = pwrkey_gestures_enable_mode;
+        pwrkey_gestures_enable_mode = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "pwrkey_gestures_enable_mode: %d -> %d",
+                old, pwrkey_gestures_enable_mode);
+    }
+    else if( pwrkey_gconf_handle_gesture(gcv, id) ) {
+        // nop
+    }
     else {
         for( size_t action_id = 0; ; ++action_id ) {
-            if( action_id >= DBUS_ACTIONS_COUNT ) {
+            if( action_id >= POWEKEY_DBUS_ACTION_COUNT ) {
                 mce_log(LL_WARN, "Spurious GConf value received; confused!");
                 goto EXIT;
             }
@@ -2092,9 +2350,23 @@ pwrkey_gconf_init(void)
                            pwrkey_gconf_cb,
                            &pwrkey_actions_long_off_gconf_id);
 
+    mce_gconf_track_int(MCE_GCONF_DOUBLETAP_MODE,
+                        &pwrkey_gestures_enable_mode,
+                        DBLTAP_ENABLE_DEFAULT,
+                        pwrkey_gconf_cb,
+                        &pwrkey_gestures_enable_mode_cb_id);
+
+    for( size_t i = 0; i < POWERKEY_ACTIONS_GESTURE_COUNT; ++i ) {
+        mce_gconf_track_string(pwrkey_actions_gesture_key[i],
+                               &pwrkey_actions_gesture[i],
+                               pwrkey_actions_gesture_val[i],
+                               pwrkey_gconf_cb,
+                               &pwrkey_actions_gesture_gconf_id[i]);
+    }
+
     /* D-Bus actions */
 
-    for( size_t action_id = 0; action_id < DBUS_ACTIONS_COUNT; ++action_id ) {
+    for( size_t action_id = 0; action_id < POWEKEY_DBUS_ACTION_COUNT; ++action_id ) {
         pwrkey_dbus_action_t *action = pwrkey_dbus_action + action_id;
 
         mce_gconf_track_string(action->gconf_key,
@@ -2150,6 +2422,14 @@ pwrkey_gconf_quit(void)
     mce_gconf_notifier_remove(pwrkey_actions_long_off_gconf_id),
         pwrkey_actions_long_off_gconf_id = 0;
 
+    mce_gconf_notifier_remove(pwrkey_gestures_enable_mode_cb_id),
+        pwrkey_gestures_enable_mode_cb_id = 0;
+
+    for( size_t i = 0; i < POWERKEY_ACTIONS_GESTURE_COUNT; ++i ) {
+        mce_gconf_notifier_remove(pwrkey_actions_gesture_gconf_id[i]),
+            pwrkey_actions_gesture_gconf_id[i] = 0;
+    }
+
     g_free(pwrkey_actions_single_on),
         pwrkey_actions_single_on = 0;
 
@@ -2168,12 +2448,17 @@ pwrkey_gconf_quit(void)
     g_free(pwrkey_actions_long_off),
         pwrkey_actions_long_off = 0;;
 
+    for( size_t i = 0; i < POWERKEY_ACTIONS_GESTURE_COUNT; ++i ) {
+        g_free(pwrkey_actions_gesture[i]),
+            pwrkey_actions_gesture[i] = 0;;
+    }
+
     /* Cancel pending delayed gconf setting sanitizing */
     pwrkey_gconf_sanitize_cancel();
 
     /* D-Bus actions */
 
-    for( size_t action_id = 0; action_id < DBUS_ACTIONS_COUNT; ++action_id ) {
+    for( size_t action_id = 0; action_id < POWEKEY_DBUS_ACTION_COUNT; ++action_id ) {
         pwrkey_dbus_action_t *action = pwrkey_dbus_action + action_id;
 
         mce_gconf_notifier_remove(action->gconf_id),
@@ -2189,8 +2474,79 @@ pwrkey_gconf_quit(void)
  * DATAPIPE_HANDLING
  * ========================================================================= */
 
-/** NGFD availability */
-static service_state_t ngfd_available = SERVICE_STATE_UNDEF;
+/** Change notifications for system_state
+ */
+static void pwrkey_datapipe_system_state_cb(gconstpointer data)
+{
+    system_state_t prev = system_state;
+    system_state = GPOINTER_TO_INT(data);
+
+    if( prev == system_state )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "system_state: %d -> %d", prev, system_state);
+
+EXIT:
+    return;
+}
+
+/** Pre-change notifications for display_state
+ */
+static void pwrkey_datapipe_display_state_next_cb(gconstpointer data)
+{
+    display_state_t prev = display_state_next;
+    display_state_next = GPOINTER_TO_INT(data);
+
+    if( prev == display_state_next )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "display_state_next = %s -> %s",
+            display_state_repr(prev),
+            display_state_repr(display_state_next));
+
+EXIT:
+    return;
+
+}
+
+/** Change notifications from lid_cover_policy_pipe
+ */
+static void pwrkey_datapipe_lid_cover_policy_cb(gconstpointer data)
+{
+    cover_state_t prev = lid_cover_policy_state;
+    lid_cover_policy_state = GPOINTER_TO_INT(data);
+
+    if( lid_cover_policy_state == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "lid_cover_policy_state = %s -> %s",
+            cover_state_repr(prev),
+            cover_state_repr(lid_cover_policy_state));
+
+EXIT:
+    return;
+}
+
+/** Change notifications for proximity_state_actual
+ */
+static void pwrkey_datapipe_proximity_sensor_cb(gconstpointer data)
+{
+    cover_state_t prev = proximity_state_actual;
+    proximity_state_actual = GPOINTER_TO_INT(data);
+
+    if( proximity_state_actual == COVER_UNDEF )
+        proximity_state_actual = COVER_OPEN;
+
+    if( proximity_state_actual == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "proximity_state_actual = %s -> %s",
+            proximity_state_repr(prev),
+            proximity_state_repr(proximity_state_actual));
+
+EXIT:
+    return;
+}
 
 /** Handle ngfd_available notifications
  *
@@ -2233,30 +2589,39 @@ pwrkey_datapipes_keypress_cb(gconstpointer const data)
     if( !(ev = *evp) )
         goto EXIT;
 
-    if( ev->type != EV_KEY )
-        goto EXIT;
+    switch( ev->type ) {
+    case EV_KEY:
+        if( ev->code == KEY_POWER ) {
+            if( ev->value == 1 ) {
+                /* Detect repeated power key pressing while
+                 * proximity sensor is covered; assume it means
+                 * the sensor is stuck and user wants to be able
+                 * to turn on the display regardless of the sensor
+                 * state */
+                pwrkey_ps_override_evaluate();
 
-    if( ev->code != KEY_POWER )
-        goto EXIT;
+                /* Power key pressed */
+                pwrkey_stm_powerkey_pressed();
+            }
+            else if( ev->value == 0 ) {
+                /* Power key released */
+                pwrkey_stm_powerkey_released();
+            }
 
-    if( ev->value == 1 ) {
-        /* Detect repeated power key pressing while
-         * proximity sensor is covered; assume it means
-         * the sensor is stuck and user wants to be able
-         * to turn on the display regardless of the sensor
-         * state */
-        pwrkey_ps_override_evaluate();
+            pwrkey_stm_rethink_wakelock();
+        }
+        break;
 
-        /* Power key pressed */
-        pwrkey_stm_powerkey_pressed();
+    case EV_MSC:
+        if( ev->code == MSC_GESTURE ) {
+            mce_log(LL_DEBUG, "gesture(%d)", ev->value);
+            pwrkey_actions_do_gesture(ev->value);
+        }
+        break;
+
+    default:
+        break;
     }
-    else if( ev->value == 0 ) {
-        /* Power key released */
-        pwrkey_stm_powerkey_released();
-
-    }
-
-    pwrkey_stm_rethink_wakelock();
 
 EXIT:
     return;
@@ -2274,6 +2639,22 @@ static datapipe_handler_t pwrkey_datapipe_handlers[] =
     {
         .datapipe  = &ngfd_available_pipe,
         .output_cb = pwrkey_datapipe_ngfd_available_cb,
+    },
+    {
+        .datapipe = &system_state_pipe,
+        .output_cb = pwrkey_datapipe_system_state_cb,
+    },
+    {
+        .datapipe = &display_state_next_pipe,
+        .output_cb = pwrkey_datapipe_display_state_next_cb,
+    },
+    {
+        .datapipe = &lid_cover_policy_pipe,
+        .output_cb = pwrkey_datapipe_lid_cover_policy_cb,
+    },
+    {
+        .datapipe = &proximity_sensor_pipe,
+        .output_cb = pwrkey_datapipe_proximity_sensor_cb,
     },
     // sentinel
     {

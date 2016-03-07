@@ -1723,7 +1723,7 @@ evin_iomon_touchscreen_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
                 mce_log(LL_DEVEL, "[doubletap] emulated from touch input");
                 ev->type  = EV_MSC;
                 ev->code  = MSC_GESTURE;
-                ev->value = 0x4;
+                ev->value = GESTURE_DOUBLETAP;
             }
             break;
         default:
@@ -1756,7 +1756,7 @@ evin_iomon_touchscreen_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
          */
         ev->type  = EV_MSC;
         ev->code  = MSC_GESTURE;
-        ev->value = 0x4;
+        ev->value = GESTURE_DOUBLETAP;
     }
 
     /* Ignore unwanted events */
@@ -1775,11 +1775,14 @@ evin_iomon_touchscreen_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
     if( submode & MCE_EVEATER_SUBMODE )
         goto EXIT;
 
-    /* Only send pressure and gesture events */
-    if( (ev->type == EV_ABS && ev->code == ABS_PRESSURE) ||
-        (ev->type == EV_KEY && ev->code == BTN_TOUCH ) ||
-        (ev->type == EV_MSC && ev->code == MSC_GESTURE ) ) {
-        /* For now there's no reason to cache the value */
+    if( ev->type == EV_MSC && ev->code == MSC_GESTURE ) {
+        /* Gesture events are handled in powerkey.c */
+        execute_datapipe(&keypress_pipe, &ev,
+                         USE_INDATA, DONT_CACHE_INDATA);
+    }
+    else if( (ev->type == EV_ABS && ev->code == ABS_PRESSURE) ||
+             (ev->type == EV_KEY && ev->code == BTN_TOUCH ) ) {
+        /* Only send pressure events */
         execute_datapipe(&touchscreen_pipe, &ev,
                          USE_INDATA, DONT_CACHE_INDATA);
     }

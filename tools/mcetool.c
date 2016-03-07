@@ -3989,6 +3989,10 @@ static bool xmce_is_powerkey_action(const char *name)
                 "dbus4",
                 "dbus5",
                 "dbus6",
+                "dbus7",
+                "dbus8",
+                "dbus9",
+                "dbus10",
         };
 
         for( size_t i = 0; i < G_N_ELEMENTS(lut); ++i ) {
@@ -4086,6 +4090,42 @@ static bool xmce_set_powerkey_actions_while_display_on_long(const char *args)
         return true;
 }
 
+static const char * const gesture_actions_key[] =
+{
+        MCE_GCONF_POWERKEY_ACTIONS_GESTURE0,
+        MCE_GCONF_POWERKEY_ACTIONS_GESTURE1,
+        MCE_GCONF_POWERKEY_ACTIONS_GESTURE2,
+        MCE_GCONF_POWERKEY_ACTIONS_GESTURE3,
+        MCE_GCONF_POWERKEY_ACTIONS_GESTURE4,
+        MCE_GCONF_POWERKEY_ACTIONS_GESTURE5,
+        MCE_GCONF_POWERKEY_ACTIONS_GESTURE6,
+        MCE_GCONF_POWERKEY_ACTIONS_GESTURE7,
+        MCE_GCONF_POWERKEY_ACTIONS_GESTURE8,
+        MCE_GCONF_POWERKEY_ACTIONS_GESTURE9,
+        MCE_GCONF_POWERKEY_ACTIONS_GESTURE10,
+};
+
+/** Set actions to perform on touchscreen gestures
+ */
+static bool xmce_set_touchscreen_gesture_action(const char *args)
+{
+        char *work = strdup(args);
+        char *conf = work;
+
+        size_t id = xmce_parse_integer(mcetool_parse_token(&conf));
+
+        if( id >= G_N_ELEMENTS(gesture_actions_key) ) {
+                fprintf(stderr, "invalid gesture id: '%s'\n", work);
+                return false;
+        }
+
+        xmce_set_powerkey_action_mask(gesture_actions_key[id], conf);
+
+        free(work);
+
+        return true;
+}
+
 /** Helper for getting powerkey action mask settings
  */
 static void xmce_get_powerkey_action_mask(const char *key, const char *tag)
@@ -4108,13 +4148,20 @@ static void xmce_get_powerkey_action_masks(void)
         xmce_get_powerkey_action_mask(MCE_GCONF_POWERKEY_ACTIONS_LONG_ON,
                                       "long");
 
-        printf("Powerkey press from display of:\n");
+        printf("Powerkey press from display off:\n");
         xmce_get_powerkey_action_mask(MCE_GCONF_POWERKEY_ACTIONS_SINGLE_OFF,
                                       "single");
         xmce_get_powerkey_action_mask(MCE_GCONF_POWERKEY_ACTIONS_DOUBLE_OFF,
                                       "double");
         xmce_get_powerkey_action_mask(MCE_GCONF_POWERKEY_ACTIONS_LONG_OFF,
                                       "long");
+
+        printf("Touchscreen gestures:\n");
+        for( size_t id = 0; id < G_N_ELEMENTS(gesture_actions_key); ++id) {
+                char temp[32];
+                snprintf(temp, sizeof temp, "gesture%zu", id);
+                xmce_get_powerkey_action_mask(gesture_actions_key[id], temp);
+        }
 }
 
 /** Validate dbus action parameters given by the user
@@ -4204,64 +4251,35 @@ static const char * const powerkey_dbus_action_key[] =
         MCE_GCONF_POWERKEY_DBUS_ACTION4,
         MCE_GCONF_POWERKEY_DBUS_ACTION5,
         MCE_GCONF_POWERKEY_DBUS_ACTION6,
+        MCE_GCONF_POWERKEY_DBUS_ACTION7,
+        MCE_GCONF_POWERKEY_DBUS_ACTION8,
+        MCE_GCONF_POWERKEY_DBUS_ACTION9,
+        MCE_GCONF_POWERKEY_DBUS_ACTION10,
 };
 
 /** Helper for setting dbus action config
  */
-static bool xmce_set_powerkey_dbus_action(size_t action_id, const char *conf)
+static bool xmce_set_powerkey_dbus_action(const char *args)
 {
-        if( action_id >= G_N_ELEMENTS(powerkey_dbus_action_key) )
+        char *work = strdup(args);
+        char *conf = work;
+
+        size_t action_id = xmce_parse_integer(mcetool_parse_token(&conf)) - 1;
+
+        if( action_id >= G_N_ELEMENTS(powerkey_dbus_action_key) ) {
+                fprintf(stderr, "invalid dbus action id: '%s'\n", work);
                 return false;
+        }
 
         if( conf && *conf && !xmce_is_powerkey_dbus_action(conf) )
                 return false;
 
         mcetool_gconf_set_string(powerkey_dbus_action_key[action_id], conf);
+
+        free(work);
+
         return true;
 }
-
-/** Configure "dbus1" powerkey action
- */
-static bool xmce_set_powerkey_dbus_action1(const char *args)
-{
-        return xmce_set_powerkey_dbus_action(0, args);
-}
-
-/** Configure "dbus2" powerkey action
- */
-static bool xmce_set_powerkey_dbus_action2(const char *args)
-{
-        return xmce_set_powerkey_dbus_action(1, args);
-}
-
-/** Configure "dbus3" powerkey action
- */
-static bool xmce_set_powerkey_dbus_action3(const char *args)
-{
-        return xmce_set_powerkey_dbus_action(2, args);
-}
-
-/** Configure "dbus4" powerkey action
- */
-static bool xmce_set_powerkey_dbus_action4(const char *args)
-{
-        return xmce_set_powerkey_dbus_action(3, args);
-}
-
-/** Configure "dbus5" powerkey action
- */
-static bool xmce_set_powerkey_dbus_action5(const char *args)
-{
-        return xmce_set_powerkey_dbus_action(4, args);
-}
-
-/** Configure "dbus6" powerkey action
- */
-static bool xmce_set_powerkey_dbus_action6(const char *args)
-{
-        return xmce_set_powerkey_dbus_action(5, args);
-}
-
 /** Helper for showing current dbus action config
  */
 static void xmce_get_powerkey_dbus_action(size_t action_id)
@@ -4283,11 +4301,11 @@ static void xmce_get_powerkey_dbus_action(size_t action_id)
         char *arg = mcetool_parse_token(&pos);
 
         char tmp[64];
-        snprintf(tmp, sizeof tmp, "Powerkey D-Bus action 'dbus%zd':",
+        snprintf(tmp, sizeof tmp, "dbus%zu",
                  action_id + 1);
 
         if( *arg && !*pos ) {
-                printf("%-"PAD1"s send signal with arg '%s'\n", tmp, arg);
+                printf("\t%-"PAD2"s send signal with arg '%s'\n", tmp, arg);
         }
         else {
                 const char *destination = arg;
@@ -4296,12 +4314,12 @@ static void xmce_get_powerkey_dbus_action(size_t action_id)
                 const char *member      = mcetool_parse_token(&pos);
                 const char *argument    = mcetool_parse_token(&pos);
 
-                printf("%-"PAD1"s make method call\n", tmp);
-                printf("\t%-"PAD2"s %s\n", "destination", destination);
-                printf("\t%-"PAD2"s %s\n", "object", object);
-                printf("\t%-"PAD2"s %s\n", "interface", interface);
-                printf("\t%-"PAD2"s %s\n", "member", member);
-                printf("\t%-"PAD2"s %s\n", "argument",
+                printf("\t%-"PAD2"s make method call:\n", tmp);
+                printf("\t%-"PAD2"s   %s '%s'\n", "", "destination", destination);
+                printf("\t%-"PAD2"s   %s '%s'\n", "", "object", object);
+                printf("\t%-"PAD2"s   %s '%s'\n", "", "interface", interface);
+                printf("\t%-"PAD2"s   %s '%s'\n", "", "member", member);
+                printf("\t%-"PAD2"s   %s '%s'\n", "", "argument",
                        *argument ? argument : "N/A");;
         }
 
@@ -4313,6 +4331,7 @@ cleanup:
  */
 static void xmce_get_powerkey_dbus_actions(void)
 {
+        printf("Powerkey D-Bus actions:\n");
         size_t actions = G_N_ELEMENTS(powerkey_dbus_action_key);
         for( size_t action_id = 0; action_id < actions; ++action_id )
                 xmce_get_powerkey_dbus_action(action_id);
@@ -4461,42 +4480,23 @@ static void xmce_get_volkey_policy(void)
  * doubletab
  * ------------------------------------------------------------------------- */
 
-/** Lookup table for doubletap gesture policies
- *
- * @note These must match the hardcoded values in mce itself.
- */
-static const symbol_t doubletap_values[] = {
-        { "disabled",           DBLTAP_ACTION_DISABLED },
-        { "show-unlock-screen", DBLTAP_ACTION_UNBLANK  },
-        { "unlock",             DBLTAP_ACTION_TKUNLOCK },
-        { NULL, -1 }
-};
-
 /** Set doubletap mode
  *
  * @param args string that can be parsed to doubletap mode
  */
 static bool xmce_set_doubletap_mode(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
-        int val = lookup(doubletap_values, args);
-        if( val < 0 ) {
-                errorf("%s: invalid doubletap policy value\n", args);
-                exit(EXIT_FAILURE);
-        }
-        mcetool_gconf_set_int(MCE_GCONF_TK_DOUBLE_TAP_GESTURE_PATH, val);
-        return true;
-}
+    char mode[256];
 
-/** Get current doubletap mode from mce and print it out
- */
-static void xmce_get_doubletap_mode(void)
-{
-        gint        val = 0;
-        const char *txt = 0;
-        if( mcetool_gconf_get_int(MCE_GCONF_TK_DOUBLE_TAP_GESTURE_PATH, &val) )
-                txt = rlookup(doubletap_values, val);
-        printf("%-"PAD1"s %s \n", "Double-tap gesture policy:", txt ?: "unknown");
+    if( !strcmp(args, "disabled") )
+        args = "";
+    else if( !strcmp(args, "show-unlock-screen") )
+        args = "unblank";
+    else if( !strcmp(args, "unlock") )
+        args = "unblank,tkunlock";
+
+    snprintf(mode, sizeof mode, "4,%s", args);
+    return xmce_set_touchscreen_gesture_action(mode);
 }
 
 /** Lookup table for doubletap wakeup policies
@@ -5448,7 +5448,6 @@ static bool xmce_get_status(const char *args)
         xmce_get_autolock_delay();
         xmce_get_devicelock_in_lockscreen();
         xmce_get_lockscreen_unblank_animation();
-        xmce_get_doubletap_mode();
         xmce_get_doubletap_wakeup();
         xmce_get_volkey_policy();
         xmce_get_powerkey_action();
@@ -5852,8 +5851,17 @@ static const mce_opt_t options[] =
                 .with_arg    = xmce_set_doubletap_mode,
                 .values      = "disabled|show-unlock-screen|unlock",
                 .usage       =
-                        "set the autolock mode; valid modes are:\n"
-                        "'disabled', 'show-unlock-screen', 'unlock'\n"
+                        "set the doubletap mode (deprecated)\n"
+                        "\n"
+                        "This option is retained for convenience/backwards compatibility\n"
+                        "and acts as alias for --set-touchscreen-gesture-action that can\n"
+                        "be used for configuring also other touchscreen gestures in addition\n"
+                        "to just double tap.\n"
+                        "\n"
+                        "Valid modes are:\n"
+                        "  disabled - double tap events are not acted on\n"
+                        "  show-unlock-screen - unblank screen\n"
+                        "  unlock - unblank screen and deactivate lockscreen\n"
         },
         {
                 .name        = "set-doubletap-wakeup",
@@ -5933,9 +5941,8 @@ static const mce_opt_t options[] =
                         "  dbus1    - send dbus signal or make method call\n"
                         "  dbus2    - send dbus signal or make method call\n"
                         "  dbus3    - send dbus signal or make method call\n"
-                        "  dbus4    - send dbus signal or make method call\n"
-                        "  dbus5    - send dbus signal or make method call\n"
-                        "  dbus6    - send dbus signal or make method call\n"
+                        "   ...\n"
+                        "  dbus10   - send dbus signal or make method call\n"
                         "\n"
                         "Comma separated list of actions can be used.\n"
         },
@@ -5985,11 +5992,25 @@ static const mce_opt_t options[] =
                         "See --set-display-on-single-powerkey-press-actions for details\n"
         },
         {
-                .name        = "set-powerkey-dbus-action1",
-                .with_arg    = xmce_set_powerkey_dbus_action1,
-                .values      = "signal_argument|method_call_details",
+                .name        = "set-touchscreen-gesture-actions",
+                .with_arg    = xmce_set_touchscreen_gesture_action,
+                .values      = "gesture_id,actions",
+                .usage       =
+                        "set actions to execute on touchscreen gestures\n"
+                        "\n"
+                        "Gesture id is a number in 0...10 range. The values are hw specific,\n"
+                        "but 4 can be assumed to mean doubletap.\n"
+                        "\n"
+                        "Actions are as with --set-display-on-single-powerkey-press-actions\n"
+        },
+        {
+                .name        = "set-powerkey-dbus-action",
+                .with_arg    = xmce_set_powerkey_dbus_action,
+                .values      = "action_id,signal_argument|method_call_details",
                 .usage       =
                         "define dbus ipc taking place when dbus1 powerkey action is triggered\n"
+                        "\n"
+                        "action_id: <1..."G_STRINGIFY(POWEKEY_DBUS_ACTION_COUNT)">\n"
                         "\n"
                         "signal_argument: <argument>\n"
                         "  MCE will still send a dbus signal, but uses the given string as argument\n"
@@ -5999,42 +6020,6 @@ static const mce_opt_t options[] =
                         "  Instead of sending a signal, MCE will make dbus method call as specified.\n"
                         "  The string argument for the method call is optional.\n"
         },
-        {
-                .name        = "set-powerkey-dbus-action2",
-                .with_arg    = xmce_set_powerkey_dbus_action2,
-                .values      = "signal_argument|method_call_details",
-                .usage       =
-                        "define dbus ipc taking place when dbus2 powerkey action is triggered\n"
-        },
-        {
-                .name        = "set-powerkey-dbus-action3",
-                .with_arg    = xmce_set_powerkey_dbus_action3,
-                .values      = "signal_argument|method_call_details",
-                .usage       =
-                        "define dbus ipc taking place when dbus3 powerkey action is triggered\n"
-        },
-        {
-                .name        = "set-powerkey-dbus-action4",
-                .with_arg    = xmce_set_powerkey_dbus_action4,
-                .values      = "signal_argument|method_call_details",
-                .usage       =
-                        "define dbus ipc taking place when dbus4 powerkey action is triggered\n"
-        },
-        {
-                .name        = "set-powerkey-dbus-action5",
-                .with_arg    = xmce_set_powerkey_dbus_action5,
-                .values      = "signal_argument|method_call_details",
-                .usage       =
-                        "define dbus ipc taking place when dbus5 powerkey action is triggered\n"
-        },
-        {
-                .name        = "set-powerkey-dbus-action6",
-                .with_arg    = xmce_set_powerkey_dbus_action6,
-                .values      = "signal_argument|method_call_details",
-                .usage       =
-                        "define dbus ipc taking place when dbus6 powerkey action is triggered\n"
-        },
-
         {
                 .name        = "set-powerkey-ps-override-count",
                 .with_arg    = xmce_set_ps_override_count,

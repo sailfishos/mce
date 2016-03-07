@@ -200,7 +200,6 @@ static void     tklock_datapipe_exception_state_cb(gconstpointer data);
 static void     tklock_datapipe_audio_route_cb(gconstpointer data);
 static void     tklock_datapipe_tk_lock_cb(gconstpointer data);
 static void     tklock_datapipe_submode_cb(gconstpointer data);
-static void     tklock_datapipe_touchscreen_cb(gconstpointer const data);
 static void     tklock_datapipe_lockkey_cb(gconstpointer const data);
 static void     tklock_datapipe_heartbeat_cb(gconstpointer data);
 static void     tklock_datapipe_keyboard_slide_input_cb(gconstpointer const data);
@@ -331,7 +330,6 @@ static void     tklock_dtcalib_stop(void);
 
 // settings from gconf
 
-static void     tklock_gconf_sanitize_doubletap_gesture_policy(void);
 static void     tklock_gconf_sanitize_lid_open_actions(void);
 static void     tklock_gconf_sanitize_lid_close_actions(void);
 
@@ -463,19 +461,13 @@ static gboolean proximity_blocks_touch = PROXIMITY_BLOCKS_TOUCH_DEFAULT;
 /** GConf callback ID for proximity_blocks_touch */
 static guint proximity_blocks_touch_cb_id = 0;
 
-/** Touchscreen double tap gesture policy */
-static gint doubletap_gesture_policy = DBLTAP_ACTION_DEFAULT;
-/** GConf callback ID for doubletap_gesture_policy */
-static guint doubletap_gesture_policy_cb_id = 0;
-
 /** Volume key input policy */
 static gint  volkey_policy = DEFAULT_VOLKEY_POLICY;
 static guint volkey_policy_cb_id = 0;
 
-/** Touchscreen double tap gesture enable mode */
-static gint doubletap_enable_mode = DBLTAP_ENABLE_DEFAULT;
-/** GConf callback ID for doubletap_enable_mode */
-static guint doubletap_enable_mode_cb_id = 0;
+/** Touchscreen gesture (doubletap etc) enable mode */
+static gint  touchscreen_gesture_enable_mode = DBLTAP_ENABLE_DEFAULT;
+static guint touchscreen_gesture_enable_mode_cb_id = 0;
 
 /** Flag: Disable automatic dim/blank from tklock */
 static gint tklock_blank_disable = DEFAULT_TK_AUTO_BLANK_DISABLE;
@@ -605,7 +597,7 @@ static output_state_t mce_touchscreen_sysfs_disable_output =
 };
 
 /** SysFS path to touchscreen double-tap gesture control */
-static const gchar *mce_touchscreen_gesture_control_path = NULL;
+static const gchar *mce_touchscreen_gesture_enable_path = NULL;
 
 /** SysFS path to touchscreen recalibration control */
 static const gchar *mce_touchscreen_calibration_control_path = NULL;
@@ -1516,110 +1508,6 @@ static bool tklock_datapipe_have_tklock_submode(void)
     return (submode & MCE_TKLOCK_SUBMODE) != 0;
 }
 
-/** Change notifications for tklock_datapipe_touchscreen_cb
- *
- * Note: Handles double tap gesture events only
- */
-static void tklock_datapipe_touchscreen_cb(gconstpointer const data)
-{
-    struct input_event const *const *evp;
-    struct input_event const *ev;
-
-    if( !(evp = data) )
-        goto EXIT;
-
-    if( !(ev = *evp) )
-        goto EXIT;
-
-    mce_log(LL_DEBUG, "TS EVENT: %d %d %d", ev->type, ev->code, ev->value);
-
-    /* Double tap ?*/
-    if( ev->type != EV_MSC || ev->code != MSC_GESTURE || ev->value != 0x4 )
-        goto EXIT;
-
-    switch( doubletap_enable_mode ) {
-    case DBLTAP_ENABLE_NEVER:
-        mce_log(LL_DEVEL, "[doubletap] ignored due to setting=never");
-        goto EXIT;
-
-    case DBLTAP_ENABLE_ALWAYS:
-        break;
-
-    default:
-    case DBLTAP_ENABLE_NO_PROXIMITY:
-        if( lid_cover_policy_state == COVER_CLOSED ) {
-            mce_log(LL_DEVEL, "[doubletap] ignored due to lid=closed");
-            goto EXIT;
-        }
-        if( proximity_state_actual != COVER_OPEN ) {
-            mce_log(LL_DEVEL, "[doubletap] ignored due to proximity");
-            goto EXIT;
-        }
-        break;
-    }
-
-    switch( system_state ) {
-    case MCE_STATE_USER:
-    case MCE_STATE_ACTDEAD:
-      break;
-    default:
-      mce_log(LL_DEVEL, "[doubletap] ignored due to system state");
-        goto EXIT;
-    }
-
-    /* Note: In case we happen to be in middle of display state transition
-     *       the double tap blocking must use the next stable display state
-     *       rather than the current - potentially transitional - state.
-     */
-    switch( display_state_next )
-    {
-    case MCE_DISPLAY_OFF:
-    case MCE_DISPLAY_LPM_OFF:
-    case MCE_DISPLAY_POWER_DOWN:
-    case MCE_DISPLAY_LPM_ON:
-        break;
-
-    default:
-    case MCE_DISPLAY_ON:
-    case MCE_DISPLAY_DIM:
-    case MCE_DISPLAY_POWER_UP:
-    case MCE_DISPLAY_UNDEF:
-        mce_log(LL_DEVEL, "[doubletap] ignored due to display state");
-        goto EXIT;
-    }
-
-    switch( doubletap_gesture_policy ) {
-    case DBLTAP_ACTION_UNBLANK:  // unblank
-    case DBLTAP_ACTION_TKUNLOCK: // unblank + unlock
-        mce_log(LL_DEBUG, "double tap -> display on");
-
-        /* Double tap event that is about to be used for unblanking
-         * the display counts as non-syntetized user activity */
-        execute_datapipe_output_triggers(&user_activity_pipe,
-                                         ev, USE_INDATA);
-
-        /* Turn the display on */
-        mce_tklock_unblank(MCE_DISPLAY_ON);
-
-        /* Optionally remove tklock */
-        if( doubletap_gesture_policy == DBLTAP_ACTION_TKUNLOCK ) {
-            execute_datapipe(&tk_lock_pipe,
-                             GINT_TO_POINTER(LOCK_OFF),
-                             USE_INDATA, CACHE_INDATA);
-        }
-        break;
-    default:
-        mce_log(LL_ERR, "Got a double tap gesture "
-                "even though we haven't enabled "
-                "gestures -- this shouldn't happen");
-        break;
-    }
-
-EXIT:
-
-    return;
-}
-
 /** Change notifications for lockkey_pipe
  */
 static void tklock_datapipe_lockkey_cb(gconstpointer const data)
@@ -2188,10 +2076,6 @@ static datapipe_handler_t tklock_datapipe_handlers[] =
     },
 
     // input triggers
-    {
-        .datapipe = &touchscreen_pipe,
-        .input_cb = tklock_datapipe_touchscreen_cb,
-    },
     {
         .datapipe = &keypress_pipe,
         .input_cb = tklock_datapipe_keypress_cb,
@@ -4233,7 +4117,7 @@ static void tklock_evctrl_set_dt_state(bool enable)
 {
     static int enabled = -1; // does not match any bool value
 
-    if( !mce_touchscreen_gesture_control_path )
+    if( !mce_touchscreen_gesture_enable_path )
         goto EXIT;
 
     if( enabled == enable )
@@ -4242,14 +4126,14 @@ static void tklock_evctrl_set_dt_state(bool enable)
     mce_log(LL_DEBUG, "%s", enable ? "enable" : "disable");
 
     if( (enabled = enable) ) {
-        mce_write_string_to_file(mce_touchscreen_gesture_control_path, "4");
+        mce_write_string_to_file(mce_touchscreen_gesture_enable_path, "4");
         tklock_dtcalib_start();
 
         // NOTE: touchscreen inputs must be enabled too
     }
     else {
         tklock_dtcalib_stop();
-        mce_write_string_to_file(mce_touchscreen_gesture_control_path, "0");
+        mce_write_string_to_file(mce_touchscreen_gesture_enable_path, "0");
 
         /* Disabling the double tap gesture causes recalibration */
         g_usleep(MCE_TOUCHSCREEN_CALIBRATION_DELAY);
@@ -4375,18 +4259,19 @@ static void tklock_evctrl_rethink(void)
         break;
     }
 
-    /* doubletap gesture policy must not be 0/disabled */
-    if( doubletap_gesture_policy == DBLTAP_ACTION_DISABLED ) {
+    /* check if touchscreen gestures are disabled */
+    switch( touchscreen_gesture_enable_mode ) {
+    case DBLTAP_ENABLE_ALWAYS:
+        break;
+    case DBLTAP_ENABLE_NEVER:
         enable_dt = false;
+        break;
+    default:
+    case DBLTAP_ENABLE_NO_PROXIMITY:
+        if( proximity_state_effective != COVER_OPEN )
+            enable_dt = false;
+        break;
     }
-
-#if 0 /* FIXME: check if proximity via sensord works better
-       *        with up to date nemomobile image */
-    /* proximity sensor must not be covered */
-    if( proximity_state_effective != COVER_OPEN ) {
-        enable_dt = false;
-    }
-#endif
 
     /* Finally, ensure that touchscreen interrupts are enabled
      * if doubletap gestures are enabled */
@@ -4601,22 +4486,6 @@ EXIT:
  * SETTINGS FROM GCONF
  * ========================================================================= */
 
-static void tklock_gconf_sanitize_doubletap_gesture_policy(void)
-{
-    switch( doubletap_gesture_policy ) {
-    case DBLTAP_ACTION_DISABLED:
-    case DBLTAP_ACTION_UNBLANK:
-    case DBLTAP_ACTION_TKUNLOCK:
-        break;
-
-    default:
-        mce_log(LL_WARN, "Double tap gesture has invalid policy: %d; "
-                "using default", doubletap_gesture_policy);
-        doubletap_gesture_policy = DBLTAP_ACTION_DEFAULT;
-        break;
-    }
-}
-
 static void tklock_gconf_sanitize_lid_open_actions(void)
 {
     switch( tklock_lid_open_actions ) {
@@ -4778,11 +4647,6 @@ static void tklock_gconf_cb(GConfClient *const gcc, const guint id,
         proximity_blocks_touch = gconf_value_get_bool(gcv) ? 1 : 0;
         tklock_evctrl_rethink();
     }
-    else if( id == doubletap_gesture_policy_cb_id ) {
-        doubletap_gesture_policy = gconf_value_get_int(gcv);
-        tklock_gconf_sanitize_doubletap_gesture_policy();
-        tklock_evctrl_rethink();
-    }
     else if( id == volkey_policy_cb_id ) {
         volkey_policy = gconf_value_get_int(gcv);
         tklock_evctrl_rethink();
@@ -4834,11 +4698,12 @@ static void tklock_gconf_cb(GConfClient *const gcc, const guint id,
 #endif
 
     }
-    else if( id == doubletap_enable_mode_cb_id ) {
-        gint old = doubletap_enable_mode;
-        doubletap_enable_mode = gconf_value_get_int(gcv);
-        mce_log(LL_NOTICE, "doubletap_enable_mode: %d -> %d",
-                old, doubletap_enable_mode);
+    else if( id == touchscreen_gesture_enable_mode_cb_id ) {
+        gint old = touchscreen_gesture_enable_mode;
+        touchscreen_gesture_enable_mode = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "touchscreen_gesture_enable_mode: %d -> %d",
+                old, touchscreen_gesture_enable_mode);
+        tklock_evctrl_rethink();
     }
     else if( id == tklock_lpmui_triggering_cb_id ) {
         gint old = tklock_lpmui_triggering;
@@ -4965,15 +4830,6 @@ static void tklock_gconf_init(void)
                         tklock_gconf_cb,
                         &tklock_autolock_delay_cb_id);
 
-    /* Touchscreen/keypad double-tap gesture policy */
-    mce_gconf_track_int(MCE_GCONF_TK_DOUBLE_TAP_GESTURE_PATH,
-                        &doubletap_gesture_policy,
-                        DBLTAP_ACTION_DEFAULT,
-                        tklock_gconf_cb,
-                        &doubletap_gesture_policy_cb_id);
-
-    tklock_gconf_sanitize_doubletap_gesture_policy();
-
     /* Volume key input policy */
     mce_gconf_track_int(MCE_GCONF_TK_VOLKEY_POLICY,
                         &volkey_policy,
@@ -5035,10 +4891,10 @@ static void tklock_gconf_init(void)
 
     /** Touchscreen double tap gesture mode */
     mce_gconf_track_int(MCE_GCONF_DOUBLETAP_MODE,
-                        &doubletap_enable_mode,
+                        &touchscreen_gesture_enable_mode,
                         DBLTAP_ENABLE_DEFAULT,
                         tklock_gconf_cb,
-                        &doubletap_enable_mode_cb_id);
+                        &touchscreen_gesture_enable_mode_cb_id);
 
     /* Bitmap of automatic lpm triggering modes */
     mce_gconf_track_int(MCE_GCONF_LPMUI_TRIGGERING,
@@ -5170,9 +5026,6 @@ static void tklock_gconf_init(void)
  */
 static void tklock_gconf_quit(void)
 {
-    mce_gconf_notifier_remove(doubletap_gesture_policy_cb_id),
-        doubletap_gesture_policy_cb_id = 0;
-
     mce_gconf_notifier_remove(volkey_policy_cb_id),
         volkey_policy_cb_id = 0;
 
@@ -5206,8 +5059,8 @@ static void tklock_gconf_quit(void)
     mce_gconf_notifier_remove(tklock_blank_disable_id),
         tklock_blank_disable_id = 0;
 
-    mce_gconf_notifier_remove(doubletap_enable_mode_cb_id),
-        doubletap_enable_mode_cb_id = 0;
+    mce_gconf_notifier_remove(touchscreen_gesture_enable_mode_cb_id),
+        touchscreen_gesture_enable_mode_cb_id = 0;
 
     mce_gconf_notifier_remove(tklock_lpmui_triggering_cb_id),
         tklock_lpmui_triggering_cb_id = 0;
@@ -5314,7 +5167,7 @@ static void tklock_sysfs_probe(void)
 
     /* touchscreen gesture control interface */
     if (g_access(MCE_RM680_DOUBLETAP_SYSFS_PATH, W_OK) == 0) {
-        mce_touchscreen_gesture_control_path =
+        mce_touchscreen_gesture_enable_path =
             MCE_RM680_DOUBLETAP_SYSFS_PATH;
     }
     else {

@@ -914,6 +914,7 @@ powerkey.o:\
 	powerkey.c\
 	builtin-gconf.h\
 	datapipe.h\
+	evdev.h\
 	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
@@ -922,6 +923,7 @@ powerkey.o:\
 	mce-lib.h\
 	mce-log.h\
 	mce.h\
+	modules/doubletap.h\
 	powerkey.h\
 	tklock.h\
 
@@ -929,6 +931,7 @@ powerkey.pic.o:\
 	powerkey.c\
 	builtin-gconf.h\
 	datapipe.h\
+	evdev.h\
 	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
@@ -937,6 +940,7 @@ powerkey.pic.o:\
 	mce-lib.h\
 	mce-log.h\
 	mce.h\
+	modules/doubletap.h\
 	powerkey.h\
 	tklock.h\
 

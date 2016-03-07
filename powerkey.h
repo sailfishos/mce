@@ -62,24 +62,6 @@
 /** Setting for long press actions from display off */
 # define MCE_GCONF_POWERKEY_ACTIONS_LONG_OFF     MCE_GCONF_POWERKEY_PATH "/actions_long_off"
 
-/** Setting for D-Bus action #1 */
-# define MCE_GCONF_POWERKEY_DBUS_ACTION1         MCE_GCONF_POWERKEY_PATH "/dbus_action1"
-
-/** Setting for D-Bus action #2 */
-# define MCE_GCONF_POWERKEY_DBUS_ACTION2         MCE_GCONF_POWERKEY_PATH "/dbus_action2"
-
-/** Setting for D-Bus action #3 */
-# define MCE_GCONF_POWERKEY_DBUS_ACTION3         MCE_GCONF_POWERKEY_PATH "/dbus_action3"
-
-/** Setting for D-Bus action #4 */
-# define MCE_GCONF_POWERKEY_DBUS_ACTION4         MCE_GCONF_POWERKEY_PATH "/dbus_action4"
-
-/** Setting for D-Bus action #5 */
-# define MCE_GCONF_POWERKEY_DBUS_ACTION5         MCE_GCONF_POWERKEY_PATH "/dbus_action5"
-
-/** Setting for D-Bus action #6 */
-# define MCE_GCONF_POWERKEY_DBUS_ACTION6         MCE_GCONF_POWERKEY_PATH "/dbus_action6"
-
 /** Power key action enable modes */
 typedef enum
 {
@@ -135,26 +117,64 @@ typedef enum
  *       work when display is off -> leave unset by default. */
 #define DEFAULT_POWERKEY_ACTIONS_LONG_OFF   ""
 
-/** Default argument for signal sent due to dbus1 action */
-#define DEFAULT_POWERKEY_DBUS_ACTION1       "event1"
-
-/** Default argument for signal sent due to dbus2 action */
-#define DEFAULT_POWERKEY_DBUS_ACTION2       "event2"
-
-/** Default argument for signal sent due to dbus3 action */
-#define DEFAULT_POWERKEY_DBUS_ACTION3       "event3"
-
-/** Default argument for signal sent due to dbus4 action */
-#define DEFAULT_POWERKEY_DBUS_ACTION4       "event4"
-
-/** Default argument for signal sent due to dbus5 action */
-#define DEFAULT_POWERKEY_DBUS_ACTION5       "event5"
-
-/** Default argument for signal sent due to dbus6 action */
-#define DEFAULT_POWERKEY_DBUS_ACTION6       "event6"
-
 /* When MCE is made modular, this will be handled differently */
 gboolean mce_powerkey_init(void);
 void mce_powerkey_exit(void);
+
+/** Setting keys for touch screen gesture actions */
+# define MCE_GCONF_POWERKEY_ACTIONS_GESTURE0  MCE_GCONF_POWERKEY_PATH "/actions_gesture0"
+# define MCE_GCONF_POWERKEY_ACTIONS_GESTURE1  MCE_GCONF_POWERKEY_PATH "/actions_gesture1"
+# define MCE_GCONF_POWERKEY_ACTIONS_GESTURE2  MCE_GCONF_POWERKEY_PATH "/actions_gesture2"
+# define MCE_GCONF_POWERKEY_ACTIONS_GESTURE3  MCE_GCONF_POWERKEY_PATH "/actions_gesture3"
+# define MCE_GCONF_POWERKEY_ACTIONS_GESTURE4  MCE_GCONF_POWERKEY_PATH "/actions_gesture4"
+# define MCE_GCONF_POWERKEY_ACTIONS_GESTURE5  MCE_GCONF_POWERKEY_PATH "/actions_gesture5"
+# define MCE_GCONF_POWERKEY_ACTIONS_GESTURE6  MCE_GCONF_POWERKEY_PATH "/actions_gesture6"
+# define MCE_GCONF_POWERKEY_ACTIONS_GESTURE7  MCE_GCONF_POWERKEY_PATH "/actions_gesture7"
+# define MCE_GCONF_POWERKEY_ACTIONS_GESTURE8  MCE_GCONF_POWERKEY_PATH "/actions_gesture8"
+# define MCE_GCONF_POWERKEY_ACTIONS_GESTURE9  MCE_GCONF_POWERKEY_PATH "/actions_gesture9"
+# define MCE_GCONF_POWERKEY_ACTIONS_GESTURE10 MCE_GCONF_POWERKEY_PATH "/actions_gesture10"
+
+/** Default values for touch screen gesture actions */
+# define DEFAULT_POWERKEY_ACTIONS_GESTURE0    "unblank"
+# define DEFAULT_POWERKEY_ACTIONS_GESTURE1    "unblank"
+# define DEFAULT_POWERKEY_ACTIONS_GESTURE2    "unblank"
+# define DEFAULT_POWERKEY_ACTIONS_GESTURE3    "unblank"
+# define DEFAULT_POWERKEY_ACTIONS_GESTURE4    "unblank"
+# define DEFAULT_POWERKEY_ACTIONS_GESTURE5    "unblank"
+# define DEFAULT_POWERKEY_ACTIONS_GESTURE6    "unblank"
+# define DEFAULT_POWERKEY_ACTIONS_GESTURE7    "unblank"
+# define DEFAULT_POWERKEY_ACTIONS_GESTURE8    "unblank"
+# define DEFAULT_POWERKEY_ACTIONS_GESTURE9    "unblank"
+# define DEFAULT_POWERKEY_ACTIONS_GESTURE10   "unblank"
+
+/** Number of configurable touchscreen gestures */
+# define POWERKEY_ACTIONS_GESTURE_COUNT 11
+
+/** Setting keys for configurable dbus actions */
+# define MCE_GCONF_POWERKEY_DBUS_ACTION1      MCE_GCONF_POWERKEY_PATH "/dbus_action1"
+# define MCE_GCONF_POWERKEY_DBUS_ACTION2      MCE_GCONF_POWERKEY_PATH "/dbus_action2"
+# define MCE_GCONF_POWERKEY_DBUS_ACTION3      MCE_GCONF_POWERKEY_PATH "/dbus_action3"
+# define MCE_GCONF_POWERKEY_DBUS_ACTION4      MCE_GCONF_POWERKEY_PATH "/dbus_action4"
+# define MCE_GCONF_POWERKEY_DBUS_ACTION5      MCE_GCONF_POWERKEY_PATH "/dbus_action5"
+# define MCE_GCONF_POWERKEY_DBUS_ACTION6      MCE_GCONF_POWERKEY_PATH "/dbus_action6"
+# define MCE_GCONF_POWERKEY_DBUS_ACTION7      MCE_GCONF_POWERKEY_PATH "/dbus_action7"
+# define MCE_GCONF_POWERKEY_DBUS_ACTION8      MCE_GCONF_POWERKEY_PATH "/dbus_action8"
+# define MCE_GCONF_POWERKEY_DBUS_ACTION9      MCE_GCONF_POWERKEY_PATH "/dbus_action9"
+# define MCE_GCONF_POWERKEY_DBUS_ACTION10     MCE_GCONF_POWERKEY_PATH "/dbus_action10"
+
+/** Default values for configurable dbus actions */
+# define DEFAULT_POWERKEY_DBUS_ACTION1       "event1"
+# define DEFAULT_POWERKEY_DBUS_ACTION2       "event2"
+# define DEFAULT_POWERKEY_DBUS_ACTION3       "event3"
+# define DEFAULT_POWERKEY_DBUS_ACTION4       "event4"
+# define DEFAULT_POWERKEY_DBUS_ACTION5       "event5"
+# define DEFAULT_POWERKEY_DBUS_ACTION6       "event6"
+# define DEFAULT_POWERKEY_DBUS_ACTION7       "event7"
+# define DEFAULT_POWERKEY_DBUS_ACTION8       "event8"
+# define DEFAULT_POWERKEY_DBUS_ACTION9       "event9"
+# define DEFAULT_POWERKEY_DBUS_ACTION10      "event10"
+
+/** Number of configurable dbus actions */
+# define POWEKEY_DBUS_ACTION_COUNT 10
 
 #endif /* _POWERKEY_H_ */
