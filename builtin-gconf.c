@@ -1246,12 +1246,6 @@ static const setting_t gconf_defaults[] =
     .def  = G_STRINGIFY(DEFAULT_TK_INPUT_POLICY_ENABLED),
   },
   {
-    // MCE_GCONF_TK_DOUBLE_TAP_GESTURE_PATH @ tklock.h
-    .key  = "/system/osso/dsm/locks/tklock_double_tap_gesture",
-    .type = "i",
-    .def  = "1",
-  },
-  {
     .key  = MCE_GCONF_TK_VOLKEY_POLICY,
     .type = "i",
     .def  = G_STRINGIFY(DEFAULT_VOLKEY_POLICY),
@@ -1674,6 +1668,61 @@ static const setting_t gconf_defaults[] =
     .def  = DEFAULT_POWERKEY_ACTIONS_LONG_OFF,
   },
   {
+    .key  = MCE_GCONF_POWERKEY_ACTIONS_GESTURE0,
+    .type = "s",
+    .def  = DEFAULT_POWERKEY_ACTIONS_GESTURE0,
+  },
+  {
+    .key  = MCE_GCONF_POWERKEY_ACTIONS_GESTURE1,
+    .type = "s",
+    .def  = DEFAULT_POWERKEY_ACTIONS_GESTURE1,
+  },
+  {
+    .key  = MCE_GCONF_POWERKEY_ACTIONS_GESTURE2,
+    .type = "s",
+    .def  = DEFAULT_POWERKEY_ACTIONS_GESTURE2,
+  },
+  {
+    .key  = MCE_GCONF_POWERKEY_ACTIONS_GESTURE3,
+    .type = "s",
+    .def  = DEFAULT_POWERKEY_ACTIONS_GESTURE3,
+  },
+  {
+    .key  = MCE_GCONF_POWERKEY_ACTIONS_GESTURE4,
+    .type = "s",
+    .def  = DEFAULT_POWERKEY_ACTIONS_GESTURE4,
+  },
+  {
+    .key  = MCE_GCONF_POWERKEY_ACTIONS_GESTURE5,
+    .type = "s",
+    .def  = DEFAULT_POWERKEY_ACTIONS_GESTURE5,
+  },
+  {
+    .key  = MCE_GCONF_POWERKEY_ACTIONS_GESTURE6,
+    .type = "s",
+    .def  = DEFAULT_POWERKEY_ACTIONS_GESTURE6,
+  },
+  {
+    .key  = MCE_GCONF_POWERKEY_ACTIONS_GESTURE7,
+    .type = "s",
+    .def  = DEFAULT_POWERKEY_ACTIONS_GESTURE7,
+  },
+  {
+    .key  = MCE_GCONF_POWERKEY_ACTIONS_GESTURE8,
+    .type = "s",
+    .def  = DEFAULT_POWERKEY_ACTIONS_GESTURE8,
+  },
+  {
+    .key  = MCE_GCONF_POWERKEY_ACTIONS_GESTURE9,
+    .type = "s",
+    .def  = DEFAULT_POWERKEY_ACTIONS_GESTURE9,
+  },
+  {
+    .key  = MCE_GCONF_POWERKEY_ACTIONS_GESTURE10,
+    .type = "s",
+    .def  = DEFAULT_POWERKEY_ACTIONS_GESTURE10,
+  },
+  {
     .key  = MCE_GCONF_POWERKEY_DBUS_ACTION1,
     .type = "s",
     .def  = DEFAULT_POWERKEY_DBUS_ACTION1,
@@ -1702,6 +1751,26 @@ static const setting_t gconf_defaults[] =
     .key  = MCE_GCONF_POWERKEY_DBUS_ACTION6,
     .type = "s",
     .def  = DEFAULT_POWERKEY_DBUS_ACTION6,
+  },
+  {
+    .key  = MCE_GCONF_POWERKEY_DBUS_ACTION7,
+    .type = "s",
+    .def  = DEFAULT_POWERKEY_DBUS_ACTION7,
+  },
+  {
+    .key  = MCE_GCONF_POWERKEY_DBUS_ACTION8,
+    .type = "s",
+    .def  = DEFAULT_POWERKEY_DBUS_ACTION8,
+  },
+  {
+    .key  = MCE_GCONF_POWERKEY_DBUS_ACTION9,
+    .type = "s",
+    .def  = DEFAULT_POWERKEY_DBUS_ACTION9,
+  },
+  {
+    .key  = MCE_GCONF_POWERKEY_DBUS_ACTION10,
+    .type = "s",
+    .def  = DEFAULT_POWERKEY_DBUS_ACTION10,
   },
   {
     .key = MCE_GCONF_MEMNOTIFY_WARNING_USED,

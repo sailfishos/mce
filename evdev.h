@@ -13,6 +13,23 @@ extern "C" {
 } /* fool JED indentation ... */
 #endif
 
+/** Assumed EV_MSC:MSC_GESTURE event values
+ *
+ * Actual gestures / values depend on hw and kernel driver - these are
+ * meant to be used mainly to improve code readability.
+ *
+ * However GESTURE_DOUBLETAP is a special case as it is assumed by
+ * mce to always mean doubletap.
+ */
+typedef enum {
+       GESTURE_SWIPE_FROM_LEFT   = 0,
+       GESTURE_SWIPE_FROM_RIGHT  = 1,
+       GESTURE_SWIPE_FROM_TOP    = 2,
+       GESTURE_SWIPE_FROM_BOTTOM = 3,
+       GESTURE_DOUBLETAP         = 4, /* To conform with value used in
+                                      * Nokia N9 kernel driver */
+} gesture_t;
+
 const char *evdev_get_event_code_name(int etype, int ecode);
 const char *evdev_get_event_type_name(int etype);
 

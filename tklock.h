@@ -40,21 +40,6 @@
 /** SysFS interface to enable/disable the RX-44/RX-48 keyboard IRQs */
 #define MCE_RX44_KEYBOARD_SYSFS_DISABLE_PATH		"/sys/devices/platform/i2c_omap.2/i2c-0/0-0045/disable_kp"
 
-/** Double tap wakeup action modes */
-typedef enum
-{
-    /** Gesture disabled */
-    DBLTAP_ACTION_DISABLED = 0,
-
-    /** Show unlock screen */
-    DBLTAP_ACTION_UNBLANK  = 1,
-
-    /* Unlock tklock */
-    DBLTAP_ACTION_TKUNLOCK = 2,
-
-    DBLTAP_ACTION_DEFAULT  = DBLTAP_ACTION_UNBLANK
-} dbltap_action_t;
-
 /**
  * SysFS interface to enable/disable
  * RM-680/RM-690/RM-696/RM-716 double tap gesture recognition
@@ -85,9 +70,6 @@ typedef enum
 
 /** Path to the touchscreen/keypad autolock GConf setting */
 #define MCE_GCONF_TK_AUTOLOCK_ENABLED_PATH	MCE_GCONF_LOCK_PATH "/touchscreen_keypad_autolock_enabled"
-
-/** Path to the touchscreen/keypad double tap gesture GConf setting */
-#define MCE_GCONF_TK_DOUBLE_TAP_GESTURE_PATH	MCE_GCONF_LOCK_PATH "/tklock_double_tap_gesture"
 
 /** Path to the automatic tklock dim/blank disable GConf setting */
 #define MCE_GCONF_TK_AUTO_BLANK_DISABLE_PATH	MCE_GCONF_LOCK_PATH "/tklock_blank_disable"
