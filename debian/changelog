@@ -1,3 +1,9 @@
+mce (1.79.0) precise; urgency=low
+
+  * [powerkey] Add enablers for configuring touchscreen gestures. Fixes MER#1537
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 08 Mar 2016 09:00:39 +0200
+
 mce (1.78.4) precise; urgency=low
 
   * [callstate] Map ofono waiting state to mce ringing state. Fixes JB#31908
