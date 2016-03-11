@@ -5542,13 +5542,21 @@ static bool xmce_set_demo_mode(const char *args)
                 xmce_set_tklock_mode("unlocked");
                 xmce_set_tklock_blank("disabled");
         }
+        else if( !strcmp(args, "dim")) {
+                // mcetool --dim-screen
+                //         --set-inhibit-mode=stay-dim
+                //         --set-tklock-mode=unlocked
+                //         --set-tklock-blank=disabled
+                xmce_set_display_state("dim");
+                xmce_set_inhibit_mode("stay-dim");
+                xmce_set_tklock_mode("unlocked");
+                xmce_set_tklock_blank("disabled");
+        }
         else if( !strcmp(args, "off")) {
-                // mcetool --unblank-screen --dim-screen --blank-screen
+                // mcetool --blank-screen
                 //         --set-inhibit-mode=disabled
                 //         --set-tklock-mode=locked
                 //         --set-tklock-blank=enabled
-                xmce_set_display_state("on");
-                xmce_set_display_state("dim");
                 xmce_set_display_state("off");
                 xmce_set_inhibit_mode("disabled");
                 xmce_set_tklock_mode("locked");
@@ -6499,10 +6507,14 @@ static const mce_opt_t options[] =
                 .name        = "set-demo-mode",
                 .flag        = 'D',
                 .with_arg    = xmce_set_demo_mode,
-                .values      = "on|off",
+                .values      = "on|dim|off",
                 .usage       =
-                        "set the display demo mode  to STATE;\n"
-                        "valid states are: 'on' and 'off'\n"
+                        "set the display blanking policy to demo mode\n"
+                        "\n"
+                        "Valid modes are:\n"
+                        "  on  - display is kept on\n"
+                        "  dim - display is allowed to dim, but not blank\n"
+                        "  off - display is allowed to turn off\n"
         },
         {
                 .name        = "set-brightness-fade-def",
