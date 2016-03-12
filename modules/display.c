@@ -31,6 +31,7 @@
 #include "../mce-gconf.h"
 #include "../mce-dbus.h"
 #include "../mce-sensorfw.h"
+#include "../tklock.h"
 #ifdef ENABLE_HYBRIS
 # include "../mce-hybris.h"
 #endif
@@ -889,6 +890,10 @@ static gint mdy_blanking_pause_mode = DEFAULT_BLANKING_PAUSE_MODE;
 
 /** GConf callback ID for mdy_blanking_pause_mode */
 static guint mdy_blanking_pause_mode_gconf_cb_id = 0;
+
+/** Flag: Disable automatic blanking from lockscreen */
+static gint  mdy_blanking_from_tklock_disabled = DEFAULT_TK_AUTO_BLANK_DISABLE;
+static guint mdy_blanking_from_tklock_disabled_gconf_cb_id = 0;
 
 /** Display blanking timeout setting */
 static gint mdy_blank_timeout = DEFAULT_BLANK_TIMEOUT;
@@ -4315,6 +4320,9 @@ static void mdy_blanking_rethink_timers(bool force)
             break;
         if( mdy_blanking_inhibit_off_p() )
             break;
+        if( tklock_mode && mdy_blanking_from_tklock_disabled )
+            break;
+
         mdy_blanking_schedule_off();
         break;
 
@@ -4343,7 +4351,7 @@ static void mdy_blanking_rethink_timers(bool force)
             break;
         }
 
-        if( tklock_mode ) {
+        if( tklock_mode && !mdy_blanking_from_tklock_disabled ) {
             mdy_blanking_schedule_off();
             break;
         }
@@ -9015,6 +9023,16 @@ static void mdy_gconf_cb(GConfClient *const gcc, const guint id,
             mdy_blanking_remove_pause_clients();
         }
     }
+    else if( id == mdy_blanking_from_tklock_disabled_gconf_cb_id ) {
+        gint old = mdy_blanking_from_tklock_disabled;
+        mdy_blanking_from_tklock_disabled = gconf_value_get_int(gcv);
+
+        if( mdy_blanking_from_tklock_disabled != old ) {
+            mce_log(LL_NOTICE, "blanking from lockscreen disabled: %d -> %d",
+                    old, mdy_blanking_from_tklock_disabled);
+            mdy_blanking_rethink_timers(true);
+        }
+    }
     else if (id == mdy_orientation_sensor_enabled_gconf_cb_id) {
         mdy_orientation_sensor_enabled = gconf_value_get_bool(gcv);
         mdy_orientation_sensor_rethink();
@@ -9392,6 +9410,14 @@ static void mdy_gconf_init(void)
                         DEFAULT_BLANKING_PAUSE_MODE,
                         mdy_gconf_cb,
                         &mdy_blanking_pause_mode_gconf_cb_id);
+
+    /* Config tracking for disabling automatic screen dimming/blanking
+     * while showing lockscreen. */
+    mce_gconf_track_int(MCE_GCONF_TK_AUTO_BLANK_DISABLE_PATH,
+                        &mdy_blanking_from_tklock_disabled,
+                        DEFAULT_TK_AUTO_BLANK_DISABLE,
+                        mdy_gconf_cb,
+                        &mdy_blanking_from_tklock_disabled_gconf_cb_id);
 }
 
 static void mdy_gconf_quit(void)
@@ -9493,6 +9519,9 @@ static void mdy_gconf_quit(void)
 
     mce_gconf_notifier_remove(mdy_blanking_pause_mode_gconf_cb_id),
         mdy_blanking_pause_mode_gconf_cb_id = 0;
+
+    mce_gconf_notifier_remove(mdy_blanking_from_tklock_disabled_gconf_cb_id),
+        mdy_blanking_from_tklock_disabled_gconf_cb_id = 0;
 
     /* Free dynamic data obtained from config */
 

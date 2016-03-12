@@ -469,11 +469,6 @@ static guint volkey_policy_cb_id = 0;
 static gint  touchscreen_gesture_enable_mode = DBLTAP_ENABLE_DEFAULT;
 static guint touchscreen_gesture_enable_mode_cb_id = 0;
 
-/** Flag: Disable automatic dim/blank from tklock */
-static gint tklock_blank_disable = DEFAULT_TK_AUTO_BLANK_DISABLE;
-/** GConf notifier id for tracking tklock_blank_disable changes */
-static guint tklock_blank_disable_id = 0;
-
 /** Lid sensor open actions */
 static gint tklock_lid_open_actions = DEFAULT_LID_OPEN_ACTION;
 /** GConf callback ID for tklock_lid_open_actions */
@@ -4677,27 +4672,6 @@ static void tklock_gconf_cb(GConfClient *const gcc, const guint id,
         tklock_kbd_close_actions = gconf_value_get_int(gcv);
         tklock_gconf_sanitize_kbd_close_actions();
     }
-    else if( id == tklock_blank_disable_id ) {
-        gint old = tklock_blank_disable;
-
-        tklock_blank_disable = gconf_value_get_int(gcv);
-
-        mce_log(LL_NOTICE, "tklock_blank_disable: %d -> %d",
-                old, tklock_blank_disable);
-
-#if 0 // FIXME: this needs to be handled at modules/display.c
-        if( tklock_blank_disable == old ) {
-            // no need to change the timers
-        }
-        else if( tklock_visual_blank_timeout_cb_id ) {
-            setup_tklock_visual_blank_timeout();
-        }
-        else if( tklock_dim_timeout_cb_id ) {
-            setup_tklock_dim_timeout();
-        }
-#endif
-
-    }
     else if( id == touchscreen_gesture_enable_mode_cb_id ) {
         gint old = touchscreen_gesture_enable_mode;
         touchscreen_gesture_enable_mode = gconf_value_get_int(gcv);
@@ -4801,14 +4775,6 @@ EXIT:
  */
 static void tklock_gconf_init(void)
 {
-    /* Config tracking for disabling automatic screen dimming/blanking
-     * while showing lockscreen. */
-    mce_gconf_track_int(MCE_GCONF_TK_AUTO_BLANK_DISABLE_PATH,
-                        &tklock_blank_disable,
-                        DEFAULT_TK_AUTO_BLANK_DISABLE,
-                        tklock_gconf_cb,
-                        &tklock_blank_disable_id);
-
     /* Touchscreen/keypad autolock enabled */
     mce_gconf_track_bool(MCE_GCONF_TK_AUTOLOCK_ENABLED_PATH,
                          &tk_autolock_enabled,
@@ -5055,9 +5021,6 @@ static void tklock_gconf_quit(void)
 
     mce_gconf_notifier_remove(tklock_autolock_delay_cb_id),
         tklock_autolock_delay_cb_id = 0;
-
-    mce_gconf_notifier_remove(tklock_blank_disable_id),
-        tklock_blank_disable_id = 0;
 
     mce_gconf_notifier_remove(touchscreen_gesture_enable_mode_cb_id),
         touchscreen_gesture_enable_mode_cb_id = 0;

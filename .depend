@@ -607,6 +607,8 @@ modules/display.o:\
 	mce-sensorfw.h\
 	mce-worker.h\
 	mce.h\
+	mce.h\
+	tklock.h\
 	modules/display.h\
 
 modules/display.pic.o:\
@@ -626,6 +628,8 @@ modules/display.pic.o:\
 	mce-sensorfw.h\
 	mce-worker.h\
 	mce.h\
+	mce.h\
+	tklock.h\
 	modules/display.h\
 
 modules/doubletap.o:\
@@ -961,6 +965,8 @@ tests/ut/ut_display.o:\
 	mce-sensorfw.h\
 	mce-worker.h\
 	mce.h\
+	mce.h\
+	tklock.h\
 	modules/display.c\
 	modules/display.h\
 	tests/ut/common.h\
@@ -982,6 +988,8 @@ tests/ut/ut_display.pic.o:\
 	mce-sensorfw.h\
 	mce-worker.h\
 	mce.h\
+	mce.h\
+	tklock.h\
 	modules/display.c\
 	modules/display.h\
 	tests/ut/common.h\
@@ -1004,6 +1012,8 @@ tests/ut/ut_display_blanking_inhibit.o:\
 	mce-sensorfw.h\
 	mce-worker.h\
 	mce.h\
+	mce.h\
+	tklock.h\
 	modules/display.c\
 	modules/display.h\
 	tests/ut/common.h\
@@ -1026,6 +1036,8 @@ tests/ut/ut_display_blanking_inhibit.pic.o:\
 	mce-sensorfw.h\
 	mce-worker.h\
 	mce.h\
+	mce.h\
+	tklock.h\
 	modules/display.c\
 	modules/display.h\
 	tests/ut/common.h\
@@ -1048,6 +1060,8 @@ tests/ut/ut_display_conf.o:\
 	mce-sensorfw.h\
 	mce-worker.h\
 	mce.h\
+	mce.h\
+	tklock.h\
 	modules/display.c\
 	modules/display.h\
 	tests/ut/common.h\
@@ -1070,6 +1084,8 @@ tests/ut/ut_display_conf.pic.o:\
 	mce-sensorfw.h\
 	mce-worker.h\
 	mce.h\
+	mce.h\
+	tklock.h\
 	modules/display.c\
 	modules/display.h\
 	tests/ut/common.h\
@@ -1092,6 +1108,8 @@ tests/ut/ut_display_filter.o:\
 	mce-sensorfw.h\
 	mce-worker.h\
 	mce.h\
+	mce.h\
+	tklock.h\
 	modules/display.c\
 	modules/display.h\
 	tests/ut/common.h\
@@ -1114,6 +1132,8 @@ tests/ut/ut_display_filter.pic.o:\
 	mce-sensorfw.h\
 	mce-worker.h\
 	mce.h\
+	mce.h\
+	tklock.h\
 	modules/display.c\
 	modules/display.h\
 	tests/ut/common.h\
@@ -1136,6 +1156,8 @@ tests/ut/ut_display_stm.o:\
 	mce-sensorfw.h\
 	mce-worker.h\
 	mce.h\
+	mce.h\
+	tklock.h\
 	modules/display.c\
 	modules/display.h\
 	tests/ut/common.h\
@@ -1158,6 +1180,8 @@ tests/ut/ut_display_stm.pic.o:\
 	mce-sensorfw.h\
 	mce-worker.h\
 	mce.h\
+	mce.h\
+	tklock.h\
 	modules/display.c\
 	modules/display.h\
 	tests/ut/common.h\
