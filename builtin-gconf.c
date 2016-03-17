@@ -1577,7 +1577,7 @@ static const setting_t gconf_defaults[] =
     // no define; used by mce display module
     .key  = "/system/osso/dsm/leds/PatternDisplayDimmed",
     .type = "b",
-    .def  = "true",
+    .def  = "false",
   },
   {
     // no define; used by led module
