@@ -1,3 +1,10 @@
+mce (1.79.2) precise; urgency=low
+
+  * [leds] Disable DisplayDimmed led pattern by default. Fixes JB#34543
+  * [event-input] Do not emulate doubletap during display power down. Fixes JB#34549
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 18 Mar 2016 09:14:51 +0200
+
 mce (1.79.1) precise; urgency=low
 
   * [mcetool] Add dimming demo mode. Fixes MER#1542
