@@ -278,6 +278,7 @@ static void         evin_iomon_generate_activity                (struct input_ev
 
 // event handling by device type
 
+static bool         evin_iomon_sw_gestures_allowed              (void);
 static gboolean     evin_iomon_touchscreen_cb                   (mce_io_mon_t *iomon, gpointer data, gsize bytes_read);
 static gboolean     evin_iomon_evin_doubletap_cb                (mce_io_mon_t *iomon, gpointer data, gsize bytes_read);
 static gboolean     evin_iomon_keypress_cb                      (mce_io_mon_t *iomon, gpointer data, gsize bytes_read);
@@ -1664,6 +1665,56 @@ EXIT:
     return;
 }
 
+/** Predicate for using touch input for sw gestures is allowed
+ *
+ * @returns true if gesture events can be injected, false otherwise
+ */
+static bool
+evin_iomon_sw_gestures_allowed(void)
+{
+    bool gestures_allowed = false;
+
+    /* No simulated gestures unless only mce is supposed to
+     * handle touch input */
+    bool grabbed = datapipe_get_gint(touch_grab_wanted_pipe);
+    if( !grabbed )
+        goto EXIT;
+
+    /* The setting must be enabled */
+    if( !fake_evin_doubletap_enabled )
+        goto EXIT;
+
+    /* And the display must be firmly in logically off state */
+    display_state_t display_state_next =
+        datapipe_get_gint(display_state_next_pipe);
+
+    switch( display_state_next ) {
+    case MCE_DISPLAY_OFF:
+    case MCE_DISPLAY_LPM_OFF:
+    case MCE_DISPLAY_LPM_ON:
+        break;
+    default:
+        goto EXIT;
+    }
+
+    display_state_t display_state =
+        datapipe_get_gint(display_state_pipe);
+
+    switch( display_state ) {
+    case MCE_DISPLAY_OFF:
+    case MCE_DISPLAY_LPM_OFF:
+    case MCE_DISPLAY_LPM_ON:
+        break;
+    default:
+        goto EXIT;
+    }
+
+    gestures_allowed = true;
+
+EXIT:
+    return gestures_allowed;
+}
+
 /** I/O monitor callback for handling touchscreen events
  *
  * @param data       The new data
@@ -1706,34 +1757,11 @@ evin_iomon_touchscreen_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
     }
 
 #ifdef ENABLE_DOUBLETAP_EMULATION
-    if( grabbed || fake_evin_doubletap_enabled ) {
-        /* Note: In case we happen to be in middle of display
-         *       state transition the double tap simulation must
-         *       use the next stable display state rather than
-         *       the current - potentially transitional - state.
-         */
-        display_state_t display_state_next =
-            datapipe_get_gint(display_state_next_pipe);
-
-        switch( display_state_next ) {
-        case MCE_DISPLAY_OFF:
-        case MCE_DISPLAY_LPM_OFF:
-        case MCE_DISPLAY_LPM_ON:
-            if( doubletap ) {
-                mce_log(LL_DEVEL, "[doubletap] emulated from touch input");
-                ev->type  = EV_MSC;
-                ev->code  = MSC_GESTURE;
-                ev->value = GESTURE_DOUBLETAP;
-            }
-            break;
-        default:
-        case MCE_DISPLAY_ON:
-        case MCE_DISPLAY_DIM:
-        case MCE_DISPLAY_UNDEF:
-        case MCE_DISPLAY_POWER_UP:
-        case MCE_DISPLAY_POWER_DOWN:
-            break;
-        }
+    if( doubletap && evin_iomon_sw_gestures_allowed() ) {
+        mce_log(LL_DEVEL, "[doubletap] emulated from touch input");
+        ev->type  = EV_MSC;
+        ev->code  = MSC_GESTURE;
+        ev->value = GESTURE_DOUBLETAP;
     }
 #endif
 
