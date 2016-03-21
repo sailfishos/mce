@@ -1457,7 +1457,7 @@ cleanup:
 #ifdef ENABLE_DOUBLETAP_EMULATION
 
 /** Fake doubletap policy */
-static gboolean fake_evin_doubletap_enabled = FALSE;
+static gboolean fake_evin_doubletap_enabled = TRUE;
 
 /** GConf callback ID for fake doubletap policy changes */
 static guint fake_evin_doubletap_id = 0;
