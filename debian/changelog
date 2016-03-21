@@ -1,3 +1,9 @@
+mce (1.79.3) precise; urgency=low
+
+  * [event-input] Enable doubletap emulation by default. Fixes JB#34610
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 21 Mar 2016 13:55:02 +0200
+
 mce (1.79.2) precise; urgency=low
 
   * [leds] Disable DisplayDimmed led pattern by default. Fixes JB#34543
