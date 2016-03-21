@@ -1427,7 +1427,7 @@ static const setting_t gconf_defaults[] =
     // MCE_GCONF_USE_FAKE_DOUBLETAP_PATH @ event-input.h
     .key  = "/system/osso/dsm/event_input/use_fake_double_tap",
     .type = "b",
-    .def  = "false",
+    .def  = "true",
   },
 #endif
   {
