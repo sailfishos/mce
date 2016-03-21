@@ -1,3 +1,9 @@
+mce (1.79.4) precise; urgency=low
+
+  * [display] Act on lpm-off delay changes. Fixes JB#34618
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 21 Mar 2016 16:11:37 +0200
+
 mce (1.79.3) precise; urgency=low
 
   * [event-input] Enable doubletap emulation by default. Fixes JB#34610
