@@ -8888,9 +8888,9 @@ static void mdy_gconf_cb(GConfClient *const gcc, const guint id,
         /* Reprogram blanking timers */
         mdy_blanking_rethink_timers(true);
     }
-    else if( id == mdy_blank_from_lpm_on_timeout_gconf_cb_id )
+    else if( id == mdy_blank_from_lpm_off_timeout_gconf_cb_id )
     {
-        mdy_blank_from_lpm_on_timeout = gconf_value_get_int(gcv);
+        mdy_blank_from_lpm_off_timeout = gconf_value_get_int(gcv);
 
         /* Reprogram blanking timers */
         mdy_blanking_rethink_timers(true);
