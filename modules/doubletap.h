@@ -52,10 +52,10 @@ typedef enum
         DBLTAP_ENABLE_NO_PROXIMITY = 2,
 } dbltap_mode_t;
 
-/** Path to the GConf settings for the doubletap module */
+/** Prefix for doubletap setting keys */
 # define MCE_SETTING_DOUBLETAP_PATH      "/system/osso/dsm/doubletap"
 
-/** Path to the doubletap  mode GConf setting */
+/** When doubletap detection is enabled */
 # define MCE_SETTING_DOUBLETAP_MODE      MCE_SETTING_DOUBLETAP_PATH "/mode"
 # define MCE_DEFAULT_DOUBLETAP_MODE      2 // = DBLTAP_ENABLE_NO_PROXIMITY
 

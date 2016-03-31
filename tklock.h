@@ -30,14 +30,14 @@
  * Settings
  * ========================================================================= */
 
-/** Path to the GConf settings for the touchscreen/keypad lock */
+/** Prefix for tklock setting keys */
 # define MCE_SETTING_TK_PATH                     "/system/osso/dsm/locks"
 
-/** Path to the touchscreen/keypad autolock GConf setting */
+/** Whether lockscreen should be activated when display turns off */
 # define MCE_SETTING_TK_AUTOLOCK_ENABLED         MCE_SETTING_TK_PATH "/touchscreen_keypad_autolock_enabled"
 # define MCE_DEFAULT_TK_AUTOLOCK_ENABLED         true
 
-/** Path to the automatic tklock dim/blank disable GConf setting */
+/** Whether automatic blanking from lockscreen is disabled */
 # define MCE_SETTING_TK_AUTO_BLANK_DISABLE       MCE_SETTING_TK_PATH "/tklock_blank_disable"
 # define MCE_DEFAULT_TK_AUTO_BLANK_DISABLE       0
 
@@ -54,27 +54,51 @@ enum
     LPMUI_TRIGGERING_HOVER_OVER  = 1<<1,
 };
 
-/** Automatic lpm triggering modes GConf setting */
+/** What conditions can trigger lpm mode display */
 # define MCE_SETTING_TK_LPMUI_TRIGGERING         MCE_SETTING_TK_PATH "/lpm_triggering"
 # define MCE_DEFAULT_TK_LPMUI_TRIGGERING         1 // = LPMUI_TRIGGERING_FROM_POCKET
 
-/** Proximity can block touch input GConf setting */
+/** Whether touch input should remain blocked until ps is not covered
+ *
+ * To avoid accidental touch interaction related to lipstick
+ * crashes/restarts occurring while the device is in a pocket,
+ * it would be highly desirable to block touch input while
+ * proximity sensor is covered. However, this causes massive
+ * problems during bootup for devices with unreliably working
+ * proximity sensor, so this must remain disabled by default.
+ */
 # define MCE_SETTING_TK_PROXIMITY_BLOCKS_TOUCH   MCE_SETTING_TK_PATH "/proximity_blocks_touch"
 # define MCE_DEFAULT_TK_PROXIMITY_BLOCKS_TOUCH   false
 
-/** Devicelock is in lockscreen GConf setting */
+/** Whether device unlocking happens in lockscreen
+ *
+ * Deactivating lockscreen must not be allowed if device unlock code
+ * is entered in lockscreen context.
+ */
 # define MCE_SETTING_TK_DEVICELOCK_IN_LOCKSCREEN MCE_SETTING_TK_PATH "/devicelock_in_lockscreen"
 # define MCE_DEFAULT_TK_DEVICELOCK_IN_LOCKSCREEN false
 
-/** Lid sensor enabled GConf setting */
+/** Whether MCE is allowed to use lid sensor
+ *
+ * Note: Unlike other sensors that are powered on/off via sensorfw,
+ *       it is assumed that lid sensor is powered on if present and
+ *       this settings just controls whether mce uses or ignores the
+ *       lid events that it receives.
+ */
 # define MCE_SETTING_TK_LID_SENSOR_ENABLED       MCE_SETTING_TK_PATH "/lid_sensor_enabled"
 # define MCE_DEFAULT_TK_LID_SENSOR_ENABLED       true
 
-/** Whether to use ALS data for LID sensor filtering */
+/** Whether lid sensor state should be verified with light sensor
+ *
+ * If enabled, lid sensor state changes are ignored unless they
+ * occur in close proximity to ambient light level changes. This
+ * is mainly useful for filtering out false state changes reported
+ * by hall effect sensors confused by unexpected magnetic fields.
+ */
 # define MCE_SETTING_TK_FILTER_LID_WITH_ALS      MCE_SETTING_TK_PATH"/filter_lid_with_als"
 # define MCE_DEFAULT_TK_FILTER_LID_WITH_ALS      true
 
-/** Maximum amount of light ALS should report when LID is closed */
+/** Maximum amount of light ALS is expected to report when LID is closed */
 # define MCE_SETTING_TK_FILTER_LID_ALS_LIMIT     MCE_SETTING_TK_PATH"/filter_lid_als_limit"
 # define MCE_DEFAULT_TK_FILTER_LID_ALS_LIMIT     0
 
@@ -92,7 +116,7 @@ typedef enum
 
 } lid_open_action_t;
 
-/** Lid sensor open action GConf setting */
+/** Actions to be taken when lid is opened */
 # define MCE_SETTING_TK_LID_OPEN_ACTIONS         MCE_SETTING_TK_PATH "/lid_open_actions"
 # define MCE_DEFAULT_TK_LID_OPEN_ACTIONS         1 // = LID_OPEN_ACTION_UNBLANK
 
@@ -110,7 +134,7 @@ typedef enum
 
 } lid_close_action_t;
 
-/** Lid sensor close action GConf setting */
+/** Actions to be taken when lid is closed */
 # define MCE_SETTING_TK_LID_CLOSE_ACTIONS        MCE_SETTING_TK_PATH "/lid_close_actions"
 # define MCE_DEFAULT_TK_LID_CLOSE_ACTIONS        2 // = LID_CLOSE_ACTION_TKLOCK
 
@@ -121,11 +145,11 @@ typedef enum {
     KBD_OPEN_TRIGGER_NO_PROXIMITY = 2,
 } kbd_open_trigger_t;
 
-/** Keypad slide open reaction condition GConf setting */
+/** When MCE should react to kbd slide open */
 # define MCE_SETTING_TK_KBD_OPEN_TRIGGER         MCE_SETTING_TK_PATH "/keyboard_open_trigger"
 # define MCE_DEFAULT_TK_KBD_OPEN_TRIGGER         2 // = KBD_OPEN_TRIGGER_NO_PROXIMITY
 
-/** Keypad slide open action GConf setting */
+/** Actions to be taken when kbd slide is opened */
 # define MCE_SETTING_TK_KBD_OPEN_ACTIONS         MCE_SETTING_TK_PATH "/keyboard_open_actions"
 # define MCE_DEFAULT_TK_KBD_OPEN_ACTIONS         1 // = LID_OPEN_ACTION_UNBLANK
 
@@ -136,15 +160,20 @@ typedef enum {
     KBD_CLOSE_TRIGGER_AFTER_OPEN = 2,
 } kbd_close_trigger_t;
 
-/** Keypad slide close reaction condition GConf setting */
+/** When MCE should react to kbd slide close */
 # define MCE_SETTING_TK_KBD_CLOSE_TRIGGER        MCE_SETTING_TK_PATH "/keyboard_close_trigger"
 # define MCE_DEFAULT_TK_KBD_CLOSE_TRIGGER        2 // = KBD_CLOSE_TRIGGER_AFTER_OPEN
 
-/** Keypad slide close action GConf setting */
+/** Actions to be taken when kbd slide is closed */
 # define MCE_SETTING_TK_KBD_CLOSE_ACTIONS        MCE_SETTING_TK_PATH "/keyboard_close_actions"
 # define MCE_DEFAULT_TK_KBD_CLOSE_ACTIONS        2 // = LID_CLOSE_ACTION_TKLOCK
 
-/** Autolock delay GConf setting [ms]*/
+/** Autolock delay after display off [ms]
+ *
+ * When display gets dimmed and then blanked, there is
+ * a "grace period" before the application that was
+ * active gets backgrounded and lockscreen activated.
+ */
 # define MCE_SETTING_TK_AUTOLOCK_DELAY           MCE_SETTING_TK_PATH "/autolock_delay"
 # define MCE_DEFAULT_TK_AUTOLOCK_DELAY           30000
 # define MINIMUM_AUTOLOCK_DELAY                  0
@@ -159,7 +188,7 @@ typedef enum {
     VOLKEY_POLICY_MEDIA_ONLY = 1,
 } volkey_policy_t;
 
-/** Volume key input policy setting */
+/** When MCE should block/allow volume key events */
 # define MCE_SETTING_TK_VOLKEY_POLICY            MCE_SETTING_TK_PATH "/volume_key_input_policy"
 # define MCE_DEFAULT_TK_VOLKEY_POLICY            0 // = VOLKEY_POLICY_DEFAULT
 
@@ -215,7 +244,7 @@ typedef enum {
 # define MCE_SETTING_TK_INPUT_POLICY_ENABLED     MCE_SETTING_TK_PATH "/touchscreen_policy_enabled"
 # define MCE_DEFAULT_TK_INPUT_POLICY_ENABLED     true
 
-/** Allow / try to deny lockscreen animations */
+/** Whether mce should allow lockscreen animations on unblank */
 # define MCE_SETTING_TK_LOCKSCREEN_ANIM_ENABLED  MCE_SETTING_TK_PATH "/lockscreen_animation_enabled"
 # define MCE_DEFAULT_TK_LOCKSCREEN_ANIM_ENABLED  true
 

@@ -27,7 +27,7 @@
  * Settings
  * ========================================================================= */
 
-/** Path to the GConf settings for the powerkey module */
+/** Prefix for powerkey setting keys */
 # define MCE_SETTING_POWERKEY_PATH                 "/system/osso/dsm/powerkey"
 
 /** Power key action enable modes */
@@ -46,7 +46,7 @@ typedef enum
     PWRKEY_ENABLE_NO_PROXIMITY2 = 3,
 } pwrkey_enable_mode_t;
 
-/** Powerkey mode setting */
+/** When mce should react to power key presses */
 # define MCE_SETTING_POWERKEY_MODE                 MCE_SETTING_POWERKEY_PATH "/mode"
 # define MCE_DEFAULT_POWERKEY_MODE                 1 // = PWRKEY_ENABLE_ALWAYS
 
@@ -59,48 +59,53 @@ typedef enum
     PWRKEY_BLANK_TO_LPM         = 1,
 } pwrkey_blanking_mode_t;
 
-/** Powerkey blanking mode setting */
+/** How power key "blank" action should behave */
 # define MCE_SETTING_POWERKEY_BLANKING_MODE        MCE_SETTING_POWERKEY_PATH "/blanking_mode"
 # define MCE_DEFAULT_POWERKEY_BLANKING_MODE        0 // = PWRKEY_BLANK_TO_OFF
 
-/** Powerkey press count for proximity sensor override */
+/** How many consequent power key presses trigger proximity override
+ *
+ * Rapidly pressing powerkey multiple times can be used to override
+ * proximity sensor covered state. Can be useful in situations where
+ * faulty / dirty / otherwise misbehaving proximity sensor does not
+ * allow turning display on.
+ */
 # define MCE_SETTING_POWERKEY_PS_OVERRIDE_COUNT    MCE_SETTING_POWERKEY_PATH "/ps_override_count"
 # define MCE_DEFAULT_POWERKEY_PS_OVERRIDE_COUNT    3
 
-/** Maximum delay between powerkey presses for ps override */
+/** Maximum delay between powerkey presses for ps override [ms]*/
 # define MCE_SETTING_POWERKEY_PS_OVERRIDE_TIMEOUT  MCE_SETTING_POWERKEY_PATH "/ps_override_timeout"
 # define MCE_DEFAULT_POWERKEY_PS_OVERRIDE_TIMEOUT  333
 
-/** Long press timeout setting */
+/** Threshold for long power key press [ms] */
 # define MCE_SETTING_POWERKEY_LONG_PRESS_DELAY     MCE_SETTING_POWERKEY_PATH "/long_press_delay"
 # define MCE_DEFAULT_POWERKEY_LONG_PRESS_DELAY     1500
 
-/** Double press timeout setting */
+/** Maximum wait time in between double power key presses [ms] */
 # define MCE_SETTING_POWERKEY_DOUBLE_PRESS_DELAY   MCE_SETTING_POWERKEY_PATH "/double_press_delay"
 # define MCE_DEFAULT_POWERKEY_DOUBLE_PRESS_DELAY   400
 
-/** Setting for single press actions from display on */
+/** Actions to take on single power key press from display on */
 # define MCE_SETTING_POWERKEY_ACTIONS_SINGLE_ON    MCE_SETTING_POWERKEY_PATH "/actions_single_on"
 # define MCE_DEFAULT_POWERKEY_ACTIONS_SINGLE_ON    "blank,tklock"
 
-/** Setting for double press actions from display on */
+/** Actions to take on double power key press from display on */
 # define MCE_SETTING_POWERKEY_ACTIONS_DOUBLE_ON    MCE_SETTING_POWERKEY_PATH "/actions_double_on"
 # define MCE_DEFAULT_POWERKEY_ACTIONS_DOUBLE_ON    "blank,tklock,devlock,vibrate"
 
-/** Setting for long press actions from display on */
+/** Actions to take on long power key press from display on */
 # define MCE_SETTING_POWERKEY_ACTIONS_LONG_ON      MCE_SETTING_POWERKEY_PATH "/actions_long_on"
 # define MCE_DEFAULT_POWERKEY_ACTIONS_LONG_ON      "shutdown"
 
-/** Setting for single press actions from display off */
+/** Actions to take on single power key press from display off */
 # define MCE_SETTING_POWERKEY_ACTIONS_SINGLE_OFF   MCE_SETTING_POWERKEY_PATH "/actions_single_off"
 # define MCE_DEFAULT_POWERKEY_ACTIONS_SINGLE_OFF   "unblank"
 
-/** Setting for double press actions from display off */
+/** Actions to take on double power key press from display off */
 # define MCE_SETTING_POWERKEY_ACTIONS_DOUBLE_OFF   MCE_SETTING_POWERKEY_PATH "/actions_double_off"
-/** Default actions for double press while display is off */
 # define MCE_DEFAULT_POWERKEY_ACTIONS_DOUBLE_OFF   "unblank,tkunlock"
 
-/** Setting for long press actions from display off
+/** Actions to take on long power key press from display off
  *
  * Note: If kernel side reports immediately power key press + release
  *       when device is suspended, detecting long presses might not
@@ -108,7 +113,7 @@ typedef enum
 # define MCE_SETTING_POWERKEY_ACTIONS_LONG_OFF     MCE_SETTING_POWERKEY_PATH "/actions_long_off"
 # define MCE_DEFAULT_POWERKEY_ACTIONS_LONG_OFF     ""
 
-/** Setting keys for touch screen gesture actions */
+/** Actions to take on touchscreen gesture N */
 # define MCE_SETTING_POWERKEY_ACTIONS_GESTURE0     MCE_SETTING_POWERKEY_PATH "/actions_gesture0"
 # define MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE0     "unblank"
 
@@ -145,7 +150,7 @@ typedef enum
 /** Number of configurable touchscreen gestures */
 # define POWERKEY_ACTIONS_GESTURE_COUNT            11
 
-/** Setting keys for configurable dbus actions */
+/** What to send when dbus action N is taken*/
 # define MCE_SETTING_POWERKEY_DBUS_ACTION1         MCE_SETTING_POWERKEY_PATH "/dbus_action1"
 # define MCE_DEFAULT_POWERKEY_DBUS_ACTION1         "event1"
 

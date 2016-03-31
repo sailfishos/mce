@@ -22,14 +22,14 @@
 #ifndef PROXIMITY_H_
 # define PROXIMITY_H_
 
-/** Path to the GConf settings for the proximity */
+/** Prefix for proximity sensor setting keys */
 # define MCE_SETTING_PROXIMITY_PATH             "/system/osso/dsm/proximity"
 
-/** Proximity sensor enabled GConf setting */
+/** Whether MCE is allowed to use proximity sensor */
 # define MCE_SETTING_PROXIMITY_PS_ENABLED       MCE_SETTING_PROXIMITY_PATH "/ps_enabled"
 # define MCE_DEFAULT_PROXIMITY_PS_ENABLED       true
 
-/** Proximity sensor acts as lid sensor setting */
+/** Whether proximity sensor should be treated as cover closed sensor */
 # define MCE_SETTING_PROXIMITY_PS_ACTS_AS_LID   MCE_SETTING_PROXIMITY_PATH "/ps_acts_as_lid"
 # define MCE_DEFAULT_PROXIMITY_PS_ACTS_AS_LID   false
 
