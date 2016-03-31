@@ -19,8 +19,7 @@
 
 /** Config value for doubletap enable mode */
 static dbltap_mode_t dbltap_mode = MCE_DEFAULT_DOUBLETAP_MODE;
-
-static guint dbltap_mode_gconf_id = 0;
+static guint         dbltap_mode_setting_id = 0;
 
 /** Latest reported proximity sensor state */
 static cover_state_t dbltap_ps_state = COVER_UNDEF;
@@ -242,14 +241,14 @@ static void dbltap_lid_cover_policy_trigger(gconstpointer data)
  * @param entry The modified GConf entry
  * @param data  (not used)
  */
-static void dbltap_mode_gconf_cb(GConfClient *const gcc, const guint id,
-                                 GConfEntry *const entry, gpointer const data)
+static void dbltap_mode_setting_cb(GConfClient *const gcc, const guint id,
+                                   GConfEntry *const entry, gpointer const data)
 {
         (void)gcc; (void)data;
 
         const GConfValue *gcv;
 
-        if( id != dbltap_mode_gconf_id )
+        if( id != dbltap_mode_setting_id )
                 goto EXIT;
 
         gint mode = MCE_DEFAULT_DOUBLETAP_MODE;
@@ -340,11 +339,11 @@ const gchar *g_module_check_init(GModule *module)
 
         dbltap_probe_sleep_mode_controls();
 
-        /* Runtime configuration settings */
+        /* Start tracking setting changes  */
         mce_setting_notifier_add(MCE_SETTING_DOUBLETAP_PATH,
                                  MCE_SETTING_DOUBLETAP_MODE,
-                                 dbltap_mode_gconf_cb,
-                                 &dbltap_mode_gconf_id);
+                                 dbltap_mode_setting_cb,
+                                 &dbltap_mode_setting_id);
 
         gint mode = MCE_DEFAULT_DOUBLETAP_MODE;
         mce_setting_get_int(MCE_SETTING_DOUBLETAP_MODE, &mode);
@@ -378,9 +377,9 @@ void g_module_unload(GModule *module)
 {
         (void)module;
 
-        /* Remove gconf notifications  */
-        mce_setting_notifier_remove(dbltap_mode_gconf_id),
-                dbltap_mode_gconf_id = 0;
+        /* Stop tracking setting changes  */
+        mce_setting_notifier_remove(dbltap_mode_setting_id),
+                dbltap_mode_setting_id = 0;
 
         /* Remove triggers/filters from datapipes */
         remove_output_trigger_from_datapipe(&proximity_sensor_pipe,

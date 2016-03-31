@@ -241,7 +241,7 @@ static evin_evdevtype_t  evin_evdevtype_from_info               (evin_evdevinfo_
 
 #ifdef ENABLE_DOUBLETAP_EMULATION
 
-static void         evin_doubletap_gconf_changed_cb             (GConfClient *const client, const guint id, GConfEntry *const entry, gpointer const data);
+static void         evin_doubletap_setting_cb                   (GConfClient *const client, const guint id, GConfEntry *const entry, gpointer const data);
 
 #endif // ENABLE_DOUBLETAP_EMULATION
 
@@ -389,7 +389,7 @@ static void         evin_ts_grab_changed                        (evin_input_grab
 static void         evin_ts_grab_wanted_cb                      (gconstpointer data);
 static void         evin_ts_grab_display_state_cb               (gconstpointer data);
 
-static void         evin_ts_grab_gconf_changed_cb               (GConfClient *const client, const guint id, GConfEntry *const entry, gpointer const data);
+static void         evin_ts_grab_setting_cb                     (GConfClient *const client, const guint id, GConfEntry *const entry, gpointer const data);
 
 static void         evin_ts_grab_init                           (void);
 static void         evin_ts_grab_quit                           (void);
@@ -404,13 +404,13 @@ static void         evin_kp_grab_event_filter_cb                (struct input_ev
 static void         evin_kp_grab_wanted_cb                      (gconstpointer data);
 
 /* ------------------------------------------------------------------------- *
- * GCONF_SETTINGS
+ * DYNAMIC_SETTINGS
  * ------------------------------------------------------------------------- */
 
-static void         evin_gconf_input_grab_rethink               (void);
-static void         evin_gconf_cb                               (GConfClient *const gcc, const guint id, GConfEntry *const entry, gpointer const data);
-static void         evin_gconf_init                             (void);
-static void         evin_gconf_quit                             (void);
+static void         evin_setting_input_grab_rethink             (void);
+static void         evin_setting_cb                             (GConfClient *const gcc, const guint id, GConfEntry *const entry, gpointer const data);
+static void         evin_setting_init                           (void);
+static void         evin_setting_quit                           (void);
 
 /* ------------------------------------------------------------------------- *
  * MODULE_INIT
@@ -1457,10 +1457,8 @@ cleanup:
 #ifdef ENABLE_DOUBLETAP_EMULATION
 
 /** Fake doubletap policy */
-static gboolean fake_evin_doubletap_enabled = MCE_DEFAULT_USE_FAKE_DOUBLETAP;
-
-/** GConf callback ID for fake doubletap policy changes */
-static guint fake_evin_doubletap_id = 0;
+static gboolean evin_doubletap_emulation_enabled = MCE_DEFAULT_USE_FAKE_DOUBLETAP;
+static guint    evin_doubletap_emulation_enabled_setting_id = 0;
 
 /** Callback for handling changes to fake doubletap configuration
  *
@@ -1470,22 +1468,22 @@ static guint fake_evin_doubletap_id = 0;
  * @param data   (not used)
  */
 static void
-evin_doubletap_gconf_changed_cb(GConfClient *const client, const guint id,
-                                GConfEntry *const entry, gpointer const data)
+evin_doubletap_setting_cb(GConfClient *const client, const guint id,
+                          GConfEntry *const entry, gpointer const data)
 {
     (void)client; (void)id; (void)data;
 
-    gboolean enabled = fake_evin_doubletap_enabled;
+    gboolean enabled = evin_doubletap_emulation_enabled;
     const GConfValue *value = 0;
 
     if( entry && (value = gconf_entry_get_value(entry)) ) {
         if( value->type == GCONF_VALUE_BOOL )
             enabled = gconf_value_get_bool(value);
     }
-    if( fake_evin_doubletap_enabled != enabled ) {
+    if( evin_doubletap_emulation_enabled != enabled ) {
         mce_log(LL_NOTICE, "use fake doubletap change: %d -> %d",
-                fake_evin_doubletap_enabled, enabled);
-        fake_evin_doubletap_enabled = enabled;
+                evin_doubletap_emulation_enabled, enabled);
+        evin_doubletap_emulation_enabled = enabled;
     }
 }
 
@@ -1681,7 +1679,7 @@ evin_iomon_sw_gestures_allowed(void)
         goto EXIT;
 
     /* The setting must be enabled */
-    if( !fake_evin_doubletap_enabled )
+    if( !evin_doubletap_emulation_enabled )
         goto EXIT;
 
     /* And the display must be firmly in logically off state */
@@ -3033,10 +3031,8 @@ static evin_input_grab_t evin_ts_grab_state =
 static bool evin_ts_grab_touch_detected = false;
 
 /* Touch unblock delay from settings [ms] */
-static gint evin_ts_grab_release_delay = MCE_DEFAULT_TOUCH_UNBLOCK_DELAY;
-
-/** GConf notification ID for touch unblock delay */
-static guint evin_ts_grab_release_delay_id = 0;
+static gint  evin_ts_grab_release_delay = MCE_DEFAULT_TOUCH_UNBLOCK_DELAY;
+static guint evin_ts_grab_release_delay_setting_id = 0;
 
 /** Gconf notification callback for touch unblock delay
  *
@@ -3046,10 +3042,10 @@ static guint evin_ts_grab_release_delay_id = 0;
  * @param data   (not used)
  */
 static void
-evin_ts_grab_gconf_changed_cb(GConfClient *const client,
-                              const guint id,
-                              GConfEntry *const entry,
-                              gpointer const data)
+evin_ts_grab_setting_cb(GConfClient *const client,
+                        const guint id,
+                        GConfEntry *const entry,
+                        gpointer const data)
 {
     (void)client; (void)id; (void)data;
 
@@ -3180,8 +3176,8 @@ evin_ts_grab_init(void)
     /* Get touch unblock delay */
     mce_setting_notifier_add(MCE_SETTING_EVENT_INPUT_PATH,
                              MCE_SETTING_TOUCH_UNBLOCK_DELAY,
-                             evin_ts_grab_gconf_changed_cb,
-                             &evin_ts_grab_release_delay_id);
+                             evin_ts_grab_setting_cb,
+                             &evin_ts_grab_release_delay_setting_id);
 
     mce_setting_get_int(MCE_SETTING_TOUCH_UNBLOCK_DELAY,
                         &evin_ts_grab_release_delay);
@@ -3197,8 +3193,8 @@ evin_ts_grab_init(void)
 static void
 evin_ts_grab_quit(void)
 {
-    mce_setting_notifier_remove(evin_ts_grab_release_delay_id),
-        evin_ts_grab_release_delay_id = 0;
+    mce_setting_notifier_remove(evin_ts_grab_release_delay_setting_id),
+        evin_ts_grab_release_delay_setting_id = 0;
 
     evin_input_grab_reset(&evin_ts_grab_state);
 }
@@ -3304,20 +3300,19 @@ evin_kp_grab_wanted_cb(gconstpointer data)
 }
 
 /* ========================================================================= *
- * GCONF_SETTINGS
+ * DYNAMIC_SETTINGS
  * ========================================================================= */
 
 /** Flag: Input device types that can be grabbed */
-static gint evin_gconf_input_grab_allowed = MCE_DEFAULT_INPUT_GRAB_ALLOWED;
-/** GConf notifier id for tracking evin_gconf_input_grab_allowed changes */
-static guint evin_gconf_input_grab_allowed_id = 0;
+static gint  evin_setting_input_grab_allowed = MCE_DEFAULT_INPUT_GRAB_ALLOWED;
+static guint evin_setting_input_grab_allowed_setting_id = 0;
 
 /** Handle changes to the list of grabbable input devices
  */
-static void evin_gconf_input_grab_rethink(void)
+static void evin_setting_input_grab_rethink(void)
 {
-    bool ts = (evin_gconf_input_grab_allowed & MCE_INPUT_GRAB_ALLOW_TS) != 0;
-    bool kp = (evin_gconf_input_grab_allowed & MCE_INPUT_GRAB_ALLOW_KP) != 0;
+    bool ts = (evin_setting_input_grab_allowed & MCE_INPUT_GRAB_ALLOW_TS) != 0;
+    bool kp = (evin_setting_input_grab_allowed & MCE_INPUT_GRAB_ALLOW_KP) != 0;
 
     evin_input_grab_allow_grab(&evin_ts_grab_state, ts);
     evin_input_grab_allow_grab(&evin_kp_grab_state, kp);
@@ -3330,8 +3325,8 @@ static void evin_gconf_input_grab_rethink(void)
  * @param entry  The modified GConf entry
  * @param data   Unused
  */
-static void evin_gconf_cb(GConfClient *const gcc, const guint id,
-                          GConfEntry *const entry, gpointer const data)
+static void evin_setting_cb(GConfClient *const gcc, const guint id,
+                            GConfEntry *const entry, gpointer const data)
 {
     (void)gcc;
     (void)data;
@@ -3345,14 +3340,14 @@ static void evin_gconf_cb(GConfClient *const gcc, const guint id,
         goto EXIT;
     }
 
-    if( id == evin_gconf_input_grab_allowed_id ) {
-        gint old = evin_gconf_input_grab_allowed;
+    if( id == evin_setting_input_grab_allowed_setting_id ) {
+        gint old = evin_setting_input_grab_allowed;
 
-        evin_gconf_input_grab_allowed = gconf_value_get_int(gcv);
+        evin_setting_input_grab_allowed = gconf_value_get_int(gcv);
 
-        mce_log(LL_NOTICE, "evin_gconf_input_grab_allowed: %d -> %d",
-                old, evin_gconf_input_grab_allowed);
-        evin_gconf_input_grab_rethink();
+        mce_log(LL_NOTICE, "evin_setting_input_grab_allowed: %d -> %d",
+                old, evin_setting_input_grab_allowed);
+        evin_setting_input_grab_rethink();
     }
     else {
         mce_log(LL_WARN, "Spurious GConf value received; confused!");
@@ -3362,26 +3357,26 @@ EXIT:
     return;
 }
 
-/** Get intial gconf based settings and add change notifiers
+/** Get intial setting values and start tracking changes
  */
-static void evin_gconf_init(void)
+static void evin_setting_init(void)
 {
     /* Bitmask of input devices that can be grabbed */
     mce_setting_track_int(MCE_SETTING_INPUT_GRAB_ALLOWED,
-                          &evin_gconf_input_grab_allowed,
+                          &evin_setting_input_grab_allowed,
                           MCE_DEFAULT_INPUT_GRAB_ALLOWED,
-                          evin_gconf_cb,
-                          &evin_gconf_input_grab_allowed_id);
+                          evin_setting_cb,
+                          &evin_setting_input_grab_allowed_setting_id);
 
-    evin_gconf_input_grab_rethink();
+    evin_setting_input_grab_rethink();
 }
 
-/** Remove gconf change notifiers
+/** Stop tracking setting changes
  */
-static void evin_gconf_quit(void)
+static void evin_setting_quit(void)
 {
-    mce_setting_notifier_remove(evin_gconf_input_grab_allowed_id),
-        evin_gconf_input_grab_allowed_id = 0;
+    mce_setting_notifier_remove(evin_setting_input_grab_allowed_setting_id),
+        evin_setting_input_grab_allowed_setting_id = 0;
 }
 
 /* ========================================================================= *
@@ -3403,17 +3398,17 @@ mce_input_init(void)
 
     evin_ts_grab_init();
 
-    evin_gconf_init();
+    evin_setting_init();
 
 #ifdef ENABLE_DOUBLETAP_EMULATION
     /* Get fake doubletap policy configuration & track changes */
     mce_setting_notifier_add(MCE_SETTING_EVENT_INPUT_PATH,
                              MCE_SETTING_USE_FAKE_DOUBLETAP,
-                             evin_doubletap_gconf_changed_cb,
-                             &fake_evin_doubletap_id);
+                             evin_doubletap_setting_cb,
+                             &evin_doubletap_emulation_enabled_setting_id);
 
     mce_setting_get_bool(MCE_SETTING_USE_FAKE_DOUBLETAP,
-                         &fake_evin_doubletap_enabled);
+                         &evin_doubletap_emulation_enabled);
 #endif
 
     /* Append triggers/filters to datapipes */
@@ -3451,8 +3446,8 @@ mce_input_exit(void)
 {
 #ifdef ENABLE_DOUBLETAP_EMULATION
     /* Remove fake doubletap policy change notifier */
-    mce_setting_notifier_remove(fake_evin_doubletap_id),
-        fake_evin_doubletap_id = 0;
+    mce_setting_notifier_remove(evin_doubletap_emulation_enabled_setting_id),
+        evin_doubletap_emulation_enabled_setting_id = 0;
 #endif
 
     /* Remove triggers/filters from datapipes */
@@ -3470,7 +3465,7 @@ mce_input_exit(void)
     /* Remove input device directory monitor */
     evin_devdir_monitor_quit();
 
-    evin_gconf_quit();
+    evin_setting_quit();
 
     evin_iomon_quit();
 

@@ -1595,7 +1595,7 @@ START_TEST (ut_check_auto_blank)
 	 *  - setup_blank_timeout() is only called from LPM_ON.
 	 *  - DEFAULT_LPM_BLANK_TIMEOUT is 0 (disabled).
 	 *  - no way to change disp_lpm_blank_timeout from outside
-	 *    - no API, no gconf
+	 *    - no API, no setting
 	 */
 	stub__mce_setting_set_bool(MCE_SETTING_USE_LOW_POWER_MODE_PATH, TRUE);
 	const gint set_disp_lpm_blank_timeout = 2;

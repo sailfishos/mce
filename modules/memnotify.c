@@ -145,12 +145,12 @@ static bool     memnotify_dev_set_trigger  (memnotify_level_t lev, const memnoti
 static bool     memnotify_dev_get_status   (memnotify_level_t lev, memnotify_limit_t *state);
 
 /* ========================================================================= *
- * CONFIG_TRACKING
+ * DYNAMIC_SETTINGS
  * ========================================================================= */
 
-static void memnotify_gconf_cb   (GConfClient *const gcc, const guint id, GConfEntry *const entry, gpointer const data);
-static void memnotify_gconf_init (void);
-static void memnotify_gconf_quit (void);
+static void memnotify_setting_cb   (GConfClient *const gcc, const guint id, GConfEntry *const entry, gpointer const data);
+static void memnotify_setting_init (void);
+static void memnotify_setting_quit (void);
 
 /* ========================================================================= *
  * DBUS_INTERFACE
@@ -701,20 +701,20 @@ EXIT:
 }
 
 /* ========================================================================= *
- * CONFIG_TRACKING
+ * DYNAMIC_SETTINGS
  * ========================================================================= */
 
 /** GConf notification id for memnotify.warning.used level */
-static guint memnotify_gconf_warning_used_id = 0;
+static guint memnotify_setting_warning_used_id = 0;
 
 /** GConf notification id for memnotify.warning.active level */
-static guint memnotify_gconf_warning_active_id = 0;
+static guint memnotify_setting_warning_active_id = 0;
 
 /** GConf notification id for memnotify.critical.used level */
-static guint memnotify_gconf_critical_used_id = 0;
+static guint memnotify_setting_critical_used_id = 0;
 
 /** GConf notification id for memnotify.critical.active level */
-static guint memnotify_gconf_critical_active_id = 0;
+static guint memnotify_setting_critical_active_id = 0;
 
 /** GConf callback for memnotify related settings
  *
@@ -724,8 +724,8 @@ static guint memnotify_gconf_critical_active_id = 0;
  * @param data   (not used)
  */
 static void
-memnotify_gconf_cb(GConfClient *const gcc, const guint id,
-                   GConfEntry *const entry, gpointer const data)
+memnotify_setting_cb(GConfClient *const gcc, const guint id,
+                     GConfEntry *const entry, gpointer const data)
 {
     const GConfValue *gcv = gconf_entry_get_value(entry);
 
@@ -739,7 +739,7 @@ memnotify_gconf_cb(GConfClient *const gcc, const guint id,
         goto EXIT;
     }
 
-    if( id == memnotify_gconf_warning_used_id ) {
+    if( id == memnotify_setting_warning_used_id ) {
         gint old = memnotify_limit[MEMNOTIFY_LEVEL_WARNING].mnl_used;
         gint val = gconf_value_get_int(gcv);
         if( old != val ) {
@@ -748,7 +748,7 @@ memnotify_gconf_cb(GConfClient *const gcc, const guint id,
             memnotify_status_update_triggers();
         }
     }
-    else if( id == memnotify_gconf_warning_active_id ) {
+    else if( id == memnotify_setting_warning_active_id ) {
         gint old = memnotify_limit[MEMNOTIFY_LEVEL_WARNING].mnl_active;
         gint val = gconf_value_get_int(gcv);
         if( old != val ) {
@@ -757,7 +757,7 @@ memnotify_gconf_cb(GConfClient *const gcc, const guint id,
             memnotify_status_update_triggers();
         }
     }
-    else if( id == memnotify_gconf_critical_used_id ) {
+    else if( id == memnotify_setting_critical_used_id ) {
         gint old = memnotify_limit[MEMNOTIFY_LEVEL_CRITICAL].mnl_used;
         gint val = gconf_value_get_int(gcv);
         if( old != val ) {
@@ -766,7 +766,7 @@ memnotify_gconf_cb(GConfClient *const gcc, const guint id,
             memnotify_status_update_triggers();
         }
     }
-    else if( id == memnotify_gconf_critical_active_id ) {
+    else if( id == memnotify_setting_critical_active_id ) {
         gint old = memnotify_limit[MEMNOTIFY_LEVEL_CRITICAL].mnl_active;
         gint val = gconf_value_get_int(gcv);
         if( old != val ) {
@@ -784,15 +784,15 @@ EXIT:
     return;
 }
 
-/** Get initial GConf values and start tracking changes
+/** Get initial setting values and start tracking changes
  */
-static void memnotify_gconf_init(void)
+static void memnotify_setting_init(void)
 {
     /* memnotify.warning.used level */
     mce_setting_notifier_add(MCE_SETTING_MEMNOTIFY_WARNING_PATH,
                              MCE_SETTING_MEMNOTIFY_WARNING_USED,
-                             memnotify_gconf_cb,
-                             &memnotify_gconf_warning_used_id);
+                             memnotify_setting_cb,
+                             &memnotify_setting_warning_used_id);
 
     mce_setting_get_int(MCE_SETTING_MEMNOTIFY_WARNING_USED,
                         &memnotify_limit[MEMNOTIFY_LEVEL_WARNING].mnl_used);
@@ -800,8 +800,8 @@ static void memnotify_gconf_init(void)
     /* memnotify.warning.active level */
     mce_setting_notifier_add(MCE_SETTING_MEMNOTIFY_WARNING_PATH,
                              MCE_SETTING_MEMNOTIFY_WARNING_ACTIVE,
-                             memnotify_gconf_cb,
-                             &memnotify_gconf_warning_active_id);
+                             memnotify_setting_cb,
+                             &memnotify_setting_warning_active_id);
 
     mce_setting_get_int(MCE_SETTING_MEMNOTIFY_WARNING_ACTIVE,
                         &memnotify_limit[MEMNOTIFY_LEVEL_WARNING].mnl_active);
@@ -809,8 +809,8 @@ static void memnotify_gconf_init(void)
     /* memnotify.critical.used level */
     mce_setting_notifier_add(MCE_SETTING_MEMNOTIFY_CRITICAL_PATH,
                              MCE_SETTING_MEMNOTIFY_CRITICAL_USED,
-                             memnotify_gconf_cb,
-                             &memnotify_gconf_critical_used_id);
+                             memnotify_setting_cb,
+                             &memnotify_setting_critical_used_id);
 
     mce_setting_get_int(MCE_SETTING_MEMNOTIFY_CRITICAL_USED,
                         &memnotify_limit[MEMNOTIFY_LEVEL_CRITICAL].mnl_used);
@@ -818,8 +818,8 @@ static void memnotify_gconf_init(void)
     /* memnotify.critical.active level */
     mce_setting_notifier_add(MCE_SETTING_MEMNOTIFY_CRITICAL_PATH,
                              MCE_SETTING_MEMNOTIFY_CRITICAL_ACTIVE,
-                             memnotify_gconf_cb,
-                             &memnotify_gconf_critical_active_id);
+                             memnotify_setting_cb,
+                             &memnotify_setting_critical_active_id);
 
     mce_setting_get_int(MCE_SETTING_MEMNOTIFY_CRITICAL_ACTIVE,
                         &memnotify_limit[MEMNOTIFY_LEVEL_CRITICAL].mnl_active);
@@ -827,21 +827,21 @@ static void memnotify_gconf_init(void)
     memnotify_status_show_triggers();
 }
 
-/** Remove GConf change notifiers
+/** Stop tracking setting changes
  */
-static void memnotify_gconf_quit(void)
+static void memnotify_setting_quit(void)
 {
-    mce_setting_notifier_remove(memnotify_gconf_warning_used_id),
-        memnotify_gconf_warning_used_id = 0;
+    mce_setting_notifier_remove(memnotify_setting_warning_used_id),
+        memnotify_setting_warning_used_id = 0;
 
-    mce_setting_notifier_remove(memnotify_gconf_warning_active_id),
-        memnotify_gconf_warning_active_id = 0;
+    mce_setting_notifier_remove(memnotify_setting_warning_active_id),
+        memnotify_setting_warning_active_id = 0;
 
-    mce_setting_notifier_remove(memnotify_gconf_critical_used_id),
-        memnotify_gconf_critical_used_id = 0;
+    mce_setting_notifier_remove(memnotify_setting_critical_used_id),
+        memnotify_setting_critical_used_id = 0;
 
-    mce_setting_notifier_remove(memnotify_gconf_critical_active_id),
-        memnotify_gconf_critical_active_id = 0;
+    mce_setting_notifier_remove(memnotify_setting_critical_active_id),
+        memnotify_setting_critical_active_id = 0;
 }
 
 /* ========================================================================= *
@@ -946,7 +946,7 @@ const gchar *g_module_check_init(GModule *module)
     (void)module;
 
     memnotify_dbus_init();
-    memnotify_gconf_init();
+    memnotify_setting_init();
 
     /* Do not even attempt to set up tracking if the memnotify
      * device node is not available */
@@ -984,7 +984,7 @@ void g_module_unload(GModule *module)
 
     mce_log(LL_DEBUG, "unloading memnotify plugin");
 
-    memnotify_gconf_quit();
+    memnotify_setting_quit();
     memnotify_dbus_quit();
     memnotify_dev_close_all();
 

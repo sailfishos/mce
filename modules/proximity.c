@@ -374,7 +374,7 @@ void g_module_unload(GModule *module)
 {
 	(void)module;
 
-	/* Remove gconf notifications  */
+	/* Stop tracking setting changes  */
 	mce_setting_notifier_remove(use_ps_conf_id),
 		use_ps_conf_id = 0;
 

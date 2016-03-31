@@ -52,20 +52,17 @@ static gint battery_level = 100;
 /** Charger state */
 static charger_state_t charger_state = CHARGER_STATE_UNDEF;
 
-/** GConf callback ID for power saving mode setting */
-static guint psm_gconf_cb_id = 0;
-/** Power saving mode from GConf */
+/** Power saving mode enabled setting */
 static gboolean power_saving_mode = MCE_DEFAULT_EM_ENABLE_PSM;
+static guint    power_saving_mode_setting_id = 0;
 
-/** GConf callback ID for forced power saving mode setting */
-static guint force_psm_gconf_cb_id = 0;
-/** Forced power saving mode from GConf */
+/** Forced power saving mode setting */
 static gboolean force_psm = MCE_DEFAULT_EM_FORCED_PSM;
+static guint    force_psm_setting_id = 0;
 
-/** GConf callback ID for power saving mode threshold */
-static guint psm_threshold_gconf_cb_id = 0;
-/** Power saving mode threshold from GConf */
-static gint psm_threshold = MCE_DEFAULT_EM_PSM_THRESHOLD;
+/** Power saving mode threshold setting */
+static gint  psm_threshold = MCE_DEFAULT_EM_PSM_THRESHOLD;
+static guint psm_threshold_setting_id = 0;
 
 /** Active power saving mode */
 static gboolean active_power_saving_mode = FALSE;
@@ -202,8 +199,8 @@ static void thermal_state_trigger(gconstpointer const data)
  * @param entry The modified GConf entry
  * @param data Unused
  */
-static void psm_gconf_cb(GConfClient *const gcc, const guint id,
-			 GConfEntry *const entry, gpointer const data)
+static void psm_setting_cb(GConfClient *const gcc, const guint id,
+			   GConfEntry *const entry, gpointer const data)
 {
 	const GConfValue *gcv = gconf_entry_get_value(entry);
 
@@ -218,13 +215,13 @@ static void psm_gconf_cb(GConfClient *const gcc, const guint id,
 		goto EXIT;
 	}
 
-	if (id == psm_gconf_cb_id) {
+	if (id == power_saving_mode_setting_id) {
 		power_saving_mode = gconf_value_get_bool(gcv);
 		update_power_saving_mode();
-	} else if (id == force_psm_gconf_cb_id) {
+	} else if (id == force_psm_setting_id) {
 		force_psm = gconf_value_get_bool(gcv);
 		update_power_saving_mode();
-	} else if (id == psm_threshold_gconf_cb_id) {
+	} else if (id == psm_threshold_setting_id) {
 		psm_threshold = gconf_value_get_int(gcv);
 		update_power_saving_mode();
 	} else {
@@ -324,8 +321,8 @@ const gchar *g_module_check_init(GModule *module)
 	/* Since we've set a default, error handling is unnecessary */
 	mce_setting_notifier_add(MCE_SETTING_EM_PATH,
 				 MCE_SETTING_EM_ENABLE_PSM,
-				 psm_gconf_cb,
-				 &psm_gconf_cb_id);
+				 psm_setting_cb,
+				 &power_saving_mode_setting_id);
 
 	mce_setting_get_bool(MCE_SETTING_EM_ENABLE_PSM,
 			     &power_saving_mode);
@@ -334,8 +331,8 @@ const gchar *g_module_check_init(GModule *module)
 	/* Since we've set a default, error handling is unnecessary */
 	mce_setting_notifier_add(MCE_SETTING_EM_PATH,
 				 MCE_SETTING_EM_FORCED_PSM,
-				 psm_gconf_cb,
-				 &force_psm_gconf_cb_id);
+				 psm_setting_cb,
+				 &force_psm_setting_id);
 
 	mce_setting_get_bool(MCE_SETTING_EM_FORCED_PSM,
 			     &force_psm);
@@ -344,8 +341,8 @@ const gchar *g_module_check_init(GModule *module)
 	/* Since we've set a default, error handling is unnecessary */
 	mce_setting_notifier_add(MCE_SETTING_EM_PATH,
 				 MCE_SETTING_EM_PSM_THRESHOLD,
-				 psm_gconf_cb,
-				 &psm_threshold_gconf_cb_id);
+				 psm_setting_cb,
+				 &psm_threshold_setting_id);
 
 	mce_setting_get_int(MCE_SETTING_EM_PSM_THRESHOLD,
 			    &psm_threshold);
@@ -368,15 +365,15 @@ void g_module_unload(GModule *module)
 {
 	(void)module;
 
-	/* Remove gconf notifications  */
-	mce_setting_notifier_remove(psm_gconf_cb_id),
-		psm_gconf_cb_id = 0;
+	/* Stop tracking setting changes */
+	mce_setting_notifier_remove(power_saving_mode_setting_id),
+		power_saving_mode_setting_id = 0;
 
-	mce_setting_notifier_remove(force_psm_gconf_cb_id),
-		force_psm_gconf_cb_id = 0;
+	mce_setting_notifier_remove(force_psm_setting_id),
+		force_psm_setting_id = 0;
 
-	mce_setting_notifier_remove(psm_threshold_gconf_cb_id),
-		psm_threshold_gconf_cb_id = 0;
+	mce_setting_notifier_remove(psm_threshold_setting_id),
+		psm_threshold_setting_id = 0;
 
 	/* Remove dbus handlers */
 	mce_psm_quit_dbus();

@@ -116,7 +116,7 @@ int, suspend_allow_state, (void))
 	if( renderer_ui_state != RENDERER_DISABLED )
 		block_early = true;
 
-	/* adjust based on gconf setting */
+	/* adjust based on setting */
 	switch( suspend_policy ) {
 	case SUSPEND_POLICY_DISABLED:
 		block_early = true;
