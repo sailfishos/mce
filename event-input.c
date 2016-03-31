@@ -3178,13 +3178,13 @@ static void
 evin_ts_grab_init(void)
 {
     /* Get touch unblock delay */
-    mce_gconf_notifier_add(MCE_SETTING_EVENT_INPUT_PATH,
-                           MCE_SETTING_TOUCH_UNBLOCK_DELAY,
-                           evin_ts_grab_gconf_changed_cb,
-                           &evin_ts_grab_release_delay_id);
+    mce_setting_notifier_add(MCE_SETTING_EVENT_INPUT_PATH,
+                             MCE_SETTING_TOUCH_UNBLOCK_DELAY,
+                             evin_ts_grab_gconf_changed_cb,
+                             &evin_ts_grab_release_delay_id);
 
-    mce_gconf_get_int(MCE_SETTING_TOUCH_UNBLOCK_DELAY,
-                      &evin_ts_grab_release_delay);
+    mce_setting_get_int(MCE_SETTING_TOUCH_UNBLOCK_DELAY,
+                        &evin_ts_grab_release_delay);
 
     mce_log(LL_INFO, "touch unblock delay config: %d",
             evin_ts_grab_release_delay);
@@ -3197,7 +3197,7 @@ evin_ts_grab_init(void)
 static void
 evin_ts_grab_quit(void)
 {
-    mce_gconf_notifier_remove(evin_ts_grab_release_delay_id),
+    mce_setting_notifier_remove(evin_ts_grab_release_delay_id),
         evin_ts_grab_release_delay_id = 0;
 
     evin_input_grab_reset(&evin_ts_grab_state);
@@ -3367,11 +3367,11 @@ EXIT:
 static void evin_gconf_init(void)
 {
     /* Bitmask of input devices that can be grabbed */
-    mce_gconf_track_int(MCE_SETTING_INPUT_GRAB_ALLOWED,
-                        &evin_gconf_input_grab_allowed,
-                        MCE_DEFAULT_INPUT_GRAB_ALLOWED,
-                        evin_gconf_cb,
-                        &evin_gconf_input_grab_allowed_id);
+    mce_setting_track_int(MCE_SETTING_INPUT_GRAB_ALLOWED,
+                          &evin_gconf_input_grab_allowed,
+                          MCE_DEFAULT_INPUT_GRAB_ALLOWED,
+                          evin_gconf_cb,
+                          &evin_gconf_input_grab_allowed_id);
 
     evin_gconf_input_grab_rethink();
 }
@@ -3380,7 +3380,7 @@ static void evin_gconf_init(void)
  */
 static void evin_gconf_quit(void)
 {
-    mce_gconf_notifier_remove(evin_gconf_input_grab_allowed_id),
+    mce_setting_notifier_remove(evin_gconf_input_grab_allowed_id),
         evin_gconf_input_grab_allowed_id = 0;
 }
 
@@ -3407,13 +3407,13 @@ mce_input_init(void)
 
 #ifdef ENABLE_DOUBLETAP_EMULATION
     /* Get fake doubletap policy configuration & track changes */
-    mce_gconf_notifier_add(MCE_SETTING_EVENT_INPUT_PATH,
-                           MCE_SETTING_USE_FAKE_DOUBLETAP,
-                           evin_doubletap_gconf_changed_cb,
-                           &fake_evin_doubletap_id);
+    mce_setting_notifier_add(MCE_SETTING_EVENT_INPUT_PATH,
+                             MCE_SETTING_USE_FAKE_DOUBLETAP,
+                             evin_doubletap_gconf_changed_cb,
+                             &fake_evin_doubletap_id);
 
-    mce_gconf_get_bool(MCE_SETTING_USE_FAKE_DOUBLETAP,
-                       &fake_evin_doubletap_enabled);
+    mce_setting_get_bool(MCE_SETTING_USE_FAKE_DOUBLETAP,
+                         &fake_evin_doubletap_enabled);
 #endif
 
     /* Append triggers/filters to datapipes */
@@ -3451,7 +3451,7 @@ mce_input_exit(void)
 {
 #ifdef ENABLE_DOUBLETAP_EMULATION
     /* Remove fake doubletap policy change notifier */
-    mce_gconf_notifier_remove(fake_evin_doubletap_id),
+    mce_setting_notifier_remove(fake_evin_doubletap_id),
         fake_evin_doubletap_id = 0;
 #endif
 

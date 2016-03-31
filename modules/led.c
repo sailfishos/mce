@@ -949,7 +949,7 @@ static void led_pattern_delete(pattern_struct *self)
 		goto EXIT;
 
 	mce_hbtimer_delete(self->timeout_id);
-	mce_gconf_notifier_remove(self->gconf_cb_id);
+	mce_setting_notifier_remove(self->gconf_cb_id);
 	free(self->name);
 
 	g_slice_free(pattern_struct, self);
@@ -1961,15 +1961,15 @@ static gboolean pattern_get_enabled(const gchar *const patternname,
 	/* Since custom led patterns do not have persistent toggles
 	 * in configuration, avoid complaining about missing keys
 	 * on default verbosity level. */
-	if( !mce_gconf_has_key(path) ) {
+	if( !mce_setting_has_key(path) ) {
 		mce_log(LL_INFO, "missing led config entry: %s", path);
 		goto EXIT;
 	}
 
 	/* Since we've set a default, error handling is unnecessary */
-	mce_gconf_notifier_add(MCE_SETTING_LED_PATH, path,
-			       led_gconf_cb, gconf_cb_id);
-	mce_gconf_get_bool(path, &retval);
+	mce_setting_notifier_add(MCE_SETTING_LED_PATH, path,
+				 led_gconf_cb, gconf_cb_id);
+	mce_setting_get_bool(path, &retval);
 
 EXIT:
 	g_free(path);
@@ -2934,10 +2934,10 @@ EXIT:
  */
 static void sw_breathing_quit(void)
 {
-	mce_gconf_notifier_remove(sw_breathing_battery_limit_gconf_id),
+	mce_setting_notifier_remove(sw_breathing_battery_limit_gconf_id),
 		sw_breathing_battery_limit_gconf_id = 0;
 
-	mce_gconf_notifier_remove(sw_breathing_enabled_gconf_id),
+	mce_setting_notifier_remove(sw_breathing_enabled_gconf_id),
 		sw_breathing_enabled_gconf_id = 0;
 
 	allow_sw_breathing(false);
@@ -2948,21 +2948,21 @@ static void sw_breathing_quit(void)
 static void sw_breathing_init(void)
 {
 	/* sw_breath_enabled */
-	mce_gconf_notifier_add(MCE_SETTING_LED_PATH,
+	mce_setting_notifier_add(MCE_SETTING_LED_PATH,
 			       MCE_SETTING_LED_SW_BREATH_ENABLED,
 			       sw_breathing_gconf_cb,
 			       &sw_breathing_enabled_gconf_id);
 
-	mce_gconf_get_bool(MCE_SETTING_LED_SW_BREATH_ENABLED,
+	mce_setting_get_bool(MCE_SETTING_LED_SW_BREATH_ENABLED,
 			   &sw_breathing_enabled);
 
 	/* sw_breath_battery_limit */
-	mce_gconf_notifier_add(MCE_SETTING_LED_PATH,
+	mce_setting_notifier_add(MCE_SETTING_LED_PATH,
 			       MCE_SETTING_LED_SW_BREATH_BATTERY_LIMIT,
 			       sw_breathing_gconf_cb,
 			       &sw_breathing_battery_limit_gconf_id);
 
-	mce_gconf_get_int(MCE_SETTING_LED_SW_BREATH_BATTERY_LIMIT,
+	mce_setting_get_int(MCE_SETTING_LED_SW_BREATH_BATTERY_LIMIT,
 			  &sw_breathing_battery_limit);
 }
 

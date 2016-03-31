@@ -341,13 +341,13 @@ const gchar *g_module_check_init(GModule *module)
         dbltap_probe_sleep_mode_controls();
 
         /* Runtime configuration settings */
-        mce_gconf_notifier_add(MCE_SETTING_DOUBLETAP_PATH,
-                               MCE_SETTING_DOUBLETAP_MODE,
-                               dbltap_mode_gconf_cb,
-                               &dbltap_mode_gconf_id);
+        mce_setting_notifier_add(MCE_SETTING_DOUBLETAP_PATH,
+                                 MCE_SETTING_DOUBLETAP_MODE,
+                                 dbltap_mode_gconf_cb,
+                                 &dbltap_mode_gconf_id);
 
         gint mode = MCE_DEFAULT_DOUBLETAP_MODE;
-        mce_gconf_get_int(MCE_SETTING_DOUBLETAP_MODE, &mode);
+        mce_setting_get_int(MCE_SETTING_DOUBLETAP_MODE, &mode);
         dbltap_mode = mode;
 
         /* Append triggers/filters to datapipes */
@@ -379,7 +379,7 @@ void g_module_unload(GModule *module)
         (void)module;
 
         /* Remove gconf notifications  */
-        mce_gconf_notifier_remove(dbltap_mode_gconf_id),
+        mce_setting_notifier_remove(dbltap_mode_gconf_id),
                 dbltap_mode_gconf_id = 0;
 
         /* Remove triggers/filters from datapipes */

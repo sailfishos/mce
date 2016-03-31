@@ -39,7 +39,7 @@ static GSList *gconf_notifiers = NULL;
  *
  * @return TRUE if value exits, FALSE otherwise
  */
-gboolean mce_gconf_has_key(const gchar *const key)
+gboolean mce_setting_has_key(const gchar *const key)
 {
 	gboolean    res = FALSE;
 	GConfValue *val = 0;
@@ -65,7 +65,7 @@ EXIT:
  * @param value The value to set the key to
  * @return TRUE on success, FALSE on failure
  */
-gboolean mce_gconf_set_int(const gchar *const key, const gint value)
+gboolean mce_setting_set_int(const gchar *const key, const gint value)
 {
 	gboolean status = FALSE;
 
@@ -95,7 +95,7 @@ EXIT:
  * @param value The value to set the key to
  * @return TRUE on success, FALSE on failure
  */
-gboolean mce_gconf_set_string(const gchar *const key, const gchar *const value)
+gboolean mce_setting_set_string(const gchar *const key, const gchar *const value)
 {
 	gboolean status = FALSE;
 
@@ -125,7 +125,7 @@ EXIT:
  * @param[out] value Will contain the value on return, if successful
  * @return TRUE on success, FALSE on failure
  */
-gboolean mce_gconf_get_bool(const gchar *const key, gboolean *value)
+gboolean mce_setting_get_bool(const gchar *const key, gboolean *value)
 {
 	gboolean status = FALSE;
 	GError *error = NULL;
@@ -171,7 +171,7 @@ EXIT:
  * @param[out] value Will contain the value on return
  * @return TRUE on success, FALSE on failure
  */
-gboolean mce_gconf_get_int(const gchar *const key, gint *value)
+gboolean mce_setting_get_int(const gchar *const key, gint *value)
 {
 	gboolean status = FALSE;
 	GError *error = NULL;
@@ -217,7 +217,7 @@ EXIT:
  * @param[out] values Will contain an GSList with the values on return
  * @return TRUE on success, FALSE on failure
  */
-gboolean mce_gconf_get_int_list(const gchar *const key, GSList **values)
+gboolean mce_setting_get_int_list(const gchar *const key, GSList **values)
 {
 	gboolean status = FALSE;
 	GError *error = NULL;
@@ -280,7 +280,7 @@ EXIT:
  * @param[out] value Will contain a newly allocated string with the value
  * @return TRUE on success, FALSE on failure
  */
-gboolean mce_gconf_get_string(const gchar *const key, gchar **value)
+gboolean mce_setting_get_string(const gchar *const key, gchar **value)
 {
 	gboolean status = FALSE;
 	GError *error = NULL;
@@ -329,7 +329,7 @@ EXIT:
  *
  * @return TRUE on success, FALSE on failure
  */
-gboolean mce_gconf_notifier_add(const gchar *path, const gchar *key,
+gboolean mce_setting_notifier_add(const gchar *path, const gchar *key,
 				const GConfClientNotifyFunc callback,
 				guint *cb_id)
 {
@@ -388,7 +388,7 @@ EXIT:
  *
  * @param id The ID of the notifier to remove, or zero
  */
-void mce_gconf_notifier_remove(guint id)
+void mce_setting_notifier_remove(guint id)
 {
 	if( gconf_disabled )
 		goto EXIT;
@@ -408,16 +408,16 @@ EXIT:
  * @param cb_id The ID of the notifier to remove
  * @param user_data Unused
  */
-void mce_gconf_notifier_remove_cb(gpointer cb_id, gpointer user_data)
+void mce_setting_notifier_remove_cb(gpointer cb_id, gpointer user_data)
 {
 	(void)user_data;
 
-	mce_gconf_notifier_remove(GPOINTER_TO_INT(cb_id));
+	mce_setting_notifier_remove(GPOINTER_TO_INT(cb_id));
 }
 
 /** Helper for getting path of gconf key
  */
-static gchar *mce_gconf_get_path(const gchar *key)
+static gchar *mce_setting_get_path(const gchar *key)
 {
 	gchar       *res = 0;
 	const gchar *end = strrchr(key, '/');
@@ -437,15 +437,15 @@ static gchar *mce_gconf_get_path(const gchar *key)
  * @param cb    change notification callback
  * @param cb_id where to store notification callback id
  */
-void mce_gconf_track_int(const gchar *key, gint *val, gint def,
+void mce_setting_track_int(const gchar *key, gint *val, gint def,
 			 GConfClientNotifyFunc cb, guint *cb_id)
 {
-	gchar *path = mce_gconf_get_path(key);
+	gchar *path = mce_setting_get_path(key);
 
 	if( path && cb && cb_id )
-		mce_gconf_notifier_add(path, key, cb, cb_id);
+		mce_setting_notifier_add(path, key, cb, cb_id);
 
-	if( !mce_gconf_get_int(key, val) && def != -1 )
+	if( !mce_setting_get_int(key, val) && def != -1 )
 		*val = def;
 
 	g_free(path);
@@ -460,15 +460,15 @@ void mce_gconf_track_int(const gchar *key, gint *val, gint def,
  * @param cb    change notification callback
  * @param cb_id where to store notification callback id
  */
-void mce_gconf_track_bool(const gchar *key, gboolean *val, gint def,
+void mce_setting_track_bool(const gchar *key, gboolean *val, gint def,
 			  GConfClientNotifyFunc cb, guint *cb_id)
 {
-	gchar *path = mce_gconf_get_path(key);
+	gchar *path = mce_setting_get_path(key);
 
 	if( path && cb && cb_id )
-		mce_gconf_notifier_add(path, key, cb, cb_id);
+		mce_setting_notifier_add(path, key, cb, cb_id);
 
-	if( !mce_gconf_get_bool(key, val) && def != -1 )
+	if( !mce_setting_get_bool(key, val) && def != -1 )
 		*val = (def != 0);
 
 	g_free(path);
@@ -486,15 +486,15 @@ void mce_gconf_track_bool(const gchar *key, gboolean *val, gint def,
  * @param cb    change notification callback
  * @param cb_id where to store notification callback id
  */
-void mce_gconf_track_string(const gchar *key, gchar **val, const gchar *def,
+void mce_setting_track_string(const gchar *key, gchar **val, const gchar *def,
 			    GConfClientNotifyFunc cb, guint *cb_id)
 {
-	gchar *path = mce_gconf_get_path(key);
+	gchar *path = mce_setting_get_path(key);
 
 	if( path && cb && cb_id )
-		mce_gconf_notifier_add(path, key, cb, cb_id);
+		mce_setting_notifier_add(path, key, cb, cb_id);
 
-	if( !mce_gconf_get_string(key, val) && def != 0 )
+	if( !mce_setting_get_string(key, val) && def != 0 )
 		*val = g_strdup(def);
 
 	g_free(path);
@@ -505,7 +505,7 @@ void mce_gconf_track_string(const gchar *key, gchar **val, const gchar *def,
  *
  * @return TRUE on success, FALSE on failure
  */
-gboolean mce_gconf_init(void)
+gboolean mce_setting_init(void)
 {
 	gboolean status = FALSE;
 
@@ -524,11 +524,11 @@ EXIT:
 /**
  * Exit function for the mce-gconf component
  */
-void mce_gconf_exit(void)
+void mce_setting_exit(void)
 {
 	if( gconf_client ) {
 		/* Free the list of GConf notifiers */
-		g_slist_foreach(gconf_notifiers, mce_gconf_notifier_remove_cb, 0);
+		g_slist_foreach(gconf_notifiers, mce_setting_notifier_remove_cb, 0);
 		gconf_notifiers = 0;
 
 		/* Forget builtin-gconf client reference */

@@ -381,43 +381,43 @@ static void
 fba_gconf_init(void)
 {
     /* ALS enabled settings */
-    mce_gconf_track_bool(MCE_SETTING_DISPLAY_ALS_ENABLED,
-                         &fba_gconf_als_enabled,
-                         MCE_DEFAULT_DISPLAY_ALS_ENABLED,
-                         fba_gconf_cb,
-                         &fba_gconf_als_enabled_id);
+    mce_setting_track_bool(MCE_SETTING_DISPLAY_ALS_ENABLED,
+                           &fba_gconf_als_enabled,
+                           MCE_DEFAULT_DISPLAY_ALS_ENABLED,
+                           fba_gconf_cb,
+                           &fba_gconf_als_enabled_id);
 
-    mce_gconf_track_bool(MCE_SETTING_DISPLAY_ALS_AUTOBRIGHTNESS,
-                         &fba_gconf_als_autobrightness,
-                         MCE_DEFAULT_DISPLAY_ALS_AUTOBRIGHTNESS,
-                         fba_gconf_cb,
-                         &fba_gconf_als_autobrightness_id);
+    mce_setting_track_bool(MCE_SETTING_DISPLAY_ALS_AUTOBRIGHTNESS,
+                           &fba_gconf_als_autobrightness,
+                           MCE_DEFAULT_DISPLAY_ALS_AUTOBRIGHTNESS,
+                           fba_gconf_cb,
+                           &fba_gconf_als_autobrightness_id);
 
-    mce_gconf_track_bool(MCE_SETTING_TK_FILTER_LID_WITH_ALS,
-                         &fba_gconf_filter_lid_with_als,
-                         MCE_DEFAULT_TK_FILTER_LID_WITH_ALS,
-                         fba_gconf_cb,
-                         &fba_gconf_filter_lid_with_als_id);
+    mce_setting_track_bool(MCE_SETTING_TK_FILTER_LID_WITH_ALS,
+                           &fba_gconf_filter_lid_with_als,
+                           MCE_DEFAULT_TK_FILTER_LID_WITH_ALS,
+                           fba_gconf_cb,
+                           &fba_gconf_filter_lid_with_als_id);
 
     /* ALS input filter setting */
-    mce_gconf_track_string(MCE_SETTING_DISPLAY_ALS_INPUT_FILTER,
-                           &fba_gconf_als_input_filter,
-                           MCE_DEFAULT_DISPLAY_ALS_INPUT_FILTER,
-                           fba_gconf_cb,
-                           &fba_gconf_als_input_filter_id);
+    mce_setting_track_string(MCE_SETTING_DISPLAY_ALS_INPUT_FILTER,
+                             &fba_gconf_als_input_filter,
+                             MCE_DEFAULT_DISPLAY_ALS_INPUT_FILTER,
+                             fba_gconf_cb,
+                             &fba_gconf_als_input_filter_id);
 
     /* ALS sample time setting */
-    mce_gconf_track_int(MCE_SETTING_DISPLAY_ALS_SAMPLE_TIME,
-                        &fba_gconf_als_sample_time,
-                        MCE_DEFAULT_DISPLAY_ALS_SAMPLE_TIME,
-                        fba_gconf_cb,
-                        &fba_gconf_als_sample_time_id);
+    mce_setting_track_int(MCE_SETTING_DISPLAY_ALS_SAMPLE_TIME,
+                          &fba_gconf_als_sample_time,
+                          MCE_DEFAULT_DISPLAY_ALS_SAMPLE_TIME,
+                          fba_gconf_cb,
+                          &fba_gconf_als_sample_time_id);
 
     /* Color profile setting */
-    mce_gconf_notifier_add(MCE_SETTING_DISPLAY_PATH,
-                           MCE_SETTING_DISPLAY_COLOR_PROFILE,
-                           fba_gconf_cb,
-                           &fba_gconf_color_profile_id);
+    mce_setting_notifier_add(MCE_SETTING_DISPLAY_PATH,
+                             MCE_SETTING_DISPLAY_COLOR_PROFILE,
+                             fba_gconf_cb,
+                             &fba_gconf_color_profile_id);
 
     fba_color_profile_init();
 }
@@ -427,22 +427,22 @@ fba_gconf_init(void)
 static void
 fba_gconf_quit(void)
 {
-    mce_gconf_notifier_remove(fba_gconf_als_enabled_id),
+    mce_setting_notifier_remove(fba_gconf_als_enabled_id),
         fba_gconf_als_enabled_id = 0;
 
-    mce_gconf_notifier_remove(fba_gconf_als_autobrightness_id),
+    mce_setting_notifier_remove(fba_gconf_als_autobrightness_id),
         fba_gconf_als_autobrightness_id = 0;
 
-    mce_gconf_notifier_remove(fba_gconf_filter_lid_with_als_id),
+    mce_setting_notifier_remove(fba_gconf_filter_lid_with_als_id),
         fba_gconf_filter_lid_with_als_id = 0;
 
-    mce_gconf_notifier_remove(fba_gconf_als_input_filter_id),
+    mce_setting_notifier_remove(fba_gconf_als_input_filter_id),
         fba_gconf_als_input_filter_id = 0;
 
-    mce_gconf_notifier_remove(fba_gconf_als_sample_time_id),
+    mce_setting_notifier_remove(fba_gconf_als_sample_time_id),
         fba_gconf_als_sample_time_id = 0;
 
-    mce_gconf_notifier_remove(fba_gconf_color_profile_id),
+    mce_setting_notifier_remove(fba_gconf_color_profile_id),
         fba_gconf_color_profile_id = 0;
 
     fba_color_profile_quit();
@@ -538,7 +538,7 @@ fba_color_profile_save(const gchar *id)
         goto EXIT;
     }
 
-    status = mce_gconf_set_string(MCE_SETTING_DISPLAY_COLOR_PROFILE, id);
+    status = mce_setting_set_string(MCE_SETTING_DISPLAY_COLOR_PROFILE, id);
 
 EXIT:
     return status;
@@ -566,7 +566,7 @@ static gchar *
 fba_color_profile_get_current(void)
 {
     gchar *retval = NULL;
-    (void)mce_gconf_get_string(MCE_SETTING_DISPLAY_COLOR_PROFILE,
+    (void)mce_setting_get_string(MCE_SETTING_DISPLAY_COLOR_PROFILE,
                                &retval);
 
     /* Treat empty string as NULL */

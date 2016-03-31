@@ -322,33 +322,33 @@ const gchar *g_module_check_init(GModule *module)
 
 	/* Power saving mode setting */
 	/* Since we've set a default, error handling is unnecessary */
-	mce_gconf_notifier_add(MCE_SETTING_EM_PATH,
-			       MCE_SETTING_EM_ENABLE_PSM,
-			       psm_gconf_cb,
-			       &psm_gconf_cb_id);
+	mce_setting_notifier_add(MCE_SETTING_EM_PATH,
+				 MCE_SETTING_EM_ENABLE_PSM,
+				 psm_gconf_cb,
+				 &psm_gconf_cb_id);
 
-	mce_gconf_get_bool(MCE_SETTING_EM_ENABLE_PSM,
-			   &power_saving_mode);
+	mce_setting_get_bool(MCE_SETTING_EM_ENABLE_PSM,
+			     &power_saving_mode);
 
 	/* Forced power saving mode setting */
 	/* Since we've set a default, error handling is unnecessary */
-	mce_gconf_notifier_add(MCE_SETTING_EM_PATH,
-			       MCE_SETTING_EM_FORCED_PSM,
-			       psm_gconf_cb,
-			       &force_psm_gconf_cb_id);
+	mce_setting_notifier_add(MCE_SETTING_EM_PATH,
+				 MCE_SETTING_EM_FORCED_PSM,
+				 psm_gconf_cb,
+				 &force_psm_gconf_cb_id);
 
-	mce_gconf_get_bool(MCE_SETTING_EM_FORCED_PSM,
-			   &force_psm);
+	mce_setting_get_bool(MCE_SETTING_EM_FORCED_PSM,
+			     &force_psm);
 
 	/* Power saving mode threshold */
 	/* Since we've set a default, error handling is unnecessary */
-	mce_gconf_notifier_add(MCE_SETTING_EM_PATH,
-			       MCE_SETTING_EM_PSM_THRESHOLD,
-			       psm_gconf_cb,
-			       &psm_threshold_gconf_cb_id);
+	mce_setting_notifier_add(MCE_SETTING_EM_PATH,
+				 MCE_SETTING_EM_PSM_THRESHOLD,
+				 psm_gconf_cb,
+				 &psm_threshold_gconf_cb_id);
 
-	mce_gconf_get_int(MCE_SETTING_EM_PSM_THRESHOLD,
-			  &psm_threshold);
+	mce_setting_get_int(MCE_SETTING_EM_PSM_THRESHOLD,
+			    &psm_threshold);
 
 	/* Add dbus handlers */
 	mce_psm_init_dbus();
@@ -369,13 +369,13 @@ void g_module_unload(GModule *module)
 	(void)module;
 
 	/* Remove gconf notifications  */
-	mce_gconf_notifier_remove(psm_gconf_cb_id),
+	mce_setting_notifier_remove(psm_gconf_cb_id),
 		psm_gconf_cb_id = 0;
 
-	mce_gconf_notifier_remove(force_psm_gconf_cb_id),
+	mce_setting_notifier_remove(force_psm_gconf_cb_id),
 		force_psm_gconf_cb_id = 0;
 
-	mce_gconf_notifier_remove(psm_threshold_gconf_cb_id),
+	mce_setting_notifier_remove(psm_threshold_gconf_cb_id),
 		psm_threshold_gconf_cb_id = 0;
 
 	/* Remove dbus handlers */

@@ -970,7 +970,7 @@ int main(int argc, char **argv)
 	/* Initialise GConf
 	 * pre-requisite: g_type_init()
 	 */
-	if (mce_gconf_init() == FALSE) {
+	if (mce_setting_init() == FALSE) {
 		mce_log(LL_CRIT,
 			"Cannot connect to default GConf engine");
 		exit(EXIT_FAILURE);
@@ -986,7 +986,7 @@ int main(int argc, char **argv)
 	mce_wltimer_init();
 
 	/* Initialise mode management
-	 * pre-requisite: mce_gconf_init()
+	 * pre-requisite: mce_setting_init()
 	 * pre-requisite: mce_dbus_init()
 	 */
 	if (mce_mode_init() == FALSE) {
@@ -994,7 +994,7 @@ int main(int argc, char **argv)
 	}
 
 	/* Initialise DSME
-	 * pre-requisite: mce_gconf_init()
+	 * pre-requisite: mce_setting_init()
 	 * pre-requisite: mce_dbus_init()
 	 * pre-requisite: mce_mce_init()
 	 */
@@ -1076,7 +1076,7 @@ EXIT:
 	mce_datapipe_quit();
 
 	/* Call the exit function for all subsystems */
-	mce_gconf_exit();
+	mce_setting_exit();
 	mce_dbus_exit();
 	mce_conf_exit();
 	mce_worker_quit();

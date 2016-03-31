@@ -1503,7 +1503,7 @@ pwrkey_dbus_action_configure(size_t action_id, bool force_reset)
         g_free(action->gconf_val), action->gconf_val = use, use = 0;
 
         /* Flush change to settings */
-        mce_gconf_set_string(action->gconf_key, action->gconf_val);
+        mce_setting_set_string(action->gconf_key, action->gconf_val);
     }
 
 cleanup:
@@ -1995,25 +1995,25 @@ pwrkey_gconf_sanitize_action_masks(void)
 
     /* send notifications if something changed */
     if( on_changed ) {
-        mce_gconf_set_string(MCE_SETTING_POWERKEY_ACTIONS_SINGLE_ON,
-                             pwrkey_actions_single_on);
+        mce_setting_set_string(MCE_SETTING_POWERKEY_ACTIONS_SINGLE_ON,
+                               pwrkey_actions_single_on);
 
-        mce_gconf_set_string(MCE_SETTING_POWERKEY_ACTIONS_DOUBLE_ON,
-                             pwrkey_actions_double_on);
+        mce_setting_set_string(MCE_SETTING_POWERKEY_ACTIONS_DOUBLE_ON,
+                               pwrkey_actions_double_on);
 
-        mce_gconf_set_string(MCE_SETTING_POWERKEY_ACTIONS_LONG_ON,
-                             pwrkey_actions_long_on);
+        mce_setting_set_string(MCE_SETTING_POWERKEY_ACTIONS_LONG_ON,
+                               pwrkey_actions_long_on);
     }
 
     if( off_changed ) {
-        mce_gconf_set_string(MCE_SETTING_POWERKEY_ACTIONS_SINGLE_OFF,
-                             pwrkey_actions_single_off);
+        mce_setting_set_string(MCE_SETTING_POWERKEY_ACTIONS_SINGLE_OFF,
+                               pwrkey_actions_single_off);
 
-        mce_gconf_set_string(MCE_SETTING_POWERKEY_ACTIONS_DOUBLE_OFF,
-                             pwrkey_actions_double_off);
+        mce_setting_set_string(MCE_SETTING_POWERKEY_ACTIONS_DOUBLE_OFF,
+                               pwrkey_actions_double_off);
 
-        mce_gconf_set_string(MCE_SETTING_POWERKEY_ACTIONS_LONG_OFF,
-                             pwrkey_actions_long_off);
+        mce_setting_set_string(MCE_SETTING_POWERKEY_ACTIONS_LONG_OFF,
+                               pwrkey_actions_long_off);
     }
 
     for( size_t i = 0; i < POWERKEY_ACTIONS_GESTURE_COUNT; ++i ) {
@@ -2023,8 +2023,8 @@ pwrkey_gconf_sanitize_action_masks(void)
             pwrkey_actions_update(&pwrkey_actions_from_gesture[i],
                                   &pwrkey_actions_gesture[i], 0, 0);
         if( gesture_changed ) {
-            mce_gconf_set_string(pwrkey_actions_gesture_key[i],
-                                 pwrkey_actions_gesture[i]);
+            mce_setting_set_string(pwrkey_actions_gesture_key[i],
+                                   pwrkey_actions_gesture[i]);
         }
     }
 }
@@ -2277,97 +2277,97 @@ static void
 pwrkey_gconf_init(void)
 {
     /* Power key press handling mode */
-    mce_gconf_track_int(MCE_SETTING_POWERKEY_MODE,
-                        &pwrkey_stm_enable_mode,
-                        MCE_DEFAULT_POWERKEY_MODE,
-                        pwrkey_gconf_cb,
-                        &pwrkey_stm_enable_mode_gconf_id);
+    mce_setting_track_int(MCE_SETTING_POWERKEY_MODE,
+                          &pwrkey_stm_enable_mode,
+                          MCE_DEFAULT_POWERKEY_MODE,
+                          pwrkey_gconf_cb,
+                          &pwrkey_stm_enable_mode_gconf_id);
 
     /* Power key display blanking mode */
-    mce_gconf_track_int(MCE_SETTING_POWERKEY_BLANKING_MODE,
-                        &pwrkey_action_blank_mode,
-                        MCE_DEFAULT_POWERKEY_BLANKING_MODE,
-                        pwrkey_gconf_cb,
-                        &pwrkey_action_blank_mode_gconf_id);
+    mce_setting_track_int(MCE_SETTING_POWERKEY_BLANKING_MODE,
+                          &pwrkey_action_blank_mode,
+                          MCE_DEFAULT_POWERKEY_BLANKING_MODE,
+                          pwrkey_gconf_cb,
+                          &pwrkey_action_blank_mode_gconf_id);
 
     /* Power key press count for proximity sensor override */
-    mce_gconf_track_int(MCE_SETTING_POWERKEY_PS_OVERRIDE_COUNT,
-                        &pwrkey_ps_override_count,
-                        MCE_DEFAULT_POWERKEY_PS_OVERRIDE_COUNT,
-                        pwrkey_gconf_cb,
-                        &pwrkey_ps_override_count_gconf_id);
+    mce_setting_track_int(MCE_SETTING_POWERKEY_PS_OVERRIDE_COUNT,
+                          &pwrkey_ps_override_count,
+                          MCE_DEFAULT_POWERKEY_PS_OVERRIDE_COUNT,
+                          pwrkey_gconf_cb,
+                          &pwrkey_ps_override_count_gconf_id);
 
     /* Maximum time between power key presses for ps override */
-    mce_gconf_track_int(MCE_SETTING_POWERKEY_PS_OVERRIDE_TIMEOUT,
-                        &pwrkey_ps_override_timeout,
-                        MCE_DEFAULT_POWERKEY_PS_OVERRIDE_TIMEOUT,
-                        pwrkey_gconf_cb,
-                        &pwrkey_ps_override_timeout_gconf_id);
+    mce_setting_track_int(MCE_SETTING_POWERKEY_PS_OVERRIDE_TIMEOUT,
+                          &pwrkey_ps_override_timeout,
+                          MCE_DEFAULT_POWERKEY_PS_OVERRIDE_TIMEOUT,
+                          pwrkey_gconf_cb,
+                          &pwrkey_ps_override_timeout_gconf_id);
 
     /* Delay for waiting long press */
-    mce_gconf_track_int(MCE_SETTING_POWERKEY_LONG_PRESS_DELAY,
-                        &pwrkey_long_press_delay,
-                        MCE_DEFAULT_POWERKEY_LONG_PRESS_DELAY,
-                        pwrkey_gconf_cb,
-                        &pwrkey_long_press_delay_gconf_id);
+    mce_setting_track_int(MCE_SETTING_POWERKEY_LONG_PRESS_DELAY,
+                          &pwrkey_long_press_delay,
+                          MCE_DEFAULT_POWERKEY_LONG_PRESS_DELAY,
+                          pwrkey_gconf_cb,
+                          &pwrkey_long_press_delay_gconf_id);
 
     /* Delay for waiting double press */
-    mce_gconf_track_int(MCE_SETTING_POWERKEY_DOUBLE_PRESS_DELAY,
-                        &pwrkey_double_press_delay,
-                        MCE_DEFAULT_POWERKEY_DOUBLE_PRESS_DELAY,
-                        pwrkey_gconf_cb,
-                        &pwrkey_double_press_delay_gconf_id);
+    mce_setting_track_int(MCE_SETTING_POWERKEY_DOUBLE_PRESS_DELAY,
+                          &pwrkey_double_press_delay,
+                          MCE_DEFAULT_POWERKEY_DOUBLE_PRESS_DELAY,
+                          pwrkey_gconf_cb,
+                          &pwrkey_double_press_delay_gconf_id);
 
     /* Action sets */
 
-    mce_gconf_track_string(MCE_SETTING_POWERKEY_ACTIONS_SINGLE_ON,
-                           &pwrkey_actions_single_on,
-                           MCE_DEFAULT_POWERKEY_ACTIONS_SINGLE_ON,
-                           pwrkey_gconf_cb,
-                           &pwrkey_actions_single_on_gconf_id);
+    mce_setting_track_string(MCE_SETTING_POWERKEY_ACTIONS_SINGLE_ON,
+                             &pwrkey_actions_single_on,
+                             MCE_DEFAULT_POWERKEY_ACTIONS_SINGLE_ON,
+                             pwrkey_gconf_cb,
+                             &pwrkey_actions_single_on_gconf_id);
 
-    mce_gconf_track_string(MCE_SETTING_POWERKEY_ACTIONS_DOUBLE_ON,
-                           &pwrkey_actions_double_on,
-                           MCE_DEFAULT_POWERKEY_ACTIONS_DOUBLE_ON,
-                           pwrkey_gconf_cb,
-                           &pwrkey_actions_double_on_gconf_id);
+    mce_setting_track_string(MCE_SETTING_POWERKEY_ACTIONS_DOUBLE_ON,
+                             &pwrkey_actions_double_on,
+                             MCE_DEFAULT_POWERKEY_ACTIONS_DOUBLE_ON,
+                             pwrkey_gconf_cb,
+                             &pwrkey_actions_double_on_gconf_id);
 
-    mce_gconf_track_string(MCE_SETTING_POWERKEY_ACTIONS_LONG_ON,
-                           &pwrkey_actions_long_on,
-                           MCE_DEFAULT_POWERKEY_ACTIONS_LONG_ON,
-                           pwrkey_gconf_cb,
-                           &pwrkey_actions_long_on_gconf_id);
+    mce_setting_track_string(MCE_SETTING_POWERKEY_ACTIONS_LONG_ON,
+                             &pwrkey_actions_long_on,
+                             MCE_DEFAULT_POWERKEY_ACTIONS_LONG_ON,
+                             pwrkey_gconf_cb,
+                             &pwrkey_actions_long_on_gconf_id);
 
-    mce_gconf_track_string(MCE_SETTING_POWERKEY_ACTIONS_SINGLE_OFF,
-                           &pwrkey_actions_single_off,
-                           MCE_DEFAULT_POWERKEY_ACTIONS_SINGLE_OFF,
-                           pwrkey_gconf_cb,
-                           &pwrkey_actions_single_off_gconf_id);
+    mce_setting_track_string(MCE_SETTING_POWERKEY_ACTIONS_SINGLE_OFF,
+                             &pwrkey_actions_single_off,
+                             MCE_DEFAULT_POWERKEY_ACTIONS_SINGLE_OFF,
+                             pwrkey_gconf_cb,
+                             &pwrkey_actions_single_off_gconf_id);
 
-    mce_gconf_track_string(MCE_SETTING_POWERKEY_ACTIONS_DOUBLE_OFF,
-                           &pwrkey_actions_double_off,
-                           MCE_DEFAULT_POWERKEY_ACTIONS_DOUBLE_OFF,
-                           pwrkey_gconf_cb,
-                           &pwrkey_actions_double_off_gconf_id);
+    mce_setting_track_string(MCE_SETTING_POWERKEY_ACTIONS_DOUBLE_OFF,
+                             &pwrkey_actions_double_off,
+                             MCE_DEFAULT_POWERKEY_ACTIONS_DOUBLE_OFF,
+                             pwrkey_gconf_cb,
+                             &pwrkey_actions_double_off_gconf_id);
 
-    mce_gconf_track_string(MCE_SETTING_POWERKEY_ACTIONS_LONG_OFF,
-                           &pwrkey_actions_long_off,
-                           MCE_DEFAULT_POWERKEY_ACTIONS_LONG_OFF,
-                           pwrkey_gconf_cb,
-                           &pwrkey_actions_long_off_gconf_id);
+    mce_setting_track_string(MCE_SETTING_POWERKEY_ACTIONS_LONG_OFF,
+                             &pwrkey_actions_long_off,
+                             MCE_DEFAULT_POWERKEY_ACTIONS_LONG_OFF,
+                             pwrkey_gconf_cb,
+                             &pwrkey_actions_long_off_gconf_id);
 
-    mce_gconf_track_int(MCE_SETTING_DOUBLETAP_MODE,
-                        &pwrkey_gestures_enable_mode,
-                        MCE_DEFAULT_DOUBLETAP_MODE,
-                        pwrkey_gconf_cb,
-                        &pwrkey_gestures_enable_mode_cb_id);
+    mce_setting_track_int(MCE_SETTING_DOUBLETAP_MODE,
+                          &pwrkey_gestures_enable_mode,
+                          MCE_DEFAULT_DOUBLETAP_MODE,
+                          pwrkey_gconf_cb,
+                          &pwrkey_gestures_enable_mode_cb_id);
 
     for( size_t i = 0; i < POWERKEY_ACTIONS_GESTURE_COUNT; ++i ) {
-        mce_gconf_track_string(pwrkey_actions_gesture_key[i],
-                               &pwrkey_actions_gesture[i],
-                               pwrkey_actions_gesture_val[i],
-                               pwrkey_gconf_cb,
-                               &pwrkey_actions_gesture_gconf_id[i]);
+        mce_setting_track_string(pwrkey_actions_gesture_key[i],
+                                 &pwrkey_actions_gesture[i],
+                                 pwrkey_actions_gesture_val[i],
+                                 pwrkey_gconf_cb,
+                                 &pwrkey_actions_gesture_gconf_id[i]);
     }
 
     /* D-Bus actions */
@@ -2375,11 +2375,11 @@ pwrkey_gconf_init(void)
     for( size_t action_id = 0; action_id < POWEKEY_DBUS_ACTION_COUNT; ++action_id ) {
         pwrkey_dbus_action_t *action = pwrkey_dbus_action + action_id;
 
-        mce_gconf_track_string(action->gconf_key,
-                               &action->gconf_val,
-                               action->gconf_def,
-                               pwrkey_gconf_cb,
-                               &action->gconf_id);
+        mce_setting_track_string(action->gconf_key,
+                                 &action->gconf_val,
+                                 action->gconf_def,
+                                 pwrkey_gconf_cb,
+                                 &action->gconf_id);
     }
 
     /* Apply sanity checks */
@@ -2393,46 +2393,46 @@ static void
 pwrkey_gconf_quit(void)
 {
     /* Power key press handling mode */
-    mce_gconf_notifier_remove(pwrkey_stm_enable_mode_gconf_id),
+    mce_setting_notifier_remove(pwrkey_stm_enable_mode_gconf_id),
         pwrkey_stm_enable_mode_gconf_id = 0;
 
     /* Power key press blanking mode */
-    mce_gconf_notifier_remove(pwrkey_action_blank_mode_gconf_id),
+    mce_setting_notifier_remove(pwrkey_action_blank_mode_gconf_id),
         pwrkey_action_blank_mode_gconf_id = 0;
 
     /* Power key press blanking mode */
-    mce_gconf_notifier_remove(pwrkey_ps_override_count_gconf_id),
+    mce_setting_notifier_remove(pwrkey_ps_override_count_gconf_id),
         pwrkey_ps_override_count_gconf_id = 0;
 
     /* Power key press blanking mode */
-    mce_gconf_notifier_remove(pwrkey_ps_override_timeout_gconf_id),
+    mce_setting_notifier_remove(pwrkey_ps_override_timeout_gconf_id),
         pwrkey_ps_override_timeout_gconf_id = 0;
 
     /* Action sets */
 
-    mce_gconf_notifier_remove(pwrkey_actions_single_on_gconf_id),
+    mce_setting_notifier_remove(pwrkey_actions_single_on_gconf_id),
         pwrkey_actions_single_on_gconf_id = 0;
 
-    mce_gconf_notifier_remove(pwrkey_actions_double_on_gconf_id),
+    mce_setting_notifier_remove(pwrkey_actions_double_on_gconf_id),
         pwrkey_actions_double_on_gconf_id = 0;
 
-    mce_gconf_notifier_remove(pwrkey_actions_long_on_gconf_id),
+    mce_setting_notifier_remove(pwrkey_actions_long_on_gconf_id),
         pwrkey_actions_long_on_gconf_id = 0;
 
-    mce_gconf_notifier_remove(pwrkey_actions_single_off_gconf_id),
+    mce_setting_notifier_remove(pwrkey_actions_single_off_gconf_id),
         pwrkey_actions_single_off_gconf_id = 0;
 
-    mce_gconf_notifier_remove(pwrkey_actions_double_off_gconf_id),
+    mce_setting_notifier_remove(pwrkey_actions_double_off_gconf_id),
         pwrkey_actions_double_off_gconf_id = 0;
 
-    mce_gconf_notifier_remove(pwrkey_actions_long_off_gconf_id),
+    mce_setting_notifier_remove(pwrkey_actions_long_off_gconf_id),
         pwrkey_actions_long_off_gconf_id = 0;
 
-    mce_gconf_notifier_remove(pwrkey_gestures_enable_mode_cb_id),
+    mce_setting_notifier_remove(pwrkey_gestures_enable_mode_cb_id),
         pwrkey_gestures_enable_mode_cb_id = 0;
 
     for( size_t i = 0; i < POWERKEY_ACTIONS_GESTURE_COUNT; ++i ) {
-        mce_gconf_notifier_remove(pwrkey_actions_gesture_gconf_id[i]),
+        mce_setting_notifier_remove(pwrkey_actions_gesture_gconf_id[i]),
             pwrkey_actions_gesture_gconf_id[i] = 0;
     }
 
@@ -2467,7 +2467,7 @@ pwrkey_gconf_quit(void)
     for( size_t action_id = 0; action_id < POWEKEY_DBUS_ACTION_COUNT; ++action_id ) {
         pwrkey_dbus_action_t *action = pwrkey_dbus_action + action_id;
 
-        mce_gconf_notifier_remove(action->gconf_id),
+        mce_setting_notifier_remove(action->gconf_id),
             action->gconf_id = 0;
 
         g_free(action->gconf_val),

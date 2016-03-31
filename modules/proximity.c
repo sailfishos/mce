@@ -339,18 +339,18 @@ const gchar *g_module_check_init(GModule *module)
 					  submode_trigger);
 
 	/* PS enabled setting */
-	mce_gconf_track_bool(MCE_SETTING_PROXIMITY_PS_ENABLED,
-			     &use_ps_conf_value,
-			     MCE_DEFAULT_PROXIMITY_PS_ENABLED,
-			     use_ps_conf_cb,
-			     &use_ps_conf_id);
+	mce_setting_track_bool(MCE_SETTING_PROXIMITY_PS_ENABLED,
+			       &use_ps_conf_value,
+			       MCE_DEFAULT_PROXIMITY_PS_ENABLED,
+			       use_ps_conf_cb,
+			       &use_ps_conf_id);
 
 	/* PS acts as LID sensor */
-	mce_gconf_track_bool(MCE_SETTING_PROXIMITY_PS_ACTS_AS_LID,
-			     &ps_acts_as_lid,
-			     MCE_DEFAULT_PROXIMITY_PS_ACTS_AS_LID,
-			     use_ps_conf_cb,
-			     &ps_acts_as_lid_conf_id);
+	mce_setting_track_bool(MCE_SETTING_PROXIMITY_PS_ACTS_AS_LID,
+			       &ps_acts_as_lid,
+			       MCE_DEFAULT_PROXIMITY_PS_ACTS_AS_LID,
+			       use_ps_conf_cb,
+			       &ps_acts_as_lid_conf_id);
 
 	/* If the proximity sensor input is used for toggling
 	 * lid state, we must take care not to leave proximity
@@ -375,10 +375,10 @@ void g_module_unload(GModule *module)
 	(void)module;
 
 	/* Remove gconf notifications  */
-	mce_gconf_notifier_remove(use_ps_conf_id),
+	mce_setting_notifier_remove(use_ps_conf_id),
 		use_ps_conf_id = 0;
 
-	mce_gconf_notifier_remove(ps_acts_as_lid_conf_id),
+	mce_setting_notifier_remove(ps_acts_as_lid_conf_id),
 		ps_acts_as_lid_conf_id = 0;
 
 	/* Remove triggers/filters from datapipes */

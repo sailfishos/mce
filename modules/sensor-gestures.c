@@ -479,17 +479,17 @@ EXIT:
  */
 static void sg_gconf_init(void)
 {
-    mce_gconf_track_bool(MCE_SETTING_FLIPOVER_GESTURE_ENABLED,
-                         &sg_flipover_gesture_enabled,
-                         MCE_DEFAULT_FLIPOVER_GESTURE_ENABLED,
-                         sg_gconf_cb,
-                         &sg_flipover_gesture_enabled_gconf_cb_id);
+    mce_setting_track_bool(MCE_SETTING_FLIPOVER_GESTURE_ENABLED,
+                           &sg_flipover_gesture_enabled,
+                           MCE_DEFAULT_FLIPOVER_GESTURE_ENABLED,
+                           sg_gconf_cb,
+                           &sg_flipover_gesture_enabled_gconf_cb_id);
 }
 
 /** Stop tracking gconf values */
 static void sg_gconf_quit(void)
 {
-    mce_gconf_notifier_remove(sg_flipover_gesture_enabled_gconf_cb_id),
+    mce_setting_notifier_remove(sg_flipover_gesture_enabled_gconf_cb_id),
         sg_flipover_gesture_enabled_gconf_cb_id = 0;
 }
 

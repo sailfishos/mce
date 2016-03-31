@@ -4776,313 +4776,313 @@ EXIT:
 static void tklock_gconf_init(void)
 {
     /* Touchscreen/keypad autolock enabled */
-    mce_gconf_track_bool(MCE_SETTING_TK_AUTOLOCK_ENABLED,
-                         &tk_autolock_enabled,
-                         MCE_DEFAULT_TK_AUTOLOCK_ENABLED,
-                         tklock_gconf_cb,
-                         &tk_autolock_enabled_cb_id);
+    mce_setting_track_bool(MCE_SETTING_TK_AUTOLOCK_ENABLED,
+                           &tk_autolock_enabled,
+                           MCE_DEFAULT_TK_AUTOLOCK_ENABLED,
+                           tklock_gconf_cb,
+                           &tk_autolock_enabled_cb_id);
 
     /* Grabbing input devices allowed */
-    mce_gconf_track_bool(MCE_SETTING_TK_INPUT_POLICY_ENABLED,
-                         &tk_input_policy_enabled,
-                         MCE_DEFAULT_TK_INPUT_POLICY_ENABLED,
-                         tklock_gconf_cb,
-                         &tk_input_policy_enabled_cb_id);
+    mce_setting_track_bool(MCE_SETTING_TK_INPUT_POLICY_ENABLED,
+                           &tk_input_policy_enabled,
+                           MCE_DEFAULT_TK_INPUT_POLICY_ENABLED,
+                           tklock_gconf_cb,
+                           &tk_input_policy_enabled_cb_id);
 
     /* Touchscreen/keypad autolock delay */
-    mce_gconf_track_int(MCE_SETTING_TK_AUTOLOCK_DELAY,
-                        &tklock_autolock_delay,
-                        MCE_DEFAULT_TK_AUTOLOCK_DELAY,
-                        tklock_gconf_cb,
-                        &tklock_autolock_delay_cb_id);
+    mce_setting_track_int(MCE_SETTING_TK_AUTOLOCK_DELAY,
+                          &tklock_autolock_delay,
+                          MCE_DEFAULT_TK_AUTOLOCK_DELAY,
+                          tklock_gconf_cb,
+                          &tklock_autolock_delay_cb_id);
 
     /* Volume key input policy */
-    mce_gconf_track_int(MCE_SETTING_TK_VOLKEY_POLICY,
-                        &volkey_policy,
-                        MCE_DEFAULT_TK_VOLKEY_POLICY,
-                        tklock_gconf_cb,
-                        &volkey_policy_cb_id);
+    mce_setting_track_int(MCE_SETTING_TK_VOLKEY_POLICY,
+                          &volkey_policy,
+                          MCE_DEFAULT_TK_VOLKEY_POLICY,
+                          tklock_gconf_cb,
+                          &volkey_policy_cb_id);
 
     /* Lid sensor open policy */
-    mce_gconf_track_int(MCE_SETTING_TK_LID_OPEN_ACTIONS,
-                        &tklock_lid_open_actions,
-                        MCE_DEFAULT_TK_LID_OPEN_ACTIONS,
-                        tklock_gconf_cb,
-                        &tklock_lid_open_actions_cb_id);
+    mce_setting_track_int(MCE_SETTING_TK_LID_OPEN_ACTIONS,
+                          &tklock_lid_open_actions,
+                          MCE_DEFAULT_TK_LID_OPEN_ACTIONS,
+                          tklock_gconf_cb,
+                          &tklock_lid_open_actions_cb_id);
 
     tklock_gconf_sanitize_lid_open_actions();
 
     /* Lid sensor close policy */
-    mce_gconf_track_int(MCE_SETTING_TK_LID_CLOSE_ACTIONS,
-                        &tklock_lid_close_actions,
-                        MCE_DEFAULT_TK_LID_CLOSE_ACTIONS,
-                        tklock_gconf_cb,
-                        &tklock_lid_close_actions_cb_id);
+    mce_setting_track_int(MCE_SETTING_TK_LID_CLOSE_ACTIONS,
+                          &tklock_lid_close_actions,
+                          MCE_DEFAULT_TK_LID_CLOSE_ACTIONS,
+                          tklock_gconf_cb,
+                          &tklock_lid_close_actions_cb_id);
 
     tklock_gconf_sanitize_lid_close_actions();
 
     /* Kbd slide open policy */
-    mce_gconf_track_int(MCE_SETTING_TK_KBD_OPEN_TRIGGER,
-                        &tklock_kbd_open_trigger,
-                        MCE_DEFAULT_TK_KBD_OPEN_TRIGGER,
-                        tklock_gconf_cb,
-                        &tklock_kbd_open_trigger_cb_id);
+    mce_setting_track_int(MCE_SETTING_TK_KBD_OPEN_TRIGGER,
+                          &tklock_kbd_open_trigger,
+                          MCE_DEFAULT_TK_KBD_OPEN_TRIGGER,
+                          tklock_gconf_cb,
+                          &tklock_kbd_open_trigger_cb_id);
 
     tklock_gconf_sanitize_kbd_open_trigger();
 
-    mce_gconf_track_int(MCE_SETTING_TK_KBD_OPEN_ACTIONS,
-                        &tklock_kbd_open_actions,
-                        MCE_DEFAULT_TK_KBD_OPEN_ACTIONS,
-                        tklock_gconf_cb,
-                        &tklock_kbd_open_actions_cb_id);
+    mce_setting_track_int(MCE_SETTING_TK_KBD_OPEN_ACTIONS,
+                          &tklock_kbd_open_actions,
+                          MCE_DEFAULT_TK_KBD_OPEN_ACTIONS,
+                          tklock_gconf_cb,
+                          &tklock_kbd_open_actions_cb_id);
 
     tklock_gconf_sanitize_kbd_open_actions();
 
     /* Kbd slide close policy */
-    mce_gconf_track_int(MCE_SETTING_TK_KBD_CLOSE_TRIGGER,
-                        &tklock_kbd_close_trigger,
-                        MCE_DEFAULT_TK_KBD_CLOSE_TRIGGER,
-                        tklock_gconf_cb,
-                        &tklock_kbd_close_trigger_cb_id);
+    mce_setting_track_int(MCE_SETTING_TK_KBD_CLOSE_TRIGGER,
+                          &tklock_kbd_close_trigger,
+                          MCE_DEFAULT_TK_KBD_CLOSE_TRIGGER,
+                          tklock_gconf_cb,
+                          &tklock_kbd_close_trigger_cb_id);
 
     tklock_gconf_sanitize_kbd_close_trigger();
 
-    mce_gconf_track_int(MCE_SETTING_TK_KBD_CLOSE_ACTIONS,
-                        &tklock_kbd_close_actions,
-                        MCE_DEFAULT_TK_KBD_CLOSE_ACTIONS,
-                        tklock_gconf_cb,
-                        &tklock_kbd_close_actions_cb_id);
+    mce_setting_track_int(MCE_SETTING_TK_KBD_CLOSE_ACTIONS,
+                          &tklock_kbd_close_actions,
+                          MCE_DEFAULT_TK_KBD_CLOSE_ACTIONS,
+                          tklock_gconf_cb,
+                          &tklock_kbd_close_actions_cb_id);
 
     tklock_gconf_sanitize_kbd_close_actions();
 
     /** Touchscreen double tap gesture mode */
-    mce_gconf_track_int(MCE_SETTING_DOUBLETAP_MODE,
-                        &touchscreen_gesture_enable_mode,
-                        MCE_DEFAULT_DOUBLETAP_MODE,
-                        tklock_gconf_cb,
-                        &touchscreen_gesture_enable_mode_cb_id);
+    mce_setting_track_int(MCE_SETTING_DOUBLETAP_MODE,
+                          &touchscreen_gesture_enable_mode,
+                          MCE_DEFAULT_DOUBLETAP_MODE,
+                          tklock_gconf_cb,
+                          &touchscreen_gesture_enable_mode_cb_id);
 
     /* Bitmap of automatic lpm triggering modes */
-    mce_gconf_track_int(MCE_SETTING_TK_LPMUI_TRIGGERING,
-                        &tklock_lpmui_triggering,
-                        MCE_DEFAULT_TK_LPMUI_TRIGGERING,
-                        tklock_gconf_cb,
-                        &tklock_lpmui_triggering_cb_id);
+    mce_setting_track_int(MCE_SETTING_TK_LPMUI_TRIGGERING,
+                          &tklock_lpmui_triggering,
+                          MCE_DEFAULT_TK_LPMUI_TRIGGERING,
+                          tklock_gconf_cb,
+                          &tklock_lpmui_triggering_cb_id);
 
     /* Proximity can block touch input */
-    mce_gconf_track_bool(MCE_SETTING_TK_PROXIMITY_BLOCKS_TOUCH,
-                         &proximity_blocks_touch,
-                         MCE_DEFAULT_TK_PROXIMITY_BLOCKS_TOUCH,
-                         tklock_gconf_cb,
-                         &proximity_blocks_touch_cb_id);
+    mce_setting_track_bool(MCE_SETTING_TK_PROXIMITY_BLOCKS_TOUCH,
+                           &proximity_blocks_touch,
+                           MCE_DEFAULT_TK_PROXIMITY_BLOCKS_TOUCH,
+                           tklock_gconf_cb,
+                           &proximity_blocks_touch_cb_id);
 
     /* Devicelock is in lockscreen */
-    mce_gconf_track_bool(MCE_SETTING_TK_DEVICELOCK_IN_LOCKSCREEN,
-                         &tklock_devicelock_in_lockscreen,
-                         MCE_DEFAULT_TK_DEVICELOCK_IN_LOCKSCREEN,
-                         tklock_gconf_cb,
-                         &tklock_devicelock_in_lockscreen_cb_id);
+    mce_setting_track_bool(MCE_SETTING_TK_DEVICELOCK_IN_LOCKSCREEN,
+                           &tklock_devicelock_in_lockscreen,
+                           MCE_DEFAULT_TK_DEVICELOCK_IN_LOCKSCREEN,
+                           tklock_gconf_cb,
+                           &tklock_devicelock_in_lockscreen_cb_id);
 
     /* Touchscreen/keypad autolock enabled */
-    mce_gconf_track_bool(MCE_SETTING_TK_LID_SENSOR_ENABLED,
-                         &lid_sensor_enabled,
-                         MCE_DEFAULT_TK_LID_SENSOR_ENABLED,
-                         tklock_gconf_cb,
-                         &lid_sensor_enabled_cb_id);
+    mce_setting_track_bool(MCE_SETTING_TK_LID_SENSOR_ENABLED,
+                           &lid_sensor_enabled,
+                           MCE_DEFAULT_TK_LID_SENSOR_ENABLED,
+                           tklock_gconf_cb,
+                           &lid_sensor_enabled_cb_id);
 
-    mce_gconf_track_bool(MCE_SETTING_DISPLAY_ALS_ENABLED,
-                         &als_enabled,
-                         MCE_DEFAULT_DISPLAY_ALS_ENABLED,
-                         tklock_gconf_cb,
-                         &als_enabled_gconf_id);
+    mce_setting_track_bool(MCE_SETTING_DISPLAY_ALS_ENABLED,
+                           &als_enabled,
+                           MCE_DEFAULT_DISPLAY_ALS_ENABLED,
+                           tklock_gconf_cb,
+                           &als_enabled_gconf_id);
 
-    mce_gconf_track_bool(MCE_SETTING_TK_FILTER_LID_WITH_ALS,
-                         &filter_lid_with_als,
-                         MCE_DEFAULT_TK_FILTER_LID_WITH_ALS,
-                         tklock_gconf_cb,
-                         &filter_lid_with_als_gconf_id);
+    mce_setting_track_bool(MCE_SETTING_TK_FILTER_LID_WITH_ALS,
+                           &filter_lid_with_als,
+                           MCE_DEFAULT_TK_FILTER_LID_WITH_ALS,
+                           tklock_gconf_cb,
+                           &filter_lid_with_als_gconf_id);
 
-    mce_gconf_track_int(MCE_SETTING_TK_FILTER_LID_ALS_LIMIT,
-                        &filter_lid_als_limit,
-                        MCE_DEFAULT_TK_FILTER_LID_ALS_LIMIT,
-                        tklock_gconf_cb,
-                        &filter_lid_als_limit_gconf_id);
+    mce_setting_track_int(MCE_SETTING_TK_FILTER_LID_ALS_LIMIT,
+                          &filter_lid_als_limit,
+                          MCE_DEFAULT_TK_FILTER_LID_ALS_LIMIT,
+                          tklock_gconf_cb,
+                          &filter_lid_als_limit_gconf_id);
 
     /* Display on exception lengths */
-    mce_gconf_track_int(MCE_SETTING_TK_EXCEPT_LEN_CALL_IN,
-                        &exception_length_call_in,
-                        MCE_DEFAULT_TK_EXCEPT_LEN_CALL_IN,
-                        tklock_gconf_cb,
-                        &exception_length_call_in_cb_id);
+    mce_setting_track_int(MCE_SETTING_TK_EXCEPT_LEN_CALL_IN,
+                          &exception_length_call_in,
+                          MCE_DEFAULT_TK_EXCEPT_LEN_CALL_IN,
+                          tklock_gconf_cb,
+                          &exception_length_call_in_cb_id);
 
-    mce_gconf_track_int(MCE_SETTING_TK_EXCEPT_LEN_CALL_OUT,
-                        &exception_length_call_out,
-                        MCE_DEFAULT_TK_EXCEPT_LEN_CALL_OUT,
-                        tklock_gconf_cb,
-                        &exception_length_call_out_cb_id);
+    mce_setting_track_int(MCE_SETTING_TK_EXCEPT_LEN_CALL_OUT,
+                          &exception_length_call_out,
+                          MCE_DEFAULT_TK_EXCEPT_LEN_CALL_OUT,
+                          tklock_gconf_cb,
+                          &exception_length_call_out_cb_id);
 
-    mce_gconf_track_int(MCE_SETTING_TK_EXCEPT_LEN_ALARM,
-                        &exception_length_alarm,
-                        MCE_DEFAULT_TK_EXCEPT_LEN_ALARM,
-                        tklock_gconf_cb,
-                        &exception_length_alarm_cb_id);
+    mce_setting_track_int(MCE_SETTING_TK_EXCEPT_LEN_ALARM,
+                          &exception_length_alarm,
+                          MCE_DEFAULT_TK_EXCEPT_LEN_ALARM,
+                          tklock_gconf_cb,
+                          &exception_length_alarm_cb_id);
 
-    mce_gconf_track_int(MCE_SETTING_TK_EXCEPT_LEN_USB_CONNECT,
-                        &exception_length_usb_connect,
-                        MCE_DEFAULT_TK_EXCEPT_LEN_USB_CONNECT,
-                        tklock_gconf_cb,
-                        &exception_length_usb_connect_cb_id);
+    mce_setting_track_int(MCE_SETTING_TK_EXCEPT_LEN_USB_CONNECT,
+                          &exception_length_usb_connect,
+                          MCE_DEFAULT_TK_EXCEPT_LEN_USB_CONNECT,
+                          tklock_gconf_cb,
+                          &exception_length_usb_connect_cb_id);
 
-    mce_gconf_track_int(MCE_SETTING_TK_EXCEPT_LEN_USB_DIALOG,
-                        &exception_length_usb_dialog,
-                        MCE_DEFAULT_TK_EXCEPT_LEN_USB_DIALOG,
-                        tklock_gconf_cb,
-                        &exception_length_usb_dialog_cb_id);
+    mce_setting_track_int(MCE_SETTING_TK_EXCEPT_LEN_USB_DIALOG,
+                          &exception_length_usb_dialog,
+                          MCE_DEFAULT_TK_EXCEPT_LEN_USB_DIALOG,
+                          tklock_gconf_cb,
+                          &exception_length_usb_dialog_cb_id);
 
-    mce_gconf_track_int(MCE_SETTING_TK_EXCEPT_LEN_CHARGER,
-                        &exception_length_charger,
-                        MCE_DEFAULT_TK_EXCEPT_LEN_CHARGER,
-                        tklock_gconf_cb,
-                        &exception_length_charger_cb_id);
+    mce_setting_track_int(MCE_SETTING_TK_EXCEPT_LEN_CHARGER,
+                          &exception_length_charger,
+                          MCE_DEFAULT_TK_EXCEPT_LEN_CHARGER,
+                          tklock_gconf_cb,
+                          &exception_length_charger_cb_id);
 
-    mce_gconf_track_int(MCE_SETTING_TK_EXCEPT_LEN_BATTERY,
-                        &exception_length_battery,
-                        MCE_DEFAULT_TK_EXCEPT_LEN_BATTERY,
-                        tklock_gconf_cb,
-                        &exception_length_battery_cb_id);
+    mce_setting_track_int(MCE_SETTING_TK_EXCEPT_LEN_BATTERY,
+                          &exception_length_battery,
+                          MCE_DEFAULT_TK_EXCEPT_LEN_BATTERY,
+                          tklock_gconf_cb,
+                          &exception_length_battery_cb_id);
 
-    mce_gconf_track_int(MCE_SETTING_TK_EXCEPT_LEN_JACK_IN,
-                        &exception_length_jack_in,
-                        MCE_DEFAULT_TK_EXCEPT_LEN_JACK_IN,
-                        tklock_gconf_cb,
-                        &exception_length_jack_in_cb_id);
+    mce_setting_track_int(MCE_SETTING_TK_EXCEPT_LEN_JACK_IN,
+                          &exception_length_jack_in,
+                          MCE_DEFAULT_TK_EXCEPT_LEN_JACK_IN,
+                          tklock_gconf_cb,
+                          &exception_length_jack_in_cb_id);
 
-    mce_gconf_track_int(MCE_SETTING_TK_EXCEPT_LEN_JACK_OUT,
-                        &exception_length_jack_out,
-                        MCE_DEFAULT_TK_EXCEPT_LEN_JACK_OUT,
-                        tklock_gconf_cb,
-                        &exception_length_jack_out_cb_id);
+    mce_setting_track_int(MCE_SETTING_TK_EXCEPT_LEN_JACK_OUT,
+                          &exception_length_jack_out,
+                          MCE_DEFAULT_TK_EXCEPT_LEN_JACK_OUT,
+                          tklock_gconf_cb,
+                          &exception_length_jack_out_cb_id);
 
-    mce_gconf_track_int(MCE_SETTING_TK_EXCEPT_LEN_CAMERA,
-                        &exception_length_camera,
-                        MCE_DEFAULT_TK_EXCEPT_LEN_CAMERA,
-                        tklock_gconf_cb,
-                        &exception_length_camera_cb_id);
+    mce_setting_track_int(MCE_SETTING_TK_EXCEPT_LEN_CAMERA,
+                          &exception_length_camera,
+                          MCE_DEFAULT_TK_EXCEPT_LEN_CAMERA,
+                          tklock_gconf_cb,
+                          &exception_length_camera_cb_id);
 
-    mce_gconf_track_int(MCE_SETTING_TK_EXCEPT_LEN_VOLUME,
-                        &exception_length_volume,
-                        MCE_DEFAULT_TK_EXCEPT_LEN_VOLUME,
-                        tklock_gconf_cb,
-                        &exception_length_volume_cb_id);
+    mce_setting_track_int(MCE_SETTING_TK_EXCEPT_LEN_VOLUME,
+                          &exception_length_volume,
+                          MCE_DEFAULT_TK_EXCEPT_LEN_VOLUME,
+                          tklock_gconf_cb,
+                          &exception_length_volume_cb_id);
 
-    mce_gconf_track_int(MCE_SETTING_TK_EXCEPT_LEN_ACTIVITY,
-                        &exception_length_activity,
-                        MCE_DEFAULT_TK_EXCEPT_LEN_ACTIVITY,
-                        tklock_gconf_cb,
-                        &exception_length_activity_cb_id);
+    mce_setting_track_int(MCE_SETTING_TK_EXCEPT_LEN_ACTIVITY,
+                          &exception_length_activity,
+                          MCE_DEFAULT_TK_EXCEPT_LEN_ACTIVITY,
+                          tklock_gconf_cb,
+                          &exception_length_activity_cb_id);
 
-    mce_gconf_track_bool(MCE_SETTING_TK_LOCKSCREEN_ANIM_ENABLED,
-                         &lockscreen_anim_enabled,
-                         MCE_DEFAULT_TK_LOCKSCREEN_ANIM_ENABLED,
-                         tklock_gconf_cb,
-                         &lockscreen_anim_enabled_cb_id);
+    mce_setting_track_bool(MCE_SETTING_TK_LOCKSCREEN_ANIM_ENABLED,
+                           &lockscreen_anim_enabled,
+                           MCE_DEFAULT_TK_LOCKSCREEN_ANIM_ENABLED,
+                           tklock_gconf_cb,
+                           &lockscreen_anim_enabled_cb_id);
 }
 
 /** Remove gconf change notifiers
  */
 static void tklock_gconf_quit(void)
 {
-    mce_gconf_notifier_remove(volkey_policy_cb_id),
+    mce_setting_notifier_remove(volkey_policy_cb_id),
         volkey_policy_cb_id = 0;
 
-    mce_gconf_notifier_remove(tklock_lid_open_actions_cb_id),
+    mce_setting_notifier_remove(tklock_lid_open_actions_cb_id),
         tklock_lid_open_actions_cb_id = 0;
 
-    mce_gconf_notifier_remove(tklock_lid_close_actions_cb_id),
+    mce_setting_notifier_remove(tklock_lid_close_actions_cb_id),
         tklock_lid_close_actions_cb_id = 0;
 
-    mce_gconf_notifier_remove(tklock_kbd_open_trigger_cb_id),
+    mce_setting_notifier_remove(tklock_kbd_open_trigger_cb_id),
         tklock_kbd_open_trigger_cb_id = 0;
 
-    mce_gconf_notifier_remove(tklock_kbd_open_actions_cb_id),
+    mce_setting_notifier_remove(tklock_kbd_open_actions_cb_id),
         tklock_kbd_open_actions_cb_id = 0;
 
-    mce_gconf_notifier_remove(tklock_kbd_close_trigger_cb_id),
+    mce_setting_notifier_remove(tklock_kbd_close_trigger_cb_id),
         tklock_kbd_close_trigger_cb_id = 0;
 
-    mce_gconf_notifier_remove(tklock_kbd_close_actions_cb_id),
+    mce_setting_notifier_remove(tklock_kbd_close_actions_cb_id),
         tklock_kbd_close_actions_cb_id = 0;
 
-    mce_gconf_notifier_remove(tk_autolock_enabled_cb_id),
+    mce_setting_notifier_remove(tk_autolock_enabled_cb_id),
         tk_autolock_enabled_cb_id = 0;
 
-    mce_gconf_notifier_remove(tk_input_policy_enabled_cb_id),
+    mce_setting_notifier_remove(tk_input_policy_enabled_cb_id),
         tk_input_policy_enabled_cb_id = 0;
 
-    mce_gconf_notifier_remove(tklock_autolock_delay_cb_id),
+    mce_setting_notifier_remove(tklock_autolock_delay_cb_id),
         tklock_autolock_delay_cb_id = 0;
 
-    mce_gconf_notifier_remove(touchscreen_gesture_enable_mode_cb_id),
+    mce_setting_notifier_remove(touchscreen_gesture_enable_mode_cb_id),
         touchscreen_gesture_enable_mode_cb_id = 0;
 
-    mce_gconf_notifier_remove(tklock_lpmui_triggering_cb_id),
+    mce_setting_notifier_remove(tklock_lpmui_triggering_cb_id),
         tklock_lpmui_triggering_cb_id = 0;
 
-    mce_gconf_notifier_remove(proximity_blocks_touch_cb_id),
+    mce_setting_notifier_remove(proximity_blocks_touch_cb_id),
         proximity_blocks_touch_cb_id = 0;
 
-    mce_gconf_notifier_remove(tklock_devicelock_in_lockscreen_cb_id),
+    mce_setting_notifier_remove(tklock_devicelock_in_lockscreen_cb_id),
         tklock_devicelock_in_lockscreen_cb_id = 0;
 
-    mce_gconf_notifier_remove(lid_sensor_enabled_cb_id),
+    mce_setting_notifier_remove(lid_sensor_enabled_cb_id),
         lid_sensor_enabled_cb_id = 0;
 
-    mce_gconf_notifier_remove(als_enabled_gconf_id),
+    mce_setting_notifier_remove(als_enabled_gconf_id),
         als_enabled_gconf_id = 0;
 
-    mce_gconf_notifier_remove(filter_lid_with_als_gconf_id),
+    mce_setting_notifier_remove(filter_lid_with_als_gconf_id),
         filter_lid_with_als_gconf_id = 0;
 
-    mce_gconf_notifier_remove(filter_lid_als_limit_gconf_id),
+    mce_setting_notifier_remove(filter_lid_als_limit_gconf_id),
         filter_lid_als_limit_gconf_id = 0;
 
-    mce_gconf_notifier_remove(exception_length_call_in_cb_id),
+    mce_setting_notifier_remove(exception_length_call_in_cb_id),
         exception_length_call_in_cb_id = 0;
 
-    mce_gconf_notifier_remove(exception_length_call_out_cb_id),
+    mce_setting_notifier_remove(exception_length_call_out_cb_id),
         exception_length_call_out_cb_id = 0;
 
-    mce_gconf_notifier_remove(exception_length_alarm_cb_id),
+    mce_setting_notifier_remove(exception_length_alarm_cb_id),
         exception_length_alarm_cb_id = 0;
 
-    mce_gconf_notifier_remove(exception_length_usb_connect_cb_id),
+    mce_setting_notifier_remove(exception_length_usb_connect_cb_id),
         exception_length_usb_connect_cb_id = 0;
 
-    mce_gconf_notifier_remove(exception_length_usb_dialog_cb_id),
+    mce_setting_notifier_remove(exception_length_usb_dialog_cb_id),
         exception_length_usb_dialog_cb_id = 0;
 
-    mce_gconf_notifier_remove(exception_length_charger_cb_id),
+    mce_setting_notifier_remove(exception_length_charger_cb_id),
         exception_length_charger_cb_id = 0;
 
-    mce_gconf_notifier_remove(exception_length_battery_cb_id),
+    mce_setting_notifier_remove(exception_length_battery_cb_id),
         exception_length_battery_cb_id = 0;
 
-    mce_gconf_notifier_remove(exception_length_jack_in_cb_id),
+    mce_setting_notifier_remove(exception_length_jack_in_cb_id),
         exception_length_jack_in_cb_id = 0;
 
-    mce_gconf_notifier_remove(exception_length_jack_out_cb_id),
+    mce_setting_notifier_remove(exception_length_jack_out_cb_id),
         exception_length_jack_out_cb_id = 0;
 
-    mce_gconf_notifier_remove(exception_length_camera_cb_id),
+    mce_setting_notifier_remove(exception_length_camera_cb_id),
         exception_length_camera_cb_id = 0;
 
-    mce_gconf_notifier_remove(exception_length_volume_cb_id),
+    mce_setting_notifier_remove(exception_length_volume_cb_id),
         exception_length_volume_cb_id = 0;
 
-    mce_gconf_notifier_remove(exception_length_activity_cb_id),
+    mce_setting_notifier_remove(exception_length_activity_cb_id),
         exception_length_activity_cb_id = 0;
 
-    mce_gconf_notifier_remove(lockscreen_anim_enabled_cb_id),
+    mce_setting_notifier_remove(lockscreen_anim_enabled_cb_id),
         lockscreen_anim_enabled_cb_id = 0;
 }
 

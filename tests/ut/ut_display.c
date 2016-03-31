@@ -178,23 +178,23 @@ static void stub_mce_conf_teardown_unchecked(void)
  * mce-gconf.c stubs {{{1
  */
 
-typedef struct stub__mce_gconf_notifier_data
+typedef struct stub__mce_setting_notifier_data
 {
 	GConfClientNotifyFunc callback;
 	guint cb_id;
-} stub__mce_gconf_notifier_data_t;
+} stub__mce_setting_notifier_data_t;
 
-static GHashTable *stub__mce_gconf_notifiers = NULL;
+static GHashTable *stub__mce_setting_notifiers = NULL;
 
 EXTERN_STUB (
-gboolean, mce_gconf_notifier_add, (const gchar *path, const gchar *key,
+gboolean, mce_setting_notifier_add, (const gchar *path, const gchar *key,
 				   const GConfClientNotifyFunc callback,
 				   guint *cb_id))
 {
 	(void)path;
 
-	typedef stub__mce_gconf_notifier_data_t notifier_data_t;
-	GHashTable *const notifiers = stub__mce_gconf_notifiers;
+	typedef stub__mce_setting_notifier_data_t notifier_data_t;
+	GHashTable *const notifiers = stub__mce_setting_notifiers;
 
 	ck_assert(g_hash_table_lookup(notifiers, key) == NULL);
 
@@ -212,12 +212,12 @@ gboolean, mce_gconf_notifier_add, (const gchar *path, const gchar *key,
 }
 
 EXTERN_STUB (
-void, mce_gconf_notifier_remove, (gpointer cb_id, gpointer user_data))
+void, mce_setting_notifier_remove, (gpointer cb_id, gpointer user_data))
 {
 	(void)user_data;
 
-	typedef stub__mce_gconf_notifier_data_t notifier_data_t;
-	GHashTable *const notifiers = stub__mce_gconf_notifiers;
+	typedef stub__mce_setting_notifier_data_t notifier_data_t;
+	GHashTable *const notifiers = stub__mce_setting_notifiers;
 
 	gboolean match_cb_id(gpointer key, gpointer value, gpointer user_data_)
 	{
@@ -232,18 +232,18 @@ void, mce_gconf_notifier_remove, (gpointer cb_id, gpointer user_data))
 							NULL));
 }
 
-typedef struct stub__mce_gconf_get_int_item
+typedef struct stub__mce_setting_get_int_item
 {
 	const gchar *key;
 	gint value;
-} stub__mce_gconf_get_int_item_t;
-static stub__mce_gconf_get_int_item_t *stub__mce_gconf_get_int_items = NULL;
+} stub__mce_setting_get_int_item_t;
+static stub__mce_setting_get_int_item_t *stub__mce_setting_get_int_items = NULL;
 
 EXTERN_STUB (
-gboolean, mce_gconf_get_int, (const gchar *const key, gint *value))
+gboolean, mce_setting_get_int, (const gchar *const key, gint *value))
 {
-	stub__mce_gconf_get_int_item_t *const items =
-		stub__mce_gconf_get_int_items;
+	stub__mce_setting_get_int_item_t *const items =
+		stub__mce_setting_get_int_items;
 
 	for( int i = 0; items[i].key; ++i ) {
 		if( strcmp(key, items[i].key) == 0 ) {
@@ -257,12 +257,12 @@ gboolean, mce_gconf_get_int, (const gchar *const key, gint *value))
 	return FALSE;
 }
 
-static gboolean stub__mce_gconf_set_int(const gchar *key, gint value)
+static gboolean stub__mce_setting_set_int(const gchar *key, gint value)
 {
-	typedef stub__mce_gconf_notifier_data_t notifier_data_t;
-	typedef stub__mce_gconf_get_int_item_t item_t;
-	item_t *const items = stub__mce_gconf_get_int_items;
-	GHashTable *const notifiers = stub__mce_gconf_notifiers;
+	typedef stub__mce_setting_notifier_data_t notifier_data_t;
+	typedef stub__mce_setting_get_int_item_t item_t;
+	item_t *const items = stub__mce_setting_get_int_items;
+	GHashTable *const notifiers = stub__mce_setting_notifiers;
 
 	item_t *item = NULL;
 	for( int i = 0; items[i].key; ++i ) {
@@ -293,20 +293,20 @@ static gboolean stub__mce_gconf_set_int(const gchar *key, gint value)
 }
 
 #define STUB__MCE_GCONF_GET_INT_LIST_MAX_ITEMS (10)
-typedef struct stub__mce_gconf_get_int_list_item
+typedef struct stub__mce_setting_get_int_list_item
 {
 	const gchar *key;
 	gint value[STUB__MCE_GCONF_GET_INT_LIST_MAX_ITEMS]; /* INT_MAX term. */
-} stub__mce_gconf_get_int_list_item_t;
-static stub__mce_gconf_get_int_list_item_t *stub__mce_gconf_get_int_list_items = NULL;
+} stub__mce_setting_get_int_list_item_t;
+static stub__mce_setting_get_int_list_item_t *stub__mce_setting_get_int_list_items = NULL;
 
 EXTERN_STUB (
-gboolean, mce_gconf_get_int_list, (const gchar *const key, GSList **values))
+gboolean, mce_setting_get_int_list, (const gchar *const key, GSList **values))
 {
 	ck_assert(*values == NULL);
 
-	stub__mce_gconf_get_int_list_item_t *const items =
-		stub__mce_gconf_get_int_list_items;
+	stub__mce_setting_get_int_list_item_t *const items =
+		stub__mce_setting_get_int_list_items;
 
 	for( int i = 0; items[i].key; ++i ) {
 		if( strcmp(key, items[i].key) != 0 )
@@ -323,18 +323,18 @@ gboolean, mce_gconf_get_int_list, (const gchar *const key, GSList **values))
 	return FALSE;
 }
 
-typedef struct stub__mce_gconf_get_bool_item
+typedef struct stub__mce_setting_get_bool_item
 {
 	const gchar *key;
 	gboolean value;
-} stub__mce_gconf_get_bool_item_t;
-static stub__mce_gconf_get_bool_item_t *stub__mce_gconf_get_bool_items = NULL;
+} stub__mce_setting_get_bool_item_t;
+static stub__mce_setting_get_bool_item_t *stub__mce_setting_get_bool_items = NULL;
 
 EXTERN_STUB (
-gboolean, mce_gconf_get_bool, (const gchar *const key, gboolean *value))
+gboolean, mce_setting_get_bool, (const gchar *const key, gboolean *value))
 {
-	stub__mce_gconf_get_bool_item_t *const items =
-		stub__mce_gconf_get_bool_items;
+	stub__mce_setting_get_bool_item_t *const items =
+		stub__mce_setting_get_bool_items;
 
 	for( int i = 0; items[i].key; ++i ) {
 		if( strcmp(key, items[i].key) == 0 ) {
@@ -348,12 +348,12 @@ gboolean, mce_gconf_get_bool, (const gchar *const key, gboolean *value))
 	return FALSE;
 }
 
-static gboolean stub__mce_gconf_set_bool(const gchar *key, gboolean value)
+static gboolean stub__mce_setting_set_bool(const gchar *key, gboolean value)
 {
-	typedef stub__mce_gconf_notifier_data_t notifier_data_t;
-	typedef stub__mce_gconf_get_bool_item_t item_t;
-	item_t *const items = stub__mce_gconf_get_bool_items;
-	GHashTable *const notifiers = stub__mce_gconf_notifiers;
+	typedef stub__mce_setting_notifier_data_t notifier_data_t;
+	typedef stub__mce_setting_get_bool_item_t item_t;
+	item_t *const items = stub__mce_setting_get_bool_items;
+	GHashTable *const notifiers = stub__mce_setting_notifiers;
 
 	item_t *item = NULL;
 	for( int i = 0; items[i].key; ++i ) {
@@ -383,13 +383,13 @@ static gboolean stub__mce_gconf_set_bool(const gchar *key, gboolean value)
 	return TRUE;
 }
 
-static void stub_mce_gconf_setup_unchecked(void)
+static void stub_mce_setting_setup_unchecked(void)
 {
-	stub__mce_gconf_notifiers = g_hash_table_new_full(g_str_hash,
+	stub__mce_setting_notifiers = g_hash_table_new_full(g_str_hash,
 							  g_str_equal,
 							  g_free, g_free);
 
-	static stub__mce_gconf_get_int_item_t int_items[] = {
+	static stub__mce_setting_get_int_item_t int_items[] = {
 		{
 			MCE_SETTING_CPU_SCALING_GOVERNOR_PATH,
 			/* governor_conf default */
@@ -427,9 +427,9 @@ static void stub_mce_gconf_setup_unchecked(void)
 			0,
 		}
 	};
-	stub__mce_gconf_get_int_items = int_items;
+	stub__mce_setting_get_int_items = int_items;
 
-	static stub__mce_gconf_get_int_list_item_t int_list_items[] = {
+	static stub__mce_setting_get_int_list_item_t int_list_items[] = {
 		{
 			MCE_SETTING_DISPLAY_DIM_TIMEOUT_LIST_PATH,
 			{ 1, 5, 10, 15, 20, INT_MAX },
@@ -438,9 +438,9 @@ static void stub_mce_gconf_setup_unchecked(void)
 			{ INT_MAX },
 		}
 	};
-	stub__mce_gconf_get_int_list_items = int_list_items;
+	stub__mce_setting_get_int_list_items = int_list_items;
 
-	static stub__mce_gconf_get_bool_item_t bool_items[] = {
+	static stub__mce_setting_get_bool_item_t bool_items[] = {
 		{
 			MCE_SETTING_DISPLAY_ADAPTIVE_DIMMING_PATH,
 			/* adaptive_dimming_enabled default */
@@ -454,13 +454,13 @@ static void stub_mce_gconf_setup_unchecked(void)
 			FALSE,
 		}
 	};
-	stub__mce_gconf_get_bool_items = bool_items;
+	stub__mce_setting_get_bool_items = bool_items;
 }
 
-static void stub_mce_gconf_teardown_unchecked(void)
+static void stub_mce_setting_teardown_unchecked(void)
 {
-	g_hash_table_destroy(stub__mce_gconf_notifiers),
-		stub__mce_gconf_notifiers = NULL;
+	g_hash_table_destroy(stub__mce_setting_notifiers),
+		stub__mce_setting_notifiers = NULL;
 }
 
 /*
@@ -1522,7 +1522,7 @@ END_TEST
 
 START_TEST (ut_check_basic_state_change)
 {
-	stub__mce_gconf_set_bool(MCE_SETTING_USE_LOW_POWER_MODE_PATH, TRUE);
+	stub__mce_setting_set_bool(MCE_SETTING_USE_LOW_POWER_MODE_PATH, TRUE);
 
 	ut_run_to_user_state();
 
@@ -1572,7 +1572,7 @@ END_TEST
 START_TEST (ut_check_auto_blank_no_lpm)
 {
 	const gint set_disp_blank_timeout = 2;
-	stub__mce_gconf_set_int(MCE_SETTING_DISPLAY_BLANK_TIMEOUT_PATH,
+	stub__mce_setting_set_int(MCE_SETTING_DISPLAY_BLANK_TIMEOUT_PATH,
 				set_disp_blank_timeout);
 
 	ut_run_to_user_state();
@@ -1597,7 +1597,7 @@ START_TEST (ut_check_auto_blank)
 	 *  - no way to change disp_lpm_blank_timeout from outside
 	 *    - no API, no gconf
 	 */
-	stub__mce_gconf_set_bool(MCE_SETTING_USE_LOW_POWER_MODE_PATH, TRUE);
+	stub__mce_setting_set_bool(MCE_SETTING_USE_LOW_POWER_MODE_PATH, TRUE);
 	const gint set_disp_lpm_blank_timeout = 2;
 	disp_lpm_blank_timeout = set_disp_lpm_blank_timeout;
 
@@ -1617,11 +1617,11 @@ END_TEST
 
 START_TEST (ut_check_auto_dim_not_adaptive)
 {
-	stub__mce_gconf_set_bool(MCE_SETTING_DISPLAY_ADAPTIVE_DIMMING_PATH,
+	stub__mce_setting_set_bool(MCE_SETTING_DISPLAY_ADAPTIVE_DIMMING_PATH,
 				 FALSE);
 
 	const gint set_disp_dim_timeout = 2;
-	stub__mce_gconf_set_int(MCE_SETTING_DISPLAY_DIM_TIMEOUT_PATH,
+	stub__mce_setting_set_int(MCE_SETTING_DISPLAY_DIM_TIMEOUT_PATH,
 				set_disp_dim_timeout);
 
 	ut_run_to_user_state();
@@ -1644,7 +1644,7 @@ START_TEST (ut_check_auto_dim)
 	 * dim_timeout.  That is why we set
 	 * dim_timeout=possible_dim_timeouts[forced_dti] */
 	const gint forced_dti = 1;
-	stub__mce_gconf_set_int(MCE_SETTING_DISPLAY_DIM_TIMEOUT_PATH,
+	stub__mce_setting_set_int(MCE_SETTING_DISPLAY_DIM_TIMEOUT_PATH,
 				ut_nth_possible_dim_timeout(forced_dti));
 
 	ck_assert(ut_is_display_state_eq(GINT_TO_POINTER(MCE_DISPLAY_ON)));
@@ -1687,12 +1687,12 @@ START_TEST (ut_check_adaptive_dim_timeout)
 	 * dim_timeout.  That is why we set
 	 * dim_timeout=possible_dim_timeouts[forced_dti] */
 	const gint forced_dti = 1;
-	stub__mce_gconf_set_int(MCE_SETTING_DISPLAY_DIM_TIMEOUT_PATH,
+	stub__mce_setting_set_int(MCE_SETTING_DISPLAY_DIM_TIMEOUT_PATH,
 				ut_nth_possible_dim_timeout(forced_dti));
 
 	/* Delay DIM -> OFF so it does not cancel_adaptive_dimming_timeout() and
 	 * reset adaptive_dimming_index to 0 */
-	stub__mce_gconf_set_int(MCE_SETTING_DISPLAY_BLANK_TIMEOUT_PATH,
+	stub__mce_setting_set_int(MCE_SETTING_DISPLAY_BLANK_TIMEOUT_PATH,
 				adaptive_dimming_threshold / 1000 * 10);
 
 	ck_assert(ut_is_display_state_eq(GINT_TO_POINTER(MCE_DISPLAY_ON)));
@@ -1749,10 +1749,10 @@ END_TEST
 
 START_TEST (ut_check_auto_dim_malf)
 {
-	stub__mce_gconf_set_bool(MCE_SETTING_DISPLAY_ADAPTIVE_DIMMING_PATH,
+	stub__mce_setting_set_bool(MCE_SETTING_DISPLAY_ADAPTIVE_DIMMING_PATH,
 				 FALSE);
 	const gint set_disp_dim_timeout = 2;
-	stub__mce_gconf_set_int(MCE_SETTING_DISPLAY_DIM_TIMEOUT_PATH,
+	stub__mce_setting_set_int(MCE_SETTING_DISPLAY_DIM_TIMEOUT_PATH,
 				set_disp_dim_timeout);
 
 	ut_run_to_user_state();
@@ -1767,11 +1767,11 @@ END_TEST
 
 START_TEST (ut_check_auto_lpm)
 {
-	stub__mce_gconf_set_bool(MCE_SETTING_USE_LOW_POWER_MODE_PATH, TRUE);
+	stub__mce_setting_set_bool(MCE_SETTING_USE_LOW_POWER_MODE_PATH, TRUE);
 
 	/* disp_lpm_timeout == disp_blank_timeout */
 	const gint set_disp_lpm_timeout = 2;
-	stub__mce_gconf_set_int(MCE_SETTING_DISPLAY_BLANK_TIMEOUT_PATH,
+	stub__mce_setting_set_int(MCE_SETTING_DISPLAY_BLANK_TIMEOUT_PATH,
 				set_disp_lpm_timeout);
 
 	ut_run_to_user_state();
@@ -1807,7 +1807,7 @@ START_TEST (ut_check_brightness)
 	}
 
 	for( int i = 0; i < nvalues; ++i ) {
-		stub__mce_gconf_set_int(MCE_SETTING_DISPLAY_BRIGHTNESS_PATH,
+		stub__mce_setting_set_int(MCE_SETTING_DISPLAY_BRIGHTNESS_PATH,
 					brightnesses[i]);
 
 		guint expected = sysfs_brightness(brightnesses[i]);
@@ -1855,11 +1855,11 @@ START_TEST (ut_check_blanking_pause)
 	const gint set_blank_prevent_timeout = 3;
 	blank_prevent_timeout = set_blank_prevent_timeout;
 
-	stub__mce_gconf_set_bool(MCE_SETTING_DISPLAY_ADAPTIVE_DIMMING_PATH,
+	stub__mce_setting_set_bool(MCE_SETTING_DISPLAY_ADAPTIVE_DIMMING_PATH,
 				 FALSE);
 
 	const gint set_disp_dim_timeout = 2;
-	stub__mce_gconf_set_int(MCE_SETTING_DISPLAY_DIM_TIMEOUT_PATH,
+	stub__mce_setting_set_int(MCE_SETTING_DISPLAY_DIM_TIMEOUT_PATH,
 				set_disp_dim_timeout);
 
 	execute_datapipe(&display_state_req_pipe,
@@ -1979,7 +1979,7 @@ START_TEST (ut_check_set_use_lpm_while_off)
 	ut_assert_transition(ut_is_display_state_eq,
 			     GINT_TO_POINTER(MCE_DISPLAY_OFF));
 
-	stub__mce_gconf_set_bool(MCE_SETTING_USE_LOW_POWER_MODE_PATH, TRUE);
+	stub__mce_setting_set_bool(MCE_SETTING_USE_LOW_POWER_MODE_PATH, TRUE);
 
 	ut_assert_transition(ut_is_display_state_eq,
 			     GINT_TO_POINTER(MCE_DISPLAY_LPM_ON));
@@ -2012,7 +2012,7 @@ START_TEST (ut_check_unset_use_lpm_while_lpm)
 
 	ut_run_to_user_state();
 
-	stub__mce_gconf_set_bool(MCE_SETTING_USE_LOW_POWER_MODE_PATH, TRUE);
+	stub__mce_setting_set_bool(MCE_SETTING_USE_LOW_POWER_MODE_PATH, TRUE);
 
 	display_type_t required_lpm_state = data[_i].lpm_on
 		? MCE_DISPLAY_LPM_ON
@@ -2023,7 +2023,7 @@ START_TEST (ut_check_unset_use_lpm_while_lpm)
 	ut_assert_transition(ut_is_display_state_eq,
 			     GINT_TO_POINTER(required_lpm_state));
 
-	stub__mce_gconf_set_bool(MCE_SETTING_USE_LOW_POWER_MODE_PATH, FALSE);
+	stub__mce_setting_set_bool(MCE_SETTING_USE_LOW_POWER_MODE_PATH, FALSE);
 
 	ut_assert_transition(ut_is_display_state_eq,
 			     GINT_TO_POINTER(MCE_DISPLAY_OFF));
@@ -2038,8 +2038,8 @@ static Suite *ut_display_suite (void)
 	tcase_set_timeout(tc_core, 300);
 	tcase_add_unchecked_fixture(tc_core, stub_mce_conf_setup_unchecked,
 				    stub_mce_conf_teardown_unchecked);
-	tcase_add_unchecked_fixture(tc_core, stub_mce_gconf_setup_unchecked,
-				    stub_mce_gconf_teardown_unchecked);
+	tcase_add_unchecked_fixture(tc_core, stub_mce_setting_setup_unchecked,
+				    stub_mce_setting_teardown_unchecked);
 	tcase_add_unchecked_fixture(tc_core, stub_mce_io_setup_unchecked,
 				    stub_mce_io_teardown_unchecked);
 	tcase_add_unchecked_fixture(tc_core, stub_wakelock_setup_unchecked,
