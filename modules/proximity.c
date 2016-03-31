@@ -24,7 +24,7 @@
 
 #include "../mce.h"
 #include "../mce-log.h"
-#include "../mce-gconf.h"
+#include "../mce-setting.h"
 #include "../mce-sensorfw.h"
 
 #include <gmodule.h>

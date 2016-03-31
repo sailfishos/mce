@@ -31,7 +31,7 @@
 #include "../mce-log.h"
 #include "../mce-io.h"
 #include "../mce-conf.h"
-#include "../mce-gconf.h"
+#include "../mce-setting.h"
 #include "../mce-dbus.h"
 #include "../mce-sensorfw.h"
 #include "../mce-wakelock.h"

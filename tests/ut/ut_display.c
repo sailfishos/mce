@@ -175,7 +175,7 @@ static void stub_mce_conf_teardown_unchecked(void)
 }
 
 /*
- * mce-gconf.c stubs {{{1
+ * mce-setting.c stubs {{{1
  */
 
 typedef struct stub__mce_setting_notifier_data

@@ -25,7 +25,7 @@
 #include "mce-fbdev.h"
 #include "mce-hbtimer.h"
 #include "mce-wltimer.h"
-#include "mce-gconf.h"
+#include "mce-setting.h"
 #include "mce-dbus.h"
 #include "mce-dsme.h"
 #include "mce-modules.h"

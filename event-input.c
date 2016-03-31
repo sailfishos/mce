@@ -29,7 +29,7 @@
 #include "mce-lib.h"
 #include "mce-conf.h"
 #ifdef ENABLE_DOUBLETAP_EMULATION
-# include "mce-gconf.h"
+# include "mce-setting.h"
 #endif
 #include "mce-sensorfw.h"
 #include "multitouch.h"

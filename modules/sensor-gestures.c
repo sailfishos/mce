@@ -22,7 +22,7 @@
 
 #include "../mce.h"
 #include "../mce-log.h"
-#include "../mce-gconf.h"
+#include "../mce-setting.h"
 #include "../mce-dbus.h"
 #include "../mce-sensorfw.h"
 #include "display.h"

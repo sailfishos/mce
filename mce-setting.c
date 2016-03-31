@@ -1,10 +1,12 @@
 /**
- * @file mce-gconf.c
- * Gconf handling code for the Mode Control Entity
+ * @file mce-setting.c
+ * Runtime setting handling code for the Mode Control Entity
  * <p>
  * Copyright © 2004-2009 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright © 2012-2016 Jolla Ltd.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
+ * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
  * mce is free software; you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License
@@ -19,7 +21,7 @@
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "mce-gconf.h"
+#include "mce-setting.h"
 
 #include "mce-log.h"
 

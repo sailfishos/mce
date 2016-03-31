@@ -1,10 +1,12 @@
 /**
- * @file mce-gconf.h
- * Headers for the GConf handling code for the Mode Control Entity
+ * @file mce-setting.h
+ * Headers for the runtime setting handling code for the Mode Control Entity
  * <p>
  * Copyright © 2004-2007 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright © 2014-2016 Jolla Ltd.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
+ * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
  * mce is free software; you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License
@@ -18,10 +20,10 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef _MCE_GCONF_H_
-#define _MCE_GCONF_H_
+#ifndef MCE_SETTING_H_
+# define MCE_SETTING_H_
 
-#include "builtin-gconf.h"
+# include "builtin-gconf.h"
 
 gboolean      mce_setting_has_key           (const gchar *const key);
 gboolean      mce_setting_set_int           (const gchar *const key, const gint value);
@@ -40,4 +42,4 @@ void          mce_setting_track_string      (const gchar *key, gchar **val, cons
 gboolean      mce_setting_init              (void);
 void          mce_setting_exit              (void);
 
-#endif /* _MCE_GCONF_H_ */
+#endif /* MCE_SETTING_H_ */
