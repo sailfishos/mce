@@ -789,39 +789,39 @@ EXIT:
 static void memnotify_gconf_init(void)
 {
     /* memnotify.warning.used level */
-    mce_gconf_notifier_add(MCE_GCONF_MEMNOTIFY_WARNING_PATH,
-                           MCE_GCONF_MEMNOTIFY_WARNING_USED,
+    mce_gconf_notifier_add(MCE_SETTING_MEMNOTIFY_WARNING_PATH,
+                           MCE_SETTING_MEMNOTIFY_WARNING_USED,
                            memnotify_gconf_cb,
                            &memnotify_gconf_warning_used_id);
 
-    mce_gconf_get_int(MCE_GCONF_MEMNOTIFY_WARNING_USED,
+    mce_gconf_get_int(MCE_SETTING_MEMNOTIFY_WARNING_USED,
                       &memnotify_limit[MEMNOTIFY_LEVEL_WARNING].mnl_used);
 
     /* memnotify.warning.active level */
-    mce_gconf_notifier_add(MCE_GCONF_MEMNOTIFY_WARNING_PATH,
-                           MCE_GCONF_MEMNOTIFY_WARNING_ACTIVE,
+    mce_gconf_notifier_add(MCE_SETTING_MEMNOTIFY_WARNING_PATH,
+                           MCE_SETTING_MEMNOTIFY_WARNING_ACTIVE,
                            memnotify_gconf_cb,
                            &memnotify_gconf_warning_active_id);
 
-    mce_gconf_get_int(MCE_GCONF_MEMNOTIFY_WARNING_ACTIVE,
+    mce_gconf_get_int(MCE_SETTING_MEMNOTIFY_WARNING_ACTIVE,
                       &memnotify_limit[MEMNOTIFY_LEVEL_WARNING].mnl_active);
 
     /* memnotify.critical.used level */
-    mce_gconf_notifier_add(MCE_GCONF_MEMNOTIFY_CRITICAL_PATH,
-                           MCE_GCONF_MEMNOTIFY_CRITICAL_USED,
+    mce_gconf_notifier_add(MCE_SETTING_MEMNOTIFY_CRITICAL_PATH,
+                           MCE_SETTING_MEMNOTIFY_CRITICAL_USED,
                            memnotify_gconf_cb,
                            &memnotify_gconf_critical_used_id);
 
-    mce_gconf_get_int(MCE_GCONF_MEMNOTIFY_CRITICAL_USED,
+    mce_gconf_get_int(MCE_SETTING_MEMNOTIFY_CRITICAL_USED,
                       &memnotify_limit[MEMNOTIFY_LEVEL_CRITICAL].mnl_used);
 
     /* memnotify.critical.active level */
-    mce_gconf_notifier_add(MCE_GCONF_MEMNOTIFY_CRITICAL_PATH,
-                           MCE_GCONF_MEMNOTIFY_CRITICAL_ACTIVE,
+    mce_gconf_notifier_add(MCE_SETTING_MEMNOTIFY_CRITICAL_PATH,
+                           MCE_SETTING_MEMNOTIFY_CRITICAL_ACTIVE,
                            memnotify_gconf_cb,
                            &memnotify_gconf_critical_active_id);
 
-    mce_gconf_get_int(MCE_GCONF_MEMNOTIFY_CRITICAL_ACTIVE,
+    mce_gconf_get_int(MCE_SETTING_MEMNOTIFY_CRITICAL_ACTIVE,
                       &memnotify_limit[MEMNOTIFY_LEVEL_CRITICAL].mnl_active);
 
     memnotify_status_show_triggers();

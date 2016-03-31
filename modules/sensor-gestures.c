@@ -54,7 +54,7 @@ static orientation_state_t orientation_state_eff = MCE_ORIENTATION_UNDEFINED;
 static gint orientation_state_eff_id = 0;
 
 /** Use of flipover gesture enabled */
-static gboolean sg_flipover_gesture_enabled = DEFAULT_FLIPOVER_GESTURE_ENABLED;
+static gboolean sg_flipover_gesture_enabled = MCE_DEFAULT_FLIPOVER_GESTURE_ENABLED;
 
 /** GConf change notification id for sg_flipover_gesture_enabled */
 static guint sg_flipover_gesture_enabled_gconf_cb_id = 0;
@@ -479,9 +479,9 @@ EXIT:
  */
 static void sg_gconf_init(void)
 {
-    mce_gconf_track_bool(MCE_GCONF_FLIPOVER_GESTURE_ENABLED,
+    mce_gconf_track_bool(MCE_SETTING_FLIPOVER_GESTURE_ENABLED,
                          &sg_flipover_gesture_enabled,
-                         DEFAULT_FLIPOVER_GESTURE_ENABLED,
+                         MCE_DEFAULT_FLIPOVER_GESTURE_ENABLED,
                          sg_gconf_cb,
                          &sg_flipover_gesture_enabled_gconf_cb_id);
 }

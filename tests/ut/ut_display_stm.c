@@ -449,7 +449,7 @@ START_TEST (ut_check_enable_suspend_while_off)
 	waitfb.thread = (pthread_t)-1;
 	renderer_ui_state = RENDERER_DISABLED;
 
-	suspend_policy = SUSPEND_POLICY_DEFAULT; /* The change */
+	suspend_policy = MCE_DEFAULT_USE_AUTOSUSPEND; /* The change */
 
 	stm_rethink();
 

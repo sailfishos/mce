@@ -562,6 +562,7 @@ NORMALIZE_USES_SPC =\
 	modules/camera.h\
 	modules/cpu-keepalive.c\
 	modules/display.c\
+	modules/display.h\
 	modules/display.dot\
 	modules/doubletap.c\
 	modules/doubletap.h\
@@ -573,6 +574,7 @@ NORMALIZE_USES_SPC =\
 	modules/memnotify.h\
 	modules/packagekit.c\
 	modules/powersavemode.h\
+	modules/proximity.h\
 	modules/radiostates.h\
 	modules/sensor-gestures.c\
 	modules/usbmode.c\
@@ -615,13 +617,11 @@ NORMALIZE_USES_TAB =\
 	modetransition.c\
 	modules/battery-bme.c\
 	modules/camera.c\
-	modules/display.h\
 	modules/keypad.c\
 	modules/led.c\
 	modules/led.h\
 	modules/powersavemode.c\
 	modules/proximity.c\
-	modules/proximity.h\
 	modules/radiostates.c\
 	systemui/tklock-dbus-names.h\
 

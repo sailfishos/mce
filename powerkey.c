@@ -128,13 +128,13 @@ static bool    pwrkey_delete_flagfile(const char *path);
  * ------------------------------------------------------------------------- */
 
 /** [setting] Power key press count for proximity sensor override */
-static gint  pwrkey_ps_override_count = 3;
+static gint  pwrkey_ps_override_count = MCE_DEFAULT_POWERKEY_PS_OVERRIDE_COUNT;
 
 /** GConf callback ID for pwrkey_ps_override_count */
 static guint pwrkey_ps_override_count_gconf_id = 0;
 
 /** [setting] Maximum time between power key presses for proximity sensor override */
-static gint  pwrkey_ps_override_timeout = 333;
+static gint  pwrkey_ps_override_timeout = MCE_DEFAULT_POWERKEY_PS_OVERRIDE_TIMEOUT;
 
 /** GConf callback ID for pwrkey_ps_override_timeout */
 static guint pwrkey_ps_override_timeout_gconf_id = 0;
@@ -147,7 +147,7 @@ static void  pwrkey_ps_override_evaluate(void);
  * Individual actions that can be taken.
  * ------------------------------------------------------------------------- */
 
-static gint  pwrkey_action_blank_mode = PWRKEY_BLANK_TO_OFF;
+static gint  pwrkey_action_blank_mode = MCE_DEFAULT_POWERKEY_BLANKING_MODE;
 static guint pwrkey_action_blank_mode_gconf_id = 0;
 
 static void  pwrkey_action_vibrate  (void);
@@ -190,7 +190,7 @@ static gchar   *pwrkey_mask_to_names   (uint32_t mask);
  * ------------------------------------------------------------------------- */
 
 /** Touchscreen gesture (doubletap etc) enable mode */
-static gint  pwrkey_gestures_enable_mode = DBLTAP_ENABLE_DEFAULT;
+static gint  pwrkey_gestures_enable_mode = MCE_DEFAULT_DOUBLETAP_MODE;
 static guint pwrkey_gestures_enable_mode_cb_id = 0;
 
 static bool  pwrkey_gestures_allowed(void);
@@ -248,33 +248,33 @@ static guint  pwrkey_actions_long_off_gconf_id   = 0;
 /** Array of setting keys for configurable touchscreen gestures */
 static const char * const pwrkey_actions_gesture_key[POWERKEY_ACTIONS_GESTURE_COUNT] =
 {
-    MCE_GCONF_POWERKEY_ACTIONS_GESTURE0,
-    MCE_GCONF_POWERKEY_ACTIONS_GESTURE1,
-    MCE_GCONF_POWERKEY_ACTIONS_GESTURE2,
-    MCE_GCONF_POWERKEY_ACTIONS_GESTURE3,
-    MCE_GCONF_POWERKEY_ACTIONS_GESTURE4,
-    MCE_GCONF_POWERKEY_ACTIONS_GESTURE5,
-    MCE_GCONF_POWERKEY_ACTIONS_GESTURE6,
-    MCE_GCONF_POWERKEY_ACTIONS_GESTURE7,
-    MCE_GCONF_POWERKEY_ACTIONS_GESTURE8,
-    MCE_GCONF_POWERKEY_ACTIONS_GESTURE9,
-    MCE_GCONF_POWERKEY_ACTIONS_GESTURE10,
+    MCE_SETTING_POWERKEY_ACTIONS_GESTURE0,
+    MCE_SETTING_POWERKEY_ACTIONS_GESTURE1,
+    MCE_SETTING_POWERKEY_ACTIONS_GESTURE2,
+    MCE_SETTING_POWERKEY_ACTIONS_GESTURE3,
+    MCE_SETTING_POWERKEY_ACTIONS_GESTURE4,
+    MCE_SETTING_POWERKEY_ACTIONS_GESTURE5,
+    MCE_SETTING_POWERKEY_ACTIONS_GESTURE6,
+    MCE_SETTING_POWERKEY_ACTIONS_GESTURE7,
+    MCE_SETTING_POWERKEY_ACTIONS_GESTURE8,
+    MCE_SETTING_POWERKEY_ACTIONS_GESTURE9,
+    MCE_SETTING_POWERKEY_ACTIONS_GESTURE10,
 };
 
 /** Array of default values for configurable touchscreen gestures */
 static const char * const pwrkey_actions_gesture_val[POWERKEY_ACTIONS_GESTURE_COUNT] =
 {
-    DEFAULT_POWERKEY_ACTIONS_GESTURE0,
-    DEFAULT_POWERKEY_ACTIONS_GESTURE1,
-    DEFAULT_POWERKEY_ACTIONS_GESTURE2,
-    DEFAULT_POWERKEY_ACTIONS_GESTURE3,
-    DEFAULT_POWERKEY_ACTIONS_GESTURE4,
-    DEFAULT_POWERKEY_ACTIONS_GESTURE5,
-    DEFAULT_POWERKEY_ACTIONS_GESTURE6,
-    DEFAULT_POWERKEY_ACTIONS_GESTURE7,
-    DEFAULT_POWERKEY_ACTIONS_GESTURE8,
-    DEFAULT_POWERKEY_ACTIONS_GESTURE9,
-    DEFAULT_POWERKEY_ACTIONS_GESTURE10,
+    MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE0,
+    MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE1,
+    MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE2,
+    MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE3,
+    MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE4,
+    MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE5,
+    MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE6,
+    MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE7,
+    MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE8,
+    MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE9,
+    MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE10,
 };
 
 /** Array of current values for configurable touchscreen gestures */
@@ -299,7 +299,7 @@ static void pwrkey_actions_select          (bool display_is_on);
  * timer for telling apart short and long power key presses
  * ------------------------------------------------------------------------- */
 
-static gint     pwrkey_long_press_delay          = DEFAULT_POWERKEY_LONG_DELAY;
+static gint     pwrkey_long_press_delay          = MCE_DEFAULT_POWERKEY_LONG_PRESS_DELAY;
 static guint    pwrkey_long_press_delay_gconf_id = 0;
 
 static guint    pwrkey_long_press_timer_id       = 0;
@@ -315,7 +315,7 @@ static bool     pwrkey_long_press_timer_cancel  (void);
  * timer for telling apart single and double power key presses
  * ------------------------------------------------------------------------- */
 
-static gint     pwrkey_double_press_delay = DEFAULT_POWERKEY_DOUBLE_DELAY;
+static gint     pwrkey_double_press_delay = MCE_DEFAULT_POWERKEY_DOUBLE_PRESS_DELAY;
 static guint    pwrkey_double_press_delay_gconf_id = 0;
 
 static guint    pwrkey_double_press_timer_id = 0;
@@ -370,62 +370,62 @@ typedef struct
 static pwrkey_dbus_action_t pwrkey_dbus_action[POWEKEY_DBUS_ACTION_COUNT] =
 {
     {
-        .gconf_key = MCE_GCONF_POWERKEY_DBUS_ACTION1,
-        .gconf_def = DEFAULT_POWERKEY_DBUS_ACTION1,
+        .gconf_key = MCE_SETTING_POWERKEY_DBUS_ACTION1,
+        .gconf_def = MCE_DEFAULT_POWERKEY_DBUS_ACTION1,
         .gconf_val = 0,
         .gconf_id  = 0,
     },
     {
-        .gconf_key = MCE_GCONF_POWERKEY_DBUS_ACTION2,
-        .gconf_def = DEFAULT_POWERKEY_DBUS_ACTION2,
+        .gconf_key = MCE_SETTING_POWERKEY_DBUS_ACTION2,
+        .gconf_def = MCE_DEFAULT_POWERKEY_DBUS_ACTION2,
         .gconf_val = 0,
         .gconf_id  = 0,
     },
     {
-        .gconf_key = MCE_GCONF_POWERKEY_DBUS_ACTION3,
-        .gconf_def = DEFAULT_POWERKEY_DBUS_ACTION3,
+        .gconf_key = MCE_SETTING_POWERKEY_DBUS_ACTION3,
+        .gconf_def = MCE_DEFAULT_POWERKEY_DBUS_ACTION3,
         .gconf_val = 0,
         .gconf_id  = 0,
     },
     {
-        .gconf_key = MCE_GCONF_POWERKEY_DBUS_ACTION4,
-        .gconf_def = DEFAULT_POWERKEY_DBUS_ACTION4,
+        .gconf_key = MCE_SETTING_POWERKEY_DBUS_ACTION4,
+        .gconf_def = MCE_DEFAULT_POWERKEY_DBUS_ACTION4,
         .gconf_val = 0,
         .gconf_id  = 0,
     },
     {
-        .gconf_key = MCE_GCONF_POWERKEY_DBUS_ACTION5,
-        .gconf_def = DEFAULT_POWERKEY_DBUS_ACTION5,
+        .gconf_key = MCE_SETTING_POWERKEY_DBUS_ACTION5,
+        .gconf_def = MCE_DEFAULT_POWERKEY_DBUS_ACTION5,
         .gconf_val = 0,
         .gconf_id  = 0,
     },
     {
-        .gconf_key = MCE_GCONF_POWERKEY_DBUS_ACTION6,
-        .gconf_def = DEFAULT_POWERKEY_DBUS_ACTION6,
+        .gconf_key = MCE_SETTING_POWERKEY_DBUS_ACTION6,
+        .gconf_def = MCE_DEFAULT_POWERKEY_DBUS_ACTION6,
         .gconf_val = 0,
         .gconf_id  = 0,
     },
     {
-        .gconf_key = MCE_GCONF_POWERKEY_DBUS_ACTION7,
-        .gconf_def = DEFAULT_POWERKEY_DBUS_ACTION7,
+        .gconf_key = MCE_SETTING_POWERKEY_DBUS_ACTION7,
+        .gconf_def = MCE_DEFAULT_POWERKEY_DBUS_ACTION7,
         .gconf_val = 0,
         .gconf_id  = 0,
     },
     {
-        .gconf_key = MCE_GCONF_POWERKEY_DBUS_ACTION8,
-        .gconf_def = DEFAULT_POWERKEY_DBUS_ACTION8,
+        .gconf_key = MCE_SETTING_POWERKEY_DBUS_ACTION8,
+        .gconf_def = MCE_DEFAULT_POWERKEY_DBUS_ACTION8,
         .gconf_val = 0,
         .gconf_id  = 0,
     },
     {
-        .gconf_key = MCE_GCONF_POWERKEY_DBUS_ACTION9,
-        .gconf_def = DEFAULT_POWERKEY_DBUS_ACTION9,
+        .gconf_key = MCE_SETTING_POWERKEY_DBUS_ACTION9,
+        .gconf_def = MCE_DEFAULT_POWERKEY_DBUS_ACTION9,
         .gconf_val = 0,
         .gconf_id  = 0,
     },
     {
-        .gconf_key = MCE_GCONF_POWERKEY_DBUS_ACTION10,
-        .gconf_def = DEFAULT_POWERKEY_DBUS_ACTION10,
+        .gconf_key = MCE_SETTING_POWERKEY_DBUS_ACTION10,
+        .gconf_def = MCE_DEFAULT_POWERKEY_DBUS_ACTION10,
         .gconf_val = 0,
         .gconf_id  = 0,
     },
@@ -452,7 +452,7 @@ static void   pwrkey_dbus_action_execute(size_t index);
 static display_state_t pwrkey_stm_display_state = MCE_DISPLAY_UNDEF;
 
 /** [setting] Power key press enable mode */
-static gint  pwrkey_stm_enable_mode = PWRKEY_ENABLE_DEFAULT;
+static gint  pwrkey_stm_enable_mode = MCE_DEFAULT_POWERKEY_MODE;
 static guint pwrkey_stm_enable_mode_gconf_id = 0;
 
 static void pwrkey_stm_long_press_timeout   (void);
@@ -1995,24 +1995,24 @@ pwrkey_gconf_sanitize_action_masks(void)
 
     /* send notifications if something changed */
     if( on_changed ) {
-        mce_gconf_set_string(MCE_GCONF_POWERKEY_ACTIONS_SINGLE_ON,
+        mce_gconf_set_string(MCE_SETTING_POWERKEY_ACTIONS_SINGLE_ON,
                              pwrkey_actions_single_on);
 
-        mce_gconf_set_string(MCE_GCONF_POWERKEY_ACTIONS_DOUBLE_ON,
+        mce_gconf_set_string(MCE_SETTING_POWERKEY_ACTIONS_DOUBLE_ON,
                              pwrkey_actions_double_on);
 
-        mce_gconf_set_string(MCE_GCONF_POWERKEY_ACTIONS_LONG_ON,
+        mce_gconf_set_string(MCE_SETTING_POWERKEY_ACTIONS_LONG_ON,
                              pwrkey_actions_long_on);
     }
 
     if( off_changed ) {
-        mce_gconf_set_string(MCE_GCONF_POWERKEY_ACTIONS_SINGLE_OFF,
+        mce_gconf_set_string(MCE_SETTING_POWERKEY_ACTIONS_SINGLE_OFF,
                              pwrkey_actions_single_off);
 
-        mce_gconf_set_string(MCE_GCONF_POWERKEY_ACTIONS_DOUBLE_OFF,
+        mce_gconf_set_string(MCE_SETTING_POWERKEY_ACTIONS_DOUBLE_OFF,
                              pwrkey_actions_double_off);
 
-        mce_gconf_set_string(MCE_GCONF_POWERKEY_ACTIONS_LONG_OFF,
+        mce_gconf_set_string(MCE_SETTING_POWERKEY_ACTIONS_LONG_OFF,
                              pwrkey_actions_long_off);
     }
 
@@ -2277,82 +2277,88 @@ static void
 pwrkey_gconf_init(void)
 {
     /* Power key press handling mode */
-    mce_gconf_track_int(MCE_GCONF_POWERKEY_MODE,
-                        &pwrkey_stm_enable_mode, -1,
+    mce_gconf_track_int(MCE_SETTING_POWERKEY_MODE,
+                        &pwrkey_stm_enable_mode,
+                        MCE_DEFAULT_POWERKEY_MODE,
                         pwrkey_gconf_cb,
                         &pwrkey_stm_enable_mode_gconf_id);
 
     /* Power key display blanking mode */
-    mce_gconf_track_int(MCE_GCONF_POWERKEY_BLANKING_MODE,
-                        &pwrkey_action_blank_mode, -1,
+    mce_gconf_track_int(MCE_SETTING_POWERKEY_BLANKING_MODE,
+                        &pwrkey_action_blank_mode,
+                        MCE_DEFAULT_POWERKEY_BLANKING_MODE,
                         pwrkey_gconf_cb,
                         &pwrkey_action_blank_mode_gconf_id);
 
     /* Power key press count for proximity sensor override */
-    mce_gconf_track_int(MCE_GCONF_POWERKEY_PS_OVERRIDE_COUNT,
-                        &pwrkey_ps_override_count, -1,
+    mce_gconf_track_int(MCE_SETTING_POWERKEY_PS_OVERRIDE_COUNT,
+                        &pwrkey_ps_override_count,
+                        MCE_DEFAULT_POWERKEY_PS_OVERRIDE_COUNT,
                         pwrkey_gconf_cb,
                         &pwrkey_ps_override_count_gconf_id);
 
     /* Maximum time between power key presses for ps override */
-    mce_gconf_track_int(MCE_GCONF_POWERKEY_PS_OVERRIDE_TIMEOUT,
-                        &pwrkey_ps_override_timeout, -1,
+    mce_gconf_track_int(MCE_SETTING_POWERKEY_PS_OVERRIDE_TIMEOUT,
+                        &pwrkey_ps_override_timeout,
+                        MCE_DEFAULT_POWERKEY_PS_OVERRIDE_TIMEOUT,
                         pwrkey_gconf_cb,
                         &pwrkey_ps_override_timeout_gconf_id);
 
     /* Delay for waiting long press */
-    mce_gconf_track_int(MCE_GCONF_POWERKEY_LONG_PRESS_DELAY,
-                        &pwrkey_long_press_delay, -1,
+    mce_gconf_track_int(MCE_SETTING_POWERKEY_LONG_PRESS_DELAY,
+                        &pwrkey_long_press_delay,
+                        MCE_DEFAULT_POWERKEY_LONG_PRESS_DELAY,
                         pwrkey_gconf_cb,
                         &pwrkey_long_press_delay_gconf_id);
 
     /* Delay for waiting double press */
-    mce_gconf_track_int(MCE_GCONF_POWERKEY_DOUBLE_PRESS_DELAY,
-                        &pwrkey_double_press_delay, -1,
+    mce_gconf_track_int(MCE_SETTING_POWERKEY_DOUBLE_PRESS_DELAY,
+                        &pwrkey_double_press_delay,
+                        MCE_DEFAULT_POWERKEY_DOUBLE_PRESS_DELAY,
                         pwrkey_gconf_cb,
                         &pwrkey_double_press_delay_gconf_id);
 
     /* Action sets */
 
-    mce_gconf_track_string(MCE_GCONF_POWERKEY_ACTIONS_SINGLE_ON,
+    mce_gconf_track_string(MCE_SETTING_POWERKEY_ACTIONS_SINGLE_ON,
                            &pwrkey_actions_single_on,
-                           DEFAULT_POWERKEY_ACTIONS_SINGLE_ON,
+                           MCE_DEFAULT_POWERKEY_ACTIONS_SINGLE_ON,
                            pwrkey_gconf_cb,
                            &pwrkey_actions_single_on_gconf_id);
 
-    mce_gconf_track_string(MCE_GCONF_POWERKEY_ACTIONS_DOUBLE_ON,
+    mce_gconf_track_string(MCE_SETTING_POWERKEY_ACTIONS_DOUBLE_ON,
                            &pwrkey_actions_double_on,
-                           DEFAULT_POWERKEY_ACTIONS_DOUBLE_ON,
+                           MCE_DEFAULT_POWERKEY_ACTIONS_DOUBLE_ON,
                            pwrkey_gconf_cb,
                            &pwrkey_actions_double_on_gconf_id);
 
-    mce_gconf_track_string(MCE_GCONF_POWERKEY_ACTIONS_LONG_ON,
+    mce_gconf_track_string(MCE_SETTING_POWERKEY_ACTIONS_LONG_ON,
                            &pwrkey_actions_long_on,
-                           DEFAULT_POWERKEY_ACTIONS_LONG_ON,
+                           MCE_DEFAULT_POWERKEY_ACTIONS_LONG_ON,
                            pwrkey_gconf_cb,
                            &pwrkey_actions_long_on_gconf_id);
 
-    mce_gconf_track_string(MCE_GCONF_POWERKEY_ACTIONS_SINGLE_OFF,
+    mce_gconf_track_string(MCE_SETTING_POWERKEY_ACTIONS_SINGLE_OFF,
                            &pwrkey_actions_single_off,
-                           DEFAULT_POWERKEY_ACTIONS_SINGLE_OFF,
+                           MCE_DEFAULT_POWERKEY_ACTIONS_SINGLE_OFF,
                            pwrkey_gconf_cb,
                            &pwrkey_actions_single_off_gconf_id);
 
-    mce_gconf_track_string(MCE_GCONF_POWERKEY_ACTIONS_DOUBLE_OFF,
+    mce_gconf_track_string(MCE_SETTING_POWERKEY_ACTIONS_DOUBLE_OFF,
                            &pwrkey_actions_double_off,
-                           DEFAULT_POWERKEY_ACTIONS_DOUBLE_OFF,
+                           MCE_DEFAULT_POWERKEY_ACTIONS_DOUBLE_OFF,
                            pwrkey_gconf_cb,
                            &pwrkey_actions_double_off_gconf_id);
 
-    mce_gconf_track_string(MCE_GCONF_POWERKEY_ACTIONS_LONG_OFF,
+    mce_gconf_track_string(MCE_SETTING_POWERKEY_ACTIONS_LONG_OFF,
                            &pwrkey_actions_long_off,
-                           DEFAULT_POWERKEY_ACTIONS_LONG_OFF,
+                           MCE_DEFAULT_POWERKEY_ACTIONS_LONG_OFF,
                            pwrkey_gconf_cb,
                            &pwrkey_actions_long_off_gconf_id);
 
-    mce_gconf_track_int(MCE_GCONF_DOUBLETAP_MODE,
+    mce_gconf_track_int(MCE_SETTING_DOUBLETAP_MODE,
                         &pwrkey_gestures_enable_mode,
-                        DBLTAP_ENABLE_DEFAULT,
+                        MCE_DEFAULT_DOUBLETAP_MODE,
                         pwrkey_gconf_cb,
                         &pwrkey_gestures_enable_mode_cb_id);
 

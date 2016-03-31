@@ -616,6 +616,7 @@ modules/display.o:\
 	mce.h\
 	tklock.h\
 	modules/display.h\
+	modules/powersavemode.h\
 
 modules/display.pic.o:\
 	modules/display.c\
@@ -637,6 +638,7 @@ modules/display.pic.o:\
 	mce.h\
 	tklock.h\
 	modules/display.h\
+	modules/powersavemode.h\
 
 modules/doubletap.o:\
 	modules/doubletap.c\
@@ -975,6 +977,7 @@ tests/ut/ut_display.o:\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
+	modules/powersavemode.h\
 	tests/ut/common.h\
 
 tests/ut/ut_display.pic.o:\
@@ -998,6 +1001,7 @@ tests/ut/ut_display.pic.o:\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
+	modules/powersavemode.h\
 	tests/ut/common.h\
 
 tests/ut/ut_display_blanking_inhibit.o:\
@@ -1022,6 +1026,7 @@ tests/ut/ut_display_blanking_inhibit.o:\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
+	modules/powersavemode.h\
 	tests/ut/common.h\
 
 tests/ut/ut_display_blanking_inhibit.pic.o:\
@@ -1046,6 +1051,7 @@ tests/ut/ut_display_blanking_inhibit.pic.o:\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
+	modules/powersavemode.h\
 	tests/ut/common.h\
 
 tests/ut/ut_display_conf.o:\
@@ -1070,6 +1076,7 @@ tests/ut/ut_display_conf.o:\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
+	modules/powersavemode.h\
 	tests/ut/common.h\
 
 tests/ut/ut_display_conf.pic.o:\
@@ -1094,6 +1101,7 @@ tests/ut/ut_display_conf.pic.o:\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
+	modules/powersavemode.h\
 	tests/ut/common.h\
 
 tests/ut/ut_display_filter.o:\
@@ -1118,6 +1126,7 @@ tests/ut/ut_display_filter.o:\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
+	modules/powersavemode.h\
 	tests/ut/common.h\
 
 tests/ut/ut_display_filter.pic.o:\
@@ -1142,6 +1151,7 @@ tests/ut/ut_display_filter.pic.o:\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
+	modules/powersavemode.h\
 	tests/ut/common.h\
 
 tests/ut/ut_display_stm.o:\
@@ -1166,6 +1176,7 @@ tests/ut/ut_display_stm.o:\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
+	modules/powersavemode.h\
 	tests/ut/common.h\
 
 tests/ut/ut_display_stm.pic.o:\
@@ -1190,6 +1201,7 @@ tests/ut/ut_display_stm.pic.o:\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
+	modules/powersavemode.h\
 	tests/ut/common.h\
 
 tklock.o:\

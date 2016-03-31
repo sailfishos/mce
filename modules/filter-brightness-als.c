@@ -282,15 +282,15 @@ static bool fba_util_streq(const char *s1, const char *s2)
  * ========================================================================= */
 
 /** Master ALS enabled setting */
-static gboolean fba_gconf_als_enabled = ALS_ENABLED_DEFAULT;
+static gboolean fba_gconf_als_enabled = MCE_DEFAULT_DISPLAY_ALS_ENABLED;
 static guint    fba_gconf_als_enabled_id = 0;
 
 /** Filter brightness through ALS setting */
-static gboolean fba_gconf_als_autobrightness = ALS_AUTOBRIGHTNESS_DEFAULT;
+static gboolean fba_gconf_als_autobrightness = MCE_DEFAULT_DISPLAY_ALS_AUTOBRIGHTNESS;
 static guint    fba_gconf_als_autobrightness_id = 0;
 
 /** ALS is used for LID filtering setting */
-static gboolean fba_gconf_filter_lid_with_als = DEFAULT_FILTER_LID_WITH_ALS;
+static gboolean fba_gconf_filter_lid_with_als = MCE_DEFAULT_TK_FILTER_LID_WITH_ALS;
 static guint    fba_gconf_filter_lid_with_als_id = 0;
 
 /** Input filter to use for ALS sensor - config value */
@@ -298,7 +298,7 @@ static gchar   *fba_gconf_als_input_filter = 0;
 static guint    fba_gconf_als_input_filter_id = 0;
 
 /** Sample time for ALS input filtering  - config value */
-static gint     fba_gconf_als_sample_time = ALS_SAMPLE_TIME_DEFAULT;
+static gint     fba_gconf_als_sample_time = MCE_DEFAULT_DISPLAY_ALS_SAMPLE_TIME;
 static guint    fba_gconf_als_sample_time_id = 0;
 
 /** Currently active color profile (dummy implementation) */
@@ -381,41 +381,41 @@ static void
 fba_gconf_init(void)
 {
     /* ALS enabled settings */
-    mce_gconf_track_bool(MCE_GCONF_DISPLAY_ALS_ENABLED,
+    mce_gconf_track_bool(MCE_SETTING_DISPLAY_ALS_ENABLED,
                          &fba_gconf_als_enabled,
-                         ALS_ENABLED_DEFAULT,
+                         MCE_DEFAULT_DISPLAY_ALS_ENABLED,
                          fba_gconf_cb,
                          &fba_gconf_als_enabled_id);
 
-    mce_gconf_track_bool(MCE_GCONF_DISPLAY_ALS_AUTOBRIGHTNESS,
+    mce_gconf_track_bool(MCE_SETTING_DISPLAY_ALS_AUTOBRIGHTNESS,
                          &fba_gconf_als_autobrightness,
-                         ALS_AUTOBRIGHTNESS_DEFAULT,
+                         MCE_DEFAULT_DISPLAY_ALS_AUTOBRIGHTNESS,
                          fba_gconf_cb,
                          &fba_gconf_als_autobrightness_id);
 
-    mce_gconf_track_bool(MCE_GCONF_FILTER_LID_WITH_ALS,
+    mce_gconf_track_bool(MCE_SETTING_TK_FILTER_LID_WITH_ALS,
                          &fba_gconf_filter_lid_with_als,
-                         DEFAULT_FILTER_LID_WITH_ALS,
+                         MCE_DEFAULT_TK_FILTER_LID_WITH_ALS,
                          fba_gconf_cb,
                          &fba_gconf_filter_lid_with_als_id);
 
     /* ALS input filter setting */
-    mce_gconf_track_string(MCE_GCONF_DISPLAY_ALS_INPUT_FILTER,
+    mce_gconf_track_string(MCE_SETTING_DISPLAY_ALS_INPUT_FILTER,
                            &fba_gconf_als_input_filter,
-                           ALS_INPUT_FILTER_DEFAULT,
+                           MCE_DEFAULT_DISPLAY_ALS_INPUT_FILTER,
                            fba_gconf_cb,
                            &fba_gconf_als_input_filter_id);
 
     /* ALS sample time setting */
-    mce_gconf_track_int(MCE_GCONF_DISPLAY_ALS_SAMPLE_TIME,
+    mce_gconf_track_int(MCE_SETTING_DISPLAY_ALS_SAMPLE_TIME,
                         &fba_gconf_als_sample_time,
-                        ALS_SAMPLE_TIME_DEFAULT,
+                        MCE_DEFAULT_DISPLAY_ALS_SAMPLE_TIME,
                         fba_gconf_cb,
                         &fba_gconf_als_sample_time_id);
 
     /* Color profile setting */
-    mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_DISPLAY_COLOR_PROFILE,
+    mce_gconf_notifier_add(MCE_SETTING_DISPLAY_PATH,
+                           MCE_SETTING_DISPLAY_COLOR_PROFILE,
                            fba_gconf_cb,
                            &fba_gconf_color_profile_id);
 
@@ -538,7 +538,7 @@ fba_color_profile_save(const gchar *id)
         goto EXIT;
     }
 
-    status = mce_gconf_set_string(MCE_GCONF_DISPLAY_COLOR_PROFILE, id);
+    status = mce_gconf_set_string(MCE_SETTING_DISPLAY_COLOR_PROFILE, id);
 
 EXIT:
     return status;
@@ -566,7 +566,7 @@ static gchar *
 fba_color_profile_get_current(void)
 {
     gchar *retval = NULL;
-    (void)mce_gconf_get_string(MCE_GCONF_DISPLAY_COLOR_PROFILE,
+    (void)mce_gconf_get_string(MCE_SETTING_DISPLAY_COLOR_PROFILE,
                                &retval);
 
     /* Treat empty string as NULL */

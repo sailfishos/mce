@@ -391,37 +391,37 @@ static void stub_mce_gconf_setup_unchecked(void)
 
 	static stub__mce_gconf_get_int_item_t int_items[] = {
 		{
-			MCE_GCONF_CPU_SCALING_GOVERNOR_PATH,
+			MCE_SETTING_CPU_SCALING_GOVERNOR_PATH,
 			/* governor_conf default */
-			GOVERNOR_UNSET,
+			MCE_DEFAULT_CPU_SCALING_GOVERNOR,
 		}, {
-			MCE_GCONF_USE_AUTOSUSPEND_PATH,
+			MCE_SETTING_USE_AUTOSUSPEND_PATH,
 			/* suspend_policy default */
-			SUSPEND_POLICY_DEFAULT,
+			MCE_DEFAULT_USE_AUTOSUSPEND,
 		}, {
-			MCE_GCONF_DISPLAY_BRIGHTNESS_PATH,
+			MCE_SETTING_DISPLAY_BRIGHTNESS_PATH,
 			/* real_disp_brightness default */
-			DEFAULT_DISP_BRIGHTNESS,
+			MCE_DEFAULT_DISPLAY_BRIGHTNESS,
 		}, {
-			MCE_GCONF_DISPLAY_BLANK_TIMEOUT_PATH,
+			MCE_SETTING_DISPLAY_BLANK_TIMEOUT_PATH,
 			/* disp_blank_timeout default */
-			DEFAULT_BLANK_TIMEOUT,
+			MCE_DEFAULT_DISPLAY_BLANK_TIMEOUT,
 		}, {
-			MCE_GCONF_DISPLAY_NEVER_BLANK_PATH,
+			MCE_SETTING_DISPLAY_NEVER_BLANK_PATH,
 			/* disp_never_blank default */
 			0,
 		}, {
-			MCE_GCONF_DISPLAY_ADAPTIVE_DIM_THRESHOLD_PATH,
+			MCE_SETTING_DISPLAY_ADAPTIVE_DIM_THRESHOLD_PATH,
 			/* adaptive_dimming_threshold default */
-			DEFAULT_ADAPTIVE_DIMMING_THRESHOLD,
+			MCE_DEFAULT_DISPLAY_ADAPTIVE_DIM_THRESHOLD,
 		}, {
-			MCE_GCONF_DISPLAY_DIM_TIMEOUT_PATH,
+			MCE_SETTING_DISPLAY_DIM_TIMEOUT_PATH,
 			/* disp_dim_timeout default */
-			DEFAULT_DIM_TIMEOUT,
+			MCE_DEFAULT_DISPLAY_DIM_TIMEOUT,
 		}, {
-			MCE_GCONF_BLANKING_INHIBIT_MODE_PATH,
+			MCE_SETTING_BLANKING_INHIBIT_MODE_PATH,
 			/* blanking_inhibit_mode default*/
-			DEFAULT_BLANKING_INHIBIT_MODE,
+			MCE_DEFAULT_BLANKING_INHIBIT_MODE,
 		}, {
 			NULL,
 			0,
@@ -431,7 +431,7 @@ static void stub_mce_gconf_setup_unchecked(void)
 
 	static stub__mce_gconf_get_int_list_item_t int_list_items[] = {
 		{
-			MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST_PATH,
+			MCE_SETTING_DISPLAY_DIM_TIMEOUT_LIST_PATH,
 			{ 1, 5, 10, 15, 20, INT_MAX },
 		}, {
 			NULL,
@@ -442,11 +442,11 @@ static void stub_mce_gconf_setup_unchecked(void)
 
 	static stub__mce_gconf_get_bool_item_t bool_items[] = {
 		{
-			MCE_GCONF_DISPLAY_ADAPTIVE_DIMMING_PATH,
+			MCE_SETTING_DISPLAY_ADAPTIVE_DIMMING_PATH,
 			/* adaptive_dimming_enabled default */
-			DEFAULT_ADAPTIVE_DIMMING_ENABLED,
+			MCE_DEFAULT_DISPLAY_ADAPTIVE_DIMMING,
 		}, {
-			MCE_GCONF_USE_LOW_POWER_MODE_PATH,
+			MCE_SETTING_USE_LOW_POWER_MODE_PATH,
 			/* use_low_power_mode default */
 			FALSE,
 		}, {
@@ -1522,7 +1522,7 @@ END_TEST
 
 START_TEST (ut_check_basic_state_change)
 {
-	stub__mce_gconf_set_bool(MCE_GCONF_USE_LOW_POWER_MODE_PATH, TRUE);
+	stub__mce_gconf_set_bool(MCE_SETTING_USE_LOW_POWER_MODE_PATH, TRUE);
 
 	ut_run_to_user_state();
 
@@ -1572,7 +1572,7 @@ END_TEST
 START_TEST (ut_check_auto_blank_no_lpm)
 {
 	const gint set_disp_blank_timeout = 2;
-	stub__mce_gconf_set_int(MCE_GCONF_DISPLAY_BLANK_TIMEOUT_PATH,
+	stub__mce_gconf_set_int(MCE_SETTING_DISPLAY_BLANK_TIMEOUT_PATH,
 				set_disp_blank_timeout);
 
 	ut_run_to_user_state();
@@ -1597,7 +1597,7 @@ START_TEST (ut_check_auto_blank)
 	 *  - no way to change disp_lpm_blank_timeout from outside
 	 *    - no API, no gconf
 	 */
-	stub__mce_gconf_set_bool(MCE_GCONF_USE_LOW_POWER_MODE_PATH, TRUE);
+	stub__mce_gconf_set_bool(MCE_SETTING_USE_LOW_POWER_MODE_PATH, TRUE);
 	const gint set_disp_lpm_blank_timeout = 2;
 	disp_lpm_blank_timeout = set_disp_lpm_blank_timeout;
 
@@ -1617,11 +1617,11 @@ END_TEST
 
 START_TEST (ut_check_auto_dim_not_adaptive)
 {
-	stub__mce_gconf_set_bool(MCE_GCONF_DISPLAY_ADAPTIVE_DIMMING_PATH,
+	stub__mce_gconf_set_bool(MCE_SETTING_DISPLAY_ADAPTIVE_DIMMING_PATH,
 				 FALSE);
 
 	const gint set_disp_dim_timeout = 2;
-	stub__mce_gconf_set_int(MCE_GCONF_DISPLAY_DIM_TIMEOUT_PATH,
+	stub__mce_gconf_set_int(MCE_SETTING_DISPLAY_DIM_TIMEOUT_PATH,
 				set_disp_dim_timeout);
 
 	ut_run_to_user_state();
@@ -1644,7 +1644,7 @@ START_TEST (ut_check_auto_dim)
 	 * dim_timeout.  That is why we set
 	 * dim_timeout=possible_dim_timeouts[forced_dti] */
 	const gint forced_dti = 1;
-	stub__mce_gconf_set_int(MCE_GCONF_DISPLAY_DIM_TIMEOUT_PATH,
+	stub__mce_gconf_set_int(MCE_SETTING_DISPLAY_DIM_TIMEOUT_PATH,
 				ut_nth_possible_dim_timeout(forced_dti));
 
 	ck_assert(ut_is_display_state_eq(GINT_TO_POINTER(MCE_DISPLAY_ON)));
@@ -1687,12 +1687,12 @@ START_TEST (ut_check_adaptive_dim_timeout)
 	 * dim_timeout.  That is why we set
 	 * dim_timeout=possible_dim_timeouts[forced_dti] */
 	const gint forced_dti = 1;
-	stub__mce_gconf_set_int(MCE_GCONF_DISPLAY_DIM_TIMEOUT_PATH,
+	stub__mce_gconf_set_int(MCE_SETTING_DISPLAY_DIM_TIMEOUT_PATH,
 				ut_nth_possible_dim_timeout(forced_dti));
 
 	/* Delay DIM -> OFF so it does not cancel_adaptive_dimming_timeout() and
 	 * reset adaptive_dimming_index to 0 */
-	stub__mce_gconf_set_int(MCE_GCONF_DISPLAY_BLANK_TIMEOUT_PATH,
+	stub__mce_gconf_set_int(MCE_SETTING_DISPLAY_BLANK_TIMEOUT_PATH,
 				adaptive_dimming_threshold / 1000 * 10);
 
 	ck_assert(ut_is_display_state_eq(GINT_TO_POINTER(MCE_DISPLAY_ON)));
@@ -1749,10 +1749,10 @@ END_TEST
 
 START_TEST (ut_check_auto_dim_malf)
 {
-	stub__mce_gconf_set_bool(MCE_GCONF_DISPLAY_ADAPTIVE_DIMMING_PATH,
+	stub__mce_gconf_set_bool(MCE_SETTING_DISPLAY_ADAPTIVE_DIMMING_PATH,
 				 FALSE);
 	const gint set_disp_dim_timeout = 2;
-	stub__mce_gconf_set_int(MCE_GCONF_DISPLAY_DIM_TIMEOUT_PATH,
+	stub__mce_gconf_set_int(MCE_SETTING_DISPLAY_DIM_TIMEOUT_PATH,
 				set_disp_dim_timeout);
 
 	ut_run_to_user_state();
@@ -1767,11 +1767,11 @@ END_TEST
 
 START_TEST (ut_check_auto_lpm)
 {
-	stub__mce_gconf_set_bool(MCE_GCONF_USE_LOW_POWER_MODE_PATH, TRUE);
+	stub__mce_gconf_set_bool(MCE_SETTING_USE_LOW_POWER_MODE_PATH, TRUE);
 
 	/* disp_lpm_timeout == disp_blank_timeout */
 	const gint set_disp_lpm_timeout = 2;
-	stub__mce_gconf_set_int(MCE_GCONF_DISPLAY_BLANK_TIMEOUT_PATH,
+	stub__mce_gconf_set_int(MCE_SETTING_DISPLAY_BLANK_TIMEOUT_PATH,
 				set_disp_lpm_timeout);
 
 	ut_run_to_user_state();
@@ -1807,7 +1807,7 @@ START_TEST (ut_check_brightness)
 	}
 
 	for( int i = 0; i < nvalues; ++i ) {
-		stub__mce_gconf_set_int(MCE_GCONF_DISPLAY_BRIGHTNESS_PATH,
+		stub__mce_gconf_set_int(MCE_SETTING_DISPLAY_BRIGHTNESS_PATH,
 					brightnesses[i]);
 
 		guint expected = sysfs_brightness(brightnesses[i]);
@@ -1855,11 +1855,11 @@ START_TEST (ut_check_blanking_pause)
 	const gint set_blank_prevent_timeout = 3;
 	blank_prevent_timeout = set_blank_prevent_timeout;
 
-	stub__mce_gconf_set_bool(MCE_GCONF_DISPLAY_ADAPTIVE_DIMMING_PATH,
+	stub__mce_gconf_set_bool(MCE_SETTING_DISPLAY_ADAPTIVE_DIMMING_PATH,
 				 FALSE);
 
 	const gint set_disp_dim_timeout = 2;
-	stub__mce_gconf_set_int(MCE_GCONF_DISPLAY_DIM_TIMEOUT_PATH,
+	stub__mce_gconf_set_int(MCE_SETTING_DISPLAY_DIM_TIMEOUT_PATH,
 				set_disp_dim_timeout);
 
 	execute_datapipe(&display_state_req_pipe,
@@ -1979,7 +1979,7 @@ START_TEST (ut_check_set_use_lpm_while_off)
 	ut_assert_transition(ut_is_display_state_eq,
 			     GINT_TO_POINTER(MCE_DISPLAY_OFF));
 
-	stub__mce_gconf_set_bool(MCE_GCONF_USE_LOW_POWER_MODE_PATH, TRUE);
+	stub__mce_gconf_set_bool(MCE_SETTING_USE_LOW_POWER_MODE_PATH, TRUE);
 
 	ut_assert_transition(ut_is_display_state_eq,
 			     GINT_TO_POINTER(MCE_DISPLAY_LPM_ON));
@@ -2012,7 +2012,7 @@ START_TEST (ut_check_unset_use_lpm_while_lpm)
 
 	ut_run_to_user_state();
 
-	stub__mce_gconf_set_bool(MCE_GCONF_USE_LOW_POWER_MODE_PATH, TRUE);
+	stub__mce_gconf_set_bool(MCE_SETTING_USE_LOW_POWER_MODE_PATH, TRUE);
 
 	display_type_t required_lpm_state = data[_i].lpm_on
 		? MCE_DISPLAY_LPM_ON
@@ -2023,7 +2023,7 @@ START_TEST (ut_check_unset_use_lpm_while_lpm)
 	ut_assert_transition(ut_is_display_state_eq,
 			     GINT_TO_POINTER(required_lpm_state));
 
-	stub__mce_gconf_set_bool(MCE_GCONF_USE_LOW_POWER_MODE_PATH, FALSE);
+	stub__mce_gconf_set_bool(MCE_SETTING_USE_LOW_POWER_MODE_PATH, FALSE);
 
 	ut_assert_transition(ut_is_display_state_eq,
 			     GINT_TO_POINTER(MCE_DISPLAY_OFF));

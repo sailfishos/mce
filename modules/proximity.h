@@ -19,18 +19,18 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef _PROXIMITY_H_
-#define _PROXIMITY_H_
+#ifndef PROXIMITY_H_
+# define PROXIMITY_H_
 
 /** Path to the GConf settings for the proximity */
-#define MCE_GCONF_PROXIMITY_PATH		"/system/osso/dsm/proximity"
+# define MCE_SETTING_PROXIMITY_PATH             "/system/osso/dsm/proximity"
 
 /** Proximity sensor enabled GConf setting */
-#define MCE_GCONF_PROXIMITY_PS_ENABLED_PATH     MCE_GCONF_PROXIMITY_PATH "/ps_enabled"
-#define DEFAULT_PROXIMITY_PS_ENABLED            true
+# define MCE_SETTING_PROXIMITY_PS_ENABLED       MCE_SETTING_PROXIMITY_PATH "/ps_enabled"
+# define MCE_DEFAULT_PROXIMITY_PS_ENABLED       true
 
 /** Proximity sensor acts as lid sensor setting */
-#define MCE_GCONF_PROXIMITY_PS_ACTS_AS_LID      MCE_GCONF_PROXIMITY_PATH "/ps_acts_as_lid"
-#define DEFAULT_PROXIMITY_PS_ACTS_AS_LID        false
+# define MCE_SETTING_PROXIMITY_PS_ACTS_AS_LID   MCE_SETTING_PROXIMITY_PATH "/ps_acts_as_lid"
+# define MCE_DEFAULT_PROXIMITY_PS_ACTS_AS_LID   false
 
-#endif /* _PROXIMITY_H_ */
+#endif /* PROXIMITY_H_ */

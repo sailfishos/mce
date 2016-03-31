@@ -1457,7 +1457,7 @@ cleanup:
 #ifdef ENABLE_DOUBLETAP_EMULATION
 
 /** Fake doubletap policy */
-static gboolean fake_evin_doubletap_enabled = TRUE;
+static gboolean fake_evin_doubletap_enabled = MCE_DEFAULT_USE_FAKE_DOUBLETAP;
 
 /** GConf callback ID for fake doubletap policy changes */
 static guint fake_evin_doubletap_id = 0;
@@ -3006,7 +3006,6 @@ evin_ts_grab_changed(evin_input_grab_t *ctrl, bool grab)
 
 enum
 {
-    TS_RELEASE_DELAY_DEFAULT = 100,
     TS_RELEASE_DELAY_BLANK   = 100,
     TS_RELEASE_DELAY_UNBLANK = 600,
 };
@@ -3024,7 +3023,7 @@ static evin_input_grab_t evin_ts_grab_state =
     .ig_allow_grab = false,
 
     .ig_release_id = 0,
-    .ig_release_ms = TS_RELEASE_DELAY_DEFAULT,
+    .ig_release_ms = MCE_DEFAULT_TOUCH_UNBLOCK_DELAY,
 
     .ig_grab_changed_cb = evin_ts_grab_changed,
     .ig_release_verify_cb = evin_ts_grab_poll_palm_detect,
@@ -3034,7 +3033,7 @@ static evin_input_grab_t evin_ts_grab_state =
 static bool evin_ts_grab_touch_detected = false;
 
 /* Touch unblock delay from settings [ms] */
-static gint evin_ts_grab_release_delay = TS_RELEASE_DELAY_DEFAULT;
+static gint evin_ts_grab_release_delay = MCE_DEFAULT_TOUCH_UNBLOCK_DELAY;
 
 /** GConf notification ID for touch unblock delay */
 static guint evin_ts_grab_release_delay_id = 0;
@@ -3179,12 +3178,12 @@ static void
 evin_ts_grab_init(void)
 {
     /* Get touch unblock delay */
-    mce_gconf_notifier_add(MCE_GCONF_EVENT_INPUT_PATH,
-                           MCE_GCONF_TOUCH_UNBLOCK_DELAY_PATH,
+    mce_gconf_notifier_add(MCE_SETTING_EVENT_INPUT_PATH,
+                           MCE_SETTING_TOUCH_UNBLOCK_DELAY,
                            evin_ts_grab_gconf_changed_cb,
                            &evin_ts_grab_release_delay_id);
 
-    mce_gconf_get_int(MCE_GCONF_TOUCH_UNBLOCK_DELAY_PATH,
+    mce_gconf_get_int(MCE_SETTING_TOUCH_UNBLOCK_DELAY,
                       &evin_ts_grab_release_delay);
 
     mce_log(LL_INFO, "touch unblock delay config: %d",
@@ -3309,7 +3308,7 @@ evin_kp_grab_wanted_cb(gconstpointer data)
  * ========================================================================= */
 
 /** Flag: Input device types that can be grabbed */
-static gint evin_gconf_input_grab_allowed = DEFAULT_INPUT_GRAB_ALLOWED;
+static gint evin_gconf_input_grab_allowed = MCE_DEFAULT_INPUT_GRAB_ALLOWED;
 /** GConf notifier id for tracking evin_gconf_input_grab_allowed changes */
 static guint evin_gconf_input_grab_allowed_id = 0;
 
@@ -3368,9 +3367,9 @@ EXIT:
 static void evin_gconf_init(void)
 {
     /* Bitmask of input devices that can be grabbed */
-    mce_gconf_track_int(MCE_GCONF_INPUT_GRAB_ALLOWED,
+    mce_gconf_track_int(MCE_SETTING_INPUT_GRAB_ALLOWED,
                         &evin_gconf_input_grab_allowed,
-                        DEFAULT_INPUT_GRAB_ALLOWED,
+                        MCE_DEFAULT_INPUT_GRAB_ALLOWED,
                         evin_gconf_cb,
                         &evin_gconf_input_grab_allowed_id);
 
@@ -3408,12 +3407,12 @@ mce_input_init(void)
 
 #ifdef ENABLE_DOUBLETAP_EMULATION
     /* Get fake doubletap policy configuration & track changes */
-    mce_gconf_notifier_add(MCE_GCONF_EVENT_INPUT_PATH,
-                           MCE_GCONF_USE_FAKE_DOUBLETAP_PATH,
+    mce_gconf_notifier_add(MCE_SETTING_EVENT_INPUT_PATH,
+                           MCE_SETTING_USE_FAKE_DOUBLETAP,
                            evin_doubletap_gconf_changed_cb,
                            &fake_evin_doubletap_id);
 
-    mce_gconf_get_bool(MCE_GCONF_USE_FAKE_DOUBLETAP_PATH,
+    mce_gconf_get_bool(MCE_SETTING_USE_FAKE_DOUBLETAP,
                        &fake_evin_doubletap_enabled);
 #endif
 

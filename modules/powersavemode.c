@@ -55,17 +55,17 @@ static charger_state_t charger_state = CHARGER_STATE_UNDEF;
 /** GConf callback ID for power saving mode setting */
 static guint psm_gconf_cb_id = 0;
 /** Power saving mode from GConf */
-static gboolean power_saving_mode = DEFAULT_POWER_SAVING_MODE;
+static gboolean power_saving_mode = MCE_DEFAULT_EM_ENABLE_PSM;
 
 /** GConf callback ID for forced power saving mode setting */
 static guint force_psm_gconf_cb_id = 0;
 /** Forced power saving mode from GConf */
-static gboolean force_psm = FALSE;
+static gboolean force_psm = MCE_DEFAULT_EM_FORCED_PSM;
 
 /** GConf callback ID for power saving mode threshold */
 static guint psm_threshold_gconf_cb_id = 0;
 /** Power saving mode threshold from GConf */
-static gint psm_threshold = DEFAULT_PSM_THRESHOLD;
+static gint psm_threshold = MCE_DEFAULT_EM_PSM_THRESHOLD;
 
 /** Active power saving mode */
 static gboolean active_power_saving_mode = FALSE;
@@ -322,32 +322,32 @@ const gchar *g_module_check_init(GModule *module)
 
 	/* Power saving mode setting */
 	/* Since we've set a default, error handling is unnecessary */
-	mce_gconf_notifier_add(MCE_GCONF_EM_PATH,
-			       MCE_GCONF_PSM_PATH,
+	mce_gconf_notifier_add(MCE_SETTING_EM_PATH,
+			       MCE_SETTING_EM_ENABLE_PSM,
 			       psm_gconf_cb,
 			       &psm_gconf_cb_id);
 
-	mce_gconf_get_bool(MCE_GCONF_PSM_PATH,
+	mce_gconf_get_bool(MCE_SETTING_EM_ENABLE_PSM,
 			   &power_saving_mode);
 
 	/* Forced power saving mode setting */
 	/* Since we've set a default, error handling is unnecessary */
-	mce_gconf_notifier_add(MCE_GCONF_EM_PATH,
-			       MCE_GCONF_FORCED_PSM_PATH,
+	mce_gconf_notifier_add(MCE_SETTING_EM_PATH,
+			       MCE_SETTING_EM_FORCED_PSM,
 			       psm_gconf_cb,
 			       &force_psm_gconf_cb_id);
 
-	mce_gconf_get_bool(MCE_GCONF_FORCED_PSM_PATH,
+	mce_gconf_get_bool(MCE_SETTING_EM_FORCED_PSM,
 			   &force_psm);
 
 	/* Power saving mode threshold */
 	/* Since we've set a default, error handling is unnecessary */
-	mce_gconf_notifier_add(MCE_GCONF_EM_PATH,
-			       MCE_GCONF_PSM_THRESHOLD_PATH,
+	mce_gconf_notifier_add(MCE_SETTING_EM_PATH,
+			       MCE_SETTING_EM_PSM_THRESHOLD,
 			       psm_gconf_cb,
 			       &psm_threshold_gconf_cb_id);
 
-	mce_gconf_get_int(MCE_GCONF_PSM_THRESHOLD_PATH,
+	mce_gconf_get_int(MCE_SETTING_EM_PSM_THRESHOLD,
 			  &psm_threshold);
 
 	/* Add dbus handlers */

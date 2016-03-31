@@ -18,7 +18,7 @@
 #include <gmodule.h>
 
 /** Config value for doubletap enable mode */
-static dbltap_mode_t dbltap_mode = DBLTAP_ENABLE_DEFAULT;
+static dbltap_mode_t dbltap_mode = MCE_DEFAULT_DOUBLETAP_MODE;
 
 static guint dbltap_mode_gconf_id = 0;
 
@@ -252,7 +252,7 @@ static void dbltap_mode_gconf_cb(GConfClient *const gcc, const guint id,
         if( id != dbltap_mode_gconf_id )
                 goto EXIT;
 
-        gint mode = DBLTAP_ENABLE_DEFAULT;
+        gint mode = MCE_DEFAULT_DOUBLETAP_MODE;
 
         if( (gcv = gconf_entry_get_value(entry)) )
                 mode = gconf_value_get_int(gcv);
@@ -341,13 +341,13 @@ const gchar *g_module_check_init(GModule *module)
         dbltap_probe_sleep_mode_controls();
 
         /* Runtime configuration settings */
-        mce_gconf_notifier_add(MCE_GCONF_DOUBLETAP_PATH,
-                               MCE_GCONF_DOUBLETAP_MODE,
+        mce_gconf_notifier_add(MCE_SETTING_DOUBLETAP_PATH,
+                               MCE_SETTING_DOUBLETAP_MODE,
                                dbltap_mode_gconf_cb,
                                &dbltap_mode_gconf_id);
 
-        gint mode = DBLTAP_ENABLE_DEFAULT;
-        mce_gconf_get_int(MCE_GCONF_DOUBLETAP_MODE, &mode);
+        gint mode = MCE_DEFAULT_DOUBLETAP_MODE;
+        mce_gconf_get_int(MCE_SETTING_DOUBLETAP_MODE, &mode);
         dbltap_mode = mode;
 
         /* Append triggers/filters to datapipes */

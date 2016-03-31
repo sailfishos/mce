@@ -433,7 +433,7 @@ extern void     mce_tklock_unblank(display_state_t to_state);
  * ========================================================================= */
 
 /** Flag: Devicelock is handled in lockscreen */
-static gboolean tklock_devicelock_in_lockscreen = DEFAULT_DEVICELOCK_IN_LOCKSCREEN;
+static gboolean tklock_devicelock_in_lockscreen = MCE_DEFAULT_TK_DEVICELOCK_IN_LOCKSCREEN;
 
 /** Flag: Convert denied tklock removal attempt to: show device unlock view */
 static bool tklock_devicelock_want_to_unlock = false;
@@ -442,141 +442,141 @@ static bool tklock_devicelock_want_to_unlock = false;
 static guint tklock_devicelock_in_lockscreen_cb_id = 0;
 
 /** Flag: Automatically lock (after ON->DIM->OFF cycle) */
-static gboolean tk_autolock_enabled = DEFAULT_TK_AUTOLOCK;
+static gboolean tk_autolock_enabled = MCE_DEFAULT_TK_AUTOLOCK_ENABLED;
 /** GConf callback ID for tk_autolock_enabled */
 static guint tk_autolock_enabled_cb_id = 0;
 
 /** Flag: Grabbing input devices is allowed */
-static gboolean tk_input_policy_enabled = DEFAULT_TK_INPUT_POLICY_ENABLED;
+static gboolean tk_input_policy_enabled = MCE_DEFAULT_TK_INPUT_POLICY_ENABLED;
 /** GConf callback ID for tk_input_policy_enabled */
 static guint tk_input_policy_enabled_cb_id = 0;
 
 /** Delay for automatick locking (after ON->DIM->OFF cycle) */
-static gint    tklock_autolock_delay = DEFAULT_AUTOLOCK_DELAY;
+static gint    tklock_autolock_delay = MCE_DEFAULT_TK_AUTOLOCK_DELAY;
 /** GConf notifier id for tklock_autolock_delay */
 static guint   tklock_autolock_delay_cb_id = 0;
 
 /** Flag: Proximity sensor can block touch input */
-static gboolean proximity_blocks_touch = PROXIMITY_BLOCKS_TOUCH_DEFAULT;
+static gboolean proximity_blocks_touch = MCE_DEFAULT_TK_PROXIMITY_BLOCKS_TOUCH;
 /** GConf callback ID for proximity_blocks_touch */
 static guint proximity_blocks_touch_cb_id = 0;
 
 /** Volume key input policy */
-static gint  volkey_policy = DEFAULT_VOLKEY_POLICY;
+static gint  volkey_policy = MCE_DEFAULT_TK_VOLKEY_POLICY;
 static guint volkey_policy_cb_id = 0;
 
 /** Touchscreen gesture (doubletap etc) enable mode */
-static gint  touchscreen_gesture_enable_mode = DBLTAP_ENABLE_DEFAULT;
+static gint  touchscreen_gesture_enable_mode = MCE_DEFAULT_DOUBLETAP_MODE;
 static guint touchscreen_gesture_enable_mode_cb_id = 0;
 
 /** Lid sensor open actions */
-static gint tklock_lid_open_actions = DEFAULT_LID_OPEN_ACTION;
+static gint tklock_lid_open_actions = MCE_DEFAULT_TK_LID_OPEN_ACTIONS;
 /** GConf callback ID for tklock_lid_open_actions */
 static guint tklock_lid_open_actions_cb_id = 0;
 
 /** Lid sensor close actions */
-static gint tklock_lid_close_actions = DEFAULT_LID_CLOSE_ACTION;
+static gint tklock_lid_close_actions = MCE_DEFAULT_TK_LID_CLOSE_ACTIONS;
 /** GConf callback ID for tklock_lid_close_actions */
 static guint tklock_lid_close_actions_cb_id = 0;
 
 /** Flag: Is the lid sensor used for display blanking */
-static gboolean lid_sensor_enabled = DEFAULT_LID_SENSOR_ENABLED;
+static gboolean lid_sensor_enabled = MCE_DEFAULT_TK_LID_SENSOR_ENABLED;
 /** GConf callback ID for lid_sensor_enabled */
 static guint lid_sensor_enabled_cb_id = 0;
 
 /** When to react to keyboard open */
-static gint   tklock_kbd_open_trigger        = DEFAULT_KBD_OPEN_TRIGGER;
+static gint   tklock_kbd_open_trigger        = MCE_DEFAULT_TK_KBD_OPEN_TRIGGER;
 static guint  tklock_kbd_open_trigger_cb_id  = 0;
 
 /** How to react to keyboard open */
-static gint   tklock_kbd_open_actions        = DEFAULT_KBD_OPEN_ACTION;
+static gint   tklock_kbd_open_actions        = MCE_DEFAULT_TK_KBD_OPEN_ACTIONS;
 static guint  tklock_kbd_open_actions_cb_id  = 0;
 
 /** When to react to keyboard close */
-static gint   tklock_kbd_close_trigger       = DEFAULT_KBD_CLOSE_TRIGGER;
+static gint   tklock_kbd_close_trigger       = MCE_DEFAULT_TK_KBD_CLOSE_TRIGGER;
 static guint  tklock_kbd_close_trigger_cb_id = 0;
 
 /** How to react to keyboard close */
-static gint   tklock_kbd_close_actions       = DEFAULT_KBD_CLOSE_ACTION;
+static gint   tklock_kbd_close_actions       = MCE_DEFAULT_TK_KBD_CLOSE_ACTIONS;
 static guint  tklock_kbd_close_actions_cb_id = 0;
 
 /** Flag for: Using ALS is allowed */
-static gboolean als_enabled = ALS_ENABLED_DEFAULT;
+static gboolean als_enabled = MCE_DEFAULT_DISPLAY_ALS_ENABLED;
 /** Config notification for als_enabled */
 static guint als_enabled_gconf_id = 0;
 
 /** Flag: Use ALS for lid close filtering */
-static gboolean filter_lid_with_als = DEFAULT_FILTER_LID_WITH_ALS;
+static gboolean filter_lid_with_als = MCE_DEFAULT_TK_FILTER_LID_WITH_ALS;
 /** Config notification for filter_lid_with_als */
 static guint filter_lid_with_als_gconf_id = 0;
 
 /** Maximum amount of light ALS should report when LID is closed */
-static gint  filter_lid_als_limit               = DEFAULT_FILTER_LID_ALS_LIMIT;
+static gint  filter_lid_als_limit               = MCE_DEFAULT_TK_FILTER_LID_ALS_LIMIT;
 /** Config notification for filter_lid_als_limit */
 static guint filter_lid_als_limit_gconf_id      = 0;
 
 /** How long to keep display on after incoming call ends [ms] */
-static gint exception_length_call_in            = DEFAULT_EXCEPTION_LENGTH_CALL_IN;
+static gint exception_length_call_in            = MCE_DEFAULT_TK_EXCEPT_LEN_CALL_IN;
 /** GConf callback ID for exception_length_call_in */
 static guint exception_length_call_in_cb_id     = 0;
 
 /** How long to keep display on after outgoing call ends [ms] */
-static gint exception_length_call_out           = DEFAULT_EXCEPTION_LENGTH_CALL_OUT;
+static gint exception_length_call_out           = MCE_DEFAULT_TK_EXCEPT_LEN_CALL_OUT;
 /** GConf callback ID for exception_length_call_out */
 static guint exception_length_call_out_cb_id    = 0;
 
 /** How long to keep display on after alarm is handled [ms] */
-static gint exception_length_alarm              = DEFAULT_EXCEPTION_LENGTH_ALARM;
+static gint exception_length_alarm              = MCE_DEFAULT_TK_EXCEPT_LEN_ALARM;
 /** GConf callback ID for exception_length_alarm */
 static guint exception_length_alarm_cb_id       = 0;
 
 /** How long to keep display on when usb cable is connected [ms] */
-static gint exception_length_usb_connect        = DEFAULT_EXCEPTION_LENGTH_USB_CONNECT;
+static gint exception_length_usb_connect        = MCE_DEFAULT_TK_EXCEPT_LEN_USB_CONNECT;
 /** GConf callback ID for exception_length_usb_connect */
 static guint exception_length_usb_connect_cb_id = 0;
 
 /** How long to keep display on when usb mode dialog is shown [ms] */
-static gint exception_length_usb_dialog         = DEFAULT_EXCEPTION_LENGTH_USB_DIALOG;
+static gint exception_length_usb_dialog         = MCE_DEFAULT_TK_EXCEPT_LEN_USB_DIALOG;
 /** GConf callback ID for exception_length_usb_dialog */
 static guint exception_length_usb_dialog_cb_id  = 0;
 
 /** How long to keep display on when charging starts [ms] */
-static gint exception_length_charger            = DEFAULT_EXCEPTION_LENGTH_CHARGER;
+static gint exception_length_charger            = MCE_DEFAULT_TK_EXCEPT_LEN_CHARGER;
 /** GConf callback ID for exception_length_charger */
 static guint exception_length_charger_cb_id     = 0;
 
 /** How long to keep display on after battery full [ms] */
-static gint exception_length_battery            = DEFAULT_EXCEPTION_LENGTH_BATTERY;
+static gint exception_length_battery            = MCE_DEFAULT_TK_EXCEPT_LEN_BATTERY;
 /** GConf callback ID for exception_length_battery */
 static guint exception_length_battery_cb_id     = 0;
 
 /** How long to keep display on when audio jack is inserted [ms] */
-static gint exception_length_jack_in            = DEFAULT_EXCEPTION_LENGTH_JACK_IN;
+static gint exception_length_jack_in            = MCE_DEFAULT_TK_EXCEPT_LEN_JACK_IN;
 /** GConf callback ID for exception_length_jack_in */
 static guint exception_length_jack_in_cb_id     = 0;
 
 /** How long to keep display on when audio jack is removed [ms] */
-static gint exception_length_jack_out           = DEFAULT_EXCEPTION_LENGTH_JACK_OUT;
+static gint exception_length_jack_out           = MCE_DEFAULT_TK_EXCEPT_LEN_JACK_OUT;
 /** GConf callback ID for exception_length_jack_out */
 static guint exception_length_jack_out_cb_id    = 0;
 
 /** How long to keep display on when camera button is pressed [ms] */
-static gint exception_length_camera             = DEFAULT_EXCEPTION_LENGTH_CAMERA;
+static gint exception_length_camera             = MCE_DEFAULT_TK_EXCEPT_LEN_CAMERA;
 /** GConf callback ID for exception_length_camera */
 static guint exception_length_camera_cb_id      = 0;
 
 /** How long to keep display on when volume button is pressed [ms] */
-static gint exception_length_volume             = DEFAULT_EXCEPTION_LENGTH_VOLUME;
+static gint exception_length_volume             = MCE_DEFAULT_TK_EXCEPT_LEN_VOLUME;
 /** GConf callback ID for exception_length_volume */
 static guint exception_length_volume_cb_id      = 0;
 
 /** How long to extend display on when there is user activity [ms] */
-static gint exception_length_activity           = DEFAULT_EXCEPTION_LENGTH_ACTIVITY;
+static gint exception_length_activity           = MCE_DEFAULT_TK_EXCEPT_LEN_ACTIVITY;
 /** GConf callback ID for exception_length_activity */
 static guint exception_length_activity_cb_id    = 0;
 
 /** Flag for: Allow lockscreen animation during unblanking */
-static gboolean lockscreen_anim_enabled = DEFAULT_TK_LOCKSCREEN_ANIM_ENABLED;
+static gboolean lockscreen_anim_enabled = MCE_DEFAULT_TK_LOCKSCREEN_ANIM_ENABLED;
 static guint    lockscreen_anim_enabled_cb_id = 0;
 
 /* ========================================================================= *
@@ -3731,7 +3731,7 @@ static void tklock_uiexcept_begin(uiexctype_t type, int64_t linger)
  * ========================================================================= */
 
 /** Bitmap of automatic lpm triggering modes */
-static gint tklock_lpmui_triggering = DEFAULT_LPMUI_TRIGGERING;
+static gint tklock_lpmui_triggering = MCE_DEFAULT_TK_LPMUI_TRIGGERING;
 
 /** GConf notifier id for tklock_lpmui_triggering */
 static guint tklock_lpmui_triggering_cb_id = 0;
@@ -4492,7 +4492,7 @@ static void tklock_gconf_sanitize_lid_open_actions(void)
     default:
         mce_log(LL_WARN, "Lid open has invalid policy: %d; "
                 "using default", tklock_lid_open_actions);
-        tklock_lid_open_actions = DEFAULT_LID_OPEN_ACTION;
+        tklock_lid_open_actions = MCE_DEFAULT_TK_LID_OPEN_ACTIONS;
         break;
     }
 }
@@ -4508,7 +4508,7 @@ static void tklock_gconf_sanitize_lid_close_actions(void)
     default:
         mce_log(LL_WARN, "Lid close has invalid policy: %d; "
                 "using default", tklock_lid_close_actions);
-        tklock_lid_close_actions = DEFAULT_LID_CLOSE_ACTION;
+        tklock_lid_close_actions = MCE_DEFAULT_TK_LID_CLOSE_ACTIONS;
         break;
     }
 }
@@ -4524,7 +4524,7 @@ static void tklock_gconf_sanitize_kbd_open_trigger(void)
     default:
         mce_log(LL_WARN, "Invalid kbd open trigger: %d; using default",
                 tklock_kbd_open_trigger);
-        tklock_kbd_open_trigger = DEFAULT_KBD_OPEN_TRIGGER;
+        tklock_kbd_open_trigger = MCE_DEFAULT_TK_KBD_OPEN_TRIGGER;
         break;
     }
 }
@@ -4540,7 +4540,7 @@ static void tklock_gconf_sanitize_kbd_open_actions(void)
     default:
         mce_log(LL_WARN, "Invalid kbd open actions: %d; using default",
                 tklock_kbd_open_actions);
-        tklock_kbd_open_actions = DEFAULT_KBD_OPEN_ACTION;
+        tklock_kbd_open_actions = MCE_DEFAULT_TK_KBD_OPEN_ACTIONS;
         break;
     }
 }
@@ -4556,7 +4556,7 @@ static void tklock_gconf_sanitize_kbd_close_trigger(void)
     default:
         mce_log(LL_WARN, "Invalid kbd close trigger: %d; using default",
                 tklock_kbd_close_trigger);
-        tklock_kbd_close_trigger = DEFAULT_KBD_CLOSE_TRIGGER;
+        tklock_kbd_close_trigger = MCE_DEFAULT_TK_KBD_CLOSE_TRIGGER;
         break;
     }
 }
@@ -4572,7 +4572,7 @@ static void tklock_gconf_sanitize_kbd_close_actions(void)
     default:
         mce_log(LL_WARN, "Invalid kbd close actions: %d; using default",
                 tklock_kbd_close_actions);
-        tklock_kbd_close_actions = DEFAULT_KBD_CLOSE_ACTION;
+        tklock_kbd_close_actions = MCE_DEFAULT_TK_KBD_CLOSE_ACTIONS;
         break;
     }
 }
@@ -4776,214 +4776,214 @@ EXIT:
 static void tklock_gconf_init(void)
 {
     /* Touchscreen/keypad autolock enabled */
-    mce_gconf_track_bool(MCE_GCONF_TK_AUTOLOCK_ENABLED_PATH,
+    mce_gconf_track_bool(MCE_SETTING_TK_AUTOLOCK_ENABLED,
                          &tk_autolock_enabled,
-                         DEFAULT_TK_AUTOLOCK,
+                         MCE_DEFAULT_TK_AUTOLOCK_ENABLED,
                          tklock_gconf_cb,
                          &tk_autolock_enabled_cb_id);
 
     /* Grabbing input devices allowed */
-    mce_gconf_track_bool(MCE_GCONF_TK_INPUT_POLICY_ENABLED,
+    mce_gconf_track_bool(MCE_SETTING_TK_INPUT_POLICY_ENABLED,
                          &tk_input_policy_enabled,
-                         DEFAULT_TK_INPUT_POLICY_ENABLED,
+                         MCE_DEFAULT_TK_INPUT_POLICY_ENABLED,
                          tklock_gconf_cb,
                          &tk_input_policy_enabled_cb_id);
 
     /* Touchscreen/keypad autolock delay */
-    mce_gconf_track_int(MCE_GCONF_AUTOLOCK_DELAY,
+    mce_gconf_track_int(MCE_SETTING_TK_AUTOLOCK_DELAY,
                         &tklock_autolock_delay,
-                        DEFAULT_AUTOLOCK_DELAY,
+                        MCE_DEFAULT_TK_AUTOLOCK_DELAY,
                         tklock_gconf_cb,
                         &tklock_autolock_delay_cb_id);
 
     /* Volume key input policy */
-    mce_gconf_track_int(MCE_GCONF_TK_VOLKEY_POLICY,
+    mce_gconf_track_int(MCE_SETTING_TK_VOLKEY_POLICY,
                         &volkey_policy,
-                        DEFAULT_VOLKEY_POLICY,
+                        MCE_DEFAULT_TK_VOLKEY_POLICY,
                         tklock_gconf_cb,
                         &volkey_policy_cb_id);
 
     /* Lid sensor open policy */
-    mce_gconf_track_int(MCE_GCONF_TK_LID_OPEN_ACTIONS,
+    mce_gconf_track_int(MCE_SETTING_TK_LID_OPEN_ACTIONS,
                         &tklock_lid_open_actions,
-                        DEFAULT_LID_OPEN_ACTION,
+                        MCE_DEFAULT_TK_LID_OPEN_ACTIONS,
                         tklock_gconf_cb,
                         &tklock_lid_open_actions_cb_id);
 
     tklock_gconf_sanitize_lid_open_actions();
 
     /* Lid sensor close policy */
-    mce_gconf_track_int(MCE_GCONF_TK_LID_CLOSE_ACTIONS,
+    mce_gconf_track_int(MCE_SETTING_TK_LID_CLOSE_ACTIONS,
                         &tklock_lid_close_actions,
-                        DEFAULT_LID_CLOSE_ACTION,
+                        MCE_DEFAULT_TK_LID_CLOSE_ACTIONS,
                         tklock_gconf_cb,
                         &tklock_lid_close_actions_cb_id);
 
     tklock_gconf_sanitize_lid_close_actions();
 
     /* Kbd slide open policy */
-    mce_gconf_track_int(MCE_GCONF_TK_KBD_OPEN_TRIGGER,
+    mce_gconf_track_int(MCE_SETTING_TK_KBD_OPEN_TRIGGER,
                         &tklock_kbd_open_trigger,
-                        DEFAULT_KBD_OPEN_TRIGGER,
+                        MCE_DEFAULT_TK_KBD_OPEN_TRIGGER,
                         tklock_gconf_cb,
                         &tklock_kbd_open_trigger_cb_id);
 
     tklock_gconf_sanitize_kbd_open_trigger();
 
-    mce_gconf_track_int(MCE_GCONF_TK_KBD_OPEN_ACTIONS,
+    mce_gconf_track_int(MCE_SETTING_TK_KBD_OPEN_ACTIONS,
                         &tklock_kbd_open_actions,
-                        DEFAULT_KBD_OPEN_ACTION,
+                        MCE_DEFAULT_TK_KBD_OPEN_ACTIONS,
                         tklock_gconf_cb,
                         &tklock_kbd_open_actions_cb_id);
 
     tklock_gconf_sanitize_kbd_open_actions();
 
     /* Kbd slide close policy */
-    mce_gconf_track_int(MCE_GCONF_TK_KBD_CLOSE_TRIGGER,
+    mce_gconf_track_int(MCE_SETTING_TK_KBD_CLOSE_TRIGGER,
                         &tklock_kbd_close_trigger,
-                        DEFAULT_KBD_CLOSE_TRIGGER,
+                        MCE_DEFAULT_TK_KBD_CLOSE_TRIGGER,
                         tklock_gconf_cb,
                         &tklock_kbd_close_trigger_cb_id);
 
     tklock_gconf_sanitize_kbd_close_trigger();
 
-    mce_gconf_track_int(MCE_GCONF_TK_KBD_CLOSE_ACTIONS,
+    mce_gconf_track_int(MCE_SETTING_TK_KBD_CLOSE_ACTIONS,
                         &tklock_kbd_close_actions,
-                        DEFAULT_KBD_CLOSE_ACTION,
+                        MCE_DEFAULT_TK_KBD_CLOSE_ACTIONS,
                         tklock_gconf_cb,
                         &tklock_kbd_close_actions_cb_id);
 
     tklock_gconf_sanitize_kbd_close_actions();
 
     /** Touchscreen double tap gesture mode */
-    mce_gconf_track_int(MCE_GCONF_DOUBLETAP_MODE,
+    mce_gconf_track_int(MCE_SETTING_DOUBLETAP_MODE,
                         &touchscreen_gesture_enable_mode,
-                        DBLTAP_ENABLE_DEFAULT,
+                        MCE_DEFAULT_DOUBLETAP_MODE,
                         tklock_gconf_cb,
                         &touchscreen_gesture_enable_mode_cb_id);
 
     /* Bitmap of automatic lpm triggering modes */
-    mce_gconf_track_int(MCE_GCONF_LPMUI_TRIGGERING,
+    mce_gconf_track_int(MCE_SETTING_TK_LPMUI_TRIGGERING,
                         &tklock_lpmui_triggering,
-                        DEFAULT_LPMUI_TRIGGERING,
+                        MCE_DEFAULT_TK_LPMUI_TRIGGERING,
                         tklock_gconf_cb,
                         &tklock_lpmui_triggering_cb_id);
 
     /* Proximity can block touch input */
-    mce_gconf_track_bool(MCE_GCONF_PROXIMITY_BLOCKS_TOUCH,
+    mce_gconf_track_bool(MCE_SETTING_TK_PROXIMITY_BLOCKS_TOUCH,
                          &proximity_blocks_touch,
-                         PROXIMITY_BLOCKS_TOUCH_DEFAULT,
+                         MCE_DEFAULT_TK_PROXIMITY_BLOCKS_TOUCH,
                          tklock_gconf_cb,
                          &proximity_blocks_touch_cb_id);
 
     /* Devicelock is in lockscreen */
-    mce_gconf_track_bool(MCE_GCONF_DEVICELOCK_IN_LOCKSCREEN,
+    mce_gconf_track_bool(MCE_SETTING_TK_DEVICELOCK_IN_LOCKSCREEN,
                          &tklock_devicelock_in_lockscreen,
-                         DEFAULT_DEVICELOCK_IN_LOCKSCREEN,
+                         MCE_DEFAULT_TK_DEVICELOCK_IN_LOCKSCREEN,
                          tklock_gconf_cb,
                          &tklock_devicelock_in_lockscreen_cb_id);
 
     /* Touchscreen/keypad autolock enabled */
-    mce_gconf_track_bool(MCE_GCONF_LID_SENSOR_ENABLED,
+    mce_gconf_track_bool(MCE_SETTING_TK_LID_SENSOR_ENABLED,
                          &lid_sensor_enabled,
-                         DEFAULT_LID_SENSOR_ENABLED,
+                         MCE_DEFAULT_TK_LID_SENSOR_ENABLED,
                          tklock_gconf_cb,
                          &lid_sensor_enabled_cb_id);
 
-    mce_gconf_track_bool(MCE_GCONF_DISPLAY_ALS_ENABLED,
+    mce_gconf_track_bool(MCE_SETTING_DISPLAY_ALS_ENABLED,
                          &als_enabled,
-                         ALS_ENABLED_DEFAULT,
+                         MCE_DEFAULT_DISPLAY_ALS_ENABLED,
                          tklock_gconf_cb,
                          &als_enabled_gconf_id);
 
-    mce_gconf_track_bool(MCE_GCONF_FILTER_LID_WITH_ALS,
+    mce_gconf_track_bool(MCE_SETTING_TK_FILTER_LID_WITH_ALS,
                          &filter_lid_with_als,
-                         DEFAULT_FILTER_LID_WITH_ALS,
+                         MCE_DEFAULT_TK_FILTER_LID_WITH_ALS,
                          tklock_gconf_cb,
                          &filter_lid_with_als_gconf_id);
 
-    mce_gconf_track_int(MCE_GCONF_FILTER_LID_ALS_LIMIT,
+    mce_gconf_track_int(MCE_SETTING_TK_FILTER_LID_ALS_LIMIT,
                         &filter_lid_als_limit,
-                        DEFAULT_FILTER_LID_ALS_LIMIT,
+                        MCE_DEFAULT_TK_FILTER_LID_ALS_LIMIT,
                         tklock_gconf_cb,
                         &filter_lid_als_limit_gconf_id);
 
     /* Display on exception lengths */
-    mce_gconf_track_int(MCE_GCONF_EXCEPTION_LENGTH_CALL_IN,
+    mce_gconf_track_int(MCE_SETTING_TK_EXCEPT_LEN_CALL_IN,
                         &exception_length_call_in,
-                        DEFAULT_EXCEPTION_LENGTH_CALL_IN,
+                        MCE_DEFAULT_TK_EXCEPT_LEN_CALL_IN,
                         tklock_gconf_cb,
                         &exception_length_call_in_cb_id);
 
-    mce_gconf_track_int(MCE_GCONF_EXCEPTION_LENGTH_CALL_OUT,
+    mce_gconf_track_int(MCE_SETTING_TK_EXCEPT_LEN_CALL_OUT,
                         &exception_length_call_out,
-                        DEFAULT_EXCEPTION_LENGTH_CALL_OUT,
+                        MCE_DEFAULT_TK_EXCEPT_LEN_CALL_OUT,
                         tklock_gconf_cb,
                         &exception_length_call_out_cb_id);
 
-    mce_gconf_track_int(MCE_GCONF_EXCEPTION_LENGTH_ALARM,
+    mce_gconf_track_int(MCE_SETTING_TK_EXCEPT_LEN_ALARM,
                         &exception_length_alarm,
-                        DEFAULT_EXCEPTION_LENGTH_ALARM,
+                        MCE_DEFAULT_TK_EXCEPT_LEN_ALARM,
                         tklock_gconf_cb,
                         &exception_length_alarm_cb_id);
 
-    mce_gconf_track_int(MCE_GCONF_EXCEPTION_LENGTH_USB_CONNECT,
+    mce_gconf_track_int(MCE_SETTING_TK_EXCEPT_LEN_USB_CONNECT,
                         &exception_length_usb_connect,
-                        DEFAULT_EXCEPTION_LENGTH_USB_CONNECT,
+                        MCE_DEFAULT_TK_EXCEPT_LEN_USB_CONNECT,
                         tklock_gconf_cb,
                         &exception_length_usb_connect_cb_id);
 
-    mce_gconf_track_int(MCE_GCONF_EXCEPTION_LENGTH_USB_DIALOG,
+    mce_gconf_track_int(MCE_SETTING_TK_EXCEPT_LEN_USB_DIALOG,
                         &exception_length_usb_dialog,
-                        DEFAULT_EXCEPTION_LENGTH_USB_DIALOG,
+                        MCE_DEFAULT_TK_EXCEPT_LEN_USB_DIALOG,
                         tklock_gconf_cb,
                         &exception_length_usb_dialog_cb_id);
 
-    mce_gconf_track_int(MCE_GCONF_EXCEPTION_LENGTH_CHARGER,
+    mce_gconf_track_int(MCE_SETTING_TK_EXCEPT_LEN_CHARGER,
                         &exception_length_charger,
-                        DEFAULT_EXCEPTION_LENGTH_CHARGER,
+                        MCE_DEFAULT_TK_EXCEPT_LEN_CHARGER,
                         tklock_gconf_cb,
                         &exception_length_charger_cb_id);
 
-    mce_gconf_track_int(MCE_GCONF_EXCEPTION_LENGTH_BATTERY,
+    mce_gconf_track_int(MCE_SETTING_TK_EXCEPT_LEN_BATTERY,
                         &exception_length_battery,
-                        DEFAULT_EXCEPTION_LENGTH_BATTERY,
+                        MCE_DEFAULT_TK_EXCEPT_LEN_BATTERY,
                         tklock_gconf_cb,
                         &exception_length_battery_cb_id);
 
-    mce_gconf_track_int(MCE_GCONF_EXCEPTION_LENGTH_JACK_IN,
+    mce_gconf_track_int(MCE_SETTING_TK_EXCEPT_LEN_JACK_IN,
                         &exception_length_jack_in,
-                        DEFAULT_EXCEPTION_LENGTH_JACK_IN,
+                        MCE_DEFAULT_TK_EXCEPT_LEN_JACK_IN,
                         tklock_gconf_cb,
                         &exception_length_jack_in_cb_id);
 
-    mce_gconf_track_int(MCE_GCONF_EXCEPTION_LENGTH_JACK_OUT,
+    mce_gconf_track_int(MCE_SETTING_TK_EXCEPT_LEN_JACK_OUT,
                         &exception_length_jack_out,
-                        DEFAULT_EXCEPTION_LENGTH_JACK_OUT,
+                        MCE_DEFAULT_TK_EXCEPT_LEN_JACK_OUT,
                         tklock_gconf_cb,
                         &exception_length_jack_out_cb_id);
 
-    mce_gconf_track_int(MCE_GCONF_EXCEPTION_LENGTH_CAMERA,
+    mce_gconf_track_int(MCE_SETTING_TK_EXCEPT_LEN_CAMERA,
                         &exception_length_camera,
-                        DEFAULT_EXCEPTION_LENGTH_CAMERA,
+                        MCE_DEFAULT_TK_EXCEPT_LEN_CAMERA,
                         tklock_gconf_cb,
                         &exception_length_camera_cb_id);
 
-    mce_gconf_track_int(MCE_GCONF_EXCEPTION_LENGTH_VOLUME,
+    mce_gconf_track_int(MCE_SETTING_TK_EXCEPT_LEN_VOLUME,
                         &exception_length_volume,
-                        DEFAULT_EXCEPTION_LENGTH_VOLUME,
+                        MCE_DEFAULT_TK_EXCEPT_LEN_VOLUME,
                         tklock_gconf_cb,
                         &exception_length_volume_cb_id);
 
-    mce_gconf_track_int(MCE_GCONF_EXCEPTION_LENGTH_ACTIVITY,
+    mce_gconf_track_int(MCE_SETTING_TK_EXCEPT_LEN_ACTIVITY,
                         &exception_length_activity,
-                        DEFAULT_EXCEPTION_LENGTH_ACTIVITY,
+                        MCE_DEFAULT_TK_EXCEPT_LEN_ACTIVITY,
                         tklock_gconf_cb,
                         &exception_length_activity_cb_id);
 
-    mce_gconf_track_bool(MCE_GCONF_TK_LOCKSCREEN_ANIM_ENABLED,
+    mce_gconf_track_bool(MCE_SETTING_TK_LOCKSCREEN_ANIM_ENABLED,
                          &lockscreen_anim_enabled,
-                         DEFAULT_TK_LOCKSCREEN_ANIM_ENABLED,
+                         MCE_DEFAULT_TK_LOCKSCREEN_ANIM_ENABLED,
                          tklock_gconf_cb,
                          &lockscreen_anim_enabled_cb_id);
 }

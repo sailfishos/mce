@@ -61,13 +61,13 @@ static display_state_t display_state = MCE_DISPLAY_UNDEF;
 static submode_t submode = MCE_NORMAL_SUBMODE;
 
 /** Configuration value for use proximity sensor */
-static gboolean use_ps_conf_value = DEFAULT_PROXIMITY_PS_ENABLED;
+static gboolean use_ps_conf_value = MCE_DEFAULT_PROXIMITY_PS_ENABLED;
 
 /** Configuration change id for use_ps_conf_value */
 static guint use_ps_conf_id = 0;
 
 /** Configuration value for ps acts as lid sensor */
-static gboolean ps_acts_as_lid = DEFAULT_PROXIMITY_PS_ACTS_AS_LID;
+static gboolean ps_acts_as_lid = MCE_DEFAULT_PROXIMITY_PS_ACTS_AS_LID;
 
 /** Configuration change id for ps_acts_as_lid */
 static guint ps_acts_as_lid_conf_id = 0;
@@ -339,16 +339,16 @@ const gchar *g_module_check_init(GModule *module)
 					  submode_trigger);
 
 	/* PS enabled setting */
-	mce_gconf_track_bool(MCE_GCONF_PROXIMITY_PS_ENABLED_PATH,
+	mce_gconf_track_bool(MCE_SETTING_PROXIMITY_PS_ENABLED,
 			     &use_ps_conf_value,
-			     DEFAULT_PROXIMITY_PS_ENABLED,
+			     MCE_DEFAULT_PROXIMITY_PS_ENABLED,
 			     use_ps_conf_cb,
 			     &use_ps_conf_id);
 
 	/* PS acts as LID sensor */
-	mce_gconf_track_bool(MCE_GCONF_PROXIMITY_PS_ACTS_AS_LID,
+	mce_gconf_track_bool(MCE_SETTING_PROXIMITY_PS_ACTS_AS_LID,
 			     &ps_acts_as_lid,
-			     DEFAULT_PROXIMITY_PS_ACTS_AS_LID,
+			     MCE_DEFAULT_PROXIMITY_PS_ACTS_AS_LID,
 			     use_ps_conf_cb,
 			     &ps_acts_as_lid_conf_id);
 
