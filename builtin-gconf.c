@@ -42,9 +42,6 @@
  *
  * ========================================================================= */
 
-/** Provide additional values for type testing purposes */
-#define GCONF_ADD_DEBUG_VALUES 0
-
 /** Enable error logging to stderr via gconf_log_error() */
 #define GCONF_ENABLE_ERROR_LOGGING 01
 
@@ -1327,49 +1324,6 @@ static const setting_t gconf_defaults[] =
     .type = "i",
     .def  = G_STRINGIFY(DEFAULT_KBD_SLIDE_INHIBIT),
   },
-
-#if GCONF_ADD_DEBUG_VALUES
-  {
-    .key  = "/test/string",
-    .type = "s",
-    .def  = "bar",
-  },
-  {
-    .key  = "/test/string_list",
-    .type = "as",
-    .def  = "foo,bar,baf",
-  },
-  {
-    .key  = "/test/bool",
-    .type = "b",
-    .def  = "true",
-  },
-  {
-    .key  = "/test/bool_list",
-    .type = "ab",
-    .def  = "true,false,1,0,yes,no,t,f,y,n",
-  },
-  {
-    .key  = "/test/int",
-    .type = "i",
-    .def  = "12345",
-  },
-  {
-    .key  = "/test/int_list",
-    .type = "ai",
-    .def  = "11,-22,33,-44,55,-66",
-  },
-  {
-    .key  = "/test/float",
-    .type = "f",
-    .def  = "-123.456",
-  },
-  {
-    .key  = "/test/float_list",
-    .type = "af",
-    .def  = "0.123,1e2,+42,-42,0.5",
-  },
-#endif
   {
     // MCE_GCONF_USE_AUTOSUSPEND @ modules/display.h
     .key  = "/system/osso/dsm/display/autosuspend_policy",
