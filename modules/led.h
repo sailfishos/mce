@@ -77,6 +77,12 @@
 /** Path to the GConf settings for the display */
 #define MCE_GCONF_LED_PATH			"/system/osso/dsm/leds"
 
+/** Setting for: sw led breathing enabled/disabled */
+#define MCE_GCONF_LED_SW_BREATH_ENABLED		MCE_GCONF_LED_PATH"/sw_breath_enabled"
+
+/** Setting for: minimum battery level for breathing */
+#define MCE_GCONF_LED_SW_BREATH_BATTERY_LIMIT	MCE_GCONF_LED_PATH"/sw_breath_battery_limit"
+
 /** Default value for LED settings */
 #define DEFAULT_PATTERN_ENABLED			TRUE
 

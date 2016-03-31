@@ -2947,7 +2947,7 @@ static void mdy_brightness_set_dim_level(void)
     execute_datapipe_output_triggers(compositor_fade_level > 0 ?
                                      &led_pattern_activate_pipe :
                                      &led_pattern_deactivate_pipe,
-                                     "PatternDisplayDimmed",
+                                     MCE_LED_PATTERN_DISPLAY_DIMMED,
                                      USE_INDATA);
 
     /* Update ui side fader opacity value */
@@ -5157,7 +5157,7 @@ static void mdy_compositor_set_killer_led(bool enable)
     execute_datapipe_output_triggers(enabled ?
                                      &led_pattern_activate_pipe :
                                      &led_pattern_deactivate_pipe,
-                                     "PatternKillingLipstick",
+                                     MCE_LED_PATTERN_KILLING_LIPSTICK,
                                      USE_INDATA);
 EXIT:
     return;
@@ -5186,13 +5186,13 @@ static void mdy_compositor_set_panic_led(renderer_state_t req)
     execute_datapipe_output_triggers(blanking ?
                                      &led_pattern_activate_pipe :
                                      &led_pattern_deactivate_pipe,
-                                     "PatternDisplayBlankFailed",
+                                     MCE_LED_PATTERN_DISPLAY_BLANK_FAILED,
                                      USE_INDATA);
 
     execute_datapipe_output_triggers(unblanking ?
                                      &led_pattern_activate_pipe :
                                      &led_pattern_deactivate_pipe,
-                                     "PatternDisplayUnblankFailed",
+                                     MCE_LED_PATTERN_DISPLAY_UNBLANK_FAILED,
                                      USE_INDATA);
 }
 
@@ -6199,13 +6199,13 @@ static void mdy_fbsusp_led_set(mdy_fbsusp_led_state_t req)
     execute_datapipe_output_triggers(blanking ?
                                      &led_pattern_activate_pipe :
                                      &led_pattern_deactivate_pipe,
-                                     "PatternDisplaySuspendFailed",
+                                     MCE_LED_PATTERN_DISPLAY_SUSPEND_FAILED,
                                      USE_INDATA);
 
     execute_datapipe_output_triggers(unblanking ?
                                      &led_pattern_activate_pipe :
                                      &led_pattern_deactivate_pipe,
-                                     "PatternDisplayResumeFailed",
+                                     MCE_LED_PATTERN_DISPLAY_RESUME_FAILED,
                                      USE_INDATA);
 }
 

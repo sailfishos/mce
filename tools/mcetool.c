@@ -28,6 +28,7 @@
 #include "../modules/filter-brightness-als.h"
 #include "../modules/proximity.h"
 #include "../modules/memnotify.h"
+#include "../modules/led.h"
 #include "../systemui/dbus-names.h"
 #include "../systemui/tklock-dbus-names.h"
 
@@ -1857,29 +1858,29 @@ EXIT:
 /** Array of led patterns that can be disabled/enabled */
 static const char * const led_patterns[] =
 {
-        "PatternBatteryCharging",
-        "PatternBatteryFull",
-        "PatternCommunication",
-        "PatternPowerOff",
-        "PatternPowerOn",
-        "PatternWebcamActive",
-        "PatternDeviceOn",
-        "PatternBatteryLow",
-        "PatternCommunicationAndBatteryFull",
-        "PatternBatteryChargingFlat",
-        "PatternCommonNotification",
-        "PatternCommunicationCall",
-        "PatternCommunicationEmail",
-        "PatternCommunicationIM",
-        "PatternCommunicationSMS",
-        "PatternCsdWhite",
-        "PatternDisplayBlankFailed",
-        "PatternDisplayUnblankFailed",
-        "PatternDisplaySuspendFailed",
-        "PatternDisplayResumeFailed",
-        "PatternKillingLipstick",
-        "PatternTouchInputBlocked",
-        "PatternDisplayDimmed",
+        MCE_LED_PATTERN_BATTERY_CHARGING,
+        MCE_LED_PATTERN_BATTERY_FULL,
+        MCE_LED_PATTERN_COMMUNICATION_EVENT,
+        MCE_LED_PATTERN_POWER_OFF,
+        MCE_LED_PATTERN_POWER_ON,
+        MCE_LED_PATTERN_CAMERA,
+        MCE_LED_PATTERN_DEVICE_ON,
+        MCE_LED_PATTERN_BATTERY_LOW,
+        MCE_LED_PATTERN_COMMUNICATION_EVENT_BATTERY_FULL,
+        MCE_LED_PATTERN_BATTERY_CHARGING_FLAT,
+        MCE_LED_PATTERN_COMMON_NOTIFICATION,
+        MCE_LED_PATTERN_COMMUNICATION_CALL,
+        MCE_LED_PATTERN_COMMUNICATION_EMAIL,
+        MCE_LED_PATTERN_COMMUNICATION_IM,
+        MCE_LED_PATTERN_COMMUNICATION_SMS,
+        MCE_LED_PATTERN_CSD_WHITE,
+        MCE_LED_PATTERN_DISPLAY_BLANK_FAILED,
+        MCE_LED_PATTERN_DISPLAY_UNBLANK_FAILED,
+        MCE_LED_PATTERN_DISPLAY_SUSPEND_FAILED,
+        MCE_LED_PATTERN_DISPLAY_RESUME_FAILED,
+        MCE_LED_PATTERN_KILLING_LIPSTICK,
+        MCE_LED_PATTERN_TOUCH_INPUT_BLOCKED,
+        MCE_LED_PATTERN_DISPLAY_DIMMED,
         0
 };
 
@@ -1904,7 +1905,7 @@ static bool set_led_breathing_enabled(const char *args)
 {
         debugf("%s(%s)\n", __FUNCTION__, args);
         gboolean val = xmce_parse_enabled(args);
-        mcetool_gconf_set_bool("/system/osso/dsm/leds/sw_breath_enabled", val);
+        mcetool_gconf_set_bool(MCE_GCONF_LED_SW_BREATH_ENABLED, val);
         return true;
 }
 
@@ -1915,7 +1916,7 @@ static void get_led_breathing_enabled(void)
         gboolean    val = FALSE;
         const char *txt = "unknown";
 
-        if( mcetool_gconf_get_bool("/system/osso/dsm/leds/sw_breath_enabled", &val) )
+        if( mcetool_gconf_get_bool(MCE_GCONF_LED_SW_BREATH_ENABLED, &val) )
                 txt = val ? "enabled" : "disabled";
 
         printf("%-"PAD1"s %s\n", "Led breathing:", txt);
@@ -1932,7 +1933,7 @@ static bool set_led_breathing_limit(const char *args)
                 errorf("%d: invalid battery limit value\n", val);
                 exit(EXIT_FAILURE);
         }
-        mcetool_gconf_set_int("/system/osso/dsm/leds/sw_breath_battery_limit", val);
+        mcetool_gconf_set_int(MCE_GCONF_LED_SW_BREATH_BATTERY_LIMIT, val);
         return true;
 }
 
@@ -1944,7 +1945,7 @@ static void get_led_breathing_limit(void)
         char txt[32];
 
         strcpy(txt, "unknown");
-        if( mcetool_gconf_get_int("/system/osso/dsm/leds/sw_breath_battery_limit", &val) )
+        if( mcetool_gconf_get_int(MCE_GCONF_LED_SW_BREATH_BATTERY_LIMIT, &val) )
                 snprintf(txt, sizeof txt, "%d", (int)val);
         printf("%-"PAD1"s %s (%%)\n", "Led breathing battery limit:", txt);
 }
@@ -1963,7 +1964,7 @@ static bool set_led_pattern_enabled(const char *pattern, bool enable)
                 return false;
         }
 
-        snprintf(key, sizeof key, "/system/osso/dsm/leds/%s", pattern);
+        snprintf(key, sizeof key, MCE_GCONF_LED_PATH"/%s", pattern);
         return mcetool_gconf_set_bool(key, enable);
 }
 
@@ -2004,7 +2005,7 @@ static bool mcetool_show_led_patterns(const char *args)
         char key[256];
 
         for( size_t i = 0; led_patterns[i]; ++i ) {
-                snprintf(key, sizeof key, "/system/osso/dsm/leds/%s",
+                snprintf(key, sizeof key, MCE_GCONF_LED_PATH"/%s",
                          led_patterns[i]);
 
                 gboolean    val = FALSE;

@@ -2858,7 +2858,7 @@ evin_ts_grab_set_led_raw(bool enabled)
     execute_datapipe_output_triggers(enabled ?
                                      &led_pattern_activate_pipe :
                                      &led_pattern_deactivate_pipe,
-                                     "PatternTouchInputBlocked",
+                                     MCE_LED_PATTERN_TOUCH_INPUT_BLOCKED,
                                      USE_INDATA);
 }
 

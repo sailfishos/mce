@@ -8,8 +8,11 @@ builtin-gconf.o:\
 	mce-log.h\
 	mce.h\
 	modules/display.h\
+	modules/doubletap.h\
 	modules/filter-brightness-als.h\
+	modules/led.h\
 	modules/memnotify.h\
+	modules/powersavemode.h\
 	modules/proximity.h\
 	powerkey.h\
 	tklock.h\
@@ -24,8 +27,11 @@ builtin-gconf.pic.o:\
 	mce-log.h\
 	mce.h\
 	modules/display.h\
+	modules/doubletap.h\
 	modules/filter-brightness-als.h\
+	modules/led.h\
 	modules/memnotify.h\
+	modules/powersavemode.h\
 	modules/proximity.h\
 	powerkey.h\
 	tklock.h\
@@ -1257,6 +1263,7 @@ tools/mcetool.o:\
 	modules/display.h\
 	modules/doubletap.h\
 	modules/filter-brightness-als.h\
+	modules/led.h\
 	modules/memnotify.h\
 	modules/powersavemode.h\
 	modules/proximity.h\
@@ -1274,6 +1281,7 @@ tools/mcetool.pic.o:\
 	modules/display.h\
 	modules/doubletap.h\
 	modules/filter-brightness-als.h\
+	modules/led.h\
 	modules/memnotify.h\
 	modules/powersavemode.h\
 	modules/proximity.h\

@@ -55,6 +55,48 @@
 /** LED pattern used when the battery is low */
 #define MCE_LED_PATTERN_BATTERY_LOW		"PatternBatteryLow"
 
+/** LED pattern used when XXX */
+#define MCE_LED_PATTERN_BATTERY_CHARGING_FLAT	"PatternBatteryChargingFlat"
+
+/** LED pattern used by messaging mw */
+#define MCE_LED_PATTERN_COMMON_NOTIFICATION	"PatternCommonNotification"
+
+/** LED pattern used by messaging mw */
+#define MCE_LED_PATTERN_COMMUNICATION_CALL	"PatternCommunicationCall"
+
+/** LED pattern used by messaging mw */
+#define MCE_LED_PATTERN_COMMUNICATION_EMAIL	"PatternCommunicationEmail"
+
+/** LED pattern used by messaging mw */
+#define MCE_LED_PATTERN_COMMUNICATION_IM	"PatternCommunicationIM"
+
+/** LED pattern used by messaging mw */
+#define MCE_LED_PATTERN_COMMUNICATION_SMS	"PatternCommunicationSMS"
+
+/** LED pattern used by CSD application */
+#define MCE_LED_PATTERN_CSD_WHITE		"PatternCsdWhite"
+
+/** LED pattern used when blanking fails due to dbus ipc */
+#define MCE_LED_PATTERN_DISPLAY_BLANK_FAILED	"PatternDisplayBlankFailed"
+
+/** LED pattern used when unblanking fails due to dbus ipc */
+#define MCE_LED_PATTERN_DISPLAY_UNBLANK_FAILED	"PatternDisplayUnblankFailed"
+
+/** LED pattern used when frame buffer suspend fails */
+#define MCE_LED_PATTERN_DISPLAY_SUSPEND_FAILED	"PatternDisplaySuspendFailed"
+
+/** LED pattern used when frame buffer resume fails */
+#define MCE_LED_PATTERN_DISPLAY_RESUME_FAILED	"PatternDisplayResumeFailed"
+
+/** LED pattern used when mce kills unresponsive lipstick */
+#define MCE_LED_PATTERN_KILLING_LIPSTICK	"PatternKillingLipstick"
+
+/** LED pattern used when display is on, but mce holds touch input */
+#define MCE_LED_PATTERN_TOUCH_INPUT_BLOCKED	"PatternTouchInputBlocked"
+
+/** LED pattern used when XXX */
+#define MCE_LED_PATTERN_DISPLAY_DIMMED		"PatternDisplayDimmed"
+
 /** LED pattern used for communication events */
 #define MCE_LED_PATTERN_COMMUNICATION_EVENT	"PatternCommunication"
 

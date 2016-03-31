@@ -30,6 +30,9 @@
 #include "modules/filter-brightness-als.h"
 #include "modules/display.h"
 #include "modules/proximity.h"
+#include "modules/powersavemode.h"
+#include "modules/doubletap.h"
+#include "modules/led.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -1064,26 +1067,22 @@ typedef struct
 static const setting_t gconf_defaults[] =
 {
   {
-    // MCE_GCONF_PSM_PATH @ modules/powersavemode.h
-    .key  = "/system/osso/dsm/energymanagement/enable_power_saving",
+    .key  = MCE_GCONF_PSM_PATH,
     .type = "b",
     .def  = "false",
   },
   {
-    // MCE_GCONF_FORCED_PSM_PATH @ modules/powersavemode.h
-    .key  = "/system/osso/dsm/energymanagement/force_power_saving",
+    .key  = MCE_GCONF_FORCED_PSM_PATH,
     .type = "b",
     .def  = "false",
   },
   {
-    // MCE_GCONF_PSM_THRESHOLD_PATH @ modules/powersavemode.h
-    .key  = "/system/osso/dsm/energymanagement/psm_threshold",
+    .key  = MCE_GCONF_PSM_THRESHOLD_PATH,
     .type = "i",
     .def  = "20",
   },
   {
-    // Hint for settings UI. Not used by MCE itself.
-    .key  = "/system/osso/dsm/energymanagement/possible_psm_thresholds",
+    .key  = MCE_GCONF_PSM_POSSIBLE_THRESHOLDS_PATH,
     .type = "ai",
     .def  = "10,20,30,40,50",
   },
@@ -1108,8 +1107,7 @@ static const setting_t gconf_defaults[] =
     .def  = G_STRINGIFY(ALS_SAMPLE_TIME_DEFAULT),
   },
   {
-    // MCE_GCONF_DISPLAY_COLOR_PROFILE @ modules/display.h
-    .key  = "/system/osso/dsm/display/color_profile",
+    .key  = MCE_GCONF_DISPLAY_COLOR_PROFILE,
     .type = "s",
     .def  = "",
   },
@@ -1209,20 +1207,17 @@ static const setting_t gconf_defaults[] =
     .def  = G_STRINGIFY(DEFAULT_BLANKING_PAUSE_MODE),
   },
   {
-    // Hint for settings UI. Not used by MCE itself.
-    .key  = "/system/osso/dsm/display/possible_display_blank_timeouts",
+    .key  = MCE_GCONF_DISPLAY_BLANK_TIMEOUT_LIST,
     .type = "ai",
     .def  = "3,10,15",
   },
   {
-    // MCE_GCONF_DISPLAY_ADAPTIVE_DIMMING @ modules/display.h
-    .key  = "/system/osso/dsm/display/use_adaptive_display_dimming",
+    .key  = MCE_GCONF_DISPLAY_ADAPTIVE_DIMMING,
     .type = "b",
     .def  = "true",
   },
   {
-    // MCE_GCONF_DISPLAY_ADAPTIVE_DIM_THRESHOLD @ modules/display.h
-    .key  = "/system/osso/dsm/display/adaptive_display_dim_threshold",
+    .key  = MCE_GCONF_DISPLAY_ADAPTIVE_DIM_THRESHOLD,
     .type = "i",
     .def  = "10000",
   },
@@ -1232,8 +1227,7 @@ static const setting_t gconf_defaults[] =
     .def  = G_STRINGIFY(DEFAULT_USE_LOW_POWER_MODE),
   },
   {
-    // MCE_GCONF_TK_AUTOLOCK_ENABLED_PATH @ tklock.h
-    .key  = "/system/osso/dsm/locks/touchscreen_keypad_autolock_enabled",
+    .key  = MCE_GCONF_TK_AUTOLOCK_ENABLED_PATH,
     .type = "b",
     .def  = "true",
   },
@@ -1253,8 +1247,7 @@ static const setting_t gconf_defaults[] =
     .def  = "1", // = LPMUI_TRIGGERING_FROM_POCKET
   },
   {
-    // MCE_GCONF_PROXIMITY_BLOCKS_TOUCH @ tklock.h
-    .key  = "/system/osso/dsm/locks/proximity_blocks_touch",
+    .key  = MCE_GCONF_PROXIMITY_BLOCKS_TOUCH,
     .type = "b",
     .def  = G_STRINGIFY(PROXIMITY_BLOCKS_TOUCH_DEFAULT),
   },
@@ -1314,8 +1307,7 @@ static const setting_t gconf_defaults[] =
     .def  = G_STRINGIFY(DEFAULT_AUTOLOCK_DELAY),
   },
   {
-    // MCE_GCONF_BLANKING_INHIBIT_MODE @ modules/display.h
-    .key  = "/system/osso/dsm/display/inhibit_blank_mode",
+    .key  = MCE_GCONF_BLANKING_INHIBIT_MODE,
     .type = "i",
     .def  = "0",
   },
@@ -1325,14 +1317,12 @@ static const setting_t gconf_defaults[] =
     .def  = G_STRINGIFY(DEFAULT_KBD_SLIDE_INHIBIT),
   },
   {
-    // MCE_GCONF_USE_AUTOSUSPEND @ modules/display.h
-    .key  = "/system/osso/dsm/display/autosuspend_policy",
+    .key  = MCE_GCONF_USE_AUTOSUSPEND,
     .type = "i",
     .def  = "1",
   },
   {
-    // MCE_GCONF_CPU_SCALING_GOVERNOR @ modules/display.h
-    .key  = "/system/osso/dsm/display/cpu_scaling_governor",
+    .key  = MCE_GCONF_CPU_SCALING_GOVERNOR,
     .type = "i",
     .def  = "0", // = GOVERNOR_UNSET = no override
   },
@@ -1378,15 +1368,13 @@ static const setting_t gconf_defaults[] =
   },
 #ifdef ENABLE_DOUBLETAP_EMULATION
   {
-    // MCE_GCONF_USE_FAKE_DOUBLETAP_PATH @ event-input.h
-    .key  = "/system/osso/dsm/event_input/use_fake_double_tap",
+    .key  = MCE_GCONF_USE_FAKE_DOUBLETAP_PATH,
     .type = "b",
     .def  = "true",
   },
 #endif
   {
-    //  MCE_GCONF_TOUCH_UNBLOCK_DELAY_PATH @ event-input.h
-    .key  = "/system/osso/dsm/event_input/touch_unblock_delay",
+    .key  = MCE_GCONF_TOUCH_UNBLOCK_DELAY_PATH,
     .type = "i",
     .def  = "100",
   },
@@ -1396,152 +1384,127 @@ static const setting_t gconf_defaults[] =
     .def  = G_STRINGIFY(DEFAULT_INPUT_GRAB_ALLOWED),
   },
   {
-    // MCE_LED_PATTERN_BATTERY_CHARGING @ mce.h
-    .key  = "/system/osso/dsm/leds/PatternBatteryCharging",
+    .key  = MCE_GCONF_LED_PATH"/"MCE_LED_PATTERN_BATTERY_CHARGING,
     .type = "b",
     .def  = "true",
   },
   {
-    // MCE_LED_PATTERN_BATTERY_FULL @ mce.h
-    .key  = "/system/osso/dsm/leds/PatternBatteryFull",
+    .key  = MCE_GCONF_LED_PATH"/"MCE_LED_PATTERN_BATTERY_FULL,
     .type = "b",
     .def  = "true",
   },
   {
-    // MCE_LED_PATTERN_COMMUNICATION_EVENT @ mce.h
-    .key  = "/system/osso/dsm/leds/PatternCommunication",
+    .key  = MCE_GCONF_LED_PATH"/"MCE_LED_PATTERN_COMMUNICATION_EVENT,
     .type = "b",
     .def  = "true",
   },
   {
-    // MCE_LED_PATTERN_POWER_OFF @ mce.h
-    .key  = "/system/osso/dsm/leds/PatternPowerOff",
+    .key  = MCE_GCONF_LED_PATH"/"MCE_LED_PATTERN_POWER_OFF,
     .type = "b",
     .def  = "true",
   },
   {
-    // MCE_LED_PATTERN_POWER_ON @ mce.h
-    .key  = "/system/osso/dsm/leds/PatternPowerOn",
+    .key  = MCE_GCONF_LED_PATH"/"MCE_LED_PATTERN_POWER_ON,
     .type = "b",
     .def  = "true",
   },
   {
-    // MCE_LED_PATTERN_CAMERA @ mce.h
-    .key  = "/system/osso/dsm/leds/PatternWebcamActive",
+    .key  = MCE_GCONF_LED_PATH"/"MCE_LED_PATTERN_CAMERA,
     .type = "b",
     .def  = "true",
   },
   {
-    // MCE_LED_PATTERN_DEVICE_ON @ mce.h
-    .key  = "/system/osso/dsm/leds/PatternDeviceOn",
+    .key  = MCE_GCONF_LED_PATH"/"MCE_LED_PATTERN_DEVICE_ON,
     .type = "b",
     .def  = "true",
   },
   {
-    // MCE_LED_PATTERN_BATTERY_LOW @ mce.h
-    .key  = "/system/osso/dsm/leds/PatternBatteryLow",
+    .key  = MCE_GCONF_LED_PATH"/"MCE_LED_PATTERN_BATTERY_LOW,
     .type = "b",
     .def  = "true",
   },
   {
-    // MCE_LED_PATTERN_COMMUNICATION_EVENT_BATTERY_FULL @ mce.h
-    .key  = "/system/osso/dsm/leds/PatternCommunicationAndBatteryFull",
+    .key  = MCE_GCONF_LED_PATH"/"MCE_LED_PATTERN_COMMUNICATION_EVENT_BATTERY_FULL,
     .type = "b",
     .def  = "true",
   },
   {
-    // no define; mentioned in mce.ini
-    .key  = "/system/osso/dsm/leds/PatternBatteryChargingFlat",
+    .key  = MCE_GCONF_LED_PATH"/"MCE_LED_PATTERN_BATTERY_CHARGING_FLAT,
     .type = "b",
     .def  = "true",
   },
   {
-    // no define; mentioned in mce.ini
-    .key  = "/system/osso/dsm/leds/PatternCommonNotification",
+    .key  = MCE_GCONF_LED_PATH"/"MCE_LED_PATTERN_COMMON_NOTIFICATION,
     .type = "b",
     .def  = "true",
   },
   {
-    // no define; mentioned in mce.ini
-    .key  = "/system/osso/dsm/leds/PatternCommunicationCall",
+    .key  = MCE_GCONF_LED_PATH"/"MCE_LED_PATTERN_COMMUNICATION_CALL,
     .type = "b",
     .def  = "true",
   },
   {
-    // no define; mentioned in mce.ini
-    .key  = "/system/osso/dsm/leds/PatternCommunicationEmail",
+    .key  = MCE_GCONF_LED_PATH"/"MCE_LED_PATTERN_COMMUNICATION_EMAIL,
     .type = "b",
     .def  = "true",
   },
   {
-    // no define; mentioned in mce.ini
-    .key  = "/system/osso/dsm/leds/PatternCommunicationIM",
+    .key  = MCE_GCONF_LED_PATH"/"MCE_LED_PATTERN_COMMUNICATION_IM,
     .type = "b",
     .def  = "true",
   },
   {
-    // no define; mentioned in mce.ini
-    .key  = "/system/osso/dsm/leds/PatternCommunicationSMS",
+    .key  = MCE_GCONF_LED_PATH"/"MCE_LED_PATTERN_COMMUNICATION_SMS,
     .type = "b",
     .def  = "true",
   },
   {
-    // no define; used by the CSD app
-    .key  = "/system/osso/dsm/leds/PatternCsdWhite",
+    .key  = MCE_GCONF_LED_PATH"/"MCE_LED_PATTERN_CSD_WHITE,
     .type = "b",
     .def  = "true",
   },
   {
-    // no define; used by mce display module
-    .key  = "/system/osso/dsm/leds/PatternDisplayBlankFailed",
+    .key  = MCE_GCONF_LED_PATH"/"MCE_LED_PATTERN_DISPLAY_BLANK_FAILED,
     .type = "b",
     .def  = "true",
   },
   {
-    // no define; used by mce display module
-    .key  = "/system/osso/dsm/leds/PatternDisplayUnblankFailed",
+    .key  = MCE_GCONF_LED_PATH"/"MCE_LED_PATTERN_DISPLAY_UNBLANK_FAILED,
     .type = "b",
     .def  = "true",
   },
   {
-    // no define; used by mce display module
-    .key  = "/system/osso/dsm/leds/PatternDisplaySuspendFailed",
+    .key  = MCE_GCONF_LED_PATH"/"MCE_LED_PATTERN_DISPLAY_SUSPEND_FAILED,
     .type = "b",
     .def  = "true",
   },
   {
-    // no define; used by mce display module
-    .key  = "/system/osso/dsm/leds/PatternDisplayResumeFailed",
+    .key  = MCE_GCONF_LED_PATH"/"MCE_LED_PATTERN_DISPLAY_RESUME_FAILED,
     .type = "b",
     .def  = "true",
   },
   {
-    // no define; used by mce display module
-    .key  = "/system/osso/dsm/leds/PatternKillingLipstick",
+    .key  = MCE_GCONF_LED_PATH"/"MCE_LED_PATTERN_KILLING_LIPSTICK,
     .type = "b",
     .def  = "true",
   },
   {
-    // no define; used by mce event input
-    .key  = "/system/osso/dsm/leds/PatternTouchInputBlocked",
+    .key  = MCE_GCONF_LED_PATH"/"MCE_LED_PATTERN_TOUCH_INPUT_BLOCKED,
     .type = "b",
     .def  = "false",
   },
   {
-    // no define; used by mce display module
-    .key  = "/system/osso/dsm/leds/PatternDisplayDimmed",
+    .key  = MCE_GCONF_LED_PATH"/"MCE_LED_PATTERN_DISPLAY_DIMMED,
     .type = "b",
     .def  = "false",
   },
   {
-    // no define; used by led module
-    .key  = "/system/osso/dsm/leds/sw_breath_enabled",
+    .key  = MCE_GCONF_LED_SW_BREATH_ENABLED,
     .type = "b",
     .def  = "true",
   },
   {
-    // no define; used by led module
-    .key  = "/system/osso/dsm/leds/sw_breath_battery_limit",
+    .key  = MCE_GCONF_LED_SW_BREATH_BATTERY_LIMIT,
     .type = "i",
     .def  = "101", // use > 100 for "only when charger is connected"
   },
@@ -1556,8 +1519,7 @@ static const setting_t gconf_defaults[] =
     .def  = G_STRINGIFY(DEFAULT_PROXIMITY_PS_ACTS_AS_LID),
   },
   {
-    // MCE_GCONF_DOUBLETAP_MODE @ doubletap.h
-    .key  = "/system/osso/dsm/doubletap/mode",
+    .key  = MCE_GCONF_DOUBLETAP_MODE,
     .type = "i",
     .def  = "2",
   },

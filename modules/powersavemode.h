@@ -41,4 +41,10 @@
 /** Path to the power save mode threshold GConf setting */
 #define MCE_GCONF_PSM_THRESHOLD_PATH		MCE_GCONF_EM_PATH "/psm_threshold"
 
+/** Setting for: Possible PSM thresholds
+ *
+ * Hint for settings UI. Not used by MCE itself.
+ */
+#define MCE_GCONF_PSM_POSSIBLE_THRESHOLDS_PATH	MCE_GCONF_EM_PATH "/possible_psm_thresholds"
+
 #endif /* _POWERSAVEMODE_H_ */

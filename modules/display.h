@@ -150,6 +150,12 @@
 /** List of possible dim timeouts GConf setting */
 #define MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST              MCE_GCONF_DISPLAY_PATH "/possible_display_dim_timeouts"
 
+/** List of possible blank timeouts GConf setting
+ *
+ * Hint for settings UI. Not used by MCE itself.
+ */
+#define MCE_GCONF_DISPLAY_BLANK_TIMEOUT_LIST            MCE_GCONF_DISPLAY_PATH "/possible_display_blank_timeouts"
+
 /** Dim timeout GConf setting */
 #define MCE_GCONF_DISPLAY_DIM_TIMEOUT                   MCE_GCONF_DISPLAY_PATH "/display_dim_timeout"
 

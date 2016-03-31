@@ -2948,21 +2948,21 @@ static void sw_breathing_quit(void)
 static void sw_breathing_init(void)
 {
 	/* sw_breath_enabled */
-	mce_gconf_notifier_add("/system/osso/dsm/leds",
-			       "/system/osso/dsm/leds/sw_breath_enabled",
+	mce_gconf_notifier_add(MCE_GCONF_LED_PATH,
+			       MCE_GCONF_LED_SW_BREATH_ENABLED,
 			       sw_breathing_gconf_cb,
 			       &sw_breathing_enabled_gconf_id);
 
-	mce_gconf_get_bool("/system/osso/dsm/leds/sw_breath_enabled",
+	mce_gconf_get_bool(MCE_GCONF_LED_SW_BREATH_ENABLED,
 			   &sw_breathing_enabled);
 
 	/* sw_breath_battery_limit */
-	mce_gconf_notifier_add("/system/osso/dsm/leds",
-			       "/system/osso/dsm/leds/sw_breath_battery_limit",
+	mce_gconf_notifier_add(MCE_GCONF_LED_PATH,
+			       MCE_GCONF_LED_SW_BREATH_BATTERY_LIMIT,
 			       sw_breathing_gconf_cb,
 			       &sw_breathing_battery_limit_gconf_id);
 
-	mce_gconf_get_int("/system/osso/dsm/leds/sw_breath_battery_limit",
+	mce_gconf_get_int(MCE_GCONF_LED_SW_BREATH_BATTERY_LIMIT,
 			  &sw_breathing_battery_limit);
 }
 
