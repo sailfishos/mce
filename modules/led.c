@@ -27,7 +27,7 @@
 #include "../mce-lib.h"
 #include "../mce-hal.h"
 #include "../mce-conf.h"
-#include "../mce-gconf.h"
+#include "../mce-setting.h"
 #include "../mce-dbus.h"
 #include "../mce-hbtimer.h"
 
@@ -154,7 +154,7 @@ typedef struct {
 	gchar channel2[CHANNEL_SIZE + 1];
 	/** Pattern for the B-channel */
 	gchar channel3[CHANNEL_SIZE + 1];
-	guint gconf_cb_id;		/**< Callback ID for GConf entry */
+	guint setting_id;		/**< Callback ID for GConf entry */
 	guint rgb_color;                /**< RGB24 data for libhybris use */
 	gboolean undecided;		/**< Flag for policy=6 lock in */
 } pattern_struct;
@@ -348,9 +348,9 @@ static void              display_state_trigger          (gconstpointer data);
 static void              led_brightness_trigger         (gconstpointer data);
 static void              led_pattern_activate_trigger   (gconstpointer data);
 static void              led_pattern_deactivate_trigger (gconstpointer data);
-static gint              gconf_cb_find                  (gconstpointer data, gconstpointer userdata);
-static void              led_gconf_cb                   (GConfClient *const gcc, const guint id, GConfEntry *const entry, gpointer const data);
-static gboolean          pattern_get_enabled            (const gchar *const patternname, guint *gconf_cb_id);
+static gint              setting_id_find                (gconstpointer data, gconstpointer userdata);
+static void              led_setting_cb                 (GConfClient *const gcc, const guint id, GConfEntry *const entry, gpointer const data);
+static gboolean          pattern_get_enabled            (const gchar *const patternname, guint *setting_id);
 static gboolean          led_activate_pattern_dbus_cb   (DBusMessage *const msg);
 static gboolean          led_deactivate_pattern_dbus_cb (DBusMessage *const msg);
 static gboolean          led_enable_dbus_cb             (DBusMessage *const msg);
@@ -365,7 +365,7 @@ static gboolean          list_includes_item             (gchar **list, const gch
 static gboolean          init_hybris_patterns           (void);
 static gboolean          init_patterns                  (void);
 static void              sw_breathing_rethink           (void);
-static void              sw_breathing_gconf_cb          (GConfClient *const gcc, const guint id, GConfEntry *const entry, gpointer const data);
+static void              sw_breathing_setting_cb        (GConfClient *const gcc, const guint id, GConfEntry *const entry, gpointer const data);
 static void              sw_breathing_quit              (void);
 static void              sw_breathing_init              (void);
 static void              charger_state_trigger          (gconstpointer data);
@@ -931,9 +931,9 @@ static pattern_struct *led_pattern_create(void)
 	if( !self )
 		goto EXIT;
 
-	self->name        = 0;
-	self->timeout_id  = 0;
-	self->gconf_cb_id = 0;
+	self->name       = 0;
+	self->timeout_id = 0;
+	self->setting_id = 0;
 
 EXIT:
 	return self;
@@ -949,7 +949,7 @@ static void led_pattern_delete(pattern_struct *self)
 		goto EXIT;
 
 	mce_hbtimer_delete(self->timeout_id);
-	mce_gconf_notifier_remove(self->gconf_cb_id);
+	mce_setting_notifier_remove(self->setting_id);
 	free(self->name);
 
 	g_slice_free(pattern_struct, self);
@@ -1897,7 +1897,7 @@ static void led_pattern_deactivate_trigger(gconstpointer data)
  * @return 0 if the GConf callback id of data matches that of userdata,
  *         -1 if they don't match
  */
-static gint gconf_cb_find(gconstpointer data, gconstpointer userdata)
+static gint setting_id_find(gconstpointer data, gconstpointer userdata)
 {
 	pattern_struct *psp;
 
@@ -1906,7 +1906,7 @@ static gint gconf_cb_find(gconstpointer data, gconstpointer userdata)
 
 	psp = (pattern_struct *)data;
 
-	return psp->gconf_cb_id != *(guint *)userdata;
+	return psp->setting_id != *(guint *)userdata;
 }
 
 /**
@@ -1917,8 +1917,8 @@ static gint gconf_cb_find(gconstpointer data, gconstpointer userdata)
  * @param entry The modified GConf entry
  * @param data Unused
  */
-static void led_gconf_cb(GConfClient *const gcc, const guint id,
-			 GConfEntry *const entry, gpointer const data)
+static void led_setting_cb(GConfClient *const gcc, const guint id,
+			   GConfEntry *const entry, gpointer const data)
 {
 	const GConfValue *gcv = gconf_entry_get_value(entry);
 	pattern_struct *psp = NULL;
@@ -1936,7 +1936,7 @@ static void led_gconf_cb(GConfClient *const gcc, const guint id,
 	}
 
 	if ((glp = g_queue_find_custom(pattern_stack,
-				       &id, gconf_cb_find)) != NULL) {
+				       &id, setting_id_find)) != NULL) {
 		psp = (pattern_struct *)glp->data;
 		psp->enabled = gconf_value_get_bool(gcv);
 		led_update_active_pattern();
@@ -1952,24 +1952,24 @@ EXIT:
  * Get the enabled/disabled value from GConf and set up a notifier
  */
 static gboolean pattern_get_enabled(const gchar *const patternname,
-				    guint *gconf_cb_id)
+				    guint *setting_id)
 {
-	gboolean retval = DEFAULT_PATTERN_ENABLED;
-	gchar *path = gconf_concat_dir_and_key(MCE_GCONF_LED_PATH,
+	gboolean retval = MCE_DEFAULT_LED_PATTERN_ENABLED;
+	gchar *path = gconf_concat_dir_and_key(MCE_SETTING_LED_PATH,
 					       patternname);
 
 	/* Since custom led patterns do not have persistent toggles
 	 * in configuration, avoid complaining about missing keys
 	 * on default verbosity level. */
-	if( !mce_gconf_has_key(path) ) {
+	if( !mce_setting_has_key(path) ) {
 		mce_log(LL_INFO, "missing led config entry: %s", path);
 		goto EXIT;
 	}
 
 	/* Since we've set a default, error handling is unnecessary */
-	mce_gconf_notifier_add(MCE_GCONF_LED_PATH, path,
-			       led_gconf_cb, gconf_cb_id);
-	mce_gconf_get_bool(path, &retval);
+	mce_setting_notifier_add(MCE_SETTING_LED_PATH, path,
+				 led_setting_cb, setting_id);
+	mce_setting_get_bool(path, &retval);
 
 EXIT:
 	g_free(path);
@@ -2365,7 +2365,7 @@ static gboolean init_lysti_patterns(void)
 			led_pattern_set_active(psp, FALSE);
 
 			psp->enabled = pattern_get_enabled(patternlist[i],
-							   &(psp->gconf_cb_id));
+							   &psp->setting_id);
 
 			psp->name = strdup(patternlist[i]);
 
@@ -2500,7 +2500,7 @@ static gboolean init_njoy_patterns(void)
 			led_pattern_set_active(psp, FALSE);
 
 			psp->enabled = pattern_get_enabled(patternlist[i],
-							   &(psp->gconf_cb_id));
+							   &psp->setting_id);
 
 			psp->name = strdup(patternlist[i]);
 
@@ -2593,7 +2593,7 @@ static gboolean init_mono_patterns(void)
 			psp->active = FALSE;
 
 			psp->enabled = pattern_get_enabled(patternlist[i],
-							   &(psp->gconf_cb_id));
+							   &psp->setting_id);
 
 			g_free(tmp);
 
@@ -2768,7 +2768,7 @@ static gboolean init_hybris_patterns(void)
 			psp->rgb_color  = strtol(v[IDX_COLOR], 0, 16);
 			psp->active     = FALSE;
 			psp->enabled    = pattern_get_enabled(name,
-							   &psp->gconf_cb_id);
+							      &psp->setting_id);
 
 			g_queue_insert_sorted(pattern_stack, psp,
 					      queue_prio_compare,
@@ -2854,16 +2854,12 @@ static charger_state_t charger_state = CHARGER_STATE_UNDEF;
 static int battery_level = 0;
 
 /** Setting: sw breathing allowed */
-static gboolean sw_breathing_enabled = FALSE;
+static gboolean sw_breathing_enabled = MCE_DEFAULT_LED_SW_BREATH_ENABLED;
+static guint    sw_breathing_enabled_setting_id = 0;
 
 /** Setting: battery level at which sw breathing is disabled */
-static gint sw_breathing_battery_limit = 90;
-
-/** GConf notification callback id for sw_breathing_enabled */
-static guint sw_breathing_enabled_gconf_id = 0;
-
-/** GConf notification callback id for sw_breathing_battery_limit */
-static guint sw_breathing_battery_limit_gconf_id = 0;
+static gint  sw_breathing_battery_limit = MCE_DEFAULT_LED_SW_BREATH_BATTERY_LIMIT;
+static guint sw_breathing_battery_limit_setting_id = 0;
 
 /** Re-evaluate sw breathing enable state
  */
@@ -2899,8 +2895,8 @@ static void sw_breathing_rethink(void)
 
 /** Gconf notification callback function
  */
-static void sw_breathing_gconf_cb(GConfClient *const gcc, const guint id,
-				  GConfEntry *const entry, gpointer const data)
+static void sw_breathing_setting_cb(GConfClient *const gcc, const guint id,
+				    GConfEntry *const entry, gpointer const data)
 {
 	(void)gcc;
 	(void)data;
@@ -2914,11 +2910,11 @@ static void sw_breathing_gconf_cb(GConfClient *const gcc, const guint id,
 		goto EXIT;
 	}
 
-	if( id == sw_breathing_enabled_gconf_id ) {
+	if( id == sw_breathing_enabled_setting_id ) {
 		sw_breathing_enabled = gconf_value_get_bool(gcv) ? 1 : 0;
 		sw_breathing_rethink();
 	}
-	else if( id == sw_breathing_battery_limit_gconf_id ) {
+	else if( id == sw_breathing_battery_limit_setting_id ) {
 		sw_breathing_battery_limit = gconf_value_get_int(gcv);
 		sw_breathing_rethink();
 	}
@@ -2934,11 +2930,11 @@ EXIT:
  */
 static void sw_breathing_quit(void)
 {
-	mce_gconf_notifier_remove(sw_breathing_battery_limit_gconf_id),
-		sw_breathing_battery_limit_gconf_id = 0;
+	mce_setting_notifier_remove(sw_breathing_battery_limit_setting_id),
+		sw_breathing_battery_limit_setting_id = 0;
 
-	mce_gconf_notifier_remove(sw_breathing_enabled_gconf_id),
-		sw_breathing_enabled_gconf_id = 0;
+	mce_setting_notifier_remove(sw_breathing_enabled_setting_id),
+		sw_breathing_enabled_setting_id = 0;
 
 	allow_sw_breathing(false);
 }
@@ -2948,21 +2944,21 @@ static void sw_breathing_quit(void)
 static void sw_breathing_init(void)
 {
 	/* sw_breath_enabled */
-	mce_gconf_notifier_add("/system/osso/dsm/leds",
-			       "/system/osso/dsm/leds/sw_breath_enabled",
-			       sw_breathing_gconf_cb,
-			       &sw_breathing_enabled_gconf_id);
+	mce_setting_notifier_add(MCE_SETTING_LED_PATH,
+			       MCE_SETTING_LED_SW_BREATH_ENABLED,
+			       sw_breathing_setting_cb,
+			       &sw_breathing_enabled_setting_id);
 
-	mce_gconf_get_bool("/system/osso/dsm/leds/sw_breath_enabled",
+	mce_setting_get_bool(MCE_SETTING_LED_SW_BREATH_ENABLED,
 			   &sw_breathing_enabled);
 
 	/* sw_breath_battery_limit */
-	mce_gconf_notifier_add("/system/osso/dsm/leds",
-			       "/system/osso/dsm/leds/sw_breath_battery_limit",
-			       sw_breathing_gconf_cb,
-			       &sw_breathing_battery_limit_gconf_id);
+	mce_setting_notifier_add(MCE_SETTING_LED_PATH,
+			       MCE_SETTING_LED_SW_BREATH_BATTERY_LIMIT,
+			       sw_breathing_setting_cb,
+			       &sw_breathing_battery_limit_setting_id);
 
-	mce_gconf_get_int("/system/osso/dsm/leds/sw_breath_battery_limit",
+	mce_setting_get_int(MCE_SETTING_LED_SW_BREATH_BATTERY_LIMIT,
 			  &sw_breathing_battery_limit);
 }
 

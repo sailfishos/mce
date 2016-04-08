@@ -18,8 +18,12 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef _LED_H_
-#define _LED_H_
+#ifndef LED_H_
+#define LED_H_
+
+/* ========================================================================= *
+ * Configuration
+ * ========================================================================= */
 
 /** Name of LED configuration group */
 #define MCE_CONF_LED_GROUP			"LED"
@@ -74,11 +78,31 @@
  */
 #define MCE_CONF_LED_PATTERN_HYBRIS_GROUP	"LEDPatternHybris"
 
-/** Path to the GConf settings for the display */
-#define MCE_GCONF_LED_PATH			"/system/osso/dsm/leds"
+/* ========================================================================= *
+ * Settings
+ * ========================================================================= */
 
-/** Default value for LED settings */
-#define DEFAULT_PATTERN_ENABLED			TRUE
+/** Prefix for led setting keys */
+#define MCE_SETTING_LED_PATH			"/system/osso/dsm/leds"
+
+/** Whether sw based led breathing is enabled */
+#define MCE_SETTING_LED_SW_BREATH_ENABLED	MCE_SETTING_LED_PATH"/sw_breath_enabled"
+#define MCE_DEFAULT_LED_SW_BREATH_ENABLED	true
+
+/** Mimimum battery level to allow led breathing without charger */
+#define MCE_SETTING_LED_SW_BREATH_BATTERY_LIMIT	MCE_SETTING_LED_PATH"/sw_breath_battery_limit"
+#define MCE_DEFAULT_LED_SW_BREATH_BATTERY_LIMIT	101
+
+/** Default value for LED pattern enabled settings
+ *
+ * Note: Keynames are dynamically constructed from MCE_SETTING_LED_PATH
+ *       prefix and led pattern name.
+ */
+#define MCE_DEFAULT_LED_PATTERN_ENABLED		true
+
+/* ========================================================================= *
+ * HW Constants
+ * ========================================================================= */
 
 /** Reno control channel */
 #define TWL5031_BCC				0x4a
@@ -322,4 +346,4 @@
 #define BRIGHTNESS_LEVEL_14			"168"	/**< level 14 */
 #define BRIGHTNESS_LEVEL_15			"180"	/**< brightest */
 
-#endif /* _LED_H_ */
+#endif /* LED_H_ */

@@ -8,8 +8,11 @@ builtin-gconf.o:\
 	mce-log.h\
 	mce.h\
 	modules/display.h\
+	modules/doubletap.h\
 	modules/filter-brightness-als.h\
+	modules/led.h\
 	modules/memnotify.h\
+	modules/powersavemode.h\
 	modules/proximity.h\
 	powerkey.h\
 	tklock.h\
@@ -24,8 +27,11 @@ builtin-gconf.pic.o:\
 	mce-log.h\
 	mce.h\
 	modules/display.h\
+	modules/doubletap.h\
 	modules/filter-brightness-als.h\
+	modules/led.h\
 	modules/memnotify.h\
+	modules/powersavemode.h\
 	modules/proximity.h\
 	powerkey.h\
 	tklock.h\
@@ -63,11 +69,11 @@ event-input.o:\
 	evdev.h\
 	event-input.h\
 	mce-conf.h\
-	mce-gconf.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce-setting.h\
 	mce.h\
 	multitouch.h\
 
@@ -78,11 +84,11 @@ event-input.pic.o:\
 	evdev.h\
 	event-input.h\
 	mce-conf.h\
-	mce-gconf.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce-setting.h\
 	mce.h\
 	multitouch.h\
 
@@ -201,18 +207,6 @@ mce-fbdev.pic.o:\
 	mce-hybris.h\
 	mce-log.h\
 	mce.h\
-
-mce-gconf.o:\
-	mce-gconf.c\
-	builtin-gconf.h\
-	mce-gconf.h\
-	mce-log.h\
-
-mce-gconf.pic.o:\
-	mce-gconf.c\
-	builtin-gconf.h\
-	mce-gconf.h\
-	mce-log.h\
 
 mce-hal.o:\
 	mce-hal.c\
@@ -338,6 +332,18 @@ mce-sensorfw.pic.o:\
 	mce-sensorfw.h\
 	mce.h\
 
+mce-setting.o:\
+	mce-setting.c\
+	builtin-gconf.h\
+	mce-log.h\
+	mce-setting.h\
+
+mce-setting.pic.o:\
+	mce-setting.c\
+	builtin-gconf.h\
+	mce-log.h\
+	mce-setting.h\
+
 mce-wakelock.o:\
 	mce-wakelock.c\
 	mce-log.h\
@@ -388,11 +394,11 @@ mce.o:\
 	mce-dbus.h\
 	mce-dsme.h\
 	mce-fbdev.h\
-	mce-gconf.h\
 	mce-hbtimer.h\
 	mce-log.h\
 	mce-modules.h\
 	mce-sensorfw.h\
+	mce-setting.h\
 	mce-wakelock.h\
 	mce-wltimer.h\
 	mce-worker.h\
@@ -413,11 +419,11 @@ mce.pic.o:\
 	mce-dbus.h\
 	mce-dsme.h\
 	mce-fbdev.h\
-	mce-gconf.h\
 	mce-hbtimer.h\
 	mce-log.h\
 	mce-modules.h\
 	mce-sensorfw.h\
+	mce-setting.h\
 	mce-wakelock.h\
 	mce-wltimer.h\
 	mce-worker.h\
@@ -599,17 +605,18 @@ modules/display.o:\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-fbdev.h\
-	mce-gconf.h\
 	mce-hybris.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce-setting.h\
 	mce-worker.h\
 	mce.h\
 	mce.h\
 	tklock.h\
 	modules/display.h\
+	modules/powersavemode.h\
 
 modules/display.pic.o:\
 	modules/display.c\
@@ -620,26 +627,27 @@ modules/display.pic.o:\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-fbdev.h\
-	mce-gconf.h\
 	mce-hybris.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce-setting.h\
 	mce-worker.h\
 	mce.h\
 	mce.h\
 	tklock.h\
 	modules/display.h\
+	modules/powersavemode.h\
 
 modules/doubletap.o:\
 	modules/doubletap.c\
 	builtin-gconf.h\
 	datapipe.h\
 	mce-conf.h\
-	mce-gconf.h\
 	mce-io.h\
 	mce-log.h\
+	mce-setting.h\
 	mce.h\
 	modules/doubletap.h\
 
@@ -648,9 +656,9 @@ modules/doubletap.pic.o:\
 	builtin-gconf.h\
 	datapipe.h\
 	mce-conf.h\
-	mce-gconf.h\
 	mce-io.h\
 	mce-log.h\
+	mce-setting.h\
 	mce.h\
 	modules/doubletap.h\
 
@@ -660,10 +668,10 @@ modules/filter-brightness-als.o:\
 	datapipe.h\
 	mce-conf.h\
 	mce-dbus.h\
-	mce-gconf.h\
 	mce-io.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce-setting.h\
 	mce-wakelock.h\
 	mce.h\
 	mce.h\
@@ -677,10 +685,10 @@ modules/filter-brightness-als.pic.o:\
 	datapipe.h\
 	mce-conf.h\
 	mce-dbus.h\
-	mce-gconf.h\
 	mce-io.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce-setting.h\
 	mce-wakelock.h\
 	mce.h\
 	mce.h\
@@ -743,13 +751,13 @@ modules/led.o:\
 	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
-	mce-gconf.h\
 	mce-hal.h\
 	mce-hbtimer.h\
 	mce-hybris.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
+	mce-setting.h\
 	mce.h\
 	modules/led.h\
 
@@ -760,13 +768,13 @@ modules/led.pic.o:\
 	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
-	mce-gconf.h\
 	mce-hal.h\
 	mce-hbtimer.h\
 	mce-hybris.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
+	mce-setting.h\
 	mce.h\
 	modules/led.h\
 
@@ -775,8 +783,8 @@ modules/memnotify.o:\
 	builtin-gconf.h\
 	datapipe.h\
 	mce-dbus.h\
-	mce-gconf.h\
 	mce-log.h\
+	mce-setting.h\
 	mce.h\
 	modules/memnotify.h\
 
@@ -785,8 +793,8 @@ modules/memnotify.pic.o:\
 	builtin-gconf.h\
 	datapipe.h\
 	mce-dbus.h\
-	mce-gconf.h\
 	mce-log.h\
+	mce-setting.h\
 	mce.h\
 	modules/memnotify.h\
 
@@ -811,8 +819,8 @@ modules/powersavemode.o:\
 	builtin-gconf.h\
 	datapipe.h\
 	mce-dbus.h\
-	mce-gconf.h\
 	mce-log.h\
+	mce-setting.h\
 	mce.h\
 	modules/powersavemode.h\
 
@@ -821,8 +829,8 @@ modules/powersavemode.pic.o:\
 	builtin-gconf.h\
 	datapipe.h\
 	mce-dbus.h\
-	mce-gconf.h\
 	mce-log.h\
+	mce-setting.h\
 	mce.h\
 	modules/powersavemode.h\
 
@@ -830,9 +838,9 @@ modules/proximity.o:\
 	modules/proximity.c\
 	builtin-gconf.h\
 	datapipe.h\
-	mce-gconf.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce-setting.h\
 	mce.h\
 	modules/proximity.h\
 
@@ -840,9 +848,9 @@ modules/proximity.pic.o:\
 	modules/proximity.c\
 	builtin-gconf.h\
 	datapipe.h\
-	mce-gconf.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce-setting.h\
 	mce.h\
 	modules/proximity.h\
 
@@ -873,9 +881,9 @@ modules/sensor-gestures.o:\
 	builtin-gconf.h\
 	datapipe.h\
 	mce-dbus.h\
-	mce-gconf.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce-setting.h\
 	mce.h\
 	modules/display.h\
 
@@ -884,9 +892,9 @@ modules/sensor-gestures.pic.o:\
 	builtin-gconf.h\
 	datapipe.h\
 	mce-dbus.h\
-	mce-gconf.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce-setting.h\
 	mce.h\
 	modules/display.h\
 
@@ -923,9 +931,9 @@ powerkey.o:\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-dsme.h\
-	mce-gconf.h\
 	mce-lib.h\
 	mce-log.h\
+	mce-setting.h\
 	mce.h\
 	modules/doubletap.h\
 	powerkey.h\
@@ -940,9 +948,9 @@ powerkey.pic.o:\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-dsme.h\
-	mce-gconf.h\
 	mce-lib.h\
 	mce-log.h\
+	mce-setting.h\
 	mce.h\
 	modules/doubletap.h\
 	powerkey.h\
@@ -958,17 +966,18 @@ tests/ut/ut_display.o:\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-fbdev.h\
-	mce-gconf.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce-setting.h\
 	mce-worker.h\
 	mce.h\
 	mce.h\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
+	modules/powersavemode.h\
 	tests/ut/common.h\
 
 tests/ut/ut_display.pic.o:\
@@ -981,17 +990,18 @@ tests/ut/ut_display.pic.o:\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-fbdev.h\
-	mce-gconf.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce-setting.h\
 	mce-worker.h\
 	mce.h\
 	mce.h\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
+	modules/powersavemode.h\
 	tests/ut/common.h\
 
 tests/ut/ut_display_blanking_inhibit.o:\
@@ -1004,18 +1014,19 @@ tests/ut/ut_display_blanking_inhibit.o:\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-fbdev.h\
-	mce-gconf.h\
 	mce-hybris.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce-setting.h\
 	mce-worker.h\
 	mce.h\
 	mce.h\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
+	modules/powersavemode.h\
 	tests/ut/common.h\
 
 tests/ut/ut_display_blanking_inhibit.pic.o:\
@@ -1028,18 +1039,19 @@ tests/ut/ut_display_blanking_inhibit.pic.o:\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-fbdev.h\
-	mce-gconf.h\
 	mce-hybris.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce-setting.h\
 	mce-worker.h\
 	mce.h\
 	mce.h\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
+	modules/powersavemode.h\
 	tests/ut/common.h\
 
 tests/ut/ut_display_conf.o:\
@@ -1052,18 +1064,19 @@ tests/ut/ut_display_conf.o:\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-fbdev.h\
-	mce-gconf.h\
 	mce-hybris.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce-setting.h\
 	mce-worker.h\
 	mce.h\
 	mce.h\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
+	modules/powersavemode.h\
 	tests/ut/common.h\
 
 tests/ut/ut_display_conf.pic.o:\
@@ -1076,18 +1089,19 @@ tests/ut/ut_display_conf.pic.o:\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-fbdev.h\
-	mce-gconf.h\
 	mce-hybris.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce-setting.h\
 	mce-worker.h\
 	mce.h\
 	mce.h\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
+	modules/powersavemode.h\
 	tests/ut/common.h\
 
 tests/ut/ut_display_filter.o:\
@@ -1100,18 +1114,19 @@ tests/ut/ut_display_filter.o:\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-fbdev.h\
-	mce-gconf.h\
 	mce-hybris.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce-setting.h\
 	mce-worker.h\
 	mce.h\
 	mce.h\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
+	modules/powersavemode.h\
 	tests/ut/common.h\
 
 tests/ut/ut_display_filter.pic.o:\
@@ -1124,18 +1139,19 @@ tests/ut/ut_display_filter.pic.o:\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-fbdev.h\
-	mce-gconf.h\
 	mce-hybris.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce-setting.h\
 	mce-worker.h\
 	mce.h\
 	mce.h\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
+	modules/powersavemode.h\
 	tests/ut/common.h\
 
 tests/ut/ut_display_stm.o:\
@@ -1148,18 +1164,19 @@ tests/ut/ut_display_stm.o:\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-fbdev.h\
-	mce-gconf.h\
 	mce-hybris.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce-setting.h\
 	mce-worker.h\
 	mce.h\
 	mce.h\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
+	modules/powersavemode.h\
 	tests/ut/common.h\
 
 tests/ut/ut_display_stm.pic.o:\
@@ -1172,18 +1189,19 @@ tests/ut/ut_display_stm.pic.o:\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-fbdev.h\
-	mce-gconf.h\
 	mce-hybris.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
+	mce-setting.h\
 	mce-worker.h\
 	mce.h\
 	mce.h\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
+	modules/powersavemode.h\
 	tests/ut/common.h\
 
 tklock.o:\
@@ -1194,11 +1212,11 @@ tklock.o:\
 	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
-	mce-gconf.h\
 	mce-hbtimer.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
+	mce-setting.h\
 	mce.h\
 	modules/display.h\
 	modules/doubletap.h\
@@ -1214,11 +1232,11 @@ tklock.pic.o:\
 	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
-	mce-gconf.h\
 	mce-hbtimer.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
+	mce-setting.h\
 	mce.h\
 	modules/display.h\
 	modules/doubletap.h\
@@ -1257,6 +1275,7 @@ tools/mcetool.o:\
 	modules/display.h\
 	modules/doubletap.h\
 	modules/filter-brightness-als.h\
+	modules/led.h\
 	modules/memnotify.h\
 	modules/powersavemode.h\
 	modules/proximity.h\
@@ -1274,6 +1293,7 @@ tools/mcetool.pic.o:\
 	modules/display.h\
 	modules/doubletap.h\
 	modules/filter-brightness-als.h\
+	modules/led.h\
 	modules/memnotify.h\
 	modules/powersavemode.h\
 	modules/proximity.h\

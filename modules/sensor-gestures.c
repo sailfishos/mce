@@ -22,7 +22,7 @@
 
 #include "../mce.h"
 #include "../mce-log.h"
-#include "../mce-gconf.h"
+#include "../mce-setting.h"
 #include "../mce-dbus.h"
 #include "../mce-sensorfw.h"
 #include "display.h"
@@ -54,10 +54,8 @@ static orientation_state_t orientation_state_eff = MCE_ORIENTATION_UNDEFINED;
 static gint orientation_state_eff_id = 0;
 
 /** Use of flipover gesture enabled */
-static gboolean sg_flipover_gesture_enabled = DEFAULT_FLIPOVER_GESTURE_ENABLED;
-
-/** GConf change notification id for sg_flipover_gesture_enabled */
-static guint sg_flipover_gesture_enabled_gconf_cb_id = 0;
+static gboolean sg_flipover_gesture_enabled = MCE_DEFAULT_FLIPOVER_GESTURE_ENABLED;
+static guint    sg_flipover_gesture_enabled_setting_id = 0;
 
 /* ========================================================================= *
  * FUNCTIONS
@@ -88,13 +86,13 @@ static void     sg_datapipe_init            (void);
 static void     sg_datapipe_quit            (void);
 
 /* ------------------------------------------------------------------------- *
- * GCONF_SETTINGS
+ * DYNAMIC_SETTINGS
  * ------------------------------------------------------------------------- */
 
-static void     sg_gconf_cb                 (GConfClient *const gcc, const guint id, GConfEntry *const entry, gpointer const data);
+static void     sg_setting_cb               (GConfClient *const gcc, const guint id, GConfEntry *const entry, gpointer const data);
 
-static void     sg_gconf_init               (void);
-static void     sg_gconf_quit               (void);
+static void     sg_setting_init             (void);
+static void     sg_setting_quit             (void);
 
 /* ------------------------------------------------------------------------- *
  * PLUGIN_LOAD_UNLOAD
@@ -438,7 +436,7 @@ static void sg_datapipe_quit(void)
 }
 
 /* ========================================================================= *
- * GCONF_SETTINGS
+ * DYNAMIC_SETTINGS
  * ========================================================================= */
 
 /**
@@ -449,8 +447,8 @@ static void sg_datapipe_quit(void)
  * @param entry The modified GConf entry
  * @param data Unused
  */
-static void sg_gconf_cb(GConfClient *const gcc, const guint id,
-                        GConfEntry *const entry, gpointer const data)
+static void sg_setting_cb(GConfClient *const gcc, const guint id,
+                          GConfEntry *const entry, gpointer const data)
 {
     const GConfValue *gcv = gconf_entry_get_value(entry);
 
@@ -464,7 +462,7 @@ static void sg_gconf_cb(GConfClient *const gcc, const guint id,
         goto EXIT;
     }
 
-    if( id == sg_flipover_gesture_enabled_gconf_cb_id ) {
+    if( id == sg_flipover_gesture_enabled_setting_id ) {
         sg_flipover_gesture_enabled = gconf_value_get_bool(gcv);
     }
     else {
@@ -475,22 +473,22 @@ EXIT:
     return;
 }
 
-/** Get initial gconf values and start tracking changes
+/** Get initial setting values and start tracking changes
  */
-static void sg_gconf_init(void)
+static void sg_setting_init(void)
 {
-    mce_gconf_track_bool(MCE_GCONF_FLIPOVER_GESTURE_ENABLED,
-                         &sg_flipover_gesture_enabled,
-                         DEFAULT_FLIPOVER_GESTURE_ENABLED,
-                         sg_gconf_cb,
-                         &sg_flipover_gesture_enabled_gconf_cb_id);
+    mce_setting_track_bool(MCE_SETTING_FLIPOVER_GESTURE_ENABLED,
+                           &sg_flipover_gesture_enabled,
+                           MCE_DEFAULT_FLIPOVER_GESTURE_ENABLED,
+                           sg_setting_cb,
+                           &sg_flipover_gesture_enabled_setting_id);
 }
 
-/** Stop tracking gconf values */
-static void sg_gconf_quit(void)
+/** Stop tracking setting changes */
+static void sg_setting_quit(void)
 {
-    mce_gconf_notifier_remove(sg_flipover_gesture_enabled_gconf_cb_id),
-        sg_flipover_gesture_enabled_gconf_cb_id = 0;
+    mce_setting_notifier_remove(sg_flipover_gesture_enabled_setting_id),
+        sg_flipover_gesture_enabled_setting_id = 0;
 }
 
 /* ========================================================================= *
@@ -507,7 +505,7 @@ const gchar *g_module_check_init(GModule *module)
 {
     (void)module;
 
-    sg_gconf_init();
+    sg_setting_init();
     sg_datapipe_init();
 
     return NULL;
@@ -522,7 +520,7 @@ void g_module_unload(GModule *module)
     (void)module;
 
     sg_datapipe_quit();
-    sg_gconf_quit();
+    sg_setting_quit();
 
     return;
 }

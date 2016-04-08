@@ -18,40 +18,71 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef _EVENT_INPUT_H_
-#define _EVENT_INPUT_H_
+#ifndef EVENT_INPUT_H_
+# define EVENT_INPUT_H_
 
-#include <glib.h>
+# include <glib.h>
+
+/* ========================================================================= *
+ * Constants
+ * ========================================================================= */
 
 /** Path to the input device directory */
-#define DEV_INPUT_PATH			"/dev/input"
+# define DEV_INPUT_PATH                 "/dev/input"
 
 /** Prefix for event files */
-#define EVENT_FILE_PREFIX		"event"
+# define EVENT_FILE_PREFIX              "event"
 
 /** Path to the GPIO key disable interface */
-#define GPIO_KEY_DISABLE_PATH		"/sys/devices/platform/gpio-keys/disabled_keys"
+# define GPIO_KEY_DISABLE_PATH          "/sys/devices/platform/gpio-keys/disabled_keys"
 
-/** Path to the GConf settings for the event input */
-#define MCE_GCONF_EVENT_INPUT_PATH	"/system/osso/dsm/event_input"
+/* ========================================================================= *
+ * Settings
+ * ========================================================================= */
 
-#ifdef ENABLE_DOUBLETAP_EMULATION
-/** Path to the use Fake Double Tap setting */
-# define MCE_GCONF_USE_FAKE_DOUBLETAP_PATH MCE_GCONF_EVENT_INPUT_PATH "/use_fake_double_tap"
-#endif
+/** Prefix for event input setting keys */
+# define MCE_SETTING_EVENT_INPUT_PATH       "/system/osso/dsm/event_input"
 
-/** Path to the touch unblock delay setting */
-#define MCE_GCONF_TOUCH_UNBLOCK_DELAY_PATH MCE_GCONF_EVENT_INPUT_PATH "/touch_unblock_delay"
+# ifdef ENABLE_DOUBLETAP_EMULATION
+/** Whether double tap emulation is enabled
+ *
+ * When enabled, mce does double tap detection from "normal" touch events
+ * that are received in display off an lpm states.
+ */
+#  define MCE_SETTING_USE_FAKE_DOUBLETAP    MCE_SETTING_EVENT_INPUT_PATH "/use_fake_double_tap"
+#  define MCE_DEFAULT_USE_FAKE_DOUBLETAP    true
+# endif
 
-/** Input device grabbing allowed setting */
-#define MCE_GCONF_INPUT_GRAB_ALLOWED       MCE_GCONF_EVENT_INPUT_PATH "/input_grab_allowed"
-#define MCE_INPUT_GRAB_ALLOW_NONE          (0)
-#define MCE_INPUT_GRAB_ALLOW_TS            (1<<0)
-#define MCE_INPUT_GRAB_ALLOW_KP            (1<<1)
-#define DEFAULT_INPUT_GRAB_ALLOWED         3 // = MCE_INPUT_GRAB_ALLOW_TS | KP
+/** How long to delay touch unblock after display power up [ms]
+ *
+ * This can be used to fine tune input policy to make it less
+ * likely that accidental touch events reach ui during in-call
+ * proximity blanking etc.
+ */
+# define MCE_SETTING_TOUCH_UNBLOCK_DELAY    MCE_SETTING_EVENT_INPUT_PATH "/touch_unblock_delay"
+# define MCE_DEFAULT_TOUCH_UNBLOCK_DELAY    100
 
-/* When MCE is made modular, this will be handled differently */
+/** What kind of evdev sources mce is allowed to grab [bitmask]
+ *
+ * By default mce grabs evdev sources dealing with touch events and volume
+ * keys under certain circumstances.
+ *
+ * If this is not desirable for some reason (for example touchscreens
+ * that use multitouch protocol B for reporting should not be grabbed),
+ * the default value of this setting should be overridden in hw adaptation
+ * specific configuration.
+ */
+# define MCE_SETTING_INPUT_GRAB_ALLOWED     MCE_SETTING_EVENT_INPUT_PATH "/input_grab_allowed"
+# define MCE_INPUT_GRAB_ALLOW_NONE          (0)
+# define MCE_INPUT_GRAB_ALLOW_TS            (1<<0)
+# define MCE_INPUT_GRAB_ALLOW_KP            (1<<1)
+# define MCE_DEFAULT_INPUT_GRAB_ALLOWED     3 // = MCE_INPUT_GRAB_ALLOW_TS | KP
+
+/* ========================================================================= *
+ * Functions
+ * ========================================================================= */
+
 gboolean mce_input_init(void);
-void mce_input_exit(void);
+void     mce_input_exit(void);
 
-#endif /* _EVENT_INPUT_H_ */
+#endif /* EVENT_INPUT_H_ */

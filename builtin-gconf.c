@@ -30,6 +30,9 @@
 #include "modules/filter-brightness-als.h"
 #include "modules/display.h"
 #include "modules/proximity.h"
+#include "modules/powersavemode.h"
+#include "modules/doubletap.h"
+#include "modules/led.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -41,9 +44,6 @@
  * CONFIGURATION
  *
  * ========================================================================= */
-
-/** Provide additional values for type testing purposes */
-#define GCONF_ADD_DEBUG_VALUES 0
 
 /** Enable error logging to stderr via gconf_log_error() */
 #define GCONF_ENABLE_ERROR_LOGGING 01
@@ -1067,795 +1067,711 @@ typedef struct
 static const setting_t gconf_defaults[] =
 {
   {
-    // MCE_GCONF_PSM_PATH @ modules/powersavemode.h
-    .key  = "/system/osso/dsm/energymanagement/enable_power_saving",
+    .key  = MCE_SETTING_EM_ENABLE_PSM,
     .type = "b",
-    .def  = "false",
+    .def  = G_STRINGIFY(MCE_DEFAULT_EM_ENABLE_PSM),
   },
   {
-    // MCE_GCONF_FORCED_PSM_PATH @ modules/powersavemode.h
-    .key  = "/system/osso/dsm/energymanagement/force_power_saving",
+    .key  = MCE_SETTING_EM_FORCED_PSM,
     .type = "b",
-    .def  = "false",
+    .def  = G_STRINGIFY(MCE_DEFAULT_EM_FORCED_PSM),
   },
   {
-    // MCE_GCONF_PSM_THRESHOLD_PATH @ modules/powersavemode.h
-    .key  = "/system/osso/dsm/energymanagement/psm_threshold",
+    .key  = MCE_SETTING_EM_PSM_THRESHOLD,
     .type = "i",
-    .def  = "20",
+    .def  = G_STRINGIFY(MCE_DEFAULT_EM_PSM_THRESHOLD),
   },
   {
-    // Hint for settings UI. Not used by MCE itself.
-    .key  = "/system/osso/dsm/energymanagement/possible_psm_thresholds",
+    .key  = MCE_SETTING_EM_POSSIBLE_PSM_THRESHOLDS,
     .type = "ai",
-    .def  = "10,20,30,40,50",
+    .def  = CUSTOM_STRINGIFY(MCE_DEFAULT_EM_POSSIBLE_PSM_THRESHOLDS),
   },
   {
-    .key  = MCE_GCONF_DISPLAY_ALS_ENABLED,
+    .key  = MCE_SETTING_DISPLAY_ALS_ENABLED,
     .type = "b",
-    .def  = G_STRINGIFY(ALS_ENABLED_DEFAULT),
+    .def  = G_STRINGIFY(MCE_DEFAULT_DISPLAY_ALS_ENABLED),
   },
   {
-    .key  = MCE_GCONF_DISPLAY_ALS_AUTOBRIGHTNESS,
+    .key  = MCE_SETTING_DISPLAY_ALS_AUTOBRIGHTNESS,
     .type = "b",
-    .def  = G_STRINGIFY(ALS_AUTOBRIGHTNESS_DEFAULT),
+    .def  = G_STRINGIFY(MCE_DEFAULT_DISPLAY_ALS_AUTOBRIGHTNESS),
   },
   {
-    .key  = MCE_GCONF_DISPLAY_ALS_INPUT_FILTER,
+    .key  = MCE_SETTING_DISPLAY_ALS_INPUT_FILTER,
     .type = "s",
-    .def  = ALS_INPUT_FILTER_DEFAULT,
+    .def  = MCE_DEFAULT_DISPLAY_ALS_INPUT_FILTER,
   },
   {
-    .key  = MCE_GCONF_DISPLAY_ALS_SAMPLE_TIME,
+    .key  = MCE_SETTING_DISPLAY_ALS_SAMPLE_TIME,
     .type = "i",
-    .def  = G_STRINGIFY(ALS_SAMPLE_TIME_DEFAULT),
+    .def  = G_STRINGIFY(MCE_DEFAULT_DISPLAY_ALS_SAMPLE_TIME),
   },
   {
-    // MCE_GCONF_DISPLAY_COLOR_PROFILE @ modules/display.h
-    .key  = "/system/osso/dsm/display/color_profile",
+    .key  = MCE_SETTING_DISPLAY_COLOR_PROFILE,
     .type = "s",
     .def  = "",
   },
   {
-    .key  = MCE_GCONF_DISPLAY_DIM_TIMEOUT,
+    .key  = MCE_SETTING_DISPLAY_DIM_TIMEOUT,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_DIM_TIMEOUT),
+    .def  = G_STRINGIFY(MCE_DEFAULT_DISPLAY_DIM_TIMEOUT),
   },
   {
-    .key  = MCE_GCONF_DISPLAY_DIM_WITH_KEYBOARD_TIMEOUT,
+    .key  = MCE_SETTING_DISPLAY_DIM_WITH_KEYBOARD_TIMEOUT,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_DISPLAY_DIM_WITH_KEYBOARD_TIMEOUT),
+    .def  = G_STRINGIFY(MCE_DEFAULT_DISPLAY_DIM_WITH_KEYBOARD_TIMEOUT),
   },
   {
-    .key  = MCE_GCONF_DISPLAY_BLANK_TIMEOUT,
+    .key  = MCE_SETTING_DISPLAY_BLANK_TIMEOUT,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_BLANK_TIMEOUT),
+    .def  = G_STRINGIFY(MCE_DEFAULT_DISPLAY_BLANK_TIMEOUT),
   },
   {
-    .key  = MCE_GCONF_DISPLAY_BLANK_FROM_LOCKSCREEN_TIMEOUT,
+    .key  = MCE_SETTING_DISPLAY_BLANK_FROM_LOCKSCREEN_TIMEOUT,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_BLANK_FROM_LOCKSCREEN_TIMEOUT),
+    .def  = G_STRINGIFY(MCE_DEFAULT_DISPLAY_BLANK_FROM_LOCKSCREEN_TIMEOUT),
   },
   {
-    .key  = MCE_GCONF_DISPLAY_BLANK_FROM_LPM_ON_TIMEOUT,
+    .key  = MCE_SETTING_DISPLAY_BLANK_FROM_LPM_ON_TIMEOUT,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_BLANK_FROM_LPM_ON_TIMEOUT),
+    .def  = G_STRINGIFY(MCE_DEFAULT_DISPLAY_BLANK_FROM_LPM_ON_TIMEOUT),
   },
   {
-    .key  = MCE_GCONF_DISPLAY_BLANK_FROM_LPM_OFF_TIMEOUT,
+    .key  = MCE_SETTING_DISPLAY_BLANK_FROM_LPM_OFF_TIMEOUT,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_BLANK_FROM_LPM_OFF_TIMEOUT),
+    .def  = G_STRINGIFY(MCE_DEFAULT_DISPLAY_BLANK_FROM_LPM_OFF_TIMEOUT),
   },
   {
-    .key  = MCE_GCONF_DISPLAY_NEVER_BLANK,
+    .key  = MCE_SETTING_DISPLAY_NEVER_BLANK,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_DISPLAY_NEVER_BLANK),
+    .def  = G_STRINGIFY(MCE_DEFAULT_DISPLAY_NEVER_BLANK),
   },
   {
-    .key  = MCE_GCONF_DISPLAY_BRIGHTNESS,
+    .key  = MCE_SETTING_DISPLAY_BRIGHTNESS,
     .type = "i",
-    .def  = "3", // Note: Legacy value, migrated at mce startup
+    .def  = G_STRINGIFY(MCE_DEFAULT_DISPLAY_BRIGHTNESS),
   },
   {
-    .key  = MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_SIZE,
+    .key  = MCE_SETTING_DISPLAY_BRIGHTNESS_LEVEL_SIZE,
     .type = "i",
-    .def  = "1", // Note: Legacy value, migrated at mce startup
+    .def  = G_STRINGIFY(MCE_DEFAULT_DISPLAY_BRIGHTNESS_LEVEL_SIZE),
   },
   {
-    .key  = MCE_GCONF_DISPLAY_BRIGHTNESS_LEVEL_COUNT,
+    .key  = MCE_SETTING_DISPLAY_BRIGHTNESS_LEVEL_COUNT,
     .type = "i",
-    .def  = "5", // Note: Legacy value, migrated at mce startup
+    .def  = G_STRINGIFY(MCE_DEFAULT_DISPLAY_BRIGHTNESS_LEVEL_COUNT),
   },
   {
-    .key  = MCE_GCONF_DISPLAY_DIM_STATIC_BRIGHTNESS,
+    .key  = MCE_SETTING_DISPLAY_DIM_STATIC_BRIGHTNESS,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_DISPLAY_DIM_STATIC_BRIGHTNESS)
+    .def  = G_STRINGIFY(MCE_DEFAULT_DISPLAY_DIM_STATIC_BRIGHTNESS)
   },
   {
-    .key  = MCE_GCONF_DISPLAY_DIM_DYNAMIC_BRIGHTNESS,
+    .key  = MCE_SETTING_DISPLAY_DIM_DYNAMIC_BRIGHTNESS,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_DISPLAY_DIM_DYNAMIC_BRIGHTNESS)
+    .def  = G_STRINGIFY(MCE_DEFAULT_DISPLAY_DIM_DYNAMIC_BRIGHTNESS)
   },
   {
-    .key  = MCE_GCONF_DISPLAY_DIM_COMPOSITOR_LO,
+    .key  = MCE_SETTING_DISPLAY_DIM_COMPOSITOR_LO,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_DISPLAY_DIM_COMPOSITOR_LO)
+    .def  = G_STRINGIFY(MCE_DEFAULT_DISPLAY_DIM_COMPOSITOR_LO)
   },
   {
-    .key  = MCE_GCONF_DISPLAY_DIM_COMPOSITOR_HI,
+    .key  = MCE_SETTING_DISPLAY_DIM_COMPOSITOR_HI,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_DISPLAY_DIM_COMPOSITOR_HI)
+    .def  = G_STRINGIFY(MCE_DEFAULT_DISPLAY_DIM_COMPOSITOR_HI)
   },
   {
-    .key  = MCE_GCONF_DISPLAY_DIM_TIMEOUT_LIST,
+    .key  = MCE_SETTING_DISPLAY_DIM_TIMEOUT_LIST,
     .type = "ai",
-    .def  = CUSTOM_STRINGIFY(DEFAULT_DISPLAY_DIM_TIMEOUT_LIST),
+    .def  = CUSTOM_STRINGIFY(MCE_DEFAULT_DISPLAY_DIM_TIMEOUT_LIST),
   },
   {
-    .key  = MCE_GCONF_ORIENTATION_SENSOR_ENABLED,
+    .key  = MCE_SETTING_ORIENTATION_SENSOR_ENABLED,
     .type = "b",
-    .def  = G_STRINGIFY(DEFAULT_ORIENTATION_SENSOR_ENABLED),
+    .def  = G_STRINGIFY(MCE_DEFAULT_ORIENTATION_SENSOR_ENABLED),
   },
   {
-    .key  = MCE_GCONF_FLIPOVER_GESTURE_ENABLED,
+    .key  = MCE_SETTING_FLIPOVER_GESTURE_ENABLED,
     .type = "b",
-    .def  = G_STRINGIFY(DEFAULT_FLIPOVER_GESTURE_ENABLED),
+    .def  = G_STRINGIFY(MCE_DEFAULT_FLIPOVER_GESTURE_ENABLED),
   },
   {
-    .key  = MCE_GCONF_ORIENTATION_CHANGE_IS_ACTIVITY,
+    .key  = MCE_SETTING_ORIENTATION_CHANGE_IS_ACTIVITY,
     .type = "b",
-    .def  = G_STRINGIFY(DEFAULT_ORIENTATION_CHANGE_IS_ACTIVITY),
+    .def  = G_STRINGIFY(MCE_DEFAULT_ORIENTATION_CHANGE_IS_ACTIVITY),
   },
   {
-    .key  = MCE_GCONF_DISPLAY_BLANKING_PAUSE_MODE,
+    .key  = MCE_SETTING_DISPLAY_BLANKING_PAUSE_MODE,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_BLANKING_PAUSE_MODE),
+    .def  = G_STRINGIFY(MCE_DEFAULT_DISPLAY_BLANKING_PAUSE_MODE),
   },
   {
-    // Hint for settings UI. Not used by MCE itself.
-    .key  = "/system/osso/dsm/display/possible_display_blank_timeouts",
+    .key  = MCE_SETTING_DISPLAY_BLANK_TIMEOUT_LIST,
     .type = "ai",
-    .def  = "3,10,15",
+    .def  = CUSTOM_STRINGIFY(MCE_DEFAULT_DISPLAY_BLANK_TIMEOUT_LIST),
   },
   {
-    // MCE_GCONF_DISPLAY_ADAPTIVE_DIMMING @ modules/display.h
-    .key  = "/system/osso/dsm/display/use_adaptive_display_dimming",
+    .key  = MCE_SETTING_DISPLAY_ADAPTIVE_DIMMING,
     .type = "b",
-    .def  = "true",
+    .def  = G_STRINGIFY(MCE_DEFAULT_DISPLAY_ADAPTIVE_DIMMING),
   },
   {
-    // MCE_GCONF_DISPLAY_ADAPTIVE_DIM_THRESHOLD @ modules/display.h
-    .key  = "/system/osso/dsm/display/adaptive_display_dim_threshold",
+    .key  = MCE_SETTING_DISPLAY_ADAPTIVE_DIM_THRESHOLD,
     .type = "i",
-    .def  = "10000",
+    .def  = G_STRINGIFY(MCE_DEFAULT_DISPLAY_ADAPTIVE_DIM_THRESHOLD),
   },
   {
-    .key  = MCE_GCONF_USE_LOW_POWER_MODE,
+    .key  = MCE_SETTING_USE_LOW_POWER_MODE,
     .type = "b",
-    .def  = G_STRINGIFY(DEFAULT_USE_LOW_POWER_MODE),
+    .def  = G_STRINGIFY(MCE_DEFAULT_USE_LOW_POWER_MODE),
   },
   {
-    // MCE_GCONF_TK_AUTOLOCK_ENABLED_PATH @ tklock.h
-    .key  = "/system/osso/dsm/locks/touchscreen_keypad_autolock_enabled",
+    .key  = MCE_SETTING_TK_AUTOLOCK_ENABLED,
     .type = "b",
-    .def  = "true",
+    .def  = G_STRINGIFY(MCE_DEFAULT_TK_AUTOLOCK_ENABLED),
   },
   {
-    .key  = MCE_GCONF_TK_INPUT_POLICY_ENABLED,
+    .key  = MCE_SETTING_TK_INPUT_POLICY_ENABLED,
     .type = "b",
-    .def  = G_STRINGIFY(DEFAULT_TK_INPUT_POLICY_ENABLED),
+    .def  = G_STRINGIFY(MCE_DEFAULT_TK_INPUT_POLICY_ENABLED),
   },
   {
-    .key  = MCE_GCONF_TK_VOLKEY_POLICY,
+    .key  = MCE_SETTING_TK_VOLKEY_POLICY,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_VOLKEY_POLICY),
+    .def  = G_STRINGIFY(MCE_DEFAULT_TK_VOLKEY_POLICY),
   },
   {
-    .key  = MCE_GCONF_LPMUI_TRIGGERING,
+    .key  = MCE_SETTING_TK_LPMUI_TRIGGERING,
     .type = "i",
-    .def  = "1", // = LPMUI_TRIGGERING_FROM_POCKET
+    .def  = G_STRINGIFY(MCE_DEFAULT_TK_LPMUI_TRIGGERING),
   },
   {
-    // MCE_GCONF_PROXIMITY_BLOCKS_TOUCH @ tklock.h
-    .key  = "/system/osso/dsm/locks/proximity_blocks_touch",
+    .key  = MCE_SETTING_TK_PROXIMITY_BLOCKS_TOUCH,
     .type = "b",
-    .def  = G_STRINGIFY(PROXIMITY_BLOCKS_TOUCH_DEFAULT),
+    .def  = G_STRINGIFY(MCE_DEFAULT_TK_PROXIMITY_BLOCKS_TOUCH),
   },
   {
-    .key  = MCE_GCONF_DEVICELOCK_IN_LOCKSCREEN,
+    .key  = MCE_SETTING_TK_DEVICELOCK_IN_LOCKSCREEN,
     .type = "b",
-    .def  = G_STRINGIFY(DEFAULT_DEVICELOCK_IN_LOCKSCREEN),
+    .def  = G_STRINGIFY(MCE_DEFAULT_TK_DEVICELOCK_IN_LOCKSCREEN),
   },
   {
-    .key  = MCE_GCONF_LID_SENSOR_ENABLED,
+    .key  = MCE_SETTING_TK_LID_SENSOR_ENABLED,
     .type = "b",
-    .def  = G_STRINGIFY(DEFAULT_LID_SENSOR_ENABLED),
+    .def  = G_STRINGIFY(MCE_DEFAULT_TK_LID_SENSOR_ENABLED),
   },
   {
-    .key  = MCE_GCONF_FILTER_LID_WITH_ALS,
+    .key  = MCE_SETTING_TK_FILTER_LID_WITH_ALS,
     .type = "b",
-    .def  = G_STRINGIFY(DEFAULT_FILTER_LID_WITH_ALS),
+    .def  = G_STRINGIFY(MCE_DEFAULT_TK_FILTER_LID_WITH_ALS),
   },
   {
-    .key  = MCE_GCONF_FILTER_LID_ALS_LIMIT,
+    .key  = MCE_SETTING_TK_FILTER_LID_ALS_LIMIT,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_FILTER_LID_ALS_LIMIT),
+    .def  = G_STRINGIFY(MCE_DEFAULT_TK_FILTER_LID_ALS_LIMIT),
   },
   {
-    .key  = MCE_GCONF_TK_LID_OPEN_ACTIONS,
+    .key  = MCE_SETTING_TK_LID_OPEN_ACTIONS,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_LID_OPEN_ACTION),
+    .def  = G_STRINGIFY(MCE_DEFAULT_TK_LID_OPEN_ACTIONS),
   },
   {
-    .key  = MCE_GCONF_TK_LID_CLOSE_ACTIONS,
+    .key  = MCE_SETTING_TK_LID_CLOSE_ACTIONS,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_LID_CLOSE_ACTION),
+    .def  = G_STRINGIFY(MCE_DEFAULT_TK_LID_CLOSE_ACTIONS),
   },
   {
-    .key  = MCE_GCONF_TK_KBD_OPEN_TRIGGER,
+    .key  = MCE_SETTING_TK_KBD_OPEN_TRIGGER,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_KBD_OPEN_TRIGGER),
+    .def  = G_STRINGIFY(MCE_DEFAULT_TK_KBD_OPEN_TRIGGER),
   },
   {
-    .key  = MCE_GCONF_TK_KBD_OPEN_ACTIONS,
+    .key  = MCE_SETTING_TK_KBD_OPEN_ACTIONS,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_KBD_OPEN_ACTION),
+    .def  = G_STRINGIFY(MCE_DEFAULT_TK_KBD_OPEN_ACTIONS),
   },
   {
-    .key  = MCE_GCONF_TK_KBD_CLOSE_TRIGGER,
+    .key  = MCE_SETTING_TK_KBD_CLOSE_TRIGGER,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_KBD_CLOSE_TRIGGER),
+    .def  = G_STRINGIFY(MCE_DEFAULT_TK_KBD_CLOSE_TRIGGER),
   },
   {
-    .key  = MCE_GCONF_TK_KBD_CLOSE_ACTIONS,
+    .key  = MCE_SETTING_TK_KBD_CLOSE_ACTIONS,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_KBD_CLOSE_ACTION),
+    .def  = G_STRINGIFY(MCE_DEFAULT_TK_KBD_CLOSE_ACTIONS),
   },
   {
-    .key  = MCE_GCONF_AUTOLOCK_DELAY,
+    .key  = MCE_SETTING_TK_AUTOLOCK_DELAY,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_AUTOLOCK_DELAY),
+    .def  = G_STRINGIFY(MCE_DEFAULT_TK_AUTOLOCK_DELAY),
   },
   {
-    // MCE_GCONF_BLANKING_INHIBIT_MODE @ modules/display.h
-    .key  = "/system/osso/dsm/display/inhibit_blank_mode",
+    .key  = MCE_SETTING_BLANKING_INHIBIT_MODE,
     .type = "i",
-    .def  = "0",
+    .def  = G_STRINGIFY(MCE_DEFAULT_BLANKING_INHIBIT_MODE),
   },
   {
-    .key  = MCE_GCONF_KBD_SLIDE_INHIBIT,
+    .key  = MCE_SETTING_KBD_SLIDE_INHIBIT,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_KBD_SLIDE_INHIBIT),
-  },
-
-#if GCONF_ADD_DEBUG_VALUES
-  {
-    .key  = "/test/string",
-    .type = "s",
-    .def  = "bar",
+    .def  = G_STRINGIFY(MCE_DEFAULT_KBD_SLIDE_INHIBIT),
   },
   {
-    .key  = "/test/string_list",
-    .type = "as",
-    .def  = "foo,bar,baf",
-  },
-  {
-    .key  = "/test/bool",
-    .type = "b",
-    .def  = "true",
-  },
-  {
-    .key  = "/test/bool_list",
-    .type = "ab",
-    .def  = "true,false,1,0,yes,no,t,f,y,n",
-  },
-  {
-    .key  = "/test/int",
+    .key  = MCE_SETTING_USE_AUTOSUSPEND,
     .type = "i",
-    .def  = "12345",
+    .def  = G_STRINGIFY(MCE_DEFAULT_USE_AUTOSUSPEND),
   },
   {
-    .key  = "/test/int_list",
-    .type = "ai",
-    .def  = "11,-22,33,-44,55,-66",
-  },
-  {
-    .key  = "/test/float",
-    .type = "f",
-    .def  = "-123.456",
-  },
-  {
-    .key  = "/test/float_list",
-    .type = "af",
-    .def  = "0.123,1e2,+42,-42,0.5",
-  },
-#endif
-  {
-    // MCE_GCONF_USE_AUTOSUSPEND @ modules/display.h
-    .key  = "/system/osso/dsm/display/autosuspend_policy",
+    .key  = MCE_SETTING_CPU_SCALING_GOVERNOR,
     .type = "i",
-    .def  = "1",
+    .def  = G_STRINGIFY(MCE_DEFAULT_CPU_SCALING_GOVERNOR),
   },
   {
-    // MCE_GCONF_CPU_SCALING_GOVERNOR @ modules/display.h
-    .key  = "/system/osso/dsm/display/cpu_scaling_governor",
+    .key  = MCE_SETTING_LIPSTICK_CORE_DELAY,
     .type = "i",
-    .def  = "0", // = GOVERNOR_UNSET = no override
+    .def  = G_STRINGIFY(MCE_DEFAULT_LIPSTICK_CORE_DELAY),
   },
   {
-    .key  = MCE_GCONF_LIPSTICK_CORE_DELAY,
+    .key  = MCE_SETTING_BRIGHTNESS_FADE_DEFAULT_MS,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_LIPSTICK_CORE_DELAY),
+    .def  = G_STRINGIFY(MCE_DEFAULT_BRIGHTNESS_FADE_DEFAULT_MS),
   },
   {
-    .key  = MCE_GCONF_BRIGHTNESS_FADE_DEFAULT_MS,
+    .key  = MCE_SETTING_BRIGHTNESS_FADE_DIMMING_MS,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_BRIGHTNESS_FADE_DEFAULT_MS),
+    .def  = G_STRINGIFY(MCE_DEFAULT_BRIGHTNESS_FADE_DIMMING_MS),
   },
   {
-    .key  = MCE_GCONF_BRIGHTNESS_FADE_DIMMING_MS,
+    .key  = MCE_SETTING_BRIGHTNESS_FADE_ALS_MS,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_BRIGHTNESS_FADE_DIMMING_MS),
+    .def  = G_STRINGIFY(MCE_DEFAULT_BRIGHTNESS_FADE_ALS_MS),
   },
   {
-    .key  = MCE_GCONF_BRIGHTNESS_FADE_ALS_MS,
+    .key  = MCE_SETTING_BRIGHTNESS_FADE_BLANK_MS,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_BRIGHTNESS_FADE_ALS_MS),
+    .def  = G_STRINGIFY(MCE_DEFAULT_BRIGHTNESS_FADE_BLANK_MS),
   },
   {
-    .key  = MCE_GCONF_BRIGHTNESS_FADE_BLANK_MS,
+    .key  = MCE_SETTING_BRIGHTNESS_FADE_UNBLANK_MS,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_BRIGHTNESS_FADE_BLANK_MS),
+    .def  = G_STRINGIFY(MCE_DEFAULT_BRIGHTNESS_FADE_UNBLANK_MS),
   },
   {
-    .key  = MCE_GCONF_BRIGHTNESS_FADE_UNBLANK_MS,
+    .key  = MCE_SETTING_DISPLAY_OFF_OVERRIDE,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_BRIGHTNESS_FADE_UNBLANK_MS),
+    .def  = G_STRINGIFY(MCE_DEFAULT_DISPLAY_OFF_OVERRIDE),
   },
   {
-    .key  = MCE_GCONF_DISPLAY_OFF_OVERRIDE,
+    .key  = MCE_SETTING_TK_AUTO_BLANK_DISABLE,
     .type = "i",
-    .def  = "0", // = DISPLAY_OFF_OVERRIDE_DISABLED
-  },
-  {
-    .key  = MCE_GCONF_TK_AUTO_BLANK_DISABLE_PATH,
-    .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_TK_AUTO_BLANK_DISABLE),
+    .def  = G_STRINGIFY(MCE_DEFAULT_TK_AUTO_BLANK_DISABLE),
   },
 #ifdef ENABLE_DOUBLETAP_EMULATION
   {
-    // MCE_GCONF_USE_FAKE_DOUBLETAP_PATH @ event-input.h
-    .key  = "/system/osso/dsm/event_input/use_fake_double_tap",
+    .key  = MCE_SETTING_USE_FAKE_DOUBLETAP,
     .type = "b",
-    .def  = "true",
+    .def  = G_STRINGIFY(MCE_DEFAULT_USE_FAKE_DOUBLETAP),
   },
 #endif
   {
-    //  MCE_GCONF_TOUCH_UNBLOCK_DELAY_PATH @ event-input.h
-    .key  = "/system/osso/dsm/event_input/touch_unblock_delay",
+    .key  = MCE_SETTING_TOUCH_UNBLOCK_DELAY,
     .type = "i",
-    .def  = "100",
+    .def  = G_STRINGIFY(MCE_DEFAULT_TOUCH_UNBLOCK_DELAY),
   },
   {
-    .key  = MCE_GCONF_INPUT_GRAB_ALLOWED,
+    .key  = MCE_SETTING_INPUT_GRAB_ALLOWED,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_INPUT_GRAB_ALLOWED),
+    .def  = G_STRINGIFY(MCE_DEFAULT_INPUT_GRAB_ALLOWED),
   },
   {
-    // MCE_LED_PATTERN_BATTERY_CHARGING @ mce.h
-    .key  = "/system/osso/dsm/leds/PatternBatteryCharging",
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_BATTERY_CHARGING,
     .type = "b",
-    .def  = "true",
+    .def  = G_STRINGIFY(MCE_DEFAULT_LED_PATTERN_ENABLED),
   },
   {
-    // MCE_LED_PATTERN_BATTERY_FULL @ mce.h
-    .key  = "/system/osso/dsm/leds/PatternBatteryFull",
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_BATTERY_FULL,
     .type = "b",
-    .def  = "true",
+    .def  = G_STRINGIFY(MCE_DEFAULT_LED_PATTERN_ENABLED),
   },
   {
-    // MCE_LED_PATTERN_COMMUNICATION_EVENT @ mce.h
-    .key  = "/system/osso/dsm/leds/PatternCommunication",
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_COMMUNICATION_EVENT,
     .type = "b",
-    .def  = "true",
+    .def  = G_STRINGIFY(MCE_DEFAULT_LED_PATTERN_ENABLED),
   },
   {
-    // MCE_LED_PATTERN_POWER_OFF @ mce.h
-    .key  = "/system/osso/dsm/leds/PatternPowerOff",
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_POWER_OFF,
     .type = "b",
-    .def  = "true",
+    .def  = G_STRINGIFY(MCE_DEFAULT_LED_PATTERN_ENABLED),
   },
   {
-    // MCE_LED_PATTERN_POWER_ON @ mce.h
-    .key  = "/system/osso/dsm/leds/PatternPowerOn",
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_POWER_ON,
     .type = "b",
-    .def  = "true",
+    .def  = G_STRINGIFY(MCE_DEFAULT_LED_PATTERN_ENABLED),
   },
   {
-    // MCE_LED_PATTERN_CAMERA @ mce.h
-    .key  = "/system/osso/dsm/leds/PatternWebcamActive",
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_CAMERA,
     .type = "b",
-    .def  = "true",
+    .def  = G_STRINGIFY(MCE_DEFAULT_LED_PATTERN_ENABLED),
   },
   {
-    // MCE_LED_PATTERN_DEVICE_ON @ mce.h
-    .key  = "/system/osso/dsm/leds/PatternDeviceOn",
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_DEVICE_ON,
     .type = "b",
-    .def  = "true",
+    .def  = G_STRINGIFY(MCE_DEFAULT_LED_PATTERN_ENABLED),
   },
   {
-    // MCE_LED_PATTERN_BATTERY_LOW @ mce.h
-    .key  = "/system/osso/dsm/leds/PatternBatteryLow",
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_BATTERY_LOW,
     .type = "b",
-    .def  = "true",
+    .def  = G_STRINGIFY(MCE_DEFAULT_LED_PATTERN_ENABLED),
   },
   {
-    // MCE_LED_PATTERN_COMMUNICATION_EVENT_BATTERY_FULL @ mce.h
-    .key  = "/system/osso/dsm/leds/PatternCommunicationAndBatteryFull",
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_COMMUNICATION_EVENT_BATTERY_FULL,
     .type = "b",
-    .def  = "true",
+    .def  = G_STRINGIFY(MCE_DEFAULT_LED_PATTERN_ENABLED),
   },
   {
-    // no define; mentioned in mce.ini
-    .key  = "/system/osso/dsm/leds/PatternBatteryChargingFlat",
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_BATTERY_CHARGING_FLAT,
     .type = "b",
-    .def  = "true",
+    .def  = G_STRINGIFY(MCE_DEFAULT_LED_PATTERN_ENABLED),
   },
   {
-    // no define; mentioned in mce.ini
-    .key  = "/system/osso/dsm/leds/PatternCommonNotification",
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_COMMON_NOTIFICATION,
     .type = "b",
-    .def  = "true",
+    .def  = G_STRINGIFY(MCE_DEFAULT_LED_PATTERN_ENABLED),
   },
   {
-    // no define; mentioned in mce.ini
-    .key  = "/system/osso/dsm/leds/PatternCommunicationCall",
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_COMMUNICATION_CALL,
     .type = "b",
-    .def  = "true",
+    .def  = G_STRINGIFY(MCE_DEFAULT_LED_PATTERN_ENABLED),
   },
   {
-    // no define; mentioned in mce.ini
-    .key  = "/system/osso/dsm/leds/PatternCommunicationEmail",
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_COMMUNICATION_EMAIL,
     .type = "b",
-    .def  = "true",
+    .def  = G_STRINGIFY(MCE_DEFAULT_LED_PATTERN_ENABLED),
   },
   {
-    // no define; mentioned in mce.ini
-    .key  = "/system/osso/dsm/leds/PatternCommunicationIM",
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_COMMUNICATION_IM,
     .type = "b",
-    .def  = "true",
+    .def  = G_STRINGIFY(MCE_DEFAULT_LED_PATTERN_ENABLED),
   },
   {
-    // no define; mentioned in mce.ini
-    .key  = "/system/osso/dsm/leds/PatternCommunicationSMS",
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_COMMUNICATION_SMS,
     .type = "b",
-    .def  = "true",
+    .def  = G_STRINGIFY(MCE_DEFAULT_LED_PATTERN_ENABLED),
   },
   {
-    // no define; used by the CSD app
-    .key  = "/system/osso/dsm/leds/PatternCsdWhite",
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_CSD_WHITE,
     .type = "b",
-    .def  = "true",
+    .def  = G_STRINGIFY(MCE_DEFAULT_LED_PATTERN_ENABLED),
   },
   {
-    // no define; used by mce display module
-    .key  = "/system/osso/dsm/leds/PatternDisplayBlankFailed",
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_DISPLAY_BLANK_FAILED,
     .type = "b",
-    .def  = "true",
+    .def  = G_STRINGIFY(MCE_DEFAULT_LED_PATTERN_ENABLED),
   },
   {
-    // no define; used by mce display module
-    .key  = "/system/osso/dsm/leds/PatternDisplayUnblankFailed",
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_DISPLAY_UNBLANK_FAILED,
     .type = "b",
-    .def  = "true",
+    .def  = G_STRINGIFY(MCE_DEFAULT_LED_PATTERN_ENABLED),
   },
   {
-    // no define; used by mce display module
-    .key  = "/system/osso/dsm/leds/PatternDisplaySuspendFailed",
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_DISPLAY_SUSPEND_FAILED,
     .type = "b",
-    .def  = "true",
+    .def  = G_STRINGIFY(MCE_DEFAULT_LED_PATTERN_ENABLED),
   },
   {
-    // no define; used by mce display module
-    .key  = "/system/osso/dsm/leds/PatternDisplayResumeFailed",
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_DISPLAY_RESUME_FAILED,
     .type = "b",
-    .def  = "true",
+    .def  = G_STRINGIFY(MCE_DEFAULT_LED_PATTERN_ENABLED),
   },
   {
-    // no define; used by mce display module
-    .key  = "/system/osso/dsm/leds/PatternKillingLipstick",
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_KILLING_LIPSTICK,
     .type = "b",
-    .def  = "true",
+    .def  = G_STRINGIFY(MCE_DEFAULT_LED_PATTERN_ENABLED),
   },
   {
-    // no define; used by mce event input
-    .key  = "/system/osso/dsm/leds/PatternTouchInputBlocked",
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_TOUCH_INPUT_BLOCKED,
     .type = "b",
-    .def  = "false",
+    .def  = G_STRINGIFY(false),
   },
   {
-    // no define; used by mce display module
-    .key  = "/system/osso/dsm/leds/PatternDisplayDimmed",
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_DISPLAY_DIMMED,
     .type = "b",
-    .def  = "false",
+    .def  = G_STRINGIFY(false),
   },
   {
-    // no define; used by led module
-    .key  = "/system/osso/dsm/leds/sw_breath_enabled",
+    .key  = MCE_SETTING_LED_SW_BREATH_ENABLED,
     .type = "b",
-    .def  = "true",
+    .def  = G_STRINGIFY(MCE_DEFAULT_LED_SW_BREATH_ENABLED),
   },
   {
-    // no define; used by led module
-    .key  = "/system/osso/dsm/leds/sw_breath_battery_limit",
+    .key  = MCE_SETTING_LED_SW_BREATH_BATTERY_LIMIT,
     .type = "i",
-    .def  = "101", // use > 100 for "only when charger is connected"
+    .def  = G_STRINGIFY(MCE_DEFAULT_LED_SW_BREATH_BATTERY_LIMIT),
   },
   {
-    .key  = MCE_GCONF_PROXIMITY_PS_ENABLED_PATH,
+    .key  = MCE_SETTING_PROXIMITY_PS_ENABLED,
     .type = "b",
-    .def  = G_STRINGIFY(DEFAULT_PROXIMITY_PS_ENABLED),
+    .def  = G_STRINGIFY(MCE_DEFAULT_PROXIMITY_PS_ENABLED),
   },
   {
-    .key  = MCE_GCONF_PROXIMITY_PS_ACTS_AS_LID,
+    .key  = MCE_SETTING_PROXIMITY_PS_ACTS_AS_LID,
     .type = "b",
-    .def  = G_STRINGIFY(DEFAULT_PROXIMITY_PS_ACTS_AS_LID),
+    .def  = G_STRINGIFY(MCE_DEFAULT_PROXIMITY_PS_ACTS_AS_LID),
   },
   {
-    // MCE_GCONF_DOUBLETAP_MODE @ doubletap.h
-    .key  = "/system/osso/dsm/doubletap/mode",
+    .key  = MCE_SETTING_DOUBLETAP_MODE,
     .type = "i",
-    .def  = "2",
+    .def  = G_STRINGIFY(MCE_DEFAULT_DOUBLETAP_MODE),
   },
   {
-    .key  = MCE_GCONF_POWERKEY_MODE,
+    .key  = MCE_SETTING_POWERKEY_MODE,
     .type = "i",
-    .def  = "1",
+    .def  = G_STRINGIFY(MCE_DEFAULT_POWERKEY_MODE),
   },
   {
-    .key  = MCE_GCONF_POWERKEY_BLANKING_MODE,
+    .key  = MCE_SETTING_POWERKEY_BLANKING_MODE,
     .type = "i",
-    .def  = "0", // = PWRKEY_BLANK_TO_OFF
+    .def  = G_STRINGIFY(MCE_DEFAULT_POWERKEY_BLANKING_MODE),
   },
   {
-    .key  = MCE_GCONF_POWERKEY_PS_OVERRIDE_COUNT,
+    .key  = MCE_SETTING_POWERKEY_PS_OVERRIDE_COUNT,
     .type = "i",
-    .def  = "3",
+    .def  = G_STRINGIFY(MCE_DEFAULT_POWERKEY_PS_OVERRIDE_COUNT),
   },
   {
-    .key  = MCE_GCONF_POWERKEY_PS_OVERRIDE_TIMEOUT,
+    .key  = MCE_SETTING_POWERKEY_PS_OVERRIDE_TIMEOUT,
     .type = "i",
-    .def  = "333",
+    .def  = G_STRINGIFY(MCE_DEFAULT_POWERKEY_PS_OVERRIDE_TIMEOUT),
   },
   {
-    .key  = MCE_GCONF_POWERKEY_LONG_PRESS_DELAY,
+    .key  = MCE_SETTING_POWERKEY_LONG_PRESS_DELAY,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_POWERKEY_LONG_DELAY),
+    .def  = G_STRINGIFY(MCE_DEFAULT_POWERKEY_LONG_PRESS_DELAY),
   },
   {
-    .key  = MCE_GCONF_POWERKEY_DOUBLE_PRESS_DELAY,
+    .key  = MCE_SETTING_POWERKEY_DOUBLE_PRESS_DELAY,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_POWERKEY_DOUBLE_DELAY),
+    .def  = G_STRINGIFY(MCE_DEFAULT_POWERKEY_DOUBLE_PRESS_DELAY),
   },
   {
-    .key  = MCE_GCONF_POWERKEY_ACTIONS_SINGLE_ON,
+    .key  = MCE_SETTING_POWERKEY_ACTIONS_SINGLE_ON,
     .type = "s",
-    .def  = DEFAULT_POWERKEY_ACTIONS_SINGLE_ON,
+    .def  = MCE_DEFAULT_POWERKEY_ACTIONS_SINGLE_ON,
   },
   {
-    .key  = MCE_GCONF_POWERKEY_ACTIONS_DOUBLE_ON,
+    .key  = MCE_SETTING_POWERKEY_ACTIONS_DOUBLE_ON,
     .type = "s",
-    .def  = DEFAULT_POWERKEY_ACTIONS_DOUBLE_ON,
+    .def  = MCE_DEFAULT_POWERKEY_ACTIONS_DOUBLE_ON,
   },
   {
-    .key  = MCE_GCONF_POWERKEY_ACTIONS_LONG_ON,
+    .key  = MCE_SETTING_POWERKEY_ACTIONS_LONG_ON,
     .type = "s",
-    .def  = DEFAULT_POWERKEY_ACTIONS_LONG_ON,
+    .def  = MCE_DEFAULT_POWERKEY_ACTIONS_LONG_ON,
   },
   {
-    .key  = MCE_GCONF_POWERKEY_ACTIONS_SINGLE_OFF,
+    .key  = MCE_SETTING_POWERKEY_ACTIONS_SINGLE_OFF,
     .type = "s",
-    .def  = DEFAULT_POWERKEY_ACTIONS_SINGLE_OFF,
+    .def  = MCE_DEFAULT_POWERKEY_ACTIONS_SINGLE_OFF,
   },
   {
-    .key  = MCE_GCONF_POWERKEY_ACTIONS_DOUBLE_OFF,
+    .key  = MCE_SETTING_POWERKEY_ACTIONS_DOUBLE_OFF,
     .type = "s",
-    .def  = DEFAULT_POWERKEY_ACTIONS_DOUBLE_OFF,
+    .def  = MCE_DEFAULT_POWERKEY_ACTIONS_DOUBLE_OFF,
   },
   {
-    .key  = MCE_GCONF_POWERKEY_ACTIONS_LONG_OFF,
+    .key  = MCE_SETTING_POWERKEY_ACTIONS_LONG_OFF,
     .type = "s",
-    .def  = DEFAULT_POWERKEY_ACTIONS_LONG_OFF,
+    .def  = MCE_DEFAULT_POWERKEY_ACTIONS_LONG_OFF,
   },
   {
-    .key  = MCE_GCONF_POWERKEY_ACTIONS_GESTURE0,
+    .key  = MCE_SETTING_POWERKEY_ACTIONS_GESTURE0,
     .type = "s",
-    .def  = DEFAULT_POWERKEY_ACTIONS_GESTURE0,
+    .def  = MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE0,
   },
   {
-    .key  = MCE_GCONF_POWERKEY_ACTIONS_GESTURE1,
+    .key  = MCE_SETTING_POWERKEY_ACTIONS_GESTURE1,
     .type = "s",
-    .def  = DEFAULT_POWERKEY_ACTIONS_GESTURE1,
+    .def  = MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE1,
   },
   {
-    .key  = MCE_GCONF_POWERKEY_ACTIONS_GESTURE2,
+    .key  = MCE_SETTING_POWERKEY_ACTIONS_GESTURE2,
     .type = "s",
-    .def  = DEFAULT_POWERKEY_ACTIONS_GESTURE2,
+    .def  = MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE2,
   },
   {
-    .key  = MCE_GCONF_POWERKEY_ACTIONS_GESTURE3,
+    .key  = MCE_SETTING_POWERKEY_ACTIONS_GESTURE3,
     .type = "s",
-    .def  = DEFAULT_POWERKEY_ACTIONS_GESTURE3,
+    .def  = MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE3,
   },
   {
-    .key  = MCE_GCONF_POWERKEY_ACTIONS_GESTURE4,
+    .key  = MCE_SETTING_POWERKEY_ACTIONS_GESTURE4,
     .type = "s",
-    .def  = DEFAULT_POWERKEY_ACTIONS_GESTURE4,
+    .def  = MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE4,
   },
   {
-    .key  = MCE_GCONF_POWERKEY_ACTIONS_GESTURE5,
+    .key  = MCE_SETTING_POWERKEY_ACTIONS_GESTURE5,
     .type = "s",
-    .def  = DEFAULT_POWERKEY_ACTIONS_GESTURE5,
+    .def  = MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE5,
   },
   {
-    .key  = MCE_GCONF_POWERKEY_ACTIONS_GESTURE6,
+    .key  = MCE_SETTING_POWERKEY_ACTIONS_GESTURE6,
     .type = "s",
-    .def  = DEFAULT_POWERKEY_ACTIONS_GESTURE6,
+    .def  = MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE6,
   },
   {
-    .key  = MCE_GCONF_POWERKEY_ACTIONS_GESTURE7,
+    .key  = MCE_SETTING_POWERKEY_ACTIONS_GESTURE7,
     .type = "s",
-    .def  = DEFAULT_POWERKEY_ACTIONS_GESTURE7,
+    .def  = MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE7,
   },
   {
-    .key  = MCE_GCONF_POWERKEY_ACTIONS_GESTURE8,
+    .key  = MCE_SETTING_POWERKEY_ACTIONS_GESTURE8,
     .type = "s",
-    .def  = DEFAULT_POWERKEY_ACTIONS_GESTURE8,
+    .def  = MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE8,
   },
   {
-    .key  = MCE_GCONF_POWERKEY_ACTIONS_GESTURE9,
+    .key  = MCE_SETTING_POWERKEY_ACTIONS_GESTURE9,
     .type = "s",
-    .def  = DEFAULT_POWERKEY_ACTIONS_GESTURE9,
+    .def  = MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE9,
   },
   {
-    .key  = MCE_GCONF_POWERKEY_ACTIONS_GESTURE10,
+    .key  = MCE_SETTING_POWERKEY_ACTIONS_GESTURE10,
     .type = "s",
-    .def  = DEFAULT_POWERKEY_ACTIONS_GESTURE10,
+    .def  = MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE10,
   },
   {
-    .key  = MCE_GCONF_POWERKEY_DBUS_ACTION1,
+    .key  = MCE_SETTING_POWERKEY_DBUS_ACTION1,
     .type = "s",
-    .def  = DEFAULT_POWERKEY_DBUS_ACTION1,
+    .def  = MCE_DEFAULT_POWERKEY_DBUS_ACTION1,
   },
   {
-    .key  = MCE_GCONF_POWERKEY_DBUS_ACTION2,
+    .key  = MCE_SETTING_POWERKEY_DBUS_ACTION2,
     .type = "s",
-    .def  = DEFAULT_POWERKEY_DBUS_ACTION2,
+    .def  = MCE_DEFAULT_POWERKEY_DBUS_ACTION2,
   },
   {
-    .key  = MCE_GCONF_POWERKEY_DBUS_ACTION3,
+    .key  = MCE_SETTING_POWERKEY_DBUS_ACTION3,
     .type = "s",
-    .def  = DEFAULT_POWERKEY_DBUS_ACTION3,
+    .def  = MCE_DEFAULT_POWERKEY_DBUS_ACTION3,
   },
   {
-    .key  = MCE_GCONF_POWERKEY_DBUS_ACTION4,
+    .key  = MCE_SETTING_POWERKEY_DBUS_ACTION4,
     .type = "s",
-    .def  = DEFAULT_POWERKEY_DBUS_ACTION4,
+    .def  = MCE_DEFAULT_POWERKEY_DBUS_ACTION4,
   },
   {
-    .key  = MCE_GCONF_POWERKEY_DBUS_ACTION5,
+    .key  = MCE_SETTING_POWERKEY_DBUS_ACTION5,
     .type = "s",
-    .def  = DEFAULT_POWERKEY_DBUS_ACTION5,
+    .def  = MCE_DEFAULT_POWERKEY_DBUS_ACTION5,
   },
   {
-    .key  = MCE_GCONF_POWERKEY_DBUS_ACTION6,
+    .key  = MCE_SETTING_POWERKEY_DBUS_ACTION6,
     .type = "s",
-    .def  = DEFAULT_POWERKEY_DBUS_ACTION6,
+    .def  = MCE_DEFAULT_POWERKEY_DBUS_ACTION6,
   },
   {
-    .key  = MCE_GCONF_POWERKEY_DBUS_ACTION7,
+    .key  = MCE_SETTING_POWERKEY_DBUS_ACTION7,
     .type = "s",
-    .def  = DEFAULT_POWERKEY_DBUS_ACTION7,
+    .def  = MCE_DEFAULT_POWERKEY_DBUS_ACTION7,
   },
   {
-    .key  = MCE_GCONF_POWERKEY_DBUS_ACTION8,
+    .key  = MCE_SETTING_POWERKEY_DBUS_ACTION8,
     .type = "s",
-    .def  = DEFAULT_POWERKEY_DBUS_ACTION8,
+    .def  = MCE_DEFAULT_POWERKEY_DBUS_ACTION8,
   },
   {
-    .key  = MCE_GCONF_POWERKEY_DBUS_ACTION9,
+    .key  = MCE_SETTING_POWERKEY_DBUS_ACTION9,
     .type = "s",
-    .def  = DEFAULT_POWERKEY_DBUS_ACTION9,
+    .def  = MCE_DEFAULT_POWERKEY_DBUS_ACTION9,
   },
   {
-    .key  = MCE_GCONF_POWERKEY_DBUS_ACTION10,
+    .key  = MCE_SETTING_POWERKEY_DBUS_ACTION10,
     .type = "s",
-    .def  = DEFAULT_POWERKEY_DBUS_ACTION10,
+    .def  = MCE_DEFAULT_POWERKEY_DBUS_ACTION10,
   },
   {
-    .key = MCE_GCONF_MEMNOTIFY_WARNING_USED,
+    .key = MCE_SETTING_MEMNOTIFY_WARNING_USED,
     .type = "i",
-    .def  = "0", // = disabled
+    .def  = G_STRINGIFY(MCE_DEFAULT_MEMNOTIFY_WARNING_USED)
   },
   {
-    .key = MCE_GCONF_MEMNOTIFY_WARNING_ACTIVE,
+    .key = MCE_SETTING_MEMNOTIFY_WARNING_ACTIVE,
     .type = "i",
-    .def  = "0", // = disabled
+    .def  = G_STRINGIFY(MCE_DEFAULT_MEMNOTIFY_WARNING_ACTIVE)
   },
   {
-    .key = MCE_GCONF_MEMNOTIFY_CRITICAL_USED,
+    .key = MCE_SETTING_MEMNOTIFY_CRITICAL_USED,
     .type = "i",
-    .def  = "0", // = disabled
+    .def  = G_STRINGIFY(MCE_DEFAULT_MEMNOTIFY_CRITICAL_USED)
   },
   {
-    .key = MCE_GCONF_MEMNOTIFY_CRITICAL_ACTIVE,
+    .key = MCE_SETTING_MEMNOTIFY_CRITICAL_ACTIVE,
     .type = "i",
-    .def  = "0", // = disabled
+    .def  = G_STRINGIFY(MCE_DEFAULT_MEMNOTIFY_CRITICAL_ACTIVE)
   },
   {
-    .key  = MCE_GCONF_EXCEPTION_LENGTH_CALL_IN,
+    .key  = MCE_SETTING_TK_EXCEPT_LEN_CALL_IN,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_EXCEPTION_LENGTH_CALL_IN),
+    .def  = G_STRINGIFY(MCE_DEFAULT_TK_EXCEPT_LEN_CALL_IN),
   },
   {
-    .key  = MCE_GCONF_EXCEPTION_LENGTH_CALL_OUT,
+    .key  = MCE_SETTING_TK_EXCEPT_LEN_CALL_OUT,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_EXCEPTION_LENGTH_CALL_OUT),
+    .def  = G_STRINGIFY(MCE_DEFAULT_TK_EXCEPT_LEN_CALL_OUT),
   },
   {
-    .key  = MCE_GCONF_EXCEPTION_LENGTH_ALARM,
+    .key  = MCE_SETTING_TK_EXCEPT_LEN_ALARM,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_EXCEPTION_LENGTH_ALARM),
+    .def  = G_STRINGIFY(MCE_DEFAULT_TK_EXCEPT_LEN_ALARM),
   },
   {
-    .key  = MCE_GCONF_EXCEPTION_LENGTH_USB_CONNECT,
+    .key  = MCE_SETTING_TK_EXCEPT_LEN_USB_CONNECT,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_EXCEPTION_LENGTH_USB_CONNECT),
+    .def  = G_STRINGIFY(MCE_DEFAULT_TK_EXCEPT_LEN_USB_CONNECT),
   },
   {
-    .key  = MCE_GCONF_EXCEPTION_LENGTH_USB_DIALOG,
+    .key  = MCE_SETTING_TK_EXCEPT_LEN_USB_DIALOG,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_EXCEPTION_LENGTH_USB_DIALOG),
+    .def  = G_STRINGIFY(MCE_DEFAULT_TK_EXCEPT_LEN_USB_DIALOG),
   },
   {
-    .key  = MCE_GCONF_EXCEPTION_LENGTH_CHARGER,
+    .key  = MCE_SETTING_TK_EXCEPT_LEN_CHARGER,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_EXCEPTION_LENGTH_CHARGER),
+    .def  = G_STRINGIFY(MCE_DEFAULT_TK_EXCEPT_LEN_CHARGER),
   },
   {
-    .key  = MCE_GCONF_EXCEPTION_LENGTH_BATTERY,
+    .key  = MCE_SETTING_TK_EXCEPT_LEN_BATTERY,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_EXCEPTION_LENGTH_BATTERY),
+    .def  = G_STRINGIFY(MCE_DEFAULT_TK_EXCEPT_LEN_BATTERY),
   },
   {
-    .key  = MCE_GCONF_EXCEPTION_LENGTH_JACK_IN,
+    .key  = MCE_SETTING_TK_EXCEPT_LEN_JACK_IN,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_EXCEPTION_LENGTH_JACK_IN),
+    .def  = G_STRINGIFY(MCE_DEFAULT_TK_EXCEPT_LEN_JACK_IN),
   },
   {
-    .key  = MCE_GCONF_EXCEPTION_LENGTH_JACK_OUT,
+    .key  = MCE_SETTING_TK_EXCEPT_LEN_JACK_OUT,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_EXCEPTION_LENGTH_JACK_OUT),
+    .def  = G_STRINGIFY(MCE_DEFAULT_TK_EXCEPT_LEN_JACK_OUT),
   },
   {
-    .key  = MCE_GCONF_EXCEPTION_LENGTH_CAMERA,
+    .key  = MCE_SETTING_TK_EXCEPT_LEN_CAMERA,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_EXCEPTION_LENGTH_CAMERA),
+    .def  = G_STRINGIFY(MCE_DEFAULT_TK_EXCEPT_LEN_CAMERA),
   },
   {
-    .key  = MCE_GCONF_EXCEPTION_LENGTH_VOLUME,
+    .key  = MCE_SETTING_TK_EXCEPT_LEN_VOLUME,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_EXCEPTION_LENGTH_VOLUME),
+    .def  = G_STRINGIFY(MCE_DEFAULT_TK_EXCEPT_LEN_VOLUME),
   },
   {
-    .key  = MCE_GCONF_EXCEPTION_LENGTH_ACTIVITY,
+    .key  = MCE_SETTING_TK_EXCEPT_LEN_ACTIVITY,
     .type = "i",
-    .def  = G_STRINGIFY(DEFAULT_EXCEPTION_LENGTH_ACTIVITY),
+    .def  = G_STRINGIFY(MCE_DEFAULT_TK_EXCEPT_LEN_ACTIVITY),
   },
   {
-    .key  = MCE_GCONF_TK_LOCKSCREEN_ANIM_ENABLED,
+    .key  = MCE_SETTING_TK_LOCKSCREEN_ANIM_ENABLED,
     .type = "b",
-    .def  = G_STRINGIFY(DEFAULT_TK_LOCKSCREEN_ANIM_ENABLED),
+    .def  = G_STRINGIFY(MCE_DEFAULT_TK_LOCKSCREEN_ANIM_ENABLED),
   },
   {
     .key  = NULL,

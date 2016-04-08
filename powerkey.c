@@ -29,7 +29,7 @@
 #include "mce-log.h"
 #include "mce-lib.h"
 #include "mce-conf.h"
-#include "mce-gconf.h"
+#include "mce-setting.h"
 #include "mce-dbus.h"
 #include "mce-dsme.h"
 
@@ -128,16 +128,12 @@ static bool    pwrkey_delete_flagfile(const char *path);
  * ------------------------------------------------------------------------- */
 
 /** [setting] Power key press count for proximity sensor override */
-static gint  pwrkey_ps_override_count = 3;
-
-/** GConf callback ID for pwrkey_ps_override_count */
-static guint pwrkey_ps_override_count_gconf_id = 0;
+static gint  pwrkey_ps_override_count = MCE_DEFAULT_POWERKEY_PS_OVERRIDE_COUNT;
+static guint pwrkey_ps_override_count_setting_id = 0;
 
 /** [setting] Maximum time between power key presses for proximity sensor override */
-static gint  pwrkey_ps_override_timeout = 333;
-
-/** GConf callback ID for pwrkey_ps_override_timeout */
-static guint pwrkey_ps_override_timeout_gconf_id = 0;
+static gint  pwrkey_ps_override_timeout = MCE_DEFAULT_POWERKEY_PS_OVERRIDE_TIMEOUT;
+static guint pwrkey_ps_override_timeout_setting_id = 0;
 
 static void  pwrkey_ps_override_evaluate(void);
 
@@ -147,8 +143,8 @@ static void  pwrkey_ps_override_evaluate(void);
  * Individual actions that can be taken.
  * ------------------------------------------------------------------------- */
 
-static gint  pwrkey_action_blank_mode = PWRKEY_BLANK_TO_OFF;
-static guint pwrkey_action_blank_mode_gconf_id = 0;
+static gint  pwrkey_action_blank_mode = MCE_DEFAULT_POWERKEY_BLANKING_MODE;
+static guint pwrkey_action_blank_mode_setting_id = 0;
 
 static void  pwrkey_action_vibrate  (void);
 static void  pwrkey_action_shutdown (void);
@@ -190,7 +186,7 @@ static gchar   *pwrkey_mask_to_names   (uint32_t mask);
  * ------------------------------------------------------------------------- */
 
 /** Touchscreen gesture (doubletap etc) enable mode */
-static gint  pwrkey_gestures_enable_mode = DBLTAP_ENABLE_DEFAULT;
+static gint  pwrkey_gestures_enable_mode = MCE_DEFAULT_DOUBLETAP_MODE;
 static guint pwrkey_gestures_enable_mode_cb_id = 0;
 
 static bool  pwrkey_gestures_allowed(void);
@@ -227,59 +223,59 @@ static pwrkey_actions_t pwrkey_actions_from_gesture[POWERKEY_ACTIONS_GESTURE_COU
 static pwrkey_actions_t *pwrkey_actions_now =
     &pwrkey_actions_from_display_off;
 
-static gchar *pwrkey_actions_single_on           = 0;
-static guint  pwrkey_actions_single_on_gconf_id  = 0;
+static gchar *pwrkey_actions_single_on             = 0;
+static guint  pwrkey_actions_single_on_setting_id  = 0;
 
-static gchar *pwrkey_actions_double_on           = 0;
-static guint  pwrkey_actions_double_on_gconf_id  = 0;
+static gchar *pwrkey_actions_double_on             = 0;
+static guint  pwrkey_actions_double_on_setting_id  = 0;
 
-static gchar *pwrkey_actions_long_on             = 0;
-static guint  pwrkey_actions_long_on_gconf_id    = 0;
+static gchar *pwrkey_actions_long_on               = 0;
+static guint  pwrkey_actions_long_on_setting_id    = 0;
 
-static gchar *pwrkey_actions_single_off          = 0;
-static guint  pwrkey_actions_single_off_gconf_id = 0;
+static gchar *pwrkey_actions_single_off            = 0;
+static guint  pwrkey_actions_single_off_setting_id = 0;
 
-static gchar *pwrkey_actions_double_off          = 0;
-static guint  pwrkey_actions_double_off_gconf_id = 0;
+static gchar *pwrkey_actions_double_off            = 0;
+static guint  pwrkey_actions_double_off_setting_id = 0;
 
-static gchar *pwrkey_actions_long_off            = 0;
-static guint  pwrkey_actions_long_off_gconf_id   = 0;
+static gchar *pwrkey_actions_long_off              = 0;
+static guint  pwrkey_actions_long_off_setting_id   = 0;
 
 /** Array of setting keys for configurable touchscreen gestures */
 static const char * const pwrkey_actions_gesture_key[POWERKEY_ACTIONS_GESTURE_COUNT] =
 {
-    MCE_GCONF_POWERKEY_ACTIONS_GESTURE0,
-    MCE_GCONF_POWERKEY_ACTIONS_GESTURE1,
-    MCE_GCONF_POWERKEY_ACTIONS_GESTURE2,
-    MCE_GCONF_POWERKEY_ACTIONS_GESTURE3,
-    MCE_GCONF_POWERKEY_ACTIONS_GESTURE4,
-    MCE_GCONF_POWERKEY_ACTIONS_GESTURE5,
-    MCE_GCONF_POWERKEY_ACTIONS_GESTURE6,
-    MCE_GCONF_POWERKEY_ACTIONS_GESTURE7,
-    MCE_GCONF_POWERKEY_ACTIONS_GESTURE8,
-    MCE_GCONF_POWERKEY_ACTIONS_GESTURE9,
-    MCE_GCONF_POWERKEY_ACTIONS_GESTURE10,
+    MCE_SETTING_POWERKEY_ACTIONS_GESTURE0,
+    MCE_SETTING_POWERKEY_ACTIONS_GESTURE1,
+    MCE_SETTING_POWERKEY_ACTIONS_GESTURE2,
+    MCE_SETTING_POWERKEY_ACTIONS_GESTURE3,
+    MCE_SETTING_POWERKEY_ACTIONS_GESTURE4,
+    MCE_SETTING_POWERKEY_ACTIONS_GESTURE5,
+    MCE_SETTING_POWERKEY_ACTIONS_GESTURE6,
+    MCE_SETTING_POWERKEY_ACTIONS_GESTURE7,
+    MCE_SETTING_POWERKEY_ACTIONS_GESTURE8,
+    MCE_SETTING_POWERKEY_ACTIONS_GESTURE9,
+    MCE_SETTING_POWERKEY_ACTIONS_GESTURE10,
 };
 
 /** Array of default values for configurable touchscreen gestures */
 static const char * const pwrkey_actions_gesture_val[POWERKEY_ACTIONS_GESTURE_COUNT] =
 {
-    DEFAULT_POWERKEY_ACTIONS_GESTURE0,
-    DEFAULT_POWERKEY_ACTIONS_GESTURE1,
-    DEFAULT_POWERKEY_ACTIONS_GESTURE2,
-    DEFAULT_POWERKEY_ACTIONS_GESTURE3,
-    DEFAULT_POWERKEY_ACTIONS_GESTURE4,
-    DEFAULT_POWERKEY_ACTIONS_GESTURE5,
-    DEFAULT_POWERKEY_ACTIONS_GESTURE6,
-    DEFAULT_POWERKEY_ACTIONS_GESTURE7,
-    DEFAULT_POWERKEY_ACTIONS_GESTURE8,
-    DEFAULT_POWERKEY_ACTIONS_GESTURE9,
-    DEFAULT_POWERKEY_ACTIONS_GESTURE10,
+    MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE0,
+    MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE1,
+    MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE2,
+    MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE3,
+    MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE4,
+    MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE5,
+    MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE6,
+    MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE7,
+    MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE8,
+    MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE9,
+    MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE10,
 };
 
 /** Array of current values for configurable touchscreen gestures */
-static gchar *pwrkey_actions_gesture         [POWERKEY_ACTIONS_GESTURE_COUNT] = {};
-static guint  pwrkey_actions_gesture_gconf_id[POWERKEY_ACTIONS_GESTURE_COUNT] = {};
+static gchar *pwrkey_actions_gesture           [POWERKEY_ACTIONS_GESTURE_COUNT] = {};
+static guint  pwrkey_actions_gesture_setting_id[POWERKEY_ACTIONS_GESTURE_COUNT] = {};
 
 static void pwrkey_actions_parse           (pwrkey_actions_t *self, const char *names_single, const char *names_double, const char *names_long);
 
@@ -299,10 +295,10 @@ static void pwrkey_actions_select          (bool display_is_on);
  * timer for telling apart short and long power key presses
  * ------------------------------------------------------------------------- */
 
-static gint     pwrkey_long_press_delay          = DEFAULT_POWERKEY_LONG_DELAY;
-static guint    pwrkey_long_press_delay_gconf_id = 0;
+static gint     pwrkey_long_press_delay = MCE_DEFAULT_POWERKEY_LONG_PRESS_DELAY;
+static guint    pwrkey_long_press_delay_setting_id = 0;
 
-static guint    pwrkey_long_press_timer_id       = 0;
+static guint    pwrkey_long_press_timer_id = 0;
 
 static gboolean pwrkey_long_press_timer_cb      (gpointer aptr);
 static void     pwrkey_long_press_timer_start   (void);
@@ -315,8 +311,8 @@ static bool     pwrkey_long_press_timer_cancel  (void);
  * timer for telling apart single and double power key presses
  * ------------------------------------------------------------------------- */
 
-static gint     pwrkey_double_press_delay = DEFAULT_POWERKEY_DOUBLE_DELAY;
-static guint    pwrkey_double_press_delay_gconf_id = 0;
+static gint     pwrkey_double_press_delay = MCE_DEFAULT_POWERKEY_DOUBLE_PRESS_DELAY;
+static guint    pwrkey_double_press_delay_setting_id = 0;
 
 static guint    pwrkey_double_press_timer_id = 0;
 
@@ -355,10 +351,10 @@ static const char pwrkey_dbus_action_flag[]  =
 
 typedef struct
 {
-    const char *gconf_key;
-    const char *gconf_def;
-    gchar      *gconf_val;
-    guint       gconf_id;
+    const char *setting_key;
+    const char *setting_def;
+    gchar      *setting_val;
+    guint       setting_id;
 
     char *destination;
     char *object;
@@ -370,64 +366,64 @@ typedef struct
 static pwrkey_dbus_action_t pwrkey_dbus_action[POWEKEY_DBUS_ACTION_COUNT] =
 {
     {
-        .gconf_key = MCE_GCONF_POWERKEY_DBUS_ACTION1,
-        .gconf_def = DEFAULT_POWERKEY_DBUS_ACTION1,
-        .gconf_val = 0,
-        .gconf_id  = 0,
+        .setting_key = MCE_SETTING_POWERKEY_DBUS_ACTION1,
+        .setting_def = MCE_DEFAULT_POWERKEY_DBUS_ACTION1,
+        .setting_val = 0,
+        .setting_id  = 0,
     },
     {
-        .gconf_key = MCE_GCONF_POWERKEY_DBUS_ACTION2,
-        .gconf_def = DEFAULT_POWERKEY_DBUS_ACTION2,
-        .gconf_val = 0,
-        .gconf_id  = 0,
+        .setting_key = MCE_SETTING_POWERKEY_DBUS_ACTION2,
+        .setting_def = MCE_DEFAULT_POWERKEY_DBUS_ACTION2,
+        .setting_val = 0,
+        .setting_id  = 0,
     },
     {
-        .gconf_key = MCE_GCONF_POWERKEY_DBUS_ACTION3,
-        .gconf_def = DEFAULT_POWERKEY_DBUS_ACTION3,
-        .gconf_val = 0,
-        .gconf_id  = 0,
+        .setting_key = MCE_SETTING_POWERKEY_DBUS_ACTION3,
+        .setting_def = MCE_DEFAULT_POWERKEY_DBUS_ACTION3,
+        .setting_val = 0,
+        .setting_id  = 0,
     },
     {
-        .gconf_key = MCE_GCONF_POWERKEY_DBUS_ACTION4,
-        .gconf_def = DEFAULT_POWERKEY_DBUS_ACTION4,
-        .gconf_val = 0,
-        .gconf_id  = 0,
+        .setting_key = MCE_SETTING_POWERKEY_DBUS_ACTION4,
+        .setting_def = MCE_DEFAULT_POWERKEY_DBUS_ACTION4,
+        .setting_val = 0,
+        .setting_id  = 0,
     },
     {
-        .gconf_key = MCE_GCONF_POWERKEY_DBUS_ACTION5,
-        .gconf_def = DEFAULT_POWERKEY_DBUS_ACTION5,
-        .gconf_val = 0,
-        .gconf_id  = 0,
+        .setting_key = MCE_SETTING_POWERKEY_DBUS_ACTION5,
+        .setting_def = MCE_DEFAULT_POWERKEY_DBUS_ACTION5,
+        .setting_val = 0,
+        .setting_id  = 0,
     },
     {
-        .gconf_key = MCE_GCONF_POWERKEY_DBUS_ACTION6,
-        .gconf_def = DEFAULT_POWERKEY_DBUS_ACTION6,
-        .gconf_val = 0,
-        .gconf_id  = 0,
+        .setting_key = MCE_SETTING_POWERKEY_DBUS_ACTION6,
+        .setting_def = MCE_DEFAULT_POWERKEY_DBUS_ACTION6,
+        .setting_val = 0,
+        .setting_id  = 0,
     },
     {
-        .gconf_key = MCE_GCONF_POWERKEY_DBUS_ACTION7,
-        .gconf_def = DEFAULT_POWERKEY_DBUS_ACTION7,
-        .gconf_val = 0,
-        .gconf_id  = 0,
+        .setting_key = MCE_SETTING_POWERKEY_DBUS_ACTION7,
+        .setting_def = MCE_DEFAULT_POWERKEY_DBUS_ACTION7,
+        .setting_val = 0,
+        .setting_id  = 0,
     },
     {
-        .gconf_key = MCE_GCONF_POWERKEY_DBUS_ACTION8,
-        .gconf_def = DEFAULT_POWERKEY_DBUS_ACTION8,
-        .gconf_val = 0,
-        .gconf_id  = 0,
+        .setting_key = MCE_SETTING_POWERKEY_DBUS_ACTION8,
+        .setting_def = MCE_DEFAULT_POWERKEY_DBUS_ACTION8,
+        .setting_val = 0,
+        .setting_id  = 0,
     },
     {
-        .gconf_key = MCE_GCONF_POWERKEY_DBUS_ACTION9,
-        .gconf_def = DEFAULT_POWERKEY_DBUS_ACTION9,
-        .gconf_val = 0,
-        .gconf_id  = 0,
+        .setting_key = MCE_SETTING_POWERKEY_DBUS_ACTION9,
+        .setting_def = MCE_DEFAULT_POWERKEY_DBUS_ACTION9,
+        .setting_val = 0,
+        .setting_id  = 0,
     },
     {
-        .gconf_key = MCE_GCONF_POWERKEY_DBUS_ACTION10,
-        .gconf_def = DEFAULT_POWERKEY_DBUS_ACTION10,
-        .gconf_val = 0,
-        .gconf_id  = 0,
+        .setting_key = MCE_SETTING_POWERKEY_DBUS_ACTION10,
+        .setting_def = MCE_DEFAULT_POWERKEY_DBUS_ACTION10,
+        .setting_val = 0,
+        .setting_id  = 0,
     },
 };
 
@@ -452,8 +448,8 @@ static void   pwrkey_dbus_action_execute(size_t index);
 static display_state_t pwrkey_stm_display_state = MCE_DISPLAY_UNDEF;
 
 /** [setting] Power key press enable mode */
-static gint  pwrkey_stm_enable_mode = PWRKEY_ENABLE_DEFAULT;
-static guint pwrkey_stm_enable_mode_gconf_id = 0;
+static gint  pwrkey_stm_enable_mode = MCE_DEFAULT_POWERKEY_MODE;
+static guint pwrkey_stm_enable_mode_setting_id = 0;
 
 static void pwrkey_stm_long_press_timeout   (void);
 static void pwrkey_stm_double_press_timeout (void);
@@ -482,23 +478,23 @@ static void     pwrkey_dbus_init(void);
 static void     pwrkey_dbus_quit(void);
 
 /* ------------------------------------------------------------------------- *
- * GCONF_SETTINGS
+ * DYNAMIC_SETTINGS
  *
  * tracking powerkey related runtime changeable settings
  * ------------------------------------------------------------------------- */
 
-static gint     pwrkey_gconf_sanitize_id = 0;
+static gint     pwrkey_setting_sanitize_id = 0;
 
-static gboolean pwrkey_gconf_sanitize_cb     (gpointer aptr);
-static void     pwrkey_gconf_sanitize_now    (void);
-static void     pwrkey_gconf_sanitize_later  (void);
-static void     pwrkey_gconf_sanitize_cancel (void);
+static gboolean pwrkey_setting_sanitize_cb     (gpointer aptr);
+static void     pwrkey_setting_sanitize_now    (void);
+static void     pwrkey_setting_sanitize_later  (void);
+static void     pwrkey_setting_sanitize_cancel (void);
 
-static bool     pwrkey_gconf_handle_gesture  (const GConfValue *gcv, guint id);
-static void     pwrkey_gconf_cb              (GConfClient *const gcc, const guint id, GConfEntry *const entry, gpointer const data);
+static bool     pwrkey_setting_handle_gesture  (const GConfValue *gcv, guint id);
+static void     pwrkey_setting_cb              (GConfClient *const gcc, const guint id, GConfEntry *const entry, gpointer const data);
 
-static void     pwrkey_gconf_init            (void);
-static void     pwrkey_gconf_quit            (void);
+static void     pwrkey_setting_init            (void);
+static void     pwrkey_setting_quit            (void);
 
 /* ------------------------------------------------------------------------- *
  * DATAPIPE_HANDLING
@@ -1359,7 +1355,7 @@ pwrkey_dbus_action_reset(pwrkey_dbus_action_t *self)
     pwrkey_dbus_action_clear(self);
 
     /* Builtin default is always just a signal arg, no parsing required */
-    self->argument = strdup(self->gconf_def);
+    self->argument = strdup(self->setting_def);
 }
 
 static bool
@@ -1448,10 +1444,10 @@ pwrkey_dbus_action_parse(pwrkey_dbus_action_t *self)
 
     pwrkey_dbus_action_clear(self);
 
-    if( empty(self->gconf_val) )
+    if( empty(self->setting_val) )
         goto cleanup;
 
-    pos = tmp = strdup(self->gconf_val);
+    pos = tmp = strdup(self->setting_val);
     arg = pwrkey_get_token(&pos);
 
     if( *arg && !*pos ) {
@@ -1498,12 +1494,12 @@ pwrkey_dbus_action_configure(size_t action_id, bool force_reset)
 
     use = pwrkey_dbus_action_to_string(action);
 
-    if( !eq(action->gconf_val, use) ) {
+    if( !eq(action->setting_val, use) ) {
         /* Change locally cached value */
-        g_free(action->gconf_val), action->gconf_val = use, use = 0;
+        g_free(action->setting_val), action->setting_val = use, use = 0;
 
         /* Flush change to settings */
-        mce_gconf_set_string(action->gconf_key, action->gconf_val);
+        mce_setting_set_string(action->setting_key, action->setting_val);
     }
 
 cleanup:
@@ -1963,11 +1959,11 @@ pwrkey_dbus_quit(void)
 }
 
 /* ========================================================================= *
- * GCONF_SETTINGS
+ * DYNAMIC_SETTINGS
  * ========================================================================= */
 
 static void
-pwrkey_gconf_sanitize_action_masks(void)
+pwrkey_setting_sanitize_action_masks(void)
 {
     /* parse settings -> bitmasks */
     pwrkey_actions_parse(&pwrkey_actions_from_display_on,
@@ -1995,25 +1991,25 @@ pwrkey_gconf_sanitize_action_masks(void)
 
     /* send notifications if something changed */
     if( on_changed ) {
-        mce_gconf_set_string(MCE_GCONF_POWERKEY_ACTIONS_SINGLE_ON,
-                             pwrkey_actions_single_on);
+        mce_setting_set_string(MCE_SETTING_POWERKEY_ACTIONS_SINGLE_ON,
+                               pwrkey_actions_single_on);
 
-        mce_gconf_set_string(MCE_GCONF_POWERKEY_ACTIONS_DOUBLE_ON,
-                             pwrkey_actions_double_on);
+        mce_setting_set_string(MCE_SETTING_POWERKEY_ACTIONS_DOUBLE_ON,
+                               pwrkey_actions_double_on);
 
-        mce_gconf_set_string(MCE_GCONF_POWERKEY_ACTIONS_LONG_ON,
-                             pwrkey_actions_long_on);
+        mce_setting_set_string(MCE_SETTING_POWERKEY_ACTIONS_LONG_ON,
+                               pwrkey_actions_long_on);
     }
 
     if( off_changed ) {
-        mce_gconf_set_string(MCE_GCONF_POWERKEY_ACTIONS_SINGLE_OFF,
-                             pwrkey_actions_single_off);
+        mce_setting_set_string(MCE_SETTING_POWERKEY_ACTIONS_SINGLE_OFF,
+                               pwrkey_actions_single_off);
 
-        mce_gconf_set_string(MCE_GCONF_POWERKEY_ACTIONS_DOUBLE_OFF,
-                             pwrkey_actions_double_off);
+        mce_setting_set_string(MCE_SETTING_POWERKEY_ACTIONS_DOUBLE_OFF,
+                               pwrkey_actions_double_off);
 
-        mce_gconf_set_string(MCE_GCONF_POWERKEY_ACTIONS_LONG_OFF,
-                             pwrkey_actions_long_off);
+        mce_setting_set_string(MCE_SETTING_POWERKEY_ACTIONS_LONG_OFF,
+                               pwrkey_actions_long_off);
     }
 
     for( size_t i = 0; i < POWERKEY_ACTIONS_GESTURE_COUNT; ++i ) {
@@ -2023,14 +2019,14 @@ pwrkey_gconf_sanitize_action_masks(void)
             pwrkey_actions_update(&pwrkey_actions_from_gesture[i],
                                   &pwrkey_actions_gesture[i], 0, 0);
         if( gesture_changed ) {
-            mce_gconf_set_string(pwrkey_actions_gesture_key[i],
-                                 pwrkey_actions_gesture[i]);
+            mce_setting_set_string(pwrkey_actions_gesture_key[i],
+                                   pwrkey_actions_gesture[i]);
         }
     }
 }
 
 static void
-pwrkey_gconf_sanitize_dbus_actions(void)
+pwrkey_setting_sanitize_dbus_actions(void)
 {
     /* The custom dbus action settings can cause mce to
      * get aborted by dbus_message_new_xxx().
@@ -2052,48 +2048,48 @@ pwrkey_gconf_sanitize_dbus_actions(void)
 }
 
 static void
-pwrkey_gconf_sanitize_now(void)
+pwrkey_setting_sanitize_now(void)
 {
-    pwrkey_gconf_sanitize_action_masks();
-    pwrkey_gconf_sanitize_dbus_actions();
+    pwrkey_setting_sanitize_action_masks();
+    pwrkey_setting_sanitize_dbus_actions();
 }
 
-static gboolean pwrkey_gconf_sanitize_cb(gpointer aptr)
+static gboolean pwrkey_setting_sanitize_cb(gpointer aptr)
 {
     (void)aptr;
 
-    if( !pwrkey_gconf_sanitize_id )
+    if( !pwrkey_setting_sanitize_id )
         goto EXIT;
 
-    pwrkey_gconf_sanitize_id = 0;
+    pwrkey_setting_sanitize_id = 0;
 
-    pwrkey_gconf_sanitize_now();
+    pwrkey_setting_sanitize_now();
 
 EXIT:
     return FALSE;
 }
 
-static void pwrkey_gconf_sanitize_later(void)
+static void pwrkey_setting_sanitize_later(void)
 {
-    if( !pwrkey_gconf_sanitize_id )
-        pwrkey_gconf_sanitize_id = g_idle_add(pwrkey_gconf_sanitize_cb, 0);
+    if( !pwrkey_setting_sanitize_id )
+        pwrkey_setting_sanitize_id = g_idle_add(pwrkey_setting_sanitize_cb, 0);
 }
 
-static void pwrkey_gconf_sanitize_cancel(void)
+static void pwrkey_setting_sanitize_cancel(void)
 {
-    if( pwrkey_gconf_sanitize_id ) {
-        g_source_remove(pwrkey_gconf_sanitize_id),
-            pwrkey_gconf_sanitize_id = 0;
+    if( pwrkey_setting_sanitize_id ) {
+        g_source_remove(pwrkey_setting_sanitize_id),
+            pwrkey_setting_sanitize_id = 0;
     }
 }
 
 static bool
-pwrkey_gconf_handle_gesture(const GConfValue *gcv, guint id)
+pwrkey_setting_handle_gesture(const GConfValue *gcv, guint id)
 {
     bool handled = false;
 
     for( size_t i = 0; i < POWERKEY_ACTIONS_GESTURE_COUNT; ++i ) {
-        if( pwrkey_actions_gesture_gconf_id[i] != id )
+        if( pwrkey_actions_gesture_setting_id[i] != id )
             continue;
 
         const char *val = gconf_value_get_string(gcv);
@@ -2102,7 +2098,7 @@ pwrkey_gconf_handle_gesture(const GConfValue *gcv, guint id)
                     i, pwrkey_actions_gesture[i], val);
             g_free(pwrkey_actions_gesture[i]);
             pwrkey_actions_gesture[i] = g_strdup(val);
-            pwrkey_gconf_sanitize_later();
+            pwrkey_setting_sanitize_later();
         }
 
         handled = true;
@@ -2120,8 +2116,8 @@ pwrkey_gconf_handle_gesture(const GConfValue *gcv, guint id)
  * @param data   (not used)
  */
 static void
-pwrkey_gconf_cb(GConfClient *const gcc, const guint id,
-                            GConfEntry *const entry, gpointer const data)
+pwrkey_setting_cb(GConfClient *const gcc, const guint id,
+                  GConfEntry *const entry, gpointer const data)
 {
     (void)gcc;
     (void)data;
@@ -2135,100 +2131,100 @@ pwrkey_gconf_cb(GConfClient *const gcc, const guint id,
         goto EXIT;
     }
 
-    if( id == pwrkey_stm_enable_mode_gconf_id ) {
+    if( id == pwrkey_stm_enable_mode_setting_id ) {
         gint old = pwrkey_stm_enable_mode;
         pwrkey_stm_enable_mode = gconf_value_get_int(gcv);
         mce_log(LL_NOTICE, "pwrkey_stm_enable_mode: %d -> %d",
                 old, pwrkey_stm_enable_mode);
     }
-    else if( id == pwrkey_action_blank_mode_gconf_id ) {
+    else if( id == pwrkey_action_blank_mode_setting_id ) {
         gint old = pwrkey_action_blank_mode;
         pwrkey_action_blank_mode = gconf_value_get_int(gcv);
         mce_log(LL_NOTICE, "pwrkey_action_blank_mode: %d -> %d",
                 old, pwrkey_action_blank_mode);
     }
-    else if( id == pwrkey_ps_override_count_gconf_id ) {
+    else if( id == pwrkey_ps_override_count_setting_id ) {
         gint old = pwrkey_ps_override_count;
         pwrkey_ps_override_count = gconf_value_get_int(gcv);
         mce_log(LL_NOTICE, "pwrkey_ps_override_count: %d -> %d",
                 old, pwrkey_ps_override_count);
     }
-    else if( id == pwrkey_ps_override_timeout_gconf_id ) {
+    else if( id == pwrkey_ps_override_timeout_setting_id ) {
         gint old = pwrkey_ps_override_timeout;
         pwrkey_ps_override_timeout = gconf_value_get_int(gcv);
         mce_log(LL_NOTICE, "pwrkey_ps_override_timeout: %d -> %d",
                 old, pwrkey_ps_override_timeout);
     }
-    else if( id == pwrkey_long_press_delay_gconf_id ) {
+    else if( id == pwrkey_long_press_delay_setting_id ) {
         gint old = pwrkey_long_press_delay;
         pwrkey_long_press_delay = gconf_value_get_int(gcv);
         mce_log(LL_NOTICE, "pwrkey_long_press_delay: %d -> %d",
                 old, pwrkey_long_press_delay);
     }
-    else if( id == pwrkey_double_press_delay_gconf_id ) {
+    else if( id == pwrkey_double_press_delay_setting_id ) {
         gint old = pwrkey_double_press_delay;
         pwrkey_double_press_delay = gconf_value_get_int(gcv);
         mce_log(LL_NOTICE, "pwrkey_double_press_delay: %d -> %d",
                 old, pwrkey_double_press_delay);
     }
-    else if( id == pwrkey_actions_single_on_gconf_id ) {
+    else if( id == pwrkey_actions_single_on_setting_id ) {
         const char *val = gconf_value_get_string(gcv);
         if( !eq(pwrkey_actions_single_on, val) ) {
             mce_log(LL_NOTICE, "pwrkey_actions_single_on: '%s' -> '%s'",
                     pwrkey_actions_single_on, val);
             g_free(pwrkey_actions_single_on);
             pwrkey_actions_single_on = g_strdup(val);
-            pwrkey_gconf_sanitize_later();
+            pwrkey_setting_sanitize_later();
         }
     }
-    else if( id == pwrkey_actions_double_on_gconf_id ) {
+    else if( id == pwrkey_actions_double_on_setting_id ) {
         const char *val = gconf_value_get_string(gcv);
         if( !eq(pwrkey_actions_double_on, val) ) {
             mce_log(LL_NOTICE, "pwrkey_actions_double_on: '%s' -> '%s'",
                     pwrkey_actions_double_on, val);
             g_free(pwrkey_actions_double_on);
             pwrkey_actions_double_on = g_strdup(val);
-            pwrkey_gconf_sanitize_later();
+            pwrkey_setting_sanitize_later();
         }
     }
-    else if( id == pwrkey_actions_long_on_gconf_id ) {
+    else if( id == pwrkey_actions_long_on_setting_id ) {
         const char *val = gconf_value_get_string(gcv);
         if( !eq(pwrkey_actions_long_on, val) ) {
             mce_log(LL_NOTICE, "pwrkey_actions_long_on: '%s' -> '%s'",
                     pwrkey_actions_long_on, val);
             g_free(pwrkey_actions_long_on);
             pwrkey_actions_long_on = g_strdup(val);
-            pwrkey_gconf_sanitize_later();
+            pwrkey_setting_sanitize_later();
         }
     }
-    else if( id == pwrkey_actions_single_off_gconf_id ) {
+    else if( id == pwrkey_actions_single_off_setting_id ) {
         const char *val = gconf_value_get_string(gcv);
         if( !eq(pwrkey_actions_single_off, val) ) {
             mce_log(LL_NOTICE, "pwrkey_actions_single_off: '%s' -> '%s'",
                     pwrkey_actions_single_off, val);
             g_free(pwrkey_actions_single_off);
             pwrkey_actions_single_off = g_strdup(val);
-            pwrkey_gconf_sanitize_later();
+            pwrkey_setting_sanitize_later();
         }
     }
-    else if( id == pwrkey_actions_double_off_gconf_id ) {
+    else if( id == pwrkey_actions_double_off_setting_id ) {
         const char *val = gconf_value_get_string(gcv);
         if( !eq(pwrkey_actions_double_off, val) ) {
             mce_log(LL_NOTICE, "pwrkey_actions_double_off: '%s' -> '%s'",
                     pwrkey_actions_double_off, val);
             g_free(pwrkey_actions_double_off);
             pwrkey_actions_double_off = g_strdup(val);
-            pwrkey_gconf_sanitize_later();
+            pwrkey_setting_sanitize_later();
         }
     }
-    else if( id == pwrkey_actions_long_off_gconf_id ) {
+    else if( id == pwrkey_actions_long_off_setting_id ) {
         const char *val = gconf_value_get_string(gcv);
         if( !eq(pwrkey_actions_long_off, val) ) {
             mce_log(LL_NOTICE, "pwrkey_actions_long_off: '%s' -> '%s'",
                     pwrkey_actions_long_off, val);
             g_free(pwrkey_actions_long_off);
             pwrkey_actions_long_off = g_strdup(val);
-            pwrkey_gconf_sanitize_later();
+            pwrkey_setting_sanitize_later();
         }
     }
     else if( id == pwrkey_gestures_enable_mode_cb_id ) {
@@ -2237,7 +2233,7 @@ pwrkey_gconf_cb(GConfClient *const gcc, const guint id,
         mce_log(LL_NOTICE, "pwrkey_gestures_enable_mode: %d -> %d",
                 old, pwrkey_gestures_enable_mode);
     }
-    else if( pwrkey_gconf_handle_gesture(gcv, id) ) {
+    else if( pwrkey_setting_handle_gesture(gcv, id) ) {
         // nop
     }
     else {
@@ -2249,19 +2245,19 @@ pwrkey_gconf_cb(GConfClient *const gcc, const guint id,
 
             pwrkey_dbus_action_t *action = pwrkey_dbus_action + action_id;
 
-            if( id != action->gconf_id )
+            if( id != action->setting_id )
                 continue;
 
             const char *val = gconf_value_get_string(gcv);
 
-            if( eq(action->gconf_val, val) )
+            if( eq(action->setting_val, val) )
                 break;
 
             mce_log(LL_NOTICE, "pwrkey_dbus_action%zd_val: '%s' -> '%s'",
-                    action_id, action->gconf_val, val);
+                    action_id, action->setting_val, val);
 
-            g_free(action->gconf_val), action->gconf_val = g_strdup(val);
-            pwrkey_gconf_sanitize_later();
+            g_free(action->setting_val), action->setting_val = g_strdup(val);
+            pwrkey_setting_sanitize_later();
             break;
         }
     }
@@ -2271,97 +2267,103 @@ EXIT:
     return;
 }
 
-/** Get gconf values and add change notifiers
+/** Get setting values and start tracking changes
  */
 static void
-pwrkey_gconf_init(void)
+pwrkey_setting_init(void)
 {
     /* Power key press handling mode */
-    mce_gconf_track_int(MCE_GCONF_POWERKEY_MODE,
-                        &pwrkey_stm_enable_mode, -1,
-                        pwrkey_gconf_cb,
-                        &pwrkey_stm_enable_mode_gconf_id);
+    mce_setting_track_int(MCE_SETTING_POWERKEY_MODE,
+                          &pwrkey_stm_enable_mode,
+                          MCE_DEFAULT_POWERKEY_MODE,
+                          pwrkey_setting_cb,
+                          &pwrkey_stm_enable_mode_setting_id);
 
     /* Power key display blanking mode */
-    mce_gconf_track_int(MCE_GCONF_POWERKEY_BLANKING_MODE,
-                        &pwrkey_action_blank_mode, -1,
-                        pwrkey_gconf_cb,
-                        &pwrkey_action_blank_mode_gconf_id);
+    mce_setting_track_int(MCE_SETTING_POWERKEY_BLANKING_MODE,
+                          &pwrkey_action_blank_mode,
+                          MCE_DEFAULT_POWERKEY_BLANKING_MODE,
+                          pwrkey_setting_cb,
+                          &pwrkey_action_blank_mode_setting_id);
 
     /* Power key press count for proximity sensor override */
-    mce_gconf_track_int(MCE_GCONF_POWERKEY_PS_OVERRIDE_COUNT,
-                        &pwrkey_ps_override_count, -1,
-                        pwrkey_gconf_cb,
-                        &pwrkey_ps_override_count_gconf_id);
+    mce_setting_track_int(MCE_SETTING_POWERKEY_PS_OVERRIDE_COUNT,
+                          &pwrkey_ps_override_count,
+                          MCE_DEFAULT_POWERKEY_PS_OVERRIDE_COUNT,
+                          pwrkey_setting_cb,
+                          &pwrkey_ps_override_count_setting_id);
 
     /* Maximum time between power key presses for ps override */
-    mce_gconf_track_int(MCE_GCONF_POWERKEY_PS_OVERRIDE_TIMEOUT,
-                        &pwrkey_ps_override_timeout, -1,
-                        pwrkey_gconf_cb,
-                        &pwrkey_ps_override_timeout_gconf_id);
+    mce_setting_track_int(MCE_SETTING_POWERKEY_PS_OVERRIDE_TIMEOUT,
+                          &pwrkey_ps_override_timeout,
+                          MCE_DEFAULT_POWERKEY_PS_OVERRIDE_TIMEOUT,
+                          pwrkey_setting_cb,
+                          &pwrkey_ps_override_timeout_setting_id);
 
     /* Delay for waiting long press */
-    mce_gconf_track_int(MCE_GCONF_POWERKEY_LONG_PRESS_DELAY,
-                        &pwrkey_long_press_delay, -1,
-                        pwrkey_gconf_cb,
-                        &pwrkey_long_press_delay_gconf_id);
+    mce_setting_track_int(MCE_SETTING_POWERKEY_LONG_PRESS_DELAY,
+                          &pwrkey_long_press_delay,
+                          MCE_DEFAULT_POWERKEY_LONG_PRESS_DELAY,
+                          pwrkey_setting_cb,
+                          &pwrkey_long_press_delay_setting_id);
 
     /* Delay for waiting double press */
-    mce_gconf_track_int(MCE_GCONF_POWERKEY_DOUBLE_PRESS_DELAY,
-                        &pwrkey_double_press_delay, -1,
-                        pwrkey_gconf_cb,
-                        &pwrkey_double_press_delay_gconf_id);
+    mce_setting_track_int(MCE_SETTING_POWERKEY_DOUBLE_PRESS_DELAY,
+                          &pwrkey_double_press_delay,
+                          MCE_DEFAULT_POWERKEY_DOUBLE_PRESS_DELAY,
+                          pwrkey_setting_cb,
+                          &pwrkey_double_press_delay_setting_id);
 
     /* Action sets */
 
-    mce_gconf_track_string(MCE_GCONF_POWERKEY_ACTIONS_SINGLE_ON,
-                           &pwrkey_actions_single_on,
-                           DEFAULT_POWERKEY_ACTIONS_SINGLE_ON,
-                           pwrkey_gconf_cb,
-                           &pwrkey_actions_single_on_gconf_id);
+    mce_setting_track_string(MCE_SETTING_POWERKEY_ACTIONS_SINGLE_ON,
+                             &pwrkey_actions_single_on,
+                             MCE_DEFAULT_POWERKEY_ACTIONS_SINGLE_ON,
+                             pwrkey_setting_cb,
+                             &pwrkey_actions_single_on_setting_id);
 
-    mce_gconf_track_string(MCE_GCONF_POWERKEY_ACTIONS_DOUBLE_ON,
-                           &pwrkey_actions_double_on,
-                           DEFAULT_POWERKEY_ACTIONS_DOUBLE_ON,
-                           pwrkey_gconf_cb,
-                           &pwrkey_actions_double_on_gconf_id);
+    mce_setting_track_string(MCE_SETTING_POWERKEY_ACTIONS_DOUBLE_ON,
+                             &pwrkey_actions_double_on,
+                             MCE_DEFAULT_POWERKEY_ACTIONS_DOUBLE_ON,
+                             pwrkey_setting_cb,
+                             &pwrkey_actions_double_on_setting_id);
 
-    mce_gconf_track_string(MCE_GCONF_POWERKEY_ACTIONS_LONG_ON,
-                           &pwrkey_actions_long_on,
-                           DEFAULT_POWERKEY_ACTIONS_LONG_ON,
-                           pwrkey_gconf_cb,
-                           &pwrkey_actions_long_on_gconf_id);
+    mce_setting_track_string(MCE_SETTING_POWERKEY_ACTIONS_LONG_ON,
+                             &pwrkey_actions_long_on,
+                             MCE_DEFAULT_POWERKEY_ACTIONS_LONG_ON,
+                             pwrkey_setting_cb,
+                             &pwrkey_actions_long_on_setting_id);
 
-    mce_gconf_track_string(MCE_GCONF_POWERKEY_ACTIONS_SINGLE_OFF,
-                           &pwrkey_actions_single_off,
-                           DEFAULT_POWERKEY_ACTIONS_SINGLE_OFF,
-                           pwrkey_gconf_cb,
-                           &pwrkey_actions_single_off_gconf_id);
+    mce_setting_track_string(MCE_SETTING_POWERKEY_ACTIONS_SINGLE_OFF,
+                             &pwrkey_actions_single_off,
+                             MCE_DEFAULT_POWERKEY_ACTIONS_SINGLE_OFF,
+                             pwrkey_setting_cb,
+                             &pwrkey_actions_single_off_setting_id);
 
-    mce_gconf_track_string(MCE_GCONF_POWERKEY_ACTIONS_DOUBLE_OFF,
-                           &pwrkey_actions_double_off,
-                           DEFAULT_POWERKEY_ACTIONS_DOUBLE_OFF,
-                           pwrkey_gconf_cb,
-                           &pwrkey_actions_double_off_gconf_id);
+    mce_setting_track_string(MCE_SETTING_POWERKEY_ACTIONS_DOUBLE_OFF,
+                             &pwrkey_actions_double_off,
+                             MCE_DEFAULT_POWERKEY_ACTIONS_DOUBLE_OFF,
+                             pwrkey_setting_cb,
+                             &pwrkey_actions_double_off_setting_id);
 
-    mce_gconf_track_string(MCE_GCONF_POWERKEY_ACTIONS_LONG_OFF,
-                           &pwrkey_actions_long_off,
-                           DEFAULT_POWERKEY_ACTIONS_LONG_OFF,
-                           pwrkey_gconf_cb,
-                           &pwrkey_actions_long_off_gconf_id);
+    mce_setting_track_string(MCE_SETTING_POWERKEY_ACTIONS_LONG_OFF,
+                             &pwrkey_actions_long_off,
+                             MCE_DEFAULT_POWERKEY_ACTIONS_LONG_OFF,
+                             pwrkey_setting_cb,
+                             &pwrkey_actions_long_off_setting_id);
 
-    mce_gconf_track_int(MCE_GCONF_DOUBLETAP_MODE,
-                        &pwrkey_gestures_enable_mode,
-                        DBLTAP_ENABLE_DEFAULT,
-                        pwrkey_gconf_cb,
-                        &pwrkey_gestures_enable_mode_cb_id);
+    mce_setting_track_int(MCE_SETTING_DOUBLETAP_MODE,
+                          &pwrkey_gestures_enable_mode,
+                          MCE_DEFAULT_DOUBLETAP_MODE,
+                          pwrkey_setting_cb,
+                          &pwrkey_gestures_enable_mode_cb_id);
 
     for( size_t i = 0; i < POWERKEY_ACTIONS_GESTURE_COUNT; ++i ) {
-        mce_gconf_track_string(pwrkey_actions_gesture_key[i],
-                               &pwrkey_actions_gesture[i],
-                               pwrkey_actions_gesture_val[i],
-                               pwrkey_gconf_cb,
-                               &pwrkey_actions_gesture_gconf_id[i]);
+        mce_setting_track_string(pwrkey_actions_gesture_key[i],
+                                 &pwrkey_actions_gesture[i],
+                                 pwrkey_actions_gesture_val[i],
+                                 pwrkey_setting_cb,
+                                 &pwrkey_actions_gesture_setting_id[i]);
     }
 
     /* D-Bus actions */
@@ -2369,65 +2371,65 @@ pwrkey_gconf_init(void)
     for( size_t action_id = 0; action_id < POWEKEY_DBUS_ACTION_COUNT; ++action_id ) {
         pwrkey_dbus_action_t *action = pwrkey_dbus_action + action_id;
 
-        mce_gconf_track_string(action->gconf_key,
-                               &action->gconf_val,
-                               action->gconf_def,
-                               pwrkey_gconf_cb,
-                               &action->gconf_id);
+        mce_setting_track_string(action->setting_key,
+                                 &action->setting_val,
+                                 action->setting_def,
+                                 pwrkey_setting_cb,
+                                 &action->setting_id);
     }
 
     /* Apply sanity checks */
 
-    pwrkey_gconf_sanitize_now();
+    pwrkey_setting_sanitize_now();
 }
 
-/** Remove gconf change notifiers
+/** Stop tracking setting changes
  */
 static void
-pwrkey_gconf_quit(void)
+pwrkey_setting_quit(void)
 {
     /* Power key press handling mode */
-    mce_gconf_notifier_remove(pwrkey_stm_enable_mode_gconf_id),
-        pwrkey_stm_enable_mode_gconf_id = 0;
+    mce_setting_notifier_remove(pwrkey_stm_enable_mode_setting_id),
+        pwrkey_stm_enable_mode_setting_id = 0;
 
     /* Power key press blanking mode */
-    mce_gconf_notifier_remove(pwrkey_action_blank_mode_gconf_id),
-        pwrkey_action_blank_mode_gconf_id = 0;
+    mce_setting_notifier_remove(pwrkey_action_blank_mode_setting_id),
+        pwrkey_action_blank_mode_setting_id = 0;
 
     /* Power key press blanking mode */
-    mce_gconf_notifier_remove(pwrkey_ps_override_count_gconf_id),
-        pwrkey_ps_override_count_gconf_id = 0;
+    mce_setting_notifier_remove(pwrkey_ps_override_count_setting_id),
+        pwrkey_ps_override_count_setting_id = 0;
 
     /* Power key press blanking mode */
-    mce_gconf_notifier_remove(pwrkey_ps_override_timeout_gconf_id),
-        pwrkey_ps_override_timeout_gconf_id = 0;
+    mce_setting_notifier_remove(pwrkey_ps_override_timeout_setting_id),
+        pwrkey_ps_override_timeout_setting_id = 0;
 
     /* Action sets */
 
-    mce_gconf_notifier_remove(pwrkey_actions_single_on_gconf_id),
-        pwrkey_actions_single_on_gconf_id = 0;
+    mce_setting_notifier_remove(pwrkey_actions_single_on_setting_id),
+        pwrkey_actions_single_on_setting_id = 0;
 
-    mce_gconf_notifier_remove(pwrkey_actions_double_on_gconf_id),
-        pwrkey_actions_double_on_gconf_id = 0;
+    mce_setting_notifier_remove(pwrkey_actions_double_on_setting_id),
+        pwrkey_actions_double_on_setting_id = 0;
 
-    mce_gconf_notifier_remove(pwrkey_actions_long_on_gconf_id),
-        pwrkey_actions_long_on_gconf_id = 0;
+    mce_setting_notifier_remove(pwrkey_actions_long_on_setting_id),
+        pwrkey_actions_long_on_setting_id = 0;
 
-    mce_gconf_notifier_remove(pwrkey_actions_single_off_gconf_id),
-        pwrkey_actions_single_off_gconf_id = 0;
+    mce_setting_notifier_remove(pwrkey_actions_single_off_setting_id),
+        pwrkey_actions_single_off_setting_id = 0;
 
-    mce_gconf_notifier_remove(pwrkey_actions_double_off_gconf_id),
-        pwrkey_actions_double_off_gconf_id = 0;
+    mce_setting_notifier_remove(pwrkey_actions_double_off_setting_id),
+        pwrkey_actions_double_off_setting_id = 0;
 
-    mce_gconf_notifier_remove(pwrkey_actions_long_off_gconf_id),
-        pwrkey_actions_long_off_gconf_id = 0;
+    mce_setting_notifier_remove(pwrkey_actions_long_off_setting_id),
+        pwrkey_actions_long_off_setting_id = 0;
 
-    mce_gconf_notifier_remove(pwrkey_gestures_enable_mode_cb_id),
+    mce_setting_notifier_remove(pwrkey_gestures_enable_mode_cb_id),
         pwrkey_gestures_enable_mode_cb_id = 0;
 
     for( size_t i = 0; i < POWERKEY_ACTIONS_GESTURE_COUNT; ++i ) {
-        mce_gconf_notifier_remove(pwrkey_actions_gesture_gconf_id[i]),
-            pwrkey_actions_gesture_gconf_id[i] = 0;
+        mce_setting_notifier_remove(pwrkey_actions_gesture_setting_id[i]),
+            pwrkey_actions_gesture_setting_id[i] = 0;
     }
 
     g_free(pwrkey_actions_single_on),
@@ -2453,19 +2455,19 @@ pwrkey_gconf_quit(void)
             pwrkey_actions_gesture[i] = 0;;
     }
 
-    /* Cancel pending delayed gconf setting sanitizing */
-    pwrkey_gconf_sanitize_cancel();
+    /* Cancel pending delayed setting sanitizing */
+    pwrkey_setting_sanitize_cancel();
 
     /* D-Bus actions */
 
     for( size_t action_id = 0; action_id < POWEKEY_DBUS_ACTION_COUNT; ++action_id ) {
         pwrkey_dbus_action_t *action = pwrkey_dbus_action + action_id;
 
-        mce_gconf_notifier_remove(action->gconf_id),
-            action->gconf_id = 0;
+        mce_setting_notifier_remove(action->setting_id),
+            action->setting_id = 0;
 
-        g_free(action->gconf_val),
-            action->gconf_val = 0;;
+        g_free(action->setting_val),
+            action->setting_val = 0;;
 
     }
 }
@@ -2823,7 +2825,7 @@ gboolean mce_powerkey_init(void)
 
     pwrkey_dbus_init();
 
-    pwrkey_gconf_init();
+    pwrkey_setting_init();
 
     xngf_init();
 
@@ -2841,7 +2843,7 @@ void mce_powerkey_exit(void)
 
     pwrkey_dbus_quit();
 
-    pwrkey_gconf_quit();
+    pwrkey_setting_quit();
 
     pwrkey_datapipes_quit();
 

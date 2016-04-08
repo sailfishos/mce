@@ -278,7 +278,7 @@ MCE_CORE += powerkey.c
 MCE_CORE += mce-fbdev.c
 MCE_CORE += mce-dbus.c
 MCE_CORE += mce-dsme.c
-MCE_CORE += mce-gconf.c
+MCE_CORE += mce-setting.c
 MCE_CORE += mce-hbtimer.c
 MCE_CORE += mce-wltimer.c
 MCE_CORE += mce-wakelock.c
@@ -547,6 +547,7 @@ NORMALIZE_USES_SPC =\
 	mce-modules.h\
 	mce-sensorfw.c\
 	mce-sensorfw.h\
+	mce-setting.h\
 	mce-wakelock.c\
 	mce-wakelock.h\
 	mce-worker.c\
@@ -562,6 +563,7 @@ NORMALIZE_USES_SPC =\
 	modules/camera.h\
 	modules/cpu-keepalive.c\
 	modules/display.c\
+	modules/display.h\
 	modules/display.dot\
 	modules/doubletap.c\
 	modules/doubletap.h\
@@ -573,6 +575,7 @@ NORMALIZE_USES_SPC =\
 	modules/memnotify.h\
 	modules/packagekit.c\
 	modules/powersavemode.h\
+	modules/proximity.h\
 	modules/radiostates.h\
 	modules/sensor-gestures.c\
 	modules/usbmode.c\
@@ -599,8 +602,7 @@ NORMALIZE_USES_TAB =\
 	mce-conf.h\
 	mce-dbus.c\
 	mce-dbus.h\
-	mce-gconf.c\
-	mce-gconf.h\
+	mce-setting.c\
 	mce-hal.c\
 	mce-hal.h\
 	mce-io.c\
@@ -615,13 +617,11 @@ NORMALIZE_USES_TAB =\
 	modetransition.c\
 	modules/battery-bme.c\
 	modules/camera.c\
-	modules/display.h\
 	modules/keypad.c\
 	modules/led.c\
 	modules/led.h\
 	modules/powersavemode.c\
 	modules/proximity.c\
-	modules/proximity.h\
 	modules/radiostates.c\
 	systemui/tklock-dbus-names.h\
 

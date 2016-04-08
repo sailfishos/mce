@@ -31,7 +31,7 @@
 #include "../mce-log.h"
 #include "../mce-io.h"
 #include "../mce-conf.h"
-#include "../mce-gconf.h"
+#include "../mce-setting.h"
 #include "../mce-dbus.h"
 #include "../mce-sensorfw.h"
 #include "../mce-wakelock.h"
@@ -84,12 +84,12 @@ static int  fba_util_imin   (int a, int b);
 static bool fba_util_streq  (const char *s1, const char *s2);
 
 /* ------------------------------------------------------------------------- *
- * GCONF_SETTINGS
+ * DYNAMIC_SETTINGS
  * ------------------------------------------------------------------------- */
 
-static void fba_gconf_cb    (GConfClient *const gcc, const guint id, GConfEntry *const entry, gpointer const data);
-static void fba_gconf_init  (void);
-static void fba_gconf_quit  (void);
+static void fba_setting_cb    (GConfClient *const gcc, const guint id, GConfEntry *const entry, gpointer const data);
+static void fba_setting_init  (void);
+static void fba_setting_quit  (void);
 
 /* ------------------------------------------------------------------------- *
  * COLOR_PROFILE
@@ -278,32 +278,32 @@ static bool fba_util_streq(const char *s1, const char *s2)
 }
 
 /* ========================================================================= *
- * GCONF_SETTINGS
+ * DYNAMIC_SETTINGS
  * ========================================================================= */
 
 /** Master ALS enabled setting */
-static gboolean fba_gconf_als_enabled = ALS_ENABLED_DEFAULT;
-static guint    fba_gconf_als_enabled_id = 0;
+static gboolean fba_setting_als_enabled = MCE_DEFAULT_DISPLAY_ALS_ENABLED;
+static guint    fba_setting_als_enabled_id = 0;
 
 /** Filter brightness through ALS setting */
-static gboolean fba_gconf_als_autobrightness = ALS_AUTOBRIGHTNESS_DEFAULT;
-static guint    fba_gconf_als_autobrightness_id = 0;
+static gboolean fba_setting_als_autobrightness = MCE_DEFAULT_DISPLAY_ALS_AUTOBRIGHTNESS;
+static guint    fba_setting_als_autobrightness_id = 0;
 
 /** ALS is used for LID filtering setting */
-static gboolean fba_gconf_filter_lid_with_als = DEFAULT_FILTER_LID_WITH_ALS;
-static guint    fba_gconf_filter_lid_with_als_id = 0;
+static gboolean fba_setting_filter_lid_with_als = MCE_DEFAULT_TK_FILTER_LID_WITH_ALS;
+static guint    fba_setting_filter_lid_with_als_id = 0;
 
 /** Input filter to use for ALS sensor - config value */
-static gchar   *fba_gconf_als_input_filter = 0;
-static guint    fba_gconf_als_input_filter_id = 0;
+static gchar   *fba_setting_als_input_filter = 0;
+static guint    fba_setting_als_input_filter_id = 0;
 
 /** Sample time for ALS input filtering  - config value */
-static gint     fba_gconf_als_sample_time = ALS_SAMPLE_TIME_DEFAULT;
-static guint    fba_gconf_als_sample_time_id = 0;
+static gint     fba_setting_als_sample_time = MCE_DEFAULT_DISPLAY_ALS_SAMPLE_TIME;
+static guint    fba_setting_als_sample_time_id = 0;
 
 /** Currently active color profile (dummy implementation) */
-static char    *fba_gconf_color_profile = 0;
-static guint    fba_gconf_color_profile_id = 0;
+static char    *fba_setting_color_profile = 0;
+static guint    fba_setting_color_profile_id = 0;
 
 /** GConf callback for powerkey related settings
  *
@@ -313,8 +313,8 @@ static guint    fba_gconf_color_profile_id = 0;
  * @param data   (not used)
  */
 static void
-fba_gconf_cb(GConfClient *const gcc, const guint id,
-             GConfEntry *const entry, gpointer const data)
+fba_setting_cb(GConfClient *const gcc, const guint id,
+               GConfEntry *const entry, gpointer const data)
 {
     (void)gcc;
     (void)data;
@@ -327,43 +327,43 @@ fba_gconf_cb(GConfClient *const gcc, const guint id,
         goto EXIT;
     }
 
-    if( id == fba_gconf_als_enabled_id ) {
-        fba_gconf_als_enabled = gconf_value_get_bool(gcv);
+    if( id == fba_setting_als_enabled_id ) {
+        fba_setting_als_enabled = gconf_value_get_bool(gcv);
         fba_status_rethink();
     }
-    else if( id == fba_gconf_als_autobrightness_id ) {
-        fba_gconf_als_autobrightness = gconf_value_get_bool(gcv);
+    else if( id == fba_setting_als_autobrightness_id ) {
+        fba_setting_als_autobrightness = gconf_value_get_bool(gcv);
         fba_status_rethink();
     }
-    else if( id == fba_gconf_filter_lid_with_als_id ) {
-        fba_gconf_filter_lid_with_als = gconf_value_get_bool(gcv);
+    else if( id == fba_setting_filter_lid_with_als_id ) {
+        fba_setting_filter_lid_with_als = gconf_value_get_bool(gcv);
         fba_status_rethink();
     }
-    else if( id == fba_gconf_als_input_filter_id ) {
+    else if( id == fba_setting_als_input_filter_id ) {
         const char *val = gconf_value_get_string(gcv);
 
-        if( !fba_util_streq(fba_gconf_als_input_filter, val) ) {
-            g_free(fba_gconf_als_input_filter);
-            fba_gconf_als_input_filter = g_strdup(val);
-            fba_inputflt_select(fba_gconf_als_input_filter);
+        if( !fba_util_streq(fba_setting_als_input_filter, val) ) {
+            g_free(fba_setting_als_input_filter);
+            fba_setting_als_input_filter = g_strdup(val);
+            fba_inputflt_select(fba_setting_als_input_filter);
         }
     }
-    else if( id == fba_gconf_als_sample_time_id ) {
-        gint old = fba_gconf_als_sample_time;
-        fba_gconf_als_sample_time = gconf_value_get_int(gcv);
+    else if( id == fba_setting_als_sample_time_id ) {
+        gint old = fba_setting_als_sample_time;
+        fba_setting_als_sample_time = gconf_value_get_int(gcv);
 
-        if( fba_gconf_als_sample_time != old ) {
-            mce_log(LL_NOTICE, "fba_gconf_als_sample_time: %d -> %d",
-                    old, fba_gconf_als_sample_time);
+        if( fba_setting_als_sample_time != old ) {
+            mce_log(LL_NOTICE, "fba_setting_als_sample_time: %d -> %d",
+                    old, fba_setting_als_sample_time);
             // NB: takes effect on the next sample timer restart
         }
     }
-    else if (id == fba_gconf_color_profile_id) {
+    else if (id == fba_setting_color_profile_id) {
         const gchar *val = gconf_value_get_string(gcv);
 
-        if( !fba_util_streq(fba_gconf_color_profile, val) ) {
+        if( !fba_util_streq(fba_setting_color_profile, val) ) {
             if( !fba_color_profile_set(val) )
-                fba_color_profile_save(fba_gconf_color_profile);
+                fba_color_profile_save(fba_setting_color_profile);
         }
     }
     else {
@@ -375,75 +375,75 @@ EXIT:
     return;
 }
 
-/** Install gconf notification callbacks
+/** Start tracking setting changes
  */
 static void
-fba_gconf_init(void)
+fba_setting_init(void)
 {
     /* ALS enabled settings */
-    mce_gconf_track_bool(MCE_GCONF_DISPLAY_ALS_ENABLED,
-                         &fba_gconf_als_enabled,
-                         ALS_ENABLED_DEFAULT,
-                         fba_gconf_cb,
-                         &fba_gconf_als_enabled_id);
+    mce_setting_track_bool(MCE_SETTING_DISPLAY_ALS_ENABLED,
+                           &fba_setting_als_enabled,
+                           MCE_DEFAULT_DISPLAY_ALS_ENABLED,
+                           fba_setting_cb,
+                           &fba_setting_als_enabled_id);
 
-    mce_gconf_track_bool(MCE_GCONF_DISPLAY_ALS_AUTOBRIGHTNESS,
-                         &fba_gconf_als_autobrightness,
-                         ALS_AUTOBRIGHTNESS_DEFAULT,
-                         fba_gconf_cb,
-                         &fba_gconf_als_autobrightness_id);
+    mce_setting_track_bool(MCE_SETTING_DISPLAY_ALS_AUTOBRIGHTNESS,
+                           &fba_setting_als_autobrightness,
+                           MCE_DEFAULT_DISPLAY_ALS_AUTOBRIGHTNESS,
+                           fba_setting_cb,
+                           &fba_setting_als_autobrightness_id);
 
-    mce_gconf_track_bool(MCE_GCONF_FILTER_LID_WITH_ALS,
-                         &fba_gconf_filter_lid_with_als,
-                         DEFAULT_FILTER_LID_WITH_ALS,
-                         fba_gconf_cb,
-                         &fba_gconf_filter_lid_with_als_id);
+    mce_setting_track_bool(MCE_SETTING_TK_FILTER_LID_WITH_ALS,
+                           &fba_setting_filter_lid_with_als,
+                           MCE_DEFAULT_TK_FILTER_LID_WITH_ALS,
+                           fba_setting_cb,
+                           &fba_setting_filter_lid_with_als_id);
 
     /* ALS input filter setting */
-    mce_gconf_track_string(MCE_GCONF_DISPLAY_ALS_INPUT_FILTER,
-                           &fba_gconf_als_input_filter,
-                           ALS_INPUT_FILTER_DEFAULT,
-                           fba_gconf_cb,
-                           &fba_gconf_als_input_filter_id);
+    mce_setting_track_string(MCE_SETTING_DISPLAY_ALS_INPUT_FILTER,
+                             &fba_setting_als_input_filter,
+                             MCE_DEFAULT_DISPLAY_ALS_INPUT_FILTER,
+                             fba_setting_cb,
+                             &fba_setting_als_input_filter_id);
 
     /* ALS sample time setting */
-    mce_gconf_track_int(MCE_GCONF_DISPLAY_ALS_SAMPLE_TIME,
-                        &fba_gconf_als_sample_time,
-                        ALS_SAMPLE_TIME_DEFAULT,
-                        fba_gconf_cb,
-                        &fba_gconf_als_sample_time_id);
+    mce_setting_track_int(MCE_SETTING_DISPLAY_ALS_SAMPLE_TIME,
+                          &fba_setting_als_sample_time,
+                          MCE_DEFAULT_DISPLAY_ALS_SAMPLE_TIME,
+                          fba_setting_cb,
+                          &fba_setting_als_sample_time_id);
 
     /* Color profile setting */
-    mce_gconf_notifier_add(MCE_GCONF_DISPLAY_PATH,
-                           MCE_GCONF_DISPLAY_COLOR_PROFILE,
-                           fba_gconf_cb,
-                           &fba_gconf_color_profile_id);
+    mce_setting_notifier_add(MCE_SETTING_DISPLAY_PATH,
+                             MCE_SETTING_DISPLAY_COLOR_PROFILE,
+                             fba_setting_cb,
+                             &fba_setting_color_profile_id);
 
     fba_color_profile_init();
 }
 
-/** Remove gconf notification callbacks
+/** Stop tracking setting changes
  */
 static void
-fba_gconf_quit(void)
+fba_setting_quit(void)
 {
-    mce_gconf_notifier_remove(fba_gconf_als_enabled_id),
-        fba_gconf_als_enabled_id = 0;
+    mce_setting_notifier_remove(fba_setting_als_enabled_id),
+        fba_setting_als_enabled_id = 0;
 
-    mce_gconf_notifier_remove(fba_gconf_als_autobrightness_id),
-        fba_gconf_als_autobrightness_id = 0;
+    mce_setting_notifier_remove(fba_setting_als_autobrightness_id),
+        fba_setting_als_autobrightness_id = 0;
 
-    mce_gconf_notifier_remove(fba_gconf_filter_lid_with_als_id),
-        fba_gconf_filter_lid_with_als_id = 0;
+    mce_setting_notifier_remove(fba_setting_filter_lid_with_als_id),
+        fba_setting_filter_lid_with_als_id = 0;
 
-    mce_gconf_notifier_remove(fba_gconf_als_input_filter_id),
-        fba_gconf_als_input_filter_id = 0;
+    mce_setting_notifier_remove(fba_setting_als_input_filter_id),
+        fba_setting_als_input_filter_id = 0;
 
-    mce_gconf_notifier_remove(fba_gconf_als_sample_time_id),
-        fba_gconf_als_sample_time_id = 0;
+    mce_setting_notifier_remove(fba_setting_als_sample_time_id),
+        fba_setting_als_sample_time_id = 0;
 
-    mce_gconf_notifier_remove(fba_gconf_color_profile_id),
-        fba_gconf_color_profile_id = 0;
+    mce_setting_notifier_remove(fba_setting_color_profile_id),
+        fba_setting_color_profile_id = 0;
 
     fba_color_profile_quit();
 }
@@ -496,7 +496,7 @@ fba_color_profile_set(const gchar *id)
         goto EXIT;
     }
 
-    if( fba_gconf_color_profile && !strcmp(fba_gconf_color_profile, id) ) {
+    if( fba_setting_color_profile && !strcmp(fba_setting_color_profile, id) ) {
         mce_log(LL_DEBUG, "No change in color profile, ignoring");
         status = TRUE;
         goto EXIT;
@@ -512,7 +512,7 @@ fba_color_profile_set(const gchar *id)
         goto EXIT;
     }
 
-    free(fba_gconf_color_profile), fba_gconf_color_profile = strdup(id);
+    free(fba_setting_color_profile), fba_setting_color_profile = strdup(id);
 
     status = TRUE;
 
@@ -538,7 +538,7 @@ fba_color_profile_save(const gchar *id)
         goto EXIT;
     }
 
-    status = mce_gconf_set_string(MCE_GCONF_DISPLAY_COLOR_PROFILE, id);
+    status = mce_setting_set_string(MCE_SETTING_DISPLAY_COLOR_PROFILE, id);
 
 EXIT:
     return status;
@@ -566,7 +566,7 @@ static gchar *
 fba_color_profile_get_current(void)
 {
     gchar *retval = NULL;
-    (void)mce_gconf_get_string(MCE_GCONF_DISPLAY_COLOR_PROFILE,
+    (void)mce_setting_get_string(MCE_SETTING_DISPLAY_COLOR_PROFILE,
                                &retval);
 
     /* Treat empty string as NULL */
@@ -603,7 +603,7 @@ fba_color_profile_init(void)
 static void
 fba_color_profile_quit(void)
 {
-    free(fba_gconf_color_profile), fba_gconf_color_profile = 0;
+    free(fba_setting_color_profile), fba_setting_color_profile = 0;
 }
 
 /* ========================================================================= *
@@ -888,7 +888,7 @@ fba_inputflt_sampling_time(void)
 {
     return mce_clip_int(ALS_SAMPLE_TIME_MIN,
                         ALS_SAMPLE_TIME_MAX,
-                        fba_gconf_als_sample_time);
+                        fba_setting_als_sample_time);
 }
 
 /** Start ALS sampling timer
@@ -960,7 +960,7 @@ EXIT:
 static void
 fba_inputflt_init(void)
 {
-    fba_inputflt_select(fba_gconf_als_input_filter);
+    fba_inputflt_select(fba_setting_als_input_filter);
 }
 
 /** De-initialize ALS filtering
@@ -1249,7 +1249,7 @@ fba_datapipe_display_brightness_filter(gpointer data)
 
     int brightness = setting;
 
-    if( !fba_gconf_als_autobrightness || fba_inputflt_output_lux < 0 )
+    if( !fba_setting_als_autobrightness || fba_inputflt_output_lux < 0 )
         goto EXIT;
 
     int max_prof = lut_display.profiles - 1;
@@ -1279,7 +1279,7 @@ fba_datapipe_led_brightness_filter(gpointer data)
     int value = GPOINTER_TO_INT(data);
     int scale = 40;
 
-    if( !fba_gconf_als_autobrightness || fba_inputflt_output_lux < 0 )
+    if( !fba_setting_als_autobrightness || fba_inputflt_output_lux < 0 )
         goto EXIT;
 
     if( lut_led.profiles < 1 )
@@ -1301,7 +1301,7 @@ fba_datapipe_lpm_brightness_filter(gpointer data)
 {
     int value = GPOINTER_TO_INT(data);
 
-    if( !fba_gconf_als_autobrightness || fba_inputflt_output_lux < 0 )
+    if( !fba_setting_als_autobrightness || fba_inputflt_output_lux < 0 )
         goto EXIT;
 
     if( lut_lpm.profiles < 1 )
@@ -1327,7 +1327,7 @@ fba_datapipe_key_backlight_filter(gpointer data)
     int value = GPOINTER_TO_INT(data);
     int scale = 100;
 
-    if( !fba_gconf_als_autobrightness || fba_inputflt_output_lux < 0 )
+    if( !fba_setting_als_autobrightness || fba_inputflt_output_lux < 0 )
         goto EXIT;
 
     if( lut_key.profiles < 1 )
@@ -1351,7 +1351,7 @@ fba_datapipe_ambient_light_poll_filter(gpointer data)
     bool prev = fba_ambient_light_poll;
     fba_ambient_light_poll = GPOINTER_TO_INT(data);
 
-    if( !fba_gconf_als_enabled )
+    if( !fba_setting_als_enabled )
         fba_ambient_light_poll = FALSE;
 
     if( fba_ambient_light_poll == prev )
@@ -1506,7 +1506,7 @@ static gboolean
 fba_dbus_send_current_color_profile(DBusMessage *method_call)
 {
     DBusMessage *msg = 0;
-    const char  *val = fba_gconf_color_profile ?: COLOR_PROFILE_ID_HARDCODED;
+    const char  *val = fba_setting_color_profile ?: COLOR_PROFILE_ID_HARDCODED;
 
     if( method_call )
         msg = dbus_new_method_reply(method_call);
@@ -1703,7 +1703,7 @@ static gint fba_status_sensor_lux = -1;
 static void
 fba_status_sensor_value_change_cb(int lux)
 {
-    if( !fba_gconf_als_enabled )
+    if( !fba_setting_als_enabled )
         fba_status_sensor_lux = -1;
     else
         fba_status_sensor_lux = lux;
@@ -1729,7 +1729,7 @@ fba_status_sensor_is_needed(void)
     case MCE_DISPLAY_DIM:
     case MCE_DISPLAY_LPM_OFF:
     case MCE_DISPLAY_LPM_ON:
-        if( fba_gconf_als_autobrightness || fba_gconf_filter_lid_with_als )
+        if( fba_setting_als_autobrightness || fba_setting_filter_lid_with_als )
             need_als = true;
         break;
 
@@ -1752,7 +1752,7 @@ fba_status_rethink(void)
     static int enable_old = -1;
     bool       enable_new = false;
 
-    if( fba_gconf_als_enabled )
+    if( fba_setting_als_enabled )
         enable_new = (fba_ambient_light_poll ||
                       fba_status_sensor_is_needed());
 
@@ -1763,7 +1763,7 @@ fba_status_rethink(void)
         goto EXIT;
 
     mce_log(LL_DEBUG, "enabled=%d; autobright=%d; filter_lid=%d -> enable=%d",
-            fba_gconf_als_enabled, fba_gconf_als_autobrightness, fba_gconf_filter_lid_with_als, enable_new);
+            fba_setting_als_enabled, fba_setting_als_autobrightness, fba_setting_filter_lid_with_als, enable_new);
 
     enable_old = enable_new;
 
@@ -1796,8 +1796,8 @@ fba_status_rethink(void)
     }
 
 EXIT:
-    if( old_autobrightness != fba_gconf_als_autobrightness ) {
-        old_autobrightness = fba_gconf_als_autobrightness;
+    if( old_autobrightness != fba_setting_als_autobrightness ) {
+        old_autobrightness = fba_setting_als_autobrightness;
         fba_datapipe_execute_brightness_change();
     }
 
@@ -1906,7 +1906,7 @@ g_module_check_init(GModule *module)
 
     fba_dbus_init();
 
-    fba_gconf_init();
+    fba_setting_init();
 
     fba_inputflt_init();
 
@@ -1927,7 +1927,7 @@ g_module_unload(GModule *module)
     /* Mark that plugin is about to be unloaded */
     fba_module_unload = true;
 
-    fba_gconf_quit();
+    fba_setting_quit();
 
     fba_dbus_quit();
 
@@ -1940,8 +1940,8 @@ g_module_unload(GModule *module)
     fba_sensorpoll_stop();
     fba_inputflt_quit();
 
-    g_free(fba_gconf_als_input_filter),
-        fba_gconf_als_input_filter = 0;
+    g_free(fba_setting_als_input_filter),
+        fba_setting_als_input_filter = 0;
 
     return;
 }
