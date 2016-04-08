@@ -1,3 +1,16 @@
+mce (1.79.5) precise; urgency=low
+
+  * [settings] Remove unused debug data. MER#1554
+  * [settings] Do not use hardcoded key names. MER#1554
+  * [settings] Remove gconf references from key names. MER#1554
+  * [settings] Remove gconf references from interface function names. MER#1554
+  * [settings] Rename mce-gconf module to mce-setting. MER#1554
+  * [settings] Use mce-setting module. MER#1554
+  * [settings] Improve key name documentation. MER#1554
+  * [settings] Remove gconf references from code. Fixes MER#1554
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 08 Apr 2016 08:17:12 +0300
+
 mce (1.79.4) precise; urgency=low
 
   * [display] Act on lpm-off delay changes. Fixes JB#34618
