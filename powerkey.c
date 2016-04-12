@@ -475,6 +475,7 @@ static void pwrkey_stm_terminate            (void);
 static void     pwrkey_dbus_send_signal(const char *sig, const char *arg);
 
 static gboolean pwrkey_dbus_trigger_event_cb(DBusMessage *const req);
+static gboolean pwrkey_dbus_ignore_incoming_call_cb(DBusMessage *const req);
 
 static void     pwrkey_dbus_init(void);
 static void     pwrkey_dbus_quit(void);
@@ -617,6 +618,9 @@ static alarm_ui_state_t alarm_ui_state = MCE_ALARM_UI_OFF_INT32;
 
 /** Cached call state */
 static call_state_t call_state = CALL_STATE_NONE;
+
+/** Use powerkey for blanking during incoming calls */
+static bool pwrkey_ignore_incoming_call = false;
 
 /* ========================================================================= *
  * PS_OVERRIDE
@@ -801,10 +805,33 @@ pwrkey_action_blank(void)
 static void
 pwrkey_action_unblank(void)
 {
+    /* Special case: Even if incoming call is beeing ignored, do not
+     * allow unblanking via power key while proximity sensor is covered.
+     *
+     * Silencing ringing via pressing the power key through fabric
+     * of a pocket easily leads to several power key presses getting
+     * emitted and we do not want the display to get activated by such
+     * activity.
+     */
+    if( call_state == CALL_STATE_RINGING ) {
+        if( !pwrkey_ignore_incoming_call ) {
+            mce_log(LL_DEVEL, "skip unblank; incoming call not ignored");
+            goto EXIT;
+        }
+
+        if( proximity_state_actual != COVER_OPEN ) {
+            mce_log(LL_DEVEL, "skip unblank; proximity covered/unknown");
+            goto EXIT;
+        }
+    }
+
     display_state_t request = MCE_DISPLAY_ON;
     mce_log(LL_DEBUG, "Requesting display=%s",
             display_state_repr(request));
     mce_tklock_unblank(request);
+
+EXIT:
+    return;
 }
 
 static void
@@ -1747,6 +1774,12 @@ pwrkey_stm_ignore_action(void)
     /* During incoming call power key is used to silence ringing */
     switch( call_state ) {
     case CALL_STATE_RINGING:
+        if( pwrkey_ignore_incoming_call ) {
+            /* Call ui has signaled mce that the incoming call has
+             * been ignored -> powerkey can be used for display
+             * control even if there is incoming call. */
+            break;
+        }
         mce_log(LL_DEVEL, "[powerkey] ignored due to incoming call");
         ignore_powerkey = true;
         pwrkey_dbus_send_signal("call_ui_feedback_ind", "powerkey");
@@ -1913,6 +1946,31 @@ EXIT:
     return TRUE;
 }
 
+/** D-Bus callback for ignoring incoming call
+ *
+ * @param req D-Bus method call message
+ *
+ * @return TRUE
+ */
+static gboolean pwrkey_dbus_ignore_incoming_call_cb(DBusMessage *const req)
+{
+
+    mce_log(LL_DEVEL, "ignore incoming call from %s",
+            mce_dbus_get_message_sender_ident(req));
+
+    if( call_state == CALL_STATE_RINGING ) {
+        mce_log(LL_DEBUG, "start ignoring incoming calls");
+        pwrkey_ignore_incoming_call = true;
+    }
+
+    if( !dbus_message_get_no_reply(req) ) {
+      DBusMessage *rsp = dbus_new_method_reply(req);
+      dbus_send_message(rsp), rsp = 0;
+    }
+
+    return TRUE;
+}
+
 /** Array of dbus message handlers */
 static mce_dbus_handler_t pwrkey_dbus_handlers[] =
 {
@@ -1946,6 +2004,13 @@ static mce_dbus_handler_t pwrkey_dbus_handlers[] =
         .callback  = pwrkey_dbus_trigger_event_cb,
         .args      =
             "    <arg direction=\"in\" name=\"action\" type=\"u\"/>\n"
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_IGNORE_INCOMING_CALL_REQ,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = pwrkey_dbus_ignore_incoming_call_cb,
+        .args      = 0
     },
     /* sentinel */
     {
@@ -2677,6 +2742,11 @@ pwrkey_datapipe_call_state_cb(gconstpointer data)
     mce_log(LL_DEBUG, "call_state = %s -> %s",
             call_state_repr(prev),
             call_state_repr(call_state));
+
+    if( pwrkey_ignore_incoming_call ) {
+        mce_log(LL_DEBUG, "stop ignoring incoming calls");
+        pwrkey_ignore_incoming_call = false;
+    }
 
 EXIT:
     return;
