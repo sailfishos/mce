@@ -614,6 +614,7 @@ NORMALIZE_USES_TAB =\
 	mce-modules.c\
 	mce.c\
 	mce.h\
+	mce.conf\
 	modetransition.c\
 	modules/battery-bme.c\
 	modules/camera.c\
