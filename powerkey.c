@@ -505,9 +505,12 @@ static void     pwrkey_setting_quit            (void);
 static void pwrkey_datapipes_keypress_cb(gconstpointer const data);
 static void pwrkey_datapipe_ngfd_available_cb(gconstpointer data);
 static void pwrkey_datapipe_system_state_cb(gconstpointer data);
+static void pwrkey_datapipe_display_state_cb(gconstpointer data);
 static void pwrkey_datapipe_display_state_next_cb(gconstpointer data);
 static void pwrkey_datapipe_lid_cover_policy_cb(gconstpointer data);
 static void pwrkey_datapipe_proximity_sensor_cb(gconstpointer data);
+static void pwrkey_datapipe_call_state_cb(gconstpointer data);
+static void pwrkey_datapipe_alarm_ui_state_cb(gconstpointer data);
 
 static void pwrkey_datapipes_init(void);
 static void pwrkey_datapipes_quit(void);
@@ -589,6 +592,9 @@ static bool pwrkey_delete_flagfile(const char *path)
 /** System state; is undefined at bootup, can't assume anything */
 static system_state_t system_state = MCE_STATE_UNDEF;
 
+/** Current display state; undefined initially, can't assume anything */
+static display_state_t display_state = MCE_DISPLAY_UNDEF;
+
 /** Next Display state; undefined initially, can't assume anything */
 static display_state_t display_state_next = MCE_DISPLAY_UNDEF;
 
@@ -600,6 +606,12 @@ static cover_state_t proximity_state_actual = COVER_OPEN;
 
 /** NGFD availability */
 static service_state_t ngfd_available = SERVICE_STATE_UNDEF;
+
+/** Cached alarm ui state */
+static alarm_ui_state_t alarm_ui_state = MCE_ALARM_UI_OFF_INT32;
+
+/** Cached call state */
+static call_state_t call_state = CALL_STATE_NONE;
 
 /* ========================================================================= *
  * PS_OVERRIDE
@@ -1679,7 +1691,7 @@ static void pwrkey_stm_store_initial_state(void)
 {
     /* Cache display state */
 
-    pwrkey_stm_display_state = datapipe_get_gint(display_state_pipe);
+    pwrkey_stm_display_state = display_state;
 
     /* MCE_DISPLAY_OFF requests must be queued only
      * from fully powered up display states.
@@ -1710,12 +1722,6 @@ pwrkey_stm_ignore_action(void)
 {
     /* Assume that power key action should not be ignored */
     bool ignore_powerkey = false;
-
-    alarm_ui_state_t alarm_ui_state =
-        datapipe_get_gint(alarm_ui_state_pipe);
-
-    call_state_t call_state =
-        datapipe_get_gint(call_state_pipe);
 
     /* If alarm dialog is up, power key is used for snoozing */
     switch( alarm_ui_state ) {
@@ -2492,6 +2498,27 @@ EXIT:
     return;
 }
 
+/** Handle display state change notifications
+ *
+ * @param data display state (as void pointer)
+ */
+static void
+pwrkey_datapipe_display_state_cb(gconstpointer data)
+{
+    display_state_t prev = display_state;
+    display_state = GPOINTER_TO_INT(data);
+
+    if( display_state == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "display_state = %s -> %s",
+            display_state_repr(prev),
+            display_state_repr(display_state));
+
+EXIT:
+    return;
+}
+
 /** Pre-change notifications for display_state
  */
 static void pwrkey_datapipe_display_state_next_cb(gconstpointer data)
@@ -2629,6 +2656,48 @@ EXIT:
     return;
 }
 
+/** Handle call state change notifications
+ *
+ * @param data call state (as void pointer)
+ */
+static void
+pwrkey_datapipe_call_state_cb(gconstpointer data)
+{
+    call_state_t prev = call_state;
+    call_state = GPOINTER_TO_INT(data);
+
+    if( call_state == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "call_state = %s -> %s",
+            call_state_repr(prev),
+            call_state_repr(call_state));
+
+EXIT:
+    return;
+}
+
+/** Handle alarm ui state change notifications
+ *
+ * @param data alarm ui state (as void pointer)
+ */
+static void
+pwrkey_datapipe_alarm_ui_state_cb(gconstpointer data)
+{
+    alarm_ui_state_t prev = alarm_ui_state;
+    alarm_ui_state = GPOINTER_TO_INT(data);
+
+    if( alarm_ui_state == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "alarm_ui_state = %s -> %s",
+            alarm_state_repr(prev),
+            alarm_state_repr(alarm_ui_state));
+
+EXIT:
+    return;
+}
+
 /** Array of datapipe handlers */
 static datapipe_handler_t pwrkey_datapipe_handlers[] =
 {
@@ -2643,20 +2712,32 @@ static datapipe_handler_t pwrkey_datapipe_handlers[] =
         .output_cb = pwrkey_datapipe_ngfd_available_cb,
     },
     {
-        .datapipe = &system_state_pipe,
+        .datapipe  = &system_state_pipe,
         .output_cb = pwrkey_datapipe_system_state_cb,
     },
     {
-        .datapipe = &display_state_next_pipe,
+        .datapipe  = &display_state_pipe,
+        .output_cb = pwrkey_datapipe_display_state_cb,
+    },
+    {
+        .datapipe  = &display_state_next_pipe,
         .output_cb = pwrkey_datapipe_display_state_next_cb,
     },
     {
-        .datapipe = &lid_cover_policy_pipe,
+        .datapipe  = &lid_cover_policy_pipe,
         .output_cb = pwrkey_datapipe_lid_cover_policy_cb,
     },
     {
-        .datapipe = &proximity_sensor_pipe,
+        .datapipe  = &proximity_sensor_pipe,
         .output_cb = pwrkey_datapipe_proximity_sensor_cb,
+    },
+    {
+        .datapipe  = &alarm_ui_state_pipe,
+        .output_cb = pwrkey_datapipe_alarm_ui_state_cb,
+    },
+    {
+        .datapipe  = &call_state_pipe,
+        .output_cb = pwrkey_datapipe_call_state_cb,
     },
     // sentinel
     {
