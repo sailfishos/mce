@@ -284,6 +284,7 @@ static void pwrkey_actions_do_common       (void);
 static void pwrkey_actions_do_single_press (void);
 static void pwrkey_actions_do_double_press (void);
 static void pwrkey_actions_do_long_press   (void);
+static bool pwrkey_actions_update          (const pwrkey_actions_t *self, gchar **names_single, gchar **names_double, gchar **names_long);
 
 static bool pwrkey_actions_use_double_press(void);
 
@@ -434,6 +435,7 @@ static bool   pwrkey_dbus_action_is_signal(const pwrkey_dbus_action_t *self);
 static void   pwrkey_dbus_action_parse(pwrkey_dbus_action_t *self);
 static gchar *pwrkey_dbus_action_to_string(const pwrkey_dbus_action_t *self);
 static void   pwrkey_dbus_action_sanitize(pwrkey_dbus_action_t *self);
+static void   pwrkey_dbus_action_configure(size_t action_id, bool force_reset);
 static void   pwrkey_dbus_action_execute(size_t index);
 
 /* ------------------------------------------------------------------------- *
@@ -484,6 +486,9 @@ static void     pwrkey_dbus_quit(void);
  * ------------------------------------------------------------------------- */
 
 static gint     pwrkey_setting_sanitize_id = 0;
+
+static void     pwrkey_setting_sanitize_action_masks(void);
+static void     pwrkey_setting_sanitize_dbus_actions(void);
 
 static gboolean pwrkey_setting_sanitize_cb     (gpointer aptr);
 static void     pwrkey_setting_sanitize_now    (void);
