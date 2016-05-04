@@ -1,3 +1,13 @@
+mce (1.80.0) precise; urgency=low
+
+  * [powerkey] Do not poll datapipes. JB#20728
+  * [powerkey] Add missing function prototypes. JB#20728
+  * [dbus] Fix mce D-Bus method call config. JB#20728
+  * [powerkey] Add D-Bus method for ignoring incoming calls. JB#20728
+  * [build] Update mce development package dependency. JB#20728
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 04 May 2016 13:08:48 +0300
+
 mce (1.79.5) precise; urgency=low
 
   * [settings] Remove unused debug data. MER#1554
