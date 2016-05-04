@@ -284,6 +284,7 @@ static void pwrkey_actions_do_common       (void);
 static void pwrkey_actions_do_single_press (void);
 static void pwrkey_actions_do_double_press (void);
 static void pwrkey_actions_do_long_press   (void);
+static bool pwrkey_actions_update          (const pwrkey_actions_t *self, gchar **names_single, gchar **names_double, gchar **names_long);
 
 static bool pwrkey_actions_use_double_press(void);
 
@@ -434,6 +435,7 @@ static bool   pwrkey_dbus_action_is_signal(const pwrkey_dbus_action_t *self);
 static void   pwrkey_dbus_action_parse(pwrkey_dbus_action_t *self);
 static gchar *pwrkey_dbus_action_to_string(const pwrkey_dbus_action_t *self);
 static void   pwrkey_dbus_action_sanitize(pwrkey_dbus_action_t *self);
+static void   pwrkey_dbus_action_configure(size_t action_id, bool force_reset);
 static void   pwrkey_dbus_action_execute(size_t index);
 
 /* ------------------------------------------------------------------------- *
@@ -473,6 +475,7 @@ static void pwrkey_stm_terminate            (void);
 static void     pwrkey_dbus_send_signal(const char *sig, const char *arg);
 
 static gboolean pwrkey_dbus_trigger_event_cb(DBusMessage *const req);
+static gboolean pwrkey_dbus_ignore_incoming_call_cb(DBusMessage *const req);
 
 static void     pwrkey_dbus_init(void);
 static void     pwrkey_dbus_quit(void);
@@ -484,6 +487,9 @@ static void     pwrkey_dbus_quit(void);
  * ------------------------------------------------------------------------- */
 
 static gint     pwrkey_setting_sanitize_id = 0;
+
+static void     pwrkey_setting_sanitize_action_masks(void);
+static void     pwrkey_setting_sanitize_dbus_actions(void);
 
 static gboolean pwrkey_setting_sanitize_cb     (gpointer aptr);
 static void     pwrkey_setting_sanitize_now    (void);
@@ -505,9 +511,12 @@ static void     pwrkey_setting_quit            (void);
 static void pwrkey_datapipes_keypress_cb(gconstpointer const data);
 static void pwrkey_datapipe_ngfd_available_cb(gconstpointer data);
 static void pwrkey_datapipe_system_state_cb(gconstpointer data);
+static void pwrkey_datapipe_display_state_cb(gconstpointer data);
 static void pwrkey_datapipe_display_state_next_cb(gconstpointer data);
 static void pwrkey_datapipe_lid_cover_policy_cb(gconstpointer data);
 static void pwrkey_datapipe_proximity_sensor_cb(gconstpointer data);
+static void pwrkey_datapipe_call_state_cb(gconstpointer data);
+static void pwrkey_datapipe_alarm_ui_state_cb(gconstpointer data);
 
 static void pwrkey_datapipes_init(void);
 static void pwrkey_datapipes_quit(void);
@@ -589,6 +598,9 @@ static bool pwrkey_delete_flagfile(const char *path)
 /** System state; is undefined at bootup, can't assume anything */
 static system_state_t system_state = MCE_STATE_UNDEF;
 
+/** Current display state; undefined initially, can't assume anything */
+static display_state_t display_state = MCE_DISPLAY_UNDEF;
+
 /** Next Display state; undefined initially, can't assume anything */
 static display_state_t display_state_next = MCE_DISPLAY_UNDEF;
 
@@ -600,6 +612,15 @@ static cover_state_t proximity_state_actual = COVER_OPEN;
 
 /** NGFD availability */
 static service_state_t ngfd_available = SERVICE_STATE_UNDEF;
+
+/** Cached alarm ui state */
+static alarm_ui_state_t alarm_ui_state = MCE_ALARM_UI_OFF_INT32;
+
+/** Cached call state */
+static call_state_t call_state = CALL_STATE_NONE;
+
+/** Use powerkey for blanking during incoming calls */
+static bool pwrkey_ignore_incoming_call = false;
 
 /* ========================================================================= *
  * PS_OVERRIDE
@@ -784,10 +805,33 @@ pwrkey_action_blank(void)
 static void
 pwrkey_action_unblank(void)
 {
+    /* Special case: Even if incoming call is beeing ignored, do not
+     * allow unblanking via power key while proximity sensor is covered.
+     *
+     * Silencing ringing via pressing the power key through fabric
+     * of a pocket easily leads to several power key presses getting
+     * emitted and we do not want the display to get activated by such
+     * activity.
+     */
+    if( call_state == CALL_STATE_RINGING ) {
+        if( !pwrkey_ignore_incoming_call ) {
+            mce_log(LL_DEVEL, "skip unblank; incoming call not ignored");
+            goto EXIT;
+        }
+
+        if( proximity_state_actual != COVER_OPEN ) {
+            mce_log(LL_DEVEL, "skip unblank; proximity covered/unknown");
+            goto EXIT;
+        }
+    }
+
     display_state_t request = MCE_DISPLAY_ON;
     mce_log(LL_DEBUG, "Requesting display=%s",
             display_state_repr(request));
     mce_tklock_unblank(request);
+
+EXIT:
+    return;
 }
 
 static void
@@ -1679,7 +1723,7 @@ static void pwrkey_stm_store_initial_state(void)
 {
     /* Cache display state */
 
-    pwrkey_stm_display_state = datapipe_get_gint(display_state_pipe);
+    pwrkey_stm_display_state = display_state;
 
     /* MCE_DISPLAY_OFF requests must be queued only
      * from fully powered up display states.
@@ -1711,12 +1755,6 @@ pwrkey_stm_ignore_action(void)
     /* Assume that power key action should not be ignored */
     bool ignore_powerkey = false;
 
-    alarm_ui_state_t alarm_ui_state =
-        datapipe_get_gint(alarm_ui_state_pipe);
-
-    call_state_t call_state =
-        datapipe_get_gint(call_state_pipe);
-
     /* If alarm dialog is up, power key is used for snoozing */
     switch( alarm_ui_state ) {
     case MCE_ALARM_UI_VISIBLE_INT32:
@@ -1736,6 +1774,12 @@ pwrkey_stm_ignore_action(void)
     /* During incoming call power key is used to silence ringing */
     switch( call_state ) {
     case CALL_STATE_RINGING:
+        if( pwrkey_ignore_incoming_call ) {
+            /* Call ui has signaled mce that the incoming call has
+             * been ignored -> powerkey can be used for display
+             * control even if there is incoming call. */
+            break;
+        }
         mce_log(LL_DEVEL, "[powerkey] ignored due to incoming call");
         ignore_powerkey = true;
         pwrkey_dbus_send_signal("call_ui_feedback_ind", "powerkey");
@@ -1902,6 +1946,31 @@ EXIT:
     return TRUE;
 }
 
+/** D-Bus callback for ignoring incoming call
+ *
+ * @param req D-Bus method call message
+ *
+ * @return TRUE
+ */
+static gboolean pwrkey_dbus_ignore_incoming_call_cb(DBusMessage *const req)
+{
+
+    mce_log(LL_DEVEL, "ignore incoming call from %s",
+            mce_dbus_get_message_sender_ident(req));
+
+    if( call_state == CALL_STATE_RINGING ) {
+        mce_log(LL_DEBUG, "start ignoring incoming calls");
+        pwrkey_ignore_incoming_call = true;
+    }
+
+    if( !dbus_message_get_no_reply(req) ) {
+      DBusMessage *rsp = dbus_new_method_reply(req);
+      dbus_send_message(rsp), rsp = 0;
+    }
+
+    return TRUE;
+}
+
 /** Array of dbus message handlers */
 static mce_dbus_handler_t pwrkey_dbus_handlers[] =
 {
@@ -1935,6 +2004,13 @@ static mce_dbus_handler_t pwrkey_dbus_handlers[] =
         .callback  = pwrkey_dbus_trigger_event_cb,
         .args      =
             "    <arg direction=\"in\" name=\"action\" type=\"u\"/>\n"
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_IGNORE_INCOMING_CALL_REQ,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = pwrkey_dbus_ignore_incoming_call_cb,
+        .args      = 0
     },
     /* sentinel */
     {
@@ -2492,6 +2568,27 @@ EXIT:
     return;
 }
 
+/** Handle display state change notifications
+ *
+ * @param data display state (as void pointer)
+ */
+static void
+pwrkey_datapipe_display_state_cb(gconstpointer data)
+{
+    display_state_t prev = display_state;
+    display_state = GPOINTER_TO_INT(data);
+
+    if( display_state == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "display_state = %s -> %s",
+            display_state_repr(prev),
+            display_state_repr(display_state));
+
+EXIT:
+    return;
+}
+
 /** Pre-change notifications for display_state
  */
 static void pwrkey_datapipe_display_state_next_cb(gconstpointer data)
@@ -2629,6 +2726,53 @@ EXIT:
     return;
 }
 
+/** Handle call state change notifications
+ *
+ * @param data call state (as void pointer)
+ */
+static void
+pwrkey_datapipe_call_state_cb(gconstpointer data)
+{
+    call_state_t prev = call_state;
+    call_state = GPOINTER_TO_INT(data);
+
+    if( call_state == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "call_state = %s -> %s",
+            call_state_repr(prev),
+            call_state_repr(call_state));
+
+    if( pwrkey_ignore_incoming_call ) {
+        mce_log(LL_DEBUG, "stop ignoring incoming calls");
+        pwrkey_ignore_incoming_call = false;
+    }
+
+EXIT:
+    return;
+}
+
+/** Handle alarm ui state change notifications
+ *
+ * @param data alarm ui state (as void pointer)
+ */
+static void
+pwrkey_datapipe_alarm_ui_state_cb(gconstpointer data)
+{
+    alarm_ui_state_t prev = alarm_ui_state;
+    alarm_ui_state = GPOINTER_TO_INT(data);
+
+    if( alarm_ui_state == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "alarm_ui_state = %s -> %s",
+            alarm_state_repr(prev),
+            alarm_state_repr(alarm_ui_state));
+
+EXIT:
+    return;
+}
+
 /** Array of datapipe handlers */
 static datapipe_handler_t pwrkey_datapipe_handlers[] =
 {
@@ -2643,20 +2787,32 @@ static datapipe_handler_t pwrkey_datapipe_handlers[] =
         .output_cb = pwrkey_datapipe_ngfd_available_cb,
     },
     {
-        .datapipe = &system_state_pipe,
+        .datapipe  = &system_state_pipe,
         .output_cb = pwrkey_datapipe_system_state_cb,
     },
     {
-        .datapipe = &display_state_next_pipe,
+        .datapipe  = &display_state_pipe,
+        .output_cb = pwrkey_datapipe_display_state_cb,
+    },
+    {
+        .datapipe  = &display_state_next_pipe,
         .output_cb = pwrkey_datapipe_display_state_next_cb,
     },
     {
-        .datapipe = &lid_cover_policy_pipe,
+        .datapipe  = &lid_cover_policy_pipe,
         .output_cb = pwrkey_datapipe_lid_cover_policy_cb,
     },
     {
-        .datapipe = &proximity_sensor_pipe,
+        .datapipe  = &proximity_sensor_pipe,
         .output_cb = pwrkey_datapipe_proximity_sensor_cb,
+    },
+    {
+        .datapipe  = &alarm_ui_state_pipe,
+        .output_cb = pwrkey_datapipe_alarm_ui_state_cb,
+    },
+    {
+        .datapipe  = &call_state_pipe,
+        .output_cb = pwrkey_datapipe_call_state_cb,
     },
     // sentinel
     {
