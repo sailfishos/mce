@@ -292,6 +292,15 @@ static gchar *engine2_leds_path = NULL;
 /** Path to engine 3 leds */
 static gchar *engine3_leds_path = NULL;
 
+/** Cached display state */
+static display_state_t display_state = MCE_DISPLAY_UNDEF;
+
+/** Cached system state */
+static system_state_t system_state = MCE_STATE_UNDEF;
+
+/** Cached led brightness */
+static gint led_brightness = 0;
+
 /** Maximum LED brightness
  *
  * The led_brightness_pipe is initialized to maximum_led_brightness
@@ -1407,8 +1416,6 @@ static gboolean display_off_p(display_state_t state)
  */
 static void led_update_active_pattern(void)
 {
-	display_state_t display_state = display_state_get();
-	system_state_t system_state = datapipe_get_gint(system_state_pipe);
 	pattern_struct *new_active_pattern = 0;
 
 	if( !pattern_stack )
@@ -1668,9 +1675,20 @@ static void led_disable(void)
  */
 static void system_state_trigger(gconstpointer data)
 {
-	(void)data;
+	system_state_t prev = system_state;
+	system_state = GPOINTER_TO_INT(data);
+
+	if( prev == system_state )
+		goto EXIT;
+
+	mce_log(LL_DEBUG, "system_state: %s -> %s",
+		system_state_repr(prev),
+		system_state_repr(system_state));
 
 	led_update_active_pattern();
+
+EXIT:
+	return;
 }
 
 /** Monotonic time stamp helper
@@ -1775,7 +1793,7 @@ static void user_activity_trigger(gconstpointer data)
 {
 	(void)data; // the data is irrelevant
 
-	if( display_state_get() == MCE_DISPLAY_ON )
+	if( display_state == MCE_DISPLAY_ON )
 		led_pattern_op(type6_revert_cb);
 	get_monotime(&activity_time);
 }
@@ -1787,12 +1805,17 @@ static void user_activity_trigger(gconstpointer data)
  */
 static void display_state_trigger(gconstpointer data)
 {
-	static display_state_t old_display_state = MCE_DISPLAY_UNDEF;
-	display_state_t display_state = GPOINTER_TO_INT(data);
+	display_state_t prev = display_state;
+	display_state = GPOINTER_TO_INT(data);
+
 	struct timeval tv;
 
-	if (old_display_state == display_state)
+	if (prev == display_state)
 		goto EXIT;
+
+	mce_log(LL_DEBUG, "display_state: %s -> %s",
+		display_state_repr(prev),
+		display_state_repr(display_state));
 
 	get_monotime(&tv);
 	timersub(&tv, &activity_time, &tv);
@@ -1823,7 +1846,6 @@ static void display_state_trigger(gconstpointer data)
 	}
 
 	led_update_active_pattern();
-	old_display_state = display_state;
 
 EXIT:
 	return;
@@ -1836,7 +1858,14 @@ EXIT:
  */
 static void led_brightness_trigger(gconstpointer data)
 {
-	gint led_brightness = GPOINTER_TO_INT(data);
+	gint prev = led_brightness;
+	led_brightness = GPOINTER_TO_INT(data);
+
+	if( prev == led_brightness )
+		goto EXIT;
+
+	mce_log(LL_DEBUG, "led_brightness: %d -> %d",
+		prev, led_brightness);
 
 	switch (get_led_type()) {
 	case LED_TYPE_LYSTI_RGB:
@@ -1861,6 +1890,9 @@ static void led_brightness_trigger(gconstpointer data)
 	default:
 		break;
 	}
+
+EXIT:
+	return;
 }
 
 /**
@@ -1870,7 +1902,13 @@ static void led_brightness_trigger(gconstpointer data)
  */
 static void led_pattern_activate_trigger(gconstpointer data)
 {
-	led_activate_pattern((gchar *)data);
+	const char *name = data;
+
+	/* The datapipe does not have a state, so we need to
+	 * ignore null data that shows up on initialization */
+
+	if( name )
+		led_activate_pattern(name);
 }
 
 /**
@@ -1880,7 +1918,13 @@ static void led_pattern_activate_trigger(gconstpointer data)
  */
 static void led_pattern_deactivate_trigger(gconstpointer data)
 {
-	led_deactivate_pattern((gchar *)data);
+	const char *name = data;
+
+	/* The datapipe does not have a state, so we need to
+	 * ignore null data that shows up on initialization */
+
+	if( name )
+		led_deactivate_pattern(data);
 }
 
 /**
@@ -2966,6 +3010,10 @@ static void charger_state_trigger(gconstpointer data)
 	if( charger_state == prev )
 		goto EXIT;
 
+	mce_log(LL_DEBUG, "charger_state: %s -> %s",
+		charger_state_repr(prev),
+		charger_state_repr(charger_state));
+
 	sw_breathing_rethink();
 EXIT:
 	return;
@@ -2980,6 +3028,8 @@ static void battery_level_trigger(gconstpointer data)
 
 	if( battery_level == prev )
 		goto EXIT;
+
+	mce_log(LL_DEBUG, "battery_level: %d -> %d", prev, battery_level);
 
 	sw_breathing_rethink();
 EXIT:
@@ -3057,6 +3107,70 @@ static void mce_led_quit_dbus(void)
 	mce_dbus_handler_unregister_array(led_dbus_handlers);
 }
 
+/** Array of datapipe handlers */
+static datapipe_handler_t mce_led_datapipe_handlers[] =
+{
+	// output triggers
+	{
+		.datapipe  = &user_activity_pipe,
+		.output_cb = user_activity_trigger,
+	},
+	{
+		.datapipe  = &system_state_pipe,
+		.output_cb = system_state_trigger,
+	},
+	{
+		.datapipe  = &display_state_pipe,
+		.output_cb = display_state_trigger,
+	},
+	{
+		.datapipe  = &led_brightness_pipe,
+		.output_cb = led_brightness_trigger,
+	},
+	{
+		.datapipe  = &led_pattern_activate_pipe,
+		.output_cb = led_pattern_activate_trigger,
+	},
+	{
+		.datapipe  = &led_pattern_deactivate_pipe,
+		.output_cb = led_pattern_deactivate_trigger,
+	},
+	{
+		.datapipe  = &charger_state_pipe,
+		.output_cb = charger_state_trigger,
+	},
+	{
+		.datapipe  = &battery_level_pipe,
+		.output_cb = battery_level_trigger,
+	},
+	// sentinel
+	{
+		.datapipe = 0,
+	}
+};
+
+static datapipe_bindings_t mce_led_datapipe_bindings =
+{
+	.module   = "led",
+	.handlers = mce_led_datapipe_handlers,
+};
+
+/** Append triggers/filters to datapipes
+ */
+static void
+mce_led_datapipes_init(void)
+{
+	datapipe_bindings_init(&mce_led_datapipe_bindings);
+}
+
+/** Remove triggers/filters from datapipes
+ */
+static void
+mce_led_datapipes_quit(void)
+{
+	datapipe_bindings_quit(&mce_led_datapipe_bindings);
+}
+
 /**
  * Init function for the LED logic module
  *
@@ -3072,22 +3186,7 @@ const gchar *g_module_check_init(GModule *module)
 	(void)module;
 
 	/* Append triggers/filters to datapipes */
-	append_output_trigger_to_datapipe(&user_activity_pipe,
-					  user_activity_trigger);
-	append_output_trigger_to_datapipe(&system_state_pipe,
-					  system_state_trigger);
-	append_output_trigger_to_datapipe(&display_state_pipe,
-					  display_state_trigger);
-	append_output_trigger_to_datapipe(&led_brightness_pipe,
-					  led_brightness_trigger);
-	append_output_trigger_to_datapipe(&led_pattern_activate_pipe,
-					  led_pattern_activate_trigger);
-	append_output_trigger_to_datapipe(&led_pattern_deactivate_pipe,
-					  led_pattern_deactivate_trigger);
-	append_output_trigger_to_datapipe(&charger_state_pipe,
-					  charger_state_trigger);
-	append_output_trigger_to_datapipe(&battery_level_pipe,
-					  battery_level_trigger);
+	mce_led_datapipes_init();
 
 	/* Setup a pattern stack,
 	 * a combination rule stack and a cross-refernce for said stack
@@ -3124,8 +3223,6 @@ EXIT:
  */
 void g_module_unload(GModule *module)
 {
-	system_state_t system_state = datapipe_get_gint(system_state_pipe);
-
 	(void)module;
 
 	/* Remove dbus handlers */
@@ -3141,22 +3238,7 @@ void g_module_unload(GModule *module)
 	mce_close_output(&led_brightness_b_output);
 
 	/* Remove triggers/filters from datapipes */
-	remove_output_trigger_from_datapipe(&led_pattern_deactivate_pipe,
-					    led_pattern_deactivate_trigger);
-	remove_output_trigger_from_datapipe(&led_pattern_activate_pipe,
-					    led_pattern_activate_trigger);
-	remove_output_trigger_from_datapipe(&led_brightness_pipe,
-					    led_brightness_trigger);
-	remove_output_trigger_from_datapipe(&display_state_pipe,
-					    display_state_trigger);
-	remove_output_trigger_from_datapipe(&system_state_pipe,
-					    system_state_trigger);
-	remove_output_trigger_from_datapipe(&user_activity_pipe,
-					    user_activity_trigger);
-	remove_output_trigger_from_datapipe(&charger_state_pipe,
-					    charger_state_trigger);
-	remove_output_trigger_from_datapipe(&battery_level_pipe,
-					    battery_level_trigger);
+	mce_led_datapipes_quit();
 
 	/* Remove breathing timers and wakelocks */
 	sw_breathing_quit();
