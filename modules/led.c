@@ -1613,13 +1613,10 @@ static void led_activate_pattern(const gchar *const name)
 		led_pattern_set_active(psp, TRUE);
 		update_combination_rules(name);
 		led_update_active_pattern();
-		mce_log(LL_DEBUG,
-			"LED pattern %s activated",
-			name);
 	} else {
 		mce_log(LL_DEBUG,
 			"Received request to activate "
-			"a non-existing LED pattern");
+			"a non-existing LED pattern '%s'", name);
 	}
 
 EXIT:
@@ -1639,13 +1636,10 @@ static void led_deactivate_pattern(const gchar *const name)
 		led_pattern_set_active(psp, FALSE);
 		update_combination_rules(name);
 		led_update_active_pattern();
-		mce_log(LL_DEBUG,
-			"LED pattern %s deactivated",
-			name);
 	} else {
 		mce_log(LL_DEBUG,
 			"Received request to deactivate "
-			"a non-existing LED pattern");
+			"a non-existing LED pattern '%s'", name);
 	}
 }
 
