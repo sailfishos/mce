@@ -1802,7 +1802,11 @@ evin_iomon_touchscreen_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
         goto EXIT;
 
     if( ev->type == EV_MSC && ev->code == MSC_GESTURE ) {
-        /* Gesture events are handled in powerkey.c */
+        /* Gesture events count as actual non-synthetized
+         * user activity. */
+        evin_iomon_generate_activity(ev, false, true);
+
+        /* But otherwise are handled in powerkey.c. */
         execute_datapipe(&keypress_pipe, &ev,
                          USE_INDATA, DONT_CACHE_INDATA);
     }
