@@ -1,3 +1,11 @@
+mce (1.79.5.1) precise; urgency=low
+
+  * [event-input] Treat gesture events as user activity. Fixes JB#35137
+  * [led] Tune led activation logging. JB#35137
+  * [led] Do not poll datapipes. JB#35137
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 10 May 2016 10:13:44 +0300
+
 mce (1.79.5) precise; urgency=low
 
   * [settings] Remove unused debug data. MER#1554
