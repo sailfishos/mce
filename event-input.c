@@ -186,6 +186,8 @@ static int               evin_evdevinfo_has_codes               (const evin_evde
 
 static int               evin_evdevinfo_match_types_ex          (const evin_evdevinfo_t *self, const int *types_req, const int *types_ign);
 static int               evin_evdevinfo_match_types             (const evin_evdevinfo_t *self, const int *types);
+
+static int               evin_evdevinfo_match_codes_ex          (const evin_evdevinfo_t *self, int type, const int *codes, const int *codes_ign);
 static int               evin_evdevinfo_match_codes             (const evin_evdevinfo_t *self, int type, const int *codes);
 
 static bool              evin_evdevinfo_is_volumekey_default    (const evin_evdevinfo_t *self);
@@ -1088,6 +1090,31 @@ evin_evdevinfo_match_types(const evin_evdevinfo_t *self, const int *types)
 
 /** Check if all of the listed codes and only the listed codes are supported
  *
+ * @param self      evin_evdevinfo_t object
+ * @param types     evdev event type
+ * @param codes     array of evdev event codes, terminated with -1
+ * @param codes_ign array of dontcare evdev event codes, terminated with -1
+ *
+ * @return 1 if all of codes and only codes are supported, 0 otherwise
+ */
+static int
+evin_evdevinfo_match_codes_ex(const evin_evdevinfo_t *self, int type,
+                              const int *codes, const int *codes_ign)
+{
+    for( int ecode = 0; ecode < KEY_CNT; ++ecode ) {
+        if( evin_evdevinfo_list_has_entry(codes_ign, ecode) )
+            continue;
+
+        int have = evin_evdevinfo_has_code(self, type, ecode);
+        int want = evin_evdevinfo_list_has_entry(codes, ecode);
+        if( have != want )
+            return 0;
+    }
+    return 1;
+}
+
+/** Check if all of the listed codes and only the listed codes are supported
+ *
  * @param self  evin_evdevinfo_t object
  * @param types evdev event type
  * @param codes array of evdev event codes, terminated with -1
@@ -1097,14 +1124,12 @@ evin_evdevinfo_match_types(const evin_evdevinfo_t *self, const int *types)
 static int
 evin_evdevinfo_match_codes(const evin_evdevinfo_t *self, int type, const int *codes)
 {
-    for( int ecode = 0; ecode < KEY_CNT; ++ecode ) {
-        int have = evin_evdevinfo_has_code(self, type, ecode);
-        int want = evin_evdevinfo_list_has_entry(codes, ecode);
-        if( have != want )
-            return 0;
-    }
-    return 1;
+    return evin_evdevinfo_match_codes_ex(self, type, codes, 0);
 }
+
+#ifndef  KEY_CAMERA_SNAPSHOT
+# define KEY_CAMERA_SNAPSHOT 0x02fe
+#endif
 
 /** Test if input device sends only volume key events
  *
@@ -1126,6 +1151,15 @@ evin_evdevinfo_is_volumekey_default(const evin_evdevinfo_t *self)
         KEY_VOLUMEUP,
         -1
     };
+    static const int ignored_key_codes[] = {
+        /* Getting some key blocked/unblocked based on
+         * volume key policy is less harmful than leaving
+         * the volume keys active all the time. */
+        KEY_CAMERA_FOCUS,
+        KEY_CAMERA_SNAPSHOT,
+        KEY_CAMERA,
+        -1
+    };
 
     /* Except we do not care if autorepeat controls are there or not */
     static const int ignored_types[] = {
@@ -1134,10 +1168,14 @@ evin_evdevinfo_is_volumekey_default(const evin_evdevinfo_t *self)
     };
 
     return (evin_evdevinfo_match_types_ex(self, wanted_types, ignored_types) &&
-            evin_evdevinfo_match_codes(self, EV_KEY, wanted_key_codes));
+            evin_evdevinfo_match_codes_ex(self, EV_KEY, wanted_key_codes,
+                                          ignored_key_codes));
 }
 
-/** Test if input device is exactly like volume key device in Nexus 5
+/** Test if input device is like volume key device in Nexus 5
+ *
+ * In addition to volume keys, the input device also reports
+ * lid sensor state.
  *
  * @param self  evin_evdevinfo_t object
  *
@@ -1158,13 +1196,22 @@ evin_evdevinfo_is_volumekey_hammerhead(const evin_evdevinfo_t *self)
         -1
     };
 
+    static const int ignored_key_codes[] = {
+        /* Getting camera focus blocked/unblocked based on
+         * volume key policy is less harmful than leaving
+         * the volume keys active all the time. */
+        KEY_CAMERA_FOCUS,
+        -1
+    };
+
     static const int wanted_sw_codes[] = {
         SW_LID, // magnetic lid cover sensor
         -1
     };
 
     return (evin_evdevinfo_match_types(self, wanted_types) &&
-            evin_evdevinfo_match_codes(self, EV_KEY, wanted_key_codes) &&
+            evin_evdevinfo_match_codes_ex(self, EV_KEY, wanted_key_codes,
+                                          ignored_key_codes) &&
             evin_evdevinfo_match_codes(self, EV_SW, wanted_sw_codes));
 }
 
