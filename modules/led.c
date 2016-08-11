@@ -1039,9 +1039,11 @@ static bool led_pattern_should_breathe(const pattern_struct *self)
 		 * the led_pattern_can_breathe() should catch it. */
 		MCE_LED_PATTERN_BATTERY_FULL,
 
-		/* The CSD test has a led pattern that should utilize
-		 * breathing regardless of the breathing settings */
-		MCE_LED_PATTERN_CSD_BREATHING,
+		/* The CSD test has some led patterns that should utilize
+		 * breathing regardless of the breathing settings and/or
+		 * charging status. */
+		MCE_LED_PATTERN_CSD_BINARY_BLINK,
+		MCE_LED_PATTERN_CSD_WHITE_BLINK,
 	};
 
 	bool breathe = false;
