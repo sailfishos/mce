@@ -36,6 +36,38 @@
 /** Path to the GPIO key disable interface */
 # define GPIO_KEY_DISABLE_PATH          "/sys/devices/platform/gpio-keys/disabled_keys"
 
+/** Name of the evdev event mapping configuration group
+ *
+ * This configuration group can be used to remap the events
+ * sent by the kernel to the ones expected by mce.
+ *
+ * Items in the group are of form:
+ *
+ * <event_emitted_by_kernel>=<event_expected_by_mce>
+ *
+ * Where both event_emitted_by_kernel and event_expected_by_mce are event
+ * code names such: as SW_LID, SW_KEYPAD_SLIDE, ...
+ *
+ * See inifiles/evdev.ini for details and examples.
+ */
+#define MCE_CONF_EVDEV_GROUP            "EVDEV"
+
+/** Name of the evdev type configuration group
+ *
+ * This configuration group can be used to explicitly define input device
+ * types in cases where probing heuristic in mce code fails to work.
+ *
+ * Items in the group are of form:
+ *
+ * <device_name>=<device_type>
+ *
+ * Where device_name is sanitized evdev device name obtained via EVIOCGNAME
+ * ioctl(), and device_type is one of : TOUCH, VOLKEY, DBLTAP, ...
+ *
+ * See evio_sanitize_key_name() and evin_evdevtype_parse() for details.
+ */
+#define MCE_CONF_EVDEV_TYPE_GROUP       "EVDEV_TYPE"
+
 /* ========================================================================= *
  * Settings
  * ========================================================================= */
