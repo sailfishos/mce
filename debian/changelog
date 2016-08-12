@@ -1,3 +1,9 @@
+mce (1.80.2) precise; urgency=low
+
+  * [led] Always breathe CSD white blinking pattern. Fixes JB#35854
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 12 Aug 2016 08:09:37 +0300
+
 mce (1.80.1) precise; urgency=low
 
   * [event-input] Treat gesture events as user activity. Fixes JB#35137
