@@ -1,3 +1,10 @@
+mce (1.81.0) precise; urgency=low
+
+  * [event-input] Ignore camera events in volkey probe. MER#1634
+  * [event-input] All explicitly defining input device types. Fixes MER#1634
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 12 Aug 2016 14:56:43 +0300
+
 mce (1.80.2) precise; urgency=low
 
   * [led] Always breathe CSD white blinking pattern. Fixes JB#35854
