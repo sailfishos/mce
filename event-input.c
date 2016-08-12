@@ -186,6 +186,8 @@ static int               evin_evdevinfo_has_codes               (const evin_evde
 
 static int               evin_evdevinfo_match_types_ex          (const evin_evdevinfo_t *self, const int *types_req, const int *types_ign);
 static int               evin_evdevinfo_match_types             (const evin_evdevinfo_t *self, const int *types);
+
+static int               evin_evdevinfo_match_codes_ex          (const evin_evdevinfo_t *self, int type, const int *codes, const int *codes_ign);
 static int               evin_evdevinfo_match_codes             (const evin_evdevinfo_t *self, int type, const int *codes);
 
 static bool              evin_evdevinfo_is_volumekey_default    (const evin_evdevinfo_t *self);
@@ -230,9 +232,13 @@ typedef enum {
     /** Keyboard device */
     EVDEV_KEYBOARD,
 
+    /** Device type was not explicitly set in configuration */
+    EVDEV_UNKNOWN,
+
 } evin_evdevtype_t;
 
 static const char       *evin_evdevtype_repr                    (evin_evdevtype_t type);
+static evin_evdevtype_t  evin_evdevtype_parse                   (const char *name);
 static evin_evdevtype_t  evin_evdevtype_from_info               (evin_evdevinfo_t *info);
 
 /* ------------------------------------------------------------------------- *
@@ -244,6 +250,13 @@ static evin_evdevtype_t  evin_evdevtype_from_info               (evin_evdevinfo_
 static void         evin_doubletap_setting_cb                   (GConfClient *const client, const guint id, GConfEntry *const entry, gpointer const data);
 
 #endif // ENABLE_DOUBLETAP_EMULATION
+
+/* ------------------------------------------------------------------------- *
+ * INI_FILE_HELPERS
+ * ------------------------------------------------------------------------- */
+
+static bool  evio_is_valid_key_char(int ch);
+static char *evio_sanitize_key_name(const char *name);
 
 /* ------------------------------------------------------------------------- *
  * EVDEV_IO_MONITORING
@@ -766,7 +779,7 @@ EXIT:
 static void
 evin_event_mapper_init(void)
 {
-    static const char grp[] = "EVDEV";
+    static const char grp[] = MCE_CONF_EVDEV_GROUP;
 
     gchar **keys  = 0;
     gsize   count = 0;
@@ -1088,6 +1101,31 @@ evin_evdevinfo_match_types(const evin_evdevinfo_t *self, const int *types)
 
 /** Check if all of the listed codes and only the listed codes are supported
  *
+ * @param self      evin_evdevinfo_t object
+ * @param types     evdev event type
+ * @param codes     array of evdev event codes, terminated with -1
+ * @param codes_ign array of dontcare evdev event codes, terminated with -1
+ *
+ * @return 1 if all of codes and only codes are supported, 0 otherwise
+ */
+static int
+evin_evdevinfo_match_codes_ex(const evin_evdevinfo_t *self, int type,
+                              const int *codes, const int *codes_ign)
+{
+    for( int ecode = 0; ecode < KEY_CNT; ++ecode ) {
+        if( evin_evdevinfo_list_has_entry(codes_ign, ecode) )
+            continue;
+
+        int have = evin_evdevinfo_has_code(self, type, ecode);
+        int want = evin_evdevinfo_list_has_entry(codes, ecode);
+        if( have != want )
+            return 0;
+    }
+    return 1;
+}
+
+/** Check if all of the listed codes and only the listed codes are supported
+ *
  * @param self  evin_evdevinfo_t object
  * @param types evdev event type
  * @param codes array of evdev event codes, terminated with -1
@@ -1097,14 +1135,12 @@ evin_evdevinfo_match_types(const evin_evdevinfo_t *self, const int *types)
 static int
 evin_evdevinfo_match_codes(const evin_evdevinfo_t *self, int type, const int *codes)
 {
-    for( int ecode = 0; ecode < KEY_CNT; ++ecode ) {
-        int have = evin_evdevinfo_has_code(self, type, ecode);
-        int want = evin_evdevinfo_list_has_entry(codes, ecode);
-        if( have != want )
-            return 0;
-    }
-    return 1;
+    return evin_evdevinfo_match_codes_ex(self, type, codes, 0);
 }
+
+#ifndef  KEY_CAMERA_SNAPSHOT
+# define KEY_CAMERA_SNAPSHOT 0x02fe
+#endif
 
 /** Test if input device sends only volume key events
  *
@@ -1126,6 +1162,15 @@ evin_evdevinfo_is_volumekey_default(const evin_evdevinfo_t *self)
         KEY_VOLUMEUP,
         -1
     };
+    static const int ignored_key_codes[] = {
+        /* Getting some key blocked/unblocked based on
+         * volume key policy is less harmful than leaving
+         * the volume keys active all the time. */
+        KEY_CAMERA_FOCUS,
+        KEY_CAMERA_SNAPSHOT,
+        KEY_CAMERA,
+        -1
+    };
 
     /* Except we do not care if autorepeat controls are there or not */
     static const int ignored_types[] = {
@@ -1134,10 +1179,14 @@ evin_evdevinfo_is_volumekey_default(const evin_evdevinfo_t *self)
     };
 
     return (evin_evdevinfo_match_types_ex(self, wanted_types, ignored_types) &&
-            evin_evdevinfo_match_codes(self, EV_KEY, wanted_key_codes));
+            evin_evdevinfo_match_codes_ex(self, EV_KEY, wanted_key_codes,
+                                          ignored_key_codes));
 }
 
-/** Test if input device is exactly like volume key device in Nexus 5
+/** Test if input device is like volume key device in Nexus 5
+ *
+ * In addition to volume keys, the input device also reports
+ * lid sensor state.
  *
  * @param self  evin_evdevinfo_t object
  *
@@ -1158,13 +1207,22 @@ evin_evdevinfo_is_volumekey_hammerhead(const evin_evdevinfo_t *self)
         -1
     };
 
+    static const int ignored_key_codes[] = {
+        /* Getting camera focus blocked/unblocked based on
+         * volume key policy is less harmful than leaving
+         * the volume keys active all the time. */
+        KEY_CAMERA_FOCUS,
+        -1
+    };
+
     static const int wanted_sw_codes[] = {
         SW_LID, // magnetic lid cover sensor
         -1
     };
 
     return (evin_evdevinfo_match_types(self, wanted_types) &&
-            evin_evdevinfo_match_codes(self, EV_KEY, wanted_key_codes) &&
+            evin_evdevinfo_match_codes_ex(self, EV_KEY, wanted_key_codes,
+                                          ignored_key_codes) &&
             evin_evdevinfo_match_codes(self, EV_SW, wanted_sw_codes));
 }
 
@@ -1238,9 +1296,62 @@ evin_evdevtype_repr(evin_evdevtype_t type)
         [EVDEV_ALS]      = "AMBIENT LIGHT SENSOR",
         [EVDEV_VOLKEY]   = "VOLUME KEYS",
         [EVDEV_KEYBOARD] = "KEYBOARD",
+        [EVDEV_UNKNOWN]  = "UNKNOWN",
     };
 
     return lut[type];
+}
+
+/** Convert textual evdev classification from config file to enum value
+ *
+ * @param name evdev device type from configuration file
+ *
+ * @return Return corresponding device type id, or EVDEV_UNKNOWN
+ */
+static evin_evdevtype_t
+evin_evdevtype_parse(const char *name)
+{
+    static const struct
+    {
+        const char *key;
+        int         val;
+    } lut[] =
+    {
+        { "REJECT",               EVDEV_REJECT,    },
+        { "TOUCH",                EVDEV_TOUCH,     },
+        { "INPUT",                EVDEV_INPUT,     },
+        { "ACTIVITY",             EVDEV_ACTIVITY,  },
+        { "IGNORE",               EVDEV_IGNORE,    },
+        { "DOUBLE_TAP",           EVDEV_DBLTAP,    },
+        { "DBLTAP",               EVDEV_DBLTAP,    },
+        { "PS",                   EVDEV_PS,        },
+        { "PROXIMITY_SENSOR",     EVDEV_PS,        },
+        { "ALS",                  EVDEV_ALS,       },
+        { "LIGHT_SENSOR",         EVDEV_ALS,       },
+        { "VOLKEY",               EVDEV_VOLKEY,    },
+        { "VOLUME_KEYS",          EVDEV_VOLKEY,    },
+        { "KEYBOARD",             EVDEV_KEYBOARD,  },
+
+        /* Note: EVDEV_UNKNOWN is left out on purpose as it
+         *       signifies parsing error and thus is not
+         *       meant to be used in configuration files. */
+    };
+
+    evin_evdevtype_t type = EVDEV_UNKNOWN;
+
+    if( !name )
+        goto EXIT;
+
+    for( size_t i = 0; i < G_N_ELEMENTS(lut); ++i ) {
+        if( strcmp(lut[i].key, name) )
+            continue;
+
+        type = lut[i].val;
+        break;
+    }
+
+EXIT:
+    return type;
 }
 
 /** Use heuristics to determine what mce should do with an evdev device node
@@ -1490,6 +1601,100 @@ evin_doubletap_setting_cb(GConfClient *const client, const guint id,
 #endif /* ENABLE_DOUBLETAP_EMULATION */
 
 /* ========================================================================= *
+ * INI_FILE_HELPERS
+ * ========================================================================= */
+
+/** Predicate for: character can be used in glib keyfile key keyname
+ *
+ * @param ch character
+ *
+ * @return true if character can be used as is, false otherwise
+ */
+static bool
+evio_is_valid_key_char(int ch)
+{
+    /* Skip negatives, ascii control chars / white space */
+    if( ch <= 0x20 )
+        return false;
+
+    /* Keys must be utf-8 and we do not control what kernel
+     * returns -> skip stuff that is not ascii-7 pure */
+    if( ch >= 0x80 )
+        return false;
+
+    /* Square brackets are used for keyfile groups or
+     * specifying language specific variant values */
+    if( ch == '[' || ch == ']' )
+        return false;
+
+    /* And '=' is used for separating keys from values */
+    if( ch == '=' )
+        return false;
+
+    /* Assume everything else is ok */
+    return true;
+}
+
+/** Sanitize c-string to "usable as ini file key" form
+ *
+ * Dynamically obtained strings - such as evdev device names queried
+ * from kernel - might contain characters that are not allowed in
+ * glib keyfile keys. This function performs one way transformation
+ * that allows turning any c-string into a form that can be used
+ * as key name.
+ *
+ * Leading and trailing illegal characters are skipped altogether.
+ *
+ * Sequences of mid-string illegal characters are squeezed into
+ * single underscores.
+ *
+ * Caller must release the returned string via free().
+ *
+ * Examples:
+ *   "gpio-keys" -> "gpio-keys" (no change)
+ *   "  some thing [x=7]  " -> "some_thing_x_7"
+ *
+ * @param name Device name
+ *
+ * @return Device name without illegal characters, or NULL
+ */
+static char *
+evio_sanitize_key_name(const char *name)
+{
+    char *key = 0;
+
+    if( !name )
+        goto EXIT;
+
+    if( !(key = strdup(name)) )
+        goto EXIT;
+
+    char *src = key;
+    char *dst = key;
+
+    while( *src && !evio_is_valid_key_char(*src) )
+        ++src;
+
+    for( ;; ) {
+        while( *src && evio_is_valid_key_char(*src) )
+            *dst++ = *src++;
+
+        while( *src && !evio_is_valid_key_char(*src) )
+            ++src;
+
+        if( !*src )
+            break;
+
+        *dst++ = '_';
+    }
+
+    *dst = 0;
+
+EXIT:
+    return key;
+}
+
+/* ========================================================================= *
  * EVDEV_IO_MONITORING
  * ========================================================================= */
 
@@ -1513,16 +1718,31 @@ static evin_iomon_extra_t *
 evin_iomon_extra_create(int fd, const char *name)
 {
     evin_iomon_extra_t *self = calloc(1, sizeof *self);
+    gchar              *type = 0;
+    char               *key  = 0;
 
-    self->ex_name = strdup(name);
-    self->ex_info = evin_evdevinfo_create();
+    /* Initialize extra info to sane defaults */
+    self->ex_name            = strdup(name);
+    self->ex_info            = evin_evdevinfo_create();
+    self->ex_type            = EVDEV_UNKNOWN;
+    self->ex_sw_keypad_slide = 0;
+    self->ex_mt_state        = 0;
 
     evin_evdevinfo_probe(self->ex_info, fd);
 
-    self->ex_type = evin_evdevtype_from_info(self->ex_info);
+    /* Check if evdev device type has been set in the configuration */
+    key  = evio_sanitize_key_name(name);
+    type = mce_conf_get_string(MCE_CONF_EVDEV_TYPE_GROUP, key, 0);
+    if( type ) {
+        self->ex_type = evin_evdevtype_parse(type);
+        if( self->ex_type == EVDEV_UNKNOWN )
+            mce_log(LL_WARN, "unknown evdev device type '%s'", type);
+    }
 
-    self->ex_sw_keypad_slide = 0;
-    self->ex_mt_state = 0;
+    /* In case of missing / faulty configuration, use heuristics
+     * to determine the device type */
+    if( self->ex_type == EVDEV_UNKNOWN )
+        self->ex_type = evin_evdevtype_from_info(self->ex_info);
 
     if( self->ex_type == EVDEV_KEYBOARD ) {
         self->ex_sw_keypad_slide = mce_conf_get_string("SW_KEYPAD_SLIDE",
@@ -1534,6 +1754,9 @@ evin_iomon_extra_create(int fd, const char *name)
                                                   EV_ABS, ABS_MT_SLOT);
         self->ex_mt_state = mt_state_create(protocol_b);
     }
+
+    g_free(type);
+    free(key);
 
     return self;
 }
@@ -2128,6 +2351,7 @@ evin_iomon_device_add(const gchar *path)
 
     case EVDEV_REJECT:
     case EVDEV_IGNORE:
+    case EVDEV_UNKNOWN:
         goto EXIT;
 
     default:
