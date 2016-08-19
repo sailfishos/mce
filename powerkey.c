@@ -439,7 +439,7 @@ static void   pwrkey_dbus_action_configure(size_t action_id, bool force_reset);
 static void   pwrkey_dbus_action_execute(size_t index);
 
 /* ------------------------------------------------------------------------- *
- * STATE_MACHINE
+ * POWER_KEY_STATE_MACHINE
  *
  * main logic for tracking power key presses and associated timers
  *
@@ -465,6 +465,24 @@ static void pwrkey_stm_rethink_wakelock     (void);
 
 static void pwrkey_stm_store_initial_state  (void);
 static void pwrkey_stm_terminate            (void);
+
+/* ------------------------------------------------------------------------- *
+ * HOME_KEY_STATE_MACHINE
+ * ------------------------------------------------------------------------- */
+
+typedef enum
+{
+    HOMEKEY_STM_WAIT_PRESS   = 0,
+    HOMEKEY_STM_WAIT_UNBLANK = 1,
+    HOMEKEY_STM_SEND_SIGNAL  = 2,
+    HOMEKEY_STM_WAIT_RELEASE = 3,
+} homekey_stm_t;
+
+static const char *homekey_stm_repr        (homekey_stm_t state);
+static void        homekey_stm_set_state   (homekey_stm_t state);
+static bool        homekey_stm_exec_step   (void);
+static void        homekey_stm_eval_state  (void);
+static void        homekey_stm_set_pressed (bool pressed);
 
 /* ------------------------------------------------------------------------- *
  * DBUS_IPC
@@ -1617,7 +1635,7 @@ cleanup:
 }
 
 /* ========================================================================= *
- * STATE_MACHINE
+ * POWER_KEY_STATE_MACHINE
  * ========================================================================= */
 
 /** Check if we need to hold a wakelock for power key handling
@@ -1834,6 +1852,156 @@ pwrkey_stm_ignore_action(void)
 
 EXIT:
     return ignore_powerkey;
+}
+
+/* ========================================================================= *
+ * HOME_KEY_STATE_MACHINE
+ * ========================================================================= */
+
+/** Convert homekey_stm_t enum to human readable string
+ *
+ * @param state homekey_stm_t enumeration value
+ *
+ * @return human readable representation of state
+ */
+static const char *
+homekey_stm_repr(homekey_stm_t state)
+{
+    const char *repr = "HOMEKEY_STM_UNKNOWN";
+
+    switch( state ) {
+    case HOMEKEY_STM_WAIT_PRESS:   repr = "HOMEKEY_STM_WAIT_PRESS";   break;
+    case HOMEKEY_STM_WAIT_UNBLANK: repr = "HOMEKEY_STM_WAIT_UNBLANK"; break;
+    case HOMEKEY_STM_SEND_SIGNAL:  repr = "HOMEKEY_STM_SEND_SIGNAL";  break;
+    case HOMEKEY_STM_WAIT_RELEASE: repr = "HOMEKEY_STM_WAIT_RELEASE"; break;
+    default:
+        break;
+    }
+
+    return repr;
+}
+
+/** Current state of home key handling state machine */
+static homekey_stm_t homekey_stm_state = HOMEKEY_STM_WAIT_PRESS;
+
+/** Cached home key is pressed down state */
+static bool homekey_stm_pressed = false;
+
+/** Set current state of home key handling state machine
+ *
+ * Perform any actions that are related to leaving current and/or
+ * entering the new state.
+ *
+ * @param state homekey_stm_t enumeration value
+ */
+static void
+homekey_stm_set_state(homekey_stm_t state)
+{
+    if( homekey_stm_state == state )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "state: %s -> %s",
+            homekey_stm_repr(homekey_stm_state),
+            homekey_stm_repr(state));
+
+    /* Handle entering new state */
+
+    switch( (homekey_stm_state = state) ) {
+    case HOMEKEY_STM_WAIT_PRESS:
+        break;
+
+    case HOMEKEY_STM_WAIT_UNBLANK:
+        /* Check if policy allows display unblanking */
+        if( proximity_state_actual != COVER_OPEN ) {
+            mce_log(LL_DEBUG, "Proximity sensor %s; skip unblank",
+                    proximity_state_repr(proximity_state_actual));
+            break;
+        }
+
+        /* Initiate display power up */
+        mce_log(LL_DEBUG, "request %s",
+                display_state_repr(MCE_DISPLAY_ON));
+        execute_datapipe(&display_state_req_pipe,
+                         GINT_TO_POINTER(MCE_DISPLAY_ON),
+                         USE_INDATA, CACHE_INDATA);
+        break;
+
+    case HOMEKEY_STM_SEND_SIGNAL:
+        /* Inform compositor that it should perform home key actions */
+        pwrkey_dbus_send_signal("power_button_trigger", "home-key");
+        break;
+
+    case HOMEKEY_STM_WAIT_RELEASE:
+        break;
+
+    default:
+        break;
+    }
+
+EXIT:
+    return;
+}
+
+/** Perform one home key handling state machine transition
+ *
+ * @return true if state transition took place, false otherwise
+ */
+static bool
+homekey_stm_exec_step(void)
+{
+    homekey_stm_t prev = homekey_stm_state;
+
+    switch( homekey_stm_state ) {
+    default:
+    case HOMEKEY_STM_WAIT_PRESS:
+        if( homekey_stm_pressed )
+            homekey_stm_set_state(HOMEKEY_STM_WAIT_UNBLANK);
+        break;
+
+    case HOMEKEY_STM_WAIT_UNBLANK:
+        if( display_state_next != MCE_DISPLAY_ON )
+            homekey_stm_set_state(HOMEKEY_STM_WAIT_RELEASE);
+        else if( display_state == MCE_DISPLAY_ON )
+            homekey_stm_set_state(HOMEKEY_STM_SEND_SIGNAL);
+        break;
+
+    case HOMEKEY_STM_SEND_SIGNAL:
+        homekey_stm_set_state(HOMEKEY_STM_WAIT_RELEASE);
+        break;
+
+    case HOMEKEY_STM_WAIT_RELEASE:
+        if( !homekey_stm_pressed )
+            homekey_stm_set_state(HOMEKEY_STM_WAIT_PRESS);
+        break;
+    }
+
+    return homekey_stm_state != prev;
+}
+
+/** Update current state of home key handling state machine
+ *
+ * Repeatedly executes transitions until stable state is reached.
+ */
+static void
+homekey_stm_eval_state(void)
+{
+    while( homekey_stm_exec_step() )
+        ;
+}
+
+/** Set home key pressed down state and update state machine
+ */
+static void
+homekey_stm_set_pressed(bool pressed)
+{
+    if( homekey_stm_pressed == pressed )
+        goto EXIT;
+
+    homekey_stm_pressed = pressed;
+    homekey_stm_eval_state();
+
+EXIT:
+    return;
 }
 
 /* ========================================================================= *
@@ -2585,6 +2753,8 @@ pwrkey_datapipe_display_state_cb(gconstpointer data)
             display_state_repr(prev),
             display_state_repr(display_state));
 
+    homekey_stm_eval_state();
+
 EXIT:
     return;
 }
@@ -2602,6 +2772,8 @@ static void pwrkey_datapipe_display_state_next_cb(gconstpointer data)
     mce_log(LL_DEBUG, "display_state_next = %s -> %s",
             display_state_repr(prev),
             display_state_repr(display_state_next));
+
+    homekey_stm_eval_state();
 
 EXIT:
     return;
@@ -2690,7 +2862,8 @@ pwrkey_datapipes_keypress_cb(gconstpointer const data)
 
     switch( ev->type ) {
     case EV_KEY:
-        if( ev->code == KEY_POWER ) {
+        switch( ev->code ) {
+        case KEY_POWER:
             if( ev->value == 1 ) {
                 /* Detect repeated power key pressing while
                  * proximity sensor is covered; assume it means
@@ -2708,6 +2881,17 @@ pwrkey_datapipes_keypress_cb(gconstpointer const data)
             }
 
             pwrkey_stm_rethink_wakelock();
+            break;
+
+        case KEY_HOME:
+            if( ev->value == 1 )
+                homekey_stm_set_pressed(true);
+            else if( ev->value == 0 )
+                homekey_stm_set_pressed(false);
+            break;
+
+        default:
+            break;
         }
         break;
 
