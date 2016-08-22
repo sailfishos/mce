@@ -531,6 +531,7 @@ NORMALIZE_USES_SPC =\
 	event-switches.h\
 	filewatcher.c\
 	filewatcher.h\
+	homekey.dot\
 	libwakelock.h\
 	mce-dsme.c\
 	mce-dsme.h\
