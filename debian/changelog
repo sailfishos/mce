@@ -1,3 +1,10 @@
+mce (1.82.0) precise; urgency=low
+
+  * [powerkey] Add state machine for home key handling. JB#34962
+  * [event-input] Ignore KEY_HOME in volume key probing. Fixes JB#35956
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 22 Aug 2016 08:50:49 +0300
+
 mce (1.81.0) precise; urgency=low
 
   * [event-input] Ignore camera events in volkey probe. MER#1634
