@@ -328,15 +328,10 @@ static gpointer mia_datapipe_device_inactive_cb(gpointer data)
     if( display_state_next == MCE_DISPLAY_DIM )
         goto EXIT;
 
-    /* Activity tracking applies only to USER and ACT_DEAD modes */
-    switch( system_state ) {
-    case MCE_STATE_USER:
-    case MCE_STATE_ACTDEAD:
-        break;
-
-    default:
-        mce_log(LL_DEBUG, "system_state != USER|ACTDEAD"
-                "; ignoring activity");
+    /* Activity tracking applies only to USER mode */
+    if( system_state != MCE_STATE_USER ) {
+        mce_log(LL_DEBUG, "system_state = %s; ignoring activity",
+                system_state_repr(system_state));
         device_inactive = TRUE;
         goto EXIT;
     }

@@ -394,7 +394,7 @@ static void                mdy_poweron_led_rethink_schedule(void);
 #define ACTDEAD_MAX_DIM_TIMEOUT 15
 
 /** Maximum blank timeout applicable in ACTDEAD mode [s] */
-#define ACTDEAD_MAX_OFF_TIMEOUT 3
+#define ACTDEAD_MAX_OFF_TIMEOUT 15
 
 static void                mdy_blanking_update_inactivity_timeout(void);
 static gboolean            mdy_blanking_can_blank_from_low_power_mode(void);
@@ -1680,14 +1680,8 @@ static void mdy_datapipe_device_inactive_cb(gconstpointer data)
         break;
 
     case MCE_DISPLAY_OFF:
-        /* Activity alone will not make OFF->ON transition.
-         * Except in act dead, where display is not really off
-         * and thus double tap detection is not active ... */
-
-        if( system_state != MCE_STATE_ACTDEAD )
-            break;
-
-        // fall through
+        /* Activity alone will not make OFF->ON transition. */
+        break;
 
     case MCE_DISPLAY_DIM:
         /* DIM->ON on device activity */
@@ -3564,8 +3558,18 @@ static void mdy_blanking_schedule_off(void)
 {
     gint timeout = mdy_blank_timeout;
 
-    if( display_state == MCE_DISPLAY_LPM_OFF )
+    if( system_state == MCE_STATE_ACTDEAD ) {
+        /* Utilize the same configurable blanking delay as
+         * what is used for the lockscreen, but cap it to a
+         * sensible maximum value. */
+        timeout = mdy_blank_from_lockscreen_timeout;
+
+        if( timeout > ACTDEAD_MAX_OFF_TIMEOUT )
+            timeout = ACTDEAD_MAX_OFF_TIMEOUT;
+    }
+    else if( display_state == MCE_DISPLAY_LPM_OFF ) {
         timeout = mdy_blank_from_lpm_off_timeout;
+    }
     else if( submode & MCE_TKLOCK_SUBMODE ) {
         /* In case UI boots up to lockscreen, we need to
          * apply additional after-boot delay also to
@@ -3574,12 +3578,6 @@ static void mdy_blanking_schedule_off(void)
 
         if( timeout < mdy_blank_from_lockscreen_timeout )
             timeout = mdy_blank_from_lockscreen_timeout;
-    }
-
-    /* In act dead mode blanking timeouts are capped */
-    if( system_state == MCE_STATE_ACTDEAD ) {
-        if( timeout > ACTDEAD_MAX_OFF_TIMEOUT )
-            timeout = ACTDEAD_MAX_OFF_TIMEOUT;
     }
 
     /* Blanking pause can optionally stay in dimmed state */
@@ -4266,6 +4264,14 @@ static void mdy_blanking_rethink_timers(bool force)
         if( mdy_update_mode )
             break;
         if( exception_state & ~UIEXC_CALL ) {
+            break;
+        }
+
+        if( system_state != MCE_STATE_USER ) {
+            /* In act-dead mode & co blanking inhibit modes are
+             * ignored and display is blanked without going through
+             * the dimming step */
+            mdy_blanking_schedule_off();
             break;
         }
 
