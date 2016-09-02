@@ -1,3 +1,9 @@
+mce (1.82.1) precise; urgency=low
+
+  * [inactivity] Ignore user activity in act-dead mode. Fixes JB#35892
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 02 Sep 2016 14:03:44 +0300
+
 mce (1.82.0) precise; urgency=low
 
   * [powerkey] Add state machine for home key handling. JB#34962
