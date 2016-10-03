@@ -2568,7 +2568,7 @@ sfw_session_start_cb(DBusPendingCall *pc, void *aptr)
 EXIT:
     mce_log(LL_DEBUG, "session(%s): sid=%d",
             sfw_plugin_get_sensor_name(self->ses_plugin),
-            (int)self->ses_id);
+            (int)ses);
 
     switch( ses ) {
     case SESSION_ID_INVALID:
