@@ -1,3 +1,9 @@
+mce (1.82.2) precise; urgency=low
+
+  * [mce-sensorfw] Use obtained session id in logging. Fixes MER#1661
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 04 Oct 2016 07:13:54 +0300
+
 mce (1.82.1) precise; urgency=low
 
   * [inactivity] Ignore user activity in act-dead mode. Fixes JB#35892
