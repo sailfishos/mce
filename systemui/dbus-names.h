@@ -28,4 +28,13 @@
 /** The System UI request path. */
 #define SYSTEMUI_REQUEST_PATH  "/screenlock"
 
+/** The device lock service */
+#define DEVICELOCK_SERVICE       "org.nemomobile.devicelock"
+
+/** The device lock request interface. */
+#define DEVICELOCK_REQUEST_IF    "org.nemomobile.lipstick.devicelock"
+
+/** The device lock request path. */
+#define DEVICELOCK_REQUEST_PATH  "/devicelock"
+
 #endif /* _SYSTEMUI_DBUS_NAMES_H */

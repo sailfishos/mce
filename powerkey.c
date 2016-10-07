@@ -855,9 +855,9 @@ EXIT:
 static void
 pwrkey_action_devlock(void)
 {
-    static const char service[]   = "org.nemomobile.lipstick";
-    static const char object[]    = "/devicelock";
-    static const char interface[] = "org.nemomobile.lipstick.devicelock";
+    static const char service[]   = DEVICELOCK_SERVICE;
+    static const char object[]    = DEVICELOCK_REQUEST_PATH;
+    static const char interface[] = DEVICELOCK_REQUEST_IF;
     static const char method[]    = "setState";
     dbus_int32_t      request     = DEVICE_LOCK_LOCKED;
 
