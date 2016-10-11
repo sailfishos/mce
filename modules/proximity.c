@@ -85,7 +85,7 @@ static void report_proximity(cover_state_t state)
 
 	if( old_state != state )
 	{
-		mce_log(LL_NOTICE, "state: %s -> %s",
+		mce_log(LL_CRUCIAL, "state: %s -> %s",
 			cover_state_repr(old_state),
 			cover_state_repr(state));
 
@@ -104,7 +104,7 @@ static void report_lid_input(cover_state_t state)
 	cover_state_t old_state = datapipe_get_gint(lid_cover_sensor_pipe);
 
 	if( state != old_state ) {
-		mce_log(LL_NOTICE, "state: %s -> %s",
+		mce_log(LL_CRUCIAL, "state: %s -> %s",
 			cover_state_repr(old_state),
 			cover_state_repr(state));
 
