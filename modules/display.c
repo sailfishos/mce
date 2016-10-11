@@ -5399,7 +5399,7 @@ static void mdy_compositor_name_owner_set(const char *curr)
 {
     bool has_owner = (curr && *curr);
 
-    mce_log(LL_DEVEL, "compositor is %s on system bus",
+    mce_log(LL_CRUCIAL, "compositor is %s on system bus",
             has_owner ? curr : "N/A");
 
     /* first clear existing data, timers, etc */
@@ -6312,7 +6312,7 @@ EXIT:
 static void mdy_stm_set_compositor_availability_changed(bool changed)
 {
     if( mdy_stm_compositor_availability_changed != changed ) {
-        mce_log(LL_DEBUG, "compositor availability change: %s",
+        mce_log(LL_CRUCIAL, "compositor availability change: %s",
                 changed ? "pending" : "handled");
         mdy_stm_compositor_availability_changed = changed;
     }
