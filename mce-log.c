@@ -78,13 +78,13 @@ static void timestamp(struct timeval *tv)
  *
  * @return log level clipped to LL_CRIT ... LL_DEBUG range
  */
-static loglevel_t mce_log_level_normalize(loglevel_t loglevel)
+static loglevel_t mce_log_level_clip(loglevel_t loglevel)
 {
-	if( loglevel < LL_EXTRA ) {
-		loglevel = LL_EXTRA;
+	if( loglevel <= LL_MINIMUM ) {
+		loglevel = LL_MINIMUM;
 	}
-	else if( loglevel > LL_DEBUG ) {
-		loglevel = LL_DEBUG;
+	else if( loglevel > LL_MAXIMUM ) {
+		loglevel = LL_MAXIMUM;
 	}
 	return loglevel;
 }
@@ -99,6 +99,7 @@ static const char *mce_log_level_tag(loglevel_t loglevel)
 {
 	const char *res = "?";
 	switch( loglevel ) {
+	case LL_CRUCIAL:res = "T"; break;
 	case LL_EXTRA:  res = "X"; break;
 	case LL_CRIT:   res = "C"; break;
 	case LL_ERR:    res = "E"; break;
@@ -169,7 +170,7 @@ void mce_log_file(loglevel_t loglevel, const char *const file,
 {
 	va_list args;
 
-	loglevel = mce_log_level_normalize(loglevel);
+	loglevel = mce_log_level_clip(loglevel);
 
 	if( mce_log_p_(loglevel, file, function) ) {
 		gchar *msg = 0;
@@ -193,9 +194,16 @@ void mce_log_file(loglevel_t loglevel, const char *const file,
 				mce_log_level_tag(loglevel),
 				msg);
 		} else {
-			/* LL_EXTRA = devel flavor notice */
-			if( loglevel == LL_EXTRA )
+			/* Use NOTICE priority when reporting LL_EXTRA
+			 * and LL_CRUCIAL logging */
+			switch( loglevel ) {
+			case LL_EXTRA:
+			case LL_CRUCIAL:
 				loglevel = LL_NOTICE;
+				break;
+			default:
+				break;
+			}
 
 			/* loglevels are subset of syslog priorities, so
 			 * we can use loglevel as is for syslog priority */
@@ -310,7 +318,7 @@ EXIT:
  *
  * @return 1 if logging at givel level is enabled, 0 if not
  */
-int mce_log_p_(const loglevel_t loglevel,
+int mce_log_p_(loglevel_t loglevel,
 	       const char *const file,
 	       const char *const func)
 {
@@ -321,8 +329,15 @@ int mce_log_p_(const loglevel_t loglevel,
 			return true;
 	}
 
-	if( loglevel < LL_EXTRA )
-		return logverbosity >= LL_NOTICE;
+	/* LL_EXTRA & LL_CRUCIAL are evaluated as WARNING level */
+	switch( loglevel ) {
+	case LL_EXTRA:
+	case LL_CRUCIAL:
+		loglevel = LL_WARN;;
+		break;
+	default:
+		break;
+	}
 
 	return logverbosity >= loglevel;
 }
