@@ -1327,7 +1327,7 @@ static void tklock_datapipe_exception_state_cb(gconstpointer data)
     if( exception_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "exception_state = %s -> %s",
+    mce_log(LL_CRUCIAL, "exception_state = %s -> %s",
             uiexctype_repr(prev),
             uiexctype_repr(exception_state));
 
@@ -5889,7 +5889,7 @@ static gboolean tklock_dbus_notification_beg_cb(DBusMessage *const msg)
         goto EXIT;
     }
 
-    mce_log(LL_DEVEL, "notification begin from %s",
+    mce_log(LL_CRUCIAL, "notification begin from %s",
             mce_dbus_get_message_sender_ident(msg));
 
     mce_tklock_begin_notification(from, name, dur, add);
@@ -5928,7 +5928,7 @@ static gboolean tklock_dbus_notification_end_cb(DBusMessage *const msg)
         goto EXIT;
     }
 
-    mce_log(LL_DEVEL, "notification end from %s",
+    mce_log(LL_CRUCIAL, "notification end from %s",
             mce_dbus_get_message_sender_ident(msg));
 
     mce_tklock_end_notification(from, name, dur);
