@@ -1219,7 +1219,8 @@ static gpointer mdy_datapipe_display_state_filter_cb(gpointer data)
 
     case MCE_DISPLAY_LPM_OFF:
     case MCE_DISPLAY_LPM_ON:
-        if( mdy_use_low_power_mode && mdy_low_power_mode_supported )
+        if( lipstick_service_state == SERVICE_STATE_RUNNING &&
+            mdy_use_low_power_mode && mdy_low_power_mode_supported )
             break;
 
         mce_log(LL_DEBUG, "reject low power mode display request");
@@ -3519,6 +3520,8 @@ static gboolean mdy_blanking_off_cb(gpointer data)
     switch( display_state ) {
     case MCE_DISPLAY_ON:
     case MCE_DISPLAY_DIM:
+        if( lipstick_service_state != SERVICE_STATE_RUNNING )
+            break;
         if( submode & MCE_TKLOCK_SUBMODE )
             next_state = MCE_DISPLAY_LPM_ON;
         break;
