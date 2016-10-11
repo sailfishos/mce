@@ -5982,7 +5982,7 @@ static void mdy_display_state_enter(display_state_t prev_state,
     display_state_pipe.cached_data = GINT_TO_POINTER(next_state);
 
     /* Run display state change triggers */
-    mce_log(LL_DEVEL, "current display state = %s",
+    mce_log(LL_CRUCIAL, "current display state = %s",
             display_state_repr(next_state));
     execute_datapipe(&display_state_pipe,
                      GINT_TO_POINTER(next_state),
@@ -6073,7 +6073,7 @@ static void mdy_display_state_leave(display_state_t prev_state,
         display_state_t state =
             need_power ? MCE_DISPLAY_POWER_UP : MCE_DISPLAY_POWER_DOWN;
 
-        mce_log(LL_DEVEL, "current display state = %s",
+        mce_log(LL_CRUCIAL, "current display state = %s",
                 display_state_repr(state));
         display_state_pipe.cached_data = GINT_TO_POINTER(state);
         execute_datapipe(&display_state_pipe,
