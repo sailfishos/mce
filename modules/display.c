@@ -7729,7 +7729,7 @@ static gboolean mdy_dbus_handle_display_on_req(DBusMessage *const msg)
                 mce_dbus_get_message_sender_ident(msg), reason);
     }
     else {
-        mce_log(LL_DEVEL,"display ON request from %s",
+        mce_log(LL_CRUCIAL,"display ON request from %s",
                 mce_dbus_get_message_sender_ident(msg));
         request = MCE_DISPLAY_ON;
     }
@@ -7759,7 +7759,7 @@ static gboolean mdy_dbus_handle_display_dim_req(DBusMessage *const msg)
                 mce_dbus_get_message_sender_ident(msg), reason);
     }
     else {
-        mce_log(LL_DEVEL,"display DIM request from %s",
+        mce_log(LL_CRUCIAL,"display DIM request from %s",
                 mce_dbus_get_message_sender_ident(msg));
         request = MCE_DISPLAY_DIM;
     }
@@ -7788,7 +7788,7 @@ static gboolean mdy_dbus_handle_display_off_req(DBusMessage *const msg)
     if( mdy_dbus_display_off_override == DISPLAY_OFF_OVERRIDE_USE_LPM )
         return mdy_dbus_handle_display_lpm_req(msg);
 
-    mce_log(LL_DEVEL, "display off request from %s",
+    mce_log(LL_CRUCIAL, "display off request from %s",
             mce_dbus_get_message_sender_ident(msg));
 
     if( !dbus_message_get_no_reply(msg) )
@@ -7816,7 +7816,7 @@ static gboolean mdy_dbus_handle_display_lpm_req(DBusMessage *const msg)
     bool             lock_ui = true;
     const char      *reason  = 0;
 
-    mce_log(LL_DEVEL, "display lpm request from %s",
+    mce_log(LL_CRUCIAL, "display lpm request from %s",
             mce_dbus_get_message_sender_ident(msg));
 
     /* Ignore lpm requests if there are active calls / alarms */
