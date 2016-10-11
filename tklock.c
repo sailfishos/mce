@@ -1450,9 +1450,7 @@ static void tklock_datapipe_submode_cb(gconstpointer data)
             /* Nevertheless, removal of tklock means there is something
              * happening at the ui side - and probably the best course of
              * action is to cancel lpm state by turning on the display. */
-            execute_datapipe(&display_state_req_pipe,
-                             GINT_TO_POINTER(MCE_DISPLAY_ON),
-                             USE_INDATA, CACHE_INDATA);
+            mce_datapipe_req_display_state(MCE_DISPLAY_ON);
             break;
 
         default:
@@ -1507,9 +1505,7 @@ static void tklock_datapipe_lockkey_cb(gconstpointer const data)
                          GINT_TO_POINTER(LOCK_ON),
                          USE_INDATA, CACHE_INDATA);
 
-        execute_datapipe(&display_state_req_pipe,
-                         GINT_TO_POINTER(MCE_DISPLAY_OFF),
-                         USE_INDATA, CACHE_INDATA);
+        mce_datapipe_req_display_state(MCE_DISPLAY_OFF);
         break;
 
     default:
@@ -1519,9 +1515,7 @@ static void tklock_datapipe_lockkey_cb(gconstpointer const data)
     case MCE_DISPLAY_LPM_ON:
     case MCE_DISPLAY_POWER_DOWN:
         mce_log(LL_DEBUG, "display -> on");
-        execute_datapipe(&display_state_req_pipe,
-                         GINT_TO_POINTER(MCE_DISPLAY_ON),
-                         USE_INDATA, CACHE_INDATA);
+        mce_datapipe_req_display_state(MCE_DISPLAY_ON);
         break;
     }
 
@@ -2775,9 +2769,7 @@ static void tklock_lidpolicy_rethink(void)
         /* Blank display + lock ui */
         if( tklock_lid_close_actions != LID_CLOSE_ACTION_DISABLED ) {
             mce_log(LL_DEVEL, "lid closed - blank");
-            execute_datapipe(&display_state_req_pipe,
-                             GINT_TO_POINTER(MCE_DISPLAY_OFF),
-                             USE_INDATA, CACHE_INDATA);
+            mce_datapipe_req_display_state(MCE_DISPLAY_OFF);
         }
 
         if( tklock_lid_close_actions == LID_CLOSE_ACTION_TKLOCK ) {
@@ -2792,9 +2784,7 @@ static void tklock_lidpolicy_rethink(void)
         /* Unblank display + unlock ui */
         if( tklock_lid_open_actions != LID_OPEN_ACTION_DISABLED ) {
             mce_log(LL_DEVEL, "lid open - unblank");
-            execute_datapipe(&display_state_req_pipe,
-                             GINT_TO_POINTER(MCE_DISPLAY_ON),
-                             USE_INDATA, CACHE_INDATA);
+            mce_datapipe_req_display_state(MCE_DISPLAY_ON);
         }
 
         if( tklock_lid_open_actions == LID_OPEN_ACTION_TKUNLOCK ) {
@@ -2857,9 +2847,7 @@ static void tklock_keyboard_slide_opened(void)
     /* Check what actions are wanted */
     if( tklock_kbd_open_actions != LID_OPEN_ACTION_DISABLED ) {
         mce_log(LL_DEVEL, "kbd slide open - unblank");
-        execute_datapipe(&display_state_req_pipe,
-                         GINT_TO_POINTER(MCE_DISPLAY_ON),
-                         USE_INDATA, CACHE_INDATA);
+        mce_datapipe_req_display_state(MCE_DISPLAY_ON);
     }
 
     if( tklock_kbd_open_actions == LID_OPEN_ACTION_TKUNLOCK ) {
@@ -2904,9 +2892,7 @@ static void tklock_keyboard_slide_closed(void)
     /* Check what actions are wanted */
     if( tklock_kbd_close_actions != LID_CLOSE_ACTION_DISABLED ) {
         mce_log(LL_DEVEL, "kbd slide closed - blank");
-        execute_datapipe(&display_state_req_pipe,
-                         GINT_TO_POINTER(MCE_DISPLAY_OFF),
-                         USE_INDATA, CACHE_INDATA);
+        mce_datapipe_req_display_state(MCE_DISPLAY_OFF);
     }
 
     if( tklock_kbd_close_actions == LID_CLOSE_ACTION_TKLOCK ) {
@@ -3477,9 +3463,7 @@ static void tklock_uiexcept_rethink(void)
             else {
                 mce_log(LL_DEBUG, "display blank");
             }
-            execute_datapipe(&display_state_req_pipe,
-                             GINT_TO_POINTER(MCE_DISPLAY_OFF),
-                             USE_INDATA, CACHE_INDATA);
+            mce_datapipe_req_display_state(MCE_DISPLAY_OFF);
         }
         else {
             mce_log(LL_DEBUG, "display already blanked");
@@ -3512,9 +3496,7 @@ static void tklock_uiexcept_rethink(void)
         }
         else if( display_state != MCE_DISPLAY_ON ) {
             mce_log(LL_DEBUG, "display unblank");
-            execute_datapipe(&display_state_req_pipe,
-                             GINT_TO_POINTER(MCE_DISPLAY_ON),
-                             USE_INDATA, CACHE_INDATA);
+            mce_datapipe_req_display_state(MCE_DISPLAY_ON);
         }
     }
 
@@ -3584,9 +3566,7 @@ static void tklock_uiexcept_finish(void)
     default:
         /* If the display was not clearly ON when exception started,
          * turn it OFF after exceptions are over. */
-        execute_datapipe(&display_state_req_pipe,
-                         GINT_TO_POINTER(MCE_DISPLAY_OFF),
-                         USE_INDATA, CACHE_INDATA);
+        mce_datapipe_req_display_state(MCE_DISPLAY_OFF);
         break;
 
     case MCE_DISPLAY_ON:
@@ -3602,9 +3582,7 @@ static void tklock_uiexcept_finish(void)
             lid_cover_policy_state == COVER_CLOSED )
             break;
 
-        execute_datapipe(&display_state_req_pipe,
-                         GINT_TO_POINTER(exx.display),
-                         USE_INDATA, CACHE_INDATA);
+        mce_datapipe_req_display_state(exx.display);
         break;
     }
 EXIT:
@@ -3940,9 +3918,7 @@ static void tklock_lpmui_rethink(void)
         /* Note: Display plugin handles MCE_DISPLAY_LPM_ON request as
          *       MCE_DISPLAY_OFF unless lpm mode is both supported
          *       and enabled. */
-        execute_datapipe(&display_state_req_pipe,
-                         GINT_TO_POINTER(MCE_DISPLAY_LPM_ON),
-                         USE_INDATA, CACHE_INDATA);
+        mce_datapipe_req_display_state(MCE_DISPLAY_LPM_ON);
     }
 
 EXIT:
@@ -6665,9 +6641,8 @@ void mce_tklock_unblank(display_state_t to_state)
         tklock_uiexcept_begin(UIEXC_NOANIM, 0);
     }
 
-    execute_datapipe(&display_state_req_pipe,
-                     GINT_TO_POINTER(to_state),
-                     USE_INDATA, CACHE_INDATA);
+    mce_datapipe_req_display_state(to_state);
+
 EXIT:
     return;
 }

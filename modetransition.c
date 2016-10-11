@@ -179,9 +179,7 @@ static void system_state_trigger(gconstpointer data)
 		switch( old_system_state ) {
 		case MCE_STATE_USER:
 		case MCE_STATE_ACTDEAD:
-			execute_datapipe(&display_state_req_pipe,
-					 GINT_TO_POINTER(MCE_DISPLAY_ON),
-					 USE_INDATA, CACHE_INDATA);
+			mce_datapipe_req_display_state(MCE_DISPLAY_ON);
 			break;
 
 		default:

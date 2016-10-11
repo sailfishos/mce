@@ -815,9 +815,7 @@ pwrkey_action_blank(void)
 
     mce_log(LL_DEBUG, "Requesting display=%s",
             display_state_repr(request));
-    execute_datapipe(&display_state_req_pipe,
-                     GINT_TO_POINTER(request),
-                     USE_INDATA, CACHE_INDATA);
+    mce_datapipe_req_display_state(request);
 }
 
 static void
@@ -1921,9 +1919,7 @@ homekey_stm_set_state(homekey_stm_t state)
         /* Initiate display power up */
         mce_log(LL_DEBUG, "request %s",
                 display_state_repr(MCE_DISPLAY_ON));
-        execute_datapipe(&display_state_req_pipe,
-                         GINT_TO_POINTER(MCE_DISPLAY_ON),
-                         USE_INDATA, CACHE_INDATA);
+        mce_datapipe_req_display_state(MCE_DISPLAY_ON);
         break;
 
     case HOMEKEY_STM_SEND_SIGNAL:
