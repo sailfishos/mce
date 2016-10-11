@@ -101,6 +101,14 @@
 /** How long to delay entering late suspend after powering down display */
 #define MCE_DISPLAY_STM_SUSPEND_DELAY_NS (5LL * 1000LL * 1000LL * 1000LL)
 
+#ifdef ENABLE_DEVEL_LOGGING
+/** Strictly for debugging: D-Bus method to invoke MCE_DISPLAY_LPM_ON state */
+# define MCE_DISPLAY_LPM_ON_REQ             "req_display_state_lpm_on"
+
+/** Strictly for debugging: D-Bus method to invoke MCE_DISPLAY_LPM_OFF state */
+# define MCE_DISPLAY_LPM_OFF_REQ            "req_display_state_lpm_off"
+#endif
+
 /* ========================================================================= *
  * TYPEDEFS
  * ========================================================================= */
@@ -670,6 +678,10 @@ static gboolean            mdy_dbus_handle_display_on_req(DBusMessage *const msg
 static gboolean            mdy_dbus_handle_display_dim_req(DBusMessage *const msg);
 static gboolean            mdy_dbus_handle_display_off_req(DBusMessage *const msg);
 static gboolean            mdy_dbus_handle_display_lpm_req(DBusMessage *const msg);
+#ifdef ENABLE_DEVEL_LOGGING
+static gboolean            mdy_dbus_handle_display_lpm_on_req(DBusMessage *const msg);
+static gboolean            mdy_dbus_handle_display_lpm_off_req(DBusMessage *const msg);
+#endif
 static gboolean            mdy_dbus_handle_display_status_get_req(DBusMessage *const msg);
 
 static gboolean            mdy_dbus_send_cabc_mode(DBusMessage *const method_call);
@@ -7865,6 +7877,54 @@ EXIT:
     return TRUE;
 }
 
+/** D-Bus callback for the display lpm-on method call
+ *
+ * @param msg The D-Bus message
+ *
+ * @return TRUE
+ */
+#ifdef ENABLE_DEVEL_LOGGING
+static gboolean mdy_dbus_handle_display_lpm_on_req(DBusMessage *const msg)
+{
+    display_state_t  current = datapipe_get_gint(display_state_next_pipe);
+    display_state_t  request = MCE_DISPLAY_LPM_ON;
+
+    mce_log(LL_CRUCIAL, "display lpm-on request from %s",
+            mce_dbus_get_message_sender_ident(msg));
+
+    if( !dbus_message_get_no_reply(msg) )
+        dbus_send_message(dbus_new_method_reply(msg));
+
+    mdy_dbus_handle_display_state_req(request);
+
+    return TRUE;
+}
+#endif
+
+/** D-Bus callback for the display lpm-off method call
+ *
+ * @param msg The D-Bus message
+ *
+ * @return TRUE
+ */
+#ifdef ENABLE_DEVEL_LOGGING
+static gboolean mdy_dbus_handle_display_lpm_off_req(DBusMessage *const msg)
+{
+    display_state_t  current = datapipe_get_gint(display_state_next_pipe);
+    display_state_t  request = MCE_DISPLAY_LPM_OFF;
+
+    mce_log(LL_CRUCIAL, "display lpm-off request from %s",
+            mce_dbus_get_message_sender_ident(msg));
+
+    if( !dbus_message_get_no_reply(msg) )
+        dbus_send_message(dbus_new_method_reply(msg));
+
+    mdy_dbus_handle_display_state_req(request);
+
+    return TRUE;
+}
+#endif
+
 /**
  * D-Bus callback for the get display status method call
  *
@@ -8379,6 +8439,24 @@ static mce_dbus_handler_t mdy_dbus_handlers[] =
         .args      =
             ""
     },
+#ifdef ENABLE_DEVEL_LOGGING
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_DISPLAY_LPM_ON_REQ,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = mdy_dbus_handle_display_lpm_on_req,
+        .args      =
+            ""
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_DISPLAY_LPM_OFF_REQ,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = mdy_dbus_handle_display_lpm_off_req,
+        .args      =
+            ""
+    },
+#endif
     {
         .interface = MCE_REQUEST_IF,
         .name      = MCE_PREVENT_BLANK_REQ,
