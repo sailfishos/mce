@@ -101,6 +101,14 @@
 /** How long to delay entering late suspend after powering down display */
 #define MCE_DISPLAY_STM_SUSPEND_DELAY_NS (5LL * 1000LL * 1000LL * 1000LL)
 
+#ifdef ENABLE_DEVEL_LOGGING
+/** Strictly for debugging: D-Bus method to invoke MCE_DISPLAY_LPM_ON state */
+# define MCE_DISPLAY_LPM_ON_REQ             "req_display_state_lpm_on"
+
+/** Strictly for debugging: D-Bus method to invoke MCE_DISPLAY_LPM_OFF state */
+# define MCE_DISPLAY_LPM_OFF_REQ            "req_display_state_lpm_off"
+#endif
+
 /* ========================================================================= *
  * TYPEDEFS
  * ========================================================================= */
@@ -670,6 +678,10 @@ static gboolean            mdy_dbus_handle_display_on_req(DBusMessage *const msg
 static gboolean            mdy_dbus_handle_display_dim_req(DBusMessage *const msg);
 static gboolean            mdy_dbus_handle_display_off_req(DBusMessage *const msg);
 static gboolean            mdy_dbus_handle_display_lpm_req(DBusMessage *const msg);
+#ifdef ENABLE_DEVEL_LOGGING
+static gboolean            mdy_dbus_handle_display_lpm_on_req(DBusMessage *const msg);
+static gboolean            mdy_dbus_handle_display_lpm_off_req(DBusMessage *const msg);
+#endif
 static gboolean            mdy_dbus_handle_display_status_get_req(DBusMessage *const msg);
 
 static gboolean            mdy_dbus_send_cabc_mode(DBusMessage *const method_call);
@@ -1207,7 +1219,8 @@ static gpointer mdy_datapipe_display_state_filter_cb(gpointer data)
 
     case MCE_DISPLAY_LPM_OFF:
     case MCE_DISPLAY_LPM_ON:
-        if( mdy_use_low_power_mode && mdy_low_power_mode_supported )
+        if( lipstick_service_state == SERVICE_STATE_RUNNING &&
+            mdy_use_low_power_mode && mdy_low_power_mode_supported )
             break;
 
         mce_log(LL_DEBUG, "reject low power mode display request");
@@ -1686,9 +1699,7 @@ static void mdy_datapipe_device_inactive_cb(gconstpointer data)
     case MCE_DISPLAY_DIM:
         /* DIM->ON on device activity */
         mce_log(LL_NOTICE, "display on due to activity");
-        execute_datapipe(&display_state_req_pipe,
-                         GINT_TO_POINTER(MCE_DISPLAY_ON),
-                         USE_INDATA, CACHE_INDATA);
+        mce_datapipe_req_display_state(MCE_DISPLAY_ON);
         break;
 
     default:
@@ -3383,9 +3394,7 @@ static gboolean mdy_blanking_dim_cb(gpointer data)
     if( submode & MCE_MALF_SUBMODE )
         display = MCE_DISPLAY_OFF;
 
-    execute_datapipe(&display_state_req_pipe,
-                     GINT_TO_POINTER(display),
-                     USE_INDATA, CACHE_INDATA);
+    mce_datapipe_req_display_state(display);
 
     return FALSE;
 }
@@ -3511,6 +3520,8 @@ static gboolean mdy_blanking_off_cb(gpointer data)
     switch( display_state ) {
     case MCE_DISPLAY_ON:
     case MCE_DISPLAY_DIM:
+        if( lipstick_service_state != SERVICE_STATE_RUNNING )
+            break;
         if( submode & MCE_TKLOCK_SUBMODE )
             next_state = MCE_DISPLAY_LPM_ON;
         break;
@@ -3518,9 +3529,7 @@ static gboolean mdy_blanking_off_cb(gpointer data)
         break;
     }
 
-    execute_datapipe(&display_state_req_pipe,
-                     GINT_TO_POINTER(next_state),
-                     USE_INDATA, CACHE_INDATA);
+    mce_datapipe_req_display_state(next_state);
 
     /* Remove wakelock unless the timer got re-programmed */
     if( !mdy_blanking_off_cb_id  )
@@ -3629,9 +3638,7 @@ static gboolean mdy_blanking_lpm_off_cb(gpointer data)
 
     mdy_blanking_lpm_off_cb_id = 0;
 
-    execute_datapipe(&display_state_req_pipe,
-                     GINT_TO_POINTER(MCE_DISPLAY_LPM_OFF),
-                     USE_INDATA, CACHE_INDATA);
+    mce_datapipe_req_display_state(MCE_DISPLAY_LPM_OFF);
 
     return FALSE;
 }
@@ -4330,9 +4337,7 @@ static void mdy_blanking_rethink_proximity(void)
     switch( display_state ) {
     case MCE_DISPLAY_LPM_ON:
         if( proximity_state == COVER_CLOSED )
-            execute_datapipe(&display_state_req_pipe,
-                             GINT_TO_POINTER(MCE_DISPLAY_LPM_OFF),
-                             USE_INDATA, CACHE_INDATA);
+            mce_datapipe_req_display_state(MCE_DISPLAY_LPM_OFF);
         else
             mdy_blanking_schedule_lpm_off();
         break;
@@ -4340,9 +4345,7 @@ static void mdy_blanking_rethink_proximity(void)
     case MCE_DISPLAY_LPM_OFF:
         if( proximity_state == COVER_OPEN &&
             lid_cover_policy_state != COVER_CLOSED )
-            execute_datapipe(&display_state_req_pipe,
-                             GINT_TO_POINTER(MCE_DISPLAY_LPM_ON),
-                             USE_INDATA, CACHE_INDATA);
+            mce_datapipe_req_display_state(MCE_DISPLAY_LPM_ON);
         else
             mdy_blanking_schedule_off();
         break;
@@ -5411,7 +5414,7 @@ static void mdy_compositor_name_owner_set(const char *curr)
 {
     bool has_owner = (curr && *curr);
 
-    mce_log(LL_DEVEL, "compositor is %s on system bus",
+    mce_log(LL_CRUCIAL, "compositor is %s on system bus",
             has_owner ? curr : "N/A");
 
     /* first clear existing data, timers, etc */
@@ -5994,7 +5997,7 @@ static void mdy_display_state_enter(display_state_t prev_state,
     display_state_pipe.cached_data = GINT_TO_POINTER(next_state);
 
     /* Run display state change triggers */
-    mce_log(LL_DEVEL, "current display state = %s",
+    mce_log(LL_CRUCIAL, "current display state = %s",
             display_state_repr(next_state));
     execute_datapipe(&display_state_pipe,
                      GINT_TO_POINTER(next_state),
@@ -6085,7 +6088,7 @@ static void mdy_display_state_leave(display_state_t prev_state,
         display_state_t state =
             need_power ? MCE_DISPLAY_POWER_UP : MCE_DISPLAY_POWER_DOWN;
 
-        mce_log(LL_DEVEL, "current display state = %s",
+        mce_log(LL_CRUCIAL, "current display state = %s",
                 display_state_repr(state));
         display_state_pipe.cached_data = GINT_TO_POINTER(state);
         execute_datapipe(&display_state_pipe,
@@ -6324,7 +6327,7 @@ EXIT:
 static void mdy_stm_set_compositor_availability_changed(bool changed)
 {
     if( mdy_stm_compositor_availability_changed != changed ) {
-        mce_log(LL_DEBUG, "compositor availability change: %s",
+        mce_log(LL_CRUCIAL, "compositor availability change: %s",
                 changed ? "pending" : "handled");
         mdy_stm_compositor_availability_changed = changed;
     }
@@ -7721,9 +7724,7 @@ static void mdy_dbus_handle_display_state_req(display_state_t state)
      * similar -> reset the last indication sent cache */
     mdy_dbus_invalidate_display_status();
 
-    execute_datapipe(&display_state_req_pipe,
-                     GINT_TO_POINTER(state),
-                     USE_INDATA, CACHE_INDATA);
+    mce_datapipe_req_display_state(state);
 }
 
 /**
@@ -7743,7 +7744,7 @@ static gboolean mdy_dbus_handle_display_on_req(DBusMessage *const msg)
                 mce_dbus_get_message_sender_ident(msg), reason);
     }
     else {
-        mce_log(LL_DEVEL,"display ON request from %s",
+        mce_log(LL_CRUCIAL,"display ON request from %s",
                 mce_dbus_get_message_sender_ident(msg));
         request = MCE_DISPLAY_ON;
     }
@@ -7773,7 +7774,7 @@ static gboolean mdy_dbus_handle_display_dim_req(DBusMessage *const msg)
                 mce_dbus_get_message_sender_ident(msg), reason);
     }
     else {
-        mce_log(LL_DEVEL,"display DIM request from %s",
+        mce_log(LL_CRUCIAL,"display DIM request from %s",
                 mce_dbus_get_message_sender_ident(msg));
         request = MCE_DISPLAY_DIM;
     }
@@ -7802,7 +7803,7 @@ static gboolean mdy_dbus_handle_display_off_req(DBusMessage *const msg)
     if( mdy_dbus_display_off_override == DISPLAY_OFF_OVERRIDE_USE_LPM )
         return mdy_dbus_handle_display_lpm_req(msg);
 
-    mce_log(LL_DEVEL, "display off request from %s",
+    mce_log(LL_CRUCIAL, "display off request from %s",
             mce_dbus_get_message_sender_ident(msg));
 
     if( !dbus_message_get_no_reply(msg) )
@@ -7830,7 +7831,7 @@ static gboolean mdy_dbus_handle_display_lpm_req(DBusMessage *const msg)
     bool             lock_ui = true;
     const char      *reason  = 0;
 
-    mce_log(LL_DEVEL, "display lpm request from %s",
+    mce_log(LL_CRUCIAL, "display lpm request from %s",
             mce_dbus_get_message_sender_ident(msg));
 
     /* Ignore lpm requests if there are active calls / alarms */
@@ -7878,6 +7879,54 @@ EXIT:
 
     return TRUE;
 }
+
+/** D-Bus callback for the display lpm-on method call
+ *
+ * @param msg The D-Bus message
+ *
+ * @return TRUE
+ */
+#ifdef ENABLE_DEVEL_LOGGING
+static gboolean mdy_dbus_handle_display_lpm_on_req(DBusMessage *const msg)
+{
+    display_state_t  current = datapipe_get_gint(display_state_next_pipe);
+    display_state_t  request = MCE_DISPLAY_LPM_ON;
+
+    mce_log(LL_CRUCIAL, "display lpm-on request from %s",
+            mce_dbus_get_message_sender_ident(msg));
+
+    if( !dbus_message_get_no_reply(msg) )
+        dbus_send_message(dbus_new_method_reply(msg));
+
+    mdy_dbus_handle_display_state_req(request);
+
+    return TRUE;
+}
+#endif
+
+/** D-Bus callback for the display lpm-off method call
+ *
+ * @param msg The D-Bus message
+ *
+ * @return TRUE
+ */
+#ifdef ENABLE_DEVEL_LOGGING
+static gboolean mdy_dbus_handle_display_lpm_off_req(DBusMessage *const msg)
+{
+    display_state_t  current = datapipe_get_gint(display_state_next_pipe);
+    display_state_t  request = MCE_DISPLAY_LPM_OFF;
+
+    mce_log(LL_CRUCIAL, "display lpm-off request from %s",
+            mce_dbus_get_message_sender_ident(msg));
+
+    if( !dbus_message_get_no_reply(msg) )
+        dbus_send_message(dbus_new_method_reply(msg));
+
+    mdy_dbus_handle_display_state_req(request);
+
+    return TRUE;
+}
+#endif
 
 /**
  * D-Bus callback for the get display status method call
@@ -8393,6 +8442,24 @@ static mce_dbus_handler_t mdy_dbus_handlers[] =
         .args      =
             ""
     },
+#ifdef ENABLE_DEVEL_LOGGING
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_DISPLAY_LPM_ON_REQ,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = mdy_dbus_handle_display_lpm_on_req,
+        .args      =
+            ""
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_DISPLAY_LPM_OFF_REQ,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = mdy_dbus_handle_display_lpm_off_req,
+        .args      =
+            ""
+    },
+#endif
     {
         .interface = MCE_REQUEST_IF,
         .name      = MCE_PREVENT_BLANK_REQ,
@@ -8522,9 +8589,7 @@ static void mdy_flagfiles_update_mode_cb(const char *path,
 
         if( mdy_update_mode ) {
             /* Issue display on request when update mode starts */
-            execute_datapipe(&display_state_req_pipe,
-                             GINT_TO_POINTER(MCE_DISPLAY_ON),
-                             USE_INDATA, CACHE_INDATA);
+            mce_datapipe_req_display_state(MCE_DISPLAY_ON);
         }
 
         /* suspend policy is affected by update mode */
@@ -8821,17 +8886,13 @@ static void mdy_setting_cb(GConfClient *const gcc, const guint id,
             ((mdy_low_power_mode_supported == FALSE) ||
                 (mdy_use_low_power_mode == FALSE) ||
                 (mdy_blanking_can_blank_from_low_power_mode() == TRUE))) {
-            execute_datapipe(&display_state_req_pipe,
-                             GINT_TO_POINTER(MCE_DISPLAY_OFF),
-                             USE_INDATA, CACHE_INDATA);
+            mce_datapipe_req_display_state(MCE_DISPLAY_OFF);
         }
         else if ((display_state == MCE_DISPLAY_OFF) &&
                  (mdy_use_low_power_mode == TRUE) &&
                  (mdy_blanking_can_blank_from_low_power_mode() == FALSE) &&
                  (mdy_low_power_mode_supported == TRUE)) {
-            execute_datapipe(&display_state_req_pipe,
-                             GINT_TO_POINTER(MCE_DISPLAY_LPM_ON),
-                             USE_INDATA, CACHE_INDATA);
+            mce_datapipe_req_display_state(MCE_DISPLAY_LPM_ON);
         }
     }
     else if (id == mdy_adaptive_dimming_enabled_setting_id) {
@@ -9588,11 +9649,9 @@ const gchar *g_module_check_init(GModule *module)
      * gets notification from DSME */
     mce_log(LL_INFO, "initial display mode = %s",
             display_is_on ? "ON" : "OFF");
-    execute_datapipe(&display_state_req_pipe,
-                     GINT_TO_POINTER(display_is_on ?
-                                     MCE_DISPLAY_ON :
-                                     MCE_DISPLAY_OFF),
-                     USE_INDATA, CACHE_INDATA);
+    mce_datapipe_req_display_state(display_is_on ?
+                                   MCE_DISPLAY_ON :
+                                   MCE_DISPLAY_OFF);
 
     /* Start the framebuffer sleep/wakeup thread */
 #ifdef ENABLE_WAKELOCKS

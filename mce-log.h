@@ -48,6 +48,10 @@ typedef enum {
 	LL_MAXIMUM = LOG_DEBUG,		/**< Minimum for bounds checking */
 	LL_MINIMUM = LOG_EMERG,		/**< Maximum for bounds checking */
 
+	LL_CRUCIAL = LOG_EMERG,		/**< Elevated priority for solving
+					 *   problems that require logs from
+					 *   the whole user base. Should be
+					 *   downgraded as soon as possible. */
 } loglevel_t;
 
 # ifdef OSSOLOG_COMPILE
@@ -55,7 +59,7 @@ void mce_log_add_pattern(const char *pat);
 void mce_log_set_verbosity(int verbosity);
 int  mce_log_get_verbosity(void);
 
-int  mce_log_p_(const loglevel_t loglevel,
+int  mce_log_p_(loglevel_t loglevel,
 		const char *const file, const char *const function);
 
 void mce_log_file(loglevel_t loglevel, const char *const file,

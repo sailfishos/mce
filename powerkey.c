@@ -815,9 +815,7 @@ pwrkey_action_blank(void)
 
     mce_log(LL_DEBUG, "Requesting display=%s",
             display_state_repr(request));
-    execute_datapipe(&display_state_req_pipe,
-                     GINT_TO_POINTER(request),
-                     USE_INDATA, CACHE_INDATA);
+    mce_datapipe_req_display_state(request);
 }
 
 static void
@@ -1921,9 +1919,7 @@ homekey_stm_set_state(homekey_stm_t state)
         /* Initiate display power up */
         mce_log(LL_DEBUG, "request %s",
                 display_state_repr(MCE_DISPLAY_ON));
-        execute_datapipe(&display_state_req_pipe,
-                         GINT_TO_POINTER(MCE_DISPLAY_ON),
-                         USE_INDATA, CACHE_INDATA);
+        mce_datapipe_req_display_state(MCE_DISPLAY_ON);
         break;
 
     case HOMEKEY_STM_SEND_SIGNAL:
@@ -2865,6 +2861,7 @@ pwrkey_datapipes_keypress_cb(gconstpointer const data)
         switch( ev->code ) {
         case KEY_POWER:
             if( ev->value == 1 ) {
+                mce_log(LL_CRUCIAL, "powerkey pressed");
                 /* Detect repeated power key pressing while
                  * proximity sensor is covered; assume it means
                  * the sensor is stuck and user wants to be able
@@ -2876,6 +2873,7 @@ pwrkey_datapipes_keypress_cb(gconstpointer const data)
                 pwrkey_stm_powerkey_pressed();
             }
             else if( ev->value == 0 ) {
+                mce_log(LL_CRUCIAL, "powerkey released");
                 /* Power key released */
                 pwrkey_stm_powerkey_released();
             }
@@ -2884,10 +2882,14 @@ pwrkey_datapipes_keypress_cb(gconstpointer const data)
             break;
 
         case KEY_HOME:
-            if( ev->value == 1 )
+            if( ev->value == 1 ) {
+                mce_log(LL_CRUCIAL, "homekey pressed");
                 homekey_stm_set_pressed(true);
-            else if( ev->value == 0 )
+            }
+            else if( ev->value == 0 ) {
+                mce_log(LL_CRUCIAL, "homekey released");
                 homekey_stm_set_pressed(false);
+            }
             break;
 
         default:
@@ -2897,7 +2899,7 @@ pwrkey_datapipes_keypress_cb(gconstpointer const data)
 
     case EV_MSC:
         if( ev->code == MSC_GESTURE ) {
-            mce_log(LL_DEBUG, "gesture(%d)", ev->value);
+            mce_log(LL_CRUCIAL, "gesture(%d)", ev->value);
             pwrkey_actions_do_gesture(ev->value);
         }
         break;
