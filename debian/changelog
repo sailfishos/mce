@@ -1,3 +1,18 @@
+mce (1.82.3) precise; urgency=low
+
+  * [logging] Add LL_CRUCIAL logging priority. JB#36274
+  * [datapipe] Elevate logging of display state requests. JB#36274
+  * [proximity] Elevate logging proximity and lid sensor changes. JB#36274
+  * [powerkey] Elevate logging of powerkey, homekey and gesture events. JB#36274
+  * [tklock] Elevate logging of display exception state changes. JB#36274
+  * [display] Elevate logging of compositor exit/startup. JB#36274
+  * [display] Elevate logging of current display state changes. JB#36274
+  * [display] Elevate logging of display state request over D-Bus. Fixes JB#36274
+  * [display] Add D-Bus methods for debugging LPM display states. JB#36473
+  * [display] Allow LPM display states only when lipstick is running. JB#36473
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 13 Oct 2016 07:32:32 +0300
+
 mce (1.82.2) precise; urgency=low
 
   * [mce-sensorfw] Use obtained session id in logging. Fixes MER#1661
