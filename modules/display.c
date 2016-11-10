@@ -7889,7 +7889,6 @@ EXIT:
 #ifdef ENABLE_DEVEL_LOGGING
 static gboolean mdy_dbus_handle_display_lpm_on_req(DBusMessage *const msg)
 {
-    display_state_t  current = datapipe_get_gint(display_state_next_pipe);
     display_state_t  request = MCE_DISPLAY_LPM_ON;
 
     mce_log(LL_CRUCIAL, "display lpm-on request from %s",
@@ -7913,7 +7912,6 @@ static gboolean mdy_dbus_handle_display_lpm_on_req(DBusMessage *const msg)
 #ifdef ENABLE_DEVEL_LOGGING
 static gboolean mdy_dbus_handle_display_lpm_off_req(DBusMessage *const msg)
 {
-    display_state_t  current = datapipe_get_gint(display_state_next_pipe);
     display_state_t  request = MCE_DISPLAY_LPM_OFF;
 
     mce_log(LL_CRUCIAL, "display lpm-off request from %s",

@@ -1049,24 +1049,22 @@ static const char *value_signature(GConfValue *conf)
 
 /** Helper for appending GConfValue to dbus message
  *
- * @param reply DBusMessage under construction
- * @param conf GConfValue to be added to the reply
+ * @param iter  Append iterator for DBusMessage under construction
+ * @param conf  GConfValue to be added at the iterator
  *
- * @return TRUE if the value was succesfully appended, or FALSE on failure
+ * @return true if the value was succesfully appended, or false on failure
  */
-static gboolean append_gconf_value_to_dbus_message(DBusMessage *reply, GConfValue *conf)
+static bool append_gconf_value_to_dbus_iterator(DBusMessageIter *iter, GConfValue *conf)
 {
 	const char *sig = 0;
 
-	DBusMessageIter body, variant, array;
+	DBusMessageIter variant, array;
 
 	if( !(sig = value_signature(conf)) ) {
 		goto bailout_message;
 	}
 
-	dbus_message_iter_init_append(reply, &body);
-
-	if( !dbus_message_iter_open_container(&body, DBUS_TYPE_VARIANT,
+	if( !dbus_message_iter_open_container(iter, DBUS_TYPE_VARIANT,
 					      sig, &variant) ) {
 		goto bailout_message;
 	}
@@ -1177,27 +1175,115 @@ static gboolean append_gconf_value_to_dbus_message(DBusMessage *reply, GConfValu
 		goto bailout_variant;
 	}
 
-	if( !dbus_message_iter_close_container(&body, &variant) ) {
+	if( !dbus_message_iter_close_container(iter, &variant) ) {
 		goto bailout_message;
 	}
-	return TRUE;
+	return true;
 
 bailout_array:
 	dbus_message_iter_abandon_container(&variant, &array);
 
 bailout_variant:
-	dbus_message_iter_abandon_container(&body, &variant);
+	dbus_message_iter_abandon_container(iter, &variant);
 
 bailout_message:
-	return FALSE;
+	return false;
 }
 
-/* FIXME: Once the constants are in mce-dev these can be removed */
-#ifndef MCE_CONFIG_GET
-# define MCE_CONFIG_GET         "get_config"
-# define MCE_CONFIG_SET         "set_config"
-# define MCE_CONFIG_CHANGE_SIG  "config_change_ind"
-#endif
+/** Helper for appending GConfEntry to dbus message
+ *
+ * @param iter   Append iterator for DBusMessage under construction
+ * @param entry  GConfEntry to be added at the iterator
+ *
+ * @return true if the value was succesfully appended, or false on failure
+ */
+static bool append_gconf_entry_to_dbus_iterator(DBusMessageIter *iter, GConfEntry *entry)
+{
+	DBusMessageIter sub;
+
+	if( !dbus_message_iter_open_container(iter, DBUS_TYPE_DICT_ENTRY,
+					      0, &sub) ) {
+		goto bailout_message;
+	}
+
+	if( !dbus_message_iter_append_basic(&sub,
+					    DBUS_TYPE_STRING, &entry->key) ) {
+		goto bailout_container;
+	}
+
+	if( !append_gconf_value_to_dbus_iterator(&sub, entry->value) ) {
+		goto bailout_container;
+	}
+
+	if( !dbus_message_iter_close_container(iter, &sub) ) {
+		goto bailout_message;
+	}
+
+	return true;
+
+bailout_container:
+	dbus_message_iter_abandon_container(iter, &sub);
+
+bailout_message:
+	return false;
+}
+
+/** Helper for appending list of GConfEntry objects to dbus message
+ *
+ * @param iter     Append iterator for DBusMessage under construction
+ * @param entries  GSList containing GConfEntry objects
+ *
+ * @return true if the value was succesfully appended, or false on failure
+ */
+static bool append_gconf_entries_to_dbus_iterator(DBusMessageIter *iter, GSList *entries)
+{
+	DBusMessageIter sub;
+
+	if( !dbus_message_iter_open_container(iter, DBUS_TYPE_ARRAY,
+					      DBUS_DICT_ENTRY_BEGIN_CHAR_AS_STRING
+					      DBUS_TYPE_STRING_AS_STRING
+					      DBUS_TYPE_VARIANT_AS_STRING
+					      DBUS_DICT_ENTRY_END_CHAR_AS_STRING,
+					      &sub) ) {
+		goto bailout_message;
+	}
+
+	for( GSList *item = entries; item; item = item->next )
+	{
+		GConfEntry *entry = item->data;
+
+		if( !append_gconf_entry_to_dbus_iterator(&sub, entry) )
+			goto bailout_container;
+	}
+
+	if( !dbus_message_iter_close_container(iter, &sub) ) {
+		goto bailout_message;
+	}
+
+	return true;
+
+bailout_container:
+	dbus_message_iter_abandon_container(iter, &sub);
+
+bailout_message:
+	return false;
+}
+
+/** Helper for appending GConfValue to dbus message
+ *
+ * @param reply DBusMessage under construction
+ * @param conf GConfValue to be added to the reply
+ *
+ * @return true if the value was succesfully appended, or false on failure
+ */
+static bool append_gconf_value_to_dbus_message(DBusMessage *reply, GConfValue *conf)
+{
+	DBusMessageIter body;
+
+	dbus_message_iter_init_append(reply, &body);
+
+	return append_gconf_value_to_dbus_iterator(&body, conf);
+}
 
 /**
  * D-Bus callback for the config get method call
@@ -1271,6 +1357,49 @@ EXIT:
 	g_clear_error(&err);
 
 	return status;
+}
+
+/** D-Bus callback for the config get all -method call
+ *
+ * @param msg The D-Bus message to reply to
+ *
+ * @return TRUE
+ */
+static gboolean config_get_all_dbus_cb(DBusMessage *const req)
+{
+	GConfClient *cli = 0;
+	DBusMessage *rsp = 0;
+
+	mce_log(LL_DEBUG, "Received configuration query request");
+
+	if( !(cli = gconf_client_get_default()) )
+		goto EXIT;
+
+	if( !(rsp = dbus_new_method_reply(req)) )
+		goto EXIT;
+
+	DBusMessageIter body;
+
+	dbus_message_iter_init_append(rsp, &body);
+
+	if( !append_gconf_entries_to_dbus_iterator(&body, cli->entries) ) {
+		dbus_message_unref(rsp), rsp = 0;
+	}
+
+EXIT:
+
+	if( !dbus_message_get_no_reply(req) ) {
+		if( !rsp )
+			rsp = dbus_message_new_error(req, "com.nokia.mce.GConf.Error",
+						     "unknown");
+		if( rsp )
+			dbus_send_message(rsp), rsp = 0;
+	}
+
+	if( rsp )
+		dbus_message_unref(rsp);
+
+	return TRUE;
 }
 
 /** Send configuration changed notification signal
@@ -3777,6 +3906,15 @@ static mce_dbus_handler_t mce_dbus_handlers[] =
 		.args      =
 			"    <arg direction=\"in\" name=\"key_name\" type=\"s\"/>\n"
 			"    <arg direction=\"out\" name=\"key_value\" type=\"v\"/>\n"
+	},
+	{
+		.interface = MCE_REQUEST_IF,
+		.name      = MCE_CONFIG_GET_ALL,
+		.type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+		.callback  = config_get_all_dbus_cb,
+		.args      =
+			"    <arg direction=\"out\" name=\"values\" type=\"a{sv}\"/>\n"
+			"    <annotation name=\"org.qtproject.QtDBus.QtTypeName.Out0\" value=\"QVariantMap\"/>\n"
 	},
 	{
 		.interface = MCE_REQUEST_IF,
