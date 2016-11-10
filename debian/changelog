@@ -1,3 +1,11 @@
+mce (1.83.0) precise; urgency=low
+
+  * [display] Remove unused variables
+  * [dbus] Remove unneeded constants
+  * [dbus] Add method call for getting all mce settings. JB#34813
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 10 Nov 2016 09:16:06 +0200
+
 mce (1.82.3) precise; urgency=low
 
   * [logging] Add LL_CRUCIAL logging priority. JB#36274
