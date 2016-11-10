@@ -1192,13 +1192,6 @@ bailout_message:
 	return FALSE;
 }
 
-/* FIXME: Once the constants are in mce-dev these can be removed */
-#ifndef MCE_CONFIG_GET
-# define MCE_CONFIG_GET         "get_config"
-# define MCE_CONFIG_SET         "set_config"
-# define MCE_CONFIG_CHANGE_SIG  "config_change_ind"
-#endif
-
 /**
  * D-Bus callback for the config get method call
  *
