@@ -1,3 +1,9 @@
+mce (1.83.1) precise; urgency=low
+
+  * [display] Handle auto-blanking rules in correct order. Fixes JB#36959
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 21 Nov 2016 09:37:03 +0200
+
 mce (1.83.0) precise; urgency=low
 
   * [display] Remove unused variables
