@@ -3567,7 +3567,10 @@ static void mdy_blanking_schedule_off(void)
 {
     gint timeout = mdy_blank_timeout;
 
-    if( system_state == MCE_STATE_ACTDEAD ) {
+    if( exception_state & UIEXC_CALL ) {
+        /* During calls: Use unadjusted default timeout */
+    }
+    else if( system_state == MCE_STATE_ACTDEAD ) {
         /* Utilize the same configurable blanking delay as
          * what is used for the lockscreen, but cap it to a
          * sensible maximum value. */
@@ -4268,46 +4271,59 @@ static void mdy_blanking_rethink_timers(bool force)
         break;
 
     case MCE_DISPLAY_ON:
+        /* In update mode auto-blanking must not occur. */
         if( mdy_update_mode )
             break;
-        if( exception_state & ~UIEXC_CALL ) {
-            break;
-        }
 
-        if( system_state != MCE_STATE_USER ) {
-            /* In act-dead mode & co blanking inhibit modes are
-             * ignored and display is blanked without going through
-             * the dimming step */
-            mdy_blanking_schedule_off();
-            break;
-        }
+        /* All exceptional states apart from active call
+         * should block auto-blanking. */
+        if( exception_state ) {
+            /* Not call related -> block auto-blanking */
+             if( exception_state & ~UIEXC_CALL )
+                break;
 
-        if( mdy_blanking_inhibit_dim_p() )
-            break;
-
-        if( exception_state & UIEXC_CALL ) {
-            // do not dim-blank when handling incoming call
+            /* Incoming call -> block auto-blanking */
             if( call_state == CALL_STATE_RINGING )
                 break;
 
-            // no dim-blank timers with handset audio
-            // ... while proximity covered
+            /* Even during during active calls we do not want
+             * to interfere with proximity blanking */
             if( audio_route == AUDIO_ROUTE_HANDSET  &&
                 proximity_state == COVER_CLOSED )
                 break;
-            // dim-blank timers used with speaker/headset
-            mdy_blanking_schedule_dim();
-            break;
         }
 
-        if( tklock_mode && !mdy_blanking_from_tklock_disabled ) {
+        /* In act-dead mode & co blanking inhibit modes are
+         * ignored and display is blanked without going through
+         * the dimming step */
+        if( system_state != MCE_STATE_USER ) {
             mdy_blanking_schedule_off();
             break;
         }
 
+        /* When lockscreen is active, inhibit modes are ignored
+         * and display is blanked without going through the
+         * dimming step.
+         *
+         * However, to deal with incoming calls received while
+         * lockscreen and/or device lock is active, normal
+         * dimming rules must be applied during active calls.
+         */
+        if( tklock_mode && !(exception_state & UIEXC_CALL) ) {
+            if( !mdy_blanking_from_tklock_disabled )
+                mdy_blanking_schedule_off();
+            break;
+        }
+
+        /* Check if blanking pause is blocking dimming */
         if( mdy_blanking_is_paused() && !mdy_blanking_pause_can_dim() )
             break;
 
+        /* Check if inhibit mode is blocking dimming */
+        if( mdy_blanking_inhibit_dim_p() )
+            break;
+
+        /* Schedule auto-dim */
         mdy_blanking_schedule_dim();
         break;
 
