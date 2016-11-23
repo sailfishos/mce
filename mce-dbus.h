@@ -99,7 +99,8 @@ gboolean dbus_send_ex(const char *service,
 		      DBusPendingCall **ppc,
 		      int first_arg_type, ...);
 
-gconstpointer mce_dbus_handler_add_ex(const gchar *const interface,
+gconstpointer mce_dbus_handler_add_ex(const gchar *const sender,
+				      const gchar *const interface,
 				      const gchar *const name,
 				      const gchar *const args,
 				      const gchar *const rules,
@@ -152,6 +153,7 @@ typedef union
  */
 typedef struct
 {
+  const char *sender;
   const char *interface;
   const char *name;
   const char *rules;
