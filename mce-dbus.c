@@ -1911,6 +1911,7 @@ static gchar *mce_dbus_build_signal_match(const gchar *interface,
 	g_free(match_extra);
 	g_free(match_iface);
 	g_free(match_member);
+	g_free(match_sender);
 
 	return match;
 }

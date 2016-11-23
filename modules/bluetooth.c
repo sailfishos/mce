@@ -40,7 +40,7 @@ static void     bluetooth_suspend_block_start(void);
  * DBUS_HANDLERS
  * ------------------------------------------------------------------------- */
 
-static gboolean bluetooth_dbus_bluez_signal_cb(DBusMessage *const msg);
+static gboolean bluetooth_dbus_bluez4_signal_cb(DBusMessage *const msg);
 
 static void     bluetooth_dbus_init(void);
 static void     bluetooth_dbus_quit(void);
@@ -108,7 +108,7 @@ static void bluetooth_suspend_block_start(void)
  * DBUS_HANDLERS
  * ========================================================================= */
 
-/** Handle signal originating from bluez
+/** Handle signal originating from bluez4
  *
  * MCE is not interested in the signal content per se, any incoming
  * signals just mean there is bluetooth activity and mce should allow
@@ -120,7 +120,17 @@ static void bluetooth_suspend_block_start(void)
  * @return TRUE
  */
 static gboolean
-bluetooth_dbus_bluez_signal_cb(DBusMessage *const msg)
+bluetooth_dbus_bluez4_signal_cb(DBusMessage *const msg)
+{
+    if( mce_log_p(LL_DEBUG) ) {
+        char *repr = mce_dbus_message_repr(msg);
+        mce_log(LL_DEBUG, "%s", repr ?: "bluez sig");
+        free(repr);
+    }
+
+    bluetooth_suspend_block_start();
+    return TRUE;
+}
 {
     if( mce_log_p(LL_DEBUG) ) {
         char *repr = mce_dbus_message_repr(msg);
@@ -135,36 +145,36 @@ bluetooth_dbus_bluez_signal_cb(DBusMessage *const msg)
 /** Array of dbus message handlers */
 static mce_dbus_handler_t bluetooth_dbus_handlers[] =
 {
-    /* signals */
+    /* bluez4 signals */
     {
         .interface = "org.bluez.Manager",
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
-        .callback  = bluetooth_dbus_bluez_signal_cb,
+        .callback  = bluetooth_dbus_bluez4_signal_cb,
     },
     {
         .interface = "org.bluez.Adapter",
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
-        .callback  = bluetooth_dbus_bluez_signal_cb,
+        .callback  = bluetooth_dbus_bluez4_signal_cb,
     },
     {
         .interface = "org.bluez.Device",
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
-        .callback  = bluetooth_dbus_bluez_signal_cb,
+        .callback  = bluetooth_dbus_bluez4_signal_cb,
     },
     {
         .interface = "org.bluez.Input",
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
-        .callback  = bluetooth_dbus_bluez_signal_cb,
+        .callback  = bluetooth_dbus_bluez4_signal_cb,
     },
     {
         .interface = "org.bluez.Audio",
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
-        .callback  = bluetooth_dbus_bluez_signal_cb,
+        .callback  = bluetooth_dbus_bluez4_signal_cb,
     },
     {
         .interface = "org.bluez.SerialProxyManager",
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
-        .callback  = bluetooth_dbus_bluez_signal_cb,
+        .callback  = bluetooth_dbus_bluez4_signal_cb,
     },
     /* sentinel */
     {
