@@ -19,6 +19,7 @@
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "../mce.h"
 #include "../mce-log.h"
 #include "../mce-dbus.h"
 #include "../libwakelock.h"
@@ -184,6 +185,76 @@ static void bluetooth_dbus_quit(void)
 {
     mce_dbus_handler_unregister_array(bluetooth_dbus_handlers);
 }
+/* ========================================================================= *
+ * DATAPIPE_TRACKING
+ * ========================================================================= */
+
+/** Availability of bluez; from bluez_available_pipe */
+static service_state_t bluez_available = SERVICE_STATE_UNDEF;
+
+/** Datapipe trigger for bluez availability
+ *
+ * @param data bluez D-Bus service availability (as a void pointer)
+ */
+static void bluetooth_datapipe_bluez_available_cb(gconstpointer const data)
+{
+    service_state_t prev = bluez_available;
+    bluez_available = GPOINTER_TO_INT(data);
+
+    if( bluez_available == prev )
+        goto EXIT;
+
+    mce_log(LL_DEVEL, "bluez dbus service: %s -> %s",
+            service_state_repr(prev),
+            service_state_repr(bluez_available));
+
+    switch( bluez_available ) {
+    case SERVICE_STATE_RUNNING:
+    case SERVICE_STATE_STOPPED:
+        bluetooth_suspend_block_start();
+        break;
+
+    default:
+        break;
+    }
+
+EXIT:
+    return;
+}
+
+/** Array of datapipe handlers */
+static datapipe_handler_t bluetooth_datapipe_handlers[] =
+{
+    // output triggers
+    {
+        .datapipe  = &bluez_available_pipe,
+        .output_cb = bluetooth_datapipe_bluez_available_cb,
+    },
+    // sentinel
+    {
+        .datapipe = 0,
+    }
+};
+
+static datapipe_bindings_t bluetooth_datapipe_bindings =
+{
+    .module   = "bluetooth",
+    .handlers = bluetooth_datapipe_handlers,
+};
+
+/** Append triggers/filters to datapipes
+ */
+static void bluetooth_datapipe_init(void)
+{
+    datapipe_bindings_init(&bluetooth_datapipe_bindings);
+}
+
+/** Remove triggers/filters from datapipes
+ */
+static void bluetooth_datapipe_quit(void)
+{
+    datapipe_bindings_quit(&bluetooth_datapipe_bindings);
+}
 
 /* ========================================================================= *
  * MODULE_LOAD_UNLOAD
@@ -199,6 +270,8 @@ const gchar *g_module_check_init(GModule *module)
 {
     (void)module;
 
+    bluetooth_datapipe_init();
+
     bluetooth_dbus_init();
 
     return 0;
@@ -211,6 +284,8 @@ const gchar *g_module_check_init(GModule *module)
 void g_module_unload(GModule *module)
 {
     (void)module;
+
+    bluetooth_datapipe_quit();
 
     bluetooth_dbus_quit();
 
