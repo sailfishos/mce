@@ -140,6 +140,7 @@ extern datapipe_struct lipstick_available_pipe;
 extern datapipe_struct usbmoded_available_pipe;
 extern datapipe_struct ngfd_available_pipe;
 extern datapipe_struct dsme_available_pipe;
+extern datapipe_struct bluez_available_pipe;
 extern datapipe_struct packagekit_locked_pipe;
 extern datapipe_struct update_mode_pipe;
 extern datapipe_struct shutting_down_pipe;

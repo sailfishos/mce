@@ -3595,6 +3595,10 @@ static struct
 	.datapipe = &dsme_available_pipe,
     },
     {
+	.name     = "org.bluez",
+	.datapipe = &bluez_available_pipe,
+    },
+    {
 	.name     = COMPOSITOR_SERVICE,
 	.datapipe = &compositor_available_pipe,
     },

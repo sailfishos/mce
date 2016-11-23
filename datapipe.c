@@ -184,6 +184,9 @@ datapipe_struct ngfd_available_pipe;
 /** dsme availability; read only */
 datapipe_struct dsme_available_pipe;
 
+/** bluez availability; read only */
+datapipe_struct bluez_available_pipe;
+
 /** PackageKit Locked status; read only */
 datapipe_struct packagekit_locked_pipe;
 
@@ -913,6 +916,9 @@ void mce_datapipe_init(void)
 	setup_datapipe(&dsme_available_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
 
+	setup_datapipe(&bluez_available_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
+
 	setup_datapipe(&packagekit_locked_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(FALSE));
 	setup_datapipe(&update_mode_pipe, READ_ONLY, DONT_FREE_CACHE,
@@ -991,6 +997,7 @@ void mce_datapipe_quit(void)
 	free_datapipe(&usbmoded_available_pipe);
 	free_datapipe(&ngfd_available_pipe);
 	free_datapipe(&dsme_available_pipe);
+	free_datapipe(&bluez_available_pipe);
 	free_datapipe(&packagekit_locked_pipe);
 	free_datapipe(&update_mode_pipe);
 	free_datapipe(&shutting_down_pipe);
