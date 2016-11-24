@@ -25,8 +25,15 @@
 #include "../libwakelock.h"
 
 #include <stdlib.h>
+#include <string.h>
 
 #include <gmodule.h>
+
+/* Unlike the other standard dbus interfaces, the object manager seems
+ * not to be defined in dbus-shared.h header file ... */
+#ifndef  DBUS_INTERFACE_OBJECT_MANAGER
+# define DBUS_INTERFACE_OBJECT_MANAGER "org.freedesktop.DBus.ObjectManager"
+#endif
 
 /* ------------------------------------------------------------------------- *
  * SUSPEND_BLOCK
@@ -41,6 +48,7 @@ static void     bluetooth_suspend_block_start(void);
  * ------------------------------------------------------------------------- */
 
 static gboolean bluetooth_dbus_bluez4_signal_cb(DBusMessage *const msg);
+static gboolean bluetooth_dbus_bluez5_signal_cb(DBusMessage *const msg);
 
 static void     bluetooth_dbus_init(void);
 static void     bluetooth_dbus_quit(void);
@@ -131,7 +139,45 @@ bluetooth_dbus_bluez4_signal_cb(DBusMessage *const msg)
     bluetooth_suspend_block_start();
     return TRUE;
 }
+
+/** Handle signal originating from bluez5
+ *
+ * MCE is not interested in the signal content per se, any incoming
+ * signals just mean there is bluetooth activity and mce should allow
+ * related ipc and processing to happen without the device getting
+ * suspened too soon.
+ *
+ * @param msg dbus signal message
+ *
+ * @return TRUE
+ */
+static gboolean
+bluetooth_dbus_bluez5_signal_cb(DBusMessage *const msg)
 {
+    static const char name[] = "org.bluez";
+
+    /* Note: The signal match rule can and should use the
+     *       well-known name, but the actual signals that
+     *       we receive are going to have the private name
+     *       as sender.
+     */
+
+    /* Get name owner from tracking cache. Assume that
+     * no bluez signals are sent before the well known
+     * name is claimed or after it is released. */
+    const char *owner = mce_dbus_nameowner_get(name);
+    if( !owner )
+        goto EXIT;
+
+    /* Check if the signal sender matches the supposed
+     * owner (or the well-known-name, just in case) */
+    const char *sender = dbus_message_get_sender(msg);
+    if( !sender )
+        goto EXIT;
+
+    if( strcmp(sender, owner) && strcmp(sender, name) )
+        goto EXIT;
+
     if( mce_log_p(LL_DEBUG) ) {
         char *repr = mce_dbus_message_repr(msg);
         mce_log(LL_DEBUG, "%s", repr ?: "bluez sig");
@@ -139,6 +185,7 @@ bluetooth_dbus_bluez4_signal_cb(DBusMessage *const msg)
     }
 
     bluetooth_suspend_block_start();
+EXIT:
     return TRUE;
 }
 
@@ -175,6 +222,28 @@ static mce_dbus_handler_t bluetooth_dbus_handlers[] =
         .interface = "org.bluez.SerialProxyManager",
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
         .callback  = bluetooth_dbus_bluez4_signal_cb,
+    },
+    /* bluez5 signals */
+    {
+        .sender    = "org.bluez",
+        .interface = DBUS_INTERFACE_OBJECT_MANAGER,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .name      = "InterfacesAdded",
+        .callback  = bluetooth_dbus_bluez5_signal_cb,
+    },
+    {
+        .sender    = "org.bluez",
+        .interface = DBUS_INTERFACE_OBJECT_MANAGER,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .name      = "InterfacesRemoved",
+        .callback  = bluetooth_dbus_bluez5_signal_cb,
+    },
+    {
+        .sender    = "org.bluez",
+        .interface = DBUS_INTERFACE_PROPERTIES,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .name      = "PropertiesChanged",
+        .callback  = bluetooth_dbus_bluez5_signal_cb,
     },
     /* sentinel */
     {
