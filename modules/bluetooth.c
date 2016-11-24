@@ -19,13 +19,21 @@
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "../mce.h"
 #include "../mce-log.h"
 #include "../mce-dbus.h"
 #include "../libwakelock.h"
 
 #include <stdlib.h>
+#include <string.h>
 
 #include <gmodule.h>
+
+/* Unlike the other standard dbus interfaces, the object manager seems
+ * not to be defined in dbus-shared.h header file ... */
+#ifndef  DBUS_INTERFACE_OBJECT_MANAGER
+# define DBUS_INTERFACE_OBJECT_MANAGER "org.freedesktop.DBus.ObjectManager"
+#endif
 
 /* ------------------------------------------------------------------------- *
  * SUSPEND_BLOCK
@@ -39,7 +47,8 @@ static void     bluetooth_suspend_block_start(void);
  * DBUS_HANDLERS
  * ------------------------------------------------------------------------- */
 
-static gboolean bluetooth_dbus_bluez_signal_cb(DBusMessage *const msg);
+static gboolean bluetooth_dbus_bluez4_signal_cb(DBusMessage *const msg);
+static gboolean bluetooth_dbus_bluez5_signal_cb(DBusMessage *const msg);
 
 static void     bluetooth_dbus_init(void);
 static void     bluetooth_dbus_quit(void);
@@ -107,7 +116,7 @@ static void bluetooth_suspend_block_start(void)
  * DBUS_HANDLERS
  * ========================================================================= */
 
-/** Handle signal originating from bluez
+/** Handle signal originating from bluez4
  *
  * MCE is not interested in the signal content per se, any incoming
  * signals just mean there is bluetooth activity and mce should allow
@@ -119,7 +128,7 @@ static void bluetooth_suspend_block_start(void)
  * @return TRUE
  */
 static gboolean
-bluetooth_dbus_bluez_signal_cb(DBusMessage *const msg)
+bluetooth_dbus_bluez4_signal_cb(DBusMessage *const msg)
 {
     if( mce_log_p(LL_DEBUG) ) {
         char *repr = mce_dbus_message_repr(msg);
@@ -131,39 +140,110 @@ bluetooth_dbus_bluez_signal_cb(DBusMessage *const msg)
     return TRUE;
 }
 
+/** Handle signal originating from bluez5
+ *
+ * MCE is not interested in the signal content per se, any incoming
+ * signals just mean there is bluetooth activity and mce should allow
+ * related ipc and processing to happen without the device getting
+ * suspened too soon.
+ *
+ * @param msg dbus signal message
+ *
+ * @return TRUE
+ */
+static gboolean
+bluetooth_dbus_bluez5_signal_cb(DBusMessage *const msg)
+{
+    static const char name[] = "org.bluez";
+
+    /* Note: The signal match rule can and should use the
+     *       well-known name, but the actual signals that
+     *       we receive are going to have the private name
+     *       as sender.
+     */
+
+    /* Get name owner from tracking cache. Assume that
+     * no bluez signals are sent before the well known
+     * name is claimed or after it is released. */
+    const char *owner = mce_dbus_nameowner_get(name);
+    if( !owner )
+        goto EXIT;
+
+    /* Check if the signal sender matches the supposed
+     * owner (or the well-known-name, just in case) */
+    const char *sender = dbus_message_get_sender(msg);
+    if( !sender )
+        goto EXIT;
+
+    if( strcmp(sender, owner) && strcmp(sender, name) )
+        goto EXIT;
+
+    if( mce_log_p(LL_DEBUG) ) {
+        char *repr = mce_dbus_message_repr(msg);
+        mce_log(LL_DEBUG, "%s", repr ?: "bluez sig");
+        free(repr);
+    }
+
+    bluetooth_suspend_block_start();
+EXIT:
+    return TRUE;
+}
+
 /** Array of dbus message handlers */
 static mce_dbus_handler_t bluetooth_dbus_handlers[] =
 {
-    /* signals */
+    /* bluez4 signals */
     {
         .interface = "org.bluez.Manager",
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
-        .callback  = bluetooth_dbus_bluez_signal_cb,
+        .callback  = bluetooth_dbus_bluez4_signal_cb,
     },
     {
         .interface = "org.bluez.Adapter",
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
-        .callback  = bluetooth_dbus_bluez_signal_cb,
+        .callback  = bluetooth_dbus_bluez4_signal_cb,
     },
     {
         .interface = "org.bluez.Device",
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
-        .callback  = bluetooth_dbus_bluez_signal_cb,
+        .callback  = bluetooth_dbus_bluez4_signal_cb,
     },
     {
         .interface = "org.bluez.Input",
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
-        .callback  = bluetooth_dbus_bluez_signal_cb,
+        .callback  = bluetooth_dbus_bluez4_signal_cb,
     },
     {
         .interface = "org.bluez.Audio",
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
-        .callback  = bluetooth_dbus_bluez_signal_cb,
+        .callback  = bluetooth_dbus_bluez4_signal_cb,
     },
     {
         .interface = "org.bluez.SerialProxyManager",
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
-        .callback  = bluetooth_dbus_bluez_signal_cb,
+        .callback  = bluetooth_dbus_bluez4_signal_cb,
+    },
+    /* bluez5 signals */
+    {
+        .sender    = "org.bluez",
+        .interface = DBUS_INTERFACE_OBJECT_MANAGER,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .name      = "InterfacesAdded",
+        .callback  = bluetooth_dbus_bluez5_signal_cb,
+    },
+    {
+        .sender    = "org.bluez",
+        .interface = DBUS_INTERFACE_OBJECT_MANAGER,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .name      = "InterfacesRemoved",
+        .callback  = bluetooth_dbus_bluez5_signal_cb,
+    },
+    {
+        .sender    = "org.bluez",
+        .interface = DBUS_INTERFACE_PROPERTIES,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .name      = "PropertiesChanged",
+        .callback  = bluetooth_dbus_bluez5_signal_cb,
     },
     /* sentinel */
     {
@@ -184,6 +264,76 @@ static void bluetooth_dbus_quit(void)
 {
     mce_dbus_handler_unregister_array(bluetooth_dbus_handlers);
 }
+/* ========================================================================= *
+ * DATAPIPE_TRACKING
+ * ========================================================================= */
+
+/** Availability of bluez; from bluez_available_pipe */
+static service_state_t bluez_available = SERVICE_STATE_UNDEF;
+
+/** Datapipe trigger for bluez availability
+ *
+ * @param data bluez D-Bus service availability (as a void pointer)
+ */
+static void bluetooth_datapipe_bluez_available_cb(gconstpointer const data)
+{
+    service_state_t prev = bluez_available;
+    bluez_available = GPOINTER_TO_INT(data);
+
+    if( bluez_available == prev )
+        goto EXIT;
+
+    mce_log(LL_DEVEL, "bluez dbus service: %s -> %s",
+            service_state_repr(prev),
+            service_state_repr(bluez_available));
+
+    switch( bluez_available ) {
+    case SERVICE_STATE_RUNNING:
+    case SERVICE_STATE_STOPPED:
+        bluetooth_suspend_block_start();
+        break;
+
+    default:
+        break;
+    }
+
+EXIT:
+    return;
+}
+
+/** Array of datapipe handlers */
+static datapipe_handler_t bluetooth_datapipe_handlers[] =
+{
+    // output triggers
+    {
+        .datapipe  = &bluez_available_pipe,
+        .output_cb = bluetooth_datapipe_bluez_available_cb,
+    },
+    // sentinel
+    {
+        .datapipe = 0,
+    }
+};
+
+static datapipe_bindings_t bluetooth_datapipe_bindings =
+{
+    .module   = "bluetooth",
+    .handlers = bluetooth_datapipe_handlers,
+};
+
+/** Append triggers/filters to datapipes
+ */
+static void bluetooth_datapipe_init(void)
+{
+    datapipe_bindings_init(&bluetooth_datapipe_bindings);
+}
+
+/** Remove triggers/filters from datapipes
+ */
+static void bluetooth_datapipe_quit(void)
+{
+    datapipe_bindings_quit(&bluetooth_datapipe_bindings);
+}
 
 /* ========================================================================= *
  * MODULE_LOAD_UNLOAD
@@ -199,6 +349,8 @@ const gchar *g_module_check_init(GModule *module)
 {
     (void)module;
 
+    bluetooth_datapipe_init();
+
     bluetooth_dbus_init();
 
     return 0;
@@ -211,6 +363,8 @@ const gchar *g_module_check_init(GModule *module)
 void g_module_unload(GModule *module)
 {
     (void)module;
+
+    bluetooth_datapipe_quit();
 
     bluetooth_dbus_quit();
 

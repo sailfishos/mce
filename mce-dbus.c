@@ -289,12 +289,19 @@ typedef gboolean (*handler_callback_t)(DBusMessage *const msg);
 typedef struct
 {
 	handler_callback_t  callback;   /**< Handler callback */
+	gchar              *sender;     /**< Service name to match */
 	gchar              *interface;  /**< The interface to listen on */
 	gchar              *rules;      /**< Additional matching rules */
 	gchar              *name;       /**< Method call or signal name */
 	gchar              *args;       /**< Introspect XML data */
 	int                 type;       /**< DBUS_MESSAGE_TYPE */
 } handler_struct_t;
+
+/** Set sender for D-Bus handler structure */
+static inline void handler_struct_set_sender(handler_struct_t *self, const char *val)
+{
+	g_free(self->sender), self->sender = val ? g_strdup(val) : 0;
+}
 
 /** Set handler type for D-Bus handler structure */
 static inline void handler_struct_set_type(handler_struct_t *self, int val)
@@ -343,6 +350,7 @@ static void handler_struct_delete(handler_struct_t *self)
 	g_free(self->name);
 	g_free(self->rules);
 	g_free(self->interface);
+	g_free(self->sender);
 	g_free(self);
 
 EXIT:
@@ -354,6 +362,7 @@ static handler_struct_t *handler_struct_create(void)
 {
 	handler_struct_t *self = g_malloc0(sizeof *self);
 
+	self->sender    = 0;
 	self->interface = 0;
 	self->rules     = 0;
 	self->name      = 0;
@@ -1885,15 +1894,20 @@ static gboolean check_rules(DBusMessage *const msg,
  *
  * For use from mce_dbus_handler_add() and mce_dbus_handler_remove()
  */
-static gchar *mce_dbus_build_signal_match(const gchar *interface,
+static gchar *mce_dbus_build_signal_match(const gchar *sender,
+					  const gchar *interface,
 					  const gchar *name,
 					  const gchar *rules)
 {
 	gchar *match = 0;
 
+	gchar *match_sender = 0;
 	gchar *match_member = 0;
 	gchar *match_iface  = 0;
 	gchar *match_extra  = 0;
+
+	if( sender )
+		match_sender = g_strdup_printf(",sender='%s'", sender);
 
 	if( name )
 		match_member = g_strdup_printf(",member='%s'", name);
@@ -1904,13 +1918,15 @@ static gchar *mce_dbus_build_signal_match(const gchar *interface,
 	if( rules )
 		match_extra = g_strdup_printf(",%s", rules);
 
-	match = g_strdup_printf("type='signal'%s%s%s",
+	match = g_strdup_printf("type='signal'%s%s%s%s",
+				match_sender ?: "",
 				match_iface  ?: "",
 				match_member ?: "",
 				match_extra  ?: "");
 	g_free(match_extra);
 	g_free(match_iface);
 	g_free(match_member);
+	g_free(match_sender);
 
 	return match;
 }
@@ -2066,7 +2082,8 @@ EXIT:
  * @param callback The callback function
  * @return A D-Bus handler cookie on success, NULL on failure
  */
-gconstpointer mce_dbus_handler_add_ex(const gchar *const interface,
+gconstpointer mce_dbus_handler_add_ex(const gchar *const sender,
+				      const gchar *const interface,
 				      const gchar *const name,
 				      const gchar *const args,
 				      const gchar *const rules,
@@ -2083,7 +2100,7 @@ gconstpointer mce_dbus_handler_add_ex(const gchar *const interface,
 
 	switch( type ) {
 	case DBUS_MESSAGE_TYPE_SIGNAL:
-		match = mce_dbus_build_signal_match(interface, name, rules);
+		match = mce_dbus_build_signal_match(sender, interface, name, rules);
 		if( !match ) {
 			mce_log(LL_CRIT, "Failed to allocate memory for match");
 			goto EXIT;
@@ -2104,6 +2121,7 @@ gconstpointer mce_dbus_handler_add_ex(const gchar *const interface,
 	}
 
 	handler = handler_struct_create();
+	handler_struct_set_sender(handler, sender);
 	handler_struct_set_type(handler, type);
 	handler_struct_set_interface(handler, interface);
 	handler_struct_set_name(handler, name);
@@ -2129,8 +2147,9 @@ gconstpointer mce_dbus_handler_add(const gchar *const interface,
 				   const guint type,
 				   gboolean (*callback)(DBusMessage *const msg))
 {
+	const char *sender = 0;
 	const char *args = 0;
-	return mce_dbus_handler_add_ex(interface, name,
+	return mce_dbus_handler_add_ex(sender, interface, name,
 				       args, rules,
 				       type, callback);
 }
@@ -2163,7 +2182,8 @@ void mce_dbus_handler_remove(gconstpointer cookie)
 	}
 
 	if( handler->type == DBUS_MESSAGE_TYPE_SIGNAL ) {
-		match = mce_dbus_build_signal_match(handler->interface,
+		match = mce_dbus_build_signal_match(handler->sender,
+						    handler->interface,
 						    handler->name,
 						    handler->rules);
 
@@ -2791,7 +2811,8 @@ void
 mce_dbus_handler_register(mce_dbus_handler_t *self)
 {
 	if( !self->cookie ) {
-		self->cookie = mce_dbus_handler_add_ex(self->interface,
+		self->cookie = mce_dbus_handler_add_ex(self->sender,
+						       self->interface,
 						       self->name,
 						       self->args,
 						       self->rules,
@@ -3593,6 +3614,10 @@ static struct
     {
 	.name     = DSME_DBUS_SERVICE,
 	.datapipe = &dsme_available_pipe,
+    },
+    {
+	.name     = "org.bluez",
+	.datapipe = &bluez_available_pipe,
     },
     {
 	.name     = COMPOSITOR_SERVICE,
