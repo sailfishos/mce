@@ -1,3 +1,13 @@
+mce (1.84.0) precise; urgency=low
+
+  * [dbus] Track org.bluez service availability. JB#18661
+  * [bluetooth] Block suspend on bluez start/stop. JB#18661
+  * [bluetooth] Rename bluez4 specific functionality. JB#18661
+  * [dbus] Allow use of sender in signal matching. JB#18661
+  * [bluetooth] Block suspend on bluez5 signals. Fixes JB#18661
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 24 Nov 2016 12:18:06 +0200
+
 mce (1.83.1) precise; urgency=low
 
   * [display] Handle auto-blanking rules in correct order. Fixes JB#36959
