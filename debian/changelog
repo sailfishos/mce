@@ -1,3 +1,9 @@
+mce (1.84.1) precise; urgency=low
+
+  * [bluetooth] Shorten suspend blocking on bluez activity. Fixes JB#34498
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 24 Nov 2016 13:30:30 +0200
+
 mce (1.84.0) precise; urgency=low
 
   * [dbus] Track org.bluez service availability. JB#18661
