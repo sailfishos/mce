@@ -64,6 +64,9 @@ G_MODULE_EXPORT void         g_module_unload(GModule *module);
  * SUSPEND_BLOCK
  * ========================================================================= */
 
+/** How long bluetooth dbus activity is allowed to delay suspend */
+#define BLUETOOTH_SUSPEND_BLOCK_MS 2000
+
 /** Timer id for cancelling suspend blocking */
 static guint bluetooth_suspend_block_timer_id = 0;
 
@@ -109,7 +112,8 @@ static void bluetooth_suspend_block_start(void)
         mce_log(LL_DEVEL, "bt suspend blocking started");
     }
     bluetooth_suspend_block_timer_id =
-        g_timeout_add(5000, bluetooth_suspend_block_timer_cb, 0);
+        g_timeout_add(BLUETOOTH_SUSPEND_BLOCK_MS,
+                      bluetooth_suspend_block_timer_cb, 0);
 }
 
 /* ========================================================================= *
