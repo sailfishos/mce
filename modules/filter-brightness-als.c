@@ -1276,19 +1276,37 @@ EXIT:
 static gpointer
 fba_datapipe_led_brightness_filter(gpointer data)
 {
-    int value = GPOINTER_TO_INT(data);
-    int scale = 40;
+    /* Startup default: LED brightness scale is unknown */
+    static int prev_scale = -1;
 
-    if( !fba_setting_als_autobrightness || fba_inputflt_output_lux < 0 )
-        goto EXIT;
+    /* Default to: Brightness setting * 40 % */
+    int brightness = GPOINTER_TO_INT(data);
+    int curr_scale = 40;
 
+    /* Check if LED brightness configuration exists */
     if( lut_led.profiles < 1 )
         goto EXIT;
 
-    scale = fba_als_filter_run(&lut_led, 0, fba_inputflt_output_lux);
+    /* Forget cached output state if als master toggle or
+     * autobrightness setting gets disabled */
+    if(  !fba_setting_als_enabled ||
+         !fba_setting_als_autobrightness ) {
+        prev_scale = -1;
+        goto EXIT;
+    }
+
+    if( fba_inputflt_output_lux >= 0 ) {
+        /* Evaluate brightness scale based on available sensor data */
+        curr_scale = fba_als_filter_run(&lut_led, 0, fba_inputflt_output_lux);
+        prev_scale = curr_scale;
+    }
+    else if( prev_scale >= 0 ) {
+        /* Use previously evaluated brightness scale */
+        curr_scale = prev_scale;
+    }
 
 EXIT:
-    return GINT_TO_POINTER(value * scale / 100);
+    return GINT_TO_POINTER(brightness * curr_scale / 100);
 }
 
 /** Ambient Light Sensor filter for LPM brightness
