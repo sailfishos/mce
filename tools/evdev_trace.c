@@ -269,6 +269,7 @@ static void usage(void)
          "  -t, --trace          -- trace input events\n"
          "  -e, --emit-also-tod  -- emit also time of day\n"
          "  -E, --emit-only-tod  -- emit only time of day\n"
+         "  -I, --show-readers   -- identify processes using devices\n"
          "\n"
          "NOTES\n"
          "  If no device paths are given, /dev/input/event* is assumed.\n"
