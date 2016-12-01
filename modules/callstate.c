@@ -1368,14 +1368,17 @@ send_call_state(DBusMessage *const method_call,
                                       MCE_SIGNAL_IF,
                         method_call ? MCE_CALL_STATE_GET :
                                       MCE_CALL_STATE_SIG);
-                dbus_message_unref(msg);
                 goto EXIT;
         }
 
-        /* Send the message */
-        status = dbus_send_message(msg);
+        /* Send the message if it is signal or wanted method reply */
+        if( !method_call || !dbus_message_get_no_reply(method_call) )
+                status = dbus_send_message(msg), msg = 0;
 
 EXIT:
+        if( msg )
+                dbus_message_unref(msg);
+
         return status;
 }
 
@@ -1498,11 +1501,13 @@ EXIT:
         mce_log(LL_ERR,"Failed to append reply arguments to D-Bus "
                 "message for %s.%s",
                 MCE_REQUEST_IF, MCE_CALL_STATE_CHANGE_REQ);
-        dbus_message_unref(reply);
-    } else {
-        /* Send the message */
-        status = dbus_send_message(reply);
     }
+    else if( !dbus_message_get_no_reply(msg) ) {
+        status = dbus_send_message(reply), reply = 0;
+    }
+
+    if( reply )
+        dbus_message_unref(reply);
 
     return status;
 }
