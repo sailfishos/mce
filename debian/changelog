@@ -1,3 +1,10 @@
+mce (1.84.3) precise; urgency=low
+
+  * [als] Retain led brightness over light sensor off time. Fixes JB#35151
+  * [callstate] Do not send unwanted D-Bus method replies. Fixes JB#36773
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 01 Dec 2016 09:55:01 +0200
+
 mce (1.84.2) precise; urgency=low
 
   * [evdev_trace] List --show-readers option in usage. Fixes JB#36916
