@@ -1445,9 +1445,10 @@ static const char *rlookup(const symbol_t *stab, int val)
  * @note These must match the hardcoded values in mce itself.
  */
 static const symbol_t suspendpol_values[] = {
-        { "disabled",  0 },
-        { "enabled",   1 },
-        { "early",     2 },
+        { "disabled",           SUSPEND_POLICY_DISABLED            },
+        { "enabled",            SUSPEND_POLICY_ENABLED             },
+        { "early",              SUSPEND_POLICY_EARLY_ONLY          },
+        { "disable_on_charger", SUSPEND_POLICY_DISABLE_ON_CHARGER  },
         { NULL, -1 }
 };
 
@@ -6125,10 +6126,16 @@ static const mce_opt_t options[] =
                 .name        = "set-suspend-policy",
                 .flag        = 's',
                 .with_arg    = xmce_set_suspend_policy,
-                .values      = "enabled|disabled|early",
+                .values      = "enabled|disabled|early|disable_on_charger",
                 .usage       =
                         "set the autosuspend mode; valid modes are:\n"
-                        "'enabled', 'disabled' and 'early'\n"
+                        "  enabled   Allow early and late suspend. This is the default mode.\n"
+                        "  disabled  Deny suspending altogether. Also display and touch panel should\n"
+                        "            stay powered on and allow sw double tap detection.\n"
+                        "  early     Allow early suspend / display power off, but not late suspend\n"
+                        "            so that (at least one) cpu stays online.\n"
+                        "  disable_on_charger Switch between enabled and disabled based on charger\n"
+                        "            availability.\n"
         },
         {
                 .name        = "get-suspend-stats",

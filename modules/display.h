@@ -509,6 +509,9 @@ enum
 
     /** Allow on and early suspend, but never enter late suspend */
     SUSPEND_POLICY_EARLY_ONLY  = 2,
+
+    /** Disable suspend when charger is connected */
+    SUSPEND_POLICY_DISABLE_ON_CHARGER = 3,
 };
 
 /** Whether the device is allowed to automatically suspend [mode]
