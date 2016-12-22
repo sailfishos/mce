@@ -5773,7 +5773,8 @@ static int mdy_autosuspend_get_allowed_level(void)
         break;
 
     case SUSPEND_POLICY_DISABLE_ON_CHARGER:
-        if( charger_state == CHARGER_STATE_ON )
+        if( system_state == MCE_STATE_USER &&
+            charger_state == CHARGER_STATE_ON )
             block_early = true;
         break;
 

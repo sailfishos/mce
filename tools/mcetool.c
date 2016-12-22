@@ -6135,7 +6135,7 @@ static const mce_opt_t options[] =
                         "  early     Allow early suspend / display power off, but not late suspend\n"
                         "            so that (at least one) cpu stays online.\n"
                         "  disable_on_charger Switch between enabled and disabled based on charger\n"
-                        "            availability.\n"
+                        "            availability when device is running in USER mode.\n"
         },
         {
                 .name        = "get-suspend-stats",
