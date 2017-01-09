@@ -1494,7 +1494,15 @@ static void mdy_datapipe_charger_state_cb(gconstpointer data)
     if( charger_state == prev )
         goto EXIT;
 
+    mce_log(LL_DEBUG, "charger_state: %s -> %s",
+            charger_state_repr(prev),
+            charger_state_repr(charger_state));
+
+    // keep display on/dim while charging etc
     mdy_blanking_rethink_timers(false);
+
+    // charging can block suspend
+    mdy_stm_schedule_rethink();
 
 EXIT:
     return;
@@ -5762,6 +5770,12 @@ static int mdy_autosuspend_get_allowed_level(void)
 
     case SUSPEND_POLICY_EARLY_ONLY:
         block_late = true;
+        break;
+
+    case SUSPEND_POLICY_DISABLE_ON_CHARGER:
+        if( system_state == MCE_STATE_USER &&
+            charger_state == CHARGER_STATE_ON )
+            block_early = true;
         break;
 
     default:
