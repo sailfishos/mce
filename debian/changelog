@@ -1,3 +1,9 @@
+mce (1.85.0) precise; urgency=low
+
+  * [display] Optionally disable suspend while charging. Fixes MER#1723
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 09 Jan 2017 10:08:56 +0200
+
 mce (1.84.3) precise; urgency=low
 
   * [als] Retain led brightness over light sensor off time. Fixes JB#35151
