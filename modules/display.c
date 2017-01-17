@@ -1794,6 +1794,11 @@ static datapipe_handler_t mdy_datapipe_handlers[] =
         .datapipe  = &keyboard_slide_pipe,
         .input_cb  = mdy_datapipe_keyboard_slide_input_cb,
     },
+    // input filters
+    {
+        .datapipe  = &display_state_req_pipe,
+        .filter_cb = mdy_datapipe_display_state_filter_cb,
+    },
     // output triggers
     {
         .datapipe  = &keyboard_available_pipe,
@@ -1893,23 +1898,13 @@ static datapipe_bindings_t mdy_datapipe_bindings =
  */
 static void mdy_datapipe_init(void)
 {
-    // filters
-    append_filter_to_datapipe(&display_state_req_pipe,
-                              mdy_datapipe_display_state_filter_cb);
-
-    // triggers
     datapipe_bindings_init(&mdy_datapipe_bindings);
 }
 
 /** Remove triggers/filters from datapipes */
 static void mdy_datapipe_quit(void)
 {
-    // triggers
     datapipe_bindings_quit(&mdy_datapipe_bindings);
-
-    // filters
-    remove_filter_from_datapipe(&display_state_req_pipe,
-                                mdy_datapipe_display_state_filter_cb);
 }
 
 /* ========================================================================= *
