@@ -82,8 +82,9 @@ typedef enum {
  * Policy used for caching indata
  */
 typedef enum {
-	DONT_CACHE_INDATA = FALSE,	/**< Do not cache the indata */
-	CACHE_INDATA = TRUE		/**< Cache the indata */
+	DONT_CACHE_INDATA = 0,          /**< Do not cache the indata */
+	CACHE_INDATA      = 1<<0,       /**< Cache the unfiltered indata */
+	CACHE_OUTDATA     = 1<<1,       /**< Cache the filtered outdata */
 } caching_policy_t;
 
 /* Available datapipes */
@@ -170,8 +171,7 @@ extern datapipe_struct proximity_blank_pipe;
 /* Datapipe execution */
 void execute_datapipe_input_triggers(datapipe_struct *const datapipe,
 				     gpointer const indata,
-				     const data_source_t use_cache,
-				     const caching_policy_t cache_indata);
+				     const data_source_t use_cache);
 gconstpointer execute_datapipe_filters(datapipe_struct *const datapipe,
 				       gpointer indata,
 				       const data_source_t use_cache);

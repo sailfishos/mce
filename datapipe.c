@@ -232,8 +232,7 @@ datapipe_struct proximity_blank_pipe;
  */
 void execute_datapipe_input_triggers(datapipe_struct *const datapipe,
 				     gpointer const indata,
-				     const data_source_t use_cache,
-				     const caching_policy_t cache_indata)
+				     const data_source_t use_cache)
 {
 	void (*trigger)(gconstpointer const input);
 	gpointer data;
@@ -248,15 +247,6 @@ void execute_datapipe_input_triggers(datapipe_struct *const datapipe,
 	}
 
 	data = (use_cache == USE_CACHE) ? datapipe->cached_data : indata;
-
-	if (cache_indata == CACHE_INDATA) {
-		if (use_cache == USE_INDATA) {
-			if (datapipe->free_cache == FREE_CACHE)
-				g_free(datapipe->cached_data);
-
-			datapipe->cached_data = data;
-		}
-	}
 
 	for (i = 0; (trigger = g_slist_nth_data(datapipe->input_triggers,
 						i)) != NULL; i++) {
@@ -298,12 +288,14 @@ gconstpointer execute_datapipe_filters(datapipe_struct *const datapipe,
 					       i)) != NULL; i++) {
 		gpointer tmp = filter(data);
 
-		/* If the data needs to be freed, and this isn't the indata,
-		 * or if we're not using the cache, then free the data
-		 */
-		if ((datapipe->free_cache == FREE_CACHE) &&
-		    ((i > 0) || (use_cache == USE_INDATA)))
-			g_free(data);
+		if( datapipe->free_cache == FREE_CACHE ) {
+			/* When dealing with dynamic data, the transitional
+			 * values need to be released - except for the value
+			 * that is cached at the datapipe
+			 */
+			if( tmp != data && data != datapipe->cached_data )
+				g_free(data);
+		}
 
 		data = tmp;
 	}
@@ -364,7 +356,7 @@ gconstpointer execute_datapipe(datapipe_struct *const datapipe,
 			       const data_source_t use_cache,
 			       const caching_policy_t cache_indata)
 {
-	gconstpointer data = NULL;
+	gconstpointer outdata = NULL;
 
 	if (datapipe == NULL) {
 		mce_log(LL_ERR,
@@ -373,19 +365,42 @@ gconstpointer execute_datapipe(datapipe_struct *const datapipe,
 		goto EXIT;
 	}
 
-	execute_datapipe_input_triggers(datapipe, indata, use_cache,
-					cache_indata);
+	/* Determine input value */
+	if( use_cache == USE_CACHE )
+		indata = datapipe->cached_data;
 
-	if (datapipe->read_only == READ_ONLY) {
-		data = indata;
-	} else {
-		data = execute_datapipe_filters(datapipe, indata, use_cache);
+	/* Optionally cache the value at the input stage */
+	if( cache_indata & (CACHE_INDATA|CACHE_OUTDATA) ) {
+		if( datapipe->free_cache == FREE_CACHE &&
+		    datapipe->cached_data != indata )
+			g_free(datapipe->cached_data);
+		datapipe->cached_data = indata;
 	}
 
-	execute_datapipe_output_triggers(datapipe, data, USE_INDATA);
+	/* Execute input value callbacks */
+	execute_datapipe_input_triggers(datapipe, indata, USE_INDATA);
+
+	/* Determine output value */
+	if (datapipe->read_only == READ_ONLY) {
+		outdata = indata;
+	} else {
+		outdata = execute_datapipe_filters(datapipe, indata, USE_INDATA);
+	}
+
+	/* Optionally cache the value at the output stage */
+	if( cache_indata & CACHE_OUTDATA ) {
+		if( datapipe->free_cache == FREE_CACHE &&
+		    datapipe->cached_data != outdata )
+			g_free(datapipe->cached_data);
+
+		datapipe->cached_data = (gpointer)outdata;
+	}
+
+	/* Execute output value callbacks */
+	execute_datapipe_output_triggers(datapipe, outdata, USE_INDATA);
 
 EXIT:
-	return data;
+	return outdata;
 }
 
 /**
