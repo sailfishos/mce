@@ -397,9 +397,6 @@ EXIT:
 void append_filter_to_datapipe(datapipe_struct *const datapipe,
 			       gpointer (*filter)(gpointer data))
 {
-	void (*refcount_trigger)(void);
-	gint i;
-
 	if (datapipe == NULL) {
 		mce_log(LL_ERR,
 			"append_filter_to_datapipe() called "
@@ -423,10 +420,6 @@ void append_filter_to_datapipe(datapipe_struct *const datapipe,
 
 	datapipe->filters = g_slist_append(datapipe->filters, filter);
 
-	for (i = 0; (refcount_trigger = g_slist_nth_data(datapipe->refcount_triggers, i)) != NULL; i++) {
-		refcount_trigger();
-	}
-
 EXIT:
 	return;
 }
@@ -441,9 +434,7 @@ EXIT:
 void remove_filter_from_datapipe(datapipe_struct *const datapipe,
 				 gpointer (*filter)(gpointer data))
 {
-	void (*refcount_trigger)(void);
 	guint oldlen;
-	gint i;
 
 	if (datapipe == NULL) {
 		mce_log(LL_ERR,
@@ -477,10 +468,6 @@ void remove_filter_from_datapipe(datapipe_struct *const datapipe,
 		goto EXIT;
 	}
 
-	for (i = 0; (refcount_trigger = g_slist_nth_data(datapipe->refcount_triggers, i)) != NULL; i++) {
-		refcount_trigger();
-	}
-
 EXIT:
 	return;
 }
@@ -494,9 +481,6 @@ EXIT:
 void append_input_trigger_to_datapipe(datapipe_struct *const datapipe,
 				      void (*trigger)(gconstpointer data))
 {
-	void (*refcount_trigger)(void);
-	gint i;
-
 	if (datapipe == NULL) {
 		mce_log(LL_ERR,
 			"append_input_trigger_to_datapipe() called "
@@ -514,10 +498,6 @@ void append_input_trigger_to_datapipe(datapipe_struct *const datapipe,
 	datapipe->input_triggers = g_slist_append(datapipe->input_triggers,
 						  trigger);
 
-	for (i = 0; (refcount_trigger = g_slist_nth_data(datapipe->refcount_triggers, i)) != NULL; i++) {
-		refcount_trigger();
-	}
-
 EXIT:
 	return;
 }
@@ -532,9 +512,7 @@ EXIT:
 void remove_input_trigger_from_datapipe(datapipe_struct *const datapipe,
 					void (*trigger)(gconstpointer data))
 {
-	void (*refcount_trigger)(void);
 	guint oldlen;
-	gint i;
 
 	if (datapipe == NULL) {
 		mce_log(LL_ERR,
@@ -562,10 +540,6 @@ void remove_input_trigger_from_datapipe(datapipe_struct *const datapipe,
 		goto EXIT;
 	}
 
-	for (i = 0; (refcount_trigger = g_slist_nth_data(datapipe->refcount_triggers, i)) != NULL; i++) {
-		refcount_trigger();
-	}
-
 EXIT:
 	return;
 }
@@ -579,9 +553,6 @@ EXIT:
 void append_output_trigger_to_datapipe(datapipe_struct *const datapipe,
 				       void (*trigger)(gconstpointer data))
 {
-	void (*refcount_trigger)(void);
-	gint i;
-
 	if (datapipe == NULL) {
 		mce_log(LL_ERR,
 			"append_output_trigger_to_datapipe() called "
@@ -599,10 +570,6 @@ void append_output_trigger_to_datapipe(datapipe_struct *const datapipe,
 	datapipe->output_triggers = g_slist_append(datapipe->output_triggers,
 						   trigger);
 
-	for (i = 0; (refcount_trigger = g_slist_nth_data(datapipe->refcount_triggers, i)) != NULL; i++) {
-		refcount_trigger();
-	}
-
 EXIT:
 	return;
 }
@@ -617,9 +584,7 @@ EXIT:
 void remove_output_trigger_from_datapipe(datapipe_struct *const datapipe,
 					 void (*trigger)(gconstpointer data))
 {
-	void (*refcount_trigger)(void);
 	guint oldlen;
-	gint i;
 
 	if (datapipe == NULL) {
 		mce_log(LL_ERR,
@@ -644,80 +609,6 @@ void remove_output_trigger_from_datapipe(datapipe_struct *const datapipe,
 	if (oldlen == g_slist_length(datapipe->output_triggers)) {
 		mce_log(LL_DEBUG,
 			"Trying to remove non-existing output trigger");
-		goto EXIT;
-	}
-
-	for (i = 0; (refcount_trigger = g_slist_nth_data(datapipe->refcount_triggers, i)) != NULL; i++) {
-		refcount_trigger();
-	}
-
-EXIT:
-	return;
-}
-
-/**
- * Append a reference count trigger to an existing datapipe
- *
- * @param datapipe The datapipe to manipulate
- * @param trigger The trigger to add to the datapipe
- */
-void append_refcount_trigger_to_datapipe(datapipe_struct *const datapipe,
-					 void (*trigger)(void))
-{
-	if (datapipe == NULL) {
-		mce_log(LL_ERR,
-			"append_refcount_trigger_to_datapipe() called "
-			"without a valid datapipe");
-		goto EXIT;
-	}
-
-	if (trigger == NULL) {
-		mce_log(LL_ERR,
-			"append_refcount_trigger_to_datapipe() called "
-			"without a valid trigger");
-		goto EXIT;
-	}
-
-	datapipe->refcount_triggers = g_slist_append(datapipe->refcount_triggers, trigger);
-
-EXIT:
-	return;
-}
-
-/**
- * Remove a reference count trigger from an existing datapipe
- * Non-existing triggers are ignored
- *
- * @param datapipe The datapipe to manipulate
- * @param trigger The trigger to remove from the datapipe
- */
-void remove_refcount_trigger_from_datapipe(datapipe_struct *const datapipe,
-					   void (*trigger)(void))
-{
-	guint oldlen;
-
-	if (datapipe == NULL) {
-		mce_log(LL_ERR,
-			"remove_refcount_trigger_from_datapipe() called "
-			"without a valid datapipe");
-		goto EXIT;
-	}
-
-	if (trigger == NULL) {
-		mce_log(LL_ERR,
-			"remove_refcount_trigger_from_datapipe() called "
-			"without a valid trigger");
-		goto EXIT;
-	}
-
-	oldlen = g_slist_length(datapipe->refcount_triggers);
-
-	datapipe->refcount_triggers = g_slist_remove(datapipe->refcount_triggers, trigger);
-
-	/* Did we remove any entry? */
-	if (oldlen == g_slist_length(datapipe->refcount_triggers)) {
-		mce_log(LL_DEBUG,
-			"Trying to remove non-existing refcount trigger");
 		goto EXIT;
 	}
 
@@ -752,7 +643,6 @@ void setup_datapipe(datapipe_struct *const datapipe,
 	datapipe->filters = NULL;
 	datapipe->input_triggers = NULL;
 	datapipe->output_triggers = NULL;
-	datapipe->refcount_triggers = NULL;
 	datapipe->datasize = datasize;
 	datapipe->read_only = read_only;
 	datapipe->free_cache = free_cache;
@@ -793,12 +683,6 @@ void free_datapipe(datapipe_struct *const datapipe)
 		mce_log(LL_INFO,
 			"free_datapipe() called on a datapipe that "
 			"still has registered output_trigger(s)");
-	}
-
-	if (datapipe->refcount_triggers != NULL) {
-		mce_log(LL_INFO,
-			"free_datapipe() called on a datapipe that "
-			"still has registered refcount_trigger(s)");
 	}
 
 	if (datapipe->free_cache == FREE_CACHE) {

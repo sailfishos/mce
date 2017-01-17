@@ -48,9 +48,6 @@ typedef struct {
 	GSList *filters;		/**< The filters */
 	GSList *input_triggers;		/**< Triggers called on indata */
 	GSList *output_triggers;	/**< Triggers called on outdata */
-	GSList *refcount_triggers;	/**< Triggers called on
-					 *   reference count changes
-					 */
 	gpointer cached_data;		/**< Latest cached data */
 	gsize datasize;			/**< Size of data; NULL == automagic */
 	gboolean free_cache;		/**< Free the cache? */
@@ -170,17 +167,6 @@ extern datapipe_struct proximity_blank_pipe;
 /** Retrieve a gpointer from a datapipe */
 #define datapipe_get_gpointer(_datapipe)	((_datapipe).cached_data)
 
-/* Reference count */
-
-/** Retrieve the filter reference count from a datapipe */
-#define datapipe_get_filter_refcount(_datapipe)	(g_slist_length((_datapipe).filters))
-
-/** Retrieve the input trigger reference count from a datapipe */
-#define datapipe_get_input_trigger_refcount(_datapipe)	(g_slist_length((_datapipe).input_triggers))
-
-/** Retrieve the output trigger reference count from a datapipe */
-#define datapipe_get_output_trigger_refcount(_datapipe)	(g_slist_length((_datapipe).output_triggers))
-
 /* Datapipe execution */
 void execute_datapipe_input_triggers(datapipe_struct *const datapipe,
 				     gpointer const indata,
@@ -214,12 +200,6 @@ void append_output_trigger_to_datapipe(datapipe_struct *const datapipe,
 				       void (*trigger)(gconstpointer data));
 void remove_output_trigger_from_datapipe(datapipe_struct *const datapipe,
 					 void (*trigger)(gconstpointer data));
-
-/* Reference count triggers */
-void append_refcount_trigger_to_datapipe(datapipe_struct *const datapipe,
-					 void (*trigger)(void));
-void remove_refcount_trigger_from_datapipe(datapipe_struct *const datapipe,
-					   void (*trigger)(void));
 
 void setup_datapipe(datapipe_struct *const datapipe,
 		    const read_only_policy_t read_only,
