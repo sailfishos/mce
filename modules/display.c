@@ -8960,8 +8960,13 @@ static void mdy_setting_cb(GConfClient *const gcc, const guint id,
         mdy_blanking_rethink_timers(true);
     }
     else if( id == mdy_disp_never_blank_setting_id ) {
+        gint prev = mdy_disp_never_blank;
         mdy_disp_never_blank = gconf_value_get_int(gcv);
-        mce_log(LL_NOTICE, "never_blank = %d", mdy_disp_never_blank);
+        if( prev != mdy_disp_never_blank ) {
+            mce_log(LL_NOTICE, "never_blank = %d", mdy_disp_never_blank);
+            if( mdy_disp_never_blank )
+                mce_datapipe_req_display_state(MCE_DISPLAY_ON);
+        }
     }
     else if( id == mdy_compositor_core_delay_setting_id ) {
         mdy_compositor_core_delay = gconf_value_get_int(gcv);
