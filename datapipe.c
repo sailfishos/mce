@@ -697,25 +697,25 @@ EXIT:
  */
 void mce_datapipe_init(void)
 {
-	setup_datapipe(&system_state_pipe, READ_WRITE, DONT_FREE_CACHE,
+	setup_datapipe(&system_state_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(MCE_STATE_UNDEF));
-	setup_datapipe(&master_radio_pipe, READ_WRITE, DONT_FREE_CACHE,
+	setup_datapipe(&master_radio_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(0));
-	setup_datapipe(&call_state_pipe, READ_WRITE, DONT_FREE_CACHE,
+	setup_datapipe(&call_state_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(CALL_STATE_NONE));
-	setup_datapipe(&call_type_pipe, READ_WRITE, DONT_FREE_CACHE,
+	setup_datapipe(&call_type_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(NORMAL_CALL));
 	setup_datapipe(&alarm_ui_state_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(MCE_ALARM_UI_INVALID_INT32));
 	setup_datapipe(&submode_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(MCE_NORMAL_SUBMODE));
-	setup_datapipe(&display_state_pipe, READ_WRITE, DONT_FREE_CACHE,
+	setup_datapipe(&display_state_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(MCE_DISPLAY_UNDEF));
 	setup_datapipe(&display_state_req_pipe, READ_WRITE, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(MCE_DISPLAY_UNDEF));
-	setup_datapipe(&display_state_next_pipe, READ_WRITE, DONT_FREE_CACHE,
+	setup_datapipe(&display_state_next_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(MCE_DISPLAY_UNDEF));
-	setup_datapipe(&exception_state_pipe, READ_WRITE, DONT_FREE_CACHE,
+	setup_datapipe(&exception_state_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(UIEXC_NONE));
 	setup_datapipe(&display_brightness_pipe, READ_WRITE, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(3));
@@ -745,7 +745,7 @@ void mce_datapipe_init(void)
 		       0, GINT_TO_POINTER(COVER_CLOSED));
 	setup_datapipe(&keyboard_available_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(COVER_CLOSED));
-	setup_datapipe(&lid_sensor_is_working_pipe, READ_WRITE,
+	setup_datapipe(&lid_sensor_is_working_pipe, READ_ONLY,
 		       DONT_FREE_CACHE, 0, GINT_TO_POINTER(FALSE));
 	setup_datapipe(&lid_cover_sensor_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(COVER_UNDEF));
@@ -787,7 +787,6 @@ void mce_datapipe_init(void)
 		       0, GINT_TO_POINTER(THERMAL_STATE_UNDEF));
 	setup_datapipe(&heartbeat_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(0));
-
 	setup_datapipe(&compositor_available_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
 	setup_datapipe(&lipstick_available_pipe, READ_ONLY, DONT_FREE_CACHE,
@@ -811,13 +810,13 @@ void mce_datapipe_init(void)
 		       0, GINT_TO_POINTER(FALSE));
 	setup_datapipe(&device_lock_state_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(DEVICE_LOCK_UNDEFINED));
-	setup_datapipe(&touch_detected_pipe, READ_WRITE, DONT_FREE_CACHE,
+	setup_datapipe(&touch_detected_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(FALSE));
-	setup_datapipe(&touch_grab_wanted_pipe, READ_WRITE, DONT_FREE_CACHE,
+	setup_datapipe(&touch_grab_wanted_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(FALSE));
 	setup_datapipe(&touch_grab_active_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(FALSE));
-	setup_datapipe(&keypad_grab_wanted_pipe, READ_WRITE, DONT_FREE_CACHE,
+	setup_datapipe(&keypad_grab_wanted_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(FALSE));
 	setup_datapipe(&keypad_grab_active_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(FALSE));
