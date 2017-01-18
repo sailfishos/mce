@@ -1882,7 +1882,7 @@ evin_iomon_generate_activity(struct input_event *ev, bool cooked, bool raw)
             t_cooked = t;
             execute_datapipe(&device_inactive_pipe,
                              GINT_TO_POINTER(FALSE),
-                             USE_INDATA, CACHE_INDATA);
+                             USE_INDATA, CACHE_OUTDATA);
         }
     }
 

@@ -1666,7 +1666,7 @@ START_TEST (ut_check_auto_dim)
 
 		/* Generate activity so adaptive_dimming_index gets inc. */
 		execute_datapipe(&device_inactive_pipe, GINT_TO_POINTER(FALSE),
-				 USE_INDATA, CACHE_INDATA);
+				 USE_INDATA, CACHE_OUTDATA);
 		ut_assert_transition(ut_is_display_state_eq,
 				     GINT_TO_POINTER(MCE_DISPLAY_ON));
 	}
@@ -1706,7 +1706,7 @@ START_TEST (ut_check_adaptive_dim_timeout)
 
 	/* Generating activity the adaptive_dimming_index gets incremented */
 	execute_datapipe(&device_inactive_pipe, GINT_TO_POINTER(FALSE),
-			 USE_INDATA, CACHE_INDATA);
+			 USE_INDATA, CACHE_OUTDATA);
 	/* Verify adaptive_dimming_index=1 by meassuring rime to re-enter DIM */
 	expected_dim_time = ut_nth_possible_dim_timeout(forced_dti + 1);
 	ut_assert_transition(ut_is_display_state_eq,

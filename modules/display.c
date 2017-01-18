@@ -5856,7 +5856,7 @@ static void mdy_orientation_generate_activity(void)
     mce_log(LL_DEBUG, "orientation change; generate activity");
     execute_datapipe(&device_inactive_pipe,
                      GINT_TO_POINTER(FALSE),
-                     USE_INDATA, CACHE_INDATA);
+                     USE_INDATA, CACHE_OUTDATA);
 
 EXIT:
     return;
