@@ -258,7 +258,7 @@ void mce_datapipe_quit(void);
 		display_state_repr(req_target));\
 	execute_datapipe(&display_state_req_pipe,\
 			 GINT_TO_POINTER(req_target),\
-			 USE_INDATA, CACHE_INDATA);\
+			 USE_INDATA, CACHE_OUTDATA);\
     }\
     else {\
 	/* TODO: double check request handling and remove this logging */\
