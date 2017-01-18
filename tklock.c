@@ -2608,7 +2608,7 @@ static void tklock_lidfilter_rethink_lid_state(void)
     if( lid_cover_sensor_state != COVER_UNDEF ) {
         execute_datapipe(&ambient_light_poll_pipe,
                          GINT_TO_POINTER(TRUE),
-                         USE_INDATA, CACHE_INDATA);
+                         USE_INDATA, CACHE_OUTDATA);
     }
 
     switch( lid_cover_sensor_state ) {
