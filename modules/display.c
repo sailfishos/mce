@@ -3423,6 +3423,10 @@ static void mdy_blanking_schedule_dim(void)
 {
     mdy_blanking_cancel_dim();
 
+    /* Do not reprogram timer if never-blank mode is active */
+    if( mdy_disp_never_blank )
+        goto EXIT;
+
     gint dim_timeout = mdy_blanking_get_dimming_delay();
 
     mce_log(LL_DEBUG, "DIM timer scheduled @ %d secs", dim_timeout);
@@ -3433,6 +3437,7 @@ static void mdy_blanking_schedule_dim(void)
 
     mdy_blanking_inhibit_schedule_broadcast();
 
+EXIT:
     return;
 }
 
@@ -3570,6 +3575,12 @@ static void mdy_blanking_schedule_off(void)
 {
     gint timeout = mdy_blank_timeout;
 
+    /* Just disable timer if never-blank mode is active */
+    if( mdy_disp_never_blank ) {
+        mdy_blanking_cancel_off();
+        goto EXIT;
+    }
+
     if( exception_state & UIEXC_CALL ) {
         /* During calls: Use unadjusted default timeout */
     }
@@ -3671,11 +3682,17 @@ static void mdy_blanking_schedule_lpm_off(void)
 
     mdy_blanking_cancel_lpm_off();
 
+    /* Do not reprogram timer if never-blank mode is active */
+    if( mdy_disp_never_blank )
+        goto EXIT;
+
     /* Setup new timeout */
     mce_log(LL_DEBUG, "LPM-BLANK timer scheduled @ %d secs", timeout);
     mdy_blanking_lpm_off_cb_id =
         g_timeout_add_seconds(timeout,
                               mdy_blanking_lpm_off_cb, NULL);
+
+EXIT:
     return;
 }
 
@@ -4243,6 +4260,10 @@ static void mdy_blanking_rethink_timers(bool force)
     mdy_blanking_cancel_dim();
     mdy_blanking_cancel_off();
     mdy_blanking_cancel_lpm_off();
+
+    /* Skip timer programming in never-blank mode */
+    if( mdy_disp_never_blank )
+        goto EXIT;
 
     if( exception_state & ~UIEXC_CALL ) {
         /* exceptional ui states other than
@@ -8966,6 +8987,7 @@ static void mdy_setting_cb(GConfClient *const gcc, const guint id,
             mce_log(LL_NOTICE, "never_blank = %d", mdy_disp_never_blank);
             if( mdy_disp_never_blank )
                 mce_datapipe_req_display_state(MCE_DISPLAY_ON);
+            mdy_blanking_rethink_timers(true);
         }
     }
     else if( id == mdy_compositor_core_delay_setting_id ) {
