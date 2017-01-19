@@ -1,3 +1,19 @@
+mce (1.85.1) precise; urgency=low
+
+  * [datapipe] Drop reference count trigger functionality
+  * [dsme] Do not use filter for system_state_pipe
+  * [datapipe] Mark unfiltered datapipes as read only
+  * [datapipe] Allow data caching at output stage. JB#37393
+  * [datapipe] Cache display_state_req_pipe output value. JB#37393
+  * [datapipe] Do not prefilter display state requests. Fixes JB#37393
+  * [datapipe] Cache device_inactive_pipe output value
+  * [datapipe] Cache ambient_light_poll_pipe output value
+  * [display] Use only array based datapipe binding
+  * [display] Power up display when never-blank mode is enabled. JB#37393
+  * [display] Start/stop blanking timers based on never-blank mode. JB#37393
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 19 Jan 2017 12:00:52 +0200
+
 mce (1.85.0) precise; urgency=low
 
   * [display] Optionally disable suspend while charging. Fixes MER#1723
