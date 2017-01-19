@@ -1854,7 +1854,7 @@ fba_sensorpoll_timer_cb(gpointer aptr)
     fba_sensorpoll_timer_id = 0;
     execute_datapipe(&ambient_light_poll_pipe,
                      GINT_TO_POINTER(false),
-                     USE_INDATA, CACHE_INDATA);
+                     USE_INDATA, CACHE_OUTDATA);
 EXIT:
     return FALSE;
 }

@@ -332,7 +332,7 @@ static gboolean charger_charging_failed_dbus_cb(DBusMessage *const msg)
 
 	/* Generate activity */
 	(void)execute_datapipe(&device_inactive_pipe, GINT_TO_POINTER(FALSE),
-			       USE_INDATA, CACHE_INDATA);
+			       USE_INDATA, CACHE_OUTDATA);
 
 	status = TRUE;
 
@@ -359,7 +359,7 @@ static gboolean charger_connected_dbus_cb(DBusMessage *const msg)
 		/* Generate activity */
 		(void)execute_datapipe(&device_inactive_pipe,
 				       GINT_TO_POINTER(FALSE),
-				       USE_INDATA, CACHE_INDATA);
+				       USE_INDATA, CACHE_OUTDATA);
 		cached_charger_connected = 1;
 	}
 
@@ -399,7 +399,7 @@ static gboolean charger_disconnected_dbus_cb(DBusMessage *const msg)
 		/* Generate activity */
 		(void)execute_datapipe(&device_inactive_pipe,
 				       GINT_TO_POINTER(FALSE),
-				       USE_INDATA, CACHE_INDATA);
+				       USE_INDATA, CACHE_OUTDATA);
 		cached_charger_connected = 0;
 	}
 

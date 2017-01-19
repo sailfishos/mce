@@ -48,9 +48,6 @@ typedef struct {
 	GSList *filters;		/**< The filters */
 	GSList *input_triggers;		/**< Triggers called on indata */
 	GSList *output_triggers;	/**< Triggers called on outdata */
-	GSList *refcount_triggers;	/**< Triggers called on
-					 *   reference count changes
-					 */
 	gpointer cached_data;		/**< Latest cached data */
 	gsize datasize;			/**< Size of data; NULL == automagic */
 	gboolean free_cache;		/**< Free the cache? */
@@ -85,8 +82,9 @@ typedef enum {
  * Policy used for caching indata
  */
 typedef enum {
-	DONT_CACHE_INDATA = FALSE,	/**< Do not cache the indata */
-	CACHE_INDATA = TRUE		/**< Cache the indata */
+	DONT_CACHE_INDATA = 0,          /**< Do not cache the indata */
+	CACHE_INDATA      = 1<<0,       /**< Cache the unfiltered indata */
+	CACHE_OUTDATA     = 1<<1,       /**< Cache the filtered outdata */
 } caching_policy_t;
 
 /* Available datapipes */
@@ -170,22 +168,10 @@ extern datapipe_struct proximity_blank_pipe;
 /** Retrieve a gpointer from a datapipe */
 #define datapipe_get_gpointer(_datapipe)	((_datapipe).cached_data)
 
-/* Reference count */
-
-/** Retrieve the filter reference count from a datapipe */
-#define datapipe_get_filter_refcount(_datapipe)	(g_slist_length((_datapipe).filters))
-
-/** Retrieve the input trigger reference count from a datapipe */
-#define datapipe_get_input_trigger_refcount(_datapipe)	(g_slist_length((_datapipe).input_triggers))
-
-/** Retrieve the output trigger reference count from a datapipe */
-#define datapipe_get_output_trigger_refcount(_datapipe)	(g_slist_length((_datapipe).output_triggers))
-
 /* Datapipe execution */
 void execute_datapipe_input_triggers(datapipe_struct *const datapipe,
 				     gpointer const indata,
-				     const data_source_t use_cache,
-				     const caching_policy_t cache_indata);
+				     const data_source_t use_cache);
 gconstpointer execute_datapipe_filters(datapipe_struct *const datapipe,
 				       gpointer indata,
 				       const data_source_t use_cache);
@@ -214,12 +200,6 @@ void append_output_trigger_to_datapipe(datapipe_struct *const datapipe,
 				       void (*trigger)(gconstpointer data));
 void remove_output_trigger_from_datapipe(datapipe_struct *const datapipe,
 					 void (*trigger)(gconstpointer data));
-
-/* Reference count triggers */
-void append_refcount_trigger_to_datapipe(datapipe_struct *const datapipe,
-					 void (*trigger)(void));
-void remove_refcount_trigger_from_datapipe(datapipe_struct *const datapipe,
-					   void (*trigger)(void));
 
 void setup_datapipe(datapipe_struct *const datapipe,
 		    const read_only_policy_t read_only,
@@ -264,8 +244,10 @@ void mce_datapipe_quit(void);
 #define mce_datapipe_req_display_state(state_) do {\
     display_state_t cur_target = datapipe_get_gint(display_state_next_pipe);\
     display_state_t req_target = (display_state_t)(state_);\
+    /* Use elevated logginng verbosity for requests that \
+     * are likely to result in display power up. */ \
+    int level = LL_DEBUG; \
     if( cur_target != req_target ) {\
-	int level = LL_DEBUG; \
 	switch( req_target ) {\
 	case MCE_DISPLAY_ON:\
 	case MCE_DISPLAY_LPM_ON:\
@@ -274,17 +256,16 @@ void mce_datapipe_quit(void);
 	default:\
 	    break;\
 	}\
-	mce_log(level, "display state req: %s",\
-		display_state_repr(req_target));\
-	execute_datapipe(&display_state_req_pipe,\
-			 GINT_TO_POINTER(req_target),\
-			 USE_INDATA, CACHE_INDATA);\
     }\
-    else {\
-	/* TODO: double check request handling and remove this logging */\
-	mce_log(LL_WARN, "ignoring display state req: %s",\
-		display_state_repr(req_target));\
-    }\
+    mce_log(level, "display state req: %s",\
+	    display_state_repr(req_target));\
+    /* But the request must always be fed to the datapipe \
+     * because during already ongoing transition something \
+     * else might be already queued up and we want't the \
+     * last request to reach the queue to "win". */ \
+    execute_datapipe(&display_state_req_pipe,\
+		     GINT_TO_POINTER(req_target),\
+		     USE_INDATA, CACHE_OUTDATA);\
 } while(0)
 
 #endif /* _DATAPIPE_H_ */

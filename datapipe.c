@@ -232,8 +232,7 @@ datapipe_struct proximity_blank_pipe;
  */
 void execute_datapipe_input_triggers(datapipe_struct *const datapipe,
 				     gpointer const indata,
-				     const data_source_t use_cache,
-				     const caching_policy_t cache_indata)
+				     const data_source_t use_cache)
 {
 	void (*trigger)(gconstpointer const input);
 	gpointer data;
@@ -248,15 +247,6 @@ void execute_datapipe_input_triggers(datapipe_struct *const datapipe,
 	}
 
 	data = (use_cache == USE_CACHE) ? datapipe->cached_data : indata;
-
-	if (cache_indata == CACHE_INDATA) {
-		if (use_cache == USE_INDATA) {
-			if (datapipe->free_cache == FREE_CACHE)
-				g_free(datapipe->cached_data);
-
-			datapipe->cached_data = data;
-		}
-	}
 
 	for (i = 0; (trigger = g_slist_nth_data(datapipe->input_triggers,
 						i)) != NULL; i++) {
@@ -298,12 +288,14 @@ gconstpointer execute_datapipe_filters(datapipe_struct *const datapipe,
 					       i)) != NULL; i++) {
 		gpointer tmp = filter(data);
 
-		/* If the data needs to be freed, and this isn't the indata,
-		 * or if we're not using the cache, then free the data
-		 */
-		if ((datapipe->free_cache == FREE_CACHE) &&
-		    ((i > 0) || (use_cache == USE_INDATA)))
-			g_free(data);
+		if( datapipe->free_cache == FREE_CACHE ) {
+			/* When dealing with dynamic data, the transitional
+			 * values need to be released - except for the value
+			 * that is cached at the datapipe
+			 */
+			if( tmp != data && data != datapipe->cached_data )
+				g_free(data);
+		}
 
 		data = tmp;
 	}
@@ -364,7 +356,7 @@ gconstpointer execute_datapipe(datapipe_struct *const datapipe,
 			       const data_source_t use_cache,
 			       const caching_policy_t cache_indata)
 {
-	gconstpointer data = NULL;
+	gconstpointer outdata = NULL;
 
 	if (datapipe == NULL) {
 		mce_log(LL_ERR,
@@ -373,19 +365,42 @@ gconstpointer execute_datapipe(datapipe_struct *const datapipe,
 		goto EXIT;
 	}
 
-	execute_datapipe_input_triggers(datapipe, indata, use_cache,
-					cache_indata);
+	/* Determine input value */
+	if( use_cache == USE_CACHE )
+		indata = datapipe->cached_data;
 
-	if (datapipe->read_only == READ_ONLY) {
-		data = indata;
-	} else {
-		data = execute_datapipe_filters(datapipe, indata, use_cache);
+	/* Optionally cache the value at the input stage */
+	if( cache_indata & (CACHE_INDATA|CACHE_OUTDATA) ) {
+		if( datapipe->free_cache == FREE_CACHE &&
+		    datapipe->cached_data != indata )
+			g_free(datapipe->cached_data);
+		datapipe->cached_data = indata;
 	}
 
-	execute_datapipe_output_triggers(datapipe, data, USE_INDATA);
+	/* Execute input value callbacks */
+	execute_datapipe_input_triggers(datapipe, indata, USE_INDATA);
+
+	/* Determine output value */
+	if (datapipe->read_only == READ_ONLY) {
+		outdata = indata;
+	} else {
+		outdata = execute_datapipe_filters(datapipe, indata, USE_INDATA);
+	}
+
+	/* Optionally cache the value at the output stage */
+	if( cache_indata & CACHE_OUTDATA ) {
+		if( datapipe->free_cache == FREE_CACHE &&
+		    datapipe->cached_data != outdata )
+			g_free(datapipe->cached_data);
+
+		datapipe->cached_data = (gpointer)outdata;
+	}
+
+	/* Execute output value callbacks */
+	execute_datapipe_output_triggers(datapipe, outdata, USE_INDATA);
 
 EXIT:
-	return data;
+	return outdata;
 }
 
 /**
@@ -397,9 +412,6 @@ EXIT:
 void append_filter_to_datapipe(datapipe_struct *const datapipe,
 			       gpointer (*filter)(gpointer data))
 {
-	void (*refcount_trigger)(void);
-	gint i;
-
 	if (datapipe == NULL) {
 		mce_log(LL_ERR,
 			"append_filter_to_datapipe() called "
@@ -423,10 +435,6 @@ void append_filter_to_datapipe(datapipe_struct *const datapipe,
 
 	datapipe->filters = g_slist_append(datapipe->filters, filter);
 
-	for (i = 0; (refcount_trigger = g_slist_nth_data(datapipe->refcount_triggers, i)) != NULL; i++) {
-		refcount_trigger();
-	}
-
 EXIT:
 	return;
 }
@@ -441,9 +449,7 @@ EXIT:
 void remove_filter_from_datapipe(datapipe_struct *const datapipe,
 				 gpointer (*filter)(gpointer data))
 {
-	void (*refcount_trigger)(void);
 	guint oldlen;
-	gint i;
 
 	if (datapipe == NULL) {
 		mce_log(LL_ERR,
@@ -477,10 +483,6 @@ void remove_filter_from_datapipe(datapipe_struct *const datapipe,
 		goto EXIT;
 	}
 
-	for (i = 0; (refcount_trigger = g_slist_nth_data(datapipe->refcount_triggers, i)) != NULL; i++) {
-		refcount_trigger();
-	}
-
 EXIT:
 	return;
 }
@@ -494,9 +496,6 @@ EXIT:
 void append_input_trigger_to_datapipe(datapipe_struct *const datapipe,
 				      void (*trigger)(gconstpointer data))
 {
-	void (*refcount_trigger)(void);
-	gint i;
-
 	if (datapipe == NULL) {
 		mce_log(LL_ERR,
 			"append_input_trigger_to_datapipe() called "
@@ -514,10 +513,6 @@ void append_input_trigger_to_datapipe(datapipe_struct *const datapipe,
 	datapipe->input_triggers = g_slist_append(datapipe->input_triggers,
 						  trigger);
 
-	for (i = 0; (refcount_trigger = g_slist_nth_data(datapipe->refcount_triggers, i)) != NULL; i++) {
-		refcount_trigger();
-	}
-
 EXIT:
 	return;
 }
@@ -532,9 +527,7 @@ EXIT:
 void remove_input_trigger_from_datapipe(datapipe_struct *const datapipe,
 					void (*trigger)(gconstpointer data))
 {
-	void (*refcount_trigger)(void);
 	guint oldlen;
-	gint i;
 
 	if (datapipe == NULL) {
 		mce_log(LL_ERR,
@@ -562,10 +555,6 @@ void remove_input_trigger_from_datapipe(datapipe_struct *const datapipe,
 		goto EXIT;
 	}
 
-	for (i = 0; (refcount_trigger = g_slist_nth_data(datapipe->refcount_triggers, i)) != NULL; i++) {
-		refcount_trigger();
-	}
-
 EXIT:
 	return;
 }
@@ -579,9 +568,6 @@ EXIT:
 void append_output_trigger_to_datapipe(datapipe_struct *const datapipe,
 				       void (*trigger)(gconstpointer data))
 {
-	void (*refcount_trigger)(void);
-	gint i;
-
 	if (datapipe == NULL) {
 		mce_log(LL_ERR,
 			"append_output_trigger_to_datapipe() called "
@@ -599,10 +585,6 @@ void append_output_trigger_to_datapipe(datapipe_struct *const datapipe,
 	datapipe->output_triggers = g_slist_append(datapipe->output_triggers,
 						   trigger);
 
-	for (i = 0; (refcount_trigger = g_slist_nth_data(datapipe->refcount_triggers, i)) != NULL; i++) {
-		refcount_trigger();
-	}
-
 EXIT:
 	return;
 }
@@ -617,9 +599,7 @@ EXIT:
 void remove_output_trigger_from_datapipe(datapipe_struct *const datapipe,
 					 void (*trigger)(gconstpointer data))
 {
-	void (*refcount_trigger)(void);
 	guint oldlen;
-	gint i;
 
 	if (datapipe == NULL) {
 		mce_log(LL_ERR,
@@ -644,80 +624,6 @@ void remove_output_trigger_from_datapipe(datapipe_struct *const datapipe,
 	if (oldlen == g_slist_length(datapipe->output_triggers)) {
 		mce_log(LL_DEBUG,
 			"Trying to remove non-existing output trigger");
-		goto EXIT;
-	}
-
-	for (i = 0; (refcount_trigger = g_slist_nth_data(datapipe->refcount_triggers, i)) != NULL; i++) {
-		refcount_trigger();
-	}
-
-EXIT:
-	return;
-}
-
-/**
- * Append a reference count trigger to an existing datapipe
- *
- * @param datapipe The datapipe to manipulate
- * @param trigger The trigger to add to the datapipe
- */
-void append_refcount_trigger_to_datapipe(datapipe_struct *const datapipe,
-					 void (*trigger)(void))
-{
-	if (datapipe == NULL) {
-		mce_log(LL_ERR,
-			"append_refcount_trigger_to_datapipe() called "
-			"without a valid datapipe");
-		goto EXIT;
-	}
-
-	if (trigger == NULL) {
-		mce_log(LL_ERR,
-			"append_refcount_trigger_to_datapipe() called "
-			"without a valid trigger");
-		goto EXIT;
-	}
-
-	datapipe->refcount_triggers = g_slist_append(datapipe->refcount_triggers, trigger);
-
-EXIT:
-	return;
-}
-
-/**
- * Remove a reference count trigger from an existing datapipe
- * Non-existing triggers are ignored
- *
- * @param datapipe The datapipe to manipulate
- * @param trigger The trigger to remove from the datapipe
- */
-void remove_refcount_trigger_from_datapipe(datapipe_struct *const datapipe,
-					   void (*trigger)(void))
-{
-	guint oldlen;
-
-	if (datapipe == NULL) {
-		mce_log(LL_ERR,
-			"remove_refcount_trigger_from_datapipe() called "
-			"without a valid datapipe");
-		goto EXIT;
-	}
-
-	if (trigger == NULL) {
-		mce_log(LL_ERR,
-			"remove_refcount_trigger_from_datapipe() called "
-			"without a valid trigger");
-		goto EXIT;
-	}
-
-	oldlen = g_slist_length(datapipe->refcount_triggers);
-
-	datapipe->refcount_triggers = g_slist_remove(datapipe->refcount_triggers, trigger);
-
-	/* Did we remove any entry? */
-	if (oldlen == g_slist_length(datapipe->refcount_triggers)) {
-		mce_log(LL_DEBUG,
-			"Trying to remove non-existing refcount trigger");
 		goto EXIT;
 	}
 
@@ -752,7 +658,6 @@ void setup_datapipe(datapipe_struct *const datapipe,
 	datapipe->filters = NULL;
 	datapipe->input_triggers = NULL;
 	datapipe->output_triggers = NULL;
-	datapipe->refcount_triggers = NULL;
 	datapipe->datasize = datasize;
 	datapipe->read_only = read_only;
 	datapipe->free_cache = free_cache;
@@ -795,12 +700,6 @@ void free_datapipe(datapipe_struct *const datapipe)
 			"still has registered output_trigger(s)");
 	}
 
-	if (datapipe->refcount_triggers != NULL) {
-		mce_log(LL_INFO,
-			"free_datapipe() called on a datapipe that "
-			"still has registered refcount_trigger(s)");
-	}
-
 	if (datapipe->free_cache == FREE_CACHE) {
 		g_free(datapipe->cached_data);
 	}
@@ -813,25 +712,25 @@ EXIT:
  */
 void mce_datapipe_init(void)
 {
-	setup_datapipe(&system_state_pipe, READ_WRITE, DONT_FREE_CACHE,
+	setup_datapipe(&system_state_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(MCE_STATE_UNDEF));
-	setup_datapipe(&master_radio_pipe, READ_WRITE, DONT_FREE_CACHE,
+	setup_datapipe(&master_radio_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(0));
-	setup_datapipe(&call_state_pipe, READ_WRITE, DONT_FREE_CACHE,
+	setup_datapipe(&call_state_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(CALL_STATE_NONE));
-	setup_datapipe(&call_type_pipe, READ_WRITE, DONT_FREE_CACHE,
+	setup_datapipe(&call_type_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(NORMAL_CALL));
 	setup_datapipe(&alarm_ui_state_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(MCE_ALARM_UI_INVALID_INT32));
 	setup_datapipe(&submode_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(MCE_NORMAL_SUBMODE));
-	setup_datapipe(&display_state_pipe, READ_WRITE, DONT_FREE_CACHE,
+	setup_datapipe(&display_state_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(MCE_DISPLAY_UNDEF));
 	setup_datapipe(&display_state_req_pipe, READ_WRITE, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(MCE_DISPLAY_UNDEF));
-	setup_datapipe(&display_state_next_pipe, READ_WRITE, DONT_FREE_CACHE,
+	setup_datapipe(&display_state_next_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(MCE_DISPLAY_UNDEF));
-	setup_datapipe(&exception_state_pipe, READ_WRITE, DONT_FREE_CACHE,
+	setup_datapipe(&exception_state_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(UIEXC_NONE));
 	setup_datapipe(&display_brightness_pipe, READ_WRITE, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(3));
@@ -861,7 +760,7 @@ void mce_datapipe_init(void)
 		       0, GINT_TO_POINTER(COVER_CLOSED));
 	setup_datapipe(&keyboard_available_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(COVER_CLOSED));
-	setup_datapipe(&lid_sensor_is_working_pipe, READ_WRITE,
+	setup_datapipe(&lid_sensor_is_working_pipe, READ_ONLY,
 		       DONT_FREE_CACHE, 0, GINT_TO_POINTER(FALSE));
 	setup_datapipe(&lid_cover_sensor_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(COVER_UNDEF));
@@ -903,7 +802,6 @@ void mce_datapipe_init(void)
 		       0, GINT_TO_POINTER(THERMAL_STATE_UNDEF));
 	setup_datapipe(&heartbeat_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(0));
-
 	setup_datapipe(&compositor_available_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
 	setup_datapipe(&lipstick_available_pipe, READ_ONLY, DONT_FREE_CACHE,
@@ -927,13 +825,13 @@ void mce_datapipe_init(void)
 		       0, GINT_TO_POINTER(FALSE));
 	setup_datapipe(&device_lock_state_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(DEVICE_LOCK_UNDEFINED));
-	setup_datapipe(&touch_detected_pipe, READ_WRITE, DONT_FREE_CACHE,
+	setup_datapipe(&touch_detected_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(FALSE));
-	setup_datapipe(&touch_grab_wanted_pipe, READ_WRITE, DONT_FREE_CACHE,
+	setup_datapipe(&touch_grab_wanted_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(FALSE));
 	setup_datapipe(&touch_grab_active_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(FALSE));
-	setup_datapipe(&keypad_grab_wanted_pipe, READ_WRITE, DONT_FREE_CACHE,
+	setup_datapipe(&keypad_grab_wanted_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(FALSE));
 	setup_datapipe(&keypad_grab_active_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(FALSE));

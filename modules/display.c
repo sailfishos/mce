@@ -1794,6 +1794,11 @@ static datapipe_handler_t mdy_datapipe_handlers[] =
         .datapipe  = &keyboard_slide_pipe,
         .input_cb  = mdy_datapipe_keyboard_slide_input_cb,
     },
+    // input filters
+    {
+        .datapipe  = &display_state_req_pipe,
+        .filter_cb = mdy_datapipe_display_state_filter_cb,
+    },
     // output triggers
     {
         .datapipe  = &keyboard_available_pipe,
@@ -1893,23 +1898,13 @@ static datapipe_bindings_t mdy_datapipe_bindings =
  */
 static void mdy_datapipe_init(void)
 {
-    // filters
-    append_filter_to_datapipe(&display_state_req_pipe,
-                              mdy_datapipe_display_state_filter_cb);
-
-    // triggers
     datapipe_bindings_init(&mdy_datapipe_bindings);
 }
 
 /** Remove triggers/filters from datapipes */
 static void mdy_datapipe_quit(void)
 {
-    // triggers
     datapipe_bindings_quit(&mdy_datapipe_bindings);
-
-    // filters
-    remove_filter_from_datapipe(&display_state_req_pipe,
-                                mdy_datapipe_display_state_filter_cb);
 }
 
 /* ========================================================================= *
@@ -3428,6 +3423,10 @@ static void mdy_blanking_schedule_dim(void)
 {
     mdy_blanking_cancel_dim();
 
+    /* Do not reprogram timer if never-blank mode is active */
+    if( mdy_disp_never_blank )
+        goto EXIT;
+
     gint dim_timeout = mdy_blanking_get_dimming_delay();
 
     mce_log(LL_DEBUG, "DIM timer scheduled @ %d secs", dim_timeout);
@@ -3438,6 +3437,7 @@ static void mdy_blanking_schedule_dim(void)
 
     mdy_blanking_inhibit_schedule_broadcast();
 
+EXIT:
     return;
 }
 
@@ -3575,6 +3575,12 @@ static void mdy_blanking_schedule_off(void)
 {
     gint timeout = mdy_blank_timeout;
 
+    /* Just disable timer if never-blank mode is active */
+    if( mdy_disp_never_blank ) {
+        mdy_blanking_cancel_off();
+        goto EXIT;
+    }
+
     if( exception_state & UIEXC_CALL ) {
         /* During calls: Use unadjusted default timeout */
     }
@@ -3676,11 +3682,17 @@ static void mdy_blanking_schedule_lpm_off(void)
 
     mdy_blanking_cancel_lpm_off();
 
+    /* Do not reprogram timer if never-blank mode is active */
+    if( mdy_disp_never_blank )
+        goto EXIT;
+
     /* Setup new timeout */
     mce_log(LL_DEBUG, "LPM-BLANK timer scheduled @ %d secs", timeout);
     mdy_blanking_lpm_off_cb_id =
         g_timeout_add_seconds(timeout,
                               mdy_blanking_lpm_off_cb, NULL);
+
+EXIT:
     return;
 }
 
@@ -4248,6 +4260,10 @@ static void mdy_blanking_rethink_timers(bool force)
     mdy_blanking_cancel_dim();
     mdy_blanking_cancel_off();
     mdy_blanking_cancel_lpm_off();
+
+    /* Skip timer programming in never-blank mode */
+    if( mdy_disp_never_blank )
+        goto EXIT;
 
     if( exception_state & ~UIEXC_CALL ) {
         /* exceptional ui states other than
@@ -5856,7 +5872,7 @@ static void mdy_orientation_generate_activity(void)
     mce_log(LL_DEBUG, "orientation change; generate activity");
     execute_datapipe(&device_inactive_pipe,
                      GINT_TO_POINTER(FALSE),
-                     USE_INDATA, CACHE_INDATA);
+                     USE_INDATA, CACHE_OUTDATA);
 
 EXIT:
     return;
@@ -8965,8 +8981,14 @@ static void mdy_setting_cb(GConfClient *const gcc, const guint id,
         mdy_blanking_rethink_timers(true);
     }
     else if( id == mdy_disp_never_blank_setting_id ) {
+        gint prev = mdy_disp_never_blank;
         mdy_disp_never_blank = gconf_value_get_int(gcv);
-        mce_log(LL_NOTICE, "never_blank = %d", mdy_disp_never_blank);
+        if( prev != mdy_disp_never_blank ) {
+            mce_log(LL_NOTICE, "never_blank = %d", mdy_disp_never_blank);
+            if( mdy_disp_never_blank )
+                mce_datapipe_req_display_state(MCE_DISPLAY_ON);
+            mdy_blanking_rethink_timers(true);
+        }
     }
     else if( id == mdy_compositor_core_delay_setting_id ) {
         mdy_compositor_core_delay = gconf_value_get_int(gcv);

@@ -142,7 +142,7 @@ static void           mce_dsme_dbus_quit(void);
  * ------------------------------------------------------------------------- */
 
 static void           mce_dsme_datapipe_dsme_available_cb (gconstpointer data);
-static gpointer       mce_dsme_datapipe_system_state_cb   (gpointer data);
+static void           mce_dsme_datapipe_system_state_cb   (gconstpointer data);
 
 static void           mce_dsme_datapipe_init(void);
 static void           mce_dsme_datapipe_quit(void);
@@ -904,14 +904,12 @@ EXIT:
 
 /** Handle system_state_pipe notifications
  *
- * Implemented as an input filter to ensure this function gets
+ * Implemented as an input trigger to ensure this function gets
  * executed before output triggers from other modules/plugins.
  *
  * @param data The system state (as a void pointer)
- *
- * @return system state (as a void pointer)
  */
-static gpointer mce_dsme_datapipe_system_state_cb(gpointer data)
+static void mce_dsme_datapipe_system_state_cb(gconstpointer data)
 {
     system_state_t prev = system_state;
     system_state = GPOINTER_TO_INT(data);
@@ -965,16 +963,16 @@ static gpointer mce_dsme_datapipe_system_state_cb(gpointer data)
     }
 
 EXIT:
-    return GINT_TO_POINTER(system_state);
+    return;
 }
 
 /** Array of datapipe handlers */
 static datapipe_handler_t mce_dsme_datapipe_handlers[] =
 {
-    // input filters
+    // input triggers
     {
         .datapipe  = &system_state_pipe,
-        .filter_cb = mce_dsme_datapipe_system_state_cb,
+        .input_cb  = mce_dsme_datapipe_system_state_cb,
     },
     // output triggers
     {

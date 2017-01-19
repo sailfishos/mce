@@ -228,7 +228,7 @@ static const char *mia_inactivity_repr(bool inactive)
 static void mia_generate_activity(void)
 {
     execute_datapipe(&device_inactive_pipe, GINT_TO_POINTER(FALSE),
-                     USE_INDATA, CACHE_INDATA);
+                     USE_INDATA, CACHE_OUTDATA);
 }
 
 /** Helper for switching to inactive state
@@ -236,7 +236,7 @@ static void mia_generate_activity(void)
 static void mia_generate_inactivity(void)
 {
     execute_datapipe(&device_inactive_pipe, GINT_TO_POINTER(TRUE),
-                     USE_INDATA, CACHE_INDATA);
+                     USE_INDATA, CACHE_OUTDATA);
 }
 
 /* ========================================================================= *
