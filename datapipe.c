@@ -4,8 +4,10 @@
  * this can be used to filter data and to setup data triggers
  * <p>
  * Copyright © 2007-2008 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (C) 2014-2017 Jolla Ltd.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
+ * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
  * mce is free software; you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License
@@ -785,7 +787,7 @@ void mce_datapipe_init(void)
 	setup_datapipe(&battery_status_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(BATTERY_STATUS_UNDEF));
 	setup_datapipe(&battery_level_pipe, READ_ONLY, DONT_FREE_CACHE,
-		       0, GINT_TO_POINTER(100));
+		       0, GINT_TO_POINTER(BATTERY_LEVEL_INITIAL));
 	setup_datapipe(&camera_button_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(CAMERA_BUTTON_UNDEF));
 	setup_datapipe(&inactivity_timeout_pipe, READ_ONLY, DONT_FREE_CACHE,
@@ -1060,6 +1062,32 @@ const char *usb_cable_state_repr(usb_cable_state_t state)
 	return res;
 }
 
+/** Convert usb_cable_state_t enum to dbus argument string
+ *
+ * @param state usb_cable_state_t enumeration value
+ *
+ * @return representation of state for use over dbus
+ */
+const char *usb_cable_state_to_dbus(usb_cable_state_t state)
+{
+	const char *res = MCE_USB_CABLE_STATE_UNKNOWN;
+
+	switch( state ) {
+	case USB_CABLE_DISCONNECTED:
+		res = MCE_USB_CABLE_STATE_DISCONNECTED;
+		break;
+
+	case USB_CABLE_ASK_USER:
+	case USB_CABLE_CONNECTED:
+		res = MCE_USB_CABLE_STATE_CONNECTED;
+		break;
+	default:
+		break;
+	}
+
+	return res;
+}
+
 /** Convert charger_state_t enum to human readable string
  *
  * @param state charger_state_t enumeration value
@@ -1075,6 +1103,30 @@ const char *charger_state_repr(charger_state_t state)
 	case CHARGER_STATE_OFF:   res = "off";       break;
 	case CHARGER_STATE_ON:    res = "on";        break;
 	default: break;
+	}
+
+	return res;
+}
+
+/** Convert charger_state_t enum to dbus argument string
+ *
+ * @param state charger_state_t enumeration value
+ *
+ * @return representation of state for use over dbus
+ */
+const char *charger_state_to_dbus(charger_state_t state)
+{
+	const char *res = MCE_CHARGER_STATE_UNKNOWN;
+
+	switch( state ) {
+	case CHARGER_STATE_OFF:
+		res = MCE_CHARGER_STATE_OFF;
+		break;
+	case CHARGER_STATE_ON:
+		res = MCE_CHARGER_STATE_ON;
+		break;
+	default:
+		break;
 	}
 
 	return res;
@@ -1120,6 +1172,34 @@ const char *battery_status_repr(battery_status_t state)
 	case BATTERY_STATUS_LOW:   res = "low";       break;
 	case BATTERY_STATUS_EMPTY: res = "empty";     break;
 	default: break;
+	}
+	return res;
+}
+
+/** Convert battery_status_t enum to dbus argument string
+ *
+ * @param state battery_status_t enumeration value
+ *
+ * @return representation of state for use over dbus
+ */
+const char *battery_status_to_dbus(battery_status_t state)
+{
+	const char *res = MCE_BATTERY_STATUS_UNKNOWN;
+	switch( state ) {
+	case BATTERY_STATUS_FULL:
+		res = MCE_BATTERY_STATUS_FULL;
+		break;
+	case BATTERY_STATUS_OK:
+		res = MCE_BATTERY_STATUS_OK;
+		break;
+	case BATTERY_STATUS_LOW:
+		res = MCE_BATTERY_STATUS_LOW;
+		break;
+	case BATTERY_STATUS_EMPTY:
+		res = MCE_BATTERY_STATUS_EMPTY;
+		break;
+	default:
+		break;
 	}
 	return res;
 }

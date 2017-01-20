@@ -3,8 +3,12 @@
  * Mode Control Entity - main file
  * <p>
  * Copyright © 2004-2011 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (C) 2012-2017 Jolla Ltd.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
+ * @author Tapio Rantala <ext-tapio.rantala@nokia.com>
+ * @author Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>
+ * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
  * mce is free software; you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License
@@ -21,6 +25,7 @@
 
 #include "mce.h"
 #include "mce-log.h"
+#include "mce-common.h"
 #include "mce-conf.h"
 #include "mce-fbdev.h"
 #include "mce-hbtimer.h"
@@ -1027,6 +1032,9 @@ int main(int argc, char **argv)
 		goto EXIT;
 	}
 
+	if( !mce_common_init() )
+		goto EXIT;
+
 	/* Load all modules */
 	if (mce_modules_init() == FALSE) {
 		goto EXIT;
@@ -1060,6 +1068,8 @@ int main(int argc, char **argv)
 EXIT:
 	/* Unload all modules */
 	mce_modules_exit();
+
+	mce_common_quit();
 
 	/* Call the exit function for all components */
 	mce_sensorfw_quit();
