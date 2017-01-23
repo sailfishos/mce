@@ -3,8 +3,13 @@
  * Generic headers for Mode Control Entity
  * <p>
  * Copyright © 2004-2011 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (C) 2012-2017 Jolla Ltd.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
+ * @author Irina Bezruk <ext-irina.bezruk@nokia.com>
+ * @author Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>
+ * @author Vesa Halttunen <vesa.halttunen@jollamobile.com>
+ * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
  * mce is free software; you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License
@@ -291,6 +296,9 @@ typedef enum {
 
 const char *lock_state_repr(lock_state_t state);
 
+/** Assumed initial battery level */
+#define BATTERY_LEVEL_INITIAL 100
+
 /** Battery status */
 typedef enum {
 	BATTERY_STATUS_UNDEF = -1,	/**< Battery status not known */
@@ -301,6 +309,7 @@ typedef enum {
 } battery_status_t;
 
 const char *battery_status_repr(battery_status_t state);
+const char *battery_status_to_dbus(battery_status_t state);
 
 /** Charging status */
 typedef enum {
@@ -310,6 +319,7 @@ typedef enum {
 } charger_state_t;
 
 const char *charger_state_repr(charger_state_t state);
+const char *charger_state_to_dbus(charger_state_t state);
 
 /** Camera button state */
 typedef enum {
@@ -339,6 +349,7 @@ typedef enum {
 } usb_cable_state_t;
 
 const char *usb_cable_state_repr(usb_cable_state_t state);
+const char *usb_cable_state_to_dbus(usb_cable_state_t state);
 
 /** Thermal status */
 typedef enum {

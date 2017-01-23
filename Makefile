@@ -1,8 +1,20 @@
 # Makefile for MCE
 # Copyright © 2004-2011 Nokia Corporation.
-# Written by David Weinehall
-# Modified by Tuomo Tanskanen
-# Modified by Simo Piiroinen
+# Copyright (C) 2012-2017 Jolla Ltd.
+#
+# @author David Weinehall <david.weinehall@nokia.com>
+# @author Tuomo Tanskanen
+# @author Irina Bezruk <ext-irina.bezruk@nokia.com>
+# @author Victor Portnov <ext-victor.portnov@nokia.com>
+# @author Jukka Turunen <ext-jukka.t.turunen@nokia.com>
+# @author Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>
+# @author Tapio Rantala <ext-tapio.rantala@nokia.com>
+# @author Dmitry Rozhkov <dmitry.rozhkov@jollamobile.com>
+# @author Kalle Jokiniemi <kalle.jokiniemi@jolla.com>
+# @author Philippe De Swert <philippe.deswert@jollamobile.com>
+# @author Pekka Lundstrom <pekka.lundstrom@jollamobile.com>
+# @author Martin Kampas <martin.kampas@tieto.com>
+# @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
 #
 # mce is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License
@@ -275,6 +287,7 @@ MCE_LDLIBS += $(MCE_PKG_LDLIBS)
 MCE_CORE += tklock.c
 MCE_CORE += modetransition.c
 MCE_CORE += powerkey.c
+MCE_CORE += mce-common.c
 MCE_CORE += mce-fbdev.c
 MCE_CORE += mce-dbus.c
 MCE_CORE += mce-dsme.c
@@ -533,6 +546,8 @@ NORMALIZE_USES_SPC =\
 	filewatcher.h\
 	homekey.dot\
 	libwakelock.h\
+	mce-common.c\
+	mce-common.h\
 	mce-dsme.c\
 	mce-dsme.h\
 	mce-fbdev.c\

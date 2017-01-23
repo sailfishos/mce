@@ -132,6 +132,24 @@ mce-command-line.pic.o:\
 	mce-command-line.c\
 	mce-command-line.h\
 
+mce-common.o:\
+	mce-common.c\
+	builtin-gconf.h\
+	datapipe.h\
+	mce-common.h\
+	mce-dbus.h\
+	mce-log.h\
+	mce.h\
+
+mce-common.pic.o:\
+	mce-common.c\
+	builtin-gconf.h\
+	datapipe.h\
+	mce-common.h\
+	mce-dbus.h\
+	mce-log.h\
+	mce.h\
+
 mce-conf.o:\
 	mce-conf.c\
 	datapipe.h\
@@ -390,6 +408,7 @@ mce.o:\
 	event-switches.h\
 	libwakelock.h\
 	mce-command-line.h\
+	mce-common.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-dsme.h\
@@ -415,6 +434,7 @@ mce.pic.o:\
 	event-switches.h\
 	libwakelock.h\
 	mce-command-line.h\
+	mce-common.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-dsme.h\
