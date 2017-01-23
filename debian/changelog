@@ -1,3 +1,9 @@
+mce (1.86.0) precise; urgency=low
+
+  * [mce] Expose battery/charging data on D-Bus. Fixes JB#37422
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 23 Jan 2017 12:00:25 +0200
+
 mce (1.85.1) precise; urgency=low
 
   * [datapipe] Drop reference count trigger functionality
