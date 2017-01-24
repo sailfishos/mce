@@ -1,3 +1,10 @@
+mce (1.86.1) precise; urgency=low
+
+  * [dbus] Fix introspect data for battery data method calls. JB#37492
+  * [dbus] Allow everybody to make battery data method calls. Fixes JB#37492
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 24 Jan 2017 16:53:16 +0200
+
 mce (1.86.0) precise; urgency=low
 
   * [mce] Expose battery/charging data on D-Bus. Fixes JB#37422
