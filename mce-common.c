@@ -377,24 +377,32 @@ static mce_dbus_handler_t common_dbus_handlers[] =
         .name      = MCE_USB_CABLE_STATE_GET,
         .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
         .callback  = common_dbus_get_usb_cable_state_cb,
+        .args      =
+            "    <arg direction=\"out\" name=\"usb_cable_state\" type=\"s\"/>\n"
     },
     {
         .interface = MCE_REQUEST_IF,
         .name      = MCE_CHARGER_STATE_GET,
         .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
         .callback  = common_dbus_get_charger_state_cb,
+        .args      =
+            "    <arg direction=\"out\" name=\"charger_state\" type=\"s\"/>\n"
     },
     {
         .interface = MCE_REQUEST_IF,
         .name      = MCE_BATTERY_STATUS_GET,
         .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
         .callback  = common_dbus_get_battery_status_cb,
+        .args      =
+            "    <arg direction=\"out\" name=\"battery_status\" type=\"s\"/>\n"
     },
     {
         .interface = MCE_REQUEST_IF,
         .name      = MCE_BATTERY_LEVEL_GET,
         .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
         .callback  = common_dbus_get_battery_level_cb,
+        .args      =
+            "    <arg direction=\"out\" name=\"battery_level\" type=\"i\"/>\n"
     },
     /* sentinel */
     {
