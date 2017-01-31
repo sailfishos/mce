@@ -247,7 +247,7 @@ CFLAGS += -Wdeclaration-after-statement
 CFLAGS += -Wold-style-definition
 CFLAGS += -Wmissing-declarations
 CFLAGS += -Wmissing-include-dirs
-CFLAGS += -Wstrict-aliasing=2
+CFLAGS += -Wstrict-aliasing=3
 CFLAGS += -Wunsafe-loop-optimizations
 CFLAGS += -Winvalid-pch
 #CFLAGS += -Waddress  (-Wall does this)
