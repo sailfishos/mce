@@ -595,7 +595,9 @@ mce_worker_execute(void)
         pthread_mutex_unlock(&mw_rsp_mutex);
 
         uint64_t cnt = 1;
-        write(mw_rsp_evfd, &cnt, sizeof cnt);
+        if( write(mw_rsp_evfd, &cnt, sizeof cnt) == -1 ) {
+            mce_log(LL_ERR, "signaling job finished failed: %m");
+        }
     }
 }
 
@@ -660,7 +662,9 @@ mce_worker_add_job(const char *context, const char *name,
     pthread_mutex_unlock(&mw_req_mutex);
 
     uint64_t cnt = 1;
-    write(mw_req_evfd, &cnt, sizeof cnt);
+    if( write(mw_req_evfd, &cnt, sizeof cnt) == -1 ) {
+        mce_log(LL_ERR, "signaling job added failed: %m");
+    }
 
 EXIT:
     return;
