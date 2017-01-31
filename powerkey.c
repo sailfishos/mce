@@ -35,6 +35,8 @@
 
 #include "modules/doubletap.h"
 
+#include "systemui/dbus-names.h"
+
 #ifdef ENABLE_WAKELOCKS
 # include "libwakelock.h"
 #endif

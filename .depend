@@ -961,6 +961,7 @@ powerkey.o:\
 	mce.h\
 	modules/doubletap.h\
 	powerkey.h\
+	systemui/dbus-names.h\
 	tklock.h\
 
 powerkey.pic.o:\
@@ -978,6 +979,7 @@ powerkey.pic.o:\
 	mce.h\
 	modules/doubletap.h\
 	powerkey.h\
+	systemui/dbus-names.h\
 	tklock.h\
 
 tests/ut/ut_display.o:\
