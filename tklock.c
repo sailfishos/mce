@@ -5425,9 +5425,9 @@ EXIT:
 static void tklock_ui_get_device_lock(void)
 {
     mce_log(LL_DEBUG, "query device lock status");
-    dbus_send(SYSTEMUI_SERVICE,
-              "/devicelock",
-              "org.nemomobile.lipstick.devicelock",
+    dbus_send(DEVICELOCK_SERVICE,
+              DEVICELOCK_REQUEST_PATH,
+              DEVICELOCK_REQUEST_IF,
               "state",
               tklock_ui_get_device_lock_cb,
               DBUS_TYPE_INVALID);
