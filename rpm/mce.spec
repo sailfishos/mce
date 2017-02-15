@@ -69,7 +69,8 @@ Nokia N770, N800, N810, N900, N9 and N950 devices.
 
 %build
 ./verify_version
-make %{?jobs:-j%jobs} %{!?qa_stage_devel:ENABLE_DEVEL_LOGGING=n}
+#make %{?jobs:-j%jobs} %{!?qa_stage_devel:ENABLE_DEVEL_LOGGING=n}
+make %{?_smp_mflags} %{!?qa_stage_devel:ENABLE_DEVEL_LOGGING=n}
 
 %install
 rm -rf %{buildroot}
