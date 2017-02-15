@@ -145,4 +145,4 @@ digraph mce_sensorfw
     SERVICE_STOPPED -> PLUGIN_ANY [style=dotted, lhead=clusterPLUGIN];
   }
 
-};
+}
