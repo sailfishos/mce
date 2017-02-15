@@ -728,6 +728,9 @@ EXIT:
  */
 static void mce_dsme_socket_disconnect(void)
 {
+    if( mce_dsme_socket_is_connected() )
+        mce_dsme_processwd_quit();
+
     if( mce_dsme_socket_recv_id ) {
         mce_log(LL_DEBUG, "Removing DSME socket notifier");
         g_source_remove(mce_dsme_socket_recv_id);
