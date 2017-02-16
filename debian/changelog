@@ -1,3 +1,11 @@
+mce (1.86.3) precise; urgency=low
+
+  * [dsme] Delete processwd before disconnecting dsme socket. Fixes JB#37778
+  * [diagrams] Fix issues with dot sources
+  * [rpmbuild] Use _smp_mflags instead of jobs macro
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 16 Feb 2017 13:24:37 +0200
+
 mce (1.86.2) precise; urgency=low
 
   * [devicelock] Use the org.nemomobile.devicelock service for devicelock.
