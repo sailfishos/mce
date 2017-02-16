@@ -82,4 +82,4 @@ digraph modules_memnotify
   BROADCAST -> DBUS1;
   NOTIFY -> EVALUATE;
   GCONF -> NOTIFY;
-};
+}
