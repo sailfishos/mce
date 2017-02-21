@@ -2126,7 +2126,15 @@ static gboolean pwrkey_dbus_ignore_incoming_call_cb(DBusMessage *const req)
 
     if( call_state == CALL_STATE_RINGING ) {
         mce_log(LL_DEBUG, "start ignoring incoming calls");
+
+        /* Update powerkey module specific toggle */
         pwrkey_ignore_incoming_call = true;
+
+        /* Make also callstate plugin ignore incoming calls. This
+         * should lead to call_state changing from RINGING to ACTIVE
+         * or NONE depending on whether there are other calls or not. */
+        execute_datapipe(&ignore_incoming_call_pipe, GINT_TO_POINTER(true),
+                         USE_INDATA, DONT_CACHE_INDATA);
     }
 
     if( !dbus_message_get_no_reply(req) ) {

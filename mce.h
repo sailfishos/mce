@@ -226,11 +226,14 @@ typedef enum {
 	/** There's an active call */
 	CALL_STATE_ACTIVE = 2,
 	/** The device is in service state */
-	CALL_STATE_SERVICE = 3
+	CALL_STATE_SERVICE = 3,
+	/** Ringing call that is ignored by call ui and mce */
+	CALL_STATE_IGNORED = 4,
 } call_state_t;
 
 const char *call_state_repr(call_state_t state);
-call_state_t call_state_parse(const char *name);
+const char *call_state_to_dbus(call_state_t state);
+call_state_t call_state_from_dbus(const char *name);
 
 /** Call type */
 typedef enum {
