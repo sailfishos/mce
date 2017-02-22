@@ -1,3 +1,9 @@
+mce (1.86.4) precise; urgency=low
+
+  * [callstate] Make it possible to ignore incoming calls. Fixes JB#37565
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 22 Feb 2017 13:18:43 +0200
+
 mce (1.86.3) precise; urgency=low
 
   * [dsme] Delete processwd before disconnecting dsme socket. Fixes JB#37778
