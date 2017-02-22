@@ -220,6 +220,20 @@ static void clients_get_state     (const char *dbus_name, ofono_vcall_t *vcall);
 static void clients_init          (void);
 static void clients_quit          (void);
 
+/** Mark incoming vcall as ignored
+ *
+ * @param self      oFono voice call object
+ */
+static void
+ofono_vcall_ignore_incoming_call(ofono_vcall_t *self)
+{
+    if( self->state == CALL_STATE_RINGING ) {
+        mce_log(LL_DEBUG, "ignoring incoming vcall: %s",
+                self->name ?: "unnamed");
+        self->state = CALL_STATE_IGNORED;
+    }
+}
+
 /** Merge emergency data to oFono voice call object
  *
  * @param self      oFono voice call object
@@ -1208,6 +1222,39 @@ static const ofono_vcall_t clients_vcall_def =
     .type  = NORMAL_CALL,
 };
 
+/** Enumeration callback for ignoring incoming calls
+ *
+ * @param key   D-Bus name of the client (as void pointer)
+ * @param val   ofono_vcall_t data of the client (as void pointer)
+ * @param aptr  NULL (unused)
+ */
+static void
+clients_ignore_incoming_calls_cb(gpointer key, gpointer val, gpointer aptr)
+{
+    (void)key;
+    (void)aptr;
+
+    ofono_vcall_t *simulated = val;
+
+    ofono_vcall_ignore_incoming_call(simulated);
+}
+
+/** Mark all incoming calls as ignored
+ *
+ * @param combined  ofono_vcall_t data to update
+ */
+static void
+clients_ignore_incoming_calls(void)
+{
+    if( !clients_state_lut )
+        goto EXIT;
+
+    g_hash_table_foreach(clients_state_lut, clients_ignore_incoming_calls_cb, 0);
+
+EXIT:
+    return;
+}
+
 /** Enumeration callback for evaluating combined dbus client state
  *
  * @param key   D-Bus name of the client (as void pointer)
@@ -1336,7 +1383,7 @@ send_call_state(DBusMessage *const method_call,
         if (call_state != NULL)
                 sstate = call_state;
         else
-                sstate = call_state_repr(datapipe_get_gint(call_state_pipe));
+                sstate = call_state_to_dbus(datapipe_get_gint(call_state_pipe));
 
         if (call_type != NULL)
                 stype = call_type;
@@ -1455,7 +1502,7 @@ change_call_state_dbus_cb(DBusMessage *const msg)
     }
 
     /* Convert call state to enum */
-    curr.state = call_state_parse(state);
+    curr.state = call_state_from_dbus(state);
     if( curr.state == CALL_STATE_INVALID ) {
         mce_log(LL_WARN, "Invalid call state received; request ignored");
         goto EXIT;
@@ -1538,6 +1585,31 @@ EXIT:
 /* ========================================================================= *
  * MANAGE CALL STATE TRANSITIONS
  * ========================================================================= */
+
+/** Callback for ignoring incoming voice call states
+ */
+static void
+call_state_ignore_incoming_calls_cb(gpointer key, gpointer value, gpointer aptr)
+{
+    (void)key; //const char *name  = key;
+    (void)aptr;
+    ofono_vcall_t *vcall = value;
+
+    ofono_vcall_ignore_incoming_call(vcall);
+}
+
+/** Internally ignore incoming calls
+ */
+static void
+call_state_ignore_incoming_calls(void)
+{
+    /* Consider simulated call states */
+    clients_ignore_incoming_calls();
+
+    /* consider ofono voice call properties */
+    if( vcalls_lut )
+       g_hash_table_foreach(vcalls_lut, call_state_ignore_incoming_calls_cb, 0);
+}
 
 /** Callback for merging voice call stats
  */
@@ -1673,7 +1745,7 @@ call_state_rethink_forced(void)
 }
 
 /* ========================================================================= *
- * MODULE LOAD / UNLOAD
+ * D-BUS CALLBACKS
  * ========================================================================= */
 
 /** Array of dbus message handlers */
@@ -1772,6 +1844,73 @@ static void mce_callstate_quit_dbus(void)
     mce_dbus_handler_unregister_array(callstate_dbus_handlers);
 }
 
+/* ========================================================================= *
+ * DATAPIPE CALLBACKS
+ * ========================================================================= */
+
+/** Handle call state change notifications
+ *
+ * @param data call state (as void pointer)
+ */
+static void
+callstate_datapipe_ignore_incoming_call_cb(gconstpointer data)
+{
+    bool ignore_incoming_call = GPOINTER_TO_INT(data);
+
+    mce_log(LL_DEBUG, "ignore_incoming_call = %s",
+            ignore_incoming_call ? "YES" : "NO");
+
+    // Note: Edge triggered
+    if( !ignore_incoming_call )
+        goto EXIT;
+
+    call_state_ignore_incoming_calls();
+    call_state_rethink_now();
+
+EXIT:
+    return;
+}
+
+/** Array of datapipe handlers */
+static datapipe_handler_t callstate_datapipe_handlers[] =
+{
+    // output triggers
+    {
+        .datapipe  = &ignore_incoming_call_pipe,
+        .output_cb = callstate_datapipe_ignore_incoming_call_cb,
+    },
+    // sentinel
+    {
+        .datapipe = 0,
+    }
+};
+
+static datapipe_bindings_t callstate_datapipe_bindings =
+{
+    .module   = "callstate",
+    .handlers = callstate_datapipe_handlers,
+};
+
+/** Append triggers/filters to datapipes
+ */
+static void
+callstate_datapipes_init(void)
+{
+    datapipe_bindings_init(&callstate_datapipe_bindings);
+}
+
+/** Remove triggers/filters from datapipes
+ */
+static void
+callstate_datapipes_quit(void)
+{
+    datapipe_bindings_quit(&callstate_datapipe_bindings);
+}
+
+/* ========================================================================= *
+ * MODULE LOAD / UNLOAD
+ * ========================================================================= */
+
 /**
  * Init function for the call state module
  *
@@ -1792,6 +1931,9 @@ const gchar *g_module_check_init(GModule *module)
     clients_init();
     vcalls_init();
     modems_init();
+
+    /* install datapipe hooks */
+    callstate_datapipes_init();
 
     /* install dbus message handlers */
     mce_callstate_init_dbus();
@@ -1816,6 +1958,9 @@ void g_module_unload(GModule *module)
 
     /* remove dbus message handlers */
     mce_callstate_quit_dbus();
+
+    /* remove datapipe hooks */
+    callstate_datapipes_quit();
 
     /* remove all timers & callbacks */
     mce_wltimer_delete(call_state_rethink_tmr),

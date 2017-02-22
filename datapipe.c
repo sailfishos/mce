@@ -132,6 +132,13 @@ datapipe_struct submode_pipe;
 /** The call state */
 datapipe_struct call_state_pipe;
 
+/** The ignore incoming call "state".
+ *
+ * Note: Related actions happen when true is executed on the
+ *       datapipe, but the cached value always remains at false.
+ */
+datapipe_struct ignore_incoming_call_pipe;
+
 /** The call type */
 datapipe_struct call_type_pipe;
 
@@ -720,6 +727,8 @@ void mce_datapipe_init(void)
 		       0, GINT_TO_POINTER(0));
 	setup_datapipe(&call_state_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(CALL_STATE_NONE));
+	setup_datapipe(&ignore_incoming_call_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(false));
 	setup_datapipe(&call_type_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(NORMAL_CALL));
 	setup_datapipe(&alarm_ui_state_pipe, READ_ONLY, DONT_FREE_CACHE,
@@ -889,6 +898,7 @@ void mce_datapipe_quit(void)
 	free_datapipe(&alarm_ui_state_pipe);
 	free_datapipe(&call_type_pipe);
 	free_datapipe(&call_state_pipe);
+	free_datapipe(&ignore_incoming_call_pipe);
 	free_datapipe(&master_radio_pipe);
 	free_datapipe(&system_state_pipe);
 	free_datapipe(&heartbeat_pipe);
@@ -1250,17 +1260,45 @@ static const mce_translation_t call_state_translation[] =
 	}
 };
 
-/** MCE call state number to string
+/** MCE call state number to string on D-Bus
  */
-const char *call_state_repr(call_state_t state)
+const char *call_state_to_dbus(call_state_t state)
 {
 	return mce_translate_int_to_string(call_state_translation, state);
 }
 
-/** String to MCE call state number */
-call_state_t call_state_parse(const char *name)
+/** String from D-Bus to MCE call state number */
+call_state_t call_state_from_dbus(const char *name)
 {
 	return mce_translate_string_to_int(call_state_translation, name);
+}
+
+/** MCE call state number to string (for diagnostic logging)
+ */
+const char *call_state_repr(call_state_t state)
+{
+	const char *repr = "invalid";
+
+	switch( state ) {
+	case CALL_STATE_NONE:
+		repr = MCE_CALL_STATE_NONE;
+		break;
+	case CALL_STATE_RINGING:
+		repr = MCE_CALL_STATE_RINGING;
+		break;
+	case CALL_STATE_ACTIVE:
+		repr = MCE_CALL_STATE_ACTIVE;
+		break;
+	case CALL_STATE_SERVICE:
+		repr = MCE_CALL_STATE_SERVICE;
+		break;
+	case CALL_STATE_IGNORED:
+		repr = "ignored";
+		break;
+	default:
+		break;
+	}
+	return repr;
 }
 
 /** Mapping of call type integer <-> call type string */

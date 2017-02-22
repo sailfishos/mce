@@ -120,6 +120,7 @@ extern datapipe_struct system_state_pipe;
 extern datapipe_struct master_radio_pipe;
 extern datapipe_struct submode_pipe;
 extern datapipe_struct call_state_pipe;
+extern datapipe_struct ignore_incoming_call_pipe;
 extern datapipe_struct call_type_pipe;
 extern datapipe_struct tk_lock_pipe;
 extern datapipe_struct charger_state_pipe;
