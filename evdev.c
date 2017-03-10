@@ -11,6 +11,7 @@
 #include <linux/input.h>
 
 #include <stdio.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
@@ -30,62 +31,92 @@ static const char *lookup(const char * const *lut, size_t cnt, int val)
   return ((size_t)val < cnt) ? lut[val] : 0;
 }
 
+/** Helper for reporting unknown events without using dynamic memory
+ *
+ *
+ * Uses small statically allocated ringbuffer so that few invocations
+ * can be made before the previously returned strings get overwritten.
+ *
+ * This allows correct behavior in cases where more than one event
+ * name lookup fails within construction of one diagnostic message.
+ * For example something like this:
+ *
+ *    printf("event %s - code %s\n",
+ *           evdev_get_event_type_name(etype),
+ *           evdev_get_event_code_name(etype, ecode));
+ */
+static const char *unknown(const char *fmt, ...)
+__attribute__((format(printf, 1, 2)));
+
+static const char *unknown(const char *fmt, ...)
+{
+  static char     buff[4][16];
+  static unsigned slot = 0;
+
+  slot = (slot + 1) & 3;
+
+  va_list va;
+  va_start(va, fmt);
+  vsnprintf(buff[slot], sizeof *buff, fmt, va);
+  va_end(va);
+
+  return buff[slot];
+}
+
 /* Internal helper functions for looking up event codes by type */
 static const char * syn_name(int ecode)
 {
-  return lookup(lut_syn, numof(lut_syn), ecode) ?: "SYN_???";
+  return lookup(lut_syn, numof(lut_syn), ecode) ?: unknown("SYN_%04x", ecode);
 }
 
 static const char * key_name(int ecode)
 {
-  return lookup(lut_key, numof(lut_key), ecode) ?: "KEY_???";
+  return lookup(lut_key, numof(lut_key), ecode) ?: unknown("KEY_%04x", ecode);
 }
 
 static const char * rel_name(int ecode)
 {
-  return lookup(lut_rel, numof(lut_rel), ecode) ?: "REL_???";
+  return lookup(lut_rel, numof(lut_rel), ecode) ?: unknown("REL_%04x", ecode);
 }
 
 static const char * abs_name(int ecode)
 {
-  return lookup(lut_abs, numof(lut_abs), ecode) ?: "ABS_???";
+  return lookup(lut_abs, numof(lut_abs), ecode) ?: unknown("ABS_%04x", ecode);
 }
 
 static const char * msc_name(int ecode)
 {
-  return lookup(lut_msc, numof(lut_msc), ecode) ?: "MSC_???";
+  return lookup(lut_msc, numof(lut_msc), ecode) ?: unknown("MSC_%04x", ecode);
 }
 
 static const char * led_name(int ecode)
 {
-  return lookup(lut_led, numof(lut_led), ecode) ?: "LED_???";
+  return lookup(lut_led, numof(lut_led), ecode) ?: unknown("LED_%04x", ecode);
 }
 
 static const char * rep_name(int ecode)
 {
-  return lookup(lut_rep, numof(lut_rep), ecode) ?: "REP_???";
+  return lookup(lut_rep, numof(lut_rep), ecode) ?: unknown("REP_%04x", ecode);
 }
 
 static const char * snd_name(int ecode)
 {
-  return lookup(lut_snd, numof(lut_snd), ecode) ?: "SND_???";
+  return lookup(lut_snd, numof(lut_snd), ecode) ?: unknown("SND_%04x", ecode);
 }
 
 static const char * sw_name(int ecode)
 {
-  return lookup(lut_sw, numof(lut_sw), ecode) ?: "SW_???";
+  return lookup(lut_sw, numof(lut_sw), ecode) ?: unknown("SW_%04x", ecode);
 }
 
 static const char * ff_name(int ecode)
 {
-  return lookup(lut_ff, numof(lut_ff), ecode) ?: "FF_???";
+  return lookup(lut_ff, numof(lut_ff), ecode) ?: unknown("FF_%04x", ecode);
 }
 
 static const char * pwr_name(int ecode)
 {
-  (void)ecode; // not used
-  return "PWR_???";
-  //return lookup(lut_pwr, numof(lut_pwr), ecode) ?: "PWR_???";
+  return unknown("PWR_%04x", ecode);
 }
 
 /** How many "unsigned long" elements bitmap needs to cover bc bits */
@@ -164,7 +195,7 @@ const char *evdev_get_event_code_name(int etype, int ecode)
   {
     return lut[etype](ecode);
   }
-  return "???_???";
+  return unknown("%02x_%04x", etype, ecode);
 }
 
 /** Lookup human readable name for input event type
@@ -175,7 +206,7 @@ const char *evdev_get_event_code_name(int etype, int ecode)
  */
 const char * evdev_get_event_type_name(int etype)
 {
-  return lookup(lut_ev, numof(lut_ev), etype) ?: "EV_???";
+  return lookup(lut_ev, numof(lut_ev), etype) ?: unknown("EV_%02x", etype);
 }
 
 /** Open input device in read only mode
