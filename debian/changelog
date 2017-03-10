@@ -1,3 +1,9 @@
+mce (1.86.5) precise; urgency=low
+
+  * [evdev] Represent unknown event codes in numerical form. Fixes JB#38002
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 10 Mar 2017 11:06:38 +0200
+
 mce (1.86.4) precise; urgency=low
 
   * [callstate] Make it possible to ignore incoming calls. Fixes JB#37565

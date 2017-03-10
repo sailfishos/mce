@@ -57,7 +57,7 @@ distclean:: clean
 # CONFIGURATION
 # ----------------------------------------------------------------------------
 
-VERSION := 1.86.4
+VERSION := 1.86.5
 
 INSTALL_BIN := install --mode=755
 INSTALL_DIR := install -d
