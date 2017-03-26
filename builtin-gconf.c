@@ -94,17 +94,17 @@ GConfValue *gconf_value_copy(const GConfValue *src);
 GConfValue *gconf_value_new(GConfValueType type);
 void gconf_value_free(GConfValue *self);
 gboolean gconf_value_get_bool(const GConfValue *self);
-void gconf_value_set_bool(GConfValue *self, gboolean val);
+bool gconf_value_set_bool(GConfValue *self, gboolean val);
 int gconf_value_get_int(const GConfValue *self);
-void gconf_value_set_int(GConfValue *self, gint val);
+bool gconf_value_set_int(GConfValue *self, gint val);
 double gconf_value_get_float(const GConfValue *self);
-void gconf_value_set_float(GConfValue *self, double val);
+bool gconf_value_set_float(GConfValue *self, double val);
 const char *gconf_value_get_string(const GConfValue *self);
-void gconf_value_set_string(GConfValue *self, const char *val);
+bool gconf_value_set_string(GConfValue *self, const char *val);
 GConfValueType gconf_value_get_list_type(const GConfValue *self);
 void gconf_value_set_list_type(GConfValue *self, GConfValueType list_type);
 GSList *gconf_value_get_list(const GConfValue *self);
-void gconf_value_set_list(GConfValue *self, GSList *list);
+bool gconf_value_set_list(GConfValue *self, GSList *list);
 static GConfEntry *gconf_entry_init(const char *key, const char *type, const char *data);
 static void gconf_entry_free(GConfEntry *self);
 static void gconf_entry_free_cb(gpointer self);
@@ -131,6 +131,24 @@ gboolean gconf_client_set_float(GConfClient *client, const gchar *key, double va
 gboolean gconf_client_set_string(GConfClient *client, const gchar *key, const gchar *val, GError **err);
 gboolean gconf_client_set_list(GConfClient *client, const gchar *key, GConfValueType list_type, GSList *list, GError **err);
 void gconf_client_suggest_sync(GConfClient *client, GError **err);
+
+/* ========================================================================= *
+ *
+ * MISCELLANEOUS UTILITIES
+ *
+ * ========================================================================= */
+
+/* Null tolerant string equality predicate
+ *
+ * @param s1 string
+ * @param s2 string
+ *
+ * @return true if both s1 and s2 are null or same string, false otherwise
+ */
+static inline bool eq(const char *s1, const char *s2)
+{
+    return (s1 && s2) ? !strcmp(s1, s2) : (s1 == s2);
+}
 
 /* ========================================================================= *
  *
@@ -840,17 +858,22 @@ gconf_value_get_bool(const GConfValue *self)
 }
 
 /** See GConf API documentation */
-void
+bool
 gconf_value_set_bool(GConfValue *self, gboolean val)
 {
-  if( self->type == GCONF_VALUE_BOOL )
-  {
-    self->data.b = val;
-  }
-  else
+  bool changed = false;
+
+  if( self->type != GCONF_VALUE_BOOL )
   {
     gconf_log_error("not a bool value");
   }
+  else if( self->data.b != val )
+  {
+    self->data.b = val;
+    changed = true;
+  }
+
+  return changed;
 }
 
 /** See GConf API documentation */
@@ -861,17 +884,22 @@ gconf_value_get_int(const GConfValue *self)
 }
 
 /** See GConf API documentation */
-void
+bool
 gconf_value_set_int(GConfValue *self, gint val)
 {
-  if( self->type == GCONF_VALUE_INT )
-  {
-    self->data.i = val;
-  }
-  else
+  bool changed = false;
+
+  if( self->type != GCONF_VALUE_INT )
   {
     gconf_log_error("not an int value");
   }
+  else if( self->data.i != val )
+  {
+    self->data.i = val;
+    changed = true;
+  }
+
+  return changed;
 }
 
 /** See GConf API documentation */
@@ -882,17 +910,22 @@ gconf_value_get_float(const GConfValue *self)
 }
 
 /** See GConf API documentation */
-void
+bool
 gconf_value_set_float(GConfValue *self, double val)
 {
-  if( self->type == GCONF_VALUE_FLOAT )
-  {
-    self->data.f = val;
-  }
-  else
+  bool changed = false;
+
+  if( self->type != GCONF_VALUE_FLOAT )
   {
     gconf_log_error("not a float value");
   }
+  else if( self->data.f != val )
+  {
+    self->data.f = val;
+    changed = true;
+  }
+
+  return changed;
 }
 
 /** See GConf API documentation */
@@ -903,17 +936,22 @@ gconf_value_get_string(const GConfValue *self)
 }
 
 /** See GConf API documentation */
-void
+bool
 gconf_value_set_string(GConfValue *self, const char *val)
 {
-  if( self->type == GCONF_VALUE_STRING )
-  {
-    free(self->data.s), self->data.s = strdup(val);
-  }
-  else
+  bool changed = false;
+
+  if( self->type != GCONF_VALUE_STRING )
   {
     gconf_log_error("not a string value");
   }
+  else if( !eq(self->data.s, val) )
+  {
+    free(self->data.s), self->data.s = val ? strdup(val) : 0;
+    changed = true;
+  }
+
+  return changed;
 }
 
 /** See GConf API documentation */
@@ -969,15 +1007,26 @@ gconf_value_get_list(const GConfValue *self)
 }
 
 /** See GConf API documentation */
-void
+bool
 gconf_value_set_list(GConfValue *self, GSList *list)
 {
+  // TODO: proper list compare would be saner, but for now
+  // list has changed if string representation changes ...
+  char *prev = gconf_value_str(self);
+
   self->list_head = gconf_value_list_free(self->list_head);
 
   if( gconf_value_list_validata(list, self->list_type) )
   {
     self->list_head = gconf_value_list_copy(list);
   }
+
+  char *curr = gconf_value_str(self);
+  bool changed = !eq(prev, curr);
+  free(curr);
+  free(prev);
+
+  return changed;
 }
 
 /* ========================================================================= *
@@ -1024,6 +1073,10 @@ gconf_entry_init(const char *key, const char *type, const char *data)
   }
 
   self->value = gconf_value_init(vtype, ltype, data);
+
+  self->notify_entered = false;
+  self->notify_changed = false;
+
   return self;
 }
 
@@ -1790,6 +1843,9 @@ static GConfClient *default_client = 0;
 /** Lookup table for latest change signals sent */
 static GHashTable *gconf_signal_sent = 0;
 
+/** Lookup table for latest change notify made */
+static GHashTable *gconf_notify_made = 0;
+
 /** Save values to persistent storage file */
 static void gconf_client_save_values(GConfClient *self, const char *path)
 {
@@ -2039,6 +2095,10 @@ static void gconf_client_free_default(void)
   {
     g_hash_table_unref(gconf_signal_sent),  gconf_signal_sent = 0;
   }
+  if( gconf_notify_made )
+  {
+    g_hash_table_unref(gconf_notify_made),  gconf_notify_made = 0;
+  }
 }
 
 /** See GConf API documentation */
@@ -2185,7 +2245,7 @@ gconf_client_set_bool(GConfClient *client,
 
   if( value && gconf_require_type(key, value, GCONF_VALUE_BOOL, err) )
   {
-    gconf_value_set_bool(value, val);
+    bool changed = gconf_value_set_bool(value, val);
     res = TRUE;
 
 #if GCONF_ENABLE_DEBUG_LOGGING
@@ -2197,7 +2257,14 @@ gconf_client_set_bool(GConfClient *client,
     }
 #endif
 
-    gconf_client_notify_change(client, key);
+    if( changed )
+    {
+      gconf_client_notify_change(client, key);
+    }
+    else
+    {
+      mce_log(LL_DEBUG, "key %s - no change", key);
+    }
   }
 
   return res;
@@ -2215,7 +2282,7 @@ gconf_client_set_int(GConfClient *client,
 
   if( value && gconf_require_type(key, value, GCONF_VALUE_INT, err) )
   {
-    gconf_value_set_int(value, val);
+    bool changed = gconf_value_set_int(value, val);
     res = TRUE;
 
 #if GCONF_ENABLE_DEBUG_LOGGING
@@ -2227,7 +2294,14 @@ gconf_client_set_int(GConfClient *client,
     }
 #endif
 
-    gconf_client_notify_change(client, key);
+    if( changed )
+    {
+      gconf_client_notify_change(client, key);
+    }
+    else
+    {
+      mce_log(LL_DEBUG, "key %s - no change", key);
+    }
   }
   return res;
 }
@@ -2244,7 +2318,7 @@ gconf_client_set_float(GConfClient *client,
 
   if( value && gconf_require_type(key, value, GCONF_VALUE_FLOAT, err) )
   {
-    gconf_value_set_float(value, val);
+    bool changed = gconf_value_set_float(value, val);
     res = TRUE;
 
 #if GCONF_ENABLE_DEBUG_LOGGING
@@ -2256,7 +2330,14 @@ gconf_client_set_float(GConfClient *client,
     }
 #endif
 
-    gconf_client_notify_change(client, key);
+    if( changed )
+    {
+      gconf_client_notify_change(client, key);
+    }
+    else
+    {
+      mce_log(LL_DEBUG, "key %s - no change", key);
+    }
   }
   return res;
 }
@@ -2273,7 +2354,7 @@ gconf_client_set_string(GConfClient *client,
 
   if( value && gconf_require_type(key, value, GCONF_VALUE_STRING, err) )
   {
-    gconf_value_set_string(value, val);
+    bool changed = gconf_value_set_string(value, val);
     res = TRUE;
 
 #if GCONF_ENABLE_DEBUG_LOGGING
@@ -2285,7 +2366,14 @@ gconf_client_set_string(GConfClient *client,
     }
 #endif
 
-    gconf_client_notify_change(client, key);
+    if( changed )
+    {
+      gconf_client_notify_change(client, key);
+    }
+    else
+    {
+      mce_log(LL_DEBUG, "key %s - no change", key);
+    }
   }
   return res;
 }
@@ -2303,7 +2391,7 @@ gconf_client_set_list(GConfClient *client,
 
   if( value && gconf_require_list_type(key, value, list_type, err) )
   {
-    gconf_value_set_list(value, list);
+    bool changed = gconf_value_set_list(value, list);
 
     res = TRUE;
 
@@ -2316,7 +2404,10 @@ gconf_client_set_list(GConfClient *client,
     }
 #endif
 
-    gconf_client_notify_change(client, key);
+    if( changed )
+    {
+      gconf_client_notify_change(client, key);
+    }
   }
   return res;
 }
@@ -2388,42 +2479,68 @@ gconf_client_notify_new(const gchar           *namespace_section,
   return self;
 }
 
-/** Broadcast value change on D-Bus */
-static
-void
-gconf_signal_value_change(GConfEntry *entry)
+/** External change broadcast needed predicate
+ */
+static bool
+gconf_entry_signal_p(GConfEntry *entry)
 {
+  bool        changed = false;
+  const char *prev    = 0;
+  char       *curr    = 0;
 
-  const char *prev = 0;
-  char       *curr = 0;
-
-  /* HACK: The builtin-gconf does not care if the value actually changes
-   *       or not. To avoid sending "no change" signals we keep track
-   *       of the string representation of the last change that was
-   *       broadcast ... */
   if( !gconf_signal_sent )
   {
     gconf_signal_sent = g_hash_table_new_full(g_str_hash, g_str_equal, free, free);
   }
 
-  if( !(curr = gconf_value_str(entry->value)) )
-  {
-    goto EXIT;
-  }
-
   prev = g_hash_table_lookup(gconf_signal_sent, entry->key);
+  curr = gconf_value_str(entry->value);
 
-  if( prev && !strcmp(prev, curr) )
+  changed = !eq(prev, curr);
+
+  mce_log(LL_DEBUG, "%s: %s -> %s (%s)",
+          entry->key, prev, curr, changed ? "BROADCAST" : "IGNORE");
+
+  if( changed )
   {
-    goto EXIT;
+    g_hash_table_insert(gconf_signal_sent, strdup(entry->key), curr), curr = 0;
   }
 
-  g_hash_table_insert(gconf_signal_sent, strdup(entry->key), curr), curr = 0;
-  mce_dbus_send_config_notification(entry);
-
-EXIT:
   free(curr);
-  return;
+
+  return changed;
+}
+
+/** Internal change notification needed predicate
+ */
+static bool
+gconf_entry_notify_p(GConfEntry *entry)
+{
+  bool        changed = false;
+  const char *prev    = 0;
+  char       *curr    = 0;
+
+  if( !gconf_notify_made )
+  {
+    gconf_notify_made = g_hash_table_new_full(g_str_hash, g_str_equal, free, free);
+  }
+
+  prev = g_hash_table_lookup(gconf_notify_made, entry->key);
+  curr = gconf_value_str(entry->value);
+
+  changed = !eq(prev, curr);
+
+  mce_log(LL_DEBUG, "%s: %s -> %s (%s)",
+          entry->key, prev, curr, changed ? "NOTIFY" : "IGNORE");
+
+  if( changed )
+  {
+    g_hash_table_insert(gconf_notify_made, strdup(entry->key), curr), curr = 0;
+  }
+
+  free(curr);
+
+  return changed;
 }
 
 /** Dispatch change notifications via installed  callbacks */
@@ -2435,8 +2552,26 @@ gconf_client_notify_change(GConfClient           *client,
   GError *err = 0;
   GConfEntry *entry = gconf_client_find_entry(client, namespace_section, &err);
 
-  if( entry )
+  if( !entry || !gconf_entry_notify_p(entry) )
   {
+    goto EXIT;
+  }
+
+  entry->notify_changed = true;
+
+  if( entry->notify_entered )
+  {
+    goto EXIT;
+  }
+
+  entry->notify_entered = true;
+
+  bool broadcast = gconf_entry_signal_p(entry);
+
+  while( entry->notify_changed )
+  {
+    entry->notify_changed = false;
+
     /* handle internal notifications */
     for( GSList *item = client->notify_list; item; item = item->next )
     {
@@ -2454,9 +2589,21 @@ gconf_client_notify_change(GConfClient           *client,
       }
     }
 
-    /* broadcast change also on dbus */
-    gconf_signal_value_change(entry);
+    if( gconf_entry_signal_p(entry) )
+    {
+      broadcast = true;
+    }
   }
+
+  entry->notify_entered = false;
+
+  /* broadcast change also on dbus */
+  if( broadcast )
+  {
+    mce_dbus_send_config_notification(entry);
+  }
+
+EXIT:
 
   g_clear_error(&err);
 }
