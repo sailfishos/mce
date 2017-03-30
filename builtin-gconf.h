@@ -7,6 +7,7 @@
 #ifndef BUILTIN_GCONF_H_
 # define BUILTIN_GCONF_H_
 
+#include <stdbool.h>
 #include <glib.h>
 
 # ifdef __cplusplus
@@ -90,6 +91,9 @@ typedef struct GConfEntry
 
   char *def;
 
+  bool notify_entered; // already withing gconf_client_notify_change()
+  bool notify_changed; // another round of notifications needed within gconf_client_notify_change()
+
 } GConfEntry;
 
 typedef struct GConfClient
@@ -139,17 +143,17 @@ GConfValue *gconf_value_copy(const GConfValue *src);
 GConfValue *gconf_value_new(GConfValueType type);
 void gconf_value_free(GConfValue *self);
 gboolean gconf_value_get_bool(const GConfValue *self);
-void gconf_value_set_bool(GConfValue *self, gboolean val);
+bool gconf_value_set_bool(GConfValue *self, gboolean val);
 int gconf_value_get_int(const GConfValue *self);
-void gconf_value_set_int(GConfValue *self, gint val);
+bool gconf_value_set_int(GConfValue *self, gint val);
 double gconf_value_get_float(const GConfValue *self);
-void gconf_value_set_float(GConfValue *self, double val);
+bool gconf_value_set_float(GConfValue *self, double val);
 const char *gconf_value_get_string(const GConfValue *self);
-void gconf_value_set_string(GConfValue *self, const char *val);
+bool gconf_value_set_string(GConfValue *self, const char *val);
 GConfValueType gconf_value_get_list_type(const GConfValue *self);
 void gconf_value_set_list_type(GConfValue *self, GConfValueType list_type);
 GSList *gconf_value_get_list(const GConfValue *self);
-void gconf_value_set_list(GConfValue *self, GSList *list);
+bool gconf_value_set_list(GConfValue *self, GSList *list);
 const char *gconf_entry_get_key(const GConfEntry *entry);
 GConfValue *gconf_entry_get_value(const GConfEntry *entry);
 GConfClient *gconf_client_get_default(void);

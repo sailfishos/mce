@@ -95,13 +95,10 @@ static void fba_setting_quit  (void);
  * COLOR_PROFILE
  * ------------------------------------------------------------------------- */
 
-static gboolean  fba_color_profile_exists      (const char *id);
-static gboolean  fba_color_profile_set         (const gchar *id);
-static gboolean  fba_color_profile_save        (const gchar *id);
-static gchar    *fba_color_profile_get_default (void);
-static gchar    *fba_color_profile_get_current (void);
+static bool      fba_color_profile_exists      (const char *id);
+static bool      fba_color_profile_set         (const gchar *id);
 
-static gboolean  fba_color_profile_init        (void);
+static void      fba_color_profile_init        (void);
 static void      fba_color_profile_quit        (void);
 
 /* ------------------------------------------------------------------------- *
@@ -212,7 +209,7 @@ static void     fba_datapipe_quit                       (void);
  * DBUS_HANDLERS
  * ------------------------------------------------------------------------- */
 
-static gboolean fba_dbus_send_current_color_profile  (DBusMessage *method_call);
+static void     fba_dbus_send_current_color_profile  (DBusMessage *method_call);
 
 static gboolean fba_dbus_get_color_profile_cb        (DBusMessage *const msg);
 static gboolean fba_dbus_get_color_profiles_cb       (DBusMessage *const msg);
@@ -302,8 +299,11 @@ static gint     fba_setting_als_sample_time = MCE_DEFAULT_DISPLAY_ALS_SAMPLE_TIM
 static guint    fba_setting_als_sample_time_id = 0;
 
 /** Currently active color profile (dummy implementation) */
-static char    *fba_setting_color_profile = 0;
+static gchar   *fba_setting_color_profile = 0;
 static guint    fba_setting_color_profile_id = 0;
+
+/** Default color profile, set in ini-files */
+static gchar   *fba_default_color_profile = 0;
 
 /** GConf callback for powerkey related settings
  *
@@ -360,11 +360,9 @@ fba_setting_cb(GConfClient *const gcc, const guint id,
     }
     else if (id == fba_setting_color_profile_id) {
         const gchar *val = gconf_value_get_string(gcv);
-
-        if( !fba_util_streq(fba_setting_color_profile, val) ) {
-            if( !fba_color_profile_set(val) )
-                fba_color_profile_save(fba_setting_color_profile);
-        }
+        mce_log(LL_NOTICE, "fba_setting_color_profile: '%s' -> '%s'",
+                fba_setting_color_profile, val);
+        fba_color_profile_set(val);
     }
     else {
         mce_log(LL_WARN, "Spurious GConf value received; confused!");
@@ -462,148 +460,111 @@ static const char * const fba_color_profile_names[] =
  *
  * @param id color profile name
  *
- * @return TRUE if profile is supported, FALSE otherwise
+ * @return true if profile is supported, false otherwise
  */
-static gboolean
+static bool
 fba_color_profile_exists(const char *id)
 {
-    if( !id )
-        return FALSE;
+    if( !id || !*id )
+        return false;
 
-    size_t n = sizeof fba_color_profile_names / sizeof *fba_color_profile_names;
-    for( size_t i = 0; i < n; ++i ) {
+    if( !strcmp(id, COLOR_PROFILE_ID_HARDCODED) )
+        return true;
+
+    for( size_t i = 0; i < G_N_ELEMENTS(fba_color_profile_names); ++i ) {
         if( !strcmp(fba_color_profile_names[i], id) )
-            return TRUE;
+            return true;
     }
 
-    return FALSE;
+    return false;
 }
 
 /**
  * Set the current color profile according to requested
  *
  * @param id Name of requested color profile
- * @return TRUE on success, FALSE on failure
+ *
+ * @return true on success, false on failure
  */
-static gboolean
+static bool
 fba_color_profile_set(const gchar *id)
 {
     // NOTE: color profile support dropped, this just a stub
 
-    gboolean status = FALSE;
+    /* Transform "default" request into request for whatever is
+     * the configured default color profile. */
+    if( !g_strcmp0(id, COLOR_PROFILE_ID_DEFAULT) )
+        id = fba_default_color_profile ?: COLOR_PROFILE_ID_HARDCODED;
 
-    if( !id ) {
-        goto EXIT;
+    /* Succes is: The requested color profile exists */
+    bool success = fba_color_profile_exists(id);
+
+    /* Fall back to hadrcoded if requested profile is not supported */
+    if( !success ) {
+        if( id && *id )
+            mce_log(LL_WARN, "%s: unsupported color profile", id);
+        id = COLOR_PROFILE_ID_HARDCODED;
     }
 
-    if( fba_setting_color_profile && !strcmp(fba_setting_color_profile, id) ) {
-        mce_log(LL_DEBUG, "No change in color profile, ignoring");
-        status = TRUE;
-        goto EXIT;
+    /* Check if the color profile does change */
+    bool changed = g_strcmp0(id, fba_setting_color_profile);
+
+    /* Update the cached value */
+    if( changed ) {
+        g_free(fba_setting_color_profile),
+            fba_setting_color_profile = g_strdup(id);
     }
 
-    if( !fba_color_profile_exists(id) ) {
-        mce_log(LL_WARN, "%s: unsupported color profile", id);
-        goto EXIT;
+    /* Send a change indication if the value did change, or
+     * if the requested value was not accepted as-is */
+    if( changed || !success ) {
+        fba_dbus_send_current_color_profile(0);
     }
 
-    if( !fba_color_profile_save(id) ) {
-        mce_log(LL_WARN, "The current color profile id can't be saved");
-        goto EXIT;
+    /* If we were to do something about the color profile,
+     * it would happen here */
+    if( changed ) {
+        /* nop */
     }
 
-    free(fba_setting_color_profile), fba_setting_color_profile = strdup(id);
+    /* Always sync the settings cache */
+    mce_setting_set_string(MCE_SETTING_DISPLAY_COLOR_PROFILE,
+                           fba_setting_color_profile);
 
-    status = TRUE;
-
-EXIT:
-    return status;
-}
-
-/**
- * Save the profile id into conf file
- *
- * @param id The profile id to save
- * @return TRUE on success, FALSE on failure
- */
-static gboolean
-fba_color_profile_save(const gchar *id)
-{
-    gboolean status = FALSE;
-
-    if (mce_are_settings_locked() == TRUE) {
-        mce_log(LL_WARN,
-                "Cannot save current color profile id; backup/restore "
-                "or device clear/factory reset pending");
-        goto EXIT;
-    }
-
-    status = mce_setting_set_string(MCE_SETTING_DISPLAY_COLOR_PROFILE, id);
-
-EXIT:
-    return status;
-}
-
-/**
- * Read the default color profile id from conf file
- *
- * @return Pointer to allocated string if success; NULL otherwise
- */
-static gchar *
-fba_color_profile_get_default(void)
-{
-    return mce_conf_get_string(MCE_CONF_COMMON_GROUP,
-                               MCE_CONF_DEFAULT_PROFILE_ID_KEY,
-                               NULL);
-}
-
-/**
- * Read the current color profile id from conf file
- *
- * @return Pointer to allocated string if success; NULL otherwise
- */
-static gchar *
-fba_color_profile_get_current(void)
-{
-    gchar *retval = NULL;
-    (void)mce_setting_get_string(MCE_SETTING_DISPLAY_COLOR_PROFILE,
-                               &retval);
-
-    /* Treat empty string as NULL */
-    if( retval && !*retval )
-        g_free(retval), retval = 0;
-
-    return retval;
+    return success;
 }
 
 /**
  * Initialization of saveed color profile during boot
- *
- * @return TRUE on success, FALSE on failure
  */
-static gboolean
+static void
 fba_color_profile_init(void)
 {
-    gchar *profile = NULL;
-    gboolean status = FALSE;
+    /* Get the default value specified in static configuration.
+     * This must be done before fba_color_profile_set() is called.
+     */
+    fba_default_color_profile =
+        mce_conf_get_string(MCE_CONF_COMMON_GROUP,
+                            MCE_CONF_DEFAULT_PROFILE_ID_KEY,
+                            NULL);
 
-    profile = fba_color_profile_get_current();
-
-    if (profile == NULL)
-        profile = fba_color_profile_get_default();
-
-    if (profile != NULL) {
-        status = fba_color_profile_set(profile);
-        g_free(profile);
-    }
-
-    return status;
+    /* Apply the last value saved to dynamic settings / the default.
+     */
+    gchar *saved_color_profile = 0;
+    mce_setting_get_string(MCE_SETTING_DISPLAY_COLOR_PROFILE,
+                           &saved_color_profile);
+    fba_color_profile_set(saved_color_profile);
+    g_free(saved_color_profile);
 }
 
 static void
 fba_color_profile_quit(void)
 {
-    free(fba_setting_color_profile), fba_setting_color_profile = 0;
+    g_free(fba_default_color_profile),
+        fba_default_color_profile = 0;
+
+    g_free(fba_setting_color_profile),
+        fba_setting_color_profile = 0;
 }
 
 /* ========================================================================= *
@@ -1518,13 +1479,15 @@ fba_datapipe_quit(void)
  * Send the current profile id
  *
  * @param method_call A DBusMessage to reply to
- * @return TRUE
  */
-static gboolean
+static void
 fba_dbus_send_current_color_profile(DBusMessage *method_call)
 {
     DBusMessage *msg = 0;
-    const char  *val = fba_setting_color_profile ?: COLOR_PROFILE_ID_HARDCODED;
+    const char  *val = fba_setting_color_profile;
+
+    if( !fba_color_profile_exists(val) )
+        val = COLOR_PROFILE_ID_HARDCODED;
 
     if( method_call )
         msg = dbus_new_method_reply(method_call);
@@ -1541,10 +1504,9 @@ fba_dbus_send_current_color_profile(DBusMessage *method_call)
         goto EXIT;
 
     dbus_send_message(msg), msg = 0;
+
 EXIT:
     if( msg ) dbus_message_unref(msg);
-
-    return TRUE;
 }
 
 /**

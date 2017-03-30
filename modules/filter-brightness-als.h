@@ -35,4 +35,7 @@
 /** Name of the hardcoded color profile */
 # define COLOR_PROFILE_ID_HARDCODED      "hardcoded"
 
+/** Name to use for requesting (configured) default profile */
+# define COLOR_PROFILE_ID_DEFAULT        "default"
+
 #endif /* _FILTER_BRIGHTNESS_ALS_H_ */
