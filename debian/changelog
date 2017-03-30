@@ -1,3 +1,10 @@
+mce (1.86.6) precise; urgency=low
+
+  * [settings] Avoid internal recursion and ensure external notification
+  * [settings] Do not crash on invalid color profile values. Fixes MER#1775
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 30 Mar 2017 11:35:35 +0300
+
 mce (1.86.5) precise; urgency=low
 
   * [evdev] Represent unknown event codes in numerical form. Fixes JB#38002
