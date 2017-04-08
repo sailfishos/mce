@@ -28,6 +28,8 @@
 #include "mce-lib.h"
 #include "mce-wakelock.h"
 
+#include "systemui/dbus-names.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -3628,6 +3630,10 @@ static struct
 	 *       service name must be probed after compositor */
 	.name     = LIPSTICK_SERVICE,
 	.datapipe = &lipstick_available_pipe,
+    },
+    {
+	.name     = DEVICELOCK_SERVICE,
+	.datapipe = &devicelock_available_pipe,
     },
     {
 	.name     = USB_MODED_DBUS_SERVICE,

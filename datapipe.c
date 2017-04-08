@@ -184,6 +184,9 @@ datapipe_struct compositor_available_pipe;
 /** lipstick availability; read only */
 datapipe_struct lipstick_available_pipe;
 
+/** devicelock availability; read only */
+datapipe_struct devicelock_available_pipe;
+
 /** usbmoded availability; read only */
 datapipe_struct usbmoded_available_pipe;
 
@@ -817,6 +820,8 @@ void mce_datapipe_init(void)
 		       0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
 	setup_datapipe(&lipstick_available_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
+	setup_datapipe(&devicelock_available_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
 	setup_datapipe(&usbmoded_available_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
 	setup_datapipe(&ngfd_available_pipe, READ_ONLY, DONT_FREE_CACHE,
@@ -904,6 +909,7 @@ void mce_datapipe_quit(void)
 	free_datapipe(&heartbeat_pipe);
 	free_datapipe(&compositor_available_pipe);
 	free_datapipe(&lipstick_available_pipe);
+	free_datapipe(&devicelock_available_pipe);
 	free_datapipe(&usbmoded_available_pipe);
 	free_datapipe(&ngfd_available_pipe);
 	free_datapipe(&dsme_available_pipe);

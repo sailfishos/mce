@@ -136,6 +136,7 @@ extern datapipe_struct thermal_state_pipe;
 extern datapipe_struct heartbeat_pipe;
 extern datapipe_struct compositor_available_pipe;
 extern datapipe_struct lipstick_available_pipe;
+extern datapipe_struct devicelock_available_pipe;
 extern datapipe_struct usbmoded_available_pipe;
 extern datapipe_struct ngfd_available_pipe;
 extern datapipe_struct dsme_available_pipe;
