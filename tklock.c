@@ -698,6 +698,37 @@ static void tklock_datapipe_device_resumed_cb(gconstpointer data)
     tklock_proxlock_resume();
 }
 
+/** devicelock dbus name is reserved; assume unknown */
+static service_state_t devicelock_available = SERVICE_STATE_UNDEF;
+
+/** Change notifications for devicelock_available
+ */
+static void tklock_datapipe_devicelock_available_cb(gconstpointer data)
+{
+    service_state_t prev = devicelock_available;
+    devicelock_available = GPOINTER_TO_INT(data);
+
+    if( devicelock_available == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "devicelock_available = %s -> %s",
+            service_state_repr(prev),
+            service_state_repr(devicelock_available));
+
+    if( devicelock_available == SERVICE_STATE_RUNNING ) {
+        /* query initial device lock state on devicelock/mce startup */
+        tklock_ui_get_device_lock();
+    }
+    else {
+        /* if device lock service is not running, the device lock
+         * state is undefined */
+        tklock_datapipe_set_device_lock_state(DEVICE_LOCK_UNDEFINED);
+    }
+
+EXIT:
+    return;
+}
+
 /** Lipstick dbus name is reserved; assume false */
 static service_state_t lipstick_available = SERVICE_STATE_UNDEF;
 
@@ -718,15 +749,6 @@ static void tklock_datapipe_lipstick_available_cb(gconstpointer data)
     // force tklock ipc
     tklock_ui_notified = -1;
     tklock_ui_set(false);
-
-    if( lipstick_available == SERVICE_STATE_RUNNING ) {
-        /* query initial device lock state on lipstick/mce startup */
-        tklock_ui_get_device_lock();
-    }
-    else {
-        /* assume device lock is off if lipstick exits */
-        tklock_datapipe_set_device_lock_state(DEVICE_LOCK_UNDEFINED);
-    }
 
 EXIT:
     return;
@@ -1921,6 +1943,10 @@ static datapipe_handler_t tklock_datapipe_handlers[] =
     {
         .datapipe = &lipstick_available_pipe,
         .output_cb = tklock_datapipe_lipstick_available_cb,
+    },
+    {
+        .datapipe  = &devicelock_available_pipe,
+        .output_cb = tklock_datapipe_devicelock_available_cb,
     },
     {
         .datapipe = &update_mode_pipe,
