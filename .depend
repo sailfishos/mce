@@ -69,6 +69,7 @@ event-input.o:\
 	evdev.h\
 	event-input.h\
 	mce-conf.h\
+	mce-dbus.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
@@ -84,6 +85,7 @@ event-input.pic.o:\
 	evdev.h\
 	event-input.h\
 	mce-conf.h\
+	mce-dbus.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\

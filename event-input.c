@@ -28,12 +28,16 @@
 #include "mce-io.h"
 #include "mce-lib.h"
 #include "mce-conf.h"
+#include "mce-dbus.h"
 #ifdef ENABLE_DOUBLETAP_EMULATION
 # include "mce-setting.h"
 #endif
 #include "mce-sensorfw.h"
 #include "multitouch.h"
 #include "evdev.h"
+
+#include <mce/dbus-names.h>
+#include <mce/mode-names.h>
 
 #include <linux/input.h>
 
@@ -193,6 +197,7 @@ static int               evin_evdevinfo_match_codes             (const evin_evde
 static bool              evin_evdevinfo_is_volumekey_default    (const evin_evdevinfo_t *self);
 static bool              evin_evdevinfo_is_volumekey_hammerhead (const evin_evdevinfo_t *self);
 static bool              evin_evdevinfo_is_volumekey            (const evin_evdevinfo_t *self);
+static bool              evin_evdevinfo_is_keyboard             (const evin_evdevinfo_t *self);
 
 /* ------------------------------------------------------------------------- *
  * EVDEVTYPE
@@ -303,6 +308,8 @@ static void         evin_iomon_device_delete_cb                 (mce_io_mon_t *i
 static void         evin_iomon_device_rem_all                   (void);
 static void         evin_iomon_device_add                       (const gchar *path);
 static void         evin_iomon_device_update                    (const gchar *path, gboolean add);
+static mce_io_mon_t*evin_iomon_lookup_device                    (const char *name);
+static void         evin_iomon_device_iterate                   (evin_evdevtype_t type, GFunc func, gpointer data);
 
 // check initial switch event states
 
@@ -339,40 +346,63 @@ static void     evin_touchstate_schedule_update (void);
  * INPUT_GRAB  --  GENERIC EVDEV INPUT GRAB STATE MACHINE
  * ------------------------------------------------------------------------- */
 
+/** Event input policy state */
+typedef enum
+{
+    /** Initial value */
+    EVIN_STATE_UNKNOWN  = 0,
+    /** Input events can be processed normally */
+    EVIN_STATE_ENABLED  = 1,
+     /** Input events should be ignored */
+    EVIN_STATE_DISABLED = 2,
+} evin_state_t;
+
+static const char *evin_state_repr(evin_state_t state);
+static const char *evin_state_to_dbus(evin_state_t state);
+
 typedef struct evin_input_grab_t evin_input_grab_t;
 
 /** State information for generic input grabbing state machine */
 struct evin_input_grab_t
 {
     /** State machine instance name */
-    const char *ig_name;
+    const char  *ig_name;
+
+    /** Current policy decision */
+    evin_state_t ig_state;
 
     /** Currently touched/down */
-    bool        ig_touching;
+    bool         ig_touching;
 
     /** Was touched/down, delaying release */
-    bool        ig_touched;
+    bool         ig_touched;
 
     /** Input grab is wanted */
-    bool        ig_want_grab;
+    bool         ig_want_grab;
 
     /** Input grab is allowed */
-    bool        ig_allow_grab;
+    bool         ig_allow_grab;
+
+    /** Input grab should be active */
+    bool         ig_have_grab;
 
     /** Input grab is active */
-    bool        ig_have_grab;
+    bool         ig_real_grab;
 
     /** Delayed release timer */
-    guint       ig_release_id;
+    guint        ig_release_id;
 
     /** Delayed release delay */
-    int         ig_release_ms;
+    int          ig_release_ms;
 
     /** Callback for notifying grab status changes */
-    void      (*ig_grab_changed_cb)(evin_input_grab_t *self, bool have_grab);
+    void       (*ig_grab_changed_cb)(evin_input_grab_t *self, bool have_grab);
 
     /** Callback for additional release polling */
-    bool      (*ig_release_verify_cb)(evin_input_grab_t *self);
+    bool       (*ig_release_verify_cb)(evin_input_grab_t *self);
+
+    /** Callback for broadcasting policy changes */
+    void       (*ig_state_changed_cb)(evin_input_grab_t *self);
 };
 
 static void         evin_input_grab_reset                       (evin_input_grab_t *self);
@@ -392,14 +422,17 @@ static void         evin_input_grab_iomon_cb                    (gpointer data, 
 static void         evin_ts_grab_set_led_raw                    (bool enabled);
 static gboolean     evin_ts_grab_set_led_cb                     (gpointer aptr);
 static void         evin_ts_grab_set_led                        (bool enabled);
+static void         evin_ts_grab_rethink_led                    (void);
 
 static void         evin_ts_grab_set_active                     (gboolean grab);
 
 static bool         evin_ts_grab_poll_palm_detect               (evin_input_grab_t *ctrl);
 
 static void         evin_ts_grab_changed                        (evin_input_grab_t *ctrl, bool grab);
+static void         evin_ts_policy_changed                      (evin_input_grab_t *ctrl);
 
 static void         evin_ts_grab_wanted_cb                      (gconstpointer data);
+static void         evin_ts_grab_touch_detected_cb              (gconstpointer data);
 static void         evin_ts_grab_display_state_cb               (gconstpointer data);
 
 static void         evin_ts_grab_setting_cb                     (GConfClient *const client, const guint id, GConfEntry *const entry, gpointer const data);
@@ -413,6 +446,7 @@ static void         evin_ts_grab_quit                           (void);
 
 static void         evin_kp_grab_set_active                     (gboolean grab);
 static void         evin_kp_grab_changed                        (evin_input_grab_t *ctrl, bool grab);
+static void         evin_kp_policy_changed                      (evin_input_grab_t *ctrl);
 static void         evin_kp_grab_event_filter_cb                (struct input_event *ev);
 static void         evin_kp_grab_wanted_cb                      (gconstpointer data);
 
@@ -424,6 +458,17 @@ static void         evin_setting_input_grab_rethink             (void);
 static void         evin_setting_cb                             (GConfClient *const gcc, const guint id, GConfEntry *const entry, gpointer const data);
 static void         evin_setting_init                           (void);
 static void         evin_setting_quit                           (void);
+
+/* ------------------------------------------------------------------------- *
+ * DBUS_HOOKS
+ * ------------------------------------------------------------------------- */
+
+static void         evin_dbus_send_keypad_input_policy      (DBusMessage *const req);
+static gboolean     evin_dbus_keypad_input_policy_get_req_cb(DBusMessage *const msg);
+static void         evin_dbus_send_touch_input_policy       (DBusMessage *const req);
+static gboolean     evin_dbus_touch_input_policy_get_req_cb (DBusMessage *const msg);
+static void         evin_dbus_init                         (void);
+static void         evin_dbus_quit                         (void);
 
 /* ------------------------------------------------------------------------- *
  * MODULE_INIT
@@ -2896,6 +2941,34 @@ evin_touchstate_schedule_update(void)
  * INPUT_GRAB  --  GENERIC EVDEV INPUT GRAB STATE MACHINE
  * ========================================================================= */
 
+/** Convert state enum to human readable string for purposes
+ */
+static const char *
+evin_state_repr(evin_state_t state)
+{
+  const char *str = "EVIN_STATE_INVALID";
+
+  switch( state ) {
+  case EVIN_STATE_UNKNOWN:  str = "EVIN_STATE_UNKNOWN";  break;
+  case EVIN_STATE_ENABLED:  str = "EVIN_STATE_ENABLED";  break;
+  case EVIN_STATE_DISABLED: str = "EVIN_STATE_DISABLED"; break;
+  default: break;
+  }
+
+  return str;
+}
+
+/** Convert state enum to string for use on dbus
+ */
+static const char *
+evin_state_to_dbus(evin_state_t state)
+{
+    if( state == EVIN_STATE_DISABLED )
+        return MCE_INPUT_POLICY_DISABLED;
+
+    return MCE_INPUT_POLICY_ENABLED;
+}
+
 /** Reset input grab state machine
  *
  * Releases any dynamic resources held by the state machine
@@ -2983,20 +3056,33 @@ evin_input_grab_rethink(evin_input_grab_t *self)
         goto EXIT;
     }
 
-    // do we want to change state?
-    bool need = self->ig_want_grab && self->ig_allow_grab;
-
-    if( self->ig_have_grab == need )
-        goto EXIT;
-
-    // make the transition
-    self->ig_have_grab = need;
-
-    // and report it
-    if( self->ig_grab_changed_cb )
-        self->ig_grab_changed_cb(self, self->ig_have_grab);
+    // do the transition
+    self->ig_have_grab = self->ig_want_grab;
 
 EXIT:
+    ;
+    // evaluate actual grab
+    bool real = self->ig_have_grab && self->ig_allow_grab;
+    if( self->ig_real_grab != real ) {
+        self->ig_real_grab = real;
+
+        if( self->ig_grab_changed_cb )
+            self->ig_grab_changed_cb(self, self->ig_real_grab);
+    }
+
+    // evaluate policy change
+    evin_state_t state = EVIN_STATE_ENABLED;
+    if( self->ig_want_grab || self->ig_have_grab )
+        state = EVIN_STATE_DISABLED;
+
+    if( self->ig_state != state ) {
+        mce_log(LL_DEBUG, "state(%s): %s -> %s", self->ig_name,
+                evin_state_repr(self->ig_state),
+                evin_state_repr(state));
+        self->ig_state = state;
+        if( self->ig_state_changed_cb )
+            self->ig_state_changed_cb(self);
+    }
     return;
 }
 
@@ -3080,6 +3166,35 @@ EXIT:
  * TS_GRAB
  * ------------------------------------------------------------------------- */
 
+/** State data for touch input grab state machine */
+static evin_input_grab_t evin_ts_grab_state =
+{
+    .ig_name       = "ts",
+    .ig_state      = EVIN_STATE_UNKNOWN,
+
+    .ig_touching   = false,
+    .ig_touched    = false,
+
+    .ig_want_grab  = false,
+    .ig_have_grab  = false,
+    .ig_real_grab  = false,
+    .ig_allow_grab = false,
+
+    .ig_release_id = 0,
+    .ig_release_ms = MCE_DEFAULT_TOUCH_UNBLOCK_DELAY,
+
+    .ig_grab_changed_cb   = evin_ts_grab_changed,
+    .ig_release_verify_cb = evin_ts_grab_poll_palm_detect,
+    .ig_state_changed_cb  = evin_ts_policy_changed,
+};
+
+/** Flag for: finger-on-touchscreen */
+static bool evin_ts_grab_touch_detected = false;
+
+/* Touch unblock delay from settings [ms] */
+static gint  evin_ts_grab_release_delay = MCE_DEFAULT_TOUCH_UNBLOCK_DELAY;
+static guint evin_ts_grab_release_delay_setting_id = 0;
+
 /** Low level helper for input grab debug led pattern activate/deactivate
  */
 static void
@@ -3150,7 +3265,8 @@ evin_ts_grab_rethink_led(void)
     {
     case MCE_DISPLAY_ON:
     case MCE_DISPLAY_DIM:
-        enable = datapipe_get_gint(touch_grab_active_pipe);
+        if( evin_ts_grab_state.ig_state == EVIN_STATE_DISABLED )
+            enable = true;
         break;
     default:
         break;
@@ -3179,8 +3295,6 @@ evin_ts_grab_set_active(gboolean grab)
     execute_datapipe(&touch_grab_active_pipe,
                      GINT_TO_POINTER(grab),
                      USE_INDATA, CACHE_INDATA);
-
-    evin_ts_grab_rethink_led();
 
 EXIT:
     return;
@@ -3234,37 +3348,19 @@ evin_ts_grab_changed(evin_input_grab_t *ctrl, bool grab)
     evin_ts_grab_set_active(grab);
 }
 
+static void
+evin_ts_policy_changed(evin_input_grab_t *ctrl)
+{
+    (void)ctrl;
+    evin_ts_grab_rethink_led();
+    evin_dbus_send_touch_input_policy(0);
+}
+
 enum
 {
     TS_RELEASE_DELAY_BLANK   = 100,
     TS_RELEASE_DELAY_UNBLANK = 600,
 };
-
-/** State data for touch input grab state machine */
-static evin_input_grab_t evin_ts_grab_state =
-{
-    .ig_name      = "ts",
-
-    .ig_touching  = false,
-    .ig_touched   = false,
-
-    .ig_want_grab = false,
-    .ig_have_grab = false,
-    .ig_allow_grab = false,
-
-    .ig_release_id = 0,
-    .ig_release_ms = MCE_DEFAULT_TOUCH_UNBLOCK_DELAY,
-
-    .ig_grab_changed_cb = evin_ts_grab_changed,
-    .ig_release_verify_cb = evin_ts_grab_poll_palm_detect,
-};
-
-/** Flag for: finger-on-touchscreen */
-static bool evin_ts_grab_touch_detected = false;
-
-/* Touch unblock delay from settings [ms] */
-static gint  evin_ts_grab_release_delay = MCE_DEFAULT_TOUCH_UNBLOCK_DELAY;
-static guint evin_ts_grab_release_delay_setting_id = 0;
 
 /** Gconf notification callback for touch unblock delay
  *
@@ -3469,22 +3565,32 @@ evin_kp_grab_changed(evin_input_grab_t *ctrl, bool grab)
     evin_kp_grab_set_active(grab);
 }
 
+static void
+evin_kp_policy_changed(evin_input_grab_t *ctrl)
+{
+    (void)ctrl;
+    evin_dbus_send_keypad_input_policy(0);
+}
+
 /** State data for volumekey input grab state machine */
 static evin_input_grab_t evin_kp_grab_state =
 {
-    .ig_name      = "kp",
+    .ig_name       = "kp",
+    .ig_state      = EVIN_STATE_UNKNOWN,
 
-    .ig_touching  = false,
-    .ig_touched   = false,
+    .ig_touching   = false,
+    .ig_touched    = false,
 
-    .ig_want_grab = false,
-    .ig_have_grab = false,
+    .ig_want_grab  = false,
+    .ig_have_grab  = false,
+    .ig_real_grab  = false,
     .ig_allow_grab = false,
 
     .ig_release_id = 0,
     .ig_release_ms = 200,
 
-    .ig_grab_changed_cb = evin_kp_grab_changed,
+    .ig_grab_changed_cb  = evin_kp_grab_changed,
+    .ig_state_changed_cb = evin_kp_policy_changed,
 };
 
 /** Event filter for determining volume key pressed state
@@ -3612,6 +3718,167 @@ static void evin_setting_quit(void)
 }
 
 /* ========================================================================= *
+ * DBUS_HOOKS
+ * ========================================================================= */
+
+/** Send the keypad input policy
+ *
+ * @param req A method call message to be replied, or
+ *            NULL to broadcast a keypad input policy signal
+ */
+static void
+evin_dbus_send_keypad_input_policy(DBusMessage *const req)
+{
+    DBusMessage *rsp = 0;
+
+    if( req )
+        rsp = dbus_new_method_reply(req);
+    else
+        rsp = dbus_new_signal(MCE_SIGNAL_PATH, MCE_SIGNAL_IF,
+                              MCE_VOLKEY_INPUT_POLICY_SIG);
+    if( !rsp )
+        goto EXIT;
+
+    const char *arg = evin_state_to_dbus(evin_kp_grab_state.ig_state);
+
+    mce_log(LL_DEBUG, "send keypad input policy %s: %s",
+            req ? "reply" : "signal", arg);
+
+    if( !dbus_message_append_args(rsp,
+                                  DBUS_TYPE_STRING, &arg,
+                                  DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    dbus_send_message(rsp), rsp = 0;
+
+EXIT:
+    if( rsp ) dbus_message_unref(rsp);
+}
+
+/** D-Bus callback for the get keypad input policy method call
+ *
+ * @param msg The D-Bus message
+ *
+ * @return TRUE
+ */
+static gboolean
+evin_dbus_keypad_input_policy_get_req_cb(DBusMessage *const msg)
+{
+    mce_log(LL_DEVEL, "Received keypad input policy get request from %s",
+            mce_dbus_get_message_sender_ident(msg));
+
+    evin_dbus_send_keypad_input_policy(msg);
+
+    return TRUE;
+}
+
+/** Send the touch input policy
+ *
+ * @param req A method call message to be replied, or
+ *            NULL to broadcast a touch input policy signal
+ */
+static void
+evin_dbus_send_touch_input_policy(DBusMessage *const req)
+{
+    DBusMessage *rsp = 0;
+
+    if( req )
+        rsp = dbus_new_method_reply(req);
+    else
+        rsp = dbus_new_signal(MCE_SIGNAL_PATH, MCE_SIGNAL_IF,
+                              MCE_TOUCH_INPUT_POLICY_SIG);
+    if( !rsp )
+        goto EXIT;
+
+    const char *arg = evin_state_to_dbus(evin_ts_grab_state.ig_state);
+
+    mce_log(LL_DEBUG, "send touch input policy %s: %s",
+            req ? "reply" : "signal", arg);
+
+    if( !dbus_message_append_args(rsp,
+                                  DBUS_TYPE_STRING, &arg,
+                                  DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    dbus_send_message(rsp), rsp = 0;
+
+EXIT:
+    if( rsp ) dbus_message_unref(rsp);
+}
+
+/** D-Bus callback for the get touch input policy method call
+ *
+ * @param msg The D-Bus message
+ *
+ * @return TRUE
+ */
+static gboolean
+evin_dbus_touch_input_policy_get_req_cb(DBusMessage *const msg)
+{
+    mce_log(LL_DEVEL, "Received keypad input policy get request from %s",
+            mce_dbus_get_message_sender_ident(msg));
+
+    evin_dbus_send_touch_input_policy(msg);
+
+    return TRUE;
+}
+
+/** Array of dbus message handlers */
+static mce_dbus_handler_t evin_dbus_handlers[] =
+{
+    /* signals - outbound (for Introspect purposes only) */
+    {
+        .interface = MCE_SIGNAL_IF,
+        .name      = MCE_VOLKEY_INPUT_POLICY_SIG,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .args      =
+            "    <arg name=\"input_policy\" type=\"s\"/>\n"
+    },
+    {
+        .interface = MCE_SIGNAL_IF,
+        .name      = MCE_TOUCH_INPUT_POLICY_SIG,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .args      =
+            "    <arg name=\"input_policy\" type=\"s\"/>\n"
+    },
+    /* method calls */
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_VOLKEY_INPUT_POLICY_GET,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = evin_dbus_keypad_input_policy_get_req_cb,
+        .args      =
+            "    <arg direction=\"out\" name=\"input_policy\" type=\"s\"/>\n"
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_TOUCH_INPUT_POLICY_GET,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = evin_dbus_touch_input_policy_get_req_cb,
+        .args      =
+            "    <arg direction=\"out\" name=\"input_policy\" type=\"s\"/>\n"
+    },
+    /* sentinel */
+    {
+        .interface = 0
+    }
+};
+
+/** Add dbus handlers
+ */
+static void evin_dbus_init(void)
+{
+    mce_dbus_handler_register_array(evin_dbus_handlers);
+}
+
+/** Remove dbus handlers
+ */
+static void evin_dbus_quit(void)
+{
+    mce_dbus_handler_unregister_array(evin_dbus_handlers);
+}
+
+/* ========================================================================= *
  * MODULE_INIT
  * ========================================================================= */
 
@@ -3627,6 +3894,8 @@ mce_input_init(void)
     evin_gpio_init();
 
     evin_event_mapper_init();
+
+    evin_dbus_init();
 
     evin_ts_grab_init();
 
@@ -3709,6 +3978,8 @@ mce_input_exit(void)
     evin_event_mapper_quit();
 
     evin_touchstate_cancel_update();
+
+    evin_dbus_quit();
 
     return;
 }
