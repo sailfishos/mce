@@ -1,3 +1,9 @@
+mce (1.87.0) precise; urgency=low
+
+  * [event-input] Expose touch and volume key policy on D-Bus. JB#38001
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 10 Apr 2017 15:46:32 +0300
+
 mce (1.86.6) precise; urgency=low
 
   * [settings] Avoid internal recursion and ensure external notification
