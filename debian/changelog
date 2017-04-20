@@ -1,3 +1,11 @@
+mce (1.87.1) precise; urgency=low
+
+  * [dbus] Track devicelock service availability. JB#38183
+  * [powerkey] Skip device lock requests while the service is not up. JB#38183
+  * [tklock] Handle devicelock availability changes. Fixes JB#38183
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 20 Apr 2017 08:40:07 +0300
+
 mce (1.87.0) precise; urgency=low
 
   * [event-input] Expose touch and volume key policy on D-Bus. JB#38001
