@@ -177,6 +177,7 @@ mce-dbus.o:\
 	mce-log.h\
 	mce-wakelock.h\
 	mce.h\
+	systemui/dbus-names.h\
 
 mce-dbus.pic.o:\
 	mce-dbus.c\
@@ -187,6 +188,7 @@ mce-dbus.pic.o:\
 	mce-log.h\
 	mce-wakelock.h\
 	mce.h\
+	systemui/dbus-names.h\
 
 mce-dsme.o:\
 	mce-dsme.c\

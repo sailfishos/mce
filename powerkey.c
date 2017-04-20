@@ -639,6 +639,9 @@ static alarm_ui_state_t alarm_ui_state = MCE_ALARM_UI_OFF_INT32;
 /** Cached call state */
 static call_state_t call_state = CALL_STATE_NONE;
 
+/** devicelock dbus name is reserved; assume unknown */
+static service_state_t devicelock_available = SERVICE_STATE_UNDEF;
+
 /** Use powerkey for blanking during incoming calls */
 static bool pwrkey_ignore_incoming_call = false;
 
@@ -861,12 +864,21 @@ pwrkey_action_devlock(void)
     static const char method[]    = "setState";
     dbus_int32_t      request     = DEVICE_LOCK_LOCKED;
 
+    if( devicelock_available != SERVICE_STATE_RUNNING ) {
+        mce_log(LL_WARN, "devicelock service state is %s; skip %s request",
+                service_state_repr(devicelock_available),
+                device_lock_state_repr(request));
+        goto EXIT;
+    }
+
     mce_log(LL_DEBUG, "Requesting devicelock=%s",
             device_lock_state_repr(request));
 
     dbus_send(service, object, interface, method, 0,
               DBUS_TYPE_INT32, &request,
               DBUS_TYPE_INVALID);
+EXIT:
+    return;
 }
 
 static void
@@ -2969,6 +2981,26 @@ EXIT:
     return;
 }
 
+/** Change notifications for devicelock_available
+ */
+static void pwrkey_datapipe_devicelock_available_cb(gconstpointer data)
+{
+    service_state_t prev = devicelock_available;
+    devicelock_available = GPOINTER_TO_INT(data);
+
+    if( devicelock_available == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "devicelock_available = %s -> %s",
+            service_state_repr(prev),
+            service_state_repr(devicelock_available));
+
+    /* no immediate action, but see pwrkey_action_devlock() */
+
+EXIT:
+    return;
+}
+
 /** Array of datapipe handlers */
 static datapipe_handler_t pwrkey_datapipe_handlers[] =
 {
@@ -3009,6 +3041,10 @@ static datapipe_handler_t pwrkey_datapipe_handlers[] =
     {
         .datapipe  = &call_state_pipe,
         .output_cb = pwrkey_datapipe_call_state_cb,
+    },
+    {
+        .datapipe  = &devicelock_available_pipe,
+        .output_cb = pwrkey_datapipe_devicelock_available_cb,
     },
     // sentinel
     {
