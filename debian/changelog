@@ -1,3 +1,9 @@
+mce (1.87.2) precise; urgency=low
+
+  * [dsme] Avoid recursion during dsmesock disconnecting. Fixes JB#38474
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 05 May 2017 16:56:57 +0300
+
 mce (1.87.1) precise; urgency=low
 
   * [dbus] Track devicelock service availability. JB#38183
