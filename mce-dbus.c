@@ -536,6 +536,7 @@ EXIT:
 static gboolean
 dbus_send_message_with_reply_handler(DBusMessage *const msg,
 				     DBusPendingCallNotifyFunction callback,
+				     int timeout,
 				     void *user_data,
 				     DBusFreeFunction user_free,
 				     DBusPendingCall **ppc)
@@ -546,7 +547,8 @@ dbus_send_message_with_reply_handler(DBusMessage *const msg,
 	if( !msg )
 		goto EXIT;
 
-	if( !dbus_connection_send_with_reply(dbus_connection, msg, &pc, -1) ) {
+	if( !dbus_connection_send_with_reply(dbus_connection, msg, &pc,
+					     timeout) ) {
 		mce_log(LL_CRIT, "Out of memory when sending D-Bus message");
 		goto EXIT;
 	}
@@ -596,6 +598,7 @@ static gboolean dbus_send_va(const char *service,
 			     const char *interface,
 			     const char *name,
 			     DBusPendingCallNotifyFunction callback,
+			     int         timeout,
 			     void *user_data, DBusFreeFunction user_free,
 			     DBusPendingCall **ppc,
 			     int first_arg_type, va_list va)
@@ -634,7 +637,9 @@ static gboolean dbus_send_va(const char *service,
 		msg = 0;
 	}
 	else {
-		res = dbus_send_message_with_reply_handler(msg, callback,
+		res = dbus_send_message_with_reply_handler(msg,
+							   callback,
+							   timeout,
 							   user_data,
 							   user_free,
 							   ppc);
@@ -688,7 +693,49 @@ gboolean dbus_send_ex(const char *service,
 	va_list va;
 	va_start(va, first_arg_type);
 	gboolean res = dbus_send_va(service, path, interface, name,
-				    callback, user_data, user_free,
+				    callback, -1, user_data, user_free,
+				    ppc, first_arg_type, va);
+	va_end(va);
+	return res;
+}
+
+/** Generic function to send D-Bus messages and signals
+ * to send a signal, call dbus_send with service == NULL
+ *
+ * @todo Make it possible to send D-Bus replies as well
+ *
+ * @param service        D-Bus service; for signals, set to NULL
+ * @param path           D-Bus path
+ * @param interface      D-Bus interface
+ * @param name The       D-Bus method or signal name to send to
+ * @param callback       A reply callback, or NULL to set no reply;
+ *                       for signals, this is unused, but please use NULL
+ *                       for consistency
+ * @param timeout        Milliseconds to wait for reply, or -1 for default
+ * @param user_data      Data to pass to callback
+ * @param user_free      Data release callback for user_data
+ * @param ppc            Where to store pending call handle, or NULL
+ * @param first_arg_type The DBUS_TYPE of the first argument in the list
+ * @param ...            The arguments to append to the D-Bus message;
+ *                       terminate with DBUS_TYPE_INVALID
+ *                       Note: the arguments MUST be passed by reference
+ *
+ * @return TRUE on success, FALSE on failure
+ */
+gboolean dbus_send_ex2(const char *service,
+		       const char *path,
+		       const char *interface,
+		       const char *name,
+		       DBusPendingCallNotifyFunction callback,
+		       int timeout,
+		       void *user_data, DBusFreeFunction user_free,
+		       DBusPendingCall **ppc,
+		       int first_arg_type, ...)
+{
+	va_list va;
+	va_start(va, first_arg_type);
+	gboolean res = dbus_send_va(service, path, interface, name,
+				    callback, timeout, user_data, user_free,
 				    ppc, first_arg_type, va);
 	va_end(va);
 	return res;
@@ -721,7 +768,7 @@ gboolean dbus_send(const gchar *const service, const gchar *const path,
 	va_list va;
 	va_start(va, first_arg_type);
 	gboolean res = dbus_send_va(service, path, interface, name,
-				    callback, 0, 0, 0, first_arg_type, va);
+				    callback, -1, 0, 0, 0, first_arg_type, va);
 	va_end(va);
 	return res;
 }
