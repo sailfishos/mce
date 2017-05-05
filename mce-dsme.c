@@ -123,7 +123,6 @@ static gboolean       mce_dsme_socket_recv_cb      (GIOChannel *source, GIOCondi
 static bool           mce_dsme_socket_is_connected (void);
 static bool           mce_dsme_socket_connect      (void);
 static void           mce_dsme_socket_disconnect   (void);
-static void           mce_dsme_socket_reconnect    (void);
 
 /* ------------------------------------------------------------------------- *
  * DBUS_HANDLERS
@@ -558,6 +557,10 @@ static void mce_dsme_set_shutting_down(bool shutting_down)
     mce_log(LL_DEVEL, "Shutdown %s",
             mce_dsme_shutting_down_flag ? "started" : "canceled");
 
+    /* Re-evaluate dsmesock connection */
+    if( !mce_dsme_shutting_down_flag )
+        mce_dsme_socket_connect();
+
     execute_datapipe(&shutting_down_pipe,
                      GINT_TO_POINTER(mce_dsme_shutting_down_flag),
                      USE_INDATA, CACHE_INDATA);
@@ -588,10 +591,6 @@ static bool mce_dsme_socket_send(gpointer msg, const char *request_name)
     if( dsmesock_send(mce_dsme_socket_connection, msg) == -1) {
         mce_log(LL_ERR, "failed to send %s to dsme; %m",
                 request_name);
-
-        /* close and try to re-connect */
-        mce_dsme_socket_reconnect();
-        goto EXIT;
     }
 
     mce_log(LL_DEBUG, "%s sent to DSME", request_name);
@@ -688,8 +687,17 @@ static bool mce_dsme_socket_connect(void)
 {
     GIOChannel *iochan = NULL;
 
-    /* Make sure we start from closed state */
-    mce_dsme_socket_disconnect();
+    /* No new connections during shutdown */
+    if( mce_dsme_is_shutting_down() )
+        goto EXIT;
+
+    /* No new connections unless dsme dbus service is up */
+    if( dsme_available != SERVICE_STATE_RUNNING )
+        goto EXIT;
+
+    /* Already connected ? */
+    if( mce_dsme_socket_recv_id )
+        goto EXIT;
 
     mce_log(LL_DEBUG, "Opening DSME socket");
 
@@ -721,6 +729,9 @@ static bool mce_dsme_socket_connect(void)
 EXIT:
     if( iochan ) g_io_channel_unref(iochan);
 
+    if( !mce_dsme_socket_recv_id )
+        mce_dsme_socket_disconnect();
+
     return mce_dsme_socket_is_connected();
 }
 
@@ -728,13 +739,15 @@ EXIT:
  */
 static void mce_dsme_socket_disconnect(void)
 {
-    if( mce_dsme_socket_is_connected() )
-        mce_dsme_processwd_quit();
-
     if( mce_dsme_socket_recv_id ) {
         mce_log(LL_DEBUG, "Removing DSME socket notifier");
         g_source_remove(mce_dsme_socket_recv_id);
         mce_dsme_socket_recv_id = 0;
+
+        /* Still having had a live socket notifier means: We have
+         * initiated the dsmesock disconnect and need to deactivate
+         * the process watchdog before actually disconnecting. */
+        mce_dsme_processwd_quit();
     }
 
     if( mce_dsme_socket_connection ) {
@@ -742,18 +755,6 @@ static void mce_dsme_socket_disconnect(void)
         dsmesock_close(mce_dsme_socket_connection);
         mce_dsme_socket_connection = 0;
     }
-
-    // FIXME: should we assume something about the system state?
-}
-
-/** Close dsmesock connection and reconnect if/when dsme is available
- */
-static void mce_dsme_socket_reconnect(void)
-{
-    mce_dsme_socket_disconnect();
-
-    if( dsme_available == SERVICE_STATE_RUNNING )
-        mce_dsme_socket_connect();
 }
 
 /* ========================================================================= *
@@ -896,10 +897,9 @@ static void mce_dsme_datapipe_dsme_available_cb(gconstpointer const data)
             service_state_repr(prev),
             service_state_repr(dsme_available));
 
+    /* Re-evaluate dsmesock connection */
     if( dsme_available == SERVICE_STATE_RUNNING )
         mce_dsme_socket_connect();
-    else
-        mce_dsme_socket_disconnect();
 
 EXIT:
     return;
@@ -1034,9 +1034,6 @@ void mce_dsme_exit(void)
     mce_worker_rem_context(MCE_DSME_WORKERWD_JOB_CONTEXT);
 
     mce_dsme_dbus_quit();
-
-    if( mce_dsme_socket_is_connected() )
-        mce_dsme_processwd_quit();
 
     mce_dsme_socket_disconnect();
 
