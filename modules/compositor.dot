@@ -1,0 +1,61 @@
+/* -*- mode: c -*- */
+
+/* Extra documentation for state transitions made from
+ * XXX() function in the mce display plugin
+ */
+
+digraph compositor_state_machine {
+  fontsize=12;
+  label = "MCE - COMPOSITOR IPC STATE MACHINE";
+  nodesep=0.3;
+  ranksep=0.2;
+  node[fontsize=6];
+  edge[fontsize=6];
+  edge[arrowsize=0.3];
+  node[style=filled,fillcolor=skyblue,shape=box];
+  node[width=0.00001];
+  node[height=0.00001];
+  // COMMENTS
+  node[fillcolor=grey90];
+// QUARANTINE   COMMENTS[label="NB: A wakelock is held all the\ntime except in POWER OFF\nwith late suspend enabled\n"];
+  //
+  // --==( STABLE )==--
+  //
+  node[fillcolor=yellow];
+
+  COMPOSITOR_IPC_ANY [label="*"];
+
+  COMPOSITOR_IPC_STOPPED;
+  COMPOSITOR_IPC_GRANTED;
+
+  //
+  // --==( WAITING )==--
+  //
+  node[fillcolor=skyblue];
+
+  COMPOSITOR_IPC_REQUESTING;
+
+  //
+  // --==( TRANSIENT )==--
+  //
+  node[fillcolor=wheat];
+  COMPOSITOR_IPC_STARTED;
+  COMPOSITOR_IPC_FAILED;
+
+  //
+  // --==( TRANSITIONS )==--
+  //
+  node[shape=oval,fillcolor=pink];
+
+  COMPOSITOR_IPC_ANY        -> COMPOSITOR_IPC_STOPPED    ;
+
+  COMPOSITOR_IPC_STOPPED    -> COMPOSITOR_IPC_STARTED    ;
+
+  COMPOSITOR_IPC_STARTED    -> COMPOSITOR_IPC_REQUESTING ;
+
+  COMPOSITOR_IPC_REQUESTING -> COMPOSITOR_IPC_GRANTED    ;
+  COMPOSITOR_IPC_REQUESTING -> COMPOSITOR_IPC_FAILED     ;
+
+  COMPOSITOR_IPC_GRANTED    -> COMPOSITOR_IPC_REQUESTING ;
+  COMPOSITOR_IPC_FAILED     -> COMPOSITOR_IPC_REQUESTING ;
+}

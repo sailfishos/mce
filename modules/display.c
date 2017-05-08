@@ -109,6 +109,47 @@
 # define MCE_DISPLAY_LPM_OFF_REQ            "req_display_state_lpm_off"
 #endif
 
+/** Placeholder value for unknown compositor pid */
+#define COMPOSITOR_STM_INVALID_PID (-1)
+
+/** Panic led delay for freshly started compositor process
+ *
+ * During bootup it is more or less expected that compositor is
+ * unable to answer immediately. So we allow freshly started
+ * compositor process longer delay and bring it down gradually
+ * to target level.
+ */
+#define COMPOSITOR_STM_INITIAL_PANIC_DELAY 15000
+
+/** Panic led delay for already established compositor process
+ *
+ * With each successfull ipc communication with the compositor,
+ * the expected ipc delay is lowered until the minimum is reached.
+ */
+#define COMPOSITOR_STM_MINIMUM_PANIC_DELAY  3000
+
+/** How long to wait for reply to setUpdatesEnabled() calls
+ *
+ * There is no way to robustly deal with situations where compositor
+ * replies get delayed. If the compositor side recovers from whatever
+ * is delaying the dbus methdod call processing, it will see the already
+ * send enable/disable rendering call. Any attempts to retry / change
+ * direction once a request has been send can only lead to mce and
+ * compositor processes getting out of sync regarding updates enabled
+ * status.
+ *
+ * So the best option is to wait until we get a reply or compositor
+ * process gets restarted.
+ */
+# define COMPOSITOR_STM_DBUS_CALL_TIMEOUT DBUS_TIMEOUT_INFINITE
+
+/** How long to delay retrying after failed setUpdatesEnabled() calls
+ *
+ * Few seconds delay makes sure mce does not go amok with retries if
+ * there should still be some hiccup with compositor dbus service.
+ */
+#define COMPOSITOR_STM_DBUS_RETRY_DELAY 5000
+
 /* ========================================================================= *
  * TYPEDEFS
  * ========================================================================= */
@@ -147,14 +188,65 @@ typedef struct {
     gboolean available;
 } cabc_mode_mapping_t;
 
-/** UpdatesEnabled state for UI */
+/** Enumeration of possible setUpdatesEnabled() synchronization states */
 typedef enum
 {
+    /** setUpdatesEnabled() call failed */
     RENDERER_ERROR    = -2,
+
+    /** setUpdatesEnabled() not attempted yet */
     RENDERER_UNKNOWN  = -1,
+
+    /** setUpdatesEnabled(false) successfully made */
     RENDERER_DISABLED =  0,
+
+    /** setUpdatesEnabled(true) successfully made */
     RENDERER_ENABLED  =  1,
 } renderer_state_t;
+
+/** Enumeration for compositor related debug led patterns */
+typedef enum
+{
+    /** Getting reply to setUpdatesEnabled(true) is taking too long */
+    COMPOSITOR_LED_ENABLE_PANIC,
+
+    /** Getting reply to setUpdatesEnabled(false) is taking too long */
+    COMPOSITOR_LED_DISABLE_PANIC,
+
+    /** Killing unresponsive compositor process */
+    COMPOSITOR_LED_KILLER_ACTIVE,
+
+    /** Number of compositor related debug led patterns */
+    COMPOSITOR_LED_NUMOF,
+} compositor_led_t;
+
+/** Enumeration of states mce <-> compositor ipc can be in */
+typedef enum
+{
+    /** Waiting for D-Bus service availability */
+    COMPOSITOR_STATE_INITIAL,
+
+    /** About to be destroyed */
+    COMPOSITOR_STATE_FINAL,
+
+    /** Compositor D-Bus service is not running */
+    COMPOSITOR_STATE_STOPPED,
+
+    /** Compositor D-Bus service is running */
+    COMPOSITOR_STATE_STARTED,
+
+    /** Pending setUpdatesEnabled() D-Bus method call */
+    COMPOSITOR_STATE_REQUESTING,
+
+    /** Successfully finished setUpdatesEnabled() D-Bus method call */
+    COMPOSITOR_STATE_GRANTED,
+
+    /** Received error reply to setUpdatesEnabled() D-Bus method call */
+    COMPOSITOR_STATE_FAILED,
+
+    /** Number of compositor ipc related states */
+    COMPOSITOR_STATE_NUMOF
+} compositor_state_t;
 
 /** State information for frame buffer resume waiting */
 typedef struct
@@ -494,32 +586,94 @@ static void                mdy_waitfb_thread_stop(waitfb_t *self);
 #endif
 
 /* ------------------------------------------------------------------------- *
+ * compositor_led_t
+ * ------------------------------------------------------------------------- */
+
+static void                compositor_led_set_active        (compositor_led_t led, bool active);
+static bool                compositor_led_is_active         (compositor_led_t led);
+
+/* ------------------------------------------------------------------------- *
+ * compositor_state_t
+ * ------------------------------------------------------------------------- */
+
+static const char         *compositor_state_repr            (compositor_state_t state);
+
+/* ------------------------------------------------------------------------- *
+ * renderer_state_t
+ * ------------------------------------------------------------------------- */
+
+static const char         *renderer_state_repr              (renderer_state_t state);
+
+/* ------------------------------------------------------------------------- *
+ * compositor_stm_t
+ * ------------------------------------------------------------------------- */
+
+typedef struct compositor_stm_t compositor_stm_t;
+
+static void                 compositor_stm_ctor              (compositor_stm_t *self);
+static void                 compositor_stm_dtor              (compositor_stm_t *self);
+
+compositor_stm_t           *compositor_stm_create            (void);
+void                        compositor_stm_delete            (compositor_stm_t *self);
+void                        compositor_stm_delete_cb         (void *self);
+
+static void                 compositor_stm_set_service_pid   (compositor_stm_t *self, pid_t pid);
+static void                 compositor_stm_set_service_owner (compositor_stm_t *self, const char *owner);
+static const char          *compositor_stm_get_service_owner (const compositor_stm_t *self);
+
+static void                 compositor_stm_send_pid_query    (compositor_stm_t *self);
+static void                 compositor_stm_forget_pid_query  (compositor_stm_t *self);
+static void                 compositor_stm_pid_query_cb      (DBusPendingCall *pc, void *aptr);
+
+static void                 compositor_stm_send_ctrl_request (compositor_stm_t *self);
+static void                 compositor_stm_forget_ctrl_request(compositor_stm_t *self);
+static void                 compositor_stm_ctrl_request_cb   (DBusPendingCall *pc, void *aptr);
+
+static void                 compositor_stm_schedule_panic    (compositor_stm_t *self);
+static void                 compositor_stm_cancel_panic      (compositor_stm_t *self);
+static gboolean             compositor_stm_panic_timer_cb    (void *aptr);
+
+static void                 compositor_stm_schedule_retry    (compositor_stm_t *self);
+static void                 compositor_stm_cancel_retry      (compositor_stm_t *self);
+static gboolean             compositor_stm_retry_timer_cb    (void *aptr);
+
+static void                 compositor_stm_schedule_killer   (compositor_stm_t *self);
+static void                 compositor_stm_cancel_killer     (compositor_stm_t *self);
+static gboolean             compositor_stm_core_timer_cb     (void *aptr);
+static gboolean             compositor_stm_kill_timer_cb     (void *aptr);
+static gboolean             compositor_stm_bury_timer_cb     (void *aptr);
+
+static compositor_state_t   compositor_stm_get_state         (const compositor_stm_t *self);
+static void                 compositor_stm_set_state         (compositor_stm_t *self, compositor_state_t state);
+static void                 compositor_stm_enter_state       (compositor_stm_t *self);
+static void                 compositor_stm_leave_state       (compositor_stm_t *self);
+static void                 compositor_stm_eval_state        (compositor_stm_t *self);
+
+static void                 compositor_stm_set_target        (compositor_stm_t *self, renderer_state_t state);
+static void                 compositor_stm_set_requested     (compositor_stm_t *self, renderer_state_t state);
+static void                 compositor_stm_set_granted       (compositor_stm_t *self, renderer_state_t state);
+
+static bool                 compositor_stm_is_pending        (const compositor_stm_t *self);
+static bool                 compositor_stm_is_enabled        (const compositor_stm_t *self);
+static bool                 compositor_stm_is_disabled       (const compositor_stm_t *self);
+static void                 compositor_stm_set_enabled       (compositor_stm_t *self, bool enable);
+
+/* ------------------------------------------------------------------------- *
  * COMPOSITOR_IPC
  * ------------------------------------------------------------------------- */
 
-static void                mdy_compositor_set_killer_led(bool enable);
+static void                mdy_compositor_init(void);
+static void                mdy_compositor_quit(void);
 
-static void                mdy_compositor_set_panic_led(renderer_state_t req);
-static gboolean            mdy_compositor_panic_led_cb(gpointer aptr);
-static void                mdy_compositor_cancel_panic_led(void);
-static void                mdy_compositor_schedule_panic_led(renderer_state_t req);
+static void                mdy_compositor_set_name_owner(const char *curr);
 
-static gboolean            mdy_compositor_kill_verify_cb(gpointer aptr);
-static gboolean            mdy_compositor_kill_kill_cb(gpointer aptr);
-static gboolean            mdy_compositor_kill_core_cb(gpointer aptr);
-
-static void                mdy_compositor_schedule_killer(void);
-static void                mdy_compositor_cancel_killer(void);
-
-static void                mdy_compositor_name_owner_pid_cb(const char *name, int pid);
+static void                mdy_compositor_disable(void);
+static void                mdy_compositor_enable(void);
 
 static bool                mdy_compositor_is_available(void);
-
-static void                mdy_compositor_name_owner_set(const char *curr);
-
-static void                mdy_compositor_state_req_cb(DBusPendingCall *pending, void *user_data);
-static void                mdy_compositor_cancel_state_req(void);
-static gboolean            mdy_compositor_start_state_req(renderer_state_t state);
+static bool                mdy_compositor_is_pending(void);
+static bool                mdy_compositor_is_disabled(void);
+static bool                mdy_compositor_is_enabled(void);
 
 /* ------------------------------------------------------------------------- *
  * CALLSTATE_CHANGES
@@ -621,14 +775,6 @@ static void                mdy_stm_acquire_wakelock(void);
 static void                mdy_stm_push_target_change(display_state_t next_state);
 static bool                mdy_stm_pull_target_change(void);
 static void                mdy_stm_finish_target_change(void);
-
-// setUpdatesEnabled() from state machine
-static bool                mdy_stm_is_renderer_pending(void);
-static bool                mdy_stm_is_renderer_disabled(void);
-static bool                mdy_stm_is_renderer_enabled(void);
-
-static void                mdy_stm_disable_renderer(void);
-static void                mdy_stm_enable_renderer(void);
 
 // actual state machine
 static void                mdy_stm_trans(stm_state_t state);
@@ -5094,14 +5240,95 @@ static waitfb_t mdy_waitfb_data =
 };
 
 /* ========================================================================= *
- * COMPOSITOR_IPC
+ * COMPOSITOR_LEDS
  * ========================================================================= */
 
-/** Owner of compositor dbus name */
-static gchar *mdy_compositor_priv_name = 0;
+/** Mapping for: compositor_led_t enumeration to led pattern name. */
+static const char * const compositor_led_pattern[COMPOSITOR_LED_NUMOF] =
+{
+    [COMPOSITOR_LED_ENABLE_PANIC]  = MCE_LED_PATTERN_DISPLAY_UNBLANK_FAILED,
+    [COMPOSITOR_LED_DISABLE_PANIC] = MCE_LED_PATTERN_DISPLAY_BLANK_FAILED,
+    [COMPOSITOR_LED_KILLER_ACTIVE] = MCE_LED_PATTERN_KILLING_LIPSTICK,
+};
 
-/** PID to kill when compositor does not react to setUpdatesEnabled() ipc  */
-static int mdy_compositor_pid = -1;
+/** Bookkeeping for activated/deactivated compositor led patterns */
+static bool compositor_led_active[COMPOSITOR_LED_NUMOF];
+
+/** Activate/deactivate compositor related debug led pattern
+ */
+static void compositor_led_set_active(compositor_led_t led, bool active)
+{
+    if( compositor_led_active[led] == active )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "%s %s",
+            active ? "activate" : "deactivate",
+            compositor_led_pattern[led]);
+
+    execute_datapipe_output_triggers((compositor_led_active[led] = active) ?
+                                     &led_pattern_activate_pipe :
+                                     &led_pattern_deactivate_pipe,
+                                     compositor_led_pattern[led],
+                                     USE_INDATA);
+EXIT:
+    return;
+}
+
+static bool compositor_led_is_active(compositor_led_t led)
+{
+    return compositor_led_active[led];
+}
+
+/* ========================================================================= *
+ * renderer_state_t
+ * ========================================================================= */
+
+/** Convert renderer_state_t enumeration value to human readable string
+ */
+static const char *
+renderer_state_repr(renderer_state_t state)
+{
+    const char *repr = "RENDERER_INVALID";
+
+    switch( state ) {
+    case RENDERER_ERROR:    repr = "RENDERER_ERROR";    break;
+    case RENDERER_UNKNOWN:  repr = "RENDERER_UNKNOWN";  break;
+    case RENDERER_DISABLED: repr = "RENDERER_DISABLED"; break;
+    case RENDERER_ENABLED:  repr = "RENDERER_ENABLED";  break;
+    default: break;
+    }
+
+    return repr;
+}
+
+/* ========================================================================= *
+ * compositor_state_t
+ * ========================================================================= */
+
+/** Convert compositor_state_t enumeration value to human readable string
+ */
+static const char *
+compositor_state_repr(compositor_state_t state)
+{
+    const char *repr = "COMPOSITOR_STATE_INVALID";
+
+    switch( state ) {
+    case COMPOSITOR_STATE_INITIAL:    repr = "COMPOSITOR_STATE_INITIAL";    break;
+    case COMPOSITOR_STATE_FINAL:      repr = "COMPOSITOR_STATE_FINAL";      break;
+    case COMPOSITOR_STATE_STOPPED:    repr = "COMPOSITOR_STATE_STOPPED";    break;
+    case COMPOSITOR_STATE_STARTED:    repr = "COMPOSITOR_STATE_STARTED";    break;
+    case COMPOSITOR_STATE_REQUESTING: repr = "COMPOSITOR_STATE_REQUESTING"; break;
+    case COMPOSITOR_STATE_GRANTED:    repr = "COMPOSITOR_STATE_GRANTED";    break;
+    case COMPOSITOR_STATE_FAILED:     repr = "COMPOSITOR_STATE_FAILED";     break;
+    default: break;
+    }
+
+    return repr;
+}
+
+/* ========================================================================= *
+ * compositor_stm_t
+ * ========================================================================= */
 
 /** Delay [s] from setUpdatesEnabled() to attempting compositor core dump */
 static gint  mdy_compositor_core_delay = MCE_DEFAULT_LIPSTICK_CORE_DELAY;
@@ -5111,287 +5338,559 @@ static guint mdy_compositor_core_delay_setting_id = 0;
 static gint mdy_compositor_kill_delay = 25;
 
 /* Delay [s] for verifying whether compositor did exit after kill attempt */
-static gint mdy_compositor_verify_delay = 5;
+static gint mdy_compositor_bury_delay = 5;
 
-/** Currently active compositor killing timer id */
-static guint mdy_compositor_kill_id  = 0;
-
-/** Currently active setUpdatesEnabled() method call */
-static DBusPendingCall *mdy_compositor_state_req_pc = 0;
-
-/** Timeout to use for setUpdatesEnabled method calls [ms]; -1 = use default */
-static int mdy_compositor_ipc_timeout = 2 * 60 * 1000; /* 2 minutes */
-
-/** UI side rendering state; no suspend unless RENDERER_DISABLED */
-static renderer_state_t mdy_compositor_ui_state = RENDERER_UNKNOWN;
-
-/** Enable/Disable compositor killing led pattern
- *
- * @param enable true to start the led, false to stop it
- */
-static void mdy_compositor_set_killer_led(bool enable)
+/** Bookkeeping for MCE <-> COMPOSITOR IPC state management */
+struct compositor_stm_t
 {
-    static bool enabled = false;
+    /** Compositor D-Bus IPC state
+     *
+     * Modify via compositor_stm_set_state()
+     */
+    compositor_state_t     csi_state;
 
-    if( enabled == enable )
+    /** Private name of the compositor D-Bus service owner
+     *
+     * Modify via compositor_stm_set_service_owner()
+     */
+    gchar                 *csi_service_owner;
+
+    /** Process identifier of the compositor D-Bus service
+     *
+     * Modify via compositor_stm_set_service_pid()
+     */
+    pid_t                  csi_service_pid;
+
+    /** In what state we want the compositor to be in
+     *
+     * Modify via compositor_stm_set_target()
+     */
+    renderer_state_t       csi_target;
+
+    /** In what state we have requested the compositor to be in
+     *
+     * Modify via compositor_stm_set_requested()
+     */
+    renderer_state_t       csi_requested;
+
+    /** In what state we know the compositor to be in
+     *
+     * Modify via compositor_stm_set_granted()
+     */
+    renderer_state_t       csi_granted;
+
+    /** Timer id for compositor method call retries
+     *
+     * Managed by compositor_stm_schedule_retry() & co
+     */
+    guint                  csi_retry_timer_id;
+
+    /** Delay between compositor method call retries [ms]
+     *
+     * Set in compositor_stm_ctor(), currently does not change during
+     * runtime.
+     */
+    guint                  csi_retry_delay;
+
+    /** Currently pending compositor pid query
+     *
+     * Managed by compositor_stm_send_ctrl_request() & co
+     */
+    DBusPendingCall       *csi_pid_query_pc;
+
+    /** Currently pending compositor D-Bus method call
+     *
+     * Managed by compositor_stm_send_ctrl_request() & co
+     */
+    DBusPendingCall       *csi_ctrl_request_pc;
+
+    /** Timer id for killing unresponsive compositor process
+     *
+     * Managed by compositor_stm_schedule_killer() & co
+     */
+    guint                  csi_kill_timer_id;
+
+    /** Timer id for activating unresponsive compositor panic led
+     *
+     * Managed by compositor_stm_schedule_panic() & co
+     */
+    guint                  csi_panic_timer_id;
+
+    /** Timer delay for activating unresponsive compositor panic led
+     *
+     * Tweaked from compositor_stm_enter_state()
+     */
+    guint                  csi_panic_delay;
+};
+
+/* ------------------------------------------------------------------------- *
+ * construct/destruct
+ * ------------------------------------------------------------------------- */
+
+/** Initialize compositor_stm_t object
+ */
+static void
+compositor_stm_ctor(compositor_stm_t *self)
+{
+    /* Waiting for dbus name owner probe to finish
+     * i.e. compositor_stm_set_service_owner() to
+     * be called.
+     */
+    self->csi_state = COMPOSITOR_STATE_INITIAL;
+
+    /* compositor dbus service owner is not known */
+    self->csi_service_owner = 0;
+    self->csi_service_pid   = COMPOSITOR_STM_INVALID_PID;
+
+    /* On startup we want to enable compositor asap */
+    self->csi_target    = RENDERER_ENABLED;
+    self->csi_requested = RENDERER_UNKNOWN;
+    self->csi_granted   = RENDERER_UNKNOWN;
+
+    /* No pending compositor dbus method call */
+    self->csi_ctrl_request_pc = 0;
+
+    /* Retry timer is inactive */
+    self->csi_retry_timer_id = 0;
+    self->csi_retry_delay = COMPOSITOR_STM_DBUS_RETRY_DELAY;
+
+    /* Compositor kill timer is inactive */
+    self->csi_kill_timer_id = 0;
+
+    /* Delayer compositor reply panic timer is inactive */
+    self->csi_panic_timer_id = 0;
+    self->csi_panic_delay = COMPOSITOR_STM_INITIAL_PANIC_DELAY;
+}
+
+/** Cancel pending actions and release dynamic resources
+ */
+static void
+compositor_stm_dtor(compositor_stm_t *self)
+{
+    /* Cleanup happens via the state machine */
+    compositor_stm_set_state(self, COMPOSITOR_STATE_FINAL);
+}
+
+/* ------------------------------------------------------------------------- *
+ * create/delete
+ * ------------------------------------------------------------------------- */
+
+/** Allocate and initialize compositor_stm_t object
+ */
+compositor_stm_t *
+compositor_stm_create(void)
+{
+    compositor_stm_t *self = calloc(1, sizeof *self);
+    compositor_stm_ctor(self);
+    return self;
+}
+
+/** Finalize and release compositor_stm_t object
+ */
+void
+compositor_stm_delete(compositor_stm_t *self)
+{
+    if( self != 0 )
+    {
+        compositor_stm_dtor(self);
+        free(self);
+    }
+}
+
+/** Type agnostic delete callback for compositor_stm_t objects
+ */
+void
+compositor_stm_delete_cb(void *self)
+{
+    compositor_stm_delete(self);
+}
+
+/* ------------------------------------------------------------------------- *
+ * managing compositor name owner details
+ * ------------------------------------------------------------------------- */
+
+/** Store compositor dbus service process identifier
+ */
+static void
+compositor_stm_set_service_pid(compositor_stm_t *self, pid_t pid)
+{
+    if( self->csi_service_pid != pid ) {
+        mce_log(LL_DEBUG, "compositor_stm_service_pid: %d -> %d",
+                (int)self->csi_service_pid, (int)pid);
+        self->csi_service_pid = pid;
+    }
+}
+
+/** Store compositor dbus service name owner
+ */
+static void
+compositor_stm_set_service_owner(compositor_stm_t *self, const char *owner)
+{
+    if( owner && !*owner )
+        owner = 0;
+
+    if( !g_strcmp0(self->csi_service_owner, owner) )
         goto EXIT;
 
-    enabled = enable;
-    execute_datapipe_output_triggers(enabled ?
-                                     &led_pattern_activate_pipe :
-                                     &led_pattern_deactivate_pipe,
-                                     MCE_LED_PATTERN_KILLING_LIPSTICK,
-                                     USE_INDATA);
+    mce_log(LL_DEBUG, "compositor_stm_service_owner: %s -> %s",
+            self->csi_service_owner ?: "none",
+            owner                   ?: "none");
+
+    g_free(self->csi_service_owner),
+        self->csi_service_owner = 0;
+
+    compositor_stm_set_service_pid(self, COMPOSITOR_STM_INVALID_PID);
+
+    if( self->csi_state == COMPOSITOR_STATE_FINAL )
+        goto EXIT;
+
+    compositor_stm_set_state(self, COMPOSITOR_STATE_STOPPED);
+
+    if( owner ) {
+        self->csi_service_owner = g_strdup(owner);
+        compositor_stm_set_state(self, COMPOSITOR_STATE_STARTED);
+    }
+
 EXIT:
     return;
 }
 
-/** Enabled/Disable setUpdatesEnabled failure led patterns
+/** Get compositor dbus service name owner
  */
-static void mdy_compositor_set_panic_led(renderer_state_t req)
+static const char *
+compositor_stm_get_service_owner(const compositor_stm_t *self)
 {
-    bool blanking = false;
-    bool unblanking = false;
+    return self->csi_service_owner;
+}
 
-    switch( req ) {
-    case RENDERER_DISABLED:
-        blanking = true;
-        mce_log(LL_DEVEL, "start alert led pattern for: failed ui stop");
-        break;
+/* ------------------------------------------------------------------------- *
+ * managing org.freedesktop.DBus.GetConnectionUnixProcessID() method call
+ * ------------------------------------------------------------------------- */
+
+/** Initiate async query to find out pid of compositor dbus service
+ */
+static void
+compositor_stm_send_pid_query(compositor_stm_t *self)
+{
+    compositor_stm_forget_pid_query(self);
+
+    mce_log(LL_NOTICE, "start pid query");
+
+    dbus_send_ex(DBUS_SERVICE_DBUS,
+                 DBUS_PATH_DBUS,
+                 DBUS_INTERFACE_DBUS,
+                 "GetConnectionUnixProcessID",
+                 // ----------------
+                 compositor_stm_pid_query_cb,
+                 self, 0,
+                 &self->csi_pid_query_pc,
+                 // ----------------
+                 DBUS_TYPE_STRING, &self->csi_service_owner,
+                 DBUS_TYPE_INVALID);
+
+}
+
+/** Abandon pending compositor dbus service pid query
+ */
+static void
+compositor_stm_forget_pid_query(compositor_stm_t *self)
+{
+    if( self->csi_pid_query_pc ) {
+        mce_log(LL_NOTICE, "forget pid query");
+
+        dbus_pending_call_cancel(self->csi_pid_query_pc);
+        dbus_pending_call_unref(self->csi_pid_query_pc),
+            self->csi_pid_query_pc = 0;
+    }
+}
+
+/** Handle reply to pending compositor dbus service pid query
+ */
+static void
+compositor_stm_pid_query_cb(DBusPendingCall *pc, void *aptr)
+{
+    compositor_stm_t *self = aptr;
+    DBusMessage  *rsp  = 0;
+    DBusError     err  = DBUS_ERROR_INIT;
+    dbus_uint32_t dta  = 0;
+    pid_t         pid  = COMPOSITOR_STM_INVALID_PID;
+
+    if( self->csi_pid_query_pc != pc )
+        goto EXIT;
+
+    dbus_pending_call_unref(self->csi_pid_query_pc),
+        self->csi_pid_query_pc = 0;
+
+    if( !(rsp = dbus_pending_call_steal_reply(pc)) )
+        goto EXIT;
+
+    mce_log(LL_NOTICE, "reply to pid query");
+
+    if( dbus_set_error_from_message(&err, rsp) ||
+        !dbus_message_get_args(rsp, &err,
+                               DBUS_TYPE_UINT32, &dta,
+                               DBUS_TYPE_INVALID) ) {
+        mce_log(LL_ERR, "%s: %s", err.name, err.message);
+    }
+    else {
+        pid = (pid_t)dta;
+    }
+
+    compositor_stm_set_service_pid(self, pid);
+
+EXIT:
+
+    if( rsp ) dbus_message_unref(rsp);
+
+    dbus_error_free(&err);
+
+    return;
+}
+
+/* ------------------------------------------------------------------------- *
+ * managing org.nemomobile.compositor.setUpdatesEnabled() method calls
+ * ------------------------------------------------------------------------- */
+
+/** Initiate async compositor state request
+ */
+static void
+compositor_stm_send_ctrl_request(compositor_stm_t *self)
+{
+    compositor_stm_forget_ctrl_request(self);
+
+    dbus_bool_t dta = (self->csi_requested == RENDERER_ENABLED);
+
+    mce_log(LL_NOTICE, "call %s(%s)",
+            COMPOSITOR_SET_UPDATES_ENABLED,
+            renderer_state_repr(self->csi_requested));
+
+    // XXX we want to use longer than default timeout here!
+    bool ack = dbus_send_ex2(COMPOSITOR_SERVICE,
+                             COMPOSITOR_PATH,
+                             COMPOSITOR_IFACE,
+                             COMPOSITOR_SET_UPDATES_ENABLED,
+                             compositor_stm_ctrl_request_cb,
+                             COMPOSITOR_STM_DBUS_CALL_TIMEOUT,
+                             self, 0,
+                             &self->csi_ctrl_request_pc,
+                             DBUS_TYPE_BOOLEAN, &dta,
+                             DBUS_TYPE_INVALID);
+
+    if( !ack )
+        compositor_stm_set_state(self, COMPOSITOR_STATE_FAILED);
+}
+
+/** Abandon pending compositor state request
+ */
+static void
+compositor_stm_forget_ctrl_request(compositor_stm_t *self)
+{
+    if( self->csi_ctrl_request_pc ) {
+        mce_log(LL_NOTICE, "forget %s(%s)",
+                COMPOSITOR_SET_UPDATES_ENABLED,
+                renderer_state_repr(self->csi_requested));
+
+        dbus_pending_call_cancel(self->csi_ctrl_request_pc);
+        dbus_pending_call_unref(self->csi_ctrl_request_pc),
+            self->csi_ctrl_request_pc = 0;
+    }
+}
+
+/** Handle reply to pending compositor state request
+ */
+static void
+compositor_stm_ctrl_request_cb(DBusPendingCall *pc, void *aptr)
+{
+    compositor_stm_t       *self = aptr;
+    DBusMessage *rsp  = 0;
+    DBusError    err  = DBUS_ERROR_INIT;
+    bool         ack  = false;
+
+    if( self->csi_ctrl_request_pc != pc )
+        goto EXIT;
+
+    dbus_pending_call_unref(self->csi_ctrl_request_pc),
+        self->csi_ctrl_request_pc = 0;
+
+    mce_log(LL_NOTICE, "reply to %s(%s)",
+            COMPOSITOR_SET_UPDATES_ENABLED,
+            renderer_state_repr(self->csi_requested));
+
+    if( !(rsp = dbus_pending_call_steal_reply(pc)) )
+        goto EXIT;
+
+    if( dbus_set_error_from_message(&err, rsp) ) {
+        mce_log(LL_WARN, "%s: %s", err.name, err.message);
+        goto EXIT;
+    }
+
+    ack = true;
+
+EXIT:
+    if( ack )
+        compositor_stm_set_state(self, COMPOSITOR_STATE_GRANTED);
+    else
+        compositor_stm_set_state(self, COMPOSITOR_STATE_FAILED);
+
+    if( rsp ) dbus_message_unref(rsp);
+
+    dbus_error_free(&err);
+
+    return;
+}
+
+/* ------------------------------------------------------------------------- *
+ * panic led activation
+ * ------------------------------------------------------------------------- */
+
+/** Schedule actiovation of unresponsive-compositor panic led pattern
+ */
+static void
+compositor_stm_schedule_panic(compositor_stm_t *self)
+{
+    /* Skip if timer already scheduled */
+    if( self->csi_panic_timer_id )
+        goto EXIT;
+
+    /* Skip if panic led pattern is already active */
+    switch( self->csi_requested ) {
     case RENDERER_ENABLED:
-        unblanking = true;
-        mce_log(LL_DEVEL, "start alert led pattern for: failed ui start");
+        if( compositor_led_is_active(COMPOSITOR_LED_ENABLE_PANIC) )
+            goto EXIT;
+        break;
+    case RENDERER_DISABLED:
+        if( compositor_led_is_active(COMPOSITOR_LED_DISABLE_PANIC) )
+            goto EXIT;
+    default:
+        break;
+    }
+
+    mce_log(LL_DEBUG, "schedule panic led");
+
+    self->csi_panic_timer_id = g_timeout_add(self->csi_panic_delay,
+                                             compositor_stm_panic_timer_cb,
+                                             self);
+
+EXIT:
+    return;
+}
+
+/** Cancel actiovation of unresponsive-compositor panic led pattern
+ */
+static void
+compositor_stm_cancel_panic(compositor_stm_t *self)
+{
+    compositor_led_set_active(COMPOSITOR_LED_ENABLE_PANIC,  false);
+    compositor_led_set_active(COMPOSITOR_LED_DISABLE_PANIC, false);
+
+    if( !self->csi_panic_timer_id )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "cancel panic led");
+
+    g_source_remove(self->csi_panic_timer_id),
+        self->csi_panic_timer_id = 0;
+
+EXIT:
+    return;
+
+}
+
+/** Trigger actiovation of unresponsive-compositor panic led pattern
+ */
+static gboolean
+compositor_stm_panic_timer_cb(void *aptr)
+{
+    compositor_stm_t *self = aptr;
+
+    if( !self->csi_panic_timer_id )
+        goto EXIT;
+
+    self->csi_panic_timer_id = 0;
+
+    mce_log(LL_WARN, "panic led triggered");
+
+    switch( self->csi_requested ) {
+    case RENDERER_ENABLED:
+        compositor_led_set_active(COMPOSITOR_LED_ENABLE_PANIC,  true);
+        compositor_led_set_active(COMPOSITOR_LED_DISABLE_PANIC, false);
+        break;
+    case RENDERER_DISABLED:
+        compositor_led_set_active(COMPOSITOR_LED_DISABLE_PANIC, true);
+        compositor_led_set_active(COMPOSITOR_LED_ENABLE_PANIC,  false);
         break;
     default:
         break;
     }
 
-    execute_datapipe_output_triggers(blanking ?
-                                     &led_pattern_activate_pipe :
-                                     &led_pattern_deactivate_pipe,
-                                     MCE_LED_PATTERN_DISPLAY_BLANK_FAILED,
-                                     USE_INDATA);
-
-    execute_datapipe_output_triggers(unblanking ?
-                                     &led_pattern_activate_pipe :
-                                     &led_pattern_deactivate_pipe,
-                                     MCE_LED_PATTERN_DISPLAY_UNBLANK_FAILED,
-                                     USE_INDATA);
+EXIT:
+    return FALSE;
 }
 
-/** Timer id for setUpdatesEnabled is taking too long */
-static guint mdy_renderer_led_timer_id = 0;
+/* ------------------------------------------------------------------------- *
+ * retry timer
+ * ------------------------------------------------------------------------- */
 
-/** Timer callback for setUpdatesEnabled is taking too long
+/** Schedule retrying of failed compositor state request
  */
-static gboolean mdy_compositor_panic_led_cb(gpointer aptr)
+static void
+compositor_stm_schedule_retry(compositor_stm_t *self)
 {
-    renderer_state_t req = GPOINTER_TO_INT(aptr);
+    compositor_stm_cancel_retry(self);
 
-    if( !mdy_renderer_led_timer_id )
+    mce_log(LL_DEBUG, "schedule ipc retry");
+
+    self->csi_retry_timer_id = g_timeout_add(self->csi_retry_delay,
+                                             compositor_stm_retry_timer_cb, self);
+}
+
+/** Cancel retrying of failed compositor state request
+ */
+static void
+compositor_stm_cancel_retry(compositor_stm_t *self)
+{
+    if( self->csi_retry_timer_id ) {
+        mce_log(LL_DEBUG, "cancel ipc retry");
+
+        g_source_remove(self->csi_retry_timer_id),
+            self->csi_retry_timer_id = 0;
+    }
+}
+
+/** Trigger retrying of failed compositor state request
+ */
+static gboolean
+compositor_stm_retry_timer_cb(void *aptr)
+{
+    compositor_stm_t *self = aptr;
+
+    if( !self->csi_retry_timer_id )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "compositor panic led timer triggered");
+    self->csi_retry_timer_id = 0;
 
-    mdy_renderer_led_timer_id = 0;
-    mdy_compositor_set_panic_led(req);
+    mce_log(LL_DEBUG, "ipc retry triggered");
+
+    compositor_stm_set_state(self, COMPOSITOR_STATE_REQUESTING);
 
 EXIT:
     return FALSE;
 }
 
-/* Cancel setUpdatesEnabled is taking too long timer
+/* ------------------------------------------------------------------------- *
+ * compositor killer activation
+ * ------------------------------------------------------------------------- */
+
+/** Schedule killing of unresponsive compositor process
  */
-static void mdy_compositor_cancel_panic_led(void)
+static void
+compositor_stm_schedule_killer(compositor_stm_t *self)
 {
-    mdy_compositor_set_panic_led(RENDERER_UNKNOWN);
-
-    if( mdy_renderer_led_timer_id != 0 ) {
-        mce_log(LL_DEBUG, "compositor panic led timer cancelled");
-        g_source_remove(mdy_renderer_led_timer_id),
-            mdy_renderer_led_timer_id = 0;
-    }
-}
-
-/* Schedule setUpdatesEnabled is taking too long timer
- */
-static void mdy_compositor_schedule_panic_led(renderer_state_t req)
-{
-    /* During bootup it is more or less expected that compositor is
-     * unable to answer immediately. So we initially allow longer
-     * delay and bring it down gradually to target level. */
-    static int delay = LED_DELAY_UI_DISABLE_ENABLE_MAXIMUM;
-
-    mdy_compositor_set_panic_led(RENDERER_UNKNOWN);
-
-    if( mdy_renderer_led_timer_id != 0 )
-        g_source_remove(mdy_renderer_led_timer_id);
-
-    mdy_renderer_led_timer_id = g_timeout_add(delay,
-                                              mdy_compositor_panic_led_cb,
-                                              GINT_TO_POINTER(req));
-
-    mce_log(LL_DEBUG, "compositor panic led timer sheduled @ %d ms", delay);
-
-    delay = delay * 3 / 4;
-    if( delay < LED_DELAY_UI_DISABLE_ENABLE_MINIMUM )
-        delay = LED_DELAY_UI_DISABLE_ENABLE_MINIMUM;
-}
-
-/** Timer for verifying that compositor has exited after kill signal
- *
- * @param aptr Process identifier as void pointer
- *
- * @return FALSE to stop the timer from repeating
- */
-static gboolean mdy_compositor_kill_verify_cb(gpointer aptr)
-{
-    int pid = GPOINTER_TO_INT(aptr);
-
-    if( !mdy_compositor_kill_id )
+    /* Once scheduled, the kill timer is not reprogrammed until
+     * the process is gone */
+    if( self->csi_kill_timer_id )
         goto EXIT;
 
-    mdy_compositor_kill_id = 0;
-
-    if( kill(pid, 0) == -1 && errno == ESRCH )
-        goto EXIT;
-
-    mce_log(LL_ERR, "compositor is not responsive and killing it failed");
-
-EXIT:
-    /* Stop the led pattern even if we can't kill compositor process */
-    mdy_compositor_set_killer_led(false);
-
-    return FALSE;
-}
-
-/** Timer for killing compositor in case core dump attempt did not make it exit
- *
- * @param aptr Process identifier as void pointer
- *
- * @return FALSE to stop the timer from repeating
- */
-static gboolean mdy_compositor_kill_kill_cb(gpointer aptr)
-{
-    int pid = GPOINTER_TO_INT(aptr);
-
-    if( !mdy_compositor_kill_id )
-        goto EXIT;
-
-    mdy_compositor_kill_id = 0;
-
-    /* In the unlikely event that asynchronous pid query is not finished
-     * at the kill timeout, abandon the quest */
-    if( pid == -1 ) {
-        if( (pid = mdy_compositor_pid) == -1 ) {
-            mce_log(LL_WARN, "pid of compositor not know yet; can't kill it");
-            goto EXIT;
-        }
-    }
-
-    /* If compositor is already gone after core dump attempt, no further
-     * actions are needed */
-    if( kill(pid, 0) == -1 && errno == ESRCH )
-        goto EXIT;
-
-    mce_log(LL_WARN, "compositor is not responsive; attempting to kill it");
-
-    /* Send SIGKILL to compositor; if that succeeded, verify after brief
-     * delay if the process is really gone */
-
-    if( kill(pid, SIGKILL) == -1 ) {
-        mce_log(LL_ERR, "failed to SIGKILL compositor: %m");
-    }
-    else {
-        mdy_compositor_kill_id =
-            g_timeout_add(1000 * mdy_compositor_verify_delay,
-                          mdy_compositor_kill_verify_cb,
-                          GINT_TO_POINTER(pid));
-    }
-
-EXIT:
-    /* Keep led pattern active if verify timer was scheduled */
-    mdy_compositor_set_killer_led(mdy_compositor_kill_id != 0);
-
-    return FALSE;
-}
-
-/** Timer for dumping compositor core if setUpdatesEnabled() goes without reply
- *
- * @param aptr Process identifier as void pointer
- *
- * @return FALSE to stop the timer from repeating
- */
-static gboolean mdy_compositor_kill_core_cb(gpointer aptr)
-{
-    int pid = GPOINTER_TO_INT(aptr);
-
-    if( !mdy_compositor_kill_id )
-        goto EXIT;
-
-    mdy_compositor_kill_id = 0;
-
-    mce_log(LL_WARN, "compositor is not responsive; attempting to core dump it");
-
-    /* In the unlikely event that asynchronous pid query is not finished
-     * at the core dump timeout, wait a while longer and just kill it */
-    if( pid == -1 ) {
-        if( (pid = mdy_compositor_pid) == -1 ) {
-            mce_log(LL_WARN, "pid of compositor not know yet; skip core dump");
-            goto SKIP;
-        }
-    }
-
-    /* We do not want to kill compositor if debugger is attached to it.
-     * Since there can be only one attacher at one time, we can use dummy
-     * attach + detach cycle to determine debugger presence. */
-    if( ptrace(PTRACE_ATTACH, pid, 0, 0) == -1 ) {
-        mce_log(LL_WARN, "could not attach to compositor: %m");
-        mce_log(LL_WARN, "assuming debugger is attached; skip killing");
-        goto EXIT;
-    }
-
-    if( ptrace(PTRACE_DETACH, pid, 0,0) == -1 ) {
-        mce_log(LL_WARN, "could not detach from compositor: %m");
-    }
-
-    /* We need to send some signal that a) leads to core dump b) is not
-     * handled "nicely" by compositor. SIGXCPU fits that description and
-     * is also c) somewhat relevant "CPU time limit exceeded" d) easily
-     * distinguishable from other "normal" crash reports. */
-
-    if( kill(pid, SIGXCPU) == -1 ) {
-        mce_log(LL_ERR, "failed to SIGXCPU compositor: %m");
-        goto EXIT;
-    }
-
-    /* Just in case compositor process was stopped, make it continue - and
-     * hopefully dump a core. */
-
-    if( kill(pid, SIGCONT) == -1 )
-        mce_log(LL_ERR, "failed to SIGCONT compositor: %m");
-
-SKIP:
-
-    /* Allow some time for core dump to take place, then just kill it */
-    mdy_compositor_kill_id = g_timeout_add(1000 * mdy_compositor_kill_delay,
-                                           mdy_compositor_kill_kill_cb,
-                                           GINT_TO_POINTER(pid));
-EXIT:
-
-    /* Start led pattern active if kill timer was scheduled */
-    mdy_compositor_set_killer_led(mdy_compositor_kill_id != 0);
-
-    return FALSE;
-}
-
-/** Shedule compositor core dump + kill
- *
- * This should be called when initiating asynchronous setUpdatesEnabled()
- * D-Bus method call.
- */
-static void mdy_compositor_schedule_killer(void)
-{
     /* The compositor killing is not used unless we have "devel" flavor
      * mce, or normal mce running in verbose mode */
     if( !mce_log_p(LL_DEVEL) )
@@ -5401,226 +5900,511 @@ static void mdy_compositor_schedule_killer(void)
     if( mdy_compositor_core_delay <= 0 )
         goto EXIT;
 
-    /* Note: Initially we might not yet know the compositor PID. But once
-     *       it gets known, the kill timer chain will lock in to it.
-     *       If compositor name owner changes, the timer chain is cancelled
-     *       and pid reset again. This should make sure we can do the
-     *       killing even if the async pid query does not finish before
-     *       we need to make the 1st setUpdatesEnabled() ipc and we do not
-     *       kill freshly restarted compositor because the previous instance
-     *       got stuck. */
+    mce_log(LL_DEBUG, "schedule compositor killer");
 
-    if( !mdy_compositor_kill_id ) {
-        mce_log(LL_DEBUG, "scheduled compositor killing");
-        mdy_compositor_kill_id =
-            g_timeout_add(1000 * mdy_compositor_core_delay,
-                          mdy_compositor_kill_core_cb,
-                          GINT_TO_POINTER(mdy_compositor_pid));
-    }
+    self->csi_kill_timer_id = g_timeout_add(mdy_compositor_core_delay * 1000,
+                                            compositor_stm_core_timer_cb,
+                                            self);
 
 EXIT:
     return;
 }
 
-/** Cancel any pending compositor killing timers
- *
- * This should be called when non-error reply is received for
- * setUpdatesEnabled() D-Bus method call.
+/** Cancel killing of unresponsive compositor process
  */
-static void mdy_compositor_cancel_killer(void)
+static void
+compositor_stm_cancel_killer(compositor_stm_t *self)
 {
-    if( mdy_compositor_kill_id ) {
-        g_source_remove(mdy_compositor_kill_id),
-            mdy_compositor_kill_id = 0;
-        mce_log(LL_DEBUG, "cancelled compositor killing");
-    }
+    compositor_led_set_active(COMPOSITOR_LED_KILLER_ACTIVE, false);
 
-    /* In any case stop the led pattern */
-    mdy_compositor_set_killer_led(false);
-}
-
-static void mdy_compositor_name_owner_pid_cb(const char *name, int pid)
-{
-    if( mdy_str_eq_p(mdy_compositor_priv_name, name) )
-        mdy_compositor_pid = pid;
-}
-
-static bool mdy_compositor_is_available(void)
-{
-    return mdy_compositor_priv_name != 0;
-}
-
-static void mdy_compositor_name_owner_set(const char *curr)
-{
-    bool has_owner = (curr && *curr);
-
-    mce_log(LL_CRUCIAL, "compositor is %s on system bus",
-            has_owner ? curr : "N/A");
-
-    /* first clear existing data, timers, etc */
-    g_free(mdy_compositor_priv_name), mdy_compositor_priv_name = 0;
-    mdy_compositor_pid = -1;
-    mdy_compositor_cancel_killer();
-
-    /* then cache dbus name and start pid query */
-    if( has_owner ) {
-        mdy_compositor_priv_name = g_strdup(curr);
-        mce_dbus_get_pid_async(curr, mdy_compositor_name_owner_pid_cb);
-    }
-}
-
-/** Handle replies to org.nemomobile.compositor.setUpdatesEnabled() calls
- *
- * @param pending   asynchronous dbus call handle
- * @param user_data enable/disable state as void pointer
- */
-static void mdy_compositor_state_req_cb(DBusPendingCall *pending,
-                                      void *user_data)
-{
-    DBusMessage *rsp = 0;
-    DBusError    err = DBUS_ERROR_INIT;
-
-    /* The user_data pointer is used for storing the renderer
-     * state associated with the async method call sent to
-     * compositor. The reply message is just an acknowledgement
-     * from ui that it got the value and thus has no content. */
-    renderer_state_t state = GPOINTER_TO_INT(user_data);
-
-    mce_log(LL_NOTICE, "%s(%s) - method reply",
-            COMPOSITOR_SET_UPDATES_ENABLED,
-            state ? "ENABLE" : "DISABLE");
-
-    if( mdy_compositor_state_req_pc != pending )
-        goto cleanup;
-
-    mdy_compositor_cancel_panic_led();
-
-    mdy_compositor_state_req_pc = 0;
-
-    if( !(rsp = dbus_pending_call_steal_reply(pending)) )
-        goto cleanup;
-
-    if( dbus_set_error_from_message(&err, rsp) ) {
-        /* Mark down that the request failed; we can't
-         * enter suspend without UI side being in the
-         * loop or we'll risk spectacular crashes */
-        mce_log(LL_WARN, "%s: %s", err.name, err.message);
-        mdy_compositor_ui_state = RENDERER_ERROR;
-    }
-    else {
-        mdy_compositor_ui_state = state;
-        mdy_compositor_cancel_killer();
-    }
-
-    mce_log(LL_NOTICE, "RENDERER state=%d", mdy_compositor_ui_state);
-
-    mdy_stm_schedule_rethink();
-
-cleanup:
-    if( rsp ) dbus_message_unref(rsp);
-    dbus_error_free(&err);
-}
-
-/** Cancel pending org.nemomobile.compositor.setUpdatesEnabled() call
- *
- * This is just bookkeeping for mce side, the method call message
- * has already been sent - we just are no longer interested in
- * seeing the return message.
- */
-static void mdy_compositor_cancel_state_req(void)
-{
-    mdy_compositor_cancel_panic_led();
-
-    if( !mdy_compositor_state_req_pc )
-        return;
-
-    mce_log(LL_NOTICE, "RENDERER STATE REQUEST CANCELLED");
-
-    dbus_pending_call_cancel(mdy_compositor_state_req_pc),
-        mdy_compositor_state_req_pc = 0;
-}
-
-/** Enable/Disable ui updates via dbus ipc with compositor
- *
- * Used at transitions to/from display=off
- *
- * Gives time for compositor to finish rendering activities
- * before putting frame buffer to sleep via early/late suspend,
- * and telling when rendering is allowed again.
- *
- * @param enabled TRUE for enabling updates, FALSE for disbling updates
- *
- * @return TRUE if asynchronous method call was succesfully sent,
- *         FALSE otherwise
- */
-static gboolean mdy_compositor_start_state_req(renderer_state_t state)
-{
-    gboolean         res = FALSE;
-    DBusConnection  *bus = 0;
-    DBusMessage     *req = 0;
-    dbus_bool_t      dta = (state == RENDERER_ENABLED);
-
-    mdy_compositor_cancel_state_req();
-
-    mce_log(LL_NOTICE, "%s(%s) - method call",
-            COMPOSITOR_SET_UPDATES_ENABLED,
-            state ? "ENABLE" : "DISABLE");
-
-    /* Mark the state at compositor side as unknown until we get
-     * either ack or error reply */
-    mdy_compositor_ui_state = RENDERER_UNKNOWN;
-
-    if( !(bus = dbus_connection_get()) )
+    if( !self->csi_kill_timer_id )
         goto EXIT;
 
-    req = dbus_message_new_method_call(COMPOSITOR_SERVICE,
-                                       COMPOSITOR_PATH,
-                                       COMPOSITOR_IFACE,
-                                       COMPOSITOR_SET_UPDATES_ENABLED);
-    if( !req )
-        goto EXIT;
+    mce_log(LL_DEBUG, "cancel compositor killer");
 
-    if( !dbus_message_append_args(req,
-                                  DBUS_TYPE_BOOLEAN, &dta,
-                                  DBUS_TYPE_INVALID) )
-        goto EXIT;
-
-    if( !dbus_connection_send_with_reply(bus, req,
-                                         &mdy_compositor_state_req_pc,
-                                         mdy_compositor_ipc_timeout) )
-        goto EXIT;
-
-    if( !mdy_compositor_state_req_pc )
-        goto EXIT;
-
-    mce_dbus_pending_call_blocks_suspend(mdy_compositor_state_req_pc);
-
-    if( !dbus_pending_call_set_notify(mdy_compositor_state_req_pc,
-                                      mdy_compositor_state_req_cb,
-                                      GINT_TO_POINTER(state), 0) )
-        goto EXIT;
-
-    /* Success */
-    res = TRUE;
-
-    /* If we do not get reply in a short while, start led pattern */
-    mdy_compositor_schedule_panic_led(state);
-
-    /* And after waiting a bit longer, assume that compositor is
-     * process stuck and kill it */
-    mdy_compositor_schedule_killer();
+    g_source_remove(self->csi_kill_timer_id),
+        self->csi_kill_timer_id = 0;
 
 EXIT:
-    if( mdy_compositor_state_req_pc  ) {
-        dbus_pending_call_unref(mdy_compositor_state_req_pc);
-        // Note: The pending call notification holds the final
-        //       reference. It gets released at cancellation
-        //       or return from notification callback
-    }
-    if( req ) dbus_message_unref(req);
-    if( bus ) dbus_connection_unref(bus);
+    return;
+}
 
-    return res;
+/** Trigger attempt to coredump unresponsive compositor process
+ */
+static gboolean
+compositor_stm_core_timer_cb(void *aptr)
+{
+    compositor_stm_t *self = aptr;
+
+    if( !self->csi_kill_timer_id )
+        goto EXIT;
+
+    self->csi_kill_timer_id = 0;
+
+    mce_log(LL_WARN, "compositor core dump triggered");
+
+    if( self->csi_service_pid == COMPOSITOR_STM_INVALID_PID )
+        goto EXIT;
+
+    /* We do not want to kill compositor if debugger is attached to it.
+     * Since there can be only one attacher at one time, we can use dummy
+     * attach + detach cycle to determine debugger presence. */
+    if( ptrace(PTRACE_ATTACH, self->csi_service_pid, 0, 0) == -1 ) {
+        mce_log(LL_WARN, "could not attach to compositor: %m");
+        mce_log(LL_WARN, "assuming debugger is attached; skip killing");
+        goto EXIT;
+    }
+
+    if( ptrace(PTRACE_DETACH, self->csi_service_pid, 0,0) == -1 ) {
+        mce_log(LL_WARN, "could not detach from compositor: %m");
+    }
+
+    /* Activate killer led - will be deactivated when compositor
+     * restart is seen base on D-Bus name ownership. */
+    compositor_led_set_active(COMPOSITOR_LED_KILLER_ACTIVE, true);
+
+    /* We need to send some signal that a) leads to core dump b) is not
+     * handled "nicely" by compositor. SIGXCPU fits that description and
+     * is also c) somewhat relevant "CPU time limit exceeded" d) easily
+     * distinguishable from other "normal" crash reports. */
+    if( kill(self->csi_service_pid, SIGXCPU) == -1 && errno == ESRCH )
+        goto EXIT;
+
+    self->csi_kill_timer_id = g_timeout_add(mdy_compositor_kill_delay * 1000,
+                                            compositor_stm_kill_timer_cb,
+                                            self);
+
+EXIT:
+    return FALSE;
+}
+
+/** Trigger attempt to kill unresponsive compositor process
+ */
+static gboolean
+compositor_stm_kill_timer_cb(void *aptr)
+{
+    compositor_stm_t *self = aptr;
+
+    if( !self->csi_kill_timer_id )
+        goto EXIT;
+
+    self->csi_kill_timer_id = 0;
+
+    mce_log(LL_WARN, "compositor kill triggered");
+
+    if( self->csi_service_pid == COMPOSITOR_STM_INVALID_PID )
+        goto EXIT;
+
+    if( kill(self->csi_service_pid, SIGKILL) == -1 && errno == ESRCH )
+        goto EXIT;
+
+    self->csi_kill_timer_id = g_timeout_add(mdy_compositor_bury_delay * 1000,
+                                            compositor_stm_bury_timer_cb,
+                                            self);
+
+EXIT:
+    return FALSE;
+}
+
+/** Trigger a check if unresponsive compositor got killed
+ */
+static gboolean
+compositor_stm_bury_timer_cb(void *aptr)
+{
+    compositor_stm_t *self = aptr;
+
+    if( !self->csi_kill_timer_id )
+        goto EXIT;
+
+    self->csi_kill_timer_id = 0;
+
+    mce_log(LL_WARN, "compositor bury triggered");
+
+    if( self->csi_service_pid == COMPOSITOR_STM_INVALID_PID )
+        goto EXIT;
+
+    if( kill(self->csi_service_pid, 0) == -1 && errno != ESRCH )
+        mce_log(LL_ERR, "compositor is not responsive and killing it failed");
+
+EXIT:
+    return FALSE;
+}
+
+/* ------------------------------------------------------------------------- *
+ * compositor ipc state machine
+ * ------------------------------------------------------------------------- */
+
+/** Get current state of the state machine
+ */
+static compositor_state_t
+compositor_stm_get_state(const compositor_stm_t *self)
+{
+    return self->csi_state;
+}
+
+/** Perform a state transition
+ */
+static void
+compositor_stm_set_state(compositor_stm_t *self, compositor_state_t state)
+{
+    if( self->csi_state == COMPOSITOR_STATE_FINAL ) {
+        mce_log(LL_ERR, "compositor_stm_state: %s -> %s - rejected",
+                compositor_state_repr(self->csi_state),
+                compositor_state_repr(state));
+        goto EXIT;
+    }
+
+    if( self->csi_state == state )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "compositor_stm_state: %s -> %s",
+            compositor_state_repr(self->csi_state),
+            compositor_state_repr(state));
+
+    compositor_stm_leave_state(self);
+    self->csi_state = state;
+    compositor_stm_enter_state(self);
+
+EXIT:
+
+    compositor_stm_eval_state(self);
+
+    return;
+}
+
+/** Perform actions on entry to a state
+ */
+static void
+compositor_stm_enter_state(compositor_stm_t *self)
+{
+    switch( self->csi_state ) {
+    case COMPOSITOR_STATE_INITIAL:
+        break;
+
+    case COMPOSITOR_STATE_FINAL:
+        // forget the service name/pid
+        compositor_stm_set_service_owner(self, 0);
+
+        // cancel all pending actions
+        compositor_stm_cancel_retry(self);
+        compositor_stm_cancel_panic(self);
+        compositor_stm_cancel_killer(self);
+        compositor_stm_forget_ctrl_request(self);
+        compositor_stm_forget_pid_query(self);
+
+        // deactivate all led patterns
+        for( compositor_led_t led = 0; led < COMPOSITOR_LED_NUMOF; ++led )
+            compositor_led_set_active(led, false);
+        break;
+
+    case COMPOSITOR_STATE_STOPPED:
+        compositor_stm_forget_pid_query(self);
+        compositor_stm_cancel_killer(self);
+        // leave via compositor_stm_set_service_owner()
+        break;
+
+    case COMPOSITOR_STATE_STARTED:
+        self->csi_panic_delay = COMPOSITOR_STM_INITIAL_PANIC_DELAY;
+
+        compositor_stm_send_pid_query(self);
+        compositor_stm_set_state(self, COMPOSITOR_STATE_REQUESTING);
+        break;
+
+    case COMPOSITOR_STATE_REQUESTING:
+        compositor_stm_set_requested(self, self->csi_target);
+        compositor_stm_schedule_killer(self);
+        compositor_stm_schedule_panic(self);
+        compositor_stm_send_ctrl_request(self);
+        break;
+
+    case COMPOSITOR_STATE_GRANTED:
+        self->csi_panic_delay = self->csi_panic_delay * 3 / 4;
+        if( self->csi_panic_delay < COMPOSITOR_STM_MINIMUM_PANIC_DELAY )
+            self->csi_panic_delay = COMPOSITOR_STM_MINIMUM_PANIC_DELAY;
+
+        compositor_stm_set_granted(self, self->csi_requested);
+        compositor_stm_cancel_killer(self);
+        compositor_stm_cancel_panic(self);
+
+        /* Wake display state machine */
+        mdy_stm_schedule_rethink();
+        break;
+
+    case COMPOSITOR_STATE_FAILED:
+        compositor_stm_set_granted(self, RENDERER_ERROR);
+        compositor_stm_schedule_retry(self);
+
+        /* We can't enter suspend without UI side being in
+         * the loop or we'll risk spectacular crashes */
+        mdy_stm_schedule_rethink();
+
+        break;
+
+    default:
+        break;
+    }
+}
+
+/** Perform actions when leaving a state
+ */
+static void
+compositor_stm_leave_state(compositor_stm_t *self)
+{
+    switch( self->csi_state ) {
+    case COMPOSITOR_STATE_INITIAL:
+        break;
+
+    case COMPOSITOR_STATE_FINAL:
+        break;
+
+    case COMPOSITOR_STATE_STOPPED:
+        break;
+
+    case COMPOSITOR_STATE_STARTED:
+        break;
+
+    case COMPOSITOR_STATE_REQUESTING:
+        compositor_stm_forget_ctrl_request(self);
+        break;
+
+    case COMPOSITOR_STATE_GRANTED:
+        compositor_stm_set_granted(self, RENDERER_UNKNOWN);
+        /* Wake display state machine */
+        mdy_stm_schedule_rethink();
+        break;
+
+    case COMPOSITOR_STATE_FAILED:
+        compositor_stm_cancel_retry(self);
+        break;
+
+    default:
+        break;
+    }
+}
+
+/** Check if actions need to be taken within a state
+ */
+static void
+compositor_stm_eval_state(compositor_stm_t *self)
+{
+    switch( self->csi_state ) {
+    case COMPOSITOR_STATE_INITIAL:
+        break;
+
+    case COMPOSITOR_STATE_FINAL:
+        break;
+
+    case COMPOSITOR_STATE_STOPPED:
+        break;
+
+    case COMPOSITOR_STATE_STARTED:
+        break;
+
+    case COMPOSITOR_STATE_REQUESTING:
+        break;
+
+    case COMPOSITOR_STATE_GRANTED:
+        /* React to changes via compositor_stm_set_enabled() */
+        if( self->csi_target != self->csi_granted )
+            compositor_stm_set_state(self, COMPOSITOR_STATE_REQUESTING);
+        break;
+
+    case COMPOSITOR_STATE_FAILED:
+        break;
+
+    default:
+        break;
+    }
+}
+
+/* ------------------------------------------------------------------------- *
+ * managing target/requested/granted states
+ * ------------------------------------------------------------------------- */
+
+/** Set the state we want compositor side to be in
+ */
+static void
+compositor_stm_set_target(compositor_stm_t *self, renderer_state_t state)
+{
+    /* Only RENDERER_ENABLED or RENDERER_DISABLED can be target */
+    if( state != RENDERER_DISABLED )
+        state = RENDERER_ENABLED;
+
+    if( self->csi_target != state ) {
+        mce_log(LL_DEBUG, "compositor_stm_target: %s -> %s",
+                renderer_state_repr(self->csi_target),
+                renderer_state_repr(state));
+        self->csi_target = state;
+    }
+}
+
+/** Set the state we have requested compositor to transfer to
+ */
+static void
+compositor_stm_set_requested(compositor_stm_t *self, renderer_state_t state)
+{
+    if( self->csi_requested != state ) {
+        mce_log(LL_DEBUG, "compositor_stm_requested: %s -> %s",
+                renderer_state_repr(self->csi_requested),
+                renderer_state_repr(state));
+        self->csi_requested = state;
+    }
+}
+
+/** Set the state compositor has transferred to
+ */
+static void
+compositor_stm_set_granted(compositor_stm_t *self, renderer_state_t state)
+{
+    if( self->csi_granted != state ) {
+        mce_log(LL_DEBUG, "compositor_stm_granted: %s -> %s",
+                renderer_state_repr(self->csi_granted),
+                renderer_state_repr(state));
+        self->csi_granted = state;
+    }
+}
+
+/* ------------------------------------------------------------------------- *
+ * external interface for use from display state machine
+ * ------------------------------------------------------------------------- */
+
+/** Predicate for: compositor side state is not known
+ */
+static bool
+compositor_stm_is_pending(const compositor_stm_t *self)
+{
+    return compositor_stm_get_state(self) != COMPOSITOR_STATE_GRANTED;
+}
+
+/** Predicate for: compositor side is in setUpdatesEnabled(true) state
+ */
+static bool
+compositor_stm_is_enabled(const compositor_stm_t *self)
+{
+    if( compositor_stm_is_pending(self) )
+        return false;
+
+    return self->csi_granted == RENDERER_ENABLED;
+}
+
+/** Predicate for: compositor side is in setUpdatesEnabled(false) state
+ */
+static bool
+compositor_stm_is_disabled(const compositor_stm_t *self)
+{
+    if( compositor_stm_is_pending(self) )
+        return false;
+
+    return self->csi_granted == RENDERER_DISABLED;
+}
+
+/** Change state we want compositor side to be in
+ */
+static void
+compositor_stm_set_enabled(compositor_stm_t *self, bool enable)
+{
+    if( enable )
+        compositor_stm_set_target(self, RENDERER_ENABLED);
+    else
+        compositor_stm_set_target(self, RENDERER_DISABLED);
+
+    compositor_stm_eval_state(self);
+}
+
+/* ========================================================================= *
+ * COMPOSITOR_IPC
+ * ========================================================================= */
+
+static compositor_stm_t *mdy_compositor_ipc = 0;
+
+/** Start compositor D-Bus ipc state tracking
+ */
+static void mdy_compositor_init(void)
+{
+    if( !mdy_compositor_ipc )
+        mdy_compositor_ipc = compositor_stm_create();
+}
+
+/** Stop compositor D-Bus ipc state tracking
+ */
+static void mdy_compositor_quit(void)
+{
+    compositor_stm_delete(mdy_compositor_ipc),
+        mdy_compositor_ipc = 0;
+}
+
+/** Set owner of compositor D-Bus service
+ *
+ * @param curr Private name of the service owner, or empty/null for none
+ */
+static void mdy_compositor_set_name_owner(const char *curr)
+{
+    if( mdy_compositor_ipc )
+        compositor_stm_set_service_owner(mdy_compositor_ipc, curr);
+}
+
+/* Start setUpdatesEnabled(true) ipc with systemui
+ */
+static void mdy_compositor_enable(void)
+{
+    if( mdy_compositor_ipc )
+        compositor_stm_set_enabled(mdy_compositor_ipc, true);
+}
+
+/* Start setUpdatesEnabled(false) ipc with systemui
+ */
+static void mdy_compositor_disable(void)
+{
+    if( mdy_compositor_ipc )
+        compositor_stm_set_enabled(mdy_compositor_ipc, false);
+}
+
+/** Predicate for compositor D-Bus service is available
+ */
+static bool mdy_compositor_is_available(void)
+{
+    bool available = false;
+
+    if( mdy_compositor_ipc )
+        available = compositor_stm_get_service_owner(mdy_compositor_ipc) != 0;
+
+    return available;
+}
+
+/** Predicate for setUpdatesEnabled() ipc not finished yet
+ */
+static bool mdy_compositor_is_pending(void)
+{
+    bool pending = false;
+
+    if( mdy_compositor_ipc )
+        pending = compositor_stm_is_pending(mdy_compositor_ipc);
+
+    return pending;
+}
+
+/** Predicate for setUpdatesEnabled(false) ipc successfully finished
+ */
+static bool mdy_compositor_is_disabled(void)
+{
+    bool disabled = false;
+
+    if( mdy_compositor_ipc )
+        disabled = compositor_stm_is_disabled(mdy_compositor_ipc);
+
+    return disabled;
+}
+
+/** Predicate for setUpdatesEnabled(true) ipc successfully finished
+ */
+static bool mdy_compositor_is_enabled(void)
+{
+    bool enabled = false;
+
+    if( mdy_compositor_ipc )
+        enabled = compositor_stm_is_enabled(mdy_compositor_ipc);
+
+    return enabled;
 }
 
 /* ========================================================================= *
@@ -5775,7 +6559,7 @@ static int mdy_autosuspend_get_allowed_level(void)
         block_early = true;
 
     /* do not suspend while ui side might still be drawing */
-    if( mdy_compositor_ui_state != RENDERER_DISABLED )
+    if( !mdy_compositor_is_disabled() )
         block_early = true;
 
     /* adjust based on setting */
@@ -6313,7 +7097,7 @@ static void mdy_datapipe_compositor_available_cb(gconstpointer aptr)
     if( service == SERVICE_STATE_RUNNING )
         curr = mce_dbus_nameowner_get(COMPOSITOR_SERVICE);
 
-    mdy_compositor_name_owner_set(curr);
+    mdy_compositor_set_name_owner(curr);
 
     /* If compositor drops from systembus in USER/ACTDEAD mode while
      * we are not shutting down, assume we are dealing with lipstick
@@ -6646,55 +7430,6 @@ static void mdy_stm_finish_target_change(void)
     mdy_display_state_enter(prev, mdy_stm_curr);
 }
 
-/** Predicate for setUpdatesEnabled() ipc not finished yet
- */
-static bool mdy_stm_is_renderer_pending(void)
-{
-    return mdy_compositor_ui_state == RENDERER_UNKNOWN;
-}
-
-/** Predicate for setUpdatesEnabled(false) ipc finished
- */
-static bool mdy_stm_is_renderer_disabled(void)
-{
-    return mdy_compositor_ui_state == RENDERER_DISABLED;
-}
-
-/** Predicate for setUpdatesEnabled(true) ipc finished
- */
-static bool mdy_stm_is_renderer_enabled(void)
-{
-    return mdy_compositor_ui_state == RENDERER_ENABLED;
-}
-
-/* Start setUpdatesEnabled(false) ipc with systemui
- */
-static void mdy_stm_disable_renderer(void)
-{
-    if( mdy_compositor_ui_state != RENDERER_DISABLED ||
-        mdy_stm_compositor_availability_changed ) {
-        mce_log(LL_NOTICE, "stopping renderer");
-        mdy_compositor_start_state_req(RENDERER_DISABLED);
-    }
-    else {
-        mce_log(LL_NOTICE, "renderer already disabled");
-    }
-}
-
-/* Start setUpdatesEnabled(true) ipc with systemui
- */
-static void mdy_stm_enable_renderer(void)
-{
-    if( mdy_compositor_ui_state != RENDERER_ENABLED ||
-        mdy_stm_compositor_availability_changed ) {
-        mce_log(LL_NOTICE, "starting renderer");
-        mdy_compositor_start_state_req(RENDERER_ENABLED);
-    }
-    else {
-        mce_log(LL_NOTICE, "renderer already enabled");
-    }
-}
-
 /** Execute one state machine step
  *
  * The state transition flow implemented by this function is
@@ -6729,16 +7464,16 @@ static void mdy_stm_step(void)
             mdy_stm_trans(STM_WAIT_FADE_TO_TARGET);
         }
         else {
-            mdy_stm_enable_renderer();
+            mdy_compositor_enable();
             mdy_stm_trans(STM_RENDERER_WAIT_START);
         }
         mdy_stm_set_compositor_availability_changed(false);
         break;
 
     case STM_RENDERER_WAIT_START:
-        if( mdy_stm_is_renderer_pending() )
+        if( mdy_compositor_is_pending() )
             break;
-        if( mdy_stm_is_renderer_enabled() ) {
+        if( mdy_compositor_is_enabled() ) {
             mdy_brightness_set_fade_target_unblank(mdy_brightness_level_display_resume);
             mdy_stm_trans(STM_WAIT_FADE_TO_TARGET);
             break;
@@ -6812,16 +7547,16 @@ static void mdy_stm_step(void)
             mdy_stm_trans(STM_ENTER_LOGICAL_OFF);
         }
         else {
-            mdy_stm_disable_renderer();
+            mdy_compositor_disable();
             mdy_stm_trans(STM_RENDERER_WAIT_STOP);
         }
         mdy_stm_set_compositor_availability_changed(false);
         break;
 
     case STM_RENDERER_WAIT_STOP:
-        if( mdy_stm_is_renderer_pending() )
+        if( mdy_compositor_is_pending() )
             break;
-        if( mdy_stm_is_renderer_disabled() ) {
+        if( mdy_compositor_is_disabled() ) {
             /* Unless we're running on an early-suspend kernel we
              * have no way of knowing whether compositor has already
              * powered off the display. Normally it does not matter,
@@ -9637,6 +10372,8 @@ const gchar *g_module_check_init(GModule *module)
 
     (void)module;
 
+    mdy_compositor_init();
+
     /* Allow execution of worker thread jobs from this plugin */
     mce_worker_add_context(MODULE_NAME);
 
@@ -9796,13 +10533,13 @@ void g_module_unload(GModule *module)
     mdy_blanking_cancel_dim();
     mdy_blanking_unprime_adaptive_dimming();
     mdy_blanking_cancel_off();
-    mdy_compositor_cancel_killer();
     mdy_callstate_clear_changed();
     mdy_blanking_inhibit_cancel_broadcast();
 
-    /* Cancel active asynchronous dbus method calls to avoid
-     * callback functions with stale adresses getting invoked */
-    mdy_compositor_cancel_state_req();
+    /* Stopping compositor ipc state machine can cause
+     * scheduling of display state machine wakeups, so
+     * it needs to be done 1st */
+    mdy_compositor_quit();
 
     /* Cancel pending state machine updates */
     mdy_stm_cancel_rethink();
@@ -9811,8 +10548,6 @@ void g_module_unload(GModule *module)
 
     /* Remove callbacks on module unload */
     mce_sensorfw_orient_set_notify(0);
-
-    g_free(mdy_compositor_priv_name), mdy_compositor_priv_name = 0;
 
     /* If we are shutting down/rebooting and we have fbdev
      * open, create a detached child process to hold on to
