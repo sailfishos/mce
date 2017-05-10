@@ -1,3 +1,9 @@
+mce (1.87.3) precise; urgency=low
+
+  * [mce] Use sigaction() for registering signal handlers. Fixes JB#38515
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 10 May 2017 16:29:18 +0300
+
 mce (1.87.2) precise; urgency=low
 
   * [dsme] Avoid recursion during dsmesock disconnecting. Fixes JB#38474
