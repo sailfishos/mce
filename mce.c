@@ -206,14 +206,40 @@ static void signal_handler(const gint signr)
 		mce_quit_mainloop();
 		break;
 
-	case SIGPIPE:
-		break;
-
 	default:
 		/* Should never happen */
+		mce_log(LL_WARN, "stray signal %d received in mainloop", signr);
 		break;
 	}
 }
+
+/** Array of signals that should be ignored */
+static const int mce_signals_to_ignore[] =
+{
+	/* We want error return from write() & co, not a signal */
+	SIGPIPE,
+
+	/* Ignore tty signals even if mce is run from terminal */
+	SIGTSTP,
+	SIGTTOU,
+	SIGTTIN,
+	-1
+};
+
+/** Array of signals that should terminate mce */
+static const int mce_signals_to_exit_on[] =
+{
+#ifdef ENABLE_WAKELOCKS
+	SIGABRT,
+	SIGILL,
+	SIGFPE,
+	SIGSEGV,
+	SIGALRM,
+	SIGBUS,
+	SIGTSTP,
+#endif
+	-1
+};
 
 /** Array of signals that should be trapped */
 static const int mce_signals_to_trap[] =
@@ -221,22 +247,9 @@ static const int mce_signals_to_trap[] =
 	SIGUSR1,
 	SIGUSR2,
 	SIGHUP,
-
 	SIGINT,
 	SIGQUIT,
 	SIGTERM,
-
-#ifdef ENABLE_WAKELOCKS
-	SIGABRT,
-	SIGILL,
-	SIGFPE,
-	SIGSEGV,
-	SIGPIPE,
-	SIGALRM,
-	SIGBUS,
-	SIGTSTP,
-#endif
-
 	-1
 };
 
@@ -244,18 +257,49 @@ static const int mce_signals_to_trap[] =
  */
 static void mce_signal_handlers_install(void)
 {
-	for( size_t i = 0; mce_signals_to_trap[i] != -1; ++i ) {
-		signal(mce_signals_to_trap[i], mce_tx_signal_cb);
-	}
+	struct sigaction sa;
+
+	/* Signals that are completely ignored */
+	for( size_t i = 0; mce_signals_to_ignore[i] != -1; ++i )
+		signal(mce_signals_to_ignore[i], SIG_IGN);
+
+	/* Unrecoverable situations that require immediate exit,
+	 * but we should still attempt to disable autosuspend
+	 * and clean up wakelocks: Reset default behavior when
+	 * triggered and do not block while attempting to handle.
+	 */
+
+	memset(&sa, 0, sizeof sa);
+	sigemptyset(&sa.sa_mask);
+	sa.sa_handler = mce_tx_signal_cb;
+	sa.sa_flags   = SA_RESETHAND | SA_NODEFER;
+
+	for( size_t i = 0; mce_signals_to_exit_on[i] != -1; ++i )
+		sigaction(mce_signals_to_exit_on[i], &sa, 0);
+
+	/* Signals that should be ok to handle via mainloop */
+
+	memset(&sa, 0, sizeof sa);
+	sigemptyset(&sa.sa_mask);
+	sa.sa_handler = mce_tx_signal_cb;
+	sa.sa_flags   = SA_RESTART;
+
+	for( size_t i = 0; mce_signals_to_trap[i] != -1; ++i )
+		sigaction(mce_signals_to_trap[i], &sa, 0);
 }
 
 /** Restore default handlers for trapped signals
  */
 void mce_signal_handlers_remove(void)
 {
-	for( size_t i = 0; mce_signals_to_trap[i] != -1; ++i ) {
+	for( size_t i = 0; mce_signals_to_ignore[i] != -1; ++i )
+		signal(mce_signals_to_ignore[i], SIG_DFL);
+
+	for( size_t i = 0; mce_signals_to_exit_on[i] != -1; ++i )
+		signal(mce_signals_to_exit_on[i], SIG_DFL);
+
+	for( size_t i = 0; mce_signals_to_trap[i] != -1; ++i )
 		signal(mce_signals_to_trap[i], SIG_DFL);
-	}
 }
 
 /** Pipe used for transferring signals out of signal handler context */
@@ -303,17 +347,16 @@ static void mce_tx_signal_cb(int sig)
 	static volatile int exit_tries = 0;
 
 	static const char msg[] = "\n*** BREAK ***\n";
-#ifdef ENABLE_WAKELOCKS
 	static const char die[] = "\n*** UNRECOVERABLE FAILURE ***\n";
-#endif
-
-	/* FIXME: Should really use sigaction() to avoid having
-	 * the default handler active until we manage to restore
-	 * our handler here ... */
-	signal(sig, mce_tx_signal_cb);
 
 	switch( sig )
 	{
+	case SIGUSR1:
+	case SIGUSR2:
+	case SIGHUP:
+		/* Just pass to mainloop */
+		break;
+
 	case SIGINT:
 	case SIGQUIT:
 	case SIGTERM:
@@ -333,24 +376,12 @@ static void mce_tx_signal_cb(int sig)
 		}
 		break;
 
-#ifdef ENABLE_WAKELOCKS
-	case SIGABRT:
-	case SIGILL:
-	case SIGFPE:
-	case SIGSEGV:
-	case SIGALRM:
-	case SIGBUS:
-		/* Unrecoverable failures can't be handled in the mainloop
-		 * Terminate but disable suspend first */
+	default:
+		/* Assume unrecoverable failure that can't be handled in
+		 * the mainloop - disable autosuspend and then terminate
+		 * via default signal handler. */
 		no_error_check_write(STDERR_FILENO, die, sizeof die - 1);
 		mce_exit_via_signal(sig);
-		break;
-
-	case SIGTSTP:
-		/* Stopping mce could also lead to unrecoverable suspend */
-		break;
-#endif
-	default:
 		break;
 	}
 
