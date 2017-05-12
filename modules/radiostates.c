@@ -396,7 +396,6 @@ static gboolean req_radio_states_change_dbus_cb(DBusMessage *const msg)
 			"Failed to get argument from %s.%s: %s",
 			MCE_REQUEST_IF, MCE_RADIO_STATES_CHANGE_REQ,
 			error.message);
-		dbus_error_free(&error);
 		goto EXIT;
 	}
 
@@ -411,6 +410,7 @@ static gboolean req_radio_states_change_dbus_cb(DBusMessage *const msg)
 	}
 
 EXIT:
+	dbus_error_free(&error);
 	return status;
 }
 

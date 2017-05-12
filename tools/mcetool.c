@@ -105,6 +105,7 @@ static DBusConnection *xdbus_init(void)
                                         err.name, err.message);
                         }
                         errorf("MCE not running, terminating\n");
+                        dbus_error_free(&err);
                         exit(EXIT_FAILURE);
                 }
 

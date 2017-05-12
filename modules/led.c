@@ -2028,10 +2028,7 @@ static gboolean led_activate_pattern_dbus_cb(DBusMessage *const msg)
 	dbus_bool_t no_reply = dbus_message_get_no_reply(msg);
 	const gchar *pattern = NULL;
 	gboolean status = FALSE;
-	DBusError error;
-
-	/* Register error channel */
-	dbus_error_init(&error);
+	DBusError error = DBUS_ERROR_INIT;
 
 	if (dbus_message_get_args(msg, &error,
 				  DBUS_TYPE_STRING, &pattern,
@@ -2041,7 +2038,6 @@ static gboolean led_activate_pattern_dbus_cb(DBusMessage *const msg)
 			"Failed to get argument from %s.%s: %s",
 			MCE_REQUEST_IF, MCE_ACTIVATE_LED_PATTERN,
 			error.message);
-		dbus_error_free(&error);
 		goto EXIT;
 	}
 
@@ -2059,6 +2055,7 @@ static gboolean led_activate_pattern_dbus_cb(DBusMessage *const msg)
 	}
 
 EXIT:
+	dbus_error_free(&error);
 	return status;
 }
 
@@ -2073,10 +2070,7 @@ static gboolean led_deactivate_pattern_dbus_cb(DBusMessage *const msg)
 	dbus_bool_t no_reply = dbus_message_get_no_reply(msg);
 	const gchar *pattern = NULL;
 	gboolean status = FALSE;
-	DBusError error;
-
-	/* Register error channel */
-	dbus_error_init(&error);
+	DBusError error = DBUS_ERROR_INIT;
 
 	if (dbus_message_get_args(msg, &error,
 				  DBUS_TYPE_STRING, &pattern,
@@ -2086,7 +2080,6 @@ static gboolean led_deactivate_pattern_dbus_cb(DBusMessage *const msg)
 			"Failed to get argument from %s.%s: %s",
 			MCE_REQUEST_IF, MCE_DEACTIVATE_LED_PATTERN,
 			error.message);
-		dbus_error_free(&error);
 		goto EXIT;
 	}
 
@@ -2104,6 +2097,7 @@ static gboolean led_deactivate_pattern_dbus_cb(DBusMessage *const msg)
 	}
 
 EXIT:
+	dbus_error_free(&error);
 	return status;
 }
 

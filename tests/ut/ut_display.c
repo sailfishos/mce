@@ -679,12 +679,9 @@ static DBusConnection *stub__dbus_connection = NULL;
 EXTERN_STUB (
 DBusConnection *, dbus_connection_get, (void))
 {
-	DBusBusType bus_type = DBUS_BUS_SYSTEM;
-	DBusError error;
-
-	dbus_error_init(&error);
-
 	if( !stub__dbus_connection ) {
+		DBusBusType bus_type = DBUS_BUS_SYSTEM;
+		DBusError error = DBUS_ERROR_INIT;
 		if( (stub__dbus_connection = dbus_bus_get(bus_type,
 							  &error)) == NULL ) {
 			printf("%s: Failed to open connection to message bus; %s",

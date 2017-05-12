@@ -1497,7 +1497,6 @@ change_call_state_dbus_cb(DBusMessage *const msg)
         mce_log(LL_ERR, "Failed to get argument from %s.%s: %s",
                 MCE_REQUEST_IF, MCE_CALL_STATE_CHANGE_REQ,
                 error.message);
-        dbus_error_free(&error);
         goto EXIT;
     }
 
@@ -1555,6 +1554,8 @@ EXIT:
 
     if( reply )
         dbus_message_unref(reply);
+
+    dbus_error_free(&error);
 
     return status;
 }

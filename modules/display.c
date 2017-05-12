@@ -8789,10 +8789,7 @@ static gboolean mdy_dbus_handle_cabc_mode_owner_lost_sig(DBusMessage *const msg)
     const gchar *old_name;
     const gchar *new_name;
     const gchar *service;
-    DBusError error;
-
-    /* Register error channel */
-    dbus_error_init(&error);
+    DBusError error = DBUS_ERROR_INIT;
 
     /* Extract result */
     if (dbus_message_get_args(msg, &error,
@@ -8803,7 +8800,6 @@ static gboolean mdy_dbus_handle_cabc_mode_owner_lost_sig(DBusMessage *const msg)
         mce_log(LL_ERR, "Failed to get argument from %s.%s; %s",
                 "org.freedesktop.DBus", "NameOwnerChanged",
                 error.message);
-        dbus_error_free(&error);
         goto EXIT;
     }
 
@@ -8814,6 +8810,7 @@ static gboolean mdy_dbus_handle_cabc_mode_owner_lost_sig(DBusMessage *const msg)
     status = TRUE;
 
 EXIT:
+    dbus_error_free(&error);
     return status;
 }
 
@@ -8854,10 +8851,7 @@ static gboolean mdy_dbus_handle_cabc_mode_set_req(DBusMessage *const msg)
     const gchar *dbus_cabc_mode = NULL;
     gboolean status = FALSE;
     gint i;
-    DBusError error;
-
-    /* Register error channel */
-    dbus_error_init(&error);
+    DBusError error = DBUS_ERROR_INIT;
 
     if (sender == NULL) {
         mce_log(LL_ERR, "invalid set CABC mode request (NULL sender)");
@@ -8874,7 +8868,6 @@ static gboolean mdy_dbus_handle_cabc_mode_set_req(DBusMessage *const msg)
         mce_log(LL_ERR, "Failed to get argument from %s.%s; %s",
                 MCE_REQUEST_IF, MCE_CABC_MODE_REQ,
                 error.message);
-        dbus_error_free(&error);
         goto EXIT;
     }
 
@@ -8922,6 +8915,7 @@ static gboolean mdy_dbus_handle_cabc_mode_set_req(DBusMessage *const msg)
     }
 
 EXIT:
+    dbus_error_free(&error);
     return status;
 }
 
