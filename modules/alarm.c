@@ -126,9 +126,7 @@ static gboolean alarm_owner_monitor_dbus_cb(DBusMessage *const msg)
     const gchar *service;
     gssize retval;
 
-    DBusError error;
-    /* Register error channel */
-    dbus_error_init(&error);
+    DBusError error = DBUS_ERROR_INIT;
 
     /* Extract result */
     if (dbus_message_get_args(msg, &error,
@@ -140,7 +138,6 @@ static gboolean alarm_owner_monitor_dbus_cb(DBusMessage *const msg)
                 "Failed to get argument from %s.%s; %s",
                 "org.freedesktop.DBus", "NameOwnerChanged",
                 error.message);
-        dbus_error_free(&error);
         goto EXIT;
     }
 
@@ -159,8 +156,8 @@ static gboolean alarm_owner_monitor_dbus_cb(DBusMessage *const msg)
     status = TRUE;
 
 EXIT:
+    dbus_error_free(&error);
     return status;
-
 }
 
 /**
@@ -252,11 +249,8 @@ static gboolean alarm_dialog_status_dbus_cb(DBusMessage *const msg)
     alarm_ui_state_t alarm_ui_state = MCE_ALARM_UI_INVALID_INT32;
     gboolean status = FALSE;
     const gchar *sender = dbus_message_get_sender(msg);
-    DBusError error;
+    DBusError error = DBUS_ERROR_INIT;
     dbus_int32_t dialog_status;
-
-    /* Register error channel */
-    dbus_error_init(&error);
 
     mce_log(LL_DEVEL, "Received alarm dialog status signal from %s",
             mce_dbus_get_name_owner_ident(sender));
@@ -270,7 +264,6 @@ static gboolean alarm_dialog_status_dbus_cb(DBusMessage *const msg)
                 VISUAL_REMINDERS_SIGNAL_IF,
                 VISUAL_REMINDER_STATUS_SIG,
                 error.message);
-        dbus_error_free(&error);
         goto EXIT;
     }
 
@@ -304,6 +297,7 @@ static gboolean alarm_dialog_status_dbus_cb(DBusMessage *const msg)
     status = TRUE;
 
 EXIT:
+    dbus_error_free(&error);
     return status;
 }
 

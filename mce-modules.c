@@ -214,6 +214,24 @@ void mce_modules_exit(void)
 
 	if (modules != NULL) {
 		for (i = 0; (module = g_slist_nth_data(modules, i)) != NULL; i++) {
+			if( mce_in_valgrind_mode() ) {
+				/* Do not actually unmap the plugins so that
+				 * valgrind can still locate the symbols at
+				 * exit time. */
+				gpointer addr = 0;
+				g_module_symbol(module, "g_module_unload", &addr);
+				if( addr ) {
+					mce_log(LL_WARN, "simulating module %s unload",
+						g_module_name(module));
+					void (*unload)(GModule *) = addr;
+					unload(module);
+				}
+				else {
+					mce_log(LL_WARN, "skipping module %s unload",
+						g_module_name(module));
+				}
+				continue;
+			}
 			g_module_close(module);
 		}
 

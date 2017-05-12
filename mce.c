@@ -657,6 +657,7 @@ static struct
 	bool systembus;
 	bool show_module_info;
 	bool systemd_notify;
+	bool valgrind_mode;
 	int  auto_exit;
 } mce_args =
 {
@@ -666,8 +667,14 @@ static struct
 	.systembus        = true,
 	.show_module_info = false,
 	.systemd_notify   = false,
+	.valgrind_mode    = false,
 	.auto_exit        = -1,
 };
+
+bool mce_in_valgrind_mode(void)
+{
+	return mce_args.valgrind_mode;
+}
 
 static bool mce_do_help(const char *arg);
 static bool mce_do_version(const char *arg);
@@ -696,6 +703,12 @@ static bool mce_do_force_syslog(const char *arg)
 static bool mce_do_auto_exit(const char *arg)
 {
 	mce_args.auto_exit = arg ? strtol(arg, 0, 0) : 5;
+	return true;
+}
+static bool mce_do_valgrind_mode(const char *arg)
+{
+	(void)arg;
+	mce_args.valgrind_mode = true;
 	return true;
 }
 static bool mce_do_log_function(const char *arg)
@@ -858,6 +871,12 @@ static const mce_opt_t options[] =
 			"Exit after mainloop gets idle\n"
 			"\n"
 			"This is usefult for mce startup debugging only.\n"
+	},
+	{
+		.name        = "valgrind-mode",
+		.without_arg = mce_do_valgrind_mode,
+		.usage       =
+			"Enable run-under valgrind mode\n"
 	},
 	// sentinel
 	{

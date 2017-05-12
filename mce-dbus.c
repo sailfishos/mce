@@ -35,6 +35,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <fcntl.h>
+#include <dlfcn.h>
 
 #include <dbus/dbus-glib-lowlevel.h>
 
@@ -536,6 +537,7 @@ EXIT:
 static gboolean
 dbus_send_message_with_reply_handler(DBusMessage *const msg,
 				     DBusPendingCallNotifyFunction callback,
+				     int timeout,
 				     void *user_data,
 				     DBusFreeFunction user_free,
 				     DBusPendingCall **ppc)
@@ -546,7 +548,8 @@ dbus_send_message_with_reply_handler(DBusMessage *const msg,
 	if( !msg )
 		goto EXIT;
 
-	if( !dbus_connection_send_with_reply(dbus_connection, msg, &pc, -1) ) {
+	if( !dbus_connection_send_with_reply(dbus_connection, msg, &pc,
+					     timeout) ) {
 		mce_log(LL_CRIT, "Out of memory when sending D-Bus message");
 		goto EXIT;
 	}
@@ -596,6 +599,7 @@ static gboolean dbus_send_va(const char *service,
 			     const char *interface,
 			     const char *name,
 			     DBusPendingCallNotifyFunction callback,
+			     int         timeout,
 			     void *user_data, DBusFreeFunction user_free,
 			     DBusPendingCall **ppc,
 			     int first_arg_type, va_list va)
@@ -634,7 +638,9 @@ static gboolean dbus_send_va(const char *service,
 		msg = 0;
 	}
 	else {
-		res = dbus_send_message_with_reply_handler(msg, callback,
+		res = dbus_send_message_with_reply_handler(msg,
+							   callback,
+							   timeout,
 							   user_data,
 							   user_free,
 							   ppc);
@@ -688,7 +694,49 @@ gboolean dbus_send_ex(const char *service,
 	va_list va;
 	va_start(va, first_arg_type);
 	gboolean res = dbus_send_va(service, path, interface, name,
-				    callback, user_data, user_free,
+				    callback, -1, user_data, user_free,
+				    ppc, first_arg_type, va);
+	va_end(va);
+	return res;
+}
+
+/** Generic function to send D-Bus messages and signals
+ * to send a signal, call dbus_send with service == NULL
+ *
+ * @todo Make it possible to send D-Bus replies as well
+ *
+ * @param service        D-Bus service; for signals, set to NULL
+ * @param path           D-Bus path
+ * @param interface      D-Bus interface
+ * @param name The       D-Bus method or signal name to send to
+ * @param callback       A reply callback, or NULL to set no reply;
+ *                       for signals, this is unused, but please use NULL
+ *                       for consistency
+ * @param timeout        Milliseconds to wait for reply, or -1 for default
+ * @param user_data      Data to pass to callback
+ * @param user_free      Data release callback for user_data
+ * @param ppc            Where to store pending call handle, or NULL
+ * @param first_arg_type The DBUS_TYPE of the first argument in the list
+ * @param ...            The arguments to append to the D-Bus message;
+ *                       terminate with DBUS_TYPE_INVALID
+ *                       Note: the arguments MUST be passed by reference
+ *
+ * @return TRUE on success, FALSE on failure
+ */
+gboolean dbus_send_ex2(const char *service,
+		       const char *path,
+		       const char *interface,
+		       const char *name,
+		       DBusPendingCallNotifyFunction callback,
+		       int timeout,
+		       void *user_data, DBusFreeFunction user_free,
+		       DBusPendingCall **ppc,
+		       int first_arg_type, ...)
+{
+	va_list va;
+	va_start(va, first_arg_type);
+	gboolean res = dbus_send_va(service, path, interface, name,
+				    callback, timeout, user_data, user_free,
 				    ppc, first_arg_type, va);
 	va_end(va);
 	return res;
@@ -721,7 +769,7 @@ gboolean dbus_send(const gchar *const service, const gchar *const path,
 	va_list va;
 	va_start(va, first_arg_type);
 	gboolean res = dbus_send_va(service, path, interface, name,
-				    callback, 0, 0, 0, first_arg_type, va);
+				    callback, -1, 0, 0, 0, first_arg_type, va);
 	va_end(va);
 	return res;
 }
@@ -4005,11 +4053,65 @@ static mce_dbus_handler_t mce_dbus_handlers[] =
 	}
 };
 
+/** Error string to use when abnormal dbus connects are detected */
+static const char mce_dbus_init_bypass[] =
+	"attempt to bypass mce dbus connection handling";
+
+/** Flag for: DBus connect attempt is expected */
+static bool mce_dbus_init_called = false;
+
+/** Intercept libdbus dbus_bus_get() calls
+ */
+DBusConnection *
+dbus_bus_get (DBusBusType type, DBusError *err)
+{
+	(void)type;
+	dbus_set_error_const(err, DBUS_ERROR_NO_SERVER, mce_dbus_init_bypass);
+	mce_log(LL_CRIT, "%s", mce_dbus_init_bypass);
+
+	/* Note: getpid() never fails, it is used as a dummy test to keep
+	 *       the compiler happy even though we never return from here. */
+	if( getpid() != -1 )
+		mce_abort();
+	return 0;
+}
+
+/** Intercept libdbus dbus_bus_get_private() calls
+ */
+DBusConnection *
+dbus_bus_get_private(DBusBusType type, DBusError *err)
+{
+	static DBusConnection *(*real)(DBusBusType, DBusError*) = 0;
+
+	if( !real ) {
+		if( !(real = dlsym(RTLD_NEXT, __FUNCTION__)) )
+			mce_abort();
+	}
+
+	DBusConnection *con = 0;
+
+	if( !mce_dbus_init_called || dbus_connection ) {
+		dbus_set_error_const(err, DBUS_ERROR_NO_SERVER,
+				     mce_dbus_init_bypass);
+		mce_log(LL_CRIT, "%s", mce_dbus_init_bypass);
+		mce_abort();
+	}
+	else {
+		con = real(type, err);
+	}
+
+	return con;
+}
+
 /**
  * Init function for the mce-dbus component
  * Pre-requisites: glib mainloop registered
  *
+ * Note: This is the only function that is allowed to make a D-Bus
+ *       connection in context of the whole MCE process.
+ *
  * @param systembus TRUE to use system bus, FALSE to use session bus
+ *
  * @return TRUE on success, FALSE on failure
  */
 gboolean mce_dbus_init(const gboolean systembus)
@@ -4024,8 +4126,12 @@ gboolean mce_dbus_init(const gboolean systembus)
 	mce_log(LL_DEBUG, "Establishing D-Bus connection");
 
 	/* Establish D-Bus connection */
-	if( !(dbus_connection = dbus_bus_get(bus_type, &error)) ) {
-		mce_log(LL_CRIT, "Failed to open connection to message bus; %s",
+	mce_dbus_init_called = true;
+	dbus_connection = dbus_bus_get_private(bus_type, &error);
+	mce_dbus_init_called = false;
+
+	if( !dbus_connection ) {
+		mce_log(LL_CRIT, "DBus connect failed; %s",
 			error.message);
 		goto EXIT;
 	}
@@ -4083,11 +4189,18 @@ void mce_dbus_exit(void)
 		dbus_handlers = 0;
 	}
 
-	/* If there is an established D-Bus connection, unreference it */
+	/* Disconnect from D-Bus */
 	if (dbus_connection != NULL) {
-		mce_log(LL_DEBUG, "Unreferencing D-Bus connection");
-		dbus_connection_unref(dbus_connection);
-		dbus_connection = NULL;
+		mce_log(LL_DEBUG, "closing dbus connection");
+		dbus_connection_close(dbus_connection);
+		dbus_connection_unref(dbus_connection),
+			dbus_connection = NULL;
+	}
+
+	/* When debugging, tell libdbus to release all dynamic resouces */
+	if( mce_in_valgrind_mode() ) {
+		mce_log(LL_WARN, "dbus shutdown");
+		dbus_shutdown();
 	}
 
 	return;
