@@ -35,6 +35,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <fcntl.h>
+#include <dlfcn.h>
 
 #include <dbus/dbus-glib-lowlevel.h>
 
@@ -4052,11 +4053,65 @@ static mce_dbus_handler_t mce_dbus_handlers[] =
 	}
 };
 
+/** Error string to use when abnormal dbus connects are detected */
+static const char mce_dbus_init_bypass[] =
+	"attempt to bypass mce dbus connection handling";
+
+/** Flag for: DBus connect attempt is expected */
+static bool mce_dbus_init_called = false;
+
+/** Intercept libdbus dbus_bus_get() calls
+ */
+DBusConnection *
+dbus_bus_get (DBusBusType type, DBusError *err)
+{
+	(void)type;
+	dbus_set_error_const(err, DBUS_ERROR_NO_SERVER, mce_dbus_init_bypass);
+	mce_log(LL_CRIT, "%s", mce_dbus_init_bypass);
+
+	/* Note: getpid() never fails, it is used as a dummy test to keep
+	 *       the compiler happy even though we never return from here. */
+	if( getpid() != -1 )
+		mce_abort();
+	return 0;
+}
+
+/** Intercept libdbus dbus_bus_get_private() calls
+ */
+DBusConnection *
+dbus_bus_get_private(DBusBusType type, DBusError *err)
+{
+	static DBusConnection *(*real)(DBusBusType, DBusError*) = 0;
+
+	if( !real ) {
+		if( !(real = dlsym(RTLD_NEXT, __FUNCTION__)) )
+			mce_abort();
+	}
+
+	DBusConnection *con = 0;
+
+	if( !mce_dbus_init_called || dbus_connection ) {
+		dbus_set_error_const(err, DBUS_ERROR_NO_SERVER,
+				     mce_dbus_init_bypass);
+		mce_log(LL_CRIT, "%s", mce_dbus_init_bypass);
+		mce_abort();
+	}
+	else {
+		con = real(type, err);
+	}
+
+	return con;
+}
+
 /**
  * Init function for the mce-dbus component
  * Pre-requisites: glib mainloop registered
  *
+ * Note: This is the only function that is allowed to make a D-Bus
+ *       connection in context of the whole MCE process.
+ *
  * @param systembus TRUE to use system bus, FALSE to use session bus
+ *
  * @return TRUE on success, FALSE on failure
  */
 gboolean mce_dbus_init(const gboolean systembus)
@@ -4071,8 +4126,12 @@ gboolean mce_dbus_init(const gboolean systembus)
 	mce_log(LL_DEBUG, "Establishing D-Bus connection");
 
 	/* Establish D-Bus connection */
-	if( !(dbus_connection = dbus_bus_get(bus_type, &error)) ) {
-		mce_log(LL_CRIT, "Failed to open connection to message bus; %s",
+	mce_dbus_init_called = true;
+	dbus_connection = dbus_bus_get_private(bus_type, &error);
+	mce_dbus_init_called = false;
+
+	if( !dbus_connection ) {
+		mce_log(LL_CRIT, "DBus connect failed; %s",
 			error.message);
 		goto EXIT;
 	}
@@ -4130,11 +4189,12 @@ void mce_dbus_exit(void)
 		dbus_handlers = 0;
 	}
 
-	/* If there is an established D-Bus connection, unreference it */
+	/* Disconnect from D-Bus */
 	if (dbus_connection != NULL) {
-		mce_log(LL_DEBUG, "Unreferencing D-Bus connection");
-		dbus_connection_unref(dbus_connection);
-		dbus_connection = NULL;
+		mce_log(LL_DEBUG, "closing dbus connection");
+		dbus_connection_close(dbus_connection);
+		dbus_connection_unref(dbus_connection),
+			dbus_connection = NULL;
 	}
 
 	return;
