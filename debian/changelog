@@ -1,3 +1,13 @@
+mce (1.87.4) precise; urgency=low
+
+  * [dbus] Add dbus send helper variant with controllable reply timeout
+  * [display] Add state machine to deal with compositor ipc. Fixes MER#1771
+  * [dbus] Normalize DBusError initialization and cleanup
+  * [dbus] Use closable private D-Bus connection
+  * [mce] Add valgrind mode to ease memory leak debugging
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 12 May 2017 13:20:15 +0300
+
 mce (1.87.3) precise; urgency=low
 
   * [mce] Use sigaction() for registering signal handlers. Fixes JB#38515
