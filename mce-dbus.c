@@ -4197,5 +4197,11 @@ void mce_dbus_exit(void)
 			dbus_connection = NULL;
 	}
 
+	/* When debugging, tell libdbus to release all dynamic resouces */
+	if( mce_in_valgrind_mode() ) {
+		mce_log(LL_WARN, "dbus shutdown");
+		dbus_shutdown();
+	}
+
 	return;
 }
