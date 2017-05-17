@@ -123,6 +123,7 @@ extern datapipe_struct call_state_pipe;
 extern datapipe_struct ignore_incoming_call_pipe;
 extern datapipe_struct call_type_pipe;
 extern datapipe_struct tk_lock_pipe;
+extern datapipe_struct interaction_expected_pipe;
 extern datapipe_struct charger_state_pipe;
 extern datapipe_struct battery_status_pipe;
 extern datapipe_struct battery_level_pipe;

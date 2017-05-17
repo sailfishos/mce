@@ -145,6 +145,9 @@ datapipe_struct call_type_pipe;
 /** The touchscreen/keypad lock state */
 datapipe_struct tk_lock_pipe;
 
+/** UI side is in a state where user interaction is expected */
+datapipe_struct interaction_expected_pipe;
+
 /** Charger state; read only */
 datapipe_struct charger_state_pipe;
 
@@ -794,6 +797,8 @@ void mce_datapipe_init(void)
 		       0, GINT_TO_POINTER(MCE_ORIENTATION_UNDEFINED));
 	setup_datapipe(&tk_lock_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(LOCK_UNDEF));
+	setup_datapipe(&interaction_expected_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(false));
 	setup_datapipe(&charger_state_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(CHARGER_STATE_UNDEF));
 	setup_datapipe(&battery_status_pipe, READ_ONLY, DONT_FREE_CACHE,
@@ -871,6 +876,7 @@ void mce_datapipe_quit(void)
 	free_datapipe(&camera_button_pipe);
 	free_datapipe(&battery_status_pipe);
 	free_datapipe(&charger_state_pipe);
+	free_datapipe(&interaction_expected_pipe);
 	free_datapipe(&tk_lock_pipe);
 	free_datapipe(&proximity_sensor_pipe);
 	free_datapipe(&ambient_light_sensor_pipe);
