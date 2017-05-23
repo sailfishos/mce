@@ -1029,27 +1029,28 @@ static mce_dbus_handler_t radiostates_dbus_handlers[] =
 {
 	/* signals - outbound (for Introspect purposes only) */
 	{
-		.interface = MCE_SIGNAL_IF,
-		.name      = MCE_RADIO_STATES_SIG,
-		.type      = DBUS_MESSAGE_TYPE_SIGNAL,
-		.args      =
+		.interface  = MCE_SIGNAL_IF,
+		.name       = MCE_RADIO_STATES_SIG,
+		.type       = DBUS_MESSAGE_TYPE_SIGNAL,
+		.args       =
 			"    <arg name=\"radio_states\" type=\"u\"/>\n"
 	},
 	/* method calls */
 	{
-		.interface = MCE_REQUEST_IF,
-		.name      = MCE_RADIO_STATES_GET,
-		.type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
-		.callback  = get_radio_states_dbus_cb,
-		.args      =
+		.interface  = MCE_REQUEST_IF,
+		.name       = MCE_RADIO_STATES_GET,
+		.type       = DBUS_MESSAGE_TYPE_METHOD_CALL,
+		.callback   = get_radio_states_dbus_cb,
+		.args       =
 			"    <arg direction=\"out\" name=\"radio_states\" type=\"u\"/>\n"
 	},
 	{
-		.interface = MCE_REQUEST_IF,
-		.name      = MCE_RADIO_STATES_CHANGE_REQ,
-		.type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
-		.callback  = req_radio_states_change_dbus_cb,
-		.args      =
+		.interface  = MCE_REQUEST_IF,
+		.name       = MCE_RADIO_STATES_CHANGE_REQ,
+		.type       = DBUS_MESSAGE_TYPE_METHOD_CALL,
+		.callback   = req_radio_states_change_dbus_cb,
+		.privileged = true,
+		.args       =
 			"    <arg direction=\"in\" name=\"radio_states\" type=\"u\"/>\n"
 			"    <arg direction=\"in\" name=\"states_to_chage\" type=\"u\"/>\n"
 	},
