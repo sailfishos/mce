@@ -242,10 +242,15 @@ static gboolean xmce_ipc_va(const gchar *const name, DBusMessage **reply,
 static gboolean xmce_ipc_no_reply(const gchar *const name,
                                   int arg_type, ...)
 {
+        DBusMessage *reply = 0;
+
         va_list va;
         va_start(va, arg_type);
-        gboolean ack = xmce_ipc_va(name, 0, arg_type, va);
+        gboolean ack = xmce_ipc_va(name, &reply, arg_type, va);
         va_end(va);
+
+        if( reply )
+                dbus_message_unref(reply);
         return ack;
 }
 
