@@ -180,9 +180,6 @@ char *mce_dbus_message_iter_repr(DBusMessageIter *iter);
 const char *mce_dbus_get_name_owner_ident(const char *name);
 const char *mce_dbus_get_message_sender_ident(DBusMessage *msg);
 
-typedef void (*mce_dbus_pid_notify_t)(const char *name, int pid);
-void mce_dbus_get_pid_async(const char *name, mce_dbus_pid_notify_t cb);
-
 const char *mce_dbus_nameowner_get(const char *name);
 
 void mce_dbus_pending_call_blocks_suspend(DBusPendingCall *pc);
