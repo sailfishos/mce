@@ -30,19 +30,476 @@
 
 #include "systemui/dbus-names.h"
 
+#include <sys/types.h>
+#include <sys/stat.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
 #include <fcntl.h>
 #include <dlfcn.h>
+#include <grp.h>
+#include <pwd.h>
 
 #include <dbus/dbus-glib-lowlevel.h>
 
 #include <mce/dbus-names.h>
 
+/* ========================================================================= *
+ * TYPES & CONSTANTS
+ * ========================================================================= */
+
 /** How long to block late suspend when mce is sending dbus messages */
 #define MCE_DBUS_SEND_SUSPEND_BLOCK_MS 1000
+
+/** Placeholder value for invalid/unknown process id */
+#define PEERINFO_NO_PID ((pid_t)-1)
+
+/** Placeholder value for invalid/unknown user id */
+#define PEERINFO_NO_UID ((uid_t)-1)
+
+/** Placeholder value for invalid/unknown group id */
+#define PEERINFO_NO_GID ((gid_t)-1)
+
+/** Root user id */
+#define PEERINFO_ROOT_UID ((uid_t)0)
+
+/** Root group id */
+#define PEERINFO_ROOT_GID ((gid_t)0)
+
+/** D-Bus handler callback function */
+typedef gboolean (*handler_callback_t)(DBusMessage *const msg);
+
+/** D-Bus handler structure */
+typedef struct
+{
+    handler_callback_t  callback;   /**< Handler callback */
+    gchar              *sender;     /**< Service name to match */
+    gchar              *interface;  /**< The interface to listen on */
+    gchar              *rules;      /**< Additional matching rules */
+    gchar              *name;       /**< Method call or signal name */
+    gchar              *args;       /**< Introspect XML data */
+    int                 type;       /**< DBUS_MESSAGE_TYPE */
+    bool                privileged; /**< Allowed for privileged users only */
+} handler_struct_t;
+
+/** Notification details for async pid query handling */
+typedef struct mce_dbus_pid_query_t mce_dbus_pid_query_t;
+
+struct mce_dbus_pid_query_t
+{
+    gchar                 *name;
+    mce_dbus_pid_notify_t  notify;
+};
+
+/** D-Bus peer identity/availability tracking state */
+typedef enum
+{
+    /** Freshly created */
+    PEERSTATE_INITIAL,
+
+    /** Doing org.freedesktop.DBus.GetNameOwner */
+    PEERSTATE_QUERY_OWNER,
+
+    /** org.freedesktop.DBus.GetConnectionUnixProcessID */
+    PEERSTATE_QUERY_PID,
+
+    /** Owner known and available on D-Bus */
+    PEERSTATE_RUNNING,
+
+    /** Owner known, but no longer available on D-Bus
+     *
+     * The peer info is retained briefly so that it is still
+     * available when for example logging client cleanup actions.
+     */
+    PEERSTATE_STALE,
+
+    /** There is no known owner for the name
+     *
+     * Object info related to private bus names is expunged.
+     */
+    PEERSTATE_STOPPED,
+
+    /** Final state when tracking object is about to be deleted */
+    PEERSTATE_DELETED,
+} peerstate_t;
+
+/** Possible values for "privileged" peer checks */
+typedef enum
+{
+    /** Client/service is not available / details are not known yet */
+    PRIVILEGED_UNKNOWN = -1,
+
+    /** Client/service is on D-Bus and it is not a privileged process */
+    PRIVILEGED_NO,
+
+    /** Client/service is on D-Bus and it is a privileged process */
+    PRIVILEGED_YES,
+} privileged_t;
+
+/** Cached D-Bus peer details */
+typedef struct peerinfo_t peerinfo_t;
+
+/** Notification details for client exit tracking */
+typedef struct peerquit_t peerquit_t;
+
+/** Callback function type for notifying client exits */
+typedef gboolean  (*peerquit_fn)(DBusMessage *const msg);
+
+struct peerquit_t
+{
+    peerinfo_t *pq_peerinfo;
+    peerquit_fn pq_callback;
+};
+
+struct peerinfo_t
+{
+    /** Availability / property query IPC state */
+    peerstate_t      pi_state;
+
+    /** D-Bus name to track */
+    gchar           *pi_name;
+
+    /** Unique bus name of the name owner */
+    gchar           *pi_owner_name;
+
+    /** Signal match that has been sent to D-Bus daemon */
+    gchar           *pi_rule;
+
+    /** Process id of the D-Bus name owner */
+    pid_t            pi_owner_pid;
+
+    /** Cached effective user id of the D-Bus name owner */
+    uid_t            pi_owner_uid;
+
+    /** Cached effective group id of the D-Bus name owner */
+    gid_t            pi_owner_gid;
+
+    /** Cached command line of the Bus name owner */
+    gchar           *pi_owner_cmd;
+
+    /** Optional datapipe to use for service availability signaling */
+    datapipe_struct *pi_datapipe;
+
+    /** Client exit notifications for this D-Bus name */
+    GQueue           pi_quit_callbacks; // -> peerquit_t *
+
+    /** Queue of privileged method calls waiting for peer details */
+    GQueue           pi_priv_methods; // -> DBusMessage *
+
+    /** Pending org.freedesktop.DBus.GetNameOwner method call */
+    DBusPendingCall *pi_name_owner_pc;
+
+    /** Pending org.freedesktop.DBus.GetConnectionUnixProcessID method call */
+    DBusPendingCall *pi_name_pid_pc;
+
+    /** Timer for delayed PEERSTATE_STALE -> PEERSTATE_STOPPED transition */
+    guint            pi_expunge_id;
+
+    /** Timer for delayed PEERSTATE_STOPPED -> PEERSTATE_DELETED transition */
+    guint            pi_delete_id;
+
+    /** Fixed size buffer for providing peer details for debugging purposes */
+    char             pi_repr[128];
+};
+
+/* ========================================================================= *
+ * FUNCTIONALITY
+ * ========================================================================= */
+
+/* ------------------------------------------------------------------------- *
+ * SUSPEND_PROOFING
+ * ------------------------------------------------------------------------- */
+
+static void               mdb_callgate_detach_cb               (void *aptr);
+static void               mdb_callgate_attach                  (DBusPendingCall *pc);
+void                      mce_dbus_pending_call_blocks_suspend (DBusPendingCall *pc);
+
+/* ------------------------------------------------------------------------- *
+ * DEBUG_HELPERS
+ * ------------------------------------------------------------------------- */
+
+static dbus_bool_t        mce_dbus_message_repr_any            (FILE *file, DBusMessageIter *iter);
+char                     *mce_dbus_message_iter_repr           (DBusMessageIter *iter);
+char                     *mce_dbus_message_repr                (DBusMessage *const msg);
+
+/* ------------------------------------------------------------------------- *
+ * HANDLER_STRUCT_T
+ * ------------------------------------------------------------------------- */
+
+static inline void        handler_struct_set_sender            (handler_struct_t *self, const char *val);
+static inline void        handler_struct_set_type              (handler_struct_t *self, int val);
+static inline void        handler_struct_set_interface         (handler_struct_t *self, const char *val);
+static inline void        handler_struct_set_args              (handler_struct_t *self, const char *val);
+static inline void        handler_struct_set_name              (handler_struct_t *self, const char *val);
+static inline void        handler_struct_set_rules             (handler_struct_t *self, const char *val);
+static inline void        handler_struct_set_callback          (handler_struct_t *self, handler_callback_t val);
+static inline void        handler_struct_set_privileged        (handler_struct_t *self, bool val);
+
+static void               handler_struct_delete                (handler_struct_t *self);
+static handler_struct_t  *handler_struct_create                (void);
+
+/* ------------------------------------------------------------------------- *
+ * PEERSTATE_T
+ * ------------------------------------------------------------------------- */
+
+static const char       *peerstate_repr                        (peerstate_t state);
+
+/* ------------------------------------------------------------------------- *
+ * PEERQUIT_T
+ * ------------------------------------------------------------------------- */
+
+static peerquit_t       *peerquit_create                       (peerinfo_t *parent, peerquit_fn callback);
+static void              peerquit_delete                       (peerquit_t *self);
+
+static void              peerquit_notify                       (peerquit_t *self, DBusMessage *msg);
+
+/* ------------------------------------------------------------------------- *
+ * PEERINFO_T
+ * ------------------------------------------------------------------------- */
+
+static gchar            *peerinfo_guess_cmd                    (pid_t pid);
+
+static inline void       peerinfo_ctor                         (peerinfo_t *self, const char *name);
+static inline void       peerinfo_dtor                         (peerinfo_t *self);
+peerinfo_t              *peerinfo_create                       (const char *name);
+void                     peerinfo_delete                       (peerinfo_t *self);
+void                     peerinfo_delete_cb                    (void *self);
+
+static void              peerinfo_enter_state                  (peerinfo_t *self);
+static void              peerinfo_leave_state                  (peerinfo_t *self);
+static void              peerinfo_set_state                    (peerinfo_t *self, peerstate_t state);
+static peerstate_t       peerinfo_get_state                    (const peerinfo_t *self);
+
+const char              *peerinfo_repr                         (peerinfo_t *self);
+static const char       *peerinfo_name                         (const peerinfo_t *self);
+static const char       *peerinfo_get_owner_name               (const peerinfo_t *self);
+static void              peerinfo_set_owner_name               (peerinfo_t *self, const char *name);
+static pid_t             peerinfo_get_owner_pid                (const peerinfo_t *self);
+static void              peerinfo_set_owner_pid                (peerinfo_t *self, pid_t pid);
+static uid_t             peerinfo_get_owner_uid                (const peerinfo_t *self);
+static void              peerinfo_set_owner_uid                (peerinfo_t *self, uid_t uid);
+static gid_t             peerinfo_get_owner_gid                (const peerinfo_t *self);
+static void              peerinfo_set_owner_gid                (peerinfo_t *self, gid_t gid);
+static const char       *peerinfo_get_owner_cmd                (const peerinfo_t *self);
+static void              peerinfo_set_owner_cmd                (peerinfo_t *self, const char *cmd);
+static privileged_t      peerinfo_get_privileged               (const peerinfo_t *self, bool no_caching);
+static void              peerinfo_set_datapipe                 (peerinfo_t *self, datapipe_struct *datapipe);
+
+static void              peerinfo_query_owner_ign              (peerinfo_t *self);
+static void              peerinfo_query_owner_rsp              (DBusPendingCall *pc, void *aptr);
+static void              peerinfo_query_owner_req              (peerinfo_t *self);
+
+static void              peerinfo_query_pid_ign                (peerinfo_t *self);
+static void              peerinfo_query_pid_rsp                (DBusPendingCall *pc, void *aptr);
+static void              peerinfo_query_pid_req                (peerinfo_t *self);
+
+static void              peerinfo_query_expunge_ign            (peerinfo_t *self);
+static gboolean          peerinfo_query_expunge_tmo            (gpointer aptr);
+static void              peerinfo_query_expunge_req            (peerinfo_t *self);
+
+static void              peerinfo_query_delete_ign             (peerinfo_t *self);
+static gboolean          peerinfo_query_delete_tmo             (gpointer aptr);
+static void              peerinfo_query_delete_req             (peerinfo_t *self);
+
+static peerquit_t       *peerinfo_add_quit_callback            (peerinfo_t *self, peerquit_fn callback);
+static void              peerinfo_remove_quit_callback         (peerinfo_t *self, peerquit_t *quit);
+static void              peerinfo_execute_quit_callbacks       (peerinfo_t *self);
+static void              peerinfo_flush_quit_callbacks         (peerinfo_t *self);
+
+static void              peerinfo_queue_method                 (peerinfo_t *self, DBusMessage *req);
+static void              peerinfo_flush_methods                (peerinfo_t *self);
+static void              peerinfo_handle_methods               (peerinfo_t *self);
+
+/* ------------------------------------------------------------------------- *
+ * PEER_TRACKING
+ * ------------------------------------------------------------------------- */
+
+static DBusHandlerResult mce_dbus_peerinfo_filter_cb           (DBusConnection *con, DBusMessage *msg, void *user_data);
+static void              mce_dbus_init_peerinfo                (void);
+static void              mce_dbus_quit_peerinfo                (void);
+peerinfo_t              *mce_dbus_get_peerinfo                 (const char *name);
+peerinfo_t              *mce_dbus_add_peerinfo                 (const char *name);
+void                     mce_dbus_update_peerinfo              (const char *name, const char *owner);
+void                     mce_dbus_del_peerinfo                 (const char *name);
+const char              *mce_dbus_get_peerdesc                 (const char *name);
+
+/* ------------------------------------------------------------------------- *
+ * MESSAGE_SENDING
+ * ------------------------------------------------------------------------- */
+
+DBusConnection          *dbus_connection_get                   (void);
+DBusMessage             *dbus_new_signal                       (const gchar *const path, const gchar *const interface, const gchar *const name);
+static DBusMessage      *dbus_new_error                        (DBusMessage *req, const char *err, const char *fmt, ...);
+DBusMessage             *dbus_new_method_call                  (const gchar *const service, const gchar *const path, const gchar *const interface, const gchar *const name);
+DBusMessage             *dbus_new_method_reply                 (DBusMessage *const message);
+gboolean                 dbus_send_message                     (DBusMessage *const msg);
+static gboolean          dbus_send_message_with_reply_handler  (DBusMessage *const msg, DBusPendingCallNotifyFunction callback, int timeout, void *user_data, DBusFreeFunction user_free, DBusPendingCall **ppc);
+static gboolean          dbus_send_va                          (const char *service, const char *path, const char *interface, const char *name, DBusPendingCallNotifyFunction callback, int timeout, void *user_data, DBusFreeFunction user_free, DBusPendingCall **ppc, int first_arg_type, va_list va);
+gboolean                 dbus_send_ex                          (const char *service, const char *path, const char *interface, const char *name, DBusPendingCallNotifyFunction callback, void *user_data, DBusFreeFunction user_free, DBusPendingCall **ppc, int first_arg_type, ...);
+gboolean                 dbus_send_ex2                         (const char *service, const char *path, const char *interface, const char *name, DBusPendingCallNotifyFunction callback, int timeout, void *user_data, DBusFreeFunction user_free, DBusPendingCall **ppc, int first_arg_type, ...);
+gboolean                 dbus_send                             (const gchar *const service, const gchar *const path, const gchar *const interface, const gchar *const name, DBusPendingCallNotifyFunction callback, int first_arg_type, ...);
+
+/* ------------------------------------------------------------------------- *
+ * METHOD_CALL_HANDLERS
+ * ------------------------------------------------------------------------- */
+
+static gboolean          version_get_dbus_cb                   (DBusMessage *const msg);
+static gboolean          suspend_stats_get_dbus_cb             (DBusMessage *const req);
+static gboolean          verbosity_get_dbus_cb                 (DBusMessage *const req);
+static gboolean          config_get_dbus_cb                    (DBusMessage *const msg);
+static gboolean          verbosity_set_dbus_cb                 (DBusMessage *const req);
+static gboolean          config_get_all_dbus_cb                (DBusMessage *const req);
+static gboolean          config_reset_dbus_cb                  (DBusMessage *const msg);
+static gboolean          config_set_dbus_cb                    (DBusMessage *const msg);
+static gboolean          introspect_dbus_cb                    (DBusMessage *const req);
+
+/* ------------------------------------------------------------------------- *
+ * CONFIG_VALUES
+ * ------------------------------------------------------------------------- */
+
+static const char      **string_array_from_gconf_value         (GConfValue *conf, int *pcount);
+static dbus_int32_t     *int_array_from_gconf_value            (GConfValue *conf, int *pcount);
+static dbus_bool_t      *bool_array_from_gconf_value           (GConfValue *conf, int *pcount);
+static double           *float_array_from_gconf_value          (GConfValue *conf, int *pcount);
+static const char       *type_signature                        (GConfValueType type);
+static const char       *value_signature                       (GConfValue *conf);
+static bool              append_gconf_value_to_dbus_iterator   (DBusMessageIter *iter, GConfValue *conf);
+static bool              append_gconf_entry_to_dbus_iterator   (DBusMessageIter *iter, GConfEntry *entry);
+static bool              append_gconf_entries_to_dbus_iterator (DBusMessageIter *iter, GSList *entries);
+static bool              append_gconf_value_to_dbus_message    (DBusMessage *reply, GConfValue *conf);
+void                     mce_dbus_send_config_notification     (GConfEntry *entry);
+static void              value_list_free                       (GSList *list);
+static GSList           *value_list_from_string_array          (DBusMessageIter *iter);
+static GSList           *value_list_from_int_array             (DBusMessageIter *iter);
+static GSList           *value_list_from_bool_array            (DBusMessageIter *iter);
+static GSList           *value_list_from_float_array           (DBusMessageIter *iter);
+
+/* ------------------------------------------------------------------------- *
+ * MESSAGE_DISPATCH
+ * ------------------------------------------------------------------------- */
+
+static gboolean          check_rules                           (DBusMessage *const msg, const char *rules);
+static gchar            *mce_dbus_build_signal_match           (const gchar *sender, const gchar *interface, const gchar *name, const gchar *rules);
+static void              mce_dbus_squeeze_slist                (GSList **list);
+static bool              mce_dbus_match                        (const char *msg_val, const char *hnd_val);
+static DBusHandlerResult msg_handler                           (DBusConnection *const connection, DBusMessage *const msg, gpointer const user_data);
+static gconstpointer     mce_dbus_handler_add_ex               (const gchar *const sender, const gchar *const interface, const gchar *const name, const gchar *const args, const gchar *const rules, const guint type, gboolean (*callback)(DBusMessage *const msg), bool privileged);
+static void              mce_dbus_handler_remove               (gconstpointer cookie);
+static void              mce_dbus_handler_remove_cb            (gpointer handler, gpointer user_data);
+void                     mce_dbus_handler_register             (mce_dbus_handler_t *self);
+void                     mce_dbus_handler_unregister           (mce_dbus_handler_t *self);
+void                     mce_dbus_handler_register_array       (mce_dbus_handler_t *array);
+void                     mce_dbus_handler_unregister_array     (mce_dbus_handler_t *array);
+
+/* ------------------------------------------------------------------------- *
+ * OWNER_MONITORING
+ * ------------------------------------------------------------------------- */
+
+static peerquit_t       *find_monitored_service                (const gchar *service, GSList *monitor_list);
+gssize                   mce_dbus_owner_monitor_add            (const gchar *service, gboolean (*callback)(DBusMessage *const msg), GSList **monitor_list, gssize max_num);
+gssize                   mce_dbus_owner_monitor_remove         (const gchar *service, GSList **monitor_list);
+void                     mce_dbus_owner_monitor_remove_all     (GSList **monitor_list);
+
+/* ------------------------------------------------------------------------- *
+ * SERVICE_MANAGEMENT
+ * ------------------------------------------------------------------------- */
+
+static gboolean          dbus_acquire_services                 (void);
+static void              dbus_quit_message_handler             (void);
+static gboolean          dbus_init_message_handler             (void);
+
+/* ------------------------------------------------------------------------- *
+ * MESSAGE_ITER
+ * ------------------------------------------------------------------------- */
+
+const char              *mce_dbus_type_repr                    (int type);
+bool                     mce_dbus_iter_at_end                  (DBusMessageIter *iter);
+static bool              mce_dbus_iter_req_type                (DBusMessageIter *iter, int want);
+static bool              mce_dbus_iter_get_basic               (DBusMessageIter *iter, void *pval, int type);
+bool                     mce_dbus_iter_get_object              (DBusMessageIter *iter, const char **pval);
+bool                     mce_dbus_iter_get_string              (DBusMessageIter *iter, const char **pval);
+bool                     mce_dbus_iter_get_bool                (DBusMessageIter *iter, bool *pval);
+bool                     mce_dbus_iter_get_int32               (DBusMessageIter *iter, dbus_int32_t *pval);
+bool                     mce_dbus_iter_get_uint32              (DBusMessageIter *iter, dbus_uint32_t *pval);
+static bool              mce_dbus_iter_get_container           (DBusMessageIter *iter, DBusMessageIter *sub, int type);
+bool                     mce_dbus_iter_get_array               (DBusMessageIter *iter, DBusMessageIter *sub);
+bool                     mce_dbus_iter_get_struct              (DBusMessageIter *iter, DBusMessageIter *sub);
+bool                     mce_dbus_iter_get_entry               (DBusMessageIter *iter, DBusMessageIter *sub);
+bool                     mce_dbus_iter_get_variant             (DBusMessageIter *iter, DBusMessageIter *sub);
+
+/* ------------------------------------------------------------------------- *
+ * PEER_IDENTITY
+ * ------------------------------------------------------------------------- */
+
+const char              *mce_dbus_get_name_owner_ident         (const char *name);
+const char              *mce_dbus_get_message_sender_ident     (DBusMessage *msg);
+
+/* ------------------------------------------------------------------------- *
+ * ASYNC_PID_QUERY
+ * ------------------------------------------------------------------------- */
+
+static mce_dbus_pid_query_t *mce_dbus_pid_query_create         (const char *name, mce_dbus_pid_notify_t cb);
+static void                  mce_dbus_pid_query_delete         (mce_dbus_pid_query_t *self);
+static void                  mce_dbus_pid_query_delete_cb      (gpointer self);
+static void                  mce_dbus_pid_query_notify         (const mce_dbus_pid_query_t *self, int pid);
+static void                  mce_dbus_get_pid_async_cb         (DBusPendingCall *pc, void *aptr);
+void                         mce_dbus_get_pid_async            (const char *name, mce_dbus_pid_notify_t cb);
+
+/* ------------------------------------------------------------------------- *
+ * INTROSPECT_SUPPORT
+ * ------------------------------------------------------------------------- */
+
+static void              introspect_add_methods                (FILE *file, const char *interface);
+static void              introspect_add_signals                (FILE *file, const char *interface);
+static void              introspect_add_defaults               (FILE *file);
+static void              introspect_com_nokia_mce_request      (FILE *file);
+static void              introspect_com_nokia_mce_signal       (FILE *file);
+static void              introspect_com_nokia_mce              (FILE *file);
+static void              introspect_com_nokia                  (FILE *file);
+static void              introspect_com                        (FILE *file);
+static void              introspect_root                       (FILE *file);
+static bool              introspectable_signal                 (const char *interface, const char *member);
+
+/* ------------------------------------------------------------------------- *
+ * DBUS_NAME_OWNER_TRACKING
+ * ------------------------------------------------------------------------- */
+
+const char              *mce_dbus_nameowner_get                (const char *name);
+static char             *mce_dbus_nameowner_watch              (const char *name);
+static void              mce_dbus_nameowner_unwatch            (char *rule);
+
+/* ------------------------------------------------------------------------- *
+ * MODULE_INIT_QUIT
+ * ------------------------------------------------------------------------- */
+
+DBusConnection          *dbus_bus_get                          (DBusBusType type, DBusError *err);
+DBusConnection          *dbus_bus_get_private                  (DBusBusType type, DBusError *err);
+static void              mce_dbus_init_privileged_uid          (void);
+static void              mce_dbus_init_privileged_gid          (void);
+gboolean                 mce_dbus_init                         (const gboolean systembus);
+void                     mce_dbus_exit                         (void);
+
+/* ========================================================================= *
+ * DATA
+ * ========================================================================= */
+
+/** Pointer to the DBusConnection */
+static DBusConnection *dbus_connection = NULL;
+
+/** List of all D-Bus handlers */
+static GSList *dbus_handlers = NULL; // -> handler_struct_t *
+
+/** Cached UID for "privileged" user; assume root only */
+static uid_t mce_dbus_privileged_uid = PEERINFO_ROOT_UID;
+
+/** Cached GID for "privileged" group; assume root only */
+static gid_t mce_dbus_privileged_gid = PEERINFO_ROOT_GID;
+
+/* ========================================================================= *
+ * SUSPEND_PROOFING
+ * ========================================================================= */
 
 /** Pending call callgate slot destry callback function
  *
@@ -116,7 +573,9 @@ void mce_dbus_pending_call_blocks_suspend(DBusPendingCall *pc)
 	mdb_callgate_attach(pc);
 }
 
-static bool introspectable_signal(const char *interface, const char *member);
+/* ========================================================================= *
+ * DEBUG_HELPERS
+ * ========================================================================= */
 
 /** Emit one iterm from dbus message iterator to file
  *
@@ -279,26 +738,9 @@ EXIT:
 	return data;
 }
 
-/** Pointer to the DBusConnection */
-static DBusConnection *dbus_connection = NULL;
-
-/** List of all D-Bus handlers */
-static GSList *dbus_handlers = NULL;
-
-/** D-Bus handler callback function */
-typedef gboolean (*handler_callback_t)(DBusMessage *const msg);
-
-/** D-Bus handler structure */
-typedef struct
-{
-	handler_callback_t  callback;   /**< Handler callback */
-	gchar              *sender;     /**< Service name to match */
-	gchar              *interface;  /**< The interface to listen on */
-	gchar              *rules;      /**< Additional matching rules */
-	gchar              *name;       /**< Method call or signal name */
-	gchar              *args;       /**< Introspect XML data */
-	int                 type;       /**< DBUS_MESSAGE_TYPE */
-} handler_struct_t;
+/* ========================================================================= *
+ * HANDLER_STRUCT_T
+ * ========================================================================= */
 
 /** Set sender for D-Bus handler structure */
 static inline void handler_struct_set_sender(handler_struct_t *self, const char *val)
@@ -343,6 +785,12 @@ static inline void handler_struct_set_callback(handler_struct_t *self,
 	self->callback = val;
 }
 
+/** Set privileged requirement for D-Bus handler structure */
+static inline void handler_struct_set_privileged(handler_struct_t *self, bool val)
+{
+	self->privileged = val;
+}
+
 /** Release D-Bus handler structure */
 static void handler_struct_delete(handler_struct_t *self)
 {
@@ -365,14 +813,1176 @@ static handler_struct_t *handler_struct_create(void)
 {
 	handler_struct_t *self = g_malloc0(sizeof *self);
 
-	self->sender    = 0;
-	self->interface = 0;
-	self->rules     = 0;
-	self->name      = 0;
-	self->args      = 0;
-	self->type      = DBUS_MESSAGE_TYPE_INVALID;
+	self->sender     = 0;
+	self->interface  = 0;
+	self->rules      = 0;
+	self->name       = 0;
+	self->args       = 0;
+	self->type       = DBUS_MESSAGE_TYPE_INVALID;
+	self->privileged = false;
+
 	return self;
 }
+
+/* ========================================================================= *
+ * PEERSTATE_T
+ * ========================================================================= */
+
+static const char *
+peerstate_repr(peerstate_t state)
+{
+    const char *repr = "PEERSTATE_INVALID";
+
+    switch( state ) {
+    case PEERSTATE_INITIAL:       repr = "PEERSTATE_INITIAL";     break;
+    case PEERSTATE_QUERY_OWNER:   repr = "PEERSTATE_QUERY_OWNER"; break;
+    case PEERSTATE_QUERY_PID:     repr = "PEERSTATE_QUERY_PID";   break;
+    case PEERSTATE_RUNNING:       repr = "PEERSTATE_RUNNING";     break;
+    case PEERSTATE_STALE:         repr = "PEERSTATE_STALE";       break;
+    case PEERSTATE_STOPPED:       repr = "PEERSTATE_STOPPED";     break;
+    case PEERSTATE_DELETED:       repr = "PEERSTATE_DELETED";     break;
+    default: break;
+    }
+
+    return repr;
+}
+
+/* ========================================================================= *
+ * PEERQUIT_T
+ * ========================================================================= */
+
+static peerquit_t *
+peerquit_create(peerinfo_t *parent, peerquit_fn callback)
+{
+    peerquit_t *self = g_malloc0(sizeof *self);
+
+    self->pq_peerinfo = parent;
+    self->pq_callback = callback;
+
+    mce_log(LL_DEBUG, "create quit notify: %s -> %p",
+	    peerinfo_name(self->pq_peerinfo),
+	    self->pq_callback);
+
+    return self;
+}
+
+static void
+peerquit_delete(peerquit_t *self)
+{
+    if( self )
+    {
+	mce_log(LL_DEBUG, "delete quit notify: %s -> %p",
+		peerinfo_name(self->pq_peerinfo),
+		self->pq_callback);
+
+	g_free(self);
+    }
+}
+
+static void
+peerquit_notify(peerquit_t *self, DBusMessage *msg)
+{
+    mce_log(LL_DEBUG, "execute quit notify: %s -> %p",
+	    peerinfo_name(self->pq_peerinfo),
+	    self->pq_callback);
+    self->pq_callback(msg);
+}
+
+/* ========================================================================= *
+ * PEERINFO_T
+ * ========================================================================= */
+
+/* ------------------------------------------------------------------------- *
+ * misc helpers
+ * ------------------------------------------------------------------------- */
+
+static gchar *
+peerinfo_guess_cmd(pid_t pid)
+{
+    gchar *cmd  = 0;
+    int    file = -1;
+
+    char path[256];
+    unsigned char text[64];
+
+    snprintf(path, sizeof path, "/proc/%d/cmdline", (int)pid);
+    if( (file = open(path, O_RDONLY)) == -1 ) {
+	mce_log(LL_ERR, "%s: open: %m", path);
+	goto EXIT;
+    }
+
+    int n = read(file, text, sizeof text - 1);
+    if( n == -1 ) {
+	mce_log(LL_ERR, "%s: read: %m", path);
+	goto EXIT;
+    }
+    text[n] = 0;
+
+    for( int i = 0; i < n; ++i ) {
+	if( text[i] < 32 )
+	    text[i] = ' ';
+    }
+
+    cmd = g_strdup((char *)text);
+
+EXIT:
+    if( file != -1 ) close(file);
+
+    return cmd;
+}
+
+/* ------------------------------------------------------------------------- *
+ * create / delete
+ * ------------------------------------------------------------------------- */
+
+static inline void
+peerinfo_ctor(peerinfo_t *self, const char *name)
+{
+    self->pi_state         = PEERSTATE_INITIAL;
+    self->pi_name          = g_strdup(name);
+    self->pi_owner_name    = 0;
+    self->pi_owner_pid     = PEERINFO_NO_PID;
+    self->pi_owner_uid     = PEERINFO_NO_UID;
+    self->pi_owner_gid     = PEERINFO_NO_GID;
+    self->pi_owner_cmd     = 0;
+    self->pi_datapipe      = 0;
+    self->pi_name_owner_pc = 0;
+    self->pi_name_pid_pc   = 0;
+    self->pi_expunge_id    = 0;
+    self->pi_delete_id     = 0;
+
+    g_queue_init(&self->pi_quit_callbacks);
+    g_queue_init(&self->pi_priv_methods);
+
+    mce_log(LL_DEBUG, "[%s] create", peerinfo_name(self));
+
+    self->pi_rule = mce_dbus_nameowner_watch(peerinfo_name(self));
+
+    peerinfo_set_state(self, PEERSTATE_QUERY_OWNER);
+}
+
+static inline void
+peerinfo_dtor(peerinfo_t *self)
+{
+    mce_log(LL_DEBUG, "[%s] delete", peerinfo_name(self));
+
+    mce_dbus_nameowner_unwatch(self->pi_rule),
+	self->pi_rule = 0;
+
+    peerinfo_flush_quit_callbacks(self);
+    g_queue_clear(&self->pi_quit_callbacks);
+
+    peerinfo_flush_methods(self);
+    g_queue_clear(&self->pi_priv_methods);
+
+    peerinfo_set_owner_name(self, 0);
+    peerinfo_set_owner_pid(self, PEERINFO_NO_PID);
+    peerinfo_set_owner_uid(self, PEERINFO_NO_UID);
+    peerinfo_set_owner_gid(self, PEERINFO_NO_GID);
+
+    peerinfo_query_owner_ign(self);
+    peerinfo_query_pid_ign(self);
+    peerinfo_query_expunge_ign(self);
+    peerinfo_query_delete_ign(self);
+
+    g_free(self->pi_name),
+	self->pi_name = 0;
+}
+
+peerinfo_t *
+peerinfo_create(const char *name)
+{
+    peerinfo_t *self = g_malloc0(sizeof *self);
+    peerinfo_ctor(self, name);
+    return self;
+}
+
+void
+peerinfo_delete(peerinfo_t *self)
+{
+    if( self != 0 )
+    {
+	peerinfo_dtor(self);
+	g_free(self);
+    }
+}
+
+void
+peerinfo_delete_cb(void *self)
+{
+    peerinfo_delete(self);
+}
+
+/* ------------------------------------------------------------------------- *
+ * state management
+ * ------------------------------------------------------------------------- */
+
+static void
+peerinfo_enter_state(peerinfo_t *self)
+{
+    switch( self->pi_state ) {
+    case PEERSTATE_INITIAL:
+	break;
+
+    case PEERSTATE_QUERY_OWNER:
+	if( *peerinfo_name(self) == ':' ) {
+	    peerinfo_set_owner_name(self, peerinfo_name(self));
+	    peerinfo_set_state(self, PEERSTATE_QUERY_PID);
+	}
+	else {
+	    peerinfo_query_owner_req(self);
+	}
+	break;
+
+    case PEERSTATE_QUERY_PID:
+	peerinfo_query_pid_req(self);
+	break;
+
+    case PEERSTATE_RUNNING:
+	if( self->pi_datapipe ) {
+	    execute_datapipe(self->pi_datapipe,
+			     GINT_TO_POINTER(SERVICE_STATE_RUNNING),
+			     USE_INDATA, CACHE_INDATA);
+	}
+	peerinfo_handle_methods(self);
+	break;
+
+    case PEERSTATE_STALE:
+	peerinfo_flush_methods(self);
+	peerinfo_execute_quit_callbacks(self);
+
+	peerinfo_query_expunge_req(self);
+
+	break;
+
+    case PEERSTATE_STOPPED:
+	peerinfo_flush_methods(self);
+	peerinfo_execute_quit_callbacks(self);
+
+	peerinfo_set_owner_name(self, "");
+	peerinfo_set_owner_pid(self, PEERINFO_NO_PID);
+	peerinfo_set_owner_uid(self, PEERINFO_NO_UID);
+	peerinfo_set_owner_gid(self, PEERINFO_NO_GID);
+
+	/* Private names do not come back, delete from cache */
+	if( *peerinfo_name(self) == ':' ) {
+	    peerinfo_set_state(self, PEERSTATE_DELETED);
+	}
+	break;
+
+    case PEERSTATE_DELETED:
+	peerinfo_query_delete_req(self);
+	break;
+
+    default:
+	mce_abort();
+    }
+}
+
+static void
+peerinfo_leave_state(peerinfo_t *self)
+{
+    switch( self->pi_state ) {
+    case PEERSTATE_INITIAL:
+	break;
+
+    case PEERSTATE_QUERY_OWNER:
+	peerinfo_query_owner_ign(self);
+	break;
+
+    case PEERSTATE_QUERY_PID:
+	peerinfo_query_pid_ign(self);
+	break;
+
+    case PEERSTATE_RUNNING:
+	if( self->pi_datapipe ) {
+	    execute_datapipe(self->pi_datapipe,
+			     GINT_TO_POINTER(SERVICE_STATE_STOPPED),
+			     USE_INDATA, CACHE_INDATA);
+	}
+	break;
+
+    case PEERSTATE_STALE:
+	peerinfo_query_expunge_ign(self);
+	break;
+
+    case PEERSTATE_STOPPED:
+	break;
+
+    case PEERSTATE_DELETED:
+	break;
+
+    default:
+	mce_abort();
+    }
+}
+
+static void
+peerinfo_set_state(peerinfo_t *self, peerstate_t state)
+{
+    if( self->pi_state == PEERSTATE_DELETED )
+	goto EXIT;
+
+    if( self->pi_state == state )
+	goto EXIT;
+
+    mce_log(LL_DEBUG, "[%s] state: %s -> %s",
+	    peerinfo_name(self),
+	    peerstate_repr(self->pi_state),
+	    peerstate_repr(state));
+
+    peerinfo_leave_state(self);
+    self->pi_state = state;
+    peerinfo_enter_state(self);
+
+EXIT:
+    return;
+}
+
+static peerstate_t
+peerinfo_get_state(const peerinfo_t *self)
+{
+    return self->pi_state;
+}
+
+/* ------------------------------------------------------------------------- *
+ * property accessors
+ * ------------------------------------------------------------------------- */
+
+const char *
+peerinfo_repr(peerinfo_t *self)
+{
+    const char *desc = 0;
+
+    if( !self )
+	goto EXIT;
+
+    snprintf(self->pi_repr, sizeof self->pi_repr,
+	     "name=%s owner=%s pid=%d uid=%d gid=%d priv=%d cmd=%s",
+	     peerinfo_name (self),
+	     peerinfo_get_owner_name(self) ?: "NULL",
+	     (int)peerinfo_get_owner_pid(self),
+	     (int)peerinfo_get_owner_uid(self),
+	     (int)peerinfo_get_owner_gid(self),
+	     peerinfo_get_privileged(self, false),
+	     peerinfo_get_owner_cmd(self) ?: "NULL");
+
+    desc = self->pi_repr;
+
+EXIT:
+    return desc;
+}
+
+static const char *
+peerinfo_name(const peerinfo_t *self)
+{
+    return self->pi_name;
+}
+
+static const char *
+peerinfo_get_owner_name(const peerinfo_t *self)
+{
+    return self->pi_owner_name;
+}
+
+static void
+peerinfo_set_owner_name(peerinfo_t *self, const char *name)
+{
+    if( !g_strcmp0(self->pi_owner_name, name) )
+	goto EXIT;
+
+    mce_log(LL_DEBUG, "[%s] owner name: %s -> %s",
+	    peerinfo_name(self),
+	    self->pi_owner_name ?: "NULL",
+	    name          ?: "NULL");
+
+    g_free(self->pi_owner_name),
+	self->pi_owner_name = name ? g_strdup(name) : 0;
+
+    if( self->pi_owner_name ) {
+	if( *self->pi_owner_name)
+	    peerinfo_set_state(self, PEERSTATE_QUERY_PID);
+	else
+	    peerinfo_set_state(self, PEERSTATE_STALE);
+    }
+
+EXIT:
+    return;
+}
+
+static pid_t
+peerinfo_get_owner_pid(const peerinfo_t *self)
+{
+    return self->pi_owner_pid;
+}
+
+static void
+peerinfo_set_owner_pid(peerinfo_t *self, pid_t pid)
+{
+    if( self->pi_owner_pid == pid )
+	goto EXIT;
+
+    mce_log(LL_DEBUG, "[%s] owner pid: %d -> %d",
+	    peerinfo_name(self),
+	    (int)self->pi_owner_pid,
+	    (int)pid);
+
+    self->pi_owner_pid = pid;
+
+    gchar *cmd = 0;
+    if( pid != PEERINFO_NO_PID )
+	cmd = peerinfo_guess_cmd(pid);
+    peerinfo_set_owner_cmd(self, cmd);
+    g_free(cmd);
+
+    if( pid != PEERINFO_NO_PID ) {
+	char path[256];
+	snprintf(path, sizeof path, "/proc/%d", (int)pid);
+
+	struct stat st;
+	memset(&st, 0, sizeof st);
+	if( stat(path, &st) == 0 ) {
+	    peerinfo_set_owner_uid(self, st.st_uid);
+	    peerinfo_set_owner_gid(self, st.st_gid);
+	}
+    }
+
+EXIT:
+    return;
+}
+
+static uid_t
+peerinfo_get_owner_uid(const peerinfo_t *self)
+{
+    return self->pi_owner_uid;
+}
+
+static void
+peerinfo_set_owner_uid(peerinfo_t *self, uid_t uid)
+{
+    if( self->pi_owner_uid == uid )
+	goto EXIT;
+
+    mce_log(LL_DEBUG, "[%s] owner uid: %d -> %d",
+	    peerinfo_name(self),
+	    (int)self->pi_owner_uid,
+	    (int)uid);
+
+    self->pi_owner_uid = uid;
+
+EXIT:
+    return;
+}
+
+static gid_t
+peerinfo_get_owner_gid(const peerinfo_t *self)
+{
+    return self->pi_owner_gid;
+}
+
+static void
+peerinfo_set_owner_gid(peerinfo_t *self, gid_t gid)
+{
+    if( self->pi_owner_gid == gid )
+	goto EXIT;
+
+    mce_log(LL_DEBUG, "[%s] owner gid: %d -> %d",
+	    peerinfo_name(self),
+	    (int)self->pi_owner_gid,
+	    (int)gid);
+
+    self->pi_owner_gid = gid;
+
+EXIT:
+    return;
+}
+
+static const char *
+peerinfo_get_owner_cmd(const peerinfo_t *self)
+{
+    return self->pi_owner_cmd;
+}
+
+static void
+peerinfo_set_owner_cmd(peerinfo_t *self, const char *cmd)
+{
+    if( !g_strcmp0(self->pi_owner_cmd, cmd) )
+	goto EXIT;
+
+    mce_log(LL_DEBUG, "[%s] owner cmd: %s -> %s",
+	    peerinfo_name(self),
+	    self->pi_owner_cmd ?: "NULL",
+	    cmd                ?: "NULL");
+
+    g_free(self->pi_owner_cmd),
+	self->pi_owner_cmd = cmd ? g_strdup(cmd) : 0;
+
+EXIT:
+    return;
+}
+
+static privileged_t
+peerinfo_get_privileged(const peerinfo_t *self, bool no_caching)
+{
+    privileged_t privileged = PRIVILEGED_NO;
+
+    if( !self )
+	goto EXIT;
+
+    pid_t pid = peerinfo_get_owner_pid(self);
+    if( pid == PEERINFO_NO_PID ) {
+	privileged = PRIVILEGED_UNKNOWN;
+	goto EXIT;
+    }
+
+    uid_t uid = PEERINFO_NO_UID;
+    gid_t gid = PEERINFO_NO_GID;
+
+    if( no_caching ) {
+
+	/* The owner / group of /proc/PID directory reflects
+	 * the current euid / egid of the process. */
+
+	char path[256];
+	struct stat st;
+
+	memset(&st, 0, sizeof st);
+	snprintf(path, sizeof path, "/proc/%d", (int)pid);
+
+	if( stat(path, &st) == -1 )
+	    goto EXIT;
+
+	uid = st.st_uid;
+	gid = st.st_gid;
+    }
+    else {
+	uid = peerinfo_get_owner_uid(self);
+	gid = peerinfo_get_owner_gid(self);
+    }
+
+    if( uid == PEERINFO_ROOT_UID ||
+	uid == mce_dbus_privileged_uid ||
+	gid == mce_dbus_privileged_gid ) {
+	privileged = PRIVILEGED_YES;
+    }
+
+EXIT:
+    return privileged;
+}
+
+static void
+peerinfo_set_datapipe(peerinfo_t *self, datapipe_struct *datapipe)
+{
+    mce_log(LL_DEBUG, "[%s] datapipe: %p -> %p",
+	    peerinfo_name(self),
+	    self->pi_datapipe,
+	    datapipe);
+
+    if( (self->pi_datapipe = datapipe) ) {
+	if( peerinfo_get_state(self) == PEERSTATE_RUNNING ) {
+	    execute_datapipe(self->pi_datapipe,
+			     GINT_TO_POINTER(SERVICE_STATE_RUNNING),
+			     USE_INDATA, CACHE_INDATA);
+	}
+    }
+}
+
+/* ------------------------------------------------------------------------- *
+ * async owner name query
+ * ------------------------------------------------------------------------- */
+
+static void
+peerinfo_query_owner_ign(peerinfo_t *self)
+{
+    if( !self->pi_name_owner_pc )
+	goto EXIT;
+
+    mce_log(LL_DEBUG, "[%s] owner query canceled", peerinfo_name(self));
+
+    dbus_pending_call_cancel(self->pi_name_owner_pc);
+    dbus_pending_call_unref(self->pi_name_owner_pc),
+	self->pi_name_owner_pc = 0;
+
+EXIT:
+    return;
+}
+
+static void
+peerinfo_query_owner_rsp(DBusPendingCall *pc, void *aptr)
+{
+    peerinfo_t  *self  = aptr;
+    const char  *owner = 0;
+    DBusMessage *rsp   = 0;
+    DBusError    err   = DBUS_ERROR_INIT;
+
+    mce_log(LL_DEBUG, "[%s] owner query replied", peerinfo_name(self));
+
+    if( self->pi_name_owner_pc != pc )
+	goto EXIT;
+
+    dbus_pending_call_unref(self->pi_name_owner_pc),
+	self->pi_name_owner_pc = 0;
+
+    if( !(rsp = dbus_pending_call_steal_reply(pc)) )
+	goto EXIT;
+
+    if( dbus_set_error_from_message(&err, rsp) ||
+	!dbus_message_get_args(rsp, &err,
+			       DBUS_TYPE_STRING, &owner,
+			       DBUS_TYPE_INVALID) )
+    {
+	if( strcmp(err.name, DBUS_ERROR_NAME_HAS_NO_OWNER) ) {
+	    mce_log(LL_WARN, "%s: %s", err.name, err.message);
+	}
+    }
+
+    if( owner ) {
+	peerinfo_set_owner_name(self, owner);
+    }
+    else {
+	peerinfo_set_state(self, PEERSTATE_STALE);
+    }
+
+EXIT:
+    if( rsp ) dbus_message_unref(rsp);
+    dbus_error_free(&err);
+}
+
+static void
+peerinfo_query_owner_req(peerinfo_t *self)
+{
+    if( peerinfo_get_state(self) != PEERSTATE_QUERY_OWNER )
+	goto EXIT;
+
+    if( self->pi_name_owner_pc )
+	goto EXIT;
+
+    mce_log(LL_DEBUG, "[%s] owner query ...", peerinfo_name(self));
+
+    const char *name = peerinfo_name(self);
+
+    dbus_send_ex(DBUS_SERVICE_DBUS,
+		 DBUS_PATH_DBUS,
+		 DBUS_INTERFACE_DBUS,
+		 "GetNameOwner",
+		 peerinfo_query_owner_rsp,
+		 self, 0,
+		 &self->pi_name_owner_pc,
+		 DBUS_TYPE_STRING, &name,
+		 DBUS_TYPE_INVALID);
+
+EXIT:
+    return;
+}
+
+/* ------------------------------------------------------------------------- *
+ * async owner pid query
+ * ------------------------------------------------------------------------- */
+
+static void
+peerinfo_query_pid_ign(peerinfo_t *self)
+{
+    if( !self->pi_name_pid_pc )
+	goto EXIT;
+
+    mce_log(LL_DEBUG, "[%s] pid query canceled", peerinfo_name(self));
+
+    dbus_pending_call_cancel(self->pi_name_pid_pc);
+    dbus_pending_call_unref(self->pi_name_pid_pc),
+	self->pi_name_pid_pc = 0;
+
+EXIT:
+    return;
+}
+
+static void
+peerinfo_query_pid_rsp(DBusPendingCall *pc, void *aptr)
+{
+    peerinfo_t  *self  = aptr;
+    dbus_uint32_t pid  = 0;
+    DBusMessage *rsp   = 0;
+    DBusError    err   = DBUS_ERROR_INIT;
+
+    mce_log(LL_DEBUG, "[%s] pid query replied", peerinfo_name(self));
+
+    if( self->pi_name_pid_pc != pc )
+	goto EXIT;
+
+    dbus_pending_call_unref(self->pi_name_pid_pc),
+	self->pi_name_pid_pc = 0;
+
+    if( !(rsp = dbus_pending_call_steal_reply(pc)) )
+	goto EXIT;
+
+    if( dbus_set_error_from_message(&err, rsp) ||
+	!dbus_message_get_args(rsp, &err,
+			       DBUS_TYPE_UINT32, &pid,
+			       DBUS_TYPE_INVALID) )
+    {
+	mce_log(LL_WARN, "%s: %s", err.name, err.message);
+    }
+
+    if( pid ) {
+	peerinfo_set_owner_pid(self, pid);
+	peerinfo_set_state(self, PEERSTATE_RUNNING);
+
+	/* Make sure any previously logged ipc without process
+	 * details can be mapped to something useful when
+	 * debugging -> emit details now that we have them. */
+	mce_log(LL_DEVEL, "%s", peerinfo_repr(self));
+    }
+    else {
+	peerinfo_set_state(self, PEERSTATE_STALE);
+    }
+
+EXIT:
+    if( rsp ) dbus_message_unref(rsp);
+    dbus_error_free(&err);
+}
+
+static void
+peerinfo_query_pid_req(peerinfo_t *self)
+{
+    if( peerinfo_get_state(self) != PEERSTATE_QUERY_PID )
+	goto EXIT;
+
+    if( self->pi_name_pid_pc )
+	goto EXIT;
+
+    mce_log(LL_DEBUG, "[%s] pid query send", peerinfo_name(self));
+
+    const char *name = peerinfo_name(self);
+
+    dbus_send_ex(DBUS_SERVICE_DBUS,
+		 DBUS_PATH_DBUS,
+		 DBUS_INTERFACE_DBUS,
+		 "GetConnectionUnixProcessID",
+		 peerinfo_query_pid_rsp,
+		 self, 0,
+		 &self->pi_name_pid_pc,
+		 DBUS_TYPE_STRING, &name,
+		 DBUS_TYPE_INVALID);
+
+EXIT:
+    return;
+}
+
+/* ------------------------------------------------------------------------- *
+ * expunge timer
+ * ------------------------------------------------------------------------- */
+
+static void
+peerinfo_query_expunge_ign(peerinfo_t *self)
+{
+    if( !self->pi_expunge_id )
+	goto EXIT;
+
+    mce_log(LL_DEBUG, "[%s] expunge timer canceled", peerinfo_name(self));
+
+    g_source_remove(self->pi_expunge_id),
+	self->pi_expunge_id = 0;
+
+EXIT:
+    return;
+}
+
+static gboolean
+peerinfo_query_expunge_tmo(gpointer aptr)
+{
+    peerinfo_t  *self  = aptr;
+
+    mce_log(LL_DEBUG, "[%s] expunge timer triggered", peerinfo_name(self));
+
+    if( !self->pi_expunge_id )
+	goto EXIT;
+
+    self->pi_expunge_id = 0;
+
+    peerinfo_set_state(self, PEERSTATE_STOPPED);
+
+EXIT:
+    return FALSE;
+}
+
+static void
+peerinfo_query_expunge_req(peerinfo_t *self)
+{
+    if( peerinfo_get_state(self) != PEERSTATE_STALE )
+	goto EXIT;
+
+    if( self->pi_expunge_id )
+	goto EXIT;
+
+    mce_log(LL_DEBUG, "[%s] expunge timer scheduled", peerinfo_name(self));
+
+    self->pi_expunge_id = g_timeout_add(500,
+					peerinfo_query_expunge_tmo,
+					self);
+EXIT:
+    return;
+}
+
+/* ------------------------------------------------------------------------- *
+ * delete timer
+ * ------------------------------------------------------------------------- */
+
+static void
+peerinfo_query_delete_ign(peerinfo_t *self)
+{
+    if( !self->pi_delete_id )
+	goto EXIT;
+
+    mce_log(LL_DEBUG, "[%s] delete timer canceled", peerinfo_name(self));
+
+    g_source_remove(self->pi_delete_id),
+	self->pi_delete_id = 0;
+
+EXIT:
+    return;
+}
+
+static gboolean
+peerinfo_query_delete_tmo(gpointer aptr)
+{
+    peerinfo_t  *self  = aptr;
+
+    mce_log(LL_DEBUG, "[%s] delete timer triggered", peerinfo_name(self));
+
+    if( !self->pi_delete_id )
+	goto EXIT;
+
+    self->pi_delete_id = 0;
+
+    mce_dbus_del_peerinfo(peerinfo_name(self));
+
+EXIT:
+    return FALSE;
+}
+
+static void
+peerinfo_query_delete_req(peerinfo_t *self)
+{
+    if( peerinfo_get_state(self) != PEERSTATE_DELETED )
+	goto EXIT;
+
+    if( self->pi_delete_id )
+	goto EXIT;
+
+    mce_log(LL_DEBUG, "[%s] delete timer scheduled", peerinfo_name(self));
+
+    self->pi_delete_id = g_idle_add(peerinfo_query_delete_tmo, self);
+
+EXIT:
+
+    return;
+}
+
+/* ------------------------------------------------------------------------- *
+ * quit notifications
+ * ------------------------------------------------------------------------- */
+
+static peerquit_t *
+peerinfo_add_quit_callback(peerinfo_t *self, peerquit_fn callback)
+{
+    peerquit_t *quit = peerquit_create(self, callback);
+    g_queue_push_tail(&self->pi_quit_callbacks, quit);
+    return quit;
+}
+
+static void
+peerinfo_remove_quit_callback(peerinfo_t *self, peerquit_t *quit)
+{
+    if( g_queue_remove(&self->pi_quit_callbacks, quit) )
+	peerquit_delete(quit);
+}
+
+static void
+peerinfo_execute_quit_callbacks(peerinfo_t *self)
+{
+    const char  *name  = peerinfo_name(self);
+    const char  *owner = "";
+    DBusMessage *faked = 0;
+
+    peerquit_t *quit;
+
+    mce_log(LL_DEBUG, "[%s] run quit notifications", peerinfo_name(self));
+
+    while( (quit = g_queue_pop_head(&self->pi_quit_callbacks)) ) {
+	if( !faked ) {
+	    faked = dbus_message_new_signal("/org/freedesktop/DBus",
+					    "org.freedesktop.DBus",
+					    "NameOwnerChanged");
+	    if( !faked )
+		break;
+
+	    dbus_message_append_args(faked,
+				     DBUS_TYPE_STRING, &name,
+				     DBUS_TYPE_STRING, &name,
+				     DBUS_TYPE_STRING, &owner,
+				     DBUS_TYPE_INVALID);
+	}
+	peerquit_notify(quit, faked);
+	peerquit_delete(quit);
+    }
+
+    if( faked )
+	dbus_message_unref(faked);
+}
+
+static void
+peerinfo_flush_quit_callbacks(peerinfo_t *self)
+{
+    peerquit_t *quit;
+
+    while( (quit = g_queue_pop_head(&self->pi_quit_callbacks)) )
+	peerquit_delete(quit);
+}
+
+/* ------------------------------------------------------------------------- *
+ * waiting priviledged calls
+ * ------------------------------------------------------------------------- */
+
+static void
+peerinfo_queue_method(peerinfo_t *self, DBusMessage *req)
+{
+    if( req ) {
+	mce_log(LL_DEBUG, "queue %s call from %s",
+		dbus_message_get_member(req),
+		peerinfo_repr(self));
+	g_queue_push_tail(&self->pi_priv_methods, dbus_message_ref(req));
+    }
+}
+
+static void
+peerinfo_flush_methods(peerinfo_t *self)
+{
+    DBusMessage *req;
+
+    while( (req = g_queue_pop_head(&self->pi_priv_methods)) ) {
+	mce_log(LL_WARN, "dropped %s call from %s",
+		dbus_message_get_member(req),
+		peerinfo_repr(self));
+	dbus_message_unref(req);
+    }
+}
+
+static void
+peerinfo_handle_methods(peerinfo_t *self)
+{
+    DBusMessage *req;
+
+    while( (req = g_queue_pop_head(&self->pi_priv_methods)) ) {
+	mce_log(LL_DEBUG, "retry %s call from %s",
+		dbus_message_get_member(req),
+		peerinfo_repr(self));
+	msg_handler(0, req, 0);
+	dbus_message_unref(req);
+    }
+}
+
+/* ========================================================================= *
+ * PEER_TRACKING
+ * ========================================================================= */
+
+/** Lookup table of D-Bus names to watch */
+static struct
+{
+    const char      *name;
+    datapipe_struct *datapipe;
+
+} mce_dbus_nameowner_lut[] =
+{
+    {
+	.name     = DSME_DBUS_SERVICE,
+	.datapipe = &dsme_available_pipe,
+    },
+    {
+	.name     = "org.bluez",
+	.datapipe = &bluez_available_pipe,
+    },
+    {
+	.name     = COMPOSITOR_SERVICE,
+	.datapipe = &compositor_available_pipe,
+    },
+    {
+	/* Note: due to lipstick==compositor assumption lipstick
+	 *       service name must be probed after compositor */
+	.name     = LIPSTICK_SERVICE,
+	.datapipe = &lipstick_available_pipe,
+    },
+    {
+	.name     = DEVICELOCK_SERVICE,
+	.datapipe = &devicelock_available_pipe,
+    },
+    {
+	.name     = USB_MODED_DBUS_SERVICE,
+	.datapipe = &usbmoded_available_pipe,
+    },
+    {
+	.name     = "com.nokia.NonGraphicFeedback1.Backend",
+	.datapipe = &ngfd_available_pipe,
+    },
+    {
+	.name = 0,
+    }
+};
+
+/** D-Bus message filter for handling NameOwnerChanged signals
+ *
+ * @param con       (not used)
+ * @param msg       message to be acted upon
+ * @param user_data (not used)
+ *
+ * @return DBUS_HANDLER_RESULT_NOT_YET_HANDLED (other filters see the msg too)
+ */
+static
+DBusHandlerResult
+mce_dbus_peerinfo_filter_cb(DBusConnection *con, DBusMessage *msg, void *user_data)
+{
+    (void)user_data;
+    (void)con;
+
+    DBusHandlerResult res = DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
+
+    const char *name = 0;
+    const char *prev = 0;
+    const char *curr = 0;
+
+    DBusError err = DBUS_ERROR_INIT;
+
+    if( !dbus_message_is_signal(msg, DBUS_INTERFACE_DBUS,
+				"NameOwnerChanged") )
+	goto EXIT;
+
+    if( !dbus_message_get_args(msg, &err,
+			       DBUS_TYPE_STRING, &name,
+			       DBUS_TYPE_STRING, &prev,
+			       DBUS_TYPE_STRING, &curr,
+			       DBUS_TYPE_INVALID) ) {
+	mce_log(LL_WARN, "%s: %s", err.name, err.message);
+	goto EXIT;
+    }
+
+    mce_dbus_update_peerinfo(name, curr);
+
+EXIT:
+    dbus_error_free(&err);
+    return res;
+}
+
+/** D-Bus name to peerinfo_t object look up table */
+static GHashTable *mce_dbus_peerinfo_lut = 0;
+
+/** Initialize peerinfo lookup table and seed it with essential services
+ */
+static void
+mce_dbus_init_peerinfo(void)
+{
+    if( !mce_dbus_peerinfo_lut ) {
+	mce_dbus_peerinfo_lut = g_hash_table_new_full(g_str_hash, g_str_equal,
+						      g_free, peerinfo_delete_cb);
+
+	dbus_connection_add_filter(dbus_connection,
+				   mce_dbus_peerinfo_filter_cb, 0, 0);
+
+	for( int i = 0; mce_dbus_nameowner_lut[i].name; ++i ) {
+	    peerinfo_t *info = mce_dbus_add_peerinfo(mce_dbus_nameowner_lut[i].name);
+	    peerinfo_set_datapipe(info, mce_dbus_nameowner_lut[i].datapipe);
+	}
+    }
+}
+
+/** Cleanup peerinfo lookup table
+ */
+static void
+mce_dbus_quit_peerinfo(void)
+{
+    if( mce_dbus_peerinfo_lut ) {
+	dbus_connection_remove_filter(dbus_connection,
+				      mce_dbus_peerinfo_filter_cb, 0);
+
+	g_hash_table_unref(mce_dbus_peerinfo_lut),
+	    mce_dbus_peerinfo_lut = 0;
+    }
+}
+
+/** Lookup already existing peerinfo based on D-Bus name
+ */
+peerinfo_t *
+mce_dbus_get_peerinfo(const char *name)
+{
+    peerinfo_t *info = 0;
+
+    if( !mce_dbus_peerinfo_lut )
+	goto EXIT;
+
+    info = g_hash_table_lookup(mce_dbus_peerinfo_lut, name);
+
+EXIT:
+    return info;
+}
+
+/** Lookup / create peerinfo based on D-Bus name
+ */
+peerinfo_t *
+mce_dbus_add_peerinfo(const char *name)
+{
+    peerinfo_t *info = 0;
+
+    if( !mce_dbus_peerinfo_lut )
+	goto EXIT;
+
+    if( !(info = g_hash_table_lookup(mce_dbus_peerinfo_lut, name)) ) {
+	info = peerinfo_create(name);
+	g_hash_table_replace(mce_dbus_peerinfo_lut,
+			     g_strdup(name), info);
+    }
+
+EXIT:
+    return info;
+}
+
+/** Update name owner in already existing peerinfo object
+ */
+void
+mce_dbus_update_peerinfo(const char *name, const char *owner)
+{
+    peerinfo_t *info = mce_dbus_get_peerinfo(name);
+
+    if( !info )
+	goto EXIT;
+
+    peerinfo_set_owner_name(info, owner);
+
+EXIT:
+    return;
+}
+
+/** Remove peerinfo based on D-Bus name
+ */
+void
+mce_dbus_del_peerinfo(const char *name)
+{
+    if( !mce_dbus_peerinfo_lut )
+	goto EXIT;
+
+    g_hash_table_remove(mce_dbus_peerinfo_lut, name);
+
+EXIT:
+    return;
+}
+
+/** Get useful-for-debugging description of process owning D-Bus name
+ */
+const char *
+mce_dbus_get_peerdesc(const char *name)
+{
+    return peerinfo_repr(mce_dbus_add_peerinfo(name));
+}
+
+/* ========================================================================= *
+ * MESSAGE_SENDING
+ * ========================================================================= */
 
 /** Return reference to dbus connection cached at mce-dbus module
  *
@@ -774,6 +2384,10 @@ gboolean dbus_send(const gchar *const service, const gchar *const path,
 	return res;
 }
 
+/* ========================================================================= *
+ * METHOD_CALL_HANDLERS
+ * ========================================================================= */
+
 /**
  * D-Bus callback for the version get method call
  *
@@ -924,6 +2538,10 @@ EXIT:
 
 	return TRUE;
 }
+
+/* ========================================================================= *
+ * CONFIG_VALUES
+ * ========================================================================= */
 
 /** Helper for appending gconf string list to dbus message
  *
@@ -1858,6 +3476,10 @@ EXIT:
 	return status;
 }
 
+/* ========================================================================= *
+ * MESSAGE_DISPATCH
+ * ========================================================================= */
+
 /**
  * D-Bus rule checker
  *
@@ -1942,7 +3564,7 @@ static gboolean check_rules(DBusMessage *const msg,
 
 /** Build a dbus signal match string
  *
- * For use from mce_dbus_handler_add() and mce_dbus_handler_remove()
+ * For use from mce_dbus_handler_add_ex() and mce_dbus_handler_remove()
  */
 static gchar *mce_dbus_build_signal_match(const gchar *sender,
 					  const gchar *interface,
@@ -2046,7 +3668,6 @@ static DBusHandlerResult msg_handler(DBusConnection *const connection,
 				     DBusMessage *const msg,
 				     gpointer const user_data)
 {
-	(void)connection;
 	(void)user_data;
 
 	mce_wakelock_obtain("dbus_recv", -1);
@@ -2056,6 +3677,12 @@ static DBusHandlerResult msg_handler(DBusConnection *const connection,
 
 	const char *interface = dbus_message_get_interface(msg);
 	const char *member    = dbus_message_get_member(msg);
+	const char *sender    = dbus_message_get_sender(msg);
+
+	peerinfo_t *peerinfo  = 0;
+
+	if( sender )
+		peerinfo = mce_dbus_add_peerinfo(sender);
 
 	for( GSList *now = dbus_handlers; now; now = now->next ) {
 
@@ -2081,8 +3708,42 @@ static DBusHandlerResult msg_handler(DBusConnection *const connection,
 			if( !mce_dbus_match(member, handler->name) )
 				break;
 
-			handler->callback(msg);
 			status = DBUS_HANDLER_RESULT_HANDLED;
+
+			if( !handler->privileged ) {
+				handler->callback(msg);
+				goto EXIT;
+			}
+
+			switch( peerinfo_get_privileged(peerinfo, true) ) {
+			case PRIVILEGED_YES:
+				handler->callback(msg);
+				break;
+
+			case PRIVILEGED_UNKNOWN:
+				/* We do not yet know if the client is
+				 * privileged or not -> queue message to
+				 * be handled when we know.
+				 *
+				 * Null connection arg => assume the message
+				 * is fed from peerinfo_handle_methods() and
+				 * must not be queued again. */
+				if( connection != 0 ) {
+					peerinfo_queue_method(peerinfo, msg);
+					break;
+				}
+				/* fall through */
+
+			default:
+			case PRIVILEGED_NO:
+				mce_log(LL_WARN, "method %s is reserved for privileged users; denied from: %s",
+					member, peerinfo_repr(peerinfo));
+				dbus_send_message(dbus_new_error(msg, DBUS_ERROR_AUTH_FAILED,
+								 "method %s is reserved for privileged users",
+								 member));
+				break;
+
+			}
 			goto EXIT;
 
 		case DBUS_MESSAGE_TYPE_ERROR:
@@ -2132,13 +3793,15 @@ EXIT:
  * @param callback The callback function
  * @return A D-Bus handler cookie on success, NULL on failure
  */
+static
 gconstpointer mce_dbus_handler_add_ex(const gchar *const sender,
 				      const gchar *const interface,
 				      const gchar *const name,
 				      const gchar *const args,
 				      const gchar *const rules,
 				      const guint type,
-				      gboolean (*callback)(DBusMessage *const msg))
+				      gboolean (*callback)(DBusMessage *const msg),
+				      bool privileged)
 {
 	handler_struct_t *handler = 0;
 	gchar            *match   = 0;
@@ -2178,6 +3841,7 @@ gconstpointer mce_dbus_handler_add_ex(const gchar *const sender,
 	handler_struct_set_args(handler, args);
 	handler_struct_set_rules(handler, rules);
 	handler_struct_set_callback(handler, callback);
+	handler_struct_set_privileged(handler, privileged);
 
 	/* Only register D-Bus matches for inbound signals */
 	if( match && callback )
@@ -2191,25 +3855,13 @@ EXIT:
 	return handler;
 }
 
-gconstpointer mce_dbus_handler_add(const gchar *const interface,
-				   const gchar *const name,
-				   const gchar *const rules,
-				   const guint type,
-				   gboolean (*callback)(DBusMessage *const msg))
-{
-	const char *sender = 0;
-	const char *args = 0;
-	return mce_dbus_handler_add_ex(sender, interface, name,
-				       args, rules,
-				       type, callback);
-}
-
 /**
  * Unregister a D-Bus signal or method handler
  *
  * @param cookie A D-Bus handler cookie for
  *               the handler that should be removed
  */
+static
 void mce_dbus_handler_remove(gconstpointer cookie)
 {
 	handler_struct_t *handler = (handler_struct_t *)cookie;
@@ -2270,21 +3922,9 @@ static void mce_dbus_handler_remove_cb(gpointer handler, gpointer user_data)
 	mce_dbus_handler_remove(handler);
 }
 
-/**
- * Custom compare function used to find owner monitor entries
- *
- * @param owner_id An owner monitor cookie
- * @param name The name to search for
- * @return Less than, equal to, or greater than zero depending
- *         whether the name of the rules with the id owner_id
- *         is less than, equal to, or greater than name
- */
-static gint monitor_compare(gconstpointer owner_id, gconstpointer name)
-{
-	handler_struct_t *hs = (handler_struct_t *)owner_id;
-
-	return strcmp(hs->rules, name);
-}
+/* ========================================================================= *
+ * OWNER_MONITORING
+ * ========================================================================= */
 
 /**
  * Locate the specified D-Bus service in the monitor list
@@ -2294,132 +3934,31 @@ static gint monitor_compare(gconstpointer owner_id, gconstpointer name)
  * @return A pointer to the entry if the entry is in the list,
  *         NULL if the entry is not in the list
  */
-static GSList *find_monitored_service(const gchar *service,
-				      GSList *monitor_list)
+static peerquit_t *
+find_monitored_service(const gchar *service, GSList *monitor_list)
 {
-	gchar *rule = NULL;
-	GSList *tmp = NULL;
+    peerquit_t *hit = 0;
 
-	if (service == NULL)
-		goto EXIT;
+    if( !service )
+	goto EXIT;
 
-	/* Signal content: arg0=name, arg1=old owner, arg2=new owner.
-	 * In This case  we want to track loss of name owner. */
-	if ((rule = g_strdup_printf("arg0='%s',arg2=''", service)) == NULL)
-		goto EXIT;
+    for( GSList *item = monitor_list; item; item = item->next ) {
+	peerquit_t *quit = item->data;
 
-	tmp = g_slist_find_custom(monitor_list, rule, monitor_compare);
+	if( !quit )
+	    continue;
 
-	g_free(rule);
+	peerinfo_t *info = quit->pq_peerinfo;
+
+	if( strcmp(peerinfo_name(info), service) )
+	    continue;
+
+	hit = quit;
+	break;
+    }
 
 EXIT:
-	return tmp;
-}
-
-/**
- * Check whether the D-Bus service in question is in the monitor list or not
- *
- * @param service The service to check for
- * @param monitor_list The monitor list check
- * @return TRUE if the entry is in the list,
- *         FALSE if the entry is not in the list
- */
-gboolean mce_dbus_is_owner_monitored(const gchar *service,
-				     GSList *monitor_list)
-{
-	return (find_monitored_service(service, monitor_list) != NULL);
-}
-
-/** Generate and handle fake owner gone message
- *
- * @param data Name that no longer has an owner (as a void pointer)
- *
- * @return Always FALSE
- */
-static gboolean fake_owner_gone(const char *owner)
-{
-	const char  *empty = "";
-	DBusMessage *faked = dbus_new_signal("/org/freedesktop/DBus",
-					     "org.freedesktop.DBus",
-					     "NameOwnerChanged");
-
-	/* Since owner monitoring is used for clients that are expected
-	 * to stay on the system bus, emit warning if they drop away
-	 * before verification round trip can be made.
-	 */
-	mce_log(LL_WARN, "simulating name owner loss for: %s", owner);
-
-	dbus_message_append_args(faked,
-				 DBUS_TYPE_STRING, &owner,
-				 DBUS_TYPE_STRING, &owner,
-				 DBUS_TYPE_STRING, &empty,
-				 DBUS_TYPE_INVALID);
-
-	/* Run the fake signal through mce message filter
-	 */
-	msg_handler(NULL, faked, NULL);
-
-	dbus_message_unref(faked), faked = 0;
-
-	return FALSE;
-}
-
-/** Handle reply to mce_dbus_owner_monitor_verify
- *
- * @param pc    pending call object
- * @param aptr  name of service checked as void pointer
- */
-static void
-mce_dbus_owner_monitor_verify_cb(DBusPendingCall *pc, void *aptr)
-{
-	(void) aptr;
-
-	DBusMessage *rsp  = 0;
-	DBusError    err  = DBUS_ERROR_INIT;
-	dbus_bool_t  dta  = FALSE;
-	const char  *name = aptr;
-
-	if( !(rsp = dbus_pending_call_steal_reply(pc)) ) {
-		mce_log(LL_ERR, "%s: no reply", "NameHasOwner");
-		goto EXIT;
-	}
-
-	if( dbus_set_error_from_message(&err, rsp) ) {
-		mce_log(LL_ERR, "%s: %s", err.name, err.message);
-		goto EXIT;
-	}
-
-	if( !dbus_message_get_args(rsp, &err,
-				   DBUS_TYPE_BOOLEAN, &dta,
-				   DBUS_TYPE_INVALID) ) {
-		mce_log(LL_ERR, "%s: %s", err.name, err.message);
-		goto EXIT;
-	}
-
-EXIT:
-	if( !dta )
-		fake_owner_gone(name);
-
-	if( rsp ) dbus_message_unref(rsp);
-	dbus_error_free(&err);
-}
-
-/** Start async query to check that monitored service is alive
- *
- * @param name Owner of the service that is being monitored
- */
-static void
-mce_dbus_owner_monitor_verify(const char *name)
-{
-	dbus_send_ex(DBUS_SERVICE_DBUS,
-		     DBUS_PATH_DBUS,
-		     DBUS_INTERFACE_DBUS,
-		     "NameHasOwner",
-		     mce_dbus_owner_monitor_verify_cb,
-		     g_strdup(name), g_free,
-		     0,
-		     DBUS_TYPE_STRING, &name,
-		     DBUS_TYPE_INVALID);
+    return hit;
 }
 
 /**
@@ -2443,63 +3982,48 @@ gssize mce_dbus_owner_monitor_add(const gchar *service,
 				  GSList **monitor_list,
 				  gssize max_num)
 {
-	gconstpointer cookie;
-	gchar *rule = NULL;
-	gssize retval = -1;
-	gssize num;
+    gssize retval = -1;
+    gssize num;
 
-	/* If service or monitor_list is NULL, fail */
-	if (service == NULL) {
-		mce_log(LL_CRIT,
-			"A programming error occured; "
-			"mce_dbus_owner_monitor_add() called with "
-			"service == NULL");
-		goto EXIT;
-	} else if (monitor_list == NULL) {
-		mce_log(LL_CRIT,
-			"A programming error occured; "
-			"mce_dbus_owner_monitor_add() called with "
-			"monitor_list == NULL");
-		goto EXIT;
-	}
+    if( !service ) {
+	mce_log(LL_CRIT, "A programming error occured; "
+		"mce_dbus_owner_monitor_add() called with "
+		"service == NULL");
+	goto EXIT;
+    }
 
-	/* If the service is already in the list, we're done */
-	if (find_monitored_service(service, *monitor_list) != NULL) {
-		retval = 0;
-		goto EXIT;
-	}
+    if( !monitor_list ) {
+	mce_log(LL_CRIT, "A programming error occured; "
+		"mce_dbus_owner_monitor_add() called with "
+		"monitor_list == NULL");
+	goto EXIT;
+    }
 
-	/* If the service isn't in the list, and the list already
-	 * contains max_num elements, bail out
-	 */
-	if ((num = g_slist_length(*monitor_list)) == max_num)
-		goto EXIT;
+    /* If the service is already in the list, we're done */
+    if( find_monitored_service(service, *monitor_list) ) {
+	retval = 0;
+	goto EXIT;
+    }
 
-	/* Signal content: arg0=name, arg1=old owner, arg2=new owner.
-	 * In This case  we want to track loss of name owner. */
-	if ((rule = g_strdup_printf("arg0='%s',arg2=''", service)) == NULL)
-		goto EXIT;
+    /* If the service isn't in the list, and the list already
+     * contains max_num elements, bail out
+     */
+    if( (num = g_slist_length(*monitor_list)) >= max_num )
+	goto EXIT;
 
-	/* Add ownership monitoring for the service */
-	cookie = mce_dbus_handler_add("org.freedesktop.DBus",
-				      "NameOwnerChanged",
-				      rule,
-				      DBUS_MESSAGE_TYPE_SIGNAL,
-				      callback);
-
-	if (cookie == NULL)
-		goto EXIT;
-
-	*monitor_list = g_slist_prepend(*monitor_list, (gpointer)cookie);
-	retval = num + 1;
-
-	/* start async query to verify that the peer is still alive */
-	mce_dbus_owner_monitor_verify(service);
+    /* TODO: Think really hard if it is in anyway possible
+     *       for the peerinfo to be in PEERSTATE_STOPPED
+     *       state as that would mean the notification
+     *       would not get triggered ...
+     */
+    peerinfo_t *info = mce_dbus_add_peerinfo(service);
+    peerquit_t *quit = peerinfo_add_quit_callback(info, callback);
+    *monitor_list = g_slist_prepend(*monitor_list, quit);
+    retval = num + 1;
 
 EXIT:
-	g_free(rule);
 
-	return retval;
+    return retval;
 }
 
 /**
@@ -2515,24 +4039,24 @@ EXIT:
 gssize mce_dbus_owner_monitor_remove(const gchar *service,
 				     GSList **monitor_list)
 {
-	gssize retval = -1;
-	GSList *tmp;
+    gssize retval = -1;
 
-	/* If service or monitor_list is NULL, fail */
-	if ((service == NULL) || (monitor_list == NULL))
-		goto EXIT;
+    if( !service || !monitor_list )
+	goto EXIT;
 
-	/* If the service is not in the list, fail */
-	if ((tmp = find_monitored_service(service, *monitor_list)) == NULL)
-		goto EXIT;
+    peerquit_t *quit = find_monitored_service(service, *monitor_list);
 
-	/* Remove ownership monitoring for the service */
-	mce_dbus_handler_remove(tmp->data);
-	*monitor_list = g_slist_remove(*monitor_list, tmp->data);
-	retval = g_slist_length(*monitor_list);
+    if( !quit )
+	goto EXIT;
+
+    peerinfo_t *info = quit->pq_peerinfo;
+
+    *monitor_list = g_slist_remove(*monitor_list, quit);
+    peerinfo_remove_quit_callback(info, quit);
+    retval = g_slist_length(*monitor_list);
 
 EXIT:
-	return retval;
+    return retval;
 }
 
 /**
@@ -2542,12 +4066,30 @@ EXIT:
  */
 void mce_dbus_owner_monitor_remove_all(GSList **monitor_list)
 {
-	if( monitor_list && *monitor_list ) {
-		g_slist_foreach(*monitor_list, mce_dbus_handler_remove_cb, 0);
-		g_slist_free(*monitor_list);
-		*monitor_list = NULL;
-	}
+    if( !monitor_list )
+	goto EXIT;
+
+    for( GSList *item = *monitor_list; item; item = item->next ) {
+	peerquit_t *quit = item->data;
+
+	if( !quit )
+	    continue;
+
+	item->data = 0;
+
+	peerinfo_t *info = quit->pq_peerinfo;
+	peerinfo_remove_quit_callback(info, quit);
+    }
+    g_slist_free(*monitor_list);
+    *monitor_list = 0;
+
+EXIT:
+    return;
 }
+
+/* ========================================================================= *
+ * SERVICE_MANAGEMENT
+ * ========================================================================= */
 
 /**
  * Acquire D-Bus services
@@ -2607,6 +4149,10 @@ static gboolean dbus_init_message_handler(void)
 EXIT:
 	return status;
 }
+
+/* ========================================================================= *
+ * MESSAGE_ITER
+ * ========================================================================= */
 
 /** Get dbus data type to human readable form
  *
@@ -2867,7 +4413,8 @@ mce_dbus_handler_register(mce_dbus_handler_t *self)
 						       self->args,
 						       self->rules,
 						       self->type,
-						       self->callback);
+						       self->callback,
+						       self->privileged);
 		if( !self->cookie )
 			mce_log(LL_ERR, "%s.%s: failed to add handler",
 				self->interface, self->name);
@@ -2908,347 +4455,14 @@ mce_dbus_handler_unregister_array(mce_dbus_handler_t *array)
 }
 
 /* ========================================================================= *
- * DBUS NAME INFO
+ * PEER_IDENTITY
  * ========================================================================= */
-
-/** Cached D-Bus name owner identification data */
-typedef struct
-{
-	char                ni_repr[64];
-	char               *ni_name;
-	int                 ni_pid;
-	char               *ni_exe;
-	mce_dbus_handler_t  ni_hnd;
-
-} mce_dbus_ident_t;
-
-static void              mce_dbus_rem_ident(const char *name);
-static mce_dbus_ident_t *mce_dbus_get_ident(const char *name);
-static mce_dbus_ident_t *mce_dbus_add_ident(const char *name);
-
-/** Get human readable representation of D-Bus name owner identification data
- */
-static const char *
-mce_dbus_ident_get_repr(const mce_dbus_ident_t *self)
-{
-	return self->ni_repr;
-}
-
-/** Update human readable representation of D-Bus name owner identification
- */
-static void
-mce_dbus_ident_update_repr(mce_dbus_ident_t *self)
-{
-	char pid[16];
-
-	if( self->ni_pid < 0 )
-		snprintf(pid, sizeof pid, "???");
-	else
-		snprintf(pid, sizeof pid, "%d", self->ni_pid);
-
-	snprintf(self->ni_repr, sizeof self->ni_repr, "name=%s pid=%s cmd=%s",
-		 self->ni_name, pid, self->ni_exe ?: "???");
-}
-
-/** Update executable name in D-Bus name owner identification data
- */
-static void mce_dbus_ident_update_exe(mce_dbus_ident_t *self)
-{
-	int file = -1;
-	char path[256];
-	unsigned char text[64];
-
-	if( self->ni_exe )
-		goto EXIT;
-
-	snprintf(path, sizeof path, "/proc/%d/cmdline", self->ni_pid);
-	if( (file = open(path, O_RDONLY)) == -1 ) {
-		mce_log(LL_ERR, "%s: open: %m", path);
-		goto EXIT;
-	}
-
-	int n = read(file, text, sizeof text - 1);
-	if( n == -1 ) {
-		mce_log(LL_ERR, "%s: read: %m", path);
-		goto EXIT;
-	}
-	text[n] = 0;
-
-	for( int i = 0; i < n; ++i ) {
-		if( text[i] < 32 )
-			text[i] = ' ';
-	}
-
-	self->ni_exe = strdup((char *)text);
-
-EXIT:
-	if( file != -1 ) close(file);
-
-	return;
-}
-
-/** Handle reply to asynchronous pid of D-Bus name owner query
- */
-static void mce_dbus_ident_query_pid_cb(DBusPendingCall *pc, void *aptr)
-{
-	const char   *name = 0;
-	DBusMessage  *rsp  = 0;
-	DBusError     err  = DBUS_ERROR_INIT;
-	dbus_uint32_t dta  = 0;
-
-	mce_dbus_ident_t *self = 0;
-
-	if( !(name = aptr) )
-		goto EXIT;
-
-	if( !pc )
-		goto EXIT;
-
-	if( !(rsp = dbus_pending_call_steal_reply(pc)) )
-		goto EXIT;
-
-	if( dbus_set_error_from_message(&err, rsp) ||
-	    !dbus_message_get_args(rsp, &err,
-				   DBUS_TYPE_UINT32, &dta,
-				   DBUS_TYPE_INVALID) ) {
-		mce_log(LL_ERR, "%s: %s", err.name, err.message);
-		mce_dbus_rem_ident(name);
-		goto EXIT;
-	}
-
-	if( !(self = mce_dbus_get_ident(name)) )
-		goto EXIT;
-
-	if( self->ni_pid != 0 )
-		goto EXIT;
-
-	self->ni_pid = (int)dta;
-	mce_dbus_ident_update_exe(self);
-	mce_dbus_ident_update_repr(self);
-	mce_log(LL_DEVEL, "%s", mce_dbus_ident_get_repr(self));
-
-EXIT:
-	if( rsp ) dbus_message_unref(rsp);
-	dbus_error_free(&err);
-
-	return;
-}
-
-/** Start asynchronous pid of D-Bus name owner query
- */
-static void mce_dbus_ident_query_pid(mce_dbus_ident_t *self)
-{
-	// already done, or in progress
-	if( self->ni_pid >= 0 )
-		goto EXIT;
-
-	// mark as: in progress
-	self->ni_pid = 0;
-
-	const char *name = self->ni_name;
-
-	// start async query
-	dbus_send_ex(DBUS_SERVICE_DBUS,
-		     DBUS_PATH_DBUS,
-		     DBUS_INTERFACE_DBUS,
-		     "GetConnectionUnixProcessID",
-		     // ----------------
-		     mce_dbus_ident_query_pid_cb,
-		     strdup(name),
-		     free,
-		     0,
-		     // ----------------
-		     DBUS_TYPE_STRING, &name,
-		     DBUS_TYPE_INVALID);
-
-EXIT:
-	return;
-}
-
-/** Handle NameOwnerChanged signal for cached name owner tracking
- */
-static gboolean
-mce_dbus_ident_lost_cb(DBusMessage *sig)
-{
-	const char *name = 0;
-	const char *prev = 0;
-	const char *curr = 0;
-	DBusError   err  = DBUS_ERROR_INIT;
-
-	if( dbus_set_error_from_message(&err, sig) ) {
-		mce_log(LL_ERR, "%s: %s", err.name, err.message);
-		goto EXIT;
-	}
-
-	if( !dbus_message_get_args(sig, &err,
-				   DBUS_TYPE_STRING, &name,
-				   DBUS_TYPE_STRING, &prev,
-				   DBUS_TYPE_STRING, &curr,
-				   DBUS_TYPE_INVALID) ) {
-		mce_log(LL_ERR, "%s: %s", err.name, err.message);
-		goto EXIT;
-	}
-
-	if( curr && *curr )
-		goto EXIT;
-
-	mce_dbus_rem_ident(name);
-
-EXIT:
-	dbus_error_free(&err);
-	return TRUE;
-}
-
-/** Allocate cached D-Bus name owner identification data
- */
-static mce_dbus_ident_t *
-mce_dbus_ident_create(const char *name)
-{
-	mce_dbus_ident_t *self = calloc(1, sizeof *self);
-
-	self->ni_name = strdup(name);
-	self->ni_pid  = -1;
-	self->ni_exe  = 0;
-
-	mce_log(LL_DEBUG, "start tracking %s", self->ni_name);
-
-	self->ni_hnd.interface = DBUS_INTERFACE_DBUS;
-	self->ni_hnd.name      = "NameOwnerChanged";
-	self->ni_hnd.rules     = g_strdup_printf("arg0='%s',arg2=''", name);
-	self->ni_hnd.type      = DBUS_MESSAGE_TYPE_SIGNAL;
-	self->ni_hnd.callback  = mce_dbus_ident_lost_cb;
-
-	mce_dbus_handler_register(&self->ni_hnd);
-	mce_dbus_ident_update_repr(self);
-	mce_dbus_ident_query_pid(self);
-
-	return self;
-}
-
-/** Release Cached D-Bus name owner identification data
- */
-static void
-mce_dbus_ident_delete(mce_dbus_ident_t *self)
-{
-	if( self ) {
-		mce_log(LL_DEBUG, "stop tracking %s", self->ni_name);
-		mce_dbus_handler_unregister(&self->ni_hnd);
-		g_free((void *)self->ni_hnd.rules);
-		free(self->ni_name);
-		free(self->ni_exe);
-		free(self);
-	}
-}
-
-/** Type agnostic callback for releasing D-Bus name owner identification data
- */
-static void
-mce_dbus_ident_delete_cb(gpointer self)
-{
-	mce_dbus_ident_delete(self);
-}
-
-/** Lookup table for cached D-Bus name owner identification data */
-static GHashTable *info_lut = 0;
-
-/** Idle callback for handling delayed dbus name owner purging
- *
- * @param aptr  dbus name as void pointer
- *
- * @return FALSE to stop handler from repeating
- */
-static gboolean mce_dbus_rem_ident_cb(gpointer aptr)
-{
-	char *name = aptr;
-
-	if( !info_lut )
-		goto EXIT;
-
-	g_hash_table_remove(info_lut, name);
-
-EXIT:
-	g_free(name);
-
-	return FALSE;
-}
-
-/** Remove D-Bus name owner identification data from cache
- *
- * @param name  dbus name to purge from cache
- */
-static void mce_dbus_rem_ident(const char *name)
-{
-	if( !info_lut )
-		goto EXIT;
-
-	/* Remove entry via idle callback so that the
-	 * identification information we have is still
-	 * made available for other owner lost handlers
-	 */
-	g_idle_add(mce_dbus_rem_ident_cb, g_strdup(name));
-
-EXIT:
-	return;
-}
-
-/** Locate D-Bus name owner identification data from cache
- */
-static mce_dbus_ident_t *
-mce_dbus_get_ident(const char *name)
-{
-	mce_dbus_ident_t *res = 0;
-
-	if( !info_lut )
-		goto EXIT;
-
-	res = g_hash_table_lookup(info_lut, name);
-
-EXIT:
-	return res;
-}
-
-/** Add D-Bus name owner identification data to cache
- */
-static mce_dbus_ident_t *
-mce_dbus_add_ident(const char *name)
-{
-	mce_dbus_ident_t *res = 0;
-
-	// have existing value?
-	if( (res = mce_dbus_get_ident(name)) )
-		goto EXIT;
-
-	// have lookup table?
-	if( !info_lut ) {
-		info_lut = g_hash_table_new_full(g_str_hash, g_str_equal, free,
-						 mce_dbus_ident_delete_cb);
-	}
-
-	// insert new entry
-	res = mce_dbus_ident_create(name);
-	g_hash_table_replace(info_lut, strdup(name), res);
-
-EXIT:
-
-	return res;
-}
 
 /** Get identification string of D-Bus name owner
  */
 const char *mce_dbus_get_name_owner_ident(const char *name)
 {
-	const char *res = 0;
-	const mce_dbus_ident_t *info = 0;
-
-	if( !name )
-		goto EXIT;
-
-	if( !(info = mce_dbus_add_ident(name)) )
-		goto EXIT;
-
-	res = mce_dbus_ident_get_repr(info);
-
-EXIT:
+	const char *res = mce_dbus_get_peerdesc(name);
 	return res ?: "unknown";
 }
 
@@ -3263,16 +4477,8 @@ const char *mce_dbus_get_message_sender_ident(DBusMessage *msg)
 }
 
 /* ========================================================================= *
- * ASYNC PID QUERY
+ * ASYNC_PID_QUERY
  * ========================================================================= */
-
-typedef struct mce_dbus_pid_query_t mce_dbus_pid_query_t;
-
-struct mce_dbus_pid_query_t
-{
-	gchar                 *name;
-	mce_dbus_pid_notify_t  notify;
-};
 
 static mce_dbus_pid_query_t *
 mce_dbus_pid_query_create(const char *name, mce_dbus_pid_notify_t cb)
@@ -3632,109 +4838,6 @@ EXIT:
  * DBUS_NAME_OWNER_TRACKING
  * ========================================================================= */
 
-static void                mce_dbus_nameowner_changed(const char *name, const char *prev, const char *curr);
-static DBusHandlerResult   mce_dbus_nameowner_filter_cb(DBusConnection *con, DBusMessage *msg, void *user_data);
-static void                mce_dbus_nameowner_query_rsp(DBusPendingCall *pending, void *user_data);
-static void                mce_dbus_nameowner_query_req(const char *name);
-static char               *mce_dbus_nameowner_watch(const char *name);
-static void                mce_dbus_nameowner_unwatch(char *rule);
-
-static void                mce_dbus_nameowner_init(void);
-static void                mce_dbus_nameowner_quit(void);
-
-/** Format string for constructing name owner lost match rules */
-static const char mce_dbus_nameowner_rule_fmt[] =
-"type='signal'"
-",interface='"DBUS_INTERFACE_DBUS"'"
-",member='NameOwnerChanged'"
-",arg0='%s'"
-;
-
-/** Lookup table of D-Bus names to watch */
-static struct
-{
-    const char      *name;
-    char            *rule;
-    void           (*notify)(const char *name, const char *prev, const char *curr);
-    datapipe_struct *datapipe;
-    char            *owner;
-
-} mce_dbus_nameowner_lut[] =
-{
-    {
-	.name     = DSME_DBUS_SERVICE,
-	.datapipe = &dsme_available_pipe,
-    },
-    {
-	.name     = "org.bluez",
-	.datapipe = &bluez_available_pipe,
-    },
-    {
-	.name     = COMPOSITOR_SERVICE,
-	.datapipe = &compositor_available_pipe,
-    },
-    {
-	/* Note: due to lipstick==compositor assumption lipstick
-	 *       service name must be probed after compositor */
-	.name     = LIPSTICK_SERVICE,
-	.datapipe = &lipstick_available_pipe,
-    },
-    {
-	.name     = DEVICELOCK_SERVICE,
-	.datapipe = &devicelock_available_pipe,
-    },
-    {
-	.name     = USB_MODED_DBUS_SERVICE,
-	.datapipe = &usbmoded_available_pipe,
-    },
-    {
-	.name     = "com.nokia.NonGraphicFeedback1.Backend",
-	.datapipe = &ngfd_available_pipe,
-    },
-    {
-	.name = 0,
-    }
-};
-
-/** Call NameOwner changed callback from mce_dbus_nameowner_lut
- *
- * @param name D-Bus name that changed owner
- * @param prev D-Bus name of the previous owner
- * @param curr D-Bus name of the current owner
- */
-static void
-mce_dbus_nameowner_changed(const char *name, const char *prev, const char *curr)
-{
-    for( int i = 0; mce_dbus_nameowner_lut[i].name; ++i ) {
-	if( strcmp(mce_dbus_nameowner_lut[i].name, name) )
-	    continue;
-
-	mce_log(LL_DEVEL, "%s: owner: '%s' -> '%s'", name, prev, curr);
-
-	// change cached name owner
-	free(mce_dbus_nameowner_lut[i].owner);
-	if( curr && *curr )
-	    mce_dbus_nameowner_lut[i].owner = strdup(curr);
-	else
-	    mce_dbus_nameowner_lut[i].owner = 0;
-
-	// handle notification callback before datapipe
-	if( mce_dbus_nameowner_lut[i].notify )
-	    mce_dbus_nameowner_lut[i].notify(name, prev, curr);
-
-	// update datapipe if defined
-	if( !mce_dbus_nameowner_lut[i].datapipe )
-	    continue;
-
-	service_state_t state =
-	    (curr && *curr) ? SERVICE_STATE_RUNNING : SERVICE_STATE_STOPPED;
-
-	execute_datapipe(mce_dbus_nameowner_lut[i].datapipe,
-			 GINT_TO_POINTER(state),
-			 USE_INDATA, CACHE_INDATA);
-    }
-}
-
 /** Get current name owner for tracked services
  *
  * @param name Well known D-Bus name
@@ -3745,133 +4848,12 @@ const char *
 mce_dbus_nameowner_get(const char *name)
 {
     const char *owner = 0;
-    for( int i = 0; mce_dbus_nameowner_lut[i].name; ++i ) {
-	if( strcmp(mce_dbus_nameowner_lut[i].name, name) )
-	    continue;
 
-	owner = mce_dbus_nameowner_lut[i].owner;
-	break;
-    }
+    peerinfo_t *info = mce_dbus_get_peerinfo(name);
+    if( info )
+	owner = peerinfo_get_owner_name(info);
+
     return owner;
-}
-
-/** Call back for handling asynchronous client verification via GetNameOwner
- *
- * @param pending   control structure for asynchronous d-bus methdod call
- * @param user_data dbus_name of the client as void poiter
- */
-static
-void
-mce_dbus_nameowner_query_rsp(DBusPendingCall *pending, void *user_data)
-{
-    const char  *name   = user_data;
-    const char  *owner  = 0;
-    DBusMessage *rsp    = 0;
-    DBusError    err    = DBUS_ERROR_INIT;
-
-    if( !(rsp = dbus_pending_call_steal_reply(pending)) )
-	goto EXIT;
-
-    if( dbus_set_error_from_message(&err, rsp) ||
-	!dbus_message_get_args(rsp, &err,
-			       DBUS_TYPE_STRING, &owner,
-			       DBUS_TYPE_INVALID) )
-    {
-	if( strcmp(err.name, DBUS_ERROR_NAME_HAS_NO_OWNER) ) {
-	    mce_log(LL_WARN, "%s: %s", err.name, err.message);
-	}
-    }
-
-    mce_dbus_nameowner_changed(name, "", owner ?: "");
-
-EXIT:
-    if( rsp ) dbus_message_unref(rsp);
-    dbus_error_free(&err);
-}
-
-/** Verify that a client exists via an asynchronous GetNameOwner method call
- *
- * @param name the dbus name who's owner we wish to know
- */
-static
-void
-mce_dbus_nameowner_query_req(const char *name)
-{
-    DBusMessage     *req = 0;
-    DBusPendingCall *pc  = 0;
-    char            *key = 0;
-
-    req = dbus_message_new_method_call(DBUS_SERVICE_DBUS,
-				       DBUS_PATH_DBUS,
-				       DBUS_INTERFACE_DBUS,
-				       "GetNameOwner");
-    dbus_message_append_args(req,
-			     DBUS_TYPE_STRING, &name,
-			     DBUS_TYPE_INVALID);
-
-    if( !dbus_connection_send_with_reply(dbus_connection, req, &pc, -1) )
-	goto EXIT;
-
-    if( !pc )
-	goto EXIT;
-
-    mdb_callgate_attach(pc);
-
-    key = strdup(name);
-
-    if( !dbus_pending_call_set_notify(pc, mce_dbus_nameowner_query_rsp, key, free) )
-	goto EXIT;
-
-    // key string is owned by pending call
-    key = 0;
-
-EXIT:
-    free(key);
-
-    if( pc  ) dbus_pending_call_unref(pc);
-    if( req ) dbus_message_unref(req);
-}
-
-/** D-Bus message filter for handling NameOwnerChanged signals
- *
- * @param con       (not used)
- * @param msg       message to be acted upon
- * @param user_data (not used)
- *
- * @return DBUS_HANDLER_RESULT_NOT_YET_HANDLED (other filters see the msg too)
- */
-static
-DBusHandlerResult
-mce_dbus_nameowner_filter_cb(DBusConnection *con, DBusMessage *msg, void *user_data)
-{
-    (void)user_data;
-    (void)con;
-
-    DBusHandlerResult res = DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
-
-    const char *name = 0;
-    const char *prev = 0;
-    const char *curr = 0;
-
-    DBusError err = DBUS_ERROR_INIT;
-
-    if( !dbus_message_is_signal(msg, DBUS_INTERFACE_DBUS,
-				"NameOwnerChanged") )
-	goto EXIT;
-
-    if( !dbus_message_get_args(msg, &err,
-			       DBUS_TYPE_STRING, &name,
-			       DBUS_TYPE_STRING, &prev,
-			       DBUS_TYPE_STRING, &curr,
-			       DBUS_TYPE_INVALID) ) {
-	mce_log(LL_WARN, "%s: %s", err.name, err.message);
-	goto EXIT;
-    }
-
-    mce_dbus_nameowner_changed(name, prev, curr);
-EXIT:
-    dbus_error_free(&err);
-    return res;
 }
 
 /** Create a match rule and add it to D-Bus daemon side
@@ -3882,10 +4864,16 @@ EXIT:
  *
  * @return rule that was sent to the D-Bus daemon
  */
-static char *
+static gchar *
 mce_dbus_nameowner_watch(const char *name)
 {
-    char *rule = g_strdup_printf(mce_dbus_nameowner_rule_fmt, name);
+    static const char fmt[] =
+	"type='signal'"
+	",interface='"DBUS_INTERFACE_DBUS"'"
+	",member='NameOwnerChanged'"
+	",arg0='%s'";
+
+    gchar *rule = g_strdup_printf(fmt, name);
     dbus_bus_add_match(dbus_connection, rule, 0);
     return rule;
 }
@@ -3894,7 +4882,7 @@ mce_dbus_nameowner_watch(const char *name)
  *
  * @param rule obtained from mce_dbus_nameowner_watch()
  */
-static void mce_dbus_nameowner_unwatch(char *rule)
+static void mce_dbus_nameowner_unwatch(gchar *rule)
 {
     if( rule ) {
 	dbus_bus_remove_match(dbus_connection, rule, 0);
@@ -3902,58 +4890,8 @@ static void mce_dbus_nameowner_unwatch(char *rule)
     }
 }
 
-/** Start D-Bus name owner tracking
- */
-static void
-mce_dbus_nameowner_init(void)
-{
-    if( !dbus_connection )
-	goto EXIT;
-
-    dbus_connection_add_filter(dbus_connection,
-			       mce_dbus_nameowner_filter_cb, 0, 0);
-
-    for( int i = 0; mce_dbus_nameowner_lut[i].name; ++i ) {
-	mce_dbus_nameowner_lut[i].rule = mce_dbus_nameowner_watch(mce_dbus_nameowner_lut[i].name);
-	mce_dbus_nameowner_query_req(mce_dbus_nameowner_lut[i].name);
-    }
-
-EXIT:
-    return;
-}
-
-/** Stop D-Bus name owner tracking
- */
-
-static void
-mce_dbus_nameowner_quit(void)
-{
-    if( !dbus_connection )
-	goto EXIT;
-
-    /* remove filter callback */
-    dbus_connection_remove_filter(dbus_connection,
-				  mce_dbus_nameowner_filter_cb, 0);
-
-    /* remove name owner matches */
-    for( int i = 0; mce_dbus_nameowner_lut[i].name; ++i ) {
-	mce_dbus_nameowner_unwatch(mce_dbus_nameowner_lut[i].rule),
-	    mce_dbus_nameowner_lut[i].rule = 0;
-
-	free(mce_dbus_nameowner_lut[i].owner),
-	    mce_dbus_nameowner_lut[i].owner = 0;
-    }
-
-    // TODO: we should keep track of async name owner calls
-    //       and cancel them at this point
-
-EXIT:
-    return;
-
-}
-
 /* ========================================================================= *
- * LOAD/UNLOAD
+ * MODULE_INIT_QUIT
  * ========================================================================= */
 
 /** Array of dbus message handlers */
@@ -4103,6 +5041,68 @@ dbus_bus_get_private(DBusBusType type, DBusError *err)
 	return con;
 }
 
+/** Lookup id for "privileged" user
+ */
+static void
+mce_dbus_init_privileged_uid(void)
+{
+    char  *data = 0;
+    size_t size = sysconf(_SC_GETPW_R_SIZE_MAX);
+
+    if( size < 0x1000 )
+	size = 0x1000;
+
+    if( !(data = malloc(size)) )
+	goto EXIT;
+
+    struct passwd pwd;
+    struct passwd *pw = 0;
+
+    if( getpwnam_r("privileged", &pwd, data, size, &pw) != 0 )
+	goto EXIT;
+
+    if( !pw )
+	goto EXIT;
+
+    mce_dbus_privileged_uid = pw->pw_uid;
+
+EXIT:
+    mce_log(LL_DEBUG, "privileged uid = %d", (int)mce_dbus_privileged_uid);
+
+    free(data);
+}
+
+/** Lookup id for "privileged" group
+ */
+static void
+mce_dbus_init_privileged_gid(void)
+{
+    char *data = 0;
+    long  size = sysconf(_SC_GETGR_R_SIZE_MAX);
+
+    if( size < 0x1000 )
+	size = 0x1000;
+
+    if( !(data = malloc(size)) )
+	goto EXIT;
+
+    struct group grp;
+    struct group *gr = 0;
+
+    if( getgrnam_r("privileged", &grp, data, size, &gr) != 0 )
+	goto EXIT;
+
+    if( !gr )
+	goto EXIT;
+
+    mce_dbus_privileged_gid = gr->gr_gid;
+
+EXIT:
+    mce_log(LL_DEBUG, "privileged gid = %d", (int)mce_dbus_privileged_gid);
+
+    free(data);
+}
+
 /**
  * Init function for the mce-dbus component
  * Pre-requisites: glib mainloop registered
@@ -4119,6 +5119,9 @@ gboolean mce_dbus_init(const gboolean systembus)
 	gboolean    status   = FALSE;
 	DBusBusType bus_type = DBUS_BUS_SYSTEM;
 	DBusError   error    = DBUS_ERROR_INIT;
+
+	mce_dbus_init_privileged_uid();
+	mce_dbus_init_privileged_gid();
 
 	if( !systembus )
 		bus_type = DBUS_BUS_SESSION;
@@ -4151,11 +5154,11 @@ gboolean mce_dbus_init(const gboolean systembus)
 	if( !dbus_init_message_handler() )
 		goto EXIT;
 
+	/* Start tracking essential services */
+	mce_dbus_init_peerinfo();
+
 	/* Register callbacks that are handled inside mce-dbus.c */
 	mce_dbus_handler_register_array(mce_dbus_handlers);
-
-	/* Start tracking essential services */
-	mce_dbus_nameowner_init();
 
 	status = TRUE;
 
@@ -4169,18 +5172,14 @@ EXIT:
  */
 void mce_dbus_exit(void)
 {
-	/* Stop tracking essential services */
-	mce_dbus_nameowner_quit();
+	/* Stop tracking services */
+	mce_dbus_quit_peerinfo();
 
 	/* Remove message handlers */
 	dbus_quit_message_handler();
 
 	/* Unregister callbacks that are handled inside mce-dbus.c */
 	mce_dbus_handler_unregister_array(mce_dbus_handlers);
-
-	/* Remove info look up table */
-	if( info_lut )
-		g_hash_table_unref(info_lut), info_lut = 0;
 
 	/* Unregister remaining D-Bus handlers */
 	if( dbus_handlers ) {
