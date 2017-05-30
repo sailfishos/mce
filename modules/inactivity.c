@@ -342,16 +342,6 @@ static gpointer mia_datapipe_device_inactive_cb(gpointer data)
         /* Default to: inactive */
         device_inactive = TRUE;
 
-        /* Allow activity if display is already on */
-        switch( display_state_next ) {
-        case MCE_DISPLAY_ON:
-            device_inactive = FALSE;
-            break;
-
-        default:
-            break;
-        }
-
         /* Allow activity if there is active alarm */
         switch( alarm_ui_state ) {
         case MCE_ALARM_UI_RINGING_INT32:
