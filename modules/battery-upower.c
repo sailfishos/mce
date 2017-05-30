@@ -712,8 +712,8 @@ mcebat_update_cb(gpointer user_data)
         }
 
         /* Generate activity */
-        (void)execute_datapipe(&device_inactive_pipe, GINT_TO_POINTER(FALSE),
-                               USE_INDATA, CACHE_OUTDATA);
+        execute_datapipe(&device_inactive_event_pipe, GINT_TO_POINTER(FALSE),
+                         USE_INDATA, CACHE_OUTDATA);
     }
 
     if( mcebat.status != prev.status ) {

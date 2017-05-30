@@ -92,8 +92,8 @@ static gboolean generic_activity_iomon_cb(mce_io_mon_t *iomon, gpointer data, gs
 	(void)bytes_read;
 
 	/* Generate activity */
-	(void)execute_datapipe(&device_inactive_pipe, GINT_TO_POINTER(FALSE),
-			       USE_INDATA, CACHE_OUTDATA);
+	execute_datapipe(&device_inactive_event_pipe, GINT_TO_POINTER(FALSE),
+			 USE_INDATA, CACHE_OUTDATA);
 
 	return FALSE;
 }
@@ -120,8 +120,8 @@ static gboolean camera_launch_button_iomon_cb(mce_io_mon_t *iomon, gpointer data
 	}
 
 	/* Generate activity */
-	(void)execute_datapipe(&device_inactive_pipe, GINT_TO_POINTER(FALSE),
-			       USE_INDATA, CACHE_OUTDATA);
+	execute_datapipe(&device_inactive_event_pipe, GINT_TO_POINTER(FALSE),
+			 USE_INDATA, CACHE_OUTDATA);
 
 	/* Update camera button state */
 	(void)execute_datapipe(&camera_button_pipe,
@@ -177,9 +177,9 @@ static gboolean kbd_slide_iomon_cb(mce_io_mon_t *iomon, gpointer data, gsize byt
 		slide_state = COVER_OPEN;
 
 		/* Generate activity */
-		(void)execute_datapipe(&device_inactive_pipe,
-				       GINT_TO_POINTER(FALSE),
-				       USE_INDATA, CACHE_OUTDATA);
+		execute_datapipe(&device_inactive_event_pipe,
+				 GINT_TO_POINTER(FALSE),
+				 USE_INDATA, CACHE_OUTDATA);
 	} else {
 		slide_state = COVER_CLOSED;
 	}
@@ -209,9 +209,9 @@ static gboolean lid_cover_iomon_cb(mce_io_mon_t *iomon, gpointer data, gsize byt
 		lid_cover_state = COVER_OPEN;
 
 		/* Generate activity */
-		(void)execute_datapipe(&device_inactive_pipe,
-				       GINT_TO_POINTER(FALSE),
-				       USE_INDATA, CACHE_OUTDATA);
+		execute_datapipe(&device_inactive_event_pipe,
+				 GINT_TO_POINTER(FALSE),
+				 USE_INDATA, CACHE_OUTDATA);
 	} else {
 		lid_cover_state = COVER_CLOSED;
 	}
@@ -273,8 +273,8 @@ static gboolean usb_cable_iomon_cb(mce_io_mon_t *iomon, gpointer data, gsize byt
 	}
 
 	/* Generate activity */
-	(void)execute_datapipe(&device_inactive_pipe, GINT_TO_POINTER(FALSE),
-			       USE_INDATA, CACHE_OUTDATA);
+	execute_datapipe(&device_inactive_event_pipe, GINT_TO_POINTER(FALSE),
+			 USE_INDATA, CACHE_OUTDATA);
 
 	(void)execute_datapipe(&usb_cable_pipe,
 			       GINT_TO_POINTER(cable_state),
@@ -301,9 +301,9 @@ static gboolean lens_cover_iomon_cb(mce_io_mon_t *iomon, gpointer data, gsize by
 		lens_cover_state = COVER_OPEN;
 
 		/* Generate activity */
-		(void)execute_datapipe(&device_inactive_pipe,
-				       GINT_TO_POINTER(FALSE),
-				       USE_INDATA, CACHE_OUTDATA);
+		execute_datapipe(&device_inactive_event_pipe,
+				 GINT_TO_POINTER(FALSE),
+				 USE_INDATA, CACHE_OUTDATA);
 	} else {
 		lens_cover_state = COVER_CLOSED;
 	}

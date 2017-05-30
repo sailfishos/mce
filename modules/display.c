@@ -1816,7 +1816,7 @@ EXIT:
 /** Cached inactivity state */
 static gboolean device_inactive = FALSE;
 
-/** Handle device_inactive_pipe notifications
+/** Handle device_inactive_state_pipe notifications
  *
  * @param data The inactivity stored in a pointer;
  *             TRUE if the device is inactive,
@@ -1979,7 +1979,7 @@ static datapipe_handler_t mdy_datapipe_handlers[] =
         .output_cb = mdy_datapipe_submode_cb,
     },
     {
-        .datapipe  = &device_inactive_pipe,
+        .datapipe  = &device_inactive_state_pipe,
         .output_cb = mdy_datapipe_device_inactive_cb,
     },
     {
@@ -6654,7 +6654,7 @@ static void mdy_orientation_generate_activity(void)
     }
 
     mce_log(LL_DEBUG, "orientation change; generate activity");
-    execute_datapipe(&device_inactive_pipe,
+    execute_datapipe(&device_inactive_event_pipe,
                      GINT_TO_POINTER(FALSE),
                      USE_INDATA, CACHE_OUTDATA);
 

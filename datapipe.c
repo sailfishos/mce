@@ -39,7 +39,10 @@ datapipe_struct led_brightness_pipe;
 datapipe_struct lpm_brightness_pipe;
 
 /** State of device; read only */
-datapipe_struct device_inactive_pipe;
+datapipe_struct device_inactive_state_pipe;
+
+/** Device inactivity events; read only */
+datapipe_struct device_inactive_event_pipe;
 
 /** LED pattern to activate; read only */
 datapipe_struct led_pattern_activate_pipe;
@@ -769,7 +772,9 @@ void mce_datapipe_init(void)
 		       sizeof (struct input_event), NULL);
 	setup_datapipe(&touchscreen_pipe, READ_ONLY, FREE_CACHE,
 		       sizeof (struct input_event), NULL);
-	setup_datapipe(&device_inactive_pipe, READ_WRITE, DONT_FREE_CACHE,
+	setup_datapipe(&device_inactive_state_pipe, READ_ONLY, DONT_FREE_CACHE,
+		       0, GINT_TO_POINTER(TRUE));
+	setup_datapipe(&device_inactive_event_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(TRUE));
 	setup_datapipe(&lockkey_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(0));
@@ -890,7 +895,8 @@ void mce_datapipe_quit(void)
 	free_datapipe(&keyboard_slide_pipe);
 	free_datapipe(&keyboard_available_pipe);
 	free_datapipe(&lockkey_pipe);
-	free_datapipe(&device_inactive_pipe);
+	free_datapipe(&device_inactive_state_pipe);
+	free_datapipe(&device_inactive_event_pipe);
 	free_datapipe(&touchscreen_pipe);
 	free_datapipe(&keypress_pipe);
 	free_datapipe(&key_backlight_pipe);
