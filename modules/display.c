@@ -2479,8 +2479,12 @@ static void mdy_brightness_set_priority_boost(bool enable)
     mce_log(LL_DEBUG, "sched=%d, prio=%d", scheduler, param.sched_priority);
 
     if( sched_setscheduler(0, scheduler, &param) == -1 ) {
-        mce_log(LL_WARN, "can't %s high priority mode: %m",
-                enable ? "enter" : "leave");
+        static bool warned = false;
+        if( !warned ) {
+            warned = true;
+            mce_log(LL_WARN, "can't %s high priority mode: %m",
+                    enable ? "enter" : "leave");
+        }
     }
 
     /* The logical change is made even if we fail to actually change
