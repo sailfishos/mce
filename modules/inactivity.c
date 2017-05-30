@@ -114,6 +114,7 @@ static void     mia_datapipe_alarm_ui_state_cb       (gconstpointer data);
 static void     mia_datapipe_call_state_cb           (gconstpointer data);
 static void     mia_datapipe_system_state_cb         (gconstpointer data);
 static void     mia_datapipe_display_state_next_cb   (gconstpointer data);
+static void     mia_datapipe_interaction_expected_cb (gconstpointer data);
 
 static void     mia_datapipe_check_initial_state     (void);
 
@@ -212,6 +213,9 @@ static gint inactivity_timeout = DEFAULT_INACTIVITY_TIMEOUT;
 
 /** Cached proximity sensor state */
 static cover_state_t proximity_state = COVER_UNDEF;
+
+/** Cached Interaction expected state */
+static bool interaction_expected = false;
 
 /* ========================================================================= *
  * HELPER_FUNCTIONS
@@ -347,6 +351,10 @@ static bool mia_activity_allowed(void)
         default:
             break;
         }
+
+        /* Expecting user interaction */
+        if( interaction_expected )
+            goto ALLOW;
 
         goto DENY;
     }
@@ -575,6 +583,32 @@ EXIT:
     return;
 }
 
+/** Change notifications for interaction_expected_pipe
+ */
+static void mia_datapipe_interaction_expected_cb(gconstpointer data)
+{
+    bool prev = interaction_expected;
+    interaction_expected = GPOINTER_TO_INT(data);
+
+    if( prev == interaction_expected )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "interaction_expected: %d -> %d",
+            prev, interaction_expected);
+
+    /* Generate activity to restart blanking timers if interaction
+     * becomes expected while lockscreen is active. */
+    if( interaction_expected &&
+        (submode & MCE_TKLOCK_SUBMODE) &&
+        display_state_next == MCE_DISPLAY_ON ) {
+        mce_log(LL_DEBUG, "interaction expected; generate activity");
+        mia_generate_activity();
+    }
+
+EXIT:
+    return;
+}
+
 /** Handle initial state evaluation and broadcast
  */
 static void mia_datapipe_check_initial_state(void)
@@ -662,6 +696,10 @@ static datapipe_handler_t mia_datapipe_handlers[] =
     {
         .datapipe  = &display_state_next_pipe,
         .output_cb = mia_datapipe_display_state_next_cb,
+    },
+    {
+        .datapipe  = &interaction_expected_pipe,
+        .output_cb = mia_datapipe_interaction_expected_cb,
     },
     // sentinel
     {
