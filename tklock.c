@@ -3249,6 +3249,7 @@ static void tklock_proxlock_rethink(void)
 typedef struct
 {
     uiexctype_t         mask;
+    uiexctype_t         last;
     display_state_t     display;
     bool                tklock;
     device_lock_state_t devicelock;
@@ -3264,6 +3265,7 @@ typedef struct
 static exception_t exdata =
 {
     .mask        = UIEXC_NONE,
+    .last        = UIEXC_NONE,
     .display     = MCE_DISPLAY_UNDEF,
     .tklock      = false,
     .devicelock  = DEVICE_LOCK_UNDEFINED,
@@ -3379,6 +3381,12 @@ static void tklock_uiexcept_rethink(void)
         mce_log(LL_DEBUG, "UIEXC_NONE");
         goto EXIT;
     }
+
+    /* Track states that have gotten topmost before linger */
+    if( active != UIEXC_LINGER )
+        exdata.last  = UIEXC_NONE;
+    else if( active_prev != UIEXC_LINGER )
+        exdata.last  = active_prev;
 
     /* Special case: tklock changes during incoming calls */
     if( exdata.tklock  ) {
@@ -3597,6 +3605,7 @@ static void tklock_uiexcept_cancel(void)
     }
 
     exdata.mask        = UIEXC_NONE;
+    exdata.last        = UIEXC_NONE;
     exdata.display     = MCE_DISPLAY_UNDEF;
     exdata.tklock      = false;
     exdata.devicelock  = DEVICE_LOCK_UNDEFINED;
@@ -3676,6 +3685,28 @@ static gboolean tklock_uiexcept_linger_cb(gpointer aptr)
     }
 
     mce_log(LL_DEBUG, "linger timeout");
+
+    /* Disable state restore if lockscreen is active and interaction
+     * expected after linger. */
+    if( display_state_next == MCE_DISPLAY_ON &&
+        tklock_ui_enabled && interaction_expected ) {
+        if( exdata.last == UIEXC_CALL ) {
+            /* End of call is exception within exception because
+             * the call ui can be left on top of the lockscreen and
+             * there is no way to know whether that happened or not.
+             *
+             * Do not disable state restore and assume the linger
+             * time has been long enough for the user to have done
+             * significant enough actions during it to have disabled
+             * the state restore in other ways.
+             */
+        }
+        else {
+            tklock_uiexcept_deny_state_restore(true,
+                                               "interaction during linger");
+        }
+    }
+
     tklock_uiexcept_finish();
 
 EXIT:
