@@ -109,23 +109,6 @@ gboolean dbus_send_ex2(const char *service,
 		       DBusPendingCall **ppc,
 		       int first_arg_type, ...);
 
-gconstpointer mce_dbus_handler_add_ex(const gchar *const sender,
-				      const gchar *const interface,
-				      const gchar *const name,
-				      const gchar *const args,
-				      const gchar *const rules,
-				      const guint type,
-				      gboolean (*callback)(DBusMessage *const msg));
-
-gconstpointer mce_dbus_handler_add(const gchar *const interface,
-				   const gchar *const name,
-				   const gchar *const rules,
-				   const guint type,
-				   gboolean (*callback)(DBusMessage *const msg));
-
-void mce_dbus_handler_remove(gconstpointer cookie);
-gboolean mce_dbus_is_owner_monitored(const gchar *service,
-				     GSList *monitor_list);
 gssize mce_dbus_owner_monitor_add(const gchar *service,
 				  gboolean (*callback)(DBusMessage *const msg),
 				  GSList **monitor_list,
@@ -169,7 +152,8 @@ typedef struct
   const char *rules;
   const char *args;
   int         type;
-  gboolean (*callback)(DBusMessage *const msg);
+  gboolean  (*callback)(DBusMessage *const msg);
+  bool        privileged;
 
   gconstpointer cookie;
 } mce_dbus_handler_t;
@@ -195,9 +179,6 @@ char *mce_dbus_message_iter_repr(DBusMessageIter *iter);
 
 const char *mce_dbus_get_name_owner_ident(const char *name);
 const char *mce_dbus_get_message_sender_ident(DBusMessage *msg);
-
-typedef void (*mce_dbus_pid_notify_t)(const char *name, int pid);
-void mce_dbus_get_pid_async(const char *name, mce_dbus_pid_notify_t cb);
 
 const char *mce_dbus_nameowner_get(const char *name);
 
