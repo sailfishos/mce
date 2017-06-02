@@ -1,3 +1,12 @@
+mce (1.88.0) precise; urgency=low
+
+  * [dbus] Enablers for limiting dbus methods to privileged clients. JB#38607
+  * [radiostates] Deny radio control from unprivileged clients. Fixes JB#38607
+  * [mcetool] Do not silently ignore D-Bus errors from mce. JB#38607
+  * [dbus] Drop unused async pid query functionality
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 02 Jun 2017 12:13:45 +0300
+
 mce (1.87.4) precise; urgency=low
 
   * [dbus] Add dbus send helper variant with controllable reply timeout
