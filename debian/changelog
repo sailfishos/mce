@@ -1,3 +1,14 @@
+mce (1.89.0) precise; urgency=low
+
+  * [tklock] Cancel display blanking on lockscreen interaction. Fixes JB#35376
+  * [inactivity] Do not allow activity while lockscreen is active
+  * [inactivity] Skip activity renew instead of switching to inactivity
+  * [inactivity] Allow activity when interaction is expected. JB#35376
+  * [display] Do not repeatedly warn about scheduler change failures
+  * [tklock] Do not blank when dismissing alarm with side swipe. Fixes JB#35239
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 20 Jun 2017 23:13:04 +0300
+
 mce (1.88.0) precise; urgency=low
 
   * [dbus] Enablers for limiting dbus methods to privileged clients. JB#38607
