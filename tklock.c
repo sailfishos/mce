@@ -199,6 +199,7 @@ static void     tklock_datapipe_keypress_cb(gconstpointer const data);
 static void     tklock_datapipe_exception_state_cb(gconstpointer data);
 static void     tklock_datapipe_audio_route_cb(gconstpointer data);
 static void     tklock_datapipe_tk_lock_cb(gconstpointer data);
+static void     tklock_datapipe_interaction_expected_cb(gconstpointer data);
 static void     tklock_datapipe_submode_cb(gconstpointer data);
 static void     tklock_datapipe_lockkey_cb(gconstpointer const data);
 static void     tklock_datapipe_heartbeat_cb(gconstpointer data);
@@ -297,7 +298,7 @@ static void     tklock_uiexcept_begin(uiexctype_t type, int64_t linger);
 static void     tklock_uiexcept_end(uiexctype_t type, int64_t linger);
 static void     tklock_uiexcept_cancel(void);
 static void     tklock_uiexcept_finish(void);
-static bool     tklock_uiexcept_deny_state_restore(bool force);
+static bool     tklock_uiexcept_deny_state_restore(bool force, const char *cause);
 static void     tklock_uiexcept_rethink(void);
 
 // low power mode ui state machine
@@ -380,6 +381,7 @@ static gboolean tklock_dbus_send_tklock_mode(DBusMessage *const method_call);
 
 static gboolean tklock_dbus_mode_get_req_cb(DBusMessage *const msg);
 static gboolean tklock_dbus_mode_change_req_cb(DBusMessage *const msg);
+static gboolean tklock_dbus_interaction_expected_cb(DBusMessage *const msg);
 static gboolean tklock_dbus_systemui_callback_cb(DBusMessage *const msg);
 
 static gboolean tklock_dbus_device_lock_changed_cb(DBusMessage *const msg);
@@ -1429,6 +1431,43 @@ static void tklock_datapipe_tk_lock_cb(gconstpointer data)
     tklock_ui_set(enable);
 }
 
+/** Interaction expected; assume false */
+static bool interaction_expected = false;
+
+/** Change notifications for interaction_expected_pipe
+ */
+static void tklock_datapipe_interaction_expected_cb(gconstpointer data)
+{
+    bool prev = interaction_expected;
+    interaction_expected = GPOINTER_TO_INT(data);
+
+    if( prev == interaction_expected )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "interaction_expected: %d -> %d",
+            prev, interaction_expected);
+
+    /* All changes must be ignored when handling exceptional things
+     * like calls and alarms that are shown on top of lockscreen ui.
+     */
+    if( exception_state & (UIEXC_CALL | UIEXC_ALARM) )
+        goto EXIT;
+
+    /* Edge triggered action: When interaction becomes expected
+     * while lockscreen is still active (e.g. display has been
+     * unblanked to show notification on the lockscreen and
+     * user has swiped from plain lockscreen view to device unlock
+     * code entry view) the display state restore should be disabled.
+     */
+    if( display_state_next == MCE_DISPLAY_ON &&
+        tklock_ui_enabled && interaction_expected ) {
+        tklock_uiexcept_deny_state_restore(true, "interaction expected");
+    }
+
+EXIT:
+    return;
+}
+
 static submode_t submode = MCE_INVALID_SUBMODE;
 
 /** Change notifications for submode
@@ -1909,14 +1948,13 @@ static void tklock_datapipe_user_activity_cb(gconstpointer data)
     switch( exception_state ) {
     case UIEXC_LINGER:
         /* touch events during linger -> do not restore display state */
-        if( tklock_uiexcept_deny_state_restore(true) )
-            mce_log(LL_DEBUG, "touch event during linger; do not restore display/tklock state");
+        tklock_uiexcept_deny_state_restore(true, "touch event during linger");
         break;
 
     case UIEXC_NOTIF:
         /* touch events while device is not locked -> do not restore display state */
-        if( tklock_uiexcept_deny_state_restore(false) ) {
-            mce_log(LL_DEBUG, "touch event while unlocked; do not restore display/tklock state");
+        if( tklock_uiexcept_deny_state_restore(false,
+                                               "touch event during notification") ) {
             break;
         }
         /* touchscreen activity makes notification exceptions to last longer */
@@ -1971,6 +2009,10 @@ static datapipe_handler_t tklock_datapipe_handlers[] =
     {
         .datapipe = &tk_lock_pipe,
         .output_cb = tklock_datapipe_tk_lock_cb,
+    },
+    {
+        .datapipe  = &interaction_expected_pipe,
+        .output_cb = tklock_datapipe_interaction_expected_cb,
     },
     {
         .datapipe = &proximity_sensor_pipe,
@@ -3207,6 +3249,7 @@ static void tklock_proxlock_rethink(void)
 typedef struct
 {
     uiexctype_t         mask;
+    uiexctype_t         last;
     display_state_t     display;
     bool                tklock;
     device_lock_state_t devicelock;
@@ -3222,6 +3265,7 @@ typedef struct
 static exception_t exdata =
 {
     .mask        = UIEXC_NONE,
+    .last        = UIEXC_NONE,
     .display     = MCE_DISPLAY_UNDEF,
     .tklock      = false,
     .devicelock  = DEVICE_LOCK_UNDEFINED,
@@ -3278,7 +3322,7 @@ static void  tklock_uiexcept_sync_to_datapipe(void)
  *               false for canceling only if neither tklock nor devicelock
  *               is active
  */
-static bool tklock_uiexcept_deny_state_restore(bool force)
+static bool tklock_uiexcept_deny_state_restore(bool force, const char *cause)
 {
     bool changed = false;
 
@@ -3289,6 +3333,8 @@ static bool tklock_uiexcept_deny_state_restore(bool force)
     // must be forced or unlocked
     if( !force && (exdata.tklock || exdata.devicelock) )
         goto EXIT;
+
+    mce_log(LL_DEVEL, "%s; state restore disabled", cause);
 
     exdata.restore = false;
     changed = true;
@@ -3335,6 +3381,12 @@ static void tklock_uiexcept_rethink(void)
         mce_log(LL_DEBUG, "UIEXC_NONE");
         goto EXIT;
     }
+
+    /* Track states that have gotten topmost before linger */
+    if( active != UIEXC_LINGER )
+        exdata.last  = UIEXC_NONE;
+    else if( active_prev != UIEXC_LINGER )
+        exdata.last  = active_prev;
 
     /* Special case: tklock changes during incoming calls */
     if( exdata.tklock  ) {
@@ -3553,6 +3605,7 @@ static void tklock_uiexcept_cancel(void)
     }
 
     exdata.mask        = UIEXC_NONE;
+    exdata.last        = UIEXC_NONE;
     exdata.display     = MCE_DISPLAY_UNDEF;
     exdata.tklock      = false;
     exdata.devicelock  = DEVICE_LOCK_UNDEFINED;
@@ -3632,6 +3685,28 @@ static gboolean tklock_uiexcept_linger_cb(gpointer aptr)
     }
 
     mce_log(LL_DEBUG, "linger timeout");
+
+    /* Disable state restore if lockscreen is active and interaction
+     * expected after linger. */
+    if( display_state_next == MCE_DISPLAY_ON &&
+        tklock_ui_enabled && interaction_expected ) {
+        if( exdata.last == UIEXC_CALL ) {
+            /* End of call is exception within exception because
+             * the call ui can be left on top of the lockscreen and
+             * there is no way to know whether that happened or not.
+             *
+             * Do not disable state restore and assume the linger
+             * time has been long enough for the user to have done
+             * significant enough actions during it to have disabled
+             * the state restore in other ways.
+             */
+        }
+        else {
+            tklock_uiexcept_deny_state_restore(true,
+                                               "interaction during linger");
+        }
+    }
+
     tklock_uiexcept_finish();
 
 EXIT:
@@ -5845,6 +5920,39 @@ EXIT:
     return status;
 }
 
+/** D-Bus callback for handling interaction expected -state changed signals
+ *
+ * @param msg The D-Bus message
+ *
+ * @return TRUE
+ */
+static gboolean tklock_dbus_interaction_expected_cb(DBusMessage *const msg)
+{
+    DBusError    err = DBUS_ERROR_INIT;
+    dbus_bool_t  arg = false;
+
+    if( !msg )
+        goto EXIT;
+
+    if( !dbus_message_get_args(msg, &err,
+                               DBUS_TYPE_BOOLEAN, &arg,
+                               DBUS_TYPE_INVALID) ) {
+        mce_log(LL_ERR, "Failed to parse interaction expected signal: %s: %s",
+                err.name, err.message);
+        goto EXIT;
+    }
+
+    mce_log(LL_DEBUG, "received interaction expected signal: state=%d", arg);
+    execute_datapipe(&interaction_expected_pipe,
+                     GINT_TO_POINTER(arg),
+                     USE_INDATA, CACHE_INDATA);
+
+EXIT:
+    dbus_error_free(&err);
+
+    return TRUE;
+}
+
 /**
  * D-Bus callback from SystemUI touchscreen/keypad lock
  *
@@ -6009,6 +6117,13 @@ static mce_dbus_handler_t tklock_dbus_handlers[] =
         .rules     = "path='/devicelock'",
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
         .callback  = tklock_dbus_device_lock_changed_cb,
+    },
+    {
+        .interface = "org.nemomobile.lipstick.screenlock",
+        .name      = "interaction_expected",
+        .rules     = "path='/screenlock'",
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .callback  = tklock_dbus_interaction_expected_cb,
     },
     /* signals - outbound (for Introspect purposes only) */
     {

@@ -90,7 +90,8 @@ typedef enum {
 /* Available datapipes */
 extern datapipe_struct led_brightness_pipe;
 extern datapipe_struct lpm_brightness_pipe;
-extern datapipe_struct device_inactive_pipe;
+extern datapipe_struct device_inactive_state_pipe;
+extern datapipe_struct device_inactive_event_pipe;
 extern datapipe_struct led_pattern_activate_pipe;
 extern datapipe_struct led_pattern_deactivate_pipe;
 extern datapipe_struct device_resumed_pipe;
@@ -123,6 +124,7 @@ extern datapipe_struct call_state_pipe;
 extern datapipe_struct ignore_incoming_call_pipe;
 extern datapipe_struct call_type_pipe;
 extern datapipe_struct tk_lock_pipe;
+extern datapipe_struct interaction_expected_pipe;
 extern datapipe_struct charger_state_pipe;
 extern datapipe_struct battery_status_pipe;
 extern datapipe_struct battery_level_pipe;

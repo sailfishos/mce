@@ -1292,7 +1292,7 @@ static void stub_setup_checked(void)
 		       sizeof (struct input_event), NULL);
 	setup_datapipe(&touchscreen_pipe, READ_ONLY, FREE_CACHE,
 		       sizeof (struct input_event), NULL);
-	setup_datapipe(&device_inactive_pipe, READ_WRITE, DONT_FREE_CACHE,
+	setup_datapipe(&device_inactive_state_pipe, READ_WRITE, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(FALSE));
 	setup_datapipe(&lockkey_pipe, READ_ONLY, DONT_FREE_CACHE,
 		       0, GINT_TO_POINTER(0));
@@ -1364,7 +1364,7 @@ static void stub_teardown_checked(void)
 	free_datapipe(&lid_cover_input_pipe);
 	free_datapipe(&keyboard_slide_pipe);
 	free_datapipe(&lockkey_pipe);
-	free_datapipe(&device_inactive_pipe);
+	free_datapipe(&device_inactive_state_pipe);
 	free_datapipe(&touchscreen_pipe);
 	free_datapipe(&keypress_pipe);
 	free_datapipe(&key_backlight_pipe);
@@ -1662,7 +1662,7 @@ START_TEST (ut_check_auto_dim)
 					     expected_dim_time);
 
 		/* Generate activity so adaptive_dimming_index gets inc. */
-		execute_datapipe(&device_inactive_pipe, GINT_TO_POINTER(FALSE),
+		execute_datapipe(&device_inactive_event_pipe, GINT_TO_POINTER(FALSE),
 				 USE_INDATA, CACHE_OUTDATA);
 		ut_assert_transition(ut_is_display_state_eq,
 				     GINT_TO_POINTER(MCE_DISPLAY_ON));
@@ -1702,7 +1702,7 @@ START_TEST (ut_check_adaptive_dim_timeout)
 				     expected_dim_time);
 
 	/* Generating activity the adaptive_dimming_index gets incremented */
-	execute_datapipe(&device_inactive_pipe, GINT_TO_POINTER(FALSE),
+	execute_datapipe(&device_inactive_event_pipe, GINT_TO_POINTER(FALSE),
 			 USE_INDATA, CACHE_OUTDATA);
 	/* Verify adaptive_dimming_index=1 by meassuring rime to re-enter DIM */
 	expected_dim_time = ut_nth_possible_dim_timeout(forced_dti + 1);

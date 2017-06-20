@@ -850,7 +850,7 @@ const gchar *g_module_check_init(GModule *module)
 					  system_state_trigger);
 	append_output_trigger_to_datapipe(&key_backlight_pipe,
 					  set_backlight_brightness);
-	append_output_trigger_to_datapipe(&device_inactive_pipe,
+	append_output_trigger_to_datapipe(&device_inactive_state_pipe,
 					  device_inactive_trigger);
 	append_output_trigger_to_datapipe(&keyboard_slide_pipe,
 					  keyboard_slide_trigger);
@@ -949,7 +949,7 @@ void g_module_unload(GModule *module)
 					    display_state_trigger);
 	remove_output_trigger_from_datapipe(&keyboard_slide_pipe,
 					    keyboard_slide_trigger);
-	remove_output_trigger_from_datapipe(&device_inactive_pipe,
+	remove_output_trigger_from_datapipe(&device_inactive_state_pipe,
 					    device_inactive_trigger);
 	remove_output_trigger_from_datapipe(&key_backlight_pipe,
 					    set_backlight_brightness);
