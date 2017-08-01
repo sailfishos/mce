@@ -570,6 +570,24 @@ modules/bluetooth.pic.o:\
 	mce-log.h\
 	mce.h\
 
+modules/buttonbacklight.o:\
+	modules/buttonbacklight.c\
+	builtin-gconf.h\
+	datapipe.h\
+	mce-conf.h\
+	mce-dbus.h\
+	mce-log.h\
+	mce.h\
+
+modules/buttonbacklight.pic.o:\
+	modules/buttonbacklight.c\
+	builtin-gconf.h\
+	datapipe.h\
+	mce-conf.h\
+	mce-dbus.h\
+	mce-log.h\
+	mce.h\
+
 modules/callstate.o:\
 	modules/callstate.c\
 	builtin-gconf.h\

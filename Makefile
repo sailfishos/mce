@@ -160,6 +160,7 @@ MODULES += $(MODULE_DIR)/battery-bme.so
 MODULES += $(MODULE_DIR)/battery-upower.so
 MODULES += $(MODULE_DIR)/bluetooth.so
 MODULES += $(MODULE_DIR)/battery-statefs.so
+MODULES += $(MODULE_DIR)/buttonbacklight.so
 MODULES += $(MODULE_DIR)/display.so
 MODULES += $(MODULE_DIR)/usbmode.so
 MODULES += $(MODULE_DIR)/doubletap.so
@@ -574,6 +575,7 @@ NORMALIZE_USES_SPC =\
 	modules/battery-upower.c\
 	modules/battery-statefs.c\
 	modules/bluetooth.c\
+	modules/buttonbacklight.c\
 	modules/callstate.c\
 	modules/callstate.h\
 	modules/camera.h\
