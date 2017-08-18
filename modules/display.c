@@ -384,6 +384,7 @@ static bool                mdy_shutdown_in_progress(void);
 static void                mdy_datapipe_packagekit_locked_cb(gconstpointer data);;
 static void                mdy_datapipe_system_state_cb(gconstpointer data);
 static void                mdy_datapipe_submode_cb(gconstpointer data);
+static void                mdy_datapipe_interaction_expected_cb(gconstpointer data);
 static void                mdy_datapipe_mdy_datapipe_lid_cover_policy_cb(gconstpointer data);
 static gpointer            mdy_datapipe_display_state_filter_cb(gpointer data);
 static void                mdy_datapipe_display_state_cb(gconstpointer data);
@@ -496,6 +497,7 @@ static void                mdy_poweron_led_rethink_schedule(void);
 /** Maximum blank timeout applicable in ACTDEAD mode [s] */
 #define ACTDEAD_MAX_OFF_TIMEOUT 15
 
+static bool                mdy_blanking_from_lockscreen(void);
 static void                mdy_blanking_update_inactivity_timeout(void);
 static gboolean            mdy_blanking_can_blank_from_low_power_mode(void);
 
@@ -1306,6 +1308,28 @@ EXIT:
     return;
 }
 
+/** Interaction expected; assume false */
+static bool interaction_expected = false;
+
+/** Change notifications for interaction_expected_pipe
+ */
+static void mdy_datapipe_interaction_expected_cb(gconstpointer data)
+{
+    bool prev = interaction_expected;
+    interaction_expected = GPOINTER_TO_INT(data);
+
+    if( prev == interaction_expected )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "interaction_expected: %d -> %d",
+            prev, interaction_expected);
+
+    mdy_blanking_rethink_timers(false);
+
+EXIT:
+    return;
+}
+
 /** Cache Lid cover policy state; assume unknown
  */
 static cover_state_t lid_cover_policy_state = COVER_UNDEF;
@@ -1979,6 +2003,10 @@ static datapipe_handler_t mdy_datapipe_handlers[] =
         .output_cb = mdy_datapipe_submode_cb,
     },
     {
+        .datapipe  = &interaction_expected_pipe,
+        .output_cb = mdy_datapipe_interaction_expected_cb,
+    },
+    {
         .datapipe  = &device_inactive_state_pipe,
         .output_cb = mdy_datapipe_device_inactive_cb,
     },
@@ -2027,7 +2055,6 @@ static datapipe_handler_t mdy_datapipe_handlers[] =
         .datapipe  = &shutting_down_pipe,
         .output_cb = mdy_datapipe_shutting_down_cb,
     },
-
     // sentinel
     {
         .datapipe = 0,
@@ -3415,6 +3442,15 @@ static void mdy_poweron_led_rethink_schedule(void)
  * AUTOMATIC_BLANKING
  * ========================================================================= */
 
+/** Check whether blanking rules for lockscreen should be used
+ *
+ * @return true if lockscreen blanking should be used, false otherwise
+ */
+static bool mdy_blanking_from_lockscreen(void)
+{
+    return (submode & MCE_TKLOCK_SUBMODE) && !interaction_expected;
+}
+
 /** Re-calculate inactivity timeout
  *
  * This function should be called whenever the variables used
@@ -3467,7 +3503,7 @@ static gboolean mdy_blanking_can_blank_from_low_power_mode(void)
 #else
     // TODO: we need proximity locking back in, for now just allow it
     //       when tklocked
-    if( submode & MCE_TKLOCK_SUBMODE )
+    if( mdy_blanking_from_lockscreen() )
         return TRUE;
 #endif
 
@@ -3680,7 +3716,7 @@ static gboolean mdy_blanking_off_cb(gpointer data)
     case MCE_DISPLAY_DIM:
         if( lipstick_service_state != SERVICE_STATE_RUNNING )
             break;
-        if( submode & MCE_TKLOCK_SUBMODE )
+        if( mdy_blanking_from_lockscreen() )
             next_state = MCE_DISPLAY_LPM_ON;
         break;
     default:
@@ -3746,7 +3782,7 @@ static void mdy_blanking_schedule_off(void)
     else if( display_state == MCE_DISPLAY_LPM_OFF ) {
         timeout = mdy_blank_from_lpm_off_timeout;
     }
-    else if( submode & MCE_TKLOCK_SUBMODE ) {
+    else if( mdy_blanking_from_lockscreen() ) {
         /* In case UI boots up to lockscreen, we need to
          * apply additional after-boot delay also to
          * blanking timer. */
@@ -4338,8 +4374,8 @@ static void mdy_blanking_rethink_timers(bool force)
 
     static audio_route_t prev_audio_route = AUDIO_ROUTE_HANDSET;
 
-    static submode_t prev_tklock_mode = 0;
-    submode_t tklock_mode = submode & MCE_TKLOCK_SUBMODE;
+    static bool prev_tklock_mode = false;
+    bool tklock_mode = mdy_blanking_from_lockscreen();
 
     if( prev_tklock_mode != tklock_mode )
         force = true;
