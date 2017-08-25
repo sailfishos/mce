@@ -1,3 +1,9 @@
+mce (1.89.1) precise; urgency=low
+
+  * [display] Use normal blanking delay from interactive lockscreen. MER#1802
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 25 Aug 2017 13:11:23 +0300
+
 mce (1.89.0) precise; urgency=low
 
   * [tklock] Cancel display blanking on lockscreen interaction. Fixes JB#35376
