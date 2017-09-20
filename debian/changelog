@@ -1,3 +1,10 @@
+mce (1.89.0.1) precise; urgency=low
+
+  * [display] Use normal blanking delay from interactive lockscreen. MER#1802
+  * [settings] Do not grab touch input devices by default. Fixes JB#39800
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 20 Sep 2017 11:01:29 +0300
+
 mce (1.89.0) precise; urgency=low
 
   * [tklock] Cancel display blanking on lockscreen interaction. Fixes JB#35376
