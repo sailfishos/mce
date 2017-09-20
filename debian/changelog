@@ -1,3 +1,9 @@
+mce (1.89.2) precise; urgency=low
+
+  * [settings] Do not grab touch input devices by default. Fixes JB#39800
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 20 Sep 2017 10:31:09 +0300
+
 mce (1.89.1) precise; urgency=low
 
   * [display] Use normal blanking delay from interactive lockscreen. MER#1802
