@@ -2913,6 +2913,24 @@ pwrkey_datapipes_keypress_cb(gconstpointer const data)
 
                     /* Power key pressed */
                     pwrkey_stm_powerkey_pressed();
+
+                    /* Some devices report both power key press and release
+                     * already when the physical button is pressed down.
+                     * Other devices wait for physical release before
+                     * reporting key release. And in some devices it depends
+                     * on whether the device is suspended or not.
+                     *
+                     * To normalize behavior in default configuration (i.e.
+                     * begin display power up already on power key press
+                     * without waiting for user to lift finger off the button):
+                     * Synthetize key release, if no actions are bound to long
+                     * power key press from display off state. */
+                    if( pwrkey_stm_display_state == MCE_DISPLAY_OFF ) {
+                        if( !pwrkey_actions_from_display_off.mask_long ) {
+                            mce_log(LL_DEBUG, "powerkey release simulated");
+                            pwrkey_stm_powerkey_released();
+                        }
+                    }
                 }
             }
             else if( ev->value == 0 ) {
