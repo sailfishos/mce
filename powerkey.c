@@ -2869,6 +2869,19 @@ EXIT:
 static void
 pwrkey_datapipes_keypress_cb(gconstpointer const data)
 {
+    /* Faulty/aged physical power key buttons can generate
+     * bursts of press and release events that are then
+     * interpreted as double presses. To avoid this we
+     * ignore power key presses that occur so soon after
+     * previous release that they are unlikely to be
+     * caused by human activity. */
+
+    /* Minimum delay between power key release and press. */
+    static const int64_t press_delay = 50;
+
+    /* Time limit for accepting the next power key press */
+    static int64_t press_limit = 0;
+
     const struct input_event * const *evp;
     const struct input_event *ev;
 
@@ -2883,21 +2896,33 @@ pwrkey_datapipes_keypress_cb(gconstpointer const data)
         switch( ev->code ) {
         case KEY_POWER:
             if( ev->value == 1 ) {
-                mce_log(LL_CRUCIAL, "powerkey pressed");
-                /* Detect repeated power key pressing while
-                 * proximity sensor is covered; assume it means
-                 * the sensor is stuck and user wants to be able
-                 * to turn on the display regardless of the sensor
-                 * state */
-                pwrkey_ps_override_evaluate();
+                if( mce_lib_get_boot_tick() < press_limit ) {
+                    /* Too soon after the previous powerkey
+                     * release -> assume faulty hw sending
+                     * bursts of presses */
+                    mce_log(LL_CRUCIAL, "powerkey press ignored");
+                }
+                else {
+                    mce_log(LL_CRUCIAL, "powerkey pressed");
+                    /* Detect repeated power key pressing while
+                     * proximity sensor is covered; assume it means
+                     * the sensor is stuck and user wants to be able
+                     * to turn on the display regardless of the sensor
+                     * state */
+                    pwrkey_ps_override_evaluate();
 
-                /* Power key pressed */
-                pwrkey_stm_powerkey_pressed();
+                    /* Power key pressed */
+                    pwrkey_stm_powerkey_pressed();
+                }
             }
             else if( ev->value == 0 ) {
                 mce_log(LL_CRUCIAL, "powerkey released");
                 /* Power key released */
                 pwrkey_stm_powerkey_released();
+
+                /* Adjust time limit for accepting the next power
+                 * key press */
+                press_limit = mce_lib_get_boot_tick() + press_delay;
             }
 
             pwrkey_stm_rethink_wakelock();
