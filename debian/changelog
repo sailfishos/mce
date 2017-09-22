@@ -1,3 +1,10 @@
+mce (1.89.3) precise; urgency=low
+
+  * [powerkey] Ignore bursts of power key presses. Fixes JB#37181
+  * [powerkey] Do not differentiate long/short presses in display off. JB#39431
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 22 Sep 2017 09:29:41 +0300
+
 mce (1.89.2) precise; urgency=low
 
   * [settings] Do not grab touch input devices by default. Fixes JB#39800
