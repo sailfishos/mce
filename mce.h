@@ -170,6 +170,9 @@ const char *alarm_state_repr(alarm_ui_state_t state);
 /** System sub-modes; several of these can be active at once */
 typedef gint submode_t;
 
+const char *submode_change_repr(submode_t prev, submode_t curr);
+const char *submode_repr(submode_t submode);
+
 /** Submode invalid */
 #define MCE_INVALID_SUBMODE		(1 << 31)
 

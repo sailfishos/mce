@@ -939,6 +939,75 @@ void mce_datapipe_quit(void)
 	free_datapipe(&proximity_blank_pipe);
 }
 
+/** Convert submode_t bitmap changes to human readable string
+ *
+ * @param prev  submode_t bitmap changed from
+ * @param curr  submode_t bitmap changed to
+ *
+ * @return human readable representation of submode
+ */
+const char *submode_change_repr(submode_t prev, submode_t curr)
+{
+	static const struct {
+		submode_t bit; const char *name;
+	} lut[] = {
+		{ MCE_INVALID_SUBMODE,          "INVALID"          },
+		{ MCE_TKLOCK_SUBMODE,           "TKLOCK"           },
+		{ MCE_EVEATER_SUBMODE,          "EVEATER"          },
+		{ MCE_BOOTUP_SUBMODE,           "BOOTUP"           },
+		{ MCE_TRANSITION_SUBMODE,       "TRANSITION"       },
+		{ MCE_AUTORELOCK_SUBMODE,       "AUTORELOCK"       },
+		{ MCE_VISUAL_TKLOCK_SUBMODE,    "VISUAL_TKLOCK"    },
+		{ MCE_POCKET_SUBMODE,           "POCKET"           },
+		{ MCE_PROXIMITY_TKLOCK_SUBMODE, "PROXIMITY_TKLOCK" },
+		{ MCE_MALF_SUBMODE,             "MALF"             },
+		{ 0,0 }
+	};
+
+	static char buff[128];
+	char *pos = buff;
+	char *end = buff + sizeof buff - 1;
+
+	auto inline void add(const char *str)
+	{
+		while( pos < end && *str )
+			*pos++ = *str++;
+	}
+
+	for( int i = 0; lut[i].name; ++i ) {
+		const char *tag = 0;
+
+		if( curr & lut[i].bit ) {
+			tag = (prev & lut[i].bit) ? "" : "+";
+		}
+		else if( prev & lut[i].bit ) {
+			tag = "-";
+		}
+
+		if( tag ) {
+			if( pos> buff ) add(" ");
+			add(tag);
+			add(lut[i].name);
+		}
+	}
+	if( pos == buff ) {
+		add("NONE");
+	}
+	*pos = 0;
+	return buff;
+}
+
+/** Convert submode_t bitmap to human readable string
+ *
+ * @param submode submode_t bitmap
+ *
+ * @return human readable representation of submode
+ */
+const char *submode_repr(submode_t submode)
+{
+  return submode_change_repr(submode, submode);
+}
+
 /** Convert system_state_t enum to human readable string
  *
  * @param state system_state_t enumeration value
