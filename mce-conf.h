@@ -45,4 +45,20 @@ const gchar * const *mce_conf_get_touchscreen_event_drivers(void);
 const gchar * const *mce_conf_get_keyboard_event_drivers(void);
 const gchar * const *mce_conf_get_blacklisted_event_drivers(void);
 
+/* ========================================================================= *
+ * Constant related to button backlight configuration
+ * ========================================================================= */
+
+/** Name of the display backlight configuration group */
+# define MCE_CONF_BUTTON_BACKLIGHT_GROUP                  "ButtonBacklight"
+
+/** Path to button backlight control file */
+# define MCE_CONF_BUTTON_BACKLIGHT_CONTROL_PATH           "ControlPath"
+
+/** Value to write when enabling button backlight */
+# define MCE_CONF_BUTTON_BACKLIGHT_CONTROL_VALUE_ENABLE   "ControlValueEnable"
+
+/** Value to write when disabling button backlight */
+# define MCE_CONF_BUTTON_BACKLIGHT_CONTROL_VALUE_DISABLE  "ControlValueDisable"
+
 #endif /* _MCE_CONF_H_ */

@@ -1475,6 +1475,14 @@ static const symbol_t never_blank_values[] = {
         { NULL, -1 }
 };
 
+/** Lookup table for button backlight options
+ */
+static const symbol_t button_backlight_values[] = {
+        { "enabled",   1 },
+        { "disabled",  0 },
+        { NULL, -1 }
+};
+
 /** Lookup table for fake doubletap policies
  */
 static const symbol_t fake_doubletap_values[] = {
@@ -2450,6 +2458,65 @@ EXIT:
         printf("%-"PAD1"s %s (%s)\n", "Call state (type):",
                callstate ?: "unknown",
                calltype ?:  "unknown");
+
+        if( rsp ) dbus_message_unref(rsp);
+}
+
+/* ------------------------------------------------------------------------- *
+ * button backlight
+ * ------------------------------------------------------------------------- */
+
+/** Set button backlight state
+ *
+ * Note: An enable gets cancelled when mcetool exits. The
+ *       --block option can be used keep mcetool connected to
+ *       system bus.
+ *
+ * @param args string with "enabled" / "disabled"
+ */
+static bool xmce_set_button_backlight(const char *args)
+{
+        debugf("%s(%s)\n", __FUNCTION__, args);
+
+        int val = lookup(button_backlight_values, args);
+        if( val < 0 ) {
+                errorf("%s: invalid never blank value\n", args);
+                return false;
+        }
+
+        dbus_bool_t enabled = (val != 0);
+
+        xmce_ipc_no_reply(MCE_BUTTON_BACKLIGHT_CHANGE_REQ,
+                          DBUS_TYPE_BOOLEAN, &enabled,
+                          DBUS_TYPE_INVALID);
+
+        return true;
+}
+
+/** Get current button backlight state from mce and print it out
+ */
+static void xmce_get_button_backlight(void)
+{
+        dbus_bool_t enabled = FALSE;
+        DBusMessage *rsp = NULL;
+        DBusError    err = DBUS_ERROR_INIT;
+
+        if( !xmce_ipc_message_reply(MCE_BUTTON_BACKLIGHT_GET, &rsp, DBUS_TYPE_INVALID) )
+                goto EXIT;
+
+        dbus_message_get_args(rsp, &err,
+                              DBUS_TYPE_BOOLEAN, &enabled,
+                              DBUS_TYPE_INVALID);
+
+EXIT:
+        if( dbus_error_is_set(&err) ) {
+                errorf("%s: %s: %s\n", MCE_CALL_STATE_GET,
+                       err.name, err.message);
+                dbus_error_free(&err);
+        }
+
+        printf("%-"PAD1"s %s\n", "Button backlight:",
+               rlookup(button_backlight_values, enabled));
 
         if( rsp ) dbus_message_unref(rsp);
 }
@@ -5430,6 +5497,7 @@ static bool xmce_get_status(const char *args)
         xmce_get_verbosity();
         xmce_get_radio_states();
         xmce_get_call_state();
+        xmce_get_button_backlight();
         xmce_get_display_state();
         xmce_get_color_profile();
         xmce_get_display_brightness();
@@ -6438,6 +6506,14 @@ static const mce_opt_t options[] =
                         "set the call state and type\n"
                         "Valid states are: none, ringing, active and service.\n"
                         "Valid types are: normal and emergency.\n"
+        },
+        {
+                .name        = "set-button-backlight",
+                .with_arg    = xmce_set_button_backlight,
+                .values      = "enabled|disabled",
+                .usage       =
+                        "request button backlight state\n"
+                        "Valid states are: enabled and disabled.\n"
         },
         {
                 .name        = "enable-led",
