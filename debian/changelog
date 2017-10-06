@@ -1,3 +1,10 @@
+mce (1.90.0) precise; urgency=low
+
+  * [datapipe] Make submode_repr() functions generally available
+  * [buttonbacklight] Implement button backlight policy. JB#39838
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 06 Oct 2017 13:22:32 +0300
+
 mce (1.89.3) precise; urgency=low
 
   * [powerkey] Ignore bursts of power key presses. Fixes JB#37181
