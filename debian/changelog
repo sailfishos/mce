@@ -1,3 +1,9 @@
+mce (1.90.1) precise; urgency=low
+
+  * [dbus] Add config for button backlight methods. JB#39838
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 12 Oct 2017 16:12:34 +0300
+
 mce (1.90.0) precise; urgency=low
 
   * [datapipe] Make submode_repr() functions generally available
