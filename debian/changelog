@@ -1,3 +1,9 @@
+mce (1.90.2) precise; urgency=low
+
+  * [tklock] Do not allow tkunlock while display is blanked. Fixes MER#1831
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 13 Nov 2017 08:33:33 +0200
+
 mce (1.90.1) precise; urgency=low
 
   * [dbus] Add config for button backlight methods. JB#39838
