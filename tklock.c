@@ -5863,6 +5863,57 @@ EXIT:
     return status;
 }
 
+/** Apply allow/deny policy for TKLock requests received over D-Bus
+ *
+ * Basically locking is always allowed, but unlocking only when
+ * display already is / is making transition to powered up state.
+ *
+ * @param state requested state
+ *
+ * @returns allowed state
+ */
+static lock_state_t
+tklock_dbus_sanitize_requested_mode(lock_state_t state)
+{
+    /* Translate toggle requests to something we can evaluate */
+    if( state == LOCK_TOGGLE )
+        state = tklock_ui_enabled ? LOCK_OFF : LOCK_ON;
+
+    switch( state ) {
+    default:
+    case LOCK_UNDEF:
+    case LOCK_TOGGLE:
+        break;
+
+    case LOCK_OFF:
+    case LOCK_OFF_DELAYED:
+    case LOCK_OFF_PROXIMITY:
+        state = LOCK_OFF;
+        switch( display_state_next ) {
+        case MCE_DISPLAY_ON:
+        case MCE_DISPLAY_DIM:
+            break;
+        default:
+            if( tklock_ui_enabled ) {
+                mce_log(LL_WARN, "tkunlock denied due to display=%s",
+                        display_state_repr(display_state_next));
+                state = LOCK_ON;
+            }
+            break;
+        }
+        goto EXIT;
+
+    case LOCK_ON:
+    case LOCK_ON_DIMMED:
+    case LOCK_ON_PROXIMITY:
+    case LOCK_ON_DELAYED:
+        state = LOCK_ON;
+        break;
+    }
+EXIT:
+    return state;
+}
+
 /**
  * D-Bus callback for the tklock mode change method call
  *
@@ -5905,6 +5956,7 @@ static gboolean tklock_dbus_mode_change_req_cb(DBusMessage *const msg)
 
     if( state != LOCK_UNDEF ) {
         tklock_ui_notified = -1;
+        state = tklock_dbus_sanitize_requested_mode(state);
         tklock_datapipe_tk_lock_cb(GINT_TO_POINTER(state));
     }
 
@@ -5978,10 +6030,12 @@ static gboolean tklock_dbus_systemui_callback_cb(DBusMessage *const msg)
     mce_log(LL_DEVEL, "tklock callback value: %d, from %s", result,
             mce_dbus_get_message_sender_ident(msg));
 
+    lock_state_t state = LOCK_OFF;
     switch( result ) {
     case TKLOCK_UNLOCK:
         tklock_ui_notified = -1;
-        tklock_ui_set(false);
+        state = tklock_dbus_sanitize_requested_mode(state);
+        tklock_datapipe_tk_lock_cb(GINT_TO_POINTER(state));
         break;
 
     default:
