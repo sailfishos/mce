@@ -86,9 +86,6 @@ typedef enum
 /** Maximum number of concurrent notification ui exceptions */
 #define TKLOCK_NOTIF_SLOTS 32
 
-/** Signal to send when lpm ui state changes */
-#define MCE_LPM_UI_MODE_SIG "lpm_ui_mode_ind"
-
 /** How long to wait for lid close after low lux [ms] */
 #define TKLOCK_LIDFILTER_SET_WAIT_FOR_CLOSE_DELAY 1500
 
@@ -5555,7 +5552,8 @@ static void tklock_ui_send_lpm_signal(void)
 
     /* then send the signal */
     const char *sig = MCE_LPM_UI_MODE_SIG;
-    const char *arg = enabled ? "enabled" : "disabled";
+    const char *arg = enabled ? MCE_LPM_UI_ENABLED : MCE_LPM_UI_DISABLED;
+
     mce_log(LL_DEVEL, "sending dbus signal: %s %s", sig, arg);
     dbus_send(0, MCE_SIGNAL_PATH, MCE_SIGNAL_IF,  sig, 0,
               DBUS_TYPE_STRING, &arg, DBUS_TYPE_INVALID);
@@ -5614,7 +5612,7 @@ static void tklock_ui_show_device_unlock(void)
      * 2) having the tkunlock redirection available means that it would
      *    not be needed at all in the power key handler ...
      */
-    const char *sig = "power_button_trigger";
+    const char *sig = MCE_POWER_BUTTON_TRIGGER;
     const char *arg = "double-power-key";
     dbus_send(0, MCE_SIGNAL_PATH, MCE_SIGNAL_IF, sig, 0,
               DBUS_TYPE_STRING, &arg, DBUS_TYPE_INVALID);
@@ -5675,9 +5673,6 @@ tklock_dbus_display_blanking_policy_get_cb(DBusMessage *const msg)
     return TRUE;
 }
 
-#define MCE_KEYBOARD_SLIDE_STATE_SIG "keyboard_slide_state_ind"
-#define MCE_KEYBOARD_SLIDE_STATE_REQ "keyboard_slide_state_req"
-
 /** Send the keyboard slide open/closed state
  *
  * @param req A method call message to be replied, or
@@ -5692,15 +5687,15 @@ tklock_dbus_send_keyboard_slide_state(DBusMessage *const req)
         rsp = dbus_new_method_reply(req);
     else
         rsp = dbus_new_signal(MCE_SIGNAL_PATH, MCE_SIGNAL_IF,
-                              MCE_KEYBOARD_SLIDE_STATE_SIG);
+                              MCE_SLIDING_KEYBOARD_STATE_SIG);
     if( !rsp )
         goto EXIT;
 
-    const char *arg = "undef";
+    const char *arg = MCE_SLIDING_KEYBOARD_UNDEF;
 
     switch( kbd_slide_output_state ) {
-    case COVER_OPEN:   arg = "open";   break;
-    case COVER_CLOSED: arg = "closed"; break;
+    case COVER_OPEN:   arg = MCE_SLIDING_KEYBOARD_OPEN;   break;
+    case COVER_CLOSED: arg = MCE_SLIDING_KEYBOARD_CLOSED; break;
     default: break;
     }
 
@@ -5735,9 +5730,6 @@ tklock_dbus_keyboard_slide_state_get_req_cb(DBusMessage *const msg)
     return TRUE;
 }
 
-#define MCE_KEYBOARD_AVAILABLE_STATE_SIG "keyboard_available_state_ind"
-#define MCE_KEYBOARD_AVAILABLE_STATE_REQ "keyboard_available_state_req"
-
 /** Send the keyboard available state
  *
  * @param req A method call message to be replied, or
@@ -5752,15 +5744,15 @@ tklock_dbus_send_keyboard_available_state(DBusMessage *const req)
         rsp = dbus_new_method_reply(req);
     else
         rsp = dbus_new_signal(MCE_SIGNAL_PATH, MCE_SIGNAL_IF,
-                              MCE_KEYBOARD_AVAILABLE_STATE_SIG);
+                              MCE_HARDWARE_KEYBOARD_STATE_SIG);
     if( !rsp )
         goto EXIT;
 
-    const char *arg = "undef";
+    const char *arg = MCE_HARDWARE_KEYBOARD_UNDEF;
 
     switch( kbd_available_state ) {
-    case COVER_OPEN:   arg = "available";     break;
-    case COVER_CLOSED: arg = "not-available"; break;
+    case COVER_OPEN:   arg = MCE_HARDWARE_KEYBOARD_AVAILABLE;     break;
+    case COVER_CLOSED: arg = MCE_HARDWARE_KEYBOARD_NOT_AVAILABLE; break;
     default: break;
     }
 
@@ -6196,14 +6188,14 @@ static mce_dbus_handler_t tklock_dbus_handlers[] =
     },
     {
         .interface = MCE_SIGNAL_IF,
-        .name      = MCE_KEYBOARD_SLIDE_STATE_SIG,
+        .name      = MCE_SLIDING_KEYBOARD_STATE_SIG,
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
         .args      =
             "    <arg name=\"slide_state\" type=\"s\"/>\n"
     },
     {
         .interface = MCE_SIGNAL_IF,
-        .name      = MCE_KEYBOARD_AVAILABLE_STATE_SIG,
+        .name      = MCE_HARDWARE_KEYBOARD_STATE_SIG,
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
         .args      =
             "    <arg name=\"keyboard_state\" type=\"s\"/>\n"
@@ -6242,7 +6234,7 @@ static mce_dbus_handler_t tklock_dbus_handlers[] =
     },
     {
         .interface = MCE_REQUEST_IF,
-        .name      = "notification_begin_req",
+        .name      = MCE_NOTIFICATION_BEGIN_REQ,
         .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
         .callback  = tklock_dbus_notification_beg_cb,
         .args      =
@@ -6252,7 +6244,7 @@ static mce_dbus_handler_t tklock_dbus_handlers[] =
     },
     {
         .interface = MCE_REQUEST_IF,
-        .name      = "notification_end_req",
+        .name      = MCE_NOTIFICATION_END_REQ,
         .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
         .callback  = tklock_dbus_notification_end_cb,
         .args      =
@@ -6261,7 +6253,7 @@ static mce_dbus_handler_t tklock_dbus_handlers[] =
     },
     {
         .interface = MCE_REQUEST_IF,
-        .name      = MCE_KEYBOARD_SLIDE_STATE_REQ,
+        .name      = MCE_SLIDING_KEYBOARD_STATE_GET,
         .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
         .callback  = tklock_dbus_keyboard_slide_state_get_req_cb,
         .args      =
@@ -6269,7 +6261,7 @@ static mce_dbus_handler_t tklock_dbus_handlers[] =
     },
     {
         .interface = MCE_REQUEST_IF,
-        .name      = MCE_KEYBOARD_AVAILABLE_STATE_REQ,
+        .name      = MCE_HARDWARE_KEYBOARD_STATE_GET,
         .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
         .callback  = tklock_dbus_keyboard_available_state_get_req_cb,
         .args      =

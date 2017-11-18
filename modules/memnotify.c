@@ -27,6 +27,7 @@
 #include "../mce-setting.h"
 
 #include <mce/dbus-names.h>
+#include <mce/mode-names.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -257,10 +258,10 @@ memnotify_level_name(memnotify_level_t lev)
 {
     static const char * const lut[MEMNOTIFY_LEVEL_COUNT] =
     {
-        [MEMNOTIFY_LEVEL_NORMAL]	= "normal",
-        [MEMNOTIFY_LEVEL_WARNING]	= "warning",
-        [MEMNOTIFY_LEVEL_CRITICAL]	= "critical",
-        [MEMNOTIFY_LEVEL_UNKNOWN]	= "unknown",
+        [MEMNOTIFY_LEVEL_NORMAL]   = MCE_MEMORY_LEVEL_NORMAL,
+        [MEMNOTIFY_LEVEL_WARNING]  = MCE_MEMORY_LEVEL_WARNING,
+        [MEMNOTIFY_LEVEL_CRITICAL] = MCE_MEMORY_LEVEL_CRITICAL,
+        [MEMNOTIFY_LEVEL_UNKNOWN]  = MCE_MEMORY_LEVEL_UNKNOWN,
     };
 
     return (lev < MEMNOTIFY_LEVEL_COUNT) ? lut[lev] : "undefined";

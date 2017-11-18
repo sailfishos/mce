@@ -28,6 +28,7 @@
 #include "display.h"
 
 #include <mce/dbus-names.h>
+#include <mce/mode-names.h>
 
 #include <gmodule.h>
 
@@ -117,7 +118,7 @@ static void sg_send_flipover_signal(const char *sig)
         goto EXIT;
 
     // NOTE: introspection data shared with powerkey.c
-    const char *arg = "flipover";
+    const char *arg = MCE_FEEDBACK_EVENT_FLIPOVER;
     mce_log(LL_DEVEL, "sending dbus signal: %s %s", sig, arg);
     dbus_send(0, MCE_SIGNAL_PATH, MCE_SIGNAL_IF,  sig, 0,
               DBUS_TYPE_STRING, &arg, DBUS_TYPE_INVALID);
@@ -168,10 +169,10 @@ static void sg_detect_flipover_gesture(void)
         primed = false;
 
         if( sg_have_alarm_dialog() )
-            sg_send_flipover_signal("alarm_ui_feedback_ind");
+            sg_send_flipover_signal(MCE_ALARM_UI_FEEDBACK_SIG);
 
         if( sg_have_incoming_call() )
-            sg_send_flipover_signal("call_ui_feedback_ind");
+            sg_send_flipover_signal(MCE_CALL_UI_FEEDBACK_SIG);
     }
 
 EXIT:

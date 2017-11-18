@@ -249,13 +249,6 @@ typedef enum {
 # define MCE_DEFAULT_TK_LOCKSCREEN_ANIM_ENABLED  true
 
 /* ========================================================================= *
- * D-Bus Constants
- * ========================================================================= */
-
-/** Name of D-Bus callback to provide to Touchscreen/Keypad Lock SystemUI */
-# define MCE_TKLOCK_CB_REQ               "tklock_callback"
-
-/* ========================================================================= *
  * Configuration
  * ========================================================================= */
 

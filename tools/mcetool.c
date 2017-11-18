@@ -52,12 +52,6 @@
 /** Name shown by --help etc. */
 #define PROG_NAME "mcetool"
 
-/** Define get config DBUS method */
-#define MCE_DBUS_GET_CONFIG_REQ                 "get_config"
-
-/** Define set config DBUS method */
-#define MCE_DBUS_SET_CONFIG_REQ                 "set_config"
-
 /** Default padding for left column of status reports */
 #define PAD1 "36"
 
@@ -1035,7 +1029,7 @@ static gboolean xmce_setting_get_bool(const gchar *const key, gboolean *value)
 
         DBusMessageIter body, variant;
 
-        if( !(req = xmce_setting_request(MCE_DBUS_GET_CONFIG_REQ)) )
+        if( !(req = xmce_setting_request(MCE_CONFIG_GET)) )
                 goto EXIT;
         if( !dbushelper_init_write_iterator(req, &body) )
                 goto EXIT;
@@ -1074,7 +1068,7 @@ static gboolean xmce_setting_get_int(const gchar *const key, gint *value)
 
         DBusMessageIter body, variant;
 
-        if( !(req = xmce_setting_request(MCE_DBUS_GET_CONFIG_REQ)) )
+        if( !(req = xmce_setting_request(MCE_CONFIG_GET)) )
                 goto EXIT;
         if( !dbushelper_init_write_iterator(req, &body) )
                 goto EXIT;
@@ -1114,7 +1108,7 @@ static gboolean xmce_setting_get_string(const gchar *const key, gchar **value)
 
         DBusMessageIter body, variant;
 
-        if( !(req = xmce_setting_request(MCE_DBUS_GET_CONFIG_REQ)) )
+        if( !(req = xmce_setting_request(MCE_CONFIG_GET)) )
                 goto EXIT;
         if( !dbushelper_init_write_iterator(req, &body) )
                 goto EXIT;
@@ -1154,7 +1148,7 @@ static gboolean xmce_setting_get_int_array(const gchar *const key, gint **values
 
         DBusMessageIter body, variant;
 
-        if( !(req = xmce_setting_request(MCE_DBUS_GET_CONFIG_REQ)) )
+        if( !(req = xmce_setting_request(MCE_CONFIG_GET)) )
                 goto EXIT;
         if( !dbushelper_init_write_iterator(req, &body) )
                 goto EXIT;
@@ -1199,7 +1193,7 @@ static gboolean xmce_setting_set_bool(const gchar *const key,
         DBusMessageIter *wpos = stack;
         DBusMessageIter *rpos = stack;
 
-        if( !(req = xmce_setting_request(MCE_DBUS_SET_CONFIG_REQ)) )
+        if( !(req = xmce_setting_request(MCE_CONFIG_SET)) )
                 goto EXIT;
         if( !dbushelper_init_write_iterator(req, wpos) )
                 goto EXIT;
@@ -1252,7 +1246,7 @@ static gboolean xmce_setting_set_int(const gchar *const key, const gint value)
         DBusMessageIter *rpos = stack;
 
         // construct request
-        if( !(req = xmce_setting_request(MCE_DBUS_SET_CONFIG_REQ)) )
+        if( !(req = xmce_setting_request(MCE_CONFIG_SET)) )
                 goto EXIT;
         if( !dbushelper_init_write_iterator(req, wpos) )
                 goto EXIT;
@@ -1306,7 +1300,7 @@ static gboolean xmce_setting_set_string(const gchar *const key, const char *valu
         DBusMessageIter *rpos = stack;
 
         // construct request
-        if( !(req = xmce_setting_request(MCE_DBUS_SET_CONFIG_REQ)) )
+        if( !(req = xmce_setting_request(MCE_CONFIG_SET)) )
                 goto EXIT;
         if( !dbushelper_init_write_iterator(req, wpos) )
                 goto EXIT;
@@ -1365,7 +1359,7 @@ static gboolean xmce_setting_set_int_array(const gchar *const key,
         DBusMessageIter *rpos = stack;
 
         // construct request
-        if( !(req = xmce_setting_request(MCE_DBUS_SET_CONFIG_REQ)) )
+        if( !(req = xmce_setting_request(MCE_CONFIG_SET)) )
                 goto EXIT;
         if( !dbushelper_init_write_iterator(req, wpos) )
                 goto EXIT;
@@ -2083,7 +2077,7 @@ static bool xmce_set_verbosity(const char *arg)
                 return false;
         }
 
-        return xmce_ipc_no_reply("set_verbosity",
+        return xmce_ipc_no_reply(MCE_VERBOSITY_REQ,
                                  DBUS_TYPE_INT32, &val,
                                  DBUS_TYPE_INVALID);
 }
@@ -2095,7 +2089,7 @@ static void xmce_get_verbosity(void)
         gint        val = 0;
         const char *txt = 0;
 
-        if( xmce_ipc_int_reply("get_verbosity", &val, DBUS_TYPE_INVALID) )
+        if( xmce_ipc_int_reply(MCE_VERBOSITY_GET, &val, DBUS_TYPE_INVALID) )
                 txt = rlookup(verbosity_levels, val);
 
         printf("%-"PAD1"s %s \n", "Verbosity level:", txt ?: "unknown");
@@ -2221,7 +2215,7 @@ static bool xmce_notification_begin(const char *args)
 
         /* Note: length and limit ranges are enforced at mce side */
 
-        xmce_ipc_no_reply("notification_begin_req",
+        xmce_ipc_no_reply(MCE_NOTIFICATION_BEGIN_REQ,
                           DBUS_TYPE_STRING, &title,
                           DBUS_TYPE_INT32 , &length,
                           DBUS_TYPE_INT32 , &renew,
@@ -2243,7 +2237,7 @@ static bool xmce_notification_end(const char *args)
 
         /* Note: linger range is enforced at mce side */
 
-        xmce_ipc_no_reply("notification_end_req",
+        xmce_ipc_no_reply(MCE_NOTIFICATION_END_REQ,
                           DBUS_TYPE_STRING, &title,
                           DBUS_TYPE_INT32 , &linger,
                           DBUS_TYPE_INVALID);
@@ -5089,7 +5083,7 @@ static bool xmce_get_suspend_stats(const char *args)
         DBusMessage *rsp = NULL;
         DBusError    err = DBUS_ERROR_INIT;
 
-        if( !xmce_ipc_message_reply("get_suspend_stats", &rsp, DBUS_TYPE_INVALID) )
+        if( !xmce_ipc_message_reply(MCE_SUSPEND_STATS_GET, &rsp, DBUS_TYPE_INVALID) )
                 goto EXIT;
 
         dbus_int64_t uptime_ms  = 0;
@@ -5106,7 +5100,7 @@ static bool xmce_get_suspend_stats(const char *args)
 EXIT:
 
         if( dbus_error_is_set(&err) ) {
-                errorf("%s: %s: %s\n", "get_suspend_stats", err.name, err.message);
+                errorf("%s: %s: %s\n", MCE_SUSPEND_STATS_GET, err.name, err.message);
                 dbus_error_free(&err);
         }
 
@@ -5163,7 +5157,7 @@ static bool xmce_get_display_stats(const char *args)
 
         DBusMessageIter body, array, dict, entry;
 
-        if( !xmce_ipc_message_reply("get_display_stats", &rsp, DBUS_TYPE_INVALID) )
+        if( !xmce_ipc_message_reply(MCE_DISPLAY_STATS_GET, &rsp, DBUS_TYPE_INVALID) )
                 goto EXIT;
 
         if( !dbushelper_init_read_iterator(rsp, &body) )
@@ -5213,7 +5207,7 @@ EXIT:
         g_free(name);
 
         if( dbus_error_is_set(&err) ) {
-                errorf("%s: %s: %s\n", "get_display_stats", err.name, err.message);
+                errorf("%s: %s: %s\n", MCE_DISPLAY_STATS_GET, err.name, err.message);
                 dbus_error_free(&err);
         }
 

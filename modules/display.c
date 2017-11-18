@@ -101,14 +101,6 @@
 /** How long to delay entering late suspend after powering down display */
 #define MCE_DISPLAY_STM_SUSPEND_DELAY_NS (5LL * 1000LL * 1000LL * 1000LL)
 
-#ifdef ENABLE_DEVEL_LOGGING
-/** Strictly for debugging: D-Bus method to invoke MCE_DISPLAY_LPM_ON state */
-# define MCE_DISPLAY_LPM_ON_REQ             "req_display_state_lpm_on"
-
-/** Strictly for debugging: D-Bus method to invoke MCE_DISPLAY_LPM_OFF state */
-# define MCE_DISPLAY_LPM_OFF_REQ            "req_display_state_lpm_off"
-#endif
-
 /** Placeholder value for unknown compositor pid */
 #define COMPOSITOR_STM_INVALID_PID (-1)
 
@@ -3173,9 +3165,6 @@ EXIT:
 /* ========================================================================= *
  * UI_SIDE_DIMMING
  * ========================================================================= */
-
-/** Signal to send when ui side fader opacity changes */
-#define MCE_FADER_OPACITY_SIG "fader_opacity_ind"
 
 /** Compositor side fade to black opacity level percentage
  *
@@ -9258,7 +9247,7 @@ static mce_dbus_handler_t mdy_dbus_handlers[] =
 #ifdef ENABLE_DEVEL_LOGGING
     {
         .interface = MCE_REQUEST_IF,
-        .name      = MCE_DISPLAY_LPM_ON_REQ,
+        .name      = MCE_DISPLAY_STATE_LPM_ON_REQ,
         .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
         .callback  = mdy_dbus_handle_display_lpm_on_req,
         .args      =
@@ -9266,7 +9255,7 @@ static mce_dbus_handler_t mdy_dbus_handlers[] =
     },
     {
         .interface = MCE_REQUEST_IF,
-        .name      = MCE_DISPLAY_LPM_OFF_REQ,
+        .name      = MCE_DISPLAY_STATE_LPM_OFF_REQ,
         .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
         .callback  = mdy_dbus_handle_display_lpm_off_req,
         .args      =
@@ -9300,7 +9289,7 @@ static mce_dbus_handler_t mdy_dbus_handlers[] =
     },
     {
         .interface = MCE_REQUEST_IF,
-        .name      = "get_display_stats",
+        .name      = MCE_DISPLAY_STATS_GET,
         .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
         .callback  = mdy_dbus_handle_display_stats_get_req,
         .args      =

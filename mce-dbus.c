@@ -4827,7 +4827,7 @@ static mce_dbus_handler_t mce_dbus_handlers[] =
 	},
 	{
 		.interface = MCE_REQUEST_IF,
-		.name      = "get_suspend_stats",
+		.name      = MCE_SUSPEND_STATS_GET,
 		.type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
 		.callback  = suspend_stats_get_dbus_cb,
 		.args      =
@@ -4836,7 +4836,7 @@ static mce_dbus_handler_t mce_dbus_handlers[] =
 	},
 	{
 		.interface = MCE_REQUEST_IF,
-		.name      = "get_verbosity",
+		.name      = MCE_VERBOSITY_GET,
 		.type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
 		.callback  = verbosity_get_dbus_cb,
 		.args      =
@@ -4844,7 +4844,7 @@ static mce_dbus_handler_t mce_dbus_handlers[] =
 	},
 	{
 		.interface = MCE_REQUEST_IF,
-		.name      = "set_verbosity",
+		.name      = MCE_VERBOSITY_REQ,
 		.type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
 		.callback  = verbosity_set_dbus_cb,
 		.args      =
