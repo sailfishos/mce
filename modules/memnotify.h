@@ -30,18 +30,4 @@
 # define MCE_SETTING_MEMNOTIFY_CRITICAL_ACTIVE  MCE_SETTING_MEMNOTIFY_PATH"/critical/active"
 # define MCE_DEFAULT_MEMNOTIFY_CRITICAL_ACTIVE  0 // = disabled
 
-/* ========================================================================= *
- * D-Bus Constants
- * ========================================================================= */
-
-/** Signal that is sent when memory use level changes
- *
- * Has a string parameter: "normal", "warning" or "critical" (actual strings
- * are defined in the memnotify_limit[] array).
- */
-# define MCE_MEMORY_LEVEL_SIG           "sig_memory_level_ind"
-
-/** Query current memory level */
-# define MCE_MEMORY_LEVEL_GET           "get_memory_level"
-
 #endif /* MEMNOTIFY_H_ */

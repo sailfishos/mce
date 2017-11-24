@@ -1607,7 +1607,7 @@ pwrkey_dbus_action_execute(size_t action_id)
     }
 
     if( pwrkey_dbus_action_is_signal(action) ) {
-        pwrkey_dbus_send_signal("power_button_trigger",
+        pwrkey_dbus_send_signal(MCE_POWER_BUTTON_TRIGGER,
                                 action->argument);
         goto cleanup;
     }
@@ -1791,7 +1791,7 @@ pwrkey_stm_ignore_action(void)
     case MCE_ALARM_UI_RINGING_INT32:
         mce_log(LL_DEVEL, "[powerkey] ignored due to active alarm");
         ignore_powerkey = true;
-        pwrkey_dbus_send_signal("alarm_ui_feedback_ind", "powerkey");
+        pwrkey_dbus_send_signal(MCE_ALARM_UI_FEEDBACK_SIG, MCE_FEEDBACK_EVENT_POWERKEY);
         break;
 
     default:
@@ -1812,7 +1812,7 @@ pwrkey_stm_ignore_action(void)
         }
         mce_log(LL_DEVEL, "[powerkey] ignored due to incoming call");
         ignore_powerkey = true;
-        pwrkey_dbus_send_signal("call_ui_feedback_ind", "powerkey");
+        pwrkey_dbus_send_signal(MCE_CALL_UI_FEEDBACK_SIG, MCE_FEEDBACK_EVENT_POWERKEY);
         break;
 
     default:
@@ -1938,7 +1938,7 @@ homekey_stm_set_state(homekey_stm_t state)
 
     case HOMEKEY_STM_SEND_SIGNAL:
         /* Inform compositor that it should perform home key actions */
-        pwrkey_dbus_send_signal("power_button_trigger", "home-key");
+        pwrkey_dbus_send_signal(MCE_POWER_BUTTON_TRIGGER, "home-key");
         break;
 
     case HOMEKEY_STM_WAIT_RELEASE:
@@ -2163,21 +2163,21 @@ static mce_dbus_handler_t pwrkey_dbus_handlers[] =
     /* signals - outbound (for Introspect purposes only) */
     {
         .interface = MCE_SIGNAL_IF,
-        .name      = "alarm_ui_feedback_ind",
+        .name      = MCE_ALARM_UI_FEEDBACK_SIG,
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
         .args      =
             "    <arg name=\"event\" type=\"s\"/>\n"
     },
     {
         .interface = MCE_SIGNAL_IF,
-        .name      = "call_ui_feedback_ind",
+        .name      = MCE_CALL_UI_FEEDBACK_SIG,
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
         .args      =
             "    <arg name=\"event\" type=\"s\"/>\n"
     },
     {
         .interface = MCE_SIGNAL_IF,
-        .name      = "power_button_trigger",
+        .name      = MCE_POWER_BUTTON_TRIGGER,
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
         .args      =
             "    <arg name=\"event\" type=\"s\"/>\n"
