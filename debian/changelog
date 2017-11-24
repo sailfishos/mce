@@ -1,3 +1,11 @@
+mce (1.90.3) precise; urgency=low
+
+  * [dbus] Document root-only dbus methods in mce dbus config
+  * [dbus] Use constants from mde-dev instead of hard-coding. Fixes MER#1854
+  * [build] Update mce development package dependency
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 24 Nov 2017 12:20:55 +0200
+
 mce (1.90.2) precise; urgency=low
 
   * [tklock] Do not allow tkunlock while display is blanked. Fixes MER#1831
