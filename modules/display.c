@@ -752,6 +752,11 @@ static void                mdy_stm_fbdev_power_done_cb(void *aptr, void *reply);
 static void               *mdy_stm_fbdev_power_exec_cb(void *aptr);
 static void                mdy_stm_fbdev_set_power(bool poweron);
 
+// asynchronous sysfs write to allow/deny suspending
+static void                mdy_stm_autosuspend_done_cb(void *aptr, void *reply);
+static void               *mdy_stm_autosuspend_exec_cb(void *aptr);
+static void                mdy_stm_autosuspend_set_state(bool allow);
+
 // early/late suspend and resume
 static bool                mdy_stm_is_early_suspend_allowed(void);
 static bool                mdy_stm_is_late_suspend_allowed(void);
@@ -7309,6 +7314,87 @@ static bool mdy_stm_is_late_suspend_allowed(void)
 #endif
 }
 
+/** Flag for: Entering/leaving early suspend / autosleep */
+static bool mdy_stm_autosuspend_pending = false;
+
+/** Flag for: Early suspend / autosleep enabled */
+static bool mdy_stm_autosuspend_enabled = false;
+
+/** Early suspend / autosleep control sysfs write finished
+ *
+ * @param aptr  Requested suspend state (as void pointer)
+ * @param reply Return value from execute callback (Unused)
+ */
+static void mdy_stm_autosuspend_done_cb(void *aptr, void *reply)
+{
+    (void)reply;
+
+    /* Note: This is executed in the main thread context */
+
+    bool allow = GPOINTER_TO_INT(aptr);
+
+    mdy_stm_autosuspend_enabled = allow;
+    mdy_stm_autosuspend_pending = false;
+
+    mce_log(LL_DEBUG, "autosuspend = %s", allow ? "enabled" : "disabled");
+
+    if( mdy_waitfb_data.thread ) {
+        /* Early suspend: Resume implicitly wakes up display too */
+    }
+    else {
+        /* Autosleep: Explicit display power control needed */
+        mdy_stm_fbdev_set_power(allow ? false : true);
+    }
+
+    mdy_stm_schedule_rethink();
+}
+
+/** Execute early suspend / autosleep control sysfs write
+ *
+ * @param aptr  Requested suspend state (as void pointer)
+ *
+ * @return Requested suspend state (as void pointer)
+ */
+static void *mdy_stm_autosuspend_exec_cb(void *aptr)
+{
+    /* Note: This is executed in the worker thread context */
+
+    bool allow = GPOINTER_TO_INT(aptr);
+
+    mce_log(LL_DEBUG, "autosuspend = %s", allow ? "enabling" : "disabling");
+
+    if( allow )
+        wakelock_allow_suspend();
+    else
+        wakelock_block_suspend();
+
+    return aptr;
+}
+
+/** Enable / disable early suspend / autosleep
+ *
+ * In some kernels the sysfs write handler does not return control
+ * to the caller until the whole resume sequence is finished. To avoid
+ * blocking the whole mce mainloop, the sysfs write is queued to worker
+ * thread for asynchronous execution.
+ *
+ * @param allow  true to allow suspending, or false to deny suspending
+ */
+static void mdy_stm_autosuspend_set_state(bool allow)
+{
+    /* The state machine logic should make it sure that overlapping
+     * control attempts never occur - raise a flag if detected anyway
+     */
+    if( mdy_stm_autosuspend_pending )
+        mce_log(LL_WARN, "state machine fault - autosuspend control");
+
+    mdy_stm_autosuspend_pending = true;
+    mce_worker_add_job(MODULE_NAME, "autosuspend-ctrl",
+                       mdy_stm_autosuspend_exec_cb,
+                       mdy_stm_autosuspend_done_cb,
+                       GINT_TO_POINTER(allow));
+}
+
 /** Start frame buffer suspend
  */
 static void mdy_stm_start_fb_suspend(void)
@@ -7317,9 +7403,7 @@ static void mdy_stm_start_fb_suspend(void)
 
 #ifdef ENABLE_WAKELOCKS
     mce_log(LL_NOTICE, "suspending");
-    wakelock_allow_suspend();
-    if( !mdy_waitfb_data.thread )
-        mdy_stm_fbdev_set_power(false);
+    mdy_stm_autosuspend_set_state(true);
 #else
     mce_log(LL_NOTICE, "power off frame buffer");
     mdy_waitfb_data.suspended = true, mce_fbdev_set_power(false);
@@ -7334,11 +7418,9 @@ static void mdy_stm_start_fb_resume(void)
 
 #ifdef ENABLE_WAKELOCKS
     mce_log(LL_NOTICE, "resuming");
-    wakelock_block_suspend();
-    if( !mdy_waitfb_data.thread )
-        mdy_stm_fbdev_set_power(true);
+    mdy_stm_autosuspend_set_state(false);
 #else
-    mce_log(LL_NOTICE, "power off frame buffer");
+    mce_log(LL_NOTICE, "power on frame buffer");
     mdy_waitfb_data.suspended = false, mce_fbdev_set_power(true);
 #endif
 }
@@ -7535,6 +7617,12 @@ static void mdy_stm_step(void)
         break;
 
     case STM_ENTER_POWER_ON:
+        /* To avoid overlapping autosuspend control attempts, we need
+         * to stay in transient state until pending exit from early
+         * suspend / autosleep has been finished */
+        if( mdy_stm_autosuspend_pending )
+            break;
+
         mdy_stm_finish_target_change();
         mdy_stm_trans(STM_STAY_POWER_ON);
         break;
@@ -7614,8 +7702,18 @@ static void mdy_stm_step(void)
         break;
 
     case STM_WAIT_SUSPEND:
+        /* Done with async entry to early suspend / autosleep? */
+        if( mdy_stm_autosuspend_pending )
+            break;
+
+        /* Done with async frame buffer device blank ioctl? */
+        if( mdy_stm_fbdev_pending_set_power )
+            break;
+
+        /* Received frame buffer sleep notification? */
         if( !mdy_stm_is_fb_suspend_finished() )
             break;
+
         mdy_stm_trans(STM_ENTER_POWER_OFF);
         break;
 
@@ -7666,10 +7764,18 @@ static void mdy_stm_step(void)
         break;
 
     case STM_WAIT_RESUME:
+        /* Done with async frame buffer device unblank ioctl? */
         if( mdy_stm_fbdev_pending_set_power )
             break;
+
+        /* Received frame buffer wakeup notification? */
         if( !mdy_stm_is_fb_resume_finished() )
             break;
+
+        /* Note: All control branches started from here must wait
+         *       for mdy_stm_autosuspend_pending == false before
+         *       accepting new target display states. */
+
         if( mdy_stm_display_state_needs_power(mdy_stm_next) ) {
             /* We must have non-zero brightness in place when ui draws
              * for the 1st time or the brightness changes will not happen
@@ -7684,6 +7790,12 @@ static void mdy_stm_step(void)
         break;
 
     case STM_ENTER_LOGICAL_OFF:
+        /* To avoid overlapping autosuspend control attempts, we need
+         * to stay in transient state until pending exit from early
+         * suspend / autosleep has been finished */
+        if( mdy_stm_autosuspend_pending )
+            break;
+
         mdy_stm_finish_target_change();
         if( force_powerup_in_logical_off ) {
             force_powerup_in_logical_off = false;
