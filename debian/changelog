@@ -1,3 +1,9 @@
+mce (1.90.4) precise; urgency=low
+
+  * [display] Enable/disable autosuspend from worker thread. Fixes JB#40265
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 28 Nov 2017 14:09:57 +0200
+
 mce (1.90.3) precise; urgency=low
 
   * [dbus] Document root-only dbus methods in mce dbus config
