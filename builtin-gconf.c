@@ -1827,6 +1827,16 @@ static const setting_t gconf_defaults[] =
     .def  = G_STRINGIFY(MCE_DEFAULT_TK_LOCKSCREEN_ANIM_ENABLED),
   },
   {
+    .key  = MCE_SETTING_TK_PROXIMITY_DELAY_DEFAULT,
+    .type = "i",
+    .def  = G_STRINGIFY(MCE_DEFAULT_TK_PROXIMITY_DELAY_DEFAULT),
+  },
+  {
+    .key  = MCE_SETTING_TK_PROXIMITY_DELAY_INCALL,
+    .type = "i",
+    .def  = G_STRINGIFY(MCE_DEFAULT_TK_PROXIMITY_DELAY_INCALL),
+  },
+  {
     .key  = NULL,
   }
 };

@@ -554,6 +554,14 @@ static guint exception_length_activity_setting_id = 0;
 static gboolean lockscreen_anim_enabled = MCE_DEFAULT_TK_LOCKSCREEN_ANIM_ENABLED;
 static guint    lockscreen_anim_enabled_setting_id = 0;
 
+/** Default delay for delaying proximity uncovered handling [ms] */
+static gint  tklock_proximity_delay_default = MCE_DEFAULT_TK_PROXIMITY_DELAY_DEFAULT;
+static guint tklock_proximity_delay_default_setting_id = 0;
+
+/** Delay for delaying proximity uncovered handling during calls [ms] */
+static gint  tklock_proximity_delay_incall = MCE_DEFAULT_TK_PROXIMITY_DELAY_INCALL;
+static guint tklock_proximity_delay_incall_setting_id = 0;
+
 /* ========================================================================= *
  * probed control file paths
  * ========================================================================= */
@@ -971,14 +979,6 @@ static void tklock_datapipe_proximity_uncover_cancel(void)
     }
 }
 
-enum {
-    /** Default delay for delaying proximity uncovered handling [ms] */
-    PROXIMITY_DELAY_DEFAULT = 100,
-
-    /** Delay for delaying proximity uncovered handling during calls [ms] */
-    PROXIMITY_DELAY_INCALL  = 500,
-};
-
 /** Schedule delayed proximity uncovering
  */
 static void tklock_datapipe_proximity_uncover_schedule(void)
@@ -988,10 +988,15 @@ static void tklock_datapipe_proximity_uncover_schedule(void)
     else
         wakelock_lock("mce_proximity_stm", -1);
 
-    int delay = PROXIMITY_DELAY_DEFAULT;
+    int delay = tklock_proximity_delay_default;
 
     if( call_state == CALL_STATE_ACTIVE )
-        delay = PROXIMITY_DELAY_INCALL;
+        delay = tklock_proximity_delay_incall;
+
+    if( delay < MCE_MINIMUM_TK_PROXIMITY_DELAY )
+        delay = MCE_MINIMUM_TK_PROXIMITY_DELAY;
+    else if( delay > MCE_MAXIMUM_TK_PROXIMITY_DELAY )
+        delay = MCE_MAXIMUM_TK_PROXIMITY_DELAY;
 
     tklock_datapipe_proximity_uncover_id =
         g_timeout_add(delay, tklock_datapipe_proximity_uncover_cb, 0);
@@ -4811,6 +4816,18 @@ static void tklock_setting_cb(GConfClient *const gcc, const guint id,
         mce_log(LL_NOTICE, "exception_length_activity: %d -> %d",
                 old, exception_length_activity);
     }
+    else if( id == tklock_proximity_delay_default_setting_id ) {
+        gint old = tklock_proximity_delay_default;
+        tklock_proximity_delay_default = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "proximity_delay_default: %d -> %d",
+                old, tklock_proximity_delay_default);
+    }
+    else if( id == tklock_proximity_delay_incall_setting_id ) {
+        gint old = tklock_proximity_delay_incall;
+        tklock_proximity_delay_incall = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "proximity_delay_incall: %d -> %d",
+                old, tklock_proximity_delay_incall);
+    }
     else {
         mce_log(LL_WARN, "Spurious GConf value received; confused!");
     }
@@ -5034,6 +5051,19 @@ static void tklock_setting_init(void)
                            MCE_DEFAULT_TK_LOCKSCREEN_ANIM_ENABLED,
                            tklock_setting_cb,
                            &lockscreen_anim_enabled_setting_id);
+
+    /* Delays for proximity sensor uncover handling */
+    mce_setting_track_int(MCE_SETTING_TK_PROXIMITY_DELAY_DEFAULT,
+                          &tklock_proximity_delay_default,
+                          MCE_DEFAULT_TK_PROXIMITY_DELAY_DEFAULT,
+                          tklock_setting_cb,
+                          &tklock_proximity_delay_default_setting_id);
+
+    mce_setting_track_int(MCE_SETTING_TK_PROXIMITY_DELAY_INCALL,
+                          &tklock_proximity_delay_incall,
+                          MCE_DEFAULT_TK_PROXIMITY_DELAY_INCALL,
+                          tklock_setting_cb,
+                          &tklock_proximity_delay_incall_setting_id);
 }
 
 /** Stop tracking setting changes
