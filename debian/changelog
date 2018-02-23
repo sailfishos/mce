@@ -1,3 +1,9 @@
+mce (1.91.0) precise; urgency=low
+
+  * [tklock] Add settings for proximity sensor uncover delays. Fixes MER#1881
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 23 Feb 2018 15:15:26 +0200
+
 mce (1.90.4) precise; urgency=low
 
   * [display] Enable/disable autosuspend from worker thread. Fixes JB#40265
