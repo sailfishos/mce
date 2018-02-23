@@ -248,6 +248,18 @@ typedef enum {
 # define MCE_SETTING_TK_LOCKSCREEN_ANIM_ENABLED  MCE_SETTING_TK_PATH "/lockscreen_animation_enabled"
 # define MCE_DEFAULT_TK_LOCKSCREEN_ANIM_ENABLED  true
 
+/** Default proximity sensor uncover handling [ms]*/
+# define MCE_SETTING_TK_PROXIMITY_DELAY_DEFAULT  MCE_SETTING_TK_PATH "/proximity_delay_default"
+# define MCE_DEFAULT_TK_PROXIMITY_DELAY_DEFAULT  100
+
+/** In-call proximity sensor uncover handling [ms]*/
+# define MCE_SETTING_TK_PROXIMITY_DELAY_INCALL   MCE_SETTING_TK_PATH "/proximity_delay_incall"
+# define MCE_DEFAULT_TK_PROXIMITY_DELAY_INCALL   500
+
+/** Accpeted range for proximity sensor uncover delay: [0s, 1h] */
+# define MCE_MINIMUM_TK_PROXIMITY_DELAY          0
+# define MCE_MAXIMUM_TK_PROXIMITY_DELAY          (60 * 60 * 1000)
+
 /* ========================================================================= *
  * Configuration
  * ========================================================================= */

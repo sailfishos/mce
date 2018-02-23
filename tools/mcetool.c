@@ -3537,6 +3537,63 @@ static void xmce_get_ps_acts_as_lid(void)
 }
 
 /* ------------------------------------------------------------------------- *
+ * ps uncover delay
+ * ------------------------------------------------------------------------- */
+
+static bool xmce_set_ps_uncover_delay_sub(const char *key, const char *args)
+{
+        int val = xmce_parse_integer(args);
+        if( val < MCE_MINIMUM_TK_PROXIMITY_DELAY ||
+            val > MCE_MAXIMUM_TK_PROXIMITY_DELAY ) {
+                errorf("%s: invalid proximity uncover delay\n", args);
+                return false;
+        }
+        return xmce_setting_set_int(key, val);
+}
+
+static void xmce_get_ps_uncover_delay_sub(const char *tag, const char *key)
+{
+        gint val = 0;
+        char txt[32];
+
+        strcpy(txt, "unknown");
+        if( xmce_setting_get_int(key, &val) )
+                snprintf(txt, sizeof txt, "%d", (int)val);
+        printf("%-"PAD1"s %s (ms)\n", tag, txt);
+}
+
+/** Set default proximity sensor uncover delay
+ *
+ * @param args string that can be parsed to integer
+ */
+static bool xmce_set_default_ps_uncover_delay(const char *args)
+{
+        return xmce_set_ps_uncover_delay_sub(MCE_SETTING_TK_PROXIMITY_DELAY_DEFAULT,
+                                             args);
+}
+
+/** Set default proximity sensor uncover delay
+ *
+ * @param args string that can be parsed to integer
+ */
+static bool xmce_set_incall_ps_uncover_delay(const char *args)
+{
+        return xmce_set_ps_uncover_delay_sub(MCE_SETTING_TK_PROXIMITY_DELAY_INCALL,
+                                             args);
+}
+
+/** Get proximity sensor uncover delays and print them out
+ */
+static void xmce_get_ps_uncover_delay(void)
+{
+        xmce_get_ps_uncover_delay_sub("Default ps uncover delay:",
+                                      MCE_SETTING_TK_PROXIMITY_DELAY_DEFAULT);
+
+        xmce_get_ps_uncover_delay_sub("In-call ps uncover delay:",
+                                      MCE_SETTING_TK_PROXIMITY_DELAY_INCALL);
+}
+
+/* ------------------------------------------------------------------------- *
  * als
  * ------------------------------------------------------------------------- */
 
@@ -5539,6 +5596,7 @@ static bool xmce_get_status(const char *args)
         xmce_get_orientation_change_is_activity();
         xmce_get_flipover_gesture_detection();
         xmce_get_ps_mode();
+        xmce_get_ps_uncover_delay();
         xmce_get_ps_blocks_touch();
         xmce_get_ps_acts_as_lid();
         xmce_get_lid_sensor_mode();
@@ -6338,6 +6396,18 @@ static const mce_opt_t options[] =
                 .values      = "enabled|disabled",
                         "set the ps mode; valid modes are:\n"
                         "'enabled' and 'disabled'\n"
+        },
+        {
+                .name        = "set-default-ps-uncover-delay",
+                .with_arg    = xmce_set_default_ps_uncover_delay,
+                .values      = "ms",
+                        "set the default ps uncover delay in milliseconds\n"
+        },
+        {
+                .name        = "set-incall-ps-uncover-delay",
+                .with_arg    = xmce_set_incall_ps_uncover_delay,
+                .values      = "ms",
+                        "set the incall ps uncover delay in milliseconds\n"
         },
         {
                 .name        = "set-ps-blocks-touch",
