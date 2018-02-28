@@ -247,7 +247,7 @@ EXIT:
  */
 static gboolean charger_charging_on_dbus_cb(DBusMessage *const msg)
 {
-	gboolean old_charger_state = datapipe_get_gbool(charger_state_pipe);
+	charger_state_t old_charger_state = datapipe_get_gint(charger_state_pipe);
 	gboolean status = FALSE;
 
 	(void)msg;
@@ -256,8 +256,9 @@ static gboolean charger_charging_on_dbus_cb(DBusMessage *const msg)
 		"Received charger_charging_on signal");
 
 	/* Only update the charger state if needed */
-	if (old_charger_state == FALSE) {
-		datapipe_exec_full(&charger_state_pipe, GINT_TO_POINTER(TRUE),
+	if (old_charger_state != CHARGER_STATE_ON) {
+		datapipe_exec_full(&charger_state_pipe,
+				   GINT_TO_POINTER(CHARGER_STATE_ON),
 				   USE_INDATA, CACHE_INDATA);
 	}
 
@@ -281,7 +282,7 @@ static gboolean charger_charging_on_dbus_cb(DBusMessage *const msg)
  */
 static gboolean charger_charging_off_dbus_cb(DBusMessage *const msg)
 {
-	gboolean old_charger_state = datapipe_get_gbool(charger_state_pipe);
+	charger_state_t old_charger_state = datapipe_get_gint(charger_state_pipe);
 	gboolean status = FALSE;
 
 	(void)msg;
@@ -290,8 +291,9 @@ static gboolean charger_charging_off_dbus_cb(DBusMessage *const msg)
 		"Received charger_charging_off signal");
 
 	/* Only update the charger state if needed */
-	if (old_charger_state == TRUE) {
-		datapipe_exec_full(&charger_state_pipe, GINT_TO_POINTER(FALSE),
+	if (old_charger_state != CHARGER_STATE_OFF) {
+		datapipe_exec_full(&charger_state_pipe,
+				   GINT_TO_POINTER(CHARGER_STATE_OFF),
 				   USE_INDATA, CACHE_INDATA);
 	}
 
@@ -312,7 +314,7 @@ static gboolean charger_charging_off_dbus_cb(DBusMessage *const msg)
  */
 static gboolean charger_charging_failed_dbus_cb(DBusMessage *const msg)
 {
-	gboolean old_charger_state = datapipe_get_gbool(charger_state_pipe);
+	charger_state_t old_charger_state = datapipe_get_gint(charger_state_pipe);
 	gboolean status = FALSE;
 
 	(void)msg;
@@ -321,8 +323,9 @@ static gboolean charger_charging_failed_dbus_cb(DBusMessage *const msg)
 		"Received charger_charging_failed signal");
 
 	/* Only update the charger state if needed */
-	if (old_charger_state == TRUE) {
-		datapipe_exec_full(&charger_state_pipe, GINT_TO_POINTER(FALSE),
+	if (old_charger_state != CHARGER_STATE_OFF) {
+		datapipe_exec_full(&charger_state_pipe,
+				   GINT_TO_POINTER(CHARGER_STATE_OFF),
 				   USE_INDATA, CACHE_INDATA);
 	}
 
@@ -377,7 +380,7 @@ static gboolean charger_connected_dbus_cb(DBusMessage *const msg)
  */
 static gboolean charger_disconnected_dbus_cb(DBusMessage *const msg)
 {
-	gboolean old_charger_state = datapipe_get_gbool(charger_state_pipe);
+	charger_state_t old_charger_state = datapipe_get_gint(charger_state_pipe);
 	gboolean status = FALSE;
 
 	(void)msg;
@@ -386,8 +389,9 @@ static gboolean charger_disconnected_dbus_cb(DBusMessage *const msg)
 		"Received charger_disconnected signal");
 
 	/* Only update the charger state if needed */
-	if (old_charger_state == TRUE) {
-		datapipe_exec_full(&charger_state_pipe, GINT_TO_POINTER(FALSE),
+	if (old_charger_state != CHARGER_STATE_OFF) {
+		datapipe_exec_full(&charger_state_pipe,
+				   GINT_TO_POINTER(CHARGER_STATE_OFF),
 				   USE_INDATA, CACHE_INDATA);
 	}
 
