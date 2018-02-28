@@ -23,7 +23,7 @@
 
 #include <glib.h>
 
-/** How long to delay removal of MCE_TRANSITION_SUBMODE after
+/** How long to delay removal of MCE_SUBMODE_TRANSITION after
  *  receiving system state change from dsme
  *
  * <0 -> immediately

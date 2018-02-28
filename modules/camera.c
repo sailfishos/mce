@@ -98,13 +98,13 @@ static gboolean camera_active_state_iomon_input_cb(mce_io_mon_t *iomon, gpointer
 	(void)bytes_read;
 
 	if (!strncmp(data, MCE_CAMERA_ACTIVE, strlen(MCE_CAMERA_ACTIVE))) {
-		execute_datapipe_output_triggers(&led_pattern_activate_pipe,
-						 MCE_LED_PATTERN_CAMERA,
-						 USE_INDATA);
+		datapipe_exec_output_triggers(&led_pattern_activate_pipe,
+					      MCE_LED_PATTERN_CAMERA,
+					      USE_INDATA);
 	} else {
-		execute_datapipe_output_triggers(&led_pattern_deactivate_pipe,
-						 MCE_LED_PATTERN_CAMERA,
-						 USE_INDATA);
+		datapipe_exec_output_triggers(&led_pattern_deactivate_pipe,
+					      MCE_LED_PATTERN_CAMERA,
+					      USE_INDATA);
 	}
 
 	return FALSE;
@@ -123,8 +123,8 @@ static gboolean camera_popout_state_iomon_input_cb(mce_io_mon_t *iomon, gpointer
 	(void)bytes_read;
 
 	/* Generate activity */
-	execute_datapipe(&device_inactive_event_pipe, GINT_TO_POINTER(FALSE),
-			 USE_INDATA, CACHE_OUTDATA);
+	datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(FALSE),
+			   USE_INDATA, CACHE_OUTDATA);
 
 	if (popout_unlock == FALSE)
 		goto EXIT;
@@ -133,9 +133,9 @@ static gboolean camera_popout_state_iomon_input_cb(mce_io_mon_t *iomon, gpointer
 	if (!strncmp(data, MCE_CAMERA_POPPED_OUT,
 		     strlen(MCE_CAMERA_POPPED_OUT))) {
 		/* Request delayed unlock of touchscreen/keypad lock */
-		(void)execute_datapipe(&tk_lock_pipe,
-				       GINT_TO_POINTER(LOCK_OFF_DELAYED),
-				       USE_INDATA, CACHE_INDATA);
+		(void)datapipe_exec_full(&tklock_request_pipe,
+					 GINT_TO_POINTER(TKLOCK_REQUEST_OFF_DELAYED),
+					 USE_INDATA, CACHE_INDATA);
 	}
 
 EXIT:

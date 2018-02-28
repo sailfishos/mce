@@ -10,7 +10,7 @@
  * STUBS
  * ------------------------------------------------------------------------- */
 
-static submode_t stub__submode = MCE_NORMAL_SUBMODE;
+static submode_t stub__submode = MCE_SUBMODE_NORMAL;
 
 EXTERN_STUB (
 submode_t, mce_get_submode_int32, (void))
@@ -82,11 +82,11 @@ START_TEST (ut_check_is_dismiss_lpm_enabled)
 	use_low_power_mode = data[_i].use_low_power_mode;
 	call_state_pipe.cached_data = GINT_TO_POINTER(data[_i].call_state);
 	if( data[_i].proximity_tklock_submode )
-		stub__submode |= MCE_PROXIMITY_TKLOCK_SUBMODE;
+		stub__submode |= MCE_SUBMODE_PROXIMITY_TKLOCK;
 	if( data[_i].tklock_submode )
-		stub__submode |= MCE_TKLOCK_SUBMODE;
+		stub__submode |= MCE_SUBMODE_TKLOCK;
 	if( data[_i].malf_submode )
-		stub__submode |= MCE_MALF_SUBMODE;
+		stub__submode |= MCE_SUBMODE_MALF;
 
 	ck_assert_int_eq(is_dismiss_low_power_mode_enabled(),
 			 data[_i].expected_result);
@@ -179,7 +179,7 @@ START_TEST (ut_check_display_state_filter)
 		? GINT_TO_POINTER(CALL_STATE_RINGING)
 		: GINT_TO_POINTER(CALL_STATE_NONE);
 	stub__submode |= data[_i].transition_submode
-		? MCE_TRANSITION_SUBMODE
+		? MCE_SUBMODE_TRANSITION
 		: 0;
 	low_power_mode_supported = use_low_power_mode =
 		data[_i].lpm_enabled;
@@ -190,7 +190,7 @@ START_TEST (ut_check_display_state_filter)
 	ck_assert_int_eq(GPOINTER_TO_INT(input2_filtered),
 			 data[_i].expected_output);
 	// The ugly hack has been commented out in display_state_filter()
-	//ck_assert_int_eq(GPOINTER_TO_INT(display_state_pipe.cached_data),
+	//ck_assert_int_eq(GPOINTER_TO_INT(display_state_curr_pipe.cached_data),
 	//		 data[_i].expected_output);
 }
 END_TEST

@@ -30,7 +30,7 @@ digraph home_key_state_machine {
 
     WAIT_PRESS    -> WAIT_UNBLANK  [label=" pressed==true\l"];
     WAIT_UNBLANK  -> WAIT_RELEASE  [label=" display_state_next!=on\l"];
-    WAIT_UNBLANK  -> SEND_SIGNAL   [label=" display_state==on\l"];
+    WAIT_UNBLANK  -> SEND_SIGNAL   [label=" display_state_curr==on\l"];
     SEND_SIGNAL   -> WAIT_RELEASE  [label=" (always)\l"];
     WAIT_RELEASE  -> WAIT_PRESS    [label=" pressed==false\l"];
 }

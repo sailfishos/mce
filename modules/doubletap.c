@@ -25,10 +25,10 @@ static guint         dbltap_mode_setting_id = 0;
 static cover_state_t dbltap_ps_state = COVER_UNDEF;
 
 /** Latest reported proximity blanking */
-static bool dbltap_ps_blank = false;
+static bool dbltap_ps_blanked = false;
 
 /** Latest reported lid sensor policy decision */
-static cover_state_t dbltap_lid_cover_policy = COVER_UNDEF;
+static cover_state_t dbltap_lid_sensor_filtered = COVER_UNDEF;
 
 /** Path to doubletap wakeup control file */
 static char *dbltap_ctrl_path = 0;
@@ -166,14 +166,14 @@ static void dbltap_rethink(void)
                          * want to keep the touch detection powered up but
                          * not reporting double taps to allow faster touch
                          * event reporting when unblanking again. */
-                        if( dbltap_ps_blank )
+                        if( dbltap_ps_blanked )
                                 state = DT_DISABLED_NOSLEEP;
                         else
                                 state = DT_DISABLED;
                 }
 
                 /* Disable due to lid sensor */
-                if( dbltap_lid_cover_policy == COVER_CLOSED )
+                if( dbltap_lid_sensor_filtered == COVER_CLOSED )
                         state = DT_DISABLED;
                 break;
         }
@@ -196,7 +196,7 @@ static void dbltap_mode_set(dbltap_mode_t mode)
  *
  * @param data proximity state as void pointer
  */
-static void dbltap_proximity_trigger(gconstpointer data)
+static void dbltap_proximity_sensor_actual_trigger(gconstpointer data)
 {
         cover_state_t state = GPOINTER_TO_INT(data);
 
@@ -210,12 +210,12 @@ static void dbltap_proximity_trigger(gconstpointer data)
  *
  * @param data proximity blank as void pointer
  */
-static void dbltap_proximity_blank_trigger(gconstpointer data)
+static void dbltap_proximity_blanked_trigger(gconstpointer data)
 {
         cover_state_t state = GPOINTER_TO_INT(data);
 
-        if( dbltap_ps_blank != state ) {
-                dbltap_ps_blank = state;
+        if( dbltap_ps_blanked != state ) {
+                dbltap_ps_blanked = state;
                 dbltap_rethink();
         }
 }
@@ -224,12 +224,12 @@ static void dbltap_proximity_blank_trigger(gconstpointer data)
  *
  * @param data lid policy decision as void pointer
  */
-static void dbltap_lid_cover_policy_trigger(gconstpointer data)
+static void dbltap_lid_sensor_filtered_trigger(gconstpointer data)
 {
         cover_state_t state = GPOINTER_TO_INT(data);
 
-        if( dbltap_lid_cover_policy != state ) {
-                dbltap_lid_cover_policy = state;
+        if( dbltap_lid_sensor_filtered != state ) {
+                dbltap_lid_sensor_filtered = state;
                 dbltap_rethink();
         }
 }
@@ -350,17 +350,17 @@ const gchar *g_module_check_init(GModule *module)
         dbltap_mode = mode;
 
         /* Append triggers/filters to datapipes */
-        append_output_trigger_to_datapipe(&proximity_sensor_pipe,
-                                          dbltap_proximity_trigger);
-        append_output_trigger_to_datapipe(&proximity_blank_pipe,
-                                          dbltap_proximity_blank_trigger);
-        append_output_trigger_to_datapipe(&lid_cover_policy_pipe,
-                                          dbltap_lid_cover_policy_trigger);
+        datapipe_add_output_trigger(&proximity_sensor_actual_pipe,
+                                    dbltap_proximity_sensor_actual_trigger);
+        datapipe_add_output_trigger(&proximity_blanked_pipe,
+                                    dbltap_proximity_blanked_trigger);
+        datapipe_add_output_trigger(&lid_sensor_filtered_pipe,
+                                    dbltap_lid_sensor_filtered_trigger);
 
         /* Get initial state of datapipes */
-        dbltap_ps_state = datapipe_get_gint(proximity_sensor_pipe);
-        dbltap_ps_blank = datapipe_get_gint(proximity_blank_pipe);
-        dbltap_lid_cover_policy = datapipe_get_gint(lid_cover_policy_pipe);
+        dbltap_ps_state = datapipe_get_gint(proximity_sensor_actual_pipe);
+        dbltap_ps_blanked = datapipe_get_gint(proximity_blanked_pipe);
+        dbltap_lid_sensor_filtered = datapipe_get_gint(lid_sensor_filtered_pipe);
 
         /* enable/disable double tap wakeups based on initial conditions */
         dbltap_rethink();
@@ -382,12 +382,12 @@ void g_module_unload(GModule *module)
                 dbltap_mode_setting_id = 0;
 
         /* Remove triggers/filters from datapipes */
-        remove_output_trigger_from_datapipe(&proximity_sensor_pipe,
-                                            dbltap_proximity_trigger);
-        remove_output_trigger_from_datapipe(&proximity_blank_pipe,
-                                            dbltap_proximity_blank_trigger);
-        remove_output_trigger_from_datapipe(&lid_cover_policy_pipe,
-                                            dbltap_lid_cover_policy_trigger);
+        datapipe_remove_output_trigger(&proximity_sensor_actual_pipe,
+                                       dbltap_proximity_sensor_actual_trigger);
+        datapipe_remove_output_trigger(&proximity_blanked_pipe,
+                                       dbltap_proximity_blanked_trigger);
+        datapipe_remove_output_trigger(&lid_sensor_filtered_pipe,
+                                       dbltap_lid_sensor_filtered_trigger);
 
         /* Free config strings */
         g_free(dbltap_ctrl_path);

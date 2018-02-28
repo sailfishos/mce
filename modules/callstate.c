@@ -195,7 +195,7 @@ ofono_callstate_to_mce(const char *name)
  */
 static call_type_t ofono_calltype_to_mce(bool emergency)
 {
-    return emergency ? EMERGENCY_CALL : NORMAL_CALL;
+    return emergency ? CALL_TYPE_EMERGENCY : CALL_TYPE_NORMAL;
 }
 
 /* ========================================================================= *
@@ -243,7 +243,7 @@ static void
 ofono_vcall_merge_emergency(ofono_vcall_t *self, bool emergency)
 {
     if( emergency )
-        self->type = EMERGENCY_CALL;
+        self->type = CALL_TYPE_EMERGENCY;
 }
 
 /** Merge state data from oFono voice call object to another
@@ -273,8 +273,8 @@ ofono_vcall_merge_vcall(ofono_vcall_t *self, const ofono_vcall_t *that)
     }
 
     /* if any call is emergency, we have emergency call */
-    if( that->type == EMERGENCY_CALL )
-        self->type = EMERGENCY_CALL;
+    if( that->type == CALL_TYPE_EMERGENCY )
+        self->type = CALL_TYPE_EMERGENCY;
 }
 
 /** Create oFono voice call object
@@ -291,7 +291,7 @@ ofono_vcall_create(const char *path)
     self->name   = g_strdup(path);
     self->probed = false;
     self->state  = CALL_STATE_INVALID;
-    self->type   = NORMAL_CALL;
+    self->type   = CALL_TYPE_NORMAL;
 
     mce_log(LL_DEBUG, "vcall=%s", self->name);
     return self;
@@ -1219,7 +1219,7 @@ xofono_name_owner_get(void)
 static const ofono_vcall_t clients_vcall_def =
 {
     .state = CALL_STATE_NONE,
-    .type  = NORMAL_CALL,
+    .type  = CALL_TYPE_NORMAL,
 };
 
 /** Enumeration callback for ignoring incoming calls
@@ -1509,14 +1509,14 @@ change_call_state_dbus_cb(DBusMessage *const msg)
 
     /* Convert call type to enum */
     curr.type = call_type_parse(type);
-    if( curr.type == INVALID_CALL ) {
+    if( curr.type == CALL_TYPE_INVALID ) {
         mce_log(LL_WARN, "Invalid call type received; request ignored");
         goto EXIT;
     }
 
     /* reject no-call emergency calls ... */
     if( curr.state == CALL_STATE_NONE )
-        curr.type = NORMAL_CALL;
+        curr.type = CALL_TYPE_NORMAL;
 
     mce_log(LL_DEBUG, "Client call state changed: %s:%s -> %s:%s",
             call_state_repr(prev.state),
@@ -1650,13 +1650,13 @@ call_state_rethink_now(void)
     static ofono_vcall_t previous =
     {
         .state = CALL_STATE_INVALID,
-        .type  = NORMAL_CALL,
+        .type  = CALL_TYPE_NORMAL,
     };
 
     ofono_vcall_t combined =
     {
         .state = CALL_STATE_NONE,
-        .type  = NORMAL_CALL,
+        .type  = CALL_TYPE_NORMAL,
     };
 
     /* consider simulated call state */
@@ -1696,13 +1696,13 @@ call_state_rethink_now(void)
 
     send_call_state(NULL, state_str, type_str);
 
-    execute_datapipe(&call_state_pipe,
-                     GINT_TO_POINTER(call_state),
-                     USE_INDATA, CACHE_INDATA);
+    datapipe_exec_full(&call_state_pipe,
+                       GINT_TO_POINTER(call_state),
+                       USE_INDATA, CACHE_INDATA);
 
-    execute_datapipe(&call_type_pipe,
-                     GINT_TO_POINTER(call_type),
-                     USE_INDATA, CACHE_INDATA);
+    datapipe_exec_full(&call_type_pipe,
+                       GINT_TO_POINTER(call_type),
+                       USE_INDATA, CACHE_INDATA);
 
 EXIT:
     return changed;
@@ -1854,7 +1854,7 @@ static void mce_callstate_quit_dbus(void)
  * @param data call state (as void pointer)
  */
 static void
-callstate_datapipe_ignore_incoming_call_cb(gconstpointer data)
+callstate_datapipe_ignore_incoming_call_event_cb(gconstpointer data)
 {
     bool ignore_incoming_call = GPOINTER_TO_INT(data);
 
@@ -1877,8 +1877,8 @@ static datapipe_handler_t callstate_datapipe_handlers[] =
 {
     // output triggers
     {
-        .datapipe  = &ignore_incoming_call_pipe,
-        .output_cb = callstate_datapipe_ignore_incoming_call_cb,
+        .datapipe  = &ignore_incoming_call_event_pipe,
+        .output_cb = callstate_datapipe_ignore_incoming_call_event_cb,
     },
     // sentinel
     {

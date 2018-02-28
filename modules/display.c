@@ -377,23 +377,23 @@ static void                mdy_datapipe_packagekit_locked_cb(gconstpointer data)
 static void                mdy_datapipe_system_state_cb(gconstpointer data);
 static void                mdy_datapipe_submode_cb(gconstpointer data);
 static void                mdy_datapipe_interaction_expected_cb(gconstpointer data);
-static void                mdy_datapipe_mdy_datapipe_lid_cover_policy_cb(gconstpointer data);
+static void                mdy_datapipe_lid_sensor_filtered_cb(gconstpointer data);
 static gpointer            mdy_datapipe_display_state_filter_cb(gpointer data);
-static void                mdy_datapipe_display_state_cb(gconstpointer data);
+static void                mdy_datapipe_display_state_curr_cb(gconstpointer data);
 static void                mdy_datapipe_display_state_next_cb(gconstpointer data);
-static void                mdy_datapipe_keyboard_slide_input_cb(gconstpointer const data);
+static void                mdy_datapipe_keyboard_slide_input_state_cb(gconstpointer const data);
 static void                mdy_datapipe_display_brightness_cb(gconstpointer data);
 static void                mdy_datapipe_lpm_brightness_cb(gconstpointer data);
 static void                mdy_datapipe_display_state_req_cb(gconstpointer data);
 static void                mdy_datapipe_audio_route_cb(gconstpointer data);
 static void                mdy_datapipe_charger_state_cb(gconstpointer data);
-static void                mdy_datapipe_exception_state_cb(gconstpointer data);
+static void                mdy_datapipe_uiexception_type_cb(gconstpointer data);
 static void                mdy_datapipe_alarm_ui_state_cb(gconstpointer data);
-static void                mdy_datapipe_proximity_sensor_cb(gconstpointer data);
-static void                mdy_datapipe_power_saving_mode_cb(gconstpointer data);
+static void                mdy_datapipe_proximity_sensor_actual_cb(gconstpointer data);
+static void                mdy_datapipe_power_saving_mode_active_cb(gconstpointer data);
 static void                mdy_datapipe_call_state_trigger_cb(gconstpointer data);
 static void                mdy_datapipe_device_inactive_cb(gconstpointer data);
-static void                mdy_datapipe_orientation_state_cb(gconstpointer data);
+static void                mdy_datapipe_orientation_sensor_actual_cb(gconstpointer data);
 static void                mdy_datapipe_shutting_down_cb(gconstpointer aptr);
 
 static void                mdy_datapipe_init(void);
@@ -490,7 +490,7 @@ static void                mdy_poweron_led_rethink_schedule(void);
 #define ACTDEAD_MAX_OFF_TIMEOUT 15
 
 static bool                mdy_blanking_from_lockscreen(void);
-static void                mdy_blanking_update_inactivity_timeout(void);
+static void                mdy_blanking_update_device_inactive_delay(void);
 static gboolean            mdy_blanking_can_blank_from_low_power_mode(void);
 
 // display timer: ON -> DIM
@@ -738,8 +738,8 @@ static void                mdy_fbsusp_led_start_timer(mdy_fbsusp_led_state_t req
 static const char         *mdy_stm_state_name(stm_state_t state);
 
 // react to systemui availability changes
-static void                mdy_datapipe_compositor_available_cb(gconstpointer aptr);
-static void                mdy_datapipe_lipstick_available_cb(gconstpointer aptr);
+static void                mdy_datapipe_compositor_service_state_cb(gconstpointer aptr);
+static void                mdy_datapipe_lipstick_service_state_cb(gconstpointer aptr);
 
 // whether there is unhandled compositor availability change
 static void                mdy_stm_set_compositor_availability_changed(bool changed);
@@ -770,7 +770,7 @@ static bool                mdy_stm_is_fb_resume_finished(void);
 static void                mdy_stm_release_wakelock(void);
 static void                mdy_stm_acquire_wakelock(void);
 
-// display_state changing
+// display state changing
 static void                mdy_stm_push_target_change(display_state_t next_state);
 static bool                mdy_stm_pull_target_change(void);
 static void                mdy_stm_finish_target_change(void);
@@ -850,7 +850,7 @@ static void                mdy_dbus_quit(void);
 static gboolean            mdy_flagfiles_desktop_ready_cb(gpointer user_data);
 static void                mdy_flagfiles_bootstate_cb(const char *path, const char *file, gpointer data);
 static void                mdy_flagfiles_init_done_cb(const char *path, const char *file, gpointer data);
-static void                mdy_flagfiles_update_mode_cb(const char *path, const char *file, gpointer data);
+static void                mdy_flagfiles_osupdate_running_cb(const char *path, const char *file, gpointer data);
 static void                mdy_flagfiles_start_tracking(void);
 static void                mdy_flagfiles_stop_tracking(void);
 
@@ -994,10 +994,10 @@ static gboolean mdy_init_done = FALSE;
 static filewatcher_t *mdy_init_done_watcher = 0;
 
 /** Is the update-mode flag file present in the file system */
-static gboolean mdy_update_mode = FALSE;
+static gboolean mdy_osupdate_running = FALSE;
 
 /** Content change watcher for the update-mode flag file */
-static filewatcher_t *mdy_update_mode_watcher = 0;
+static filewatcher_t *mdy_osupdate_running_watcher = 0;
 
 /* ------------------------------------------------------------------------- *
  * DYNAMIC_SETTINGS
@@ -1234,7 +1234,7 @@ EXIT:
 }
 
 /* Cached system state */
-static system_state_t system_state = MCE_STATE_UNDEF;
+static system_state_t system_state = MCE_SYSTEM_STATE_UNDEF;
 
 /**
  * Handle system_state_pipe notifications
@@ -1270,7 +1270,7 @@ EXIT:
 }
 
 /* Assume we are in mode transition when mce starts up */
-static submode_t submode = MCE_TRANSITION_SUBMODE;
+static submode_t submode = MCE_SUBMODE_TRANSITION;
 
 /**
  * Handle submode_pipe notifications
@@ -1288,11 +1288,11 @@ static void mdy_datapipe_submode_cb(gconstpointer data)
     mce_log(LL_DEBUG, "submode = %d", submode);
 
     /* Rethink dim/blank timers if tklock state changed */
-    if( (prev ^ submode) & MCE_TKLOCK_SUBMODE )
+    if( (prev ^ submode) & MCE_SUBMODE_TKLOCK )
         mdy_blanking_rethink_timers(false);
 
-    submode_t old_trans = prev & MCE_TRANSITION_SUBMODE;
-    submode_t new_trans = submode & MCE_TRANSITION_SUBMODE;
+    submode_t old_trans = prev & MCE_SUBMODE_TRANSITION;
+    submode_t new_trans = submode & MCE_SUBMODE_TRANSITION;
 
     if( old_trans && !new_trans ) {
         /* End of transition; stable state reached */
@@ -1329,32 +1329,32 @@ EXIT:
 
 /** Cache Lid cover policy state; assume unknown
  */
-static cover_state_t lid_cover_policy_state = COVER_UNDEF;
+static cover_state_t lid_sensor_filtered = COVER_UNDEF;
 
-/** Change notifications from lid_cover_policy_pipe
+/** Change notifications from lid_sensor_filtered_pipe
  */
-static void mdy_datapipe_mdy_datapipe_lid_cover_policy_cb(gconstpointer data)
+static void mdy_datapipe_lid_sensor_filtered_cb(gconstpointer data)
 {
-    cover_state_t prev = lid_cover_policy_state;
-    lid_cover_policy_state = GPOINTER_TO_INT(data);
+    cover_state_t prev = lid_sensor_filtered;
+    lid_sensor_filtered = GPOINTER_TO_INT(data);
 
-    if( lid_cover_policy_state == prev )
+    if( lid_sensor_filtered == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "lid_cover_policy_state = %s -> %s",
+    mce_log(LL_DEBUG, "lid_sensor_filtered = %s -> %s",
             cover_state_repr(prev),
-            cover_state_repr(lid_cover_policy_state));
+            cover_state_repr(lid_sensor_filtered));
 EXIT:
     return;
 }
 
 /* Cached current display state */
-static display_state_t display_state = MCE_DISPLAY_UNDEF;
+static display_state_t display_state_curr = MCE_DISPLAY_UNDEF;
 
 /* Cached target display state */
 static display_state_t display_state_next = MCE_DISPLAY_UNDEF;
 
-/** Filter display_state_req_pipe changes
+/** Filter display_state_request_pipe changes
  *
  * @param data The unfiltered display state stored in a pointer
  *
@@ -1372,7 +1372,7 @@ static gpointer mdy_datapipe_display_state_filter_cb(gpointer data)
     }
 
     /* Handle update-mode override */
-    if( mdy_update_mode ) {
+    if( mdy_osupdate_running ) {
         next_state = MCE_DISPLAY_ON;
         goto UPDATE;
     }
@@ -1404,28 +1404,28 @@ static gpointer mdy_datapipe_display_state_filter_cb(gpointer data)
     }
 
     /* Allow display off / no change */
-    if( next_state == MCE_DISPLAY_OFF || next_state == display_state )
+    if( next_state == MCE_DISPLAY_OFF || next_state == display_state_curr )
         goto UPDATE;
 
     /* Keep existing state if display on requests are made during
      * mce/device startup and device shutdown/reboot. */
-    if( system_state == MCE_STATE_UNDEF ) {
+    if( system_state == MCE_SYSTEM_STATE_UNDEF ) {
         /* But initial state = ON/OFF selection at display plugin
          * initialization must still be allowed */
-        if( display_state == MCE_DISPLAY_UNDEF ) {
+        if( display_state_curr == MCE_DISPLAY_UNDEF ) {
             if( next_state != MCE_DISPLAY_ON )
                 next_state = MCE_DISPLAY_OFF;
         }
         else {
             mce_log(LL_WARN, "reject display mode request at start up");
-            next_state = display_state;
+            next_state = display_state_curr;
         }
     }
-    else if( (submode & MCE_TRANSITION_SUBMODE) &&
-             ( system_state == MCE_STATE_SHUTDOWN ||
-               system_state == MCE_STATE_REBOOT ) ) {
+    else if( (submode & MCE_SUBMODE_TRANSITION) &&
+             ( system_state == MCE_SYSTEM_STATE_SHUTDOWN ||
+               system_state == MCE_SYSTEM_STATE_REBOOT ) ) {
         mce_log(LL_WARN, "reject display mode request at shutdown/reboot");
-        next_state = display_state;
+        next_state = display_state_curr;
     }
 
 UPDATE:
@@ -1438,12 +1438,12 @@ UPDATE:
     /* Note: An attempt to keep the current state can lead into this
      *       datapipe input filter returning transiend power up/down
      *       or undefined states. These must be ignored at the datapipe
-     *       output handler display_state_req_pipe(). */
+     *       output handler display_state_request_pipe(). */
 
     return GINT_TO_POINTER(next_state);
 }
 
-/** Handle display_state_req_pipe notifications
+/** Handle display_state_request_pipe notifications
  *
  * This is where display state transition starts
  *
@@ -1471,7 +1471,7 @@ static void mdy_datapipe_display_state_req_cb(gconstpointer data)
         /* Any "no-change" transient state requests practically
          * have to be side effects of display state request
          * filtering - no need to make fuzz about them */
-        if( next_state == display_state )
+        if( next_state == display_state_curr )
             break;
 
         mce_log(LL_WARN, "%s is not valid target state; ignoring",
@@ -1480,18 +1480,18 @@ static void mdy_datapipe_display_state_req_cb(gconstpointer data)
     }
 }
 
-/** Handle display_state_pipe notifications
+/** Handle display_state_curr_pipe notifications
  *
  * This is where display state transition ends
  *
  * @param data The display state stored in a pointer
  */
-static void mdy_datapipe_display_state_cb(gconstpointer data)
+static void mdy_datapipe_display_state_curr_cb(gconstpointer data)
 {
-    display_state_t prev = display_state;
-    display_state = GPOINTER_TO_INT(data);
+    display_state_t prev = display_state_curr;
+    display_state_curr = GPOINTER_TO_INT(data);
 
-    if( display_state == prev )
+    if( display_state_curr == prev )
         goto EXIT;
 
     mdy_statistics_update();
@@ -1529,24 +1529,24 @@ EXIT:
 }
 
 /** Keypad slide input state; assume closed */
-static cover_state_t kbd_slide_input_state = COVER_CLOSED;
+static cover_state_t keyboard_slide_input_state = COVER_CLOSED;
 
-/** Change notifications from keyboard_slide_pipe
+/** Change notifications from keyboard_slide_state_pipe
  */
-static void mdy_datapipe_keyboard_slide_input_cb(gconstpointer const data)
+static void mdy_datapipe_keyboard_slide_input_state_cb(gconstpointer const data)
 {
-    cover_state_t prev = kbd_slide_input_state;
-    kbd_slide_input_state = GPOINTER_TO_INT(data);
+    cover_state_t prev = keyboard_slide_input_state;
+    keyboard_slide_input_state = GPOINTER_TO_INT(data);
 
-    if( kbd_slide_input_state == COVER_UNDEF )
-        kbd_slide_input_state = COVER_CLOSED;
+    if( keyboard_slide_input_state == COVER_UNDEF )
+        keyboard_slide_input_state = COVER_CLOSED;
 
-    if( kbd_slide_input_state == prev )
+    if( keyboard_slide_input_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEVEL, "kbd_slide_input_state = %s -> %s",
+    mce_log(LL_DEVEL, "keyboard_slide_input_state = %s -> %s",
             cover_state_repr(prev),
-            cover_state_repr(kbd_slide_input_state));
+            cover_state_repr(keyboard_slide_input_state));
 
     /* force blanking reprogramming */
     mdy_blanking_rethink_timers(true);
@@ -1556,20 +1556,20 @@ EXIT:
 }
 
 /** Keypad available output state; assume unknown */
-static cover_state_t kbd_available_state = COVER_UNDEF;
+static cover_state_t keyboard_available_state = COVER_UNDEF;
 
 static void
-mdy_datapipe_keyboard_available_cb(gconstpointer const data)
+mdy_datapipe_keyboard_available_state_cb(gconstpointer const data)
 {
-    cover_state_t prev = kbd_available_state;
-    kbd_available_state = GPOINTER_TO_INT(data);
+    cover_state_t prev = keyboard_available_state;
+    keyboard_available_state = GPOINTER_TO_INT(data);
 
-    if( kbd_available_state == prev )
+    if( keyboard_available_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "kbd_available_state = %s -> %s",
+    mce_log(LL_DEBUG, "keyboard_available_state = %s -> %s",
             cover_state_repr(prev),
-            cover_state_repr(kbd_available_state));
+            cover_state_repr(keyboard_available_state));
 
     /* force blanking reprogramming */
     mdy_blanking_rethink_timers(true);
@@ -1676,19 +1676,19 @@ EXIT:
 }
 
 /** Cached exceptional ui state */
-static uiexctype_t exception_state = UIEXC_NONE;
+static uiexception_type_t uiexception_type = UIEXCEPTION_TYPE_NONE;
 
-/** Handle exception_state_pipe notifications
+/** Handle uiexception_type_pipe notifications
  */
-static void mdy_datapipe_exception_state_cb(gconstpointer data)
+static void mdy_datapipe_uiexception_type_cb(gconstpointer data)
 {
-    uiexctype_t prev = exception_state;
-    exception_state = GPOINTER_TO_INT(data);
+    uiexception_type_t prev = uiexception_type;
+    uiexception_type = GPOINTER_TO_INT(data);
 
-    if( exception_state == prev )
+    if( uiexception_type == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "exception_state = %d", exception_state);
+    mce_log(LL_DEBUG, "uiexception_type = %d", uiexception_type);
 
     // normal on->dim->blank might not be applicable
     mdy_blanking_rethink_timers(false);
@@ -1733,22 +1733,22 @@ EXIT:
 }
 
 /** Cached proximity sensor state */
-static cover_state_t proximity_state = COVER_UNDEF;
+static cover_state_t proximity_sensor_actual = COVER_UNDEF;
 
-/** Handle proximity_sensor_pipe notifications
+/** Handle proximity_sensor_actual_pipe notifications
  *
  * @param data Unused
  */
-static void mdy_datapipe_proximity_sensor_cb(gconstpointer data)
+static void mdy_datapipe_proximity_sensor_actual_cb(gconstpointer data)
 {
-    cover_state_t prev = proximity_state;
-    proximity_state = GPOINTER_TO_INT(data);
+    cover_state_t prev = proximity_sensor_actual;
+    proximity_sensor_actual = GPOINTER_TO_INT(data);
 
-    if( proximity_state == prev )
+    if( proximity_sensor_actual == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "proximity_state = %s",
-            proximity_state_repr(proximity_state));
+    mce_log(LL_DEBUG, "proximity_sensor_actual = %s",
+            proximity_state_repr(proximity_sensor_actual));
 
     /* handle toggling between LPM_ON and LPM_OFF */
     mdy_blanking_rethink_proximity();
@@ -1758,35 +1758,36 @@ EXIT:
 }
 
 /** Cached power saving mode state */
-static gboolean power_saving_mode = MCE_DEFAULT_EM_ENABLE_PSM;
+static gboolean power_saving_mode_active = MCE_DEFAULT_EM_ENABLE_PSM;
 
-/** Handle power_saving_mode_pipe notifications
+/** Handle power_saving_mode_active_pipe notifications
  *
  * @param data Unused
  */
-static void mdy_datapipe_power_saving_mode_cb(gconstpointer data)
+static void mdy_datapipe_power_saving_mode_active_cb(gconstpointer data)
 {
-    gboolean prev = power_saving_mode;
-    power_saving_mode = GPOINTER_TO_INT(data);
+    gboolean prev = power_saving_mode_active;
+    power_saving_mode_active = GPOINTER_TO_INT(data);
 
-    if( power_saving_mode == prev )
+    if( power_saving_mode_active == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "power_saving_mode = %d", power_saving_mode);
+    mce_log(LL_DEBUG, "power_saving_mode_active = %d",
+            power_saving_mode_active);
 
-    if( power_saving_mode ) {
+    if( power_saving_mode_active ) {
         /* Override the CABC mode and brightness setting */
         mdy_psm_cabc_mode = DEFAULT_PSM_CABC_MODE;
         mdy_psm_disp_brightness = mce_xlat_int(1,100, 1,20,
                                                mdy_brightness_setting);
 
-        execute_datapipe(&display_brightness_pipe,
-                         GINT_TO_POINTER(mdy_psm_disp_brightness),
-                         USE_INDATA, CACHE_INDATA);
+        datapipe_exec_full(&display_brightness_pipe,
+                           GINT_TO_POINTER(mdy_psm_disp_brightness),
+                           USE_INDATA, CACHE_INDATA);
 
-        execute_datapipe(&lpm_brightness_pipe,
-                         GINT_TO_POINTER(mdy_psm_disp_brightness),
-                         USE_INDATA, CACHE_INDATA);
+        datapipe_exec_full(&lpm_brightness_pipe,
+                           GINT_TO_POINTER(mdy_psm_disp_brightness),
+                           USE_INDATA, CACHE_INDATA);
 
         mdy_cabc_mode_set(mdy_psm_cabc_mode);
     } else {
@@ -1794,13 +1795,13 @@ static void mdy_datapipe_power_saving_mode_cb(gconstpointer data)
         mdy_psm_cabc_mode = NULL;
         mdy_psm_disp_brightness = -1;
 
-        execute_datapipe(&display_brightness_pipe,
-                         GINT_TO_POINTER(mdy_brightness_setting),
-                         USE_INDATA, CACHE_INDATA);
+        datapipe_exec_full(&display_brightness_pipe,
+                           GINT_TO_POINTER(mdy_brightness_setting),
+                           USE_INDATA, CACHE_INDATA);
 
-        execute_datapipe(&lpm_brightness_pipe,
-                         GINT_TO_POINTER(mdy_brightness_setting),
-                         USE_INDATA, CACHE_INDATA);
+        datapipe_exec_full(&lpm_brightness_pipe,
+                           GINT_TO_POINTER(mdy_brightness_setting),
+                           USE_INDATA, CACHE_INDATA);
 
         mdy_cabc_mode_set(mdy_cabc_mode);
     }
@@ -1837,7 +1838,7 @@ EXIT:
 /** Cached inactivity state */
 static gboolean device_inactive = FALSE;
 
-/** Handle device_inactive_state_pipe notifications
+/** Handle device_inactive_pipe notifications
  *
  * @param data The inactivity stored in a pointer;
  *             TRUE if the device is inactive,
@@ -1861,7 +1862,7 @@ static void mdy_datapipe_device_inactive_cb(gconstpointer data)
      * the next on->dim transition to use longer timeout */
     mdy_blanking_trigger_adaptive_dimming();
 
-    switch( display_state ) {
+    switch( display_state_curr ) {
     case MCE_DISPLAY_ON:
         /* Explicitly reset the display dim timer */
         mdy_blanking_rethink_timers(true);
@@ -1891,26 +1892,26 @@ EXIT:
 }
 
 /** Cached Orientation Sensor value */
-static orientation_state_t orientation_state = MCE_ORIENTATION_UNDEFINED;
+static orientation_state_t orientation_sensor_actual = MCE_ORIENTATION_UNDEFINED;
 
-/** Handle orientation_sensor_pipe notifications
+/** Handle orientation_sensor_actual_pipe notifications
  *
  * @param data The orientation state stored in a pointer
  */
-static void mdy_datapipe_orientation_state_cb(gconstpointer data)
+static void mdy_datapipe_orientation_sensor_actual_cb(gconstpointer data)
 {
-    orientation_state_t prev = orientation_state;
-    orientation_state = GPOINTER_TO_INT(data);
+    orientation_state_t prev = orientation_sensor_actual;
+    orientation_sensor_actual = GPOINTER_TO_INT(data);
 
-    if( orientation_state == prev )
+    if( orientation_sensor_actual == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "orientation_state = %s",
-            orientation_state_repr(orientation_state));
+    mce_log(LL_DEBUG, "orientation_sensor_actual = %s",
+            orientation_state_repr(orientation_sensor_actual));
 
     /* Ignore sensor power up/down */
     if( prev == MCE_ORIENTATION_UNDEFINED ||
-        orientation_state ==  MCE_ORIENTATION_UNDEFINED )
+        orientation_sensor_actual ==  MCE_ORIENTATION_UNDEFINED )
         goto EXIT;
 
     mdy_orientation_generate_activity();
@@ -1950,29 +1951,29 @@ static datapipe_handler_t mdy_datapipe_handlers[] =
 {
     // input triggers
     {
-        .datapipe  = &display_state_pipe,
-        .input_cb  = mdy_datapipe_display_state_cb,
+        .datapipe  = &display_state_curr_pipe,
+        .input_cb  = mdy_datapipe_display_state_curr_cb,
     },
     {
         .datapipe  = &display_state_next_pipe,
         .input_cb  = mdy_datapipe_display_state_next_cb,
     },
     {
-        .datapipe  = &keyboard_slide_pipe,
-        .input_cb  = mdy_datapipe_keyboard_slide_input_cb,
+        .datapipe  = &keyboard_slide_state_pipe,
+        .input_cb  = mdy_datapipe_keyboard_slide_input_state_cb,
     },
     // input filters
     {
-        .datapipe  = &display_state_req_pipe,
+        .datapipe  = &display_state_request_pipe,
         .filter_cb = mdy_datapipe_display_state_filter_cb,
     },
     // output triggers
     {
-        .datapipe  = &keyboard_available_pipe,
-        .output_cb = mdy_datapipe_keyboard_available_cb,
+        .datapipe  = &keyboard_available_state_pipe,
+        .output_cb = mdy_datapipe_keyboard_available_state_cb,
     },
     {
-        .datapipe  = &display_state_req_pipe,
+        .datapipe  = &display_state_request_pipe,
         .output_cb = mdy_datapipe_display_state_req_cb,
     },
     {
@@ -1992,8 +1993,8 @@ static datapipe_handler_t mdy_datapipe_handlers[] =
         .output_cb = mdy_datapipe_system_state_cb,
     },
     {
-        .datapipe  = &orientation_sensor_pipe,
-        .output_cb = mdy_datapipe_orientation_state_cb,
+        .datapipe  = &orientation_sensor_actual_pipe,
+        .output_cb = mdy_datapipe_orientation_sensor_actual_cb,
     },
     {
         .datapipe  = &submode_pipe,
@@ -2004,7 +2005,7 @@ static datapipe_handler_t mdy_datapipe_handlers[] =
         .output_cb = mdy_datapipe_interaction_expected_cb,
     },
     {
-        .datapipe  = &device_inactive_state_pipe,
+        .datapipe  = &device_inactive_pipe,
         .output_cb = mdy_datapipe_device_inactive_cb,
     },
     {
@@ -2012,20 +2013,20 @@ static datapipe_handler_t mdy_datapipe_handlers[] =
         .output_cb = mdy_datapipe_call_state_trigger_cb,
     },
     {
-        .datapipe  = &power_saving_mode_pipe,
-        .output_cb = mdy_datapipe_power_saving_mode_cb,
+        .datapipe  = &power_saving_mode_active_pipe,
+        .output_cb = mdy_datapipe_power_saving_mode_active_cb,
     },
     {
-        .datapipe  = &proximity_sensor_pipe,
-        .output_cb = mdy_datapipe_proximity_sensor_cb,
+        .datapipe  = &proximity_sensor_actual_pipe,
+        .output_cb = mdy_datapipe_proximity_sensor_actual_cb,
     },
     {
         .datapipe  = &alarm_ui_state_pipe,
         .output_cb = mdy_datapipe_alarm_ui_state_cb,
     },
     {
-        .datapipe  = &exception_state_pipe,
-        .output_cb = mdy_datapipe_exception_state_cb,
+        .datapipe  = &uiexception_type_pipe,
+        .output_cb = mdy_datapipe_uiexception_type_cb,
     },
     {
         .datapipe  = &audio_route_pipe,
@@ -2037,16 +2038,16 @@ static datapipe_handler_t mdy_datapipe_handlers[] =
     },
 
     {
-        .datapipe  = &compositor_available_pipe,
-        .output_cb = mdy_datapipe_compositor_available_cb,
+        .datapipe  = &compositor_service_state_pipe,
+        .output_cb = mdy_datapipe_compositor_service_state_cb,
     },
     {
-        .datapipe  = &lipstick_available_pipe,
-        .output_cb = mdy_datapipe_lipstick_available_cb,
+        .datapipe  = &lipstick_service_state_pipe,
+        .output_cb = mdy_datapipe_lipstick_service_state_cb,
     },
     {
-        .datapipe  = &lid_cover_policy_pipe,
-        .output_cb = mdy_datapipe_mdy_datapipe_lid_cover_policy_cb,
+        .datapipe  = &lid_sensor_filtered_pipe,
+        .output_cb = mdy_datapipe_lid_sensor_filtered_cb,
     },
     {
         .datapipe  = &shutting_down_pipe,
@@ -2121,10 +2122,10 @@ static void mdy_fbdev_rethink(void)
         goto EXIT;
 
     // do not close during os update
-    if( mdy_update_mode )
+    if( mdy_osupdate_running )
         goto EXIT;
 
-    if( system_state == MCE_STATE_ACTDEAD ) {
+    if( system_state == MCE_SYSTEM_STATE_ACTDEAD ) {
         // or when there are act dead alarms
         switch( alarm_ui_state ) {
         case MCE_ALARM_UI_RINGING_INT32:
@@ -2134,7 +2135,7 @@ static void mdy_fbdev_rethink(void)
             break;
         }
     }
-    else if( system_state != MCE_STATE_USER ) {
+    else if( system_state != MCE_SYSTEM_STATE_USER ) {
         // or we are not in USER/ACT_DEAD
         goto EXIT;
     }
@@ -2143,9 +2144,9 @@ static void mdy_fbdev_rethink(void)
     // clear the display when something potentially has left
     // stale ui on screen - we skip it if the display is not
     // firmly in powered up state
-    if( display_state != display_state_next )
+    if( display_state_curr != display_state_next )
         goto EXIT;
-    if( !mdy_stm_display_state_needs_power(display_state) )
+    if( !mdy_stm_display_state_needs_power(display_state_curr) )
         goto EXIT;
 
     can_close = true;
@@ -2258,14 +2259,14 @@ static void mdy_hbm_rethink(void)
         goto EXIT;
 
     /* should not occur, but do nothing while in transition */
-    if( display_state == MCE_DISPLAY_POWER_DOWN ||
-        display_state == MCE_DISPLAY_POWER_UP ) {
+    if( display_state_curr == MCE_DISPLAY_POWER_DOWN ||
+        display_state_curr == MCE_DISPLAY_POWER_UP ) {
         mce_log(LL_WARN, "hbm mode setting wile in transition");
         goto EXIT;
     }
 
     /* If the display is off or dimmed, disable HBM */
-    if( display_state != MCE_DISPLAY_ON ) {
+    if( display_state_curr != MCE_DISPLAY_ON ) {
         if (mdy_hbm_level_written != 0) {
             mdy_hbm_set_level(0);
         }
@@ -2562,13 +2563,13 @@ static void mdy_brightness_fade_continue_with_als(fader_type_t fader_type)
     }
 
     /* The display state must be stable too */
-    if( display_state_next != display_state )
+    if( display_state_next != display_state_curr )
         goto EXIT;
 
     /* Target level depends on the display state */
     int level = mdy_brightness_fade_end_level;
 
-    switch( display_state ) {
+    switch( display_state_curr ) {
     case MCE_DISPLAY_LPM_ON:
         level = mdy_brightness_level_display_lpm;
         break;
@@ -3062,11 +3063,11 @@ static void mdy_brightness_set_dim_level(void)
      * FIXME: When ui side dimming is working, the led pattern
      *        hack should be removed altogether.
      */
-    execute_datapipe_output_triggers(compositor_fade_level > 0 ?
-                                     &led_pattern_activate_pipe :
-                                     &led_pattern_deactivate_pipe,
-                                     MCE_LED_PATTERN_DISPLAY_DIMMED,
-                                     USE_INDATA);
+    datapipe_exec_output_triggers(compositor_fade_level > 0 ?
+                                  &led_pattern_activate_pipe :
+                                  &led_pattern_deactivate_pipe,
+                                  MCE_LED_PATTERN_DISPLAY_DIMMED,
+                                  USE_INDATA);
 
     /* Update ui side fader opacity value */
     mdy_ui_dimming_set_level(compositor_fade_level);
@@ -3206,18 +3207,18 @@ static void mdy_ui_dimming_rethink(void)
      * 1) display state transition starts
      * 2) als tuning changes mdy_ui_dimming_level
      *
-     * When (1) happens, both display_state and display_state_next
+     * When (1) happens, both display_state_curr and display_state_next
      * hold stable states.
      *
      * If (2) happens during display power up/down, the
-     * display_state variable can hold transitient
+     * display_state_curr variable can hold transitient
      * MCE_DISPLAY_POWER_UP/DOWN states.
      */
 
     /* Assume that ui side dimming should not occur */
     dbus_int32_t dimming_curr = 0;
 
-    if( display_state == MCE_DISPLAY_POWER_DOWN ||
+    if( display_state_curr == MCE_DISPLAY_POWER_DOWN ||
         display_state_next == MCE_DISPLAY_OFF   ||
         display_state_next == MCE_DISPLAY_LPM_OFF ) {
         /* At or entering powered off state -> keep current state */
@@ -3238,19 +3239,19 @@ static void mdy_ui_dimming_rethink(void)
     /* Assume the change is due to ALS tuning */
     dbus_int32_t duration = mdy_brightness_fade_duration_als_ms;
 
-    if( display_state == MCE_DISPLAY_POWER_UP ) {
+    if( display_state_curr == MCE_DISPLAY_POWER_UP ) {
         /* Leaving powered off state -> use unblank duration */
         duration = mdy_brightness_fade_duration_unblank_ms;
     }
-    else if( display_state == MCE_DISPLAY_POWER_DOWN ) {
+    else if( display_state_curr == MCE_DISPLAY_POWER_DOWN ) {
         /* Entering powered off state -> use blank duration */
         duration = mdy_brightness_fade_duration_blank_ms;
     }
-    else if( display_state != display_state_next ) {
+    else if( display_state_curr != display_state_next ) {
         /* Ongoing display state transition that does not need
          * or has not yet entered transient state */
-        if( display_state == MCE_DISPLAY_OFF ||
-            display_state == MCE_DISPLAY_LPM_OFF ) {
+        if( display_state_curr == MCE_DISPLAY_OFF ||
+            display_state_curr == MCE_DISPLAY_LPM_OFF ) {
             /* Leaving powered off state -> use unblank duration */
             duration = mdy_brightness_fade_duration_unblank_ms;
         }
@@ -3392,11 +3393,11 @@ static void mdy_poweron_led_rethink(void)
     mce_log(LL_DEBUG, "%s MCE_LED_PATTERN_POWER_ON",
             want_led ? "activate" : "deactivate");
 
-    execute_datapipe_output_triggers(want_led ?
-                                     &led_pattern_activate_pipe :
-                                     &led_pattern_deactivate_pipe,
-                                     MCE_LED_PATTERN_POWER_ON,
-                                     USE_INDATA);
+    datapipe_exec_output_triggers(want_led ?
+                                  &led_pattern_activate_pipe :
+                                  &led_pattern_deactivate_pipe,
+                                  MCE_LED_PATTERN_POWER_ON,
+                                  USE_INDATA);
 }
 
 /** Timer id for delayed POWER_ON led state evaluation */
@@ -3442,7 +3443,7 @@ static void mdy_poweron_led_rethink_schedule(void)
  */
 static bool mdy_blanking_from_lockscreen(void)
 {
-    return (submode & MCE_TKLOCK_SUBMODE) && !interaction_expected;
+    return (submode & MCE_SUBMODE_TKLOCK) && !interaction_expected;
 }
 
 /** Re-calculate inactivity timeout
@@ -3450,23 +3451,24 @@ static bool mdy_blanking_from_lockscreen(void)
  * This function should be called whenever the variables used
  * in the calculation are changed.
  */
-static void mdy_blanking_update_inactivity_timeout(void)
+static void mdy_blanking_update_device_inactive_delay(void)
 {
     /* Inactivity should be signaled around the time when the display
      * should have dimmed and blanked - even if the actual blanking is
      * blocked by blanking pause and/or blanking inhibit mode. */
 
-    gint inactivity_timeout = (mdy_blanking_get_default_dimming_delay() +
-                               mdy_blank_timeout);
+    gint prev = datapipe_get_gint(inactivity_delay_pipe);
+    gint curr = (mdy_blanking_get_default_dimming_delay() +
+                 mdy_blank_timeout);
 
-    if( datapipe_get_gint(inactivity_timeout_pipe) == inactivity_timeout )
+    if( prev == curr )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "inactivity_timeout = %d", inactivity_timeout);
+    mce_log(LL_DEBUG, "device_inactive_delay = %d", curr);
 
-    execute_datapipe(&inactivity_timeout_pipe,
-                     GINT_TO_POINTER(inactivity_timeout),
-                     USE_INDATA, CACHE_INDATA);
+    datapipe_exec_full(&inactivity_delay_pipe,
+                       GINT_TO_POINTER(curr),
+                       USE_INDATA, CACHE_INDATA);
 EXIT:
     return;
 }
@@ -3483,7 +3485,7 @@ static gboolean mdy_blanking_can_blank_from_low_power_mode(void)
         return TRUE;
 
     // always allow in MALF
-    if( submode & MCE_MALF_SUBMODE )
+    if( submode & MCE_SUBMODE_MALF )
         return TRUE;
 
     // always allow during active call
@@ -3492,7 +3494,7 @@ static gboolean mdy_blanking_can_blank_from_low_power_mode(void)
 
 #if 0
     // for reference, old logic: allow after proximity tklock set
-    if( submode & MCE_PROXIMITY_TKLOCK_SUBMODE )
+    if( submode & MCE_SUBMODE_PROXIMITY_TKLOCK )
         return TRUE;
 #else
     // TODO: we need proximity locking back in, for now just allow it
@@ -3514,7 +3516,7 @@ static gint mdy_blanking_get_default_dimming_delay(void)
     gint dim_timeout = mdy_disp_dim_timeout_default;
 
     /* Use different setting if hw kbd is available */
-    if( kbd_available_state == COVER_OPEN &&
+    if( keyboard_available_state == COVER_OPEN &&
         mdy_disp_dim_timeout_keyboard > 0 ) {
         dim_timeout = mdy_disp_dim_timeout_keyboard;
     }
@@ -3525,7 +3527,7 @@ static gint mdy_blanking_get_default_dimming_delay(void)
         dim_timeout = boot_delay;
 
     /* In act dead mode blanking timeouts are capped */
-    if( system_state == MCE_STATE_ACTDEAD ) {
+    if( system_state == MCE_SYSTEM_STATE_ACTDEAD ) {
         if( dim_timeout > ACTDEAD_MAX_DIM_TIMEOUT )
             dim_timeout = ACTDEAD_MAX_DIM_TIMEOUT;
     }
@@ -3574,7 +3576,7 @@ static gboolean mdy_blanking_dim_cb(gpointer data)
 
     /* If device is in MALF state skip dimming since systemui
      * isn't working yet */
-    if( submode & MCE_MALF_SUBMODE )
+    if( submode & MCE_SUBMODE_MALF )
         display = MCE_DISPLAY_OFF;
 
     mce_datapipe_req_display_state(display);
@@ -3705,7 +3707,7 @@ static gboolean mdy_blanking_off_cb(gpointer data)
     display_state_t next_state = MCE_DISPLAY_OFF;
 
     /* Use lpm on, if starting from on/dim and tklock is already set */
-    switch( display_state ) {
+    switch( display_state_curr ) {
     case MCE_DISPLAY_ON:
     case MCE_DISPLAY_DIM:
         if( lipstick_service_state != SERVICE_STATE_RUNNING )
@@ -3761,10 +3763,10 @@ static void mdy_blanking_schedule_off(void)
         goto EXIT;
     }
 
-    if( exception_state & UIEXC_CALL ) {
+    if( uiexception_type & UIEXCEPTION_TYPE_CALL ) {
         /* During calls: Use unadjusted default timeout */
     }
-    else if( system_state == MCE_STATE_ACTDEAD ) {
+    else if( system_state == MCE_SYSTEM_STATE_ACTDEAD ) {
         /* Utilize the same configurable blanking delay as
          * what is used for the lockscreen, but cap it to a
          * sensible maximum value. */
@@ -3773,7 +3775,7 @@ static void mdy_blanking_schedule_off(void)
         if( timeout > ACTDEAD_MAX_OFF_TIMEOUT )
             timeout = ACTDEAD_MAX_OFF_TIMEOUT;
     }
-    else if( display_state == MCE_DISPLAY_LPM_OFF ) {
+    else if( display_state_curr == MCE_DISPLAY_LPM_OFF ) {
         timeout = mdy_blank_from_lpm_off_timeout;
     }
     else if( mdy_blanking_from_lockscreen() ) {
@@ -3787,7 +3789,7 @@ static void mdy_blanking_schedule_off(void)
     }
 
     /* Blanking pause can optionally stay in dimmed state */
-    if( display_state == MCE_DISPLAY_DIM &&
+    if( display_state_curr == MCE_DISPLAY_DIM &&
         mdy_blanking_is_paused() &&
         mdy_blanking_pause_can_dim() ) {
         mdy_blanking_cancel_off();
@@ -3987,7 +3989,7 @@ static void mdy_blanking_add_pause_client(const gchar *name)
     }
 
     // display must be on
-    switch( display_state ) {
+    switch( display_state_curr ) {
     case MCE_DISPLAY_ON:
         // always allowed
         break;
@@ -4005,7 +4007,7 @@ static void mdy_blanking_add_pause_client(const gchar *name)
     }
 
     // and tklock off
-    if( submode & MCE_TKLOCK_SUBMODE ) {
+    if( submode & MCE_SUBMODE_TKLOCK ) {
         mce_log(LL_WARN, "blanking pause request from`%s ignored';"
                 " tklock on", name);
         goto EXIT;
@@ -4121,7 +4123,7 @@ static bool mdy_adaptive_dimming_is_enabled(void)
 {
     bool enabled = false;
 
-    if( system_state != MCE_STATE_USER )
+    if( system_state != MCE_SYSTEM_STATE_USER )
         goto EXIT;
 
     if( !mdy_adaptive_dimming_enabled )
@@ -4255,7 +4257,7 @@ static bool mdy_blanking_inhibit_off_p(void)
 
     /* Blanking inhibit is explicitly ignored in act dead */
     switch( system_state ) {
-    case MCE_STATE_ACTDEAD:
+    case MCE_SYSTEM_STATE_ACTDEAD:
         goto EXIT;
 
     default:
@@ -4280,7 +4282,7 @@ static bool mdy_blanking_inhibit_off_p(void)
     /* Evaluate kbd slide related blanking inhibit policy */
     switch( mdy_kbd_slide_inhibit_mode ) {
     case KBD_SLIDE_INHIBIT_STAY_DIM_WHEN_OPEN:
-        if( kbd_slide_input_state == COVER_OPEN )
+        if( keyboard_slide_input_state == COVER_OPEN )
             inhibit = true;
         break;
 
@@ -4302,7 +4304,7 @@ static bool mdy_blanking_inhibit_dim_p(void)
 
     /* Blanking inhibit is explicitly ignored in act dead */
     switch( system_state ) {
-    case MCE_STATE_ACTDEAD:
+    case MCE_SYSTEM_STATE_ACTDEAD:
         goto EXIT;
 
     default:
@@ -4327,7 +4329,7 @@ static bool mdy_blanking_inhibit_dim_p(void)
     /* Evaluate kbd slide related blanking inhibit policy */
     switch( mdy_kbd_slide_inhibit_mode ) {
     case KBD_SLIDE_INHIBIT_STAY_ON_WHEN_OPEN:
-        if( kbd_slide_input_state == COVER_OPEN )
+        if( keyboard_slide_input_state == COVER_OPEN )
             inhibit = true;
         break;
 
@@ -4345,14 +4347,14 @@ static void mdy_blanking_rethink_timers(bool force)
 {
     // TRIGGERS:
     // submode           <- mdy_datapipe_submode_cb()
-    // display_state     <- mdy_display_state_changed()
+    // display_state_curr<- mdy_display_state_changed()
     // audio_route       <- mdy_datapipe_audio_route_cb()
     // charger_state     <- mdy_datapipe_charger_state_cb()
-    // exception_state   <- mdy_datapipe_exception_state_cb()
+    // uiexception_type  <- mdy_datapipe_uiexception_type_cb()
     // call_state        <- mdy_datapipe_call_state_trigger_cb()
     //
     // INPUTS:
-    // proximity_state   <- mdy_datapipe_proximity_sensor_cb()
+    // proximity_sensor_actual   <- mdy_datapipe_proximity_sensor_actual_cb()
     // mdy_blanking_inhibit_mode <- mdy_setting_cb()
     // mdy_blanking_is_paused()
 
@@ -4360,7 +4362,7 @@ static void mdy_blanking_rethink_timers(bool force)
 
     static cover_state_t prev_proximity_state = COVER_UNDEF;
 
-    static uiexctype_t prev_exception_state = UIEXC_NONE;
+    static uiexception_type_t prev_uiexception_type = UIEXCEPTION_TYPE_NONE;
 
     static call_state_t prev_call_state = CALL_STATE_NONE;
 
@@ -4380,16 +4382,16 @@ static void mdy_blanking_rethink_timers(bool force)
     if( prev_charger_state != charger_state )
         force = true;
 
-    if( prev_exception_state != exception_state )
+    if( prev_uiexception_type != uiexception_type )
         force = true;
 
     if( prev_call_state != call_state )
         force = true;
 
-    if( prev_proximity_state != proximity_state )
+    if( prev_proximity_state != proximity_sensor_actual )
         force = true;
 
-    if( prev_display_state != display_state ) {
+    if( prev_display_state != display_state_curr ) {
         force = true;
 
         /* Stop blanking pause period, unless toggling between
@@ -4398,8 +4400,8 @@ static void mdy_blanking_rethink_timers(bool force)
 
         if( (prev_display_state == MCE_DISPLAY_ON ||
              prev_display_state == MCE_DISPLAY_DIM) &&
-            (display_state == MCE_DISPLAY_ON ||
-             display_state == MCE_DISPLAY_DIM) &&
+            (display_state_curr == MCE_DISPLAY_ON ||
+             display_state_curr == MCE_DISPLAY_DIM) &&
             mdy_blanking_is_paused() &&
             mdy_blanking_pause_can_dim() ) {
             // keep existing blanking pause timer alive
@@ -4410,7 +4412,7 @@ static void mdy_blanking_rethink_timers(bool force)
         }
 
         // handle adaptive blanking states
-        switch( display_state ) {
+        switch( display_state_curr ) {
         default:
         case MCE_DISPLAY_UNDEF:
         case MCE_DISPLAY_OFF:
@@ -4445,13 +4447,13 @@ static void mdy_blanking_rethink_timers(bool force)
     if( mdy_disp_never_blank )
         goto EXIT;
 
-    if( exception_state & ~UIEXC_CALL ) {
+    if( uiexception_type & ~UIEXCEPTION_TYPE_CALL ) {
         /* exceptional ui states other than
          * call ui -> no dim/blank timers */
         goto EXIT;
     }
 
-    switch( display_state ) {
+    switch( display_state_curr ) {
     case MCE_DISPLAY_OFF:
         break;
 
@@ -4464,7 +4466,7 @@ static void mdy_blanking_rethink_timers(bool force)
         break;
 
     case MCE_DISPLAY_DIM:
-        if( mdy_update_mode )
+        if( mdy_osupdate_running )
             break;
         if( mdy_blanking_inhibit_off_p() )
             break;
@@ -4476,14 +4478,14 @@ static void mdy_blanking_rethink_timers(bool force)
 
     case MCE_DISPLAY_ON:
         /* In update mode auto-blanking must not occur. */
-        if( mdy_update_mode )
+        if( mdy_osupdate_running )
             break;
 
         /* All exceptional states apart from active call
          * should block auto-blanking. */
-        if( exception_state ) {
+        if( uiexception_type ) {
             /* Not call related -> block auto-blanking */
-             if( exception_state & ~UIEXC_CALL )
+             if( uiexception_type & ~UIEXCEPTION_TYPE_CALL )
                 break;
 
             /* Incoming call -> block auto-blanking */
@@ -4493,14 +4495,14 @@ static void mdy_blanking_rethink_timers(bool force)
             /* Even during during active calls we do not want
              * to interfere with proximity blanking */
             if( audio_route == AUDIO_ROUTE_HANDSET  &&
-                proximity_state == COVER_CLOSED )
+                proximity_sensor_actual == COVER_CLOSED )
                 break;
         }
 
         /* In act-dead mode & co blanking inhibit modes are
          * ignored and display is blanked without going through
          * the dimming step */
-        if( system_state != MCE_STATE_USER ) {
+        if( system_state != MCE_SYSTEM_STATE_USER ) {
             mdy_blanking_schedule_off();
             break;
         }
@@ -4513,7 +4515,7 @@ static void mdy_blanking_rethink_timers(bool force)
          * lockscreen and/or device lock is active, normal
          * dimming rules must be applied during active calls.
          */
-        if( tklock_mode && !(exception_state & UIEXC_CALL) ) {
+        if( tklock_mode && !(uiexception_type & UIEXCEPTION_TYPE_CALL) ) {
             if( !mdy_blanking_from_tklock_disabled )
                 mdy_blanking_schedule_off();
             break;
@@ -4539,9 +4541,9 @@ static void mdy_blanking_rethink_timers(bool force)
     }
 
 EXIT:
-    prev_display_state = display_state;
-    prev_proximity_state = proximity_state;
-    prev_exception_state = exception_state;
+    prev_display_state = display_state_curr;
+    prev_proximity_state = proximity_sensor_actual;
+    prev_uiexception_type = uiexception_type;
     prev_call_state = call_state;
     prev_charger_state = charger_state;
     prev_audio_route = audio_route;
@@ -4554,17 +4556,17 @@ EXIT:
  */
 static void mdy_blanking_rethink_proximity(void)
 {
-    switch( display_state ) {
+    switch( display_state_curr ) {
     case MCE_DISPLAY_LPM_ON:
-        if( proximity_state == COVER_CLOSED )
+        if( proximity_sensor_actual == COVER_CLOSED )
             mce_datapipe_req_display_state(MCE_DISPLAY_LPM_OFF);
         else
             mdy_blanking_schedule_lpm_off();
         break;
 
     case MCE_DISPLAY_LPM_OFF:
-        if( proximity_state == COVER_OPEN &&
-            lid_cover_policy_state != COVER_CLOSED )
+        if( proximity_sensor_actual == COVER_OPEN &&
+            lid_sensor_filtered != COVER_CLOSED )
             mce_datapipe_req_display_state(MCE_DISPLAY_LPM_ON);
         else
             mdy_blanking_schedule_off();
@@ -4626,7 +4628,7 @@ static void mdy_blanking_rethink_afterboot_delay(void)
     if( mdy_bootstate != BOOTSTATE_USER )
         goto DONE;
 
-    if( system_state != MCE_STATE_USER )
+    if( system_state != MCE_SYSTEM_STATE_USER )
         goto DONE;
 
     /* Lipstick has started */
@@ -5299,11 +5301,11 @@ static void compositor_led_set_active(compositor_led_t led, bool active)
             active ? "activate" : "deactivate",
             compositor_led_pattern[led]);
 
-    execute_datapipe_output_triggers((compositor_led_active[led] = active) ?
-                                     &led_pattern_activate_pipe :
-                                     &led_pattern_deactivate_pipe,
-                                     compositor_led_pattern[led],
-                                     USE_INDATA);
+    datapipe_exec_output_triggers((compositor_led_active[led] = active) ?
+                                  &led_pattern_activate_pipe :
+                                  &led_pattern_deactivate_pipe,
+                                  compositor_led_pattern[led],
+                                  USE_INDATA);
 EXIT:
     return;
 }
@@ -6565,11 +6567,11 @@ static int mdy_autosuspend_get_allowed_level(void)
 
     /* Exceptional situations without separate state
      * management block late suspend */
-    if( exception_state & (UIEXC_NOTIF|UIEXC_LINGER) )
+    if( uiexception_type & (UIEXCEPTION_TYPE_NOTIF|UIEXCEPTION_TYPE_LINGER) )
         block_late = true;
 
     /* no late suspend in ACTDEAD etc */
-    if( system_state != MCE_STATE_USER )
+    if( system_state != MCE_SYSTEM_STATE_USER )
         block_late = true;
 
     /* no late suspend during bootup */
@@ -6589,7 +6591,7 @@ static int mdy_autosuspend_get_allowed_level(void)
         block_early = true;
 
     /* no suspend during update mode */
-    if( mdy_update_mode )
+    if( mdy_osupdate_running )
         block_early = true;
 
     /* do not suspend while ui side might still be drawing */
@@ -6607,7 +6609,7 @@ static int mdy_autosuspend_get_allowed_level(void)
         break;
 
     case SUSPEND_POLICY_DISABLE_ON_CHARGER:
-        if( system_state == MCE_STATE_USER &&
+        if( system_state == MCE_SYSTEM_STATE_USER &&
             charger_state == CHARGER_STATE_ON )
             block_early = true;
         break;
@@ -6664,9 +6666,9 @@ static void mdy_autosuspend_setting_cb(GConfClient *const client, const guint id
  */
 static void mdy_orientation_changed_cb(int state)
 {
-    execute_datapipe(&orientation_sensor_pipe,
-                     GINT_TO_POINTER(state),
-                     USE_INDATA, CACHE_INDATA);
+    datapipe_exec_full(&orientation_sensor_actual_pipe,
+                       GINT_TO_POINTER(state),
+                       USE_INDATA, CACHE_INDATA);
 }
 
 /** Generate user activity from orientation sensor input
@@ -6678,7 +6680,7 @@ static void mdy_orientation_generate_activity(void)
         goto EXIT;
 
     /* Display must be on/dimmed */
-    switch( display_state ) {
+    switch( display_state_curr ) {
     case MCE_DISPLAY_ON:
     case MCE_DISPLAY_DIM:
         break;
@@ -6688,9 +6690,9 @@ static void mdy_orientation_generate_activity(void)
     }
 
     mce_log(LL_DEBUG, "orientation change; generate activity");
-    execute_datapipe(&device_inactive_event_pipe,
-                     GINT_TO_POINTER(FALSE),
-                     USE_INDATA, CACHE_OUTDATA);
+    datapipe_exec_full(&inactivity_event_pipe,
+                       GINT_TO_POINTER(FALSE),
+                       USE_INDATA, CACHE_OUTDATA);
 
 EXIT:
     return;
@@ -6771,7 +6773,7 @@ EXIT:
 static void mdy_display_state_changed(void)
 {
     /* Disable blanking pause if display != ON */
-    switch( display_state ) {
+    switch( display_state_curr ) {
     case MCE_DISPLAY_ON:
         break;
 
@@ -6796,7 +6798,7 @@ static void mdy_display_state_changed(void)
      * Should turn in to big nop if there are no changes.
      */
 
-    switch( display_state ) {
+    switch( display_state_curr ) {
     case MCE_DISPLAY_OFF:
     case MCE_DISPLAY_LPM_OFF:
         /* Blanking or already blanked -> set zero brightness */
@@ -6835,14 +6837,14 @@ static void mdy_display_state_changed(void)
 /** Handle end of display state transition
  *
  * After the state machine has finished display state
- * tranistion, it gets broadcast to display_state_pipe
+ * tranistion, it gets broadcast to display_state_curr_pipe
  * via this function.
  *
- * Actions for this will be executed in display_state_pipe
+ * Actions for this will be executed in display_state_curr_pipe
  * output trigger mdy_display_state_changed().
  *
  * @param prev_state    previous display state
- * @param display_state state transferred to
+ * @param display_state_curr state transferred to
  */
 static void mdy_display_state_enter(display_state_t prev_state,
                                     display_state_t next_state)
@@ -6857,15 +6859,15 @@ static void mdy_display_state_enter(display_state_t prev_state,
         mdy_brightness_als_fade_allowed = true;
     }
 
-    /* Restore display_state_pipe to valid value */
-    display_state_pipe.cached_data = GINT_TO_POINTER(next_state);
+    /* Restore display_state_curr_pipe to valid value */
+    display_state_curr_pipe.cached_data = GINT_TO_POINTER(next_state);
 
     /* Run display state change triggers */
     mce_log(LL_CRUCIAL, "current display state = %s",
             display_state_repr(next_state));
-    execute_datapipe(&display_state_pipe,
-                     GINT_TO_POINTER(next_state),
-                     USE_INDATA, CACHE_INDATA);
+    datapipe_exec_full(&display_state_curr_pipe,
+                       GINT_TO_POINTER(next_state),
+                       USE_INDATA, CACHE_INDATA);
 
     /* Deal with new stable display state */
     mdy_display_state_changed();
@@ -6874,7 +6876,7 @@ static void mdy_display_state_enter(display_state_t prev_state,
 /** Handle start of display state transition
  *
  * @param prev_state    display state before transition
- * @param display_state target state to transfer to
+ * @param display_state_curr target state to transfer to
  */
 static void mdy_display_state_leave(display_state_t prev_state,
                                     display_state_t next_state)
@@ -6938,15 +6940,15 @@ static void mdy_display_state_leave(display_state_t prev_state,
     }
 
     /* Broadcast the final target of this transition; note that this
-     * happens while display_state_pipe still holds the previous
+     * happens while display_state_curr_pipe still holds the previous
      * (non-transitional) state */
     mce_log(LL_NOTICE, "target display state = %s",
             display_state_repr(next_state));
-    execute_datapipe(&display_state_next_pipe,
-                     GINT_TO_POINTER(next_state),
-                     USE_INDATA, CACHE_INDATA);
+    datapipe_exec_full(&display_state_next_pipe,
+                       GINT_TO_POINTER(next_state),
+                       USE_INDATA, CACHE_INDATA);
 
-    /* Invalidate display_state_pipe when making transitions
+    /* Invalidate display_state_curr_pipe when making transitions
      * that need to wait for external parties */
     if( have_power != need_power ) {
         display_state_t state =
@@ -6954,10 +6956,10 @@ static void mdy_display_state_leave(display_state_t prev_state,
 
         mce_log(LL_CRUCIAL, "current display state = %s",
                 display_state_repr(state));
-        display_state_pipe.cached_data = GINT_TO_POINTER(state);
-        execute_datapipe(&display_state_pipe,
-                         display_state_pipe.cached_data,
-                         USE_INDATA, CACHE_INDATA);
+        display_state_curr_pipe.cached_data = GINT_TO_POINTER(state);
+        datapipe_exec_full(&display_state_curr_pipe,
+                           display_state_curr_pipe.cached_data,
+                           USE_INDATA, CACHE_INDATA);
     }
 }
 
@@ -6985,17 +6987,17 @@ static void mdy_fbsusp_led_set(mdy_fbsusp_led_state_t req)
         break;
     }
 
-    execute_datapipe_output_triggers(blanking ?
-                                     &led_pattern_activate_pipe :
-                                     &led_pattern_deactivate_pipe,
-                                     MCE_LED_PATTERN_DISPLAY_SUSPEND_FAILED,
-                                     USE_INDATA);
+    datapipe_exec_output_triggers(blanking ?
+                                  &led_pattern_activate_pipe :
+                                  &led_pattern_deactivate_pipe,
+                                  MCE_LED_PATTERN_DISPLAY_SUSPEND_FAILED,
+                                  USE_INDATA);
 
-    execute_datapipe_output_triggers(unblanking ?
-                                     &led_pattern_activate_pipe :
-                                     &led_pattern_deactivate_pipe,
-                                     MCE_LED_PATTERN_DISPLAY_RESUME_FAILED,
-                                     USE_INDATA);
+    datapipe_exec_output_triggers(unblanking ?
+                                  &led_pattern_activate_pipe :
+                                  &led_pattern_deactivate_pipe,
+                                  MCE_LED_PATTERN_DISPLAY_RESUME_FAILED,
+                                  USE_INDATA);
 }
 
 /** Timer id for fbdev suspend/resume is taking too long */
@@ -7108,7 +7110,7 @@ static const char *mdy_stm_state_name(stm_state_t state)
 
 /** react to compositor availability changes
  */
-static void mdy_datapipe_compositor_available_cb(gconstpointer aptr)
+static void mdy_datapipe_compositor_service_state_cb(gconstpointer aptr)
 {
     static service_state_t service = SERVICE_STATE_UNDEF;
 
@@ -7118,7 +7120,7 @@ static void mdy_datapipe_compositor_available_cb(gconstpointer aptr)
     if( service == prev )
         goto EXIT;
 
-    mce_log(LL_DEVEL, "compositor_available = %s -> %s",
+    mce_log(LL_DEVEL, "compositor_service_state = %s -> %s",
             service_state_repr(prev),
             service_state_repr(service));
 
@@ -7165,7 +7167,7 @@ EXIT:
 
 /** react to systemui availability changes
  */
-static void mdy_datapipe_lipstick_available_cb(gconstpointer aptr)
+static void mdy_datapipe_lipstick_service_state_cb(gconstpointer aptr)
 {
     service_state_t prev = lipstick_service_state;
     lipstick_service_state = GPOINTER_TO_INT(aptr);
@@ -7173,7 +7175,7 @@ static void mdy_datapipe_lipstick_available_cb(gconstpointer aptr)
     if( lipstick_service_state == prev )
         goto EXIT;
 
-    mce_log(LL_DEVEL, "lipstick_available = %s -> %s",
+    mce_log(LL_DEVEL, "lipstick_service_state = %s -> %s",
             service_state_repr(prev),
             service_state_repr(lipstick_service_state));
 
@@ -7990,10 +7992,10 @@ static void mdy_statistics_update(void)
 
     mdy_statistics_data[prev_state].time_ms += (now - prev_update);
 
-    if( prev_state != display_state )
-        mdy_statistics_data[display_state].entries += 1;
+    if( prev_state != display_state_curr )
+        mdy_statistics_data[display_state_curr].entries += 1;
 
-    prev_state  = display_state;
+    prev_state  = display_state_curr;
     prev_update = now;
 }
 
@@ -8254,8 +8256,8 @@ static void mdy_governor_rethink(void)
     int governor_want = GOVERNOR_INTERACTIVE;
 
     /* Use default when in transitional states */
-    if( system_state != MCE_STATE_USER &&
-        system_state != MCE_STATE_ACTDEAD ) {
+    if( system_state != MCE_SYSTEM_STATE_USER &&
+        system_state != MCE_SYSTEM_STATE_ACTDEAD ) {
         governor_want = GOVERNOR_DEFAULT;
     }
 
@@ -8399,8 +8401,8 @@ static gboolean mdy_dbus_send_blanking_inhibit_status(DBusMessage *const method_
      * blanking inhibit is active. This should catch things like
      * stay-on inhibit modes, update mode, never-blank mode, etc
      */
-    if( display_state == MCE_DISPLAY_ON ||
-        display_state == MCE_DISPLAY_DIM ) {
+    if( display_state_curr == MCE_DISPLAY_ON ||
+        display_state_curr == MCE_DISPLAY_DIM ) {
         if( !mdy_blanking_off_cb_id && !mdy_blanking_dim_cb_id )
             curr = true;
     }
@@ -8408,7 +8410,7 @@ static gboolean mdy_dbus_send_blanking_inhibit_status(DBusMessage *const method_
     /* The stay-dim inhibit modes do not prevent dimming, so those need
      * to be taken into account separately.
      */
-    if( display_state == MCE_DISPLAY_ON && mdy_blanking_dim_cb_id ) {
+    if( display_state_curr == MCE_DISPLAY_ON && mdy_blanking_dim_cb_id ) {
         if( mdy_blanking_inhibit_dim_p() )
             curr = true;
     }
@@ -8510,7 +8512,7 @@ static gboolean mdy_dbus_send_display_status(DBusMessage *const method_call)
         switch( display_state_next ) {
         case MCE_DISPLAY_ON:
         case MCE_DISPLAY_DIM:
-            if( display_state != display_state_next )
+            if( display_state_curr != display_state_next )
                 goto EXIT;
             break;
 
@@ -8572,7 +8574,7 @@ static const char *mdy_dbus_get_reason_to_block_display_on(void)
     const char *reason = 0;
 
     /* display off? */
-    switch( display_state ) {
+    switch( display_state_curr ) {
     default:
     case MCE_DISPLAY_OFF:
     case MCE_DISPLAY_LPM_OFF:
@@ -8590,8 +8592,8 @@ static const char *mdy_dbus_get_reason_to_block_display_on(void)
 
     /* system state must be USER or ACT DEAD */
     switch( system_state ) {
-    case MCE_STATE_USER:
-    case MCE_STATE_ACTDEAD:
+    case MCE_SYSTEM_STATE_USER:
+    case MCE_SYSTEM_STATE_ACTDEAD:
         break;
     default:
         reason = "system_state != USER|ACTDEAD";
@@ -8619,13 +8621,13 @@ static const char *mdy_dbus_get_reason_to_block_display_on(void)
     }
 
     /* lid closed? */
-    if( lid_cover_policy_state == COVER_CLOSED ) {
+    if( lid_sensor_filtered == COVER_CLOSED ) {
         reason = "lid closed";
         goto EXIT;
     }
 
     /* proximity covered? */
-    if( proximity_state == COVER_CLOSED ) {
+    if( proximity_sensor_actual == COVER_CLOSED ) {
         reason = "proximity covered";
         goto EXIT;
     }
@@ -8731,9 +8733,9 @@ static gboolean mdy_dbus_handle_display_off_req(DBusMessage *const msg)
     if( !dbus_message_get_no_reply(msg) )
         dbus_send_message(dbus_new_method_reply(msg));
 
-    execute_datapipe(&tk_lock_pipe,
-                     GINT_TO_POINTER(LOCK_ON),
-                     USE_INDATA, CACHE_INDATA);
+    datapipe_exec_full(&tklock_request_pipe,
+                       GINT_TO_POINTER(TKLOCK_REQUEST_ON),
+                       USE_INDATA, CACHE_INDATA);
 
     mdy_dbus_handle_display_state_req(MCE_DISPLAY_OFF);
 
@@ -8757,7 +8759,7 @@ static gboolean mdy_dbus_handle_display_lpm_req(DBusMessage *const msg)
             mce_dbus_get_message_sender_ident(msg));
 
     /* Ignore lpm requests if there are active calls / alarms */
-    if( exception_state & (UIEXC_CALL | UIEXC_ALARM) ) {
+    if( uiexception_type & (UIEXCEPTION_TYPE_CALL | UIEXCEPTION_TYPE_ALARM) ) {
         reason  = "call or alarm active";
         request = current;
         lock_ui = false;
@@ -8792,9 +8794,9 @@ EXIT:
     }
 
     if( lock_ui ) {
-        execute_datapipe(&tk_lock_pipe,
-                         GINT_TO_POINTER(LOCK_ON),
-                         USE_INDATA, CACHE_INDATA);
+        datapipe_exec_full(&tklock_request_pipe,
+                           GINT_TO_POINTER(TKLOCK_REQUEST_ON),
+                           USE_INDATA, CACHE_INDATA);
     }
 
     mdy_dbus_handle_display_state_req(request);
@@ -9233,12 +9235,12 @@ static gboolean mdy_dbus_handle_desktop_started_sig(DBusMessage *const msg)
     mce_log(LL_NOTICE, "Received desktop startup notification");
 
     mce_log(LL_DEBUG, "deactivate MCE_LED_PATTERN_POWER_ON");
-    execute_datapipe_output_triggers(&led_pattern_deactivate_pipe,
-                                     MCE_LED_PATTERN_POWER_ON, USE_INDATA);
+    datapipe_exec_output_triggers(&led_pattern_deactivate_pipe,
+                                  MCE_LED_PATTERN_POWER_ON, USE_INDATA);
 
-    mce_rem_submode_int32(MCE_BOOTUP_SUBMODE);
+    mce_rem_submode_int32(MCE_SUBMODE_BOOTUP);
 
-    mce_rem_submode_int32(MCE_MALF_SUBMODE);
+    mce_rem_submode_int32(MCE_SUBMODE_MALF);
     if (g_access(MCE_MALF_FILENAME, F_OK) == 0) {
         g_remove(MCE_MALF_FILENAME);
     }
@@ -9274,7 +9276,7 @@ static mce_dbus_handler_t mdy_dbus_handlers[] =
         .name      = MCE_DISPLAY_SIG,
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
         .args      =
-            "    <arg name=\"display_state\" type=\"s\"/>\n"
+            "    <arg name=\"display_state_curr\" type=\"s\"/>\n"
     },
     {
         .interface = MCE_SIGNAL_IF,
@@ -9314,7 +9316,7 @@ static mce_dbus_handler_t mdy_dbus_handlers[] =
         .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
         .callback  = mdy_dbus_handle_display_status_get_req,
         .args      =
-            "    <arg direction=\"out\" name=\"display_state\" type=\"s\"/>\n"
+            "    <arg direction=\"out\" name=\"display_state_curr\" type=\"s\"/>\n"
     },
     {
         .interface = MCE_REQUEST_IF,
@@ -9483,7 +9485,7 @@ static void mdy_flagfiles_init_done_cb(const char *path,
  * @param file name of the flag file
  * @param data (not used)
  */
-static void mdy_flagfiles_update_mode_cb(const char *path,
+static void mdy_flagfiles_osupdate_running_cb(const char *path,
                                          const char *file,
                                          gpointer data)
 {
@@ -9494,14 +9496,14 @@ static void mdy_flagfiles_update_mode_cb(const char *path,
 
     gboolean flag = access(full, F_OK) ? FALSE : TRUE;
 
-    if( mdy_update_mode != flag ) {
-        mdy_update_mode = flag;
+    if( mdy_osupdate_running != flag ) {
+        mdy_osupdate_running = flag;
 
         /* Log by default as it might help analyzing upgrade problems */
-        mce_log(LL_WARN, "update_mode flag file present: %s",
-                mdy_update_mode ? "true" : "false");
+        mce_log(LL_WARN, "osupdate_running flag file present: %s",
+                mdy_osupdate_running ? "true" : "false");
 
-        if( mdy_update_mode ) {
+        if( mdy_osupdate_running ) {
             /* Issue display on request when update mode starts */
             mce_datapipe_req_display_state(MCE_DISPLAY_ON);
         }
@@ -9513,9 +9515,9 @@ static void mdy_flagfiles_update_mode_cb(const char *path,
         mdy_blanking_rethink_timers(true);
 
         /* broadcast change within mce */
-        execute_datapipe(&update_mode_pipe,
-                         GINT_TO_POINTER(mdy_update_mode),
-                         USE_INDATA, CACHE_INDATA);
+        datapipe_exec_full(&osupdate_running_pipe,
+                           GINT_TO_POINTER(mdy_osupdate_running),
+                           USE_INDATA, CACHE_INDATA);
     }
 }
 
@@ -9587,8 +9589,8 @@ static void mdy_flagfiles_start_tracking(void)
 
     /* if the update directory exits, track flag file presense */
     if( access(update_dir, F_OK) == 0 ) {
-        mdy_update_mode_watcher = filewatcher_create(update_dir, update_flag,
-                                                     mdy_flagfiles_update_mode_cb,
+        mdy_osupdate_running_watcher = filewatcher_create(update_dir, update_flag,
+                                                     mdy_flagfiles_osupdate_running_cb,
                                                      0, 0);
     }
 
@@ -9634,9 +9636,9 @@ static void mdy_flagfiles_start_tracking(void)
         mdy_bootstate = BOOTSTATE_USER;
     }
 
-    if( mdy_update_mode_watcher ) {
+    if( mdy_osupdate_running_watcher ) {
         /* evaluate the initial state of update-mode flag file */
-        filewatcher_force_trigger(mdy_update_mode_watcher);
+        filewatcher_force_trigger(mdy_osupdate_running_watcher);
     }
 }
 
@@ -9644,7 +9646,7 @@ static void mdy_flagfiles_start_tracking(void)
  */
 static void mdy_flagfiles_stop_tracking(void)
 {
-    filewatcher_delete(mdy_update_mode_watcher), mdy_update_mode_watcher = 0;
+    filewatcher_delete(mdy_osupdate_running_watcher), mdy_osupdate_running_watcher = 0;
 
     filewatcher_delete(mdy_init_done_watcher), mdy_init_done_watcher = 0;
 
@@ -9766,7 +9768,7 @@ static void mdy_setting_cb(GConfClient *const gcc, const guint id,
     }
     else if (id == mdy_blank_timeout_setting_id) {
         mdy_blank_timeout = gconf_value_get_int(gcv);
-        mdy_blanking_update_inactivity_timeout();
+        mdy_blanking_update_device_inactive_delay();
 
         /* Reprogram blanking timers */
         mdy_blanking_rethink_timers(true);
@@ -9795,14 +9797,14 @@ static void mdy_setting_cb(GConfClient *const gcc, const guint id,
     else if (id == mdy_use_low_power_mode_setting_id) {
         mdy_use_low_power_mode = gconf_value_get_bool(gcv);
 
-        if (((display_state == MCE_DISPLAY_LPM_OFF) ||
-             (display_state == MCE_DISPLAY_LPM_ON)) &&
+        if (((display_state_curr == MCE_DISPLAY_LPM_OFF) ||
+             (display_state_curr == MCE_DISPLAY_LPM_ON)) &&
             ((mdy_low_power_mode_supported == FALSE) ||
                 (mdy_use_low_power_mode == FALSE) ||
                 (mdy_blanking_can_blank_from_low_power_mode() == TRUE))) {
             mce_datapipe_req_display_state(MCE_DISPLAY_OFF);
         }
-        else if ((display_state == MCE_DISPLAY_OFF) &&
+        else if ((display_state_curr == MCE_DISPLAY_OFF) &&
                  (mdy_use_low_power_mode == TRUE) &&
                  (mdy_blanking_can_blank_from_low_power_mode() == FALSE) &&
                  (mdy_low_power_mode_supported == TRUE)) {
@@ -10038,9 +10040,9 @@ static void mdy_setting_sanitize_brightness_levels(void)
     /* Then execute through the brightness pipe too; this will update
      * the mdy_brightness_level_display_on & mdy_brightness_level_display_dim
      * values. */
-    execute_datapipe(&display_brightness_pipe,
-                     GINT_TO_POINTER(mdy_brightness_setting),
-                     USE_INDATA, CACHE_INDATA);
+    datapipe_exec_full(&display_brightness_pipe,
+                       GINT_TO_POINTER(mdy_brightness_setting),
+                       USE_INDATA, CACHE_INDATA);
 
     mce_log(LL_DEBUG, "mdy_brightness_level_display_on = %d",
             mdy_brightness_level_display_on);
@@ -10049,9 +10051,9 @@ static void mdy_setting_sanitize_brightness_levels(void)
 
     /* And drive the display brightness setting value through lpm datapipe
      * too. This will update the mdy_brightness_level_display_lpm value. */
-    execute_datapipe(&lpm_brightness_pipe,
-                     GINT_TO_POINTER(mdy_brightness_setting),
-                     USE_INDATA, CACHE_INDATA);
+    datapipe_exec_full(&lpm_brightness_pipe,
+                       GINT_TO_POINTER(mdy_brightness_setting),
+                       USE_INDATA, CACHE_INDATA);
 }
 
 static void mdy_setting_sanitize_dim_timeouts(bool force_update)
@@ -10081,7 +10083,7 @@ static void mdy_setting_sanitize_dim_timeouts(bool force_update)
     mdy_blanking_reset_adaptive_dimming_delay();
 
     /* Update inactivity timeout */
-    mdy_blanking_update_inactivity_timeout();
+    mdy_blanking_update_device_inactive_delay();
 }
 
 /** Get initial setting values and start tracking changes

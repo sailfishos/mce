@@ -168,52 +168,42 @@ typedef enum {
 const char *alarm_state_repr(alarm_ui_state_t state);
 
 /** System sub-modes; several of these can be active at once */
-typedef gint submode_t;
+typedef enum {
+	/** Submode invalid */
+	MCE_SUBMODE_INVALID		= (1 << 31),
+	/** No submodes enabled */
+	MCE_SUBMODE_NORMAL		= 0,
+	/** Touchscreen/Keypad lock enabled */
+	MCE_SUBMODE_TKLOCK		= (1 << 0),
+	/** Event eater enabled */
+	MCE_SUBMODE_EVEATER		= (1 << 1),
+	/** Bootup in progress */
+	MCE_SUBMODE_BOOTUP		= (1 << 3),
+	/** State transition in progress */
+	MCE_SUBMODE_TRANSITION		= (1 << 4),
+	/** Touchscreen/Keypad autorelock active */
+	MCE_SUBMODE_AUTORELOCK		= (1 << 5),
+	/** Visual Touchscreen/Keypad active */
+	MCE_SUBMODE_VISUAL_TKLOCK	= (1 << 6),
+	/** Proximity is used to protect from accidental events */
+	MCE_SUBMODE_POCKET		= (1 << 7),
+	/** Touchscreen/Keypad lock is enabled based on proximity state */
+	MCE_SUBMODE_PROXIMITY_TKLOCK	= (1 << 8),
+	/** Device is in MALF state */
+	MCE_SUBMODE_MALF		= (1 << 9),
+} submode_t;
 
 const char *submode_change_repr(submode_t prev, submode_t curr);
 const char *submode_repr(submode_t submode);
 
-/** Submode invalid */
-#define MCE_INVALID_SUBMODE		(1 << 31)
-
-/** No submodes enabled */
-#define MCE_NORMAL_SUBMODE		0
-
-/** Touchscreen/Keypad lock enabled */
-#define MCE_TKLOCK_SUBMODE		(1 << 0)
-
-/** Event eater enabled */
-#define MCE_EVEATER_SUBMODE		(1 << 1)
-
-/** Bootup in progress */
-#define MCE_BOOTUP_SUBMODE		(1 << 3)
-
-/** State transition in progress */
-#define MCE_TRANSITION_SUBMODE		(1 << 4)
-
-/** Touchscreen/Keypad autorelock active */
-#define MCE_AUTORELOCK_SUBMODE		(1 << 5)
-
-/** Visual Touchscreen/Keypad active */
-#define MCE_VISUAL_TKLOCK_SUBMODE	(1 << 6)
-
-/** Proximity is used to protect from accidental events */
-#define MCE_POCKET_SUBMODE		(1 << 7)
-
-/** Touchscreen/Keypad lock is enabled based on proximity state */
-#define MCE_PROXIMITY_TKLOCK_SUBMODE	(1 << 8)
-
-/** Device is in MALF state */
-#define MCE_MALF_SUBMODE		(1 << 9)
-
 /** System state */
 typedef enum {
-	MCE_STATE_UNDEF = -1,		/**< System state not set */
-	MCE_STATE_SHUTDOWN = 0,		/**< System is in shutdown state */
-	MCE_STATE_USER = 2,		/**< System is in user state */
-	MCE_STATE_ACTDEAD = 5,		/**< System is in acting dead state */
-	MCE_STATE_REBOOT = 6,		/**< System is in reboot state */
-	MCE_STATE_BOOT = 9		/**< System is in bootup state */
+	MCE_SYSTEM_STATE_UNDEF    = -1, /**< System state not set */
+	MCE_SYSTEM_STATE_SHUTDOWN =  0, /**< System is in shutdown state */
+	MCE_SYSTEM_STATE_USER     =  2, /**< System is in user state */
+	MCE_SYSTEM_STATE_ACTDEAD  =  5, /**< System is in acting dead state */
+	MCE_SYSTEM_STATE_REBOOT   =  6, /**< System is in reboot state */
+	MCE_SYSTEM_STATE_BOOT     =  9, /**< System is in bootup state */
 } system_state_t;
 
 const char *system_state_repr(system_state_t state);
@@ -241,11 +231,11 @@ call_state_t call_state_from_dbus(const char *name);
 /** Call type */
 typedef enum {
 	/** Invalid call type */
-	INVALID_CALL = MCE_INVALID_TRANSLATION,
+	CALL_TYPE_INVALID   = MCE_INVALID_TRANSLATION,
 	/** The call is a normal call */
-	NORMAL_CALL = 0,
+	CALL_TYPE_NORMAL    = 0,
 	/** The call is an emergency call */
-	EMERGENCY_CALL = 1
+	CALL_TYPE_EMERGENCY = 1
 } call_type_t;
 
 const char *call_type_repr(call_type_t type);
@@ -281,26 +271,26 @@ const char *proximity_state_repr(cover_state_t state);
 /** Lock state */
 typedef enum {
 	/** Lock state not set */
-	LOCK_UNDEF = -1,
+	TKLOCK_REQUEST_UNDEF         = -1,
 	/** Lock is disabled */
-	LOCK_OFF = 0,
+	TKLOCK_REQUEST_OFF           =  0,
 	/** Delayed unlock; write only */
-	LOCK_OFF_DELAYED = 1,
+	TKLOCK_REQUEST_OFF_DELAYED   =  1,
 	/** Lock is disabled, but autorelock isn't disabled; write only */
-	LOCK_OFF_PROXIMITY = 2,
+	TKLOCK_REQUEST_OFF_PROXIMITY =  2,
 	/** Lock is enabled */
-	LOCK_ON = 3,
+	TKLOCK_REQUEST_ON            =  3,
 	/** Dimmed lock; write only */
-	LOCK_ON_DIMMED = 4,
+	TKLOCK_REQUEST_ON_DIMMED     =  4,
 	/** Enable proximity lock (no UI); write only */
-	LOCK_ON_PROXIMITY = 5,
+	TKLOCK_REQUEST_ON_PROXIMITY  =  5,
 	/** Toggle lock state; write only */
-	LOCK_TOGGLE = 6,
+	TKLOCK_REQUEST_TOGGLE        =  6,
 	/** Delayed lock; write only */
-	LOCK_ON_DELAYED = 7
-} lock_state_t;
+	TKLOCK_REQUEST_ON_DELAYED    =  7,
+} tklock_request_t;
 
-const char *lock_state_repr(lock_state_t state);
+const char *tklock_request_repr(tklock_request_t state);
 
 /** Assumed initial battery level */
 #define BATTERY_LEVEL_INITIAL 100
@@ -369,16 +359,16 @@ typedef enum {
 
 /** Exceptional UI status */
 typedef enum {
-	UIEXC_NONE   = 0,
-	UIEXC_LINGER = 1<<0,
-	UIEXC_CALL   = 1<<1,
-	UIEXC_ALARM  = 1<<2,
-	UIEXC_NOTIF  = 1<<3,
-	UIEXC_NOANIM = 1<<4,
-} uiexctype_t;
+	UIEXCEPTION_TYPE_NONE   = 0,
+	UIEXCEPTION_TYPE_LINGER = 1<<0,
+	UIEXCEPTION_TYPE_CALL   = 1<<1,
+	UIEXCEPTION_TYPE_ALARM  = 1<<2,
+	UIEXCEPTION_TYPE_NOTIF  = 1<<3,
+	UIEXCEPTION_TYPE_NOANIM = 1<<4,
+} uiexception_type_t;
 
-const char *uiexctype_repr(uiexctype_t state);
-const char *uiexctype_to_dbus(uiexctype_t state);
+const char *uiexception_type_repr(uiexception_type_t type);
+const char *uiexception_type_to_dbus(uiexception_type_t type);
 
 /** D-Bus service availability */
 typedef enum {
@@ -403,6 +393,15 @@ typedef enum
 
 const char *orientation_state_repr(orientation_state_t state);
 
+/** Key pressed/realease state */
+typedef enum {
+    KEY_STATE_UNDEF    = -1,
+    KEY_STATE_RELEASED =  0,
+    KEY_STATE_PRESSED  =  1,
+} key_state_t;
+
+const char *key_state_repr(key_state_t state);
+
 /* XXX: use HAL */
 
 /** Does the device have a flicker key? */
@@ -415,7 +414,7 @@ extern gboolean has_flicker_key;
  *
  * Used in case the display module doesn't load for some reason
  */
-#define DEFAULT_INACTIVITY_TIMEOUT	33
+#define DEFAULT_INACTIVITY_DELAY	33
 
 submode_t mce_get_submode_int32(void);
 gboolean mce_add_submode_int32(const submode_t submode);
@@ -427,14 +426,8 @@ void mce_quit_mainloop(void);
 void mce_signal_handlers_remove(void);
 
 #define display_state_get() ({\
-	gint res = GPOINTER_TO_INT(display_state_pipe.cached_data);\
-	mce_log(LL_DEBUG, "display_state=%d", res);\
-	res;\
-})
-
-#define proximity_state_get() ({\
-	gint res = GPOINTER_TO_INT(proximity_sensor_pipe.cached_data);\
-	mce_log(LL_DEBUG, "proximity_state=%d", res);\
+	gint res = GPOINTER_TO_INT(display_state_curr_pipe.cached_data);\
+	mce_log(LL_DEBUG, "display_state_curr=%d", res);\
 	res;\
 })
 

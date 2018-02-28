@@ -90,7 +90,7 @@ static void     bbl_state_rethink               (void);
  * ------------------------------------------------------------------------- */
 
 static void     bbl_datapipe_system_state_cb    (gconstpointer data);
-static void     bbl_datapipe_display_state_cb   (gconstpointer data);
+static void     bbl_datapipe_display_state_curr_cb(gconstpointer data);
 static void     bbl_datapipe_submode_cb         (gconstpointer data);
 static void     bbl_datapipes_init              (void);
 static void     bbl_datapipes_quit              (void);
@@ -131,13 +131,13 @@ G_MODULE_EXPORT void         g_module_unload    (GModule *module);
  * ========================================================================= */
 
 /** Current system state; undefined initially */
-static system_state_t system_state = MCE_STATE_UNDEF;
+static system_state_t system_state = MCE_SYSTEM_STATE_UNDEF;
 
 /** Current display state; undefined initially */
-static display_state_t display_state = MCE_DISPLAY_UNDEF;
+static display_state_t display_state_curr = MCE_DISPLAY_UNDEF;
 
 /** Current submode: Initialized to invalid placeholder value */
-static submode_t submode = MCE_INVALID_SUBMODE;
+static submode_t submode = MCE_SUBMODE_INVALID;
 
 /** Current backlight state: unknown initially */
 static tristate_t backlight_state = TRISTATE_UNKNOWN;
@@ -261,14 +261,14 @@ bbl_state_rethink(void)
 
     /* Device running in USER mode ? */
     switch( system_state ) {
-    case MCE_STATE_USER:
+    case MCE_SYSTEM_STATE_USER:
         break;
     default:
         goto EXIT;
     }
 
     /* Display is ON or DIM */
-    switch( display_state ) {
+    switch( display_state_curr ) {
     case MCE_DISPLAY_ON:
     case MCE_DISPLAY_DIM:
         break;
@@ -277,7 +277,7 @@ bbl_state_rethink(void)
     }
 
     /* Lokcscreen is not active ? */
-    if( submode & (MCE_TKLOCK_SUBMODE | MCE_INVALID_SUBMODE) )
+    if( submode & (MCE_SUBMODE_TKLOCK | MCE_SUBMODE_INVALID) )
         goto EXIT;
 
     /* Button backlight should be enabled */
@@ -319,17 +319,17 @@ EXIT:
  * @param data display state (as void pointer)
  */
 static void
-bbl_datapipe_display_state_cb(gconstpointer data)
+bbl_datapipe_display_state_curr_cb(gconstpointer data)
 {
-    display_state_t prev = display_state;
-    display_state = GPOINTER_TO_INT(data);
+    display_state_t prev = display_state_curr;
+    display_state_curr = GPOINTER_TO_INT(data);
 
-    if( display_state == prev )
+    if( display_state_curr == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "display_state = %s -> %s",
+    mce_log(LL_DEBUG, "display_state_curr = %s -> %s",
             display_state_repr(prev),
-            display_state_repr(display_state));
+            display_state_repr(display_state_curr));
 
     bbl_state_rethink();
 
@@ -366,8 +366,8 @@ static datapipe_handler_t bbl_datapipe_handlers[] =
         .output_cb = bbl_datapipe_system_state_cb,
     },
     {
-        .datapipe  = &display_state_pipe,
-        .output_cb = bbl_datapipe_display_state_cb,
+        .datapipe  = &display_state_curr_pipe,
+        .output_cb = bbl_datapipe_display_state_curr_cb,
     },
     {
         .datapipe  = &submode_pipe,

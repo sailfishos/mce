@@ -46,7 +46,7 @@ static gboolean cam_focus_disable_exists = FALSE;
 static gconstpointer cam_launch_iomon_id = NULL;
 
 /** ID for the lid cover I/O monitor */
-static gconstpointer lid_cover_iomon_id = NULL;
+static gconstpointer lid_sensor_actual_iomon_id = NULL;
 
 /** ID for the proximity sensor I/O monitor */
 static gconstpointer proximity_sensor_iomon_id = NULL;
@@ -92,8 +92,8 @@ static gboolean generic_activity_iomon_cb(mce_io_mon_t *iomon, gpointer data, gs
 	(void)bytes_read;
 
 	/* Generate activity */
-	execute_datapipe(&device_inactive_event_pipe, GINT_TO_POINTER(FALSE),
-			 USE_INDATA, CACHE_OUTDATA);
+	datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(FALSE),
+			   USE_INDATA, CACHE_OUTDATA);
 
 	return FALSE;
 }
@@ -120,13 +120,13 @@ static gboolean camera_launch_button_iomon_cb(mce_io_mon_t *iomon, gpointer data
 	}
 
 	/* Generate activity */
-	execute_datapipe(&device_inactive_event_pipe, GINT_TO_POINTER(FALSE),
-			 USE_INDATA, CACHE_OUTDATA);
+	datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(FALSE),
+			   USE_INDATA, CACHE_OUTDATA);
 
 	/* Update camera button state */
-	(void)execute_datapipe(&camera_button_pipe,
-			       GINT_TO_POINTER(camera_button_state),
-			       USE_INDATA, CACHE_INDATA);
+	(void)datapipe_exec_full(&camera_button_state_pipe,
+				 GINT_TO_POINTER(camera_button_state),
+				 USE_INDATA, CACHE_INDATA);
 
 	return FALSE;
 }
@@ -140,21 +140,19 @@ static gboolean camera_launch_button_iomon_cb(mce_io_mon_t *iomon, gpointer data
  */
 static gboolean lockkey_iomon_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
 {
-	gint lockkey_state;
+	key_state_t lockkey_state = KEY_STATE_RELEASED;
 
 	(void)iomon;
 	(void)bytes_read;
 
 	if (!strncmp(data, MCE_FLICKER_KEY_ACTIVE,
 		     strlen(MCE_FLICKER_KEY_ACTIVE))) {
-		lockkey_state = 1;
-	} else {
-		lockkey_state = 0;
+		lockkey_state = KEY_STATE_PRESSED;
 	}
 
-	(void)execute_datapipe(&lockkey_pipe,
-			       GINT_TO_POINTER(lockkey_state),
-			       USE_INDATA, CACHE_INDATA);
+	(void)datapipe_exec_full(&lockkey_state_pipe,
+				 GINT_TO_POINTER(lockkey_state),
+				 USE_INDATA, CACHE_INDATA);
 
 	return FALSE;
 }
@@ -177,16 +175,16 @@ static gboolean kbd_slide_iomon_cb(mce_io_mon_t *iomon, gpointer data, gsize byt
 		slide_state = COVER_OPEN;
 
 		/* Generate activity */
-		execute_datapipe(&device_inactive_event_pipe,
-				 GINT_TO_POINTER(FALSE),
-				 USE_INDATA, CACHE_OUTDATA);
+		datapipe_exec_full(&inactivity_event_pipe,
+				   GINT_TO_POINTER(FALSE),
+				   USE_INDATA, CACHE_OUTDATA);
 	} else {
 		slide_state = COVER_CLOSED;
 	}
 
-	(void)execute_datapipe(&keyboard_slide_pipe,
-			       GINT_TO_POINTER(slide_state),
-			       USE_INDATA, CACHE_INDATA);
+	(void)datapipe_exec_full(&keyboard_slide_state_pipe,
+				 GINT_TO_POINTER(slide_state),
+				 USE_INDATA, CACHE_INDATA);
 
 	return FALSE;
 }
@@ -198,27 +196,27 @@ static gboolean kbd_slide_iomon_cb(mce_io_mon_t *iomon, gpointer data, gsize byt
  * @param bytes_read Unused
  * @return Always returns FALSE to return remaining data (if any)
  */
-static gboolean lid_cover_iomon_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
+static gboolean lid_sensor_actual_iomon_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
 {
-	cover_state_t lid_cover_state;
+	cover_state_t lid_state;
 
 	(void)iomon;
 	(void)bytes_read;
 
 	if (!strncmp(data, MCE_LID_COVER_OPEN, strlen(MCE_LID_COVER_OPEN))) {
-		lid_cover_state = COVER_OPEN;
+		lid_state = COVER_OPEN;
 
 		/* Generate activity */
-		execute_datapipe(&device_inactive_event_pipe,
-				 GINT_TO_POINTER(FALSE),
-				 USE_INDATA, CACHE_OUTDATA);
+		datapipe_exec_full(&inactivity_event_pipe,
+				   GINT_TO_POINTER(FALSE),
+				   USE_INDATA, CACHE_OUTDATA);
 	} else {
-		lid_cover_state = COVER_CLOSED;
+		lid_state = COVER_CLOSED;
 	}
 
-	(void)execute_datapipe(&lid_cover_sensor_pipe,
-			       GINT_TO_POINTER(lid_cover_state),
-			       USE_INDATA, CACHE_INDATA);
+	(void)datapipe_exec_full(&lid_sensor_actual_pipe,
+				 GINT_TO_POINTER(lid_state),
+				 USE_INDATA, CACHE_INDATA);
 
 	return FALSE;
 }
@@ -232,21 +230,21 @@ static gboolean lid_cover_iomon_cb(mce_io_mon_t *iomon, gpointer data, gsize byt
  */
 static gboolean proximity_sensor_iomon_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
 {
-	cover_state_t proximity_sensor_state;
+	cover_state_t proximity_sensor_actual;
 
 	(void)iomon;
 	(void)bytes_read;
 
 	if (!strncmp(data, MCE_PROXIMITY_SENSOR_OPEN,
 		     strlen(MCE_PROXIMITY_SENSOR_OPEN))) {
-		proximity_sensor_state = COVER_OPEN;
+		proximity_sensor_actual = COVER_OPEN;
 	} else {
-		proximity_sensor_state = COVER_CLOSED;
+		proximity_sensor_actual = COVER_CLOSED;
 	}
 
-	(void)execute_datapipe(&proximity_sensor_pipe,
-			       GINT_TO_POINTER(proximity_sensor_state),
-			       USE_INDATA, CACHE_INDATA);
+	(void)datapipe_exec_full(&proximity_sensor_actual_pipe,
+				 GINT_TO_POINTER(proximity_sensor_actual),
+				 USE_INDATA, CACHE_INDATA);
 
 	return FALSE;
 }
@@ -273,12 +271,12 @@ static gboolean usb_cable_iomon_cb(mce_io_mon_t *iomon, gpointer data, gsize byt
 	}
 
 	/* Generate activity */
-	execute_datapipe(&device_inactive_event_pipe, GINT_TO_POINTER(FALSE),
-			 USE_INDATA, CACHE_OUTDATA);
+	datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(FALSE),
+			   USE_INDATA, CACHE_OUTDATA);
 
-	(void)execute_datapipe(&usb_cable_pipe,
-			       GINT_TO_POINTER(cable_state),
-			       USE_INDATA, CACHE_INDATA);
+	(void)datapipe_exec_full(&usb_cable_state_pipe,
+				 GINT_TO_POINTER(cable_state),
+				 USE_INDATA, CACHE_INDATA);
 
 	return FALSE;
 }
@@ -301,16 +299,16 @@ static gboolean lens_cover_iomon_cb(mce_io_mon_t *iomon, gpointer data, gsize by
 		lens_cover_state = COVER_OPEN;
 
 		/* Generate activity */
-		execute_datapipe(&device_inactive_event_pipe,
-				 GINT_TO_POINTER(FALSE),
-				 USE_INDATA, CACHE_OUTDATA);
+		datapipe_exec_full(&inactivity_event_pipe,
+				   GINT_TO_POINTER(FALSE),
+				   USE_INDATA, CACHE_OUTDATA);
 	} else {
 		lens_cover_state = COVER_CLOSED;
 	}
 
-	(void)execute_datapipe(&lens_cover_pipe,
-			       GINT_TO_POINTER(lens_cover_state),
-			       USE_INDATA, CACHE_INDATA);
+	(void)datapipe_exec_full(&lens_cover_state_pipe,
+				 GINT_TO_POINTER(lens_cover_state),
+				 USE_INDATA, CACHE_INDATA);
 
 	return FALSE;
 }
@@ -321,9 +319,9 @@ static gboolean lens_cover_iomon_cb(mce_io_mon_t *iomon, gpointer data, gsize by
  * @note Only gives reasonable readings when the proximity sensor is enabled
  * @return TRUE on success, FALSE on failure
  */
-static gboolean update_proximity_sensor_state(void)
+static gboolean update_proximity_sensor(void)
 {
-	cover_state_t proximity_sensor_state;
+	cover_state_t proximity_sensor_actual;
 	gboolean status = FALSE;
 	gchar *tmp = NULL;
 
@@ -334,14 +332,14 @@ static gboolean update_proximity_sensor_state(void)
 
 	if (!strncmp(tmp, MCE_PROXIMITY_SENSOR_OPEN,
 		     strlen(MCE_PROXIMITY_SENSOR_OPEN))) {
-		proximity_sensor_state = COVER_OPEN;
+		proximity_sensor_actual = COVER_OPEN;
 	} else {
-		proximity_sensor_state = COVER_CLOSED;
+		proximity_sensor_actual = COVER_CLOSED;
 	}
 
-	(void)execute_datapipe(&proximity_sensor_pipe,
-			       GINT_TO_POINTER(proximity_sensor_state),
-			       USE_INDATA, CACHE_INDATA);
+	(void)datapipe_exec_full(&proximity_sensor_actual_pipe,
+				 GINT_TO_POINTER(proximity_sensor_actual),
+				 USE_INDATA, CACHE_INDATA);
 
 	g_free(tmp);
 
@@ -362,7 +360,7 @@ static void update_proximity_monitor(void)
 	    (alarm_ui_state == MCE_ALARM_UI_VISIBLE_INT32) ||
 	    (alarm_ui_state == MCE_ALARM_UI_RINGING_INT32)) {
 		mce_write_string_to_file(MCE_PROXIMITY_SENSOR_DISABLE_PATH, "0");
-		(void)update_proximity_sensor_state();
+		(void)update_proximity_sensor();
 	} else {
 		mce_write_string_to_file(MCE_PROXIMITY_SENSOR_DISABLE_PATH, "1");
 	}
@@ -402,20 +400,20 @@ static void alarm_ui_state_trigger(gconstpointer const data)
  */
 static void submode_trigger(gconstpointer data)
 {
-	static submode_t old_submode = MCE_NORMAL_SUBMODE;
+	static submode_t old_submode = MCE_SUBMODE_NORMAL;
 	submode_t submode = GPOINTER_TO_INT(data);
 
 	/* If the tklock is enabled, disable the camera focus interrupts,
 	 * since we don't use them anyway
 	 */
-	if ((submode & MCE_TKLOCK_SUBMODE) != 0) {
-		if ((old_submode & MCE_TKLOCK_SUBMODE) == 0) {
+	if ((submode & MCE_SUBMODE_TKLOCK) != 0) {
+		if ((old_submode & MCE_SUBMODE_TKLOCK) == 0) {
 			if ((cam_focus_disable_exists == TRUE) &&
 			    (cam_focus_iomon_id != NULL))
 				mce_write_string_to_file(MCE_CAM_FOCUS_DISABLE_PATH, "1");
 		}
 	} else {
-		if ((old_submode & MCE_TKLOCK_SUBMODE) != 0) {
+		if ((old_submode & MCE_SUBMODE_TKLOCK) != 0) {
 			if (cam_focus_disable_exists == TRUE)
 				mce_write_string_to_file(MCE_CAM_FOCUS_DISABLE_PATH, "0");
 		}
@@ -475,12 +473,12 @@ gboolean mce_switches_init(void)
 	gboolean status = FALSE;
 
 	/* Append triggers/filters to datapipes */
-	append_input_trigger_to_datapipe(&call_state_pipe,
-					 call_state_trigger);
-	append_input_trigger_to_datapipe(&alarm_ui_state_pipe,
-					 alarm_ui_state_trigger);
-	append_output_trigger_to_datapipe(&submode_pipe,
-					  submode_trigger);
+	datapipe_add_input_trigger(&call_state_pipe,
+				   call_state_trigger);
+	datapipe_add_input_trigger(&alarm_ui_state_pipe,
+				   alarm_ui_state_trigger);
+	datapipe_add_output_trigger(&submode_pipe,
+				    submode_trigger);
 
 	/* Register I/O monitors */
 	lockkey_iomon_id =
@@ -499,9 +497,9 @@ gboolean mce_switches_init(void)
 		mce_switches_add_iomon(MCE_CAM_LAUNCH_STATE_PATH,
 				       camera_launch_button_iomon_cb);
 
-	lid_cover_iomon_id =
+	lid_sensor_actual_iomon_id =
 		mce_switches_add_iomon(MCE_LID_COVER_STATE_PATH,
-				       lid_cover_iomon_cb);
+				       lid_sensor_actual_iomon_cb);
 
 	proximity_sensor_iomon_id =
 		mce_switches_add_iomon(MCE_PROXIMITY_SENSOR_STATE_PATH,
@@ -551,12 +549,12 @@ gboolean mce_switches_init(void)
 void mce_switches_exit(void)
 {
 	/* Remove triggers/filters from datapipes */
-	remove_output_trigger_from_datapipe(&submode_pipe,
-					    submode_trigger);
-	remove_input_trigger_from_datapipe(&alarm_ui_state_pipe,
-					   alarm_ui_state_trigger);
-	remove_input_trigger_from_datapipe(&call_state_pipe,
-					   call_state_trigger);
+	datapipe_remove_output_trigger(&submode_pipe,
+				       submode_trigger);
+	datapipe_remove_input_trigger(&alarm_ui_state_pipe,
+				      alarm_ui_state_trigger);
+	datapipe_remove_input_trigger(&call_state_pipe,
+				      call_state_trigger);
 
 	/* Unregister I/O monitors */
 	mce_switches_rem_iomon_all();

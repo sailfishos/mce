@@ -174,14 +174,14 @@ static void     mht_connection_close       (void);
  * DATAPIPE_HANDLERS
  * ------------------------------------------------------------------------- */
 
-/** Availability of dsme; from dsme_available_pipe */
-static service_state_t dsme_available = SERVICE_STATE_UNDEF;
+/** Availability of dsme; from dsme_service_state_pipe */
+static service_state_t dsme_service_state = SERVICE_STATE_UNDEF;
 
 /** Device is shutting down; assume false */
 static bool shutting_down = false;
 
-static void mht_datapipe_dsme_available_cb (gconstpointer data);
-static void mht_datapipe_device_resumed_cb (gconstpointer data);
+static void mht_datapipe_dsme_service_state_cb (gconstpointer data);
+static void mht_datapipe_resume_detected_event_cb (gconstpointer data);
 static void mht_datapipe_shutting_down_cb  (gconstpointer data);
 
 static void mht_datapipe_init(void);
@@ -955,7 +955,7 @@ mht_connection_close(void)
  * ========================================================================= */
 
 /** Resumed from suspend notification */
-static void mht_datapipe_device_resumed_cb(gconstpointer data)
+static void mht_datapipe_resume_detected_event_cb(gconstpointer data)
 {
     (void) data;
 
@@ -966,19 +966,19 @@ static void mht_datapipe_device_resumed_cb(gconstpointer data)
 
 /** Datapipe trigger for dsme availability
  */
-static void mht_datapipe_dsme_available_cb(gconstpointer const data)
+static void mht_datapipe_dsme_service_state_cb(gconstpointer const data)
 {
-    service_state_t prev = dsme_available;
-    dsme_available = GPOINTER_TO_INT(data);
+    service_state_t prev = dsme_service_state;
+    dsme_service_state = GPOINTER_TO_INT(data);
 
-    if( dsme_available == prev )
+    if( dsme_service_state == prev )
         goto EXIT;
 
     mce_log(LL_DEBUG, "DSME dbus service: %s -> %s",
             service_state_repr(prev),
-            service_state_repr(dsme_available));
+            service_state_repr(dsme_service_state));
 
-    if( dsme_available == SERVICE_STATE_RUNNING )
+    if( dsme_service_state == SERVICE_STATE_RUNNING )
         mht_connection_open();
     else
         mht_connection_close();
@@ -997,7 +997,8 @@ static void mht_datapipe_shutting_down_cb(gconstpointer data)
     if( shutting_down == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "shutting_down = %d -> %d", prev, shutting_down);
+    mce_log(LL_DEBUG, "shutting_down = %d -> %d",
+            prev, shutting_down);
 
     /* Loss of iphb connection is expected during shutdown */
 
@@ -1010,15 +1011,15 @@ static datapipe_handler_t mht_datapipe_handlers[] =
 {
     // output triggers
     {
-        .datapipe  = &device_resumed_pipe,
-        .output_cb = mht_datapipe_device_resumed_cb,
+        .datapipe  = &resume_detected_event_pipe,
+        .output_cb = mht_datapipe_resume_detected_event_cb,
     },
     {
-        .datapipe  = &dsme_available_pipe,
-        .output_cb = mht_datapipe_dsme_available_cb,
+        .datapipe  = &dsme_service_state_pipe,
+        .output_cb = mht_datapipe_dsme_service_state_cb,
     },
     {
-        .datapipe = &shutting_down_pipe,
+        .datapipe  = &shutting_down_pipe,
         .output_cb = mht_datapipe_shutting_down_cb,
     },
 

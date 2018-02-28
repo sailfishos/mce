@@ -175,9 +175,9 @@ static void io_detect_resume(void)
 		skip / 1000, skip % 1000);
 
 	// notify in case some timers need re-evaluating
-	execute_datapipe_output_triggers(&device_resumed_pipe,
-					 &prev,
-					 USE_INDATA);
+	datapipe_exec_output_triggers(&resume_detected_event_pipe,
+				      &prev,
+				      USE_INDATA);
 
 EXIT:
 	return;

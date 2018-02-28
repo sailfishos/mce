@@ -293,10 +293,10 @@ static gchar *engine2_leds_path = NULL;
 static gchar *engine3_leds_path = NULL;
 
 /** Cached display state */
-static display_state_t display_state = MCE_DISPLAY_UNDEF;
+static display_state_t display_state_curr = MCE_DISPLAY_UNDEF;
 
 /** Cached system state */
-static system_state_t system_state = MCE_STATE_UNDEF;
+static system_state_t system_state = MCE_SYSTEM_STATE_UNDEF;
 
 /** Cached led brightness */
 static gint led_brightness = 0;
@@ -352,8 +352,8 @@ static void              type6_lock_in_cb               (void *data, void *aptr)
 static void              type6_revert_cb                (void *data, void *aptr);
 static void              type6_deactivate_cb            (void *data, void *aptr);
 static void              led_pattern_op                 (GFunc cb);
-static void              user_activity_trigger          (gconstpointer data);
-static void              display_state_trigger          (gconstpointer data);
+static void              user_activity_event_trigger    (gconstpointer data);
+static void              display_state_curr_trigger     (gconstpointer data);
 static void              led_brightness_trigger         (gconstpointer data);
 static void              led_pattern_activate_trigger   (gconstpointer data);
 static void              led_pattern_deactivate_trigger (gconstpointer data);
@@ -1464,13 +1464,13 @@ static void led_update_active_pattern(void)
 
 		/* Show pattern with visibility 7 if display is dimmed */
 		if( new_active_pattern->policy == 7 ) {
-			if( display_state == MCE_DISPLAY_DIM )
+			if( display_state_curr == MCE_DISPLAY_DIM )
 				break;
 			continue;
 		}
 
 		/* Acting dead behaviour */
-		if (system_state == MCE_STATE_ACTDEAD) {
+		if (system_state == MCE_SYSTEM_STATE_ACTDEAD) {
 			/* If we're in acting dead,
 			 * show patterns with visibility 4
 			 */
@@ -1480,7 +1480,7 @@ static void led_update_active_pattern(void)
 			/* If we're in acting dead
 			 * and the display is off, show pattern
 			 */
-			if (display_off_p(display_state) &&
+			if (display_off_p(display_state_curr) &&
 			    (new_active_pattern->policy == 2))
 				break;
 
@@ -1493,7 +1493,7 @@ static void led_update_active_pattern(void)
 		/* If the display is off or in low power mode,
 		 * we can use any active pattern
 		 */
-		if( display_off_p(display_state) )
+		if( display_off_p(display_state_curr) )
 			break;
 
 		/* If the pattern should be shown with screen on, use it */
@@ -1791,11 +1791,11 @@ static void led_pattern_op(GFunc cb)
  *
  * @param data Unused
  */
-static void user_activity_trigger(gconstpointer data)
+static void user_activity_event_trigger(gconstpointer data)
 {
 	(void)data; // the data is irrelevant
 
-	if( display_state == MCE_DISPLAY_ON )
+	if( display_state_curr == MCE_DISPLAY_ON )
 		led_pattern_op(type6_revert_cb);
 	get_monotime(&activity_time);
 }
@@ -1805,24 +1805,24 @@ static void user_activity_trigger(gconstpointer data)
  *
  * @param data Unused
  */
-static void display_state_trigger(gconstpointer data)
+static void display_state_curr_trigger(gconstpointer data)
 {
-	display_state_t prev = display_state;
-	display_state = GPOINTER_TO_INT(data);
+	display_state_t prev = display_state_curr;
+	display_state_curr = GPOINTER_TO_INT(data);
 
 	struct timeval tv;
 
-	if (prev == display_state)
+	if (prev == display_state_curr)
 		goto EXIT;
 
-	mce_log(LL_DEBUG, "display_state: %s -> %s",
+	mce_log(LL_DEBUG, "display_state_curr: %s -> %s",
 		display_state_repr(prev),
-		display_state_repr(display_state));
+		display_state_repr(display_state_curr));
 
 	get_monotime(&tv);
 	timersub(&tv, &activity_time, &tv);
 
-	switch( display_state ) {
+	switch( display_state_curr ) {
 	case MCE_DISPLAY_ON:
 		if( timercmp(&tv, &activity_limit, <) )
 			led_pattern_op(type6_deactivate_cb);
@@ -2414,9 +2414,9 @@ static gboolean init_lysti_patterns(void)
 	init_combination_rules();
 
 	/* Set the LED brightness */
-	execute_datapipe(&led_brightness_pipe,
-			 GINT_TO_POINTER(maximum_led_brightness),
-			 USE_INDATA, CACHE_INDATA);
+	datapipe_exec_full(&led_brightness_pipe,
+			   GINT_TO_POINTER(maximum_led_brightness),
+			   USE_INDATA, CACHE_INDATA);
 
 	status = TRUE;
 
@@ -2547,9 +2547,9 @@ static gboolean init_njoy_patterns(void)
 	}
 
 	/* Set the LED brightness */
-	execute_datapipe(&led_brightness_pipe,
-			 GINT_TO_POINTER(maximum_led_brightness),
-			 USE_INDATA, CACHE_INDATA);
+	datapipe_exec_full(&led_brightness_pipe,
+			   GINT_TO_POINTER(maximum_led_brightness),
+			   USE_INDATA, CACHE_INDATA);
 
 	status = TRUE;
 
@@ -2814,9 +2814,9 @@ static gboolean init_hybris_patterns(void)
 	init_combination_rules();
 
 	/* Set the LED brightness */
-	execute_datapipe(&led_brightness_pipe,
-			 GINT_TO_POINTER(maximum_led_brightness),
-			 USE_INDATA, CACHE_INDATA);
+	datapipe_exec_full(&led_brightness_pipe,
+			   GINT_TO_POINTER(maximum_led_brightness),
+			   USE_INDATA, CACHE_INDATA);
 
 	status = TRUE;
 
@@ -3108,16 +3108,16 @@ static datapipe_handler_t mce_led_datapipe_handlers[] =
 {
 	// output triggers
 	{
-		.datapipe  = &user_activity_pipe,
-		.output_cb = user_activity_trigger,
+		.datapipe  = &user_activity_event_pipe,
+		.output_cb = user_activity_event_trigger,
 	},
 	{
 		.datapipe  = &system_state_pipe,
 		.output_cb = system_state_trigger,
 	},
 	{
-		.datapipe  = &display_state_pipe,
-		.output_cb = display_state_trigger,
+		.datapipe  = &display_state_curr_pipe,
+		.output_cb = display_state_curr_trigger,
 	},
 	{
 		.datapipe  = &led_brightness_pipe,
@@ -3240,9 +3240,9 @@ void g_module_unload(GModule *module)
 	sw_breathing_quit();
 
 	/* Don't disable the LED on shutdown/reboot/acting dead */
-	if ((system_state != MCE_STATE_ACTDEAD) &&
-	    (system_state != MCE_STATE_SHUTDOWN) &&
-	    (system_state != MCE_STATE_REBOOT)) {
+	if ((system_state != MCE_SYSTEM_STATE_ACTDEAD) &&
+	    (system_state != MCE_SYSTEM_STATE_SHUTDOWN) &&
+	    (system_state != MCE_SYSTEM_STATE_REBOOT)) {
 		led_set_active_pattern(0);
 
 		switch (get_led_type()) {

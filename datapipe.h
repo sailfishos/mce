@@ -24,20 +24,20 @@
 #include <stdbool.h>
 #include <glib.h>
 
-/** Device lock states used in device_lock_state_pipe */
+/** Device lock states used in devicelock_state_pipe */
 typedef enum
 {
     /** Device lock is not active */
-    DEVICE_LOCK_UNLOCKED  = 0,
+    DEVICELOCK_STATE_UNLOCKED  = 0,
 
     /** Device lock is active */
-    DEVICE_LOCK_LOCKED    = 1,
+    DEVICELOCK_STATE_LOCKED    = 1,
 
     /** Initial startup value; from mce p.o.v. equals not active */
-    DEVICE_LOCK_UNDEFINED = 2,
-}  device_lock_state_t;
+    DEVICELOCK_STATE_UNDEFINED = 2,
+}  devicelock_state_t;
 
-const char *device_lock_state_repr(device_lock_state_t state);
+const char *devicelock_state_repr(devicelock_state_t state);
 
 /**
  * Datapipe structure
@@ -90,70 +90,70 @@ typedef enum {
 /* Available datapipes */
 extern datapipe_struct led_brightness_pipe;
 extern datapipe_struct lpm_brightness_pipe;
-extern datapipe_struct device_inactive_state_pipe;
-extern datapipe_struct device_inactive_event_pipe;
+extern datapipe_struct device_inactive_pipe;
+extern datapipe_struct inactivity_event_pipe;
 extern datapipe_struct led_pattern_activate_pipe;
 extern datapipe_struct led_pattern_deactivate_pipe;
-extern datapipe_struct device_resumed_pipe;
-extern datapipe_struct user_activity_pipe;
-extern datapipe_struct display_state_pipe;
-extern datapipe_struct display_state_req_pipe;
+extern datapipe_struct resume_detected_event_pipe;
+extern datapipe_struct user_activity_event_pipe;
+extern datapipe_struct display_state_curr_pipe;
+extern datapipe_struct display_state_request_pipe;
 extern datapipe_struct display_state_next_pipe;
-extern datapipe_struct exception_state_pipe;
+extern datapipe_struct uiexception_type_pipe;
 extern datapipe_struct display_brightness_pipe;
-extern datapipe_struct key_backlight_pipe;
-extern datapipe_struct keypress_pipe;
-extern datapipe_struct touchscreen_pipe;
-extern datapipe_struct lockkey_pipe;
-extern datapipe_struct keyboard_slide_pipe;
-extern datapipe_struct keyboard_available_pipe;
+extern datapipe_struct key_backlight_brightness_pipe;
+extern datapipe_struct keypress_event_pipe;
+extern datapipe_struct touchscreen_event_pipe;
+extern datapipe_struct lockkey_state_pipe;
+extern datapipe_struct keyboard_slide_state_pipe;
+extern datapipe_struct keyboard_available_state_pipe;
 extern datapipe_struct lid_sensor_is_working_pipe;
-extern datapipe_struct lid_cover_sensor_pipe;
-extern datapipe_struct lid_cover_policy_pipe;
-extern datapipe_struct lens_cover_pipe;
-extern datapipe_struct proximity_sensor_pipe;
-extern datapipe_struct ambient_light_sensor_pipe;
-extern datapipe_struct ambient_light_level_pipe;
-extern datapipe_struct ambient_light_poll_pipe;
-extern datapipe_struct orientation_sensor_pipe;
+extern datapipe_struct lid_sensor_actual_pipe;
+extern datapipe_struct lid_sensor_filtered_pipe;
+extern datapipe_struct lens_cover_state_pipe;
+extern datapipe_struct proximity_sensor_actual_pipe;
+extern datapipe_struct light_sensor_actual_pipe;
+extern datapipe_struct light_sensor_filtered_pipe;
+extern datapipe_struct light_sensor_poll_request_pipe;
+extern datapipe_struct orientation_sensor_actual_pipe;
 extern datapipe_struct alarm_ui_state_pipe;
 extern datapipe_struct system_state_pipe;
-extern datapipe_struct master_radio_pipe;
+extern datapipe_struct master_radio_enabled_pipe;
 extern datapipe_struct submode_pipe;
 extern datapipe_struct call_state_pipe;
-extern datapipe_struct ignore_incoming_call_pipe;
+extern datapipe_struct ignore_incoming_call_event_pipe;
 extern datapipe_struct call_type_pipe;
-extern datapipe_struct tk_lock_pipe;
+extern datapipe_struct tklock_request_pipe;
 extern datapipe_struct interaction_expected_pipe;
 extern datapipe_struct charger_state_pipe;
 extern datapipe_struct battery_status_pipe;
 extern datapipe_struct battery_level_pipe;
-extern datapipe_struct camera_button_pipe;
-extern datapipe_struct inactivity_timeout_pipe;
+extern datapipe_struct camera_button_state_pipe;
+extern datapipe_struct inactivity_delay_pipe;
 extern datapipe_struct audio_route_pipe;
-extern datapipe_struct usb_cable_pipe;
-extern datapipe_struct jack_sense_pipe;
-extern datapipe_struct power_saving_mode_pipe;
+extern datapipe_struct usb_cable_state_pipe;
+extern datapipe_struct jack_sense_state_pipe;
+extern datapipe_struct power_saving_mode_active_pipe;
 extern datapipe_struct thermal_state_pipe;
-extern datapipe_struct heartbeat_pipe;
-extern datapipe_struct compositor_available_pipe;
-extern datapipe_struct lipstick_available_pipe;
-extern datapipe_struct devicelock_available_pipe;
-extern datapipe_struct usbmoded_available_pipe;
-extern datapipe_struct ngfd_available_pipe;
-extern datapipe_struct dsme_available_pipe;
-extern datapipe_struct bluez_available_pipe;
+extern datapipe_struct heartbeat_event_pipe;
+extern datapipe_struct compositor_service_state_pipe;
+extern datapipe_struct lipstick_service_state_pipe;
+extern datapipe_struct devicelock_service_state_pipe;
+extern datapipe_struct usbmoded_service_state_pipe;
+extern datapipe_struct ngfd_service_state_pipe;
+extern datapipe_struct dsme_service_state_pipe;
+extern datapipe_struct bluez_service_state_pipe;
 extern datapipe_struct packagekit_locked_pipe;
-extern datapipe_struct update_mode_pipe;
+extern datapipe_struct osupdate_running_pipe;
 extern datapipe_struct shutting_down_pipe;
-extern datapipe_struct device_lock_state_pipe;
+extern datapipe_struct devicelock_state_pipe;
 extern datapipe_struct touch_detected_pipe;
 extern datapipe_struct touch_grab_wanted_pipe;
 extern datapipe_struct touch_grab_active_pipe;
 extern datapipe_struct keypad_grab_wanted_pipe;
 extern datapipe_struct keypad_grab_active_pipe;
-extern datapipe_struct music_playback_pipe;
-extern datapipe_struct proximity_blank_pipe;
+extern datapipe_struct music_playback_ongoing_pipe;
+extern datapipe_struct proximity_blanked_pipe;
 
 /* Data retrieval */
 
@@ -173,43 +173,43 @@ extern datapipe_struct proximity_blank_pipe;
 #define datapipe_get_gpointer(_datapipe)	((_datapipe).cached_data)
 
 /* Datapipe execution */
-void execute_datapipe_input_triggers(datapipe_struct *const datapipe,
-				     gpointer const indata,
-				     const data_source_t use_cache);
-gconstpointer execute_datapipe_filters(datapipe_struct *const datapipe,
-				       gpointer indata,
-				       const data_source_t use_cache);
-void execute_datapipe_output_triggers(const datapipe_struct *const datapipe,
-				      gconstpointer indata,
-				      const data_source_t use_cache);
-gconstpointer execute_datapipe(datapipe_struct *const datapipe,
-			       gpointer indata,
-			       const data_source_t use_cache,
-			       const caching_policy_t cache_indata);
+void datapipe_exec_input_triggers(datapipe_struct *const datapipe,
+				  gpointer const indata,
+				  const data_source_t use_cache);
+gconstpointer datapipe_exec_filters(datapipe_struct *const datapipe,
+				    gpointer indata,
+				    const data_source_t use_cache);
+void datapipe_exec_output_triggers(const datapipe_struct *const datapipe,
+				   gconstpointer indata,
+				   const data_source_t use_cache);
+gconstpointer datapipe_exec_full(datapipe_struct *const datapipe,
+				 gpointer indata,
+				 const data_source_t use_cache,
+				 const caching_policy_t cache_indata);
 
 /* Filters */
-void append_filter_to_datapipe(datapipe_struct *const datapipe,
-			       gpointer (*filter)(gpointer data));
-void remove_filter_from_datapipe(datapipe_struct *const datapipe,
-				 gpointer (*filter)(gpointer data));
+void datapipe_add_filter(datapipe_struct *const datapipe,
+			 gpointer (*filter)(gpointer data));
+void datapipe_remove_filter(datapipe_struct *const datapipe,
+			    gpointer (*filter)(gpointer data));
 
 /* Input triggers */
-void append_input_trigger_to_datapipe(datapipe_struct *const datapipe,
-				      void (*trigger)(gconstpointer data));
-void remove_input_trigger_from_datapipe(datapipe_struct *const datapipe,
-					void (*trigger)(gconstpointer data));
+void datapipe_add_input_trigger(datapipe_struct *const datapipe,
+				void (*trigger)(gconstpointer data));
+void datapipe_remove_input_trigger(datapipe_struct *const datapipe,
+				   void (*trigger)(gconstpointer data));
 
 /* Output triggers */
-void append_output_trigger_to_datapipe(datapipe_struct *const datapipe,
-				       void (*trigger)(gconstpointer data));
-void remove_output_trigger_from_datapipe(datapipe_struct *const datapipe,
-					 void (*trigger)(gconstpointer data));
+void datapipe_add_output_trigger(datapipe_struct *const datapipe,
+				 void (*trigger)(gconstpointer data));
+void datapipe_remove_output_trigger(datapipe_struct *const datapipe,
+				    void (*trigger)(gconstpointer data));
 
-void setup_datapipe(datapipe_struct *const datapipe,
-		    const read_only_policy_t read_only,
-		    const cache_free_policy_t free_cache,
-		    const gsize datasize, gpointer initial_data);
-void free_datapipe(datapipe_struct *const datapipe);
+void datapipe_init(datapipe_struct *const datapipe,
+		   const read_only_policy_t read_only,
+		   const cache_free_policy_t free_cache,
+		   const gsize datasize, gpointer initial_data);
+void datapipe_free(datapipe_struct *const datapipe);
 
 /* Binding arrays */
 
@@ -267,9 +267,9 @@ void mce_datapipe_quit(void);
      * because during already ongoing transition something \
      * else might be already queued up and we want't the \
      * last request to reach the queue to "win". */ \
-    execute_datapipe(&display_state_req_pipe,\
-		     GINT_TO_POINTER(req_target),\
-		     USE_INDATA, CACHE_OUTDATA);\
+    datapipe_exec_full(&display_state_request_pipe,\
+		       GINT_TO_POINTER(req_target),\
+		       USE_INDATA, CACHE_OUTDATA);\
 } while(0)
 
 #endif /* _DATAPIPE_H_ */

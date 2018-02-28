@@ -1020,9 +1020,9 @@ peerinfo_enter_state(peerinfo_t *self)
 
     case PEERSTATE_RUNNING:
 	if( self->pi_datapipe ) {
-	    execute_datapipe(self->pi_datapipe,
-			     GINT_TO_POINTER(SERVICE_STATE_RUNNING),
-			     USE_INDATA, CACHE_INDATA);
+	    datapipe_exec_full(self->pi_datapipe,
+			       GINT_TO_POINTER(SERVICE_STATE_RUNNING),
+			       USE_INDATA, CACHE_INDATA);
 	}
 	peerinfo_handle_methods(self);
 	break;
@@ -1076,9 +1076,9 @@ peerinfo_leave_state(peerinfo_t *self)
 
     case PEERSTATE_RUNNING:
 	if( self->pi_datapipe ) {
-	    execute_datapipe(self->pi_datapipe,
-			     GINT_TO_POINTER(SERVICE_STATE_STOPPED),
-			     USE_INDATA, CACHE_INDATA);
+	    datapipe_exec_full(self->pi_datapipe,
+			       GINT_TO_POINTER(SERVICE_STATE_STOPPED),
+			       USE_INDATA, CACHE_INDATA);
 	}
 	break;
 
@@ -1360,9 +1360,9 @@ peerinfo_set_datapipe(peerinfo_t *self, datapipe_struct *datapipe)
 
     if( (self->pi_datapipe = datapipe) ) {
 	if( peerinfo_get_state(self) == PEERSTATE_RUNNING ) {
-	    execute_datapipe(self->pi_datapipe,
-			     GINT_TO_POINTER(SERVICE_STATE_RUNNING),
-			     USE_INDATA, CACHE_INDATA);
+	    datapipe_exec_full(self->pi_datapipe,
+			       GINT_TO_POINTER(SERVICE_STATE_RUNNING),
+			       USE_INDATA, CACHE_INDATA);
 	}
     }
 }
@@ -1774,33 +1774,33 @@ static struct
 {
     {
 	.name     = DSME_DBUS_SERVICE,
-	.datapipe = &dsme_available_pipe,
+	.datapipe = &dsme_service_state_pipe,
     },
     {
 	.name     = "org.bluez",
-	.datapipe = &bluez_available_pipe,
+	.datapipe = &bluez_service_state_pipe,
     },
     {
 	.name     = COMPOSITOR_SERVICE,
-	.datapipe = &compositor_available_pipe,
+	.datapipe = &compositor_service_state_pipe,
     },
     {
 	/* Note: due to lipstick==compositor assumption lipstick
 	 *       service name must be probed after compositor */
 	.name     = LIPSTICK_SERVICE,
-	.datapipe = &lipstick_available_pipe,
+	.datapipe = &lipstick_service_state_pipe,
     },
     {
 	.name     = DEVICELOCK_SERVICE,
-	.datapipe = &devicelock_available_pipe,
+	.datapipe = &devicelock_service_state_pipe,
     },
     {
 	.name     = USB_MODED_DBUS_SERVICE,
-	.datapipe = &usbmoded_available_pipe,
+	.datapipe = &usbmoded_service_state_pipe,
     },
     {
 	.name     = "com.nokia.NonGraphicFeedback1.Backend",
-	.datapipe = &ngfd_available_pipe,
+	.datapipe = &ngfd_service_state_pipe,
     },
     {
 	.name = 0,

@@ -696,24 +696,24 @@ mcebat_update_cb(gpointer user_data)
                 charger_state_repr(mcebat.charger));
 
         /* Charger connected state */
-        execute_datapipe(&charger_state_pipe, GINT_TO_POINTER(mcebat.charger),
-                         USE_INDATA, CACHE_INDATA);
+        datapipe_exec_full(&charger_state_pipe, GINT_TO_POINTER(mcebat.charger),
+                           USE_INDATA, CACHE_INDATA);
 
         /* Charging led pattern */
         if( mcebat.charger == CHARGER_STATE_ON ) {
-            execute_datapipe_output_triggers(&led_pattern_activate_pipe,
-                                             MCE_LED_PATTERN_BATTERY_CHARGING,
-                                             USE_INDATA);
+            datapipe_exec_output_triggers(&led_pattern_activate_pipe,
+                                          MCE_LED_PATTERN_BATTERY_CHARGING,
+                                          USE_INDATA);
         }
         else {
-            execute_datapipe_output_triggers(&led_pattern_deactivate_pipe,
-                                             MCE_LED_PATTERN_BATTERY_CHARGING,
-                                             USE_INDATA);
+            datapipe_exec_output_triggers(&led_pattern_deactivate_pipe,
+                                          MCE_LED_PATTERN_BATTERY_CHARGING,
+                                          USE_INDATA);
         }
 
         /* Generate activity */
-        execute_datapipe(&device_inactive_event_pipe, GINT_TO_POINTER(FALSE),
-                         USE_INDATA, CACHE_OUTDATA);
+        datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(FALSE),
+                           USE_INDATA, CACHE_OUTDATA);
     }
 
     if( mcebat.status != prev.status ) {
@@ -721,35 +721,35 @@ mcebat_update_cb(gpointer user_data)
 
         /* Battery full led pattern */
         if( mcebat.status == BATTERY_STATUS_FULL ) {
-            execute_datapipe_output_triggers(&led_pattern_activate_pipe,
-                                             MCE_LED_PATTERN_BATTERY_FULL,
-                                             USE_INDATA);
+            datapipe_exec_output_triggers(&led_pattern_activate_pipe,
+                                          MCE_LED_PATTERN_BATTERY_FULL,
+                                          USE_INDATA);
         }
         else {
-            execute_datapipe_output_triggers(&led_pattern_deactivate_pipe,
-                                             MCE_LED_PATTERN_BATTERY_FULL,
-                                             USE_INDATA);
+            datapipe_exec_output_triggers(&led_pattern_deactivate_pipe,
+                                          MCE_LED_PATTERN_BATTERY_FULL,
+                                          USE_INDATA);
         }
 
 #if SUPPORT_BATTERY_LOW_LED_PATTERN
         /* Battery low led pattern */
         if( mcebat.status == BATTERY_STATUS_LOW ||
             mcebat.status == BATTERY_STATUS_EMPTY ) {
-            execute_datapipe_output_triggers(&led_pattern_activate_pipe,
-                                             MCE_LED_PATTERN_BATTERY_LOW,
-                                             USE_INDATA);
+            datapipe_exec_output_triggers(&led_pattern_activate_pipe,
+                                          MCE_LED_PATTERN_BATTERY_LOW,
+                                          USE_INDATA);
         }
         else {
-            execute_datapipe_output_triggers(&led_pattern_deactivate_pipe,
-                                             MCE_LED_PATTERN_BATTERY_LOW,
-                                             USE_INDATA);
+            datapipe_exec_output_triggers(&led_pattern_deactivate_pipe,
+                                          MCE_LED_PATTERN_BATTERY_LOW,
+                                          USE_INDATA);
         }
 #endif /* SUPPORT_BATTERY_LOW_LED_PATTERN */
 
         /* Battery charge state */
-        execute_datapipe(&battery_status_pipe,
-                         GINT_TO_POINTER(mcebat.status),
-                         USE_INDATA, CACHE_INDATA);
+        datapipe_exec_full(&battery_status_pipe,
+                           GINT_TO_POINTER(mcebat.status),
+                           USE_INDATA, CACHE_INDATA);
 
     }
 
@@ -757,9 +757,9 @@ mcebat_update_cb(gpointer user_data)
         mce_log(LL_INFO, "level: %d -> %d", prev.level, mcebat.level);
 
         /* Battery charge percentage */
-        execute_datapipe(&battery_level_pipe,
-                         GINT_TO_POINTER(mcebat.level),
-                         USE_INDATA, CACHE_INDATA);
+        datapipe_exec_full(&battery_level_pipe,
+                           GINT_TO_POINTER(mcebat.level),
+                           USE_INDATA, CACHE_INDATA);
     }
 
     /* Clear the timer id and do not repeat */

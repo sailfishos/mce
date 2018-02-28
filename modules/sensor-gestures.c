@@ -37,7 +37,7 @@
  * ========================================================================= */
 
 /** Cached display state */
-static display_state_t display_state = MCE_DISPLAY_UNDEF;
+static display_state_t display_state_curr = MCE_DISPLAY_UNDEF;
 
 /** Cached alarm ui state */
 static alarm_ui_state_t alarm_ui_state = MCE_ALARM_UI_INVALID_INT32;
@@ -46,13 +46,13 @@ static alarm_ui_state_t alarm_ui_state = MCE_ALARM_UI_INVALID_INT32;
 static call_state_t call_state = CALL_STATE_INVALID;
 
 /** Cached raw orientation sensor value */
-static orientation_state_t orientation_state_raw = MCE_ORIENTATION_UNDEFINED;
+static orientation_state_t orientation_sensor_actual = MCE_ORIENTATION_UNDEFINED;
 
 /** Cached delayed orientation sensor value */
-static orientation_state_t orientation_state_eff = MCE_ORIENTATION_UNDEFINED;
+static orientation_state_t orientation_sensor_effective = MCE_ORIENTATION_UNDEFINED;
 
-/** Timer id for delayed orientation_state_eff updating */
-static gint orientation_state_eff_id = 0;
+/** Timer id for delayed orientation_sensor_effective updating */
+static gint orientation_sensor_effective_id = 0;
 
 /** Use of flipover gesture enabled */
 static gboolean sg_flipover_gesture_enabled = MCE_DEFAULT_FLIPOVER_GESTURE_ENABLED;
@@ -78,10 +78,10 @@ static bool     sg_have_incoming_call       (void);
 
 static void     sg_call_state_cb            (gconstpointer const data);
 static void     sg_alarm_ui_state_cb        (gconstpointer data);
-static void     sg_display_state_cb         (gconstpointer data);
-static void     sg_orientation_state_update (void);
-static gboolean sg_orientation_state_eff_cb (gpointer data);
-static void     sg_orientation_state_raw_cb (gconstpointer data);
+static void     sg_display_state_curr_cb    (gconstpointer data);
+static void     sg_orientation_sensor_update(void);
+static gboolean sg_orientation_sensor_effective_cb (gpointer data);
+static void     sg_orientation_sensor_actual_cb (gconstpointer data);
 
 static void     sg_datapipe_init            (void);
 static void     sg_datapipe_quit            (void);
@@ -139,7 +139,7 @@ static void sg_detect_flipover_gesture(void)
     static bool primed = false;
 
     /* Check display state */
-    if( display_state != MCE_DISPLAY_ON ) {
+    if( display_state_curr != MCE_DISPLAY_ON ) {
         primed = false;
         goto EXIT;
     }
@@ -152,17 +152,17 @@ static void sg_detect_flipover_gesture(void)
     }
 
     /* Check for undefined orientation state */
-    if( orientation_state_raw == MCE_ORIENTATION_UNDEFINED ||
-        orientation_state_eff == MCE_ORIENTATION_UNDEFINED ) {
+    if( orientation_sensor_actual == MCE_ORIENTATION_UNDEFINED ||
+        orientation_sensor_effective == MCE_ORIENTATION_UNDEFINED ) {
         primed = false;
         goto EXIT;
     }
 
     /* Check effective orientation state */
-    if( orientation_state_eff == MCE_ORIENTATION_FACE_UP ) {
+    if( orientation_sensor_effective == MCE_ORIENTATION_FACE_UP ) {
         primed = true;
     }
-    else if( orientation_state_eff != MCE_ORIENTATION_FACE_DOWN ) {
+    else if( orientation_sensor_effective != MCE_ORIENTATION_FACE_DOWN ) {
         // nop
     }
     else if( primed ) {
@@ -267,21 +267,21 @@ EXIT:
     return;
 }
 
-/** Handle display_state_pipe notifications
+/** Handle display_state_curr_pipe notifications
  *
  * @param data The display state stored in a pointer
  */
-static void sg_display_state_cb(gconstpointer data)
+static void sg_display_state_curr_cb(gconstpointer data)
 {
-    display_state_t prev = display_state;
-    display_state = GPOINTER_TO_INT(data);
+    display_state_t prev = display_state_curr;
+    display_state_curr = GPOINTER_TO_INT(data);
 
-    if( display_state == prev )
+    if( display_state_curr == prev )
         goto EXIT;
 
     mce_log(LL_DEBUG, "display: %s -> %s",
             display_state_repr(prev),
-            display_state_repr(display_state));
+            display_state_repr(display_state_curr));
 
     sg_detect_flipover_gesture();
 
@@ -291,17 +291,17 @@ EXIT:
 
 /** Update effective orientation state from raw sensor state
  */
-static void sg_orientation_state_update(void)
+static void sg_orientation_sensor_update(void)
 {
-    orientation_state_t prev = orientation_state_eff;
-    orientation_state_eff = orientation_state_raw;
+    orientation_state_t prev = orientation_sensor_effective;
+    orientation_sensor_effective = orientation_sensor_actual;
 
-    if( orientation_state_eff == prev )
+    if( orientation_sensor_effective == prev )
         goto EXIT;
 
     mce_log(LL_DEBUG, "orient.eff: %s -> %s",
             orientation_state_repr(prev),
-            orientation_state_repr(orientation_state_eff));
+            orientation_state_repr(orientation_sensor_effective));
 
     sg_detect_flipover_gesture();
 
@@ -309,44 +309,44 @@ EXIT:
     return;
 }
 
-/** Handle delayed orientation_sensor_pipe notifications
+/** Handle delayed orientation_sensor_actual_pipe notifications
  *
  * @param data (unused)
  *
  * @return FALSE to stop the timer from repeating
  */
-static gboolean sg_orientation_state_eff_cb(gpointer data)
+static gboolean sg_orientation_sensor_effective_cb(gpointer data)
 {
     (void)data;
 
-    if( !orientation_state_eff_id )
+    if( !orientation_sensor_effective_id )
         goto EXIT;
 
     mce_log(LL_DEBUG, "orient.eff: timer triggered");
 
-    orientation_state_eff_id = 0;
+    orientation_sensor_effective_id = 0;
 
-    sg_orientation_state_update();
+    sg_orientation_sensor_update();
 
 EXIT:
     return FALSE;
 }
 
-/** Handle orientation_sensor_pipe notifications
+/** Handle orientation_sensor_actual_pipe notifications
  *
  * @param data The orientation state stored in a pointer
  */
-static void sg_orientation_state_raw_cb(gconstpointer data)
+static void sg_orientation_sensor_actual_cb(gconstpointer data)
 {
-    orientation_state_t prev = orientation_state_raw;
-    orientation_state_raw = GPOINTER_TO_INT(data);
+    orientation_state_t prev = orientation_sensor_actual;
+    orientation_sensor_actual = GPOINTER_TO_INT(data);
 
-    if( orientation_state_raw == prev )
+    if( orientation_sensor_actual == prev )
         goto EXIT;
 
     mce_log(LL_DEBUG, "orient.raw: %s -> %s",
             orientation_state_repr(prev),
-            orientation_state_repr(orientation_state_raw));
+            orientation_state_repr(orientation_sensor_actual));
 
     /* Unprime if orientation is unknown */
     sg_detect_flipover_gesture();
@@ -361,27 +361,27 @@ static void sg_orientation_state_raw_cb(gconstpointer data)
      */
 
     /* Remove existing delay timer */
-    if( orientation_state_eff_id ) {
-        g_source_remove(orientation_state_eff_id);
-        orientation_state_eff_id = 0;
+    if( orientation_sensor_effective_id ) {
+        g_source_remove(orientation_sensor_effective_id);
+        orientation_sensor_effective_id = 0;
 
         mce_log(LL_DEBUG, "orient.eff: timer canceled");
     }
 
     if( prev == MCE_ORIENTATION_UNDEFINED &&
-        orientation_state_raw == MCE_ORIENTATION_FACE_UP ) {
+        orientation_sensor_actual == MCE_ORIENTATION_FACE_UP ) {
         /* Invalidate effective sensor value */
-        orientation_state_eff = MCE_ORIENTATION_UNDEFINED;
+        orientation_sensor_effective = MCE_ORIENTATION_UNDEFINED;
 
         /* Schedule re-validation after 1000 ms */
-        orientation_state_eff_id =
-            g_timeout_add(1000, sg_orientation_state_eff_cb, 0);
+        orientation_sensor_effective_id =
+            g_timeout_add(1000, sg_orientation_sensor_effective_cb, 0);
 
         mce_log(LL_DEBUG, "orient.eff: timer started");
     }
     else {
         /* Update effective sensor value immediately */
-        sg_orientation_state_update();
+        sg_orientation_sensor_update();
     }
 
 EXIT:
@@ -399,12 +399,12 @@ static datapipe_handler_t sg_datapipe_handlers[] =
 
     // output triggers
     {
-        .datapipe  = &orientation_sensor_pipe,
-        .output_cb = sg_orientation_state_raw_cb,
+        .datapipe  = &orientation_sensor_actual_pipe,
+        .output_cb = sg_orientation_sensor_actual_cb,
     },
     {
-        .datapipe  = &display_state_pipe,
-        .output_cb = sg_display_state_cb,
+        .datapipe  = &display_state_curr_pipe,
+        .output_cb = sg_display_state_curr_cb,
     },
     {
         .datapipe  = &alarm_ui_state_pipe,

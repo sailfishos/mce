@@ -18,10 +18,10 @@ EXTERN_DUMMY_STUB (
 DBusConnection *, dbus_connection_get, (void));
 
 EXTERN_DUMMY_STUB (
-gconstpointer, execute_datapipe, (datapipe_struct *const datapipe,
-				  gpointer indata,
-				  const data_source_t use_cache,
-				  const caching_policy_t cache_indata));
+gconstpointer, datapipe_exec_full, (datapipe_struct *const datapipe,
+				    gpointer indata,
+				    const data_source_t use_cache,
+				    const caching_policy_t cache_indata));
 
 /* mce-sensorfw.c stubs */
 
@@ -97,7 +97,7 @@ int, suspend_allow_state, (void))
 	bool block_early = false;
 #if 0
 	/* no late suspend in ACTDEAD etc */
-	if( system_state != MCE_STATE_USER )
+	if( system_state != MCE_SYSTEM_STATE_USER )
 		block_late = true;
 
 	/* no late suspend during bootup */
@@ -134,7 +134,7 @@ int, suspend_allow_state, (void))
 	return block_early ? 0 : block_late ? 1 : 2;
 }
 
-/* display_state stub */
+/* display_state_curr stub */
 
 static display_state_t stub__display_state = MCE_DISPLAY_UNDEF;
 
@@ -142,10 +142,10 @@ static bool stub__display_state_pre_trigger_called = false;
 
 LOCAL_STUB (
 void, display_state_pre_trigger, (display_state_t prev_state,
-				  display_state_t display_state))
+				  display_state_t display_state_curr))
 {
 	(void)prev_state;
-	(void)display_state;
+	(void)display_state_curr;
 	stub__display_state_pre_trigger_called = true;
 }
 
@@ -153,10 +153,10 @@ static bool stub__display_state_post_trigger_called = false;
 
 LOCAL_STUB (
 void, display_state_post_trigger, (display_state_t prev_state,
-				   display_state_t display_state))
+				   display_state_t display_state_curr))
 {
 	(void)prev_state;
-	stub__display_state = display_state;
+	stub__display_state = display_state_curr;
 	stub__display_state_post_trigger_called = true;
 }
 

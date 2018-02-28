@@ -54,11 +54,11 @@ static guint mce_dsme_socket_recv_id = 0;
 /** ID for delayed state transition reporting timer */
 static guint mce_dsme_transition_id = 0;
 
-/** Availability of dsme; from dsme_available_pipe */
-static service_state_t dsme_available = SERVICE_STATE_UNDEF;
+/** Availability of dsme; from dsme_service_state_pipe */
+static service_state_t dsme_service_state = SERVICE_STATE_UNDEF;
 
 /** System state from dsme; fed to system_state_pipe */
-static system_state_t system_state = MCE_STATE_UNDEF;
+static system_state_t system_state = MCE_SYSTEM_STATE_UNDEF;
 
 /** Shutdown warning from dsme; fed to shutting_down_pipe */
 static bool mce_dsme_shutting_down_flag = false;
@@ -140,7 +140,7 @@ static void           mce_dsme_dbus_quit(void);
  * DATAPIPE_TRACKING
  * ------------------------------------------------------------------------- */
 
-static void           mce_dsme_datapipe_dsme_available_cb (gconstpointer data);
+static void           mce_dsme_datapipe_dsme_service_state_cb (gconstpointer data);
 static void           mce_dsme_datapipe_system_state_cb   (gconstpointer data);
 
 static void           mce_dsme_datapipe_init(void);
@@ -213,27 +213,27 @@ static const char *mce_dsme_msg_type_repr(int type)
  */
 static system_state_t mce_dsme_normalise_system_state(dsme_state_t dsmestate)
 {
-    system_state_t state = MCE_STATE_UNDEF;
+    system_state_t state = MCE_SYSTEM_STATE_UNDEF;
 
     switch (dsmestate) {
     case DSME_STATE_SHUTDOWN:
-        state = MCE_STATE_SHUTDOWN;
+        state = MCE_SYSTEM_STATE_SHUTDOWN;
         break;
 
     case DSME_STATE_USER:
-        state = MCE_STATE_USER;
+        state = MCE_SYSTEM_STATE_USER;
         break;
 
     case DSME_STATE_ACTDEAD:
-        state = MCE_STATE_ACTDEAD;
+        state = MCE_SYSTEM_STATE_ACTDEAD;
         break;
 
     case DSME_STATE_REBOOT:
-        state = MCE_STATE_REBOOT;
+        state = MCE_SYSTEM_STATE_REBOOT;
         break;
 
     case DSME_STATE_BOOT:
-        state = MCE_STATE_BOOT;
+        state = MCE_SYSTEM_STATE_BOOT;
         break;
 
     case DSME_STATE_NOT_SET:
@@ -375,8 +375,8 @@ static void mce_dsme_processwd_pong(void)
     mce_dsme_worker_ping();
 
     /* Execute hearbeat actions even if ping-pong ipc failed */
-    execute_datapipe(&heartbeat_pipe, GINT_TO_POINTER(0),
-                     USE_INDATA, DONT_CACHE_INDATA);
+    datapipe_exec_full(&heartbeat_event_pipe, GINT_TO_POINTER(0),
+                       USE_INDATA, DONT_CACHE_INDATA);
 }
 
 /**
@@ -439,7 +439,7 @@ void mce_dsme_request_powerup(void)
  */
 void mce_dsme_request_reboot(void)
 {
-    if( datapipe_get_gint(update_mode_pipe) ) {
+    if( datapipe_get_gint(osupdate_running_pipe) ) {
         mce_log(LL_WARN, "reboot blocked; os update in progress");
         goto EXIT;
     }
@@ -457,7 +457,7 @@ EXIT:
  */
 void mce_dsme_request_normal_shutdown(void)
 {
-    if( datapipe_get_gint(update_mode_pipe) ) {
+    if( datapipe_get_gint(osupdate_running_pipe) ) {
         mce_log(LL_WARN, "shutdown blocked; os update in progress");
         goto EXIT;
     }
@@ -487,7 +487,7 @@ static gboolean mce_dsme_transition_cb(gpointer data)
 
     mce_dsme_transition_id = 0;
 
-    mce_rem_submode_int32(MCE_TRANSITION_SUBMODE);
+    mce_rem_submode_int32(MCE_SUBMODE_TRANSITION);
 
     return FALSE;
 }
@@ -510,7 +510,7 @@ static void mce_dsme_transition_schedule(void)
     mce_dsme_transition_cancel();
 
     /* Check if we have transition to end */
-    if( !(mce_get_submode_int32() & MCE_TRANSITION_SUBMODE) )
+    if( !(mce_get_submode_int32() & MCE_SUBMODE_TRANSITION) )
         goto EXIT;
 
 #if TRANSITION_DELAY > 0
@@ -561,9 +561,9 @@ static void mce_dsme_set_shutting_down(bool shutting_down)
     if( !mce_dsme_shutting_down_flag )
         mce_dsme_socket_connect();
 
-    execute_datapipe(&shutting_down_pipe,
-                     GINT_TO_POINTER(mce_dsme_shutting_down_flag),
-                     USE_INDATA, CACHE_INDATA);
+    datapipe_exec_full(&shutting_down_pipe,
+                       GINT_TO_POINTER(mce_dsme_shutting_down_flag),
+                       USE_INDATA, CACHE_INDATA);
 
 EXIT:
     return;
@@ -641,9 +641,9 @@ static gboolean mce_dsme_socket_recv_cb(GIOChannel *source,
     }
     else if( (msg2 = DSMEMSG_CAST(DSM_MSGTYPE_STATE_CHANGE_IND, msg)) ) {
         system_state_t state = mce_dsme_normalise_system_state(msg2->state);
-        execute_datapipe(&system_state_pipe,
-                         GINT_TO_POINTER(state),
-                         USE_INDATA, CACHE_INDATA);
+        datapipe_exec_full(&system_state_pipe,
+                           GINT_TO_POINTER(state),
+                           USE_INDATA, CACHE_INDATA);
     }
     else {
         mce_log(LL_DEBUG, "Unhandled message type %s (0x%x) received from DSME",
@@ -692,7 +692,7 @@ static bool mce_dsme_socket_connect(void)
         goto EXIT;
 
     /* No new connections unless dsme dbus service is up */
-    if( dsme_available != SERVICE_STATE_RUNNING )
+    if( dsme_service_state != SERVICE_STATE_RUNNING )
         goto EXIT;
 
     /* Already connected ? */
@@ -885,20 +885,20 @@ static void mce_dsme_dbus_quit(void)
  *
  * @param data DSME D-Bus service availability (as a void pointer)
  */
-static void mce_dsme_datapipe_dsme_available_cb(gconstpointer const data)
+static void mce_dsme_datapipe_dsme_service_state_cb(gconstpointer const data)
 {
-    service_state_t prev = dsme_available;
-    dsme_available = GPOINTER_TO_INT(data);
+    service_state_t prev = dsme_service_state;
+    dsme_service_state = GPOINTER_TO_INT(data);
 
-    if( dsme_available == prev )
+    if( dsme_service_state == prev )
         goto EXIT;
 
     mce_log(LL_DEVEL, "DSME dbus service: %s -> %s",
             service_state_repr(prev),
-            service_state_repr(dsme_available));
+            service_state_repr(dsme_service_state));
 
     /* Re-evaluate dsmesock connection */
-    if( dsme_available == SERVICE_STATE_RUNNING )
+    if( dsme_service_state == SERVICE_STATE_RUNNING )
         mce_dsme_socket_connect();
 
 EXIT:
@@ -924,23 +924,23 @@ static void mce_dsme_datapipe_system_state_cb(gconstpointer data)
             system_state_repr(prev),
             system_state_repr(system_state));
 
-    /* Set transition submode unless coming from MCE_STATE_UNDEF */
-    if( prev != MCE_STATE_UNDEF )
-        mce_add_submode_int32(MCE_TRANSITION_SUBMODE);
+    /* Set transition submode unless coming from MCE_SYSTEM_STATE_UNDEF */
+    if( prev != MCE_SYSTEM_STATE_UNDEF )
+        mce_add_submode_int32(MCE_SUBMODE_TRANSITION);
 
     /* Handle LED patterns */
     switch( system_state ) {
-    case MCE_STATE_USER:
-        execute_datapipe_output_triggers(&led_pattern_activate_pipe,
-                                         MCE_LED_PATTERN_DEVICE_ON,
-                                         USE_INDATA);
+    case MCE_SYSTEM_STATE_USER:
+        datapipe_exec_output_triggers(&led_pattern_activate_pipe,
+                                      MCE_LED_PATTERN_DEVICE_ON,
+                                      USE_INDATA);
         break;
 
-    case MCE_STATE_SHUTDOWN:
-    case MCE_STATE_REBOOT:
-        execute_datapipe_output_triggers(&led_pattern_deactivate_pipe,
-                                         MCE_LED_PATTERN_DEVICE_ON,
-                                         USE_INDATA);
+    case MCE_SYSTEM_STATE_SHUTDOWN:
+    case MCE_SYSTEM_STATE_REBOOT:
+        datapipe_exec_output_triggers(&led_pattern_deactivate_pipe,
+                                      MCE_LED_PATTERN_DEVICE_ON,
+                                      USE_INDATA);
         break;
 
     default:
@@ -949,15 +949,15 @@ static void mce_dsme_datapipe_system_state_cb(gconstpointer data)
 
     /* Handle shutdown flag */
     switch( system_state ) {
-    case MCE_STATE_ACTDEAD:
-    case MCE_STATE_USER:
+    case MCE_SYSTEM_STATE_ACTDEAD:
+    case MCE_SYSTEM_STATE_USER:
         /* Re-entry to actdead/user also means shutdown
          * has been cancelled */
         mce_dsme_set_shutting_down(false);
         break;
 
-    case MCE_STATE_SHUTDOWN:
-    case MCE_STATE_REBOOT:
+    case MCE_SYSTEM_STATE_SHUTDOWN:
+    case MCE_SYSTEM_STATE_REBOOT:
         mce_dsme_set_shutting_down(true);
         break;
 
@@ -979,8 +979,8 @@ static datapipe_handler_t mce_dsme_datapipe_handlers[] =
     },
     // output triggers
     {
-        .datapipe  = &dsme_available_pipe,
-        .output_cb = mce_dsme_datapipe_dsme_available_cb,
+        .datapipe  = &dsme_service_state_pipe,
+        .output_cb = mce_dsme_datapipe_dsme_service_state_cb,
     },
     // sentinel
     {
