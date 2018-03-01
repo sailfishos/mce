@@ -1,3 +1,11 @@
+mce (1.92.0) precise; urgency=low
+
+  * [build] Remove unneeded include statements
+  * [logging] Log human readable state names instead of enumeration values
+  * [fingerprint] Ignore powerkey during fingerprint enroll. Fixes JB#41217
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 01 Mar 2018 15:12:37 +0200
+
 mce (1.91.1) precise; urgency=low
 
   * [datapipe] Unify naming. Contributes to JB#22475
