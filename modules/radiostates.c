@@ -358,7 +358,7 @@ static gboolean radio_states_change(gulong states, gulong mask)
 		 * and that all callbacks are called; the trigger inside
 		 * radiostates.c has already had all its actions performed
 		 */
-		execute_datapipe(&master_radio_pipe, GINT_TO_POINTER(master), USE_INDATA, CACHE_INDATA);
+		datapipe_exec_full(&master_radio_enabled_pipe, GINT_TO_POINTER(master), USE_INDATA, CACHE_INDATA);
 	}
 
 	/* After datapipe execution the radio state should
@@ -419,7 +419,7 @@ EXIT:
  *
  * @param data The master radio state stored in a pointer
  */
-static void master_radio_trigger(gconstpointer data)
+static void master_radio_enabled_trigger(gconstpointer data)
 {
 	gulong new_radio_states;
 
@@ -1097,8 +1097,8 @@ const gchar *g_module_check_init(GModule *module)
 		active_radio_states, radio_states);
 
 	/* Append triggers/filters to datapipes */
-	append_output_trigger_to_datapipe(&master_radio_pipe,
-					  master_radio_trigger);
+	datapipe_add_output_trigger(&master_radio_enabled_pipe,
+				    master_radio_enabled_trigger);
 
 	/* Add dbus handlers */
 	mce_radiostates_init_dbus();
@@ -1127,8 +1127,8 @@ void g_module_unload(GModule *module)
 	xconnman_quit();
 
 	/* Remove triggers/filters from datapipes */
-	remove_output_trigger_from_datapipe(&master_radio_pipe,
-					    master_radio_trigger);
+	datapipe_remove_output_trigger(&master_radio_enabled_pipe,
+				       master_radio_enabled_trigger);
 
 	return;
 }

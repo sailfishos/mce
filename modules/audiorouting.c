@@ -534,18 +534,18 @@ static gboolean actions_dbus_cb(DBusMessage *sig)
                 volume_limit_inputsound <= 0);
 
 EXIT:
-    if( datapipe_get_gint(music_playback_pipe) != playback ) {
+    if( datapipe_get_gint(music_playback_ongoing_pipe) != playback ) {
         mce_log(LL_DEVEL, "music playback: %d", playback);
-        execute_datapipe(&music_playback_pipe,
-                         GINT_TO_POINTER(playback),
-                         USE_INDATA, CACHE_INDATA);
+        datapipe_exec_full(&music_playback_ongoing_pipe,
+                           GINT_TO_POINTER(playback),
+                           USE_INDATA, CACHE_INDATA);
     }
 
     if( datapipe_get_gint(audio_route_pipe) != audio_route ) {
         mce_log(LL_DEVEL, "audio route: %d", audio_route);
-        execute_datapipe(&audio_route_pipe,
-                         GINT_TO_POINTER(audio_route),
-                         USE_INDATA, CACHE_INDATA);
+        datapipe_exec_full(&audio_route_pipe,
+                           GINT_TO_POINTER(audio_route),
+                           USE_INDATA, CACHE_INDATA);
     }
 
     return TRUE;

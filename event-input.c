@@ -433,7 +433,7 @@ static void         evin_ts_policy_changed                      (evin_input_grab
 
 static void         evin_ts_grab_wanted_cb                      (gconstpointer data);
 static void         evin_ts_grab_touch_detected_cb              (gconstpointer data);
-static void         evin_ts_grab_display_state_cb               (gconstpointer data);
+static void         evin_ts_grab_display_state_curr_cb          (gconstpointer data);
 
 static void         evin_ts_grab_setting_cb                     (GConfClient *const client, const guint id, GConfEntry *const entry, gpointer const data);
 
@@ -577,15 +577,15 @@ EXIT:
 static void
 evin_gpio_submode_trigger(gconstpointer data)
 {
-    static submode_t old_submode = MCE_NORMAL_SUBMODE;
+    static submode_t old_submode = MCE_SUBMODE_NORMAL;
     submode_t submode = GPOINTER_TO_INT(data);
 
     /* If the tklock is enabled, disable the camera focus interrupts,
      * since we don't use them anyway
      */
     if( evin_gpio_key_disable_exists ) {
-        submode_t tklock_prev = (old_submode & MCE_TKLOCK_SUBMODE);
-        submode_t tklock_curr = (submode & MCE_TKLOCK_SUBMODE);
+        submode_t tklock_prev = (old_submode & MCE_SUBMODE_TKLOCK);
+        submode_t tklock_curr = (submode & MCE_SUBMODE_TKLOCK);
 
         if( tklock_prev != tklock_curr ) {
             if( tklock_curr )
@@ -1914,8 +1914,8 @@ evin_iomon_generate_activity(struct input_event *ev, bool cooked, bool raw)
     if( raw ) {
         if( t_raw != t ) {
             t_raw = t;
-            execute_datapipe_output_triggers(&user_activity_pipe,
-                                             ev, USE_INDATA);
+            datapipe_exec_output_triggers(&user_activity_event_pipe,
+                                          ev, USE_INDATA);
         }
     }
 
@@ -1923,11 +1923,11 @@ evin_iomon_generate_activity(struct input_event *ev, bool cooked, bool raw)
     if( cooked ) {
         submode_t submode = mce_get_submode_int32();
 
-        if( t_cooked != t || (submode & MCE_EVEATER_SUBMODE) ) {
+        if( t_cooked != t || (submode & MCE_SUBMODE_EVEATER) ) {
             t_cooked = t;
-            execute_datapipe(&device_inactive_event_pipe,
-                             GINT_TO_POINTER(FALSE),
-                             USE_INDATA, CACHE_OUTDATA);
+            datapipe_exec_full(&inactivity_event_pipe,
+                               GINT_TO_POINTER(FALSE),
+                               USE_INDATA, CACHE_OUTDATA);
         }
     }
 
@@ -1967,10 +1967,10 @@ evin_iomon_sw_gestures_allowed(void)
         goto EXIT;
     }
 
-    display_state_t display_state =
-        datapipe_get_gint(display_state_pipe);
+    display_state_t display_state_curr =
+        datapipe_get_gint(display_state_curr_pipe);
 
-    switch( display_state ) {
+    switch( display_state_curr ) {
     case MCE_DISPLAY_OFF:
     case MCE_DISPLAY_LPM_OFF:
     case MCE_DISPLAY_LPM_ON:
@@ -2037,16 +2037,16 @@ evin_iomon_touchscreen_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
 
     /* Power key up event from touch screen -> double tap gesture event */
     if( ev->type == EV_KEY && ev->code == KEY_POWER && ev->value == 0 ) {
-        cover_state_t proximity_sensor_state =
-            datapipe_get_gint(proximity_sensor_pipe);
+        cover_state_t proximity_sensor_actual =
+            datapipe_get_gint(proximity_sensor_actual_pipe);
 
-        cover_state_t lid_cover_policy_state =
-            datapipe_get_gint(lid_cover_policy_pipe);
+        cover_state_t lid_sensor_filtered =
+            datapipe_get_gint(lid_sensor_filtered_pipe);
 
         mce_log(LL_DEVEL, "[doubletap] as power key event; "
                 "proximity=%s, lid=%s",
-                proximity_state_repr(proximity_sensor_state),
-                proximity_state_repr(lid_cover_policy_state));
+                proximity_state_repr(proximity_sensor_actual),
+                proximity_state_repr(lid_sensor_filtered));
 
         /* Mimic N9 style gesture event for which we
          * already have logic in place. Possible filtering
@@ -2070,7 +2070,7 @@ evin_iomon_touchscreen_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
     submode_t submode = mce_get_submode_int32();
 
     /* If the event eater is active, don't send anything */
-    if( submode & MCE_EVEATER_SUBMODE )
+    if( submode & MCE_SUBMODE_EVEATER )
         goto EXIT;
 
     if( ev->type == EV_MSC && ev->code == MSC_GESTURE ) {
@@ -2079,14 +2079,14 @@ evin_iomon_touchscreen_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
         evin_iomon_generate_activity(ev, false, true);
 
         /* But otherwise are handled in powerkey.c. */
-        execute_datapipe(&keypress_pipe, &ev,
-                         USE_INDATA, DONT_CACHE_INDATA);
+        datapipe_exec_full(&keypress_event_pipe, &ev,
+                           USE_INDATA, DONT_CACHE_INDATA);
     }
     else if( (ev->type == EV_ABS && ev->code == ABS_PRESSURE) ||
              (ev->type == EV_KEY && ev->code == BTN_TOUCH ) ) {
         /* Only send pressure events */
-        execute_datapipe(&touchscreen_pipe, &ev,
-                         USE_INDATA, DONT_CACHE_INDATA);
+        datapipe_exec_full(&touchscreen_event_pipe, &ev,
+                           USE_INDATA, DONT_CACHE_INDATA);
     }
 
 EXIT:
@@ -2170,9 +2170,11 @@ evin_iomon_keypress_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
             }
         }
         if ((ev->code == KEY_SCREENLOCK) && (ev->value != 2)) {
-            (void)execute_datapipe(&lockkey_pipe,
-                                   GINT_TO_POINTER(ev->value),
-                                   USE_INDATA, CACHE_INDATA);
+            key_state_t key_state = ev->value ?
+                KEY_STATE_PRESSED : KEY_STATE_RELEASED;
+            (void)datapipe_exec_full(&lockkey_state_pipe,
+                                     GINT_TO_POINTER(key_state),
+                                     USE_INDATA, CACHE_INDATA);
         }
 
         /* For now there's no reason to cache the keypress
@@ -2190,11 +2192,11 @@ evin_iomon_keypress_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
          */
         if (((ev->code != KEY_CAMERA_FOCUS) &&
              (ev->code != KEY_SCREENLOCK) &&
-             ((((submode & MCE_EVEATER_SUBMODE) == 0) &&
+             ((((submode & MCE_SUBMODE_EVEATER) == 0) &&
                (ev->value == 1)) || (ev->value == 0))) &&
-            ((submode & MCE_PROXIMITY_TKLOCK_SUBMODE) == 0)) {
-            (void)execute_datapipe(&keypress_pipe, &ev,
-                                   USE_INDATA, DONT_CACHE_INDATA);
+            ((submode & MCE_SUBMODE_PROXIMITY_TKLOCK) == 0)) {
+            (void)datapipe_exec_full(&keypress_event_pipe, &ev,
+                                     USE_INDATA, DONT_CACHE_INDATA);
         }
     }
 
@@ -2202,7 +2204,11 @@ evin_iomon_keypress_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
         switch (ev->code) {
         case SW_CAMERA_LENS_COVER:
             if (ev->value != 2) {
-                (void)execute_datapipe(&lens_cover_pipe, GINT_TO_POINTER(ev->value ? COVER_CLOSED : COVER_OPEN), USE_INDATA, CACHE_INDATA);
+                cover_state_t cover_state = ev->value ?
+                    COVER_CLOSED : COVER_OPEN;
+                datapipe_exec_full(&lens_cover_state_pipe,
+                                   GINT_TO_POINTER(cover_state),
+                                   USE_INDATA, CACHE_INDATA);
             }
 
             /* Don't generate activity on COVER_CLOSED */
@@ -2213,7 +2219,11 @@ evin_iomon_keypress_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
 
         case SW_KEYPAD_SLIDE:
             if (ev->value != 2) {
-                (void)execute_datapipe(&keyboard_slide_pipe, GINT_TO_POINTER(ev->value ? COVER_CLOSED : COVER_OPEN), USE_INDATA, CACHE_INDATA);
+                cover_state_t cover_state = ev->value ?
+                    COVER_CLOSED : COVER_OPEN;
+                datapipe_exec_full(&keyboard_slide_state_pipe,
+                                   GINT_TO_POINTER(cover_state),
+                                   USE_INDATA, CACHE_INDATA);
                 evin_iomon_keyboard_state_update();
             }
 
@@ -2225,7 +2235,11 @@ evin_iomon_keypress_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
 
         case SW_FRONT_PROXIMITY:
             if (ev->value != 2) {
-                (void)execute_datapipe(&proximity_sensor_pipe, GINT_TO_POINTER(ev->value ? COVER_CLOSED : COVER_OPEN), USE_INDATA, CACHE_INDATA);
+                cover_state_t cover_state = ev->value ?
+                    COVER_CLOSED : COVER_OPEN;
+                datapipe_exec_full(&proximity_sensor_actual_pipe,
+                                   GINT_TO_POINTER(cover_state),
+                                   USE_INDATA, CACHE_INDATA);
             }
 
             break;
@@ -2235,7 +2249,11 @@ evin_iomon_keypress_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
         case SW_LINEOUT_INSERT:
         case SW_VIDEOOUT_INSERT:
             if (ev->value != 2) {
-                (void)execute_datapipe(&jack_sense_pipe, GINT_TO_POINTER(ev->value ? COVER_CLOSED : COVER_OPEN), USE_INDATA, CACHE_INDATA);
+                cover_state_t cover_state = ev->value ?
+                    COVER_CLOSED : COVER_OPEN;
+                datapipe_exec_full(&jack_sense_state_pipe,
+                                   GINT_TO_POINTER(cover_state),
+                                   USE_INDATA, CACHE_INDATA);
             }
 
             break;
@@ -2244,14 +2262,14 @@ evin_iomon_keypress_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
             /* hammerhead magnetic lid sensor; Feed in to the
              * same datapipe as N770 sliding cover uses */
             if( ev->value ) {
-                execute_datapipe(&lid_cover_sensor_pipe,
-                                 GINT_TO_POINTER(COVER_CLOSED),
-                                 USE_INDATA, CACHE_INDATA);
+                datapipe_exec_full(&lid_sensor_actual_pipe,
+                                   GINT_TO_POINTER(COVER_CLOSED),
+                                   USE_INDATA, CACHE_INDATA);
             }
             else {
-                execute_datapipe(&lid_cover_sensor_pipe,
-                                 GINT_TO_POINTER(COVER_OPEN),
-                                 USE_INDATA, CACHE_INDATA);
+                datapipe_exec_full(&lid_sensor_actual_pipe,
+                                   GINT_TO_POINTER(COVER_OPEN),
+                                   USE_INDATA, CACHE_INDATA);
             }
             break;
 
@@ -2505,24 +2523,24 @@ evin_iomon_switch_states_update_iter_cb(gpointer io_monitor, gpointer user_data)
     ecode = evin_event_mapper_rlookup_switch(SW_CAMERA_LENS_COVER);
     if( test_bit(ecode, featurelist) ) {
         state = test_bit(ecode, statelist) ? COVER_CLOSED : COVER_OPEN;
-        execute_datapipe(&lens_cover_pipe, GINT_TO_POINTER(state),
-                         USE_INDATA, CACHE_INDATA);
+        datapipe_exec_full(&lens_cover_state_pipe, GINT_TO_POINTER(state),
+                           USE_INDATA, CACHE_INDATA);
     }
 
     /* Check initial keypad slide state */
     ecode = evin_event_mapper_rlookup_switch(SW_KEYPAD_SLIDE);
     if( test_bit(ecode, featurelist) ) {
         state = test_bit(ecode, statelist) ? COVER_CLOSED : COVER_OPEN;
-        execute_datapipe(&keyboard_slide_pipe, GINT_TO_POINTER(state),
-                         USE_INDATA, CACHE_INDATA);
+        datapipe_exec_full(&keyboard_slide_state_pipe, GINT_TO_POINTER(state),
+                           USE_INDATA, CACHE_INDATA);
     }
 
     /* Check initial front proximity state */
     ecode = evin_event_mapper_rlookup_switch(SW_FRONT_PROXIMITY);
     if( test_bit(ecode, featurelist) ) {
         state = test_bit(ecode, statelist) ? COVER_CLOSED : COVER_OPEN;
-        execute_datapipe(&proximity_sensor_pipe, GINT_TO_POINTER(state),
-                         USE_INDATA, CACHE_INDATA);
+        datapipe_exec_full(&proximity_sensor_actual_pipe, GINT_TO_POINTER(state),
+                           USE_INDATA, CACHE_INDATA);
     }
 
     /* Check initial lid sensor state */
@@ -2531,12 +2549,12 @@ evin_iomon_switch_states_update_iter_cb(gpointer io_monitor, gpointer user_data)
         state = test_bit(ecode, statelist) ? COVER_CLOSED : COVER_OPEN;
         mce_log(LL_DEVEL, "SW_LID initial state = %s",
                 cover_state_repr(state));
-        execute_datapipe(&lid_cover_sensor_pipe, GINT_TO_POINTER(state),
-                         USE_INDATA, CACHE_INDATA);
+        datapipe_exec_full(&lid_sensor_actual_pipe, GINT_TO_POINTER(state),
+                           USE_INDATA, CACHE_INDATA);
     }
 
     /* Need to consider more than one switch state when setting the
-     * initial value of the jack_sense_pipe */
+     * initial value of the jack_sense_state_pipe */
 
     bool have  = false;
     int  value = 0;
@@ -2559,8 +2577,8 @@ evin_iomon_switch_states_update_iter_cb(gpointer io_monitor, gpointer user_data)
 
     if( have ) {
         state = value ? COVER_CLOSED : COVER_OPEN;
-        execute_datapipe(&jack_sense_pipe, GINT_TO_POINTER(state),
-                         USE_INDATA, CACHE_INDATA);
+        datapipe_exec_full(&jack_sense_state_pipe, GINT_TO_POINTER(state),
+                           USE_INDATA, CACHE_INDATA);
     }
 
 EXIT:
@@ -2675,9 +2693,9 @@ evin_iomon_keyboard_state_update(void)
 
     cover_state_t state = available ? COVER_OPEN : COVER_CLOSED;
 
-    execute_datapipe(&keyboard_available_pipe,
-                     GINT_TO_POINTER(state),
-                     USE_INDATA, CACHE_INDATA);
+    datapipe_exec_full(&keyboard_available_state_pipe,
+                       GINT_TO_POINTER(state),
+                       USE_INDATA, CACHE_INDATA);
 }
 
 /** Scan /dev/input for input event devices
@@ -2908,9 +2926,9 @@ evin_touchstate_update_cb(gpointer aptr)
         goto EXIT;
 
     mce_log(LL_DEBUG, "touch_detected=%s", touching ? "true" : "false");
-    execute_datapipe(&touch_detected_pipe,
-                     GINT_TO_POINTER(touching),
-                     USE_INDATA, CACHE_INDATA);
+    datapipe_exec_full(&touch_detected_pipe,
+                       GINT_TO_POINTER(touching),
+                       USE_INDATA, CACHE_INDATA);
 
 EXIT:
     return FALSE;
@@ -3200,11 +3218,11 @@ static guint evin_ts_grab_release_delay_setting_id = 0;
 static void
 evin_ts_grab_set_led_raw(bool enabled)
 {
-    execute_datapipe_output_triggers(enabled ?
-                                     &led_pattern_activate_pipe :
-                                     &led_pattern_deactivate_pipe,
-                                     MCE_LED_PATTERN_TOUCH_INPUT_BLOCKED,
-                                     USE_INDATA);
+    datapipe_exec_output_triggers(enabled ?
+                                  &led_pattern_activate_pipe :
+                                  &led_pattern_deactivate_pipe,
+                                  MCE_LED_PATTERN_TOUCH_INPUT_BLOCKED,
+                                  USE_INDATA);
 }
 
 /** Handle delayed input grab led pattern activation
@@ -3261,7 +3279,7 @@ evin_ts_grab_rethink_led(void)
 {
     bool enable = false;
 
-    switch( datapipe_get_gint(display_state_pipe) )
+    switch( datapipe_get_gint(display_state_curr_pipe) )
     {
     case MCE_DISPLAY_ON:
     case MCE_DISPLAY_DIM:
@@ -3292,9 +3310,9 @@ evin_ts_grab_set_active(gboolean grab)
                               GINT_TO_POINTER(grab));
 
     // STATE MACHINE -> OUTPUT DATAPIPE
-    execute_datapipe(&touch_grab_active_pipe,
-                     GINT_TO_POINTER(grab),
-                     USE_INDATA, CACHE_INDATA);
+    datapipe_exec_full(&touch_grab_active_pipe,
+                       GINT_TO_POINTER(grab),
+                       USE_INDATA, CACHE_INDATA);
 
 EXIT:
     return;
@@ -3437,19 +3455,19 @@ evin_ts_grab_touch_detected_cb(gconstpointer data)
  * @param data Display state as void pointer
  */
 static void
-evin_ts_grab_display_state_cb(gconstpointer data)
+evin_ts_grab_display_state_curr_cb(gconstpointer data)
 {
-    static display_state_t display_state = MCE_DISPLAY_UNDEF;
+    static display_state_t display_state_curr = MCE_DISPLAY_UNDEF;
 
-    display_state_t prev = display_state;
-    display_state = GPOINTER_TO_INT(data);
+    display_state_t prev = display_state_curr;
+    display_state_curr = GPOINTER_TO_INT(data);
 
-    if( display_state == prev )
+    if( display_state_curr == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "display_state=%s", display_state_repr(display_state));
+    mce_log(LL_DEBUG, "display_state_curr=%s", display_state_repr(display_state_curr));
 
-    switch( display_state ) {
+    switch( display_state_curr ) {
     case MCE_DISPLAY_POWER_DOWN:
     case MCE_DISPLAY_OFF:
     case MCE_DISPLAY_LPM_ON:
@@ -3547,9 +3565,9 @@ evin_kp_grab_set_active(gboolean grab)
                               GINT_TO_POINTER(grab));
 
     // STATE MACHINE -> OUTPUT DATAPIPE
-    execute_datapipe(&keypad_grab_active_pipe,
-                     GINT_TO_POINTER(grab),
-                     USE_INDATA, CACHE_INDATA);
+    datapipe_exec_full(&keypad_grab_active_pipe,
+                       GINT_TO_POINTER(grab),
+                       USE_INDATA, CACHE_INDATA);
 
 EXIT:
     return;
@@ -3913,16 +3931,16 @@ mce_input_init(void)
 #endif
 
     /* Append triggers/filters to datapipes */
-    append_output_trigger_to_datapipe(&submode_pipe,
-                                      evin_gpio_submode_trigger);
-    append_output_trigger_to_datapipe(&display_state_pipe,
-                                      evin_ts_grab_display_state_cb);
-    append_output_trigger_to_datapipe(&touch_detected_pipe,
-                                      evin_ts_grab_touch_detected_cb);
-    append_output_trigger_to_datapipe(&touch_grab_wanted_pipe,
-                                      evin_ts_grab_wanted_cb);
-    append_output_trigger_to_datapipe(&keypad_grab_wanted_pipe,
-                                      evin_kp_grab_wanted_cb);
+    datapipe_add_output_trigger(&submode_pipe,
+                                evin_gpio_submode_trigger);
+    datapipe_add_output_trigger(&display_state_curr_pipe,
+                                evin_ts_grab_display_state_curr_cb);
+    datapipe_add_output_trigger(&touch_detected_pipe,
+                                evin_ts_grab_touch_detected_cb);
+    datapipe_add_output_trigger(&touch_grab_wanted_pipe,
+                                evin_ts_grab_wanted_cb);
+    datapipe_add_output_trigger(&keypad_grab_wanted_pipe,
+                                evin_kp_grab_wanted_cb);
 
     /* Register input device directory monitor */
     if( !evin_devdir_monitor_init() )
@@ -3952,16 +3970,16 @@ mce_input_exit(void)
 #endif
 
     /* Remove triggers/filters from datapipes */
-    remove_output_trigger_from_datapipe(&submode_pipe,
-                                        evin_gpio_submode_trigger);
-    remove_output_trigger_from_datapipe(&display_state_pipe,
-                                        evin_ts_grab_display_state_cb);
-    remove_output_trigger_from_datapipe(&touch_detected_pipe,
-                                        evin_ts_grab_touch_detected_cb);
-    remove_output_trigger_from_datapipe(&touch_grab_wanted_pipe,
-                                        evin_ts_grab_wanted_cb);
-    remove_output_trigger_from_datapipe(&keypad_grab_wanted_pipe,
-                                        evin_kp_grab_wanted_cb);
+    datapipe_remove_output_trigger(&submode_pipe,
+                                   evin_gpio_submode_trigger);
+    datapipe_remove_output_trigger(&display_state_curr_pipe,
+                                   evin_ts_grab_display_state_curr_cb);
+    datapipe_remove_output_trigger(&touch_detected_pipe,
+                                   evin_ts_grab_touch_detected_cb);
+    datapipe_remove_output_trigger(&touch_grab_wanted_pipe,
+                                   evin_ts_grab_wanted_cb);
+    datapipe_remove_output_trigger(&keypad_grab_wanted_pipe,
+                                   evin_kp_grab_wanted_cb);
 
     /* Remove input device directory monitor */
     evin_devdir_monitor_quit();

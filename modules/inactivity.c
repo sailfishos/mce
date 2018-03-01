@@ -105,10 +105,10 @@ static void          mia_action_delete (mia_action_t *self);
  * DATAPIPE_TRACKING
  * ------------------------------------------------------------------------- */
 
-static void     mia_datapipe_inactive_request_cb     (gconstpointer data);
+static void     mia_datapipe_inactivity_event_cb     (gconstpointer data);
 static void     mia_datapipe_device_inactive_cb      (gconstpointer data);
-static void     mia_datapipe_proximity_sensor_cb     (gconstpointer data);
-static void     mia_datapipe_inactivity_timeout_cb   (gconstpointer data);
+static void     mia_datapipe_proximity_sensor_actual_cb(gconstpointer data);
+static void     mia_datapipe_inactivity_delay_cb     (gconstpointer data);
 static void     mia_datapipe_submode_cb              (gconstpointer data);
 static void     mia_datapipe_alarm_ui_state_cb       (gconstpointer data);
 static void     mia_datapipe_call_state_cb           (gconstpointer data);
@@ -194,7 +194,7 @@ static mce_hbtimer_t *inactivity_timer_hnd = 0;
 static gboolean device_inactive = TRUE;
 
 /* Cached submode bitmask; assume in transition at startup */
-static submode_t submode = MCE_TRANSITION_SUBMODE;
+static submode_t submode = MCE_SUBMODE_TRANSITION;
 
 /** Cached alarm ui state */
 static alarm_ui_state_t alarm_ui_state = MCE_ALARM_UI_INVALID_INT32;
@@ -203,16 +203,16 @@ static alarm_ui_state_t alarm_ui_state = MCE_ALARM_UI_INVALID_INT32;
 static call_state_t call_state = CALL_STATE_INVALID;
 
 /* Cached system state */
-static system_state_t system_state = MCE_STATE_UNDEF;
+static system_state_t system_state = MCE_SYSTEM_STATE_UNDEF;
 
 /** Cached display state */
 static display_state_t display_state_next = MCE_DISPLAY_UNDEF;
 
 /** Cached inactivity timeout delay [s] */
-static gint inactivity_timeout = DEFAULT_INACTIVITY_TIMEOUT;
+static gint device_inactive_delay = DEFAULT_INACTIVITY_DELAY;
 
 /** Cached proximity sensor state */
-static cover_state_t proximity_state = COVER_UNDEF;
+static cover_state_t proximity_sensor_actual = COVER_UNDEF;
 
 /** Cached Interaction expected state */
 static bool interaction_expected = false;
@@ -232,16 +232,16 @@ static const char *mia_inactivity_repr(bool inactive)
  */
 static void mia_generate_activity(void)
 {
-    execute_datapipe(&device_inactive_event_pipe, GINT_TO_POINTER(FALSE),
-                     USE_INDATA, CACHE_OUTDATA);
+    datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(FALSE),
+                       USE_INDATA, CACHE_OUTDATA);
 }
 
 /** Helper for switching to inactive state
  */
 static void mia_generate_inactivity(void)
 {
-    execute_datapipe(&device_inactive_event_pipe, GINT_TO_POINTER(TRUE),
-                     USE_INDATA, CACHE_OUTDATA);
+    datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(TRUE),
+                       USE_INDATA, CACHE_OUTDATA);
 }
 
 /* ========================================================================= *
@@ -317,20 +317,20 @@ static bool mia_activity_allowed(void)
 
     /* Activity applies only when display is on */
     if( display_state_next != MCE_DISPLAY_ON ) {
-        mce_log(LL_DEBUG, "display_state = %s; ignoring activity",
+        mce_log(LL_DEBUG, "display_state_curr = %s; ignoring activity",
                 display_state_repr(display_state_next));
         goto DENY;
     }
 
     /* Activity applies only to USER mode */
-    if( system_state != MCE_STATE_USER ) {
+    if( system_state != MCE_SYSTEM_STATE_USER ) {
         mce_log(LL_DEBUG, "system_state = %s; ignoring activity",
                 system_state_repr(system_state));
         goto DENY;
     }
 
     /* Normally activity does not apply when lockscreen is active */
-    if( submode & MCE_TKLOCK_SUBMODE ) {
+    if( submode & MCE_SUBMODE_TKLOCK ) {
 
         /* Active alarm */
         switch( alarm_ui_state ) {
@@ -372,7 +372,7 @@ DENY:
  *             TRUE if the device is inactive,
  *             FALSE if the device is active
  */
-static void mia_datapipe_inactive_request_cb(gconstpointer data)
+static void mia_datapipe_inactivity_event_cb(gconstpointer data)
 {
     gboolean inactive = GPOINTER_TO_INT(data);
 
@@ -390,9 +390,9 @@ static void mia_datapipe_inactive_request_cb(gconstpointer data)
             goto EXIT;
     }
 
-    execute_datapipe(&device_inactive_state_pipe,
-                     GINT_TO_POINTER(inactive),
-                     USE_INDATA, CACHE_OUTDATA);
+    datapipe_exec_full(&device_inactive_pipe,
+                       GINT_TO_POINTER(inactive),
+                       USE_INDATA, CACHE_OUTDATA);
 EXIT:
     return;
 }
@@ -429,22 +429,22 @@ static void mia_datapipe_device_inactive_cb(gconstpointer data)
  *
  * @param data proximity sensor state as void pointer
  */
-static void mia_datapipe_proximity_sensor_cb(gconstpointer data)
+static void mia_datapipe_proximity_sensor_actual_cb(gconstpointer data)
 {
-    cover_state_t prev = proximity_state;
-    proximity_state = GPOINTER_TO_INT(data);
+    cover_state_t prev = proximity_sensor_actual;
+    proximity_sensor_actual = GPOINTER_TO_INT(data);
 
-    if( proximity_state == prev )
+    if( proximity_sensor_actual == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "proximity_state: %s -> %s",
+    mce_log(LL_DEBUG, "proximity_sensor_actual: %s -> %s",
             proximity_state_repr(prev),
-            proximity_state_repr(proximity_state));
+            proximity_state_repr(proximity_sensor_actual));
 
     /* generate activity if proximity sensor is
      * uncovered and there is a incoming call */
 
-    if( proximity_state == COVER_OPEN &&
+    if( proximity_sensor_actual == COVER_OPEN &&
         call_state == CALL_STATE_RINGING ) {
         mce_log(LL_INFO, "proximity -> uncovered, call = ringing");
         mia_generate_activity();
@@ -458,20 +458,20 @@ EXIT:
  *
  * @param data inactivity timeout (as void pointer)
  */
-static void mia_datapipe_inactivity_timeout_cb(gconstpointer data)
+static void mia_datapipe_inactivity_delay_cb(gconstpointer data)
 {
-    gint prev = inactivity_timeout;
-    inactivity_timeout = GPOINTER_TO_INT(data);
+    gint prev = device_inactive_delay;
+    device_inactive_delay = GPOINTER_TO_INT(data);
 
     /* Sanitise timeout */
-    if( inactivity_timeout <= 0 )
-        inactivity_timeout = 30;
+    if( device_inactive_delay <= 0 )
+        device_inactive_delay = 30;
 
-    if( inactivity_timeout == prev )
+    if( device_inactive_delay == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "inactivity_timeout: %d -> %d",
-            prev, inactivity_timeout);
+    mce_log(LL_DEBUG, "device_inactive_delay: %d -> %d",
+            prev, device_inactive_delay);
 
     /* Reprogram timer */
     mia_timer_start();
@@ -553,7 +553,7 @@ static void mia_datapipe_system_state_cb(gconstpointer data)
             system_state_repr(prev),
             system_state_repr(system_state));
 
-    if( prev == MCE_STATE_UNDEF )
+    if( prev == MCE_SYSTEM_STATE_UNDEF )
         mia_datapipe_check_initial_state();
 
 EXIT:
@@ -599,7 +599,7 @@ static void mia_datapipe_interaction_expected_cb(gconstpointer data)
     /* Generate activity to restart blanking timers if interaction
      * becomes expected while lockscreen is active. */
     if( interaction_expected &&
-        (submode & MCE_TKLOCK_SUBMODE) &&
+        (submode & MCE_SUBMODE_TKLOCK) &&
         display_state_next == MCE_DISPLAY_ON ) {
         mce_log(LL_DEBUG, "interaction expected; generate activity");
         mia_generate_activity();
@@ -623,7 +623,7 @@ static void mia_datapipe_check_initial_state(void)
      * mce startup are done and the device state
      * is sufficiently known */
 
-    if( system_state == MCE_STATE_UNDEF )
+    if( system_state == MCE_SYSTEM_STATE_UNDEF )
         goto EXIT;
 
     if( display_state_next == MCE_DISPLAY_UNDEF )
@@ -662,20 +662,20 @@ static datapipe_handler_t mia_datapipe_handlers[] =
 {
     // output triggers
     {
-        .datapipe  = &device_inactive_event_pipe,
-        .output_cb = mia_datapipe_inactive_request_cb,
+        .datapipe  = &inactivity_event_pipe,
+        .output_cb = mia_datapipe_inactivity_event_cb,
     },
     {
-        .datapipe  = &device_inactive_state_pipe,
+        .datapipe  = &device_inactive_pipe,
         .output_cb = mia_datapipe_device_inactive_cb,
     },
     {
-        .datapipe  = &proximity_sensor_pipe,
-        .output_cb = mia_datapipe_proximity_sensor_cb,
+        .datapipe  = &proximity_sensor_actual_pipe,
+        .output_cb = mia_datapipe_proximity_sensor_actual_cb,
     },
     {
-        .datapipe  = &inactivity_timeout_pipe,
-        .output_cb = mia_datapipe_inactivity_timeout_cb,
+        .datapipe  = &inactivity_delay_pipe,
+        .output_cb = mia_datapipe_inactivity_delay_cb,
     },
     {
         .datapipe  = &submode_pipe,
@@ -1178,8 +1178,9 @@ static void mia_timer_start(void)
     if( device_inactive )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "inactivity timeout in %d seconds", inactivity_timeout);
-    mce_hbtimer_set_period(inactivity_timer_hnd, inactivity_timeout * 1000);
+    mce_log(LL_DEBUG, "inactivity timeout in %d seconds",
+            device_inactive_delay);
+    mce_hbtimer_set_period(inactivity_timer_hnd, device_inactive_delay * 1000);
     mce_hbtimer_start(inactivity_timer_hnd);
 
 EXIT:
@@ -1202,7 +1203,7 @@ static void
 mia_timer_init(void)
 {
     inactivity_timer_hnd = mce_hbtimer_create("inactivity-timer",
-                                               inactivity_timeout * 1000,
+                                               device_inactive_delay * 1000,
                                                mia_timer_cb, 0);
 }
 

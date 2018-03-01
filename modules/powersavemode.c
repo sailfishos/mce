@@ -147,9 +147,9 @@ static void update_power_saving_mode(void)
 
 	if (active_power_saving_mode != new_power_saving_mode) {
 		active_power_saving_mode = new_power_saving_mode;
-		(void)execute_datapipe(&power_saving_mode_pipe,
-				       GINT_TO_POINTER(active_power_saving_mode),
-				       USE_INDATA, CACHE_INDATA);
+		(void)datapipe_exec_full(&power_saving_mode_active_pipe,
+					 GINT_TO_POINTER(active_power_saving_mode),
+					 USE_INDATA, CACHE_INDATA);
 		send_psm_state(NULL);
 	}
 }
@@ -310,12 +310,12 @@ const gchar *g_module_check_init(GModule *module)
 	(void)module;
 
 	/* Append triggers/filters to datapipes */
-	append_output_trigger_to_datapipe(&battery_level_pipe,
-					  battery_level_trigger);
-	append_output_trigger_to_datapipe(&charger_state_pipe,
-					  charger_state_trigger);
-	append_output_trigger_to_datapipe(&thermal_state_pipe,
-					  thermal_state_trigger);
+	datapipe_add_output_trigger(&battery_level_pipe,
+				    battery_level_trigger);
+	datapipe_add_output_trigger(&charger_state_pipe,
+				    charger_state_trigger);
+	datapipe_add_output_trigger(&thermal_state_pipe,
+				    thermal_state_trigger);
 
 	/* Power saving mode setting */
 	/* Since we've set a default, error handling is unnecessary */
@@ -379,12 +379,12 @@ void g_module_unload(GModule *module)
 	mce_psm_quit_dbus();
 
 	/* Remove triggers/filters from datapipes */
-	remove_output_trigger_from_datapipe(&thermal_state_pipe,
-					    thermal_state_trigger);
-	remove_output_trigger_from_datapipe(&battery_level_pipe,
-					    battery_level_trigger);
-	remove_output_trigger_from_datapipe(&charger_state_pipe,
-					    charger_state_trigger);
+	datapipe_remove_output_trigger(&thermal_state_pipe,
+				       thermal_state_trigger);
+	datapipe_remove_output_trigger(&battery_level_pipe,
+				       battery_level_trigger);
+	datapipe_remove_output_trigger(&charger_state_pipe,
+				       charger_state_trigger);
 
 	return;
 }

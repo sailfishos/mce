@@ -272,26 +272,26 @@ static void bluetooth_dbus_quit(void)
  * DATAPIPE_TRACKING
  * ========================================================================= */
 
-/** Availability of bluez; from bluez_available_pipe */
-static service_state_t bluez_available = SERVICE_STATE_UNDEF;
+/** Availability of bluez; from bluez_service_state_pipe */
+static service_state_t bluez_service_state = SERVICE_STATE_UNDEF;
 
 /** Datapipe trigger for bluez availability
  *
  * @param data bluez D-Bus service availability (as a void pointer)
  */
-static void bluetooth_datapipe_bluez_available_cb(gconstpointer const data)
+static void bluetooth_datapipe_bluez_service_state_cb(gconstpointer const data)
 {
-    service_state_t prev = bluez_available;
-    bluez_available = GPOINTER_TO_INT(data);
+    service_state_t prev = bluez_service_state;
+    bluez_service_state = GPOINTER_TO_INT(data);
 
-    if( bluez_available == prev )
+    if( bluez_service_state == prev )
         goto EXIT;
 
     mce_log(LL_DEVEL, "bluez dbus service: %s -> %s",
             service_state_repr(prev),
-            service_state_repr(bluez_available));
+            service_state_repr(bluez_service_state));
 
-    switch( bluez_available ) {
+    switch( bluez_service_state ) {
     case SERVICE_STATE_RUNNING:
     case SERVICE_STATE_STOPPED:
         bluetooth_suspend_block_start();
@@ -310,8 +310,8 @@ static datapipe_handler_t bluetooth_datapipe_handlers[] =
 {
     // output triggers
     {
-        .datapipe  = &bluez_available_pipe,
-        .output_cb = bluetooth_datapipe_bluez_available_cb,
+        .datapipe  = &bluez_service_state_pipe,
+        .output_cb = bluetooth_datapipe_bluez_service_state_cb,
     },
     // sentinel
     {

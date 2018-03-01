@@ -490,7 +490,7 @@ static void set_simple_backlight_brightness(guint brightness)
  *
  * @param data Backlight brightness passed as a gconstpointer
  */
-static void set_backlight_brightness(gconstpointer data)
+static void set_key_backlight_brightness(gconstpointer data)
 {
 	static gint cached_brightness = -1;
 	gint new_brightness = GPOINTER_TO_INT(data);
@@ -541,8 +541,8 @@ static void disable_key_backlight(void)
 {
 	cancel_key_backlight_timeout();
 
-	execute_datapipe(&key_backlight_pipe, GINT_TO_POINTER(0),
-			 USE_INDATA, CACHE_INDATA);
+	datapipe_exec_full(&key_backlight_brightness_pipe, GINT_TO_POINTER(0),
+			   USE_INDATA, CACHE_INDATA);
 }
 
 /**
@@ -594,16 +594,16 @@ static void enable_key_backlight(void)
 	cancel_key_backlight_timeout();
 
 	/* Only enable the key backlight if the slide is open */
-	if (datapipe_get_gint(keyboard_slide_pipe) != COVER_OPEN)
+	if (datapipe_get_gint(keyboard_slide_state_pipe) != COVER_OPEN)
 		goto EXIT;
 
 	setup_key_backlight_timeout();
 
 	/* If the backlight is off, turn it on */
-	if (datapipe_get_guint(key_backlight_pipe) == 0) {
-		execute_datapipe(&key_backlight_pipe,
-				 GINT_TO_POINTER(backlight_brightness_level_maximum),
-				 USE_INDATA, CACHE_INDATA);
+	if (datapipe_get_guint(key_backlight_brightness_pipe) == 0) {
+		datapipe_exec_full(&key_backlight_brightness_pipe,
+				   GINT_TO_POINTER(backlight_brightness_level_maximum),
+				   USE_INDATA, CACHE_INDATA);
 	}
 
 EXIT:
@@ -615,7 +615,7 @@ EXIT:
  */
 static void enable_key_backlight_policy(void)
 {
-	cover_state_t kbd_slide_state = datapipe_get_gint(keyboard_slide_pipe);
+	cover_state_t kbd_slide_state = datapipe_get_gint(keyboard_slide_state_pipe);
 	system_state_t system_state = datapipe_get_gint(system_state_pipe);
 	alarm_ui_state_t alarm_ui_state =
 		datapipe_get_gint(alarm_ui_state_pipe);
@@ -633,7 +633,7 @@ static void enable_key_backlight_policy(void)
 	/* Only enable the key backlight in USER state
 	 * and when the alarm dialog is visible
 	 */
-	if ((system_state == MCE_STATE_USER) ||
+	if ((system_state == MCE_SYSTEM_STATE_USER) ||
 	    ((alarm_ui_state == MCE_ALARM_UI_VISIBLE_INT32) ||
 	     (alarm_ui_state == MCE_ALARM_UI_RINGING_INT32))) {
 		/* If there's a key backlight timeout active, restart it,
@@ -731,10 +731,10 @@ static void device_inactive_trigger(gconstpointer const data)
  *             COVER_OPEN if the keyboard is open,
  *             COVER_CLOSED if the keyboard is closed
  */
-static void keyboard_slide_trigger(gconstpointer const data)
+static void keyboard_slide_state_trigger(gconstpointer const data)
 {
 	if ((GPOINTER_TO_INT(data) == COVER_OPEN) &&
-	    ((mce_get_submode_int32() & MCE_TKLOCK_SUBMODE) == 0)) {
+	    ((mce_get_submode_int32() & MCE_SUBMODE_TKLOCK) == 0)) {
 		enable_key_backlight_policy();
 	} else {
 		disable_key_backlight();
@@ -746,16 +746,16 @@ static void keyboard_slide_trigger(gconstpointer const data)
  *
  * @param data The display stated stored in a pointer
  */
-static void display_state_trigger(gconstpointer data)
+static void display_state_curr_trigger(gconstpointer data)
 {
 	static display_state_t old_display_state = MCE_DISPLAY_UNDEF;
-	display_state_t display_state = GPOINTER_TO_INT(data);
+	display_state_t display_state_curr = GPOINTER_TO_INT(data);
 
-	if (old_display_state == display_state)
+	if (old_display_state == display_state_curr)
 		goto EXIT;
 
 	/* Disable the key backlight if the display dims */
-	switch (display_state) {
+	switch (display_state_curr) {
 	case MCE_DISPLAY_OFF:
 	case MCE_DISPLAY_LPM_OFF:
 	case MCE_DISPLAY_LPM_ON:
@@ -776,7 +776,7 @@ static void display_state_trigger(gconstpointer data)
 		break;
 	}
 
-	old_display_state = display_state;
+	old_display_state = display_state_curr;
 
 EXIT:
 	return;
@@ -794,7 +794,7 @@ static void system_state_trigger(gconstpointer data)
 	/* If we're changing to another state than USER,
 	 * disable the key backlight
 	 */
-	if (system_state != MCE_STATE_USER)
+	if (system_state != MCE_SYSTEM_STATE_USER)
 		disable_key_backlight();
 }
 
@@ -846,16 +846,16 @@ const gchar *g_module_check_init(GModule *module)
 	(void)module;
 
 	/* Append triggers/filters to datapipes */
-	append_output_trigger_to_datapipe(&system_state_pipe,
-					  system_state_trigger);
-	append_output_trigger_to_datapipe(&key_backlight_pipe,
-					  set_backlight_brightness);
-	append_output_trigger_to_datapipe(&device_inactive_state_pipe,
-					  device_inactive_trigger);
-	append_output_trigger_to_datapipe(&keyboard_slide_pipe,
-					  keyboard_slide_trigger);
-	append_output_trigger_to_datapipe(&display_state_pipe,
-					  display_state_trigger);
+	datapipe_add_output_trigger(&system_state_pipe,
+				    system_state_trigger);
+	datapipe_add_output_trigger(&key_backlight_brightness_pipe,
+				    set_key_backlight_brightness);
+	datapipe_add_output_trigger(&device_inactive_pipe,
+				    device_inactive_trigger);
+	datapipe_add_output_trigger(&keyboard_slide_state_pipe,
+				    keyboard_slide_state_trigger);
+	datapipe_add_output_trigger(&display_state_curr_pipe,
+				    display_state_curr_trigger);
 
 	/* Get configuration options */
 	key_backlight_timeout =
@@ -945,16 +945,16 @@ void g_module_unload(GModule *module)
 	g_free(engine3_leds_path);
 
 	/* Remove triggers/filters from datapipes */
-	remove_output_trigger_from_datapipe(&display_state_pipe,
-					    display_state_trigger);
-	remove_output_trigger_from_datapipe(&keyboard_slide_pipe,
-					    keyboard_slide_trigger);
-	remove_output_trigger_from_datapipe(&device_inactive_state_pipe,
-					    device_inactive_trigger);
-	remove_output_trigger_from_datapipe(&key_backlight_pipe,
-					    set_backlight_brightness);
-	remove_output_trigger_from_datapipe(&system_state_pipe,
-					    system_state_trigger);
+	datapipe_remove_output_trigger(&display_state_curr_pipe,
+				       display_state_curr_trigger);
+	datapipe_remove_output_trigger(&keyboard_slide_state_pipe,
+				       keyboard_slide_state_trigger);
+	datapipe_remove_output_trigger(&device_inactive_pipe,
+				       device_inactive_trigger);
+	datapipe_remove_output_trigger(&key_backlight_brightness_pipe,
+				       set_key_backlight_brightness);
+	datapipe_remove_output_trigger(&system_state_pipe,
+				       system_state_trigger);
 
 	/* Remove all timer sources */
 	cancel_key_backlight_timeout();

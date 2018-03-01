@@ -14,10 +14,10 @@ EXTERN_DUMMY_STUB (
 submode_t, mce_get_submode_int32, (void));
 
 EXTERN_DUMMY_STUB (
-gconstpointer, execute_datapipe, (datapipe_struct *const datapipe,
-				  gpointer indata,
-				  const data_source_t use_cache,
-				  const caching_policy_t cache_indata));
+gconstpointer, datapipe_exec_full, (datapipe_struct *const datapipe,
+				    gpointer indata,
+				    const data_source_t use_cache,
+				    const caching_policy_t cache_indata));
 
 LOCAL_STUB (
 void, cancel_blank_prevent, (void))
@@ -65,7 +65,7 @@ static struct ut_check_blanking_inhibit_data
 	/* Global state */
         system_state_t   system_state;           /* ACTDEAD, BOOT, REBOOT,
 						    SHUTDOWN, USER, UNDEF    */
-        display_state_t  display_state;          /* {LPM_,}{OFF,ON}, DIM,    */
+        display_state_t  display_state_curr;          /* {LPM_,}{OFF,ON}, DIM,    */
         alarm_ui_state_t alarm_ui_state;         /* OFF, RINGING, VISIBLE    */
         gboolean         call_ringing;
         gboolean         charger_connected;
@@ -139,8 +139,8 @@ START_TEST (ut_check_blanking_inhibit)
 	/* Setup global state */
 	system_state_pipe.cached_data =
 		GINT_TO_POINTER(data[_i].system_state);
-	display_state_pipe.cached_data =
-		GINT_TO_POINTER(data[_i].display_state);
+	display_state_curr_pipe.cached_data =
+		GINT_TO_POINTER(data[_i].display_state_curr);
 	alarm_ui_state_pipe.cached_data =
 		GINT_TO_POINTER(data[_i].alarm_ui_state);
 	call_state_pipe.cached_data = data[_i].call_ringing

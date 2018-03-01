@@ -49,8 +49,8 @@ static gboolean mce_set_submode_int32(const submode_t submode)
 	mce_log(LL_NOTICE, "submode change: %s",
 		submode_change_repr(old_submode, submode));
 
-	execute_datapipe(&submode_pipe, GINT_TO_POINTER(submode),
-			 USE_INDATA, CACHE_INDATA);
+	datapipe_exec_full(&submode_pipe, GINT_TO_POINTER(submode),
+			   USE_INDATA, CACHE_INDATA);
 EXIT:
 	return TRUE;
 }
@@ -101,24 +101,24 @@ submode_t mce_get_submode_int32(void)
  */
 static void system_state_trigger(gconstpointer data)
 {
-	static system_state_t old_system_state = MCE_STATE_UNDEF;
+	static system_state_t old_system_state = MCE_SYSTEM_STATE_UNDEF;
 	system_state_t system_state = GPOINTER_TO_INT(data);
 
 	switch (system_state) {
-	case MCE_STATE_USER:
+	case MCE_SYSTEM_STATE_USER:
 		break;
 
-	case MCE_STATE_SHUTDOWN:
-	case MCE_STATE_REBOOT:
+	case MCE_SYSTEM_STATE_SHUTDOWN:
+	case MCE_SYSTEM_STATE_REBOOT:
 		/* Actions to perform when shutting down/rebooting
 		 */
 		switch( old_system_state ) {
-		case MCE_STATE_USER:
-		case MCE_STATE_BOOT:
-		case MCE_STATE_UNDEF:
-		case MCE_STATE_ACTDEAD:
-			execute_datapipe_output_triggers(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_DEVICE_ON, USE_INDATA);
-			execute_datapipe_output_triggers(&led_pattern_activate_pipe, MCE_LED_PATTERN_POWER_OFF, USE_INDATA);
+		case MCE_SYSTEM_STATE_USER:
+		case MCE_SYSTEM_STATE_BOOT:
+		case MCE_SYSTEM_STATE_UNDEF:
+		case MCE_SYSTEM_STATE_ACTDEAD:
+			datapipe_exec_output_triggers(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_DEVICE_ON, USE_INDATA);
+			datapipe_exec_output_triggers(&led_pattern_activate_pipe, MCE_LED_PATTERN_POWER_OFF, USE_INDATA);
 			break;
 
 		default:
@@ -129,8 +129,8 @@ static void system_state_trigger(gconstpointer data)
 		 * user mode, ui side will do shutdown animation.
 		 * Unblank the screen to make it visible. */
 		switch( old_system_state ) {
-		case MCE_STATE_USER:
-		case MCE_STATE_ACTDEAD:
+		case MCE_SYSTEM_STATE_USER:
+		case MCE_SYSTEM_STATE_ACTDEAD:
 			mce_datapipe_req_display_state(MCE_DISPLAY_ON);
 			break;
 
@@ -139,10 +139,10 @@ static void system_state_trigger(gconstpointer data)
 		}
 		break;
 
-	case MCE_STATE_ACTDEAD:
+	case MCE_SYSTEM_STATE_ACTDEAD:
 		break;
 
-	case MCE_STATE_UNDEF:
+	case MCE_SYSTEM_STATE_UNDEF:
 		goto EXIT;
 
 	default:
@@ -169,8 +169,8 @@ gboolean mce_mode_init(void)
 	gboolean status = FALSE;
 
 	/* Append triggers/filters to datapipes */
-	append_output_trigger_to_datapipe(&system_state_pipe,
-					  system_state_trigger);
+	datapipe_add_output_trigger(&system_state_pipe,
+				    system_state_trigger);
 
 	/* If the bootup file exists, mce has crashed / restarted;
 	 * since it exists in /var/run it will be removed when we reboot.
@@ -181,14 +181,14 @@ gboolean mce_mode_init(void)
 	if (g_access(MCE_BOOTUP_FILENAME, F_OK) == -1) {
 		if (errno == ENOENT) {
 			mce_log(LL_DEBUG, "Bootup mode enabled");
-			mce_add_submode_int32(MCE_TRANSITION_SUBMODE);
+			mce_add_submode_int32(MCE_SUBMODE_TRANSITION);
 			errno = 0;
 
 			(void)mce_write_string_to_file(MCE_BOOTUP_FILENAME,
 						       ENABLED_STRING);
 
 			if (g_access(MALF_FILENAME, F_OK) == 0) {
-				mce_add_submode_int32(MCE_MALF_SUBMODE);
+				mce_add_submode_int32(MCE_SUBMODE_MALF);
 				mce_log(LL_DEBUG, "Malf mode enabled");
 				if (g_access(MCE_MALF_FILENAME, F_OK) == -1) {
 					if (errno != ENOENT) {
@@ -211,7 +211,7 @@ gboolean mce_mode_init(void)
 	} else {
 		if (g_access(MALF_FILENAME, F_OK) == 0) {
 			if (g_access(MCE_MALF_FILENAME, F_OK) == 0) {
-				mce_add_submode_int32(MCE_MALF_SUBMODE);
+				mce_add_submode_int32(MCE_SUBMODE_MALF);
 				mce_log(LL_DEBUG, "Malf mode enabled");
 			}
 		} else if ((errno == ENOENT) &&
@@ -234,8 +234,8 @@ EXIT:
 void mce_mode_exit(void)
 {
 	/* Remove triggers/filters from datapipes */
-	remove_output_trigger_from_datapipe(&system_state_pipe,
-					    system_state_trigger);
+	datapipe_remove_output_trigger(&system_state_pipe,
+				       system_state_trigger);
 
 	return;
 }

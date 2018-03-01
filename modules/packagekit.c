@@ -82,7 +82,7 @@ static void     xpkgkit_logging_cancel_start    (void);
 
 // DATAPIPE_HANDLERS
 
-static void     xpkgkit_datapipe_update_mode_cb(gconstpointer data);
+static void     xpkgkit_datapipe_osupdate_running_cb(gconstpointer data);
 static void     xpkgkit_datapipe_init          (void);
 static void     xpkgkit_datapipe_quit          (void);
 
@@ -112,9 +112,9 @@ xpkgkit_set_locked_state(bool locked)
     xpkgkit_is_locked = locked;
     mce_log(LL_DEBUG, "packagekit is %slocked", locked ? "" : "not ");
 
-    execute_datapipe(&packagekit_locked_pipe,
-                     GINT_TO_POINTER(xpkgkit_is_locked),
-                     USE_INDATA, CACHE_INDATA);
+    datapipe_exec_full(&packagekit_locked_pipe,
+                       GINT_TO_POINTER(xpkgkit_is_locked),
+                       USE_INDATA, CACHE_INDATA);
 
 EXIT:
     return;
@@ -485,21 +485,21 @@ EXIT:
  * ========================================================================= */
 
 /** Update mode is active; assume false */
-static bool update_mode = false;
+static bool osupdate_running = false;
 
-/** Change notifications for update_mode
+/** Change notifications for osupdate_running
  */
-static void xpkgkit_datapipe_update_mode_cb(gconstpointer data)
+static void xpkgkit_datapipe_osupdate_running_cb(gconstpointer data)
 {
-    bool prev = update_mode;
-    update_mode = GPOINTER_TO_INT(data);
+    bool prev = osupdate_running;
+    osupdate_running = GPOINTER_TO_INT(data);
 
-    if( update_mode == prev )
+    if( osupdate_running == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "update_mode = %d -> %d", prev, update_mode);
+    mce_log(LL_DEBUG, "osupdate_running = %d -> %d", prev, osupdate_running);
 
-    if( update_mode ) {
+    if( osupdate_running ) {
         /* When update mode gets activated, we start a systemd
          * service that will store journal to a persistent file
          * until the next reboot. */
@@ -515,8 +515,8 @@ static datapipe_handler_t xpkgkit_datapipe_handlers[] =
 {
     // output triggers
     {
-        .datapipe  = &update_mode_pipe,
-        .output_cb = xpkgkit_datapipe_update_mode_cb,
+        .datapipe  = &osupdate_running_pipe,
+        .output_cb = xpkgkit_datapipe_osupdate_running_cb,
     },
 
     // sentinel

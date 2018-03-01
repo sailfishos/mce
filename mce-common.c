@@ -587,7 +587,7 @@ static datapipe_handler_t common_datapipe_handlers[] =
 {
     // output triggers
     {
-        .datapipe  = &usb_cable_pipe,
+        .datapipe  = &usb_cable_state_pipe,
         .output_cb = common_datapipe_usb_cable_state_cb,
     },
     {

@@ -56,7 +56,7 @@ static void     usbmode_dbus_quit            (void);
  * DATAPIPE_HANDLERS
  * ========================================================================= */
 
-static void usbmode_datapipe_usbmoded_available_cb (gconstpointer data);
+static void usbmode_datapipe_usbmoded_service_state_cb (gconstpointer data);
 
 static void usbmode_datapipe_init                  (void);
 static void usbmode_datapipe_quit                  (void);
@@ -142,7 +142,7 @@ cleanup:
     return state;
 }
 
-/** Update usb_cable_pipe according tomatch  USB mode reported by usb_moded
+/** Update usb_cable_state_pipe according tomatch  USB mode reported by usb_moded
  *
  * @param mode Name of USB mode as reported by usb_moded
  */
@@ -151,7 +151,7 @@ usbmode_cable_state_update(const char *mode)
 {
     mce_log(LL_NOTICE, "usb mode: %s", mode);
 
-    usb_cable_state_t prev = datapipe_get_gint(usb_cable_pipe);
+    usb_cable_state_t prev = datapipe_get_gint(usb_cable_state_pipe);
     usb_cable_state_t curr = usbmode_cable_state_lookup(mode);
 
     if( prev == curr )
@@ -161,8 +161,8 @@ usbmode_cable_state_update(const char *mode)
             usb_cable_state_repr(prev),
             usb_cable_state_repr(curr));
 
-    execute_datapipe(&usb_cable_pipe, GINT_TO_POINTER(curr),
-                     USE_INDATA, CACHE_INDATA);
+    datapipe_exec_full(&usb_cable_state_pipe, GINT_TO_POINTER(curr),
+                       USE_INDATA, CACHE_INDATA);
 EXIT:
     return;
 }
@@ -307,27 +307,27 @@ static void usbmode_dbus_quit(void)
  * DATAPIPE_HANDLERS
  * ========================================================================= */
 
-static service_state_t usbmoded_available = SERVICE_STATE_UNDEF;
+static service_state_t usbmoded_service_state = SERVICE_STATE_UNDEF;
 
-/** Handle display_state_req_pipe notifications
+/** Handle display_state_request_pipe notifications
  *
  * This is where display state transition starts
  *
  * @param data Requested display_state_t (as void pointer)
  */
-static void usbmode_datapipe_usbmoded_available_cb(gconstpointer data)
+static void usbmode_datapipe_usbmoded_service_state_cb(gconstpointer data)
 {
-    service_state_t prev = usbmoded_available;
-    usbmoded_available = GPOINTER_TO_INT(data);
+    service_state_t prev = usbmoded_service_state;
+    usbmoded_service_state = GPOINTER_TO_INT(data);
 
-    if( usbmoded_available == prev )
+    if( usbmoded_service_state == prev )
         goto EXIT;
 
-    mce_log(LL_NOTICE, "usbmoded_available = %s -> %s",
+    mce_log(LL_NOTICE, "usbmoded_service_state = %s -> %s",
             service_state_repr(prev),
-            service_state_repr(usbmoded_available));
+            service_state_repr(usbmoded_service_state));
 
-    if( usbmoded_available == SERVICE_STATE_RUNNING )
+    if( usbmoded_service_state == SERVICE_STATE_RUNNING )
         usbmode_dbus_query_start();
     else
         usbmode_dbus_query_cancel();
@@ -341,8 +341,8 @@ static datapipe_handler_t usbmode_datapipe_handlers[] =
 {
     // output triggers
     {
-        .datapipe  = &usbmoded_available_pipe,
-        .output_cb = usbmode_datapipe_usbmoded_available_cb,
+        .datapipe  = &usbmoded_service_state_pipe,
+        .output_cb = usbmode_datapipe_usbmoded_service_state_cb,
     },
 
     // sentinel

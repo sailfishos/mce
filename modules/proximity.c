@@ -55,10 +55,10 @@ static call_state_t call_state = CALL_STATE_INVALID;
 static alarm_ui_state_t alarm_ui_state = MCE_ALARM_UI_INVALID_INT32;
 
 /** Cached display state */
-static display_state_t display_state = MCE_DISPLAY_UNDEF;
+static display_state_t display_state_curr = MCE_DISPLAY_UNDEF;
 
 /** Cached submode state */
-static submode_t submode = MCE_NORMAL_SUBMODE;
+static submode_t submode = MCE_SUBMODE_NORMAL;
 
 /** Configuration value for use proximity sensor */
 static gboolean use_ps_conf_value = MCE_DEFAULT_PROXIMITY_PS_ENABLED;
@@ -79,7 +79,7 @@ static guint ps_acts_as_lid_conf_id = 0;
 static void report_proximity(cover_state_t state)
 {
 	/* Get current proximity datapipe value */
-	cover_state_t old_state = datapipe_get_gint(proximity_sensor_pipe);
+	cover_state_t old_state = datapipe_get_gint(proximity_sensor_actual_pipe);
 
 	/* Execute datapipe if state has changed */
 
@@ -89,9 +89,9 @@ static void report_proximity(cover_state_t state)
 			cover_state_repr(old_state),
 			cover_state_repr(state));
 
-		execute_datapipe(&proximity_sensor_pipe,
-				 GINT_TO_POINTER(state),
-				 USE_INDATA, CACHE_INDATA);
+		datapipe_exec_full(&proximity_sensor_actual_pipe,
+				   GINT_TO_POINTER(state),
+				   USE_INDATA, CACHE_INDATA);
 	}
 }
 
@@ -101,16 +101,16 @@ static void report_proximity(cover_state_t state)
  */
 static void report_lid_input(cover_state_t state)
 {
-	cover_state_t old_state = datapipe_get_gint(lid_cover_sensor_pipe);
+	cover_state_t old_state = datapipe_get_gint(lid_sensor_actual_pipe);
 
 	if( state != old_state ) {
 		mce_log(LL_CRUCIAL, "state: %s -> %s",
 			cover_state_repr(old_state),
 			cover_state_repr(state));
 
-		execute_datapipe(&lid_cover_sensor_pipe,
-				 GINT_TO_POINTER(state),
-				 USE_INDATA, CACHE_INDATA);
+		datapipe_exec_full(&lid_sensor_actual_pipe,
+				   GINT_TO_POINTER(state),
+				   USE_INDATA, CACHE_INDATA);
 	}
 }
 
@@ -121,17 +121,17 @@ static void report_lid_input(cover_state_t state)
  */
 static void ps_sensorfw_iomon_cb(bool covered)
 {
-	cover_state_t proximity_sensor_state = COVER_UNDEF;
+	cover_state_t proximity_sensor_actual = COVER_UNDEF;
 
 	if( covered )
-		proximity_sensor_state = COVER_CLOSED;
+		proximity_sensor_actual = COVER_CLOSED;
 	else
-		proximity_sensor_state = COVER_OPEN;
+		proximity_sensor_actual = COVER_OPEN;
 
 	if( ps_acts_as_lid )
-		report_lid_input(proximity_sensor_state);
+		report_lid_input(proximity_sensor_actual);
 	else
-		report_proximity(proximity_sensor_state);
+		report_proximity(proximity_sensor_actual);
 
 	return;
 }
@@ -291,9 +291,9 @@ static void alarm_ui_state_trigger(gconstpointer const data)
  *
  * @param data The display state stored in a pointer
  */
-static void display_state_trigger(gconstpointer data)
+static void display_state_curr_trigger(gconstpointer data)
 {
-	display_state = GPOINTER_TO_INT(data);
+	display_state_curr = GPOINTER_TO_INT(data);
 
 	update_proximity_monitor();
 }
@@ -325,18 +325,18 @@ const gchar *g_module_check_init(GModule *module)
 	/* Get initial state of datapipes */
 	call_state = datapipe_get_gint(call_state_pipe);
 	alarm_ui_state = datapipe_get_gint(alarm_ui_state_pipe);
-	display_state = display_state_get();
+	display_state_curr = display_state_get();
 	submode = datapipe_get_gint(submode_pipe);
 
 	/* Append triggers/filters to datapipes */
-	append_input_trigger_to_datapipe(&call_state_pipe,
-					 call_state_trigger);
-	append_input_trigger_to_datapipe(&alarm_ui_state_pipe,
-					 alarm_ui_state_trigger);
-	append_output_trigger_to_datapipe(&display_state_pipe,
-					  display_state_trigger);
-	append_output_trigger_to_datapipe(&submode_pipe,
-					  submode_trigger);
+	datapipe_add_input_trigger(&call_state_pipe,
+				   call_state_trigger);
+	datapipe_add_input_trigger(&alarm_ui_state_pipe,
+				   alarm_ui_state_trigger);
+	datapipe_add_output_trigger(&display_state_curr_pipe,
+				    display_state_curr_trigger);
+	datapipe_add_output_trigger(&submode_pipe,
+				    submode_trigger);
 
 	/* PS enabled setting */
 	mce_setting_track_bool(MCE_SETTING_PROXIMITY_PS_ENABLED,
@@ -382,14 +382,14 @@ void g_module_unload(GModule *module)
 		ps_acts_as_lid_conf_id = 0;
 
 	/* Remove triggers/filters from datapipes */
-	remove_output_trigger_from_datapipe(&display_state_pipe,
-					    display_state_trigger);
-	remove_input_trigger_from_datapipe(&alarm_ui_state_pipe,
-					   alarm_ui_state_trigger);
-	remove_input_trigger_from_datapipe(&call_state_pipe,
-					   call_state_trigger);
-	remove_output_trigger_from_datapipe(&submode_pipe,
-					    submode_trigger);
+	datapipe_remove_output_trigger(&display_state_curr_pipe,
+				       display_state_curr_trigger);
+	datapipe_remove_input_trigger(&alarm_ui_state_pipe,
+				      alarm_ui_state_trigger);
+	datapipe_remove_input_trigger(&call_state_pipe,
+				      call_state_trigger);
+	datapipe_remove_output_trigger(&submode_pipe,
+				       submode_trigger);
 
 	/* Disable proximity monitoring to remove callbacks
 	 * to unloaded module */
