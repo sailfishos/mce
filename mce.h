@@ -292,6 +292,8 @@ typedef enum {
 
 const char *tklock_request_repr(tklock_request_t state);
 
+const char *tklock_status_repr(int status);
+
 /** Assumed initial battery level */
 #define BATTERY_LEVEL_INITIAL 100
 
@@ -402,6 +404,23 @@ typedef enum {
 
 const char *key_state_repr(key_state_t state);
 
+/** Fingerprint daemon state */
+typedef enum fpstate_t
+{
+    FPSTATE_UNSET,
+    FPSTATE_ENUMERATING,
+    FPSTATE_IDLE,
+    FPSTATE_ENROLLING,
+    FPSTATE_IDENTIFYING,
+    FPSTATE_REMOVING,
+    FPSTATE_VERIFYING,
+    FPSTATE_ABORTING,
+    FPSTATE_TERMINATING,
+} fpstate_t;
+
+fpstate_t   fpstate_parse(const char *name);
+const char *fpstate_repr (fpstate_t state);
+
 /* XXX: use HAL */
 
 /** Does the device have a flicker key? */
@@ -427,7 +446,8 @@ void mce_signal_handlers_remove(void);
 
 #define display_state_get() ({\
 	gint res = GPOINTER_TO_INT(display_state_curr_pipe.cached_data);\
-	mce_log(LL_DEBUG, "display_state_curr=%d", res);\
+	mce_log(LL_DEBUG, "display_state_curr=%s",\
+		display_state_repr(res));\
 	res;\
 })
 

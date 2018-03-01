@@ -12,7 +12,6 @@
 #include "../mce-conf.h"
 #include "../mce-setting.h"
 
-#include <stdbool.h>
 #include <unistd.h>
 
 #include <gmodule.h>

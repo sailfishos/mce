@@ -49,18 +49,14 @@
 #include "../mce.h"
 #include "../mce-log.h"
 
-#include <sys/types.h>
 #include <sys/epoll.h>
 
-#include <stdio.h>
-#include <stdbool.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
 #include <string.h>
 #include <stdlib.h>
 
-#include <glib.h>
 #include <gmodule.h>
 
 /* ========================================================================= *

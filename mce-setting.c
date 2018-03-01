@@ -25,7 +25,6 @@
 
 #include "mce-log.h"
 
-#include <stdlib.h>
 #include <string.h>
 
 /** Pointer to the GConf client */

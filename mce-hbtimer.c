@@ -34,14 +34,11 @@
 # include "libwakelock.h"
 #endif
 
-#include <sys/types.h>
 #include <sys/socket.h>
 
 #include <stdlib.h>
-#include <stdint.h>
 #include <inttypes.h>
 #include <string.h>
-#include <unistd.h>
 #include <errno.h>
 #include <pthread.h>
 

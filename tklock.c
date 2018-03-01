@@ -23,11 +23,9 @@
 
 #include "tklock.h"
 
-#include "mce.h"
 #include "mce-log.h"
 #include "mce-lib.h"
 #include "mce-io.h"
-#include "mce-conf.h"
 #include "mce-setting.h"
 #include "mce-dbus.h"
 #include "mce-hbtimer.h"
@@ -44,9 +42,6 @@
 #include "systemui/tklock-dbus-names.h"
 
 #include <linux/input.h>
-
-#include <sys/types.h>
-#include <sys/stat.h>
 
 #include <unistd.h>
 #include <string.h>
@@ -615,7 +610,9 @@ static void tklock_datapipe_system_state_cb(gconstpointer data)
     if( prev == system_state )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "system_state: %d -> %d", prev, system_state);
+    mce_log(LL_DEBUG, "system_state: %s -> %s",
+            system_state_repr(prev),
+            system_state_repr(system_state));
 
     tklock_ui_set(false);
 
@@ -5548,7 +5545,8 @@ static void tklock_ui_get_devicelock_cb(DBusPendingCall *pc, void *aptr)
         goto EXIT;
     }
 
-    mce_log(LL_INFO, "device lock status reply: state=%d", val);
+    mce_log(LL_INFO, "device lock status reply: state=%s",
+            devicelock_state_repr(val));
     tklock_datapipe_set_devicelock_state(val);
 
 EXIT:
@@ -6057,7 +6055,8 @@ static gboolean tklock_dbus_systemui_callback_cb(DBusMessage *const msg)
         goto EXIT;
     }
 
-    mce_log(LL_DEVEL, "tklock callback value: %d, from %s", result,
+    mce_log(LL_DEVEL, "tklock callback value: %s, from %s",
+            tklock_status_repr(result),
             mce_dbus_get_message_sender_ident(msg));
 
     tklock_request_t state = TKLOCK_REQUEST_OFF;
@@ -6182,7 +6181,8 @@ static gboolean tklock_dbus_devicelock_changed_cb(DBusMessage *const msg)
         goto EXIT;
     }
 
-    mce_log(LL_DEBUG, "received device lock signal: state=%d", val);
+    mce_log(LL_DEBUG, "received device lock signal: state=%s",
+            devicelock_state_repr(val));
     tklock_datapipe_set_devicelock_state(val);
 
 EXIT:

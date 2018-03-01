@@ -21,7 +21,6 @@
 
 #include "memnotify.h"
 
-#include "../mce.h"
 #include "../mce-log.h"
 #include "../mce-dbus.h"
 #include "../mce-setting.h"

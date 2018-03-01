@@ -26,9 +26,7 @@
 #include "mce-log.h"
 #include "mce-io.h"
 
-#include <stdlib.h>
 #include <unistd.h>
-#include <string.h>
 #include <errno.h>
 
 #include <glib/gstdio.h>

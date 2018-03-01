@@ -30,7 +30,6 @@
 
 #include "systemui/dbus-names.h"
 
-#include <sys/types.h>
 #include <sys/stat.h>
 
 #include <stdio.h>
@@ -1797,6 +1796,10 @@ static struct
     {
 	.name     = USB_MODED_DBUS_SERVICE,
 	.datapipe = &usbmoded_service_state_pipe,
+    },
+    {
+	.name     = FINGERPRINT1_DBUS_SERVICE,
+	.datapipe = &fpd_service_state_pipe,
     },
     {
 	.name     = "com.nokia.NonGraphicFeedback1.Backend",

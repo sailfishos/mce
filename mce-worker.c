@@ -29,7 +29,6 @@
 
 #include <sys/eventfd.h>
 
-#include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
