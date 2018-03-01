@@ -26,9 +26,7 @@
 
 #include "mce-wltimer.h"
 
-#include "mce.h"
 #include "mce-log.h"
-#include "mce-lib.h"
 #include "mce-wakelock.h"
 
 #include <stdlib.h>

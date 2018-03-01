@@ -24,8 +24,6 @@
 #ifndef _FILTER_BRIGHTNESS_ALS_H_
 # define _FILTER_BRIGHTNESS_ALS_H_
 
-# include <glib.h>
-
 /** Name of common group in color profiles conf file */
 # define MCE_CONF_COMMON_GROUP           "Common"
 

@@ -39,13 +39,10 @@
 #include <mce/dbus-names.h>
 #include <mce/mode-names.h>
 
-#include <linux/input.h>
-
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <dirent.h>
 
 #include <glib/gstdio.h>
 #include <gio/gio.h>

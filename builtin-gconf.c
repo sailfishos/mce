@@ -27,7 +27,6 @@
 #include "event-input.h"
 
 #include "modules/memnotify.h"
-#include "modules/filter-brightness-als.h"
 #include "modules/display.h"
 #include "modules/proximity.h"
 #include "modules/powersavemode.h"

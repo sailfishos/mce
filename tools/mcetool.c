@@ -25,7 +25,6 @@
 #include "../modules/display.h"
 #include "../modules/doubletap.h"
 #include "../modules/powersavemode.h"
-#include "../modules/filter-brightness-als.h"
 #include "../modules/proximity.h"
 #include "../modules/memnotify.h"
 #include "../modules/led.h"

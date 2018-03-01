@@ -24,7 +24,6 @@
 #include "../mce-log.h"
 #include "../mce-setting.h"
 #include "../mce-dbus.h"
-#include "../mce-sensorfw.h"
 #include "display.h"
 
 #include <mce/dbus-names.h>

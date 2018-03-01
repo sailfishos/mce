@@ -25,10 +25,8 @@
 #include "tklock.h"
 #include "evdev.h"
 
-#include "mce.h"
 #include "mce-log.h"
 #include "mce-lib.h"
-#include "mce-conf.h"
 #include "mce-setting.h"
 #include "mce-dbus.h"
 #include "mce-dsme.h"
@@ -43,12 +41,10 @@
 
 #include <linux/input.h>
 
-#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <errno.h>
 
 #include <mce/dbus-names.h>
 #include <mce/mode-names.h>

@@ -23,8 +23,6 @@
 
 #include "builtin-gconf.h"
 
-#include <stdbool.h>
-
 #include <dbus/dbus.h>
 
 /* ========================================================================= *

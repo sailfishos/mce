@@ -33,7 +33,6 @@
 # include "../libwakelock.h"
 #endif
 
-#include <stdint.h>
 #include <string.h>
 #include <inttypes.h>
 

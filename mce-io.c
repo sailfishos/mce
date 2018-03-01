@@ -30,7 +30,6 @@
 # include "libwakelock.h"
 #endif
 
-#include <stdbool.h>
 #include <unistd.h>
 #include <inttypes.h>
 #include <string.h>

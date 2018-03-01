@@ -23,11 +23,9 @@
 
 #include "tklock.h"
 
-#include "mce.h"
 #include "mce-log.h"
 #include "mce-lib.h"
 #include "mce-io.h"
-#include "mce-conf.h"
 #include "mce-setting.h"
 #include "mce-dbus.h"
 #include "mce-hbtimer.h"
@@ -44,9 +42,6 @@
 #include "systemui/tklock-dbus-names.h"
 
 #include <linux/input.h>
-
-#include <sys/types.h>
-#include <sys/stat.h>
 
 #include <unistd.h>
 #include <string.h>

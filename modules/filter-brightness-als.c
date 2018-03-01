@@ -27,7 +27,6 @@
 #include "filter-brightness-als.h"
 #include "display.h"
 
-#include "../mce.h"
 #include "../mce-log.h"
 #include "../mce-io.h"
 #include "../mce-conf.h"
@@ -37,7 +36,6 @@
 #include "../mce-wakelock.h"
 #include "../tklock.h"
 
-#include <stdlib.h>
 #include <string.h>
 
 #include <mce/dbus-names.h>

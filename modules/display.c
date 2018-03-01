@@ -22,7 +22,6 @@
 
 #include "display.h"
 
-#include "../mce.h"
 #include "../mce-log.h"
 #include "../mce-io.h"
 #include "../mce-lib.h"

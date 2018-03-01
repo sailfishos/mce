@@ -27,11 +27,8 @@
 #include "fileusers.h"
 #include "../mce-log.h"
 
-#include <sys/types.h>
-
 #include <stdio.h>
 #include <stdbool.h>
-#include <dirent.h>
 #include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
