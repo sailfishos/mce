@@ -1,3 +1,10 @@
+mce (1.91.1) precise; urgency=low
+
+  * [datapipe] Unify naming. Contributes to JB#22475
+  * [battery-bme] Use charger_state_t instead of gboolean
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 01 Mar 2018 12:58:10 +0200
+
 mce (1.91.0) precise; urgency=low
 
   * [tklock] Add settings for proximity sensor uncover delays. Fixes MER#1881
