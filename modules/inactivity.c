@@ -492,7 +492,8 @@ static void mia_datapipe_submode_cb(gconstpointer data)
     if( submode == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "submode = %d", submode);
+    mce_log(LL_DEBUG, "submode = %s",
+            submode_change_repr(prev, submode));
 
 EXIT:
     return;

@@ -1253,6 +1253,27 @@ const char *tklock_request_repr(tklock_request_t state)
 	return res;
 }
 
+/** Conver tklock status code from system ui to human readable string
+ *
+ * @param status TKLOCK_xxx value defined in mode-names.h from mce-dev.
+ *
+ * @return human readable representation of status
+ */
+const char *tklock_status_repr(int status)
+{
+	const char *repr = "TKLOCK_UNKNOWN";
+
+	switch( status ) {
+	case TKLOCK_UNLOCK:  repr = "TKLOCK_UNLOCK";  break;
+	case TKLOCK_RETRY:   repr = "TKLOCK_RETRY";   break;
+	case TKLOCK_TIMEOUT: repr = "TKLOCK_TIMEOUT"; break;
+	case TKLOCK_CLOSED:  repr = "TKLOCK_CLOSED";  break;
+	default: break;
+	}
+
+	return repr;
+}
+
 /** Convert battery_status_t enum to human readable string
  *
  * @param state battery_status_t enumeration value

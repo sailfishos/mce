@@ -2744,7 +2744,9 @@ static void pwrkey_datapipe_system_state_cb(gconstpointer data)
     if( prev == system_state )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "system_state: %d -> %d", prev, system_state);
+    mce_log(LL_DEBUG, "system_state: %s -> %s",
+            system_state_repr(prev),
+            system_state_repr(system_state));
 
 EXIT:
     return;

@@ -1284,7 +1284,8 @@ static void mdy_datapipe_submode_cb(gconstpointer data)
     if( submode == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "submode = %d", submode);
+    mce_log(LL_DEBUG, "submode = %s",
+            submode_change_repr(prev, submode));
 
     /* Rethink dim/blank timers if tklock state changed */
     if( (prev ^ submode) & MCE_SUBMODE_TKLOCK )
@@ -1687,7 +1688,8 @@ static void mdy_datapipe_uiexception_type_cb(gconstpointer data)
     if( uiexception_type == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "uiexception_type = %d", uiexception_type);
+    mce_log(LL_DEBUG, "uiexception_type = %s",
+            uiexception_type_repr(uiexception_type));
 
     // normal on->dim->blank might not be applicable
     mdy_blanking_rethink_timers(false);
