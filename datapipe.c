@@ -238,6 +238,15 @@ datapipe_struct music_playback_ongoing_pipe;
 /** proximity blanking; read only */
 datapipe_struct proximity_blanked_pipe;
 
+/** fingerprint daemon availability; read only */
+datapipe_struct fpd_service_state_pipe;
+
+/** fingerprint daemon state; read only */
+datapipe_struct fpstate_pipe;
+
+/** fingerprint is enrolling; read only */
+datapipe_struct enroll_in_progress_pipe;
+
 /**
  * Execute the input triggers of a datapipe
  *
@@ -865,6 +874,12 @@ void mce_datapipe_init(void)
 		      0, GINT_TO_POINTER(FALSE));
 	datapipe_init(&proximity_blanked_pipe, READ_ONLY, DONT_FREE_CACHE,
 		      0, GINT_TO_POINTER(FALSE));
+	datapipe_init(&fpd_service_state_pipe, READ_ONLY, DONT_FREE_CACHE,
+		      0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
+	datapipe_init(&fpstate_pipe, READ_ONLY, DONT_FREE_CACHE,
+		      0, GINT_TO_POINTER(FPSTATE_UNSET));
+	datapipe_init(&enroll_in_progress_pipe, READ_ONLY, DONT_FREE_CACHE,
+		      0, GINT_TO_POINTER(false));
 }
 
 /** Free all datapipes
@@ -937,6 +952,9 @@ void mce_datapipe_quit(void)
 	datapipe_free(&keypad_grab_wanted_pipe);
 	datapipe_free(&music_playback_ongoing_pipe);
 	datapipe_free(&proximity_blanked_pipe);
+	datapipe_free(&fpd_service_state_pipe);
+	datapipe_free(&fpstate_pipe);
+	datapipe_free(&enroll_in_progress_pipe);
 }
 
 /** Convert submode_t bitmap changes to human readable string
@@ -1525,6 +1543,38 @@ const char *key_state_repr(key_state_t state)
 	default: break;
 	}
 	return repr;
+}
+
+/** Lookup table for fpstate_t <--> string */
+static const mce_translation_t fpstate_lut[] =
+{
+	{ FPSTATE_UNSET,           "FPSTATE_UNSET"       },
+	{ FPSTATE_ENUMERATING,     "FPSTATE_ENUMERATING" },
+	{ FPSTATE_IDLE,            "FPSTATE_IDLE"        },
+	{ FPSTATE_ENROLLING,       "FPSTATE_ENROLLING"   },
+	{ FPSTATE_IDENTIFYING,     "FPSTATE_IDENTIFYING" },
+	{ FPSTATE_REMOVING,        "FPSTATE_REMOVING"    },
+	{ FPSTATE_VERIFYING,       "FPSTATE_VERIFYING"   },
+	{ FPSTATE_ABORTING,        "FPSTATE_ABORTING"    },
+	{ FPSTATE_TERMINATING,     "FPSTATE_TERMINATING" },
+	// sentinel
+	{ MCE_INVALID_TRANSLATION, 0                     }
+};
+
+/** Parse fpd state from dbus string */
+fpstate_t fpstate_parse(const char *name)
+{
+	return mce_translate_string_to_int_with_default(fpstate_lut,
+							name,
+							FPSTATE_UNSET);
+}
+
+/** Translate fpd state to human readable form */
+const char *fpstate_repr(fpstate_t state)
+{
+	return mce_translate_int_to_string_with_default(fpstate_lut,
+							state,
+							"FPSTATE_UNKNOWN");
 }
 
 void datapipe_handlers_install(datapipe_handler_t *bindings)

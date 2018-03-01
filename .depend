@@ -724,6 +724,22 @@ modules/filter-brightness-als.pic.o:\
 	modules/display.h\
 	modules/filter-brightness-als.h\
 
+modules/fingerprint.o:\
+	modules/fingerprint.c\
+	builtin-gconf.h\
+	datapipe.h\
+	mce-dbus.h\
+	mce-log.h\
+	mce.h\
+
+modules/fingerprint.pic.o:\
+	modules/fingerprint.c\
+	builtin-gconf.h\
+	datapipe.h\
+	mce-dbus.h\
+	mce-log.h\
+	mce.h\
+
 modules/inactivity.o:\
 	modules/inactivity.c\
 	builtin-gconf.h\

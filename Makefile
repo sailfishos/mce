@@ -150,6 +150,7 @@ TARGETS += mce
 # Plugins to build
 MODULES += $(MODULE_DIR)/radiostates.so
 MODULES += $(MODULE_DIR)/filter-brightness-als.so
+MODULES += $(MODULE_DIR)/fingerprint.so
 MODULES += $(MODULE_DIR)/proximity.so
 MODULES += $(MODULE_DIR)/keypad.so
 MODULES += $(MODULE_DIR)/inactivity.so
@@ -587,6 +588,7 @@ NORMALIZE_USES_SPC =\
 	modules/doubletap.h\
 	modules/filter-brightness-als.c\
 	modules/filter-brightness-als.h\
+	modules/fingerprint.c\
 	modules/keypad.h\
 	modules/inactivity.c\
 	modules/memnotify.c\
@@ -666,7 +668,7 @@ endif
 .SUFFIXES: .q .p
 
 %.q : %.c ; $(CC) -o $@ -E $< $(CPPFLAGS) $(MCE_CFLAGS)
-%.p : %.q ; cproto -s < $< | sed -e 's/_Bool/bool/g'
+%.p : %.q ; cproto -s < $< | sed -e 's/_Bool/bool/g' | prettyproto.py
 
 clean::
 	$(RM) -f *.[qp] modules/*.[qp] tools/*.[qp]

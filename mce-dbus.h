@@ -120,6 +120,39 @@ void mce_dbus_exit(void);
 
 void mce_dbus_send_config_notification(GConfEntry *entry);
 
+/* ========================================================================= *
+ * FINGERPRINT_DAEMON_DBUS_SERVICE (API Version 1)
+ * ========================================================================= */
+
+# define FINGERPRINT1_DBUS_SERVICE               "org.sailfishos.fingerprint1"
+
+# define FINGERPRINT1_DBUS_ROOT_OBJECT           "/org/sailfishos/fingerprint1"
+
+# define FINGERPRINT1_DBUS_INTERFACE             "org.sailfishos.fingerprint1"
+
+# define FINGERPRINT1_DBUS_REQ_ENROLL            "Enroll"
+# define FINGERPRINT1_DBUS_REQ_IDENTIFY          "Identify"
+# define FINGERPRINT1_DBUS_REQ_ABORT             "Abort"
+# define FINGERPRINT1_DBUS_REQ_GET_ALL           "GetAll"
+# define FINGERPRINT1_DBUS_REQ_REMOVE            "Remove"
+# define FINGERPRINT1_DBUS_REQ_VERIFY            "Verify"
+# define FINGERPRINT1_DBUS_REQ_GET_STATE         "GetState"
+
+# define FINGERPRINT1_DBUS_SIG_ADDED             "Added"
+# define FINGERPRINT1_DBUS_SIG_REMOVED           "Removed"
+# define FINGERPRINT1_DBUS_SIG_IDENTIFIED        "Identified"
+# define FINGERPRINT1_DBUS_SIG_ABORTED           "Aborted"
+# define FINGERPRINT1_DBUS_SIG_FAILED            "Failed"
+# define FINGERPRINT1_DBUS_SIG_VERIFIED          "Verified"
+
+# define FINGERPRINT1_DBUS_SIG_STATE_CHANGED     "StateChanged"
+
+# define FINGERPRINT1_DBUS_SIG_ERROR_INFO        "ErrorInfo"
+
+# define FINGERPRINT1_DBUS_SIG_ACQUISITION_INFO  "AcquisitionInfo"
+
+# define FINGERPRINT1_DBUS_SIG_ENROLL_PROGRESS   "EnrollProgressChanged"
+
 /** Placeholder for any basic dbus data type */
 typedef union
 {

@@ -404,6 +404,23 @@ typedef enum {
 
 const char *key_state_repr(key_state_t state);
 
+/** Fingerprint daemon state */
+typedef enum fpstate_t
+{
+    FPSTATE_UNSET,
+    FPSTATE_ENUMERATING,
+    FPSTATE_IDLE,
+    FPSTATE_ENROLLING,
+    FPSTATE_IDENTIFYING,
+    FPSTATE_REMOVING,
+    FPSTATE_VERIFYING,
+    FPSTATE_ABORTING,
+    FPSTATE_TERMINATING,
+} fpstate_t;
+
+fpstate_t   fpstate_parse(const char *name);
+const char *fpstate_repr (fpstate_t state);
+
 /* XXX: use HAL */
 
 /** Does the device have a flicker key? */

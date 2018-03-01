@@ -1798,6 +1798,10 @@ static struct
 	.datapipe = &usbmoded_service_state_pipe,
     },
     {
+	.name     = FINGERPRINT1_DBUS_SERVICE,
+	.datapipe = &fpd_service_state_pipe,
+    },
+    {
 	.name     = "com.nokia.NonGraphicFeedback1.Backend",
 	.datapipe = &ngfd_service_state_pipe,
     },

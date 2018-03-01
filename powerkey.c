@@ -638,6 +638,9 @@ static call_state_t call_state = CALL_STATE_NONE;
 /** devicelock dbus name is reserved; assume unknown */
 static service_state_t devicelock_service_state = SERVICE_STATE_UNDEF;
 
+/** Cached ongoing fingerprint enroll; assume not */
+static bool enroll_in_progress = false;
+
 /** Use powerkey for blanking during incoming calls */
 static bool pwrkey_ignore_incoming_call = false;
 
@@ -1818,6 +1821,22 @@ pwrkey_stm_ignore_action(void)
     case CALL_STATE_SERVICE:
         // dontcare
         break;
+    }
+
+    /* If user is enrolling a fingerprint, do not blank with powerkey */
+    if( enroll_in_progress ) {
+        /* We only want to block actions that would blank / lock the
+         * device i.e. what would happen from display on/dimmed state.
+         */
+        switch( display_state_next ) {
+        case MCE_DISPLAY_ON:
+        case MCE_DISPLAY_DIM:
+            mce_log(LL_DEVEL, "[powerkey] ignored due to fingerprint enroll");
+            ignore_powerkey = true;
+            break;
+        default:
+            break;
+        }
     }
 
     /* Skip rest if already desided to ignore */
@@ -3042,6 +3061,26 @@ EXIT:
     return;
 }
 
+/** Change notifications for enroll_in_progress
+ */
+static void pwrkey_datapipe_enroll_in_progress_cb(gconstpointer data)
+{
+    fpstate_t prev = enroll_in_progress;
+    enroll_in_progress = GPOINTER_TO_INT(data);
+
+    if( enroll_in_progress == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "enroll_in_progress = %s -> %s",
+            prev ? "true" : "false",
+            enroll_in_progress ? "true" : "false");
+
+    /* no immediate action, but see pwrkey_stm_ignore_action() */
+
+EXIT:
+    return;
+}
+
 /** Array of datapipe handlers */
 static datapipe_handler_t pwrkey_datapipe_handlers[] =
 {
@@ -3087,6 +3126,11 @@ static datapipe_handler_t pwrkey_datapipe_handlers[] =
         .datapipe  = &devicelock_service_state_pipe,
         .output_cb = pwrkey_datapipe_devicelock_service_state_cb,
     },
+    {
+        .datapipe  = &enroll_in_progress_pipe,
+        .output_cb = pwrkey_datapipe_enroll_in_progress_cb,
+    },
+
     // sentinel
     {
         .datapipe = 0,
