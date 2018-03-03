@@ -4991,7 +4991,7 @@ static display_type_t mdy_display_type_get(void)
 
         /* Enable hardware fading if supported */
         if (mdy_brightness_hw_fading_is_supported == TRUE)
-            (void)mce_write_number_string_to_file(&mdy_brightness_hw_fading_output, 1);
+            mce_write_number_string_to_file(&mdy_brightness_hw_fading_output, 1);
     }
     else if (g_access(DISPLAY_BACKLIGHT_PATH DISPLAY_ACPI_VIDEO0, W_OK) == 0) {
         display_type = DISPLAY_TYPE_ACPI_VIDEO0;
@@ -10516,7 +10516,7 @@ const gchar *g_module_check_init(GModule *module)
     mce_worker_add_context(MODULE_NAME);
 
     /* Initialise the display type and the relevant paths */
-    (void)mdy_display_type_get();
+    mdy_display_type_get();
 
 #ifdef ENABLE_CPU_GOVERNOR
     /* Get CPU scaling governor settings from INI-files */

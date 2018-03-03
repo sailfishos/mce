@@ -1388,7 +1388,7 @@ gboolean mce_read_number_string_from_file(const gchar *const file,
 EXIT2:
 	/* XXX: improve close policy? */
 	if ((status == FALSE) || (close_on_exit == TRUE)) {
-		(void)mce_close_file(file, &new_fp);
+		mce_close_file(file, &new_fp);
 
 		if (fp != NULL)
 			*fp = NULL;
@@ -1453,7 +1453,7 @@ gboolean mce_write_string_to_file(const gchar *const file,
 	status = TRUE;
 
 EXIT2:
-	(void)mce_close_file(file, &fp);
+	mce_close_file(file, &fp);
 
 EXIT:
 	return status;
