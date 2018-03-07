@@ -87,6 +87,9 @@ datapipe_struct touchscreen_event_pipe;
 /** The lock-key has been pressed; read only */
 datapipe_struct lockkey_state_pipe;
 
+/** The init-done condition has been reached; read only */
+datapipe_struct init_done_pipe;
+
 /** Keyboard open/closed; read only */
 datapipe_struct keyboard_slide_state_pipe;
 
@@ -787,6 +790,8 @@ void mce_datapipe_init(void)
 		      0, GINT_TO_POINTER(TRUE));
 	datapipe_init(&lockkey_state_pipe, READ_ONLY, DONT_FREE_CACHE,
 		      0, GINT_TO_POINTER(KEY_STATE_UNDEF));
+	datapipe_init(&init_done_pipe, READ_ONLY, DONT_FREE_CACHE,
+		      0, GINT_TO_POINTER(TRISTATE_UNKNOWN));
 	datapipe_init(&keyboard_slide_state_pipe, READ_ONLY, DONT_FREE_CACHE,
 		      0, GINT_TO_POINTER(COVER_CLOSED));
 	datapipe_init(&keyboard_available_state_pipe, READ_ONLY, DONT_FREE_CACHE,
@@ -910,6 +915,7 @@ void mce_datapipe_quit(void)
 	datapipe_free(&keyboard_slide_state_pipe);
 	datapipe_free(&keyboard_available_state_pipe);
 	datapipe_free(&lockkey_state_pipe);
+	datapipe_free(&init_done_pipe);
 	datapipe_free(&device_inactive_pipe);
 	datapipe_free(&inactivity_event_pipe);
 	datapipe_free(&touchscreen_event_pipe);

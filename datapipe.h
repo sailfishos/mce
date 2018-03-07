@@ -105,6 +105,7 @@ extern datapipe_struct key_backlight_brightness_pipe;
 extern datapipe_struct keypress_event_pipe;
 extern datapipe_struct touchscreen_event_pipe;
 extern datapipe_struct lockkey_state_pipe;
+extern datapipe_struct init_done_pipe;
 extern datapipe_struct keyboard_slide_state_pipe;
 extern datapipe_struct keyboard_available_state_pipe;
 extern datapipe_struct lid_sensor_is_working_pipe;

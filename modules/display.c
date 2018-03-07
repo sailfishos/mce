@@ -987,7 +987,7 @@ static bootstate_t mdy_bootstate = BOOTSTATE_UNKNOWN;
 static filewatcher_t *mdy_bootstate_watcher = 0;
 
 /** Is the init-done flag file present in the file system */
-static gboolean mdy_init_done = FALSE;
+static tristate_t mdy_init_done = TRISTATE_UNKNOWN;
 
 /** Content change watcher for the init-done flag file */
 static filewatcher_t *mdy_init_done_watcher = 0;
@@ -3389,7 +3389,8 @@ EXIT:
  */
 static void mdy_poweron_led_rethink(void)
 {
-    bool want_led = (!mdy_init_done && mdy_bootstate == BOOTSTATE_USER);
+    bool want_led = (mdy_init_done != TRISTATE_TRUE &&
+                     mdy_bootstate == BOOTSTATE_USER);
 
     mce_log(LL_DEBUG, "%s MCE_LED_PATTERN_POWER_ON",
             want_led ? "activate" : "deactivate");
@@ -4622,7 +4623,7 @@ static void mdy_blanking_rethink_afterboot_delay(void)
     int64_t want_limit = 0;
 
     /* Bootup has not yet finished */
-    if( mdy_init_done )
+    if( mdy_init_done != TRISTATE_TRUE )
         goto DONE;
 
     /* We are booting to USER mode */
@@ -6576,7 +6577,7 @@ static int mdy_autosuspend_get_allowed_level(void)
         block_late = true;
 
     /* no late suspend during bootup */
-    if( mdy_desktop_ready_id || !mdy_init_done )
+    if( mdy_desktop_ready_id || mdy_init_done != TRISTATE_TRUE )
         block_late = true;
 
     /* no late suspend during shutdown */
@@ -8263,7 +8264,7 @@ static void mdy_governor_rethink(void)
     }
 
     /* Use default during bootup */
-    if( mdy_desktop_ready_id || !mdy_init_done ) {
+    if( mdy_desktop_ready_id || mdy_init_done != TRISTATE_TRUE ) {
         governor_want = GOVERNOR_DEFAULT;
     }
 
@@ -9461,18 +9462,25 @@ static void mdy_flagfiles_init_done_cb(const char *path,
     char full[256];
     snprintf(full, sizeof full, "%s/%s", path, file);
 
-    gboolean flag = access(full, F_OK) ? FALSE : TRUE;
+    tristate_t prev = mdy_init_done;
+    mdy_init_done = access(full, F_OK) ? TRISTATE_FALSE : TRISTATE_TRUE;
 
-    if( mdy_init_done != flag ) {
-        mdy_init_done = flag;
-        mce_log(LL_NOTICE, "init_done flag file present: %s",
-                mdy_init_done ? "true" : "false");
+    if( mdy_init_done != prev ) {
+        mce_log(LL_DEVEL, "init_done flag file present: %s -> %s",
+                tristate_repr(prev),
+                tristate_repr(mdy_init_done));
+
         mdy_stm_schedule_rethink();
 #ifdef ENABLE_CPU_GOVERNOR
         mdy_governor_rethink();
 #endif
         mdy_poweron_led_rethink();
         mdy_blanking_rethink_afterboot_delay();
+
+        /* broadcast change within mce */
+        datapipe_exec_full(&init_done_pipe,
+                           GINT_TO_POINTER(mdy_init_done),
+                           USE_INDATA, CACHE_INDATA);
     }
 }
 
@@ -9613,7 +9621,12 @@ static void mdy_flagfiles_start_tracking(void)
             delay = ready - uptime;
 
         /* do not wait for the init-done flag file */
-        mdy_init_done = TRUE;
+        if( mdy_init_done != TRISTATE_TRUE ) {
+            mdy_init_done = TRISTATE_TRUE;
+            datapipe_exec_full(&init_done_pipe,
+                               GINT_TO_POINTER(mdy_init_done),
+                               USE_INDATA, CACHE_INDATA);
+        }
     }
 
     mce_log(LL_NOTICE, "suspend delay %d seconds", (int)delay);
