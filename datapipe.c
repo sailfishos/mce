@@ -1533,6 +1533,7 @@ const char *orientation_state_repr(orientation_state_t state)
 	return name;
 }
 
+/** Translate key state to human readable form */
 const char *key_state_repr(key_state_t state)
 {
 	const char *repr = "UNKNOWN";
@@ -1540,6 +1541,19 @@ const char *key_state_repr(key_state_t state)
 	case KEY_STATE_UNDEF:    repr = "UNDEF";    break;
 	case KEY_STATE_RELEASED: repr = "RELEASED"; break;
 	case KEY_STATE_PRESSED:  repr = "PRESSED";  break;
+	default: break;
+	}
+	return repr;
+}
+
+/** Translate tristate to human readable form */
+const char *tristate_repr(tristate_t state)
+{
+	const char *repr = "invalid";
+	switch( state ) {
+	case TRISTATE_UNKNOWN: repr = "unknown"; break;
+	case TRISTATE_FALSE:   repr = "false";   break;
+	case TRISTATE_TRUE:    repr = "true";    break;
 	default: break;
 	}
 	return repr;

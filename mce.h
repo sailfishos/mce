@@ -404,6 +404,16 @@ typedef enum {
 
 const char *key_state_repr(key_state_t state);
 
+/** Generic "extended boolean" type */
+typedef enum
+{
+  TRISTATE_UNKNOWN = -1,
+  TRISTATE_FALSE   =  0,
+  TRISTATE_TRUE    =  1,
+} tristate_t;
+
+const char *tristate_repr(tristate_t state);
+
 /** Fingerprint daemon state */
 typedef enum fpstate_t
 {
