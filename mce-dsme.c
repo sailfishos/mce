@@ -60,6 +60,9 @@ static system_state_t system_state = MCE_SYSTEM_STATE_UNDEF;
 /** Shutdown warning from dsme; fed to shutting_down_pipe */
 static bool mce_dsme_shutting_down_flag = false;
 
+/** Cached init_done state; assume unknown */
+static tristate_t init_done = TRISTATE_UNKNOWN;
+
 /* ========================================================================= *
  * MODULE FUNCTIONS
  * ========================================================================= */
@@ -138,7 +141,8 @@ static void           mce_dsme_dbus_quit(void);
  * ------------------------------------------------------------------------- */
 
 static void           mce_dsme_datapipe_dsme_service_state_cb (gconstpointer data);
-static void           mce_dsme_datapipe_system_state_cb   (gconstpointer data);
+static void           mce_dsme_datapipe_init_done_cb          (gconstpointer data);
+static void           mce_dsme_datapipe_system_state_cb       (gconstpointer data);
 
 static void           mce_dsme_datapipe_init(void);
 static void           mce_dsme_datapipe_quit(void);
@@ -902,6 +906,29 @@ EXIT:
     return;
 }
 
+/** Change notifications for init_done
+ */
+static void mce_dsme_datapipe_init_done_cb(gconstpointer data)
+{
+    tristate_t prev = init_done;
+    init_done = GPOINTER_TO_INT(data);
+
+    if( init_done == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "init_done = %s -> %s",
+            tristate_repr(prev),
+            tristate_repr(init_done));
+
+    if( init_done == TRISTATE_TRUE ) {
+        /* Remove transition submode after brief delay */
+        mce_dsme_transition_schedule();
+    }
+
+EXIT:
+    return;
+}
+
 /** Handle system_state_pipe notifications
  *
  * Implemented as an input trigger to ensure this function gets
@@ -978,6 +1005,10 @@ static datapipe_handler_t mce_dsme_datapipe_handlers[] =
     {
         .datapipe  = &dsme_service_state_pipe,
         .output_cb = mce_dsme_datapipe_dsme_service_state_cb,
+    },
+    {
+        .datapipe  = &init_done_pipe,
+        .output_cb = mce_dsme_datapipe_init_done_cb,
     },
     // sentinel
     {
