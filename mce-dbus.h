@@ -23,6 +23,8 @@
 
 #include "builtin-gconf.h"
 
+#include <unistd.h>
+
 #include <dbus/dbus.h>
 
 /* ========================================================================= *
@@ -220,5 +222,64 @@ const char *mce_dbus_get_message_sender_ident(DBusMessage *msg);
 const char *mce_dbus_nameowner_get(const char *name);
 
 void mce_dbus_pending_call_blocks_suspend(DBusPendingCall *pc);
+
+/* ========================================================================= *
+ * PEERINFO
+ * ========================================================================= */
+
+/** D-Bus peer identity/availability tracking state */
+typedef enum
+{
+    /** Freshly created */
+    PEERSTATE_INITIAL,
+
+    /** Doing org.freedesktop.DBus.GetNameOwner */
+    PEERSTATE_QUERY_OWNER,
+
+    /** org.freedesktop.DBus.GetConnectionUnixProcessID */
+    PEERSTATE_QUERY_PID,
+
+    /** Owner known and available on D-Bus */
+    PEERSTATE_RUNNING,
+
+    /** Owner known, but no longer available on D-Bus
+     *
+     * The peer info is retained briefly so that it is still
+     * available when for example logging client cleanup actions.
+     */
+    PEERSTATE_STALE,
+
+    /** There is no known owner for the name
+     *
+     * Object info related to private bus names is expunged.
+     */
+    PEERSTATE_STOPPED,
+
+    /** Final state when tracking object is about to be deleted */
+    PEERSTATE_DELETED,
+} peerstate_t;
+
+const char *peerstate_repr(peerstate_t state);
+
+/** Cached D-Bus peer details */
+typedef struct peerinfo_t peerinfo_t;
+
+const char       *peerinfo_name                         (const peerinfo_t *self);
+peerstate_t       peerinfo_get_state                    (const peerinfo_t *self);
+pid_t             peerinfo_get_owner_pid                (const peerinfo_t *self);
+uid_t             peerinfo_get_owner_uid                (const peerinfo_t *self);
+gid_t             peerinfo_get_owner_gid                (const peerinfo_t *self);
+const char       *peerinfo_get_owner_cmd                (const peerinfo_t *self);
+
+typedef void (*peernotify_fn)(const peerinfo_t *peerinfo, gpointer userdata);
+
+void mce_dbus_name_tracker_add(const char     *name,
+			       peernotify_fn   callback,
+			       gpointer        userdata,
+			       GDestroyNotify  userfree);
+
+void mce_dbus_name_tracker_remove(const char     *name,
+				  peernotify_fn   callback,
+				  gpointer        userdata);
 
 #endif /* _MCE_DBUS_H_ */
