@@ -43,6 +43,12 @@
 /* Enabling/disabling display updates via compositor service */
 #define COMPOSITOR_SET_UPDATES_ENABLED "setUpdatesEnabled"
 
+/** Query owner of topmost ui window */
+#define COMPOSITOR_GET_TOPMOST_WINDOW_PID "privateTopmostWindowProcessId"
+
+/** Change notification for owner of topmost ui window */
+#define COMPOSITOR_TOPMOST_WINDOW_PID_CHANGED "privateTopmostWindowProcessIdChanged"
+
 /* ========================================================================= *
  * LIPSTICK DBUS SERVICE
  * ========================================================================= */

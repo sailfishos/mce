@@ -579,6 +579,16 @@ static void                mdy_waitfb_thread_stop(waitfb_t *self);
 #endif
 
 /* ------------------------------------------------------------------------- *
+ * TOPMOST_WINDOW_TRACKING
+ * ------------------------------------------------------------------------- */
+
+static void                mdy_topmost_window_set_pid          (int pid);
+static gboolean            mdy_topmost_window_pid_changed_cb   (DBusMessage *const sig);
+static void                mdy_topmost_window_pid_reply_cb     (DBusPendingCall *pc, void *aptr);
+static void                mdy_topmost_window_forget_pid_query (void);
+static void                mdy_topmost_window_send_pid_query   (void);
+
+/* ------------------------------------------------------------------------- *
  * compositor_led_t
  * ------------------------------------------------------------------------- */
 
@@ -5278,6 +5288,142 @@ static waitfb_t mdy_waitfb_data =
 };
 
 /* ========================================================================= *
+ * TOPMOST_WINDOW_TRACKING
+ * ========================================================================= */
+
+/** Cached PID of process owning the topmost window on UI */
+static int mdy_topmost_window_pid = -1;
+
+static void
+mdy_topmost_window_set_pid(int pid)
+{
+    if( mdy_topmost_window_pid == pid )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "mdy_topmost_window_pid: %d -> %d",
+            mdy_topmost_window_pid, pid);
+    mdy_topmost_window_pid = pid;
+
+    datapipe_exec_full(&topmost_window_pid_pipe,
+                       GINT_TO_POINTER(mdy_topmost_window_pid),
+                       USE_INDATA, CACHE_INDATA);
+
+EXIT:
+    return;
+}
+
+/** Handle topmost window pid changed signal
+ *
+ * @param sig  D-Bus signal message
+ *
+ * @return TRUE
+ */
+static gboolean mdy_topmost_window_pid_changed_cb(DBusMessage *const sig)
+{
+    dbus_int32_t pid = -1;
+    DBusError    err = DBUS_ERROR_INIT;
+
+    if( !dbus_message_get_args(sig, &err,
+                               DBUS_TYPE_INT32, &pid,
+                               DBUS_TYPE_INVALID) ) {
+        mce_log(LL_WARN, "parse error: %s: %s", err.name, err.message);
+        goto EXIT;
+    }
+
+    mce_log(LL_DEBUG, "received %s(%d)",
+            COMPOSITOR_TOPMOST_WINDOW_PID_CHANGED, (int)pid);
+
+    mdy_topmost_window_set_pid(pid);
+
+EXIT:
+
+    return TRUE;
+}
+
+static DBusPendingCall *mdy_topmost_window_pid_pc = 0;
+
+/** Handle reply to pending compositor state request
+ */
+static void
+mdy_topmost_window_pid_reply_cb(DBusPendingCall *pc, void *aptr)
+{
+    (void)aptr;
+
+    DBusMessage *rsp  = 0;
+    DBusError    err  = DBUS_ERROR_INIT;
+    dbus_int32_t pid  = -1;
+
+    if( mdy_topmost_window_pid_pc != pc )
+        goto EXIT;
+
+    dbus_pending_call_unref(mdy_topmost_window_pid_pc),
+        mdy_topmost_window_pid_pc = 0;
+
+    mce_log(LL_NOTICE, "reply to %s()",
+            COMPOSITOR_GET_TOPMOST_WINDOW_PID);
+
+    if( !(rsp = dbus_pending_call_steal_reply(pc)) )
+        goto EXIT;
+
+    if( dbus_set_error_from_message(&err, rsp) ) {
+        mce_log(LL_WARN, "error reply: %s: %s", err.name, err.message);
+        goto EXIT;
+    }
+
+    if( !dbus_message_get_args(rsp, &err,
+                               DBUS_TYPE_INT32, &pid,
+                               DBUS_TYPE_INVALID) ) {
+        mce_log(LL_WARN, "parse error: %s: %s", err.name, err.message);
+        goto EXIT;
+    }
+
+    mdy_topmost_window_set_pid(pid);
+
+EXIT:
+
+    if( rsp ) dbus_message_unref(rsp);
+
+    dbus_error_free(&err);
+
+    return;
+}
+
+/** Abandon pending compositor state request
+ */
+static void
+mdy_topmost_window_forget_pid_query(void)
+{
+    if( mdy_topmost_window_pid_pc ) {
+        mce_log(LL_NOTICE, "forget %s()",
+                COMPOSITOR_GET_TOPMOST_WINDOW_PID);
+
+        dbus_pending_call_cancel(mdy_topmost_window_pid_pc);
+        dbus_pending_call_unref(mdy_topmost_window_pid_pc),
+            mdy_topmost_window_pid_pc = 0;
+    }
+}
+
+/** Initiate async compositor state request
+ */
+static void
+mdy_topmost_window_send_pid_query(void)
+{
+    mdy_topmost_window_forget_pid_query();
+
+    mce_log(LL_NOTICE, "call %s()",
+            COMPOSITOR_GET_TOPMOST_WINDOW_PID);
+
+    dbus_send_ex(COMPOSITOR_SERVICE,
+                 COMPOSITOR_PATH,
+                 COMPOSITOR_IFACE,
+                 COMPOSITOR_GET_TOPMOST_WINDOW_PID,
+                 mdy_topmost_window_pid_reply_cb,
+                 0, 0,
+                 &mdy_topmost_window_pid_pc,
+                 DBUS_TYPE_INVALID);
+}
+
+/* ========================================================================= *
  * COMPOSITOR_LEDS
  * ========================================================================= */
 
@@ -7162,6 +7308,16 @@ static void mdy_datapipe_compositor_service_state_cb(gconstpointer aptr)
      */
     if( prev != SERVICE_STATE_UNDEF )
         mdy_stm_push_target_change(MCE_DISPLAY_ON);
+
+    /* PID of topmost window needs to be invalidated / queried
+     * when compositor service state changes.
+     */
+
+    mdy_topmost_window_set_pid(-1);
+    if( service == SERVICE_STATE_RUNNING )
+        mdy_topmost_window_send_pid_query();
+    else
+        mdy_topmost_window_forget_pid_query();
 
 EXIT:
     return;
@@ -9291,6 +9447,12 @@ static mce_dbus_handler_t mdy_dbus_handlers[] =
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
         .callback  = mdy_dbus_handle_desktop_started_sig,
     },
+    {
+        .interface = COMPOSITOR_IFACE,
+        .name      = COMPOSITOR_TOPMOST_WINDOW_PID_CHANGED,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .callback  = mdy_topmost_window_pid_changed_cb,
+    },
     /* method calls */
     {
         .interface = MCE_REQUEST_IF,
@@ -10711,6 +10873,9 @@ void g_module_unload(GModule *module)
                              - mce_lib_get_boot_tick());
         mce_fbdev_linger_after_exit(delay_ms);
     }
+
+    /* Do not leave pending dbus calls behind */
+    mdy_topmost_window_forget_pid_query();
 
     return;
 }

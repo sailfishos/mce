@@ -163,6 +163,9 @@ datapipe_struct battery_status_pipe;
 /** Battery charge level; read only */
 datapipe_struct battery_level_pipe;
 
+/** Topmost window PID; read only */
+datapipe_struct topmost_window_pid_pipe;
+
 /** Camera button; read only */
 datapipe_struct camera_button_state_pipe;
 
@@ -824,6 +827,8 @@ void mce_datapipe_init(void)
 		      0, GINT_TO_POINTER(BATTERY_STATUS_UNDEF));
 	datapipe_init(&battery_level_pipe, READ_ONLY, DONT_FREE_CACHE,
 		      0, GINT_TO_POINTER(BATTERY_LEVEL_INITIAL));
+	datapipe_init(&topmost_window_pid_pipe, READ_ONLY, DONT_FREE_CACHE,
+		      0, GINT_TO_POINTER(-1));
 	datapipe_init(&camera_button_state_pipe, READ_ONLY, DONT_FREE_CACHE,
 		      0, GINT_TO_POINTER(CAMERA_BUTTON_UNDEF));
 	datapipe_init(&inactivity_delay_pipe, READ_ONLY, DONT_FREE_CACHE,
@@ -898,6 +903,7 @@ void mce_datapipe_quit(void)
 	datapipe_free(&audio_route_pipe);
 	datapipe_free(&inactivity_delay_pipe);
 	datapipe_free(&battery_level_pipe);
+	datapipe_free(&topmost_window_pid_pipe);
 	datapipe_free(&camera_button_state_pipe);
 	datapipe_free(&battery_status_pipe);
 	datapipe_free(&charger_state_pipe);

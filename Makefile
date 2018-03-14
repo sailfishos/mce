@@ -266,6 +266,9 @@ LDLIBS   += -Wl,--as-needed
 # MCE
 # ----------------------------------------------------------------------------
 
+%.o : %.c
+	$(CC) -c -o $@ $< $(CPPFLAGS) $(CFLAGS)
+
 MCE_PKG_NAMES += gobject-2.0
 MCE_PKG_NAMES += glib-2.0
 MCE_PKG_NAMES += gio-2.0

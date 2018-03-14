@@ -129,6 +129,7 @@ extern datapipe_struct interaction_expected_pipe;
 extern datapipe_struct charger_state_pipe;
 extern datapipe_struct battery_status_pipe;
 extern datapipe_struct battery_level_pipe;
+extern datapipe_struct topmost_window_pid_pipe;
 extern datapipe_struct camera_button_state_pipe;
 extern datapipe_struct inactivity_delay_pipe;
 extern datapipe_struct audio_route_pipe;
