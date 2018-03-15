@@ -846,7 +846,9 @@ static void                mdy_governor_setting_cb(GConfClient *const client, co
  * ------------------------------------------------------------------------- */
 
 static gboolean            mdy_dbus_send_blanking_pause_status(DBusMessage *const method_call);
+static gboolean            mdy_dbus_send_blanking_pause_allowed_status(DBusMessage *const method_call);
 static gboolean            mdy_dbus_handle_blanking_pause_get_req(DBusMessage *const msg);
+static gboolean            mdy_dbus_handle_blanking_pause_allowed_get_req(DBusMessage *const msg);
 
 static gboolean            mdy_dbus_send_blanking_inhibit_status(DBusMessage *const method_call);
 static gboolean            mdy_dbus_handle_blanking_inhibit_get_req(DBusMessage *const msg);
@@ -4109,6 +4111,8 @@ DONE:
 
         if( blanking_pause_allowed != TRISTATE_TRUE )
             mdy_blanking_remove_pause_clients();
+
+        mdy_dbus_send_blanking_pause_allowed_status(0);
     }
 }
 
@@ -8729,6 +8733,50 @@ EXIT:
     return TRUE;
 }
 
+/** Send a blanking pause allowed reply or signal
+ *
+ * @param method_call A DBusMessage to reply to; or NULL to send signal
+ *
+ * @return TRUE
+ */
+static gboolean mdy_dbus_send_blanking_pause_allowed_status(DBusMessage *const method_call)
+{
+    static int   prev = -1;
+    bool         curr = blanking_pause_allowed;
+    dbus_bool_t  data = curr;
+    DBusMessage *msg  = 0;
+
+    if( method_call ) {
+        msg = dbus_new_method_reply(method_call);
+        mce_log(LL_DEBUG, "Sending blanking pause allowed reply: %s",
+                data ? "true" : "false");
+    }
+    else if( prev == curr ) {
+        /* Omit no-change signals */
+        goto EXIT;
+    }
+    else {
+        prev = curr;
+        msg = dbus_new_signal(MCE_SIGNAL_PATH, MCE_SIGNAL_IF,
+                              MCE_PREVENT_BLANK_ALLOWED_SIG);
+        mce_log(LL_DEVEL, "Sending blanking pause allowed signal: %s",
+                data ? "true" : "false");
+    }
+
+    if( !dbus_message_append_args(msg,
+                                  DBUS_TYPE_BOOLEAN, &data,
+                                  DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    dbus_send_message(msg), msg = 0;
+
+EXIT:
+    if( msg )
+        dbus_message_unref(msg);
+
+    return TRUE;
+}
+
 /** D-Bus callback for the get blanking pause status method call
  *
  * @param msg The D-Bus message
@@ -8741,6 +8789,22 @@ static gboolean mdy_dbus_handle_blanking_pause_get_req(DBusMessage *const msg)
             mce_dbus_get_message_sender_ident(msg));
 
     mdy_dbus_send_blanking_pause_status(msg);
+
+    return TRUE;
+}
+
+/** D-Bus callback for the get blanking pause allowed method call
+ *
+ * @param msg The D-Bus message
+ *
+ * @return TRUE
+ */
+static gboolean mdy_dbus_handle_blanking_pause_allowed_get_req(DBusMessage *const msg)
+{
+    mce_log(LL_DEVEL, "Received blanking pause allowed get request from %s",
+            mce_dbus_get_message_sender_ident(msg));
+
+    mdy_dbus_send_blanking_pause_allowed_status(msg);
 
     return TRUE;
 }
@@ -9626,6 +9690,13 @@ static mce_dbus_handler_t mdy_dbus_handlers[] =
     },
     {
         .interface = MCE_SIGNAL_IF,
+        .name      = MCE_PREVENT_BLANK_ALLOWED_SIG,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .args      =
+            "    <arg name=\"allowed\" type=\"b\"/>\n"
+    },
+    {
+        .interface = MCE_SIGNAL_IF,
         .name      = MCE_BLANKING_INHIBIT_SIG,
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
         .args      =
@@ -9667,6 +9738,14 @@ static mce_dbus_handler_t mdy_dbus_handlers[] =
         .callback  = mdy_dbus_handle_blanking_pause_get_req,
         .args      =
             "    <arg direction=\"out\" name=\"blanking_pause\" type=\"s\"/>\n"
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_PREVENT_BLANK_ALLOWED_GET,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = mdy_dbus_handle_blanking_pause_allowed_get_req,
+        .args      =
+            "    <arg direction=\"out\" name=\"allowed\" type=\"b\"/>\n"
     },
     {
         .interface = MCE_REQUEST_IF,
