@@ -248,7 +248,7 @@ void mce_datapipe_quit(void);
  * This needs to be macro so that logging context stays
  * at the point of call.
  */
-#define mce_datapipe_req_display_state(state_) do {\
+#define mce_datapipe_request_display_state(state_) do {\
     display_state_t cur_target = datapipe_get_gint(display_state_next_pipe);\
     display_state_t req_target = (display_state_t)(state_);\
     /* Use elevated logginng verbosity for requests that \

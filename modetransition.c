@@ -129,7 +129,7 @@ static void system_state_trigger(gconstpointer data)
 		switch( old_system_state ) {
 		case MCE_SYSTEM_STATE_USER:
 		case MCE_SYSTEM_STATE_ACTDEAD:
-			mce_datapipe_req_display_state(MCE_DISPLAY_ON);
+			mce_datapipe_request_display_state(MCE_DISPLAY_ON);
 			break;
 
 		default:

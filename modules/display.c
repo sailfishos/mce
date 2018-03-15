@@ -1876,7 +1876,7 @@ static void mdy_datapipe_device_inactive_cb(gconstpointer data)
     case MCE_DISPLAY_DIM:
         /* DIM->ON on device activity */
         mce_log(LL_NOTICE, "display on due to activity");
-        mce_datapipe_req_display_state(MCE_DISPLAY_ON);
+        mce_datapipe_request_display_state(MCE_DISPLAY_ON);
         break;
 
     default:
@@ -3580,7 +3580,7 @@ static gboolean mdy_blanking_dim_cb(gpointer data)
     if( submode & MCE_SUBMODE_MALF )
         display = MCE_DISPLAY_OFF;
 
-    mce_datapipe_req_display_state(display);
+    mce_datapipe_request_display_state(display);
 
     return FALSE;
 }
@@ -3720,7 +3720,7 @@ static gboolean mdy_blanking_off_cb(gpointer data)
         break;
     }
 
-    mce_datapipe_req_display_state(next_state);
+    mce_datapipe_request_display_state(next_state);
 
     /* Remove wakelock unless the timer got re-programmed */
     if( !mdy_blanking_off_cb_id  )
@@ -3838,7 +3838,7 @@ static gboolean mdy_blanking_lpm_off_cb(gpointer data)
 
     mdy_blanking_lpm_off_cb_id = 0;
 
-    mce_datapipe_req_display_state(MCE_DISPLAY_LPM_OFF);
+    mce_datapipe_request_display_state(MCE_DISPLAY_LPM_OFF);
 
     return FALSE;
 }
@@ -4560,7 +4560,7 @@ static void mdy_blanking_rethink_proximity(void)
     switch( display_state_curr ) {
     case MCE_DISPLAY_LPM_ON:
         if( proximity_sensor_actual == COVER_CLOSED )
-            mce_datapipe_req_display_state(MCE_DISPLAY_LPM_OFF);
+            mce_datapipe_request_display_state(MCE_DISPLAY_LPM_OFF);
         else
             mdy_blanking_schedule_lpm_off();
         break;
@@ -4568,7 +4568,7 @@ static void mdy_blanking_rethink_proximity(void)
     case MCE_DISPLAY_LPM_OFF:
         if( proximity_sensor_actual == COVER_OPEN &&
             lid_sensor_filtered != COVER_CLOSED )
-            mce_datapipe_req_display_state(MCE_DISPLAY_LPM_ON);
+            mce_datapipe_request_display_state(MCE_DISPLAY_LPM_ON);
         else
             mdy_blanking_schedule_off();
         break;
@@ -8649,7 +8649,7 @@ static void mdy_dbus_handle_display_state_req(display_state_t state)
      * similar -> reset the last indication sent cache */
     mdy_dbus_invalidate_display_status();
 
-    mce_datapipe_req_display_state(state);
+    mce_datapipe_request_display_state(state);
 }
 
 /**
@@ -9502,7 +9502,7 @@ static void mdy_flagfiles_osupdate_running_cb(const char *path,
 
         if( mdy_osupdate_running ) {
             /* Issue display on request when update mode starts */
-            mce_datapipe_req_display_state(MCE_DISPLAY_ON);
+            mce_datapipe_request_display_state(MCE_DISPLAY_ON);
         }
 
         /* suspend policy is affected by update mode */
@@ -9799,13 +9799,13 @@ static void mdy_setting_cb(GConfClient *const gcc, const guint id,
             ((mdy_low_power_mode_supported == FALSE) ||
                 (mdy_use_low_power_mode == FALSE) ||
                 (mdy_blanking_can_blank_from_low_power_mode() == TRUE))) {
-            mce_datapipe_req_display_state(MCE_DISPLAY_OFF);
+            mce_datapipe_request_display_state(MCE_DISPLAY_OFF);
         }
         else if ((display_state_curr == MCE_DISPLAY_OFF) &&
                  (mdy_use_low_power_mode == TRUE) &&
                  (mdy_blanking_can_blank_from_low_power_mode() == FALSE) &&
                  (mdy_low_power_mode_supported == TRUE)) {
-            mce_datapipe_req_display_state(MCE_DISPLAY_LPM_ON);
+            mce_datapipe_request_display_state(MCE_DISPLAY_LPM_ON);
         }
     }
     else if (id == mdy_adaptive_dimming_enabled_setting_id) {
@@ -9855,7 +9855,7 @@ static void mdy_setting_cb(GConfClient *const gcc, const guint id,
         if( prev != mdy_disp_never_blank ) {
             mce_log(LL_NOTICE, "never_blank = %d", mdy_disp_never_blank);
             if( mdy_disp_never_blank )
-                mce_datapipe_req_display_state(MCE_DISPLAY_ON);
+                mce_datapipe_request_display_state(MCE_DISPLAY_ON);
             mdy_blanking_rethink_timers(true);
         }
     }
@@ -10570,7 +10570,7 @@ const gchar *g_module_check_init(GModule *module)
      * gets notification from DSME */
     mce_log(LL_INFO, "initial display mode = %s",
             display_is_on ? "ON" : "OFF");
-    mce_datapipe_req_display_state(display_is_on ?
+    mce_datapipe_request_display_state(display_is_on ?
                                    MCE_DISPLAY_ON :
                                    MCE_DISPLAY_OFF);
 
