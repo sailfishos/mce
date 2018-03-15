@@ -276,3 +276,15 @@ void mce_datapipe_quit(void);
 } while(0)
 
 #endif /* _DATAPIPE_H_ */
+
+/** Execute tklock request
+ *
+ * @param tklock_request Value from  tklock_request_t
+ */
+#define mce_datapipe_request_tklock(tklock_request) do {\
+    mce_log(LL_DEBUG, "Requesting tklock=%s",\
+	    tklock_request_repr(tklock_request));\
+    datapipe_exec_full(&tklock_request_pipe,\
+		       GINT_TO_POINTER(tklock_request),\
+		       USE_INDATA, CACHE_INDATA);\
+}while(0)

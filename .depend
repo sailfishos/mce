@@ -599,6 +599,7 @@ modules/camera.o:\
 	datapipe.h\
 	mce-conf.h\
 	mce-io.h\
+	mce-log.h\
 	mce.h\
 	tklock.h\
 	modules/camera.h\
@@ -608,6 +609,7 @@ modules/camera.pic.o:\
 	datapipe.h\
 	mce-conf.h\
 	mce-io.h\
+	mce-log.h\
 	mce.h\
 	tklock.h\
 	modules/camera.h\

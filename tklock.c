@@ -776,9 +776,7 @@ static void tklock_datapipe_osupdate_running_cb(gconstpointer data)
 
     if( osupdate_running ) {
         /* undo tklock when update mode starts */
-        datapipe_exec_full(&tklock_request_pipe,
-                           GINT_TO_POINTER(TKLOCK_REQUEST_OFF),
-                           USE_INDATA, CACHE_INDATA);
+        mce_datapipe_request_tklock(TKLOCK_REQUEST_OFF);
     }
 
 EXIT:
@@ -1569,10 +1567,7 @@ static void tklock_datapipe_lockkey_state_cb(gconstpointer const data)
          * The tklock requests get ignored in act dead
          * etc, so we can just blindly request it.
          */
-        datapipe_exec_full(&tklock_request_pipe,
-                           GINT_TO_POINTER(TKLOCK_REQUEST_ON),
-                           USE_INDATA, CACHE_INDATA);
-
+        mce_datapipe_request_tklock(TKLOCK_REQUEST_ON);
         mce_datapipe_req_display_state(MCE_DISPLAY_OFF);
         break;
 
@@ -2273,9 +2268,7 @@ static void tklock_autolock_on_devlock_trigger(void)
      */
 
     mce_log(LL_DEBUG, "autolock after devicelock: triggered");
-    datapipe_exec_full(&tklock_request_pipe,
-                       GINT_TO_POINTER(TKLOCK_REQUEST_ON),
-                       USE_INDATA, CACHE_INDATA);
+    mce_datapipe_request_tklock(TKLOCK_REQUEST_ON);
 EXIT:
     return;
 }
@@ -2850,9 +2843,7 @@ static void tklock_lidpolicy_rethink(void)
 
         if( tklock_lid_close_actions == LID_CLOSE_ACTION_TKLOCK ) {
             mce_log(LL_DEBUG, "lid closed - tklock");
-            datapipe_exec_full(&tklock_request_pipe,
-                               GINT_TO_POINTER(TKLOCK_REQUEST_ON),
-                               USE_INDATA, CACHE_INDATA);
+            mce_datapipe_request_tklock(TKLOCK_REQUEST_ON);
         }
         break;
 
@@ -2865,9 +2856,7 @@ static void tklock_lidpolicy_rethink(void)
 
         if( tklock_lid_open_actions == LID_OPEN_ACTION_TKUNLOCK ) {
             mce_log(LL_DEBUG, "lid open - untklock");
-            datapipe_exec_full(&tklock_request_pipe,
-                               GINT_TO_POINTER(TKLOCK_REQUEST_OFF),
-                               USE_INDATA, CACHE_INDATA);
+            mce_datapipe_request_tklock(TKLOCK_REQUEST_OFF);
         }
         break;
 
@@ -2928,9 +2917,7 @@ static void tklock_keyboard_slide_opened(void)
 
     if( tklock_kbd_open_actions == LID_OPEN_ACTION_TKUNLOCK ) {
         mce_log(LL_DEBUG, "kbd slide open - untklock");
-        datapipe_exec_full(&tklock_request_pipe,
-                           GINT_TO_POINTER(TKLOCK_REQUEST_OFF),
-                           USE_INDATA, CACHE_INDATA);
+        mce_datapipe_request_tklock(TKLOCK_REQUEST_OFF);
     }
 
     /* Mark down we unblanked due to keyboard open */
@@ -2973,9 +2960,7 @@ static void tklock_keyboard_slide_closed(void)
 
     if( tklock_kbd_close_actions == LID_CLOSE_ACTION_TKLOCK ) {
         mce_log(LL_DEBUG, "kbd slide closed - tklock");
-        datapipe_exec_full(&tklock_request_pipe,
-                           GINT_TO_POINTER(TKLOCK_REQUEST_ON),
-                           USE_INDATA, CACHE_INDATA);
+        mce_datapipe_request_tklock(TKLOCK_REQUEST_ON);
     }
 
 EXIT:
@@ -3642,9 +3627,7 @@ static void tklock_uiexception_finish(void)
     /* then flip the tklock  back on? Note that we
      * we do not unlock no matter what. */
     if( exx.tklock ) {
-        datapipe_exec_full(&tklock_request_pipe,
-                           GINT_TO_POINTER(TKLOCK_REQUEST_ON),
-                           USE_INDATA, CACHE_INDATA);
+        mce_datapipe_request_tklock(TKLOCK_REQUEST_ON);
     }
 
     /* and finally the display data pipe */
@@ -3835,9 +3818,7 @@ static void tklock_lpmui_set_state(bool enable)
          * display modes, the dbus signaling happens after some
          * delay.
          */
-        datapipe_exec_full(&tklock_request_pipe,
-                           GINT_TO_POINTER(TKLOCK_REQUEST_ON),
-                           USE_INDATA, CACHE_INDATA);
+        mce_datapipe_request_tklock(TKLOCK_REQUEST_ON);
     }
     else {
         /* Do delayed signaling in sync with possible tklock

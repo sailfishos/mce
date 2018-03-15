@@ -8734,9 +8734,7 @@ static gboolean mdy_dbus_handle_display_off_req(DBusMessage *const msg)
     if( !dbus_message_get_no_reply(msg) )
         dbus_send_message(dbus_new_method_reply(msg));
 
-    datapipe_exec_full(&tklock_request_pipe,
-                       GINT_TO_POINTER(TKLOCK_REQUEST_ON),
-                       USE_INDATA, CACHE_INDATA);
+    mce_datapipe_request_tklock(TKLOCK_REQUEST_ON);
 
     mdy_dbus_handle_display_state_req(MCE_DISPLAY_OFF);
 
@@ -8795,9 +8793,7 @@ EXIT:
     }
 
     if( lock_ui ) {
-        datapipe_exec_full(&tklock_request_pipe,
-                           GINT_TO_POINTER(TKLOCK_REQUEST_ON),
-                           USE_INDATA, CACHE_INDATA);
+        mce_datapipe_request_tklock(TKLOCK_REQUEST_ON);
     }
 
     mdy_dbus_handle_display_state_req(request);

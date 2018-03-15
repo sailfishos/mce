@@ -764,10 +764,7 @@ static void
 pwrkey_action_tklock(void)
 {
     tklock_request_t request = TKLOCK_REQUEST_ON;
-    mce_log(LL_DEBUG, "Requesting tklock=%s", tklock_request_repr(request));
-    datapipe_exec_full(&tklock_request_pipe,
-                       GINT_TO_POINTER(request),
-                       USE_INDATA, CACHE_INDATA);
+    mce_datapipe_request_tklock(request);
 }
 
 static void
@@ -794,10 +791,7 @@ pwrkey_action_tkunlock(void)
         goto EXIT;
     }
 
-    mce_log(LL_DEBUG, "Requesting tklock=%s", tklock_request_repr(request));
-    datapipe_exec_full(&tklock_request_pipe,
-                       GINT_TO_POINTER(request),
-                       USE_INDATA, CACHE_INDATA);
+    mce_datapipe_request_tklock(request);
 EXIT:
     return;
 }

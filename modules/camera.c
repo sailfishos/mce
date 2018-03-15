@@ -21,6 +21,7 @@
 
 #include "camera.h"
 
+#include "../mce-log.h"
 #include "../mce-io.h"
 #include "../mce-conf.h"
 #include "../tklock.h"
@@ -132,9 +133,7 @@ static gboolean camera_popout_state_iomon_input_cb(mce_io_mon_t *iomon, gpointer
 	if (!strncmp(data, MCE_CAMERA_POPPED_OUT,
 		     strlen(MCE_CAMERA_POPPED_OUT))) {
 		/* Request delayed unlock of touchscreen/keypad lock */
-		datapipe_exec_full(&tklock_request_pipe,
-				   GINT_TO_POINTER(TKLOCK_REQUEST_OFF_DELAYED),
-				   USE_INDATA, CACHE_INDATA);
+		mce_datapipe_request_tklock(TKLOCK_REQUEST_OFF_DELAYED);
 	}
 
 EXIT:
