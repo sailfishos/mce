@@ -25,6 +25,7 @@
 #include "../mce-log.h"
 #include "../mce-io.h"
 #include "../mce-lib.h"
+#include "../mce-dbus.h"
 #include "../mce-fbdev.h"
 #include "../mce-conf.h"
 #include "../mce-setting.h"
@@ -349,6 +350,19 @@ typedef enum
     FADER_NUMOF
 } fader_type_t;
 
+/* ------------------------------------------------------------------------- *
+ * BLANKING_PAUSE_CLIENT
+ * ------------------------------------------------------------------------- */
+
+typedef struct bpclient_t bpclient_t;
+
+struct bpclient_t
+{
+    char    *bpc_name;
+    pid_t    bpc_pid;
+    int64_t  bpc_tmo;
+};
+
 /* ========================================================================= *
  * PROTOTYPES
  * ========================================================================= */
@@ -479,6 +493,16 @@ static void                mdy_poweron_led_rethink_cancel(void);
 static void                mdy_poweron_led_rethink_schedule(void);
 
 /* ------------------------------------------------------------------------- *
+ * BLANKING_PAUSE_CLIENT
+ * ------------------------------------------------------------------------- */
+
+void        bpclient_update_pid_cb (const peerinfo_t *peerinfo, gpointer userdata);
+void        bpclient_update_timeout(bpclient_t *self);
+bpclient_t *bpclient_create        (const char *name);
+void        bpclient_delete        (bpclient_t *self);
+void        bpclient_delete_cb     (void *self);
+
+/* ------------------------------------------------------------------------- *
  * AUTOMATIC_BLANKING
  * ------------------------------------------------------------------------- */
 
@@ -522,16 +546,19 @@ static void                mdy_blanking_schedule_lpm_off(void);
 static void                mdy_blanking_pause_evaluate_allowed(void);
 static gboolean            mdy_blanking_pause_period_cb(gpointer data);
 static void                mdy_blanking_stop_pause_period(void);
-static void                mdy_blanking_start_pause_period(void);
+static void                mdy_blanking_start_pause_period(int duration);
+
+static void                mdy_blanking_init_pause_client_tracking(void);
+static void                mdy_blanking_quit_pause_client_tracking(void);
 
 static bool                mdy_blanking_is_paused(void);
 static bool                mdy_blanking_pause_can_dim(void);
 static bool                mdy_blanking_pause_is_allowed(void);
 
-static void                mdy_blanking_add_pause_client(const gchar *name);
-static gboolean            mdy_blanking_remove_pause_client(const gchar *name);
+static void                mdy_blanking_add_pause_client(const char *name);
+static void                mdy_blanking_remove_pause_client(const char *name);
 static void                mdy_blanking_remove_pause_clients(void);
-static gboolean            mdy_blanking_pause_client_lost_cb(DBusMessage *const msg);
+static void                mdy_blanking_evaluate_pause_timeout(void);
 
 // adaptive dimming period: dimming timeouts get longer on ON->DIM->ON transitions
 
@@ -885,6 +912,9 @@ G_MODULE_EXPORT void         g_module_unload(GModule *module);
  * VARIABLES
  * ========================================================================= */
 
+/** Display blank prevention timer */
+static gint mdy_blank_prevent_timeout = BLANK_PREVENT_TIMEOUT;
+
 /* ------------------------------------------------------------------------- *
  * MODULE_LOAD_UNLOAD
  * ------------------------------------------------------------------------- */
@@ -926,11 +956,118 @@ static bool mdy_shutdown_in_progress(void)
 }
 
 /* ------------------------------------------------------------------------- *
- * AUTOMATIC_BLANKING
+ * BLANKING_PAUSE_CLIENT
  * ------------------------------------------------------------------------- */
 
-/** Display blank prevention timer */
-static gint mdy_blank_prevent_timeout = BLANK_PREVENT_TIMEOUT;
+/** Callback for handling blanking pause client state change notifications
+ *
+ * @param peerinfo  peerinfo_t object holding currently known peer details
+ * @param userdata  bpclient_t object as void pointer
+ */
+void
+bpclient_update_pid_cb(const peerinfo_t *peerinfo, gpointer userdata)
+{
+    bpclient_t  *self  = userdata;
+    peerstate_t  state = peerinfo_get_state(peerinfo);
+    pid_t        pid   = peerinfo_get_owner_pid(peerinfo);
+
+    mce_log(LL_DEBUG, "client %s @%s pid=%d", self->bpc_name,
+            peerstate_repr(state), (int)pid);
+
+    switch( state ) {
+    case PEERSTATE_STALE:
+    case PEERSTATE_STOPPED:
+    case PEERSTATE_DELETED:
+        mdy_blanking_remove_pause_client(self->bpc_name), self = 0;
+        goto EXIT;
+    default:
+        break;
+    }
+
+    if( self->bpc_pid != pid ) {
+        self->bpc_pid = pid;
+        mdy_blanking_evaluate_pause_timeout();
+    }
+EXIT:
+    return;
+}
+
+/** Renew timeout for blanking pause client
+ *
+ * @param self  bpclient_t object
+ */
+void
+bpclient_update_timeout(bpclient_t *self)
+{
+    mce_log(LL_DEBUG, "client %s renewed", self->bpc_name);
+
+    int64_t tmo = (mce_lib_get_boot_tick() +
+                   mdy_blank_prevent_timeout * 1000);
+
+    if( self->bpc_tmo != tmo ) {
+        self->bpc_tmo = tmo;
+        mdy_blanking_evaluate_pause_timeout();
+    }
+}
+
+/** Create object for holding blanking pause client state
+ *
+ * @param name  D-Bus name of the client
+ */
+bpclient_t *
+bpclient_create(const char *name)
+{
+    bpclient_t *self = calloc(1, sizeof *self);
+
+    self->bpc_name = strdup(name);
+    self->bpc_pid  = -1;
+    self->bpc_tmo  = 0;
+
+    mce_log(LL_DEBUG, "client %s added", self->bpc_name);
+
+    mce_dbus_name_tracker_add(self->bpc_name,
+                              bpclient_update_pid_cb,
+                              self, 0);
+
+    return self;
+}
+
+/** Delete object for holding blanking pause client state
+ *
+ * @param self  bpclient_t object
+ */
+void
+bpclient_delete(bpclient_t *self)
+{
+    if( !self )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "client %s removed", self->bpc_name);
+
+    mce_dbus_name_tracker_remove(self->bpc_name,
+                                 bpclient_update_pid_cb,
+                                 self);
+
+    free(self->bpc_name), self->bpc_name = 0;
+    free(self);
+
+EXIT:
+    return;
+}
+
+/** Type agnostic callback for deleting blanking pause client objects
+ *
+ * @param self  bpclient_t object
+ */
+void
+bpclient_delete_cb(void *self)
+{
+    bpclient_delete(self);
+}
+
+/* ------------------------------------------------------------------------- *
+ * AUTOMATIC_BLANKING
+ * ------------------------------------------------------------------------- */
 
 /** File used to enable low power mode */
 static gchar *mdy_low_power_mode_file = NULL;
@@ -3995,6 +4132,7 @@ static gboolean mdy_blanking_pause_period_cb(gpointer data)
         mdy_blanking_remove_pause_clients();
 
         mdy_dbus_send_blanking_pause_status(0);
+        mdy_blanking_rethink_timers(true);
     }
 
     return FALSE;
@@ -4011,31 +4149,49 @@ static void mdy_blanking_stop_pause_period(void)
             mdy_blanking_pause_period_cb_id = 0;
 
         mdy_dbus_send_blanking_pause_status(0);
+        mdy_blanking_rethink_timers(true);
     }
 }
 
 /**
  * Prevent screen blanking for display_timeout seconds
  */
-static void mdy_blanking_start_pause_period(void)
+static void mdy_blanking_start_pause_period(int duration)
 {
+    bool was_paused = (mdy_blanking_pause_period_cb_id != 0);
+
     /* Cancel existing timeout */
     if( mdy_blanking_pause_period_cb_id )
         g_source_remove(mdy_blanking_pause_period_cb_id);
 
     /* Setup new timeout */
     mdy_blanking_pause_period_cb_id =
-        g_timeout_add_seconds(mdy_blank_prevent_timeout,
-                              mdy_blanking_pause_period_cb, NULL);
+        g_timeout_add(duration, mdy_blanking_pause_period_cb, 0);
 
-    mce_log(LL_DEBUG, "BLANKING PAUSE started; period = %d",
-            mdy_blank_prevent_timeout);
+    mce_log(LL_DEBUG, "BLANKING PAUSE started; period = %d", duration);
 
-    mdy_dbus_send_blanking_pause_status(0);
+    if( !was_paused ) {
+        mdy_dbus_send_blanking_pause_status(0);
+        mdy_blanking_rethink_timers(true);
+    }
 }
 
 /** List of monitored blanking pause clients */
-static GSList *mdy_blanking_pause_clients = NULL;
+static GHashTable *bpclient_lut = 0;
+
+static void
+mdy_blanking_init_pause_client_tracking(void)
+{
+    bpclient_lut = g_hash_table_new_full(g_str_hash, g_str_equal,
+                                         g_free, bpclient_delete_cb);
+}
+
+static void
+mdy_blanking_quit_pause_client_tracking(void)
+{
+    if( bpclient_lut )
+        g_hash_table_unref(bpclient_lut), bpclient_lut = 0;
+}
 
 /** Blanking pause is active predicate
  *
@@ -4069,10 +4225,9 @@ static bool mdy_blanking_pause_is_allowed(void)
  *
  * @param name The private the D-Bus name of the client
  */
-static void mdy_blanking_add_pause_client(const gchar *name)
+void
+mdy_blanking_add_pause_client(const char *name)
 {
-    gssize rc = -1;
-
     if( !name )
         goto EXIT;
 
@@ -4081,17 +4236,17 @@ static void mdy_blanking_add_pause_client(const gchar *name)
         goto EXIT;
     }
 
-    rc = mce_dbus_owner_monitor_add(name,
-                                    mdy_blanking_pause_client_lost_cb,
-                                    &mdy_blanking_pause_clients,
-                                    BLANKING_PAUSE_MAX_MONITORED);
-    if( rc < 0 ) {
-        mce_log(LL_WARN, "Failed to add name owner monitor for `%s'", name);
+    if( !bpclient_lut )
         goto EXIT;
+
+    bpclient_t *client = g_hash_table_lookup(bpclient_lut, name);
+
+    if( !client ) {
+        client = bpclient_create(name);
+        g_hash_table_replace(bpclient_lut, g_strdup(name), client);
     }
 
-    mdy_blanking_start_pause_period();
-    mdy_blanking_rethink_timers(true);
+    bpclient_update_timeout(client);
 
 EXIT:
     return;
@@ -4103,84 +4258,95 @@ EXIT:
  *
  * @return TRUE on success, FALSE if name is NULL
  */
-static gboolean mdy_blanking_remove_pause_client(const gchar *name)
+static void
+mdy_blanking_remove_pause_client(const char *name)
 {
-    gssize rc = -1;
+    if( !bpclient_lut )
+        goto EXIT;
 
     if( !name )
         goto EXIT;
 
-    rc = mce_dbus_owner_monitor_remove(name, &mdy_blanking_pause_clients);
+    bpclient_t *client = g_hash_table_lookup(bpclient_lut, name);
 
-    if( rc < 0 ) {
-        // name was not monitored
+    if( !client )
         goto EXIT;
-    }
 
-    if( rc == 0 ) {
-        /* no names left, remove the timeout */
-        mdy_blanking_stop_pause_period();
-        mdy_blanking_rethink_timers(true);
-    }
+    g_hash_table_remove(bpclient_lut, name);
+
+    mdy_blanking_evaluate_pause_timeout();
 
 EXIT:
-    return (rc != -1);
+    return;
 }
 
 /** Remove all clients, stop blanking pause */
 static void mdy_blanking_remove_pause_clients(void)
 {
-    /* If there are clients to remove or blanking pause timer to stop,
-     * we need to re-evaluate need for dimming timer before returning */
-    bool rethink = (mdy_blanking_pause_clients || mdy_blanking_is_paused());
-
-    /* Remove all name monitors for the blanking pause requester */
-    mce_dbus_owner_monitor_remove_all(&mdy_blanking_pause_clients);
-
-    /* Stop blank prevent timer */
-    mdy_blanking_stop_pause_period();
-
-    if( rethink )
-        mdy_blanking_rethink_timers(true);
+    g_hash_table_remove_all(bpclient_lut);
+    mdy_blanking_evaluate_pause_timeout();
 }
 
-/** Handle blanking pause clients dropping from dbus
- *
- * D-Bus callback used for monitoring the process that requested
- * blanking prevention; if that process exits, immediately
- * cancel the blanking timeout and resume normal operation
- *
- * @param msg The D-Bus message
- *
- * @return TRUE on success, FALSE on failure
- */
-static gboolean mdy_blanking_pause_client_lost_cb(DBusMessage *const msg)
+void
+mdy_blanking_evaluate_pause_timeout(void)
 {
-    gboolean    status     = FALSE;
-    const char *dbus_name  = 0;
-    const char *prev_owner = 0;
-    const char *curr_owner = 0;
-    DBusError   error      = DBUS_ERROR_INIT;
-
-    if( !dbus_message_get_args(msg, &error,
-                               DBUS_TYPE_STRING, &dbus_name,
-                               DBUS_TYPE_STRING, &prev_owner,
-                               DBUS_TYPE_STRING, &curr_owner,
-                               DBUS_TYPE_INVALID) ) {
-        mce_log(LL_ERR, "Failed to get argument from %s.%s; %s",
-                "org.freedesktop.DBus", "NameOwnerChanged",
-                error.message);
+    if( !bpclient_lut )
         goto EXIT;
+
+    int64_t now = mce_lib_get_boot_tick();
+    int64_t tmo = 0;
+    int     dur = 0;
+
+    GSList *stale = 0;
+
+    GHashTableIter iter;
+    gpointer key, value;
+
+    g_hash_table_iter_init(&iter, bpclient_lut);
+    while( g_hash_table_iter_next (&iter, &key, &value) )
+    {
+        const char *name   = key;
+        bpclient_t *client = value;
+
+        if( client->bpc_tmo <= now ) {
+            mce_log(LL_DEBUG, "client %s is stale", name);
+            stale = g_slist_prepend(stale, (gpointer)name);
+            continue;
+        }
+        if( client->bpc_pid == -1 ) {
+            mce_log(LL_DEBUG, "client %s is not identified", name);
+            continue;
+        }
+        if( (submode & MCE_SUBMODE_TKLOCK) &&
+            client->bpc_pid != topmost_window_pid ) {
+            mce_log(LL_DEBUG, "tklocked and client %s is not topmost", name);
+            continue;
+        }
+
+        mce_log(LL_DEBUG, "client %s is holding blanking pause", name);
+        if( tmo < client->bpc_tmo )
+            tmo = client->bpc_tmo;
     }
 
-    mce_log(LL_DEBUG, "blanking pause client %s lost", dbus_name);
+    while( stale ) {
+        const char *name = stale->data;
+        g_hash_table_remove(bpclient_lut, name);
+        stale = g_slist_remove(stale, name);
+    }
 
-    mdy_blanking_remove_pause_client(dbus_name);
-    status = TRUE;
+    if( tmo > now )
+        dur = (int)(tmo - now);
 
 EXIT:
-    dbus_error_free(&error);
-    return status;
+
+    mce_log(LL_DEBUG, "blanking paused for %d ms", dur);
+
+    if( dur > 0 )
+        mdy_blanking_start_pause_period(dur);
+    else
+        mdy_blanking_stop_pause_period();
+
+    return;
 }
 
 // PERIOD: ADAPTIVE DIMMING
@@ -10704,6 +10870,8 @@ const gchar *g_module_check_init(GModule *module)
 
     (void)module;
 
+    mdy_blanking_init_pause_client_tracking();
+
     mdy_compositor_init();
 
     /* Allow execution of worker thread jobs from this plugin */
@@ -10804,6 +10972,8 @@ void g_module_unload(GModule *module)
 
     /* Mark down that we are unloading */
     mdy_unloading_module = TRUE;
+
+    mdy_blanking_quit_pause_client_tracking();
 
     /* Deny execution of worker thread jobs from this plugin */
     mce_worker_rem_context(MODULE_NAME);
