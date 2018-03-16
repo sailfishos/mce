@@ -519,6 +519,7 @@ static void                mdy_blanking_schedule_lpm_off(void);
 
 // blanking pause period: inhibit automatic ON -> DIM transitions
 
+static void                mdy_blanking_pause_evaluate_allowed(void);
 static gboolean            mdy_blanking_pause_period_cb(gpointer data);
 static void                mdy_blanking_stop_pause_period(void);
 static void                mdy_blanking_start_pause_period(void);
@@ -1297,6 +1298,8 @@ static void mdy_datapipe_submode_cb(gconstpointer data)
     mce_log(LL_DEBUG, "submode = %s",
             submode_change_repr(prev, submode));
 
+    mdy_blanking_pause_evaluate_allowed();
+
     /* Rethink dim/blank timers if tklock state changed */
     if( (prev ^ submode) & MCE_SUBMODE_TKLOCK )
         mdy_blanking_rethink_timers(false);
@@ -1331,6 +1334,7 @@ static void mdy_datapipe_interaction_expected_cb(gconstpointer data)
     mce_log(LL_DEBUG, "interaction_expected: %d -> %d",
             prev, interaction_expected);
 
+    mdy_blanking_pause_evaluate_allowed();
     mdy_blanking_rethink_timers(false);
 
 EXIT:
@@ -1505,6 +1509,7 @@ static void mdy_datapipe_display_state_curr_cb(gconstpointer data)
         goto EXIT;
 
     mdy_statistics_update();
+    mdy_blanking_pause_evaluate_allowed();
     mdy_blanking_inhibit_schedule_broadcast();
 
 EXIT:
@@ -1533,6 +1538,7 @@ static void mdy_datapipe_display_state_next_cb(gconstpointer data)
     mdy_blanking_rethink_afterboot_delay();
 
     mdy_dbus_send_display_status(0);
+    mdy_blanking_pause_evaluate_allowed();
 
 EXIT:
     return;
@@ -3892,6 +3898,80 @@ EXIT:
 
 // PERIOD: BLANKING PAUSE
 
+/** Cached blanking pause is allowed -policy decision */
+static tristate_t blanking_pause_allowed = TRISTATE_UNKNOWN;
+
+/** Evaluate whether clients are allowed to pause blanking
+ *
+ * Check whether device in such a state where clients are
+ * allowed to pause display blanking.
+ */
+static void mdy_blanking_pause_evaluate_allowed(void)
+{
+    tristate_t allowed = TRISTATE_FALSE;
+
+    /* Feature must not be disabled in config */
+    if( !mdy_blanking_pause_is_allowed() )
+        goto DONE;
+
+    /* Display must be currently on */
+    switch( display_state_curr ) {
+    case MCE_DISPLAY_ON:
+        // always allowed
+        break;
+
+    case MCE_DISPLAY_DIM:
+        // optionally allowed
+        if( mdy_blanking_pause_can_dim() )
+            break;
+        // fall through
+
+    default:
+        goto DONE;
+    }
+
+    /* Only ON <--> DIM transitions are tolerated */
+    switch( display_state_next ) {
+    case MCE_DISPLAY_ON:
+        // always allowed
+        break;
+
+    case MCE_DISPLAY_DIM:
+        // optionally allowed
+        if( mdy_blanking_pause_can_dim() )
+            break;
+        // fall through
+
+    default:
+        goto DONE;
+    }
+
+    /* Tklock must be off ...
+     *
+     * ... unless lockscreen expects user interaction
+     * and there is some application on top of lockscreen
+     */
+    if( submode & MCE_SUBMODE_TKLOCK ) {
+        if( !interaction_expected )
+            goto DONE;
+        if( mdy_topmost_window_pid == -1 )
+            goto DONE;
+    }
+
+    allowed = TRISTATE_TRUE;
+
+DONE:
+    if( blanking_pause_allowed != allowed ) {
+        mce_log(LL_DEBUG, "blanking_pause_allowed: %s -> %s",
+                tristate_repr(blanking_pause_allowed),
+                tristate_repr(allowed));
+        blanking_pause_allowed = allowed;
+
+        if( blanking_pause_allowed != TRISTATE_TRUE )
+            mdy_blanking_remove_pause_clients();
+    }
+}
+
 /** ID for display blank prevention timer source */
 static guint mdy_blanking_pause_period_cb_id = 0;
 
@@ -3993,35 +4073,8 @@ static void mdy_blanking_add_pause_client(const gchar *name)
     if( !name )
         goto EXIT;
 
-    // check if the feature is disabled
-    if( !mdy_blanking_pause_is_allowed() ) {
-        mce_log(LL_DEBUG, "blanking pause request from`%s ignored';"
-                " feature is disabled", name);
-        goto EXIT;
-    }
-
-    // display must be on
-    switch( display_state_curr ) {
-    case MCE_DISPLAY_ON:
-        // always allowed
-        break;
-
-    case MCE_DISPLAY_DIM:
-        // optionally allowed
-        if( mdy_blanking_pause_can_dim() )
-            break;
-        // fall through
-
-    default:
-        mce_log(LL_WARN, "blanking pause request from`%s ignored';"
-                " display not on", name);
-        goto EXIT;
-    }
-
-    // and tklock off
-    if( submode & MCE_SUBMODE_TKLOCK ) {
-        mce_log(LL_WARN, "blanking pause request from`%s ignored';"
-                " tklock on", name);
+    if( blanking_pause_allowed != TRISTATE_TRUE ) {
+        mce_log(LL_DEBUG, "blanking pause request from`%s ignored", name);
         goto EXIT;
     }
 
@@ -5303,6 +5356,8 @@ mdy_topmost_window_set_pid(int pid)
     mce_log(LL_DEBUG, "mdy_topmost_window_pid: %d -> %d",
             mdy_topmost_window_pid, pid);
     mdy_topmost_window_pid = pid;
+
+    mdy_blanking_pause_evaluate_allowed();
 
     datapipe_exec_full(&topmost_window_pid_pipe,
                        GINT_TO_POINTER(mdy_topmost_window_pid),
@@ -6920,21 +6975,6 @@ EXIT:
  */
 static void mdy_display_state_changed(void)
 {
-    /* Disable blanking pause if display != ON */
-    switch( display_state_curr ) {
-    case MCE_DISPLAY_ON:
-        break;
-
-    case MCE_DISPLAY_DIM:
-        if( mdy_blanking_is_paused() && mdy_blanking_pause_can_dim() )
-            break;
-        // fall through
-
-    default:
-        mdy_blanking_remove_pause_clients();
-        break;
-    }
-
     /* Program dim/blank timers */
     mdy_blanking_rethink_timers(false);
 
@@ -10077,24 +10117,7 @@ static void mdy_setting_cb(GConfClient *const gcc, const guint id,
         mce_log(LL_NOTICE, "blanking pause mode = %s",
                 blanking_pause_mode_repr(mdy_blanking_pause_mode));
 
-        if( mdy_blanking_pause_mode == old ) {
-            /* nop */
-        }
-        else if( mdy_blanking_pause_is_allowed() ) {
-            /* Reprogram dim timer as needed when toggling between
-             * keep-on and allow-dimming modes.
-             *
-             * Note that re-enabling after disable means that active
-             * client side renew sessions are out of sync and hiccups
-             * can occur (i.e. display can blank once after enabling).
-             */
-            mdy_blanking_rethink_timers(true);
-        }
-        else {
-            /* Flush any active sessions there might be and reprogram
-             * display off timer as needed. */
-            mdy_blanking_remove_pause_clients();
-        }
+        mdy_blanking_pause_evaluate_allowed();
     }
     else if( id == mdy_blanking_from_tklock_disabled_setting_id ) {
         gint old = mdy_blanking_from_tklock_disabled;
