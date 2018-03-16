@@ -21,10 +21,14 @@
  * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "inactivity.h"
+
 #include "../mce.h"
 #include "../mce-log.h"
 #include "../mce-dbus.h"
+#include "../mce-dsme.h"
 #include "../mce-hbtimer.h"
+#include "../mce-setting.h"
 
 #ifdef ENABLE_WAKELOCKS
 # include "../libwakelock.h"
@@ -105,6 +109,7 @@ static void          mia_action_delete (mia_action_t *self);
  * DATAPIPE_TRACKING
  * ------------------------------------------------------------------------- */
 
+static bool     mia_activity_allowed                 (void);
 static void     mia_datapipe_inactivity_event_cb     (gconstpointer data);
 static void     mia_datapipe_device_inactive_cb      (gconstpointer data);
 static void     mia_datapipe_proximity_sensor_actual_cb(gconstpointer data);
@@ -115,6 +120,9 @@ static void     mia_datapipe_call_state_cb           (gconstpointer data);
 static void     mia_datapipe_system_state_cb         (gconstpointer data);
 static void     mia_datapipe_display_state_next_cb   (gconstpointer data);
 static void     mia_datapipe_interaction_expected_cb (gconstpointer data);
+static void     mia_datapipe_charger_state_cb        (gconstpointer data);
+static void     mia_datapipe_init_done_cb            (gconstpointer data);
+static void     mia_datapipe_osupdate_running_cb     (gconstpointer data);
 
 static void     mia_datapipe_check_initial_state     (void);
 
@@ -167,6 +175,27 @@ static void     mia_timer_init  (void);
 static void     mia_timer_quit  (void);
 
 /* ------------------------------------------------------------------------- *
+ * SHUTDOWN_TIMER
+ * ------------------------------------------------------------------------- */
+
+static gboolean mia_shutdown_timer_cb       (gpointer aptr);
+static void     mia_shutdown_timer_stop     (void);
+static void     mia_shutdown_timer_start    (void);
+static bool     mia_shutdown_timer_wanted   (void);
+static void     mia_shutdown_timer_rethink  (void);
+static void     mia_shutdown_timer_restart  (void);
+static void     mia_shutdown_timer_init     (void);
+static void     mia_shutdown_timer_quit     (void);
+
+/* ------------------------------------------------------------------------- *
+ * SETTING_TRACKING
+ * ------------------------------------------------------------------------- */
+
+static void     mia_setting_changed_cb      (GConfClient *gcc, guint id, GConfEntry *entry, gpointer data);
+static void     mia_setting_init            (void);
+static void     mia_setting_quit            (void);
+
+/* ------------------------------------------------------------------------- *
  * MODULE_LOAD_UNLOAD
  * ------------------------------------------------------------------------- */
 
@@ -185,6 +214,12 @@ static GSList *activity_action_owners = NULL;
 
 /** Heartbeat timer for inactivity timeout */
 static mce_hbtimer_t *inactivity_timer_hnd = 0;
+
+/** Heartbeat timer for idle shutdown */
+static mce_hbtimer_t *shutdown_timer_hnd = 0;
+
+/** Flag for: Idle shutdown already triggered */
+static bool shutdown_timer_triggered = false;
 
 /** Cached device inactivity state
  *
@@ -216,6 +251,19 @@ static cover_state_t proximity_sensor_actual = COVER_UNDEF;
 
 /** Cached Interaction expected state */
 static bool interaction_expected = false;
+
+/** Cached charger state; assume unknown */
+static charger_state_t charger_state = CHARGER_STATE_UNDEF;
+
+/** Cached init_done state; assume unknown */
+static tristate_t init_done = TRISTATE_UNKNOWN;
+
+/** Update mode is active; assume false */
+static bool osupdate_running = false;
+
+/** Setting for automatick shutdown delay after inactivity */
+static gint    mia_shutdown_delay = MCE_DEFAULT_INACTIVITY_SHUTDOWN_DELAY;
+static guint   mia_shutdown_delay_setting_id = 0;
 
 /* ========================================================================= *
  * HELPER_FUNCTIONS
@@ -419,6 +467,8 @@ static void mia_datapipe_device_inactive_cb(gconstpointer data)
         /* React to activity */
         if( !device_inactive )
             mia_activity_action_execute_all();
+
+        mia_shutdown_timer_rethink();
     }
 
     /* Restart/stop timer */
@@ -557,6 +607,8 @@ static void mia_datapipe_system_state_cb(gconstpointer data)
     if( prev == MCE_SYSTEM_STATE_UNDEF )
         mia_datapipe_check_initial_state();
 
+    mia_shutdown_timer_rethink();
+
 EXIT:
     return;
 }
@@ -605,6 +657,64 @@ static void mia_datapipe_interaction_expected_cb(gconstpointer data)
         mce_log(LL_DEBUG, "interaction expected; generate activity");
         mia_generate_activity();
     }
+
+EXIT:
+    return;
+}
+
+/** Change notifications for charger_state
+ */
+static void mia_datapipe_charger_state_cb(gconstpointer data)
+{
+    charger_state_t prev = charger_state;
+    charger_state = GPOINTER_TO_INT(data);
+
+    if( charger_state == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "charger_state = %s -> %s",
+            charger_state_repr(prev),
+            charger_state_repr(charger_state));
+
+    mia_shutdown_timer_rethink();
+
+EXIT:
+    return;
+}
+
+/** Change notifications for init_done
+ */
+static void mia_datapipe_init_done_cb(gconstpointer data)
+{
+    tristate_t prev = init_done;
+    init_done = GPOINTER_TO_INT(data);
+
+    if( init_done == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "init_done = %s -> %s",
+            tristate_repr(prev),
+            tristate_repr(init_done));
+
+    mia_shutdown_timer_rethink();
+
+EXIT:
+    return;
+}
+
+/** Change notifications for osupdate_running
+ */
+static void mia_datapipe_osupdate_running_cb(gconstpointer data)
+{
+    bool prev = osupdate_running;
+    osupdate_running = GPOINTER_TO_INT(data);
+
+    if( osupdate_running == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "osupdate_running = %d -> %d", prev, osupdate_running);
+
+    mia_shutdown_timer_rethink();
 
 EXIT:
     return;
@@ -701,6 +811,18 @@ static datapipe_handler_t mia_datapipe_handlers[] =
     {
         .datapipe  = &interaction_expected_pipe,
         .output_cb = mia_datapipe_interaction_expected_cb,
+    },
+    {
+        .datapipe  = &charger_state_pipe,
+        .output_cb = mia_datapipe_charger_state_cb,
+    },
+    {
+        .datapipe  = &init_done_pipe,
+        .output_cb = mia_datapipe_init_done_cb,
+    },
+    {
+        .datapipe  = &osupdate_running_pipe,
+        .output_cb = mia_datapipe_osupdate_running_cb,
     },
     // sentinel
     {
@@ -1218,6 +1340,208 @@ mia_timer_quit(void)
 }
 
 /* ========================================================================= *
+ * SHUTDOWN_TIMER
+ * ========================================================================= */
+
+/** Timer callback for starting inactivity shutdown
+ *
+ * @param aptr  (unused) User data pointer
+ *
+ * @return TRUE to restart timer, or FALSE to stop it
+ */
+static gboolean
+mia_shutdown_timer_cb(gpointer aptr)
+{
+    (void)aptr;
+
+    mce_log(LL_WARN, "shutdown timer triggered");
+
+    shutdown_timer_triggered = true;
+    mce_dsme_request_normal_shutdown();
+
+    return FALSE;
+}
+
+/** Cancel inactivity shutdown timeout
+ */
+static void
+mia_shutdown_timer_stop(void)
+{
+    if( !mce_hbtimer_is_active(shutdown_timer_hnd) )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "shutdown timer stopped");
+    mce_hbtimer_stop(shutdown_timer_hnd);
+
+EXIT:
+    shutdown_timer_triggered = false;
+    return;
+}
+
+/** Schedule inactivity shutdown timeout
+ */
+static void
+mia_shutdown_timer_start(void)
+{
+    if( mce_hbtimer_is_active(shutdown_timer_hnd) )
+        goto EXIT;
+
+    if( shutdown_timer_triggered ) {
+        mce_log(LL_DEBUG, "shutdown timer already triggered");
+        goto EXIT;
+    }
+
+    if( mia_shutdown_delay < MCE_MINIMUM_INACTIVITY_SHUTDOWN_DELAY ) {
+        mce_log(LL_DEBUG, "shutdown timer is disabled in config");
+        goto EXIT;
+    }
+
+    mce_log(LL_DEBUG, "shutdown timer started (trigger in %d seconds)",
+            mia_shutdown_delay);
+    mce_hbtimer_set_period(shutdown_timer_hnd,
+                           mia_shutdown_delay * 1000);
+    mce_hbtimer_start(shutdown_timer_hnd);
+
+EXIT:
+    return;
+}
+
+/** Evaluate if conditions for inactivity shutdown has been met
+ *
+ * @return true if delayed shutdown should be started, false otherwise
+ */
+static bool
+mia_shutdown_timer_wanted(void)
+{
+    bool want_timer = false;
+
+    if( !device_inactive )
+        goto EXIT;
+
+    if( charger_state != CHARGER_STATE_OFF )
+        goto EXIT;
+
+    if( osupdate_running )
+        goto EXIT;
+
+    if( init_done != TRISTATE_TRUE )
+        goto EXIT;
+
+    if( system_state != MCE_SYSTEM_STATE_USER )
+        goto EXIT;
+
+    want_timer = true;
+
+EXIT:
+    return want_timer;
+}
+
+/** Schedule/cancel inactivity shutdown based on device state
+ */
+static void
+mia_shutdown_timer_rethink(void)
+{
+    if( mia_shutdown_timer_wanted() )
+        mia_shutdown_timer_start();
+    else
+        mia_shutdown_timer_stop();
+}
+
+/** Reschedule inactivity shutdown after settings changes
+ */
+static void
+mia_shutdown_timer_restart(void)
+{
+    if( !shutdown_timer_triggered ) {
+        mia_shutdown_timer_stop();
+        mia_shutdown_timer_rethink();
+    }
+}
+
+/** Initialize inactivity shutdown triggering
+ */
+static void
+mia_shutdown_timer_init(void)
+{
+    shutdown_timer_hnd =
+        mce_hbtimer_create("idle_shutdown",
+                           mia_shutdown_delay * 1000,
+                           mia_shutdown_timer_cb,
+                           0);
+}
+
+/** Cleanup inactivity shutdown triggering
+ */
+static void
+mia_shutdown_timer_quit(void)
+{
+    mce_hbtimer_delete(shutdown_timer_hnd),
+        shutdown_timer_hnd = 0;
+}
+
+/* ========================================================================= *
+ * SETTING_TRACKING
+ * ========================================================================= */
+
+/** Handle setting value changed notifications
+ *
+ * @param gcc   (unused) gconf client object
+ * @param id    ID from gconf_client_notify_add()
+ * @param entry The modified GConf entry
+ * @param aptr  (unused) User data pointer
+ */
+static void
+mia_setting_changed_cb(GConfClient *gcc, guint id,
+                       GConfEntry *entry, gpointer aptr)
+{
+    (void)gcc;
+    (void)aptr;
+
+    const GConfValue *gcv = gconf_entry_get_value(entry);
+
+    if( !gcv ) {
+        mce_log(LL_DEBUG, "GConf Key `%s' has been unset",
+                gconf_entry_get_key(entry));
+        goto EXIT;
+    }
+
+    if( id == mia_shutdown_delay_setting_id ) {
+        gint prev = mia_shutdown_delay;
+        mia_shutdown_delay = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "mia_shutdown_delay: %d -> %d",
+                prev, mia_shutdown_delay);
+        mia_shutdown_timer_restart();
+    }
+    else {
+        mce_log(LL_WARN, "Spurious GConf value received; confused!");
+    }
+
+EXIT:
+    return;
+}
+
+/** Get intial setting values and start tracking changes
+ */
+static void
+mia_setting_init(void)
+{
+    mce_setting_track_int(MCE_SETTING_INACTIVITY_SHUTDOWN_DELAY,
+                          &mia_shutdown_delay,
+                          MCE_DEFAULT_INACTIVITY_SHUTDOWN_DELAY,
+                          mia_setting_changed_cb,
+                          &mia_shutdown_delay_setting_id);
+}
+
+/** Stop tracking setting changes
+ */
+static void
+mia_setting_quit(void)
+{
+    mce_setting_notifier_remove(mia_shutdown_delay_setting_id),
+        mia_shutdown_delay_setting_id = 0;
+}
+
+/* ========================================================================= *
  * MODULE_LOAD_UNLOAD
  * ========================================================================= */
 
@@ -1231,7 +1555,10 @@ const gchar *g_module_check_init(GModule *module)
 {
     (void)module;
 
+    mia_setting_init();
+
     mia_timer_init();
+    mia_shutdown_timer_init();
 
     /* Append triggers/filters to datapipes */
     mia_datapipe_init();
@@ -1258,6 +1585,8 @@ void g_module_unload(GModule *module)
 {
     (void)module;
 
+    mia_setting_quit();
+
     /* Remove dbus handlers */
     mia_dbus_quit();
 
@@ -1266,6 +1595,7 @@ void g_module_unload(GModule *module)
 
     /* Do not leave any timers active */
     mia_timer_quit();
+    mia_shutdown_timer_quit();
 
 #ifdef ENABLE_WAKELOCKS
     mia_keepalive_stop();

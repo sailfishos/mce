@@ -591,6 +591,7 @@ NORMALIZE_USES_SPC =\
 	modules/fingerprint.c\
 	modules/keypad.h\
 	modules/inactivity.c\
+	modules/inactivity.h\
 	modules/memnotify.c\
 	modules/memnotify.h\
 	modules/packagekit.c\

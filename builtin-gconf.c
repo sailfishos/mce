@@ -32,6 +32,7 @@
 #include "modules/powersavemode.h"
 #include "modules/doubletap.h"
 #include "modules/led.h"
+#include "modules/inactivity.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -1834,6 +1835,11 @@ static const setting_t gconf_defaults[] =
     .key  = MCE_SETTING_TK_PROXIMITY_DELAY_INCALL,
     .type = "i",
     .def  = G_STRINGIFY(MCE_DEFAULT_TK_PROXIMITY_DELAY_INCALL),
+  },
+  {
+    .key  = MCE_SETTING_INACTIVITY_SHUTDOWN_DELAY,
+    .type = "i",
+    .def  = G_STRINGIFY(MCE_DEFAULT_INACTIVITY_SHUTDOWN_DELAY),
   },
   {
     .key  = NULL,

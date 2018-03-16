@@ -9,6 +9,7 @@ builtin-gconf.o:\
 	mce.h\
 	modules/display.h\
 	modules/doubletap.h\
+	modules/inactivity.h\
 	modules/led.h\
 	modules/memnotify.h\
 	modules/powersavemode.h\
@@ -27,6 +28,7 @@ builtin-gconf.pic.o:\
 	mce.h\
 	modules/display.h\
 	modules/doubletap.h\
+	modules/inactivity.h\
 	modules/led.h\
 	modules/memnotify.h\
 	modules/powersavemode.h\
@@ -748,9 +750,12 @@ modules/inactivity.o:\
 	datapipe.h\
 	libwakelock.h\
 	mce-dbus.h\
+	mce-dsme.h\
 	mce-hbtimer.h\
 	mce-log.h\
+	mce-setting.h\
 	mce.h\
+	modules/inactivity.h\
 
 modules/inactivity.pic.o:\
 	modules/inactivity.c\
@@ -758,9 +763,12 @@ modules/inactivity.pic.o:\
 	datapipe.h\
 	libwakelock.h\
 	mce-dbus.h\
+	mce-dsme.h\
 	mce-hbtimer.h\
 	mce-log.h\
+	mce-setting.h\
 	mce.h\
+	modules/inactivity.h\
 
 modules/keypad.o:\
 	modules/keypad.c\
@@ -1302,6 +1310,7 @@ tools/mcetool.o:\
 	mce.h\
 	modules/display.h\
 	modules/doubletap.h\
+	modules/inactivity.h\
 	modules/led.h\
 	modules/memnotify.h\
 	modules/powersavemode.h\
@@ -1319,6 +1328,7 @@ tools/mcetool.pic.o:\
 	mce.h\
 	modules/display.h\
 	modules/doubletap.h\
+	modules/inactivity.h\
 	modules/led.h\
 	modules/memnotify.h\
 	modules/powersavemode.h\

@@ -24,6 +24,7 @@
 #include "../event-input.h"
 #include "../modules/display.h"
 #include "../modules/doubletap.h"
+#include "../modules/inactivity.h"
 #include "../modules/powersavemode.h"
 #include "../modules/proximity.h"
 #include "../modules/memnotify.h"
@@ -3593,6 +3594,45 @@ static void xmce_get_ps_uncover_delay(void)
 }
 
 /* ------------------------------------------------------------------------- *
+ * inactivity shutdown delay
+ * ------------------------------------------------------------------------- */
+
+/** Set inactivity shutdown delay
+ *
+ * @param args string that can be parsed to integer
+ */
+static bool xmce_set_inactivity_shutdown_delay(const char *args)
+{
+        const char *key = MCE_SETTING_INACTIVITY_SHUTDOWN_DELAY;
+        int val = xmce_parse_integer(args);
+
+        if( val != 0 && val < MCE_MINIMUM_INACTIVITY_SHUTDOWN_DELAY ) {
+                errorf("%s: invalid inactivity shutdown delay\n", args);
+                return false;
+        }
+
+        return xmce_setting_set_int(key, val);
+}
+
+/** Get inactivity shutdown delay and print it out
+ */
+static void xmce_get_inactivity_shutdown_delay(void)
+{
+        const char *key = MCE_SETTING_INACTIVITY_SHUTDOWN_DELAY;
+        gint val = 0;
+        char txt[32];
+
+        if( !xmce_setting_get_int(key, &val) )
+                strcpy(txt, "unknown");
+        else if( val < MCE_MINIMUM_INACTIVITY_SHUTDOWN_DELAY )
+                strcpy(txt, "disabled");
+        else
+                snprintf(txt, sizeof txt, "%d (s)", (int)val);
+
+        printf("%-"PAD1"s %s\n", "Inactivity shutdown delay:", txt);
+}
+
+/* ------------------------------------------------------------------------- *
  * als
  * ------------------------------------------------------------------------- */
 
@@ -5566,6 +5606,7 @@ static bool xmce_get_status(const char *args)
         xmce_get_blank_prevent_mode();
         xmce_get_keyboard_backlight_state();
         xmce_get_inactivity_state();
+        xmce_get_inactivity_shutdown_delay();
         xmce_get_power_saving_mode();
         xmce_get_forced_psm();
         xmce_get_psm_threshold();
@@ -6952,6 +6993,24 @@ static const mce_opt_t options[] =
                         "All settings whose key name contains the given subpart\n"
                         "will be reset to defaults set in /etc/mce/*.conf files.\n"
                         "If no keyish is given, all settings are reset.\n"
+        },
+        {
+                .name        = "set-inactivity-shutdown-delay",
+                .with_arg    = xmce_set_inactivity_shutdown_delay,
+                .values      = "s",
+                        "set delay in seconds for automatic shutdown\n"
+                        "\n"
+                        "If the device is not in active use it will be\n"
+                        "automatically powered off after the given delay.\n"
+                        "\n"
+                        "Mostly this is assumed to be useful for developing\n"
+                        "purposes where juggling between several devices\n"
+                        "running in some blanking inhibit mode easily means\n"
+                        "that the device you need the next has empty battery.\n"
+                        "\n"
+                        "Using value smaller than "
+                        G_STRINGIFY(MCE_MINIMUM_INACTIVITY_SHUTDOWN_DELAY)
+                        " disables the feature.\n"
         },
 
         // sentinel
