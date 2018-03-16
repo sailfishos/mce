@@ -915,7 +915,8 @@ G_MODULE_EXPORT void         g_module_unload(GModule *module);
  * ========================================================================= */
 
 /** Display blank prevention timer */
-static gint mdy_blank_prevent_timeout = BLANK_PREVENT_TIMEOUT;
+static const gint mdy_blank_prevent_timeout = BLANK_PREVENT_TIMEOUT * 1000;
+static const gint mdy_blank_prevent_slack   = BLANK_PREVENT_SLACK * 1000;
 
 /* ------------------------------------------------------------------------- *
  * MODULE_LOAD_UNLOAD
@@ -1003,8 +1004,7 @@ bpclient_update_timeout(bpclient_t *self)
 {
     mce_log(LL_DEBUG, "client %s renewed", self->bpc_name);
 
-    int64_t tmo = (mce_lib_get_boot_tick() +
-                   mdy_blank_prevent_timeout * 1000);
+    int64_t tmo = mce_lib_get_boot_tick() + mdy_blank_prevent_timeout;
 
     if( self->bpc_tmo != tmo ) {
         self->bpc_tmo = tmo;
@@ -4167,6 +4167,9 @@ static void mdy_blanking_start_pause_period(int duration)
     /* Cancel existing timeout */
     if( mdy_blanking_pause_period_cb_id )
         g_source_remove(mdy_blanking_pause_period_cb_id);
+
+    /* Add suitable amount of slack */
+    duration += mdy_blank_prevent_slack;
 
     /* Setup new timeout */
     mdy_blanking_pause_period_cb_id =
