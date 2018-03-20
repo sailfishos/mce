@@ -129,7 +129,7 @@ static void system_state_trigger(gconstpointer data)
 		switch( old_system_state ) {
 		case MCE_SYSTEM_STATE_USER:
 		case MCE_SYSTEM_STATE_ACTDEAD:
-			mce_datapipe_req_display_state(MCE_DISPLAY_ON);
+			mce_datapipe_request_display_state(MCE_DISPLAY_ON);
 			break;
 
 		default:
@@ -182,8 +182,8 @@ gboolean mce_mode_init(void)
 			mce_add_submode_int32(MCE_SUBMODE_TRANSITION);
 			errno = 0;
 
-			(void)mce_write_string_to_file(MCE_BOOTUP_FILENAME,
-						       ENABLED_STRING);
+			mce_write_string_to_file(MCE_BOOTUP_FILENAME,
+						 ENABLED_STRING);
 
 			if (g_access(MALF_FILENAME, F_OK) == 0) {
 				mce_add_submode_int32(MCE_SUBMODE_MALF);
@@ -196,8 +196,8 @@ gboolean mce_mode_init(void)
 						goto EXIT;
 					}
 
-					(void)mce_write_string_to_file(MCE_MALF_FILENAME,
-								       ENABLED_STRING);
+					mce_write_string_to_file(MCE_MALF_FILENAME,
+								 ENABLED_STRING);
 				}
 			}
 		} else {

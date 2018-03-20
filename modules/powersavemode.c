@@ -147,9 +147,9 @@ static void update_power_saving_mode(void)
 
 	if (active_power_saving_mode != new_power_saving_mode) {
 		active_power_saving_mode = new_power_saving_mode;
-		(void)datapipe_exec_full(&power_saving_mode_active_pipe,
-					 GINT_TO_POINTER(active_power_saving_mode),
-					 USE_INDATA, CACHE_INDATA);
+		datapipe_exec_full(&power_saving_mode_active_pipe,
+				   GINT_TO_POINTER(active_power_saving_mode),
+				   USE_INDATA, CACHE_INDATA);
 		send_psm_state(NULL);
 	}
 }

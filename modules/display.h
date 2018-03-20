@@ -122,6 +122,14 @@
  */
 # define BLANK_PREVENT_TIMEOUT                   60
 
+/** Blank prevent timeout slack, in seconds
+ *
+ * To allow clients to use exactly BLANK_PREVENT_TIMEOUT long
+ * renew period, make mce wait for renew requests a bit longer
+ * than that before automatically terminating blaning pause.
+ */
+# define BLANK_PREVENT_SLACK                      5
+
 /**
  * Default maximum brightness;
  * used if the maximum brightness cannot be read from SysFS

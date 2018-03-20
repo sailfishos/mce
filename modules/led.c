@@ -717,16 +717,16 @@ static void lysti_set_brightness(gint brightness)
 
 	if (get_led_type() == LED_TYPE_LYSTI_MONO) {
 		/* If we have a monochrome LED only set one brightness */
-		(void)mce_write_number_string_to_file(&led_current_rm_output, r_brightness);
+		mce_write_number_string_to_file(&led_current_rm_output, r_brightness);
 
 		mce_log(LL_DEBUG,
 			"Brightness set to %d",
 			active_brightness);
 	} else if (get_led_type() == LED_TYPE_LYSTI_RGB) {
 		/* If we have an RGB LED set the brightness for all channels */
-		(void)mce_write_number_string_to_file(&led_current_rm_output, r_brightness);
-		(void)mce_write_number_string_to_file(&led_current_g_output, g_brightness);
-		(void)mce_write_number_string_to_file(&led_current_b_output, b_brightness);
+		mce_write_number_string_to_file(&led_current_rm_output, r_brightness);
+		mce_write_number_string_to_file(&led_current_g_output, g_brightness);
+		mce_write_number_string_to_file(&led_current_b_output, b_brightness);
 
 		mce_log(LL_DEBUG,
 			"Brightness set to %d (%d, %d, %d)",
@@ -768,8 +768,8 @@ static void njoy_set_brightness(gint brightness)
 		active_brightness = brightness;
 	}
 
-	(void)mce_write_number_string_to_file(&led_brightness_rm_output,
-					      (unsigned)active_brightness);
+	mce_write_number_string_to_file(&led_brightness_rm_output,
+					(unsigned)active_brightness);
 
 	mce_log(LL_DEBUG, "Brightness set to %d", active_brightness);
 }
@@ -790,8 +790,8 @@ static void mono_set_brightness(gint brightness)
 		return;
 
 	active_brightness = brightness;
-	(void)mce_write_string_to_file(led_brightness_rm_output.path,
-				       brightness_map[brightness]);
+	mce_write_string_to_file(led_brightness_rm_output.path,
+				 brightness_map[brightness]);
 
 	mce_log(LL_DEBUG, "Brightness set to %d", brightness);
 }
@@ -833,21 +833,21 @@ static void hybris_set_brightness(gint brightness)
 static void lysti_disable_led(void)
 {
 	/* Disable engine 1 */
-	(void)mce_write_string_to_file(engine1_mode_path,
-				       MCE_LED_DISABLED_MODE);
+	mce_write_string_to_file(engine1_mode_path,
+				 MCE_LED_DISABLED_MODE);
 
 	if (get_led_type() == LED_TYPE_LYSTI_MONO) {
 		/* Turn off the led */
-		(void)mce_write_number_string_to_file(&led_brightness_rm_output, 0);
+		mce_write_number_string_to_file(&led_brightness_rm_output, 0);
 	} else if (get_led_type() == LED_TYPE_LYSTI_RGB) {
 		/* Disable engine 2 */
-		(void)mce_write_string_to_file(engine2_mode_path,
-					       MCE_LED_DISABLED_MODE);
+		mce_write_string_to_file(engine2_mode_path,
+					 MCE_LED_DISABLED_MODE);
 
 		/* Turn off all three leds */
-		(void)mce_write_number_string_to_file(&led_brightness_rm_output, 0);
-		(void)mce_write_number_string_to_file(&led_brightness_g_output, 0);
-		(void)mce_write_number_string_to_file(&led_brightness_b_output, 0);
+		mce_write_number_string_to_file(&led_brightness_rm_output, 0);
+		mce_write_number_string_to_file(&led_brightness_g_output, 0);
+		mce_write_number_string_to_file(&led_brightness_b_output, 0);
 	}
 }
 
@@ -857,25 +857,25 @@ static void lysti_disable_led(void)
 static void njoy_disable_led(void)
 {
 	/* Disable engine 1 */
-	(void)mce_write_string_to_file(engine1_mode_path,
-				       MCE_LED_DISABLED_MODE);
+	mce_write_string_to_file(engine1_mode_path,
+				 MCE_LED_DISABLED_MODE);
 
 	if (get_led_type() == LED_TYPE_NJOY_MONO) {
 		/* Turn off the led */
-		(void)mce_write_number_string_to_file(&led_brightness_rm_output, 0);
+		mce_write_number_string_to_file(&led_brightness_rm_output, 0);
 	} else if (get_led_type() == LED_TYPE_NJOY_RGB) {
 		/* Disable engine 2 */
-		(void)mce_write_string_to_file(engine2_mode_path,
-					       MCE_LED_DISABLED_MODE);
+		mce_write_string_to_file(engine2_mode_path,
+					 MCE_LED_DISABLED_MODE);
 
 		/* Disable engine 3 */
-		(void)mce_write_string_to_file(engine3_mode_path,
-					       MCE_LED_DISABLED_MODE);
+		mce_write_string_to_file(engine3_mode_path,
+					 MCE_LED_DISABLED_MODE);
 
 		/* Turn off all three leds */
-		(void)mce_write_number_string_to_file(&led_brightness_rm_output, 0);
-		(void)mce_write_number_string_to_file(&led_brightness_g_output, 0);
-		(void)mce_write_number_string_to_file(&led_brightness_b_output, 0);
+		mce_write_number_string_to_file(&led_brightness_rm_output, 0);
+		mce_write_number_string_to_file(&led_brightness_g_output, 0);
+		mce_write_number_string_to_file(&led_brightness_b_output, 0);
 	}
 }
 
@@ -884,8 +884,8 @@ static void njoy_disable_led(void)
  */
 static void mono_disable_led(void)
 {
-	(void)mce_write_string_to_file(MCE_LED_TRIGGER_PATH,
-				       MCE_LED_TRIGGER_NONE);
+	mce_write_string_to_file(MCE_LED_TRIGGER_PATH,
+				 MCE_LED_TRIGGER_NONE);
 	mono_set_brightness(0);
 }
 
@@ -1147,29 +1147,29 @@ static void lysti_program_led(const pattern_struct *const pattern)
 	/* Load new patterns, one engine at a time */
 
 	/* Engine 1 */
-	(void)mce_write_string_to_file(engine1_mode_path,
-				       MCE_LED_LOAD_MODE);
-	(void)mce_write_string_to_file(engine1_leds_path,
-				       bin_to_string(pattern->engine1_mux));
-	(void)mce_write_string_to_file(engine1_load_path,
-				       pattern->channel1);
+	mce_write_string_to_file(engine1_mode_path,
+				 MCE_LED_LOAD_MODE);
+	mce_write_string_to_file(engine1_leds_path,
+				 bin_to_string(pattern->engine1_mux));
+	mce_write_string_to_file(engine1_load_path,
+				 pattern->channel1);
 
 	/* Engine 2; if needed */
 	if (get_led_type() == LED_TYPE_LYSTI_RGB) {
-		(void)mce_write_string_to_file(engine2_mode_path,
-					       MCE_LED_LOAD_MODE);
-		(void)mce_write_string_to_file(engine2_leds_path,
-					       bin_to_string(pattern->engine2_mux));
-		(void)mce_write_string_to_file(engine2_load_path,
-					       pattern->channel2);
+		mce_write_string_to_file(engine2_mode_path,
+					 MCE_LED_LOAD_MODE);
+		mce_write_string_to_file(engine2_leds_path,
+					 bin_to_string(pattern->engine2_mux));
+		mce_write_string_to_file(engine2_load_path,
+					 pattern->channel2);
 
 		/* Run the new pattern; enable engines in reverse order */
-		(void)mce_write_string_to_file(engine2_mode_path,
-					       MCE_LED_RUN_MODE);
+		mce_write_string_to_file(engine2_mode_path,
+					 MCE_LED_RUN_MODE);
 	}
 
-	(void)mce_write_string_to_file(engine1_mode_path,
-				       MCE_LED_RUN_MODE);
+	mce_write_string_to_file(engine1_mode_path,
+				 MCE_LED_RUN_MODE);
 
 	/* Save what colors we are driving */
 	current_lysti_led_pattern = pattern->engine1_mux | pattern->engine2_mux;
@@ -1193,33 +1193,33 @@ static void njoy_program_led(const pattern_struct *const pattern)
 	/* Load new patterns */
 
 	/* Engine 1 */
-	(void)mce_write_string_to_file(engine1_mode_path,
-				       MCE_LED_LOAD_MODE);
-	(void)mce_write_string_to_file(engine1_load_path,
-				       pattern->channel1);
+	mce_write_string_to_file(engine1_mode_path,
+				 MCE_LED_LOAD_MODE);
+	mce_write_string_to_file(engine1_load_path,
+				 pattern->channel1);
 
 	if (get_led_type() == LED_TYPE_NJOY_RGB) {
 		/* Engine 2 */
-		(void)mce_write_string_to_file(engine2_mode_path,
-					       MCE_LED_LOAD_MODE);
-		(void)mce_write_string_to_file(engine2_load_path,
-					       pattern->channel2);
+		mce_write_string_to_file(engine2_mode_path,
+					 MCE_LED_LOAD_MODE);
+		mce_write_string_to_file(engine2_load_path,
+					 pattern->channel2);
 
 		/* Engine 3 */
-		(void)mce_write_string_to_file(engine3_mode_path,
-					       MCE_LED_LOAD_MODE);
-		(void)mce_write_string_to_file(engine3_load_path,
-					       pattern->channel3);
+		mce_write_string_to_file(engine3_mode_path,
+					 MCE_LED_LOAD_MODE);
+		mce_write_string_to_file(engine3_load_path,
+					 pattern->channel3);
 
 		/* Run the new pattern; enable engines in reverse order */
-		(void)mce_write_string_to_file(engine3_mode_path,
-					       MCE_LED_RUN_MODE);
-		(void)mce_write_string_to_file(engine2_mode_path,
-					       MCE_LED_RUN_MODE);
+		mce_write_string_to_file(engine3_mode_path,
+					 MCE_LED_RUN_MODE);
+		mce_write_string_to_file(engine2_mode_path,
+					 MCE_LED_RUN_MODE);
 	}
 
-	(void)mce_write_string_to_file(engine1_mode_path,
-				       MCE_LED_RUN_MODE);
+	mce_write_string_to_file(engine1_mode_path,
+				 MCE_LED_RUN_MODE);
 
 	/* Reset brightness */
 	njoy_set_brightness(-1);
@@ -1257,15 +1257,15 @@ static void mono_program_led(const pattern_struct *const pattern)
 	 * use a timer trigger, otherwise disable the trigger
 	 */
 	if (pattern->off_period != 0) {
-		(void)mce_write_string_to_file(MCE_LED_TRIGGER_PATH,
-					       MCE_LED_TRIGGER_TIMER);
-		(void)mce_write_number_string_to_file(&led_off_period_output,
-						      (unsigned)pattern->off_period);
-		(void)mce_write_number_string_to_file(&led_on_period_output,
-						      (unsigned)pattern->on_period);
+		mce_write_string_to_file(MCE_LED_TRIGGER_PATH,
+					 MCE_LED_TRIGGER_TIMER);
+		mce_write_number_string_to_file(&led_off_period_output,
+						(unsigned)pattern->off_period);
+		mce_write_number_string_to_file(&led_on_period_output,
+						(unsigned)pattern->on_period);
 	} else {
-		(void)mce_write_string_to_file(MCE_LED_TRIGGER_PATH,
-					       MCE_LED_TRIGGER_NONE);
+		mce_write_string_to_file(MCE_LED_TRIGGER_PATH,
+					 MCE_LED_TRIGGER_NONE);
 	}
 
 	mono_set_brightness(pattern->brightness);

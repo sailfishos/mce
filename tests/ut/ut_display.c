@@ -1508,9 +1508,7 @@ START_TEST (ut_check_basic_state_change_no_lpm)
 			display_state_name(state_changes[i].required),
 			display_state_name(state_changes[i].expected));
 
-		datapipe_exec_full(&display_state_request_pipe,
-				   GINT_TO_POINTER(state_changes[i].required),
-				   USE_INDATA, CACHE_INDATA);
+		mce_datapipe_request_display_state(state_changes[i].required);
 		ut_assert_transition(ut_is_display_state_eq,
 				     GINT_TO_POINTER(state_changes[i].expected));
 	}
@@ -1557,9 +1555,7 @@ START_TEST (ut_check_basic_state_change)
 			display_state_name(state_changes[i].required),
 			display_state_name(state_changes[i].expected));
 
-		datapipe_exec_full(&display_state_request_pipe,
-				   GINT_TO_POINTER(state_changes[i].required),
-				   USE_INDATA, CACHE_INDATA);
+		mce_datapipe_request_display_state(state_changes[i].required);
 		ut_assert_transition(ut_is_display_state_eq,
 				     GINT_TO_POINTER(state_changes[i].expected));
 	}
@@ -1574,9 +1570,7 @@ START_TEST (ut_check_auto_blank_no_lpm)
 
 	ut_run_to_user_state();
 
-	datapipe_exec_full(&display_state_request_pipe,
-			   GINT_TO_POINTER(MCE_DISPLAY_DIM),
-			   USE_INDATA, CACHE_INDATA);
+	mce_datapipe_request_display_state(MCE_DISPLAY_DIM);
 	ut_assert_transition(ut_is_display_state_eq,
 			     GINT_TO_POINTER(MCE_DISPLAY_DIM));
 
@@ -1600,9 +1594,7 @@ START_TEST (ut_check_auto_blank)
 
 	ut_run_to_user_state();
 
-	datapipe_exec_full(&display_state_request_pipe,
-			   GINT_TO_POINTER(MCE_DISPLAY_LPM_ON),
-			   USE_INDATA, CACHE_INDATA);
+	mce_datapipe_request_display_state(MCE_DISPLAY_LPM_ON);
 	ut_assert_transition(ut_is_display_state_eq,
 			     GINT_TO_POINTER(MCE_DISPLAY_LPM_ON));
 
@@ -1718,9 +1710,7 @@ START_TEST (ut_check_adaptive_dim_timeout)
 			- UT_COMPARE_TIME_TRESHOLD);
 	/* Verify adaptive_dimming_index=1 by meassuring time to re-enter DIM */
 	expected_dim_time = ut_nth_possible_dim_timeout(forced_dti + 1);
-	datapipe_exec_full(&display_state_request_pipe,
-			   GINT_TO_POINTER(MCE_DISPLAY_ON),
-			   USE_INDATA, CACHE_INDATA);
+	mce_datapipe_request_display_state(MCE_DISPLAY_ON);
 	ut_assert_transition(ut_is_display_state_eq,
 			     GINT_TO_POINTER(MCE_DISPLAY_ON));
 	ut_assert_transition_time_eq(ut_is_display_state_eq,
@@ -1733,9 +1723,7 @@ START_TEST (ut_check_adaptive_dim_timeout)
 			+ UT_COMPARE_TIME_TRESHOLD);
 	/* Verify adaptive_dimming_index=0 by meassuring time to re-enter DIM */
 	expected_dim_time = ut_nth_possible_dim_timeout(forced_dti + 0);
-	datapipe_exec_full(&display_state_request_pipe,
-			   GINT_TO_POINTER(MCE_DISPLAY_ON),
-			   USE_INDATA, CACHE_INDATA);
+	mce_datapipe_request_display_state(MCE_DISPLAY_ON);
 	ut_assert_transition(ut_is_display_state_eq,
 			     GINT_TO_POINTER(MCE_DISPLAY_ON));
 	ut_assert_transition_time_eq(ut_is_display_state_eq,
@@ -1773,9 +1761,7 @@ START_TEST (ut_check_auto_lpm)
 
 	ut_run_to_user_state();
 
-	datapipe_exec_full(&display_state_request_pipe,
-			   GINT_TO_POINTER(MCE_DISPLAY_DIM),
-			   USE_INDATA, CACHE_INDATA);
+	mce_datapipe_request_display_state(MCE_DISPLAY_DIM);
 	ut_assert_transition(ut_is_display_state_eq,
 			     GINT_TO_POINTER(MCE_DISPLAY_DIM));
 
@@ -1859,9 +1845,7 @@ START_TEST (ut_check_blanking_pause)
 	stub__mce_setting_set_int(MCE_SETTING_DISPLAY_DIM_TIMEOUT_PATH,
 				set_disp_dim_timeout);
 
-	datapipe_exec_full(&display_state_request_pipe,
-			   GINT_TO_POINTER(data[_i].initial_display_state),
-			   USE_INDATA, CACHE_INDATA);
+	mce_datapipe_request_display_state(data[_i].initial_display_state);
 	ut_assert_transition(ut_is_display_state_eq,
 			     GINT_TO_POINTER(data[_i].initial_display_state));
 
@@ -1970,9 +1954,7 @@ START_TEST (ut_check_set_use_lpm_while_off)
 {
 	ut_run_to_user_state();
 
-	datapipe_exec_full(&display_state_request_pipe,
-			   GINT_TO_POINTER(MCE_DISPLAY_OFF),
-			   USE_INDATA, CACHE_INDATA);
+	mce_datapipe_request_display_state(MCE_DISPLAY_OFF);
 	ut_assert_transition(ut_is_display_state_eq,
 			     GINT_TO_POINTER(MCE_DISPLAY_OFF));
 
@@ -2014,9 +1996,7 @@ START_TEST (ut_check_unset_use_lpm_while_lpm)
 	display_type_t required_lpm_state = data[_i].lpm_on
 		? MCE_DISPLAY_LPM_ON
 		: MCE_DISPLAY_LPM_OFF;
-	datapipe_exec_full(&display_state_request_pipe,
-			   GINT_TO_POINTER(required_lpm_state),
-			   USE_INDATA, CACHE_INDATA);
+	mce_datapipe_request_display_state(required_lpm_state);
 	ut_assert_transition(ut_is_display_state_eq,
 			     GINT_TO_POINTER(required_lpm_state));
 

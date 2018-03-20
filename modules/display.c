@@ -25,6 +25,7 @@
 #include "../mce-log.h"
 #include "../mce-io.h"
 #include "../mce-lib.h"
+#include "../mce-dbus.h"
 #include "../mce-fbdev.h"
 #include "../mce-conf.h"
 #include "../mce-setting.h"
@@ -349,6 +350,19 @@ typedef enum
     FADER_NUMOF
 } fader_type_t;
 
+/* ------------------------------------------------------------------------- *
+ * BLANKING_PAUSE_CLIENT
+ * ------------------------------------------------------------------------- */
+
+typedef struct bpclient_t bpclient_t;
+
+struct bpclient_t
+{
+    char    *bpc_name;
+    pid_t    bpc_pid;
+    int64_t  bpc_tmo;
+};
+
 /* ========================================================================= *
  * PROTOTYPES
  * ========================================================================= */
@@ -479,6 +493,16 @@ static void                mdy_poweron_led_rethink_cancel(void);
 static void                mdy_poweron_led_rethink_schedule(void);
 
 /* ------------------------------------------------------------------------- *
+ * BLANKING_PAUSE_CLIENT
+ * ------------------------------------------------------------------------- */
+
+void        bpclient_update_pid_cb (const peerinfo_t *peerinfo, gpointer userdata);
+void        bpclient_update_timeout(bpclient_t *self);
+bpclient_t *bpclient_create        (const char *name);
+void        bpclient_delete        (bpclient_t *self);
+void        bpclient_delete_cb     (void *self);
+
+/* ------------------------------------------------------------------------- *
  * AUTOMATIC_BLANKING
  * ------------------------------------------------------------------------- */
 
@@ -519,18 +543,22 @@ static void                mdy_blanking_schedule_lpm_off(void);
 
 // blanking pause period: inhibit automatic ON -> DIM transitions
 
+static void                mdy_blanking_pause_evaluate_allowed(void);
 static gboolean            mdy_blanking_pause_period_cb(gpointer data);
 static void                mdy_blanking_stop_pause_period(void);
-static void                mdy_blanking_start_pause_period(void);
+static void                mdy_blanking_start_pause_period(int duration);
+
+static void                mdy_blanking_init_pause_client_tracking(void);
+static void                mdy_blanking_quit_pause_client_tracking(void);
 
 static bool                mdy_blanking_is_paused(void);
 static bool                mdy_blanking_pause_can_dim(void);
 static bool                mdy_blanking_pause_is_allowed(void);
 
-static void                mdy_blanking_add_pause_client(const gchar *name);
-static gboolean            mdy_blanking_remove_pause_client(const gchar *name);
+static void                mdy_blanking_add_pause_client(const char *name);
+static void                mdy_blanking_remove_pause_client(const char *name);
 static void                mdy_blanking_remove_pause_clients(void);
-static gboolean            mdy_blanking_pause_client_lost_cb(DBusMessage *const msg);
+static void                mdy_blanking_evaluate_pause_timeout(void);
 
 // adaptive dimming period: dimming timeouts get longer on ON->DIM->ON transitions
 
@@ -577,6 +605,16 @@ static void               *mdy_waitfb_thread_entry(void *aptr);
 static gboolean            mdy_waitfb_thread_start(waitfb_t *self);
 static void                mdy_waitfb_thread_stop(waitfb_t *self);
 #endif
+
+/* ------------------------------------------------------------------------- *
+ * TOPMOST_WINDOW_TRACKING
+ * ------------------------------------------------------------------------- */
+
+static void                mdy_topmost_window_set_pid          (int pid);
+static gboolean            mdy_topmost_window_pid_changed_cb   (DBusMessage *const sig);
+static void                mdy_topmost_window_pid_reply_cb     (DBusPendingCall *pc, void *aptr);
+static void                mdy_topmost_window_forget_pid_query (void);
+static void                mdy_topmost_window_send_pid_query   (void);
 
 /* ------------------------------------------------------------------------- *
  * compositor_led_t
@@ -808,7 +846,9 @@ static void                mdy_governor_setting_cb(GConfClient *const client, co
  * ------------------------------------------------------------------------- */
 
 static gboolean            mdy_dbus_send_blanking_pause_status(DBusMessage *const method_call);
+static gboolean            mdy_dbus_send_blanking_pause_allowed_status(DBusMessage *const method_call);
 static gboolean            mdy_dbus_handle_blanking_pause_get_req(DBusMessage *const msg);
+static gboolean            mdy_dbus_handle_blanking_pause_allowed_get_req(DBusMessage *const msg);
 
 static gboolean            mdy_dbus_send_blanking_inhibit_status(DBusMessage *const method_call);
 static gboolean            mdy_dbus_handle_blanking_inhibit_get_req(DBusMessage *const msg);
@@ -874,6 +914,10 @@ G_MODULE_EXPORT void         g_module_unload(GModule *module);
  * VARIABLES
  * ========================================================================= */
 
+/** Display blank prevention timer */
+static const gint mdy_blank_prevent_timeout = BLANK_PREVENT_TIMEOUT * 1000;
+static const gint mdy_blank_prevent_slack   = BLANK_PREVENT_SLACK * 1000;
+
 /* ------------------------------------------------------------------------- *
  * MODULE_LOAD_UNLOAD
  * ------------------------------------------------------------------------- */
@@ -915,11 +959,117 @@ static bool mdy_shutdown_in_progress(void)
 }
 
 /* ------------------------------------------------------------------------- *
- * AUTOMATIC_BLANKING
+ * BLANKING_PAUSE_CLIENT
  * ------------------------------------------------------------------------- */
 
-/** Display blank prevention timer */
-static gint mdy_blank_prevent_timeout = BLANK_PREVENT_TIMEOUT;
+/** Callback for handling blanking pause client state change notifications
+ *
+ * @param peerinfo  peerinfo_t object holding currently known peer details
+ * @param userdata  bpclient_t object as void pointer
+ */
+void
+bpclient_update_pid_cb(const peerinfo_t *peerinfo, gpointer userdata)
+{
+    bpclient_t  *self  = userdata;
+    peerstate_t  state = peerinfo_get_state(peerinfo);
+    pid_t        pid   = peerinfo_get_owner_pid(peerinfo);
+
+    mce_log(LL_DEBUG, "client %s @%s pid=%d", self->bpc_name,
+            peerstate_repr(state), (int)pid);
+
+    switch( state ) {
+    case PEERSTATE_STALE:
+    case PEERSTATE_STOPPED:
+    case PEERSTATE_DELETED:
+        mdy_blanking_remove_pause_client(self->bpc_name), self = 0;
+        goto EXIT;
+    default:
+        break;
+    }
+
+    if( self->bpc_pid != pid ) {
+        self->bpc_pid = pid;
+        mdy_blanking_evaluate_pause_timeout();
+    }
+EXIT:
+    return;
+}
+
+/** Renew timeout for blanking pause client
+ *
+ * @param self  bpclient_t object
+ */
+void
+bpclient_update_timeout(bpclient_t *self)
+{
+    mce_log(LL_DEBUG, "client %s renewed", self->bpc_name);
+
+    int64_t tmo = mce_lib_get_boot_tick() + mdy_blank_prevent_timeout;
+
+    if( self->bpc_tmo != tmo ) {
+        self->bpc_tmo = tmo;
+        mdy_blanking_evaluate_pause_timeout();
+    }
+}
+
+/** Create object for holding blanking pause client state
+ *
+ * @param name  D-Bus name of the client
+ */
+bpclient_t *
+bpclient_create(const char *name)
+{
+    bpclient_t *self = calloc(1, sizeof *self);
+
+    self->bpc_name = strdup(name);
+    self->bpc_pid  = -1;
+    self->bpc_tmo  = 0;
+
+    mce_log(LL_DEBUG, "client %s added", self->bpc_name);
+
+    mce_dbus_name_tracker_add(self->bpc_name,
+                              bpclient_update_pid_cb,
+                              self, 0);
+
+    return self;
+}
+
+/** Delete object for holding blanking pause client state
+ *
+ * @param self  bpclient_t object
+ */
+void
+bpclient_delete(bpclient_t *self)
+{
+    if( !self )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "client %s removed", self->bpc_name);
+
+    mce_dbus_name_tracker_remove(self->bpc_name,
+                                 bpclient_update_pid_cb,
+                                 self);
+
+    free(self->bpc_name), self->bpc_name = 0;
+    free(self);
+
+EXIT:
+    return;
+}
+
+/** Type agnostic callback for deleting blanking pause client objects
+ *
+ * @param self  bpclient_t object
+ */
+void
+bpclient_delete_cb(void *self)
+{
+    bpclient_delete(self);
+}
+
+/* ------------------------------------------------------------------------- *
+ * AUTOMATIC_BLANKING
+ * ------------------------------------------------------------------------- */
 
 /** File used to enable low power mode */
 static gchar *mdy_low_power_mode_file = NULL;
@@ -987,7 +1137,7 @@ static bootstate_t mdy_bootstate = BOOTSTATE_UNKNOWN;
 static filewatcher_t *mdy_bootstate_watcher = 0;
 
 /** Is the init-done flag file present in the file system */
-static gboolean mdy_init_done = FALSE;
+static tristate_t mdy_init_done = TRISTATE_UNKNOWN;
 
 /** Content change watcher for the init-done flag file */
 static filewatcher_t *mdy_init_done_watcher = 0;
@@ -1203,6 +1353,9 @@ xlat(int src_lo, int src_hi, int dst_lo, int dst_hi, int val)
  * DATAPIPE_TRACKING
  * ========================================================================= */
 
+/** Cached PID of process owning the topmost window on UI */
+static int topmost_window_pid = -1;
+
 /** Cached lipstick availability; assume unknown */
 static service_state_t lipstick_service_state = SERVICE_STATE_UNDEF;
 
@@ -1287,6 +1440,8 @@ static void mdy_datapipe_submode_cb(gconstpointer data)
     mce_log(LL_DEBUG, "submode = %s",
             submode_change_repr(prev, submode));
 
+    mdy_blanking_pause_evaluate_allowed();
+
     /* Rethink dim/blank timers if tklock state changed */
     if( (prev ^ submode) & MCE_SUBMODE_TKLOCK )
         mdy_blanking_rethink_timers(false);
@@ -1321,6 +1476,7 @@ static void mdy_datapipe_interaction_expected_cb(gconstpointer data)
     mce_log(LL_DEBUG, "interaction_expected: %d -> %d",
             prev, interaction_expected);
 
+    mdy_blanking_pause_evaluate_allowed();
     mdy_blanking_rethink_timers(false);
 
 EXIT:
@@ -1495,6 +1651,7 @@ static void mdy_datapipe_display_state_curr_cb(gconstpointer data)
         goto EXIT;
 
     mdy_statistics_update();
+    mdy_blanking_pause_evaluate_allowed();
     mdy_blanking_inhibit_schedule_broadcast();
 
 EXIT:
@@ -1523,6 +1680,7 @@ static void mdy_datapipe_display_state_next_cb(gconstpointer data)
     mdy_blanking_rethink_afterboot_delay();
 
     mdy_dbus_send_display_status(0);
+    mdy_blanking_pause_evaluate_allowed();
 
 EXIT:
     return;
@@ -1876,7 +2034,7 @@ static void mdy_datapipe_device_inactive_cb(gconstpointer data)
     case MCE_DISPLAY_DIM:
         /* DIM->ON on device activity */
         mce_log(LL_NOTICE, "display on due to activity");
-        mce_datapipe_req_display_state(MCE_DISPLAY_ON);
+        mce_datapipe_request_display_state(MCE_DISPLAY_ON);
         break;
 
     default:
@@ -3389,7 +3547,8 @@ EXIT:
  */
 static void mdy_poweron_led_rethink(void)
 {
-    bool want_led = (!mdy_init_done && mdy_bootstate == BOOTSTATE_USER);
+    bool want_led = (mdy_init_done != TRISTATE_TRUE &&
+                     mdy_bootstate == BOOTSTATE_USER);
 
     mce_log(LL_DEBUG, "%s MCE_LED_PATTERN_POWER_ON",
             want_led ? "activate" : "deactivate");
@@ -3580,7 +3739,7 @@ static gboolean mdy_blanking_dim_cb(gpointer data)
     if( submode & MCE_SUBMODE_MALF )
         display = MCE_DISPLAY_OFF;
 
-    mce_datapipe_req_display_state(display);
+    mce_datapipe_request_display_state(display);
 
     return FALSE;
 }
@@ -3720,7 +3879,7 @@ static gboolean mdy_blanking_off_cb(gpointer data)
         break;
     }
 
-    mce_datapipe_req_display_state(next_state);
+    mce_datapipe_request_display_state(next_state);
 
     /* Remove wakelock unless the timer got re-programmed */
     if( !mdy_blanking_off_cb_id  )
@@ -3838,7 +3997,7 @@ static gboolean mdy_blanking_lpm_off_cb(gpointer data)
 
     mdy_blanking_lpm_off_cb_id = 0;
 
-    mce_datapipe_req_display_state(MCE_DISPLAY_LPM_OFF);
+    mce_datapipe_request_display_state(MCE_DISPLAY_LPM_OFF);
 
     return FALSE;
 }
@@ -3881,6 +4040,82 @@ EXIT:
 
 // PERIOD: BLANKING PAUSE
 
+/** Cached blanking pause is allowed -policy decision */
+static tristate_t blanking_pause_allowed = TRISTATE_UNKNOWN;
+
+/** Evaluate whether clients are allowed to pause blanking
+ *
+ * Check whether device in such a state where clients are
+ * allowed to pause display blanking.
+ */
+static void mdy_blanking_pause_evaluate_allowed(void)
+{
+    tristate_t allowed = TRISTATE_FALSE;
+
+    /* Feature must not be disabled in config */
+    if( !mdy_blanking_pause_is_allowed() )
+        goto DONE;
+
+    /* Display must be currently on */
+    switch( display_state_curr ) {
+    case MCE_DISPLAY_ON:
+        // always allowed
+        break;
+
+    case MCE_DISPLAY_DIM:
+        // optionally allowed
+        if( mdy_blanking_pause_can_dim() )
+            break;
+        // fall through
+
+    default:
+        goto DONE;
+    }
+
+    /* Only ON <--> DIM transitions are tolerated */
+    switch( display_state_next ) {
+    case MCE_DISPLAY_ON:
+        // always allowed
+        break;
+
+    case MCE_DISPLAY_DIM:
+        // optionally allowed
+        if( mdy_blanking_pause_can_dim() )
+            break;
+        // fall through
+
+    default:
+        goto DONE;
+    }
+
+    /* Tklock must be off ...
+     *
+     * ... unless lockscreen expects user interaction
+     * and there is some application on top of lockscreen
+     */
+    if( submode & MCE_SUBMODE_TKLOCK ) {
+        if( !interaction_expected )
+            goto DONE;
+        if( topmost_window_pid == -1 )
+            goto DONE;
+    }
+
+    allowed = TRISTATE_TRUE;
+
+DONE:
+    if( blanking_pause_allowed != allowed ) {
+        mce_log(LL_DEBUG, "blanking_pause_allowed: %s -> %s",
+                tristate_repr(blanking_pause_allowed),
+                tristate_repr(allowed));
+        blanking_pause_allowed = allowed;
+
+        if( blanking_pause_allowed != TRISTATE_TRUE )
+            mdy_blanking_remove_pause_clients();
+
+        mdy_dbus_send_blanking_pause_allowed_status(0);
+    }
+}
+
 /** ID for display blank prevention timer source */
 static guint mdy_blanking_pause_period_cb_id = 0;
 
@@ -3901,6 +4136,7 @@ static gboolean mdy_blanking_pause_period_cb(gpointer data)
         mdy_blanking_remove_pause_clients();
 
         mdy_dbus_send_blanking_pause_status(0);
+        mdy_blanking_rethink_timers(true);
     }
 
     return FALSE;
@@ -3917,31 +4153,52 @@ static void mdy_blanking_stop_pause_period(void)
             mdy_blanking_pause_period_cb_id = 0;
 
         mdy_dbus_send_blanking_pause_status(0);
+        mdy_blanking_rethink_timers(true);
     }
 }
 
 /**
  * Prevent screen blanking for display_timeout seconds
  */
-static void mdy_blanking_start_pause_period(void)
+static void mdy_blanking_start_pause_period(int duration)
 {
+    bool was_paused = (mdy_blanking_pause_period_cb_id != 0);
+
     /* Cancel existing timeout */
     if( mdy_blanking_pause_period_cb_id )
         g_source_remove(mdy_blanking_pause_period_cb_id);
 
+    /* Add suitable amount of slack */
+    duration += mdy_blank_prevent_slack;
+
     /* Setup new timeout */
     mdy_blanking_pause_period_cb_id =
-        g_timeout_add_seconds(mdy_blank_prevent_timeout,
-                              mdy_blanking_pause_period_cb, NULL);
+        g_timeout_add(duration, mdy_blanking_pause_period_cb, 0);
 
-    mce_log(LL_DEBUG, "BLANKING PAUSE started; period = %d",
-            mdy_blank_prevent_timeout);
+    mce_log(LL_DEBUG, "BLANKING PAUSE started; period = %d", duration);
 
-    mdy_dbus_send_blanking_pause_status(0);
+    if( !was_paused ) {
+        mdy_dbus_send_blanking_pause_status(0);
+        mdy_blanking_rethink_timers(true);
+    }
 }
 
 /** List of monitored blanking pause clients */
-static GSList *mdy_blanking_pause_clients = NULL;
+static GHashTable *bpclient_lut = 0;
+
+static void
+mdy_blanking_init_pause_client_tracking(void)
+{
+    bpclient_lut = g_hash_table_new_full(g_str_hash, g_str_equal,
+                                         g_free, bpclient_delete_cb);
+}
+
+static void
+mdy_blanking_quit_pause_client_tracking(void)
+{
+    if( bpclient_lut )
+        g_hash_table_unref(bpclient_lut), bpclient_lut = 0;
+}
 
 /** Blanking pause is active predicate
  *
@@ -3975,56 +4232,28 @@ static bool mdy_blanking_pause_is_allowed(void)
  *
  * @param name The private the D-Bus name of the client
  */
-static void mdy_blanking_add_pause_client(const gchar *name)
+void
+mdy_blanking_add_pause_client(const char *name)
 {
-    gssize rc = -1;
-
     if( !name )
         goto EXIT;
 
-    // check if the feature is disabled
-    if( !mdy_blanking_pause_is_allowed() ) {
-        mce_log(LL_DEBUG, "blanking pause request from`%s ignored';"
-                " feature is disabled", name);
+    if( blanking_pause_allowed != TRISTATE_TRUE ) {
+        mce_log(LL_DEBUG, "blanking pause request from`%s ignored", name);
         goto EXIT;
     }
 
-    // display must be on
-    switch( display_state_curr ) {
-    case MCE_DISPLAY_ON:
-        // always allowed
-        break;
-
-    case MCE_DISPLAY_DIM:
-        // optionally allowed
-        if( mdy_blanking_pause_can_dim() )
-            break;
-        // fall through
-
-    default:
-        mce_log(LL_WARN, "blanking pause request from`%s ignored';"
-                " display not on", name);
+    if( !bpclient_lut )
         goto EXIT;
+
+    bpclient_t *client = g_hash_table_lookup(bpclient_lut, name);
+
+    if( !client ) {
+        client = bpclient_create(name);
+        g_hash_table_replace(bpclient_lut, g_strdup(name), client);
     }
 
-    // and tklock off
-    if( submode & MCE_SUBMODE_TKLOCK ) {
-        mce_log(LL_WARN, "blanking pause request from`%s ignored';"
-                " tklock on", name);
-        goto EXIT;
-    }
-
-    rc = mce_dbus_owner_monitor_add(name,
-                                    mdy_blanking_pause_client_lost_cb,
-                                    &mdy_blanking_pause_clients,
-                                    BLANKING_PAUSE_MAX_MONITORED);
-    if( rc < 0 ) {
-        mce_log(LL_WARN, "Failed to add name owner monitor for `%s'", name);
-        goto EXIT;
-    }
-
-    mdy_blanking_start_pause_period();
-    mdy_blanking_rethink_timers(true);
+    bpclient_update_timeout(client);
 
 EXIT:
     return;
@@ -4036,84 +4265,95 @@ EXIT:
  *
  * @return TRUE on success, FALSE if name is NULL
  */
-static gboolean mdy_blanking_remove_pause_client(const gchar *name)
+static void
+mdy_blanking_remove_pause_client(const char *name)
 {
-    gssize rc = -1;
+    if( !bpclient_lut )
+        goto EXIT;
 
     if( !name )
         goto EXIT;
 
-    rc = mce_dbus_owner_monitor_remove(name, &mdy_blanking_pause_clients);
+    bpclient_t *client = g_hash_table_lookup(bpclient_lut, name);
 
-    if( rc < 0 ) {
-        // name was not monitored
+    if( !client )
         goto EXIT;
-    }
 
-    if( rc == 0 ) {
-        /* no names left, remove the timeout */
-        mdy_blanking_stop_pause_period();
-        mdy_blanking_rethink_timers(true);
-    }
+    g_hash_table_remove(bpclient_lut, name);
+
+    mdy_blanking_evaluate_pause_timeout();
 
 EXIT:
-    return (rc != -1);
+    return;
 }
 
 /** Remove all clients, stop blanking pause */
 static void mdy_blanking_remove_pause_clients(void)
 {
-    /* If there are clients to remove or blanking pause timer to stop,
-     * we need to re-evaluate need for dimming timer before returning */
-    bool rethink = (mdy_blanking_pause_clients || mdy_blanking_is_paused());
-
-    /* Remove all name monitors for the blanking pause requester */
-    mce_dbus_owner_monitor_remove_all(&mdy_blanking_pause_clients);
-
-    /* Stop blank prevent timer */
-    mdy_blanking_stop_pause_period();
-
-    if( rethink )
-        mdy_blanking_rethink_timers(true);
+    g_hash_table_remove_all(bpclient_lut);
+    mdy_blanking_evaluate_pause_timeout();
 }
 
-/** Handle blanking pause clients dropping from dbus
- *
- * D-Bus callback used for monitoring the process that requested
- * blanking prevention; if that process exits, immediately
- * cancel the blanking timeout and resume normal operation
- *
- * @param msg The D-Bus message
- *
- * @return TRUE on success, FALSE on failure
- */
-static gboolean mdy_blanking_pause_client_lost_cb(DBusMessage *const msg)
+void
+mdy_blanking_evaluate_pause_timeout(void)
 {
-    gboolean    status     = FALSE;
-    const char *dbus_name  = 0;
-    const char *prev_owner = 0;
-    const char *curr_owner = 0;
-    DBusError   error      = DBUS_ERROR_INIT;
-
-    if( !dbus_message_get_args(msg, &error,
-                               DBUS_TYPE_STRING, &dbus_name,
-                               DBUS_TYPE_STRING, &prev_owner,
-                               DBUS_TYPE_STRING, &curr_owner,
-                               DBUS_TYPE_INVALID) ) {
-        mce_log(LL_ERR, "Failed to get argument from %s.%s; %s",
-                "org.freedesktop.DBus", "NameOwnerChanged",
-                error.message);
+    if( !bpclient_lut )
         goto EXIT;
+
+    int64_t now = mce_lib_get_boot_tick();
+    int64_t tmo = 0;
+    int     dur = 0;
+
+    GSList *stale = 0;
+
+    GHashTableIter iter;
+    gpointer key, value;
+
+    g_hash_table_iter_init(&iter, bpclient_lut);
+    while( g_hash_table_iter_next (&iter, &key, &value) )
+    {
+        const char *name   = key;
+        bpclient_t *client = value;
+
+        if( client->bpc_tmo <= now ) {
+            mce_log(LL_DEBUG, "client %s is stale", name);
+            stale = g_slist_prepend(stale, (gpointer)name);
+            continue;
+        }
+        if( client->bpc_pid == -1 ) {
+            mce_log(LL_DEBUG, "client %s is not identified", name);
+            continue;
+        }
+        if( (submode & MCE_SUBMODE_TKLOCK) &&
+            client->bpc_pid != topmost_window_pid ) {
+            mce_log(LL_DEBUG, "tklocked and client %s is not topmost", name);
+            continue;
+        }
+
+        mce_log(LL_DEBUG, "client %s is holding blanking pause", name);
+        if( tmo < client->bpc_tmo )
+            tmo = client->bpc_tmo;
     }
 
-    mce_log(LL_DEBUG, "blanking pause client %s lost", dbus_name);
+    while( stale ) {
+        const char *name = stale->data;
+        g_hash_table_remove(bpclient_lut, name);
+        stale = g_slist_remove(stale, name);
+    }
 
-    mdy_blanking_remove_pause_client(dbus_name);
-    status = TRUE;
+    if( tmo > now )
+        dur = (int)(tmo - now);
 
 EXIT:
-    dbus_error_free(&error);
-    return status;
+
+    mce_log(LL_DEBUG, "blanking paused for %d ms", dur);
+
+    if( dur > 0 )
+        mdy_blanking_start_pause_period(dur);
+    else
+        mdy_blanking_stop_pause_period();
+
+    return;
 }
 
 // PERIOD: ADAPTIVE DIMMING
@@ -4560,7 +4800,7 @@ static void mdy_blanking_rethink_proximity(void)
     switch( display_state_curr ) {
     case MCE_DISPLAY_LPM_ON:
         if( proximity_sensor_actual == COVER_CLOSED )
-            mce_datapipe_req_display_state(MCE_DISPLAY_LPM_OFF);
+            mce_datapipe_request_display_state(MCE_DISPLAY_LPM_OFF);
         else
             mdy_blanking_schedule_lpm_off();
         break;
@@ -4568,7 +4808,7 @@ static void mdy_blanking_rethink_proximity(void)
     case MCE_DISPLAY_LPM_OFF:
         if( proximity_sensor_actual == COVER_OPEN &&
             lid_sensor_filtered != COVER_CLOSED )
-            mce_datapipe_req_display_state(MCE_DISPLAY_LPM_ON);
+            mce_datapipe_request_display_state(MCE_DISPLAY_LPM_ON);
         else
             mdy_blanking_schedule_off();
         break;
@@ -4622,7 +4862,7 @@ static void mdy_blanking_rethink_afterboot_delay(void)
     int64_t want_limit = 0;
 
     /* Bootup has not yet finished */
-    if( mdy_init_done )
+    if( mdy_init_done != TRISTATE_TRUE )
         goto DONE;
 
     /* We are booting to USER mode */
@@ -4991,7 +5231,7 @@ static display_type_t mdy_display_type_get(void)
 
         /* Enable hardware fading if supported */
         if (mdy_brightness_hw_fading_is_supported == TRUE)
-            (void)mce_write_number_string_to_file(&mdy_brightness_hw_fading_output, 1);
+            mce_write_number_string_to_file(&mdy_brightness_hw_fading_output, 1);
     }
     else if (g_access(DISPLAY_BACKLIGHT_PATH DISPLAY_ACPI_VIDEO0, W_OK) == 0) {
         display_type = DISPLAY_TYPE_ACPI_VIDEO0;
@@ -5275,6 +5515,141 @@ static waitfb_t mdy_waitfb_data =
     .pipe_fd    = -1,
     .pipe_id    = 0,
 };
+
+/* ========================================================================= *
+ * TOPMOST_WINDOW_TRACKING
+ * ========================================================================= */
+
+static void
+mdy_topmost_window_set_pid(int pid)
+{
+    if( topmost_window_pid == pid )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "topmost_window_pid: %d -> %d",
+            topmost_window_pid, pid);
+    topmost_window_pid = pid;
+
+    mdy_blanking_pause_evaluate_allowed();
+
+    datapipe_exec_full(&topmost_window_pid_pipe,
+                       GINT_TO_POINTER(topmost_window_pid),
+                       USE_INDATA, CACHE_INDATA);
+
+EXIT:
+    return;
+}
+
+/** Handle topmost window pid changed signal
+ *
+ * @param sig  D-Bus signal message
+ *
+ * @return TRUE
+ */
+static gboolean mdy_topmost_window_pid_changed_cb(DBusMessage *const sig)
+{
+    dbus_int32_t pid = -1;
+    DBusError    err = DBUS_ERROR_INIT;
+
+    if( !dbus_message_get_args(sig, &err,
+                               DBUS_TYPE_INT32, &pid,
+                               DBUS_TYPE_INVALID) ) {
+        mce_log(LL_WARN, "parse error: %s: %s", err.name, err.message);
+        goto EXIT;
+    }
+
+    mce_log(LL_DEBUG, "received %s(%d)",
+            COMPOSITOR_TOPMOST_WINDOW_PID_CHANGED, (int)pid);
+
+    mdy_topmost_window_set_pid(pid);
+
+EXIT:
+
+    return TRUE;
+}
+
+static DBusPendingCall *mdy_topmost_window_pid_pc = 0;
+
+/** Handle reply to pending compositor state request
+ */
+static void
+mdy_topmost_window_pid_reply_cb(DBusPendingCall *pc, void *aptr)
+{
+    (void)aptr;
+
+    DBusMessage *rsp  = 0;
+    DBusError    err  = DBUS_ERROR_INIT;
+    dbus_int32_t pid  = -1;
+
+    if( mdy_topmost_window_pid_pc != pc )
+        goto EXIT;
+
+    dbus_pending_call_unref(mdy_topmost_window_pid_pc),
+        mdy_topmost_window_pid_pc = 0;
+
+    mce_log(LL_NOTICE, "reply to %s()",
+            COMPOSITOR_GET_TOPMOST_WINDOW_PID);
+
+    if( !(rsp = dbus_pending_call_steal_reply(pc)) )
+        goto EXIT;
+
+    if( dbus_set_error_from_message(&err, rsp) ) {
+        mce_log(LL_WARN, "error reply: %s: %s", err.name, err.message);
+        goto EXIT;
+    }
+
+    if( !dbus_message_get_args(rsp, &err,
+                               DBUS_TYPE_INT32, &pid,
+                               DBUS_TYPE_INVALID) ) {
+        mce_log(LL_WARN, "parse error: %s: %s", err.name, err.message);
+        goto EXIT;
+    }
+
+    mdy_topmost_window_set_pid(pid);
+
+EXIT:
+
+    if( rsp ) dbus_message_unref(rsp);
+
+    dbus_error_free(&err);
+
+    return;
+}
+
+/** Abandon pending compositor state request
+ */
+static void
+mdy_topmost_window_forget_pid_query(void)
+{
+    if( mdy_topmost_window_pid_pc ) {
+        mce_log(LL_NOTICE, "forget %s()",
+                COMPOSITOR_GET_TOPMOST_WINDOW_PID);
+
+        dbus_pending_call_cancel(mdy_topmost_window_pid_pc);
+        dbus_pending_call_unref(mdy_topmost_window_pid_pc),
+            mdy_topmost_window_pid_pc = 0;
+    }
+}
+
+/** Initiate async compositor state request
+ */
+static void
+mdy_topmost_window_send_pid_query(void)
+{
+    mdy_topmost_window_forget_pid_query();
+
+    mce_log(LL_NOTICE, "call %s()",
+            COMPOSITOR_GET_TOPMOST_WINDOW_PID);
+
+    dbus_send_ex(COMPOSITOR_SERVICE,
+                 COMPOSITOR_PATH,
+                 COMPOSITOR_IFACE,
+                 COMPOSITOR_GET_TOPMOST_WINDOW_PID,
+                 mdy_topmost_window_pid_reply_cb,
+                 0, 0,
+                 &mdy_topmost_window_pid_pc,
+                 DBUS_TYPE_INVALID);
+}
 
 /* ========================================================================= *
  * COMPOSITOR_LEDS
@@ -6576,7 +6951,7 @@ static int mdy_autosuspend_get_allowed_level(void)
         block_late = true;
 
     /* no late suspend during bootup */
-    if( mdy_desktop_ready_id || !mdy_init_done )
+    if( mdy_desktop_ready_id || mdy_init_done != TRISTATE_TRUE )
         block_late = true;
 
     /* no late suspend during shutdown */
@@ -6773,21 +7148,6 @@ EXIT:
  */
 static void mdy_display_state_changed(void)
 {
-    /* Disable blanking pause if display != ON */
-    switch( display_state_curr ) {
-    case MCE_DISPLAY_ON:
-        break;
-
-    case MCE_DISPLAY_DIM:
-        if( mdy_blanking_is_paused() && mdy_blanking_pause_can_dim() )
-            break;
-        // fall through
-
-    default:
-        mdy_blanking_remove_pause_clients();
-        break;
-    }
-
     /* Program dim/blank timers */
     mdy_blanking_rethink_timers(false);
 
@@ -7161,6 +7521,16 @@ static void mdy_datapipe_compositor_service_state_cb(gconstpointer aptr)
      */
     if( prev != SERVICE_STATE_UNDEF )
         mdy_stm_push_target_change(MCE_DISPLAY_ON);
+
+    /* PID of topmost window needs to be invalidated / queried
+     * when compositor service state changes.
+     */
+
+    mdy_topmost_window_set_pid(-1);
+    if( service == SERVICE_STATE_RUNNING )
+        mdy_topmost_window_send_pid_query();
+    else
+        mdy_topmost_window_forget_pid_query();
 
 EXIT:
     return;
@@ -8263,7 +8633,7 @@ static void mdy_governor_rethink(void)
     }
 
     /* Use default during bootup */
-    if( mdy_desktop_ready_id || !mdy_init_done ) {
+    if( mdy_desktop_ready_id || mdy_init_done != TRISTATE_TRUE ) {
         governor_want = GOVERNOR_DEFAULT;
     }
 
@@ -8366,6 +8736,50 @@ EXIT:
     return TRUE;
 }
 
+/** Send a blanking pause allowed reply or signal
+ *
+ * @param method_call A DBusMessage to reply to; or NULL to send signal
+ *
+ * @return TRUE
+ */
+static gboolean mdy_dbus_send_blanking_pause_allowed_status(DBusMessage *const method_call)
+{
+    static int   prev = -1;
+    bool         curr = blanking_pause_allowed;
+    dbus_bool_t  data = curr;
+    DBusMessage *msg  = 0;
+
+    if( method_call ) {
+        msg = dbus_new_method_reply(method_call);
+        mce_log(LL_DEBUG, "Sending blanking pause allowed reply: %s",
+                data ? "true" : "false");
+    }
+    else if( prev == curr ) {
+        /* Omit no-change signals */
+        goto EXIT;
+    }
+    else {
+        prev = curr;
+        msg = dbus_new_signal(MCE_SIGNAL_PATH, MCE_SIGNAL_IF,
+                              MCE_PREVENT_BLANK_ALLOWED_SIG);
+        mce_log(LL_DEVEL, "Sending blanking pause allowed signal: %s",
+                data ? "true" : "false");
+    }
+
+    if( !dbus_message_append_args(msg,
+                                  DBUS_TYPE_BOOLEAN, &data,
+                                  DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    dbus_send_message(msg), msg = 0;
+
+EXIT:
+    if( msg )
+        dbus_message_unref(msg);
+
+    return TRUE;
+}
+
 /** D-Bus callback for the get blanking pause status method call
  *
  * @param msg The D-Bus message
@@ -8378,6 +8792,22 @@ static gboolean mdy_dbus_handle_blanking_pause_get_req(DBusMessage *const msg)
             mce_dbus_get_message_sender_ident(msg));
 
     mdy_dbus_send_blanking_pause_status(msg);
+
+    return TRUE;
+}
+
+/** D-Bus callback for the get blanking pause allowed method call
+ *
+ * @param msg The D-Bus message
+ *
+ * @return TRUE
+ */
+static gboolean mdy_dbus_handle_blanking_pause_allowed_get_req(DBusMessage *const msg)
+{
+    mce_log(LL_DEVEL, "Received blanking pause allowed get request from %s",
+            mce_dbus_get_message_sender_ident(msg));
+
+    mdy_dbus_send_blanking_pause_allowed_status(msg);
 
     return TRUE;
 }
@@ -8649,7 +9079,7 @@ static void mdy_dbus_handle_display_state_req(display_state_t state)
      * similar -> reset the last indication sent cache */
     mdy_dbus_invalidate_display_status();
 
-    mce_datapipe_req_display_state(state);
+    mce_datapipe_request_display_state(state);
 }
 
 /**
@@ -8734,9 +9164,7 @@ static gboolean mdy_dbus_handle_display_off_req(DBusMessage *const msg)
     if( !dbus_message_get_no_reply(msg) )
         dbus_send_message(dbus_new_method_reply(msg));
 
-    datapipe_exec_full(&tklock_request_pipe,
-                       GINT_TO_POINTER(TKLOCK_REQUEST_ON),
-                       USE_INDATA, CACHE_INDATA);
+    mce_datapipe_request_tklock(TKLOCK_REQUEST_ON);
 
     mdy_dbus_handle_display_state_req(MCE_DISPLAY_OFF);
 
@@ -8795,9 +9223,7 @@ EXIT:
     }
 
     if( lock_ui ) {
-        datapipe_exec_full(&tklock_request_pipe,
-                           GINT_TO_POINTER(TKLOCK_REQUEST_ON),
-                           USE_INDATA, CACHE_INDATA);
+        mce_datapipe_request_tklock(TKLOCK_REQUEST_ON);
     }
 
     mdy_dbus_handle_display_state_req(request);
@@ -9267,6 +9693,13 @@ static mce_dbus_handler_t mdy_dbus_handlers[] =
     },
     {
         .interface = MCE_SIGNAL_IF,
+        .name      = MCE_PREVENT_BLANK_ALLOWED_SIG,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .args      =
+            "    <arg name=\"allowed\" type=\"b\"/>\n"
+    },
+    {
+        .interface = MCE_SIGNAL_IF,
         .name      = MCE_BLANKING_INHIBIT_SIG,
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
         .args      =
@@ -9294,6 +9727,12 @@ static mce_dbus_handler_t mdy_dbus_handlers[] =
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
         .callback  = mdy_dbus_handle_desktop_started_sig,
     },
+    {
+        .interface = COMPOSITOR_IFACE,
+        .name      = COMPOSITOR_TOPMOST_WINDOW_PID_CHANGED,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .callback  = mdy_topmost_window_pid_changed_cb,
+    },
     /* method calls */
     {
         .interface = MCE_REQUEST_IF,
@@ -9302,6 +9741,14 @@ static mce_dbus_handler_t mdy_dbus_handlers[] =
         .callback  = mdy_dbus_handle_blanking_pause_get_req,
         .args      =
             "    <arg direction=\"out\" name=\"blanking_pause\" type=\"s\"/>\n"
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_PREVENT_BLANK_ALLOWED_GET,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = mdy_dbus_handle_blanking_pause_allowed_get_req,
+        .args      =
+            "    <arg direction=\"out\" name=\"allowed\" type=\"b\"/>\n"
     },
     {
         .interface = MCE_REQUEST_IF,
@@ -9465,18 +9912,25 @@ static void mdy_flagfiles_init_done_cb(const char *path,
     char full[256];
     snprintf(full, sizeof full, "%s/%s", path, file);
 
-    gboolean flag = access(full, F_OK) ? FALSE : TRUE;
+    tristate_t prev = mdy_init_done;
+    mdy_init_done = access(full, F_OK) ? TRISTATE_FALSE : TRISTATE_TRUE;
 
-    if( mdy_init_done != flag ) {
-        mdy_init_done = flag;
-        mce_log(LL_NOTICE, "init_done flag file present: %s",
-                mdy_init_done ? "true" : "false");
+    if( mdy_init_done != prev ) {
+        mce_log(LL_DEVEL, "init_done flag file present: %s -> %s",
+                tristate_repr(prev),
+                tristate_repr(mdy_init_done));
+
         mdy_stm_schedule_rethink();
 #ifdef ENABLE_CPU_GOVERNOR
         mdy_governor_rethink();
 #endif
         mdy_poweron_led_rethink();
         mdy_blanking_rethink_afterboot_delay();
+
+        /* broadcast change within mce */
+        datapipe_exec_full(&init_done_pipe,
+                           GINT_TO_POINTER(mdy_init_done),
+                           USE_INDATA, CACHE_INDATA);
     }
 }
 
@@ -9506,7 +9960,7 @@ static void mdy_flagfiles_osupdate_running_cb(const char *path,
 
         if( mdy_osupdate_running ) {
             /* Issue display on request when update mode starts */
-            mce_datapipe_req_display_state(MCE_DISPLAY_ON);
+            mce_datapipe_request_display_state(MCE_DISPLAY_ON);
         }
 
         /* suspend policy is affected by update mode */
@@ -9617,7 +10071,12 @@ static void mdy_flagfiles_start_tracking(void)
             delay = ready - uptime;
 
         /* do not wait for the init-done flag file */
-        mdy_init_done = TRUE;
+        if( mdy_init_done != TRISTATE_TRUE ) {
+            mdy_init_done = TRISTATE_TRUE;
+            datapipe_exec_full(&init_done_pipe,
+                               GINT_TO_POINTER(mdy_init_done),
+                               USE_INDATA, CACHE_INDATA);
+        }
     }
 
     mce_log(LL_NOTICE, "suspend delay %d seconds", (int)delay);
@@ -9803,13 +10262,13 @@ static void mdy_setting_cb(GConfClient *const gcc, const guint id,
             ((mdy_low_power_mode_supported == FALSE) ||
                 (mdy_use_low_power_mode == FALSE) ||
                 (mdy_blanking_can_blank_from_low_power_mode() == TRUE))) {
-            mce_datapipe_req_display_state(MCE_DISPLAY_OFF);
+            mce_datapipe_request_display_state(MCE_DISPLAY_OFF);
         }
         else if ((display_state_curr == MCE_DISPLAY_OFF) &&
                  (mdy_use_low_power_mode == TRUE) &&
                  (mdy_blanking_can_blank_from_low_power_mode() == FALSE) &&
                  (mdy_low_power_mode_supported == TRUE)) {
-            mce_datapipe_req_display_state(MCE_DISPLAY_LPM_ON);
+            mce_datapipe_request_display_state(MCE_DISPLAY_LPM_ON);
         }
     }
     else if (id == mdy_adaptive_dimming_enabled_setting_id) {
@@ -9859,7 +10318,7 @@ static void mdy_setting_cb(GConfClient *const gcc, const guint id,
         if( prev != mdy_disp_never_blank ) {
             mce_log(LL_NOTICE, "never_blank = %d", mdy_disp_never_blank);
             if( mdy_disp_never_blank )
-                mce_datapipe_req_display_state(MCE_DISPLAY_ON);
+                mce_datapipe_request_display_state(MCE_DISPLAY_ON);
             mdy_blanking_rethink_timers(true);
         }
     }
@@ -9902,27 +10361,10 @@ static void mdy_setting_cb(GConfClient *const gcc, const guint id,
     else if( id == mdy_blanking_pause_mode_setting_id ) {
         gint old = mdy_blanking_pause_mode;
         mdy_blanking_pause_mode = gconf_value_get_int(gcv);
-
-        mce_log(LL_NOTICE, "blanking pause mode = %s",
-                blanking_pause_mode_repr(mdy_blanking_pause_mode));
-
-        if( mdy_blanking_pause_mode == old ) {
-            /* nop */
-        }
-        else if( mdy_blanking_pause_is_allowed() ) {
-            /* Reprogram dim timer as needed when toggling between
-             * keep-on and allow-dimming modes.
-             *
-             * Note that re-enabling after disable means that active
-             * client side renew sessions are out of sync and hiccups
-             * can occur (i.e. display can blank once after enabling).
-             */
-            mdy_blanking_rethink_timers(true);
-        }
-        else {
-            /* Flush any active sessions there might be and reprogram
-             * display off timer as needed. */
-            mdy_blanking_remove_pause_clients();
+        if( mdy_blanking_pause_mode != old ) {
+            mce_log(LL_NOTICE, "blanking pause mode = %s",
+                    blanking_pause_mode_repr(mdy_blanking_pause_mode));
+            mdy_blanking_pause_evaluate_allowed();
         }
     }
     else if( id == mdy_blanking_from_tklock_disabled_setting_id ) {
@@ -10510,13 +10952,15 @@ const gchar *g_module_check_init(GModule *module)
 
     (void)module;
 
+    mdy_blanking_init_pause_client_tracking();
+
     mdy_compositor_init();
 
     /* Allow execution of worker thread jobs from this plugin */
     mce_worker_add_context(MODULE_NAME);
 
     /* Initialise the display type and the relevant paths */
-    (void)mdy_display_type_get();
+    mdy_display_type_get();
 
 #ifdef ENABLE_CPU_GOVERNOR
     /* Get CPU scaling governor settings from INI-files */
@@ -10574,7 +11018,7 @@ const gchar *g_module_check_init(GModule *module)
      * gets notification from DSME */
     mce_log(LL_INFO, "initial display mode = %s",
             display_is_on ? "ON" : "OFF");
-    mce_datapipe_req_display_state(display_is_on ?
+    mce_datapipe_request_display_state(display_is_on ?
                                    MCE_DISPLAY_ON :
                                    MCE_DISPLAY_OFF);
 
@@ -10610,6 +11054,8 @@ void g_module_unload(GModule *module)
 
     /* Mark down that we are unloading */
     mdy_unloading_module = TRUE;
+
+    mdy_blanking_quit_pause_client_tracking();
 
     /* Deny execution of worker thread jobs from this plugin */
     mce_worker_rem_context(MODULE_NAME);
@@ -10702,6 +11148,9 @@ void g_module_unload(GModule *module)
                              - mce_lib_get_boot_tick());
         mce_fbdev_linger_after_exit(delay_ms);
     }
+
+    /* Do not leave pending dbus calls behind */
+    mdy_topmost_window_forget_pid_query();
 
     return;
 }

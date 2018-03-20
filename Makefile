@@ -266,6 +266,9 @@ LDLIBS   += -Wl,--as-needed
 # MCE
 # ----------------------------------------------------------------------------
 
+%.o : %.c
+	$(CC) -c -o $@ $< $(CPPFLAGS) $(CFLAGS)
+
 MCE_PKG_NAMES += gobject-2.0
 MCE_PKG_NAMES += glib-2.0
 MCE_PKG_NAMES += gio-2.0
@@ -550,6 +553,7 @@ NORMALIZE_USES_SPC =\
 	libwakelock.h\
 	mce-common.c\
 	mce-common.h\
+	mce-dbus.h\
 	mce-dsme.c\
 	mce-dsme.h\
 	mce-fbdev.c\
@@ -591,6 +595,7 @@ NORMALIZE_USES_SPC =\
 	modules/fingerprint.c\
 	modules/keypad.h\
 	modules/inactivity.c\
+	modules/inactivity.h\
 	modules/memnotify.c\
 	modules/memnotify.h\
 	modules/packagekit.c\
@@ -621,7 +626,6 @@ NORMALIZE_USES_TAB =\
 	mce-conf.c\
 	mce-conf.h\
 	mce-dbus.c\
-	mce-dbus.h\
 	mce-setting.c\
 	mce-hal.c\
 	mce-hal.h\

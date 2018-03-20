@@ -87,6 +87,9 @@ datapipe_struct touchscreen_event_pipe;
 /** The lock-key has been pressed; read only */
 datapipe_struct lockkey_state_pipe;
 
+/** The init-done condition has been reached; read only */
+datapipe_struct init_done_pipe;
+
 /** Keyboard open/closed; read only */
 datapipe_struct keyboard_slide_state_pipe;
 
@@ -159,6 +162,9 @@ datapipe_struct battery_status_pipe;
 
 /** Battery charge level; read only */
 datapipe_struct battery_level_pipe;
+
+/** Topmost window PID; read only */
+datapipe_struct topmost_window_pid_pipe;
 
 /** Camera button; read only */
 datapipe_struct camera_button_state_pipe;
@@ -787,6 +793,8 @@ void mce_datapipe_init(void)
 		      0, GINT_TO_POINTER(TRUE));
 	datapipe_init(&lockkey_state_pipe, READ_ONLY, DONT_FREE_CACHE,
 		      0, GINT_TO_POINTER(KEY_STATE_UNDEF));
+	datapipe_init(&init_done_pipe, READ_ONLY, DONT_FREE_CACHE,
+		      0, GINT_TO_POINTER(TRISTATE_UNKNOWN));
 	datapipe_init(&keyboard_slide_state_pipe, READ_ONLY, DONT_FREE_CACHE,
 		      0, GINT_TO_POINTER(COVER_CLOSED));
 	datapipe_init(&keyboard_available_state_pipe, READ_ONLY, DONT_FREE_CACHE,
@@ -819,6 +827,8 @@ void mce_datapipe_init(void)
 		      0, GINT_TO_POINTER(BATTERY_STATUS_UNDEF));
 	datapipe_init(&battery_level_pipe, READ_ONLY, DONT_FREE_CACHE,
 		      0, GINT_TO_POINTER(BATTERY_LEVEL_INITIAL));
+	datapipe_init(&topmost_window_pid_pipe, READ_ONLY, DONT_FREE_CACHE,
+		      0, GINT_TO_POINTER(-1));
 	datapipe_init(&camera_button_state_pipe, READ_ONLY, DONT_FREE_CACHE,
 		      0, GINT_TO_POINTER(CAMERA_BUTTON_UNDEF));
 	datapipe_init(&inactivity_delay_pipe, READ_ONLY, DONT_FREE_CACHE,
@@ -893,6 +903,7 @@ void mce_datapipe_quit(void)
 	datapipe_free(&audio_route_pipe);
 	datapipe_free(&inactivity_delay_pipe);
 	datapipe_free(&battery_level_pipe);
+	datapipe_free(&topmost_window_pid_pipe);
 	datapipe_free(&camera_button_state_pipe);
 	datapipe_free(&battery_status_pipe);
 	datapipe_free(&charger_state_pipe);
@@ -910,6 +921,7 @@ void mce_datapipe_quit(void)
 	datapipe_free(&keyboard_slide_state_pipe);
 	datapipe_free(&keyboard_available_state_pipe);
 	datapipe_free(&lockkey_state_pipe);
+	datapipe_free(&init_done_pipe);
 	datapipe_free(&device_inactive_pipe);
 	datapipe_free(&inactivity_event_pipe);
 	datapipe_free(&touchscreen_event_pipe);
@@ -1533,6 +1545,7 @@ const char *orientation_state_repr(orientation_state_t state)
 	return name;
 }
 
+/** Translate key state to human readable form */
 const char *key_state_repr(key_state_t state)
 {
 	const char *repr = "UNKNOWN";
@@ -1540,6 +1553,19 @@ const char *key_state_repr(key_state_t state)
 	case KEY_STATE_UNDEF:    repr = "UNDEF";    break;
 	case KEY_STATE_RELEASED: repr = "RELEASED"; break;
 	case KEY_STATE_PRESSED:  repr = "PRESSED";  break;
+	default: break;
+	}
+	return repr;
+}
+
+/** Translate tristate to human readable form */
+const char *tristate_repr(tristate_t state)
+{
+	const char *repr = "invalid";
+	switch( state ) {
+	case TRISTATE_UNKNOWN: repr = "unknown"; break;
+	case TRISTATE_FALSE:   repr = "false";   break;
+	case TRISTATE_TRUE:    repr = "true";    break;
 	default: break;
 	}
 	return repr;

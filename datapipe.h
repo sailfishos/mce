@@ -105,6 +105,7 @@ extern datapipe_struct key_backlight_brightness_pipe;
 extern datapipe_struct keypress_event_pipe;
 extern datapipe_struct touchscreen_event_pipe;
 extern datapipe_struct lockkey_state_pipe;
+extern datapipe_struct init_done_pipe;
 extern datapipe_struct keyboard_slide_state_pipe;
 extern datapipe_struct keyboard_available_state_pipe;
 extern datapipe_struct lid_sensor_is_working_pipe;
@@ -128,6 +129,7 @@ extern datapipe_struct interaction_expected_pipe;
 extern datapipe_struct charger_state_pipe;
 extern datapipe_struct battery_status_pipe;
 extern datapipe_struct battery_level_pipe;
+extern datapipe_struct topmost_window_pid_pipe;
 extern datapipe_struct camera_button_state_pipe;
 extern datapipe_struct inactivity_delay_pipe;
 extern datapipe_struct audio_route_pipe;
@@ -248,7 +250,7 @@ void mce_datapipe_quit(void);
  * This needs to be macro so that logging context stays
  * at the point of call.
  */
-#define mce_datapipe_req_display_state(state_) do {\
+#define mce_datapipe_request_display_state(state_) do {\
     display_state_t cur_target = datapipe_get_gint(display_state_next_pipe);\
     display_state_t req_target = (display_state_t)(state_);\
     /* Use elevated logginng verbosity for requests that \
@@ -276,3 +278,15 @@ void mce_datapipe_quit(void);
 } while(0)
 
 #endif /* _DATAPIPE_H_ */
+
+/** Execute tklock request
+ *
+ * @param tklock_request Value from  tklock_request_t
+ */
+#define mce_datapipe_request_tklock(tklock_request) do {\
+    mce_log(LL_DEBUG, "Requesting tklock=%s",\
+	    tklock_request_repr(tklock_request));\
+    datapipe_exec_full(&tklock_request_pipe,\
+		       GINT_TO_POINTER(tklock_request),\
+		       USE_INDATA, CACHE_INDATA);\
+}while(0)

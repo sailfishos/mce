@@ -420,35 +420,35 @@ static void set_lysti_backlight_brightness(guint fadetime, guint brightness)
 	old_brightness = brightness;
 
 	/* Disable engine 3 */
-	(void)mce_write_string_to_file(engine3_mode_path,
-				       MCE_LED_DISABLED_MODE);
+	mce_write_string_to_file(engine3_mode_path,
+				 MCE_LED_DISABLED_MODE);
 
 	/* Turn off all keyboard backlight LEDs */
-	(void)mce_write_number_string_to_file(&led_brightness_kb0_output, 0);
-	(void)mce_write_number_string_to_file(&led_brightness_kb1_output, 0);
-	(void)mce_write_number_string_to_file(&led_brightness_kb2_output, 0);
-	(void)mce_write_number_string_to_file(&led_brightness_kb3_output, 0);
-	(void)mce_write_number_string_to_file(&led_brightness_kb4_output, 0);
-	(void)mce_write_number_string_to_file(&led_brightness_kb5_output, 0);
+	mce_write_number_string_to_file(&led_brightness_kb0_output, 0);
+	mce_write_number_string_to_file(&led_brightness_kb1_output, 0);
+	mce_write_number_string_to_file(&led_brightness_kb2_output, 0);
+	mce_write_number_string_to_file(&led_brightness_kb3_output, 0);
+	mce_write_number_string_to_file(&led_brightness_kb4_output, 0);
+	mce_write_number_string_to_file(&led_brightness_kb5_output, 0);
 
 	/* Set backlight LED current */
-	(void)mce_write_number_string_to_file(&led_current_kb0_output, MAXIMUM_LYSTI_BACKLIGHT_LED_CURRENT);
-	(void)mce_write_number_string_to_file(&led_current_kb1_output, MAXIMUM_LYSTI_BACKLIGHT_LED_CURRENT);
-	(void)mce_write_number_string_to_file(&led_current_kb2_output, MAXIMUM_LYSTI_BACKLIGHT_LED_CURRENT);
-	(void)mce_write_number_string_to_file(&led_current_kb3_output, MAXIMUM_LYSTI_BACKLIGHT_LED_CURRENT);
-	(void)mce_write_number_string_to_file(&led_current_kb4_output, MAXIMUM_LYSTI_BACKLIGHT_LED_CURRENT);
-	(void)mce_write_number_string_to_file(&led_current_kb5_output, MAXIMUM_LYSTI_BACKLIGHT_LED_CURRENT);
+	mce_write_number_string_to_file(&led_current_kb0_output, MAXIMUM_LYSTI_BACKLIGHT_LED_CURRENT);
+	mce_write_number_string_to_file(&led_current_kb1_output, MAXIMUM_LYSTI_BACKLIGHT_LED_CURRENT);
+	mce_write_number_string_to_file(&led_current_kb2_output, MAXIMUM_LYSTI_BACKLIGHT_LED_CURRENT);
+	mce_write_number_string_to_file(&led_current_kb3_output, MAXIMUM_LYSTI_BACKLIGHT_LED_CURRENT);
+	mce_write_number_string_to_file(&led_current_kb4_output, MAXIMUM_LYSTI_BACKLIGHT_LED_CURRENT);
+	mce_write_number_string_to_file(&led_current_kb5_output, MAXIMUM_LYSTI_BACKLIGHT_LED_CURRENT);
 
 	/* Engine 3 */
-	(void)mce_write_string_to_file(engine3_mode_path,
-				       MCE_LED_LOAD_MODE);
+	mce_write_string_to_file(engine3_mode_path,
+				 MCE_LED_LOAD_MODE);
 
-	(void)mce_write_string_to_file(engine3_leds_path,
-				       bin_to_string(key_backlight_mask));
-	(void)mce_write_string_to_file(engine3_load_path,
-				       pattern);
-	(void)mce_write_string_to_file(engine3_mode_path,
-				       MCE_LED_RUN_MODE);
+	mce_write_string_to_file(engine3_leds_path,
+				 bin_to_string(key_backlight_mask));
+	mce_write_string_to_file(engine3_load_path,
+				 pattern);
+	mce_write_string_to_file(engine3_mode_path,
+				 MCE_LED_RUN_MODE);
 
 EXIT:
 	return;
@@ -464,15 +464,15 @@ static void set_n810_backlight_brightness(guint fadetime, guint brightness)
 {
 	/* Set fade time */
 	if (brightness == 0) {
-		(void)mce_write_number_string_to_file(&n810_keypad_fadetime_output, fadetime);
-		(void)mce_write_number_string_to_file(&n810_keyboard_fadetime_output, fadetime);
+		mce_write_number_string_to_file(&n810_keypad_fadetime_output, fadetime);
+		mce_write_number_string_to_file(&n810_keyboard_fadetime_output, fadetime);
 	} else {
-		(void)mce_write_number_string_to_file(&n810_keypad_fadetime_output, 0);
-		(void)mce_write_number_string_to_file(&n810_keyboard_fadetime_output, 0);
+		mce_write_number_string_to_file(&n810_keypad_fadetime_output, 0);
+		mce_write_number_string_to_file(&n810_keyboard_fadetime_output, 0);
 	}
 
-	(void)mce_write_number_string_to_file(&led_brightness_kb0_output, brightness);
-	(void)mce_write_number_string_to_file(&led_brightness_kb1_output, brightness);
+	mce_write_number_string_to_file(&led_brightness_kb0_output, brightness);
+	mce_write_number_string_to_file(&led_brightness_kb1_output, brightness);
 }
 
 /**
@@ -482,7 +482,7 @@ static void set_n810_backlight_brightness(guint fadetime, guint brightness)
  */
 static void set_simple_backlight_brightness(guint brightness)
 {
-	(void)mce_write_number_string_to_file(&backlight_brightness_level_output, brightness);
+	mce_write_number_string_to_file(&backlight_brightness_level_output, brightness);
 }
 
 /**
