@@ -1,3 +1,23 @@
+mce (1.93.0) precise; urgency=low
+
+  * [datapipe] Remove lintisms. JB#22475
+  * [datapipe] Use macro for making tklock requests. JB#22475
+  * [datapipe] Use macro for making display state requests. JB#22475
+  * [mce] Make tristate_t type generally available. JB#22475
+  * [datapipe] Add init_done_pipe. JB#22475
+  * [dsme] End transition submode on init_done condition. JB#22475
+  * [inactivity] Optional shutdown after idling. Fixes MER#1889
+  * [display] Track pid of topmost window. JB#41340
+  * [display] Add blanking pause allowed -policy. JB#41340
+  * [display] Allow blanking pause when app is on top of lockscreen. JB#41340
+  * [dbus] Add dbus peer tracking api. JB#41340
+  * [dbus] Cleanup mce-dbus header file. JB#41340
+  * [display] Only topmost application can pause blanking. JB#41340
+  * [display] Expose blanking pause allowed -policy on dbus. JB#41340
+  * [display] Add slack to blanking pause timeout. JB#41340
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 20 Mar 2018 10:58:11 +0200
+
 mce (1.92.0) precise; urgency=low
 
   * [build] Remove unneeded include statements
