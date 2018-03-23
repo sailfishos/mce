@@ -205,6 +205,7 @@ static void     tklock_datapipe_lid_sensor_actual_cb(gconstpointer data);
 static void     tklock_datapipe_lid_sensor_filtered_cb(gconstpointer data);
 static void     tklock_datapipe_lens_cover_state_cb(gconstpointer data);
 static void     tklock_datapipe_user_activity_event_cb(gconstpointer data);
+static void     tklock_datapipe_init_done_cb(gconstpointer data);
 
 static bool     tklock_datapipe_have_tklock_submode(void);
 static void     tklock_datapipe_set_devicelock_state(devicelock_state_t state);
@@ -587,6 +588,9 @@ static output_state_t mce_keypad_sysfs_disable_output =
 /* ========================================================================= *
  * DATAPIPE VALUES AND TRIGGERS
  * ========================================================================= */
+
+/** Cached init_done state; assume unknown */
+static tristate_t init_done = TRISTATE_UNKNOWN;
 
 /** Proximity state history for triggering low power mode ui */
 static ps_history_t tklock_lpmui_hist[8];
@@ -1973,6 +1977,29 @@ EXIT:
     return;
 }
 
+/** Change notifications for init_done
+ */
+static void tklock_datapipe_init_done_cb(gconstpointer data)
+{
+    tristate_t prev = init_done;
+    init_done = GPOINTER_TO_INT(data);
+
+    if( init_done == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "init_done = %s -> %s",
+            tristate_repr(prev),
+            tristate_repr(init_done));
+
+    /* No direct actions, but restoring display state
+     * after notifications etc is disabled until init
+     * done is reached. See tklock_uiexception_begin().
+     */
+
+EXIT:
+    return;
+}
+
 /** Array of datapipe handlers */
 static datapipe_handler_t tklock_datapipe_handlers[] =
 {
@@ -2093,6 +2120,10 @@ static datapipe_handler_t tklock_datapipe_handlers[] =
         .datapipe  = &user_activity_event_pipe,
         .output_cb = tklock_datapipe_user_activity_event_cb,
 
+    },
+    {
+        .datapipe  = &init_done_pipe,
+        .output_cb = tklock_datapipe_init_done_cb,
     },
     {
         /* Note: Keybaord slide state signaling must reflect
@@ -3746,13 +3777,26 @@ static void tklock_uiexception_begin(uiexception_type_t type, int64_t linger)
         tklock_uiexception_cancel();
 
         /* save display, tklock and device lock states */
-        exdata.display    = display_state_curr;
+        exdata.display    = display_state_next;
         exdata.tklock     = tklock_datapipe_have_tklock_submode();
         exdata.devicelock = devicelock_state;
 
         /* initially insync, restore state at end */
         exdata.insync      = true;
         exdata.restore     = (type != UIEXCEPTION_TYPE_NOANIM);
+
+        /* Display should be on after booting up to user mode.
+         * If something like "charger connected" notification gets
+         * triggered during bootup, we need to disable state restore
+         * in order not to cause return to some non-intentional
+         * transient state.
+         */
+        if( exdata.restore &&
+            init_done != TRISTATE_TRUE &&
+            system_state == MCE_SYSTEM_STATE_USER ) {
+            mce_log(LL_DEVEL, "suppressing display state restore");
+            exdata.restore = false;
+        }
     }
 
     exdata.mask &= ~UIEXCEPTION_TYPE_LINGER;
