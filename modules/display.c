@@ -7526,7 +7526,7 @@ static void mdy_datapipe_compositor_service_state_cb(gconstpointer aptr)
     if( service == SERVICE_STATE_RUNNING &&
         mdy_init_done == TRISTATE_FALSE ) {
         mce_log(LL_NOTICE, "display on due to compositor startup");
-	mce_datapipe_request_display_state(MCE_DISPLAY_ON);
+        mce_datapipe_request_display_state(MCE_DISPLAY_ON);
     }
 
     /* PID of topmost window needs to be invalidated / queried
@@ -7561,7 +7561,7 @@ static void mdy_datapipe_lipstick_service_state_cb(gconstpointer aptr)
     if( lipstick_service_state == SERVICE_STATE_RUNNING &&
         mdy_init_done == TRISTATE_FALSE ) {
         mce_log(LL_NOTICE, "display on due to lipstick startup");
-	mce_datapipe_request_display_state(MCE_DISPLAY_ON);
+        mce_datapipe_request_display_state(MCE_DISPLAY_ON);
     }
 
     mdy_blanking_rethink_afterboot_delay();
