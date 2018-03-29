@@ -71,7 +71,6 @@ static tristate_t init_done = TRISTATE_UNKNOWN;
  * UTILITY_FUNCTIONS
  * ------------------------------------------------------------------------- */
 
-static const char    *mce_dsme_msg_type_repr          (int type);
 static system_state_t mce_dsme_normalise_system_state (dsme_state_t dsmestate);
 
 /* ------------------------------------------------------------------------- *
@@ -118,7 +117,7 @@ static void           mce_dsme_set_shutting_down (bool shutting_down);
  * SOCKET_CONNECTION
  * ------------------------------------------------------------------------- */
 
-static bool           mce_dsme_socket_send         (gpointer msg, const char *request_name);
+static bool           mce_dsme_socket_send         (void *msg);
 static gboolean       mce_dsme_socket_recv_cb      (GIOChannel *source, GIOCondition condition, gpointer data);
 static bool           mce_dsme_socket_is_connected (void);
 static bool           mce_dsme_socket_connect      (void);
@@ -157,54 +156,6 @@ void                  mce_dsme_exit(void);
 /* ========================================================================= *
  * UTILITY_FUNCTIONS
  * ========================================================================= */
-
-/** Lookup dsme message type name by id
- *
- * Note: This is ugly hack, but the way these are defined in libdsme and
- * libiphb makes it difficult to gauge the type without involving the type
- * conversion macros - and those we *really* do not want to do use just to
- * report unhandled stuff in debug verbosity.
- *
- * @param type private type id from dsme message header
- *
- * @return human readable name of the type
- */
-static const char *mce_dsme_msg_type_repr(int type)
-{
-#define X(name,value) if( type == value ) return #name
-
-    X(CLOSE,                        0x00000001);
-    X(STATE_CHANGE_IND,             0x00000301);
-    X(STATE_QUERY,                  0x00000302);
-    X(SAVE_DATA_IND,                0x00000304);
-    X(POWERUP_REQ,                  0x00000305);
-    X(SHUTDOWN_REQ,                 0x00000306);
-    X(SET_ALARM_STATE,              0x00000307);
-    X(REBOOT_REQ,                   0x00000308);
-    X(STATE_REQ_DENIED_IND,         0x00000309);
-    X(THERMAL_SHUTDOWN_IND,         0x00000310);
-    X(SET_CHARGER_STATE,            0x00000311);
-    X(SET_THERMAL_STATE,            0x00000312);
-    X(SET_EMERGENCY_CALL_STATE,     0x00000313);
-    X(SET_BATTERY_STATE,            0x00000314);
-    X(BATTERY_EMPTY_IND,            0x00000315);
-    X(PROCESSWD_CREATE,             0x00000500);
-    X(PROCESSWD_DELETE,             0x00000501);
-    X(PROCESSWD_CLEAR,              0x00000502);
-    X(PROCESSWD_SET_INTERVAL,       0x00000503);
-    X(PROCESSWD_PING,               0x00000504);
-    X(PROCESSWD_PONG,               0x00000504);
-    X(PROCESSWD_MANUAL_PING,        0x00000505);
-    X(WAIT,                         0x00000600);
-    X(WAKEUP,                       0x00000601);
-    X(GET_VERSION,                  0x00001100);
-    X(DSME_VERSION,                 0x00001101);
-    X(SET_TA_TEST_MODE,             0x00001102);
-
-#undef X
-
-    return "UNKNOWN";
-}
 
 /** Convert system states used by dsme to the ones used in mce datapipes
  *
@@ -370,7 +321,7 @@ static void mce_dsme_processwd_pong(void)
     msg.pid = getpid();
 
     /* Send the message */
-    mce_dsme_socket_send(&msg, "DSM_MSGTYPE_PROCESSWD_PONG");
+    mce_dsme_socket_send(&msg);
 
     /* Run worker thread sanity check */
     mce_dsme_worker_ping();
@@ -391,7 +342,7 @@ static void mce_dsme_processwd_init(void)
     msg.pid = getpid();
 
     /* Send the message */
-    mce_dsme_socket_send(&msg, "DSM_MSGTYPE_PROCESSWD_CREATE");
+    mce_dsme_socket_send(&msg);
 }
 
 /**
@@ -407,7 +358,7 @@ static void mce_dsme_processwd_quit(void)
     msg.pid = getpid();
 
     /* Send the message */
-    mce_dsme_socket_send(&msg, "DSM_MSGTYPE_PROCESSWD_DELETE");
+    mce_dsme_socket_send(&msg);
 }
 
 /* ========================================================================= *
@@ -422,7 +373,7 @@ static void mce_dsme_query_system_state(void)
     DSM_MSGTYPE_STATE_QUERY msg = DSME_MSG_INIT(DSM_MSGTYPE_STATE_QUERY);
 
     /* Send the message */
-    mce_dsme_socket_send(&msg, "DSM_MSGTYPE_STATE_QUERY");
+    mce_dsme_socket_send(&msg);
 }
 
 /** Request powerup
@@ -433,7 +384,7 @@ void mce_dsme_request_powerup(void)
     DSM_MSGTYPE_POWERUP_REQ msg = DSME_MSG_INIT(DSM_MSGTYPE_POWERUP_REQ);
 
     /* Send the message */
-    mce_dsme_socket_send(&msg, "DSM_MSGTYPE_POWERUP_REQ");
+    mce_dsme_socket_send(&msg);
 }
 
 /** Request reboot
@@ -449,7 +400,7 @@ void mce_dsme_request_reboot(void)
     DSM_MSGTYPE_REBOOT_REQ msg = DSME_MSG_INIT(DSM_MSGTYPE_REBOOT_REQ);
 
     /* Send the message */
-    mce_dsme_socket_send(&msg, "DSM_MSGTYPE_REBOOT_REQ");
+    mce_dsme_socket_send(&msg);
 EXIT:
     return;
 }
@@ -467,7 +418,7 @@ void mce_dsme_request_normal_shutdown(void)
     DSM_MSGTYPE_SHUTDOWN_REQ msg = DSME_MSG_INIT(DSM_MSGTYPE_SHUTDOWN_REQ);
 
     /* Send the message */
-    mce_dsme_socket_send(&msg, "DSM_MSGTYPE_SHUTDOWN_REQ(DSME_NORMAL_SHUTDOWN)");
+    mce_dsme_socket_send(&msg);
 EXIT:
     return;
 }
@@ -579,22 +530,22 @@ EXIT:
  *
  * @param msg A pointer to the message to send
  */
-static bool mce_dsme_socket_send(gpointer msg, const char *request_name)
+static bool mce_dsme_socket_send(void *msg)
 {
     bool res = false;
 
     if( !mce_dsme_socket_connection ) {
         mce_log(LL_WARN, "failed to send %s to dsme; %s",
-                request_name, "not connected");
+                dsmemsg_name(msg), "not connected");
         goto EXIT;
     }
 
     if( dsmesock_send(mce_dsme_socket_connection, msg) == -1) {
         mce_log(LL_ERR, "failed to send %s to dsme; %m",
-                request_name);
+                dsmemsg_name(msg));
     }
 
-    mce_log(LL_DEBUG, "%s sent to DSME", request_name);
+    mce_log(LL_DEBUG, "%s sent to DSME", dsmemsg_name(msg));
 
     res = true;
 
@@ -647,9 +598,8 @@ static gboolean mce_dsme_socket_recv_cb(GIOChannel *source,
                            USE_INDATA, CACHE_INDATA);
     }
     else {
-        mce_log(LL_DEBUG, "Unhandled message type %s (0x%x) received from DSME",
-                mce_dsme_msg_type_repr(msg->type_),
-                msg->type_); /* <- unholy access of a private member */
+        mce_log(LL_DEBUG, "Unhandled %s message received from DSME",
+                dsmemsg_name(msg));
     }
 
 EXIT:
