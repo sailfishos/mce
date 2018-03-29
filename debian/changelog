@@ -1,3 +1,9 @@
+mce (1.93.2) precise; urgency=low
+
+  * [display] Unblank when compositor starts during bootup. JB#41302
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 29 Mar 2018 08:45:22 +0300
+
 mce (1.93.1) precise; urgency=low
 
   * [tklock] Disable display state restore during bootup. JB#41395
