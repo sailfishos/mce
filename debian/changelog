@@ -1,3 +1,10 @@
+mce (1.93.3) precise; urgency=low
+
+  * [display] Normalize whitespace
+  * [dsme] Make dsme message type identifiers unique. JB#38500
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 04 Apr 2018 08:54:16 +0300
+
 mce (1.93.2) precise; urgency=low
 
   * [display] Unblank when compositor starts during bootup. JB#41302
