@@ -758,7 +758,7 @@ mce_dsme_dbus_thermal_shutdown_cb(DBusMessage *const msg)
     (void)msg;
 
     mce_log(LL_WARN, "Received thermal shutdown notification");
-    mce_dsme_set_shutting_down(true);
+    mce_datapipe_request_display_state(MCE_DISPLAY_ON);
 
     return TRUE;
 }
@@ -775,7 +775,7 @@ mce_dsme_dbus_battery_empty_shutdown_cb(DBusMessage *const msg)
     (void)msg;
 
     mce_log(LL_WARN, "Received battery empty shutdown notification");
-    mce_dsme_set_shutting_down(true);
+    mce_datapipe_request_display_state(MCE_DISPLAY_ON);
 
     return TRUE;
 }
