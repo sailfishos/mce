@@ -1,3 +1,9 @@
+mce (1.93.4) precise; urgency=low
+
+  * [dsme] Do not take shutdown actions on shutdown notification. JB#41302
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 10 Apr 2018 21:48:28 +0300
+
 mce (1.93.3) precise; urgency=low
 
   * [display] Normalize whitespace
