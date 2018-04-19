@@ -116,15 +116,16 @@ digraph mce_sensorfw
     PLUGIN_LOADING;
     PLUGIN_LOADED;
     PLUGIN_ERROR;
+    PLUGIN_NA;
     PLUGIN_ANY [label="*"];
 
-    PLUGIN_ANY  -> PLUGIN_IDLE    [label="reset()"];
-    PLUGIN_IDLE -> PLUGIN_LOADING [label="load()"];
+    PLUGIN_ANY  -> PLUGIN_IDLE       [label="reset()"];
+    PLUGIN_IDLE -> PLUGIN_LOADING    [label="load()"];
+    PLUGIN_LOADING -> PLUGIN_NA      [label="not-available"];
+    PLUGIN_LOADING -> PLUGIN_LOADED  [label="loaded"];
+    PLUGIN_ANY     -> PLUGIN_ERROR   [label="failure"];
 
-    PLUGIN_LOADING -> PLUGIN_LOADED;
-    PLUGIN_ANY     -> PLUGIN_ERROR [label="failure"];
-
-    PLUGIN_LOADED  -> SESSION_IDLE [style=dotted, lhead=clusterSESSION];
+    PLUGIN_LOADED  -> SESSION_IDLE   [style=dotted, lhead=clusterSESSION];
 
     PLUGIN_ERROR   -> PLUGIN_LOADING [label="retry"];
   }
