@@ -4297,12 +4297,13 @@ static void mdy_blanking_remove_pause_clients(void)
 void
 mdy_blanking_evaluate_pause_timeout(void)
 {
+    int     dur = 0;
+
     if( !bpclient_lut )
         goto EXIT;
 
     int64_t now = mce_lib_get_boot_tick();
     int64_t tmo = 0;
-    int     dur = 0;
 
     GSList *stale = 0;
 
