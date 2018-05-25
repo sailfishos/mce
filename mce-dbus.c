@@ -402,8 +402,8 @@ static gboolean          dbus_init_message_handler             (void);
 
 const char              *mce_dbus_type_repr                    (int type);
 bool                     mce_dbus_iter_at_end                  (DBusMessageIter *iter);
-static bool              mce_dbus_iter_req_type                (DBusMessageIter *iter, int want);
-static bool              mce_dbus_iter_get_basic               (DBusMessageIter *iter, void *pval, int type);
+bool                     mce_dbus_iter_req_type                (DBusMessageIter *iter, int want);
+bool                     mce_dbus_iter_get_basic               (DBusMessageIter *iter, void *pval, int type);
 bool                     mce_dbus_iter_get_object              (DBusMessageIter *iter, const char **pval);
 bool                     mce_dbus_iter_get_string              (DBusMessageIter *iter, const char **pval);
 bool                     mce_dbus_iter_get_bool                (DBusMessageIter *iter, bool *pval);
@@ -4475,7 +4475,7 @@ mce_dbus_iter_at_end(DBusMessageIter *iter)
  *
  * @return true if iterator points to expected type, false otherwise
  */
-static bool
+bool
 mce_dbus_iter_req_type(DBusMessageIter *iter, int want)
 {
 	int have = dbus_message_iter_get_arg_type(iter);
@@ -4500,7 +4500,7 @@ mce_dbus_iter_req_type(DBusMessageIter *iter, int want)
  *
  * @return true if iterator points to expected type, false otherwise
  */
-static bool
+bool
 mce_dbus_iter_get_basic(DBusMessageIter *iter, void *pval, int type)
 {
 	if( !dbus_type_is_basic(type) ) {

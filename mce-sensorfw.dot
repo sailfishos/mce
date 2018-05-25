@@ -53,22 +53,26 @@ digraph mce_sensorfw
     OVERRIDE_DISABLING;
     OVERRIDE_DISABLED;
     OVERRIDE_ERROR;
+    OVERRIDE_NA;
     OVERRIDE_ANY [label="*"];
 
-    OVERRIDE_ANY       -> OVERRIDE_ERROR [label="failure"];
-    OVERRIDE_ANY       -> OVERRIDE_IDLE  [label="reset()"];
+    OVERRIDE_ANY       -> OVERRIDE_ERROR     [label="failure"];
+    OVERRIDE_ANY       -> OVERRIDE_IDLE      [label="reset()"];
 
-    OVERRIDE_IDLE      -> OVERRIDE_RETHINK [label="connected"];
+    OVERRIDE_IDLE      -> OVERRIDE_RETHINK   [label="connected"];
 
     OVERRIDE_RETHINK   -> OVERRIDE_ENABLING;
     OVERRIDE_RETHINK   -> OVERRIDE_DISABLING;
 
-    OVERRIDE_ENABLING  -> OVERRIDE_ENABLED;
-    OVERRIDE_ENABLED   -> OVERRIDE_RETHINK [label="disable()"];
-    OVERRIDE_DISABLING -> OVERRIDE_DISABLED;
-    OVERRIDE_DISABLED  -> OVERRIDE_RETHINK  [label="enable()"];
+    OVERRIDE_ENABLING  -> OVERRIDE_ENABLED   [label="ack"];
+    OVERRIDE_ENABLED   -> OVERRIDE_RETHINK   [label="disable()"];
+    OVERRIDE_DISABLING -> OVERRIDE_DISABLED  [label="ack"];
+    OVERRIDE_DISABLED  -> OVERRIDE_RETHINK   [label="enable()"];
 
-    OVERRIDE_ERROR     -> OVERRIDE_RETHINK [label="retry"];
+    OVERRIDE_ERROR     -> OVERRIDE_RETHINK   [label="retry"];
+
+    OVERRIDE_ENABLING  -> OVERRIDE_NA        [label="nak"];
+    OVERRIDE_DISABLING -> OVERRIDE_NA        [label="nak"];
   }
 
   subgraph clusterCONNECTION {
