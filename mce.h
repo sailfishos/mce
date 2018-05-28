@@ -450,6 +450,7 @@ gboolean mce_add_submode_int32(const submode_t submode);
 gboolean mce_rem_submode_int32(const submode_t submode);
 
 bool mce_in_valgrind_mode(void);
+bool mce_in_sensortest_mode(void);
 void mce_abort(void) __attribute__((noreturn));
 void mce_quit_mainloop(void);
 void mce_signal_handlers_remove(void);

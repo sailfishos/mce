@@ -195,9 +195,36 @@ typedef enum
     SFW_SENSOR_ID_PS,
     SFW_SENSOR_ID_ALS,
     SFW_SENSOR_ID_ORIENT,
+    SFW_SENSOR_ID_ACCELEROMETER,
+    SFW_SENSOR_ID_COMPASS,
+    SFW_SENSOR_ID_GYROSCOPE,
+    SFW_SENSOR_ID_LID,
+    SFW_SENSOR_ID_HUMIDITY,
+    SFW_SENSOR_ID_MAGNETOMETER,
+    SFW_SENSOR_ID_PRESSURE,
+    SFW_SENSOR_ID_ROTATION,
+    SFW_SENSOR_ID_STEPCOUNTER,
+    SFW_SENSOR_ID_TAP,
+    SFW_SENSOR_ID_TEMPERATURE,
 
     SFW_SENSOR_ID_COUNT
 } sensor_id_t;
+
+static bool
+sensor_id_available(sensor_id_t id)
+{
+    bool available = true;
+    switch( id ) {
+    case SFW_SENSOR_ID_PS:
+    case SFW_SENSOR_ID_ALS:
+    case SFW_SENSOR_ID_ORIENT:
+        break;
+    default:
+        available = mce_in_sensortest_mode();
+        break;
+    }
+    return available;
+}
 
 /* ========================================================================= *
  * D-BUS CONSTANTS FOR D-BUS DAEMON
@@ -241,6 +268,17 @@ typedef enum
 #define SFW_SENSOR_INTERFACE_PS             "local.ProximitySensor"
 #define SFW_SENSOR_INTERFACE_ALS            "local.ALSSensor"
 #define SFW_SENSOR_INTERFACE_ORIENT         "local.OrientationSensor"
+#define SFW_SENSOR_INTERFACE_ACCELEROMETER  "local.AccelerometerSensor"
+#define SFW_SENSOR_INTERFACE_COMPASS        "local.CompassSensor"
+#define SFW_SENSOR_INTERFACE_GYROSCOPE      "local.GyroscopeSensor"
+#define SFW_SENSOR_INTERFACE_LID            "local.LidSensor"
+#define SFW_SENSOR_INTERFACE_HUMIDITY       "local.HumiditySensor"
+#define SFW_SENSOR_INTERFACE_MAGNETOMETER   "local.MagnetometerSensor"
+#define SFW_SENSOR_INTERFACE_PRESSURE       "local.PressureSensor"
+#define SFW_SENSOR_INTERFACE_ROTATION       "local.RotationSensor"
+#define SFW_SENSOR_INTERFACE_STEPCOUNTER    "local.StepcounterSensor"
+#define SFW_SENSOR_INTERFACE_TAP            "local.TapSensor"
+#define SFW_SENSOR_INTERFACE_TEMPERATURE    "local.TemperatureSensor"
 
 /** D-Bus method for enabling sensor
  *
@@ -273,6 +311,17 @@ typedef enum
 #define SFW_SENSOR_METHOD_READ_PS             "proximity"
 #define SFW_SENSOR_METHOD_READ_ALS            "lux"
 #define SFW_SENSOR_METHOD_READ_ORIENT         "orientation"
+#define SFW_SENSOR_METHOD_READ_ACCELEROMETER  "xyz"
+#define SFW_SENSOR_METHOD_READ_COMPASS        "value" // or "declinationvalue"?
+#define SFW_SENSOR_METHOD_READ_GYROSCOPE      "value"
+#define SFW_SENSOR_METHOD_READ_LID            "closed"
+#define SFW_SENSOR_METHOD_READ_HUMIDITY       "relativeHumidity"
+#define SFW_SENSOR_METHOD_READ_MAGNETOMETER   "magneticField"
+#define SFW_SENSOR_METHOD_READ_PRESSURE       "pressure"
+#define SFW_SENSOR_METHOD_READ_ROTATION       "rotation"
+#define SFW_SENSOR_METHOD_READ_STEPCOUNTER    "steps"
+#define SFW_SENSOR_METHOD_READ_TAP            NULL // event, not state
+#define SFW_SENSOR_METHOD_READ_TEMPERATURE    "temperature"
 
 // ----------------------------------------------------------------
 
@@ -286,6 +335,17 @@ typedef enum
 #define SFW_SENSOR_NAME_PS                "proximitysensor"
 #define SFW_SENSOR_NAME_ALS               "alssensor"
 #define SFW_SENSOR_NAME_ORIENT            "orientationsensor"
+#define SFW_SENSOR_NAME_ACCELEROMETER     "accelerometersensor"
+#define SFW_SENSOR_NAME_COMPASS           "compasssensor"
+#define SFW_SENSOR_NAME_GYROSCOPE         "gyroscopesensor"
+#define SFW_SENSOR_NAME_LID               "lidsensor"
+#define SFW_SENSOR_NAME_HUMIDITY          "humiditysensor"
+#define SFW_SENSOR_NAME_MAGNETOMETER      "magnetometersensor"
+#define SFW_SENSOR_NAME_PRESSURE          "pressuresensor"
+#define SFW_SENSOR_NAME_ROTATION          "rotationsensor"
+#define SFW_SENSOR_NAME_STEPCOUNTER       "stepcountersensor"
+#define SFW_SENSOR_NAME_TAP               "tapsensor"
+#define SFW_SENSOR_NAME_TEMPERATURE       "temperaturesensor"
 
 // ----------------------------------------------------------------
 
@@ -305,6 +365,17 @@ typedef struct sfw_backend_t              sfw_backend_t;
 typedef struct sfw_sample_als_t           sfw_sample_als_t;
 typedef struct sfw_sample_ps_t            sfw_sample_ps_t;
 typedef struct sfw_sample_orient_t        sfw_sample_orient_t;
+typedef struct sfw_sample_accelerometer_t sfw_sample_accelerometer_t;
+typedef struct sfw_sample_compass_t       sfw_sample_compass_t;
+typedef struct sfw_sample_gyroscope_t     sfw_sample_gyroscope_t;
+typedef struct sfw_sample_lid_t           sfw_sample_lid_t;
+typedef struct sfw_sample_humidity_t      sfw_sample_humidity_t;
+typedef struct sfw_sample_magnetometer_t  sfw_sample_magnetometer_t;
+typedef struct sfw_sample_pressure_t      sfw_sample_pressure_t;
+typedef struct sfw_sample_rotation_t      sfw_sample_rotation_t;
+typedef struct sfw_sample_stepcounter_t   sfw_sample_stepcounter_t;
+typedef struct sfw_sample_tap_t           sfw_sample_tap_t;
+typedef struct sfw_sample_temperature_t   sfw_sample_temperature_t;
 
 /* ========================================================================= *
  * SENSORFW_NOTIFY
@@ -408,6 +479,211 @@ struct sfw_sample_orient_t
 
 static const char *sfw_sample_orient_repr(const sfw_sample_orient_t *self);
 
+typedef enum sfw_lid_type_t
+{
+    SFW_LID_TYPE_UNKNOWN = -1, // UnknownLid
+    SFW_LID_TYPE_FRONT   =  0, // FrontLid
+    SFW_LID_TYPE_BACK    =  1, // BackLid
+} sfw_lid_type_t;
+
+static const char *sfw_lid_type_repr(sfw_lid_type_t type);
+
+typedef enum sfw_tap_direction_t
+{
+    /** Left or right side tapped */
+    SFW_TAP_DIRECTION_X          = 0,
+
+    /** Top or down side tapped */
+    SFW_TAP_DIRECTION_Y          = 1,
+
+    /** Face or bottom tapped */
+    SFW_TAP_DIRECTION_Z          = 2,
+
+    /** Tapped from left to right */
+    SFW_TAP_DIRECTION_LEFT_RIGHT = 3,
+
+    /** Tapped from right to left */
+    SFW_TAP_DIRECTION_RIGHT_LEFT = 4,
+
+    /** Tapped from top to bottom */
+    SFW_TAP_DIRECTION_TOP_BOTTOM = 5,
+
+    /** Tapped from bottom to top */
+    SFW_TAP_DIRECTION_BOTTOM_TOP = 6,
+
+    /** Tapped from face to back */
+    SFW_TAP_DIRECTION_FACE_BACK  = 7,
+
+    /** Tapped from back to face */
+    SFW_TAP_DIRECTION_BACK_FACE  = 8,
+} sfw_tap_direction_t;
+
+static const char *sfw_tap_direction_repr(sfw_tap_direction_t direction);
+
+typedef enum sfw_tap_type_t
+{
+    /** placeholder */
+    SFW_TAP_TYPE_NONE       = -1,
+    /** Double tap. */
+    SFW_TAP_TYPE_DOUBLE_TAP = 0,
+    /**< Single tap. */
+    SFW_TAP_TYPE_SINGLE_TAP = 1,
+} sfw_tap_type_t;
+
+static const char * sfw_tap_type_repr(sfw_tap_type_t type);
+
+typedef struct sfw_xyz_t
+{
+    int32_t x,y,z;
+} sfw_xyz_t;
+
+struct sfw_sample_accelerometer_t
+{
+    /** microseconds, monotonic */
+    uint64_t accelerometer_timestamp;
+
+    /** amount of TBD */
+    sfw_xyz_t accelerometer_xyz;
+};
+
+static const char *sfw_sample_accelerometer_repr(const sfw_sample_accelerometer_t *self);
+
+struct sfw_sample_compass_t
+{
+    /** microseconds, monotonic */
+    uint64_t compass_timestamp;
+
+    /** Angle to north which may be declination corrected or not. This is the value apps should use */
+    int32_t compass_degrees;
+    /** Angle to north without declination correction */
+    int32_t compass_raw_degrees;
+    /** Declination corrected angle to north */
+    int32_t compass_corrected_degrees;
+    /** Magnetometer calibration level. Higher value means better calibration. */
+    int32_t compass_level;
+};
+
+static const char *sfw_sample_compass_repr(const sfw_sample_compass_t *self);
+
+struct sfw_sample_gyroscope_t
+{
+    /** microseconds, monotonic */
+    uint64_t gyroscope_timestamp;
+
+    /** amount of TBD */
+    sfw_xyz_t gyroscope_xyz;
+};
+
+static const char *sfw_sample_gyroscope_repr(const sfw_sample_gyroscope_t *self);
+
+struct sfw_sample_lid_t
+{
+    /** microseconds, monotonic */
+    uint64_t lid_timestamp;
+
+    /** amount of TBD */
+    int32_t  lid_type; // sfw_lid_type_t
+    uint32_t lid_value;
+};
+
+static const char *sfw_sample_lid_repr(const sfw_sample_lid_t *self);
+
+struct sfw_sample_humidity_t
+{
+    /** microseconds, monotonic */
+    uint64_t humidity_timestamp;
+
+    /** amount of TBD */
+    uint32_t humidity_value;
+};
+
+static const char *sfw_sample_humidity_repr(const sfw_sample_humidity_t *self);
+
+struct sfw_sample_magnetometer_t
+{
+    /** microseconds, monotonic */
+    uint64_t magnetometer_timestamp;
+
+    /** X coordinate value */
+    int32_t magnetometer_x;
+
+    /** Y coordinate value */
+    int32_t magnetometer_y;
+
+    /** Z coordinate value */
+    int32_t magnetometer_z;
+
+    /** raw X coordinate value */
+    int32_t magnetometer_rx;
+
+    /** raw Y coordinate value */
+    int32_t magnetometer_ry;
+
+    /** raw Z coordinate value */
+    int32_t magnetometer_rz;
+
+    /** Magnetometer calibration level. Higher value means better calibration. */
+    int32_t magnetometer_level;
+};
+
+static const char *sfw_sample_magnetometer_repr(const sfw_sample_magnetometer_t *self);
+
+struct sfw_sample_pressure_t
+{
+    /** microseconds, monotonic */
+    uint64_t pressure_timestamp;
+
+    /** amount of TBD */
+    uint32_t pressure_value;
+};
+
+static const char *sfw_sample_pressure_repr(const sfw_sample_pressure_t *self);
+
+struct sfw_sample_rotation_t
+{
+    /** microseconds, monotonic */
+    uint64_t rotation_timestamp;
+
+    /** amount of TBD */
+    sfw_xyz_t rotation_xyz;
+};
+
+static const char *sfw_sample_rotation_repr(const sfw_sample_rotation_t *self);
+
+struct sfw_sample_stepcounter_t
+{
+    /** microseconds, monotonic */
+    uint64_t stepcounter_timestamp;
+
+    /** amount of TBD */
+    uint32_t stepcounter_value;
+};
+
+static const char *sfw_sample_stepcounter_repr(const sfw_sample_stepcounter_t *self);
+
+struct sfw_sample_tap_t
+{
+    /** microseconds, monotonic */
+    uint64_t tap_timestamp;
+
+    /** amount of TBD */
+    uint32_t tap_direction; // sfw_tap_direction_t
+    int32_t  tap_type;      // sfw_tap_type_t
+};
+
+static const char *sfw_sample_tap_repr(const sfw_sample_tap_t *self);
+
+struct sfw_sample_temperature_t
+{
+    /** microseconds, monotonic */
+    uint64_t temperature_timestamp;
+
+    /** amount of TBD */
+    uint32_t temperature_value;
+};
+
+static const char *sfw_sample_temperature_repr(const sfw_sample_temperature_t *self);
+
 /* ========================================================================= *
  * SENSORFW_BACKEND
  * ========================================================================= */
@@ -448,10 +724,32 @@ static bool sfw_backend_parse_data              (DBusMessageIter *data, int arg_
 static bool sfw_backend_als_value_cb            (sfw_plugin_t *plugin, DBusMessageIter *data);
 static bool sfw_backend_ps_value_cb             (sfw_plugin_t *plugin, DBusMessageIter *data);
 static bool sfw_backend_orient_value_cb         (sfw_plugin_t *plugin, DBusMessageIter *data);
+static bool sfw_backend_accelerometer_value_cb  (sfw_plugin_t *plugin, DBusMessageIter *data);
+static bool sfw_backend_compass_value_cb        (sfw_plugin_t *plugin, DBusMessageIter *data);
+static bool sfw_backend_gyroscope_value_cb      (sfw_plugin_t *plugin, DBusMessageIter *data);
+static bool sfw_backend_lid_value_cb            (sfw_plugin_t *plugin, DBusMessageIter *data);
+static bool sfw_backend_humidity_value_cb       (sfw_plugin_t *plugin, DBusMessageIter *data);
+static bool sfw_backend_magnetometer_value_cb   (sfw_plugin_t *plugin, DBusMessageIter *data);
+static bool sfw_backend_pressure_value_cb       (sfw_plugin_t *plugin, DBusMessageIter *data);
+static bool sfw_backend_rotation_value_cb       (sfw_plugin_t *plugin, DBusMessageIter *data);
+static bool sfw_backend_stepcounter_value_cb    (sfw_plugin_t *plugin, DBusMessageIter *data);
+static bool sfw_backend_tap_value_cb            (sfw_plugin_t *plugin, DBusMessageIter *data);
+static bool sfw_backend_temperature_value_cb    (sfw_plugin_t *plugin, DBusMessageIter *data);
 
 static void sfw_backend_als_sample_cb           (sfw_plugin_t *plugin, sfw_notify_t type, const void *sample);
 static void sfw_backend_ps_sample_cb            (sfw_plugin_t *plugin, sfw_notify_t type, const void *sample);
 static void sfw_backend_orient_sample_cb        (sfw_plugin_t *plugin, sfw_notify_t type, const void *sample);
+static void sfw_backend_accelerometer_sample_cb (sfw_plugin_t *plugin, sfw_notify_t type, const void *sample);
+static void sfw_backend_compass_sample_cb       (sfw_plugin_t *plugin, sfw_notify_t type, const void *sample);
+static void sfw_backend_gyroscope_sample_cb     (sfw_plugin_t *plugin, sfw_notify_t type, const void *sample);
+static void sfw_backend_lid_sample_cb           (sfw_plugin_t *plugin, sfw_notify_t type, const void *sample);
+static void sfw_backend_humidity_sample_cb      (sfw_plugin_t *plugin, sfw_notify_t type, const void *sample);
+static void sfw_backend_magnetometer_sample_cb  (sfw_plugin_t *plugin, sfw_notify_t type, const void *sample);
+static void sfw_backend_pressure_sample_cb      (sfw_plugin_t *plugin, sfw_notify_t type, const void *sample);
+static void sfw_backend_rotation_sample_cb      (sfw_plugin_t *plugin, sfw_notify_t type, const void *sample);
+static void sfw_backend_stepcounter_sample_cb   (sfw_plugin_t *plugin, sfw_notify_t type, const void *sample);
+static void sfw_backend_tap_sample_cb           (sfw_plugin_t *plugin, sfw_notify_t type, const void *sample);
+static void sfw_backend_temperature_sample_cb   (sfw_plugin_t *plugin, sfw_notify_t type, const void *sample);
 
 /* ========================================================================= *
  * SENSORFW_HELPERS
@@ -996,6 +1294,191 @@ sfw_sample_orient_repr(const sfw_sample_orient_t *self)
     return buf;
 }
 
+static const char *
+sfw_sample_accelerometer_repr(const sfw_sample_accelerometer_t *self)
+{
+    static char buf[64];
+    snprintf(buf, sizeof buf,
+             "time=%"PRIu64" x=%"PRId32" y=%"PRId32" z=%"PRId32,
+             self->accelerometer_timestamp,
+             self->accelerometer_xyz.x,
+             self->accelerometer_xyz.y,
+             self->accelerometer_xyz.z);
+    return buf;
+}
+
+static const char *
+sfw_sample_compass_repr(const sfw_sample_compass_t *self)
+{
+    static char buf[64];
+    snprintf(buf, sizeof buf,
+             "time=%"PRIu64" deg=%"PRId32" raw=%"PRId32" cor=%"PRId32" lev=%"PRId32,
+             self->compass_timestamp,
+             self->compass_degrees,
+             self->compass_raw_degrees,
+             self->compass_corrected_degrees,
+             self->compass_level);
+    return buf;
+}
+
+static const char *
+sfw_sample_gyroscope_repr(const sfw_sample_gyroscope_t *self)
+{
+    static char buf[64];
+    snprintf(buf, sizeof buf,
+             "time=%"PRIu64" x=%"PRId32" y=%"PRId32" z=%"PRId32,
+             self->gyroscope_timestamp,
+             self->gyroscope_xyz.x,
+             self->gyroscope_xyz.y,
+             self->gyroscope_xyz.z);
+    return buf;
+}
+
+static const char *
+sfw_lid_type_repr(sfw_lid_type_t type)
+{
+    const char *repr = "INVALID";
+    switch( type ) {
+    case SFW_LID_TYPE_UNKNOWN: repr = "UNKNOWN"; break;
+    case SFW_LID_TYPE_FRONT:   repr = "FRONT";   break;
+    case SFW_LID_TYPE_BACK:    repr = "BACK";    break;
+    default: break;
+    }
+    return repr;
+}
+
+static const char *
+sfw_sample_lid_repr(const sfw_sample_lid_t *self)
+{
+    static char buf[64];
+    snprintf(buf, sizeof buf,
+             "time=%"PRIu64" type=%s value=%"PRIu32,
+             self->lid_timestamp,
+             sfw_lid_type_repr(self->lid_type),
+             self->lid_value);
+    return buf;
+}
+
+static const char *
+sfw_sample_humidity_repr(const sfw_sample_humidity_t *self)
+{
+    static char buf[64];
+    snprintf(buf, sizeof buf,
+             "time=%"PRIu64" humidity=%"PRIu32,
+             self->humidity_timestamp,
+             self->humidity_value);
+    return buf;
+}
+
+static const char *
+sfw_sample_magnetometer_repr(const sfw_sample_magnetometer_t *self)
+{
+    static char buf[64];
+    snprintf(buf, sizeof buf,
+             "time=%"PRIu64
+             " x=%"PRId32" y=%"PRId32" z=%"PRId32
+             " rx=%"PRId32" ry=%"PRId32" rz=%"PRId32
+             " level=%"PRId32,
+             self->magnetometer_timestamp,
+             self->magnetometer_x,
+             self->magnetometer_y,
+             self->magnetometer_z,
+             self->magnetometer_rx,
+             self->magnetometer_ry,
+             self->magnetometer_rz,
+             self->magnetometer_level);
+    return buf;
+}
+
+static const char *
+sfw_sample_pressure_repr(const sfw_sample_pressure_t *self)
+{
+    static char buf[64];
+    snprintf(buf, sizeof buf,
+             "time=%"PRIu64" pressure=%"PRIu32,
+             self->pressure_timestamp,
+             self->pressure_value);
+    return buf;
+}
+
+static const char *
+sfw_sample_rotation_repr(const sfw_sample_rotation_t *self)
+{
+    static char buf[64];
+    snprintf(buf, sizeof buf,
+             "time=%"PRIu64" x=%"PRId32" y=%"PRId32" z=%"PRId32,
+             self->rotation_timestamp,
+             self->rotation_xyz.x,
+             self->rotation_xyz.y,
+             self->rotation_xyz.z);
+    return buf;
+}
+
+static const char *
+sfw_sample_stepcounter_repr(const sfw_sample_stepcounter_t *self)
+{
+    static char buf[64];
+    snprintf(buf, sizeof buf,
+             "time=%"PRIu64" stepcount=%"PRIu32,
+             self->stepcounter_timestamp,
+             self->stepcounter_value);
+    return buf;
+}
+
+static const char *
+sfw_tap_direction_repr(sfw_tap_direction_t direction)
+{
+    const char *repr = "INVALID";
+    switch( direction ) {
+    case SFW_TAP_DIRECTION_X:           repr = "X";          break;
+    case SFW_TAP_DIRECTION_Y:           repr = "Y";          break;
+    case SFW_TAP_DIRECTION_Z:           repr = "Z";          break;
+    case SFW_TAP_DIRECTION_LEFT_RIGHT:  repr = "LEFT_RIGHT"; break;
+    case SFW_TAP_DIRECTION_RIGHT_LEFT:  repr = "RIGHT_LEFT"; break;
+    case SFW_TAP_DIRECTION_TOP_BOTTOM:  repr = "TOP_BOTTOM"; break;
+    case SFW_TAP_DIRECTION_BOTTOM_TOP:  repr = "BOTTOM_TOP"; break;
+    case SFW_TAP_DIRECTION_FACE_BACK:   repr = "FACE_BACK";  break;
+    case SFW_TAP_DIRECTION_BACK_FACE:   repr = "BACK_FACE";  break;
+    default: break;
+    }
+    return repr;
+}
+
+static const char *
+sfw_tap_type_repr(sfw_tap_type_t type)
+{
+    const char *repr = "INVALID";
+    switch( type ) {
+    case SFW_TAP_TYPE_NONE:       repr = "NONE";       break;
+    case SFW_TAP_TYPE_DOUBLE_TAP: repr = "DOUBLE_TAP"; break;
+    case SFW_TAP_TYPE_SINGLE_TAP: repr = "SINGLE_TAP"; break;
+    default: break;
+    }
+    return repr;
+}
+
+static const char *
+sfw_sample_tap_repr(const sfw_sample_tap_t *self)
+{
+    static char buf[64];
+    snprintf(buf, sizeof buf, "time=%"PRIu64" direction=%s type=%s",
+             self->tap_timestamp,
+             sfw_tap_direction_repr(self->tap_direction),
+             sfw_tap_type_repr(self->tap_type));
+    return buf;
+}
+
+static const char *
+sfw_sample_temperature_repr(const sfw_sample_temperature_t *self)
+{
+    static char buf[64];
+    snprintf(buf, sizeof buf,
+             "time=%"PRIu64" temperature=%"PRIu32,
+             self->temperature_timestamp,
+             self->temperature_value);
+    return buf;
+}
+
 /* ========================================================================= *
  * SENSORFW_BACKEND
  * ========================================================================= */
@@ -1090,6 +1573,338 @@ sfw_backend_orient_value_cb(sfw_plugin_t *plugin, DBusMessageIter *data)
     const sfw_sample_orient_t sample = {
         .orient_timestamp = tck,
         .orient_state     = val,
+    };
+
+    sfw_plugin_handle_sample(plugin, &sample);
+
+    ack = true;
+EXIT:
+    return ack;
+}
+
+static bool
+sfw_backend_accelerometer_value_cb(sfw_plugin_t *plugin, DBusMessageIter *data)
+{
+    bool          ack  = false;
+    dbus_uint64_t tck  = 0;
+    dbus_int32_t  xval = 0;
+    dbus_int32_t  yval = 0;
+    dbus_int32_t  zval = 0;
+
+    if( !sfw_backend_parse_data(data,
+                                DBUS_TYPE_UINT64, &tck,
+                                DBUS_TYPE_INT32,  &xval,
+                                DBUS_TYPE_INT32,  &yval,
+                                DBUS_TYPE_INT32,  &zval,
+                                DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    const sfw_sample_accelerometer_t sample = {
+        .accelerometer_timestamp = tck,
+        .accelerometer_xyz = {
+            .x = xval,
+            .y = yval,
+            .z = zval,
+        },
+    };
+
+    sfw_plugin_handle_sample(plugin, &sample);
+
+    ack = true;
+EXIT:
+    return ack;
+}
+
+static bool
+sfw_backend_compass_value_cb(sfw_plugin_t *plugin, DBusMessageIter *data)
+{
+    bool          ack  = false;
+    dbus_uint64_t tck  = 0;
+    dbus_int32_t  deg = 0;
+    dbus_int32_t  raw = 0;
+    dbus_int32_t  cor = 0;
+    dbus_int32_t  lev = 0;
+
+    if( !sfw_backend_parse_data(data,
+                                DBUS_TYPE_UINT64, &tck,
+                                DBUS_TYPE_INT32,  &deg,
+                                DBUS_TYPE_INT32,  &raw,
+                                DBUS_TYPE_INT32,  &cor,
+                                DBUS_TYPE_INT32,  &lev,
+                                DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    const sfw_sample_compass_t sample = {
+        .compass_timestamp         = tck,
+        .compass_degrees           = deg,
+        .compass_raw_degrees       = raw,
+        .compass_corrected_degrees = cor,
+        .compass_level             = lev,
+    };
+
+    sfw_plugin_handle_sample(plugin, &sample);
+
+    ack = true;
+EXIT:
+    return ack;
+}
+
+static bool
+sfw_backend_gyroscope_value_cb(sfw_plugin_t *plugin, DBusMessageIter *data)
+{
+    bool          ack  = false;
+    dbus_uint64_t tck  = 0;
+    dbus_int32_t  xval = 0;
+    dbus_int32_t  yval = 0;
+    dbus_int32_t  zval = 0;
+
+    if( !sfw_backend_parse_data(data,
+                                DBUS_TYPE_UINT64, &tck,
+                                DBUS_TYPE_INT32,  &xval,
+                                DBUS_TYPE_INT32,  &yval,
+                                DBUS_TYPE_INT32,  &zval,
+                                DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    const sfw_sample_gyroscope_t sample = {
+        .gyroscope_timestamp = tck,
+        .gyroscope_xyz = {
+            .x = xval,
+            .y = yval,
+            .z = zval,
+        },
+    };
+
+    sfw_plugin_handle_sample(plugin, &sample);
+
+    ack = true;
+EXIT:
+    return ack;
+}
+
+static bool
+sfw_backend_lid_value_cb(sfw_plugin_t *plugin, DBusMessageIter *data)
+{
+    bool          ack  = false;
+    dbus_uint64_t tck  = 0;
+    dbus_int32_t  type = 0;
+    dbus_uint32_t val  = 0;
+
+    if( !sfw_backend_parse_data(data,
+                                DBUS_TYPE_UINT64, &tck,
+                                DBUS_TYPE_INT32,  &type,
+                                DBUS_TYPE_UINT32, &val,
+                                DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    const sfw_sample_lid_t sample = {
+        .lid_timestamp = tck,
+        .lid_type      = type,
+        .lid_value     = val,
+    };
+
+    sfw_plugin_handle_sample(plugin, &sample);
+
+    ack = true;
+EXIT:
+    return ack;
+}
+
+static bool
+sfw_backend_humidity_value_cb(sfw_plugin_t *plugin, DBusMessageIter *data)
+{
+    bool          ack  = false;
+    dbus_uint64_t tck  = 0;
+    dbus_uint32_t  val = 0;
+
+    if( !sfw_backend_parse_data(data,
+                                DBUS_TYPE_UINT64, &tck,
+                                DBUS_TYPE_UINT32, &val,
+                                DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    const sfw_sample_humidity_t sample = {
+        .humidity_timestamp = tck,
+        .humidity_value     = val,
+    };
+
+    sfw_plugin_handle_sample(plugin, &sample);
+
+    ack = true;
+EXIT:
+    return ack;
+}
+
+static bool
+sfw_backend_magnetometer_value_cb(sfw_plugin_t *plugin, DBusMessageIter *data)
+{
+    bool          ack  = false;
+    dbus_uint64_t tck  = 0;
+    dbus_int32_t   x   = 0;
+    dbus_int32_t   y   = 0;
+    dbus_int32_t   z   = 0;
+    dbus_int32_t   rx  = 0;
+    dbus_int32_t   ry  = 0;
+    dbus_int32_t   rz  = 0;
+    dbus_int32_t   lev = 0;
+
+    if( !sfw_backend_parse_data(data,
+                                DBUS_TYPE_UINT64, &tck,
+                                DBUS_TYPE_INT32, &x,
+                                DBUS_TYPE_INT32, &y,
+                                DBUS_TYPE_INT32, &z,
+                                DBUS_TYPE_INT32, &rx,
+                                DBUS_TYPE_INT32, &ry,
+                                DBUS_TYPE_INT32, &rz,
+                                DBUS_TYPE_INT32, &lev,
+                                DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    const sfw_sample_magnetometer_t sample = {
+        .magnetometer_timestamp = tck,
+        .magnetometer_x         = x,
+        .magnetometer_y         = y,
+        .magnetometer_z         = z,
+        .magnetometer_rx        = rx,
+        .magnetometer_ry        = ry,
+        .magnetometer_rz        = rz,
+        .magnetometer_level     = lev,
+    };
+
+    sfw_plugin_handle_sample(plugin, &sample);
+
+    ack = true;
+EXIT:
+    return ack;
+}
+
+static bool
+sfw_backend_pressure_value_cb(sfw_plugin_t *plugin, DBusMessageIter *data)
+{
+    bool          ack  = false;
+    dbus_uint64_t tck  = 0;
+    dbus_uint32_t val  = 0;
+
+    if( !sfw_backend_parse_data(data,
+                                DBUS_TYPE_UINT64, &tck,
+                                DBUS_TYPE_UINT32, &val,
+                                DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    const sfw_sample_pressure_t sample = {
+        .pressure_timestamp = tck,
+        .pressure_value     = val,
+    };
+
+    sfw_plugin_handle_sample(plugin, &sample);
+
+    ack = true;
+EXIT:
+    return ack;
+}
+
+static bool
+sfw_backend_rotation_value_cb(sfw_plugin_t *plugin, DBusMessageIter *data)
+{
+    bool          ack  = false;
+    dbus_uint64_t tck  = 0;
+    dbus_int32_t  xval = 0;
+    dbus_int32_t  yval = 0;
+    dbus_int32_t  zval = 0;
+
+    if( !sfw_backend_parse_data(data,
+                                DBUS_TYPE_UINT64, &tck,
+                                DBUS_TYPE_INT32,  &xval,
+                                DBUS_TYPE_INT32,  &yval,
+                                DBUS_TYPE_INT32,  &zval,
+                                DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    const sfw_sample_rotation_t sample = {
+        .rotation_timestamp = tck,
+        .rotation_xyz = {
+            .x = xval,
+            .y = yval,
+            .z = zval,
+        },
+    };
+
+    sfw_plugin_handle_sample(plugin, &sample);
+
+    ack = true;
+EXIT:
+    return ack;
+}
+
+static bool
+sfw_backend_stepcounter_value_cb(sfw_plugin_t *plugin, DBusMessageIter *data)
+{
+    bool          ack = false;
+    dbus_uint64_t tck = 0;
+    dbus_uint32_t val = 0;
+
+    if( !sfw_backend_parse_data(data,
+                                DBUS_TYPE_UINT64, &tck,
+                                DBUS_TYPE_UINT32, &val,
+                                DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    const sfw_sample_stepcounter_t sample = {
+        .stepcounter_timestamp = tck,
+        .stepcounter_value     = val,
+    };
+
+    sfw_plugin_handle_sample(plugin, &sample);
+
+    ack = true;
+EXIT:
+    return ack;
+}
+
+static bool
+sfw_backend_tap_value_cb(sfw_plugin_t *plugin, DBusMessageIter *data)
+{
+    bool          ack = false;
+    dbus_uint64_t tck = 0;
+    dbus_uint32_t direction = 0;
+    dbus_uint32_t type = 0;
+
+    if( !sfw_backend_parse_data(data,
+                                DBUS_TYPE_UINT64, &tck,
+                                DBUS_TYPE_UINT32, &direction,
+                                DBUS_TYPE_INT32,  &type,
+                                DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    const sfw_sample_tap_t sample = {
+        .tap_timestamp = tck,
+        .tap_direction = direction,
+        .tap_type      = type,
+    };
+
+    sfw_plugin_handle_sample(plugin, &sample);
+
+    ack = true;
+EXIT:
+    return ack;
+}
+
+static bool
+sfw_backend_temperature_value_cb(sfw_plugin_t *plugin, DBusMessageIter *data)
+{
+    bool          ack  = false;
+    dbus_uint64_t tck  = 0;
+    dbus_uint32_t val  = 0;
+
+    if( !sfw_backend_parse_data(data,
+                                DBUS_TYPE_UINT64, &tck,
+                                DBUS_TYPE_UINT32, &val,
+                                DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    const sfw_sample_temperature_t sample = {
+        .temperature_timestamp = tck,
+        .temperature_value     = val,
     };
 
     sfw_plugin_handle_sample(plugin, &sample);
@@ -1301,6 +2116,466 @@ sfw_backend_orient_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void
     return;
 }
 
+/** Callback for handling accelerometer events from sensord */
+static void
+sfw_backend_accelerometer_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *sampledata)
+{
+    (void)plugin;
+    const sfw_sample_accelerometer_t *sample = sampledata;
+
+    static const sfw_sample_accelerometer_t default_value =
+    {
+        .accelerometer_xyz = {
+            .x = 0,
+            .y = 0,
+            .z = 0,
+        },
+    };
+
+    static sfw_sample_accelerometer_t cached_value = { };
+
+    static bool tracking_active = false;
+
+    switch( type ) {
+    default:
+    case NOTIFY_REPEAT:
+        break;
+
+    case NOTIFY_FORGET:
+    case NOTIFY_RESET:
+        tracking_active = false;
+        cached_value = default_value;
+        break;
+
+    case NOTIFY_RESTORE:
+        tracking_active = true;
+        break;
+
+    case NOTIFY_EVDEV:
+    case NOTIFY_SENSORD:
+        cached_value = *sample;
+        break;
+    }
+
+    sample = tracking_active ? &cached_value : &default_value;
+
+    mce_log(LL_DEBUG, "ACCELEROMETER: UPDATE %s %s",
+            sfw_notify_name(type),
+            sfw_sample_accelerometer_repr(sample));
+
+    return;
+}
+
+static void
+sfw_backend_compass_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *sampledata)
+{
+    (void)plugin;
+    const sfw_sample_compass_t *sample = sampledata;
+
+    static const sfw_sample_compass_t default_value = { };
+    static sfw_sample_compass_t cached_value = { };
+
+    static bool tracking_active = false;
+
+    switch( type ) {
+    default:
+    case NOTIFY_REPEAT:
+        break;
+
+    case NOTIFY_FORGET:
+    case NOTIFY_RESET:
+        tracking_active = false;
+        cached_value = default_value;
+        break;
+
+    case NOTIFY_RESTORE:
+        tracking_active = true;
+        break;
+
+    case NOTIFY_EVDEV:
+    case NOTIFY_SENSORD:
+        cached_value = *sample;
+        break;
+    }
+
+    sample = tracking_active ? &cached_value : &default_value;
+
+    mce_log(LL_DEBUG, "COMPASS: UPDATE %s %s",
+            sfw_notify_name(type),
+            sfw_sample_compass_repr(sample));
+
+    return;
+}
+
+static void
+sfw_backend_gyroscope_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *sampledata)
+{
+    (void)plugin;
+    const sfw_sample_gyroscope_t *sample = sampledata;
+
+    static const sfw_sample_gyroscope_t default_value = { };
+    static sfw_sample_gyroscope_t cached_value = { };
+
+    static bool tracking_active = false;
+
+    switch( type ) {
+    default:
+    case NOTIFY_REPEAT:
+        break;
+
+    case NOTIFY_FORGET:
+    case NOTIFY_RESET:
+        tracking_active = false;
+        cached_value = default_value;
+        break;
+
+    case NOTIFY_RESTORE:
+        tracking_active = true;
+        break;
+
+    case NOTIFY_EVDEV:
+    case NOTIFY_SENSORD:
+        cached_value = *sample;
+        break;
+    }
+
+    sample = tracking_active ? &cached_value : &default_value;
+
+    mce_log(LL_DEBUG, "GYROSCOPE: UPDATE %s %s",
+            sfw_notify_name(type),
+            sfw_sample_gyroscope_repr(sample));
+
+    return;
+}
+
+static void
+sfw_backend_lid_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *sampledata)
+{
+    (void)plugin;
+    const sfw_sample_lid_t *sample = sampledata;
+
+    static const sfw_sample_lid_t default_value = { };
+    static sfw_sample_lid_t cached_value = { };
+
+    static bool tracking_active = false;
+
+    switch( type ) {
+    default:
+    case NOTIFY_REPEAT:
+        break;
+
+    case NOTIFY_FORGET:
+    case NOTIFY_RESET:
+        tracking_active = false;
+        cached_value = default_value;
+        break;
+
+    case NOTIFY_RESTORE:
+        tracking_active = true;
+        break;
+
+    case NOTIFY_EVDEV:
+    case NOTIFY_SENSORD:
+        cached_value = *sample;
+        break;
+    }
+
+    sample = tracking_active ? &cached_value : &default_value;
+
+    mce_log(LL_DEBUG, "LID: UPDATE %s %s",
+            sfw_notify_name(type),
+            sfw_sample_lid_repr(sample));
+
+    return;
+}
+
+static void
+sfw_backend_humidity_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *sampledata)
+{
+    (void)plugin;
+    const sfw_sample_humidity_t *sample = sampledata;
+
+    static const sfw_sample_humidity_t default_value = { };
+    static sfw_sample_humidity_t cached_value = { };
+
+    static bool tracking_active = false;
+
+    switch( type ) {
+    default:
+    case NOTIFY_REPEAT:
+        break;
+
+    case NOTIFY_FORGET:
+    case NOTIFY_RESET:
+        tracking_active = false;
+        cached_value = default_value;
+        break;
+
+    case NOTIFY_RESTORE:
+        tracking_active = true;
+        break;
+
+    case NOTIFY_EVDEV:
+    case NOTIFY_SENSORD:
+        cached_value = *sample;
+        break;
+    }
+
+    sample = tracking_active ? &cached_value : &default_value;
+
+    mce_log(LL_DEBUG, "HUMIDITY: UPDATE %s %s",
+            sfw_notify_name(type),
+            sfw_sample_humidity_repr(sample));
+
+    return;
+}
+
+static void
+sfw_backend_magnetometer_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *sampledata)
+{
+    (void)plugin;
+    const sfw_sample_magnetometer_t *sample = sampledata;
+
+    static const sfw_sample_magnetometer_t default_value = { };
+    static sfw_sample_magnetometer_t cached_value = { };
+
+    static bool tracking_active = false;
+
+    switch( type ) {
+    default:
+    case NOTIFY_REPEAT:
+        break;
+
+    case NOTIFY_FORGET:
+    case NOTIFY_RESET:
+        tracking_active = false;
+        cached_value = default_value;
+        break;
+
+    case NOTIFY_RESTORE:
+        tracking_active = true;
+        break;
+
+    case NOTIFY_EVDEV:
+    case NOTIFY_SENSORD:
+        cached_value = *sample;
+        break;
+    }
+
+    sample = tracking_active ? &cached_value : &default_value;
+
+    mce_log(LL_DEBUG, "MAGNETOMETER: UPDATE %s %s",
+            sfw_notify_name(type),
+            sfw_sample_magnetometer_repr(sample));
+
+    return;
+}
+
+static void
+sfw_backend_pressure_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *sampledata)
+{
+    (void)plugin;
+    const sfw_sample_pressure_t *sample = sampledata;
+
+    static const sfw_sample_pressure_t default_value = { };
+    static sfw_sample_pressure_t cached_value = { };
+
+    static bool tracking_active = false;
+
+    switch( type ) {
+    default:
+    case NOTIFY_REPEAT:
+        break;
+
+    case NOTIFY_FORGET:
+    case NOTIFY_RESET:
+        tracking_active = false;
+        cached_value = default_value;
+        break;
+
+    case NOTIFY_RESTORE:
+        tracking_active = true;
+        break;
+
+    case NOTIFY_EVDEV:
+    case NOTIFY_SENSORD:
+        cached_value = *sample;
+        break;
+    }
+
+    sample = tracking_active ? &cached_value : &default_value;
+
+    mce_log(LL_DEBUG, "PRESSURE: UPDATE %s %s",
+            sfw_notify_name(type),
+            sfw_sample_pressure_repr(sample));
+
+    return;
+}
+
+static void
+sfw_backend_rotation_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *sampledata)
+{
+    (void)plugin;
+    const sfw_sample_rotation_t *sample = sampledata;
+
+    static const sfw_sample_rotation_t default_value = { };
+    static sfw_sample_rotation_t cached_value = { };
+
+    static bool tracking_active = false;
+
+    switch( type ) {
+    default:
+    case NOTIFY_REPEAT:
+        break;
+
+    case NOTIFY_FORGET:
+    case NOTIFY_RESET:
+        tracking_active = false;
+        cached_value = default_value;
+        break;
+
+    case NOTIFY_RESTORE:
+        tracking_active = true;
+        break;
+
+    case NOTIFY_EVDEV:
+    case NOTIFY_SENSORD:
+        cached_value = *sample;
+        break;
+    }
+
+    sample = tracking_active ? &cached_value : &default_value;
+
+    mce_log(LL_DEBUG, "ROTATION: UPDATE %s %s",
+            sfw_notify_name(type),
+            sfw_sample_rotation_repr(sample));
+
+    return;
+}
+
+static void
+sfw_backend_stepcounter_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *sampledata)
+{
+    (void)plugin;
+    const sfw_sample_stepcounter_t *sample = sampledata;
+
+    static const sfw_sample_stepcounter_t default_value = { };
+    static sfw_sample_stepcounter_t cached_value = { };
+
+    static bool tracking_active = false;
+
+    switch( type ) {
+    default:
+    case NOTIFY_REPEAT:
+        break;
+
+    case NOTIFY_FORGET:
+    case NOTIFY_RESET:
+        tracking_active = false;
+        cached_value = default_value;
+        break;
+
+    case NOTIFY_RESTORE:
+        tracking_active = true;
+        break;
+
+    case NOTIFY_EVDEV:
+    case NOTIFY_SENSORD:
+        cached_value = *sample;
+        break;
+    }
+
+    sample = tracking_active ? &cached_value : &default_value;
+
+    mce_log(LL_DEBUG, "STEPCOUNTER: UPDATE %s %s",
+            sfw_notify_name(type),
+            sfw_sample_stepcounter_repr(sample));
+
+    return;
+}
+
+static void
+sfw_backend_tap_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *sampledata)
+{
+    (void)plugin;
+    const sfw_sample_tap_t *sample = sampledata;
+
+    static const sfw_sample_tap_t default_value = { };
+    static sfw_sample_tap_t cached_value = { };
+
+    static bool tracking_active = false;
+
+    switch( type ) {
+    default:
+    case NOTIFY_REPEAT:
+        break;
+
+    case NOTIFY_FORGET:
+    case NOTIFY_RESET:
+        tracking_active = false;
+        cached_value = default_value;
+        break;
+
+    case NOTIFY_RESTORE:
+        tracking_active = true;
+        break;
+
+    case NOTIFY_EVDEV:
+    case NOTIFY_SENSORD:
+        cached_value = *sample;
+        break;
+    }
+
+    sample = tracking_active ? &cached_value : &default_value;
+
+    mce_log(LL_DEBUG, "TAP: UPDATE %s %s",
+            sfw_notify_name(type),
+            sfw_sample_tap_repr(sample));
+
+    return;
+}
+
+static void
+sfw_backend_temperature_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *sampledata)
+{
+    (void)plugin;
+    const sfw_sample_temperature_t *sample = sampledata;
+
+    static const sfw_sample_temperature_t default_value = { };
+    static sfw_sample_temperature_t cached_value = { };
+
+    static bool tracking_active = false;
+
+    switch( type ) {
+    default:
+    case NOTIFY_REPEAT:
+        break;
+
+    case NOTIFY_FORGET:
+    case NOTIFY_RESET:
+        tracking_active = false;
+        cached_value = default_value;
+        break;
+
+    case NOTIFY_RESTORE:
+        tracking_active = true;
+        break;
+
+    case NOTIFY_EVDEV:
+    case NOTIFY_SENSORD:
+        cached_value = *sample;
+        break;
+    }
+
+    sample = tracking_active ? &cached_value : &default_value;
+
+    mce_log(LL_DEBUG, "TEMPERATURE: UPDATE %s %s",
+            sfw_notify_name(type),
+            sfw_sample_temperature_repr(sample));
+
+    return;
+}
+
 // ----------------------------------------------------------------
 
 /** Data and callback functions for all sensors */
@@ -1332,6 +2607,105 @@ static const sfw_backend_t sfw_backend_lut[SFW_SENSOR_ID_COUNT] =
         .be_value_cb         = sfw_backend_orient_value_cb,
         .be_sample_cb        = sfw_backend_orient_sample_cb,
         .be_value_method     = SFW_SENSOR_METHOD_READ_ORIENT,
+    },
+    [SFW_SENSOR_ID_ACCELEROMETER] = {
+        .be_sensor_name      = SFW_SENSOR_NAME_ACCELEROMETER,
+        .be_sensor_object    = 0,
+        .be_sensor_interface = SFW_SENSOR_INTERFACE_ACCELEROMETER,
+        .be_sample_size      = sizeof(sfw_sample_accelerometer_t),
+        .be_value_cb         = sfw_backend_accelerometer_value_cb,
+        .be_sample_cb        = sfw_backend_accelerometer_sample_cb,
+        .be_value_method     = SFW_SENSOR_METHOD_READ_ACCELEROMETER,
+    },
+    [SFW_SENSOR_ID_COMPASS] = {
+        .be_sensor_name      = SFW_SENSOR_NAME_COMPASS,
+        .be_sensor_object    = 0,
+        .be_sensor_interface = SFW_SENSOR_INTERFACE_COMPASS,
+        .be_sample_size      = sizeof(sfw_sample_compass_t),
+        .be_value_cb         = sfw_backend_compass_value_cb,
+        .be_sample_cb        = sfw_backend_compass_sample_cb,
+        .be_value_method     = SFW_SENSOR_METHOD_READ_COMPASS,
+    },
+    [SFW_SENSOR_ID_GYROSCOPE] = {
+        .be_sensor_name      = SFW_SENSOR_NAME_GYROSCOPE,
+        .be_sensor_object    = 0,
+        .be_sensor_interface = SFW_SENSOR_INTERFACE_GYROSCOPE,
+        .be_sample_size      = sizeof(sfw_sample_gyroscope_t),
+        .be_value_cb         = sfw_backend_gyroscope_value_cb,
+        .be_sample_cb        = sfw_backend_gyroscope_sample_cb,
+        .be_value_method     = SFW_SENSOR_METHOD_READ_GYROSCOPE,
+    },
+    [SFW_SENSOR_ID_LID] = {
+        .be_sensor_name      = SFW_SENSOR_NAME_LID,
+        .be_sensor_object    = 0,
+        .be_sensor_interface = SFW_SENSOR_INTERFACE_LID,
+        .be_sample_size      = sizeof(sfw_sample_lid_t),
+        .be_value_cb         = sfw_backend_lid_value_cb,
+        .be_sample_cb        = sfw_backend_lid_sample_cb,
+        .be_value_method     = SFW_SENSOR_METHOD_READ_LID,
+    },
+    [SFW_SENSOR_ID_HUMIDITY] = {
+        .be_sensor_name      = SFW_SENSOR_NAME_HUMIDITY,
+        .be_sensor_object    = 0,
+        .be_sensor_interface = SFW_SENSOR_INTERFACE_HUMIDITY,
+        .be_sample_size      = sizeof(sfw_sample_humidity_t),
+        .be_value_cb         = sfw_backend_humidity_value_cb,
+        .be_sample_cb        = sfw_backend_humidity_sample_cb,
+        .be_value_method     = SFW_SENSOR_METHOD_READ_HUMIDITY,
+    },
+    [SFW_SENSOR_ID_MAGNETOMETER] = {
+        .be_sensor_name      = SFW_SENSOR_NAME_MAGNETOMETER,
+        .be_sensor_object    = 0,
+        .be_sensor_interface = SFW_SENSOR_INTERFACE_MAGNETOMETER,
+        .be_sample_size      = sizeof(sfw_sample_magnetometer_t),
+        .be_value_cb         = sfw_backend_magnetometer_value_cb,
+        .be_sample_cb        = sfw_backend_magnetometer_sample_cb,
+        .be_value_method     = SFW_SENSOR_METHOD_READ_MAGNETOMETER,
+    },
+    [SFW_SENSOR_ID_PRESSURE] = {
+        .be_sensor_name      = SFW_SENSOR_NAME_PRESSURE,
+        .be_sensor_object    = 0,
+        .be_sensor_interface = SFW_SENSOR_INTERFACE_PRESSURE,
+        .be_sample_size      = sizeof(sfw_sample_pressure_t),
+        .be_value_cb         = sfw_backend_pressure_value_cb,
+        .be_sample_cb        = sfw_backend_pressure_sample_cb,
+        .be_value_method     = SFW_SENSOR_METHOD_READ_PRESSURE,
+    },
+    [SFW_SENSOR_ID_ROTATION] = {
+        .be_sensor_name      = SFW_SENSOR_NAME_ROTATION,
+        .be_sensor_object    = 0,
+        .be_sensor_interface = SFW_SENSOR_INTERFACE_ROTATION,
+        .be_sample_size      = sizeof(sfw_sample_rotation_t),
+        .be_value_cb         = sfw_backend_rotation_value_cb,
+        .be_sample_cb        = sfw_backend_rotation_sample_cb,
+        .be_value_method     = SFW_SENSOR_METHOD_READ_ROTATION,
+    },
+    [SFW_SENSOR_ID_STEPCOUNTER] = {
+        .be_sensor_name      = SFW_SENSOR_NAME_STEPCOUNTER,
+        .be_sensor_object    = 0,
+        .be_sensor_interface = SFW_SENSOR_INTERFACE_STEPCOUNTER,
+        .be_sample_size      = sizeof(sfw_sample_stepcounter_t),
+        .be_value_cb         = sfw_backend_stepcounter_value_cb,
+        .be_sample_cb        = sfw_backend_stepcounter_sample_cb,
+        .be_value_method     = SFW_SENSOR_METHOD_READ_STEPCOUNTER,
+    },
+    [SFW_SENSOR_ID_TAP] = {
+        .be_sensor_name      = SFW_SENSOR_NAME_TAP,
+        .be_sensor_object    = 0,
+        .be_sensor_interface = SFW_SENSOR_INTERFACE_TAP,
+        .be_sample_size      = sizeof(sfw_sample_tap_t),
+        .be_value_cb         = sfw_backend_tap_value_cb,
+        .be_sample_cb        = sfw_backend_tap_sample_cb,
+        .be_value_method     = SFW_SENSOR_METHOD_READ_TAP,
+    },
+    [SFW_SENSOR_ID_TEMPERATURE] = {
+        .be_sensor_name      = SFW_SENSOR_NAME_TEMPERATURE,
+        .be_sensor_object    = 0,
+        .be_sensor_interface = SFW_SENSOR_INTERFACE_TEMPERATURE,
+        .be_sample_size      = sizeof(sfw_sample_temperature_t),
+        .be_value_cb         = sfw_backend_temperature_value_cb,
+        .be_sample_cb        = sfw_backend_temperature_sample_cb,
+        .be_value_method     = SFW_SENSOR_METHOD_READ_TEMPERATURE,
     },
 };
 
@@ -3117,8 +4491,12 @@ static void
 sfw_plugin_enable_sensor(sfw_plugin_t *self, bool enable)
 {
     if( self ) {
-        mce_log(LL_DEBUG, "%s: %s", sfw_plugin_get_sensor_name(self),
-                enable ? "enable" : "disable");
+        bool forced = false;
+        if( !enable && mce_in_sensortest_mode() )
+            forced = enable = true;
+        mce_log(LL_DEBUG, "%s: %s%s", sfw_plugin_get_sensor_name(self),
+                enable ? "enable" : "disable",
+                forced ? " (forced)" : "");
         if( self->plg_override )
             sfw_override_set_target(self->plg_override, enable);
         if( self->plg_reporting )
@@ -3383,7 +4761,10 @@ sfw_service_create(void)
     self->srv_query_pc      = 0;
 
     for( sensor_id_t id = 0; id < SFW_SENSOR_ID_COUNT; ++id ) {
-        self->srv_plugin[id] = sfw_plugin_create(sfw_backend_lut + id);
+        if( sensor_id_available(id) )
+            self->srv_plugin[id] = sfw_plugin_create(sfw_backend_lut + id);
+        else
+            self->srv_plugin[id] =  0;
     }
 
     return self;
@@ -4100,6 +5481,12 @@ mce_sensorfw_init(void)
     /* From proximity sensor reporting point of view MCE start up
      * needs to be handled as a special case. */
     sfw_exception_start(SFW_EXCEPTION_LENGTH_MCE_STARTING_UP);
+
+    /* In sensor test mode, enable all known sensors */
+    if( mce_in_sensortest_mode() ) {
+        for( sensor_id_t id = 0; id < SFW_SENSOR_ID_COUNT; ++id )
+            sfw_service_set_sensor(sfw_service, id, true);
+    }
 
     return true;
 }
