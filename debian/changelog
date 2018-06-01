@@ -1,3 +1,12 @@
+mce (1.94.0) precise; urgency=low
+
+  * [display] Do not jump over variable initialization
+  * [mce-sensorfw] Do not retry loading of unavailable sensors. JB#41369
+  * [mce-sensorfw] Refactor mce - sensorfwd IPC. JB#41369
+  * [mce-sensorfw] Implement sensor-test mode for mce. JB#41369
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 01 Jun 2018 09:55:07 +0300
+
 mce (1.93.4) precise; urgency=low
 
   * [dsme] Do not take shutdown actions on shutdown notification. JB#41302
