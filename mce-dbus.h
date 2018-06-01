@@ -196,6 +196,8 @@ char *mce_dbus_message_repr(DBusMessage *const msg);
 char *mce_dbus_message_iter_repr(DBusMessageIter *iter);
 
 bool mce_dbus_iter_at_end(DBusMessageIter *iter);
+bool mce_dbus_iter_req_type(DBusMessageIter *iter, int want);
+bool mce_dbus_iter_get_basic(DBusMessageIter *iter, void *pval, int type);
 bool mce_dbus_iter_get_object(DBusMessageIter *iter, const char **pval);
 bool mce_dbus_iter_get_string(DBusMessageIter *iter, const char **pval);
 bool mce_dbus_iter_get_bool(DBusMessageIter *iter, bool *pval);

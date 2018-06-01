@@ -188,6 +188,44 @@
  *
  * ========================================================================= */
 
+/** ID numbers for sensors supported by mce-sensorfwd module
+ */
+typedef enum
+{
+    SFW_SENSOR_ID_PS,
+    SFW_SENSOR_ID_ALS,
+    SFW_SENSOR_ID_ORIENT,
+    SFW_SENSOR_ID_ACCELEROMETER,
+    SFW_SENSOR_ID_COMPASS,
+    SFW_SENSOR_ID_GYROSCOPE,
+    SFW_SENSOR_ID_LID,
+    SFW_SENSOR_ID_HUMIDITY,
+    SFW_SENSOR_ID_MAGNETOMETER,
+    SFW_SENSOR_ID_PRESSURE,
+    SFW_SENSOR_ID_ROTATION,
+    SFW_SENSOR_ID_STEPCOUNTER,
+    SFW_SENSOR_ID_TAP,
+    SFW_SENSOR_ID_TEMPERATURE,
+
+    SFW_SENSOR_ID_COUNT
+} sensor_id_t;
+
+static bool
+sensor_id_available(sensor_id_t id)
+{
+    bool available = true;
+    switch( id ) {
+    case SFW_SENSOR_ID_PS:
+    case SFW_SENSOR_ID_ALS:
+    case SFW_SENSOR_ID_ORIENT:
+        break;
+    default:
+        available = mce_in_sensortest_mode();
+        break;
+    }
+    return available;
+}
+
 /* ========================================================================= *
  * D-BUS CONSTANTS FOR D-BUS DAEMON
  * ========================================================================= */
@@ -223,40 +261,67 @@
 
 // ----------------------------------------------------------------
 
-/* Note: Every sensor has unique object path & interface */
+/* D-Bus interfaces for accessing sensor specific data
+ *
+ * Note: Sensorfwd uses separate interface for each sensor. */
 
-/** D-Bus interface used by proximity sensor plugin */
-#define SENSORFW_SENSOR_INTERFACE_PS           "local.ProximitySensor"
+#define SFW_SENSOR_INTERFACE_PS             "local.ProximitySensor"
+#define SFW_SENSOR_INTERFACE_ALS            "local.ALSSensor"
+#define SFW_SENSOR_INTERFACE_ORIENT         "local.OrientationSensor"
+#define SFW_SENSOR_INTERFACE_ACCELEROMETER  "local.AccelerometerSensor"
+#define SFW_SENSOR_INTERFACE_COMPASS        "local.CompassSensor"
+#define SFW_SENSOR_INTERFACE_GYROSCOPE      "local.GyroscopeSensor"
+#define SFW_SENSOR_INTERFACE_LID            "local.LidSensor"
+#define SFW_SENSOR_INTERFACE_HUMIDITY       "local.HumiditySensor"
+#define SFW_SENSOR_INTERFACE_MAGNETOMETER   "local.MagnetometerSensor"
+#define SFW_SENSOR_INTERFACE_PRESSURE       "local.PressureSensor"
+#define SFW_SENSOR_INTERFACE_ROTATION       "local.RotationSensor"
+#define SFW_SENSOR_INTERFACE_STEPCOUNTER    "local.StepcounterSensor"
+#define SFW_SENSOR_INTERFACE_TAP            "local.TapSensor"
+#define SFW_SENSOR_INTERFACE_TEMPERATURE    "local.TemperatureSensor"
 
-/** D-Bus interface used by ambient light sensor plugin */
-#define SENSORFW_SENSOR_INTERFACE_ALS          "local.ALSSensor"
+/** D-Bus method for enabling sensor
+ *
+ * @Note All sensor specific interfaces have start method.
+ */
+#define SFW_SENSOR_METHOD_START             "start"
 
-/** D-Bus interface used by orientation sensor plugin */
-#define SENSORFW_SENSOR_INTERFACE_ORIENT       "local.OrientationSensor"
+/** D-Bus method for disabling sensor
+ *
+ * @Note All sensor specific interfaces have stop method.
+ */
+#define SFW_SENSOR_METHOD_STOP              "stop"
 
-/* Common methods supported by all sensor interfaces */
+/** D-Bus method for changing sensor standby override
+ *
+ * @Note All sensor specific interfaces have have this method,
+ *       but unless it is actually explicitly implemented, a
+ *       virtual dummy method call handler gets invoked and
+ *       it will just return "false".
+ */
+#define SFW_SENSOR_METHOD_SET_OVERRIDE      "setStandbyOverride"
 
-/** D-Bus method for enabling sensor */
-#define SENSORFW_SENSOR_METHOD_START           "start"
+/* D-Bus methods for getting current sensor value
+ *
+ * The method name and returned data varies from one sensor to
+ * another, and in some cases there is no "current state" to
+ * query (such as tap detection sensor which emits events).
+ */
 
-/** D-Bus method for disabling sensor */
-#define SENSORFW_SENSOR_METHOD_STOP            "stop"
-
-/** D-Bus method for changing sensor standby override */
-#define SENSORFW_SENSOR_METHOD_SET_OVERRIDE    "setStandbyOverride"
-
-/* Note: The sensor specific methods for reading current state
- *       differ only by method name, so common logic can stll be
- *       used for making the queries and processing the replies. */
-
-/** D-Bus method for reading intial proximity state */
-#define SENSORFW_SENSOR_METHOD_READ_PS         "proximity"
-
-/** D-Bus method for reading intial ambient light state */
-#define SENSORFW_SENSOR_METHOD_READ_ALS        "lux"
-
-/** D-Bus method for reading intial orientation state */
-#define SENSORFW_SENSOR_METHOD_READ_ORIENT     "orientation"
+#define SFW_SENSOR_METHOD_READ_PS             "proximity"
+#define SFW_SENSOR_METHOD_READ_ALS            "lux"
+#define SFW_SENSOR_METHOD_READ_ORIENT         "orientation"
+#define SFW_SENSOR_METHOD_READ_ACCELEROMETER  "xyz"
+#define SFW_SENSOR_METHOD_READ_COMPASS        "value" // or "declinationvalue"?
+#define SFW_SENSOR_METHOD_READ_GYROSCOPE      "value"
+#define SFW_SENSOR_METHOD_READ_LID            "closed"
+#define SFW_SENSOR_METHOD_READ_HUMIDITY       "relativeHumidity"
+#define SFW_SENSOR_METHOD_READ_MAGNETOMETER   "magneticField"
+#define SFW_SENSOR_METHOD_READ_PRESSURE       "pressure"
+#define SFW_SENSOR_METHOD_READ_ROTATION       "rotation"
+#define SFW_SENSOR_METHOD_READ_STEPCOUNTER    "steps"
+#define SFW_SENSOR_METHOD_READ_TAP            NULL // event, not state
+#define SFW_SENSOR_METHOD_READ_TEMPERATURE    "temperature"
 
 // ----------------------------------------------------------------
 
@@ -265,31 +330,107 @@
 
 // ----------------------------------------------------------------
 
-/** Name of proximity sensor */
-#define SENSORFW_SENSOR_NAME_PS                "proximitysensor"
+/* Sensor names used by senseofwd */
 
-/** Name of ambient light sensor */
-#define SENSORFW_SENSOR_NAME_ALS               "alssensor"
+#define SFW_SENSOR_NAME_PS                "proximitysensor"
+#define SFW_SENSOR_NAME_ALS               "alssensor"
+#define SFW_SENSOR_NAME_ORIENT            "orientationsensor"
+#define SFW_SENSOR_NAME_ACCELEROMETER     "accelerometersensor"
+#define SFW_SENSOR_NAME_COMPASS           "compasssensor"
+#define SFW_SENSOR_NAME_GYROSCOPE         "gyroscopesensor"
+#define SFW_SENSOR_NAME_LID               "lidsensor"
+#define SFW_SENSOR_NAME_HUMIDITY          "humiditysensor"
+#define SFW_SENSOR_NAME_MAGNETOMETER      "magnetometersensor"
+#define SFW_SENSOR_NAME_PRESSURE          "pressuresensor"
+#define SFW_SENSOR_NAME_ROTATION          "rotationsensor"
+#define SFW_SENSOR_NAME_STEPCOUNTER       "stepcountersensor"
+#define SFW_SENSOR_NAME_TAP               "tapsensor"
+#define SFW_SENSOR_NAME_TEMPERATURE       "temperaturesensor"
 
-/** Name of orientation sensor */
-#define SENSORFW_SENSOR_NAME_ORIENT            "orientationsensor"
+// ----------------------------------------------------------------
 
 /* ========================================================================= *
  * FORWARD_DECLARATIONS
  * ========================================================================= */
 
-typedef struct sfw_service_t       sfw_service_t;
+typedef struct sfw_service_t              sfw_service_t;
 
-typedef struct sfw_plugin_t        sfw_plugin_t;
-typedef struct sfw_session_t       sfw_session_t;
-typedef struct sfw_connection_t    sfw_connection_t;
-typedef struct sfw_override_t      sfw_override_t;
-typedef struct sfw_reporting_t     sfw_reporting_t;
-typedef struct sfw_backend_t       sfw_backend_t;
+typedef struct sfw_plugin_t               sfw_plugin_t;
+typedef struct sfw_session_t              sfw_session_t;
+typedef struct sfw_connection_t           sfw_connection_t;
+typedef struct sfw_override_t             sfw_override_t;
+typedef struct sfw_reporting_t            sfw_reporting_t;
+typedef struct sfw_backend_t              sfw_backend_t;
 
-typedef struct sfw_sample_als_t    sfw_sample_als_t;
-typedef struct sfw_sample_ps_t     sfw_sample_ps_t;
-typedef struct sfw_sample_orient_t sfw_sample_orient_t;
+typedef struct sfw_sample_als_t           sfw_sample_als_t;
+typedef struct sfw_sample_ps_t            sfw_sample_ps_t;
+typedef struct sfw_sample_orient_t        sfw_sample_orient_t;
+typedef struct sfw_sample_accelerometer_t sfw_sample_accelerometer_t;
+typedef struct sfw_sample_compass_t       sfw_sample_compass_t;
+typedef struct sfw_sample_gyroscope_t     sfw_sample_gyroscope_t;
+typedef struct sfw_sample_lid_t           sfw_sample_lid_t;
+typedef struct sfw_sample_humidity_t      sfw_sample_humidity_t;
+typedef struct sfw_sample_magnetometer_t  sfw_sample_magnetometer_t;
+typedef struct sfw_sample_pressure_t      sfw_sample_pressure_t;
+typedef struct sfw_sample_rotation_t      sfw_sample_rotation_t;
+typedef struct sfw_sample_stepcounter_t   sfw_sample_stepcounter_t;
+typedef struct sfw_sample_tap_t           sfw_sample_tap_t;
+typedef struct sfw_sample_temperature_t   sfw_sample_temperature_t;
+
+/* ========================================================================= *
+ * SENSORFW_NOTIFY
+ * ========================================================================= */
+
+/** Proximity state to use when sensor can't be enabled
+ *
+ * This must be "uncovered" so that absense of or failures within
+ * sensord do not make the device unusable due to proximity values
+ * blocking display power up and touch input.
+ */
+#define SFW_NOTIFY_DEFAULT_PS false
+
+/** Proximity state to use when waiting for sensord startup
+ *
+ * This must be "covered" so that we do not prematurely unblock
+ * touch input / allow display power up during bootup and during
+ * sensord restarts.
+ */
+#define SFW_NOTIFY_EXCEPTION_PS true
+
+/** Ambient light level [lux] to use when sensor can't be enabled */
+#define SFW_NOTIFY_DEFAULT_ALS 400
+
+/** Orientation state to use when sensor can't be enabled */
+#define SFW_NOTIFY_DEFAULT_ORIENT MCE_ORIENTATION_UNDEFINED
+
+/** Dummy sensor value to use when re-sending cached state data */
+#define SFW_NOTIFY_DUMMY 0
+
+typedef enum
+{
+    /** Cached sensor state should be reset to default value */
+    NOTIFY_RESET,
+
+    /** Cached sensor state should be restored from last-known value */
+    NOTIFY_RESTORE,
+
+    /** Cached sensor state should be sent again */
+    NOTIFY_REPEAT,
+
+    /** Sensor state was received from evdev source */
+    NOTIFY_EVDEV,
+
+    /** Sensor state was received from sensord */
+    NOTIFY_SENSORD,
+
+    /** Flush cached state */
+    NOTIFY_FORGET,
+
+    NOTIFY_NUMTYPES
+} sfw_notify_t;
+
+static const char       *sfw_notify_name                (sfw_notify_t type);
+static gboolean          sfw_name_owner_changed_cb      (DBusMessage *const msg);
 
 /* ========================================================================= *
  * SENSORD_DATA_TYPES
@@ -304,6 +445,8 @@ struct sfw_sample_als_t
     /** amount of light [lux] */
     uint32_t als_value;
 };
+
+static const char *sfw_sample_als_repr(const sfw_sample_als_t *self);
 
 /** PS data block as sensord sends them */
 struct sfw_sample_ps_t
@@ -322,6 +465,8 @@ struct sfw_sample_ps_t
     uint8_t  ps_withinProximity;
 };
 
+static const char *sfw_sample_ps_repr(const sfw_sample_ps_t *self);
+
 /** Orientation data block as sensord sends them */
 struct sfw_sample_orient_t
 {
@@ -332,18 +477,222 @@ struct sfw_sample_orient_t
     int32_t  orient_state;
 };
 
+static const char *sfw_sample_orient_repr(const sfw_sample_orient_t *self);
+
+typedef enum sfw_lid_type_t
+{
+    SFW_LID_TYPE_UNKNOWN = -1, // UnknownLid
+    SFW_LID_TYPE_FRONT   =  0, // FrontLid
+    SFW_LID_TYPE_BACK    =  1, // BackLid
+} sfw_lid_type_t;
+
+static const char *sfw_lid_type_repr(sfw_lid_type_t type);
+
+typedef enum sfw_tap_direction_t
+{
+    /** Left or right side tapped */
+    SFW_TAP_DIRECTION_X          = 0,
+
+    /** Top or down side tapped */
+    SFW_TAP_DIRECTION_Y          = 1,
+
+    /** Face or bottom tapped */
+    SFW_TAP_DIRECTION_Z          = 2,
+
+    /** Tapped from left to right */
+    SFW_TAP_DIRECTION_LEFT_RIGHT = 3,
+
+    /** Tapped from right to left */
+    SFW_TAP_DIRECTION_RIGHT_LEFT = 4,
+
+    /** Tapped from top to bottom */
+    SFW_TAP_DIRECTION_TOP_BOTTOM = 5,
+
+    /** Tapped from bottom to top */
+    SFW_TAP_DIRECTION_BOTTOM_TOP = 6,
+
+    /** Tapped from face to back */
+    SFW_TAP_DIRECTION_FACE_BACK  = 7,
+
+    /** Tapped from back to face */
+    SFW_TAP_DIRECTION_BACK_FACE  = 8,
+} sfw_tap_direction_t;
+
+static const char *sfw_tap_direction_repr(sfw_tap_direction_t direction);
+
+typedef enum sfw_tap_type_t
+{
+    /** placeholder */
+    SFW_TAP_TYPE_NONE       = -1,
+    /** Double tap. */
+    SFW_TAP_TYPE_DOUBLE_TAP = 0,
+    /**< Single tap. */
+    SFW_TAP_TYPE_SINGLE_TAP = 1,
+} sfw_tap_type_t;
+
+static const char * sfw_tap_type_repr(sfw_tap_type_t type);
+
+typedef struct sfw_xyz_t
+{
+    int32_t x,y,z;
+} sfw_xyz_t;
+
+struct sfw_sample_accelerometer_t
+{
+    /** microseconds, monotonic */
+    uint64_t accelerometer_timestamp;
+
+    /** amount of TBD */
+    sfw_xyz_t accelerometer_xyz;
+};
+
+static const char *sfw_sample_accelerometer_repr(const sfw_sample_accelerometer_t *self);
+
+struct sfw_sample_compass_t
+{
+    /** microseconds, monotonic */
+    uint64_t compass_timestamp;
+
+    /** Angle to north which may be declination corrected or not. This is the value apps should use */
+    int32_t compass_degrees;
+    /** Angle to north without declination correction */
+    int32_t compass_raw_degrees;
+    /** Declination corrected angle to north */
+    int32_t compass_corrected_degrees;
+    /** Magnetometer calibration level. Higher value means better calibration. */
+    int32_t compass_level;
+};
+
+static const char *sfw_sample_compass_repr(const sfw_sample_compass_t *self);
+
+struct sfw_sample_gyroscope_t
+{
+    /** microseconds, monotonic */
+    uint64_t gyroscope_timestamp;
+
+    /** amount of TBD */
+    sfw_xyz_t gyroscope_xyz;
+};
+
+static const char *sfw_sample_gyroscope_repr(const sfw_sample_gyroscope_t *self);
+
+struct sfw_sample_lid_t
+{
+    /** microseconds, monotonic */
+    uint64_t lid_timestamp;
+
+    /** amount of TBD */
+    int32_t  lid_type; // sfw_lid_type_t
+    uint32_t lid_value;
+};
+
+static const char *sfw_sample_lid_repr(const sfw_sample_lid_t *self);
+
+struct sfw_sample_humidity_t
+{
+    /** microseconds, monotonic */
+    uint64_t humidity_timestamp;
+
+    /** amount of TBD */
+    uint32_t humidity_value;
+};
+
+static const char *sfw_sample_humidity_repr(const sfw_sample_humidity_t *self);
+
+struct sfw_sample_magnetometer_t
+{
+    /** microseconds, monotonic */
+    uint64_t magnetometer_timestamp;
+
+    /** X coordinate value */
+    int32_t magnetometer_x;
+
+    /** Y coordinate value */
+    int32_t magnetometer_y;
+
+    /** Z coordinate value */
+    int32_t magnetometer_z;
+
+    /** raw X coordinate value */
+    int32_t magnetometer_rx;
+
+    /** raw Y coordinate value */
+    int32_t magnetometer_ry;
+
+    /** raw Z coordinate value */
+    int32_t magnetometer_rz;
+
+    /** Magnetometer calibration level. Higher value means better calibration. */
+    int32_t magnetometer_level;
+};
+
+static const char *sfw_sample_magnetometer_repr(const sfw_sample_magnetometer_t *self);
+
+struct sfw_sample_pressure_t
+{
+    /** microseconds, monotonic */
+    uint64_t pressure_timestamp;
+
+    /** amount of TBD */
+    uint32_t pressure_value;
+};
+
+static const char *sfw_sample_pressure_repr(const sfw_sample_pressure_t *self);
+
+struct sfw_sample_rotation_t
+{
+    /** microseconds, monotonic */
+    uint64_t rotation_timestamp;
+
+    /** amount of TBD */
+    sfw_xyz_t rotation_xyz;
+};
+
+static const char *sfw_sample_rotation_repr(const sfw_sample_rotation_t *self);
+
+struct sfw_sample_stepcounter_t
+{
+    /** microseconds, monotonic */
+    uint64_t stepcounter_timestamp;
+
+    /** amount of TBD */
+    uint32_t stepcounter_value;
+};
+
+static const char *sfw_sample_stepcounter_repr(const sfw_sample_stepcounter_t *self);
+
+struct sfw_sample_tap_t
+{
+    /** microseconds, monotonic */
+    uint64_t tap_timestamp;
+
+    /** amount of TBD */
+    uint32_t tap_direction; // sfw_tap_direction_t
+    int32_t  tap_type;      // sfw_tap_type_t
+};
+
+static const char *sfw_sample_tap_repr(const sfw_sample_tap_t *self);
+
+struct sfw_sample_temperature_t
+{
+    /** microseconds, monotonic */
+    uint64_t temperature_timestamp;
+
+    /** amount of TBD */
+    uint32_t temperature_value;
+};
+
+static const char *sfw_sample_temperature_repr(const sfw_sample_temperature_t *self);
+
 /* ========================================================================= *
  * SENSORFW_BACKEND
  * ========================================================================= */
 
-/** Callback function type: initial value reporting */
-typedef void (*sfw_value_fn)(sfw_plugin_t *plugin, unsigned value);
+/** Callback function type: parsing initial value reply */
+typedef bool (*sfw_value_fn)(sfw_plugin_t *plugin, DBusMessageIter *data);
 
 /** Callback function type: value change reporting */
-typedef void (*sfw_sample_fn)(sfw_plugin_t *plugin, const void *sample);
-
-/** Callback function type: value reset reporting */
-typedef void (*sfw_reset_fn)(sfw_plugin_t *plugin);
+typedef void (*sfw_sample_fn)(sfw_plugin_t *plugin, sfw_notify_t type, const void *sample);
 
 /** Sensor specific data and callbacks */
 struct sfw_backend_t
@@ -360,24 +709,47 @@ struct sfw_backend_t
     /** Size of sensor data blobs sensord will be sending */
     size_t        be_sample_size;
 
+    /** Callback for handling initial value reply */
+    sfw_value_fn  be_value_cb;
+
     /** Callback for handling sensor data blob */
     sfw_sample_fn be_sample_cb;
 
     /** D-Bus method name for querying the initial sensor value */
     const char   *be_value_method;
-
-    /** Callback for handling received initial sensor value */
-    sfw_value_fn  be_value_cb;
-
-    /** Callback for resetting sensor value back to default */
-    sfw_reset_fn  be_reset_cb;
-
-    /** Callback for restoring sensor value back to last-known */
-    sfw_reset_fn  be_restore_cb;
-
-    /** Callback for setting sensor value when stopped */
-    sfw_reset_fn  be_forget_cb;
 };
+
+static bool sfw_backend_parse_data              (DBusMessageIter *data, int arg_type, ...);
+
+static bool sfw_backend_als_value_cb            (sfw_plugin_t *plugin, DBusMessageIter *data);
+static bool sfw_backend_ps_value_cb             (sfw_plugin_t *plugin, DBusMessageIter *data);
+static bool sfw_backend_orient_value_cb         (sfw_plugin_t *plugin, DBusMessageIter *data);
+static bool sfw_backend_accelerometer_value_cb  (sfw_plugin_t *plugin, DBusMessageIter *data);
+static bool sfw_backend_compass_value_cb        (sfw_plugin_t *plugin, DBusMessageIter *data);
+static bool sfw_backend_gyroscope_value_cb      (sfw_plugin_t *plugin, DBusMessageIter *data);
+static bool sfw_backend_lid_value_cb            (sfw_plugin_t *plugin, DBusMessageIter *data);
+static bool sfw_backend_humidity_value_cb       (sfw_plugin_t *plugin, DBusMessageIter *data);
+static bool sfw_backend_magnetometer_value_cb   (sfw_plugin_t *plugin, DBusMessageIter *data);
+static bool sfw_backend_pressure_value_cb       (sfw_plugin_t *plugin, DBusMessageIter *data);
+static bool sfw_backend_rotation_value_cb       (sfw_plugin_t *plugin, DBusMessageIter *data);
+static bool sfw_backend_stepcounter_value_cb    (sfw_plugin_t *plugin, DBusMessageIter *data);
+static bool sfw_backend_tap_value_cb            (sfw_plugin_t *plugin, DBusMessageIter *data);
+static bool sfw_backend_temperature_value_cb    (sfw_plugin_t *plugin, DBusMessageIter *data);
+
+static void sfw_backend_als_sample_cb           (sfw_plugin_t *plugin, sfw_notify_t type, const void *sample);
+static void sfw_backend_ps_sample_cb            (sfw_plugin_t *plugin, sfw_notify_t type, const void *sample);
+static void sfw_backend_orient_sample_cb        (sfw_plugin_t *plugin, sfw_notify_t type, const void *sample);
+static void sfw_backend_accelerometer_sample_cb (sfw_plugin_t *plugin, sfw_notify_t type, const void *sample);
+static void sfw_backend_compass_sample_cb       (sfw_plugin_t *plugin, sfw_notify_t type, const void *sample);
+static void sfw_backend_gyroscope_sample_cb     (sfw_plugin_t *plugin, sfw_notify_t type, const void *sample);
+static void sfw_backend_lid_sample_cb           (sfw_plugin_t *plugin, sfw_notify_t type, const void *sample);
+static void sfw_backend_humidity_sample_cb      (sfw_plugin_t *plugin, sfw_notify_t type, const void *sample);
+static void sfw_backend_magnetometer_sample_cb  (sfw_plugin_t *plugin, sfw_notify_t type, const void *sample);
+static void sfw_backend_pressure_sample_cb      (sfw_plugin_t *plugin, sfw_notify_t type, const void *sample);
+static void sfw_backend_rotation_sample_cb      (sfw_plugin_t *plugin, sfw_notify_t type, const void *sample);
+static void sfw_backend_stepcounter_sample_cb   (sfw_plugin_t *plugin, sfw_notify_t type, const void *sample);
+static void sfw_backend_tap_sample_cb           (sfw_plugin_t *plugin, sfw_notify_t type, const void *sample);
+static void sfw_backend_temperature_sample_cb   (sfw_plugin_t *plugin, sfw_notify_t type, const void *sample);
 
 /* ========================================================================= *
  * SENSORFW_HELPERS
@@ -492,6 +864,9 @@ typedef enum  {
     /** Something went wrong */
     OVERRIDE_ERROR,
 
+    /** Not supported */
+    OVERRIDE_NA,
+
     OVERRIDE_NUMSTATES
 } sfw_override_state_t;
 
@@ -560,6 +935,8 @@ typedef enum
     CONNECTION_NUMSTATES
 } sfw_connection_state_t;
 
+static const char       *sfw_connection_state_name      (sfw_connection_state_t state);
+
 /** State machine for handling sensor data connection */
 struct sfw_connection_t
 {
@@ -581,8 +958,6 @@ struct sfw_connection_t
     /** Timer for: Retry after ipc error */
     guint                   con_retry_id;
 };
-
-static const char       *sfw_connection_state_name      (sfw_connection_state_t state);
 
 static sfw_connection_t *sfw_connection_create          (sfw_plugin_t *plugin);
 static void              sfw_connection_delete          (sfw_connection_t *self);
@@ -702,6 +1077,9 @@ typedef enum
     /** Something went wrong */
     PLUGIN_ERROR,
 
+    /** Plugin not available */
+    PLUGIN_NA,
+
     PLUGIN_NUMSTATES
 } sfw_plugin_state_t;
 
@@ -743,6 +1121,7 @@ static const char       *sfw_plugin_state_name          (sfw_plugin_state_t stat
 static sfw_plugin_t     *sfw_plugin_create              (const sfw_backend_t *backend);
 static void              sfw_plugin_delete              (sfw_plugin_t *self);
 
+static void              sfw_plugin_enable_sensor       (sfw_plugin_t *self, bool enable);
 static const char       *sfw_plugin_get_sensor_name     (const sfw_plugin_t *self);
 static const char       *sfw_plugin_get_sensor_object   (const sfw_plugin_t *self);
 static const char       *sfw_plugin_get_sensor_interface(const sfw_plugin_t *self);
@@ -750,8 +1129,9 @@ static int               sfw_plugin_get_session_id      (const sfw_plugin_t *sel
 static const char       *sfw_plugin_get_value_method    (const sfw_plugin_t *self);
 static size_t            sfw_plugin_get_sample_size     (const sfw_plugin_t *self);
 static void              sfw_plugin_handle_sample       (sfw_plugin_t *self, const void *sample);
-static void              sfw_plugin_handle_value        (sfw_plugin_t *self, unsigned value);
+static bool              sfw_plugin_handle_value        (sfw_plugin_t *self, DBusMessageIter *data);
 static void              sfw_plugin_reset_value         (sfw_plugin_t *self);
+static void              sfw_plugin_repeat_value        (sfw_plugin_t *self);
 static void              sfw_plugin_restore_value       (sfw_plugin_t *self);
 static void              sfw_plugin_forget_value        (sfw_plugin_t *self);
 
@@ -808,15 +1188,8 @@ struct sfw_service_t
     /** Pending name owner dbus method call */
     DBusPendingCall     *srv_query_pc;
 
-    /** State machine object for proximity sensor */
-    sfw_plugin_t        *srv_ps;
-
-    /** State machine object for ambient light sensor */
-    sfw_plugin_t        *srv_als;
-
-    /** State machine object for orientation sensor */
-    sfw_plugin_t        *srv_orient;
-
+    /** State machine objects for sensors */
+    sfw_plugin_t        *srv_plugin[SFW_SENSOR_ID_COUNT];
 };
 
 static const char       *sfw_service_state_name         (sfw_service_state_t state);
@@ -833,64 +1206,8 @@ static void              sfw_service_do_start           (sfw_service_t *self);
 static void              sfw_service_do_stop            (sfw_service_t *self);
 static void              sfw_service_do_query           (sfw_service_t *self);
 
-static void              sfw_service_set_ps             (sfw_service_t *self, bool enable);
-static void              sfw_service_set_als            (sfw_service_t *self, bool enable);
-static void              sfw_service_set_orient         (sfw_service_t *self, bool enable);
-
-/* ========================================================================= *
- * SENSORFW_NOTIFY
- * ========================================================================= */
-
-/** Proximity state to use when sensor can't be enabled
- *
- * This must be "uncovered" so that absense of or failures within
- * sensord do not make the device unusable due to proximity values
- * blocking display power up and touch input.
- */
-#define SWF_NOTIFY_DEFAULT_PS false
-
-/** Proximity state to use when waiting for sensord startup
- *
- * This must be "covered" so that we do not prematurely unblock
- * touch input / allow display power up during bootup and during
- * sensord restarts.
- */
-#define SWF_NOTIFY_EXCEPTION_PS true
-
-/** Ambient light level [lux] to use when sensor can't be enabled */
-#define SWF_NOTIFY_DEFAULT_ALS 400
-
-/** Orientation state to use when sensor can't be enabled */
-#define SWF_NOTIFY_DEFAULT_ORIENT MCE_ORIENTATION_UNDEFINED
-
-/** Dummy sensor value to use when re-sending cached state data */
-#define SWF_NOTIFY_DUMMY 0
-
-typedef enum
-{
-    /** Cached sensor state should be reset to default value */
-    NOTIFY_RESET,
-
-    /** Cached sensor state should be restored from last-known value */
-    NOTIFY_RESTORE,
-
-    /** Cached sensor state should be sent again */
-    NOTIFY_REPEAT,
-
-    /** Sensor state was received from evdev source */
-    NOTIFY_EVDEV,
-
-    /** Sensor state was received from sensord */
-    NOTIFY_SENSORD,
-
-    NOTIFY_NUMTYPES
-} sfw_notify_t;
-
-static gboolean          sfw_name_owner_changed_cb      (DBusMessage *const msg);
-
-static void              sfw_notify_ps                  (sfw_notify_t type, bool covered);
-static void              sfw_notify_als                 (sfw_notify_t type, unsigned lux);
-static void              sfw_notify_orient              (sfw_notify_t type, int state);
+static sfw_plugin_t     *sfw_service_plugin             (const sfw_service_t *self, sensor_id_t id);
+static void              sfw_service_set_sensor         (const sfw_service_t *self, sensor_id_t id, bool enable);
 
 /* ========================================================================= *
  * SENSORFW_EXCEPTION
@@ -917,215 +1234,1479 @@ static bool              sfw_exception_is_active (void);
  * SENSORFW_MODULE
  * ========================================================================= */
 
+/** Sensord availability tracking state machine object */
+static sfw_service_t *sfw_service = 0;
+
+/** Proximity change callback used for notifying upper level logic */
+static void (*sfw_notify_ps_cb)(bool covered) = 0;
+
+/** Ambient light change callback used for notifying upper level logic */
+static void (*sfw_notify_als_cb)(int lux) = 0;
+
+/** Orientation change callback used for notifying upper level logic */
+static void (*sfw_notify_orient_cb)(int state) = 0;
+
 // (exported API defined in "mce-sensorfw.h")
+
+static gboolean mce_sensorfw_evdev_cb    (GIOChannel *chn, GIOCondition cnd, gpointer aptr);
+
+static void     mce_sensorfw_als_detach  (void);
+static void     mce_sensorfw_ps_detach   (void);
+
+static bool     als_from_evdev(void);
+static bool     ps_from_evdev(void);
+
+/* ========================================================================= *
+ * SENSORD_DATA_TYPES
+ * ========================================================================= */
+
+static const char *
+sfw_sample_als_repr(const sfw_sample_als_t *self)
+{
+    static char buf[64];
+    snprintf(buf, sizeof buf,
+             "time=%"PRIu64" lux=%"PRIu32,
+             self->als_timestamp,
+             self->als_value);
+    return buf;
+}
+
+static const char *
+sfw_sample_ps_repr(const sfw_sample_ps_t *self)
+{
+    static char buf[64];
+    snprintf(buf, sizeof buf,
+             "time=%"PRIu64" distance=%"PRIu32" proximity=%s",
+             self->ps_timestamp,
+             self->ps_value,
+             self->ps_withinProximity ? "true" : "false");
+    return buf;
+}
+
+static const char *
+sfw_sample_orient_repr(const sfw_sample_orient_t *self)
+{
+    static char buf[64];
+    snprintf(buf, sizeof buf,
+             "time=%"PRIu64" state=%s",
+             self->orient_timestamp,
+             orientation_state_repr(self->orient_state));
+    return buf;
+}
+
+static const char *
+sfw_sample_accelerometer_repr(const sfw_sample_accelerometer_t *self)
+{
+    static char buf[64];
+    snprintf(buf, sizeof buf,
+             "time=%"PRIu64" x=%"PRId32" y=%"PRId32" z=%"PRId32,
+             self->accelerometer_timestamp,
+             self->accelerometer_xyz.x,
+             self->accelerometer_xyz.y,
+             self->accelerometer_xyz.z);
+    return buf;
+}
+
+static const char *
+sfw_sample_compass_repr(const sfw_sample_compass_t *self)
+{
+    static char buf[64];
+    snprintf(buf, sizeof buf,
+             "time=%"PRIu64" deg=%"PRId32" raw=%"PRId32" cor=%"PRId32" lev=%"PRId32,
+             self->compass_timestamp,
+             self->compass_degrees,
+             self->compass_raw_degrees,
+             self->compass_corrected_degrees,
+             self->compass_level);
+    return buf;
+}
+
+static const char *
+sfw_sample_gyroscope_repr(const sfw_sample_gyroscope_t *self)
+{
+    static char buf[64];
+    snprintf(buf, sizeof buf,
+             "time=%"PRIu64" x=%"PRId32" y=%"PRId32" z=%"PRId32,
+             self->gyroscope_timestamp,
+             self->gyroscope_xyz.x,
+             self->gyroscope_xyz.y,
+             self->gyroscope_xyz.z);
+    return buf;
+}
+
+static const char *
+sfw_lid_type_repr(sfw_lid_type_t type)
+{
+    const char *repr = "INVALID";
+    switch( type ) {
+    case SFW_LID_TYPE_UNKNOWN: repr = "UNKNOWN"; break;
+    case SFW_LID_TYPE_FRONT:   repr = "FRONT";   break;
+    case SFW_LID_TYPE_BACK:    repr = "BACK";    break;
+    default: break;
+    }
+    return repr;
+}
+
+static const char *
+sfw_sample_lid_repr(const sfw_sample_lid_t *self)
+{
+    static char buf[64];
+    snprintf(buf, sizeof buf,
+             "time=%"PRIu64" type=%s value=%"PRIu32,
+             self->lid_timestamp,
+             sfw_lid_type_repr(self->lid_type),
+             self->lid_value);
+    return buf;
+}
+
+static const char *
+sfw_sample_humidity_repr(const sfw_sample_humidity_t *self)
+{
+    static char buf[64];
+    snprintf(buf, sizeof buf,
+             "time=%"PRIu64" humidity=%"PRIu32,
+             self->humidity_timestamp,
+             self->humidity_value);
+    return buf;
+}
+
+static const char *
+sfw_sample_magnetometer_repr(const sfw_sample_magnetometer_t *self)
+{
+    static char buf[64];
+    snprintf(buf, sizeof buf,
+             "time=%"PRIu64
+             " x=%"PRId32" y=%"PRId32" z=%"PRId32
+             " rx=%"PRId32" ry=%"PRId32" rz=%"PRId32
+             " level=%"PRId32,
+             self->magnetometer_timestamp,
+             self->magnetometer_x,
+             self->magnetometer_y,
+             self->magnetometer_z,
+             self->magnetometer_rx,
+             self->magnetometer_ry,
+             self->magnetometer_rz,
+             self->magnetometer_level);
+    return buf;
+}
+
+static const char *
+sfw_sample_pressure_repr(const sfw_sample_pressure_t *self)
+{
+    static char buf[64];
+    snprintf(buf, sizeof buf,
+             "time=%"PRIu64" pressure=%"PRIu32,
+             self->pressure_timestamp,
+             self->pressure_value);
+    return buf;
+}
+
+static const char *
+sfw_sample_rotation_repr(const sfw_sample_rotation_t *self)
+{
+    static char buf[64];
+    snprintf(buf, sizeof buf,
+             "time=%"PRIu64" x=%"PRId32" y=%"PRId32" z=%"PRId32,
+             self->rotation_timestamp,
+             self->rotation_xyz.x,
+             self->rotation_xyz.y,
+             self->rotation_xyz.z);
+    return buf;
+}
+
+static const char *
+sfw_sample_stepcounter_repr(const sfw_sample_stepcounter_t *self)
+{
+    static char buf[64];
+    snprintf(buf, sizeof buf,
+             "time=%"PRIu64" stepcount=%"PRIu32,
+             self->stepcounter_timestamp,
+             self->stepcounter_value);
+    return buf;
+}
+
+static const char *
+sfw_tap_direction_repr(sfw_tap_direction_t direction)
+{
+    const char *repr = "INVALID";
+    switch( direction ) {
+    case SFW_TAP_DIRECTION_X:           repr = "X";          break;
+    case SFW_TAP_DIRECTION_Y:           repr = "Y";          break;
+    case SFW_TAP_DIRECTION_Z:           repr = "Z";          break;
+    case SFW_TAP_DIRECTION_LEFT_RIGHT:  repr = "LEFT_RIGHT"; break;
+    case SFW_TAP_DIRECTION_RIGHT_LEFT:  repr = "RIGHT_LEFT"; break;
+    case SFW_TAP_DIRECTION_TOP_BOTTOM:  repr = "TOP_BOTTOM"; break;
+    case SFW_TAP_DIRECTION_BOTTOM_TOP:  repr = "BOTTOM_TOP"; break;
+    case SFW_TAP_DIRECTION_FACE_BACK:   repr = "FACE_BACK";  break;
+    case SFW_TAP_DIRECTION_BACK_FACE:   repr = "BACK_FACE";  break;
+    default: break;
+    }
+    return repr;
+}
+
+static const char *
+sfw_tap_type_repr(sfw_tap_type_t type)
+{
+    const char *repr = "INVALID";
+    switch( type ) {
+    case SFW_TAP_TYPE_NONE:       repr = "NONE";       break;
+    case SFW_TAP_TYPE_DOUBLE_TAP: repr = "DOUBLE_TAP"; break;
+    case SFW_TAP_TYPE_SINGLE_TAP: repr = "SINGLE_TAP"; break;
+    default: break;
+    }
+    return repr;
+}
+
+static const char *
+sfw_sample_tap_repr(const sfw_sample_tap_t *self)
+{
+    static char buf[64];
+    snprintf(buf, sizeof buf, "time=%"PRIu64" direction=%s type=%s",
+             self->tap_timestamp,
+             sfw_tap_direction_repr(self->tap_direction),
+             sfw_tap_type_repr(self->tap_type));
+    return buf;
+}
+
+static const char *
+sfw_sample_temperature_repr(const sfw_sample_temperature_t *self)
+{
+    static char buf[64];
+    snprintf(buf, sizeof buf,
+             "time=%"PRIu64" temperature=%"PRIu32,
+             self->temperature_timestamp,
+             self->temperature_value);
+    return buf;
+}
 
 /* ========================================================================= *
  * SENSORFW_BACKEND
  * ========================================================================= */
 
+/* ------------------------------------------------------------------------- *
+ * callbacks for interpreting sensor specific current value replies
+ * ------------------------------------------------------------------------- */
+
+static bool
+sfw_backend_parse_data(DBusMessageIter *data, int arg_type, ...)
+{
+    bool ack = false;
+    va_list va;
+    va_start(va, arg_type);
+
+    while( !mce_dbus_iter_at_end(data) ) {
+        if( !mce_dbus_iter_get_basic(data, va_arg(va, void *), arg_type) )
+            goto EXIT;
+        arg_type = va_arg(va, int);
+    }
+
+    ack = true;
+EXIT:
+    va_end(va);
+    return ack;
+}
+
+static bool
+sfw_backend_als_value_cb(sfw_plugin_t *plugin, DBusMessageIter *data)
+{
+    bool          ack = false;
+    dbus_uint64_t tck  = 0;
+    dbus_uint32_t val  = 0;
+
+    if( !sfw_backend_parse_data(data,
+                                DBUS_TYPE_UINT64, &tck,
+                                DBUS_TYPE_UINT32, &val,
+                                DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    const sfw_sample_als_t sample = {
+        .als_timestamp = tck,
+        .als_value     = val,
+    };
+
+    sfw_plugin_handle_sample(plugin, &sample);
+
+    ack = true;
+EXIT:
+    return ack;
+}
+
+static bool
+sfw_backend_ps_value_cb(sfw_plugin_t *plugin, DBusMessageIter *data)
+{
+    bool          ack = false;
+    dbus_uint64_t tck  = 0;
+    dbus_uint32_t val  = 0;
+
+    if( !sfw_backend_parse_data(data,
+                                DBUS_TYPE_UINT64, &tck,
+                                DBUS_TYPE_UINT32, &val,
+                                DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    const sfw_sample_ps_t sample = {
+        .ps_timestamp       = tck,
+        .ps_value           = (val < 1) ?    0 :    10,
+        .ps_withinProximity = (val < 1) ? true : false,
+    };
+
+    sfw_plugin_handle_sample(plugin, &sample);
+
+    ack = true;
+EXIT:
+    return ack;
+}
+
+static bool
+sfw_backend_orient_value_cb(sfw_plugin_t *plugin, DBusMessageIter *data)
+{
+    bool          ack = false;
+    dbus_uint64_t tck  = 0;
+    dbus_uint32_t val  = 0;
+
+    if( !sfw_backend_parse_data(data,
+                                DBUS_TYPE_UINT64, &tck,
+                                DBUS_TYPE_UINT32, &val,
+                                DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    const sfw_sample_orient_t sample = {
+        .orient_timestamp = tck,
+        .orient_state     = val,
+    };
+
+    sfw_plugin_handle_sample(plugin, &sample);
+
+    ack = true;
+EXIT:
+    return ack;
+}
+
+static bool
+sfw_backend_accelerometer_value_cb(sfw_plugin_t *plugin, DBusMessageIter *data)
+{
+    bool          ack  = false;
+    dbus_uint64_t tck  = 0;
+    dbus_int32_t  xval = 0;
+    dbus_int32_t  yval = 0;
+    dbus_int32_t  zval = 0;
+
+    if( !sfw_backend_parse_data(data,
+                                DBUS_TYPE_UINT64, &tck,
+                                DBUS_TYPE_INT32,  &xval,
+                                DBUS_TYPE_INT32,  &yval,
+                                DBUS_TYPE_INT32,  &zval,
+                                DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    const sfw_sample_accelerometer_t sample = {
+        .accelerometer_timestamp = tck,
+        .accelerometer_xyz = {
+            .x = xval,
+            .y = yval,
+            .z = zval,
+        },
+    };
+
+    sfw_plugin_handle_sample(plugin, &sample);
+
+    ack = true;
+EXIT:
+    return ack;
+}
+
+static bool
+sfw_backend_compass_value_cb(sfw_plugin_t *plugin, DBusMessageIter *data)
+{
+    bool          ack  = false;
+    dbus_uint64_t tck  = 0;
+    dbus_int32_t  deg = 0;
+    dbus_int32_t  raw = 0;
+    dbus_int32_t  cor = 0;
+    dbus_int32_t  lev = 0;
+
+    if( !sfw_backend_parse_data(data,
+                                DBUS_TYPE_UINT64, &tck,
+                                DBUS_TYPE_INT32,  &deg,
+                                DBUS_TYPE_INT32,  &raw,
+                                DBUS_TYPE_INT32,  &cor,
+                                DBUS_TYPE_INT32,  &lev,
+                                DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    const sfw_sample_compass_t sample = {
+        .compass_timestamp         = tck,
+        .compass_degrees           = deg,
+        .compass_raw_degrees       = raw,
+        .compass_corrected_degrees = cor,
+        .compass_level             = lev,
+    };
+
+    sfw_plugin_handle_sample(plugin, &sample);
+
+    ack = true;
+EXIT:
+    return ack;
+}
+
+static bool
+sfw_backend_gyroscope_value_cb(sfw_plugin_t *plugin, DBusMessageIter *data)
+{
+    bool          ack  = false;
+    dbus_uint64_t tck  = 0;
+    dbus_int32_t  xval = 0;
+    dbus_int32_t  yval = 0;
+    dbus_int32_t  zval = 0;
+
+    if( !sfw_backend_parse_data(data,
+                                DBUS_TYPE_UINT64, &tck,
+                                DBUS_TYPE_INT32,  &xval,
+                                DBUS_TYPE_INT32,  &yval,
+                                DBUS_TYPE_INT32,  &zval,
+                                DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    const sfw_sample_gyroscope_t sample = {
+        .gyroscope_timestamp = tck,
+        .gyroscope_xyz = {
+            .x = xval,
+            .y = yval,
+            .z = zval,
+        },
+    };
+
+    sfw_plugin_handle_sample(plugin, &sample);
+
+    ack = true;
+EXIT:
+    return ack;
+}
+
+static bool
+sfw_backend_lid_value_cb(sfw_plugin_t *plugin, DBusMessageIter *data)
+{
+    bool          ack  = false;
+    dbus_uint64_t tck  = 0;
+    dbus_int32_t  type = 0;
+    dbus_uint32_t val  = 0;
+
+    if( !sfw_backend_parse_data(data,
+                                DBUS_TYPE_UINT64, &tck,
+                                DBUS_TYPE_INT32,  &type,
+                                DBUS_TYPE_UINT32, &val,
+                                DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    const sfw_sample_lid_t sample = {
+        .lid_timestamp = tck,
+        .lid_type      = type,
+        .lid_value     = val,
+    };
+
+    sfw_plugin_handle_sample(plugin, &sample);
+
+    ack = true;
+EXIT:
+    return ack;
+}
+
+static bool
+sfw_backend_humidity_value_cb(sfw_plugin_t *plugin, DBusMessageIter *data)
+{
+    bool          ack  = false;
+    dbus_uint64_t tck  = 0;
+    dbus_uint32_t  val = 0;
+
+    if( !sfw_backend_parse_data(data,
+                                DBUS_TYPE_UINT64, &tck,
+                                DBUS_TYPE_UINT32, &val,
+                                DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    const sfw_sample_humidity_t sample = {
+        .humidity_timestamp = tck,
+        .humidity_value     = val,
+    };
+
+    sfw_plugin_handle_sample(plugin, &sample);
+
+    ack = true;
+EXIT:
+    return ack;
+}
+
+static bool
+sfw_backend_magnetometer_value_cb(sfw_plugin_t *plugin, DBusMessageIter *data)
+{
+    bool          ack  = false;
+    dbus_uint64_t tck  = 0;
+    dbus_int32_t   x   = 0;
+    dbus_int32_t   y   = 0;
+    dbus_int32_t   z   = 0;
+    dbus_int32_t   rx  = 0;
+    dbus_int32_t   ry  = 0;
+    dbus_int32_t   rz  = 0;
+    dbus_int32_t   lev = 0;
+
+    if( !sfw_backend_parse_data(data,
+                                DBUS_TYPE_UINT64, &tck,
+                                DBUS_TYPE_INT32, &x,
+                                DBUS_TYPE_INT32, &y,
+                                DBUS_TYPE_INT32, &z,
+                                DBUS_TYPE_INT32, &rx,
+                                DBUS_TYPE_INT32, &ry,
+                                DBUS_TYPE_INT32, &rz,
+                                DBUS_TYPE_INT32, &lev,
+                                DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    const sfw_sample_magnetometer_t sample = {
+        .magnetometer_timestamp = tck,
+        .magnetometer_x         = x,
+        .magnetometer_y         = y,
+        .magnetometer_z         = z,
+        .magnetometer_rx        = rx,
+        .magnetometer_ry        = ry,
+        .magnetometer_rz        = rz,
+        .magnetometer_level     = lev,
+    };
+
+    sfw_plugin_handle_sample(plugin, &sample);
+
+    ack = true;
+EXIT:
+    return ack;
+}
+
+static bool
+sfw_backend_pressure_value_cb(sfw_plugin_t *plugin, DBusMessageIter *data)
+{
+    bool          ack  = false;
+    dbus_uint64_t tck  = 0;
+    dbus_uint32_t val  = 0;
+
+    if( !sfw_backend_parse_data(data,
+                                DBUS_TYPE_UINT64, &tck,
+                                DBUS_TYPE_UINT32, &val,
+                                DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    const sfw_sample_pressure_t sample = {
+        .pressure_timestamp = tck,
+        .pressure_value     = val,
+    };
+
+    sfw_plugin_handle_sample(plugin, &sample);
+
+    ack = true;
+EXIT:
+    return ack;
+}
+
+static bool
+sfw_backend_rotation_value_cb(sfw_plugin_t *plugin, DBusMessageIter *data)
+{
+    bool          ack  = false;
+    dbus_uint64_t tck  = 0;
+    dbus_int32_t  xval = 0;
+    dbus_int32_t  yval = 0;
+    dbus_int32_t  zval = 0;
+
+    if( !sfw_backend_parse_data(data,
+                                DBUS_TYPE_UINT64, &tck,
+                                DBUS_TYPE_INT32,  &xval,
+                                DBUS_TYPE_INT32,  &yval,
+                                DBUS_TYPE_INT32,  &zval,
+                                DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    const sfw_sample_rotation_t sample = {
+        .rotation_timestamp = tck,
+        .rotation_xyz = {
+            .x = xval,
+            .y = yval,
+            .z = zval,
+        },
+    };
+
+    sfw_plugin_handle_sample(plugin, &sample);
+
+    ack = true;
+EXIT:
+    return ack;
+}
+
+static bool
+sfw_backend_stepcounter_value_cb(sfw_plugin_t *plugin, DBusMessageIter *data)
+{
+    bool          ack = false;
+    dbus_uint64_t tck = 0;
+    dbus_uint32_t val = 0;
+
+    if( !sfw_backend_parse_data(data,
+                                DBUS_TYPE_UINT64, &tck,
+                                DBUS_TYPE_UINT32, &val,
+                                DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    const sfw_sample_stepcounter_t sample = {
+        .stepcounter_timestamp = tck,
+        .stepcounter_value     = val,
+    };
+
+    sfw_plugin_handle_sample(plugin, &sample);
+
+    ack = true;
+EXIT:
+    return ack;
+}
+
+static bool
+sfw_backend_tap_value_cb(sfw_plugin_t *plugin, DBusMessageIter *data)
+{
+    bool          ack = false;
+    dbus_uint64_t tck = 0;
+    dbus_uint32_t direction = 0;
+    dbus_uint32_t type = 0;
+
+    if( !sfw_backend_parse_data(data,
+                                DBUS_TYPE_UINT64, &tck,
+                                DBUS_TYPE_UINT32, &direction,
+                                DBUS_TYPE_INT32,  &type,
+                                DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    const sfw_sample_tap_t sample = {
+        .tap_timestamp = tck,
+        .tap_direction = direction,
+        .tap_type      = type,
+    };
+
+    sfw_plugin_handle_sample(plugin, &sample);
+
+    ack = true;
+EXIT:
+    return ack;
+}
+
+static bool
+sfw_backend_temperature_value_cb(sfw_plugin_t *plugin, DBusMessageIter *data)
+{
+    bool          ack  = false;
+    dbus_uint64_t tck  = 0;
+    dbus_uint32_t val  = 0;
+
+    if( !sfw_backend_parse_data(data,
+                                DBUS_TYPE_UINT64, &tck,
+                                DBUS_TYPE_UINT32, &val,
+                                DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    const sfw_sample_temperature_t sample = {
+        .temperature_timestamp = tck,
+        .temperature_value     = val,
+    };
+
+    sfw_plugin_handle_sample(plugin, &sample);
+
+    ack = true;
+EXIT:
+    return ack;
+}
+
+/* ------------------------------------------------------------------------- *
+ * Callbacks for interpreting sensor specific change notifications
+ * ------------------------------------------------------------------------- */
+
 /** Callback for handling ambient light events from sensord */
 static void
-sfw_backend_als_sample_cb(sfw_plugin_t *plugin, const void *sample)
+sfw_backend_als_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *sampledata)
 {
     (void)plugin;
+    const sfw_sample_als_t *sample  = sampledata;
 
-    const sfw_sample_als_t *self = sample;
+    static const sfw_sample_als_t default_value = {
+        .als_value = SFW_NOTIFY_DEFAULT_ALS,
+    };
 
-    mce_log(LL_DEBUG, "ALS: time=%"PRIu64" light=%"PRIu32"",
-            self->als_timestamp, self->als_value);
+    static sfw_sample_als_t cached_value = {
+        .als_value = SFW_NOTIFY_DEFAULT_ALS,
+    };
 
-    sfw_notify_als(NOTIFY_SENSORD, self->als_value);
+    static bool tracking_active = false;
+
+    if( sample ) {
+        mce_log(LL_DEBUG, "ALS: UPDATE %s %s",
+                sfw_notify_name(type),
+                sfw_sample_als_repr(sample));
+    }
+
+    switch( type ) {
+    default:
+    case NOTIFY_REPEAT:
+        break;
+
+    case NOTIFY_FORGET:
+    case NOTIFY_RESET:
+        tracking_active = false;
+        break;
+
+    case NOTIFY_RESTORE:
+        tracking_active = true;
+        break;
+
+    case NOTIFY_EVDEV:
+        cached_value = *sample;
+        break;
+
+    case NOTIFY_SENSORD:
+        if( als_from_evdev() )
+            mce_log(LL_DEBUG, "ignoring sensord input: %s",
+                    sfw_sample_als_repr(sample));
+        else
+            cached_value = *sample;
+        break;
+    }
+
+    /* Default value is used unless we are in fully working state */
+    sample = tracking_active ? &cached_value : &default_value ;
+
+    if( sfw_notify_als_cb ) {
+        mce_log(LL_DEBUG, "ALS: NOTIFY %s %s",
+                sfw_notify_name(type),
+                sfw_sample_als_repr(sample));
+        sfw_notify_als_cb(sample->als_value);
+    }
+
+    return;
 }
 
 /** Callback for handling proximity events from sensord */
 static void
-sfw_backend_ps_sample_cb(sfw_plugin_t *plugin, const void *sample)
+sfw_backend_ps_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *sampledata)
 {
     (void)plugin;
+    const sfw_sample_ps_t *sample = sampledata;
 
-    const sfw_sample_ps_t *self = sample;
+    static const sfw_sample_ps_t exception_value = {
+        .ps_withinProximity = SFW_NOTIFY_EXCEPTION_PS,
+    };
 
-    mce_log(LL_DEBUG, "PS: time=%"PRIu64" distance=%"PRIu32" proximity=%s",
-            self->ps_timestamp, self->ps_value,
-            self->ps_withinProximity ? "true" : "false");
+    static const sfw_sample_ps_t default_value = {
+        .ps_withinProximity = SFW_NOTIFY_DEFAULT_PS,
+    };
 
-    sfw_notify_ps(NOTIFY_SENSORD, self->ps_withinProximity);
+    static sfw_sample_ps_t cached_value = {
+        .ps_value = 10,
+        .ps_withinProximity = SFW_NOTIFY_DEFAULT_PS,
+    };
+
+    static bool tracking_active = false;
+
+    if( sample ) {
+        mce_log(LL_DEBUG, "PS: UPDATE %s %s",
+                sfw_notify_name(type),
+                sfw_sample_ps_repr(sample));
+    }
+
+    switch( type ) {
+    default:
+    case NOTIFY_FORGET:
+    case NOTIFY_REPEAT:
+        break;
+
+    case NOTIFY_RESET:
+        tracking_active = false;
+        break;
+
+    case NOTIFY_RESTORE:
+        tracking_active = true;
+        break;
+
+    case NOTIFY_EVDEV:
+        cached_value = *sample;
+        break;
+
+    case NOTIFY_SENSORD:
+        if( ps_from_evdev() )
+            mce_log(LL_DEBUG, "ignoring sensord input: %s",
+                    sfw_sample_ps_repr(sample));
+        else
+            cached_value = *sample;
+        break;
+    }
+
+    if( sfw_exception_is_active() ) {
+        // ps=covered while waiting for sensorfwd to show up
+        sample = &exception_value;
+    }
+    else if( !tracking_active ) {
+        // ps=not-covered while sensorfwd is not running
+        sample = &default_value;
+    }
+    else {
+        // ps=as-reported by sensorfwd or kernel
+        sample = &cached_value;
+    }
+
+    if( sfw_notify_ps_cb ) {
+        mce_log(LL_DEBUG, "PS: NOTIFY %s %s",
+                sfw_notify_name(type),
+                sfw_sample_ps_repr(sample));
+        sfw_notify_ps_cb(sample->ps_withinProximity);
+    }
+
+    return;
 }
 
 /** Callback for handling orientation events from sensord */
 static void
-sfw_backend_orient_sample_cb(sfw_plugin_t *plugin, const void *sample)
+sfw_backend_orient_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *sampledata)
+{
+    static const sfw_sample_orient_t default_value = {
+        .orient_state = SFW_NOTIFY_DEFAULT_ORIENT,
+    };
+
+    static sfw_sample_orient_t cached_value = {
+        .orient_state = SFW_NOTIFY_DEFAULT_ORIENT,
+    };
+
+    static bool     tracking_active = false;
+
+    (void)plugin;
+    const sfw_sample_orient_t *sample = sampledata;
+
+    if( sample ) {
+        mce_log(LL_DEBUG, "ORIENT: UPDATE %s %s",
+                sfw_notify_name(type),
+                sfw_sample_orient_repr(sample));
+    }
+
+    switch( type ) {
+    default:
+    case NOTIFY_REPEAT:
+        break;
+
+    case NOTIFY_FORGET:
+    case NOTIFY_RESET:
+        tracking_active = false;
+        cached_value = default_value;
+        break;
+
+    case NOTIFY_RESTORE:
+        tracking_active = true;
+        break;
+
+    case NOTIFY_EVDEV:
+    case NOTIFY_SENSORD:
+        cached_value = *sample;
+        break;
+    }
+
+    /* Default value is used unless we are in fully working state */
+    sample = tracking_active ? &cached_value : &default_value ;
+
+    if( sfw_notify_orient_cb ) {
+        mce_log(LL_DEBUG, "ORIENT: NOTIFY %s %s",
+                sfw_notify_name(type),
+                sfw_sample_orient_repr(sample));
+        sfw_notify_orient_cb(sample->orient_state);
+    }
+
+    return;
+}
+
+/** Callback for handling accelerometer events from sensord */
+static void
+sfw_backend_accelerometer_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *sampledata)
 {
     (void)plugin;
+    const sfw_sample_accelerometer_t *sample = sampledata;
 
-    const sfw_sample_orient_t *self = sample;
+    static const sfw_sample_accelerometer_t default_value =
+    {
+        .accelerometer_xyz = {
+            .x = 0,
+            .y = 0,
+            .z = 0,
+        },
+    };
 
-    mce_log(LL_DEBUG, "ORIENT: time=%"PRIu64" state=%"PRId32"",
-            self->orient_timestamp, self->orient_state);
+    static sfw_sample_accelerometer_t cached_value = { };
 
-    sfw_notify_orient(NOTIFY_SENSORD, self->orient_state);
+    static bool tracking_active = false;
+
+    switch( type ) {
+    default:
+    case NOTIFY_REPEAT:
+        break;
+
+    case NOTIFY_FORGET:
+    case NOTIFY_RESET:
+        tracking_active = false;
+        cached_value = default_value;
+        break;
+
+    case NOTIFY_RESTORE:
+        tracking_active = true;
+        break;
+
+    case NOTIFY_EVDEV:
+    case NOTIFY_SENSORD:
+        cached_value = *sample;
+        break;
+    }
+
+    sample = tracking_active ? &cached_value : &default_value;
+
+    mce_log(LL_DEBUG, "ACCELEROMETER: UPDATE %s %s",
+            sfw_notify_name(type),
+            sfw_sample_accelerometer_repr(sample));
+
+    return;
+}
+
+static void
+sfw_backend_compass_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *sampledata)
+{
+    (void)plugin;
+    const sfw_sample_compass_t *sample = sampledata;
+
+    static const sfw_sample_compass_t default_value = { };
+    static sfw_sample_compass_t cached_value = { };
+
+    static bool tracking_active = false;
+
+    switch( type ) {
+    default:
+    case NOTIFY_REPEAT:
+        break;
+
+    case NOTIFY_FORGET:
+    case NOTIFY_RESET:
+        tracking_active = false;
+        cached_value = default_value;
+        break;
+
+    case NOTIFY_RESTORE:
+        tracking_active = true;
+        break;
+
+    case NOTIFY_EVDEV:
+    case NOTIFY_SENSORD:
+        cached_value = *sample;
+        break;
+    }
+
+    sample = tracking_active ? &cached_value : &default_value;
+
+    mce_log(LL_DEBUG, "COMPASS: UPDATE %s %s",
+            sfw_notify_name(type),
+            sfw_sample_compass_repr(sample));
+
+    return;
+}
+
+static void
+sfw_backend_gyroscope_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *sampledata)
+{
+    (void)plugin;
+    const sfw_sample_gyroscope_t *sample = sampledata;
+
+    static const sfw_sample_gyroscope_t default_value = { };
+    static sfw_sample_gyroscope_t cached_value = { };
+
+    static bool tracking_active = false;
+
+    switch( type ) {
+    default:
+    case NOTIFY_REPEAT:
+        break;
+
+    case NOTIFY_FORGET:
+    case NOTIFY_RESET:
+        tracking_active = false;
+        cached_value = default_value;
+        break;
+
+    case NOTIFY_RESTORE:
+        tracking_active = true;
+        break;
+
+    case NOTIFY_EVDEV:
+    case NOTIFY_SENSORD:
+        cached_value = *sample;
+        break;
+    }
+
+    sample = tracking_active ? &cached_value : &default_value;
+
+    mce_log(LL_DEBUG, "GYROSCOPE: UPDATE %s %s",
+            sfw_notify_name(type),
+            sfw_sample_gyroscope_repr(sample));
+
+    return;
+}
+
+static void
+sfw_backend_lid_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *sampledata)
+{
+    (void)plugin;
+    const sfw_sample_lid_t *sample = sampledata;
+
+    static const sfw_sample_lid_t default_value = { };
+    static sfw_sample_lid_t cached_value = { };
+
+    static bool tracking_active = false;
+
+    switch( type ) {
+    default:
+    case NOTIFY_REPEAT:
+        break;
+
+    case NOTIFY_FORGET:
+    case NOTIFY_RESET:
+        tracking_active = false;
+        cached_value = default_value;
+        break;
+
+    case NOTIFY_RESTORE:
+        tracking_active = true;
+        break;
+
+    case NOTIFY_EVDEV:
+    case NOTIFY_SENSORD:
+        cached_value = *sample;
+        break;
+    }
+
+    sample = tracking_active ? &cached_value : &default_value;
+
+    mce_log(LL_DEBUG, "LID: UPDATE %s %s",
+            sfw_notify_name(type),
+            sfw_sample_lid_repr(sample));
+
+    return;
+}
+
+static void
+sfw_backend_humidity_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *sampledata)
+{
+    (void)plugin;
+    const sfw_sample_humidity_t *sample = sampledata;
+
+    static const sfw_sample_humidity_t default_value = { };
+    static sfw_sample_humidity_t cached_value = { };
+
+    static bool tracking_active = false;
+
+    switch( type ) {
+    default:
+    case NOTIFY_REPEAT:
+        break;
+
+    case NOTIFY_FORGET:
+    case NOTIFY_RESET:
+        tracking_active = false;
+        cached_value = default_value;
+        break;
+
+    case NOTIFY_RESTORE:
+        tracking_active = true;
+        break;
+
+    case NOTIFY_EVDEV:
+    case NOTIFY_SENSORD:
+        cached_value = *sample;
+        break;
+    }
+
+    sample = tracking_active ? &cached_value : &default_value;
+
+    mce_log(LL_DEBUG, "HUMIDITY: UPDATE %s %s",
+            sfw_notify_name(type),
+            sfw_sample_humidity_repr(sample));
+
+    return;
+}
+
+static void
+sfw_backend_magnetometer_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *sampledata)
+{
+    (void)plugin;
+    const sfw_sample_magnetometer_t *sample = sampledata;
+
+    static const sfw_sample_magnetometer_t default_value = { };
+    static sfw_sample_magnetometer_t cached_value = { };
+
+    static bool tracking_active = false;
+
+    switch( type ) {
+    default:
+    case NOTIFY_REPEAT:
+        break;
+
+    case NOTIFY_FORGET:
+    case NOTIFY_RESET:
+        tracking_active = false;
+        cached_value = default_value;
+        break;
+
+    case NOTIFY_RESTORE:
+        tracking_active = true;
+        break;
+
+    case NOTIFY_EVDEV:
+    case NOTIFY_SENSORD:
+        cached_value = *sample;
+        break;
+    }
+
+    sample = tracking_active ? &cached_value : &default_value;
+
+    mce_log(LL_DEBUG, "MAGNETOMETER: UPDATE %s %s",
+            sfw_notify_name(type),
+            sfw_sample_magnetometer_repr(sample));
+
+    return;
+}
+
+static void
+sfw_backend_pressure_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *sampledata)
+{
+    (void)plugin;
+    const sfw_sample_pressure_t *sample = sampledata;
+
+    static const sfw_sample_pressure_t default_value = { };
+    static sfw_sample_pressure_t cached_value = { };
+
+    static bool tracking_active = false;
+
+    switch( type ) {
+    default:
+    case NOTIFY_REPEAT:
+        break;
+
+    case NOTIFY_FORGET:
+    case NOTIFY_RESET:
+        tracking_active = false;
+        cached_value = default_value;
+        break;
+
+    case NOTIFY_RESTORE:
+        tracking_active = true;
+        break;
+
+    case NOTIFY_EVDEV:
+    case NOTIFY_SENSORD:
+        cached_value = *sample;
+        break;
+    }
+
+    sample = tracking_active ? &cached_value : &default_value;
+
+    mce_log(LL_DEBUG, "PRESSURE: UPDATE %s %s",
+            sfw_notify_name(type),
+            sfw_sample_pressure_repr(sample));
+
+    return;
+}
+
+static void
+sfw_backend_rotation_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *sampledata)
+{
+    (void)plugin;
+    const sfw_sample_rotation_t *sample = sampledata;
+
+    static const sfw_sample_rotation_t default_value = { };
+    static sfw_sample_rotation_t cached_value = { };
+
+    static bool tracking_active = false;
+
+    switch( type ) {
+    default:
+    case NOTIFY_REPEAT:
+        break;
+
+    case NOTIFY_FORGET:
+    case NOTIFY_RESET:
+        tracking_active = false;
+        cached_value = default_value;
+        break;
+
+    case NOTIFY_RESTORE:
+        tracking_active = true;
+        break;
+
+    case NOTIFY_EVDEV:
+    case NOTIFY_SENSORD:
+        cached_value = *sample;
+        break;
+    }
+
+    sample = tracking_active ? &cached_value : &default_value;
+
+    mce_log(LL_DEBUG, "ROTATION: UPDATE %s %s",
+            sfw_notify_name(type),
+            sfw_sample_rotation_repr(sample));
+
+    return;
+}
+
+static void
+sfw_backend_stepcounter_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *sampledata)
+{
+    (void)plugin;
+    const sfw_sample_stepcounter_t *sample = sampledata;
+
+    static const sfw_sample_stepcounter_t default_value = { };
+    static sfw_sample_stepcounter_t cached_value = { };
+
+    static bool tracking_active = false;
+
+    switch( type ) {
+    default:
+    case NOTIFY_REPEAT:
+        break;
+
+    case NOTIFY_FORGET:
+    case NOTIFY_RESET:
+        tracking_active = false;
+        cached_value = default_value;
+        break;
+
+    case NOTIFY_RESTORE:
+        tracking_active = true;
+        break;
+
+    case NOTIFY_EVDEV:
+    case NOTIFY_SENSORD:
+        cached_value = *sample;
+        break;
+    }
+
+    sample = tracking_active ? &cached_value : &default_value;
+
+    mce_log(LL_DEBUG, "STEPCOUNTER: UPDATE %s %s",
+            sfw_notify_name(type),
+            sfw_sample_stepcounter_repr(sample));
+
+    return;
+}
+
+static void
+sfw_backend_tap_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *sampledata)
+{
+    (void)plugin;
+    const sfw_sample_tap_t *sample = sampledata;
+
+    static const sfw_sample_tap_t default_value = { };
+    static sfw_sample_tap_t cached_value = { };
+
+    static bool tracking_active = false;
+
+    switch( type ) {
+    default:
+    case NOTIFY_REPEAT:
+        break;
+
+    case NOTIFY_FORGET:
+    case NOTIFY_RESET:
+        tracking_active = false;
+        cached_value = default_value;
+        break;
+
+    case NOTIFY_RESTORE:
+        tracking_active = true;
+        break;
+
+    case NOTIFY_EVDEV:
+    case NOTIFY_SENSORD:
+        cached_value = *sample;
+        break;
+    }
+
+    sample = tracking_active ? &cached_value : &default_value;
+
+    mce_log(LL_DEBUG, "TAP: UPDATE %s %s",
+            sfw_notify_name(type),
+            sfw_sample_tap_repr(sample));
+
+    return;
+}
+
+static void
+sfw_backend_temperature_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *sampledata)
+{
+    (void)plugin;
+    const sfw_sample_temperature_t *sample = sampledata;
+
+    static const sfw_sample_temperature_t default_value = { };
+    static sfw_sample_temperature_t cached_value = { };
+
+    static bool tracking_active = false;
+
+    switch( type ) {
+    default:
+    case NOTIFY_REPEAT:
+        break;
+
+    case NOTIFY_FORGET:
+    case NOTIFY_RESET:
+        tracking_active = false;
+        cached_value = default_value;
+        break;
+
+    case NOTIFY_RESTORE:
+        tracking_active = true;
+        break;
+
+    case NOTIFY_EVDEV:
+    case NOTIFY_SENSORD:
+        cached_value = *sample;
+        break;
+    }
+
+    sample = tracking_active ? &cached_value : &default_value;
+
+    mce_log(LL_DEBUG, "TEMPERATURE: UPDATE %s %s",
+            sfw_notify_name(type),
+            sfw_sample_temperature_repr(sample));
+
+    return;
 }
 
 // ----------------------------------------------------------------
 
-/** Callback for handling reply to ambient light query from sensord */
-static void
-sfw_backend_als_value_cb(sfw_plugin_t *plugin, unsigned value)
+/** Data and callback functions for all sensors */
+static const sfw_backend_t sfw_backend_lut[SFW_SENSOR_ID_COUNT] =
 {
-    (void)plugin;
-
-    mce_log(LL_DEBUG, "ALS: initial light=%u", value);
-
-    sfw_notify_als(NOTIFY_SENSORD, value);
-}
-
-/** Callback for handling reply to proximity query from sensord */
-static void
-sfw_backend_ps_value_cb(sfw_plugin_t *plugin, unsigned value)
-{
-    (void)plugin;
-
-    bool covered = (value < 1);
-
-    mce_log(LL_DEBUG, "PS: initial distance=%u proximity=%s",
-            value, covered ? "true" : "false");
-
-    sfw_notify_ps(NOTIFY_SENSORD, covered);
-}
-
-/** Callback for handling reply to orientation query from sensord */
-static void
-sfw_backend_orient_value_cb(sfw_plugin_t *plugin, unsigned value)
-{
-    (void)plugin;
-
-    mce_log(LL_DEBUG, "ORIENT: initial state=%u", value);
-
-    sfw_notify_orient(NOTIFY_SENSORD, value);
-}
-
-// ----------------------------------------------------------------
-
-/** Callback for resetting ambient light state to default */
-static void
-sfw_backend_als_reset_cb(sfw_plugin_t *plugin)
-{
-    (void)plugin;
-
-    mce_log(LL_DEBUG, "ALS: light=reset-to-default");
-
-    sfw_notify_als(NOTIFY_RESET, SWF_NOTIFY_DUMMY);
-}
-
-/** Callback for resetting proximity state to default */
-static void
-sfw_backend_ps_reset_cb(sfw_plugin_t *plugin)
-{
-    (void)plugin;
-
-    mce_log(LL_DEBUG, "PS: covered=reset-to-default");
-
-    sfw_notify_ps(NOTIFY_RESET, SWF_NOTIFY_DUMMY);
-}
-
-/** Callback for resetting orientation state to default */
-static void
-sfw_backend_orient_reset_cb(sfw_plugin_t *plugin)
-{
-    (void)plugin;
-
-    mce_log(LL_DEBUG, "ORIENT: state=reset-to-default");
-
-    sfw_notify_orient(NOTIFY_RESET, SWF_NOTIFY_DUMMY);
-}
-
-/** Callback for restoring ambient light state to last-known */
-static void
-sfw_backend_als_restore_cb(sfw_plugin_t *plugin)
-{
-    (void)plugin;
-
-    mce_log(LL_DEBUG, "ALS: light=restore-to-last-known");
-
-    sfw_notify_als(NOTIFY_RESTORE, SWF_NOTIFY_DUMMY);
-}
-
-/** Callback for restoring proximity state to last-known */
-static void
-sfw_backend_ps_restore_cb(sfw_plugin_t *plugin)
-{
-    (void)plugin;
-
-    mce_log(LL_DEBUG, "PS: covered=restore-to-last-known");
-
-    sfw_notify_ps(NOTIFY_RESTORE, SWF_NOTIFY_DUMMY);
-}
-
-/** Callback for restoring orientation state to last-known */
-static void
-sfw_backend_orient_restore_cb(sfw_plugin_t *plugin)
-{
-    (void)plugin;
-
-    mce_log(LL_DEBUG, "ORIENT: state=restore-to-last-known");
-
-    sfw_notify_orient(NOTIFY_RESTORE, SWF_NOTIFY_DUMMY);
-}
-
-// ----------------------------------------------------------------
-
-/** Data and callbacks for proximity sensor */
-static const sfw_backend_t sfw_backend_ps =
-{
-    .be_sensor_name      = SENSORFW_SENSOR_NAME_PS,
-    .be_sensor_object    = 0,
-    .be_sensor_interface = SENSORFW_SENSOR_INTERFACE_PS,
-
-    .be_sample_size      = sizeof(sfw_sample_ps_t),
-    .be_sample_cb        = sfw_backend_ps_sample_cb,
-
-    .be_value_method     = SENSORFW_SENSOR_METHOD_READ_PS,
-    .be_value_cb         = sfw_backend_ps_value_cb,
-
-    .be_reset_cb         = sfw_backend_ps_reset_cb,
-    .be_restore_cb       = sfw_backend_ps_restore_cb,
-    .be_forget_cb        = 0,
-};
-
-/** Data and callbacks for ambient light sensor */
-static const sfw_backend_t sfw_backend_als =
-{
-    .be_sensor_name      = SENSORFW_SENSOR_NAME_ALS,
-    .be_sensor_object    = 0,
-    .be_sensor_interface = SENSORFW_SENSOR_INTERFACE_ALS,
-
-    .be_sample_size      = sizeof(sfw_sample_als_t),
-    .be_sample_cb        = sfw_backend_als_sample_cb,
-
-    .be_value_method     = SENSORFW_SENSOR_METHOD_READ_ALS,
-    .be_value_cb         = sfw_backend_als_value_cb,
-
-    .be_reset_cb         = sfw_backend_als_reset_cb,
-    .be_restore_cb       = sfw_backend_als_restore_cb,
-    .be_forget_cb        = 0,
-};
-
-/** Data and callbacks for orientation sensor */
-static const sfw_backend_t sfw_backend_orient =
-{
-    .be_sensor_name      = SENSORFW_SENSOR_NAME_ORIENT,
-    .be_sensor_object    = 0,
-    .be_sensor_interface = SENSORFW_SENSOR_INTERFACE_ORIENT,
-
-    .be_sample_size      = sizeof(sfw_sample_orient_t),
-    .be_sample_cb        = sfw_backend_orient_sample_cb,
-
-    .be_value_method     = SENSORFW_SENSOR_METHOD_READ_ORIENT,
-    .be_value_cb         = sfw_backend_orient_value_cb,
-
-    .be_reset_cb         = sfw_backend_orient_reset_cb,
-    .be_restore_cb       = sfw_backend_orient_restore_cb,
-    .be_forget_cb        = sfw_backend_orient_reset_cb,
+    [SFW_SENSOR_ID_PS] = {
+        .be_sensor_name      = SFW_SENSOR_NAME_PS,
+        .be_sensor_object    = 0,
+        .be_sensor_interface = SFW_SENSOR_INTERFACE_PS,
+        .be_sample_size      = sizeof(sfw_sample_ps_t),
+        .be_value_cb         = sfw_backend_ps_value_cb,
+        .be_sample_cb        = sfw_backend_ps_sample_cb,
+        .be_value_method     = SFW_SENSOR_METHOD_READ_PS,
+    },
+    [SFW_SENSOR_ID_ALS] = {
+        .be_sensor_name      = SFW_SENSOR_NAME_ALS,
+        .be_sensor_object    = 0,
+        .be_sensor_interface = SFW_SENSOR_INTERFACE_ALS,
+        .be_sample_size      = sizeof(sfw_sample_als_t),
+        .be_value_cb         = sfw_backend_als_value_cb,
+        .be_sample_cb        = sfw_backend_als_sample_cb,
+        .be_value_method     = SFW_SENSOR_METHOD_READ_ALS,
+    },
+    [SFW_SENSOR_ID_ORIENT] = {
+        .be_sensor_name      = SFW_SENSOR_NAME_ORIENT,
+        .be_sensor_object    = 0,
+        .be_sensor_interface = SFW_SENSOR_INTERFACE_ORIENT,
+        .be_sample_size      = sizeof(sfw_sample_orient_t),
+        .be_value_cb         = sfw_backend_orient_value_cb,
+        .be_sample_cb        = sfw_backend_orient_sample_cb,
+        .be_value_method     = SFW_SENSOR_METHOD_READ_ORIENT,
+    },
+    [SFW_SENSOR_ID_ACCELEROMETER] = {
+        .be_sensor_name      = SFW_SENSOR_NAME_ACCELEROMETER,
+        .be_sensor_object    = 0,
+        .be_sensor_interface = SFW_SENSOR_INTERFACE_ACCELEROMETER,
+        .be_sample_size      = sizeof(sfw_sample_accelerometer_t),
+        .be_value_cb         = sfw_backend_accelerometer_value_cb,
+        .be_sample_cb        = sfw_backend_accelerometer_sample_cb,
+        .be_value_method     = SFW_SENSOR_METHOD_READ_ACCELEROMETER,
+    },
+    [SFW_SENSOR_ID_COMPASS] = {
+        .be_sensor_name      = SFW_SENSOR_NAME_COMPASS,
+        .be_sensor_object    = 0,
+        .be_sensor_interface = SFW_SENSOR_INTERFACE_COMPASS,
+        .be_sample_size      = sizeof(sfw_sample_compass_t),
+        .be_value_cb         = sfw_backend_compass_value_cb,
+        .be_sample_cb        = sfw_backend_compass_sample_cb,
+        .be_value_method     = SFW_SENSOR_METHOD_READ_COMPASS,
+    },
+    [SFW_SENSOR_ID_GYROSCOPE] = {
+        .be_sensor_name      = SFW_SENSOR_NAME_GYROSCOPE,
+        .be_sensor_object    = 0,
+        .be_sensor_interface = SFW_SENSOR_INTERFACE_GYROSCOPE,
+        .be_sample_size      = sizeof(sfw_sample_gyroscope_t),
+        .be_value_cb         = sfw_backend_gyroscope_value_cb,
+        .be_sample_cb        = sfw_backend_gyroscope_sample_cb,
+        .be_value_method     = SFW_SENSOR_METHOD_READ_GYROSCOPE,
+    },
+    [SFW_SENSOR_ID_LID] = {
+        .be_sensor_name      = SFW_SENSOR_NAME_LID,
+        .be_sensor_object    = 0,
+        .be_sensor_interface = SFW_SENSOR_INTERFACE_LID,
+        .be_sample_size      = sizeof(sfw_sample_lid_t),
+        .be_value_cb         = sfw_backend_lid_value_cb,
+        .be_sample_cb        = sfw_backend_lid_sample_cb,
+        .be_value_method     = SFW_SENSOR_METHOD_READ_LID,
+    },
+    [SFW_SENSOR_ID_HUMIDITY] = {
+        .be_sensor_name      = SFW_SENSOR_NAME_HUMIDITY,
+        .be_sensor_object    = 0,
+        .be_sensor_interface = SFW_SENSOR_INTERFACE_HUMIDITY,
+        .be_sample_size      = sizeof(sfw_sample_humidity_t),
+        .be_value_cb         = sfw_backend_humidity_value_cb,
+        .be_sample_cb        = sfw_backend_humidity_sample_cb,
+        .be_value_method     = SFW_SENSOR_METHOD_READ_HUMIDITY,
+    },
+    [SFW_SENSOR_ID_MAGNETOMETER] = {
+        .be_sensor_name      = SFW_SENSOR_NAME_MAGNETOMETER,
+        .be_sensor_object    = 0,
+        .be_sensor_interface = SFW_SENSOR_INTERFACE_MAGNETOMETER,
+        .be_sample_size      = sizeof(sfw_sample_magnetometer_t),
+        .be_value_cb         = sfw_backend_magnetometer_value_cb,
+        .be_sample_cb        = sfw_backend_magnetometer_sample_cb,
+        .be_value_method     = SFW_SENSOR_METHOD_READ_MAGNETOMETER,
+    },
+    [SFW_SENSOR_ID_PRESSURE] = {
+        .be_sensor_name      = SFW_SENSOR_NAME_PRESSURE,
+        .be_sensor_object    = 0,
+        .be_sensor_interface = SFW_SENSOR_INTERFACE_PRESSURE,
+        .be_sample_size      = sizeof(sfw_sample_pressure_t),
+        .be_value_cb         = sfw_backend_pressure_value_cb,
+        .be_sample_cb        = sfw_backend_pressure_sample_cb,
+        .be_value_method     = SFW_SENSOR_METHOD_READ_PRESSURE,
+    },
+    [SFW_SENSOR_ID_ROTATION] = {
+        .be_sensor_name      = SFW_SENSOR_NAME_ROTATION,
+        .be_sensor_object    = 0,
+        .be_sensor_interface = SFW_SENSOR_INTERFACE_ROTATION,
+        .be_sample_size      = sizeof(sfw_sample_rotation_t),
+        .be_value_cb         = sfw_backend_rotation_value_cb,
+        .be_sample_cb        = sfw_backend_rotation_sample_cb,
+        .be_value_method     = SFW_SENSOR_METHOD_READ_ROTATION,
+    },
+    [SFW_SENSOR_ID_STEPCOUNTER] = {
+        .be_sensor_name      = SFW_SENSOR_NAME_STEPCOUNTER,
+        .be_sensor_object    = 0,
+        .be_sensor_interface = SFW_SENSOR_INTERFACE_STEPCOUNTER,
+        .be_sample_size      = sizeof(sfw_sample_stepcounter_t),
+        .be_value_cb         = sfw_backend_stepcounter_value_cb,
+        .be_sample_cb        = sfw_backend_stepcounter_sample_cb,
+        .be_value_method     = SFW_SENSOR_METHOD_READ_STEPCOUNTER,
+    },
+    [SFW_SENSOR_ID_TAP] = {
+        .be_sensor_name      = SFW_SENSOR_NAME_TAP,
+        .be_sensor_object    = 0,
+        .be_sensor_interface = SFW_SENSOR_INTERFACE_TAP,
+        .be_sample_size      = sizeof(sfw_sample_tap_t),
+        .be_value_cb         = sfw_backend_tap_value_cb,
+        .be_sample_cb        = sfw_backend_tap_sample_cb,
+        .be_value_method     = SFW_SENSOR_METHOD_READ_TAP,
+    },
+    [SFW_SENSOR_ID_TEMPERATURE] = {
+        .be_sensor_name      = SFW_SENSOR_NAME_TEMPERATURE,
+        .be_sensor_object    = 0,
+        .be_sensor_interface = SFW_SENSOR_INTERFACE_TEMPERATURE,
+        .be_sample_size      = sizeof(sfw_sample_temperature_t),
+        .be_value_cb         = sfw_backend_temperature_value_cb,
+        .be_sample_cb        = sfw_backend_temperature_sample_cb,
+        .be_value_method     = SFW_SENSOR_METHOD_READ_TEMPERATURE,
+    },
 };
 
 /* ========================================================================= *
@@ -1368,7 +2949,7 @@ sfw_reporting_trans(sfw_reporting_t *self, sfw_reporting_state_t state)
         dbus_send_ex(SENSORFW_SERVICE,
                      sfw_plugin_get_sensor_object(self->rep_plugin),
                      sfw_plugin_get_sensor_interface(self->rep_plugin),
-                     SENSORFW_SENSOR_METHOD_START,
+                     SFW_SENSOR_METHOD_START,
                      sfw_reporting_change_cb,
                      self, 0, &self->rep_change_pc,
                      DBUS_TYPE_INT32, &sid,
@@ -1382,7 +2963,7 @@ sfw_reporting_trans(sfw_reporting_t *self, sfw_reporting_state_t state)
         dbus_send_ex(SENSORFW_SERVICE,
                      sfw_plugin_get_sensor_object(self->rep_plugin),
                      sfw_plugin_get_sensor_interface(self->rep_plugin),
-                     SENSORFW_SENSOR_METHOD_STOP,
+                     SFW_SENSOR_METHOD_STOP,
                      sfw_reporting_change_cb,
                      self, 0, &self->rep_change_pc,
                      DBUS_TYPE_INT32, &sid,
@@ -1390,6 +2971,11 @@ sfw_reporting_trans(sfw_reporting_t *self, sfw_reporting_state_t state)
         break;
 
     case REPORTING_ENABLED:
+        if( !sfw_plugin_get_value_method(self->rep_plugin) ) {
+            mce_log(LL_DEBUG, "reporting(%s): skip state query",
+                    sfw_plugin_get_sensor_name(self->rep_plugin));
+            break;
+        }
         dbus_send_ex(SENSORFW_SERVICE,
                      sfw_plugin_get_sensor_object(self->rep_plugin),
                      sfw_plugin_get_sensor_interface(self->rep_plugin),
@@ -1433,11 +3019,9 @@ sfw_reporting_value_cb(DBusPendingCall *pc, void *aptr)
 
     DBusMessage  *rsp  = 0;
     DBusError     err  = DBUS_ERROR_INIT;
-    dbus_uint32_t tck  = 0;
-    dbus_uint32_t val  = 0;
     bool          ack  = false;
 
-    if( !pc || !self || pc != self->rep_value_pc )
+    if( pc != self->rep_value_pc )
         goto EXIT;
 
     dbus_pending_call_unref(self->rep_value_pc),
@@ -1456,30 +3040,20 @@ sfw_reporting_value_cb(DBusPendingCall *pc, void *aptr)
         goto EXIT;
     }
 
+    mce_log(LL_DEBUG, "reporting(%s): reply received",
+            sfw_plugin_get_sensor_name(self->rep_plugin));
+
     DBusMessageIter body, data;
 
     if( !dbus_message_iter_init(rsp, &body) )
         goto PARSE_FAILED;
 
-    if( dbus_message_iter_get_arg_type(&body) != DBUS_TYPE_STRUCT )
+    if( !mce_dbus_iter_get_struct(&body, &data) )
         goto PARSE_FAILED;
 
-    dbus_message_iter_recurse(&body, &data);
-    dbus_message_iter_next(&body);
-
-    if( dbus_message_iter_get_arg_type(&data) !=  DBUS_TYPE_UINT64 )
+    if( !(ack = sfw_plugin_handle_value(self->rep_plugin, &data)) )
         goto PARSE_FAILED;
 
-    dbus_message_iter_get_basic(&data, &tck);
-    dbus_message_iter_next(&data);
-
-    if( dbus_message_iter_get_arg_type(&data) !=  DBUS_TYPE_UINT32 )
-        goto PARSE_FAILED;
-
-    dbus_message_iter_get_basic(&data, &val);
-    dbus_message_iter_next(&data);
-
-    sfw_plugin_handle_value(self->rep_plugin, val);
     ack = true;
     goto EXIT;
 
@@ -1508,7 +3082,7 @@ sfw_reporting_change_cb(DBusPendingCall *pc, void *aptr)
     DBusError    err = DBUS_ERROR_INIT;
     dbus_bool_t  ack = FALSE;
 
-    if( !pc || !self || pc != self->rep_change_pc )
+    if( pc != self->rep_change_pc )
         goto EXIT;
 
     dbus_pending_call_unref(self->rep_change_pc),
@@ -1636,6 +3210,7 @@ sfw_override_state_name(sfw_override_state_t state)
         [OVERRIDE_DISABLING]    = "DISABLING",
         [OVERRIDE_DISABLED]     = "DISABLED",
         [OVERRIDE_ERROR]        = "ERROR",
+        [OVERRIDE_NA]           = "NA",
     };
 
     return (state < OVERRIDE_NUMSTATES) ? lut[state] : 0;
@@ -1739,7 +3314,7 @@ sfw_override_trans(sfw_override_t *self, sfw_override_state_t state)
         dbus_send_ex(SENSORFW_SERVICE,
                      sfw_plugin_get_sensor_object(self->ovr_plugin),
                      sfw_plugin_get_sensor_interface(self->ovr_plugin),
-                     SENSORFW_SENSOR_METHOD_SET_OVERRIDE,
+                     SFW_SENSOR_METHOD_SET_OVERRIDE,
                      sfw_override_start_cb,
                      self, 0, &self->ovr_start_pc,
                      DBUS_TYPE_INT32, &sid,
@@ -1759,6 +3334,7 @@ sfw_override_trans(sfw_override_t *self, sfw_override_state_t state)
         break;
 
     default:
+    case OVERRIDE_NA:
     case OVERRIDE_IDLE:
     case OVERRIDE_INITIAL:
         // NOP
@@ -1781,8 +3357,9 @@ sfw_override_start_cb(DBusPendingCall *pc, void *aptr)
     DBusMessage *rsp = 0;
     DBusError    err = DBUS_ERROR_INIT;
     dbus_bool_t  ack = FALSE;
+    dbus_bool_t  nak = FALSE;
 
-    if( !pc || !self || pc != self->ovr_start_pc )
+    if( pc != self->ovr_start_pc )
         goto EXIT;
 
     dbus_pending_call_unref(self->ovr_start_pc),
@@ -1791,33 +3368,35 @@ sfw_override_start_cb(DBusPendingCall *pc, void *aptr)
     if( !(rsp = dbus_pending_call_steal_reply(pc)) ) {
         mce_log(LL_ERR, "override(%s): no reply",
                 sfw_plugin_get_sensor_name(self->ovr_plugin));
-        goto EXIT;
     }
-
-    if( dbus_set_error_from_message(&err, rsp) ) {
+    else if( dbus_set_error_from_message(&err, rsp) ) {
         mce_log(LL_ERR, "override(%s): error reply: %s: %s",
                 sfw_plugin_get_sensor_name(self->ovr_plugin),
                 err.name, err.message);
-        goto EXIT;
     }
-
-    if( !dbus_message_get_args(rsp, &err,
+    else if( !dbus_message_get_args(rsp, &err,
                                DBUS_TYPE_BOOLEAN, &ack,
                                DBUS_TYPE_INVALID) ) {
         mce_log(LL_ERR, "override(%s): parse error: %s: %s",
                 sfw_plugin_get_sensor_name(self->ovr_plugin),
                 err.name, err.message);
-        goto EXIT;
     }
-
-EXIT:
-    mce_log(LL_DEBUG, "override(%s): ack=%d",
-            sfw_plugin_get_sensor_name(self->ovr_plugin), ack);
+    else if( !ack ) {
+        mce_log(LL_ERR, "override(%s): failed",
+                sfw_plugin_get_sensor_name(self->ovr_plugin));
+        nak = true;
+    }
+    else {
+        mce_log(LL_DEBUG, "override(%s): succeeded",
+                sfw_plugin_get_sensor_name(self->ovr_plugin));
+    }
 
     if( self->ovr_state == OVERRIDE_ENABLING ||
         self->ovr_state == OVERRIDE_DISABLING ) {
 
-        if( !ack )
+        if( nak )
+            sfw_override_trans(self, OVERRIDE_NA);
+        else if( !ack )
             sfw_override_trans(self, OVERRIDE_ERROR);
         else if( self->ovr_state == OVERRIDE_ENABLING )
             sfw_override_trans(self, OVERRIDE_ENABLED);
@@ -1825,6 +3404,7 @@ EXIT:
             sfw_override_trans(self, OVERRIDE_DISABLED);
     }
 
+EXIT:
     if( rsp ) dbus_message_unref(rsp);
     dbus_error_free(&err);
 
@@ -2536,7 +4116,7 @@ sfw_session_start_cb(DBusPendingCall *pc, void *aptr)
     DBusError    err = DBUS_ERROR_INIT;
     dbus_int32_t ses = SESSION_ID_UNKNOWN;
 
-    if( !pc || !self || pc != self->ses_start_pc )
+    if( pc != self->ses_start_pc )
         goto EXIT;
 
     dbus_pending_call_unref(self->ses_start_pc),
@@ -2654,6 +4234,7 @@ sfw_plugin_state_name(sfw_plugin_state_t state)
         [PLUGIN_LOADING]  = "LOADING",
         [PLUGIN_LOADED]   = "LOADED",
         [PLUGIN_ERROR]    = "ERROR",
+        [PLUGIN_NA]       = "NA",
     };
 
     return (state < PLUGIN_NUMSTATES) ? lut[state] : 0;
@@ -2698,25 +4279,30 @@ sfw_plugin_get_session_id(const sfw_plugin_t *self)
     return self ? sfw_session_get_id(self->plg_session) : SESSION_ID_INVALID;
 }
 
+static void
+sfw_plugin_notify(sfw_plugin_t *self, sfw_notify_t type, const void *sample)
+{
+    if( self && self->plg_backend && self->plg_backend->be_sample_cb )
+        self->plg_backend->be_sample_cb(self, type, sample);
+}
+
 /** Handle sensor specific change event received from data connection
  */
 static void
 sfw_plugin_handle_sample(sfw_plugin_t *self, const void *sample)
 {
-    if( self->plg_backend->be_sample_cb )
-        self->plg_backend->be_sample_cb(self, sample);
+    sfw_plugin_notify(self, NOTIFY_SENSORD, sample);
 }
 
 /** Handle sensor specific initial value received via dbus query
  */
-static void
-sfw_plugin_handle_value(sfw_plugin_t *self, unsigned value)
+static bool
+sfw_plugin_handle_value(sfw_plugin_t *self, DBusMessageIter *data)
 {
-    mce_log(LL_DEBUG, "plugin(%s): initial=%u",
-            sfw_plugin_get_sensor_name(self), value);
-
+    bool ack = false;
     if( self->plg_backend->be_value_cb )
-        self->plg_backend->be_value_cb(self, value);
+        ack = self->plg_backend->be_value_cb(self, data);
+    return ack;
 }
 
 /** Reset sensor state to assumed default state
@@ -2727,11 +4313,19 @@ sfw_plugin_handle_value(sfw_plugin_t *self, unsigned value)
 static void
 sfw_plugin_reset_value(sfw_plugin_t *self)
 {
-    mce_log(LL_DEBUG, "plugin(%s): reset",
-            sfw_plugin_get_sensor_name(self));
+    mce_log(LL_DEBUG, "plugin(%s): reset", sfw_plugin_get_sensor_name(self));
+    sfw_plugin_notify(self, NOTIFY_RESET, 0);
+}
 
-    if( self->plg_backend->be_reset_cb )
-        self->plg_backend->be_reset_cb(self);
+/** Repeat sensor state notification
+ *
+ * Used when tracking callbacks are changed
+ */
+static void
+sfw_plugin_repeat_value(sfw_plugin_t *self)
+{
+    mce_log(LL_DEBUG, "plugin(%s): repeat", sfw_plugin_get_sensor_name(self));
+    sfw_plugin_notify(self, NOTIFY_REPEAT, 0);
 }
 
 /** Restore sensor state to last seen state
@@ -2741,11 +4335,8 @@ sfw_plugin_reset_value(sfw_plugin_t *self)
 static void
 sfw_plugin_restore_value(sfw_plugin_t *self)
 {
-    mce_log(LL_DEBUG, "plugin(%s): restore",
-            sfw_plugin_get_sensor_name(self));
-
-    if( self->plg_backend->be_restore_cb )
-        self->plg_backend->be_restore_cb(self);
+    mce_log(LL_DEBUG, "plugin(%s): restore", sfw_plugin_get_sensor_name(self));
+    sfw_plugin_notify(self, NOTIFY_RESTORE, 0);
 }
 
 /** Set sensor state when stopped
@@ -2755,11 +4346,8 @@ sfw_plugin_restore_value(sfw_plugin_t *self)
 static void
 sfw_plugin_forget_value(sfw_plugin_t *self)
 {
-    mce_log(LL_DEBUG, "plugin(%s): stopped",
-            sfw_plugin_get_sensor_name(self));
-
-    if( self->plg_backend->be_forget_cb )
-        self->plg_backend->be_forget_cb(self);
+    mce_log(LL_DEBUG, "plugin(%s): forget", sfw_plugin_get_sensor_name(self));
+    sfw_plugin_notify(self, NOTIFY_FORGET, 0);
 }
 
 /** Get size of sensor specific change event
@@ -2806,6 +4394,9 @@ sfw_plugin_cancel_retry(sfw_plugin_t *self)
 static void
 sfw_plugin_trans(sfw_plugin_t *self, sfw_plugin_state_t state)
 {
+    if( !self )
+        goto EXIT;
+
     if( self->plg_state == state )
         goto EXIT;
 
@@ -2823,6 +4414,7 @@ sfw_plugin_trans(sfw_plugin_t *self, sfw_plugin_state_t state)
     case PLUGIN_IDLE:
     case PLUGIN_ERROR:
     case PLUGIN_INITIAL:
+    case PLUGIN_NA:
         sfw_plugin_do_session_reset(self);
 
         if( self->plg_state == PLUGIN_ERROR )
@@ -2893,6 +4485,25 @@ sfw_plugin_create(const sfw_backend_t *backend)
     return self;
 }
 
+/** Set sensor plugin target state
+ */
+static void
+sfw_plugin_enable_sensor(sfw_plugin_t *self, bool enable)
+{
+    if( self ) {
+        bool forced = false;
+        if( !enable && mce_in_sensortest_mode() )
+            forced = enable = true;
+        mce_log(LL_DEBUG, "%s: %s%s", sfw_plugin_get_sensor_name(self),
+                enable ? "enable" : "disable",
+                forced ? " (forced)" : "");
+        if( self->plg_override )
+            sfw_override_set_target(self->plg_override, enable);
+        if( self->plg_reporting )
+            sfw_reporting_set_target(self->plg_reporting, enable);
+    }
+}
+
 /** Delete sensor plugin load/unload state machine object
  */
 static void
@@ -2931,8 +4542,9 @@ sfw_plugin_load_cb(DBusPendingCall *pc, void *aptr)
     DBusMessage  *rsp  = 0;
     DBusError     err  = DBUS_ERROR_INIT;
     dbus_bool_t   ack  = FALSE;
+    bool          nak  = true;
 
-    if( !pc || !self || pc != self->plg_load_pc )
+    if( pc != self->plg_load_pc )
         goto EXIT;
 
     dbus_pending_call_unref(self->plg_load_pc),
@@ -2958,13 +4570,17 @@ sfw_plugin_load_cb(DBusPendingCall *pc, void *aptr)
         goto EXIT;
     }
 
+    nak = false;
+
 EXIT:
 
     if( self->plg_state == PLUGIN_LOADING) {
-        if( ack )
+        if( nak )
+            sfw_plugin_trans(self, PLUGIN_ERROR);
+        else if( ack )
             sfw_plugin_trans(self, PLUGIN_LOADED);
         else
-            sfw_plugin_trans(self, PLUGIN_ERROR);
+            sfw_plugin_trans(self, PLUGIN_NA);
     }
 
     if( rsp ) dbus_message_unref(rsp);
@@ -3001,6 +4617,9 @@ EXIT:
 static void
 sfw_plugin_do_load(sfw_plugin_t *self)
 {
+    if( !self )
+        goto EXIT;
+
     switch( self->plg_state ) {
     case PLUGIN_IDLE:
     case PLUGIN_INITIAL:
@@ -3010,6 +4629,9 @@ sfw_plugin_do_load(sfw_plugin_t *self)
         // nop
         break;
     }
+
+EXIT:
+    return;
 }
 
 /** Unload plugin
@@ -3135,11 +4757,15 @@ sfw_service_create(void)
 {
     sfw_service_t *self = calloc(1, sizeof *self);
 
-    self->srv_state    = SERVICE_UNKNOWN;
-    self->srv_query_pc = 0;
-    self->srv_ps       = sfw_plugin_create(&sfw_backend_ps);
-    self->srv_als      = sfw_plugin_create(&sfw_backend_als);
-    self->srv_orient   = sfw_plugin_create(&sfw_backend_orient);
+    self->srv_state         = SERVICE_UNKNOWN;
+    self->srv_query_pc      = 0;
+
+    for( sensor_id_t id = 0; id < SFW_SENSOR_ID_COUNT; ++id ) {
+        if( sensor_id_available(id) )
+            self->srv_plugin[id] = sfw_plugin_create(sfw_backend_lut + id);
+        else
+            self->srv_plugin[id] =  0;
+    }
 
     return self;
 }
@@ -3154,14 +4780,8 @@ sfw_service_delete(sfw_service_t *self)
     if( self ) {
         sfw_service_trans(self, SERVICE_UNKNOWN);
 
-        sfw_plugin_delete(self->srv_ps),
-            self->srv_ps = 0;
-
-        sfw_plugin_delete(self->srv_als),
-            self->srv_als = 0;
-
-        sfw_plugin_delete(self->srv_orient),
-            self->srv_orient = 0;
+        for( sensor_id_t id = 0; id < SFW_SENSOR_ID_COUNT; ++id )
+            sfw_plugin_delete(self->srv_plugin[id]), self->srv_plugin[id] = 0;
 
         free(self);
     }
@@ -3188,9 +4808,6 @@ sfw_service_query_cb(DBusPendingCall *pc, void *aptr)
     DBusMessage   *rsp   = 0;
     const char    *owner = 0;
     DBusError      err   = DBUS_ERROR_INIT;
-
-    if( !pc || !self )
-        goto EXIT;
 
     if( pc != self->srv_query_pc )
         goto EXIT;
@@ -3257,17 +4874,15 @@ sfw_service_trans(sfw_service_t *self, sfw_service_state_t state)
 
     case SERVICE_RUNNING:
         sfw_exception_start(SFW_EXCEPTION_LENGTH_SENSORD_RUNNING);
-        sfw_plugin_do_load(self->srv_ps);
-        sfw_plugin_do_load(self->srv_als);
-        sfw_plugin_do_load(self->srv_orient);
+        for( sensor_id_t id = 0; id < SFW_SENSOR_ID_COUNT; ++id )
+            sfw_plugin_do_load(self->srv_plugin[id]);
         break;
 
     case SERVICE_UNKNOWN:
     case SERVICE_STOPPED:
         sfw_exception_start(SFW_EXCEPTION_LENGTH_SENSORD_STOPPED);
-        sfw_plugin_do_reset(self->srv_ps);
-        sfw_plugin_do_reset(self->srv_als);
-        sfw_plugin_do_reset(self->srv_orient);
+        for( sensor_id_t id = 0; id < SFW_SENSOR_ID_COUNT; ++id )
+            sfw_plugin_do_reset(self->srv_plugin[id]);
         break;
 
     default:
@@ -3305,52 +4920,23 @@ sfw_service_do_query(sfw_service_t *self)
         sfw_service_trans(self, SERVICE_QUERYING);
 }
 
-/** Perform actions needed when proximity sensor needed state changes
- */
-static void
-sfw_service_set_ps(sfw_service_t *self, bool enable)
+/** Lookup plugin by sensor id */
+static sfw_plugin_t *
+sfw_service_plugin(const sfw_service_t *self, sensor_id_t id)
 {
-    // using NULL self pointer explicitly allowed
-
-    mce_log(LL_DEBUG, "%s", enable ? "enable" : "disable");
-    if( self && self->srv_ps ) {
-        if( self->srv_ps->plg_override )
-            sfw_override_set_target(self->srv_ps->plg_override, enable);
-        if( self->srv_ps->plg_reporting )
-            sfw_reporting_set_target(self->srv_ps->plg_reporting, enable);
+    sfw_plugin_t *plugin = 0;
+    if( self ) {
+        plugin = self->srv_plugin[id];
     }
+    return plugin;
 }
 
-/** Perform actions needed when ambient light sensor needed state changes
- */
+/** Enable/disable sensor by id */
 static void
-sfw_service_set_als(sfw_service_t *self, bool enable)
+sfw_service_set_sensor(const sfw_service_t *self, sensor_id_t id, bool enable)
 {
-    // using NULL self pointer explicitly allowed
-
-    mce_log(LL_DEBUG, "%s", enable ? "enable" : "disable");
-    if( self && self->srv_als ) {
-        if( self->srv_als->plg_override )
-            sfw_override_set_target(self->srv_als->plg_override, enable);
-        if( self->srv_als->plg_reporting )
-            sfw_reporting_set_target(self->srv_als->plg_reporting, enable);
-    }
-}
-
-/** Perform actions needed when orientation sensor needed state changes
- */
-static void
-sfw_service_set_orient(sfw_service_t *self, bool enable)
-{
-    // using NULL self pointer explicitly allowed
-
-    mce_log(LL_DEBUG, "%s", enable ? "enable" : "disable");
-    if( self && self->srv_orient ) {
-        if( self->srv_orient->plg_override )
-            sfw_override_set_target(self->srv_orient->plg_override, enable);
-        if( self->srv_orient->plg_reporting )
-            sfw_reporting_set_target(self->srv_orient->plg_reporting, enable);
-    }
+    sfw_plugin_t *plugin = sfw_service_plugin(self, id);
+    sfw_plugin_enable_sensor(plugin, enable);
 }
 
 /* ========================================================================= *
@@ -3363,20 +4949,21 @@ sfw_service_set_orient(sfw_service_t *self, bool enable)
  */
 static guint ps_evdev_id = 0;
 
+static bool ps_from_evdev(void)
+{
+    return ps_evdev_id != 0;
+}
+
 /** io watch id for ALS evdev file descriptor
  *
  * If this is non-zero, ambient light data received from sensord is ignored.
  */
 static guint als_evdev_id = 0;
 
-/** Proximity change callback used for notifying upper level logic */
-static void (*sfw_notify_ps_cb)(bool covered) = 0;
-
-/** Ambient light change callback used for notifying upper level logic */
-static void (*sfw_notify_als_cb)(int lux) = 0;
-
-/** Orientation change callback used for notifying upper level logic */
-static void (*sfw_notify_orient_cb)(int state) = 0;
+static bool als_from_evdev(void)
+{
+    return als_evdev_id != 0;
+}
 
 /** Translate notification type to human readable form
  */
@@ -3390,168 +4977,10 @@ sfw_notify_name(sfw_notify_t type)
         [NOTIFY_REPEAT]  = "REPEAT",
         [NOTIFY_EVDEV]   = "EVDEV",
         [NOTIFY_SENSORD] = "SENSORD",
+        [NOTIFY_FORGET]  = "FORGET",
     };
 
     return (type < NOTIFY_NUMTYPES) ? lut[type] : 0;
-}
-
-/** Notify proximity state via callback
- */
-static void
-sfw_notify_ps(sfw_notify_t type, bool input_value)
-{
-    static bool cached_value    = SWF_NOTIFY_DEFAULT_PS;
-    const  bool default_value   = SWF_NOTIFY_DEFAULT_PS;
-    static bool tracking_active = false;
-
-    /* Always update cached state data */
-    switch( type ) {
-    default:
-    case NOTIFY_REPEAT:
-        break;
-
-    case NOTIFY_RESET:
-        tracking_active = false;
-        break;
-
-    case NOTIFY_RESTORE:
-        tracking_active = true;
-        break;
-
-    case NOTIFY_EVDEV:
-        cached_value = input_value;
-        break;
-
-    case NOTIFY_SENSORD:
-        if( ps_evdev_id )
-            mce_log(LL_DEBUG, "ignoring PS=%d from sensord", input_value);
-        else
-            cached_value = input_value;
-        break;
-    }
-
-    /* The rest can be skipped if callback function is unset */
-    if( !sfw_notify_ps_cb )
-        goto EXIT;
-
-    /* Default value is used unless we are in fully working state */
-    bool output_value = tracking_active ? cached_value : default_value ;
-
-    /* Use separate value while expecting sensord startup */
-    if( sfw_exception_is_active() && !output_value ) {
-        mce_log(LL_DEBUG, "waiting for sensord; using proximity=covered");
-        output_value = SWF_NOTIFY_EXCEPTION_PS;
-    }
-
-    mce_log(LL_DEBUG, "%s: input %s -> notify %s",
-            sfw_notify_name(type),
-            input_value ? "covered" : "uncovered",
-            output_value ? "covered" : "uncovered");
-
-    sfw_notify_ps_cb(output_value);
-
-EXIT:
-    return;
-}
-
-/** Notify ambient light level via callback
- */
-static void
-sfw_notify_als(sfw_notify_t type, unsigned input_value)
-{
-    static unsigned cached_value    = SWF_NOTIFY_DEFAULT_ALS;
-    const  unsigned default_value   = SWF_NOTIFY_DEFAULT_ALS;
-    static bool     tracking_active = false;
-
-    /* Always update cached state data */
-    switch( type ) {
-    default:
-    case NOTIFY_REPEAT:
-        break;
-
-    case NOTIFY_RESET:
-        tracking_active = false;
-        break;
-
-    case NOTIFY_RESTORE:
-        tracking_active = true;
-        break;
-
-    case NOTIFY_EVDEV:
-        cached_value = input_value;
-        break;
-
-    case NOTIFY_SENSORD:
-        if( als_evdev_id )
-            mce_log(LL_DEBUG, "ignoring ALS=%u from sensord", input_value);
-        else
-            cached_value = input_value;
-        break;
-    }
-
-    /* The rest can be skipped if callback function is unset */
-    if( !sfw_notify_als_cb )
-        goto EXIT;
-
-    /* Default value is used unless we are in fully working state */
-    unsigned output_value = tracking_active ? cached_value : default_value ;
-
-    mce_log(LL_DEBUG, "%s: input %u -> notify %u",
-            sfw_notify_name(type),
-            input_value, output_value);
-
-    sfw_notify_als_cb(output_value);
-
-EXIT:
-    return;
-}
-
-/** Notify orientation state via callback
- */
-static void
-sfw_notify_orient(sfw_notify_t type, int input_value)
-{
-    static unsigned cached_value    = SWF_NOTIFY_DEFAULT_ORIENT;
-    const  unsigned default_value   = SWF_NOTIFY_DEFAULT_ORIENT;
-    static bool     tracking_active = false;
-
-    /* Always update cached state data */
-    switch( type ) {
-    default:
-    case NOTIFY_REPEAT:
-        break;
-
-    case NOTIFY_RESET:
-        tracking_active = false;
-        cached_value = default_value;
-        break;
-
-    case NOTIFY_RESTORE:
-        tracking_active = true;
-        break;
-
-    case NOTIFY_EVDEV:
-    case NOTIFY_SENSORD:
-        cached_value = input_value;
-        break;
-    }
-
-    /* The rest can be skipped if callback function is unset */
-    if( !sfw_notify_orient_cb )
-        goto EXIT;
-
-    /* Default value is used unless we are in fully working state */
-    unsigned output_value = tracking_active ? cached_value : default_value ;
-
-    mce_log(LL_DEBUG, "%s: input %s -> notify %s",
-            sfw_notify_name(type),
-            orientation_state_repr(input_value),
-            orientation_state_repr(output_value));
-
-    sfw_notify_orient_cb(output_value);
-
-EXIT:
-    return;
 }
 
 /* ========================================================================= *
@@ -3581,7 +5010,8 @@ static gboolean sfw_exception_timer_cb(gpointer aptr)
 
     mce_log(LL_DEBUG, "exceptional reporting ended");
 
-    sfw_notify_ps(NOTIFY_REPEAT, SWF_NOTIFY_DUMMY);
+    sfw_plugin_t *plugin = sfw_service_plugin(sfw_service, SFW_SENSOR_ID_PS);
+    sfw_plugin_repeat_value(plugin);
 
 EXIT:
     return FALSE;
@@ -3620,7 +5050,8 @@ static void sfw_exception_start(sfw_exception_delay_t delay_ms)
                                  0);
     sfw_exception_inititial = false;
 
-    sfw_notify_ps(NOTIFY_REPEAT, SWF_NOTIFY_DUMMY);
+    sfw_plugin_t *plugin = sfw_service_plugin(sfw_service, SFW_SENSOR_ID_PS);
+    sfw_plugin_repeat_value(plugin);
 }
 
 /** Cancel exceptional value reporting period
@@ -3637,9 +5068,6 @@ static void sfw_exception_cancel(void)
 /* ========================================================================= *
  * SENSORFW_MODULE
  * ========================================================================= */
-
-/** Sensord availability tracking state machine object */
-static sfw_service_t *sfw_service = 0;
 
 // ----------------------------------------------------------------
 
@@ -3668,8 +5096,11 @@ mce_sensorfw_resume(void)
 void
 mce_sensorfw_als_set_notify(void (*cb)(int lux))
 {
-    if( (sfw_notify_als_cb = cb) )
-        sfw_notify_als(NOTIFY_REPEAT, 0);
+
+    if( (sfw_notify_als_cb = cb) ) {
+        sfw_plugin_t *plugin = sfw_service_plugin(sfw_service, SFW_SENSOR_ID_ALS);
+        sfw_plugin_repeat_value(plugin);
+    }
 }
 
 /** Try to enable ALS input
@@ -3677,7 +5108,7 @@ mce_sensorfw_als_set_notify(void (*cb)(int lux))
 void
 mce_sensorfw_als_enable(void)
 {
-    sfw_service_set_als(sfw_service, true);
+    sfw_service_set_sensor(sfw_service, SFW_SENSOR_ID_ALS, true);
 }
 
 /** Try to disable ALS input
@@ -3685,7 +5116,7 @@ mce_sensorfw_als_enable(void)
 void
 mce_sensorfw_als_disable(void)
 {
-    sfw_service_set_als(sfw_service, false);
+    sfw_service_set_sensor(sfw_service, SFW_SENSOR_ID_ALS, false);
 }
 
 // ----------------------------------------------------------------
@@ -3697,8 +5128,10 @@ mce_sensorfw_als_disable(void)
 void
 mce_sensorfw_ps_set_notify(void (*cb)(bool covered))
 {
-    if( (sfw_notify_ps_cb = cb) )
-        sfw_notify_ps(NOTIFY_REPEAT, 0);
+    if( (sfw_notify_ps_cb = cb) ) {
+        sfw_plugin_t *plugin = sfw_service_plugin(sfw_service, SFW_SENSOR_ID_PS);
+        sfw_plugin_repeat_value(plugin);
+    }
 }
 
 /** Try to enable PS input
@@ -3706,7 +5139,7 @@ mce_sensorfw_ps_set_notify(void (*cb)(bool covered))
 void
 mce_sensorfw_ps_enable(void)
 {
-    sfw_service_set_ps(sfw_service, true);
+    sfw_service_set_sensor(sfw_service, SFW_SENSOR_ID_PS, true);
 }
 
 /** Try to disable PS input
@@ -3714,7 +5147,7 @@ mce_sensorfw_ps_enable(void)
 void
 mce_sensorfw_ps_disable(void)
 {
-    sfw_service_set_ps(sfw_service, false);
+    sfw_service_set_sensor(sfw_service, SFW_SENSOR_ID_PS, false);
 }
 
 // ----------------------------------------------------------------
@@ -3726,8 +5159,10 @@ mce_sensorfw_ps_disable(void)
 void
 mce_sensorfw_orient_set_notify(void (*cb)(int state))
 {
-    if( (sfw_notify_orient_cb = cb) )
-        sfw_notify_orient(NOTIFY_REPEAT, 0);
+    if( (sfw_notify_orient_cb = cb) ) {
+        sfw_plugin_t *plugin = sfw_service_plugin(sfw_service, SFW_SENSOR_ID_ORIENT);
+        sfw_plugin_repeat_value(plugin);
+    }
 }
 
 /** Try to enable Orientation input
@@ -3735,7 +5170,7 @@ mce_sensorfw_orient_set_notify(void (*cb)(int state))
 void
 mce_sensorfw_orient_enable(void)
 {
-    sfw_service_set_orient(sfw_service, true);
+    sfw_service_set_sensor(sfw_service, SFW_SENSOR_ID_ORIENT, true);
 }
 
 /** Try to disable Orientation input
@@ -3743,7 +5178,7 @@ mce_sensorfw_orient_enable(void)
 void
 mce_sensorfw_orient_disable(void)
 {
-    sfw_service_set_orient(sfw_service, false);
+    sfw_service_set_sensor(sfw_service, SFW_SENSOR_ID_ORIENT, false);
 }
 
 // ----------------------------------------------------------------
@@ -3809,11 +5244,26 @@ mce_sensorfw_evdev_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
         }
     }
 
-    if( als != -1 )
-        sfw_notify_als(NOTIFY_EVDEV, als);
+    if( als != -1 ) {
+        sfw_sample_als_t sample =
+        {
+            .als_value = als,
+        };
 
-    if( ps != -1 )
-        sfw_notify_ps(NOTIFY_EVDEV, ps < 1);
+        sfw_plugin_t *plugin = sfw_service_plugin(sfw_service, SFW_SENSOR_ID_ALS);
+        sfw_plugin_notify(plugin, NOTIFY_EVDEV, &sample);
+    }
+
+    if( ps != -1 ) {
+        sfw_sample_ps_t sample =
+        {
+            .ps_value           = (ps < 1) ? 0    : 10,
+            .ps_withinProximity = (ps < 1) ? true : false,
+        };
+
+        sfw_plugin_t *plugin = sfw_service_plugin(sfw_service, SFW_SENSOR_ID_PS);
+        sfw_plugin_notify(plugin, NOTIFY_EVDEV, &sample);
+    }
 
 EXIT:
     if( !keep && *id ) {
@@ -3876,7 +5326,13 @@ mce_sensorfw_als_attach(int fd)
     fd = -1;
 
     mce_log(LL_INFO, "ALS: %d (initial)", info.value);
-    sfw_notify_als(NOTIFY_EVDEV, info.value);
+
+    sfw_sample_als_t sample =
+    {
+        .als_value = info.value,
+    };
+    sfw_plugin_t *plugin = sfw_service_plugin(sfw_service, SFW_SENSOR_ID_ALS);
+    sfw_plugin_notify(plugin, NOTIFY_EVDEV, &sample);
 
 EXIT:
     if( fd != -1 )
@@ -3933,7 +5389,15 @@ mce_sensorfw_ps_attach(int fd)
     fd = -1;
 
     mce_log(LL_NOTICE, "PS: %d (initial)", info.value);
-    sfw_notify_ps(NOTIFY_EVDEV, info.value < 1);
+
+    int ps = info.value;
+    sfw_sample_ps_t sample =
+    {
+        .ps_value           = (ps < 1) ? 0    : 10,
+        .ps_withinProximity = (ps < 1) ? true : false,
+    };
+    sfw_plugin_t *plugin = sfw_service_plugin(sfw_service, SFW_SENSOR_ID_PS);
+    sfw_plugin_notify(plugin, NOTIFY_EVDEV, &sample);
 
 EXIT:
     if( fd != -1 )
@@ -4007,14 +5471,22 @@ static mce_dbus_handler_t sfw_dbus_handlers[] =
 bool
 mce_sensorfw_init(void)
 {
-    sfw_exception_start(SFW_EXCEPTION_LENGTH_MCE_STARTING_UP);
-
     /* Register D-Bus handlers */
     mce_dbus_handler_register_array(sfw_dbus_handlers);
 
     /* Start tracking sensord availablity */
     sfw_service = sfw_service_create();
     sfw_service_do_query(sfw_service);
+
+    /* From proximity sensor reporting point of view MCE start up
+     * needs to be handled as a special case. */
+    sfw_exception_start(SFW_EXCEPTION_LENGTH_MCE_STARTING_UP);
+
+    /* In sensor test mode, enable all known sensors */
+    if( mce_in_sensortest_mode() ) {
+        for( sensor_id_t id = 0; id < SFW_SENSOR_ID_COUNT; ++id )
+            sfw_service_set_sensor(sfw_service, id, true);
+    }
 
     return true;
 }

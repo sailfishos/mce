@@ -658,6 +658,7 @@ static struct
 	bool show_module_info;
 	bool systemd_notify;
 	bool valgrind_mode;
+	bool sensortest_mode;
 	int  auto_exit;
 } mce_args =
 {
@@ -668,12 +669,18 @@ static struct
 	.show_module_info = false,
 	.systemd_notify   = false,
 	.valgrind_mode    = false,
+	.sensortest_mode  = false,
 	.auto_exit        = -1,
 };
 
 bool mce_in_valgrind_mode(void)
 {
 	return mce_args.valgrind_mode;
+}
+
+bool mce_in_sensortest_mode(void)
+{
+	return mce_args.sensortest_mode;
 }
 
 static bool mce_do_help(const char *arg);
@@ -709,6 +716,12 @@ static bool mce_do_valgrind_mode(const char *arg)
 {
 	(void)arg;
 	mce_args.valgrind_mode = true;
+	return true;
+}
+static bool mce_do_sensortest_mode(const char *arg)
+{
+	(void)arg;
+	mce_args.sensortest_mode = true;
 	return true;
 }
 static bool mce_do_log_function(const char *arg)
@@ -877,6 +890,25 @@ static const mce_opt_t options[] =
 		.without_arg = mce_do_valgrind_mode,
 		.usage       =
 			"Enable run-under valgrind mode\n"
+	},
+	{
+		.name        = "sensortest-mode",
+		.without_arg = mce_do_sensortest_mode,
+		.usage       =
+			"Enable track-all-sensors mode\n"
+			"\n"
+			"Intents to provide a quick way to check whether\n"
+			"sensor adaptation is in a state where all sensors\n"
+			"that are supposedly supported actually report\n"
+			"changes via sensorfwd interfaces.\n"
+			"\n"
+			"This is mainly useful when porting to new devices.\n"
+			"\n"
+			"Suggested usage is to manually execute mce in a way\n"
+			"where it is otherwise quiet, but debug logging for\n"
+			"sensor related activity is enabled, for example:\n"
+			"\n"
+			"   mce --sensortest-mode -Tqqq -lmce-sensorfw.c:*\n"
 	},
 	// sentinel
 	{
