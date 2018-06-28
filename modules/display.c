@@ -1660,7 +1660,7 @@ EXIT:
 
 /** Handle display_state_next_pipe notifications
  *
- * This is where display state transition ends
+ * This is where display state transition begins
  *
  * @param data The display state stored in a pointer
  */
@@ -1679,7 +1679,18 @@ static void mdy_datapipe_display_state_next_cb(gconstpointer data)
 
     mdy_blanking_rethink_afterboot_delay();
 
-    mdy_dbus_send_display_status(0);
+    if( mdy_stm_display_state_needs_power(display_state_next) ) {
+        /* Powered on states: Whether to send a signal or not
+         * is decided at mdy_dbus_send_display_status(). In
+         * practice only LPM_ON state gets handled from here. */
+        mdy_dbus_send_display_status(0);
+    }
+    else {
+        /* When powering off: Display state change is signaled at
+         * suitable time during transition from mdy_stm_step(). */
+        // NOP
+    }
+
     mdy_blanking_pause_evaluate_allowed();
 
 EXIT:
@@ -8043,6 +8054,9 @@ static void mdy_stm_step(void)
     case STM_WAIT_FADE_TO_BLACK:
         if( mdy_brightness_fade_is_active() )
             break;
+        /* Broadcast display off state. Any changes that get triggered on
+         * UI side should be invisible as the backlight is already off. */
+        mdy_dbus_send_display_status(0);
         mdy_stm_trans(STM_RENDERER_INIT_STOP);
         break;
 
@@ -8931,63 +8945,68 @@ static gboolean mdy_dbus_send_display_status(DBusMessage *const method_call)
 {
     gboolean     status = FALSE;
     DBusMessage *msg    = NULL;
-    const gchar *state  = MCE_DISPLAY_OFF_STRING;
 
-    /* Evaluate display state name to send */
-    switch( display_state_next ) {
-    default:
-        break;
+    /* Signal broadcasting activity defines also what should
+     * be returned when query via dbus method call is made. */
 
-    case MCE_DISPLAY_DIM:
-        state = MCE_DISPLAY_DIM_STRING;
-        break;
-
-    case MCE_DISPLAY_ON:
-        state = MCE_DISPLAY_ON_STRING;
-        break;
-    }
-
+    static const char *prev = 0;
     if( !method_call ) {
-        /* Signal fully powered on states when the transition has
-         * finished, other states when transition starts.
-         *
-         * The intent is that ui sees display state change to off
-         * before setUpdatesEnabled(false) ipc is made and it stays
-         * off until reply to setUpdatesEnabled(true) is received.
-         */
+        /* Evaluate whether a signal can be send at this time. */
         switch( display_state_next ) {
         case MCE_DISPLAY_ON:
         case MCE_DISPLAY_DIM:
+            /* Fully powered on states can be signaled only after
+             * finishing the transition. */
             if( display_state_curr != display_state_next )
                 goto EXIT;
             break;
-
         default:
+            /* Other states *can* be signaled already during the
+             * transition. */
             break;
         }
 
-        if( !strcmp(mdy_dbus_last_display_state, state))
-            goto EXIT;
-        mdy_dbus_last_display_state = state;
-        mce_log(LL_NOTICE, "Sending display status signal: %s", state);
-    }
-    else
-        mce_log(LL_DEBUG, "Sending display status reply: %s", state);
+        /* Update what state name to expose on D-Bus. */
+        switch( display_state_next ) {
+        default:
+            prev = MCE_DISPLAY_OFF_STRING;
+            break;
 
-    /* If method_call is set, send a reply,
-     * otherwise, send a signal
-     */
-    if (method_call != NULL) {
-        msg = dbus_new_method_reply(method_call);
-    } else {
-        /* display_status_ind */
+        case MCE_DISPLAY_DIM:
+            prev = MCE_DISPLAY_DIM_STRING;
+            break;
+
+        case MCE_DISPLAY_ON:
+            prev = MCE_DISPLAY_ON_STRING;
+            break;
+        }
+
+        /* Avoid sending no-change signals */
+        if( !g_strcmp0(mdy_dbus_last_display_state, prev))
+            goto EXIT;
+        mdy_dbus_last_display_state = prev;
+    }
+
+    /* Previously sent / just updated broadcast value. Or safe
+     * fallback value in case something somehow managed to make
+     * a method call before initial display state broadcast. */
+
+    const char *curr = prev ?: MCE_DISPLAY_OFF_STRING;
+
+    /* Signal broadcast, or method call reply */
+    if( !method_call ) {
+        mce_log(LL_NOTICE, "Sending display status signal: %s", curr);
         msg = dbus_new_signal(MCE_SIGNAL_PATH, MCE_SIGNAL_IF,
                               MCE_DISPLAY_SIG);
+    }
+    else {
+        mce_log(LL_DEBUG, "Sending display status reply: %s", curr);
+        msg = dbus_new_method_reply(method_call);
     }
 
     /* Append the display status */
     if (dbus_message_append_args(msg,
-                                 DBUS_TYPE_STRING, &state,
+                                 DBUS_TYPE_STRING, &curr,
                                  DBUS_TYPE_INVALID) == FALSE) {
         mce_log(LL_ERR, "Failed to append %sargument to D-Bus message "
                 "for %s.%s",
