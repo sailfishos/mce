@@ -1,3 +1,9 @@
+mce (1.94.1) precise; urgency=low
+
+  * [display] Delay display off signal until backlight is off. Fixes JB#30476
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 29 Jun 2018 08:45:37 +0300
+
 mce (1.94.0) precise; urgency=low
 
   * [display] Do not jump over variable initialization
