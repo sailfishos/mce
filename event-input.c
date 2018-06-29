@@ -2028,7 +2028,7 @@ evin_iomon_touchscreen_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
         mce_log(LL_DEVEL, "[doubletap] emulated from touch input");
         ev->type  = EV_MSC;
         ev->code  = MSC_GESTURE;
-        ev->value = GESTURE_DOUBLETAP;
+        ev->value = GESTURE_DOUBLETAP | GESTURE_SYNTHESIZED;
     }
 #endif
 
