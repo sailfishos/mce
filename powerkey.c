@@ -187,7 +187,7 @@ static gchar   *pwrkey_mask_to_names   (uint32_t mask);
 static gint  pwrkey_gestures_enable_mode = MCE_DEFAULT_DOUBLETAP_MODE;
 static guint pwrkey_gestures_enable_mode_cb_id = 0;
 
-static bool  pwrkey_gestures_allowed(void);
+static bool  pwrkey_gestures_allowed(bool synthesized);
 
 /* ------------------------------------------------------------------------- *
  * ACTION_TRIGGERING
@@ -1104,18 +1104,24 @@ pwrkey_mask_to_names(uint32_t mask)
 /** Predicate for: touchscreen gesture actions are allowed
  */
 static bool
-pwrkey_gestures_allowed(void)
+pwrkey_gestures_allowed(bool synthesized)
 {
     bool allowed = false;
 
     /* Check enable setting */
     switch( pwrkey_gestures_enable_mode ) {
-    case DBLTAP_ENABLE_NEVER:
-        mce_log(LL_DEVEL, "[gesture] ignored due to setting=never");
-        goto EXIT;
-
     case DBLTAP_ENABLE_ALWAYS:
         break;
+
+    case DBLTAP_ENABLE_NEVER:
+        if( !synthesized ) {
+            mce_log(LL_DEVEL, "[gesture] ignored due to setting=never");
+            goto EXIT;
+        }
+        /* Synthesized events (e.g. double tap from lpm) are implicitly
+         * subjected to proximity rules.
+         *
+         * Fall through */
 
     default:
     case DBLTAP_ENABLE_NO_PROXIMITY:
@@ -1174,13 +1180,16 @@ EXIT:
 static void
 pwrkey_actions_do_gesture(size_t gesture)
 {
+    /* Check settings, proximity sensor state, etc */
+    if( !pwrkey_gestures_allowed(gesture & GESTURE_SYNTHESIZED) )
+        goto EXIT;
+
+    /* Remove modifier bits */
+    gesture &= ~GESTURE_SYNTHESIZED;
+
     /* Treat unconfigurable gestures as doubletaps */
     if( gesture >= POWERKEY_ACTIONS_GESTURE_COUNT )
         gesture = GESTURE_DOUBLETAP;
-
-    /* Check settings, proximity sensor state, etc */
-    if( !pwrkey_gestures_allowed() )
-        goto EXIT;
 
     pwrkey_mask_execute(pwrkey_actions_from_gesture[gesture].mask_single);
 
