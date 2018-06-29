@@ -1,3 +1,9 @@
+mce (1.94.2) precise; urgency=low
+
+  * [powerkey] Handle synthesized gestures despite hw settings. Fixes JB#42261
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 29 Jun 2018 13:16:06 +0300
+
 mce (1.94.1) precise; urgency=low
 
   * [display] Delay display off signal until backlight is off. Fixes JB#30476
