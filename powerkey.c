@@ -3097,6 +3097,17 @@ EXIT:
     return;
 }
 
+/** Handle NGFD play event requests
+ *
+ * @param data Requested event name (as void pointer)
+ */
+static void fba_datapipe_ngfd_event_request_cb(gconstpointer data)
+{
+    const char *event = data;
+    mce_log(LL_DEBUG, "ngfd event request = %s", event);
+    xngf_play_event(event);
+}
+
 /** Array of datapipe handlers */
 static datapipe_handler_t pwrkey_datapipe_handlers[] =
 {
@@ -3145,6 +3156,10 @@ static datapipe_handler_t pwrkey_datapipe_handlers[] =
     {
         .datapipe  = &enroll_in_progress_pipe,
         .output_cb = pwrkey_datapipe_enroll_in_progress_cb,
+    },
+    {
+        .datapipe  = &ngfd_event_request_pipe,
+        .output_cb = fba_datapipe_ngfd_event_request_cb,
     },
 
     // sentinel
