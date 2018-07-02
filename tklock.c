@@ -5388,6 +5388,18 @@ static bool tklock_ui_notify_must_be_delayed(void)
         delay = true;
     }
     else if( display_state_curr != display_state_next ) {
+        switch( display_state_curr ) {
+        case MCE_DISPLAY_LPM_ON:
+            /* Making transition from lpm state. In order not
+             * to confuse device lock ui, finish the display
+             * state transition before acting on tklock state.
+             */
+            delay = true;
+            break;
+        default:
+            break;
+        }
+
         switch( display_state_next ) {
         case MCE_DISPLAY_OFF:
         case MCE_DISPLAY_LPM_OFF:
