@@ -1529,6 +1529,16 @@ static void tklock_datapipe_submode_cb(gconstpointer data)
         }
     }
 
+    /* Synchronize tklock ipc state with submode changes.
+     *
+     * As this can cause synchronization attempt to the other
+     * direction, we must ensure that possibly conflicting rules
+     * do not induce indefinite state machine ringing. */
+    static int ringing_depth = 0;
+    if( ++ringing_depth <= 2 )
+        tklock_ui_set(tklock_datapipe_have_tklock_submode());
+    --ringing_depth;
+
 EXIT:
     return;
 }
