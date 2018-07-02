@@ -31,6 +31,17 @@
  * ========================================================================= */
 
 /* ------------------------------------------------------------------------- *
+ * LED_CONTROL
+ * ------------------------------------------------------------------------- */
+
+static void     fingerprint_scanning_led_activate  (bool activate);
+
+static void     fingerprint_acquired_led_activate  (bool enable);
+static gboolean fingerprint_acquired_led_timer_cb  (gpointer aptr);
+static void     fingerprint_acquired_led_trigger   (void);
+static void     fingerprint_acquired_led_cancel    (void);
+
+/* ------------------------------------------------------------------------- *
  * STATE_MANAGEMENT
  * ------------------------------------------------------------------------- */
 
@@ -104,6 +115,81 @@ static fpstate_t fpstate = FPSTATE_UNSET;
 static bool enroll_in_progress = false;
 
 /* ========================================================================= *
+ * LED_CONTROL
+ * ========================================================================= */
+
+/** Control led pattern for indicating fingerprint scanner status
+ *
+ * @param activate true to activate led, false to deactivate
+ */
+static void
+fingerprint_scanning_led_activate(bool activate)
+{
+    static bool activated = false;
+    if( activated != activate ) {
+        datapipe_exec_output_triggers((activated = activate) ?
+                                      &led_pattern_activate_pipe :
+                                      &led_pattern_deactivate_pipe,
+                                      MCE_LED_PATTERN_SCANNING_FINGERPRINT,
+                                      USE_INDATA);
+    }
+}
+
+/** Control led pattern for indicating fingerprint acquisition events
+ *
+ * @param activate true to activate led, false to deactivate
+ */
+static void
+fingerprint_acquired_led_activate(bool activate)
+{
+    static bool activated = false;
+    if( activated != activate ) {
+        datapipe_exec_output_triggers((activated = activate) ?
+                                      &led_pattern_activate_pipe :
+                                      &led_pattern_deactivate_pipe,
+                                      MCE_LED_PATTERN_FINGERPRINT_ACQUIRED,
+                                      USE_INDATA);
+    }
+}
+
+/** Timer id for: Stop fingerprint acquisition event led */
+static guint fingerprint_acquired_led_timer_id = 0;
+
+/** Timer callback for: Stop fingerprint acquisition event led */
+static gboolean
+fingerprint_acquired_led_timer_cb(gpointer aptr)
+{
+    (void)aptr;
+    fingerprint_acquired_led_timer_id = 0;
+    fingerprint_acquired_led_activate(false);
+    return FALSE;
+}
+
+/** Briefly activate fingerprint acquisition event led
+ */
+static void
+fingerprint_acquired_led_trigger(void)
+{
+    if( fingerprint_acquired_led_timer_id )
+        g_source_remove(fingerprint_acquired_led_timer_id);
+    fingerprint_acquired_led_timer_id =
+        g_timeout_add(200, fingerprint_acquired_led_timer_cb, 0);
+    fingerprint_acquired_led_activate(true);
+}
+
+/** Dctivate fingerprint acquisition event led
+ */
+static void
+fingerprint_acquired_led_cancel(void)
+{
+    if( fingerprint_acquired_led_timer_id ) {
+        g_source_remove(fingerprint_acquired_led_timer_id),
+            fingerprint_acquired_led_timer_id = 0;
+    }
+    fingerprint_acquired_led_activate(false);
+}
+
+/* ========================================================================= *
  * STATE_MANAGEMENT
  * ========================================================================= */
 
@@ -126,6 +212,17 @@ fingerprint_update_fpstate(fpstate_t state)
 
     datapipe_exec_full(&fpstate_pipe, GINT_TO_POINTER(fpstate),
                        USE_INDATA, CACHE_INDATA);
+
+    switch( fpstate ) {
+    case FPSTATE_ENROLLING:
+    case FPSTATE_IDENTIFYING:
+    case FPSTATE_VERIFYING:
+        fingerprint_scanning_led_activate(true);
+        break;
+    default:
+        fingerprint_scanning_led_activate(false);
+        break;
+    }
 
     fingerprint_update_enroll_in_progress();
 
@@ -467,6 +564,8 @@ fingerprint_dbus_fpacquired_info_cb(DBusMessage *const msg)
         break;
     }
 
+    fingerprint_acquired_led_trigger();
+
 EXIT:
     dbus_error_free(&err);
 
@@ -624,5 +723,7 @@ g_module_unload(GModule *module)
     fingerprint_datapipe_quit();
     fingerprint_dbus_fpstate_query_cancel();
 
+    fingerprint_scanning_led_activate(false);
+    fingerprint_acquired_led_cancel();
     return;
 }

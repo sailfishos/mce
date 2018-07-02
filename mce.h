@@ -111,6 +111,12 @@
 /** LED pattern used for communication events when battery is full */
 #define MCE_LED_PATTERN_COMMUNICATION_EVENT_BATTERY_FULL	"PatternCommunicationAndBatteryFull"
 
+/** LED pattern used when fingerprint scanner is active */
+#define MCE_LED_PATTERN_SCANNING_FINGERPRINT	"PatternScanningFingerprint"
+
+/** LED pattern used when fingerprint acquisition events are seen */
+#define MCE_LED_PATTERN_FINGERPRINT_ACQUIRED	"PatternFingerprintAcquired"
+
 /** Persistent lock file for backups */
 #define MCE_SETTINGS_LOCK_FILE_PATH		G_STRINGIFY(MCE_RUN_DIR) "/restored"
 
