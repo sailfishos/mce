@@ -161,6 +161,7 @@ static void  pwrkey_action_dbus7    (void);
 static void  pwrkey_action_dbus8    (void);
 static void  pwrkey_action_dbus9    (void);
 static void  pwrkey_action_dbus10   (void);
+static void  pwrkey_action_nop      (void);
 
 /* ------------------------------------------------------------------------- *
  * ACTION_SETS
@@ -934,6 +935,12 @@ pwrkey_action_dbus10(void)
     pwrkey_dbus_action_execute(9);
 }
 
+static void
+pwrkey_action_nop(void)
+{
+    /* Do nothing */
+}
+
 /* ========================================================================= *
  * ACTION_SETS
  * ========================================================================= */
@@ -1019,6 +1026,12 @@ static const pwrkey_bitconf_t pwrkey_action_lut[] =
     {
         .name = "dbus10",
         .func = pwrkey_action_dbus10,
+    },
+
+    // Low priority placeholder/dummy action
+    {
+        .name = "nop",
+        .func = pwrkey_action_nop,
     },
 };
 

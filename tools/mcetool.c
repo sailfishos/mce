@@ -4158,6 +4158,7 @@ static bool xmce_is_powerkey_action(const char *name)
                 "dbus8",
                 "dbus9",
                 "dbus10",
+                "nop",
         };
 
         for( size_t i = 0; i < G_N_ELEMENTS(lut); ++i ) {
@@ -6119,6 +6120,10 @@ static const mce_opt_t options[] =
                         "  dbus3    - send dbus signal or make method call\n"
                         "   ...\n"
                         "  dbus10   - send dbus signal or make method call\n"
+                        "  nop      - dummy operation, for differentiating otherwise\n"
+                        "             identical single/double press actions (mce does not\n"
+                        "             wait for double presses double press actions are\n"
+                        "             the same as for a single press)\n"
                         "\n"
                         "Comma separated list of actions can be used.\n"
         },
