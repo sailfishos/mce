@@ -1746,10 +1746,11 @@ fba_status_rethink(void)
     enable_old = enable_new;
 
     if( enable_new ) {
-        /* Enable change notifications */
-        mce_sensorfw_als_set_notify(fba_status_sensor_value_change_cb);
-
+        /* Enable sensor before attaching notification callback.
+         * So that the last seen light sensor reading is made active
+         * again and reported instead of the fallback/default value. */
         mce_sensorfw_als_enable();
+        mce_sensorfw_als_set_notify(fba_status_sensor_value_change_cb);
 
         /* The sensor has been off for some time, so the
          * history needs to be forgotten when we get fresh
