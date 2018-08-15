@@ -1033,19 +1033,19 @@ int main(int argc, char **argv)
 
 	/* Initialise subsystems */
 
-	/* Open fbdev as early as possible */
-	mce_fbdev_init();
-
-	/* Start worker thread */
-	if( !mce_worker_init() )
-		goto EXIT;
-
 	/* Get configuration options */
 	if( !mce_conf_init() ) {
 		mce_log(LL_CRIT,
 			"Failed to initialise configuration options");
 		exit(EXIT_FAILURE);
 	}
+
+	/* Open fbdev as early as possible */
+	mce_fbdev_init();
+
+	/* Start worker thread */
+	if( !mce_worker_init() )
+		goto EXIT;
 
 	/* Initialise D-Bus */
 	if( !mce_dbus_init(mce_args.systembus) ) {
