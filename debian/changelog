@@ -1,3 +1,10 @@
+mce (1.94.3) precise; urgency=low
+
+  * [mce] Parse static config before probing for fb device. Fixes JB#42607
+  * [als] Enable sensor before requesting notifications. Fixes JB#42677
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 15 Aug 2018 14:28:03 +0300
+
 mce (1.94.2) precise; urgency=low
 
   * [powerkey] Handle synthesized gestures despite hw settings. Fixes JB#42261
