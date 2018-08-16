@@ -161,6 +161,7 @@ static void  pwrkey_action_dbus7    (void);
 static void  pwrkey_action_dbus8    (void);
 static void  pwrkey_action_dbus9    (void);
 static void  pwrkey_action_dbus10   (void);
+static void  pwrkey_action_nop      (void);
 
 /* ------------------------------------------------------------------------- *
  * ACTION_SETS
@@ -934,6 +935,12 @@ pwrkey_action_dbus10(void)
     pwrkey_dbus_action_execute(9);
 }
 
+static void
+pwrkey_action_nop(void)
+{
+    /* Do nothing */
+}
+
 /* ========================================================================= *
  * ACTION_SETS
  * ========================================================================= */
@@ -1019,6 +1026,12 @@ static const pwrkey_bitconf_t pwrkey_action_lut[] =
     {
         .name = "dbus10",
         .func = pwrkey_action_dbus10,
+    },
+
+    // Low priority placeholder/dummy action
+    {
+        .name = "nop",
+        .func = pwrkey_action_nop,
     },
 };
 
@@ -3084,6 +3097,17 @@ EXIT:
     return;
 }
 
+/** Handle NGFD play event requests
+ *
+ * @param data Requested event name (as void pointer)
+ */
+static void fba_datapipe_ngfd_event_request_cb(gconstpointer data)
+{
+    const char *event = data;
+    mce_log(LL_DEBUG, "ngfd event request = %s", event);
+    xngf_play_event(event);
+}
+
 /** Array of datapipe handlers */
 static datapipe_handler_t pwrkey_datapipe_handlers[] =
 {
@@ -3132,6 +3156,10 @@ static datapipe_handler_t pwrkey_datapipe_handlers[] =
     {
         .datapipe  = &enroll_in_progress_pipe,
         .output_cb = pwrkey_datapipe_enroll_in_progress_cb,
+    },
+    {
+        .datapipe  = &ngfd_event_request_pipe,
+        .output_cb = fba_datapipe_ngfd_event_request_cb,
     },
 
     // sentinel

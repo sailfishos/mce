@@ -604,6 +604,12 @@ static int  tklock_ui_notified = -1; // does not match bool values
 /** System state; is undefined at bootup, can't assume anything */
 static system_state_t system_state = MCE_SYSTEM_STATE_UNDEF;
 
+/** Display state; undefined initially, can't assume anything */
+static display_state_t display_state_curr = MCE_DISPLAY_UNDEF;
+
+/** Next Display state; undefined initially, can't assume anything */
+static display_state_t display_state_next = MCE_DISPLAY_UNDEF;
+
 /** Change notifications for system_state
  */
 static void tklock_datapipe_system_state_cb(gconstpointer data)
@@ -690,8 +696,28 @@ static void tklock_datapipe_devicelock_state_cb(gconstpointer data)
         break;
     }
 
-    if( devicelock_state == DEVICELOCK_STATE_LOCKED )
+    switch( devicelock_state ) {
+    case DEVICELOCK_STATE_LOCKED:
         tklock_autolock_on_devlock_trigger();
+        break;
+    case DEVICELOCK_STATE_UNLOCKED:
+        if( display_state_next == MCE_DISPLAY_LPM_ON ) {
+            /* Devicelock ui keeps fingerprint scanner active in LPM state
+             * and unlocks device on identify, but omits unlock feedback
+             * and leaves the display state as-is.
+             *
+             * As a workaround, execute unlock feedback from mce and
+             * exit from LPM by removing tklock submode.
+             */
+            datapipe_exec_output_triggers(&ngfd_event_request_pipe,
+                                          "unlock_device",
+                                          USE_INDATA);
+            mce_rem_submode_int32(MCE_SUBMODE_TKLOCK);
+        }
+        break;
+    default:
+        break;
+    }
 
 EXIT:
     return;
@@ -808,12 +834,6 @@ static void tklock_datapipe_shutting_down_cb(gconstpointer data)
 EXIT:
     return;
 }
-
-/** Display state; undefined initially, can't assume anything */
-static display_state_t display_state_curr = MCE_DISPLAY_UNDEF;
-
-/** Next Display state; undefined initially, can't assume anything */
-static display_state_t display_state_next = MCE_DISPLAY_UNDEF;
 
 /** Autorelock trigger: assume disabled */
 static autorelock_t autorelock_trigger = AUTORELOCK_NO_TRIGGERS;
@@ -1528,6 +1548,16 @@ static void tklock_datapipe_submode_cb(gconstpointer data)
             break;
         }
     }
+
+    /* Synchronize tklock ipc state with submode changes.
+     *
+     * As this can cause synchronization attempt to the other
+     * direction, we must ensure that possibly conflicting rules
+     * do not induce indefinite state machine ringing. */
+    static int ringing_depth = 0;
+    if( ++ringing_depth <= 2 )
+        tklock_ui_set(tklock_datapipe_have_tklock_submode());
+    --ringing_depth;
 
 EXIT:
     return;
@@ -5388,6 +5418,18 @@ static bool tklock_ui_notify_must_be_delayed(void)
         delay = true;
     }
     else if( display_state_curr != display_state_next ) {
+        switch( display_state_curr ) {
+        case MCE_DISPLAY_LPM_ON:
+            /* Making transition from lpm state. In order not
+             * to confuse device lock ui, finish the display
+             * state transition before acting on tklock state.
+             */
+            delay = true;
+            break;
+        default:
+            break;
+        }
+
         switch( display_state_next ) {
         case MCE_DISPLAY_OFF:
         case MCE_DISPLAY_LPM_OFF:

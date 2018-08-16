@@ -205,6 +205,9 @@ datapipe_struct usbmoded_service_state_pipe;
 /** ngfd availability; read only */
 datapipe_struct ngfd_service_state_pipe;
 
+/** Request ngfd event playing */
+datapipe_struct ngfd_event_request_pipe;
+
 /** dsme availability; read only */
 datapipe_struct dsme_service_state_pipe;
 
@@ -855,6 +858,8 @@ void mce_datapipe_init(void)
 		      0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
 	datapipe_init(&ngfd_service_state_pipe, READ_ONLY, DONT_FREE_CACHE,
 		      0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
+	datapipe_init(&ngfd_event_request_pipe, READ_ONLY, DONT_FREE_CACHE,
+		      0, NULL);
 
 	datapipe_init(&dsme_service_state_pipe, READ_ONLY, DONT_FREE_CACHE,
 		      0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
@@ -951,6 +956,7 @@ void mce_datapipe_quit(void)
 	datapipe_free(&devicelock_service_state_pipe);
 	datapipe_free(&usbmoded_service_state_pipe);
 	datapipe_free(&ngfd_service_state_pipe);
+	datapipe_free(&ngfd_event_request_pipe);
 	datapipe_free(&dsme_service_state_pipe);
 	datapipe_free(&bluez_service_state_pipe);
 	datapipe_free(&packagekit_locked_pipe);

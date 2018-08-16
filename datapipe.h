@@ -143,6 +143,7 @@ extern datapipe_struct lipstick_service_state_pipe;
 extern datapipe_struct devicelock_service_state_pipe;
 extern datapipe_struct usbmoded_service_state_pipe;
 extern datapipe_struct ngfd_service_state_pipe;
+extern datapipe_struct ngfd_event_request_pipe;
 extern datapipe_struct dsme_service_state_pipe;
 extern datapipe_struct bluez_service_state_pipe;
 extern datapipe_struct packagekit_locked_pipe;
