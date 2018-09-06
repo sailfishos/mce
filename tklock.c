@@ -725,18 +725,46 @@ static void tklock_datapipe_devicelock_state_cb(gconstpointer data)
         tklock_autolock_on_devlock_trigger();
         break;
     case DEVICELOCK_STATE_UNLOCKED:
-        if( display_state_next == MCE_DISPLAY_LPM_ON ) {
+        switch( display_state_next ) {
+        case MCE_DISPLAY_OFF:
+        case MCE_DISPLAY_LPM_OFF:
+        case MCE_DISPLAY_LPM_ON:
+            /* Transitions from undefined -> unlocked state occur
+             * during device bootup / mce restart and should not
+             * cause any actions.
+             */
+            if( prev == DEVICELOCK_STATE_UNDEFINED )
+                break;
+
             /* Devicelock ui keeps fingerprint scanner active in LPM state
              * and unlocks device on identify, but omits unlock feedback
              * and leaves the display state as-is.
              *
-             * As a workaround, execute unlock feedback from mce and
-             * exit from LPM by removing tklock submode.
+             * As a workaround, execute unlock feedback from mce. Then
+             * exit from LPM by requesting display power up and removal
+             * of tklock submode.
+             *
+             * While this is mostly relevant to LPM, apply the same logic
+             * also when in actually powered off display states to guard
+             * against timing glitches (getting fingerprint identification
+             * when already decided to exit LPM, etc) and changes in device
+             * lock ui side logic.
              */
+            mce_log(LL_WARN, "device got unlocked while display is off; "
+                    "assume fingerprint authentication occurred");
             datapipe_exec_output_triggers(&ngfd_event_request_pipe,
                                           "unlock_device",
                                           USE_INDATA);
-            mce_rem_submode_int32(MCE_SUBMODE_TKLOCK);
+            if( proximity_sensor_actual != COVER_OPEN ) {
+                mce_log(LL_WARN, "unblank skipped due to proximity sensor");
+                break;
+
+            }
+            mce_datapipe_request_display_state(MCE_DISPLAY_ON);
+            mce_datapipe_request_tklock(TKLOCK_REQUEST_OFF);
+            break;
+        default:
+            break;
         }
         break;
     default:
