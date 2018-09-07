@@ -610,6 +610,30 @@ static display_state_t display_state_curr = MCE_DISPLAY_UNDEF;
 /** Next Display state; undefined initially, can't assume anything */
 static display_state_t display_state_next = MCE_DISPLAY_UNDEF;
 
+/** Call state; assume no active calls */
+static call_state_t call_state = CALL_STATE_NONE;
+
+/** Actual proximity state; assume not covered */
+static cover_state_t proximity_sensor_actual = COVER_OPEN;
+
+/** Effective proximity state; assume not covered */
+static cover_state_t proximity_sensor_effective = COVER_OPEN;
+
+/** Lid cover sensor state; assume unkown
+ *
+ * When in covered state, it is assumed that it is not physically
+ * possible to see/interact with the display and thus it should
+ * stay powered off.
+ *
+ * Originally was used to track Nokia N770 slidable cover. Now
+ * it is used also for things like the hammerhead magnetic lid
+ * sensor.
+ */
+static cover_state_t lid_sensor_actual = COVER_UNDEF;
+
+/** Lid cover policy state; assume unknown */
+static cover_state_t lid_sensor_filtered = COVER_UNDEF;
+
 /** Change notifications for system_state
  */
 static void tklock_datapipe_system_state_cb(gconstpointer data)
@@ -918,30 +942,6 @@ EXIT:
     return;
 
 }
-
-/** Call state; assume no active calls */
-static call_state_t call_state = CALL_STATE_NONE;
-
-/** Actual proximity state; assume not covered */
-static cover_state_t proximity_sensor_actual = COVER_OPEN;
-
-/** Effective proximity state; assume not covered */
-static cover_state_t proximity_sensor_effective = COVER_OPEN;
-
-/** Lid cover sensor state; assume unkown
- *
- * When in covered state, it is assumed that it is not physically
- * possible to see/interact with the display and thus it should
- * stay powered off.
- *
- * Originally was used to track Nokia N770 slidable cover. Now
- * it is used also for things like the hammerhead magnetic lid
- * sensor.
- */
-static cover_state_t lid_sensor_actual = COVER_UNDEF;
-
-/** Lid cover policy state; assume unknown */
-static cover_state_t lid_sensor_filtered = COVER_UNDEF;
 
 /** Timer id for delayed proximity uncovering */
 static guint tklock_datapipe_proximity_uncover_id = 0;
