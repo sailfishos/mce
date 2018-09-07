@@ -22,24 +22,24 @@
 #define _CAMERA_H_
 
 /** Path to the SysFS interface for the camera active state */
-#define CAMERA_ACTIVE_STATE_PATH			"/sys/devices/platform/omap24xxcam/streaming"
+#define CAMERA_ACTIVE_STATE_PATH                        "/sys/devices/platform/omap24xxcam/streaming"
 
 /** Value for the camera active state */
-#define MCE_CAMERA_ACTIVE				"active"
+#define MCE_CAMERA_ACTIVE                               "active"
 
 /** Value for the camera inactive state */
-#define MCE_CAMERA_INACTIVE				"inactive"
+#define MCE_CAMERA_INACTIVE                             "inactive"
 
 /** Path to the SysFS interface for the camera pop-out state */
-#define CAMERA_POPOUT_STATE_PATH			"/sys/devices/platform/gpio-switch/cam_act/state"
+#define CAMERA_POPOUT_STATE_PATH                        "/sys/devices/platform/gpio-switch/cam_act/state"
 
 /** Value for the camera in popped out state */
-#define MCE_CAMERA_POPPED_OUT				"active"
+#define MCE_CAMERA_POPPED_OUT                           "active"
 
 /** Value for the camera in popped in state */
-#define MCE_CAMERA_POPPED_IN				"inactive"
+#define MCE_CAMERA_POPPED_IN                            "inactive"
 
 /** Default fallback setting for the touchscreen/keypad autolock */
-#define DEFAULT_CAMERA_POPOUT_UNLOCK			TRUE		/* FALSE / TRUE */
+#define DEFAULT_CAMERA_POPOUT_UNLOCK                    TRUE            /* FALSE / TRUE */
 
 #endif /* _CAMERA_H_ */

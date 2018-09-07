@@ -5225,7 +5225,7 @@ static char *elapsed_time_repr(char *buff, size_t size, int64_t t)
         int m  = (int)t %   60; t /=   60;
         int h  = (int)t %   24; t /=   24;
 
-        if( t )	snprintf(days, sizeof days, "%"PRIi64"d ", t);
+        if( t ) snprintf(days, sizeof days, "%"PRIi64"d ", t);
 
         snprintf(buff, size, "%s%s%02d:%02d:%02d.%03d",
                  sgn, days, h, m, s, ms);

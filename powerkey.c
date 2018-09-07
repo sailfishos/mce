@@ -2095,7 +2095,7 @@ static gboolean pwrkey_dbus_trigger_event_cb(DBusMessage *const req)
         break;
 
     default:
-        mce_log(LL_ERR,	"Argument passed to %s.%s has incorrect type",
+        mce_log(LL_ERR, "Argument passed to %s.%s has incorrect type",
                 MCE_REQUEST_IF, MCE_TRIGGER_POWERKEY_EVENT_REQ);
         goto EXIT;
     }

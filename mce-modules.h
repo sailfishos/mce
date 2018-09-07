@@ -24,16 +24,16 @@
 #include <glib.h>
 
 /** Name of Modules configuration group */
-#define MCE_CONF_MODULES_GROUP		"Modules"
+#define MCE_CONF_MODULES_GROUP          "Modules"
 
 /** Name of configuration key for module path */
-#define MCE_CONF_MODULES_PATH		"ModulePath"
+#define MCE_CONF_MODULES_PATH           "ModulePath"
 
 /** Name of configuration key for modules to load */
-#define MCE_CONF_MODULES_MODULES	"Modules"
+#define MCE_CONF_MODULES_MODULES        "Modules"
 
 /** Default value for module path */
-#define DEFAULT_MCE_MODULE_PATH		"/usr/lib/mce/modules"
+#define DEFAULT_MCE_MODULE_PATH         "/usr/lib/mce/modules"
 
 void mce_modules_dump_info(void);
 gboolean mce_modules_init(void);
