@@ -24,6 +24,8 @@
 #include "../mce-log.h"
 #include "../mce-dbus.h"
 
+#include <linux/input.h>
+
 #include <gmodule.h>
 
 /* ========================================================================= *
@@ -221,8 +223,8 @@ static void          fpoperation_set_fpstate        (fpoperation_t *self, fpstat
 static void          fpoperation_cancel_timout      (fpoperation_t *self);
 static bool          fpoperation_detach_timout      (fpoperation_t *self);
 static void          fpoperation_attach_timeout     (fpoperation_t *self, int delay, GSourceFunc cb);
+static gboolean      fpoperation_trigger_fpwakeup_cb(gpointer aptr);
 static gboolean      fpoperation_throttling_ended_cb(gpointer aptr);
-static void          fpoperation_start_throttling   (fpoperation_t *self, int delay);
 static void          fpoperation_cancel_pending_call(fpoperation_t *self);
 static bool          fpoperation_detach_pending_call(fpoperation_t *self, DBusPendingCall *pc);
 static void          fpoperation_attach_pending_call(fpoperation_t *self, DBusPendingCall *pc);
@@ -284,6 +286,7 @@ static void  fingerprint_datapipe_display_state_next_cb      (gconstpointer data
 static void  fingerprint_datapipe_interaction_expected_cb    (gconstpointer data);
 static void  fingerprint_datapipe_topmost_window_pid_cb      (gconstpointer data);
 static void  fingerprint_datapipe_proximity_sensor_actual_cb (gconstpointer data);
+static void  fingerprint_datapipe_keypress_event_cb          (gconstpointer const data);
 static void  fingerprint_datapipe_init                       (void);
 static void  fingerprint_datapipe_quit                       (void);
 
@@ -328,7 +331,8 @@ static void      fpwakeup_cancel_rethink    (void);
 static void      fpwakeup_propagate_fpstate (void);
 static void      fpwakeup_propagate_fpresult(fpresult_t event);
 static void      fpwakeup_propagate_eval    (void);
-static void      fpwakeup_execute           (void);
+static bool      fpwakeup_set_primed        (bool prime);
+static void      fpwakeup_trigger           (void);
 
 /* ------------------------------------------------------------------------- *
  * G_MODULE
@@ -364,6 +368,9 @@ static int topmost_window_pid = -1;
 
 /** Cached proximity sensor state */
 static cover_state_t proximity_sensor_actual = COVER_UNDEF;
+
+/** Cached power key pressed down state */
+static bool powerkey_pressed = false;
 
 /* ========================================================================= *
  * MANAGED_STATES
@@ -634,6 +641,23 @@ fpoperation_attach_timeout(fpoperation_t *self, int delay, GSourceFunc cb)
     self->fpo_timer = g_timeout_add(delay, cb, self);
 }
 
+/** Timer callback for triggering fpwakeup
+ */
+static gboolean
+fpoperation_trigger_fpwakeup_cb(gpointer aptr)
+{
+    fpoperation_t *self = aptr;
+
+    if( !fpoperation_detach_timout(self) )
+        goto EXIT;
+
+    fpwakeup_trigger();
+    fpoperation_trans(self, FPOPSTATE_THROTTLING);
+
+EXIT:
+    return G_SOURCE_REMOVE;
+}
+
 /** Timer callback for exiting FPOPSTATE_THROTTLING state
  */
 static gboolean
@@ -648,14 +672,6 @@ fpoperation_throttling_ended_cb(gpointer aptr)
 
 EXIT:
     return G_SOURCE_REMOVE;
-}
-
-/** Start timer for exiting FPOPSTATE_THROTTLING state
- */
-static void
-fpoperation_start_throttling(fpoperation_t *self, int delay)
-{
-    fpoperation_attach_timeout(self, delay, fpoperation_throttling_ended_cb);
 }
 
 /** Cancel pending async dbus method call
@@ -848,7 +864,12 @@ fpidentify_enter_cb(fpoperation_t *self)
         fpoperation_set_fpstate(self, FPSTATE_IDENTIFYING);
         break;
     case FPOPSTATE_SUCCESS:
-        fpwakeup_execute();
+        /* We have identified fingerprint. Delay execution of fp wakeup
+         * briefly to see if some higher priority event such as power key
+         * press happens in close proximity, */
+        if( fpwakeup_set_primed(true) )
+            mce_log(LL_DEBUG, "fp wakeup primed");
+        fpoperation_attach_timeout(self, 100, fpoperation_trigger_fpwakeup_cb);
         break;
     case FPOPSTATE_FAILURE:
         break;
@@ -861,7 +882,7 @@ fpidentify_enter_cb(fpoperation_t *self)
     case FPOPSTATE_ABORTED:
         break;
     case FPOPSTATE_THROTTLING:
-        fpoperation_start_throttling(self, 250);
+        fpoperation_attach_timeout(self, 250, fpoperation_throttling_ended_cb);
         break;
     default:
         break;
@@ -944,6 +965,7 @@ fpidentify_eval_cb(fpoperation_t *self)
         }
         break;
     case FPOPSTATE_SUCCESS:
+        break;
     case FPOPSTATE_FAILURE:
     case FPOPSTATE_ABORTED:
         fpoperation_trans(self, FPOPSTATE_THROTTLING);
@@ -1534,9 +1556,60 @@ EXIT:
     return;
 }
 
+/** Datapipe trigger for power key events
+ *
+ * @param data A pointer to the input_event struct
+ */
+static void
+fingerprint_datapipe_keypress_event_cb(gconstpointer const data)
+{
+    const struct input_event * const *evp;
+    const struct input_event *ev;
+
+    if( !(evp = data) )
+        goto EXIT;
+
+    if( !(ev = *evp) )
+        goto EXIT;
+
+    /* For example in Sony Xperia X fingerprint scanner is located
+     * on the power key. This creates interesting situations as
+     * we can also get fingerprint identification while user intents
+     * to just press the power key...
+     */
+    if( ev->type == EV_KEY && ev->code == KEY_POWER ) {
+        /* Unprime on power key event of any kind. This effectively
+         * cancels fingerprint wakeup that has been detected just
+         * before power key press / release.
+         */
+        if( fpwakeup_set_primed(false) )
+            mce_log(LL_WARN, "powerkey event; fp wakeup unprimed");
+
+        /* Denying fpwakeups via policy when power key is pressed
+         * down should inhibit fingerprint wakeups in those cases
+         * where we see the powerkey press before getting fingerprint
+         * identified.
+         */
+        bool pressed = (ev->value != 0);
+        if( powerkey_pressed != pressed ) {
+            mce_log(LL_DEBUG, "powerkey_pressed: %d -> %d",
+                    powerkey_pressed, pressed);
+            powerkey_pressed = pressed;
+            fpwakeup_schedule_rethink();
+        }
+    }
+EXIT:
+    return;
+}
+
 /** Array of datapipe handlers */
 static datapipe_handler_t fingerprint_datapipe_handlers[] =
 {
+    // input triggers
+    {
+        .datapipe = &keypress_event_pipe,
+        .input_cb = fingerprint_datapipe_keypress_event_cb,
+    },
     // output triggers
     {
         .datapipe  = &fpd_service_state_pipe,
@@ -2215,6 +2288,10 @@ fpwakeup_evaluate_allowed(void)
     if( proximity_sensor_actual != COVER_OPEN )
         goto EXIT;
 
+    /* Power key must not be pressed down */
+    if( powerkey_pressed )
+        goto EXIT;
+
     switch( display_state_next ) {
     case MCE_DISPLAY_OFF:
     case MCE_DISPLAY_LPM_OFF:
@@ -2357,12 +2434,31 @@ fpwakeup_propagate_eval(void)
         fpoperation_eval(&fpoperation_lut[i]);
 }
 
+static bool fpwakeup_primed = false;
+
+static bool
+fpwakeup_set_primed(bool prime)
+{
+    bool changed = false;
+    if( fpwakeup_primed != prime ) {
+        fpwakeup_primed = prime;
+        changed = true;
+    }
+    return changed;
+}
+
 /** Execute display wakeup
  */
 static void
-fpwakeup_execute(void)
+fpwakeup_trigger(void)
 {
-    if( !fpwakeup_is_allowed() ) {
+    if( !fpwakeup_set_primed(false) ) {
+        /* Other overlapping inputs, such as power key press,
+         * have taken priority over fingerprint wakeup.
+         */
+        mce_log(LL_WARN, "fingerprint wakeup; explicitly ignored");
+    }
+    else if( !fpwakeup_is_allowed() ) {
         /* Policy state changed somewhere in between requesting
          * fingerprint identification and getting the result.
          */
