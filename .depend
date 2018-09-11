@@ -299,6 +299,7 @@ mce-lib.o:\
 	datapipe.h\
 	mce-lib.h\
 	mce-log.h\
+	mce-wakelock.h\
 	mce.h\
 
 mce-lib.pic.o:\
@@ -306,6 +307,7 @@ mce-lib.pic.o:\
 	datapipe.h\
 	mce-lib.h\
 	mce-log.h\
+	mce-wakelock.h\
 	mce.h\
 
 mce-log.o:\

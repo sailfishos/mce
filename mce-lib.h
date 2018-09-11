@@ -61,4 +61,11 @@ int64_t mce_lib_get_boot_tick(void);
 int64_t mce_lib_get_mono_tick(void);
 int64_t mce_lib_get_real_tick(void);
 
+guint mce_wakelocked_timeout_add_full(gint priority, guint interval,
+				      GSourceFunc function,
+				      gpointer data, GDestroyNotify notify);
+guint mce_wakelocked_timeout_add(guint interval, GSourceFunc function,
+				 gpointer data);
+guint mce_wakelocked_idle_add(GSourceFunc function, gpointer data);
+
 #endif /* _MCE_LIB_H_ */
