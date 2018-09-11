@@ -23,6 +23,7 @@
 #include "../mce.h"
 #include "../mce-log.h"
 #include "../mce-dbus.h"
+#include "../mce-setting.h"
 
 #include <linux/input.h>
 
@@ -291,6 +292,14 @@ static void  fingerprint_datapipe_init                       (void);
 static void  fingerprint_datapipe_quit                       (void);
 
 /* ------------------------------------------------------------------------- *
+ * FINGERPRINT_SETTING
+ * ------------------------------------------------------------------------- */
+
+static void  fingerprint_setting_cb  (GConfClient *const gcc, const guint id, GConfEntry *const entry, gpointer const data);
+static void  fingerprint_setting_init(void);
+static void  fingerprint_setting_quit(void);
+
+/* ------------------------------------------------------------------------- *
  * FINGERPRINT_DBUS
  * ------------------------------------------------------------------------- */
 
@@ -371,6 +380,23 @@ static cover_state_t proximity_sensor_actual = COVER_UNDEF;
 
 /** Cached power key pressed down state */
 static bool powerkey_pressed = false;
+
+/* ========================================================================= *
+ * FINGERPRINT_SETTINGS
+ * ========================================================================= */
+
+/** Fingerprint wakeup enable mode */
+static gint  fingerprint_wakeup_mode = MCE_DEFAULT_FPWAKEUP_MODE;
+static guint fingerprint_wakeup_mode_setting_id = 0;
+
+static gint  fingerprint_allow_delay = MCE_DEFAULT_FPWAKEUP_ALLOW_DELAY;
+static guint fingerprint_allow_delay_setting_id = 0;
+
+static gint  fingerprint_trigger_delay = MCE_DEFAULT_FPWAKEUP_TRIGGER_DELAY;
+static guint fingerprint_trigger_delay_setting_id = 0;
+
+static gint  fingerprint_throttle_delay = MCE_DEFAULT_FPWAKEUP_THROTTLE_DELAY;
+static guint fingerprint_throttle_delay_setting_id = 0;
 
 /* ========================================================================= *
  * MANAGED_STATES
@@ -869,7 +895,8 @@ fpidentify_enter_cb(fpoperation_t *self)
          * press happens in close proximity, */
         if( fpwakeup_set_primed(true) )
             mce_log(LL_DEBUG, "fp wakeup primed");
-        fpoperation_attach_timeout(self, 100, fpoperation_trigger_fpwakeup_cb);
+        fpoperation_attach_timeout(self, fingerprint_trigger_delay,
+                                   fpoperation_trigger_fpwakeup_cb);
         break;
     case FPOPSTATE_FAILURE:
         break;
@@ -882,7 +909,8 @@ fpidentify_enter_cb(fpoperation_t *self)
     case FPOPSTATE_ABORTED:
         break;
     case FPOPSTATE_THROTTLING:
-        fpoperation_attach_timeout(self, 250, fpoperation_throttling_ended_cb);
+        fpoperation_attach_timeout(self, fingerprint_throttle_delay,
+                                   fpoperation_throttling_ended_cb);
         break;
     default:
         break;
@@ -1673,6 +1701,114 @@ fingerprint_datapipe_quit(void)
 }
 
 /* ========================================================================= *
+ * FINGERPRINT_SETTINGS
+ * ========================================================================= */
+
+/** Setting changed callback
+ *
+ * @param gcc   Unused
+ * @param id    Connection ID from gconf_client_notify_add()
+ * @param entry The modified GConf entry
+ * @param data  Unused
+ */
+static void
+fingerprint_setting_cb(GConfClient *const gcc, const guint id,
+                       GConfEntry *const entry, gpointer const data)
+{
+    (void)gcc;
+    (void)data;
+    (void)id;
+
+    const GConfValue *gcv = gconf_entry_get_value(entry);
+
+    if( !gcv ) {
+        mce_log(LL_DEBUG, "GConf Key `%s' has been unset",
+                gconf_entry_get_key(entry));
+        goto EXIT;
+    }
+
+    if( id == fingerprint_wakeup_mode_setting_id ) {
+        gint old = fingerprint_wakeup_mode;
+        fingerprint_wakeup_mode = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "fingerprint_wakeup_mode: %d -> %d",
+                old, fingerprint_wakeup_mode);
+        fpwakeup_schedule_rethink();
+    }
+    else if( id == fingerprint_trigger_delay_setting_id ) {
+        gint old = fingerprint_trigger_delay;
+        fingerprint_trigger_delay = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "fingerprint_trigger_delay: %d -> %d",
+                old, fingerprint_trigger_delay);
+        /* Takes effect on the next identify */
+    }
+    else if( id == fingerprint_throttle_delay_setting_id ) {
+        gint old = fingerprint_throttle_delay;
+        fingerprint_throttle_delay = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "fingerprint_throttle_delay: %d -> %d",
+                old, fingerprint_throttle_delay);
+        /* Takes effect after the next ipc attempt */
+    }
+    else if( id == fingerprint_allow_delay_setting_id ) {
+        gint old = fingerprint_allow_delay;
+        fingerprint_allow_delay = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "fingerprint_allow_delay: %d -> %d",
+                old, fingerprint_allow_delay);
+        /* Takes effect on the next policy change */
+    }
+    else {
+        mce_log(LL_WARN, "Spurious GConf value received; confused!");
+    }
+
+EXIT:
+    return;
+}
+
+/** Get intial setting values and start tracking changes
+ */
+static void
+fingerprint_setting_init(void)
+{
+    mce_setting_track_int(MCE_SETTING_FPWAKEUP_MODE,
+                          &fingerprint_wakeup_mode,
+                          MCE_DEFAULT_FPWAKEUP_MODE,
+                          fingerprint_setting_cb,
+                          &fingerprint_wakeup_mode_setting_id);
+
+    mce_setting_track_int(MCE_SETTING_FPWAKEUP_ALLOW_DELAY,
+                          &fingerprint_allow_delay,
+                          MCE_DEFAULT_FPWAKEUP_ALLOW_DELAY,
+                          fingerprint_setting_cb,
+                          &fingerprint_allow_delay_setting_id);
+
+    mce_setting_track_int(MCE_SETTING_FPWAKEUP_TRIGGER_DELAY,
+                          &fingerprint_trigger_delay,
+                          MCE_DEFAULT_FPWAKEUP_TRIGGER_DELAY,
+                          fingerprint_setting_cb,
+                          &fingerprint_trigger_delay_setting_id);
+
+    mce_setting_track_int(MCE_SETTING_FPWAKEUP_THROTTLE_DELAY,
+                          &fingerprint_throttle_delay,
+                          MCE_DEFAULT_FPWAKEUP_THROTTLE_DELAY,
+                          fingerprint_setting_cb,
+                          &fingerprint_throttle_delay_setting_id);
+}
+
+/** Stop tracking setting changes
+ */
+static void
+fingerprint_setting_quit(void)
+{
+    mce_setting_notifier_remove(fingerprint_wakeup_mode_setting_id),
+        fingerprint_wakeup_mode_setting_id = 0;
+    mce_setting_notifier_remove(fingerprint_allow_delay_setting_id),
+        fingerprint_allow_delay_setting_id = 0;
+    mce_setting_notifier_remove(fingerprint_trigger_delay_setting_id),
+        fingerprint_trigger_delay_setting_id = 0;
+    mce_setting_notifier_remove(fingerprint_throttle_delay_setting_id),
+        fingerprint_throttle_delay_setting_id = 0;
+}
+
+/* ========================================================================= *
  * FINGERPRINT_DBUS
  * ========================================================================= */
 
@@ -2261,7 +2397,8 @@ static void
 fpwakeup_schedule_allow(void)
 {
     if( !fpwakeup_allow_id ) {
-        fpwakeup_allow_id = g_timeout_add(500, fpwakeup_allow_cb, 0);
+        fpwakeup_allow_id = g_timeout_add(fingerprint_allow_delay,
+                                          fpwakeup_allow_cb, 0);
     }
 }
 
@@ -2284,9 +2421,19 @@ fpwakeup_evaluate_allowed(void)
     if( !fingerprint_data_exists() )
         goto EXIT;
 
-    /* Proximity sensor must not be covered */
-    if( proximity_sensor_actual != COVER_OPEN )
+    /* Check fpwakeup policy */
+    switch( fingerprint_wakeup_mode ) {
+    default:
+    case FPWAKEUP_ENABLE_NEVER:
         goto EXIT;
+    case FPWAKEUP_ENABLE_ALWAYS:
+        break;
+    case FPWAKEUP_ENABLE_NO_PROXIMITY:
+        /* Proximity sensor must not be covered */
+        if( proximity_sensor_actual == COVER_CLOSED )
+            goto EXIT;
+        break;
+    }
 
     /* Power key must not be pressed down */
     if( powerkey_pressed )
@@ -2496,6 +2643,7 @@ g_module_check_init(GModule *module)
     (void)module;
 
     fingerprint_data_init();
+    fingerprint_setting_init();
     fingerprint_datapipe_init();
     fingerprint_dbus_init();
 
@@ -2512,6 +2660,7 @@ g_module_unload(GModule *module)
     (void)module;
 
     fingerprint_data_quit();
+    fingerprint_setting_quit();
 
     fingerprint_dbus_quit();
     fingerprint_datapipe_quit();

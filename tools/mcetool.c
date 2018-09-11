@@ -19,6 +19,7 @@
  */
 
 #include "../mce-command-line.h"
+#include "../mce-setting.h"
 #include "../tklock.h"
 #include "../powerkey.h"
 #include "../event-input.h"
@@ -4706,6 +4707,135 @@ static void xmce_get_doubletap_wakeup(void)
 }
 
 /* ------------------------------------------------------------------------- *
+ * fingerprint
+ * ------------------------------------------------------------------------- */
+
+/** Lookup table for fingerprint wakeup policies
+ *
+ * @note These must match the hardcoded values in mce itself.
+ */
+static const symbol_t fingerprint_wakeup[] = {
+        { "never",     FPWAKEUP_ENABLE_NEVER },
+        { "always",    FPWAKEUP_ENABLE_ALWAYS },
+        { "proximity", FPWAKEUP_ENABLE_NO_PROXIMITY },
+        { NULL, -1 }
+};
+
+/** Set fingerprint wakeup mode
+ *
+ * @param args string that can be parsed to fingerprint wakeup mode
+ */
+static bool xmce_set_fingerprint_wakeup_mode(const char *args)
+{
+        int val = lookup(fingerprint_wakeup, args);
+        if( val < 0 ) {
+                errorf("%s: invalid fingerprint policy value\n", args);
+                exit(EXIT_FAILURE);
+        }
+        xmce_setting_set_int(MCE_SETTING_FPWAKEUP_MODE, val);
+        return true;
+}
+
+/** Get current fingerprint wakeup mode from mce and print it out
+ */
+static void xmce_get_fingerprint_wakeup_mode(void)
+{
+        gint        val = 0;
+        const char *txt = 0;
+        if( xmce_setting_get_int(MCE_SETTING_FPWAKEUP_MODE, &val) )
+                txt = rlookup(fingerprint_wakeup, val);
+        printf("%-"PAD1"s %s \n", "Fingerprint wakeup policy:",
+               txt ?: "unknown");
+}
+
+/** Set fingerprint wakeup allow delay
+ *
+ * @param args string that can be parsed to number
+ */
+static bool xmce_set_fingerprint_wakeup_allow_delay(const char *args)
+{
+        const char *key = MCE_SETTING_FPWAKEUP_ALLOW_DELAY;
+        gint        val = xmce_parse_integer(args);
+        xmce_setting_set_int(key, val);
+        return true;
+}
+
+/** Get current fingerprint wakeup allow delay
+ */
+static void xmce_get_fingerprint_wakeup_allow_delay(void)
+{
+        const char *tag = "Fingerprint wakeup allow delay:";
+        const char *key = MCE_SETTING_FPWAKEUP_ALLOW_DELAY;
+        gint        val = 0;
+        char        txt[64];
+
+        if( !xmce_setting_get_int(key, &val) )
+                snprintf(txt, sizeof txt, "unknown");
+        else
+                snprintf(txt, sizeof txt, "%d [ms]", val);
+
+        printf("%-"PAD1"s %s\n", tag, txt);
+}
+
+/** Set fingerprint wakeup triggering delay
+ *
+ * @param args string that can be parsed to number
+ */
+static bool xmce_set_fingerprint_wakeup_trigger_delay(const char *args)
+{
+        const char *key = MCE_SETTING_FPWAKEUP_TRIGGER_DELAY;
+        gint        val = xmce_parse_integer(args);
+        xmce_setting_set_int(key, val);
+        return true;
+}
+
+/** Get current fingerprint wakeup triggering delay
+ */
+static void xmce_get_fingerprint_wakeup_trigger_delay(void)
+{
+        const char *tag = "Fingerprint wakeup triggering delay:";
+        const char *key = MCE_SETTING_FPWAKEUP_TRIGGER_DELAY;
+        gint        val = 0;
+        char        txt[64];
+
+        if( !xmce_setting_get_int(key, &val) )
+                snprintf(txt, sizeof txt, "unknown");
+        else
+                snprintf(txt, sizeof txt, "%d [ms]", val);
+
+        printf("%-"PAD1"s %s\n", tag, txt);
+}
+
+/** Set fingerprint wakeup throttle delay
+ *
+ * @param args string that can be parsed to number
+ */
+static bool xmce_set_fingerprint_wakeup_throttle_delay(const char *args)
+{
+        const char *key = MCE_SETTING_FPWAKEUP_THROTTLE_DELAY;
+        gint        val = xmce_parse_integer(args);
+        xmce_setting_set_int(key, val);
+        return true;
+}
+
+/** Get current fingerprint wakeup throttle delay
+ */
+static void xmce_get_fingerprint_wakeup_throttle_delay(void)
+{
+        const char *tag = "Fingerprint wakeup throttle delay:";
+        const char *key = MCE_SETTING_FPWAKEUP_THROTTLE_DELAY;
+        gint        val = 0;
+        char        txt[64];
+
+        if( !xmce_setting_get_int(key, &val) )
+                snprintf(txt, sizeof txt, "unknown");
+        else
+                snprintf(txt, sizeof txt, "%d [ms]", val);
+
+        printf("%-"PAD1"s %s\n", tag, txt);
+}
+
+/* ------------------------------------------------------------------------- *
  * psm (power saving mode)
  * ------------------------------------------------------------------------- */
 
@@ -5619,6 +5749,10 @@ static bool xmce_get_status(const char *args)
         xmce_get_devicelock_in_lockscreen();
         xmce_get_lockscreen_unblank_animation();
         xmce_get_doubletap_wakeup();
+        xmce_get_fingerprint_wakeup_mode();
+        xmce_get_fingerprint_wakeup_allow_delay();
+        xmce_get_fingerprint_wakeup_trigger_delay();
+        xmce_get_fingerprint_wakeup_throttle_delay();
         xmce_get_volkey_policy();
         xmce_get_powerkey_action();
         xmce_get_powerkey_blanking();
@@ -6052,6 +6186,57 @@ static const mce_opt_t options[] =
                         "'never', 'always', 'proximity'\n"
                         "\n"
                         "Note: proximity setting applies for lid sensor too."
+        },
+        {
+                .name        = "set-fingerprint-wakeup-mode",
+                .with_arg    = xmce_set_fingerprint_wakeup_mode,
+                .values      = "never|always|proximity",
+                .usage       =
+                        "set the fingerprint wakeup mode; valid modes are:\n"
+                        "'never', 'always', 'proximity'\n"
+                        "\n"
+                        "Note: Additionally the device must be in a state where fingerprint\n"
+                        "      acquisition does not interfere with authentication services\n"
+                        "      and some sensible action can be taken on fingerprint identify.\n"
+        },
+        {
+                .name        = "set-fingerprint-wakeup-allow-delay",
+                .with_arg    = xmce_set_fingerprint_wakeup_allow_delay,
+                .values      = "ms",
+                .usage       =
+                        "set delay for enabling fp wakeups on policy change.\n"
+                        "\n"
+                        "When policy decision makes denied->allowed transition, mce will\n"
+                        "wait a bit before starting identification ipc - so that short\n"
+                        "living policy changes do not cause unnecessary dbus ipc.\n"
+                        "\n"
+                        "On allowed->denied transitions mce will immediately let go of any\n"
+                        "pending identification requests.\n"
+        },
+        {
+                .name        = "set-fingerprint-wakeup-trigger-delay",
+                .with_arg    = xmce_set_fingerprint_wakeup_trigger_delay,
+                .values      = "ms",
+                .usage       =
+                        "set delay between identifying a finger and acting on it.\n"
+                        "\n"
+                        "Used for filtering out false positive fingerprints when user makes\n"
+                        "an attempt to press power key on devices where fingerprint scanner\n"
+                        "is located physically on power button.\n"
+                        "\n"
+                        "In devices that have dedicated fingerprint scanner it should be\n"
+                        "safe to set this delay to zero.\n"
+        },
+        {
+                .name        = "set-fingerprint-wakeup-throttle-delay",
+                .with_arg    = xmce_set_fingerprint_wakeup_throttle_delay,
+                .values      = "ms",
+                .usage       =
+                        "set delay between ipc attempts with fingerprint daemon.\n"
+                        "\n"
+                        "Used for both pacing dbus ipc to fingerprint daemon on failures, and\n"
+                        "allowing authentication services some time to grab fingerprint sensor\n"
+                        "when needed.\n"
         },
         {
                 .name        = "set-volume-key-policy",

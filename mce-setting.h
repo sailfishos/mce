@@ -25,6 +25,46 @@
 
 # include "builtin-gconf.h"
 
+/* ========================================================================= *
+ * Fingerprint Scanner Settings
+ * ========================================================================= */
+
+/** Fingerprint wakeup enable modes */
+typedef enum
+{
+    /** Fingerprint wakeups disabled */
+    FPWAKEUP_ENABLE_NEVER        = 0,
+
+    /** Fingerprint wakeups always enabled */
+    FPWAKEUP_ENABLE_ALWAYS       = 1,
+
+    /** Fingerprint wakeups enabled when PS is not covered */
+    FPWAKEUP_ENABLE_NO_PROXIMITY = 2,
+} fpwakeup_mode_t;
+
+/** Prefix for fingerprint setting keys */
+# define MCE_SETTING_FINGERPRINT_PATH   "/system/osso/dsm/fingerprint"
+
+/** When fingerprint wakeup is allowed */
+# define MCE_SETTING_FPWAKEUP_MODE             MCE_SETTING_FINGERPRINT_PATH "/mode"
+# define MCE_DEFAULT_FPWAKEUP_MODE             2 // = FPWAKEUP_ENABLE_NO_PROXIMITY
+
+/** Delay between policy change and activating fingerprint daemon [ms] */
+# define MCE_SETTING_FPWAKEUP_ALLOW_DELAY      MCE_SETTING_FINGERPRINT_PATH "/allow_delay"
+# define MCE_DEFAULT_FPWAKEUP_ALLOW_DELAY      500
+
+/** Delay between getting identified fingerprint and acting on it [ms] */
+# define MCE_SETTING_FPWAKEUP_TRIGGER_DELAY    MCE_SETTING_FINGERPRINT_PATH "/trigger_delay"
+# define MCE_DEFAULT_FPWAKEUP_TRIGGER_DELAY    100
+
+/** Delay between ipc attempts with fingerprint daemon [ms] */
+# define MCE_SETTING_FPWAKEUP_THROTTLE_DELAY   MCE_SETTING_FINGERPRINT_PATH "/throttle_delay"
+# define MCE_DEFAULT_FPWAKEUP_THROTTLE_DELAY   250
+
+/* ========================================================================= *
+ * Functions
+ * ========================================================================= */
+
 gboolean      mce_setting_has_key           (const gchar *const key);
 gboolean      mce_setting_set_int           (const gchar *const key, const gint value);
 gboolean      mce_setting_set_string        (const gchar *const key, const gchar *const value);
