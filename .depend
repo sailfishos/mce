@@ -737,6 +737,7 @@ modules/fingerprint.o:\
 	builtin-gconf.h\
 	datapipe.h\
 	mce-dbus.h\
+	mce-lib.h\
 	mce-log.h\
 	mce-setting.h\
 	mce.h\
@@ -746,6 +747,7 @@ modules/fingerprint.pic.o:\
 	builtin-gconf.h\
 	datapipe.h\
 	mce-dbus.h\
+	mce-lib.h\
 	mce-log.h\
 	mce-setting.h\
 	mce.h\

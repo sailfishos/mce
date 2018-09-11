@@ -21,6 +21,7 @@
  */
 
 #include "../mce.h"
+#include "../mce-lib.h"
 #include "../mce-log.h"
 #include "../mce-dbus.h"
 #include "../mce-setting.h"
@@ -664,7 +665,7 @@ static void
 fpoperation_attach_timeout(fpoperation_t *self, int delay, GSourceFunc cb)
 {
     fpoperation_cancel_timout(self);
-    self->fpo_timer = g_timeout_add(delay, cb, self);
+    self->fpo_timer = mce_wakelocked_timeout_add(delay, cb, self);
 }
 
 /** Timer callback for triggering fpwakeup
@@ -1238,7 +1239,7 @@ fingerprint_led_acquired_trigger(void)
     if( fingerprint_led_acquired_timer_id )
         g_source_remove(fingerprint_led_acquired_timer_id);
     fingerprint_led_acquired_timer_id =
-        g_timeout_add(200, fingerprint_led_acquired_timer_cb, 0);
+        mce_wakelocked_timeout_add(200, fingerprint_led_acquired_timer_cb, 0);
     fingerprint_led_acquired_activate(true);
 }
 
@@ -2397,8 +2398,8 @@ static void
 fpwakeup_schedule_allow(void)
 {
     if( !fpwakeup_allow_id ) {
-        fpwakeup_allow_id = g_timeout_add(fingerprint_allow_delay,
-                                          fpwakeup_allow_cb, 0);
+        fpwakeup_allow_id = mce_wakelocked_timeout_add(fingerprint_allow_delay,
+                                                       fpwakeup_allow_cb, 0);
     }
 }
 
@@ -2539,7 +2540,7 @@ static void
 fpwakeup_schedule_rethink(void)
 {
     if( !fpwakeup_rethink_id ) {
-        fpwakeup_rethink_id = g_idle_add(fpwakeup_rethink_cb, 0);
+        fpwakeup_rethink_id = mce_wakelocked_idle_add(fpwakeup_rethink_cb, 0);
     }
 }
 
