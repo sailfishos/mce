@@ -207,7 +207,8 @@ static void     tklock_datapipe_lens_cover_state_cb(gconstpointer data);
 static void     tklock_datapipe_user_activity_event_cb(gconstpointer data);
 static void     tklock_datapipe_init_done_cb(gconstpointer data);
 
-static bool     tklock_datapipe_have_tklock_submode(void);
+static bool     tklock_datapipe_in_tklock_submode(void);
+static void     tklock_datapipe_set_tklock_submode(bool lock);
 static void     tklock_datapipe_set_devicelock_state(devicelock_state_t state);
 
 static void     tklock_datapipe_init(void);
@@ -350,7 +351,8 @@ static void     tklock_ui_notify_cancel(void);
 static void     tklock_ui_eat_event(void);
 static void     tklock_ui_open(void);
 static void     tklock_ui_close(void);
-static void     tklock_ui_set(bool enable);
+static bool     tklock_ui_is_enabled(void);
+static void     tklock_ui_set_enabled(bool enable);
 
 static void     tklock_ui_get_devicelock_cb(DBusPendingCall *pc, void *aptr);
 static void     tklock_ui_get_devicelock(void);
@@ -595,8 +597,11 @@ static tristate_t init_done = TRISTATE_UNKNOWN;
 /** Proximity state history for triggering low power mode ui */
 static ps_history_t tklock_lpmui_hist[8];
 
-/** Current tklock ui state */
-static bool tklock_ui_enabled = false;
+/** Current tklock ui state
+ *
+ * Access only via tklock_ui_is_enabled() / tklock_ui_set_enabled().
+ */
+static bool tklock_ui_enabled_pvt = false;
 
 /** Current tklock ui state that has been sent to lipstick */
 static int  tklock_ui_notified = -1; // does not match bool values
@@ -648,7 +653,7 @@ static void tklock_datapipe_system_state_cb(gconstpointer data)
             system_state_repr(prev),
             system_state_repr(system_state));
 
-    tklock_ui_set(false);
+    tklock_ui_set_enabled(false);
 
 EXIT:
     return;
@@ -835,7 +840,7 @@ static void tklock_datapipe_lipstick_service_state_cb(gconstpointer data)
 
     // force tklock ipc
     tklock_ui_notified = -1;
-    tklock_ui_set(false);
+    tklock_ui_set_enabled(false);
 
 EXIT:
     return;
@@ -1462,7 +1467,7 @@ static void tklock_datapipe_tklock_request_cb(gconstpointer data)
     mce_log(LL_DEBUG, "tklock_request = %s",
             tklock_request_repr(tklock_request));
 
-    bool enable = tklock_ui_enabled;
+    bool enable = tklock_ui_is_enabled();
 
     switch( tklock_request ) {
     case TKLOCK_REQUEST_UNDEF:
@@ -1481,7 +1486,7 @@ static void tklock_datapipe_tklock_request_cb(gconstpointer data)
     case TKLOCK_REQUEST_TOGGLE:
         enable = !enable;
     }
-    tklock_ui_set(enable);
+    tklock_ui_set_enabled(enable);
 }
 
 /** Interaction expected; assume false */
@@ -1513,7 +1518,7 @@ static void tklock_datapipe_interaction_expected_cb(gconstpointer data)
      * code entry view) the display state restore should be disabled.
      */
     if( display_state_next == MCE_DISPLAY_ON &&
-        tklock_ui_enabled && interaction_expected ) {
+        tklock_ui_is_enabled() && interaction_expected ) {
         tklock_uiexception_deny_state_restore(true, "interaction expected");
     }
 
@@ -1521,7 +1526,34 @@ EXIT:
     return;
 }
 
+/** Cached submode_pipe state; assume invalid */
 static submode_t submode = MCE_SUBMODE_INVALID;
+
+/** Filter tklock submode changes
+ *
+ * All tklock submode changes are subjected to policy implemented
+ * at tklock_ui_xxx() functions.
+ *
+ * Basically this ensures tklock_datapipe_submode_cb() will never
+ * see submode values where tklock would not agree with policy.
+ */
+static gpointer tklock_datapipe_submode_filter_cb(gpointer data)
+{
+    submode_t input  = GPOINTER_TO_INT(data);
+    submode_t output = input;
+
+    tklock_ui_set_enabled(input & MCE_SUBMODE_TKLOCK);
+
+    if( tklock_ui_is_enabled() )
+        output |= MCE_SUBMODE_TKLOCK;
+    else
+        output &= ~MCE_SUBMODE_TKLOCK;
+
+    if( input != output )
+        mce_log(LL_DEBUG, "submode filter: %s", submode_change_repr(input, output));
+
+    return GINT_TO_POINTER(output);
+}
 
 /** Change notifications for submode
  */
@@ -1533,7 +1565,12 @@ static void tklock_datapipe_submode_cb(gconstpointer data)
     if( submode == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "submode = 0x%x", submode);
+    /* Note: Due to filtering at tklock_datapipe_submode_filter_cb()
+     *       the submode value seen here is always in sync with policy
+     *       implemented at tklock_ui_xxx() functions.
+     */
+
+    mce_log(LL_DEBUG, "submode = %s", submode_change_repr(prev, submode));
 
     // out of sync tklock state blocks state restore
     tklock_uiexception_rethink();
@@ -1577,16 +1614,6 @@ static void tklock_datapipe_submode_cb(gconstpointer data)
         }
     }
 
-    /* Synchronize tklock ipc state with submode changes.
-     *
-     * As this can cause synchronization attempt to the other
-     * direction, we must ensure that possibly conflicting rules
-     * do not induce indefinite state machine ringing. */
-    static int ringing_depth = 0;
-    if( ++ringing_depth <= 2 )
-        tklock_ui_set(tklock_datapipe_have_tklock_submode());
-    --ringing_depth;
-
 EXIT:
     return;
 }
@@ -1596,9 +1623,27 @@ EXIT:
  * @return TRUE if the touchscreen/keypad lock is enabled,
  *         FALSE if the touchscreen/keypad lock is disabled
  */
-static bool tklock_datapipe_have_tklock_submode(void)
+static bool tklock_datapipe_in_tklock_submode(void)
 {
     return (submode & MCE_SUBMODE_TKLOCK) != 0;
+}
+
+static void tklock_datapipe_set_tklock_submode(bool lock)
+{
+    /* This function should be called only via:
+     *
+     * tklock_ui_set_enabled()
+     *    tklock_ui_sync_cb()
+     *       tklock_datapipe_set_tklock_submode()
+     */
+
+    mce_log(LL_DEBUG, "tklock submode request: %s",
+            lock ? "LOCK" : "UNLOCK");
+
+    if( lock )
+        mce_add_submode_int32(MCE_SUBMODE_TKLOCK);
+    else
+        mce_rem_submode_int32(MCE_SUBMODE_TKLOCK);
 }
 
 /** Change notifications for lockkey_state_pipe
@@ -2061,6 +2106,11 @@ EXIT:
 /** Array of datapipe handlers */
 static datapipe_handler_t tklock_datapipe_handlers[] =
 {
+    // input filters
+    {
+        .datapipe  = &submode_pipe,
+        .filter_cb = tklock_datapipe_submode_filter_cb,
+    },
     // output triggers
     {
         .datapipe  = &resume_detected_event_pipe,
@@ -3098,7 +3148,7 @@ static void tklock_autolock_evaluate(void)
         goto EXIT;
 
     // tklock unset
-    if( submode & MCE_SUBMODE_TKLOCK )
+    if( tklock_datapipe_in_tklock_submode() )
         goto EXIT;
 
     // autolocking enabled
@@ -3119,7 +3169,7 @@ static void tklock_autolock_evaluate(void)
 
 LOCK:
     mce_log(LL_DEBUG, "autolock applied");
-    tklock_ui_set(true);
+    tklock_ui_set_enabled(true);
 
 EXIT:
     return;
@@ -3222,7 +3272,7 @@ static void tklock_proxlock_evaluate(void)
         goto EXIT;
 
     // tklock unset
-    if( submode & MCE_SUBMODE_TKLOCK )
+    if( tklock_datapipe_in_tklock_submode() )
         goto EXIT;
 
     // proximity covered
@@ -3239,7 +3289,7 @@ static void tklock_proxlock_evaluate(void)
 
     // lock
     mce_log(LL_DEBUG, "proxlock applied");
-    tklock_ui_set(true);
+    tklock_ui_set_enabled(true);
 
 EXIT:
     return;
@@ -3487,7 +3537,7 @@ static void tklock_uiexception_rethink(void)
         case CALL_STATE_NONE:
             /* Start paying attention to tklock changes again if it gets
              * restored after all calls have ended */
-            if( exdata.was_called && tklock_datapipe_have_tklock_submode() ) {
+            if( exdata.was_called && tklock_datapipe_in_tklock_submode() ) {
                 mce_log(LL_NOTICE, "stopping to ignore tklock removal");
                 exdata.was_called = false;
             }
@@ -3499,7 +3549,7 @@ static void tklock_uiexception_rethink(void)
     }
 
     /* Canceling state restore due to tklock changes */
-    if( tklock_datapipe_have_tklock_submode() ) {
+    if( tklock_datapipe_in_tklock_submode() ) {
         // getting locked does not cancel state restore
         exdata.tklock = true;
     }
@@ -3768,7 +3818,7 @@ static gboolean tklock_uiexception_linger_cb(gpointer aptr)
     /* Disable state restore if lockscreen is active and interaction
      * expected after linger. */
     if( display_state_next == MCE_DISPLAY_ON &&
-        tklock_ui_enabled && interaction_expected ) {
+        tklock_ui_is_enabled() && interaction_expected ) {
         if( exdata.last == UIEXCEPTION_TYPE_CALL ) {
             /* End of call is exception within exception because
              * the call ui can be left on top of the lockscreen and
@@ -3836,7 +3886,7 @@ static void tklock_uiexception_begin(uiexception_type_t type, int64_t linger)
 
         /* save display, tklock and device lock states */
         exdata.display    = display_state_next;
-        exdata.tklock     = tklock_datapipe_have_tklock_submode();
+        exdata.tklock     = tklock_datapipe_in_tklock_submode();
         exdata.devicelock = devicelock_state;
 
         /* initially insync, restore state at end */
@@ -5389,7 +5439,7 @@ static guint tklock_ui_notify_beg_id = 0;
 
 static void tklock_ui_send_tklock_signal(void)
 {
-    bool current = tklock_datapipe_have_tklock_submode();
+    bool current = tklock_ui_is_enabled();
 
     if( tklock_ui_notified == current )
         goto EXIT;
@@ -5508,7 +5558,7 @@ static gboolean tklock_ui_notify_beg_cb(gpointer data)
 
     /* Deal with redirection of tkunlock -> show device lock prompt */
     if( tklock_devicelock_want_to_unlock ) {
-        if( tklock_ui_enabled &&
+        if( tklock_ui_is_enabled() &&
             display_state_next == MCE_DISPLAY_ON ) {
             mce_log(LL_DEBUG, "request: show device lock query");
             tklock_ui_show_device_unlock();
@@ -5566,54 +5616,88 @@ EXIT:
     tklock_ui_notify_rethink_wakelock();
 }
 
-static void tklock_ui_set(bool enable)
+/** Timer for synchronizing tklock ui state -> submode tklock bit */
+static guint    tklock_ui_sync_id = 0;
+
+/** Callback for synchronizing tklock_ui -> submode tklock bit */
+static gboolean tklock_ui_sync_cb(gpointer aptr)
 {
+    (void)aptr;
+
+    tklock_ui_sync_id = 0;
+
+    mce_log(LL_DEBUG, "tklock sync triggered");
+
+    bool enabled = tklock_ui_is_enabled();
+
+    if( tklock_datapipe_in_tklock_submode() != enabled )
+        tklock_datapipe_set_tklock_submode(enabled);
+
+    return G_SOURCE_REMOVE;
+}
+
+static bool tklock_ui_is_enabled(void)
+{
+    return tklock_ui_enabled_pvt;
+}
+
+static void tklock_ui_set_enabled(bool enable)
+{
+    /* See also tklock_datapipe_set_tklock_submode() */
+
+    /* Note: As long as lipstick process is running, mce must
+     *       not attempt forced tklock removal as it can lead
+     *       to tklock state ringing if/when lipstick happens
+     *       to require tklock to be set. */
+
     /* Filter request based on device state */
-    if( enable ) {
-        /* Note: As long as lipstick process is running, mce must
-         *       not attempt forced tklock removal as it can lead
-         *       to tklock state ringing if/when lipstick happens
-         *       to require tklock to be set. */
 
-        if( lipstick_service_state != SERVICE_STATE_RUNNING ) {
-            /* When there is no UI to lock, allowing tklock to
-             * be set can only cause problems */
-            mce_log(LL_INFO, "deny tklock; lipstick not running");
-            enable = false;
-        }
-    }
-
-    /* Skip if there would be no change */
-    if( tklock_ui_enabled == enable )
+    /* When there is no UI to lock, allowing tklock to
+     * be set can only cause problems */
+    if( enable && lipstick_service_state != SERVICE_STATE_RUNNING ) {
+        mce_log(LL_INFO, "deny tklock; lipstick not running");
+        enable = false;
         goto EXIT;
+    }
 
     /* If device lock is handled in lockscreen, we must not
      * allow *removing* of tklock (=move away from lockscreen)
      * while device lock is still active. */
-    if( tklock_devicelock_in_lockscreen &&
-        devicelock_state == DEVICELOCK_STATE_LOCKED && !enable ) {
+    if( !enable && tklock_devicelock_in_lockscreen &&
+        devicelock_state == DEVICELOCK_STATE_LOCKED ) {
         mce_log(LL_DEVEL, "deny tkunlock; show device lock query");
         tklock_devicelock_want_to_unlock = true;
+        enable = true;
         goto EXIT;
     }
 
     /* Do not allow unlocking while lid sensor is enabled and covered */
-    if( lid_sensor_filtered == COVER_CLOSED && !enable ) {
+    if( !enable && lid_sensor_filtered == COVER_CLOSED && !enable ) {
         mce_log(LL_WARN, "deny tkunlock; lid sensor is covered");
+        enable = true;
         goto EXIT;
     }
 
-    /* Activate the new tklock state */
-    if( (tklock_ui_enabled = enable) )
-        mce_add_submode_int32(MCE_SUBMODE_TKLOCK);
-    else
-        mce_rem_submode_int32(MCE_SUBMODE_TKLOCK);
+    /* Request accepted as-is */
 
 EXIT:
+    /* Check and handle state change */
+    if( tklock_ui_enabled_pvt != enable ) {
+        tklock_ui_enabled_pvt = enable;
+        mce_log(LL_DEBUG, "tklock_ui_enabled: %s",
+                tklock_ui_enabled_pvt ? "TRUE" : "FALSE");
+    }
+
     /* Schedule notification attempt even if there is no change,
      * so that ui side is not left thinking that a tklock request
      * it made was accepted. */
     tklock_ui_notify_schdule();
+
+    /* Sync to submode in any case */
+    if( !tklock_ui_sync_id ) {
+        mce_log(LL_DEBUG, "tklock sync scheduled");
+        tklock_ui_sync_id = g_idle_add(tklock_ui_sync_cb, 0);
+    }
 }
 
 /** Handle reply to device lock state query
@@ -5929,7 +6013,10 @@ static gboolean tklock_dbus_send_tklock_mode(DBusMessage *const method_call)
 {
     gboolean    status = FALSE;
     DBusMessage *msg   = NULL;
-    const char  *mode  = (tklock_datapipe_have_tklock_submode() ?
+
+    /* Note: Events on D-Bus must be based on tklock ui state,
+     *       not submode tklock bit. */
+    const char  *mode  = (tklock_ui_is_enabled() ?
                           MCE_TK_LOCKED : MCE_TK_UNLOCKED);
 
     /* If method_call is set, send a reply. Otherwise, send a signal. */
@@ -6000,7 +6087,7 @@ tklock_dbus_sanitize_requested_mode(tklock_request_t state)
 {
     /* Translate toggle requests to something we can evaluate */
     if( state == TKLOCK_REQUEST_TOGGLE )
-        state = tklock_ui_enabled ? TKLOCK_REQUEST_OFF : TKLOCK_REQUEST_ON;
+        state = tklock_ui_is_enabled() ? TKLOCK_REQUEST_OFF : TKLOCK_REQUEST_ON;
 
     switch( state ) {
     default:
@@ -6017,7 +6104,7 @@ tklock_dbus_sanitize_requested_mode(tklock_request_t state)
         case MCE_DISPLAY_DIM:
             break;
         default:
-            if( tklock_ui_enabled ) {
+            if( tklock_ui_is_enabled() ) {
                 mce_log(LL_WARN, "tkunlock denied due to display=%s",
                         display_state_repr(display_state_next));
                 state = TKLOCK_REQUEST_ON;
@@ -6939,6 +7026,11 @@ void mce_tklock_exit(void)
     tklock_ui_notify_cancel();
 
     tklock_autolock_quit();
+
+    if( tklock_ui_sync_id ) {
+        g_source_remove(tklock_ui_sync_id),
+            tklock_ui_sync_id = 0;
+    }
 
     // FIXME: check that final state is sane
 
