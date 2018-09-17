@@ -47,7 +47,7 @@ typedef enum
 
 /** When fingerprint wakeup is allowed */
 # define MCE_SETTING_FPWAKEUP_MODE             MCE_SETTING_FINGERPRINT_PATH "/mode"
-# define MCE_DEFAULT_FPWAKEUP_MODE             2 // = FPWAKEUP_ENABLE_NO_PROXIMITY
+# define MCE_DEFAULT_FPWAKEUP_MODE             0 // = FPWAKEUP_ENABLE_NEVER
 
 /** Delay between policy change and activating fingerprint daemon [ms] */
 # define MCE_SETTING_FPWAKEUP_ALLOW_DELAY      MCE_SETTING_FINGERPRINT_PATH "/allow_delay"
