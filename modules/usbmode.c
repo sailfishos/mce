@@ -28,6 +28,9 @@
 
 #include <gmodule.h>
 
+#include <usb_moded-dbus.h>
+#include <usb_moded-modes.h>
+
 /* ========================================================================= *
  * CABLE_STATE
  * ========================================================================= */
@@ -88,22 +91,40 @@ static const struct
     usb_cable_state_t  state;
 } mode_lut[] =
 {
-    { "undefined",                  USB_CABLE_DISCONNECTED },
-    { "USB disconnected",           USB_CABLE_DISCONNECTED },
-    { "charger_disconnected",       USB_CABLE_DISCONNECTED },
+    /* No cable attached */
+    { MODE_UNDEFINED,             USB_CABLE_DISCONNECTED },
 
-    { "mass_storage",               USB_CABLE_CONNECTED    },
-    { "data_in_use",                USB_CABLE_CONNECTED    },
-    { "mtp_mode",                   USB_CABLE_CONNECTED    },
-    { "pc_suite",                   USB_CABLE_CONNECTED    },
-    { "USB connected",              USB_CABLE_CONNECTED    },
-    { "charger_connected",          USB_CABLE_CONNECTED    },
-    { "developer_mode",             USB_CABLE_CONNECTED    },
-    { "charging_only",              USB_CABLE_CONNECTED    },
-    { "dedicated_charger",          USB_CABLE_CONNECTED    },
+    /* Attach / detach dedicated charger */
+    { CHARGER_CONNECTED,          USB_CABLE_CONNECTED    },
+    { MODE_CHARGER,               USB_CABLE_CONNECTED    },
+    { CHARGER_DISCONNECTED,       USB_CABLE_DISCONNECTED },
 
-    { "mode_requested_show_dialog", USB_CABLE_ASK_USER     },
-    { "ask",                        USB_CABLE_ASK_USER     },
+    /* Attach / detach pc cable */
+    { USB_CONNECTED,              USB_CABLE_CONNECTED    },
+    { MODE_CHARGING_FALLBACK,     USB_CABLE_CONNECTED    },
+    { USB_CONNECTED_DIALOG_SHOW,  USB_CABLE_ASK_USER     },
+    { MODE_ASK,                   USB_CABLE_ASK_USER     },
+    { MODE_MASS_STORAGE,          USB_CABLE_CONNECTED    },
+    { MODE_MTP,                   USB_CABLE_CONNECTED    },
+    { MODE_PC_SUITE,              USB_CABLE_CONNECTED    },
+    { MODE_DEVELOPER,             USB_CABLE_CONNECTED    },
+    { MODE_CHARGING,              USB_CABLE_CONNECTED    },
+    { MODE_HOST,                  USB_CABLE_CONNECTED    },
+    { MODE_CONNECTION_SHARING,    USB_CABLE_CONNECTED    },
+    { MODE_DIAG,                  USB_CABLE_CONNECTED    },
+    { MODE_ADB,                   USB_CABLE_CONNECTED    },
+    { USB_DISCONNECTED,           USB_CABLE_DISCONNECTED },
+
+    /* Busy can occur both on connect / after disconnect */
+    { MODE_BUSY,                  USB_CABLE_UNDEF        },
+
+    /* Events ignored while evaluating cable state */
+    { DATA_IN_USE,                USB_CABLE_UNDEF        },
+    { USB_REALLY_DISCONNECT,      USB_CABLE_UNDEF        },
+    { USB_PRE_UNMOUNT,            USB_CABLE_UNDEF        },
+    { RE_MOUNT_FAILED,            USB_CABLE_UNDEF        },
+    { MODE_SETTING_FAILED,        USB_CABLE_UNDEF        },
+    { UMOUNT_ERROR,               USB_CABLE_UNDEF        },
 };
 
 /** Map reported usb mode to usb_cable_state_t used within mce
@@ -153,6 +174,9 @@ usbmode_cable_state_update(const char *mode)
 
     usb_cable_state_t prev = datapipe_get_gint(usb_cable_state_pipe);
     usb_cable_state_t curr = usbmode_cable_state_lookup(mode);
+
+    if( curr == USB_CABLE_UNDEF )
+        goto EXIT;
 
     if( prev == curr )
         goto EXIT;
