@@ -1,3 +1,18 @@
+mce (1.95.0) precise; urgency=low
+
+  * [mce] Expand also intra-line tabs
+  * [tklock] Move cached datapipe values in one place
+  * [tklock] Unblank and tkunlock when device gets unlocked. JB#42135
+  * [fingerprint] Implement fingerprint wakeup. JB#42135
+  * [fingerprint] Work around fp scanner on power key issues. JB#42135
+  * [fingerprint] Add settings for controlling fingerprint wakeups. JB#42135
+  * [mce-lib] Add suspend proofed glib timeout lookalikes
+  * [fingerprint] Suspend proof timer and idle callbacks. JB#42135
+  * [settings] Fingerprint wakeups are disabled by default. JB#42135
+  * [tklock] Keep tklock submode and lockscreen state in sync. Fixes JB#42145
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 18 Sep 2018 13:44:53 +0300
+
 mce (1.94.5) precise; urgency=low
 
   * [usbmode] Do not assume "busy" means connected. Fixes JB#42976
