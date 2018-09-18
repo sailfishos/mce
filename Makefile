@@ -344,6 +344,7 @@ MODULE_PKG_NAMES += glib-2.0
 MODULE_PKG_NAMES += gmodule-2.0
 MODULE_PKG_NAMES += dbus-1
 MODULE_PKG_NAMES += dbus-glib-1
+MODULE_PKG_NAMES += usb_moded
 
 MODULE_PKG_CFLAGS := $(shell $(PKG_CONFIG) --cflags $(MODULE_PKG_NAMES))
 MODULE_PKG_LDLIBS := $(shell $(PKG_CONFIG) --libs   $(MODULE_PKG_NAMES))
