@@ -1,3 +1,9 @@
+mce (1.94.5) precise; urgency=low
+
+  * [usbmode] Do not assume "busy" means connected. Fixes JB#42976
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 18 Sep 2018 11:36:51 +0300
+
 mce (1.94.4) precise; urgency=low
 
   * [powerkey] Add "nop" powerkey action
