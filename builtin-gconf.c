@@ -21,6 +21,7 @@
 #include "mce-log.h"
 #include "mce-io.h"
 #include "mce-dbus.h"
+#include "mce-setting.h"
 
 #include "powerkey.h"
 #include "tklock.h"
@@ -1585,6 +1586,26 @@ static const setting_t gconf_defaults[] =
     .key  = MCE_SETTING_DOUBLETAP_MODE,
     .type = "i",
     .def  = G_STRINGIFY(MCE_DEFAULT_DOUBLETAP_MODE),
+  },
+  {
+    .key  = MCE_SETTING_FPWAKEUP_MODE,
+    .type = "i",
+    .def  = G_STRINGIFY(MCE_DEFAULT_FPWAKEUP_MODE),
+  },
+  {
+    .key  = MCE_SETTING_FPWAKEUP_ALLOW_DELAY,
+    .type = "i",
+    .def  = G_STRINGIFY(MCE_DEFAULT_FPWAKEUP_ALLOW_DELAY),
+  },
+  {
+    .key  = MCE_SETTING_FPWAKEUP_TRIGGER_DELAY,
+    .type = "i",
+    .def  = G_STRINGIFY(MCE_DEFAULT_FPWAKEUP_TRIGGER_DELAY),
+  },
+  {
+    .key  = MCE_SETTING_FPWAKEUP_THROTTLE_DELAY,
+    .type = "i",
+    .def  = G_STRINGIFY(MCE_DEFAULT_FPWAKEUP_THROTTLE_DELAY),
   },
   {
     .key  = MCE_SETTING_POWERKEY_MODE,

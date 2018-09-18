@@ -240,7 +240,7 @@ sensor_id_available(sensor_id_t id)
  * ========================================================================= */
 
 /** How long to wait before retrying failed sensorfw dbus requests */
-#define SENSORFW_RETRY_DELAY_MS		       10000
+#define SENSORFW_RETRY_DELAY_MS                10000
 
 /** D-Bus name of the sensord service */
 #define SENSORFW_SERVICE                       "com.nokia.SensorService"

@@ -24,11 +24,11 @@
 #include <glib.h>
 
 /** Path to the boot detection file */
-#define MCE_BOOTUP_FILENAME		G_STRINGIFY(MCE_RUN_DIR) "/boot"
+#define MCE_BOOTUP_FILENAME             G_STRINGIFY(MCE_RUN_DIR) "/boot"
 
-#define SPLASH_DELAY			500		/**< 0.5 seconds */
-#define ACTDEAD_DELAY			1500		/**< 1.5 seconds */
-#define POWERUP_DELAY			3500		/**< 3.5 seconds */
+#define SPLASH_DELAY                    500             /**< 0.5 seconds */
+#define ACTDEAD_DELAY                   1500            /**< 1.5 seconds */
+#define POWERUP_DELAY                   3500            /**< 3.5 seconds */
 
 /* When MCE is made modular, this will be handled differently */
 gboolean mce_mode_init(void);

@@ -660,7 +660,7 @@ NORMALIZE_UNKNOWN = $(filter-out $(NORMALIZE_KNOWN), $(SOURCEFILES_ALL))
 
 normalize::
 	normalize_whitespace -M Makefile
-	normalize_whitespace -b -e -s $(NORMALIZE_USES_SPC)
+	normalize_whitespace -t -b -e -s $(NORMALIZE_USES_SPC)
 	normalize_whitespace -T -e -s $(NORMALIZE_USES_TAB)
 ifneq ($(NORMALIZE_UNKNOWN),)
 	@echo "Unknown source files: $(NORMALIZE_UNKNOWN)"

@@ -760,7 +760,7 @@ void mce_datapipe_init(void)
 		      0, GINT_TO_POINTER(CALL_TYPE_NORMAL));
 	datapipe_init(&alarm_ui_state_pipe, READ_ONLY, DONT_FREE_CACHE,
 		      0, GINT_TO_POINTER(MCE_ALARM_UI_INVALID_INT32));
-	datapipe_init(&submode_pipe, READ_ONLY, DONT_FREE_CACHE,
+	datapipe_init(&submode_pipe, READ_WRITE, DONT_FREE_CACHE,
 		      0, GINT_TO_POINTER(MCE_SUBMODE_NORMAL));
 	datapipe_init(&display_state_curr_pipe, READ_ONLY, DONT_FREE_CACHE,
 		      0, GINT_TO_POINTER(MCE_DISPLAY_UNDEF));

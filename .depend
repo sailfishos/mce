@@ -6,6 +6,7 @@ builtin-gconf.o:\
 	mce-dbus.h\
 	mce-io.h\
 	mce-log.h\
+	mce-setting.h\
 	mce.h\
 	modules/display.h\
 	modules/doubletap.h\
@@ -25,6 +26,7 @@ builtin-gconf.pic.o:\
 	mce-dbus.h\
 	mce-io.h\
 	mce-log.h\
+	mce-setting.h\
 	mce.h\
 	modules/display.h\
 	modules/doubletap.h\
@@ -297,6 +299,7 @@ mce-lib.o:\
 	datapipe.h\
 	mce-lib.h\
 	mce-log.h\
+	mce-wakelock.h\
 	mce.h\
 
 mce-lib.pic.o:\
@@ -304,6 +307,7 @@ mce-lib.pic.o:\
 	datapipe.h\
 	mce-lib.h\
 	mce-log.h\
+	mce-wakelock.h\
 	mce.h\
 
 mce-log.o:\
@@ -733,7 +737,9 @@ modules/fingerprint.o:\
 	builtin-gconf.h\
 	datapipe.h\
 	mce-dbus.h\
+	mce-lib.h\
 	mce-log.h\
+	mce-setting.h\
 	mce.h\
 
 modules/fingerprint.pic.o:\
@@ -741,7 +747,9 @@ modules/fingerprint.pic.o:\
 	builtin-gconf.h\
 	datapipe.h\
 	mce-dbus.h\
+	mce-lib.h\
 	mce-log.h\
+	mce-setting.h\
 	mce.h\
 
 modules/inactivity.o:\
@@ -1304,9 +1312,11 @@ tools/fileusers.pic.o:\
 
 tools/mcetool.o:\
 	tools/mcetool.c\
+	builtin-gconf.h\
 	datapipe.h\
 	event-input.h\
 	mce-command-line.h\
+	mce-setting.h\
 	mce.h\
 	modules/display.h\
 	modules/doubletap.h\
@@ -1322,9 +1332,11 @@ tools/mcetool.o:\
 
 tools/mcetool.pic.o:\
 	tools/mcetool.c\
+	builtin-gconf.h\
 	datapipe.h\
 	event-input.h\
 	mce-command-line.h\
+	mce-setting.h\
 	mce.h\
 	modules/display.h\
 	modules/doubletap.h\

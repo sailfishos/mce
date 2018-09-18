@@ -24,6 +24,7 @@
 
 #include "mce.h"
 #include "mce-log.h"
+#include "mce-wakelock.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -405,4 +406,112 @@ int64_t mce_lib_get_mono_tick(void)
 int64_t mce_lib_get_real_tick(void)
 {
 	return mce_lib_get_tick(CLOCK_REALTIME);
+}
+
+/** Bookkeeping data for wakelocked glib timers */
+typedef struct timeout_gate_t
+{
+	gchar       *tg_lock;
+	GSourceFunc  tg_func;
+	gpointer     tg_data;
+	GDestroyNotify tg_free;
+} timeout_gate_t;
+
+/** Delete wakelocked glib timer gate
+ */
+static void
+timeout_gate_delete_cb(gpointer aptr)
+{
+	timeout_gate_t *self = aptr;
+
+	if( self->tg_free )
+		self->tg_free(self->tg_data);
+
+	mce_wakelock_release(self->tg_lock);
+
+	g_free(self->tg_lock);
+	g_slice_free1(sizeof *self, self);
+}
+
+/** Create wakelocked glib timer gate
+ */
+static timeout_gate_t *
+timeout_gate_create(GSourceFunc func, gpointer aptr, GDestroyNotify notify)
+{
+	static unsigned uniq = 0;
+
+	timeout_gate_t *self = g_slice_alloc0(sizeof *self);
+	self->tg_lock = g_strdup_printf("mce_timeout_%u", ++uniq);
+	self->tg_func = func;
+	self->tg_data = aptr;
+	self->tg_free = notify;
+	mce_wakelock_obtain(self->tg_lock, -1);
+	return self;
+}
+
+/** Handle wakelocked glib timeout
+ */
+static gboolean
+timeout_gate_cb(gpointer aptr)
+{
+	timeout_gate_t *self = aptr;
+	return self->tg_func(self->tg_data);
+}
+
+/** Wakelocking alternative for g_timeout_add_full()
+ *
+ * Obtains multiplexed wakelock that is released when the timeout
+ * source is released either implicitly by returning FALSE from callback
+ * function, or explicitly by calling g_source_remove().
+ *
+ * @param priority  the priority of the timeout source
+ * @param interval  the time between calls to the function, in milliseconds
+ * @param function  function to call
+ * @param data      data to pass to function
+ * @param notify    function to call when the timeout is removed, or NULL
+ *
+ * @return glib source identifier
+ */
+guint
+mce_wakelocked_timeout_add_full(gint priority, guint interval,
+				GSourceFunc function,
+				gpointer data, GDestroyNotify notify)
+{
+	return g_timeout_add_full(priority, interval, timeout_gate_cb,
+				  timeout_gate_create(function, data, notify),
+				  timeout_gate_delete_cb);
+}
+
+/** Wakelocking alternative for g_timeout_add()
+ *
+ * See g_timeout_add_full() for details.
+ *
+ * @param interval  the time between calls to the function, in milliseconds
+ * @param function  function to call
+ * @param data      data to pass to function
+ *
+ * @return glib source identifier
+ */
+guint
+mce_wakelocked_timeout_add(guint interval, GSourceFunc function, gpointer data)
+{
+	return mce_wakelocked_timeout_add_full(G_PRIORITY_DEFAULT, interval,
+					       function, data, NULL);
+}
+
+/** Wakelocking alternative for g_idle_add()
+ *
+ * See g_timeout_add_full() for details.
+ *
+ * @param function  function to call
+ * @param data      data to pass to function
+ *
+ * @return glib source identifier
+ */
+guint
+mce_wakelocked_idle_add(GSourceFunc function, gpointer data)
+{
+	/* NB This not exactly like g_idle_add() */
+	return mce_wakelocked_timeout_add_full(G_PRIORITY_DEFAULT, 0,
+					       function, data, NULL);
 }

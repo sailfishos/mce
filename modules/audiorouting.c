@@ -30,7 +30,7 @@
 #include <gmodule.h>
 
 /** Module name */
-#define MODULE_NAME		"audiorouting"
+#define MODULE_NAME             "audiorouting"
 
 /** Functionality provided by this module */
 static const gchar *const provides[] = { MODULE_NAME, NULL };
@@ -46,10 +46,10 @@ G_MODULE_EXPORT module_info_struct module_info = {
 };
 
 /** D-Bus interface for the policy framework */
-#define POLICY_DBUS_INTERFACE		"com.nokia.policy"
+#define POLICY_DBUS_INTERFACE           "com.nokia.policy"
 
 /** D-Bus signal for actions from the policy framework */
-#define POLICY_AUDIO_ACTIONS		"audio_actions"
+#define POLICY_AUDIO_ACTIONS            "audio_actions"
 
 /** Bits for members values available in ohm_decision_t */
 enum
