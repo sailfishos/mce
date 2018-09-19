@@ -72,7 +72,6 @@ typedef enum {
  */
 typedef enum {
     DATAPIPE_DATA_LITERAL = FALSE,  /**< Don't free the cache */
-    DATAPIPE_DATA_DYNAMIC = TRUE,   /**< Free the cache */
 } datapipe_data_t;
 
 /**

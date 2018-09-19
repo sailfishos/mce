@@ -527,15 +527,6 @@ datapipe_exec_filters(datapipe_t *const datapipe,
                                            i)) != NULL; i++) {
         gpointer tmp = filter(data);
 
-        if( datapipe->dp_free_cache == DATAPIPE_DATA_DYNAMIC ) {
-            /* When dealing with dynamic data, the transitional
-             * values need to be released - except for the value
-             * that is cached at the datapipe
-             */
-            if( tmp != data && data != datapipe->dp_cached_data )
-                g_free(data);
-        }
-
         data = tmp;
     }
 
@@ -600,9 +591,6 @@ gconstpointer datapipe_exec_full(datapipe_t *const datapipe,
 
     /* Optionally cache the value at the input stage */
     if( cache_indata & (DATAPIPE_CACHE_INDATA|DATAPIPE_CACHE_OUTDATA) ) {
-        if( datapipe->dp_free_cache == DATAPIPE_DATA_DYNAMIC &&
-            datapipe->dp_cached_data != indata )
-            g_free(datapipe->dp_cached_data);
         datapipe->dp_cached_data = indata;
     }
 
@@ -618,10 +606,6 @@ gconstpointer datapipe_exec_full(datapipe_t *const datapipe,
 
     /* Optionally cache the value at the output stage */
     if( cache_indata & DATAPIPE_CACHE_OUTDATA ) {
-        if( datapipe->dp_free_cache == DATAPIPE_DATA_DYNAMIC &&
-            datapipe->dp_cached_data != outdata )
-            g_free(datapipe->dp_cached_data);
-
         datapipe->dp_cached_data = (gpointer)outdata;
     }
 
@@ -872,8 +856,7 @@ EXIT:
  * @param datapipe The datapipe to manipulate
  * @param read_only DATAPIPE_FILTERING_DENIED if the datapipe is read only,
  *                  DATAPIPE_FILTERING_ALLOWED if it's read/write
- * @param free_cache DATAPIPE_DATA_DYNAMIC if the cached data needs to be freed,
- *                   DATAPIPE_DATA_LITERAL if the cache data should not be freed
+ * @param free_cache DATAPIPE_DATA_LITERAL if the cache data should not be freed
  * @param datasize Pass size of memory to copy,
  *                 or 0 if only passing pointers or data as pointers
  * @param initial_data Initial cache content
@@ -937,10 +920,6 @@ datapipe_free(datapipe_t *const datapipe)
         mce_log(LL_INFO,
                 "datapipe_free() called on a datapipe that "
                 "still has registered output_trigger(s)");
-    }
-
-    if (datapipe->dp_free_cache == DATAPIPE_DATA_DYNAMIC) {
-        g_free(datapipe->dp_cached_data);
     }
 
 EXIT:
