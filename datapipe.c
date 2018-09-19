@@ -49,7 +49,7 @@ const char            *datapipe_name                 (datapipe_t *const datapipe
 gconstpointer          datapipe_value                (datapipe_t *const datapipe);
 static void            datapipe_exec_input_triggers  (datapipe_t *const datapipe, gconstpointer const indata);
 static gconstpointer   datapipe_exec_filters         (datapipe_t *const datapipe, gconstpointer indata);
-void                   datapipe_exec_output_triggers (const datapipe_t *const datapipe, gconstpointer indata);
+static void            datapipe_exec_output_triggers (const datapipe_t *const datapipe, gconstpointer indata);
 gconstpointer          datapipe_exec_full            (datapipe_t *const datapipe, gconstpointer indata);
 static void            datapipe_add_filter           (datapipe_t *const datapipe, gpointer (*filter)(gpointer data));
 static void            datapipe_remove_filter        (datapipe_t *const datapipe, gpointer (*filter)(gpointer data));
@@ -542,7 +542,8 @@ EXIT:
  * @param datapipe The datapipe to execute
  * @param indata The input data to run through the datapipe
  */
-void datapipe_exec_output_triggers(const datapipe_t *const datapipe,
+static void
+datapipe_exec_output_triggers(const datapipe_t *const datapipe,
                                    gconstpointer indata)
 {
     void (*trigger)(gconstpointer input);

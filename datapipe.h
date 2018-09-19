@@ -105,7 +105,6 @@ typedef struct
 
 const char     *datapipe_name                (datapipe_t *const datapipe);
 gconstpointer   datapipe_value               (datapipe_t *const datapipe);
-void            datapipe_exec_output_triggers(const datapipe_t *const datapipe, gconstpointer indata);
 gconstpointer   datapipe_exec_full           (datapipe_t *const datapipe, gconstpointer indata);
 
 /* ------------------------------------------------------------------------- *
