@@ -69,15 +69,14 @@ typedef enum {
  * Only access this struct through the functions
  */
 typedef struct {
-    const char *dp_name;             /**< Name of the datapipe */
-    GSList     *dp_filters;          /**< The filters */
-    GSList     *dp_input_triggers;   /**< Triggers called on indata */
-    GSList     *dp_output_triggers;  /**< Triggers called on outdata */
-    gpointer    dp_cached_data;      /**< Latest cached data */
-    gsize       dp_datasize;         /**< Size of data; NULL == automagic */
-
-    datapipe_filtering_t dp_read_only;        /**< Datapipe is read only */
-    datapipe_cache_t     dp_cache;
+    const char           *dp_name;             /**< Name of the datapipe */
+    GSList               *dp_filters;          /**< The filters */
+    GSList               *dp_input_triggers;   /**< Triggers called on indata */
+    GSList               *dp_output_triggers;  /**< Triggers called on outdata */
+    gconstpointer         dp_cached_data;      /**< Latest cached data */
+    gsize                 dp_datasize;         /**< Size of data; NULL == automagic */
+    datapipe_filtering_t  dp_read_only;        /**< Datapipe is read only */
+    datapipe_cache_t      dp_cache;
 } datapipe_t;
 
 typedef struct
@@ -105,9 +104,9 @@ typedef struct
  * ------------------------------------------------------------------------- */
 
 const char     *datapipe_name                (datapipe_t *const datapipe);
-gpointer        datapipe_value               (datapipe_t *const datapipe);
+gconstpointer   datapipe_value               (datapipe_t *const datapipe);
 void            datapipe_exec_output_triggers(const datapipe_t *const datapipe, gconstpointer indata);
-gconstpointer   datapipe_exec_full           (datapipe_t *const datapipe, gpointer indata);
+gconstpointer   datapipe_exec_full           (datapipe_t *const datapipe, gconstpointer indata);
 
 /* ------------------------------------------------------------------------- *
  * MCE_DATAPIPE

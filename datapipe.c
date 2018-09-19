@@ -46,18 +46,18 @@
  * ------------------------------------------------------------------------- */
 
 const char            *datapipe_name                 (datapipe_t *const datapipe);
-gpointer               datapipe_value                (datapipe_t *const datapipe);
-static void            datapipe_exec_input_triggers  (datapipe_t *const datapipe, gpointer const indata);
-static gconstpointer   datapipe_exec_filters         (datapipe_t *const datapipe, gpointer indata);
+gconstpointer          datapipe_value                (datapipe_t *const datapipe);
+static void            datapipe_exec_input_triggers  (datapipe_t *const datapipe, gconstpointer const indata);
+static gconstpointer   datapipe_exec_filters         (datapipe_t *const datapipe, gconstpointer indata);
 void                   datapipe_exec_output_triggers (const datapipe_t *const datapipe, gconstpointer indata);
-gconstpointer          datapipe_exec_full            (datapipe_t *const datapipe, gpointer indata);
+gconstpointer          datapipe_exec_full            (datapipe_t *const datapipe, gconstpointer indata);
 static void            datapipe_add_filter           (datapipe_t *const datapipe, gpointer (*filter)(gpointer data));
 static void            datapipe_remove_filter        (datapipe_t *const datapipe, gpointer (*filter)(gpointer data));
 static void            datapipe_add_input_trigger    (datapipe_t *const datapipe, void (*trigger)(gconstpointer data));
 static void            datapipe_remove_input_trigger (datapipe_t *const datapipe, void (*trigger)(gconstpointer data));
 static void            datapipe_add_output_trigger   (datapipe_t *const datapipe, void (*trigger)(gconstpointer data));
 static void            datapipe_remove_output_trigger(datapipe_t *const datapipe, void (*trigger)(gconstpointer data));
-static void            datapipe_init_                (datapipe_t *const datapipe, const char *name, const datapipe_filtering_t read_only, datapipe_cache_t cache, const gsize datasize, gpointer initial_data);
+static void            datapipe_init_                (datapipe_t *const datapipe, const char *name, const datapipe_filtering_t read_only, datapipe_cache_t cache, const gsize datasize, gconstpointer initial_data);
 static void            datapipe_free                 (datapipe_t *const datapipe);
 
 /* ------------------------------------------------------------------------- *
@@ -457,7 +457,7 @@ datapipe_name(datapipe_t *const datapipe)
  *
  * @return datapipe value, as void pointer
  */
-gpointer
+gconstpointer
 datapipe_value(datapipe_t *const datapipe)
 {
     return datapipe->dp_cached_data;
@@ -473,10 +473,10 @@ datapipe_value(datapipe_t *const datapipe)
  */
 static void
 datapipe_exec_input_triggers(datapipe_t *const datapipe,
-                             gpointer const indata)
+                             gconstpointer const indata)
 {
     void (*trigger)(gconstpointer const input);
-    gpointer data;
+    gconstpointer data;
     gint i;
 
     if (datapipe == NULL) {
@@ -507,10 +507,10 @@ EXIT:
  */
 static gconstpointer
 datapipe_exec_filters(datapipe_t *const datapipe,
-                      gpointer indata)
+                      gconstpointer indata)
 {
-    gpointer (*filter)(gpointer input);
-    gpointer data;
+    gpointer (*filter)(gconstpointer input);
+    gconstpointer data;
     gconstpointer retval = NULL;
     gint i;
 
@@ -525,7 +525,7 @@ datapipe_exec_filters(datapipe_t *const datapipe,
 
     for (i = 0; (filter = g_slist_nth_data(datapipe->dp_filters,
                                            i)) != NULL; i++) {
-        gpointer tmp = filter(data);
+        gconstpointer tmp = filter(data);
 
         data = tmp;
     }
@@ -574,8 +574,8 @@ EXIT:
  * @param indata The input data to run through the datapipe
  * @return The processed data
  */
-gconstpointer datapipe_exec_full(datapipe_t *const datapipe,
-                                 gpointer indata)
+gconstpointer
+datapipe_exec_full(datapipe_t *const datapipe, gconstpointer indata)
 {
 
     gconstpointer outdata = NULL;
@@ -866,7 +866,7 @@ datapipe_init_(datapipe_t *const datapipe,
                const char *name,
                const datapipe_filtering_t read_only,
                datapipe_cache_t cache,
-               const gsize datasize, gpointer initial_data)
+               const gsize datasize, gconstpointer initial_data)
 {
     if (datapipe == NULL) {
         mce_log(LL_ERR,
