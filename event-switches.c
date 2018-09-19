@@ -463,6 +463,49 @@ static void mce_switches_rem_iomon_all(void)
 	mce_io_mon_unregister_list(switch_iomon_list);
 }
 
+/** Array of datapipe handlers */
+static datapipe_handler_t mce_switches_datapipe_handlers[] =
+{
+	// input triggers
+	{
+		.datapipe = &call_state_pipe,
+		.input_cb = call_state_trigger,
+	},
+	{
+		.datapipe = &alarm_ui_state_pipe,
+		.input_cb = alarm_ui_state_trigger,
+	},
+	// output triggers
+	{
+		.datapipe  = &submode_pipe,
+		.output_cb = submode_trigger,
+	},
+	// sentinel
+	{
+		.datapipe = 0,
+	}
+};
+
+static datapipe_bindings_t mce_switches_datapipe_bindings =
+{
+	.module   = "mce_switches",
+	.handlers = mce_switches_datapipe_handlers,
+};
+
+/** Append triggers/filters to datapipes
+ */
+static void mce_switches_datapipe_init(void)
+{
+	mce_datapipe_init_bindings(&mce_switches_datapipe_bindings);
+}
+
+/** Remove triggers/filters from datapipes
+ */
+static void mce_switches_datapipe_quit(void)
+{
+	mce_datapipe_quit_bindings(&mce_switches_datapipe_bindings);
+}
+
 /**
  * Init function for the switches component
  *
@@ -473,12 +516,7 @@ gboolean mce_switches_init(void)
 	gboolean status = FALSE;
 
 	/* Append triggers/filters to datapipes */
-	datapipe_add_input_trigger(&call_state_pipe,
-				   call_state_trigger);
-	datapipe_add_input_trigger(&alarm_ui_state_pipe,
-				   alarm_ui_state_trigger);
-	datapipe_add_output_trigger(&submode_pipe,
-				    submode_trigger);
+	mce_switches_datapipe_init();
 
 	/* Register I/O monitors */
 	lockkey_iomon_id =
@@ -549,12 +587,7 @@ gboolean mce_switches_init(void)
 void mce_switches_exit(void)
 {
 	/* Remove triggers/filters from datapipes */
-	datapipe_remove_output_trigger(&submode_pipe,
-				       submode_trigger);
-	datapipe_remove_input_trigger(&alarm_ui_state_pipe,
-				      alarm_ui_state_trigger);
-	datapipe_remove_input_trigger(&call_state_pipe,
-				      call_state_trigger);
+	mce_switches_datapipe_quit();
 
 	/* Unregister I/O monitors */
 	mce_switches_rem_iomon_all();

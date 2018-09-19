@@ -1074,6 +1074,40 @@ static void mce_radiostates_quit_dbus(void)
 	mce_dbus_handler_unregister_array(radiostates_dbus_handlers);
 }
 
+/** Array of datapipe handlers */
+static datapipe_handler_t mce_radiostates_datapipe_handlers[] =
+{
+	// output triggers
+	{
+		.datapipe  = &master_radio_enabled_pipe,
+		.output_cb = master_radio_enabled_trigger,
+	},
+	// sentinel
+	{
+		.datapipe = 0,
+	}
+};
+
+static datapipe_bindings_t mce_radiostates_datapipe_bindings =
+{
+	.module   = "mce_radiostates",
+	.handlers = mce_radiostates_datapipe_handlers,
+};
+
+/** Append triggers/filters to datapipes
+ */
+static void mce_radiostates_datapipe_init(void)
+{
+	mce_datapipe_init_bindings(&mce_radiostates_datapipe_bindings);
+}
+
+/** Remove triggers/filters from datapipes
+ */
+static void mce_radiostates_datapipe_quit(void)
+{
+	mce_datapipe_quit_bindings(&mce_radiostates_datapipe_bindings);
+}
+
 /**
  * Init function for the radio states module
  *
@@ -1097,8 +1131,7 @@ const gchar *g_module_check_init(GModule *module)
 		active_radio_states, radio_states);
 
 	/* Append triggers/filters to datapipes */
-	datapipe_add_output_trigger(&master_radio_enabled_pipe,
-				    master_radio_enabled_trigger);
+	mce_radiostates_datapipe_init();
 
 	/* Add dbus handlers */
 	mce_radiostates_init_dbus();
@@ -1127,8 +1160,7 @@ void g_module_unload(GModule *module)
 	xconnman_quit();
 
 	/* Remove triggers/filters from datapipes */
-	datapipe_remove_output_trigger(&master_radio_enabled_pipe,
-				       master_radio_enabled_trigger);
+	mce_radiostates_datapipe_quit();
 
 	return;
 }

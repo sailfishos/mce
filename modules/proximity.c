@@ -309,6 +309,53 @@ static void submode_trigger(gconstpointer data)
 	update_proximity_monitor();
 }
 
+/** Array of datapipe handlers */
+static datapipe_handler_t proximity_datapipe_handlers[] =
+{
+	// input triggers
+	{
+		.datapipe = &call_state_pipe,
+		.input_cb = call_state_trigger,
+	},
+	{
+		.datapipe = &alarm_ui_state_pipe,
+		.input_cb = alarm_ui_state_trigger,
+	},
+	// output triggers
+	{
+		.datapipe  = &display_state_curr_pipe,
+		.output_cb = display_state_curr_trigger,
+	},
+	{
+		.datapipe  = &submode_pipe,
+		.output_cb = submode_trigger,
+	},
+	// sentinel
+	{
+		.datapipe = 0,
+	}
+};
+
+static datapipe_bindings_t proximity_datapipe_bindings =
+{
+	.module   = "proximity",
+	.handlers = proximity_datapipe_handlers,
+};
+
+/** Append triggers/filters to datapipes
+ */
+static void proximity_datapipe_init(void)
+{
+	mce_datapipe_init_bindings(&proximity_datapipe_bindings);
+}
+
+/** Remove triggers/filters from datapipes
+ */
+static void proximity_datapipe_quit(void)
+{
+	mce_datapipe_quit_bindings(&proximity_datapipe_bindings);
+}
+
 /**
  * Init function for the proximity sensor module
  *
@@ -329,14 +376,7 @@ const gchar *g_module_check_init(GModule *module)
 	submode = datapipe_get_gint(submode_pipe);
 
 	/* Append triggers/filters to datapipes */
-	datapipe_add_input_trigger(&call_state_pipe,
-				   call_state_trigger);
-	datapipe_add_input_trigger(&alarm_ui_state_pipe,
-				   alarm_ui_state_trigger);
-	datapipe_add_output_trigger(&display_state_curr_pipe,
-				    display_state_curr_trigger);
-	datapipe_add_output_trigger(&submode_pipe,
-				    submode_trigger);
+	proximity_datapipe_init();
 
 	/* PS enabled setting */
 	mce_setting_track_bool(MCE_SETTING_PROXIMITY_PS_ENABLED,
@@ -382,14 +422,7 @@ void g_module_unload(GModule *module)
 		ps_acts_as_lid_conf_id = 0;
 
 	/* Remove triggers/filters from datapipes */
-	datapipe_remove_output_trigger(&display_state_curr_pipe,
-				       display_state_curr_trigger);
-	datapipe_remove_input_trigger(&alarm_ui_state_pipe,
-				      alarm_ui_state_trigger);
-	datapipe_remove_input_trigger(&call_state_pipe,
-				      call_state_trigger);
-	datapipe_remove_output_trigger(&submode_pipe,
-				       submode_trigger);
+	proximity_datapipe_quit();
 
 	/* Disable proximity monitoring to remove callbacks
 	 * to unloaded module */

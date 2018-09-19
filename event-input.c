@@ -3897,6 +3897,56 @@ static void evin_dbus_quit(void)
  * MODULE_INIT
  * ========================================================================= */
 
+/** Array of datapipe handlers */
+static datapipe_handler_t mce_input_datapipe_handlers[] =
+{
+    // output triggers
+    {
+        .datapipe  = &submode_pipe,
+        .output_cb = evin_gpio_submode_trigger,
+    },
+    {
+        .datapipe  = &display_state_curr_pipe,
+        .output_cb = evin_ts_grab_display_state_curr_cb,
+    },
+    {
+        .datapipe  = &touch_detected_pipe,
+        .output_cb = evin_ts_grab_touch_detected_cb,
+    },
+    {
+        .datapipe  = &touch_grab_wanted_pipe,
+        .output_cb = evin_ts_grab_wanted_cb,
+    },
+    {
+        .datapipe  = &keypad_grab_wanted_pipe,
+        .output_cb = evin_kp_grab_wanted_cb,
+    },
+    // sentinel
+    {
+        .datapipe = 0,
+    }
+};
+
+static datapipe_bindings_t mce_input_datapipe_bindings =
+{
+    .module   = "mce_input",
+    .handlers = mce_input_datapipe_handlers,
+};
+
+/** Append triggers/filters to datapipes
+ */
+static void mce_input_datapipe_init(void)
+{
+    mce_datapipe_init_bindings(&mce_input_datapipe_bindings);
+}
+
+/** Remove triggers/filters from datapipes
+ */
+static void mce_input_datapipe_quit(void)
+{
+    mce_datapipe_quit_bindings(&mce_input_datapipe_bindings);
+}
+
 /** Init function for the /dev/input event component
  *
  * @return TRUE on success, FALSE on failure
@@ -3928,16 +3978,7 @@ mce_input_init(void)
 #endif
 
     /* Append triggers/filters to datapipes */
-    datapipe_add_output_trigger(&submode_pipe,
-                                evin_gpio_submode_trigger);
-    datapipe_add_output_trigger(&display_state_curr_pipe,
-                                evin_ts_grab_display_state_curr_cb);
-    datapipe_add_output_trigger(&touch_detected_pipe,
-                                evin_ts_grab_touch_detected_cb);
-    datapipe_add_output_trigger(&touch_grab_wanted_pipe,
-                                evin_ts_grab_wanted_cb);
-    datapipe_add_output_trigger(&keypad_grab_wanted_pipe,
-                                evin_kp_grab_wanted_cb);
+    mce_input_datapipe_init();
 
     /* Register input device directory monitor */
     if( !evin_devdir_monitor_init() )
@@ -3967,16 +4008,7 @@ mce_input_exit(void)
 #endif
 
     /* Remove triggers/filters from datapipes */
-    datapipe_remove_output_trigger(&submode_pipe,
-                                   evin_gpio_submode_trigger);
-    datapipe_remove_output_trigger(&display_state_curr_pipe,
-                                   evin_ts_grab_display_state_curr_cb);
-    datapipe_remove_output_trigger(&touch_detected_pipe,
-                                   evin_ts_grab_touch_detected_cb);
-    datapipe_remove_output_trigger(&touch_grab_wanted_pipe,
-                                   evin_ts_grab_wanted_cb);
-    datapipe_remove_output_trigger(&keypad_grab_wanted_pipe,
-                                   evin_kp_grab_wanted_cb);
+    mce_input_datapipe_quit();
 
     /* Remove input device directory monitor */
     evin_devdir_monitor_quit();

@@ -830,6 +830,56 @@ static void mce_keypad_quit_dbus(void)
 	mce_dbus_handler_unregister_array(keypad_dbus_handlers);
 }
 
+/** Array of datapipe handlers */
+static datapipe_handler_t mce_keypad_datapipe_handlers[] =
+{
+	// output triggers
+	{
+		.datapipe  = &system_state_pipe,
+		.output_cb = system_state_trigger,
+	},
+	{
+		.datapipe  = &key_backlight_brightness_pipe,
+		.output_cb = set_key_backlight_brightness,
+	},
+	{
+		.datapipe  = &device_inactive_pipe,
+		.output_cb = device_inactive_trigger,
+	},
+	{
+		.datapipe  = &keyboard_slide_state_pipe,
+		.output_cb = keyboard_slide_state_trigger,
+	},
+	{
+		.datapipe  = &display_state_curr_pipe,
+		.output_cb = display_state_curr_trigger,
+	},
+	// sentinel
+	{
+		.datapipe = 0,
+	}
+};
+
+static datapipe_bindings_t mce_keypad_datapipe_bindings =
+{
+	.module   = "mce_keypad",
+	.handlers = mce_keypad_datapipe_handlers,
+};
+
+/** Append triggers/filters to datapipes
+ */
+static void mce_keypad_datapipe_init(void)
+{
+	mce_datapipe_init_bindings(&mce_keypad_datapipe_bindings);
+}
+
+/** Remove triggers/filters from datapipes
+ */
+static void mce_keypad_datapipe_quit(void)
+{
+	mce_datapipe_quit_bindings(&mce_keypad_datapipe_bindings);
+}
+
 /**
  * Init function for the keypad module
  *
@@ -846,16 +896,7 @@ const gchar *g_module_check_init(GModule *module)
 	(void)module;
 
 	/* Append triggers/filters to datapipes */
-	datapipe_add_output_trigger(&system_state_pipe,
-				    system_state_trigger);
-	datapipe_add_output_trigger(&key_backlight_brightness_pipe,
-				    set_key_backlight_brightness);
-	datapipe_add_output_trigger(&device_inactive_pipe,
-				    device_inactive_trigger);
-	datapipe_add_output_trigger(&keyboard_slide_state_pipe,
-				    keyboard_slide_state_trigger);
-	datapipe_add_output_trigger(&display_state_curr_pipe,
-				    display_state_curr_trigger);
+	mce_keypad_datapipe_init();
 
 	/* Get configuration options */
 	key_backlight_timeout =
@@ -945,16 +986,7 @@ void g_module_unload(GModule *module)
 	g_free(engine3_leds_path);
 
 	/* Remove triggers/filters from datapipes */
-	datapipe_remove_output_trigger(&display_state_curr_pipe,
-				       display_state_curr_trigger);
-	datapipe_remove_output_trigger(&keyboard_slide_state_pipe,
-				       keyboard_slide_state_trigger);
-	datapipe_remove_output_trigger(&device_inactive_pipe,
-				       device_inactive_trigger);
-	datapipe_remove_output_trigger(&key_backlight_brightness_pipe,
-				       set_key_backlight_brightness);
-	datapipe_remove_output_trigger(&system_state_pipe,
-				       system_state_trigger);
+	mce_keypad_datapipe_quit();
 
 	/* Remove all timer sources */
 	cancel_key_backlight_timeout();
