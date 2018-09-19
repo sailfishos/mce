@@ -682,7 +682,7 @@ static void tklock_datapipe_set_devicelock_state(devicelock_state_t state)
     if( devicelock_state != state ) {
         datapipe_exec_full(&devicelock_state_pipe,
                            GINT_TO_POINTER(state),
-                           USE_INDATA, CACHE_INDATA);
+                           DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
     }
 }
 
@@ -759,7 +759,7 @@ static void tklock_datapipe_devicelock_state_cb(gconstpointer data)
                     "assume fingerprint authentication occurred");
             datapipe_exec_output_triggers(&ngfd_event_request_pipe,
                                           "unlock_device",
-                                          USE_INDATA);
+                                          DATAPIPE_USE_INDATA);
             if( proximity_sensor_actual != COVER_OPEN ) {
                 mce_log(LL_WARN, "unblank skipped due to proximity sensor");
                 break;
@@ -1869,7 +1869,7 @@ static void tklock_datapipe_lid_sensor_is_working_cb(gconstpointer data)
         /* Invalidate sensor data */
         datapipe_exec_full(&lid_sensor_actual_pipe,
                            GINT_TO_POINTER(COVER_UNDEF),
-                           USE_INDATA, CACHE_INDATA);
+                           DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
     }
 
 EXIT:
@@ -1891,7 +1891,7 @@ static void tklock_datapipe_lid_sensor_actual_cb(gconstpointer data)
          * so we can stop assuming it stays closed forever */
         datapipe_exec_full(&lid_sensor_is_working_pipe,
                            GINT_TO_POINTER(true),
-                           USE_INDATA, CACHE_INDATA);
+                           DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
     }
 
     mce_log(LL_DEVEL, "lid_sensor_actual = %s -> %s",
@@ -2445,7 +2445,7 @@ static void tklock_lidsensor_init(void)
     /* Broadcast initial state */
     datapipe_exec_full(&lid_sensor_is_working_pipe,
                        GINT_TO_POINTER(tklock_lid_sensor_is_working),
-                       USE_INDATA, CACHE_INDATA);
+                       DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
 }
 
 /* ========================================================================= *
@@ -2575,7 +2575,7 @@ static gboolean tklock_lidfilter_wait_for_close_cb(gpointer aptr)
     /* Invalidate sensor data */
     datapipe_exec_full(&lid_sensor_actual_pipe,
                        GINT_TO_POINTER(COVER_UNDEF),
-                       USE_INDATA, CACHE_INDATA);
+                       DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
 
 EXIT:
     return FALSE;
@@ -2647,7 +2647,7 @@ static gboolean tklock_lidfilter_wait_for_dark_cb(gpointer aptr)
     /* Invalidate sensor data */
     datapipe_exec_full(&lid_sensor_actual_pipe,
                        GINT_TO_POINTER(COVER_UNDEF),
-                       USE_INDATA, CACHE_INDATA);
+                       DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
 
 EXIT:
     return FALSE;
@@ -2785,7 +2785,7 @@ static void tklock_lidfilter_rethink_allow_close(void)
           mce_log(LL_DEVEL, "unblank while lid closed; ignore lid");
           datapipe_exec_full(&lid_sensor_actual_pipe,
                              GINT_TO_POINTER(COVER_UNDEF),
-                             USE_INDATA, CACHE_INDATA);
+                             DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
       }
       break;
 
@@ -2816,7 +2816,7 @@ static void tklock_lidfilter_rethink_lid_state(void)
     if( lid_sensor_actual != COVER_UNDEF ) {
         datapipe_exec_full(&light_sensor_poll_request_pipe,
                            GINT_TO_POINTER(TRUE),
-                           USE_INDATA, CACHE_OUTDATA);
+                           DATAPIPE_USE_INDATA, DATAPIPE_CACHE_OUTDATA);
     }
 
     switch( lid_sensor_actual ) {
@@ -2969,7 +2969,7 @@ static void tklock_lidpolicy_rethink(void)
     /* First make the policy decision known */
     datapipe_exec_full(&lid_sensor_filtered_pipe,
                        GINT_TO_POINTER(action),
-                       USE_INDATA, CACHE_INDATA);
+                       DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
 
     /* Then execute the required actions */
     switch( action ) {
@@ -3444,7 +3444,7 @@ static void  tklock_uiexception_sync_to_datapipe(void)
     if( in_pipe != active ) {
         datapipe_exec_full(&uiexception_type_pipe,
                            GINT_TO_POINTER(active),
-                           USE_INDATA, CACHE_INDATA);
+                           DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
     }
 }
 
@@ -3503,7 +3503,7 @@ static void tklock_uiexception_rethink(void)
         case MCE_DISPLAY_POWER_UP:
             datapipe_exec_full(&proximity_blanked_pipe,
                                GINT_TO_POINTER(false),
-                               USE_INDATA, CACHE_INDATA);
+                               DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
             break;
         }
     }
@@ -3667,7 +3667,7 @@ static void tklock_uiexception_rethink(void)
                 mce_log(LL_DEVEL, "display proximity blank");
                 datapipe_exec_full(&proximity_blanked_pipe,
                                    GINT_TO_POINTER(true),
-                                   USE_INDATA, CACHE_INDATA);
+                                   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
             }
             else {
                 mce_log(LL_DEBUG, "display blank");
@@ -3714,7 +3714,7 @@ static void tklock_uiexception_rethink(void)
     if( !exdata.insync ) {
         datapipe_exec_full(&proximity_blanked_pipe,
                            GINT_TO_POINTER(false),
-                           USE_INDATA, CACHE_INDATA);
+                           DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
     }
 
 EXIT:
@@ -4537,7 +4537,7 @@ static void tklock_evctrl_rethink(void)
           (lid_sensor_filtered != COVER_CLOSED) ) ) {
         datapipe_exec_full(&touch_grab_wanted_pipe,
                            GINT_TO_POINTER(grab_ts),
-                           USE_INDATA, CACHE_INDATA);
+                           DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
     }
 
     /* - - - - - - - - - - - - - - - - - - - *
@@ -4564,7 +4564,7 @@ static void tklock_evctrl_rethink(void)
 
     datapipe_exec_full(&keypad_grab_wanted_pipe,
                        GINT_TO_POINTER(grab_kp),
-                       USE_INDATA, CACHE_INDATA);
+                       DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
 
     return;
 }
@@ -6207,7 +6207,7 @@ static gboolean tklock_dbus_interaction_expected_cb(DBusMessage *const msg)
     mce_log(LL_DEBUG, "received interaction expected signal: state=%d", arg);
     datapipe_exec_full(&interaction_expected_pipe,
                        GINT_TO_POINTER(arg),
-                       USE_INDATA, CACHE_INDATA);
+                       DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
 
 EXIT:
     dbus_error_free(&err);

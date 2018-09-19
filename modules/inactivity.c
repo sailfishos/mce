@@ -281,7 +281,7 @@ static const char *mia_inactivity_repr(bool inactive)
 static void mia_generate_activity(void)
 {
     datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(FALSE),
-                       USE_INDATA, CACHE_OUTDATA);
+                       DATAPIPE_USE_INDATA, DATAPIPE_CACHE_OUTDATA);
 }
 
 /** Helper for switching to inactive state
@@ -289,7 +289,7 @@ static void mia_generate_activity(void)
 static void mia_generate_inactivity(void)
 {
     datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(TRUE),
-                       USE_INDATA, CACHE_OUTDATA);
+                       DATAPIPE_USE_INDATA, DATAPIPE_CACHE_OUTDATA);
 }
 
 /* ========================================================================= *
@@ -440,7 +440,7 @@ static void mia_datapipe_inactivity_event_cb(gconstpointer data)
 
     datapipe_exec_full(&device_inactive_pipe,
                        GINT_TO_POINTER(inactive),
-                       USE_INDATA, CACHE_OUTDATA);
+                       DATAPIPE_USE_INDATA, DATAPIPE_CACHE_OUTDATA);
 EXIT:
     return;
 }

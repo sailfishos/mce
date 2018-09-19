@@ -91,7 +91,7 @@ static void report_proximity(cover_state_t state)
 
 		datapipe_exec_full(&proximity_sensor_actual_pipe,
 				   GINT_TO_POINTER(state),
-				   USE_INDATA, CACHE_INDATA);
+				   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
 	}
 }
 
@@ -110,7 +110,7 @@ static void report_lid_input(cover_state_t state)
 
 		datapipe_exec_full(&lid_sensor_actual_pipe,
 				   GINT_TO_POINTER(state),
-				   USE_INDATA, CACHE_INDATA);
+				   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
 	}
 }
 

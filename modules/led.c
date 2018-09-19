@@ -2416,7 +2416,7 @@ static gboolean init_lysti_patterns(void)
 	/* Set the LED brightness */
 	datapipe_exec_full(&led_brightness_pipe,
 			   GINT_TO_POINTER(maximum_led_brightness),
-			   USE_INDATA, CACHE_INDATA);
+			   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
 
 	status = TRUE;
 
@@ -2549,7 +2549,7 @@ static gboolean init_njoy_patterns(void)
 	/* Set the LED brightness */
 	datapipe_exec_full(&led_brightness_pipe,
 			   GINT_TO_POINTER(maximum_led_brightness),
-			   USE_INDATA, CACHE_INDATA);
+			   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
 
 	status = TRUE;
 
@@ -2816,7 +2816,7 @@ static gboolean init_hybris_patterns(void)
 	/* Set the LED brightness */
 	datapipe_exec_full(&led_brightness_pipe,
 			   GINT_TO_POINTER(maximum_led_brightness),
-			   USE_INDATA, CACHE_INDATA);
+			   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
 
 	status = TRUE;
 
@@ -3200,8 +3200,8 @@ const gchar *g_module_check_init(GModule *module)
 
 	/* Initialize sw breathing state data */
 	sw_breathing_init();
-	charger_state_trigger(charger_state_pipe.cached_data);
-	battery_level_trigger(battery_level_pipe.cached_data);
+	charger_state_trigger(charger_state_pipe.dp_cached_data);
+	battery_level_trigger(battery_level_pipe.dp_cached_data);
 
 	/* Evaluate initial active pattern state */
 	led_enable();

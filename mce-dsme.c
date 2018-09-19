@@ -328,7 +328,7 @@ static void mce_dsme_processwd_pong(void)
 
     /* Execute hearbeat actions even if ping-pong ipc failed */
     datapipe_exec_full(&heartbeat_event_pipe, GINT_TO_POINTER(0),
-                       USE_INDATA, DONT_CACHE_INDATA);
+                       DATAPIPE_USE_INDATA, DATAPIPE_CACHE_NOTHING);
 }
 
 /**
@@ -515,7 +515,7 @@ static void mce_dsme_set_shutting_down(bool shutting_down)
 
     datapipe_exec_full(&shutting_down_pipe,
                        GINT_TO_POINTER(mce_dsme_shutting_down_flag),
-                       USE_INDATA, CACHE_INDATA);
+                       DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
 
 EXIT:
     return;
@@ -595,7 +595,7 @@ static gboolean mce_dsme_socket_recv_cb(GIOChannel *source,
         system_state_t state = mce_dsme_normalise_system_state(msg2->state);
         datapipe_exec_full(&system_state_pipe,
                            GINT_TO_POINTER(state),
-                           USE_INDATA, CACHE_INDATA);
+                           DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
     }
     else {
         mce_log(LL_DEBUG, "Unhandled %s message received from DSME",
@@ -907,14 +907,14 @@ static void mce_dsme_datapipe_system_state_cb(gconstpointer data)
     case MCE_SYSTEM_STATE_USER:
         datapipe_exec_output_triggers(&led_pattern_activate_pipe,
                                       MCE_LED_PATTERN_DEVICE_ON,
-                                      USE_INDATA);
+                                      DATAPIPE_USE_INDATA);
         break;
 
     case MCE_SYSTEM_STATE_SHUTDOWN:
     case MCE_SYSTEM_STATE_REBOOT:
         datapipe_exec_output_triggers(&led_pattern_deactivate_pipe,
                                       MCE_LED_PATTERN_DEVICE_ON,
-                                      USE_INDATA);
+                                      DATAPIPE_USE_INDATA);
         break;
 
     default:

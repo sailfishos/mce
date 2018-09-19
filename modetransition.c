@@ -48,7 +48,7 @@ static gboolean mce_set_submode_int32(const submode_t submode)
 		submode_change_repr(old_submode, submode));
 
 	datapipe_exec_full(&submode_pipe, GINT_TO_POINTER(submode),
-			   USE_INDATA, CACHE_INDATA);
+			   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
 EXIT:
 	return TRUE;
 }
@@ -115,8 +115,8 @@ static void system_state_trigger(gconstpointer data)
 		case MCE_SYSTEM_STATE_BOOT:
 		case MCE_SYSTEM_STATE_UNDEF:
 		case MCE_SYSTEM_STATE_ACTDEAD:
-			datapipe_exec_output_triggers(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_DEVICE_ON, USE_INDATA);
-			datapipe_exec_output_triggers(&led_pattern_activate_pipe, MCE_LED_PATTERN_POWER_OFF, USE_INDATA);
+			datapipe_exec_output_triggers(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_DEVICE_ON, DATAPIPE_USE_INDATA);
+			datapipe_exec_output_triggers(&led_pattern_activate_pipe, MCE_LED_PATTERN_POWER_OFF, DATAPIPE_USE_INDATA);
 			break;
 
 		default:

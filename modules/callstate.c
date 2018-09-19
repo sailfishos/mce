@@ -1698,11 +1698,11 @@ call_state_rethink_now(void)
 
     datapipe_exec_full(&call_state_pipe,
                        GINT_TO_POINTER(call_state),
-                       USE_INDATA, CACHE_INDATA);
+                       DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
 
     datapipe_exec_full(&call_type_pipe,
                        GINT_TO_POINTER(call_type),
-                       USE_INDATA, CACHE_INDATA);
+                       DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
 
 EXIT:
     return changed;

@@ -544,6 +544,8 @@ NORMALIZE_USES_SPC =\
 	bme-dbus-names.h\
 	builtin-gconf.c\
 	builtin-gconf.h\
+	datapipe.c\
+	datapipe.h\
 	evdev.c\
 	evdev.h\
 	event-input.c\
@@ -621,8 +623,6 @@ NORMALIZE_USES_SPC =\
 	tools/fileusers.h\
 
 NORMALIZE_USES_TAB =\
-	datapipe.c\
-	datapipe.h\
 	event-switches.c\
 	libwakelock.c\
 	mce-conf.c\

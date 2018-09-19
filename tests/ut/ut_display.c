@@ -1262,71 +1262,71 @@ static void stub_setup_checked(void)
 	stub__main_loop = g_main_loop_new(NULL, TRUE);
 
 	/* Setup all datapipes - copy & paste from mce's main() */
-	datapipe_init(&system_state_pipe, READ_WRITE, DONT_FREE_CACHE,
+	datapipe_init(&system_state_pipe, DATAPIPE_FILTERING_ALLOWED, DATAPIPE_DATA_LITERAL,
 		      0, GINT_TO_POINTER(MCE_SYSTEM_STATE_UNDEF));
-	datapipe_init(&master_radio_enabled_pipe, READ_WRITE, DONT_FREE_CACHE,
+	datapipe_init(&master_radio_enabled_pipe, DATAPIPE_FILTERING_ALLOWED, DATAPIPE_DATA_LITERAL,
 		      0, GINT_TO_POINTER(0));
-	datapipe_init(&call_state_pipe, READ_WRITE, DONT_FREE_CACHE,
+	datapipe_init(&call_state_pipe, DATAPIPE_FILTERING_ALLOWED, DATAPIPE_DATA_LITERAL,
 		      0, GINT_TO_POINTER(CALL_STATE_NONE));
-	datapipe_init(&call_type_pipe, READ_WRITE, DONT_FREE_CACHE,
+	datapipe_init(&call_type_pipe, DATAPIPE_FILTERING_ALLOWED, DATAPIPE_DATA_LITERAL,
 		      0, GINT_TO_POINTER(CALL_TYPE_NORMAL));
-	datapipe_init(&alarm_ui_state_pipe, READ_ONLY, DONT_FREE_CACHE,
+	datapipe_init(&alarm_ui_state_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
 		      0, GINT_TO_POINTER(MCE_ALARM_UI_INVALID_INT32));
-	datapipe_init(&submode_pipe, READ_ONLY, DONT_FREE_CACHE,
+	datapipe_init(&submode_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
 		      0, GINT_TO_POINTER(MCE_SUBMODE_NORMAL));
-	datapipe_init(&display_state_curr_pipe, READ_WRITE, DONT_FREE_CACHE,
+	datapipe_init(&display_state_curr_pipe, DATAPIPE_FILTERING_ALLOWED, DATAPIPE_DATA_LITERAL,
 		      0, GINT_TO_POINTER(MCE_DISPLAY_UNDEF));
-	datapipe_init(&display_state_request_pipe, READ_WRITE, DONT_FREE_CACHE,
+	datapipe_init(&display_state_request_pipe, DATAPIPE_FILTERING_ALLOWED, DATAPIPE_DATA_LITERAL,
 		      0, GINT_TO_POINTER(MCE_DISPLAY_UNDEF));
-	datapipe_init(&display_brightness_pipe, READ_WRITE, DONT_FREE_CACHE,
+	datapipe_init(&display_brightness_pipe, DATAPIPE_FILTERING_ALLOWED, DATAPIPE_DATA_LITERAL,
 		      0, GINT_TO_POINTER(0));
-	datapipe_init(&led_brightness_pipe, READ_WRITE, DONT_FREE_CACHE,
+	datapipe_init(&led_brightness_pipe, DATAPIPE_FILTERING_ALLOWED, DATAPIPE_DATA_LITERAL,
 		      0, GINT_TO_POINTER(0));
-	datapipe_init(&led_pattern_activate_pipe, READ_ONLY, FREE_CACHE,
+	datapipe_init(&led_pattern_activate_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_DYNAMIC,
 		      0, NULL);
-	datapipe_init(&led_pattern_deactivate_pipe, READ_ONLY, FREE_CACHE,
+	datapipe_init(&led_pattern_deactivate_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_DYNAMIC,
 		      0, NULL);
-	datapipe_init(&key_backlight_brightness_pipe, READ_WRITE, DONT_FREE_CACHE,
+	datapipe_init(&key_backlight_brightness_pipe, DATAPIPE_FILTERING_ALLOWED, DATAPIPE_DATA_LITERAL,
 		      0, GINT_TO_POINTER(0));
-	datapipe_init(&keypress_event_pipe, READ_ONLY, FREE_CACHE,
+	datapipe_init(&keypress_event_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_DYNAMIC,
 		      sizeof (struct input_event), NULL);
-	datapipe_init(&touchscreen_event_pipe, READ_ONLY, FREE_CACHE,
+	datapipe_init(&touchscreen_event_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_DYNAMIC,
 		      sizeof (struct input_event), NULL);
-	datapipe_init(&device_inactive_pipe, READ_WRITE, DONT_FREE_CACHE,
+	datapipe_init(&device_inactive_pipe, DATAPIPE_FILTERING_ALLOWED, DATAPIPE_DATA_LITERAL,
 		      0, GINT_TO_POINTER(FALSE));
-	datapipe_init(&lockkey_state_pipe, READ_ONLY, DONT_FREE_CACHE,
+	datapipe_init(&lockkey_state_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
 		      0, GINT_TO_POINTER(0));
-	datapipe_init(&keyboard_slide_state_pipe, READ_ONLY, DONT_FREE_CACHE,
+	datapipe_init(&keyboard_slide_state_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
 		      0, GINT_TO_POINTER(0));
-	datapipe_init(&lid_sensor_actual_pipe, READ_ONLY, DONT_FREE_CACHE,
+	datapipe_init(&lid_sensor_actual_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
 		      0, GINT_TO_POINTER(0));
-	datapipe_init(&lens_cover_state_pipe, READ_ONLY, DONT_FREE_CACHE,
+	datapipe_init(&lens_cover_state_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
 		      0, GINT_TO_POINTER(0));
-	datapipe_init(&proximity_sensor_actual_pipe, READ_ONLY, DONT_FREE_CACHE,
+	datapipe_init(&proximity_sensor_actual_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
 		      0, GINT_TO_POINTER(0));
-	datapipe_init(&tklock_request_pipe, READ_ONLY, DONT_FREE_CACHE,
+	datapipe_init(&tklock_request_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
 		      0, GINT_TO_POINTER(TKLOCK_REQUEST_UNDEF));
-	datapipe_init(&charger_state_pipe, READ_ONLY, DONT_FREE_CACHE,
+	datapipe_init(&charger_state_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
 		      0, GINT_TO_POINTER(0));
-	datapipe_init(&battery_status_pipe, READ_ONLY, DONT_FREE_CACHE,
+	datapipe_init(&battery_status_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
 		      0, GINT_TO_POINTER(BATTERY_STATUS_UNDEF));
-	datapipe_init(&battery_level_pipe, READ_ONLY, DONT_FREE_CACHE,
+	datapipe_init(&battery_level_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
 		      0, GINT_TO_POINTER(100));
-	datapipe_init(&camera_button_state_pipe, READ_ONLY, DONT_FREE_CACHE,
+	datapipe_init(&camera_button_state_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
 		      0, GINT_TO_POINTER(CAMERA_BUTTON_UNDEF));
-	datapipe_init(&inactivity_delay_pipe, READ_ONLY, DONT_FREE_CACHE,
+	datapipe_init(&inactivity_delay_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
 		      0, GINT_TO_POINTER(DEFAULT_INACTIVITY_DELAY));
-	datapipe_init(&audio_route_pipe, READ_ONLY, DONT_FREE_CACHE,
+	datapipe_init(&audio_route_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
 		      0, GINT_TO_POINTER(AUDIO_ROUTE_UNDEF));
-	datapipe_init(&usb_cable_state_pipe, READ_ONLY, DONT_FREE_CACHE,
+	datapipe_init(&usb_cable_state_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
 		      0, GINT_TO_POINTER(0));
-	datapipe_init(&jack_sense_state_pipe, READ_ONLY, DONT_FREE_CACHE,
+	datapipe_init(&jack_sense_state_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
 		      0, GINT_TO_POINTER(0));
-	datapipe_init(&power_saving_mode_active_pipe, READ_ONLY, DONT_FREE_CACHE,
+	datapipe_init(&power_saving_mode_active_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
 		      0, GINT_TO_POINTER(0));
-	datapipe_init(&thermal_state_pipe, READ_ONLY, DONT_FREE_CACHE,
+	datapipe_init(&thermal_state_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
 		      0, GINT_TO_POINTER(THERMAL_STATE_UNDEF));
-	datapipe_init(&heartbeat_event_pipe, READ_ONLY, DONT_FREE_CACHE,
+	datapipe_init(&heartbeat_event_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
 		      0, GINT_TO_POINTER(0));
 
 	datapipe_add_filter(&display_brightness_pipe,
@@ -1459,7 +1459,7 @@ static gint ut_nth_possible_dim_timeout(int n)
 static void ut_run_to_user_state(void)
 {
 	datapipe_exec_full(&system_state_pipe, GINT_TO_POINTER(MCE_SYSTEM_STATE_USER),
-			   USE_INDATA, CACHE_INDATA);
+			   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
 
 	ut_assert_transition(ut_is_desktop_ready, NULL);
 	ut_assert_transition(ut_is_display_state_eq,
@@ -1655,7 +1655,7 @@ START_TEST (ut_check_auto_dim)
 
 		/* Generate activity so adaptive_dimming_index gets inc. */
 		datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(FALSE),
-				   USE_INDATA, CACHE_OUTDATA);
+				   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_OUTDATA);
 		ut_assert_transition(ut_is_display_state_eq,
 				     GINT_TO_POINTER(MCE_DISPLAY_ON));
 	}
@@ -1695,7 +1695,7 @@ START_TEST (ut_check_adaptive_dim_timeout)
 
 	/* Generating activity the adaptive_dimming_index gets incremented */
 	datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(FALSE),
-			   USE_INDATA, CACHE_OUTDATA);
+			   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_OUTDATA);
 	/* Verify adaptive_dimming_index=1 by meassuring rime to re-enter DIM */
 	expected_dim_time = ut_nth_possible_dim_timeout(forced_dti + 1);
 	ut_assert_transition(ut_is_display_state_eq,
@@ -1899,7 +1899,7 @@ START_TEST (ut_check_sw_fading)
 	const gint start_brightness = 3;
 	datapipe_exec_full(&display_brightness_pipe,
 			   GINT_TO_POINTER(start_brightness),
-			   USE_INDATA, CACHE_INDATA);
+			   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
 	ut_assert_transition(ut_is_sysfs_brightness_eq,
 			     GINT_TO_POINTER(start_brightness * 20));
 
@@ -1936,7 +1936,7 @@ START_TEST (ut_check_sw_fading)
 
 	datapipe_exec_full(&display_brightness_pipe,
 			   GINT_TO_POINTER(start_brightness + data[_i].change),
-			   USE_INDATA, CACHE_INDATA);
+			   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
 	ut_assert_transition_time_eq(ut_is_sysfs_brightness_eq,
 				     GINT_TO_POINTER(20 * (start_brightness +
 							   data[_i].change)),

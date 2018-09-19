@@ -1193,7 +1193,7 @@ fingerprint_led_scanning_activate(bool activate)
                                       &led_pattern_activate_pipe :
                                       &led_pattern_deactivate_pipe,
                                       MCE_LED_PATTERN_SCANNING_FINGERPRINT,
-                                      USE_INDATA);
+                                      DATAPIPE_USE_INDATA);
     }
 }
 
@@ -1214,7 +1214,7 @@ fingerprint_led_acquired_activate(bool activate)
                                       &led_pattern_activate_pipe :
                                       &led_pattern_deactivate_pipe,
                                       MCE_LED_PATTERN_FINGERPRINT_ACQUIRED,
-                                      USE_INDATA);
+                                      DATAPIPE_USE_INDATA);
     }
 }
 
@@ -1277,7 +1277,7 @@ fingerprint_datapipe_set_fpstate(fpstate_t state)
             fpstate_repr(fpstate));
 
     datapipe_exec_full(&fpstate_pipe, GINT_TO_POINTER(fpstate),
-                       USE_INDATA, CACHE_INDATA);
+                       DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
 
     switch( fpstate ) {
     case FPSTATE_ENROLLING:
@@ -1360,7 +1360,7 @@ fingerprint_datapipe_update_enroll_in_progress(void)
 
     datapipe_exec_full(&enroll_in_progress_pipe,
                        GINT_TO_POINTER(enroll_in_progress),
-                       USE_INDATA, CACHE_INDATA);
+                       DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
 EXIT:
     return;
 }
@@ -1382,7 +1382,7 @@ fingerprint_datapipe_generate_activity(void)
     mce_log(LL_DEBUG, "generating activity from fingerprint sensor");
     datapipe_exec_full(&inactivity_event_pipe,
                        GINT_TO_POINTER(FALSE),
-                       USE_INDATA, CACHE_OUTDATA);
+                       DATAPIPE_USE_INDATA, DATAPIPE_CACHE_OUTDATA);
 
 EXIT:
     return;
@@ -2618,7 +2618,7 @@ fpwakeup_trigger(void)
         /* (Mis)use haptic feedback associated with device unlocking */
         datapipe_exec_output_triggers(&ngfd_event_request_pipe,
                                       "unlock_device",
-                                      USE_INDATA);
+                                      DATAPIPE_USE_INDATA);
 
         /* Make sure we unblank / exit from lpm */
         mce_datapipe_request_display_state(MCE_DISPLAY_ON);

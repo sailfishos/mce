@@ -358,7 +358,7 @@ static gboolean radio_states_change(gulong states, gulong mask)
 		 * and that all callbacks are called; the trigger inside
 		 * radiostates.c has already had all its actions performed
 		 */
-		datapipe_exec_full(&master_radio_enabled_pipe, GINT_TO_POINTER(master), USE_INDATA, CACHE_INDATA);
+		datapipe_exec_full(&master_radio_enabled_pipe, GINT_TO_POINTER(master), DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
 	}
 
 	/* After datapipe execution the radio state should

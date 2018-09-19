@@ -114,7 +114,7 @@ xpkgkit_set_locked_state(bool locked)
 
     datapipe_exec_full(&packagekit_locked_pipe,
                        GINT_TO_POINTER(xpkgkit_is_locked),
-                       USE_INDATA, CACHE_INDATA);
+                       DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
 
 EXIT:
     return;

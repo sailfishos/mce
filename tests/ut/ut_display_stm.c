@@ -18,10 +18,10 @@ EXTERN_DUMMY_STUB (
 DBusConnection *, dbus_connection_get, (void));
 
 EXTERN_DUMMY_STUB (
-gconstpointer, datapipe_exec_full, (datapipe_struct *const datapipe,
+gconstpointer, datapipe_exec_full, (datapipe_t *const datapipe,
 				    gpointer indata,
-				    const data_source_t use_cache,
-				    const caching_policy_t cache_indata));
+				    const datapipe_use_t use_cache,
+				    const datapipe_cache_t cache_indata));
 
 /* mce-sensorfw.c stubs */
 
