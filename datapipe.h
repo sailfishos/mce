@@ -80,7 +80,6 @@ typedef enum {
  */
 typedef enum {
     DATAPIPE_USE_INDATA = FALSE,  /**< Use the indata as data source */
-    DATAPIPE_USE_CACHED = TRUE,   /**< Use the cache as data source */
 } datapipe_use_t;
 
 /**

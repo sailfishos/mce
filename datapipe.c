@@ -468,8 +468,7 @@ datapipe_value(datapipe_t *const datapipe)
  *
  * @param datapipe The datapipe to execute
  * @param indata The input data to run through the datapipe
- * @param use_cache DATAPIPE_USE_CACHED to use data from cache,
- *                  DATAPIPE_USE_INDATA to use indata
+ * @param use_cache DATAPIPE_USE_INDATA to use indata
  * @param cache_indata DATAPIPE_CACHE_INDATA to cache the indata,
  *                     DATAPIPE_CACHE_NOTHING to keep the old data
  */
@@ -478,6 +477,8 @@ datapipe_exec_input_triggers(datapipe_t *const datapipe,
                              gpointer const indata,
                              const datapipe_use_t use_cache)
 {
+    (void)use_cache; // TODO: remove
+
     void (*trigger)(gconstpointer const input);
     gpointer data;
     gint i;
@@ -490,7 +491,7 @@ datapipe_exec_input_triggers(datapipe_t *const datapipe,
         goto EXIT;
     }
 
-    data = (use_cache == DATAPIPE_USE_CACHED) ? datapipe->dp_cached_data : indata;
+    data = indata;
 
     for (i = 0; (trigger = g_slist_nth_data(datapipe->dp_input_triggers,
                                             i)) != NULL; i++) {
@@ -506,8 +507,7 @@ EXIT:
  *
  * @param datapipe The datapipe to execute
  * @param indata The input data to run through the datapipe
- * @param use_cache DATAPIPE_USE_CACHED to use data from cache,
- *                  DATAPIPE_USE_INDATA to use indata
+ * @param use_cache DATAPIPE_USE_INDATA to use indata
  * @return The processed data
  */
 static gconstpointer
@@ -515,6 +515,8 @@ datapipe_exec_filters(datapipe_t *const datapipe,
                       gpointer indata,
                       const datapipe_use_t use_cache)
 {
+    (void)use_cache; // TODO: remove
+
     gpointer (*filter)(gpointer input);
     gpointer data;
     gconstpointer retval = NULL;
@@ -527,7 +529,7 @@ datapipe_exec_filters(datapipe_t *const datapipe,
         goto EXIT;
     }
 
-    data = (use_cache == DATAPIPE_USE_CACHED) ? datapipe->dp_cached_data : indata;
+    data = indata;
 
     for (i = 0; (filter = g_slist_nth_data(datapipe->dp_filters,
                                            i)) != NULL; i++) {
@@ -556,13 +558,14 @@ EXIT:
  *
  * @param datapipe The datapipe to execute
  * @param indata The input data to run through the datapipe
- * @param use_cache DATAPIPE_USE_CACHED to use data from cache,
- *                  DATAPIPE_USE_INDATA to use indata
+ * @param use_cache DATAPIPE_USE_INDATA to use indata
  */
 void datapipe_exec_output_triggers(const datapipe_t *const datapipe,
                                    gconstpointer indata,
                                    const datapipe_use_t use_cache)
 {
+    (void)use_cache; // TODO: remove
+
     void (*trigger)(gconstpointer input);
     gconstpointer data;
     gint i;
@@ -574,7 +577,7 @@ void datapipe_exec_output_triggers(const datapipe_t *const datapipe,
         goto EXIT;
     }
 
-    data = (use_cache == DATAPIPE_USE_CACHED) ? datapipe->dp_cached_data : indata;
+    data = indata;
 
     for (i = 0; (trigger = g_slist_nth_data(datapipe->dp_output_triggers,
                                             i)) != NULL; i++) {
@@ -590,8 +593,7 @@ EXIT:
  *
  * @param datapipe The datapipe to execute
  * @param indata The input data to run through the datapipe
- * @param use_cache DATAPIPE_USE_CACHED to use data from cache,
- *                  DATAPIPE_USE_INDATA to use indata
+ * @param use_cache DATAPIPE_USE_INDATA to use indata
  * @param cache_indata DATAPIPE_CACHE_INDATA to cache the indata,
  *                     DATAPIPE_CACHE_NOTHING to keep the old data
  * @return The processed data
@@ -601,6 +603,8 @@ gconstpointer datapipe_exec_full(datapipe_t *const datapipe,
                                  const datapipe_use_t use_cache,
                                  const datapipe_cache_t cache_indata)
 {
+    (void)use_cache; // TODO: remove
+
     gconstpointer outdata = NULL;
 
     if (datapipe == NULL) {
@@ -609,10 +613,6 @@ gconstpointer datapipe_exec_full(datapipe_t *const datapipe,
                 "without a valid datapipe");
         goto EXIT;
     }
-
-    /* Determine input value */
-    if( use_cache == DATAPIPE_USE_CACHED )
-        indata = datapipe->dp_cached_data;
 
     /* Optionally cache the value at the input stage */
     if( cache_indata & (DATAPIPE_CACHE_INDATA|DATAPIPE_CACHE_OUTDATA) ) {
