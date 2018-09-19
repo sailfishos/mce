@@ -68,13 +68,6 @@ typedef enum {
 } datapipe_filtering_t;
 
 /**
- * Policy used for the cache when freeing a datapipe
- */
-typedef enum {
-    DATAPIPE_DATA_LITERAL = FALSE,  /**< Don't free the cache */
-} datapipe_data_t;
-
-/**
  * Policy used for caching indata
  */
 typedef enum {

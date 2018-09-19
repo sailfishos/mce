@@ -34,8 +34,8 @@
  * Macros
  * ========================================================================= */
 
-#define datapipe_init(datapipe, filtering, caching, datasize, value)\
-     datapipe_init_(&(datapipe), #datapipe, filtering, caching, datasize, value)
+#define datapipe_init(datapipe, filtering, datasize, value)\
+     datapipe_init_(&(datapipe), #datapipe, filtering, datasize, value)
 
 /* ========================================================================= *
  * Prototypes
@@ -57,7 +57,7 @@ static void            datapipe_add_input_trigger    (datapipe_t *const datapipe
 static void            datapipe_remove_input_trigger (datapipe_t *const datapipe, void (*trigger)(gconstpointer data));
 static void            datapipe_add_output_trigger   (datapipe_t *const datapipe, void (*trigger)(gconstpointer data));
 static void            datapipe_remove_output_trigger(datapipe_t *const datapipe, void (*trigger)(gconstpointer data));
-static void            datapipe_init_                (datapipe_t *const datapipe, const char *name, const datapipe_filtering_t read_only, const datapipe_data_t free_cache, const gsize datasize, gpointer initial_data);
+static void            datapipe_init_                (datapipe_t *const datapipe, const char *name, const datapipe_filtering_t read_only, const gsize datasize, gpointer initial_data);
 static void            datapipe_free                 (datapipe_t *const datapipe);
 
 /* ------------------------------------------------------------------------- *
@@ -856,7 +856,6 @@ EXIT:
  * @param datapipe The datapipe to manipulate
  * @param read_only DATAPIPE_FILTERING_DENIED if the datapipe is read only,
  *                  DATAPIPE_FILTERING_ALLOWED if it's read/write
- * @param free_cache DATAPIPE_DATA_LITERAL if the cache data should not be freed
  * @param datasize Pass size of memory to copy,
  *                 or 0 if only passing pointers or data as pointers
  * @param initial_data Initial cache content
@@ -865,7 +864,6 @@ static void
 datapipe_init_(datapipe_t *const datapipe,
                const char *name,
                const datapipe_filtering_t read_only,
-               const datapipe_data_t free_cache,
                const gsize datasize, gpointer initial_data)
 {
     if (datapipe == NULL) {
@@ -881,7 +879,6 @@ datapipe_init_(datapipe_t *const datapipe,
     datapipe->dp_output_triggers = NULL;
     datapipe->dp_datasize        = datasize;
     datapipe->dp_read_only       = read_only;
-    datapipe->dp_free_cache      = free_cache;
     datapipe->dp_cached_data     = initial_data;
 
 EXIT:
@@ -930,152 +927,152 @@ EXIT:
  */
 void mce_datapipe_init(void)
 {
-    datapipe_init(system_state_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(system_state_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(MCE_SYSTEM_STATE_UNDEF));
-    datapipe_init(master_radio_enabled_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(master_radio_enabled_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(FALSE));
-    datapipe_init(call_state_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(call_state_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(CALL_STATE_NONE));
-    datapipe_init(ignore_incoming_call_event_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(ignore_incoming_call_event_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(false));
-    datapipe_init(call_type_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(call_type_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(CALL_TYPE_NORMAL));
-    datapipe_init(alarm_ui_state_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(alarm_ui_state_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(MCE_ALARM_UI_INVALID_INT32));
-    datapipe_init(submode_pipe, DATAPIPE_FILTERING_ALLOWED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(submode_pipe, DATAPIPE_FILTERING_ALLOWED,
                   0, GINT_TO_POINTER(MCE_SUBMODE_NORMAL));
-    datapipe_init(display_state_curr_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(display_state_curr_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(MCE_DISPLAY_UNDEF));
-    datapipe_init(display_state_request_pipe, DATAPIPE_FILTERING_ALLOWED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(display_state_request_pipe, DATAPIPE_FILTERING_ALLOWED,
                   0, GINT_TO_POINTER(MCE_DISPLAY_UNDEF));
-    datapipe_init(display_state_next_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(display_state_next_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(MCE_DISPLAY_UNDEF));
-    datapipe_init(uiexception_type_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(uiexception_type_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(UIEXCEPTION_TYPE_NONE));
-    datapipe_init(display_brightness_pipe, DATAPIPE_FILTERING_ALLOWED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(display_brightness_pipe, DATAPIPE_FILTERING_ALLOWED,
                   0, GINT_TO_POINTER(3));
-    datapipe_init(led_brightness_pipe, DATAPIPE_FILTERING_ALLOWED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(led_brightness_pipe, DATAPIPE_FILTERING_ALLOWED,
                   0, GINT_TO_POINTER(0));
-    datapipe_init(lpm_brightness_pipe, DATAPIPE_FILTERING_ALLOWED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(lpm_brightness_pipe, DATAPIPE_FILTERING_ALLOWED,
                   0, GINT_TO_POINTER(0));
-    datapipe_init(led_pattern_activate_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(led_pattern_activate_pipe, DATAPIPE_FILTERING_DENIED,
                   0, NULL);
-    datapipe_init(resume_detected_event_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(resume_detected_event_pipe, DATAPIPE_FILTERING_DENIED,
                   0, NULL);
-    datapipe_init(led_pattern_deactivate_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(led_pattern_deactivate_pipe, DATAPIPE_FILTERING_DENIED,
                   0, NULL);
-    datapipe_init(user_activity_event_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(user_activity_event_pipe, DATAPIPE_FILTERING_DENIED,
                   0, NULL);
-    datapipe_init(key_backlight_brightness_pipe, DATAPIPE_FILTERING_ALLOWED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(key_backlight_brightness_pipe, DATAPIPE_FILTERING_ALLOWED,
                   0, GINT_TO_POINTER(0));
-    datapipe_init(keypress_event_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(keypress_event_pipe, DATAPIPE_FILTERING_DENIED,
                   sizeof (struct input_event), NULL);
-    datapipe_init(touchscreen_event_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(touchscreen_event_pipe, DATAPIPE_FILTERING_DENIED,
                   sizeof (struct input_event), NULL);
-    datapipe_init(device_inactive_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(device_inactive_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(TRUE));
-    datapipe_init(inactivity_event_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(inactivity_event_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(TRUE));
-    datapipe_init(lockkey_state_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(lockkey_state_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(KEY_STATE_UNDEF));
-    datapipe_init(init_done_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(init_done_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(TRISTATE_UNKNOWN));
-    datapipe_init(keyboard_slide_state_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(keyboard_slide_state_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(COVER_CLOSED));
-    datapipe_init(keyboard_available_state_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(keyboard_available_state_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(COVER_CLOSED));
     datapipe_init(lid_sensor_is_working_pipe, DATAPIPE_FILTERING_DENIED,
-                  DATAPIPE_DATA_LITERAL, 0, GINT_TO_POINTER(FALSE));
-    datapipe_init(lid_sensor_actual_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
-                  0, GINT_TO_POINTER(COVER_UNDEF));
-    datapipe_init(lid_sensor_filtered_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
-                  0, GINT_TO_POINTER(COVER_UNDEF));
-    datapipe_init(lens_cover_state_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
-                  0, GINT_TO_POINTER(COVER_CLOSED));
-    datapipe_init(proximity_sensor_actual_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
-                  0, GINT_TO_POINTER(COVER_OPEN));
-    datapipe_init(light_sensor_actual_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
-                  0, GINT_TO_POINTER(400));
-    datapipe_init(light_sensor_filtered_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
-                  0, GINT_TO_POINTER(400));
-    datapipe_init(light_sensor_poll_request_pipe, DATAPIPE_FILTERING_ALLOWED, DATAPIPE_DATA_LITERAL,
-                  0, GINT_TO_POINTER(false));
-    datapipe_init(orientation_sensor_actual_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
-                  0, GINT_TO_POINTER(MCE_ORIENTATION_UNDEFINED));
-    datapipe_init(tklock_request_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
-                  0, GINT_TO_POINTER(TKLOCK_REQUEST_UNDEF));
-    datapipe_init(interaction_expected_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
-                  0, GINT_TO_POINTER(false));
-    datapipe_init(charger_state_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
-                  0, GINT_TO_POINTER(CHARGER_STATE_UNDEF));
-    datapipe_init(battery_status_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
-                  0, GINT_TO_POINTER(BATTERY_STATUS_UNDEF));
-    datapipe_init(battery_level_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
-                  0, GINT_TO_POINTER(BATTERY_LEVEL_INITIAL));
-    datapipe_init(topmost_window_pid_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
-                  0, GINT_TO_POINTER(-1));
-    datapipe_init(camera_button_state_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
-                  0, GINT_TO_POINTER(CAMERA_BUTTON_UNDEF));
-    datapipe_init(inactivity_delay_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
-                  0, GINT_TO_POINTER(DEFAULT_INACTIVITY_DELAY));
-    datapipe_init(audio_route_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
-                  0, GINT_TO_POINTER(AUDIO_ROUTE_UNDEF));
-    datapipe_init(usb_cable_state_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
-                  0, GINT_TO_POINTER(USB_CABLE_UNDEF));
-    datapipe_init(jack_sense_state_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
-                  0, GINT_TO_POINTER(COVER_UNDEF));
-    datapipe_init(power_saving_mode_active_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
                   0, GINT_TO_POINTER(FALSE));
-    datapipe_init(thermal_state_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(lid_sensor_actual_pipe, DATAPIPE_FILTERING_DENIED,
+                  0, GINT_TO_POINTER(COVER_UNDEF));
+    datapipe_init(lid_sensor_filtered_pipe, DATAPIPE_FILTERING_DENIED,
+                  0, GINT_TO_POINTER(COVER_UNDEF));
+    datapipe_init(lens_cover_state_pipe, DATAPIPE_FILTERING_DENIED,
+                  0, GINT_TO_POINTER(COVER_CLOSED));
+    datapipe_init(proximity_sensor_actual_pipe, DATAPIPE_FILTERING_DENIED,
+                  0, GINT_TO_POINTER(COVER_OPEN));
+    datapipe_init(light_sensor_actual_pipe, DATAPIPE_FILTERING_DENIED,
+                  0, GINT_TO_POINTER(400));
+    datapipe_init(light_sensor_filtered_pipe, DATAPIPE_FILTERING_DENIED,
+                  0, GINT_TO_POINTER(400));
+    datapipe_init(light_sensor_poll_request_pipe, DATAPIPE_FILTERING_ALLOWED,
+                  0, GINT_TO_POINTER(false));
+    datapipe_init(orientation_sensor_actual_pipe, DATAPIPE_FILTERING_DENIED,
+                  0, GINT_TO_POINTER(MCE_ORIENTATION_UNDEFINED));
+    datapipe_init(tklock_request_pipe, DATAPIPE_FILTERING_DENIED,
+                  0, GINT_TO_POINTER(TKLOCK_REQUEST_UNDEF));
+    datapipe_init(interaction_expected_pipe, DATAPIPE_FILTERING_DENIED,
+                  0, GINT_TO_POINTER(false));
+    datapipe_init(charger_state_pipe, DATAPIPE_FILTERING_DENIED,
+                  0, GINT_TO_POINTER(CHARGER_STATE_UNDEF));
+    datapipe_init(battery_status_pipe, DATAPIPE_FILTERING_DENIED,
+                  0, GINT_TO_POINTER(BATTERY_STATUS_UNDEF));
+    datapipe_init(battery_level_pipe, DATAPIPE_FILTERING_DENIED,
+                  0, GINT_TO_POINTER(BATTERY_LEVEL_INITIAL));
+    datapipe_init(topmost_window_pid_pipe, DATAPIPE_FILTERING_DENIED,
+                  0, GINT_TO_POINTER(-1));
+    datapipe_init(camera_button_state_pipe, DATAPIPE_FILTERING_DENIED,
+                  0, GINT_TO_POINTER(CAMERA_BUTTON_UNDEF));
+    datapipe_init(inactivity_delay_pipe, DATAPIPE_FILTERING_DENIED,
+                  0, GINT_TO_POINTER(DEFAULT_INACTIVITY_DELAY));
+    datapipe_init(audio_route_pipe, DATAPIPE_FILTERING_DENIED,
+                  0, GINT_TO_POINTER(AUDIO_ROUTE_UNDEF));
+    datapipe_init(usb_cable_state_pipe, DATAPIPE_FILTERING_DENIED,
+                  0, GINT_TO_POINTER(USB_CABLE_UNDEF));
+    datapipe_init(jack_sense_state_pipe, DATAPIPE_FILTERING_DENIED,
+                  0, GINT_TO_POINTER(COVER_UNDEF));
+    datapipe_init(power_saving_mode_active_pipe, DATAPIPE_FILTERING_DENIED,
+                  0, GINT_TO_POINTER(FALSE));
+    datapipe_init(thermal_state_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(THERMAL_STATE_UNDEF));
-    datapipe_init(heartbeat_event_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(heartbeat_event_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(0));
-    datapipe_init(compositor_service_state_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(compositor_service_state_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
-    datapipe_init(lipstick_service_state_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(lipstick_service_state_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
-    datapipe_init(devicelock_service_state_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(devicelock_service_state_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
-    datapipe_init(usbmoded_service_state_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(usbmoded_service_state_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
-    datapipe_init(ngfd_service_state_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(ngfd_service_state_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
-    datapipe_init(ngfd_event_request_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(ngfd_event_request_pipe, DATAPIPE_FILTERING_DENIED,
                   0, NULL);
 
-    datapipe_init(dsme_service_state_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(dsme_service_state_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
 
-    datapipe_init(bluez_service_state_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(bluez_service_state_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
 
-    datapipe_init(packagekit_locked_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(packagekit_locked_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(FALSE));
-    datapipe_init(osupdate_running_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(osupdate_running_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(FALSE));
-    datapipe_init(shutting_down_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(shutting_down_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(FALSE));
-    datapipe_init(devicelock_state_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(devicelock_state_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(DEVICELOCK_STATE_UNDEFINED));
-    datapipe_init(touch_detected_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(touch_detected_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(FALSE));
-    datapipe_init(touch_grab_wanted_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(touch_grab_wanted_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(FALSE));
-    datapipe_init(touch_grab_active_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(touch_grab_active_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(FALSE));
-    datapipe_init(keypad_grab_wanted_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(keypad_grab_wanted_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(FALSE));
-    datapipe_init(keypad_grab_active_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(keypad_grab_active_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(FALSE));
-    datapipe_init(music_playback_ongoing_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(music_playback_ongoing_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(FALSE));
-    datapipe_init(proximity_blanked_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(proximity_blanked_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(FALSE));
-    datapipe_init(fpd_service_state_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(fpd_service_state_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
-    datapipe_init(fpstate_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(fpstate_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(FPSTATE_UNSET));
-    datapipe_init(enroll_in_progress_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
+    datapipe_init(enroll_in_progress_pipe, DATAPIPE_FILTERING_DENIED,
                   0, GINT_TO_POINTER(false));
 }
 
