@@ -47,8 +47,7 @@ static gboolean mce_set_submode_int32(const submode_t submode)
 	mce_log(LL_NOTICE, "submode change: %s",
 		submode_change_repr(old_submode, submode));
 
-	datapipe_exec_full(&submode_pipe, GINT_TO_POINTER(submode),
-			   DATAPIPE_CACHE_INDATA);
+	datapipe_exec_full(&submode_pipe, GINT_TO_POINTER(submode));
 EXIT:
 	return TRUE;
 }

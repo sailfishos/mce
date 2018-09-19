@@ -541,8 +541,7 @@ static void disable_key_backlight(void)
 {
 	cancel_key_backlight_timeout();
 
-	datapipe_exec_full(&key_backlight_brightness_pipe, GINT_TO_POINTER(0),
-			   DATAPIPE_CACHE_INDATA);
+	datapipe_exec_full(&key_backlight_brightness_pipe, GINT_TO_POINTER(0));
 }
 
 /**
@@ -602,8 +601,7 @@ static void enable_key_backlight(void)
 	/* If the backlight is off, turn it on */
 	if (datapipe_get_guint(key_backlight_brightness_pipe) == 0) {
 		datapipe_exec_full(&key_backlight_brightness_pipe,
-				   GINT_TO_POINTER(backlight_brightness_level_maximum),
-				   DATAPIPE_CACHE_INDATA);
+				   GINT_TO_POINTER(backlight_brightness_level_maximum));
 	}
 
 EXIT:

@@ -537,15 +537,13 @@ EXIT:
     if( datapipe_get_gint(music_playback_ongoing_pipe) != playback ) {
         mce_log(LL_DEVEL, "music playback: %d", playback);
         datapipe_exec_full(&music_playback_ongoing_pipe,
-                           GINT_TO_POINTER(playback),
-                           DATAPIPE_CACHE_INDATA);
+                           GINT_TO_POINTER(playback));
     }
 
     if( datapipe_get_gint(audio_route_pipe) != audio_route ) {
         mce_log(LL_DEVEL, "audio route: %d", audio_route);
         datapipe_exec_full(&audio_route_pipe,
-                           GINT_TO_POINTER(audio_route),
-                           DATAPIPE_CACHE_INDATA);
+                           GINT_TO_POINTER(audio_route));
     }
 
     return TRUE;

@@ -64,8 +64,7 @@ static gboolean battery_full_dbus_cb(DBusMessage *const msg)
 	datapipe_exec_output_triggers(&led_pattern_activate_pipe, MCE_LED_PATTERN_BATTERY_FULL);
 
 	datapipe_exec_full(&battery_status_pipe,
-			   GINT_TO_POINTER(BATTERY_STATUS_FULL),
-			   DATAPIPE_CACHE_INDATA);
+			   GINT_TO_POINTER(BATTERY_STATUS_FULL));
 
 	status = TRUE;
 
@@ -91,8 +90,7 @@ static gboolean battery_ok_dbus_cb(DBusMessage *const msg)
 //	datapipe_exec_output_triggers(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_BATTERY_LOW);
 
 	datapipe_exec_full(&battery_status_pipe,
-			   GINT_TO_POINTER(BATTERY_STATUS_OK),
-			   DATAPIPE_CACHE_INDATA);
+			   GINT_TO_POINTER(BATTERY_STATUS_OK));
 
 	status = TRUE;
 
@@ -118,8 +116,7 @@ static gboolean battery_low_dbus_cb(DBusMessage *const msg)
 //	datapipe_exec_output_triggers(&led_pattern_activate_pipe, MCE_LED_PATTERN_BATTERY_LOW);
 
 	datapipe_exec_full(&battery_status_pipe,
-			   GINT_TO_POINTER(BATTERY_STATUS_LOW),
-			   DATAPIPE_CACHE_INDATA);
+			   GINT_TO_POINTER(BATTERY_STATUS_LOW));
 
 	status = TRUE;
 
@@ -143,8 +140,7 @@ static gboolean battery_empty_dbus_cb(DBusMessage *const msg)
 		"Received battery empty signal");
 
 	datapipe_exec_full(&battery_status_pipe,
-			   GINT_TO_POINTER(BATTERY_STATUS_EMPTY),
-			   DATAPIPE_CACHE_INDATA);
+			   GINT_TO_POINTER(BATTERY_STATUS_EMPTY));
 
 	status = TRUE;
 
@@ -230,8 +226,7 @@ static gboolean battery_state_changed_dbus_cb(DBusMessage *const msg)
 		percentage);
 
 	datapipe_exec_full(&battery_level_pipe,
-			   GINT_TO_POINTER(percentage),
-			   DATAPIPE_CACHE_INDATA);
+			   GINT_TO_POINTER(percentage));
 
 	status = TRUE;
 
@@ -258,8 +253,7 @@ static gboolean charger_charging_on_dbus_cb(DBusMessage *const msg)
 	/* Only update the charger state if needed */
 	if (old_charger_state != CHARGER_STATE_ON) {
 		datapipe_exec_full(&charger_state_pipe,
-				   GINT_TO_POINTER(CHARGER_STATE_ON),
-				   DATAPIPE_CACHE_INDATA);
+				   GINT_TO_POINTER(CHARGER_STATE_ON));
 	}
 
 	/* In case these are active; there's no harm to call them anyway */
@@ -293,8 +287,7 @@ static gboolean charger_charging_off_dbus_cb(DBusMessage *const msg)
 	/* Only update the charger state if needed */
 	if (old_charger_state != CHARGER_STATE_OFF) {
 		datapipe_exec_full(&charger_state_pipe,
-				   GINT_TO_POINTER(CHARGER_STATE_OFF),
-				   DATAPIPE_CACHE_INDATA);
+				   GINT_TO_POINTER(CHARGER_STATE_OFF));
 	}
 
 	/* In case these are active; there's no harm to call them anyway */
@@ -325,8 +318,7 @@ static gboolean charger_charging_failed_dbus_cb(DBusMessage *const msg)
 	/* Only update the charger state if needed */
 	if (old_charger_state != CHARGER_STATE_OFF) {
 		datapipe_exec_full(&charger_state_pipe,
-				   GINT_TO_POINTER(CHARGER_STATE_OFF),
-				   DATAPIPE_CACHE_INDATA);
+				   GINT_TO_POINTER(CHARGER_STATE_OFF));
 	}
 
 	/* In case these are active; there's no harm to call them anyway */
@@ -334,8 +326,7 @@ static gboolean charger_charging_failed_dbus_cb(DBusMessage *const msg)
 	datapipe_exec_output_triggers(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_BATTERY_CHARGING);
 
 	/* Generate activity */
-	datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(FALSE),
-			   DATAPIPE_CACHE_OUTDATA);
+	datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(FALSE));
 
 	status = TRUE;
 
@@ -361,8 +352,7 @@ static gboolean charger_connected_dbus_cb(DBusMessage *const msg)
 	if (cached_charger_connected != 1) {
 		/* Generate activity */
 		datapipe_exec_full(&inactivity_event_pipe,
-				   GINT_TO_POINTER(FALSE),
-				 DATAPIPE_CACHE_OUTDATA);
+				   GINT_TO_POINTER(FALSE));
 		cached_charger_connected = 1;
 	}
 
@@ -391,8 +381,7 @@ static gboolean charger_disconnected_dbus_cb(DBusMessage *const msg)
 	/* Only update the charger state if needed */
 	if (old_charger_state != CHARGER_STATE_OFF) {
 		datapipe_exec_full(&charger_state_pipe,
-				   GINT_TO_POINTER(CHARGER_STATE_OFF),
-				   DATAPIPE_CACHE_INDATA);
+				   GINT_TO_POINTER(CHARGER_STATE_OFF));
 	}
 
 	/* In case these are active; there's no harm to call them anyway */
@@ -402,8 +391,7 @@ static gboolean charger_disconnected_dbus_cb(DBusMessage *const msg)
 	if (cached_charger_connected != 0) {
 		/* Generate activity */
 		datapipe_exec_full(&inactivity_event_pipe,
-				   GINT_TO_POINTER(FALSE),
-				 DATAPIPE_CACHE_OUTDATA);
+				   GINT_TO_POINTER(FALSE));
 		cached_charger_connected = 0;
 	}
 

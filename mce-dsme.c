@@ -327,8 +327,7 @@ static void mce_dsme_processwd_pong(void)
     mce_dsme_worker_ping();
 
     /* Execute hearbeat actions even if ping-pong ipc failed */
-    datapipe_exec_full(&heartbeat_event_pipe, GINT_TO_POINTER(0),
-                       DATAPIPE_CACHE_NOTHING);
+    datapipe_exec_full(&heartbeat_event_pipe, GINT_TO_POINTER(0));
 }
 
 /**
@@ -514,8 +513,7 @@ static void mce_dsme_set_shutting_down(bool shutting_down)
         mce_dsme_socket_connect();
 
     datapipe_exec_full(&shutting_down_pipe,
-                       GINT_TO_POINTER(mce_dsme_shutting_down_flag),
-                       DATAPIPE_CACHE_INDATA);
+                       GINT_TO_POINTER(mce_dsme_shutting_down_flag));
 
 EXIT:
     return;
@@ -594,8 +592,7 @@ static gboolean mce_dsme_socket_recv_cb(GIOChannel *source,
     else if( (msg2 = DSMEMSG_CAST(DSM_MSGTYPE_STATE_CHANGE_IND, msg)) ) {
         system_state_t state = mce_dsme_normalise_system_state(msg2->state);
         datapipe_exec_full(&system_state_pipe,
-                           GINT_TO_POINTER(state),
-                           DATAPIPE_CACHE_INDATA);
+                           GINT_TO_POINTER(state));
     }
     else {
         mce_log(LL_DEBUG, "Unhandled %s message received from DSME",

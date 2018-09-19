@@ -290,6 +290,7 @@ MCE_CFLAGS += $(MCE_PKG_CFLAGS)
 MCE_LDLIBS += $(MCE_PKG_LDLIBS)
 
 # These must be made callable from the plugins
+MCE_CORE += datapipe.c
 MCE_CORE += tklock.c
 MCE_CORE += modetransition.c
 MCE_CORE += powerkey.c
@@ -308,7 +309,6 @@ MCE_CORE += mce-hal.c
 MCE_CORE += mce-log.c
 MCE_CORE += mce-command-line.c
 MCE_CORE += mce-conf.c
-MCE_CORE += datapipe.c
 MCE_CORE += mce-modules.c
 MCE_CORE += multitouch.c
 MCE_CORE += mce-io.c

@@ -713,8 +713,7 @@ pwrkey_ps_override_evaluate(void)
 
         /* Force cached proximity state to "open" */
         datapipe_exec_full(&proximity_sensor_actual_pipe,
-                           GINT_TO_POINTER(COVER_OPEN),
-                           DATAPIPE_CACHE_INDATA);
+                           GINT_TO_POINTER(COVER_OPEN));
     }
 
     if( lid_sensor_filtered == COVER_CLOSED ) {
@@ -723,8 +722,7 @@ pwrkey_ps_override_evaluate(void)
 
         /* Reset lid sensor validation data */
         datapipe_exec_full(&lid_sensor_is_working_pipe,
-                           GINT_TO_POINTER(false),
-                           DATAPIPE_CACHE_INDATA);
+                           GINT_TO_POINTER(false));
     }
 
     t_last = 0, count = 0;
@@ -2175,8 +2173,7 @@ static gboolean pwrkey_dbus_ignore_incoming_call_cb(DBusMessage *const req)
         /* Make also callstate plugin ignore incoming calls. This
          * should lead to call_state changing from RINGING to ACTIVE
          * or NONE depending on whether there are other calls or not. */
-        datapipe_exec_full(&ignore_incoming_call_event_pipe, GINT_TO_POINTER(true),
-                           DATAPIPE_CACHE_NOTHING);
+        datapipe_exec_full(&ignore_incoming_call_event_pipe, GINT_TO_POINTER(true));
     }
 
     if( !dbus_message_get_no_reply(req) ) {

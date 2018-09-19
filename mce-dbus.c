@@ -1133,8 +1133,7 @@ peerinfo_enter_state(peerinfo_t *self)
     case PEERSTATE_RUNNING:
 	if( self->pi_datapipe ) {
 	    datapipe_exec_full(self->pi_datapipe,
-			       GINT_TO_POINTER(SERVICE_STATE_RUNNING),
-			       DATAPIPE_CACHE_INDATA);
+			       GINT_TO_POINTER(SERVICE_STATE_RUNNING));
 	}
 	peerinfo_handle_methods(self);
 	break;
@@ -1189,8 +1188,7 @@ peerinfo_leave_state(peerinfo_t *self)
     case PEERSTATE_RUNNING:
 	if( self->pi_datapipe ) {
 	    datapipe_exec_full(self->pi_datapipe,
-			       GINT_TO_POINTER(SERVICE_STATE_STOPPED),
-			       DATAPIPE_CACHE_INDATA);
+			       GINT_TO_POINTER(SERVICE_STATE_STOPPED));
 	}
 	break;
 
@@ -1475,8 +1473,7 @@ peerinfo_set_datapipe(peerinfo_t *self, datapipe_t *datapipe)
     if( (self->pi_datapipe = datapipe) ) {
 	if( peerinfo_get_state(self) == PEERSTATE_RUNNING ) {
 	    datapipe_exec_full(self->pi_datapipe,
-			       GINT_TO_POINTER(SERVICE_STATE_RUNNING),
-			       DATAPIPE_CACHE_INDATA);
+			       GINT_TO_POINTER(SERVICE_STATE_RUNNING));
 	}
     }
 }

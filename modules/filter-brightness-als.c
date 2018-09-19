@@ -809,8 +809,7 @@ fba_inputflt_sampling_output(int lux)
 
     /* Feed filtered sensor data to datapipe */
     datapipe_exec_full(&light_sensor_filtered_pipe,
-                       GINT_TO_POINTER(fba_inputflt_output_lux),
-                       DATAPIPE_CACHE_INDATA);
+                       GINT_TO_POINTER(fba_inputflt_output_lux));
 EXIT:
     return;
 }
@@ -1397,17 +1396,13 @@ fba_datapipe_execute_brightness_change(void)
 {
     /* Re-filter the brightness */
     datapipe_exec_full(&display_brightness_pipe,
-                       datapipe_value(&display_brightness_pipe),
-                       DATAPIPE_CACHE_NOTHING);
+                       datapipe_value(&display_brightness_pipe));
     datapipe_exec_full(&led_brightness_pipe,
-                       datapipe_value(&led_brightness_pipe),
-                       DATAPIPE_CACHE_NOTHING);
+                       datapipe_value(&led_brightness_pipe));
     datapipe_exec_full(&lpm_brightness_pipe,
-                       datapipe_value(&lpm_brightness_pipe),
-                       DATAPIPE_CACHE_NOTHING);
+                       datapipe_value(&lpm_brightness_pipe));
     datapipe_exec_full(&key_backlight_brightness_pipe,
-                       datapipe_value(&key_backlight_brightness_pipe),
-                       DATAPIPE_CACHE_NOTHING);
+                       datapipe_value(&key_backlight_brightness_pipe));
 }
 
 /** Array of datapipe handlers */
@@ -1697,8 +1692,7 @@ fba_status_sensor_value_change_cb(int lux)
 
     /* Feed raw sensor data to datapipe */
     datapipe_exec_full(&light_sensor_actual_pipe,
-                       GINT_TO_POINTER(fba_status_sensor_lux),
-                       DATAPIPE_CACHE_INDATA);
+                       GINT_TO_POINTER(fba_status_sensor_lux));
 }
 
 static bool
@@ -1818,8 +1812,7 @@ fba_sensorpoll_timer_cb(gpointer aptr)
 
     fba_sensorpoll_timer_id = 0;
     datapipe_exec_full(&light_sensor_poll_request_pipe,
-                       GINT_TO_POINTER(false),
-                       DATAPIPE_CACHE_OUTDATA);
+                       GINT_TO_POINTER(false));
 EXIT:
     return FALSE;
 }

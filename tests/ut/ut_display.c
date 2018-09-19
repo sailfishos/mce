@@ -1458,8 +1458,7 @@ static gint ut_nth_possible_dim_timeout(int n)
 
 static void ut_run_to_user_state(void)
 {
-	datapipe_exec_full(&system_state_pipe, GINT_TO_POINTER(MCE_SYSTEM_STATE_USER),
-			   DATAPIPE_CACHE_INDATA);
+	datapipe_exec_full(&system_state_pipe, GINT_TO_POINTER(MCE_SYSTEM_STATE_USER));
 
 	ut_assert_transition(ut_is_desktop_ready, NULL);
 	ut_assert_transition(ut_is_display_state_eq,
@@ -1654,8 +1653,7 @@ START_TEST (ut_check_auto_dim)
 					     expected_dim_time);
 
 		/* Generate activity so adaptive_dimming_index gets inc. */
-		datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(FALSE),
-				   DATAPIPE_CACHE_OUTDATA);
+		datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(FALSE));
 		ut_assert_transition(ut_is_display_state_eq,
 				     GINT_TO_POINTER(MCE_DISPLAY_ON));
 	}
@@ -1694,8 +1692,7 @@ START_TEST (ut_check_adaptive_dim_timeout)
 				     expected_dim_time);
 
 	/* Generating activity the adaptive_dimming_index gets incremented */
-	datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(FALSE),
-			   DATAPIPE_CACHE_OUTDATA);
+	datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(FALSE));
 	/* Verify adaptive_dimming_index=1 by meassuring rime to re-enter DIM */
 	expected_dim_time = ut_nth_possible_dim_timeout(forced_dti + 1);
 	ut_assert_transition(ut_is_display_state_eq,
@@ -1898,8 +1895,7 @@ START_TEST (ut_check_sw_fading)
 	/* Set initial brightness to 60% so there is some space above/bellow */
 	const gint start_brightness = 3;
 	datapipe_exec_full(&display_brightness_pipe,
-			   GINT_TO_POINTER(start_brightness),
-			   DATAPIPE_CACHE_INDATA);
+			   GINT_TO_POINTER(start_brightness));
 	ut_assert_transition(ut_is_sysfs_brightness_eq,
 			     GINT_TO_POINTER(start_brightness * 20));
 
@@ -1935,8 +1931,7 @@ START_TEST (ut_check_sw_fading)
 		stub__mce_io_write_count(STUB__BRIGHTNESS_OUTPUT_PATH);
 
 	datapipe_exec_full(&display_brightness_pipe,
-			   GINT_TO_POINTER(start_brightness + data[_i].change),
-			   DATAPIPE_CACHE_INDATA);
+			   GINT_TO_POINTER(start_brightness + data[_i].change));
 	ut_assert_transition_time_eq(ut_is_sysfs_brightness_eq,
 				     GINT_TO_POINTER(20 * (start_brightness +
 							   data[_i].change)),

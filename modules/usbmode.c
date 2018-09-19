@@ -185,8 +185,7 @@ usbmode_cable_state_update(const char *mode)
             usb_cable_state_repr(prev),
             usb_cable_state_repr(curr));
 
-    datapipe_exec_full(&usb_cable_state_pipe, GINT_TO_POINTER(curr),
-                       DATAPIPE_CACHE_INDATA);
+    datapipe_exec_full(&usb_cable_state_pipe, GINT_TO_POINTER(curr));
 EXIT:
     return;
 }

@@ -44,22 +44,6 @@ typedef enum
 const char *devicelock_state_repr(devicelock_state_t state);
 
 /**
- * Datapipe structure
- *
- * Only access this struct through the functions
- */
-typedef struct {
-    const char *dp_name;             /**< Name of the datapipe */
-    GSList     *dp_filters;          /**< The filters */
-    GSList     *dp_input_triggers;   /**< Triggers called on indata */
-    GSList     *dp_output_triggers;  /**< Triggers called on outdata */
-    gpointer    dp_cached_data;      /**< Latest cached data */
-    gsize       dp_datasize;         /**< Size of data; NULL == automagic */
-    gboolean    dp_free_cache;       /**< Free the cache? */
-    gboolean    dp_read_only;        /**< Datapipe is read only */
-} datapipe_t;
-
-/**
  * Read only policy type
  */
 typedef enum {
@@ -74,7 +58,27 @@ typedef enum {
     DATAPIPE_CACHE_NOTHING = 0,     /**< Do not cache the indata */
     DATAPIPE_CACHE_INDATA  = 1<<0,  /**< Cache the unfiltered indata */
     DATAPIPE_CACHE_OUTDATA = 1<<1,  /**< Cache the filtered outdata */
+
+    DATAPIPE_CACHE_DEFAULT = (DATAPIPE_CACHE_INDATA |
+                              DATAPIPE_CACHE_OUTDATA),
 } datapipe_cache_t;
+
+/**
+ * Datapipe structure
+ *
+ * Only access this struct through the functions
+ */
+typedef struct {
+    const char *dp_name;             /**< Name of the datapipe */
+    GSList     *dp_filters;          /**< The filters */
+    GSList     *dp_input_triggers;   /**< Triggers called on indata */
+    GSList     *dp_output_triggers;  /**< Triggers called on outdata */
+    gpointer    dp_cached_data;      /**< Latest cached data */
+    gsize       dp_datasize;         /**< Size of data; NULL == automagic */
+
+    datapipe_filtering_t dp_read_only;        /**< Datapipe is read only */
+    datapipe_cache_t     dp_cache;
+} datapipe_t;
 
 typedef struct
 {
@@ -103,7 +107,7 @@ typedef struct
 const char     *datapipe_name                (datapipe_t *const datapipe);
 gpointer        datapipe_value               (datapipe_t *const datapipe);
 void            datapipe_exec_output_triggers(const datapipe_t *const datapipe, gconstpointer indata);
-gconstpointer   datapipe_exec_full           (datapipe_t *const datapipe, gpointer indata, const datapipe_cache_t cache_indata);
+gconstpointer   datapipe_exec_full           (datapipe_t *const datapipe, gpointer indata);
 
 /* ------------------------------------------------------------------------- *
  * MCE_DATAPIPE
@@ -152,8 +156,7 @@ void  mce_datapipe_quit_bindings   (datapipe_bindings_t *self);
      * else might be already queued up and we want't the \
      * last request to reach the queue to "win". */ \
     datapipe_exec_full(&display_state_request_pipe,\
-                       GINT_TO_POINTER(req_target),\
-                       DATAPIPE_CACHE_OUTDATA);\
+                       GINT_TO_POINTER(req_target));\
 } while(0)
 
 /** Execute tklock request
@@ -164,8 +167,7 @@ void  mce_datapipe_quit_bindings   (datapipe_bindings_t *self);
     mce_log(LL_DEBUG, "Requesting tklock=%s",\
             tklock_request_repr(tklock_request));\
     datapipe_exec_full(&tklock_request_pipe,\
-                       GINT_TO_POINTER(tklock_request),\
-                       DATAPIPE_CACHE_INDATA);\
+                       GINT_TO_POINTER(tklock_request));\
 }while(0)
 
 /* ========================================================================= *

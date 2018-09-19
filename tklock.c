@@ -681,8 +681,7 @@ static void tklock_datapipe_set_devicelock_state(devicelock_state_t state)
 
     if( devicelock_state != state ) {
         datapipe_exec_full(&devicelock_state_pipe,
-                           GINT_TO_POINTER(state),
-                           DATAPIPE_CACHE_INDATA);
+                           GINT_TO_POINTER(state));
     }
 }
 
@@ -1867,8 +1866,7 @@ static void tklock_datapipe_lid_sensor_is_working_cb(gconstpointer data)
 
         /* Invalidate sensor data */
         datapipe_exec_full(&lid_sensor_actual_pipe,
-                           GINT_TO_POINTER(COVER_UNDEF),
-                           DATAPIPE_CACHE_INDATA);
+                           GINT_TO_POINTER(COVER_UNDEF));
     }
 
 EXIT:
@@ -1889,8 +1887,7 @@ static void tklock_datapipe_lid_sensor_actual_cb(gconstpointer data)
         /* We have seen the sensor flip from closed to open position,
          * so we can stop assuming it stays closed forever */
         datapipe_exec_full(&lid_sensor_is_working_pipe,
-                           GINT_TO_POINTER(true),
-                           DATAPIPE_CACHE_INDATA);
+                           GINT_TO_POINTER(true));
     }
 
     mce_log(LL_DEVEL, "lid_sensor_actual = %s -> %s",
@@ -2443,8 +2440,7 @@ static void tklock_lidsensor_init(void)
 
     /* Broadcast initial state */
     datapipe_exec_full(&lid_sensor_is_working_pipe,
-                       GINT_TO_POINTER(tklock_lid_sensor_is_working),
-                       DATAPIPE_CACHE_INDATA);
+                       GINT_TO_POINTER(tklock_lid_sensor_is_working));
 }
 
 /* ========================================================================= *
@@ -2573,8 +2569,7 @@ static gboolean tklock_lidfilter_wait_for_close_cb(gpointer aptr)
 
     /* Invalidate sensor data */
     datapipe_exec_full(&lid_sensor_actual_pipe,
-                       GINT_TO_POINTER(COVER_UNDEF),
-                       DATAPIPE_CACHE_INDATA);
+                       GINT_TO_POINTER(COVER_UNDEF));
 
 EXIT:
     return FALSE;
@@ -2645,8 +2640,7 @@ static gboolean tklock_lidfilter_wait_for_dark_cb(gpointer aptr)
 
     /* Invalidate sensor data */
     datapipe_exec_full(&lid_sensor_actual_pipe,
-                       GINT_TO_POINTER(COVER_UNDEF),
-                       DATAPIPE_CACHE_INDATA);
+                       GINT_TO_POINTER(COVER_UNDEF));
 
 EXIT:
     return FALSE;
@@ -2783,8 +2777,7 @@ static void tklock_lidfilter_rethink_allow_close(void)
       if( lid_sensor_actual == COVER_CLOSED ) {
           mce_log(LL_DEVEL, "unblank while lid closed; ignore lid");
           datapipe_exec_full(&lid_sensor_actual_pipe,
-                             GINT_TO_POINTER(COVER_UNDEF),
-                             DATAPIPE_CACHE_INDATA);
+                             GINT_TO_POINTER(COVER_UNDEF));
       }
       break;
 
@@ -2814,8 +2807,7 @@ static void tklock_lidfilter_rethink_lid_state(void)
     /* Keep ALS powered up for a while after lid state change */
     if( lid_sensor_actual != COVER_UNDEF ) {
         datapipe_exec_full(&light_sensor_poll_request_pipe,
-                           GINT_TO_POINTER(TRUE),
-                           DATAPIPE_CACHE_OUTDATA);
+                           GINT_TO_POINTER(TRUE));
     }
 
     switch( lid_sensor_actual ) {
@@ -2967,8 +2959,7 @@ static void tklock_lidpolicy_rethink(void)
 
     /* First make the policy decision known */
     datapipe_exec_full(&lid_sensor_filtered_pipe,
-                       GINT_TO_POINTER(action),
-                       DATAPIPE_CACHE_INDATA);
+                       GINT_TO_POINTER(action));
 
     /* Then execute the required actions */
     switch( action ) {
@@ -3442,8 +3433,7 @@ static void  tklock_uiexception_sync_to_datapipe(void)
 
     if( in_pipe != active ) {
         datapipe_exec_full(&uiexception_type_pipe,
-                           GINT_TO_POINTER(active),
-                           DATAPIPE_CACHE_INDATA);
+                           GINT_TO_POINTER(active));
     }
 }
 
@@ -3501,8 +3491,7 @@ static void tklock_uiexception_rethink(void)
         case MCE_DISPLAY_LPM_ON:
         case MCE_DISPLAY_POWER_UP:
             datapipe_exec_full(&proximity_blanked_pipe,
-                               GINT_TO_POINTER(false),
-                               DATAPIPE_CACHE_INDATA);
+                               GINT_TO_POINTER(false));
             break;
         }
     }
@@ -3665,8 +3654,7 @@ static void tklock_uiexception_rethink(void)
             if( proximity_blank ) {
                 mce_log(LL_DEVEL, "display proximity blank");
                 datapipe_exec_full(&proximity_blanked_pipe,
-                                   GINT_TO_POINTER(true),
-                                   DATAPIPE_CACHE_INDATA);
+                                   GINT_TO_POINTER(true));
             }
             else {
                 mce_log(LL_DEBUG, "display blank");
@@ -3712,8 +3700,7 @@ static void tklock_uiexception_rethink(void)
      * state is no longer controlled by this state machine. */
     if( !exdata.insync ) {
         datapipe_exec_full(&proximity_blanked_pipe,
-                           GINT_TO_POINTER(false),
-                           DATAPIPE_CACHE_INDATA);
+                           GINT_TO_POINTER(false));
     }
 
 EXIT:
@@ -4535,8 +4522,7 @@ static void tklock_evctrl_rethink(void)
            !proximity_blocks_touch) &&
           (lid_sensor_filtered != COVER_CLOSED) ) ) {
         datapipe_exec_full(&touch_grab_wanted_pipe,
-                           GINT_TO_POINTER(grab_ts),
-                           DATAPIPE_CACHE_INDATA);
+                           GINT_TO_POINTER(grab_ts));
     }
 
     /* - - - - - - - - - - - - - - - - - - - *
@@ -4562,8 +4548,7 @@ static void tklock_evctrl_rethink(void)
         grab_kp = false;
 
     datapipe_exec_full(&keypad_grab_wanted_pipe,
-                       GINT_TO_POINTER(grab_kp),
-                       DATAPIPE_CACHE_INDATA);
+                       GINT_TO_POINTER(grab_kp));
 
     return;
 }
@@ -6205,8 +6190,7 @@ static gboolean tklock_dbus_interaction_expected_cb(DBusMessage *const msg)
 
     mce_log(LL_DEBUG, "received interaction expected signal: state=%d", arg);
     datapipe_exec_full(&interaction_expected_pipe,
-                       GINT_TO_POINTER(arg),
-                       DATAPIPE_CACHE_INDATA);
+                       GINT_TO_POINTER(arg));
 
 EXIT:
     dbus_error_free(&err);

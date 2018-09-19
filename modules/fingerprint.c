@@ -1274,8 +1274,7 @@ fingerprint_datapipe_set_fpstate(fpstate_t state)
             fpstate_repr(prev),
             fpstate_repr(fpstate));
 
-    datapipe_exec_full(&fpstate_pipe, GINT_TO_POINTER(fpstate),
-                       DATAPIPE_CACHE_INDATA);
+    datapipe_exec_full(&fpstate_pipe, GINT_TO_POINTER(fpstate));
 
     switch( fpstate ) {
     case FPSTATE_ENROLLING:
@@ -1357,8 +1356,7 @@ fingerprint_datapipe_update_enroll_in_progress(void)
             enroll_in_progress ? "true" : "false");
 
     datapipe_exec_full(&enroll_in_progress_pipe,
-                       GINT_TO_POINTER(enroll_in_progress),
-                       DATAPIPE_CACHE_INDATA);
+                       GINT_TO_POINTER(enroll_in_progress));
 EXIT:
     return;
 }
@@ -1379,8 +1377,7 @@ fingerprint_datapipe_generate_activity(void)
 
     mce_log(LL_DEBUG, "generating activity from fingerprint sensor");
     datapipe_exec_full(&inactivity_event_pipe,
-                       GINT_TO_POINTER(FALSE),
-                       DATAPIPE_CACHE_OUTDATA);
+                       GINT_TO_POINTER(FALSE));
 
 EXIT:
     return;

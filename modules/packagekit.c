@@ -113,8 +113,7 @@ xpkgkit_set_locked_state(bool locked)
     mce_log(LL_DEBUG, "packagekit is %slocked", locked ? "" : "not ");
 
     datapipe_exec_full(&packagekit_locked_pipe,
-                       GINT_TO_POINTER(xpkgkit_is_locked),
-                       DATAPIPE_CACHE_INDATA);
+                       GINT_TO_POINTER(xpkgkit_is_locked));
 
 EXIT:
     return;

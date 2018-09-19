@@ -1697,12 +1697,10 @@ call_state_rethink_now(void)
     send_call_state(NULL, state_str, type_str);
 
     datapipe_exec_full(&call_state_pipe,
-                       GINT_TO_POINTER(call_state),
-                       DATAPIPE_CACHE_INDATA);
+                       GINT_TO_POINTER(call_state));
 
     datapipe_exec_full(&call_type_pipe,
-                       GINT_TO_POINTER(call_type),
-                       DATAPIPE_CACHE_INDATA);
+                       GINT_TO_POINTER(call_type));
 
 EXIT:
     return changed;

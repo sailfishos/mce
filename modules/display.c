@@ -1952,12 +1952,10 @@ static void mdy_datapipe_power_saving_mode_active_cb(gconstpointer data)
                                                mdy_brightness_setting);
 
         datapipe_exec_full(&display_brightness_pipe,
-                           GINT_TO_POINTER(mdy_psm_disp_brightness),
-                           DATAPIPE_CACHE_INDATA);
+                           GINT_TO_POINTER(mdy_psm_disp_brightness));
 
         datapipe_exec_full(&lpm_brightness_pipe,
-                           GINT_TO_POINTER(mdy_psm_disp_brightness),
-                           DATAPIPE_CACHE_INDATA);
+                           GINT_TO_POINTER(mdy_psm_disp_brightness));
 
         mdy_cabc_mode_set(mdy_psm_cabc_mode);
     } else {
@@ -1966,12 +1964,10 @@ static void mdy_datapipe_power_saving_mode_active_cb(gconstpointer data)
         mdy_psm_disp_brightness = -1;
 
         datapipe_exec_full(&display_brightness_pipe,
-                           GINT_TO_POINTER(mdy_brightness_setting),
-                           DATAPIPE_CACHE_INDATA);
+                           GINT_TO_POINTER(mdy_brightness_setting));
 
         datapipe_exec_full(&lpm_brightness_pipe,
-                           GINT_TO_POINTER(mdy_brightness_setting),
-                           DATAPIPE_CACHE_INDATA);
+                           GINT_TO_POINTER(mdy_brightness_setting));
 
         mdy_cabc_mode_set(mdy_cabc_mode);
     }
@@ -3636,8 +3632,7 @@ static void mdy_blanking_update_device_inactive_delay(void)
     mce_log(LL_DEBUG, "device_inactive_delay = %d", curr);
 
     datapipe_exec_full(&inactivity_delay_pipe,
-                       GINT_TO_POINTER(curr),
-                       DATAPIPE_CACHE_INDATA);
+                       GINT_TO_POINTER(curr));
 EXIT:
     return;
 }
@@ -5543,8 +5538,7 @@ mdy_topmost_window_set_pid(int pid)
     mdy_blanking_pause_evaluate_allowed();
 
     datapipe_exec_full(&topmost_window_pid_pipe,
-                       GINT_TO_POINTER(topmost_window_pid),
-                       DATAPIPE_CACHE_INDATA);
+                       GINT_TO_POINTER(topmost_window_pid));
 
 EXIT:
     return;
@@ -7052,8 +7046,7 @@ static void mdy_autosuspend_setting_cb(GConfClient *const client, const guint id
 static void mdy_orientation_changed_cb(int state)
 {
     datapipe_exec_full(&orientation_sensor_actual_pipe,
-                       GINT_TO_POINTER(state),
-                       DATAPIPE_CACHE_INDATA);
+                       GINT_TO_POINTER(state));
 }
 
 /** Generate user activity from orientation sensor input
@@ -7076,8 +7069,7 @@ static void mdy_orientation_generate_activity(void)
 
     mce_log(LL_DEBUG, "orientation change; generate activity");
     datapipe_exec_full(&inactivity_event_pipe,
-                       GINT_TO_POINTER(FALSE),
-                       DATAPIPE_CACHE_OUTDATA);
+                       GINT_TO_POINTER(FALSE));
 
 EXIT:
     return;
@@ -7236,8 +7228,7 @@ static void mdy_display_state_enter(display_state_t prev_state,
     mce_log(LL_CRUCIAL, "current display state = %s",
             display_state_repr(next_state));
     datapipe_exec_full(&display_state_curr_pipe,
-                       GINT_TO_POINTER(next_state),
-                       DATAPIPE_CACHE_INDATA);
+                       GINT_TO_POINTER(next_state));
 
     /* Deal with new stable display state */
     mdy_display_state_changed();
@@ -7315,8 +7306,7 @@ static void mdy_display_state_leave(display_state_t prev_state,
     mce_log(LL_NOTICE, "target display state = %s",
             display_state_repr(next_state));
     datapipe_exec_full(&display_state_next_pipe,
-                       GINT_TO_POINTER(next_state),
-                       DATAPIPE_CACHE_INDATA);
+                       GINT_TO_POINTER(next_state));
 
     /* Invalidate display_state_curr_pipe when making transitions
      * that need to wait for external parties */
@@ -7328,8 +7318,7 @@ static void mdy_display_state_leave(display_state_t prev_state,
                 display_state_repr(state));
         display_state_curr_pipe.dp_cached_data = GINT_TO_POINTER(state);
         datapipe_exec_full(&display_state_curr_pipe,
-                           display_state_curr_pipe.dp_cached_data,
-                           DATAPIPE_CACHE_INDATA);
+                           display_state_curr_pipe.dp_cached_data);
     }
 }
 
@@ -9958,8 +9947,7 @@ static void mdy_flagfiles_init_done_cb(const char *path,
 
         /* broadcast change within mce */
         datapipe_exec_full(&init_done_pipe,
-                           GINT_TO_POINTER(mdy_init_done),
-                           DATAPIPE_CACHE_INDATA);
+                           GINT_TO_POINTER(mdy_init_done));
     }
 }
 
@@ -10000,8 +9988,7 @@ static void mdy_flagfiles_osupdate_running_cb(const char *path,
 
         /* broadcast change within mce */
         datapipe_exec_full(&osupdate_running_pipe,
-                           GINT_TO_POINTER(mdy_osupdate_running),
-                           DATAPIPE_CACHE_INDATA);
+                           GINT_TO_POINTER(mdy_osupdate_running));
     }
 }
 
@@ -10103,8 +10090,7 @@ static void mdy_flagfiles_start_tracking(void)
         if( mdy_init_done != TRISTATE_TRUE ) {
             mdy_init_done = TRISTATE_TRUE;
             datapipe_exec_full(&init_done_pipe,
-                               GINT_TO_POINTER(mdy_init_done),
-                               DATAPIPE_CACHE_INDATA);
+                               GINT_TO_POINTER(mdy_init_done));
         }
     }
 
@@ -10513,8 +10499,7 @@ static void mdy_setting_sanitize_brightness_levels(void)
      * the mdy_brightness_level_display_on & mdy_brightness_level_display_dim
      * values. */
     datapipe_exec_full(&display_brightness_pipe,
-                       GINT_TO_POINTER(mdy_brightness_setting),
-                       DATAPIPE_CACHE_INDATA);
+                       GINT_TO_POINTER(mdy_brightness_setting));
 
     mce_log(LL_DEBUG, "mdy_brightness_level_display_on = %d",
             mdy_brightness_level_display_on);
@@ -10524,8 +10509,7 @@ static void mdy_setting_sanitize_brightness_levels(void)
     /* And drive the display brightness setting value through lpm datapipe
      * too. This will update the mdy_brightness_level_display_lpm value. */
     datapipe_exec_full(&lpm_brightness_pipe,
-                       GINT_TO_POINTER(mdy_brightness_setting),
-                       DATAPIPE_CACHE_INDATA);
+                       GINT_TO_POINTER(mdy_brightness_setting));
 }
 
 static void mdy_setting_sanitize_dim_timeouts(bool force_update)

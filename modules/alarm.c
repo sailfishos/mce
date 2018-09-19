@@ -105,8 +105,7 @@ static void alarm_sync_state_to_datapipe(alarm_ui_state_t state)
 
     mce_log(LL_DEVEL, "alarm state = %s", alarm_state_repr(state));
     datapipe_exec_full(&alarm_ui_state_pipe,
-                       GINT_TO_POINTER(state),
-                       DATAPIPE_CACHE_INDATA);
+                       GINT_TO_POINTER(state));
 
 EXIT:
     return;
