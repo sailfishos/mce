@@ -144,20 +144,11 @@ void           mce_datapipe_quit            (void);
  * Macros
  * ========================================================================= */
 
-/** Retrieve a gboolean from a datapipe */
-# define datapipe_get_gbool(_datapipe)  (GPOINTER_TO_INT((_datapipe).dp_cached_data))
-
 /** Retrieve a gint from a datapipe */
 # define datapipe_get_gint(_datapipe)   (GPOINTER_TO_INT((_datapipe).dp_cached_data))
 
 /** Retrieve a guint from a datapipe */
 # define datapipe_get_guint(_datapipe)  (GPOINTER_TO_UINT((_datapipe).dp_cached_data))
-
-/** Retrieve a gsize from a datapipe */
-# define datapipe_get_gsize(_datapipe)  (GPOINTER_TO_SIZE((_datapipe).dp_cached_data))
-
-/** Retrieve a gpointer from a datapipe */
-# define datapipe_get_gpointer(_datapipe)       ((_datapipe).dp_cached_data)
 
 /* Helper for making display state requests
  *
