@@ -538,14 +538,14 @@ EXIT:
         mce_log(LL_DEVEL, "music playback: %d", playback);
         datapipe_exec_full(&music_playback_ongoing_pipe,
                            GINT_TO_POINTER(playback),
-                           DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                           DATAPIPE_CACHE_INDATA);
     }
 
     if( datapipe_get_gint(audio_route_pipe) != audio_route ) {
         mce_log(LL_DEVEL, "audio route: %d", audio_route);
         datapipe_exec_full(&audio_route_pipe,
                            GINT_TO_POINTER(audio_route),
-                           DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                           DATAPIPE_CACHE_INDATA);
     }
 
     return TRUE;

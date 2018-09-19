@@ -1953,11 +1953,11 @@ static void mdy_datapipe_power_saving_mode_active_cb(gconstpointer data)
 
         datapipe_exec_full(&display_brightness_pipe,
                            GINT_TO_POINTER(mdy_psm_disp_brightness),
-                           DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                           DATAPIPE_CACHE_INDATA);
 
         datapipe_exec_full(&lpm_brightness_pipe,
                            GINT_TO_POINTER(mdy_psm_disp_brightness),
-                           DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                           DATAPIPE_CACHE_INDATA);
 
         mdy_cabc_mode_set(mdy_psm_cabc_mode);
     } else {
@@ -1967,11 +1967,11 @@ static void mdy_datapipe_power_saving_mode_active_cb(gconstpointer data)
 
         datapipe_exec_full(&display_brightness_pipe,
                            GINT_TO_POINTER(mdy_brightness_setting),
-                           DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                           DATAPIPE_CACHE_INDATA);
 
         datapipe_exec_full(&lpm_brightness_pipe,
                            GINT_TO_POINTER(mdy_brightness_setting),
-                           DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                           DATAPIPE_CACHE_INDATA);
 
         mdy_cabc_mode_set(mdy_cabc_mode);
     }
@@ -3236,8 +3236,7 @@ static void mdy_brightness_set_dim_level(void)
     datapipe_exec_output_triggers(compositor_fade_level > 0 ?
                                   &led_pattern_activate_pipe :
                                   &led_pattern_deactivate_pipe,
-                                  MCE_LED_PATTERN_DISPLAY_DIMMED,
-                                  DATAPIPE_USE_INDATA);
+                                  MCE_LED_PATTERN_DISPLAY_DIMMED);
 
     /* Update ui side fader opacity value */
     mdy_ui_dimming_set_level(compositor_fade_level);
@@ -3567,8 +3566,7 @@ static void mdy_poweron_led_rethink(void)
     datapipe_exec_output_triggers(want_led ?
                                   &led_pattern_activate_pipe :
                                   &led_pattern_deactivate_pipe,
-                                  MCE_LED_PATTERN_POWER_ON,
-                                  DATAPIPE_USE_INDATA);
+                                  MCE_LED_PATTERN_POWER_ON);
 }
 
 /** Timer id for delayed POWER_ON led state evaluation */
@@ -3639,7 +3637,7 @@ static void mdy_blanking_update_device_inactive_delay(void)
 
     datapipe_exec_full(&inactivity_delay_pipe,
                        GINT_TO_POINTER(curr),
-                       DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                       DATAPIPE_CACHE_INDATA);
 EXIT:
     return;
 }
@@ -5546,7 +5544,7 @@ mdy_topmost_window_set_pid(int pid)
 
     datapipe_exec_full(&topmost_window_pid_pipe,
                        GINT_TO_POINTER(topmost_window_pid),
-                       DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                       DATAPIPE_CACHE_INDATA);
 
 EXIT:
     return;
@@ -5692,8 +5690,7 @@ static void compositor_led_set_active(compositor_led_t led, bool active)
     datapipe_exec_output_triggers((compositor_led_active[led] = active) ?
                                   &led_pattern_activate_pipe :
                                   &led_pattern_deactivate_pipe,
-                                  compositor_led_pattern[led],
-                                  DATAPIPE_USE_INDATA);
+                                  compositor_led_pattern[led]);
 EXIT:
     return;
 }
@@ -7056,7 +7053,7 @@ static void mdy_orientation_changed_cb(int state)
 {
     datapipe_exec_full(&orientation_sensor_actual_pipe,
                        GINT_TO_POINTER(state),
-                       DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                       DATAPIPE_CACHE_INDATA);
 }
 
 /** Generate user activity from orientation sensor input
@@ -7080,7 +7077,7 @@ static void mdy_orientation_generate_activity(void)
     mce_log(LL_DEBUG, "orientation change; generate activity");
     datapipe_exec_full(&inactivity_event_pipe,
                        GINT_TO_POINTER(FALSE),
-                       DATAPIPE_USE_INDATA, DATAPIPE_CACHE_OUTDATA);
+                       DATAPIPE_CACHE_OUTDATA);
 
 EXIT:
     return;
@@ -7240,7 +7237,7 @@ static void mdy_display_state_enter(display_state_t prev_state,
             display_state_repr(next_state));
     datapipe_exec_full(&display_state_curr_pipe,
                        GINT_TO_POINTER(next_state),
-                       DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                       DATAPIPE_CACHE_INDATA);
 
     /* Deal with new stable display state */
     mdy_display_state_changed();
@@ -7319,7 +7316,7 @@ static void mdy_display_state_leave(display_state_t prev_state,
             display_state_repr(next_state));
     datapipe_exec_full(&display_state_next_pipe,
                        GINT_TO_POINTER(next_state),
-                       DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                       DATAPIPE_CACHE_INDATA);
 
     /* Invalidate display_state_curr_pipe when making transitions
      * that need to wait for external parties */
@@ -7332,7 +7329,7 @@ static void mdy_display_state_leave(display_state_t prev_state,
         display_state_curr_pipe.dp_cached_data = GINT_TO_POINTER(state);
         datapipe_exec_full(&display_state_curr_pipe,
                            display_state_curr_pipe.dp_cached_data,
-                           DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                           DATAPIPE_CACHE_INDATA);
     }
 }
 
@@ -7363,14 +7360,12 @@ static void mdy_fbsusp_led_set(mdy_fbsusp_led_state_t req)
     datapipe_exec_output_triggers(blanking ?
                                   &led_pattern_activate_pipe :
                                   &led_pattern_deactivate_pipe,
-                                  MCE_LED_PATTERN_DISPLAY_SUSPEND_FAILED,
-                                  DATAPIPE_USE_INDATA);
+                                  MCE_LED_PATTERN_DISPLAY_SUSPEND_FAILED);
 
     datapipe_exec_output_triggers(unblanking ?
                                   &led_pattern_activate_pipe :
                                   &led_pattern_deactivate_pipe,
-                                  MCE_LED_PATTERN_DISPLAY_RESUME_FAILED,
-                                  DATAPIPE_USE_INDATA);
+                                  MCE_LED_PATTERN_DISPLAY_RESUME_FAILED);
 }
 
 /** Timer id for fbdev suspend/resume is taking too long */
@@ -9697,7 +9692,7 @@ static gboolean mdy_dbus_handle_desktop_started_sig(DBusMessage *const msg)
 
     mce_log(LL_DEBUG, "deactivate MCE_LED_PATTERN_POWER_ON");
     datapipe_exec_output_triggers(&led_pattern_deactivate_pipe,
-                                  MCE_LED_PATTERN_POWER_ON, DATAPIPE_USE_INDATA);
+                                  MCE_LED_PATTERN_POWER_ON);
 
     mce_rem_submode_int32(MCE_SUBMODE_BOOTUP);
 
@@ -9964,7 +9959,7 @@ static void mdy_flagfiles_init_done_cb(const char *path,
         /* broadcast change within mce */
         datapipe_exec_full(&init_done_pipe,
                            GINT_TO_POINTER(mdy_init_done),
-                           DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                           DATAPIPE_CACHE_INDATA);
     }
 }
 
@@ -10006,7 +10001,7 @@ static void mdy_flagfiles_osupdate_running_cb(const char *path,
         /* broadcast change within mce */
         datapipe_exec_full(&osupdate_running_pipe,
                            GINT_TO_POINTER(mdy_osupdate_running),
-                           DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                           DATAPIPE_CACHE_INDATA);
     }
 }
 
@@ -10109,7 +10104,7 @@ static void mdy_flagfiles_start_tracking(void)
             mdy_init_done = TRISTATE_TRUE;
             datapipe_exec_full(&init_done_pipe,
                                GINT_TO_POINTER(mdy_init_done),
-                               DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                               DATAPIPE_CACHE_INDATA);
         }
     }
 
@@ -10519,7 +10514,7 @@ static void mdy_setting_sanitize_brightness_levels(void)
      * values. */
     datapipe_exec_full(&display_brightness_pipe,
                        GINT_TO_POINTER(mdy_brightness_setting),
-                       DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                       DATAPIPE_CACHE_INDATA);
 
     mce_log(LL_DEBUG, "mdy_brightness_level_display_on = %d",
             mdy_brightness_level_display_on);
@@ -10530,7 +10525,7 @@ static void mdy_setting_sanitize_brightness_levels(void)
      * too. This will update the mdy_brightness_level_display_lpm value. */
     datapipe_exec_full(&lpm_brightness_pipe,
                        GINT_TO_POINTER(mdy_brightness_setting),
-                       DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                       DATAPIPE_CACHE_INDATA);
 }
 
 static void mdy_setting_sanitize_dim_timeouts(bool force_update)

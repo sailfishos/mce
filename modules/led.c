@@ -2416,7 +2416,7 @@ static gboolean init_lysti_patterns(void)
 	/* Set the LED brightness */
 	datapipe_exec_full(&led_brightness_pipe,
 			   GINT_TO_POINTER(maximum_led_brightness),
-			   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+			   DATAPIPE_CACHE_INDATA);
 
 	status = TRUE;
 
@@ -2549,7 +2549,7 @@ static gboolean init_njoy_patterns(void)
 	/* Set the LED brightness */
 	datapipe_exec_full(&led_brightness_pipe,
 			   GINT_TO_POINTER(maximum_led_brightness),
-			   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+			   DATAPIPE_CACHE_INDATA);
 
 	status = TRUE;
 
@@ -2816,7 +2816,7 @@ static gboolean init_hybris_patterns(void)
 	/* Set the LED brightness */
 	datapipe_exec_full(&led_brightness_pipe,
 			   GINT_TO_POINTER(maximum_led_brightness),
-			   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+			   DATAPIPE_CACHE_INDATA);
 
 	status = TRUE;
 

@@ -697,23 +697,21 @@ mcebat_update_cb(gpointer user_data)
 
         /* Charger connected state */
         datapipe_exec_full(&charger_state_pipe, GINT_TO_POINTER(mcebat.charger),
-                           DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                           DATAPIPE_CACHE_INDATA);
 
         /* Charging led pattern */
         if( mcebat.charger == CHARGER_STATE_ON ) {
             datapipe_exec_output_triggers(&led_pattern_activate_pipe,
-                                          MCE_LED_PATTERN_BATTERY_CHARGING,
-                                          DATAPIPE_USE_INDATA);
+                                          MCE_LED_PATTERN_BATTERY_CHARGING);
         }
         else {
             datapipe_exec_output_triggers(&led_pattern_deactivate_pipe,
-                                          MCE_LED_PATTERN_BATTERY_CHARGING,
-                                          DATAPIPE_USE_INDATA);
+                                          MCE_LED_PATTERN_BATTERY_CHARGING);
         }
 
         /* Generate activity */
         datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(FALSE),
-                           DATAPIPE_USE_INDATA, DATAPIPE_CACHE_OUTDATA);
+                           DATAPIPE_CACHE_OUTDATA);
     }
 
     if( mcebat.status != prev.status ) {
@@ -722,13 +720,11 @@ mcebat_update_cb(gpointer user_data)
         /* Battery full led pattern */
         if( mcebat.status == BATTERY_STATUS_FULL ) {
             datapipe_exec_output_triggers(&led_pattern_activate_pipe,
-                                          MCE_LED_PATTERN_BATTERY_FULL,
-                                          DATAPIPE_USE_INDATA);
+                                          MCE_LED_PATTERN_BATTERY_FULL);
         }
         else {
             datapipe_exec_output_triggers(&led_pattern_deactivate_pipe,
-                                          MCE_LED_PATTERN_BATTERY_FULL,
-                                          DATAPIPE_USE_INDATA);
+                                          MCE_LED_PATTERN_BATTERY_FULL);
         }
 
 #if SUPPORT_BATTERY_LOW_LED_PATTERN
@@ -736,20 +732,18 @@ mcebat_update_cb(gpointer user_data)
         if( mcebat.status == BATTERY_STATUS_LOW ||
             mcebat.status == BATTERY_STATUS_EMPTY ) {
             datapipe_exec_output_triggers(&led_pattern_activate_pipe,
-                                          MCE_LED_PATTERN_BATTERY_LOW,
-                                          DATAPIPE_USE_INDATA);
+                                          MCE_LED_PATTERN_BATTERY_LOW);
         }
         else {
             datapipe_exec_output_triggers(&led_pattern_deactivate_pipe,
-                                          MCE_LED_PATTERN_BATTERY_LOW,
-                                          DATAPIPE_USE_INDATA);
+                                          MCE_LED_PATTERN_BATTERY_LOW);
         }
 #endif /* SUPPORT_BATTERY_LOW_LED_PATTERN */
 
         /* Battery charge state */
         datapipe_exec_full(&battery_status_pipe,
                            GINT_TO_POINTER(mcebat.status),
-                           DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                           DATAPIPE_CACHE_INDATA);
 
     }
 
@@ -759,7 +753,7 @@ mcebat_update_cb(gpointer user_data)
         /* Battery charge percentage */
         datapipe_exec_full(&battery_level_pipe,
                            GINT_TO_POINTER(mcebat.level),
-                           DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                           DATAPIPE_CACHE_INDATA);
     }
 
     /* Clear the timer id and do not repeat */

@@ -99,12 +99,10 @@ static gboolean camera_active_state_iomon_input_cb(mce_io_mon_t *iomon, gpointer
 
 	if (!strncmp(data, MCE_CAMERA_ACTIVE, strlen(MCE_CAMERA_ACTIVE))) {
 		datapipe_exec_output_triggers(&led_pattern_activate_pipe,
-					      MCE_LED_PATTERN_CAMERA,
-					      DATAPIPE_USE_INDATA);
+					      MCE_LED_PATTERN_CAMERA);
 	} else {
 		datapipe_exec_output_triggers(&led_pattern_deactivate_pipe,
-					      MCE_LED_PATTERN_CAMERA,
-					      DATAPIPE_USE_INDATA);
+					      MCE_LED_PATTERN_CAMERA);
 	}
 
 	return FALSE;
@@ -124,7 +122,7 @@ static gboolean camera_popout_state_iomon_input_cb(mce_io_mon_t *iomon, gpointer
 
 	/* Generate activity */
 	datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(FALSE),
-			   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_OUTDATA);
+			   DATAPIPE_CACHE_OUTDATA);
 
 	if (popout_unlock == FALSE)
 		goto EXIT;

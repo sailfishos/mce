@@ -1192,8 +1192,7 @@ fingerprint_led_scanning_activate(bool activate)
         datapipe_exec_output_triggers((activated = activate) ?
                                       &led_pattern_activate_pipe :
                                       &led_pattern_deactivate_pipe,
-                                      MCE_LED_PATTERN_SCANNING_FINGERPRINT,
-                                      DATAPIPE_USE_INDATA);
+                                      MCE_LED_PATTERN_SCANNING_FINGERPRINT);
     }
 }
 
@@ -1213,8 +1212,7 @@ fingerprint_led_acquired_activate(bool activate)
         datapipe_exec_output_triggers((activated = activate) ?
                                       &led_pattern_activate_pipe :
                                       &led_pattern_deactivate_pipe,
-                                      MCE_LED_PATTERN_FINGERPRINT_ACQUIRED,
-                                      DATAPIPE_USE_INDATA);
+                                      MCE_LED_PATTERN_FINGERPRINT_ACQUIRED);
     }
 }
 
@@ -1277,7 +1275,7 @@ fingerprint_datapipe_set_fpstate(fpstate_t state)
             fpstate_repr(fpstate));
 
     datapipe_exec_full(&fpstate_pipe, GINT_TO_POINTER(fpstate),
-                       DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                       DATAPIPE_CACHE_INDATA);
 
     switch( fpstate ) {
     case FPSTATE_ENROLLING:
@@ -1360,7 +1358,7 @@ fingerprint_datapipe_update_enroll_in_progress(void)
 
     datapipe_exec_full(&enroll_in_progress_pipe,
                        GINT_TO_POINTER(enroll_in_progress),
-                       DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                       DATAPIPE_CACHE_INDATA);
 EXIT:
     return;
 }
@@ -1382,7 +1380,7 @@ fingerprint_datapipe_generate_activity(void)
     mce_log(LL_DEBUG, "generating activity from fingerprint sensor");
     datapipe_exec_full(&inactivity_event_pipe,
                        GINT_TO_POINTER(FALSE),
-                       DATAPIPE_USE_INDATA, DATAPIPE_CACHE_OUTDATA);
+                       DATAPIPE_CACHE_OUTDATA);
 
 EXIT:
     return;
@@ -2617,8 +2615,7 @@ fpwakeup_trigger(void)
 
         /* (Mis)use haptic feedback associated with device unlocking */
         datapipe_exec_output_triggers(&ngfd_event_request_pipe,
-                                      "unlock_device",
-                                      DATAPIPE_USE_INDATA);
+                                      "unlock_device");
 
         /* Make sure we unblank / exit from lpm */
         mce_datapipe_request_display_state(MCE_DISPLAY_ON);

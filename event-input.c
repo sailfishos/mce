@@ -1911,8 +1911,7 @@ evin_iomon_generate_activity(struct input_event *ev, bool cooked, bool raw)
     if( raw ) {
         if( t_raw != t ) {
             t_raw = t;
-            datapipe_exec_output_triggers(&user_activity_event_pipe,
-                                          ev, DATAPIPE_USE_INDATA);
+            datapipe_exec_output_triggers(&user_activity_event_pipe, ev);
         }
     }
 
@@ -1924,7 +1923,7 @@ evin_iomon_generate_activity(struct input_event *ev, bool cooked, bool raw)
             t_cooked = t;
             datapipe_exec_full(&inactivity_event_pipe,
                                GINT_TO_POINTER(FALSE),
-                               DATAPIPE_USE_INDATA, DATAPIPE_CACHE_OUTDATA);
+                               DATAPIPE_CACHE_OUTDATA);
         }
     }
 
@@ -2077,13 +2076,13 @@ evin_iomon_touchscreen_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
 
         /* But otherwise are handled in powerkey.c. */
         datapipe_exec_full(&keypress_event_pipe, &ev,
-                           DATAPIPE_USE_INDATA, DATAPIPE_CACHE_NOTHING);
+                           DATAPIPE_CACHE_NOTHING);
     }
     else if( (ev->type == EV_ABS && ev->code == ABS_PRESSURE) ||
              (ev->type == EV_KEY && ev->code == BTN_TOUCH ) ) {
         /* Only send pressure events */
         datapipe_exec_full(&touchscreen_event_pipe, &ev,
-                           DATAPIPE_USE_INDATA, DATAPIPE_CACHE_NOTHING);
+                           DATAPIPE_CACHE_NOTHING);
     }
 
 EXIT:
@@ -2171,7 +2170,7 @@ evin_iomon_keypress_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
                 KEY_STATE_PRESSED : KEY_STATE_RELEASED;
             datapipe_exec_full(&lockkey_state_pipe,
                                GINT_TO_POINTER(key_state),
-                               DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                               DATAPIPE_CACHE_INDATA);
         }
 
         /* For now there's no reason to cache the keypress
@@ -2193,7 +2192,7 @@ evin_iomon_keypress_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
                (ev->value == 1)) || (ev->value == 0))) &&
             ((submode & MCE_SUBMODE_PROXIMITY_TKLOCK) == 0)) {
             datapipe_exec_full(&keypress_event_pipe, &ev,
-                               DATAPIPE_USE_INDATA, DATAPIPE_CACHE_NOTHING);
+                               DATAPIPE_CACHE_NOTHING);
         }
     }
 
@@ -2205,7 +2204,7 @@ evin_iomon_keypress_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
                     COVER_CLOSED : COVER_OPEN;
                 datapipe_exec_full(&lens_cover_state_pipe,
                                    GINT_TO_POINTER(cover_state),
-                                   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                                   DATAPIPE_CACHE_INDATA);
             }
 
             /* Don't generate activity on COVER_CLOSED */
@@ -2220,7 +2219,7 @@ evin_iomon_keypress_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
                     COVER_CLOSED : COVER_OPEN;
                 datapipe_exec_full(&keyboard_slide_state_pipe,
                                    GINT_TO_POINTER(cover_state),
-                                   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                                   DATAPIPE_CACHE_INDATA);
                 evin_iomon_keyboard_state_update();
             }
 
@@ -2236,7 +2235,7 @@ evin_iomon_keypress_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
                     COVER_CLOSED : COVER_OPEN;
                 datapipe_exec_full(&proximity_sensor_actual_pipe,
                                    GINT_TO_POINTER(cover_state),
-                                   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                                   DATAPIPE_CACHE_INDATA);
             }
 
             break;
@@ -2250,7 +2249,7 @@ evin_iomon_keypress_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
                     COVER_CLOSED : COVER_OPEN;
                 datapipe_exec_full(&jack_sense_state_pipe,
                                    GINT_TO_POINTER(cover_state),
-                                   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                                   DATAPIPE_CACHE_INDATA);
             }
 
             break;
@@ -2261,12 +2260,12 @@ evin_iomon_keypress_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
             if( ev->value ) {
                 datapipe_exec_full(&lid_sensor_actual_pipe,
                                    GINT_TO_POINTER(COVER_CLOSED),
-                                   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                                   DATAPIPE_CACHE_INDATA);
             }
             else {
                 datapipe_exec_full(&lid_sensor_actual_pipe,
                                    GINT_TO_POINTER(COVER_OPEN),
-                                   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                                   DATAPIPE_CACHE_INDATA);
             }
             break;
 
@@ -2521,7 +2520,7 @@ evin_iomon_switch_states_update_iter_cb(gpointer io_monitor, gpointer user_data)
     if( test_bit(ecode, featurelist) ) {
         state = test_bit(ecode, statelist) ? COVER_CLOSED : COVER_OPEN;
         datapipe_exec_full(&lens_cover_state_pipe, GINT_TO_POINTER(state),
-                           DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                           DATAPIPE_CACHE_INDATA);
     }
 
     /* Check initial keypad slide state */
@@ -2529,7 +2528,7 @@ evin_iomon_switch_states_update_iter_cb(gpointer io_monitor, gpointer user_data)
     if( test_bit(ecode, featurelist) ) {
         state = test_bit(ecode, statelist) ? COVER_CLOSED : COVER_OPEN;
         datapipe_exec_full(&keyboard_slide_state_pipe, GINT_TO_POINTER(state),
-                           DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                           DATAPIPE_CACHE_INDATA);
     }
 
     /* Check initial front proximity state */
@@ -2537,7 +2536,7 @@ evin_iomon_switch_states_update_iter_cb(gpointer io_monitor, gpointer user_data)
     if( test_bit(ecode, featurelist) ) {
         state = test_bit(ecode, statelist) ? COVER_CLOSED : COVER_OPEN;
         datapipe_exec_full(&proximity_sensor_actual_pipe, GINT_TO_POINTER(state),
-                           DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                           DATAPIPE_CACHE_INDATA);
     }
 
     /* Check initial lid sensor state */
@@ -2547,7 +2546,7 @@ evin_iomon_switch_states_update_iter_cb(gpointer io_monitor, gpointer user_data)
         mce_log(LL_DEVEL, "SW_LID initial state = %s",
                 cover_state_repr(state));
         datapipe_exec_full(&lid_sensor_actual_pipe, GINT_TO_POINTER(state),
-                           DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                           DATAPIPE_CACHE_INDATA);
     }
 
     /* Need to consider more than one switch state when setting the
@@ -2575,7 +2574,7 @@ evin_iomon_switch_states_update_iter_cb(gpointer io_monitor, gpointer user_data)
     if( have ) {
         state = value ? COVER_CLOSED : COVER_OPEN;
         datapipe_exec_full(&jack_sense_state_pipe, GINT_TO_POINTER(state),
-                           DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                           DATAPIPE_CACHE_INDATA);
     }
 
 EXIT:
@@ -2692,7 +2691,7 @@ evin_iomon_keyboard_state_update(void)
 
     datapipe_exec_full(&keyboard_available_state_pipe,
                        GINT_TO_POINTER(state),
-                       DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                       DATAPIPE_CACHE_INDATA);
 }
 
 /** Scan /dev/input for input event devices
@@ -2925,7 +2924,7 @@ evin_touchstate_update_cb(gpointer aptr)
     mce_log(LL_DEBUG, "touch_detected=%s", touching ? "true" : "false");
     datapipe_exec_full(&touch_detected_pipe,
                        GINT_TO_POINTER(touching),
-                       DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                       DATAPIPE_CACHE_INDATA);
 
 EXIT:
     return FALSE;
@@ -3218,8 +3217,7 @@ evin_ts_grab_set_led_raw(bool enabled)
     datapipe_exec_output_triggers(enabled ?
                                   &led_pattern_activate_pipe :
                                   &led_pattern_deactivate_pipe,
-                                  MCE_LED_PATTERN_TOUCH_INPUT_BLOCKED,
-                                  DATAPIPE_USE_INDATA);
+                                  MCE_LED_PATTERN_TOUCH_INPUT_BLOCKED);
 }
 
 /** Handle delayed input grab led pattern activation
@@ -3309,7 +3307,7 @@ evin_ts_grab_set_active(gboolean grab)
     // STATE MACHINE -> OUTPUT DATAPIPE
     datapipe_exec_full(&touch_grab_active_pipe,
                        GINT_TO_POINTER(grab),
-                       DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                       DATAPIPE_CACHE_INDATA);
 
 EXIT:
     return;
@@ -3564,7 +3562,7 @@ evin_kp_grab_set_active(gboolean grab)
     // STATE MACHINE -> OUTPUT DATAPIPE
     datapipe_exec_full(&keypad_grab_active_pipe,
                        GINT_TO_POINTER(grab),
-                       DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+                       DATAPIPE_CACHE_INDATA);
 
 EXIT:
     return;

@@ -175,8 +175,7 @@ static void io_detect_resume(void)
 
 	// notify in case some timers need re-evaluating
 	datapipe_exec_output_triggers(&resume_detected_event_pipe,
-				      &prev,
-				      DATAPIPE_USE_INDATA);
+				      &prev);
 
 EXIT:
 	return;

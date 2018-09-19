@@ -93,7 +93,7 @@ static gboolean generic_activity_iomon_cb(mce_io_mon_t *iomon, gpointer data, gs
 
 	/* Generate activity */
 	datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(FALSE),
-			   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_OUTDATA);
+			   DATAPIPE_CACHE_OUTDATA);
 
 	return FALSE;
 }
@@ -121,12 +121,12 @@ static gboolean camera_launch_button_iomon_cb(mce_io_mon_t *iomon, gpointer data
 
 	/* Generate activity */
 	datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(FALSE),
-			   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_OUTDATA);
+			   DATAPIPE_CACHE_OUTDATA);
 
 	/* Update camera button state */
 	datapipe_exec_full(&camera_button_state_pipe,
 			   GINT_TO_POINTER(camera_button_state),
-			   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+			   DATAPIPE_CACHE_INDATA);
 
 	return FALSE;
 }
@@ -152,7 +152,7 @@ static gboolean lockkey_iomon_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes
 
 	datapipe_exec_full(&lockkey_state_pipe,
 			   GINT_TO_POINTER(lockkey_state),
-			   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+			   DATAPIPE_CACHE_INDATA);
 
 	return FALSE;
 }
@@ -177,14 +177,14 @@ static gboolean kbd_slide_iomon_cb(mce_io_mon_t *iomon, gpointer data, gsize byt
 		/* Generate activity */
 		datapipe_exec_full(&inactivity_event_pipe,
 				   GINT_TO_POINTER(FALSE),
-				   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_OUTDATA);
+				   DATAPIPE_CACHE_OUTDATA);
 	} else {
 		slide_state = COVER_CLOSED;
 	}
 
 	datapipe_exec_full(&keyboard_slide_state_pipe,
 			   GINT_TO_POINTER(slide_state),
-			   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+			   DATAPIPE_CACHE_INDATA);
 
 	return FALSE;
 }
@@ -209,14 +209,14 @@ static gboolean lid_sensor_actual_iomon_cb(mce_io_mon_t *iomon, gpointer data, g
 		/* Generate activity */
 		datapipe_exec_full(&inactivity_event_pipe,
 				   GINT_TO_POINTER(FALSE),
-				   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_OUTDATA);
+				   DATAPIPE_CACHE_OUTDATA);
 	} else {
 		lid_state = COVER_CLOSED;
 	}
 
 	datapipe_exec_full(&lid_sensor_actual_pipe,
 			   GINT_TO_POINTER(lid_state),
-			   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+			   DATAPIPE_CACHE_INDATA);
 
 	return FALSE;
 }
@@ -244,7 +244,7 @@ static gboolean proximity_sensor_iomon_cb(mce_io_mon_t *iomon, gpointer data, gs
 
 	datapipe_exec_full(&proximity_sensor_actual_pipe,
 			   GINT_TO_POINTER(proximity_sensor_actual),
-			   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+			   DATAPIPE_CACHE_INDATA);
 
 	return FALSE;
 }
@@ -272,11 +272,11 @@ static gboolean usb_cable_iomon_cb(mce_io_mon_t *iomon, gpointer data, gsize byt
 
 	/* Generate activity */
 	datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(FALSE),
-			   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_OUTDATA);
+			   DATAPIPE_CACHE_OUTDATA);
 
 	datapipe_exec_full(&usb_cable_state_pipe,
 			   GINT_TO_POINTER(cable_state),
-			   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+			   DATAPIPE_CACHE_INDATA);
 
 	return FALSE;
 }
@@ -301,14 +301,14 @@ static gboolean lens_cover_iomon_cb(mce_io_mon_t *iomon, gpointer data, gsize by
 		/* Generate activity */
 		datapipe_exec_full(&inactivity_event_pipe,
 				   GINT_TO_POINTER(FALSE),
-				   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_OUTDATA);
+				   DATAPIPE_CACHE_OUTDATA);
 	} else {
 		lens_cover_state = COVER_CLOSED;
 	}
 
 	datapipe_exec_full(&lens_cover_state_pipe,
 			   GINT_TO_POINTER(lens_cover_state),
-			   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+			   DATAPIPE_CACHE_INDATA);
 
 	return FALSE;
 }
@@ -339,7 +339,7 @@ static gboolean update_proximity_sensor(void)
 
 	datapipe_exec_full(&proximity_sensor_actual_pipe,
 			   GINT_TO_POINTER(proximity_sensor_actual),
-			   DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);
+			   DATAPIPE_CACHE_INDATA);
 
 	g_free(tmp);
 

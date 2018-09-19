@@ -76,13 +76,6 @@ typedef enum {
 } datapipe_data_t;
 
 /**
- * Policy for the data source
- */
-typedef enum {
-    DATAPIPE_USE_INDATA = FALSE,  /**< Use the indata as data source */
-} datapipe_use_t;
-
-/**
  * Policy used for caching indata
  */
 typedef enum {
@@ -117,8 +110,8 @@ typedef struct
 
 const char     *datapipe_name                (datapipe_t *const datapipe);
 gpointer        datapipe_value               (datapipe_t *const datapipe);
-void            datapipe_exec_output_triggers(const datapipe_t *const datapipe, gconstpointer indata, const datapipe_use_t use_cache);
-gconstpointer   datapipe_exec_full           (datapipe_t *const datapipe, gpointer indata, const datapipe_use_t use_cache, const datapipe_cache_t cache_indata);
+void            datapipe_exec_output_triggers(const datapipe_t *const datapipe, gconstpointer indata);
+gconstpointer   datapipe_exec_full           (datapipe_t *const datapipe, gpointer indata, const datapipe_cache_t cache_indata);
 
 /* ------------------------------------------------------------------------- *
  * MCE_DATAPIPE
@@ -168,7 +161,7 @@ void  mce_datapipe_quit_bindings   (datapipe_bindings_t *self);
      * last request to reach the queue to "win". */ \
     datapipe_exec_full(&display_state_request_pipe,\
                        GINT_TO_POINTER(req_target),\
-                       DATAPIPE_USE_INDATA, DATAPIPE_CACHE_OUTDATA);\
+                       DATAPIPE_CACHE_OUTDATA);\
 } while(0)
 
 /** Execute tklock request
@@ -180,7 +173,7 @@ void  mce_datapipe_quit_bindings   (datapipe_bindings_t *self);
             tklock_request_repr(tklock_request));\
     datapipe_exec_full(&tklock_request_pipe,\
                        GINT_TO_POINTER(tklock_request),\
-                       DATAPIPE_USE_INDATA, DATAPIPE_CACHE_INDATA);\
+                       DATAPIPE_CACHE_INDATA);\
 }while(0)
 
 /* ========================================================================= *

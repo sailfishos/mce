@@ -47,10 +47,10 @@
 
 const char            *datapipe_name                 (datapipe_t *const datapipe);
 gpointer               datapipe_value                (datapipe_t *const datapipe);
-static void            datapipe_exec_input_triggers  (datapipe_t *const datapipe, gpointer const indata, const datapipe_use_t use_cache);
-static gconstpointer   datapipe_exec_filters         (datapipe_t *const datapipe, gpointer indata, const datapipe_use_t use_cache);
-void                   datapipe_exec_output_triggers (const datapipe_t *const datapipe, gconstpointer indata, const datapipe_use_t use_cache);
-gconstpointer          datapipe_exec_full            (datapipe_t *const datapipe, gpointer indata, const datapipe_use_t use_cache, const datapipe_cache_t cache_indata);
+static void            datapipe_exec_input_triggers  (datapipe_t *const datapipe, gpointer const indata);
+static gconstpointer   datapipe_exec_filters         (datapipe_t *const datapipe, gpointer indata);
+void                   datapipe_exec_output_triggers (const datapipe_t *const datapipe, gconstpointer indata);
+gconstpointer          datapipe_exec_full            (datapipe_t *const datapipe, gpointer indata, const datapipe_cache_t cache_indata);
 static void            datapipe_add_filter           (datapipe_t *const datapipe, gpointer (*filter)(gpointer data));
 static void            datapipe_remove_filter        (datapipe_t *const datapipe, gpointer (*filter)(gpointer data));
 static void            datapipe_add_input_trigger    (datapipe_t *const datapipe, void (*trigger)(gconstpointer data));
@@ -468,17 +468,13 @@ datapipe_value(datapipe_t *const datapipe)
  *
  * @param datapipe The datapipe to execute
  * @param indata The input data to run through the datapipe
- * @param use_cache DATAPIPE_USE_INDATA to use indata
  * @param cache_indata DATAPIPE_CACHE_INDATA to cache the indata,
  *                     DATAPIPE_CACHE_NOTHING to keep the old data
  */
 static void
 datapipe_exec_input_triggers(datapipe_t *const datapipe,
-                             gpointer const indata,
-                             const datapipe_use_t use_cache)
+                             gpointer const indata)
 {
-    (void)use_cache; // TODO: remove
-
     void (*trigger)(gconstpointer const input);
     gpointer data;
     gint i;
@@ -507,16 +503,12 @@ EXIT:
  *
  * @param datapipe The datapipe to execute
  * @param indata The input data to run through the datapipe
- * @param use_cache DATAPIPE_USE_INDATA to use indata
  * @return The processed data
  */
 static gconstpointer
 datapipe_exec_filters(datapipe_t *const datapipe,
-                      gpointer indata,
-                      const datapipe_use_t use_cache)
+                      gpointer indata)
 {
-    (void)use_cache; // TODO: remove
-
     gpointer (*filter)(gpointer input);
     gpointer data;
     gconstpointer retval = NULL;
@@ -558,14 +550,10 @@ EXIT:
  *
  * @param datapipe The datapipe to execute
  * @param indata The input data to run through the datapipe
- * @param use_cache DATAPIPE_USE_INDATA to use indata
  */
 void datapipe_exec_output_triggers(const datapipe_t *const datapipe,
-                                   gconstpointer indata,
-                                   const datapipe_use_t use_cache)
+                                   gconstpointer indata)
 {
-    (void)use_cache; // TODO: remove
-
     void (*trigger)(gconstpointer input);
     gconstpointer data;
     gint i;
@@ -593,18 +581,14 @@ EXIT:
  *
  * @param datapipe The datapipe to execute
  * @param indata The input data to run through the datapipe
- * @param use_cache DATAPIPE_USE_INDATA to use indata
  * @param cache_indata DATAPIPE_CACHE_INDATA to cache the indata,
  *                     DATAPIPE_CACHE_NOTHING to keep the old data
  * @return The processed data
  */
 gconstpointer datapipe_exec_full(datapipe_t *const datapipe,
                                  gpointer indata,
-                                 const datapipe_use_t use_cache,
                                  const datapipe_cache_t cache_indata)
 {
-    (void)use_cache; // TODO: remove
-
     gconstpointer outdata = NULL;
 
     if (datapipe == NULL) {
@@ -623,13 +607,13 @@ gconstpointer datapipe_exec_full(datapipe_t *const datapipe,
     }
 
     /* Execute input value callbacks */
-    datapipe_exec_input_triggers(datapipe, indata, DATAPIPE_USE_INDATA);
+    datapipe_exec_input_triggers(datapipe, indata);
 
     /* Determine output value */
     if (datapipe->dp_read_only == DATAPIPE_FILTERING_DENIED) {
         outdata = indata;
     } else {
-        outdata = datapipe_exec_filters(datapipe, indata, DATAPIPE_USE_INDATA);
+        outdata = datapipe_exec_filters(datapipe, indata);
     }
 
     /* Optionally cache the value at the output stage */
@@ -642,7 +626,7 @@ gconstpointer datapipe_exec_full(datapipe_t *const datapipe,
     }
 
     /* Execute output value callbacks */
-    datapipe_exec_output_triggers(datapipe, outdata, DATAPIPE_USE_INDATA);
+    datapipe_exec_output_triggers(datapipe, outdata);
 
 EXIT:
     return outdata;
