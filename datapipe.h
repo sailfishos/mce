@@ -49,13 +49,14 @@ const char *devicelock_state_repr(devicelock_state_t state);
  * Only access this struct through the functions
  */
 typedef struct {
-    GSList   *dp_filters;          /**< The filters */
-    GSList   *dp_input_triggers;   /**< Triggers called on indata */
-    GSList   *dp_output_triggers;  /**< Triggers called on outdata */
-    gpointer  dp_cached_data;      /**< Latest cached data */
-    gsize     dp_datasize;         /**< Size of data; NULL == automagic */
-    gboolean  dp_free_cache;       /**< Free the cache? */
-    gboolean  dp_read_only;        /**< Datapipe is read only */
+    const char *dp_name;             /**< Name of the datapipe */
+    GSList     *dp_filters;          /**< The filters */
+    GSList     *dp_input_triggers;   /**< Triggers called on indata */
+    GSList     *dp_output_triggers;  /**< Triggers called on outdata */
+    gpointer    dp_cached_data;      /**< Latest cached data */
+    gsize       dp_datasize;         /**< Size of data; NULL == automagic */
+    gboolean    dp_free_cache;       /**< Free the cache? */
+    gboolean    dp_read_only;        /**< Datapipe is read only */
 } datapipe_t;
 
 /**
@@ -115,6 +116,7 @@ typedef struct
  * DATAPIPE
  * ------------------------------------------------------------------------- */
 
+const char    *datapipe_name                 (datapipe_t *const datapipe);
 void           datapipe_exec_input_triggers  (datapipe_t *const datapipe, gpointer const indata, const datapipe_use_t use_cache);
 gconstpointer  datapipe_exec_filters         (datapipe_t *const datapipe, gpointer indata, const datapipe_use_t use_cache);
 void           datapipe_exec_output_triggers (const datapipe_t *const datapipe, gconstpointer indata, const datapipe_use_t use_cache);
@@ -125,7 +127,7 @@ void           datapipe_add_input_trigger    (datapipe_t *const datapipe, void (
 void           datapipe_remove_input_trigger (datapipe_t *const datapipe, void (*trigger)(gconstpointer data));
 void           datapipe_add_output_trigger   (datapipe_t *const datapipe, void (*trigger)(gconstpointer data));
 void           datapipe_remove_output_trigger(datapipe_t *const datapipe, void (*trigger)(gconstpointer data));
-void           datapipe_init                 (datapipe_t *const datapipe, const datapipe_filtering_t read_only, const datapipe_data_t free_cache, const gsize datasize, gpointer initial_data);
+void           datapipe_init_                (datapipe_t *const datapipe, const char *name, const datapipe_filtering_t read_only, const datapipe_data_t free_cache, const gsize datasize, gpointer initial_data);
 void           datapipe_free                 (datapipe_t *const datapipe);
 
 /* ------------------------------------------------------------------------- *
@@ -143,6 +145,9 @@ void           mce_datapipe_quit            (void);
 /* ========================================================================= *
  * Macros
  * ========================================================================= */
+
+#define datapipe_init(datapipe, filtering, caching, datasize, value)\
+     datapipe_init_(&(datapipe), #datapipe, filtering, caching, datasize, value)
 
 /** Retrieve a gint from a datapipe */
 # define datapipe_get_gint(_datapipe)   (GPOINTER_TO_INT((_datapipe).dp_cached_data))
