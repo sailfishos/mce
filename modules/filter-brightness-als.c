@@ -1396,14 +1396,22 @@ static void
 fba_datapipe_execute_brightness_change(void)
 {
     /* Re-filter the brightness */
-    datapipe_exec_full(&display_brightness_pipe, NULL,
-                       DATAPIPE_USE_CACHED, DATAPIPE_CACHE_NOTHING);
-    datapipe_exec_full(&led_brightness_pipe, NULL,
-                       DATAPIPE_USE_CACHED, DATAPIPE_CACHE_NOTHING);
-    datapipe_exec_full(&lpm_brightness_pipe, NULL,
-                       DATAPIPE_USE_CACHED, DATAPIPE_CACHE_NOTHING);
-    datapipe_exec_full(&key_backlight_brightness_pipe, NULL,
-                       DATAPIPE_USE_CACHED, DATAPIPE_CACHE_NOTHING);
+    datapipe_exec_full(&display_brightness_pipe,
+                       datapipe_value(&display_brightness_pipe),
+                       DATAPIPE_USE_INDATA,
+                       DATAPIPE_CACHE_NOTHING);
+    datapipe_exec_full(&led_brightness_pipe,
+                       datapipe_value(&led_brightness_pipe),
+                       DATAPIPE_USE_INDATA,
+                       DATAPIPE_CACHE_NOTHING);
+    datapipe_exec_full(&lpm_brightness_pipe,
+                       datapipe_value(&lpm_brightness_pipe),
+                       DATAPIPE_USE_INDATA,
+                       DATAPIPE_CACHE_NOTHING);
+    datapipe_exec_full(&key_backlight_brightness_pipe,
+                       datapipe_value(&key_backlight_brightness_pipe),
+                       DATAPIPE_USE_INDATA,
+                       DATAPIPE_CACHE_NOTHING);
 }
 
 /** Array of datapipe handlers */
