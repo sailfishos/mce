@@ -51,19 +51,18 @@ void             datapipe_remove_output_trigger(datapipe_t *const datapipe, void
 void             datapipe_init                 (datapipe_t *const datapipe, const datapipe_filtering_t read_only, const datapipe_data_t free_cache, const gsize datasize, gpointer initial_data);
 void             datapipe_free                 (datapipe_t *const datapipe);
 
-void             datapipe_handlers_install     (datapipe_handler_t *bindings);
-void             datapipe_handlers_remove      (datapipe_handler_t *bindings);
-void             datapipe_handlers_execute     (datapipe_handler_t *bindings);
-static gboolean  datapipe_handlers_execute_cb  (gpointer aptr);
-void             datapipe_bindings_init        (datapipe_bindings_t *self);
-void             datapipe_bindings_quit        (datapipe_bindings_t *self);
-
 /* ------------------------------------------------------------------------- *
  * MCE_DATAPIPE
  * ------------------------------------------------------------------------- */
 
-void  mce_datapipe_init(void);
-void  mce_datapipe_quit(void);
+void             mce_datapipe_install_handlers   (datapipe_handler_t *bindings);
+void             mce_datapipe_remove_handlers    (datapipe_handler_t *bindings);
+void             mce_datapipe_execute_handlers   (datapipe_handler_t *bindings);
+static gboolean  mce_datapipe_execute_handlers_cb(gpointer aptr);
+void             mce_datapipe_init_bindings      (datapipe_bindings_t *self);
+void             mce_datapipe_quit_bindings      (datapipe_bindings_t *self);
+void             mce_datapipe_init               (void);
+void             mce_datapipe_quit               (void);
 
 /* ------------------------------------------------------------------------- *
  * SUBMODE
@@ -1781,7 +1780,7 @@ const char *fpstate_repr(fpstate_t state)
                                                     "FPSTATE_UNKNOWN");
 }
 
-void datapipe_handlers_install(datapipe_handler_t *bindings)
+void mce_datapipe_install_handlers(datapipe_handler_t *bindings)
 {
     if( !bindings )
         goto EXIT;
@@ -1808,7 +1807,7 @@ EXIT:
     return;
 }
 
-void datapipe_handlers_remove(datapipe_handler_t *bindings)
+void mce_datapipe_remove_handlers(datapipe_handler_t *bindings)
 {
     if( !bindings )
         goto EXIT;
@@ -1835,7 +1834,7 @@ EXIT:
     return;
 }
 
-void datapipe_handlers_execute(datapipe_handler_t *bindings)
+void mce_datapipe_execute_handlers(datapipe_handler_t *bindings)
 {
     if( !bindings )
         goto EXIT;
@@ -1852,7 +1851,7 @@ EXIT:
     return;
 }
 
-static gboolean datapipe_handlers_execute_cb(gpointer aptr)
+static gboolean mce_datapipe_execute_handlers_cb(gpointer aptr)
 {
     datapipe_bindings_t *self = aptr;
 
@@ -1865,7 +1864,7 @@ static gboolean datapipe_handlers_execute_cb(gpointer aptr)
     self->execute_id = 0;
 
     mce_log(LL_INFO, "module=%s", self->module ?: "unknown");
-    datapipe_handlers_execute(self->handlers);
+    mce_datapipe_execute_handlers(self->handlers);
 
 EXIT:
     return FALSE;
@@ -1873,22 +1872,22 @@ EXIT:
 
 /** Append triggers/filters to datapipes
  */
-void datapipe_bindings_init(datapipe_bindings_t *self)
+void mce_datapipe_init_bindings(datapipe_bindings_t *self)
 {
     mce_log(LL_INFO, "module=%s", self->module ?: "unknown");
 
     /* Set up datapipe callbacks */
-    datapipe_handlers_install(self->handlers);
+    mce_datapipe_install_handlers(self->handlers);
 
     /* Get initial values for output triggers from idle
      * callback, i.e. when all modules have been loaded */
     if( !self->execute_id )
-        self->execute_id = g_idle_add(datapipe_handlers_execute_cb, self);
+        self->execute_id = g_idle_add(mce_datapipe_execute_handlers_cb, self);
 }
 
 /** Remove triggers/filters from datapipes
  */
-void datapipe_bindings_quit(datapipe_bindings_t *self)
+void mce_datapipe_quit_bindings(datapipe_bindings_t *self)
 {
     mce_log(LL_INFO, "module=%s", self->module ?: "unknown");
 
@@ -1899,5 +1898,5 @@ void datapipe_bindings_quit(datapipe_bindings_t *self)
     }
 
     /* Remove datapipe callbacks */
-    datapipe_handlers_remove(self->handlers);
+    mce_datapipe_remove_handlers(self->handlers);
 }

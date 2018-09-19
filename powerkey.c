@@ -3179,7 +3179,7 @@ static datapipe_bindings_t pwrkey_datapipe_bindings =
 static void
 pwrkey_datapipes_init(void)
 {
-    datapipe_bindings_init(&pwrkey_datapipe_bindings);
+    mce_datapipe_init_bindings(&pwrkey_datapipe_bindings);
 }
 
 /** Remove triggers/filters from datapipes
@@ -3187,7 +3187,7 @@ pwrkey_datapipes_init(void)
 static void
 pwrkey_datapipes_quit(void)
 {
-    datapipe_bindings_quit(&pwrkey_datapipe_bindings);
+    mce_datapipe_quit_bindings(&pwrkey_datapipe_bindings);
 }
 
 /* ========================================================================= *

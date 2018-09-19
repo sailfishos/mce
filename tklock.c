@@ -2289,14 +2289,14 @@ static datapipe_bindings_t tklock_datapipe_bindings =
  */
 static void tklock_datapipe_init(void)
 {
-    datapipe_bindings_init(&tklock_datapipe_bindings);
+    mce_datapipe_init_bindings(&tklock_datapipe_bindings);
 }
 
 /** Remove triggers/filters from datapipes
  */
 static void tklock_datapipe_quit(void)
 {
-    datapipe_bindings_quit(&tklock_datapipe_bindings);
+    mce_datapipe_quit_bindings(&tklock_datapipe_bindings);
 }
 
 /* ========================================================================= *

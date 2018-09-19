@@ -1897,7 +1897,7 @@ static datapipe_bindings_t callstate_datapipe_bindings =
 static void
 callstate_datapipes_init(void)
 {
-    datapipe_bindings_init(&callstate_datapipe_bindings);
+    mce_datapipe_init_bindings(&callstate_datapipe_bindings);
 }
 
 /** Remove triggers/filters from datapipes
@@ -1905,7 +1905,7 @@ callstate_datapipes_init(void)
 static void
 callstate_datapipes_quit(void)
 {
-    datapipe_bindings_quit(&callstate_datapipe_bindings);
+    mce_datapipe_quit_bindings(&callstate_datapipe_bindings);
 }
 
 /* ========================================================================= *

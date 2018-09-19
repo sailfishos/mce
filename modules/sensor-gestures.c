@@ -426,13 +426,13 @@ static datapipe_bindings_t sg_datapipe_bindings =
  */
 static void sg_datapipe_init(void)
 {
-    datapipe_bindings_init(&sg_datapipe_bindings);
+    mce_datapipe_init_bindings(&sg_datapipe_bindings);
 }
 
 /** Remove triggers/filters from datapipes */
 static void sg_datapipe_quit(void)
 {
-    datapipe_bindings_quit(&sg_datapipe_bindings);
+    mce_datapipe_quit_bindings(&sg_datapipe_bindings);
 }
 
 /* ========================================================================= *

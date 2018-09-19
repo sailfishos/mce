@@ -2239,13 +2239,13 @@ static datapipe_bindings_t mdy_datapipe_bindings =
  */
 static void mdy_datapipe_init(void)
 {
-    datapipe_bindings_init(&mdy_datapipe_bindings);
+    mce_datapipe_init_bindings(&mdy_datapipe_bindings);
 }
 
 /** Remove triggers/filters from datapipes */
 static void mdy_datapipe_quit(void)
 {
-    datapipe_bindings_quit(&mdy_datapipe_bindings);
+    mce_datapipe_quit_bindings(&mdy_datapipe_bindings);
 }
 
 /* ========================================================================= *

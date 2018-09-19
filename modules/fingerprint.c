@@ -1690,7 +1690,7 @@ static void
 fingerprint_datapipe_init(void)
 {
     // triggers
-    datapipe_bindings_init(&fingerprint_datapipe_bindings);
+    mce_datapipe_init_bindings(&fingerprint_datapipe_bindings);
 }
 
 /** Remove triggers/filters from datapipes */
@@ -1698,7 +1698,7 @@ static void
 fingerprint_datapipe_quit(void)
 {
     // triggers
-    datapipe_bindings_quit(&fingerprint_datapipe_bindings);
+    mce_datapipe_quit_bindings(&fingerprint_datapipe_bindings);
 }
 
 /* ========================================================================= *

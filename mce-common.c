@@ -618,14 +618,14 @@ static datapipe_bindings_t common_datapipe_bindings =
  */
 static void common_datapipe_init(void)
 {
-    datapipe_bindings_init(&common_datapipe_bindings);
+    mce_datapipe_init_bindings(&common_datapipe_bindings);
 }
 
 /** Remove triggers/filters from datapipes
  */
 static void common_datapipe_quit(void)
 {
-    datapipe_bindings_quit(&common_datapipe_bindings);
+    mce_datapipe_quit_bindings(&common_datapipe_bindings);
 }
 
 /* ========================================================================= *

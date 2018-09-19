@@ -329,14 +329,14 @@ static datapipe_bindings_t bluetooth_datapipe_bindings =
  */
 static void bluetooth_datapipe_init(void)
 {
-    datapipe_bindings_init(&bluetooth_datapipe_bindings);
+    mce_datapipe_init_bindings(&bluetooth_datapipe_bindings);
 }
 
 /** Remove triggers/filters from datapipes
  */
 static void bluetooth_datapipe_quit(void)
 {
-    datapipe_bindings_quit(&bluetooth_datapipe_bindings);
+    mce_datapipe_quit_bindings(&bluetooth_datapipe_bindings);
 }
 
 /* ========================================================================= *

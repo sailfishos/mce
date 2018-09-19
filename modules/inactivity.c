@@ -840,13 +840,13 @@ static datapipe_bindings_t mia_datapipe_bindings =
  */
 static void mia_datapipe_init(void)
 {
-    datapipe_bindings_init(&mia_datapipe_bindings);
+    mce_datapipe_init_bindings(&mia_datapipe_bindings);
 }
 
 /** Remove triggers/filters from datapipes */
 static void mia_datapipe_quit(void)
 {
-    datapipe_bindings_quit(&mia_datapipe_bindings);
+    mce_datapipe_quit_bindings(&mia_datapipe_bindings);
 }
 
 /* ========================================================================= *

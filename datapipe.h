@@ -127,18 +127,18 @@ void           datapipe_add_output_trigger   (datapipe_t *const datapipe, void (
 void           datapipe_remove_output_trigger(datapipe_t *const datapipe, void (*trigger)(gconstpointer data));
 void           datapipe_init                 (datapipe_t *const datapipe, const datapipe_filtering_t read_only, const datapipe_data_t free_cache, const gsize datasize, gpointer initial_data);
 void           datapipe_free                 (datapipe_t *const datapipe);
-void           datapipe_handlers_install     (datapipe_handler_t *bindings);
-void           datapipe_handlers_remove      (datapipe_handler_t *bindings);
-void           datapipe_handlers_execute     (datapipe_handler_t *bindings);
-void           datapipe_bindings_init        (datapipe_bindings_t *self);
-void           datapipe_bindings_quit        (datapipe_bindings_t *self);
 
 /* ------------------------------------------------------------------------- *
  * MCE_DATAPIPE
  * ------------------------------------------------------------------------- */
 
-void  mce_datapipe_init(void);
-void  mce_datapipe_quit(void);
+void           mce_datapipe_install_handlers(datapipe_handler_t *bindings);
+void           mce_datapipe_remove_handlers (datapipe_handler_t *bindings);
+void           mce_datapipe_execute_handlers(datapipe_handler_t *bindings);
+void           mce_datapipe_init_bindings   (datapipe_bindings_t *self);
+void           mce_datapipe_quit_bindings   (datapipe_bindings_t *self);
+void           mce_datapipe_init            (void);
+void           mce_datapipe_quit            (void);
 
 /* ========================================================================= *
  * Macros

@@ -1458,7 +1458,7 @@ static datapipe_bindings_t fba_datapipe_bindings =
 static void
 fba_datapipe_init(void)
 {
-    datapipe_bindings_init(&fba_datapipe_bindings);
+    mce_datapipe_init_bindings(&fba_datapipe_bindings);
 }
 
 /** Remove datapipe triggers/filters
@@ -1466,7 +1466,7 @@ fba_datapipe_init(void)
 static void
 fba_datapipe_quit(void)
 {
-    datapipe_bindings_quit(&fba_datapipe_bindings);
+    mce_datapipe_quit_bindings(&fba_datapipe_bindings);
 }
 
 /* ========================================================================= *

@@ -3156,7 +3156,7 @@ static datapipe_bindings_t mce_led_datapipe_bindings =
 static void
 mce_led_datapipes_init(void)
 {
-	datapipe_bindings_init(&mce_led_datapipe_bindings);
+	mce_datapipe_init_bindings(&mce_led_datapipe_bindings);
 }
 
 /** Remove triggers/filters from datapipes
@@ -3164,7 +3164,7 @@ mce_led_datapipes_init(void)
 static void
 mce_led_datapipes_quit(void)
 {
-	datapipe_bindings_quit(&mce_led_datapipe_bindings);
+	mce_datapipe_quit_bindings(&mce_led_datapipe_bindings);
 }
 
 /**

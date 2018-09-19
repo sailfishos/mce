@@ -976,14 +976,14 @@ static datapipe_bindings_t mce_dsme_datapipe_bindings =
  */
 static void mce_dsme_datapipe_init(void)
 {
-    datapipe_bindings_init(&mce_dsme_datapipe_bindings);
+    mce_datapipe_init_bindings(&mce_dsme_datapipe_bindings);
 }
 
 /** Remove triggers/filters from datapipes
  */
 static void mce_dsme_datapipe_quit(void)
 {
-    datapipe_bindings_quit(&mce_dsme_datapipe_bindings);
+    mce_datapipe_quit_bindings(&mce_dsme_datapipe_bindings);
 }
 
 /* ========================================================================= *
