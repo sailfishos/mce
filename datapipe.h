@@ -77,6 +77,7 @@ typedef struct {
     gsize                 dp_datasize;         /**< Size of data; NULL == automagic */
     datapipe_filtering_t  dp_read_only;        /**< Datapipe is read only */
     datapipe_cache_t      dp_cache;
+    guint                 dp_gc_id;
 } datapipe_t;
 
 typedef struct
@@ -103,18 +104,18 @@ typedef struct
  * DATAPIPE
  * ------------------------------------------------------------------------- */
 
-const char     *datapipe_name                (datapipe_t *const datapipe);
-gconstpointer   datapipe_value               (datapipe_t *const datapipe);
-gconstpointer   datapipe_exec_full           (datapipe_t *const datapipe, gconstpointer indata);
+const char     *datapipe_name     (const datapipe_t *self);
+gconstpointer   datapipe_value    (const datapipe_t *self);
+gconstpointer   datapipe_exec_full(datapipe_t *self, gconstpointer indata);
 
 /* ------------------------------------------------------------------------- *
  * MCE_DATAPIPE
  * ------------------------------------------------------------------------- */
 
-void  mce_datapipe_init            (void);
-void  mce_datapipe_quit            (void);
-void  mce_datapipe_init_bindings   (datapipe_bindings_t *self);
-void  mce_datapipe_quit_bindings   (datapipe_bindings_t *self);
+void  mce_datapipe_init         (void);
+void  mce_datapipe_quit         (void);
+void  mce_datapipe_init_bindings(datapipe_bindings_t *self);
+void  mce_datapipe_quit_bindings(datapipe_bindings_t *self);
 
 /* ========================================================================= *
  * Macros

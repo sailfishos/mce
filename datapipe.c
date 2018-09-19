@@ -45,20 +45,21 @@
  * DATAPIPE
  * ------------------------------------------------------------------------- */
 
-const char            *datapipe_name                 (datapipe_t *const datapipe);
-gconstpointer          datapipe_value                (datapipe_t *const datapipe);
-static void            datapipe_exec_input_triggers  (datapipe_t *const datapipe, gconstpointer const indata);
-static gconstpointer   datapipe_exec_filters         (datapipe_t *const datapipe, gconstpointer indata);
-static void            datapipe_exec_output_triggers (const datapipe_t *const datapipe, gconstpointer indata);
-gconstpointer          datapipe_exec_full            (datapipe_t *const datapipe, gconstpointer indata);
-static void            datapipe_add_filter           (datapipe_t *const datapipe, gpointer (*filter)(gpointer data));
-static void            datapipe_remove_filter        (datapipe_t *const datapipe, gpointer (*filter)(gpointer data));
-static void            datapipe_add_input_trigger    (datapipe_t *const datapipe, void (*trigger)(gconstpointer data));
-static void            datapipe_remove_input_trigger (datapipe_t *const datapipe, void (*trigger)(gconstpointer data));
-static void            datapipe_add_output_trigger   (datapipe_t *const datapipe, void (*trigger)(gconstpointer data));
-static void            datapipe_remove_output_trigger(datapipe_t *const datapipe, void (*trigger)(gconstpointer data));
-static void            datapipe_init_                (datapipe_t *const datapipe, const char *name, const datapipe_filtering_t read_only, datapipe_cache_t cache, const gsize datasize, gconstpointer initial_data);
-static void            datapipe_free                 (datapipe_t *const datapipe);
+const char       *datapipe_name                 (const datapipe_t *self);
+gconstpointer     datapipe_value                (const datapipe_t *self);
+static void       datapipe_gc                   (datapipe_t *self);
+static gboolean   datapipe_gc_cb                (gpointer aptr);
+static void       datapipe_schedule_gc          (datapipe_t *self);
+static void       datapipe_cancel_gc            (datapipe_t *self);
+gconstpointer     datapipe_exec_full            (datapipe_t *self, gconstpointer indata);
+static void       datapipe_add_filter           (datapipe_t *self, gpointer (*filter)(gpointer data));
+static void       datapipe_remove_filter        (datapipe_t *self, gpointer (*filter)(gpointer data));
+static void       datapipe_add_input_trigger    (datapipe_t *self, void (*trigger)(gconstpointer data));
+static void       datapipe_remove_input_trigger (datapipe_t *self, void (*trigger)(gconstpointer data));
+static void       datapipe_add_output_trigger   (datapipe_t *self, void (*trigger)(gconstpointer data));
+static void       datapipe_remove_output_trigger(datapipe_t *self, void (*trigger)(gconstpointer data));
+static void       datapipe_init_                (datapipe_t *self, const char *name, const datapipe_filtering_t read_only, datapipe_cache_t cache, const gsize datasize, gconstpointer initial_data);
+static void       datapipe_free                 (datapipe_t *self);
 
 /* ------------------------------------------------------------------------- *
  * MCE_DATAPIPE
@@ -438,180 +439,145 @@ datapipe_t enroll_in_progress_pipe;
 
 /** Get name of datapipe
  *
- * @param datapipe The datapipe, or NULL
+ * @param self The datapipe, or NULL
  *
  * @return datapipe name, or suitable placeholder value
  */
 const char *
-datapipe_name(datapipe_t *const datapipe)
+datapipe_name(const datapipe_t *self)
 {
     const char *name = "invalid";
-    if( datapipe )
-        name = datapipe->dp_name ?: "unnamed";
+    if( self )
+        name = self->dp_name ?: "unnamed";
     return name;
 }
 
 /** Get value of datapipe
  *
- * @param datapipe The datapipe
+ * @param self The datapipe
  *
  * @return datapipe value, as void pointer
  */
 gconstpointer
-datapipe_value(datapipe_t *const datapipe)
+datapipe_value(const datapipe_t *self)
 {
-    return datapipe->dp_cached_data;
+    return self->dp_cached_data;
 }
 
-/**
- * Execute the input triggers of a datapipe
+/** Garbage collect stale callback slots
  *
- * @param datapipe The datapipe to execute
- * @param indata The input data to run through the datapipe
- * @param cache_indata DATAPIPE_CACHE_INDATA to cache the indata,
- *                     DATAPIPE_CACHE_NOTHING to keep the old data
+ * While it can be assumed to be extremely rare, filters and triggers can end
+ * up being added/removed due to datapipe activity. In order to allow O(N)
+ * traversal in datapipe_exec_full() slots with removed callbacks are
+ * zeroed and left behind to be collected from idle callback.
+ *
+ * @param self The datapipe
  */
 static void
-datapipe_exec_input_triggers(datapipe_t *const datapipe,
-                             gconstpointer const indata)
+datapipe_gc(datapipe_t *self)
 {
-    void (*trigger)(gconstpointer const input);
-    gconstpointer data;
-    gint i;
+    /* Cancel pending idle callback */
+    datapipe_cancel_gc(self);
 
-    if (datapipe == NULL) {
-        /* Potential memory leak! */
-        mce_log(LL_ERR,
-                "datapipe_exec_input_triggers() called "
-                "without a valid datapipe");
-        goto EXIT;
-    }
-
-    data = indata;
-
-    for (i = 0; (trigger = g_slist_nth_data(datapipe->dp_input_triggers,
-                                            i)) != NULL; i++) {
-        trigger(data);
-    }
-
-EXIT:
-    return;
+    /* Flush out slots with null callback */
+    self->dp_input_triggers  = g_slist_remove_all(self->dp_input_triggers, 0);
+    self->dp_filters         = g_slist_remove_all(self->dp_filters, 0);
+    self->dp_output_triggers = g_slist_remove_all(self->dp_output_triggers, 0);
 }
 
-/**
- * Execute the filters of a datapipe
+/** Garbage collect idle callback
  *
- * @param datapipe The datapipe to execute
- * @param indata The input data to run through the datapipe
- * @return The processed data
+ * @param self The datapipe, as void pointer
+ *
+ * @return G_SOURCE_REMOVE
  */
-static gconstpointer
-datapipe_exec_filters(datapipe_t *const datapipe,
-                      gconstpointer indata)
+static gboolean
+datapipe_gc_cb(gpointer aptr)
 {
-    gpointer (*filter)(gconstpointer input);
-    gconstpointer data;
-    gconstpointer retval = NULL;
-    gint i;
-
-    if (datapipe == NULL) {
-        mce_log(LL_ERR,
-                "datapipe_exec_filters() called "
-                "without a valid datapipe");
-        goto EXIT;
-    }
-
-    data = indata;
-
-    for (i = 0; (filter = g_slist_nth_data(datapipe->dp_filters,
-                                           i)) != NULL; i++) {
-        gconstpointer tmp = filter(data);
-
-        data = tmp;
-    }
-
-    retval = data;
-
-EXIT:
-    return retval;
+    datapipe_t *self = aptr;
+    self->dp_gc_id = 0;
+    datapipe_gc(self);
+    return G_SOURCE_REMOVE;
 }
 
-/**
- * Execute the output triggers of a datapipe
+/** Schedule garbage collection
  *
- * @param datapipe The datapipe to execute
- * @param indata The input data to run through the datapipe
+ * @param self The datapipe, as void pointer
  */
 static void
-datapipe_exec_output_triggers(const datapipe_t *const datapipe,
-                                   gconstpointer indata)
+datapipe_schedule_gc(datapipe_t *self)
 {
-    void (*trigger)(gconstpointer input);
-    gconstpointer data;
-    gint i;
-
-    if (datapipe == NULL) {
-        mce_log(LL_ERR,
-                "datapipe_exec_output_triggers() called "
-                "without a valid datapipe");
-        goto EXIT;
+    if( !self->dp_gc_id ) {
+        self->dp_gc_id = g_idle_add(datapipe_gc_cb, self);
     }
+}
 
-    data = indata;
-
-    for (i = 0; (trigger = g_slist_nth_data(datapipe->dp_output_triggers,
-                                            i)) != NULL; i++) {
-        trigger(data);
+/** Cancel garbage collection
+ *
+ * @param self The datapipe, as void pointer
+ */
+static void
+datapipe_cancel_gc(datapipe_t *self)
+{
+    if( self->dp_gc_id ) {
+        g_source_remove(self->dp_gc_id),
+            self->dp_gc_id = 0;
     }
-
-EXIT:
-    return;
 }
 
 /**
  * Execute the datapipe
  *
- * @param datapipe The datapipe to execute
+ * @param self The datapipe to execute
  * @param indata The input data to run through the datapipe
  * @return The processed data
  */
 gconstpointer
-datapipe_exec_full(datapipe_t *const datapipe, gconstpointer indata)
+datapipe_exec_full(datapipe_t *self, gconstpointer indata)
 {
-
     gconstpointer outdata = NULL;
 
-    if (datapipe == NULL) {
+    if (self == NULL) {
         mce_log(LL_ERR,
                 "datapipe_exec_full() called "
                 "without a valid datapipe");
         goto EXIT;
     }
 
-    datapipe_cache_t cache_indata = datapipe->dp_cache;
+    datapipe_cache_t cache_indata = self->dp_cache;
 
     /* Optionally cache the value at the input stage */
-    if( cache_indata & (DATAPIPE_CACHE_INDATA|DATAPIPE_CACHE_OUTDATA) ) {
-        datapipe->dp_cached_data = indata;
+    if( cache_indata & (DATAPIPE_CACHE_INDATA | DATAPIPE_CACHE_OUTDATA) ) {
+        self->dp_cached_data = indata;
     }
 
     /* Execute input value callbacks */
-    datapipe_exec_input_triggers(datapipe, indata);
-
-    /* Determine output value */
-    if (datapipe->dp_read_only == DATAPIPE_FILTERING_DENIED) {
-        outdata = indata;
-    } else {
-        outdata = datapipe_exec_filters(datapipe, indata);
+    for( GSList *item = self->dp_input_triggers; item; item = item->next ) {
+        void (*trigger)(gconstpointer input) = item->data;
+        if( trigger )
+            trigger(indata);
     }
 
+    /* Determine output value */
+    outdata = indata;
+    if( self->dp_read_only == DATAPIPE_FILTERING_ALLOWED ) {
+        for( GSList *item = self->dp_filters; item; item = item->next ) {
+            gconstpointer (*filter)(gconstpointer input) = item->data;
+            if( filter )
+                outdata = filter(outdata);
+        }
+    }
     /* Optionally cache the value at the output stage */
     if( cache_indata & DATAPIPE_CACHE_OUTDATA ) {
-        datapipe->dp_cached_data = (gpointer)outdata;
+        self->dp_cached_data = (gpointer)outdata;
     }
 
     /* Execute output value callbacks */
-    datapipe_exec_output_triggers(datapipe, outdata);
+    for( GSList *item = self->dp_output_triggers; item; item = item->next ) {
+        void (*trigger)(gconstpointer input) = item->data;
+        if( trigger )
+            trigger(outdata);
+    }
 
 EXIT:
     return outdata;
@@ -620,35 +586,29 @@ EXIT:
 /**
  * Append a filter to an existing datapipe
  *
- * @param datapipe The datapipe to manipulate
+ * @param self The datapipe to manipulate
  * @param filter The filter to add to the datapipe
  */
 static void
-datapipe_add_filter(datapipe_t *const datapipe,
+datapipe_add_filter(datapipe_t *self,
                     gpointer (*filter)(gpointer data))
 {
-    if (datapipe == NULL) {
-        mce_log(LL_ERR,
-                "datapipe_add_filter() called "
-                "without a valid datapipe");
+    if (self == NULL) {
+        mce_log(LL_ERR, "called with NULL datapipe");
         goto EXIT;
     }
 
     if (filter == NULL) {
-        mce_log(LL_ERR,
-                "datapipe_add_filter() called "
-                "without a valid filter");
+        mce_log(LL_ERR, "called with NULL filter");
         goto EXIT;
     }
 
-    if (datapipe->dp_read_only == DATAPIPE_FILTERING_DENIED) {
-        mce_log(LL_ERR,
-                "datapipe_add_filter() called "
-                "on read only datapipe");
+    if (self->dp_read_only == DATAPIPE_FILTERING_DENIED) {
+        mce_log(LL_ERR, "called on read only datapipe");
         goto EXIT;
     }
 
-    datapipe->dp_filters = g_slist_append(datapipe->dp_filters, filter);
+    self->dp_filters = g_slist_append(self->dp_filters, filter);
 
 EXIT:
     return;
@@ -658,46 +618,33 @@ EXIT:
  * Remove a filter from an existing datapipe
  * Non-existing filters are ignored
  *
- * @param datapipe The datapipe to manipulate
+ * @param self The datapipe to manipulate
  * @param filter The filter to remove from the datapipe
  */
 static void
-datapipe_remove_filter(datapipe_t *const datapipe,
+datapipe_remove_filter(datapipe_t *self,
                        gpointer (*filter)(gpointer data))
 {
-    guint oldlen;
-
-    if (datapipe == NULL) {
-        mce_log(LL_ERR,
-                "datapipe_remove_filter() called "
-                "without a valid datapipe");
+    if (self == NULL) {
+        mce_log(LL_ERR, "called with NULL datapipe");
         goto EXIT;
     }
 
     if (filter == NULL) {
-        mce_log(LL_ERR,
-                "datapipe_remove_filter() called "
-                "without a valid filter");
+        mce_log(LL_ERR, "called with NULL filter");
         goto EXIT;
     }
 
-    if (datapipe->dp_read_only == DATAPIPE_FILTERING_DENIED) {
-        mce_log(LL_ERR,
-                "datapipe_remove_filter() called "
-                "on read only datapipe");
+    if (self->dp_read_only == DATAPIPE_FILTERING_DENIED) {
+        mce_log(LL_ERR, "called on read only datapipe");
         goto EXIT;
     }
 
-    oldlen = g_slist_length(datapipe->dp_filters);
-
-    datapipe->dp_filters = g_slist_remove(datapipe->dp_filters, filter);
-
-    /* Did we remove any entry? */
-    if (oldlen == g_slist_length(datapipe->dp_filters)) {
-        mce_log(LL_DEBUG,
-                "Trying to remove non-existing filter");
-        goto EXIT;
-    }
+    GSList *itm = g_slist_find(self->dp_filters, filter);
+    if( !itm )
+        mce_log(LL_DEBUG, "called with non-existing filter");
+    else
+        itm->data = 0, datapipe_schedule_gc(self);
 
 EXIT:
     return;
@@ -706,29 +653,25 @@ EXIT:
 /**
  * Append an input trigger to an existing datapipe
  *
- * @param datapipe The datapipe to manipulate
+ * @param self The datapipe to manipulate
  * @param trigger The trigger to add to the datapipe
  */
 static void
-datapipe_add_input_trigger(datapipe_t *const datapipe,
+datapipe_add_input_trigger(datapipe_t *self,
                            void (*trigger)(gconstpointer data))
 {
-    if (datapipe == NULL) {
-        mce_log(LL_ERR,
-                "datapipe_add_input_trigger() called "
-                "without a valid datapipe");
+    if (self == NULL) {
+        mce_log(LL_ERR, "called with NULL datapipe");
         goto EXIT;
     }
 
     if (trigger == NULL) {
-        mce_log(LL_ERR,
-                "datapipe_add_input_trigger() called "
-                "without a valid trigger");
+        mce_log(LL_ERR, "called with NULL trigger");
         goto EXIT;
     }
 
-    datapipe->dp_input_triggers = g_slist_append(datapipe->dp_input_triggers,
-                                              trigger);
+    self->dp_input_triggers = g_slist_append(self->dp_input_triggers,
+                                             trigger);
 
 EXIT:
     return;
@@ -738,40 +681,28 @@ EXIT:
  * Remove an input trigger from an existing datapipe
  * Non-existing triggers are ignored
  *
- * @param datapipe The datapipe to manipulate
+ * @param self The datapipe to manipulate
  * @param trigger The trigger to remove from the datapipe
  */
 static void
-datapipe_remove_input_trigger(datapipe_t *const datapipe,
+datapipe_remove_input_trigger(datapipe_t *self,
                               void (*trigger)(gconstpointer data))
 {
-    guint oldlen;
-
-    if (datapipe == NULL) {
-        mce_log(LL_ERR,
-                "datapipe_remove_input_trigger() called "
-                "without a valid datapipe");
+    if (self == NULL) {
+        mce_log(LL_ERR, "called with NULL datapipe");
         goto EXIT;
     }
 
     if (trigger == NULL) {
-        mce_log(LL_ERR,
-                "datapipe_remove_input_trigger() called "
-                "without a valid trigger");
+        mce_log(LL_ERR, "called with NULL trigger");
         goto EXIT;
     }
 
-    oldlen = g_slist_length(datapipe->dp_input_triggers);
-
-    datapipe->dp_input_triggers = g_slist_remove(datapipe->dp_input_triggers,
-                                              trigger);
-
-    /* Did we remove any entry? */
-    if (oldlen == g_slist_length(datapipe->dp_input_triggers)) {
-        mce_log(LL_DEBUG,
-                "Trying to remove non-existing input trigger");
-        goto EXIT;
-    }
+    GSList *itm = g_slist_find(self->dp_input_triggers, trigger);
+    if( !itm )
+        mce_log(LL_DEBUG, "called with non-existing trigger");
+    else
+        itm->data = 0, datapipe_schedule_gc(self);
 
 EXIT:
     return;
@@ -780,29 +711,25 @@ EXIT:
 /**
  * Append an output trigger to an existing datapipe
  *
- * @param datapipe The datapipe to manipulate
+ * @param self The datapipe to manipulate
  * @param trigger The trigger to add to the datapipe
  */
 static void
-datapipe_add_output_trigger(datapipe_t *const datapipe,
+datapipe_add_output_trigger(datapipe_t *self,
                             void (*trigger)(gconstpointer data))
 {
-    if (datapipe == NULL) {
-        mce_log(LL_ERR,
-                "datapipe_add_output_trigger() called "
-                "without a valid datapipe");
+    if (self == NULL) {
+        mce_log(LL_ERR, "called with NULL datapipe");
         goto EXIT;
     }
 
     if (trigger == NULL) {
-        mce_log(LL_ERR,
-                "datapipe_add_output_trigger() called "
-                "without a valid trigger");
+        mce_log(LL_ERR, "called with NULL trigger");
         goto EXIT;
     }
 
-    datapipe->dp_output_triggers = g_slist_append(datapipe->dp_output_triggers,
-                                               trigger);
+    self->dp_output_triggers = g_slist_append(self->dp_output_triggers,
+                                              trigger);
 
 EXIT:
     return;
@@ -812,41 +739,28 @@ EXIT:
  * Remove an output trigger from an existing datapipe
  * Non-existing triggers are ignored
  *
- * @param datapipe The datapipe to manipulate
+ * @param self The datapipe to manipulate
  * @param trigger The trigger to remove from the datapipe
  */
 static void
-datapipe_remove_output_trigger(datapipe_t *const datapipe,
+datapipe_remove_output_trigger(datapipe_t *self,
                                void (*trigger)(gconstpointer data))
 {
-    guint oldlen;
-
-    if (datapipe == NULL) {
-        mce_log(LL_ERR,
-                "datapipe_remove_output_trigger() called "
-                "without a valid datapipe");
+    if (self == NULL) {
+        mce_log(LL_ERR, "called with NULL datapipe");
         goto EXIT;
     }
 
     if (trigger == NULL) {
-        mce_log(LL_ERR,
-                "datapipe_remove_output_trigger() called "
-                "without a valid trigger");
+        mce_log(LL_ERR, "called with NULL trigger");
         goto EXIT;
     }
 
-    oldlen = g_slist_length(datapipe->dp_output_triggers);
-
-    datapipe->dp_output_triggers = g_slist_remove(datapipe->dp_output_triggers,
-                                               trigger);
-
-    /* Did we remove any entry? */
-    if (oldlen == g_slist_length(datapipe->dp_output_triggers)) {
-        mce_log(LL_DEBUG,
-                "Trying to remove non-existing output trigger");
-        goto EXIT;
-    }
-
+    GSList *itm = g_slist_find(self->dp_output_triggers, trigger);
+    if( !itm )
+        mce_log(LL_DEBUG, "called with non-existing trigger");
+    else
+        itm->data = 0, datapipe_schedule_gc(self);
 EXIT:
     return;
 }
@@ -854,7 +768,7 @@ EXIT:
 /**
  * Initialise a datapipe
  *
- * @param datapipe     The datapipe to manipulate
+ * @param self     The datapipe to manipulate
  * @param read_only    DATAPIPE_FILTERING_DENIED if the datapipe is read only,
  *                     DATAPIPE_FILTERING_ALLOWED if it's read/write
  * @parm  cache        DATAPIPE_CACHE_INDATA, etc
@@ -863,28 +777,28 @@ EXIT:
  * @param initial_data Initial cache content
  */
 static void
-datapipe_init_(datapipe_t *const datapipe,
+datapipe_init_(datapipe_t *self,
                const char *name,
                const datapipe_filtering_t read_only,
                datapipe_cache_t cache,
                const gsize datasize, gconstpointer initial_data)
 {
-    if (datapipe == NULL) {
+    if (self == NULL) {
         mce_log(LL_ERR,
                 "datapipe_init() called "
                 "without a valid datapipe");
         goto EXIT;
     }
 
-    datapipe->dp_name            = name;
-    datapipe->dp_filters         = NULL;
-    datapipe->dp_input_triggers  = NULL;
-    datapipe->dp_output_triggers = NULL;
-    datapipe->dp_datasize        = datasize;
-    datapipe->dp_read_only       = read_only;
-    datapipe->dp_cached_data     = initial_data;
-    datapipe->dp_cache           = cache;
-
+    self->dp_name            = name;
+    self->dp_filters         = NULL;
+    self->dp_input_triggers  = NULL;
+    self->dp_output_triggers = NULL;
+    self->dp_datasize        = datasize;
+    self->dp_read_only       = read_only;
+    self->dp_cached_data     = initial_data;
+    self->dp_cache           = cache;
+    self->dp_gc_id           = 0;
 EXIT:
     return;
 }
@@ -892,32 +806,34 @@ EXIT:
 /**
  * Deinitialize a datapipe
  *
- * @param datapipe The datapipe to manipulate
+ * @param self The datapipe to manipulate
  */
 static void
-datapipe_free(datapipe_t *const datapipe)
+datapipe_free(datapipe_t *self)
 {
-    if (datapipe == NULL) {
+    if (self == NULL) {
         mce_log(LL_ERR,
                 "datapipe_free() called "
                 "without a valid datapipe");
         goto EXIT;
     }
 
+    datapipe_gc(self);
+
     /* Warn about still registered filters/triggers */
-    if (datapipe->dp_filters != NULL) {
+    if (self->dp_filters != NULL) {
         mce_log(LL_INFO,
                 "datapipe_free() called on a datapipe that "
                 "still has registered filter(s)");
     }
 
-    if (datapipe->dp_input_triggers != NULL) {
+    if (self->dp_input_triggers != NULL) {
         mce_log(LL_INFO,
                 "datapipe_free() called on a datapipe that "
                 "still has registered input_trigger(s)");
     }
 
-    if (datapipe->dp_output_triggers != NULL) {
+    if (self->dp_output_triggers != NULL) {
         mce_log(LL_INFO,
                 "datapipe_free() called on a datapipe that "
                 "still has registered output_trigger(s)");
