@@ -1282,15 +1282,15 @@ static void stub_setup_checked(void)
 		      0, GINT_TO_POINTER(0));
 	datapipe_init(&led_brightness_pipe, DATAPIPE_FILTERING_ALLOWED, DATAPIPE_DATA_LITERAL,
 		      0, GINT_TO_POINTER(0));
-	datapipe_init(&led_pattern_activate_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_DYNAMIC,
+	datapipe_init(&led_pattern_activate_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
 		      0, NULL);
-	datapipe_init(&led_pattern_deactivate_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_DYNAMIC,
+	datapipe_init(&led_pattern_deactivate_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
 		      0, NULL);
 	datapipe_init(&key_backlight_brightness_pipe, DATAPIPE_FILTERING_ALLOWED, DATAPIPE_DATA_LITERAL,
 		      0, GINT_TO_POINTER(0));
-	datapipe_init(&keypress_event_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_DYNAMIC,
+	datapipe_init(&keypress_event_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
 		      sizeof (struct input_event), NULL);
-	datapipe_init(&touchscreen_event_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_DYNAMIC,
+	datapipe_init(&touchscreen_event_pipe, DATAPIPE_FILTERING_DENIED, DATAPIPE_DATA_LITERAL,
 		      sizeof (struct input_event), NULL);
 	datapipe_init(&device_inactive_pipe, DATAPIPE_FILTERING_ALLOWED, DATAPIPE_DATA_LITERAL,
 		      0, GINT_TO_POINTER(FALSE));
