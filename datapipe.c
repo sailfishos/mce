@@ -46,6 +46,7 @@
  * ------------------------------------------------------------------------- */
 
 const char            *datapipe_name                 (datapipe_t *const datapipe);
+gpointer               datapipe_value                (datapipe_t *const datapipe);
 static void            datapipe_exec_input_triggers  (datapipe_t *const datapipe, gpointer const indata, const datapipe_use_t use_cache);
 static gconstpointer   datapipe_exec_filters         (datapipe_t *const datapipe, gpointer indata, const datapipe_use_t use_cache);
 void                   datapipe_exec_output_triggers (const datapipe_t *const datapipe, gconstpointer indata, const datapipe_use_t use_cache);
@@ -448,6 +449,18 @@ datapipe_name(datapipe_t *const datapipe)
     if( datapipe )
         name = datapipe->dp_name ?: "unnamed";
     return name;
+}
+
+/** Get value of datapipe
+ *
+ * @param datapipe The datapipe
+ *
+ * @return datapipe value, as void pointer
+ */
+gpointer
+datapipe_value(datapipe_t *const datapipe)
+{
+    return datapipe->dp_cached_data;
 }
 
 /**
