@@ -1911,7 +1911,7 @@ evin_iomon_generate_activity(struct input_event *ev, bool cooked, bool raw)
     if( raw ) {
         if( t_raw != t ) {
             t_raw = t;
-            datapipe_exec_output_triggers(&user_activity_event_pipe, ev);
+            datapipe_exec_full(&user_activity_event_pipe, ev);
         }
     }
 
@@ -3196,10 +3196,10 @@ static guint evin_ts_grab_release_delay_setting_id = 0;
 static void
 evin_ts_grab_set_led_raw(bool enabled)
 {
-    datapipe_exec_output_triggers(enabled ?
-                                  &led_pattern_activate_pipe :
-                                  &led_pattern_deactivate_pipe,
-                                  MCE_LED_PATTERN_TOUCH_INPUT_BLOCKED);
+    datapipe_exec_full(enabled ?
+                       &led_pattern_activate_pipe :
+                       &led_pattern_deactivate_pipe,
+                       MCE_LED_PATTERN_TOUCH_INPUT_BLOCKED);
 }
 
 /** Handle delayed input grab led pattern activation

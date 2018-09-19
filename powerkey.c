@@ -1246,8 +1246,8 @@ pwrkey_actions_do_long_press(void)
     case MCE_SYSTEM_STATE_ACTDEAD:
         /* Activate power on led pattern and power up to user mode*/
         mce_log(LL_DEBUG, "activate MCE_LED_PATTERN_POWER_ON");
-        datapipe_exec_output_triggers(&led_pattern_activate_pipe,
-                                      MCE_LED_PATTERN_POWER_ON);
+        datapipe_exec_full(&led_pattern_activate_pipe,
+                           MCE_LED_PATTERN_POWER_ON);
         mce_dsme_request_powerup();
         break;
 

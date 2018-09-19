@@ -114,8 +114,8 @@ static void system_state_trigger(gconstpointer data)
 		case MCE_SYSTEM_STATE_BOOT:
 		case MCE_SYSTEM_STATE_UNDEF:
 		case MCE_SYSTEM_STATE_ACTDEAD:
-			datapipe_exec_output_triggers(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_DEVICE_ON);
-			datapipe_exec_output_triggers(&led_pattern_activate_pipe, MCE_LED_PATTERN_POWER_OFF);
+			datapipe_exec_full(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_DEVICE_ON);
+			datapipe_exec_full(&led_pattern_activate_pipe, MCE_LED_PATTERN_POWER_OFF);
 			break;
 
 		default:

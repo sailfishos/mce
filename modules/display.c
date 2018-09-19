@@ -3229,10 +3229,10 @@ static void mdy_brightness_set_dim_level(void)
      * FIXME: When ui side dimming is working, the led pattern
      *        hack should be removed altogether.
      */
-    datapipe_exec_output_triggers(compositor_fade_level > 0 ?
-                                  &led_pattern_activate_pipe :
-                                  &led_pattern_deactivate_pipe,
-                                  MCE_LED_PATTERN_DISPLAY_DIMMED);
+    datapipe_exec_full(compositor_fade_level > 0 ?
+                       &led_pattern_activate_pipe :
+                       &led_pattern_deactivate_pipe,
+                       MCE_LED_PATTERN_DISPLAY_DIMMED);
 
     /* Update ui side fader opacity value */
     mdy_ui_dimming_set_level(compositor_fade_level);
@@ -3559,10 +3559,10 @@ static void mdy_poweron_led_rethink(void)
     mce_log(LL_DEBUG, "%s MCE_LED_PATTERN_POWER_ON",
             want_led ? "activate" : "deactivate");
 
-    datapipe_exec_output_triggers(want_led ?
-                                  &led_pattern_activate_pipe :
-                                  &led_pattern_deactivate_pipe,
-                                  MCE_LED_PATTERN_POWER_ON);
+    datapipe_exec_full(want_led ?
+                       &led_pattern_activate_pipe :
+                       &led_pattern_deactivate_pipe,
+                       MCE_LED_PATTERN_POWER_ON);
 }
 
 /** Timer id for delayed POWER_ON led state evaluation */
@@ -5681,10 +5681,10 @@ static void compositor_led_set_active(compositor_led_t led, bool active)
             active ? "activate" : "deactivate",
             compositor_led_pattern[led]);
 
-    datapipe_exec_output_triggers((compositor_led_active[led] = active) ?
-                                  &led_pattern_activate_pipe :
-                                  &led_pattern_deactivate_pipe,
-                                  compositor_led_pattern[led]);
+    datapipe_exec_full((compositor_led_active[led] = active) ?
+                       &led_pattern_activate_pipe :
+                       &led_pattern_deactivate_pipe,
+                       compositor_led_pattern[led]);
 EXIT:
     return;
 }
@@ -7346,15 +7346,15 @@ static void mdy_fbsusp_led_set(mdy_fbsusp_led_state_t req)
         break;
     }
 
-    datapipe_exec_output_triggers(blanking ?
-                                  &led_pattern_activate_pipe :
-                                  &led_pattern_deactivate_pipe,
-                                  MCE_LED_PATTERN_DISPLAY_SUSPEND_FAILED);
+    datapipe_exec_full(blanking ?
+                       &led_pattern_activate_pipe :
+                       &led_pattern_deactivate_pipe,
+                       MCE_LED_PATTERN_DISPLAY_SUSPEND_FAILED);
 
-    datapipe_exec_output_triggers(unblanking ?
-                                  &led_pattern_activate_pipe :
-                                  &led_pattern_deactivate_pipe,
-                                  MCE_LED_PATTERN_DISPLAY_RESUME_FAILED);
+    datapipe_exec_full(unblanking ?
+                       &led_pattern_activate_pipe :
+                       &led_pattern_deactivate_pipe,
+                       MCE_LED_PATTERN_DISPLAY_RESUME_FAILED);
 }
 
 /** Timer id for fbdev suspend/resume is taking too long */
@@ -9680,8 +9680,8 @@ static gboolean mdy_dbus_handle_desktop_started_sig(DBusMessage *const msg)
     mce_log(LL_NOTICE, "Received desktop startup notification");
 
     mce_log(LL_DEBUG, "deactivate MCE_LED_PATTERN_POWER_ON");
-    datapipe_exec_output_triggers(&led_pattern_deactivate_pipe,
-                                  MCE_LED_PATTERN_POWER_ON);
+    datapipe_exec_full(&led_pattern_deactivate_pipe,
+                       MCE_LED_PATTERN_POWER_ON);
 
     mce_rem_submode_int32(MCE_SUBMODE_BOOTUP);
 

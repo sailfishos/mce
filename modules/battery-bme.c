@@ -60,8 +60,8 @@ static gboolean battery_full_dbus_cb(DBusMessage *const msg)
 	mce_log(LL_DEBUG,
 		"Received battery full signal");
 
-	datapipe_exec_output_triggers(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_BATTERY_CHARGING);
-	datapipe_exec_output_triggers(&led_pattern_activate_pipe, MCE_LED_PATTERN_BATTERY_FULL);
+	datapipe_exec_full(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_BATTERY_CHARGING);
+	datapipe_exec_full(&led_pattern_activate_pipe, MCE_LED_PATTERN_BATTERY_FULL);
 
 	datapipe_exec_full(&battery_status_pipe,
 			   GINT_TO_POINTER(BATTERY_STATUS_FULL));
@@ -87,7 +87,7 @@ static gboolean battery_ok_dbus_cb(DBusMessage *const msg)
 	mce_log(LL_DEBUG,
 		"Received battery ok signal");
 
-//	datapipe_exec_output_triggers(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_BATTERY_LOW);
+//	datapipe_exec_full(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_BATTERY_LOW);
 
 	datapipe_exec_full(&battery_status_pipe,
 			   GINT_TO_POINTER(BATTERY_STATUS_OK));
@@ -113,7 +113,7 @@ static gboolean battery_low_dbus_cb(DBusMessage *const msg)
 	mce_log(LL_DEBUG,
 		"Received battery low signal");
 
-//	datapipe_exec_output_triggers(&led_pattern_activate_pipe, MCE_LED_PATTERN_BATTERY_LOW);
+//	datapipe_exec_full(&led_pattern_activate_pipe, MCE_LED_PATTERN_BATTERY_LOW);
 
 	datapipe_exec_full(&battery_status_pipe,
 			   GINT_TO_POINTER(BATTERY_STATUS_LOW));
@@ -257,10 +257,10 @@ static gboolean charger_charging_on_dbus_cb(DBusMessage *const msg)
 	}
 
 	/* In case these are active; there's no harm to call them anyway */
-	datapipe_exec_output_triggers(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_BATTERY_FULL);
-//	datapipe_exec_output_triggers(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_BATTERY_LOW);
+	datapipe_exec_full(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_BATTERY_FULL);
+//	datapipe_exec_full(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_BATTERY_LOW);
 
-	datapipe_exec_output_triggers(&led_pattern_activate_pipe, MCE_LED_PATTERN_BATTERY_CHARGING);
+	datapipe_exec_full(&led_pattern_activate_pipe, MCE_LED_PATTERN_BATTERY_CHARGING);
 
 	status = TRUE;
 
@@ -291,7 +291,7 @@ static gboolean charger_charging_off_dbus_cb(DBusMessage *const msg)
 	}
 
 	/* In case these are active; there's no harm to call them anyway */
-	datapipe_exec_output_triggers(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_BATTERY_CHARGING);
+	datapipe_exec_full(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_BATTERY_CHARGING);
 
 	status = TRUE;
 
@@ -322,8 +322,8 @@ static gboolean charger_charging_failed_dbus_cb(DBusMessage *const msg)
 	}
 
 	/* In case these are active; there's no harm to call them anyway */
-	datapipe_exec_output_triggers(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_BATTERY_FULL);
-	datapipe_exec_output_triggers(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_BATTERY_CHARGING);
+	datapipe_exec_full(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_BATTERY_FULL);
+	datapipe_exec_full(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_BATTERY_CHARGING);
 
 	/* Generate activity */
 	datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(FALSE));
@@ -385,8 +385,8 @@ static gboolean charger_disconnected_dbus_cb(DBusMessage *const msg)
 	}
 
 	/* In case these are active; there's no harm to call them anyway */
-	datapipe_exec_output_triggers(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_BATTERY_FULL);
-	datapipe_exec_output_triggers(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_BATTERY_CHARGING);
+	datapipe_exec_full(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_BATTERY_FULL);
+	datapipe_exec_full(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_BATTERY_CHARGING);
 
 	if (cached_charger_connected != 0) {
 		/* Generate activity */

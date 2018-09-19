@@ -1189,10 +1189,10 @@ fingerprint_led_scanning_activate(bool activate)
 {
     static bool activated = false;
     if( activated != activate ) {
-        datapipe_exec_output_triggers((activated = activate) ?
-                                      &led_pattern_activate_pipe :
-                                      &led_pattern_deactivate_pipe,
-                                      MCE_LED_PATTERN_SCANNING_FINGERPRINT);
+        datapipe_exec_full((activated = activate) ?
+                           &led_pattern_activate_pipe :
+                           &led_pattern_deactivate_pipe,
+                           MCE_LED_PATTERN_SCANNING_FINGERPRINT);
     }
 }
 
@@ -1209,10 +1209,10 @@ fingerprint_led_acquired_activate(bool activate)
 {
     static bool activated = false;
     if( activated != activate ) {
-        datapipe_exec_output_triggers((activated = activate) ?
-                                      &led_pattern_activate_pipe :
-                                      &led_pattern_deactivate_pipe,
-                                      MCE_LED_PATTERN_FINGERPRINT_ACQUIRED);
+        datapipe_exec_full((activated = activate) ?
+                           &led_pattern_activate_pipe :
+                           &led_pattern_deactivate_pipe,
+                           MCE_LED_PATTERN_FINGERPRINT_ACQUIRED);
     }
 }
 
@@ -2611,8 +2611,8 @@ fpwakeup_trigger(void)
         mce_log(LL_CRUCIAL, "fingerprint wakeup triggered");
 
         /* (Mis)use haptic feedback associated with device unlocking */
-        datapipe_exec_output_triggers(&ngfd_event_request_pipe,
-                                      "unlock_device");
+        datapipe_exec_full(&ngfd_event_request_pipe,
+                           "unlock_device");
 
         /* Make sure we unblank / exit from lpm */
         mce_datapipe_request_display_state(MCE_DISPLAY_ON);

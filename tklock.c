@@ -756,8 +756,8 @@ static void tklock_datapipe_devicelock_state_cb(gconstpointer data)
              */
             mce_log(LL_WARN, "device got unlocked while display is off; "
                     "assume fingerprint authentication occurred");
-            datapipe_exec_output_triggers(&ngfd_event_request_pipe,
-                                          "unlock_device");
+            datapipe_exec_full(&ngfd_event_request_pipe,
+                               "unlock_device");
             if( proximity_sensor_actual != COVER_OPEN ) {
                 mce_log(LL_WARN, "unblank skipped due to proximity sensor");
                 break;

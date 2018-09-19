@@ -902,14 +902,14 @@ static void mce_dsme_datapipe_system_state_cb(gconstpointer data)
     /* Handle LED patterns */
     switch( system_state ) {
     case MCE_SYSTEM_STATE_USER:
-        datapipe_exec_output_triggers(&led_pattern_activate_pipe,
-                                      MCE_LED_PATTERN_DEVICE_ON);
+        datapipe_exec_full(&led_pattern_activate_pipe,
+                           MCE_LED_PATTERN_DEVICE_ON);
         break;
 
     case MCE_SYSTEM_STATE_SHUTDOWN:
     case MCE_SYSTEM_STATE_REBOOT:
-        datapipe_exec_output_triggers(&led_pattern_deactivate_pipe,
-                                      MCE_LED_PATTERN_DEVICE_ON);
+        datapipe_exec_full(&led_pattern_deactivate_pipe,
+                           MCE_LED_PATTERN_DEVICE_ON);
         break;
 
     default:

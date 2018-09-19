@@ -729,12 +729,12 @@ mcebat_update_cb(gpointer user_data)
 
         /* Charging led pattern */
         if( mcebat.charger == CHARGER_STATE_ON ) {
-            datapipe_exec_output_triggers(&led_pattern_activate_pipe,
-                                          MCE_LED_PATTERN_BATTERY_CHARGING);
+            datapipe_exec_full(&led_pattern_activate_pipe,
+                               MCE_LED_PATTERN_BATTERY_CHARGING);
         }
         else {
-            datapipe_exec_output_triggers(&led_pattern_deactivate_pipe,
-                                          MCE_LED_PATTERN_BATTERY_CHARGING);
+            datapipe_exec_full(&led_pattern_deactivate_pipe,
+                               MCE_LED_PATTERN_BATTERY_CHARGING);
         }
 
         /* Generate activity */
@@ -748,24 +748,24 @@ mcebat_update_cb(gpointer user_data)
 
         /* Battery full led pattern */
         if( mcebat.status == BATTERY_STATUS_FULL ) {
-            datapipe_exec_output_triggers(&led_pattern_activate_pipe,
-                                          MCE_LED_PATTERN_BATTERY_FULL);
+            datapipe_exec_full(&led_pattern_activate_pipe,
+                               MCE_LED_PATTERN_BATTERY_FULL);
         }
         else {
-            datapipe_exec_output_triggers(&led_pattern_deactivate_pipe,
-                                          MCE_LED_PATTERN_BATTERY_FULL);
+            datapipe_exec_full(&led_pattern_deactivate_pipe,
+                               MCE_LED_PATTERN_BATTERY_FULL);
         }
 
 #if SUPPORT_BATTERY_LOW_LED_PATTERN
         /* Battery low led pattern */
         if( mcebat.status == BATTERY_STATUS_LOW ||
             mcebat.status == BATTERY_STATUS_EMPTY ) {
-            datapipe_exec_output_triggers(&led_pattern_activate_pipe,
-                                          MCE_LED_PATTERN_BATTERY_LOW);
+            datapipe_exec_full(&led_pattern_activate_pipe,
+                               MCE_LED_PATTERN_BATTERY_LOW);
         }
         else {
-            datapipe_exec_output_triggers(&led_pattern_deactivate_pipe,
-                                          MCE_LED_PATTERN_BATTERY_LOW);
+            datapipe_exec_full(&led_pattern_deactivate_pipe,
+                               MCE_LED_PATTERN_BATTERY_LOW);
         }
 #endif /* SUPPORT_BATTERY_LOW_LED_PATTERN */
 

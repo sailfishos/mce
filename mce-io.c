@@ -174,8 +174,7 @@ static void io_detect_resume(void)
 		skip / 1000, skip % 1000);
 
 	// notify in case some timers need re-evaluating
-	datapipe_exec_output_triggers(&resume_detected_event_pipe,
-				      &prev);
+	datapipe_exec_full(&resume_detected_event_pipe, &prev);
 
 EXIT:
 	return;
