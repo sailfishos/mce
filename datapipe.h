@@ -116,38 +116,22 @@ typedef struct
  * DATAPIPE
  * ------------------------------------------------------------------------- */
 
-const char    *datapipe_name                 (datapipe_t *const datapipe);
-void           datapipe_exec_input_triggers  (datapipe_t *const datapipe, gpointer const indata, const datapipe_use_t use_cache);
-gconstpointer  datapipe_exec_filters         (datapipe_t *const datapipe, gpointer indata, const datapipe_use_t use_cache);
-void           datapipe_exec_output_triggers (const datapipe_t *const datapipe, gconstpointer indata, const datapipe_use_t use_cache);
-gconstpointer  datapipe_exec_full            (datapipe_t *const datapipe, gpointer indata, const datapipe_use_t use_cache, const datapipe_cache_t cache_indata);
-void           datapipe_add_filter           (datapipe_t *const datapipe, gpointer (*filter)(gpointer data));
-void           datapipe_remove_filter        (datapipe_t *const datapipe, gpointer (*filter)(gpointer data));
-void           datapipe_add_input_trigger    (datapipe_t *const datapipe, void (*trigger)(gconstpointer data));
-void           datapipe_remove_input_trigger (datapipe_t *const datapipe, void (*trigger)(gconstpointer data));
-void           datapipe_add_output_trigger   (datapipe_t *const datapipe, void (*trigger)(gconstpointer data));
-void           datapipe_remove_output_trigger(datapipe_t *const datapipe, void (*trigger)(gconstpointer data));
-void           datapipe_init_                (datapipe_t *const datapipe, const char *name, const datapipe_filtering_t read_only, const datapipe_data_t free_cache, const gsize datasize, gpointer initial_data);
-void           datapipe_free                 (datapipe_t *const datapipe);
+const char     *datapipe_name                (datapipe_t *const datapipe);
+void            datapipe_exec_output_triggers(const datapipe_t *const datapipe, gconstpointer indata, const datapipe_use_t use_cache);
+gconstpointer   datapipe_exec_full           (datapipe_t *const datapipe, gpointer indata, const datapipe_use_t use_cache, const datapipe_cache_t cache_indata);
 
 /* ------------------------------------------------------------------------- *
  * MCE_DATAPIPE
  * ------------------------------------------------------------------------- */
 
-void           mce_datapipe_install_handlers(datapipe_handler_t *bindings);
-void           mce_datapipe_remove_handlers (datapipe_handler_t *bindings);
-void           mce_datapipe_execute_handlers(datapipe_handler_t *bindings);
-void           mce_datapipe_init_bindings   (datapipe_bindings_t *self);
-void           mce_datapipe_quit_bindings   (datapipe_bindings_t *self);
-void           mce_datapipe_init            (void);
-void           mce_datapipe_quit            (void);
+void  mce_datapipe_init            (void);
+void  mce_datapipe_quit            (void);
+void  mce_datapipe_init_bindings   (datapipe_bindings_t *self);
+void  mce_datapipe_quit_bindings   (datapipe_bindings_t *self);
 
 /* ========================================================================= *
  * Macros
  * ========================================================================= */
-
-#define datapipe_init(datapipe, filtering, caching, datasize, value)\
-     datapipe_init_(&(datapipe), #datapipe, filtering, caching, datasize, value)
 
 /** Retrieve a gint from a datapipe */
 # define datapipe_get_gint(_datapipe)   (GPOINTER_TO_INT((_datapipe).dp_cached_data))
