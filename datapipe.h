@@ -78,6 +78,7 @@ typedef struct {
     datapipe_filtering_t  dp_read_only;        /**< Datapipe is read only */
     datapipe_cache_t      dp_cache;
     guint                 dp_gc_id;
+    guint                 dp_token;
 } datapipe_t;
 
 typedef struct

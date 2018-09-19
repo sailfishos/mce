@@ -525,8 +525,7 @@ datapipe_cancel_gc(datapipe_t *self)
     }
 }
 
-/**
- * Execute the datapipe
+/** Execute the datapipe
  *
  * @param self The datapipe to execute
  * @param indata The input data to run through the datapipe
@@ -544,6 +543,8 @@ datapipe_exec_full(datapipe_t *self, gconstpointer indata)
         goto EXIT;
     }
 
+    guint token = ++self->dp_token;
+
     datapipe_cache_t cache_indata = self->dp_cache;
 
     /* Optionally cache the value at the input stage */
@@ -554,8 +555,16 @@ datapipe_exec_full(datapipe_t *self, gconstpointer indata)
     /* Execute input value callbacks */
     for( GSList *item = self->dp_input_triggers; item; item = item->next ) {
         void (*trigger)(gconstpointer input) = item->data;
-        if( trigger )
-            trigger(indata);
+        if( !trigger )
+            continue;
+
+        if( self->dp_token != token ) {
+            mce_log(LL_WARN, "%s: recursion detected at input triggers",
+                    datapipe_name(self));
+            goto EXIT;
+        }
+
+        trigger(indata);
     }
 
     /* Determine output value */
@@ -563,8 +572,16 @@ datapipe_exec_full(datapipe_t *self, gconstpointer indata)
     if( self->dp_read_only == DATAPIPE_FILTERING_ALLOWED ) {
         for( GSList *item = self->dp_filters; item; item = item->next ) {
             gconstpointer (*filter)(gconstpointer input) = item->data;
-            if( filter )
-                outdata = filter(outdata);
+            if( !filter )
+                continue;
+
+            if( self->dp_token != token ) {
+                mce_log(LL_WARN, "%s: recursion detected at input filters",
+                        datapipe_name(self));
+                goto EXIT;
+            }
+
+            outdata = filter(outdata);
         }
     }
     /* Optionally cache the value at the output stage */
@@ -575,8 +592,16 @@ datapipe_exec_full(datapipe_t *self, gconstpointer indata)
     /* Execute output value callbacks */
     for( GSList *item = self->dp_output_triggers; item; item = item->next ) {
         void (*trigger)(gconstpointer input) = item->data;
-        if( trigger )
-            trigger(outdata);
+        if( !trigger )
+            continue;
+
+        if( self->dp_token != token ) {
+            mce_log(LL_WARN, "%s: recursion detected at output triggers",
+                    datapipe_name(self));
+            goto EXIT;
+        }
+
+        trigger(outdata);
     }
 
 EXIT:
@@ -799,6 +824,8 @@ datapipe_init_(datapipe_t *self,
     self->dp_cached_data     = initial_data;
     self->dp_cache           = cache;
     self->dp_gc_id           = 0;
+    self->dp_token           = 0;
+
 EXIT:
     return;
 }
