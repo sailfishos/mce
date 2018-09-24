@@ -1,3 +1,27 @@
+mce (1.95.1) precise; urgency=low
+
+  * [datapipe] Mass rename datatypes. JB#22475
+  * [datapipe] Mass rename functions. JB#22475
+  * [datapipe] Remove dead code. JB#22475
+  * [datapipe] Add name property for datapipes. JB#22475
+  * [mce] Use array based datapipe binding. JB#22475
+  * [datapipe] Make internal functions static. JB#22475
+  * [datapipe] Add datapipe_value(). JB#22475
+  * [als] Avoid using DATAPIPE_USE_CACHED in brightness re-evaluation. JB#22475
+  * [datapipe] Drop unused DATAPIPE_USE_CACHED enumeration value. JB#22475
+  * [datapipe] Drop useless datapipe_use_t enumeration. JB#22475
+  * [datapipe] Fix datapipes incorrectly marked as dynamic. JB#22475
+  * [datapipe] Drop unused DATAPIPE_DATA_DYNAMIC enumeration value. JB#22475
+  * [datapipe] Drop useless datapipe_data_t enumeration type. JB#22475
+  * [datapipe] Make cache control property of datapipe. JB#22475
+  * [datapipe] Use const pointers in datapipe. JB#22475
+  * [mce] Use datapipe_exec_full() for all datapipe actions. JB#22475
+  * [datapipe] Make datapipe_exec_output_triggers() static. JB#22475
+  * [datapipe] Refactor datapipe execution. JB#22475
+  * [datapipe] Detect and mitigate recursive datapipe execution. Fixes JB#22475
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 24 Sep 2018 08:50:58 +0300
+
 mce (1.95.0) precise; urgency=low
 
   * [mce] Expand also intra-line tabs
