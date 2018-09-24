@@ -713,8 +713,7 @@ pwrkey_ps_override_evaluate(void)
 
         /* Force cached proximity state to "open" */
         datapipe_exec_full(&proximity_sensor_actual_pipe,
-                           GINT_TO_POINTER(COVER_OPEN),
-                           USE_INDATA, CACHE_INDATA);
+                           GINT_TO_POINTER(COVER_OPEN));
     }
 
     if( lid_sensor_filtered == COVER_CLOSED ) {
@@ -723,8 +722,7 @@ pwrkey_ps_override_evaluate(void)
 
         /* Reset lid sensor validation data */
         datapipe_exec_full(&lid_sensor_is_working_pipe,
-                           GINT_TO_POINTER(false),
-                           USE_INDATA, CACHE_INDATA);
+                           GINT_TO_POINTER(false));
     }
 
     t_last = 0, count = 0;
@@ -1248,9 +1246,8 @@ pwrkey_actions_do_long_press(void)
     case MCE_SYSTEM_STATE_ACTDEAD:
         /* Activate power on led pattern and power up to user mode*/
         mce_log(LL_DEBUG, "activate MCE_LED_PATTERN_POWER_ON");
-        datapipe_exec_output_triggers(&led_pattern_activate_pipe,
-                                      MCE_LED_PATTERN_POWER_ON,
-                                      USE_INDATA);
+        datapipe_exec_full(&led_pattern_activate_pipe,
+                           MCE_LED_PATTERN_POWER_ON);
         mce_dsme_request_powerup();
         break;
 
@@ -2176,8 +2173,7 @@ static gboolean pwrkey_dbus_ignore_incoming_call_cb(DBusMessage *const req)
         /* Make also callstate plugin ignore incoming calls. This
          * should lead to call_state changing from RINGING to ACTIVE
          * or NONE depending on whether there are other calls or not. */
-        datapipe_exec_full(&ignore_incoming_call_event_pipe, GINT_TO_POINTER(true),
-                           USE_INDATA, DONT_CACHE_INDATA);
+        datapipe_exec_full(&ignore_incoming_call_event_pipe, GINT_TO_POINTER(true));
     }
 
     if( !dbus_message_get_no_reply(req) ) {
@@ -3179,7 +3175,7 @@ static datapipe_bindings_t pwrkey_datapipe_bindings =
 static void
 pwrkey_datapipes_init(void)
 {
-    datapipe_bindings_init(&pwrkey_datapipe_bindings);
+    mce_datapipe_init_bindings(&pwrkey_datapipe_bindings);
 }
 
 /** Remove triggers/filters from datapipes
@@ -3187,7 +3183,7 @@ pwrkey_datapipes_init(void)
 static void
 pwrkey_datapipes_quit(void)
 {
-    datapipe_bindings_quit(&pwrkey_datapipe_bindings);
+    mce_datapipe_quit_bindings(&pwrkey_datapipe_bindings);
 }
 
 /* ========================================================================= *

@@ -113,8 +113,7 @@ xpkgkit_set_locked_state(bool locked)
     mce_log(LL_DEBUG, "packagekit is %slocked", locked ? "" : "not ");
 
     datapipe_exec_full(&packagekit_locked_pipe,
-                       GINT_TO_POINTER(xpkgkit_is_locked),
-                       USE_INDATA, CACHE_INDATA);
+                       GINT_TO_POINTER(xpkgkit_is_locked));
 
 EXIT:
     return;
@@ -535,14 +534,14 @@ static datapipe_bindings_t xpkgkit_datapipe_bindings =
  */
 static void xpkgkit_datapipe_init(void)
 {
-    datapipe_bindings_init(&xpkgkit_datapipe_bindings);
+    mce_datapipe_init_bindings(&xpkgkit_datapipe_bindings);
 }
 
 /** Remove triggers/filters from datapipes
  */
 static void xpkgkit_datapipe_quit(void)
 {
-    datapipe_bindings_quit(&xpkgkit_datapipe_bindings);
+    mce_datapipe_quit_bindings(&xpkgkit_datapipe_bindings);
 }
 
 /* ========================================================================= *

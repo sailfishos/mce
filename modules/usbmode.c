@@ -185,8 +185,7 @@ usbmode_cable_state_update(const char *mode)
             usb_cable_state_repr(prev),
             usb_cable_state_repr(curr));
 
-    datapipe_exec_full(&usb_cable_state_pipe, GINT_TO_POINTER(curr),
-                       USE_INDATA, CACHE_INDATA);
+    datapipe_exec_full(&usb_cable_state_pipe, GINT_TO_POINTER(curr));
 EXIT:
     return;
 }
@@ -386,14 +385,14 @@ static datapipe_bindings_t usbmode_datapipe_bindings =
 static void usbmode_datapipe_init(void)
 {
     // triggers
-    datapipe_bindings_init(&usbmode_datapipe_bindings);
+    mce_datapipe_init_bindings(&usbmode_datapipe_bindings);
 }
 
 /** Remove triggers/filters from datapipes */
 static void usbmode_datapipe_quit(void)
 {
     // triggers
-    datapipe_bindings_quit(&usbmode_datapipe_bindings);
+    mce_datapipe_quit_bindings(&usbmode_datapipe_bindings);
 }
 
 /* ========================================================================= *

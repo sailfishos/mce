@@ -1911,8 +1911,7 @@ evin_iomon_generate_activity(struct input_event *ev, bool cooked, bool raw)
     if( raw ) {
         if( t_raw != t ) {
             t_raw = t;
-            datapipe_exec_output_triggers(&user_activity_event_pipe,
-                                          ev, USE_INDATA);
+            datapipe_exec_full(&user_activity_event_pipe, ev);
         }
     }
 
@@ -1923,8 +1922,7 @@ evin_iomon_generate_activity(struct input_event *ev, bool cooked, bool raw)
         if( t_cooked != t || (submode & MCE_SUBMODE_EVEATER) ) {
             t_cooked = t;
             datapipe_exec_full(&inactivity_event_pipe,
-                               GINT_TO_POINTER(FALSE),
-                               USE_INDATA, CACHE_OUTDATA);
+                               GINT_TO_POINTER(FALSE));
         }
     }
 
@@ -2076,14 +2074,12 @@ evin_iomon_touchscreen_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
         evin_iomon_generate_activity(ev, false, true);
 
         /* But otherwise are handled in powerkey.c. */
-        datapipe_exec_full(&keypress_event_pipe, &ev,
-                           USE_INDATA, DONT_CACHE_INDATA);
+        datapipe_exec_full(&keypress_event_pipe, &ev);
     }
     else if( (ev->type == EV_ABS && ev->code == ABS_PRESSURE) ||
              (ev->type == EV_KEY && ev->code == BTN_TOUCH ) ) {
         /* Only send pressure events */
-        datapipe_exec_full(&touchscreen_event_pipe, &ev,
-                           USE_INDATA, DONT_CACHE_INDATA);
+        datapipe_exec_full(&touchscreen_event_pipe, &ev);
     }
 
 EXIT:
@@ -2170,8 +2166,7 @@ evin_iomon_keypress_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
             key_state_t key_state = ev->value ?
                 KEY_STATE_PRESSED : KEY_STATE_RELEASED;
             datapipe_exec_full(&lockkey_state_pipe,
-                               GINT_TO_POINTER(key_state),
-                               USE_INDATA, CACHE_INDATA);
+                               GINT_TO_POINTER(key_state));
         }
 
         /* For now there's no reason to cache the keypress
@@ -2192,8 +2187,7 @@ evin_iomon_keypress_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
              ((((submode & MCE_SUBMODE_EVEATER) == 0) &&
                (ev->value == 1)) || (ev->value == 0))) &&
             ((submode & MCE_SUBMODE_PROXIMITY_TKLOCK) == 0)) {
-            datapipe_exec_full(&keypress_event_pipe, &ev,
-                               USE_INDATA, DONT_CACHE_INDATA);
+            datapipe_exec_full(&keypress_event_pipe, &ev);
         }
     }
 
@@ -2204,8 +2198,7 @@ evin_iomon_keypress_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
                 cover_state_t cover_state = ev->value ?
                     COVER_CLOSED : COVER_OPEN;
                 datapipe_exec_full(&lens_cover_state_pipe,
-                                   GINT_TO_POINTER(cover_state),
-                                   USE_INDATA, CACHE_INDATA);
+                                   GINT_TO_POINTER(cover_state));
             }
 
             /* Don't generate activity on COVER_CLOSED */
@@ -2219,8 +2212,7 @@ evin_iomon_keypress_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
                 cover_state_t cover_state = ev->value ?
                     COVER_CLOSED : COVER_OPEN;
                 datapipe_exec_full(&keyboard_slide_state_pipe,
-                                   GINT_TO_POINTER(cover_state),
-                                   USE_INDATA, CACHE_INDATA);
+                                   GINT_TO_POINTER(cover_state));
                 evin_iomon_keyboard_state_update();
             }
 
@@ -2235,8 +2227,7 @@ evin_iomon_keypress_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
                 cover_state_t cover_state = ev->value ?
                     COVER_CLOSED : COVER_OPEN;
                 datapipe_exec_full(&proximity_sensor_actual_pipe,
-                                   GINT_TO_POINTER(cover_state),
-                                   USE_INDATA, CACHE_INDATA);
+                                   GINT_TO_POINTER(cover_state));
             }
 
             break;
@@ -2249,8 +2240,7 @@ evin_iomon_keypress_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
                 cover_state_t cover_state = ev->value ?
                     COVER_CLOSED : COVER_OPEN;
                 datapipe_exec_full(&jack_sense_state_pipe,
-                                   GINT_TO_POINTER(cover_state),
-                                   USE_INDATA, CACHE_INDATA);
+                                   GINT_TO_POINTER(cover_state));
             }
 
             break;
@@ -2260,13 +2250,11 @@ evin_iomon_keypress_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
              * same datapipe as N770 sliding cover uses */
             if( ev->value ) {
                 datapipe_exec_full(&lid_sensor_actual_pipe,
-                                   GINT_TO_POINTER(COVER_CLOSED),
-                                   USE_INDATA, CACHE_INDATA);
+                                   GINT_TO_POINTER(COVER_CLOSED));
             }
             else {
                 datapipe_exec_full(&lid_sensor_actual_pipe,
-                                   GINT_TO_POINTER(COVER_OPEN),
-                                   USE_INDATA, CACHE_INDATA);
+                                   GINT_TO_POINTER(COVER_OPEN));
             }
             break;
 
@@ -2520,24 +2508,21 @@ evin_iomon_switch_states_update_iter_cb(gpointer io_monitor, gpointer user_data)
     ecode = evin_event_mapper_rlookup_switch(SW_CAMERA_LENS_COVER);
     if( test_bit(ecode, featurelist) ) {
         state = test_bit(ecode, statelist) ? COVER_CLOSED : COVER_OPEN;
-        datapipe_exec_full(&lens_cover_state_pipe, GINT_TO_POINTER(state),
-                           USE_INDATA, CACHE_INDATA);
+        datapipe_exec_full(&lens_cover_state_pipe, GINT_TO_POINTER(state));
     }
 
     /* Check initial keypad slide state */
     ecode = evin_event_mapper_rlookup_switch(SW_KEYPAD_SLIDE);
     if( test_bit(ecode, featurelist) ) {
         state = test_bit(ecode, statelist) ? COVER_CLOSED : COVER_OPEN;
-        datapipe_exec_full(&keyboard_slide_state_pipe, GINT_TO_POINTER(state),
-                           USE_INDATA, CACHE_INDATA);
+        datapipe_exec_full(&keyboard_slide_state_pipe, GINT_TO_POINTER(state));
     }
 
     /* Check initial front proximity state */
     ecode = evin_event_mapper_rlookup_switch(SW_FRONT_PROXIMITY);
     if( test_bit(ecode, featurelist) ) {
         state = test_bit(ecode, statelist) ? COVER_CLOSED : COVER_OPEN;
-        datapipe_exec_full(&proximity_sensor_actual_pipe, GINT_TO_POINTER(state),
-                           USE_INDATA, CACHE_INDATA);
+        datapipe_exec_full(&proximity_sensor_actual_pipe, GINT_TO_POINTER(state));
     }
 
     /* Check initial lid sensor state */
@@ -2546,8 +2531,7 @@ evin_iomon_switch_states_update_iter_cb(gpointer io_monitor, gpointer user_data)
         state = test_bit(ecode, statelist) ? COVER_CLOSED : COVER_OPEN;
         mce_log(LL_DEVEL, "SW_LID initial state = %s",
                 cover_state_repr(state));
-        datapipe_exec_full(&lid_sensor_actual_pipe, GINT_TO_POINTER(state),
-                           USE_INDATA, CACHE_INDATA);
+        datapipe_exec_full(&lid_sensor_actual_pipe, GINT_TO_POINTER(state));
     }
 
     /* Need to consider more than one switch state when setting the
@@ -2574,8 +2558,7 @@ evin_iomon_switch_states_update_iter_cb(gpointer io_monitor, gpointer user_data)
 
     if( have ) {
         state = value ? COVER_CLOSED : COVER_OPEN;
-        datapipe_exec_full(&jack_sense_state_pipe, GINT_TO_POINTER(state),
-                           USE_INDATA, CACHE_INDATA);
+        datapipe_exec_full(&jack_sense_state_pipe, GINT_TO_POINTER(state));
     }
 
 EXIT:
@@ -2691,8 +2674,7 @@ evin_iomon_keyboard_state_update(void)
     cover_state_t state = available ? COVER_OPEN : COVER_CLOSED;
 
     datapipe_exec_full(&keyboard_available_state_pipe,
-                       GINT_TO_POINTER(state),
-                       USE_INDATA, CACHE_INDATA);
+                       GINT_TO_POINTER(state));
 }
 
 /** Scan /dev/input for input event devices
@@ -2924,8 +2906,7 @@ evin_touchstate_update_cb(gpointer aptr)
 
     mce_log(LL_DEBUG, "touch_detected=%s", touching ? "true" : "false");
     datapipe_exec_full(&touch_detected_pipe,
-                       GINT_TO_POINTER(touching),
-                       USE_INDATA, CACHE_INDATA);
+                       GINT_TO_POINTER(touching));
 
 EXIT:
     return FALSE;
@@ -3215,11 +3196,10 @@ static guint evin_ts_grab_release_delay_setting_id = 0;
 static void
 evin_ts_grab_set_led_raw(bool enabled)
 {
-    datapipe_exec_output_triggers(enabled ?
-                                  &led_pattern_activate_pipe :
-                                  &led_pattern_deactivate_pipe,
-                                  MCE_LED_PATTERN_TOUCH_INPUT_BLOCKED,
-                                  USE_INDATA);
+    datapipe_exec_full(enabled ?
+                       &led_pattern_activate_pipe :
+                       &led_pattern_deactivate_pipe,
+                       MCE_LED_PATTERN_TOUCH_INPUT_BLOCKED);
 }
 
 /** Handle delayed input grab led pattern activation
@@ -3308,8 +3288,7 @@ evin_ts_grab_set_active(gboolean grab)
 
     // STATE MACHINE -> OUTPUT DATAPIPE
     datapipe_exec_full(&touch_grab_active_pipe,
-                       GINT_TO_POINTER(grab),
-                       USE_INDATA, CACHE_INDATA);
+                       GINT_TO_POINTER(grab));
 
 EXIT:
     return;
@@ -3563,8 +3542,7 @@ evin_kp_grab_set_active(gboolean grab)
 
     // STATE MACHINE -> OUTPUT DATAPIPE
     datapipe_exec_full(&keypad_grab_active_pipe,
-                       GINT_TO_POINTER(grab),
-                       USE_INDATA, CACHE_INDATA);
+                       GINT_TO_POINTER(grab));
 
 EXIT:
     return;
@@ -3897,6 +3875,56 @@ static void evin_dbus_quit(void)
  * MODULE_INIT
  * ========================================================================= */
 
+/** Array of datapipe handlers */
+static datapipe_handler_t mce_input_datapipe_handlers[] =
+{
+    // output triggers
+    {
+        .datapipe  = &submode_pipe,
+        .output_cb = evin_gpio_submode_trigger,
+    },
+    {
+        .datapipe  = &display_state_curr_pipe,
+        .output_cb = evin_ts_grab_display_state_curr_cb,
+    },
+    {
+        .datapipe  = &touch_detected_pipe,
+        .output_cb = evin_ts_grab_touch_detected_cb,
+    },
+    {
+        .datapipe  = &touch_grab_wanted_pipe,
+        .output_cb = evin_ts_grab_wanted_cb,
+    },
+    {
+        .datapipe  = &keypad_grab_wanted_pipe,
+        .output_cb = evin_kp_grab_wanted_cb,
+    },
+    // sentinel
+    {
+        .datapipe = 0,
+    }
+};
+
+static datapipe_bindings_t mce_input_datapipe_bindings =
+{
+    .module   = "mce_input",
+    .handlers = mce_input_datapipe_handlers,
+};
+
+/** Append triggers/filters to datapipes
+ */
+static void mce_input_datapipe_init(void)
+{
+    mce_datapipe_init_bindings(&mce_input_datapipe_bindings);
+}
+
+/** Remove triggers/filters from datapipes
+ */
+static void mce_input_datapipe_quit(void)
+{
+    mce_datapipe_quit_bindings(&mce_input_datapipe_bindings);
+}
+
 /** Init function for the /dev/input event component
  *
  * @return TRUE on success, FALSE on failure
@@ -3928,16 +3956,7 @@ mce_input_init(void)
 #endif
 
     /* Append triggers/filters to datapipes */
-    datapipe_add_output_trigger(&submode_pipe,
-                                evin_gpio_submode_trigger);
-    datapipe_add_output_trigger(&display_state_curr_pipe,
-                                evin_ts_grab_display_state_curr_cb);
-    datapipe_add_output_trigger(&touch_detected_pipe,
-                                evin_ts_grab_touch_detected_cb);
-    datapipe_add_output_trigger(&touch_grab_wanted_pipe,
-                                evin_ts_grab_wanted_cb);
-    datapipe_add_output_trigger(&keypad_grab_wanted_pipe,
-                                evin_kp_grab_wanted_cb);
+    mce_input_datapipe_init();
 
     /* Register input device directory monitor */
     if( !evin_devdir_monitor_init() )
@@ -3967,16 +3986,7 @@ mce_input_exit(void)
 #endif
 
     /* Remove triggers/filters from datapipes */
-    datapipe_remove_output_trigger(&submode_pipe,
-                                   evin_gpio_submode_trigger);
-    datapipe_remove_output_trigger(&display_state_curr_pipe,
-                                   evin_ts_grab_display_state_curr_cb);
-    datapipe_remove_output_trigger(&touch_detected_pipe,
-                                   evin_ts_grab_touch_detected_cb);
-    datapipe_remove_output_trigger(&touch_grab_wanted_pipe,
-                                   evin_ts_grab_wanted_cb);
-    datapipe_remove_output_trigger(&keypad_grab_wanted_pipe,
-                                   evin_kp_grab_wanted_cb);
+    mce_input_datapipe_quit();
 
     /* Remove input device directory monitor */
     evin_devdir_monitor_quit();

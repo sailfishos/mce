@@ -348,7 +348,7 @@ static datapipe_bindings_t bbl_datapipe_bindings =
 static void
 bbl_datapipes_init(void)
 {
-    datapipe_bindings_init(&bbl_datapipe_bindings);
+    mce_datapipe_init_bindings(&bbl_datapipe_bindings);
 }
 
 /** Remove triggers/filters from datapipes
@@ -356,7 +356,7 @@ bbl_datapipes_init(void)
 static void
 bbl_datapipes_quit(void)
 {
-    datapipe_bindings_quit(&bbl_datapipe_bindings);
+    mce_datapipe_quit_bindings(&bbl_datapipe_bindings);
 }
 
 /* ========================================================================= *

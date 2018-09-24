@@ -1697,12 +1697,10 @@ call_state_rethink_now(void)
     send_call_state(NULL, state_str, type_str);
 
     datapipe_exec_full(&call_state_pipe,
-                       GINT_TO_POINTER(call_state),
-                       USE_INDATA, CACHE_INDATA);
+                       GINT_TO_POINTER(call_state));
 
     datapipe_exec_full(&call_type_pipe,
-                       GINT_TO_POINTER(call_type),
-                       USE_INDATA, CACHE_INDATA);
+                       GINT_TO_POINTER(call_type));
 
 EXIT:
     return changed;
@@ -1897,7 +1895,7 @@ static datapipe_bindings_t callstate_datapipe_bindings =
 static void
 callstate_datapipes_init(void)
 {
-    datapipe_bindings_init(&callstate_datapipe_bindings);
+    mce_datapipe_init_bindings(&callstate_datapipe_bindings);
 }
 
 /** Remove triggers/filters from datapipes
@@ -1905,7 +1903,7 @@ callstate_datapipes_init(void)
 static void
 callstate_datapipes_quit(void)
 {
-    datapipe_bindings_quit(&callstate_datapipe_bindings);
+    mce_datapipe_quit_bindings(&callstate_datapipe_bindings);
 }
 
 /* ========================================================================= *

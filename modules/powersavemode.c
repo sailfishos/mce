@@ -148,8 +148,7 @@ static void update_power_saving_mode(void)
 	if (active_power_saving_mode != new_power_saving_mode) {
 		active_power_saving_mode = new_power_saving_mode;
 		datapipe_exec_full(&power_saving_mode_active_pipe,
-				   GINT_TO_POINTER(active_power_saving_mode),
-				   USE_INDATA, CACHE_INDATA);
+				   GINT_TO_POINTER(active_power_saving_mode));
 		send_psm_state(NULL);
 	}
 }
@@ -296,6 +295,48 @@ static void mce_psm_quit_dbus(void)
 	mce_dbus_handler_unregister_array(psm_dbus_handlers);
 }
 
+/** Array of datapipe handlers */
+static datapipe_handler_t mce_psm_datapipe_handlers[] =
+{
+	// output triggers
+	{
+		.datapipe  = &battery_level_pipe,
+			.output_cb = battery_level_trigger,
+	},
+	{
+		.datapipe  = &charger_state_pipe,
+			.output_cb = charger_state_trigger,
+	},
+	{
+		.datapipe  = &thermal_state_pipe,
+			.output_cb = thermal_state_trigger,
+	},
+	// sentinel
+	{
+		.datapipe = 0,
+	}
+};
+
+static datapipe_bindings_t mce_psm_datapipe_bindings =
+{
+	.module   = "mce_psm",
+	.handlers = mce_psm_datapipe_handlers,
+};
+
+/** Append triggers/filters to datapipes
+ */
+static void mce_psm_datapipe_init(void)
+{
+	mce_datapipe_init_bindings(&mce_psm_datapipe_bindings);
+}
+
+/** Remove triggers/filters from datapipes
+ */
+static void mce_psm_datapipe_quit(void)
+{
+	mce_datapipe_quit_bindings(&mce_psm_datapipe_bindings);
+}
+
 /**
  * Init function for the power saving mode module
  *
@@ -310,12 +351,7 @@ const gchar *g_module_check_init(GModule *module)
 	(void)module;
 
 	/* Append triggers/filters to datapipes */
-	datapipe_add_output_trigger(&battery_level_pipe,
-				    battery_level_trigger);
-	datapipe_add_output_trigger(&charger_state_pipe,
-				    charger_state_trigger);
-	datapipe_add_output_trigger(&thermal_state_pipe,
-				    thermal_state_trigger);
+	mce_psm_datapipe_init();
 
 	/* Power saving mode setting */
 	/* Since we've set a default, error handling is unnecessary */
@@ -379,12 +415,7 @@ void g_module_unload(GModule *module)
 	mce_psm_quit_dbus();
 
 	/* Remove triggers/filters from datapipes */
-	datapipe_remove_output_trigger(&thermal_state_pipe,
-				       thermal_state_trigger);
-	datapipe_remove_output_trigger(&battery_level_pipe,
-				       battery_level_trigger);
-	datapipe_remove_output_trigger(&charger_state_pipe,
-				       charger_state_trigger);
+	mce_psm_datapipe_quit();
 
 	return;
 }

@@ -327,8 +327,7 @@ static void mce_dsme_processwd_pong(void)
     mce_dsme_worker_ping();
 
     /* Execute hearbeat actions even if ping-pong ipc failed */
-    datapipe_exec_full(&heartbeat_event_pipe, GINT_TO_POINTER(0),
-                       USE_INDATA, DONT_CACHE_INDATA);
+    datapipe_exec_full(&heartbeat_event_pipe, GINT_TO_POINTER(0));
 }
 
 /**
@@ -514,8 +513,7 @@ static void mce_dsme_set_shutting_down(bool shutting_down)
         mce_dsme_socket_connect();
 
     datapipe_exec_full(&shutting_down_pipe,
-                       GINT_TO_POINTER(mce_dsme_shutting_down_flag),
-                       USE_INDATA, CACHE_INDATA);
+                       GINT_TO_POINTER(mce_dsme_shutting_down_flag));
 
 EXIT:
     return;
@@ -594,8 +592,7 @@ static gboolean mce_dsme_socket_recv_cb(GIOChannel *source,
     else if( (msg2 = DSMEMSG_CAST(DSM_MSGTYPE_STATE_CHANGE_IND, msg)) ) {
         system_state_t state = mce_dsme_normalise_system_state(msg2->state);
         datapipe_exec_full(&system_state_pipe,
-                           GINT_TO_POINTER(state),
-                           USE_INDATA, CACHE_INDATA);
+                           GINT_TO_POINTER(state));
     }
     else {
         mce_log(LL_DEBUG, "Unhandled %s message received from DSME",
@@ -905,16 +902,14 @@ static void mce_dsme_datapipe_system_state_cb(gconstpointer data)
     /* Handle LED patterns */
     switch( system_state ) {
     case MCE_SYSTEM_STATE_USER:
-        datapipe_exec_output_triggers(&led_pattern_activate_pipe,
-                                      MCE_LED_PATTERN_DEVICE_ON,
-                                      USE_INDATA);
+        datapipe_exec_full(&led_pattern_activate_pipe,
+                           MCE_LED_PATTERN_DEVICE_ON);
         break;
 
     case MCE_SYSTEM_STATE_SHUTDOWN:
     case MCE_SYSTEM_STATE_REBOOT:
-        datapipe_exec_output_triggers(&led_pattern_deactivate_pipe,
-                                      MCE_LED_PATTERN_DEVICE_ON,
-                                      USE_INDATA);
+        datapipe_exec_full(&led_pattern_deactivate_pipe,
+                           MCE_LED_PATTERN_DEVICE_ON);
         break;
 
     default:
@@ -976,14 +971,14 @@ static datapipe_bindings_t mce_dsme_datapipe_bindings =
  */
 static void mce_dsme_datapipe_init(void)
 {
-    datapipe_bindings_init(&mce_dsme_datapipe_bindings);
+    mce_datapipe_init_bindings(&mce_dsme_datapipe_bindings);
 }
 
 /** Remove triggers/filters from datapipes
  */
 static void mce_dsme_datapipe_quit(void)
 {
-    datapipe_bindings_quit(&mce_dsme_datapipe_bindings);
+    mce_datapipe_quit_bindings(&mce_dsme_datapipe_bindings);
 }
 
 /* ========================================================================= *

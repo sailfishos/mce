@@ -47,8 +47,7 @@ static gboolean mce_set_submode_int32(const submode_t submode)
 	mce_log(LL_NOTICE, "submode change: %s",
 		submode_change_repr(old_submode, submode));
 
-	datapipe_exec_full(&submode_pipe, GINT_TO_POINTER(submode),
-			   USE_INDATA, CACHE_INDATA);
+	datapipe_exec_full(&submode_pipe, GINT_TO_POINTER(submode));
 EXIT:
 	return TRUE;
 }
@@ -115,8 +114,8 @@ static void system_state_trigger(gconstpointer data)
 		case MCE_SYSTEM_STATE_BOOT:
 		case MCE_SYSTEM_STATE_UNDEF:
 		case MCE_SYSTEM_STATE_ACTDEAD:
-			datapipe_exec_output_triggers(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_DEVICE_ON, USE_INDATA);
-			datapipe_exec_output_triggers(&led_pattern_activate_pipe, MCE_LED_PATTERN_POWER_OFF, USE_INDATA);
+			datapipe_exec_full(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_DEVICE_ON);
+			datapipe_exec_full(&led_pattern_activate_pipe, MCE_LED_PATTERN_POWER_OFF);
 			break;
 
 		default:
@@ -157,6 +156,40 @@ EXIT:
 	return;
 }
 
+/** Array of datapipe handlers */
+static datapipe_handler_t mce_mode_datapipe_handlers[] =
+{
+	// output triggers
+	{
+		.datapipe  = &system_state_pipe,
+		.output_cb = system_state_trigger,
+	},
+	// sentinel
+	{
+		.datapipe = 0,
+	}
+};
+
+static datapipe_bindings_t mce_mode_datapipe_bindings =
+{
+	.module   = "mce_mode",
+	.handlers = mce_mode_datapipe_handlers,
+};
+
+/** Append triggers/filters to datapipes
+ */
+static void mce_mode_datapipe_init(void)
+{
+	mce_datapipe_init_bindings(&mce_mode_datapipe_bindings);
+}
+
+/** Remove triggers/filters from datapipes
+ */
+static void mce_mode_datapipe_quit(void)
+{
+	mce_datapipe_quit_bindings(&mce_mode_datapipe_bindings);
+}
+
 /**
  * Init function for the modetransition component
  *
@@ -167,8 +200,7 @@ gboolean mce_mode_init(void)
 	gboolean status = FALSE;
 
 	/* Append triggers/filters to datapipes */
-	datapipe_add_output_trigger(&system_state_pipe,
-				    system_state_trigger);
+	mce_mode_datapipe_init();
 
 	/* If the bootup file exists, mce has crashed / restarted;
 	 * since it exists in /var/run it will be removed when we reboot.
@@ -232,8 +264,7 @@ EXIT:
 void mce_mode_exit(void)
 {
 	/* Remove triggers/filters from datapipes */
-	datapipe_remove_output_trigger(&system_state_pipe,
-				       system_state_trigger);
+	mce_mode_datapipe_quit();
 
 	return;
 }

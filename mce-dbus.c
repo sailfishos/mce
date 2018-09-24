@@ -146,7 +146,7 @@ struct peerinfo_t
     gchar           *pi_owner_cmd;
 
     /** Optional datapipe to use for service availability signaling */
-    datapipe_struct *pi_datapipe;
+    datapipe_t      *pi_datapipe;
 
     /** Client exit notifications for this D-Bus name */
     GQueue           pi_quit_callbacks; // -> peerquit_t *
@@ -265,7 +265,7 @@ static void              peerinfo_set_owner_gid                (peerinfo_t *self
 const char              *peerinfo_get_owner_cmd                (const peerinfo_t *self);
 static void              peerinfo_set_owner_cmd                (peerinfo_t *self, const char *cmd);
 static privileged_t      peerinfo_get_privileged               (const peerinfo_t *self, bool no_caching);
-static void              peerinfo_set_datapipe                 (peerinfo_t *self, datapipe_struct *datapipe);
+static void              peerinfo_set_datapipe                 (peerinfo_t *self, datapipe_t *datapipe);
 
 static void              peerinfo_query_owner_ign              (peerinfo_t *self);
 static void              peerinfo_query_owner_rsp              (DBusPendingCall *pc, void *aptr);
@@ -1133,8 +1133,7 @@ peerinfo_enter_state(peerinfo_t *self)
     case PEERSTATE_RUNNING:
 	if( self->pi_datapipe ) {
 	    datapipe_exec_full(self->pi_datapipe,
-			       GINT_TO_POINTER(SERVICE_STATE_RUNNING),
-			       USE_INDATA, CACHE_INDATA);
+			       GINT_TO_POINTER(SERVICE_STATE_RUNNING));
 	}
 	peerinfo_handle_methods(self);
 	break;
@@ -1189,8 +1188,7 @@ peerinfo_leave_state(peerinfo_t *self)
     case PEERSTATE_RUNNING:
 	if( self->pi_datapipe ) {
 	    datapipe_exec_full(self->pi_datapipe,
-			       GINT_TO_POINTER(SERVICE_STATE_STOPPED),
-			       USE_INDATA, CACHE_INDATA);
+			       GINT_TO_POINTER(SERVICE_STATE_STOPPED));
 	}
 	break;
 
@@ -1465,7 +1463,7 @@ EXIT:
 }
 
 static void
-peerinfo_set_datapipe(peerinfo_t *self, datapipe_struct *datapipe)
+peerinfo_set_datapipe(peerinfo_t *self, datapipe_t *datapipe)
 {
     mce_log(LL_DEBUG, "[%s] datapipe: %p -> %p",
 	    peerinfo_name(self),
@@ -1475,8 +1473,7 @@ peerinfo_set_datapipe(peerinfo_t *self, datapipe_struct *datapipe)
     if( (self->pi_datapipe = datapipe) ) {
 	if( peerinfo_get_state(self) == PEERSTATE_RUNNING ) {
 	    datapipe_exec_full(self->pi_datapipe,
-			       GINT_TO_POINTER(SERVICE_STATE_RUNNING),
-			       USE_INDATA, CACHE_INDATA);
+			       GINT_TO_POINTER(SERVICE_STATE_RUNNING));
 	}
     }
 }
@@ -2015,8 +2012,8 @@ peerinfo_handle_methods(peerinfo_t *self)
 /** Lookup table of D-Bus names to watch */
 static struct
 {
-    const char      *name;
-    datapipe_struct *datapipe;
+    const char  *name;
+    datapipe_t  *datapipe;
 
 } mce_dbus_nameowner_lut[] =
 {

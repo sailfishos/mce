@@ -1189,11 +1189,10 @@ fingerprint_led_scanning_activate(bool activate)
 {
     static bool activated = false;
     if( activated != activate ) {
-        datapipe_exec_output_triggers((activated = activate) ?
-                                      &led_pattern_activate_pipe :
-                                      &led_pattern_deactivate_pipe,
-                                      MCE_LED_PATTERN_SCANNING_FINGERPRINT,
-                                      USE_INDATA);
+        datapipe_exec_full((activated = activate) ?
+                           &led_pattern_activate_pipe :
+                           &led_pattern_deactivate_pipe,
+                           MCE_LED_PATTERN_SCANNING_FINGERPRINT);
     }
 }
 
@@ -1210,11 +1209,10 @@ fingerprint_led_acquired_activate(bool activate)
 {
     static bool activated = false;
     if( activated != activate ) {
-        datapipe_exec_output_triggers((activated = activate) ?
-                                      &led_pattern_activate_pipe :
-                                      &led_pattern_deactivate_pipe,
-                                      MCE_LED_PATTERN_FINGERPRINT_ACQUIRED,
-                                      USE_INDATA);
+        datapipe_exec_full((activated = activate) ?
+                           &led_pattern_activate_pipe :
+                           &led_pattern_deactivate_pipe,
+                           MCE_LED_PATTERN_FINGERPRINT_ACQUIRED);
     }
 }
 
@@ -1276,8 +1274,7 @@ fingerprint_datapipe_set_fpstate(fpstate_t state)
             fpstate_repr(prev),
             fpstate_repr(fpstate));
 
-    datapipe_exec_full(&fpstate_pipe, GINT_TO_POINTER(fpstate),
-                       USE_INDATA, CACHE_INDATA);
+    datapipe_exec_full(&fpstate_pipe, GINT_TO_POINTER(fpstate));
 
     switch( fpstate ) {
     case FPSTATE_ENROLLING:
@@ -1359,8 +1356,7 @@ fingerprint_datapipe_update_enroll_in_progress(void)
             enroll_in_progress ? "true" : "false");
 
     datapipe_exec_full(&enroll_in_progress_pipe,
-                       GINT_TO_POINTER(enroll_in_progress),
-                       USE_INDATA, CACHE_INDATA);
+                       GINT_TO_POINTER(enroll_in_progress));
 EXIT:
     return;
 }
@@ -1381,8 +1377,7 @@ fingerprint_datapipe_generate_activity(void)
 
     mce_log(LL_DEBUG, "generating activity from fingerprint sensor");
     datapipe_exec_full(&inactivity_event_pipe,
-                       GINT_TO_POINTER(FALSE),
-                       USE_INDATA, CACHE_OUTDATA);
+                       GINT_TO_POINTER(FALSE));
 
 EXIT:
     return;
@@ -1690,7 +1685,7 @@ static void
 fingerprint_datapipe_init(void)
 {
     // triggers
-    datapipe_bindings_init(&fingerprint_datapipe_bindings);
+    mce_datapipe_init_bindings(&fingerprint_datapipe_bindings);
 }
 
 /** Remove triggers/filters from datapipes */
@@ -1698,7 +1693,7 @@ static void
 fingerprint_datapipe_quit(void)
 {
     // triggers
-    datapipe_bindings_quit(&fingerprint_datapipe_bindings);
+    mce_datapipe_quit_bindings(&fingerprint_datapipe_bindings);
 }
 
 /* ========================================================================= *
@@ -2616,9 +2611,8 @@ fpwakeup_trigger(void)
         mce_log(LL_CRUCIAL, "fingerprint wakeup triggered");
 
         /* (Mis)use haptic feedback associated with device unlocking */
-        datapipe_exec_output_triggers(&ngfd_event_request_pipe,
-                                      "unlock_device",
-                                      USE_INDATA);
+        datapipe_exec_full(&ngfd_event_request_pipe,
+                           "unlock_device");
 
         /* Make sure we unblank / exit from lpm */
         mce_datapipe_request_display_state(MCE_DISPLAY_ON);

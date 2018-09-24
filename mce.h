@@ -462,7 +462,7 @@ void mce_quit_mainloop(void);
 void mce_signal_handlers_remove(void);
 
 #define display_state_get() ({\
-	gint res = GPOINTER_TO_INT(display_state_curr_pipe.cached_data);\
+	gint res = GPOINTER_TO_INT(display_state_curr_pipe.dp_cached_data);\
 	mce_log(LL_DEBUG, "display_state_curr=%s",\
 		display_state_repr(res));\
 	res;\

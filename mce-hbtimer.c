@@ -1036,14 +1036,14 @@ static datapipe_bindings_t mht_datapipe_bindings =
  */
 static void mht_datapipe_init(void)
 {
-    datapipe_bindings_init(&mht_datapipe_bindings);
+    mce_datapipe_init_bindings(&mht_datapipe_bindings);
 }
 
 /** Remove triggers/filters from datapipes
  */
 static void mht_datapipe_quit(void)
 {
-    datapipe_bindings_quit(&mht_datapipe_bindings);
+    mce_datapipe_quit_bindings(&mht_datapipe_bindings);
 }
 
 /* ========================================================================= *

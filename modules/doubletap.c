@@ -307,6 +307,48 @@ EXIT:
         return;
 }
 
+/** Array of datapipe handlers */
+static datapipe_handler_t dbltap_datapipe_handlers[] =
+{
+        // output triggers
+        {
+                .datapipe  = &proximity_sensor_actual_pipe,
+                .output_cb = dbltap_proximity_sensor_actual_trigger,
+        },
+        {
+                .datapipe  = &proximity_blanked_pipe,
+                .output_cb = dbltap_proximity_blanked_trigger,
+        },
+        {
+                .datapipe  = &lid_sensor_filtered_pipe,
+                .output_cb = dbltap_lid_sensor_filtered_trigger,
+        },
+        // sentinel
+        {
+                .datapipe = 0,
+        }
+};
+
+static datapipe_bindings_t dbltap_datapipe_bindings =
+{
+        .module   = "dbltap",
+        .handlers = dbltap_datapipe_handlers,
+};
+
+/** Append triggers/filters to datapipes
+ */
+static void dbltap_datapipe_init(void)
+{
+        mce_datapipe_init_bindings(&dbltap_datapipe_bindings);
+}
+
+/** Remove triggers/filters from datapipes
+ */
+static void dbltap_datapipe_quit(void)
+{
+        mce_datapipe_quit_bindings(&dbltap_datapipe_bindings);
+}
+
 /** Init function for the doubletap module
  *
  * @param module (not used)
@@ -349,12 +391,7 @@ const gchar *g_module_check_init(GModule *module)
         dbltap_mode = mode;
 
         /* Append triggers/filters to datapipes */
-        datapipe_add_output_trigger(&proximity_sensor_actual_pipe,
-                                    dbltap_proximity_sensor_actual_trigger);
-        datapipe_add_output_trigger(&proximity_blanked_pipe,
-                                    dbltap_proximity_blanked_trigger);
-        datapipe_add_output_trigger(&lid_sensor_filtered_pipe,
-                                    dbltap_lid_sensor_filtered_trigger);
+        dbltap_datapipe_init();
 
         /* Get initial state of datapipes */
         dbltap_ps_state = datapipe_get_gint(proximity_sensor_actual_pipe);
@@ -381,12 +418,7 @@ void g_module_unload(GModule *module)
                 dbltap_mode_setting_id = 0;
 
         /* Remove triggers/filters from datapipes */
-        datapipe_remove_output_trigger(&proximity_sensor_actual_pipe,
-                                       dbltap_proximity_sensor_actual_trigger);
-        datapipe_remove_output_trigger(&proximity_blanked_pipe,
-                                       dbltap_proximity_blanked_trigger);
-        datapipe_remove_output_trigger(&lid_sensor_filtered_pipe,
-                                       dbltap_lid_sensor_filtered_trigger);
+        dbltap_datapipe_quit();
 
         /* Free config strings */
         g_free(dbltap_ctrl_path);

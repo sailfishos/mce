@@ -14,10 +14,10 @@ EXTERN_DUMMY_STUB (
 submode_t, mce_get_submode_int32, (void));
 
 EXTERN_DUMMY_STUB (
-gconstpointer, datapipe_exec_full, (datapipe_struct *const datapipe,
+gconstpointer, datapipe_exec_full, (datapipe_t *const datapipe,
 				    gpointer indata,
-				    const data_source_t use_cache,
-				    const caching_policy_t cache_indata));
+				    const datapipe_use_t use_cache,
+				    const datapipe_cache_t cache_indata));
 
 LOCAL_STUB (
 void, cancel_blank_prevent, (void))

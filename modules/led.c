@@ -2415,8 +2415,7 @@ static gboolean init_lysti_patterns(void)
 
 	/* Set the LED brightness */
 	datapipe_exec_full(&led_brightness_pipe,
-			   GINT_TO_POINTER(maximum_led_brightness),
-			   USE_INDATA, CACHE_INDATA);
+			   GINT_TO_POINTER(maximum_led_brightness));
 
 	status = TRUE;
 
@@ -2548,8 +2547,7 @@ static gboolean init_njoy_patterns(void)
 
 	/* Set the LED brightness */
 	datapipe_exec_full(&led_brightness_pipe,
-			   GINT_TO_POINTER(maximum_led_brightness),
-			   USE_INDATA, CACHE_INDATA);
+			   GINT_TO_POINTER(maximum_led_brightness));
 
 	status = TRUE;
 
@@ -2815,8 +2813,7 @@ static gboolean init_hybris_patterns(void)
 
 	/* Set the LED brightness */
 	datapipe_exec_full(&led_brightness_pipe,
-			   GINT_TO_POINTER(maximum_led_brightness),
-			   USE_INDATA, CACHE_INDATA);
+			   GINT_TO_POINTER(maximum_led_brightness));
 
 	status = TRUE;
 
@@ -3156,7 +3153,7 @@ static datapipe_bindings_t mce_led_datapipe_bindings =
 static void
 mce_led_datapipes_init(void)
 {
-	datapipe_bindings_init(&mce_led_datapipe_bindings);
+	mce_datapipe_init_bindings(&mce_led_datapipe_bindings);
 }
 
 /** Remove triggers/filters from datapipes
@@ -3164,7 +3161,7 @@ mce_led_datapipes_init(void)
 static void
 mce_led_datapipes_quit(void)
 {
-	datapipe_bindings_quit(&mce_led_datapipe_bindings);
+	mce_datapipe_quit_bindings(&mce_led_datapipe_bindings);
 }
 
 /**
@@ -3200,8 +3197,8 @@ const gchar *g_module_check_init(GModule *module)
 
 	/* Initialize sw breathing state data */
 	sw_breathing_init();
-	charger_state_trigger(charger_state_pipe.cached_data);
-	battery_level_trigger(battery_level_pipe.cached_data);
+	charger_state_trigger(charger_state_pipe.dp_cached_data);
+	battery_level_trigger(battery_level_pipe.dp_cached_data);
 
 	/* Evaluate initial active pattern state */
 	led_enable();

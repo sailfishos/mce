@@ -280,16 +280,14 @@ static const char *mia_inactivity_repr(bool inactive)
  */
 static void mia_generate_activity(void)
 {
-    datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(FALSE),
-                       USE_INDATA, CACHE_OUTDATA);
+    datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(FALSE));
 }
 
 /** Helper for switching to inactive state
  */
 static void mia_generate_inactivity(void)
 {
-    datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(TRUE),
-                       USE_INDATA, CACHE_OUTDATA);
+    datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(TRUE));
 }
 
 /* ========================================================================= *
@@ -439,8 +437,7 @@ static void mia_datapipe_inactivity_event_cb(gconstpointer data)
     }
 
     datapipe_exec_full(&device_inactive_pipe,
-                       GINT_TO_POINTER(inactive),
-                       USE_INDATA, CACHE_OUTDATA);
+                       GINT_TO_POINTER(inactive));
 EXIT:
     return;
 }
@@ -840,13 +837,13 @@ static datapipe_bindings_t mia_datapipe_bindings =
  */
 static void mia_datapipe_init(void)
 {
-    datapipe_bindings_init(&mia_datapipe_bindings);
+    mce_datapipe_init_bindings(&mia_datapipe_bindings);
 }
 
 /** Remove triggers/filters from datapipes */
 static void mia_datapipe_quit(void)
 {
-    datapipe_bindings_quit(&mia_datapipe_bindings);
+    mce_datapipe_quit_bindings(&mia_datapipe_bindings);
 }
 
 /* ========================================================================= *
