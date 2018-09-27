@@ -36,9 +36,74 @@
 
 #include <gmodule.h>
 
-/* Forward declarations needed to keep connman related static
- * functions cleanly separated from the legacy mce code */
-static void xconnman_sync_master_to_offline(void);
+/* ========================================================================= *
+ * Prototypes
+ * ========================================================================= */
+
+/* ------------------------------------------------------------------------- *
+ * RADIO_STATES
+ * ------------------------------------------------------------------------- */
+
+static const char  *radio_states_change_repr(guint prev, guint curr);
+static const char  *radio_states_repr       (guint state);
+
+/* ------------------------------------------------------------------------- *
+ * MRS
+ * ------------------------------------------------------------------------- */
+
+static guint     mrs_get_default_radio_states            (void);
+static void      mrs_restore_radio_states                (void);
+static void      mrs_save_radio_states                   (void);
+static void      mrs_modify_radio_states                 (const guint states, const guint mask);
+static void      mrs_sync_radio_state                    (void);
+static gboolean  mrs_radio_state_sync_cb                 (gpointer aptr);
+static void      mrs_cancel_radio_state_sync             (void);
+static void      mrs_schedule_radio_state_sync           (void);
+static void      mrs_datapipe_update_master_radio_enabled(void);
+static void      mrs_datapipe_master_radio_enabled_cb    (gconstpointer data);
+static void      mrs_datapipe_init                       (void);
+static void      mrs_datapipe_quit                       (void);
+
+/* ------------------------------------------------------------------------- *
+ * MRS_DBUS
+ * ------------------------------------------------------------------------- */
+
+static gboolean  mrs_dbus_send_radio_states  (DBusMessage *const method_call);
+static gboolean  mrs_dbus_get_radio_states_cb(DBusMessage *const msg);
+static gboolean  mrs_dbus_set_radio_states_cb(DBusMessage *const msg);
+static void      mrs_dbus_init               (void);
+static void      mrs_dbus_quit               (void);
+
+/* ------------------------------------------------------------------------- *
+ * XCONNMAN
+ * ------------------------------------------------------------------------- */
+
+static void               xconnman_set_property_cb               (DBusPendingCall *pc, void *user_data);
+static gboolean           xconnman_set_property_bool             (const char *key, gboolean val);
+static void               xconnman_sync_offline_to_master        (void);
+static void               xconnman_sync_master_to_offline        (void);
+static void               xconnman_property_changed              (const char *key, int type, const dbus_any_t *val);
+static void               xconnman_handle_property_changed_signal(DBusMessage *msg);
+static void               xconnman_get_properties_cb             (DBusPendingCall *pc, void *user_data);
+static gboolean           xconnman_get_properties                (void);
+static void               xconnman_set_runstate                  (gboolean running);
+static void               xconnman_check_service_cb              (DBusPendingCall *pc, void *user_data);
+static gboolean           xconnman_check_service                 (void);
+static void               xconnman_handle_name_owner_change      (DBusMessage *msg);
+static DBusHandlerResult  xconnman_dbus_filter_cb                (DBusConnection *con, DBusMessage *msg, void *user_data);
+static void               xconnman_quit                          (void);
+static gboolean           xconnman_init                          (void);
+
+/* ------------------------------------------------------------------------- *
+ * G_MODULE
+ * ------------------------------------------------------------------------- */
+
+const gchar  *g_module_check_init(GModule *module);
+void          g_module_unload    (GModule *module);
+
+/* ========================================================================= *
+ * Data
+ * ========================================================================= */
 
 /** Module name */
 #define MODULE_NAME		"radiostates"
@@ -66,8 +131,18 @@ static const gboolean radio_state_defaults[RADIO_STATES_COUNT] = {
 	DEFAULT_FMTX_RADIO_STATE
 };
 
+/** Short names - keep in sync with mcetool */
+static const char * const radio_state_repr[RADIO_STATES_COUNT] = {
+	"master",
+	"cellular",
+	"wlan",
+	"bluetooth",
+	"nfc",
+	"fmtx",
+};
+
 /** radio state flag */
-static const gint radio_state_flags[RADIO_STATES_COUNT] = {
+static const guint radio_state_flags[RADIO_STATES_COUNT] = {
 	MCE_RADIO_STATE_MASTER,
 	MCE_RADIO_STATE_CELLULAR,
 	MCE_RADIO_STATE_WLAN,
@@ -89,20 +164,83 @@ G_MODULE_EXPORT module_info_struct module_info = {
 	.priority = 250
 };
 
-/** Real radio states */
-static gulong radio_states = 0;
+/** Copy of radio states from master disable time */
+static guint saved_radio_states = 0;
 
 /** Active radio states (master switch disables all radios) */
-static gulong active_radio_states = 0;
+static guint active_radio_states = 0;
 
-/**
- * Get default radio states from customisable settings
+/* ========================================================================= *
+ * RADIO_STATES
+ * ========================================================================= */
+
+/** Translate radio state bitmap change into human readable form
  *
- * @return -1 in case of error, radio states otherwise
+ * @param prev previously active radio states
+ * @param curr currently active radio states
+ *
+ * @return human readable bitmap change description
  */
-static gint get_default_radio_states(void)
+static const char *
+radio_states_change_repr(guint prev, guint curr)
 {
-	gint default_radio_states = 0;
+	static char repr[128];
+	char *pos = repr;
+	char *end = repr + sizeof repr - 1;
+
+	auto void add(const char *str) {
+		if( !str )
+			str = "(null)";
+		while( *str && pos < end )
+			*pos++ = *str++;
+	}
+
+	guint diff = prev ^ curr;
+
+	for( int i = 0; i < RADIO_STATES_COUNT; ++i ) {
+		guint mask = radio_state_flags[i];
+		if( (diff | curr) & mask ) {
+			if( diff & mask )
+				add((curr & mask) ? "+" : "-");
+			add(radio_state_repr[i]);
+			add(" ");
+		}
+	}
+
+	if( pos > repr )
+		--pos;
+	else
+		add("(none)");
+
+	*pos = 0;
+
+	return repr;
+}
+
+/** Translate radio state bitmap into human readable form
+ *
+ * @param state active radio states
+ *
+ * @return human readable bitmap description
+ */
+static const char *
+radio_states_repr(guint state)
+{
+	return radio_states_change_repr(state, state);
+}
+
+/* ========================================================================= *
+ * MRS
+ * ========================================================================= */
+
+/** Get default radio states from customisable settings
+ *
+ * @return radio states
+ */
+static guint
+mrs_get_default_radio_states(void)
+{
+	guint default_radio_states = 0;
 
 	for( size_t i = 0; i < RADIO_STATES_COUNT; ++i ) {
 		gboolean flag = mce_conf_get_bool(MCE_CONF_RADIO_STATES_GROUP,
@@ -113,37 +251,286 @@ static gint get_default_radio_states(void)
 		}
 	}
 
-	mce_log(LL_DEBUG, "default_radio_states = %x", default_radio_states);
+	mce_log(LL_DEBUG, "default_radio_states = %s",
+		radio_states_repr(default_radio_states));
 
 	return default_radio_states;
 }
 
-/**
- * Send the radio states
+/** Restore the radio states from persistant storage
+ */
+static void
+mrs_restore_radio_states(void)
+{
+	static const char online_file[]  = MCE_ONLINE_RADIO_STATES_PATH;
+	static const char offline_file[] = MCE_OFFLINE_RADIO_STATES_PATH;
+
+	/* Apply configured defaults */
+	active_radio_states = saved_radio_states = mrs_get_default_radio_states();
+
+	/* FIXME: old maemo backup/restore handling - can be removed? */
+	if( mce_are_settings_locked() ) {
+		if( mce_unlock_settings() )
+			mce_log(LL_INFO, "Removed stale settings lockfile");
+		else
+			mce_log(LL_ERR, "Failed to remove settings lockfile; %m");
+	}
+
+	/* The files get generated by mce on 1st bootup. Skip the
+	 * read attempt and associated diagnostic logging if the
+	 * files do not exist */
+	if( access(online_file, F_OK) == -1 && errno == ENOENT )
+		goto EXIT;
+
+	gulong online_states  = 0;
+	gulong offline_states = 0;
+
+	if( mce_read_number_string_from_file(online_file, &online_states,
+					     NULL, TRUE, TRUE) )
+		active_radio_states = (guint)online_states;
+
+	if( mce_read_number_string_from_file(offline_file, &offline_states,
+					     NULL, TRUE, TRUE) )
+		saved_radio_states  = (guint)offline_states;
+
+EXIT:
+	mce_log(LL_DEBUG, "active_radio_states: %s",
+		radio_states_repr(active_radio_states));
+	mce_log(LL_DEBUG, "saved_radio_states: %s",
+		radio_states_repr(saved_radio_states));
+	return;
+}
+
+/** Save the radio states to persistant storage
+ */
+static void
+mrs_save_radio_states(void)
+{
+	const guint online_states  = active_radio_states;
+	const guint offline_states = saved_radio_states;
+
+	/* FIXME: old maemo backup/restore handling - can be removed? */
+	if (mce_are_settings_locked() == TRUE) {
+		mce_log(LL_WARN,
+			"Cannot save radio states; backup/restore "
+			"or device clear/factory reset pending");
+		goto EXIT;
+	}
+
+	mce_write_number_string_to_file_atomic(MCE_ONLINE_RADIO_STATES_PATH,
+					       online_states);
+	mce_write_number_string_to_file_atomic(MCE_OFFLINE_RADIO_STATES_PATH,
+					       offline_states);
+
+EXIT:
+	return;
+}
+
+/** Set the radio states
+ *
+ * @param states The raw radio states
+ * @param mask   The raw radio states mask
+ */
+static void
+mrs_modify_radio_states(const guint states, const guint mask)
+{
+	mce_log(LL_DEBUG, "states: %s",
+		radio_states_change_repr(states ^ mask, states));
+
+	guint prev = active_radio_states;
+
+	/* Deal with master bit changes first */
+	if( (mask & MCE_RADIO_STATE_MASTER) &&
+	    ((active_radio_states ^ states) & MCE_RADIO_STATE_MASTER) ) {
+		if( active_radio_states & MCE_RADIO_STATE_MASTER ) {
+			/* Master disable: save & clear state */
+			saved_radio_states = active_radio_states;
+			active_radio_states = 0;
+		}
+		else {
+			/* Master enable: resture saved state */
+			active_radio_states = saved_radio_states;
+		}
+	}
+
+	/* Then update active features bits */
+	active_radio_states = (active_radio_states & ~mask) | (states & mask);
+
+	/* Immediate actions on state change */
+	if( prev != active_radio_states ) {
+		mce_log(LL_DEBUG, "active_radio_states: %s",
+			radio_states_change_repr(prev, active_radio_states));
+
+		/* Update persistent values */
+		mrs_save_radio_states();
+
+		/* Broadcast changes */
+		mrs_dbus_send_radio_states(NULL);
+	}
+
+	/* Do datapipe & connman sync from idle callback */
+	mrs_schedule_radio_state_sync();
+}
+
+/** Immediately sync active radio state to datapipes and connman
+ */
+static void
+mrs_sync_radio_state(void)
+{
+	/* Remove pending timer */
+	mrs_cancel_radio_state_sync();
+
+	/* Sync to master_radio_enabled_pipe */
+	mrs_datapipe_update_master_radio_enabled();
+
+	/* After datapipe execution the radio state should
+	 * be stable - sync connman offline property to it */
+	xconnman_sync_master_to_offline();
+}
+
+/** Timer id for: delayed radio state sync
+ */
+static guint mrs_radio_state_sync_id = 0;
+
+/** Timer callback for: delayed radio state sync
+ */
+static gboolean
+mrs_radio_state_sync_cb(gpointer aptr)
+{
+	(void)aptr;
+	mrs_radio_state_sync_id = 0;
+	mrs_sync_radio_state();
+	return G_SOURCE_REMOVE;
+}
+
+/** Cancel delayed radio state sync
+ */
+static void
+mrs_cancel_radio_state_sync(void)
+{
+	if( mrs_radio_state_sync_id ) {
+		g_source_remove(mrs_radio_state_sync_id),
+			mrs_radio_state_sync_id = 0;
+	}
+}
+
+/** Schedule delayed radio state sync
+ */
+static void
+mrs_schedule_radio_state_sync(void)
+{
+	if( !mrs_radio_state_sync_id ) {
+		mrs_radio_state_sync_id =
+			g_idle_add(mrs_radio_state_sync_cb, 0);
+	}
+}
+
+/* ========================================================================= *
+ * MRS_DATAPIPES
+ * ========================================================================= */
+
+/** Sync active radio state -> master_radio_enabled_pipe
+ */
+static void
+mrs_datapipe_update_master_radio_enabled(void)
+{
+	int prev = datapipe_get_gint(master_radio_enabled_pipe);
+	int next = (active_radio_states & MCE_RADIO_STATE_MASTER) ? 1 : 0;
+
+	if( prev != next )
+		datapipe_exec_full(&master_radio_enabled_pipe, GINT_TO_POINTER(next));
+}
+
+/** Sync master_radio_enabled_pipe -> active radio state
+ *
+ * @param data master radio state as a pointer
+ */
+static void
+mrs_datapipe_master_radio_enabled_cb(gconstpointer data)
+{
+	guint prev = (active_radio_states & MCE_RADIO_STATE_MASTER);
+	guint next = data ? MCE_RADIO_STATE_MASTER : 0;
+
+	if( prev != next )
+		mrs_modify_radio_states(next, MCE_RADIO_STATE_MASTER);
+}
+
+/** Array of datapipe handlers
+ */
+static datapipe_handler_t mrs_datapipe_handlers[] =
+{
+	// output triggers
+	{
+		.datapipe  = &master_radio_enabled_pipe,
+		.output_cb = mrs_datapipe_master_radio_enabled_cb,
+	},
+	// sentinel
+	{
+		.datapipe = 0,
+	}
+};
+
+/** Datapipe bindings for this module
+ */
+static datapipe_bindings_t mrs_datapipe_bindings =
+{
+	.module   = MODULE_NAME,
+	.handlers = mrs_datapipe_handlers,
+};
+
+/** Append triggers/filters to datapipes
+ */
+static void mrs_datapipe_init(void)
+{
+	mce_datapipe_init_bindings(&mrs_datapipe_bindings);
+}
+
+/** Remove triggers/filters from datapipes
+ */
+static void mrs_datapipe_quit(void)
+{
+	mce_datapipe_quit_bindings(&mrs_datapipe_bindings);
+}
+
+/* ========================================================================= *
+ * MRS_DBUS
+ * ========================================================================= */
+
+/** Send the radio states
  *
  * @param method_call A DBusMessage to reply to;
  *                    pass NULL to send a signal instead
+ *
  * @return TRUE on success, FALSE on failure
  */
-static gboolean send_radio_states(DBusMessage *const method_call)
+static gboolean
+mrs_dbus_send_radio_states(DBusMessage *const method_call)
 {
+	static dbus_uint32_t prev = ~0u;
+
 	DBusMessage *msg = NULL;
 	gboolean status = FALSE;
 
 	dbus_uint32_t data = active_radio_states;
 
-	mce_log(LL_DEBUG, "Sending radio states: %x", data);
-
-	/* If method_call is set, send a reply,
-	 * otherwise, send a signal
-	 */
-	if (method_call != NULL) {
+	if( method_call ) {
+		/* Send reply to a method call */
 		msg = dbus_new_method_reply(method_call);
-	} else {
-		/* radio_states_ind */
+	}
+	else if( prev == data ) {
+		/* Skip duplicate signals */
+		goto EXIT;
+	}
+	else {
+		/* Broadcast change signal */
+		prev = data;
 		msg = dbus_new_signal(MCE_SIGNAL_PATH, MCE_SIGNAL_IF,
 				      MCE_RADIO_STATES_SIG);
 	}
+
+	mce_log(LL_DEBUG, "Sending radio states %s: %s",
+		method_call ? "reply" : "signal",
+		radio_states_repr(data));
 
 	/* Append the radio states */
 	if (dbus_message_append_args(msg,
@@ -154,9 +541,9 @@ static gboolean send_radio_states(DBusMessage *const method_call)
 			"for %s.%s",
 			method_call ? "reply " : "",
 			method_call ? MCE_REQUEST_IF :
-				      MCE_SIGNAL_IF,
+			MCE_SIGNAL_IF,
 			method_call ? MCE_RADIO_STATES_GET :
-				      MCE_RADIO_STATES_SIG);
+			MCE_RADIO_STATES_SIG);
 		dbus_message_unref(msg);
 		goto EXIT;
 	}
@@ -168,155 +555,14 @@ EXIT:
 	return status;
 }
 
-/**
- * Set the radio states
- *
- * @param states The raw radio states
- * @param mask The raw radio states mask
- */
-static void set_radio_states(const gulong states, const gulong mask)
-{
-	radio_states = (radio_states & ~mask) | (states & mask);
-
-	if( (mask & MCE_RADIO_STATE_MASTER) && !(states & MCE_RADIO_STATE_MASTER) ) {
-		active_radio_states = states & mask;
-	}
-	else if( !(radio_states & MCE_RADIO_STATE_MASTER) ) {
-		active_radio_states = (active_radio_states & ~mask) | (states & mask);
-	}
-	else {
-		active_radio_states = (radio_states & ~mask) | (states & mask);
-	}
-}
-
-/**
- * Save the radio states to persistant storage
- *
- * @param online_states The online radio states to store
- * @param offline_states The offline radio states to store
- * @return TRUE on success, FALSE on failure
- */
-static gboolean save_radio_states(const gulong online_states,
-				  const gulong offline_states)
-{
-	gboolean status = FALSE;
-
-	if (mce_are_settings_locked() == TRUE) {
-		mce_log(LL_WARN,
-			"Cannot save radio states; backup/restore "
-			"or device clear/factory reset pending");
-		goto EXIT;
-	}
-
-	status = mce_write_number_string_to_file_atomic(MCE_ONLINE_RADIO_STATES_PATH, online_states);
-
-	if (status == FALSE)
-		goto EXIT;
-
-	status = mce_write_number_string_to_file_atomic(MCE_OFFLINE_RADIO_STATES_PATH, offline_states);
-
-EXIT:
-	return status;
-}
-
-/**
- * Read radio states from persistent storage
- *
- * @param online_file The path to the online radio states file
- * @param[out] online_states A pointer to the restored online radio states
- * @param offline_file The path to the offline radio states file
- * @param[out] offline_states A pointer to the restored offline radio states
- * @return TRUE on success, FALSE on failure
- */
-static gboolean read_radio_states(const gchar *const online_file,
-				  gulong *online_states,
-				  const gchar *const offline_file,
-				  gulong *offline_states)
-{
-	gboolean status = FALSE;
-
-	/* The files get generated by mce on 1st bootup. Skip the
-	 * read attempt and associated diagnostic logging if the
-	 * files do not exist */
-	if( access(offline_file, F_OK) == -1 && errno == ENOENT )
-		goto EXIT;
-
-	status = mce_read_number_string_from_file(offline_file, offline_states,
-						  NULL, TRUE, TRUE);
-
-	if (status == FALSE)
-		goto EXIT;
-
-	status = mce_read_number_string_from_file(online_file, online_states,
-						  NULL, TRUE, TRUE);
-
-EXIT:
-	return status;
-}
-
-/**
- * Restore the radio states from persistant storage
- *
- * @param[out] online_states A pointer to the restored online radio states
- * @param[out] offline_states A pointer to the restored offline radio states
- * @return TRUE on success, FALSE on failure
- */
-static gboolean restore_radio_states(gulong *online_states,
-				     gulong *offline_states)
-{
-	if (mce_are_settings_locked() == TRUE) {
-		mce_log(LL_INFO, "Removing stale settings lockfile");
-
-		if (mce_unlock_settings() == FALSE) {
-			mce_log(LL_ERR, "Failed to remove settings lockfile; %m");
-		}
-	}
-
-	return read_radio_states(MCE_ONLINE_RADIO_STATES_PATH, online_states, MCE_OFFLINE_RADIO_STATES_PATH, offline_states);
-}
-
-/**
- * Restore the default radio states from persistent storage
- *
- * @param[out] online_states A pointer to the restored online radio states
- * @param[out] offline_states A pointer to the restored offline radio states
- * @return TRUE on success, FALSE on failure
- */
-static gboolean restore_default_radio_states(gulong *online_states,
-					     gulong *offline_states)
-{
-	gint default_radio_states = get_default_radio_states();
-	gboolean status = FALSE;
-
-	*offline_states = 0;
-	*online_states = 0;
-
-	if (default_radio_states == -1)
-		goto EXIT;
-
-	*offline_states = default_radio_states;
-
-	if (default_radio_states & MCE_RADIO_STATE_MASTER)
-		*online_states = default_radio_states;
-
-	if( !save_radio_states(*online_states, *offline_states) ) {
-		mce_log(LL_ERR, "Could not save restored radio states");
-		goto EXIT;
-	}
-
-	status = TRUE;
-
-EXIT:
-	return status;
-}
-
-/**
- * D-Bus callback for the get radio states method call
+/** D-Bus callback for the get radio states method call
  *
  * @param msg The D-Bus message
+ *
  * @return TRUE on success, FALSE on failure
  */
-static gboolean get_radio_states_dbus_cb(DBusMessage *const msg)
+static gboolean
+mrs_dbus_get_radio_states_cb(DBusMessage *const msg)
 {
 	gboolean status = FALSE;
 
@@ -324,7 +570,7 @@ static gboolean get_radio_states_dbus_cb(DBusMessage *const msg)
 		mce_dbus_get_message_sender_ident(msg));
 
 	/* Try to send a reply that contains the current radio states */
-	if (send_radio_states(msg) == FALSE)
+	if (mrs_dbus_send_radio_states(msg) == FALSE)
 		goto EXIT;
 
 	status = TRUE;
@@ -333,50 +579,15 @@ EXIT:
 	return status;
 }
 
-/** Process radio state change within mce
- *
- * @return TRUE on success, FALSE on failure
- */
-static gboolean radio_states_change(gulong states, gulong mask)
-{
-	gboolean status = TRUE;
-	gulong   old_radio_states = active_radio_states;
-
-	set_radio_states(states, mask);
-
-	/* If we fail to write the radio states, restore the old states */
-	if( !save_radio_states(active_radio_states, radio_states) ) {
-		set_radio_states(old_radio_states, ~0);
-		status = FALSE;
-	}
-
-	if (old_radio_states != active_radio_states) {
-		send_radio_states(NULL);
-		gint master = (radio_states & MCE_RADIO_STATE_MASTER) ? 1 : 0;
-
-		/* This is just to make sure that the cache is up to date
-		 * and that all callbacks are called; the trigger inside
-		 * radiostates.c has already had all its actions performed
-		 */
-		datapipe_exec_full(&master_radio_enabled_pipe, GINT_TO_POINTER(master));
-	}
-
-	/* After datapipe execution the radio state should
-	 * be stable - sync connman offline property to it */
-	xconnman_sync_master_to_offline();
-
-	return status;
-}
-
-/**
- * D-Bus callback for radio states change method call
+/** D-Bus callback for radio states change method call
  *
  * @todo Decide on error handling policy
  *
  * @param msg The D-Bus message
+ *
  * @return TRUE on success, FALSE on failure
  */
-static gboolean req_radio_states_change_dbus_cb(DBusMessage *const msg)
+static gboolean mrs_dbus_set_radio_states_cb(DBusMessage *const msg)
 {
 	dbus_bool_t   no_reply = dbus_message_get_no_reply(msg);
 	gboolean      status   = FALSE;
@@ -399,7 +610,7 @@ static gboolean req_radio_states_change_dbus_cb(DBusMessage *const msg)
 		goto EXIT;
 	}
 
-	radio_states_change(states, mask);
+	mrs_modify_radio_states(states, mask);
 
 	if (no_reply == FALSE) {
 		DBusMessage *reply = dbus_new_method_reply(msg);
@@ -414,28 +625,57 @@ EXIT:
 	return status;
 }
 
-/**
- * Handle master radio state
- *
- * @param data The master radio state stored in a pointer
+/** Array of dbus message handlers
  */
-static void master_radio_enabled_trigger(gconstpointer data)
+static mce_dbus_handler_t radiostates_dbus_handlers[] =
 {
-	gulong new_radio_states;
-
-	if (GPOINTER_TO_UINT(data) != 0)
-		new_radio_states = (radio_states | MCE_RADIO_STATE_MASTER);
-	else
-		new_radio_states = (radio_states & ~MCE_RADIO_STATE_MASTER);
-
-	/* If we fail to write the radio states, use the old states */
-	if( !save_radio_states(active_radio_states, radio_states) )
-		new_radio_states = radio_states;
-
-	if (radio_states != new_radio_states) {
-		set_radio_states(new_radio_states, MCE_RADIO_STATE_MASTER);
-		send_radio_states(NULL);
+	/* signals - outbound (for Introspect purposes only) */
+	{
+		.interface  = MCE_SIGNAL_IF,
+			.name       = MCE_RADIO_STATES_SIG,
+			.type       = DBUS_MESSAGE_TYPE_SIGNAL,
+			.args       =
+			"    <arg name=\"radio_states\" type=\"u\"/>\n"
+	},
+	/* method calls */
+	{
+		.interface  = MCE_REQUEST_IF,
+			.name       = MCE_RADIO_STATES_GET,
+			.type       = DBUS_MESSAGE_TYPE_METHOD_CALL,
+			.callback   = mrs_dbus_get_radio_states_cb,
+			.args       =
+			"    <arg direction=\"out\" name=\"radio_states\" type=\"u\"/>\n"
+	},
+	{
+		.interface  = MCE_REQUEST_IF,
+			.name       = MCE_RADIO_STATES_CHANGE_REQ,
+			.type       = DBUS_MESSAGE_TYPE_METHOD_CALL,
+			.callback   = mrs_dbus_set_radio_states_cb,
+			.privileged = true,
+			.args       =
+			"    <arg direction=\"in\" name=\"radio_states\" type=\"u\"/>\n"
+			"    <arg direction=\"in\" name=\"states_to_chage\" type=\"u\"/>\n"
+	},
+	/* sentinel */
+	{
+		.interface = 0
 	}
+};
+
+/** Add dbus handlers
+ */
+static void
+mrs_dbus_init(void)
+{
+	mce_dbus_handler_register_array(radiostates_dbus_handlers);
+}
+
+/** Remove dbus handlers
+ */
+static void
+mrs_dbus_quit(void)
+{
+	mce_dbus_handler_unregister_array(radiostates_dbus_handlers);
 }
 
 /* ------------------------------------------------------------------------- *
@@ -506,7 +746,7 @@ static DBusConnection *connman_bus = 0;
 static gboolean connman_running = FALSE;
 
 /** Last MCE master radio state sent to connman; initialized to invalid value */
-static gulong connman_master = ~0lu;
+static guint connman_master = ~0lu;
 
 /** Flag: query connman properties if no change signal received
  *
@@ -625,7 +865,7 @@ static void xconnman_sync_offline_to_master(void)
 {
 	if( (connman_master ^ active_radio_states) & MCE_RADIO_STATE_MASTER ) {
 		mce_log(LL_DEBUG, "sync connman OfflineMode -> mce master");
-		radio_states_change(connman_master, MCE_RADIO_STATE_MASTER);
+		mrs_modify_radio_states(connman_master, MCE_RADIO_STATE_MASTER);
 	}
 }
 
@@ -633,12 +873,12 @@ static void xconnman_sync_offline_to_master(void)
  */
 static void xconnman_sync_master_to_offline(void)
 {
-	gulong master;
+	guint master;
 
 	if( !connman_running )
 		return;
 
-	master = radio_states & MCE_RADIO_STATE_MASTER;
+	master = active_radio_states & MCE_RADIO_STATE_MASTER;
 
 	if( connman_master != master ) {
 		connman_master = master;
@@ -887,9 +1127,9 @@ static gboolean xconnman_check_service(void)
 	const char      *name = CONNMAN_SERVICE;
 
 	if( !(req = dbus_message_new_method_call(DBUS_SERVICE_DBUS,
-					   DBUS_PATH_DBUS,
-					   DBUS_INTERFACE_DBUS,
-					   "GetNameOwner")) )
+						 DBUS_PATH_DBUS,
+						 DBUS_INTERFACE_DBUS,
+						 "GetNameOwner")) )
 		goto EXIT;
 
 	if( !dbus_message_append_args(req,
@@ -1024,143 +1264,58 @@ EXIT:
 	return ack;
 }
 
-/** Array of dbus message handlers */
-static mce_dbus_handler_t radiostates_dbus_handlers[] =
-{
-	/* signals - outbound (for Introspect purposes only) */
-	{
-		.interface  = MCE_SIGNAL_IF,
-		.name       = MCE_RADIO_STATES_SIG,
-		.type       = DBUS_MESSAGE_TYPE_SIGNAL,
-		.args       =
-			"    <arg name=\"radio_states\" type=\"u\"/>\n"
-	},
-	/* method calls */
-	{
-		.interface  = MCE_REQUEST_IF,
-		.name       = MCE_RADIO_STATES_GET,
-		.type       = DBUS_MESSAGE_TYPE_METHOD_CALL,
-		.callback   = get_radio_states_dbus_cb,
-		.args       =
-			"    <arg direction=\"out\" name=\"radio_states\" type=\"u\"/>\n"
-	},
-	{
-		.interface  = MCE_REQUEST_IF,
-		.name       = MCE_RADIO_STATES_CHANGE_REQ,
-		.type       = DBUS_MESSAGE_TYPE_METHOD_CALL,
-		.callback   = req_radio_states_change_dbus_cb,
-		.privileged = true,
-		.args       =
-			"    <arg direction=\"in\" name=\"radio_states\" type=\"u\"/>\n"
-			"    <arg direction=\"in\" name=\"states_to_chage\" type=\"u\"/>\n"
-	},
-	/* sentinel */
-	{
-		.interface = 0
-	}
-};
+/* ========================================================================= *
+ * G_MODULE
+ * ========================================================================= */
 
-/** Add dbus handlers
- */
-static void mce_radiostates_init_dbus(void)
-{
-	mce_dbus_handler_register_array(radiostates_dbus_handlers);
-}
-
-/** Remove dbus handlers
- */
-static void mce_radiostates_quit_dbus(void)
-{
-	mce_dbus_handler_unregister_array(radiostates_dbus_handlers);
-}
-
-/** Array of datapipe handlers */
-static datapipe_handler_t mce_radiostates_datapipe_handlers[] =
-{
-	// output triggers
-	{
-		.datapipe  = &master_radio_enabled_pipe,
-		.output_cb = master_radio_enabled_trigger,
-	},
-	// sentinel
-	{
-		.datapipe = 0,
-	}
-};
-
-static datapipe_bindings_t mce_radiostates_datapipe_bindings =
-{
-	.module   = "mce_radiostates",
-	.handlers = mce_radiostates_datapipe_handlers,
-};
-
-/** Append triggers/filters to datapipes
- */
-static void mce_radiostates_datapipe_init(void)
-{
-	mce_datapipe_init_bindings(&mce_radiostates_datapipe_bindings);
-}
-
-/** Remove triggers/filters from datapipes
- */
-static void mce_radiostates_datapipe_quit(void)
-{
-	mce_datapipe_quit_bindings(&mce_radiostates_datapipe_bindings);
-}
-
-/**
- * Init function for the radio states module
+/** Init function for the radio states module
  *
- * @todo XXX status needs to be set on error!
+ * @param module (Unused)
  *
- * @param module Unused
  * @return NULL on success, a string with an error message on failure
  */
-G_MODULE_EXPORT const gchar *g_module_check_init(GModule *module);
-const gchar *g_module_check_init(GModule *module)
+G_MODULE_EXPORT const gchar *
+g_module_check_init(GModule *module)
 {
 	(void)module;
 
-	/* If we fail to restore the radio states, default to offline */
-	if( !restore_radio_states(&active_radio_states, &radio_states) &&
-	    !restore_default_radio_states(&active_radio_states, &radio_states) ) {
-		active_radio_states = radio_states = 0;
-	}
-
-	mce_log(LL_DEBUG, "active_radio_states: %lx, radio_states: %lx",
-		active_radio_states, radio_states);
+	/* Read persistent values */
+	mrs_restore_radio_states();
 
 	/* Append triggers/filters to datapipes */
-	mce_radiostates_datapipe_init();
+	mrs_datapipe_init();
 
 	/* Add dbus handlers */
-	mce_radiostates_init_dbus();
+	mrs_dbus_init();
 
 	if( !xconnman_init() )
 		mce_log(LL_WARN, "failed to set up connman mirroring");
 
+	/* Process and broadcast initial state */
+	mrs_datapipe_update_master_radio_enabled();
+	mrs_dbus_send_radio_states(NULL);
+
 	return NULL;
 }
 
-/**
- * Exit function for the radio states module
+/** Exit function for the radio states module
  *
- * @todo D-Bus unregistration
- *
- * @param module Unused
+ * @param module (Unused)
  */
-G_MODULE_EXPORT void g_module_unload(GModule *module);
-void g_module_unload(GModule *module)
+G_MODULE_EXPORT void
+g_module_unload(GModule *module)
 {
 	(void)module;
 
 	/* Remove dbus handlers */
-	mce_radiostates_quit_dbus();
+	mrs_dbus_quit();
 
 	xconnman_quit();
 
 	/* Remove triggers/filters from datapipes */
-	mce_radiostates_datapipe_quit();
+	mrs_datapipe_quit();
+
+	mrs_cancel_radio_state_sync();
 
 	return;
 }
