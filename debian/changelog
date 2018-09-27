@@ -1,3 +1,9 @@
+mce (1.95.2) precise; urgency=low
+
+  * [radiostates] Rewrite active/saved radio states handling. Fixes JB#43030
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 27 Sep 2018 14:33:01 +0300
+
 mce (1.95.1) precise; urgency=low
 
   * [datapipe] Mass rename datatypes. JB#22475
