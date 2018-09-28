@@ -5413,6 +5413,9 @@ static gboolean mdy_waitfb_thread_start(waitfb_t *self)
 
     mdy_waitfb_thread_stop(self);
 
+    if( lwl_probe() == SUSPEND_TYPE_AUTO )
+        goto EXIT;
+
     if( access(self->wake_path, F_OK) == -1 ||
         access(self->sleep_path, F_OK) == -1 )
         goto EXIT;
