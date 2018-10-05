@@ -1,3 +1,10 @@
+mce (1.95.3) precise; urgency=low
+
+  * [suspend] Expose suspend type within mce. JB#42611
+  * [display] Workaround state machine freeze on unblank. Fixes JB#42611
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 05 Oct 2018 11:58:55 +0300
+
 mce (1.95.2) precise; urgency=low
 
   * [radiostates] Rewrite active/saved radio states handling. Fixes JB#43030
