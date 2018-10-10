@@ -113,6 +113,9 @@ static const char *repr_bool  (bool val);
  * ------------------------------------------------------------------------- */
 
 static void     bsf_datapipe_shutting_down_cb(gconstpointer data);
+static void     bsf_datapipe_heartbeat_event_cb(gconstpointer data);
+static void     bsf_datapipe_usb_cable_state_cb(gconstpointer data);
+static void     bsf_datapipe_resume_detected_event_cb(gconstpointer data);
 
 static void     bsf_datapipe_init(void);
 static void     bsf_datapipe_quit(void);
@@ -408,6 +411,58 @@ EXIT:
     return;
 }
 
+/** Change notifications for heartbeat_event_pipe
+ */
+static void bsf_datapipe_heartbeat_event_cb(gconstpointer data)
+{
+    (void)data;
+
+    mce_log(LL_DEBUG, "heartbeat");
+
+    /* HACK: Force all props to be reread on system heartbeat
+     *       i.e. periodically, when the device is awake anyway,
+     */
+    sfsctl_schedule_reread();
+}
+
+/** USB cable status; assume disconnected */
+static usb_cable_state_t usb_cable_state = USB_CABLE_UNDEF;
+
+/** Change notifications for usb_cable_state
+ */
+static void bsf_datapipe_usb_cable_state_cb(gconstpointer data)
+{
+    usb_cable_state_t prev = usb_cable_state;
+
+    usb_cable_state = GPOINTER_TO_INT(data);
+
+    if( prev == usb_cable_state )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "usb_cable_state = %s -> %s",
+            usb_cable_state_repr(prev),
+            usb_cable_state_repr(usb_cable_state));
+
+    /* HACK: Force all props to be reread when usb cable
+     *       state change is reported by usb-moded.
+     */
+    sfsctl_schedule_reread();
+
+EXIT:
+    return;
+}
+
+/** Resumed from suspend notification */
+static void bsf_datapipe_resume_detected_event_cb(gconstpointer data)
+{
+    (void) data;
+
+    mce_log(LL_DEBUG, "resume detected");
+
+    /* HACK: Force all props to be reread on resume */
+    sfsctl_schedule_reread();
+}
+
 /** Array of datapipe handlers */
 static datapipe_handler_t bsf_datapipe_handlers[] =
 {
@@ -415,6 +470,18 @@ static datapipe_handler_t bsf_datapipe_handlers[] =
     {
         .datapipe  = &shutting_down_pipe,
         .output_cb = bsf_datapipe_shutting_down_cb,
+    },
+    {
+        .datapipe  = &heartbeat_event_pipe,
+        .output_cb = bsf_datapipe_heartbeat_event_cb,
+    },
+    {
+        .datapipe  = &usb_cable_state_pipe,
+        .output_cb = bsf_datapipe_usb_cable_state_cb,
+    },
+    {
+        .datapipe  = &resume_detected_event_pipe,
+        .output_cb = bsf_datapipe_resume_detected_event_cb,
     },
 
     // sentinel
