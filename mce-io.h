@@ -168,4 +168,8 @@ gboolean mce_io_update_file_atomic(const char *path,
 				   const void *data, size_t size,
 				   mode_t mode, gboolean keep_backup);
 
+/* Resume from suspend detection */
+void mce_io_init_resume_timer(void);
+void mce_io_quit_resume_timer(void);
+
 #endif /* _MCE_IO_H_ */

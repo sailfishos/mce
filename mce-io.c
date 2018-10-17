@@ -25,10 +25,13 @@
 #include "mce.h"
 #include "mce-log.h"
 #include "mce-lib.h"
+#include "mce-wakelock.h"
 
 #ifdef ENABLE_WAKELOCKS
 # include "libwakelock.h"
 #endif
+
+#include <sys/timerfd.h>
 
 #include <unistd.h>
 #include <inttypes.h>
@@ -37,6 +40,10 @@
 #include <fcntl.h>
 
 #include <glib/gstdio.h>
+
+#ifndef  TFD_TIMER_CANCELON_SET
+# define TFD_TIMER_CANCELON_SET (1<<1)
+#endif
 
 /* ========================================================================= *
  * CONSTANTS
@@ -93,6 +100,11 @@ static GSList *file_monitors = NULL;
 
 static void    io_detect_resume  (void);
 
+static gboolean     mce_io_resume_timer_cb    (GIOChannel *chn, GIOCondition cnd, gpointer aptr);
+static bool         mce_io_prime_resume_timer (void);
+void                mce_io_init_resume_timer  (void);
+void                mce_io_quit_resume_timer  (void);
+
 // GLIB_IO_HELPERS
 
 static const char *io_condition_repr (GIOCondition cond);
@@ -125,6 +137,7 @@ int                  mce_io_mon_get_fd                  (const mce_io_mon_t *iom
 
 // MISC_UTILS
 
+guint           mce_io_add_watch                        (int fd, bool close_on_unref, GIOCondition cnd, GIOFunc io_cb, gpointer aptr);
 gboolean        mce_close_file                          (const gchar *const file, FILE **fp);
 gboolean        mce_read_chunk_from_file                (const gchar *const file, void **data, gssize *len, int flags);
 gboolean        mce_read_string_from_file               (const gchar *const file, gchar **string);
@@ -178,6 +191,166 @@ static void io_detect_resume(void)
 
 EXIT:
 	return;
+}
+
+/** Timerfd we use for detecting resume
+ */
+static int mce_io_resume_timer_fd = -1;
+
+/** Glib io watch for mce_io_resume_timer_fd
+ */
+static guint mce_io_resume_timer_id = 0;
+
+/** Virtual wakelock used for protecting resume timer wakeups
+ */
+static const char mce_io_resume_timer_wakelock[] = "mce_io_resume_timer";
+
+/** Glib io callback for mce_io_resume_timer_fd
+ */
+static gboolean
+mce_io_resume_timer_cb(GIOChannel  *chn, GIOCondition cnd, gpointer aptr)
+{
+	(void)chn;
+	(void)aptr;
+
+	/* Deny suspending while handling timer wakeup */
+	mce_wakelock_obtain(mce_io_resume_timer_wakelock, -1);
+
+	gboolean result = G_SOURCE_REMOVE;
+
+	if( mce_io_resume_timer_fd == -1 || mce_io_resume_timer_id == 0 ) {
+		mce_log(LL_WARN, "stray resume timer wakeup");
+		goto EXIT;
+	}
+
+	if( cnd & ~G_IO_IN ) {
+		mce_log(LL_CRIT, "unexpected resume timer wakeup: %s",
+			io_condition_repr(cnd));
+		goto EXIT;
+	}
+
+	/* Read trigger count. Expected result is ECANCELED */
+	uint64_t cnt = 0;
+	int res = read(mce_io_resume_timer_fd, &cnt, sizeof cnt);
+
+	if( res == -1 ) {
+		if( errno == EAGAIN || errno == EINTR ) {
+			/* Silentry ignore temporary errors */
+		}
+		else if( errno == ECANCELED ) {
+			/* The expected error */
+			mce_log(LL_DEBUG, "resume timer wakeup");
+			io_detect_resume();
+			if( !mce_io_prime_resume_timer() )
+				goto EXIT;
+		}
+		else {
+			/* Some unexpected error */
+			mce_log(LL_CRIT, "can't read resume timer: %m");
+			goto EXIT;
+		}
+	}
+	else {
+		/* Silentry ignore timer actually triggering */
+		if( !mce_io_prime_resume_timer() )
+			goto EXIT;
+	}
+
+	result = G_SOURCE_CONTINUE;
+
+EXIT:
+	if( result != G_SOURCE_CONTINUE && mce_io_resume_timer_id ) {
+		mce_log(LL_CRIT, "disabling resume timer");
+		mce_io_resume_timer_id = 0;
+		mce_io_quit_resume_timer();
+	}
+
+	mce_wakelock_release(mce_io_resume_timer_wakelock);
+
+	return result;
+}
+
+/** Program resume timer fd
+ */
+static bool
+mce_io_prime_resume_timer(void)
+{
+	bool ack = false;
+
+	if( mce_io_resume_timer_fd == -1 )
+		goto EXIT;
+
+	/* Use dummy interval as we are basically only interested in
+	 * getting ECANCELED when CLOCK_REALTIME is adjusted due to
+	 * device resuming from suspend.
+	 */
+	struct itimerspec its = { };
+	int flags = TFD_TIMER_ABSTIME | TFD_TIMER_CANCELON_SET;
+	if( timerfd_settime(mce_io_resume_timer_fd, flags, &its, 0) == -1 ) {
+		mce_log(LL_WARN, "can't program resume timer: %m");
+		goto EXIT;
+	}
+
+	ack = true;
+
+EXIT:
+	return ack;
+}
+
+/** Create resume timer fd
+ */
+void
+mce_io_init_resume_timer(void)
+{
+	bool ack = false;
+
+	/* Create realtime clock timerfd */
+	int clockid = CLOCK_REALTIME;
+	int flags = O_NONBLOCK | O_CLOEXEC;
+	mce_io_resume_timer_fd = timerfd_create(clockid, flags);
+
+	if( mce_io_resume_timer_fd == -1 ) {
+		mce_log(LL_WARN, "timerfd_create: %m");
+		goto EXIT;
+	}
+
+	/* Program dummy wakeup time */
+	if( !mce_io_prime_resume_timer() )
+		goto EXIT;
+
+	/* Add io watch for the timerfd */
+	mce_io_resume_timer_id = mce_io_add_watch(mce_io_resume_timer_fd,
+						  false,
+						  G_IO_IN,
+						  mce_io_resume_timer_cb,
+						  0);
+
+	if( !mce_io_resume_timer_id )
+		goto EXIT;
+
+	ack = true;
+
+EXIT:
+	if( !ack ) {
+		mce_io_quit_resume_timer();
+		mce_log(LL_WARN, "detect resume via timerfd not in use");
+	}
+}
+
+/** Delete resume timer fd
+ */
+void
+mce_io_quit_resume_timer(void)
+{
+	if( mce_io_resume_timer_id ) {
+		g_source_remove(mce_io_resume_timer_id),
+			mce_io_resume_timer_id = 0;
+	}
+
+	if( mce_io_resume_timer_fd != -1 ) {
+		close(mce_io_resume_timer_fd),
+			mce_io_resume_timer_fd = -1;
+	}
 }
 
 /* ========================================================================= *
@@ -1104,6 +1277,40 @@ void *mce_io_mon_get_user_data(const mce_io_mon_t *iomon)
 /* ========================================================================= *
  * MISC_UTILS
  * ========================================================================= */
+
+/** Helper for creating I/O watch for file descriptor
+ *
+ * @param fd              File descriptor for which to add glib io watch
+ * @param close_on_unref  True to transfer fd owhership to io watch
+ * @param cnd             Condition bitmask
+ * @param io_cb           Callback function
+ * @param aptr            User data to pass to the callback
+ *
+ * @return wath id on success, or 0 on failure
+ */
+guint
+mce_io_add_watch(int fd, bool close_on_unref,
+		 GIOCondition cnd, GIOFunc io_cb, gpointer aptr)
+{
+	guint         wid = 0;
+	GIOChannel   *chn = 0;
+
+	if( !(chn = g_io_channel_unix_new(fd)) )
+		goto cleanup;
+
+	g_io_channel_set_close_on_unref(chn, close_on_unref);
+
+	cnd |= G_IO_ERR | G_IO_HUP | G_IO_NVAL;
+
+	if( !(wid = g_io_add_watch(chn, cnd, io_cb, aptr)) )
+		goto cleanup;
+
+cleanup:
+	if( chn != 0 ) g_io_channel_unref(chn);
+
+	return wid;
+
+}
 
 /**
  * Helper function for closing files that checks for NULL,

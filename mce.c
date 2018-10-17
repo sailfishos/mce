@@ -24,6 +24,7 @@
  */
 
 #include "mce.h"
+#include "mce-io.h"
 #include "mce-log.h"
 #include "mce-common.h"
 #include "mce-conf.h"
@@ -1141,6 +1142,9 @@ int main(int argc, char **argv)
 		g_idle_add(mce_auto_exit_cb, 0);
 	}
 
+	/* Use timerfd to detect resume from suspend */
+	mce_io_init_resume_timer();
+
 	/* Run the main loop */
 	g_main_loop_run(mainloop);
 
@@ -1148,6 +1152,8 @@ int main(int argc, char **argv)
 	 * either because we requested or because of an error
 	 */
 EXIT:
+	mce_io_quit_resume_timer();
+
 	/* Unload all modules */
 	mce_modules_exit();
 
