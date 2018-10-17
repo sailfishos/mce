@@ -1,3 +1,9 @@
+mce (1.95.4) precise; urgency=low
+
+  * [mce-io] Augment resume detection with timerfd source. Fixes JB#43297
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 17 Oct 2018 09:07:46 +0300
+
 mce (1.95.3) precise; urgency=low
 
   * [suspend] Expose suspend type within mce. JB#42611
