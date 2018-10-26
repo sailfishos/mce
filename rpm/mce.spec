@@ -25,6 +25,7 @@ BuildRequires:  pkgconfig(libsystemd-daemon)
 BuildRequires:  kernel-headers >= 2.6.32
 BuildRequires:  systemd
 BuildRequires:  pkgconfig(usb_moded)
+BuildRequires:  pkgconfig(libudev)
 # systemd has /etc/rpm/macros.systemd
 # Automatically genereted libglib-2.0.so.0 dependency is not enough
 Requires: glib2 >= 2.36.0

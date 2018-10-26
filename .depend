@@ -534,6 +534,26 @@ modules/battery-statefs.pic.o:\
 	mce-log.h\
 	mce.h\
 
+modules/battery-udev.o:\
+	modules/battery-udev.c\
+	datapipe.h\
+	mce-conf.h\
+	mce-io.h\
+	mce-lib.h\
+	mce-log.h\
+	mce-wakelock.h\
+	mce.h\
+
+modules/battery-udev.pic.o:\
+	modules/battery-udev.c\
+	datapipe.h\
+	mce-conf.h\
+	mce-io.h\
+	mce-lib.h\
+	mce-log.h\
+	mce-wakelock.h\
+	mce.h\
+
 modules/battery-upower.o:\
 	modules/battery-upower.c\
 	builtin-gconf.h\
