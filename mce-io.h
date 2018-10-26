@@ -24,6 +24,7 @@
 #include <sys/stat.h>
 
 #include <stdio.h>
+#include <stdbool.h>
 
 #include <glib.h>
 
@@ -171,5 +172,9 @@ gboolean mce_io_update_file_atomic(const char *path,
 /* Resume from suspend detection */
 void mce_io_init_resume_timer(void);
 void mce_io_quit_resume_timer(void);
+
+guint mce_io_add_watch(int fd, bool close_on_unref, GIOCondition cnd, GIOFunc io_cb, gpointer aptr);
+const char *mce_io_condition_repr (GIOCondition cond);
+const char *mce_io_status_name    (GIOStatus io_status);
 
 #endif /* _MCE_IO_H_ */

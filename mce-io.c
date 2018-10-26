@@ -107,8 +107,8 @@ void                mce_io_quit_resume_timer  (void);
 
 // GLIB_IO_HELPERS
 
-static const char *io_condition_repr (GIOCondition cond);
-static const char *io_status_name    (GIOStatus io_status);
+const char *mce_io_condition_repr (GIOCondition cond);
+const char *mce_io_status_name    (GIOStatus io_status);
 
 // IO_MONITOR
 
@@ -225,7 +225,7 @@ mce_io_resume_timer_cb(GIOChannel  *chn, GIOCondition cnd, gpointer aptr)
 
 	if( cnd & ~G_IO_IN ) {
 		mce_log(LL_CRIT, "unexpected resume timer wakeup: %s",
-			io_condition_repr(cnd));
+			mce_io_condition_repr(cnd));
 		goto EXIT;
 	}
 
@@ -364,7 +364,7 @@ mce_io_quit_resume_timer(void)
  *
  * @return Names of bits set, separated with " | "
  */
-static const char *io_condition_repr(GIOCondition cond)
+const char *mce_io_condition_repr(GIOCondition cond)
 {
 	static const struct
 	{
@@ -416,7 +416,7 @@ static const char *io_condition_repr(GIOCondition cond)
  *
  * @return Name of the status enum, without the common prefix
  */
-static const char *io_status_name(GIOStatus io_status)
+const char *mce_io_status_name(GIOStatus io_status)
 {
 	const char *status_name = "UNKNOWN";
 	switch (io_status) {
@@ -712,7 +712,7 @@ static gboolean mce_io_mon_read_chunks(GIOChannel *source,
 	}
 
 	mce_log(LL_INFO, "%s: status=%s, data=%d/%d=%d+%d, skipped=%d",
-		iomon->path, io_status_name(io_status),
+		iomon->path, mce_io_status_name(io_status),
 		bytes_have, (int)iomon->chunk_size, chunks_have,
 		bytes_have % (int)iomon->chunk_size, chunks_have - chunks_done);
 
@@ -828,7 +828,7 @@ static gboolean mce_io_mon_input_cb(GIOChannel *source,
 	// error conditions
 	if( condition & (G_IO_ERR | G_IO_HUP | G_IO_NVAL) ) {
 		mce_log(LL_ERR, "iomon '%s' got %s", iomon->path,
-			io_condition_repr(condition));
+			mce_io_condition_repr(condition));
 		keep_going = FALSE;
 		goto EXIT;
 	}
