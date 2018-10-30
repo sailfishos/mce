@@ -161,6 +161,7 @@ MODULES += $(MODULE_DIR)/battery-bme.so
 MODULES += $(MODULE_DIR)/battery-upower.so
 MODULES += $(MODULE_DIR)/bluetooth.so
 MODULES += $(MODULE_DIR)/battery-statefs.so
+MODULES += $(MODULE_DIR)/battery-udev.so
 MODULES += $(MODULE_DIR)/buttonbacklight.so
 MODULES += $(MODULE_DIR)/display.so
 MODULES += $(MODULE_DIR)/usbmode.so
@@ -345,6 +346,7 @@ MODULE_PKG_NAMES += gmodule-2.0
 MODULE_PKG_NAMES += dbus-1
 MODULE_PKG_NAMES += dbus-glib-1
 MODULE_PKG_NAMES += usb_moded
+MODULE_PKG_NAMES += libudev
 
 MODULE_PKG_CFLAGS := $(shell $(PKG_CONFIG) --cflags $(MODULE_PKG_NAMES))
 MODULE_PKG_LDLIBS := $(shell $(PKG_CONFIG) --libs   $(MODULE_PKG_NAMES))
@@ -583,6 +585,7 @@ NORMALIZE_USES_SPC =\
 	modules/audiorouting.c\
 	modules/battery-upower.c\
 	modules/battery-statefs.c\
+	modules/battery-udev.c\
 	modules/bluetooth.c\
 	modules/buttonbacklight.c\
 	modules/callstate.c\
@@ -660,6 +663,7 @@ NORMALIZE_UNKNOWN = $(filter-out $(NORMALIZE_KNOWN), $(SOURCEFILES_ALL))
 
 normalize::
 	normalize_whitespace -M Makefile
+	normalize_whitespace -a inifiles/*.ini config/*.conf
 	normalize_whitespace -t -b -e -s $(NORMALIZE_USES_SPC)
 	normalize_whitespace -T -e -s $(NORMALIZE_USES_TAB)
 ifneq ($(NORMALIZE_UNKNOWN),)
