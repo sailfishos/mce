@@ -1,3 +1,10 @@
+mce (1.96.0) precise; urgency=low
+
+  * [mce-io] Make utility functions globally available
+  * [battery-udev] Add battery tracker that utilizes udev. Fixes JB#43282
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 30 Oct 2018 08:56:21 +0200
+
 mce (1.95.4) precise; urgency=low
 
   * [mce-io] Augment resume detection with timerfd source. Fixes JB#43297
