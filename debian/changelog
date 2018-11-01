@@ -1,3 +1,9 @@
+mce (1.96.1) precise; urgency=low
+
+  * [battery-statefs] Work around unreliable change notifications. JB#43282
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 01 Nov 2018 09:01:03 +0200
+
 mce (1.96.0) precise; urgency=low
 
   * [mce-io] Make utility functions globally available
