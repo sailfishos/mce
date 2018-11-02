@@ -1,3 +1,9 @@
+mce (1.97.0) precise; urgency=low
+
+  * [led] Add proximity sensor debugging patterns. JB#43690
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 02 Nov 2018 12:24:50 +0200
+
 mce (1.96.1) precise; urgency=low
 
   * [battery-statefs] Work around unreliable change notifications. JB#43282
