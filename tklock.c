@@ -977,6 +977,78 @@ EXIT:
 /** Timer id for delayed proximity uncovering */
 static guint tklock_datapipe_proximity_uncover_id = 0;
 
+/** Re-evaluate proximity sensor debugging led pattern state
+ */
+static void tklock_datapipe_proximity_eval_led(void)
+{
+    typedef enum {
+        PROXIMITY_LED_STATE_UNDEFINED  = 0,
+        PROXIMITY_LED_STATE_COVERED    = 1,
+        PROXIMITY_LED_STATE_UNCOVERING = 2,
+        PROXIMITY_LED_STATE_UNCOVERED  = 3,
+    } proximity_led_state_t;
+
+    static proximity_led_state_t prev = PROXIMITY_LED_STATE_UNDEFINED;
+
+    /* Evaluate what led pattern should be active */
+    proximity_led_state_t curr = PROXIMITY_LED_STATE_UNDEFINED;
+
+    if( proximity_sensor_effective == COVER_OPEN )
+        curr = PROXIMITY_LED_STATE_UNCOVERED;
+    else if( proximity_sensor_actual == COVER_OPEN )
+        curr = PROXIMITY_LED_STATE_UNCOVERING;
+    else if( proximity_sensor_actual == COVER_CLOSED )
+        curr = PROXIMITY_LED_STATE_COVERED;
+
+    if( prev == curr )
+        goto EXIT;
+
+    /* Activate new pattern 1st, then deactivate old pattern
+     * to avoid transition via no active pattern.
+     */
+
+    switch( curr )
+    {
+    case PROXIMITY_LED_STATE_UNCOVERED:
+        datapipe_exec_full(&led_pattern_activate_pipe,
+                           MCE_LED_PATTERN_PROXIMITY_UNCOVERED);
+        break;
+    case PROXIMITY_LED_STATE_UNCOVERING:
+        datapipe_exec_full(&led_pattern_activate_pipe,
+                           MCE_LED_PATTERN_PROXIMITY_UNCOVERING);
+        break;
+    case PROXIMITY_LED_STATE_COVERED:
+        datapipe_exec_full(&led_pattern_activate_pipe,
+                           MCE_LED_PATTERN_PROXIMITY_COVERED);
+        break;
+    default:
+        break;
+    }
+
+    switch( prev )
+    {
+    case PROXIMITY_LED_STATE_UNCOVERED:
+        datapipe_exec_full(&led_pattern_deactivate_pipe,
+                           MCE_LED_PATTERN_PROXIMITY_UNCOVERED);
+        break;
+    case PROXIMITY_LED_STATE_UNCOVERING:
+        datapipe_exec_full(&led_pattern_deactivate_pipe,
+                           MCE_LED_PATTERN_PROXIMITY_UNCOVERING);
+        break;
+    case PROXIMITY_LED_STATE_COVERED:
+        datapipe_exec_full(&led_pattern_deactivate_pipe,
+                           MCE_LED_PATTERN_PROXIMITY_COVERED);
+        break;
+    default:
+        break;
+    }
+
+    prev = curr;
+
+EXIT:
+    return;
+}
+
 /** Set effective proximity state from current sensor state
  */
 static void tklock_datapipe_proximity_update(void)
@@ -990,6 +1062,7 @@ static void tklock_datapipe_proximity_update(void)
 
     proximity_sensor_effective = proximity_sensor_actual;
 
+    tklock_datapipe_proximity_eval_led();
     tklock_uiexception_rethink();
     tklock_proxlock_rethink();
     tklock_evctrl_rethink();
@@ -1070,6 +1143,8 @@ static void tklock_datapipe_proximity_sensor_actual_cb(gconstpointer data)
     mce_log(LL_DEBUG, "proximity_sensor_actual = %s -> %s",
             proximity_state_repr(prev),
             proximity_state_repr(proximity_sensor_actual));
+
+    tklock_datapipe_proximity_eval_led();
 
     /* update lpm ui proximity history using raw data */
     tklock_lpmui_update_history(proximity_sensor_actual);

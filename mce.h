@@ -117,6 +117,15 @@
 /** LED pattern used when fingerprint acquisition events are seen */
 #define MCE_LED_PATTERN_FINGERPRINT_ACQUIRED	"PatternFingerprintAcquired"
 
+/** LED pattern used when proximity sensor is covered */
+#define MCE_LED_PATTERN_PROXIMITY_COVERED	"PatternProximityCovered"
+
+/** LED pattern used during proximity sensor uncover hysteresis */
+#define MCE_LED_PATTERN_PROXIMITY_UNCOVERING	"PatternProximityUncovering"
+
+/** LED pattern used when proximity sensor is uncovered */
+#define MCE_LED_PATTERN_PROXIMITY_UNCOVERED	"PatternProximityUncovered"
+
 /** Persistent lock file for backups */
 #define MCE_SETTINGS_LOCK_FILE_PATH		G_STRINGIFY(MCE_RUN_DIR) "/restored"
 

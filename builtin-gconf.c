@@ -1563,6 +1563,21 @@ static const setting_t gconf_defaults[] =
     .def  = G_STRINGIFY(false),
   },
   {
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_PROXIMITY_COVERED,
+    .type = "b",
+    .def  = G_STRINGIFY(false),
+  },
+  {
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_PROXIMITY_UNCOVERING,
+    .type = "b",
+    .def  = G_STRINGIFY(false),
+  },
+  {
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_PROXIMITY_UNCOVERED,
+    .type = "b",
+    .def  = G_STRINGIFY(false),
+  },
+  {
     .key  = MCE_SETTING_LED_SW_BREATH_ENABLED,
     .type = "b",
     .def  = G_STRINGIFY(MCE_DEFAULT_LED_SW_BREATH_ENABLED),
