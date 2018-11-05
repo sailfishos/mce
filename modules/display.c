@@ -1679,18 +1679,6 @@ static void mdy_datapipe_display_state_next_cb(gconstpointer data)
 
     mdy_blanking_rethink_afterboot_delay();
 
-    if( mdy_stm_display_state_needs_power(display_state_next) ) {
-        /* Powered on states: Whether to send a signal or not
-         * is decided at mdy_dbus_send_display_status(). In
-         * practice only LPM_ON state gets handled from here. */
-        mdy_dbus_send_display_status(0);
-    }
-    else {
-        /* When powering off: Display state change is signaled at
-         * suitable time during transition from mdy_stm_step(). */
-        // NOP
-    }
-
     mdy_blanking_pause_evaluate_allowed();
 
 EXIT:
@@ -8942,7 +8930,8 @@ static gboolean mdy_dbus_send_display_status(DBusMessage *const method_call)
         switch( display_state_next ) {
         case MCE_DISPLAY_ON:
         case MCE_DISPLAY_DIM:
-            /* Fully powered on states can be signaled only after
+        case MCE_DISPLAY_LPM_ON:
+            /* Powered on states can be signaled only after
              * finishing the transition. */
             if( display_state_curr != display_state_next )
                 goto EXIT;
