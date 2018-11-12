@@ -1,3 +1,10 @@
+mce (1.97.2) precise; urgency=low
+
+  * [event-input] Do not skip volume key processing. JB#43764
+  * [settings] Deny keypad input device grabbing by default. Fixes JB#43764
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 12 Nov 2018 13:29:05 +0200
+
 mce (1.97.1) precise; urgency=low
 
   * [display] Omit premature display state broadcast. JB#43703
