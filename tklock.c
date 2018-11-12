@@ -1455,6 +1455,10 @@ static void tklock_datapipe_keypress_event_cb(gconstpointer const data)
 
     case KEY_VOLUMEDOWN:
     case KEY_VOLUMEUP:
+        if( datapipe_get_gint(keypad_grab_wanted_pipe) ) {
+            mce_log(LL_DEVEL, "volume key ignored");
+            break;
+        }
         mce_log(LL_DEBUG, "volume key");
         mce_tklock_begin_notification(0, "mce_volume_key",
                                       exception_length_volume, -1);
