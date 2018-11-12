@@ -2152,16 +2152,6 @@ evin_iomon_keypress_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
     }
 
     if (ev->type == EV_KEY) {
-        if( datapipe_get_gint(keypad_grab_active_pipe) ) {
-            switch( ev->code ) {
-            case KEY_VOLUMEUP:
-            case KEY_VOLUMEDOWN:
-                mce_log(LL_DEVEL, "ignore volume key event");
-                goto EXIT;
-            default:
-                break;
-            }
-        }
         if ((ev->code == KEY_SCREENLOCK) && (ev->value != 2)) {
             key_state_t key_state = ev->value ?
                 KEY_STATE_PRESSED : KEY_STATE_RELEASED;
