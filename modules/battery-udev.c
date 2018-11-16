@@ -328,7 +328,7 @@ mcebat_update(const mcebat_t *curr)
         }
 
         /* Generate activity */
-        datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(FALSE));
+        mce_datapipe_generate_activity();
     }
 
     if( prev.battery_status != curr->battery_status ) {

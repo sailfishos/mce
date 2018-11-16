@@ -118,6 +118,9 @@ void  mce_datapipe_quit         (void);
 void  mce_datapipe_init_bindings(datapipe_bindings_t *self);
 void  mce_datapipe_quit_bindings(datapipe_bindings_t *self);
 
+void  mce_datapipe_generate_activity   (void);
+void  mce_datapipe_generate_inactivity (void);
+
 /* ========================================================================= *
  * Macros
  * ========================================================================= */

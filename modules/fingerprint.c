@@ -1376,8 +1376,7 @@ fingerprint_datapipe_generate_activity(void)
     }
 
     mce_log(LL_DEBUG, "generating activity from fingerprint sensor");
-    datapipe_exec_full(&inactivity_event_pipe,
-                       GINT_TO_POINTER(FALSE));
+    mce_datapipe_generate_activity();
 
 EXIT:
     return;

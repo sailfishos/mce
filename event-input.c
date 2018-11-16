@@ -1921,8 +1921,7 @@ evin_iomon_generate_activity(struct input_event *ev, bool cooked, bool raw)
 
         if( t_cooked != t || (submode & MCE_SUBMODE_EVEATER) ) {
             t_cooked = t;
-            datapipe_exec_full(&inactivity_event_pipe,
-                               GINT_TO_POINTER(FALSE));
+            mce_datapipe_generate_activity();
         }
     }
 

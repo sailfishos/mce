@@ -1796,3 +1796,17 @@ void mce_datapipe_quit_bindings(datapipe_bindings_t *self)
     /* Remove datapipe callbacks */
     mce_datapipe_remove_handlers(self->handlers);
 }
+
+/** Helper for attempting to switch to active state
+ */
+void mce_datapipe_generate_activity(void)
+{
+    datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(FALSE));
+}
+
+/** Helper for switching to inactive state
+ */
+void mce_datapipe_generate_inactivity(void)
+{
+    datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(TRUE));
+}
