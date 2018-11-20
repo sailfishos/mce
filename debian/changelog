@@ -1,3 +1,12 @@
+mce (1.98.0) precise; urgency=low
+
+  * [datapipe] Normalize inactivity datapipe execution
+  * [buttonbacklight] Power off backlight after timeout. JB#42094
+  * [buttonbacklight] Add enablers for overriding backlight policy. JB#42094
+  * [buttonbacklight] Add setting for backlight off delay. JB#42094
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 20 Nov 2018 14:03:40 +0200
+
 mce (1.97.2) precise; urgency=low
 
   * [event-input] Do not skip volume key processing. JB#43764
