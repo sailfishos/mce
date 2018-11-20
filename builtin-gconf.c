@@ -1888,6 +1888,11 @@ static const setting_t gconf_defaults[] =
     .def  = G_STRINGIFY(MCE_DEFAULT_INACTIVITY_SHUTDOWN_DELAY),
   },
   {
+    .key  = MCE_SETTING_BUTTONBACKLIGHT_OFF_DELAY,
+    .type = "i",
+    .def  = G_STRINGIFY(MCE_DEFAULT_BUTTONBACKLIGHT_OFF_DELAY),
+  },
+  {
     .key  = NULL,
   }
 };

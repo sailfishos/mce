@@ -596,6 +596,7 @@ modules/buttonbacklight.o:\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-log.h\
+	mce-setting.h\
 	mce.h\
 
 modules/buttonbacklight.pic.o:\
@@ -606,6 +607,7 @@ modules/buttonbacklight.pic.o:\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-log.h\
+	mce-setting.h\
 	mce.h\
 
 modules/callstate.o:\

@@ -24,6 +24,7 @@
 #include "../mce-log.h"
 #include "../mce-dbus.h"
 #include "../mce-conf.h"
+#include "../mce-setting.h"
 #include "../evdev.h"
 
 #include <linux/input.h>
@@ -117,6 +118,14 @@ static void  bbl_config_init  (void);
 static void  bbl_config_quit  (void);
 
 /* ------------------------------------------------------------------------- *
+ * BBL_SETTING
+ * ------------------------------------------------------------------------- */
+
+static void  bbl_setting_cb  (GConfClient *const gcc, const guint id, GConfEntry *const entry, gpointer const data);
+static void  bbl_setting_init(void);
+static void  bbl_setting_quit(void);
+
+/* ------------------------------------------------------------------------- *
  * G_MODULE
  * ------------------------------------------------------------------------- */
 
@@ -161,6 +170,10 @@ static gchar *bbl_control_value_disable = 0;
 
 /** Timer for: Turn off backlight after user inactivity */
 static guint bbl_inactive_id = 0;
+
+/** Setting for: Button backlight off delay [ms] */
+static gint  bbl_off_delay = MCE_DEFAULT_BUTTONBACKLIGHT_OFF_DELAY;
+static guint bbl_off_delay_setting_id = 0;
 
 /* ========================================================================= *
  * BBL_SYSFS
@@ -221,8 +234,8 @@ bbl_inactive_schedule(void)
 {
     bbl_inactive_cancel();
 
-    if( backlight_state_forced == TRISTATE_UNKNOWN )
-        bbl_inactive_id = g_timeout_add(5000, bbl_inactive_cb, 0);
+    if( backlight_state_forced == TRISTATE_UNKNOWN && bbl_off_delay > 0 )
+        bbl_inactive_id = g_timeout_add(bbl_off_delay, bbl_inactive_cb, 0);
 }
 
 /* ========================================================================= *
@@ -1019,6 +1032,69 @@ bbl_config_quit(void)
 }
 
 /* ========================================================================= *
+ * BBL_SETTING
+ * ========================================================================= */
+
+/** Setting changed callback
+ *
+ * @param gcc   Unused
+ * @param id    Connection ID from gconf_client_notify_add()
+ * @param entry The modified GConf entry
+ * @param data  Unused
+ */
+static void
+bbl_setting_cb(GConfClient *const gcc, const guint id,
+                       GConfEntry *const entry, gpointer const data)
+{
+    (void)gcc;
+    (void)data;
+    (void)id;
+
+    const GConfValue *gcv = gconf_entry_get_value(entry);
+
+    if( !gcv ) {
+        mce_log(LL_DEBUG, "GConf Key `%s' has been unset",
+                gconf_entry_get_key(entry));
+        goto EXIT;
+    }
+
+    if( id == bbl_off_delay_setting_id ) {
+        gint old = bbl_off_delay;
+        bbl_off_delay = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "bbl_off_delay: %d -> %d", old, bbl_off_delay);
+        /* Restart backlight off timer */
+        bbl_state_rethink_physical();
+    }
+    else {
+        mce_log(LL_WARN, "Spurious GConf value received; confused!");
+    }
+
+EXIT:
+    return;
+}
+
+/** Get intial setting values and start tracking changes
+ */
+static void
+bbl_setting_init(void)
+{
+    mce_setting_track_int(MCE_SETTING_BUTTONBACKLIGHT_OFF_DELAY,
+                          &bbl_off_delay,
+                          MCE_DEFAULT_BUTTONBACKLIGHT_OFF_DELAY,
+                          bbl_setting_cb,
+                          &bbl_off_delay_setting_id);
+}
+
+/** Stop tracking setting changes
+ */
+static void
+bbl_setting_quit(void)
+{
+    mce_setting_notifier_remove(bbl_off_delay_setting_id),
+        bbl_off_delay_setting_id = 0;
+}
+
+/* ========================================================================= *
  * G_MODULE
  * ========================================================================= */
 
@@ -1037,6 +1113,9 @@ g_module_check_init(GModule *module)
     /* Lookup static configuration */
     bbl_config_init();
 
+    /* Start tracking dynamic configuration */
+    bbl_setting_init();
+
     /* Install datapipe hooks */
     bbl_datapipe_init();
 
@@ -1054,6 +1133,9 @@ void
 g_module_unload(GModule *module)
 {
     (void)module;
+
+    /* Stop tracking dynamic configuration */
+    bbl_setting_quit();
 
     /* Remove dbus handlers */
     bbl_dbus_quit();

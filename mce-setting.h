@@ -62,6 +62,17 @@ typedef enum
 # define MCE_DEFAULT_FPWAKEUP_THROTTLE_DELAY   250
 
 /* ========================================================================= *
+ * Button Backlight Settings
+ * ========================================================================= */
+
+/** Prefix for fingerprint setting keys */
+# define MCE_SETTING_BUTTONBACKLIGHT_PATH   "/system/osso/dsm/buttonbacklight"
+
+/** When fingerprint wakeup is allowed */
+# define MCE_SETTING_BUTTONBACKLIGHT_OFF_DELAY MCE_SETTING_BUTTONBACKLIGHT_PATH "/off_delay"
+# define MCE_DEFAULT_BUTTONBACKLIGHT_OFF_DELAY 5000 // = 5 seconds
+
+/* ========================================================================= *
  * Functions
  * ========================================================================= */
 
