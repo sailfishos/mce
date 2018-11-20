@@ -34,6 +34,7 @@
 #include <errno.h>
 
 #include <mce/dbus-names.h>
+#include <mce/mode-names.h>
 
 #include <gmodule.h>
 
@@ -45,7 +46,10 @@
 #define MODULE_NAME               "buttonbacklight"
 
 /** Maximum number of concurrent button backlight enabler clients */
-#define BBL_MAX_CLIENTS 15
+#define BBL_MAX_POLICY_CLIENTS 15
+
+/** Maximum number of concurrent button backlight mode clients */
+#define BBL_MAX_MODE_CLIENTS    1
 
 /* ========================================================================= *
  * PROTOTYPES
@@ -73,6 +77,7 @@ static void  bbl_state_set_physical    (tristate_t state);
 static void  bbl_state_set_logical     (tristate_t state);
 static void  bbl_state_rethink_physical(void);
 static void  bbl_state_rethink_logical (void);
+static void  bbl_state_set_forced      (tristate_t state);
 
 /* ------------------------------------------------------------------------- *
  * BBL_DATAPIPE
@@ -89,12 +94,16 @@ static void  bbl_datapipe_quit                  (void);
  * BBL_DBUS
  * ------------------------------------------------------------------------- */
 
-static gboolean  bbl_dbus_client_exit_cb         (DBusMessage *const sig);
-static void      bbl_dbus_add_client             (const char *dbus_name);
-static void      bbl_dbus_remove_client          (const char *dbus_name);
+static gboolean  bbl_dbus_mode_client_exit_cb    (DBusMessage *const sig);
+static void      bbl_dbus_add_mode_client        (const char *dbus_name, bool backlight_state);
+static void      bbl_dbus_remove_mode_client     (const char *dbus_name);
+static gboolean  bbl_dbus_policy_client_exit_cb  (DBusMessage *const sig);
+static void      bbl_dbus_add_policy_client      (const char *dbus_name);
+static void      bbl_dbus_remove_policy_client   (const char *dbus_name);
 static void      bbl_dbus_remove_all_clients     (void);
 static gboolean  bbl_dbus_send_backlight_state   (DBusMessage *const req);
 static gboolean  bbl_dbus_set_backlight_state_cb (DBusMessage *const req);
+static gboolean  bbl_dbus_backlight_mode_cb      (DBusMessage *const req);
 static gboolean  bbl_dbus_get_button_backlight_cb(DBusMessage *const req);
 static void      bbl_dbus_init                   (void);
 static void      bbl_dbus_quit                   (void);
@@ -127,6 +136,8 @@ static display_state_t display_state_curr = MCE_DISPLAY_UNDEF;
 /** Current submode: Initialized to invalid placeholder value */
 static submode_t submode = MCE_SUBMODE_INVALID;
 
+static tristate_t backlight_state_forced = TRISTATE_UNKNOWN;
+
 /** Current logical backlight state: unknown initially */
 static tristate_t backlight_state_logical = TRISTATE_UNKNOWN;
 
@@ -134,7 +145,10 @@ static tristate_t backlight_state_logical = TRISTATE_UNKNOWN;
 static tristate_t backlight_state_physical = TRISTATE_UNKNOWN;
 
 /** List of monitored bus clients */
-static GSList *bbl_dbus_monitored_clients = NULL;
+static GSList *bbl_dbus_monitored_policy_clients = NULL;
+
+/** List of monitored bus clients */
+static GSList *bbl_dbus_monitored_mode_clients = NULL;
 
 /** Sysfs control file path for backlight */
 static gchar *bbl_control_path = 0;
@@ -206,7 +220,9 @@ static void
 bbl_inactive_schedule(void)
 {
     bbl_inactive_cancel();
-    bbl_inactive_id = g_timeout_add(5000, bbl_inactive_cb, 0);
+
+    if( backlight_state_forced == TRISTATE_UNKNOWN )
+        bbl_inactive_id = g_timeout_add(5000, bbl_inactive_cb, 0);
 }
 
 /* ========================================================================= *
@@ -293,8 +309,14 @@ bbl_state_rethink_logical(void)
     /* Assume button backlight needs to be disabled */
     tristate_t state = TRISTATE_FALSE;
 
+    if( backlight_state_forced != TRISTATE_UNKNOWN ) {
+        state = backlight_state_forced;
+        mce_log(LL_DEBUG, "forced state: %s", tristate_repr(state));
+        goto EXIT;
+    }
+
     /* Any clients that have requested enabling ? */
-    if( bbl_dbus_monitored_clients == 0 )
+    if( bbl_dbus_monitored_policy_clients == 0 )
         goto EXIT;
 
     /* Sane sysfs config has been defined ? */
@@ -326,7 +348,36 @@ bbl_state_rethink_logical(void)
     state = TRISTATE_TRUE;
 
 EXIT:
+    mce_log(LL_DEBUG, "applied state: %s", tristate_repr(state));
     bbl_state_set_logical(state);
+}
+
+/** Set current button backlight state
+ *
+ * @param state one of TRISTATE_TRUE, TRISTATE_FALSE, or TRISTATE_UNKNOWN
+ */
+static void
+bbl_state_set_forced(tristate_t state)
+{
+    if( backlight_state_forced == state )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "backlight_state_forced: %s -> %s",
+            tristate_repr(backlight_state_forced),
+            tristate_repr(state));
+    backlight_state_forced = state;
+
+    /* Possible logical state override */
+    bbl_state_rethink_logical();
+
+    /* Possible inactivity timeout override */
+    bbl_state_rethink_physical();
+
+    /* Broadcast state if changed */
+    bbl_dbus_send_backlight_state(0);
+
+EXIT:
+    return;
 }
 
 /* ========================================================================= *
@@ -431,7 +482,14 @@ static void bbl_datapipe_user_activity_event_cb(gconstpointer data)
                 evdev_get_event_type_name(ev->type),
                 evdev_get_event_code_name(ev->type, ev->code),
                 ev->value);
-        bbl_state_rethink_physical();
+        switch( ev->code ) {
+        case BTN_TOUCH:
+            // ignore touch screen events
+            break;
+        default:
+            bbl_state_rethink_physical();
+            break;
+        }
         break;
     default:
         break;
@@ -502,7 +560,7 @@ bbl_datapipe_quit(void)
  * @return TRUE
  */
 static gboolean
-bbl_dbus_client_exit_cb(DBusMessage *const sig)
+bbl_dbus_mode_client_exit_cb(DBusMessage *const sig)
 {
     DBusError   error     = DBUS_ERROR_INIT;
     const char *dbus_name = 0;
@@ -520,7 +578,7 @@ bbl_dbus_client_exit_cb(DBusMessage *const sig)
     }
 
     if( !*new_owner )
-        bbl_dbus_remove_client(dbus_name);
+        bbl_dbus_remove_mode_client(dbus_name);
 
 EXIT:
     dbus_error_free(&error);
@@ -530,14 +588,94 @@ EXIT:
 /** Register a client that has enabled button backlight
  */
 static void
-bbl_dbus_add_client(const char *dbus_name)
+bbl_dbus_add_mode_client(const char *dbus_name, bool backlight_state)
 {
     gssize rc = mce_dbus_owner_monitor_add(dbus_name,
-                                           bbl_dbus_client_exit_cb,
-                                           &bbl_dbus_monitored_clients,
-                                           BBL_MAX_CLIENTS);
+                                           bbl_dbus_mode_client_exit_cb,
+                                           &bbl_dbus_monitored_mode_clients,
+                                           BBL_MAX_MODE_CLIENTS);
+    if( rc < 0 ) {
+        mce_log(LL_WARN, "client %s ignored; BBL_MAX_MODE_CLIENTS exceeded",
+                dbus_name);
+      goto EXIT;
+    }
+
+    if( rc > 0 )
+        mce_log(LL_DEBUG, "mode client %s added for tracking", dbus_name);
+    else
+        mce_log(LL_DEBUG, "mode client %s already tracked", dbus_name);
+
+    bbl_state_set_forced(backlight_state ? TRISTATE_TRUE : TRISTATE_FALSE);
+
+EXIT:
+    return;
+}
+
+/** Unregister a client that has enabled button backlight
+ */
+static void
+bbl_dbus_remove_mode_client(const char *dbus_name)
+{
+    gssize rc = mce_dbus_owner_monitor_remove(dbus_name,
+                                              &bbl_dbus_monitored_mode_clients);
+
     if( rc < 0 )
-        mce_log(LL_WARN, "client %s ignored; BBL_MAX_CLIENTS exceeded",
+        mce_log(LL_WARN, "client %s ignored; is not tracked",dbus_name);
+    else
+        mce_log(LL_DEBUG, "mode client %s removed from tracking", dbus_name);
+
+    if( rc == 0 )
+        bbl_state_set_forced(TRISTATE_UNKNOWN);
+
+    bbl_state_rethink_logical();
+}
+
+/** Callback used for monitoring button backlight clients
+ *
+ * If processes that have enabled button backlight drop out
+ * from dbus, treat it as if they had asked for backlight disable.
+ *
+ * @param sig NameOwnerChanged D-Bus signal
+ *
+ * @return TRUE
+ */
+static gboolean
+bbl_dbus_policy_client_exit_cb(DBusMessage *const sig)
+{
+    DBusError   error     = DBUS_ERROR_INIT;
+    const char *dbus_name = 0;
+    const char *old_owner = 0;
+    const char *new_owner = 0;
+
+    if( !dbus_message_get_args(sig, &error,
+                               DBUS_TYPE_STRING, &dbus_name,
+                               DBUS_TYPE_STRING, &old_owner,
+                               DBUS_TYPE_STRING, &new_owner,
+                               DBUS_TYPE_INVALID) ) {
+        mce_log(LL_ERR, "Failed to parse NameOwnerChanged: %s: %s",
+                error.name, error.message);
+        goto EXIT;
+    }
+
+    if( !*new_owner )
+        bbl_dbus_remove_policy_client(dbus_name);
+
+EXIT:
+    dbus_error_free(&error);
+    return TRUE;
+}
+
+/** Register a client that has enabled button backlight
+ */
+static void
+bbl_dbus_add_policy_client(const char *dbus_name)
+{
+    gssize rc = mce_dbus_owner_monitor_add(dbus_name,
+                                           bbl_dbus_policy_client_exit_cb,
+                                           &bbl_dbus_monitored_policy_clients,
+                                           BBL_MAX_POLICY_CLIENTS);
+    if( rc < 0 )
+        mce_log(LL_WARN, "client %s ignored; BBL_MAX_POLICY_CLIENTS exceeded",
                 dbus_name);
     else if( rc > 0 )
         mce_log(LL_DEBUG, "client %s added for tracking", dbus_name);
@@ -550,10 +688,10 @@ bbl_dbus_add_client(const char *dbus_name)
 /** Unregister a client that has enabled button backlight
  */
 static void
-bbl_dbus_remove_client(const char *dbus_name)
+bbl_dbus_remove_policy_client(const char *dbus_name)
 {
     gssize rc = mce_dbus_owner_monitor_remove(dbus_name,
-                                              &bbl_dbus_monitored_clients);
+                                              &bbl_dbus_monitored_policy_clients);
 
     if( rc < 0 )
         mce_log(LL_WARN, "client %s ignored; is not tracked",dbus_name);
@@ -568,7 +706,8 @@ bbl_dbus_remove_client(const char *dbus_name)
 static void
 bbl_dbus_remove_all_clients(void)
 {
-    mce_dbus_owner_monitor_remove_all(&bbl_dbus_monitored_clients);
+    mce_dbus_owner_monitor_remove_all(&bbl_dbus_monitored_policy_clients);
+    mce_dbus_owner_monitor_remove_all(&bbl_dbus_monitored_mode_clients);
     bbl_state_rethink_logical();
 }
 
@@ -585,6 +724,9 @@ bbl_dbus_send_backlight_state(DBusMessage *const req)
     tristate_t        curr = backlight_state_logical;
     dbus_bool_t        arg = FALSE;
     DBusMessage       *msg = 0;
+
+    if( backlight_state_forced != TRISTATE_UNKNOWN )
+        curr = backlight_state_forced;
 
     /* Externally TRISTATE_UNKNOWN is signaled as TRISTATE_FALSE */
     if( curr == TRISTATE_TRUE )
@@ -654,9 +796,62 @@ bbl_dbus_set_backlight_state_cb(DBusMessage *const req)
     }
 
     if( enable )
-        bbl_dbus_add_client(sender);
+        bbl_dbus_add_policy_client(sender);
     else
-        bbl_dbus_remove_client(sender);
+        bbl_dbus_remove_policy_client(sender);
+
+    if( !dbus_message_get_no_reply(req) ) {
+        if( !rsp )
+            rsp = dbus_new_method_reply(req);
+        dbus_send_message(rsp), rsp = 0;
+    }
+
+    if( rsp )
+        dbus_message_unref(rsp);
+
+    dbus_error_free(&err);
+
+    return TRUE;
+}
+
+/** D-Bus callback for the button backlight state change request method call
+ *
+ * @param req  Method call message to handle
+ *
+ * @return TRUE
+ */
+static gboolean
+bbl_dbus_backlight_mode_cb(DBusMessage *const req)
+{
+    const char    *sender = dbus_message_get_sender(req);
+    DBusError      err    = DBUS_ERROR_INIT;
+    dbus_int32_t   mode   = MCE_BUTTON_BACKLIGHT_MODE_POLICY;
+    DBusMessage   *rsp    = 0;
+
+    mce_log(LL_DEVEL, "button backlight mode from %s",
+            mce_dbus_get_name_owner_ident(sender));
+
+    if( !dbus_message_get_args(req, &err,
+                               DBUS_TYPE_INT32, &mode,
+                               DBUS_TYPE_INVALID) ) {
+        mce_log(LL_ERR, "Failed to get argument from %s.%s: %s: %s",
+                MCE_REQUEST_IF, MCE_BUTTON_BACKLIGHT_MODE_REQ,
+                err.name, err.message);
+        rsp = dbus_message_new_error(req, err.name, err.message);
+    }
+
+    switch( mode ) {
+    case MCE_BUTTON_BACKLIGHT_MODE_OFF:
+        bbl_dbus_add_mode_client(sender, false);
+        break;
+    case MCE_BUTTON_BACKLIGHT_MODE_ON:
+        bbl_dbus_add_mode_client(sender, true);
+        break;
+    default:
+    case MCE_BUTTON_BACKLIGHT_MODE_POLICY:
+        bbl_dbus_remove_mode_client(sender);
+        break;
+    }
 
     if( !dbus_message_get_no_reply(req) ) {
         if( !rsp )
@@ -712,6 +907,14 @@ static mce_dbus_handler_t bbl_dbus_handlers[] =
         .callback  = bbl_dbus_set_backlight_state_cb,
         .args      =
             "    <arg direction=\"in\" name=\"enable\" type=\"b\"/>\n"
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_BUTTON_BACKLIGHT_MODE_REQ,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = bbl_dbus_backlight_mode_cb,
+        .args      =
+            "    <arg direction=\"in\" name=\"mode\" type=\"i\"/>\n"
     },
     {
         .interface = MCE_REQUEST_IF,

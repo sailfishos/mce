@@ -1478,6 +1478,15 @@ static const symbol_t button_backlight_values[] = {
         { NULL, -1 }
 };
 
+/** Lookup table for button backlight mode options
+ */
+static const symbol_t button_backlight_mode_values[] = {
+        { "off",    MCE_BUTTON_BACKLIGHT_MODE_OFF    },
+        { "on",     MCE_BUTTON_BACKLIGHT_MODE_ON     },
+        { "policy", MCE_BUTTON_BACKLIGHT_MODE_POLICY },
+        { NULL, -1 }
+};
+
 /** Lookup table for fake doubletap policies
  */
 static const symbol_t fake_doubletap_values[] = {
@@ -2465,6 +2474,31 @@ EXIT:
 /* ------------------------------------------------------------------------- *
  * button backlight
  * ------------------------------------------------------------------------- */
+
+/** Set button backlight mode
+ *
+ * Note: The set mode gets cancelled when mcetool exits. The
+ *       --block option can be used keep mcetool connected to
+ *       system bus.
+ *
+ * @param args string with "off", "on", "policy"
+ */
+static bool xmce_set_button_backlight_mode(const char *args)
+{
+        debugf("%s(%s)\n", __FUNCTION__, args);
+
+        dbus_int32_t val = lookup(button_backlight_mode_values, args);
+        if( val < 0 ) {
+                errorf("%s: invalid button backlight value\n", args);
+                return false;
+        }
+
+        xmce_ipc_no_reply(MCE_BUTTON_BACKLIGHT_MODE_REQ,
+                          DBUS_TYPE_INT32, &val,
+                          DBUS_TYPE_INVALID);
+
+        return true;
+}
 
 /** Set button backlight state
  *
@@ -6813,6 +6847,14 @@ static const mce_opt_t options[] =
                 .usage       =
                         "request button backlight state\n"
                         "Valid states are: enabled and disabled.\n"
+        },
+        {
+                .name        = "set-button-backlight-mode",
+                .with_arg    = xmce_set_button_backlight_mode,
+                .values      = "off|on|policy",
+                .usage       =
+                        "request button backlight mode\n"
+                        "Valid modes are: off|on|policy.\n"
         },
         {
                 .name        = "enable-led",
