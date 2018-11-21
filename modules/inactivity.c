@@ -77,8 +77,6 @@ G_MODULE_EXPORT module_info_struct module_info = {
  * ------------------------------------------------------------------------- */
 
 static const char *mia_inactivity_repr     (bool inactive);
-static void        mia_generate_activity   (void);
-static void        mia_generate_inactivity (void);
 
 /* ------------------------------------------------------------------------- *
  * DBUS_ACTION
@@ -274,20 +272,6 @@ static guint   mia_shutdown_delay_setting_id = 0;
 static const char *mia_inactivity_repr(bool inactive)
 {
     return inactive ? "inactive" : "active";
-}
-
-/** Helper for attempting to switch to active state
- */
-static void mia_generate_activity(void)
-{
-    datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(FALSE));
-}
-
-/** Helper for switching to inactive state
- */
-static void mia_generate_inactivity(void)
-{
-    datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(TRUE));
 }
 
 /* ========================================================================= *
@@ -494,7 +478,7 @@ static void mia_datapipe_proximity_sensor_actual_cb(gconstpointer data)
     if( proximity_sensor_actual == COVER_OPEN &&
         call_state == CALL_STATE_RINGING ) {
         mce_log(LL_INFO, "proximity -> uncovered, call = ringing");
-        mia_generate_activity();
+        mce_datapipe_generate_activity();
     }
 
 EXIT:
@@ -652,7 +636,7 @@ static void mia_datapipe_interaction_expected_cb(gconstpointer data)
         (submode & MCE_SUBMODE_TKLOCK) &&
         display_state_next == MCE_DISPLAY_ON ) {
         mce_log(LL_DEBUG, "interaction expected; generate activity");
-        mia_generate_activity();
+        mce_datapipe_generate_activity();
     }
 
 EXIT:
@@ -753,7 +737,7 @@ static void mia_datapipe_check_initial_state(void)
      */
 
     mce_log(LL_DEBUG, "device state known");
-    mia_generate_activity();
+    mce_datapipe_generate_activity();
 
     /* Make sure the current state gets broadcast even
      * if the artificial activity gets suppressed. */
@@ -1284,7 +1268,7 @@ static gboolean mia_timer_cb(gpointer data)
 
     mce_log(LL_DEBUG, "inactivity timeout triggered");
 
-    mia_generate_inactivity();
+    mce_datapipe_generate_inactivity();
 
     return FALSE;
 }

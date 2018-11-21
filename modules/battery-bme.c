@@ -326,7 +326,7 @@ static gboolean charger_charging_failed_dbus_cb(DBusMessage *const msg)
 	datapipe_exec_full(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_BATTERY_CHARGING);
 
 	/* Generate activity */
-	datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(FALSE));
+	mce_datapipe_generate_activity();
 
 	status = TRUE;
 
@@ -351,8 +351,7 @@ static gboolean charger_connected_dbus_cb(DBusMessage *const msg)
 
 	if (cached_charger_connected != 1) {
 		/* Generate activity */
-		datapipe_exec_full(&inactivity_event_pipe,
-				   GINT_TO_POINTER(FALSE));
+		mce_datapipe_generate_activity();
 		cached_charger_connected = 1;
 	}
 
@@ -390,8 +389,7 @@ static gboolean charger_disconnected_dbus_cb(DBusMessage *const msg)
 
 	if (cached_charger_connected != 0) {
 		/* Generate activity */
-		datapipe_exec_full(&inactivity_event_pipe,
-				   GINT_TO_POINTER(FALSE));
+		mce_datapipe_generate_activity();
 		cached_charger_connected = 0;
 	}
 

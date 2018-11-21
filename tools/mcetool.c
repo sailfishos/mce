@@ -1478,6 +1478,15 @@ static const symbol_t button_backlight_values[] = {
         { NULL, -1 }
 };
 
+/** Lookup table for button backlight mode options
+ */
+static const symbol_t button_backlight_mode_values[] = {
+        { "off",    MCE_BUTTON_BACKLIGHT_MODE_OFF    },
+        { "on",     MCE_BUTTON_BACKLIGHT_MODE_ON     },
+        { "policy", MCE_BUTTON_BACKLIGHT_MODE_POLICY },
+        { NULL, -1 }
+};
+
 /** Lookup table for fake doubletap policies
  */
 static const symbol_t fake_doubletap_values[] = {
@@ -2465,6 +2474,60 @@ EXIT:
 /* ------------------------------------------------------------------------- *
  * button backlight
  * ------------------------------------------------------------------------- */
+
+/** Set button backlight off delay
+ *
+ * @param args string that can be parsed to number
+ */
+static bool xmce_set_button_backlligut_off_delay(const char *args)
+{
+        const char *key = MCE_SETTING_BUTTONBACKLIGHT_OFF_DELAY;
+        gint        val = xmce_parse_integer(args);
+        xmce_setting_set_int(key, val);
+        return true;
+}
+
+/** Get current fingerprint wakeup allow delay
+ */
+static void xmce_get_button_backlligut_off_delay(void)
+{
+        const char *tag = "Button backlight off delay:";
+        const char *key = MCE_SETTING_BUTTONBACKLIGHT_OFF_DELAY;
+        gint        val = 0;
+        char        txt[64];
+
+        if( !xmce_setting_get_int(key, &val) )
+                snprintf(txt, sizeof txt, "unknown");
+        else
+                snprintf(txt, sizeof txt, "%d [ms]", val);
+
+        printf("%-"PAD1"s %s\n", tag, txt);
+}
+
+/** Set button backlight mode
+ *
+ * Note: The set mode gets cancelled when mcetool exits. The
+ *       --block option can be used keep mcetool connected to
+ *       system bus.
+ *
+ * @param args string with "off", "on", "policy"
+ */
+static bool xmce_set_button_backlight_mode(const char *args)
+{
+        debugf("%s(%s)\n", __FUNCTION__, args);
+
+        dbus_int32_t val = lookup(button_backlight_mode_values, args);
+        if( val < 0 ) {
+                errorf("%s: invalid button backlight value\n", args);
+                return false;
+        }
+
+        xmce_ipc_no_reply(MCE_BUTTON_BACKLIGHT_MODE_REQ,
+                          DBUS_TYPE_INT32, &val,
+                          DBUS_TYPE_INVALID);
+
+        return true;
+}
 
 /** Set button backlight state
  *
@@ -5806,6 +5869,7 @@ static bool xmce_get_status(const char *args)
         get_led_breathing_limit();
         xmce_get_memnotify_limits();
         xmce_get_memnotify_level();
+        xmce_get_button_backlligut_off_delay();
         printf("\n");
 
         return true;
@@ -6813,6 +6877,28 @@ static const mce_opt_t options[] =
                 .usage       =
                         "request button backlight state\n"
                         "Valid states are: enabled and disabled.\n"
+        },
+        {
+                .name        = "set-button-backlight-mode",
+                .with_arg    = xmce_set_button_backlight_mode,
+                .values      = "off|on|policy",
+                .usage       =
+                        "request button backlight mode\n"
+                        "Valid modes are: off|on|policy.\n"
+        },
+        {
+                .name        = "set-button-backlight-off-delay",
+                .with_arg    = xmce_set_button_backlligut_off_delay,
+                .values      = "ms",
+                .usage       =
+                        "set delay for powering off button backlight.\n"
+                        "\n"
+                        "Set delay in ms for powering off the backlight for\n"
+                        "menu/home/back buttons.\n"
+                        "\n"
+                        "Use zero to keep the buttons light as long as the\n"
+                        "topmost application / system is prepared to handle\n"
+                        "button presses.\n"
         },
         {
                 .name        = "enable-led",

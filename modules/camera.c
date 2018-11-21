@@ -121,7 +121,7 @@ static gboolean camera_popout_state_iomon_input_cb(mce_io_mon_t *iomon, gpointer
 	(void)bytes_read;
 
 	/* Generate activity */
-	datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(FALSE));
+	mce_datapipe_generate_activity();
 
 	if (popout_unlock == FALSE)
 		goto EXIT;

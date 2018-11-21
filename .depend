@@ -592,18 +592,22 @@ modules/buttonbacklight.o:\
 	modules/buttonbacklight.c\
 	builtin-gconf.h\
 	datapipe.h\
+	evdev.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-log.h\
+	mce-setting.h\
 	mce.h\
 
 modules/buttonbacklight.pic.o:\
 	modules/buttonbacklight.c\
 	builtin-gconf.h\
 	datapipe.h\
+	evdev.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-log.h\
+	mce-setting.h\
 	mce.h\
 
 modules/callstate.o:\

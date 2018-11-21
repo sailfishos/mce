@@ -1653,7 +1653,7 @@ START_TEST (ut_check_auto_dim)
 					     expected_dim_time);
 
 		/* Generate activity so adaptive_dimming_index gets inc. */
-		datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(FALSE));
+		mce_datapipe_generate_activity();
 		ut_assert_transition(ut_is_display_state_eq,
 				     GINT_TO_POINTER(MCE_DISPLAY_ON));
 	}
@@ -1692,7 +1692,7 @@ START_TEST (ut_check_adaptive_dim_timeout)
 				     expected_dim_time);
 
 	/* Generating activity the adaptive_dimming_index gets incremented */
-	datapipe_exec_full(&inactivity_event_pipe, GINT_TO_POINTER(FALSE));
+	mce_datapipe_generate_activity();
 	/* Verify adaptive_dimming_index=1 by meassuring rime to re-enter DIM */
 	expected_dim_time = ut_nth_possible_dim_timeout(forced_dti + 1);
 	ut_assert_transition(ut_is_display_state_eq,
