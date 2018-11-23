@@ -43,6 +43,7 @@
 #include <dbus/dbus-glib-lowlevel.h>
 
 #include <mce/dbus-names.h>
+#include <dsme/thermalmanager_dbus_if.h>
 
 /* ========================================================================= *
  * TYPES & CONSTANTS
@@ -2020,6 +2021,10 @@ static struct
     {
 	.name     = DSME_DBUS_SERVICE,
 	.datapipe = &dsme_service_state_pipe,
+    },
+    {
+	.name     = thermalmanager_service,
+	.datapipe = &thermalmanager_service_state_pipe,
     },
     {
 	.name     = "org.bluez",

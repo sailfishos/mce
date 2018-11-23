@@ -281,6 +281,7 @@ MCE_PKG_NAMES += dsme
 MCE_PKG_NAMES += libiphb
 MCE_PKG_NAMES += libsystemd-daemon
 MCE_PKG_NAMES += libngf0
+MCE_PKG_NAMES += thermalmanager_dbus_if
 
 MCE_PKG_CFLAGS := $(shell $(PKG_CONFIG) --cflags $(MCE_PKG_NAMES))
 MCE_PKG_LDLIBS := $(shell $(PKG_CONFIG) --libs   $(MCE_PKG_NAMES))

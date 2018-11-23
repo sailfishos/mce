@@ -388,6 +388,9 @@ datapipe_t ngfd_event_request_pipe;
 /** dsme availability; read only */
 datapipe_t dsme_service_state_pipe;
 
+/** thermalmanager availability; read only */
+datapipe_t thermalmanager_service_state_pipe;
+
 /** bluez availability; read only */
 datapipe_t bluez_service_state_pipe;
 
@@ -944,6 +947,7 @@ void mce_datapipe_init(void)
     datapipe_init(usbmoded_service_state_pipe,      DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
     datapipe_init(ngfd_service_state_pipe,          DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
     datapipe_init(dsme_service_state_pipe,          DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
+    datapipe_init(thermalmanager_service_state_pipe,DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
     datapipe_init(bluez_service_state_pipe,         DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
     datapipe_init(packagekit_locked_pipe,           DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(FALSE));
     datapipe_init(osupdate_running_pipe,            DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(FALSE));
@@ -1022,6 +1026,7 @@ void mce_datapipe_quit(void)
     datapipe_free(&ngfd_service_state_pipe);
     datapipe_free(&ngfd_event_request_pipe);
     datapipe_free(&dsme_service_state_pipe);
+    datapipe_free(&thermalmanager_service_state_pipe);
     datapipe_free(&bluez_service_state_pipe);
     datapipe_free(&packagekit_locked_pipe);
     datapipe_free(&osupdate_running_pipe);
@@ -1148,6 +1153,24 @@ const char *devicelock_state_repr(devicelock_state_t state)
     default: break;
     }
 
+    return res;
+}
+
+/** Convert thermal_state_t enum to human readable string
+ *
+ * @param state thermal state as thermal_state_t type
+ *
+ * @return human readable representation of state
+ */
+const char *thermal_state_repr(thermal_state_t state)
+{
+    const char *res = "unknown";
+    switch( state ) {
+    case THERMAL_STATE_UNDEF:      res = "undef";      break;
+    case THERMAL_STATE_OK:         res = "ok";         break;
+    case THERMAL_STATE_OVERHEATED: res = "overheated"; break;
+    default: break;
+    }
     return res;
 }
 

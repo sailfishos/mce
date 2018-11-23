@@ -374,6 +374,8 @@ typedef enum {
 	THERMAL_STATE_OVERHEATED = 1,
 } thermal_state_t;
 
+const char *thermal_state_repr(thermal_state_t state);
+
 /** Exceptional UI status */
 typedef enum {
 	UIEXCEPTION_TYPE_NONE   = 0,

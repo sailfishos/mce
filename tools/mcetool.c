@@ -4944,7 +4944,7 @@ static bool xmce_set_psm_threshold(const char *args)
         debugf("%s(%s)\n", __FUNCTION__, args);
         int val = xmce_parse_integer(args);
 
-        if( val < 10 || val > 50 || val % 10 ) {
+        if( val < 0 || val > 100 ) {
                 errorf("%d: invalid psm threshold value\n", val);
                 exit(EXIT_FAILURE);
         }
