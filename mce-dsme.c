@@ -37,6 +37,7 @@
 #include <dsme/state.h>
 #include <dsme/protocol.h>
 #include <dsme/processwd.h>
+#include <dsme/thermalmanager_dbus_if.h>
 
 /* ========================================================================= *
  * MODULE DATA
@@ -54,8 +55,14 @@ static guint mce_dsme_transition_id = 0;
 /** Availability of dsme; from dsme_service_state_pipe */
 static service_state_t dsme_service_state = SERVICE_STATE_UNDEF;
 
+/** Availability of thermalmanager; from thermalmanager_service_state_pipe */
+static service_state_t thermalmanager_service_state = SERVICE_STATE_UNDEF;
+
 /** System state from dsme; fed to system_state_pipe */
 static system_state_t system_state = MCE_SYSTEM_STATE_UNDEF;
+
+/** Thermal state from thermalmanager (dsme); fed to thermal_state_pipe */
+static thermal_state_t thermal_state = THERMAL_STATE_UNDEF;
 
 /** Shutdown warning from dsme; fed to shutting_down_pipe */
 static bool mce_dsme_shutting_down_flag = false;
@@ -71,7 +78,8 @@ static tristate_t init_done = TRISTATE_UNKNOWN;
  * UTILITY_FUNCTIONS
  * ------------------------------------------------------------------------- */
 
-static system_state_t mce_dsme_normalise_system_state (dsme_state_t dsmestate);
+static thermal_state_t mce_dsme_parse_thermal_state    (const char *name);
+static system_state_t  mce_dsme_normalise_system_state (dsme_state_t dsmestate);
 
 /* ------------------------------------------------------------------------- *
  * WORKER_WATCHDOG
@@ -127,6 +135,11 @@ static void           mce_dsme_socket_disconnect   (void);
  * DBUS_HANDLERS
  * ------------------------------------------------------------------------- */
 
+static gboolean       mce_dsme_dbus_thermal_state_change_cb   (DBusMessage *const msg);
+static void           mce_dsme_dbus_thermal_state_reply_cb    (DBusPendingCall *pc, void *aptr);
+static void           mce_dsme_dbus_cancel_thermal_state_query(void);
+static void           mce_dsme_dbus_start_thermal_state_query (void);
+
 static gboolean       mce_dsme_dbus_init_done_cb              (DBusMessage *const msg);
 static gboolean       mce_dsme_dbus_shutdown_cb               (DBusMessage *const msg);
 static gboolean       mce_dsme_dbus_thermal_shutdown_cb       (DBusMessage *const msg);
@@ -139,7 +152,10 @@ static void           mce_dsme_dbus_quit(void);
  * DATAPIPE_TRACKING
  * ------------------------------------------------------------------------- */
 
+static void           mce_dsme_datapipe_set_thermal_state     (thermal_state_t state);
+
 static void           mce_dsme_datapipe_dsme_service_state_cb (gconstpointer data);
+static void           mce_dsme_datapipe_thermalmanager_service_state_cb(gconstpointer const data);
 static void           mce_dsme_datapipe_init_done_cb          (gconstpointer data);
 static void           mce_dsme_datapipe_system_state_cb       (gconstpointer data);
 
@@ -212,6 +228,32 @@ static system_state_t mce_dsme_normalise_system_state(dsme_state_t dsmestate)
                 "treating as undefined");
         break;
     }
+
+    return state;
+}
+
+/** Convert thermal manager thermal state name to mce thermal_state_t
+ *
+ * @param name  Thermal state name as received over D-Bus
+ *
+ * @return name mapped to thermal_state_t enumeration value
+ */
+static thermal_state_t mce_dsme_parse_thermal_state(const char *name)
+{
+    thermal_state_t state = THERMAL_STATE_UNDEF;
+
+    if( name == 0 )
+        ;
+    else if( !strcmp(name, thermalmanager_thermal_status_low) )
+        state = THERMAL_STATE_OK;
+    else if( !strcmp(name, thermalmanager_thermal_status_normal) )
+        state = THERMAL_STATE_OK;
+    else if( !strcmp(name, thermalmanager_thermal_status_warning) )
+        state = THERMAL_STATE_OK;
+    else if( !strcmp(name, thermalmanager_thermal_status_alert) )
+        state = THERMAL_STATE_OVERHEATED;
+    else if( !strcmp(name, thermalmanager_thermal_status_fatal) )
+        state = THERMAL_STATE_OVERHEATED;
 
     return state;
 }
@@ -709,6 +751,114 @@ static void mce_dsme_socket_disconnect(void)
  * DBUS_HANDLERS
  * ========================================================================= */
 
+/** Pending thermal state query */
+static DBusPendingCall *mce_dsme_thermal_state_query_pc = 0;
+
+/** D-Bus callback for the thermal state change notification signal
+ *
+ * @param msg The D-Bus message
+ *
+ * @return TRUE
+ */
+static gboolean
+mce_dsme_dbus_thermal_state_change_cb(DBusMessage *const msg)
+{
+    DBusError error = DBUS_ERROR_INIT;
+    const char *name = 0;
+
+    if( !dbus_message_get_args(msg, &error,
+                               DBUS_TYPE_STRING, &name,
+                               DBUS_TYPE_INVALID)) {
+        mce_log(LL_ERR, "Failed to parse %s.%s; %s: %s",
+                dbus_message_get_interface(msg),
+                dbus_message_get_member(msg),
+                error.name, error.message);
+        goto EXIT;
+    }
+
+    mce_log(LL_WARN, "thermal state signal: %s", name);
+    thermal_state_t state = mce_dsme_parse_thermal_state(name);
+    mce_dsme_datapipe_set_thermal_state(state);
+
+EXIT:
+    dbus_error_free(&error);
+    return TRUE;
+}
+
+/** Handle reply to async query made from mce_dsme_thermal_state_query_async()
+ */
+static void
+mce_dsme_dbus_thermal_state_reply_cb(DBusPendingCall *pc, void *aptr)
+{
+    (void)aptr;
+
+    DBusMessage *rsp  = 0;
+    DBusError    err  = DBUS_ERROR_INIT;
+    const char  *name = 0;
+
+    if( pc != mce_dsme_thermal_state_query_pc )
+        goto EXIT;
+
+    dbus_pending_call_unref(mce_dsme_thermal_state_query_pc),
+        mce_dsme_thermal_state_query_pc = 0;
+
+    if( !(rsp = dbus_pending_call_steal_reply(pc)) ) {
+        mce_log(LL_WARN, "no reply");
+        goto EXIT;
+    }
+
+    if( dbus_set_error_from_message(&err, rsp) ) {
+        mce_log(LL_WARN, "error reply: %s: %s", err.name, err.message);
+        goto EXIT;
+    }
+
+    if( !dbus_message_get_args(rsp, &err,
+                               DBUS_TYPE_STRING, &name,
+                               DBUS_TYPE_INVALID) ) {
+        mce_log(LL_WARN, "parse error: %s: %s", err.name, err.message);
+        goto EXIT;
+    }
+
+    mce_log(LL_DEBUG, "thermal state reply: %s", name);
+    thermal_state_t state = mce_dsme_parse_thermal_state(name);
+    mce_dsme_datapipe_set_thermal_state(state);
+
+EXIT:
+    if( rsp ) dbus_message_unref(rsp);
+    dbus_error_free(&err);
+    return;
+}
+
+/** Cancel pending async thermal state query
+ */
+static void
+mce_dsme_dbus_cancel_thermal_state_query(void)
+{
+    if( mce_dsme_thermal_state_query_pc ) {
+        mce_log(LL_DEBUG, "cancel thermal state query");
+        dbus_pending_call_cancel(mce_dsme_thermal_state_query_pc);
+        dbus_pending_call_unref(mce_dsme_thermal_state_query_pc);
+        mce_dsme_thermal_state_query_pc = 0;
+    }
+}
+
+/** Initiate async query to find out current thermal state
+ */
+static void
+mce_dsme_dbus_start_thermal_state_query(void)
+{
+    mce_dsme_dbus_cancel_thermal_state_query();
+
+    mce_log(LL_DEBUG, "start thermal state query");
+    dbus_send_ex(thermalmanager_service,
+                 thermalmanager_path,
+                 thermalmanager_interface,
+                 thermalmanager_get_thermal_state,
+                 mce_dsme_dbus_thermal_state_reply_cb, 0, 0,
+                 &mce_dsme_thermal_state_query_pc,
+                 DBUS_TYPE_INVALID);
+}
+
 /** D-Bus callback for the init done notification signal
  *
  * @param msg The D-Bus message
@@ -805,6 +955,12 @@ static mce_dbus_handler_t mce_dsme_dbus_handlers[] =
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
         .callback  = mce_dsme_dbus_battery_empty_shutdown_cb,
     },
+    {
+        .interface = thermalmanager_interface,
+        .name      = thermalmanager_state_change_ind,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .callback  = mce_dsme_dbus_thermal_state_change_cb,
+    },
     /* sentinel */
     {
         .interface = 0
@@ -829,6 +985,22 @@ static void mce_dsme_dbus_quit(void)
  * DATAPIPE_TRACKING
  * ========================================================================= */
 
+static void mce_dsme_datapipe_set_thermal_state(thermal_state_t state)
+{
+    if( thermal_state != state ) {
+        /* All thermal state transitions are of interest - except for the
+         * UNDEF -> OK that is expected to happen during mce startup. */
+        int level = LL_WARN;
+        if( thermal_state == THERMAL_STATE_UNDEF && state == THERMAL_STATE_OK )
+            level = LL_DEBUG;
+        mce_log(level, "thermal state changed: %s -> %s",
+                thermal_state_repr(thermal_state),
+                thermal_state_repr(state));
+        thermal_state = state;
+        datapipe_exec_full(&thermal_state_pipe, GINT_TO_POINTER(thermal_state));
+    }
+}
+
 /** Datapipe trigger for dsme availability
  *
  * @param data DSME D-Bus service availability (as a void pointer)
@@ -848,6 +1020,31 @@ static void mce_dsme_datapipe_dsme_service_state_cb(gconstpointer const data)
     /* Re-evaluate dsmesock connection */
     if( dsme_service_state == SERVICE_STATE_RUNNING )
         mce_dsme_socket_connect();
+
+EXIT:
+    return;
+}
+
+/** Datapipe trigger for thermalmanager availability
+ *
+ * @param data thermalmanager D-Bus service availability (as a void pointer)
+ */
+static void mce_dsme_datapipe_thermalmanager_service_state_cb(gconstpointer const data)
+{
+    service_state_t prev = thermalmanager_service_state;
+    thermalmanager_service_state = GPOINTER_TO_INT(data);
+
+    if( thermalmanager_service_state == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "thermalmanager dbus service: %s -> %s",
+            service_state_repr(prev),
+            service_state_repr(thermalmanager_service_state));
+
+    if( thermalmanager_service_state == SERVICE_STATE_RUNNING )
+        mce_dsme_dbus_start_thermal_state_query();
+    else
+        mce_dsme_dbus_cancel_thermal_state_query();
 
 EXIT:
     return;
@@ -952,6 +1149,10 @@ static datapipe_handler_t mce_dsme_datapipe_handlers[] =
         .output_cb = mce_dsme_datapipe_dsme_service_state_cb,
     },
     {
+        .datapipe  = &thermalmanager_service_state_pipe,
+        .output_cb = mce_dsme_datapipe_thermalmanager_service_state_cb,
+    },
+    {
         .datapipe  = &init_done_pipe,
         .output_cb = mce_dsme_datapipe_init_done_cb,
     },
@@ -1012,8 +1213,8 @@ void mce_dsme_exit(void)
 
     mce_dsme_datapipe_quit();
 
-    /* Remove all timer sources before returning */
+    /* Remove all timer sources & pending calls before returning */
     mce_dsme_transition_cancel();
-
+    mce_dsme_dbus_cancel_thermal_state_query();
     return;
 }

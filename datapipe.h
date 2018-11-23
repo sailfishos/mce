@@ -235,6 +235,7 @@ extern datapipe_t usbmoded_service_state_pipe;
 extern datapipe_t ngfd_service_state_pipe;
 extern datapipe_t ngfd_event_request_pipe;
 extern datapipe_t dsme_service_state_pipe;
+extern datapipe_t thermalmanager_service_state_pipe;
 extern datapipe_t bluez_service_state_pipe;
 extern datapipe_t packagekit_locked_pipe;
 extern datapipe_t osupdate_running_pipe;
