@@ -65,7 +65,7 @@ static gint  psm_threshold = MCE_DEFAULT_EM_PSM_THRESHOLD;
 static guint psm_threshold_setting_id = 0;
 
 /** Active power saving mode */
-static gboolean active_power_saving_mode = FALSE;
+static bool active_power_saving_mode = false;
 
 /** Device thermal state */
 static thermal_state_t thermal_state = THERMAL_STATE_UNDEF;
@@ -127,28 +127,31 @@ EXIT:
  */
 static void update_power_saving_mode(void)
 {
-	gint new_power_saving_mode;
+	bool activate = false;
 
-	/* XXX: later on we should make overheating another
-	 *      trigger for power saving mode too
-	 */
-	if (((((battery_level <= psm_threshold) &&
-	       (power_saving_mode == TRUE)) ||
-	      (force_psm == TRUE)) &&
-	     (charger_state != CHARGER_STATE_ON)) ||
-	    (thermal_state == THERMAL_STATE_OVERHEATED)) {
-		/* If the battery charge level is lower than the threshold,
-		 * and the user has enable power saving mode,
-		 * or if the device is overheated,
-		 * activate low power mode
-		 */
-		new_power_saving_mode = TRUE;
-	} else {
-		new_power_saving_mode = FALSE;
+	if( thermal_state == THERMAL_STATE_OVERHEATED ) {
+		/* If device overheats, PSM is triggered regardless
+		 * of other settings and states. */
+		activate = true;
+	}
+	else if( charger_state == CHARGER_STATE_ON ) {
+		/* If charger is connected, PSM should be deactivated. */
+		activate = false;
+	}
+	else if( force_psm ) {
+		/* Forced PSM is triggered when charger is disconnected. */
+		activate = true;
+	}
+	else if( power_saving_mode && battery_level <= psm_threshold ) {
+		/* Normally PSM is triggered when the feature is enabled and
+		 * battery level is not over the threshold. */
+		activate = true;
 	}
 
-	if (active_power_saving_mode != new_power_saving_mode) {
-		active_power_saving_mode = new_power_saving_mode;
+	if( active_power_saving_mode != activate ) {
+		active_power_saving_mode = activate;
+		mce_log(LL_DEBUG, "power_saving_mode: %s",
+			active_power_saving_mode ? "activated" : "deactivated");
 		datapipe_exec_full(&power_saving_mode_active_pipe,
 				   GINT_TO_POINTER(active_power_saving_mode));
 		send_psm_state(NULL);
