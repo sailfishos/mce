@@ -1,3 +1,12 @@
+mce (1.98.1) precise; urgency=low
+
+  * [powersavemode] Use D-Bus types when constructing D-Bus message
+  * [powersavemode] Make PowerSaveMode activation criteria readable
+  * [dsme] Track thermal state from thermal manager. Fixes JB#43907
+  * [mcetool] Do not artificially limit PSM threshold setting
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 23 Nov 2018 15:23:10 +0200
+
 mce (1.98.0) precise; urgency=low
 
   * [datapipe] Normalize inactivity datapipe execution
