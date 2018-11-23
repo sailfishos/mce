@@ -97,9 +97,11 @@ static gboolean send_psm_state(DBusMessage *const method_call)
 				      MCE_PSM_STATE_SIG);
 	}
 
+	dbus_bool_t arg = active_power_saving_mode;
+
 	/* Append the power saving mode */
 	if (dbus_message_append_args(msg,
-				     DBUS_TYPE_BOOLEAN, &active_power_saving_mode,
+				     DBUS_TYPE_BOOLEAN, &arg,
 				     DBUS_TYPE_INVALID) == FALSE) {
 		mce_log(LL_CRIT,
 			"Failed to append %sargument to D-Bus message "
