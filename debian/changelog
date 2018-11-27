@@ -1,3 +1,9 @@
+mce (1.98.2) precise; urgency=low
+
+  * [event-input] Handle input device that emit only gesture events. JB#43930
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 27 Nov 2018 15:59:14 +0200
+
 mce (1.98.1) precise; urgency=low
 
   * [powersavemode] Use D-Bus types when constructing D-Bus message
