@@ -1552,6 +1552,13 @@ evin_evdevtype_from_info(evin_evdevinfo_t *info)
         goto cleanup;
     }
 
+    /* Also gesture events from an input device that does not
+     * emit touch events need to be handled as double taps etc. */
+    if( evin_evdevinfo_has_code(info, EV_MSC, MSC_GESTURE) ) {
+        res = EVDEV_DBLTAP;
+        goto cleanup;
+    }
+
     /* Assume that: devices that support only ABS_DISTANCE are
      * proximity sensors and devices that support only ABS_MISC
      * are ambient light sensors that are handled via libhybris
@@ -2102,9 +2109,13 @@ evin_iomon_evin_doubletap_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_rea
     if( bytes_read != sizeof (*ev) )
         goto EXIT;
 
-    /* Feed power key events to touchscreen handler for
-     * possible double tap gesture event conversion */
-    if( ev->type == EV_KEY && ev->code == KEY_POWER ) {
+    if( ev->type == EV_MSC && ev->code == MSC_GESTURE ) {
+        /* Feed gesture events to touchscreen handler as-is */
+        evin_iomon_touchscreen_cb(iomon, ev, sizeof *ev);
+    }
+    else if( ev->type == EV_KEY && ev->code == KEY_POWER ) {
+        /* Feed power key events to touchscreen handler for
+         * possible double tap gesture event conversion */
         evin_iomon_touchscreen_cb(iomon, ev, sizeof *ev);
     }
 
