@@ -1,3 +1,9 @@
+mce (1.95.3.1) precise; urgency=low
+
+  * [event-input] Handle input device that emit only gesture events. JB#43930
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 30 Nov 2018 13:43:09 +0200
+
 mce (1.95.3) precise; urgency=low
 
   * [suspend] Expose suspend type within mce. JB#42611
