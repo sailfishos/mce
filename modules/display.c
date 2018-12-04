@@ -7943,6 +7943,27 @@ static void mdy_stm_step(void)
         break;
 
     case STM_RENDERER_INIT_START:
+        if( mdy_stm_compositor_availability_changed ) {
+            /* If previous compositor instance exiting leaves the system
+             * in a state where effective brightness gets set to zero,
+             * any frames drawn by freshly started compositor can end up
+             * getting ignored.
+             *
+             * In some devices kernel can: Implicitly change effective
+             * brightness without reflecting the change on sysfs *and*
+             * ignore sysfs changes that do not change the value as it
+             * is available on sysfs -> To get (non-zero) effective
+             * brightness back in sync: Do a off-by-one write first,
+             * followed by writing the value we actually want to use.
+             */
+            int brightness = mdy_brightness_level_cached;
+            mce_log(LL_WARN, "forced brightness sync to: %d", brightness);
+            mdy_brightness_level_cached = -1;
+            if( brightness > 0 )
+                mdy_brightness_set_level(brightness - 1);
+            mdy_brightness_set_level(brightness);
+        }
+
         if( !mdy_compositor_is_available() ) {
             mdy_brightness_set_fade_target_unblank(mdy_brightness_level_display_resume);
             mdy_stm_trans(STM_WAIT_FADE_TO_TARGET);
