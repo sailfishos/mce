@@ -1,3 +1,9 @@
+mce (1.98.3) precise; urgency=low
+
+  * [display] Synchronize brightness after compositor changes. Fixes JB#44051
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 04 Dec 2018 11:12:41 +0200
+
 mce (1.98.2) precise; urgency=low
 
   * [event-input] Handle input device that emit only gesture events. JB#43930

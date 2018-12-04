@@ -57,7 +57,7 @@ distclean:: clean
 # CONFIGURATION
 # ----------------------------------------------------------------------------
 
-VERSION := 1.98.2
+VERSION := 1.98.3
 
 INSTALL_BIN := install --mode=755
 INSTALL_DIR := install -d
