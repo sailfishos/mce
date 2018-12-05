@@ -9838,19 +9838,21 @@ static mce_dbus_handler_t mdy_dbus_handlers[] =
     },
 #ifdef ENABLE_DEVEL_LOGGING
     {
-        .interface = MCE_REQUEST_IF,
-        .name      = MCE_DISPLAY_STATE_LPM_ON_REQ,
-        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
-        .callback  = mdy_dbus_handle_display_lpm_on_req,
-        .args      =
+        .interface  = MCE_REQUEST_IF,
+        .name       = MCE_DISPLAY_STATE_LPM_ON_REQ,
+        .type       = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback   = mdy_dbus_handle_display_lpm_on_req,
+        .privileged = true,
+        .args       =
             ""
     },
     {
-        .interface = MCE_REQUEST_IF,
-        .name      = MCE_DISPLAY_STATE_LPM_OFF_REQ,
-        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
-        .callback  = mdy_dbus_handle_display_lpm_off_req,
-        .args      =
+        .interface  = MCE_REQUEST_IF,
+        .name       = MCE_DISPLAY_STATE_LPM_OFF_REQ,
+        .type       = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback   = mdy_dbus_handle_display_lpm_off_req,
+        .privileged = true,
+        .args       =
             ""
     },
 #endif
