@@ -67,6 +67,362 @@
 
 # define errorf(FMT, ARGS...) fprintf(stderr, PROG_NAME": E: "FMT, ##ARGS)
 
+/* ========================================================================= *
+ * Types
+ * ========================================================================= */
+
+/* ------------------------------------------------------------------------- *
+ * SYMBOL LOOKUP TABLES
+ * ------------------------------------------------------------------------- */
+
+/** Simple string key to integer value symbol */
+typedef struct
+{
+        /** Name of the symbol, or NULL to mark end of symbol table */
+        const char *key;
+
+        /** Value of the symbol */
+        int         val;
+} symbol_t;
+
+/* ========================================================================= *
+ * Prototypes
+ * ========================================================================= */
+
+/* ------------------------------------------------------------------------- *
+ * XDBUS
+ * ------------------------------------------------------------------------- */
+
+static DBusConnection  *xdbus_init   (void);
+static void             xdbus_exit   (void);
+static gboolean         xdbus_call_va(const gchar *const service, const gchar *const path, const gchar *const interface, const gchar *const name, DBusMessage **reply, int arg_type, va_list va);
+
+/* ------------------------------------------------------------------------- *
+ * XMCE
+ * ------------------------------------------------------------------------- */
+
+static gboolean      xmce_ipc_va                                       (const gchar *const name, DBusMessage **reply, int arg_type, va_list va);
+static gboolean      xmce_ipc_no_reply                                 (const gchar *const name, int arg_type, ...);
+static gboolean      xmce_ipc_message_reply                            (const gchar *const name, DBusMessage **reply, int arg_type, ...);
+static gboolean      xmce_ipc_string_reply                             (const gchar *const name, char **result, int arg_type, ...);
+static gboolean      xmce_ipc_uint_reply                               (const gchar *const name, guint *result, int arg_type, ...);
+static gboolean      xmce_ipc_int_reply                                (const gchar *const name, gint *result, int arg_type, ...);
+static gboolean      xmce_ipc_bool_reply                               (const gchar *const name, gboolean *result, int arg_type, ...);
+static DBusMessage  *xmce_setting_request                              (const gchar *const method);
+static gboolean      xmce_setting_get_bool                             (const gchar *const key, gboolean *value);
+static gboolean      xmce_setting_get_int                              (const gchar *const key, gint *value);
+static gboolean      xmce_setting_get_string                           (const gchar *const key, gchar **value);
+static gboolean      xmce_setting_get_int_array                        (const gchar *const key, gint **values, gint *count);
+static gboolean      xmce_setting_set_bool                             (const gchar *const key, const gboolean value);
+static gboolean      xmce_setting_set_int                              (const gchar *const key, const gint value);
+static gboolean      xmce_setting_set_string                           (const gchar *const key, const char *value);
+static gboolean      xmce_setting_set_int_array                        (const gchar *const key, const gint *values, gint count);
+static int           xmce_parse_powerkeyevent                          (const char *args);
+static unsigned      xmce_parse_radio_states                           (const char *args);
+static gboolean      xmce_parse_enabled                                (const char *args);
+static int           xmce_parse_integer                                (const char *args);
+static double        xmce_parse_double                                 (const char *args);
+static bool          xmce_set_verbosity                                (const char *arg);
+static void          xmce_get_verbosity                                (void);
+static bool          xmce_get_color_profile_ids                        (const char *arg);
+static bool          xmce_set_color_profile                            (const char *args);
+static void          xmce_get_color_profile                            (void);
+static void          xmce_parse_notification_args                      (const char *args, char **title, dbus_int32_t *delay, dbus_int32_t *renew);
+static bool          xmce_notification_begin                           (const char *args);
+static bool          xmce_notification_end                             (const char *args);
+static bool          xmce_enable_radio                                 (const char *args);
+static bool          xmce_disable_radio                                (const char *args);
+static void          xmce_get_radio_states                             (void);
+static bool          xmce_set_lpmui_triggering                         (const char *args);
+static void          xmce_get_lpmui_triggering                         (void);
+static bool          xmce_set_input_grab_allowed                       (const char *args);
+static void          xmce_get_input_grab_allowed                       (void);
+static bool          xmce_set_call_state                               (const char *args);
+static void          xmce_get_call_state                               (void);
+static bool          xmce_set_button_backlligut_off_delay              (const char *args);
+static void          xmce_get_button_backlligut_off_delay              (void);
+static bool          xmce_set_button_backlight_mode                    (const char *args);
+static bool          xmce_set_button_backlight                         (const char *args);
+static void          xmce_get_button_backlight                         (void);
+static void          xmce_set_display_state                            (const char *state);
+static void          xmce_get_display_state                            (void);
+static bool          xmce_prevent_display_blanking                     (const char *arg);
+static bool          xmce_allow_display_blanking                       (const char *arg);
+static bool          xmce_set_blank_prevent_mode                       (const char *args);
+static void          xmce_get_blank_prevent_mode                       (void);
+static bool          xmce_set_display_brightness                       (const char *args);
+static void          xmce_get_display_brightness                       (void);
+static bool          xmce_set_dimmed_brightness_static                 (const char *args);
+static void          xmce_get_dimmed_brightness_static                 (void);
+static bool          xmce_set_dimmed_brightness_dynamic                (const char *args);
+static void          xmce_get_dimmed_brightness_dynamic                (void);
+static bool          xmce_set_compositor_dimming_hi                    (const char *args);
+static bool          xmce_set_compositor_dimming_lo                    (const char *args);
+static void          xmce_get_compositor_dimming                       (void);
+static bool          xmce_set_cabc_mode                                (const char *args);
+static void          xmce_get_cabc_mode                                (void);
+static bool          xmce_reset_settings                               (const char *args);
+static bool          xmce_set_dim_timeout                              (const char *args);
+static void          xmce_get_dim_timeout                              (void);
+static bool          xmce_set_dim_with_kbd_timeout                     (const char *args);
+static void          xmce_get_dim_with_kbd_timeout                     (void);
+static bool          xmce_set_dim_timeouts                             (const char *args);
+static void          xmce_get_dim_timeouts                             (void);
+static bool          xmce_set_adaptive_dimming_mode                    (const char *args);
+static void          xmce_get_adaptive_dimming_mode                    (void);
+static bool          xmce_set_adaptive_dimming_time                    (const char *args);
+static void          xmce_get_adaptive_dimming_time                    (void);
+static bool          xmce_set_exception_length_call_in                 (const char *args);
+static bool          xmce_set_exception_length_call_out                (const char *args);
+static bool          xmce_set_exception_length_alarm                   (const char *args);
+static bool          xmce_set_exception_length_usb_connect             (const char *args);
+static bool          xmce_set_exception_length_usb_dialog              (const char *args);
+static bool          xmce_set_exception_length_charger                 (const char *args);
+static bool          xmce_set_exception_length_battery                 (const char *args);
+static bool          xmce_set_exception_length_jack_in                 (const char *args);
+static bool          xmce_set_exception_length_jack_out                (const char *args);
+static bool          xmce_set_exception_length_camera                  (const char *args);
+static bool          xmce_set_exception_length_volume                  (const char *args);
+static bool          xmce_set_exception_length_activity                (const char *args);
+static void          xmce_get_exception_length                         (const char *tag, const char *key);
+static void          xmce_get_exception_lengths                        (void);
+static bool          xmce_set_filter_lid_with_als                      (const char *args);
+static void          xmce_get_filter_lid_with_als                      (void);
+static bool          xmce_set_filter_lid_als_limit                     (const char *args);
+static void          xmce_get_filter_lid_als_limit                     (void);
+static bool          xmce_set_lid_sensor_mode                          (const char *args);
+static void          xmce_get_lid_sensor_mode                          (void);
+static bool          xmce_set_lid_open_actions                         (const char *args);
+static void          xmce_get_lid_open_actions                         (void);
+static bool          xmce_set_lid_close_actions                        (const char *args);
+static void          xmce_get_lid_close_actions                        (void);
+static bool          xmce_set_kbd_slide_open_trigger                   (const char *args);
+static void          xmce_get_kbd_slide_open_trigger                   (void);
+static bool          xmce_set_kbd_slide_open_actions                   (const char *args);
+static void          xmce_get_kbd_slide_open_actions                   (void);
+static bool          xmce_set_kbd_slide_close_trigger                  (const char *args);
+static void          xmce_get_kbd_slide_close_trigger                  (void);
+static bool          xmce_set_kbd_slide_close_actions                  (const char *args);
+static void          xmce_get_kbd_slide_close_actions                  (void);
+static bool          xmce_set_orientation_sensor_mode                  (const char *args);
+static void          xmce_get_orientation_sensor_mode                  (void);
+static bool          xmce_set_orientation_change_is_activity           (const char *args);
+static void          xmce_get_orientation_change_is_activity           (void);
+static bool          xmce_set_flipover_gesture_detection               (const char *args);
+static void          xmce_get_flipover_gesture_detection               (void);
+static bool          xmce_set_ps_mode                                  (const char *args);
+static void          xmce_get_ps_mode                                  (void);
+static bool          xmce_set_ps_blocks_touch                          (const char *args);
+static void          xmce_get_ps_blocks_touch                          (void);
+static bool          xmce_set_ps_acts_as_lid                           (const char *args);
+static void          xmce_get_ps_acts_as_lid                           (void);
+static bool          xmce_set_ps_uncover_delay_sub                     (const char *key, const char *args);
+static void          xmce_get_ps_uncover_delay_sub                     (const char *tag, const char *key);
+static bool          xmce_set_default_ps_uncover_delay                 (const char *args);
+static bool          xmce_set_incall_ps_uncover_delay                  (const char *args);
+static void          xmce_get_ps_uncover_delay                         (void);
+static bool          xmce_set_inactivity_shutdown_delay                (const char *args);
+static void          xmce_get_inactivity_shutdown_delay                (void);
+static bool          xmce_set_als_autobrightness                       (const char *args);
+static void          xmce_get_als_autobrightness                       (void);
+static bool          xmce_set_als_mode                                 (const char *args);
+static void          xmce_get_als_mode                                 (void);
+static bool          xmce_is_als_filter_name                           (const char *name);
+static bool          xmce_set_als_input_filter                         (const char *args);
+static void          xmce_get_als_input_filter                         (void);
+static bool          xmce_set_als_sample_time                          (const char *args);
+static void          xmce_get_als_sample_time                          (void);
+static bool          xmce_set_autolock_mode                            (const char *args);
+static void          xmce_get_autolock_mode                            (void);
+static bool          xmce_set_autolock_delay                           (const char *args);
+static void          xmce_get_autolock_delay                           (void);
+static bool          xmce_set_devicelock_in_lockscreen                 (const char *args);
+static void          xmce_get_devicelock_in_lockscreen                 (void);
+static bool          xmce_set_lockscreen_unblank_animation             (const char *args);
+static void          xmce_get_lockscreen_unblank_animation             (void);
+static bool          xmce_set_blank_timeout                            (const char *args);
+static bool          xmce_set_blank_from_lockscreen_timeout            (const char *args);
+static bool          xmce_set_blank_from_lpm_on_timeout                (const char *args);
+static bool          xmce_set_blank_from_lpm_off_timeout               (const char *args);
+static void          xmce_get_blank_timeout_sub                        (const char *tag, const char *key);
+static void          xmce_get_blank_timeout                            (void);
+static bool          xmce_powerkey_event                               (const char *args);
+static bool          xmce_set_powerkey_action                          (const char *args);
+static void          xmce_get_powerkey_action                          (void);
+static bool          xmce_set_powerkey_blanking                        (const char *args);
+static void          xmce_get_powerkey_blanking                        (void);
+static bool          xmce_set_powerkey_long_press_delay                (const char *args);
+static void          xmce_get_powerkey_long_press_delay                (void);
+static bool          xmce_set_powerkey_double_press_delay              (const char *args);
+static void          xmce_get_powerkey_double_press_delay              (void);
+static bool          xmce_is_powerkey_action                           (const char *name);
+static bool          xmce_is_powerkey_action_mask                      (const char *names);
+static void          xmce_set_powerkey_action_mask                     (const char *key, const char *names);
+static bool          xmce_set_powerkey_actions_while_display_off_single(const char *args);
+static bool          xmce_set_powerkey_actions_while_display_off_double(const char *args);
+static bool          xmce_set_powerkey_actions_while_display_off_long  (const char *args);
+static bool          xmce_set_powerkey_actions_while_display_on_single (const char *args);
+static bool          xmce_set_powerkey_actions_while_display_on_double (const char *args);
+static bool          xmce_set_powerkey_actions_while_display_on_long   (const char *args);
+static bool          xmce_set_touchscreen_gesture_action               (const char *args);
+static void          xmce_get_powerkey_action_mask                     (const char *key, const char *tag);
+static void          xmce_get_powerkey_action_masks                    (void);
+static bool          xmce_is_powerkey_dbus_action                      (const char *conf);
+static bool          xmce_set_powerkey_dbus_action                     (const char *args);
+static void          xmce_get_powerkey_dbus_action                     (size_t action_id);
+static void          xmce_get_powerkey_dbus_actions                    (void);
+static bool          xmce_set_ps_override_count                        (const char *args);
+static void          xmce_get_ps_override_count                        (void);
+static bool          xmce_set_ps_override_timeout                      (const char *args);
+static void          xmce_get_ps_override_timeout                      (void);
+static bool          xmce_set_display_off_override                     (const char *args);
+static void          xmce_get_display_off_override                     (void);
+static bool          xmce_set_volkey_policy                            (const char *args);
+static void          xmce_get_volkey_policy                            (void);
+static bool          xmce_set_doubletap_mode                           (const char *args);
+static bool          xmce_set_doubletap_wakeup                         (const char *args);
+static void          xmce_get_doubletap_wakeup                         (void);
+static bool          xmce_set_fingerprint_wakeup_mode                  (const char *args);
+static void          xmce_get_fingerprint_wakeup_mode                  (void);
+static bool          xmce_set_fingerprint_wakeup_allow_delay           (const char *args);
+static void          xmce_get_fingerprint_wakeup_allow_delay           (void);
+static bool          xmce_set_fingerprint_wakeup_trigger_delay         (const char *args);
+static void          xmce_get_fingerprint_wakeup_trigger_delay         (void);
+static bool          xmce_set_fingerprint_wakeup_throttle_delay        (const char *args);
+static void          xmce_get_fingerprint_wakeup_throttle_delay        (void);
+static bool          xmce_set_power_saving_mode                        (const char *args);
+static void          xmce_get_power_saving_mode                        (void);
+static bool          xmce_set_psm_threshold                            (const char *args);
+static void          xmce_get_psm_threshold                            (void);
+static bool          xmce_set_forced_psm                               (const char *args);
+static void          xmce_get_forced_psm                               (void);
+static bool          xmce_set_low_power_mode                           (const char *args);
+static void          xmce_get_low_power_mode                           (void);
+static bool          xmce_set_inhibit_mode                             (const char *args);
+static void          xmce_get_inhibit_mode                             (void);
+static bool          xmce_set_kbd_slide_inhibit_mode                   (const char *args);
+static void          xmce_get_kbd_slide_inhibit_mode                   (void);
+static bool          xmce_set_lipstick_core_delay                      (const char *args);
+static void          xmce_get_lipstick_core_delay                      (void);
+static bool          xmce_set_brightness_fade_default                  (const char *args);
+static bool          xmce_set_brightness_fade_dimming                  (const char *args);
+static bool          xmce_set_brightness_fade_als                      (const char *args);
+static bool          xmce_set_brightness_fade_blank                    (const char *args);
+static bool          xmce_set_brightness_fade_unblank                  (const char *args);
+static void          xmce_get_brightness_fade_helper                   (const char *title, const char *key);
+static void          xmce_get_brightness_fade                          (void);
+static bool          xmce_set_memnotify_warning_used                   (const char *args);
+static bool          xmce_set_memnotify_warning_active                 (const char *args);
+static bool          xmce_set_memnotify_critical_used                  (const char *args);
+static bool          xmce_set_memnotify_critical_active                (const char *args);
+static void          xmce_get_memnotify_helper                         (const char *title, const char *key);
+static void          xmce_get_memnotify_limits                         (void);
+static void          xmce_get_memnotify_level                          (void);
+static bool          xmce_set_input_policy_mode                        (const char *args);
+static void          xmce_get_input_policy_mode                        (void);
+static bool          xmce_set_touch_unblock_delay                      (const char *args);
+static void          xmce_get_touch_unblock_delay                      (void);
+static bool          xmce_set_cpu_scaling_governor                     (const char *args);
+static void          xmce_get_cpu_scaling_governor                     (void);
+static bool          xmce_set_never_blank                              (const char *args);
+static void          xmce_get_never_blank                              (void);
+static bool          xmce_set_suspend_policy                           (const char *args);
+static void          xmce_get_suspend_policy                           (void);
+static bool          xmce_get_suspend_stats                            (const char *args);
+static bool          xmce_get_display_stats                            (const char *args);
+static bool          xmce_set_fake_doubletap                           (const char *args);
+static void          xmce_get_fake_doubletap                           (void);
+static bool          xmce_tklock_open                                  (const char *args);
+static bool          xmce_tklock_close                                 (const char *args);
+static bool          xmce_tklock_callback                              (const char *args);
+static bool          xmce_set_tklock_mode                              (const char *args);
+static void          xmce_get_tklock_mode                              (void);
+static bool          xmce_set_tklock_blank                             (const char *args);
+static void          xmce_get_tklock_blank                             (void);
+static void          xmce_get_version                                  (void);
+static void          xmce_get_inactivity_state                         (void);
+static void          xmce_get_keyboard_backlight_state                 (void);
+static bool          xmce_get_status                                   (const char *args);
+static bool          xmce_set_demo_mode                                (const char *args);
+
+/* ------------------------------------------------------------------------- *
+ * DBUSHELPER
+ * ------------------------------------------------------------------------- */
+
+static const char   *dbushelper_get_type_name      (int type);
+static gboolean      dbushelper_require_type       (DBusMessageIter *iter, int want_type);
+static gboolean      dbushelper_require_array_type (DBusMessageIter *iter, int want_type);
+static DBusMessage  *dbushelper_call_method        (DBusMessage *req);
+static gboolean      dbushelper_read_at_end        (DBusMessageIter *iter);
+static gboolean      dbushelper_read_int           (DBusMessageIter *iter, gint *value);
+static gboolean      dbushelper_read_int64         (DBusMessageIter *iter, int64_t *value);
+static gboolean      dbushelper_read_string        (DBusMessageIter *iter, gchar **value);
+static gboolean      dbushelper_read_boolean       (DBusMessageIter *iter, gboolean *value);
+static gboolean      dbushelper_read_variant       (DBusMessageIter *iter, DBusMessageIter *sub);
+static gboolean      dbushelper_read_array         (DBusMessageIter *iter, DBusMessageIter *sub);
+static gboolean      dbushelper_read_dict          (DBusMessageIter *iter, DBusMessageIter *sub);
+static gboolean      dbushelper_read_struct        (DBusMessageIter *iter, DBusMessageIter *sub);
+static gboolean      dbushelper_read_int_array     (DBusMessageIter *iter, gint **value, gint *count);
+static gboolean      dbushelper_init_read_iterator (DBusMessage *rsp, DBusMessageIter *iter);
+static gboolean      dbushelper_init_write_iterator(DBusMessage *req, DBusMessageIter *iter);
+static gboolean      dbushelper_write_int          (DBusMessageIter *iter, gint value);
+static gboolean      dbushelper_write_string       (DBusMessageIter *iter, const char *value);
+static gboolean      dbushelper_write_int_array    (DBusMessageIter *iter, const gint *value, gint count);
+static gboolean      dbushelper_write_boolean      (DBusMessageIter *iter, gboolean value);
+static gboolean      dbushelper_write_path         (DBusMessageIter *iter, const gchar *value);
+static gboolean      dbushelper_push_variant       (DBusMessageIter **stack, const char *signature);
+static gboolean      dbushelper_push_array         (DBusMessageIter **stack, const char *signature);
+static gboolean      dbushelper_pop_container      (DBusMessageIter **stack);
+static void          dbushelper_abandon_stack      (DBusMessageIter *stack, DBusMessageIter *iter);
+
+/* ------------------------------------------------------------------------- *
+ * UNGROUPED
+ * ------------------------------------------------------------------------- */
+
+static int          lookup                   (const symbol_t *stab, const char *key);
+static const char  *rlookup                  (const symbol_t *stab, int val);
+static int          parse_inhibitmode        (const char *args);
+static const char  *repr_inhibitmode         (int value);
+static gint        *parse_gint_array         (const char *text, gint *len);
+static bool         is_configurable_pattern  (const char *pattern);
+static bool         set_led_breathing_enabled(const char *args);
+static void         get_led_breathing_enabled(void);
+static bool         set_led_breathing_limit  (const char *args);
+static void         get_led_breathing_limit  (void);
+static bool         set_led_pattern_enabled  (const char *pattern, bool enable);
+static bool         interactive_confirmation (const char *positive);
+static char        *elapsed_time_repr        (char *buff, size_t size, int64_t t);
+int                 main                     (int argc, char **argv);
+
+/* ------------------------------------------------------------------------- *
+ * MCETOOL
+ * ------------------------------------------------------------------------- */
+
+static gboolean   mcetool_parse_timspec    (struct timespec *ts, const char *args);
+static char      *mcetool_parse_token      (char **ppos);
+static char      *mcetool_format_bitmask   (const symbol_t *lut, int mask, char *buff, size_t size);
+static unsigned   mcetool_parse_bitmask    (const symbol_t *lut, const char *args);
+static bool       mcetool_show_led_patterns(const char *args);
+static bool       mcetool_block            (const char *args);
+
+/* ------------------------------------------------------------------------- *
+ * MCETOOL_DO
+ * ------------------------------------------------------------------------- */
+
+static bool  mcetool_do_enable_led         (const char *arg);
+static bool  mcetool_do_disable_led        (const char *arg);
+static bool  mcetool_do_enable_pattern     (const char *args);
+static bool  mcetool_do_disable_led_pattern(const char *args);
+static bool  mcetool_do_activate_pattern   (const char *args);
+static bool  mcetool_do_deactivate_pattern (const char *args);
+static bool  mcetool_do_unblank_screen     (const char *arg);
+static bool  mcetool_do_dim_screen         (const char *arg);
+static bool  mcetool_do_blank_screen       (const char *arg);
+static bool  mcetool_do_blank_screen_lpm   (const char *arg);
+static bool  mcetool_do_version            (const char *arg);
+static bool  mcetool_do_help               (const char *arg);
+static bool  mcetool_do_long_help          (const char *arg);
+
 /* ------------------------------------------------------------------------- *
  * GENERIC DBUS HELPERS
  * ------------------------------------------------------------------------- */
@@ -1400,16 +1756,6 @@ EXIT:
 /* ------------------------------------------------------------------------- *
  * SYMBOL LOOKUP TABLES
  * ------------------------------------------------------------------------- */
-
-/** Simple string key to integer value symbol */
-typedef struct
-{
-        /** Name of the symbol, or NULL to mark end of symbol table */
-        const char *key;
-
-        /** Value of the symbol */
-        int         val;
-} symbol_t;
 
 /** Lookup symbol by name and return value
  *
@@ -7308,7 +7654,7 @@ PROG_NAME" v"G_STRINGIFY(PRG_VERSION)"\n"
 "Copyright (C) 2005-2011 Nokia Corporation.  All rights reserved.\n"
 ;
 
-static bool mcetool_do_version(const char *arg)
+static __attribute__((__noreturn__)) bool mcetool_do_version(const char *arg)
 {
         (void)arg;
 
@@ -7316,7 +7662,7 @@ static bool mcetool_do_version(const char *arg)
         exit(EXIT_SUCCESS);
 }
 
-static bool mcetool_do_help(const char *arg)
+static __attribute__((__noreturn__)) bool mcetool_do_help(const char *arg)
 {
         fprintf(stdout,
                 "Mode Control Entity Tool\n"
@@ -7344,9 +7690,9 @@ static bool mcetool_do_help(const char *arg)
         exit(EXIT_SUCCESS);
 }
 
-static bool mcetool_do_long_help(const char *arg)
+static bool __attribute__((__noreturn__)) mcetool_do_long_help(const char *arg)
 {
-        return mcetool_do_help(arg ?: "all");
+        mcetool_do_help(arg ?: "all");
 }
 
 /* ========================================================================= *
