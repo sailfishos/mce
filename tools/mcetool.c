@@ -19,6 +19,7 @@
  */
 
 #include "../mce-command-line.h"
+#include "../mce-dbus.h"
 #include "../mce-setting.h"
 #include "../tklock.h"
 #include "../powerkey.h"
@@ -102,6 +103,9 @@ static gboolean         xdbus_call_va(const gchar *const service, const gchar *c
  * ------------------------------------------------------------------------- */
 
 static gboolean      xmce_ipc_va                                       (const gchar *const name, DBusMessage **reply, int arg_type, va_list va);
+#ifdef ENABLE_BATTERY_SIMULATION
+static gboolean      xmce_ipc                                          (const gchar *const name, DBusMessage **reply, int arg_type, ...);
+#endif
 static gboolean      xmce_ipc_no_reply                                 (const gchar *const name, int arg_type, ...);
 static gboolean      xmce_ipc_message_reply                            (const gchar *const name, DBusMessage **reply, int arg_type, ...);
 static gboolean      xmce_ipc_string_reply                             (const gchar *const name, char **result, int arg_type, ...);
@@ -127,6 +131,15 @@ static void          xmce_get_verbosity                                (void);
 static bool          xmce_get_color_profile_ids                        (const char *arg);
 static bool          xmce_set_color_profile                            (const char *args);
 static void          xmce_get_color_profile                            (void);
+#ifdef ENABLE_BATTERY_SIMULATION
+static bool          xmce_set_charger_state                            (const char *state);
+static bool          xmce_set_battery_level                            (int level);
+#endif
+static void          xmce_get_cable_state                              (void);
+static void          xmce_get_charger_state                            (void);
+static void          xmce_get_battery_status                           (void);
+static void          xmce_get_battery_level                            (void);
+static void          xmce_get_battery_info                             (void);
 static void          xmce_parse_notification_args                      (const char *args, char **title, dbus_int32_t *delay, dbus_int32_t *renew);
 static bool          xmce_notification_begin                           (const char *args);
 static bool          xmce_notification_end                             (const char *args);
@@ -415,6 +428,10 @@ static bool  mcetool_do_enable_pattern     (const char *args);
 static bool  mcetool_do_disable_led_pattern(const char *args);
 static bool  mcetool_do_activate_pattern   (const char *args);
 static bool  mcetool_do_deactivate_pattern (const char *args);
+#ifdef ENABLE_BATTERY_SIMULATION
+static bool  mcetool_do_set_charger_state  (const char *arg);
+static bool  mcetool_do_set_battery_level  (const char *arg);
+#endif
 static bool  mcetool_do_unblank_screen     (const char *arg);
 static bool  mcetool_do_dim_screen         (const char *arg);
 static bool  mcetool_do_blank_screen       (const char *arg);
@@ -581,6 +598,35 @@ static gboolean xmce_ipc_va(const gchar *const name, DBusMessage **reply,
                              name, reply,
                              arg_type, va);
 }
+
+/** Wrapper for making synchronous D-Bus method calls to MCE
+ *
+ * If reply pointer is NULL, the method call is sent without
+ * waiting for method return message.
+ *
+ * @param name      [IN]  D-Bus method call name
+ * @param reply     [OUT] Where to store method_return message, or NULL
+ * @param arg_type  [IN]  DBUS_TYPE_STRING etc, as with dbus_message_append_args()
+ * @param ...       [IN]  D-Bus arguments, terminated with DBUS_TYPE_INVALID
+ *
+ * @return TRUE if call was successfully sent (and optionally reply received),
+ *         or FALSE in case of errors
+ */
+#ifdef ENABLE_BATTERY_SIMULATION
+static gboolean xmce_ipc(const gchar *const name, DBusMessage **reply,
+                         int arg_type, ...)
+{
+        va_list va;
+        va_start(va, arg_type);
+        gboolean ack = xdbus_call_va(MCE_SERVICE,
+                                     MCE_REQUEST_PATH,
+                                     MCE_REQUEST_IF,
+                                     name, reply,
+                                     arg_type, va);
+        va_end(va);
+        return ack;
+}
+#endif // ENABLE_BATTERY_SIMULATION
 
 /** Wrapper for making MCE D-Bus method calls without waiting for reply
  *
@@ -2521,6 +2567,137 @@ static void xmce_get_color_profile(void)
         xmce_ipc_string_reply(MCE_COLOR_PROFILE_GET, &str, DBUS_TYPE_INVALID);
         printf("%-"PAD1"s %s\n","Color profile:", str ?: "unknown");
         free(str);
+}
+
+/* ------------------------------------------------------------------------- *
+ * battery stuff
+ * ------------------------------------------------------------------------- */
+
+#ifdef ENABLE_BATTERY_SIMULATION
+static bool xmce_set_charger_state(const char *state)
+{
+        dbus_bool_t   ret = false;
+        DBusError     err = DBUS_ERROR_INIT;
+        DBusMessage  *rsp = 0;
+        gboolean      ack = xmce_ipc(MCE_CHARGER_STATE_REQ, &rsp,
+                                     DBUS_TYPE_STRING, &state,
+                                     DBUS_TYPE_INVALID);
+        if( !ack || !rsp )
+                goto EXIT;
+
+        if( !dbus_message_get_args(rsp, &err,
+                                   DBUS_TYPE_BOOLEAN, &ret,
+                                   DBUS_TYPE_INVALID) )
+                goto EXIT;
+
+EXIT:
+        if( dbus_error_is_set(&err) ) {
+                errorf("set %s: %s: %s\n", state, err.name, err.message);
+                dbus_error_free(&err);
+        }
+
+        if( rsp ) dbus_message_unref(rsp);
+
+        return ack && ret;
+}
+
+static bool xmce_set_battery_level(int level)
+{
+        dbus_bool_t   ret = false;
+        DBusError     err = DBUS_ERROR_INIT;
+        DBusMessage  *rsp = 0;
+        dbus_int32_t  arg = level;
+        gboolean      ack = xmce_ipc(MCE_BATTERY_LEVEL_REQ, &rsp,
+                                     DBUS_TYPE_INT32, &arg,
+                                     DBUS_TYPE_INVALID);
+        if( !ack || !rsp )
+                goto EXIT;
+
+        if( !dbus_message_get_args(rsp, &err,
+                                   DBUS_TYPE_BOOLEAN, &ret,
+                                   DBUS_TYPE_INVALID) )
+                goto EXIT;
+
+EXIT:
+        if( dbus_error_is_set(&err) ) {
+                errorf("set %d: %s: %s\n", level, err.name, err.message);
+                dbus_error_free(&err);
+        }
+
+        if( rsp ) dbus_message_unref(rsp);
+
+        return ack && ret;
+}
+
+static bool mcetool_do_set_charger_state(const char *arg)
+{
+        const char * const lut[] = {
+                MCE_CHARGER_STATE_UNKNOWN,
+                MCE_CHARGER_STATE_ON,
+                MCE_CHARGER_STATE_OFF,
+                0
+        };
+
+        for( size_t i = 0; ; ++i ) {
+                if( !lut[i] ) {
+                        errorf("%s: invalid charger state\n", arg);
+                        return false;
+                }
+                if( !strcmp(lut[i], arg) )
+                        break;
+        }
+
+        return xmce_set_charger_state(arg);
+}
+
+static bool mcetool_do_set_battery_level(const char *arg)
+{
+        int level = xmce_parse_integer(arg);
+        if( level < 0 || level > 100 ) {
+                errorf("%s: invalid battery level\n", arg);
+                return false;
+        }
+        return xmce_set_battery_level(level);
+}
+#endif // ENABLE_BATTERY_SIMULATION
+
+static void xmce_get_cable_state(void)
+{
+        char *str = 0;
+        xmce_ipc_string_reply(MCE_USB_CABLE_STATE_GET, &str, DBUS_TYPE_INVALID);
+        printf("%-"PAD1"s %s\n","Charger cable:", str ?: "unknown");
+        free(str);
+}
+
+static void xmce_get_charger_state(void)
+{
+        char *str = 0;
+        xmce_ipc_string_reply(MCE_CHARGER_STATE_GET, &str, DBUS_TYPE_INVALID);
+        printf("%-"PAD1"s %s\n","Charger state:", str ?: "unknown");
+        free(str);
+}
+
+static void xmce_get_battery_status(void)
+{
+        char *str = 0;
+        xmce_ipc_string_reply(MCE_BATTERY_STATUS_GET, &str, DBUS_TYPE_INVALID);
+        printf("%-"PAD1"s %s\n","Battery status:", str ?: "unknown");
+        free(str);
+}
+
+static void xmce_get_battery_level(void)
+{
+        gint num = -1;
+        xmce_ipc_int_reply(MCE_BATTERY_LEVEL_GET, &num, DBUS_TYPE_INVALID);
+        printf("%-"PAD1"s %d\n","Battery level:", num);
+}
+
+static void xmce_get_battery_info(void)
+{
+        xmce_get_cable_state();
+        xmce_get_charger_state();
+        xmce_get_battery_level();
+        xmce_get_battery_status();
 }
 
 /* ------------------------------------------------------------------------- *
@@ -6216,6 +6393,8 @@ static bool xmce_get_status(const char *args)
         xmce_get_memnotify_limits();
         xmce_get_memnotify_level();
         xmce_get_button_backlligut_off_delay();
+
+        xmce_get_battery_info();
         printf("\n");
 
         return true;
@@ -7639,6 +7818,25 @@ static const mce_opt_t options[] =
                         G_STRINGIFY(MCE_MINIMUM_INACTIVITY_SHUTDOWN_DELAY)
                         " disables the feature.\n"
         },
+#ifdef ENABLE_BATTERY_SIMULATION
+        {
+                .name        = "set-charger-state",
+                .with_arg    = mcetool_do_set_charger_state,
+                .values      =
+                        MCE_CHARGER_STATE_UNKNOWN"|"
+                        MCE_CHARGER_STATE_ON"|"
+                        MCE_CHARGER_STATE_OFF,
+                .usage       =
+                        "Override charger state for debugging purposes\n"
+        },
+        {
+                .name        = "set-battery-level",
+                .with_arg    = mcetool_do_set_battery_level,
+                .values      = "percent",
+                .usage       =
+                        "Override battery level for debugging purposes\n"
+        },
+#endif // ENABLE_BATTERY_SIMULATION
 
         // sentinel
         {
@@ -7690,7 +7888,7 @@ static __attribute__((__noreturn__)) bool mcetool_do_help(const char *arg)
         exit(EXIT_SUCCESS);
 }
 
-static bool __attribute__((__noreturn__)) mcetool_do_long_help(const char *arg)
+static __attribute__((__noreturn__)) bool mcetool_do_long_help(const char *arg)
 {
         mcetool_do_help(arg ?: "all");
 }
