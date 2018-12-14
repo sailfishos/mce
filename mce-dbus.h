@@ -28,6 +28,39 @@
 # include <dbus/dbus.h>
 
 /* ========================================================================= *
+ * NON-PUBLIC mce dbus method calls
+ * ========================================================================= */
+
+# ifdef ENABLE_BATTERY_SIMULATION
+/** Override current charger state
+ *
+ * Available in devel flavor mce only, and only to privileged applications.
+ *
+ * @since mce 1.99.0
+ *
+ * @param string: current charger state, one of:
+ * - #MCE_CHARGER_STATE_UNKNOWN
+ * - #MCE_CHARGER_STATE_ON
+ * - #MCE_CHARGER_STATE_OFF
+ *
+ * @return boolean true if accepted, false / error reply otherwise
+ */
+#  define MCE_CHARGER_STATE_REQ                   "req_charger_state"
+
+/** Override current battery level
+ *
+ * Available in devel flavor mce only, and only to privileged applications.
+ *
+ * @since mce 1.99.0
+ *
+ * @param int32: battery level percent, or #MCE_BATTERY_LEVEL_UNKNOWN
+ *
+ * @return boolean true if accepted, false / error reply otherwise
+ */
+#  define MCE_BATTERY_LEVEL_REQ                   "req_battery_level"
+# endif // ENABLE_BATTERY_SIMULATION
+
+/* ========================================================================= *
  * DSME DBUS SERVICE
  * ========================================================================= */
 

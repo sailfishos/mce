@@ -24,7 +24,11 @@
 #include "../mce-lib.h"
 #include "../mce-log.h"
 #include "../mce-conf.h"
+#include "../mce-dbus.h"
 #include "../mce-wakelock.h"
+
+#include <mce/dbus-names.h>
+#include <mce/mode-names.h>
 
 #include <libudev.h>
 
@@ -168,7 +172,19 @@ struct udevproperty_t
  * MCEBAT
  * ------------------------------------------------------------------------- */
 
-static void  mcebat_update(const mcebat_t *curr);
+static void  mcebat_update(void);
+
+#ifdef ENABLE_BATTERY_SIMULATION
+static void      mcebat_dbus_remove_client          (const char *dbus_name);
+static gboolean  mcebat_dbus_client_removed_cb      (DBusMessage *const msg);
+static bool      mcebat_dbus_add_client             (const char *dbus_name);
+static void      mcebat_dbus_evaluate_battery_status(void);
+static gboolean  mcebat_dbus_charger_state_req_cb   (DBusMessage *const msg);
+static gboolean  mcebat_dbus_battery_level_req_cb   (DBusMessage *const msg);
+#endif // ENABLE_BATTERY_SIMULATION
+
+static void      mcebat_dbus_init                   (void);
+static void      mcebat_dbus_quit                   (void);
 
 /* ------------------------------------------------------------------------- *
  * UDEVPROPERTY
@@ -252,11 +268,34 @@ G_MODULE_EXPORT module_info_struct module_info =
  * Note: To avoid mce startup time glitches, these must be kept in
  *       sync with default values held in the relevant datapipes.
  */
-static mcebat_t mcebat_current = {
+static mcebat_t mcebat_datapipe = {
     .battery_level  = BATTERY_LEVEL_INITIAL,
     .battery_status = BATTERY_STATUS_UNDEF,
     .charger_state  = CHARGER_STATE_UNDEF,
 };
+
+/** Cached battery state as derived from udev
+ */
+static mcebat_t mcebat_actual = {
+    .battery_level  = BATTERY_LEVEL_INITIAL,
+    .battery_status = BATTERY_STATUS_UNDEF,
+    .charger_state  = CHARGER_STATE_UNDEF,
+};
+
+#ifdef ENABLE_BATTERY_SIMULATION
+/** Maximum number of concurrent call state requesters */
+# define CLIENTS_MONITOR_COUNT 1
+
+/** List of monitored battery state requesters */
+static GSList *clients_monitor_list = NULL;
+
+/** Cached battery state as requested over D-Bus
+ *
+ * Synchronized with mcebat_datapipe when simulation
+ * is activated, so no initialization is needed.
+ */
+static mcebat_t mcebat_simulated;
+#endif // ENABLE_BATTERY_SIMULATION
 
 /** Wakelock used for suspend proofing edev event processing */
 static const char       udevtracker_wakelock[]   = "udevtracker_wakeup";
@@ -295,6 +334,316 @@ static const char * const udevproperty_used_keys[] = {
 };
 
 /* ========================================================================= *
+ * CLIENT
+ * ========================================================================= */
+
+#ifdef ENABLE_BATTERY_SIMULATION
+/** Unregister battery simulation client
+ *
+ * When the last client is removed, actual battery/charger state is
+ * taken back to use.
+ *
+ * @param dbus_name  Private D-Bus name of the client
+ */
+static void
+mcebat_dbus_remove_client(const char *dbus_name)
+{
+    gssize rc = mce_dbus_owner_monitor_remove(dbus_name,
+                                              &clients_monitor_list);
+
+    if( rc < 0 )
+        goto EXIT;
+
+    if( rc == 0 ) {
+        mce_log(LL_WARN, "client %s removed - stop simulation", dbus_name);
+        mcebat_update();
+    }
+
+EXIT:
+    return;
+}
+
+/** D-Bus callback: A tracked client dropped from bus
+ *
+ * @param msg The D-Bus message
+ *
+ * @return TRUE
+ */
+static gboolean
+mcebat_dbus_client_removed_cb(DBusMessage *const msg)
+{
+    DBusError   error     = DBUS_ERROR_INIT;
+    const char *dbus_name = 0;
+    const char *old_owner = 0;
+    const char *new_owner = 0;
+
+    if( !dbus_message_get_args(msg, &error,
+                               DBUS_TYPE_STRING, &dbus_name,
+                               DBUS_TYPE_STRING, &old_owner,
+                               DBUS_TYPE_STRING, &new_owner,
+                               DBUS_TYPE_INVALID) ) {
+        mce_log(LL_ERR, "Failed to parse NameOwnerChanged: %s: %s",
+                error.name, error.message);
+        goto EXIT;
+    }
+
+    mcebat_dbus_remove_client(dbus_name);
+
+EXIT:
+    dbus_error_free(&error);
+    return TRUE;
+}
+
+/** Register battery simulation client
+ *
+ * When the first client is registered, simulated battery state
+ * is synchronized with actual state.
+ *
+ * @param dbus_name  Private D-Bus name of the client
+ *
+ * @return true if client was registered, false otherwise
+ */
+static bool
+mcebat_dbus_add_client(const char *dbus_name)
+{
+    bool ack = false;
+    gssize rc = mce_dbus_owner_monitor_add(dbus_name,
+                                           mcebat_dbus_client_removed_cb,
+                                           &clients_monitor_list,
+                                           CLIENTS_MONITOR_COUNT);
+    if( rc < 0 ) {
+        mce_log(LL_WARN, "client %s not added", dbus_name);
+        goto EXIT;
+    }
+
+    if( rc == 1 ) {
+        mce_log(LL_WARN, "client %s added - start simulation", dbus_name);
+        /* Note: Simulation starts from current state, so there
+         *       is no need to re-evaluate immediately. */
+        mcebat_simulated = mcebat_datapipe;
+    }
+
+    ack = true;
+
+EXIT:
+    return ack;
+}
+
+/** Evaluate simulated battery status
+ *
+ * Should be called whenever the simulation values controlled
+ * by clients change so that also derived values are re-evaluated.
+ */
+static void
+mcebat_dbus_evaluate_battery_status(void)
+{
+    /* Handle charger-connected special cases */
+    if( mcebat_simulated.charger_state == CHARGER_STATE_ON ) {
+        if( mcebat_simulated.battery_level >= 100 ) {
+            /* Battery full reached */
+            mcebat_simulated.battery_status = BATTERY_STATUS_FULL;
+            goto EXIT;
+        }
+        if( mcebat_simulated.battery_status == BATTERY_STATUS_FULL &&
+            mcebat_simulated.battery_level  >= BATTERY_CAPACITY_FULL ) {
+            /* Maintenance charging retains full status*/
+            goto EXIT;
+        }
+        if( mcebat_simulated.battery_level  >  BATTERY_CAPACITY_UNDEF ) {
+            /* Low/empty does not apply while charging */
+            mcebat_simulated.battery_status = BATTERY_STATUS_OK;
+            goto EXIT;
+        }
+    }
+
+    /* Evaluate based on battery level */
+    if( mcebat_simulated.battery_level <= BATTERY_CAPACITY_UNDEF )
+        mcebat_simulated.battery_status = BATTERY_STATUS_UNDEF;
+    else if( mcebat_simulated.battery_level <= BATTERY_CAPACITY_EMPTY )
+        mcebat_simulated.battery_status = BATTERY_STATUS_EMPTY;
+    else if( mcebat_simulated.battery_level <= BATTERY_CAPACITY_LOW )
+        mcebat_simulated.battery_status = BATTERY_STATUS_LOW;
+    else
+        mcebat_simulated.battery_status = BATTERY_STATUS_OK;
+
+EXIT:
+    return;
+}
+
+/** D-Bus callback: Simulated charger state requested
+ *
+ * @param msg The D-Bus message
+ *
+ * @return TRUE
+ */
+static gboolean
+mcebat_dbus_charger_state_req_cb(DBusMessage *const msg)
+{
+    dbus_bool_t   accepted  = false;
+    const char    *sender   = dbus_message_get_sender(msg);
+    DBusError      error    = DBUS_ERROR_INIT;
+    const char    *state    = 0;
+    DBusMessage   *reply    = 0;
+
+    mce_log(LL_DEVEL, "charger state request from %s",
+            mce_dbus_get_name_owner_ident(sender));
+
+    if( !mcebat_dbus_add_client(sender) )
+        goto EXIT;
+
+    if( !dbus_message_get_args(msg, &error,
+                               DBUS_TYPE_STRING, &state,
+                               DBUS_TYPE_INVALID) ) {
+        goto EXIT;
+    }
+
+    if( !strcmp(state, MCE_CHARGER_STATE_ON) )
+        mcebat_simulated.charger_state = CHARGER_STATE_ON;
+    else if( !strcmp(state, MCE_CHARGER_STATE_OFF) )
+        mcebat_simulated.charger_state = CHARGER_STATE_OFF;
+    else
+        mcebat_simulated.charger_state = CHARGER_STATE_UNDEF;
+
+    mcebat_dbus_evaluate_battery_status();
+    mcebat_update();
+
+    accepted = true;
+
+EXIT:
+    /* Setup the reply */
+    reply = dbus_new_method_reply(msg);
+
+    /* Append the result */
+    if( !dbus_message_append_args(reply,
+                                  DBUS_TYPE_BOOLEAN, &accepted,
+                                  DBUS_TYPE_INVALID)) {
+        mce_log(LL_ERR,"Failed to append reply arguments to D-Bus "
+                "message for %s.%s",
+                MCE_REQUEST_IF, dbus_message_get_member(msg));
+    }
+    else if( !dbus_message_get_no_reply(msg) ) {
+        dbus_send_message(reply), reply = 0;
+    }
+
+    if( reply )
+        dbus_message_unref(reply);
+
+    dbus_error_free(&error);
+
+    return TRUE;
+}
+
+/** D-Bus callback: Simulated charger state requested
+ *
+ * @param msg The D-Bus message
+ *
+ * @return TRUE
+ */
+static gboolean
+mcebat_dbus_battery_level_req_cb(DBusMessage *const msg)
+{
+    dbus_bool_t   accepted  = false;
+    const char    *sender   = dbus_message_get_sender(msg);
+    DBusError      error    = DBUS_ERROR_INIT;
+    dbus_int32_t   level    = 0;
+    DBusMessage   *reply    = 0;
+
+    mce_log(LL_DEVEL, "battery level request from %s",
+            mce_dbus_get_name_owner_ident(sender));
+
+    if( !mcebat_dbus_add_client(sender) )
+        goto EXIT;
+
+    if( !dbus_message_get_args(msg, &error,
+                               DBUS_TYPE_INT32, &level,
+                               DBUS_TYPE_INVALID) ) {
+        goto EXIT;
+    }
+
+    mcebat_simulated.battery_level = level;
+
+    mcebat_dbus_evaluate_battery_status();
+    mcebat_update();
+
+    accepted = true;
+
+EXIT:
+    /* Setup the reply */
+    reply = dbus_new_method_reply(msg);
+
+    /* Append the result */
+    if( !dbus_message_append_args(reply,
+                                  DBUS_TYPE_BOOLEAN, &accepted,
+                                  DBUS_TYPE_INVALID)) {
+        mce_log(LL_ERR,"Failed to append reply arguments to D-Bus "
+                "message for %s.%s",
+                MCE_REQUEST_IF, dbus_message_get_member(msg));
+    }
+    else if( !dbus_message_get_no_reply(msg) ) {
+        dbus_send_message(reply), reply = 0;
+    }
+
+    if( reply )
+        dbus_message_unref(reply);
+
+    dbus_error_free(&error);
+
+    return TRUE;
+}
+#endif // ENABLE_BATTERY_SIMULATION
+
+/** Array of dbus message handlers */
+static mce_dbus_handler_t callstate_dbus_handlers[] =
+{
+    /* method calls */
+#ifdef ENABLE_BATTERY_SIMULATION
+    {
+        .interface  = MCE_REQUEST_IF,
+        .name       = MCE_CHARGER_STATE_REQ,
+        .type       = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback   = mcebat_dbus_charger_state_req_cb,
+        .privileged = true,
+        .args       =
+            "    <arg direction=\"in\" name=\"charger_state\" type=\"s\"/>\n"
+            "    <arg direction=\"out\" name=\"accepted\" type=\"b\"/>\n"
+    },
+    {
+        .interface  = MCE_REQUEST_IF,
+        .name       = MCE_BATTERY_LEVEL_REQ,
+        .type       = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback   = mcebat_dbus_battery_level_req_cb,
+        .privileged = true,
+        .args       =
+            "    <arg direction=\"in\" name=\"battery_level\" type=\"i\"/>\n"
+            "    <arg direction=\"out\" name=\"accepted\" type=\"b\"/>\n"
+    },
+#endif // ENABLE_BATTERY_SIMULATION
+    /* sentinel */
+    {
+        .interface = 0
+    }
+};
+
+/** Add dbus handlers
+ */
+static void mcebat_dbus_init(void)
+{
+    mce_dbus_handler_register_array(callstate_dbus_handlers);
+}
+
+/** Remove dbus handlers
+ */
+static void mcebat_dbus_quit(void)
+{
+    mce_dbus_handler_unregister_array(callstate_dbus_handlers);
+
+#ifdef ENABLE_BATTERY_SIMULATION
+    /* Just release resources, do not re-evaluate state */
+    mce_dbus_owner_monitor_remove_all(&clients_monitor_list);
+#endif
+}
+
+/* ========================================================================= *
  * MCEBAT
  * ========================================================================= */
 
@@ -303,10 +652,17 @@ static const char * const udevproperty_used_keys[] = {
  * @param curr  Battery state data to expose.
  */
 static void
-mcebat_update(const mcebat_t *curr)
+mcebat_update(void)
 {
-    mcebat_t prev = mcebat_current;
-    mcebat_current = *curr;
+    const mcebat_t *curr = &mcebat_actual;
+
+#ifdef ENABLE_BATTERY_SIMULATION
+    if( clients_monitor_list )
+        curr = &mcebat_simulated;
+#endif
+
+    mcebat_t prev = mcebat_datapipe;
+    mcebat_datapipe = *curr;
 
     if( prev.charger_state != curr->charger_state ) {
         mce_log(LL_CRUCIAL, "charger_state: %s -> %s",
@@ -992,18 +1348,15 @@ udevtracker_rethink(udevtracker_t *self)
 {
     udevtracker_cancel_rethink(self);
 
-    /* Start with latest data that was pushed to datapipes */
-    mcebat_t mcebat = mcebat_current;
-
     /* Give charger_state special treatment: Assume charger is
      * disconnect & rectify if any of the battery/charger devices
      * indicate charging activity. */
-    mcebat.charger_state = CHARGER_STATE_OFF;
+    mcebat_actual.charger_state = CHARGER_STATE_OFF;
 
-    g_hash_table_foreach(self->udt_devices, udevdevice_evaluate_cb, &mcebat);
+    g_hash_table_foreach(self->udt_devices, udevdevice_evaluate_cb, &mcebat_actual);
 
     /* Sync to datapipes */
-    mcebat_update(&mcebat);
+    mcebat_update();
 }
 
 /** Timer callback for delayed battery state evaluation
@@ -1252,6 +1605,8 @@ G_MODULE_EXPORT const gchar *g_module_check_init(GModule *module)
     if( !udevtracker_start(udevtracker_object) )
         goto EXIT;
 
+    mcebat_dbus_init();
+
     mce_log(LL_DEBUG, "%s: loaded", MODULE_NAME);
 
 EXIT:
@@ -1265,6 +1620,8 @@ EXIT:
 G_MODULE_EXPORT void g_module_unload(GModule *module)
 {
     (void)module;
+
+    mcebat_dbus_quit();
 
     udevtracker_delete(udevtracker_object), udevtracker_object = 0;
 
