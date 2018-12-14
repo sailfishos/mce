@@ -1,3 +1,12 @@
+mce (1.99.0) precise; urgency=low
+
+  * [cpu-keepalive] Flag keepalive wakeup method call as privileged
+  * [display] Flag lpm debugging method calls as privileged
+  * [mcetool] Add prototypes for all local functions
+  * [battery-udev] Add battery debugging D-Bus methods. Fixes JB#44072
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 14 Dec 2018 11:50:38 +0200
+
 mce (1.98.3) precise; urgency=low
 
   * [display] Synchronize brightness after compositor changes. Fixes JB#44051
