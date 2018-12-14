@@ -409,6 +409,8 @@ static void                mdy_datapipe_device_inactive_cb(gconstpointer data);
 static void                mdy_datapipe_orientation_sensor_actual_cb(gconstpointer data);
 static void                mdy_datapipe_shutting_down_cb(gconstpointer aptr);
 
+static void                mdy_datapipe_execute_brightness(void);
+
 static void                mdy_datapipe_init(void);
 static void                mdy_datapipe_quit(void);
 
@@ -481,7 +483,7 @@ static void                mdy_ui_dimming_rethink(void);
  * CONTENT_ADAPTIVE_BACKLIGHT_CONTROL
  * ------------------------------------------------------------------------- */
 
-static void                mdy_cabc_mode_set(const gchar *const mode);
+static void                mdy_cabc_mode_set(const gchar *mode);
 
 /* ------------------------------------------------------------------------- *
  * BOOTUP_LED_PATTERN
@@ -1111,14 +1113,11 @@ static gboolean mdy_cabc_is_supported = FALSE;
 /** File used to get the available CABC modes */
 static gchar *mdy_cabc_available_modes_file = NULL;
 
-/**
- * CABC mode (power save mode active) -- uses the SysFS mode names;
- * NULL to disable
- */
-static const gchar *mdy_psm_cabc_mode = NULL;
-
 /** CABC mode -- uses the SysFS mode names */
-static const gchar *mdy_cabc_mode = DEFAULT_CABC_MODE;
+static const gchar *mdy_cabc_mode_def = DEFAULT_CABC_MODE;
+
+/** CABC mode when power save mode is active */
+static const gchar *mdy_cabc_mode_psm = DEFAULT_PSM_CABC_MODE;
 
 /** File used to set the CABC mode */
 static gchar *mdy_cabc_mode_file = NULL;
@@ -1212,13 +1211,6 @@ static int64_t mdy_brightness_setting_change_time = 0;
  * Used only for updating mdy_brightness_setting_change_time
  */
 static guint mdy_automatic_brightness_setting_setting_id = 0;
-
-/** PSM display brightness setting; [1, 5]
- *  or -1 when power save mode is not active
- *
- * (not a setting, but depends on mdy_brightness_setting)
- */
-static gint mdy_psm_disp_brightness = -1;
 
 /** Never blank display setting */
 static gint  mdy_disp_never_blank = MCE_DEFAULT_DISPLAY_NEVER_BLANK;
@@ -1933,32 +1925,10 @@ static void mdy_datapipe_power_saving_mode_active_cb(gconstpointer data)
     mce_log(LL_DEBUG, "power_saving_mode_active = %d",
             power_saving_mode_active);
 
-    if( power_saving_mode_active ) {
-        /* Override the CABC mode and brightness setting */
-        mdy_psm_cabc_mode = DEFAULT_PSM_CABC_MODE;
-        mdy_psm_disp_brightness = mce_xlat_int(1,100, 1,20,
-                                               mdy_brightness_setting);
+    /* Switch active brightness and CABC mode */
+    mdy_datapipe_execute_brightness();
+    mdy_cabc_mode_set(0);
 
-        datapipe_exec_full(&display_brightness_pipe,
-                           GINT_TO_POINTER(mdy_psm_disp_brightness));
-
-        datapipe_exec_full(&lpm_brightness_pipe,
-                           GINT_TO_POINTER(mdy_psm_disp_brightness));
-
-        mdy_cabc_mode_set(mdy_psm_cabc_mode);
-    } else {
-        /* Restore the CABC mode and brightness setting */
-        mdy_psm_cabc_mode = NULL;
-        mdy_psm_disp_brightness = -1;
-
-        datapipe_exec_full(&display_brightness_pipe,
-                           GINT_TO_POINTER(mdy_brightness_setting));
-
-        datapipe_exec_full(&lpm_brightness_pipe,
-                           GINT_TO_POINTER(mdy_brightness_setting));
-
-        mdy_cabc_mode_set(mdy_cabc_mode);
-    }
 EXIT:
     return;
 }
@@ -2098,6 +2068,31 @@ static void mdy_datapipe_shutting_down_cb(gconstpointer aptr)
 
 EXIT:
     return;
+}
+
+/** Re-evaluate display brightness
+ *
+ * Should be called when display brigtness setting changes
+ * and on entry to / exit from power save mode.
+ */
+static void mdy_datapipe_execute_brightness(void)
+{
+    /* Choose between normal and PSM brightness */
+    int brightness = mdy_brightness_setting;
+
+    if( power_saving_mode_active )
+        brightness = mce_xlat_int(1,100, 1,20, brightness);
+
+    /* Then execute through the brightness pipe; to update
+     * - mdy_brightness_level_display_on, and
+     * - mdy_brightness_level_display_dim
+     */
+    datapipe_exec_full(&display_brightness_pipe, GINT_TO_POINTER(brightness));
+
+    /* And through lpm brightness pipe; to update:
+     * - mdy_brightness_level_display_lpm
+     */
+    datapipe_exec_full(&lpm_brightness_pipe, GINT_TO_POINTER(brightness));
 }
 
 /** Array of datapipe handlers */
@@ -3484,49 +3479,59 @@ cabc_mode_mapping_t mdy_cabc_mode_mapping[] =
  *
  * @param mode The CABC mode to set
  */
-static void mdy_cabc_mode_set(const gchar *const mode)
+static void mdy_cabc_mode_set(const gchar *mode)
 {
-    static gboolean available_modes_scanned = FALSE;
-    const gchar *tmp = NULL;
-    gint i;
+    static bool available_modes_scanned = false;
 
-    if ((mdy_cabc_is_supported == FALSE) || (mdy_cabc_available_modes_file == NULL))
+    if( !mdy_cabc_is_supported )
+        goto EXIT;
+
+    if( !mdy_cabc_available_modes_file )
         goto EXIT;
 
     /* Update the list of available modes against the list we support */
-    if (available_modes_scanned == FALSE) {
+    if( !available_modes_scanned ) {
+        available_modes_scanned = true;
+
         gchar *available_modes = NULL;
-
-        available_modes_scanned = TRUE;
-
-        if (mce_read_string_from_file(mdy_cabc_available_modes_file,
-                                      &available_modes) == FALSE)
+        if( !mce_read_string_from_file(mdy_cabc_available_modes_file,
+                                       &available_modes) ) {
             goto EXIT;
-
-        for (i = 0; (tmp = mdy_cabc_mode_mapping[i].sysfs) != NULL; i++) {
-            if (strstr_delim(available_modes, tmp, " ") != NULL)
+        }
+        for( size_t i = 0; mdy_cabc_mode_mapping[i].sysfs; ++i ) {
+            if( strstr_delim(available_modes, mdy_cabc_mode_mapping[i].sysfs, " ") )
                 mdy_cabc_mode_mapping[i].available = TRUE;
         }
-
         g_free(available_modes);
     }
 
+    if( !mode ) {
+        if( power_saving_mode_active ) {
+            mode = mdy_cabc_mode_psm ?: DEFAULT_PSM_CABC_MODE;
+        }
+        else {
+            mode = mdy_cabc_mode_def ?: DEFAULT_CABC_MODE;
+        }
+    }
+
     /* If the requested mode is supported, use it */
-    for (i = 0; (tmp = mdy_cabc_mode_mapping[i].sysfs) != NULL; i++) {
-        if (mdy_cabc_mode_mapping[i].available == FALSE)
+    for( size_t i = 0; mdy_cabc_mode_mapping[i].sysfs; ++i ) {
+        if( !mdy_cabc_mode_mapping[i].available  )
             continue;
 
-        if (!strcmp(tmp, mode)) {
-            mce_write_string_to_file(mdy_cabc_mode_file, tmp);
+        /* Note: The value in the array is a static const string */
+        const char *have = mdy_cabc_mode_mapping[i].sysfs;
+        if( strcmp(have, mode) )
+            continue;
 
-            /* Don't overwrite the regular CABC mode with the
-             * power save mode CABC mode
-             */
-            if (mdy_psm_cabc_mode == NULL)
-                mdy_cabc_mode = tmp;
+        mce_write_string_to_file(mdy_cabc_mode_file, have);
 
-            break;
-        }
+        if( power_saving_mode_active )
+            mdy_cabc_mode_psm = have;
+        else
+            mdy_cabc_mode_def = have;
+
+        break;
     }
 
 EXIT:
@@ -9338,40 +9343,45 @@ EXIT:
  */
 static gboolean mdy_dbus_send_cabc_mode(DBusMessage *const method_call)
 {
-    const gchar *dbus_cabc_mode = NULL;
     DBusMessage *msg = NULL;
     gboolean status = FALSE;
-    gint i;
 
-    for (i = 0; mdy_cabc_mode_mapping[i].sysfs != NULL; i++) {
-        if (!strcmp(mdy_cabc_mode_mapping[i].sysfs, mdy_cabc_mode)) {
-            dbus_cabc_mode = mdy_cabc_mode_mapping[i].dbus;
-            break;
+    /* Resolve what to send
+     *
+     * Note that possible PSM time override is ignored and only the
+     * supposedly active CABC mode is exposed on D-Bus.
+     */
+    const char *send_mode = NULL;
+    const char *have_mode = mdy_cabc_mode_def;
+    if( have_mode ) {
+        for( size_t i = 0; mdy_cabc_mode_mapping[i].sysfs; ++i ) {
+            if( !strcmp(mdy_cabc_mode_mapping[i].sysfs, have_mode) ) {
+                send_mode = mdy_cabc_mode_mapping[i].dbus;
+                break;
+            }
         }
     }
+    if( !send_mode )
+        send_mode = MCE_CABC_MODE_OFF;
 
-    if (dbus_cabc_mode == NULL)
-        dbus_cabc_mode = MCE_CABC_MODE_OFF;
+    mce_log(LL_DEBUG,"Sending CABC mode: %s", send_mode);
 
-    mce_log(LL_DEBUG,"Sending CABC mode: %s", dbus_cabc_mode);
-
+    /* Construct and send reply message */
     msg = dbus_new_method_reply(method_call);
-
-    /* Append the CABC mode */
-    if (dbus_message_append_args(msg,
-                                 DBUS_TYPE_STRING, &dbus_cabc_mode,
-                                 DBUS_TYPE_INVALID) == FALSE) {
+    if( !dbus_message_append_args(msg,
+                                 DBUS_TYPE_STRING, &send_mode,
+                                 DBUS_TYPE_INVALID) ) {
         mce_log(LL_ERR, "Failed to append reply argument to D-Bus message "
                 "for %s.%s",
                 MCE_REQUEST_IF, MCE_CABC_MODE_GET);
-        dbus_message_unref(msg);
         goto EXIT;
     }
-
-    /* Send the message */
-    status = dbus_send_message(msg);
+    status = dbus_send_message(msg), msg = 0;
 
 EXIT:
+    if( msg )
+        dbus_message_unref(msg);
+
     return status;
 }
 
@@ -10509,21 +10519,7 @@ static void mdy_setting_sanitize_brightness_levels(void)
     mce_log(LL_DEBUG, "mdy_brightness_dim_compositor_hi=%d",
             mdy_brightness_dim_compositor_hi);
 
-    /* Then execute through the brightness pipe too; this will update
-     * the mdy_brightness_level_display_on & mdy_brightness_level_display_dim
-     * values. */
-    datapipe_exec_full(&display_brightness_pipe,
-                       GINT_TO_POINTER(mdy_brightness_setting));
-
-    mce_log(LL_DEBUG, "mdy_brightness_level_display_on = %d",
-            mdy_brightness_level_display_on);
-    mce_log(LL_DEBUG, "mdy_brightness_level_display_dim = %d",
-            mdy_brightness_level_display_dim);
-
-    /* And drive the display brightness setting value through lpm datapipe
-     * too. This will update the mdy_brightness_level_display_lpm value. */
-    datapipe_exec_full(&lpm_brightness_pipe,
-                       GINT_TO_POINTER(mdy_brightness_setting));
+    mdy_datapipe_execute_brightness();
 }
 
 static void mdy_setting_sanitize_dim_timeouts(bool force_update)
