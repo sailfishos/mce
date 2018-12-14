@@ -1,3 +1,9 @@
+mce (1.99.1) precise; urgency=low
+
+  * [display] Do not disable PSM brightness on setting change. Fixes JB#44169
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 14 Dec 2018 21:48:45 +0200
+
 mce (1.99.0) precise; urgency=low
 
   * [cpu-keepalive] Flag keepalive wakeup method call as privileged
