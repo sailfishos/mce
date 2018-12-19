@@ -78,7 +78,7 @@ make %{?_smp_mflags} %{!?qa_stage_devel:ENABLE_DEVEL_LOGGING=n}
 %install
 rm -rf %{buildroot}
 # FIXME: we need a configure script ... for now pass dirs in make install
-make install DESTDIR=%{buildroot} _UNITDIR=%{_unitdir}
+make install DESTDIR=%{buildroot} _UNITDIR=%{_unitdir} ENABLE_MANPAGE_INSTALL=n
 
 %preun
 if [ "$1" -eq 0 ]; then
@@ -94,7 +94,7 @@ systemctl daemon-reload || :
 
 %files
 %defattr(-,root,root,-)
-%doc COPYING debian/changelog debian/copyright
+%license COPYING debian/copyright
 # binaries
 %{_sbindir}/%{name}
 %dir %{_libdir}/%{name}
@@ -110,8 +110,6 @@ systemctl daemon-reload || :
 # empty /var/lib/mce -> rpm
 %dir %{_localstatedir}/lib/%{name}/
 # NB empty /var/run/mce -> handled by systemd tmpfiles.d/mce.conf
-# manpages
-%{_mandir}/man8/%{name}.8.gz
 # dbus
 %config %{_sysconfdir}/dbus-1/system.d/mce.conf
 # systemd
@@ -121,10 +119,9 @@ systemctl daemon-reload || :
 
 %files tools
 %defattr(-,root,root,-)
-%doc COPYING debian/copyright
+%license COPYING debian/copyright
 %{_sbindir}/mcetool
 %{_sbindir}/evdev_trace
-%{_mandir}/man8/mcetool.8.gz
 
 %files tests
 %defattr(-,root,root,-)
