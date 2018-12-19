@@ -536,8 +536,10 @@ modules/battery-statefs.pic.o:\
 
 modules/battery-udev.o:\
 	modules/battery-udev.c\
+	builtin-gconf.h\
 	datapipe.h\
 	mce-conf.h\
+	mce-dbus.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
@@ -546,8 +548,10 @@ modules/battery-udev.o:\
 
 modules/battery-udev.pic.o:\
 	modules/battery-udev.c\
+	builtin-gconf.h\
 	datapipe.h\
 	mce-conf.h\
+	mce-dbus.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
@@ -1344,6 +1348,7 @@ tools/mcetool.o:\
 	datapipe.h\
 	event-input.h\
 	mce-command-line.h\
+	mce-dbus.h\
 	mce-setting.h\
 	mce.h\
 	modules/display.h\
@@ -1364,6 +1369,7 @@ tools/mcetool.pic.o:\
 	datapipe.h\
 	event-input.h\
 	mce-command-line.h\
+	mce-dbus.h\
 	mce-setting.h\
 	mce.h\
 	modules/display.h\
