@@ -470,6 +470,9 @@ static void  evin_datapipe_keypad_grab_wanted_cb     (gconstpointer data);
 static void  evin_datapipe_display_state_next_cb     (gconstpointer data);
 static void  evin_datapipe_proximity_sensor_actual_cb(gconstpointer data);
 static void  evin_datapipe_lid_sensor_filtered_cb    (gconstpointer data);
+static void  evin_datapipe_topmost_window_pid_cb     (gconstpointer data);
+static void  evin_datapipe_call_state_cb             (gconstpointer data);
+static void  evin_datapipe_alarm_ui_state_cb         (gconstpointer data);
 static void  evin_datapipe_init                      (void);
 static void  evin_datapipe_quit                      (void);
 
@@ -507,6 +510,15 @@ static cover_state_t proximity_sensor_actual = COVER_UNDEF;
 
 /** Cached (filtered) lid sensor state */
 static cover_state_t lid_sensor_filtered = COVER_UNDEF;
+
+/** Cached PID of process owning the topmost window on UI */
+static int topmost_window_pid = -1;
+
+/** Cached alarm state; assume no active alarms */
+static alarm_ui_state_t alarm_ui_state = MCE_ALARM_UI_OFF_INT32;
+
+/** Cached call state */
+static call_state_t call_state = CALL_STATE_INVALID;
 
 /* ========================================================================= *
  * GPIO_KEYS
@@ -2154,6 +2166,9 @@ evin_iomon_keypress_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
 {
     (void)iomon;
 
+    static bool key_fn_down  = false;
+    static bool key_esc_down = false;
+
     struct input_event *ev;
 
     ev = data;
@@ -2184,6 +2199,43 @@ evin_iomon_keypress_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
                 KEY_STATE_PRESSED : KEY_STATE_RELEASED;
             datapipe_exec_full(&lockkey_state_pipe,
                                GINT_TO_POINTER(key_state));
+        }
+        else if( ev->code == KEY_FN || ev->code == KEY_LEFTMETA ) {
+            key_fn_down = (ev->value != 0);
+        }
+        else if( ev->code == KEY_ESC ) {
+            bool display_on = (display_state_curr == MCE_DISPLAY_ON ||
+                               display_state_curr == MCE_DISPLAY_DIM);
+            bool app_active = (topmost_window_pid != -1);
+            bool alarm_ringing = (alarm_ui_state == MCE_ALARM_UI_RINGING_INT32 ||
+                                  alarm_ui_state == MCE_ALARM_UI_VISIBLE_INT32);
+            bool incoming_call = (call_state == CALL_STATE_RINGING);
+
+            /* Trapping ESC key should be harmless when display
+             * is off / when there is no active application that
+             * might have input focus.
+             *
+             * While there is a slight chance of hiccups, also use
+             * escape key for silencing alarms / calls without need
+             * for pressing the meta key.
+             */
+            bool allow_trap = (key_fn_down || !display_on || !app_active ||
+                               alarm_ringing || incoming_call);
+
+            if( ev->value != 0 && allow_trap ) {
+                /* Press / repeat event while trapping allowed */
+                key_esc_down = true;
+                ev->code = KEY_POWER;
+            }
+            else if( key_esc_down ) {
+                /* Repeat / release event while already trapped */
+                ev->code = KEY_POWER;
+                key_esc_down = (ev->value != 0);
+            }
+
+            if( ev->code == KEY_POWER )
+                mce_log(LL_DEBUG, "esc key -> power key %s",
+                        key_esc_down ? "press" : "release");
         }
 
         /* For now there's no reason to cache the keypress
@@ -3951,6 +4003,66 @@ EXIT:
     return;
 }
 
+/** Change notifications for topmost_window_pid_pipe
+ */
+static void
+evin_datapipe_topmost_window_pid_cb(gconstpointer data)
+{
+    int prev = topmost_window_pid;
+    topmost_window_pid = GPOINTER_TO_INT(data);
+
+    if( prev == topmost_window_pid )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "topmost_window_pid: %d -> %d",
+            prev, topmost_window_pid);
+
+EXIT:
+    return;
+}
+
+/** Change notifications for alarm_ui_state
+ */
+static void evin_datapipe_alarm_ui_state_cb(gconstpointer data)
+{
+    alarm_ui_state_t prev = alarm_ui_state;
+    alarm_ui_state = GPOINTER_TO_INT(data);
+
+    if( alarm_ui_state == MCE_ALARM_UI_INVALID_INT32 )
+        alarm_ui_state = MCE_ALARM_UI_OFF_INT32;
+
+    if( alarm_ui_state == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "alarm_ui_state = %s -> %s",
+            alarm_state_repr(prev),
+            alarm_state_repr(alarm_ui_state));
+
+EXIT:
+    return;
+}
+
+/** Change notifications for call_state
+ */
+static void evin_datapipe_call_state_cb(gconstpointer data)
+{
+    call_state_t prev = call_state;
+    call_state = GPOINTER_TO_INT(data);
+
+    if( call_state == CALL_STATE_INVALID )
+        call_state = CALL_STATE_NONE;
+
+    if( call_state == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "call_state = %s -> %s",
+            call_state_repr(prev),
+            call_state_repr(call_state));
+
+EXIT:
+    return;
+}
+
 /** Array of datapipe handlers */
 static datapipe_handler_t evin_datapipe_handlers[] =
 {
@@ -3986,6 +4098,18 @@ static datapipe_handler_t evin_datapipe_handlers[] =
     {
         .datapipe  = &lid_sensor_filtered_pipe,
         .output_cb = evin_datapipe_lid_sensor_filtered_cb,
+    },
+    {
+        .datapipe  = &topmost_window_pid_pipe,
+        .output_cb = evin_datapipe_topmost_window_pid_cb,
+    },
+    {
+        .datapipe  = &alarm_ui_state_pipe,
+        .output_cb = evin_datapipe_alarm_ui_state_cb,
+    },
+    {
+        .datapipe  = &call_state_pipe,
+        .output_cb = evin_datapipe_call_state_cb,
     },
     // sentinel
     {
