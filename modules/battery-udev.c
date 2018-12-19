@@ -63,8 +63,19 @@
 #define PROP_CAPACITY "POWER_SUPPLY_CAPACITY"
 #define PROP_STATUS   "POWER_SUPPLY_STATUS"
 
+/** INI-file group for blacklisting device properties */
 #define MCE_CONF_BATTERY_UDEV_PROPERTY_BLACKLIST_GROUP "BatteryUDevPropertyBlacklist"
+
+/** INI-file group for blacklisting devices */
 #define MCE_CONF_BATTERY_UDEV_DEVICE_BLACKLIST_GROUP   "BatteryUDevDeviceBlacklist"
+
+/** Delay between udev notifications and battery state evaluation
+ *
+ * The purpose is to increase chances of getting battery and
+ * charger notifications handled in one go and thus decrease
+ * changes of getting false positive battery full blips.
+ */
+#define BATTERY_REEVALUATE_DELAY 50 // [ms]
 
 /* ========================================================================= *
  * Types
@@ -143,8 +154,8 @@ struct udevdevice_t
     /** Flag for: Device has reached battery full state */
     bool        udd_full;
 
-    /** Flag for: a "change" notification has been received from udev */
-    bool        udd_changed;
+    /** Flag for: The latest evaluated status was "Charging" */
+    bool        udd_charging;
 };
 
 /** Bookkeeping data for a single udev device property
@@ -206,21 +217,25 @@ static bool              udevproperty_set        (udevproperty_t *self, const ch
  * UDEVDEVICE
  * ------------------------------------------------------------------------- */
 
-static void             udevdevice_init_blacklist(void);
-static void             udevdevice_quit_blacklist(void);
-static bool             udevdevice_is_blacklisted(const char *name);
-static udevdevice_t    *udevdevice_create        (const char *name);
-static void             udevdevice_delete        (udevdevice_t *self);
-static void             udevdevice_delete_cb     (void *self);
-static const char      *udevdevice_name          (const udevdevice_t *self);
-static udevproperty_t  *udevdevice_get_prop      (udevdevice_t *self, const char *key);
-static udevproperty_t  *udevdevice_add_prop      (udevdevice_t *self, const char *key);
-static bool             udevdevice_set_prop      (udevdevice_t *self, const char *key, const char *val);
-static const char      *udevdevice_get_str_prop  (udevdevice_t *self, const char *key, const char *def);
-static int              udevdevice_get_int_prop  (udevdevice_t *self, const char *key, int def);
-static bool             udevdevice_refresh       (udevdevice_t *self, struct udev_device *dev);
-static void             udevdevice_evaluate      (udevdevice_t *self, mcebat_t *mcebat);
-static void             udevdevice_evaluate_cb   (gpointer key, gpointer value, gpointer aptr);
+static void             udevdevice_init_blacklist     (void);
+static void             udevdevice_quit_blacklist     (void);
+static bool             udevdevice_is_blacklisted     (const char *name);
+static udevdevice_t    *udevdevice_create             (const char *name);
+static void             udevdevice_delete             (udevdevice_t *self);
+static void             udevdevice_delete_cb          (void *self);
+static const char      *udevdevice_name               (const udevdevice_t *self);
+static udevproperty_t  *udevdevice_get_prop           (udevdevice_t *self, const char *key);
+static udevproperty_t  *udevdevice_add_prop           (udevdevice_t *self, const char *key);
+static bool             udevdevice_set_prop           (udevdevice_t *self, const char *key, const char *val);
+static const char      *udevdevice_get_str_prop       (udevdevice_t *self, const char *key, const char *def);
+static int              udevdevice_get_int_prop       (udevdevice_t *self, const char *key, int def);
+static bool             udevdevice_refresh            (udevdevice_t *self, struct udev_device *dev);
+static bool             udevdevice_is_battery         (udevdevice_t *self);
+static bool             udevdevice_is_charger         (udevdevice_t *self);
+static void             udevdevice_evaluate_charger   (udevdevice_t *self, mcebat_t *mcebat);
+static void             udevdevice_evaluate_charger_cb(gpointer key, gpointer value, gpointer aptr);
+static void             udevdevice_evaluate_battery   (udevdevice_t *self, mcebat_t *mcebat);
+static void             udevdevice_evaluate_battery_cb(gpointer key, gpointer value, gpointer aptr);
 
 /* ------------------------------------------------------------------------- *
  * UDEVTRACKER
@@ -934,28 +949,47 @@ static void
 udevdevice_init_blacklist(void)
 {
     static const char grp[] = MCE_CONF_BATTERY_UDEV_DEVICE_BLACKLIST_GROUP;
+    static const char * const builtin_blacklist[] = {
+        "bcl",
+        "bms",
+        "dc",
+        "fg_adc",
+        "main",
+        "parallel",
+        "pc_port",
+        "pm8921-dc",
+        0
+    };
 
     if( udevdevice_blacklist_lut )
-        goto EXIT;
-
-    if( !mce_conf_has_group(grp) )
         goto EXIT;
 
     udevdevice_blacklist_lut =
         g_hash_table_new_full(g_str_hash, g_str_equal, g_free, 0);
 
-    gsize   count = 0;
-    gchar **keys  = mce_conf_get_keys(grp, &count);
+    if( mce_conf_has_group(grp) ) {
+        mce_log(LL_DEBUG, "using configured device blacklist");
+        gsize   count = 0;
+        gchar **keys  = mce_conf_get_keys(grp, &count);
 
-    for( gsize i = 0; i < count; ++i ) {
-        bool blacklisted = mce_conf_get_bool(grp, keys[i], true);
-        if( blacklisted ) {
+        for( gsize i = 0; i < count; ++i ) {
+            bool blacklisted = mce_conf_get_bool(grp, keys[i], true);
+            if( blacklisted ) {
+                g_hash_table_replace(udevdevice_blacklist_lut,
+                                     g_strdup(keys[i]),
+                                     GINT_TO_POINTER(true));
+            }
+        }
+        g_strfreev(keys);
+    }
+    else {
+        mce_log(LL_DEBUG, "using built-in device blacklist");
+        for( size_t i = 0; builtin_blacklist[i]; ++i ) {
             g_hash_table_replace(udevdevice_blacklist_lut,
-                                 g_strdup(keys[i]),
+                                 g_strdup(builtin_blacklist[i]),
                                  GINT_TO_POINTER(true));
         }
     }
-    g_strfreev(keys);
 
 EXIT:
     return;
@@ -1007,8 +1041,8 @@ udevdevice_create(const char *name)
                                             g_str_equal,
                                             g_free,
                                             udevproperty_delete_cb);
-    self->udd_full    = 0;
-    self->udd_changed = false;
+    self->udd_full     = false;
+    self->udd_charging = false;
 
     return self;
 }
@@ -1145,11 +1179,6 @@ udevdevice_refresh(udevdevice_t *self, struct udev_device *dev)
 {
     bool rethink = false;
 
-    /* Flag devices that have received change notifications from udev */
-    const char *action = udev_device_get_action(dev);
-    if( !g_strcmp0(action, "change") )
-        self->udd_changed = true;
-
     for( struct udev_list_entry *iter =
          udev_device_get_properties_list_entry(dev);
          iter; iter = udev_list_entry_get_next(iter) ) {
@@ -1167,130 +1196,197 @@ udevdevice_refresh(udevdevice_t *self, struct udev_device *dev)
     return rethink;
 }
 
+/** Predicate for: power_supply device is a battery
+ *
+ * @param self  device object
+ *
+ * @return true device is a battery, false otherwise
+ */
+static bool
+udevdevice_is_battery(udevdevice_t *self)
+{
+    return (udevdevice_get_prop(self, PROP_STATUS) &&
+            udevdevice_get_prop(self, PROP_CAPACITY));
+}
+
+/** Predicate for: power_supply device is a charger
+ *
+ * @param self  device object
+ *
+ * @return true device is a charger, false otherwise
+ */
+static bool
+udevdevice_is_charger(udevdevice_t *self)
+{
+    if( udevdevice_is_battery(self) )
+        return false;
+
+    return (udevdevice_get_prop(self, PROP_PRESENT) ||
+            udevdevice_get_prop(self, PROP_ONLINE));
+}
+
 /** Update mce style battery data based on device properties
  *
  * @param self    device object
  * @param mcebat  mce style battery data to update
  */
 static void
-udevdevice_evaluate(udevdevice_t *self, mcebat_t *mcebat)
+udevdevice_evaluate_charger(udevdevice_t *self, mcebat_t *mcebat)
 {
+    if( !udevdevice_is_charger(self) )
+        goto EXIT;
+
     int present = udevdevice_get_int_prop(self, PROP_PRESENT, -1);
     int online  = udevdevice_get_int_prop(self, PROP_ONLINE, -1);
 
-    if( present == -1 && online == -1 ) {
-        mce_log(LL_DEBUG, "%s: ignored", udevdevice_name(self));
-        goto EXIT;
-    }
+    /* Device is a charger.
+     *
+     * Whatever the meaning of present / online properties
+     * is supposed to be, the best guess we can make is that
+     * we ought to be able to charge when either one gets
+     * non-zero value ... */
 
-    int         capacity = udevdevice_get_int_prop(self, PROP_CAPACITY, -1);
-    const char *status   = udevdevice_get_str_prop(self, PROP_STATUS, 0);
+    bool active = (present == 1 || online == 1);
 
-    if( status ) {
-        /* Device is a battery.
-         *
-         * FIXME: There is a built-in assumption that there will be only
-         *        one battery device - if there should be more than one,
-         *        then the one that happens to be the last to be seen
-         *        during g_hash_table_foreach() ends up being used.
-         */
+    if( active )
+        mcebat->charger_state = CHARGER_STATE_ON;
 
-        /* mce level is udev capacity as-is
-         */
-        mcebat->battery_level = capacity;
-
-        /* mce status is by default derived from udev capacity
-         */
-        if( capacity <= BATTERY_CAPACITY_UNDEF )
-            mcebat->battery_status = BATTERY_STATUS_UNDEF;
-        else if( capacity <= BATTERY_CAPACITY_EMPTY )
-            mcebat->battery_status = BATTERY_STATUS_EMPTY;
-        else if( capacity <= BATTERY_CAPACITY_LOW )
-            mcebat->battery_status = BATTERY_STATUS_LOW;
-        else
-            mcebat->battery_status = BATTERY_STATUS_OK;
-
-        /* udev status is "Unknown|Charging|Discharging|Not charging|Full"
-         *
-         * "Charging" and "Full" override capacity based mce battery status
-         * evaluation above.
-         *
-         * How maintenance charging is reported after hitting battery
-         * full varies from one device to another. To normalize behavior
-         * and avoid repeated charging started notifications sequences
-         * like "Full"->"Charging"->"Full"->... are compressed into
-         * a single "Full" (untill charger is disconnected / battery level
-         * makes significant enough drop).
-         *
-         * Also if battery device indicates that it is getting charged,
-         * assume that a charger is connected.
-         */
-        if( !g_strcmp0(status, "Full") ) {
-            mcebat->charger_state  = CHARGER_STATE_ON;
-            mcebat->battery_status = BATTERY_STATUS_FULL;
-            self->udd_full = true;
-        }
-        else if( !g_strcmp0(status, "Charging") ) {
-            mcebat->charger_state  = CHARGER_STATE_ON;
-            mcebat->battery_status = BATTERY_STATUS_OK;
-            if( self->udd_full && capacity >= BATTERY_CAPACITY_FULL )
-                mcebat->battery_status = BATTERY_STATUS_FULL;
-            else
-                self->udd_full = false;
-        }
-        else {
-            self->udd_full = false;
-        }
-        mce_log(LL_DEBUG, "%s: battery @ cap=%d status=%s full=%d",
-                udevdevice_name(self), capacity, status, self->udd_full);
-    }
-    else {
-        /* Device is a charger.
-         *
-         * Assumption is that there are multiple charger devices like
-         * "ac", "usb", "wireless", etc - and "a charger is connected"
-         * needs to be indicated when at least one of those is "online".
-         *
-         * Also, it might be that initial enumeration yields devices
-         * that will never notify changes. Assumption is that battery
-         * devices are less likely to be like that, but charger devices
-         * are ignored until a change notification about them is received.
-         */
-
-        bool active = false;
-
-        if( self->udd_changed )
-            active = (present == 1 || online == 1);
-
-        if( active )
-            mcebat->charger_state = CHARGER_STATE_ON;
-
-        mce_log(LL_DEBUG, "%s: charger @ "
-                "changed=%d present=%d online=%d -> active=%d",
-                udevdevice_name(self),
-                self->udd_changed,
-                present, online, active);
-    }
-
+    mce_log(LL_DEBUG, "%s: charger @ "
+            "present=%d online=%d -> active=%d",
+            udevdevice_name(self),
+            present, online, active);
 EXIT:
     return;
 }
 
-/** g_hash_table_foreach() compatible udevdevice_evaluate() wrapper callback
+/** g_hash_table_foreach() compatible udevdevice_evaluate_charger() wrapper callback
  *
  * @param key   (unused) device sysname as void pointer
  * @param value  device object as void pointer
  * @param aptr   mce battery data object as void pointer
  */
 static void
-udevdevice_evaluate_cb(gpointer key, gpointer value, gpointer aptr)
+udevdevice_evaluate_charger_cb(gpointer key, gpointer value, gpointer aptr)
 {
     (void)key;
 
     mcebat_t     *mcebat = aptr;
     udevdevice_t *self   = value;
 
-    udevdevice_evaluate(self, mcebat);
+    udevdevice_evaluate_charger(self, mcebat);
+}
+
+/** Update mce style battery data based on device properties
+ *
+ * @param self    device object
+ * @param mcebat  mce style battery data to update
+ */
+static void
+udevdevice_evaluate_battery(udevdevice_t *self, mcebat_t *mcebat)
+{
+    if( !udevdevice_is_battery(self) )
+        goto EXIT;
+
+    /* Device is a battery.
+     *
+     * FIXME: There is a built-in assumption that there will be only
+     *        one battery device - if there should be more than one,
+     *        then the one that happens to be the last to be seen
+     *        during g_hash_table_foreach() ends up being used.
+     */
+
+    int         capacity = udevdevice_get_int_prop(self, PROP_CAPACITY, -1);
+    const char *status   = udevdevice_get_str_prop(self, PROP_STATUS, 0);
+
+    /* mce level is udev capacity as-is
+     */
+    mcebat->battery_level = capacity;
+
+    /* mce status is by default derived from udev capacity
+     */
+    if( capacity <= BATTERY_CAPACITY_UNDEF )
+        mcebat->battery_status = BATTERY_STATUS_UNDEF;
+    else if( capacity <= BATTERY_CAPACITY_EMPTY )
+        mcebat->battery_status = BATTERY_STATUS_EMPTY;
+    else if( capacity <= BATTERY_CAPACITY_LOW )
+        mcebat->battery_status = BATTERY_STATUS_LOW;
+    else
+        mcebat->battery_status = BATTERY_STATUS_OK;
+
+    /* udev status is "Unknown|Charging|Discharging|Not charging|Full"
+     *
+     * "Charging" and "Full" override capacity based mce battery status
+     * evaluation above.
+     *
+     * How maintenance charging is reported after hitting battery
+     * full varies from one device to another. To normalize behavior
+     * and avoid repeated charging started notifications sequences
+     * like "Full"->"Charging"->"Full"->... are compressed into
+     * a single "Full" (untill charger is disconnected / battery level
+     * makes significant enough drop).
+     *
+     * Also if battery device indicates that it is getting charged,
+     * assume that a charger is connected.
+     */
+    if( !g_strcmp0(status, "Full") ) {
+        mcebat->charger_state  = CHARGER_STATE_ON;
+        mcebat->battery_status = BATTERY_STATUS_FULL;
+        self->udd_full = true;
+    }
+    else if( !g_strcmp0(status, "Charging") ) {
+        mcebat->charger_state  = CHARGER_STATE_ON;
+        mcebat->battery_status = BATTERY_STATUS_OK;
+        if( self->udd_full && capacity >= BATTERY_CAPACITY_FULL )
+            mcebat->battery_status = BATTERY_STATUS_FULL;
+        else
+            self->udd_full = false;
+    }
+    /* Some devices go:
+     *   Charging -> Full -> Discharging -> Charging -> Full
+     *
+     * Others might go:
+     *   Charging -> Not charging -> Charging -> Not charging
+     *
+     * Use heuristics to normalize such things to battery full too.
+     */
+    else if( mcebat->charger_state == CHARGER_STATE_ON &&
+             capacity >= BATTERY_CAPACITY_FULL &&
+             (self->udd_full || self->udd_charging) ) {
+        mcebat->battery_status = BATTERY_STATUS_FULL;
+
+        if( !self->udd_full ) {
+            mce_log(LL_WARN, "assuming end of charging due to battery full");
+            self->udd_full = true;
+        }
+    }
+    else {
+        self->udd_full = false;
+    }
+
+    mce_log(LL_DEBUG, "%s: battery @ cap=%d status=%s full=%d",
+            udevdevice_name(self), capacity, status, self->udd_full);
+
+    self->udd_charging = !g_strcmp0(status, "Charging");
+
+EXIT:
+    return;
+}
+
+/** g_hash_table_foreach() compatible udevdevice_evaluate_battery() wrapper callback
+ *
+ * @param key   (unused) device sysname as void pointer
+ * @param value  device object as void pointer
+ * @param aptr   mce battery data object as void pointer
+ */
+static void
+udevdevice_evaluate_battery_cb(gpointer key, gpointer value, gpointer aptr)
+{
+    (void)key;
+
+    mcebat_t     *mcebat = aptr;
+    udevdevice_t *self   = value;
+
+    udevdevice_evaluate_battery(self, mcebat);
 }
 
 /* ========================================================================= *
@@ -1353,7 +1449,8 @@ udevtracker_rethink(udevtracker_t *self)
      * indicate charging activity. */
     mcebat_actual.charger_state = CHARGER_STATE_OFF;
 
-    g_hash_table_foreach(self->udt_devices, udevdevice_evaluate_cb, &mcebat_actual);
+    g_hash_table_foreach(self->udt_devices, udevdevice_evaluate_charger_cb, &mcebat_actual);
+    g_hash_table_foreach(self->udt_devices, udevdevice_evaluate_battery_cb, &mcebat_actual);
 
     /* Sync to datapipes */
     mcebat_update();
@@ -1395,8 +1492,10 @@ static void
 udevtracker_schedule_rethink(udevtracker_t *self)
 {
     if( !self->udt_rethink_id ) {
-        self->udt_rethink_id = mce_wakelocked_idle_add(udevtracker_rethink_cb,
-                                                       self);
+        self->udt_rethink_id =
+            mce_wakelocked_timeout_add(BATTERY_REEVALUATE_DELAY,
+                                       udevtracker_rethink_cb,
+                                       self);
         mce_log(LL_DEBUG, "battery state re-evaluation sheduled");
     }
 }
