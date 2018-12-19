@@ -1,3 +1,9 @@
+mce (1.99.2) precise; urgency=low
+
+  * [battery-udev] Tweak battery full heuristics. Fixes JB#44036
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 19 Dec 2018 14:56:46 +0200
+
 mce (1.99.1) precise; urgency=low
 
   * [display] Do not disable PSM brightness on setting change. Fixes JB#44169
