@@ -1,3 +1,10 @@
+mce (1.99.3) precise; urgency=low
+
+  * [event-input] Do not poll datapipes
+  * [event-input] Conditionally use escape key as power key. Fixes JB#44179
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 19 Dec 2018 15:16:50 +0200
+
 mce (1.99.2) precise; urgency=low
 
   * [battery-udev] Tweak battery full heuristics. Fixes JB#44036
