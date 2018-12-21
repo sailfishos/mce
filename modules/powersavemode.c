@@ -306,19 +306,19 @@ static datapipe_handler_t mce_psm_datapipe_handlers[] =
 	// output triggers
 	{
 		.datapipe  = &battery_level_pipe,
-			.output_cb = battery_level_trigger,
+		.output_cb = battery_level_trigger,
 	},
 	{
 		.datapipe  = &charger_state_pipe,
-			.output_cb = charger_state_trigger,
+		.output_cb = charger_state_trigger,
 	},
 	{
 		.datapipe  = &thermal_state_pipe,
-			.output_cb = thermal_state_trigger,
+		.output_cb = thermal_state_trigger,
 	},
 	// sentinel
 	{
-		.datapipe = 0,
+		.datapipe  = 0,
 	}
 };
 
