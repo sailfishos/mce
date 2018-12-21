@@ -1,3 +1,13 @@
+mce (1.99.5) precise; urgency=low
+
+  * [mce-setting] Add setter for boolean config values
+  * [powersavemode] Fix array data indentation
+  * [powersavemode] Avoid unnecessary state evaluation
+  * [powersavemode] Disable forced-psm on charger connect. JB#43843
+  * [powersavemode] Do not trigger psm during mce startup. JB#43843
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 21 Dec 2018 15:56:30 +0200
+
 mce (1.99.4) precise; urgency=low
 
   * [packaging] Remove man pages from package. Contributes to JB#24119
