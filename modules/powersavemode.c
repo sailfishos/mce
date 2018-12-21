@@ -196,6 +196,14 @@ static void charger_state_trigger(gconstpointer const data)
 		charger_state_repr(prev),
 		charger_state_repr(charger_state));
 
+	if( force_psm && charger_state == CHARGER_STATE_ON ) {
+		mce_log(LL_DEBUG, "autodisable forced-power-save-mode");
+		/* Change cached value before changing the setting
+		 * value to avoid repeated state evaluation. */
+		force_psm = false;
+		mce_setting_set_bool(MCE_SETTING_EM_FORCED_PSM, false);
+	}
+
 	update_power_saving_mode();
 
 EXIT:
