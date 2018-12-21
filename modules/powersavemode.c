@@ -139,13 +139,21 @@ static void update_power_saving_mode(void)
 		activate = false;
 	}
 	else if( force_psm ) {
-		/* Forced PSM is triggered when charger is disconnected. */
-		activate = true;
+		/* Forced PSM is triggered when no charger is connected. */
+		if( charger_state == CHARGER_STATE_UNDEF )
+			mce_log(LL_DEBUG, "charger state unknown; "
+				"not activating forced-psm");
+		else
+			activate = true;
 	}
 	else if( power_saving_mode && battery_level <= psm_threshold ) {
 		/* Normally PSM is triggered when the feature is enabled and
 		 * battery level is not over the threshold. */
-		activate = true;
+		if( charger_state == CHARGER_STATE_UNDEF )
+			mce_log(LL_DEBUG, "charger state unknown; "
+				"not activating psm");
+		else
+			activate = true;
 	}
 
 	if( active_power_saving_mode != activate ) {
@@ -196,7 +204,12 @@ static void charger_state_trigger(gconstpointer const data)
 		charger_state_repr(prev),
 		charger_state_repr(charger_state));
 
-	if( force_psm && charger_state == CHARGER_STATE_ON ) {
+	/* Disable forced-psm on charger connect - but ignore
+	 * undef -> on transitions that are expected to happen
+	 * on mce startup. */
+	if( force_psm &&
+	    prev == CHARGER_STATE_OFF &&
+	    charger_state == CHARGER_STATE_ON ) {
 		mce_log(LL_DEBUG, "autodisable forced-power-save-mode");
 		/* Change cached value before changing the setting
 		 * value to avoid repeated state evaluation. */
