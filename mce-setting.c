@@ -59,6 +59,36 @@ EXIT:
 	return res;
 }
 
+/**Set an boolean GConf key to the specified value
+ *
+ * @param key   The GConf key to set the value of
+ * @param value The value to set the key to
+ *
+ * @return TRUE on success, FALSE on failure
+ */
+gboolean mce_setting_set_bool(const gchar *const key, const gboolean value)
+{
+	gboolean status = FALSE;
+
+	if( gconf_disabled ) {
+		mce_log(LL_DEBUG, "blocked %s = %d", key, value);
+		goto EXIT;
+	}
+
+	if( !gconf_client_set_bool(gconf_client, key, value, NULL) ) {
+		mce_log(LL_WARN, "Failed to write %s to GConf", key);
+		goto EXIT;
+	}
+
+	/* synchronise if possible, ignore errors */
+	gconf_client_suggest_sync(gconf_client, NULL);
+
+	status = TRUE;
+
+EXIT:
+	return status;
+}
+
 /**
  * Set an integer GConf key to the specified value
  *

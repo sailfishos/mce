@@ -77,6 +77,7 @@ typedef enum
  * ========================================================================= */
 
 gboolean      mce_setting_has_key           (const gchar *const key);
+gboolean      mce_setting_set_bool          (const gchar *const key, const gboolean value);
 gboolean      mce_setting_set_int           (const gchar *const key, const gint value);
 gboolean      mce_setting_set_string        (const gchar *const key, const gchar *const value);
 gboolean      mce_setting_get_bool          (const gchar *const key, gboolean *value);
