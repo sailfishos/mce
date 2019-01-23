@@ -94,7 +94,7 @@ enum
  * by hall effect sensors confused by unexpected magnetic fields.
  */
 # define MCE_SETTING_TK_FILTER_LID_WITH_ALS      MCE_SETTING_TK_PATH"/filter_lid_with_als"
-# define MCE_DEFAULT_TK_FILTER_LID_WITH_ALS      true
+# define MCE_DEFAULT_TK_FILTER_LID_WITH_ALS      false
 
 /** Maximum amount of light ALS is expected to report when LID is closed */
 # define MCE_SETTING_TK_FILTER_LID_ALS_LIMIT     MCE_SETTING_TK_PATH"/filter_lid_als_limit"
