@@ -1,3 +1,9 @@
+mce (1.99.6) precise; urgency=low
+
+  * [settings] Do not filter lid sensor with als by default. Fixes JB#44452
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 24 Jan 2019 09:18:35 +0200
+
 mce (1.99.5) precise; urgency=low
 
   * [mce-setting] Add setter for boolean config values
