@@ -1,3 +1,9 @@
+mce (1.99.7) precise; urgency=low
+
+  * [audiorouting] Derive music playback from media_state. Fixes JB#36733
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 28 Jan 2019 10:15:11 +0200
+
 mce (1.99.6) precise; urgency=low
 
   * [settings] Do not filter lid sensor with als by default. Fixes JB#44452
