@@ -137,6 +137,9 @@ static const struct
 /** Audio route; derived from audio sink device name */
 static audio_route_t audio_route = AUDIO_ROUTE_UNDEF;
 
+/** Audio playback: derived from media_state */
+static tristate_t media_playback_state = TRISTATE_UNKNOWN;
+
 /* Volume limits used for "music playback" heuristics */
 static int volume_limit_player     = 100;
 static int volume_limit_flash      = 100;
@@ -292,6 +295,22 @@ static void context_cb(ohm_decision_t *ohm)
 
     if( have != want )
         goto EXIT;
+
+    if( !strcmp(ohm->variable, "media_state") ) {
+        tristate_t state = TRISTATE_UNKNOWN;
+
+        if( !strcmp(ohm->value, "active") || !strcmp(ohm->value, "background") )
+            state = TRISTATE_TRUE;
+        else
+            state = TRISTATE_FALSE;
+
+        if( media_playback_state != state ) {
+            mce_log(LL_DEBUG, "media_playback_state: %s -> %s",
+                    tristate_repr(media_playback_state),
+                    tristate_repr(state));
+            media_playback_state = state;
+        }
+    }
 
 EXIT:
     return;
@@ -529,9 +548,17 @@ static gboolean actions_dbus_cb(DBusMessage *sig)
             goto EXIT;
     }
 
-    playback = (volume_limit_player > 0 &&
-                volume_limit_flash <= 0 &&
-                volume_limit_inputsound <= 0);
+    if( media_playback_state != TRISTATE_UNKNOWN ) {
+        /* Use media_state from com.nokia.policy.context
+         * when it is included in OHM policy signal. */
+        playback = (media_playback_state == TRISTATE_TRUE);
+    }
+    else {
+        /* Fallback to volume limit heuristics */
+        playback = (volume_limit_player > 0 &&
+                    volume_limit_flash <= 0 &&
+                    volume_limit_inputsound <= 0);
+    }
 
 EXIT:
     if( datapipe_get_gint(music_playback_ongoing_pipe) != playback ) {
