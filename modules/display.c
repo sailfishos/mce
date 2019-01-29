@@ -582,6 +582,7 @@ static void                mdy_blanking_rethink_proximity(void);
 static void                mdy_blanking_cancel_timers(void);
 
 // after boot blank prevent
+static bool                mdy_blanking_afterboot_delay_start_p(void);
 static void                mdy_blanking_rethink_afterboot_delay(void);
 static gint                mdy_blanking_get_afterboot_delay(void);
 
@@ -4833,8 +4834,10 @@ static void mdy_blanking_cancel_timers(void)
     mdy_brightness_stop_fade_timer();
 }
 
-/** End of after bootup autoblank prevent; initially not active */
-static int64_t mdy_blanking_afterboot_limit = 0;
+/** After bootup autoblank prevent; initially neither enabled nor active */
+static bool    mdy_blanking_afterboot_delay_enabled = false;
+static bool    mdy_blanking_afterboot_delay_started = false;
+static int64_t mdy_blanking_afterboot_delay_ends = 0;
 
 /** Get delay until end of after boot blank prevent
  *
@@ -4844,20 +4847,24 @@ static int64_t mdy_blanking_afterboot_limit = 0;
 static gint mdy_blanking_get_afterboot_delay(void)
 {
     gint delay = 0;
-    if( mdy_blanking_afterboot_limit ) {
+    if( mdy_blanking_afterboot_delay_ends ) {
         int64_t now = mce_lib_get_boot_tick();
-        int64_t tmo = mdy_blanking_afterboot_limit - now;
-        if( tmo > 0 )
-            delay = (gint)tmo;
+        int64_t tmo = mdy_blanking_afterboot_delay_ends - now;
+        if( tmo > 0 ) {
+            /* milliseconds to seconds, round up */
+            delay = (gint)((tmo + 999) / 1000);
+        }
     }
-    return (delay + 999) / 1000;
+    return delay;
 }
 
-/** Evaluate need for longer after-boot blanking delay
+/** Evaluate whether device startup has reached "after boot" stage
+ *
+ * @return true if conditions are met, false otherwise
  */
-static void mdy_blanking_rethink_afterboot_delay(void)
+static bool mdy_blanking_afterboot_delay_start_p(void)
 {
-    int64_t want_limit = 0;
+    bool start = false;
 
     /* Bootup has not yet finished */
     if( mdy_init_done != TRISTATE_TRUE )
@@ -4878,33 +4885,62 @@ static void mdy_blanking_rethink_afterboot_delay(void)
     if( display_state_next != MCE_DISPLAY_ON )
         goto DONE;
 
-    /* And limit has not yet been set */
-    if( mdy_blanking_afterboot_limit )
-        goto EXIT;
-
-    /* Set up Use longer after-boot dim timeout */
-    want_limit = (mce_lib_get_boot_tick() +
-                  AFTERBOOT_BLANKING_TIMEOUT * 1000);
+    start = true;
 
 DONE:
+    return start;
+}
 
-    if( mdy_blanking_afterboot_limit == want_limit )
+/** Evaluate need for longer after-boot blanking delay
+ */
+static void mdy_blanking_rethink_afterboot_delay(void)
+{
+    /* The feature should be enabled only when mce process
+     * gets started as part of regular bootup sequence, which
+     * in practice means: Getting to observe that init-done
+     * has not been reached yet.
+     */
+    if( !mdy_blanking_afterboot_delay_enabled ) {
+        if( mdy_init_done != TRISTATE_FALSE )
+            goto EXIT;
+
+        mdy_blanking_afterboot_delay_enabled = true;
+        mce_log(LL_DEBUG, "after boot blank prevent enabled");
+    }
+
+    /* Activate once after bootup has progressed far enough.
+     * And deactivate after reaching the after-boot timeout.
+     */
+    int64_t prev = mdy_blanking_afterboot_delay_ends;
+
+    if( !mdy_blanking_afterboot_delay_started ) {
+        /* Enabled, but not yet activated */
+        if( mdy_blanking_afterboot_delay_start_p() ) {
+            /* Activate */
+            mdy_blanking_afterboot_delay_started = true;
+            mdy_blanking_afterboot_delay_ends =
+                mce_lib_get_boot_tick() + AFTERBOOT_BLANKING_TIMEOUT * 1000;
+        }
+    }
+    else if( mdy_blanking_afterboot_delay_ends ) {
+        /* Enabled and active */
+        if( mdy_blanking_afterboot_delay_ends <= mce_lib_get_boot_tick() ) {
+            /* Deactivate */
+            mdy_blanking_afterboot_delay_ends = 0;
+        }
+    }
+
+    if( prev == mdy_blanking_afterboot_delay_ends )
         goto EXIT;
 
-    /* Enable long delay when needed, but disable only after
-     * display leaves powered on state */
-    if( want_limit || display_state_next != MCE_DISPLAY_ON ) {
-        mce_log(LL_DEBUG, "after boot blank prevent %s",
-                want_limit ? "activated" : "deactivated");
+    mce_log(LL_DEBUG, "after boot blank prevent %s",
+            mdy_blanking_afterboot_delay_ends ? "activated" : "deactivated");
 
-        mdy_blanking_afterboot_limit = want_limit;
-
-        /* If dim/blank timer is running, reprogram it */
-        if( mdy_blanking_dim_cb_id )
-            mdy_blanking_schedule_dim();
-        else if( mdy_blanking_off_cb_id )
-            mdy_blanking_schedule_off();
-    }
+    /* If dim/blank timer is running, reprogram it */
+    if( mdy_blanking_dim_cb_id )
+        mdy_blanking_schedule_dim();
+    else if( mdy_blanking_off_cb_id )
+        mdy_blanking_schedule_off();
 
 EXIT:
     return;
