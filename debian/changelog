@@ -1,3 +1,9 @@
+mce (1.99.8) precise; urgency=low
+
+  * [display] Trigger after-boot blanking delay only once. Fixes JB#44311
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 29 Jan 2019 09:39:03 +0200
+
 mce (1.99.7) precise; urgency=low
 
   * [audiorouting] Derive music playback from media_state. Fixes JB#36733
