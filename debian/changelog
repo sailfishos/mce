@@ -1,3 +1,9 @@
+mce (1.98.2.3) precise; urgency=low
+
+  * [settings] Do not filter lid sensor with als by default. Fixes JB#44452
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 29 Jan 2019 08:31:26 +0200
+
 mce (1.98.2.2) precise; urgency=low
 
   * [event-input] Do not poll datapipes
