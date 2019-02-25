@@ -1,3 +1,9 @@
+mce (1.99.9) precise; urgency=low
+
+  * [dbus] Try to avoid reporting negative suspend time. Fixes JB#44904
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 25 Feb 2019 07:50:38 +0200
+
 mce (1.99.8) precise; urgency=low
 
   * [display] Trigger after-boot blanking delay only once. Fixes JB#44311
