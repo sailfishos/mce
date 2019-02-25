@@ -2671,9 +2671,12 @@ static gboolean suspend_stats_get_dbus_cb(DBusMessage *const req)
 	mce_log(LL_DEVEL, "suspend info request from %s",
 		mce_dbus_get_message_sender_ident(req));
 
-	/* get stats */
+	/* Get time values - in an order that is less
+	 * likely to produce negative values on subtract.
+	 */
+	dbus_int64_t active_ms  = mce_lib_get_mono_tick();
 	dbus_int64_t uptime_ms  = mce_lib_get_boot_tick();
-	dbus_int64_t suspend_ms = uptime_ms - mce_lib_get_mono_tick();
+	dbus_int64_t suspend_ms = uptime_ms - active_ms;
 
 	/* create and send reply message */
 	rsp = dbus_new_method_reply(req);
