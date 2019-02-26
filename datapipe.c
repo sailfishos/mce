@@ -38,6 +38,24 @@
      datapipe_init_(&(datapipe), #datapipe, filtering, caching, datasize, value)
 
 /* ========================================================================= *
+ * Types
+ * ========================================================================= */
+
+struct datapipe_t
+{
+    const char           *dp_name;             /**< Name of the datapipe */
+    GSList               *dp_filters;          /**< The filters */
+    GSList               *dp_input_triggers;   /**< Triggers called on indata */
+    GSList               *dp_output_triggers;  /**< Triggers called on outdata */
+    gconstpointer         dp_cached_data;      /**< Latest cached data */
+    gsize                 dp_datasize;         /**< Size of data; NULL == automagic */
+    datapipe_filtering_t  dp_read_only;        /**< Datapipe is read only */
+    datapipe_cache_t      dp_cache;
+    guint                 dp_gc_id;
+    guint                 dp_token;
+};
+
+/* ========================================================================= *
  * Prototypes
  * ========================================================================= */
 
@@ -465,6 +483,26 @@ gconstpointer
 datapipe_value(const datapipe_t *self)
 {
     return self->dp_cached_data;
+}
+
+/** Set value of datapipe
+ *
+ * Note: Do not use this function.
+ *
+ * This function exists only to facilitate legacy hacks in
+ * the display plugin - no new code should ever call it and
+ * it should be removed as soon as possible.
+ *
+ * The proper way to modify datapipe content is to use
+ * #datapipe_exec_full() function.
+ *
+ * @param self The datapipe
+ * @paran data The value, as void pointer
+ */
+void
+datapipe_set_value(datapipe_t *self, gconstpointer data)
+{
+    self->dp_cached_data = data;
 }
 
 /** Garbage collect stale callback slots

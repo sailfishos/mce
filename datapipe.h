@@ -68,18 +68,7 @@ typedef enum {
  *
  * Only access this struct through the functions
  */
-typedef struct {
-    const char           *dp_name;             /**< Name of the datapipe */
-    GSList               *dp_filters;          /**< The filters */
-    GSList               *dp_input_triggers;   /**< Triggers called on indata */
-    GSList               *dp_output_triggers;  /**< Triggers called on outdata */
-    gconstpointer         dp_cached_data;      /**< Latest cached data */
-    gsize                 dp_datasize;         /**< Size of data; NULL == automagic */
-    datapipe_filtering_t  dp_read_only;        /**< Datapipe is read only */
-    datapipe_cache_t      dp_cache;
-    guint                 dp_gc_id;
-    guint                 dp_token;
-} datapipe_t;
+typedef struct datapipe_t datapipe_t;
 
 typedef struct
 {
@@ -108,6 +97,7 @@ typedef struct
 const char     *datapipe_name     (const datapipe_t *self);
 gconstpointer   datapipe_value    (const datapipe_t *self);
 gconstpointer   datapipe_exec_full(datapipe_t *self, gconstpointer indata);
+void            datapipe_set_value(datapipe_t *self, gconstpointer data);
 
 /* ------------------------------------------------------------------------- *
  * MCE_DATAPIPE
@@ -126,10 +116,10 @@ void  mce_datapipe_generate_inactivity (void);
  * ========================================================================= */
 
 /** Retrieve a gint from a datapipe */
-# define datapipe_get_gint(_datapipe)   (GPOINTER_TO_INT((_datapipe).dp_cached_data))
+# define datapipe_get_gint(_datapipe) ((gint)(void*)datapipe_value(&(_datapipe)))
 
 /** Retrieve a guint from a datapipe */
-# define datapipe_get_guint(_datapipe)  (GPOINTER_TO_UINT((_datapipe).dp_cached_data))
+# define datapipe_get_guint(_datapipe) ((guint)(void*)datapipe_value(&(_datapipe)))
 
 /* Helper for making display state requests
  *

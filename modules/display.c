@@ -7253,7 +7253,9 @@ static void mdy_display_state_enter(display_state_t prev_state,
     }
 
     /* Restore display_state_curr_pipe to valid value */
-    display_state_curr_pipe.dp_cached_data = GINT_TO_POINTER(next_state);
+    // FIXME: datapipe value should not be directly manipulated
+    datapipe_set_value(&display_state_curr_pipe,
+                       GINT_TO_POINTER(next_state));
 
     /* Run display state change triggers */
     mce_log(LL_CRUCIAL, "current display state = %s",
@@ -7347,9 +7349,12 @@ static void mdy_display_state_leave(display_state_t prev_state,
 
         mce_log(LL_CRUCIAL, "current display state = %s",
                 display_state_repr(state));
-        display_state_curr_pipe.dp_cached_data = GINT_TO_POINTER(state);
+
+        // FIXME: datapipe value should not be directly manipulated
+        datapipe_set_value(&display_state_curr_pipe,
+                           GINT_TO_POINTER(state));
         datapipe_exec_full(&display_state_curr_pipe,
-                           display_state_curr_pipe.dp_cached_data);
+                           GINT_TO_POINTER(state));
     }
 }
 
