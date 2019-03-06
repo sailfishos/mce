@@ -268,21 +268,12 @@ typedef enum
     /** Owner known and available on D-Bus */
     PEERSTATE_RUNNING,
 
-    /** Owner known, but no longer available on D-Bus
+    /** Owner possibly known, but no longer available on D-Bus
      *
      * The peer info is retained briefly so that it is still
      * available when for example logging client cleanup actions.
      */
-    PEERSTATE_STALE,
-
-    /** There is no known owner for the name
-     *
-     * Object info related to private bus names is expunged.
-     */
     PEERSTATE_STOPPED,
-
-    /** Final state when tracking object is about to be deleted */
-    PEERSTATE_DELETED,
 } peerstate_t;
 
 const char *peerstate_repr(peerstate_t state);

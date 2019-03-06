@@ -164,10 +164,7 @@ struct peerinfo_t
     /** Pending org.freedesktop.DBus.GetConnectionUnixProcessID method call */
     DBusPendingCall *pi_name_pid_pc;
 
-    /** Timer for delayed PEERSTATE_STALE -> PEERSTATE_STOPPED transition */
-    guint            pi_expunge_id;
-
-    /** Timer for delayed PEERSTATE_STOPPED -> PEERSTATE_DELETED transition */
+    /** Timer for delayed delete after hitting PEERSTATE_STOPPED */
     guint            pi_delete_id;
 
     /** Fixed size buffer for providing peer details for debugging purposes */
@@ -256,7 +253,7 @@ peerstate_t              peerinfo_get_state                    (const peerinfo_t
 static const char       *peerinfo_repr                         (peerinfo_t *self);
 const char              *peerinfo_name                         (const peerinfo_t *self);
 const char              *peerinfo_get_owner_name               (const peerinfo_t *self);
-static void              peerinfo_set_owner_name               (peerinfo_t *self, const char *name);
+static bool              peerinfo_set_owner_name               (peerinfo_t *self, const char *name);
 pid_t                    peerinfo_get_owner_pid                (const peerinfo_t *self);
 static void              peerinfo_set_owner_pid                (peerinfo_t *self, pid_t pid);
 uid_t                    peerinfo_get_owner_uid                (const peerinfo_t *self);
@@ -275,10 +272,6 @@ static void              peerinfo_query_owner_req              (peerinfo_t *self
 static void              peerinfo_query_pid_ign                (peerinfo_t *self);
 static void              peerinfo_query_pid_rsp                (DBusPendingCall *pc, void *aptr);
 static void              peerinfo_query_pid_req                (peerinfo_t *self);
-
-static void              peerinfo_query_expunge_ign            (peerinfo_t *self);
-static gboolean          peerinfo_query_expunge_tmo            (gpointer aptr);
-static void              peerinfo_query_expunge_req            (peerinfo_t *self);
 
 static void              peerinfo_query_delete_ign             (peerinfo_t *self);
 static gboolean          peerinfo_query_delete_tmo             (gpointer aptr);
@@ -814,9 +807,7 @@ peerstate_repr(peerstate_t state)
     case PEERSTATE_QUERY_OWNER:   repr = "PEERSTATE_QUERY_OWNER"; break;
     case PEERSTATE_QUERY_PID:     repr = "PEERSTATE_QUERY_PID";   break;
     case PEERSTATE_RUNNING:       repr = "PEERSTATE_RUNNING";     break;
-    case PEERSTATE_STALE:         repr = "PEERSTATE_STALE";       break;
     case PEERSTATE_STOPPED:       repr = "PEERSTATE_STOPPED";     break;
-    case PEERSTATE_DELETED:       repr = "PEERSTATE_DELETED";     break;
     default: break;
     }
 
@@ -1042,7 +1033,6 @@ peerinfo_ctor(peerinfo_t *self, const char *name)
     self->pi_datapipe      = 0;
     self->pi_name_owner_pc = 0;
     self->pi_name_pid_pc   = 0;
-    self->pi_expunge_id    = 0;
     self->pi_delete_id     = 0;
 
     g_queue_init(&self->pi_quit_callbacks);
@@ -1075,7 +1065,6 @@ peerinfo_dtor(peerinfo_t *self)
 
     peerinfo_query_owner_ign(self);
     peerinfo_query_pid_ign(self);
-    peerinfo_query_expunge_ign(self);
     peerinfo_query_delete_ign(self);
 
     g_free(self->pi_name),
@@ -1123,15 +1112,24 @@ peerinfo_enter_state(peerinfo_t *self)
 	    peerinfo_set_state(self, PEERSTATE_QUERY_PID);
 	}
 	else {
+	    peerinfo_set_owner_name(self, 0);
 	    peerinfo_query_owner_req(self);
 	}
 	break;
 
     case PEERSTATE_QUERY_PID:
+	peerinfo_set_owner_pid(self, PEERINFO_NO_PID);
+	peerinfo_set_owner_uid(self, PEERINFO_NO_UID);
+	peerinfo_set_owner_gid(self, PEERINFO_NO_GID);
 	peerinfo_query_pid_req(self);
 	break;
 
     case PEERSTATE_RUNNING:
+	/* Make sure any previously logged ipc without process
+	 * details can be mapped to something useful when
+	 * debugging -> emit details now that we have them. */
+	mce_log(LL_DEVEL, "%s", peerinfo_repr(self));
+
 	if( self->pi_datapipe ) {
 	    datapipe_exec_full(self->pi_datapipe,
 			       GINT_TO_POINTER(SERVICE_STATE_RUNNING));
@@ -1139,31 +1137,17 @@ peerinfo_enter_state(peerinfo_t *self)
 	peerinfo_handle_methods(self);
 	break;
 
-    case PEERSTATE_STALE:
-	peerinfo_flush_methods(self);
-	peerinfo_execute_quit_callbacks(self);
-
-	peerinfo_query_expunge_req(self);
-
-	break;
-
     case PEERSTATE_STOPPED:
+	if( self->pi_datapipe ) {
+	    datapipe_exec_full(self->pi_datapipe,
+			       GINT_TO_POINTER(SERVICE_STATE_STOPPED));
+	}
 	peerinfo_flush_methods(self);
 	peerinfo_execute_quit_callbacks(self);
-
-	peerinfo_set_owner_name(self, "");
-	peerinfo_set_owner_pid(self, PEERINFO_NO_PID);
-	peerinfo_set_owner_uid(self, PEERINFO_NO_UID);
-	peerinfo_set_owner_gid(self, PEERINFO_NO_GID);
 
 	/* Private names do not come back, delete from cache */
-	if( *peerinfo_name(self) == ':' ) {
-	    peerinfo_set_state(self, PEERSTATE_DELETED);
-	}
-	break;
-
-    case PEERSTATE_DELETED:
-	peerinfo_query_delete_req(self);
+	if( *peerinfo_name(self) == ':' )
+	    peerinfo_query_delete_req(self);
 	break;
 
     default:
@@ -1187,20 +1171,10 @@ peerinfo_leave_state(peerinfo_t *self)
 	break;
 
     case PEERSTATE_RUNNING:
-	if( self->pi_datapipe ) {
-	    datapipe_exec_full(self->pi_datapipe,
-			       GINT_TO_POINTER(SERVICE_STATE_STOPPED));
-	}
-	break;
-
-    case PEERSTATE_STALE:
-	peerinfo_query_expunge_ign(self);
 	break;
 
     case PEERSTATE_STOPPED:
-	break;
-
-    case PEERSTATE_DELETED:
+	peerinfo_query_delete_ign(self);
 	break;
 
     default:
@@ -1211,9 +1185,6 @@ peerinfo_leave_state(peerinfo_t *self)
 static void
 peerinfo_set_state(peerinfo_t *self, peerstate_t state)
 {
-    if( self->pi_state == PEERSTATE_DELETED )
-	goto EXIT;
-
     if( self->pi_state == state )
 	goto EXIT;
 
@@ -1278,9 +1249,14 @@ peerinfo_get_owner_name(const peerinfo_t *self)
     return self->pi_owner_name;
 }
 
-static void
+static bool
 peerinfo_set_owner_name(peerinfo_t *self, const char *name)
 {
+    bool changed = false;
+
+    if( name && !*name )
+	name = 0;
+
     if( !g_strcmp0(self->pi_owner_name, name) )
 	goto EXIT;
 
@@ -1292,15 +1268,10 @@ peerinfo_set_owner_name(peerinfo_t *self, const char *name)
     g_free(self->pi_owner_name),
 	self->pi_owner_name = name ? g_strdup(name) : 0;
 
-    if( self->pi_owner_name ) {
-	if( *self->pi_owner_name)
-	    peerinfo_set_state(self, PEERSTATE_QUERY_PID);
-	else
-	    peerinfo_set_state(self, PEERSTATE_STALE);
-    }
+    changed = true;
 
 EXIT:
-    return;
+    return changed;
 }
 
 pid_t
@@ -1472,9 +1443,18 @@ peerinfo_set_datapipe(peerinfo_t *self, datapipe_t *datapipe)
 	    datapipe);
 
     if( (self->pi_datapipe = datapipe) ) {
-	if( peerinfo_get_state(self) == PEERSTATE_RUNNING ) {
+	/* Report immediately if the state is already known */
+	switch( peerinfo_get_state(self) ) {
+	case PEERSTATE_RUNNING:
 	    datapipe_exec_full(self->pi_datapipe,
 			       GINT_TO_POINTER(SERVICE_STATE_RUNNING));
+	    break;
+	case PEERSTATE_STOPPED:
+	    datapipe_exec_full(self->pi_datapipe,
+			       GINT_TO_POINTER(SERVICE_STATE_STOPPED));
+	    break;
+	default:
+	    break;
 	}
     }
 }
@@ -1515,24 +1495,26 @@ peerinfo_query_owner_rsp(DBusPendingCall *pc, void *aptr)
     dbus_pending_call_unref(self->pi_name_owner_pc),
 	self->pi_name_owner_pc = 0;
 
-    if( !(rsp = dbus_pending_call_steal_reply(pc)) )
-	goto EXIT;
-
-    if( dbus_set_error_from_message(&err, rsp) ||
-	!dbus_message_get_args(rsp, &err,
-			       DBUS_TYPE_STRING, &owner,
-			       DBUS_TYPE_INVALID) )
-    {
+    if( !(rsp = dbus_pending_call_steal_reply(pc)) ) {
+	mce_log(LL_WARN, "null reply");
+    }
+    else if( dbus_set_error_from_message(&err, rsp) ) {
 	if( strcmp(err.name, DBUS_ERROR_NAME_HAS_NO_OWNER) ) {
-	    mce_log(LL_WARN, "%s: %s", err.name, err.message);
+	    mce_log(LL_WARN, "error reply: %s: %s", err.name, err.message);
 	}
+    }
+    else if( !dbus_message_get_args(rsp, &err,
+				    DBUS_TYPE_STRING, &owner,
+				    DBUS_TYPE_INVALID) ) {
+	mce_log(LL_WARN, "parse error: %s: %s", err.name, err.message);
     }
 
     if( owner ) {
 	peerinfo_set_owner_name(self, owner);
+	peerinfo_set_state(self, PEERSTATE_QUERY_PID);
     }
     else {
-	peerinfo_set_state(self, PEERSTATE_STALE);
+	peerinfo_set_state(self, PEERSTATE_STOPPED);
     }
 
 EXIT:
@@ -1603,28 +1585,24 @@ peerinfo_query_pid_rsp(DBusPendingCall *pc, void *aptr)
     dbus_pending_call_unref(self->pi_name_pid_pc),
 	self->pi_name_pid_pc = 0;
 
-    if( !(rsp = dbus_pending_call_steal_reply(pc)) )
-	goto EXIT;
-
-    if( dbus_set_error_from_message(&err, rsp) ||
-	!dbus_message_get_args(rsp, &err,
+    if( !(rsp = dbus_pending_call_steal_reply(pc)) ) {
+	mce_log(LL_WARN, "null reply");
+    }
+    else if( dbus_set_error_from_message(&err, rsp) ) {
+	mce_log(LL_WARN, "error reply: %s: %s", err.name, err.message);
+    }
+    else if( !dbus_message_get_args(rsp, &err,
 			       DBUS_TYPE_UINT32, &pid,
-			       DBUS_TYPE_INVALID) )
-    {
-	mce_log(LL_WARN, "%s: %s", err.name, err.message);
+			       DBUS_TYPE_INVALID) ) {
+	mce_log(LL_WARN, "parse error: %s: %s", err.name, err.message);
     }
 
     if( pid ) {
 	peerinfo_set_owner_pid(self, pid);
 	peerinfo_set_state(self, PEERSTATE_RUNNING);
-
-	/* Make sure any previously logged ipc without process
-	 * details can be mapped to something useful when
-	 * debugging -> emit details now that we have them. */
-	mce_log(LL_DEVEL, "%s", peerinfo_repr(self));
     }
     else {
-	peerinfo_set_state(self, PEERSTATE_STALE);
+	peerinfo_set_state(self, PEERSTATE_STOPPED);
     }
 
 EXIT:
@@ -1660,61 +1638,6 @@ EXIT:
 }
 
 /* ------------------------------------------------------------------------- *
- * expunge timer
- * ------------------------------------------------------------------------- */
-
-static void
-peerinfo_query_expunge_ign(peerinfo_t *self)
-{
-    if( !self->pi_expunge_id )
-	goto EXIT;
-
-    mce_log(LL_DEBUG, "[%s] expunge timer canceled", peerinfo_name(self));
-
-    g_source_remove(self->pi_expunge_id),
-	self->pi_expunge_id = 0;
-
-EXIT:
-    return;
-}
-
-static gboolean
-peerinfo_query_expunge_tmo(gpointer aptr)
-{
-    peerinfo_t  *self  = aptr;
-
-    mce_log(LL_DEBUG, "[%s] expunge timer triggered", peerinfo_name(self));
-
-    if( !self->pi_expunge_id )
-	goto EXIT;
-
-    self->pi_expunge_id = 0;
-
-    peerinfo_set_state(self, PEERSTATE_STOPPED);
-
-EXIT:
-    return FALSE;
-}
-
-static void
-peerinfo_query_expunge_req(peerinfo_t *self)
-{
-    if( peerinfo_get_state(self) != PEERSTATE_STALE )
-	goto EXIT;
-
-    if( self->pi_expunge_id )
-	goto EXIT;
-
-    mce_log(LL_DEBUG, "[%s] expunge timer scheduled", peerinfo_name(self));
-
-    self->pi_expunge_id = g_timeout_add(500,
-					peerinfo_query_expunge_tmo,
-					self);
-EXIT:
-    return;
-}
-
-/* ------------------------------------------------------------------------- *
  * delete timer
  * ------------------------------------------------------------------------- */
 
@@ -1745,6 +1668,11 @@ peerinfo_query_delete_tmo(gpointer aptr)
 
     self->pi_delete_id = 0;
 
+    /* Execute any quit callbacks that might have been queued
+     * while peerinfo is already in PEERSTATE_STOPPED state.
+     */
+    peerinfo_execute_quit_callbacks(self);
+
     mce_dbus_del_peerinfo(peerinfo_name(self));
 
 EXIT:
@@ -1754,7 +1682,7 @@ EXIT:
 static void
 peerinfo_query_delete_req(peerinfo_t *self)
 {
-    if( peerinfo_get_state(self) != PEERSTATE_DELETED )
+    if( peerinfo_get_state(self) != PEERSTATE_STOPPED )
 	goto EXIT;
 
     if( self->pi_delete_id )
@@ -1762,7 +1690,7 @@ peerinfo_query_delete_req(peerinfo_t *self)
 
     mce_log(LL_DEBUG, "[%s] delete timer scheduled", peerinfo_name(self));
 
-    self->pi_delete_id = g_idle_add(peerinfo_query_delete_tmo, self);
+    self->pi_delete_id = g_timeout_add(500, peerinfo_query_delete_tmo, self);
 
 EXIT:
 
@@ -2186,7 +2114,14 @@ mce_dbus_update_peerinfo(const char *name, const char *owner)
     if( !info )
 	goto EXIT;
 
-    peerinfo_set_owner_name(info, owner);
+    if( peerinfo_set_owner_name(info, owner) ) {
+	if( peerinfo_get_owner_name(info) ) {
+	    peerinfo_set_state(info, PEERSTATE_QUERY_PID);
+	}
+	else {
+	    peerinfo_set_state(info, PEERSTATE_STOPPED);
+	}
+    }
 
 EXIT:
     return;
@@ -4248,11 +4183,7 @@ gssize mce_dbus_owner_monitor_add(const gchar *service,
     if( (num = g_slist_length(*monitor_list)) >= max_num )
 	goto EXIT;
 
-    /* TODO: Think really hard if it is in anyway possible
-     *       for the peerinfo to be in PEERSTATE_STOPPED
-     *       state as that would mean the notification
-     *       would not get triggered ...
-     */
+    /* Attach callback to peerinfo tracker */
     peerinfo_t *info = mce_dbus_add_peerinfo(service);
     peerquit_t *quit = peerinfo_add_quit_callback(info, callback);
     *monitor_list = g_slist_prepend(*monitor_list, quit);

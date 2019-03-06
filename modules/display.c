@@ -981,9 +981,7 @@ bpclient_update_pid_cb(const peerinfo_t *peerinfo, gpointer userdata)
             peerstate_repr(state), (int)pid);
 
     switch( state ) {
-    case PEERSTATE_STALE:
     case PEERSTATE_STOPPED:
-    case PEERSTATE_DELETED:
         mdy_blanking_remove_pause_client(self->bpc_name), self = 0;
         goto EXIT;
     default:
