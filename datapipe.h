@@ -55,10 +55,36 @@ typedef enum {
  * Policy used for caching indata
  */
 typedef enum {
-    DATAPIPE_CACHE_NOTHING = 0,     /**< Do not cache the indata */
-    DATAPIPE_CACHE_INDATA  = 1<<0,  /**< Cache the unfiltered indata */
-    DATAPIPE_CACHE_OUTDATA = 1<<1,  /**< Cache the filtered outdata */
+    /** Data is passed through datapipe, but is not cached
+     *
+     * Suitable for stateless impulse and event data.
+     */
+    DATAPIPE_CACHE_NOTHING = 0,
 
+    /** Update cache with unfiltered input value
+     *
+     * The cached value is set to unfiltered input value.
+     *
+     * Suitable for datapipes designed to be re-run in mind - in practice
+     * this would be brightness control pipes where the input is setting
+     * value and output is light sensor filtered hw brightness level.
+     */
+    DATAPIPE_CACHE_INDATA  = 1<<0,
+
+    /** Update cache with filtered input value
+     *
+     * The cached value is set to filtered input value.
+     */
+    DATAPIPE_CACHE_OUTDATA = 1<<1,
+
+    /* Update cache both with unfiltered and filtered input value
+     *
+     * The cached value is updated both before and after filtering.
+     *
+     * As this is the least likely option to cause differences between
+     * direct datapipe polling and following notifications, it should
+     * be used unless there is some specific reason not to.
+     */
     DATAPIPE_CACHE_DEFAULT = (DATAPIPE_CACHE_INDATA |
                               DATAPIPE_CACHE_OUTDATA),
 } datapipe_cache_t;
@@ -96,8 +122,12 @@ typedef struct
 
 const char     *datapipe_name     (const datapipe_t *self);
 gconstpointer   datapipe_value    (const datapipe_t *self);
-gconstpointer   datapipe_exec_full(datapipe_t *self, gconstpointer indata);
+gconstpointer   datapipe_exec_full_real(datapipe_t *self, gconstpointer indata,
+                                   const char *file, const char *func);
 void            datapipe_set_value(datapipe_t *self, gconstpointer data);
+
+#define datapipe_exec_full(PIPE_,DATA_)\
+   datapipe_exec_full_real(PIPE_,DATA_,__FILE__,__func__)
 
 /* ------------------------------------------------------------------------- *
  * MCE_DATAPIPE

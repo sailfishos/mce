@@ -25,17 +25,29 @@
 #include "mce.h"
 #include "mce-log.h"
 #include "mce-lib.h"
+#include "evdev.h"
 
 #include <mce/mode-names.h>
 
 #include <linux/input.h>
 
+#include <stdio.h>
+
 /* ========================================================================= *
  * Macros
  * ========================================================================= */
 
-#define datapipe_init(datapipe, filtering, caching, datasize, value)\
-     datapipe_init_(&(datapipe), #datapipe, filtering, caching, datasize, value)
+#define cat2(a,b) a##b
+#define cat3(a,b,c) a##b##c
+
+#define datapipe_log(PIPE_, FMT_, ARGS_...)\
+     do {\
+         if( mce_log_p(LL_DEBUG) || \
+             mce_log_p_(LL_DEBUG,__FILE__,PIPE_->dp_name) ) {\
+             mce_log_unconditional(LL_DEBUG, __FILE__, __func__,\
+                          FMT_ , ## ARGS_);\
+         }\
+     } while(0)
 
 /* ========================================================================= *
  * Types
@@ -53,11 +65,62 @@ struct datapipe_t
     datapipe_cache_t      dp_cache;
     guint                 dp_gc_id;
     guint                 dp_token;
+    const char         *(*dp_value_repr_cb)(gconstpointer value);
+    const char         *(*dp_change_repr_cb)(gconstpointer prev, gconstpointer curr);
 };
+
+#define DATAPIPE_INIT(NAME_,TYPE_,VALUE_,SIZE_,FILTERING_,CACHING_)\
+     {\
+         .dp_name = #NAME_ "_pipe",\
+         .dp_filters = 0,\
+         .dp_input_triggers = 0,\
+         .dp_output_triggers = 0,\
+         .dp_cached_data = GINT_TO_POINTER(VALUE_),\
+         .dp_datasize = SIZE_,\
+         .dp_read_only = FILTERING_,\
+         .dp_cache = CACHING_,\
+         .dp_gc_id = 0,\
+         .dp_token = 0,\
+         .dp_value_repr_cb = cat3(datapipe_hook_,TYPE_,_value),\
+         .dp_change_repr_cb = cat3(datapipe_hook_,TYPE_,_change),\
+     }
 
 /* ========================================================================= *
  * Prototypes
  * ========================================================================= */
+
+/* ------------------------------------------------------------------------- *
+ * DATAPIPE_HOOK
+ * ------------------------------------------------------------------------- */
+
+static const char  *datapipe_hook_int_value                (gconstpointer data);
+static const char  *datapipe_hook_boolean_value            (gconstpointer data);
+static const char  *datapipe_hook_string_value             (gconstpointer data);
+static const char  *datapipe_hook_impulse_value            (gconstpointer data);
+static const char  *datapipe_hook_input_event_value        (gconstpointer data);
+static const char  *datapipe_hook_input_event_ptr_value    (gconstpointer data);
+static const char  *datapipe_hook_display_state_value      (gconstpointer data);
+static const char  *datapipe_hook_uiexception_type_value   (gconstpointer data);
+static const char  *datapipe_hook_lockkey_state_value      (gconstpointer data);
+static const char  *datapipe_hook_tristate_value           (gconstpointer data);
+static const char  *datapipe_hook_cover_state_value        (gconstpointer data);
+static const char  *datapipe_hook_orientation_state_value  (gconstpointer data);
+static const char  *datapipe_hook_alarm_ui_state_value     (gconstpointer data);
+static const char  *datapipe_hook_system_state_value       (gconstpointer data);
+static const char  *datapipe_hook_submode_value            (gconstpointer data);
+static const char  *datapipe_hook_submode_change           (gconstpointer prev, gconstpointer curr);
+static const char  *datapipe_hook_call_state_value         (gconstpointer data);
+static const char  *datapipe_hook_call_type_value          (gconstpointer data);
+static const char  *datapipe_hook_tklock_request_value     (gconstpointer data);
+static const char  *datapipe_hook_charger_state_value      (gconstpointer data);
+static const char  *datapipe_hook_battery_status_value     (gconstpointer data);
+static const char  *datapipe_hook_camera_button_state_value(gconstpointer data);
+static const char  *datapipe_hook_audio_route_value        (gconstpointer data);
+static const char  *datapipe_hook_usb_cable_state_value    (gconstpointer data);
+static const char  *datapipe_hook_thermal_state_value      (gconstpointer data);
+static const char  *datapipe_hook_service_state_value      (gconstpointer data);
+static const char  *datapipe_hook_devicelock_state_value   (gconstpointer data);
+static const char  *datapipe_hook_fpstate_value            (gconstpointer data);
 
 /* ------------------------------------------------------------------------- *
  * DATAPIPE
@@ -65,18 +128,18 @@ struct datapipe_t
 
 const char       *datapipe_name                 (const datapipe_t *self);
 gconstpointer     datapipe_value                (const datapipe_t *self);
+void              datapipe_set_value            (datapipe_t *self, gconstpointer data);
 static void       datapipe_gc                   (datapipe_t *self);
 static gboolean   datapipe_gc_cb                (gpointer aptr);
 static void       datapipe_schedule_gc          (datapipe_t *self);
 static void       datapipe_cancel_gc            (datapipe_t *self);
-gconstpointer     datapipe_exec_full            (datapipe_t *self, gconstpointer indata);
+gconstpointer     datapipe_exec_full_real       (datapipe_t *self, gconstpointer indata, const char *file, const char *func);
 static void       datapipe_add_filter           (datapipe_t *self, gpointer (*filter)(gpointer data));
 static void       datapipe_remove_filter        (datapipe_t *self, gpointer (*filter)(gpointer data));
 static void       datapipe_add_input_trigger    (datapipe_t *self, void (*trigger)(gconstpointer data));
 static void       datapipe_remove_input_trigger (datapipe_t *self, void (*trigger)(gconstpointer data));
 static void       datapipe_add_output_trigger   (datapipe_t *self, void (*trigger)(gconstpointer data));
 static void       datapipe_remove_output_trigger(datapipe_t *self, void (*trigger)(gconstpointer data));
-static void       datapipe_init_                (datapipe_t *self, const char *name, const datapipe_filtering_t read_only, datapipe_cache_t cache, const gsize datasize, gconstpointer initial_data);
 static void       datapipe_free                 (datapipe_t *self);
 
 /* ------------------------------------------------------------------------- *
@@ -91,6 +154,8 @@ static void      mce_datapipe_execute_handlers   (datapipe_handler_t *bindings);
 static gboolean  mce_datapipe_execute_handlers_cb(gpointer aptr);
 void             mce_datapipe_init_bindings      (datapipe_bindings_t *self);
 void             mce_datapipe_quit_bindings      (datapipe_bindings_t *self);
+void             mce_datapipe_generate_activity  (void);
+void             mce_datapipe_generate_inactivity(void);
 
 /* ------------------------------------------------------------------------- *
  * SUBMODE
@@ -110,6 +175,12 @@ const char  *system_state_repr(system_state_t state);
  * ------------------------------------------------------------------------- */
 
 const char  *devicelock_state_repr(devicelock_state_t state);
+
+/* ------------------------------------------------------------------------- *
+ * THERMAL_STATE
+ * ------------------------------------------------------------------------- */
+
+const char  *thermal_state_repr(thermal_state_t state);
 
 /* ------------------------------------------------------------------------- *
  * UIEXCEPTION_TYPE
@@ -137,6 +208,18 @@ const char  *usb_cable_state_to_dbus(usb_cable_state_t state);
 
 const char  *charger_state_repr   (charger_state_t state);
 const char  *charger_state_to_dbus(charger_state_t state);
+
+/* ------------------------------------------------------------------------- *
+ * CAMERA_BUTTON_STATE
+ * ------------------------------------------------------------------------- */
+
+const char  *camera_button_state_repr(camera_button_state_t state);
+
+/* ------------------------------------------------------------------------- *
+ * AUDIO_ROUTE
+ * ------------------------------------------------------------------------- */
+
+const char  *audio_route_repr(audio_route_t state);
 
 /* ------------------------------------------------------------------------- *
  * TKLOCK_REQUEST
@@ -222,237 +305,478 @@ fpstate_t    fpstate_parse(const char *name);
 const char  *fpstate_repr (fpstate_t state);
 
 /* ========================================================================= *
+ * DATAPIPE_HOOK
+ * ========================================================================= */
+
+/* For each datatype used in datapipes there exist:
+ * - datapipe_hook_<type>_value
+ * - datapipe_hook_<type>_changes
+ *
+ * These are used in expansion of #DATAPIPE_INIT() macro and must resolve
+ * either to a valid callback function or null pointer.
+ */
+
+static const char *
+datapipe_hook_int_value(gconstpointer data)
+{
+    static char buf[32];
+    snprintf(buf, sizeof buf, "%d", GPOINTER_TO_INT(data));
+    return buf;
+}
+#define datapipe_hook_int_change 0
+
+static const char *
+datapipe_hook_boolean_value(gconstpointer data)
+{
+    return data ? "true" : "false";
+}
+#define datapipe_hook_boolean_change 0
+
+static const char *
+datapipe_hook_string_value(gconstpointer data)
+{
+    return data;
+}
+#define datapipe_hook_string_change 0
+
+static const char *
+datapipe_hook_impulse_value(gconstpointer data)
+{
+    (void)data;
+    return "impulse";
+}
+#define datapipe_hook_impulse_change 0
+
+static const char *
+datapipe_hook_input_event_value(gconstpointer data)
+{
+    static char buf[64];
+    const struct input_event *ev = data;
+    if( !ev )
+        return "NULL event!";
+    snprintf(buf, sizeof buf, "type: %s, code: %s, value: %d",
+             evdev_get_event_type_name(ev->type),
+             evdev_get_event_code_name(ev->type, ev->code),
+             ev->value);
+    return buf;
+}
+#define datapipe_hook_input_event_change 0
+
+static const char *
+datapipe_hook_input_event_ptr_value(gconstpointer data)
+{
+    const struct input_event *const*evp = data;
+    if( !evp )
+        return "NULL event ptr!";
+    return datapipe_hook_input_event_value(*evp);
+}
+#define datapipe_hook_input_event_ptr_change 0
+
+static const char *
+datapipe_hook_display_state_value(gconstpointer data)
+{
+    display_state_t display_state = GPOINTER_TO_INT(data);
+    return display_state_repr(display_state);
+}
+#define datapipe_hook_display_state_change 0
+
+static const char *
+datapipe_hook_uiexception_type_value(gconstpointer data)
+{
+    uiexception_type_t value = GPOINTER_TO_INT(data);
+    return uiexception_type_repr(value);
+}
+#define datapipe_hook_uiexception_type_change 0
+
+static const char *
+datapipe_hook_lockkey_state_value(gconstpointer data)
+{
+    key_state_t key_state = GPOINTER_TO_INT(data);
+    return key_state_repr(key_state);
+}
+#define datapipe_hook_lockkey_state_change 0
+
+static const char *
+datapipe_hook_tristate_value(gconstpointer data)
+{
+    tristate_t value = GPOINTER_TO_INT(data);
+    return tristate_repr(value);
+}
+#define datapipe_hook_tristate_change 0
+
+static const char *
+datapipe_hook_cover_state_value(gconstpointer data)
+{
+    cover_state_t value = GPOINTER_TO_INT(data);
+    return cover_state_repr(value);
+}
+#define datapipe_hook_cover_state_change 0
+
+static const char *
+datapipe_hook_orientation_state_value(gconstpointer data)
+{
+    orientation_state_t value = GPOINTER_TO_INT(data);
+    return orientation_state_repr(value);
+}
+#define datapipe_hook_orientation_state_change 0
+
+static const char *
+datapipe_hook_alarm_ui_state_value(gconstpointer data)
+{
+    alarm_ui_state_t value = GPOINTER_TO_INT(data);
+    return alarm_state_repr(value);
+}
+#define datapipe_hook_alarm_ui_state_change 0
+
+static const char *
+datapipe_hook_system_state_value(gconstpointer data)
+{
+    system_state_t value = GPOINTER_TO_INT(data);
+    return system_state_repr(value);
+}
+#define datapipe_hook_system_state_change 0
+
+static const char *
+datapipe_hook_submode_value(gconstpointer data)
+{
+    submode_t value = GPOINTER_TO_INT(data);
+    return submode_repr(value);
+}
+static const char *
+datapipe_hook_submode_change(gconstpointer prev, gconstpointer curr)
+{
+    submode_t v1 = GPOINTER_TO_INT(prev);
+    submode_t v2 = GPOINTER_TO_INT(curr);
+    return submode_change_repr(v1, v2);
+}
+static const char *
+datapipe_hook_call_state_value(gconstpointer data)
+{
+    call_state_t value = GPOINTER_TO_INT(data);
+    return call_state_repr(value);
+}
+#define datapipe_hook_call_state_change 0
+
+static const char *
+datapipe_hook_call_type_value(gconstpointer data)
+{
+    call_type_t value = GPOINTER_TO_INT(data);
+    return call_type_repr(value);
+}
+#define datapipe_hook_call_type_change 0
+
+static const char *
+datapipe_hook_tklock_request_value(gconstpointer data)
+{
+    tklock_request_t value = GPOINTER_TO_INT(data);
+    return tklock_request_repr(value);
+}
+#define datapipe_hook_tklock_request_change 0
+
+static const char *
+datapipe_hook_charger_state_value(gconstpointer data)
+{
+    charger_state_t value = GPOINTER_TO_INT(data);
+    return charger_state_repr(value);
+}
+#define datapipe_hook_charger_state_change 0
+
+static const char *
+datapipe_hook_battery_status_value(gconstpointer data)
+{
+    battery_status_t value = GPOINTER_TO_INT(data);
+    return battery_status_repr(value);
+}
+#define datapipe_hook_battery_status_change 0
+
+static const char *
+datapipe_hook_camera_button_state_value(gconstpointer data)
+{
+    camera_button_state_t value = GPOINTER_TO_INT(data);
+    return camera_button_state_repr(value);
+}
+#define datapipe_hook_camera_button_state_change 0
+
+static const char *
+datapipe_hook_audio_route_value(gconstpointer data)
+{
+    audio_route_t value = GPOINTER_TO_INT(data);
+    return audio_route_repr(value);
+}
+#define datapipe_hook_audio_route_change 0
+
+static const char *
+datapipe_hook_usb_cable_state_value(gconstpointer data)
+{
+    usb_cable_state_t value = GPOINTER_TO_INT(data);
+    return usb_cable_state_repr(value);
+}
+#define datapipe_hook_usb_cable_state_change 0
+
+static const char *
+datapipe_hook_thermal_state_value(gconstpointer data)
+{
+    thermal_state_t value = GPOINTER_TO_INT(data);
+    return thermal_state_repr(value);
+}
+#define datapipe_hook_thermal_state_change 0
+
+static const char *
+datapipe_hook_service_state_value(gconstpointer data)
+{
+    service_state_t value = GPOINTER_TO_INT(data);
+    return service_state_repr(value);
+}
+#define datapipe_hook_service_state_change 0
+
+static const char *
+datapipe_hook_devicelock_state_value(gconstpointer data)
+{
+    devicelock_state_t value = GPOINTER_TO_INT(data);
+    return devicelock_state_repr(value);
+}
+#define datapipe_hook_devicelock_state_change 0
+
+static const char *
+datapipe_hook_fpstate_value(gconstpointer data)
+{
+    fpstate_t value = GPOINTER_TO_INT(data);
+    return fpstate_repr(value);
+}
+#define datapipe_hook_fpstate_change 0
+
+/* ========================================================================= *
  * Data
  * ========================================================================= */
 
 /* Available datapipes */
 
 /** LED brightness */
-datapipe_t led_brightness_pipe;
+datapipe_t led_brightness_pipe                  = DATAPIPE_INIT(led_brightness, int, 0, 0, DATAPIPE_FILTERING_ALLOWED, DATAPIPE_CACHE_INDATA);
 
 /** LPM brightness */
-datapipe_t lpm_brightness_pipe;
+datapipe_t lpm_brightness_pipe                  = DATAPIPE_INIT(lpm_brightness, int, 0, 0, DATAPIPE_FILTERING_ALLOWED, DATAPIPE_CACHE_INDATA);
 
 /** State of device; read only */
-datapipe_t device_inactive_pipe;
+datapipe_t device_inactive_pipe                 = DATAPIPE_INIT(device_inactive, boolean, true, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** Device inactivity events; read only */
-datapipe_t inactivity_event_pipe;
+datapipe_t inactivity_event_pipe                = DATAPIPE_INIT(inactivity_event, boolean, true, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** LED pattern to activate; read only */
-datapipe_t led_pattern_activate_pipe;
+datapipe_t led_pattern_activate_pipe            = DATAPIPE_INIT(led_pattern_activate, string, 0, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_NOTHING);
 
 /** LED pattern to deactivate; read only */
-datapipe_t led_pattern_deactivate_pipe;
+datapipe_t led_pattern_deactivate_pipe          = DATAPIPE_INIT(led_pattern_deactivate, string, 0, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_NOTHING);
 
 /** resumed from suspend notification; read only */
-datapipe_t resume_detected_event_pipe;
+datapipe_t resume_detected_event_pipe           = DATAPIPE_INIT(resume_detected_event, impulse, 0, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_NOTHING);
 
 /** Non-synthetized user activity; read only */
-datapipe_t user_activity_event_pipe;
+datapipe_t user_activity_event_pipe             = DATAPIPE_INIT(user_activity_event, input_event, 0, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_NOTHING);
 
 /** State of display; read only */
-datapipe_t display_state_curr_pipe;
+datapipe_t display_state_curr_pipe              = DATAPIPE_INIT(display_state_curr, display_state, MCE_DISPLAY_UNDEF, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** Desired state of display; write only */
-datapipe_t display_state_request_pipe;
+datapipe_t display_state_request_pipe           = DATAPIPE_INIT(display_state_request, display_state, MCE_DISPLAY_UNDEF, 0, DATAPIPE_FILTERING_ALLOWED, DATAPIPE_CACHE_DEFAULT);
 
 /** Next (non-transitional) state of display; read only */
-datapipe_t display_state_next_pipe;
+datapipe_t display_state_next_pipe              = DATAPIPE_INIT(display_state_next, display_state, MCE_DISPLAY_UNDEF, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** exceptional ui state; read write */
-datapipe_t uiexception_type_pipe;
+datapipe_t uiexception_type_pipe                = DATAPIPE_INIT(uiexception_type, uiexception_type, UIEXCEPTION_TYPE_NONE, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /**
  * Display brightness;
  * bits 0-7 is brightness in percent (0-100)
  * upper 8 bits is high brightness boost (0-2)
  */
-datapipe_t display_brightness_pipe;
+datapipe_t display_brightness_pipe              = DATAPIPE_INIT(display_brightness, int, 3, 0, DATAPIPE_FILTERING_ALLOWED, DATAPIPE_CACHE_INDATA);
 
 /** Key backlight */
-datapipe_t key_backlight_brightness_pipe;
+datapipe_t key_backlight_brightness_pipe        = DATAPIPE_INIT(key_backlight_brightness, int, 0, 0, DATAPIPE_FILTERING_ALLOWED, DATAPIPE_CACHE_INDATA);
 
 /** A key has been pressed */
-datapipe_t keypress_event_pipe;
+datapipe_t keypress_event_pipe                  = DATAPIPE_INIT(keypress_event, input_event_ptr, 0, sizeof (struct input_event), DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_NOTHING);
 
 /** Touchscreen activity took place */
-datapipe_t touchscreen_event_pipe;
+datapipe_t touchscreen_event_pipe               = DATAPIPE_INIT(touchscreen_event, input_event_ptr, 0, sizeof (struct input_event), DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_NOTHING);
 
 /** The lock-key has been pressed; read only */
-datapipe_t lockkey_state_pipe;
+datapipe_t lockkey_state_pipe                   = DATAPIPE_INIT(lockkey_state, lockkey_state, KEY_STATE_UNDEF, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** The init-done condition has been reached; read only */
-datapipe_t init_done_pipe;
+datapipe_t init_done_pipe                       = DATAPIPE_INIT(init_done, tristate, TRISTATE_UNKNOWN, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** Keyboard open/closed; read only */
-datapipe_t keyboard_slide_state_pipe;
+datapipe_t keyboard_slide_state_pipe            = DATAPIPE_INIT(keyboard_slide_state, cover_state, COVER_CLOSED, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** Keyboard available; read only */
-datapipe_t keyboard_available_state_pipe;
+datapipe_t keyboard_available_state_pipe        = DATAPIPE_INIT(keyboard_available_state, cover_state, COVER_CLOSED, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** Lid sensor is working state; read/write */
-datapipe_t lid_sensor_is_working_pipe;
+datapipe_t lid_sensor_is_working_pipe           = DATAPIPE_INIT(lid_sensor_is_working, boolean, false, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** Lid cover sensor open/closed; read only */
-datapipe_t lid_sensor_actual_pipe;
+datapipe_t lid_sensor_actual_pipe               = DATAPIPE_INIT(lid_sensor_actual, cover_state, COVER_UNDEF, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** Lid cover policy state; read only */
-datapipe_t lid_sensor_filtered_pipe;
+datapipe_t lid_sensor_filtered_pipe             = DATAPIPE_INIT(lid_sensor_filtered, cover_state, COVER_UNDEF, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** Lens cover open/closed; read only */
-datapipe_t lens_cover_state_pipe;
+datapipe_t lens_cover_state_pipe                = DATAPIPE_INIT(lens_cover_state, cover_state, COVER_CLOSED, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** Proximity sensor; read only */
-datapipe_t proximity_sensor_actual_pipe;
+datapipe_t proximity_sensor_actual_pipe         = DATAPIPE_INIT(proximity_sensor_actual, cover_state, COVER_OPEN, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** Ambient light sensor; read only */
-datapipe_t light_sensor_actual_pipe;
+datapipe_t light_sensor_actual_pipe             = DATAPIPE_INIT(light_sensor_actual, int, 400, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** Filtered ambient light level; read only */
-datapipe_t light_sensor_filtered_pipe;
+datapipe_t light_sensor_filtered_pipe           = DATAPIPE_INIT(light_sensor_filtered, int, 400, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** Temporary ambient light sensor enable; read/write */
-datapipe_t light_sensor_poll_request_pipe;
+datapipe_t light_sensor_poll_request_pipe       = DATAPIPE_INIT(light_sensor_poll_request, boolean, false, 0, DATAPIPE_FILTERING_ALLOWED, DATAPIPE_CACHE_DEFAULT);
 
 /** Orientation sensor; read only */
-datapipe_t orientation_sensor_actual_pipe;
+datapipe_t orientation_sensor_actual_pipe       = DATAPIPE_INIT(orientation_sensor_actual, orientation_state, MCE_ORIENTATION_UNDEFINED, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** The alarm UI state */
-datapipe_t alarm_ui_state_pipe;
+datapipe_t alarm_ui_state_pipe                  = DATAPIPE_INIT(alarm_ui_state, alarm_ui_state, MCE_ALARM_UI_INVALID_INT32, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** The device state; read only */
-datapipe_t system_state_pipe;
+datapipe_t system_state_pipe                    = DATAPIPE_INIT(system_state, system_state, MCE_SYSTEM_STATE_UNDEF, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** Enable/disable radios */
-datapipe_t master_radio_enabled_pipe;
+datapipe_t master_radio_enabled_pipe            = DATAPIPE_INIT(master_radio_enabled, boolean, false, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** The device submode */
-datapipe_t submode_pipe;
+datapipe_t submode_pipe                         = DATAPIPE_INIT(submode, submode, MCE_SUBMODE_NORMAL, 0, DATAPIPE_FILTERING_ALLOWED, DATAPIPE_CACHE_DEFAULT);
 
 /** The call state */
-datapipe_t call_state_pipe;
+datapipe_t call_state_pipe                      = DATAPIPE_INIT(call_state, call_state, CALL_STATE_NONE, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** The ignore incoming call "state".
  *
  * Note: Related actions happen when true is executed on the
- *       datapipe, but the cached value always remains at false.
+ * datapipe, but the cached value always remains at false.
  */
-datapipe_t ignore_incoming_call_event_pipe;
+datapipe_t ignore_incoming_call_event_pipe      = DATAPIPE_INIT(ignore_incoming_call_event, boolean, false, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_NOTHING);
 
 /** The call type */
-datapipe_t call_type_pipe;
+datapipe_t call_type_pipe                       = DATAPIPE_INIT(call_type, call_type, CALL_TYPE_NORMAL, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** The touchscreen/keypad lock state */
-datapipe_t tklock_request_pipe;
+datapipe_t tklock_request_pipe                  = DATAPIPE_INIT(tklock_request, tklock_request, TKLOCK_REQUEST_UNDEF, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** UI side is in a state where user interaction is expected */
-datapipe_t interaction_expected_pipe;
+datapipe_t interaction_expected_pipe            = DATAPIPE_INIT(interaction_expected, boolean, false, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** Charger state; read only */
-datapipe_t charger_state_pipe;
+datapipe_t charger_state_pipe                   = DATAPIPE_INIT(charger_state, charger_state, CHARGER_STATE_UNDEF, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** Battery status; read only */
-datapipe_t battery_status_pipe;
+datapipe_t battery_status_pipe                  = DATAPIPE_INIT(battery_status, battery_status, BATTERY_STATUS_UNDEF, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** Battery charge level; read only */
-datapipe_t battery_level_pipe;
+datapipe_t battery_level_pipe                   = DATAPIPE_INIT(battery_level, int, BATTERY_LEVEL_INITIAL, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** Topmost window PID; read only */
-datapipe_t topmost_window_pid_pipe;
+datapipe_t topmost_window_pid_pipe              = DATAPIPE_INIT(topmost_window_pid, int, -1, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** Camera button; read only */
-datapipe_t camera_button_state_pipe;
+datapipe_t camera_button_state_pipe             = DATAPIPE_INIT(camera_button_state, camera_button_state, CAMERA_BUTTON_UNDEF, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** The inactivity timeout; read only */
-datapipe_t inactivity_delay_pipe;
+datapipe_t inactivity_delay_pipe                = DATAPIPE_INIT(inactivity_delay, int, DEFAULT_INACTIVITY_DELAY, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** Audio routing state; read only */
-datapipe_t audio_route_pipe;
+datapipe_t audio_route_pipe                     = DATAPIPE_INIT(audio_route, audio_route, AUDIO_ROUTE_UNDEF, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** USB cable has been connected/disconnected; read only */
-datapipe_t usb_cable_state_pipe;
+datapipe_t usb_cable_state_pipe                 = DATAPIPE_INIT(usb_cable_state, usb_cable_state, USB_CABLE_UNDEF, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** A jack connector has been connected/disconnected; read only */
-datapipe_t jack_sense_state_pipe;
+datapipe_t jack_sense_state_pipe                = DATAPIPE_INIT(jack_sense_state, cover_state, COVER_UNDEF, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** Power save mode is active; read only */
-datapipe_t power_saving_mode_active_pipe;
+datapipe_t power_saving_mode_active_pipe        = DATAPIPE_INIT(power_saving_mode_active, boolean, false, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** Thermal state; read only */
-datapipe_t thermal_state_pipe;
+datapipe_t thermal_state_pipe                   = DATAPIPE_INIT(thermal_state, thermal_state, THERMAL_STATE_UNDEF, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** Heartbeat; read only */
-datapipe_t heartbeat_event_pipe;
+datapipe_t heartbeat_event_pipe                 = DATAPIPE_INIT(heartbeat_event, impulse, 0, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_NOTHING);
 
 /** compositor availability; read only */
-datapipe_t compositor_service_state_pipe;
+datapipe_t compositor_service_state_pipe        = DATAPIPE_INIT(compositor_service_state, service_state, SERVICE_STATE_UNDEF, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** lipstick availability; read only */
-datapipe_t lipstick_service_state_pipe;
+datapipe_t lipstick_service_state_pipe          = DATAPIPE_INIT(lipstick_service_state, service_state, SERVICE_STATE_UNDEF, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** devicelock availability; read only */
-datapipe_t devicelock_service_state_pipe;
+datapipe_t devicelock_service_state_pipe        = DATAPIPE_INIT(devicelock_service_state, service_state, SERVICE_STATE_UNDEF, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** usbmoded availability; read only */
-datapipe_t usbmoded_service_state_pipe;
+datapipe_t usbmoded_service_state_pipe          = DATAPIPE_INIT(usbmoded_service_state, service_state, SERVICE_STATE_UNDEF, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** ngfd availability; read only */
-datapipe_t ngfd_service_state_pipe;
+datapipe_t ngfd_service_state_pipe              = DATAPIPE_INIT(ngfd_service_state, service_state, SERVICE_STATE_UNDEF, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** Request ngfd event playing */
-datapipe_t ngfd_event_request_pipe;
+datapipe_t ngfd_event_request_pipe              = DATAPIPE_INIT(ngfd_event_request, string, 0, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_NOTHING);
 
 /** dsme availability; read only */
-datapipe_t dsme_service_state_pipe;
+datapipe_t dsme_service_state_pipe              = DATAPIPE_INIT(dsme_service_state, service_state, SERVICE_STATE_UNDEF, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** thermalmanager availability; read only */
-datapipe_t thermalmanager_service_state_pipe;
+datapipe_t thermalmanager_service_state_pipe    = DATAPIPE_INIT(thermalmanager_service_state, service_state, SERVICE_STATE_UNDEF, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** bluez availability; read only */
-datapipe_t bluez_service_state_pipe;
+datapipe_t bluez_service_state_pipe             = DATAPIPE_INIT(bluez_service_state, service_state, SERVICE_STATE_UNDEF, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** PackageKit Locked status; read only */
-datapipe_t packagekit_locked_pipe;
+datapipe_t packagekit_locked_pipe               = DATAPIPE_INIT(packagekit_locked, boolean, false, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** Update mode active status; read only */
-datapipe_t osupdate_running_pipe;
+datapipe_t osupdate_running_pipe                = DATAPIPE_INIT(osupdate_running, boolean, false, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** Shutting down; read only */
-datapipe_t shutting_down_pipe;
+datapipe_t shutting_down_pipe                   = DATAPIPE_INIT(shutting_down, boolean, false, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** Device Lock state; read only */
-datapipe_t devicelock_state_pipe;
+datapipe_t devicelock_state_pipe                = DATAPIPE_INIT(devicelock_state, devicelock_state, DEVICELOCK_STATE_UNDEFINED, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** touchscreen input detected; read only */
-datapipe_t touch_detected_pipe;
+datapipe_t touch_detected_pipe                  = DATAPIPE_INIT(touch_detected, boolean, false, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** touchscreen input grab required; read/write */
-datapipe_t touch_grab_wanted_pipe;
+datapipe_t touch_grab_wanted_pipe               = DATAPIPE_INIT(touch_grab_wanted, boolean, false, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** touchscreen input grab active; read only */
-datapipe_t touch_grab_active_pipe;
+datapipe_t touch_grab_active_pipe               = DATAPIPE_INIT(touch_grab_active, boolean, false, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** keypad input grab required; read/write */
-datapipe_t keypad_grab_wanted_pipe;
+datapipe_t keypad_grab_wanted_pipe              = DATAPIPE_INIT(keypad_grab_wanted, boolean, false, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** keypad input grab active; read only */
-datapipe_t keypad_grab_active_pipe;
+datapipe_t keypad_grab_active_pipe              = DATAPIPE_INIT(keypad_grab_active, boolean, false, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** music playback active; read only */
-datapipe_t music_playback_ongoing_pipe;
+datapipe_t music_playback_ongoing_pipe          = DATAPIPE_INIT(music_playback_ongoing, boolean, false, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** proximity blanking; read only */
-datapipe_t proximity_blanked_pipe;
+datapipe_t proximity_blanked_pipe               = DATAPIPE_INIT(proximity_blanked, boolean, false, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** fingerprint daemon availability; read only */
-datapipe_t fpd_service_state_pipe;
+datapipe_t fpd_service_state_pipe               = DATAPIPE_INIT(fpd_service_state, service_state, SERVICE_STATE_UNDEF, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** fingerprint daemon state; read only */
-datapipe_t fpstate_pipe;
+datapipe_t fpstate_pipe                         = DATAPIPE_INIT(fpstate, fpstate, FPSTATE_UNSET, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** fingerprint is enrolling; read only */
-datapipe_t enroll_in_progress_pipe;
+datapipe_t enroll_in_progress_pipe              = DATAPIPE_INIT(enroll_in_progress, boolean, false, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /* ========================================================================= *
  * Functions
@@ -487,11 +811,13 @@ datapipe_value(const datapipe_t *self)
 
 /** Set value of datapipe
  *
- * Note: Do not use this function.
+ * Note: Do not call this function from outside datapipe.c.
  *
- * This function exists only to facilitate legacy hacks in
- * the display plugin - no new code should ever call it and
- * it should be removed as soon as possible.
+ * While such calls exist to facilitate legacy hacks in the
+ * display plugin - no new code like that should be added.
+ *
+ * FIXME: Remove offending call sites and make this function
+ *        static.
  *
  * The proper way to modify datapipe content is to use
  * #datapipe_exec_full() function.
@@ -502,7 +828,29 @@ datapipe_value(const datapipe_t *self)
 void
 datapipe_set_value(datapipe_t *self, gconstpointer data)
 {
+    gconstpointer prev = self->dp_cached_data;
     self->dp_cached_data = data;
+
+    if( prev != data ) {
+        if( self->dp_change_repr_cb ) {
+            datapipe_log(self, "%s: %s",
+                         datapipe_name(self),
+                         self->dp_change_repr_cb(prev, data));
+        }
+        else if( self->dp_value_repr_cb ) {
+            gchar *saved = g_strdup(self->dp_value_repr_cb(prev));
+            datapipe_log(self, "%s: %s -> %s",
+                         datapipe_name(self),
+                         saved,
+                         self->dp_value_repr_cb(data));
+            g_free(saved);
+        }
+        else {
+            datapipe_log(self, "%s: %p -> %p",
+                         datapipe_name(self),
+                         prev, data);
+        }
+    }
 }
 
 /** Garbage collect stale callback slots
@@ -568,20 +916,39 @@ datapipe_cancel_gc(datapipe_t *self)
 
 /** Execute the datapipe
  *
+ * Note: Use #datapipe_exec_full() macro instead of calling
+ *       this function directly.
+ *
  * @param self The datapipe to execute
  * @param indata The input data to run through the datapipe
  * @return The processed data
  */
 gconstpointer
-datapipe_exec_full(datapipe_t *self, gconstpointer indata)
+datapipe_exec_full_real(datapipe_t *self, gconstpointer indata,
+                        const char *file, const char *func)
 {
     gconstpointer outdata = NULL;
 
     if (self == NULL) {
         mce_log(LL_ERR,
-                "datapipe_exec_full() called "
+                "datapipe_exec_full_real() called "
                 "without a valid datapipe");
         goto EXIT;
+    }
+
+    if( mce_log_p(LL_DEBUG) ||
+        mce_log_p_(LL_DEBUG, file, func) ||
+        mce_log_p_(LL_DEBUG, __FILE__, datapipe_name(self)) ) {
+
+        if( self->dp_value_repr_cb ) {
+            mce_log_unconditional(LL_DEBUG, file, func, "%s: execute %s",
+                         datapipe_name(self),
+                         self->dp_value_repr_cb(indata));
+        }
+        else {
+            mce_log_unconditional(LL_DEBUG, file, func, "%s: execute %p",
+                                  datapipe_name(self), indata);
+        }
     }
 
     guint token = ++self->dp_token;
@@ -590,7 +957,7 @@ datapipe_exec_full(datapipe_t *self, gconstpointer indata)
 
     /* Optionally cache the value at the input stage */
     if( cache_indata & (DATAPIPE_CACHE_INDATA | DATAPIPE_CACHE_OUTDATA) ) {
-        self->dp_cached_data = indata;
+        datapipe_set_value(self, indata);
     }
 
     /* Execute input value callbacks */
@@ -627,7 +994,7 @@ datapipe_exec_full(datapipe_t *self, gconstpointer indata)
     }
     /* Optionally cache the value at the output stage */
     if( cache_indata & DATAPIPE_CACHE_OUTDATA ) {
-        self->dp_cached_data = (gpointer)outdata;
+        datapipe_set_value(self, outdata);
     }
 
     /* Execute output value callbacks */
@@ -832,46 +1199,6 @@ EXIT:
 }
 
 /**
- * Initialise a datapipe
- *
- * @param self     The datapipe to manipulate
- * @param read_only    DATAPIPE_FILTERING_DENIED if the datapipe is read only,
- *                     DATAPIPE_FILTERING_ALLOWED if it's read/write
- * @parm  cache        DATAPIPE_CACHE_INDATA, etc
- * @param datasize     Pass size of memory to copy,
- *                     or 0 if only passing pointers or data as pointers
- * @param initial_data Initial cache content
- */
-static void
-datapipe_init_(datapipe_t *self,
-               const char *name,
-               const datapipe_filtering_t read_only,
-               datapipe_cache_t cache,
-               const gsize datasize, gconstpointer initial_data)
-{
-    if (self == NULL) {
-        mce_log(LL_ERR,
-                "datapipe_init() called "
-                "without a valid datapipe");
-        goto EXIT;
-    }
-
-    self->dp_name            = name;
-    self->dp_filters         = NULL;
-    self->dp_input_triggers  = NULL;
-    self->dp_output_triggers = NULL;
-    self->dp_datasize        = datasize;
-    self->dp_read_only       = read_only;
-    self->dp_cached_data     = initial_data;
-    self->dp_cache           = cache;
-    self->dp_gc_id           = 0;
-    self->dp_token           = 0;
-
-EXIT:
-    return;
-}
-
-/**
  * Deinitialize a datapipe
  *
  * @param self The datapipe to manipulate
@@ -915,92 +1242,9 @@ EXIT:
  */
 void mce_datapipe_init(void)
 {
-    /* DATAPIPE_CACHE_NOTHING -> Impulses and events - the data is passed through datapipe, but is not cached
+    /* Currently all datapipes are initialized statically
+     * and this function exists for the sake of symmetry.
      */
-    datapipe_init(keypress_event_pipe,              DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_NOTHING, sizeof (struct input_event), NULL);
-    datapipe_init(touchscreen_event_pipe,           DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_NOTHING, sizeof (struct input_event), NULL);
-    datapipe_init(ignore_incoming_call_event_pipe,  DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_NOTHING, 0, GINT_TO_POINTER(false));
-    datapipe_init(heartbeat_event_pipe,             DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_NOTHING, 0, GINT_TO_POINTER(0));
-    datapipe_init(led_pattern_activate_pipe,        DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_NOTHING, 0, NULL);
-    datapipe_init(led_pattern_deactivate_pipe,      DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_NOTHING, 0, NULL);
-    datapipe_init(resume_detected_event_pipe,       DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_NOTHING, 0, NULL);
-    datapipe_init(user_activity_event_pipe,         DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_NOTHING, 0, NULL);
-    datapipe_init(ngfd_event_request_pipe,          DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_NOTHING, 0, NULL);
-
-    /* DATAPIPE_CACHE_INDATA -> Brightness control - setting value (=datapipe input) is cached, hw compatible
-     * output is produced via filtering.
-     */
-
-    datapipe_init(led_brightness_pipe,              DATAPIPE_FILTERING_ALLOWED, DATAPIPE_CACHE_INDATA, 0, GINT_TO_POINTER(0));
-    datapipe_init(lpm_brightness_pipe,              DATAPIPE_FILTERING_ALLOWED, DATAPIPE_CACHE_INDATA, 0, GINT_TO_POINTER(0));
-    datapipe_init(display_brightness_pipe,          DATAPIPE_FILTERING_ALLOWED, DATAPIPE_CACHE_INDATA, 0, GINT_TO_POINTER(3));
-    datapipe_init(key_backlight_brightness_pipe,    DATAPIPE_FILTERING_ALLOWED, DATAPIPE_CACHE_INDATA, 0, GINT_TO_POINTER(0));
-
-    /* DATAPIPE_CACHE_DEFAULT -> For the rest the simplest option is just to cache
-     * both unfiltered input and filtered output.
-     * least likely to produce differences between direct reading & following
-     * notifications.
-     */
-    datapipe_init(system_state_pipe,                DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(MCE_SYSTEM_STATE_UNDEF));
-    datapipe_init(master_radio_enabled_pipe,        DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(FALSE));
-    datapipe_init(call_state_pipe,                  DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(CALL_STATE_NONE));
-    datapipe_init(call_type_pipe,                   DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(CALL_TYPE_NORMAL));
-    datapipe_init(alarm_ui_state_pipe,              DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(MCE_ALARM_UI_INVALID_INT32));
-    datapipe_init(submode_pipe,                     DATAPIPE_FILTERING_ALLOWED, DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(MCE_SUBMODE_NORMAL));
-    datapipe_init(display_state_curr_pipe,          DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(MCE_DISPLAY_UNDEF));
-    datapipe_init(display_state_request_pipe,       DATAPIPE_FILTERING_ALLOWED, DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(MCE_DISPLAY_UNDEF));
-    datapipe_init(display_state_next_pipe,          DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(MCE_DISPLAY_UNDEF));
-    datapipe_init(uiexception_type_pipe,            DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(UIEXCEPTION_TYPE_NONE));
-    datapipe_init(device_inactive_pipe,             DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(TRUE));
-    datapipe_init(inactivity_event_pipe,            DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(TRUE));
-    datapipe_init(lockkey_state_pipe,               DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(KEY_STATE_UNDEF));
-    datapipe_init(init_done_pipe,                   DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(TRISTATE_UNKNOWN));
-    datapipe_init(keyboard_slide_state_pipe,        DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(COVER_CLOSED));
-    datapipe_init(keyboard_available_state_pipe,    DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(COVER_CLOSED));
-    datapipe_init(lid_sensor_is_working_pipe,       DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(FALSE));
-    datapipe_init(lid_sensor_actual_pipe,           DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(COVER_UNDEF));
-    datapipe_init(lid_sensor_filtered_pipe,         DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(COVER_UNDEF));
-    datapipe_init(lens_cover_state_pipe,            DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(COVER_CLOSED));
-    datapipe_init(proximity_sensor_actual_pipe,     DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(COVER_OPEN));
-    datapipe_init(light_sensor_actual_pipe,         DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(400));
-    datapipe_init(light_sensor_filtered_pipe,       DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(400));
-    datapipe_init(light_sensor_poll_request_pipe,   DATAPIPE_FILTERING_ALLOWED, DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(false));
-    datapipe_init(orientation_sensor_actual_pipe,   DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(MCE_ORIENTATION_UNDEFINED));
-    datapipe_init(tklock_request_pipe,              DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(TKLOCK_REQUEST_UNDEF));
-    datapipe_init(interaction_expected_pipe,        DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(false));
-    datapipe_init(charger_state_pipe,               DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(CHARGER_STATE_UNDEF));
-    datapipe_init(battery_status_pipe,              DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(BATTERY_STATUS_UNDEF));
-    datapipe_init(battery_level_pipe,               DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(BATTERY_LEVEL_INITIAL));
-    datapipe_init(topmost_window_pid_pipe,          DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(-1));
-    datapipe_init(camera_button_state_pipe,         DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(CAMERA_BUTTON_UNDEF));
-    datapipe_init(inactivity_delay_pipe,            DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(DEFAULT_INACTIVITY_DELAY));
-    datapipe_init(audio_route_pipe,                 DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(AUDIO_ROUTE_UNDEF));
-    datapipe_init(usb_cable_state_pipe,             DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(USB_CABLE_UNDEF));
-    datapipe_init(jack_sense_state_pipe,            DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(COVER_UNDEF));
-    datapipe_init(power_saving_mode_active_pipe,    DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(FALSE));
-    datapipe_init(thermal_state_pipe,               DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(THERMAL_STATE_UNDEF));
-    datapipe_init(compositor_service_state_pipe,    DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
-    datapipe_init(lipstick_service_state_pipe,      DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
-    datapipe_init(devicelock_service_state_pipe,    DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
-    datapipe_init(usbmoded_service_state_pipe,      DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
-    datapipe_init(ngfd_service_state_pipe,          DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
-    datapipe_init(dsme_service_state_pipe,          DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
-    datapipe_init(thermalmanager_service_state_pipe,DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
-    datapipe_init(bluez_service_state_pipe,         DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
-    datapipe_init(packagekit_locked_pipe,           DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(FALSE));
-    datapipe_init(osupdate_running_pipe,            DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(FALSE));
-    datapipe_init(shutting_down_pipe,               DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(FALSE));
-    datapipe_init(devicelock_state_pipe,            DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(DEVICELOCK_STATE_UNDEFINED));
-    datapipe_init(touch_detected_pipe,              DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(FALSE));
-    datapipe_init(touch_grab_wanted_pipe,           DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(FALSE));
-    datapipe_init(touch_grab_active_pipe,           DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(FALSE));
-    datapipe_init(keypad_grab_wanted_pipe,          DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(FALSE));
-    datapipe_init(keypad_grab_active_pipe,          DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(FALSE));
-    datapipe_init(music_playback_ongoing_pipe,      DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(FALSE));
-    datapipe_init(proximity_blanked_pipe,           DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(FALSE));
-    datapipe_init(fpd_service_state_pipe,           DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(SERVICE_STATE_UNDEF));
-    datapipe_init(fpstate_pipe,                     DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(FPSTATE_UNSET));
-    datapipe_init(enroll_in_progress_pipe,          DATAPIPE_FILTERING_DENIED,  DATAPIPE_CACHE_DEFAULT, 0, GINT_TO_POINTER(false));
 }
 
 /** Free all datapipes
@@ -1385,6 +1629,47 @@ const char *charger_state_to_dbus(charger_state_t state)
         break;
     default:
         break;
+    }
+
+    return res;
+}
+
+/** Convert camera_button_state_t enum to human readable string
+ *
+ * @param state camera_button_state_t enumeration value
+ *
+ * @return human readable representation of state
+ */
+const char *camera_button_state_repr(camera_button_state_t state)
+{
+    const char *res = "unknown";
+
+    switch( state ) {
+    case CAMERA_BUTTON_UNDEF:     res = "undef";     break;
+    case CAMERA_BUTTON_UNPRESSED: res = "unpressed"; break;
+    case CAMERA_BUTTON_LAUNCH:    res = "launch";    break;
+    default: break;
+    }
+
+    return res;
+}
+
+/** Convert audio_route_t enum to human readable string
+ *
+ * @param state audio_route_t enumeration value
+ *
+ * @return human readable representation of state
+ */
+const char *audio_route_repr(audio_route_t state)
+{
+    const char *res = "unknown";
+
+    switch( state ) {
+    case AUDIO_ROUTE_UNDEF:   res = "undef";   break;
+    case AUDIO_ROUTE_HANDSET: res = "handset"; break;
+    case AUDIO_ROUTE_SPEAKER: res = "speaker"; break;
+    case AUDIO_ROUTE_HEADSET: res = "headset"; break;
+    default: break;
     }
 
     return res;

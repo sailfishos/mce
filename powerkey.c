@@ -3077,7 +3077,7 @@ EXIT:
  */
 static void pwrkey_datapipe_enroll_in_progress_cb(gconstpointer data)
 {
-    fpstate_t prev = enroll_in_progress;
+    bool prev = enroll_in_progress;
     enroll_in_progress = GPOINTER_TO_INT(data);
 
     if( enroll_in_progress == prev )

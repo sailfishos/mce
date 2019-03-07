@@ -341,6 +341,8 @@ typedef enum {
 	CAMERA_BUTTON_LAUNCH = 1,	/**< Camera button fully pressed */
 } camera_button_state_t;
 
+const char *camera_button_state_repr(camera_button_state_t state);
+
 /** Audio route */
 typedef enum {
 	/** Audio route not defined */
@@ -352,6 +354,8 @@ typedef enum {
 	/** Audio routed to headset */
 	AUDIO_ROUTE_HEADSET = 2,
 } audio_route_t;
+
+const char *audio_route_repr(audio_route_t state);
 
 /** USB cable state */
 typedef enum {
