@@ -2220,10 +2220,6 @@ static datapipe_handler_t tklock_datapipe_handlers[] =
         .output_cb = tklock_datapipe_display_state_next_cb,
     },
     {
-        .datapipe  = &tklock_request_pipe,
-        .output_cb = tklock_datapipe_tklock_request_cb,
-    },
-    {
         .datapipe  = &interaction_expected_pipe,
         .output_cb = tklock_datapipe_interaction_expected_cb,
     },
@@ -2326,6 +2322,10 @@ static datapipe_handler_t tklock_datapipe_handlers[] =
     },
 
     // input triggers
+    {
+        .datapipe = &tklock_request_pipe,
+        .input_cb = tklock_datapipe_tklock_request_cb,
+    },
     {
         .datapipe = &keypress_event_pipe,
         .input_cb = tklock_datapipe_keypress_event_cb,
