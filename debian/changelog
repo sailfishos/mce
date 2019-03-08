@@ -1,3 +1,13 @@
+mce (1.99.10) precise; urgency=low
+
+  * [datapipe] Make datapipe_t structure opaque
+  * [datapipe] Add enablers for logging datapipe value changes
+  * [dbus] Fix peerinfo tracking on mce startup
+  * [tklock] Do not act on initial tklock request datapipe value. JB#44605
+  * [tklock] Do not deactivate lockscreen on mce restart. Fixes JB#44605
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 08 Mar 2019 18:30:32 +0200
+
 mce (1.99.9) precise; urgency=low
 
   * [dbus] Try to avoid reporting negative suspend time. Fixes JB#44904
