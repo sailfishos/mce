@@ -211,10 +211,10 @@ static void dbltap_proximity_sensor_actual_trigger(gconstpointer data)
  */
 static void dbltap_proximity_blanked_trigger(gconstpointer data)
 {
-        cover_state_t state = GPOINTER_TO_INT(data);
+        bool blanked = GPOINTER_TO_INT(data);
 
-        if( dbltap_ps_blanked != state ) {
-                dbltap_ps_blanked = state;
+        if( dbltap_ps_blanked != blanked ) {
+                dbltap_ps_blanked = blanked;
                 dbltap_rethink();
         }
 }

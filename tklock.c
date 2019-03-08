@@ -836,9 +836,30 @@ static void tklock_datapipe_lipstick_service_state_cb(gconstpointer data)
             service_state_repr(prev),
             service_state_repr(lipstick_service_state));
 
+    bool enable_tklock = false;
+
+    /* Tklock is applicable only when lipstick is running */
+    if( lipstick_service_state == SERVICE_STATE_RUNNING ) {
+        /* STOPPED -> RUNNING: Implies lipstick start / restart.
+         * In this case lockscreen status is decided by lipstick.
+         * We achieve tklock state synchronization by making a
+         * lockscreen deactivation request - which lipstick can
+         * then choose to honor or override.
+         *
+         * UNDEF -> RUNNING: Implies a mce restart while lipstick
+         * is running. What we would like to happen is that
+         * things stay exactly as they were. However there is
+         * no way to recover lockscreen state from lipstick.
+         * So in order to err on the safer side, we activate
+         * lockscreen to get tklock state in sync again.
+         */
+        if( prev == SERVICE_STATE_UNDEF )
+            enable_tklock = true;
+    }
+
     // force tklock ipc
     tklock_ui_notified = -1;
-    tklock_ui_set_enabled(false);
+    tklock_ui_set_enabled(enable_tklock);
 
 EXIT:
     return;
@@ -2220,10 +2241,6 @@ static datapipe_handler_t tklock_datapipe_handlers[] =
         .output_cb = tklock_datapipe_display_state_next_cb,
     },
     {
-        .datapipe  = &tklock_request_pipe,
-        .output_cb = tklock_datapipe_tklock_request_cb,
-    },
-    {
         .datapipe  = &interaction_expected_pipe,
         .output_cb = tklock_datapipe_interaction_expected_cb,
     },
@@ -2326,6 +2343,10 @@ static datapipe_handler_t tklock_datapipe_handlers[] =
     },
 
     // input triggers
+    {
+        .datapipe = &tklock_request_pipe,
+        .input_cb = tklock_datapipe_tklock_request_cb,
+    },
     {
         .datapipe = &keypress_event_pipe,
         .input_cb = tklock_datapipe_keypress_event_cb,

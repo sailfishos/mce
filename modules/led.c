@@ -3197,8 +3197,8 @@ const gchar *g_module_check_init(GModule *module)
 
 	/* Initialize sw breathing state data */
 	sw_breathing_init();
-	charger_state_trigger(charger_state_pipe.dp_cached_data);
-	battery_level_trigger(battery_level_pipe.dp_cached_data);
+	charger_state_trigger(datapipe_value(&charger_state_pipe));
+	battery_level_trigger(datapipe_value(&battery_level_pipe));
 
 	/* Evaluate initial active pattern state */
 	led_enable();
