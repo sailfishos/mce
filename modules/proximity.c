@@ -386,16 +386,15 @@ mp_datapipe_submode_cb(gconstpointer data)
 /** Array of datapipe handlers */
 static datapipe_handler_t mp_datapipe_handlers[] =
 {
-    // input triggers
-    {
-        .datapipe = &call_state_pipe,
-        .input_cb = mp_datapipe_call_state_cb,
-    },
-    {
-        .datapipe = &alarm_ui_state_pipe,
-        .input_cb = mp_datapipe_alarm_ui_state_cb,
-    },
     // output triggers
+    {
+        .datapipe  = &call_state_pipe,
+        .output_cb = mp_datapipe_call_state_cb,
+    },
+    {
+        .datapipe  = &alarm_ui_state_pipe,
+        .output_cb = mp_datapipe_alarm_ui_state_cb,
+    },
     {
         .datapipe  = &display_state_curr_pipe,
         .output_cb = mp_datapipe_display_state_curr_cb,
@@ -446,12 +445,6 @@ G_MODULE_EXPORT const gchar *
 g_module_check_init(GModule *module)
 {
     (void)module;
-
-    /* Get initial state of datapipes */
-    call_state = datapipe_get_gint(call_state_pipe);
-    alarm_ui_state = datapipe_get_gint(alarm_ui_state_pipe);
-    display_state_curr = display_state_get();
-    submode = datapipe_get_gint(submode_pipe);
 
     /* Append triggers/filters to datapipes */
     mp_datapipe_init();
