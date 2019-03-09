@@ -64,7 +64,9 @@ static void  mp_monitor_rethink     (void);
  * MP_SETTING
  * ------------------------------------------------------------------------- */
 
-static void  mp_setting_cb(GConfClient *const gcc, const guint id, GConfEntry *const entry, gpointer const data);
+static void  mp_setting_cb  (GConfClient *const gcc, const guint id, GConfEntry *const entry, gpointer const data);
+static void  mp_setting_init(void);
+static void  mp_setting_quit(void);
 
 /* ------------------------------------------------------------------------- *
  * MP_DATAPIPE
@@ -331,6 +333,38 @@ EXIT:
     return;
 }
 
+/** Start tracking dynamic settings
+ */
+static void
+mp_setting_init(void)
+{
+    /* PS enabled setting */
+    mce_setting_track_bool(MCE_SETTING_PROXIMITY_PS_ENABLED,
+                           &use_ps,
+                           MCE_DEFAULT_PROXIMITY_PS_ENABLED,
+                           mp_setting_cb,
+                           &use_ps_conf_id);
+
+    /* PS acts as LID sensor */
+    mce_setting_track_bool(MCE_SETTING_PROXIMITY_PS_ACTS_AS_LID,
+                           &ps_acts_as_lid,
+                           MCE_DEFAULT_PROXIMITY_PS_ACTS_AS_LID,
+                           mp_setting_cb,
+                           &ps_acts_as_lid_conf_id);
+}
+
+/** Stop tracking dynamic settings
+ */
+static void
+mp_setting_quit(void)
+{
+    mce_setting_notifier_remove(use_ps_conf_id),
+        use_ps_conf_id = 0;
+
+    mce_setting_notifier_remove(ps_acts_as_lid_conf_id),
+        ps_acts_as_lid_conf_id = 0;
+}
+
 /* ========================================================================= *
  * MP_DATAPIPE
  * ========================================================================= */
@@ -449,19 +483,8 @@ g_module_check_init(GModule *module)
     /* Append triggers/filters to datapipes */
     mp_datapipe_init();
 
-    /* PS enabled setting */
-    mce_setting_track_bool(MCE_SETTING_PROXIMITY_PS_ENABLED,
-                           &use_ps,
-                           MCE_DEFAULT_PROXIMITY_PS_ENABLED,
-                           mp_setting_cb,
-                           &use_ps_conf_id);
-
-    /* PS acts as LID sensor */
-    mce_setting_track_bool(MCE_SETTING_PROXIMITY_PS_ACTS_AS_LID,
-                           &ps_acts_as_lid,
-                           MCE_DEFAULT_PROXIMITY_PS_ACTS_AS_LID,
-                           mp_setting_cb,
-                           &ps_acts_as_lid_conf_id);
+    /* Get settings and start tracking changes */
+    mp_setting_init();
 
     /* If the proximity sensor input is used for toggling
      * lid state, we must take care not to leave proximity
@@ -485,11 +508,7 @@ g_module_unload(GModule *module)
     (void)module;
 
     /* Stop tracking setting changes  */
-    mce_setting_notifier_remove(use_ps_conf_id),
-        use_ps_conf_id = 0;
-
-    mce_setting_notifier_remove(ps_acts_as_lid_conf_id),
-        ps_acts_as_lid_conf_id = 0;
+    mp_setting_quit();
 
     /* Remove triggers/filters from datapipes */
     mp_datapipe_quit();
