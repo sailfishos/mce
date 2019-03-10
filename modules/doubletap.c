@@ -1,8 +1,23 @@
-/* ------------------------------------------------------------------------- *
- * Copyright (C) 2013-2014 Jolla Ltd.
- * Contact: Simo Piiroinen <simo.piiroinen@jollamobile.com>
- * License: LGPLv2
- * ------------------------------------------------------------------------- */
+/**
+ * @file doubletap.c
+ * Doubletap control module -- this handles gesture enabling/disabling
+ * <p>
+ * Copyright (C) 2013-2019 Jolla Ltd.
+ * <p>
+ * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
+ *
+ * mce is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License
+ * version 2.1 as published by the Free Software Foundation.
+ *
+ * mce is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with mce.  If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include "doubletap.h"
 
@@ -21,13 +36,13 @@ static dbltap_mode_t dbltap_mode = MCE_DEFAULT_DOUBLETAP_MODE;
 static guint         dbltap_mode_setting_id = 0;
 
 /** Latest reported proximity sensor state */
-static cover_state_t dbltap_ps_state = COVER_UNDEF;
+static cover_state_t proximity_sensor_actual = COVER_UNDEF;
 
 /** Latest reported proximity blanking */
-static bool dbltap_ps_blanked = false;
+static bool proximity_blanked = false;
 
 /** Latest reported lid sensor policy decision */
-static cover_state_t dbltap_lid_sensor_filtered = COVER_UNDEF;
+static cover_state_t lid_sensor_filtered = COVER_UNDEF;
 
 /** Path to doubletap wakeup control file */
 static char *dbltap_ctrl_path = 0;
@@ -160,19 +175,19 @@ static void dbltap_rethink(void)
                 state = DT_ENABLED;
 
                 /* Disable due to proximity sensor. */
-                if( dbltap_ps_state == COVER_CLOSED ) {
+                if( proximity_sensor_actual == COVER_CLOSED ) {
                         /* Note that during in-call proximity blanking we
                          * want to keep the touch detection powered up but
                          * not reporting double taps to allow faster touch
                          * event reporting when unblanking again. */
-                        if( dbltap_ps_blanked )
+                        if( proximity_blanked )
                                 state = DT_DISABLED_NOSLEEP;
                         else
                                 state = DT_DISABLED;
                 }
 
                 /* Disable due to lid sensor */
-                if( dbltap_lid_sensor_filtered == COVER_CLOSED )
+                if( lid_sensor_filtered == COVER_CLOSED )
                         state = DT_DISABLED;
                 break;
         }
@@ -199,8 +214,8 @@ static void dbltap_proximity_sensor_actual_trigger(gconstpointer data)
 {
         cover_state_t state = GPOINTER_TO_INT(data);
 
-        if( dbltap_ps_state != state ) {
-                dbltap_ps_state = state;
+        if( proximity_sensor_actual != state ) {
+                proximity_sensor_actual = state;
                 dbltap_rethink();
         }
 }
@@ -213,8 +228,8 @@ static void dbltap_proximity_blanked_trigger(gconstpointer data)
 {
         bool blanked = GPOINTER_TO_INT(data);
 
-        if( dbltap_ps_blanked != blanked ) {
-                dbltap_ps_blanked = blanked;
+        if( proximity_blanked != blanked ) {
+                proximity_blanked = blanked;
                 dbltap_rethink();
         }
 }
@@ -227,8 +242,8 @@ static void dbltap_lid_sensor_filtered_trigger(gconstpointer data)
 {
         cover_state_t state = GPOINTER_TO_INT(data);
 
-        if( dbltap_lid_sensor_filtered != state ) {
-                dbltap_lid_sensor_filtered = state;
+        if( lid_sensor_filtered != state ) {
+                lid_sensor_filtered = state;
                 dbltap_rethink();
         }
 }
@@ -394,9 +409,9 @@ const gchar *g_module_check_init(GModule *module)
         dbltap_datapipe_init();
 
         /* Get initial state of datapipes */
-        dbltap_ps_state = datapipe_get_gint(proximity_sensor_actual_pipe);
-        dbltap_ps_blanked = datapipe_get_gint(proximity_blanked_pipe);
-        dbltap_lid_sensor_filtered = datapipe_get_gint(lid_sensor_filtered_pipe);
+        proximity_sensor_actual = datapipe_get_gint(proximity_sensor_actual_pipe);
+        proximity_blanked = datapipe_get_gint(proximity_blanked_pipe);
+        lid_sensor_filtered = datapipe_get_gint(lid_sensor_filtered_pipe);
 
         /* enable/disable double tap wakeups based on initial conditions */
         dbltap_rethink();
