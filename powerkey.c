@@ -3,7 +3,7 @@
  * Power key logic for the Mode Control Entity
  * <p>
  * Copyright © 2004-2011 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright © 2014-2015 Jolla Ltd.
+ * Copyright © 2014-2019 Jolla Ltd.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
@@ -3112,6 +3112,10 @@ static datapipe_handler_t pwrkey_datapipe_handlers[] =
         .datapipe = &keypress_event_pipe,
         .input_cb = pwrkey_datapipes_keypress_event_cb,
     },
+    {
+        .datapipe = &ngfd_event_request_pipe,
+        .input_cb = fba_datapipe_ngfd_event_request_cb,
+    },
     // output triggers
     {
         .datapipe  = &ngfd_service_state_pipe,
@@ -3153,11 +3157,6 @@ static datapipe_handler_t pwrkey_datapipe_handlers[] =
         .datapipe  = &enroll_in_progress_pipe,
         .output_cb = pwrkey_datapipe_enroll_in_progress_cb,
     },
-    {
-        .datapipe  = &ngfd_event_request_pipe,
-        .output_cb = fba_datapipe_ngfd_event_request_cb,
-    },
-
     // sentinel
     {
         .datapipe = 0,
