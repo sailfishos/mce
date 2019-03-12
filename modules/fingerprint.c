@@ -2421,8 +2421,8 @@ fpwakeup_evaluate_allowed(void)
     case FPWAKEUP_ENABLE_ALWAYS:
         break;
     case FPWAKEUP_ENABLE_NO_PROXIMITY:
-        /* Proximity sensor must not be covered */
-        if( proximity_sensor_actual == COVER_CLOSED )
+        /* Proximity sensor must not be covered or unknown */
+        if( proximity_sensor_actual != COVER_OPEN )
             goto EXIT;
         break;
     }
