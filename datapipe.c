@@ -628,7 +628,7 @@ datapipe_t lid_sensor_filtered_pipe             = DATAPIPE_INIT(lid_sensor_filte
 datapipe_t lens_cover_state_pipe                = DATAPIPE_INIT(lens_cover_state, cover_state, COVER_CLOSED, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** Proximity sensor; read only */
-datapipe_t proximity_sensor_actual_pipe         = DATAPIPE_INIT(proximity_sensor_actual, cover_state, COVER_OPEN, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
+datapipe_t proximity_sensor_actual_pipe         = DATAPIPE_INIT(proximity_sensor_actual, cover_state, COVER_UNDEF, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** Proximity sensor; read only */
 datapipe_t proximity_sensor_effective_pipe      = DATAPIPE_INIT(proximity_sensor_effective, cover_state, COVER_UNDEF, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);

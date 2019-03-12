@@ -629,10 +629,10 @@ static display_state_t display_state_next = MCE_DISPLAY_UNDEF;
 static call_state_t call_state = CALL_STATE_NONE;
 
 /** Actual proximity state; assume not covered */
-static cover_state_t proximity_sensor_actual = COVER_OPEN;
+static cover_state_t proximity_sensor_actual = COVER_UNDEF;
 
 /** Effective proximity state; assume not covered */
-static cover_state_t proximity_sensor_effective = COVER_OPEN;
+static cover_state_t proximity_sensor_effective = COVER_UNDEF;
 
 /** Lid cover sensor state; assume unkown
  *
@@ -1167,9 +1167,6 @@ static void tklock_datapipe_proximity_sensor_actual_cb(gconstpointer data)
 {
     cover_state_t prev = proximity_sensor_actual;
     proximity_sensor_actual = GPOINTER_TO_INT(data);
-
-    if( proximity_sensor_actual == COVER_UNDEF )
-        proximity_sensor_actual = COVER_OPEN;
 
     if( proximity_sensor_actual == prev )
         goto EXIT;

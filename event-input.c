@@ -3,9 +3,15 @@
  * /dev/input event provider for the Mode Control Entity
  * <p>
  * Copyright © 2004-2011 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (C) 2013-2019 Jolla Ltd.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Ismo Laitinen <ismo.laitinen@nokia.com>
+ * @author Tapio Rantala <ext-tapio.rantala@nokia.com>
+ * @author Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>
+ * @author Jukka Turunen <ext-jukka.t.turunen@nokia.com>
+ * @author Mika Laitio <lamikr@pilppa.org>
+ * @author Robin Burchell <robin+git@viroteck.net>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
  * mce is free software; you can redistribute it and/or modify
@@ -3972,9 +3978,6 @@ static void evin_datapipe_proximity_sensor_actual_cb(gconstpointer data)
 {
     cover_state_t prev = proximity_sensor_actual;
     proximity_sensor_actual = GPOINTER_TO_INT(data);
-
-    if( proximity_sensor_actual == COVER_UNDEF )
-        proximity_sensor_actual = COVER_OPEN;
 
     if( proximity_sensor_actual == prev )
         goto EXIT;

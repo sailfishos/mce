@@ -628,7 +628,7 @@ static display_state_t display_state_next = MCE_DISPLAY_UNDEF;
 static cover_state_t lid_sensor_filtered = COVER_UNDEF;
 
 /** Actual proximity state; assume not covered */
-static cover_state_t proximity_sensor_actual = COVER_OPEN;
+static cover_state_t proximity_sensor_actual = COVER_UNDEF;
 
 /** NGFD availability */
 static service_state_t ngfd_service_state = SERVICE_STATE_UNDEF;
@@ -2854,9 +2854,6 @@ static void pwrkey_datapipe_proximity_sensor_actual_cb(gconstpointer data)
 {
     cover_state_t prev = proximity_sensor_actual;
     proximity_sensor_actual = GPOINTER_TO_INT(data);
-
-    if( proximity_sensor_actual == COVER_UNDEF )
-        proximity_sensor_actual = COVER_OPEN;
 
     if( proximity_sensor_actual == prev )
         goto EXIT;
