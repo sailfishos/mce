@@ -676,7 +676,7 @@ pwrkey_ps_override_evaluate(void)
     }
 
     /* If neither sensor is not covered, just reset the counter */
-    if( proximity_sensor_actual != COVER_CLOSED &&
+    if( proximity_sensor_actual == COVER_OPEN &&
         lid_sensor_filtered != COVER_CLOSED ) {
         t_last = 0, count = 0;
         goto EXIT;
