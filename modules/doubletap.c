@@ -175,7 +175,7 @@ static void dbltap_rethink(void)
                 state = DT_ENABLED;
 
                 /* Disable due to proximity sensor. */
-                if( proximity_sensor_actual == COVER_CLOSED ) {
+                if( proximity_sensor_actual != COVER_OPEN ) {
                         /* Note that during in-call proximity blanking we
                          * want to keep the touch detection powered up but
                          * not reporting double taps to allow faster touch
