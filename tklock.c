@@ -3797,7 +3797,7 @@ static void tklock_uiexception_rethink(void)
         else if( lid_sensor_filtered == COVER_CLOSED ) {
             mce_log(LL_NOTICE, "NOT UNBLANKING; lid covered");
         }
-        else if( proximity_sensor_effective == COVER_CLOSED ) {
+        else if( proximity_sensor_effective != COVER_OPEN ) {
             mce_log(LL_NOTICE, "NOT UNBLANKING; proximity covered");
         }
         else if( display_state_curr != MCE_DISPLAY_ON ) {
