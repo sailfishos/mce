@@ -1296,6 +1296,7 @@ tklock.o:\
 	datapipe.h\
 	evdev.h\
 	libwakelock.h\
+	mce-common.h\
 	mce-dbus.h\
 	mce-hbtimer.h\
 	mce-io.h\
@@ -1315,6 +1316,7 @@ tklock.pic.o:\
 	datapipe.h\
 	evdev.h\
 	libwakelock.h\
+	mce-common.h\
 	mce-dbus.h\
 	mce-hbtimer.h\
 	mce-io.h\

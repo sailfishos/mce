@@ -33,6 +33,7 @@
 
 #include "tklock.h"
 
+#include "mce-common.h"
 #include "mce-log.h"
 #include "mce-lib.h"
 #include "mce-io.h"
@@ -81,6 +82,8 @@ typedef enum
 /* ========================================================================= *
  * CONSTANTS
  * ========================================================================= */
+
+#define MODULE_NAME "tklock"
 
 /** Max valid time_t value in milliseconds */
 #define MAX_TICK (INT_MAX * (int64_t)1000)
@@ -180,6 +183,7 @@ typedef enum
 
 static void     tklock_datapipe_system_state_cb(gconstpointer data);
 static void     tklock_datapipe_devicelock_state_cb(gconstpointer data);
+static void     tklock_datapipe_devicelock_state_cb2(gpointer aptr);
 static void     tklock_datapipe_resume_detected_event_cb(gconstpointer data);
 static void     tklock_datapipe_lipstick_service_state_cb(gconstpointer data);
 static void     tklock_datapipe_osupdate_running_cb(gconstpointer data);
@@ -768,13 +772,12 @@ static void tklock_datapipe_devicelock_state_cb(gconstpointer data)
                     "assume fingerprint authentication occurred");
             datapipe_exec_full(&ngfd_event_request_pipe,
                                "unlock_device");
-            if( proximity_sensor_actual != COVER_OPEN ) {
-                mce_log(LL_WARN, "unblank skipped due to proximity sensor");
-                break;
 
-            }
-            mce_datapipe_request_display_state(MCE_DISPLAY_ON);
-            mce_datapipe_request_tklock(TKLOCK_REQUEST_OFF);
+            /* Delay display state / tklock processing until proximity
+             * sensor state is known */
+            common_on_proximity_schedule(MODULE_NAME,
+                                         tklock_datapipe_devicelock_state_cb2,
+                                         0);
             break;
         default:
             break;
@@ -786,6 +789,27 @@ static void tklock_datapipe_devicelock_state_cb(gconstpointer data)
 
 EXIT:
     return;
+}
+
+/** Wait for proximity sensor callback for fingerprint unlock handling
+ *
+ * @param aptr unused
+ */
+static void tklock_datapipe_devicelock_state_cb2(gpointer aptr)
+{
+    (void)aptr;
+
+    /* Still unlocked ? */
+    if( devicelock_state == DEVICELOCK_STATE_UNLOCKED ) {
+        if( proximity_sensor_actual != COVER_OPEN ) {
+            mce_log(LL_WARN, "unblank skipped due to proximity sensor");
+        }
+        else {
+            mce_datapipe_request_display_state(MCE_DISPLAY_ON);
+            mce_datapipe_request_tklock(TKLOCK_REQUEST_OFF);
+        }
+    }
+
 }
 
 /** Resumed from suspend notification */
@@ -2387,7 +2411,7 @@ static datapipe_handler_t tklock_datapipe_handlers[] =
 
 static datapipe_bindings_t tklock_datapipe_bindings =
 {
-    .module   = "tklock",
+    .module   = MODULE_NAME,
     .handlers = tklock_datapipe_handlers,
 };
 
@@ -7124,6 +7148,8 @@ void mce_tklock_exit(void)
         g_source_remove(tklock_ui_sync_id),
             tklock_ui_sync_id = 0;
     }
+
+    common_on_proximity_cancel(MODULE_NAME, 0, 0);
 
     // FIXME: check that final state is sane
 
