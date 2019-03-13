@@ -38,6 +38,7 @@
 #include "../mce-lib.h"
 #include "../mce-dbus.h"
 #include "../mce-fbdev.h"
+#include "../mce-common.h"
 #include "../mce-conf.h"
 #include "../mce-setting.h"
 #include "../mce-dbus.h"
@@ -9167,6 +9168,98 @@ static void mdy_dbus_handle_display_state_req(display_state_t state)
     mce_datapipe_request_display_state(state);
 }
 
+/** Delayed processing of display state request received over dbus
+ *
+ * @param aptr  requested display state (as void pointer)
+ */
+static void mdy_dbus_handle_display_state_req_cb(gpointer aptr)
+{
+    display_state_t  current   = datapipe_get_gint(display_state_next_pipe);
+    display_state_t  requested = GPOINTER_TO_INT(aptr);
+    display_state_t  granted   = requested;
+    const char      *reason    = 0;
+    bool             tklock    = false;
+
+    switch( requested ) {
+    case MCE_DISPLAY_OFF:
+        tklock = true;
+        break;
+
+    case MCE_DISPLAY_ON:
+    case MCE_DISPLAY_DIM:
+        reason = mdy_dbus_get_reason_to_block_display_on();
+        break;
+
+    case MCE_DISPLAY_LPM_ON:
+        /* Ignore lpm requests if there are active calls / alarms */
+        if( uiexception_type & (UIEXCEPTION_TYPE_CALL | UIEXCEPTION_TYPE_ALARM) ) {
+            reason  = "call or alarm active";
+            break;
+        }
+
+        /* If there are any reasons to ignore display on/dim requests,
+         * they apply for lpm requests too */
+        if( (reason = mdy_dbus_get_reason_to_block_display_on()) )
+            break;
+
+        /* UI side is allowed to trigger lpm from fully powered
+         * up display states, i.e. blank to lpm. */
+        switch( current ) {
+        case MCE_DISPLAY_DIM:
+        case MCE_DISPLAY_ON:
+            tklock = true;
+            break;
+        default:
+            /* Complain and treat as if MCE_DISPLAY_OFF were made */
+            reason = "display is off";
+            granted = MCE_DISPLAY_OFF;
+            tklock = true;
+            break;
+        }
+        break;
+
+    default:
+        reason = "unexpected state requested";
+        break;
+    }
+
+    if( reason ) {
+        mce_log(LL_WARN, "display %s request denied: %s",
+                display_state_repr(requested), reason);
+        if( granted == requested )
+            granted = current;
+    }
+
+    if( tklock )
+        mce_datapipe_request_tklock(TKLOCK_REQUEST_ON);
+
+    mdy_dbus_handle_display_state_req(granted);
+}
+
+/** Delay processing of display state request until proximity state is known
+ *
+ * If proximity sensor state is already known, the action is executed
+ * immediately. Otherwise it will be delayed until sensor ramp-up is
+ * finished.
+ *
+ * Note that evaluation delay (due to on-demand proximity sensor use)
+ * has small, but non-zero chance of introducing visual hiccups.
+ *
+ * @param msg    DBus method call message (for diagnostic logging purposes)
+ * @param state  requested display state
+ */
+static void mdy_dbus_schedule_display_state_req(DBusMessage *const msg,
+                                                display_state_t state)
+{
+    mce_log(LL_CRUCIAL,"display %s request from %s",
+            display_state_repr(state),
+            mce_dbus_get_message_sender_ident(msg));
+
+    common_on_proximity_schedule(MODULE_NAME,
+                                 mdy_dbus_handle_display_state_req_cb,
+                                 GINT_TO_POINTER(state));
+}
+
 /**
  * D-Bus callback for the display on method call
  *
@@ -9176,24 +9269,9 @@ static void mdy_dbus_handle_display_state_req(display_state_t state)
  */
 static gboolean mdy_dbus_handle_display_on_req(DBusMessage *const msg)
 {
-    display_state_t  request = datapipe_get_gint(display_state_next_pipe);
-    const char      *reason  = mdy_dbus_get_reason_to_block_display_on();
-
-    if( reason ) {
-        mce_log(LL_WARN, "display ON request from %s denied: %s",
-                mce_dbus_get_message_sender_ident(msg), reason);
-    }
-    else {
-        mce_log(LL_CRUCIAL,"display ON request from %s",
-                mce_dbus_get_message_sender_ident(msg));
-        request = MCE_DISPLAY_ON;
-    }
-
+    mdy_dbus_schedule_display_state_req(msg, MCE_DISPLAY_ON);
     if( !dbus_message_get_no_reply(msg) )
         dbus_send_message(dbus_new_method_reply(msg));
-
-    mdy_dbus_handle_display_state_req(request);
-
     return TRUE;
 }
 
@@ -9206,24 +9284,9 @@ static gboolean mdy_dbus_handle_display_on_req(DBusMessage *const msg)
  */
 static gboolean mdy_dbus_handle_display_dim_req(DBusMessage *const msg)
 {
-    display_state_t  request = datapipe_get_gint(display_state_next_pipe);
-    const char      *reason  = mdy_dbus_get_reason_to_block_display_on();
-
-    if( reason ) {
-        mce_log(LL_WARN, "display DIM request from %s denied: %s",
-                mce_dbus_get_message_sender_ident(msg), reason);
-    }
-    else {
-        mce_log(LL_CRUCIAL,"display DIM request from %s",
-                mce_dbus_get_message_sender_ident(msg));
-        request = MCE_DISPLAY_DIM;
-    }
-
+    mdy_dbus_schedule_display_state_req(msg, MCE_DISPLAY_DIM);
     if( !dbus_message_get_no_reply(msg) )
         dbus_send_message(dbus_new_method_reply(msg));
-
-    mdy_dbus_handle_display_state_req(request);
-
     return TRUE;
 }
 
@@ -9243,16 +9306,9 @@ static gboolean mdy_dbus_handle_display_off_req(DBusMessage *const msg)
     if( mdy_dbus_display_off_override == DISPLAY_OFF_OVERRIDE_USE_LPM )
         return mdy_dbus_handle_display_lpm_req(msg);
 
-    mce_log(LL_CRUCIAL, "display off request from %s",
-            mce_dbus_get_message_sender_ident(msg));
-
+    mdy_dbus_schedule_display_state_req(msg, MCE_DISPLAY_OFF);
     if( !dbus_message_get_no_reply(msg) )
         dbus_send_message(dbus_new_method_reply(msg));
-
-    mce_datapipe_request_tklock(TKLOCK_REQUEST_ON);
-
-    mdy_dbus_handle_display_state_req(MCE_DISPLAY_OFF);
-
     return TRUE;
 }
 
@@ -9264,55 +9320,9 @@ static gboolean mdy_dbus_handle_display_off_req(DBusMessage *const msg)
  */
 static gboolean mdy_dbus_handle_display_lpm_req(DBusMessage *const msg)
 {
-    display_state_t  current = datapipe_get_gint(display_state_next_pipe);
-    display_state_t  request = MCE_DISPLAY_OFF;
-    bool             lock_ui = true;
-    const char      *reason  = 0;
-
-    mce_log(LL_CRUCIAL, "display lpm request from %s",
-            mce_dbus_get_message_sender_ident(msg));
-
-    /* Ignore lpm requests if there are active calls / alarms */
-    if( uiexception_type & (UIEXCEPTION_TYPE_CALL | UIEXCEPTION_TYPE_ALARM) ) {
-        reason  = "call or alarm active";
-        request = current;
-        lock_ui = false;
-        goto EXIT;
-    }
-
-    /* If there is any reason to block display on/dim request,
-     * it applies for lpm requests too */
-    if( (reason = mdy_dbus_get_reason_to_block_display_on()) )
-        goto EXIT;
-
-    /* But UI side is allowed only to blank via lpm */
-    switch( current ) {
-    case MCE_DISPLAY_DIM:
-    case MCE_DISPLAY_ON:
-        request = MCE_DISPLAY_LPM_ON;
-        break;
-
-    default:
-        reason = "display is off";
-        break;
-    }
-
-EXIT:
+    mdy_dbus_schedule_display_state_req(msg, MCE_DISPLAY_LPM_ON);
     if( !dbus_message_get_no_reply(msg) )
         dbus_send_message(dbus_new_method_reply(msg));
-
-    /* Warn if lpm request can't be applied */
-    if( reason ) {
-        mce_log(LL_WARN, "display LPM request from %s denied: %s",
-                mce_dbus_get_message_sender_ident(msg), reason);
-    }
-
-    if( lock_ui ) {
-        mce_datapipe_request_tklock(TKLOCK_REQUEST_ON);
-    }
-
-    mdy_dbus_handle_display_state_req(request);
-
     return TRUE;
 }
 
@@ -11224,6 +11234,8 @@ void g_module_unload(GModule *module)
 
     /* Do not leave pending dbus calls behind */
     mdy_topmost_window_forget_pid_query();
+
+    common_on_proximity_cancel(MODULE_NAME, 0, 0);
 
     return;
 }

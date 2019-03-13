@@ -678,6 +678,7 @@ modules/display.o:\
 	datapipe.h\
 	filewatcher.h\
 	libwakelock.h\
+	mce-common.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-fbdev.h\
@@ -699,6 +700,7 @@ modules/display.pic.o:\
 	datapipe.h\
 	filewatcher.h\
 	libwakelock.h\
+	mce-common.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-fbdev.h\
@@ -1059,6 +1061,7 @@ tests/ut/ut_display.o:\
 	datapipe.h\
 	filewatcher.h\
 	libwakelock.h\
+	mce-common.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-fbdev.h\
@@ -1082,6 +1085,7 @@ tests/ut/ut_display.pic.o:\
 	datapipe.h\
 	filewatcher.h\
 	libwakelock.h\
+	mce-common.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-fbdev.h\
@@ -1105,6 +1109,7 @@ tests/ut/ut_display_blanking_inhibit.o:\
 	datapipe.h\
 	filewatcher.h\
 	libwakelock.h\
+	mce-common.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-fbdev.h\
@@ -1129,6 +1134,7 @@ tests/ut/ut_display_blanking_inhibit.pic.o:\
 	datapipe.h\
 	filewatcher.h\
 	libwakelock.h\
+	mce-common.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-fbdev.h\
@@ -1153,6 +1159,7 @@ tests/ut/ut_display_conf.o:\
 	datapipe.h\
 	filewatcher.h\
 	libwakelock.h\
+	mce-common.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-fbdev.h\
@@ -1177,6 +1184,7 @@ tests/ut/ut_display_conf.pic.o:\
 	datapipe.h\
 	filewatcher.h\
 	libwakelock.h\
+	mce-common.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-fbdev.h\
@@ -1201,6 +1209,7 @@ tests/ut/ut_display_filter.o:\
 	datapipe.h\
 	filewatcher.h\
 	libwakelock.h\
+	mce-common.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-fbdev.h\
@@ -1225,6 +1234,7 @@ tests/ut/ut_display_filter.pic.o:\
 	datapipe.h\
 	filewatcher.h\
 	libwakelock.h\
+	mce-common.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-fbdev.h\
@@ -1249,6 +1259,7 @@ tests/ut/ut_display_stm.o:\
 	datapipe.h\
 	filewatcher.h\
 	libwakelock.h\
+	mce-common.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-fbdev.h\
@@ -1273,6 +1284,7 @@ tests/ut/ut_display_stm.pic.o:\
 	datapipe.h\
 	filewatcher.h\
 	libwakelock.h\
+	mce-common.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-fbdev.h\
