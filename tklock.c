@@ -791,7 +791,7 @@ EXIT:
     return;
 }
 
-/** Wait for proximity sensor callback for fingerprint unlock handling
+/** Wait for proximity sensor -callback for fingerprint unlock handling
  *
  * @param aptr unused
  */
@@ -3191,6 +3191,10 @@ EXIT:
     return;
 }
 
+/** Wait for proximity sensor -callback for keyboard slide handling
+ *
+ * @param aptr unused
+ */
 static void tklock_keyboard_slide_opened_cb(gpointer aptr)
 {
     (void)aptr;
@@ -3395,6 +3399,9 @@ tklock_autolock_quit(void)
  * 3) we are not handling call/alarm/etc
  * ========================================================================= */
 
+/** Proximity sensor on-demand tag for proximity locking purposes */
+#define PROXLOC_ON_DEMAND_TAG "proxlock"
+
 /** Delay for enabling tklock from display off when proximity is covered */
 #define PROXLOC_DELAY_MS (3000)
 
@@ -3441,6 +3448,12 @@ static gboolean tklock_proxlock_cb(gpointer aptr)
 
         mce_log(LL_DEBUG, "proxlock timer triggered");
         tklock_proxlock_evaluate();
+
+        /* Timer did not get re-activated, ps not needed anymore */
+        if( !tklock_proxlock_id )
+            datapipe_exec_full(&proximity_sensor_required_pipe,
+                               PROXIMITY_SENSOR_REQUIRED_REM
+                               PROXLOC_ON_DEMAND_TAG);
     }
     return false;
 }
@@ -3452,6 +3465,11 @@ static void tklock_proxlock_disable(void)
     if( tklock_proxlock_id ) {
         g_source_remove(tklock_proxlock_id), tklock_proxlock_id = 0;
         mce_log(LL_DEBUG, "proxlock timer stopped");
+
+        /* Timer canceled, ps not needed anymore */
+        datapipe_exec_full(&proximity_sensor_required_pipe,
+                           PROXIMITY_SENSOR_REQUIRED_REM
+                           PROXLOC_ON_DEMAND_TAG);
     }
 }
 
@@ -3463,6 +3481,10 @@ static void tklock_proxlock_enable(void)
         tklock_proxlock_tick = mce_lib_get_boot_tick() + delay;
         tklock_proxlock_id = g_timeout_add(delay, tklock_proxlock_cb, 0);
         mce_log(LL_DEBUG, "proxlock timer started (%d ms)", delay);
+        /* Timer started, ps is needed */
+        datapipe_exec_full(&proximity_sensor_required_pipe,
+                           PROXIMITY_SENSOR_REQUIRED_ADD
+                           PROXLOC_ON_DEMAND_TAG);
     }
 }
 
@@ -3489,6 +3511,12 @@ static void tklock_proxlock_resume(void)
         mce_log(LL_DEBUG, "adjusting proxlock time after resume (%d ms)", delay);
         tklock_proxlock_id = g_timeout_add(delay, tklock_proxlock_cb, 0);
     }
+
+    /* Timer canceled, ps not needed anymore */
+    if( !tklock_proxlock_id )
+        datapipe_exec_full(&proximity_sensor_required_pipe,
+                           PROXIMITY_SENSOR_REQUIRED_REM
+                           PROXLOC_ON_DEMAND_TAG);
 
 EXIT:
     return;
