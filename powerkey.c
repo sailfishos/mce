@@ -28,6 +28,7 @@
 #include "mce-log.h"
 #include "mce-lib.h"
 #include "mce-setting.h"
+#include "mce-common.h"
 #include "mce-dbus.h"
 #include "mce-dsme.h"
 
@@ -87,6 +88,12 @@
  * Effectively this is just as before, except for the double press
  * actions to apply device lock / wake up to home screen.
  * ========================================================================= */
+
+/* ========================================================================= *
+ * CONSTANTS
+ * ========================================================================= */
+
+#define MODULE_NAME "powerkey"
 
 /* ========================================================================= *
  * PROTOTYPES
@@ -175,6 +182,7 @@ typedef struct
     void      (*func)(void);
 } pwrkey_bitconf_t;
 
+static void     pwrkey_mask_execute_cb (gpointer aptr);
 static void     pwrkey_mask_execute    (uint32_t mask);
 static uint32_t pwrkey_mask_from_name  (const char *name);
 static uint32_t pwrkey_mask_from_names (const char *names);
@@ -189,6 +197,39 @@ static gint  pwrkey_gestures_enable_mode = MCE_DEFAULT_DOUBLETAP_MODE;
 static guint pwrkey_gestures_enable_mode_cb_id = 0;
 
 static bool  pwrkey_gestures_allowed(bool synthesized);
+
+/* ------------------------------------------------------------------------- *
+ * PWRKEY_UNBLANK
+ * ------------------------------------------------------------------------- */
+
+/** Enumeratio of possible unblank allowed predicates */
+typedef enum
+{
+    /** Apply powerkey press rules */
+    PWRKEY_UNBLANK_PREDICATE_POWERKEY,
+
+    /** Apply rules for real gesture events */
+    PWRKEY_UNBLANK_PREDICATE_GESTURE_REAL,
+
+    /** Apply rules for synthetized gesture events */
+    PWRKEY_UNBLANK_PREDICATE_GESTURE_SYNTH,
+} pwrkey_unblank_predicate_t;
+
+/** Lookup table of unblank predicate names (for diagnostic logging) */
+static const char * const pwrkey_unblank_predicate_name[] =
+{
+    [PWRKEY_UNBLANK_PREDICATE_POWERKEY]      = "powerkey",
+    [PWRKEY_UNBLANK_PREDICATE_GESTURE_REAL]  = "gesture_real",
+    [PWRKEY_UNBLANK_PREDICATE_GESTURE_SYNTH] = "gesture_synth",
+};
+
+/** Currently active unblanking allowed predicate */
+static pwrkey_unblank_predicate_t pwrkey_unblank_predicate =
+    PWRKEY_UNBLANK_PREDICATE_POWERKEY;
+
+static bool  pwrkey_unblank_allowed         (void);
+static void  pwrkey_unblank_set_predicate_cb(gpointer aptr);
+static void  pwrkey_unblank_set_predicate   (pwrkey_unblank_predicate_t predicate);
 
 /* ------------------------------------------------------------------------- *
  * ACTION_TRIGGERING
@@ -841,6 +882,11 @@ pwrkey_action_unblank(void)
         }
     }
 
+    if( !pwrkey_unblank_allowed() ) {
+        mce_log(LL_DEVEL, "skip unblank; predicate condition not met");
+        goto EXIT;
+    }
+
     display_state_t request = MCE_DISPLAY_ON;
     mce_log(LL_DEBUG, "Requesting display=%s",
             display_state_repr(request));
@@ -1036,13 +1082,28 @@ static const pwrkey_bitconf_t pwrkey_action_lut[] =
     },
 };
 
+static void pwrkey_mask_execute_cb(gpointer aptr)
+{
+    const char *name = aptr;
+    for( size_t i = 0; i < G_N_ELEMENTS(pwrkey_action_lut); ++i ) {
+        if( strcmp(pwrkey_action_lut[i].name, name) )
+            continue;
+        mce_log(LL_DEBUG, "* exec(%s)", name);
+        pwrkey_action_lut[i].func();
+        break;
+    }
+}
+
 static void
 pwrkey_mask_execute(uint32_t mask)
 {
     for( size_t i = 0; i < G_N_ELEMENTS(pwrkey_action_lut); ++i ) {
         if( mask & (1u << i) ) {
-            mce_log(LL_DEBUG, "* exec(%s)", pwrkey_action_lut[i].name);
-            pwrkey_action_lut[i].func();
+            const char *name = pwrkey_action_lut[i].name;
+            mce_log(LL_DEBUG, "* queue(%s)", name);
+            common_on_proximity_schedule(MODULE_NAME,
+                                         pwrkey_mask_execute_cb,
+                                         (gpointer)name);
         }
     }
 }
@@ -1188,23 +1249,85 @@ EXIT:
 }
 
 /* ========================================================================= *
+ * PWRKEY_UNBLANK
+ * ========================================================================= */
+
+/** Check if unblanking is allowed according to currently active rules
+ *
+ * @return true if unblanking is allowed, false otherwise
+ */
+static bool
+pwrkey_unblank_allowed(void)
+{
+    bool allowed = false;
+    switch( pwrkey_unblank_predicate ) {
+    case PWRKEY_UNBLANK_PREDICATE_POWERKEY:
+        allowed = !pwrkey_stm_ignore_action();
+        break;
+    case PWRKEY_UNBLANK_PREDICATE_GESTURE_REAL:
+        allowed = pwrkey_gestures_allowed(false);
+        break;
+    case PWRKEY_UNBLANK_PREDICATE_GESTURE_SYNTH:
+        allowed = pwrkey_gestures_allowed(true);
+        break;
+    default:
+        break;
+    }
+    mce_log(LL_DEBUG, "evaluate predicate %s => %s",
+            pwrkey_unblank_predicate_name[pwrkey_unblank_predicate],
+            allowed ? "allowed" : "denied");
+    return allowed;
+}
+
+/** On-proximity callback for selecting unblank rules
+ *
+ * @param aptr unblank predicate to use (as void pointer)
+ */
+static void
+pwrkey_unblank_set_predicate_cb(gpointer aptr)
+{
+    pwrkey_unblank_predicate = GPOINTER_TO_INT(aptr);
+    mce_log(LL_DEBUG, "execute predicate = %s",
+            pwrkey_unblank_predicate_name[pwrkey_unblank_predicate]);
+}
+
+/** Select which rules apply in delayed on-proximity action handling
+ *
+ * @param predicate unblank predicate to use (as void pointer)
+ */
+static void
+pwrkey_unblank_set_predicate(pwrkey_unblank_predicate_t predicate)
+{
+    mce_log(LL_DEBUG, "schedule predicate = %s",
+            pwrkey_unblank_predicate_name[predicate]);
+    common_on_proximity_schedule(MODULE_NAME,
+                                 pwrkey_unblank_set_predicate_cb,
+                                 GINT_TO_POINTER(predicate));
+}
+
+/* ========================================================================= *
  * ACTION_TRIGGERING
  * ========================================================================= */
 
 static void
 pwrkey_actions_do_gesture(size_t gesture)
 {
-    /* Check settings, proximity sensor state, etc */
-    if( !pwrkey_gestures_allowed(gesture & GESTURE_SYNTHESIZED) )
-        goto EXIT;
+    /* Extract modifier bits */
+    bool synthetized = (gesture & GESTURE_SYNTHESIZED) != 0;
 
-    /* Remove modifier bits */
     gesture &= ~GESTURE_SYNTHESIZED;
+
+    /* Check settings, proximity sensor state, etc */
+    if( !pwrkey_gestures_allowed(synthetized) )
+        goto EXIT;
 
     /* Treat unconfigurable gestures as doubletaps */
     if( gesture >= POWERKEY_ACTIONS_GESTURE_COUNT )
         gesture = GESTURE_DOUBLETAP;
 
+    pwrkey_unblank_set_predicate(synthetized
+                                 ? PWRKEY_UNBLANK_PREDICATE_GESTURE_SYNTH
+                                 : PWRKEY_UNBLANK_PREDICATE_GESTURE_REAL);
     pwrkey_mask_execute(pwrkey_actions_from_gesture[gesture].mask_single);
 
 EXIT:
@@ -1214,12 +1337,14 @@ EXIT:
 static void
 pwrkey_actions_do_common(void)
 {
+    pwrkey_unblank_set_predicate(PWRKEY_UNBLANK_PREDICATE_POWERKEY);
     pwrkey_mask_execute(pwrkey_actions_now->mask_common);
 }
 
 static void
 pwrkey_actions_do_single_press(void)
 {
+    pwrkey_unblank_set_predicate(PWRKEY_UNBLANK_PREDICATE_POWERKEY);
     pwrkey_mask_execute(pwrkey_actions_now->mask_single);
 }
 
@@ -1232,6 +1357,7 @@ pwrkey_actions_use_double_press(void)
 static void
 pwrkey_actions_do_double_press(void)
 {
+    pwrkey_unblank_set_predicate(PWRKEY_UNBLANK_PREDICATE_POWERKEY);
     pwrkey_mask_execute(pwrkey_actions_now->mask_double);
 }
 
@@ -1256,6 +1382,7 @@ pwrkey_actions_do_long_press(void)
 
     case MCE_SYSTEM_STATE_USER:
         /* Apply configured actions */
+        pwrkey_unblank_set_predicate(PWRKEY_UNBLANK_PREDICATE_POWERKEY);
         pwrkey_mask_execute(pwrkey_actions_now->mask_long);
         break;
 
@@ -3165,7 +3292,7 @@ static datapipe_handler_t pwrkey_datapipe_handlers[] =
 
 static datapipe_bindings_t pwrkey_datapipe_bindings =
 {
-    .module   = "powerkey",
+    .module   = MODULE_NAME,
     .handlers = pwrkey_datapipe_handlers,
 };
 
@@ -3348,6 +3475,8 @@ void mce_powerkey_exit(void)
 
     /* Remove all timer sources & release wakelock */
     pwrkey_stm_terminate();
+
+    common_on_proximity_cancel(MODULE_NAME, 0, 0);
 
     return;
 }
