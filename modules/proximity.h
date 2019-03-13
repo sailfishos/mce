@@ -3,9 +3,13 @@
  * Headers for the proximity sensor module
  * <p>
  * Copyright © 2010-2011 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (C) 2013-2019 Jolla Ltd.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Tuomo Tanskanen <ext-tuomo.1.tanskanen@nokia.com>
+ * @author Tapio Rantala <ext-tapio.rantala@nokia.com>
+ * @author Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>
+ * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
  * mce is free software; you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License
@@ -28,6 +32,10 @@
 /** Whether MCE is allowed to use proximity sensor */
 # define MCE_SETTING_PROXIMITY_PS_ENABLED       MCE_SETTING_PROXIMITY_PATH "/ps_enabled"
 # define MCE_DEFAULT_PROXIMITY_PS_ENABLED       true
+
+/** Whether proximity sensor should be used on-demand*/
+# define MCE_SETTING_PROXIMITY_ON_DEMAND        MCE_SETTING_PROXIMITY_PATH "/on_demand"
+# define MCE_DEFAULT_PROXIMITY_ON_DEMAND        false
 
 /** Whether proximity sensor should be treated as cover closed sensor */
 # define MCE_SETTING_PROXIMITY_PS_ACTS_AS_LID   MCE_SETTING_PROXIMITY_PATH "/ps_acts_as_lid"

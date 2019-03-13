@@ -4,7 +4,7 @@
  * this can be used to filter data and to setup data triggers
  * <p>
  * Copyright © 2007-2008 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2014-2017 Jolla Ltd.
+ * Copyright (C) 2014-2019 Jolla Ltd.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
@@ -630,6 +630,31 @@ datapipe_t lens_cover_state_pipe                = DATAPIPE_INIT(lens_cover_state
 /** Proximity sensor; read only */
 datapipe_t proximity_sensor_actual_pipe         = DATAPIPE_INIT(proximity_sensor_actual, cover_state, COVER_OPEN, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
+/** Proximity sensor; read only */
+datapipe_t proximity_sensor_effective_pipe      = DATAPIPE_INIT(proximity_sensor_effective, cover_state, COVER_UNDEF, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
+
+/** Proximity sensor on-demand control; write only
+ *
+ * The data fed into proximity_sensor_required_pipe needs to
+ * be a statically allocated const string with format like:
+ *
+ *   "<PREFIX><NAME>"
+ *
+ * Where <PREFIX> is one of:
+ *
+ * - PROXIMITY_SENSOR_REQUIRED_ADD: <NAME> is added to the
+ *   list of resons to keep on-demand proximity sensor mode
+ *   active.
+ *
+ * - PROXIMITY_SENSOR_REQUIRED_REM: <NAME> is from the the
+ *   list of resons to keep on-demand proximity sensor mode
+ *   active.
+ */
+datapipe_t proximity_sensor_required_pipe       = DATAPIPE_INIT(proximity_sensor_required, string, 0, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_NOTHING);
+
+/** proximity blanking; read only */
+datapipe_t proximity_blanked_pipe               = DATAPIPE_INIT(proximity_blanked, boolean, false, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
+
 /** Ambient light sensor; read only */
 datapipe_t light_sensor_actual_pipe             = DATAPIPE_INIT(light_sensor_actual, int, 400, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
@@ -765,9 +790,6 @@ datapipe_t keypad_grab_active_pipe              = DATAPIPE_INIT(keypad_grab_acti
 
 /** music playback active; read only */
 datapipe_t music_playback_ongoing_pipe          = DATAPIPE_INIT(music_playback_ongoing, boolean, false, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
-
-/** proximity blanking; read only */
-datapipe_t proximity_blanked_pipe               = DATAPIPE_INIT(proximity_blanked, boolean, false, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** fingerprint daemon availability; read only */
 datapipe_t fpd_service_state_pipe               = DATAPIPE_INIT(fpd_service_state, service_state, SERVICE_STATE_UNDEF, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
@@ -1265,6 +1287,9 @@ void mce_datapipe_quit(void)
     datapipe_free(&interaction_expected_pipe);
     datapipe_free(&tklock_request_pipe);
     datapipe_free(&proximity_sensor_actual_pipe);
+    datapipe_free(&proximity_sensor_effective_pipe);
+    datapipe_free(&proximity_sensor_required_pipe);
+    datapipe_free(&proximity_blanked_pipe);
     datapipe_free(&light_sensor_actual_pipe);
     datapipe_free(&light_sensor_filtered_pipe);
     datapipe_free(&light_sensor_poll_request_pipe);
@@ -1320,7 +1345,6 @@ void mce_datapipe_quit(void)
     datapipe_free(&keypad_grab_active_pipe);
     datapipe_free(&keypad_grab_wanted_pipe);
     datapipe_free(&music_playback_ongoing_pipe);
-    datapipe_free(&proximity_blanked_pipe);
     datapipe_free(&fpd_service_state_pipe);
     datapipe_free(&fpstate_pipe);
     datapipe_free(&enroll_in_progress_pipe);

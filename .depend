@@ -41,6 +41,7 @@ builtin-gconf.pic.o:\
 datapipe.o:\
 	datapipe.c\
 	datapipe.h\
+	evdev.h\
 	mce-lib.h\
 	mce-log.h\
 	mce.h\
@@ -48,6 +49,7 @@ datapipe.o:\
 datapipe.pic.o:\
 	datapipe.c\
 	datapipe.h\
+	evdev.h\
 	mce-lib.h\
 	mce-log.h\
 	mce.h\
@@ -142,6 +144,7 @@ mce-common.o:\
 	datapipe.h\
 	mce-common.h\
 	mce-dbus.h\
+	mce-lib.h\
 	mce-log.h\
 	mce.h\
 
@@ -151,6 +154,7 @@ mce-common.pic.o:\
 	datapipe.h\
 	mce-common.h\
 	mce-dbus.h\
+	mce-lib.h\
 	mce-log.h\
 	mce.h\
 
@@ -928,6 +932,7 @@ modules/proximity.o:\
 	modules/proximity.c\
 	builtin-gconf.h\
 	datapipe.h\
+	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce-setting.h\
@@ -938,6 +943,7 @@ modules/proximity.pic.o:\
 	modules/proximity.c\
 	builtin-gconf.h\
 	datapipe.h\
+	mce-lib.h\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce-setting.h\

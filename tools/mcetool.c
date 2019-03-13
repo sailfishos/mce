@@ -2,8 +2,15 @@
  * Tool to test and remote control the Mode Control Entity
  * <p>
  * Copyright © 2005-2011 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (C) 2012-2019 Jolla Ltd.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
+ * @author Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>
+ * @author Victor Portnov <ext-victor.portnov@nokia.com>
+ * @author Philippe De Swert <philippe.deswert@jollamobile.com>
+ * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
+ * @author Vesa Halttunen <vesa.halttunen@jollamobile.com>
+ * @author Kimmo Lindholm <kimmo.lindholm@eke.fi>
  *
  * mce is free software; you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License
@@ -225,6 +232,8 @@ static bool          xmce_set_flipover_gesture_detection               (const ch
 static void          xmce_get_flipover_gesture_detection               (void);
 static bool          xmce_set_ps_mode                                  (const char *args);
 static void          xmce_get_ps_mode                                  (void);
+static bool          xmce_set_ps_on_demand                             (const char *args);
+static void          xmce_get_ps_on_demand                             (void);
 static bool          xmce_set_ps_blocks_touch                          (const char *args);
 static void          xmce_get_ps_blocks_touch                          (void);
 static bool          xmce_set_ps_acts_as_lid                           (const char *args);
@@ -4082,6 +4091,30 @@ static void xmce_get_ps_mode(void)
         printf("%-"PAD1"s %s\n", "Use ps mode:", txt);
 }
 
+/* Set ps use mode
+ *
+ * @param args string suitable for interpreting as enabled/disabled
+ */
+static bool xmce_set_ps_on_demand(const char *args)
+{
+        debugf("%s(%s)\n", __FUNCTION__, args);
+        gboolean val = xmce_parse_enabled(args);
+        xmce_setting_set_bool(MCE_SETTING_PROXIMITY_ON_DEMAND, val);
+        return true;
+}
+
+/** Get current ps mode from mce and print it out
+ */
+static void xmce_get_ps_on_demand(void)
+{
+        gboolean val = 0;
+        char txt[32] = "unknown";
+
+        if( xmce_setting_get_bool(MCE_SETTING_PROXIMITY_ON_DEMAND, &val) )
+                snprintf(txt, sizeof txt, "%s", val ? "enabled" : "disabled");
+        printf("%-"PAD1"s %s\n", "Use ps on-demand:", txt);
+}
+
 /** Set ps can block touch input mode
  *
  * @param args string suitable for interpreting as enabled/disabled
@@ -6362,6 +6395,7 @@ static bool xmce_get_status(const char *args)
         xmce_get_orientation_change_is_activity();
         xmce_get_flipover_gesture_detection();
         xmce_get_ps_mode();
+        xmce_get_ps_on_demand();
         xmce_get_ps_uncover_delay();
         xmce_get_ps_blocks_touch();
         xmce_get_ps_acts_as_lid();
@@ -7219,7 +7253,17 @@ static const mce_opt_t options[] =
                 .with_arg    = xmce_set_ps_mode,
                 .values      = "enabled|disabled",
                         "set the ps mode; valid modes are:\n"
-                        "'enabled' and 'disabled'\n"
+                        "'enabled'  sensor is disabled/enabled based on policy\n"
+                        "           and other settings\n"
+                        "'disabled' sensor is never powered on by mce\n"
+        },
+        {
+                .name        = "set-ps-on-demand",
+                .with_arg    = xmce_set_ps_on_demand,
+                .values      = "enabled|disabled",
+                        "set the ps on-demand mode; valid modes are:\n"
+                        "'enabled'  sensor is powered up only when needed\n"
+                        "'disabled' sensor is always kept powered on\n"
         },
         {
                 .name        = "set-default-ps-uncover-delay",
