@@ -3,9 +3,20 @@
  * Display module -- this implements display handling for MCE
  * <p>
  * Copyright © 2007-2011 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (C) 2012-2019 Jolla Ltd.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
+ * @author Tapio Rantala <ext-tapio.rantala@nokia.com>
+ * @author Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>
+ * @author Jukka Turunen <ext-jukka.t.turunen@nokia.com>
+ * @author Irina Bezruk <ext-irina.bezruk@nokia.com>
+ * @author Markus Lehtonen <markus.lehtonen@iki.fi>
+ * @author Kalle Jokiniemi <kalle.jokiniemi@jolla.com>
+ * @author Philippe De Swert <philippedeswert@gmail.com>
+ * @author Philippe De Swert <philippe.deswert@jollamobile.com>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
+ * @author Martin Kampas <martin.kampas@tieto.com>
+ * @author Pekka Lundstrom <pekka.lundstrom@jollamobile.com>
  *
  * mce is free software; you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License
@@ -9131,8 +9142,8 @@ static const char *mdy_dbus_get_reason_to_block_display_on(void)
         goto EXIT;
     }
 
-    /* proximity covered? */
-    if( proximity_sensor_actual == COVER_CLOSED ) {
+    /* proximity covered or unknown? */
+    if( proximity_sensor_actual != COVER_OPEN ) {
         reason = "proximity covered";
         goto EXIT;
     }
