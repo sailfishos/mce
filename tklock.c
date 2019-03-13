@@ -3166,7 +3166,7 @@ static void tklock_keyboard_slide_opened(void)
         break;
 
     case KBD_OPEN_TRIGGER_NO_PROXIMITY:
-        if( proximity_sensor_actual == COVER_CLOSED ||
+        if( proximity_sensor_actual != COVER_OPEN ||
             lid_sensor_filtered == COVER_CLOSED )
             goto EXIT;
         break;
@@ -3189,6 +3189,16 @@ static void tklock_keyboard_slide_opened(void)
 
 EXIT:
     return;
+}
+
+static void tklock_keyboard_slide_opened_cb(gpointer aptr)
+{
+    (void)aptr;
+
+    /* Slide still open? */
+    if( keyboard_slide_input_state == COVER_OPEN ) {
+        tklock_keyboard_slide_opened();
+    }
 }
 
 static void tklock_keyboard_slide_closed(void)
@@ -3240,7 +3250,9 @@ static void tklock_keyboard_slide_rethink(void)
 {
     switch( keyboard_slide_input_state ) {
     case COVER_OPEN:
-        tklock_keyboard_slide_opened();
+        /* Delay processing until proximity sensor state is known */
+        common_on_proximity_schedule(MODULE_NAME,
+                                     tklock_keyboard_slide_opened_cb, 0);
         break;
 
     case COVER_CLOSED:
