@@ -525,7 +525,7 @@ static void     pwrkey_setting_quit            (void);
  * reacting to state changes / input from other mce modules
  * ------------------------------------------------------------------------- */
 
-static void pwrkey_datapipes_keypress_event_cb(gconstpointer const data);
+static void pwrkey_datapipe_keypress_event_cb(gconstpointer const data);
 static void pwrkey_datapipe_ngfd_service_state_cb(gconstpointer data);
 static void pwrkey_datapipe_system_state_cb(gconstpointer data);
 static void pwrkey_datapipe_display_state_curr_cb(gconstpointer data);
@@ -534,9 +534,12 @@ static void pwrkey_datapipe_lid_sensor_filtered_cb(gconstpointer data);
 static void pwrkey_datapipe_proximity_sensor_actual_cb(gconstpointer data);
 static void pwrkey_datapipe_call_state_cb(gconstpointer data);
 static void pwrkey_datapipe_alarm_ui_state_cb(gconstpointer data);
+static void pwrkey_datapipe_devicelock_service_state_cb(gconstpointer data);
+static void pwrkey_datapipe_enroll_in_progress_cb(gconstpointer data);
+static void pwrkey_datapipe_ngfd_event_request_cb(gconstpointer data);
 
-static void pwrkey_datapipes_init(void);
-static void pwrkey_datapipes_quit(void);
+static void pwrkey_datapipe_init(void);
+static void pwrkey_datapipe_quit(void);
 
 /* ------------------------------------------------------------------------- *
  * MODULE_INTEFACE
@@ -2896,7 +2899,7 @@ EXIT:
  * @param data A pointer to the input_event struct
  */
 static void
-pwrkey_datapipes_keypress_event_cb(gconstpointer const data)
+pwrkey_datapipe_keypress_event_cb(gconstpointer const data)
 {
     /* Faulty/aged physical power key buttons can generate
      * bursts of press and release events that are then
@@ -3097,7 +3100,7 @@ EXIT:
  *
  * @param data Requested event name (as void pointer)
  */
-static void fba_datapipe_ngfd_event_request_cb(gconstpointer data)
+static void pwrkey_datapipe_ngfd_event_request_cb(gconstpointer data)
 {
     const char *event = data;
     mce_log(LL_DEBUG, "ngfd event request = %s", event);
@@ -3110,11 +3113,11 @@ static datapipe_handler_t pwrkey_datapipe_handlers[] =
     // input triggers
     {
         .datapipe = &keypress_event_pipe,
-        .input_cb = pwrkey_datapipes_keypress_event_cb,
+        .input_cb = pwrkey_datapipe_keypress_event_cb,
     },
     {
         .datapipe = &ngfd_event_request_pipe,
-        .input_cb = fba_datapipe_ngfd_event_request_cb,
+        .input_cb = pwrkey_datapipe_ngfd_event_request_cb,
     },
     // output triggers
     {
@@ -3172,7 +3175,7 @@ static datapipe_bindings_t pwrkey_datapipe_bindings =
 /** Append triggers/filters to datapipes
  */
 static void
-pwrkey_datapipes_init(void)
+pwrkey_datapipe_init(void)
 {
     mce_datapipe_init_bindings(&pwrkey_datapipe_bindings);
 }
@@ -3180,7 +3183,7 @@ pwrkey_datapipes_init(void)
 /** Remove triggers/filters from datapipes
  */
 static void
-pwrkey_datapipes_quit(void)
+pwrkey_datapipe_quit(void)
 {
     mce_datapipe_quit_bindings(&pwrkey_datapipe_bindings);
 }
@@ -3320,7 +3323,7 @@ xngf_quit(void)
  */
 gboolean mce_powerkey_init(void)
 {
-    pwrkey_datapipes_init();
+    pwrkey_datapipe_init();
 
     pwrkey_dbus_init();
 
@@ -3344,7 +3347,7 @@ void mce_powerkey_exit(void)
 
     pwrkey_setting_quit();
 
-    pwrkey_datapipes_quit();
+    pwrkey_datapipe_quit();
 
     /* Remove all timer sources & release wakelock */
     pwrkey_stm_terminate();
