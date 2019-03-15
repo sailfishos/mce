@@ -2,7 +2,7 @@
  * @file mce-common.c
  * Common state logic for Mode Control Entity
  * <p>
- * Copyright (C) 2017 Jolla Ltd.
+ * Copyright (C) 2017-2019 Jolla Ltd.
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
@@ -22,6 +22,7 @@
 
 #include "mce.h"
 #include "mce-dbus.h"
+#include "mce-lib.h"
 #include "mce-log.h"
 
 #include <string.h>
@@ -30,10 +31,51 @@
 #include <mce/mode-names.h>
 
 /* ========================================================================= *
+ * TYPES
+ * ========================================================================= */
+
+/** Bookkeeping data for on-condition callback function */
+typedef struct
+{
+    /** Source identification, for mass cancelation */
+    gchar         *srce;
+
+    /** Function to call */
+    GDestroyNotify func;
+
+    /** Parameter to give to the function */
+    gpointer       aptr;
+} on_condition_t;
+
+/* ========================================================================= *
  * PROTOTYPES
  * ========================================================================= */
 
-// DBUS_FUNCTIONS
+/* ------------------------------------------------------------------------- *
+ * ON_CONDITION
+ * ------------------------------------------------------------------------- */
+
+static bool            on_condition_matches           (on_condition_t *self, const char *srce, GDestroyNotify func, gpointer aptr);
+static on_condition_t *on_condition_create            (const char *srce, GDestroyNotify func, gpointer aptr);
+static void            on_condition_delete            (on_condition_t *self);
+static void            on_condition_exec              (on_condition_t *self);
+static void            on_condition_exec_and_delete_cb(gpointer self);
+static void            on_condition_delete_cb         (gpointer self);
+
+/* ------------------------------------------------------------------------- *
+ * COMMON_ON_PROXIMITY
+ * ------------------------------------------------------------------------- */
+
+static gboolean common_on_proximity_exec_cb (gpointer aptr);
+static void     common_on_proximity_exec    (void);
+void            common_on_proximity_schedule(const char *srce, GDestroyNotify func, gpointer aptr);
+void            common_on_proximity_cancel  (const char *srce, GDestroyNotify func, gpointer aptr);
+static void     common_on_proximity_quit    (void);
+
+/* ------------------------------------------------------------------------- *
+ * COMMON_DBUS
+ * ------------------------------------------------------------------------- */
+
 static void     common_dbus_send_usb_cable_state  (DBusMessage *const req);
 static gboolean common_dbus_get_usb_cable_state_cb(DBusMessage *const req);
 static void     common_dbus_send_charger_state    (DBusMessage *const req);
@@ -42,18 +84,26 @@ static void     common_dbus_send_battery_status   (DBusMessage *const req);
 static gboolean common_dbus_get_battery_status_cb (DBusMessage *const req);
 static void     common_dbus_send_battery_level    (DBusMessage *const req);
 static gboolean common_dbus_get_battery_level_cb  (DBusMessage *const req);
+static gboolean common_dbus_initial_cb            (gpointer aptr);
 static void     common_dbus_init                  (void);
 static void     common_dbus_quit                  (void);
 
-// DATAPIPE_FUNCTIONS
-static void     common_datapipe_usb_cable_state_cb(gconstpointer data);
-static void     common_datapipe_charger_state_cb  (gconstpointer data);
-static void     common_datapipe_battery_status_cb (gconstpointer data);
-static void     common_datapipe_battery_level_cb  (gconstpointer data);
-static void     common_datapipe_init              (void);
-static void     common_datapipe_quit              (void);
+/* ------------------------------------------------------------------------- *
+ * COMMON_DATAPIPE
+ * ------------------------------------------------------------------------- */
 
-// MODULE_INIT_QUIT
+static void common_datapipe_usb_cable_state_cb        (gconstpointer data);
+static void common_datapipe_charger_state_cb          (gconstpointer data);
+static void common_datapipe_battery_status_cb         (gconstpointer data);
+static void common_datapipe_battery_level_cb          (gconstpointer data);
+static void common_datapipe_proximity_sensor_actual_cb(gconstpointer data);
+static void common_datapipe_init                      (void);
+static void common_datapipe_quit                      (void);
+
+/* ------------------------------------------------------------------------- *
+ * MCE_COMMON
+ * ------------------------------------------------------------------------- */
+
 bool mce_common_init(void);
 void mce_common_quit(void);
 
@@ -72,6 +122,210 @@ static battery_status_t battery_status = BATTERY_STATUS_UNDEF;
 
 /** Battery charge level: assume 100% */
 static gint battery_level = BATTERY_LEVEL_INITIAL;
+
+/** Cached (raw) proximity sensor state */
+static cover_state_t proximity_sensor_actual = COVER_UNDEF;
+
+/* ========================================================================= *
+ * ON_CONDITION
+ * ========================================================================= */
+
+static bool
+on_condition_matches(on_condition_t *self,
+                     const char *srce, GDestroyNotify func, gpointer aptr)
+{
+    bool matches = false;
+
+    if( !srce || !self || !self->srce )
+        goto EXIT;
+
+    if( strcmp(self->srce, srce) )
+        goto EXIT;
+
+    if( self->func == func && self->aptr == aptr )
+        matches = true;
+    else
+        matches = !func && !srce;
+
+EXIT:
+    return matches;
+}
+
+static on_condition_t *
+on_condition_create(const char *srce, GDestroyNotify func, gpointer aptr)
+{
+    on_condition_t *self = g_slice_alloc0(sizeof *self);
+    self->srce = g_strdup(srce);
+    self->func = func;
+    self->aptr = aptr;
+    return self;
+}
+
+static void
+on_condition_delete(on_condition_t *self)
+{
+    if( self ) {
+        g_free(self->srce);
+        g_slice_free1(sizeof *self, self);
+    }
+}
+
+static void
+on_condition_exec(on_condition_t *self)
+{
+    if( self )
+        self->func(self->aptr);
+}
+
+static void
+on_condition_exec_and_delete_cb(gpointer self)
+{
+    on_condition_exec(self);
+    on_condition_delete(self);
+}
+
+static void
+on_condition_delete_cb(gpointer self)
+{
+    on_condition_delete(self);
+}
+
+/* ========================================================================= *
+ * COMMON_ON_PROXIMITY
+ * ========================================================================= */
+
+#define COMMON_ON_DEMAND_TAG "common_on_proximity"
+
+static GSList *common_on_proximity_actions = 0;
+static guint   common_on_proximity_exec_id = 0;
+
+static gboolean
+common_on_proximity_exec_cb(gpointer aptr)
+{
+    (void)aptr;
+
+    gboolean result = G_SOURCE_REMOVE;
+
+    GSList *todo;
+
+    /* Execute queued actions */
+    if( (todo = common_on_proximity_actions) ) {
+        common_on_proximity_actions = 0;
+        todo = g_slist_reverse(todo);
+        g_slist_free_full(todo, on_condition_exec_and_delete_cb);
+    }
+
+    /* Check if executed actions queued more actions */
+    if( common_on_proximity_actions ) {
+        /* Repeat to handle freshly added actions */
+        result = G_SOURCE_CONTINUE;
+    }
+    else {
+        /* Queue exchausted - sensor no longer needed */
+        datapipe_exec_full(&proximity_sensor_required_pipe,
+                           PROXIMITY_SENSOR_REQUIRED_REM
+                           COMMON_ON_DEMAND_TAG);
+    }
+
+EXIT:
+    if( result == G_SOURCE_REMOVE )
+        common_on_proximity_exec_id = 0;
+
+    return result;
+}
+
+static void
+common_on_proximity_exec(void)
+{
+    /* Execute via idle to make sure all proximity
+     * datapipe listeners have had a chance to
+     * register sensor state before callbacks
+     * get triggered. */
+    if( !common_on_proximity_exec_id ) {
+        common_on_proximity_exec_id =
+            mce_wakelocked_idle_add(common_on_proximity_exec_cb,
+                                    0);
+    }
+}
+
+/** Execute callback function when actual proximity sensor state is available
+ *
+ * @param srce  Call site identification
+ * @param func  Callback function pointer
+ * @param aptr  Parameter for the callback function
+ */
+void
+common_on_proximity_schedule(const char *srce, GDestroyNotify func, gpointer aptr)
+{
+    /* In order to execute actions in the requested order,
+     * immediate execution can be allowed only when proximity
+     * sensor state is known and the already queued actions
+     * have been executed.
+     */
+    if( proximity_sensor_actual == COVER_UNDEF ||
+        common_on_proximity_actions ||
+        common_on_proximity_exec_id ) {
+        // TODO: all failures to communicate sensor power up with
+        //       sensorfwd should lead to mce-sensorfw module
+        //       declaring proximity=not-covered, but having an
+        //       explicit timeout here would not hurt ...
+        if( !common_on_proximity_actions )
+            datapipe_exec_full(&proximity_sensor_required_pipe,
+                               PROXIMITY_SENSOR_REQUIRED_ADD
+                               COMMON_ON_DEMAND_TAG);
+
+        common_on_proximity_actions =
+            g_slist_prepend(common_on_proximity_actions,
+                            on_condition_create(srce, func, aptr));
+    }
+    else {
+        func(aptr);
+    }
+}
+
+/** Cancel pending on-proximity callback
+ *
+ * @param srce  Call site identification
+ * @param func  Callback function pointer, or NULL for all
+ * @param aptr  Parameter for the callback function, or NULL for all
+ */
+void
+common_on_proximity_cancel(const char *srce, GDestroyNotify func, gpointer aptr)
+{
+    for( GSList *iter = common_on_proximity_actions; iter; iter = iter->next ) {
+        on_condition_t *item = iter->data;
+
+        if( !item )
+            continue;
+
+        if( !on_condition_matches(item, srce, func, aptr) )
+            continue;
+
+        /* Detach from list and delete.
+         *
+         * Note that the list itself is not garbage collected in order not
+         * to disturb possibly pending execute etc logic -> all iterators
+         * must be prepared to bump into empty links.
+         */
+        iter->data = 0;
+        on_condition_delete(item);
+    }
+}
+
+static void
+common_on_proximity_quit(void)
+{
+    /* Cancel pending "on_condition" actions */
+    g_slist_free_full(common_on_proximity_actions,
+                      on_condition_delete_cb),
+        common_on_proximity_actions = 0;
+
+    /* Do not leave active timers behind */
+    if( common_on_proximity_exec_id ) {
+        g_source_remove(common_on_proximity_exec_id),
+            common_on_proximity_exec_id = 0;
+    }
+}
 
 /* ========================================================================= *
  * DBUS_FUNCTIONS
@@ -579,6 +833,31 @@ EXIT:
 }
 
 /* ------------------------------------------------------------------------- *
+ * proximity_sensor
+ * ------------------------------------------------------------------------- */
+
+/** Change notifications for proximity_sensor_actual
+ */
+static void common_datapipe_proximity_sensor_actual_cb(gconstpointer data)
+{
+    cover_state_t prev = proximity_sensor_actual;
+    proximity_sensor_actual = GPOINTER_TO_INT(data);
+
+    if( proximity_sensor_actual == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "proximity_sensor_actual = %s -> %s",
+            proximity_state_repr(prev),
+            proximity_state_repr(proximity_sensor_actual));
+
+    if( proximity_sensor_actual != COVER_UNDEF )
+        common_on_proximity_exec();
+
+EXIT:
+    return;
+}
+
+/* ------------------------------------------------------------------------- *
  * init/quit
  * ------------------------------------------------------------------------- */
 
@@ -601,6 +880,10 @@ static datapipe_handler_t common_datapipe_handlers[] =
     {
         .datapipe  = &battery_level_pipe,
         .output_cb = common_datapipe_battery_level_cb,
+    },
+    {
+        .datapipe  = &proximity_sensor_actual_pipe,
+        .output_cb = common_datapipe_proximity_sensor_actual_cb,
     },
     // sentinel
     {
@@ -654,4 +937,5 @@ mce_common_quit(void)
     /* remove all handlers */
     common_dbus_quit();
     common_datapipe_quit();
+    common_on_proximity_quit();
 }

@@ -1,6 +1,6 @@
 # Makefile for MCE
 # Copyright © 2004-2011 Nokia Corporation.
-# Copyright (C) 2012-2017 Jolla Ltd.
+# Copyright (C) 2012-2019 Jolla Ltd.
 #
 # @author David Weinehall <david.weinehall@nokia.com>
 # @author Tuomo Tanskanen
@@ -609,6 +609,7 @@ NORMALIZE_USES_SPC =\
 	modules/memnotify.h\
 	modules/packagekit.c\
 	modules/powersavemode.h\
+	modules/proximity.c\
 	modules/proximity.h\
 	modules/radiostates.h\
 	modules/sensor-gestures.c\
@@ -653,7 +654,6 @@ NORMALIZE_USES_TAB =\
 	modules/led.c\
 	modules/led.h\
 	modules/powersavemode.c\
-	modules/proximity.c\
 	modules/radiostates.c\
 	systemui/tklock-dbus-names.h\
 

@@ -4,9 +4,19 @@
  * of the Mode Control Entity
  * <p>
  * Copyright © 2004-2011 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (C) 2012-2019 Jolla Ltd.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
+ * @author Tapio Rantala <ext-tapio.rantala@nokia.com>
+ * @author Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>
+ * @author Jukka Turunen <ext-jukka.t.turunen@nokia.com>
+ * @author Irina Bezruk <ext-irina.bezruk@nokia.com>
+ * @author Kalle Jokiniemi <kalle.jokiniemi@jolla.com>
+ * @author Mika Laitio <lamikr@pilppa.org>
+ * @author Markus Lehtonen <markus.lehtonen@iki.fi>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
+ * @author Vesa Halttunen <vesa.halttunen@jollamobile.com>
+ * @author Andrew den Exter <andrew.den.exter@jolla.com>
  *
  * mce is free software; you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License
@@ -23,6 +33,7 @@
 
 #include "tklock.h"
 
+#include "mce-common.h"
 #include "mce-log.h"
 #include "mce-lib.h"
 #include "mce-io.h"
@@ -71,6 +82,8 @@ typedef enum
 /* ========================================================================= *
  * CONSTANTS
  * ========================================================================= */
+
+#define MODULE_NAME "tklock"
 
 /** Max valid time_t value in milliseconds */
 #define MAX_TICK (INT_MAX * (int64_t)1000)
@@ -170,6 +183,7 @@ typedef enum
 
 static void     tklock_datapipe_system_state_cb(gconstpointer data);
 static void     tklock_datapipe_devicelock_state_cb(gconstpointer data);
+static void     tklock_datapipe_devicelock_state_cb2(gpointer aptr);
 static void     tklock_datapipe_resume_detected_event_cb(gconstpointer data);
 static void     tklock_datapipe_lipstick_service_state_cb(gconstpointer data);
 static void     tklock_datapipe_osupdate_running_cb(gconstpointer data);
@@ -619,10 +633,10 @@ static display_state_t display_state_next = MCE_DISPLAY_UNDEF;
 static call_state_t call_state = CALL_STATE_NONE;
 
 /** Actual proximity state; assume not covered */
-static cover_state_t proximity_sensor_actual = COVER_OPEN;
+static cover_state_t proximity_sensor_actual = COVER_UNDEF;
 
 /** Effective proximity state; assume not covered */
-static cover_state_t proximity_sensor_effective = COVER_OPEN;
+static cover_state_t proximity_sensor_effective = COVER_UNDEF;
 
 /** Lid cover sensor state; assume unkown
  *
@@ -758,13 +772,12 @@ static void tklock_datapipe_devicelock_state_cb(gconstpointer data)
                     "assume fingerprint authentication occurred");
             datapipe_exec_full(&ngfd_event_request_pipe,
                                "unlock_device");
-            if( proximity_sensor_actual != COVER_OPEN ) {
-                mce_log(LL_WARN, "unblank skipped due to proximity sensor");
-                break;
 
-            }
-            mce_datapipe_request_display_state(MCE_DISPLAY_ON);
-            mce_datapipe_request_tklock(TKLOCK_REQUEST_OFF);
+            /* Delay display state / tklock processing until proximity
+             * sensor state is known */
+            common_on_proximity_schedule(MODULE_NAME,
+                                         tklock_datapipe_devicelock_state_cb2,
+                                         0);
             break;
         default:
             break;
@@ -776,6 +789,27 @@ static void tklock_datapipe_devicelock_state_cb(gconstpointer data)
 
 EXIT:
     return;
+}
+
+/** Wait for proximity sensor -callback for fingerprint unlock handling
+ *
+ * @param aptr unused
+ */
+static void tklock_datapipe_devicelock_state_cb2(gpointer aptr)
+{
+    (void)aptr;
+
+    /* Still unlocked ? */
+    if( devicelock_state == DEVICELOCK_STATE_UNLOCKED ) {
+        if( proximity_sensor_actual != COVER_OPEN ) {
+            mce_log(LL_WARN, "unblank skipped due to proximity sensor");
+        }
+        else {
+            mce_datapipe_request_display_state(MCE_DISPLAY_ON);
+            mce_datapipe_request_tklock(TKLOCK_REQUEST_OFF);
+        }
+    }
+
 }
 
 /** Resumed from suspend notification */
@@ -1083,6 +1117,9 @@ static void tklock_datapipe_proximity_update(void)
 
     proximity_sensor_effective = proximity_sensor_actual;
 
+    datapipe_exec_full(&proximity_sensor_effective_pipe,
+                       GINT_TO_POINTER(proximity_sensor_effective));
+
     tklock_datapipe_proximity_eval_led();
     tklock_uiexception_rethink();
     tklock_proxlock_rethink();
@@ -1154,9 +1191,6 @@ static void tklock_datapipe_proximity_sensor_actual_cb(gconstpointer data)
 {
     cover_state_t prev = proximity_sensor_actual;
     proximity_sensor_actual = GPOINTER_TO_INT(data);
-
-    if( proximity_sensor_actual == COVER_UNDEF )
-        proximity_sensor_actual = COVER_OPEN;
 
     if( proximity_sensor_actual == prev )
         goto EXIT;
@@ -2377,7 +2411,7 @@ static datapipe_handler_t tklock_datapipe_handlers[] =
 
 static datapipe_bindings_t tklock_datapipe_bindings =
 {
-    .module   = "tklock",
+    .module   = MODULE_NAME,
     .handlers = tklock_datapipe_handlers,
 };
 
@@ -3132,7 +3166,7 @@ static void tklock_keyboard_slide_opened(void)
         break;
 
     case KBD_OPEN_TRIGGER_NO_PROXIMITY:
-        if( proximity_sensor_actual == COVER_CLOSED ||
+        if( proximity_sensor_actual != COVER_OPEN ||
             lid_sensor_filtered == COVER_CLOSED )
             goto EXIT;
         break;
@@ -3155,6 +3189,20 @@ static void tklock_keyboard_slide_opened(void)
 
 EXIT:
     return;
+}
+
+/** Wait for proximity sensor -callback for keyboard slide handling
+ *
+ * @param aptr unused
+ */
+static void tklock_keyboard_slide_opened_cb(gpointer aptr)
+{
+    (void)aptr;
+
+    /* Slide still open? */
+    if( keyboard_slide_input_state == COVER_OPEN ) {
+        tklock_keyboard_slide_opened();
+    }
 }
 
 static void tklock_keyboard_slide_closed(void)
@@ -3206,7 +3254,9 @@ static void tklock_keyboard_slide_rethink(void)
 {
     switch( keyboard_slide_input_state ) {
     case COVER_OPEN:
-        tklock_keyboard_slide_opened();
+        /* Delay processing until proximity sensor state is known */
+        common_on_proximity_schedule(MODULE_NAME,
+                                     tklock_keyboard_slide_opened_cb, 0);
         break;
 
     case COVER_CLOSED:
@@ -3349,6 +3399,9 @@ tklock_autolock_quit(void)
  * 3) we are not handling call/alarm/etc
  * ========================================================================= */
 
+/** Proximity sensor on-demand tag for proximity locking purposes */
+#define PROXLOC_ON_DEMAND_TAG "proxlock"
+
 /** Delay for enabling tklock from display off when proximity is covered */
 #define PROXLOC_DELAY_MS (3000)
 
@@ -3395,6 +3448,12 @@ static gboolean tklock_proxlock_cb(gpointer aptr)
 
         mce_log(LL_DEBUG, "proxlock timer triggered");
         tklock_proxlock_evaluate();
+
+        /* Timer did not get re-activated, ps not needed anymore */
+        if( !tklock_proxlock_id )
+            datapipe_exec_full(&proximity_sensor_required_pipe,
+                               PROXIMITY_SENSOR_REQUIRED_REM
+                               PROXLOC_ON_DEMAND_TAG);
     }
     return false;
 }
@@ -3406,6 +3465,11 @@ static void tklock_proxlock_disable(void)
     if( tklock_proxlock_id ) {
         g_source_remove(tklock_proxlock_id), tklock_proxlock_id = 0;
         mce_log(LL_DEBUG, "proxlock timer stopped");
+
+        /* Timer canceled, ps not needed anymore */
+        datapipe_exec_full(&proximity_sensor_required_pipe,
+                           PROXIMITY_SENSOR_REQUIRED_REM
+                           PROXLOC_ON_DEMAND_TAG);
     }
 }
 
@@ -3417,6 +3481,10 @@ static void tklock_proxlock_enable(void)
         tklock_proxlock_tick = mce_lib_get_boot_tick() + delay;
         tklock_proxlock_id = g_timeout_add(delay, tklock_proxlock_cb, 0);
         mce_log(LL_DEBUG, "proxlock timer started (%d ms)", delay);
+        /* Timer started, ps is needed */
+        datapipe_exec_full(&proximity_sensor_required_pipe,
+                           PROXIMITY_SENSOR_REQUIRED_ADD
+                           PROXLOC_ON_DEMAND_TAG);
     }
 }
 
@@ -3443,6 +3511,12 @@ static void tklock_proxlock_resume(void)
         mce_log(LL_DEBUG, "adjusting proxlock time after resume (%d ms)", delay);
         tklock_proxlock_id = g_timeout_add(delay, tklock_proxlock_cb, 0);
     }
+
+    /* Timer canceled, ps not needed anymore */
+    if( !tklock_proxlock_id )
+        datapipe_exec_full(&proximity_sensor_required_pipe,
+                           PROXIMITY_SENSOR_REQUIRED_REM
+                           PROXLOC_ON_DEMAND_TAG);
 
 EXIT:
     return;
@@ -3787,7 +3861,7 @@ static void tklock_uiexception_rethink(void)
         else if( lid_sensor_filtered == COVER_CLOSED ) {
             mce_log(LL_NOTICE, "NOT UNBLANKING; lid covered");
         }
-        else if( proximity_sensor_effective == COVER_CLOSED ) {
+        else if( proximity_sensor_effective != COVER_OPEN ) {
             mce_log(LL_NOTICE, "NOT UNBLANKING; proximity covered");
         }
         else if( display_state_curr != MCE_DISPLAY_ON ) {
@@ -7114,6 +7188,8 @@ void mce_tklock_exit(void)
         g_source_remove(tklock_ui_sync_id),
             tklock_ui_sync_id = 0;
     }
+
+    common_on_proximity_cancel(MODULE_NAME, 0, 0);
 
     // FIXME: check that final state is sane
 

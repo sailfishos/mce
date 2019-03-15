@@ -2,7 +2,7 @@
  * @file mce-common.h
  * Header for common state logic for Mode Control Entity
  * <p>
- * Copyright (C) 2017 Jolla Ltd.
+ * Copyright (C) 2017-2019 Jolla Ltd.
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
@@ -23,8 +23,12 @@
 # define MCE_COMMON_H_
 
 # include <stdbool.h>
+# include <glib.h>
 
 bool mce_common_init(void);
 void mce_common_quit(void);
+
+void common_on_proximity_schedule(const char *srce, GDestroyNotify func, gpointer aptr);
+void common_on_proximity_cancel  (const char *srce, GDestroyNotify func, gpointer aptr);
 
 #endif /* MCE_COMMON_H_ */

@@ -3,8 +3,10 @@
  * Headers for the simple filter framework
  * <p>
  * Copyright © 2007 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (C) 2014-2019 Jolla Ltd.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
+ * @author: Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
  * mce is free software; you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License
@@ -193,6 +195,18 @@ void  mce_datapipe_generate_inactivity (void);
                        GINT_TO_POINTER(tklock_request));\
 }while(0)
 
+/** Add reason -prefix for executing proximity_sensor_required_pipe request
+ *
+ * See #proximity_sensor_required_pipe for details.
+ */
+#define PROXIMITY_SENSOR_REQUIRED_ADD "+"
+
+/** Remove reason -prefix for executing proximity_sensor_required_pipe request
+ *
+ * See #proximity_sensor_required_pipe for details.
+ */
+#define PROXIMITY_SENSOR_REQUIRED_REM "-"
+
 /* ========================================================================= *
  * Datapipes
  * ========================================================================= */
@@ -223,6 +237,9 @@ extern datapipe_t lid_sensor_actual_pipe;
 extern datapipe_t lid_sensor_filtered_pipe;
 extern datapipe_t lens_cover_state_pipe;
 extern datapipe_t proximity_sensor_actual_pipe;
+extern datapipe_t proximity_sensor_effective_pipe;
+extern datapipe_t proximity_sensor_required_pipe;
+extern datapipe_t proximity_blanked_pipe;
 extern datapipe_t light_sensor_actual_pipe;
 extern datapipe_t light_sensor_filtered_pipe;
 extern datapipe_t light_sensor_poll_request_pipe;
@@ -267,7 +284,6 @@ extern datapipe_t touch_grab_active_pipe;
 extern datapipe_t keypad_grab_wanted_pipe;
 extern datapipe_t keypad_grab_active_pipe;
 extern datapipe_t music_playback_ongoing_pipe;
-extern datapipe_t proximity_blanked_pipe;
 extern datapipe_t fpd_service_state_pipe;
 extern datapipe_t fpstate_pipe;
 extern datapipe_t enroll_in_progress_pipe;
