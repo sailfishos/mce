@@ -1,3 +1,27 @@
+mce (1.100.0) precise; urgency=low
+
+  * [proximity] Normalize code style
+  * [proximity] Normalize datapipe tracking setup
+  * [proximity] Normalize settings tracking
+  * [doubletap] Normalize naming of variables used for datapipe tracking
+  * [powerkey] Do not treat ngfd request datapipe as having a state
+  * [powerkey] Normalize function naming
+  * [proximity] On-demand proximity sensor activation. Fixes JB#34789 MER#1562
+  * [proximity] Do not assume unknown sensor state equals not-covered
+  * [doubletap] Do not enable doubletap detection when proximity state is unknown
+  * [fingerprint] Do not enable fingerprint wakeups when p-sensor state is unknown
+  * [powerkey] Do not reset p-sensor override when sensor state is unknown
+  * [powerkey] Wait for p-sensor state before executing powerkey/gesture actions
+  * [tklock] Do not allow display wakeups when p-sensor state is unknown
+  * [tklock] Wait for p-sensor state before acting on fingerprint unlock
+  * [tklock] Wait for p-sensor state before acting on keyboard slide open
+  * [tklock] Keep p-sensor active while handling proximity locking
+  * [display] Ignore unblank D-Bus requests when p-sensor state is unknown
+  * [display] Wait for p-sensor state before acting on D-Bus requests
+  * [examples] Add config file to enable on-demand proximity sensor use
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 15 Mar 2019 12:34:29 +0200
+
 mce (1.99.10) precise; urgency=low
 
   * [datapipe] Make datapipe_t structure opaque
