@@ -546,8 +546,12 @@ enum
 enum
 {
     GOVERNOR_UNSET       = 0,
-    GOVERNOR_DEFAULT     = 1,
+    GOVERNOR_PERFORMANCE = 1,
     GOVERNOR_INTERACTIVE = 2,
+    GOVERNOR_INACTIVE    = 3,
+    GOVERNOR_POWERSAVE   = 4,
+    GOVERNOR_AUTOMATIC   = 5,
+    GOVERNOR_NUMOF
 };
 
 /** Select cpu scaling governor to use when device is in user mode
