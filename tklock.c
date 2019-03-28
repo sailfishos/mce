@@ -218,6 +218,7 @@ static void     tklock_datapipe_keyboard_slide_input_state_cb(gconstpointer cons
 static void     tklock_datapipe_keyboard_slide_output_state_cb(gconstpointer const data);
 static void     tklock_datapipe_keyboard_available_state_cb(gconstpointer const data);
 static void     tklock_datapipe_light_sensor_poll_request_cb(gconstpointer const data);
+static void     tklock_datapipe_topmost_window_pid_cb(gconstpointer data);
 static void     tklock_datapipe_light_sensor_actual_cb(gconstpointer data);
 static void     tklock_datapipe_lid_sensor_is_working_cb(gconstpointer data);
 static void     tklock_datapipe_lid_sensor_actual_cb(gconstpointer data);
@@ -230,6 +231,8 @@ static void     tklock_datapipe_init_done_cb(gconstpointer data);
 static bool     tklock_datapipe_in_tklock_submode(void);
 static void     tklock_datapipe_set_tklock_submode(bool lock);
 static void     tklock_datapipe_set_devicelock_state(devicelock_state_t state);
+static void     tklock_datapipe_rethink_interaction_expected(void);
+static void     tklock_datapipe_update_interaction_expected(bool expected);
 
 static void     tklock_datapipe_init(void);
 static void     tklock_datapipe_quit(void);
@@ -621,6 +624,12 @@ static output_state_t mce_keypad_sysfs_disable_output =
  * DATAPIPE VALUES AND TRIGGERS
  * ========================================================================= */
 
+/** Cached submode_pipe state; assume invalid */
+static submode_t submode = MCE_SUBMODE_INVALID;
+
+/** Cached PID of process owning the topmost window on UI */
+static int topmost_window_pid = -1;
+
 /** Cached init_done state; assume unknown */
 static tristate_t init_done = TRISTATE_UNKNOWN;
 
@@ -977,6 +986,8 @@ static void tklock_datapipe_display_state_curr_cb(gconstpointer data)
     mce_log(LL_DEBUG, "display_state_curr = %s -> %s",
             display_state_repr(prev),
             display_state_repr(display_state_curr));
+
+    tklock_datapipe_rethink_interaction_expected();
 
     tklock_lidfilter_rethink_allow_close();
 
@@ -1640,6 +1651,9 @@ static void tklock_datapipe_tklock_request_cb(gconstpointer data)
 /** Interaction expected; assume false */
 static bool interaction_expected = false;
 
+/** Interaction expected; unfiltered info from compositor */
+static bool interaction_expected_raw = false;
+
 /** Change notifications for interaction_expected_pipe
  */
 static void tklock_datapipe_interaction_expected_cb(gconstpointer data)
@@ -1674,8 +1688,75 @@ EXIT:
     return;
 }
 
-/** Cached submode_pipe state; assume invalid */
-static submode_t submode = MCE_SUBMODE_INVALID;
+/** Re-evaluate effective interaction_expected value
+ *
+ * The notifications from compositor side do not always make
+ * sense from mce point of view.
+ *
+ * This function:
+ * - Normalizes the interaction_expected value by filtering out
+ *   obviously impossible situations such as having interacation
+ *   expected while display is powered off.
+ * - Should be called whenever state variables used in the
+ *   filtering have changed.
+ */
+static void tklock_datapipe_rethink_interaction_expected(void)
+{
+    bool use = interaction_expected_raw;
+
+    switch( display_state_curr ) {
+    case MCE_DISPLAY_ON:
+    case MCE_DISPLAY_DIM:
+        /* Display is in state that allows interaction */
+        if( submode & MCE_SUBMODE_TKLOCK ) {
+            /* Lockscreen active
+             * -> use reported state
+             */
+        }
+        else if( topmost_window_pid == -1 ) {
+            /* Home screen active
+             * -> use reported state
+             */
+        }
+        else {
+            /* Application active
+             * -> ignore reported state
+             */
+            use = true;
+        }
+        break;
+    default:
+        /* Display is not in state allowing interaction
+         * -> ignore reported state */
+        use = false;
+        break;
+    }
+
+    if( interaction_expected != use )
+        datapipe_exec_full(&interaction_expected_pipe, GINT_TO_POINTER(use));
+}
+
+/** Update raw interaction expected state
+ *
+ * Updates cached raw value and re-calculates effective value.
+ *
+ * @param expected  state as reported by compositor
+ */
+static void tklock_datapipe_update_interaction_expected(bool expected)
+{
+    if( interaction_expected_raw == expected )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "interaction_expected_raw: %d -> %d",
+            interaction_expected_raw, expected);
+
+    interaction_expected_raw = expected;
+    tklock_datapipe_rethink_interaction_expected();
+
+EXIT:
+    return;
+
+}
 
 /** Filter tklock submode changes
  *
@@ -1732,6 +1813,8 @@ static void tklock_datapipe_submode_cb(gconstpointer data)
     // skip the rest if tklock did not change
     if( !((prev ^ submode) & MCE_SUBMODE_TKLOCK) )
         goto EXIT;
+
+    tklock_datapipe_rethink_interaction_expected();
 
     if( submode & MCE_SUBMODE_TKLOCK ) {
         // tklock added
@@ -1943,6 +2026,26 @@ tklock_datapipe_light_sensor_poll_request_cb(gconstpointer const data)
      * plugin - in which case we see a false->false transition
      * here at datapipe output trigger callback. */
     tklock_lidfilter_rethink_als_poll();
+}
+
+/** Change notifications for topmost_window_pid_pipe
+ */
+static void
+tklock_datapipe_topmost_window_pid_cb(gconstpointer data)
+{
+    int prev = topmost_window_pid;
+    topmost_window_pid = GPOINTER_TO_INT(data);
+
+    if( prev == topmost_window_pid )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "topmost_window_pid: %d -> %d",
+            prev, topmost_window_pid);
+
+    tklock_datapipe_rethink_interaction_expected();
+
+EXIT:
+    return;
 }
 
 /** Raw ambient light sensor state; assume unknown */
@@ -2390,6 +2493,10 @@ static datapipe_handler_t tklock_datapipe_handlers[] =
     {
         .datapipe  = &light_sensor_poll_request_pipe,
         .output_cb = tklock_datapipe_light_sensor_poll_request_cb,
+    },
+    {
+        .datapipe  = &topmost_window_pid_pipe,
+        .output_cb = tklock_datapipe_topmost_window_pid_cb,
     },
 
     // input triggers
@@ -6379,8 +6486,7 @@ static gboolean tklock_dbus_interaction_expected_cb(DBusMessage *const msg)
     }
 
     mce_log(LL_DEBUG, "received interaction expected signal: state=%d", arg);
-    datapipe_exec_full(&interaction_expected_pipe,
-                       GINT_TO_POINTER(arg));
+    tklock_datapipe_update_interaction_expected(arg);
 
 EXIT:
     dbus_error_free(&err);
