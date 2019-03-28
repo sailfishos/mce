@@ -227,7 +227,6 @@ common_on_proximity_exec_cb(gpointer aptr)
                            COMMON_ON_DEMAND_TAG);
     }
 
-EXIT:
     if( result == G_SOURCE_REMOVE )
         common_on_proximity_exec_id = 0;
 

@@ -478,6 +478,7 @@ static void  evin_datapipe_proximity_sensor_actual_cb(gconstpointer data);
 static void  evin_datapipe_lid_sensor_filtered_cb    (gconstpointer data);
 static void  evin_datapipe_topmost_window_pid_cb     (gconstpointer data);
 static void  evin_datapipe_call_state_cb             (gconstpointer data);
+static void  evin_datapipe_interaction_expected_cb   (gconstpointer data);
 static void  evin_datapipe_alarm_ui_state_cb         (gconstpointer data);
 static void  evin_datapipe_init                      (void);
 static void  evin_datapipe_quit                      (void);
@@ -525,6 +526,9 @@ static alarm_ui_state_t alarm_ui_state = MCE_ALARM_UI_OFF_INT32;
 
 /** Cached call state */
 static call_state_t call_state = CALL_STATE_INVALID;
+
+/** Cached Interaction expected state */
+static bool interaction_expected = false;
 
 /* ========================================================================= *
  * GPIO_KEYS
@@ -2210,9 +2214,6 @@ evin_iomon_keypress_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
             key_fn_down = (ev->value != 0);
         }
         else if( ev->code == KEY_ESC ) {
-            bool display_on = (display_state_curr == MCE_DISPLAY_ON ||
-                               display_state_curr == MCE_DISPLAY_DIM);
-            bool app_active = (topmost_window_pid != -1);
             bool alarm_ringing = (alarm_ui_state == MCE_ALARM_UI_RINGING_INT32 ||
                                   alarm_ui_state == MCE_ALARM_UI_VISIBLE_INT32);
             bool incoming_call = (call_state == CALL_STATE_RINGING);
@@ -2225,8 +2226,9 @@ evin_iomon_keypress_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
              * escape key for silencing alarms / calls without need
              * for pressing the meta key.
              */
-            bool allow_trap = (key_fn_down || !display_on || !app_active ||
-                               alarm_ringing || incoming_call);
+
+            bool allow_trap = (key_fn_down || !interaction_expected ||
+                               incoming_call || alarm_ringing);
 
             if( ev->value != 0 && allow_trap ) {
                 /* Press / repeat event while trapping allowed */
@@ -4066,6 +4068,23 @@ EXIT:
     return;
 }
 
+/** Change notifications for interaction_expected_pipe
+ */
+static void evin_datapipe_interaction_expected_cb(gconstpointer data)
+{
+    bool prev = interaction_expected;
+    interaction_expected = GPOINTER_TO_INT(data);
+
+    if( prev == interaction_expected )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "interaction_expected: %d -> %d",
+            prev, interaction_expected);
+
+EXIT:
+    return;
+}
+
 /** Array of datapipe handlers */
 static datapipe_handler_t evin_datapipe_handlers[] =
 {
@@ -4113,6 +4132,10 @@ static datapipe_handler_t evin_datapipe_handlers[] =
     {
         .datapipe  = &call_state_pipe,
         .output_cb = evin_datapipe_call_state_cb,
+    },
+    {
+        .datapipe  = &interaction_expected_pipe,
+        .output_cb = evin_datapipe_interaction_expected_cb,
     },
     // sentinel
     {
