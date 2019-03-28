@@ -185,16 +185,20 @@ static void     tklock_datapipe_system_state_cb(gconstpointer data);
 static void     tklock_datapipe_devicelock_state_cb(gconstpointer data);
 static void     tklock_datapipe_devicelock_state_cb2(gpointer aptr);
 static void     tklock_datapipe_resume_detected_event_cb(gconstpointer data);
+static void     tklock_datapipe_devicelock_service_state_cb(gconstpointer data);
 static void     tklock_datapipe_lipstick_service_state_cb(gconstpointer data);
 static void     tklock_datapipe_osupdate_running_cb(gconstpointer data);
 static void     tklock_datapipe_shutting_down_cb(gconstpointer data);
 static void     tklock_datapipe_display_state_curr_cb(gconstpointer data);
+static void     tklock_datapipe_display_state_next_cb(gconstpointer data);
+static void     tklock_datapipe_proximity_eval_led(void);
 static void     tklock_datapipe_proximity_update(void);
 static gboolean tklock_datapipe_proximity_uncover_cb(gpointer data);
 static void     tklock_datapipe_proximity_uncover_cancel(void);
 static void     tklock_datapipe_proximity_uncover_schedule(void);
 static void     tklock_datapipe_proximity_sensor_actual_cb(gconstpointer data);
 static void     tklock_datapipe_call_state_cb(gconstpointer data);
+static void     tklock_datapipe_music_playback_ongoing_cb(gconstpointer data);
 static void     tklock_datapipe_alarm_ui_state_cb(gconstpointer data);
 static void     tklock_datapipe_charger_state_cb(gconstpointer data);
 static void     tklock_datapipe_battery_status_cb(gconstpointer data);
@@ -206,6 +210,7 @@ static void     tklock_datapipe_uiexception_type_cb(gconstpointer data);
 static void     tklock_datapipe_audio_route_cb(gconstpointer data);
 static void     tklock_datapipe_tklock_request_cb(gconstpointer data);
 static void     tklock_datapipe_interaction_expected_cb(gconstpointer data);
+static gpointer tklock_datapipe_submode_filter_cb(gpointer data);
 static void     tklock_datapipe_submode_cb(gconstpointer data);
 static void     tklock_datapipe_lockkey_state_cb(gconstpointer const data);
 static void     tklock_datapipe_heartbeat_event_cb(gconstpointer data);
@@ -218,6 +223,7 @@ static void     tklock_datapipe_lid_sensor_is_working_cb(gconstpointer data);
 static void     tklock_datapipe_lid_sensor_actual_cb(gconstpointer data);
 static void     tklock_datapipe_lid_sensor_filtered_cb(gconstpointer data);
 static void     tklock_datapipe_lens_cover_state_cb(gconstpointer data);
+static bool     tklock_touch_activity_event_p(const struct input_event *ev);
 static void     tklock_datapipe_user_activity_event_cb(gconstpointer data);
 static void     tklock_datapipe_init_done_cb(gconstpointer data);
 
@@ -270,6 +276,9 @@ static void              tklock_lidpolicy_rethink             (void);
 
 // keyboard slide state machine
 
+static void     tklock_keyboard_slide_opened(void);
+static void     tklock_keyboard_slide_opened_cb(gpointer aptr);
+static void     tklock_keyboard_slide_closed(void);
 static void     tklock_keyboard_slide_rethink(void);
 
 // autolock state machine
@@ -342,6 +351,10 @@ static void     tklock_dtcalib_stop(void);
 
 static void     tklock_setting_sanitize_lid_open_actions(void);
 static void     tklock_setting_sanitize_lid_close_actions(void);
+static void     tklock_setting_sanitize_kbd_open_trigger(void);
+static void     tklock_setting_sanitize_kbd_open_actions(void);
+static void     tklock_setting_sanitize_kbd_close_trigger(void);
+static void     tklock_setting_sanitize_kbd_close_actions(void);
 
 static void     tklock_setting_cb(GConfClient *const gcc, const guint id, GConfEntry *const entry, gpointer const data);
 
@@ -360,6 +373,7 @@ static bool     tklock_ui_notify_must_be_delayed(void);
 static gboolean tklock_ui_notify_end_cb(gpointer data);
 static gboolean tklock_ui_notify_beg_cb(gpointer data);
 static void     tklock_ui_notify_schdule(void);
+static gboolean tklock_ui_sync_cb(gpointer aptr);
 static void     tklock_ui_notify_cancel(void);
 
 static void     tklock_ui_eat_event(void);
@@ -390,6 +404,8 @@ static gboolean tklock_dbus_keyboard_available_state_get_req_cb(DBusMessage *con
 static gboolean tklock_dbus_send_tklock_mode(DBusMessage *const method_call);
 
 static gboolean tklock_dbus_mode_get_req_cb(DBusMessage *const msg);
+static tklock_request_t tklock_dbus_sanitize_requested_mode(tklock_request_t state);
+
 static gboolean tklock_dbus_mode_change_req_cb(DBusMessage *const msg);
 static gboolean tklock_dbus_interaction_expected_cb(DBusMessage *const msg);
 static gboolean tklock_dbus_systemui_callback_cb(DBusMessage *const msg);
