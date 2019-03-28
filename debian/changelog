@@ -1,3 +1,9 @@
+mce (1.100.1) precise; urgency=low
+
+  * [dbus] Stricten org.nemomobile.compositor D-Bus policy. JB#45281
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 28 Mar 2019 08:38:20 +0200
+
 mce (1.100.0) precise; urgency=low
 
   * [proximity] Normalize code style
