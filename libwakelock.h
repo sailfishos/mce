@@ -1,7 +1,7 @@
 /* ------------------------------------------------------------------------- *
  * Copyright (C) 2012 Jolla Ltd.
  * Contact: Simo Piiroinen <simo.piiroinen@jollamobile.com>
- * License: LGPLv2
+ * License: LGPLv2.1
  * ------------------------------------------------------------------------- */
 
 #ifndef LIBWAKELOCK_H_

@@ -4,7 +4,7 @@
 # ----------------------------------------------------------------------------
 # Copyright (C) 2012 Jolla Ltd.
 # Contact: Simo Piiroinen <simo.piiroinen@jollamobile.com>
-# License: GPLv2
+# License: GPLv2.1
 # ----------------------------------------------------------------------------
 
 import sys,os

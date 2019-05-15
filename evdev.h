@@ -1,7 +1,7 @@
 /* ------------------------------------------------------------------------- *
  * Copyright (C) 2012-2013 Jolla Ltd.
  * Contact: Simo Piiroinen <simo.piiroinen@jollamobile.com>
- * License: GPLv2
+ * License: GPLv2.1
  * ------------------------------------------------------------------------- */
 
 #ifndef EVDEV_H_
