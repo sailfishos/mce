@@ -3,6 +3,11 @@
  * Defines used when communicating with SystemUI TKLock
  * <p>
  * Copyright © 2005-2011 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (C) 2014-2019 Jolla Ltd.
+ *
+ * @author David Weinehall <david.weinehall@nokia.com>
+ * @author Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>
+ * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
  * These headers are free software; you can redistribute them
  * and/or modify them under the terms of the GNU Lesser General Public

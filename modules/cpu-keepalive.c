@@ -1,14 +1,8 @@
-/* ------------------------------------------------------------------------- *
- * Copyright (C) 2013 Jolla Ltd.
- * Contact: Simo Piiroinen <simo.piiroinen@jollamobile.com>
- * License: LGPLv2
- * ------------------------------------------------------------------------- */
-
 /**
  * @file cpu-keepalive.c
  * cpu-keepalive module -- this implements late suspend blocking for MCE
  * <p>
- * Copyright © 2013 Jolla Ltd.
+ * Copyright (C) 2013-2019 Jolla Ltd.
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *

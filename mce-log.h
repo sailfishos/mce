@@ -3,8 +3,10 @@
  * Headers for the logging functions for Mode Control Entity
  * <p>
  * Copyright © 2006-2007, 2009-2010 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (C) 2012-2019 Jolla Ltd.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
+ * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
  * mce is free software; you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License

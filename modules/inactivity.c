@@ -3,9 +3,10 @@
  * Inactivity module -- this implements inactivity logic for MCE
  * <p>
  * Copyright © 2007-2011 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright © 2015      Jolla Ltd.
+ * Copyright (C) 2013-2019 Jolla Ltd.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
+ * @author Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
  * mce is free software; you can redistribute it and/or modify

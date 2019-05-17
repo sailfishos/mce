@@ -5,10 +5,12 @@
  * and MCE (the Mode Control Entity)
  * <p>
  * Copyright © 2004-2011 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright © 2015      Jolla Ltd.
+ * Copyright © 2012-2019 Jolla Ltd.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Ismo Laitinen <ismo.laitinen@nokia.com>
+ * @author Tapio Rantala <ext-tapio.rantala@nokia.com>
+ * @author Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
  * mce is free software; you can redistribute it and/or modify

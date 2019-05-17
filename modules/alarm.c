@@ -3,8 +3,11 @@
  * Alarm interface module for the Mode Control Entity
  * <p>
  * Copyright © 2005-2009 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (C) 2013-2019 Jolla Ltd.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
+ * @author Jukka Turunen <ext-jukka.t.turunen@nokia.com>
+ * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
  * mce is free software; you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License
