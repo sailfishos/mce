@@ -3,8 +3,10 @@
  * Headers for the mode transition component of the Mode Control Entity
  * <p>
  * Copyright © 2004-2010 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (C) 2018-2019 Jolla Ltd.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
+ * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
  * mce is free software; you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License

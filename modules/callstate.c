@@ -3,8 +3,10 @@
  * Call state module -- this handles the call state for MCE
  * <p>
  * Copyright © 2008-2009 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (C) 2012-2019 Jolla Ltd.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
+ * @author Kalle Jokiniemi <kalle.jokiniemi@jolla.com>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
  * mce is free software; you can redistribute it and/or modify

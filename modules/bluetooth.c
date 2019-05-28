@@ -2,7 +2,7 @@
  * @file bluetooth.c
  * Bluetooth module -- this implements bluez tracking for MCE
  * <p>
- * Copyright (C) 2014 Jolla Ltd
+ * Copyright (C) 2014-2019 Jolla Ltd.
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *

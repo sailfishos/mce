@@ -3,6 +3,13 @@
  * D-Bus Interface for communicating with SystemUI
  * <p>
  * Copyright © 2004-2011 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (C) 2012-2019 Jolla Ltd.
+ *
+ * @author David Weinehall <david.weinehall@nokia.com>
+ * @author Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>
+ * @author Vesa Halttunen <vesa.halttunen@jollamobile.com>
+ * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
+ * @author Andrew den Exter <andrew.den.exter@jolla.com>
  *
  * These headers are free software; you can redistribute them
  * and/or modify them under the terms of the GNU Lesser General Public

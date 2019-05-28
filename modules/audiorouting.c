@@ -3,6 +3,7 @@
  * Audio routing module -- this listens to the audio routing
  * <p>
  * Copyright © 2009-2010 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (C) 2014-2019 Jolla Ltd.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
