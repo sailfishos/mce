@@ -1,3 +1,10 @@
+mce (1.100.3) precise; urgency=low
+
+  * [mce] Unify license blurbs. JB#33684
+  * [mce] Update git url to git.sailfishos.org. JB#33684
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 28 May 2019 09:25:45 +0300
+
 mce (1.100.2) precise; urgency=low
 
   * [common] Remove unused EXIT label
