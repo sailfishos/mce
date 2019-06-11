@@ -288,6 +288,7 @@ static void  fingerprint_datapipe_display_state_next_cb      (gconstpointer data
 static void  fingerprint_datapipe_interaction_expected_cb    (gconstpointer data);
 static void  fingerprint_datapipe_topmost_window_pid_cb      (gconstpointer data);
 static void  fingerprint_datapipe_proximity_sensor_actual_cb (gconstpointer data);
+static void  fingerprint_datapipe_lid_sensor_filtered_cb     (gconstpointer data);
 static void  fingerprint_datapipe_keypress_event_cb          (gconstpointer const data);
 static void  fingerprint_datapipe_init                       (void);
 static void  fingerprint_datapipe_quit                       (void);
@@ -378,6 +379,9 @@ static int topmost_window_pid = -1;
 
 /** Cached proximity sensor state */
 static cover_state_t proximity_sensor_actual = COVER_UNDEF;
+
+/** Lid cover policy state; assume unknown */
+static cover_state_t lid_sensor_filtered = COVER_UNDEF;
 
 /** Cached power key pressed down state */
 static bool powerkey_pressed = false;
@@ -1576,6 +1580,27 @@ EXIT:
     return;
 }
 
+/** Change notifications from lid_sensor_filtered_pipe
+ */
+static void
+fingerprint_datapipe_lid_sensor_filtered_cb(gconstpointer data)
+{
+    cover_state_t prev = lid_sensor_filtered;
+    lid_sensor_filtered = GPOINTER_TO_INT(data);
+
+    if( lid_sensor_filtered == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "lid_sensor_filtered = %s -> %s",
+            cover_state_repr(prev),
+            cover_state_repr(lid_sensor_filtered));
+
+    fpwakeup_schedule_rethink();
+
+EXIT:
+    return;
+}
+
 /** Datapipe trigger for power key events
  *
  * @param data A pointer to the input_event struct
@@ -1662,6 +1687,10 @@ static datapipe_handler_t fingerprint_datapipe_handlers[] =
     {
         .datapipe  = &proximity_sensor_actual_pipe,
         .output_cb = fingerprint_datapipe_proximity_sensor_actual_cb,
+    },
+    {
+        .datapipe  = &lid_sensor_filtered_pipe,
+        .output_cb = fingerprint_datapipe_lid_sensor_filtered_cb,
     },
     // sentinel
     {
@@ -2419,8 +2448,15 @@ fpwakeup_evaluate_allowed(void)
     case FPWAKEUP_ENABLE_NEVER:
         goto EXIT;
     case FPWAKEUP_ENABLE_ALWAYS:
+        /* Lid must not be closed */
+        if( lid_sensor_filtered == COVER_CLOSED )
+            goto EXIT;
+        /* Proximity sensor state: don't care */
         break;
     case FPWAKEUP_ENABLE_NO_PROXIMITY:
+        /* Lid must not be closed */
+        if( lid_sensor_filtered == COVER_CLOSED )
+            goto EXIT;
         /* Proximity sensor must not be covered or unknown */
         if( proximity_sensor_actual != COVER_OPEN )
             goto EXIT;
