@@ -25,6 +25,7 @@
 #include "../mce-log.h"
 #include "../mce-dbus.h"
 #include "../mce-setting.h"
+#include "../evdev.h"
 
 #include <linux/input.h>
 
@@ -2651,6 +2652,20 @@ fpwakeup_trigger(void)
 
         /* Exit from lockscreen */
         mce_datapipe_request_tklock(TKLOCK_REQUEST_OFF);
+
+        /* Deactivate type=6 led patterns (e.g. sms/email notifications)
+         * by signaling "true user activity" via synthetized gesture
+         * input event. (The event type ought not matter, but using
+         * double tap event is somewhat logical and does not cause side
+         * effects in the few places where the event type is actually
+         * checked.)
+         */
+        const struct input_event ev = {
+            .type  = EV_MSC,
+            .code  = MSC_GESTURE,
+            .value = GESTURE_DOUBLETAP | GESTURE_SYNTHESIZED,
+        };
+        datapipe_exec_full(&user_activity_event_pipe, &ev);
     }
 }
 
