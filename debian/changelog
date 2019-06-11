@@ -1,3 +1,9 @@
+mce (1.100.4) precise; urgency=low
+
+  * [fingerprint] Disable fp wakeup when lid is closed. Fixes JB#46167
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 11 Jun 2019 13:30:54 +0300
+
 mce (1.100.3) precise; urgency=low
 
   * [mce] Unify license blurbs. JB#33684
