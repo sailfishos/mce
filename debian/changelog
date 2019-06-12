@@ -1,3 +1,10 @@
+mce (1.100.5) precise; urgency=low
+
+  * [fingerprint] Disable sms/email led on fp wakeup. Fixes JB#43914
+  * [tklock] Do not unblank due to open cover on mce startup. Fixes JB#41255
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 12 Jun 2019 11:16:44 +0300
+
 mce (1.100.4) precise; urgency=low
 
   * [fingerprint] Disable fp wakeup when lid is closed. Fixes JB#46167
