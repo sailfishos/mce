@@ -3181,6 +3181,9 @@ static void tklock_lidfilter_rethink_als_state(void)
  */
 static void tklock_lidpolicy_rethink(void)
 {
+    /* We have not seen COVER_CLOSED state yet */
+    static bool lid_has_been_closed = false;
+
     /* Assume lid is neither open nor closed */
     cover_state_t action = COVER_UNDEF;
 
@@ -3206,6 +3209,11 @@ static void tklock_lidpolicy_rethink(void)
         action = COVER_OPEN;
     }
 
+    /* To avoid unblanking on mce restart while lid is open, stay in
+     * undecided state until we have observed lid closed state too. */
+    if( action == COVER_OPEN && !lid_has_been_closed )
+        action = COVER_UNDEF;
+
     /* Skip the rest if there is no change */
     if( lid_sensor_filtered == action )
         goto EXIT;
@@ -3221,6 +3229,9 @@ static void tklock_lidpolicy_rethink(void)
     /* Then execute the required actions */
     switch( action ) {
     case COVER_CLOSED:
+        /* Allow unblanking when lid is opened again. */
+        lid_has_been_closed = true;
+
         /* Blank display + lock ui */
         if( tklock_lid_close_actions != LID_CLOSE_ACTION_DISABLED ) {
             mce_log(LL_DEVEL, "lid closed - blank");
