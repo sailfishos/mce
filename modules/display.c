@@ -154,6 +154,19 @@
  */
 #define COMPOSITOR_STM_DBUS_RETRY_DELAY 5000
 
+/** How long hiding applications is allowed to take on entry to LPM
+ *
+ * The LPM UI is effectively the same as lockscreen. If some application
+ * remains on top after LPM activation, we have ghost UI instead of LPM.
+ *
+ * The known problem spot is: Call UI after ending a call.
+ *
+ * The delay should be long enough not to cause false positives, and
+ * short enough not to leave users too much time to try to interact
+ * with an application that is not going to get any touch events.
+ */
+#define LPM_SANITIZE_DELAY 600 // [ms]
+
 /* ========================================================================= *
  * TYPEDEFS
  * ========================================================================= */
@@ -431,6 +444,15 @@ static void                mdy_datapipe_quit(void);
  * ------------------------------------------------------------------------- */
 
 static void                mdy_fbdev_rethink(void);
+
+/* ------------------------------------------------------------------------- *
+ * LOW_POWER_MODE
+ * ------------------------------------------------------------------------- */
+
+static bool                mdy_lpm_allowed(void);
+static gboolean            mdy_lpm_sanitize_cb(gpointer aptr);
+static void                mdy_lpm_schedule_sanitize(void);
+static void                mdy_lpm_cancel_sanitize(void);
 
 /* ------------------------------------------------------------------------- *
  * HIGH_BRIGHTNESS_MODE
@@ -1356,6 +1378,9 @@ xlat(int src_lo, int src_hi, int dst_lo, int dst_hi, int val)
  * DATAPIPE_TRACKING
  * ========================================================================= */
 
+/** Cached exceptional ui state */
+static uiexception_type_t uiexception_type = UIEXCEPTION_TYPE_NONE;
+
 /** Cached PID of process owning the topmost window on UI */
 static int topmost_window_pid = -1;
 
@@ -1545,8 +1570,7 @@ static gpointer mdy_datapipe_display_state_filter_cb(gpointer data)
 
     case MCE_DISPLAY_LPM_OFF:
     case MCE_DISPLAY_LPM_ON:
-        if( lipstick_service_state == SERVICE_STATE_RUNNING &&
-            mdy_use_low_power_mode && mdy_low_power_mode_supported )
+        if( mdy_lpm_allowed() )
             break;
 
         mce_log(LL_DEBUG, "reject low power mode display request");
@@ -1653,6 +1677,10 @@ static void mdy_datapipe_display_state_curr_cb(gconstpointer data)
     if( display_state_curr == prev )
         goto EXIT;
 
+    /* Entered (visible) LPM state -> schedule sanity check */
+    if( display_state_curr == MCE_DISPLAY_LPM_ON  )
+        mdy_lpm_schedule_sanitize();
+
     mdy_statistics_update();
     mdy_blanking_pause_evaluate_allowed();
     mdy_blanking_inhibit_schedule_broadcast();
@@ -1674,6 +1702,11 @@ static void mdy_datapipe_display_state_next_cb(gconstpointer data)
 
     if( display_state_next == prev )
         goto EXIT;
+
+    /* Leaving LPM state -> sanity check no longer needed */
+    if( display_state_next != MCE_DISPLAY_LPM_ON &&
+        display_state_next != MCE_DISPLAY_LPM_OFF )
+        mdy_lpm_cancel_sanitize();
 
     mdy_ui_dimming_rethink();
 
@@ -1834,9 +1867,6 @@ static void mdy_datapipe_charger_state_cb(gconstpointer data)
 EXIT:
     return;
 }
-
-/** Cached exceptional ui state */
-static uiexception_type_t uiexception_type = UIEXCEPTION_TYPE_NONE;
 
 /** Handle uiexception_type_pipe notifications
  */
@@ -2317,6 +2347,111 @@ EXIT:
         mce_fbdev_close();
     else
         mce_fbdev_open();
+}
+
+/* ========================================================================= *
+ * LOW_POWER_MODE
+ * ========================================================================= */
+
+/** Predicate for: Entering LPM display states is allowed
+ *
+ * Entering LPM display states happens in co-operation between
+ * mce and lipstick, via asynchronous D-Bus IPC.
+ *
+ * There are some situations where we know that entering LPM
+ * just wont be possible - this function is used for detecting
+ * such situations and denying attempts globally already at
+ * display state request filtering stage.
+ *
+ * @see #mdy_datapipe_display_state_filter_cb()
+ *
+ * Additionally we can bump into situations where it looks like
+ * entering LPM is ok, but UI side does not make the necessary
+ * transitions - these are handled by starting a timer on entry
+ * to MCE_DISPLAY_LPM_ON and checking relevant state data after
+ * a brief delay (or cancelling the checkup upon leaving LPM).
+ *
+ * @see #mdy_datapipe_display_state_curr_cb()
+ * @see #mdy_datapipe_display_state_next_cb()
+ *
+ * @return true if entering LPM states is allowed, false otherwise
+ */
+static bool mdy_lpm_allowed(void)
+{
+    bool allowed = false;
+
+    /* Feature must be enabled and supported */
+    if( !mdy_use_low_power_mode || !mdy_low_power_mode_supported )
+        goto EXIT;
+
+    /* Lipstick must be running */
+    if( lipstick_service_state != SERVICE_STATE_RUNNING )
+        goto EXIT;
+
+    /* Since call and alarm UIs are layered above lockscreen,
+     * they are mutually exclusive with lpm */
+    if( uiexception_type & (UIEXCEPTION_TYPE_CALL |
+                            UIEXCEPTION_TYPE_ALARM) )
+        goto EXIT;
+
+    allowed = true;
+
+EXIT:
+    return allowed;
+}
+
+/** Timer id for: Sanity check after entering LPM state
+ */
+static guint mdy_lpm_sanitize_id = 0;
+
+/** Timer callback for: Sanity check after entering LPM state
+ *
+ * @param aptr unused user data pointer
+ *
+ * @return G_SOURCE_REMOVE (to stop timer from repeating)
+ */
+static gboolean mdy_lpm_sanitize_cb(gpointer aptr)
+{
+    (void)aptr;
+
+    mdy_lpm_sanitize_id = 0;
+
+    /* If we're still in LPM state, and something is on
+     * top of lockscreen -> we have dimmed out UI that
+     * can't be interacted with -> exit from LPM. */
+
+    if( display_state_next != MCE_DISPLAY_LPM_ON &&
+        display_state_next != MCE_DISPLAY_LPM_OFF )
+        goto EXIT;
+
+    if( topmost_window_pid == -1 )
+        goto EXIT;
+
+    mce_log(LL_WARN, "app on screen; exiting lpm state");
+    mce_datapipe_request_display_state(MCE_DISPLAY_OFF);
+
+EXIT:
+    return G_SOURCE_REMOVE;
+}
+
+/** Schedule sanity check for staying in LPM state
+ */
+static void mdy_lpm_schedule_sanitize(void)
+{
+    if( !mdy_lpm_sanitize_id ) {
+        mdy_lpm_sanitize_id =
+            g_timeout_add(LPM_SANITIZE_DELAY, mdy_lpm_sanitize_cb, 0);
+    }
+}
+
+/** Cancel scheduled LPM state sanity check
+ */
+static void mdy_lpm_cancel_sanitize(void)
+{
+    if( mdy_lpm_sanitize_id ) {
+        g_source_remove(mdy_lpm_sanitize_id),
+            mdy_lpm_sanitize_id = 0;
+    }
 }
 
 /* ========================================================================= *
@@ -11212,6 +11347,8 @@ void g_module_unload(GModule *module)
     mdy_stm_cancel_rethink();
 
     mdy_poweron_led_rethink_cancel();
+
+    mdy_lpm_cancel_sanitize();
 
     /* Remove callbacks on module unload */
     mce_sensorfw_orient_set_notify(0);
