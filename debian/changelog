@@ -1,3 +1,9 @@
+mce (1.100.6) precise; urgency=low
+
+  * [display] Reject LPM mode when lockscreen is not on screen. Fixes JB#21043
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 14 Jun 2019 09:24:00 +0300
+
 mce (1.100.5) precise; urgency=low
 
   * [fingerprint] Disable sms/email led on fp wakeup. Fixes JB#43914
