@@ -1,3 +1,9 @@
+mce (1.100.7) precise; urgency=low
+
+  * [dbus] Handle D-Bus name owner handoff correctly. JB#46305
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 24 Jun 2019 10:39:40 +0300
+
 mce (1.100.6) precise; urgency=low
 
   * [display] Reject LPM mode when lockscreen is not on screen. Fixes JB#21043
