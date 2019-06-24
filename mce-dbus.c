@@ -2117,11 +2117,10 @@ mce_dbus_update_peerinfo(const char *name, const char *owner)
 	goto EXIT;
 
     if( peerinfo_set_owner_name(info, owner) ) {
+	peerinfo_set_state(info, PEERSTATE_STOPPED);
+
 	if( peerinfo_get_owner_name(info) ) {
 	    peerinfo_set_state(info, PEERSTATE_QUERY_PID);
-	}
-	else {
-	    peerinfo_set_state(info, PEERSTATE_STOPPED);
 	}
     }
 
