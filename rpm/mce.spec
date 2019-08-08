@@ -97,6 +97,7 @@ systemctl daemon-reload || :
 %license COPYING debian/copyright
 # binaries
 %{_sbindir}/%{name}
+%{_sbindir}/dummy_compositor
 %dir %{_libdir}/%{name}
 %dir %{_libdir}/%{name}/modules
 %{_libdir}/%{name}/modules/*.so

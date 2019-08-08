@@ -177,6 +177,7 @@ MODULES += $(MODULE_DIR)/packagekit.so
 # Tools to build
 TOOLS   += $(TOOLDIR)/mcetool
 TOOLS   += $(TOOLDIR)/evdev_trace
+TOOLS   += $(TOOLDIR)/dummy_compositor
 
 # Unit tests to build
 UTESTS  += $(UTESTDIR)/ut_display_conf
@@ -373,6 +374,7 @@ $(MODULE_DIR)/%.so : $(MODULE_DIR)/%.pic.o
 TOOLS_PKG_NAMES += gobject-2.0
 TOOLS_PKG_NAMES += glib-2.0
 TOOLS_PKG_NAMES += dbus-1
+TOOLS_PKG_NAMES += dbus-glib-1
 
 TOOLS_PKG_CFLAGS := $(shell $(PKG_CONFIG) --cflags $(TOOLS_PKG_NAMES))
 TOOLS_PKG_LDLIBS := $(shell $(PKG_CONFIG) --libs   $(TOOLS_PKG_NAMES))
@@ -387,6 +389,10 @@ $(TOOLDIR)/mcetool : $(TOOLDIR)/mcetool.o mce-command-line.o
 $(TOOLDIR)/evdev_trace : CFLAGS += $(TOOLS_CFLAGS)
 $(TOOLDIR)/evdev_trace : LDLIBS += $(TOOLS_LDLIBS)
 $(TOOLDIR)/evdev_trace : $(TOOLDIR)/evdev_trace.o evdev.o $(TOOLDIR)/fileusers.o
+
+$(TOOLDIR)/dummy_compositor : CFLAGS += $(TOOLS_CFLAGS)
+$(TOOLDIR)/dummy_compositor : LDLIBS += $(TOOLS_LDLIBS)
+$(TOOLDIR)/dummy_compositor : $(TOOLDIR)/dummy_compositor.o
 
 # ----------------------------------------------------------------------------
 # UNIT TESTS
@@ -624,6 +630,7 @@ NORMALIZE_USES_SPC =\
 	tklock.c\
 	tklock.h\
 	tools/evdev_trace.c\
+	tools/dummy_compositor.c\
 	tools/mcetool.c\
 	tools/fileusers.c\
 	tools/fileusers.h\
@@ -680,7 +687,7 @@ endif
 .SUFFIXES: .q .p
 
 %.q : %.c ; $(CC) -o $@ -E $< $(CPPFLAGS) $(MCE_CFLAGS)
-%.p : %.q ; cproto -s < $< | sed -e 's/_Bool/bool/g' | prettyproto.py
+%.p : %.q ; cproto -s < $< | sed -e 's/_Bool/bool/g' | prettyproto.py | tee $@
 
 clean::
 	$(RM) -f *.[qp] modules/*.[qp] tools/*.[qp]

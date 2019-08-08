@@ -774,6 +774,7 @@ modules/fingerprint.o:\
 	modules/fingerprint.c\
 	builtin-gconf.h\
 	datapipe.h\
+	evdev.h\
 	mce-dbus.h\
 	mce-lib.h\
 	mce-log.h\
@@ -784,6 +785,7 @@ modules/fingerprint.pic.o:\
 	modules/fingerprint.c\
 	builtin-gconf.h\
 	datapipe.h\
+	evdev.h\
 	mce-dbus.h\
 	mce-lib.h\
 	mce-log.h\
@@ -1353,6 +1355,16 @@ tools/evdev_trace.pic.o:\
 	evdev.h\
 	mce-log.h\
 	tools/fileusers.h\
+
+tools/dummy_compositor.o:\
+	tools/dummy_compositor.c\
+	builtin-gconf.h\
+	mce-dbus.h\
+
+tools/dummy_compositor.pic.o:\
+	tools/dummy_compositor.c\
+	builtin-gconf.h\
+	mce-dbus.h\
 
 tools/fileusers.o:\
 	tools/fileusers.c\
