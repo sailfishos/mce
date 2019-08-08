@@ -1,3 +1,9 @@
+mce (1.101.0) precise; urgency=low
+
+  * [dummy_compositor] Implement dummy compositor D-Bus service. JB#46723
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 08 Aug 2019 15:33:40 +0300
+
 mce (1.100.7) precise; urgency=low
 
   * [dbus] Handle D-Bus name owner handoff correctly. JB#46305
