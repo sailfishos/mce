@@ -3,7 +3,8 @@
  * Generic headers for Mode Control Entity
  * <p>
  * Copyright © 2004-2011 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2012-2017 Jolla Ltd.
+ * Copyright (C) 2012-2019 Jolla Ltd.
+ * Copyright (c) 2019 Open Mobile Platform LLC.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Irina Bezruk <ext-irina.bezruk@nokia.com>
@@ -333,6 +334,41 @@ typedef enum {
 
 const char *charger_state_repr(charger_state_t state);
 const char *charger_state_to_dbus(charger_state_t state);
+
+/** Known charger types
+ *
+ * Note that the ordering is:
+ *
+ * a) significant in the sense that in case there are several chargers
+ *    connected and active at the same time, maximum numerical value is
+ *    exposed as effective charger type on D-Bus
+ *
+ * b) internal to mce, so that values can and should be rearranged if
+ *    there should be changes in what makes sense to ui side.
+ */
+typedef enum
+{
+    CHARGER_TYPE_NONE,
+
+    /* Charger types that do not carry special meaning from
+     * sfos UI point of view.
+     */
+    CHARGER_TYPE_OTHER,
+    CHARGER_TYPE_WIRELESS,
+    CHARGER_TYPE_CDP,           // Charging Downstream Port
+
+    /* Wall chargers imply notification on disconnect
+     */
+    CHARGER_TYPE_DCP,           // Dedicated Charging Port
+    CHARGER_TYPE_HVDCP,         // High Voltage DCP
+
+    /* PC connection implies usb mode management
+     */
+    CHARGER_TYPE_USB,           // Standard Downstream Port
+} charger_type_t;
+
+const char *charger_type_repr(charger_type_t type);
+const char *charger_type_to_dbus(charger_type_t type);
 
 /** Camera button state */
 typedef enum {
