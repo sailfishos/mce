@@ -3,6 +3,7 @@
  * <p>
  * Copyright © 2005-2011 Nokia Corporation and/or its subsidiary(-ies).
  * Copyright (C) 2012-2019 Jolla Ltd.
+ * Copyright (c) 2019 Open Mobile Platform LLC.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>
@@ -139,6 +140,7 @@ static bool          xmce_get_color_profile_ids                        (const ch
 static bool          xmce_set_color_profile                            (const char *args);
 static void          xmce_get_color_profile                            (void);
 #ifdef ENABLE_BATTERY_SIMULATION
+static bool          xmce_set_charger_type                             (const char *type);
 static bool          xmce_set_charger_state                            (const char *state);
 static bool          xmce_set_battery_level                            (int level);
 #endif
@@ -438,6 +440,7 @@ static bool  mcetool_do_disable_led_pattern(const char *args);
 static bool  mcetool_do_activate_pattern   (const char *args);
 static bool  mcetool_do_deactivate_pattern (const char *args);
 #ifdef ENABLE_BATTERY_SIMULATION
+static bool  mcetool_do_set_charger_type(const char *arg);
 static bool  mcetool_do_set_charger_state  (const char *arg);
 static bool  mcetool_do_set_battery_level  (const char *arg);
 #endif
@@ -2583,6 +2586,33 @@ static void xmce_get_color_profile(void)
  * ------------------------------------------------------------------------- */
 
 #ifdef ENABLE_BATTERY_SIMULATION
+static bool xmce_set_charger_type(const char *type)
+{
+        dbus_bool_t   ret = false;
+        DBusError     err = DBUS_ERROR_INIT;
+        DBusMessage  *rsp = 0;
+        gboolean      ack = xmce_ipc(MCE_CHARGER_TYPE_REQ, &rsp,
+                                     DBUS_TYPE_STRING, &type,
+                                     DBUS_TYPE_INVALID);
+        if( !ack || !rsp )
+                goto EXIT;
+
+        if( !dbus_message_get_args(rsp, &err,
+                                   DBUS_TYPE_BOOLEAN, &ret,
+                                   DBUS_TYPE_INVALID) )
+                goto EXIT;
+
+EXIT:
+        if( dbus_error_is_set(&err) ) {
+                errorf("set %s: %s: %s\n", type, err.name, err.message);
+                dbus_error_free(&err);
+        }
+
+        if( rsp ) dbus_message_unref(rsp);
+
+        return ack && ret;
+}
+
 static bool xmce_set_charger_state(const char *state)
 {
         dbus_bool_t   ret = false;
@@ -2636,6 +2666,31 @@ EXIT:
         if( rsp ) dbus_message_unref(rsp);
 
         return ack && ret;
+}
+
+static bool mcetool_do_set_charger_type(const char *arg)
+{
+        const char * const lut[] = {
+                MCE_CHARGER_TYPE_NONE,
+                MCE_CHARGER_TYPE_USB,
+                MCE_CHARGER_TYPE_DCP,
+                MCE_CHARGER_TYPE_HVDCP,
+                MCE_CHARGER_TYPE_CDP,
+                MCE_CHARGER_TYPE_WIRELESS,
+                MCE_CHARGER_TYPE_OTHER,
+                0
+        };
+
+        for( size_t i = 0; ; ++i ) {
+                if( !lut[i] ) {
+                        errorf("%s: invalid charger type\n", arg);
+                        return false;
+                }
+                if( !strcmp(lut[i], arg) )
+                        break;
+        }
+
+        return xmce_set_charger_type(arg);
 }
 
 static bool mcetool_do_set_charger_state(const char *arg)
@@ -7863,6 +7918,20 @@ static const mce_opt_t options[] =
                         " disables the feature.\n"
         },
 #ifdef ENABLE_BATTERY_SIMULATION
+        {
+                .name        = "set-charger-type",
+                .with_arg    = mcetool_do_set_charger_type,
+                .values      =
+                        MCE_CHARGER_TYPE_NONE "|"
+                        MCE_CHARGER_TYPE_USB "|"
+                        MCE_CHARGER_TYPE_DCP "|"
+                        MCE_CHARGER_TYPE_HVDCP "|"
+                        MCE_CHARGER_TYPE_CDP "|"
+                        MCE_CHARGER_TYPE_WIRELESS "|"
+                        MCE_CHARGER_TYPE_OTHER,
+                .usage       =
+                        "Override charger type for debugging purposes\n"
+        },
         {
                 .name        = "set-charger-state",
                 .with_arg    = mcetool_do_set_charger_state,

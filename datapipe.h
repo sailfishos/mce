@@ -4,6 +4,7 @@
  * <p>
  * Copyright © 2007 Nokia Corporation and/or its subsidiary(-ies).
  * Copyright (C) 2014-2019 Jolla Ltd.
+ * Copyright (c) 2019 Open Mobile Platform LLC.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author: Simo Piiroinen <simo.piiroinen@jollamobile.com>
@@ -253,6 +254,7 @@ extern datapipe_t ignore_incoming_call_event_pipe;
 extern datapipe_t call_type_pipe;
 extern datapipe_t tklock_request_pipe;
 extern datapipe_t interaction_expected_pipe;
+extern datapipe_t charger_type_pipe;
 extern datapipe_t charger_state_pipe;
 extern datapipe_t battery_status_pipe;
 extern datapipe_t battery_level_pipe;

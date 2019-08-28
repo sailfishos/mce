@@ -2,7 +2,8 @@
  * @file battery-udev.c
  * Battery module -- this implements battery and charger logic for MCE
  * <p>
- * Copyright (C) 2018 Jolla Ltd.
+ * Copyright (C) 2018-2019 Jolla Ltd.
+ * Copyright (c) 2019 Open Mobile Platform LLC.
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  * <p>
@@ -58,10 +59,12 @@
 #define BATTERY_CAPACITY_FULL    90 // statefs uses 96
 
 /* Power supply device properties we are interested in */
-#define PROP_PRESENT  "POWER_SUPPLY_PRESENT"
-#define PROP_ONLINE   "POWER_SUPPLY_ONLINE"
-#define PROP_CAPACITY "POWER_SUPPLY_CAPACITY"
-#define PROP_STATUS   "POWER_SUPPLY_STATUS"
+#define PROP_PRESENT   "POWER_SUPPLY_PRESENT"
+#define PROP_ONLINE    "POWER_SUPPLY_ONLINE"
+#define PROP_CAPACITY  "POWER_SUPPLY_CAPACITY"
+#define PROP_STATUS    "POWER_SUPPLY_STATUS"
+#define PROP_REAL_TYPE "POWER_SUPPLY_REAL_TYPE"
+#define PROP_TYPE      "POWER_SUPPLY_TYPE"
 
 /** INI-file group for blacklisting device properties */
 #define MCE_CONF_BATTERY_UDEV_PROPERTY_BLACKLIST_GROUP "BatteryUDevPropertyBlacklist"
@@ -115,6 +118,9 @@ typedef struct
 
     /** Charger connected; for use with charger_state_pipe */
     charger_state_t  charger_state;
+
+    /** Charger type; for tweaking UI behavior */
+    charger_type_t   charger_type;
 } mcebat_t;
 
 typedef struct udevtracker_t  udevtracker_t;
@@ -191,6 +197,7 @@ static gboolean  mcebat_dbus_client_removed_cb      (DBusMessage *const msg);
 static bool      mcebat_dbus_add_client             (const char *dbus_name);
 static void      mcebat_dbus_evaluate_battery_status(void);
 static gboolean  mcebat_dbus_charger_state_req_cb   (DBusMessage *const msg);
+static gboolean  mcebat_dbus_charger_type_req_cb    (DBusMessage *const msg);
 static gboolean  mcebat_dbus_battery_level_req_cb   (DBusMessage *const msg);
 #endif // ENABLE_BATTERY_SIMULATION
 
@@ -217,6 +224,7 @@ static bool              udevproperty_set        (udevproperty_t *self, const ch
  * UDEVDEVICE
  * ------------------------------------------------------------------------- */
 
+static charger_type_t   udevdevice_lookup_charger_type(const char *name);
 static void             udevdevice_init_blacklist     (void);
 static void             udevdevice_quit_blacklist     (void);
 static bool             udevdevice_is_blacklisted     (const char *name);
@@ -287,6 +295,7 @@ static mcebat_t mcebat_datapipe = {
     .battery_level  = BATTERY_LEVEL_INITIAL,
     .battery_status = BATTERY_STATUS_UNDEF,
     .charger_state  = CHARGER_STATE_UNDEF,
+    .charger_type   = CHARGER_TYPE_NONE,
 };
 
 /** Cached battery state as derived from udev
@@ -295,6 +304,7 @@ static mcebat_t mcebat_actual = {
     .battery_level  = BATTERY_LEVEL_INITIAL,
     .battery_status = BATTERY_STATUS_UNDEF,
     .charger_state  = CHARGER_STATE_UNDEF,
+    .charger_type   = CHARGER_TYPE_NONE,
 };
 
 #ifdef ENABLE_BATTERY_SIMULATION
@@ -342,6 +352,8 @@ static const char * const udevproperty_used_keys[] = {
     PROP_PRESENT,
     // charger
     PROP_ONLINE,
+    PROP_REAL_TYPE,
+    PROP_TYPE,
     // battery
     PROP_CAPACITY,
     PROP_STATUS,
@@ -485,6 +497,77 @@ EXIT:
     return;
 }
 
+/** D-Bus callback: Simulated charger type requested
+ *
+ * @param msg The D-Bus message
+ *
+ * @return TRUE
+ */
+static gboolean
+mcebat_dbus_charger_type_req_cb(DBusMessage *const msg)
+{
+    dbus_bool_t   accepted  = false;
+    const char    *sender   = dbus_message_get_sender(msg);
+    DBusError      error    = DBUS_ERROR_INIT;
+    const char    *type     = 0;
+    DBusMessage   *reply    = 0;
+
+    mce_log(LL_DEVEL, "charger type request from %s",
+            mce_dbus_get_name_owner_ident(sender));
+
+    if( !mcebat_dbus_add_client(sender) )
+        goto EXIT;
+
+    if( !dbus_message_get_args(msg, &error,
+                               DBUS_TYPE_STRING, &type,
+                               DBUS_TYPE_INVALID) ) {
+        goto EXIT;
+    }
+
+    if( !strcmp(type, MCE_CHARGER_TYPE_NONE) )
+        mcebat_simulated.charger_type = CHARGER_TYPE_NONE;
+    else if( !strcmp(type, MCE_CHARGER_TYPE_USB) )
+        mcebat_simulated.charger_type = CHARGER_TYPE_USB;
+    else if( !strcmp(type, MCE_CHARGER_TYPE_DCP) )
+        mcebat_simulated.charger_type = CHARGER_TYPE_DCP;
+    else if( !strcmp(type, MCE_CHARGER_TYPE_HVDCP) )
+        mcebat_simulated.charger_type = CHARGER_TYPE_HVDCP;
+    else if( !strcmp(type, MCE_CHARGER_TYPE_CDP) )
+        mcebat_simulated.charger_type = CHARGER_TYPE_CDP;
+    else if( !strcmp(type, MCE_CHARGER_TYPE_WIRELESS) )
+        mcebat_simulated.charger_type = CHARGER_TYPE_WIRELESS;
+    else
+        mcebat_simulated.charger_type = CHARGER_TYPE_OTHER;
+
+    mcebat_dbus_evaluate_battery_status();
+    mcebat_update();
+
+    accepted = true;
+
+EXIT:
+    /* Setup the reply */
+    reply = dbus_new_method_reply(msg);
+
+    /* Append the result */
+    if( !dbus_message_append_args(reply,
+                                  DBUS_TYPE_BOOLEAN, &accepted,
+                                  DBUS_TYPE_INVALID)) {
+        mce_log(LL_ERR,"Failed to append reply arguments to D-Bus "
+                "message for %s.%s",
+                MCE_REQUEST_IF, dbus_message_get_member(msg));
+    }
+    else if( !dbus_message_get_no_reply(msg) ) {
+        dbus_send_message(reply), reply = 0;
+    }
+
+    if( reply )
+        dbus_message_unref(reply);
+
+    dbus_error_free(&error);
+
+    return TRUE;
+}
+
 /** D-Bus callback: Simulated charger state requested
  *
  * @param msg The D-Bus message
@@ -614,6 +697,16 @@ static mce_dbus_handler_t callstate_dbus_handlers[] =
 #ifdef ENABLE_BATTERY_SIMULATION
     {
         .interface  = MCE_REQUEST_IF,
+        .name       = MCE_CHARGER_TYPE_REQ,
+        .type       = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback   = mcebat_dbus_charger_type_req_cb,
+        .privileged = true,
+        .args       =
+            "    <arg direction=\"in\" name=\"charger_type\" type=\"s\"/>\n"
+            "    <arg direction=\"out\" name=\"accepted\" type=\"b\"/>\n"
+    },
+    {
+        .interface  = MCE_REQUEST_IF,
         .name       = MCE_CHARGER_STATE_REQ,
         .type       = DBUS_MESSAGE_TYPE_METHOD_CALL,
         .callback   = mcebat_dbus_charger_state_req_cb,
@@ -678,6 +771,15 @@ mcebat_update(void)
 
     mcebat_t prev = mcebat_datapipe;
     mcebat_datapipe = *curr;
+
+    if( prev.charger_type != curr->charger_type ) {
+        mce_log(LL_CRUCIAL, "charger_type: %s -> %s",
+                charger_type_repr(prev.charger_type),
+                charger_type_repr(curr->charger_type));
+
+        datapipe_exec_full(&charger_type_pipe,
+                           GINT_TO_POINTER(curr->charger_type));
+    }
 
     if( prev.charger_state != curr->charger_state ) {
         mce_log(LL_CRUCIAL, "charger_state: %s -> %s",
@@ -942,6 +1044,60 @@ udevproperty_set(udevproperty_t *self, const char *val)
 /* ========================================================================= *
  * UDEVDEVICE
  * ========================================================================= */
+
+/** Lookup charger type based on device name / value of type property
+ *
+ * @param name  string to match
+ *
+ * @return charger_type_t enumeration value
+ */
+static charger_type_t
+udevdevice_lookup_charger_type(const char *name)
+{
+    static const struct {
+        const char *name;
+        int         value;
+    } lut[] = {
+        /* Type map - adapted from statefs sources
+         */
+        { "CDP",         CHARGER_TYPE_CDP      },
+        { "USB_CDP",     CHARGER_TYPE_CDP      },
+        { "USB_DCP",     CHARGER_TYPE_DCP      },
+        { "USB_HVDCP",   CHARGER_TYPE_HVDCP    },
+        { "USB_HVDCP_3", CHARGER_TYPE_HVDCP    },
+        { "Mains",       CHARGER_TYPE_DCP      },
+        { "USB",         CHARGER_TYPE_USB      },
+        { "USB_ACA",     CHARGER_TYPE_USB      },
+
+        /* Additions since leaving statefs behind
+         */
+        { "WIRELESS",    CHARGER_TYPE_WIRELESS },
+        { "AC",          CHARGER_TYPE_DCP      },
+
+        /* To make connect/disconnect transitions
+         * cleaner, ignore "Unknown" reporting
+         */
+        { "Unknown",     CHARGER_TYPE_NONE     },
+
+        /* Sentinel */
+        { 0, 0 }
+    };
+
+    charger_type_t value = CHARGER_TYPE_OTHER;
+    if( name ) {
+        for( size_t i = 0; ; ++i ) {
+            if( lut[i].name == 0 ) {
+                mce_log(LL_WARN, "unknown charger type: %s", name);
+                break;
+            }
+            if( !g_ascii_strcasecmp(lut[i].name, name) ) {
+                value = lut[i].value;
+                break;
+            }
+        }
+    }
+    return value;
+}
 
 /** Initialize device blacklist lookup table
  */
@@ -1248,8 +1404,35 @@ udevdevice_evaluate_charger(udevdevice_t *self, mcebat_t *mcebat)
 
     bool active = (present == 1 || online == 1);
 
-    if( active )
+    if( active ) {
         mcebat->charger_state = CHARGER_STATE_ON;
+
+        /* Charger is online, evaluate charger type
+         *
+         * Legacy QC devices have TYPE property that has
+         * content sfos sw stack knows how to interpret.
+         *
+         * More recent QC devices might expose "USB_PD" in
+         * TYPE prop and have additional REAL_TYPE property
+         * containing old style data.
+         *
+         * MTK devices have multiple power supply device
+         * nodes visible in udev and charger type must be
+         * determined from device node name.
+         */
+        const char *name;
+        if( !(name = udevdevice_get_str_prop(self, PROP_REAL_TYPE, 0)) ) {
+            if( !(name = udevdevice_get_str_prop(self, PROP_TYPE, 0)) )
+                name = udevdevice_name(self);
+        }
+
+        charger_type_t type = udevdevice_lookup_charger_type(name);
+
+        /* Update effective charger type exposed on D-Bus
+         */
+        if( mcebat->charger_type < type )
+            mcebat->charger_type = type;
+    }
 
     mce_log(LL_DEBUG, "%s: charger @ "
             "present=%d online=%d -> active=%d",
@@ -1448,6 +1631,10 @@ udevtracker_rethink(udevtracker_t *self)
      * disconnect & rectify if any of the battery/charger devices
      * indicate charging activity. */
     mcebat_actual.charger_state = CHARGER_STATE_OFF;
+
+    /* Reset charger type, iterator chooses maximum of
+     * none < other < wall chargers < pc connection. */
+    mcebat_actual.charger_type = CHARGER_TYPE_NONE;
 
     g_hash_table_foreach(self->udt_devices, udevdevice_evaluate_charger_cb, &mcebat_actual);
     g_hash_table_foreach(self->udt_devices, udevdevice_evaluate_battery_cb, &mcebat_actual);

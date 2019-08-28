@@ -5,6 +5,7 @@
  * <p>
  * Copyright © 2007-2008 Nokia Corporation and/or its subsidiary(-ies).
  * Copyright (C) 2014-2019 Jolla Ltd.
+ * Copyright (c) 2019 Open Mobile Platform LLC.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
@@ -113,6 +114,7 @@ static const char  *datapipe_hook_call_state_value         (gconstpointer data);
 static const char  *datapipe_hook_call_type_value          (gconstpointer data);
 static const char  *datapipe_hook_tklock_request_value     (gconstpointer data);
 static const char  *datapipe_hook_charger_state_value      (gconstpointer data);
+static const char  *datapipe_hook_charger_type_value       (gconstpointer data);
 static const char  *datapipe_hook_battery_status_value     (gconstpointer data);
 static const char  *datapipe_hook_camera_button_state_value(gconstpointer data);
 static const char  *datapipe_hook_audio_route_value        (gconstpointer data);
@@ -201,6 +203,13 @@ const char  *service_state_repr(service_state_t state);
 
 const char  *usb_cable_state_repr   (usb_cable_state_t state);
 const char  *usb_cable_state_to_dbus(usb_cable_state_t state);
+
+/* ------------------------------------------------------------------------- *
+ * CHARGER_TYPE
+ * ------------------------------------------------------------------------- */
+
+const char  *charger_type_repr   (charger_type_t type);
+const char  *charger_type_to_dbus(charger_type_t type);
 
 /* ------------------------------------------------------------------------- *
  * CHARGER_STATE
@@ -474,6 +483,14 @@ datapipe_hook_tklock_request_value(gconstpointer data)
 #define datapipe_hook_tklock_request_change 0
 
 static const char *
+datapipe_hook_charger_type_value(gconstpointer data)
+{
+    charger_type_t value = GPOINTER_TO_INT(data);
+    return charger_type_repr(value);
+}
+#define datapipe_hook_charger_type_change 0
+
+static const char *
 datapipe_hook_charger_state_value(gconstpointer data)
 {
     charger_state_t value = GPOINTER_TO_INT(data);
@@ -697,6 +714,9 @@ datapipe_t tklock_request_pipe                  = DATAPIPE_INIT(tklock_request, 
 
 /** UI side is in a state where user interaction is expected */
 datapipe_t interaction_expected_pipe            = DATAPIPE_INIT(interaction_expected, boolean, false, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
+
+/** Charger type; read only */
+datapipe_t charger_type_pipe                    = DATAPIPE_INIT(charger_type, charger_type, CHARGER_TYPE_NONE, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** Charger state; read only */
 datapipe_t charger_state_pipe                   = DATAPIPE_INIT(charger_state, charger_state, CHARGER_STATE_UNDEF, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
@@ -1283,6 +1303,7 @@ void mce_datapipe_quit(void)
     datapipe_free(&topmost_window_pid_pipe);
     datapipe_free(&camera_button_state_pipe);
     datapipe_free(&battery_status_pipe);
+    datapipe_free(&charger_type_pipe);
     datapipe_free(&charger_state_pipe);
     datapipe_free(&interaction_expected_pipe);
     datapipe_free(&tklock_request_pipe);
@@ -1612,6 +1633,51 @@ const char *usb_cable_state_to_dbus(usb_cable_state_t state)
     }
 
     return res;
+}
+
+/** Convert charger_type_t enum to human readable string
+ *
+ * @param type charger_type_t enumeration value
+ *
+ * @return human readable representation of type
+ */
+const char *
+charger_type_repr(charger_type_t type)
+{
+    const char *repr = "unknown";
+    switch( type ) {
+    case CHARGER_TYPE_NONE:     repr = "none";     break;
+    case CHARGER_TYPE_USB:      repr = "usb";      break;
+    case CHARGER_TYPE_DCP:      repr = "dcp";      break;
+    case CHARGER_TYPE_HVDCP:    repr = "hwdcp";    break;
+    case CHARGER_TYPE_CDP:      repr = "cdp";      break;
+    case CHARGER_TYPE_WIRELESS: repr = "wireless"; break;
+    case CHARGER_TYPE_OTHER:    repr = "other";    break;
+    default: break;
+    }
+    return repr;
+}
+
+/** Convert charger_type_t enum to dbus argument string
+ *
+ * @param type charger_type_t enumeration value
+ *
+ * @return representation of type for use over dbus
+ */
+const char *
+charger_type_to_dbus(charger_type_t type)
+{
+    const char *repr = MCE_CHARGER_TYPE_OTHER;
+    switch( type ) {
+    case CHARGER_TYPE_NONE:     repr = MCE_CHARGER_TYPE_NONE;     break;
+    case CHARGER_TYPE_USB:      repr = MCE_CHARGER_TYPE_USB;      break;
+    case CHARGER_TYPE_DCP:      repr = MCE_CHARGER_TYPE_DCP;      break;
+    case CHARGER_TYPE_HVDCP:    repr = MCE_CHARGER_TYPE_HVDCP;    break;
+    case CHARGER_TYPE_CDP:      repr = MCE_CHARGER_TYPE_CDP;      break;
+    case CHARGER_TYPE_WIRELESS: repr = MCE_CHARGER_TYPE_WIRELESS; break;
+    default: break;
+    }
+    return repr;
 }
 
 /** Convert charger_state_t enum to human readable string

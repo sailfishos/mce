@@ -20,7 +20,7 @@ BuildRequires:  pkgconfig(dsme) >= 0.65.0
 BuildRequires:  pkgconfig(thermalmanager_dbus_if)
 BuildRequires:  pkgconfig(libiphb)
 BuildRequires:  pkgconfig(glib-2.0) >= 2.36.0
-BuildRequires:  pkgconfig(mce) >= 1.26.0
+BuildRequires:  pkgconfig(mce) >= 1.27.0
 BuildRequires:  pkgconfig(libngf0) >= 0.24
 BuildRequires:  pkgconfig(libsystemd-daemon)
 BuildRequires:  kernel-headers >= 2.6.32

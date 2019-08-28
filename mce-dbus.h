@@ -4,6 +4,7 @@
  * <p>
  * Copyright © 2004-2010 Nokia Corporation and/or its subsidiary(-ies).
  * Copyright (C) 2013-2019 Jolla Ltd.
+ * Copyright (c) 2019 Open Mobile Platform LLC.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
@@ -48,6 +49,25 @@
  * @return boolean true if accepted, false / error reply otherwise
  */
 #  define MCE_CHARGER_STATE_REQ                   "req_charger_state"
+
+/** Override current charger type
+ *
+ * Available in devel flavor mce only, and only to privileged applications.
+ *
+ * @since mce 1.102.0
+ *
+ * @param string: current charger type, one of:
+ * - #MCE_CHARGER_TYPE_NONE
+ * - #MCE_CHARGER_TYPE_USB
+ * - #MCE_CHARGER_TYPE_DCP
+ * - #MCE_CHARGER_TYPE_HVDCP
+ * - #MCE_CHARGER_TYPE_CDP
+ * - #MCE_CHARGER_TYPE_WIRELESS
+ * - #MCE_CHARGER_TYPE_OTHER
+ *
+ * @return boolean true if accepted, false / error reply otherwise
+ */
+#  define MCE_CHARGER_TYPE_REQ                   "req_charger_type"
 
 /** Override current battery level
  *

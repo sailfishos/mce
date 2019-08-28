@@ -3,6 +3,7 @@
  * Common state logic for Mode Control Entity
  * <p>
  * Copyright (C) 2017-2019 Jolla Ltd.
+ * Copyright (c) 2019 Open Mobile Platform LLC.
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
@@ -78,6 +79,8 @@ static void     common_on_proximity_quit    (void);
 
 static void     common_dbus_send_usb_cable_state  (DBusMessage *const req);
 static gboolean common_dbus_get_usb_cable_state_cb(DBusMessage *const req);
+static void     common_dbus_send_charger_type     (DBusMessage *const req);
+static gboolean common_dbus_get_charger_type_cb   (DBusMessage *const req);
 static void     common_dbus_send_charger_state    (DBusMessage *const req);
 static gboolean common_dbus_get_charger_state_cb  (DBusMessage *const req);
 static void     common_dbus_send_battery_status   (DBusMessage *const req);
@@ -93,6 +96,7 @@ static void     common_dbus_quit                  (void);
  * ------------------------------------------------------------------------- */
 
 static void common_datapipe_usb_cable_state_cb        (gconstpointer data);
+static void common_datapipe_charger_type_cb           (gconstpointer data);
 static void common_datapipe_charger_state_cb          (gconstpointer data);
 static void common_datapipe_battery_status_cb         (gconstpointer data);
 static void common_datapipe_battery_level_cb          (gconstpointer data);
@@ -113,6 +117,9 @@ void mce_common_quit(void);
 
 /** USB cable status; assume undefined */
 static usb_cable_state_t usb_cable_state = USB_CABLE_UNDEF;
+
+/** Charger type; assume none */
+static charger_type_t charger_type = CHARGER_TYPE_NONE;
 
 /** Charger state; assume undefined */
 static charger_state_t charger_state = CHARGER_STATE_UNDEF;
@@ -394,6 +401,69 @@ common_dbus_get_usb_cable_state_cb(DBusMessage *const req)
 }
 
 /* ------------------------------------------------------------------------- *
+ * charger_type
+ * ------------------------------------------------------------------------- */
+
+/** Send charger_type D-Bus signal / method call reply
+ *
+ * @param req  method call message to reply, or NULL to send signal
+ */
+static void
+common_dbus_send_charger_type(DBusMessage *const req)
+{
+    static const char *last = 0;
+
+    DBusMessage *msg = NULL;
+
+    const char *value = charger_type_to_dbus(charger_type);
+
+    if( req ) {
+        msg = dbus_new_method_reply(req);
+    }
+    else if( last == value ) {
+        goto EXIT;
+    }
+    else {
+        last = value;
+        msg = dbus_new_signal(MCE_SIGNAL_PATH,
+                              MCE_SIGNAL_IF,
+                              MCE_CHARGER_TYPE_SIG);
+    }
+
+    if( !dbus_message_append_args(msg,
+                                  DBUS_TYPE_STRING, &value,
+                                  DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "%s: %s = %s",
+            req ? "reply" : "broadcast",
+            "charger_type", value);
+
+    dbus_send_message(msg), msg = 0;
+
+EXIT:
+
+    if( msg )
+        dbus_message_unref(msg);
+}
+
+/** Callback for handling charger_type D-Bus queries
+ *
+ * @param req  method call message to reply
+ */
+static gboolean
+common_dbus_get_charger_type_cb(DBusMessage *const req)
+{
+    mce_log(LL_DEBUG, "charger_type query from: %s",
+            mce_dbus_get_message_sender_ident(req));
+
+    if( !dbus_message_get_no_reply(req) )
+        common_dbus_send_charger_type(req);
+
+    return TRUE;
+}
+
+/* ------------------------------------------------------------------------- *
  * charger_state
  * ------------------------------------------------------------------------- */
 
@@ -562,7 +632,7 @@ common_dbus_send_battery_level(DBusMessage *const req)
 
     mce_log(LL_DEBUG, "%s: %s = %d",
             req ? "reply" : "broadcast",
-            "charger_state", value);
+            "battery_level", value);
 
     dbus_send_message(msg), msg = 0;
 
@@ -605,6 +675,13 @@ static mce_dbus_handler_t common_dbus_handlers[] =
     },
     {
         .interface = MCE_SIGNAL_IF,
+        .name      = MCE_CHARGER_TYPE_SIG,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .args      =
+            "    <arg name=\"charger_type\" type=\"s\"/>\n"
+    },
+    {
+        .interface = MCE_SIGNAL_IF,
         .name      = MCE_CHARGER_STATE_SIG,
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
         .args      =
@@ -632,6 +709,14 @@ static mce_dbus_handler_t common_dbus_handlers[] =
         .callback  = common_dbus_get_usb_cable_state_cb,
         .args      =
             "    <arg direction=\"out\" name=\"usb_cable_state\" type=\"s\"/>\n"
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_CHARGER_TYPE_GET,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = common_dbus_get_charger_type_cb,
+        .args      =
+            "    <arg direction=\"out\" name=\"charger_type\" type=\"s\"/>\n"
     },
     {
         .interface = MCE_REQUEST_IF,
@@ -683,6 +768,7 @@ static gboolean common_dbus_initial_cb(gpointer aptr)
      * some values to undefined state.
      */
     common_dbus_send_usb_cable_state(0);
+    common_dbus_send_charger_type(0);
     common_dbus_send_charger_state(0);
     common_dbus_send_battery_status(0);
     common_dbus_send_battery_level(0);
@@ -749,6 +835,32 @@ static void common_datapipe_usb_cable_state_cb(gconstpointer data)
             value_old, value_new);
 
     common_dbus_send_usb_cable_state(0);
+
+EXIT:
+    return;
+}
+
+/* ------------------------------------------------------------------------- *
+ * charger_type
+ * ------------------------------------------------------------------------- */
+
+/** Callback for handling charger_type_pipe state changes
+ *
+ * @param data charger_type (as void pointer)
+ */
+static void common_datapipe_charger_type_cb(gconstpointer data)
+{
+    charger_type_t prev = charger_type;
+    charger_type = GPOINTER_TO_INT(data);
+
+    if( charger_type == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "charger_type = %s -> %s",
+            charger_type_repr(prev),
+            charger_type_repr(charger_type));
+
+    common_dbus_send_charger_type(0);
 
 EXIT:
     return;
@@ -867,6 +979,10 @@ static datapipe_handler_t common_datapipe_handlers[] =
     {
         .datapipe  = &usb_cable_state_pipe,
         .output_cb = common_datapipe_usb_cable_state_cb,
+    },
+    {
+        .datapipe  = &charger_type_pipe,
+        .output_cb = common_datapipe_charger_type_cb,
     },
     {
         .datapipe  = &charger_state_pipe,
