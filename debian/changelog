@@ -1,3 +1,9 @@
+mce (1.102.0) precise; urgency=low
+
+  * [battery-udev] Make charger type available on D-Bus. JB#38667
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 28 Aug 2019 09:48:03 +0300
+
 mce (1.101.0) precise; urgency=low
 
   * [dummy_compositor] Implement dummy compositor D-Bus service. JB#46723
