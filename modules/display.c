@@ -5012,7 +5012,7 @@ static bool mdy_blanking_afterboot_delay_start_p(void)
     bool start = false;
 
     /* Bootup has not yet finished */
-    if( mdy_init_done != TRISTATE_TRUE )
+    if( mdy_init_done == TRISTATE_TRUE )
         goto DONE;
 
     /* We are booting to USER mode */
