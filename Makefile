@@ -684,13 +684,14 @@ endif
 # DEVELOPMENT TIME PROTOTYPE SCANNING
 # ----------------------------------------------------------------------------
 
-.SUFFIXES: .q .p
+.SUFFIXES: .q .p .g
 
 %.q : %.c ; $(CC) -o $@ -E $< $(CPPFLAGS) $(MCE_CFLAGS)
-%.p : %.q ; cproto -s < $< | sed -e 's/_Bool/bool/g' | prettyproto.py | tee $@
+%.p : %.q ; cproto -s < $< | prettyproto.py | tee $@
+%.g : %.q ; cproto < $< | prettyproto.py | tee $@
 
 clean::
-	$(RM) -f *.[qp] modules/*.[qp] tools/*.[qp]
+	$(RM) -f *.[qpg] modules/*.[qpg] tools/*.[qpg]
 
 # ----------------------------------------------------------------------------
 # LOCAL RPMBUILD (copy mce.* from OBS to rpm subdir)

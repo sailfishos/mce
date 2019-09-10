@@ -420,6 +420,7 @@ static gpointer            mdy_datapipe_display_state_filter_cb(gpointer data);
 static void                mdy_datapipe_display_state_curr_cb(gconstpointer data);
 static void                mdy_datapipe_display_state_next_cb(gconstpointer data);
 static void                mdy_datapipe_keyboard_slide_input_state_cb(gconstpointer const data);
+static void                mdy_datapipe_keyboard_available_state_cb(gconstpointer const data);
 static void                mdy_datapipe_display_brightness_cb(gconstpointer data);
 static void                mdy_datapipe_lpm_brightness_cb(gconstpointer data);
 static void                mdy_datapipe_display_state_req_cb(gconstpointer data);
@@ -895,6 +896,8 @@ static gboolean            mdy_dbus_send_display_status(DBusMessage *const metho
 static const char         *mdy_dbus_get_reason_to_block_display_on(void);
 
 static void                mdy_dbus_handle_display_state_req(display_state_t state);
+static void                mdy_dbus_handle_display_state_req_cb(gpointer aptr);
+static void                mdy_dbus_schedule_display_state_req(DBusMessage *const msg, display_state_t state);
 static gboolean            mdy_dbus_handle_display_on_req(DBusMessage *const msg);
 static gboolean            mdy_dbus_handle_display_dim_req(DBusMessage *const msg);
 static gboolean            mdy_dbus_handle_display_off_req(DBusMessage *const msg);
