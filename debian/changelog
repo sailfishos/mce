@@ -1,3 +1,9 @@
+mce (1.102.1) precise; urgency=low
+
+  * [display] Trigger extra blanking delay during bootup. Fixes JB#47170
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 11 Sep 2019 12:57:03 +0300
+
 mce (1.102.0) precise; urgency=low
 
   * [battery-udev] Make charger type available on D-Bus. JB#38667
