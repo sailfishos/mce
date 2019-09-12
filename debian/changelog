@@ -1,3 +1,13 @@
+mce (1.103.0) precise; urgency=low
+
+  * [display] Add missing local function prototypes
+  * [display] Flush cached brightness when adjustment fails. Fixes JB#47229
+  * [display] Add wait state to compositor switchover. JB#46746
+  * [dummy_compositor] Add exit-on-enable option. JB#46746
+  * [mce-hybris] Enablers for masking hybris plugin features. JB#46746
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 12 Sep 2019 11:08:47 +0300
+
 mce (1.102.1) precise; urgency=low
 
   * [display] Trigger extra blanking delay during bootup. Fixes JB#47170
