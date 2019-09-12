@@ -106,6 +106,7 @@ systemctl daemon-reload || :
 %config %{_sysconfdir}/%{name}/10mce.ini
 %config %{_sysconfdir}/%{name}/20mce-radio-states.ini
 %config %{_sysconfdir}/%{name}/20hybris-led.ini
+%config %{_sysconfdir}/%{name}/20hybris-features.ini
 %config %{_sysconfdir}/%{name}/20debug-led.ini
 %config %{_sysconfdir}/%{name}/20als-defaults.ini
 # empty /var/lib/mce -> rpm

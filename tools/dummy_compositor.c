@@ -116,6 +116,7 @@ static bool               dc_dbus_connect                                  (void
 static bool               dc_dbus_connected                                (void);
 static void               dc_dbus_disconnect                               (void);
 static bool               dc_dbus_reserve_name                             (void);
+static bool               dc_dbus_release_name                             (void);
 
 /* ------------------------------------------------------------------------- *
  * DC_MAINLOOP
@@ -322,6 +323,10 @@ dc_log_emit_real(int level, const char *fmt, ...)
  * DC_DBUS
  * ========================================================================= */
 
+static bool dc_exit_on_enable = false;
+static bool dc_release_name = false;
+static bool dc_name_released = false;
+
 /** Cached system bus connection */
 static DBusConnection *dc_dbus_con = 0;
 
@@ -383,7 +388,8 @@ dc_dbus_handle_name_lost_signal(DBusMessage *sig)
          * -> assume success
          * -> exit immediately
          */
-        dc_mainloop_exit(EXIT_SUCCESS);
+        if( !dc_release_name )
+            dc_mainloop_exit(EXIT_SUCCESS);
     }
 
 EXIT:
@@ -411,7 +417,8 @@ dc_dbus_handle_name_acquired_signal(DBusMessage *sig)
          * -> success
          * -> exit (after brief delay)
          */
-        dc_mainloop_schedule_delayed_exit();
+        if( !dc_exit_on_enable )
+            dc_mainloop_schedule_delayed_exit();
     }
 
 EXIT:
@@ -447,7 +454,8 @@ dc_dbus_handle_name_owner_changed_signal(DBusMessage *sig)
              * -> unexpected, but assume success
              * -> exit immediately
              */
-            dc_mainloop_exit(EXIT_SUCCESS);
+            if( !dc_release_name )
+                dc_mainloop_exit(EXIT_SUCCESS);
         }
     }
 
@@ -489,6 +497,14 @@ dc_dbus_handle_set_updates_enabled_method_call(DBusMessage *req)
         goto EXIT;
 
     dc_log_debug("set_updates_enabled(%s)", dc_bool_repr(enabled));
+
+    if( enabled && dc_exit_on_enable ) {
+        /* We have gained name ownership and
+         * mce gave us permission to draw
+         * -> exit
+         */
+        dc_mainloop_schedule_delayed_exit();
+    }
 
 EXIT:
     rsp = dbus_message_new_method_return(req);
@@ -700,6 +716,46 @@ EXIT:
     return ack;
 }
 
+/** Release ownership of COMPOSITOR_SERVICE D-Bus name
+ *
+ * @return true on success, false otherwise
+ */
+static bool
+dc_dbus_release_name(void)
+{
+    DBusError err = DBUS_ERROR_INIT;
+    bool ack = false;
+
+    if( !dc_dbus_connected() )
+        goto EXIT;
+
+    int rc = dbus_bus_release_name(dc_dbus_con,
+                                   COMPOSITOR_SERVICE,
+                                   &err);
+
+    switch( rc ) {
+    case DBUS_RELEASE_NAME_REPLY_RELEASED:
+        /* A NameLost signal should arrive shortly */
+        dc_log_debug("name released");
+        break;
+    case DBUS_RELEASE_NAME_REPLY_NOT_OWNER:
+        dc_log_err("can't release name: not owner");
+        goto EXIT;
+    case DBUS_RELEASE_NAME_REPLY_NON_EXISTENT:
+        dc_log_err("can't release name: does not exist");
+        goto EXIT;
+    default:
+        dc_log_err("releasing dbus name failed");
+        goto EXIT;
+    }
+
+    ack = true;
+
+EXIT:
+    dbus_error_free(&err);
+    return ack;
+}
+
 /* ========================================================================= *
  * DC_MAINLOOP
  * ========================================================================= */
@@ -760,6 +816,12 @@ static gboolean
 dc_mainloop_delayed_exit_cb(gpointer aptr)
 {
     (void)aptr;
+
+    if( dc_release_name && !dc_name_released ) {
+        dc_name_released = true;
+        dc_dbus_release_name();
+        return G_SOURCE_CONTINUE;
+    }
 
     dc_log_debug("delayed exit: triggered");
     dc_mainloop_delayed_exit_id = 0;
@@ -826,9 +888,14 @@ dc_print_usage(void)
         "\n"
         "OPTIONS\n"
         "    -h --help             Print usage information.\n"
+        "    -V --version          Print version information.\n"
         "    -v --verbose          Increase program verbosity.\n"
         "    -q --quiet            Decrease program verbosity.\n"
+        "    -s --force-syslog     Use syslog for logging.\n"
+        "    -T --force-stderr     Use stderr for logging.\n"
         "    -d --exit-delay=<ms>  Set successful exit delay [ms].\n"
+        "    -e --exit-on-enable   Exit on setUpdatesEnabled(true).\n"
+        "    -r --release-name     Release name before exiting.\n"
         "\n";
     const char *name = dc_log_get_name();
     fprintf(stderr, format, name, name);
@@ -850,17 +917,19 @@ int
 main(int ac, char **av)
 {
     static struct option opt_long[] = {
-        { "help",         no_argument,       0, 'h' },
-        { "version",      no_argument,       0, 'V' },
-        { "verbose",      no_argument,       0, 'v' },
-        { "quiet",        no_argument,       0, 'q' },
-        { "exit-delay",   required_argument, 0, 'd' },
-        { "force-syslog", no_argument,       0, 's' },
-        { "force-stderr", no_argument,       0, 'T' },
-        { 0,              0,                 0,  0  }
+        { "help",            no_argument,       0, 'h' },
+        { "version",         no_argument,       0, 'V' },
+        { "verbose",         no_argument,       0, 'v' },
+        { "quiet",           no_argument,       0, 'q' },
+        { "exit-delay",      required_argument, 0, 'd' },
+        { "exit-on-enable",  no_argument,       0, 'e' },
+        { "release-name",    no_argument,       0, 'r' },
+        { "force-syslog",    no_argument,       0, 's' },
+        { "force-stderr",    no_argument,       0, 'T' },
+        { 0,                 0,                 0,  0  }
     };
 
-    static const char opt_short[] = "hVvqd:sT";
+    static const char opt_short[] = "hVvqd:ersT";
 
     int xc = EXIT_FAILURE;
 
@@ -888,6 +957,12 @@ main(int ac, char **av)
             break;
         case 'd':
             dc_mainloop_exit_delay = strtol(optarg, 0, 0);
+            break;
+        case 'e':
+            dc_exit_on_enable = true;
+            break;
+        case 'r':
+            dc_release_name = true;
             break;
         case 's':
             dc_log_to = DC_LOG_TO_SYSLOG;

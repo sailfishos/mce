@@ -420,6 +420,7 @@ static gpointer            mdy_datapipe_display_state_filter_cb(gpointer data);
 static void                mdy_datapipe_display_state_curr_cb(gconstpointer data);
 static void                mdy_datapipe_display_state_next_cb(gconstpointer data);
 static void                mdy_datapipe_keyboard_slide_input_state_cb(gconstpointer const data);
+static void                mdy_datapipe_keyboard_available_state_cb(gconstpointer const data);
 static void                mdy_datapipe_display_brightness_cb(gconstpointer data);
 static void                mdy_datapipe_lpm_brightness_cb(gconstpointer data);
 static void                mdy_datapipe_display_state_req_cb(gconstpointer data);
@@ -471,10 +472,12 @@ static void                mdy_hbm_rethink(void);
  * ------------------------------------------------------------------------- */
 
 #ifdef ENABLE_HYBRIS
-static void                mdy_brightness_set_level_hybris(int number);
+static bool                mdy_brightness_set_level_hybris(int number);
 #endif
-static void                mdy_brightness_set_level_default(int number);
+static bool                mdy_brightness_set_level_default(int number);
+static int                 mdy_brightness_normalize_level(int number);
 static void                mdy_brightness_set_level(int number);
+static void                mdy_brightness_forget_level(void);
 
 static void                mdy_brightness_fade_continue_with_als(fader_type_t fader_type);
 static void                mdy_brightness_force_level(int number);
@@ -677,6 +680,14 @@ static const char         *renderer_state_repr              (renderer_state_t st
  * ------------------------------------------------------------------------- */
 
 typedef struct compositor_stm_t compositor_stm_t;
+
+static gboolean             compositor_stm_linger_timeout_cb        (gpointer aptr);
+static void                 compositor_stm_cancel_linger_timeout    (compositor_stm_t *self);
+static void                 compositor_stm_schedule_linger_timeout  (compositor_stm_t *self);
+
+static void                 compositor_stm_lingerer_info_cb  (const peerinfo_t *peerinfo, gpointer aptr);
+static const char          *compositor_stm_get_lingerer      (const compositor_stm_t *self);
+static void                 compositor_stm_set_lingerer      (compositor_stm_t *self, const char *name);
 
 static void                 compositor_stm_ctor              (compositor_stm_t *self);
 static void                 compositor_stm_dtor              (compositor_stm_t *self);
@@ -895,6 +906,8 @@ static gboolean            mdy_dbus_send_display_status(DBusMessage *const metho
 static const char         *mdy_dbus_get_reason_to_block_display_on(void);
 
 static void                mdy_dbus_handle_display_state_req(display_state_t state);
+static void                mdy_dbus_handle_display_state_req_cb(gpointer aptr);
+static void                mdy_dbus_schedule_display_state_req(DBusMessage *const msg, display_state_t state);
 static gboolean            mdy_dbus_handle_display_on_req(DBusMessage *const msg);
 static gboolean            mdy_dbus_handle_display_dim_req(DBusMessage *const msg);
 static gboolean            mdy_dbus_handle_display_off_req(DBusMessage *const msg);
@@ -2622,7 +2635,7 @@ static output_state_t mdy_brightness_level_output =
  *
  * @param number brightness value; after bounds checking
  */
-static void (*mdy_brightness_set_level_hook)(int number) = mdy_brightness_set_level_default;
+static bool (*mdy_brightness_set_level_hook)(int number) = mdy_brightness_set_level_default;
 
 /** Is hardware driven display fading supported */
 static gboolean mdy_brightness_hw_fading_is_supported = FALSE;
@@ -2702,18 +2715,33 @@ static gboolean mdy_orientation_change_is_activity = MCE_DEFAULT_ORIENTATION_CHA
 static guint    mdy_orientation_change_is_activity_setting_id = 0;
 
 /** Set display brightness via sysfs write */
-static void mdy_brightness_set_level_default(int number)
+static bool mdy_brightness_set_level_default(int number)
 {
-    mce_write_number_string_to_file(&mdy_brightness_level_output, number);
+    return mce_write_number_string_to_file(&mdy_brightness_level_output, number);
 }
 
 #ifdef ENABLE_HYBRIS
 /** Set display brightness via libhybris */
-static void mdy_brightness_set_level_hybris(int number)
+static bool mdy_brightness_set_level_hybris(int number)
 {
-    mce_hybris_backlight_set_brightness(number);
+    return mce_hybris_backlight_set_brightness(number);
 }
 #endif
+
+/** Helper for normalizing brightness to supported range
+ *
+ * @param number  brightness value
+ *
+ * @return brightness value capped to supported range
+ */
+static int mdy_brightness_normalize_level(int number)
+{
+    if( number < 0 )
+        number = 0;
+    else if (number > mdy_brightness_level_maximum )
+        number = mdy_brightness_level_maximum;
+    return number;
+}
 
 /** Helper for updating backlight brightness with bounds checking
  *
@@ -2721,30 +2749,33 @@ static void mdy_brightness_set_level_hybris(int number)
  */
 static void mdy_brightness_set_level(int number)
 {
-    int minval = 0;
-    int maxval = mdy_brightness_level_maximum;
-
     /* If we manage to get out of hw bounds values from depths
      * of pipelines and state machines we could end up with
      * black screen without easy way out -> clip to valid range */
-    if( number < minval ) {
-        mce_log(LL_ERR, "value=%d vs min=%d", number, minval);
-        number = minval;
-    }
-    else if( number > maxval ) {
-        mce_log(LL_ERR, "value=%d vs max=%d", number, maxval);
-        number = maxval;
-    }
-    else
-        mce_log(LL_DEBUG, "value=%d", number);
+    int value = mdy_brightness_normalize_level(number);
+    if( value != number )
+        mce_log(LL_ERR, "level=%d -> %d", number, value);
 
-    if( mdy_brightness_level_cached != number ) {
-        mdy_brightness_level_cached = number;
-        mdy_brightness_set_level_hook(number);
+    if( mdy_brightness_level_cached != value ) {
+        if( mdy_brightness_set_level_hook(value) ) {
+            mdy_brightness_level_cached = value;
+            mce_log(LL_DEBUG, "level: %d", mdy_brightness_level_cached);
+        }
+        else if( mdy_brightness_level_cached != -1 ) {
+            mdy_brightness_level_cached = -1;
+            mce_log(LL_WARN, "level: %d", mdy_brightness_level_cached);
+        }
     }
+}
 
-    // TODO: we might want to power off fb at zero brightness
-    //       and power it up at non-zero brightness???
+/** Helper for flushing cached backlight brightness value
+ */
+static void mdy_brightness_forget_level(void)
+{
+    if( mdy_brightness_level_cached != -1 ) {
+        mdy_brightness_level_cached = -1;
+        mce_log(LL_DEBUG, "level: %d", mdy_brightness_level_cached);
+    }
 }
 
 /** Helper for boosting mce scheduling priority during brightness fading
@@ -3147,8 +3178,10 @@ static void mdy_brightness_set_fade_target_ex(fader_type_t type,
     }
 
     /* Set up fade start and end brightness levels */
-    mdy_brightness_fade_start_level = mdy_brightness_level_cached;
-    mdy_brightness_fade_end_level   = new_brightness;
+    mdy_brightness_fade_start_level =
+        mdy_brightness_normalize_level(mdy_brightness_level_cached);
+    mdy_brightness_fade_end_level =
+        mdy_brightness_normalize_level(new_brightness);
 
     /* If the - possibly adjusted - transition time is so short that
      * only couple of adjustments would be made, do an immediate
@@ -5947,6 +5980,23 @@ struct compositor_stm_t
      */
     gchar                 *csi_service_owner;
 
+    /** Private name of the previous compositor D-Bus service owner
+     *
+     * Access via:
+     *   compositor_stm_get_lingerer()
+     *   compositor_stm_set_lingerer()
+     */
+    gchar                 *csi_lingering_owner;
+
+    /** Timer id for ignoring previous compositor D-Bus service owner
+     *
+     * Used by:
+     *   compositor_stm_schedule_linger_timeout()
+     *   compositor_stm_cancel_linger_timeout()
+     *   compositor_stm_linger_timeout_cb()
+     */
+    guint                  csi_linger_timeout_id;
+
     /** Process identifier of the compositor D-Bus service
      *
      * Modify via compositor_stm_set_service_pid()
@@ -6033,6 +6083,10 @@ compositor_stm_ctor(compositor_stm_t *self)
     /* compositor dbus service owner is not known */
     self->csi_service_owner = 0;
     self->csi_service_pid   = COMPOSITOR_STM_INVALID_PID;
+
+    /* There is no lingering previous name owner */
+    self->csi_lingering_owner   = 0;
+    self->csi_linger_timeout_id = 0;
 
     /* On startup we want to enable compositor asap */
     self->csi_target    = RENDERER_ENABLED;
@@ -6623,6 +6677,122 @@ EXIT:
 }
 
 /* ------------------------------------------------------------------------- *
+ * manage waiting for previous compositor name owner to exit
+ * ------------------------------------------------------------------------- */
+
+/** Timer callback for: lingering compositor timeout
+ *
+ * Stop waiting for the previous compositor to exit and
+ * and yield control to the current one.
+ */
+static gboolean
+compositor_stm_linger_timeout_cb(gpointer aptr)
+{
+    compositor_stm_t *self = aptr;
+
+    self->csi_linger_timeout_id = 0;
+
+    mce_log(LL_DEBUG, "linger timeout triggered");
+
+    // forget compositor we have done ipc with
+    compositor_stm_set_lingerer(self, 0);
+
+    return G_SOURCE_REMOVE;
+}
+
+/** Cancel scheduled lingering compositor timeout
+ */
+static void
+compositor_stm_cancel_linger_timeout(compositor_stm_t *self)
+{
+    if( self->csi_linger_timeout_id ) {
+        mce_log(LL_DEBUG, "linger timeout canceled");
+        g_source_remove(self->csi_linger_timeout_id),
+            self->csi_linger_timeout_id = 0;
+    }
+}
+
+/** Schedule lingering compositor timeout
+ */
+static void
+compositor_stm_schedule_linger_timeout(compositor_stm_t *self)
+{
+    compositor_stm_cancel_linger_timeout(self);
+
+    mce_log(LL_DEBUG, "linger timeout scheduled");
+    self->csi_linger_timeout_id =
+        g_timeout_add(5000, compositor_stm_linger_timeout_cb, self);
+}
+
+/** Peerinfo notification callback for lingering compositor
+ *
+ * Once the previous compositor makes an exit (it is assumed
+ * that dropping out of system bus is good enough approximation)
+ * we can yield control to a new / waiting compositor instance.
+ */
+static void
+compositor_stm_lingerer_info_cb(const peerinfo_t *peerinfo, gpointer aptr)
+{
+    compositor_stm_t *self  = aptr;
+    const char       *name  = peerinfo_name(peerinfo);
+    pid_t             pid   = peerinfo_get_owner_pid(peerinfo);
+    peerstate_t       state = peerinfo_get_state(peerinfo);
+
+    mce_log(LL_DEBUG, "lingering compositor: name=%s pid=%d state=%s",
+            name, (int)pid, peerstate_repr(state));
+
+    if( state == PEERSTATE_STOPPED ) {
+        if( !g_strcmp0(compositor_stm_get_lingerer(self), name) )
+            compositor_stm_set_lingerer(self, 0);
+    }
+}
+
+/** Get private name of lingering compositor service
+ */
+static const char *
+compositor_stm_get_lingerer(const compositor_stm_t *self)
+{
+    return self->csi_lingering_owner;
+}
+
+/** Set private name of lingering compositor service
+ *
+ * Should be called as soon as a compositor instance has been
+ * accepted as target of compositor dbus ipc.
+ */
+static void
+compositor_stm_set_lingerer(compositor_stm_t *self, const char *name)
+{
+    if( !g_strcmp0(self->csi_lingering_owner, name) )
+        goto EXIT;
+
+    if( self->csi_lingering_owner ) {
+        mce_log(LL_DEBUG, "lingering compositor: name=%s - ignored",
+                self->csi_lingering_owner);
+        mce_dbus_name_tracker_remove(self->csi_lingering_owner,
+                                     compositor_stm_lingerer_info_cb, self);
+        g_free(self->csi_lingering_owner),
+            self->csi_lingering_owner = 0;
+
+        compositor_stm_cancel_linger_timeout(self);
+    }
+
+    if( name ) {
+        self->csi_lingering_owner = g_strdup(name);
+
+        mce_log(LL_DEBUG, "lingering compositor: name=%s - tracked",
+                self->csi_lingering_owner);
+        mce_dbus_name_tracker_add(self->csi_lingering_owner,
+                                  compositor_stm_lingerer_info_cb, self, 0);
+    }
+
+    compositor_stm_eval_state(self);
+
+EXIT:
+    return;
+}
+
+/* ------------------------------------------------------------------------- *
  * compositor ipc state machine
  * ------------------------------------------------------------------------- */
 
@@ -6687,6 +6857,9 @@ compositor_stm_enter_state(compositor_stm_t *self)
         // deactivate all led patterns
         for( compositor_led_t led = 0; led < COMPOSITOR_LED_NUMOF; ++led )
             compositor_led_set_active(led, false);
+
+        // clear previous compositor tracking data
+        compositor_stm_set_lingerer(self, 0);
         break;
 
     case COMPOSITOR_STATE_STOPPED:
@@ -6696,13 +6869,19 @@ compositor_stm_enter_state(compositor_stm_t *self)
         break;
 
     case COMPOSITOR_STATE_STARTED:
+        // apply timeout for waiting previous compositor to exit
+        if( compositor_stm_get_lingerer(self) )
+            compositor_stm_schedule_linger_timeout(self);
+
         self->csi_panic_delay = COMPOSITOR_STM_INITIAL_PANIC_DELAY;
 
         compositor_stm_send_pid_query(self);
-        compositor_stm_set_state(self, COMPOSITOR_STATE_REQUESTING);
         break;
 
     case COMPOSITOR_STATE_REQUESTING:
+        // remember compositor we have done ipc with
+        compositor_stm_set_lingerer(self, self->csi_service_owner);
+
         compositor_stm_set_requested(self, self->csi_target);
         compositor_stm_schedule_killer(self);
         compositor_stm_schedule_panic(self);
@@ -6753,6 +6932,7 @@ compositor_stm_leave_state(compositor_stm_t *self)
         break;
 
     case COMPOSITOR_STATE_STARTED:
+        compositor_stm_cancel_linger_timeout(self);
         break;
 
     case COMPOSITOR_STATE_REQUESTING:
@@ -6790,6 +6970,9 @@ compositor_stm_eval_state(compositor_stm_t *self)
         break;
 
     case COMPOSITOR_STATE_STARTED:
+        /* Proceed once lingering compositor has exited / is ignored */
+        if( !compositor_stm_get_lingerer(self) )
+            compositor_stm_set_state(self, COMPOSITOR_STATE_REQUESTING);
         break;
 
     case COMPOSITOR_STATE_REQUESTING:
@@ -8149,7 +8332,7 @@ static void mdy_stm_step(void)
              */
             int brightness = mdy_brightness_level_cached;
             mce_log(LL_WARN, "forced brightness sync to: %d", brightness);
-            mdy_brightness_level_cached = -1;
+            mdy_brightness_forget_level();
             if( brightness > 0 )
                 mdy_brightness_set_level(brightness - 1);
             mdy_brightness_set_level(brightness);
@@ -8219,7 +8402,7 @@ static void mdy_stm_step(void)
                  * the display while making exit -> we need to
                  * invalidate cached backlight brightness level
                  * and possibly power up the display again */
-                mdy_brightness_level_cached = -1;
+                mdy_brightness_forget_level();
             }
             mdy_stm_trans(STM_LEAVE_POWER_ON);
             break;
@@ -8398,7 +8581,7 @@ static void mdy_stm_step(void)
 
         if( mdy_stm_compositor_availability_changed ) {
             if( !mdy_compositor_is_available() )
-                mdy_brightness_level_cached = -1;
+                mdy_brightness_forget_level();
             mdy_stm_trans(STM_LEAVE_LOGICAL_OFF);
             break;
         }

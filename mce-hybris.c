@@ -45,6 +45,29 @@
 #include <errno.h>
 #include <dlfcn.h>
 
+/* ========================================================================= *
+ * On some devices using in theory supported hybris functionality can lead
+ * to problems. As a solution mce side configuration files can be used to
+ * disable individual features.
+ * ========================================================================= */
+
+#define MCE_CONF_FEATURE_HYBRIS_GROUP                   "FeatureHybris"
+
+#define MCE_CONF_FEATURE_HYBRIS_FRAMEBUFFER             "FrameBuffer"
+#define MCE_CONF_FEATURE_HYBRIS_BACKLIGHT               "BackLight"
+#define MCE_CONF_FEATURE_HYBRIS_KEYPAD                  "KeyPad"
+#define MCE_CONF_FEATURE_HYBRIS_INDICATOR_LED           "IndicatorLed"
+#define MCE_CONF_FEATURE_HYBRIS_PROXIMITY_SENSOR        "ProximitySensor"
+#define MCE_CONF_FEATURE_HYBRIS_LIGHT_SENSOR            "LightSensor"
+
+static bool
+mce_hybris_feature_supported(const char *key)
+{
+  bool res = mce_conf_get_bool(MCE_CONF_FEATURE_HYBRIS_GROUP, key, true);
+  mce_log(LL_WARN, "hybris feature %s is %s", key, res ? "allowed" : "denied");
+  return res;
+}
+
 static void mce_hybris_ps_set_hook(mce_hybris_ps_fn cb);
 static void mce_hybris_als_set_hook(mce_hybris_als_fn cb);
 
@@ -403,7 +426,8 @@ void mce_hybris_quit(void)
 bool mce_hybris_framebuffer_init(void)
 {
   static bool (*real)(void) = 0;
-  RESOLVE;
+  if( mce_hybris_feature_supported(MCE_CONF_FEATURE_HYBRIS_FRAMEBUFFER) )
+    RESOLVE;
   return !real ? false : real();
 }
 
@@ -440,7 +464,8 @@ bool mce_hybris_framebuffer_set_power(bool state)
 bool mce_hybris_backlight_init(void)
 {
   static bool (*real)(void) = 0;
-  RESOLVE;
+  if( mce_hybris_feature_supported(MCE_CONF_FEATURE_HYBRIS_BACKLIGHT) )
+    RESOLVE;
   return !real ? false : real();
 }
 
@@ -477,7 +502,8 @@ bool mce_hybris_backlight_set_brightness(int level)
 bool mce_hybris_keypad_init(void)
 {
   static bool (*real)(void) = 0;
-  RESOLVE;
+  if( mce_hybris_feature_supported(MCE_CONF_FEATURE_HYBRIS_KEYPAD) )
+    RESOLVE;
   return !real ? false : real();
 }
 
@@ -514,7 +540,8 @@ bool mce_hybris_keypad_set_brightness(int level)
 bool mce_hybris_indicator_init(void)
 {
   static bool (*real)(void) = 0;
-  RESOLVE;
+  if( mce_hybris_feature_supported(MCE_CONF_FEATURE_HYBRIS_INDICATOR_LED) )
+    RESOLVE;
   return !real ? false : real();
 }
 
@@ -595,7 +622,8 @@ bool mce_hybris_indicator_set_brightness(int level)
 bool mce_hybris_ps_init(void)
 {
   bool (*real)(void) = 0;
-  RESOLVE;
+  if( mce_hybris_feature_supported(MCE_CONF_FEATURE_HYBRIS_PROXIMITY_SENSOR) )
+    RESOLVE;
   return !real ? false : real();
 }
 
@@ -670,7 +698,8 @@ bool mce_hybris_ps_set_callback(mce_hybris_ps_fn cb)
 bool mce_hybris_als_init(void)
 {
   bool (*real)(void) = 0;
-  RESOLVE;
+  if( mce_hybris_feature_supported(MCE_CONF_FEATURE_HYBRIS_LIGHT_SENSOR) )
+    RESOLVE;
   return !real ? false : real();
 }
 
