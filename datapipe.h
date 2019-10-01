@@ -257,6 +257,7 @@ extern datapipe_t interaction_expected_pipe;
 extern datapipe_t charger_type_pipe;
 extern datapipe_t charger_state_pipe;
 extern datapipe_t battery_status_pipe;
+extern datapipe_t battery_state_pipe;
 extern datapipe_t battery_level_pipe;
 extern datapipe_t topmost_window_pid_pipe;
 extern datapipe_t camera_button_state_pipe;

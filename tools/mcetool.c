@@ -147,6 +147,7 @@ static bool          xmce_set_battery_level                            (int leve
 static void          xmce_get_cable_state                              (void);
 static void          xmce_get_charger_state                            (void);
 static void          xmce_get_battery_status                           (void);
+static void          xmce_get_battery_state                            (void);
 static void          xmce_get_battery_level                            (void);
 static void          xmce_get_battery_info                             (void);
 static void          xmce_parse_notification_args                      (const char *args, char **title, dbus_int32_t *delay, dbus_int32_t *renew);
@@ -2749,6 +2750,14 @@ static void xmce_get_battery_status(void)
         free(str);
 }
 
+static void xmce_get_battery_state(void)
+{
+        char *str = 0;
+        xmce_ipc_string_reply(MCE_BATTERY_STATE_GET, &str, DBUS_TYPE_INVALID);
+        printf("%-"PAD1"s %s\n","Battery state:", str ?: "unknown");
+        free(str);
+}
+
 static void xmce_get_battery_level(void)
 {
         gint num = -1;
@@ -2762,6 +2771,7 @@ static void xmce_get_battery_info(void)
         xmce_get_charger_state();
         xmce_get_battery_level();
         xmce_get_battery_status();
+        xmce_get_battery_state();
 }
 
 /* ------------------------------------------------------------------------- *

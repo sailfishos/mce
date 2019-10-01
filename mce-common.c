@@ -85,6 +85,8 @@ static void     common_dbus_send_charger_state    (DBusMessage *const req);
 static gboolean common_dbus_get_charger_state_cb  (DBusMessage *const req);
 static void     common_dbus_send_battery_status   (DBusMessage *const req);
 static gboolean common_dbus_get_battery_status_cb (DBusMessage *const req);
+static void     common_dbus_send_battery_state    (DBusMessage *const req);
+static gboolean common_dbus_get_battery_state_cb  (DBusMessage *const req);
 static void     common_dbus_send_battery_level    (DBusMessage *const req);
 static gboolean common_dbus_get_battery_level_cb  (DBusMessage *const req);
 static gboolean common_dbus_initial_cb            (gpointer aptr);
@@ -99,6 +101,7 @@ static void common_datapipe_usb_cable_state_cb        (gconstpointer data);
 static void common_datapipe_charger_type_cb           (gconstpointer data);
 static void common_datapipe_charger_state_cb          (gconstpointer data);
 static void common_datapipe_battery_status_cb         (gconstpointer data);
+static void common_datapipe_battery_state_cb          (gconstpointer data);
 static void common_datapipe_battery_level_cb          (gconstpointer data);
 static void common_datapipe_proximity_sensor_actual_cb(gconstpointer data);
 static void common_datapipe_init                      (void);
@@ -126,6 +129,9 @@ static charger_state_t charger_state = CHARGER_STATE_UNDEF;
 
 /** Battery status; assume undefined */
 static battery_status_t battery_status = BATTERY_STATUS_UNDEF;
+
+/** Battery state; assume unknown */
+static battery_state_t battery_state = BATTERY_STATE_UNKNOWN;
 
 /** Battery charge level: assume 100% */
 static gint battery_level = BATTERY_LEVEL_INITIAL;
@@ -590,6 +596,69 @@ common_dbus_get_battery_status_cb(DBusMessage *const req)
 }
 
 /* ------------------------------------------------------------------------- *
+ * battery_state
+ * ------------------------------------------------------------------------- */
+
+/** Send battery_state D-Bus signal / method call reply
+ *
+ * @param req  method call message to reply, or NULL to send signal
+ */
+static void
+common_dbus_send_battery_state(DBusMessage *const req)
+{
+    static const char *last = 0;
+
+    DBusMessage *msg = NULL;
+
+    const char *value = battery_state_to_dbus(battery_state);
+
+    if( req ) {
+        msg = dbus_new_method_reply(req);
+    }
+    else if( last == value ) {
+        goto EXIT;
+    }
+    else {
+        last = value;
+        msg = dbus_new_signal(MCE_SIGNAL_PATH,
+                              MCE_SIGNAL_IF,
+                              MCE_BATTERY_STATE_SIG);
+    }
+
+    if( !dbus_message_append_args(msg,
+                                  DBUS_TYPE_STRING, &value,
+                                  DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "%s: %s = %s",
+            req ? "reply" : "broadcast",
+            "battery_state", value);
+
+    dbus_send_message(msg), msg = 0;
+
+EXIT:
+
+    if( msg )
+        dbus_message_unref(msg);
+}
+
+/** Callback for handling battery_state D-Bus queries
+ *
+ * @param req  method call message to reply
+ */
+static gboolean
+common_dbus_get_battery_state_cb(DBusMessage *const req)
+{
+    mce_log(LL_DEBUG, "battery_state query from: %s",
+            mce_dbus_get_message_sender_ident(req));
+
+    if( !dbus_message_get_no_reply(req) )
+        common_dbus_send_battery_state(req);
+
+    return TRUE;
+}
+
+/* ------------------------------------------------------------------------- *
  * battery_level
  * ------------------------------------------------------------------------- */
 
@@ -696,6 +765,13 @@ static mce_dbus_handler_t common_dbus_handlers[] =
     },
     {
         .interface = MCE_SIGNAL_IF,
+        .name      = MCE_BATTERY_STATE_SIG,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .args      =
+            "    <arg name=\"battery_state\" type=\"s\"/>\n"
+    },
+    {
+        .interface = MCE_SIGNAL_IF,
         .name      = MCE_BATTERY_LEVEL_SIG,
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
         .args      =
@@ -736,6 +812,14 @@ static mce_dbus_handler_t common_dbus_handlers[] =
     },
     {
         .interface = MCE_REQUEST_IF,
+        .name      = MCE_BATTERY_STATE_GET,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = common_dbus_get_battery_state_cb,
+        .args      =
+            "    <arg direction=\"out\" name=\"battery_state\" type=\"s\"/>\n"
+    },
+    {
+        .interface = MCE_REQUEST_IF,
         .name      = MCE_BATTERY_LEVEL_GET,
         .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
         .callback  = common_dbus_get_battery_level_cb,
@@ -771,6 +855,7 @@ static gboolean common_dbus_initial_cb(gpointer aptr)
     common_dbus_send_charger_type(0);
     common_dbus_send_charger_state(0);
     common_dbus_send_battery_status(0);
+    common_dbus_send_battery_state(0);
     common_dbus_send_battery_level(0);
 
     common_dbus_initial_id = 0;
@@ -919,6 +1004,32 @@ EXIT:
 }
 
 /* ------------------------------------------------------------------------- *
+ * battery_state
+ * ------------------------------------------------------------------------- */
+
+/** Callback for handling battery_state_pipe state changes
+ *
+ * @param data battery_state (as void pointer)
+ */
+static void common_datapipe_battery_state_cb(gconstpointer data)
+{
+    battery_state_t prev = battery_state;
+    battery_state = GPOINTER_TO_INT(data);
+
+    if( battery_state == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "battery_state = %s -> %s",
+            battery_state_repr(prev),
+            battery_state_repr(battery_state));
+
+    common_dbus_send_battery_state(0);
+
+EXIT:
+    return;
+}
+
+/* ------------------------------------------------------------------------- *
  * battery_level
  * ------------------------------------------------------------------------- */
 
@@ -991,6 +1102,10 @@ static datapipe_handler_t common_datapipe_handlers[] =
     {
         .datapipe  = &battery_status_pipe,
         .output_cb = common_datapipe_battery_status_cb,
+    },
+    {
+        .datapipe  = &battery_state_pipe,
+        .output_cb = common_datapipe_battery_state_cb,
     },
     {
         .datapipe  = &battery_level_pipe,
