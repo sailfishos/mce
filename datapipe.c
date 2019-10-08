@@ -116,6 +116,7 @@ static const char  *datapipe_hook_tklock_request_value     (gconstpointer data);
 static const char  *datapipe_hook_charger_state_value      (gconstpointer data);
 static const char  *datapipe_hook_charger_type_value       (gconstpointer data);
 static const char  *datapipe_hook_battery_status_value     (gconstpointer data);
+static const char  *datapipe_hook_battery_state_value      (gconstpointer data);
 static const char  *datapipe_hook_camera_button_state_value(gconstpointer data);
 static const char  *datapipe_hook_audio_route_value        (gconstpointer data);
 static const char  *datapipe_hook_usb_cable_state_value    (gconstpointer data);
@@ -248,6 +249,13 @@ const char  *tklock_status_repr(int status);
 
 const char  *battery_status_repr   (battery_status_t state);
 const char  *battery_status_to_dbus(battery_status_t state);
+
+/* ------------------------------------------------------------------------- *
+ * BATTERY_STATE
+ * ------------------------------------------------------------------------- */
+
+const char  *battery_state_repr   (battery_state_t state);
+const char  *battery_state_to_dbus(battery_state_t state);
 
 /* ------------------------------------------------------------------------- *
  * ALARM_STATE
@@ -507,6 +515,14 @@ datapipe_hook_battery_status_value(gconstpointer data)
 #define datapipe_hook_battery_status_change 0
 
 static const char *
+datapipe_hook_battery_state_value(gconstpointer data)
+{
+    battery_state_t value = GPOINTER_TO_INT(data);
+    return battery_state_repr(value);
+}
+#define datapipe_hook_battery_state_change 0
+
+static const char *
 datapipe_hook_camera_button_state_value(gconstpointer data)
 {
     camera_button_state_t value = GPOINTER_TO_INT(data);
@@ -723,6 +739,9 @@ datapipe_t charger_state_pipe                   = DATAPIPE_INIT(charger_state, c
 
 /** Battery status; read only */
 datapipe_t battery_status_pipe                  = DATAPIPE_INIT(battery_status, battery_status, BATTERY_STATUS_UNDEF, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
+
+/** Battery state; read only */
+datapipe_t battery_state_pipe                   = DATAPIPE_INIT(battery_state, battery_state, BATTERY_STATE_UNKNOWN, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** Battery charge level; read only */
 datapipe_t battery_level_pipe                   = DATAPIPE_INIT(battery_level, int, BATTERY_LEVEL_INITIAL, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
@@ -1303,6 +1322,7 @@ void mce_datapipe_quit(void)
     datapipe_free(&topmost_window_pid_pipe);
     datapipe_free(&camera_button_state_pipe);
     datapipe_free(&battery_status_pipe);
+    datapipe_free(&battery_state_pipe);
     datapipe_free(&charger_type_pipe);
     datapipe_free(&charger_state_pipe);
     datapipe_free(&interaction_expected_pipe);
@@ -1808,6 +1828,60 @@ const char *tklock_status_repr(int status)
     }
 
     return repr;
+}
+
+/** Convert battery_state_t enum to human readable string
+ *
+ * @param state battery_state_t enumeration value
+ *
+ * @return human readable representation of state
+ */
+const char *
+battery_state_repr(battery_state_t state)
+{
+    const char *repr = "invalid";
+
+    switch( state ) {
+    case BATTERY_STATE_UNKNOWN:      repr = "unknown";      break;
+    case BATTERY_STATE_CHARGING:     repr = "charging";     break;
+    case BATTERY_STATE_DISCHARGING:  repr = "discharging";  break;
+    case BATTERY_STATE_NOT_CHARGING: repr = "not_charging"; break;
+    case BATTERY_STATE_FULL:         repr = "full";         break;
+    default: break;
+    }
+
+    return repr;
+}
+
+/** Convert battery_state_t enum to dbus argument string
+ *
+ * @param state battery_state_t enumeration value
+ *
+ * @return representation of state for use over dbus
+ */
+const char *
+battery_state_to_dbus(battery_state_t state)
+{
+    const char *res = MCE_BATTERY_STATE_UNKNOWN;
+
+    switch( state ) {
+    case BATTERY_STATE_CHARGING:
+      res = MCE_BATTERY_STATE_CHARGING;
+      break;
+    case BATTERY_STATE_DISCHARGING:
+      res = MCE_BATTERY_STATE_DISCHARGING;
+      break;
+    case BATTERY_STATE_NOT_CHARGING:
+      res = MCE_BATTERY_STATE_NOT_CHARGING;
+      break;
+    case BATTERY_STATE_FULL:
+      res = MCE_BATTERY_STATE_FULL;
+      break;
+    default:
+      break;
+    }
+
+    return res;
 }
 
 /** Convert battery_status_t enum to human readable string

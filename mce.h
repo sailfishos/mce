@@ -313,6 +313,19 @@ const char *tklock_status_repr(int status);
 /** Assumed initial battery level */
 #define BATTERY_LEVEL_INITIAL 100
 
+/** Raw udev battery status */
+typedef enum
+{
+    BATTERY_STATE_UNKNOWN,
+    BATTERY_STATE_CHARGING,
+    BATTERY_STATE_DISCHARGING,
+    BATTERY_STATE_NOT_CHARGING,
+    BATTERY_STATE_FULL,
+} battery_state_t;
+
+const char *battery_state_repr(battery_state_t state);
+const char *battery_state_to_dbus(battery_state_t state);
+
 /** Battery status */
 typedef enum {
 	BATTERY_STATUS_UNDEF = -1,	/**< Battery status not known */

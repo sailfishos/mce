@@ -116,6 +116,9 @@ typedef struct
     /** Battery FULL/OK/LOW/EMPTY; for use with battery_status_pipe */
     battery_status_t battery_status;
 
+    /** Battery UNKNOWN|CHARGING|DISCHARGING|NOT_CHARGING|FULL"*/
+    battery_state_t  battery_state;
+
     /** Charger connected; for use with charger_state_pipe */
     charger_state_t  charger_state;
 
@@ -224,26 +227,27 @@ static bool              udevproperty_set        (udevproperty_t *self, const ch
  * UDEVDEVICE
  * ------------------------------------------------------------------------- */
 
-static charger_type_t   udevdevice_lookup_charger_type(const char *name);
-static void             udevdevice_init_blacklist     (void);
-static void             udevdevice_quit_blacklist     (void);
-static bool             udevdevice_is_blacklisted     (const char *name);
-static udevdevice_t    *udevdevice_create             (const char *name);
-static void             udevdevice_delete             (udevdevice_t *self);
-static void             udevdevice_delete_cb          (void *self);
-static const char      *udevdevice_name               (const udevdevice_t *self);
-static udevproperty_t  *udevdevice_get_prop           (udevdevice_t *self, const char *key);
-static udevproperty_t  *udevdevice_add_prop           (udevdevice_t *self, const char *key);
-static bool             udevdevice_set_prop           (udevdevice_t *self, const char *key, const char *val);
-static const char      *udevdevice_get_str_prop       (udevdevice_t *self, const char *key, const char *def);
-static int              udevdevice_get_int_prop       (udevdevice_t *self, const char *key, int def);
-static bool             udevdevice_refresh            (udevdevice_t *self, struct udev_device *dev);
-static bool             udevdevice_is_battery         (udevdevice_t *self);
-static bool             udevdevice_is_charger         (udevdevice_t *self);
-static void             udevdevice_evaluate_charger   (udevdevice_t *self, mcebat_t *mcebat);
-static void             udevdevice_evaluate_charger_cb(gpointer key, gpointer value, gpointer aptr);
-static void             udevdevice_evaluate_battery   (udevdevice_t *self, mcebat_t *mcebat);
-static void             udevdevice_evaluate_battery_cb(gpointer key, gpointer value, gpointer aptr);
+static battery_state_t  udevdevice_lookup_battery_state(const char *status);
+static charger_type_t   udevdevice_lookup_charger_type (const char *name);
+static void             udevdevice_init_blacklist      (void);
+static void             udevdevice_quit_blacklist      (void);
+static bool             udevdevice_is_blacklisted      (const char *name);
+static udevdevice_t    *udevdevice_create              (const char *name);
+static void             udevdevice_delete              (udevdevice_t *self);
+static void             udevdevice_delete_cb           (void *self);
+static const char      *udevdevice_name                (const udevdevice_t *self);
+static udevproperty_t  *udevdevice_get_prop            (udevdevice_t *self, const char *key);
+static udevproperty_t  *udevdevice_add_prop            (udevdevice_t *self, const char *key);
+static bool             udevdevice_set_prop            (udevdevice_t *self, const char *key, const char *val);
+static const char      *udevdevice_get_str_prop        (udevdevice_t *self, const char *key, const char *def);
+static int              udevdevice_get_int_prop        (udevdevice_t *self, const char *key, int def);
+static bool             udevdevice_refresh             (udevdevice_t *self, struct udev_device *dev);
+static bool             udevdevice_is_battery          (udevdevice_t *self);
+static bool             udevdevice_is_charger          (udevdevice_t *self);
+static void             udevdevice_evaluate_charger    (udevdevice_t *self, mcebat_t *mcebat);
+static void             udevdevice_evaluate_charger_cb (gpointer key, gpointer value, gpointer aptr);
+static void             udevdevice_evaluate_battery    (udevdevice_t *self, mcebat_t *mcebat);
+static void             udevdevice_evaluate_battery_cb (gpointer key, gpointer value, gpointer aptr);
 
 /* ------------------------------------------------------------------------- *
  * UDEVTRACKER
@@ -294,6 +298,7 @@ G_MODULE_EXPORT module_info_struct module_info =
 static mcebat_t mcebat_datapipe = {
     .battery_level  = BATTERY_LEVEL_INITIAL,
     .battery_status = BATTERY_STATUS_UNDEF,
+    .battery_state  = BATTERY_STATE_UNKNOWN,
     .charger_state  = CHARGER_STATE_UNDEF,
     .charger_type   = CHARGER_TYPE_NONE,
 };
@@ -303,6 +308,7 @@ static mcebat_t mcebat_datapipe = {
 static mcebat_t mcebat_actual = {
     .battery_level  = BATTERY_LEVEL_INITIAL,
     .battery_status = BATTERY_STATUS_UNDEF,
+    .battery_state  = BATTERY_STATE_UNKNOWN,
     .charger_state  = CHARGER_STATE_UNDEF,
     .charger_type   = CHARGER_TYPE_NONE,
 };
@@ -466,9 +472,12 @@ mcebat_dbus_evaluate_battery_status(void)
 {
     /* Handle charger-connected special cases */
     if( mcebat_simulated.charger_state == CHARGER_STATE_ON ) {
+        mcebat_simulated.battery_state  = BATTERY_STATE_CHARGING;
+
         if( mcebat_simulated.battery_level >= 100 ) {
             /* Battery full reached */
             mcebat_simulated.battery_status = BATTERY_STATUS_FULL;
+            mcebat_simulated.battery_state  = BATTERY_STATE_FULL;
             goto EXIT;
         }
         if( mcebat_simulated.battery_status == BATTERY_STATUS_FULL &&
@@ -481,6 +490,9 @@ mcebat_dbus_evaluate_battery_status(void)
             mcebat_simulated.battery_status = BATTERY_STATUS_OK;
             goto EXIT;
         }
+    }
+    else {
+        mcebat_simulated.battery_state  = BATTERY_STATE_DISCHARGING;
     }
 
     /* Evaluate based on battery level */
@@ -804,6 +816,16 @@ mcebat_update(void)
         mce_datapipe_generate_activity();
     }
 
+    if( prev.battery_state != curr->battery_state ) {
+        mce_log(LL_CRUCIAL, "battery_state: %s -> %s",
+                battery_state_repr(prev.battery_state),
+                battery_state_repr(curr->battery_state));
+
+        /* Battery charging state */
+        datapipe_exec_full(&battery_state_pipe,
+                           GINT_TO_POINTER(curr->battery_state));
+    }
+
     if( prev.battery_status != curr->battery_status ) {
         mce_log(LL_CRUCIAL, "battery_status: %s -> %s",
                 battery_status_repr(prev.battery_status),
@@ -1044,6 +1066,32 @@ udevproperty_set(udevproperty_t *self, const char *val)
 /* ========================================================================= *
  * UDEVDEVICE
  * ========================================================================= */
+
+/** Lookup mce battery state based on udev battery status property value
+ *
+ * @param status  udev battery status
+ *
+ * @return battery_state_t enumeration value
+ */
+
+static battery_state_t
+udevdevice_lookup_battery_state(const char *status)
+{
+    battery_state_t state = BATTERY_STATE_UNKNOWN;
+
+    if( !g_strcmp0(status, "Charging") )
+        state = BATTERY_STATE_CHARGING;
+    else if( !g_strcmp0(status, "Discharging") )
+        state = BATTERY_STATE_DISCHARGING;
+    else if( !g_strcmp0(status, "Not charging") )
+        state = BATTERY_STATE_NOT_CHARGING;
+    else if( !g_strcmp0(status, "Full") )
+        state = BATTERY_STATE_FULL;
+    else if( g_strcmp0(status, "Unknown") )
+        mce_log(LL_WARN, "unrecognized power supply state '%s'", status);
+
+    return state;
+}
 
 /** Lookup charger type based on device name / value of type property
  *
@@ -1496,9 +1544,11 @@ udevdevice_evaluate_battery(udevdevice_t *self, mcebat_t *mcebat)
     else
         mcebat->battery_status = BATTERY_STATUS_OK;
 
-    /* udev status is "Unknown|Charging|Discharging|Not charging|Full"
-     *
-     * "Charging" and "Full" override capacity based mce battery status
+    /* udev status is "Unknown|Charging|Discharging|Not charging|Full" */
+
+    mcebat->battery_state = udevdevice_lookup_battery_state(status);
+
+    /* "Charging" and "Full" override capacity based mce battery status
      * evaluation above.
      *
      * How maintenance charging is reported after hitting battery
@@ -1511,12 +1561,12 @@ udevdevice_evaluate_battery(udevdevice_t *self, mcebat_t *mcebat)
      * Also if battery device indicates that it is getting charged,
      * assume that a charger is connected.
      */
-    if( !g_strcmp0(status, "Full") ) {
+    if( mcebat->battery_state == BATTERY_STATE_FULL ) {
         mcebat->charger_state  = CHARGER_STATE_ON;
         mcebat->battery_status = BATTERY_STATUS_FULL;
         self->udd_full = true;
     }
-    else if( !g_strcmp0(status, "Charging") ) {
+    else if( mcebat->battery_state == BATTERY_STATE_CHARGING ) {
         mcebat->charger_state  = CHARGER_STATE_ON;
         mcebat->battery_status = BATTERY_STATUS_OK;
         if( self->udd_full && capacity >= BATTERY_CAPACITY_FULL )
@@ -1545,6 +1595,10 @@ udevdevice_evaluate_battery(udevdevice_t *self, mcebat_t *mcebat)
     else {
         self->udd_full = false;
     }
+
+    /* Override udev status on heuristically determined battery full */
+    if( mcebat->battery_status == BATTERY_STATUS_FULL )
+        mcebat->battery_state = BATTERY_STATE_FULL;
 
     mce_log(LL_DEBUG, "%s: battery @ cap=%d status=%s full=%d",
             udevdevice_name(self), capacity, status, self->udd_full);
