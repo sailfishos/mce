@@ -471,6 +471,10 @@ static void                mdy_hbm_rethink(void);
  * BACKLIGHT_BRIGHTNESS
  * ------------------------------------------------------------------------- */
 
+static gboolean            mdy_brightness_retry_cb(gpointer aptr);
+static void                mdy_brightness_cancel_retry(void);
+static void                mdy_brightness_schedule_retry(int level);
+
 #ifdef ENABLE_HYBRIS
 static bool                mdy_brightness_set_level_hybris(int number);
 #endif
@@ -2605,8 +2609,11 @@ static gint mdy_brightness_level_maximum = DEFAULT_MAXIMUM_DISPLAY_BRIGHTNESS;
 /** File used to get maximum display brightness */
 static gchar *mdy_brightness_level_maximum_path = NULL;
 
-/** Cached brightness, last value written; [0, mdy_brightness_level_maximum] */
+/** Cached brightness, last requested value; [0, mdy_brightness_level_maximum] */
 static gint mdy_brightness_level_cached = -1;
+
+/** Cached brightness, last value accepted by kernel */
+static gint mdy_brightness_level_active = -1;
 
 /** Brightness, when display is not off; [0, mdy_brightness_level_maximum] */
 static gint mdy_brightness_level_display_on = 1;
@@ -2636,6 +2643,9 @@ static output_state_t mdy_brightness_level_output =
  * @param number brightness value; after bounds checking
  */
 static bool (*mdy_brightness_set_level_hook)(int number) = mdy_brightness_set_level_default;
+
+/** Number of consecutive brighness adjustment failures */
+static unsigned mdy_brightness_failure_count = 0;
 
 /** Is hardware driven display fading supported */
 static gboolean mdy_brightness_hw_fading_is_supported = FALSE;
@@ -2714,9 +2724,56 @@ static guint    mdy_flipover_gesture_enabled_setting_id = 0;
 static gboolean mdy_orientation_change_is_activity = MCE_DEFAULT_ORIENTATION_CHANGE_IS_ACTIVITY;
 static guint    mdy_orientation_change_is_activity_setting_id = 0;
 
+/** Timer for retrying brightness adjustment */
+static guint mdy_brightness_retry_id = 0;
+
+/** Timer callback for retrying brightness adjustment
+ *
+ * @param aptr  brightness value as void pointer
+ *
+ * @return G_SOURCE_REMOVE (to stop timer from repeating)
+ */
+static gboolean mdy_brightness_retry_cb(gpointer aptr)
+{
+    int level = GPOINTER_TO_INT(aptr);
+    mce_log(LL_WARN, "retry brightness adjustment: level=%d", level);
+    mdy_brightness_retry_id = 0;
+    mdy_brightness_set_level(level);
+    return G_SOURCE_REMOVE;
+}
+
+/** Cancel pending brigthness adjustment retry
+ */
+static void mdy_brightness_cancel_retry(void)
+{
+    if( mdy_brightness_retry_id ) {
+        g_source_remove(mdy_brightness_retry_id),
+            mdy_brightness_retry_id = 0;
+    }
+}
+
+/** Schedule brigthness adjustment retry
+ *
+ * @param level brightness value to retry
+ */
+static void mdy_brightness_schedule_retry(int level)
+{
+    mdy_brightness_cancel_retry();
+
+    mdy_brightness_retry_id = g_timeout_add(1000,
+                                            mdy_brightness_retry_cb,
+                                            GINT_TO_POINTER(level));
+}
+
 /** Set display brightness via sysfs write */
 static bool mdy_brightness_set_level_default(int number)
 {
+    if( !mdy_brightness_level_output.path ) {
+        /* Pretend success if we have nowhere to write to,
+         * so that we do not trigger useless logging. */
+        return true;
+    }
+
     return mce_write_number_string_to_file(&mdy_brightness_level_output, number);
 }
 
@@ -2754,16 +2811,66 @@ static void mdy_brightness_set_level(int number)
      * black screen without easy way out -> clip to valid range */
     int value = mdy_brightness_normalize_level(number);
     if( value != number )
-        mce_log(LL_ERR, "level=%d -> %d", number, value);
+        mce_log(LL_WARN, "out of bounds brightness level: %d -> %d",
+                number, value);
 
-    if( mdy_brightness_level_cached != value ) {
+    /* Cancel pending retry attempts */
+    mdy_brightness_cancel_retry();
+
+    /* Mark down what we wanted the brightess to be */
+    mdy_brightness_level_cached = value;
+
+    /* Make an attempt to change actual brightness */
+    if( mdy_brightness_level_active != value ) {
         if( mdy_brightness_set_level_hook(value) ) {
-            mdy_brightness_level_cached = value;
-            mce_log(LL_DEBUG, "level: %d", mdy_brightness_level_cached);
+            /* Successfully adjusted */
+            if( mdy_brightness_failure_count ) {
+                mce_log(LL_WARN, "active brightness: %d -> %d (success after %u failures)",
+                        mdy_brightness_level_active,
+                        value,
+                        mdy_brightness_failure_count);
+                mdy_brightness_failure_count = 0;
+            }
+            else {
+                mce_log(LL_DEBUG, "active brightness: %d -> %d",
+                        mdy_brightness_level_active,
+                        value );
+            }
+            /* Mark down: In sync with kernel */
+            mdy_brightness_level_active = value;
         }
-        else if( mdy_brightness_level_cached != -1 ) {
-            mdy_brightness_level_cached = -1;
-            mce_log(LL_WARN, "level: %d", mdy_brightness_level_cached);
+        else {
+            /* Adjustment failed */
+            mdy_brightness_failure_count += 1;
+
+            /* As we more or less expect to get some amount of
+             * failures during bootup and compositor switchovers,
+             * make an attempt to limit diagnostic noise when mce
+             * is running under normal verbosity.
+             */
+            int verbosity = LL_WARN;
+            if( value <= 0 || mdy_brightness_failure_count % 10 )
+                verbosity = LL_DEBUG;
+
+            mce_log(verbosity, "active brightness: %d -> %d (failure count %u)",
+                    mdy_brightness_level_active,
+                    value,
+                    mdy_brightness_failure_count);
+
+            /* Mark down: Out of sync with kernel */
+            mdy_brightness_level_active = -1;
+
+            if( mdy_compositor_is_enabled() && value > 0 ) {
+                /* There seems to be a timing hazard regarding
+                 * dri compositor unblank vs when brightness
+                 * adjustments via sysfs will be accepted by
+                 * kernel. At the moment we do not have suitable
+                 * ipc mechanisms in place to properly deal with
+                 * this -> as a workaround: retry periodically
+                 * until it succeeds ...
+                 */
+                mdy_brightness_schedule_retry(value);
+            }
         }
     }
 }
@@ -2772,9 +2879,9 @@ static void mdy_brightness_set_level(int number)
  */
 static void mdy_brightness_forget_level(void)
 {
-    if( mdy_brightness_level_cached != -1 ) {
-        mdy_brightness_level_cached = -1;
-        mce_log(LL_DEBUG, "level: %d", mdy_brightness_level_cached);
+    if( mdy_brightness_level_active != -1 ) {
+        mdy_brightness_level_active = -1;
+        mce_log(LL_DEBUG, "active brightness: %d", mdy_brightness_level_active);
     }
 }
 
@@ -3141,7 +3248,8 @@ static void mdy_brightness_set_fade_target_ex(fader_type_t type,
 
     /* If we're already at the target level, stop any
      * ongoing fading activity */
-    if( mdy_brightness_level_cached == new_brightness ) {
+    if( mdy_brightness_level_cached == mdy_brightness_level_active &&
+        mdy_brightness_level_cached == new_brightness ) {
         mdy_brightness_stop_fade_timer();
         goto EXIT;
     }
@@ -8353,6 +8461,13 @@ static void mdy_stm_step(void)
         if( mdy_compositor_is_pending() )
             break;
         if( mdy_compositor_is_enabled() ) {
+            /* Case DRI compositor: Brightness adjustments made prior to
+             * compositor finishing with setUpdatesEnabled(true) handling
+             * might get ignored -> invalidate active brightness value so
+             * that fade-to-target always does at least one more adjustment.
+             */
+            mdy_brightness_forget_level();
+
             mdy_brightness_set_fade_target_unblank(mdy_brightness_level_display_resume);
             mdy_stm_trans(STM_WAIT_FADE_TO_TARGET);
             break;
@@ -8371,8 +8486,10 @@ static void mdy_stm_step(void)
          * would get misinterpreted. */
         if( mdy_stm_curr == MCE_DISPLAY_ON ||
             mdy_stm_curr == MCE_DISPLAY_DIM ) {
-            mdy_stm_trans(STM_ENTER_POWER_ON);
-            break;
+            if( mdy_brightness_level_active == mdy_brightness_level_cached ) {
+                mdy_stm_trans(STM_ENTER_POWER_ON);
+                break;
+            }
         }
 
         /* When using sw fader, we need to wait until it is finished.
@@ -8400,7 +8517,7 @@ static void mdy_stm_step(void)
             if( !mdy_compositor_is_available() ) {
                 /* The compositor process might have powered down
                  * the display while making exit -> we need to
-                 * invalidate cached backlight brightness level
+                 * invalidate active backlight brightness level
                  * and possibly power up the display again */
                 mdy_brightness_forget_level();
             }
@@ -8414,7 +8531,7 @@ static void mdy_stm_step(void)
     case STM_LEAVE_POWER_ON:
         if( !mdy_stm_display_state_needs_power(mdy_stm_next) )
             mdy_stm_trans(STM_WAIT_FADE_TO_BLACK);
-        else if( mdy_brightness_level_cached < 0 )
+        else if( mdy_brightness_level_active < 0 )
             mdy_stm_trans(STM_INIT_RESUME);
         else
             mdy_stm_trans(STM_RENDERER_INIT_START);
@@ -8551,8 +8668,10 @@ static void mdy_stm_step(void)
             /* We must have non-zero brightness in place when ui draws
              * for the 1st time or the brightness changes will not happen
              * until ui draws again ... */
-            if( mdy_brightness_level_cached <= 0 )
-                mdy_brightness_force_level(1);
+            if( mdy_brightness_level_active <= 0 ) {
+                int level = mdy_brightness_level_cached;
+                mdy_brightness_force_level(level < 1 ? 1 : level);
+            }
 
             mdy_stm_trans(STM_RENDERER_INIT_START);
         }
@@ -8603,7 +8722,7 @@ static void mdy_stm_step(void)
 
         if( mdy_stm_pull_target_change() &&
             mdy_stm_display_state_needs_power(mdy_stm_next) ) {
-            if( mdy_brightness_level_cached < 0 )
+            if( mdy_brightness_level_active < 0 )
                 mdy_stm_trans(STM_INIT_RESUME);
             else
                 mdy_stm_trans(STM_RENDERER_INIT_START);
@@ -11306,10 +11425,11 @@ static void mdy_brightness_init(void)
     if( mdy_brightness_level_output.path &&
         mce_read_number_string_from_file(mdy_brightness_level_output.path,
                                               &tmp, NULL, FALSE, TRUE) ) {
+        mdy_brightness_level_active =
         mdy_brightness_level_cached = (gint)tmp;
     }
-    mce_log(LL_DEBUG, "mdy_brightness_level_cached=%d",
-            mdy_brightness_level_cached);
+    mce_log(LL_DEBUG, "mdy_brightness_level_active=%d",
+            mdy_brightness_level_active);
 
     /* On some devices there are multiple ways to control backlight
      * brightness. We use only one, but after bootup it might contain
@@ -11334,8 +11454,8 @@ static void mdy_brightness_init(void)
      *    the brightness setting evaluation would lead to the same
      *    value that was originally reported
      */
-    if( mdy_brightness_level_cached > 0 )
-        mdy_brightness_force_level(mdy_brightness_level_cached - 1);
+    if( mdy_brightness_level_active > 0 )
+        mdy_brightness_force_level(mdy_brightness_level_active - 1);
 }
 
 /**
@@ -11520,6 +11640,7 @@ void g_module_unload(GModule *module)
     mdy_blanking_cancel_off();
     mdy_callstate_clear_changed();
     mdy_blanking_inhibit_cancel_broadcast();
+    mdy_brightness_cancel_retry();
 
     /* Stopping compositor ipc state machine can cause
      * scheduling of display state machine wakeups, so

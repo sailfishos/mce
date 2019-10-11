@@ -1749,8 +1749,13 @@ gboolean mce_write_number_string_to_file(output_state_t *output, const gulong nu
 	}
 
 	if( fflush(output->file) == EOF ) {
-		mce_log(LL_WARN,"%s: can't flush %s: %m", output->context, output->path);
+		mce_log(output->reported_errno != errno ? LL_WARN : LL_DEBUG,
+			"%s: can't flush %s: %m", output->context, output->path);
+		output->reported_errno = errno;
 		status = FALSE;
+	}
+	else {
+		output->reported_errno = 0;
 	}
 
 EXIT:
