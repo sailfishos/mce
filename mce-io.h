@@ -74,6 +74,9 @@ typedef struct {
 	/** TRUE if missing path configuration error has already been
 	 *  written for this file */
 	gboolean invalid_config_reported;
+
+	/** For suppressing reporting of repeated errors */
+	int reported_errno;
 } output_state_t;
 
 typedef struct mce_io_mon_t mce_io_mon_t;
