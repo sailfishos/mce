@@ -1,3 +1,9 @@
+mce (1.104.1) precise; urgency=low
+
+  * [display] Retry failing brightness adjustments. Fixes JB#47450
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 17 Oct 2019 08:55:19 +0300
+
 mce (1.104.0) precise; urgency=low
 
   * [battery-udev] Expose battery charging state. JB#44852
