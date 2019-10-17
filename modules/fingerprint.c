@@ -2647,12 +2647,6 @@ fpwakeup_trigger(void)
         datapipe_exec_full(&ngfd_event_request_pipe,
                            "unlock_device");
 
-        /* Make sure we unblank / exit from lpm */
-        mce_datapipe_request_display_state(MCE_DISPLAY_ON);
-
-        /* Exit from lockscreen */
-        mce_datapipe_request_tklock(TKLOCK_REQUEST_OFF);
-
         /* Deactivate type=6 led patterns (e.g. sms/email notifications)
          * by signaling "true user activity" via synthetized gesture
          * input event. (The event type ought not matter, but using
@@ -2663,9 +2657,13 @@ fpwakeup_trigger(void)
         const struct input_event ev = {
             .type  = EV_MSC,
             .code  = MSC_GESTURE,
-            .value = GESTURE_DOUBLETAP | GESTURE_SYNTHESIZED,
+            .value = GESTURE_FPWAKEUP | GESTURE_SYNTHESIZED,
         };
         datapipe_exec_full(&user_activity_event_pipe, &ev);
+
+        /* Forward to powerkey.c for configurable action handling */
+        const struct input_event *evp = &ev;
+        datapipe_exec_full(&keypress_event_pipe, &evp);
     }
 }
 
