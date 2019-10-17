@@ -37,13 +37,15 @@ extern "C" {
  * mce to always mean doubletap.
  */
 typedef enum {
-    /* Values */
+    /* Values 0-15 reserved for touchscreen gestures */
     GESTURE_SWIPE_FROM_LEFT   = 0,
     GESTURE_SWIPE_FROM_RIGHT  = 1,
     GESTURE_SWIPE_FROM_TOP    = 2,
     GESTURE_SWIPE_FROM_BOTTOM = 3,
     GESTURE_DOUBLETAP         = 4, /* To conform with value used in
                                     * Nokia N9 kernel driver */
+    GESTURE_FPWAKEUP          = 16,
+
     /* Modifiers */
     GESTURE_SYNTHESIZED       = (1<<8),
 } gesture_t;

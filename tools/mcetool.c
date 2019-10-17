@@ -32,6 +32,7 @@
 #include "../tklock.h"
 #include "../powerkey.h"
 #include "../event-input.h"
+#include "../evdev.h"
 #include "../modules/display.h"
 #include "../modules/doubletap.h"
 #include "../modules/inactivity.h"
@@ -1845,6 +1846,14 @@ static const char *rlookup(const symbol_t *stab, int val)
                         return stab->key;
         }
 }
+
+/** Lookup table for gesture events
+ */
+static const symbol_t gesture_values[] = {
+        { "doubletap",  GESTURE_DOUBLETAP },
+        { "fpwakeup",   GESTURE_FPWAKEUP  },
+        { NULL, -1 }
+};
 
 /** Lookup table for autosuspend policies
  *
@@ -4838,6 +4847,7 @@ static bool xmce_is_powerkey_action(const char *name)
                 "vibrate",
                 "unblank",
                 "tkunlock",
+                "tkunlock2",
                 "dbus1",
                 "dbus2",
                 "dbus3",
@@ -4946,7 +4956,7 @@ static bool xmce_set_powerkey_actions_while_display_on_long(const char *args)
         return true;
 }
 
-static const char * const gesture_actions_key[] =
+static const char * const gesture_actions_key[POWERKEY_ACTIONS_GESTURE_COUNT] =
 {
         MCE_SETTING_POWERKEY_ACTIONS_GESTURE0,
         MCE_SETTING_POWERKEY_ACTIONS_GESTURE1,
@@ -4959,6 +4969,15 @@ static const char * const gesture_actions_key[] =
         MCE_SETTING_POWERKEY_ACTIONS_GESTURE8,
         MCE_SETTING_POWERKEY_ACTIONS_GESTURE9,
         MCE_SETTING_POWERKEY_ACTIONS_GESTURE10,
+        MCE_SETTING_POWERKEY_ACTIONS_GESTURE11,
+        MCE_SETTING_POWERKEY_ACTIONS_GESTURE12,
+        MCE_SETTING_POWERKEY_ACTIONS_GESTURE13,
+        MCE_SETTING_POWERKEY_ACTIONS_GESTURE14,
+        MCE_SETTING_POWERKEY_ACTIONS_GESTURE15,
+        MCE_SETTING_POWERKEY_ACTIONS_GESTURE16,
+        MCE_SETTING_POWERKEY_ACTIONS_GESTURE17,
+        MCE_SETTING_POWERKEY_ACTIONS_GESTURE18,
+        MCE_SETTING_POWERKEY_ACTIONS_GESTURE19,
 };
 
 /** Set actions to perform on touchscreen gestures
@@ -4967,10 +4986,13 @@ static bool xmce_set_touchscreen_gesture_action(const char *args)
 {
         char *work = strdup(args);
         char *conf = work;
+        char *gesture = mcetool_parse_token(&conf);
 
-        size_t id = xmce_parse_integer(mcetool_parse_token(&conf));
+        int id = lookup(gesture_values, gesture);
+        if( id < 0 )
+                id = xmce_parse_integer(gesture);
 
-        if( id >= G_N_ELEMENTS(gesture_actions_key) ) {
+        if( id < 0 || id >= (int)G_N_ELEMENTS(gesture_actions_key) ) {
                 fprintf(stderr, "invalid gesture id: '%s'\n", work);
                 return false;
         }
@@ -5015,8 +5037,12 @@ static void xmce_get_powerkey_action_masks(void)
         printf("Touchscreen gestures:\n");
         for( size_t id = 0; id < G_N_ELEMENTS(gesture_actions_key); ++id) {
                 char temp[32];
-                snprintf(temp, sizeof temp, "gesture%zu", id);
-                xmce_get_powerkey_action_mask(gesture_actions_key[id], temp);
+                const char *gesture = rlookup(gesture_values, (int)id);
+                if( !gesture ) {
+                        snprintf(temp, sizeof temp, "gesture%zu", id);
+                        gesture = temp;
+                }
+                xmce_get_powerkey_action_mask(gesture_actions_key[id], gesture);
         }
 }
 
@@ -6986,22 +7012,23 @@ static const mce_opt_t options[] =
                         "set actions to execute on single power key press from display on state\n"
                         "\n"
                         "Valid actions are:\n"
-                        "  blank    - turn display off\n"
-                        "  tklock   - lock ui\n"
-                        "  devlock  - lock device\n"
-                        "  shutdown - power off device\n"
-                        "  vibrate  - play vibrate event via ngfd\n"
-                        "  unblank  - turn display on\n"
-                        "  tkunlock - unlock ui\n"
-                        "  dbus1    - send dbus signal or make method call\n"
-                        "  dbus2    - send dbus signal or make method call\n"
-                        "  dbus3    - send dbus signal or make method call\n"
+                        "  blank     - turn display off\n"
+                        "  tklock    - lock ui\n"
+                        "  devlock   - lock device\n"
+                        "  shutdown  - power off device\n"
+                        "  vibrate   - play vibrate event via ngfd\n"
+                        "  unblank   - turn display on\n"
+                        "  tkunlock  - unlock ui / prompt devicelock code\n"
+                        "  tkunlock2 - unlock ui if device is not locked\n"
+                        "  dbus1     - send dbus signal or make method call\n"
+                        "  dbus2     - send dbus signal or make method call\n"
+                        "  dbus3     - send dbus signal or make method call\n"
                         "   ...\n"
-                        "  dbus10   - send dbus signal or make method call\n"
-                        "  nop      - dummy operation, for differentiating otherwise\n"
-                        "             identical single/double press actions (mce does not\n"
-                        "             wait for double presses double press actions are\n"
-                        "             the same as for a single press)\n"
+                        "  dbus10    - send dbus signal or make method call\n"
+                        "  nop       - dummy operation, for differentiating otherwise\n"
+                        "              identical single/double press actions (mce does not\n"
+                        "              wait for double presses double press actions are\n"
+                        "              the same as for a single press)\n"
                         "\n"
                         "Comma separated list of actions can be used.\n"
         },
@@ -7053,14 +7080,14 @@ static const mce_opt_t options[] =
         {
                 .name        = "set-touchscreen-gesture-actions",
                 .with_arg    = xmce_set_touchscreen_gesture_action,
-                .values      = "gesture_id,actions",
+                .values      = "gesture_id|doubletap|fpwakeup,actions",
                 .usage       =
                         "set actions to execute on touchscreen gestures\n"
                         "\n"
-                        "Gesture id is a number in 0...10 range. The values are hw specific,\n"
-                        "but 4 can be assumed to mean doubletap.\n"
+                        "Gesture id is a number in 0...19 range. The values are hw specific,\n"
+                        "but 4 can be assumed to mean doubletap and 16 fingerprint wakeup.\n"
                         "\n"
-                        "Actions are as with --set-display-on-single-powerkey-press-actions\n"
+                        "Actions are as with --set-display-on-single-powerkey-press-actions.\n"
         },
         {
                 .name        = "set-powerkey-dbus-action",

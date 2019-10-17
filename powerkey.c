@@ -162,6 +162,7 @@ static void  pwrkey_action_tklock   (void);
 static void  pwrkey_action_blank    (void);
 static void  pwrkey_action_unblank  (void);
 static void  pwrkey_action_tkunlock (void);
+static void  pwrkey_action_tkunlock2(void);
 static void  pwrkey_action_devlock  (void);
 static void  pwrkey_action_dbus1    (void);
 static void  pwrkey_action_dbus2    (void);
@@ -300,6 +301,15 @@ static const char * const pwrkey_actions_gesture_key[POWERKEY_ACTIONS_GESTURE_CO
     MCE_SETTING_POWERKEY_ACTIONS_GESTURE8,
     MCE_SETTING_POWERKEY_ACTIONS_GESTURE9,
     MCE_SETTING_POWERKEY_ACTIONS_GESTURE10,
+    MCE_SETTING_POWERKEY_ACTIONS_GESTURE11,
+    MCE_SETTING_POWERKEY_ACTIONS_GESTURE12,
+    MCE_SETTING_POWERKEY_ACTIONS_GESTURE13,
+    MCE_SETTING_POWERKEY_ACTIONS_GESTURE14,
+    MCE_SETTING_POWERKEY_ACTIONS_GESTURE15,
+    MCE_SETTING_POWERKEY_ACTIONS_GESTURE16,
+    MCE_SETTING_POWERKEY_ACTIONS_GESTURE17,
+    MCE_SETTING_POWERKEY_ACTIONS_GESTURE18,
+    MCE_SETTING_POWERKEY_ACTIONS_GESTURE19,
 };
 
 /** Array of default values for configurable touchscreen gestures */
@@ -316,6 +326,15 @@ static const char * const pwrkey_actions_gesture_val[POWERKEY_ACTIONS_GESTURE_CO
     MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE8,
     MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE9,
     MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE10,
+    MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE11,
+    MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE12,
+    MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE13,
+    MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE14,
+    MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE15,
+    MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE16,
+    MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE17,
+    MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE18,
+    MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE19,
 };
 
 /** Array of current values for configurable touchscreen gestures */
@@ -574,6 +593,7 @@ static void     pwrkey_setting_quit            (void);
 static void pwrkey_datapipe_keypress_event_cb(gconstpointer const data);
 static void pwrkey_datapipe_ngfd_service_state_cb(gconstpointer data);
 static void pwrkey_datapipe_system_state_cb(gconstpointer data);
+static void pwrkey_datapipe_devicelock_state_cb(gconstpointer data);
 static void pwrkey_datapipe_display_state_curr_cb(gconstpointer data);
 static void pwrkey_datapipe_display_state_next_cb(gconstpointer data);
 static void pwrkey_datapipe_lid_sensor_filtered_cb(gconstpointer data);
@@ -663,6 +683,9 @@ static bool pwrkey_delete_flagfile(const char *path)
 
 /** System state; is undefined at bootup, can't assume anything */
 static system_state_t system_state = MCE_SYSTEM_STATE_UNDEF;
+
+/** Cached devicelock_state ; assume unknown */
+static devicelock_state_t devicelock_state = DEVICELOCK_STATE_UNDEFINED;
 
 /** Current display state; undefined initially, can't assume anything */
 static display_state_t display_state_curr = MCE_DISPLAY_UNDEF;
@@ -842,6 +865,18 @@ pwrkey_action_tkunlock(void)
     mce_datapipe_request_tklock(request);
 EXIT:
     return;
+}
+
+static void
+pwrkey_action_tkunlock2(void)
+{
+    if( devicelock_state != DEVICELOCK_STATE_UNLOCKED ) {
+        mce_log(LL_DEBUG, "devicelock_state=%s; rejecting 'tkunlock2' action",
+                devicelock_state_repr(devicelock_state));
+    }
+    else {
+        pwrkey_action_tkunlock();
+    }
 }
 
 static void
@@ -1032,6 +1067,10 @@ static const pwrkey_bitconf_t pwrkey_action_lut[] =
     {
         .name = "unblank",
         .func = pwrkey_action_unblank,
+    },
+    {
+        .name = "tkunlock2",
+        .func = pwrkey_action_tkunlock2,
     },
     {
         .name = "tkunlock",
@@ -2918,6 +2957,27 @@ EXIT:
     return;
 }
 
+/** Notification callback for devicelock_state_pipe
+ *
+ * @param data  devicelock_state_t value as void pointer
+ */
+static void
+pwrkey_datapipe_devicelock_state_cb(gconstpointer data)
+{
+    devicelock_state_t prev = devicelock_state;
+    devicelock_state = GPOINTER_TO_INT(data);
+
+    if( devicelock_state == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "devicelock_state = %s -> %s",
+            devicelock_state_repr(prev),
+            devicelock_state_repr(devicelock_state));
+
+EXIT:
+    return;
+}
+
 /** Handle display state change notifications
  *
  * @param data display state (as void pointer)
@@ -3256,6 +3316,10 @@ static datapipe_handler_t pwrkey_datapipe_handlers[] =
     {
         .datapipe  = &system_state_pipe,
         .output_cb = pwrkey_datapipe_system_state_cb,
+    },
+    {
+        .datapipe  = &devicelock_state_pipe,
+        .output_cb = pwrkey_datapipe_devicelock_state_cb,
     },
     {
         .datapipe  = &display_state_curr_pipe,
