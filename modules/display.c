@@ -6973,7 +6973,11 @@ compositor_stm_enter_state(compositor_stm_t *self)
     case COMPOSITOR_STATE_STOPPED:
         compositor_stm_forget_pid_query(self);
         compositor_stm_cancel_killer(self);
+        compositor_stm_cancel_panic(self);
         // leave via compositor_stm_set_service_owner()
+
+        /* Wake display state machine */
+        mdy_stm_schedule_rethink();
         break;
 
     case COMPOSITOR_STATE_STARTED:
@@ -7156,7 +7160,18 @@ compositor_stm_set_granted(compositor_stm_t *self, renderer_state_t state)
 static bool
 compositor_stm_is_pending(const compositor_stm_t *self)
 {
-    return compositor_stm_get_state(self) != COMPOSITOR_STATE_GRANTED;
+    bool pending = true;
+
+    switch( compositor_stm_get_state(self) ) {
+    case COMPOSITOR_STATE_GRANTED:
+    case COMPOSITOR_STATE_STOPPED:
+        pending = false;
+        break;
+    default:
+        break;
+    }
+
+    return pending;
 }
 
 /** Predicate for: compositor side is in setUpdatesEnabled(true) state
