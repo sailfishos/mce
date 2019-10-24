@@ -1,3 +1,9 @@
+mce (1.104.2) precise; urgency=low
+
+  * [display] Handle compositor exit during setUpdatesEnabled call. JB#47846
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 24 Oct 2019 11:17:07 +0300
+
 mce (1.104.1) precise; urgency=low
 
   * [display] Retry failing brightness adjustments. Fixes JB#47450
