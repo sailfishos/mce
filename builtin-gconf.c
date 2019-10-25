@@ -1758,6 +1758,51 @@ static const setting_t gconf_defaults[] =
     .def  = MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE10,
   },
   {
+    .key  = MCE_SETTING_POWERKEY_ACTIONS_GESTURE11,
+    .type = "s",
+    .def  = MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE11,
+  },
+  {
+    .key  = MCE_SETTING_POWERKEY_ACTIONS_GESTURE12,
+    .type = "s",
+    .def  = MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE12,
+  },
+  {
+    .key  = MCE_SETTING_POWERKEY_ACTIONS_GESTURE13,
+    .type = "s",
+    .def  = MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE13,
+  },
+  {
+    .key  = MCE_SETTING_POWERKEY_ACTIONS_GESTURE14,
+    .type = "s",
+    .def  = MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE14,
+  },
+  {
+    .key  = MCE_SETTING_POWERKEY_ACTIONS_GESTURE15,
+    .type = "s",
+    .def  = MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE15,
+  },
+  {
+    .key  = MCE_SETTING_POWERKEY_ACTIONS_GESTURE16,
+    .type = "s",
+    .def  = MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE16,
+  },
+  {
+    .key  = MCE_SETTING_POWERKEY_ACTIONS_GESTURE17,
+    .type = "s",
+    .def  = MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE17,
+  },
+  {
+    .key  = MCE_SETTING_POWERKEY_ACTIONS_GESTURE18,
+    .type = "s",
+    .def  = MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE18,
+  },
+  {
+    .key  = MCE_SETTING_POWERKEY_ACTIONS_GESTURE19,
+    .type = "s",
+    .def  = MCE_DEFAULT_POWERKEY_ACTIONS_GESTURE19,
+  },
+  {
     .key  = MCE_SETTING_POWERKEY_DBUS_ACTION1,
     .type = "s",
     .def  = MCE_DEFAULT_POWERKEY_DBUS_ACTION1,
