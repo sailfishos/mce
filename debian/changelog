@@ -1,3 +1,9 @@
+mce (1.104.3) precise; urgency=low
+
+  * [fingerprint] Use gesture actions for fingerprint wake up. Fixes JB#47437
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 25 Oct 2019 08:45:56 +0300
+
 mce (1.104.2) precise; urgency=low
 
   * [display] Handle compositor exit during setUpdatesEnabled call. JB#47846
