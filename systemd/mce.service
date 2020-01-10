@@ -11,6 +11,18 @@ Conflicts=shutdown.target
 Type=notify
 ExecStart=/usr/sbin/mce --systemd
 Restart=always
+# Sandboxing
+CapabilityBoundingSet=CAP_BLOCK_SUSPEND CAP_DAC_OVERRIDE CAP_FOWNER
+# System update uses /tmp/os-update-running which should be relocated
+PrivateTmp=no
+ProtectHome=yes
+ProtectSystem=full
+DevicePolicy=closed
+DeviceAllow=char-input r
+DeviceAllow=/dev/fb0 rw
+DeviceAllow=/dev/i2c-0 rw
+DeviceAllow=/dev/i2c-1 rw
+DeviceAllow=/dev/memnotify rw
 
 [Install]
 WantedBy=multi-user.target
