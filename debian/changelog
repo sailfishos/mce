@@ -1,3 +1,9 @@
+mce (1.105.0) precise; urgency=low
+
+  * [systemd] Sandbox the mce service. JB#37897 JB#44449
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 10 Jan 2020 10:45:43 +0200
+
 mce (1.104.3) precise; urgency=low
 
   * [fingerprint] Use gesture actions for fingerprint wake up. Fixes JB#47437
