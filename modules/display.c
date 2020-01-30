@@ -2,8 +2,9 @@
  * @file display.c
  * Display module -- this implements display handling for MCE
  * <p>
- * Copyright © 2007-2011 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2012-2019 Jolla Ltd.
+ * Copyright (c) 2007 - 2011 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (c) 2012 - 2020 Jolla Ltd.
+ * Copyright (c) 2020 Open Mobile Platform LLC.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Tapio Rantala <ext-tapio.rantala@nokia.com>
@@ -6721,8 +6722,11 @@ compositor_stm_core_timer_cb(void *aptr)
      * handled "nicely" by compositor. SIGXCPU fits that description and
      * is also c) somewhat relevant "CPU time limit exceeded" d) easily
      * distinguishable from other "normal" crash reports. */
-    if( kill(self->csi_service_pid, SIGXCPU) == -1 && errno == ESRCH )
-        goto EXIT;
+    if( kill(self->csi_service_pid, SIGXCPU) == -1 ) {
+        if( errno == ESRCH )
+            goto EXIT;
+        mce_log(LL_WARN, "could not SIGXCPU compositor: %m");
+    }
 
     self->csi_kill_timer_id = g_timeout_add(mdy_compositor_kill_delay * 1000,
                                             compositor_stm_kill_timer_cb,
@@ -6749,8 +6753,11 @@ compositor_stm_kill_timer_cb(void *aptr)
     if( self->csi_service_pid == COMPOSITOR_STM_INVALID_PID )
         goto EXIT;
 
-    if( kill(self->csi_service_pid, SIGKILL) == -1 && errno == ESRCH )
-        goto EXIT;
+    if( kill(self->csi_service_pid, SIGKILL) == -1 ) {
+        if( errno == ESRCH )
+            goto EXIT;
+        mce_log(LL_WARN, "could not SIGKILL compositor: %m");
+    }
 
     self->csi_kill_timer_id = g_timeout_add(mdy_compositor_bury_delay * 1000,
                                             compositor_stm_bury_timer_cb,

@@ -12,7 +12,7 @@ Type=notify
 ExecStart=/usr/sbin/mce --systemd
 Restart=always
 # Sandboxing
-CapabilityBoundingSet=CAP_BLOCK_SUSPEND CAP_DAC_OVERRIDE CAP_FOWNER
+CapabilityBoundingSet=CAP_BLOCK_SUSPEND CAP_DAC_OVERRIDE CAP_FOWNER CAP_SYS_PTRACE CAP_KILL
 # System update uses /tmp/os-update-running which should be relocated
 PrivateTmp=no
 ProtectHome=yes
