@@ -262,6 +262,7 @@ CFLAGS += -Wstack-protector
 #CFLAGS += -Werror (OBS build might have different compiler)
 CFLAGS += -Wno-declaration-after-statement
 CFLAGS += -Wno-missing-field-initializers
+CFLAGS += -Wimplicit-fallthrough=2
 
 # Linker
 LDLIBS   += -Wl,--as-needed
