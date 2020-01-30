@@ -2,8 +2,8 @@
  * @file battery-udev.c
  * Battery module -- this implements battery and charger logic for MCE
  * <p>
- * Copyright (C) 2018-2019 Jolla Ltd.
- * Copyright (c) 2019 Open Mobile Platform LLC.
+ * Copyright (c) 2018 - 2020 Jolla Ltd.
+ * Copyright (c) 2019 - 2020 Open Mobile Platform LLC.
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  * <p>
@@ -296,7 +296,7 @@ G_MODULE_EXPORT module_info_struct module_info =
  *       sync with default values held in the relevant datapipes.
  */
 static mcebat_t mcebat_datapipe = {
-    .battery_level  = BATTERY_LEVEL_INITIAL,
+    .battery_level  = MCE_BATTERY_LEVEL_UNKNOWN,
     .battery_status = BATTERY_STATUS_UNDEF,
     .battery_state  = BATTERY_STATE_UNKNOWN,
     .charger_state  = CHARGER_STATE_UNDEF,
@@ -306,7 +306,7 @@ static mcebat_t mcebat_datapipe = {
 /** Cached battery state as derived from udev
  */
 static mcebat_t mcebat_actual = {
-    .battery_level  = BATTERY_LEVEL_INITIAL,
+    .battery_level  = MCE_BATTERY_LEVEL_UNKNOWN,
     .battery_status = BATTERY_STATUS_UNDEF,
     .battery_state  = BATTERY_STATE_UNKNOWN,
     .charger_state  = CHARGER_STATE_UNDEF,

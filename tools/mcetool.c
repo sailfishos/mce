@@ -1,9 +1,9 @@
 /** @file mcetool.c
  * Tool to test and remote control the Mode Control Entity
  * <p>
- * Copyright © 2005-2011 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2012-2019 Jolla Ltd.
- * Copyright (c) 2019 Open Mobile Platform LLC.
+ * Copyright (c) 2005 - 2011 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (c) 2012 - 2020 Jolla Ltd.
+ * Copyright (c) 2019 - 2020 Open Mobile Platform LLC.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>
@@ -2727,7 +2727,7 @@ static bool mcetool_do_set_charger_state(const char *arg)
 static bool mcetool_do_set_battery_level(const char *arg)
 {
         int level = xmce_parse_integer(arg);
-        if( level < 0 || level > 100 ) {
+        if( level < -1 || level > 100 ) {
                 errorf("%s: invalid battery level\n", arg);
                 return false;
         }
@@ -7999,7 +7999,9 @@ static const char version_text[] =
 PROG_NAME" v"G_STRINGIFY(PRG_VERSION)"\n"
 "Written by David Weinehall.\n"
 "\n"
-"Copyright (C) 2005-2011 Nokia Corporation.  All rights reserved.\n"
+"Copyright (c) 2005 - 2011 Nokia Corporation.  All rights reserved.\n"
+"Copyright (c) 2012 - 2020 Jolla Ltd.\n"
+"Copyright (c) 2019 - 2020 Open Mobile Platform LLC.\n"
 ;
 
 static __attribute__((__noreturn__)) bool mcetool_do_version(const char *arg)

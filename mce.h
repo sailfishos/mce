@@ -2,9 +2,9 @@
  * @file mce.h
  * Generic headers for Mode Control Entity
  * <p>
- * Copyright © 2004-2011 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2012-2019 Jolla Ltd.
- * Copyright (c) 2019 Open Mobile Platform LLC.
+ * Copyright (c) 2004 - 2011 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (c) 2012 - 2020 Jolla Ltd.
+ * Copyright (c) 2019 - 2020 Open Mobile Platform LLC.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Irina Bezruk <ext-irina.bezruk@nokia.com>
@@ -309,9 +309,6 @@ typedef enum {
 const char *tklock_request_repr(tklock_request_t state);
 
 const char *tklock_status_repr(int status);
-
-/** Assumed initial battery level */
-#define BATTERY_LEVEL_INITIAL 100
 
 /** Raw udev battery status */
 typedef enum

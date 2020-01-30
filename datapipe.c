@@ -3,9 +3,9 @@
  * This file implements the sinmple datapipe framework;
  * this can be used to filter data and to setup data triggers
  * <p>
- * Copyright © 2007-2008 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2014-2019 Jolla Ltd.
- * Copyright (c) 2019 Open Mobile Platform LLC.
+ * Copyright (c) 2007 - 2008 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (c) 2014 - 2020 Jolla Ltd.
+ * Copyright (c) 2019 - 2020 Open Mobile Platform LLC.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
@@ -744,7 +744,7 @@ datapipe_t battery_status_pipe                  = DATAPIPE_INIT(battery_status, 
 datapipe_t battery_state_pipe                   = DATAPIPE_INIT(battery_state, battery_state, BATTERY_STATE_UNKNOWN, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** Battery charge level; read only */
-datapipe_t battery_level_pipe                   = DATAPIPE_INIT(battery_level, int, BATTERY_LEVEL_INITIAL, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
+datapipe_t battery_level_pipe                   = DATAPIPE_INIT(battery_level, int, MCE_BATTERY_LEVEL_UNKNOWN, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** Topmost window PID; read only */
 datapipe_t topmost_window_pid_pipe              = DATAPIPE_INIT(topmost_window_pid, int, -1, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
