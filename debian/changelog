@@ -1,3 +1,9 @@
+mce (1.105.1) precise; urgency=low
+
+  * [systemd] Add capabilities required by compositor killer. Fixes JB#48754
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 30 Jan 2020 19:00:06 +0200
+
 mce (1.105.0) precise; urgency=low
 
   * [systemd] Sandbox the mce service. JB#37897 JB#44449
