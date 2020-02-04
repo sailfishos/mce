@@ -3,8 +3,9 @@
  * Power saving mode module -- this handles the power saving mode
  * for MCE
  * <p>
- * Copyright © 2010-2011 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2014-2019 Jolla Ltd.
+ * Copyright (c) 2010 - 2011 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (c) 2014 - 2020 Jolla Ltd.
+ * Copyright (c) 2020 Open Mobile Platform LLC.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Tapio Rantala <ext-tapio.rantala@nokia.com>
@@ -32,6 +33,7 @@
 #include "../mce-dbus.h"
 
 #include <mce/dbus-names.h>
+#include <mce/mode-names.h>
 
 #include <gmodule.h>
 
@@ -51,8 +53,9 @@ G_MODULE_EXPORT module_info_struct module_info = {
 	.priority = 250
 };
 
-/** Battery charge level */
-static gint battery_level = 100;
+/** Battery charge level: assume unknown == -1 */
+static gint battery_level = MCE_BATTERY_LEVEL_UNKNOWN;
+
 /** Charger state */
 static charger_state_t charger_state = CHARGER_STATE_UNDEF;
 
@@ -138,9 +141,12 @@ static void update_power_saving_mode(void)
 		 * of other settings and states. */
 		activate = true;
 	}
+	else if ( battery_level <= MCE_BATTERY_LEVEL_UNKNOWN ) {
+		/* Ignore triggers based on charger and battery
+		 * info until battery level becomes known. */
+	}
 	else if( charger_state == CHARGER_STATE_ON ) {
 		/* If charger is connected, PSM should be deactivated. */
-		activate = false;
 	}
 	else if( force_psm ) {
 		/* Forced PSM is triggered when no charger is connected. */

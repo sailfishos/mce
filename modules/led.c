@@ -2,8 +2,9 @@
  * @file led.c
  * LED module -- this handles the LED logic for MCE
  * <p>
- * Copyright © 2006-2011 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2012-2019 Jolla Ltd.
+ * Copyright (c) 2006 - 2011 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (c) 2012 - 2020 Jolla Ltd.
+ * Copyright (c) 2020 Open Mobile Platform LLC.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Tapio Rantala <ext-tapio.rantala@nokia.com>
@@ -57,6 +58,7 @@
 #include <fcntl.h>
 
 #include <mce/dbus-names.h>
+#include <mce/mode-names.h>
 
 #include <gmodule.h>
 
@@ -2888,8 +2890,8 @@ static gboolean init_patterns(void)
 /** Flag for: charger connected */
 static charger_state_t charger_state = CHARGER_STATE_UNDEF;
 
-/** Current battery percent level */
-static int battery_level = 0;
+/** Current battery percent level: assume unknown */
+static int battery_level = MCE_BATTERY_LEVEL_UNKNOWN;
 
 /** Setting: sw breathing allowed */
 static gboolean sw_breathing_enabled = MCE_DEFAULT_LED_SW_BREATH_ENABLED;

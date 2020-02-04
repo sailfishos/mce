@@ -2,7 +2,8 @@
  * @file evdev.c
  * Mode Control Entity - evdev input device handling
  * <p>
- * Copyright (C) 2012-2019 Jolla Ltd.
+ * Copyright (c) 2012 - 2020 Jolla Ltd.
+ * Copyright (c) 2020 Open Mobile Platform LLC.
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
@@ -262,7 +263,8 @@ int evdev_identify_device(int fd)
   unsigned long bmap_type[BMAP_SIZE(EV_CNT)];
   unsigned long bmap_code[BMAP_SIZE(KEY_CNT)];
   unsigned long bmap_stat[BMAP_SIZE(KEY_CNT)];
-  char path[256];
+  char linkpath[PATH_MAX];
+  char path[PATH_MAX];
   int n;
 
   if( fd < 0 )
@@ -270,8 +272,8 @@ int evdev_identify_device(int fd)
     goto cleanup;
   }
 
-  snprintf(path, sizeof path, "/proc/self/fd/%d", fd);
-  if( (n = readlink(path, path, sizeof path - 1)) <= 0 )
+  snprintf(linkpath, sizeof linkpath, "/proc/self/fd/%d", fd);
+  if( (n = readlink(linkpath, path, sizeof path - 1)) <= 0 )
   {
     strcpy(path, "unknown");
   }

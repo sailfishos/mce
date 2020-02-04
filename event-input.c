@@ -2,8 +2,9 @@
  * @file event-input.c
  * /dev/input event provider for the Mode Control Entity
  * <p>
- * Copyright © 2004-2011 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2013-2019 Jolla Ltd.
+ * Copyright (c) 2004 - 2011 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (c) 2013 - 2020 Jolla Ltd.
+ * Copyright (c) 2020 Open Mobile Platform LLC.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Ismo Laitinen <ismo.laitinen@nokia.com>
@@ -3542,6 +3543,7 @@ evin_datapipe_display_state_curr_cb(gconstpointer data)
             evin_input_grab_set_touching(&evin_ts_grab_state, true);
             evin_input_grab_set_touching(&evin_ts_grab_state, false);
         }
+        /* Fall through */
 
     case MCE_DISPLAY_ON:
     case MCE_DISPLAY_DIM:

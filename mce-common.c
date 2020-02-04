@@ -2,8 +2,8 @@
  * @file mce-common.c
  * Common state logic for Mode Control Entity
  * <p>
- * Copyright (C) 2017-2019 Jolla Ltd.
- * Copyright (c) 2019 Open Mobile Platform LLC.
+ * Copyright (c) 2017 - 2020 Jolla Ltd.
+ * Copyright (c) 2019 - 2020 Open Mobile Platform LLC.
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
@@ -133,8 +133,8 @@ static battery_status_t battery_status = BATTERY_STATUS_UNDEF;
 /** Battery state; assume unknown */
 static battery_state_t battery_state = BATTERY_STATE_UNKNOWN;
 
-/** Battery charge level: assume 100% */
-static gint battery_level = BATTERY_LEVEL_INITIAL;
+/** Battery charge level: assume unknown */
+static gint battery_level = MCE_BATTERY_LEVEL_UNKNOWN;
 
 /** Cached (raw) proximity sensor state */
 static cover_state_t proximity_sensor_actual = COVER_UNDEF;
