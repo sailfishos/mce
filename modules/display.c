@@ -8029,6 +8029,9 @@ static void mdy_datapipe_compositor_service_state_cb(gconstpointer aptr)
     else
         mdy_topmost_window_forget_pid_query();
 
+    /* In any case, reprogram blanking timers */
+    mdy_blanking_rethink_timers(true);
+
 EXIT:
     return;
 }
@@ -8055,6 +8058,9 @@ static void mdy_datapipe_lipstick_service_state_cb(gconstpointer aptr)
     }
 
     mdy_blanking_rethink_afterboot_delay();
+
+    /* In any case, reprogram blanking timers */
+    mdy_blanking_rethink_timers(true);
 
 EXIT:
     return;
