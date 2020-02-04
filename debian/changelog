@@ -1,3 +1,10 @@
+mce (1.105.2) precise; urgency=low
+
+  * [build] Silence compilation warnings
+  * [battery] Do not report 100% when battery level is unknown. JB#48562
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 04 Feb 2020 09:49:05 +0200
+
 mce (1.105.1) precise; urgency=low
 
   * [systemd] Add capabilities required by compositor killer. Fixes JB#48754
