@@ -1223,6 +1223,11 @@ udevdevice_init_chargertype(void)
         { "WIRELESS",    CHARGER_TYPE_WIRELESS },
         { "AC",          CHARGER_TYPE_DCP      },
 
+        /* Pinephone chargers
+         */
+        { "axp813-ac",    CHARGER_TYPE_DCP },
+        { "axp20x-usb",   CHARGER_TYPE_USB },
+        
         /* To make connect/disconnect transitions
          * cleaner, ignore "Unknown" reporting
          */
