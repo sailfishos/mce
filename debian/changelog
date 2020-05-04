@@ -1,3 +1,9 @@
+mce (1.105.4) precise; urgency=low
+
+  * [build] Fix build with the new systemd. Contributes to JB#45921
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Mon, 04 May 2020 09:40:41 +0300
+
 mce (1.105.3) precise; urgency=low
 
   * [display] Reset blanking timers on compositor start/stop. Fixes JB#47904
