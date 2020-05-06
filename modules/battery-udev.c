@@ -1927,6 +1927,23 @@ EXIT:
  * G_MODULE
  * ========================================================================= */
 
+static guint mcebat_init_tracker_id = 0;
+
+static gboolean
+mcebat_init_tracker_cb(gpointer aptr)
+{
+    (void)aptr;
+
+    udevtracker_object = udevtracker_create();
+
+    if( !udevtracker_start(udevtracker_object) )
+        goto EXIT;
+
+EXIT:
+    mcebat_init_tracker_id = 0;
+    return G_SOURCE_REMOVE;
+}
+
 /** Init function for the battery and charger module
  *
  * @param module (not used)
@@ -1940,16 +1957,15 @@ G_MODULE_EXPORT const gchar *g_module_check_init(GModule *module)
     udevdevice_init_blacklist();
     udevproperty_init_types();
 
-    udevtracker_object = udevtracker_create();
-
-    if( !udevtracker_start(udevtracker_object) )
-        goto EXIT;
-
     mcebat_dbus_init();
 
+    /* Initial udev probing can take a long time.
+     * Do it from idle callback in order not to delay
+     * reaching systemd unit ready state.
+     */
+    mcebat_init_tracker_id = g_idle_add(mcebat_init_tracker_cb, 0);
     mce_log(LL_DEBUG, "%s: loaded", MODULE_NAME);
 
-EXIT:
     return NULL;
 }
 
@@ -1960,6 +1976,9 @@ EXIT:
 G_MODULE_EXPORT void g_module_unload(GModule *module)
 {
     (void)module;
+
+    if( mcebat_init_tracker_id )
+        g_source_remove(mcebat_init_tracker_id), mcebat_init_tracker_id = 0;
 
     mcebat_dbus_quit();
 
