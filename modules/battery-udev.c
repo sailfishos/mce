@@ -75,6 +75,13 @@
 /** INI-file group for configuring charger types */
 #define MCE_CONF_BATTERY_UDEV_DEVICE_CHARGERTYPE_GROUP "BatteryUDevChargerTypes"
 
+/** INI-file group for miscellaneous settings */
+#define MCE_CONF_BATTERY_UDEV_SETTINGS_GROUP           "BatteryUDevSettings"
+
+/** Setting for forced refresh on udev notify event */
+#define MCE_CONF_BATTERY_UDEV_REFRESH_ON_NOTIFY        "RefreshOnNotify"
+#define DEFAULT_BATTERY_UDEV_REFRESH_ON_NOTIFY         false
+
 /** Delay between udev notifications and battery state evaluation
  *
  * The purpose is to increase chances of getting battery and
@@ -82,6 +89,31 @@
  * changes of getting false positive battery full blips.
  */
 #define BATTERY_REEVALUATE_DELAY 50 // [ms]
+
+/** Delay between udev notifications and refreshing all devices
+ *
+ * Some kernels do better job with udev notifications than
+ * others... if we get notification about any device node
+ * that is used for battery / charger tracking, all properties
+ * of all tracked devices are checked after brief delay
+ *
+ * As this is relatively costly operation -> the wait should
+ * be long enought to cover all related notifications that
+ * kernel will send.
+ *
+ * As suspend is blocked during the wait -> the wait should
+ * be as short as possible.
+ *
+ * As delay affects ui responce to physical actions taken by
+ * user (e.g. detaching charger cable) -> the wait should be
+ * in "perceived immediate" time span.
+ *
+ * As a compromize, relatively short delay is used and the timer
+ * is restarted whenever we get udev notifications -> a burst of
+ * udev activity leads to only one evaluation round and suspend
+ * blocking ends soon after udev goes idle.
+ */
+#define DEVICES_REFRESH_DELAY 250
 
 /* ========================================================================= *
  * Types
@@ -188,43 +220,48 @@ struct udevproperty_t
 };
 
 /* ========================================================================= *
- * Protos
+ * Prototypes
  * ========================================================================= */
+
+/* ------------------------------------------------------------------------- *
+ * DBUS_HANDLERS
+ * ------------------------------------------------------------------------- */
+
+#ifdef ENABLE_BATTERY_SIMULATION
+static void     mcebat_dbus_remove_client          (const char *dbus_name);
+static gboolean mcebat_dbus_client_removed_cb      (DBusMessage *const msg);
+static bool     mcebat_dbus_add_client             (const char *dbus_name);
+static void     mcebat_dbus_evaluate_battery_status(void);
+static gboolean mcebat_dbus_charger_type_req_cb    (DBusMessage *const msg);
+static gboolean mcebat_dbus_charger_state_req_cb   (DBusMessage *const msg);
+static gboolean mcebat_dbus_battery_level_req_cb   (DBusMessage *const msg);
+#endif // ENABLE_BATTERY_SIMULATION
+static void     mcebat_dbus_init                   (void);
+static void     mcebat_dbus_quit                   (void);
 
 /* ------------------------------------------------------------------------- *
  * MCEBAT
  * ------------------------------------------------------------------------- */
 
-static void  mcebat_update(void);
-
-#ifdef ENABLE_BATTERY_SIMULATION
-static void      mcebat_dbus_remove_client          (const char *dbus_name);
-static gboolean  mcebat_dbus_client_removed_cb      (DBusMessage *const msg);
-static bool      mcebat_dbus_add_client             (const char *dbus_name);
-static void      mcebat_dbus_evaluate_battery_status(void);
-static gboolean  mcebat_dbus_charger_state_req_cb   (DBusMessage *const msg);
-static gboolean  mcebat_dbus_charger_type_req_cb    (DBusMessage *const msg);
-static gboolean  mcebat_dbus_battery_level_req_cb   (DBusMessage *const msg);
-#endif // ENABLE_BATTERY_SIMULATION
-
-static void      mcebat_dbus_init                   (void);
-static void      mcebat_dbus_quit                   (void);
+static void     mcebat_update         (void);
+static gboolean mcebat_init_tracker_cb(gpointer aptr);
+static void     mcebat_init_settings  (void);
 
 /* ------------------------------------------------------------------------- *
  * UDEVPROPERTY
  * ------------------------------------------------------------------------- */
 
-static void              udevproperty_init_types (void);
-static void              udevproperty_quit_types (void);
-static property_type_t   udevproperty_lookup_type(const char *key);
-static bool              udevproperty_is_used    (const char *key);
-static bool              udevproperty_is_ignored (const char *key);
-static udevproperty_t   *udevproperty_create     (udevdevice_t *dev, const char *key);
-static void              udevproperty_delete     (udevproperty_t *self);
-static void              udevproperty_delete_cb  (void *self);
-static const char       *udevproperty_key        (const udevproperty_t *self);
-static const char       *udevproperty_get        (const udevproperty_t *self);
-static bool              udevproperty_set        (udevproperty_t *self, const char *val);
+static void             udevproperty_init_types (void);
+static void             udevproperty_quit_types (void);
+static property_type_t  udevproperty_lookup_type(const char *key);
+static bool             udevproperty_is_used    (const char *key);
+static bool             udevproperty_is_ignored (const char *key);
+static udevproperty_t  *udevproperty_create     (udevdevice_t *dev, const char *key);
+static void             udevproperty_delete     (udevproperty_t *self);
+static void             udevproperty_delete_cb  (void *self);
+static const char      *udevproperty_key        (const udevproperty_t *self);
+static const char      *udevproperty_get        (const udevproperty_t *self);
+static bool             udevproperty_set        (udevproperty_t *self, const char *val);
 
 /* ------------------------------------------------------------------------- *
  * UDEVDEVICE
@@ -232,6 +269,8 @@ static bool              udevproperty_set        (udevproperty_t *self, const ch
 
 static battery_state_t  udevdevice_lookup_battery_state(const char *status);
 static charger_type_t   udevdevice_lookup_charger_type (const char *name);
+static void             udevdevice_init_chargertype    (void);
+static void             udevdevice_quit_chargertype    (void);
 static void             udevdevice_init_blacklist      (void);
 static void             udevdevice_quit_blacklist      (void);
 static bool             udevdevice_is_blacklisted      (const char *name);
@@ -256,24 +295,28 @@ static void             udevdevice_evaluate_battery_cb (gpointer key, gpointer v
  * UDEVTRACKER
  * ------------------------------------------------------------------------- */
 
-static udevtracker_t  *udevtracker_create          (void);
-static void            udevtracker_delete          (udevtracker_t *self);
-static void            udevtracker_rethink         (udevtracker_t *self);
-static gboolean        udevtracker_rethink_cb      (gpointer aptr);
-static void            udevtracker_cancel_rethink  (udevtracker_t *self);
-static void            udevtracker_schedule_rethink(udevtracker_t *self);
-static udevdevice_t   *udevtracker_add_dev         (udevtracker_t *self, const char *name);
-static void            udevtracker_update_device   (udevtracker_t *self, struct udev_device *dev);
-static bool            udevtracker_start           (udevtracker_t *self);
-static void            udevtracker_stop            (udevtracker_t *self);
-static gboolean        udevtracker_event_cb        (GIOChannel *chn, GIOCondition cnd, gpointer aptr);
+static udevtracker_t *udevtracker_create          (void);
+static void           udevtracker_delete          (udevtracker_t *self);
+static void           udevtracker_rethink         (udevtracker_t *self);
+static gboolean       udevtracker_rethink_cb      (gpointer aptr);
+static void           udevtracker_cancel_rethink  (udevtracker_t *self);
+static void           udevtracker_schedule_rethink(udevtracker_t *self);
+static udevdevice_t  *udevtracker_add_dev         (udevtracker_t *self, const char *path, const char *name);
+static bool           udevtracker_update_device   (udevtracker_t *self, struct udev_device *dev);
+static bool           udevtracker_start           (udevtracker_t *self);
+static void           udevtracker_stop            (udevtracker_t *self);
+static gboolean       udevtracker_event_cb        (GIOChannel *chn, GIOCondition cnd, gpointer aptr);
+static void           udevtracker_refresh_all     (udevtracker_t *self);
+static gboolean       udevtracker_refresh_cb      (gpointer aptr);
+static void           udevtracker_schedule_refresh(void);
+static void           udevtracker_cancel_refresh  (void);
 
 /* ------------------------------------------------------------------------- *
  * G_MODULE
  * ------------------------------------------------------------------------- */
 
-const gchar  *g_module_check_init(GModule *module);
-void          g_module_unload    (GModule *module);
+const gchar *g_module_check_init(GModule *module);
+void         g_module_unload    (GModule *module);
 
 /* ========================================================================= *
  * Data
@@ -371,6 +414,9 @@ static const char * const udevproperty_used_keys[] = {
     PROP_STATUS,
     NULL
 };
+
+/** Cached MCE_CONF_BATTERY_UDEV_REFRESH_ON_NOTIFY value */
+static bool mcebat_refresh_on_notify = DEFAULT_BATTERY_UDEV_REFRESH_ON_NOTIFY;
 
 /* ========================================================================= *
  * CLIENT
@@ -1832,18 +1878,19 @@ udevtracker_schedule_rethink(udevtracker_t *self)
 /** Add device object to track
  *
  * @param self  tracker object
+ * @param path  device syspath
  * @param name  device sysname
  *
  * @return device object
  */
 static udevdevice_t *
-udevtracker_add_dev(udevtracker_t *self, const char *name)
+udevtracker_add_dev(udevtracker_t *self, const char *path, const char *name)
 {
-    udevdevice_t *dev = g_hash_table_lookup(self->udt_devices, name);
+    udevdevice_t *dev = g_hash_table_lookup(self->udt_devices, path);
 
     if( !dev ) {
         dev = udevdevice_create(name);
-        g_hash_table_replace(self->udt_devices, g_strdup(name), dev);
+        g_hash_table_replace(self->udt_devices, g_strdup(path), dev);
     }
     return dev;
 }
@@ -1852,17 +1899,22 @@ udevtracker_add_dev(udevtracker_t *self, const char *name)
  *
  * @param self  tracker object
  * @param dev   udev device object
+ *
+ * @return true if device is used, or false if ignored
  */
-static void
+static bool
 udevtracker_update_device(udevtracker_t *self, struct udev_device *dev)
 {
+    bool rethink = false;
+
     /* TODO: Currently it is assumed that we receive only
      *       "add" or "change" notifications for power
      *       supply devices after the initial enumeration.
      */
 
-    const char   *sysname = udev_device_get_sysname(dev);
-    const char   *action  = udev_device_get_action(dev);
+    const char   *sysname  = udev_device_get_sysname(dev);
+    const char   *syspath  = udev_device_get_syspath(dev);
+    const char   *action   = udev_device_get_action(dev);
 
     if( udevdevice_is_blacklisted(sysname) ) {
         /* Report blacklisted devices during initial enumeration */
@@ -1871,13 +1923,11 @@ udevtracker_update_device(udevtracker_t *self, struct udev_device *dev)
         goto EXIT;
     }
 
-    udevdevice_t *powerdev = udevtracker_add_dev(self, sysname);
-    bool         rethink   = udevdevice_refresh(powerdev, dev);
-
-    if( rethink )
+    udevdevice_t *powerdev = udevtracker_add_dev(self, syspath, sysname);
+    if( (rethink = udevdevice_refresh(powerdev, dev)) )
         udevtracker_schedule_rethink(self);
 EXIT:
-    return;
+    return rethink;
 }
 
 /** Start udev device tracking
@@ -1902,6 +1952,7 @@ udevtracker_start(udevtracker_t *self)
         goto EXIT;
 
     /* Scan initial state */
+    mce_log(LL_DEBUG, "ENTER - get initial state");
     udev_enum = udev_enumerate_new(self->udt_udev_handle);
     udev_enumerate_add_match_subsystem(udev_enum, udevtracker_subsystem);
     udev_enumerate_scan_devices(udev_enum);
@@ -1917,6 +1968,7 @@ udevtracker_start(udevtracker_t *self)
             udev_device_unref(dev);
         }
     }
+    mce_log(LL_DEBUG, "LEAVE - get initial state");
 
     /* Monitor changes */
     self->udt_udev_monitor =
@@ -1975,6 +2027,7 @@ udevtracker_event_cb(GIOChannel  *chn, GIOCondition cnd, gpointer aptr)
 
     /* Deny suspending while handling timer wakeup */
     mce_wakelock_obtain(udevtracker_wakelock, -1);
+    mce_log(LL_DEBUG, "ENTER - udev notification");
 
     gboolean       result = G_SOURCE_REMOVE;
     udevtracker_t *self   = aptr;
@@ -1993,7 +2046,9 @@ udevtracker_event_cb(GIOChannel  *chn, GIOCondition cnd, gpointer aptr)
     struct udev_device *dev =
         udev_monitor_receive_device(self->udt_udev_monitor);
     if( dev ) {
-        udevtracker_update_device(self, dev);
+        bool changed = udevtracker_update_device(self, dev);
+        if( changed && mcebat_refresh_on_notify )
+            udevtracker_schedule_refresh();
         udev_device_unref(dev);
     }
 
@@ -2006,9 +2061,81 @@ EXIT:
         udevtracker_stop(self);
     }
 
+    mce_log(LL_DEBUG, "LEAVE - udev notification");
     mce_wakelock_release(udevtracker_wakelock);
 
     return result;
+}
+
+static void
+udevtracker_refresh_all(udevtracker_t *self)
+{
+    /* Doing it now, cancel delayed refresh */
+    udevtracker_cancel_refresh();
+
+    /* Operate on copy of keys just in case the hash
+     * table should change due to changes made from here.
+     */
+    GList *syspaths = g_hash_table_get_keys(self->udt_devices);
+    for( GList *iter = syspaths; iter; iter = iter->next ) {
+        const gchar *syspath = iter->data;
+        iter->data = g_strdup(syspath);
+    }
+
+    /* Assumption based on taking a peek at libudev code:
+     * properties for freshly created udev_device are
+     * populated by reading appropriate uevent file and
+     * thus are not something that would be cached at
+     * libudev level -> we get current data from kernel.
+     */
+    for( GList *iter = syspaths; iter; iter = iter->next ) {
+        const gchar *syspath = iter->data;
+        struct udev_device *dev =
+            udev_device_new_from_syspath(self->udt_udev_handle, syspath);
+        if( dev ) {
+            udevtracker_update_device(self, dev);
+            udev_device_unref(dev);
+        }
+    }
+
+    g_list_free_full(syspaths, g_free);
+}
+
+static guint udevtracker_refresh_id = 0;
+static gboolean udevtracker_refresh_cb(gpointer aptr)
+{
+    (void)aptr;
+    if( udevtracker_refresh_id ) {
+        udevtracker_refresh_id = 0;
+
+        mce_log(LL_DEBUG, "ENTER - refresh on notify");
+
+        if( udevtracker_object )
+            udevtracker_refresh_all(udevtracker_object);
+
+        mce_log(LL_DEBUG, "LEAVE - refresh on notify");
+    }
+    return G_SOURCE_REMOVE;
+}
+
+static void udevtracker_schedule_refresh(void)
+{
+    if( !udevtracker_refresh_id )
+        mce_log(LL_DEBUG, "forced value refresh scheduled");
+    else
+        g_source_remove(udevtracker_refresh_id);
+    udevtracker_refresh_id =
+        mce_wakelocked_timeout_add(DEVICES_REFRESH_DELAY,
+                                   udevtracker_refresh_cb, 0);
+}
+
+static void udevtracker_cancel_refresh(void)
+{
+    if( udevtracker_refresh_id ) {
+        mce_log(LL_DEBUG, "forced value refresh cancelled");
+        g_source_remove(udevtracker_refresh_id),
+            udevtracker_refresh_id = 0;
+    }
 }
 
 /* ========================================================================= *
@@ -2032,6 +2159,15 @@ EXIT:
     return G_SOURCE_REMOVE;
 }
 
+static void
+mcebat_init_settings(void)
+{
+    mcebat_refresh_on_notify =
+        mce_conf_get_bool(MCE_CONF_BATTERY_UDEV_SETTINGS_GROUP,
+                          MCE_CONF_BATTERY_UDEV_REFRESH_ON_NOTIFY,
+                          DEFAULT_BATTERY_UDEV_REFRESH_ON_NOTIFY);
+}
+
 /** Init function for the battery and charger module
  *
  * @param module (not used)
@@ -2042,6 +2178,7 @@ G_MODULE_EXPORT const gchar *g_module_check_init(GModule *module)
 {
     (void)module;
 
+    mcebat_init_settings();
     udevdevice_init_blacklist();
     udevdevice_init_chargertype();
     udevproperty_init_types();
@@ -2076,6 +2213,7 @@ G_MODULE_EXPORT void g_module_unload(GModule *module)
     udevproperty_quit_types();
     udevdevice_quit_chargertype();
     udevdevice_quit_blacklist();
+    udevtracker_cancel_refresh();
 
     mce_log(LL_DEBUG, "%s: unloaded", MODULE_NAME);
 }
