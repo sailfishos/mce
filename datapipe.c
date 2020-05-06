@@ -1655,6 +1655,37 @@ const char *usb_cable_state_to_dbus(usb_cable_state_t state)
     return res;
 }
 
+/** Convert human readable name to charger_type_t enum
+ *
+ * @param name  human readable charger type name
+ *
+ * @return charger_type_t enumeration value, or CHARGER_TYPE_INVALID
+ */
+charger_type_t
+charger_type_parse(const char *name)
+{
+    charger_type_t type = CHARGER_TYPE_INVALID;
+    if( !name )
+        mce_log(LL_WARN, "invalid charger type: %s", "null");
+    else if( !strcmp(name, "none") )
+        type = CHARGER_TYPE_NONE;
+    else if( !strcmp(name, "usb") )
+        type = CHARGER_TYPE_USB;
+    else if( !strcmp(name, "dcp") )
+        type = CHARGER_TYPE_DCP;
+    else if( !strcmp(name, "hwdcp") )
+        type = CHARGER_TYPE_HVDCP;
+    else if( !strcmp(name, "cdp") )
+        type = CHARGER_TYPE_CDP;
+    else if( !strcmp(name, "wireless") )
+        type = CHARGER_TYPE_WIRELESS;
+    else if( !strcmp(name, "other") )
+        type = CHARGER_TYPE_OTHER;
+    else
+        mce_log(LL_WARN, "invalid charger type: %s", name);
+    return type;
+}
+
 /** Convert charger_type_t enum to human readable string
  *
  * @param type charger_type_t enumeration value
@@ -1664,7 +1695,7 @@ const char *usb_cable_state_to_dbus(usb_cable_state_t state)
 const char *
 charger_type_repr(charger_type_t type)
 {
-    const char *repr = "unknown";
+    const char *repr = "invalid";
     switch( type ) {
     case CHARGER_TYPE_NONE:     repr = "none";     break;
     case CHARGER_TYPE_USB:      repr = "usb";      break;
@@ -1689,6 +1720,7 @@ charger_type_to_dbus(charger_type_t type)
 {
     const char *repr = MCE_CHARGER_TYPE_OTHER;
     switch( type ) {
+    case CHARGER_TYPE_INVALID:
     case CHARGER_TYPE_NONE:     repr = MCE_CHARGER_TYPE_NONE;     break;
     case CHARGER_TYPE_USB:      repr = MCE_CHARGER_TYPE_USB;      break;
     case CHARGER_TYPE_DCP:      repr = MCE_CHARGER_TYPE_DCP;      break;

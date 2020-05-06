@@ -72,6 +72,9 @@
 /** INI-file group for blacklisting devices */
 #define MCE_CONF_BATTERY_UDEV_DEVICE_BLACKLIST_GROUP   "BatteryUDevDeviceBlacklist"
 
+/** INI-file group for configuring charger types */
+#define MCE_CONF_BATTERY_UDEV_DEVICE_CHARGERTYPE_GROUP "BatteryUDevChargerTypes"
+
 /** Delay between udev notifications and battery state evaluation
  *
  * The purpose is to increase chances of getting battery and
@@ -342,6 +345,9 @@ static GHashTable      *udevproperty_type_lut    = 0;
 
 /** Lookup table for device blacklisting */
 static GHashTable      *udevdevice_blacklist_lut = 0;
+
+/** Lookup table for determining charger types */
+static GHashTable      *udevdevice_chargertype_lut = 0;
 
 /** How to treat unknown properties; default to ignoring them */
 static property_type_t  udevproperty_type_def    = PROPERTY_TYPE_IGNORE;
@@ -1102,9 +1108,43 @@ udevdevice_lookup_battery_state(const char *status)
 static charger_type_t
 udevdevice_lookup_charger_type(const char *name)
 {
+    charger_type_t type = CHARGER_TYPE_INVALID;
+    gchar         *key  = 0;
+    gpointer       val;
+
+    if( !name || !udevdevice_chargertype_lut )
+        goto EXIT;
+
+    key = g_ascii_strdown(name, -1);
+
+    /* Try exact match 1st, then relaxed one which equates
+     * "chipname-ac" with plain "ac".
+     */
+    val = g_hash_table_lookup(udevdevice_chargertype_lut, key);
+    if( !val ) {
+        const char *end = strrchr(key, '-');
+        if( end )
+            val = g_hash_table_lookup(udevdevice_chargertype_lut, end + 1);
+    }
+    type = GPOINTER_TO_INT(val);
+
+EXIT:
+    if( type == CHARGER_TYPE_INVALID ) {
+        mce_log(LL_WARN, "unknown charger type: %s", name ?: "null");
+        type = CHARGER_TYPE_OTHER;
+    }
+    g_free(key);
+
+    mce_log(LL_DEBUG, "charger type: %s -> %s", name ?: "null", charger_type_repr(type));
+    return type;
+}
+
+static void
+udevdevice_init_chargertype(void)
+{
     static const struct {
-        const char *name;
-        int         value;
+        const char     *name;
+        charger_type_t  type;
     } lut[] = {
         /* Type map - adapted from statefs sources
          */
@@ -1131,20 +1171,68 @@ udevdevice_lookup_charger_type(const char *name)
         { 0, 0 }
     };
 
-    charger_type_t value = CHARGER_TYPE_OTHER;
-    if( name ) {
-        for( size_t i = 0; ; ++i ) {
-            if( lut[i].name == 0 ) {
-                mce_log(LL_WARN, "unknown charger type: %s", name);
-                break;
-            }
-            if( !g_ascii_strcasecmp(lut[i].name, name) ) {
-                value = lut[i].value;
-                break;
-            }
-        }
+    static const char grp[] = MCE_CONF_BATTERY_UDEV_DEVICE_CHARGERTYPE_GROUP;
+
+    if( udevdevice_chargertype_lut )
+        goto EXIT;
+
+    udevdevice_chargertype_lut =
+        g_hash_table_new_full(g_str_hash, g_str_equal, g_free, 0);
+
+    /* Seed with built-in values */
+    for( size_t i = 0; lut[i].name; ++i ) {
+        g_hash_table_insert(udevdevice_chargertype_lut,
+                            g_ascii_strdown(lut[i].name, -1),
+                            GINT_TO_POINTER(lut[i].type));
     }
-    return value;
+
+#if 0
+    /* Dump as ini-file for use as an example */
+    {
+        GHashTableIter iter;
+        gpointer key, val;
+        g_hash_table_iter_init(&iter, udevdevice_chargertype_lut);
+        printf("[%s]\n", grp);
+        while ( g_hash_table_iter_next (&iter, &key, &val) )
+            printf("#%s = %s\n", key, charger_type_repr(GPOINTER_TO_INT(val)));
+    }
+#endif
+
+    /* Override with configuration */
+    if( mce_conf_has_group(grp) ) {
+        mce_log(LL_DEBUG, "using configured chargertypes");
+        gsize   count = 0;
+        gchar **keys  = mce_conf_get_keys(grp, &count);
+
+        for( gsize i = 0; i < count; ++i ) {
+            const gchar    *name  = keys[i];
+            gchar          *value = mce_conf_get_string(grp, name, 0);
+            charger_type_t  type  = charger_type_parse(value);
+
+            if( type != CHARGER_TYPE_INVALID ) {
+                g_hash_table_insert(udevdevice_chargertype_lut,
+                                    g_ascii_strdown(name, -1),
+                                    GINT_TO_POINTER(type));
+            }
+
+            g_free(value);
+        }
+        g_strfreev(keys);
+    }
+
+EXIT:
+    return;
+}
+
+/** Release device chargertype lookup table
+ */
+static void
+udevdevice_quit_chargertype(void)
+{
+    if( udevdevice_chargertype_lut ) {
+        g_hash_table_unref(udevdevice_chargertype_lut),
+            udevdevice_chargertype_lut = 0;
+    }
 }
 
 /** Initialize device blacklist lookup table
@@ -1955,6 +2043,7 @@ G_MODULE_EXPORT const gchar *g_module_check_init(GModule *module)
     (void)module;
 
     udevdevice_init_blacklist();
+    udevdevice_init_chargertype();
     udevproperty_init_types();
 
     mcebat_dbus_init();
@@ -1985,6 +2074,7 @@ G_MODULE_EXPORT void g_module_unload(GModule *module)
     udevtracker_delete(udevtracker_object), udevtracker_object = 0;
 
     udevproperty_quit_types();
+    udevdevice_quit_chargertype();
     udevdevice_quit_blacklist();
 
     mce_log(LL_DEBUG, "%s: unloaded", MODULE_NAME);
