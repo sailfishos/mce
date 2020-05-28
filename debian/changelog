@@ -1,3 +1,9 @@
+mce (1.105.5) precise; urgency=low
+
+  * [aarch64] Specify libdir. Contributes to JB#49681
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 28 May 2020 11:17:11 +0300
+
 mce (1.105.4) precise; urgency=low
 
   * [build] Fix build with the new systemd. Contributes to JB#45921
