@@ -72,13 +72,12 @@ Nokia N770, N800, N810, N900, N9 and N950 devices.
 
 %build
 ./verify_version
-#make %{?jobs:-j%jobs} %{!?qa_stage_devel:ENABLE_DEVEL_LOGGING=n}
-make %{?_smp_mflags} %{!?qa_stage_devel:ENABLE_DEVEL_LOGGING=n}
+make %{?_smp_mflags} _LIBDIR=%{_libdir} %{!?qa_stage_devel:ENABLE_DEVEL_LOGGING=n}
 
 %install
 rm -rf %{buildroot}
 # FIXME: we need a configure script ... for now pass dirs in make install
-make install DESTDIR=%{buildroot} _UNITDIR=%{_unitdir} ENABLE_MANPAGE_INSTALL=n
+make install DESTDIR=%{buildroot} _UNITDIR=%{_unitdir} _LIBDIR=%{_libdir} ENABLE_MANPAGE_INSTALL=n
 
 %preun
 if [ "$1" -eq 0 ]; then
