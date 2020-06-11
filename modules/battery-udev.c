@@ -82,6 +82,10 @@
 #define MCE_CONF_BATTERY_UDEV_REFRESH_ON_NOTIFY        "RefreshOnNotify"
 #define DEFAULT_BATTERY_UDEV_REFRESH_ON_NOTIFY         false
 
+/** Setting for forced refresh on system heartbeat */
+#define MCE_CONF_BATTERY_UDEV_REFRESH_ON_HEARTBEAT     "RefreshOnHeartbeat"
+#define DEFAULT_BATTERY_UDEV_REFRESH_ON_HEARTBEAT      true
+
 /** Delay between udev notifications and battery state evaluation
  *
  * The purpose is to increase chances of getting battery and
@@ -312,6 +316,14 @@ static void           udevtracker_schedule_refresh(void);
 static void           udevtracker_cancel_refresh  (void);
 
 /* ------------------------------------------------------------------------- *
+ * DATAPIPE_HANDLERS
+ * ------------------------------------------------------------------------- */
+
+static void mcebat_datapipe_heartbeat_event_cb(gconstpointer data);
+static void mcebat_datapipe_init              (void);
+static void mcebat_datapipe_quit              (void);
+
+/* ------------------------------------------------------------------------- *
  * G_MODULE
  * ------------------------------------------------------------------------- */
 
@@ -417,6 +429,9 @@ static const char * const udevproperty_used_keys[] = {
 
 /** Cached MCE_CONF_BATTERY_UDEV_REFRESH_ON_NOTIFY value */
 static bool mcebat_refresh_on_notify = DEFAULT_BATTERY_UDEV_REFRESH_ON_NOTIFY;
+
+/** Cached MCE_CONF_BATTERY_UDEV_REFRESH_ON_HEARTBEAT value  */
+static bool mcebat_refresh_on_heartbeat = DEFAULT_BATTERY_UDEV_REFRESH_ON_HEARTBEAT;
 
 /* ========================================================================= *
  * CLIENT
@@ -2139,6 +2154,60 @@ static void udevtracker_cancel_refresh(void)
 }
 
 /* ========================================================================= *
+ * DATAPIPE_HANDLERS
+ * ========================================================================= */
+
+/** Change notifications for heartbeat_event_pipe
+ *
+ * @param data (unused dummy parameter)
+ */
+static void mcebat_datapipe_heartbeat_event_cb(gconstpointer data)
+{
+    (void)data;
+
+    mce_log(LL_DEBUG, "ENTER - refresh on heartbeat");
+
+    if( mcebat_refresh_on_heartbeat && udevtracker_object )
+        udevtracker_refresh_all(udevtracker_object);
+
+    mce_log(LL_DEBUG, "LEAVE - refresh on heartbeat");
+}
+
+/** Array of datapipe handlers */
+static datapipe_handler_t mcebat_datapipe_handlers[] =
+{
+    // output triggers
+    {
+        .datapipe  = &heartbeat_event_pipe,
+        .output_cb = mcebat_datapipe_heartbeat_event_cb,
+    },
+    // sentinel
+    {
+        .datapipe = 0,
+    }
+};
+
+static datapipe_bindings_t mcebat_datapipe_bindings =
+{
+    .module   = "battery_udev",
+    .handlers = mcebat_datapipe_handlers,
+};
+
+/** Append triggers/filters to datapipes
+ */
+static void mcebat_datapipe_init(void)
+{
+    mce_datapipe_init_bindings(&mcebat_datapipe_bindings);
+}
+
+/** Remove triggers/filters from datapipes
+ */
+static void mcebat_datapipe_quit(void)
+{
+    mce_datapipe_quit_bindings(&mcebat_datapipe_bindings);
+}
+
+/* ========================================================================= *
  * G_MODULE
  * ========================================================================= */
 
@@ -2166,6 +2235,11 @@ mcebat_init_settings(void)
         mce_conf_get_bool(MCE_CONF_BATTERY_UDEV_SETTINGS_GROUP,
                           MCE_CONF_BATTERY_UDEV_REFRESH_ON_NOTIFY,
                           DEFAULT_BATTERY_UDEV_REFRESH_ON_NOTIFY);
+
+    mcebat_refresh_on_heartbeat =
+        mce_conf_get_bool(MCE_CONF_BATTERY_UDEV_SETTINGS_GROUP,
+                          MCE_CONF_BATTERY_UDEV_REFRESH_ON_HEARTBEAT,
+                          DEFAULT_BATTERY_UDEV_REFRESH_ON_HEARTBEAT);
 }
 
 /** Init function for the battery and charger module
@@ -2184,6 +2258,7 @@ G_MODULE_EXPORT const gchar *g_module_check_init(GModule *module)
     udevproperty_init_types();
 
     mcebat_dbus_init();
+    mcebat_datapipe_init();
 
     /* Initial udev probing can take a long time.
      * Do it from idle callback in order not to delay
@@ -2206,6 +2281,7 @@ G_MODULE_EXPORT void g_module_unload(GModule *module)
     if( mcebat_init_tracker_id )
         g_source_remove(mcebat_init_tracker_id), mcebat_init_tracker_id = 0;
 
+    mcebat_datapipe_quit();
     mcebat_dbus_quit();
 
     udevtracker_delete(udevtracker_object), udevtracker_object = 0;
