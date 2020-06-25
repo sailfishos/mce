@@ -1,3 +1,15 @@
+mce (1.106.0) precise; urgency=low
+
+  * [inifiles] Fix faults in example configuration files
+  * [mce] Update maintenance related make rules
+  * [logging] Flush after each message when logging to stderr
+  * [battery-udev] Handle initial probe from idle callback
+  * [battery-udev] Enablers for configurable charger types. JB#49693
+  * [battery-udev] Enablers for forced udev property refreshing. JB#49693
+  * [battery-udev] Refresh all udev properties on heartbeat. Fixes JB#48324
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Thu, 25 Jun 2020 10:10:53 +0300
+
 mce (1.105.5) precise; urgency=low
 
   * [aarch64] Specify libdir. Contributes to JB#49681
