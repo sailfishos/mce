@@ -688,9 +688,23 @@ endif
 
 .SUFFIXES: .q .p .g
 
-%.q : %.c ; $(CC) -o $@ -E $< $(CPPFLAGS) $(MCE_CFLAGS)
+PROTO_CPPFLAGS += $(CPPFLAGS)
+PROTO_CPPFLAGS += $(MCE_CFLAGS)
+PROTO_CPPFLAGS += $(MODULE_CFLAGS)
+PROTO_CPPFLAGS += -D_Float32=float
+PROTO_CPPFLAGS += -D_Float64=double
+PROTO_CPPFLAGS += -D_Float128="long double"
+PROTO_CPPFLAGS += -D_Float32x=float
+PROTO_CPPFLAGS += -D_Float64x=double
+PROTO_CPPFLAGS += -D_Float128x="long double"
+
+%.q : %.c ; $(CC) -o $@ -E $< $(PROTO_CPPFLAGS)
 %.p : %.q ; cproto -s < $< | prettyproto.py | tee $@
 %.g : %.q ; cproto < $< | prettyproto.py | tee $@
+
+protos-q: $(patsubst %.c,%.q,$(wildcard *.c modules/*.c))
+protos-p: $(patsubst %.c,%.p,$(wildcard *.c modules/*.c))
+protos-g: $(patsubst %.c,%.g,$(wildcard *.c modules/*.c))
 
 clean::
 	$(RM) -f *.[qpg] modules/*.[qpg] tools/*.[qpg]

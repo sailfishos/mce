@@ -2,8 +2,9 @@
  * @file mce-log.c
  * Logging functions for Mode Control Entity
  * <p>
- * Copyright © 2006-2007, 2010 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2012-2019 Jolla Ltd.
+ * Copyright (c) 2006 - 2007, 2010 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (c) 2012 - 2020 Jolla Ltd.
+ * Copyright (c) 2020 Open Mobile Platform LLC.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
@@ -68,6 +69,7 @@ static void timestamp(struct timeval *tv)
 			mce_log_name(),
 			(long)diff.tv_sec, (long)(diff.tv_usec/1000),
 			"END OF BURST");
+		fflush(stderr);
 		start = *tv;
 	}
 	prev = *tv;
@@ -191,6 +193,7 @@ void mce_log_unconditional_va(loglevel_t loglevel, const char *const file,
 		(long)tv.tv_sec, (long)(tv.tv_usec/1000),
 		mce_log_level_tag(loglevel),
 		msg);
+	fflush(stderr);
     } else {
 	/* Use NOTICE priority when reporting LL_EXTRA
 	 * and LL_CRUCIAL logging */

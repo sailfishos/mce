@@ -358,6 +358,12 @@ const char *charger_state_to_dbus(charger_state_t state);
  */
 typedef enum
 {
+    /* Placeholder value for lookup failures etc
+     */
+    CHARGER_TYPE_INVALID,
+
+    /* Value that signifies that no charger is connected
+     */
     CHARGER_TYPE_NONE,
 
     /* Charger types that do not carry special meaning from
@@ -377,6 +383,7 @@ typedef enum
     CHARGER_TYPE_USB,           // Standard Downstream Port
 } charger_type_t;
 
+charger_type_t charger_type_parse(const char *name);
 const char *charger_type_repr(charger_type_t type);
 const char *charger_type_to_dbus(charger_type_t type);
 
