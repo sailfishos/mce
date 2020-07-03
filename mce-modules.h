@@ -35,7 +35,7 @@
 #define MCE_CONF_MODULES_MODULES        "Modules"
 
 /** Default value for module path */
-#define DEFAULT_MCE_MODULE_PATH         "/usr/lib/mce/modules"
+#define DEFAULT_MCE_MODULE_PATH         G_STRINGIFY(MCE_DEFAULT_MCE_MODULE_PATH)
 
 void mce_modules_dump_info(void);
 gboolean mce_modules_init(void);
