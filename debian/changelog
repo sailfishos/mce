@@ -1,3 +1,9 @@
+mce (1.106.1) precise; urgency=low
+
+  * [aarch64] Do not hardcode libdir in default module path. Contributes to JB#49681
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Fri, 03 Jul 2020 17:01:56 +0300
+
 mce (1.106.0) precise; urgency=low
 
   * [inifiles] Fix faults in example configuration files
