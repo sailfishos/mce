@@ -115,8 +115,8 @@ systemctl daemon-reload || :
 %config %{_sysconfdir}/dbus-1/system.d/mce.conf
 # systemd
 %config %{_sysconfdir}/tmpfiles.d/mce.conf
-/lib/systemd/system/%{name}.service
-/lib/systemd/system/multi-user.target.wants/%{name}.service
+%{_unitdir}/%{name}.service
+%{_unitdir}/multi-user.target.wants/%{name}.service
 
 %files tools
 %defattr(-,root,root,-)
