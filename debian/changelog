@@ -1,3 +1,7 @@
+mce (1.106.2) precise; urgency=low
+
+  * [aarch64] Fix packaging systemd unit files. Contributes to JB#49681
+
 mce (1.106.1) precise; urgency=low
 
   * [aarch64] Do not hardcode libdir in default module path. Contributes to JB#49681
