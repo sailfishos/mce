@@ -203,6 +203,7 @@ static gint  pwrkey_gestures_enable_mode = MCE_DEFAULT_DOUBLETAP_MODE;
 static guint pwrkey_gestures_enable_mode_cb_id = 0;
 
 static bool  pwrkey_gestures_allowed(bool synthesized);
+static bool  pwrkey_fpwakeup_allowed(void);
 
 /* ------------------------------------------------------------------------- *
  * PWRKEY_UNBLANK
@@ -213,6 +214,9 @@ typedef enum
 {
     /** Apply powerkey press rules */
     PWRKEY_UNBLANK_PREDICATE_POWERKEY,
+
+    /** Apply fingerprint wakeup rules */
+    PWRKEY_UNBLANK_PREDICATE_FPWAKEUP,
 
     /** Apply rules for real gesture events */
     PWRKEY_UNBLANK_PREDICATE_GESTURE_REAL,
@@ -225,6 +229,7 @@ typedef enum
 static const char * const pwrkey_unblank_predicate_name[] =
 {
     [PWRKEY_UNBLANK_PREDICATE_POWERKEY]      = "powerkey",
+    [PWRKEY_UNBLANK_PREDICATE_FPWAKEUP]      = "fpwakeup",
     [PWRKEY_UNBLANK_PREDICATE_GESTURE_REAL]  = "gesture_real",
     [PWRKEY_UNBLANK_PREDICATE_GESTURE_SYNTH] = "gesture_synth",
 };
@@ -1292,6 +1297,64 @@ EXIT:
     return allowed;
 }
 
+/** Predicate for: fpwakeup actions are allowed
+ */
+static bool
+pwrkey_fpwakeup_allowed(void)
+{
+    bool allowed = false;
+
+    /* Only in USER state */
+    if( system_state  != MCE_SYSTEM_STATE_USER ) {
+        mce_log(LL_DEVEL, "[fpwakeup] ignored due to system_state=%s",
+                system_state_repr(system_state));
+        goto EXIT;
+    }
+
+    /* Not while lid is closed or proximity sensor covered */
+    if( lid_sensor_filtered == COVER_CLOSED ) {
+        mce_log(LL_DEVEL, "[gesture] ignored due to lid=%s",
+                cover_state_repr(lid_sensor_filtered));
+        goto EXIT;
+    }
+
+    if( proximity_sensor_actual == COVER_CLOSED ) {
+        mce_log(LL_DEVEL, "[gesture] ignored due to proximity=%s",
+                proximity_state_repr(proximity_sensor_actual));
+        goto EXIT;
+    }
+
+    /* To have something sensible to do with fpwakeup
+     * - display must be off, or
+     * - display is on and lockscreen active
+     */
+    submode_t submode = mce_get_submode_int32();
+
+    switch( display_state_next )
+    {
+    case MCE_DISPLAY_LPM_ON:
+    case MCE_DISPLAY_LPM_OFF:
+    case MCE_DISPLAY_OFF:
+        break;
+
+    case MCE_DISPLAY_DIM:
+    case MCE_DISPLAY_ON:
+        if( !(submode & MCE_SUBMODE_TKLOCK) ) {
+            mce_log(LL_DEVEL, "[fpwakeup] ignored due to tklock=false");
+            goto EXIT;
+        }
+        break;
+
+    default:
+        goto EXIT;
+    }
+
+    allowed = true;
+
+EXIT:
+    return allowed;
+}
+
 /* ========================================================================= *
  * PWRKEY_UNBLANK
  * ========================================================================= */
@@ -1307,6 +1370,9 @@ pwrkey_unblank_allowed(void)
     switch( pwrkey_unblank_predicate ) {
     case PWRKEY_UNBLANK_PREDICATE_POWERKEY:
         allowed = !pwrkey_stm_ignore_action();
+        break;
+    case PWRKEY_UNBLANK_PREDICATE_FPWAKEUP:
+        allowed = pwrkey_fpwakeup_allowed();
         break;
     case PWRKEY_UNBLANK_PREDICATE_GESTURE_REAL:
         allowed = pwrkey_gestures_allowed(false);
@@ -1361,17 +1427,28 @@ pwrkey_actions_do_gesture(size_t gesture)
 
     gesture &= ~GESTURE_SYNTHESIZED;
 
-    /* Check settings, proximity sensor state, etc */
-    if( !pwrkey_gestures_allowed(synthetized) )
-        goto EXIT;
-
     /* Treat unconfigurable gestures as doubletaps */
     if( gesture >= POWERKEY_ACTIONS_GESTURE_COUNT )
         gesture = GESTURE_DOUBLETAP;
 
-    pwrkey_unblank_set_predicate(synthetized
-                                 ? PWRKEY_UNBLANK_PREDICATE_GESTURE_SYNTH
-                                 : PWRKEY_UNBLANK_PREDICATE_GESTURE_REAL);
+    /* Check settings, proximity sensor state, etc */
+    pwrkey_unblank_predicate_t predicate = synthetized
+        ? PWRKEY_UNBLANK_PREDICATE_GESTURE_SYNTH
+        : PWRKEY_UNBLANK_PREDICATE_GESTURE_REAL;
+
+    switch( gesture ) {
+    case GESTURE_FPWAKEUP:
+        if( !pwrkey_fpwakeup_allowed() )
+            goto EXIT;
+        predicate = PWRKEY_UNBLANK_PREDICATE_FPWAKEUP;
+        break;
+    default:
+        if( !pwrkey_gestures_allowed(synthetized) )
+            goto EXIT;
+        break;
+    }
+
+    pwrkey_unblank_set_predicate(predicate);
     pwrkey_mask_execute(pwrkey_actions_from_gesture[gesture].mask_single);
 
 EXIT:
