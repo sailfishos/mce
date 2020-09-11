@@ -32,7 +32,7 @@
 #include <glib.h>
 
 #include <dbus/dbus.h>
-#include <dbus/dbus-glib-lowlevel.h>
+#include "../dbus-gmain/dbus-gmain.h"
 
 /* ========================================================================= *
  * Constants
@@ -622,7 +622,7 @@ dc_dbus_connect(void)
 
     dbus_connection_set_exit_on_disconnect(dc_dbus_con, false);
 
-    dbus_connection_setup_with_g_main(dc_dbus_con, 0);
+    dbus_gmain_set_up_connection(dc_dbus_con, 0);
 
 EXIT:
     dbus_error_free(&err);

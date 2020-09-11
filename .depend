@@ -178,6 +178,7 @@ mce-dbus.o:\
 	mce-dbus.c\
 	builtin-gconf.h\
 	datapipe.h\
+	dbus-gmain/dbus-gmain.h\
 	mce-dbus.h\
 	mce-lib.h\
 	mce-log.h\
@@ -189,6 +190,7 @@ mce-dbus.pic.o:\
 	mce-dbus.c\
 	builtin-gconf.h\
 	datapipe.h\
+	dbus-gmain/dbus-gmain.h\
 	mce-dbus.h\
 	mce-lib.h\
 	mce-log.h\
@@ -1347,11 +1349,13 @@ tklock.pic.o:\
 tools/dummy_compositor.o:\
 	tools/dummy_compositor.c\
 	builtin-gconf.h\
+	dbus-gmain/dbus-gmain.h\
 	mce-dbus.h\
 
 tools/dummy_compositor.pic.o:\
 	tools/dummy_compositor.c\
 	builtin-gconf.h\
+	dbus-gmain/dbus-gmain.h\
 	mce-dbus.h\
 
 tools/evdev_trace.o:\

@@ -138,11 +138,12 @@ HELPERSCRIPTDIR       := $(_DATADIR)/mce
 TESTSDESTDIR          := $(_TESTSDIR)/mce
 
 # Source directories
-DOCDIR     := doc
-TOOLDIR    := tools
-TESTSDIR   := tests
-UTESTDIR   := tests/ut
-MODULE_DIR := modules
+DOCDIR          := doc
+TOOLDIR         := tools
+TESTSDIR        := tests
+UTESTDIR        := tests/ut
+MODULE_DIR      := modules
+DBUS_GMAIN_DIR  := dbus-gmain
 
 # Binaries to build
 TARGETS += mce
@@ -281,7 +282,6 @@ MCE_PKG_NAMES += glib-2.0
 MCE_PKG_NAMES += gio-2.0
 MCE_PKG_NAMES += gmodule-2.0
 MCE_PKG_NAMES += dbus-1
-MCE_PKG_NAMES += dbus-glib-1
 MCE_PKG_NAMES += dsme
 MCE_PKG_NAMES += libiphb
 MCE_PKG_NAMES += libsystemd
@@ -332,6 +332,8 @@ ifeq ($(strip $(ENABLE_WAKELOCKS)),y)
 MCE_CORE   += libwakelock.c
 endif
 
+MCE_CORE += $(DBUS_GMAIN_DIR)/dbus-gmain.c
+
 mce : CFLAGS += $(MCE_CFLAGS)
 mce : LDLIBS += $(MCE_LDLIBS)
 ifeq ($(ENABLE_HYBRIS),y)
@@ -343,6 +345,22 @@ CFLAGS  += -g
 LDFLAGS += -g
 
 # ----------------------------------------------------------------------------
+# DBUS_GMAIN
+# ----------------------------------------------------------------------------
+
+# The dbus-gmain submodule contains sources that have
+# issues and do not compile cleanly. As the content is
+# what it is, silence warnings etc when compiling source
+# files from there...
+
+DBUS_GMAIN_CPPFLAGS += -I.
+DBUS_GMAIN_CFLAGS   += -Wno-unused-parameter
+DBUS_GMAIN_CFLAGS   += -Wno-cast-function-type
+
+$(DBUS_GMAIN_DIR)/%.o : CPPFLAGS += $(DBUS_GMAIN_CPPFLAGS)
+$(DBUS_GMAIN_DIR)/%.o : CFLAGS   += $(DBUS_GMAIN_CFLAGS)
+
+# ----------------------------------------------------------------------------
 # MODULES
 # ----------------------------------------------------------------------------
 
@@ -350,7 +368,6 @@ MODULE_PKG_NAMES += gobject-2.0
 MODULE_PKG_NAMES += glib-2.0
 MODULE_PKG_NAMES += gmodule-2.0
 MODULE_PKG_NAMES += dbus-1
-MODULE_PKG_NAMES += dbus-glib-1
 MODULE_PKG_NAMES += usb_moded
 MODULE_PKG_NAMES += libudev
 
@@ -377,7 +394,6 @@ $(MODULE_DIR)/%.so : $(MODULE_DIR)/%.pic.o
 TOOLS_PKG_NAMES += gobject-2.0
 TOOLS_PKG_NAMES += glib-2.0
 TOOLS_PKG_NAMES += dbus-1
-TOOLS_PKG_NAMES += dbus-glib-1
 
 TOOLS_PKG_CFLAGS := $(shell $(PKG_CONFIG) --cflags $(TOOLS_PKG_NAMES))
 TOOLS_PKG_LDLIBS := $(shell $(PKG_CONFIG) --libs   $(TOOLS_PKG_NAMES))
@@ -395,7 +411,7 @@ $(TOOLDIR)/evdev_trace : $(TOOLDIR)/evdev_trace.o evdev.o $(TOOLDIR)/fileusers.o
 
 $(TOOLDIR)/dummy_compositor : CFLAGS += $(TOOLS_CFLAGS)
 $(TOOLDIR)/dummy_compositor : LDLIBS += $(TOOLS_LDLIBS)
-$(TOOLDIR)/dummy_compositor : $(TOOLDIR)/dummy_compositor.o
+$(TOOLDIR)/dummy_compositor : $(TOOLDIR)/dummy_compositor.o $(DBUS_GMAIN_DIR)/dbus-gmain.o
 
 # ----------------------------------------------------------------------------
 # UNIT TESTS
@@ -403,7 +419,6 @@ $(TOOLDIR)/dummy_compositor : $(TOOLDIR)/dummy_compositor.o
 
 UTESTS_PKG_NAMES += check
 UTESTS_PKG_NAMES += dbus-1
-UTESTS_PKG_NAMES += dbus-glib-1
 UTESTS_PKG_NAMES += glib-2.0
 UTESTS_PKG_NAMES += gthread-2.0
 
@@ -427,6 +442,7 @@ $(UTESTDIR)/ut_display : LINK_STUBS += mce_write_string_to_file
 $(UTESTDIR)/ut_display : datapipe.o
 $(UTESTDIR)/ut_display : mce-lib.o
 $(UTESTDIR)/ut_display : modetransition.o
+$(UTESTDIR)/ut_display : $(DBUS_GMAIN_DIR)/dbus-gmain.o
 
 # ----------------------------------------------------------------------------
 # ACTIONS FOR TOP LEVEL TARGETS
@@ -538,10 +554,13 @@ fixme::
 # AUTOMATIC HEADER DEPENDENCIES
 # ----------------------------------------------------------------------------
 
+# All sources, except ones from gmain git submodule
+DEPEND_SOURCES = $(filter-out $(DBUS_GMAIN_DIR)/%.c, $(wildcard *.c */*.c */*/*.c))
+
 .PHONY: depend
 depend::
 	@echo "Updating .depend"
-	$(CC) -MM $(CPPFLAGS) $(MCE_CFLAGS) *.c */*.c */*/*.c |\
+	$(CC) -MM $(CPPFLAGS) $(MCE_CFLAGS) $(DEPEND_SOURCES) \
 	./depend_filter.py > .depend
 
 ifneq ($(MAKECMDGOALS),depend) # not while: make depend
