@@ -14,7 +14,7 @@ Requires(post): systemd
 Requires(postun): systemd
 Conflicts: mce-plugin-libhybris < 1.3.0
 Conflicts: lipstick-qt5 < 0.24.7
-BuildRequires:  pkgconfig(dbus-1) >= 1.0.2
+BuildRequires:  pkgconfig(dbus-1) >= 1.8.0
 BuildRequires:  pkgconfig(dsme) >= 0.65.0
 BuildRequires:  pkgconfig(thermalmanager_dbus_if)
 BuildRequires:  pkgconfig(libiphb)
