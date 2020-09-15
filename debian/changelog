@@ -1,3 +1,10 @@
+mce (1.106.4) precise; urgency=low
+
+  * [mce] Use dbus_gmain instead of dbus-glib. JB#51115
+  * [packaging] Raise dbus-1 version requirement. JB#51115
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Tue, 15 Sep 2020 07:39:53 +0300
+
 mce (1.106.3) precise; urgency=low
 
   * [powerkey] Implement separate policy for allowing fpwakeups. Fixes JB#49634
