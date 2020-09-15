@@ -1,5 +1,5 @@
 #include <check.h>
-#include <dbus/dbus-glib-lowlevel.h>	/* dbus_connection_setup_with_g_main */
+#include <dbus-gmain.h>	/*  dbus_gmain_set_up_connection */
 #include <glib.h>
 #include <linux/input.h>
 #include <stdbool.h>

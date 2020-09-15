@@ -42,7 +42,7 @@
 #include <grp.h>
 #include <pwd.h>
 
-#include <dbus/dbus-glib-lowlevel.h>
+#include "dbus-gmain/dbus-gmain.h"
 
 #include <mce/dbus-names.h>
 #include <dsme/thermalmanager_dbus_if.h>
@@ -5238,7 +5238,7 @@ gboolean mce_dbus_init(const gboolean systembus)
 	mce_log(LL_DEBUG, "Connecting D-Bus to the mainloop");
 
 	/* Connect D-Bus to the mainloop */
-	dbus_connection_setup_with_g_main(dbus_connection, NULL);
+	dbus_gmain_set_up_connection(dbus_connection, NULL);
 
 	mce_log(LL_DEBUG, "Acquiring D-Bus service");
 
