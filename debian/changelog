@@ -1,3 +1,9 @@
+mce (1.106.5) precise; urgency=low
+
+  * [packaging] Use sailfish-mirror instead of upstream for dbus-glib. JB#51115
+
+ -- Simo Piiroinen <simo.piiroinen@jollamobile.com>  Wed, 23 Sep 2020 10:18:28 +0300
+
 mce (1.106.4) precise; urgency=low
 
   * [mce] Use dbus_gmain instead of dbus-glib. JB#51115
