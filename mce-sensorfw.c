@@ -326,7 +326,7 @@ sensor_id_available(sensor_id_t id)
 // ----------------------------------------------------------------
 
 /** Connect path to sensord data unix domain socket  */
-#define SENSORFW_DATA_SOCKET                   "/var/run/sensord.sock"
+#define SENSORFW_DATA_SOCKET                   "/run/sensord.sock"
 
 // ----------------------------------------------------------------
 
