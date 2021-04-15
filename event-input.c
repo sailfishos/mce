@@ -1498,6 +1498,7 @@ evin_evdevtype_from_info(evin_evdevinfo_t *info)
         KEY_SCREENLOCK,
         KEY_VOLUMEDOWN,
         KEY_VOLUMEUP,
+        KEY_WAKEUP,
         -1
     };
 
@@ -2309,6 +2310,13 @@ evin_iomon_keypress_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
             if( ev->code == KEY_POWER )
                 mce_log(LL_DEBUG, "esc key -> power key %s",
                         key_esc_down ? "press" : "release");
+        } else if( ev->code == KEY_WAKEUP ) {
+            mce_log(LL_DEVEL, "[wakeup] as gesture event");
+
+            ev->type  = EV_MSC;
+            ev->code  = MSC_GESTURE;
+            ev->value = GESTURE_DOUBLETAP;
+            datapipe_exec_full(&keypress_event_pipe, &ev);
         }
 
         /* For now there's no reason to cache the keypress
@@ -2324,7 +2332,7 @@ evin_iomon_keypress_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
          * Additionally ignore all key events if proximity locked
          * during a call or alarm.
          */
-        if (((ev->code != KEY_CAMERA_FOCUS) &&
+        if ((ev->type == EV_KEY) && ((ev->code != KEY_CAMERA_FOCUS) &&
              (ev->code != KEY_SCREENLOCK) &&
              ((((submode & MCE_SUBMODE_EVEATER) == 0) &&
                (ev->value == 1)) || (ev->value == 0))) &&
@@ -2409,7 +2417,8 @@ evin_iomon_keypress_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
     /* Power key press and release events count as actual non-synthetized
      *  user activity, but otherwise are handled in the powerkey module.
      */
-    if( ev->type == EV_KEY && ev->code == KEY_POWER ) {
+    if(( ev->type == EV_KEY && ev->code == KEY_POWER ) || 
+        (ev->type == EV_MSC && ev->code == MSC_GESTURE)) {
         if( ev->value != 2 )
             evin_iomon_generate_activity(ev, false, true);
         goto EXIT;
