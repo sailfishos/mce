@@ -22,6 +22,8 @@
 #ifndef LIBWAKELOCK_H_
 # define LIBWAKELOCK_H_
 
+#include "musl-compatibility.h"
+
 # ifdef __cplusplus
 extern "C" {
 # elif 0

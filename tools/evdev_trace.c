@@ -102,8 +102,8 @@ process_events(int fd, const char *title)
     if( emit_event_time )
     {
       snprintf(toe, sizeof toe, "%ld.%03ld - ",
-               (long)e->time.tv_sec,
-               (long)e->time.tv_usec / 1000);
+               (long)e->input_event_sec,
+               (long)e->input_event_usec / 1000);
     }
 
     printf("%s: %s%s0x%02x/%s - 0x%03x/%s - %d\n",

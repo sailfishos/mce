@@ -1969,7 +1969,7 @@ evin_iomon_generate_activity(struct input_event *ev, bool cooked, bool raw)
     if( !ev )
         goto EXIT;
 
-    time_t t = ev->time.tv_sec;
+    time_t t = ev->input_event_sec;
 
     /* Actual, never synthetized user activity */
     if( raw ) {
