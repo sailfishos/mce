@@ -5847,6 +5847,13 @@ static waitfb_t mdy_waitfb_data =
 static void
 mdy_topmost_window_set_pid(int pid)
 {
+    /* If there is no active application window, lipstick can report
+     * pid as zero or -1 depending on details that are currently not
+     * relevant from mce point of view -> normalize and use -1 value.
+     */
+    if( pid <= 0 )
+        pid = -1;
+
     if( topmost_window_pid == pid )
         goto EXIT;
 
