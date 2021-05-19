@@ -1,3 +1,9 @@
+mce (1.106.7) precise; urgency=low
+
+  * [display] Normalize placeholder topmost window pid values. Fixes JB#54297
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Wed, 19 May 2021 10:45:31 +0300
+
 mce (1.106.6) precise; urgency=low
 
   * [mce] Use sensord.sock from /run. JB#52757
