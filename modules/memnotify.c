@@ -2,7 +2,7 @@
  * @file memnotify.c
  * Memory use tracking and notification plugin for the Mode Control Entity
  * <p>
- * Copyright (C) 2014 Jolla Ltd.
+ * Copyright (c) 2014 - 2021 Jolla Ltd.
  *
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
@@ -21,19 +21,13 @@
 
 #include "memnotify.h"
 
+#include "../mce.h"
 #include "../mce-log.h"
-#include "../mce-dbus.h"
 #include "../mce-setting.h"
 
-#include <mce/dbus-names.h>
-#include <mce/mode-names.h>
-
 #include <stdio.h>
-#include <stdlib.h>
 #include <unistd.h>
-#include <string.h>
 #include <fcntl.h>
-#include <errno.h>
 
 #include <gmodule.h>
 
@@ -45,35 +39,6 @@ static int    memnotify_char_is_black  (int ch);
 static int    memnotify_char_is_white  (int ch);
 static char  *memnotify_token_parse    (char **ppos);
 static guint  memnotify_iowatch_add    (int fd, bool close_on_unref, GIOCondition cnd, GIOFunc io_cb, gpointer aptr);
-
-/* ========================================================================= *
- * MEMORY_LEVELS
- * ========================================================================= */
-
-/** Supported memory usage levels
- *
- * Note: The ordering must match:
- *       1) memnotify_limit[] array
- *       2) memnotify_dev[] array
- */
-typedef enum
-{
-    /** No excess memory pressure */
-    MEMNOTIFY_LEVEL_NORMAL,
-
-    /** Non-essential caches etc should be released */
-    MEMNOTIFY_LEVEL_WARNING,
-
-    /** Non-essential prosesses should be terminated */
-    MEMNOTIFY_LEVEL_CRITICAL,
-
-    /* Not initialized yet or memnotify is not supported */
-    MEMNOTIFY_LEVEL_UNKNOWN,
-
-    MEMNOTIFY_LEVEL_COUNT
-} memnotify_level_t;
-
-static const char *memnotify_level_name(memnotify_level_t lev);
 
 /* ========================================================================= *
  * LIMIT_OBJECTS
@@ -151,14 +116,6 @@ static bool     memnotify_dev_get_status   (memnotify_level_t lev, memnotify_lim
 static void memnotify_setting_cb   (GConfClient *const gcc, const guint id, GConfEntry *const entry, gpointer const data);
 static void memnotify_setting_init (void);
 static void memnotify_setting_quit (void);
-
-/* ========================================================================= *
- * DBUS_INTERFACE
- * ========================================================================= */
-
-static void memnotify_dbus_broadcast_level (void);
-static void memnotify_dbus_init            (void);
-static void memnotify_dbus_quit            (void);
 
 /* ========================================================================= *
  * PLUGIN_INTEFACE
@@ -241,29 +198,6 @@ EXIT:
 
     return wid;
 
-}
-
-/* ========================================================================= *
- * MEMORY_LEVELS
- * ========================================================================= */
-
-/** Translate level enum to human readable string
- *
- * Note: Also used as argument for the change signal and thus
- *       changes here can cause API breaks.
- */
-static const char *
-memnotify_level_name(memnotify_level_t lev)
-{
-    static const char * const lut[MEMNOTIFY_LEVEL_COUNT] =
-    {
-        [MEMNOTIFY_LEVEL_NORMAL]   = MCE_MEMORY_LEVEL_NORMAL,
-        [MEMNOTIFY_LEVEL_WARNING]  = MCE_MEMORY_LEVEL_WARNING,
-        [MEMNOTIFY_LEVEL_CRITICAL] = MCE_MEMORY_LEVEL_CRITICAL,
-        [MEMNOTIFY_LEVEL_UNKNOWN]  = MCE_MEMORY_LEVEL_UNKNOWN,
-    };
-
-    return (lev < MEMNOTIFY_LEVEL_COUNT) ? lut[lev] : "undefined";
 }
 
 /* ========================================================================= *
@@ -428,7 +362,7 @@ memnotify_status_update_level(void)
 
     memnotify_level = level;
 
-    memnotify_dbus_broadcast_level();
+    datapipe_exec_full(&memnotify_level_pipe, GINT_TO_POINTER(level));
 
 EXIT:
 
@@ -464,7 +398,7 @@ memnotify_status_show_triggers(void)
     for( size_t i = 0; i < G_N_ELEMENTS(memnotify_limit); ++i ) {
         char tmp[256];
         memnotify_limit_repr(memnotify_limit+i, tmp, sizeof tmp);
-        mce_log(LL_DEBUG, "%s: %s", memnotify_level_name(i), tmp);
+        mce_log(LL_DEBUG, "%s: %s", memnotify_level_repr(i), tmp);
     }
 }
 
@@ -516,7 +450,7 @@ memnotify_dev_rx_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
     if( !memnotify_dev[lev].mnd_rx_id )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "notify trigger (%s)", memnotify_level_name(lev));
+    mce_log(LL_DEBUG, "notify trigger (%s)", memnotify_level_repr(lev));
 
     if( cnd & ~G_IO_IN ) {
         mce_log(LL_WARN, "unexpected input watch condition");
@@ -655,7 +589,7 @@ memnotify_dev_set_trigger(memnotify_level_t lev, const memnotify_limit_t *limit)
     if( done != todo )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "write %s -> %s", memnotify_level_name(lev), tmp);
+    mce_log(LL_DEBUG, "write %s -> %s", memnotify_level_repr(lev), tmp);
 
     res = true;
 
@@ -688,7 +622,7 @@ memnotify_dev_get_status(memnotify_level_t lev, memnotify_limit_t *state)
 
     tmp[done-1] = 0;
 
-    mce_log(LL_DEBUG, "read %s <- %s", memnotify_level_name(lev), tmp);
+    mce_log(LL_DEBUG, "read %s <- %s", memnotify_level_repr(lev), tmp);
 
     if( !memnotify_limit_parse(state, tmp) )
         goto EXIT;
@@ -845,93 +779,6 @@ static void memnotify_setting_quit(void)
 }
 
 /* ========================================================================= *
- * DBUS_INTERFACE
- * ========================================================================= */
-
-/** Send memory use level signal on system bus
- */
-static void
-memnotify_dbus_broadcast_level(void)
-{
-    const char *sig = MCE_MEMORY_LEVEL_SIG;
-    const char *arg = memnotify_level_name(memnotify_level);
-    mce_log(LL_DEVEL, "sending dbus signal: %s %s", sig, arg);
-    dbus_send(0, MCE_SIGNAL_PATH, MCE_SIGNAL_IF, sig, 0,
-              DBUS_TYPE_STRING, &arg, DBUS_TYPE_INVALID);
-}
-
-/** D-Bus callback for the get memory level method call
- *
- * @param msg The D-Bus message
- *
- * @return TRUE
- */
-static gboolean
-memnotify_dbus_get_level_cb(DBusMessage *const req)
-{
-    mce_log(LL_DEVEL, "Received memory leve get request from %s",
-            mce_dbus_get_message_sender_ident(req));
-
-    DBusMessage *rsp = dbus_new_method_reply(req);
-    const char  *arg = memnotify_level_name(memnotify_level);
-
-    if( !dbus_message_append_args(rsp,
-                                  DBUS_TYPE_STRING, &arg,
-                                  DBUS_TYPE_INVALID) )
-        goto EXIT;
-
-    mce_log(LL_DEBUG, "sending memory level reply: %s", arg);
-
-    dbus_send_message(rsp), rsp = 0;
-
-EXIT:
-    if( rsp )
-        dbus_message_unref(rsp);
-
-    return TRUE;
-}
-
-/** Array of dbus message handlers */
-static mce_dbus_handler_t memnotify_dbus_handlers[] =
-{
-    /* signals - outbound (for Introspect purposes only) */
-    {
-        .interface = MCE_SIGNAL_IF,
-        .name      = MCE_MEMORY_LEVEL_SIG,
-        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
-        .args      =
-            "    <arg name=\"memory_level\" type=\"s\"/>\n"
-    },
-    /* method calls */
-    {
-        .interface = MCE_REQUEST_IF,
-        .name      = MCE_MEMORY_LEVEL_GET,
-        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
-        .callback  = memnotify_dbus_get_level_cb,
-        .args      =
-            "    <arg direction=\"out\" name=\"memory_level\" type=\"s\"/>\n"
-    },
-    /* sentinel */
-    {
-        .interface = 0
-    }
-};
-
-/** Add dbus handlers
- */
-static void memnotify_dbus_init(void)
-{
-    mce_dbus_handler_register_array(memnotify_dbus_handlers);
-}
-
-/** Remove dbus handlers
- */
-static void memnotify_dbus_quit(void)
-{
-    mce_dbus_handler_unregister_array(memnotify_dbus_handlers);
-}
-
-/* ========================================================================= *
  * PLUGIN_INTEFACE
  * ========================================================================= */
 
@@ -945,7 +792,6 @@ const gchar *g_module_check_init(GModule *module)
 {
     (void)module;
 
-    memnotify_dbus_init();
     memnotify_setting_init();
 
     /* Do not even attempt to set up tracking if the memnotify
@@ -985,7 +831,6 @@ void g_module_unload(GModule *module)
     mce_log(LL_DEBUG, "unloading memnotify plugin");
 
     memnotify_setting_quit();
-    memnotify_dbus_quit();
     memnotify_dev_close_all();
 
     return;

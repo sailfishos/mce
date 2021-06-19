@@ -2,7 +2,7 @@
  * @file mce-common.c
  * Common state logic for Mode Control Entity
  * <p>
- * Copyright (c) 2017 - 2020 Jolla Ltd.
+ * Copyright (c) 2017 - 2021 Jolla Ltd.
  * Copyright (c) 2019 - 2020 Open Mobile Platform LLC.
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
@@ -25,8 +25,6 @@
 #include "mce-dbus.h"
 #include "mce-lib.h"
 #include "mce-log.h"
-
-#include <string.h>
 
 #include <mce/dbus-names.h>
 #include <mce/mode-names.h>
@@ -89,6 +87,8 @@ static void     common_dbus_send_battery_state    (DBusMessage *const req);
 static gboolean common_dbus_get_battery_state_cb  (DBusMessage *const req);
 static void     common_dbus_send_battery_level    (DBusMessage *const req);
 static gboolean common_dbus_get_battery_level_cb  (DBusMessage *const req);
+static void     common_dbus_send_memnotify_level  (void);
+static gboolean common_dbus_get_memnotify_level_cb(DBusMessage *const req);
 static gboolean common_dbus_initial_cb            (gpointer aptr);
 static void     common_dbus_init                  (void);
 static void     common_dbus_quit                  (void);
@@ -104,6 +104,7 @@ static void common_datapipe_battery_status_cb         (gconstpointer data);
 static void common_datapipe_battery_state_cb          (gconstpointer data);
 static void common_datapipe_battery_level_cb          (gconstpointer data);
 static void common_datapipe_proximity_sensor_actual_cb(gconstpointer data);
+static void common_datapipe_memnotify_level_cb        (gconstpointer data);
 static void common_datapipe_init                      (void);
 static void common_datapipe_quit                      (void);
 
@@ -138,6 +139,9 @@ static gint battery_level = MCE_BATTERY_LEVEL_UNKNOWN;
 
 /** Cached (raw) proximity sensor state */
 static cover_state_t proximity_sensor_actual = COVER_UNDEF;
+
+/** Cached memory use level */
+static memnotify_level_t memnotify_level = MEMNOTIFY_LEVEL_UNKNOWN;
 
 /* ========================================================================= *
  * ON_CONDITION
@@ -728,6 +732,59 @@ common_dbus_get_battery_level_cb(DBusMessage *const req)
 }
 
 /* ------------------------------------------------------------------------- *
+ * memnotify_level
+ * ------------------------------------------------------------------------- */
+
+/** Send memory use level signal on system bus
+ */
+static void
+common_dbus_send_memnotify_level(void)
+{
+    /* Initialize last seen value to something that is never used */
+    memnotify_level_t last = MEMNOTIFY_LEVEL_COUNT;
+
+    if( last != memnotify_level ) {
+        last = memnotify_level;
+        const char *sig = MCE_MEMORY_LEVEL_SIG;
+        const char *arg = memnotify_level_repr(memnotify_level);
+        mce_log(LL_DEVEL, "sending dbus signal: %s %s", sig, arg);
+        dbus_send(0, MCE_SIGNAL_PATH, MCE_SIGNAL_IF, sig, 0,
+                  DBUS_TYPE_STRING, &arg, DBUS_TYPE_INVALID);
+    }
+}
+
+/** D-Bus callback for the get memory level method call
+ *
+ * @param msg The D-Bus message
+ *
+ * @return TRUE
+ */
+static gboolean
+common_dbus_get_memnotify_level_cb(DBusMessage *const req)
+{
+    mce_log(LL_DEVEL, "Received memory level get request from %s",
+            mce_dbus_get_message_sender_ident(req));
+
+    DBusMessage *rsp = dbus_new_method_reply(req);
+    const char  *arg = memnotify_level_repr(memnotify_level);
+
+    if( !dbus_message_append_args(rsp,
+                                  DBUS_TYPE_STRING, &arg,
+                                  DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "sending memory level reply: %s", arg);
+
+    dbus_send_message(rsp), rsp = 0;
+
+EXIT:
+    if( rsp )
+        dbus_message_unref(rsp);
+
+    return TRUE;
+}
+
+/* ------------------------------------------------------------------------- *
  * init/quit
  * ------------------------------------------------------------------------- */
 
@@ -776,6 +833,13 @@ static mce_dbus_handler_t common_dbus_handlers[] =
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
         .args      =
             "    <arg name=\"battery_level\" type=\"i\"/>\n"
+    },
+    {
+        .interface = MCE_SIGNAL_IF,
+        .name      = MCE_MEMORY_LEVEL_SIG,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .args      =
+            "    <arg name=\"memory_level\" type=\"s\"/>\n"
     },
     /* method calls */
     {
@@ -826,6 +890,14 @@ static mce_dbus_handler_t common_dbus_handlers[] =
         .args      =
             "    <arg direction=\"out\" name=\"battery_level\" type=\"i\"/>\n"
     },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_MEMORY_LEVEL_GET,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = common_dbus_get_memnotify_level_cb,
+        .args      =
+            "    <arg direction=\"out\" name=\"memory_level\" type=\"s\"/>\n"
+    },
     /* sentinel */
     {
         .interface = 0
@@ -857,6 +929,7 @@ static gboolean common_dbus_initial_cb(gpointer aptr)
     common_dbus_send_battery_status(0);
     common_dbus_send_battery_state(0);
     common_dbus_send_battery_level(0);
+    common_dbus_send_memnotify_level();
 
     common_dbus_initial_id = 0;
     return FALSE;
@@ -1080,6 +1153,30 @@ EXIT:
 }
 
 /* ------------------------------------------------------------------------- *
+ * memnotify_level
+ * ------------------------------------------------------------------------- */
+
+/** Change notifications for memnotify_level
+ */
+static void common_datapipe_memnotify_level_cb(gconstpointer data)
+{
+    memnotify_level_t prev = memnotify_level;
+    memnotify_level = GPOINTER_TO_INT(data);
+
+    if( memnotify_level == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "memnotify_level = %s -> %s",
+            memnotify_level_repr(prev),
+            memnotify_level_repr(memnotify_level));
+
+    common_dbus_send_memnotify_level();
+
+EXIT:
+    return;
+}
+
+/* ------------------------------------------------------------------------- *
  * init/quit
  * ------------------------------------------------------------------------- */
 
@@ -1114,6 +1211,10 @@ static datapipe_handler_t common_datapipe_handlers[] =
     {
         .datapipe  = &proximity_sensor_actual_pipe,
         .output_cb = common_datapipe_proximity_sensor_actual_cb,
+    },
+    {
+        .datapipe  = &memnotify_level_pipe,
+        .output_cb = common_datapipe_memnotify_level_cb,
     },
     // sentinel
     {

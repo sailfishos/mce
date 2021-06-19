@@ -560,7 +560,7 @@ DEPEND_SOURCES = $(filter-out $(DBUS_GMAIN_DIR)/%.c, $(wildcard *.c */*.c */*/*.
 .PHONY: depend
 depend::
 	@echo "Updating .depend"
-	$(CC) -MM $(CPPFLAGS) $(MCE_CFLAGS) $(DEPEND_SOURCES) \
+	$(CC) -MM $(CPPFLAGS) $(MCE_CFLAGS) $(DEPEND_SOURCES) |\
 	./depend_filter.py > .depend
 
 ifneq ($(MAKECMDGOALS),depend) # not while: make depend
