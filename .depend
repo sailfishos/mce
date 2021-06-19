@@ -900,6 +900,24 @@ modules/memnotify.pic.o:\
 	mce.h\
 	modules/memnotify.h\
 
+modules/mempressure.o:\
+	modules/mempressure.c\
+	builtin-gconf.h\
+	datapipe.h\
+	mce-log.h\
+	mce-setting.h\
+	mce.h\
+	modules/memnotify.h\
+
+modules/mempressure.pic.o:\
+	modules/mempressure.c\
+	builtin-gconf.h\
+	datapipe.h\
+	mce-log.h\
+	mce-setting.h\
+	mce.h\
+	modules/memnotify.h\
+
 modules/packagekit.o:\
 	modules/packagekit.c\
 	builtin-gconf.h\

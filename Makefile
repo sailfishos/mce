@@ -158,6 +158,7 @@ MODULES += $(MODULE_DIR)/inactivity.so
 MODULES += $(MODULE_DIR)/camera.so
 MODULES += $(MODULE_DIR)/alarm.so
 MODULES += $(MODULE_DIR)/memnotify.so
+MODULES += $(MODULE_DIR)/mempressure.so
 MODULES += $(MODULE_DIR)/battery-bme.so
 MODULES += $(MODULE_DIR)/battery-upower.so
 MODULES += $(MODULE_DIR)/bluetooth.so
@@ -636,6 +637,7 @@ NORMALIZE_USES_SPC =\
 	modules/inactivity.h\
 	modules/memnotify.c\
 	modules/memnotify.h\
+	modules/mempressure.c\
 	modules/packagekit.c\
 	modules/powersavemode.h\
 	modules/proximity.c\
