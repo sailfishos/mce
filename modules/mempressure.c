@@ -712,6 +712,14 @@ G_MODULE_EXPORT const gchar *g_module_check_init(GModule *module)
 {
     (void)module;
 
+    /* Check if some memory pressure plugin has already taken over */
+    memnotify_level_t level = datapipe_get_gint(memnotify_level_pipe);
+    if( level != MEMNOTIFY_LEVEL_UNKNOWN ) {
+        mce_log(LL_DEBUG, "level already set to %s; mempressure disabled",
+                memnotify_level_repr(level));
+        goto EXIT;
+    }
+
     /* Check if required sysfs files are present */
     if( !mempressure_cgroup_is_available() ) {
         mce_log(LL_WARN, "mempressure cgroup interface not available");

@@ -121,6 +121,9 @@ static void memnotify_setting_quit (void);
  * PLUGIN_INTEFACE
  * ========================================================================= */
 
+static void memnotify_plugin_quit(void);
+static bool memnotify_plugin_init(void);
+
 G_MODULE_EXPORT const gchar *g_module_check_init (GModule *module);
 G_MODULE_EXPORT void         g_module_unload     (GModule *module);
 
@@ -782,6 +785,35 @@ static void memnotify_setting_quit(void)
  * PLUGIN_INTEFACE
  * ========================================================================= */
 
+static void
+memnotify_plugin_quit(void)
+{
+    memnotify_dev_close_all();
+    memnotify_setting_quit();
+}
+
+static bool
+memnotify_plugin_init(void)
+{
+    bool success = false;
+
+    memnotify_setting_init();
+
+    if( !memnotify_dev_open_all() )
+        goto EXIT;
+
+    memnotify_status_update_triggers();
+
+    success = true;
+
+EXIT:
+    /* All or nothing */
+    if( !success )
+        memnotify_plugin_quit();
+
+    return success;
+}
+
 /** Init function for the memnotify plugin
  *
  * @param module  (not used)
@@ -792,7 +824,13 @@ const gchar *g_module_check_init(GModule *module)
 {
     (void)module;
 
-    memnotify_setting_init();
+    /* Check if some memory pressure plugin has already taken over */
+    memnotify_level_t level = datapipe_get_gint(memnotify_level_pipe);
+    if( level != MEMNOTIFY_LEVEL_UNKNOWN ) {
+        mce_log(LL_DEBUG, "level already set to %s; memnotify disabled",
+                memnotify_level_repr(level));
+        goto EXIT;
+    }
 
     /* Do not even attempt to set up tracking if the memnotify
      * device node is not available */
@@ -808,10 +846,11 @@ const gchar *g_module_check_init(GModule *module)
         goto EXIT;
     }
 
-    if( !memnotify_dev_open_all() )
+    /* Initialize */
+    if( !memnotify_plugin_init() ) {
+        mce_log(LL_WARN, "memnotify plugin init failed");
         goto EXIT;
-
-    memnotify_status_update_triggers();
+    }
 
     mce_log(LL_NOTICE, "memnotify plugin active");
 
@@ -830,8 +869,7 @@ void g_module_unload(GModule *module)
 
     mce_log(LL_DEBUG, "unloading memnotify plugin");
 
-    memnotify_setting_quit();
-    memnotify_dev_close_all();
+    memnotify_plugin_quit();
 
     return;
 }
