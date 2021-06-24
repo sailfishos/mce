@@ -1,3 +1,12 @@
+mce (1.107.0) precise; urgency=low
+
+  * [memnotify] Move memnotify dbus inteface to common logic
+  * [mempressure] Implement cgroups based memory pressure evaluator. JB#54673
+  * [mce] Automatically choose memory pressure plugin. Fixes JB#54673
+  * [mcetool] Add support for human readable memory limits
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Thu, 24 Jun 2021 20:13:47 +0300
+
 mce (1.106.7) precise; urgency=low
 
   * [display] Normalize placeholder topmost window pid values. Fixes JB#54297
