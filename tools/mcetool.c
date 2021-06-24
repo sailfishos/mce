@@ -57,6 +57,9 @@
 #include <mce/dbus-names.h>
 #include <mce/mode-names.h>
 
+/** Ram page size, used for human readable memory limits */
+#define PAGE_SIZE ((unsigned long)sysconf(_SC_PAGESIZE))
+
 /** Whether to enable development time debugging */
 #define MCETOOL_ENABLE_EXTRA_DEBUG 0
 
@@ -2066,6 +2069,48 @@ static int xmce_parse_integer(const char *args)
         int   res = strtol(args, &end, 0);
         if( end <= args || *end != 0 ) {
                 errorf("%s: not a valid integer value\n", args);
+                exit(EXIT_FAILURE);
+        }
+        return res;
+}
+
+/** Convert string to memory limit page count
+ *
+ * @param args string from user
+ *
+ * @return integer number, or terminate on errors
+ */
+static int xmce_parse_memory_limit(const char *args)
+{
+        char     *end = 0;
+        uint64_t  val = strtoull(args, &end, 0);
+        if( end > args && *end != 0) {
+                switch( *end ) {
+                case 'k':
+                        ++end;
+                        val = (val << 10) / PAGE_SIZE;
+                        break;
+                case 'M':
+                        ++end;
+                        val = (val << 20) / PAGE_SIZE;
+                        break;
+                case 'G':
+                        ++end;
+                        val = (val << 30) / PAGE_SIZE;
+                        break;
+                default:
+                        errorf("'%c' is not among supported modifiers 'kMG'\n", *end);
+                        exit(EXIT_FAILURE);
+                }
+        }
+
+        if( end <= args || *end != 0 ) {
+                errorf("%s: not a valid integer value\n", args);
+                exit(EXIT_FAILURE);
+        }
+        int res = (int)val;
+        if( res < 0 || res != val ) {
+                errorf("limit range overflow\n", *end);
                 exit(EXIT_FAILURE);
         }
         return res;
@@ -5819,28 +5864,28 @@ static void xmce_get_brightness_fade(void)
 static bool xmce_set_memnotify_warning_used(const char *args)
 {
         xmce_setting_set_int(MCE_SETTING_MEMNOTIFY_WARNING_USED,
-                             xmce_parse_integer(args));
+                             xmce_parse_memory_limit(args));
         return true;
 }
 
 static bool xmce_set_memnotify_warning_active(const char *args)
 {
         xmce_setting_set_int(MCE_SETTING_MEMNOTIFY_WARNING_ACTIVE,
-                             xmce_parse_integer(args));
+                             xmce_parse_memory_limit(args));
         return true;
 }
 
 static bool xmce_set_memnotify_critical_used(const char *args)
 {
         xmce_setting_set_int(MCE_SETTING_MEMNOTIFY_CRITICAL_USED,
-                             xmce_parse_integer(args));
+                             xmce_parse_memory_limit(args));
         return true;
 }
 
 static bool xmce_set_memnotify_critical_active(const char *args)
 {
         xmce_setting_set_int(MCE_SETTING_MEMNOTIFY_CRITICAL_ACTIVE,
-                             xmce_parse_integer(args));
+                             xmce_parse_memory_limit(args));
         return true;
 }
 
@@ -5854,7 +5899,9 @@ static void xmce_get_memnotify_helper(const char *title, const char *key)
         else {
                 char txt[32];
                 snprintf(txt, sizeof txt, "%d", (int)val);
-                printf("%-"PAD1"s %s (ram pages)\n", title, txt);
+                uint64_t bytes = PAGE_SIZE * (uint64_t)val;
+                printf("%-"PAD1"s %s (ram pages = %.1f MB)\n",
+                       title, txt, bytes / (1024.0 * 1024.0));
         }
 }
 
@@ -7816,6 +7863,8 @@ static const mce_opt_t options[] =
                 .values      = "page_count",
                 .usage       =
                         "set warning limit for used memory pages; zero=disabled\n"
+                        "\n"
+                        "Also more human readable values like 100M can be used.\n"
         },
         {
                 .name        = "set-memuse-warning-active",
