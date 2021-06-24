@@ -267,6 +267,7 @@ CFLAGS += -Wstack-protector
 CFLAGS += -Wno-declaration-after-statement
 CFLAGS += -Wno-missing-field-initializers
 CFLAGS += -Wimplicit-fallthrough=2
+CFLAGS += -Wno-format-truncation
 
 # Linker
 LDLIBS   += -Wl,--as-needed

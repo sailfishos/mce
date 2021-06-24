@@ -2109,8 +2109,8 @@ static int xmce_parse_memory_limit(const char *args)
                 exit(EXIT_FAILURE);
         }
         int res = (int)val;
-        if( res < 0 || res != val ) {
-                errorf("limit range overflow\n", *end);
+        if( res < 0 || (uint64_t)res != val ) {
+                errorf("limit range overflow\n");
                 exit(EXIT_FAILURE);
         }
         return res;

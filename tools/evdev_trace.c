@@ -128,7 +128,7 @@ static
 void
 mainloop(char **path, int count, int identify, int trace)
 {
-  struct pollfd pfd[count];
+  struct pollfd *pfd = calloc(count, sizeof *pfd);
 
   int closed = 0;
 
@@ -195,6 +195,8 @@ cleanup:
   {
     if( pfd[i].fd != -1 ) close(pfd[i].fd);
   }
+
+  free(pfd);
 }
 
 /** Configuration table for long command line options */
