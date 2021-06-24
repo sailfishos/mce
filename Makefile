@@ -158,6 +158,7 @@ MODULES += $(MODULE_DIR)/inactivity.so
 MODULES += $(MODULE_DIR)/camera.so
 MODULES += $(MODULE_DIR)/alarm.so
 MODULES += $(MODULE_DIR)/memnotify.so
+MODULES += $(MODULE_DIR)/mempressure.so
 MODULES += $(MODULE_DIR)/battery-bme.so
 MODULES += $(MODULE_DIR)/battery-upower.so
 MODULES += $(MODULE_DIR)/bluetooth.so
@@ -560,7 +561,7 @@ DEPEND_SOURCES = $(filter-out $(DBUS_GMAIN_DIR)/%.c, $(wildcard *.c */*.c */*/*.
 .PHONY: depend
 depend::
 	@echo "Updating .depend"
-	$(CC) -MM $(CPPFLAGS) $(MCE_CFLAGS) $(DEPEND_SOURCES) \
+	$(CC) -MM $(CPPFLAGS) $(MCE_CFLAGS) $(DEPEND_SOURCES) |\
 	./depend_filter.py > .depend
 
 ifneq ($(MAKECMDGOALS),depend) # not while: make depend
@@ -636,6 +637,7 @@ NORMALIZE_USES_SPC =\
 	modules/inactivity.h\
 	modules/memnotify.c\
 	modules/memnotify.h\
+	modules/mempressure.c\
 	modules/packagekit.c\
 	modules/powersavemode.h\
 	modules/proximity.c\

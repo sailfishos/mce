@@ -2,8 +2,8 @@
  * @file datapipe.h
  * Headers for the simple filter framework
  * <p>
- * Copyright © 2007 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2014-2019 Jolla Ltd.
+ * Copyright (c) 2007 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (c) 2014 - 2021 Jolla Ltd.
  * Copyright (c) 2019 Open Mobile Platform LLC.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
@@ -290,5 +290,6 @@ extern datapipe_t music_playback_ongoing_pipe;
 extern datapipe_t fpd_service_state_pipe;
 extern datapipe_t fpstate_pipe;
 extern datapipe_t enroll_in_progress_pipe;
+extern datapipe_t memnotify_level_pipe;
 
 #endif /* _DATAPIPE_H_ */

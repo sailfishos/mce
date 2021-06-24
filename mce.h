@@ -3,7 +3,7 @@
  * Generic headers for Mode Control Entity
  * <p>
  * Copyright (c) 2004 - 2011 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (c) 2012 - 2020 Jolla Ltd.
+ * Copyright (c) 2012 - 2021 Jolla Ltd.
  * Copyright (c) 2019 - 2020 Open Mobile Platform LLC.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
@@ -505,7 +505,34 @@ typedef enum fpstate_t
 fpstate_t   fpstate_parse(const char *name);
 const char *fpstate_repr (fpstate_t state);
 
-/* XXX: use HAL */
+/* ========================================================================= *
+ * MEMORY_LEVELS
+ * ========================================================================= */
+
+/** Supported memory usage levels
+ *
+ * Note: The ordering must match:
+ *       1) memnotify_limit[] array
+ *       2) memnotify_dev[] array
+ */
+typedef enum
+{
+    /** No excess memory pressure */
+    MEMNOTIFY_LEVEL_NORMAL,
+
+    /** Non-essential caches etc should be released */
+    MEMNOTIFY_LEVEL_WARNING,
+
+    /** Non-essential prosesses should be terminated */
+    MEMNOTIFY_LEVEL_CRITICAL,
+
+    /* Not initialized yet or memnotify is not supported */
+    MEMNOTIFY_LEVEL_UNKNOWN,
+
+    MEMNOTIFY_LEVEL_COUNT
+} memnotify_level_t;
+
+const char *memnotify_level_repr(memnotify_level_t lev);
 
 /** Does the device have a flicker key? */
 extern gboolean has_flicker_key;

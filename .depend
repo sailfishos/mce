@@ -885,17 +885,37 @@ modules/led.pic.o:\
 modules/memnotify.o:\
 	modules/memnotify.c\
 	builtin-gconf.h\
-	mce-dbus.h\
+	datapipe.h\
 	mce-log.h\
 	mce-setting.h\
+	mce.h\
 	modules/memnotify.h\
 
 modules/memnotify.pic.o:\
 	modules/memnotify.c\
 	builtin-gconf.h\
-	mce-dbus.h\
+	datapipe.h\
 	mce-log.h\
 	mce-setting.h\
+	mce.h\
+	modules/memnotify.h\
+
+modules/mempressure.o:\
+	modules/mempressure.c\
+	builtin-gconf.h\
+	datapipe.h\
+	mce-log.h\
+	mce-setting.h\
+	mce.h\
+	modules/memnotify.h\
+
+modules/mempressure.pic.o:\
+	modules/mempressure.c\
+	builtin-gconf.h\
+	datapipe.h\
+	mce-log.h\
+	mce-setting.h\
+	mce.h\
 	modules/memnotify.h\
 
 modules/packagekit.o:\

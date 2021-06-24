@@ -4,7 +4,7 @@
  * this can be used to filter data and to setup data triggers
  * <p>
  * Copyright (c) 2007 - 2008 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (c) 2014 - 2020 Jolla Ltd.
+ * Copyright (c) 2014 - 2021 Jolla Ltd.
  * Copyright (c) 2019 - 2020 Open Mobile Platform LLC.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
@@ -124,6 +124,7 @@ static const char  *datapipe_hook_thermal_state_value      (gconstpointer data);
 static const char  *datapipe_hook_service_state_value      (gconstpointer data);
 static const char  *datapipe_hook_devicelock_state_value   (gconstpointer data);
 static const char  *datapipe_hook_fpstate_value            (gconstpointer data);
+static const char  *datapipe_hook_memnotify_level_value    (gconstpointer data);
 
 /* ------------------------------------------------------------------------- *
  * DATAPIPE
@@ -578,6 +579,14 @@ datapipe_hook_fpstate_value(gconstpointer data)
 }
 #define datapipe_hook_fpstate_change 0
 
+static const char *
+datapipe_hook_memnotify_level_value(gconstpointer data)
+{
+    memnotify_level_t value = GPOINTER_TO_INT(data);
+    return memnotify_level_repr(value);
+}
+#define datapipe_hook_memnotify_level_change 0
+
 /* ========================================================================= *
  * Data
  * ========================================================================= */
@@ -838,6 +847,9 @@ datapipe_t fpstate_pipe                         = DATAPIPE_INIT(fpstate, fpstate
 
 /** fingerprint is enrolling; read only */
 datapipe_t enroll_in_progress_pipe              = DATAPIPE_INIT(enroll_in_progress, boolean, false, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
+
+/** Memory pressure level; read only */
+datapipe_t memnotify_level_pipe                 = DATAPIPE_INIT(memnotify_level, memnotify_level, MEMNOTIFY_LEVEL_UNKNOWN, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /* ========================================================================= *
  * Functions
@@ -1389,6 +1401,7 @@ void mce_datapipe_quit(void)
     datapipe_free(&fpd_service_state_pipe);
     datapipe_free(&fpstate_pipe);
     datapipe_free(&enroll_in_progress_pipe);
+    datapipe_free(&memnotify_level_pipe);
 }
 
 /** Convert submode_t bitmap changes to human readable string
@@ -2213,6 +2226,25 @@ const char *fpstate_repr(fpstate_t state)
     return mce_translate_int_to_string_with_default(fpstate_lut,
                                                     state,
                                                     "FPSTATE_UNKNOWN");
+}
+
+/** Translate level enum to human readable string
+ *
+ * Note: Also used as argument for the change signal and thus
+ *       changes here can cause API breaks.
+ */
+const char *
+memnotify_level_repr(memnotify_level_t lev)
+{
+    static const char * const lut[MEMNOTIFY_LEVEL_COUNT] =
+    {
+        [MEMNOTIFY_LEVEL_NORMAL]   = MCE_MEMORY_LEVEL_NORMAL,
+        [MEMNOTIFY_LEVEL_WARNING]  = MCE_MEMORY_LEVEL_WARNING,
+        [MEMNOTIFY_LEVEL_CRITICAL] = MCE_MEMORY_LEVEL_CRITICAL,
+        [MEMNOTIFY_LEVEL_UNKNOWN]  = MCE_MEMORY_LEVEL_UNKNOWN,
+    };
+
+    return (lev < MEMNOTIFY_LEVEL_COUNT) ? lut[lev] : "undefined";
 }
 
 static void
