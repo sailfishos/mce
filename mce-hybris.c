@@ -366,16 +366,26 @@ static void *mce_hybris_lookup_function(const char *name)
     else if( access(path, F_OK) == -1 && errno == ENOENT ) {
       mce_log(LL_NOTICE, "%s: not installed", path);
     }
-#if defined(RTLD_DEEPBIND)
-    else if( !(base = dlopen(path, RTLD_NOW|RTLD_LOCAL|RTLD_DEEPBIND)) ) {
-#else
-    else if( !(base = dlopen(path, RTLD_NOW|RTLD_LOCAL)) ) {
-#endif
-      mce_log(LL_WARN, "%s: failed to load: %s", path, dlerror());
-    }
     else {
-      mce_log(LL_NOTICE, "loaded hybris plugin");
-      mce_hybris_set_logging_proxy(base);
+      int flags = RTLD_NOW | RTLD_LOCAL;
+
+      /* Note: RTLD_DEEPBIND is needed at least in Jolla1 for
+       * preventing symbol leakage from/to mce-plugin-libhybris
+       * (which accesses android bionic libc code via libhybris).
+       */
+#if defined(RTLD_DEEPBIND)
+      flags |= RTLD_DEEPBIND;
+#else
+      mce_log(LL_WARN, "RTLD_DEEPBIND is not supported");
+#endif
+
+      if( !(base = dlopen(path, flags)) ) {
+        mce_log(LL_WARN, "%s: failed to load: %s", path, dlerror());
+      }
+      else {
+        mce_log(LL_NOTICE, "loaded hybris plugin");
+        mce_hybris_set_logging_proxy(base);
+      }
     }
     free(path);
   }

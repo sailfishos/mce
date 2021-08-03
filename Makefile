@@ -648,6 +648,7 @@ NORMALIZE_USES_SPC =\
 	modules/usbmode.c\
 	multitouch.c\
 	multitouch.h\
+	musl-compatibility.h\
 	ofono-dbus-names.h\
 	powerkey.c\
 	powerkey.h\

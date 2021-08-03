@@ -28,6 +28,17 @@ extern "C" {
 } /* fool JED indentation ... */
 #endif
 
+/* On 32-bit arches input_event->time is undefined when using a time64
+ * kernel. These macros are used to normalize timestamp access in code.
+ */
+# ifndef input_event_sec
+#  define input_event_sec time.tv_sec
+# endif
+
+# ifndef input_event_usec
+#  define input_event_usec time.tv_usec
+# endif
+
 /** Assumed EV_MSC:MSC_GESTURE event values
  *
  * Actual gestures / values depend on hw and kernel driver - these are

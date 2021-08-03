@@ -15,6 +15,7 @@ builtin-gconf.o:\
 	modules/memnotify.h\
 	modules/powersavemode.h\
 	modules/proximity.h\
+	musl-compatibility.h\
 	powerkey.h\
 	tklock.h\
 
@@ -35,6 +36,7 @@ builtin-gconf.pic.o:\
 	modules/memnotify.h\
 	modules/powersavemode.h\
 	modules/proximity.h\
+	musl-compatibility.h\
 	powerkey.h\
 	tklock.h\
 
@@ -45,6 +47,7 @@ datapipe.o:\
 	mce-lib.h\
 	mce-log.h\
 	mce.h\
+	musl-compatibility.h\
 
 datapipe.pic.o:\
 	datapipe.c\
@@ -53,6 +56,7 @@ datapipe.pic.o:\
 	mce-lib.h\
 	mce-log.h\
 	mce.h\
+	musl-compatibility.h\
 
 evdev.o:\
 	evdev.c\
@@ -81,6 +85,7 @@ event-input.o:\
 	mce-setting.h\
 	mce.h\
 	multitouch.h\
+	musl-compatibility.h\
 
 event-input.pic.o:\
 	event-input.c\
@@ -97,6 +102,7 @@ event-input.pic.o:\
 	mce-setting.h\
 	mce.h\
 	multitouch.h\
+	musl-compatibility.h\
 
 event-switches.o:\
 	event-switches.c\
@@ -104,6 +110,7 @@ event-switches.o:\
 	event-switches.h\
 	mce-io.h\
 	mce.h\
+	musl-compatibility.h\
 
 event-switches.pic.o:\
 	event-switches.c\
@@ -111,6 +118,7 @@ event-switches.pic.o:\
 	event-switches.h\
 	mce-io.h\
 	mce.h\
+	musl-compatibility.h\
 
 filewatcher.o:\
 	filewatcher.c\
@@ -125,10 +133,12 @@ filewatcher.pic.o:\
 libwakelock.o:\
 	libwakelock.c\
 	libwakelock.h\
+	musl-compatibility.h\
 
 libwakelock.pic.o:\
 	libwakelock.c\
 	libwakelock.h\
+	musl-compatibility.h\
 
 mce-command-line.o:\
 	mce-command-line.c\
@@ -147,6 +157,7 @@ mce-common.o:\
 	mce-lib.h\
 	mce-log.h\
 	mce.h\
+	musl-compatibility.h\
 
 mce-common.pic.o:\
 	mce-common.c\
@@ -157,6 +168,7 @@ mce-common.pic.o:\
 	mce-lib.h\
 	mce-log.h\
 	mce.h\
+	musl-compatibility.h\
 
 mce-conf.o:\
 	mce-conf.c\
@@ -165,6 +177,7 @@ mce-conf.o:\
 	mce-log.h\
 	mce.h\
 	modules/led.h\
+	musl-compatibility.h\
 
 mce-conf.pic.o:\
 	mce-conf.c\
@@ -173,6 +186,7 @@ mce-conf.pic.o:\
 	mce-log.h\
 	mce.h\
 	modules/led.h\
+	musl-compatibility.h\
 
 mce-dbus.o:\
 	mce-dbus.c\
@@ -184,6 +198,7 @@ mce-dbus.o:\
 	mce-log.h\
 	mce-wakelock.h\
 	mce.h\
+	musl-compatibility.h\
 	systemui/dbus-names.h\
 
 mce-dbus.pic.o:\
@@ -196,6 +211,7 @@ mce-dbus.pic.o:\
 	mce-log.h\
 	mce-wakelock.h\
 	mce.h\
+	musl-compatibility.h\
 	systemui/dbus-names.h\
 
 mce-dsme.o:\
@@ -207,6 +223,7 @@ mce-dsme.o:\
 	mce-log.h\
 	mce-worker.h\
 	mce.h\
+	musl-compatibility.h\
 
 mce-dsme.pic.o:\
 	mce-dsme.c\
@@ -217,6 +234,7 @@ mce-dsme.pic.o:\
 	mce-log.h\
 	mce-worker.h\
 	mce.h\
+	musl-compatibility.h\
 
 mce-fbdev.o:\
 	mce-fbdev.c\
@@ -225,6 +243,7 @@ mce-fbdev.o:\
 	mce-hybris.h\
 	mce-log.h\
 	mce.h\
+	musl-compatibility.h\
 
 mce-fbdev.pic.o:\
 	mce-fbdev.c\
@@ -233,6 +252,7 @@ mce-fbdev.pic.o:\
 	mce-hybris.h\
 	mce-log.h\
 	mce.h\
+	musl-compatibility.h\
 
 mce-hal.o:\
 	mce-hal.c\
@@ -254,6 +274,7 @@ mce-hbtimer.o:\
 	mce-lib.h\
 	mce-log.h\
 	mce.h\
+	musl-compatibility.h\
 
 mce-hbtimer.pic.o:\
 	mce-hbtimer.c\
@@ -263,6 +284,7 @@ mce-hbtimer.pic.o:\
 	mce-lib.h\
 	mce-log.h\
 	mce.h\
+	musl-compatibility.h\
 
 mce-hybris.o:\
 	mce-hybris.c\
@@ -272,6 +294,7 @@ mce-hybris.o:\
 	mce-log.h\
 	mce-modules.h\
 	mce.h\
+	musl-compatibility.h\
 
 mce-hybris.pic.o:\
 	mce-hybris.c\
@@ -281,6 +304,7 @@ mce-hybris.pic.o:\
 	mce-log.h\
 	mce-modules.h\
 	mce.h\
+	musl-compatibility.h\
 
 mce-io.o:\
 	mce-io.c\
@@ -291,6 +315,7 @@ mce-io.o:\
 	mce-log.h\
 	mce-wakelock.h\
 	mce.h\
+	musl-compatibility.h\
 
 mce-io.pic.o:\
 	mce-io.c\
@@ -301,6 +326,7 @@ mce-io.pic.o:\
 	mce-log.h\
 	mce-wakelock.h\
 	mce.h\
+	musl-compatibility.h\
 
 mce-lib.o:\
 	mce-lib.c\
@@ -309,6 +335,7 @@ mce-lib.o:\
 	mce-log.h\
 	mce-wakelock.h\
 	mce.h\
+	musl-compatibility.h\
 
 mce-lib.pic.o:\
 	mce-lib.c\
@@ -317,6 +344,7 @@ mce-lib.pic.o:\
 	mce-log.h\
 	mce-wakelock.h\
 	mce.h\
+	musl-compatibility.h\
 
 mce-log.o:\
 	mce-log.c\
@@ -333,6 +361,7 @@ mce-modules.o:\
 	mce-log.h\
 	mce-modules.h\
 	mce.h\
+	musl-compatibility.h\
 
 mce-modules.pic.o:\
 	mce-modules.c\
@@ -341,6 +370,7 @@ mce-modules.pic.o:\
 	mce-log.h\
 	mce-modules.h\
 	mce.h\
+	musl-compatibility.h\
 
 mce-sensorfw.o:\
 	mce-sensorfw.c\
@@ -351,6 +381,7 @@ mce-sensorfw.o:\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce.h\
+	musl-compatibility.h\
 
 mce-sensorfw.pic.o:\
 	mce-sensorfw.c\
@@ -361,6 +392,7 @@ mce-sensorfw.pic.o:\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce.h\
+	musl-compatibility.h\
 
 mce-setting.o:\
 	mce-setting.c\
@@ -430,6 +462,7 @@ mce.o:\
 	mce-worker.h\
 	mce.h\
 	modetransition.h\
+	musl-compatibility.h\
 	powerkey.h\
 	tklock.h\
 
@@ -457,6 +490,7 @@ mce.pic.o:\
 	mce-worker.h\
 	mce.h\
 	modetransition.h\
+	musl-compatibility.h\
 	powerkey.h\
 	tklock.h\
 
@@ -467,6 +501,7 @@ modetransition.o:\
 	mce-log.h\
 	mce.h\
 	modetransition.h\
+	musl-compatibility.h\
 
 modetransition.pic.o:\
 	modetransition.c\
@@ -475,6 +510,7 @@ modetransition.pic.o:\
 	mce-log.h\
 	mce.h\
 	modetransition.h\
+	musl-compatibility.h\
 
 modules/alarm.o:\
 	modules/alarm.c\
@@ -484,6 +520,7 @@ modules/alarm.o:\
 	mce-log.h\
 	mce-wakelock.h\
 	mce.h\
+	musl-compatibility.h\
 
 modules/alarm.pic.o:\
 	modules/alarm.c\
@@ -493,6 +530,7 @@ modules/alarm.pic.o:\
 	mce-log.h\
 	mce-wakelock.h\
 	mce.h\
+	musl-compatibility.h\
 
 modules/audiorouting.o:\
 	modules/audiorouting.c\
@@ -501,6 +539,7 @@ modules/audiorouting.o:\
 	mce-dbus.h\
 	mce-log.h\
 	mce.h\
+	musl-compatibility.h\
 
 modules/audiorouting.pic.o:\
 	modules/audiorouting.c\
@@ -509,6 +548,7 @@ modules/audiorouting.pic.o:\
 	mce-dbus.h\
 	mce-log.h\
 	mce.h\
+	musl-compatibility.h\
 
 modules/battery-bme.o:\
 	modules/battery-bme.c\
@@ -518,6 +558,7 @@ modules/battery-bme.o:\
 	mce-dbus.h\
 	mce-log.h\
 	mce.h\
+	musl-compatibility.h\
 
 modules/battery-bme.pic.o:\
 	modules/battery-bme.c\
@@ -527,18 +568,21 @@ modules/battery-bme.pic.o:\
 	mce-dbus.h\
 	mce-log.h\
 	mce.h\
+	musl-compatibility.h\
 
 modules/battery-statefs.o:\
 	modules/battery-statefs.c\
 	datapipe.h\
 	mce-log.h\
 	mce.h\
+	musl-compatibility.h\
 
 modules/battery-statefs.pic.o:\
 	modules/battery-statefs.c\
 	datapipe.h\
 	mce-log.h\
 	mce.h\
+	musl-compatibility.h\
 
 modules/battery-udev.o:\
 	modules/battery-udev.c\
@@ -551,6 +595,7 @@ modules/battery-udev.o:\
 	mce-log.h\
 	mce-wakelock.h\
 	mce.h\
+	musl-compatibility.h\
 
 modules/battery-udev.pic.o:\
 	modules/battery-udev.c\
@@ -563,6 +608,7 @@ modules/battery-udev.pic.o:\
 	mce-log.h\
 	mce-wakelock.h\
 	mce.h\
+	musl-compatibility.h\
 
 modules/battery-upower.o:\
 	modules/battery-upower.c\
@@ -571,6 +617,7 @@ modules/battery-upower.o:\
 	mce-dbus.h\
 	mce-log.h\
 	mce.h\
+	musl-compatibility.h\
 
 modules/battery-upower.pic.o:\
 	modules/battery-upower.c\
@@ -579,6 +626,7 @@ modules/battery-upower.pic.o:\
 	mce-dbus.h\
 	mce-log.h\
 	mce.h\
+	musl-compatibility.h\
 
 modules/bluetooth.o:\
 	modules/bluetooth.c\
@@ -588,6 +636,7 @@ modules/bluetooth.o:\
 	mce-dbus.h\
 	mce-log.h\
 	mce.h\
+	musl-compatibility.h\
 
 modules/bluetooth.pic.o:\
 	modules/bluetooth.c\
@@ -597,6 +646,7 @@ modules/bluetooth.pic.o:\
 	mce-dbus.h\
 	mce-log.h\
 	mce.h\
+	musl-compatibility.h\
 
 modules/buttonbacklight.o:\
 	modules/buttonbacklight.c\
@@ -608,6 +658,7 @@ modules/buttonbacklight.o:\
 	mce-log.h\
 	mce-setting.h\
 	mce.h\
+	musl-compatibility.h\
 
 modules/buttonbacklight.pic.o:\
 	modules/buttonbacklight.c\
@@ -619,6 +670,7 @@ modules/buttonbacklight.pic.o:\
 	mce-log.h\
 	mce-setting.h\
 	mce.h\
+	musl-compatibility.h\
 
 modules/callstate.o:\
 	modules/callstate.c\
@@ -628,6 +680,7 @@ modules/callstate.o:\
 	mce-log.h\
 	mce-wltimer.h\
 	mce.h\
+	musl-compatibility.h\
 
 modules/callstate.pic.o:\
 	modules/callstate.c\
@@ -637,6 +690,7 @@ modules/callstate.pic.o:\
 	mce-log.h\
 	mce-wltimer.h\
 	mce.h\
+	musl-compatibility.h\
 
 modules/camera.o:\
 	modules/camera.c\
@@ -645,6 +699,7 @@ modules/camera.o:\
 	mce-io.h\
 	mce-log.h\
 	mce.h\
+	musl-compatibility.h\
 	tklock.h\
 	modules/camera.h\
 
@@ -655,6 +710,7 @@ modules/camera.pic.o:\
 	mce-io.h\
 	mce-log.h\
 	mce.h\
+	musl-compatibility.h\
 	tklock.h\
 	modules/camera.h\
 
@@ -665,6 +721,7 @@ modules/cpu-keepalive.o:\
 	mce-dbus.h\
 	mce-lib.h\
 	mce-log.h\
+	musl-compatibility.h\
 
 modules/cpu-keepalive.pic.o:\
 	modules/cpu-keepalive.c\
@@ -673,6 +730,7 @@ modules/cpu-keepalive.pic.o:\
 	mce-dbus.h\
 	mce-lib.h\
 	mce-log.h\
+	musl-compatibility.h\
 
 modules/display.o:\
 	modules/display.c\
@@ -692,6 +750,7 @@ modules/display.o:\
 	mce-setting.h\
 	mce-worker.h\
 	mce.h\
+	musl-compatibility.h\
 	tklock.h\
 	modules/display.h\
 	modules/powersavemode.h\
@@ -714,6 +773,7 @@ modules/display.pic.o:\
 	mce-setting.h\
 	mce-worker.h\
 	mce.h\
+	musl-compatibility.h\
 	tklock.h\
 	modules/display.h\
 	modules/powersavemode.h\
@@ -727,6 +787,7 @@ modules/doubletap.o:\
 	mce-log.h\
 	mce-setting.h\
 	mce.h\
+	musl-compatibility.h\
 	modules/doubletap.h\
 
 modules/doubletap.pic.o:\
@@ -738,6 +799,7 @@ modules/doubletap.pic.o:\
 	mce-log.h\
 	mce-setting.h\
 	mce.h\
+	musl-compatibility.h\
 	modules/doubletap.h\
 
 modules/filter-brightness-als.o:\
@@ -752,6 +814,7 @@ modules/filter-brightness-als.o:\
 	mce-setting.h\
 	mce-wakelock.h\
 	mce.h\
+	musl-compatibility.h\
 	tklock.h\
 	modules/display.h\
 	modules/filter-brightness-als.h\
@@ -768,6 +831,7 @@ modules/filter-brightness-als.pic.o:\
 	mce-setting.h\
 	mce-wakelock.h\
 	mce.h\
+	musl-compatibility.h\
 	tklock.h\
 	modules/display.h\
 	modules/filter-brightness-als.h\
@@ -782,6 +846,7 @@ modules/fingerprint.o:\
 	mce-log.h\
 	mce-setting.h\
 	mce.h\
+	musl-compatibility.h\
 
 modules/fingerprint.pic.o:\
 	modules/fingerprint.c\
@@ -793,6 +858,7 @@ modules/fingerprint.pic.o:\
 	mce-log.h\
 	mce-setting.h\
 	mce.h\
+	musl-compatibility.h\
 
 modules/inactivity.o:\
 	modules/inactivity.c\
@@ -805,6 +871,7 @@ modules/inactivity.o:\
 	mce-log.h\
 	mce-setting.h\
 	mce.h\
+	musl-compatibility.h\
 	modules/inactivity.h\
 
 modules/inactivity.pic.o:\
@@ -818,6 +885,7 @@ modules/inactivity.pic.o:\
 	mce-log.h\
 	mce-setting.h\
 	mce.h\
+	musl-compatibility.h\
 	modules/inactivity.h\
 
 modules/keypad.o:\
@@ -831,6 +899,7 @@ modules/keypad.o:\
 	mce-lib.h\
 	mce-log.h\
 	mce.h\
+	musl-compatibility.h\
 	modules/keypad.h\
 	modules/led.h\
 
@@ -845,6 +914,7 @@ modules/keypad.pic.o:\
 	mce-lib.h\
 	mce-log.h\
 	mce.h\
+	musl-compatibility.h\
 	modules/keypad.h\
 	modules/led.h\
 
@@ -863,6 +933,7 @@ modules/led.o:\
 	mce-log.h\
 	mce-setting.h\
 	mce.h\
+	musl-compatibility.h\
 	modules/led.h\
 
 modules/led.pic.o:\
@@ -880,6 +951,7 @@ modules/led.pic.o:\
 	mce-log.h\
 	mce-setting.h\
 	mce.h\
+	musl-compatibility.h\
 	modules/led.h\
 
 modules/memnotify.o:\
@@ -889,6 +961,7 @@ modules/memnotify.o:\
 	mce-log.h\
 	mce-setting.h\
 	mce.h\
+	musl-compatibility.h\
 	modules/memnotify.h\
 
 modules/memnotify.pic.o:\
@@ -898,6 +971,7 @@ modules/memnotify.pic.o:\
 	mce-log.h\
 	mce-setting.h\
 	mce.h\
+	musl-compatibility.h\
 	modules/memnotify.h\
 
 modules/mempressure.o:\
@@ -907,6 +981,7 @@ modules/mempressure.o:\
 	mce-log.h\
 	mce-setting.h\
 	mce.h\
+	musl-compatibility.h\
 	modules/memnotify.h\
 
 modules/mempressure.pic.o:\
@@ -916,6 +991,7 @@ modules/mempressure.pic.o:\
 	mce-log.h\
 	mce-setting.h\
 	mce.h\
+	musl-compatibility.h\
 	modules/memnotify.h\
 
 modules/packagekit.o:\
@@ -925,6 +1001,7 @@ modules/packagekit.o:\
 	mce-dbus.h\
 	mce-log.h\
 	mce.h\
+	musl-compatibility.h\
 
 modules/packagekit.pic.o:\
 	modules/packagekit.c\
@@ -933,6 +1010,7 @@ modules/packagekit.pic.o:\
 	mce-dbus.h\
 	mce-log.h\
 	mce.h\
+	musl-compatibility.h\
 
 modules/powersavemode.o:\
 	modules/powersavemode.c\
@@ -942,6 +1020,7 @@ modules/powersavemode.o:\
 	mce-log.h\
 	mce-setting.h\
 	mce.h\
+	musl-compatibility.h\
 	modules/powersavemode.h\
 
 modules/powersavemode.pic.o:\
@@ -952,6 +1031,7 @@ modules/powersavemode.pic.o:\
 	mce-log.h\
 	mce-setting.h\
 	mce.h\
+	musl-compatibility.h\
 	modules/powersavemode.h\
 
 modules/proximity.o:\
@@ -963,6 +1043,7 @@ modules/proximity.o:\
 	mce-sensorfw.h\
 	mce-setting.h\
 	mce.h\
+	musl-compatibility.h\
 	modules/proximity.h\
 
 modules/proximity.pic.o:\
@@ -974,6 +1055,7 @@ modules/proximity.pic.o:\
 	mce-sensorfw.h\
 	mce-setting.h\
 	mce.h\
+	musl-compatibility.h\
 	modules/proximity.h\
 
 modules/radiostates.o:\
@@ -985,6 +1067,7 @@ modules/radiostates.o:\
 	mce-io.h\
 	mce-log.h\
 	mce.h\
+	musl-compatibility.h\
 	modules/radiostates.h\
 
 modules/radiostates.pic.o:\
@@ -996,6 +1079,7 @@ modules/radiostates.pic.o:\
 	mce-io.h\
 	mce-log.h\
 	mce.h\
+	musl-compatibility.h\
 	modules/radiostates.h\
 
 modules/sensor-gestures.o:\
@@ -1006,6 +1090,7 @@ modules/sensor-gestures.o:\
 	mce-log.h\
 	mce-setting.h\
 	mce.h\
+	musl-compatibility.h\
 	modules/display.h\
 
 modules/sensor-gestures.pic.o:\
@@ -1016,6 +1101,7 @@ modules/sensor-gestures.pic.o:\
 	mce-log.h\
 	mce-setting.h\
 	mce.h\
+	musl-compatibility.h\
 	modules/display.h\
 
 modules/usbmode.o:\
@@ -1025,6 +1111,7 @@ modules/usbmode.o:\
 	mce-dbus.h\
 	mce-log.h\
 	mce.h\
+	musl-compatibility.h\
 
 modules/usbmode.pic.o:\
 	modules/usbmode.c\
@@ -1033,6 +1120,7 @@ modules/usbmode.pic.o:\
 	mce-dbus.h\
 	mce-log.h\
 	mce.h\
+	musl-compatibility.h\
 
 multitouch.o:\
 	multitouch.c\
@@ -1056,6 +1144,7 @@ powerkey.o:\
 	mce-setting.h\
 	mce.h\
 	modules/doubletap.h\
+	musl-compatibility.h\
 	powerkey.h\
 	systemui/dbus-names.h\
 	tklock.h\
@@ -1074,6 +1163,7 @@ powerkey.pic.o:\
 	mce-setting.h\
 	mce.h\
 	modules/doubletap.h\
+	musl-compatibility.h\
 	powerkey.h\
 	systemui/dbus-names.h\
 	tklock.h\
@@ -1096,6 +1186,7 @@ tests/ut/ut_display.o:\
 	mce-setting.h\
 	mce-worker.h\
 	mce.h\
+	musl-compatibility.h\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
@@ -1120,6 +1211,7 @@ tests/ut/ut_display.pic.o:\
 	mce-setting.h\
 	mce-worker.h\
 	mce.h\
+	musl-compatibility.h\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
@@ -1145,6 +1237,7 @@ tests/ut/ut_display_blanking_inhibit.o:\
 	mce-setting.h\
 	mce-worker.h\
 	mce.h\
+	musl-compatibility.h\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
@@ -1170,6 +1263,7 @@ tests/ut/ut_display_blanking_inhibit.pic.o:\
 	mce-setting.h\
 	mce-worker.h\
 	mce.h\
+	musl-compatibility.h\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
@@ -1195,6 +1289,7 @@ tests/ut/ut_display_conf.o:\
 	mce-setting.h\
 	mce-worker.h\
 	mce.h\
+	musl-compatibility.h\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
@@ -1220,6 +1315,7 @@ tests/ut/ut_display_conf.pic.o:\
 	mce-setting.h\
 	mce-worker.h\
 	mce.h\
+	musl-compatibility.h\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
@@ -1245,6 +1341,7 @@ tests/ut/ut_display_filter.o:\
 	mce-setting.h\
 	mce-worker.h\
 	mce.h\
+	musl-compatibility.h\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
@@ -1270,6 +1367,7 @@ tests/ut/ut_display_filter.pic.o:\
 	mce-setting.h\
 	mce-worker.h\
 	mce.h\
+	musl-compatibility.h\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
@@ -1295,6 +1393,7 @@ tests/ut/ut_display_stm.o:\
 	mce-setting.h\
 	mce-worker.h\
 	mce.h\
+	musl-compatibility.h\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
@@ -1320,6 +1419,7 @@ tests/ut/ut_display_stm.pic.o:\
 	mce-setting.h\
 	mce-worker.h\
 	mce.h\
+	musl-compatibility.h\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
@@ -1342,6 +1442,7 @@ tklock.o:\
 	mce.h\
 	modules/display.h\
 	modules/doubletap.h\
+	musl-compatibility.h\
 	systemui/dbus-names.h\
 	systemui/tklock-dbus-names.h\
 	tklock.h\
@@ -1362,6 +1463,7 @@ tklock.pic.o:\
 	mce.h\
 	modules/display.h\
 	modules/doubletap.h\
+	musl-compatibility.h\
 	systemui/dbus-names.h\
 	systemui/tklock-dbus-names.h\
 	tklock.h\
@@ -1417,6 +1519,7 @@ tools/mcetool.o:\
 	modules/memnotify.h\
 	modules/powersavemode.h\
 	modules/proximity.h\
+	musl-compatibility.h\
 	powerkey.h\
 	systemui/dbus-names.h\
 	systemui/tklock-dbus-names.h\
@@ -1439,6 +1542,7 @@ tools/mcetool.pic.o:\
 	modules/memnotify.h\
 	modules/powersavemode.h\
 	modules/proximity.h\
+	musl-compatibility.h\
 	powerkey.h\
 	systemui/dbus-names.h\
 	systemui/tklock-dbus-names.h\
