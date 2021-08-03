@@ -1,3 +1,9 @@
+mce (1.108.0) precise; urgency=low
+
+  * [mce] Musl libc compatibility. JB#49548
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Tue, 03 Aug 2021 09:06:26 +0300
+
 mce (1.107.0) precise; urgency=low
 
   * [memnotify] Move memnotify dbus inteface to common logic
