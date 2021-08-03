@@ -27,6 +27,7 @@
 #ifndef _MCE_H_
 #define _MCE_H_
 
+#include "musl-compatibility.h"
 #include "datapipe.h"
 
 /** Indicate enabled (sub)mode */

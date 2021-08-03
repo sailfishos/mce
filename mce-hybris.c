@@ -366,7 +366,11 @@ static void *mce_hybris_lookup_function(const char *name)
     else if( access(path, F_OK) == -1 && errno == ENOENT ) {
       mce_log(LL_NOTICE, "%s: not installed", path);
     }
+#if defined(RTLD_DEEPBIND)
     else if( !(base = dlopen(path, RTLD_NOW|RTLD_LOCAL|RTLD_DEEPBIND)) ) {
+#else
+    else if( !(base = dlopen(path, RTLD_NOW|RTLD_LOCAL)) ) {
+#endif
       mce_log(LL_WARN, "%s: failed to load: %s", path, dlerror());
     }
     else {
