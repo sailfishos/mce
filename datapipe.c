@@ -657,6 +657,9 @@ datapipe_t keyboard_slide_state_pipe            = DATAPIPE_INIT(keyboard_slide_s
 /** Keyboard available; read only */
 datapipe_t keyboard_available_state_pipe        = DATAPIPE_INIT(keyboard_available_state, cover_state, COVER_CLOSED, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
+/** Mouse available; read only */
+datapipe_t mouse_available_state_pipe           = DATAPIPE_INIT(mouse_available_state, cover_state, COVER_UNDEF, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
+
 /** Lid sensor is working state; read/write */
 datapipe_t lid_sensor_is_working_pipe           = DATAPIPE_INIT(lid_sensor_is_working, boolean, false, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
@@ -1353,6 +1356,7 @@ void mce_datapipe_quit(void)
     datapipe_free(&lid_sensor_filtered_pipe);
     datapipe_free(&keyboard_slide_state_pipe);
     datapipe_free(&keyboard_available_state_pipe);
+    datapipe_free(&mouse_available_state_pipe);
     datapipe_free(&lockkey_state_pipe);
     datapipe_free(&init_done_pipe);
     datapipe_free(&device_inactive_pipe);

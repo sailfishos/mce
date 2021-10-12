@@ -234,6 +234,7 @@ extern datapipe_t lockkey_state_pipe;
 extern datapipe_t init_done_pipe;
 extern datapipe_t keyboard_slide_state_pipe;
 extern datapipe_t keyboard_available_state_pipe;
+extern datapipe_t mouse_available_state_pipe;
 extern datapipe_t lid_sensor_is_working_pipe;
 extern datapipe_t lid_sensor_actual_pipe;
 extern datapipe_t lid_sensor_filtered_pipe;
