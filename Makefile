@@ -491,6 +491,7 @@ install:: build
 	$(INSTALL_DTA) inifiles/hybris-features.ini $(DESTDIR)$(CONFDIR)/20hybris-features.ini
 	$(INSTALL_DTA) inifiles/debug-led.ini $(DESTDIR)$(CONFDIR)/20debug-led.ini
 	$(INSTALL_DTA) inifiles/als-defaults.ini $(DESTDIR)$(CONFDIR)/20als-defaults.ini
+	$(INSTALL_DTA) inifiles/evdev-types.ini $(DESTDIR)$(CONFDIR)/20evdev-types.ini
 	$(INSTALL_DTA) inifiles/legacy.ini $(DESTDIR)$(CONFDIR)/11legacy.ini
 
 ifeq ($(ENABLE_SYSTEMD_SUPPORT),y)

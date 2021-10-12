@@ -106,6 +106,7 @@ systemctl daemon-reload || :
 %config %{_sysconfdir}/%{name}/20hybris-features.ini
 %config %{_sysconfdir}/%{name}/20debug-led.ini
 %config %{_sysconfdir}/%{name}/20als-defaults.ini
+%config %{_sysconfdir}/%{name}/20evdev-types.ini
 # empty /var/lib/mce -> rpm
 %dir %{_localstatedir}/lib/%{name}/
 # NB empty /var/run/mce -> handled by systemd tmpfiles.d/mce.conf

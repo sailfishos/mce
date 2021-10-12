@@ -519,3 +519,103 @@ mce_wakelocked_idle_add(GSourceFunc function, gpointer data)
 	return mce_wakelocked_timeout_add_full(G_PRIORITY_DEFAULT, 0,
 					       function, data, NULL);
 }
+
+/** ASCII white character predicate
+ *
+ * @param chr  Character to check
+ *
+ * @return true if character is whitespace, false otherwise
+ */
+static inline bool
+mce_white_p(int chr)
+{
+    return (chr > 0) && (chr <= 32);
+}
+
+/** ASCII non-white character predicate
+ *
+ * @param chr  Character to check
+ *
+ * @return true if character is not whitespace, false otherwise
+ */
+static inline bool
+mce_black_p(int chr)
+{
+    return (chr < 0) || (chr > 32);
+}
+
+/** Strip excess whitespace from string
+ *
+ * All leading and trailing whitespace is removed altogether. Other
+ * sequeces of whitespace are compressed into a single space character.
+ *
+ * @param str String to strip, or NULL
+ *
+ * @return The given string (with possibly modified content)
+ */
+char *
+mce_strip_string(char *str)
+{
+    if( str ) {
+	char *src = str;
+	char *dst = str;
+
+	while( mce_white_p(*src) )
+	    ++src;
+
+	for( ;; ) {
+	    while( mce_black_p(*src) )
+		*dst++ = *src++;
+	    while( mce_white_p(*src) )
+		++src;
+	    if( !*src )
+		break;
+	    *dst++ = ' ';
+	}
+	*dst = 0;
+    }
+
+    return str;
+}
+
+/** Extract a token from string
+ *
+ * Skips leading whitespace, then looks for / cuts at the first occurrence
+ * of given separator characters / whitespace / end of string.
+ *
+ * Note that parse position is not advanced beyond end of string and any
+ * number of empty tokens can be extracted from empty string. Thus, if
+ * used in loop, end codition is: ending parse position is at end of string.
+ *
+ * @param pos   Starting parse position
+ * @param ppos  Where to store ending parse position, or NULL
+ * @param sep   String of separator chars, or
+ *              NULL to slice at whitespace
+ *
+ * @return Extracted token
+ */
+char *
+mce_slice_token(char *pos, char **ppos, const char *sep)
+{
+    char *beg = pos;
+
+    if( beg ) {
+	while( mce_white_p(*pos) )
+	    ++pos;
+	if( sep ) {
+	    while( *pos && !strchr(sep, *pos) )
+		++pos;
+	}
+	else {
+	    while( *pos && !mce_white_p(*pos) )
+		++pos;
+	}
+	if( *pos )
+	    *pos++ = 0;
+    }
+
+    if( ppos )
+	*ppos = pos;
+
+    return mce_strip_string(beg);
+}
