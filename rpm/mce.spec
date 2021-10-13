@@ -23,7 +23,6 @@ BuildRequires:  pkgconfig(mce) >= 1.28.0
 BuildRequires:  pkgconfig(libngf0) >= 0.24
 BuildRequires:  pkgconfig(libsystemd)
 BuildRequires:  kernel-headers >= 2.6.32
-BuildRequires:  systemd
 BuildRequires:  pkgconfig(usb_moded)
 BuildRequires:  pkgconfig(libudev)
 # systemd has /etc/rpm/macros.systemd
