@@ -1,3 +1,8 @@
+mce (1.108.1) precise; urgency=low
+  * [packaging] Drop systemd BuildRequires. JB#55010
+
+ -- Björn Biar <bjorn.bidar@jolla.com>  Wed, 13 Oct 2021 15:51:00 +0300
+
 mce (1.108.0) precise; urgency=low
 
   * [mce] Musl libc compatibility. JB#49548
