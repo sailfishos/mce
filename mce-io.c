@@ -714,10 +714,10 @@ static gboolean mce_io_mon_read_chunks(GIOChannel *source,
 		}
 	}
 
-	mce_log(LL_INFO, "%s: status=%s, data=%d/%d=%d+%d, skipped=%d",
+	mce_log(LL_INFO, "%s: status=%s, data=%ld/%ld=%ld+%ld, skipped=%ld",
 		iomon->path, mce_io_status_name(io_status),
-		bytes_have, (int)iomon->chunk_size, chunks_have,
-		bytes_have % (int)iomon->chunk_size, chunks_have - chunks_done);
+		(long)bytes_have, (long)iomon->chunk_size, (long)chunks_have,
+		(long)(bytes_have % iomon->chunk_size), (long)(chunks_have - chunks_done));
 
 	status = TRUE;
 
