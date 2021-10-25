@@ -1,3 +1,12 @@
+mce (1.109.0) precise; urgency=low
+
+  * [build] Cleanup 64-bit compilation warnings
+  * [event-input] Improvements to input device type configuration
+  * [dbus] Mouse availability signaling. JB#55866
+  * [config] Do not hide sw keyboard when YubiKey is attached. Fixes JB#55731
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Mon, 25 Oct 2021 19:41:34 +0300
+
 mce (1.108.1) precise; urgency=low
   * [packaging] Drop systemd BuildRequires. JB#55010
 
