@@ -217,6 +217,7 @@ static void     tklock_datapipe_heartbeat_event_cb(gconstpointer data);
 static void     tklock_datapipe_keyboard_slide_input_state_cb(gconstpointer const data);
 static void     tklock_datapipe_keyboard_slide_output_state_cb(gconstpointer const data);
 static void     tklock_datapipe_keyboard_available_state_cb(gconstpointer const data);
+static void     tklock_datapipe_mouse_available_state_cb(gconstpointer const data);
 static void     tklock_datapipe_light_sensor_poll_request_cb(gconstpointer const data);
 static void     tklock_datapipe_topmost_window_pid_cb(gconstpointer data);
 static void     tklock_datapipe_light_sensor_actual_cb(gconstpointer data);
@@ -403,6 +404,9 @@ static gboolean tklock_dbus_keyboard_slide_state_get_req_cb(DBusMessage *const m
 
 static void     tklock_dbus_send_keyboard_available_state(DBusMessage *const req);
 static gboolean tklock_dbus_keyboard_available_state_get_req_cb(DBusMessage *const msg);
+
+static void     tklock_dbus_send_mouse_available_state(DBusMessage *const req);
+static gboolean tklock_dbus_mouse_available_state_get_req_cb(DBusMessage *const msg);
 
 static gboolean tklock_dbus_send_tklock_mode(DBusMessage *const method_call);
 
@@ -2004,6 +2008,28 @@ EXIT:
     return;
 }
 
+/** Mouse available output state; assume unknown */
+static cover_state_t mouse_available_state = COVER_UNDEF;
+
+static void
+tklock_datapipe_mouse_available_state_cb(gconstpointer const data)
+{
+    cover_state_t prev = mouse_available_state;
+    mouse_available_state = GPOINTER_TO_INT(data);
+
+    if( mouse_available_state == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "mouse_available_state = %s -> %s",
+            cover_state_repr(prev),
+            cover_state_repr(mouse_available_state));
+
+    tklock_dbus_send_mouse_available_state(0);
+
+EXIT:
+    return;
+}
+
 /** Cached als poll state; tracked via tklock_datapipe_light_sensor_poll_request_cb() */
 static gboolean light_sensor_polling = FALSE;
 
@@ -2489,6 +2515,10 @@ static datapipe_handler_t tklock_datapipe_handlers[] =
     {
         .datapipe  = &keyboard_available_state_pipe,
         .output_cb = tklock_datapipe_keyboard_available_state_cb,
+    },
+    {
+        .datapipe  = &mouse_available_state_pipe,
+        .output_cb = tklock_datapipe_mouse_available_state_cb,
     },
     {
         .datapipe  = &light_sensor_poll_request_pipe,
@@ -6294,6 +6324,64 @@ tklock_dbus_keyboard_available_state_get_req_cb(DBusMessage *const msg)
     return TRUE;
 }
 
+/** Send the mouse available state
+ *
+ * @param req A method call message to be replied, or
+ *            NULL to broadcast a mouse available state signal
+ */
+static void
+tklock_dbus_send_mouse_available_state(DBusMessage *const req)
+{
+    DBusMessage *rsp = 0;
+
+    if( req )
+        rsp = dbus_new_method_reply(req);
+    else
+        rsp = dbus_new_signal(MCE_SIGNAL_PATH, MCE_SIGNAL_IF,
+                              MCE_HARDWARE_MOUSE_STATE_SIG);
+    if( !rsp )
+        goto EXIT;
+
+    const char *arg = MCE_HARDWARE_MOUSE_UNDEF;
+
+    switch( mouse_available_state ) {
+    case COVER_OPEN:   arg = MCE_HARDWARE_MOUSE_AVAILABLE;     break;
+    case COVER_CLOSED: arg = MCE_HARDWARE_MOUSE_NOT_AVAILABLE; break;
+    default: break;
+    }
+
+    mce_log(LL_DEBUG, "send mouse available state %s: %s",
+            req ? "reply" : "signal", arg);
+
+    if( !dbus_message_append_args(rsp,
+                                  DBUS_TYPE_STRING, &arg,
+                                  DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    dbus_send_message(rsp), rsp = 0;
+
+EXIT:
+    if( rsp )
+        dbus_message_unref(rsp);
+}
+
+/** D-Bus callback for the get mouse available state method call
+ *
+ * @param msg The D-Bus message
+ *
+ * @return TRUE
+ */
+static gboolean
+tklock_dbus_mouse_available_state_get_req_cb(DBusMessage *const msg)
+{
+    mce_log(LL_DEVEL, "Received mouse available state get request from %s",
+            mce_dbus_get_message_sender_ident(msg));
+
+    tklock_dbus_send_mouse_available_state(msg);
+
+    return TRUE;
+}
+
 /**
  * Send the touchscreen/keypad lock mode
  *
@@ -6712,6 +6800,13 @@ static mce_dbus_handler_t tklock_dbus_handlers[] =
     },
     {
         .interface = MCE_SIGNAL_IF,
+        .name      = MCE_HARDWARE_MOUSE_STATE_SIG,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .args      =
+            "    <arg name=\"mouse_state\" type=\"s\"/>\n"
+    },
+    {
+        .interface = MCE_SIGNAL_IF,
         .name      = MCE_BLANKING_POLICY_SIG,
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
         .args      =
@@ -6776,6 +6871,14 @@ static mce_dbus_handler_t tklock_dbus_handlers[] =
         .callback  = tklock_dbus_keyboard_available_state_get_req_cb,
         .args      =
             "    <arg direction=\"out\" name=\"keyboard_state\" type=\"s\"/>\n"
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_HARDWARE_MOUSE_STATE_GET,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = tklock_dbus_mouse_available_state_get_req_cb,
+        .args      =
+            "    <arg direction=\"out\" name=\"mouse_state\" type=\"s\"/>\n"
     },
     {
         .interface = MCE_REQUEST_IF,

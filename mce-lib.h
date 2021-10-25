@@ -72,4 +72,7 @@ guint mce_wakelocked_timeout_add(guint interval, GSourceFunc function,
 				 gpointer data);
 guint mce_wakelocked_idle_add(GSourceFunc function, gpointer data);
 
+char *mce_strip_string(char *str);
+char *mce_slice_token(char *pos, char **ppos, const char *sep);
+
 #endif /* _MCE_LIB_H_ */

@@ -214,6 +214,9 @@ typedef enum {
     /** Touch screen to be tracked and processed */
     EVDEV_TOUCH,
 
+    /** Mouse to be tracked and processed */
+    EVDEV_MOUSE,
+
     /** Keys etc that mce needs to track and process */
     EVDEV_INPUT,
 
@@ -318,6 +321,9 @@ static void         evin_iomon_switch_states_update             (void);
 
 static void         evin_iomon_keyboard_state_update_iter_cb    (gpointer io_monitor, gpointer user_data);
 static void         evin_iomon_keyboard_state_update            (void);
+
+static void         evin_iomon_mouse_state_update_iter_cb       (gpointer io_monitor, gpointer user_data);
+static void         evin_iomon_mouse_state_update               (void);
 
 // start/stop io monitoring
 
@@ -1392,6 +1398,7 @@ evin_evdevtype_repr(evin_evdevtype_t type)
     {
         [EVDEV_REJECT]   = "REJECT",
         [EVDEV_TOUCH]    = "TOUCHSCREEN",
+        [EVDEV_MOUSE]    = "MOUSE",
         [EVDEV_INPUT]    = "KEY, BUTTON or SWITCH",
         [EVDEV_ACTIVITY] = "USER ACTIVITY ONLY",
         [EVDEV_IGNORE]   = "IGNORE",
@@ -1423,6 +1430,7 @@ evin_evdevtype_parse(const char *name)
     {
         { "REJECT",               EVDEV_REJECT,    },
         { "TOUCH",                EVDEV_TOUCH,     },
+        { "MOUSE",                EVDEV_MOUSE,     },
         { "INPUT",                EVDEV_INPUT,     },
         { "ACTIVITY",             EVDEV_ACTIVITY,  },
         { "IGNORE",               EVDEV_IGNORE,    },
@@ -1580,7 +1588,7 @@ evin_evdevtype_from_info(evin_evdevinfo_t *info)
         evin_evdevinfo_has_code(info, EV_REL, REL_X) &&
         evin_evdevinfo_has_code(info, EV_REL, REL_Y) ) {
         // mouse
-        res = EVDEV_TOUCH;
+        res = EVDEV_MOUSE;
         goto cleanup;
     }
 
@@ -1828,9 +1836,11 @@ evin_iomon_extra_delete_cb(void *aptr)
 static evin_iomon_extra_t *
 evin_iomon_extra_create(int fd, const char *name)
 {
-    evin_iomon_extra_t *self = calloc(1, sizeof *self);
-    gchar              *type = 0;
-    char               *key  = 0;
+    evin_iomon_extra_t *self      = calloc(1, sizeof *self);
+    gchar              *config    = 0;
+    char               *key       = 0;
+    char               *id        = 0;
+    struct input_id     info      = {};
 
     /* Initialize extra info to sane defaults */
     self->ex_name            = strdup(name);
@@ -1841,33 +1851,87 @@ evin_iomon_extra_create(int fd, const char *name)
 
     evin_evdevinfo_probe(self->ex_info, fd);
 
-    /* Check if evdev device type has been set in the configuration */
-    key  = evio_sanitize_key_name(name);
-    type = mce_conf_get_string(MCE_CONF_EVDEV_TYPE_GROUP, key, 0);
-    if( type ) {
-        self->ex_type = evin_evdevtype_parse(type);
-        if( self->ex_type == EVDEV_UNKNOWN )
-            mce_log(LL_WARN, "unknown evdev device type '%s'", type);
+    /* Check if evdev device type has been set in the configuration
+     *
+     * First lookup using bus-vendor-product based name,
+     * then as a fallback lookup using sanitized device name.
+     */
+    if( ioctl(fd, EVIOCGID, &info) < 0 ) {
+        mce_log(LL_WARN, "EVIOCGID: N/A (%m)");
+    }
+    else {
+        id = g_strdup_printf("b%04xv%04xp%04x",
+                             info.bustype,
+                             info.vendor,
+                             info.product);
     }
 
-    /* In case of missing / faulty configuration, use heuristics
-     * to determine the device type */
-    if( self->ex_type == EVDEV_UNKNOWN )
-        self->ex_type = evin_evdevtype_from_info(self->ex_info);
+    if( id ) {
+        config = mce_conf_get_string(MCE_CONF_EVDEV_TYPE_GROUP, id, 0);
+    }
+
+    if( !config ) {
+        key  = evio_sanitize_key_name(name);
+        config = mce_conf_get_string(MCE_CONF_EVDEV_TYPE_GROUP, key, 0);
+    }
+
+    /* Heuristics based type detection */
+    evin_evdevtype_t probed = evin_evdevtype_from_info(self->ex_info);
+
+    /* Override based on configuration */
+    if( config ) {
+        /* RULE  := <TYPE_TO_USE>[':'<ON_PROBED_TYPE>[':'<RESERVED>]]
+         * RULES := <RULE>[';'<RULE>]...
+         */
+        char *rules = config;
+        for( char *rule; *(rule = mce_slice_token(rules, &rules, ";")); ) {
+            const char *arg1 = mce_slice_token(rule, &rule, ":");
+            const char *arg2 = mce_slice_token(rule, &rule, ":");
+
+            evin_evdevtype_t configured = EVDEV_UNKNOWN;
+            evin_evdevtype_t replaces   = EVDEV_UNKNOWN;
+
+            if( *arg1 ) {
+                if( (configured = evin_evdevtype_parse(arg1)) == EVDEV_UNKNOWN )
+                    mce_log(LL_WARN, "unknown evdev device type '%s'", arg1);
+            }
+
+            if( *arg2 ) {
+                if( (replaces = evin_evdevtype_parse(arg2)) == EVDEV_UNKNOWN )
+                    mce_log(LL_WARN, "unknown evdev device type '%s'", arg2);
+            }
+
+            if( replaces == EVDEV_UNKNOWN || replaces == probed ) {
+                /* Unconditional / condition matched
+                 * -> use configured / keep probed type
+                 */
+                if( configured != EVDEV_UNKNOWN )
+                    probed = configured;
+                break;
+            }
+        }
+    }
+
+    self->ex_type = probed;
+
+    /* Initialize type specific tracking data */
 
     if( self->ex_type == EVDEV_KEYBOARD ) {
         self->ex_sw_keypad_slide = mce_conf_get_string("SW_KEYPAD_SLIDE",
                                                        self->ex_name, 0);
     }
 
-    if( self->ex_type == EVDEV_TOUCH ) {
+    if( self->ex_type == EVDEV_TOUCH ||
+        self->ex_type == EVDEV_MOUSE ||
+        self->ex_type == EVDEV_DBLTAP ) {
         bool protocol_b = evin_evdevinfo_has_code(self->ex_info,
                                                   EV_ABS, ABS_MT_SLOT);
         self->ex_mt_state = mt_state_create(protocol_b);
     }
 
-    g_free(type);
+    g_free(config);
     free(key);
+    g_free(id);
 
     return self;
 }
@@ -2449,6 +2513,7 @@ evin_iomon_device_add(const gchar *path)
     /* Choose notification callback function based on device type */
     switch( extra->ex_type ) {
     case EVDEV_TOUCH:
+    case EVDEV_MOUSE:
         notify = evin_iomon_touchscreen_cb;
         break;
 
@@ -2544,6 +2609,7 @@ evin_iomon_device_update(const gchar *path, gboolean add)
 
     evin_iomon_switch_states_update();
     evin_iomon_keyboard_state_update();
+    evin_iomon_mouse_state_update();
 }
 
 /** Check whether the fd in question supports the switches
@@ -2752,6 +2818,52 @@ evin_iomon_keyboard_state_update(void)
     cover_state_t state = available ? COVER_OPEN : COVER_CLOSED;
 
     datapipe_exec_full(&keyboard_available_state_pipe,
+                       GINT_TO_POINTER(state));
+}
+
+/** Iterator callback for evaluation availability of mouse input devices
+ *
+ * Note: The iteration is peforming a logical OR operation, so the
+ *       result variable must be modified only to set it true.
+ *
+ * @param io_monitor  io monitor as void pointer
+ * @param user_data   pointer to bool available flag
+ */
+static void
+evin_iomon_mouse_state_update_iter_cb(gpointer io_monitor, gpointer user_data)
+{
+    (void)io_monitor;
+    bool *available = user_data;
+
+    /* As long as we are iterating devices of EVDEV_MOUSE
+     * type, it is enough that we got here */
+    *available = true;
+    return;
+}
+
+/** Check if at least one mouse device in usable state exists
+ *
+ * Iterate over monitored input devices to find mouses.
+ *
+ * Update mouse availablity state based on the scanning result.
+ *
+ * This function should be called when new devices are detected,
+ * or old ones disappear.
+ */
+static void
+evin_iomon_mouse_state_update(void)
+{
+    bool available = false;
+
+    evin_iomon_device_iterate(EVDEV_MOUSE,
+                              evin_iomon_mouse_state_update_iter_cb,
+                              &available);
+
+    mce_log(LL_DEBUG, "available = %s", available ? "true" : "false");
+
+    cover_state_t state = available ? COVER_OPEN : COVER_CLOSED;
+
+    datapipe_exec_full(&mouse_available_state_pipe,
                        GINT_TO_POINTER(state));
 }
 
@@ -2976,6 +3088,10 @@ evin_touchstate_update_cb(gpointer aptr)
     bool touching = false;
 
     evin_iomon_device_iterate(EVDEV_TOUCH,
+                              evin_touchstate_iomon_iter_cb,
+                              &touching);
+
+    evin_iomon_device_iterate(EVDEV_MOUSE,
                               evin_touchstate_iomon_iter_cb,
                               &touching);
 
@@ -3358,6 +3474,10 @@ evin_ts_grab_set_active(gboolean grab)
     old_grab = grab;
 
     evin_iomon_device_iterate(EVDEV_TOUCH,
+                              evin_input_grab_iomon_cb,
+                              GINT_TO_POINTER(grab));
+
+    evin_iomon_device_iterate(EVDEV_MOUSE,
                               evin_input_grab_iomon_cb,
                               GINT_TO_POINTER(grab));
 
@@ -4212,6 +4332,7 @@ mce_input_init(void)
 
     evin_iomon_switch_states_update();
     evin_iomon_keyboard_state_update();
+    evin_iomon_mouse_state_update();
 
     status = TRUE;
 EXIT:

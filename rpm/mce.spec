@@ -19,7 +19,7 @@ BuildRequires:  pkgconfig(dsme) >= 0.65.0
 BuildRequires:  pkgconfig(thermalmanager_dbus_if)
 BuildRequires:  pkgconfig(libiphb)
 BuildRequires:  pkgconfig(glib-2.0) >= 2.36.0
-BuildRequires:  pkgconfig(mce) >= 1.28.0
+BuildRequires:  pkgconfig(mce) >= 1.29.0
 BuildRequires:  pkgconfig(libngf0) >= 0.24
 BuildRequires:  pkgconfig(libsystemd)
 BuildRequires:  kernel-headers >= 2.6.32
@@ -106,6 +106,7 @@ systemctl daemon-reload || :
 %config %{_sysconfdir}/%{name}/20hybris-features.ini
 %config %{_sysconfdir}/%{name}/20debug-led.ini
 %config %{_sysconfdir}/%{name}/20als-defaults.ini
+%config %{_sysconfdir}/%{name}/20evdev-types.ini
 # empty /var/lib/mce -> rpm
 %dir %{_localstatedir}/lib/%{name}/
 # NB empty /var/run/mce -> handled by systemd tmpfiles.d/mce.conf

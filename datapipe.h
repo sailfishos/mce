@@ -25,6 +25,7 @@
 # define _DATAPIPE_H_
 
 # include <stdbool.h>
+# include <stdint.h>
 # include <glib.h>
 
 /* ========================================================================= *
@@ -149,10 +150,10 @@ void  mce_datapipe_generate_inactivity (void);
  * ========================================================================= */
 
 /** Retrieve a gint from a datapipe */
-# define datapipe_get_gint(_datapipe) ((gint)(void*)datapipe_value(&(_datapipe)))
+# define datapipe_get_gint(_datapipe) ((gint)(intptr_t)(void*)datapipe_value(&(_datapipe)))
 
 /** Retrieve a guint from a datapipe */
-# define datapipe_get_guint(_datapipe) ((guint)(void*)datapipe_value(&(_datapipe)))
+# define datapipe_get_guint(_datapipe) ((guint)(uintptr_t)(void*)datapipe_value(&(_datapipe)))
 
 /* Helper for making display state requests
  *
@@ -233,6 +234,7 @@ extern datapipe_t lockkey_state_pipe;
 extern datapipe_t init_done_pipe;
 extern datapipe_t keyboard_slide_state_pipe;
 extern datapipe_t keyboard_available_state_pipe;
+extern datapipe_t mouse_available_state_pipe;
 extern datapipe_t lid_sensor_is_working_pipe;
 extern datapipe_t lid_sensor_actual_pipe;
 extern datapipe_t lid_sensor_filtered_pipe;

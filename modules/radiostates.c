@@ -749,7 +749,7 @@ static DBusConnection *connman_bus = 0;
 static gboolean connman_running = FALSE;
 
 /** Last MCE master radio state sent to connman; initialized to invalid value */
-static guint connman_master = ~0lu;
+static guint connman_master = ~(guint)0;
 
 /** Flag: query connman properties if no change signal received
  *
@@ -1080,7 +1080,7 @@ static void xconnman_set_runstate(gboolean running)
 	}
 	else {
 		/* force master -> offlinemode sync on connman restart */
-		connman_master = ~0lu;
+		connman_master = ~(guint)0;
 	}
 }
 
