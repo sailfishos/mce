@@ -281,11 +281,14 @@ typedef enum
     /** Freshly created */
     PEERSTATE_INITIAL,
 
-    /** Doing org.freedesktop.DBus.GetNameOwner */
+    /** Pending org.freedesktop.DBus.GetNameOwner */
     PEERSTATE_QUERY_OWNER,
 
-    /** org.freedesktop.DBus.GetConnectionUnixProcessID */
+    /** Pending org.freedesktop.DBus.GetConnectionUnixProcessID */
     PEERSTATE_QUERY_PID,
+
+    /** Pending org.sailfishos.sailjailed.Identify */
+    PEERSTATE_IDENTIFY,
 
     /** Owner known and available on D-Bus */
     PEERSTATE_RUNNING,

@@ -136,6 +136,9 @@ struct peerinfo_t
     /** Signal match that has been sent to D-Bus daemon */
     gchar           *pi_rule;
 
+    /** Process id of sandbox xdg-dbus-proxy */
+    pid_t            pi_proxy_pid;
+
     /** Process id of the D-Bus name owner */
     pid_t            pi_owner_pid;
 
@@ -165,6 +168,9 @@ struct peerinfo_t
 
     /** Pending org.freedesktop.DBus.GetConnectionUnixProcessID method call */
     DBusPendingCall *pi_name_pid_pc;
+
+    /** Pending org.sailfishos.sailjailed.Identify method call */
+    DBusPendingCall *pi_identify_pc;
 
     /** Timer for delayed delete after hitting PEERSTATE_STOPPED */
     guint            pi_delete_id;
@@ -256,6 +262,8 @@ static const char       *peerinfo_repr                         (peerinfo_t *self
 const char              *peerinfo_name                         (const peerinfo_t *self);
 const char              *peerinfo_get_owner_name               (const peerinfo_t *self);
 static bool              peerinfo_set_owner_name               (peerinfo_t *self, const char *name);
+pid_t                    peerinfo_get_proxy_pid                (const peerinfo_t *self);
+static void              peerinfo_set_proxy_pid                (peerinfo_t *self, pid_t pid);
 pid_t                    peerinfo_get_owner_pid                (const peerinfo_t *self);
 static void              peerinfo_set_owner_pid                (peerinfo_t *self, pid_t pid);
 uid_t                    peerinfo_get_owner_uid                (const peerinfo_t *self);
@@ -274,6 +282,10 @@ static void              peerinfo_query_owner_req              (peerinfo_t *self
 static void              peerinfo_query_pid_ign                (peerinfo_t *self);
 static void              peerinfo_query_pid_rsp                (DBusPendingCall *pc, void *aptr);
 static void              peerinfo_query_pid_req                (peerinfo_t *self);
+
+static void              peerinfo_identify_ign                 (peerinfo_t *self);
+static void              peerinfo_identify_rsp                 (DBusPendingCall *pc, void *aptr);
+static void              peerinfo_identify_req                 (peerinfo_t *self);
 
 static void              peerinfo_query_delete_ign             (peerinfo_t *self);
 static gboolean          peerinfo_query_delete_tmo             (gpointer aptr);
@@ -808,6 +820,7 @@ peerstate_repr(peerstate_t state)
     case PEERSTATE_INITIAL:       repr = "PEERSTATE_INITIAL";     break;
     case PEERSTATE_QUERY_OWNER:   repr = "PEERSTATE_QUERY_OWNER"; break;
     case PEERSTATE_QUERY_PID:     repr = "PEERSTATE_QUERY_PID";   break;
+    case PEERSTATE_IDENTIFY:      repr = "PEERSTATE_IDENTIFY";    break;
     case PEERSTATE_RUNNING:       repr = "PEERSTATE_RUNNING";     break;
     case PEERSTATE_STOPPED:       repr = "PEERSTATE_STOPPED";     break;
     default: break;
@@ -1028,6 +1041,7 @@ peerinfo_ctor(peerinfo_t *self, const char *name)
     self->pi_state         = PEERSTATE_INITIAL;
     self->pi_name          = g_strdup(name);
     self->pi_owner_name    = 0;
+    self->pi_proxy_pid     = PEERINFO_NO_PID;
     self->pi_owner_pid     = PEERINFO_NO_PID;
     self->pi_owner_uid     = PEERINFO_NO_UID;
     self->pi_owner_gid     = PEERINFO_NO_GID;
@@ -1035,6 +1049,7 @@ peerinfo_ctor(peerinfo_t *self, const char *name)
     self->pi_datapipe      = 0;
     self->pi_name_owner_pc = 0;
     self->pi_name_pid_pc   = 0;
+    self->pi_identify_pc   = 0;
     self->pi_delete_id     = 0;
 
     g_queue_init(&self->pi_quit_callbacks);
@@ -1061,12 +1076,14 @@ peerinfo_dtor(peerinfo_t *self)
     peerinfo_flush_methods(self);
 
     peerinfo_set_owner_name(self, 0);
+    peerinfo_set_proxy_pid(self, PEERINFO_NO_PID);
     peerinfo_set_owner_pid(self, PEERINFO_NO_PID);
     peerinfo_set_owner_uid(self, PEERINFO_NO_UID);
     peerinfo_set_owner_gid(self, PEERINFO_NO_GID);
 
     peerinfo_query_owner_ign(self);
     peerinfo_query_pid_ign(self);
+    peerinfo_identify_ign(self);
     peerinfo_query_delete_ign(self);
 
     g_free(self->pi_name),
@@ -1120,10 +1137,15 @@ peerinfo_enter_state(peerinfo_t *self)
 	break;
 
     case PEERSTATE_QUERY_PID:
+	peerinfo_set_proxy_pid(self, PEERINFO_NO_PID);
 	peerinfo_set_owner_pid(self, PEERINFO_NO_PID);
 	peerinfo_set_owner_uid(self, PEERINFO_NO_UID);
 	peerinfo_set_owner_gid(self, PEERINFO_NO_GID);
 	peerinfo_query_pid_req(self);
+	break;
+
+    case PEERSTATE_IDENTIFY:
+	peerinfo_identify_req(self);
 	break;
 
     case PEERSTATE_RUNNING:
@@ -1170,6 +1192,10 @@ peerinfo_leave_state(peerinfo_t *self)
 
     case PEERSTATE_QUERY_PID:
 	peerinfo_query_pid_ign(self);
+	break;
+
+    case PEERSTATE_IDENTIFY:
+	peerinfo_identify_ign(self);
 	break;
 
     case PEERSTATE_RUNNING:
@@ -1274,6 +1300,29 @@ peerinfo_set_owner_name(peerinfo_t *self, const char *name)
 
 EXIT:
     return changed;
+}
+
+pid_t
+peerinfo_get_proxy_pid(const peerinfo_t *self)
+{
+    return self->pi_proxy_pid;
+}
+
+static void
+peerinfo_set_proxy_pid(peerinfo_t *self, pid_t pid)
+{
+    if( self->pi_proxy_pid == pid )
+	goto EXIT;
+
+    mce_log(LL_DEBUG, "[%s] proxy pid: %d -> %d",
+	    peerinfo_name(self),
+	    (int)self->pi_proxy_pid,
+	    (int)pid);
+
+    self->pi_proxy_pid = pid;
+
+EXIT:
+    return;
 }
 
 pid_t
@@ -1600,8 +1649,18 @@ peerinfo_query_pid_rsp(DBusPendingCall *pc, void *aptr)
     }
 
     if( pid ) {
-	peerinfo_set_owner_pid(self, pid);
-	peerinfo_set_state(self, PEERSTATE_RUNNING);
+	gchar *exe_path = g_strdup_printf("/proc/%d/exe", pid);
+	gchar *exe_target = g_file_read_link(exe_path, NULL);
+	if( !g_strcmp0(exe_target, "/usr/bin/xdg-dbus-proxy") ) {
+	    peerinfo_set_proxy_pid(self, pid);
+	    peerinfo_set_state(self, PEERSTATE_IDENTIFY);
+	}
+	else {
+	    peerinfo_set_owner_pid(self, pid);
+	    peerinfo_set_state(self, PEERSTATE_RUNNING);
+	}
+	g_free(exe_target);
+	g_free(exe_path);
     }
     else {
 	peerinfo_set_state(self, PEERSTATE_STOPPED);
@@ -1633,6 +1692,114 @@ peerinfo_query_pid_req(peerinfo_t *self)
 		 self, 0,
 		 &self->pi_name_pid_pc,
 		 DBUS_TYPE_STRING, &name,
+		 DBUS_TYPE_INVALID);
+
+EXIT:
+    return;
+}
+
+/* ------------------------------------------------------------------------- *
+ * async sandboxed client identify query
+ * ------------------------------------------------------------------------- */
+
+static void
+peerinfo_identify_ign(peerinfo_t *self)
+{
+    if( !self->pi_identify_pc )
+	goto EXIT;
+
+    mce_log(LL_DEBUG, "[%s] identify query canceled", peerinfo_name(self));
+
+    dbus_pending_call_cancel(self->pi_identify_pc);
+    dbus_pending_call_unref(self->pi_identify_pc),
+	self->pi_identify_pc = 0;
+
+EXIT:
+    return;
+}
+
+static void
+peerinfo_identify_rsp(DBusPendingCall *pc, void *aptr)
+{
+    peerinfo_t  *self = aptr;
+    DBusMessage *rsp  = 0;
+    DBusError    err  = DBUS_ERROR_INIT;
+    dbus_int32_t pid  = PEERINFO_NO_PID;
+
+    mce_log(LL_DEBUG, "[%s] identify query replied", peerinfo_name(self));
+
+    if( self->pi_identify_pc != pc )
+	goto EXIT;
+
+    dbus_pending_call_unref(self->pi_identify_pc),
+	self->pi_identify_pc = 0;
+
+    if( !(rsp = dbus_pending_call_steal_reply(pc)) ) {
+	mce_log(LL_WARN, "null reply");
+    }
+    else if( dbus_set_error_from_message(&err, rsp) ) {
+	mce_log(LL_WARN, "error reply: %s: %s", err.name, err.message);
+    }
+    else {
+	DBusMessageIter body_iter;
+	dbus_message_iter_init(rsp, &body_iter);
+	if( dbus_message_iter_get_arg_type(&body_iter) == DBUS_TYPE_ARRAY ) {
+	    DBusMessageIter array_iter;
+	    dbus_message_iter_recurse(&body_iter, &array_iter);
+	    dbus_message_iter_next(&body_iter);
+	    while( dbus_message_iter_get_arg_type(&array_iter) == DBUS_TYPE_DICT_ENTRY ) {
+		DBusMessageIter dict_iter;
+		dbus_message_iter_recurse(&array_iter, &dict_iter);
+		dbus_message_iter_next(&array_iter);
+		if( dbus_message_iter_get_arg_type(&dict_iter) != DBUS_TYPE_STRING )
+		    continue;
+		const char *key = NULL;
+		dbus_message_iter_get_basic(&dict_iter, &key);
+		dbus_message_iter_next(&dict_iter);
+		if( dbus_message_iter_get_arg_type(&dict_iter) != DBUS_TYPE_VARIANT )
+		    continue;
+		DBusMessageIter variant_iter;
+		dbus_message_iter_recurse(&dict_iter, &variant_iter);
+		dbus_message_iter_next(&dict_iter);
+		if( !g_strcmp0(key, "pid") ) {
+		    if( dbus_message_iter_get_arg_type(&variant_iter) == DBUS_TYPE_INT32 )
+			dbus_message_iter_get_basic(&variant_iter, &pid);
+                    break;
+		}
+	    }
+	}
+    }
+
+    /* In case of failure, fall back to using pid of proxy */
+    if( pid == PEERINFO_NO_PID )
+	pid = peerinfo_get_proxy_pid(self);
+
+    peerinfo_set_owner_pid(self, pid);
+    peerinfo_set_state(self, PEERSTATE_RUNNING);
+
+EXIT:
+    if( rsp )
+	dbus_message_unref(rsp);
+    dbus_error_free(&err);
+}
+
+static void
+peerinfo_identify_req(peerinfo_t *self)
+{
+    if( peerinfo_get_state(self) != PEERSTATE_IDENTIFY )
+	goto EXIT;
+
+    if( self->pi_identify_pc )
+	goto EXIT;
+
+    mce_log(LL_DEBUG, "[%s] identify query send", peerinfo_name(self));
+
+    const char *name = peerinfo_name(self);
+
+    dbus_send_ex(name, "/", "org.sailfishos.sailjailed", "Identify",
+		 peerinfo_identify_rsp,
+		 self, 0,
+		 &self->pi_identify_pc,
 		 DBUS_TYPE_INVALID);
 
 EXIT:
