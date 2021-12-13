@@ -1,3 +1,9 @@
+mce (1.109.1) precise; urgency=low
+
+  * [mce-dbus] Identify clients behind xdg-dbus-proxy. Fixes: JB#56385
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Mon, 13 Dec 2021 08:30:07 +0200
+
 mce (1.109.0) precise; urgency=low
 
   * [build] Cleanup 64-bit compilation warnings
