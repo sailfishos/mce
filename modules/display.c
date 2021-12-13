@@ -4612,7 +4612,7 @@ mdy_blanking_evaluate_pause_timeout(void)
         }
         if( (submode & MCE_SUBMODE_TKLOCK) &&
             client->bpc_pid != topmost_window_pid ) {
-            mce_log(LL_DEBUG, "tklocked and client %s is not topmost", name);
+            mce_log(LL_WARN, "tklocked and client %s is not topmost", name);
             continue;
         }
 
