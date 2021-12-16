@@ -221,7 +221,8 @@ static void audio_route_sink(ohm_decision_t *ohm)
         if( strncmp(route_lut[i].device, ohm->device, n) )
             continue;
 
-        if( ohm->device[n] && strcmp(ohm->device + n, "forcall") )
+        const char *e = &ohm->device[n];
+        if( *e && strcmp(e, "forcall") && strcmp(e, "foralien") )
             continue;
 
         audio_route = route_lut[i].route;
