@@ -1,3 +1,10 @@
+mce (1.109.2) precise; urgency=low
+
+  * [audiorouting] Add audio routing mapping for "bthfp" sink device
+  * [audiorouting] Handle "foralien" audio sink suffixes. Fixes JB#50639
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Fri, 17 Dec 2021 10:49:36 +0200
+
 mce (1.109.1) precise; urgency=low
 
   * [mce-dbus] Identify clients behind xdg-dbus-proxy. Fixes: JB#56385
