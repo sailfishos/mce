@@ -116,6 +116,7 @@ static const struct
     audio_route_t      route;
 } route_lut[] = {
     { "bta2dp",           AUDIO_ROUTE_HEADSET, },
+    { "bthfp",            AUDIO_ROUTE_HEADSET, },
     { "bthsp",            AUDIO_ROUTE_HEADSET, },
     { "earpiece",         AUDIO_ROUTE_HANDSET, },
     { "earpieceandtvout", AUDIO_ROUTE_HANDSET, },
@@ -220,15 +221,16 @@ static void audio_route_sink(ohm_decision_t *ohm)
         if( strncmp(route_lut[i].device, ohm->device, n) )
             continue;
 
-        if( ohm->device[n] && strcmp(ohm->device + n, "forcall") )
+        const char *e = &ohm->device[n];
+        if( *e && strcmp(e, "forcall") && strcmp(e, "foralien") )
             continue;
 
         audio_route = route_lut[i].route;
         break;
     }
 
-    mce_log(LL_DEBUG, "audio sink '%s' -> audio route %d",
-            ohm->device, audio_route);
+    mce_log(LL_DEBUG, "audio sink '%s' -> audio route %s",
+            ohm->device, audio_route_repr(audio_route));
 }
 
 /** Handle com.nokia.policy.audio_route decision
@@ -569,7 +571,7 @@ EXIT:
     }
 
     if( datapipe_get_gint(audio_route_pipe) != audio_route ) {
-        mce_log(LL_DEVEL, "audio route: %d", audio_route);
+        mce_log(LL_DEVEL, "audio route: %s", audio_route_repr(audio_route));
         datapipe_exec_full(&audio_route_pipe,
                            GINT_TO_POINTER(audio_route));
     }

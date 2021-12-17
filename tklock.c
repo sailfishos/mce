@@ -1612,7 +1612,9 @@ static void tklock_datapipe_audio_route_cb(gconstpointer data)
     if( audio_route == prev )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "audio_route = %d -> %d", prev, audio_route);
+    mce_log(LL_DEBUG, "audio_route = %s -> %s",
+            audio_route_repr(prev), audio_route_repr(audio_route));
+
     tklock_uiexception_rethink();
 
 EXIT:
