@@ -1764,7 +1764,7 @@ peerinfo_identify_rsp(DBusPendingCall *pc, void *aptr)
 		if( !g_strcmp0(key, "pid") ) {
 		    if( dbus_message_iter_get_arg_type(&variant_iter) == DBUS_TYPE_INT32 )
 			dbus_message_iter_get_basic(&variant_iter, &pid);
-                    break;
+		    break;
 		}
 	    }
 	}
