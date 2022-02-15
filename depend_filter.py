@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- encoding: utf8 -*-
 
 # ----------------------------------------------------------------------------
@@ -13,7 +13,7 @@ def is_local(path):
     return not path.startswith("/")
 
 def print_rule(dest, srce):
-    print "%s\\\n" % "\\\n\t".join(["%s:" % dest] + srce)
+    print("%s\\\n" % "\\\n\t".join(["%s:" % dest] + srce))
 
 def set_extension(path, ext):
     return os.path.splitext(path)[0] + ext
@@ -29,7 +29,7 @@ def fix_directory(dest, srce):
 if __name__ == "__main__":
 
     data = sys.stdin.readlines()
-    data = map(lambda x:x.rstrip(), data)
+    data = list(map(lambda x:x.rstrip(), data))
     data.reverse()
 
     deps = []
@@ -52,13 +52,13 @@ if __name__ == "__main__":
         dest = fix_directory(dest, srce)
 
         # remove secondary deps with absolute path
-        temp = filter(is_local, temp)
+        temp = list(filter(is_local, temp))
 
         # sort secondary sources
         temp.sort()
 
         srce = [srce] + temp
-        srce = map(normalize_path, srce)
+        srce = list(map(normalize_path, srce))
 
         deps.append((dest,srce))
 
