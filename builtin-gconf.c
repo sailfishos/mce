@@ -2,7 +2,7 @@
  * @file builtin-gconf.c
  * GConf compatibility module - for dynamic mce settings
  * <p>
- * Copyright (C) 2012-2019 Jolla Ltd.
+ * Copyright (c) 2012 - 2022 Jolla Ltd.
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
@@ -49,6 +49,7 @@
 #include "modules/doubletap.h"
 #include "modules/led.h"
 #include "modules/inactivity.h"
+#include "modules/charging.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -1956,6 +1957,21 @@ static const setting_t gconf_defaults[] =
     .key  = MCE_SETTING_BUTTONBACKLIGHT_OFF_DELAY,
     .type = "i",
     .def  = G_STRINGIFY(MCE_DEFAULT_BUTTONBACKLIGHT_OFF_DELAY),
+  },
+  {
+    .key  = MCE_SETTING_CHARGING_MODE,
+    .type = "i",
+    .def  = G_STRINGIFY(MCE_DEFAULT_CHARGING_MODE),
+  },
+  {
+    .key  = MCE_SETTING_CHARGING_LIMIT_DISABLE,
+    .type = "i",
+    .def  = G_STRINGIFY(MCE_DEFAULT_CHARGING_LIMIT_DISABLE),
+  },
+  {
+    .key  = MCE_SETTING_CHARGING_LIMIT_ENABLE,
+    .type = "i",
+    .def  = G_STRINGIFY(MCE_DEFAULT_CHARGING_LIMIT_ENABLE),
   },
   {
     .key  = NULL,

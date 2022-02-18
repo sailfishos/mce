@@ -2,7 +2,7 @@
  * Tool to test and remote control the Mode Control Entity
  * <p>
  * Copyright (c) 2005 - 2011 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (c) 2012 - 2020 Jolla Ltd.
+ * Copyright (c) 2012 - 2022 Jolla Ltd.
  * Copyright (c) 2019 - 2020 Open Mobile Platform LLC.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
@@ -40,6 +40,7 @@
 #include "../modules/proximity.h"
 #include "../modules/memnotify.h"
 #include "../modules/led.h"
+#include "../modules/charging.h"
 #include "../systemui/dbus-names.h"
 #include "../systemui/tklock-dbus-names.h"
 
@@ -137,6 +138,7 @@ static int           xmce_parse_powerkeyevent                          (const ch
 static unsigned      xmce_parse_radio_states                           (const char *args);
 static gboolean      xmce_parse_enabled                                (const char *args);
 static int           xmce_parse_integer                                (const char *args);
+static int           xmce_parse_memory_limit                           (const char *args);
 static double        xmce_parse_double                                 (const char *args);
 static bool          xmce_set_verbosity                                (const char *arg);
 static void          xmce_get_verbosity                                (void);
@@ -153,6 +155,12 @@ static void          xmce_get_charger_state                            (void);
 static void          xmce_get_battery_status                           (void);
 static void          xmce_get_battery_state                            (void);
 static void          xmce_get_battery_level                            (void);
+static bool          xmce_set_charging_enable_limit                    (const char *args);
+static void          xmce_get_charging_enable_limit                    (void);
+static bool          xmce_set_charging_disable_limit                   (const char *args);
+static void          xmce_get_charging_disable_limit                   (void);
+static bool          xmce_set_charging_mode                            (const char *args);
+static void          xmce_get_charging_mode                            (void);
 static void          xmce_get_battery_info                             (void);
 static void          xmce_parse_notification_args                      (const char *args, char **title, dbus_int32_t *delay, dbus_int32_t *renew);
 static bool          xmce_notification_begin                           (const char *args);
@@ -2819,6 +2827,79 @@ static void xmce_get_battery_level(void)
         printf("%-"PAD1"s %d\n","Battery level:", num);
 }
 
+static bool xmce_set_charging_enable_limit(const char *args)
+{
+        int val = xmce_parse_integer(args);
+        if( val < 0 || val > 100 ) {
+                errorf("%d: invalid battery limit value\n", val);
+                exit(EXIT_FAILURE);
+        }
+        xmce_setting_set_int(MCE_SETTING_CHARGING_LIMIT_ENABLE, val);
+        return true;
+}
+
+static void xmce_get_charging_enable_limit(void)
+{
+        gint val = 0;
+        char txt[32];
+        strcpy(txt, "unknown");
+        if( xmce_setting_get_int(MCE_SETTING_CHARGING_LIMIT_ENABLE, &val) )
+                snprintf(txt, sizeof txt, "%d", (int)val);
+        printf("%-"PAD1"s %s (%%)\n", "Charging enable limit:", txt);
+}
+
+static bool xmce_set_charging_disable_limit(const char *args)
+{
+        int val = xmce_parse_integer(args);
+        if( val < 0 || val > 100 ) {
+                errorf("%d: invalid battery limit value\n", val);
+                exit(EXIT_FAILURE);
+        }
+        xmce_setting_set_int(MCE_SETTING_CHARGING_LIMIT_DISABLE, val);
+        return true;
+}
+
+static void xmce_get_charging_disable_limit(void)
+{
+        gint val = 0;
+        char txt[32];
+        strcpy(txt, "unknown");
+        if( xmce_setting_get_int(MCE_SETTING_CHARGING_LIMIT_DISABLE, &val) )
+                snprintf(txt, sizeof txt, "%d", (int)val);
+        printf("%-"PAD1"s %s (%%)\n", "Charging disable limit:", txt);
+}
+
+/** Lookuptable for enable/disable mode values */
+static const symbol_t charging_mode_lut[] =
+{
+        { "disable",                     CHARGING_MODE_DISABLE },
+        { "enable",                      CHARGING_MODE_ENABLE },
+        { "apply-thresholds",            CHARGING_MODE_APPLY_THRESHOLDS },
+        { "apply-thresholds-after-full", CHARGING_MODE_APPLY_THRESHOLDS_AFTER_FULL },
+        { 0,                             -1    }
+};
+
+static bool xmce_set_charging_mode(const char *args)
+{
+        debugf("%s(%s)\n", __FUNCTION__, args);
+        int val = lookup(charging_mode_lut, args);
+        if( val == -1 ) {
+                errorf("%s: invalid charging mode\n", args);
+                exit(EXIT_FAILURE);
+        }
+        xmce_setting_set_int(MCE_SETTING_CHARGING_MODE, val);
+        return true;
+}
+
+static void xmce_get_charging_mode(void)
+{
+        gint val = 0;
+        const char *txt = 0;
+        if( xmce_setting_get_int(MCE_SETTING_CHARGING_MODE, &val) )
+                txt = rlookup(charging_mode_lut, val);
+        printf("%-"PAD1"s %s\n", "Charging mode:", txt ?: "unknown");
+}
+
 static void xmce_get_battery_info(void)
 {
         xmce_get_cable_state();
@@ -2826,6 +2907,9 @@ static void xmce_get_battery_info(void)
         xmce_get_battery_level();
         xmce_get_battery_status();
         xmce_get_battery_state();
+        xmce_get_charging_mode();
+        xmce_get_charging_enable_limit();
+        xmce_get_charging_disable_limit();
 }
 
 /* ------------------------------------------------------------------------- *
@@ -7989,6 +8073,7 @@ static const mce_opt_t options[] =
                 .name        = "set-inactivity-shutdown-delay",
                 .with_arg    = xmce_set_inactivity_shutdown_delay,
                 .values      = "s",
+                .usage       =
                         "set delay in seconds for automatic shutdown\n"
                         "\n"
                         "If the device is not in active use it will be\n"
@@ -8036,6 +8121,44 @@ static const mce_opt_t options[] =
                         "Override battery level for debugging purposes\n"
         },
 #endif // ENABLE_BATTERY_SIMULATION
+        {
+                .name        = "set-charging-mode",
+                .with_arg    = xmce_set_charging_mode,
+                .values      = ""
+                        "enable|"
+                        "disable|"
+                        "apply-thresholds|"
+                        "apply-thresholds-after-full",
+                .usage       =
+                        "Set charging enable/disable mode\n"
+                        "\n"
+                        "Valid modes are:\n"
+                        "  enable           - charging is always enabled (default)\n"
+                        "  disable          - charging is always disabled\n"
+                        "  apply-thresholds - charging is disabled when level reaches disable limit\n"
+                        "                     and enabled when level drops to enable limit\n"
+                        "  apply-thresholds-after-full - charging is enabled until battery full is\n"
+                        "                     reached, then as with apply-thresholds\n"
+        },
+        {
+                .name        = "set-charging-enable-limit",
+                .with_arg    = xmce_set_charging_enable_limit,
+                .values      = "percent",
+                .usage       =
+                        "Set charging enable limit\n"
+                        "\n"
+                        "Charging is enabled when battery level drops to enable limit or below.\n"
+
+        },
+        {
+                .name        = "set-charging-disable-limit",
+                .with_arg    = xmce_set_charging_disable_limit,
+                .values      = "percent",
+                .usage       =
+                        "Set charging disabled limit\n"
+                        "\n"
+                        "Charging is disabled when battery level reaches disable limit or above.\n"
+        },
 
         // sentinel
         {
@@ -8049,7 +8172,7 @@ PROG_NAME" v"G_STRINGIFY(PRG_VERSION)"\n"
 "Written by David Weinehall.\n"
 "\n"
 "Copyright (c) 2005 - 2011 Nokia Corporation.  All rights reserved.\n"
-"Copyright (c) 2012 - 2020 Jolla Ltd.\n"
+"Copyright (c) 2012 - 2022 Jolla Ltd.\n"
 "Copyright (c) 2019 - 2020 Open Mobile Platform LLC.\n"
 ;
 
