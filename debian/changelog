@@ -1,3 +1,9 @@
+mce (1.110.0) precise; urgency=low
+
+  * [charging] Configurable charging hysteresis. Fixes JB#40062
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Tue, 22 Feb 2022 04:33:54 +0200
+
 mce (1.109.2) precise; urgency=low
 
   * [audiorouting] Add audio routing mapping for "bthfp" sink device
