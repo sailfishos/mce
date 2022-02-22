@@ -8,6 +8,7 @@ builtin-gconf.o:\
 	mce-log.h\
 	mce-setting.h\
 	mce.h\
+	modules/charging.h\
 	modules/display.h\
 	modules/doubletap.h\
 	modules/inactivity.h\
@@ -29,6 +30,7 @@ builtin-gconf.pic.o:\
 	mce-log.h\
 	mce-setting.h\
 	mce.h\
+	modules/charging.h\
 	modules/display.h\
 	modules/doubletap.h\
 	modules/inactivity.h\
@@ -713,6 +715,32 @@ modules/camera.pic.o:\
 	musl-compatibility.h\
 	tklock.h\
 	modules/camera.h\
+
+modules/charging.o:\
+	modules/charging.c\
+	builtin-gconf.h\
+	datapipe.h\
+	datapipe.h\
+	mce-conf.h\
+	mce-dbus.h\
+	mce-log.h\
+	mce-setting.h\
+	mce.h\
+	musl-compatibility.h\
+	modules/charging.h\
+
+modules/charging.pic.o:\
+	modules/charging.c\
+	builtin-gconf.h\
+	datapipe.h\
+	datapipe.h\
+	mce-conf.h\
+	mce-dbus.h\
+	mce-log.h\
+	mce-setting.h\
+	mce.h\
+	musl-compatibility.h\
+	modules/charging.h\
 
 modules/cpu-keepalive.o:\
 	modules/cpu-keepalive.c\
@@ -1512,6 +1540,7 @@ tools/mcetool.o:\
 	mce-dbus.h\
 	mce-setting.h\
 	mce.h\
+	modules/charging.h\
 	modules/display.h\
 	modules/doubletap.h\
 	modules/inactivity.h\
@@ -1535,6 +1564,7 @@ tools/mcetool.pic.o:\
 	mce-dbus.h\
 	mce-setting.h\
 	mce.h\
+	modules/charging.h\
 	modules/display.h\
 	modules/doubletap.h\
 	modules/inactivity.h\

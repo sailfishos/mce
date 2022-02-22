@@ -156,6 +156,7 @@ MODULES += $(MODULE_DIR)/proximity.so
 MODULES += $(MODULE_DIR)/keypad.so
 MODULES += $(MODULE_DIR)/inactivity.so
 MODULES += $(MODULE_DIR)/camera.so
+MODULES += $(MODULE_DIR)/charging.so
 MODULES += $(MODULE_DIR)/alarm.so
 MODULES += $(MODULE_DIR)/memnotify.so
 MODULES += $(MODULE_DIR)/mempressure.so
@@ -625,6 +626,8 @@ NORMALIZE_USES_SPC =\
 	modules/callstate.c\
 	modules/callstate.h\
 	modules/camera.h\
+	modules/charging.c\
+	modules/charging.h\
 	modules/cpu-keepalive.c\
 	modules/display.c\
 	modules/display.h\
@@ -726,7 +729,7 @@ PROTO_CPPFLAGS += -D_Float128x="long double"
 
 %.q : %.c ; $(CC) -o $@ -E $< $(PROTO_CPPFLAGS)
 %.p : %.q ; cproto -s < $< | prettyproto.py | tee $@
-%.g : %.q ; cproto < $< | prettyproto.py | tee $@
+%.g : %.q ; cproto < $< | prettyproto.py -xg_module | tee $@
 
 protos-q: $(patsubst %.c,%.q,$(wildcard *.c modules/*.c))
 protos-p: $(patsubst %.c,%.p,$(wildcard *.c modules/*.c))
