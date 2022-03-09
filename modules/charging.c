@@ -528,44 +528,79 @@ mch_settings_quit(void)
  * MCH_CONFIG
  * ========================================================================= */
 
+static const struct {
+    const char *control_path;
+    const char *enable_value;
+    const char *disable_value;
+} mch_autoconfig[] = {
+    {
+        .control_path  = "/sys/class/power_supply/battery/charging_enabled",
+        .enable_value  = "1",
+        .disable_value = "0",
+    },
+    {
+        .control_path  = "/sys/class/power_supply/battery/input_suspend",
+        .enable_value  = "0",
+        .disable_value = "1",
+    },
+    {
+        .control_path = NULL,
+    }
+};
+
 static void
 mch_config_init(void)
 {
     bool ack = false;
 
-    if( !mce_conf_has_group(MCE_CONF_CHARGING_GROUP) ) {
-        mce_log(LL_DEBUG, "[%s]: config block does not exist",
-                MCE_CONF_CHARGING_GROUP);
-        goto EXIT;
+    if( mce_conf_has_group(MCE_CONF_CHARGING_GROUP) ) {
+        mch_control_path =
+            mce_conf_get_string(MCE_CONF_CHARGING_GROUP,
+                                MCE_CONF_CHARGING_CONTROL_PATH,
+                                NULL);
     }
 
-    mch_control_path = mce_conf_get_string(MCE_CONF_CHARGING_GROUP,
-                                           MCE_CONF_CHARGING_CONTROL_PATH, 0);
-    if( !mch_control_path ) {
-        mce_log(LL_WARN, "[%s] %s: config item not defined",
-                MCE_CONF_CHARGING_GROUP,
-                MCE_CONF_CHARGING_CONTROL_PATH);
-        goto EXIT;
+    if( mch_control_path ) {
+        if( access(mch_control_path, W_OK) == -1 ) {
+            mce_log(LL_ERR, "%s: not writable: %m", mch_control_path);
+            goto EXIT;
+        }
+        mch_control_enable_value =
+            mce_conf_get_string(MCE_CONF_CHARGING_GROUP,
+                                MCE_CONF_CHARGING_ENABLE_VALUE,
+                                DEFAULT_CHARGING_ENABLE_VALUE);
+
+        mch_control_disable_value =
+            mce_conf_get_string(MCE_CONF_CHARGING_GROUP,
+                                MCE_CONF_CHARGING_DISABLE_VALUE,
+                                DEFAULT_CHARGING_DISABLE_VALUE);
     }
+    else {
+        for( size_t i = 0; ; ++i ) {
+            if( !mch_autoconfig[i].control_path )
+                goto EXIT;
 
-    if( access(mch_control_path, W_OK) == -1 ) {
-        mce_log(LL_ERR, "%s: not writable: %m", mch_control_path);
-        goto EXIT;
+            if( access(mch_autoconfig[i].control_path, W_OK) == -1 )
+                continue;
+
+            mch_control_path = g_strdup(mch_autoconfig[i].control_path);
+            mch_control_enable_value =
+                g_strdup(mch_autoconfig[i].enable_value);
+            mch_control_disable_value =
+                g_strdup(mch_autoconfig[i].disable_value);
+            break;
+        }
     }
-
-    mch_control_enable_value = mce_conf_get_string(MCE_CONF_CHARGING_GROUP,
-                                                   MCE_CONF_CHARGING_ENABLE_VALUE,
-                                                   DEFAULT_CHARGING_ENABLE_VALUE);
-
-    mch_control_disable_value = mce_conf_get_string(MCE_CONF_CHARGING_GROUP,
-                                                    MCE_CONF_CHARGING_DISABLE_VALUE,
-                                                    DEFAULT_CHARGING_DISABLE_VALUE);
 
     ack = true;
 
 EXIT:
     if( !ack )
         mch_config_quit();
+
+    mce_log(LL_DEBUG, "control: %s", mch_control_path          ?: "N/A");
+    mce_log(LL_DEBUG, "enable:  %s", mch_control_enable_value  ?: "N/A");
+    mce_log(LL_DEBUG, "disable: %s", mch_control_disable_value ?: "N/A");
 
     return;
 }
