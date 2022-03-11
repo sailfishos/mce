@@ -1,3 +1,9 @@
+mce (1.111.0) precise; urgency=low
+
+  * [charging] Auto-detect charging hysteresis controls. Fixes JB#57297
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Fri, 11 Mar 2022 09:12:52 +0200
+
 mce (1.110.0) precise; urgency=low
 
   * [charging] Configurable charging hysteresis. Fixes JB#40062
