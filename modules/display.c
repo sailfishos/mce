@@ -11439,22 +11439,36 @@ static void mdy_brightness_init(void)
 {
     gulong tmp = 0;
 
-    /* If possible, obtain maximum brightness level */
-    if( !mdy_brightness_level_maximum_path ) {
-        mce_log(LL_NOTICE, "No path for maximum brightness file; "
-                "defaulting to %d",
-                mdy_brightness_level_maximum);
+    /* Check if max_brightness override has been configured */
+    if( mce_conf_has_key(MCE_CONF_DISPLAY_GROUP,
+                         MCE_CONF_MAX_BACKLIGHT_VALUE) ) {
+        gint value = mce_conf_get_int(MCE_CONF_DISPLAY_GROUP,
+                                      MCE_CONF_MAX_BACKLIGHT_VALUE, 0);
+        if( value > 0 )
+            tmp = (gulong)value;
+    }
+
+    /* Try to read max_brightness sysfs file */
+    if( tmp > 0 ) {
+        /* Using configured value */
+    }
+    else if( !mdy_brightness_level_maximum_path ) {
+        mce_log(LL_WARN, "No path for maximum brightness file");
     }
     else if( !mce_read_number_string_from_file(mdy_brightness_level_maximum_path,
                                                &tmp, NULL, FALSE, TRUE) ) {
-        mce_log(LL_ERR, "Could not read the maximum brightness from %s; "
-                "defaulting to %d",
-                mdy_brightness_level_maximum_path, mdy_brightness_level_maximum);
+        mce_log(LL_ERR, "Could not read the maximum brightness from %s",
+                mdy_brightness_level_maximum_path);
     }
-    else
-        mdy_brightness_level_maximum = (gint)tmp;
 
-    mce_log(LL_DEBUG, "max_brightness = %d", mdy_brightness_level_maximum);
+    if( tmp > 0 ) {
+        mdy_brightness_level_maximum = (gint)tmp;
+        mce_log(LL_DEBUG, "max_brightness = %d", mdy_brightness_level_maximum);
+    }
+    else {
+        mce_log(LL_WARN, "Using default max_brightness = %d",
+                mdy_brightness_level_maximum);
+    }
 
     /* If we can read the current hw brightness level, update the
      * cached brightness so we can do soft transitions from the
