@@ -484,7 +484,8 @@ mt_state_handle_event(mt_state_t *self, const struct input_event *ev)
 {
     bool   dbltap = false;
 
-    self->mts_event_time = ev->time;
+	self->mts_event_time.tv_sec = ev->input_event_sec;
+	self->mts_event_time.tv_usec = ev->input_event_usec;
 
     self->mts_event_handler_cb(self, ev);
 
