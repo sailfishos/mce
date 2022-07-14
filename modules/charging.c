@@ -179,6 +179,7 @@ static gint battery_level = MCE_BATTERY_LEVEL_UNKNOWN;
 /** Policy setting: When to disable/enable charging */
 static charging_mode_t mch_charging_mode = CHARGING_MODE_ENABLE;
 static guint mch_charging_mode_id = 0;
+static gboolean mch_charging_mode_evaluated_with_cable_connected = FALSE;
 
 /** Policy decision: Whether charging is disabled/enabled */
 static charging_state_t mch_charging_state = CHARGING_STATE_UNKNOWN;
@@ -366,6 +367,13 @@ mch_policy_evaluate_charging_state(void)
 
     if( usb_cable_state == USB_CABLE_DISCONNECTED ) {
         switch( mch_charging_mode ) {
+        case CHARGING_MODE_APPLY_THRESHOLDS_AFTER_FULL:
+            if ( mch_charging_mode_evaluated_with_cable_connected ) {
+                mce_setting_set_int(MCE_SETTING_CHARGING_MODE,
+                                    CHARGING_MODE_APPLY_THRESHOLDS);
+            }
+            /* Fall through */
+
         default:
             /* Clear battery full seen */
             mch_policy_set_battery_full(false);
@@ -384,6 +392,9 @@ mch_policy_evaluate_charging_state(void)
         /* Remember if battery full has been observed */
         if( battery_status == BATTERY_STATUS_FULL )
             mch_policy_set_battery_full(true);
+
+        /* Unblock actions suppressed until cable is connected once */
+        mch_charging_mode_evaluated_with_cable_connected = TRUE;
 
         /* Evaluate based on active mode */
         switch( mch_charging_mode ) {
@@ -404,6 +415,9 @@ mch_policy_evaluate_charging_state(void)
                 charging_state = CHARGING_STATE_ENABLED;
                 break;
             }
+
+            mce_setting_set_int(MCE_SETTING_CHARGING_MODE,
+                                CHARGING_MODE_APPLY_THRESHOLDS);
             /* Fall through */
 
         case CHARGING_MODE_APPLY_THRESHOLDS:
@@ -437,6 +451,10 @@ static void mch_policy_set_charging_mode(charging_mode_t charging_mode)
             charging_mode_repr(charging_mode));
 
     mch_charging_mode = charging_mode;
+    mch_charging_mode_evaluated_with_cable_connected = FALSE;
+
+    /* Clear battery full seen */
+    mch_policy_set_battery_full(false);
 
     mch_policy_evaluate_charging_state();
 
