@@ -128,9 +128,15 @@ static void mch_datapipe_quit              (void);
  * MCH_DBUS
  * ------------------------------------------------------------------------- */
 
-static void     mch_dbus_send_charging_mode   (DBusMessage *const req);
-static gboolean mch_dbus_set_charging_mode_cb (DBusMessage *const req);
-static gboolean mch_dbus_get_charging_mode_cb (DBusMessage *const req);
+static void     mch_dbus_send_charging_mode            (DBusMessage *const req);
+static gboolean mch_dbus_set_charging_mode_cb          (DBusMessage *const req);
+static gboolean mch_dbus_get_charging_mode_cb          (DBusMessage *const req);
+static void     mch_dbus_send_charging_limit_enable    (DBusMessage *const req);
+static gboolean mch_dbus_set_charging_limit_enable_cb  (DBusMessage *const req);
+static gboolean mch_dbus_get_charging_limit_enable_cb  (DBusMessage *const req);
+static void     mch_dbus_send_charging_limit_disable   (DBusMessage *const req);
+static gboolean mch_dbus_set_charging_limit_disable_cb (DBusMessage *const req);
+static gboolean mch_dbus_get_charging_limit_disable_cb (DBusMessage *const req);
 static void     mch_dbus_send_charging_state  (DBusMessage *const req);
 static gboolean mch_dbus_get_charging_state_cb(DBusMessage *const req);
 static gboolean mch_dbus_initial_cb           (gpointer aptr);
@@ -492,6 +498,7 @@ static void mch_policy_set_limit_disable(int limit_disable)
 
     mch_limit_disable = limit_disable;
 
+    mch_dbus_send_charging_limit_disable(0);
     mch_policy_evaluate_charging_state();
 
 EXIT:
@@ -509,6 +516,7 @@ static void mch_policy_set_limit_enable(int limit_enable)
 
     mch_limit_enable = limit_enable;
 
+    mch_dbus_send_charging_limit_enable(0);
     mch_policy_evaluate_charging_state();
 
 EXIT:
@@ -960,6 +968,214 @@ mch_dbus_get_charging_mode_cb(DBusMessage *const req)
     return TRUE;
 }
 
+/** Send charging_limit_enable D-Bus signal / method call reply
+ *
+ * @param req  method call message to reply, or NULL to send signal
+ */
+static void
+mch_dbus_send_charging_limit_enable(DBusMessage *const req)
+{
+    static int last = 0;
+
+    DBusMessage *msg = NULL;
+
+    dbus_int32_t value = mch_limit_enable;
+
+    if( req ) {
+        msg = dbus_new_method_reply(req);
+    }
+    else if( last == value ) {
+        goto EXIT;
+    }
+    else {
+        last = value;
+        msg = dbus_new_signal(MCE_SIGNAL_PATH,
+                              MCE_SIGNAL_IF,
+                              MCE_CHARGING_LIMIT_ENABLE_SIG);
+    }
+
+    if( !dbus_message_append_args(msg,
+                                  DBUS_TYPE_INT32, &value,
+                                  DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "%s: %s = %d",
+            req ? "reply" : "broadcast",
+            "charging_limit_enable", value);
+
+    dbus_send_message(msg), msg = 0;
+
+EXIT:
+
+    if( msg )
+        dbus_message_unref(msg);
+}
+
+/** Callback for handling charging_limit_enable change request call
+ *
+ * @param req  Method call message to handle
+ *
+ * @return TRUE
+ */
+static gboolean
+mch_dbus_set_charging_limit_enable_cb(DBusMessage *const req)
+{
+    const char    *sender = dbus_message_get_sender(req);
+    DBusError      err    = DBUS_ERROR_INIT;
+    dbus_int32_t   limit  = 0;
+    DBusMessage   *rsp    = 0;
+
+    mce_log(LL_DEVEL, "enable-charging limit change request from %s",
+            mce_dbus_get_name_owner_ident(sender));
+
+    if( !dbus_message_get_args(req, &err,
+                               DBUS_TYPE_INT32, &limit,
+                               DBUS_TYPE_INVALID) ) {
+        mce_log(LL_ERR, "Failed to get argument from %s.%s: %s: %s",
+                MCE_REQUEST_IF, MCE_CHARGING_MODE_SET,
+                err.name, err.message);
+        rsp = dbus_message_new_error(req, err.name, err.message);
+        goto EXIT;
+    }
+
+    mce_setting_set_int(MCE_SETTING_CHARGING_LIMIT_ENABLE, limit);
+
+EXIT:
+
+    if( !dbus_message_get_no_reply(req) ) {
+        if( !rsp )
+            rsp = dbus_new_method_reply(req);
+        dbus_send_message(rsp), rsp = 0;
+    }
+
+    if( rsp )
+        dbus_message_unref(rsp);
+
+    dbus_error_free(&err);
+
+    return TRUE;
+}
+
+/** Callback for handling charging_limit_enable D-Bus queries
+ *
+ * @param req  method call message to reply
+ */
+static gboolean
+mch_dbus_get_charging_limit_enable_cb(DBusMessage *const req)
+{
+    mce_log(LL_DEBUG, "charging_limit_enable query from: %s",
+            mce_dbus_get_message_sender_ident(req));
+
+    if( !dbus_message_get_no_reply(req) )
+        mch_dbus_send_charging_limit_enable(req);
+
+    return TRUE;
+}
+
+/** Send charging_limit_disable D-Bus signal / method call reply
+ *
+ * @param req  method call message to reply, or NULL to send signal
+ */
+static void
+mch_dbus_send_charging_limit_disable(DBusMessage *const req)
+{
+    static int last = 0;
+
+    DBusMessage *msg = NULL;
+
+    dbus_int32_t value = mch_limit_disable;
+
+    if( req ) {
+        msg = dbus_new_method_reply(req);
+    }
+    else if( last == value ) {
+        goto EXIT;
+    }
+    else {
+        last = value;
+        msg = dbus_new_signal(MCE_SIGNAL_PATH,
+                              MCE_SIGNAL_IF,
+                              MCE_CHARGING_LIMIT_DISABLE_SIG);
+    }
+
+    if( !dbus_message_append_args(msg,
+                                  DBUS_TYPE_INT32, &value,
+                                  DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "%s: %s = %d",
+            req ? "reply" : "broadcast",
+            "charging_limit_disable", value);
+
+    dbus_send_message(msg), msg = 0;
+
+EXIT:
+
+    if( msg )
+        dbus_message_unref(msg);
+}
+
+/** Callback for handling charging_limit_disable change request call
+ *
+ * @param req  Method call message to handle
+ *
+ * @return TRUE
+ */
+static gboolean
+mch_dbus_set_charging_limit_disable_cb(DBusMessage *const req)
+{
+    const char    *sender = dbus_message_get_sender(req);
+    DBusError      err    = DBUS_ERROR_INIT;
+    dbus_int32_t   limit  = 0;
+    DBusMessage   *rsp    = 0;
+
+    mce_log(LL_DEVEL, "disable-charging limit change request from %s",
+            mce_dbus_get_name_owner_ident(sender));
+
+    if( !dbus_message_get_args(req, &err,
+                               DBUS_TYPE_INT32, &limit,
+                               DBUS_TYPE_INVALID) ) {
+        mce_log(LL_ERR, "Failed to get argument from %s.%s: %s: %s",
+                MCE_REQUEST_IF, MCE_CHARGING_MODE_SET,
+                err.name, err.message);
+        rsp = dbus_message_new_error(req, err.name, err.message);
+        goto EXIT;
+    }
+
+    mce_setting_set_int(MCE_SETTING_CHARGING_LIMIT_DISABLE, limit);
+
+EXIT:
+
+    if( !dbus_message_get_no_reply(req) ) {
+        if( !rsp )
+            rsp = dbus_new_method_reply(req);
+        dbus_send_message(rsp), rsp = 0;
+    }
+
+    if( rsp )
+        dbus_message_unref(rsp);
+
+    dbus_error_free(&err);
+
+    return TRUE;
+}
+
+/** Callback for handling charging_limit_disable D-Bus queries
+ *
+ * @param req  method call message to reply
+ */
+static gboolean
+mch_dbus_get_charging_limit_disable_cb(DBusMessage *const req)
+{
+    mce_log(LL_DEBUG, "charging_limit_disable query from: %s",
+            mce_dbus_get_message_sender_ident(req));
+
+    if( !dbus_message_get_no_reply(req) )
+        mch_dbus_send_charging_limit_disable(req);
+
+    return TRUE;
+}
+
 /** Send charging_state D-Bus signal / method call reply
  *
  * @param req  method call message to reply, or NULL to send signal
@@ -1038,6 +1254,20 @@ static mce_dbus_handler_t mch_dbus_handlers[] =
     },
     {
         .interface = MCE_SIGNAL_IF,
+        .name      = MCE_CHARGING_LIMIT_ENABLE_SIG,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .args      =
+        "    <arg name=\"charging_limit_enable\" type=\"i\"/>\n"
+    },
+    {
+        .interface = MCE_SIGNAL_IF,
+        .name      = MCE_CHARGING_LIMIT_DISABLE_SIG,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .args      =
+        "    <arg name=\"charging_limit_disable\" type=\"i\"/>\n"
+    },
+    {
+        .interface = MCE_SIGNAL_IF,
         .name      = MCE_CHARGING_STATE_SIG,
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
         .args      =
@@ -1051,6 +1281,38 @@ static mce_dbus_handler_t mch_dbus_handlers[] =
         .callback  = mch_dbus_set_charging_mode_cb,
         .args      =
         "    <arg direction=\"in\" name=\"charging_mode\" type=\"s\"/>\n"
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_CHARGING_LIMIT_ENABLE_GET,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = mch_dbus_get_charging_limit_enable_cb,
+        .args      =
+        "    <arg direction=\"out\" name=\"charging_limit_enable\" type=\"i\"/>\n"
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_CHARGING_LIMIT_ENABLE_SET,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = mch_dbus_set_charging_limit_enable_cb,
+        .args      =
+        "    <arg direction=\"in\" name=\"charging_limit_enable\" type=\"i\"/>\n"
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_CHARGING_LIMIT_DISABLE_GET,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = mch_dbus_get_charging_limit_disable_cb,
+        .args      =
+        "    <arg direction=\"out\" name=\"charging_limit_disable\" type=\"i\"/>\n"
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_CHARGING_LIMIT_DISABLE_SET,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = mch_dbus_set_charging_limit_disable_cb,
+        .args      =
+        "    <arg direction=\"in\" name=\"charging_limit_disable\" type=\"i\"/>\n"
     },
     {
         .interface = MCE_REQUEST_IF,
