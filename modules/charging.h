@@ -67,11 +67,11 @@
 
 typedef enum
 {
-    /* Keep charger disabled */
-    CHARGING_MODE_DISABLE,
-
     /* Keep charger enabled (default behavior) */
     CHARGING_MODE_ENABLE,
+
+    /* Keep charger disabled */
+    CHARGING_MODE_DISABLE,
 
     /* Apply thresholds without waiting for battery full */
     CHARGING_MODE_APPLY_THRESHOLDS,
