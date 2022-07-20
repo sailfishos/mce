@@ -93,6 +93,8 @@ static void mch_policy_set_battery_full       (bool battery_full);
 static void mch_policy_set_charging_state     (charging_state_t charging_state);
 static void mch_policy_evaluate_charging_state(void);
 static void mch_policy_set_charging_mode      (charging_mode_t charging_mode);
+static void mch_policy_set_limit_disable      (int limit_disable);
+static void mch_policy_set_limit_enable       (int limit_enable);
 
 /* ------------------------------------------------------------------------- *
  * MCH_SETTINGS
@@ -462,6 +464,40 @@ EXIT:
     return;
 }
 
+static void mch_policy_set_limit_disable(int limit_disable)
+{
+    if( mch_limit_disable == limit_disable )
+        goto EXIT;
+
+    mce_log(LL_CRUCIAL, "mch_limit_disable: %d -> %d",
+            mch_limit_disable,
+            limit_disable);
+
+    mch_limit_disable = limit_disable;
+
+    mch_policy_evaluate_charging_state();
+
+EXIT:
+    return;
+}
+
+static void mch_policy_set_limit_enable(int limit_enable)
+{
+    if( mch_limit_enable == limit_enable )
+        goto EXIT;
+
+    mce_log(LL_CRUCIAL, "mch_limit_enable: %d -> %d",
+            mch_limit_enable,
+            limit_enable);
+
+    mch_limit_enable = limit_enable;
+
+    mch_policy_evaluate_charging_state();
+
+EXIT:
+    return;
+}
+
 /* ========================================================================= *
  * MCH_SETTINGS
  * ========================================================================= */
@@ -485,16 +521,10 @@ mch_settings_cb(GConfClient *const gcc, const guint id,
         mch_policy_set_charging_mode(gconf_value_get_int(gcv));
     }
     else if( id == mch_limit_disable_id ) {
-        gint old = mch_limit_disable;
-        mch_limit_disable = gconf_value_get_int(gcv);
-        if( old != mch_limit_disable )
-            mch_policy_evaluate_charging_state();
+        mch_policy_set_limit_disable(gconf_value_get_int(gcv));
     }
     else if( id == mch_limit_enable_id ) {
-        gint old = mch_limit_enable;
-        mch_limit_enable = gconf_value_get_int(gcv);
-        if( old != mch_limit_enable )
-            mch_policy_evaluate_charging_state();
+        mch_policy_set_limit_enable(gconf_value_get_int(gcv));
     }
     else {
         mce_log(LL_WARN, "Spurious GConf value received; confused!");
