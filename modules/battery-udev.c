@@ -1720,6 +1720,15 @@ udevdevice_evaluate_battery(udevdevice_t *self, mcebat_t *mcebat)
         mcebat->battery_status = BATTERY_STATUS_OK;
         if( self->udd_full && capacity >= BATTERY_CAPACITY_FULL )
             mcebat->battery_status = BATTERY_STATUS_FULL;
+        /* Some devices never report Full state */
+        else if ( capacity >= 100 ) {
+            mcebat->battery_status = BATTERY_STATUS_FULL;
+
+            if( !self->udd_full ) {
+                mce_log(LL_WARN, "assuming end of charging due to battery capacity 100%%");
+                self->udd_full = true;
+            }
+        }
         else
             self->udd_full = false;
     }
