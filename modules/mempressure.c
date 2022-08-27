@@ -34,6 +34,7 @@
 #include <assert.h>
 
 #include <gmodule.h>
+#include <glib/gmain.h>
 
 /* Paths to relevant cgroup data/control files */
 #define CGROUP_MEMORY_DIRECTORY "/sys/fs/cgroup/memory"
@@ -428,16 +429,39 @@ mempressure_cgroup_quit(void)
     }
 }
 
-/** Eventfd for receiving notifications PSI memory changes */
-static int   mempressure_psi_event_fd = -1;
 static int   mempressure_psi_warning_fd = -1;
 static int   mempressure_psi_critical_fd = -1;
 static guint mempressure_psi_warn_event_id = 0;
 static guint mempressure_psi_crit_event_id = 0;
+static guint mempressure_psi_warn_timeout = 0;
+static guint mempressure_psi_crit_timeout = 0;
 
 #define PSI_MEMORY_PATH "/proc/pressure/memory"
 
-/** Input watch callback for cgroup memory threshold crossings
+static gboolean
+mempressure_psi_timeout_cb(gpointer user_data)
+{
+    if( user_data == NULL ) {
+        mce_log(LL_ERR, "null timeout argument");
+        goto EXIT;
+    }
+
+    int fd = *((int*)user_data);
+    if (fd == mempressure_psi_warning_fd) {
+        mce_log(LL_INFO, "PSI warning event timeout");
+        mempressure_psi_warn_timeout = 0;
+    } else if (fd == mempressure_psi_critical_fd) {
+        mce_log(LL_INFO, "PSI critical event timeout");
+        mempressure_psi_crit_timeout = 0;
+    } else {
+        mce_log(LL_CRIT, "unknown fd in timeout callback");
+    }
+
+EXIT:
+    return G_SOURCE_REMOVE;
+}
+
+/** Input watch callback for PSI events
  */
 static gboolean
 mempressure_psi_event_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
@@ -458,12 +482,22 @@ mempressure_psi_event_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
 
     int fd = *((int*)aptr);
 
-    if (fd == mempressure_psi_warning_fd) {
+    if (fd == mempressure_psi_warning_fd || fd == mempressure_psi_critical_fd) {
+        if (fd == mempressure_psi_warning_fd) {
+            mce_log(LL_INFO, "warning PSI event");
+            if (mempressure_psi_warn_timeout != 0) {
+                g_source_remove(mempressure_psi_warn_timeout);
+            }
+            mempressure_psi_warn_timeout = g_timeout_add(2000, mempressure_psi_timeout_cb, aptr);
+        } else {
+            assert(fd == mempressure_psi_critical_fd);
+            mce_log(LL_INFO, "critical PSI event");
+            if (mempressure_psi_crit_timeout != 0) {
+                g_source_remove(mempressure_psi_crit_timeout);
+            }
+            mempressure_psi_crit_timeout = g_timeout_add(2000, mempressure_psi_timeout_cb, aptr);
+        }
         ret = G_SOURCE_CONTINUE;
-        mce_log(LL_INFO, "warning PSI change");
-    } else if (fd == mempressure_psi_critical_fd) {
-        ret = G_SOURCE_CONTINUE;
-        mce_log(LL_INFO, "critical PSI change");
     } else {
         mce_log(LL_CRIT, "unknown fd in iowatch callback");
     }
@@ -490,13 +524,6 @@ static bool
 mempressure_psi_init(void)
 {
     bool res = false;
-
-    /* Get file descriptors */
-    mce_log(LL_DEBUG, "create eventfd");
-    if( (mempressure_psi_event_fd = eventfd(0, 0)) == -1 ) {
-        mce_log(LL_ERR, "create eventfd: %m");
-        goto EXIT;
-    }
 
     /* Get file descriptors */
     mce_log(LL_DEBUG, "open %s for warning threshold", PSI_MEMORY_PATH);
