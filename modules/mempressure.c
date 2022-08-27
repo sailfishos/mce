@@ -469,11 +469,11 @@ mempressure_psi_timeout_cb(gpointer user_data)
     }
 
     int fd = *((int*)user_data);
-    if (fd == mempressure_psi_warning_fd) {
-        mce_log(LL_INFO, "PSI warning event timeout");
+    if ( fd == mempressure_psi_warning_fd ) {
+        mce_log(LL_DEBUG, "PSI warning event timeout");
         mempressure_psi_warn_timeout = 0;
-    } else if (fd == mempressure_psi_critical_fd) {
-        mce_log(LL_INFO, "PSI critical event timeout");
+    } else if ( fd == mempressure_psi_critical_fd ) {
+        mce_log(LL_DEBUG, "PSI critical event timeout");
         mempressure_psi_crit_timeout = 0;
     } else {
         mce_log(LL_CRIT, "unknown fd in timeout callback");
@@ -513,14 +513,14 @@ mempressure_psi_event_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
     }
 
     if (fd == mempressure_psi_warning_fd) {
-        mce_log(LL_INFO, "warning PSI event");
+        mce_log(LL_DEBUG, "warning PSI event");
         if (mempressure_psi_warn_timeout != 0) {
             g_source_remove(mempressure_psi_warn_timeout);
         }
         mempressure_psi_warn_timeout = g_timeout_add(2000, mempressure_psi_timeout_cb, aptr);
     } else {
         assert(fd == mempressure_psi_critical_fd);
-        mce_log(LL_INFO, "critical PSI event");
+        mce_log(LL_DEBUG, "critical PSI event");
         if (mempressure_psi_crit_timeout != 0) {
             g_source_remove(mempressure_psi_crit_timeout);
         }
