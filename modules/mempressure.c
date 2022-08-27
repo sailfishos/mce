@@ -36,23 +36,7 @@
 #include <gmodule.h>
 #include <glib/gmain.h>
 
-// /* Paths to relevant cgroup data/control files */
-// #define CGROUP_MEMORY_DIRECTORY "/sys/fs/cgroup/memory"
-// #define CGROUP_DATA_PATH        CGROUP_MEMORY_DIRECTORY "/memory.usage_in_bytes"
-// #define CGROUP_CTRL_PATH        CGROUP_MEMORY_DIRECTORY "/cgroup.event_control"
-
 #define PSI_MEMORY_PATH "/proc/pressure/memory"
-
-/* ========================================================================= *
- * Types
- * ========================================================================= */
-
-/** Structure for holding for /dev/mempressure compatible limit data */
-// typedef struct
-// {
-//     /** Estimate of number of non-discardable RAM pages */
-//     gint        mnl_used;
-// } mempressure_limit_t;
 
 /* ========================================================================= *
  * Prototypes
@@ -62,29 +46,18 @@
  * UTILITY
  * ------------------------------------------------------------------------- */
 
-// static int      mempressure_bytes_to_pages(uint64_t bytes);
-// static uint64_t mempressure_pages_to_bytes(int pages);
 static guint    mempressure_iowatch_add   (int fd, bool close_on_unref, GIOCondition cnd, GIOFunc io_cb, gpointer aptr);
 static bool     mempressure_streq         (const char *s1, const char *s2);
 
 /* ------------------------------------------------------------------------- *
- * MEMPRESSURE_STATUS
+ * MEMPRESSURE_PSI
  * ------------------------------------------------------------------------- */
 
-// static memnotify_level_t mempressure_status_evaluate_level(void);
-// static bool              mempressure_status_update_level  (void);
-// static void              mempressure_status_show_triggers (void);
+static bool     mempressure_psi_is_available     (void);
+static gboolean mempressure_psi_event_cb         (GIOChannel *chn, GIOCondition cnd, gpointer aptr);
+static void     mempressure_psi_quit             (void);
+static bool     mempressure_psi_init             (void);
 
-/* ------------------------------------------------------------------------- *
- * MEMPRESSURE_CGROUP
- * ------------------------------------------------------------------------- */
-
-// static bool     mempressure_cgroup_is_available     (void);
-// static gboolean mempressure_cgroup_event_cb         (GIOChannel *chn, GIOCondition cnd, gpointer aptr);
-// static void     mempressure_cgroup_quit             (void);
-// static bool     mempressure_cgroup_init             (void);
-// static bool     mempressure_cgroup_update_status    (void);
-//
 
 /* ------------------------------------------------------------------------- *
  * MEMPRESSURE_SETTING
@@ -111,23 +84,6 @@ void         g_module_unload    (GModule *module);
 /* ========================================================================= *
  * UTILITY
  * ========================================================================= */
-
-// /* Convert kernel reported byte count to page count used in configuration
-//  */
-// static int mempressure_bytes_to_pages(uint64_t bytes)
-// {
-//     return (int)(bytes / PAGE_SIZE);
-// }
-//
-// /* Convert configuration page count to bytes for use in kernel interface
-//  */
-// static uint64_t mempressure_pages_to_bytes(int pages)
-// {
-//     if( pages < 0 )
-//         pages = 0;
-//     return PAGE_SIZE * (uint64_t)pages;
-// }
-//
 
 /** Add a glib I/O notification for a file descriptor
  */
@@ -169,62 +125,6 @@ static bool mempressure_streq(const char *s1, const char *s2)
 }
 
 /* ========================================================================= *
- * MEMPRESSURE_LIMIT
- * ========================================================================= */
-
-// /** Reset limit object values
-//  */
-// static void
-// mempressure_limit_clear(mempressure_limit_t *self)
-// {
-//     self->mnl_used = 0;
-// }
-//
-// /** Limit validity predicate
-//  */
-// static bool
-// mempressure_limit_is_valid(const mempressure_limit_t *self)
-// {
-//     return self->mnl_used > 0;
-// }
-//
-// /** Convert limit object values to /dev/mempressure compatible ascii form
-//  */
-// static int
-// mempressure_limit_repr(const mempressure_limit_t *self, char *data, size_t size)
-// {
-//     int res = snprintf(data, size, "used %d", self->mnl_used);
-//     return res;
-// }
-//
-// /** Parse limit object from /sys/fs/cgroup/memory/memory.usage_in_bytes format
-//  */
-// static bool
-// mempressure_limit_parse(mempressure_limit_t *self, const char *data)
-// {
-//     char     *end = 0;
-//     uint64_t  val = strtoull(data, &end, 10);
-//     bool      res = end > data && *end == 0;
-//
-//     if( !res )
-//         mce_log(LL_ERR, "parse error: '%s' is not a number", data);
-//     else
-//         self->mnl_used = mempressure_bytes_to_pages(val);
-//
-//     return res;
-// }
-//
-// /** Check if limit object values are exceeded by given state data
-//  */
-// static bool
-// mempressure_limit_exceeded(const mempressure_limit_t *self,
-//                            const mempressure_limit_t *status)
-// {
-//     return (mempressure_limit_is_valid(self) &&
-//             self->mnl_used <= status->mnl_used);
-// }
-
-/* ========================================================================= *
  * MEMPRESSURE_STATUS
  * ========================================================================= */
 
@@ -238,44 +138,9 @@ static char* mempressure_critical_type = NULL;
 /** Cached memory use level */
 static memnotify_level_t mempressure_level = MEMNOTIFY_LEVEL_UNKNOWN;
 
-/** Re-evaluate memory use level and broadcast changes via datapipe
- */
-// static bool
-// mempressure_status_update_level(void)
-// {
-//     memnotify_level_t prev = mempressure_level;
-//     mempressure_level = mempressure_status_evaluate_level();
-//
-//     if( mempressure_level == prev )
-//         goto EXIT;
-//
-//     mce_log(LL_WARN, "mempressure_level: %s -> %s",
-//             memnotify_level_repr(prev),
-//             memnotify_level_repr(mempressure_level));
-//
-//     datapipe_exec_full(&memnotify_level_pipe,
-//                        GINT_TO_POINTER(mempressure_level));
-//
-// EXIT:
-//
-//     return mempressure_level != MEMNOTIFY_LEVEL_UNKNOWN;
-// }
-
 /* ========================================================================= *
- * MEMPRESSURE_CGROUP
+ * MEMPRESSURE_PSI
  * ========================================================================= */
-
-/** File descriptor for CGROUP_DATA_PATH */
-// static int   mempressure_cgroup_data_fd  = -1;
-
-/** File descriptor for CGROUP_CTRL_PATH */
-// static int   mempressure_cgroup_ctrl_fd  = -1;
-
-/** Eventfd for receiving notifications about threshold crossings */
-// static int   mempressure_cgroup_event_fd = -1;
-
-/** I/O watch for mempressure_cgroup_event_fd */
-// static guint mempressure_cgroup_event_id = 0;
 
 /** Probe if the required PSI sysfs files are present
  */
@@ -284,96 +149,6 @@ mempressure_psi_is_available(void)
 {
     return access(PSI_MEMORY_PATH, R_OK) == 0;
 }
-
-/** Input watch callback for cgroup memory threshold crossings
- */
-// static gboolean
-// mempressure_cgroup_event_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
-// {
-//     (void) chn;
-//     (void) aptr;
-//
-//     gboolean ret = G_SOURCE_REMOVE;
-//
-//     if( !mempressure_cgroup_event_id )
-//         goto EXIT;
-//
-//     if( mempressure_cgroup_event_fd == -1 )
-//         goto EXIT;
-//
-//     if( mempressure_cgroup_data_fd == -1 )
-//         goto EXIT;
-//
-//     mce_log(LL_DEBUG, "eventfd iowatch notify");
-//
-//     if( cnd & ~G_IO_IN ) {
-//         mce_log(LL_ERR, "unexpected input watch condition");
-//         goto EXIT;
-//     }
-//
-//     uint64_t count = 0;
-//     ssize_t rc = read(mempressure_cgroup_event_fd, &count, sizeof count);
-//
-//     if( rc == 0 ) {
-//         mce_log(LL_ERR, "eventfd eof");
-//         goto EXIT;
-//     }
-//
-//     if( rc == -1 ) {
-//         if( errno == EINTR || errno == EAGAIN )
-//             ret = G_SOURCE_CONTINUE;
-//         else
-//             mce_log(LL_ERR, "eventfd error: %m");
-//         goto EXIT;
-//     }
-//
-//     if( mempressure_cgroup_update_status() )
-//         ret = G_SOURCE_CONTINUE;
-//
-//     /* Update level anyway -> if we disable iowatch due to
-//      * read/parse errors, the level gets reset to 'unknown'.
-//      */
-//     mempressure_status_update_level();
-//
-// EXIT:
-//
-//     if( ret == G_SOURCE_REMOVE && mempressure_cgroup_event_id ) {
-//         mempressure_cgroup_event_id = 0;
-//         mce_log(LL_CRIT, "disabling eventfd iowatch");
-//     }
-//
-//     return ret;
-// }
-//
-// /** Stop cgroup memory tracking
-//  */
-// static void
-// mempressure_cgroup_quit(void)
-// {
-//     if( mempressure_cgroup_event_id ) {
-//         mce_log(LL_DEBUG, "remove eventfd iowatch");
-//         g_source_remove(mempressure_cgroup_event_id),
-//             mempressure_cgroup_event_id = 0;
-//     }
-//
-//     if( mempressure_cgroup_event_fd != -1 ) {
-//         mce_log(LL_DEBUG, "close eventfd");
-//         close(mempressure_cgroup_event_fd),
-//             mempressure_cgroup_event_fd = -1;
-//     }
-//
-//     if( mempressure_cgroup_ctrl_fd != -1 ) {
-//         mce_log(LL_DEBUG, "close %s", CGROUP_CTRL_PATH);
-//         close(mempressure_cgroup_ctrl_fd),
-//             mempressure_cgroup_ctrl_fd = -1;
-//     }
-//
-//     if( mempressure_cgroup_data_fd != -1 ) {
-//         mce_log(LL_DEBUG, "close %s", CGROUP_DATA_PATH);
-//         close(mempressure_cgroup_data_fd),
-//             mempressure_cgroup_data_fd = -1;
-//     }
-// }
 
 static int   mempressure_psi_warning_fd = -1;
 static int   mempressure_psi_critical_fd = -1;
