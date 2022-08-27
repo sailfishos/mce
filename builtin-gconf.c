@@ -43,6 +43,7 @@
 #include "event-input.h"
 
 #include "modules/memnotify.h"
+#include "modules/mempressure.h"
 #include "modules/display.h"
 #include "modules/proximity.h"
 #include "modules/powersavemode.h"
@@ -1872,6 +1873,31 @@ static const setting_t gconf_defaults[] =
     .key = MCE_SETTING_MEMNOTIFY_CRITICAL_ACTIVE,
     .type = "i",
     .def  = G_STRINGIFY(MCE_DEFAULT_MEMNOTIFY_CRITICAL_ACTIVE)
+  },
+  {
+    .key = MCE_SETTING_MEMPRESSURE_WINDOW,
+    .type = "i",
+    .def  = G_STRINGIFY(MCE_DEFAULT_MEMPRESSURE_WINDOW)
+  },
+  {
+    .key = MCE_SETTING_MEMPRESSURE_WARNING_STALL,
+    .type = "i",
+    .def  = G_STRINGIFY(MCE_DEFAULT_MEMPRESSURE_WARNING_STALL)
+  },
+  {
+    .key = MCE_SETTING_MEMPRESSURE_WARNING_TYPE,
+    .type = "s",
+    .def  = MCE_DEFAULT_MEMPRESSURE_WARNING_TYPE
+  },
+  {
+    .key = MCE_SETTING_MEMPRESSURE_CRITICAL_STALL,
+    .type = "i",
+    .def  = G_STRINGIFY(MCE_DEFAULT_MEMPRESSURE_CRITICAL_STALL)
+  },
+  {
+    .key = MCE_SETTING_MEMPRESSURE_CRITICAL_TYPE,
+    .type = "s",
+    .def  = MCE_DEFAULT_MEMPRESSURE_CRITICAL_TYPE
   },
   {
     .key  = MCE_SETTING_TK_EXCEPT_LEN_CALL_IN,
