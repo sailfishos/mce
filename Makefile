@@ -161,6 +161,7 @@ MODULES += $(MODULE_DIR)/charging.so
 MODULES += $(MODULE_DIR)/alarm.so
 MODULES += $(MODULE_DIR)/memnotify.so
 MODULES += $(MODULE_DIR)/mempressure.so
+MODULES += $(MODULE_DIR)/mempressure-psi.so
 MODULES += $(MODULE_DIR)/battery-bme.so
 MODULES += $(MODULE_DIR)/battery-upower.so
 MODULES += $(MODULE_DIR)/bluetooth.so
@@ -642,6 +643,8 @@ NORMALIZE_USES_SPC =\
 	modules/memnotify.c\
 	modules/memnotify.h\
 	modules/mempressure.c\
+	modules/mempressure-psi.c\
+	modules/mempressure-psi.h\
 	modules/packagekit.c\
 	modules/powersavemode.h\
 	modules/proximity.c\
