@@ -31,6 +31,7 @@
 #include <inttypes.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <assert.h>
 
 #include <gmodule.h>
 
@@ -427,6 +428,134 @@ mempressure_cgroup_quit(void)
     }
 }
 
+/** Eventfd for receiving notifications PSI memory changes */
+static int   mempressure_psi_event_fd = -1;
+static int   mempressure_psi_warning_fd = -1;
+static int   mempressure_psi_critical_fd = -1;
+static guint mempressure_psi_warn_event_id = 0;
+static guint mempressure_psi_crit_event_id = 0;
+
+#define PSI_MEMORY_PATH "/proc/pressure/memory"
+
+/** Input watch callback for cgroup memory threshold crossings
+ */
+static gboolean
+mempressure_psi_event_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
+{
+    (void)chn;
+    (void)aptr;
+
+    gboolean ret = G_SOURCE_REMOVE;
+
+    if( cnd & ~G_IO_PRI ) {
+        mce_log(LL_ERR, "unexpected input watch condition");
+        goto EXIT;
+    }
+    if( aptr == NULL ) {
+        mce_log(LL_ERR, "null watch argument");
+        goto EXIT;
+    }
+
+    int fd = *((int*)aptr);
+
+    if (fd == mempressure_psi_warning_fd) {
+        ret = G_SOURCE_CONTINUE;
+        mce_log(LL_INFO, "warning PSI change");
+    } else if (fd == mempressure_psi_critical_fd) {
+        ret = G_SOURCE_CONTINUE;
+        mce_log(LL_INFO, "critical PSI change");
+    } else {
+        mce_log(LL_CRIT, "unknown fd in iowatch callback");
+    }
+
+EXIT:
+
+    if( ret == G_SOURCE_REMOVE &&
+        (mempressure_psi_warn_event_id || mempressure_psi_crit_event_id) ){
+        mempressure_psi_warn_event_id = 0;
+        mempressure_psi_crit_event_id = 0;
+        mce_log(LL_CRIT, "disabling eventfd iowatch");
+    }
+
+    return ret;
+}
+
+static void
+mempressure_psi_quit(void)
+{
+  // TODO
+}
+
+static bool
+mempressure_psi_init(void)
+{
+    bool res = false;
+
+    /* Get file descriptors */
+    mce_log(LL_DEBUG, "create eventfd");
+    if( (mempressure_psi_event_fd = eventfd(0, 0)) == -1 ) {
+        mce_log(LL_ERR, "create eventfd: %m");
+        goto EXIT;
+    }
+
+    /* Get file descriptors */
+    mce_log(LL_DEBUG, "open %s for warning threshold", PSI_MEMORY_PATH);
+    if( (mempressure_psi_warning_fd = open(PSI_MEMORY_PATH, O_RDWR | O_NONBLOCK)) == -1 ) {
+        mce_log(LL_ERR, "%s: open: %m", PSI_MEMORY_PATH);
+        goto EXIT;
+    }
+
+    mce_log(LL_DEBUG, "open %s for critical threshold", PSI_MEMORY_PATH);
+    if( (mempressure_psi_critical_fd = open(PSI_MEMORY_PATH, O_RDWR | O_NONBLOCK)) == -1 ) {
+        mce_log(LL_ERR, "%s: open: %m", PSI_MEMORY_PATH);
+        goto EXIT;
+    }
+
+    // setup thresholds
+    // TODO: configurable
+    const char warning_threshold[] = "some 100000 1000000"; // 100 ms stall (some process) in one-second window
+    const char critical_threshold[] = "full 150000 1000000"; // 150 ms stall (all processes) in one-second window
+
+    if (write(mempressure_psi_warning_fd, warning_threshold, strlen(warning_threshold) + 1) < 0) {
+        mce_log(LL_ERR, "%s: write: %m", PSI_MEMORY_PATH);
+        goto EXIT;
+    }
+
+    if (write(mempressure_psi_critical_fd, critical_threshold, strlen(critical_threshold) + 1) < 0) {
+        mce_log(LL_ERR, "%s: write: %m", PSI_MEMORY_PATH);
+        goto EXIT;
+    }
+
+    /* Setup notification iowatch */
+    mce_log(LL_DEBUG, "add warning fd iowatch");
+    mempressure_psi_warn_event_id =
+    mempressure_iowatch_add(mempressure_psi_warning_fd, false, G_IO_PRI,
+                            mempressure_psi_event_cb, &mempressure_psi_warning_fd);
+    if( !mempressure_psi_warn_event_id ) {
+        mce_log(LL_ERR, "failed to add warning fd iowatch");
+        goto EXIT;
+    }
+
+    mce_log(LL_DEBUG, "add critical fd iowatch");
+    mempressure_psi_crit_event_id =
+    mempressure_iowatch_add(mempressure_psi_critical_fd, false, G_IO_PRI,
+                            mempressure_psi_event_cb, &mempressure_psi_critical_fd);
+    if( !mempressure_psi_crit_event_id ) {
+        mce_log(LL_ERR, "failed to add critical fd iowatch");
+        goto EXIT;
+    }
+
+    res = true;
+
+EXIT:
+
+    // all or nothing
+    if( !res )
+        mempressure_psi_quit();
+
+    return res;
+}
+
 /** Start cgroup memory tracking
  */
 static bool
@@ -686,6 +815,9 @@ mempressure_plugin_init(void)
     mempressure_setting_init();
 
     if( !mempressure_cgroup_init() )
+        goto EXIT;
+
+    if ( !mempressure_psi_init() )
         goto EXIT;
 
     success = true;
