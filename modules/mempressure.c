@@ -438,6 +438,28 @@ static guint mempressure_psi_crit_timeout = 0;
 
 #define PSI_MEMORY_PATH "/proc/pressure/memory"
 
+static void
+mempressure_psi_update_level(void)
+{
+    memnotify_level_t prev = mempressure_level;
+
+    if ( mempressure_psi_crit_timeout != 0 ) {
+        mempressure_level = MEMNOTIFY_LEVEL_CRITICAL;
+    } else if ( mempressure_psi_warn_timeout != 0 ) {
+        mempressure_level = MEMNOTIFY_LEVEL_WARNING;
+    } else {
+        mempressure_level = MEMNOTIFY_LEVEL_NORMAL;
+    }
+    if ( prev != mempressure_level ) {
+        mce_log(LL_WARN, "mempressure_level: %s -> %s",
+                memnotify_level_repr(prev),
+                memnotify_level_repr(mempressure_level));
+
+        datapipe_exec_full(&memnotify_level_pipe,
+                           GINT_TO_POINTER(mempressure_level));
+    }
+}
+
 static gboolean
 mempressure_psi_timeout_cb(gpointer user_data)
 {
@@ -455,7 +477,10 @@ mempressure_psi_timeout_cb(gpointer user_data)
         mempressure_psi_crit_timeout = 0;
     } else {
         mce_log(LL_CRIT, "unknown fd in timeout callback");
+        goto EXIT;
     }
+
+    mempressure_psi_update_level();
 
 EXIT:
     return G_SOURCE_REMOVE;
@@ -482,25 +507,27 @@ mempressure_psi_event_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
 
     int fd = *((int*)aptr);
 
-    if (fd == mempressure_psi_warning_fd || fd == mempressure_psi_critical_fd) {
-        if (fd == mempressure_psi_warning_fd) {
-            mce_log(LL_INFO, "warning PSI event");
-            if (mempressure_psi_warn_timeout != 0) {
-                g_source_remove(mempressure_psi_warn_timeout);
-            }
-            mempressure_psi_warn_timeout = g_timeout_add(2000, mempressure_psi_timeout_cb, aptr);
-        } else {
-            assert(fd == mempressure_psi_critical_fd);
-            mce_log(LL_INFO, "critical PSI event");
-            if (mempressure_psi_crit_timeout != 0) {
-                g_source_remove(mempressure_psi_crit_timeout);
-            }
-            mempressure_psi_crit_timeout = g_timeout_add(2000, mempressure_psi_timeout_cb, aptr);
-        }
-        ret = G_SOURCE_CONTINUE;
-    } else {
+    if (fd != mempressure_psi_warning_fd && fd != mempressure_psi_critical_fd) {
         mce_log(LL_CRIT, "unknown fd in iowatch callback");
+        goto EXIT;
     }
+
+    if (fd == mempressure_psi_warning_fd) {
+        mce_log(LL_INFO, "warning PSI event");
+        if (mempressure_psi_warn_timeout != 0) {
+            g_source_remove(mempressure_psi_warn_timeout);
+        }
+        mempressure_psi_warn_timeout = g_timeout_add(2000, mempressure_psi_timeout_cb, aptr);
+    } else {
+        assert(fd == mempressure_psi_critical_fd);
+        mce_log(LL_INFO, "critical PSI event");
+        if (mempressure_psi_crit_timeout != 0) {
+            g_source_remove(mempressure_psi_crit_timeout);
+        }
+        mempressure_psi_crit_timeout = g_timeout_add(2000, mempressure_psi_timeout_cb, aptr);
+    }
+    mempressure_psi_update_level();
+    ret = G_SOURCE_CONTINUE;
 
 EXIT:
 
@@ -573,6 +600,7 @@ mempressure_psi_init(void)
     }
 
     res = true;
+    mempressure_level = MEMNOTIFY_LEVEL_NORMAL;
 
 EXIT:
 
