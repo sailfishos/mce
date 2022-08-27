@@ -544,7 +544,34 @@ EXIT:
 static void
 mempressure_psi_quit(void)
 {
-  // TODO
+    if ( mempressure_psi_warn_timeout != 0 ) {
+        g_source_remove(mempressure_psi_warn_timeout);
+    }
+    if ( mempressure_psi_crit_timeout != 0 ) {
+        g_source_remove(mempressure_psi_crit_timeout);
+    }
+    if( mempressure_psi_warn_event_id ) {
+        mce_log(LL_DEBUG, "remove warnong eventfd iowatch");
+        g_source_remove(mempressure_psi_warn_event_id),
+            mempressure_psi_warn_event_id = 0;
+    }
+    if( mempressure_psi_crit_event_id ) {
+        mce_log(LL_DEBUG, "remove critical eventfd iowatch");
+        g_source_remove(mempressure_psi_crit_event_id),
+            mempressure_psi_crit_event_id = 0;
+    }
+    if ( mempressure_psi_warning_fd ) {
+        if ( close( mempressure_psi_warning_fd ) < 0) {
+            mce_log(LL_ERR, "close failed");
+        }
+        mempressure_psi_warning_fd = 0;
+    }
+    if ( mempressure_psi_critical_fd ) {
+        if ( close( mempressure_psi_critical_fd ) < 0) {
+            mce_log(LL_ERR, "close failed");
+        }
+        mempressure_psi_critical_fd = 0;
+    }
 }
 
 static bool
