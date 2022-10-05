@@ -2,7 +2,7 @@
  * @file battery-udev.c
  * Battery module -- this implements battery and charger logic for MCE
  * <p>
- * Copyright (c) 2018 - 2020 Jolla Ltd.
+ * Copyright (c) 2018 - 2022 Jolla Ltd.
  * Copyright (c) 2019 - 2020 Open Mobile Platform LLC.
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>

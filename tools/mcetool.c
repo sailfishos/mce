@@ -161,6 +161,8 @@ static bool          xmce_set_charging_disable_limit                   (const ch
 static void          xmce_get_charging_disable_limit                   (void);
 static bool          xmce_set_charging_mode                            (const char *args);
 static void          xmce_get_charging_mode                            (void);
+static bool          xmce_set_forced_charging_mode                     (const char *args);
+static void          xmce_get_forced_charging_mode                     (void);
 static void          xmce_get_battery_info                             (void);
 static void          xmce_parse_notification_args                      (const char *args, char **title, dbus_int32_t *delay, dbus_int32_t *renew);
 static bool          xmce_notification_begin                           (const char *args);
@@ -2046,6 +2048,8 @@ static const symbol_t enabled_lut[] =
 {
         { "enabled",   TRUE  },
         { "disabled",  FALSE },
+        { "enable",    TRUE  },
+        { "disable",   FALSE },
         { 0,           -1    }
 };
 
@@ -2904,6 +2908,35 @@ static void xmce_get_charging_mode(void)
         printf("%-"PAD1"s %s\n", "Charging mode:", txt ?: "unknown");
 }
 
+static bool xmce_set_forced_charging_mode(const char *args)
+{
+        static const char * const lut[] = {
+                MCE_FORCED_CHARGING_ENABLED,
+                MCE_FORCED_CHARGING_DISABLED,
+                NULL
+        };
+        for( size_t i = 0; ; ++i ) {
+                if( lut[i] == NULL ) {
+                        errorf("%s: invalid charging override value\n", args);
+                        exit(EXIT_FAILURE);
+                }
+                if( !strcmp(lut[i], args) )
+                        break;
+        }
+        xmce_ipc_no_reply(MCE_FORCED_CHARGING_REQ,
+                          DBUS_TYPE_STRING, &args,
+                          DBUS_TYPE_INVALID);
+        return true;
+}
+
+static void xmce_get_forced_charging_mode(void)
+{
+        char *str = 0;
+        xmce_ipc_string_reply(MCE_FORCED_CHARGING_GET, &str, DBUS_TYPE_INVALID);
+        printf("%-"PAD1"s %s\n","Charging override:", str ?: "unknown");
+        free(str);
+}
+
 static void xmce_get_battery_info(void)
 {
         xmce_get_cable_state();
@@ -2912,6 +2945,7 @@ static void xmce_get_battery_info(void)
         xmce_get_battery_status();
         xmce_get_battery_state();
         xmce_get_charging_mode();
+        xmce_get_forced_charging_mode();
         xmce_get_charging_enable_limit();
         xmce_get_charging_disable_limit();
 }
@@ -8146,6 +8180,21 @@ static const mce_opt_t options[] =
                         "                     and enabled when level drops to enable limit\n"
                         "  apply-thresholds-after-full - charging is enabled until battery full is\n"
                         "                     reached, then as with apply-thresholds\n"
+        },
+        {
+                .name        = "set-forced-charging",
+                .with_arg    = xmce_set_forced_charging_mode,
+                .values      = ""
+                        MCE_FORCED_CHARGING_ENABLED
+                        "|" MCE_FORCED_CHARGING_DISABLED,
+                .usage       =
+                        "Set charging mode override\n"
+                        "\n"
+                        "Valid modes are:\n"
+                        "  enabled          - charging mode is ignored and battery is charged\n"
+                        "  disabled         - battery is charged according to charging mode\n"
+                        "\n"
+                        "Automatically disabled when battery gets full or charger is disconnected.\n"
         },
         {
                 .name        = "set-charging-enable-limit",
