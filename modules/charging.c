@@ -348,6 +348,8 @@ mch_policy_set_charging_state(charging_state_t charging_state)
                     mch_charging_state == CHARGING_STATE_DISABLED ?
                     mch_control_disable_value :
                     mch_control_enable_value);
+
+    mch_dbus_send_charging_state(0);
 EXIT:
     return;
 }
