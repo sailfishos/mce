@@ -59,7 +59,7 @@
 
 /** Battery level at which to enable charging */
 # define MCE_SETTING_CHARGING_LIMIT_ENABLE      MCE_SETTING_CHARGING_PATH "/limit_enable"
-# define MCE_DEFAULT_CHARGING_LIMIT_ENABLE      70
+# define MCE_DEFAULT_CHARGING_LIMIT_ENABLE      (MCE_DEFAULT_CHARGING_LIMIT_DISABLE - 3)
 
 /* ========================================================================= *
  * Types
