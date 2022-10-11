@@ -1,3 +1,9 @@
+mce (1.111.1) precise; urgency=low
+
+  * [charging] Broadcast charging control state changes. JB#58812
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Tue, 11 Oct 2022 09:26:36 +0300
+
 mce (1.111.0) precise; urgency=low
 
   * [charging] Auto-detect charging hysteresis controls. Fixes JB#57297
