@@ -541,8 +541,9 @@ mcebat_dbus_evaluate_battery_status(void)
     if( mcebat_simulated.charger_state == CHARGER_STATE_ON ) {
         mcebat_simulated.battery_state  = BATTERY_STATE_CHARGING;
 
-        if( mcebat_simulated.battery_level >= 100 ) {
+        if( mcebat_simulated.battery_level > 100 ) {
             /* Battery full reached */
+            mcebat_simulated.battery_level  = 100;
             mcebat_simulated.battery_status = BATTERY_STATUS_FULL;
             mcebat_simulated.battery_state  = BATTERY_STATE_FULL;
             goto EXIT;

@@ -2780,9 +2780,13 @@ static bool mcetool_do_set_charger_state(const char *arg)
 static bool mcetool_do_set_battery_level(const char *arg)
 {
         int level = xmce_parse_integer(arg);
-        if( level < -1 || level > 100 ) {
-                errorf("%s: invalid battery level\n", arg);
-                return false;
+        if( level < 0 ) {
+                /* Battery simulation takes this as: unknown */
+                level = -1;
+        }
+        else if( level > 100 ) {
+                /* Battery simulation takes this as: 100% + Full */
+                level = 101;
         }
         return xmce_set_battery_level(level);
 }
@@ -8119,6 +8123,9 @@ static const mce_opt_t options[] =
                 .values      = "percent",
                 .usage       =
                         "Override battery level for debugging purposes\n"
+                        "\n"
+                        "values < 0 signify: unknown level\n"
+                        "values > 100 signify: 100% + battery full\n"
         },
 #endif // ENABLE_BATTERY_SIMULATION
         {
