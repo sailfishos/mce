@@ -1,3 +1,12 @@
+mce (1.112.0) precise; urgency=low
+
+  * [battery-udev] Simulated battery differentiates between 100% and full
+  * [charging] Refactor setting charging limits
+  * [charging] Align default charging hysteresis with settings. JB#58372
+  * [charging] Add charge-once-to-full override. JB#58372
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Tue, 18 Oct 2022 11:08:21 +0300
+
 mce (1.111.1) precise; urgency=low
 
   * [charging] Broadcast charging control state changes. JB#58812
