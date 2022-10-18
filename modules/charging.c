@@ -58,8 +58,29 @@
 #define MCH_MINIMUM_BATTERY_LEVEL       5
 
 /* ========================================================================= *
+ * Types
+ * ========================================================================= */
+
+/** Charging mode override */
+typedef enum {
+    /** Transient / placeholder value */
+    FORCED_CHARGING_UNKNOWN,
+    /** Charging mode is ignored and battery is charged until full */
+    FORCED_CHARGING_ENABLED,
+    /** Battery is charged according to charging mode settings */
+    FORCED_CHARGING_DISABLED,
+} forced_charging_t;
+
+/* ========================================================================= *
  * Prototypes
  * ========================================================================= */
+
+/* ------------------------------------------------------------------------- *
+ * FORCED_CHARGING
+ * ------------------------------------------------------------------------- */
+
+const char        *forced_charging_repr (forced_charging_t value);
+forced_charging_t  forced_charging_parse(const char *repr);
 
 /* ------------------------------------------------------------------------- *
  * CHARGING_MODE
@@ -93,6 +114,10 @@ static void mch_policy_set_battery_full       (bool battery_full);
 static void mch_policy_set_charging_state     (charging_state_t charging_state);
 static void mch_policy_evaluate_charging_state(void);
 static void mch_policy_set_charging_mode      (charging_mode_t charging_mode);
+static void mch_policy_set_limit_disable      (int limit_disable);
+static void mch_policy_set_limit_enable       (int limit_enable);
+static void mch_policy_set_forced_charging_ex (forced_charging_t forced_charging, bool evaluate_state);
+static void mch_policy_set_forced_charging    (forced_charging_t forced_charging);
 
 /* ------------------------------------------------------------------------- *
  * MCH_SETTINGS
@@ -124,11 +149,14 @@ static void mch_datapipe_quit              (void);
  * MCH_DBUS
  * ------------------------------------------------------------------------- */
 
-static void     mch_dbus_send_charging_state  (DBusMessage *const req);
-static gboolean mch_dbus_get_charging_state_cb(DBusMessage *const req);
-static gboolean mch_dbus_initial_cb           (gpointer aptr);
-static void     mch_dbus_init                 (void);
-static void     mch_dbus_quit                 (void);
+static void     mch_dbus_send_charging_state         (DBusMessage *const req);
+static gboolean mch_dbus_get_charging_state_cb       (DBusMessage *const req);
+static void     mch_dbus_send_forced_charging_state  (DBusMessage *const req);
+static gboolean mch_dbus_get_forced_charging_state_cb(DBusMessage *const req);
+static gboolean mch_dbus_set_forced_charging_state_cb(DBusMessage *const req);
+static gboolean mch_dbus_initial_cb                  (gpointer aptr);
+static void     mch_dbus_init                        (void);
+static void     mch_dbus_quit                        (void);
 
 /* ------------------------------------------------------------------------- *
  * G_MODULE
@@ -177,8 +205,11 @@ static battery_status_t battery_status = BATTERY_STATUS_UNDEF;
 static gint battery_level = MCE_BATTERY_LEVEL_UNKNOWN;
 
 /** Policy setting: When to disable/enable charging */
-static charging_mode_t mch_charging_mode = CHARGING_MODE_ENABLE;
+static charging_mode_t mch_charging_mode = MCE_DEFAULT_CHARGING_MODE;
 static guint mch_charging_mode_id = 0;
+
+/** Whether to override charging mode policy settings */
+static forced_charging_t mch_forced_charging = FORCED_CHARGING_DISABLED;
 
 /** Policy decision: Whether charging is disabled/enabled */
 static charging_state_t mch_charging_state = CHARGING_STATE_UNKNOWN;
@@ -202,6 +233,47 @@ static gchar *mch_control_enable_value = 0;
 
 /** Value to write when disabling charging */
 static gchar *mch_control_disable_value = 0;
+
+/* ========================================================================= *
+ * FORCED_CHARGING
+ * ========================================================================= */
+
+/** Convert forced_charging_t enum values to human readable string
+ *
+ * @param value  forced_charging_t enumeration value
+ *
+ * @return human readable representation of enumeration value
+ */
+const char *
+forced_charging_repr(forced_charging_t value)
+{
+    const char *repr = MCE_FORCED_CHARGING_UNKNOWN;
+    switch( value ) {
+    case FORCED_CHARGING_ENABLED:  repr = MCE_FORCED_CHARGING_ENABLED;  break;
+    case FORCED_CHARGING_DISABLED: repr = MCE_FORCED_CHARGING_DISABLED; break;
+    default: break;
+    }
+    return repr;
+}
+
+/** Convert human readable string to forced_charging_t enum value
+ *
+ * @param repr  human readable forced charging mode
+ *
+ * @return forced_charging_t enum value, or FORCED_CHARGING_UNKNOWN
+ */
+forced_charging_t
+forced_charging_parse(const char *repr)
+{
+    forced_charging_t value = FORCED_CHARGING_UNKNOWN;
+    if( !g_strcmp0(repr, MCE_FORCED_CHARGING_ENABLED) )
+        value = FORCED_CHARGING_ENABLED;
+    else if( !g_strcmp0(repr, MCE_FORCED_CHARGING_DISABLED) )
+        value = FORCED_CHARGING_DISABLED;
+    else if( g_strcmp0(repr, MCE_FORCED_CHARGING_UNKNOWN) )
+        mce_log(LL_WARN, "invalid forced_charging value '%s'", repr ?: "<null>");
+    return value;
+}
 
 /* ========================================================================= *
  * CHARGING_MODE
@@ -367,11 +439,11 @@ mch_policy_evaluate_charging_state(void)
         limit_disable = 100;
 
     if( usb_cable_state == USB_CABLE_DISCONNECTED ) {
+        /* Clear battery full seen on disconnect */
+        mch_policy_set_battery_full(false);
+
         switch( mch_charging_mode ) {
         default:
-            /* Clear battery full seen */
-            mch_policy_set_battery_full(false);
-
             /* Return to defaults */
             charging_state = CHARGING_STATE_ENABLED;
             break;
@@ -383,8 +455,15 @@ mch_policy_evaluate_charging_state(void)
         }
     }
     else {
-        /* Remember if battery full has been observed */
-        if( battery_status == BATTERY_STATUS_FULL )
+        /* Remember if battery full has been observed since:
+         * charger was disconnected, charging mode was changed,
+         * or forced charging was enabled.
+         *
+         * Note that for the purposes of this module reaching 100%
+         * battery capacity is enough and there is no need to wait
+         * for kernel to explictly declare battery fully charged.
+         */
+        if( battery_status == BATTERY_STATUS_FULL || battery_level >= 100 )
             mch_policy_set_battery_full(true);
 
         /* Evaluate based on active mode */
@@ -421,6 +500,17 @@ mch_policy_evaluate_charging_state(void)
         }
     }
 
+    /* Handle "charge once to full" override */
+    if( mch_forced_charging != FORCED_CHARGING_DISABLED ) {
+        /* Automatically disable on charger disconnect / battery full */
+        if( usb_cable_state == USB_CABLE_DISCONNECTED ||  mch_battery_full )
+            mch_policy_set_forced_charging_ex(FORCED_CHARGING_DISABLED, false);
+
+        /* If enabled, override policy decision made above */
+        if( mch_forced_charging == FORCED_CHARGING_ENABLED )
+            charging_state = CHARGING_STATE_ENABLED;
+    }
+
     /* In any case, do not allow battery to get too empty */
     if( battery_level < MCH_MINIMUM_BATTERY_LEVEL )
             charging_state = CHARGING_STATE_ENABLED;
@@ -440,10 +530,82 @@ static void mch_policy_set_charging_mode(charging_mode_t charging_mode)
 
     mch_charging_mode = charging_mode;
 
+    /* Clear battery-full-seen on mode change */
+    mch_policy_set_battery_full(false);
+
+    /* Clear forced charging on mode change */
+    mch_policy_set_forced_charging_ex(FORCED_CHARGING_DISABLED, false);
+
     mch_policy_evaluate_charging_state();
 
 EXIT:
     return;
+}
+
+static void mch_policy_set_limit_disable(int limit_disable)
+{
+    if( mch_limit_disable == limit_disable )
+        goto EXIT;
+
+    mce_log(LL_CRUCIAL, "mch_limit_disable: %d -> %d",
+            mch_limit_disable,
+            limit_disable);
+
+    mch_limit_disable = limit_disable;
+
+    mch_policy_evaluate_charging_state();
+
+EXIT:
+    return;
+}
+
+static void mch_policy_set_limit_enable(int limit_enable)
+{
+    if( mch_limit_enable == limit_enable )
+        goto EXIT;
+
+    mce_log(LL_CRUCIAL, "mch_limit_enable: %d -> %d",
+            mch_limit_enable,
+            limit_enable);
+
+    mch_limit_enable = limit_enable;
+
+    mch_policy_evaluate_charging_state();
+
+EXIT:
+    return;
+}
+
+static void
+mch_policy_set_forced_charging_ex(forced_charging_t forced_charging,
+                                  bool evaluate_state)
+{
+    if( mch_forced_charging == forced_charging )
+        goto EXIT;
+
+    mce_log(LL_CRUCIAL, "mch_forced_charging: %s -> %s",
+            forced_charging_repr(mch_forced_charging),
+            forced_charging_repr(forced_charging));
+
+    mch_forced_charging = forced_charging;
+
+    /* Clear battery-full-seen on forced-charging enable */
+    if( mch_forced_charging == FORCED_CHARGING_ENABLED )
+        mch_policy_set_battery_full(false);
+
+    mch_dbus_send_forced_charging_state(0);
+
+    if( evaluate_state )
+        mch_policy_evaluate_charging_state();
+
+EXIT:
+    return;
+}
+
+static void
+mch_policy_set_forced_charging(forced_charging_t forced_charging)
+{
+    mch_policy_set_forced_charging_ex(forced_charging, true);
 }
 
 /* ========================================================================= *
@@ -469,16 +631,10 @@ mch_settings_cb(GConfClient *const gcc, const guint id,
         mch_policy_set_charging_mode(gconf_value_get_int(gcv));
     }
     else if( id == mch_limit_disable_id ) {
-        gint old = mch_limit_disable;
-        mch_limit_disable = gconf_value_get_int(gcv);
-        if( old != mch_limit_disable )
-            mch_policy_evaluate_charging_state();
+        mch_policy_set_limit_disable(gconf_value_get_int(gcv));
     }
     else if( id == mch_limit_enable_id ) {
-        gint old = mch_limit_enable;
-        mch_limit_enable = gconf_value_get_int(gcv);
-        if( old != mch_limit_enable )
-            mch_policy_evaluate_charging_state();
+        mch_policy_set_limit_enable(gconf_value_get_int(gcv));
     }
     else {
         mce_log(LL_WARN, "Spurious GConf value received; confused!");
@@ -849,6 +1005,114 @@ mch_dbus_get_charging_state_cb(DBusMessage *const req)
     return TRUE;
 }
 
+/** Send forced_charging_state D-Bus signal / method call reply
+ *
+ * @param req  method call message to reply, or NULL to send signal
+ */
+static void
+mch_dbus_send_forced_charging_state(DBusMessage *const req)
+{
+    static const char *last = 0;
+
+    DBusMessage *msg = NULL;
+
+    const char *value = forced_charging_repr(mch_forced_charging);
+
+    if( req ) {
+        msg = dbus_new_method_reply(req);
+    }
+    else if( last == value ) {
+        goto EXIT;
+    }
+    else {
+        last = value;
+        msg = dbus_new_signal(MCE_SIGNAL_PATH,
+                              MCE_SIGNAL_IF,
+                              MCE_FORCED_CHARGING_SIG);
+    }
+
+    if( !dbus_message_append_args(msg,
+                                  DBUS_TYPE_STRING, &value,
+                                  DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "%s: %s = %s",
+            req ? "reply" : "broadcast",
+            "forced_charging_state", value);
+
+    dbus_send_message(msg), msg = 0;
+
+EXIT:
+
+    if( msg )
+        dbus_message_unref(msg);
+}
+
+/** Callback for handling forced_charging_state D-Bus queries
+ *
+ * @param req  method call message to reply
+ */
+static gboolean
+mch_dbus_get_forced_charging_state_cb(DBusMessage *const req)
+{
+    mce_log(LL_DEBUG, "forced_charging_state query from: %s",
+            mce_dbus_get_message_sender_ident(req));
+
+    if( !dbus_message_get_no_reply(req) )
+        mch_dbus_send_forced_charging_state(req);
+
+    return TRUE;
+}
+
+/** Callback for handling forced_charging_state D-Bus requests
+ *
+ * @param req  method call message to reply
+ */
+static gboolean
+mch_dbus_set_forced_charging_state_cb(DBusMessage *const req)
+{
+    DBusMessage   *rsp    = 0;
+    DBusError      err    = DBUS_ERROR_INIT;
+    const char    *arg    = 0;
+
+    mce_log(LL_DEBUG, "forced_charging_state request from: %s",
+            mce_dbus_get_message_sender_ident(req));
+
+    if( !dbus_message_get_args(req, &err,
+                               DBUS_TYPE_STRING, &arg,
+                               DBUS_TYPE_INVALID) ) {
+        mce_log(LL_ERR, "Failed to get argument from %s.%s: %s: %s",
+                MCE_REQUEST_IF, MCE_FORCED_CHARGING_REQ,
+                err.name, err.message);
+        rsp = dbus_message_new_error(req, err.name, err.message);
+        goto EXIT;
+    }
+
+    forced_charging_t value = forced_charging_parse(arg);
+    if( value == FORCED_CHARGING_UNKNOWN ) {
+        rsp = dbus_message_new_error_printf(req, DBUS_ERROR_INVALID_ARGS,
+                                            "Invalid forced charging state \"%s\" requested",
+                                            arg);
+        goto EXIT;
+    }
+
+    mch_policy_set_forced_charging(value);
+
+EXIT:
+    if( !dbus_message_get_no_reply(req) ) {
+        if( !rsp )
+            rsp = dbus_new_method_reply(req);
+        dbus_send_message(rsp), rsp = 0;
+    }
+
+    if( rsp )
+        dbus_message_unref(rsp);
+
+    dbus_error_free(&err);
+
+    return TRUE;
+}
+
 /** Array of dbus message handlers */
 static mce_dbus_handler_t mch_dbus_handlers[] =
 {
@@ -860,6 +1124,13 @@ static mce_dbus_handler_t mch_dbus_handlers[] =
         .args      =
         "    <arg name=\"charging_state\" type=\"s\"/>\n"
     },
+    {
+        .interface = MCE_SIGNAL_IF,
+        .name      = MCE_FORCED_CHARGING_SIG,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .args      =
+        "    <arg name=\"forced_charging_state\" type=\"s\"/>\n"
+    },
     /* method calls */
     {
         .interface = MCE_REQUEST_IF,
@@ -868,6 +1139,22 @@ static mce_dbus_handler_t mch_dbus_handlers[] =
         .callback  = mch_dbus_get_charging_state_cb,
         .args      =
         "    <arg direction=\"out\" name=\"charging_state\" type=\"s\"/>\n"
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_FORCED_CHARGING_GET,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = mch_dbus_get_forced_charging_state_cb,
+        .args      =
+        "    <arg direction=\"out\" name=\"forced_charging_state\" type=\"s\"/>\n"
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_FORCED_CHARGING_REQ,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = mch_dbus_set_forced_charging_state_cb,
+        .args      =
+        "    <arg direction=\"in\" name=\"forced_charging_state\" type=\"s\"/>\n"
     },
     /* sentinel */
     {
@@ -890,6 +1177,7 @@ static gboolean mch_dbus_initial_cb(gpointer aptr)
     mch_dbus_initial_id = 0;
 
     mch_dbus_send_charging_state(0);
+    mch_dbus_send_forced_charging_state(0);
     return FALSE;
 }
 
