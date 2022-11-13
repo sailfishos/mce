@@ -154,6 +154,7 @@ static gboolean mch_dbus_get_charging_state_cb       (DBusMessage *const req);
 static void     mch_dbus_send_forced_charging_state  (DBusMessage *const req);
 static gboolean mch_dbus_get_forced_charging_state_cb(DBusMessage *const req);
 static gboolean mch_dbus_set_forced_charging_state_cb(DBusMessage *const req);
+static gboolean mch_dbus_get_charging_suspendable_cb (DBusMessage *const req);
 static gboolean mch_dbus_initial_cb                  (gpointer aptr);
 static void     mch_dbus_init                        (void);
 static void     mch_dbus_quit                        (void);
@@ -1113,6 +1114,43 @@ EXIT:
     return TRUE;
 }
 
+/** Callback for handling charging suspendable D-Bus queries
+ *
+ * @param req  method call message to reply
+ */
+static gboolean
+mch_dbus_get_charging_suspendable_cb(DBusMessage *const req)
+{
+    DBusMessage *rsp = NULL;
+    dbus_bool_t  val = (mch_control_path != NULL);
+
+    mce_log(LL_DEBUG, "%s query from: %s",
+            dbus_message_get_member(req),
+            mce_dbus_get_message_sender_ident(req));
+
+    if( !(rsp = dbus_new_method_reply(req)) )
+        goto EXIT;
+
+    if( !dbus_message_append_args(rsp,
+                                  DBUS_TYPE_BOOLEAN, &val,
+                                  DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "%s reply: %s",
+            dbus_message_get_member(req),
+            val ? "true" : "false");
+
+    if( !dbus_message_get_no_reply(req) )
+        dbus_send_message(rsp), rsp = 0;
+
+EXIT:
+
+    if( rsp )
+        dbus_message_unref(rsp);
+
+    return TRUE;
+}
+
 /** Array of dbus message handlers */
 static mce_dbus_handler_t mch_dbus_handlers[] =
 {
@@ -1155,6 +1193,14 @@ static mce_dbus_handler_t mch_dbus_handlers[] =
         .callback  = mch_dbus_set_forced_charging_state_cb,
         .args      =
         "    <arg direction=\"in\" name=\"forced_charging_state\" type=\"s\"/>\n"
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_CHARGING_SUSPENDABLE_GET,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = mch_dbus_get_charging_suspendable_cb,
+        .args      =
+        "    <arg direction=\"out\" name=\"charging_suspendable\" type=\"b\"/>\n"
     },
     /* sentinel */
     {
