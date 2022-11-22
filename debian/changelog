@@ -1,3 +1,9 @@
+mce (1.113.0) precise; urgency=low
+
+  * [charging] Expose charging suspendable on D-Bus. JB#59152
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Tue, 22 Nov 2022 14:32:19 +0200
+
 mce (1.112.0) precise; urgency=low
 
   * [battery-udev] Simulated battery differentiates between 100% and full
