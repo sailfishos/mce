@@ -82,6 +82,10 @@
 #define MCE_CONF_BATTERY_UDEV_REFRESH_ON_NOTIFY        "RefreshOnNotify"
 #define DEFAULT_BATTERY_UDEV_REFRESH_ON_NOTIFY         false
 
+/** Setting for forced refresh on USB state udev notify from extcon devices */
+#define MCE_CONF_BATTERY_UDEV_REFRESH_ON_EXTCON        "RefreshOnExtcon"
+#define DEFAULT_BATTERY_UDEV_REFRESH_ON_EXTCON         false
+
 /** Setting for forced refresh on system heartbeat */
 #define MCE_CONF_BATTERY_UDEV_REFRESH_ON_HEARTBEAT     "RefreshOnHeartbeat"
 #define DEFAULT_BATTERY_UDEV_REFRESH_ON_HEARTBEAT      true
@@ -296,6 +300,17 @@ static void             udevdevice_evaluate_battery    (udevdevice_t *self, mceb
 static void             udevdevice_evaluate_battery_cb (gpointer key, gpointer value, gpointer aptr);
 
 /* ------------------------------------------------------------------------- *
+ * UDEVEXTCON
+ * ------------------------------------------------------------------------- */
+
+static gchar *udevextcon_parse_usb_state(const char *state);
+static bool   udevextcon_update_state   (const char *syspath, const char *state);
+static void   udevextcon_initialize_from(struct udev_device *dev);
+static bool   udevextcon_update_from    (struct udev_device *dev);
+static void   udevextcon_init           (void);
+static void   udevextcon_quit           (void);
+
+/* ------------------------------------------------------------------------- *
  * UDEVTRACKER
  * ------------------------------------------------------------------------- */
 
@@ -429,6 +444,9 @@ static const char * const udevproperty_used_keys[] = {
 
 /** Cached MCE_CONF_BATTERY_UDEV_REFRESH_ON_NOTIFY value */
 static bool mcebat_refresh_on_notify = DEFAULT_BATTERY_UDEV_REFRESH_ON_NOTIFY;
+
+/** Cached MCE_CONF_BATTERY_UDEV_REFRESH_ON_EXTCON value */
+static bool mcebat_refresh_on_extcon = DEFAULT_BATTERY_UDEV_REFRESH_ON_EXTCON;
 
 /** Cached MCE_CONF_BATTERY_UDEV_REFRESH_ON_HEARTBEAT value  */
 static bool mcebat_refresh_on_heartbeat = DEFAULT_BATTERY_UDEV_REFRESH_ON_HEARTBEAT;
@@ -1777,6 +1795,131 @@ udevdevice_evaluate_battery_cb(gpointer key, gpointer value, gpointer aptr)
 }
 
 /* ========================================================================= *
+ * UDEVEXTCON
+ * ========================================================================= */
+
+/** Subsystem name for extcon devices */
+static const char udevextcon_subsystem[] = "extcon";
+
+/** USB state cache for extcon devices */
+static GHashTable *udevextcon_usb_state_lut = NULL;
+
+/** Parse USB entry from extcon state information
+ *
+ * When non-null value is returned, caller must release it with g_free().
+ *
+ * @param state Full state data for extcon device
+ *
+ * @return value for USB entry, or NULL
+ */
+static gchar *
+udevextcon_parse_usb_state(const char *state)
+{
+    gchar *res = NULL;
+    gchar *tmp = NULL;
+
+    if( (tmp = g_strdup(state)) ) {
+        for( char *pos = tmp; *pos; ) {
+            char *val = mce_slice_token(pos, &pos, NULL);
+            char *key = mce_slice_token(val, &val, "=");
+            if( !strcmp(key, "USB") ) {
+                res = g_strdup(val);
+                break;
+            }
+        }
+        g_free(tmp);
+    }
+
+    return res;
+}
+
+/** Update cached USB state for an extcon device
+ *
+ * @param syspath  syspath for device to update
+ * @param state    state reported for the device
+ *
+ * @return true if cached value changed, false otherwise
+ */
+static bool
+udevextcon_update_state(const char *syspath, const char *state)
+{
+    bool         changed   = false;
+    gchar       *usb_state = NULL;
+    const gchar *old_state = NULL;
+
+    if( !syspath || !udevextcon_usb_state_lut )
+        goto EXIT;
+
+    usb_state = udevextcon_parse_usb_state(state);
+    old_state = g_hash_table_lookup(udevextcon_usb_state_lut, syspath);
+    if( g_strcmp0(old_state, usb_state) ) {
+        mce_log(LL_DEBUG, "%s.STATE / USB: %s -> %s",
+                basename(syspath), old_state ?: "null", usb_state ?: "null");
+        if( usb_state )
+            g_hash_table_replace(udevextcon_usb_state_lut, g_strdup(syspath),
+                                 usb_state), usb_state = NULL;
+        else
+            g_hash_table_remove(udevextcon_usb_state_lut, syspath);
+        changed = true;
+    }
+
+EXIT:
+    g_free(usb_state);
+
+    return changed;
+}
+
+/** Initialize cached USB state for an extcon device
+ *
+ * @param device   device to initialize from
+ */
+static void
+udevextcon_initialize_from(struct udev_device *dev)
+{
+    const char *syspath = udev_device_get_syspath(dev);
+    const char *state   = udev_device_get_sysattr_value(dev, "state");
+    udevextcon_update_state(syspath, state);
+}
+
+/** Update cached USB state for an extcon device
+ *
+ * @param device   device to update from
+ *
+ * @return true if cached value changed, false otherwise
+ */
+static bool
+udevextcon_update_from(struct udev_device *dev)
+{
+    const char *syspath = udev_device_get_syspath(dev);
+    const char *state   = udev_device_get_property_value(dev, "STATE");
+    return udevextcon_update_state(syspath, state);
+}
+
+/** Initialize USB state cache for extcon devices
+ */
+static void
+udevextcon_init(void)
+{
+    if( mcebat_refresh_on_extcon && !udevextcon_usb_state_lut ) {
+        udevextcon_usb_state_lut = g_hash_table_new_full(g_str_hash,
+                                                         g_str_equal,
+                                                         g_free,
+                                                         g_free);
+    }
+}
+
+/** Release USB state cache for extcon devices
+ */
+static void
+udevextcon_quit(void)
+{
+    if( udevextcon_usb_state_lut ) {
+        g_hash_table_unref(udevextcon_usb_state_lut),
+            udevextcon_usb_state_lut = NULL;
+    }
+}
+
+/* ========================================================================= *
  * UDEVTRACKER
  * ========================================================================= */
 
@@ -1971,6 +2114,8 @@ udevtracker_start(udevtracker_t *self)
     mce_log(LL_DEBUG, "ENTER - get initial state");
     udev_enum = udev_enumerate_new(self->udt_udev_handle);
     udev_enumerate_add_match_subsystem(udev_enum, udevtracker_subsystem);
+    if( mcebat_refresh_on_extcon )
+        udev_enumerate_add_match_subsystem(udev_enum, udevextcon_subsystem);
     udev_enumerate_scan_devices(udev_enum);
 
     for( struct udev_list_entry *iter =
@@ -1980,7 +2125,11 @@ udevtracker_start(udevtracker_t *self)
         struct udev_device *dev =
             udev_device_new_from_syspath(self->udt_udev_handle, path);
         if( dev ) {
-            udevtracker_update_device(self, dev);
+            const char *subsystem = udev_device_get_subsystem(dev);
+            if( !g_strcmp0(subsystem, udevtracker_subsystem) )
+                udevtracker_update_device(self, dev);
+            else if( !g_strcmp0(subsystem, udevextcon_subsystem) )
+                udevextcon_initialize_from(dev);
             udev_device_unref(dev);
         }
     }
@@ -1991,6 +2140,10 @@ udevtracker_start(udevtracker_t *self)
         udev_monitor_new_from_netlink(self->udt_udev_handle, "udev");
     udev_monitor_filter_add_match_subsystem_devtype(self->udt_udev_monitor,
                                                     udevtracker_subsystem, 0);
+    if( mcebat_refresh_on_extcon )
+        udev_monitor_filter_add_match_subsystem_devtype(self->udt_udev_monitor,
+                                                        udevextcon_subsystem,
+                                                        0);
     udev_monitor_enable_receiving(self->udt_udev_monitor);
 
     int fd = udev_monitor_get_fd(self->udt_udev_monitor);
@@ -2062,9 +2215,17 @@ udevtracker_event_cb(GIOChannel  *chn, GIOCondition cnd, gpointer aptr)
     struct udev_device *dev =
         udev_monitor_receive_device(self->udt_udev_monitor);
     if( dev ) {
-        bool changed = udevtracker_update_device(self, dev);
-        if( changed && mcebat_refresh_on_notify )
-            udevtracker_schedule_refresh();
+        const char *subsystem = udev_device_get_subsystem(dev);
+        if( !g_strcmp0(subsystem, udevtracker_subsystem) ) {
+            bool changed = udevtracker_update_device(self, dev);
+            if( changed && mcebat_refresh_on_notify )
+                udevtracker_schedule_refresh();
+        }
+        else if( !g_strcmp0(subsystem, udevextcon_subsystem) ) {
+            bool changed = udevextcon_update_from(dev);
+            if( changed && mcebat_refresh_on_extcon )
+                udevtracker_schedule_refresh();
+        }
         udev_device_unref(dev);
     }
 
@@ -2237,6 +2398,11 @@ mcebat_init_settings(void)
                           MCE_CONF_BATTERY_UDEV_REFRESH_ON_NOTIFY,
                           DEFAULT_BATTERY_UDEV_REFRESH_ON_NOTIFY);
 
+    mcebat_refresh_on_extcon =
+        mce_conf_get_bool(MCE_CONF_BATTERY_UDEV_SETTINGS_GROUP,
+                          MCE_CONF_BATTERY_UDEV_REFRESH_ON_EXTCON,
+                          DEFAULT_BATTERY_UDEV_REFRESH_ON_EXTCON);
+
     mcebat_refresh_on_heartbeat =
         mce_conf_get_bool(MCE_CONF_BATTERY_UDEV_SETTINGS_GROUP,
                           MCE_CONF_BATTERY_UDEV_REFRESH_ON_HEARTBEAT,
@@ -2254,6 +2420,7 @@ G_MODULE_EXPORT const gchar *g_module_check_init(GModule *module)
     (void)module;
 
     mcebat_init_settings();
+    udevextcon_init();
     udevdevice_init_blacklist();
     udevdevice_init_chargertype();
     udevproperty_init_types();
@@ -2290,6 +2457,7 @@ G_MODULE_EXPORT void g_module_unload(GModule *module)
     udevproperty_quit_types();
     udevdevice_quit_chargertype();
     udevdevice_quit_blacklist();
+    udevextcon_quit();
     udevtracker_cancel_refresh();
 
     mce_log(LL_DEBUG, "%s: unloaded", MODULE_NAME);
