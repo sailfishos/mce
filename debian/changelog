@@ -1,3 +1,9 @@
+mce (1.114.0) precise; urgency=low
+
+  * [battery-udev] Optionally track also extcon devices. JB#59448
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Thu, 01 Dec 2022 08:59:36 +0200
+
 mce (1.113.0) precise; urgency=low
 
   * [charging] Expose charging suspendable on D-Bus. JB#59152
