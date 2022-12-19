@@ -2,8 +2,8 @@
  * @file mce-dbus.h
  * Headers for the D-Bus handling code for the Mode Control Entity
  * <p>
- * Copyright © 2004-2010 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2013-2019 Jolla Ltd.
+ * Copyright (c) 2004 - 2010 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (c) 2013 - 2023 Jolla Ltd.
  * Copyright (c) 2019 Open Mobile Platform LLC.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
@@ -106,6 +106,15 @@
 
 /** Change notification for owner of topmost ui window */
 # define COMPOSITOR_TOPMOST_WINDOW_PID_CHANGED    "privateTopmostWindowProcessIdChanged"
+
+/** Query setup actions for compositor process */
+# define COMPOSITOR_GET_SETUP_ACTIONS             "privateGetSetupActions"
+
+/** Actions to be taken before allowing new compositor to draw */
+# define COMPOSITOR_ACTION_NONE                   (0)
+# define COMPOSITOR_ACTION_STOP_HWC               (1<<0)
+# define COMPOSITOR_ACTION_START_HWC              (1<<1)
+# define COMPOSITOR_ACTION_RESTART_HWC            (1<<2)
 
 /* ========================================================================= *
  * LIPSTICK DBUS SERVICE

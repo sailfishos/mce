@@ -1,0 +1,81 @@
+/* -*- mode: c -*- */
+
+/* Extra documentation for state machine handling compositor
+ * D-Bus service handovers.
+ *
+ * Implemented in display plugin / compositor_stm_xxx() functions.
+ *
+ * To create PNG image, execute:
+ *   dot -Tpng compositor-mce.dot -o compositor-mce.png
+ */
+
+digraph compositor_state_machine {
+    fontsize=10;
+    label = "Compositor State Machine - MCE Side";
+    nodesep=0.5;
+    ranksep=0.4;
+    node[fontsize=8];
+    edge[fontsize=7];
+    edge[arrowsize=0.35];
+    node[style=filled,fillcolor=skyblue,shape=box];
+    node[width=0.00001];
+    node[height=0.00001];
+
+    /* - - - - - - - - - - - - - - - - - - - *
+     * Stable States
+     * - - - - - - - - - - - - - - - - - - - */
+
+    node[fillcolor=yellow];
+
+    COMPOSITOR_STATE_FINAL;
+    COMPOSITOR_STATE_STOPPED;
+    COMPOSITOR_STATE_GRANTED;
+
+    COMPOSITOR_STATE_ANY1[label="*"];
+
+    /* - - - - - - - - - - - - - - - - - - - *
+     * Waiting States
+     * - - - - - - - - - - - - - - - - - - - */
+
+    node[fillcolor=skyblue];
+    COMPOSITOR_STATE_INITIAL    [label="COMPOSITOR_STATE_INITIAL\l- name owner query\l"];
+    COMPOSITOR_STATE_STARTED    [label="COMPOSITOR_STATE_STARTED\l- query compositor actions\l- query compositor pid\l- wait for old compositor exit\l"];
+    COMPOSITOR_STATE_SETUP      [label="COMPOSITOR_STATE_SETUP\l- execute compositor actions\l"];
+    COMPOSITOR_STATE_REQUESTING [label="COMPOSITOR_STATE_REQUESTING\l- SetUpdatesEnabled(grant) call\l"];
+
+    /* - - - - - - - - - - - - - - - - - - - *
+     * Transient States
+     * - - - - - - - - - - - - - - - - - - - */
+
+    node[fillcolor=wheat];
+
+    COMPOSITOR_STATE_FAILED     [label="COMPOSITOR_STATE_FAILED\l- retry throttling\l"];
+
+    /* - - - - - - - - - - - - - - - - - - - *
+     * State Transitions
+     * - - - - - - - - - - - - - - - - - - - */
+
+    node[shape=oval,fillcolor=pink];
+
+    COMPOSITOR_STATE_INITIAL      -> COMPOSITOR_STATE_STOPPED     [label=" name not owned\l (=device bootup)\l"];
+    COMPOSITOR_STATE_INITIAL      -> COMPOSITOR_STATE_STARTED     [label=" name owned\l (=mce restart)\l"];
+
+    COMPOSITOR_STATE_STOPPED      -> COMPOSITOR_STATE_STARTED     [label=" name owned"];
+    COMPOSITOR_STATE_STOPPED      -> COMPOSITOR_STATE_STOPPED     [label=" NameOwnerChanged"];
+
+    COMPOSITOR_STATE_STARTED      -> COMPOSITOR_STATE_SETUP       [label=" pid+info+delay done"];
+
+    COMPOSITOR_STATE_SETUP        -> COMPOSITOR_STATE_REQUESTING  [label=" hwc stop/start done"];
+
+    COMPOSITOR_STATE_REQUESTING   -> COMPOSITOR_STATE_GRANTED     [label=" ack"];
+
+    COMPOSITOR_STATE_GRANTED      -> COMPOSITOR_STATE_REQUESTING  [label=" grant changed"];
+
+    COMPOSITOR_STATE_REQUESTING   -> COMPOSITOR_STATE_FAILED      [label=" nak"];
+
+    COMPOSITOR_STATE_FAILED       -> COMPOSITOR_STATE_REQUESTING  [label=" timeout"];
+
+    COMPOSITOR_STATE_GRANTED      -> COMPOSITOR_STATE_STOPPED     [label=" NameOwnerChanged"];
+
+    COMPOSITOR_STATE_ANY1         -> COMPOSITOR_STATE_FINAL       [label=" exit"];
+}
