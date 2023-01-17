@@ -1,3 +1,9 @@
+mce (1.114.1) precise; urgency=low
+
+  * [charging] Use literal number for charging enable limit. Fixes JB#59821
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Tue, 17 Jan 2023 09:14:59 +0200
+
 mce (1.114.0) precise; urgency=low
 
   * [battery-udev] Optionally track also extcon devices. JB#59448
