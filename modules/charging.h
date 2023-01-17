@@ -53,13 +53,19 @@
 # define MCE_SETTING_CHARGING_MODE              MCE_SETTING_CHARGING_PATH "/charging_mode"
 # define MCE_DEFAULT_CHARGING_MODE              1 // = CHARGING_MODE_ENABLE
 
-/** Battery level at which to disable charging */
+/** Battery level at which to disable charging
+ *
+ * The value is dictated by hardcoded expectations in settings ui.
+ */
 # define MCE_SETTING_CHARGING_LIMIT_DISABLE     MCE_SETTING_CHARGING_PATH "/limit_disable"
 # define MCE_DEFAULT_CHARGING_LIMIT_DISABLE     90
 
-/** Battery level at which to enable charging */
+/** Battery level at which to enable charging
+ *
+ * The value is dictated by hardcoded expectations in settings ui.
+ */
 # define MCE_SETTING_CHARGING_LIMIT_ENABLE      MCE_SETTING_CHARGING_PATH "/limit_enable"
-# define MCE_DEFAULT_CHARGING_LIMIT_ENABLE      (MCE_DEFAULT_CHARGING_LIMIT_DISABLE - 3)
+# define MCE_DEFAULT_CHARGING_LIMIT_ENABLE      87 // = MCE_DEFAULT_CHARGING_LIMIT_DISABLE - 3
 
 /* ========================================================================= *
  * Types
