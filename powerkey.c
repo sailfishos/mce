@@ -100,6 +100,12 @@
 
 #define MODULE_NAME "powerkey"
 
+#ifndef KEY_ASSISTANT
+/** Xperia 10 III Assistant button */
+#define KEY_ASSISTANT                   0x01c9
+#endif
+
+
 /* ========================================================================= *
  * PROTOTYPES
  * ========================================================================= */

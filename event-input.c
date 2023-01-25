@@ -78,6 +78,11 @@
 # define KEY_CAMERA_FOCUS               0x0210
 #endif
 
+#ifndef KEY_ASSISTANT
+/** Xperia 10 III Assistant button */
+#define KEY_ASSISTANT                   0x01c9
+#endif
+
 #ifndef FF_STATUS_CNT
 # ifdef FF_STATUS_MAX
 #  define FF_STATUS_CNT (FF_STATUS_MAX+1)
@@ -1279,6 +1284,7 @@ evin_evdevinfo_is_volumekey_default(const evin_evdevinfo_t *self)
         /* Home key should be handled by mce and can be
          * ignored as well. */
         KEY_HOME,
+        KEY_ASSISTANT,
         -1
     };
 

@@ -431,6 +431,7 @@ static const char * const lut_key[] =
   [0x01c1] = "KEY_DEL_EOS",
   [0x01c2] = "KEY_INS_LINE",
   [0x01c3] = "KEY_DEL_LINE",
+  [0x01c9] = "KEY_ASSISTANT",
   [0x01d0] = "KEY_FN",
   [0x01d1] = "KEY_FN_ESC",
   [0x01d2] = "KEY_FN_F1",
