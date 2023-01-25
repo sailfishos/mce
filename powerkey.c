@@ -3261,6 +3261,18 @@ pwrkey_datapipe_keypress_event_cb(gconstpointer const data)
             }
             break;
 
+        // treat assistant button as HOME button (note the function call)
+        case KEY_ASSISTANT:
+            if( ev->value == 1 ) {
+                mce_log(LL_CRUCIAL, "assistant key pressed");
+                homekey_stm_set_pressed(true);
+            }
+            else if( ev->value == 0 ) {
+                mce_log(LL_CRUCIAL, "assistant key released");
+                homekey_stm_set_pressed(false);
+            }
+            break;
+
         default:
             break;
         }
