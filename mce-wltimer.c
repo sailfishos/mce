@@ -5,7 +5,7 @@
  *
  * <p>
  *
- * Copyright (C) 2015 Jolla Ltd.
+ * Copyright (c) 2015 - 2023 Jolla Ltd.
  *
  * <p>
  *
@@ -57,6 +57,15 @@ struct mce_wltimer_t
 
     /** User data to pass to wlt_notify() */
     void       *wlt_user_data;
+
+    /** Currently handling notify */
+    bool        wlt_triggered;
+
+    /** Timer start while in notify */
+    bool        wlt_started;
+
+    /** Timer stop while in notify */
+    bool        wlt_stopped;
 };
 
 mce_wltimer_t * mce_wltimer_create         (const char *name, int period, GSourceFunc notify, void *user_data);
@@ -127,6 +136,9 @@ mce_wltimer_create(const char  *name,
     self->wlt_timer_id  = 0;
     self->wlt_notify    = notify;
     self->wlt_user_data = user_data;
+    self->wlt_triggered = false;
+    self->wlt_started   = false;
+    self->wlt_stopped   = false;
 
     mwt_queue_add_timer(self);
 
@@ -142,6 +154,21 @@ mce_wltimer_delete(mce_wltimer_t *self)
 {
     if( !self )
         goto EXIT;
+
+    if( self->wlt_triggered )
+        mce_log(LL_DEBUG, "%s: timer delete while in notify",
+                mce_wltimer_get_name(self));
+
+    /* Clear the behaviour modifying flags so that the timer id
+     * and wakelock does get released at mce_wltimer_stop().
+     *
+     * Note that mwt_queue_remove_timer() invalidates
+     * timer object so that mce_wltimer_gate_cb() knows
+     * not to touch it anymore when user callback returns.
+     */
+    self->wlt_triggered = false;
+    self->wlt_started   = false;
+    self->wlt_stopped   = false;
 
     mce_wltimer_stop(self);
     mwt_queue_remove_timer(self);
@@ -187,8 +214,9 @@ bool
 mce_wltimer_is_active(const mce_wltimer_t *self)
 {
     bool active = false;
-    if( self )
-        active = (self->wlt_timer_id != 0);
+    if( self && self->wlt_timer_id ) {
+        active = !(self->wlt_triggered && self->wlt_stopped);
+    }
     return active;
 }
 
@@ -236,7 +264,12 @@ mce_wltimer_gate_cb(gpointer aptr)
     if( !self->wlt_timer_id )
         goto EXIT;
 
+    mce_log(LL_DEBUG, "trigger %s %d", mce_wltimer_get_name(self),
+            self->wlt_period);
+
     if( self->wlt_notify ) {
+        self->wlt_triggered = true;
+
         bool res = self->wlt_notify(self->wlt_user_data);
 
         if( !mwt_queue_has_timer(self) ) {
@@ -245,8 +278,23 @@ mce_wltimer_gate_cb(gpointer aptr)
             self = 0;
         }
         else {
-            /* Repeat/stop according to the callback return value */
-            repeat = res;
+            if( self->wlt_started ) {
+                mce_log(LL_DEBUG, "%s: timer was started while in notify",
+                        mce_wltimer_get_name(self));
+                repeat = true;
+            }
+            else if( self->wlt_stopped ) {
+                mce_log(LL_DEBUG, "%s: timer was stopped while in notify",
+                        mce_wltimer_get_name(self));
+                repeat = false;
+            }
+            else {
+                /* Repeat/stop according to the callback return value */
+                repeat = res;
+            }
+            self->wlt_started   = false;
+            self->wlt_stopped   = false;
+            self->wlt_triggered = false;
         }
     }
 
@@ -271,15 +319,22 @@ mce_wltimer_start(mce_wltimer_t *self)
     if( !self )
         goto EXIT;
 
-    if( self->wlt_timer_id ) {
-        g_source_remove(self->wlt_timer_id),
-            self->wlt_timer_id = 0;
+    if( self->wlt_triggered ) {
+        /* In notify - Keep alive after callback returns */
+        mce_log(LL_DEBUG, "%s: timer start while in notify",
+                mce_wltimer_get_name(self));
+        self->wlt_started = true;
+        self->wlt_stopped = false;
+        goto EXIT;
     }
 
     if( !mce_wltimer_ready )
         goto EXIT;
 
     if( self->wlt_period < 0 )
+        goto EXIT;
+
+    if( self->wlt_timer_id )
         goto EXIT;
 
     mce_log(LL_DEBUG, "start %s %d", mce_wltimer_get_name(self),
@@ -309,6 +364,15 @@ mce_wltimer_stop(mce_wltimer_t *self)
 {
     if( !self )
         goto EXIT;
+
+    if( self->wlt_triggered ) {
+        /* In notify - Stop after callback returns */
+        mce_log(LL_DEBUG, "%s: timer stop while in notify",
+                mce_wltimer_get_name(self));
+        self->wlt_started = false;
+        self->wlt_stopped = true;
+        goto EXIT;
+    }
 
     if( !self->wlt_timer_id )
         goto EXIT;

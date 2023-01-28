@@ -1,0 +1,79 @@
+/* -*- mode: c -*- */
+
+/* Rough outline for expected behavior for display owning
+ * applications that implement compositor dbus service.
+ *
+ * To create PNG image, execute:
+ *   dot -Tpng compositor-ui.dot -o compositor-ui.png
+ */
+
+digraph compositor_state_machine {
+    fontsize=10;
+    label = "Compositor State Machine - UI Side";
+    nodesep=0.3;
+    ranksep=0.4;
+    node[fontsize=8];
+    edge[fontsize=7];
+    edge[arrowsize=0.35];
+    node[style=filled,fillcolor=skyblue,shape=box];
+    node[width=0.00001];
+    node[height=0.00001];
+
+    /* - - - - - - - - - - - - - - - - - - - *
+     * Transient
+     * - - - - - - - - - - - - - - - - - - - */
+
+    node[fillcolor=wheat];
+
+    DBUS_CONNECT;
+    DBUS_DISCONNECT;
+    ACQUIRE_DBUS_NAME;
+    QUIT;
+    FAIL;
+    GFX_INIT            [label="GFX_INIT\l- acquire display\l"];
+    GFX_QUIT            [label="GFX_QUIT\l- release display\l"];
+
+    ANY_1[shape=circle, label="*"];
+
+    /* - - - - - - - - - - - - - - - - - - - *
+     * Waiting
+     * - - - - - - - - - - - - - - - - - - - */
+
+    node[shape=box, fillcolor=yellow];
+
+    INIT[shape=circle, label=" "];
+    EXIT[shape=circle, label=" "];
+
+    WAIT_FOR_NAME;
+    WAIT_FOR_ENABLE;
+    GFX_DISABLED        [label="GFX_DISABLED\l- stop drawing\l- blank screen\l"];
+    GFX_ENABLED         [label="GFX_ENABLED\l- unblank screen\l- resume drawing\l"];
+
+    /* - - - - - - - - - - - - - - - - - - - *
+     * Transitions
+     * - - - - - - - - - - - - - - - - - - - */
+
+    node[shape=oval,fillcolor=pink];
+
+    INIT                -> DBUS_CONNECT;
+    DBUS_CONNECT        -> ACQUIRE_DBUS_NAME    [label=" ack"];
+    ACQUIRE_DBUS_NAME   -> WAIT_FOR_NAME        [label=" ack"];
+    ACQUIRE_DBUS_NAME   -> FAIL                 [label=" nak"];
+    GFX_INIT            -> GFX_ENABLED          [label=" ack"];
+    QUIT                -> GFX_QUIT;
+    DBUS_CONNECT        -> FAIL                 [label=" nak"];
+
+    GFX_INIT            -> FAIL                 [label=" nak"];
+    FAIL                -> GFX_QUIT;
+    GFX_QUIT            -> DBUS_DISCONNECT;
+    DBUS_DISCONNECT     -> EXIT;
+
+    edge[style=dashed];
+    WAIT_FOR_NAME       -> WAIT_FOR_ENABLE      [label=" name acquired"];
+    WAIT_FOR_ENABLE     -> GFX_INIT             [label=" updates enabled"];
+    GFX_DISABLED        -> GFX_ENABLED          [label=" updates enabled"];
+    GFX_ENABLED         -> GFX_DISABLED         [label=" updates disabled"];
+    GFX_ENABLED         -> QUIT                 [label=" name lost"];
+    GFX_DISABLED        -> QUIT                 [label=" name lost"];
+    ANY_1               -> FAIL                 [label=" disconnected"];
+}

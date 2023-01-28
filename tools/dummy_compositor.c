@@ -2,7 +2,7 @@
  *
  * Tool for creating a mid compositor hand off stop gap
  * <p>
- * Copyright (C) 2019 Jolla Ltd.
+ * Copyright (c) 2019 - 2023 Jolla Ltd.
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
@@ -326,6 +326,7 @@ dc_log_emit_real(int level, const char *fmt, ...)
 static bool dc_exit_on_enable = false;
 static bool dc_release_name = false;
 static bool dc_name_released = false;
+static unsigned dc_setup_actions = COMPOSITOR_ACTION_NONE;
 
 /** Cached system bus connection */
 static DBusConnection *dc_dbus_con = 0;
@@ -511,6 +512,30 @@ EXIT:
     return rsp;
 }
 
+/** Handle incoming privateGetSetupActions method calls
+ *
+ * @param req D-Bus method call message
+ *
+ * @return D-Bus method call reply message
+ */
+static DBusMessage *
+dc_dbus_handle_get_setup_actions_method_call(DBusMessage *req)
+{
+    DBusMessage   *rsp   = NULL;
+    dbus_uint32_t  flags = dc_setup_actions;
+
+    if( !(rsp = dbus_message_new_method_return(req)) )
+        goto EXIT;
+
+    dbus_message_append_args(rsp,
+                             DBUS_TYPE_UINT32, &flags,
+                             DBUS_TYPE_INVALID);
+    dc_log_debug("get_setup_actions() -> 0x%x", (unsigned)flags);
+
+EXIT:
+    return rsp;
+}
+
 /** Handle incoming compositor privateTopmostWindowProcessId method calls
  *
  * @param req D-Bus method call message
@@ -578,6 +603,8 @@ dc_dbus_message_filter_cb(DBusConnection *con, DBusMessage *msg, void *aptr)
                 rsp = dc_dbus_handle_set_updates_enabled_method_call(msg);
             else if( dc_equal_p(memb, COMPOSITOR_GET_TOPMOST_WINDOW_PID) )
                 rsp = dc_dbus_handle_get_topmost_window_pid_method_call(msg);
+            else if( dc_equal_p(memb, COMPOSITOR_GET_SETUP_ACTIONS) )
+                rsp = dc_dbus_handle_get_setup_actions_method_call(msg);
         }
     }
 
@@ -896,6 +923,9 @@ dc_print_usage(void)
         "    -d --exit-delay=<ms>  Set successful exit delay [ms].\n"
         "    -e --exit-on-enable   Exit on setUpdatesEnabled(true).\n"
         "    -r --release-name     Release name before exiting.\n"
+        "    --hwc-stop            Stop hwc service before enabling updates.\n"
+        "    --hwc-start           Start hwc service before enabling updates.\n"
+        "    --hwc-restart         Re-start hwc service before enabling updates.\n"
         "\n";
     const char *name = dc_log_get_name();
     fprintf(stderr, format, name, name);
@@ -926,6 +956,9 @@ main(int ac, char **av)
         { "release-name",    no_argument,       0, 'r' },
         { "force-syslog",    no_argument,       0, 's' },
         { "force-stderr",    no_argument,       0, 'T' },
+        { "hwc-stop",        no_argument,       0, 901 },
+        { "hwc-start",       no_argument,       0, 902 },
+        { "hwc-restart",     no_argument,       0, 903 },
         { 0,                 0,                 0,  0  }
     };
 
@@ -969,6 +1002,15 @@ main(int ac, char **av)
             break;
         case 'T':
             dc_log_to = DC_LOG_TO_STDERR;
+            break;
+        case 901:
+            dc_setup_actions |= COMPOSITOR_ACTION_STOP_HWC;
+            break;
+        case 902:
+            dc_setup_actions |= COMPOSITOR_ACTION_START_HWC;
+            break;
+        case 903:
+            dc_setup_actions |= COMPOSITOR_ACTION_RESTART_HWC;
             break;
         case '?':
             exit(EXIT_FAILURE);
