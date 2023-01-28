@@ -1,3 +1,11 @@
+mce (1.115.0) precise; urgency=low
+
+  * [mce-dbus] Do not attempt to track NULL service name
+  * [wltimer] Allow timer to be started/stopped during notify
+  * [mce] Handle compositor startup actions. Fixes JB#59811
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Sat, 28 Jan 2023 16:23:06 +0200
+
 mce (1.114.1) precise; urgency=low
 
   * [charging] Use literal number for charging enable limit. Fixes JB#59821
