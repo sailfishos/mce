@@ -1,3 +1,9 @@
+mce (1.115.1) precise; urgency=low
+
+  * [mcetool] Make it easier to undo ad-hoc settings tweaks. Fixes JB#60163
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Thu, 23 Feb 2023 09:23:09 +0200
+
 mce (1.115.0) precise; urgency=low
 
   * [mce-dbus] Do not attempt to track NULL service name
