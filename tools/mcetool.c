@@ -5692,9 +5692,10 @@ static void xmce_get_ps_override_timeout(void)
 /** Lookup table for display off request override values
  */
 static const symbol_t display_off_override[] = {
-        { "disabled", DISPLAY_OFF_OVERRIDE_DISABLED },
-        { "use-lpm",  DISPLAY_OFF_OVERRIDE_USE_LPM  },
-        { NULL,       -1                            }
+        { "disabled",   DISPLAY_OFF_OVERRIDE_DISABLED    },
+        { "use-lpm",    DISPLAY_OFF_OVERRIDE_USE_LPM     },
+        { "only-blank", DISPLAY_OFF_OVERRIDE_ONLY_BLANK  },
+        { NULL,         -1                               }
 };
 
 /** Set display off override
@@ -7597,10 +7598,12 @@ static const mce_opt_t options[] =
         {
                 .name        = "set-display-off-override",
                 .with_arg    = xmce_set_display_off_override,
-                .values      = "disabled|use-lpm",
+                .values      = "disabled|use-lpm|only-blank",
                 .usage       =
                         "set the display off request override; valid modes are:\n"
-                        "'disabled', 'use-lpm'\n"
+                        "disabled    - blank screen and activate lockscreen\n"
+                        "use-lpm     - activate display low power mode\n"
+                        "only-blank  - just blank screen\n"
         },
         {
                 .name        = "enable-radio",

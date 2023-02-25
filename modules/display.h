@@ -452,11 +452,14 @@ typedef enum {
 /** Values for MCE_SETTING_DISPLAY_OFF_OVERRIDE setting */
 typedef enum
 {
-    /** Display off request turns display off */
+    /** Display off request turns display off and activates lockscreen */
     DISPLAY_OFF_OVERRIDE_DISABLED = 0,
 
     /** Display off request puts display to lpm state */
     DISPLAY_OFF_OVERRIDE_USE_LPM  = 1,
+
+    /** Display off request just turns display off */
+    DISPLAY_OFF_OVERRIDE_ONLY_BLANK  = 2,
 } display_off_blanking_mode_t;
 
 /** How display off requests via D-Bus should be interpreted
