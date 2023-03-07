@@ -1323,6 +1323,10 @@ static guint     mdy_blanking_inhibit_mode_setting_id = 0;
 static gint  mdy_kbd_slide_inhibit_mode = MCE_DEFAULT_KBD_SLIDE_INHIBIT;
 static guint mdy_kbd_slide_inhibit_mode_setting_id = 0;
 
+/** Override mode for display off requests made over D-Bus */
+static gint  mdy_dbus_display_off_override = MCE_DEFAULT_DISPLAY_OFF_OVERRIDE;
+static guint mdy_dbus_display_off_override_setting_id = 0;
+
 /* ========================================================================= *
  * MISC_UTILS
  * ========================================================================= */
@@ -10093,7 +10097,8 @@ static void mdy_dbus_handle_display_state_req_cb(gpointer aptr)
 
     switch( requested ) {
     case MCE_DISPLAY_OFF:
-        tklock = true;
+        if( mdy_dbus_display_off_override != DISPLAY_OFF_OVERRIDE_ONLY_BLANK )
+            tklock = true;
         break;
 
     case MCE_DISPLAY_ON:
@@ -10200,10 +10205,6 @@ static gboolean mdy_dbus_handle_display_dim_req(DBusMessage *const msg)
         dbus_send_message(dbus_new_method_reply(msg));
     return TRUE;
 }
-
-/** Override mode for display off requests made over D-Bus */
-static gint  mdy_dbus_display_off_override = MCE_DEFAULT_DISPLAY_OFF_OVERRIDE;
-static guint mdy_dbus_display_off_override_setting_id = 0;
 
 /**
  * D-Bus callback for the display off method call
