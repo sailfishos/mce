@@ -161,6 +161,7 @@ static void  pwrkey_action_shutdown (void);
 static void  pwrkey_action_tklock   (void);
 static void  pwrkey_action_blank    (void);
 static void  pwrkey_action_unblank  (void);
+static void  pwrkey_action_unblanked(void);
 static void  pwrkey_action_tkunlock (void);
 static void  pwrkey_action_tkunlock2(void);
 static void  pwrkey_action_devlock  (void);
@@ -188,8 +189,6 @@ typedef struct
     void      (*func)(void);
 } pwrkey_bitconf_t;
 
-static void     pwrkey_mask_execute_cb (gpointer aptr);
-static void     pwrkey_mask_execute    (uint32_t mask);
 static uint32_t pwrkey_mask_from_name  (const char *name);
 static uint32_t pwrkey_mask_from_names (const char *names);
 static gchar   *pwrkey_mask_to_names   (uint32_t mask);
@@ -202,11 +201,8 @@ static gchar   *pwrkey_mask_to_names   (uint32_t mask);
 static gint  pwrkey_gestures_enable_mode = MCE_DEFAULT_DOUBLETAP_MODE;
 static guint pwrkey_gestures_enable_mode_cb_id = 0;
 
-static bool  pwrkey_gestures_allowed(bool synthesized);
-static bool  pwrkey_fpwakeup_allowed(void);
-
 /* ------------------------------------------------------------------------- *
- * PWRKEY_UNBLANK
+ * PWRKEY_PREDICATE
  * ------------------------------------------------------------------------- */
 
 /** Enumeratio of possible unblank allowed predicates */
@@ -223,24 +219,27 @@ typedef enum
 
     /** Apply rules for synthetized gesture events */
     PWRKEY_UNBLANK_PREDICATE_GESTURE_SYNTH,
+
+    /** Rules for action sets that do not include unblank */
+    PWRKEY_UNBLANK_PREDICATE_DONTCARE,
+
+    PWRKEY_UNBLANK_PREDICATE_COUNT
 } pwrkey_unblank_predicate_t;
 
 /** Lookup table of unblank predicate names (for diagnostic logging) */
-static const char * const pwrkey_unblank_predicate_name[] =
+static const char * const pwrkey_unblank_predicate_name[PWRKEY_UNBLANK_PREDICATE_COUNT] =
 {
     [PWRKEY_UNBLANK_PREDICATE_POWERKEY]      = "powerkey",
     [PWRKEY_UNBLANK_PREDICATE_FPWAKEUP]      = "fpwakeup",
     [PWRKEY_UNBLANK_PREDICATE_GESTURE_REAL]  = "gesture_real",
     [PWRKEY_UNBLANK_PREDICATE_GESTURE_SYNTH] = "gesture_synth",
+    [PWRKEY_UNBLANK_PREDICATE_DONTCARE]      = "dontcare",
 };
 
-/** Currently active unblanking allowed predicate */
-static pwrkey_unblank_predicate_t pwrkey_unblank_predicate =
-    PWRKEY_UNBLANK_PREDICATE_POWERKEY;
-
-static bool  pwrkey_unblank_allowed         (void);
-static void  pwrkey_unblank_set_predicate_cb(gpointer aptr);
-static void  pwrkey_unblank_set_predicate   (pwrkey_unblank_predicate_t predicate);
+static bool pwrkey_predicate_gesture (bool synthesized, bool *need_psensor);
+static bool pwrkey_predicate_fpwakeup(bool *need_psensor);
+static bool pwrkey_predicate_powerkey(bool *need_psensor);
+static bool pwrkey_predicate         (pwrkey_unblank_predicate_t predicate, bool *need_psensor);
 
 /* ------------------------------------------------------------------------- *
  * ACTION_TRIGGERING
@@ -349,6 +348,7 @@ static guint  pwrkey_actions_gesture_setting_id[POWERKEY_ACTIONS_GESTURE_COUNT] 
 static void pwrkey_actions_parse           (pwrkey_actions_t *self, const char *names_single, const char *names_double, const char *names_long);
 
 static void pwrkey_actions_do_gesture      (size_t gesture);
+static bool pwrkey_actions_do_special      (void);
 static void pwrkey_actions_do_common       (void);
 static void pwrkey_actions_do_single_press (void);
 static void pwrkey_actions_do_double_press (void);
@@ -516,7 +516,11 @@ static void   pwrkey_dbus_action_execute(size_t index);
  * ------------------------------------------------------------------------- */
 
 /** Diplay state when power key was pressed */
-static display_state_t pwrkey_stm_display_state = MCE_DISPLAY_UNDEF;
+static display_state_t  pwrkey_stm_display_state  = MCE_DISPLAY_UNDEF;
+static alarm_ui_state_t pwrkey_stm_alarm_ui_state = MCE_ALARM_UI_OFF_INT32;
+static call_state_t     pwrkey_stm_call_state     = CALL_STATE_NONE;
+static bool             pwrkey_stm_call_silenced  = false;
+static bool             pwrkey_stm_alarm_silenced = false;
 
 /** [setting] Power key press enable mode */
 static gint  pwrkey_stm_enable_mode = MCE_DEFAULT_POWERKEY_MODE;
@@ -527,7 +531,6 @@ static void pwrkey_stm_double_press_timeout (void);
 static void pwrkey_stm_powerkey_pressed     (void);
 static void pwrkey_stm_powerkey_released    (void);
 
-static bool pwrkey_stm_ignore_action        (void);
 static bool pwrkey_stm_pending_timers       (void);
 
 static void pwrkey_stm_rethink_wakelock     (void);
@@ -611,6 +614,48 @@ static void pwrkey_datapipe_ngfd_event_request_cb(gconstpointer data);
 
 static void pwrkey_datapipe_init(void);
 static void pwrkey_datapipe_quit(void);
+
+/* ------------------------------------------------------------------------- *
+ * PWRKEY_QUEUED
+ * ------------------------------------------------------------------------- */
+
+typedef struct pwrkey_queued_t
+{
+    pwrkey_unblank_predicate_t predicate;
+    uint32_t                   actions;
+} pwrkey_queued_t;
+
+static pwrkey_queued_t *pwrkey_queued_create            (pwrkey_unblank_predicate_t predicate, uint32_t actions);
+static void             pwrkey_queued_delete            (pwrkey_queued_t *self);
+static void             pwrkey_queued_delete_cb         (gpointer self);
+
+/* ------------------------------------------------------------------------- *
+ * PWRKEY_QUEUE
+ * ------------------------------------------------------------------------- */
+
+static void             pwrkey_queue_init                (void);
+static void             pwrkey_queue_quit                (void);
+static void             pwrkey_queue_add_actions         (pwrkey_unblank_predicate_t predicate, uint32_t mask);
+static void             pwrkey_queue_execute             (void);
+static pwrkey_queued_t *pwrkey_queue_current_action      (void);
+static void             pwrkey_queue_finish_action       (void);
+static bool             pwrkey_queue_blank_delay_needed  (void);
+static void             pwrkey_queue_start_blank_delay   (guint delay);
+static void             pwrkey_queue_stop_blank_delay    (void);
+static gboolean         pwrkey_queue_blank_delay_cb      (gpointer aptr);
+static void             pwrkey_queue_start_action_delay  (guint delay);
+static void             pwrkey_queue_stop_action_delay   (void);
+static gboolean         pwrkey_queue_action_delay_cb     (gpointer aptr);
+static bool             pwrkey_queue_unblank_delay_needed(void);
+static void             pwrkey_queue_start_unblank_delay (guint delay);
+static void             pwrkey_queue_stop_unblank_delay  (void);
+static gboolean         pwrkey_queue_unblank_delay_cb    (gpointer aptr);
+static void             pwrkey_queue_start_delay         (uint32_t actions);
+static void             pwrkey_queue_stop_all_delays     (void);
+static bool             pwrkey_queue_is_delayed          (void);
+static bool             pwrkey_queue_is_busy             (void);
+static void             pwrkey_queue_rethink_delays      (void);
+static void             pwrkey_queue_rethink_psensor     (void);
 
 /* ------------------------------------------------------------------------- *
  * MODULE_INTEFACE
@@ -899,46 +944,28 @@ pwrkey_action_blank(void)
             break;
     }
 
-    mce_log(LL_DEBUG, "Requesting display=%s",
-            display_state_repr(request));
+    /* Note: logged from datapipe functions */
     mce_datapipe_request_display_state(request);
 }
 
 static void
 pwrkey_action_unblank(void)
 {
-    /* Special case: Even if incoming call is beeing ignored, do not
-     * allow unblanking via power key while proximity sensor is covered.
-     *
-     * Silencing ringing via pressing the power key through fabric
-     * of a pocket easily leads to several power key presses getting
-     * emitted and we do not want the display to get activated by such
-     * activity.
-     */
-    if( call_state == CALL_STATE_RINGING ) {
-        if( !pwrkey_ignore_incoming_call ) {
-            mce_log(LL_DEVEL, "skip unblank; incoming call not ignored");
-            goto EXIT;
-        }
-
-        if( proximity_sensor_actual != COVER_OPEN ) {
-            mce_log(LL_DEVEL, "skip unblank; proximity covered/unknown");
-            goto EXIT;
-        }
-    }
-
-    if( !pwrkey_unblank_allowed() ) {
-        mce_log(LL_DEVEL, "skip unblank; predicate condition not met");
-        goto EXIT;
-    }
-
     display_state_t request = MCE_DISPLAY_ON;
     mce_log(LL_DEBUG, "Requesting display=%s",
             display_state_repr(request));
     mce_tklock_unblank(request);
+}
 
-EXIT:
-    return;
+static void
+pwrkey_action_unblanked(void)
+{
+    /* Placeholder dummy action.
+     *
+     * Used for preserving unblank predicate when
+     * action set including unblank is executed
+     * in multiple parts.
+     */
 }
 
 static void
@@ -1081,6 +1108,10 @@ static const pwrkey_bitconf_t pwrkey_action_lut[] =
         .name = "tkunlock",
         .func = pwrkey_action_tkunlock,
     },
+    {
+        .name = "unblanked",
+        .func = pwrkey_action_unblanked,
+    },
 
     // D-Bus actions
     {
@@ -1130,32 +1161,6 @@ static const pwrkey_bitconf_t pwrkey_action_lut[] =
         .func = pwrkey_action_nop,
     },
 };
-
-static void pwrkey_mask_execute_cb(gpointer aptr)
-{
-    const char *name = aptr;
-    for( size_t i = 0; i < G_N_ELEMENTS(pwrkey_action_lut); ++i ) {
-        if( strcmp(pwrkey_action_lut[i].name, name) )
-            continue;
-        mce_log(LL_DEBUG, "* exec(%s)", name);
-        pwrkey_action_lut[i].func();
-        break;
-    }
-}
-
-static void
-pwrkey_mask_execute(uint32_t mask)
-{
-    for( size_t i = 0; i < G_N_ELEMENTS(pwrkey_action_lut); ++i ) {
-        if( mask & (1u << i) ) {
-            const char *name = pwrkey_action_lut[i].name;
-            mce_log(LL_DEBUG, "* queue(%s)", name);
-            common_on_proximity_schedule(MODULE_NAME,
-                                         pwrkey_mask_execute_cb,
-                                         (gpointer)name);
-        }
-    }
-}
 
 static uint32_t
 pwrkey_mask_from_name(const char *name)
@@ -1222,50 +1227,24 @@ pwrkey_mask_to_names(uint32_t mask)
 }
 
 /* ------------------------------------------------------------------------- *
- * GESTURE_FILTERING
+ * PWRKEY_PREDICATE
  * ------------------------------------------------------------------------- */
 
 /** Predicate for: touchscreen gesture actions are allowed
  */
 static bool
-pwrkey_gestures_allowed(bool synthesized)
+pwrkey_predicate_gesture(bool synthesized, bool *need_psensor)
 {
     bool allowed = false;
+    bool psensor = false;
 
-    /* Check enable setting */
-    switch( pwrkey_gestures_enable_mode ) {
-    case DBLTAP_ENABLE_ALWAYS:
-        break;
-
-    case DBLTAP_ENABLE_NEVER:
-        if( !synthesized ) {
-            mce_log(LL_DEVEL, "[gesture] ignored due to setting=never");
-            goto EXIT;
-        }
-        /* Synthesized events (e.g. double tap from lpm) are implicitly
-         * subjected to proximity rules.
-         *
-         * Fall through */
-
-    default:
-    case DBLTAP_ENABLE_NO_PROXIMITY:
-        if( lid_sensor_filtered == COVER_CLOSED ) {
-            mce_log(LL_DEVEL, "[gesture] ignored due to lid=closed");
-            goto EXIT;
-        }
-        if( proximity_sensor_actual == COVER_CLOSED ) {
-            mce_log(LL_DEVEL, "[gesture] ignored due to proximity");
-            goto EXIT;
-        }
-        break;
-    }
-
+    /* Only in USER or ACTDEAD */
     switch( system_state ) {
     case MCE_SYSTEM_STATE_USER:
     case MCE_SYSTEM_STATE_ACTDEAD:
-      break;
+        break;
     default:
-      mce_log(LL_DEVEL, "[gesture] ignored due to system state");
+        mce_log(LL_DEVEL, "[gesture] ignored due to system state");
         goto EXIT;
     }
 
@@ -1290,9 +1269,40 @@ pwrkey_gestures_allowed(bool synthesized)
         goto EXIT;
     }
 
+    /* Check enable setting */
+    switch( pwrkey_gestures_enable_mode ) {
+    case DBLTAP_ENABLE_ALWAYS:
+        break;
+
+    case DBLTAP_ENABLE_NEVER:
+        if( !synthesized ) {
+            mce_log(LL_DEVEL, "[gesture] ignored due to setting=never");
+            goto EXIT;
+        }
+        /* Synthesized events (e.g. double tap from lpm) are implicitly
+         * subjected to proximity rules.
+         *
+         * Fall through */
+
+    default:
+    case DBLTAP_ENABLE_NO_PROXIMITY:
+        if( lid_sensor_filtered == COVER_CLOSED ) {
+            mce_log(LL_DEVEL, "[gesture] ignored due to lid=closed");
+            goto EXIT;
+        }
+        psensor = true;
+        if( proximity_sensor_actual == COVER_CLOSED ) {
+            mce_log(LL_DEVEL, "[gesture] ignored due to proximity");
+            goto EXIT;
+        }
+        break;
+    }
+
     allowed = true;
 
 EXIT:
+    if( need_psensor )
+        *need_psensor = psensor;
 
     return allowed;
 }
@@ -1300,27 +1310,15 @@ EXIT:
 /** Predicate for: fpwakeup actions are allowed
  */
 static bool
-pwrkey_fpwakeup_allowed(void)
+pwrkey_predicate_fpwakeup(bool *need_psensor)
 {
     bool allowed = false;
+    bool psensor = false;
 
     /* Only in USER state */
     if( system_state  != MCE_SYSTEM_STATE_USER ) {
         mce_log(LL_DEVEL, "[fpwakeup] ignored due to system_state=%s",
                 system_state_repr(system_state));
-        goto EXIT;
-    }
-
-    /* Not while lid is closed or proximity sensor covered */
-    if( lid_sensor_filtered == COVER_CLOSED ) {
-        mce_log(LL_DEVEL, "[gesture] ignored due to lid=%s",
-                cover_state_repr(lid_sensor_filtered));
-        goto EXIT;
-    }
-
-    if( proximity_sensor_actual == COVER_CLOSED ) {
-        mce_log(LL_DEVEL, "[gesture] ignored due to proximity=%s",
-                proximity_state_repr(proximity_sensor_actual));
         goto EXIT;
     }
 
@@ -1346,73 +1344,151 @@ pwrkey_fpwakeup_allowed(void)
         break;
 
     default:
+        mce_log(LL_DEVEL, "[fpwakeup] ignored due to display_state=%s",
+                display_state_repr(display_state_next));
+        goto EXIT;
+    }
+
+    /* Not while lid is closed or proximity sensor covered */
+    if( lid_sensor_filtered == COVER_CLOSED ) {
+        mce_log(LL_DEVEL, "[gesture] ignored due to lid=%s",
+                cover_state_repr(lid_sensor_filtered));
+        goto EXIT;
+    }
+
+    psensor = true;
+    if( proximity_sensor_actual == COVER_CLOSED ) {
+        mce_log(LL_DEVEL, "[gesture] ignored due to proximity=%s",
+                proximity_state_repr(proximity_sensor_actual));
         goto EXIT;
     }
 
     allowed = true;
 
 EXIT:
+    if( need_psensor )
+        *need_psensor = psensor;
+
     return allowed;
 }
 
-/* ========================================================================= *
- * PWRKEY_UNBLANK
- * ========================================================================= */
-
-/** Check if unblanking is allowed according to currently active rules
- *
- * @return true if unblanking is allowed, false otherwise
+/** Predicate for: powerkey actions are allowed
  */
 static bool
-pwrkey_unblank_allowed(void)
+pwrkey_predicate_powerkey(bool *need_psensor)
+{
+    /* Assume that power key action should not be ignored */
+    bool allowed = false;
+    bool psensor = false;
+
+    /* If user is enrolling a fingerprint, do not blank with powerkey */
+    if( enroll_in_progress ) {
+        /* We only want to block actions that would blank / lock the
+         * device i.e. what would happen from display on/dimmed state.
+         */
+        switch( display_state_next ) {
+        case MCE_DISPLAY_ON:
+        case MCE_DISPLAY_DIM:
+            mce_log(LL_DEVEL, "[powerkey] ignored due to fingerprint enroll");
+            goto EXIT;
+        default:
+            // dontcare
+            break;
+        }
+    }
+
+    /* Special case: Even if incoming call is beeing ignored, do not
+     * allow unblanking via power key while proximity sensor is covered
+     * (regardless of user settings).
+     *
+     * Silencing ringing via pressing the power key through fabric
+     * of a pocket easily leads to several power key presses getting
+     * emitted and we do not want the display to get activated by such
+     * activity.
+     */
+    if( pwrkey_stm_call_state == CALL_STATE_RINGING ) {
+        psensor = true;
+        if( !pwrkey_ignore_incoming_call ) {
+            mce_log(LL_DEVEL, "[powerkey] ignored due incoming call");
+            goto EXIT;
+        }
+        if( proximity_sensor_actual != COVER_OPEN ) {
+            mce_log(LL_DEVEL, "[powerkey] ignored due to incall proximity");
+            goto EXIT;
+        }
+    }
+
+    /* Proximity sensor state vs power key press handling mode */
+    switch( pwrkey_stm_enable_mode ) {
+    case PWRKEY_ENABLE_NEVER:
+        mce_log(LL_DEVEL, "[powerkey] ignored due to setting=never");
+        goto EXIT;
+
+    case PWRKEY_ENABLE_ALWAYS:
+        break;
+
+    case PWRKEY_ENABLE_NO_PROXIMITY2:
+        /* do not ignore if display is on */
+        if( pwrkey_stm_display_state == MCE_DISPLAY_ON  ||
+            pwrkey_stm_display_state == MCE_DISPLAY_DIM ||
+            pwrkey_stm_display_state == MCE_DISPLAY_LPM_ON ) {
+            break;
+        }
+        /* fall through */
+    default:
+    case PWRKEY_ENABLE_NO_PROXIMITY:
+        if( lid_sensor_filtered == COVER_CLOSED ) {
+            mce_log(LL_DEVEL, "[powerkey] ignored due to lid");
+            goto EXIT;
+        }
+
+        psensor = true;
+        if( proximity_sensor_actual == COVER_CLOSED ) {
+            mce_log(LL_DEVEL, "[powerkey] ignored due to proximity");
+            goto EXIT;
+        }
+        break;
+    }
+
+    allowed = true;
+
+EXIT:
+    if( need_psensor )
+        *need_psensor = psensor;
+
+    return allowed;
+}
+
+static bool
+pwrkey_predicate(pwrkey_unblank_predicate_t predicate, bool *need_psensor)
 {
     bool allowed = false;
-    switch( pwrkey_unblank_predicate ) {
+    bool psensor = false;
+
+    switch( predicate ) {
     case PWRKEY_UNBLANK_PREDICATE_POWERKEY:
-        allowed = !pwrkey_stm_ignore_action();
+        allowed = pwrkey_predicate_powerkey(&psensor);
         break;
     case PWRKEY_UNBLANK_PREDICATE_FPWAKEUP:
-        allowed = pwrkey_fpwakeup_allowed();
+        allowed = pwrkey_predicate_fpwakeup(&psensor);
         break;
     case PWRKEY_UNBLANK_PREDICATE_GESTURE_REAL:
-        allowed = pwrkey_gestures_allowed(false);
+        allowed = pwrkey_predicate_gesture(false, &psensor);
         break;
     case PWRKEY_UNBLANK_PREDICATE_GESTURE_SYNTH:
-        allowed = pwrkey_gestures_allowed(true);
+        allowed = pwrkey_predicate_gesture(true, &psensor);
+        break;
+    case PWRKEY_UNBLANK_PREDICATE_DONTCARE:
+        allowed = true;
         break;
     default:
         break;
     }
-    mce_log(LL_DEBUG, "evaluate predicate %s => %s",
-            pwrkey_unblank_predicate_name[pwrkey_unblank_predicate],
-            allowed ? "allowed" : "denied");
+
+    if( need_psensor )
+        *need_psensor = psensor;
+
     return allowed;
-}
-
-/** On-proximity callback for selecting unblank rules
- *
- * @param aptr unblank predicate to use (as void pointer)
- */
-static void
-pwrkey_unblank_set_predicate_cb(gpointer aptr)
-{
-    pwrkey_unblank_predicate = GPOINTER_TO_INT(aptr);
-    mce_log(LL_DEBUG, "execute predicate = %s",
-            pwrkey_unblank_predicate_name[pwrkey_unblank_predicate]);
-}
-
-/** Select which rules apply in delayed on-proximity action handling
- *
- * @param predicate unblank predicate to use (as void pointer)
- */
-static void
-pwrkey_unblank_set_predicate(pwrkey_unblank_predicate_t predicate)
-{
-    mce_log(LL_DEBUG, "schedule predicate = %s",
-            pwrkey_unblank_predicate_name[predicate]);
-    common_on_proximity_schedule(MODULE_NAME,
-                                 pwrkey_unblank_set_predicate_cb,
-                                 GINT_TO_POINTER(predicate));
 }
 
 /* ========================================================================= *
@@ -1436,37 +1512,75 @@ pwrkey_actions_do_gesture(size_t gesture)
         ? PWRKEY_UNBLANK_PREDICATE_GESTURE_SYNTH
         : PWRKEY_UNBLANK_PREDICATE_GESTURE_REAL;
 
-    switch( gesture ) {
-    case GESTURE_FPWAKEUP:
-        if( !pwrkey_fpwakeup_allowed() )
-            goto EXIT;
+    if( gesture == GESTURE_FPWAKEUP )
         predicate = PWRKEY_UNBLANK_PREDICATE_FPWAKEUP;
-        break;
+
+    pwrkey_queue_add_actions(predicate,
+                             pwrkey_actions_from_gesture[gesture].mask_single);
+}
+
+static bool
+pwrkey_actions_do_special(void)
+{
+    bool was_special = true;
+
+    /* If alarm dialog is up, power key is used for snoozing */
+    switch( pwrkey_stm_alarm_ui_state ) {
+    case MCE_ALARM_UI_VISIBLE_INT32:
+    case MCE_ALARM_UI_RINGING_INT32:
+        if( !pwrkey_stm_alarm_silenced ) {
+            pwrkey_stm_alarm_silenced = true;
+            mce_log(LL_DEVEL, "[powerkey] silencing alarm");
+            pwrkey_dbus_send_signal(MCE_ALARM_UI_FEEDBACK_SIG, MCE_FEEDBACK_EVENT_POWERKEY);
+        }
+        goto EXIT;
     default:
-        if( !pwrkey_gestures_allowed(synthetized) )
-            goto EXIT;
+        // dontcare
         break;
     }
 
-    pwrkey_unblank_set_predicate(predicate);
-    pwrkey_mask_execute(pwrkey_actions_from_gesture[gesture].mask_single);
+    /* During incoming call power key is used to silence ringing */
+    switch( pwrkey_stm_call_state ) {
+    case CALL_STATE_RINGING:
+        if( pwrkey_ignore_incoming_call ) {
+            /* Call ui has signaled mce that the incoming call has
+             * been ignored -> powerkey can be used for display
+             * control even if there is incoming call. */
+            break;
+        }
+        if( !pwrkey_stm_call_silenced ) {
+            pwrkey_stm_call_silenced = true;
+            mce_log(LL_DEVEL, "[powerkey] silencing incoming call");
+            pwrkey_dbus_send_signal(MCE_CALL_UI_FEEDBACK_SIG, MCE_FEEDBACK_EVENT_POWERKEY);
+        }
+        goto EXIT;
+
+    default:
+        // dontcare
+        break;
+    }
+
+    was_special = false;
 
 EXIT:
-    return;
+
+    return was_special;
 }
 
 static void
 pwrkey_actions_do_common(void)
 {
-    pwrkey_unblank_set_predicate(PWRKEY_UNBLANK_PREDICATE_POWERKEY);
-    pwrkey_mask_execute(pwrkey_actions_now->mask_common);
+    if( !pwrkey_actions_do_special() )
+        pwrkey_queue_add_actions(PWRKEY_UNBLANK_PREDICATE_POWERKEY,
+                                 pwrkey_actions_now->mask_common);
 }
 
 static void
 pwrkey_actions_do_single_press(void)
 {
-    pwrkey_unblank_set_predicate(PWRKEY_UNBLANK_PREDICATE_POWERKEY);
-    pwrkey_mask_execute(pwrkey_actions_now->mask_single);
+    if( !pwrkey_actions_do_special() )
+        pwrkey_queue_add_actions(PWRKEY_UNBLANK_PREDICATE_POWERKEY,
+                                 pwrkey_actions_now->mask_single);
 }
 
 static bool
@@ -1478,8 +1592,9 @@ pwrkey_actions_use_double_press(void)
 static void
 pwrkey_actions_do_double_press(void)
 {
-    pwrkey_unblank_set_predicate(PWRKEY_UNBLANK_PREDICATE_POWERKEY);
-    pwrkey_mask_execute(pwrkey_actions_now->mask_double);
+    if( !pwrkey_actions_do_special() )
+        pwrkey_queue_add_actions(PWRKEY_UNBLANK_PREDICATE_POWERKEY,
+                                 pwrkey_actions_now->mask_double);
 }
 
 static void
@@ -1503,8 +1618,9 @@ pwrkey_actions_do_long_press(void)
 
     case MCE_SYSTEM_STATE_USER:
         /* Apply configured actions */
-        pwrkey_unblank_set_predicate(PWRKEY_UNBLANK_PREDICATE_POWERKEY);
-        pwrkey_mask_execute(pwrkey_actions_now->mask_long);
+        if( !pwrkey_actions_do_special() )
+            pwrkey_queue_add_actions(PWRKEY_UNBLANK_PREDICATE_POWERKEY,
+                                     pwrkey_actions_now->mask_long);
         break;
 
     default:
@@ -1524,21 +1640,20 @@ pwrkey_actions_update(const pwrkey_actions_t *self,
 {
     bool changed = false;
 
-    auto void update(gchar **prev, gchar *curr)
+    uint32_t unblanked = pwrkey_mask_from_name("unblanked");
+
+    auto void update(gchar **prev, uint32_t mask)
     {
+        /* "unblanked" is internal thing, sanitize settings */
+        gchar *curr = pwrkey_mask_to_names(mask & ~unblanked);
         if( prev && !eq(*prev, curr) )
             changed = true, g_free(*prev), *prev = curr, curr = 0;
         g_free(curr);
     }
 
-    update(names_single,
-           pwrkey_mask_to_names(self->mask_single | self->mask_common));
-
-    update(names_double,
-           pwrkey_mask_to_names(self->mask_double | self->mask_common));
-
-    update(names_long,
-           pwrkey_mask_to_names(self->mask_long));
+    update(names_single, self->mask_single | self->mask_common);
+    update(names_double, self->mask_double | self->mask_common);
+    update(names_long, self->mask_long);
 
     return changed;
 }
@@ -1549,11 +1664,18 @@ pwrkey_actions_parse(pwrkey_actions_t *self,
                      const char *names_double,
                      const char *names_long)
 {
+    uint32_t unblanked = pwrkey_mask_from_name("unblanked");
+
     /* Parse from configuration strings */
     self->mask_common = 0;
     self->mask_single = pwrkey_mask_from_names(names_single);
     self->mask_double = pwrkey_mask_from_names(names_double);
     self->mask_long   = pwrkey_mask_from_names(names_long);
+
+    /* "unblanked" is internal thing, sanitize settings */
+    self->mask_single &= ~unblanked;
+    self->mask_double &= ~unblanked;
+    self->mask_long   &= ~unblanked;
 
     /* Separate leading actions that are common to both
      * single and double press */
@@ -1564,6 +1686,14 @@ pwrkey_actions_parse(pwrkey_actions_t *self,
     self->mask_common |=  comm;
     self->mask_single &= ~comm;
     self->mask_double &= ~comm;
+
+    /* Preserve "unblank" predicate via dummy "unblanked" */
+    if( self->mask_common & pwrkey_mask_from_name("unblank") ) {
+        if( self->mask_single )
+            self->mask_single |= unblanked;
+        if( self->mask_double )
+            self->mask_double |= unblanked;
+    }
 }
 
 static void pwrkey_actions_select(bool display_is_on)
@@ -1923,7 +2053,8 @@ pwrkey_stm_rethink_wakelock(void)
 #ifdef ENABLE_WAKELOCKS
     static bool have_lock = false;
 
-    bool want_lock = pwrkey_stm_pending_timers();;
+    bool want_lock = (pwrkey_stm_pending_timers() |
+                      pwrkey_queue_is_busy());
 
     if( have_lock == want_lock )
         goto EXIT;
@@ -1984,9 +2115,7 @@ static void pwrkey_stm_powerkey_pressed(void)
         pwrkey_stm_store_initial_state();
 
         /* Start short vs long press detection timer */
-        if( !pwrkey_stm_ignore_action() ) {
-            pwrkey_long_press_timer_start();
-        }
+        pwrkey_long_press_timer_start();
     }
 }
 
@@ -2014,9 +2143,18 @@ static void pwrkey_stm_powerkey_released(void)
 
 static void pwrkey_stm_store_initial_state(void)
 {
-    /* Cache display state */
+    /* Cache display, call and alarm ui states */
 
-    pwrkey_stm_display_state = display_state_curr;
+    pwrkey_stm_display_state  = display_state_curr;
+    pwrkey_stm_alarm_ui_state = alarm_ui_state;
+    pwrkey_stm_call_state     = call_state;
+    pwrkey_stm_call_silenced  = false;
+    pwrkey_stm_alarm_silenced = false;
+
+    mce_log(LL_DEBUG, "display=%s alarm=%s call=%s",
+            display_state_repr(pwrkey_stm_display_state),
+            alarm_state_repr(pwrkey_stm_alarm_ui_state),
+            call_state_repr(pwrkey_stm_call_state));
 
     /* MCE_DISPLAY_OFF requests must be queued only
      * from fully powered up display states.
@@ -2038,111 +2176,6 @@ static void pwrkey_stm_store_initial_state(void)
     }
 
     pwrkey_actions_select(display_is_on);
-}
-
-/** Should power key action be ignored predicate
- */
-static bool
-pwrkey_stm_ignore_action(void)
-{
-    /* Assume that power key action should not be ignored */
-    bool ignore_powerkey = false;
-
-    /* If alarm dialog is up, power key is used for snoozing */
-    switch( alarm_ui_state ) {
-    case MCE_ALARM_UI_VISIBLE_INT32:
-    case MCE_ALARM_UI_RINGING_INT32:
-        mce_log(LL_DEVEL, "[powerkey] ignored due to active alarm");
-        ignore_powerkey = true;
-        pwrkey_dbus_send_signal(MCE_ALARM_UI_FEEDBACK_SIG, MCE_FEEDBACK_EVENT_POWERKEY);
-        break;
-
-    default:
-    case MCE_ALARM_UI_OFF_INT32:
-    case MCE_ALARM_UI_INVALID_INT32:
-        // dontcare
-        break;
-    }
-
-    /* During incoming call power key is used to silence ringing */
-    switch( call_state ) {
-    case CALL_STATE_RINGING:
-        if( pwrkey_ignore_incoming_call ) {
-            /* Call ui has signaled mce that the incoming call has
-             * been ignored -> powerkey can be used for display
-             * control even if there is incoming call. */
-            break;
-        }
-        mce_log(LL_DEVEL, "[powerkey] ignored due to incoming call");
-        ignore_powerkey = true;
-        pwrkey_dbus_send_signal(MCE_CALL_UI_FEEDBACK_SIG, MCE_FEEDBACK_EVENT_POWERKEY);
-        break;
-
-    default:
-    case CALL_STATE_INVALID:
-    case CALL_STATE_NONE:
-    case CALL_STATE_ACTIVE:
-    case CALL_STATE_SERVICE:
-        // dontcare
-        break;
-    }
-
-    /* If user is enrolling a fingerprint, do not blank with powerkey */
-    if( enroll_in_progress ) {
-        /* We only want to block actions that would blank / lock the
-         * device i.e. what would happen from display on/dimmed state.
-         */
-        switch( display_state_next ) {
-        case MCE_DISPLAY_ON:
-        case MCE_DISPLAY_DIM:
-            mce_log(LL_DEVEL, "[powerkey] ignored due to fingerprint enroll");
-            ignore_powerkey = true;
-            break;
-        default:
-            break;
-        }
-    }
-
-    /* Skip rest if already desided to ignore */
-    if( ignore_powerkey )
-        goto EXIT;
-
-    /* Proximity sensor state vs power key press handling mode */
-    switch( pwrkey_stm_enable_mode ) {
-    case PWRKEY_ENABLE_NEVER:
-        mce_log(LL_DEVEL, "[powerkey] ignored due to setting=never");
-        ignore_powerkey = true;
-        goto EXIT;
-
-    case PWRKEY_ENABLE_ALWAYS:
-        break;
-
-    case PWRKEY_ENABLE_NO_PROXIMITY2:
-        /* do not ignore if display is on */
-        if( pwrkey_stm_display_state == MCE_DISPLAY_ON  ||
-            pwrkey_stm_display_state == MCE_DISPLAY_DIM ||
-            pwrkey_stm_display_state == MCE_DISPLAY_LPM_ON ) {
-            break;
-        }
-        /* fall through */
-    default:
-    case PWRKEY_ENABLE_NO_PROXIMITY:
-        if( lid_sensor_filtered == COVER_CLOSED ) {
-            mce_log(LL_DEVEL, "[powerkey] ignored due to lid");
-            ignore_powerkey = true;
-            goto EXIT;
-        }
-
-        if( proximity_sensor_actual == COVER_CLOSED ) {
-            mce_log(LL_DEVEL, "[powerkey] ignored due to proximity");
-            ignore_powerkey = true;
-            goto EXIT;
-        }
-        break;
-    }
-
-EXIT:
-    return ignore_powerkey;
 }
 
 /* ========================================================================= *
@@ -2362,9 +2395,6 @@ static gboolean pwrkey_dbus_trigger_event_cb(DBusMessage *const req)
 
     /* Choose actions based on display state */
     pwrkey_stm_store_initial_state();
-
-    if( pwrkey_stm_ignore_action() )
-        goto EXIT;
 
     switch (act) {
     default:
@@ -3073,6 +3103,7 @@ pwrkey_datapipe_display_state_curr_cb(gconstpointer data)
             display_state_repr(display_state_curr));
 
     homekey_stm_eval_state();
+    pwrkey_queue_rethink_delays();
 
 EXIT:
     return;
@@ -3130,6 +3161,9 @@ static void pwrkey_datapipe_proximity_sensor_actual_cb(gconstpointer data)
     mce_log(LL_DEBUG, "proximity_sensor_actual = %s -> %s",
             proximity_state_repr(prev),
             proximity_state_repr(proximity_sensor_actual));
+
+    if( proximity_sensor_actual != COVER_UNDEF )
+        pwrkey_queue_execute();
 
 EXIT:
     return;
@@ -3311,6 +3345,10 @@ pwrkey_datapipe_alarm_ui_state_cb(gconstpointer data)
     alarm_ui_state_t prev = alarm_ui_state;
     alarm_ui_state = GPOINTER_TO_INT(data);
 
+    /* No need to separate between "invalid" and "off" */
+    if( alarm_ui_state == MCE_ALARM_UI_INVALID_INT32 )
+        alarm_ui_state = MCE_ALARM_UI_OFF_INT32;
+
     if( alarm_ui_state == prev )
         goto EXIT;
 
@@ -3356,7 +3394,7 @@ static void pwrkey_datapipe_enroll_in_progress_cb(gconstpointer data)
             prev ? "true" : "false",
             enroll_in_progress ? "true" : "false");
 
-    /* no immediate action, but see pwrkey_stm_ignore_action() */
+    /* no immediate action, but see pwrkey_predicate_powerkey() */
 
 EXIT:
     return;
@@ -3578,8 +3616,502 @@ xngf_quit(void)
 {
     xngf_delete_client();
 
-    if (ngf_dbus_con)
+    if( ngf_dbus_con )
         dbus_connection_unref(ngf_dbus_con), ngf_dbus_con = 0;
+}
+
+/* ------------------------------------------------------------------------- *
+ * PWRKEY_QUEUED
+ * ------------------------------------------------------------------------- */
+
+/** Create queued actions object
+ *
+ * @param predicate  Unblank predicate
+ * @param actions    Bitmap of actions
+ *
+ * @return Queued actions object
+ */
+static pwrkey_queued_t *
+pwrkey_queued_create(pwrkey_unblank_predicate_t predicate, uint32_t actions)
+{
+    if( mce_log_p(LL_DEBUG) ) {
+        gchar *names = pwrkey_mask_to_names(actions);
+        mce_log(LL_DEBUG, "QUEUE actions: %s; predicate: %s",
+                names, pwrkey_unblank_predicate_name[predicate]);
+        g_free(names);
+    }
+
+    pwrkey_queued_t *self = g_slice_alloc0(sizeof *self);
+    self->predicate = predicate;
+    self->actions   = actions;
+
+    return self;
+}
+
+/** Delete queued actions object
+ *
+ * @param self  Queued actions object, or NULL
+ */
+static void
+pwrkey_queued_delete(pwrkey_queued_t *self)
+{
+    g_slice_free1(sizeof *self, self);
+}
+
+/** Type agnostic callback for deleting queued actions objects
+ *
+ * @param self  Queued actions object, or NULL
+ */
+static void
+pwrkey_queued_delete_cb(gpointer self)
+{
+    pwrkey_queued_delete(self);
+}
+
+/* ------------------------------------------------------------------------- *
+ * PWRKEY_QUEUE
+ * ------------------------------------------------------------------------- */
+
+/** Queued actions objects */
+static GQueue *pwrkey_queue_items = NULL;
+
+/** Timer id for unblank delay */
+static guint pwrkey_queue_unblank_delay_id = 0;
+
+/** Timer id for action delay */
+static guint pwrkey_queue_action_delay_id = 0;
+
+/** Timer id for blank delay */
+static guint pwrkey_queue_blank_delay_id = 0;
+
+/** Initialize powerkey action queue
+ */
+static void
+pwrkey_queue_init(void)
+{
+    if( !pwrkey_queue_items )
+        pwrkey_queue_items = g_queue_new();
+}
+
+/** Cleanup powerkey action queue
+ */
+static void
+pwrkey_queue_quit(void)
+{
+    if( pwrkey_queue_items ) {
+        g_queue_clear_full(pwrkey_queue_items, pwrkey_queued_delete_cb);
+        g_queue_free(pwrkey_queue_items),
+            pwrkey_queue_items = NULL;
+    }
+    pwrkey_queue_stop_all_delays();
+    pwrkey_queue_rethink_psensor();
+}
+
+/** Queue powerkey actions for execution
+ *
+ * @param predicate  Unblank predicate
+ * @param actions    Bitmap of actions
+ */
+static void
+pwrkey_queue_add_actions(pwrkey_unblank_predicate_t predicate,
+                         uint32_t actions)
+{
+    if( pwrkey_queue_items ) {
+        /* Note that the given predicate is meaningful only when
+         * executing "unblank" or "unblanked" action sets and
+         * needs to be substituted when not dealing with such.
+         */
+        pwrkey_unblank_predicate_t dontcare = PWRKEY_UNBLANK_PREDICATE_DONTCARE;
+
+        /* Note that fixed execution order must be preserved even
+         * if we end up performing the actions in multiple chunks.
+         *
+         * Step 1: Blanking actions
+         *
+         * When blanking, wait for display=off before continuing
+         * to avoid triggering changes during display fade out.
+         */
+        uint32_t blank = actions & pwrkey_mask_from_name("blank");
+        if( blank ) {
+            blank = actions & ((blank << 1) - 1);
+            g_queue_push_tail(pwrkey_queue_items,
+                              pwrkey_queued_create(dontcare, blank));
+            actions &= ~blank;
+        }
+
+        /* Step 2: Unblanking actions
+         *
+         * When unblanking, wait for display power up before
+         * continuing with actions past "tkunlock".
+         */
+        uint32_t unblank = actions & pwrkey_mask_from_name("unblank");
+        uint32_t tkunlock = pwrkey_mask_from_name("tkunlock");
+
+        if( (tkunlock = actions & ((tkunlock << 1) - 1)) ) {
+            g_queue_push_tail(pwrkey_queue_items,
+                              pwrkey_queued_create(predicate, tkunlock));
+            actions &= ~tkunlock;
+        }
+
+        /* Step 3: Remaining actions
+         *
+         * No delay, except going through idle callback before
+         * continuing with further actions objects.
+         */
+        if( actions ) {
+            uint32_t unblanked = actions & pwrkey_mask_from_name("unblanked");
+            if( !unblank && !unblanked )
+                predicate = dontcare;
+            g_queue_push_tail(pwrkey_queue_items,
+                              pwrkey_queued_create(predicate, actions));
+        }
+
+        /* Make an attempt to execute something immediately */
+        pwrkey_queue_execute();
+    }
+}
+
+/** Execute powerkey actions in queue
+ */
+static void
+pwrkey_queue_execute(void)
+{
+    while( !pwrkey_queue_is_delayed() ) {
+        pwrkey_queued_t *curr = pwrkey_queue_current_action();
+        if( !curr )
+            break;
+
+        if( mce_log_p(LL_DEBUG) ) {
+            gchar *names = pwrkey_mask_to_names(curr->actions);
+            mce_log(LL_DEBUG, "EXECUTE actions: %s; predicate: %s",
+                    names, pwrkey_unblank_predicate_name[curr->predicate]);
+            g_free(names);
+        }
+
+        bool psensor = false;
+        bool allowed = pwrkey_predicate(curr->predicate, &psensor);
+        bool unknown = psensor && proximity_sensor_actual == COVER_UNDEF;
+
+        if( mce_log_p(LL_DEBUG) ) {
+            mce_log(LL_DEBUG, "predicate(%s) => %s (psensor %s)",
+                    pwrkey_unblank_predicate_name[curr->predicate],
+                    unknown ? "unknown" : allowed ? "allowed" : "denied",
+                    psensor ? "needed" : "not needed");
+        }
+
+        if( unknown ) {
+            /* Predicate result depends on proximity sensor state and
+             * we do not know it at the moment -> break out to trigger
+             * "on-demand" condition and wait for sensor ramp up.
+             */
+            break;
+        }
+
+        if( allowed ) {
+            for( size_t i = 0; i < G_N_ELEMENTS(pwrkey_action_lut); ++i ) {
+                if( curr->actions & (1 << i) ) {
+                    mce_log(LL_DEBUG, "* exec action(%s)", pwrkey_action_lut[i].name);
+                    pwrkey_action_lut[i].func();
+                }
+            }
+            pwrkey_queue_start_delay(curr->actions);
+        }
+        else if( mce_log_p(LL_DEBUG) ) {
+            for( size_t i = 0; i < G_N_ELEMENTS(pwrkey_action_lut); ++i ) {
+                if( curr->actions & (1 << i) ) {
+                    mce_log(LL_DEBUG, "* skip action(%s)", pwrkey_action_lut[i].name);
+                }
+            }
+        }
+        pwrkey_queue_finish_action();
+    }
+
+    pwrkey_queue_rethink_psensor();
+}
+
+/** Peek at the current powerkey action in queue
+ *
+ * @return Queued actions object, or NULL if queue is empty
+ */
+static pwrkey_queued_t *
+pwrkey_queue_current_action(void)
+{
+    pwrkey_queued_t *curr = NULL;
+
+    if( pwrkey_queue_items )
+        curr = g_queue_peek_head(pwrkey_queue_items);
+
+    return curr;
+}
+
+/** Proceed to the next powerkey action in queue
+ *
+ * Removes object at the head of the queue
+ */
+static void
+pwrkey_queue_finish_action(void)
+{
+    if( pwrkey_queue_items )
+        pwrkey_queued_delete(g_queue_pop_head(pwrkey_queue_items));
+}
+
+/** Check if having unblank delay makes sense
+ *
+ * @return false if display is already unblanked, true otherwise
+ */
+static bool
+pwrkey_queue_unblank_delay_needed(void)
+{
+    bool is_relevant = true;
+    switch( display_state_curr ) {
+    case MCE_DISPLAY_POWER_UP:
+    case MCE_DISPLAY_ON:
+    case MCE_DISPLAY_DIM:
+        is_relevant = false;
+        break;
+    default:
+        break;
+    }
+    return is_relevant;
+}
+
+/** Start unblank delay
+ *
+ * @param delay  Delay in milliseconds
+ */
+static void
+pwrkey_queue_start_unblank_delay(guint delay)
+{
+    pwrkey_queue_stop_all_delays();
+
+    if( pwrkey_queue_unblank_delay_needed() ) {
+        mce_log(LL_DEBUG, "unblank delay = %u ms", delay);
+        pwrkey_queue_unblank_delay_id =
+            g_timeout_add(delay, pwrkey_queue_unblank_delay_cb, NULL);
+    }
+}
+
+/** Cancel unblank delay
+ *
+ * Called from pwrkey_datapipe_display_state_curr_cb()
+ * when display changes to powered on state.
+ */
+static void
+pwrkey_queue_stop_unblank_delay(void)
+{
+    if( pwrkey_queue_unblank_delay_id ) {
+        g_source_remove(pwrkey_queue_unblank_delay_id),
+            pwrkey_queue_unblank_delay_id = 0;
+        mce_log(LL_DEBUG, "unblank delay stopped");
+        pwrkey_queue_execute();
+    }
+}
+
+/** Timer callback for ending unblank delay
+ *
+ * @param aptr  (unused user data pointer)
+ */
+static gboolean
+pwrkey_queue_unblank_delay_cb(gpointer aptr)
+{
+    (void)aptr;
+    pwrkey_queue_unblank_delay_id = 0;
+    mce_log(LL_DEBUG, "unblank delay ended");
+    pwrkey_queue_execute();
+    return G_SOURCE_REMOVE;
+}
+
+/** Start action delay
+ *
+ * @param delay  Delay in milliseconds
+ */
+static void
+pwrkey_queue_start_action_delay(guint delay)
+{
+    pwrkey_queue_stop_all_delays();
+
+    mce_log(LL_DEBUG, "action delay = %u ms", delay);
+    pwrkey_queue_action_delay_id = g_timeout_add(delay, pwrkey_queue_action_delay_cb, NULL);
+}
+
+/** Cancel action delay
+ *
+ * Called from pwrkey_datapipe_display_state_curr_cb()
+ * when display changes to powered on state.
+ */
+static void
+pwrkey_queue_stop_action_delay(void)
+{
+    if( pwrkey_queue_action_delay_id ) {
+        g_source_remove(pwrkey_queue_action_delay_id),
+            pwrkey_queue_action_delay_id = 0;
+        mce_log(LL_DEBUG, "action delay stopped");
+        pwrkey_queue_execute();
+    }
+}
+
+/** Timer callback for ending action delay
+ *
+ * @param aptr  (unused user data pointer)
+ */
+static gboolean
+pwrkey_queue_action_delay_cb(gpointer aptr)
+{
+    (void)aptr;
+    pwrkey_queue_action_delay_id = 0;
+    mce_log(LL_DEBUG, "action delay ended");
+    pwrkey_queue_execute();
+    return G_SOURCE_REMOVE;
+}
+
+/** Check if having blank delay makes sense
+ *
+ * @return false if display is already blanked, true otherwise
+ */
+static bool
+pwrkey_queue_blank_delay_needed(void)
+{
+    bool is_relevant = true;
+    switch( display_state_curr ) {
+    case MCE_DISPLAY_OFF:
+    case MCE_DISPLAY_LPM_OFF:
+    case MCE_DISPLAY_LPM_ON:
+        is_relevant = false;
+        break;
+    default:
+    case MCE_DISPLAY_POWER_DOWN:
+        break;
+    }
+    return is_relevant;
+}
+
+/** Start blank delay
+ *
+ * @param delay  Delay in milliseconds
+ */
+static void
+pwrkey_queue_start_blank_delay(guint delay)
+{
+    pwrkey_queue_stop_all_delays();
+
+    if( pwrkey_queue_blank_delay_needed() ) {
+        mce_log(LL_DEBUG, "blank delay = %u ms", delay);
+        pwrkey_queue_blank_delay_id =
+            g_timeout_add(delay, pwrkey_queue_blank_delay_cb, NULL);
+    }
+}
+
+/** Cancel blank delay
+ *
+ * Called from pwrkey_datapipe_display_state_curr_cb()
+ * when display changes to powered on state.
+ */
+static void
+pwrkey_queue_stop_blank_delay(void)
+{
+    if( pwrkey_queue_blank_delay_id ) {
+        g_source_remove(pwrkey_queue_blank_delay_id),
+            pwrkey_queue_blank_delay_id = 0;
+        mce_log(LL_DEBUG, "blank delay stopped");
+        pwrkey_queue_execute();
+    }
+}
+
+/** Timer callback for ending blank delay
+ *
+ * @param aptr  (unused user data pointer)
+ */
+static gboolean
+pwrkey_queue_blank_delay_cb(gpointer aptr)
+{
+    (void)aptr;
+    pwrkey_queue_blank_delay_id = 0;
+    mce_log(LL_DEBUG, "blank delay ended");
+    pwrkey_queue_execute();
+    return G_SOURCE_REMOVE;
+}
+
+/** Start delay timer depending on actions just executed
+ *
+ * @param actions  Bitmap of just executed actions
+ */
+static void
+pwrkey_queue_start_delay(uint32_t actions)
+{
+    if( actions & pwrkey_mask_from_name("unblank") )
+        pwrkey_queue_start_unblank_delay(500);
+    else if( actions & pwrkey_mask_from_name("blank") )
+        pwrkey_queue_start_blank_delay(500);
+    else
+        pwrkey_queue_start_action_delay(0);
+}
+
+/** Stop all timers that delay queue execution
+ */
+static void
+pwrkey_queue_stop_all_delays(void)
+{
+    pwrkey_queue_stop_unblank_delay();
+    pwrkey_queue_stop_action_delay();
+    pwrkey_queue_stop_blank_delay();
+}
+
+/** Predicate for: pending unblank delay
+ *
+ * @returns true if queue processing is delayed, false otherwise
+ */
+static bool
+pwrkey_queue_is_delayed(void)
+{
+    return (pwrkey_queue_unblank_delay_id ||
+            pwrkey_queue_action_delay_id  ||
+            pwrkey_queue_blank_delay_id);
+}
+
+/** Predicate for: pending queued actions
+ *
+ * @returns true if queue is busy, false otherwise
+ */
+static bool
+pwrkey_queue_is_busy(void)
+{
+    return pwrkey_queue_is_delayed() || pwrkey_queue_current_action();
+}
+
+/** Check if blank/unblank delays can be canceled
+ */
+static void
+pwrkey_queue_rethink_delays(void)
+{
+    if( !pwrkey_queue_unblank_delay_needed() )
+        pwrkey_queue_stop_unblank_delay();
+
+    if( !pwrkey_queue_blank_delay_needed() )
+        pwrkey_queue_stop_blank_delay();
+}
+
+/** Re-evaluate need for on-demand proximity sensor
+ *
+ * Request "on-demand" proximity sensor activation / deactivation
+ * based on queue status.
+ */
+static void
+pwrkey_queue_rethink_psensor(void)
+{
+    static const char enable[]  = PROXIMITY_SENSOR_REQUIRED_ADD MODULE_NAME;
+    static const char disable[] = PROXIMITY_SENSOR_REQUIRED_REM MODULE_NAME;
+
+    static bool active = false;
+
+    bool required = pwrkey_queue_is_busy();
+
+    if( active != required ) {
+        active = required;
+        /* Note: logging from datapipe functions */
+        datapipe_exec_full(&proximity_sensor_required_pipe,
+                           required ? enable : disable);
+        pwrkey_stm_rethink_wakelock();
+    }
 }
 
 /* ========================================================================= *
@@ -3601,6 +4133,8 @@ gboolean mce_powerkey_init(void)
 
     xngf_init();
 
+    pwrkey_queue_init();
+
     return TRUE;
 }
 
@@ -3611,6 +4145,8 @@ gboolean mce_powerkey_init(void)
  */
 void mce_powerkey_exit(void)
 {
+    pwrkey_queue_quit();
+
     xngf_quit();
 
     pwrkey_dbus_quit();
