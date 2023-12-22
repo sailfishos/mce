@@ -1,3 +1,9 @@
+mce (1.115.3) precise; urgency=low
+
+  * [powerkey] Apply proximity delay only when needed. Fixes JB#45638
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Fri, 22 Dec 2023 16:53:27 +0200
+
 mce (1.115.2) precise; urgency=low
 
   * [mcetool] Add "only-blank" override for display off requests. JB#60257
