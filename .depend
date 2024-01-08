@@ -780,6 +780,7 @@ modules/display.o:\
 	mce-worker.h\
 	mce.h\
 	musl-compatibility.h\
+	systemui/dbus-names.h\
 	tklock.h\
 	modules/display.h\
 	modules/powersavemode.h\
@@ -804,6 +805,7 @@ modules/display.pic.o:\
 	mce-worker.h\
 	mce.h\
 	musl-compatibility.h\
+	systemui/dbus-names.h\
 	tklock.h\
 	modules/display.h\
 	modules/powersavemode.h\
@@ -1218,6 +1220,7 @@ tests/ut/ut_display.o:\
 	mce-worker.h\
 	mce.h\
 	musl-compatibility.h\
+	systemui/dbus-names.h\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
@@ -1244,6 +1247,7 @@ tests/ut/ut_display.pic.o:\
 	mce-worker.h\
 	mce.h\
 	musl-compatibility.h\
+	systemui/dbus-names.h\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
@@ -1271,6 +1275,7 @@ tests/ut/ut_display_blanking_inhibit.o:\
 	mce-worker.h\
 	mce.h\
 	musl-compatibility.h\
+	systemui/dbus-names.h\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
@@ -1298,6 +1303,7 @@ tests/ut/ut_display_blanking_inhibit.pic.o:\
 	mce-worker.h\
 	mce.h\
 	musl-compatibility.h\
+	systemui/dbus-names.h\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
@@ -1325,6 +1331,7 @@ tests/ut/ut_display_conf.o:\
 	mce-worker.h\
 	mce.h\
 	musl-compatibility.h\
+	systemui/dbus-names.h\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
@@ -1352,6 +1359,7 @@ tests/ut/ut_display_conf.pic.o:\
 	mce-worker.h\
 	mce.h\
 	musl-compatibility.h\
+	systemui/dbus-names.h\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
@@ -1379,6 +1387,7 @@ tests/ut/ut_display_filter.o:\
 	mce-worker.h\
 	mce.h\
 	musl-compatibility.h\
+	systemui/dbus-names.h\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
@@ -1406,6 +1415,7 @@ tests/ut/ut_display_filter.pic.o:\
 	mce-worker.h\
 	mce.h\
 	musl-compatibility.h\
+	systemui/dbus-names.h\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
@@ -1433,6 +1443,7 @@ tests/ut/ut_display_stm.o:\
 	mce-worker.h\
 	mce.h\
 	musl-compatibility.h\
+	systemui/dbus-names.h\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\
@@ -1460,6 +1471,7 @@ tests/ut/ut_display_stm.pic.o:\
 	mce-worker.h\
 	mce.h\
 	musl-compatibility.h\
+	systemui/dbus-names.h\
 	tklock.h\
 	modules/display.c\
 	modules/display.h\

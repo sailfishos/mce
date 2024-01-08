@@ -453,13 +453,19 @@ typedef enum {
 typedef enum
 {
     /** Display off request turns display off and activates lockscreen */
-    DISPLAY_OFF_OVERRIDE_DISABLED = 0,
+    DISPLAY_OFF_OVERRIDE_DISABLED   = 0,
 
     /** Display off request puts display to lpm state */
-    DISPLAY_OFF_OVERRIDE_USE_LPM  = 1,
+    DISPLAY_OFF_OVERRIDE_USE_LPM    = 1 << 0,
 
-    /** Display off request just turns display off */
-    DISPLAY_OFF_OVERRIDE_ONLY_BLANK  = 2,
+    /** Display off request just turns display off
+     *
+     * Note: This is mutually exclusive with other override modifiers
+     *       as they require or imply lockscreen activation. */
+    DISPLAY_OFF_OVERRIDE_ONLY_BLANK = 1 << 1,
+
+    /** Apply device lock */
+    DISPLAY_OFF_OVERRIDE_DEVLOCK    = 1 << 2,
 } display_off_blanking_mode_t;
 
 /** How display off requests via D-Bus should be interpreted

@@ -5695,6 +5695,7 @@ static const symbol_t display_off_override[] = {
         { "disabled",   DISPLAY_OFF_OVERRIDE_DISABLED    },
         { "use-lpm",    DISPLAY_OFF_OVERRIDE_USE_LPM     },
         { "only-blank", DISPLAY_OFF_OVERRIDE_ONLY_BLANK  },
+        { "devlock",    DISPLAY_OFF_OVERRIDE_DEVLOCK     },
         { NULL,         -1                               }
 };
 
@@ -5708,11 +5709,14 @@ static bool xmce_set_display_off_override(const char *args)
         if( mcetool_handle_common_args(key, args) )
                 return true;
 
-        int val = lookup(display_off_override, args);
-        if( val < 0 ) {
-                errorf("%s: invalid display off override value\n", args);
+        int val = mcetool_parse_bitmask(display_off_override, args);
+
+        if( val & DISPLAY_OFF_OVERRIDE_ONLY_BLANK &&
+            val & ~DISPLAY_OFF_OVERRIDE_ONLY_BLANK) {
+                errorf("%s: invalid display off override value combination\n", args);
                 exit(EXIT_FAILURE);
         }
+
         return xmce_setting_set_int(key, val);
 }
 
@@ -5722,8 +5726,9 @@ static void xmce_get_display_off_override(void)
 {
         gint        val = 0;
         const char *txt = 0;
+        char        buf[256];
         if( xmce_setting_get_int(MCE_SETTING_DISPLAY_OFF_OVERRIDE, &val) )
-                txt = rlookup(display_off_override, val);
+                txt = mcetool_format_bitmask(display_off_override, val, buf, sizeof buf);
         printf("%-"PAD1"s %s \n", "Display off override mode:", txt ?: "unknown");
 }
 
@@ -7598,12 +7603,17 @@ static const mce_opt_t options[] =
         {
                 .name        = "set-display-off-override",
                 .with_arg    = xmce_set_display_off_override,
-                .values      = "disabled|use-lpm|only-blank",
+                .values      = "bit1[,bit2][...]",
                 .usage       =
-                        "set the display off request override; valid modes are:\n"
+                        "set the display off request override; valid bits are:\n"
                         "disabled    - blank screen and activate lockscreen\n"
                         "use-lpm     - activate display low power mode\n"
-                        "only-blank  - just blank screen\n"
+                        "only-blank  - blank screen without activating lockscreen\n"
+                        "devlock     - also lock device\n"
+                        "\n"
+                        "Note: As lpm implies and devlock requires lockscreen\n"
+                        "      activation, 'only-blank' is mutually exclusive with\n"
+                        "      all other options.\n"
         },
         {
                 .name        = "enable-radio",
