@@ -474,7 +474,7 @@ typedef enum
  * lpm state instead of turning display fully off.
  */
 # define MCE_SETTING_DISPLAY_OFF_OVERRIDE                MCE_SETTING_DISPLAY_PATH "/display_off_override"
-# define MCE_DEFAULT_DISPLAY_OFF_OVERRIDE                0 // = DISPLAY_OFF_OVERRIDE_DISABLED
+# define MCE_DEFAULT_DISPLAY_OFF_OVERRIDE                4 // = DISPLAY_OFF_OVERRIDE_DEVLOCK
 
 /** Display blanking pause modes */
 typedef enum {
