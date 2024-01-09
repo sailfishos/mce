@@ -130,6 +130,7 @@ static inline bool empty(const char *s)
 static char   *pwrkey_get_token(char **ppos);
 static bool    pwrkey_create_flagfile(const char *path);
 static bool    pwrkey_delete_flagfile(const char *path);
+static int64_t pwrkey_event_tick(const struct input_event *ev);
 
 /* ------------------------------------------------------------------------- *
  * PS_OVERRIDE
@@ -725,6 +726,23 @@ static bool pwrkey_delete_flagfile(const char *path)
     }
 
     return deleted;
+}
+
+/** Get event time in millisecond accuracy
+ *
+ * @param ev  input event pointer
+ *
+ * @return event time in millisecond accuracy
+ */
+static int64_t pwrkey_event_tick(const struct input_event *ev)
+{
+    int64_t ms = 0;
+    if( ev ) {
+        ms += ev->input_event_sec;
+        ms *= 1000;
+        ms += ev->input_event_usec / 1000;
+    }
+    return ms;
 }
 
 /* ========================================================================= *
@@ -3228,7 +3246,13 @@ pwrkey_datapipe_keypress_event_cb(gconstpointer const data)
         switch( ev->code ) {
         case KEY_POWER:
             if( ev->value == 1 ) {
-                if( mce_lib_get_boot_tick() < press_limit ) {
+                /* Use event time infomation provided by kernel.
+                 * Assumed: monotonically rising values, we use
+                 * only difference between values and do not need
+                 * to care about sign etc of individual values. */
+                int64_t press_time = pwrkey_event_tick(ev);
+
+                if( press_limit && press_time < press_limit ) {
                     /* Too soon after the previous powerkey
                      * release -> assume faulty hw sending
                      * bursts of presses */
@@ -3264,15 +3288,14 @@ pwrkey_datapipe_keypress_event_cb(gconstpointer const data)
                         }
                     }
                 }
+                /* Adjust time limit for accepting the next power
+                 * key press (and make sure it stays non-zero) */
+                press_limit = press_time + press_delay ?: 1;
             }
             else if( ev->value == 0 ) {
                 mce_log(LL_CRUCIAL, "powerkey released");
                 /* Power key released */
                 pwrkey_stm_powerkey_released();
-
-                /* Adjust time limit for accepting the next power
-                 * key press */
-                press_limit = mce_lib_get_boot_tick() + press_delay;
             }
 
             pwrkey_stm_rethink_wakelock();
