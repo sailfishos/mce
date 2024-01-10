@@ -1,3 +1,11 @@
+mce (1.115.4) precise; urgency=low
+
+  * [display] Add "devlock" display off override modifier. JB#50672
+  * [display] Use "devlock" display off override by default. Fixes JB#50672
+  * [powerkey] Use event time for power key jitter filtering. Fixes JB#34859
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Wed, 10 Jan 2024 10:27:51 +0200
+
 mce (1.115.3) precise; urgency=low
 
   * [powerkey] Apply proximity delay only when needed. Fixes JB#45638
