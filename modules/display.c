@@ -60,6 +60,8 @@
 
 #include "powersavemode.h"
 
+#include "../systemui/dbus-names.h"
+
 #include <sys/ptrace.h>
 #include <sys/wait.h>
 
@@ -930,6 +932,8 @@ static gboolean            mdy_dbus_handle_blanking_inhibit_get_req(DBusMessage 
 static void                mdy_dbus_invalidate_display_status(void);
 static gboolean            mdy_dbus_send_display_status(DBusMessage *const method_call);
 static const char         *mdy_dbus_get_reason_to_block_display_on(void);
+static const char         *mdy_dbus_get_reason_to_block_display_off(void);
+static const char         *mdy_dbus_get_reason_to_block_display_lpm(void);
 
 static void                mdy_dbus_handle_display_state_req(display_state_t state);
 static void                mdy_dbus_handle_display_state_req_cb(gpointer aptr);
@@ -10068,6 +10072,79 @@ EXIT:
     return reason;
 }
 
+/** Helper for deciding if external display off requests are allowed
+ *
+ * During ringing call / alarm power key is reserved for silencing
+ * the ringing -> there might not be a way to power up display again
+ * -> can't allow it to be powered down on external trigger
+ *
+ * @return reason to block, or NULL if allowed
+ */
+static const char *mdy_dbus_get_reason_to_block_display_off(void)
+{
+    const char *reason = NULL;
+
+    /* incoming call? */
+    switch( call_state ) {
+    case CALL_STATE_RINGING:
+        reason = "call ringing";
+        goto EXIT;
+    default:
+        break;
+    }
+
+    /* active alarm? */
+    switch( alarm_ui_state ) {
+    case MCE_ALARM_UI_RINGING_INT32:
+    case MCE_ALARM_UI_VISIBLE_INT32:
+        reason = "active alarm";
+        goto EXIT;
+    default:
+        break;
+    }
+
+EXIT:
+    return reason;
+}
+
+/** Helper for deciding if external display lpm_on requests are allowed
+ *
+ * Check if device in a state where lpm display can be activated
+ * without causing problems elsewhere.
+ *
+ * @return reason to block, or NULL if allowed
+ */
+static const char *mdy_dbus_get_reason_to_block_display_lpm(void)
+{
+    const char *reason = NULL;
+
+    /* If there are any reasons to ignore display on/dim requests,
+     * they apply also for lpm-on requests */
+    if( (reason = mdy_dbus_get_reason_to_block_display_on()) )
+        goto EXIT;
+
+    /* Ignore lpm-on requests if there are active calls / alarms */
+    if( uiexception_type & (UIEXCEPTION_TYPE_CALL | UIEXCEPTION_TYPE_ALARM) ) {
+        reason  = "call or alarm active";
+        goto EXIT;
+    }
+
+    /* UI side is allowed to trigger lpm from fully powered up display
+     * states, i.e. blank-to-lpm is allowed, but unblank-to-lpm is not
+     */
+    switch( display_state_next ) {
+    case MCE_DISPLAY_DIM:
+    case MCE_DISPLAY_ON:
+        break;
+    default:
+        reason = "display is off";
+        goto EXIT;
+    }
+
+EXIT:
+    return reason;
+}
+
 /** Helper for handling display state requests coming over D-Bus
  *
  * @param state  Requested display state
@@ -10089,16 +10166,29 @@ static void mdy_dbus_handle_display_state_req(display_state_t state)
  */
 static void mdy_dbus_handle_display_state_req_cb(gpointer aptr)
 {
-    display_state_t  current   = datapipe_get_gint(display_state_next_pipe);
     display_state_t  requested = GPOINTER_TO_INT(aptr);
-    display_state_t  granted   = requested;
-    const char      *reason    = 0;
+    const char      *reason    = NULL;
     bool             tklock    = false;
+    bool             devlock   = false;
+
+    if( requested == MCE_DISPLAY_OFF ) {
+        /* Note: inequality test here vs bit tests below is intentional
+         *       as "only-blank" is meaningful only when it is the only
+         *       selection present in the bitmask.
+         */
+        if( mdy_dbus_display_off_override != DISPLAY_OFF_OVERRIDE_ONLY_BLANK )
+            tklock = true;
+
+        if( mdy_dbus_display_off_override & DISPLAY_OFF_OVERRIDE_USE_LPM )
+            requested = MCE_DISPLAY_LPM_ON;
+
+        if( mdy_dbus_display_off_override & DISPLAY_OFF_OVERRIDE_DEVLOCK )
+            devlock = true;
+    }
 
     switch( requested ) {
     case MCE_DISPLAY_OFF:
-        if( mdy_dbus_display_off_override != DISPLAY_OFF_OVERRIDE_ONLY_BLANK )
-            tklock = true;
+        reason = mdy_dbus_get_reason_to_block_display_off();
         break;
 
     case MCE_DISPLAY_ON:
@@ -10107,30 +10197,12 @@ static void mdy_dbus_handle_display_state_req_cb(gpointer aptr)
         break;
 
     case MCE_DISPLAY_LPM_ON:
-        /* Ignore lpm requests if there are active calls / alarms */
-        if( uiexception_type & (UIEXCEPTION_TYPE_CALL | UIEXCEPTION_TYPE_ALARM) ) {
-            reason  = "call or alarm active";
-            break;
-        }
-
-        /* If there are any reasons to ignore display on/dim requests,
-         * they apply for lpm requests too */
-        if( (reason = mdy_dbus_get_reason_to_block_display_on()) )
-            break;
-
-        /* UI side is allowed to trigger lpm from fully powered
-         * up display states, i.e. blank to lpm. */
-        switch( current ) {
-        case MCE_DISPLAY_DIM:
-        case MCE_DISPLAY_ON:
-            tklock = true;
-            break;
-        default:
-            /* Complain and treat as if MCE_DISPLAY_OFF were made */
-            reason = "display is off";
-            granted = MCE_DISPLAY_OFF;
-            tklock = true;
-            break;
+        tklock = true;
+        if( (reason = mdy_dbus_get_reason_to_block_display_lpm()) ) {
+            mce_log(LL_WARN, "display %s request denied: %s",
+                    display_state_repr(requested), reason);
+            requested = MCE_DISPLAY_OFF;
+            reason = mdy_dbus_get_reason_to_block_display_off();
         }
         break;
 
@@ -10139,17 +10211,28 @@ static void mdy_dbus_handle_display_state_req_cb(gpointer aptr)
         break;
     }
 
-    if( reason ) {
+    if( reason )
         mce_log(LL_WARN, "display %s request denied: %s",
                 display_state_repr(requested), reason);
-        if( granted == requested )
-            granted = current;
-    }
 
     if( tklock )
         mce_datapipe_request_tklock(TKLOCK_REQUEST_ON);
 
-    mdy_dbus_handle_display_state_req(granted);
+    if( !reason && requested != display_state_next )
+        mdy_dbus_handle_display_state_req(requested);
+
+    if( devlock ) {
+        dbus_int32_t state = DEVICELOCK_STATE_LOCKED;
+        mce_log(LL_WARN, "Requesting devicelock=%s",
+                devicelock_state_repr(state));
+        dbus_send(DEVICELOCK_SERVICE,
+                  DEVICELOCK_REQUEST_PATH,
+                  DEVICELOCK_REQUEST_IF,
+                  "setState",
+                  NULL,
+                  DBUS_TYPE_INT32, &state,
+                  DBUS_TYPE_INVALID);
+    }
 }
 
 /** Delay processing of display state request until proximity state is known
@@ -10215,9 +10298,6 @@ static gboolean mdy_dbus_handle_display_dim_req(DBusMessage *const msg)
  */
 static gboolean mdy_dbus_handle_display_off_req(DBusMessage *const msg)
 {
-    if( mdy_dbus_display_off_override == DISPLAY_OFF_OVERRIDE_USE_LPM )
-        return mdy_dbus_handle_display_lpm_req(msg);
-
     mdy_dbus_schedule_display_state_req(msg, MCE_DISPLAY_OFF);
     if( !dbus_message_get_no_reply(msg) )
         dbus_send_message(dbus_new_method_reply(msg));
