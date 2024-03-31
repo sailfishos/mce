@@ -693,6 +693,11 @@ static const struct {
     const char *disable_value;
 } mch_autoconfig[] = {
     {
+        .control_path  = "/sys/class/power_supply/battery/battery_charging_enabled",
+        .enable_value  = "1",
+        .disable_value = "0",
+    },
+    {
         .control_path  = "/sys/class/power_supply/battery/charging_enabled",
         .enable_value  = "1",
         .disable_value = "0",
