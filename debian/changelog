@@ -1,3 +1,9 @@
+mce (1.115.5) precise; urgency=low
+
+  * [charging] Add battery_charging_enabled to charging control. JB#61862
+
+ -- Matti Lehtimäki <matti.lehtimaki@jolla.com>  Fri, 5 Apr 2024 16:37:50 +0300
+
 mce (1.115.4) precise; urgency=low
 
   * [display] Add "devlock" display off override modifier. JB#50672
