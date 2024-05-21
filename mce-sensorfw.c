@@ -5,7 +5,8 @@
  *
  * <p>
  *
- * Copyright (C) 2013-2014 Jolla Ltd.
+ * Copyright (c) 2013 - 2014 Jolla Ltd.
+ * Copyright (c) 2025 Jollyboys Ltd.
  *
  * <p>
  *
@@ -206,6 +207,7 @@ typedef enum
     SFW_SENSOR_ID_STEPCOUNTER,
     SFW_SENSOR_ID_TAP,
     SFW_SENSOR_ID_TEMPERATURE,
+    SFW_SENSOR_ID_WAKEUP,
 
     SFW_SENSOR_ID_COUNT
 } sensor_id_t;
@@ -218,6 +220,7 @@ sensor_id_available(sensor_id_t id)
     case SFW_SENSOR_ID_PS:
     case SFW_SENSOR_ID_ALS:
     case SFW_SENSOR_ID_ORIENT:
+    case SFW_SENSOR_ID_WAKEUP:
         break;
     default:
         available = mce_in_sensortest_mode();
@@ -279,6 +282,7 @@ sensor_id_available(sensor_id_t id)
 #define SFW_SENSOR_INTERFACE_STEPCOUNTER    "local.StepcounterSensor"
 #define SFW_SENSOR_INTERFACE_TAP            "local.TapSensor"
 #define SFW_SENSOR_INTERFACE_TEMPERATURE    "local.TemperatureSensor"
+#define SFW_SENSOR_INTERFACE_WAKEUP         "local.WakeupSensor"
 
 /** D-Bus method for enabling sensor
  *
@@ -322,6 +326,7 @@ sensor_id_available(sensor_id_t id)
 #define SFW_SENSOR_METHOD_READ_STEPCOUNTER    "steps"
 #define SFW_SENSOR_METHOD_READ_TAP            NULL // event, not state
 #define SFW_SENSOR_METHOD_READ_TEMPERATURE    "temperature"
+#define SFW_SENSOR_METHOD_READ_WAKEUP         NULL // event, not state
 
 // ----------------------------------------------------------------
 
@@ -346,6 +351,7 @@ sensor_id_available(sensor_id_t id)
 #define SFW_SENSOR_NAME_STEPCOUNTER       "stepcountersensor"
 #define SFW_SENSOR_NAME_TAP               "tapsensor"
 #define SFW_SENSOR_NAME_TEMPERATURE       "temperaturesensor"
+#define SFW_SENSOR_NAME_WAKEUP            "wakeupsensor"
 
 // ----------------------------------------------------------------
 
@@ -376,6 +382,7 @@ typedef struct sfw_sample_rotation_t      sfw_sample_rotation_t;
 typedef struct sfw_sample_stepcounter_t   sfw_sample_stepcounter_t;
 typedef struct sfw_sample_tap_t           sfw_sample_tap_t;
 typedef struct sfw_sample_temperature_t   sfw_sample_temperature_t;
+typedef struct sfw_sample_wakeup_t        sfw_sample_wakeup_t;
 
 /* ========================================================================= *
  * SENSORFW_NOTIFY
@@ -684,6 +691,17 @@ struct sfw_sample_temperature_t
 
 static const char *sfw_sample_temperature_repr(const sfw_sample_temperature_t *self);
 
+struct sfw_sample_wakeup_t
+{
+    /** microseconds, monotonic */
+    uint64_t wakeup_timestamp;
+
+    /** wakeup condition, 0 = placeholder, 1 = begin, 2 = end, ...  */
+    uint32_t wakeup_value;
+};
+
+static const char *sfw_sample_wakeup_repr(const sfw_sample_wakeup_t *self);
+
 /* ========================================================================= *
  * SENSORFW_BACKEND
  * ========================================================================= */
@@ -735,6 +753,7 @@ static bool sfw_backend_rotation_value_cb       (sfw_plugin_t *plugin, DBusMessa
 static bool sfw_backend_stepcounter_value_cb    (sfw_plugin_t *plugin, DBusMessageIter *data);
 static bool sfw_backend_tap_value_cb            (sfw_plugin_t *plugin, DBusMessageIter *data);
 static bool sfw_backend_temperature_value_cb    (sfw_plugin_t *plugin, DBusMessageIter *data);
+static bool sfw_backend_wakeup_value_cb         (sfw_plugin_t *plugin, DBusMessageIter *data);
 
 static void sfw_backend_als_sample_cb           (sfw_plugin_t *plugin, sfw_notify_t type, const void *sample);
 static void sfw_backend_ps_sample_cb            (sfw_plugin_t *plugin, sfw_notify_t type, const void *sample);
@@ -750,6 +769,7 @@ static void sfw_backend_rotation_sample_cb      (sfw_plugin_t *plugin, sfw_notif
 static void sfw_backend_stepcounter_sample_cb   (sfw_plugin_t *plugin, sfw_notify_t type, const void *sample);
 static void sfw_backend_tap_sample_cb           (sfw_plugin_t *plugin, sfw_notify_t type, const void *sample);
 static void sfw_backend_temperature_sample_cb   (sfw_plugin_t *plugin, sfw_notify_t type, const void *sample);
+static void sfw_backend_wakeup_sample_cb        (sfw_plugin_t *plugin, sfw_notify_t type, const void *sample);
 
 /* ========================================================================= *
  * SENSORFW_HELPERS
@@ -1044,6 +1064,7 @@ static sfw_session_t    *sfw_session_create             (sfw_plugin_t *plugin);
 static void              sfw_session_delete             (sfw_session_t *self);
 
 static int               sfw_session_get_id             (const sfw_session_t *self);
+static void              sfw_session_set_id             (sfw_session_t *self, int sid);
 
 static void              sfw_session_cancel_start       (sfw_session_t *self);
 static void              sfw_session_cancel_retry       (sfw_session_t *self);
@@ -1245,6 +1266,9 @@ static void (*sfw_notify_als_cb)(int lux) = 0;
 
 /** Orientation change callback used for notifying upper level logic */
 static void (*sfw_notify_orient_cb)(int state) = 0;
+
+/** Wakeup event callback used for notifying upper level logic */
+static void (*sfw_notify_wakeup_cb)(int state) = 0;
 
 // (exported API defined in "mce-sensorfw.h")
 
@@ -1476,6 +1500,17 @@ sfw_sample_temperature_repr(const sfw_sample_temperature_t *self)
              "time=%"PRIu64" temperature=%"PRIu32,
              self->temperature_timestamp,
              self->temperature_value);
+    return buf;
+}
+
+static const char *
+sfw_sample_wakeup_repr(const sfw_sample_wakeup_t *self)
+{
+    static char buf[64];
+    snprintf(buf, sizeof buf,
+             "time=%"PRIu64" wakeup=%"PRIu32,
+             self->wakeup_timestamp,
+             self->wakeup_value);
     return buf;
 }
 
@@ -1905,6 +1940,31 @@ sfw_backend_temperature_value_cb(sfw_plugin_t *plugin, DBusMessageIter *data)
     const sfw_sample_temperature_t sample = {
         .temperature_timestamp = tck,
         .temperature_value     = val,
+    };
+
+    sfw_plugin_handle_sample(plugin, &sample);
+
+    ack = true;
+EXIT:
+    return ack;
+}
+
+static bool
+sfw_backend_wakeup_value_cb(sfw_plugin_t *plugin, DBusMessageIter *data)
+{
+    bool          ack  = false;
+    dbus_uint64_t tck  = 0;
+    dbus_uint32_t val  = 0;
+
+    if( !sfw_backend_parse_data(data,
+                                DBUS_TYPE_UINT64, &tck,
+                                DBUS_TYPE_UINT32, &val,
+                                DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    const sfw_sample_wakeup_t sample = {
+        .wakeup_timestamp = tck,
+        .wakeup_value     = val,
     };
 
     sfw_plugin_handle_sample(plugin, &sample);
@@ -2576,6 +2636,58 @@ sfw_backend_temperature_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const
     return;
 }
 
+static void
+sfw_backend_wakeup_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *sampledata)
+{
+    (void)plugin;
+
+    static const sfw_sample_wakeup_t default_value   = { };
+    static sfw_sample_wakeup_t       cached_value    = { };
+    static bool                      tracking_active = false;
+
+    const sfw_sample_wakeup_t *sample = sampledata;
+
+    switch( type ) {
+    default:
+    case NOTIFY_REPEAT:
+        break;
+
+    case NOTIFY_FORGET:
+    case NOTIFY_RESET:
+        tracking_active = false;
+        cached_value    = default_value;
+        break;
+
+    case NOTIFY_RESTORE:
+        tracking_active = true;
+        break;
+
+    case NOTIFY_EVDEV:
+    case NOTIFY_SENSORD:
+        cached_value = *sample;
+        break;
+    }
+
+    /* Default value is used unless we are in fully working state */
+    sample = tracking_active ? &cached_value : &default_value;
+
+    mce_log(LL_DEBUG, "wakeup: UPDATE %s %s",
+            sfw_notify_name(type),
+            sfw_sample_wakeup_repr(sample));
+
+    if( sfw_notify_wakeup_cb ) {
+        mce_log(LL_DEBUG, "WAKEUP: NOTIFY %s %s",
+                sfw_notify_name(type),
+                sfw_sample_wakeup_repr(sample));
+        sfw_notify_wakeup_cb(sample->wakeup_value);
+    }
+
+    /* Events are reported, not state changes -> No memory */
+    cached_value = default_value;
+
+    return;
+}
+
 // ----------------------------------------------------------------
 
 /** Data and callback functions for all sensors */
@@ -2706,6 +2818,15 @@ static const sfw_backend_t sfw_backend_lut[SFW_SENSOR_ID_COUNT] =
         .be_value_cb         = sfw_backend_temperature_value_cb,
         .be_sample_cb        = sfw_backend_temperature_sample_cb,
         .be_value_method     = SFW_SENSOR_METHOD_READ_TEMPERATURE,
+    },
+    [SFW_SENSOR_ID_WAKEUP] = {
+        .be_sensor_name      = SFW_SENSOR_NAME_WAKEUP,
+        .be_sensor_object    = 0,
+        .be_sensor_interface = SFW_SENSOR_INTERFACE_WAKEUP,
+        .be_sample_size      = sizeof(sfw_sample_wakeup_t),
+        .be_value_cb         = sfw_backend_wakeup_value_cb,
+        .be_sample_cb        = sfw_backend_wakeup_sample_cb,
+        .be_value_method     = SFW_SENSOR_METHOD_READ_WAKEUP,
     },
 };
 
@@ -4023,6 +4144,17 @@ sfw_session_get_id(const sfw_session_t *self)
     return self ? self->ses_id : SESSION_ID_INVALID;
 }
 
+static void
+sfw_session_set_id(sfw_session_t *self, int sid)
+{
+    if( self && self->ses_id != sid ) {
+        mce_log(LL_DEBUG, "session(%s): sid: %d -> %d",
+                sfw_plugin_get_sensor_name(self->ses_plugin),
+                self->ses_id, sid);
+        self->ses_id = sid;
+    }
+}
+
 /** Cancel pending session start method call
  */
 static void
@@ -4151,17 +4283,17 @@ EXIT:
 
     switch( ses ) {
     case SESSION_ID_INVALID:
-        self->ses_id = SESSION_ID_INVALID;
+        sfw_session_set_id(self, SESSION_ID_INVALID);
         sfw_session_trans(self, SESSION_INVALID);
         break;
 
     case SESSION_ID_UNKNOWN:
-        self->ses_id = SESSION_ID_INVALID;
+        sfw_session_set_id(self, SESSION_ID_INVALID);
         sfw_session_trans(self, SESSION_ERROR);
         break;
 
     default:
-        self->ses_id = ses;
+        sfw_session_set_id(self, ses);
         sfw_session_trans(self, SESSION_ACTIVE);
     }
 
@@ -5179,6 +5311,37 @@ void
 mce_sensorfw_orient_disable(void)
 {
     sfw_service_set_sensor(sfw_service, SFW_SENSOR_ID_ORIENT, false);
+}
+
+// ----------------------------------------------------------------
+
+/** Set Wakeup notification callback
+ *
+ * @param cb function to call when Wakeup events are received
+ */
+void
+mce_sensorfw_wakeup_set_notify(void (*cb)(int state))
+{
+    if( (sfw_notify_wakeup_cb = cb) ) {
+        sfw_plugin_t *plugin = sfw_service_plugin(sfw_service, SFW_SENSOR_ID_WAKEUP);
+        sfw_plugin_repeat_value(plugin);
+    }
+}
+
+/** Try to enable Wakeup events
+ */
+void
+mce_sensorfw_wakeup_enable(void)
+{
+    sfw_service_set_sensor(sfw_service, SFW_SENSOR_ID_WAKEUP, true);
+}
+
+/** Try to disable Wakeup events
+ */
+void
+mce_sensorfw_wakeup_disable(void)
+{
+    sfw_service_set_sensor(sfw_service, SFW_SENSOR_ID_WAKEUP, false);
 }
 
 // ----------------------------------------------------------------
