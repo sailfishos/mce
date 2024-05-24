@@ -3,7 +3,7 @@
  * Display module -- this implements display handling for MCE
  * <p>
  * Copyright (c) 2007 - 2011 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (c) 2012 - 2020 Jolla Ltd.
+ * Copyright (c) 2012 - 2023 Jolla Ltd.
  * Copyright (c) 2020 Open Mobile Platform LLC.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
@@ -44,6 +44,7 @@
 #include "../mce-setting.h"
 #include "../mce-dbus.h"
 #include "../mce-sensorfw.h"
+#include "../mce-wltimer.h"
 #include "../tklock.h"
 
 #ifdef ENABLE_HYBRIS
@@ -59,7 +60,10 @@
 
 #include "powersavemode.h"
 
+#include "../systemui/dbus-names.h"
+
 #include <sys/ptrace.h>
+#include <sys/wait.h>
 
 #include <stdlib.h>
 #include <unistd.h>
@@ -252,6 +256,9 @@ typedef enum
 
     /** Compositor D-Bus service is running */
     COMPOSITOR_STATE_STARTED,
+
+    /** HW Compositor start/stop actions */
+    COMPOSITOR_STATE_SETUP,
 
     /** Pending setUpdatesEnabled() D-Bus method call */
     COMPOSITOR_STATE_REQUESTING,
@@ -705,9 +712,17 @@ static void                 compositor_stm_set_service_pid   (compositor_stm_t *
 static void                 compositor_stm_set_service_owner (compositor_stm_t *self, const char *owner);
 static const char          *compositor_stm_get_service_owner (const compositor_stm_t *self);
 
+static void                 compositor_stm_set_service_actions(compositor_stm_t *self, unsigned actions);
+static bool                 compositor_stm_pending_pid_query(const compositor_stm_t *self);
+
 static void                 compositor_stm_send_pid_query    (compositor_stm_t *self);
 static void                 compositor_stm_forget_pid_query  (compositor_stm_t *self);
 static void                 compositor_stm_pid_query_cb      (DBusPendingCall *pc, void *aptr);
+
+static bool                 compositor_stm_pending_actions_query(const compositor_stm_t *self);
+static void                 compositor_stm_send_actions_query(compositor_stm_t *self);
+static void                 compositor_stm_forget_actions_query(compositor_stm_t *self);
+static void                 compositor_stm_actions_query_cb  (DBusPendingCall *pc, void *aptr);
 
 static void                 compositor_stm_send_ctrl_request (compositor_stm_t *self);
 static void                 compositor_stm_forget_ctrl_request(compositor_stm_t *self);
@@ -731,6 +746,8 @@ static compositor_state_t   compositor_stm_get_state         (const compositor_s
 static void                 compositor_stm_set_state         (compositor_stm_t *self, compositor_state_t state);
 static void                 compositor_stm_enter_state       (compositor_stm_t *self);
 static void                 compositor_stm_leave_state       (compositor_stm_t *self);
+
+static gboolean             compositor_stm_eval_state_cb     (gpointer aptr);
 static void                 compositor_stm_eval_state        (compositor_stm_t *self);
 
 static void                 compositor_stm_set_target        (compositor_stm_t *self, renderer_state_t state);
@@ -741,6 +758,12 @@ static bool                 compositor_stm_is_pending        (const compositor_s
 static bool                 compositor_stm_is_enabled        (const compositor_stm_t *self);
 static bool                 compositor_stm_is_disabled       (const compositor_stm_t *self);
 static void                 compositor_stm_set_enabled       (compositor_stm_t *self, bool enable);
+
+static void                 compositor_stm_init_config       (void);
+static void                 compositor_stm_quit_config       (void);
+static int                  compositor_stm_execute           (const char *command);
+static void                *compositor_stm_action_exec_cb    (void *aptr);
+static void                 compositor_stm_action_done_cb    (void *aptr, void *reply);
 
 /* ------------------------------------------------------------------------- *
  * COMPOSITOR_IPC
@@ -909,6 +932,8 @@ static gboolean            mdy_dbus_handle_blanking_inhibit_get_req(DBusMessage 
 static void                mdy_dbus_invalidate_display_status(void);
 static gboolean            mdy_dbus_send_display_status(DBusMessage *const method_call);
 static const char         *mdy_dbus_get_reason_to_block_display_on(void);
+static const char         *mdy_dbus_get_reason_to_block_display_off(void);
+static const char         *mdy_dbus_get_reason_to_block_display_lpm(void);
 
 static void                mdy_dbus_handle_display_state_req(display_state_t state);
 static void                mdy_dbus_handle_display_state_req_cb(gpointer aptr);
@@ -1301,6 +1326,10 @@ static guint     mdy_blanking_inhibit_mode_setting_id = 0;
 /** Kbd slide display blanking inhibit mode */
 static gint  mdy_kbd_slide_inhibit_mode = MCE_DEFAULT_KBD_SLIDE_INHIBIT;
 static guint mdy_kbd_slide_inhibit_mode_setting_id = 0;
+
+/** Override mode for display off requests made over D-Bus */
+static gint  mdy_dbus_display_off_override = MCE_DEFAULT_DISPLAY_OFF_OVERRIDE;
+static guint mdy_dbus_display_off_override_setting_id = 0;
 
 /* ========================================================================= *
  * MISC_UTILS
@@ -1696,7 +1725,7 @@ static void mdy_datapipe_display_state_curr_cb(gconstpointer data)
         goto EXIT;
 
     /* Entered (visible) LPM state -> schedule sanity check */
-    if( display_state_curr == MCE_DISPLAY_LPM_ON  )
+    if( display_state_curr == MCE_DISPLAY_LPM_ON )
         mdy_lpm_schedule_sanitize();
 
     mdy_statistics_update();
@@ -6061,6 +6090,7 @@ compositor_state_repr(compositor_state_t state)
     case COMPOSITOR_STATE_STOPPED:    repr = "COMPOSITOR_STATE_STOPPED";    break;
     case COMPOSITOR_STATE_STARTED:    repr = "COMPOSITOR_STATE_STARTED";    break;
     case COMPOSITOR_STATE_REQUESTING: repr = "COMPOSITOR_STATE_REQUESTING"; break;
+    case COMPOSITOR_STATE_SETUP:      repr = "COMPOSITOR_STATE_SETUP";      break;
     case COMPOSITOR_STATE_GRANTED:    repr = "COMPOSITOR_STATE_GRANTED";    break;
     case COMPOSITOR_STATE_FAILED:     repr = "COMPOSITOR_STATE_FAILED";     break;
     default: break;
@@ -6092,11 +6122,20 @@ struct compositor_stm_t
      */
     compositor_state_t     csi_state;
 
+    /** Suspend proof state re-evaluation timer */
+    mce_wltimer_t         *csi_eval_state_tmr;
+
     /** Private name of the compositor D-Bus service owner
      *
      * Modify via compositor_stm_set_service_owner()
      */
     gchar                 *csi_service_owner;
+
+    /** Whether compositor was already running when mce started up
+     *
+     * Setup actions must be skipped in such cases
+     */
+    bool                   csi_initial_owner;
 
     /** Private name of the previous compositor D-Bus service owner
      *
@@ -6120,6 +6159,15 @@ struct compositor_stm_t
      * Modify via compositor_stm_set_service_pid()
      */
     pid_t                  csi_service_pid;
+
+    /** Bitmask of setup actions for compositor service */
+    unsigned               csi_service_setup_actions;
+
+    /** Actions to execute before enabling rendering */
+    unsigned               csi_service_queued_actions;
+
+    /** Action currently being executed in worker thread */
+    unsigned               csi_service_pending_action;
 
     /** In what state we want the compositor to be in
      *
@@ -6158,6 +6206,12 @@ struct compositor_stm_t
      */
     DBusPendingCall       *csi_pid_query_pc;
 
+    /** Currently pending compositor setup actions query
+     *
+     * Managed by compositor_stm_send_actions_query() & co
+     */
+    DBusPendingCall       *csi_setup_actions_query_pc;
+
     /** Currently pending compositor D-Bus method call
      *
      * Managed by compositor_stm_send_ctrl_request() & co
@@ -6184,6 +6238,40 @@ struct compositor_stm_t
 };
 
 /* ------------------------------------------------------------------------- *
+ * configurable options
+ * ------------------------------------------------------------------------- */
+
+static gchar *compositor_stm_hwc_stop    = NULL;
+static gchar *compositor_stm_hwc_start   = NULL;
+static gchar *compositor_stm_hwc_restart = NULL;
+
+static void
+compositor_stm_init_config(void)
+{
+    compositor_stm_hwc_stop =
+            mce_conf_get_string("Compositor", "StopHwCompositor", NULL);
+
+    compositor_stm_hwc_start =
+        mce_conf_get_string("Compositor", "StartHwCompositor", NULL);
+
+    compositor_stm_hwc_restart =
+        mce_conf_get_string("Compositor", "RestartHwCompositor", NULL);
+}
+
+static void
+compositor_stm_quit_config(void)
+{
+    g_free(compositor_stm_hwc_stop),
+        compositor_stm_hwc_stop = NULL;
+
+    g_free(compositor_stm_hwc_start),
+        compositor_stm_hwc_start = NULL;
+
+    g_free(compositor_stm_hwc_restart),
+        compositor_stm_hwc_restart = NULL;
+}
+
+/* ------------------------------------------------------------------------- *
  * construct/destruct
  * ------------------------------------------------------------------------- */
 
@@ -6198,9 +6286,16 @@ compositor_stm_ctor(compositor_stm_t *self)
      */
     self->csi_state = COMPOSITOR_STATE_INITIAL;
 
+    /* Setup syspend proof rethink timer */
+    self->csi_eval_state_tmr = mce_wltimer_create("compositor_state_rethink", 0,
+                                                  compositor_stm_eval_state_cb,
+                                                  self);
+
     /* compositor dbus service owner is not known */
     self->csi_service_owner = 0;
+    self->csi_initial_owner = false;
     self->csi_service_pid   = COMPOSITOR_STM_INVALID_PID;
+    self->csi_service_setup_actions = COMPOSITOR_ACTION_NONE;
 
     /* There is no lingering previous name owner */
     self->csi_lingering_owner   = 0;
@@ -6210,6 +6305,12 @@ compositor_stm_ctor(compositor_stm_t *self)
     self->csi_target    = RENDERER_ENABLED;
     self->csi_requested = RENDERER_UNKNOWN;
     self->csi_granted   = RENDERER_UNKNOWN;
+
+    /* No pending pid query */
+    self->csi_pid_query_pc = 0;
+
+    /* No pending setup actions query */
+    self->csi_setup_actions_query_pc = 0;
 
     /* No pending compositor dbus method call */
     self->csi_ctrl_request_pc = 0;
@@ -6293,26 +6394,31 @@ compositor_stm_set_service_owner(compositor_stm_t *self, const char *owner)
     if( owner && !*owner )
         owner = 0;
 
-    if( !g_strcmp0(self->csi_service_owner, owner) )
-        goto EXIT;
+    /* Special case: When mce starts up and compositor service is not yet
+     * running we get "none-to-none" report. While that is not ownership
+     * change, it must still xfer state machine away from the initial state.
+     */
 
-    mce_log(LL_DEBUG, "compositor_stm_service_owner: %s -> %s",
-            self->csi_service_owner ?: "none",
-            owner                   ?: "none");
+    bool changed = g_strcmp0(self->csi_service_owner, owner) != 0;
+    bool initial = (self->csi_state == COMPOSITOR_STATE_INITIAL);
 
-    g_free(self->csi_service_owner),
-        self->csi_service_owner = 0;
+    if( changed ) {
+        mce_log(LL_DEBUG, "compositor_stm_service_owner: %s -> %s",
+                self->csi_service_owner ?: "none",
+                owner                   ?: "none");
 
-    compositor_stm_set_service_pid(self, COMPOSITOR_STM_INVALID_PID);
+        g_free(self->csi_service_owner),
+            self->csi_service_owner = g_strdup(owner);
+    }
 
     if( self->csi_state == COMPOSITOR_STATE_FINAL )
         goto EXIT;
 
-    compositor_stm_set_state(self, COMPOSITOR_STATE_STOPPED);
-
-    if( owner ) {
-        self->csi_service_owner = g_strdup(owner);
-        compositor_stm_set_state(self, COMPOSITOR_STATE_STARTED);
+    if( changed || initial ) {
+        if( self->csi_service_owner )
+            compositor_stm_set_state(self, COMPOSITOR_STATE_STARTED);
+        else
+            compositor_stm_set_state(self, COMPOSITOR_STATE_STOPPED);
     }
 
 EXIT:
@@ -6330,6 +6436,26 @@ compositor_stm_get_service_owner(const compositor_stm_t *self)
 /* ------------------------------------------------------------------------- *
  * managing org.freedesktop.DBus.GetConnectionUnixProcessID() method call
  * ------------------------------------------------------------------------- */
+
+/* Update service setup actions bookkeeping
+ */
+static void
+compositor_stm_set_service_actions(compositor_stm_t *self, unsigned actions)
+{
+    if( self->csi_service_setup_actions != actions ) {
+        mce_log(LL_DEBUG, "compositor_stm_service_actions: 0x%x -> 0x%x",
+                self->csi_service_setup_actions, actions);
+        self->csi_service_setup_actions = actions;
+    }
+}
+
+/* Predicate for: pending service pid query
+ */
+static bool
+compositor_stm_pending_pid_query(const compositor_stm_t *self)
+{
+    return self->csi_pid_query_pc != NULL;
+}
 
 /** Initiate async query to find out pid of compositor dbus service
  */
@@ -6351,7 +6477,6 @@ compositor_stm_send_pid_query(compositor_stm_t *self)
                  // ----------------
                  DBUS_TYPE_STRING, &self->csi_service_owner,
                  DBUS_TYPE_INVALID);
-
 }
 
 /** Abandon pending compositor dbus service pid query
@@ -6401,10 +6526,201 @@ compositor_stm_pid_query_cb(DBusPendingCall *pc, void *aptr)
     }
 
     compositor_stm_set_service_pid(self, pid);
+    compositor_stm_eval_state(self);
 
 EXIT:
 
     if( rsp ) dbus_message_unref(rsp);
+
+    dbus_error_free(&err);
+
+    return;
+}
+
+/** Execute a command helper function
+ */
+static int
+compositor_stm_execute(const char *command)
+{
+    int         result      = -1;
+    int         status      = -1;
+    char        exited[32]  = "";
+    char        trapped[32] = "";
+    const char *dumped      = "";
+
+    mce_log(LL_DEBUG, "EXEC %s", command);
+
+    fflush(NULL);
+
+    if( (status = system(command)) == -1 ) {
+        snprintf(exited, sizeof exited, " exec=failed");
+    }
+    else {
+        if( WIFSIGNALED(status) ) {
+            snprintf(trapped, sizeof trapped, " signal=%s",
+                     strsignal(WTERMSIG(status)));
+        }
+
+        if( WCOREDUMP(status) )
+            dumped = " core=dumped";
+
+        if( WIFEXITED(status) ) {
+            result = WEXITSTATUS(status);
+            snprintf(exited, sizeof exited, " exit_code=%d", result);
+        }
+    }
+
+    if( result != 0 ) {
+        mce_log(LL_WARN, "EXEC %s; %s%s%s result=%d",
+                command, exited, trapped, dumped, result);
+    }
+
+    return result;
+}
+
+/** Worker thread callback for executing actions
+ */
+static void *compositor_stm_action_exec_cb(void *aptr)
+{
+    mce_log(LL_DEBUG, "execute action at worker thread");
+
+    /* Note: This is executed in the worker thread context */
+    compositor_stm_t *self    = aptr;
+    const char       *command = NULL;
+    unsigned          action  = (self->csi_service_pending_action &
+                                 self->csi_service_queued_actions);
+
+    switch( action ) {
+    case COMPOSITOR_ACTION_STOP_HWC:
+        command = compositor_stm_hwc_stop;
+        break;
+
+    case COMPOSITOR_ACTION_START_HWC:
+        command = compositor_stm_hwc_start;
+        break;
+
+    case COMPOSITOR_ACTION_RESTART_HWC:
+        command = compositor_stm_hwc_restart;
+        break;
+    default:
+        mce_log(LL_WARN, "hwc action execution out of sync");
+        break;
+    }
+
+    if( command )
+        compositor_stm_execute(command);
+
+    return GINT_TO_POINTER(action);
+}
+
+/** Worker thread finished notification callback
+ */
+static void compositor_stm_action_done_cb(void *aptr, void *reply)
+{
+    mce_log(LL_DEBUG, "action executed by worker thread");
+
+    compositor_stm_t *self = aptr;
+    unsigned action = GPOINTER_TO_UINT(reply);
+
+    if( self->csi_service_pending_action != action ) {
+        mce_log(LL_WARN, "hwc action execution out of sync");
+    }
+    else {
+        mce_log(LL_DEBUG, "pending hwc action done");
+        self->csi_service_queued_actions &= ~action;
+        self->csi_service_pending_action = COMPOSITOR_ACTION_NONE;
+    }
+
+    compositor_stm_eval_state(self);
+}
+
+/* ------------------------------------------------------------------------- *
+ * managing org.nemomobile.compositor.privateGetSetupActions method call
+ * ------------------------------------------------------------------------- */
+
+/** Predicate for: pending service setup actions query
+ */
+static bool
+compositor_stm_pending_actions_query(const compositor_stm_t *self)
+{
+    return self->csi_setup_actions_query_pc != NULL;
+}
+
+/** Initiate async query to find out setup actions for compositor dbus service
+ */
+static void
+compositor_stm_send_actions_query(compositor_stm_t *self)
+{
+    compositor_stm_forget_actions_query(self);
+
+    mce_log(LL_NOTICE, "start setup actions query");
+
+    dbus_send_ex(COMPOSITOR_SERVICE,
+                 COMPOSITOR_PATH,
+                 COMPOSITOR_IFACE,
+                 COMPOSITOR_GET_SETUP_ACTIONS,
+                 // ----------------
+                 compositor_stm_actions_query_cb,
+                 self, 0,
+                 &self->csi_setup_actions_query_pc,
+                 // ----------------
+                 DBUS_TYPE_INVALID);
+}
+
+/** Abandon pending compositor dbus service setup actions query
+ */
+static void
+compositor_stm_forget_actions_query(compositor_stm_t *self)
+{
+    if( self->csi_setup_actions_query_pc ) {
+        mce_log(LL_NOTICE, "forget setup actions query");
+
+        dbus_pending_call_cancel(self->csi_setup_actions_query_pc);
+        dbus_pending_call_unref(self->csi_setup_actions_query_pc),
+            self->csi_setup_actions_query_pc = 0;
+    }
+}
+
+/** Handle reply to pending compositor dbus service setup actions query
+ */
+static void
+compositor_stm_actions_query_cb(DBusPendingCall *pc, void *aptr)
+{
+    compositor_stm_t *self    = aptr;
+    DBusMessage      *rsp     = 0;
+    DBusError         err     = DBUS_ERROR_INIT;
+    dbus_uint32_t     dta     = 0;
+    unsigned          actions = COMPOSITOR_ACTION_NONE;
+
+    if( self->csi_setup_actions_query_pc != pc )
+        goto BAILOUT;
+
+    mce_log(LL_NOTICE, "reply to setup actions query");
+
+    dbus_pending_call_unref(self->csi_setup_actions_query_pc),
+        self->csi_setup_actions_query_pc = 0;
+
+    if( !(rsp = dbus_pending_call_steal_reply(pc)) )
+        goto UPDATE;
+
+    if( dbus_set_error_from_message(&err, rsp) ||
+        !dbus_message_get_args(rsp, &err,
+                               DBUS_TYPE_UINT32, &dta,
+                               DBUS_TYPE_INVALID) ) {
+        mce_log(LL_ERR, "%s: %s", err.name, err.message);
+    }
+    else {
+        actions = (unsigned)dta;
+    }
+
+UPDATE:
+    compositor_stm_set_service_actions(self, actions);
+    compositor_stm_eval_state(self);
+
+BAILOUT:
+
+    if( rsp )
+        dbus_message_unref(rsp);
 
     dbus_error_free(&err);
 
@@ -6963,11 +7279,19 @@ EXIT:
 static void
 compositor_stm_enter_state(compositor_stm_t *self)
 {
+    mce_log(LL_DEBUG, "ENTER %s - %s",
+            compositor_state_repr(self->csi_state),
+            mce_dbus_get_name_owner_ident(self->csi_service_owner));
+
     switch( self->csi_state ) {
     case COMPOSITOR_STATE_INITIAL:
         break;
 
     case COMPOSITOR_STATE_FINAL:
+        // delete rethink timer
+        mce_wltimer_delete(self->csi_eval_state_tmr),
+            self->csi_eval_state_tmr = NULL;
+
         // forget the service name/pid
         compositor_stm_set_service_owner(self, 0);
 
@@ -6977,6 +7301,7 @@ compositor_stm_enter_state(compositor_stm_t *self)
         compositor_stm_cancel_killer(self);
         compositor_stm_forget_ctrl_request(self);
         compositor_stm_forget_pid_query(self);
+        compositor_stm_forget_actions_query(self);
 
         // deactivate all led patterns
         for( compositor_led_t led = 0; led < COMPOSITOR_LED_NUMOF; ++led )
@@ -7004,12 +7329,42 @@ compositor_stm_enter_state(compositor_stm_t *self)
         self->csi_panic_delay = COMPOSITOR_STM_INITIAL_PANIC_DELAY;
 
         compositor_stm_send_pid_query(self);
+        compositor_stm_send_actions_query(self);
+        break;
+
+    case COMPOSITOR_STATE_SETUP:
+        // remember compositor we have done ipc with
+        compositor_stm_set_lingerer(self, self->csi_service_owner);
+        if( self->csi_initial_owner ) {
+            mce_log(LL_DEBUG, "Actions skipped for already running compositor");
+            self->csi_initial_owner = false;
+        }
+        else {
+            unsigned actions = self->csi_service_setup_actions;
+            if( actions & COMPOSITOR_ACTION_RESTART_HWC ) {
+                mce_log(LL_DEBUG, "Action: RestartpHwCompositor");
+                if( !compositor_stm_hwc_restart ) {
+                    /* Restart command is not defined, fallback: stop + start */
+                    actions |= (COMPOSITOR_ACTION_STOP_HWC |
+                                COMPOSITOR_ACTION_START_HWC);
+                }
+                else {
+                    /* And mask out stop / start actions */
+                    actions &= ~(COMPOSITOR_ACTION_STOP_HWC |
+                                 COMPOSITOR_ACTION_START_HWC);
+                }
+            }
+            if( !compositor_stm_hwc_stop )
+                actions &= ~COMPOSITOR_ACTION_STOP_HWC;
+            if( !compositor_stm_hwc_start )
+                actions &= ~COMPOSITOR_ACTION_START_HWC;
+
+            self->csi_service_pending_action = COMPOSITOR_ACTION_NONE;
+            self->csi_service_queued_actions = actions;
+        }
         break;
 
     case COMPOSITOR_STATE_REQUESTING:
-        // remember compositor we have done ipc with
-        compositor_stm_set_lingerer(self, self->csi_service_owner);
-
         compositor_stm_set_requested(self, self->csi_target);
         compositor_stm_schedule_killer(self);
         compositor_stm_schedule_panic(self);
@@ -7049,8 +7404,16 @@ compositor_stm_enter_state(compositor_stm_t *self)
 static void
 compositor_stm_leave_state(compositor_stm_t *self)
 {
+    mce_log(LL_DEBUG, "LEAVE %s - %s",
+            compositor_state_repr(self->csi_state),
+            mce_dbus_get_name_owner_ident(self->csi_service_owner));
+
     switch( self->csi_state ) {
     case COMPOSITOR_STATE_INITIAL:
+        if( self->csi_service_owner ) {
+            mce_log(LL_DEBUG, "Compositor already running");
+            self->csi_initial_owner = true;
+        }
         break;
 
     case COMPOSITOR_STATE_FINAL:
@@ -7061,6 +7424,17 @@ compositor_stm_leave_state(compositor_stm_t *self)
 
     case COMPOSITOR_STATE_STARTED:
         compositor_stm_cancel_linger_timeout(self);
+        compositor_stm_forget_pid_query(self);
+        compositor_stm_forget_actions_query(self);
+        break;
+
+    case COMPOSITOR_STATE_SETUP:
+        /* Clear action queue, so that any possibly left behind
+         * asynchronously executed worker task has a chance to
+         * do nothing when it gets scheduled.
+         */
+        self->csi_service_pending_action = COMPOSITOR_ACTION_NONE;
+        self->csi_service_queued_actions = COMPOSITOR_ACTION_NONE;
         break;
 
     case COMPOSITOR_STATE_REQUESTING:
@@ -7084,9 +7458,21 @@ compositor_stm_leave_state(compositor_stm_t *self)
 
 /** Check if actions need to be taken within a state
  */
-static void
-compositor_stm_eval_state(compositor_stm_t *self)
+static gboolean
+compositor_stm_eval_state_cb(gpointer aptr)
 {
+    compositor_stm_t *self = aptr;
+
+    mce_log(LL_DEBUG, "EVAL %s - %s",
+            compositor_state_repr(self->csi_state),
+            mce_dbus_get_name_owner_ident(self->csi_service_owner));
+
+    /* Evaluate "pending" status on entry */
+    bool was_pending = compositor_stm_is_pending(self);
+
+    /* Default to: timer will be deactivated */
+    mce_wltimer_stop(self->csi_eval_state_tmr);
+
     switch( self->csi_state ) {
     case COMPOSITOR_STATE_INITIAL:
         break;
@@ -7099,8 +7485,52 @@ compositor_stm_eval_state(compositor_stm_t *self)
 
     case COMPOSITOR_STATE_STARTED:
         /* Proceed once lingering compositor has exited / is ignored */
-        if( !compositor_stm_get_lingerer(self) )
-            compositor_stm_set_state(self, COMPOSITOR_STATE_REQUESTING);
+        if( compositor_stm_pending_pid_query(self) ) {
+            mce_log(LL_DEBUG, "pending pid query ...");
+            break;
+        }
+        if( compositor_stm_pending_actions_query(self) ) {
+            mce_log(LL_DEBUG, "pending setup actions query ...");
+            break;
+        }
+        if( compositor_stm_get_lingerer(self) ) {
+            mce_log(LL_DEBUG, "pending service linger ...");
+            break;
+        }
+        compositor_stm_set_state(self, COMPOSITOR_STATE_SETUP);
+        break;
+
+    case COMPOSITOR_STATE_SETUP:
+        /* Still executing something? */
+        if( self->csi_service_pending_action ) {
+            mce_log(LL_DEBUG, "pending actions ...");
+            break;
+        }
+
+        /* Still have something to execute? */
+        if( self->csi_service_queued_actions & COMPOSITOR_ACTION_STOP_HWC ) {
+            mce_log(LL_DEBUG, "scheduling stop action ...");
+            self->csi_service_pending_action = COMPOSITOR_ACTION_STOP_HWC;
+        }
+        else if( self->csi_service_queued_actions & COMPOSITOR_ACTION_START_HWC ) {
+            mce_log(LL_DEBUG, "scheduling start action ...");
+            self->csi_service_pending_action = COMPOSITOR_ACTION_START_HWC;
+        }
+        else if( self->csi_service_queued_actions & COMPOSITOR_ACTION_RESTART_HWC ) {
+            mce_log(LL_DEBUG, "scheduling restart action ...");
+            self->csi_service_pending_action = COMPOSITOR_ACTION_RESTART_HWC;
+        }
+
+        if( self->csi_service_pending_action ) {
+            mce_worker_add_job(MODULE_NAME, "hwc-action",
+                               compositor_stm_action_exec_cb,
+                               compositor_stm_action_done_cb,
+                               self);
+            break;
+        }
+
+        /* All done, proceed */
+        compositor_stm_set_state(self, COMPOSITOR_STATE_REQUESTING);
         break;
 
     case COMPOSITOR_STATE_REQUESTING:
@@ -7118,6 +7548,20 @@ compositor_stm_eval_state(compositor_stm_t *self)
     default:
         break;
     }
+
+    /* If "pending" status changed, wake up display state machine */
+    if( compositor_stm_is_pending(self) != was_pending )
+        mdy_stm_schedule_rethink();
+
+    return G_SOURCE_REMOVE;
+}
+
+/** Schedule compositor state machine state re-evaluation
+ */
+static void
+compositor_stm_eval_state(compositor_stm_t *self)
+{
+    mce_wltimer_start(self->csi_eval_state_tmr);
 }
 
 /* ------------------------------------------------------------------------- *
@@ -7181,7 +7625,8 @@ compositor_stm_is_pending(const compositor_stm_t *self)
     switch( compositor_stm_get_state(self) ) {
     case COMPOSITOR_STATE_GRANTED:
     case COMPOSITOR_STATE_STOPPED:
-        pending = false;
+        if( !mce_wltimer_is_active(self->csi_eval_state_tmr) )
+            pending = false;
         break;
     default:
         break;
@@ -9627,6 +10072,79 @@ EXIT:
     return reason;
 }
 
+/** Helper for deciding if external display off requests are allowed
+ *
+ * During ringing call / alarm power key is reserved for silencing
+ * the ringing -> there might not be a way to power up display again
+ * -> can't allow it to be powered down on external trigger
+ *
+ * @return reason to block, or NULL if allowed
+ */
+static const char *mdy_dbus_get_reason_to_block_display_off(void)
+{
+    const char *reason = NULL;
+
+    /* incoming call? */
+    switch( call_state ) {
+    case CALL_STATE_RINGING:
+        reason = "call ringing";
+        goto EXIT;
+    default:
+        break;
+    }
+
+    /* active alarm? */
+    switch( alarm_ui_state ) {
+    case MCE_ALARM_UI_RINGING_INT32:
+    case MCE_ALARM_UI_VISIBLE_INT32:
+        reason = "active alarm";
+        goto EXIT;
+    default:
+        break;
+    }
+
+EXIT:
+    return reason;
+}
+
+/** Helper for deciding if external display lpm_on requests are allowed
+ *
+ * Check if device in a state where lpm display can be activated
+ * without causing problems elsewhere.
+ *
+ * @return reason to block, or NULL if allowed
+ */
+static const char *mdy_dbus_get_reason_to_block_display_lpm(void)
+{
+    const char *reason = NULL;
+
+    /* If there are any reasons to ignore display on/dim requests,
+     * they apply also for lpm-on requests */
+    if( (reason = mdy_dbus_get_reason_to_block_display_on()) )
+        goto EXIT;
+
+    /* Ignore lpm-on requests if there are active calls / alarms */
+    if( uiexception_type & (UIEXCEPTION_TYPE_CALL | UIEXCEPTION_TYPE_ALARM) ) {
+        reason  = "call or alarm active";
+        goto EXIT;
+    }
+
+    /* UI side is allowed to trigger lpm from fully powered up display
+     * states, i.e. blank-to-lpm is allowed, but unblank-to-lpm is not
+     */
+    switch( display_state_next ) {
+    case MCE_DISPLAY_DIM:
+    case MCE_DISPLAY_ON:
+        break;
+    default:
+        reason = "display is off";
+        goto EXIT;
+    }
+
+EXIT:
+    return reason;
+}
+
 /** Helper for handling display state requests coming over D-Bus
  *
  * @param state  Requested display state
@@ -9648,15 +10166,29 @@ static void mdy_dbus_handle_display_state_req(display_state_t state)
  */
 static void mdy_dbus_handle_display_state_req_cb(gpointer aptr)
 {
-    display_state_t  current   = datapipe_get_gint(display_state_next_pipe);
     display_state_t  requested = GPOINTER_TO_INT(aptr);
-    display_state_t  granted   = requested;
-    const char      *reason    = 0;
+    const char      *reason    = NULL;
     bool             tklock    = false;
+    bool             devlock   = false;
+
+    if( requested == MCE_DISPLAY_OFF ) {
+        /* Note: inequality test here vs bit tests below is intentional
+         *       as "only-blank" is meaningful only when it is the only
+         *       selection present in the bitmask.
+         */
+        if( mdy_dbus_display_off_override != DISPLAY_OFF_OVERRIDE_ONLY_BLANK )
+            tklock = true;
+
+        if( mdy_dbus_display_off_override & DISPLAY_OFF_OVERRIDE_USE_LPM )
+            requested = MCE_DISPLAY_LPM_ON;
+
+        if( mdy_dbus_display_off_override & DISPLAY_OFF_OVERRIDE_DEVLOCK )
+            devlock = true;
+    }
 
     switch( requested ) {
     case MCE_DISPLAY_OFF:
-        tklock = true;
+        reason = mdy_dbus_get_reason_to_block_display_off();
         break;
 
     case MCE_DISPLAY_ON:
@@ -9665,30 +10197,12 @@ static void mdy_dbus_handle_display_state_req_cb(gpointer aptr)
         break;
 
     case MCE_DISPLAY_LPM_ON:
-        /* Ignore lpm requests if there are active calls / alarms */
-        if( uiexception_type & (UIEXCEPTION_TYPE_CALL | UIEXCEPTION_TYPE_ALARM) ) {
-            reason  = "call or alarm active";
-            break;
-        }
-
-        /* If there are any reasons to ignore display on/dim requests,
-         * they apply for lpm requests too */
-        if( (reason = mdy_dbus_get_reason_to_block_display_on()) )
-            break;
-
-        /* UI side is allowed to trigger lpm from fully powered
-         * up display states, i.e. blank to lpm. */
-        switch( current ) {
-        case MCE_DISPLAY_DIM:
-        case MCE_DISPLAY_ON:
-            tklock = true;
-            break;
-        default:
-            /* Complain and treat as if MCE_DISPLAY_OFF were made */
-            reason = "display is off";
-            granted = MCE_DISPLAY_OFF;
-            tklock = true;
-            break;
+        tklock = true;
+        if( (reason = mdy_dbus_get_reason_to_block_display_lpm()) ) {
+            mce_log(LL_WARN, "display %s request denied: %s",
+                    display_state_repr(requested), reason);
+            requested = MCE_DISPLAY_OFF;
+            reason = mdy_dbus_get_reason_to_block_display_off();
         }
         break;
 
@@ -9697,17 +10211,28 @@ static void mdy_dbus_handle_display_state_req_cb(gpointer aptr)
         break;
     }
 
-    if( reason ) {
+    if( reason )
         mce_log(LL_WARN, "display %s request denied: %s",
                 display_state_repr(requested), reason);
-        if( granted == requested )
-            granted = current;
-    }
 
     if( tklock )
         mce_datapipe_request_tklock(TKLOCK_REQUEST_ON);
 
-    mdy_dbus_handle_display_state_req(granted);
+    if( !reason && requested != display_state_next )
+        mdy_dbus_handle_display_state_req(requested);
+
+    if( devlock ) {
+        dbus_int32_t state = DEVICELOCK_STATE_LOCKED;
+        mce_log(LL_WARN, "Requesting devicelock=%s",
+                devicelock_state_repr(state));
+        dbus_send(DEVICELOCK_SERVICE,
+                  DEVICELOCK_REQUEST_PATH,
+                  DEVICELOCK_REQUEST_IF,
+                  "setState",
+                  NULL,
+                  DBUS_TYPE_INT32, &state,
+                  DBUS_TYPE_INVALID);
+    }
 }
 
 /** Delay processing of display state request until proximity state is known
@@ -9764,10 +10289,6 @@ static gboolean mdy_dbus_handle_display_dim_req(DBusMessage *const msg)
     return TRUE;
 }
 
-/** Override mode for display off requests made over D-Bus */
-static gint  mdy_dbus_display_off_override = MCE_DEFAULT_DISPLAY_OFF_OVERRIDE;
-static guint mdy_dbus_display_off_override_setting_id = 0;
-
 /**
  * D-Bus callback for the display off method call
  *
@@ -9777,9 +10298,6 @@ static guint mdy_dbus_display_off_override_setting_id = 0;
  */
 static gboolean mdy_dbus_handle_display_off_req(DBusMessage *const msg)
 {
-    if( mdy_dbus_display_off_override == DISPLAY_OFF_OVERRIDE_USE_LPM )
-        return mdy_dbus_handle_display_lpm_req(msg);
-
     mdy_dbus_schedule_display_state_req(msg, MCE_DISPLAY_OFF);
     if( !dbus_message_get_no_reply(msg) )
         dbus_send_message(dbus_new_method_reply(msg));
@@ -11510,6 +12028,8 @@ const gchar *g_module_check_init(GModule *module)
 
     (void)module;
 
+    compositor_stm_init_config();
+
     mdy_blanking_init_pause_client_tracking();
 
     mdy_compositor_init();
@@ -11714,6 +12234,8 @@ void g_module_unload(GModule *module)
     mdy_topmost_window_forget_pid_query();
 
     common_on_proximity_cancel(MODULE_NAME, 0, 0);
+
+    compositor_stm_quit_config();
 
     return;
 }

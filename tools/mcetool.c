@@ -296,7 +296,7 @@ static bool          xmce_set_powerkey_double_press_delay              (const ch
 static void          xmce_get_powerkey_double_press_delay              (void);
 static bool          xmce_is_powerkey_action                           (const char *name);
 static bool          xmce_is_powerkey_action_mask                      (const char *names);
-static void          xmce_set_powerkey_action_mask                     (const char *key, const char *names);
+static bool          xmce_set_powerkey_action_mask                     (const char *key, const char *names);
 static bool          xmce_set_powerkey_actions_while_display_off_single(const char *args);
 static bool          xmce_set_powerkey_actions_while_display_off_double(const char *args);
 static bool          xmce_set_powerkey_actions_while_display_off_long  (const char *args);
@@ -437,12 +437,14 @@ int                 main                     (int argc, char **argv);
  * MCETOOL
  * ------------------------------------------------------------------------- */
 
-static gboolean   mcetool_parse_timspec    (struct timespec *ts, const char *args);
-static char      *mcetool_parse_token      (char **ppos);
-static char      *mcetool_format_bitmask   (const symbol_t *lut, int mask, char *buff, size_t size);
-static unsigned   mcetool_parse_bitmask    (const symbol_t *lut, const char *args);
-static bool       mcetool_show_led_patterns(const char *args);
-static bool       mcetool_block            (const char *args);
+static gboolean   mcetool_parse_timspec     (struct timespec *ts, const char *args);
+static char      *mcetool_parse_token       (char **ppos);
+static char      *mcetool_format_bitmask    (const symbol_t *lut, int mask, char *buff, size_t size);
+static unsigned   mcetool_parse_bitmask     (const symbol_t *lut, const char *args);
+static bool       mcetool_show_led_patterns (const char *args);
+static bool       mcetool_block             (const char *args);
+static bool       mcetool_handle_common_args(const char *key, const char *args);
+static bool       mcetool_reject_common_args(const char *args);
 
 /* ------------------------------------------------------------------------- *
  * MCETOOL_DO
@@ -2341,6 +2343,39 @@ EXIT:
         return mask;
 }
 
+/** Common handling for special "values" for applicable --set-xxx options
+ *
+ * @return true if args was handled, false otherwise
+ */
+static bool mcetool_handle_common_args(const char *key, const char *args)
+{
+        bool handled = true;
+        if( !g_strcmp0(args, "/reset") ) {
+                if( !xmce_reset_settings(key) )
+                        exit(EXIT_FAILURE);
+        }
+        else if( !g_strcmp0(args, "/key") ) {
+                printf("%s\n", key);
+        }
+        else {
+                handled = false;
+        }
+        return handled;
+}
+
+/** Common rejecting of special "values" for non-applicable --set-xxx options
+ *
+ * @return true if args was rejected, false otherwise
+ */
+static bool mcetool_reject_common_args(const char *args)
+{
+        if( !g_strcmp0(args, "/reset") || !g_strcmp0(args, "/key") ) {
+                errorf("not a single persistent setting, '%s' is not applicable\n", args);
+                return true;
+        }
+        return false;
+}
+
 /* ------------------------------------------------------------------------- *
  * leds
  * ------------------------------------------------------------------------- */
@@ -2398,10 +2433,12 @@ static bool is_configurable_pattern(const char *pattern)
  */
 static bool set_led_breathing_enabled(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        const char *key = MCE_SETTING_LED_SW_BREATH_ENABLED;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         gboolean val = xmce_parse_enabled(args);
-        xmce_setting_set_bool(MCE_SETTING_LED_SW_BREATH_ENABLED, val);
-        return true;
+        return xmce_setting_set_bool(key, val);
 }
 
 /** Show current sw based led breathing enable setting
@@ -2421,15 +2458,17 @@ static void get_led_breathing_enabled(void)
  */
 static bool set_led_breathing_limit(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        const char *key = MCE_SETTING_LED_SW_BREATH_BATTERY_LIMIT;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
 
         if( val < 0 || val > 100 ) {
                 errorf("%d: invalid battery limit value\n", val);
                 exit(EXIT_FAILURE);
         }
-        xmce_setting_set_int(MCE_SETTING_LED_SW_BREATH_BATTERY_LIMIT, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Show current battery limit for sw based led breathing
@@ -2557,6 +2596,9 @@ static const symbol_t verbosity_levels[] = {
  */
 static bool xmce_set_verbosity(const char *arg)
 {
+        if( mcetool_reject_common_args(arg) )
+                return false;
+
         dbus_int32_t val = lookup(verbosity_levels, arg);
         if( val < 0 ) {
                 errorf("%s: invalid verbosity level\n", arg);
@@ -2631,7 +2673,9 @@ EXIT:
  */
 static bool xmce_set_color_profile(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        if( mcetool_reject_common_args(args) )
+                return false;
+
         xmce_ipc_no_reply(MCE_COLOR_PROFILE_CHANGE_REQ,
                           DBUS_TYPE_STRING, &args,
                           DBUS_TYPE_INVALID);
@@ -2737,6 +2781,9 @@ EXIT:
 
 static bool mcetool_do_set_charger_type(const char *arg)
 {
+        if( mcetool_reject_common_args(arg) )
+                return false;
+
         const char * const lut[] = {
                 MCE_CHARGER_TYPE_NONE,
                 MCE_CHARGER_TYPE_USB,
@@ -2762,6 +2809,9 @@ static bool mcetool_do_set_charger_type(const char *arg)
 
 static bool mcetool_do_set_charger_state(const char *arg)
 {
+        if( mcetool_reject_common_args(arg) )
+                return false;
+
         const char * const lut[] = {
                 MCE_CHARGER_STATE_UNKNOWN,
                 MCE_CHARGER_STATE_ON,
@@ -2783,6 +2833,9 @@ static bool mcetool_do_set_charger_state(const char *arg)
 
 static bool mcetool_do_set_battery_level(const char *arg)
 {
+        if( mcetool_reject_common_args(arg) )
+                return false;
+
         int level = xmce_parse_integer(arg);
         if( level < 0 ) {
                 /* Battery simulation takes this as: unknown */
@@ -2837,13 +2890,16 @@ static void xmce_get_battery_level(void)
 
 static bool xmce_set_charging_enable_limit(const char *args)
 {
+        const char *key = MCE_SETTING_CHARGING_LIMIT_ENABLE;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
         if( val < 0 || val > 100 ) {
                 errorf("%d: invalid battery limit value\n", val);
                 exit(EXIT_FAILURE);
         }
-        xmce_setting_set_int(MCE_SETTING_CHARGING_LIMIT_ENABLE, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 static void xmce_get_charging_enable_limit(void)
@@ -2858,13 +2914,16 @@ static void xmce_get_charging_enable_limit(void)
 
 static bool xmce_set_charging_disable_limit(const char *args)
 {
+        const char *key = MCE_SETTING_CHARGING_LIMIT_DISABLE;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
         if( val < 0 || val > 100 ) {
                 errorf("%d: invalid battery limit value\n", val);
                 exit(EXIT_FAILURE);
         }
-        xmce_setting_set_int(MCE_SETTING_CHARGING_LIMIT_DISABLE, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 static void xmce_get_charging_disable_limit(void)
@@ -2889,14 +2948,16 @@ static const symbol_t charging_mode_lut[] =
 
 static bool xmce_set_charging_mode(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        const char *key = MCE_SETTING_CHARGING_MODE;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = lookup(charging_mode_lut, args);
         if( val == -1 ) {
                 errorf("%s: invalid charging mode\n", args);
                 exit(EXIT_FAILURE);
         }
-        xmce_setting_set_int(MCE_SETTING_CHARGING_MODE, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 static void xmce_get_charging_mode(void)
@@ -2910,6 +2971,9 @@ static void xmce_get_charging_mode(void)
 
 static bool xmce_set_forced_charging_mode(const char *args)
 {
+        if( mcetool_reject_common_args(args) )
+                return false;
+
         static const char * const lut[] = {
                 MCE_FORCED_CHARGING_ENABLED,
                 MCE_FORCED_CHARGING_DISABLED,
@@ -3124,9 +3188,12 @@ static const symbol_t lpmui_triggering_lut[] =
  */
 static bool xmce_set_lpmui_triggering(const char *args)
 {
+        const char *key = MCE_SETTING_TK_LPMUI_TRIGGERING;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int mask = mcetool_parse_bitmask(lpmui_triggering_lut, args);
-        xmce_setting_set_int(MCE_SETTING_TK_LPMUI_TRIGGERING, mask);
-        return true;
+        return xmce_setting_set_int(key, mask);
 }
 
 /** Get current lpm ui triggering mode from mce and print it out
@@ -3160,9 +3227,12 @@ static const symbol_t input_grab_allowed_lut[] =
  */
 static bool xmce_set_input_grab_allowed(const char *args)
 {
+        const char *key = MCE_SETTING_INPUT_GRAB_ALLOWED;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int mask = mcetool_parse_bitmask(input_grab_allowed_lut, args);
-        xmce_setting_set_int(MCE_SETTING_INPUT_GRAB_ALLOWED, mask);
-        return true;
+        return xmce_setting_set_int(key, mask);
 }
 
 /** Get current lpm ui triggering mode from mce and print it out
@@ -3192,7 +3262,8 @@ static void xmce_get_input_grab_allowed(void)
  */
 static bool xmce_set_call_state(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        if( mcetool_reject_common_args(args) )
+                return false;
 
         char *callstate = strdup(args);
         char *calltype  = strchr(callstate, ':');
@@ -3255,9 +3326,11 @@ EXIT:
 static bool xmce_set_button_backlligut_off_delay(const char *args)
 {
         const char *key = MCE_SETTING_BUTTONBACKLIGHT_OFF_DELAY;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         gint        val = xmce_parse_integer(args);
-        xmce_setting_set_int(key, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Get current fingerprint wakeup allow delay
@@ -3287,7 +3360,8 @@ static void xmce_get_button_backlligut_off_delay(void)
  */
 static bool xmce_set_button_backlight_mode(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        if( mcetool_reject_common_args(args) )
+                return false;
 
         dbus_int32_t val = lookup(button_backlight_mode_values, args);
         if( val < 0 ) {
@@ -3312,7 +3386,8 @@ static bool xmce_set_button_backlight_mode(const char *args)
  */
 static bool xmce_set_button_backlight(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        if( mcetool_reject_common_args(args) )
+                return false;
 
         int val = lookup(button_backlight_values, args);
         if( val < 0 ) {
@@ -3431,13 +3506,16 @@ static const symbol_t blanking_pause_modes[] = {
  */
 static bool xmce_set_blank_prevent_mode(const char *args)
 {
+        const char *key = MCE_SETTING_DISPLAY_BLANKING_PAUSE_MODE;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = lookup(blanking_pause_modes, args);
         if( val < 0 ) {
                 errorf("%s: invalid display blank prevent mode\n", args);
                 exit(EXIT_FAILURE);
         }
-        xmce_setting_set_int(MCE_SETTING_DISPLAY_BLANKING_PAUSE_MODE, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Get current display blank prevent mode from mce and print it out
@@ -3461,15 +3539,17 @@ static void xmce_get_blank_prevent_mode(void)
  */
 static bool xmce_set_display_brightness(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        const char *key = MCE_SETTING_DISPLAY_BRIGHTNESS;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
 
         if( val < 1 || val > 100 ) {
                 errorf("%d: invalid brightness value\n", val);
                 exit(EXIT_FAILURE);
         }
-        xmce_setting_set_int(MCE_SETTING_DISPLAY_BRIGHTNESS, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Get current display brightness from mce and print it out
@@ -3491,14 +3571,17 @@ static void xmce_get_display_brightness(void)
  */
 static bool xmce_set_dimmed_brightness_static(const char *args)
 {
+        const char *key = MCE_SETTING_DISPLAY_DIM_STATIC_BRIGHTNESS;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
 
         if( val < 1 || val > 100 ) {
                 errorf("%d: invalid brightness value\n", val);
                 exit(EXIT_FAILURE);
         }
-        xmce_setting_set_int(MCE_SETTING_DISPLAY_DIM_STATIC_BRIGHTNESS, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Show statically defined dimmed display brightness
@@ -3520,14 +3603,17 @@ static void xmce_get_dimmed_brightness_static(void)
  */
 static bool xmce_set_dimmed_brightness_dynamic(const char *args)
 {
+        const char *key = MCE_SETTING_DISPLAY_DIM_DYNAMIC_BRIGHTNESS;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
 
         if( val < 1 || val > 100 ) {
                 errorf("%d: invalid brightness value\n", val);
                 exit(EXIT_FAILURE);
         }
-        xmce_setting_set_int(MCE_SETTING_DISPLAY_DIM_DYNAMIC_BRIGHTNESS, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Show dynamically defined dimmed display brightness
@@ -3549,14 +3635,17 @@ static void xmce_get_dimmed_brightness_dynamic(void)
  */
 static bool xmce_set_compositor_dimming_hi(const char *args)
 {
+        const char *key = MCE_SETTING_DISPLAY_DIM_COMPOSITOR_HI;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
 
         if( val < 0 || val > 100 ) {
                 errorf("%d: invalid threshold value\n", val);
                 exit(EXIT_FAILURE);
         }
-        xmce_setting_set_int(MCE_SETTING_DISPLAY_DIM_COMPOSITOR_HI, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Set threshold for minimal dimming display via compositor
@@ -3565,15 +3654,17 @@ static bool xmce_set_compositor_dimming_hi(const char *args)
  */
 static bool xmce_set_compositor_dimming_lo(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        const char *key = MCE_SETTING_DISPLAY_DIM_COMPOSITOR_LO;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
 
         if( val < 0 || val > 100 ) {
                 errorf("%d: invalid threshold value\n", val);
                 exit(EXIT_FAILURE);
         }
-        xmce_setting_set_int(MCE_SETTING_DISPLAY_DIM_COMPOSITOR_LO, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** show thresholds for dimming display via compositor
@@ -3609,6 +3700,9 @@ static void xmce_get_compositor_dimming(void)
  */
 static bool xmce_set_cabc_mode(const char *args)
 {
+        if( mcetool_reject_common_args(args) )
+                return false;
+
         static const char * const lut[] = {
                 MCE_CABC_MODE_OFF,
                 MCE_CABC_MODE_UI,
@@ -3616,8 +3710,6 @@ static bool xmce_set_cabc_mode(const char *args)
                 MCE_CABC_MODE_MOVING_IMAGE,
                 0
         };
-
-        debugf("%s(%s)\n", __FUNCTION__, args);
 
         for( size_t i = 0; ; ++i ) {
                 if( !lut[i] ) {
@@ -3669,9 +3761,12 @@ static bool xmce_reset_settings(const char *args)
  */
 static bool xmce_set_dim_timeout(const char *args)
 {
+        const char *key = MCE_SETTING_DISPLAY_DIM_TIMEOUT;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
-        xmce_setting_set_int(MCE_SETTING_DISPLAY_DIM_TIMEOUT, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Show current dim timeout
@@ -3693,10 +3788,12 @@ static void xmce_get_dim_timeout(void)
  */
 static bool xmce_set_dim_with_kbd_timeout(const char *args)
 {
+        const char *key = MCE_SETTING_DISPLAY_DIM_WITH_KEYBOARD_TIMEOUT;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
-        xmce_setting_set_int(MCE_SETTING_DISPLAY_DIM_WITH_KEYBOARD_TIMEOUT,
-                             val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Show current dim with kbd timeout
@@ -3723,7 +3820,10 @@ static void xmce_get_dim_with_kbd_timeout(void)
 
 static bool xmce_set_dim_timeouts(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        const char *key = MCE_SETTING_DISPLAY_DIM_TIMEOUT_LIST;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         gint  len = 0;
         gint *arr = parse_gint_array(args, &len);
 
@@ -3738,10 +3838,9 @@ static bool xmce_set_dim_timeouts(const char *args)
                 }
         }
 
-        xmce_setting_set_int_array(MCE_SETTING_DISPLAY_DIM_TIMEOUT_LIST,
-                                   arr, len);
+        bool ret = xmce_setting_set_int_array(key, arr, len);
         g_free(arr);
-        return true;
+        return ret;
 }
 
 /** Get list of "allowed" dim timeouts from mce and print them out
@@ -3770,10 +3869,12 @@ static void xmce_get_dim_timeouts(void)
  */
 static bool xmce_set_adaptive_dimming_mode(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        const char *key = MCE_SETTING_DISPLAY_ADAPTIVE_DIMMING;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         gboolean val = xmce_parse_enabled(args);
-        xmce_setting_set_bool(MCE_SETTING_DISPLAY_ADAPTIVE_DIMMING, val);
-        return true;
+        return xmce_setting_set_bool(key, val);
 }
 
 /** Get current adaptive dimming mode from mce and print it out
@@ -3795,10 +3896,12 @@ static void xmce_get_adaptive_dimming_mode(void)
  */
 static bool xmce_set_adaptive_dimming_time(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        const char *key = MCE_SETTING_DISPLAY_ADAPTIVE_DIM_THRESHOLD;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
-        xmce_setting_set_int(MCE_SETTING_DISPLAY_ADAPTIVE_DIM_THRESHOLD, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Get current adaptive dimming time from mce and print it out
@@ -3820,86 +3923,122 @@ static void xmce_get_adaptive_dimming_time(void)
 
 static bool xmce_set_exception_length_call_in(const char *args)
 {
+        const char *key = MCE_SETTING_TK_EXCEPT_LEN_CALL_IN;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
-        xmce_setting_set_int(MCE_SETTING_TK_EXCEPT_LEN_CALL_IN, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 static bool xmce_set_exception_length_call_out(const char *args)
 {
+        const char *key = MCE_SETTING_TK_EXCEPT_LEN_CALL_OUT;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
-        xmce_setting_set_int(MCE_SETTING_TK_EXCEPT_LEN_CALL_OUT, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 static bool xmce_set_exception_length_alarm(const char *args)
 {
+        const char *key = MCE_SETTING_TK_EXCEPT_LEN_ALARM;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
-        xmce_setting_set_int(MCE_SETTING_TK_EXCEPT_LEN_ALARM, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 static bool xmce_set_exception_length_usb_connect(const char *args)
 {
+        const char *key = MCE_SETTING_TK_EXCEPT_LEN_USB_CONNECT;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
-        xmce_setting_set_int(MCE_SETTING_TK_EXCEPT_LEN_USB_CONNECT, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 static bool xmce_set_exception_length_usb_dialog(const char *args)
 {
+        const char *key = MCE_SETTING_TK_EXCEPT_LEN_USB_DIALOG;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
-        xmce_setting_set_int(MCE_SETTING_TK_EXCEPT_LEN_USB_DIALOG, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 static bool xmce_set_exception_length_charger(const char *args)
 {
+        const char *key = MCE_SETTING_TK_EXCEPT_LEN_CHARGER;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
-        xmce_setting_set_int(MCE_SETTING_TK_EXCEPT_LEN_CHARGER, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 static bool xmce_set_exception_length_battery(const char *args)
 {
+        const char *key = MCE_SETTING_TK_EXCEPT_LEN_BATTERY;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
-        xmce_setting_set_int(MCE_SETTING_TK_EXCEPT_LEN_BATTERY, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 static bool xmce_set_exception_length_jack_in(const char *args)
 {
+        const char *key = MCE_SETTING_TK_EXCEPT_LEN_JACK_IN;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
-        xmce_setting_set_int(MCE_SETTING_TK_EXCEPT_LEN_JACK_IN, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 static bool xmce_set_exception_length_jack_out(const char *args)
 {
+        const char *key = MCE_SETTING_TK_EXCEPT_LEN_JACK_OUT;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
-        xmce_setting_set_int(MCE_SETTING_TK_EXCEPT_LEN_JACK_OUT, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 static bool xmce_set_exception_length_camera(const char *args)
 {
+        const char *key = MCE_SETTING_TK_EXCEPT_LEN_CAMERA;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
-        xmce_setting_set_int(MCE_SETTING_TK_EXCEPT_LEN_CAMERA, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 static bool xmce_set_exception_length_volume(const char *args)
 {
+        const char *key = MCE_SETTING_TK_EXCEPT_LEN_VOLUME;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
-        xmce_setting_set_int(MCE_SETTING_TK_EXCEPT_LEN_VOLUME, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 static bool xmce_set_exception_length_activity(const char *args)
 {
+        const char *key = MCE_SETTING_TK_EXCEPT_LEN_ACTIVITY;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
-        xmce_setting_set_int(MCE_SETTING_TK_EXCEPT_LEN_ACTIVITY, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 static void xmce_get_exception_length(const char *tag, const char *key)
@@ -3965,10 +4104,12 @@ static void xmce_get_exception_lengths(void)
  */
 static bool xmce_set_filter_lid_with_als(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        const char *key = MCE_SETTING_TK_FILTER_LID_WITH_ALS;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         gboolean val = xmce_parse_enabled(args);
-        xmce_setting_set_bool(MCE_SETTING_TK_FILTER_LID_WITH_ALS, val);
-        return true;
+        return xmce_setting_set_bool(key, val);
 }
 
 /* Get current filter lid with als mode from mce and print it out
@@ -3989,13 +4130,16 @@ static void xmce_get_filter_lid_with_als(void)
  */
 static bool xmce_set_filter_lid_als_limit(const char *args)
 {
+        const char *key = MCE_SETTING_TK_FILTER_LID_ALS_LIMIT;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
         if( val < 0 ) {
                 errorf("%d: invalid lux value\n", val);
                 return false;
         }
-        xmce_setting_set_int(MCE_SETTING_TK_FILTER_LID_ALS_LIMIT, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /* Get current filter lid als limit from mce and print it out
@@ -4017,10 +4161,12 @@ static void xmce_get_filter_lid_als_limit(void)
  */
 static bool xmce_set_lid_sensor_mode(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        const char *key = MCE_SETTING_TK_LID_SENSOR_ENABLED;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         gboolean val = xmce_parse_enabled(args);
-        xmce_setting_set_bool(MCE_SETTING_TK_LID_SENSOR_ENABLED, val);
-        return true;
+        return xmce_setting_set_bool(key, val);
 }
 
 /** Get current lid_sensor mode from mce and print it out
@@ -4050,13 +4196,16 @@ static const symbol_t lid_open_actions[] = {
  */
 static bool xmce_set_lid_open_actions(const char *args)
 {
+        const char *key = MCE_SETTING_TK_LID_OPEN_ACTIONS;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = lookup(lid_open_actions, args);
         if( val < 0 ) {
                 errorf("%s: invalid lid open actions\n", args);
                 exit(EXIT_FAILURE);
         }
-        xmce_setting_set_int(MCE_SETTING_TK_LID_OPEN_ACTIONS, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Get current lid open actions from mce and print it out
@@ -4085,13 +4234,16 @@ static const symbol_t lid_close_actions[] = {
  */
 static bool xmce_set_lid_close_actions(const char *args)
 {
+        const char *key = MCE_SETTING_TK_LID_CLOSE_ACTIONS;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = lookup(lid_close_actions, args);
         if( val < 0 ) {
                 errorf("%s: invalid lid close actions\n", args);
                 exit(EXIT_FAILURE);
         }
-        xmce_setting_set_int(MCE_SETTING_TK_LID_CLOSE_ACTIONS, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Get current lid close actions from mce and print it out
@@ -4133,13 +4285,16 @@ static const symbol_t kbd_slide_close_triggers[] = {
  */
 static bool xmce_set_kbd_slide_open_trigger(const char *args)
 {
+        const char *key = MCE_SETTING_TK_KBD_OPEN_TRIGGER;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = lookup(kbd_slide_open_triggers, args);
         if( val < 0 ) {
                 errorf("%s: invalid kbd slide open trigger\n", args);
                 return false;
         }
-        xmce_setting_set_int(MCE_SETTING_TK_KBD_OPEN_TRIGGER, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Show current kbd slide open trigger
@@ -4159,13 +4314,16 @@ static void xmce_get_kbd_slide_open_trigger(void)
  */
 static bool xmce_set_kbd_slide_open_actions(const char *args)
 {
+        const char *key = MCE_SETTING_TK_KBD_OPEN_ACTIONS;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = lookup(lid_open_actions, args);
         if( val < 0 ) {
                 errorf("%s: invalid kbd slide open actions\n", args);
                 return false;
         }
-        xmce_setting_set_int(MCE_SETTING_TK_KBD_OPEN_ACTIONS, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Show current kbd slide open actions
@@ -4185,13 +4343,16 @@ static void xmce_get_kbd_slide_open_actions(void)
  */
 static bool xmce_set_kbd_slide_close_trigger(const char *args)
 {
+        const char *key = MCE_SETTING_TK_KBD_CLOSE_TRIGGER;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = lookup(kbd_slide_close_triggers, args);
         if( val < 0 ) {
                 errorf("%s: invalid kbd slide close trigger\n", args);
                 return false;
         }
-        xmce_setting_set_int(MCE_SETTING_TK_KBD_CLOSE_TRIGGER, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Show current kbd slide close trigger
@@ -4211,13 +4372,16 @@ static void xmce_get_kbd_slide_close_trigger(void)
  */
 static bool xmce_set_kbd_slide_close_actions(const char *args)
 {
+        const char *key = MCE_SETTING_TK_KBD_CLOSE_ACTIONS;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = lookup(lid_close_actions, args);
         if( val < 0 ) {
                 errorf("%s: invalid kbd slide close actions\n", args);
                 return false;
         }
-        xmce_setting_set_int(MCE_SETTING_TK_KBD_CLOSE_ACTIONS, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Show current kbd slide close actions
@@ -4241,9 +4405,12 @@ static void xmce_get_kbd_slide_close_actions(void)
  */
 static bool xmce_set_orientation_sensor_mode(const char *args)
 {
+        const char *key = MCE_SETTING_ORIENTATION_SENSOR_ENABLED;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         gboolean val = xmce_parse_enabled(args);
-        xmce_setting_set_bool(MCE_SETTING_ORIENTATION_SENSOR_ENABLED, val);
-        return true;
+        return xmce_setting_set_bool(key, val);
 }
 
 /** Show orientation sensor master toggle
@@ -4264,9 +4431,12 @@ static void xmce_get_orientation_sensor_mode(void)
  */
 static bool xmce_set_orientation_change_is_activity(const char *args)
 {
+        const char *key = MCE_SETTING_ORIENTATION_CHANGE_IS_ACTIVITY;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         gboolean val = xmce_parse_enabled(args);
-        xmce_setting_set_bool(MCE_SETTING_ORIENTATION_CHANGE_IS_ACTIVITY, val);
-        return true;
+        return xmce_setting_set_bool(key, val);
 }
 
 /** Show orientation change is activity toggle
@@ -4287,9 +4457,12 @@ static void xmce_get_orientation_change_is_activity(void)
  */
 static bool xmce_set_flipover_gesture_detection(const char *args)
 {
+        const char *key = MCE_SETTING_FLIPOVER_GESTURE_ENABLED;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         gboolean val = xmce_parse_enabled(args);
-        xmce_setting_set_bool(MCE_SETTING_FLIPOVER_GESTURE_ENABLED, val);
-        return true;
+        return xmce_setting_set_bool(key, val);
 }
 
 /** Show flipover gesture detection toggle
@@ -4314,10 +4487,12 @@ static void xmce_get_flipover_gesture_detection(void)
  */
 static bool xmce_set_ps_mode(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        const char *key = MCE_SETTING_PROXIMITY_PS_ENABLED;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         gboolean val = xmce_parse_enabled(args);
-        xmce_setting_set_bool(MCE_SETTING_PROXIMITY_PS_ENABLED, val);
-        return true;
+        return xmce_setting_set_bool(key, val);
 }
 
 /** Get current ps mode from mce and print it out
@@ -4338,10 +4513,12 @@ static void xmce_get_ps_mode(void)
  */
 static bool xmce_set_ps_on_demand(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        const char *key = MCE_SETTING_PROXIMITY_ON_DEMAND;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         gboolean val = xmce_parse_enabled(args);
-        xmce_setting_set_bool(MCE_SETTING_PROXIMITY_ON_DEMAND, val);
-        return true;
+        return xmce_setting_set_bool(key, val);
 }
 
 /** Get current ps mode from mce and print it out
@@ -4362,9 +4539,12 @@ static void xmce_get_ps_on_demand(void)
  */
 static bool xmce_set_ps_blocks_touch(const char *args)
 {
+        const char *key = MCE_SETTING_TK_PROXIMITY_BLOCKS_TOUCH;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         gboolean val = xmce_parse_enabled(args);
-        xmce_setting_set_bool(MCE_SETTING_TK_PROXIMITY_BLOCKS_TOUCH, val);
-        return true;
+        return xmce_setting_set_bool(key, val);
 }
 
 /** Get current ps can block touch input mode and print it out
@@ -4385,9 +4565,12 @@ static void xmce_get_ps_blocks_touch(void)
  */
 static bool xmce_set_ps_acts_as_lid(const char *args)
 {
+        const char *key = MCE_SETTING_PROXIMITY_PS_ACTS_AS_LID;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         gboolean val = xmce_parse_enabled(args);
-        xmce_setting_set_bool(MCE_SETTING_PROXIMITY_PS_ACTS_AS_LID, val);
-        return true;
+        return xmce_setting_set_bool(key, val);
 }
 
 /** Get current ps acts as lid mode and print it out
@@ -4408,6 +4591,9 @@ static void xmce_get_ps_acts_as_lid(void)
 
 static bool xmce_set_ps_uncover_delay_sub(const char *key, const char *args)
 {
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
         if( val < MCE_MINIMUM_TK_PROXIMITY_DELAY ||
             val > MCE_MAXIMUM_TK_PROXIMITY_DELAY ) {
@@ -4470,6 +4656,9 @@ static void xmce_get_ps_uncover_delay(void)
 static bool xmce_set_inactivity_shutdown_delay(const char *args)
 {
         const char *key = MCE_SETTING_INACTIVITY_SHUTDOWN_DELAY;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
 
         if( val != 0 && val < MCE_MINIMUM_INACTIVITY_SHUTDOWN_DELAY ) {
@@ -4508,10 +4697,12 @@ static void xmce_get_inactivity_shutdown_delay(void)
  */
 static bool xmce_set_als_autobrightness(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        const char *key = MCE_SETTING_DISPLAY_ALS_AUTOBRIGHTNESS;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         gboolean val = xmce_parse_enabled(args);
-        xmce_setting_set_bool(MCE_SETTING_DISPLAY_ALS_AUTOBRIGHTNESS, val);
-        return true;
+        return xmce_setting_set_bool(key, val);
 }
 
 /** Get current als autobrightness from mce and print it out
@@ -4532,10 +4723,12 @@ static void xmce_get_als_autobrightness(void)
  */
 static bool xmce_set_als_mode(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        const char *key = MCE_SETTING_DISPLAY_ALS_ENABLED;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         gboolean val = xmce_parse_enabled(args);
-        xmce_setting_set_bool(MCE_SETTING_DISPLAY_ALS_ENABLED, val);
-        return true;
+        return xmce_setting_set_bool(key, val);
 }
 
 /** Get current als mode from mce and print it out
@@ -4574,11 +4767,14 @@ static bool xmce_is_als_filter_name(const char *name)
  */
 static bool xmce_set_als_input_filter(const char *args)
 {
+        const char *key = MCE_SETTING_DISPLAY_ALS_INPUT_FILTER;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         if( !xmce_is_als_filter_name(args) )
                 return false;
 
-        xmce_setting_set_string(MCE_SETTING_DISPLAY_ALS_INPUT_FILTER, args);
-        return true;
+        return xmce_setting_set_string(key, args);
 }
 
 /** Get current als input filter from mce and print it out
@@ -4599,6 +4795,10 @@ static void xmce_get_als_input_filter(void)
  */
 static bool xmce_set_als_sample_time(const char *args)
 {
+        const char *key = MCE_SETTING_DISPLAY_ALS_SAMPLE_TIME;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
 
         if( val < ALS_SAMPLE_TIME_MIN || val > ALS_SAMPLE_TIME_MAX ) {
@@ -4606,8 +4806,7 @@ static bool xmce_set_als_sample_time(const char *args)
                 return false;
         }
 
-        xmce_setting_set_int(MCE_SETTING_DISPLAY_ALS_SAMPLE_TIME, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Get current als sample time from mce and print it out
@@ -4631,10 +4830,12 @@ static void xmce_get_als_sample_time(void)
  */
 static bool xmce_set_autolock_mode(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        const char *key = MCE_SETTING_TK_AUTOLOCK_ENABLED;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         gboolean val = xmce_parse_enabled(args);
-        xmce_setting_set_bool(MCE_SETTING_TK_AUTOLOCK_ENABLED, val);
-        return true;
+        return xmce_setting_set_bool(key, val);
 }
 
 /** Get current autolock mode from mce and print it out
@@ -4655,6 +4856,10 @@ static void xmce_get_autolock_mode(void)
  */
 static bool xmce_set_autolock_delay(const char *args)
 {
+        const char *key = MCE_SETTING_TK_AUTOLOCK_DELAY;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         gint val = (int)(xmce_parse_double(args) * 1000.0);
 
         if( val < MINIMUM_AUTOLOCK_DELAY || val > MAXIMUM_AUTOLOCK_DELAY ) {
@@ -4662,8 +4867,7 @@ static bool xmce_set_autolock_delay(const char *args)
                 return false;
         }
 
-        xmce_setting_set_int(MCE_SETTING_TK_AUTOLOCK_DELAY, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Get current autolock delay from mce and print it out
@@ -4709,6 +4913,10 @@ static bool interactive_confirmation(const char *positive)
  */
 static bool xmce_set_devicelock_in_lockscreen(const char *args)
 {
+        const char *key = MCE_SETTING_TK_DEVICELOCK_IN_LOCKSCREEN;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         gboolean val = xmce_parse_enabled(args);
 
         /* Make it a bit more difficult to enable the setting
@@ -4724,8 +4932,7 @@ static bool xmce_set_devicelock_in_lockscreen(const char *args)
                 }
         }
 
-        xmce_setting_set_bool(MCE_SETTING_TK_DEVICELOCK_IN_LOCKSCREEN, val);
-        return true;
+        return xmce_setting_set_bool(key, val);
 }
 
 /** Get current devicelock_in_lockscreen mode from mce and print it out
@@ -4750,9 +4957,12 @@ static void xmce_get_devicelock_in_lockscreen(void)
  */
 static bool xmce_set_lockscreen_unblank_animation(const char *args)
 {
+        const char *key = MCE_SETTING_TK_LOCKSCREEN_ANIM_ENABLED;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         gboolean val = xmce_parse_enabled(args);
-        xmce_setting_set_bool(MCE_SETTING_TK_LOCKSCREEN_ANIM_ENABLED, val);
-        return true;
+        return xmce_setting_set_bool(key, val);
 }
 
 /* Show current lock screen animation enabled/disabled
@@ -4777,10 +4987,12 @@ static void xmce_get_lockscreen_unblank_animation(void)
  */
 static bool xmce_set_blank_timeout(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        const char *key = MCE_SETTING_DISPLAY_BLANK_TIMEOUT;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
-        xmce_setting_set_int(MCE_SETTING_DISPLAY_BLANK_TIMEOUT, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Set display blanking from lockscreen timeout
@@ -4789,9 +5001,12 @@ static bool xmce_set_blank_timeout(const char *args)
  */
 static bool xmce_set_blank_from_lockscreen_timeout(const char *args)
 {
+        const char *key = MCE_SETTING_DISPLAY_BLANK_FROM_LOCKSCREEN_TIMEOUT;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
-        xmce_setting_set_int(MCE_SETTING_DISPLAY_BLANK_FROM_LOCKSCREEN_TIMEOUT, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Set display blanking from lpm-on timeout
@@ -4800,9 +5015,12 @@ static bool xmce_set_blank_from_lockscreen_timeout(const char *args)
  */
 static bool xmce_set_blank_from_lpm_on_timeout(const char *args)
 {
+        const char *key = MCE_SETTING_DISPLAY_BLANK_FROM_LPM_ON_TIMEOUT;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
-        xmce_setting_set_int(MCE_SETTING_DISPLAY_BLANK_FROM_LPM_ON_TIMEOUT, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Set display blanking from lpm-off timeout
@@ -4811,9 +5029,12 @@ static bool xmce_set_blank_from_lpm_on_timeout(const char *args)
  */
 static bool xmce_set_blank_from_lpm_off_timeout(const char *args)
 {
+        const char *key = MCE_SETTING_DISPLAY_BLANK_FROM_LPM_OFF_TIMEOUT;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
-        xmce_setting_set_int(MCE_SETTING_DISPLAY_BLANK_FROM_LPM_OFF_TIMEOUT, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Helper for outputting blank timeout settings
@@ -4887,14 +5108,16 @@ static const symbol_t powerkey_action[] = {
  */
 static bool xmce_set_powerkey_action(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        const char *key = MCE_SETTING_POWERKEY_MODE;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = lookup(powerkey_action, args);
         if( val < 0 ) {
                 errorf("%s: invalid powerkey policy value\n", args);
                 exit(EXIT_FAILURE);
         }
-        xmce_setting_set_int(MCE_SETTING_POWERKEY_MODE, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Get current powerkey wakeup mode from mce and print it out
@@ -4922,14 +5145,16 @@ static const symbol_t powerkey_blanking[] = {
  */
 static bool xmce_set_powerkey_blanking(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        const char *key = MCE_SETTING_POWERKEY_BLANKING_MODE;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = lookup(powerkey_blanking, args);
         if( val < 0 ) {
                 errorf("%s: invalid powerkey blanking value\n", args);
                 exit(EXIT_FAILURE);
         }
-        xmce_setting_set_int(MCE_SETTING_POWERKEY_BLANKING_MODE, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Get current powerkey wakeup mode from mce and print it out
@@ -4950,9 +5175,11 @@ static void xmce_get_powerkey_blanking(void)
 static bool xmce_set_powerkey_long_press_delay(const char *args)
 {
         const char *key = MCE_SETTING_POWERKEY_LONG_PRESS_DELAY;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         gint        val = xmce_parse_integer(args);
-        xmce_setting_set_int(key, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Get current powerkey long press delay
@@ -4979,9 +5206,11 @@ static void xmce_get_powerkey_long_press_delay(void)
 static bool xmce_set_powerkey_double_press_delay(const char *args)
 {
         const char *key = MCE_SETTING_POWERKEY_DOUBLE_PRESS_DELAY;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         gint        val = xmce_parse_integer(args);
-        xmce_setting_set_int(key, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Get current powerkey double press delay
@@ -5061,48 +5290,47 @@ static bool xmce_is_powerkey_action_mask(const char *names)
 
 /** Helper for setting powerkey action mask settings
  */
-static void xmce_set_powerkey_action_mask(const char *key, const char *names)
+static bool xmce_set_powerkey_action_mask(const char *key, const char *names)
 {
+        if( mcetool_handle_common_args(key, names) )
+                return true;
+
         if( names && *names && !xmce_is_powerkey_action_mask(names) )
                 exit(EXIT_FAILURE);
 
-        xmce_setting_set_string(key, names);
+        return xmce_setting_set_string(key, names);
 }
 
 /** Set actions to perform on single power key press from display off
  */
 static bool xmce_set_powerkey_actions_while_display_off_single(const char *args)
 {
-        xmce_set_powerkey_action_mask(MCE_SETTING_POWERKEY_ACTIONS_SINGLE_OFF,
-                                      args);
-        return true;
+        return xmce_set_powerkey_action_mask(MCE_SETTING_POWERKEY_ACTIONS_SINGLE_OFF,
+                                             args);
 }
 
 /** Set actions to perform on double power key press from display off
  */
 static bool xmce_set_powerkey_actions_while_display_off_double(const char *args)
 {
-        xmce_set_powerkey_action_mask(MCE_SETTING_POWERKEY_ACTIONS_DOUBLE_OFF,
-                                      args);
-        return true;
+        return xmce_set_powerkey_action_mask(MCE_SETTING_POWERKEY_ACTIONS_DOUBLE_OFF,
+                                             args);
 }
 
 /** Set actions to perform on long power key press from display off
  */
 static bool xmce_set_powerkey_actions_while_display_off_long(const char *args)
 {
-        xmce_set_powerkey_action_mask(MCE_SETTING_POWERKEY_ACTIONS_LONG_OFF,
-                                      args);
-        return true;
+        return xmce_set_powerkey_action_mask(MCE_SETTING_POWERKEY_ACTIONS_LONG_OFF,
+                                             args);
 }
 
 /** Set actions to perform on single power key press from display on
  */
 static bool xmce_set_powerkey_actions_while_display_on_single(const char *args)
 {
-        xmce_set_powerkey_action_mask(MCE_SETTING_POWERKEY_ACTIONS_SINGLE_ON,
-                                      args);
-        return true;
+        return xmce_set_powerkey_action_mask(MCE_SETTING_POWERKEY_ACTIONS_SINGLE_ON,
+                                             args);
 }
 
 /** Set actions to perform on double power key press from display on
@@ -5320,14 +5548,19 @@ static bool xmce_set_powerkey_dbus_action(const char *args)
                 return false;
         }
 
+        const char *key = powerkey_dbus_action_key[action_id];
+
+        if( mcetool_handle_common_args(key, conf) )
+                return true;
+
         if( conf && *conf && !xmce_is_powerkey_dbus_action(conf) )
                 return false;
 
-        xmce_setting_set_string(powerkey_dbus_action_key[action_id], conf);
+        bool ret = xmce_setting_set_string(key, conf);
 
         free(work);
 
-        return true;
+        return ret;
 }
 /** Helper for showing current dbus action config
  */
@@ -5393,9 +5626,11 @@ static void xmce_get_powerkey_dbus_actions(void)
 static bool xmce_set_ps_override_count(const char *args)
 {
         const char *key = MCE_SETTING_POWERKEY_PS_OVERRIDE_COUNT;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         gint        val = xmce_parse_integer(args);
-        xmce_setting_set_int(key, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Get current powerkey proximity override press count
@@ -5424,9 +5659,11 @@ static void xmce_get_ps_override_count(void)
 static bool xmce_set_ps_override_timeout(const char *args)
 {
         const char *key = MCE_SETTING_POWERKEY_PS_OVERRIDE_TIMEOUT;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         gint        val = xmce_parse_integer(args);
-        xmce_setting_set_int(key, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Get current powerkey proximity override press timeout
@@ -5455,9 +5692,11 @@ static void xmce_get_ps_override_timeout(void)
 /** Lookup table for display off request override values
  */
 static const symbol_t display_off_override[] = {
-        { "disabled", DISPLAY_OFF_OVERRIDE_DISABLED },
-        { "use-lpm",  DISPLAY_OFF_OVERRIDE_USE_LPM  },
-        { NULL,       -1                            }
+        { "disabled",   DISPLAY_OFF_OVERRIDE_DISABLED    },
+        { "use-lpm",    DISPLAY_OFF_OVERRIDE_USE_LPM     },
+        { "only-blank", DISPLAY_OFF_OVERRIDE_ONLY_BLANK  },
+        { "devlock",    DISPLAY_OFF_OVERRIDE_DEVLOCK     },
+        { NULL,         -1                               }
 };
 
 /** Set display off override
@@ -5466,14 +5705,19 @@ static const symbol_t display_off_override[] = {
  */
 static bool xmce_set_display_off_override(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
-        int val = lookup(display_off_override, args);
-        if( val < 0 ) {
-                errorf("%s: invalid display off override value\n", args);
+        const char *key = MCE_SETTING_DISPLAY_OFF_OVERRIDE;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
+        int val = mcetool_parse_bitmask(display_off_override, args);
+
+        if( val & DISPLAY_OFF_OVERRIDE_ONLY_BLANK &&
+            val & ~DISPLAY_OFF_OVERRIDE_ONLY_BLANK) {
+                errorf("%s: invalid display off override value combination\n", args);
                 exit(EXIT_FAILURE);
         }
-        xmce_setting_set_int(MCE_SETTING_DISPLAY_OFF_OVERRIDE, val);
-        return true;
+
+        return xmce_setting_set_int(key, val);
 }
 
 /** Get current display off override from mce and print it out
@@ -5482,8 +5726,9 @@ static void xmce_get_display_off_override(void)
 {
         gint        val = 0;
         const char *txt = 0;
+        char        buf[256];
         if( xmce_setting_get_int(MCE_SETTING_DISPLAY_OFF_OVERRIDE, &val) )
-                txt = rlookup(display_off_override, val);
+                txt = mcetool_format_bitmask(display_off_override, val, buf, sizeof buf);
         printf("%-"PAD1"s %s \n", "Display off override mode:", txt ?: "unknown");
 }
 
@@ -5505,13 +5750,16 @@ static const symbol_t volkey_input_policies[] = {
  */
 static bool xmce_set_volkey_policy(const char *args)
 {
+        const char *key = MCE_SETTING_TK_VOLKEY_POLICY;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = lookup(volkey_input_policies, args);
         if( val < 0 ) {
                 errorf("%s: invalid volkey input policy value\n", args);
                 return false;
         }
-        xmce_setting_set_int(MCE_SETTING_TK_VOLKEY_POLICY, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Show current volkey input policy
@@ -5565,14 +5813,16 @@ static const symbol_t doubletap_wakeup[] = {
  */
 static bool xmce_set_doubletap_wakeup(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        const char *key = MCE_SETTING_DOUBLETAP_MODE;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = lookup(doubletap_wakeup, args);
         if( val < 0 ) {
                 errorf("%s: invalid doubletap policy value\n", args);
                 exit(EXIT_FAILURE);
         }
-        xmce_setting_set_int(MCE_SETTING_DOUBLETAP_MODE, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Get current doubletap wakeup mode from mce and print it out
@@ -5607,13 +5857,16 @@ static const symbol_t fingerprint_wakeup[] = {
  */
 static bool xmce_set_fingerprint_wakeup_mode(const char *args)
 {
+        const char *key = MCE_SETTING_FPWAKEUP_MODE;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = lookup(fingerprint_wakeup, args);
         if( val < 0 ) {
                 errorf("%s: invalid fingerprint policy value\n", args);
                 exit(EXIT_FAILURE);
         }
-        xmce_setting_set_int(MCE_SETTING_FPWAKEUP_MODE, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Get current fingerprint wakeup mode from mce and print it out
@@ -5635,9 +5888,11 @@ static void xmce_get_fingerprint_wakeup_mode(void)
 static bool xmce_set_fingerprint_wakeup_allow_delay(const char *args)
 {
         const char *key = MCE_SETTING_FPWAKEUP_ALLOW_DELAY;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         gint        val = xmce_parse_integer(args);
-        xmce_setting_set_int(key, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Get current fingerprint wakeup allow delay
@@ -5664,9 +5919,11 @@ static void xmce_get_fingerprint_wakeup_allow_delay(void)
 static bool xmce_set_fingerprint_wakeup_trigger_delay(const char *args)
 {
         const char *key = MCE_SETTING_FPWAKEUP_TRIGGER_DELAY;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         gint        val = xmce_parse_integer(args);
-        xmce_setting_set_int(key, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Get current fingerprint wakeup triggering delay
@@ -5693,9 +5950,11 @@ static void xmce_get_fingerprint_wakeup_trigger_delay(void)
 static bool xmce_set_fingerprint_wakeup_throttle_delay(const char *args)
 {
         const char *key = MCE_SETTING_FPWAKEUP_THROTTLE_DELAY;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         gint        val = xmce_parse_integer(args);
-        xmce_setting_set_int(key, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Get current fingerprint wakeup throttle delay
@@ -5725,10 +5984,12 @@ static void xmce_get_fingerprint_wakeup_throttle_delay(void)
  */
 static bool xmce_set_power_saving_mode(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        const char *key = MCE_SETTING_EM_ENABLE_PSM;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         gboolean val = xmce_parse_enabled(args);
-        xmce_setting_set_bool(MCE_SETTING_EM_ENABLE_PSM, val);
-        return true;
+        return xmce_setting_set_bool(key, val);
 }
 
 /** Get current power saving mode from mce and print it out
@@ -5755,15 +6016,17 @@ static void xmce_get_power_saving_mode(void)
  */
 static bool xmce_set_psm_threshold(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        const char *key = MCE_SETTING_EM_PSM_THRESHOLD;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
 
         if( val < 0 || val > 100 ) {
                 errorf("%d: invalid psm threshold value\n", val);
                 exit(EXIT_FAILURE);
         }
-        xmce_setting_set_int(MCE_SETTING_EM_PSM_THRESHOLD, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Get current power saving threshold from mce and print it out
@@ -5785,10 +6048,12 @@ static void xmce_get_psm_threshold(void)
  */
 static bool xmce_set_forced_psm(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        const char *key = MCE_SETTING_EM_FORCED_PSM;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         gboolean val = xmce_parse_enabled(args);
-        xmce_setting_set_bool(MCE_SETTING_EM_FORCED_PSM, val);
-        return true;
+        return xmce_setting_set_bool(key, val);
 }
 
 /** Get current forced power saving mode from mce and print it out
@@ -5813,10 +6078,12 @@ static void xmce_get_forced_psm(void)
  */
 static bool xmce_set_low_power_mode(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        const char *key = MCE_SETTING_USE_LOW_POWER_MODE;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         gboolean val = xmce_parse_enabled(args);
-        xmce_setting_set_bool(MCE_SETTING_USE_LOW_POWER_MODE, val);
-        return true;
+        return xmce_setting_set_bool(key, val);
 }
 
 /** Get current low power mode state from mce and print it out
@@ -5837,10 +6104,12 @@ static void xmce_get_low_power_mode(void)
 
 static bool xmce_set_inhibit_mode(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        const char *key = MCE_SETTING_BLANKING_INHIBIT_MODE;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = parse_inhibitmode(args);
-        xmce_setting_set_int(MCE_SETTING_BLANKING_INHIBIT_MODE, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Get current blanking inhibit mode from mce and print it out
@@ -5870,14 +6139,17 @@ static const symbol_t kbd_slide_inhibitmode_lut[] =
  */
 static bool xmce_set_kbd_slide_inhibit_mode(const char *args)
 {
+        const char *key = MCE_SETTING_KBD_SLIDE_INHIBIT;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = lookup(kbd_slide_inhibitmode_lut, args);
         if( val < 0 ) {
                 errorf("%s: Invalid kbd slide blank inhibit mode\n", args);
                 return false;
         }
 
-        xmce_setting_set_int(MCE_SETTING_KBD_SLIDE_INHIBIT, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Show current kbd slide inhibit mode
@@ -5897,11 +6169,12 @@ static void xmce_get_kbd_slide_inhibit_mode(void)
 
 static bool xmce_set_lipstick_core_delay(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
-        int val = xmce_parse_integer(args);
-        xmce_setting_set_int(MCE_SETTING_LIPSTICK_CORE_DELAY, val);
+        const char *key = MCE_SETTING_LIPSTICK_CORE_DELAY;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
 
-        return true;
+        int val = xmce_parse_integer(args);
+        return xmce_setting_set_int(key, val);
 }
 
 static void xmce_get_lipstick_core_delay(void)
@@ -5921,38 +6194,48 @@ static void xmce_get_lipstick_core_delay(void)
 
 static bool xmce_set_brightness_fade_default(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        const char *key = MCE_SETTING_BRIGHTNESS_FADE_DEFAULT_MS;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
-        xmce_setting_set_int(MCE_SETTING_BRIGHTNESS_FADE_DEFAULT_MS, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 static bool xmce_set_brightness_fade_dimming(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        const char *key = MCE_SETTING_BRIGHTNESS_FADE_DIMMING_MS;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
-        xmce_setting_set_int(MCE_SETTING_BRIGHTNESS_FADE_DIMMING_MS, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 static bool xmce_set_brightness_fade_als(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        const char *key = MCE_SETTING_BRIGHTNESS_FADE_ALS_MS;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
-        xmce_setting_set_int(MCE_SETTING_BRIGHTNESS_FADE_ALS_MS, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 static bool xmce_set_brightness_fade_blank(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        const char *key = MCE_SETTING_BRIGHTNESS_FADE_BLANK_MS;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
-        xmce_setting_set_int(MCE_SETTING_BRIGHTNESS_FADE_BLANK_MS, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 static bool xmce_set_brightness_fade_unblank(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        const char *key = MCE_SETTING_BRIGHTNESS_FADE_UNBLANK_MS;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
-        xmce_setting_set_int(MCE_SETTING_BRIGHTNESS_FADE_UNBLANK_MS, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 static void xmce_get_brightness_fade_helper(const char *title, const char *key)
@@ -5985,30 +6268,38 @@ static void xmce_get_brightness_fade(void)
 
 static bool xmce_set_memnotify_warning_used(const char *args)
 {
-        xmce_setting_set_int(MCE_SETTING_MEMNOTIFY_WARNING_USED,
-                             xmce_parse_memory_limit(args));
-        return true;
+        const char *key = MCE_SETTING_MEMNOTIFY_WARNING_USED;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
+        return xmce_setting_set_int(key, xmce_parse_memory_limit(args));
 }
 
 static bool xmce_set_memnotify_warning_active(const char *args)
 {
-        xmce_setting_set_int(MCE_SETTING_MEMNOTIFY_WARNING_ACTIVE,
-                             xmce_parse_memory_limit(args));
-        return true;
+        const char *key = MCE_SETTING_MEMNOTIFY_WARNING_ACTIVE;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
+        return xmce_setting_set_int(key, xmce_parse_memory_limit(args));
 }
 
 static bool xmce_set_memnotify_critical_used(const char *args)
 {
-        xmce_setting_set_int(MCE_SETTING_MEMNOTIFY_CRITICAL_USED,
-                             xmce_parse_memory_limit(args));
-        return true;
+        const char *key = MCE_SETTING_MEMNOTIFY_CRITICAL_USED;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
+        return xmce_setting_set_int(key, xmce_parse_memory_limit(args));
 }
 
 static bool xmce_set_memnotify_critical_active(const char *args)
 {
-        xmce_setting_set_int(MCE_SETTING_MEMNOTIFY_CRITICAL_ACTIVE,
-                             xmce_parse_memory_limit(args));
-        return true;
+        const char *key = MCE_SETTING_MEMNOTIFY_CRITICAL_ACTIVE;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
+        return xmce_setting_set_int(key, xmce_parse_memory_limit(args));
 }
 
 static void xmce_get_memnotify_helper(const char *title, const char *key)
@@ -6060,9 +6351,12 @@ static void xmce_get_memnotify_level(void)
  */
 static bool xmce_set_input_policy_mode(const char *args)
 {
+        const char *key = MCE_SETTING_TK_INPUT_POLICY_ENABLED;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         gboolean val = xmce_parse_enabled(args);
-        xmce_setting_set_bool(MCE_SETTING_TK_INPUT_POLICY_ENABLED, val);
-        return true;
+        return xmce_setting_set_bool(key, val);
 }
 
 /* Show input policy mode
@@ -6083,16 +6377,17 @@ static void xmce_get_input_policy_mode(void)
 
 static bool xmce_set_touch_unblock_delay(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        const char *key = MCE_SETTING_TOUCH_UNBLOCK_DELAY;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = xmce_parse_integer(args);
 
         if( val <= 0 ) {
                 errorf("%d: invalid touch unblock delay\n", val);
                 return false;
         }
-        xmce_setting_set_int(MCE_SETTING_TOUCH_UNBLOCK_DELAY, val);
-
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 static void xmce_get_touch_unblock_delay(void)
@@ -6112,14 +6407,16 @@ static void xmce_get_touch_unblock_delay(void)
 
 static bool xmce_set_cpu_scaling_governor(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        const char *key = MCE_SETTING_CPU_SCALING_GOVERNOR;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = lookup(governor_values, args);
         if( val < 0 ) {
                 errorf("%s: invalid cpu scaling governor value\n", args);
                 exit(EXIT_FAILURE);
         }
-        xmce_setting_set_int(MCE_SETTING_CPU_SCALING_GOVERNOR, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Get current autosuspend policy from mce and print it out
@@ -6139,14 +6436,16 @@ static void xmce_get_cpu_scaling_governor(void)
 
 static bool xmce_set_never_blank(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        const char *key = MCE_SETTING_DISPLAY_NEVER_BLANK;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = lookup(never_blank_values, args);
         if( val < 0 ) {
                 errorf("%s: invalid never blank value\n", args);
                 exit(EXIT_FAILURE);
         }
-        xmce_setting_set_int(MCE_SETTING_DISPLAY_NEVER_BLANK, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 static void xmce_get_never_blank(void)
@@ -6164,14 +6463,16 @@ static void xmce_get_never_blank(void)
 
 static bool xmce_set_suspend_policy(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        const char *key = MCE_SETTING_USE_AUTOSUSPEND;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = lookup(suspendpol_values, args);
         if( val < 0 ) {
                 errorf("%s: invalid suspend policy value\n", args);
                 exit(EXIT_FAILURE);
         }
-        xmce_setting_set_int(MCE_SETTING_USE_AUTOSUSPEND, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Get current autosuspend policy from mce and print it out
@@ -6334,14 +6635,16 @@ EXIT:
 #ifdef ENABLE_DOUBLETAP_EMULATION
 static bool xmce_set_fake_doubletap(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        const char *key = MCE_SETTING_USE_FAKE_DOUBLETAP;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = lookup(fake_doubletap_values, args);
         if( val < 0 ) {
                 errorf("%s: invalid fake doubletap value\n", args);
                 exit(EXIT_FAILURE);
         }
-        xmce_setting_set_bool(MCE_SETTING_USE_FAKE_DOUBLETAP, val != 0);
-        return true;
+        return xmce_setting_set_bool(key, val != 0);
 }
 
 /** Get current fake double tap policy from mce and print it out
@@ -6507,7 +6810,9 @@ static bool xmce_tklock_callback(const char *args)
  */
 static bool xmce_set_tklock_mode(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        if( mcetool_reject_common_args(args) )
+                return false;
+
         xmce_ipc_no_reply(MCE_TKLOCK_MODE_CHANGE_REQ,
                           DBUS_TYPE_STRING, &args,
                           DBUS_TYPE_INVALID);
@@ -6530,14 +6835,16 @@ static void xmce_get_tklock_mode(void)
  */
 static bool xmce_set_tklock_blank(const char *args)
 {
-        debugf("%s(%s)\n", __FUNCTION__, args);
+        const char *key = MCE_SETTING_TK_AUTO_BLANK_DISABLE;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
         int val = lookup(tklockblank_values, args);
         if( val < 0 ) {
                 errorf("%s: invalid lockscreen blanking policy value\n", args);
                 exit(EXIT_FAILURE);
         }
-        xmce_setting_set_int(MCE_SETTING_TK_AUTO_BLANK_DISABLE, val);
-        return true;
+        return xmce_setting_set_int(key, val);
 }
 
 /** Get current tklock autoblank inhibit mode from mce and print it out
@@ -6721,8 +7028,10 @@ static bool mcetool_block(const char *args)
  */
 static bool xmce_set_demo_mode(const char *args)
 {
+        if( mcetool_reject_common_args(args) )
+                return false;
+
         bool res = true;
-        debugf("%s(%s)\n", __FUNCTION__, args);
         if( !strcmp(args, "on") ) {
                 // mcetool --unblank-screen
                 //         --set-inhibit-mode=stay-on
@@ -7294,10 +7603,17 @@ static const mce_opt_t options[] =
         {
                 .name        = "set-display-off-override",
                 .with_arg    = xmce_set_display_off_override,
-                .values      = "disabled|use-lpm",
+                .values      = "bit1[,bit2][...]",
                 .usage       =
-                        "set the display off request override; valid modes are:\n"
-                        "'disabled', 'use-lpm'\n"
+                        "set the display off request override; valid bits are:\n"
+                        "disabled    - blank screen and activate lockscreen\n"
+                        "use-lpm     - activate display low power mode\n"
+                        "only-blank  - blank screen without activating lockscreen\n"
+                        "devlock     - also lock device\n"
+                        "\n"
+                        "Note: As lpm implies and devlock requires lockscreen\n"
+                        "      activation, 'only-blank' is mutually exclusive with\n"
+                        "      all other options.\n"
         },
         {
                 .name        = "enable-radio",
@@ -8251,6 +8567,19 @@ static __attribute__((__noreturn__)) bool mcetool_do_help(const char *arg)
                 "OPTIONS\n");
 
         mce_command_line_usage(options, arg);
+
+        fprintf(stdout,
+                "\n"
+                "      --set-xxx=</key|/reset>\n"
+                "      --set-touchscreen-gesture-actions=<gesture_id,/key|/reset>\n"
+                "      --set-powerkey-dbus-action=<action_id,/key|/reset>\n%s",
+                g_strcmp0(arg, "all") ? "" :
+                "        All --set-xxx options that affect a signle\n"
+                "        persistent setting accept the following values:\n"
+                "          /key     Print setting key path\n"
+                "          /reset   Reset setting to configured default\n"
+                "\n"
+                "        See also: --reset-settings\n");
 
         fprintf(stdout,
                 "\n"

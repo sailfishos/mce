@@ -903,21 +903,34 @@ static void tklock_datapipe_lipstick_service_state_cb(gconstpointer data)
 
     /* Tklock is applicable only when lipstick is running */
     if( lipstick_service_state == SERVICE_STATE_RUNNING ) {
-        /* STOPPED -> RUNNING: Implies lipstick start / restart.
-         * In this case lockscreen status is decided by lipstick.
-         * We achieve tklock state synchronization by making a
-         * lockscreen deactivation request - which lipstick can
-         * then choose to honor or override.
-         *
-         * UNDEF -> RUNNING: Implies a mce restart while lipstick
-         * is running. What we would like to happen is that
-         * things stay exactly as they were. However there is
-         * no way to recover lockscreen state from lipstick.
-         * So in order to err on the safer side, we activate
-         * lockscreen to get tklock state in sync again.
-         */
-        if( prev == SERVICE_STATE_UNDEF )
+        if( prev == SERVICE_STATE_UNDEF ) {
+            /* UNDEF -> RUNNING: Implies a mce restart while lipstick
+             * is running. What we would like to happen is that things
+             * stay exactly as they were. However there is no passive
+             * way to recover lockscreen state from lipstick and we
+             * have to do something active in order to get tklock
+             * state in sync between mce and lipstick.
+             *
+             * If display is in powered on state, request lockscreen
+             * deactivation. If device happens to be locked, this is
+             * transformed into show-unlock-screen request.
+             *
+             * Otherwise activate lockscreen.
+             */
+            if( display_state_next != MCE_DISPLAY_ON )
+                enable_tklock = true;
+        }
+        else {
+            /* STOPPED -> RUNNING: Implies lipstick start during
+             * bootup / restart later on. In this case lockscreen
+             * status is decided by lipstick and it defaults to having
+             * lockscreen active and changes are not really accepted
+             * until lipstick startup has finished. Making a lockscreen
+             * activation request merely serves as a way to ensure that
+             * mce and lipstick get in sync about tklock state.
+             */
             enable_tklock = true;
+        }
     }
 
     // force tklock ipc

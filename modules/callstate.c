@@ -2,8 +2,8 @@
  * @file callstate.c
  * Call state module -- this handles the call state for MCE
  * <p>
- * Copyright © 2008-2009 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2012-2019 Jolla Ltd.
+ * Copyright (c) 2008 - 2009 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (c) 2012 - 2023 Jolla Ltd.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Kalle Jokiniemi <kalle.jokiniemi@jolla.com>
@@ -1733,8 +1733,7 @@ call_state_rethink_cancel(void)
 static void
 call_state_rethink_schedule(void)
 {
-    if( !mce_wltimer_is_active(call_state_rethink_tmr) )
-        mce_wltimer_start(call_state_rethink_tmr);
+    mce_wltimer_start(call_state_rethink_tmr);
 }
 
 /** Request immediate call state evaluation */

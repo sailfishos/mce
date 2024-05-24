@@ -57,7 +57,7 @@ distclean:: clean
 # CONFIGURATION
 # ----------------------------------------------------------------------------
 
-VERSION := 1.114.0
+VERSION := 1.115.5
 
 INSTALL_BIN := install --mode=755
 INSTALL_DIR := install -d
@@ -76,6 +76,7 @@ PKG_CONFIG_NOT_REQUIRED += fixme
 PKG_CONFIG_NOT_REQUIRED += normalize
 PKG_CONFIG_NOT_REQUIRED += tarball
 PKG_CONFIG_NOT_REQUIRED += tarball_from_git
+PKG_CONFIG_NOT_REQUIRED += graphs
 
 ifneq ($(MAKECMDGOALS),)
 ifeq ($(filter $(PKG_CONFIG_NOT_REQUIRED),$(MAKECMDGOALS)),$(MAKECMDGOALS))
@@ -631,7 +632,6 @@ NORMALIZE_USES_SPC =\
 	modules/cpu-keepalive.c\
 	modules/display.c\
 	modules/display.h\
-	modules/display.dot\
 	modules/doubletap.c\
 	modules/doubletap.h\
 	modules/filter-brightness-als.c\
@@ -656,7 +656,6 @@ NORMALIZE_USES_SPC =\
 	ofono-dbus-names.h\
 	powerkey.c\
 	powerkey.h\
-	powerkey.dot\
 	systemui/dbus-names.h\
 	tklock.c\
 	tklock.h\
@@ -704,6 +703,7 @@ NORMALIZE_UNKNOWN = $(filter-out $(NORMALIZE_KNOWN), $(SOURCEFILES_ALL))
 normalize::
 	normalize_whitespace -M Makefile
 	normalize_whitespace -a inifiles/*.ini config/*.conf
+	normalize_whitespace -a *.dot */*.dot
 	normalize_whitespace -t -b -e -s $(NORMALIZE_USES_SPC)
 	normalize_whitespace -T -e -s $(NORMALIZE_USES_TAB)
 ifneq ($(NORMALIZE_UNKNOWN),)
@@ -769,3 +769,30 @@ rpmbuild:: tarball
 	@test -d rpm || (echo "you need rpm/ subdir for this to work" && false)
 	install -m644 $(TARBALL).bz2 rpm/mce.* ~/rpmbuild/SOURCES/
 	rpmbuild -ba ~/rpmbuild/SOURCES/mce.spec
+
+# ----------------------------------------------------------------------------
+# DOT -> PNG/PDF
+# ----------------------------------------------------------------------------
+
+.SUFFIXES: .dot .png .pdf
+%.png : %.dot
+	dot -Tpng $< -o $@
+%.pdf : %.dot
+	dot -Tpdf $< -o $@
+
+GRAPHS_DOT += homekey.dot
+GRAPHS_DOT += mce-sensorfw.dot
+GRAPHS_DOT += modules/compositor-mce.dot
+GRAPHS_DOT += modules/compositor-ui.dot
+GRAPHS_DOT += modules/compositor.dot
+GRAPHS_DOT += modules/display.dot
+GRAPHS_DOT += modules/memnotify.dot
+GRAPHS_DOT += powerkey.dot
+
+GRAPHS_PNG := $(patsubst %.dot,%.png,$(GRAPHS_DOT))
+GRAPHS_PDF := $(patsubst %.dot,%.pdf,$(GRAPHS_DOT))
+
+graphs:: $(GRAPHS_PNG) $(GRAPHS_PDF)
+
+clean::
+	$(RM) $(GRAPHS_PNG) $(GRAPHS_PDF)
