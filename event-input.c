@@ -94,6 +94,11 @@
 # endif
 #endif
 
+/** How long to block suspend after receiwing KEY_WAKEUP event */
+#define WAKEUP_EVENT_TIMEOUT_MS    10000
+/** Wakelock used for blocking suspend after receiving KEY_WAKEUP event */
+#define WAKEUP_EVENT_WAKELOCK_NAME "wakeup-event"
+
 /* ========================================================================= *
  * DATA TYPES AND FUNCTION PROTOTYPES
  * ========================================================================= */
@@ -1498,6 +1503,7 @@ evin_evdevtype_from_info(evin_evdevinfo_t *info)
         KEY_SCREENLOCK,
         KEY_VOLUMEDOWN,
         KEY_VOLUMEUP,
+        KEY_WAKEUP,
         -1
     };
 
@@ -2309,6 +2315,11 @@ evin_iomon_keypress_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
             if( ev->code == KEY_POWER )
                 mce_log(LL_DEBUG, "esc key -> power key %s",
                         key_esc_down ? "press" : "release");
+        } else if( ev->code == KEY_WAKEUP ) {
+            mce_log(LL_DEVEL, "[wakeup] block suspend a while");
+            mce_wakelock_obtain(WAKEUP_EVENT_WAKELOCK_NAME,
+                                WAKEUP_EVENT_TIMEOUT_MS);
+
         }
 
         /* For now there's no reason to cache the keypress
