@@ -1,3 +1,9 @@
+mce (1.115.6) precise; urgency=low
+
+  * [event-input] Handle KEY_WAKEUP. JB#49548
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Wed, 31 Jul 2024 14:50:40 +0300
+
 mce (1.115.5) precise; urgency=low
 
   * [charging] Add battery_charging_enabled to charging control. JB#61862
