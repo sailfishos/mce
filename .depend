@@ -85,6 +85,7 @@ event-input.o:\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce-setting.h\
+	mce-wakelock.h\
 	mce.h\
 	multitouch.h\
 	musl-compatibility.h\
@@ -102,6 +103,7 @@ event-input.pic.o:\
 	mce-log.h\
 	mce-sensorfw.h\
 	mce-setting.h\
+	mce-wakelock.h\
 	mce.h\
 	multitouch.h\
 	musl-compatibility.h\
