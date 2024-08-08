@@ -28,6 +28,7 @@
 #include <errno.h>
 #include <syslog.h>
 #include <getopt.h>
+#include <libgen.h>
 
 #include <glib.h>
 

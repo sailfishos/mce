@@ -34,6 +34,7 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <libgen.h>
 
 /* ========================================================================= *
  * TYPES & FUNCTIONS
