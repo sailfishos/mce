@@ -34,7 +34,8 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <errno.h>
-#include <libgen.h>
+
+#include "../musl-compatibility.h"
 
 /* ========================================================================= *
  * TYPES & FUNCTIONS
@@ -160,7 +161,7 @@ fu_get_command_name(int pid)
     snprintf(path, sizeof path, "/proc/%d/cmdline", pid);
     char *tmp = fu_read_content(path);
     if( tmp )
-        res = fu_strdup(basename(tmp));
+        res = fu_strdup(simple_basename(tmp));
     free(tmp);
     return res ?: fu_strdup("unknown");
 }

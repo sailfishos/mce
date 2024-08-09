@@ -32,7 +32,6 @@
 #include <mce/mode-names.h>
 
 #include <libudev.h>
-#include <libgen.h>
 
 #include <gmodule.h>
 
@@ -1855,7 +1854,7 @@ udevextcon_update_state(const char *syspath, const char *state)
     old_state = g_hash_table_lookup(udevextcon_usb_state_lut, syspath);
     if( g_strcmp0(old_state, usb_state) ) {
         mce_log(LL_DEBUG, "%s.STATE / USB: %s -> %s",
-                basename(syspath), old_state ?: "null", usb_state ?: "null");
+                simple_basename(syspath), old_state ?: "null", usb_state ?: "null");
         if( usb_state )
             g_hash_table_replace(udevextcon_usb_state_lut, g_strdup(syspath),
                                  usb_state), usb_state = NULL;

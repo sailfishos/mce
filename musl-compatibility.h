@@ -11,4 +11,14 @@
     _rc; })
 # endif
 
+/* GNU basename() like functionality as a macro
+ *
+ * Used for gnu vs posix basename() disambiguation.
+ */
+#define simple_basename(PATH) ({\
+    const char *_sb_file = (PATH);\
+    char *_sb_slash = _sb_file ? strrchr(_sb_file, '/') : NULL;\
+    _sb_slash ? (_sb_slash + 1) : (char *)_sb_file;\
+})
+
 #endif /* MUSL_COMPATIBILITY_H_ */
