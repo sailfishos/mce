@@ -1,3 +1,10 @@
+mce (1.115.7) precise; urgency=low
+
+  * [event-input] Add missing include file. JB#49548
+  * [mce] GNU vs POSIX basename() disambiguation. JB#49548
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Fri, 09 Aug 2024 12:54:02 +0300
+
 mce (1.115.6) precise; urgency=low
 
   * [event-input] Handle KEY_WAKEUP. JB#49548
