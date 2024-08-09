@@ -129,6 +129,7 @@ typedef struct
 
 static int          evin_event_mapping_guess_event_type         (const char *event_code_name);
 
+static int          evin_event_mapping_parse_number             (const char *text);
 static bool         evin_event_mapping_parse_event              (struct input_event *ev, const char *event_code_name);
 static bool         evin_event_mapping_parse_config             (evin_event_mapping_t *self, const char *kernel_emits, const char *mce_expects);
 
@@ -696,6 +697,29 @@ EXIT:
     return etype;
 }
 
+/** Parse positive integer value originating from configuration text
+ *
+ * @param text  Number in text
+ *
+ * @return numeric value of text, or -1 in case of errors
+ */
+
+static int
+evin_event_mapping_parse_number(const char *text)
+{
+    errno = 0;
+
+    char *pos = (char *)text;
+    long  val = strtol(pos, &pos, 0);
+    int   res = (int)val;
+
+    /* No digits, negative, int overflow or other issues? */
+    if( pos == text || res < 0 || res != val || errno != 0)
+        res = -1;
+
+    return res;
+}
+
 /** Fill in event type and code based on name of the event code
  *
  * @param event_code_name name of the event e.g. "SW_KEYPAD_SLIDE"
@@ -707,13 +731,36 @@ evin_event_mapping_parse_event(struct input_event *ev, const char *event_code_na
 {
     bool success = false;
 
-    int etype = evin_event_mapping_guess_event_type(event_code_name);
-    if( etype < 0 )
+    if( !event_code_name )
         goto EXIT;
 
-    int ecode = evdev_lookup_event_code(etype, event_code_name);
-    if( ecode < 0 )
-        goto EXIT;
+    int etype = -1;
+    int ecode = -1;
+
+    /* Check if event is given in numerical form */
+    if( !strncmp(event_code_name, "KEYCODE_", 8) ) {
+        etype = EV_KEY;
+        ecode = evin_event_mapping_parse_number(event_code_name + 8);
+    }
+    else if( !strncmp(event_code_name, "BTNCODE_", 8) ) {
+        etype = EV_KEY;
+        ecode = evin_event_mapping_parse_number(event_code_name + 8);
+    }
+    else if( !strncmp(event_code_name, "SWCODE_", 7) ) {
+        etype = EV_SW;
+        ecode = evin_event_mapping_parse_number(event_code_name + 7);
+    }
+
+    if( ecode < 0 ) {
+        /* Lookup by event name */
+        etype = evin_event_mapping_guess_event_type(event_code_name);
+        if( etype < 0 )
+            goto EXIT;
+
+        ecode = evdev_lookup_event_code(etype, event_code_name);
+        if( ecode < 0 )
+            goto EXIT;
+    }
 
     ev->type = etype;
     ev->code = ecode;
@@ -927,7 +974,19 @@ EXIT:
 
     g_strfreev(keys);
 
-    mce_log(LL_DEBUG, "EVDEV MAPS: %zd", evin_event_mapper_cnt);
+    if( mce_log_p(LL_DEBUG) ) {
+        mce_log(LL_DEBUG, "EVDEV MAPS: %zd", evin_event_mapper_cnt);
+        for( size_t i = 0; i < evin_event_mapper_cnt; ++i ) {
+            evin_event_mapping_t *map = evin_event_mapper_lut + i;
+            mce_log(LL_DEBUG, "[%zu] %s:%s -> %s:%s", i,
+                    evdev_get_event_type_name(map->em_kernel_emits.type),
+                    evdev_get_event_code_name(map->em_kernel_emits.type,
+                                              map->em_kernel_emits.code),
+                    evdev_get_event_type_name(map->em_mce_expects.type),
+                    evdev_get_event_code_name(map->em_mce_expects.type,
+                                              map->em_mce_expects.code));
+        }
+    }
 
     return;
 }
