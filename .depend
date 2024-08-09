@@ -1527,33 +1527,39 @@ tools/dummy_compositor.o:\
 	builtin-gconf.h\
 	dbus-gmain/dbus-gmain.h\
 	mce-dbus.h\
+	musl-compatibility.h\
 
 tools/dummy_compositor.pic.o:\
 	tools/dummy_compositor.c\
 	builtin-gconf.h\
 	dbus-gmain/dbus-gmain.h\
 	mce-dbus.h\
+	musl-compatibility.h\
 
 tools/evdev_trace.o:\
 	tools/evdev_trace.c\
 	evdev.h\
 	mce-log.h\
+	musl-compatibility.h\
 	tools/fileusers.h\
 
 tools/evdev_trace.pic.o:\
 	tools/evdev_trace.c\
 	evdev.h\
 	mce-log.h\
+	musl-compatibility.h\
 	tools/fileusers.h\
 
 tools/fileusers.o:\
 	tools/fileusers.c\
 	mce-log.h\
+	musl-compatibility.h\
 	tools/fileusers.h\
 
 tools/fileusers.pic.o:\
 	tools/fileusers.c\
 	mce-log.h\
+	musl-compatibility.h\
 	tools/fileusers.h\
 
 tools/mcetool.o:\

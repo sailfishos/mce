@@ -29,6 +29,8 @@
 #include <syslog.h>
 #include <getopt.h>
 
+#include "../musl-compatibility.h"
+
 #include <glib.h>
 
 #include <dbus/dbus.h>
@@ -968,7 +970,7 @@ main(int ac, char **av)
 
     dc_log_debug("parse arguments");
 
-    dc_log_set_name(basename(*av));
+    dc_log_set_name(simple_basename(*av));
 
     int level = dc_log_get_level();
     for( ;; ) {

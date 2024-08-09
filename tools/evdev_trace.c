@@ -36,6 +36,8 @@
 #include <glob.h>
 #include <getopt.h>
 
+#include "../musl-compatibility.h"
+
 /** Flag for: emit event time stamps */
 static bool emit_event_time  = true;
 
@@ -350,7 +352,7 @@ main(int argc, char **argv)
 
   memset(&gb, 0, sizeof gb);
 
-  progname = basename(*argv);
+  progname = simple_basename(*argv);
 
   for( ;; )
   {
