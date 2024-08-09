@@ -35,7 +35,6 @@
 #include <poll.h>
 #include <glob.h>
 #include <getopt.h>
-#include <libgen.h>
 
 /** Flag for: emit event time stamps */
 static bool emit_event_time  = true;

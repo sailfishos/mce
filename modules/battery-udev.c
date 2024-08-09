@@ -32,7 +32,6 @@
 #include <mce/mode-names.h>
 
 #include <libudev.h>
-#include <libgen.h>
 
 #include <gmodule.h>
 

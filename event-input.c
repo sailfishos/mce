@@ -40,7 +40,6 @@
 # include "mce-setting.h"
 #endif
 #include "mce-sensorfw.h"
-#include "mce-wakelock.h"
 #include "multitouch.h"
 #include "evdev.h"
 
