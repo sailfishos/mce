@@ -1,3 +1,9 @@
+mce (1.115.8) precise; urgency=low
+
+  * [event-input] Allow numerical values in evdev event mapping. JB#49548
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Mon, 12 Aug 2024 12:13:17 +0300
+
 mce (1.115.7) precise; urgency=low
 
   * [event-input] Add missing include file. JB#49548

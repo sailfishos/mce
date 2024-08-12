@@ -1,6 +1,6 @@
 Name:       mce
 Summary:    Mode Control Entity for Nokia mobile computers
-Version:    1.115.7
+Version:    1.115.8
 Release:    1
 License:    LGPLv2
 URL:        https://github.com/sailfishos/mce
