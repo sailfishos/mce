@@ -2411,6 +2411,7 @@ static const char * const led_patterns[] =
         MCE_LED_PATTERN_PROXIMITY_COVERED,
         MCE_LED_PATTERN_PROXIMITY_UNCOVERING,
         MCE_LED_PATTERN_PROXIMITY_UNCOVERED,
+        MCE_LED_PATTERN_USER_FEEDBACK,
         0
 };
 

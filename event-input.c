@@ -307,6 +307,7 @@ static void         evin_iomon_generate_activity                (struct input_ev
 // event handling by device type
 
 static bool         evin_iomon_sw_gestures_allowed              (void);
+static void         evin_iomon_user_feedback                    (struct input_event *ev);
 static gboolean     evin_iomon_touchscreen_cb                   (mce_io_mon_t *iomon, gpointer data, gsize bytes_read);
 static gboolean     evin_iomon_evin_doubletap_cb                (mce_io_mon_t *iomon, gpointer data, gsize bytes_read);
 static gboolean     evin_iomon_keypress_cb                      (mce_io_mon_t *iomon, gpointer data, gsize bytes_read);
@@ -2165,6 +2166,32 @@ EXIT:
     return gestures_allowed;
 }
 
+/** Check if input event should trigger user feedback
+ *
+ * @param ev  Input event
+ */
+static void
+evin_iomon_user_feedback(struct input_event *ev)
+{
+    switch (ev->type) {
+    case EV_KEY:
+        switch( ev->code ) {
+        case KEY_F1  ... KEY_F12:
+        case KEY_F13 ... KEY_F24:
+            datapipe_exec_full(ev->value ?
+                               &led_pattern_activate_pipe :
+                               &led_pattern_deactivate_pipe,
+                               MCE_LED_PATTERN_USER_FEEDBACK);
+            break;
+        default:
+            break;
+        }
+        break;
+    default:
+        break;
+    }
+}
+
 /** I/O monitor callback for handling touchscreen events
  *
  * @param data       The new data
@@ -2335,6 +2362,8 @@ evin_iomon_keypress_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
     }
 
     if (ev->type == EV_KEY) {
+        evin_iomon_user_feedback(ev);
+
         if ((ev->code == KEY_SCREENLOCK) && (ev->value != 2)) {
             key_state_t key_state = ev->value ?
                 KEY_STATE_PRESSED : KEY_STATE_RELEASED;
@@ -2520,6 +2549,10 @@ evin_iomon_activity_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
     case EV_FF:
     case EV_FF_STATUS:
         goto EXIT;
+
+    case EV_KEY:
+        evin_iomon_user_feedback(ev);
+        break;
 
     default:
         break;
