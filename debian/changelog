@@ -1,3 +1,10 @@
+mce (1.115.9) precise; urgency=low
+
+  * [led] Use dynamic disabling for PatternDeviceOn. JB#62552
+  * [led] Add UserFeedback led pattern. JB#62552
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Wed, 30 Oct 2024 13:19:53 +0200
+
 mce (1.115.8) precise; urgency=low
 
   * [event-input] Allow numerical values in evdev event mapping. JB#49548
