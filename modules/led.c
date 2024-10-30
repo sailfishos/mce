@@ -1379,6 +1379,10 @@ static void led_set_active_pattern(pattern_struct *pattern)
 	if( active_pattern == pattern )
 		goto EXIT;
 
+	mce_log(LL_DEVEL, "active led pattern: %s -> %s",
+		active_pattern ? active_pattern->name : "none",
+		pattern        ? pattern->name        : "none");
+
 	active_pattern = pattern;
 
 	if( active_pattern ) {

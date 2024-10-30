@@ -128,6 +128,9 @@
 /** LED pattern used when proximity sensor is uncovered */
 #define MCE_LED_PATTERN_PROXIMITY_UNCOVERED	"PatternProximityUncovered"
 
+/** LED pattern used as feedback for user activity */
+#define MCE_LED_PATTERN_USER_FEEDBACK		"PatternUserFeedback"
+
 /** Persistent lock file for backups */
 #define MCE_SETTINGS_LOCK_FILE_PATH		G_STRINGIFY(MCE_RUN_DIR) "/restored"
 

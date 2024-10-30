@@ -1486,7 +1486,7 @@ static const setting_t gconf_defaults[] =
   {
     .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_DEVICE_ON,
     .type = "b",
-    .def  = G_STRINGIFY(MCE_DEFAULT_LED_PATTERN_ENABLED),
+    .def  = G_STRINGIFY(false),
   },
   {
     .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_BATTERY_LOW,
@@ -1590,6 +1590,11 @@ static const setting_t gconf_defaults[] =
   },
   {
     .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_PROXIMITY_UNCOVERED,
+    .type = "b",
+    .def  = G_STRINGIFY(false),
+  },
+  {
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_USER_FEEDBACK,
     .type = "b",
     .def  = G_STRINGIFY(false),
   },
