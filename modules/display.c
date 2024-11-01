@@ -408,6 +408,7 @@ static inline bool         mdy_str_eq_p(const char *s1, const char *s2);
 static const char         *blanking_pause_mode_repr(blanking_pause_mode_t mode);
 static const char         *fader_type_name(fader_type_t type);
 static int                 xlat(int src_lo, int src_hi, int dst_lo, int dst_hi, int val);
+static bool                unknown_method_p(DBusError *err);
 
 /* ------------------------------------------------------------------------- *
  * SHUTDOWN
@@ -1419,6 +1420,18 @@ xlat(int src_lo, int src_hi, int dst_lo, int dst_hi, int val)
     val /= range;
 
     return val;
+}
+
+/* Predicate for: DBusError is unknown method
+ *
+ * @param err  DBusError
+ *
+ * @return true if error is about unknown method, false otherwise
+ */
+static bool
+unknown_method_p(DBusError *err)
+{
+    return err && !g_strcmp0(err->name, DBUS_ERROR_UNKNOWN_METHOD);
 }
 
 /* ========================================================================= *
@@ -5940,7 +5953,8 @@ mdy_topmost_window_pid_reply_cb(DBusPendingCall *pc, void *aptr)
 
     DBusMessage *rsp  = 0;
     DBusError    err  = DBUS_ERROR_INIT;
-    dbus_int32_t pid  = -1;
+    dbus_int32_t dta  = 0;
+    pid_t        pid  = -1;
 
     if( mdy_topmost_window_pid_pc != pc )
         goto EXIT;
@@ -5948,22 +5962,23 @@ mdy_topmost_window_pid_reply_cb(DBusPendingCall *pc, void *aptr)
     dbus_pending_call_unref(mdy_topmost_window_pid_pc),
         mdy_topmost_window_pid_pc = 0;
 
-    mce_log(LL_NOTICE, "reply to %s()",
-            COMPOSITOR_GET_TOPMOST_WINDOW_PID);
-
     if( !(rsp = dbus_pending_call_steal_reply(pc)) )
         goto EXIT;
 
-    if( dbus_set_error_from_message(&err, rsp) ) {
-        mce_log(LL_WARN, "error reply: %s: %s", err.name, err.message);
-        goto EXIT;
-    }
+    mce_log(LL_NOTICE, "reply to %s()",
+            COMPOSITOR_GET_TOPMOST_WINDOW_PID);
 
-    if( !dbus_message_get_args(rsp, &err,
-                               DBUS_TYPE_INT32, &pid,
-                               DBUS_TYPE_INVALID) ) {
+    if( dbus_set_error_from_message(&err, rsp) ) {
+        mce_log(unknown_method_p(&err) ? LL_DEBUG : LL_WARN,
+                "error reply: %s: %s", err.name, err.message);
+    }
+    else if( !dbus_message_get_args(rsp, &err,
+                                    DBUS_TYPE_INT32, &dta,
+                                    DBUS_TYPE_INVALID) ) {
         mce_log(LL_WARN, "parse error: %s: %s", err.name, err.message);
-        goto EXIT;
+    }
+    else {
+        pid = (pid_t)dta;
     }
 
     mdy_topmost_window_set_pid(pid);
@@ -6515,11 +6530,13 @@ compositor_stm_pid_query_cb(DBusPendingCall *pc, void *aptr)
 
     mce_log(LL_NOTICE, "reply to pid query");
 
-    if( dbus_set_error_from_message(&err, rsp) ||
-        !dbus_message_get_args(rsp, &err,
-                               DBUS_TYPE_UINT32, &dta,
-                               DBUS_TYPE_INVALID) ) {
-        mce_log(LL_ERR, "%s: %s", err.name, err.message);
+    if( dbus_set_error_from_message(&err, rsp) ) {
+        mce_log(LL_WARN, "error reply: %s: %s", err.name, err.message);
+    }
+    else if( !dbus_message_get_args(rsp, &err,
+                                    DBUS_TYPE_UINT32, &dta,
+                                    DBUS_TYPE_INVALID) ) {
+        mce_log(LL_ERR, "parse error: %s: %s", err.name, err.message);
     }
     else {
         pid = (pid_t)dta;
@@ -6693,32 +6710,33 @@ compositor_stm_actions_query_cb(DBusPendingCall *pc, void *aptr)
     unsigned          actions = COMPOSITOR_ACTION_NONE;
 
     if( self->csi_setup_actions_query_pc != pc )
-        goto BAILOUT;
-
-    mce_log(LL_NOTICE, "reply to setup actions query");
+        goto EXIT;
 
     dbus_pending_call_unref(self->csi_setup_actions_query_pc),
         self->csi_setup_actions_query_pc = 0;
 
     if( !(rsp = dbus_pending_call_steal_reply(pc)) )
-        goto UPDATE;
+        goto EXIT;
 
-    if( dbus_set_error_from_message(&err, rsp) ||
-        !dbus_message_get_args(rsp, &err,
-                               DBUS_TYPE_UINT32, &dta,
-                               DBUS_TYPE_INVALID) ) {
-        mce_log(LL_ERR, "%s: %s", err.name, err.message);
+    mce_log(LL_NOTICE, "reply to setup actions query");
+
+    if( dbus_set_error_from_message(&err, rsp) ) {
+        mce_log(unknown_method_p(&err) ? LL_DEBUG : LL_WARN,
+                "error reply: %s: %s", err.name, err.message);
+    }
+    else if( !dbus_message_get_args(rsp, &err,
+                                    DBUS_TYPE_UINT32, &dta,
+                                    DBUS_TYPE_INVALID) ) {
+        mce_log(LL_ERR, "parse error: %s: %s", err.name, err.message);
     }
     else {
         actions = (unsigned)dta;
     }
 
-UPDATE:
     compositor_stm_set_service_actions(self, actions);
     compositor_stm_eval_state(self);
 
-BAILOUT:
-
+EXIT:
     if( rsp )
         dbus_message_unref(rsp);
 
@@ -6792,25 +6810,26 @@ compositor_stm_ctrl_request_cb(DBusPendingCall *pc, void *aptr)
     dbus_pending_call_unref(self->csi_ctrl_request_pc),
         self->csi_ctrl_request_pc = 0;
 
+    if( !(rsp = dbus_pending_call_steal_reply(pc)) )
+        goto EXIT;
+
     mce_log(LL_NOTICE, "reply to %s(%s)",
             COMPOSITOR_SET_UPDATES_ENABLED,
             renderer_state_repr(self->csi_requested));
 
-    if( !(rsp = dbus_pending_call_steal_reply(pc)) )
-        goto EXIT;
-
     if( dbus_set_error_from_message(&err, rsp) ) {
-        mce_log(LL_WARN, "%s: %s", err.name, err.message);
-        goto EXIT;
+        mce_log(LL_WARN, "error reply: %s: %s", err.name, err.message);
+    }
+    else {
+        ack = true;
     }
 
-    ack = true;
-
-EXIT:
     if( ack )
         compositor_stm_set_state(self, COMPOSITOR_STATE_GRANTED);
     else
         compositor_stm_set_state(self, COMPOSITOR_STATE_FAILED);
+
+EXIT:
 
     if( rsp ) dbus_message_unref(rsp);
 
