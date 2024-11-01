@@ -2465,7 +2465,7 @@ static bool set_led_breathing_limit(const char *args)
 
         int val = xmce_parse_integer(args);
 
-        if( val < 0 || val > 100 ) {
+        if( val < -1 || val > 100 ) {
                 errorf("%d: invalid battery limit value\n", val);
                 exit(EXIT_FAILURE);
         }
@@ -8110,11 +8110,12 @@ static const mce_opt_t options[] =
         {
                 .name        = "set-sw-breathing-limit",
                 .with_arg    = set_led_breathing_limit,
-                .values      = "0 ... 100",
+                .values      = "-1 ... 100",
                 .usage       =
                         "If charger is not connected, the led breathing is enabled only if\n"
-                        "battery level is greater than the limit given. Setting limit to 100%\n"
-                        "allows breathing only when charger is connected.\n"
+                        "battery level is greater than the limit given. Setting limit to 100\n"
+                        "allows breathing only when charger is connected. Using -1/unknown as\n"
+                        "limit is mostly relevant for devices that do not have a battery.\n"
         },
         {
                 .name        = "powerkey-event",
