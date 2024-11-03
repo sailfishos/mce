@@ -872,9 +872,7 @@ static gboolean mce_dsme_dbus_init_done_cb(DBusMessage *const msg)
     (void)msg;
 
     mce_log(LL_DEVEL, "Received init done notification");
-
-    /* Remove transition submode after brief delay */
-    mce_dsme_transition_schedule();
+    datapipe_exec_full(&init_done_pipe, GINT_TO_POINTER(TRISTATE_TRUE));
 
     return TRUE;
 }

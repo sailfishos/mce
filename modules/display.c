@@ -406,6 +406,7 @@ struct bpclient_t
 
 static inline bool         mdy_str_eq_p(const char *s1, const char *s2);
 static const char         *blanking_pause_mode_repr(blanking_pause_mode_t mode);
+static const char         *bootstate_repr(bootstate_t value);
 static const char         *fader_type_name(fader_type_t type);
 static int                 xlat(int src_lo, int src_hi, int dst_lo, int dst_hi, int val);
 static bool                unknown_method_p(DBusError *err);
@@ -420,7 +421,7 @@ static bool                mdy_shutdown_in_progress(void);
  * DATAPIPE_TRACKING
  * ------------------------------------------------------------------------- */
 
-static void                mdy_datapipe_packagekit_locked_cb(gconstpointer data);;
+static void                mdy_datapipe_packagekit_locked_cb(gconstpointer data);
 static void                mdy_datapipe_system_state_cb(gconstpointer data);
 static void                mdy_datapipe_submode_cb(gconstpointer data);
 static void                mdy_datapipe_interaction_expected_cb(gconstpointer data);
@@ -443,6 +444,9 @@ static void                mdy_datapipe_call_state_trigger_cb(gconstpointer data
 static void                mdy_datapipe_device_inactive_cb(gconstpointer data);
 static void                mdy_datapipe_orientation_sensor_actual_cb(gconstpointer data);
 static void                mdy_datapipe_shutting_down_cb(gconstpointer aptr);
+static void                mdy_datapipe_init_done_output_cb(gconstpointer data);
+static gpointer            mdy_datapipe_init_done_filter_cb(gpointer data);
+static void                mdy_datapipe_set_init_done(tristate_t value);
 
 static void                mdy_datapipe_execute_brightness(void);
 
@@ -967,10 +971,13 @@ static void                mdy_dbus_quit(void);
  * FLAG_FILE_TRACKING
  * ------------------------------------------------------------------------- */
 
+static void                mdy_set_bootstate(bootstate_t value);
 static gboolean            mdy_flagfiles_desktop_ready_cb(gpointer user_data);
 static void                mdy_flagfiles_bootstate_cb(const char *path, const char *file, gpointer data);
 static void                mdy_flagfiles_init_done_cb(const char *path, const char *file, gpointer data);
 static void                mdy_flagfiles_osupdate_running_cb(const char *path, const char *file, gpointer data);
+static void                mdy_flagfiles_create_tracker(filewatcher_t **ptracker, const char *dir, const char *file, filewatcher_changed_fn cb);
+static void                mdy_flagfiles_create_trackers(void);
 static void                mdy_flagfiles_start_tracking(void);
 static void                mdy_flagfiles_stop_tracking(void);
 
@@ -1364,6 +1371,24 @@ static const char *blanking_pause_mode_repr(blanking_pause_mode_t mode)
     return res;
 }
 
+/** Translate bootstate to human readable form
+ *
+ * @param value bootstate_t enumeration value
+ *
+ * @return human readable representation of value
+ */
+static const char *bootstate_repr(bootstate_t value)
+{
+    const char *repr = "INVALID";
+    switch( value ) {
+    case BOOTSTATE_UNKNOWN:  repr = "UNKNOWN";  break;
+    case BOOTSTATE_USER:     repr = "USER";     break;
+    case BOOTSTATE_ACT_DEAD: repr = "ACT_DEAD"; break;
+    default: break;
+    }
+    return repr;
+}
+
 /** Convert fader_type_t enum to human readable string
  *
  * @param state fader_type_t enumeration value
@@ -1504,6 +1529,19 @@ static void mdy_datapipe_system_state_cb(gconstpointer data)
 #endif
 
     mdy_blanking_rethink_afterboot_delay();
+
+    /* In case of flag file tracking problems: make bootup
+     * target state match the state that was reached. */
+    switch( system_state ) {
+    case MCE_SYSTEM_STATE_USER:
+        mdy_set_bootstate(BOOTSTATE_USER);
+        break;
+    case MCE_SYSTEM_STATE_ACTDEAD:
+        mdy_set_bootstate(BOOTSTATE_ACT_DEAD);
+        break;
+    default:
+        break;
+    }
 
 EXIT:
     return;
@@ -2173,6 +2211,57 @@ EXIT:
     return;
 }
 
+/** Change notifications for init_done
+ */
+static void mdy_datapipe_init_done_output_cb(gconstpointer data)
+{
+    tristate_t value = GPOINTER_TO_INT(data);
+    if( mdy_init_done != value ) {
+        mce_log(LL_DEVEL, "init_done: %s -> %s",
+                tristate_repr(mdy_init_done),
+                tristate_repr(value));
+        mdy_init_done = value;
+
+        /* Execute on-change triggers */
+        mdy_stm_schedule_rethink();
+#ifdef ENABLE_CPU_GOVERNOR
+        mdy_governor_rethink();
+#endif
+        mdy_poweron_led_rethink();
+        mdy_blanking_rethink_afterboot_delay();
+
+        /* If necessary, retry flag file tracking */
+        mdy_flagfiles_create_trackers();
+    }
+}
+
+/** Filter init_done change notifications
+ */
+static gpointer mdy_datapipe_init_done_filter_cb(gpointer data)
+{
+    tristate_t value = GPOINTER_TO_INT(data);
+
+    /* Hold on to init-done once it is reached */
+    if( mdy_init_done == TRISTATE_TRUE ) {
+        if( value != mdy_init_done ) {
+            mce_log(LL_WARN, "init_done: %s -> %s (rejected)",
+                    tristate_repr(mdy_init_done),
+                    tristate_repr(value));
+            value = mdy_init_done;
+        }
+    }
+
+    return GINT_TO_POINTER(value);
+}
+
+/** Broadcast init_done change within mce
+ */
+static void mdy_datapipe_set_init_done(tristate_t value)
+{
+    if( datapipe_get_gint(init_done_pipe) != value )
+        datapipe_exec_full(&init_done_pipe, GINT_TO_POINTER(value));
+}
+
 /** Re-evaluate display brightness
  *
  * Should be called when display brigtness setting changes
@@ -2218,6 +2307,10 @@ static datapipe_handler_t mdy_datapipe_handlers[] =
     {
         .datapipe  = &display_state_request_pipe,
         .filter_cb = mdy_datapipe_display_state_filter_cb,
+    },
+    {
+        .datapipe  = &init_done_pipe,
+        .filter_cb = mdy_datapipe_init_done_filter_cb,
     },
     // output triggers
     {
@@ -2304,6 +2397,10 @@ static datapipe_handler_t mdy_datapipe_handlers[] =
     {
         .datapipe  = &shutting_down_pipe,
         .output_cb = mdy_datapipe_shutting_down_cb,
+    },
+    {
+        .datapipe  = &init_done_pipe,
+        .output_cb = mdy_datapipe_init_done_output_cb,
     },
     // sentinel
     {
@@ -3879,7 +3976,7 @@ EXIT:
 static void mdy_poweron_led_rethink(void)
 {
     bool want_led = (mdy_init_done != TRISTATE_TRUE &&
-                     mdy_bootstate == BOOTSTATE_USER);
+                     mdy_bootstate != BOOTSTATE_ACT_DEAD);
 
     mce_log(LL_DEBUG, "%s MCE_LED_PATTERN_POWER_ON",
             want_led ? "activate" : "deactivate");
@@ -10766,15 +10863,9 @@ EXIT:
  */
 static gboolean mdy_dbus_handle_desktop_started_sig(DBusMessage *const msg)
 {
-    gboolean status = FALSE;
-
     (void)msg;
 
     mce_log(LL_NOTICE, "Received desktop startup notification");
-
-    mce_log(LL_DEBUG, "deactivate MCE_LED_PATTERN_POWER_ON");
-    datapipe_exec_full(&led_pattern_deactivate_pipe,
-                       MCE_LED_PATTERN_POWER_ON);
 
     mce_rem_submode_int32(MCE_SUBMODE_BOOTUP);
 
@@ -10786,9 +10877,7 @@ static gboolean mdy_dbus_handle_desktop_started_sig(DBusMessage *const msg)
     /* Reprogram blanking timers */
     mdy_blanking_rethink_timers(true);
 
-    status = TRUE;
-
-    return status;
+    return TRUE;
 }
 
 /** Array of dbus message handlers */
@@ -10994,6 +11083,25 @@ static void mdy_dbus_quit(void)
  * FLAG_FILE_TRACKING
  * ========================================================================= */
 
+/** Update locally cached bootstate status
+ */
+static void mdy_set_bootstate(bootstate_t value)
+{
+    if( mdy_bootstate != value ) {
+        mce_log(LL_DEVEL, "bootstate: %s -> %s",
+                bootstate_repr(mdy_bootstate),
+                bootstate_repr(value));
+        mdy_bootstate = value;
+
+        /* Execute on-change triggers */
+        mdy_poweron_led_rethink();
+        mdy_blanking_rethink_afterboot_delay();
+
+        /* If necessary, retry flag file tracking */
+        mdy_flagfiles_create_trackers();
+    }
+}
+
 /** Simulated "desktop ready" via uptime based timer
  */
 static gboolean mdy_flagfiles_desktop_ready_cb(gpointer user_data)
@@ -11001,7 +11109,7 @@ static gboolean mdy_flagfiles_desktop_ready_cb(gpointer user_data)
     (void)user_data;
     if( mdy_desktop_ready_id ) {
         mdy_desktop_ready_id = 0;
-        mce_log(LL_NOTICE, "desktop ready delay ended");
+        mce_log(LL_DEVEL, "mce startup ended");
         mdy_stm_schedule_rethink();
 #ifdef ENABLE_CPU_GOVERNOR
         mdy_governor_rethink();
@@ -11025,25 +11133,8 @@ static void mdy_flagfiles_init_done_cb(const char *path,
     char full[256];
     snprintf(full, sizeof full, "%s/%s", path, file);
 
-    tristate_t prev = mdy_init_done;
-    mdy_init_done = access(full, F_OK) ? TRISTATE_FALSE : TRISTATE_TRUE;
-
-    if( mdy_init_done != prev ) {
-        mce_log(LL_DEVEL, "init_done flag file present: %s -> %s",
-                tristate_repr(prev),
-                tristate_repr(mdy_init_done));
-
-        mdy_stm_schedule_rethink();
-#ifdef ENABLE_CPU_GOVERNOR
-        mdy_governor_rethink();
-#endif
-        mdy_poweron_led_rethink();
-        mdy_blanking_rethink_afterboot_delay();
-
-        /* broadcast change within mce */
-        datapipe_exec_full(&init_done_pipe,
-                           GINT_TO_POINTER(mdy_init_done));
-    }
+    tristate_t probed = access(full, F_OK) ? TRISTATE_FALSE : TRISTATE_TRUE;
+    mdy_datapipe_set_init_done(probed);
 }
 
 /** Content of update-mode flag file has changed
@@ -11094,10 +11185,13 @@ static void mdy_flagfiles_osupdate_running_cb(const char *path,
  * @param data (not used)
  */
 static void mdy_flagfiles_bootstate_cb(const char *path,
-                                     const char *file,
-                                     gpointer data)
+                                       const char *file,
+                                       gpointer data)
 {
     (void)data;
+
+    /* default to unknown */
+    bootstate_t bootstate = BOOTSTATE_UNKNOWN;
 
     int fd = -1;
 
@@ -11106,9 +11200,6 @@ static void mdy_flagfiles_bootstate_cb(const char *path,
     int rc;
 
     snprintf(full, sizeof full, "%s/%s", path, file);
-
-    /* default to unknown */
-    mdy_bootstate = BOOTSTATE_UNKNOWN;
 
     if( (fd = open(full, O_RDONLY)) == -1 ) {
         if( errno != ENOENT )
@@ -11128,19 +11219,30 @@ static void mdy_flagfiles_bootstate_cb(const char *path,
 
     /* for now we only need to differentiate USER and not USER */
     if( !strcmp(buff, "BOOTSTATE=USER") )
-        mdy_bootstate = BOOTSTATE_USER;
+        bootstate = BOOTSTATE_USER;
     else
-        mdy_bootstate = BOOTSTATE_ACT_DEAD;
+        bootstate = BOOTSTATE_ACT_DEAD;
 EXIT:
     if( fd != -1 ) close(fd);
 
-    mdy_poweron_led_rethink();
-    mdy_blanking_rethink_afterboot_delay();
+    mdy_set_bootstate(bootstate);
 }
 
-/** Start tracking of init_done and bootstate flag files
- */
-static void mdy_flagfiles_start_tracking(void)
+static void mdy_flagfiles_create_tracker(filewatcher_t **ptracker,
+                                         const char *dir, const char *file,
+                                         filewatcher_changed_fn cb)
+{
+    if( !*ptracker ) {
+        if( access(dir, F_OK) == 0 )
+            *ptracker = filewatcher_create(dir, file, cb, NULL, NULL);
+        if( !*ptracker )
+            mce_log(LL_WARN, "can't track flagfile: %s/%s", dir, file);
+        else
+            mce_log(LL_DEBUG, "tracking flagfile: %s/%s", dir, file);
+    }
+}
+
+static void mdy_flagfiles_create_trackers(void)
 {
     static const char update_dir[] = "/tmp";
     static const char update_flag[] = "os-update-running";
@@ -11149,67 +11251,58 @@ static void mdy_flagfiles_start_tracking(void)
     static const char flag_init[] = "init-done";
     static const char flag_boot[] = "bootstate";
 
-    time_t uptime = 0;  // uptime in seconds
-    time_t ready  = 60; // desktop ready at
-    time_t delay  = 10; // default wait time
-
-    /* if the update directory exits, track flag file presense */
-    if( access(update_dir, F_OK) == 0 ) {
-        mdy_osupdate_running_watcher = filewatcher_create(update_dir, update_flag,
-                                                     mdy_flagfiles_osupdate_running_cb,
-                                                     0, 0);
+    if( !mdy_init_done_watcher || !mdy_bootstate_watcher ) {
+        if( mkdir(flag_dir, 0755) == 0 )
+            mce_log(LL_WARN, "created flag file dir: %s", flag_dir);
+        else if( errno != EEXIST )
+            mce_log(LL_ERR, "%s: mkdir: %m", flag_dir);
+        else
+            mce_log(LL_DEBUG, "flag file dir already exists: %s", flag_dir);
     }
 
-    /* if the status directory exists, wait for flag file to appear */
-    if( access(flag_dir, F_OK) == 0 ) {
-        mdy_init_done_watcher = filewatcher_create(flag_dir, flag_init,
-                                               mdy_flagfiles_init_done_cb,
-                                               0, 0);
-        mdy_bootstate_watcher = filewatcher_create(flag_dir, flag_boot,
-                                               mdy_flagfiles_bootstate_cb,
-                                               0, 0);
-    }
+    mdy_flagfiles_create_tracker(&mdy_osupdate_running_watcher,
+                                 update_dir, update_flag,
+                                 mdy_flagfiles_osupdate_running_cb);
 
-    /* or fall back to waiting for uptime to reach some minimum value */
-    if( !mdy_init_done_watcher ) {
-        struct timespec ts;
+    mdy_flagfiles_create_tracker(&mdy_init_done_watcher,
+                                 flag_dir, flag_init,
+                                 mdy_flagfiles_init_done_cb);
 
-        /* Assume that monotonic clock == uptime */
-        if( clock_gettime(CLOCK_MONOTONIC, &ts) == 0 )
-            uptime = ts.tv_sec;
+    mdy_flagfiles_create_tracker(&mdy_bootstate_watcher,
+                                 flag_dir, flag_boot,
+                                 mdy_flagfiles_bootstate_cb);
+}
 
-        if( uptime + delay < ready )
-            delay = ready - uptime;
+/** Start tracking of init_done and bootstate flag files
+ */
+static void mdy_flagfiles_start_tracking(void)
+{
 
-        /* do not wait for the init-done flag file */
-        if( mdy_init_done != TRISTATE_TRUE ) {
-            mdy_init_done = TRISTATE_TRUE;
-            datapipe_exec_full(&init_done_pipe,
-                               GINT_TO_POINTER(mdy_init_done));
-        }
-    }
+    /* Make an attempt to start flag file tracking */
+    mdy_flagfiles_create_trackers();
 
-    mce_log(LL_NOTICE, "suspend delay %d seconds", (int)delay);
-    mdy_desktop_ready_id = g_timeout_add_seconds(delay, mdy_flagfiles_desktop_ready_cb, 0);
-
-    if( mdy_init_done_watcher ) {
-        /* evaluate the initial state of init-done flag file */
+    /* Evaluate initial states of tracked flag files */
+    if( mdy_init_done_watcher )
         filewatcher_force_trigger(mdy_init_done_watcher);
-    }
 
-    if( mdy_bootstate_watcher ) {
-        /* evaluate the initial state of bootstate flag file */
+    if( mdy_bootstate_watcher )
         filewatcher_force_trigger(mdy_bootstate_watcher);
-    }
-    else {
-        /* or assume ACT_DEAD & co are not supported */
-        mdy_bootstate = BOOTSTATE_USER;
-    }
 
-    if( mdy_osupdate_running_watcher ) {
-        /* evaluate the initial state of update-mode flag file */
+    if( mdy_osupdate_running_watcher )
         filewatcher_force_trigger(mdy_osupdate_running_watcher);
-    }
+
+    /* Suspend is disabled over mce / device startup
+     * Wait until uptime reaches 60 seconds / 10 seconds.
+     */
+    guint ready  = 60; // maximum wait time
+    guint delay  = 10; // default wait time
+    guint uptime = (guint)(mce_lib_get_boot_tick() / 1000);
+
+    if( uptime + delay < ready )
+        delay = ready - uptime;
+
+    mce_log(LL_DEVEL, "mce starting up, suspend blocked for %d seconds", (int)delay);
+    mdy_desktop_ready_id = g_timeout_add_seconds(delay, mdy_flagfiles_desktop_ready_cb, 0);
 }
 
 /** Stop tracking of init_done state

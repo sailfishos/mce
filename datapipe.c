@@ -649,7 +649,7 @@ datapipe_t touchscreen_event_pipe               = DATAPIPE_INIT(touchscreen_even
 datapipe_t lockkey_state_pipe                   = DATAPIPE_INIT(lockkey_state, lockkey_state, KEY_STATE_UNDEF, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** The init-done condition has been reached; read only */
-datapipe_t init_done_pipe                       = DATAPIPE_INIT(init_done, tristate, TRISTATE_UNKNOWN, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
+datapipe_t init_done_pipe                       = DATAPIPE_INIT(init_done, tristate, TRISTATE_UNKNOWN, 0, DATAPIPE_FILTERING_ALLOWED, DATAPIPE_CACHE_DEFAULT);
 
 /** Keyboard open/closed; read only */
 datapipe_t keyboard_slide_state_pipe            = DATAPIPE_INIT(keyboard_slide_state, cover_state, COVER_CLOSED, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
