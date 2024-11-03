@@ -1113,7 +1113,8 @@ datapipe_add_filter(datapipe_t *self,
     }
 
     if (self->dp_read_only == DATAPIPE_FILTERING_DENIED) {
-        mce_log(LL_ERR, "called on read only datapipe");
+        mce_log(LL_ERR, "called on read only datapipe %s",
+                datapipe_name(self));
         goto EXIT;
     }
 
@@ -1145,7 +1146,8 @@ datapipe_remove_filter(datapipe_t *self,
     }
 
     if (self->dp_read_only == DATAPIPE_FILTERING_DENIED) {
-        mce_log(LL_ERR, "called on read only datapipe");
+        mce_log(LL_ERR, "called on read only datapipe %s",
+                datapipe_name(self));
         goto EXIT;
     }
 
