@@ -292,7 +292,7 @@ void mce_fbdev_init(void)
     }
 #endif
     else {
-        mce_log(LL_WARN, "no fb power control available");;
+        mce_log(LL_NOTICE, "no fb power control available");;
     }
 }
 

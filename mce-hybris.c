@@ -64,7 +64,7 @@ static bool
 mce_hybris_feature_supported(const char *key)
 {
   bool res = mce_conf_get_bool(MCE_CONF_FEATURE_HYBRIS_GROUP, key, true);
-  mce_log(LL_WARN, "hybris feature %s is %s", key, res ? "allowed" : "denied");
+  mce_log(LL_NOTICE, "hybris feature %s is %s", key, res ? "allowed" : "denied");
   return res;
 }
 
