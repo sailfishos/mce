@@ -1,3 +1,11 @@
+mce (1.115.11) precise; urgency=low
+
+  * [display] Silence some compositor dbus ipc warnings. JB#60347
+  * [mce] Tweak logging messages / verbosity. JB#62767
+  * [mce] Make bootstate / init-done tracking more robust. Fixes JB#62767
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Mon, 04 Nov 2024 11:48:59 +0200
+
 mce (1.115.10) precise; urgency=low
 
   * [mcetool] Relax boundaries for led breathing battery limit. JB#62736
