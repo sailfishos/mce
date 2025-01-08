@@ -2,8 +2,9 @@
  * @file display.h
  * Headers for the display module
  * <p>
- * Copyright © 2007-2011 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2013-2019 Jolla Ltd.
+ * Copyright (c) 2007 - 2011 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (c) 2013 - 2019 Jolla Ltd.
+ * Copyright (c) 2025 Jollyboys Ltd.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Tapio Rantala <ext-tapio.rantala@nokia.com>
@@ -185,6 +186,14 @@
 /** Whether orientation changes constitute user activity */
 # define MCE_SETTING_ORIENTATION_CHANGE_IS_ACTIVITY      MCE_SETTING_DISPLAY_PATH "/orientation_change_is_activity"
 # define MCE_DEFAULT_ORIENTATION_CHANGE_IS_ACTIVITY      true
+
+/* ------------------------------------------------------------------------- *
+ * Wakeup sensor related settings
+ * ------------------------------------------------------------------------- */
+
+/** Whether MCE is allowed to use wakeup sensor */
+# define MCE_SETTING_WAKEUP_SENSOR_ENABLED               MCE_SETTING_DISPLAY_PATH "/wakeup_sensor_enabled"
+# define MCE_DEFAULT_WAKEUP_SENSOR_ENABLED               false
 
 /* ------------------------------------------------------------------------- *
  * Color profile related settings

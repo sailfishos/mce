@@ -825,6 +825,14 @@ static bool                mdy_orientation_sensor_wanted(void);
 static void                mdy_orientation_sensor_rethink(void);
 
 /* ------------------------------------------------------------------------- *
+ * WAKEUP_ACTIVITY
+ * ------------------------------------------------------------------------- */
+
+static void mdy_wakeup_sensor_event_cb(int state);
+static void mdy_wakeup_sensor_enable(bool enable);
+static void mdy_wakeup_sensor_rethink(void);
+
+/* ------------------------------------------------------------------------- *
  * DISPLAY_STATE
  * ------------------------------------------------------------------------- */
 
@@ -1809,8 +1817,9 @@ static void mdy_datapipe_display_state_next_cb(gconstpointer data)
 
     mdy_ui_dimming_rethink();
 
-    /* Start/stop orientation sensor */
+    /* Start/stop display state dependant sensors */
     mdy_orientation_sensor_rethink();
+    mdy_wakeup_sensor_rethink();
 
     mdy_blanking_rethink_afterboot_delay();
 
@@ -1984,6 +1993,9 @@ static void mdy_datapipe_uiexception_type_cb(gconstpointer data)
 
     // normal on->dim->blank might not be applicable
     mdy_blanking_rethink_timers(false);
+
+    // wakeup sensor disabled during calls / alarms
+    mdy_wakeup_sensor_rethink();
 
     // notification exception state blocks suspend
     mdy_stm_schedule_rethink();
@@ -2858,6 +2870,10 @@ static guint mdy_brightness_fade_duration_unblank_ms_setting_id = 0;
 /** Use of orientation sensor enabled */
 static gboolean mdy_orientation_sensor_enabled = MCE_DEFAULT_ORIENTATION_SENSOR_ENABLED;
 static guint    mdy_orientation_sensor_enabled_setting_id = 0;
+
+/** Use of wakeup sensor enabled */
+static gboolean mdy_wakeup_sensor_enabled = MCE_DEFAULT_WAKEUP_SENSOR_ENABLED;
+static guint    mdy_wakeup_sensor_enabled_setting_id = 0;
 
 /** Flipover gesture detection enabled */
 static gboolean mdy_flipover_gesture_enabled = MCE_DEFAULT_FLIPOVER_GESTURE_ENABLED;
@@ -5229,16 +5245,12 @@ static void mdy_blanking_rethink_proximity(void)
     case MCE_DISPLAY_LPM_ON:
         if( proximity_sensor_actual == COVER_CLOSED )
             mce_datapipe_request_display_state(MCE_DISPLAY_LPM_OFF);
-        else
-            mdy_blanking_schedule_lpm_off();
         break;
 
     case MCE_DISPLAY_LPM_OFF:
         if( proximity_sensor_actual == COVER_OPEN &&
             lid_sensor_filtered != COVER_CLOSED )
             mce_datapipe_request_display_state(MCE_DISPLAY_LPM_ON);
-        else
-            mdy_blanking_schedule_off();
         break;
 
     default:
@@ -8203,6 +8215,73 @@ EXIT:
 }
 
 /* ========================================================================= *
+ * WAKEUP_ACTIVITY
+ * ========================================================================= */
+
+/** Handle wakeup sensor events
+ */
+static void mdy_wakeup_sensor_event_cb(int event)
+{
+    mce_log(LL_CRUCIAL, "wakeup sensor event: %d", event);
+    if( display_state_next != MCE_DISPLAY_OFF ) {
+        /* Ignore unexpected stray events */
+    }
+    else if( event != 1 ) {
+        /* Ignore dummy placeholder / non-standard end condition events */
+    }
+    else if( proximity_sensor_actual == COVER_OPEN ) {
+        /* We can directly trigger LPM_ON */
+        mce_datapipe_request_display_state(MCE_DISPLAY_LPM_ON);
+    }
+    else {
+        /* Switch to LPM_OFF -> ensure that proximity sensor gets
+         * powered on and LPM_ON will be triggered if proximity
+         * sensor not-covered is reported before blank timeout */
+        mce_datapipe_request_display_state(MCE_DISPLAY_LPM_OFF);
+    }
+}
+
+/** Enable/disable wakeup sensor
+ */
+static void mdy_wakeup_sensor_enable(bool enable)
+{
+    static bool enabled = false;
+    if( enabled != enable ) {
+        mce_log(LL_DEBUG, "wakeup sensor %s", enable ? "enable" : "disable");
+        if( (enabled = enable) ) {
+            mce_sensorfw_wakeup_set_notify(mdy_wakeup_sensor_event_cb);
+            mce_sensorfw_wakeup_enable();
+        }
+        else {
+            mce_sensorfw_wakeup_set_notify(NULL);
+            mce_sensorfw_wakeup_disable();
+        }
+    }
+}
+
+/** Start/stop wakeup sensor based on device state
+ */
+static void mdy_wakeup_sensor_rethink(void)
+{
+    bool enable = false;
+
+    /* Sensor use must be enabled in settings */
+    if( !mdy_wakeup_sensor_enabled )
+        goto EXIT;
+
+    /* Display must be in fully powered off state */
+    if( display_state_next != MCE_DISPLAY_OFF )
+        goto EXIT;
+
+    /* Policy must allow LPM */
+    if( mdy_lpm_allowed() )
+        enable = true;
+
+EXIT:
+    mdy_wakeup_sensor_enable(enable);
+}
+
+/* ========================================================================= *
  * DISPLAY_STATE
  * ========================================================================= */
 
@@ -8628,6 +8707,9 @@ static void mdy_datapipe_lipstick_service_state_cb(gconstpointer aptr)
         mce_log(LL_NOTICE, "display on due to lipstick startup");
         mce_datapipe_request_display_state(MCE_DISPLAY_ON);
     }
+
+    /* Wakeup sensor use makes sense only when lipstick is running */
+    mdy_wakeup_sensor_rethink();
 
     mdy_blanking_rethink_afterboot_delay();
 
@@ -11586,6 +11668,10 @@ static void mdy_setting_cb(GConfClient *const gcc, const guint id,
         mdy_orientation_sensor_enabled = gconf_value_get_bool(gcv);
         mdy_orientation_sensor_rethink();
     }
+    else if (id == mdy_wakeup_sensor_enabled_setting_id) {
+        mdy_wakeup_sensor_enabled = gconf_value_get_bool(gcv);
+        mdy_wakeup_sensor_rethink();
+    }
     else if (id == mdy_flipover_gesture_enabled_setting_id) {
         mdy_flipover_gesture_enabled = gconf_value_get_bool(gcv);
         mdy_orientation_sensor_rethink();
@@ -11937,6 +12023,13 @@ static void mdy_setting_init(void)
                            mdy_setting_cb,
                            &mdy_orientation_change_is_activity_setting_id);
 
+    /* Use wakeup sensor */
+    mce_setting_track_bool(MCE_SETTING_WAKEUP_SENSOR_ENABLED,
+                           &mdy_wakeup_sensor_enabled,
+                           MCE_DEFAULT_WAKEUP_SENSOR_ENABLED,
+                           mdy_setting_cb,
+                           &mdy_wakeup_sensor_enabled_setting_id);
+
     /* Blanking pause mode */
     mce_setting_track_int(MCE_SETTING_DISPLAY_BLANKING_PAUSE_MODE,
                           &mdy_blanking_pause_mode,
@@ -12043,6 +12136,9 @@ static void mdy_setting_quit(void)
 
     mce_setting_notifier_remove(mdy_orientation_sensor_enabled_setting_id),
         mdy_orientation_sensor_enabled_setting_id = 0;
+
+    mce_setting_notifier_remove(mdy_wakeup_sensor_enabled_setting_id),
+        mdy_wakeup_sensor_enabled_setting_id = 0;
 
     mce_setting_notifier_remove(mdy_flipover_gesture_enabled_setting_id),
         mdy_flipover_gesture_enabled_setting_id = 0;
@@ -12223,8 +12319,9 @@ const gchar *g_module_check_init(GModule *module)
      * i.e. when the led plugin is loaded and operational */
     mdy_poweron_led_rethink_schedule();
 
-    /* Evaluate initial orientation sensor enable state */
+    /* Evaluate initial sensor enable states */
     mdy_orientation_sensor_rethink();
+    mdy_wakeup_sensor_rethink();
 
     /* Send initial blanking pause & inhibit states */
     mdy_dbus_send_blanking_pause_status(0);
@@ -12327,6 +12424,7 @@ void g_module_unload(GModule *module)
 
     /* Remove callbacks on module unload */
     mce_sensorfw_orient_set_notify(0);
+    mce_sensorfw_wakeup_set_notify(0);
 
     /* If we are shutting down/rebooting and we have fbdev
      * open, create a detached child process to hold on to

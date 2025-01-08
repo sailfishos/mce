@@ -3,6 +3,7 @@
  * GConf compatibility module - for dynamic mce settings
  * <p>
  * Copyright (c) 2012 - 2022 Jolla Ltd.
+ * Copyright (c) 2025 Jollyboys Ltd.
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
@@ -1260,6 +1261,11 @@ static const setting_t gconf_defaults[] =
     .key  = MCE_SETTING_ORIENTATION_SENSOR_ENABLED,
     .type = "b",
     .def  = G_STRINGIFY(MCE_DEFAULT_ORIENTATION_SENSOR_ENABLED),
+  },
+  {
+    .key  = MCE_SETTING_WAKEUP_SENSOR_ENABLED,
+    .type = "b",
+    .def  = G_STRINGIFY(MCE_DEFAULT_WAKEUP_SENSOR_ENABLED),
   },
   {
     .key  = MCE_SETTING_FLIPOVER_GESTURE_ENABLED,
