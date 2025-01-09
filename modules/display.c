@@ -4424,7 +4424,7 @@ static gboolean mdy_blanking_lpm_off_cb(gpointer data)
 
     mdy_blanking_lpm_off_cb_id = 0;
 
-    mce_datapipe_request_display_state(MCE_DISPLAY_LPM_OFF);
+    mce_datapipe_request_display_state(MCE_DISPLAY_OFF);
 
     return FALSE;
 }
