@@ -5225,7 +5225,7 @@ EXIT:
  */
 static void mdy_blanking_rethink_proximity(void)
 {
-    switch( display_state_curr ) {
+    switch( display_state_next ) {
     case MCE_DISPLAY_LPM_ON:
         if( proximity_sensor_actual == COVER_CLOSED )
             mce_datapipe_request_display_state(MCE_DISPLAY_LPM_OFF);
