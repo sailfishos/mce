@@ -5,6 +5,7 @@
  * Copyright (c) 2007 - 2011 Nokia Corporation and/or its subsidiary(-ies).
  * Copyright (c) 2012 - 2023 Jolla Ltd.
  * Copyright (c) 2020 Open Mobile Platform LLC.
+ * Copyright (c) 2025 Jollyboys Ltd.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Tapio Rantala <ext-tapio.rantala@nokia.com>
@@ -8144,17 +8145,18 @@ static bool mdy_orientation_sensor_wanted(void)
     if( !mdy_orientation_sensor_enabled )
         goto EXIT;
 
-    /* Enable orientation sensor in ON|DIM */
-
-    /* Start the orientation sensor already when powering up
-     * to ON|DIM|LPM_ON states -> we should have a valid sensor
-     * state before the display transition finishes.
+    /* Enable orientation sensor whenever we are in or
+     * transitioning to a powered on display state.
+     *
+     * Additionally keep the sensor powered on in LPM_OFF
+     * state to avoid jitter in orientation reporting while
+     * togging between LPM_OFF and LPM_ON states.
      */
     switch( display_state_next ) {
-    case MCE_DISPLAY_DIM:
     case MCE_DISPLAY_ON:
+    case MCE_DISPLAY_DIM:
     case MCE_DISPLAY_LPM_ON:
-    case MCE_DISPLAY_POWER_UP:
+    case MCE_DISPLAY_LPM_OFF:
         break;
 
     default:
