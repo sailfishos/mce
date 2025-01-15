@@ -4,6 +4,7 @@
  * Copyright (c) 2005 - 2011 Nokia Corporation and/or its subsidiary(-ies).
  * Copyright (c) 2012 - 2022 Jolla Ltd.
  * Copyright (c) 2019 - 2020 Open Mobile Platform LLC.
+ * Copyright (c) 2025 Jollyboys Ltd.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>
@@ -247,6 +248,8 @@ static bool          xmce_set_orientation_change_is_activity           (const ch
 static void          xmce_get_orientation_change_is_activity           (void);
 static bool          xmce_set_flipover_gesture_detection               (const char *args);
 static void          xmce_get_flipover_gesture_detection               (void);
+static bool          xmce_set_wakeup_sensor_mode                       (const char *args);
+static void          xmce_get_wakeup_sensor_mode                       (void);
 static bool          xmce_set_ps_mode                                  (const char *args);
 static void          xmce_get_ps_mode                                  (void);
 static bool          xmce_set_ps_on_demand                             (const char *args);
@@ -4479,6 +4482,37 @@ static void xmce_get_flipover_gesture_detection(void)
 }
 
 /* ------------------------------------------------------------------------- *
+ * wakeup sensor
+ * ------------------------------------------------------------------------- */
+
+/** Set wakeup sensor master toggle
+ *
+ * @param args string suitable for interpreting as enabled/disabled
+ */
+static bool xmce_set_wakeup_sensor_mode(const char *args)
+{
+        const char *key = MCE_SETTING_WAKEUP_SENSOR_ENABLED;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
+        gboolean val = xmce_parse_enabled(args);
+        return xmce_setting_set_bool(key, val);
+}
+
+/** Show wakeup sensor master toggle
+ */
+static void xmce_get_wakeup_sensor_mode(void)
+{
+        gboolean    val  = FALSE;
+        const char *repr = "unknown";
+
+        if( xmce_setting_get_bool(MCE_SETTING_WAKEUP_SENSOR_ENABLED, &val) )
+                repr = val ? "enabled" : "disabled";
+
+        printf("%-"PAD1"s %s\n", "Use wakeup sensor mode:", repr);
+}
+
+/* ------------------------------------------------------------------------- *
  * ps
  * ------------------------------------------------------------------------- */
 
@@ -6962,6 +6996,7 @@ static bool xmce_get_status(const char *args)
         xmce_get_orientation_sensor_mode();
         xmce_get_orientation_change_is_activity();
         xmce_get_flipover_gesture_detection();
+        xmce_get_wakeup_sensor_mode();
         xmce_get_ps_mode();
         xmce_get_ps_on_demand();
         xmce_get_ps_uncover_delay();
@@ -7982,6 +8017,14 @@ static const mce_opt_t options[] =
                         "  'disabled' turning device over does not affect calls/alarms\n"
         },
         {
+                .name        = "set-wakeup-sensor-mode",
+                .with_arg    = xmce_set_wakeup_sensor_mode,
+                .values      = "enabled|disabled",
+                        "set the wakeup sensor master toggle; valid modes are:\n"
+                        "  'enabled'  mce is allowed to use wakeup sensor\n"
+                        "  'disabled' all wakeup sensor features are disabled\n"
+        },
+        {
                 .name        = "get-color-profile-ids",
                 .flag        = 'a',
                 .without_arg = xmce_get_color_profile_ids,
@@ -8548,6 +8591,7 @@ PROG_NAME" v"G_STRINGIFY(PRG_VERSION)"\n"
 "Copyright (c) 2005 - 2011 Nokia Corporation.  All rights reserved.\n"
 "Copyright (c) 2012 - 2022 Jolla Ltd.\n"
 "Copyright (c) 2019 - 2020 Open Mobile Platform LLC.\n"
+"Copyright (c) 2025 Jollyboys Ltd.\n"
 ;
 
 static __attribute__((__noreturn__)) bool mcetool_do_version(const char *arg)

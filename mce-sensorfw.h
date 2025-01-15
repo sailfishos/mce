@@ -2,7 +2,8 @@
  * @file mce-sensorfw.h
  * Mode Control Entity - Interprocess communication with sensord
  * <p>
- * Copyright (C) 2013-2019 Jolla Ltd.
+ * Copyright (c) 2013 - 2019 Jolla Ltd.
+ * Copyright (c) 2025 Jollyboys Ltd.
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
@@ -49,6 +50,10 @@ void mce_sensorfw_ps_disable(void);
 void mce_sensorfw_orient_set_notify(void (*cb)(int state));
 void mce_sensorfw_orient_enable(void);
 void mce_sensorfw_orient_disable(void);
+
+void mce_sensorfw_wakeup_set_notify(void (*cb)(int state));
+void mce_sensorfw_wakeup_enable(void);
+void mce_sensorfw_wakeup_disable(void);
 
 # ifdef __cplusplus
 };

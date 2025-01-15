@@ -3,8 +3,9 @@
  * This file implements the touchscreen/keypad lock component
  * of the Mode Control Entity
  * <p>
- * Copyright © 2004-2011 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2012-2019 Jolla Ltd.
+ * Copyright (c) 2004 - 2011 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (c) 2012 - 2019 Jolla Ltd.
+ * Copyright (c) 2025 Jollyboys Ltd.
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Tapio Rantala <ext-tapio.rantala@nokia.com>
@@ -330,7 +331,6 @@ static void     tklock_lpmui_reset_history(void);
 static void     tklock_lpmui_update_history(cover_state_t state);
 static bool     tklock_lpmui_probe_from_pocket(void);
 static bool     tklock_lpmui_probe_on_table(void);
-static bool     tklock_lpmui_probe(void);
 static void     tklock_lpmui_rethink(void);
 static void     tklock_lpmui_pre_transition_actions(void);
 
@@ -4394,8 +4394,7 @@ EXIT:
 
 /** Check if LPM UI proximity sensor history equals "covered on table" state
  *
- * Proximity was uncovered for LPMUI_LIM_STABLE ms, them covered and
- * uncovered within LPMUI_LIM_CHANGE ms, possibly several times.
+ * Proximity sensor is covered after being uncovered for a while.
  *
  * @return true if conditions met, false otherwise
  */
@@ -4406,62 +4405,28 @@ static bool tklock_lpmui_probe_on_table(void)
     if( !(tklock_lpmui_triggering & LPMUI_TRIGGERING_HOVER_OVER) )
         goto EXIT;
 
-    int64_t t = mce_lib_get_boot_tick();
+    int64_t now = mce_lib_get_boot_tick();
+    int64_t t;
 
-    for( size_t i = 0; ; i += 2 ) {
+    /* Covered less than LPMUI_LIM_CHANGE ms ago? */
+    if( tklock_lpmui_hist[0].state != COVER_CLOSED )
+        goto EXIT;
+    t = now - tklock_lpmui_hist[0].tick;
+    if( t > LPMUI_LIM_CHANGE )
+        goto EXIT;
 
-        /* Need to check 3 slots: OPEN, CLOSED, OPEN */
-        if( i + 3 > numof(tklock_lpmui_hist) )
-            goto EXIT;
-
-        /* Covered and uncovered within LPMUI_LIM_CHANGE ms? */
-        if( tklock_lpmui_hist[i+0].state != COVER_OPEN )
-            goto EXIT;
-        if( t - tklock_lpmui_hist[i+0].tick > LPMUI_LIM_CHANGE )
-            goto EXIT;
-
-        if( tklock_lpmui_hist[i+1].state != COVER_CLOSED )
-            goto EXIT;
-        if( t - tklock_lpmui_hist[i+1].tick > LPMUI_LIM_CHANGE )
-            goto EXIT;
-
-        /* After being uncovered longer than LPMUI_LIM_STABLE ms? */
-        if( tklock_lpmui_hist[i+2].state != COVER_OPEN )
-            goto EXIT;
-        t = tklock_lpmui_hist[i+1].tick - tklock_lpmui_hist[i+2].tick;
-        if( t > LPMUI_LIM_STABLE )
-            break;
-
-        t = tklock_lpmui_hist[i+1].tick;
-    }
+    /* After being uncovered for LPMUI_LIM_STABLE ms? */
+    if( tklock_lpmui_hist[1].state != COVER_OPEN )
+        goto EXIT;
+    t = tklock_lpmui_hist[0].tick - tklock_lpmui_hist[1].tick;
+    if( t < LPMUI_LIM_STABLE )
+        goto EXIT;
 
     res = true;
 
 EXIT:
 
     return res;
-}
-/** Check if proximity sensor history should trigger LPM UI mode
- *
- * @return true if LPM UI can be enabled, false otherwise
- */
-static bool tklock_lpmui_probe(void)
-{
-    bool glance = false;
-
-    if( tklock_lpmui_probe_from_pocket() ) {
-        mce_log(LL_DEBUG, "from pocket");
-        glance = true;
-    }
-    else if( tklock_lpmui_probe_on_table() ) {
-        mce_log(LL_DEBUG, "hovering over");
-        glance = true;
-    }
-    else {
-        mce_log(LL_DEBUG, "proximity noise");
-    }
-
-    return glance;
 }
 
 /** Check if LPM UI mode should be enabled
@@ -4486,19 +4451,18 @@ static void tklock_lpmui_rethink(void)
     if( lid_sensor_filtered == COVER_CLOSED )
         goto EXIT;
 
-    /* or when proximity is covered */
-    if( proximity_sensor_effective != COVER_OPEN )
-        goto EXIT;
-
     /* Switch to lpm mode if the proximity sensor history matches activity
-     * we expect to see when "the device is taken from pocket" etc */
-    if( tklock_lpmui_probe() ) {
-        mce_log(LL_DEBUG, "switching to LPM UI");
-
-        /* Note: Display plugin handles MCE_DISPLAY_LPM_ON request as
-         *       MCE_DISPLAY_OFF unless lpm mode is both supported
-         *       and enabled. */
+     * we expect to see when "the device is taken from pocket" etc
+     *
+     * Note: LPM policy checks are handled via datapipe filter.
+     */
+    if( tklock_lpmui_probe_from_pocket() ) {
+        mce_log(LL_DEBUG, "from pocket -> trigger LPM_ON");
         mce_datapipe_request_display_state(MCE_DISPLAY_LPM_ON);
+    }
+    else if( tklock_lpmui_probe_on_table() ) {
+        mce_log(LL_DEBUG, "hover over -> trigger LPM_OFF");
+        mce_datapipe_request_display_state(MCE_DISPLAY_LPM_OFF);
     }
 
 EXIT:
