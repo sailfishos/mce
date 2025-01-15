@@ -57,7 +57,7 @@ distclean:: clean
 # CONFIGURATION
 # ----------------------------------------------------------------------------
 
-VERSION := 1.115.11
+VERSION := 1.116.0
 
 INSTALL_BIN := install --mode=755
 INSTALL_DIR := install -d
