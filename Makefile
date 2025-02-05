@@ -126,7 +126,7 @@ _MANDIR         ?= $(_DATADIR)/man#              # /usr/share/man
 _INFODIR        ?= $(_DATADIR)/info#             # /usr/share/info
 _DEFAULTDOCDIR  ?= $(_DATADIR)/doc#              # /usr/share/doc
 _LOCALSTATEDIR  ?= /var#                         # /var
-_UNITDIR        ?= /lib/systemd/system#
+_UNITDIR        ?= $(_PREFIX)/lib/systemd/system#
 _TESTSDIR       ?= /opt/tests#                   # /opt/tests
 
 # Install directories within DESTDIR
