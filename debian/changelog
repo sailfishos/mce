@@ -1,3 +1,9 @@
+mce (1.116.1) precise; urgency=low
+
+  * [packaging] Respect _PREFIX when installing systemd unit files. JB#49548
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Thu, 06 Feb 2025 07:46:37 +0200
+
 mce (1.116.0) precise; urgency=low
 
   * [display] Keep orientation sensor powered on in LPM_OFF
