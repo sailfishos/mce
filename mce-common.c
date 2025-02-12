@@ -741,7 +741,7 @@ static void
 common_dbus_send_memnotify_level(void)
 {
     /* Initialize last seen value to something that is never used */
-    memnotify_level_t last = MEMNOTIFY_LEVEL_COUNT;
+    static memnotify_level_t last = MEMNOTIFY_LEVEL_COUNT;
 
     if( last != memnotify_level ) {
         last = memnotify_level;
