@@ -153,6 +153,7 @@ char *bitfield_to_string(const gulong *bitfield, gsize bitfieldsize)
 						       tmp, (i * bitsize_of(*bitfield)) + j);
 
 				g_free(tmp);
+				tmp = NULL;
 
 				if (tmp2 == NULL) {
 					mce_log(LL_CRIT,
