@@ -1,3 +1,9 @@
+mce (1.116.2) precise; urgency=low
+
+  * [mce] Fix memnotify signaling properly storing the last value. JB#63136
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Fri, 14 Feb 2025 10:58:08 +0200
+
 mce (1.116.1) precise; urgency=low
 
   * [packaging] Respect _PREFIX when installing systemd unit files. JB#49548
