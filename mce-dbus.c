@@ -4,6 +4,7 @@
  * <p>
  * Copyright (c) 2004 - 2009 Nokia Corporation and/or its subsidiary(-ies).
  * Copyright (c) 2012 - 2023 Jolla Ltd.
+ * Copyright (c) 2025 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Ismo Laitinen <ismo.laitinen@nokia.com>
@@ -374,7 +375,7 @@ static GSList           *value_list_from_float_array           (DBusMessageIter 
  * MESSAGE_DISPATCH
  * ------------------------------------------------------------------------- */
 
-static gboolean          check_rules                           (DBusMessage *const msg, const char *rules);
+static gboolean          mce_dbus_check_rules                  (DBusMessage *msg, const char *rules);
 static gchar            *mce_dbus_build_signal_match           (const gchar *sender, const gchar *interface, const gchar *name, const gchar *rules);
 static void              mce_dbus_squeeze_slist                (GSList **list);
 static bool              mce_dbus_match                        (const char *msg_val, const char *hnd_val);
@@ -3831,78 +3832,65 @@ EXIT:
  * @return TRUE if message matches the rules,
  *	   FALSE if not
  */
-static gboolean check_rules(DBusMessage *const msg,
-			    const char *rules)
+static gboolean mce_dbus_check_rules(DBusMessage *msg, const char *rules)
 {
-	if (rules == NULL)
-		return TRUE;
-	rules += strspn(rules, " ");;
+	bool matched = false;
 
-	while (*rules != '\0') {
-		const char *eq;
-		const char *value;
-		const char *value_end;
-		const char *val = NULL;
-		gboolean quot = FALSE;
+	if( !rules )
+		goto MATCHED;
 
-		if ((eq = strchr(rules, '=')) == NULL)
-			return FALSE;
-		eq += strspn(eq, " ");
+	for( const char *key = rules; ; ) {
+		if( !*(key += strspn(key, ", ")) )
+			goto MATCHED;
 
-		if (eq[1] == '\'') {
-			value = eq + 2;
-			value_end = strchr(value, '\'');
-			quot = TRUE;
-		} else {
-			value = eq + 1;
-			value_end = strchrnul(value, ',');
-		}
+		const char *val = strchr(key, '=');
+		if( !val )
+			goto BAILOUT;
 
-		if (value_end == NULL)
-			return FALSE;
+		const char *end = ++val;
 
-		if (strncmp(rules, "arg", 3) == 0) {
-			int fld = atoi(rules + 3);
+		int quoted = (*val == '\'');
+		if( quoted )
+			end = strchr(++val, '\'');
+		else
+			end += strcspn(end, ",");
+		if( !end )
+			goto BAILOUT;
 
+		const char *arg = NULL;
+		if( !strncmp(key, "arg", 3) ) {
 			DBusMessageIter iter;
-
-			if (dbus_message_iter_init(msg, &iter) == FALSE)
-				return FALSE;
-
-			for (; fld; fld--) {
-				if (dbus_message_iter_has_next(&iter) == FALSE)
-					return FALSE;
-				dbus_message_iter_next(&iter);
-			}
-
-			if (dbus_message_iter_get_arg_type(&iter) !=
-			    DBUS_TYPE_STRING)
-				return FALSE;
-			dbus_message_iter_get_basic(&iter, &val);
-
-		} else if (strncmp(rules, "path", 4) == 0) {
-			val = dbus_message_get_path(msg);
+			if( !dbus_message_iter_init(msg, &iter) )
+				goto BAILOUT;
+			for( int count = atoi(key + 3); count > 0; --count )
+				if( !dbus_message_iter_next(&iter) )
+					goto BAILOUT;
+			if( dbus_message_iter_get_arg_type(&iter) == DBUS_TYPE_STRING )
+				dbus_message_iter_get_basic(&iter, &arg);
 		}
+		else if( !strncmp(key, "path", 4) ) {
+			arg = dbus_message_get_path(msg);
+		}
+		if( !arg )
+			goto BAILOUT;
 
-		if (((value_end != NULL) &&
-		     ((strncmp(value, val, value_end - value) != 0) ||
-		      (val[value_end - value] != '\0'))) ||
-		    ((value_end == NULL) &&
-		     (strcmp(value, val) != 0)))
-			return FALSE;
+		size_t len = end - val;
+		if( strncmp(arg, val, len) || arg[len] )
+			goto BAILOUT;
 
-		if (value_end == NULL)
-			break;
-
-		rules = value_end + (quot == TRUE ? 1 : 0);
-		rules += strspn(rules, " ");;
-
-		if (*rules == ',')
-			rules++;
-		rules += strspn(rules, " ");;
+		key = end + quoted;
 	}
 
-	return TRUE;
+MATCHED:
+	matched = true;
+
+BAILOUT:
+	if( rules && mce_log_p(LL_DEBUG) ) {
+		char *repr = mce_dbus_message_repr(msg);
+		mce_log(LL_DEBUG, "match %s vs %s -> %s", repr, rules, matched ? "true" : "false");
+		free(repr);
+	}
+	return matched;
 }
 
 /** Build a dbus signal match string
@@ -4103,7 +4091,7 @@ static DBusHandlerResult msg_handler(DBusConnection *const connection,
 			if( !mce_dbus_match(member, handler->name) )
 				break;
 
-			if( !check_rules(msg, handler->rules) )
+			if( !mce_dbus_check_rules(msg, handler->rules) )
 				break;
 
 			handler->callback(msg);
