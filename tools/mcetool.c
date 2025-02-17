@@ -5423,24 +5423,33 @@ static const char * const gesture_actions_key[POWERKEY_ACTIONS_GESTURE_COUNT] =
  */
 static bool xmce_set_touchscreen_gesture_action(const char *args)
 {
-        char *work = strdup(args);
-        char *conf = work;
-        char *gesture = mcetool_parse_token(&conf);
+        bool  parsed  = false;
+        char *work    = NULL;
+        char *conf    = NULL;
+        char *gesture = NULL;
+
+        if( !(conf = work = g_strdup(args)) )
+                goto EXIT;
+
+        if( !(gesture = mcetool_parse_token(&conf)) )
+                goto EXIT;
 
         int id = lookup(gesture_values, gesture);
         if( id < 0 )
                 id = xmce_parse_integer(gesture);
 
         if( id < 0 || id >= (int)G_N_ELEMENTS(gesture_actions_key) ) {
-                fprintf(stderr, "invalid gesture id: '%s'\n", work);
-                return false;
+                fprintf(stderr, "invalid gesture id: '%s'\n", gesture);
+                goto EXIT;
         }
 
         xmce_set_powerkey_action_mask(gesture_actions_key[id], conf);
+        parsed = true;
 
-        free(work);
+EXIT:
+        g_free(work);
 
-        return true;
+        return parsed;
 }
 
 /** Helper for getting powerkey action mask settings
@@ -5582,27 +5591,36 @@ static const char * const powerkey_dbus_action_key[] =
  */
 static bool xmce_set_powerkey_dbus_action(const char *args)
 {
-        char *work = strdup(args);
-        char *conf = work;
+        bool  ret  = false;
+        char *work = NULL;
+        char *conf = NULL;
+
+        if( !(conf = work = g_strdup(args)) )
+                goto FAILURE;
 
         size_t action_id = xmce_parse_integer(mcetool_parse_token(&conf)) - 1;
 
         if( action_id >= G_N_ELEMENTS(powerkey_dbus_action_key) ) {
                 fprintf(stderr, "invalid dbus action id: '%s'\n", work);
-                return false;
+                goto FAILURE;
         }
 
         const char *key = powerkey_dbus_action_key[action_id];
 
         if( mcetool_handle_common_args(key, conf) )
-                return true;
+                goto SUCCESS;
 
-        if( conf && *conf && !xmce_is_powerkey_dbus_action(conf) )
-                return false;
+        if( *conf && !xmce_is_powerkey_dbus_action(conf) )
+                goto FAILURE;
 
-        bool ret = xmce_setting_set_string(key, conf);
+        if( !xmce_setting_set_string(key, conf) )
+                goto FAILURE;
 
-        free(work);
+SUCCESS:
+        ret = true;
+
+FAILURE:
+        g_free(work);
 
         return ret;
 }
