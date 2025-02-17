@@ -2,7 +2,8 @@
  * @file libwakelock.c
  * Mode Control Entity - wakelock management
  * <p>
- * Copyright (C) 2012-2019 Jolla Ltd.
+ * Copyright (c) 2012 - 2019 Jolla Ltd.
+ * Copyright (c) 2025 Jolla Mobile Ltd
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
@@ -45,6 +46,22 @@
  */
 #define LWL_LOG_PFIX "LWL: "
 
+static inline char *
+lwl_prepend_char(char *pos, char *beg, int chr)
+{
+	if( pos > beg )
+		*--pos = chr;
+	return pos;
+}
+
+static inline char *
+lwl_append_string(char *pos, char *end, const char *str)
+{
+	while( pos < end && *str )
+		*pos++ = *str++;
+	return pos;
+}
+
 /** Number to string helper
  *
  * @param buf work space
@@ -58,18 +75,17 @@ static char *lwl_number(char *buf, size_t len, long long num)
 	int                sgn = (num < 0);
 	unsigned long long val = sgn ? -num : num;
 
-	auto void emit(int c) {
-		if( pos > buf ) *--pos = c;
-	}
-
 	/* terminate at end of work space */
-	emit(0);
+	pos = lwl_prepend_char(pos, buf, 0);
 
 	/* work backwards from least signigicant digits */
-	do { emit('0' + val % 10); } while( val /= 10 );
+	do {
+		pos = lwl_prepend_char(pos, buf, '0' + val % 10);
+	} while( val /= 10 );
 
 	/* apply minus sign if needed */
-	if( sgn ) emit('-');
+	if( sgn )
+		pos = lwl_prepend_char(pos, buf, '-');
 
 	/* return pointer to 1st digit (not start of buffer) */
 	return pos;
@@ -89,13 +105,9 @@ static char *lwl_concat(char *buf, size_t len, const char *str, ...)
 	char *end = buf + len - 1;
 	va_list va;
 
-	auto void emit(const char *s) {
-		while( pos < end && *s ) *pos++ = *s++;
-	}
-
 	va_start(va, str);
 	while( str )
-		emit(str), str = va_arg(va, const char *);
+		pos = lwl_append_string(pos, end, str), str = va_arg(va, const char *);
 	va_end(va);
 
 	*pos = 0;
@@ -115,16 +127,11 @@ static void lwl_debug_(const char *m, ...)
 	char *end = buf + sizeof buf - 1;
 	va_list va;
 
-	auto void emit(const char *s)
-	{
-		while( pos < end && *s ) *pos++ = *s++;
-	}
-
-	emit("LWL: ");
+	pos = lwl_append_string(pos, end, "LWL: ");
 	va_start(va, m);
 	while( m )
 	{
-		emit(m), m = va_arg(va, const char *);
+		pos = lwl_append_string(pos, end, m), m = va_arg(va, const char *);
 	}
 	va_end(va);
 

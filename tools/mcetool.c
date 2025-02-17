@@ -4,7 +4,7 @@
  * Copyright (c) 2005 - 2011 Nokia Corporation and/or its subsidiary(-ies).
  * Copyright (c) 2012 - 2022 Jolla Ltd.
  * Copyright (c) 2019 - 2020 Open Mobile Platform LLC.
- * Copyright (c) 2025 Jollyboys Ltd.
+ * Copyright (c) 2025 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>
@@ -442,6 +442,7 @@ int                 main                     (int argc, char **argv);
 
 static gboolean   mcetool_parse_timspec     (struct timespec *ts, const char *args);
 static char      *mcetool_parse_token       (char **ppos);
+static char      *mcetool_append_string     (char *pos, char *end, const char *str);
 static char      *mcetool_format_bitmask    (const symbol_t *lut, int mask, char *buff, size_t size);
 static unsigned   mcetool_parse_bitmask     (const symbol_t *lut, const char *args);
 static bool       mcetool_show_led_patterns (const char *args);
@@ -2250,6 +2251,16 @@ static char *mcetool_parse_token(char **ppos)
 
 }
 
+static char *mcetool_append_string(char *pos, char *end, const char *str)
+{
+    if( pos && str ) {
+        while( pos < end && *str )
+            *pos++ = *str++;
+        *pos = 0;
+    }
+    return pos;
+}
+
 /** Convert bitmap to human readable string via lookup table
  *
  * @param lut  array of symbol_t objects
@@ -2267,16 +2278,10 @@ static char *mcetool_format_bitmask(const symbol_t *lut, int mask,
         char *pos = buff;
         char *end = buff + size - 1;
 
-        auto void add(const char *str)
-        {
-                if( pos > buff && pos < end )
-                        *pos++ = ',';
-                while( pos < end && *str )
-                        *pos++ = *str++;
-        }
-
         if( !mask ) {
-                add(none);
+                if( pos > buff )
+                        pos = mcetool_append_string(pos, end, ",");
+                pos = mcetool_append_string(pos, end, none);
                 goto EXIT;
         }
 
@@ -2287,14 +2292,18 @@ static char *mcetool_format_bitmask(const symbol_t *lut, int mask,
                 const char *name = rlookup(lut, bit);
                 if( name ) {
                         mask &= ~bit;
-                        add(name);
+                        if( pos > buff )
+                                pos = mcetool_append_string(pos, end, ",");
+                        pos = mcetool_append_string(pos, end, name);
                 }
         }
 
         if( mask ) {
                 char hex[32];
                 snprintf(hex, sizeof hex, "0x%u", (unsigned)mask);
-                add(hex);
+                if( pos > buff )
+                        pos = mcetool_append_string(pos, end, ",");
+                pos = mcetool_append_string(pos, end, hex);
         }
 EXIT:
         *pos = 0;
@@ -8591,7 +8600,7 @@ PROG_NAME" v"G_STRINGIFY(PRG_VERSION)"\n"
 "Copyright (c) 2005 - 2011 Nokia Corporation.  All rights reserved.\n"
 "Copyright (c) 2012 - 2022 Jolla Ltd.\n"
 "Copyright (c) 2019 - 2020 Open Mobile Platform LLC.\n"
-"Copyright (c) 2025 Jollyboys Ltd.\n"
+"Copyright (c) 2025 Jolla Mobile Ltd\n"
 ;
 
 static __attribute__((__noreturn__)) bool mcetool_do_version(const char *arg)

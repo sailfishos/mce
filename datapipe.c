@@ -6,6 +6,7 @@
  * Copyright (c) 2007 - 2008 Nokia Corporation and/or its subsidiary(-ies).
  * Copyright (c) 2014 - 2021 Jolla Ltd.
  * Copyright (c) 2019 - 2020 Open Mobile Platform LLC.
+ * Copyright (c) 2025 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
@@ -1439,12 +1440,6 @@ const char *submode_change_repr(submode_t prev, submode_t curr)
     char *pos = buff;
     char *end = buff + sizeof buff - 1;
 
-    auto inline void add(const char *str)
-    {
-        while( pos < end && *str )
-            *pos++ = *str++;
-    }
-
     for( int i = 0; lut[i].name; ++i ) {
         const char *tag = 0;
 
@@ -1456,13 +1451,14 @@ const char *submode_change_repr(submode_t prev, submode_t curr)
         }
 
         if( tag ) {
-            if( pos> buff ) add(" ");
-            add(tag);
-            add(lut[i].name);
+            if( pos > buff )
+                pos = mce_append_string(pos, end, " ");
+            pos = mce_append_string(pos, end, tag);
+            pos = mce_append_string(pos, end, lut[i].name);
         }
     }
     if( pos == buff ) {
-        add("NONE");
+        pos = mce_append_string(pos, end, "NONE");
     }
     *pos = 0;
     return buff;

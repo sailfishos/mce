@@ -1099,6 +1099,7 @@ modules/radiostates.o:\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-io.h\
+	mce-lib.h\
 	mce-log.h\
 	mce.h\
 	musl-compatibility.h\
@@ -1111,6 +1112,7 @@ modules/radiostates.pic.o:\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-io.h\
+	mce-lib.h\
 	mce-log.h\
 	mce.h\
 	musl-compatibility.h\

@@ -2,8 +2,9 @@
  * @file mce-io.c
  * Generic I/O functionality for the Mode Control Entity
  * <p>
- * Copyright © 2006-2011 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2012-2019 Jolla Ltd.
+ * Copyright (c) 2006 - 2011 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (c) 2012 - 2019 Jolla Ltd.
+ * Copyright (c) 2025 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>
@@ -389,23 +390,18 @@ const char *mce_io_condition_repr(GIOCondition cond)
 	char *end = buf + sizeof buf - 1;
 	char *pos = buf;
 
-	auto void add(const char *s);
-
-	auto void add(const char *s)
-	{
-		while( pos < end && *s ) *pos++ = *s++;
-	}
-
 	for( size_t i = 0; lut[i].bit; ++i ) {
 		if( cond & lut[i].bit ) {
 			cond ^= lut[i].bit;
-			if( pos > buf ) add("|");
-			add(lut[i].name);
+			if( pos > buf )
+				pos = mce_append_string(pos, end, "|");
+			pos = mce_append_string(pos, end, lut[i].name);
 		}
 	}
 	*pos = 0;
 	if( cond ) {
-		if( pos > buf ) add("|");
+		if( pos > buf )
+			pos = mce_append_string(pos, end, "|");
 		snprintf(pos, end - pos, "0x%x", cond);
 	}
 

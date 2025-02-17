@@ -3,8 +3,9 @@
  * Headers for various helper functions
  * for the Mode Control Entity
  * <p>
- * Copyright © 2004-2011 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2014-2019 Jolla Ltd.
+ * Copyright (c) 2004 - 2011 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (c) 2014 - 2019 Jolla Ltd.
+ * Copyright (c) 2025 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Tapio Rantala <ext-tapio.rantala@nokia.com>
@@ -74,5 +75,6 @@ guint mce_wakelocked_idle_add(GSourceFunc function, gpointer data);
 
 char *mce_strip_string(char *str);
 char *mce_slice_token(char *pos, char **ppos, const char *sep);
+char *mce_append_string(char *pos, char *end, const char *str);
 
 #endif /* _MCE_LIB_H_ */

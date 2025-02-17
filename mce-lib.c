@@ -3,8 +3,9 @@
  * This file provides various helper functions
  * for the Mode Control Entity
  * <p>
- * Copyright © 2004-2011 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2014-2019 Jolla Ltd.
+ * Copyright (c) 2004 - 2011 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (c) 2014 - 2019 Jolla Ltd.
+ * Copyright (c) 2025 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Tapio Rantala <ext-tapio.rantala@nokia.com>
@@ -619,4 +620,15 @@ mce_slice_token(char *pos, char **ppos, const char *sep)
 	*ppos = pos;
 
     return mce_strip_string(beg);
+}
+
+char *
+mce_append_string(char *pos, char *end, const char *str)
+{
+    if( pos && str ) {
+	while( pos < end && *str )
+	    *pos++ = *str++;
+	*pos = 0;
+    }
+    return pos;
 }

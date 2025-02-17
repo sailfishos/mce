@@ -2,8 +2,9 @@
  * @file radiostates.c
  * Radio state module for the Mode Control Entity
  * <p>
- * Copyright © 2010-2011 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2013-2019 Jolla Ltd.
+ * Copyright (c) 2010 - 2011 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (c) 2013 - 2019 Jolla Ltd.
+ * Copyright (c) 2025 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>
@@ -25,6 +26,7 @@
 #include "radiostates.h"
 
 #include "../mce.h"
+#include "../mce-lib.h"
 #include "../mce-log.h"
 #include "../mce-io.h"
 #include "../mce-conf.h"
@@ -191,29 +193,22 @@ radio_states_change_repr(guint prev, guint curr)
 	char *pos = repr;
 	char *end = repr + sizeof repr - 1;
 
-	auto void add(const char *str) {
-		if( !str )
-			str = "(null)";
-		while( *str && pos < end )
-			*pos++ = *str++;
-	}
-
 	guint diff = prev ^ curr;
 
 	for( int i = 0; i < RADIO_STATES_COUNT; ++i ) {
 		guint mask = radio_state_flags[i];
 		if( (diff | curr) & mask ) {
 			if( diff & mask )
-				add((curr & mask) ? "+" : "-");
-			add(radio_state_repr[i]);
-			add(" ");
+				pos = mce_append_string(pos, end, (curr & mask) ? "+" : "-");
+			pos = mce_append_string(pos, end, radio_state_repr[i] ?: "(null)");
+			pos = mce_append_string(pos, end, " ");
 		}
 	}
 
 	if( pos > repr )
 		--pos;
 	else
-		add("(none)");
+		pos = mce_append_string(pos, end, "(none)");
 
 	*pos = 0;
 
