@@ -3,7 +3,8 @@
  *
  * Command line parameter parsing module for the Mode Control Entity
  * <p>
- * Copyright © 2014 Jolla Ltd.
+ * Copyright (c) 2014 Jolla Ltd.
+ * Copyright (c) 2025 Jolla Mobile Ltd
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
@@ -57,10 +58,15 @@ static void   mce_options_sanity_check(const mce_opt_t *opts);
 static bool
 mce_opt_handle(const mce_opt_t *self, char *arg)
 {
-    if( !arg )
-        return self->without_arg(0);
-
-    return self->with_arg(arg);
+    if( !arg ) {
+        if( self->without_arg )
+            return self->without_arg(NULL);
+    }
+    else {
+        if( self->with_arg )
+            return self->with_arg(arg);
+    }
+    return false;
 }
 
 static void
