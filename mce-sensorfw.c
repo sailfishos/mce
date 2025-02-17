@@ -6,7 +6,7 @@
  * <p>
  *
  * Copyright (c) 2013 - 2014 Jolla Ltd.
- * Copyright (c) 2025 Jollyboys Ltd.
+ * Copyright (c) 2025 Jolla Mobile Ltd
  *
  * <p>
  *
@@ -2016,15 +2016,18 @@ sfw_backend_als_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *s
         break;
 
     case NOTIFY_EVDEV:
-        cached_value = *sample;
+        if( sample )
+            cached_value = *sample;
         break;
 
     case NOTIFY_SENSORD:
-        if( als_from_evdev() )
-            mce_log(LL_DEBUG, "ignoring sensord input: %s",
-                    sfw_sample_als_repr(sample));
-        else
-            cached_value = *sample;
+        if( sample ) {
+            if( als_from_evdev() )
+                mce_log(LL_DEBUG, "ignoring sensord input: %s",
+                        sfw_sample_als_repr(sample));
+            else
+                cached_value = *sample;
+        }
         break;
     }
 
@@ -2084,15 +2087,18 @@ sfw_backend_ps_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *sa
         break;
 
     case NOTIFY_EVDEV:
-        cached_value = *sample;
+        if( sample )
+            cached_value = *sample;
         break;
 
     case NOTIFY_SENSORD:
-        if( ps_from_evdev() )
-            mce_log(LL_DEBUG, "ignoring sensord input: %s",
-                    sfw_sample_ps_repr(sample));
-        else
-            cached_value = *sample;
+        if( sample ) {
+            if( ps_from_evdev() )
+                mce_log(LL_DEBUG, "ignoring sensord input: %s",
+                        sfw_sample_ps_repr(sample));
+            else
+                cached_value = *sample;
+        }
         break;
     }
 
@@ -2159,7 +2165,8 @@ sfw_backend_orient_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void
 
     case NOTIFY_EVDEV:
     case NOTIFY_SENSORD:
-        cached_value = *sample;
+        if( sample )
+            cached_value = *sample;
         break;
     }
 
