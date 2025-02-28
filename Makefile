@@ -591,7 +591,6 @@ NORMALIZE_USES_SPC =\
 	event-switches.h\
 	filewatcher.c\
 	filewatcher.h\
-	homekey.dot\
 	libwakelock.h\
 	mce-common.c\
 	mce-common.h\
@@ -780,7 +779,6 @@ rpmbuild:: tarball
 %.pdf : %.dot
 	dot -Tpdf $< -o $@
 
-GRAPHS_DOT += homekey.dot
 GRAPHS_DOT += mce-sensorfw.dot
 GRAPHS_DOT += modules/compositor-mce.dot
 GRAPHS_DOT += modules/compositor-ui.dot

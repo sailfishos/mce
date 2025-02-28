@@ -539,23 +539,6 @@ static void pwrkey_stm_rethink_wakelock     (void);
 static void pwrkey_stm_store_initial_state  (void);
 static void pwrkey_stm_terminate            (void);
 
-/* ------------------------------------------------------------------------- *
- * HOME_KEY_STATE_MACHINE
- * ------------------------------------------------------------------------- */
-
-typedef enum
-{
-    HOMEKEY_STM_WAIT_PRESS   = 0,
-    HOMEKEY_STM_WAIT_UNBLANK = 1,
-    HOMEKEY_STM_SEND_SIGNAL  = 2,
-    HOMEKEY_STM_WAIT_RELEASE = 3,
-} homekey_stm_t;
-
-static const char *homekey_stm_repr        (homekey_stm_t state);
-static void        homekey_stm_set_state   (homekey_stm_t state);
-static bool        homekey_stm_exec_step   (void);
-static void        homekey_stm_eval_state  (void);
-static void        homekey_stm_set_pressed (bool pressed);
 
 /* ------------------------------------------------------------------------- *
  * DBUS_IPC
@@ -2197,154 +2180,6 @@ static void pwrkey_stm_store_initial_state(void)
 }
 
 /* ========================================================================= *
- * HOME_KEY_STATE_MACHINE
- * ========================================================================= */
-
-/** Convert homekey_stm_t enum to human readable string
- *
- * @param state homekey_stm_t enumeration value
- *
- * @return human readable representation of state
- */
-static const char *
-homekey_stm_repr(homekey_stm_t state)
-{
-    const char *repr = "HOMEKEY_STM_UNKNOWN";
-
-    switch( state ) {
-    case HOMEKEY_STM_WAIT_PRESS:   repr = "HOMEKEY_STM_WAIT_PRESS";   break;
-    case HOMEKEY_STM_WAIT_UNBLANK: repr = "HOMEKEY_STM_WAIT_UNBLANK"; break;
-    case HOMEKEY_STM_SEND_SIGNAL:  repr = "HOMEKEY_STM_SEND_SIGNAL";  break;
-    case HOMEKEY_STM_WAIT_RELEASE: repr = "HOMEKEY_STM_WAIT_RELEASE"; break;
-    default:
-        break;
-    }
-
-    return repr;
-}
-
-/** Current state of home key handling state machine */
-static homekey_stm_t homekey_stm_state = HOMEKEY_STM_WAIT_PRESS;
-
-/** Cached home key is pressed down state */
-static bool homekey_stm_pressed = false;
-
-/** Set current state of home key handling state machine
- *
- * Perform any actions that are related to leaving current and/or
- * entering the new state.
- *
- * @param state homekey_stm_t enumeration value
- */
-static void
-homekey_stm_set_state(homekey_stm_t state)
-{
-    if( homekey_stm_state == state )
-        goto EXIT;
-
-    mce_log(LL_DEBUG, "state: %s -> %s",
-            homekey_stm_repr(homekey_stm_state),
-            homekey_stm_repr(state));
-
-    /* Handle entering new state */
-
-    switch( (homekey_stm_state = state) ) {
-    case HOMEKEY_STM_WAIT_PRESS:
-        break;
-
-    case HOMEKEY_STM_WAIT_UNBLANK:
-        /* Check if policy allows display unblanking */
-        if( proximity_sensor_actual != COVER_OPEN ) {
-            mce_log(LL_DEBUG, "Proximity sensor %s; skip unblank",
-                    proximity_state_repr(proximity_sensor_actual));
-            break;
-        }
-
-        /* Initiate display power up */
-        mce_log(LL_DEBUG, "request %s",
-                display_state_repr(MCE_DISPLAY_ON));
-        mce_datapipe_request_display_state(MCE_DISPLAY_ON);
-        break;
-
-    case HOMEKEY_STM_SEND_SIGNAL:
-        /* Inform compositor that it should perform home key actions */
-        pwrkey_dbus_send_signal(MCE_POWER_BUTTON_TRIGGER, "home-key");
-        break;
-
-    case HOMEKEY_STM_WAIT_RELEASE:
-        break;
-
-    default:
-        break;
-    }
-
-EXIT:
-    return;
-}
-
-/** Perform one home key handling state machine transition
- *
- * @return true if state transition took place, false otherwise
- */
-static bool
-homekey_stm_exec_step(void)
-{
-    homekey_stm_t prev = homekey_stm_state;
-
-    switch( homekey_stm_state ) {
-    default:
-    case HOMEKEY_STM_WAIT_PRESS:
-        if( homekey_stm_pressed )
-            homekey_stm_set_state(HOMEKEY_STM_WAIT_UNBLANK);
-        break;
-
-    case HOMEKEY_STM_WAIT_UNBLANK:
-        if( display_state_next != MCE_DISPLAY_ON )
-            homekey_stm_set_state(HOMEKEY_STM_WAIT_RELEASE);
-        else if( display_state_curr == MCE_DISPLAY_ON )
-            homekey_stm_set_state(HOMEKEY_STM_SEND_SIGNAL);
-        break;
-
-    case HOMEKEY_STM_SEND_SIGNAL:
-        homekey_stm_set_state(HOMEKEY_STM_WAIT_RELEASE);
-        break;
-
-    case HOMEKEY_STM_WAIT_RELEASE:
-        if( !homekey_stm_pressed )
-            homekey_stm_set_state(HOMEKEY_STM_WAIT_PRESS);
-        break;
-    }
-
-    return homekey_stm_state != prev;
-}
-
-/** Update current state of home key handling state machine
- *
- * Repeatedly executes transitions until stable state is reached.
- */
-static void
-homekey_stm_eval_state(void)
-{
-    while( homekey_stm_exec_step() )
-        ;
-}
-
-/** Set home key pressed down state and update state machine
- */
-static void
-homekey_stm_set_pressed(bool pressed)
-{
-    if( homekey_stm_pressed == pressed )
-        goto EXIT;
-
-    homekey_stm_pressed = pressed;
-    homekey_stm_eval_state();
-
-EXIT:
-    return;
-}
-
-/* ========================================================================= *
  * DBUS_IPC
  * ========================================================================= */
 
@@ -3120,7 +2955,6 @@ pwrkey_datapipe_display_state_curr_cb(gconstpointer data)
             display_state_repr(prev),
             display_state_repr(display_state_curr));
 
-    homekey_stm_eval_state();
     pwrkey_queue_rethink_delays();
 
 EXIT:
@@ -3140,8 +2974,6 @@ static void pwrkey_datapipe_display_state_next_cb(gconstpointer data)
     mce_log(LL_DEBUG, "display_state_next = %s -> %s",
             display_state_repr(prev),
             display_state_repr(display_state_next));
-
-    homekey_stm_eval_state();
 
 EXIT:
     return;
@@ -3299,17 +3131,6 @@ pwrkey_datapipe_keypress_event_cb(gconstpointer const data)
             }
 
             pwrkey_stm_rethink_wakelock();
-            break;
-
-        case KEY_HOME:
-            if( ev->value == 1 ) {
-                mce_log(LL_CRUCIAL, "homekey pressed");
-                homekey_stm_set_pressed(true);
-            }
-            else if( ev->value == 0 ) {
-                mce_log(LL_CRUCIAL, "homekey released");
-                homekey_stm_set_pressed(false);
-            }
             break;
 
         default:

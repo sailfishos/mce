@@ -1341,10 +1341,6 @@ evin_evdevinfo_is_volumekey_default(const evin_evdevinfo_t *self)
         KEY_CAMERA_FOCUS,
         KEY_CAMERA_SNAPSHOT,
         KEY_CAMERA,
-
-        /* Home key should be handled by mce and can be
-         * ignored as well. */
-        KEY_HOME,
         -1
     };
 
