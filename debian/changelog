@@ -1,3 +1,9 @@
+mce (1.116.3) precise; urgency=low
+
+  * [mce] Remove home key handling. Fixes JB#63124
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Mon, 03 Mar 2025 11:21:04 +0200
+
 mce (1.116.2) precise; urgency=low
 
   * [mce] Fix memnotify signaling properly storing the last value. JB#63136
