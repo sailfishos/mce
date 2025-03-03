@@ -928,6 +928,7 @@ static void                mdy_governor_free_settings(governor_setting_t *settin
 static bool                mdy_governor_write_data(const char *path, const char *data);
 static void                mdy_governor_apply_setting(const governor_setting_t *setting);
 static void                mdy_governor_set_state(int state);
+static int                 mdy_governor_select(void);
 static void                mdy_governor_rethink(void);
 static void                mdy_governor_setting_cb(GConfClient *const client, const guint id, GConfEntry *const entry, gpointer const data);
 
@@ -1791,6 +1792,7 @@ static void mdy_datapipe_display_state_curr_cb(gconstpointer data)
     mdy_statistics_update();
     mdy_blanking_pause_evaluate_allowed();
     mdy_blanking_inhibit_schedule_broadcast();
+    mdy_governor_rethink();
 
 EXIT:
     return;
@@ -2079,6 +2081,9 @@ static void mdy_datapipe_power_saving_mode_active_cb(gconstpointer data)
     mce_log(LL_DEBUG, "power_saving_mode_active = %d",
             power_saving_mode_active);
 
+    /* Re-evaluate CPU scaling governor config */
+    mdy_governor_rethink();
+
     /* Switch active brightness and CABC mode */
     mdy_datapipe_execute_brightness();
     mdy_cabc_mode_set(0);
@@ -2114,7 +2119,7 @@ EXIT:
 }
 
 /** Cached inactivity state */
-static gboolean device_inactive = FALSE;
+static bool device_inactive = FALSE;
 
 /** Handle device_inactive_pipe notifications
  *
@@ -2124,6 +2129,7 @@ static gboolean device_inactive = FALSE;
  */
 static void mdy_datapipe_device_inactive_cb(gconstpointer data)
 {
+    bool prev = device_inactive;
     device_inactive = GPOINTER_TO_INT(data);
 
     /* while inactivity can be considered a "state",
@@ -2133,8 +2139,15 @@ static void mdy_datapipe_device_inactive_cb(gconstpointer data)
 
     mce_log(LL_DEBUG, "device_inactive = %d", device_inactive);
 
+    /* Handle state changes */
+    if( prev != device_inactive ) {
+        mdy_governor_rethink();
+    }
+
     if( device_inactive )
         goto EXIT;
+
+    /* Handle activity events */
 
     /* Activity while adaptive dimming is primed causes
      * the next on->dim transition to use longer timeout */
@@ -9578,14 +9591,100 @@ static void mdy_statistics_update(void)
 static gint  mdy_governor_conf = MCE_DEFAULT_CPU_SCALING_GOVERNOR;
 static guint mdy_governor_conf_setting_id = 0;
 
-/** GOVERNOR_DEFAULT CPU scaling governor settings */
-static governor_setting_t *mdy_governor_default = 0;
-
-/** GOVERNOR_INTERACTIVE CPU scaling governor settings */
-static governor_setting_t *mdy_governor_interactive = 0;
-
 /** Limit number of files that can be modified via settings */
 #define GOVERNOR_MAX_SETTINGS 32
+
+static governor_setting_t *mdy_governor_data_lut[GOVERNOR_NUMOF] = { };
+
+static const char * const mdy_governor_name_lut[GOVERNOR_NUMOF] =
+{
+    [GOVERNOR_UNSET]       = "Unset",
+    [GOVERNOR_PERFORMANCE] = "Performance",
+    [GOVERNOR_INTERACTIVE] = "Interactive",
+    [GOVERNOR_INACTIVE]    = "Inactive",
+    [GOVERNOR_POWERSAVE]   = "Powersave",
+    [GOVERNOR_AUTOMATIC]   = "Automatic",
+};
+
+static bool
+mdy_governor_is_valid(int type)
+{
+    return (unsigned)type < (unsigned)GOVERNOR_NUMOF;
+}
+
+static bool
+mdy_governor_has_data(int type)
+{
+    bool has_data = false;
+    switch( type ) {
+    case GOVERNOR_PERFORMANCE:
+    case GOVERNOR_INTERACTIVE:
+    case GOVERNOR_INACTIVE:
+    case GOVERNOR_POWERSAVE:
+        has_data = true;
+        break;
+    default:
+        break;
+    }
+    return has_data;
+}
+
+static const char *
+mdy_governor_name(int type)
+{
+    const char *name = "Invalid";
+    if( mdy_governor_is_valid(type) )
+        name = mdy_governor_name_lut[type];
+    return name;
+}
+
+static governor_setting_t *
+mdy_governor_data(int type)
+{
+    governor_setting_t *data = 0;
+    if( mdy_governor_is_valid(type) )
+        data = mdy_governor_data_lut[type];
+    return data;
+}
+
+static void
+mdy_governor_init(void)
+{
+    /* Get CPU scaling governor settings from INI-files */
+    for( int type = 0; type < GOVERNOR_NUMOF; ++type ) {
+        if( !mdy_governor_has_data(type) )
+            continue;
+        const char *tag = mdy_governor_name(type);
+        mdy_governor_data_lut[type] = mdy_governor_get_settings(tag);
+    }
+
+    /* Get cpu scaling governor configuration & track changes */
+    mce_setting_track_int(MCE_SETTING_CPU_SCALING_GOVERNOR,
+                          &mdy_governor_conf,
+                          MCE_DEFAULT_CPU_SCALING_GOVERNOR,
+                          mdy_governor_setting_cb,
+                          &mdy_governor_conf_setting_id);
+
+    /* Evaluate initial state */
+    mdy_governor_rethink();
+}
+
+static void
+mdy_governor_quit(void)
+{
+    /* Remove cpu scaling governor change notifier */
+    mce_setting_notifier_remove(mdy_governor_conf_setting_id),
+        mdy_governor_conf_setting_id = 0;
+
+    /* Switch back to defaults */
+    mdy_governor_rethink();
+
+    /* Release CPU scaling governor settings from INI-files */
+    for( int type = 0; type < GOVERNOR_NUMOF; ++type ) {
+        mdy_governor_free_settings(mdy_governor_data_lut[type]),
+            mdy_governor_data_lut[type] = 0;
+    }
+}
 
 /** Obtain arrays of settings from mce ini-files
  *
@@ -9733,8 +9832,8 @@ static bool mdy_governor_write_data(const char *path, const char *data)
     errno = 0, done = TEMP_FAILURE_RETRY(write(fd, data, todo));
 
     if( done != todo ) {
-        mce_log(LL_WARN, "%s: wrote %d of %d bytes: %m",
-                dest, done, todo);
+        mce_log(LL_WARN, "%s: '%s' - wrote %d of %d bytes: %m",
+                dest, data, done, todo);
         goto cleanup;
     }
 
@@ -9788,23 +9887,11 @@ cleanup:
 
 /** Switch cpu scaling governor state
  *
- * @param state GOVERNOR_DEFAULT, GOVERNOR_DEFAULT, ...
+ * @param state GOVERNOR_PERFORMANCE, GOVERNOR_PERFORMANCE, ...
  */
 static void mdy_governor_set_state(int state)
 {
-    const governor_setting_t *settings = 0;
-
-    switch( state )
-    {
-    case GOVERNOR_DEFAULT:
-        settings = mdy_governor_default;
-        break;
-    case GOVERNOR_INTERACTIVE:
-        settings = mdy_governor_interactive;
-        break;
-
-    default: break;
-    }
+    const governor_setting_t *settings = mdy_governor_data(state);
 
     if( !settings ) {
         mce_log(LL_WARN, "governor state=%d has no mapping", state);
@@ -9816,45 +9903,106 @@ static void mdy_governor_set_state(int state)
     }
 }
 
+/** Select cpu scaling governor config based on policy
+ *
+ * Use GOVERNOR_POWERSAVE when display is off
+ *
+ * Use GOVERNOR_PERFORMANCE during display ramp up / down
+ * - to maximize smoothness of high visibility transitions
+ *   while minimizing effects of waking up from deep sleep
+ *
+ * While display is on, switch between GOVERNOR_INTERACTIVE
+ * and GOVERNOR_INACTIVE based on user activity.
+ *
+ * @return governor type to use
+ */
+static int
+mdy_governor_select(void)
+{
+    /* Assume GOVERNOR_INTERACTIVE and then adjust based
+     * on device state. */
+    int type = GOVERNOR_INTERACTIVE;
+
+    switch( display_state_curr ) {
+    case MCE_DISPLAY_POWER_UP:
+    case MCE_DISPLAY_POWER_DOWN:
+        type = GOVERNOR_PERFORMANCE;
+        break;
+
+    case MCE_DISPLAY_OFF:
+    case MCE_DISPLAY_LPM_OFF:
+        type = GOVERNOR_POWERSAVE;
+        break;
+
+    case MCE_DISPLAY_LPM_ON:
+      type = GOVERNOR_INACTIVE;
+      break;
+
+    default:
+        if( device_inactive )
+            type = GOVERNOR_INACTIVE;
+        break;
+    }
+
+    return type;
+}
+
 /** Evaluate and apply CPU scaling governor policy */
 static void mdy_governor_rethink(void)
 {
     static int governor_have = GOVERNOR_UNSET;
 
-    /* By default we want to use "interactive"
-     * cpu scaling governor, except ... */
-    int governor_want = GOVERNOR_INTERACTIVE;
+    /* Default to: leave as-is
+     */
+
+    int governor_want = GOVERNOR_UNSET;
+
+    if( mdy_governor_conf == GOVERNOR_UNSET )
+        goto APPLY;
+
+    /* Default to: performance
+     */
+
+    governor_want = GOVERNOR_PERFORMANCE;
 
     /* Use default when in transitional states */
     if( system_state != MCE_SYSTEM_STATE_USER &&
-        system_state != MCE_SYSTEM_STATE_ACTDEAD ) {
-        governor_want = GOVERNOR_DEFAULT;
-    }
+        system_state != MCE_SYSTEM_STATE_ACTDEAD )
+        goto APPLY;
 
     /* Use default during bootup */
-    if( mdy_desktop_ready_id || mdy_init_done != TRISTATE_TRUE ) {
-        governor_want = GOVERNOR_DEFAULT;
-    }
+    if( mdy_desktop_ready_id || mdy_init_done != TRISTATE_TRUE )
+        goto APPLY;
 
     /* Use default during shutdown */
-    if( mdy_shutdown_in_progress()  ) {
-        governor_want = GOVERNOR_DEFAULT;
-    }
+    if( mdy_shutdown_in_progress()  )
+        goto APPLY;
 
     /* Restore default on unload / mce exit */
-    if( mdy_unloading_module ) {
-        governor_want = GOVERNOR_DEFAULT;
-    }
+    if( mdy_unloading_module )
+        goto APPLY;
 
-    /* Config override has been set */
-    if( mdy_governor_conf != GOVERNOR_UNSET ) {
+    /* Act based on the configuration value
+     */
+    if( power_saving_mode_active ) {
+        /* Power saving mode overrides setting */
+        governor_want = GOVERNOR_POWERSAVE;
+    }
+    else if( mdy_governor_conf == GOVERNOR_AUTOMATIC ) {
+        /* Select according to policy */
+        governor_want = mdy_governor_select();
+    }
+    else {
+        /* Use explicitly selected mode */
         governor_want = mdy_governor_conf;
     }
 
+APPLY:
     /* Apply new policy state */
     if( governor_have != governor_want ) {
-        mce_log(LL_NOTICE, "state: %d -> %d",
-                governor_have,  governor_want);
+        mce_log(LL_NOTICE, "state: %s -> %s",
+                mdy_governor_name(governor_have),
+                mdy_governor_name(governor_want));
         mdy_governor_set_state(governor_want);
         governor_have = governor_want;
     }
@@ -12251,19 +12399,7 @@ const gchar *g_module_check_init(GModule *module)
     mdy_display_type_get();
 
 #ifdef ENABLE_CPU_GOVERNOR
-    /* Get CPU scaling governor settings from INI-files */
-    mdy_governor_default = mdy_governor_get_settings("Default");
-    mdy_governor_interactive = mdy_governor_get_settings("Interactive");
-
-    /* Get cpu scaling governor configuration & track changes */
-    mce_setting_track_int(MCE_SETTING_CPU_SCALING_GOVERNOR,
-                          &mdy_governor_conf,
-                          MCE_DEFAULT_CPU_SCALING_GOVERNOR,
-                          mdy_governor_setting_cb,
-                          &mdy_governor_conf_setting_id);
-
-    /* Evaluate initial state */
-    mdy_governor_rethink();
+    mdy_governor_init();
 #endif
 
 #ifdef ENABLE_WAKELOCKS
@@ -12370,18 +12506,7 @@ void g_module_unload(GModule *module)
 #endif
 
 #ifdef ENABLE_CPU_GOVERNOR
-    /* Remove cpu scaling governor change notifier */
-    mce_setting_notifier_remove(mdy_governor_conf_setting_id),
-        mdy_governor_conf_setting_id = 0;
-
-    /* Switch back to defaults */
-    mdy_governor_rethink();
-
-    /* Release CPU scaling governor settings from INI-files */
-    mdy_governor_free_settings(mdy_governor_default),
-        mdy_governor_default = 0;
-    mdy_governor_free_settings(mdy_governor_interactive),
-        mdy_governor_interactive = 0;
+    mdy_governor_quit();
 #endif
 
     /* Remove triggers/filters from datapipes */

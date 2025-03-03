@@ -1888,9 +1888,12 @@ static const symbol_t suspendpol_values[] = {
 /** Lookup table for cpu scaling governor overrides
  */
 static const symbol_t governor_values[] = {
-        { "automatic",    GOVERNOR_UNSET       },
-        { "performance",  GOVERNOR_DEFAULT     },
+        { "disabled",     GOVERNOR_UNSET       },
+        { "performance",  GOVERNOR_PERFORMANCE },
         { "interactive",  GOVERNOR_INTERACTIVE },
+        { "inactive",     GOVERNOR_INACTIVE    },
+        { "powersave",    GOVERNOR_POWERSAVE   },
+        { "automatic",    GOVERNOR_AUTOMATIC   },
         { NULL, -1 }
 };
 
@@ -7744,11 +7747,18 @@ static const mce_opt_t options[] =
                 .name        = "set-cpu-scaling-governor",
                 .flag        = 'S',
                 .with_arg    = xmce_set_cpu_scaling_governor,
-                .values      = "automatic|performance|interactive",
+                .values      = "disabled|performance|interactive|inactive|powersave|automatic",
                 .usage       =
-                        "set the cpu scaling governor override; valid\n"
-                        "modes are: 'automatic', 'performance',\n"
-                        "'interactive'\n"
+                        "set the cpu scaling governor policy; valid odes are:\n"
+                        "  disabled     Do not modify anything\n"
+                        "  performance  High performance, bootup/shutdown\n"
+                        "  interactive  High performance, during active use\n"
+                        "  inactive     Medium performance, not in active use\n"
+                        "  idle         Low performance, while display is off\n"
+                        "  automatic    Switch between interactive, inactive and idle\n"
+                        "\n"
+                        "Note that this setting has no effect unless suitable device specific\n"
+                        "configuration files are installed in /etc/mce directory.\n"
         },
 #ifdef ENABLE_DOUBLETAP_EMULATION
         {
