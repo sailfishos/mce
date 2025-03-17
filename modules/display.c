@@ -5,7 +5,7 @@
  * Copyright (c) 2007 - 2011 Nokia Corporation and/or its subsidiary(-ies).
  * Copyright (c) 2012 - 2023 Jolla Ltd.
  * Copyright (c) 2020 Open Mobile Platform LLC.
- * Copyright (c) 2025 Jollyboys Ltd.
+ * Copyright (c) 2025 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Tapio Rantala <ext-tapio.rantala@nokia.com>
@@ -3175,7 +3175,7 @@ static void mdy_brightness_fade_continue_with_als(fader_type_t fader_type)
         break;
 
     default:
-        goto EXIT;
+        break;
     }
 
     /* Apply if change is needed */
