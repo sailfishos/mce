@@ -32,7 +32,7 @@
 #include <glib.h>
 
 /** Find the number of bits of a type */
-#define bitsize_of(__x)			(guint)(sizeof (__x) * 8)
+#define bitsize_of(__x)			((guint)(sizeof (__x) * 8))
 
 /** translation structure */
 typedef struct {
@@ -46,7 +46,7 @@ gboolean test_bit(guint bit, const gulong *bitfield);
 
 gboolean string_to_bitfield(const gchar *string,
 			    gulong **bitfield, gsize bitfieldsize);
-char *bitfield_to_string(const gulong *bitfield, gsize bitfieldsize);
+gchar *bitfield_to_string(const gulong *bitfield, gsize bitfieldsize);
 
 const gchar *bin_to_string(guint bin);
 
