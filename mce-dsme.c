@@ -4,8 +4,9 @@
  * DSME (the Device State Management Entity)
  * and MCE (the Mode Control Entity)
  * <p>
- * Copyright © 2004-2011 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright © 2012-2019 Jolla Ltd.
+ * Copyright (c) 2004 - 2011 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (c) 2012 - 2019 Jolla Ltd.
+ * Copyright (c) 2025 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Ismo Laitinen <ismo.laitinen@nokia.com>
@@ -89,7 +90,7 @@ static system_state_t  mce_dsme_normalise_system_state (dsme_state_t dsmestate);
 
 static void           mce_dsme_worker_done_cb  (void *aptr, void *reply);
 static void          *mce_dsme_worker_pong_cb  (void *aptr);
-static void           mce_dsme_worker_ping     (void);;
+static void           mce_dsme_worker_ping     (void);
 
 /* ------------------------------------------------------------------------- *
  * PROCESS_WATCHDOG

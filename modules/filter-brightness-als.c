@@ -4,8 +4,9 @@
  * for display backlight, key backlight, and LED brightness
  * This file implements a filter module for MCE
  * <p>
- * Copyright © 2007-2011 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright © 2012-2019 Jolla Ltd.
+ * Copyright (c) 2007 - 2011 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (c) 2012 - 2019 Jolla Ltd.
+ * Copyright (c) 2025 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Tuomo Tanskanen <ext-tuomo.1.tanskanen@nokia.com>
@@ -603,7 +604,7 @@ fba_inputflt_dummy_reset(void)
 static int  fba_inputflt_median_fifo[FBA_INPUTFLT_MEDIAN_SIZE] = {  };
 
 /** Contents of fba_inputflt_median_fifo in ascending order */
-static int  fba_inputflt_median_stat[FBA_INPUTFLT_MEDIAN_SIZE] = {  };;
+static int  fba_inputflt_median_stat[FBA_INPUTFLT_MEDIAN_SIZE] = {  };
 
 static int
 fba_inputflt_median_filter(int add)

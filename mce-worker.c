@@ -5,7 +5,8 @@
  *
  * <p>
  *
- * Copyright (C) 2015 Jolla Ltd.
+ * Copyright (c) 2015 Jolla Ltd.
+ * Copyright (c) 2025 Jolla Mobile Ltd
  *
  * <p>
  *
@@ -442,7 +443,7 @@ mce_worker_has_context(const char *context)
         return true;
 
     if( !mw_ctx_lut )
-        return false;;
+        return false;
 
     return g_hash_table_lookup(mw_ctx_lut, context) != 0;
 }

@@ -2,7 +2,8 @@
  * @file doubletap.c
  * Doubletap control module -- this handles gesture enabling/disabling
  * <p>
- * Copyright (C) 2013-2019 Jolla Ltd.
+ * Copyright (c) 2013 - 2019 Jolla Ltd.
+ * Copyright (c) 2025 Jolla Mobile Ltd
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
@@ -317,7 +318,7 @@ EXIT:
         if( !success ) {
                 g_free(sleep_mode_ctrl_path), sleep_mode_ctrl_path = 0;
                 g_free(sleep_mode_allow_val), sleep_mode_allow_val = 0;
-                g_free(sleep_mode_deny_val),  sleep_mode_deny_val  = 0;;
+                g_free(sleep_mode_deny_val),  sleep_mode_deny_val  = 0;
         }
         return;
 }

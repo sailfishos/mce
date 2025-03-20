@@ -2866,11 +2866,11 @@ pwrkey_setting_quit(void)
         pwrkey_actions_double_off = 0;
 
     g_free(pwrkey_actions_long_off),
-        pwrkey_actions_long_off = 0;;
+        pwrkey_actions_long_off = 0;
 
     for( size_t i = 0; i < POWERKEY_ACTIONS_GESTURE_COUNT; ++i ) {
         g_free(pwrkey_actions_gesture[i]),
-            pwrkey_actions_gesture[i] = 0;;
+            pwrkey_actions_gesture[i] = 0;
     }
 
     /* Cancel pending delayed setting sanitizing */
@@ -2885,8 +2885,7 @@ pwrkey_setting_quit(void)
             action->setting_id = 0;
 
         g_free(action->setting_val),
-            action->setting_val = 0;;
-
+            action->setting_val = 0;
     }
 }
 

@@ -5664,7 +5664,7 @@ static void xmce_get_powerkey_dbus_action(size_t action_id)
                 printf("\t%-"PAD2"s   %s '%s'\n", "", "interface", interface);
                 printf("\t%-"PAD2"s   %s '%s'\n", "", "member", member);
                 printf("\t%-"PAD2"s   %s '%s'\n", "", "argument",
-                       *argument ? argument : "N/A");;
+                       *argument ? argument : "N/A");
         }
 
 cleanup:

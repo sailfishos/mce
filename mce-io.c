@@ -2046,7 +2046,7 @@ void *mce_io_load_file_until_eof(const char *path, size_t *psize)
 	data = g_malloc(size);
 
 	for( ;; ) {
-		rc = TEMP_FAILURE_RETRY(read(fd, data + used, size - used));;
+		rc = TEMP_FAILURE_RETRY(read(fd, data + used, size - used));
 
 		if( rc == 0 )
 			break;
