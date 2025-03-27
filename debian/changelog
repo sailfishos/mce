@@ -1,3 +1,17 @@
+mce (1.116.4) precise; urgency=low
+
+  * [mce] Get rid of nested functions. JB#63136
+  * [mce] Refactor bitfield_to_string() function
+  * [mce] Fix potential null deref in command line parser. JB#63136
+  * [mce] Fix memory leaks. JB#63136
+  * [mce] Fix potential sensors related null deref issues. JB#63136
+  * [mce] Drop unused variable. JB#63136
+  * [mce] Silence clang warning about unused initial value. JB#63136
+  * [mce] Fix potential null arg to strncmp() function. Fixes JB#63136
+  * [mce] Remove excess semicolons
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Thu, 27 Mar 2025 13:49:28 +0200
+
 mce (1.116.3) precise; urgency=low
 
   * [mce] Remove home key handling. Fixes JB#63124
