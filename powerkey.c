@@ -2,8 +2,9 @@
  * @file powerkey.c
  * Power key logic for the Mode Control Entity
  * <p>
- * Copyright © 2004-2011 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright © 2013-2019 Jolla Ltd.
+ * Copyright (c) 2004 - 2011 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (c) 2013 - 2019 Jolla Ltd.
+ * Copyright (c) 2025 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Tapio Rantala <ext-tapio.rantala@nokia.com>
@@ -538,7 +539,6 @@ static void pwrkey_stm_rethink_wakelock     (void);
 
 static void pwrkey_stm_store_initial_state  (void);
 static void pwrkey_stm_terminate            (void);
-
 
 /* ------------------------------------------------------------------------- *
  * DBUS_IPC
@@ -1209,17 +1209,11 @@ pwrkey_mask_to_names(uint32_t mask)
     char *pos = tmp;
     char *end = tmp + sizeof tmp - 1;
 
-    auto void add(const char *str)
-    {
-        while( pos < end && *str )
-            *pos++ = *str++;
-    };
-
     for( size_t i = 0; i < G_N_ELEMENTS(pwrkey_action_lut); ++i ) {
         if( mask & (1u << i) ) {
             if( pos > tmp )
-                add(",");
-            add(pwrkey_action_lut[i].name);
+                pos = mce_append_string(pos, end, ",");
+            pos = mce_append_string(pos, end, pwrkey_action_lut[i].name);
         }
     }
     *pos = 0;
@@ -1633,6 +1627,16 @@ pwrkey_actions_do_long_press(void)
     }
 }
 
+static inline void
+pwrkey_actions_update_sub(bool *changed, char **prev, uint32_t mask, uint32_t unblanked)
+{
+    /* "unblanked" is internal thing, sanitize settings */
+    gchar *curr = pwrkey_mask_to_names(mask & ~unblanked);
+    if( prev && !eq(*prev, curr) )
+        *changed = true, g_free(*prev), *prev = curr, curr = NULL;
+    g_free(curr);
+}
+
 static bool
 pwrkey_actions_update(const pwrkey_actions_t *self,
                       gchar **names_single,
@@ -1643,18 +1647,9 @@ pwrkey_actions_update(const pwrkey_actions_t *self,
 
     uint32_t unblanked = pwrkey_mask_from_name("unblanked");
 
-    auto void update(gchar **prev, uint32_t mask)
-    {
-        /* "unblanked" is internal thing, sanitize settings */
-        gchar *curr = pwrkey_mask_to_names(mask & ~unblanked);
-        if( prev && !eq(*prev, curr) )
-            changed = true, g_free(*prev), *prev = curr, curr = 0;
-        g_free(curr);
-    }
-
-    update(names_single, self->mask_single | self->mask_common);
-    update(names_double, self->mask_double | self->mask_common);
-    update(names_long, self->mask_long);
+    pwrkey_actions_update_sub(&changed, names_single, self->mask_single | self->mask_common, unblanked);
+    pwrkey_actions_update_sub(&changed, names_double, self->mask_double | self->mask_common, unblanked);
+    pwrkey_actions_update_sub(&changed, names_long, self->mask_long, unblanked);
 
     return changed;
 }
@@ -2871,11 +2866,11 @@ pwrkey_setting_quit(void)
         pwrkey_actions_double_off = 0;
 
     g_free(pwrkey_actions_long_off),
-        pwrkey_actions_long_off = 0;;
+        pwrkey_actions_long_off = 0;
 
     for( size_t i = 0; i < POWERKEY_ACTIONS_GESTURE_COUNT; ++i ) {
         g_free(pwrkey_actions_gesture[i]),
-            pwrkey_actions_gesture[i] = 0;;
+            pwrkey_actions_gesture[i] = 0;
     }
 
     /* Cancel pending delayed setting sanitizing */
@@ -2890,8 +2885,7 @@ pwrkey_setting_quit(void)
             action->setting_id = 0;
 
         g_free(action->setting_val),
-            action->setting_val = 0;;
-
+            action->setting_val = 0;
     }
 }
 

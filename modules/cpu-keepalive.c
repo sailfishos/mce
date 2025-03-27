@@ -2,7 +2,8 @@
  * @file cpu-keepalive.c
  * cpu-keepalive module -- this implements late suspend blocking for MCE
  * <p>
- * Copyright (C) 2013-2019 Jolla Ltd.
+ * Copyright (c) 2013 - 2019 Jolla Ltd.
+ * Copyright (c) 2025 Jolla Mobile Ltd
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
@@ -985,14 +986,13 @@ cka_clients_verify_name_cb(DBusPendingCall *pending, void *user_data)
   const gchar *name   = user_data;
   gchar       *owner  = 0;
   DBusMessage *rsp    = 0;
-  cka_client_t    *client = 0;
 
   if( !(rsp = dbus_pending_call_steal_reply(pending)) )
   {
     goto EXIT;
   }
 
-  if( !(client = cka_clients_get_client(name)) )
+  if( !cka_clients_get_client(name) )
   {
     mce_log(LL_WARN, "untracked client %s", name);
   }
@@ -1000,7 +1000,7 @@ cka_clients_verify_name_cb(DBusPendingCall *pending, void *user_data)
   if( !(owner = cka_dbusutil_parse_GetNameOwner_rsp(rsp)) || !*owner )
   {
     mce_log(LL_WARN, "dead client %s", name);
-    cka_clients_remove_client(name), client = 0;
+    cka_clients_remove_client(name);
   }
   else
   {

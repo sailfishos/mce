@@ -336,7 +336,6 @@ mce-lib.o:\
 	mce-lib.c\
 	datapipe.h\
 	mce-lib.h\
-	mce-log.h\
 	mce-wakelock.h\
 	mce.h\
 	musl-compatibility.h\
@@ -345,7 +344,6 @@ mce-lib.pic.o:\
 	mce-lib.c\
 	datapipe.h\
 	mce-lib.h\
-	mce-log.h\
 	mce-wakelock.h\
 	mce.h\
 	musl-compatibility.h\
@@ -1099,6 +1097,7 @@ modules/radiostates.o:\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-io.h\
+	mce-lib.h\
 	mce-log.h\
 	mce.h\
 	musl-compatibility.h\
@@ -1111,6 +1110,7 @@ modules/radiostates.pic.o:\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-io.h\
+	mce-lib.h\
 	mce-log.h\
 	mce.h\
 	musl-compatibility.h\

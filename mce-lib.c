@@ -3,8 +3,9 @@
  * This file provides various helper functions
  * for the Mode Control Entity
  * <p>
- * Copyright © 2004-2011 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2014-2019 Jolla Ltd.
+ * Copyright (c) 2004 - 2011 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (c) 2014 - 2019 Jolla Ltd.
+ * Copyright (c) 2025 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Tapio Rantala <ext-tapio.rantala@nokia.com>
@@ -27,7 +28,6 @@
 #include "mce-lib.h"
 
 #include "mce.h"
-#include "mce-log.h"
 #include "mce-wakelock.h"
 
 #include <stdio.h>
@@ -128,47 +128,27 @@ EXIT:
  * @return A string with the newly allocated string on success,
  *         NULL on failure
  */
-char *bitfield_to_string(const gulong *bitfield, gsize bitfieldsize)
+gchar *bitfield_to_string(const gulong *bitfield, gsize bitfieldsize)
 {
-	gchar *tmp = NULL;
-	guint i, j;
-
 	/* Always pass 0; this way a NULL string represents failure,
 	 * and a string with no bits set will represent an empty mask;
 	 * we also simplify the g_strdup_printf() case quite a bit
 	 */
-	if ((tmp = strdup("0")) == NULL) {
-		mce_log(LL_CRIT,
-			"Failed to allocate memory "
-			"for tmp");
-		goto EXIT;
-	}
+	gchar *res = g_strdup("0");
 
-	for (i = 0; i < bitfieldsize; i++) {
-		for (j = 0; bitfield[i] && j < bitsize_of(*bitfield); j++) {
+	for (guint i = 0; i < bitfieldsize; i++) {
+		if (!bitfield[i])
+			continue;
+		for (guint j = 0; j < bitsize_of(*bitfield); j++) {
 			if (bitfield[i] & (1UL << j)) {
-				gchar *tmp2;
-
-				tmp2 = g_strdup_printf("%s,%u",
-						       tmp, (i * bitsize_of(*bitfield)) + j);
-
-				g_free(tmp);
-				tmp = NULL;
-
-				if (tmp2 == NULL) {
-					mce_log(LL_CRIT,
-						"Failed to allocate memory "
-						"for tmp2");
-					goto EXIT;
-				}
-
-				tmp = tmp2;
+				gchar *old = res;
+				res = g_strdup_printf("%s,%u", old, j + i * bitsize_of(*bitfield));
+				g_free(old);
 			}
 		}
 	}
 
-EXIT:
-	return tmp;
+	return res;
 }
 
 /**
@@ -619,4 +599,15 @@ mce_slice_token(char *pos, char **ppos, const char *sep)
 	*ppos = pos;
 
     return mce_strip_string(beg);
+}
+
+char *
+mce_append_string(char *pos, char *end, const char *str)
+{
+    if( pos && str ) {
+	while( pos < end && *str )
+	    *pos++ = *str++;
+	*pos = 0;
+    }
+    return pos;
 }

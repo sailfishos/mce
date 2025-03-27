@@ -2,7 +2,8 @@
  * @file mce-fbdev.c
  * Frame buffer device handling code for the Mode Control Entity
  * <p>
- * Copyright 2015 Jolla Ltd.
+ * Copyright (c) 2015 Jolla Ltd.
+ * Copyright (c) 2025 Jolla Mobile Ltd
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
@@ -292,7 +293,7 @@ void mce_fbdev_init(void)
     }
 #endif
     else {
-        mce_log(LL_NOTICE, "no fb power control available");;
+        mce_log(LL_NOTICE, "no fb power control available");
     }
 }
 

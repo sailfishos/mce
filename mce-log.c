@@ -5,6 +5,7 @@
  * Copyright (c) 2006 - 2007, 2010 Nokia Corporation and/or its subsidiary(-ies).
  * Copyright (c) 2012 - 2020 Jolla Ltd.
  * Copyright (c) 2020 Open Mobile Platform LLC.
+ * Copyright (c) 2025 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
@@ -364,7 +365,7 @@ int mce_log_p_(loglevel_t loglevel,
 	switch( loglevel ) {
 	case LL_EXTRA:
 	case LL_CRUCIAL:
-		loglevel = LL_WARN;;
+		loglevel = LL_WARN;
 		break;
 	default:
 		break;

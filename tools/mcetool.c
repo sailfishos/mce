@@ -4,7 +4,7 @@
  * Copyright (c) 2005 - 2011 Nokia Corporation and/or its subsidiary(-ies).
  * Copyright (c) 2012 - 2022 Jolla Ltd.
  * Copyright (c) 2019 - 2020 Open Mobile Platform LLC.
- * Copyright (c) 2025 Jollyboys Ltd.
+ * Copyright (c) 2025 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>
@@ -442,6 +442,7 @@ int                 main                     (int argc, char **argv);
 
 static gboolean   mcetool_parse_timspec     (struct timespec *ts, const char *args);
 static char      *mcetool_parse_token       (char **ppos);
+static char      *mcetool_append_string     (char *pos, char *end, const char *str);
 static char      *mcetool_format_bitmask    (const symbol_t *lut, int mask, char *buff, size_t size);
 static unsigned   mcetool_parse_bitmask     (const symbol_t *lut, const char *args);
 static bool       mcetool_show_led_patterns (const char *args);
@@ -2250,6 +2251,16 @@ static char *mcetool_parse_token(char **ppos)
 
 }
 
+static char *mcetool_append_string(char *pos, char *end, const char *str)
+{
+    if( pos && str ) {
+        while( pos < end && *str )
+            *pos++ = *str++;
+        *pos = 0;
+    }
+    return pos;
+}
+
 /** Convert bitmap to human readable string via lookup table
  *
  * @param lut  array of symbol_t objects
@@ -2267,16 +2278,10 @@ static char *mcetool_format_bitmask(const symbol_t *lut, int mask,
         char *pos = buff;
         char *end = buff + size - 1;
 
-        auto void add(const char *str)
-        {
-                if( pos > buff && pos < end )
-                        *pos++ = ',';
-                while( pos < end && *str )
-                        *pos++ = *str++;
-        }
-
         if( !mask ) {
-                add(none);
+                if( pos > buff )
+                        pos = mcetool_append_string(pos, end, ",");
+                pos = mcetool_append_string(pos, end, none);
                 goto EXIT;
         }
 
@@ -2287,14 +2292,18 @@ static char *mcetool_format_bitmask(const symbol_t *lut, int mask,
                 const char *name = rlookup(lut, bit);
                 if( name ) {
                         mask &= ~bit;
-                        add(name);
+                        if( pos > buff )
+                                pos = mcetool_append_string(pos, end, ",");
+                        pos = mcetool_append_string(pos, end, name);
                 }
         }
 
         if( mask ) {
                 char hex[32];
                 snprintf(hex, sizeof hex, "0x%u", (unsigned)mask);
-                add(hex);
+                if( pos > buff )
+                        pos = mcetool_append_string(pos, end, ",");
+                pos = mcetool_append_string(pos, end, hex);
         }
 EXIT:
         *pos = 0;
@@ -5414,24 +5423,33 @@ static const char * const gesture_actions_key[POWERKEY_ACTIONS_GESTURE_COUNT] =
  */
 static bool xmce_set_touchscreen_gesture_action(const char *args)
 {
-        char *work = strdup(args);
-        char *conf = work;
-        char *gesture = mcetool_parse_token(&conf);
+        bool  parsed  = false;
+        char *work    = NULL;
+        char *conf    = NULL;
+        char *gesture = NULL;
+
+        if( !(conf = work = g_strdup(args)) )
+                goto EXIT;
+
+        if( !(gesture = mcetool_parse_token(&conf)) )
+                goto EXIT;
 
         int id = lookup(gesture_values, gesture);
         if( id < 0 )
                 id = xmce_parse_integer(gesture);
 
         if( id < 0 || id >= (int)G_N_ELEMENTS(gesture_actions_key) ) {
-                fprintf(stderr, "invalid gesture id: '%s'\n", work);
-                return false;
+                fprintf(stderr, "invalid gesture id: '%s'\n", gesture);
+                goto EXIT;
         }
 
         xmce_set_powerkey_action_mask(gesture_actions_key[id], conf);
+        parsed = true;
 
-        free(work);
+EXIT:
+        g_free(work);
 
-        return true;
+        return parsed;
 }
 
 /** Helper for getting powerkey action mask settings
@@ -5573,27 +5591,36 @@ static const char * const powerkey_dbus_action_key[] =
  */
 static bool xmce_set_powerkey_dbus_action(const char *args)
 {
-        char *work = strdup(args);
-        char *conf = work;
+        bool  ret  = false;
+        char *work = NULL;
+        char *conf = NULL;
+
+        if( !(conf = work = g_strdup(args)) )
+                goto FAILURE;
 
         size_t action_id = xmce_parse_integer(mcetool_parse_token(&conf)) - 1;
 
         if( action_id >= G_N_ELEMENTS(powerkey_dbus_action_key) ) {
                 fprintf(stderr, "invalid dbus action id: '%s'\n", work);
-                return false;
+                goto FAILURE;
         }
 
         const char *key = powerkey_dbus_action_key[action_id];
 
         if( mcetool_handle_common_args(key, conf) )
-                return true;
+                goto SUCCESS;
 
-        if( conf && *conf && !xmce_is_powerkey_dbus_action(conf) )
-                return false;
+        if( *conf && !xmce_is_powerkey_dbus_action(conf) )
+                goto FAILURE;
 
-        bool ret = xmce_setting_set_string(key, conf);
+        if( !xmce_setting_set_string(key, conf) )
+                goto FAILURE;
 
-        free(work);
+SUCCESS:
+        ret = true;
+
+FAILURE:
+        g_free(work);
 
         return ret;
 }
@@ -5637,7 +5664,7 @@ static void xmce_get_powerkey_dbus_action(size_t action_id)
                 printf("\t%-"PAD2"s   %s '%s'\n", "", "interface", interface);
                 printf("\t%-"PAD2"s   %s '%s'\n", "", "member", member);
                 printf("\t%-"PAD2"s   %s '%s'\n", "", "argument",
-                       *argument ? argument : "N/A");;
+                       *argument ? argument : "N/A");
         }
 
 cleanup:
@@ -8591,7 +8618,7 @@ PROG_NAME" v"G_STRINGIFY(PRG_VERSION)"\n"
 "Copyright (c) 2005 - 2011 Nokia Corporation.  All rights reserved.\n"
 "Copyright (c) 2012 - 2022 Jolla Ltd.\n"
 "Copyright (c) 2019 - 2020 Open Mobile Platform LLC.\n"
-"Copyright (c) 2025 Jollyboys Ltd.\n"
+"Copyright (c) 2025 Jolla Mobile Ltd\n"
 ;
 
 static __attribute__((__noreturn__)) bool mcetool_do_version(const char *arg)

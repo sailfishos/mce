@@ -4,6 +4,7 @@
  * <p>
  * Copyright (c) 2012 - 2020 Jolla Ltd.
  * Copyright (c) 2020 Open Mobile Platform LLC.
+ * Copyright (c) 2025 Jolla Mobile Ltd
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
@@ -290,7 +291,7 @@ int evdev_identify_device(int fd)
 
   // device name
   {
-    char name[256];;
+    char name[256];
     if( ioctl(fd, EVIOCGNAME(sizeof(name)), name) == -1 )
     {
       mce_log(LL_WARN, "%s: EVIOCGNAME: %m", path);

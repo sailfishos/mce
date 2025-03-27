@@ -2,7 +2,8 @@
  * @file battery-upower.c
  * Battery module -- this implements battery and charger logic for MCE
  * <p>
- * Copyright (C) 2013 Jolla Ltd.
+ * Copyright (c) 2013 Jolla Ltd.
+ * Copyright (c) 2025 Jolla Mobile Ltd
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  * <p>
@@ -290,7 +291,7 @@ static uprop_t * uprop_create(const char *key)
 {
     uprop_t *self = calloc(1, sizeof *self);
 
-    self->p_key  = strdup(key);;
+    self->p_key  = strdup(key);
     self->p_type = DBUS_TYPE_INVALID;
 
     return self;

@@ -5,7 +5,7 @@
  * <p>
  * Copyright (c) 2004 - 2011 Nokia Corporation and/or its subsidiary(-ies).
  * Copyright (c) 2012 - 2019 Jolla Ltd.
- * Copyright (c) 2025 Jollyboys Ltd.
+ * Copyright (c) 2025 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Tapio Rantala <ext-tapio.rantala@nokia.com>
@@ -392,7 +392,7 @@ static void     tklock_ui_get_devicelock(void);
 static void     tklock_ui_send_lpm_signal(void);
 static void     tklock_ui_enable_lpm(void);
 static void     tklock_ui_disable_lpm(void);
-static void     tklock_ui_show_device_unlock(void);;
+static void     tklock_ui_show_device_unlock(void);
 
 // dbus ipc
 
