@@ -41,6 +41,9 @@
 /** List of max backlight control files to try */
 # define MCE_CONF_MAX_BACKLIGHT_PATH             "MaxBrightnessPath"
 
+/** Path to the SysFS entry for the HBM control */
+# define MCE_CONF_HBM_CONTROL_PATH               "HBMControlPath"
+
 /** Default timeout for the high brightness mode; in seconds */
 # define DEFAULT_HBM_TIMEOUT                     1800    /* 30 min */
 

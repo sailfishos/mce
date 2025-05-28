@@ -5611,6 +5611,27 @@ static display_type_t mdy_display_type_get(void)
 
     mce_log(LL_DEBUG, "Display type: %d", display_type);
 
+    if( display_type != DISPLAY_TYPE_NONE ) {
+        gchar **hbmdir = mce_conf_get_string_list(MCE_CONF_DISPLAY_GROUP,
+                                                  MCE_CONF_HBM_CONTROL_PATH, 0);
+
+        if( hbmdir ) {
+            for( size_t i = 0; hbmdir[i]; ++i ) {
+                if( !*hbmdir[i] || g_access(hbmdir[i], W_OK) )
+                    continue;
+
+                g_free((void*)mdy_high_brightness_mode_output.path);
+
+                mdy_high_brightness_mode_output.path = g_strdup(hbmdir[i]);
+                mdy_high_brightness_mode_supported = TRUE;
+
+                break;
+            }
+        }
+
+        g_strfreev(hbmdir);
+    }
+
 EXIT:
     return display_type;
 }
