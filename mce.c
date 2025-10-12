@@ -1044,6 +1044,11 @@ int main(int argc, char **argv)
 	/* Open fbdev as early as possible */
 	mce_fbdev_init();
 
+#ifdef ENABLE_WAKELOCKS
+    /* Initialize libwakelock */
+	lwl_init();
+#endif
+
 	/* Start worker thread */
 	if( !mce_worker_init() )
 		goto EXIT;

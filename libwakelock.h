@@ -55,6 +55,7 @@ void wakelock_allow_suspend(void);
 void wakelock_block_suspend(void);
 void wakelock_block_suspend_until_exit(void);
 
+void lwl_init(void);
 void lwl_enable_logging(void);
 suspend_type_t lwl_probe(void);
 

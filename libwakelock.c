@@ -27,12 +27,19 @@
 
 #include "libwakelock.h"
 
+#include "mce-conf.h"
+
 #include <stdarg.h>
 #include <stdbool.h>
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
 #include <fcntl.h>
+
+#define MCE_CONF_SUSPEND_GROUP         "Suspend"
+
+#define MCE_CONF_SUSPEND_EXTERN        "External"
+
 
 /** Whether to write debug logging to stderr
  *
@@ -153,6 +160,9 @@ static void lwl_debug_(const char *m, ...)
 /** Flag that gets set once the process is about to exit */
 static int        lwl_shutting_down = 0;
 
+/** Flag that prefers external suspend to the other modes **/
+static int        lwl_force_extern = 0;
+
 /** Sysfs entry for acquiring wakelocks */
 static const char lwl_lock_path[]   = "/sys/power/wake_lock";
 
@@ -260,6 +270,10 @@ suspend_type_t lwl_probe(void)
 	if( access(lwl_lock_path, W_OK) || access(lwl_unlock_path, W_OK) ) {
 		/* No suspend without wakelock controls */
 		suspend_type = SUSPEND_TYPE_NONE;
+	}
+	else if( lwl_force_extern ) {
+		/* Configuration preference */
+		suspend_type = SUSPEND_TYPE_EXTERN;
 	}
 	else if( lwl_write_data(lwl_state_path, &data_on) ) {
 		/* No error from disabling early suspend */
@@ -388,4 +402,12 @@ void wakelock_block_suspend_until_exit(void)
 void lwl_enable_logging(void)
 {
 	lwl_debug_enabled = 1;
+}
+
+/** Load module configuration
+ */
+void lwl_init(void)
+{
+	lwl_force_extern = mce_conf_get_bool(MCE_CONF_SUSPEND_GROUP,
+		MCE_CONF_SUSPEND_EXTERN, false);
 }
