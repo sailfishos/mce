@@ -5883,7 +5883,7 @@ static gboolean mdy_waitfb_thread_start(waitfb_t *self)
 
     mdy_waitfb_thread_stop(self);
 
-    if( lwl_probe() == SUSPEND_TYPE_AUTO )
+    if( lwl_probe() == SUSPEND_TYPE_AUTO || lwl_probe() == SUSPEND_TYPE_EXTERN )
         goto EXIT;
 
     if( access(self->wake_path, F_OK) == -1 ||

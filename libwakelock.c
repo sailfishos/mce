@@ -270,7 +270,8 @@ suspend_type_t lwl_probe(void)
 		suspend_type = SUSPEND_TYPE_AUTO;
 	}
 	else  {
-		suspend_type = SUSPEND_TYPE_NONE;
+		/* Only wakelock controls available - assuming external autosleep */
+		suspend_type = SUSPEND_TYPE_EXTERN;
 	}
 
 EXIT:

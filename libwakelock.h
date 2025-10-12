@@ -38,11 +38,14 @@ typedef enum {
     /* Suspend not supported */
     SUSPEND_TYPE_NONE  =  0,
 
+    /* External suspend model */
+    SUSPEND_TYPE_EXTERN =  1,
+
     /* Early suspend model */
-    SUSPEND_TYPE_EARLY =  1,
+    SUSPEND_TYPE_EARLY =  2,
 
     /* Autosleep model */
-    SUSPEND_TYPE_AUTO  =  2,
+    SUSPEND_TYPE_AUTO  =  3,
 } suspend_type_t;
 
 void wakelock_lock  (const char *name, long long ns);
