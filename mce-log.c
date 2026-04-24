@@ -54,6 +54,7 @@ static void monotime(struct timeval *tv)
 	clock_gettime(CLOCK_BOOTTIME, &ts);
 	TIMESPEC_TO_TIMEVAL(tv, &ts);
 }
+
 static void timestamp(struct timeval *tv)
 {
 	static struct timeval start, prev;

@@ -248,6 +248,7 @@ gint mce_translate_string_to_int_with_default(const mce_translation_t translatio
 
 	return number;
 }
+
 /**
  * Translate a string to its integer representation
  *

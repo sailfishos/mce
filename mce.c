@@ -710,18 +710,21 @@ static bool mce_do_auto_exit(const char *arg)
 	mce_args.auto_exit = arg ? strtol(arg, 0, 0) : 5;
 	return true;
 }
+
 static bool mce_do_valgrind_mode(const char *arg)
 {
 	(void)arg;
 	mce_args.valgrind_mode = true;
 	return true;
 }
+
 static bool mce_do_sensortest_mode(const char *arg)
 {
 	(void)arg;
 	mce_args.sensortest_mode = true;
 	return true;
 }
+
 static bool mce_do_log_function(const char *arg)
 {
 	mce_log_add_pattern(arg);

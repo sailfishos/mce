@@ -270,6 +270,7 @@ int mce_log_p_(const loglevel_t loglevel,
 
   return true;
 }
+
 /** Provide runtime usage information
  */
 static void usage(void)
