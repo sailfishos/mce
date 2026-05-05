@@ -1,3 +1,9 @@
+mce (1.116.5) precise; urgency=low
+
+  * [battery-udev] Treat non-zero values as true in online and present properties. JB#64145
+
+ -- Matti Lehtimäki <matti.lehtimaki@jolla.com>  Tue, 5 May 2026 22:38:05 +0300
+
 mce (1.116.4) precise; urgency=low
 
   * [mce] Get rid of nested functions. JB#63136
