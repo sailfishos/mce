@@ -1618,7 +1618,7 @@ udevdevice_evaluate_charger(udevdevice_t *self, mcebat_t *mcebat)
      * we ought to be able to charge when either one gets
      * non-zero value ... */
 
-    bool active = (present == 1 || online == 1);
+    bool active = (present > 0 || online > 0);
 
     if( active ) {
         mcebat->charger_state = CHARGER_STATE_ON;
