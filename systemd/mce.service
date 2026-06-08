@@ -4,6 +4,7 @@ DefaultDependencies=no
 Requires=dbus.socket
 After=dbus.socket
 After=local-fs.target
+After=systemd-modules-load.service
 Before=basic.target
 Conflicts=shutdown.target
 
