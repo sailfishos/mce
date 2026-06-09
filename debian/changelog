@@ -1,3 +1,9 @@
+mce (1.116.6) precise; urgency=low
+
+  * [systemd] Start mce after systemd-modules-load service. JB#64449
+
+ -- Matti Lehtimäki <matti.lehtimaki@jolla.com>  Tue, 9 Jun 2026 13:49:50 +0300
+
 mce (1.116.5) precise; urgency=low
 
   * [battery-udev] Treat non-zero values as true in online and present properties. JB#64145
