@@ -6,7 +6,7 @@
  * <p>
  *
  * Copyright (c) 2013 - 2014 Jolla Ltd.
- * Copyright (c) 2025 Jolla Mobile Ltd
+ * Copyright (c) 2025 - 2026 Jolla Mobile Ltd
  *
  * <p>
  *
@@ -4385,7 +4385,8 @@ static const char *
 sfw_plugin_get_sensor_name(const sfw_plugin_t *self)
 {
     // Explicitly allow NULL self pointer to be used
-    return self ? self->plg_backend->be_sensor_name : 0;
+    const char *name = self ? self->plg_backend->be_sensor_name : NULL;
+    return name ?: "unknown";
 }
 
 /** Get sensord compatible D-Bus object path for the sensor

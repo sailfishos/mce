@@ -5,7 +5,7 @@
  * Copyright (c) 2007 - 2011 Nokia Corporation and/or its subsidiary(-ies).
  * Copyright (c) 2012 - 2023 Jolla Ltd.
  * Copyright (c) 2020 Open Mobile Platform LLC.
- * Copyright (c) 2025 Jolla Mobile Ltd
+ * Copyright (c) 2025 - 2026 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Tapio Rantala <ext-tapio.rantala@nokia.com>
@@ -411,6 +411,7 @@ static const char         *bootstate_repr(bootstate_t value);
 static const char         *fader_type_name(fader_type_t type);
 static int                 xlat(int src_lo, int src_hi, int dst_lo, int dst_hi, int val);
 static bool                unknown_method_p(DBusError *err);
+static const char         *mdy_repr_bool(bool val);
 
 /* ------------------------------------------------------------------------- *
  * SHUTDOWN
@@ -496,6 +497,7 @@ static bool                mdy_brightness_set_level_default(int number);
 static int                 mdy_brightness_normalize_level(int number);
 static void                mdy_brightness_set_level(int number);
 static void                mdy_brightness_forget_level(void);
+static void                mdy_brightness_synchronize_level(void);
 
 static void                mdy_brightness_fade_continue_with_als(fader_type_t fader_type);
 static void                mdy_brightness_force_level(int number);
@@ -759,6 +761,8 @@ static void                 compositor_stm_eval_state        (compositor_stm_t *
 static void                 compositor_stm_set_target        (compositor_stm_t *self, renderer_state_t state);
 static void                 compositor_stm_set_requested     (compositor_stm_t *self, renderer_state_t state);
 static void                 compositor_stm_set_granted       (compositor_stm_t *self, renderer_state_t state);
+
+static void                 compositor_stm_set_never_granted (compositor_stm_t *self, bool never_granted);
 
 static bool                 compositor_stm_is_pending        (const compositor_stm_t *self);
 static bool                 compositor_stm_is_enabled        (const compositor_stm_t *self);
@@ -1466,6 +1470,18 @@ static bool
 unknown_method_p(DBusError *err)
 {
     return err && !g_strcmp0(err->name, DBUS_ERROR_UNKNOWN_METHOD);
+}
+
+/** Boolean to string helper
+ *
+ * @param val boolean value
+ *
+ * @return "true" or "false" depending on val
+ */
+static const char *
+mdy_repr_bool(bool val)
+{
+    return val ? "true" : "false";
 }
 
 /* ========================================================================= *
@@ -3042,6 +3058,31 @@ static void mdy_brightness_forget_level(void)
         mdy_brightness_level_active = -1;
         mce_log(LL_DEBUG, "active brightness: %d", mdy_brightness_level_active);
     }
+}
+
+/** Helper for clearing kernel side bookkeeping issues
+ *
+ * In many devices kernel ignores repeated writes of the same
+ * value to brightness control sysfs file. This becomes a problem
+ * if this userspace controlled value gets out of sync with the
+ * underlying effective hw brightness. Typically this involves timing
+ * hazards related to compositor process handoff / display device
+ * ownership changes, and causes the display to remain blank when
+ * the new display owner draws its ui.
+ *
+ * To get the (non-zero) effective brightness back in sync: do a
+ * off-by-one write first, followed by writing the value that we
+ * actually want to use.
+ */
+static void mdy_brightness_synchronize_level(void)
+{
+    int brightness = mdy_brightness_level_cached;
+    mce_log(LL_DEBUG, "forced brightness sync to: %d", brightness);
+    if( brightness > 0 )
+        mdy_brightness_set_level(brightness - 1);
+    else
+        mdy_brightness_forget_level();
+    mdy_brightness_set_level(brightness);
 }
 
 /** Helper for boosting mce scheduling priority during brightness fading
@@ -6312,6 +6353,12 @@ struct compositor_stm_t
      */
     renderer_state_t       csi_granted;
 
+    /** Flag for: 1st time this compositor is granted draw permission
+     *
+     * Modify via compositor_stm_set_never_granted()
+     */
+    bool                   csi_never_granted;
+
     /** Timer id for compositor method call retries
      *
      * Managed by compositor_stm_schedule_retry() & co
@@ -6430,6 +6477,9 @@ compositor_stm_ctor(compositor_stm_t *self)
     self->csi_target    = RENDERER_ENABLED;
     self->csi_requested = RENDERER_UNKNOWN;
     self->csi_granted   = RENDERER_UNKNOWN;
+
+    /* Becomes relevant on entry to COMPOSITOR_STATE_STARTED */
+    self->csi_never_granted = false;
 
     /* No pending pid query */
     self->csi_pid_query_pc = 0;
@@ -7451,6 +7501,7 @@ compositor_stm_enter_state(compositor_stm_t *self)
         break;
 
     case COMPOSITOR_STATE_STARTED:
+        compositor_stm_set_never_granted(self, true);
         // apply timeout for waiting previous compositor to exit
         if( compositor_stm_get_lingerer(self) )
             compositor_stm_schedule_linger_timeout(self);
@@ -7508,6 +7559,13 @@ compositor_stm_enter_state(compositor_stm_t *self)
         compositor_stm_set_granted(self, self->csi_requested);
         compositor_stm_cancel_killer(self);
         compositor_stm_cancel_panic(self);
+
+        /* In case of first draw after compositor change
+         * -> clear possible effective zero brightness situation */
+        if( self->csi_never_granted ) {
+            mdy_brightness_synchronize_level();
+            compositor_stm_set_never_granted(self, false);
+        }
 
         /* Wake display state machine */
         mdy_stm_schedule_rethink();
@@ -7737,6 +7795,19 @@ compositor_stm_set_granted(compositor_stm_t *self, renderer_state_t state)
                 renderer_state_repr(self->csi_granted),
                 renderer_state_repr(state));
         self->csi_granted = state;
+    }
+}
+
+/** Set / clear permission to draw never-granted flag
+ */
+static void
+compositor_stm_set_never_granted(compositor_stm_t *self, bool never_granted)
+{
+    if( self->csi_never_granted != never_granted ) {
+        mce_log(LL_DEBUG, "compositor_stm_never_granted: %s -> %s",
+                mdy_repr_bool(self->csi_never_granted),
+                mdy_repr_bool(never_granted));
+        self->csi_never_granted = never_granted;
     }
 }
 
@@ -9108,24 +9179,9 @@ static void mdy_stm_step(void)
 
     case STM_RENDERER_INIT_START:
         if( mdy_stm_compositor_availability_changed ) {
-            /* If previous compositor instance exiting leaves the system
-             * in a state where effective brightness gets set to zero,
-             * any frames drawn by freshly started compositor can end up
-             * getting ignored.
-             *
-             * In some devices kernel can: Implicitly change effective
-             * brightness without reflecting the change on sysfs *and*
-             * ignore sysfs changes that do not change the value as it
-             * is available on sysfs -> To get (non-zero) effective
-             * brightness back in sync: Do a off-by-one write first,
-             * followed by writing the value we actually want to use.
-             */
-            int brightness = mdy_brightness_level_cached;
-            mce_log(LL_WARN, "forced brightness sync to: %d", brightness);
-            mdy_brightness_forget_level();
-            if( brightness > 0 )
-                mdy_brightness_set_level(brightness - 1);
-            mdy_brightness_set_level(brightness);
+            /* Starting display power up after compositor change
+             * -> clear possible effective zero brightness situation */
+            mdy_brightness_synchronize_level();
         }
 
         if( !mdy_compositor_is_available() ) {
@@ -9136,7 +9192,6 @@ static void mdy_stm_step(void)
             mdy_compositor_enable();
             mdy_stm_trans(STM_RENDERER_WAIT_START);
         }
-        mdy_stm_set_compositor_availability_changed(false);
         break;
 
     case STM_RENDERER_WAIT_START:
@@ -9189,6 +9244,13 @@ static void mdy_stm_step(void)
          * suspend / autosleep has been finished */
         if( mdy_stm_autosuspend_pending )
             break;
+
+        if( mdy_stm_compositor_availability_changed ) {
+            /* Ending display power up after compositor change
+             * -> clear possible effective zero brightness situation */
+            mdy_brightness_synchronize_level();
+            mdy_stm_set_compositor_availability_changed(false);
+        }
 
         mdy_stm_finish_target_change();
         mdy_stm_trans(STM_STAY_POWER_ON);
