@@ -1036,6 +1036,7 @@ modules/mempressure.o:\
 	modules/mempressure.c\
 	builtin-gconf.h\
 	datapipe.h\
+	mce-lib.h\
 	mce-log.h\
 	mce-setting.h\
 	mce.h\
@@ -1046,6 +1047,7 @@ modules/mempressure.pic.o:\
 	modules/mempressure.c\
 	builtin-gconf.h\
 	datapipe.h\
+	mce-lib.h\
 	mce-log.h\
 	mce-setting.h\
 	mce.h\
