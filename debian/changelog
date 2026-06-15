@@ -1,3 +1,10 @@
+mce (1.116.7) precise; urgency=low
+
+  * [sensorfw] Fix potential null sensor name problem
+  * [display] Synchronize brightness in key points. Fixes JB#64465
+
+ -- Simo Piiroinen <spiiroin@gmail.com>  Mon, 15 Jun 2026 08:02:31 +0300
+
 mce (1.116.6) precise; urgency=low
 
   * [systemd] Start mce after systemd-modules-load service. JB#64449
