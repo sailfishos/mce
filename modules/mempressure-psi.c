@@ -3,6 +3,7 @@
  * Memory use tracking and notification plugin for the Mode Control Entity
  * <p>
  * Copyright (c) 2014 - 2021 Jolla Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  *
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  * @author Lukáš Karas <lukas.karas@avast.com>
@@ -32,7 +33,6 @@
 #include <inttypes.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <assert.h>
 
 #include <gmodule.h>
 #include <glib/gmain.h>
@@ -47,17 +47,17 @@
  * UTILITY
  * ------------------------------------------------------------------------- */
 
-static guint    mempressure_psi_iowatch_add   (int fd, bool close_on_unref, GIOCondition cnd, GIOFunc io_cb, gpointer aptr);
-static bool     mempressure_psi_streq         (const char *s1, const char *s2);
+static guint    mempressure_psi_iowatch_add(int fd, bool close_on_unref, GIOCondition cnd, GIOFunc io_cb, gpointer aptr);
+static bool     mempressure_psi_streq      (const char *s1, const char *s2);
 
 /* ------------------------------------------------------------------------- *
  * MEMPRESSURE_PSI_PSI
  * ------------------------------------------------------------------------- */
 
-static bool     mempressure_psi_is_available     (void);
-static gboolean mempressure_psi_event_cb         (GIOChannel *chn, GIOCondition cnd, gpointer aptr);
-static void     mempressure_psi_quit             (void);
-static bool     mempressure_psi_init             (void);
+static bool     mempressure_psi_is_available(void);
+static gboolean mempressure_psi_event_cb    (GIOChannel *chn, GIOCondition cnd, gpointer aptr);
+static void     mempressure_psi_quit        (void);
+static bool     mempressure_psi_init        (void);
 
 /* ------------------------------------------------------------------------- *
  * MEMPRESSURE_PSI_SETTING
@@ -94,9 +94,8 @@ mempressure_psi_iowatch_add(int fd, bool close_on_unref,
     guint         wid = 0;
     GIOChannel   *chn = 0;
 
-    if( !(chn = g_io_channel_unix_new(fd)) ) {
+    if( !(chn = g_io_channel_unix_new(fd)) )
         goto EXIT;
-    }
 
     g_io_channel_set_close_on_unref(chn, close_on_unref);
 
@@ -107,7 +106,8 @@ mempressure_psi_iowatch_add(int fd, bool close_on_unref,
 
 EXIT:
 
-    if( chn != 0 ) g_io_channel_unref(chn);
+    if( chn )
+        g_io_channel_unref(chn);
 
     return wid;
 }
@@ -150,27 +150,25 @@ mempressure_psi_is_available(void)
     return access(PSI_MEMORY_PATH, R_OK) == 0;
 }
 
-static int   mempressure_psi_warning_fd    = -1;
-static int   mempressure_psi_critical_fd   = -1;
-static guint mempressure_psi_warn_event_id = 0;
-static guint mempressure_psi_crit_event_id = 0;
-static guint mempressure_psi_warn_timeout  = 0;
-static guint mempressure_psi_crit_timeout  = 0;
+static int   mempressure_psi_warning_fd       = -1;
+static int   mempressure_psi_critical_fd      = -1;
+static guint mempressure_psi_warn_event_id    = 0;
+static guint mempressure_psi_crit_event_id    = 0;
+static guint mempressure_psi_warn_timeout_id  = 0;
+static guint mempressure_psi_crit_timeout_id  = 0;
 
 static void
 mempressure_psi_update_level(void)
 {
     memnotify_level_t prev = mempressure_psi_level;
 
-    if( mempressure_psi_crit_timeout != 0 ) {
+    if( mempressure_psi_crit_timeout_id )
         mempressure_psi_level = MEMNOTIFY_LEVEL_CRITICAL;
-    }
-    else if( mempressure_psi_warn_timeout != 0 ) {
+    else if( mempressure_psi_warn_timeout_id )
         mempressure_psi_level = MEMNOTIFY_LEVEL_WARNING;
-    }
-    else {
+    else
         mempressure_psi_level = MEMNOTIFY_LEVEL_NORMAL;
-    }
+
     if( prev != mempressure_psi_level ) {
         mce_log(LL_INFO, "mempressure_psi_level: %s -> %s",
                 memnotify_level_repr(prev),
@@ -192,11 +190,11 @@ mempressure_psi_timeout_cb(gpointer user_data)
     int fd = *((int *)user_data);
     if( fd == mempressure_psi_warning_fd ) {
         mce_log(LL_DEBUG, "PSI warning event timeout");
-        mempressure_psi_warn_timeout = 0;
+        mempressure_psi_warn_timeout_id = 0;
     }
     else if( fd == mempressure_psi_critical_fd ) {
         mce_log(LL_DEBUG, "PSI critical event timeout");
-        mempressure_psi_crit_timeout = 0;
+        mempressure_psi_crit_timeout_id = 0;
     }
     else {
         mce_log(LL_CRIT, "unknown fd in timeout callback");
@@ -209,7 +207,7 @@ EXIT:
     return G_SOURCE_REMOVE;
 }
 
-/** Input watch callback for PSI events
+/** Input watch callback for PSI warning events
  */
 static gboolean
 mempressure_psi_event_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
@@ -218,49 +216,57 @@ mempressure_psi_event_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
     (void)aptr;
 
     gboolean ret = G_SOURCE_REMOVE;
+    int      fd  = -2; // != -1 closed file placeholder
+
+    if( aptr == NULL ) {
+        mce_log(LL_ERR, "PSI event: null iowatch argument");
+        goto EXIT;
+    }
+
+    fd = *((int *)aptr);
 
     if( cnd & ~G_IO_PRI ) {
-        mce_log(LL_ERR, "unexpected input watch condition");
-        goto EXIT;
-    }
-    if( aptr == NULL ) {
-        mce_log(LL_ERR, "null watch argument");
-        goto EXIT;
-    }
-
-    int fd = *((int *)aptr);
-
-    if( fd != mempressure_psi_warning_fd && fd != mempressure_psi_critical_fd ) {
-        mce_log(LL_CRIT, "unknown fd in iowatch callback");
+        mce_log(LL_ERR, "PSI event: unexpected iowatch condition");
         goto EXIT;
     }
 
     if( fd == mempressure_psi_warning_fd ) {
         mce_log(LL_DEBUG, "warning PSI event");
-        if( mempressure_psi_warn_timeout != 0 ) {
-            g_source_remove(mempressure_psi_warn_timeout);
-        }
-        mempressure_psi_warn_timeout = g_timeout_add((mempressure_psi_window / 1000) * 2,
-                                                     mempressure_psi_timeout_cb, aptr);
+        if( mempressure_psi_warn_timeout_id )
+            g_source_remove(mempressure_psi_warn_timeout_id);
+        mempressure_psi_warn_timeout_id = g_timeout_add((mempressure_psi_window / 1000) * 2,
+                                                        mempressure_psi_timeout_cb, aptr);
+    }
+    else if( fd == mempressure_psi_critical_fd ) {
+        mce_log(LL_DEBUG, "critical PSI event");
+        if( mempressure_psi_crit_timeout_id )
+            g_source_remove(mempressure_psi_crit_timeout_id);
+        mempressure_psi_crit_timeout_id = g_timeout_add((mempressure_psi_window / 1000) * 2,
+                                                        mempressure_psi_timeout_cb, aptr);
     }
     else {
-        assert(fd == mempressure_psi_critical_fd);
-        mce_log(LL_DEBUG, "critical PSI event");
-        if( mempressure_psi_crit_timeout != 0 ) {
-            g_source_remove(mempressure_psi_crit_timeout);
-        }
-        mempressure_psi_crit_timeout = g_timeout_add((mempressure_psi_window / 1000) * 2,
-                                                     mempressure_psi_timeout_cb, aptr);
+        mce_log(LL_ERR, "unknown PSI event");
+        goto EXIT;
     }
+
     mempressure_psi_update_level();
+
     ret = G_SOURCE_CONTINUE;
 
 EXIT:
 
-    if( ret == G_SOURCE_REMOVE && (mempressure_psi_warn_event_id || mempressure_psi_crit_event_id) ) {
-        mempressure_psi_warn_event_id = 0;
-        mempressure_psi_crit_event_id = 0;
-        mce_log(LL_CRIT, "disabling eventfd iowatch");
+    if( ret == G_SOURCE_REMOVE ) {
+        if( fd == mempressure_psi_warning_fd ) {
+            mce_log(LL_CRIT, "PSI event: disabling warning iowatch");
+            mempressure_psi_warn_event_id = 0;
+        }
+        else if( fd == mempressure_psi_critical_fd ) {
+            mce_log(LL_CRIT, "PSI event: disabling critical iowatch");
+            mempressure_psi_crit_event_id = 0;
+        }
+        else {
+            mce_log(LL_CRIT, "PSI event: disabling stray iowatch");
+        }
     }
 
     return ret;
@@ -269,14 +275,16 @@ EXIT:
 static void
 mempressure_psi_quit(void)
 {
-    if( mempressure_psi_warn_timeout != 0 ) {
-        g_source_remove(mempressure_psi_warn_timeout);
+    if( mempressure_psi_warn_timeout_id ) {
+        g_source_remove(mempressure_psi_warn_timeout_id),
+            mempressure_psi_warn_timeout_id = 0;
     }
-    if( mempressure_psi_crit_timeout != 0 ) {
-        g_source_remove(mempressure_psi_crit_timeout);
+    if( mempressure_psi_crit_timeout_id ) {
+        g_source_remove(mempressure_psi_crit_timeout_id),
+            mempressure_psi_crit_timeout_id = 0;
     }
     if( mempressure_psi_warn_event_id ) {
-        mce_log(LL_DEBUG, "remove warnong eventfd iowatch");
+        mce_log(LL_DEBUG, "remove warning eventfd iowatch");
         g_source_remove(mempressure_psi_warn_event_id),
             mempressure_psi_warn_event_id = 0;
     }
@@ -286,16 +294,14 @@ mempressure_psi_quit(void)
             mempressure_psi_crit_event_id = 0;
     }
     if( mempressure_psi_warning_fd ) {
-        if( close( mempressure_psi_warning_fd ) < 0 ) {
+        if( close( mempressure_psi_warning_fd ) == -1 )
             mce_log(LL_ERR, "close failed");
-        }
-        mempressure_psi_warning_fd = 0;
+        mempressure_psi_warning_fd = -1;
     }
     if( mempressure_psi_critical_fd ) {
-        if( close( mempressure_psi_critical_fd ) < 0 ) {
+        if( close( mempressure_psi_critical_fd ) == -1 )
             mce_log(LL_ERR, "close failed");
-        }
-        mempressure_psi_critical_fd = 0;
+        mempressure_psi_critical_fd = -1;
     }
 }
 
@@ -318,25 +324,23 @@ mempressure_psi_init(void)
     }
 
     // setup thresholds
-    char buf[1024];
-    snprintf(buf, sizeof buf,
-             "%s %d %d",
+    char buf[64];
+    snprintf(buf, sizeof buf, "%s %d %d",
              mempressure_psi_warning_type, mempressure_psi_warning_stall, mempressure_psi_window);
 
     mce_log(LL_DEBUG, "warning threshold: %s", buf);
 
-    if( write(mempressure_psi_warning_fd, buf, strlen(buf) + 1) < 0 ) {
+    if( write(mempressure_psi_warning_fd, buf, strlen(buf) + 1) == -1 ) {
         mce_log(LL_ERR, "%s: write: %m", PSI_MEMORY_PATH);
         goto EXIT;
     }
 
-    snprintf(buf, sizeof buf,
-             "%s %d %d",
+    snprintf(buf, sizeof buf, "%s %d %d",
              mempressure_psi_critical_type, mempressure_psi_critical_stall, mempressure_psi_window);
 
     mce_log(LL_DEBUG, "critical threshold: %s", buf);
 
-    if( write(mempressure_psi_critical_fd, buf, strlen(buf) + 1) < 0 ) {
+    if( write(mempressure_psi_critical_fd, buf, strlen(buf) + 1) == -1 ) {
         mce_log(LL_ERR, "%s: write: %m", PSI_MEMORY_PATH);
         goto EXIT;
     }
@@ -507,9 +511,8 @@ static void mempressure_psi_setting_init(void)
     mce_setting_get_string(MCE_SETTING_MEMPRESSURE_PSI_WARNING_TYPE,
                            &mempressure_psi_warning_type);
 
-    if( mempressure_psi_warning_type == NULL ) {
+    if( !mempressure_psi_warning_type )
         mempressure_psi_warning_type = g_strdup(MCE_DEFAULT_MEMPRESSURE_PSI_WARNING_TYPE);
-    }
 
     mce_setting_notifier_add(MCE_SETTING_MEMPRESSURE_PSI_CRITICAL_PATH,
                              MCE_SETTING_MEMPRESSURE_PSI_CRITICAL_STALL,
@@ -527,9 +530,8 @@ static void mempressure_psi_setting_init(void)
     mce_setting_get_string(MCE_SETTING_MEMPRESSURE_PSI_CRITICAL_TYPE,
                            &mempressure_psi_critical_type);
 
-    if( mempressure_psi_critical_type == NULL ) {
+    if( !mempressure_psi_critical_type )
         mempressure_psi_critical_type = g_strdup(MCE_DEFAULT_MEMPRESSURE_PSI_CRITICAL_TYPE);
-    }
 }
 
 /** Stop tracking setting changes
@@ -545,8 +547,8 @@ static void mempressure_psi_setting_quit(void)
     mce_setting_notifier_remove(mempressure_psi_setting_warning_type_id),
         mempressure_psi_setting_warning_type_id = 0;
 
-    g_free(mempressure_psi_warning_type);
-    mempressure_psi_warning_type = NULL;
+    g_free(mempressure_psi_warning_type),
+        mempressure_psi_warning_type = NULL;
 
     mce_setting_notifier_remove(mempressure_psi_setting_critical_stall_id),
         mempressure_psi_setting_critical_stall_id = 0;
@@ -554,8 +556,8 @@ static void mempressure_psi_setting_quit(void)
     mce_setting_notifier_remove(mempressure_psi_setting_critical_type_id),
         mempressure_psi_setting_critical_type_id = 0;
 
-    g_free(mempressure_psi_critical_type);
-    mempressure_psi_critical_type = NULL;
+    g_free(mempressure_psi_critical_type),
+        mempressure_psi_critical_type = NULL;
 }
 
 /* ========================================================================= *
