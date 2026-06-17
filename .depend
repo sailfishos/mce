@@ -178,6 +178,7 @@ mce-conf.o:\
 	mce-conf.c\
 	datapipe.h\
 	mce-conf.h\
+	mce-lib.h\
 	mce-log.h\
 	mce.h\
 	modules/led.h\
@@ -187,6 +188,7 @@ mce-conf.pic.o:\
 	mce-conf.c\
 	datapipe.h\
 	mce-conf.h\
+	mce-lib.h\
 	mce-log.h\
 	mce.h\
 	modules/led.h\
