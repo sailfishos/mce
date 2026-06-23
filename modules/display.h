@@ -5,6 +5,7 @@
  * Copyright (c) 2007 - 2011 Nokia Corporation and/or its subsidiary(-ies).
  * Copyright (c) 2013 - 2019 Jolla Ltd.
  * Copyright (c) 2025 Jollyboys Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Tapio Rantala <ext-tapio.rantala@nokia.com>
@@ -41,6 +42,9 @@
 
 /** List of max backlight control files to try */
 # define MCE_CONF_MAX_BACKLIGHT_PATH             "MaxBrightnessPath"
+
+/** Subset of display brightness values to use */
+# define MCE_CONF_BRIGHTNESS_MAPPING             "BrightnessMapping"
 
 /** Default timeout for the high brightness mode; in seconds */
 # define DEFAULT_HBM_TIMEOUT                     1800    /* 30 min */
