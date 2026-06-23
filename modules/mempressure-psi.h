@@ -3,6 +3,7 @@
  * Memory use tracking and notification plugin for the Mode Control Entity
  * <p>
  * Copyright (c) 2014 - 2019 Jolla Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  * @author Lukáš Karas <lukas.karas@avast.com>
@@ -28,7 +29,7 @@
  * ========================================================================= */
 
 /** Prefix for mempressure setting keys */
-# define MCE_SETTING_MEMPRESSURE_PSI_PATH              "/system/osso/dsm/mempressure-psi"
+# define MCE_SETTING_MEMPRESSURE_PSI_PATH              "/system/osso/dsm/mempressure_psi"
 
 /** PSI tracking window [us] */
 # define MCE_SETTING_MEMPRESSURE_PSI_WINDOW            MCE_SETTING_MEMPRESSURE_PSI_PATH"/window"

@@ -1604,6 +1604,7 @@ tools/mcetool.o:\
 	modules/inactivity.h\
 	modules/led.h\
 	modules/memnotify.h\
+	modules/mempressure-psi.h\
 	modules/powersavemode.h\
 	modules/proximity.h\
 	musl-compatibility.h\
@@ -1628,6 +1629,7 @@ tools/mcetool.pic.o:\
 	modules/inactivity.h\
 	modules/led.h\
 	modules/memnotify.h\
+	modules/mempressure-psi.h\
 	modules/powersavemode.h\
 	modules/proximity.h\
 	musl-compatibility.h\
