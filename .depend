@@ -379,6 +379,7 @@ mce-sensorfw.o:\
 	builtin-gconf.h\
 	datapipe.h\
 	libwakelock.h\
+	mce-conf.h\
 	mce-dbus.h\
 	mce-log.h\
 	mce-sensorfw.h\
@@ -390,6 +391,7 @@ mce-sensorfw.pic.o:\
 	builtin-gconf.h\
 	datapipe.h\
 	libwakelock.h\
+	mce-conf.h\
 	mce-dbus.h\
 	mce-log.h\
 	mce-sensorfw.h\

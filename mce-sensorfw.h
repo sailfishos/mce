@@ -4,6 +4,7 @@
  * <p>
  * Copyright (c) 2013 - 2019 Jolla Ltd.
  * Copyright (c) 2025 Jollyboys Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
@@ -24,6 +25,12 @@
 # define MCE_SENSORFW_H_
 
 # include <stdbool.h>
+
+/** Name of Sensors configuration group */
+# define MCE_CONF_SENSORS_GROUP          "Sensors"
+
+/** Settin for ALS value multiplier s*/
+# define MCE_CONF_ALS_VALUE_MULTIPLIER   "AlsValueMultiplier"
 
 # ifdef __cplusplus
 extern "C" {
