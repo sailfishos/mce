@@ -642,6 +642,7 @@ NORMALIZE_USES_SPC =\
 	modules/memnotify.c\
 	modules/memnotify.h\
 	modules/mempressure.c\
+	modules/mempressure.h\
 	modules/packagekit.c\
 	modules/powersavemode.h\
 	modules/proximity.c\
