@@ -2,8 +2,9 @@
  * @file mce-conf.h
  * Headers for the configuration option handling for MCE
  * <p>
- * Copyright © 2006-2007 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2013-2019 Jolla Ltd.
+ * Copyright (c) 2006 - 2007 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (c) 2013 - 2019 Jolla Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>
@@ -39,6 +40,8 @@ gchar *mce_conf_get_string(const gchar *group, const gchar *key,
 			   const gchar *defaultval);
 gchar **mce_conf_get_string_list(const gchar *group, const gchar *key,
 				 gsize *length);
+double mce_conf_get_double(const gchar *group, const gchar *key, double defaultval);
+float mce_conf_get_float(const gchar *group, const gchar *key, float defaultval);
 gchar **mce_conf_get_keys(const gchar *group, gsize *length);
 
 gboolean mce_conf_init(void);

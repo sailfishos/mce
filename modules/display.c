@@ -2774,6 +2774,12 @@ EXIT:
  * BACKLIGHT_BRIGHTNESS
  * ========================================================================= */
 
+/** Maximum logical level for mapped brightness (-1 = no mapping) */
+static int  mdy_brightness_map_max = -1;
+
+/** Mapping from logical brightness to actual brightness (null = no mapping) */
+static uint16_t *mdy_brightness_map_val = NULL;
+
 /** Maximum display brightness, hw specific */
 static gint mdy_brightness_level_maximum = DEFAULT_MAXIMUM_DISPLAY_BRIGHTNESS;
 
@@ -2947,6 +2953,15 @@ static bool mdy_brightness_set_level_default(int number)
         /* Pretend success if we have nowhere to write to,
          * so that we do not trigger useless logging. */
         return true;
+    }
+
+    /* If brightness mapping is defined, use it */
+    if( mdy_brightness_map_max > 0 ) {
+        if( number < 0 )
+            number = 0;
+        else if( number > mdy_brightness_map_max )
+            number = mdy_brightness_map_max;
+        number = mdy_brightness_map_val[number];
     }
 
     return mce_write_number_string_to_file(&mdy_brightness_level_output, number);
@@ -12223,14 +12238,93 @@ static void mdy_setting_quit(void)
  * MODULE_LOAD_UNLOAD
  * ========================================================================= */
 
+/** Release brightness mapping data
+ */
+static void
+mdy_brightness_mapping_quit(void)
+{
+    g_free(mdy_brightness_map_val),
+        mdy_brightness_map_val = NULL;
+    mdy_brightness_map_max = -1;
+}
+
+/** Parse brightness mapping data from MCE configuration
+ */
+static void
+mdy_brightness_mapping_init(void)
+{
+    gsize cnt = 0;
+    gint *val = NULL;
+
+    /* Clear current values */
+    mdy_brightness_mapping_quit();
+
+    /* Skip silently if not defined */
+    if( !mce_conf_has_key(MCE_CONF_DISPLAY_GROUP, MCE_CONF_BRIGHTNESS_MAPPING) )
+        goto EXIT;
+
+    /* Must have at least two values: zero and positive */
+    val = mce_conf_get_int_list(MCE_CONF_DISPLAY_GROUP, MCE_CONF_BRIGHTNESS_MAPPING, &cnt);
+
+    if( !val || cnt < 2 ) {
+        mce_log(LL_WARN, "BrightnessMapping: not enough values");
+        goto EXIT;
+    }
+
+    if( val[0] != 0 ) {
+        mce_log(LL_WARN, "BrightnessMapping: first value (= %d) is not zero", val[0]);
+        goto EXIT;
+    }
+
+    if( val[1] <= 0 ) {
+        mce_log(LL_WARN, "BrightnessMapping: second value (= %d) is not positive", val[1]);
+        goto EXIT;
+    }
+
+    /* Values must be ascending (dups are allowed) */
+    for( gsize i = 1; i < cnt; ++i ) {
+        if( val[i] < val[i - i] ) {
+            mce_log(LL_WARN, "BrightnessMapping: values are not ascending");
+            goto EXIT;
+        }
+    }
+
+    /* Values must fit in uint16_t */
+    for( gsize i = 0; i < cnt; ++i ) {
+        if( val[i] > UINT16_MAX ) {
+            mce_log(LL_WARN, "BrightnessMapping: value %d is not <= %d", val[i], UINT16_MAX);
+            goto EXIT;
+        }
+    }
+
+    /* Take new values in use */
+    mdy_brightness_map_max = cnt - 1;
+    mdy_brightness_map_val = g_malloc(cnt * sizeof *mdy_brightness_map_val);
+    for( gsize i = 0; i < cnt; ++i )
+        mdy_brightness_map_val[i] = (uint16_t)val[i];
+
+    mce_log(LL_DEBUG, "BrightnessMapping: internal [%d..%d] -> external: [%u..%u]",
+            0, mdy_brightness_map_max, mdy_brightness_map_val[0],
+            mdy_brightness_map_val[mdy_brightness_map_max]);
+
+EXIT:
+    g_free(val);
+}
+
 /** Probe maximum and current backlight brightness from sysfs
  */
 static void mdy_brightness_init(void)
 {
     gulong tmp = 0;
 
+    /* Check if brightness mapping is defined */
+    mdy_brightness_mapping_init();
+
     /* If possible, obtain maximum brightness level */
-    if( !mdy_brightness_level_maximum_path ) {
+    if( mdy_brightness_map_max > 0 ) {
+        mdy_brightness_level_maximum = mdy_brightness_map_max;
+    }
+    else if( !mdy_brightness_level_maximum_path ) {
         mce_log(LL_NOTICE, "No path for maximum brightness file; "
                 "defaulting to %d",
                 mdy_brightness_level_maximum);
@@ -12252,6 +12346,15 @@ static void mdy_brightness_init(void)
     if( mdy_brightness_level_output.path &&
         mce_read_number_string_from_file(mdy_brightness_level_output.path,
                                               &tmp, NULL, FALSE, TRUE) ) {
+        /* If brightness mapping is defined, do a reverse lookup for active value */
+        if( tmp && mdy_brightness_map_max > 0 ) {
+            for( int i = 0; ; ++i ) {
+                if( i >= mdy_brightness_map_max || tmp <= mdy_brightness_map_val[i] ) {
+                    tmp = i;
+                    break;
+                }
+            }
+        }
         mdy_brightness_level_active =
         mdy_brightness_level_cached = (gint)tmp;
     }
@@ -12510,6 +12613,8 @@ void g_module_unload(GModule *module)
     common_on_proximity_cancel(MODULE_NAME, 0, 0);
 
     compositor_stm_quit_config();
+
+    mdy_brightness_mapping_quit();
 
     return;
 }

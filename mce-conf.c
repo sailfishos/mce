@@ -2,8 +2,9 @@
  * @file mce-conf.c
  * Configuration option handling for MCE
  * <p>
- * Copyright © 2006-2009 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2013-2019 Jolla Ltd.
+ * Copyright (c) 2006 - 2009 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (c) 2013 - 2019 Jolla Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>
@@ -248,6 +249,45 @@ gchar **mce_conf_get_string_list(const gchar *group, const gchar *key,
 	g_clear_error(&error);
 
 	return tmp;
+}
+
+/**
+ * Get a double configuration value
+ *
+ * @param group       The configuration group to get the value from
+ * @param key         The configuration key to get the value of
+ * @param defaultval  The default value to use if the key isn't set
+ *
+ * @return The configuration value on success, the default value on failure
+ */
+double mce_conf_get_double(const gchar *group, const gchar *key, double defaultval)
+{
+	GError   *error   = NULL;
+	double    value   = g_key_file_get_double(mce_conf_get_keyfile(), group, key, &error);
+
+	if( error ) {
+		mce_log(LL_DEBUG, "Could not get config key %s/%s; %s; defaulting to `%g'",
+			group, key, error->message, defaultval);
+		value = defaultval;
+	}
+
+	g_clear_error(&error);
+
+	return value;
+}
+
+/**
+ * Get a float configuration value
+ *
+ * @param group       The configuration group to get the value from
+ * @param key         The configuration key to get the value of
+ * @param defaultval  The default value to use if the key isn't set
+ *
+ * @return The configuration value on success, the default value on failure
+ */
+float mce_conf_get_float(const gchar *group, const gchar *key, float defaultval)
+{
+	return (float)mce_conf_get_double(group, key, defaultval);
 }
 
 gchar **mce_conf_get_keys(const gchar *group, gsize *length)

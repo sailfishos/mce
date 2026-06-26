@@ -28,6 +28,7 @@
 #include "mce-sensorfw.h"
 
 #include "mce.h"
+#include "mce-conf.h"
 #include "mce-log.h"
 #include "mce-dbus.h"
 #include "libwakelock.h"
@@ -1978,6 +1979,12 @@ EXIT:
  * Callbacks for interpreting sensor specific change notifications
  * ------------------------------------------------------------------------- */
 
+/** Scaler used for ALS data
+ *
+ * In case we get raw uncalibrated values from sensorfw
+ */
+static float als_value_multiplier = 1.0f;
+
 /** Callback for handling ambient light events from sensord */
 static void
 sfw_backend_als_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *sampledata)
@@ -2038,7 +2045,7 @@ sfw_backend_als_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *s
         mce_log(LL_DEBUG, "ALS: NOTIFY %s %s",
                 sfw_notify_name(type),
                 sfw_sample_als_repr(sample));
-        sfw_notify_als_cb(sample->als_value);
+        sfw_notify_als_cb((int)(sample->als_value * als_value_multiplier + 0.5));
     }
 
     return;
@@ -5637,11 +5644,27 @@ static mce_dbus_handler_t sfw_dbus_handlers[] =
 
 // ----------------------------------------------------------------
 
+static void
+mce_sensorfw_settings_init(void)
+{
+    als_value_multiplier = mce_conf_get_float(MCE_CONF_SENSORS_GROUP, MCE_CONF_ALS_VALUE_MULTIPLIER, 1.0f);
+}
+
+static void
+mce_sensorfw_settings_quit(void)
+{
+    als_value_multiplier = 1.0f;
+}
+
+// ----------------------------------------------------------------
+
 /** Initialize mce sensorfw module
  */
 bool
 mce_sensorfw_init(void)
 {
+    mce_sensorfw_settings_init();
+
     /* Register D-Bus handlers */
     mce_dbus_handler_register_array(sfw_dbus_handlers);
 
@@ -5678,4 +5701,6 @@ mce_sensorfw_quit(void)
     sfw_service_delete(sfw_service), sfw_service = 0;
 
     sfw_exception_cancel();
+
+    mce_sensorfw_settings_quit();
 }

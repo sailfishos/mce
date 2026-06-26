@@ -6,7 +6,7 @@
  * <p>
  * Copyright (c) 2007 - 2011 Nokia Corporation and/or its subsidiary(-ies).
  * Copyright (c) 2012 - 2019 Jolla Ltd.
- * Copyright (c) 2025 Jolla Mobile Ltd
+ * Copyright (c) 2025 - 2026 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Tuomo Tanskanen <ext-tuomo.1.tanskanen@nokia.com>
@@ -1018,8 +1018,8 @@ fba_als_filter_load_profile(fba_als_filter_t *self, const char *grp, int prof)
                 grp, lim_key);
     }
     else if( lim_cnt < FBA_PROFILE_STEPS ) {
-        mce_log(LL_DEBUG, "[%s] %s: missing items",
-                grp, lim_key);
+        mce_log(LL_DEBUG, "[%s] %s: missing items (%d vs %d)",
+                grp, lim_key, (int)lim_cnt, FBA_PROFILE_STEPS);
     }
 
     for( gsize k = 0; k < lim_cnt; ++k ) {
@@ -1116,18 +1116,16 @@ fba_als_filter_get_lux(fba_als_filter_t *self, int prof, int slot)
 static int
 fba_als_filter_run(fba_als_filter_t *self, int prof, int lux)
 {
-    mce_log(LL_DEBUG, "FILTERING: %s", self->id);
-
     if( lux < 0 ) {
-        mce_log(LL_DEBUG, "no lux data yet");
+        mce_log(LL_DEBUG, "%s: no lux data yet", self->id);
         goto EXIT;
     }
 
     if( self->prof != prof ) {
-        mce_log(LL_DEBUG, "profile changed");
+        mce_log(LL_DEBUG, "%s: als profile changed: %d -> %d", self->id, self->prof, prof);
     }
     else if( self->lux_lo <= lux && lux <= self->lux_hi ) {
-        mce_log(LL_DEBUG, "within thresholds");
+        mce_log(LL_DEBUG, "%s: lux=%d is within thresholds [%d..%d]", self->id, lux, self->lux_lo, self->lux_hi);
         goto EXIT;
     }
 
@@ -1168,8 +1166,8 @@ fba_als_filter_run(fba_als_filter_t *self, int prof, int lux)
     self->lux_lo = b - fba_util_imin(b-a, c-b) / 10;
     self->lux_hi = c;
 
-    mce_log(LL_DEBUG, "prof=%d, slot=%d, range=%d...%d",
-            prof, slot, self->lux_lo, self->lux_hi);
+    mce_log(LL_DEBUG, "%s: prof=%d, lux=%d, slot=%d, range=%d...%d ==> value=%d",
+            self->id, prof, lux, slot, self->lux_lo, self->lux_hi, self->val);
 
 EXIT:
     return self->val;
