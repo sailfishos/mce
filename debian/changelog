@@ -1,3 +1,9 @@
+mce (1.117.1) precise; urgency=low
+
+  * [battery-udev] Use POWER_SUPPLY_USB_TYPE property. JB#64437
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Thu, 02 Jul 2026 08:15:11 +0300
+
 mce (1.117.0) precise; urgency=low
 
   * [brightness] Tweak auto-brightness debug logging. JB#64183
