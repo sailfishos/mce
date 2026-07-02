@@ -4,7 +4,7 @@
  * Copyright (c) 2005 - 2011 Nokia Corporation and/or its subsidiary(-ies).
  * Copyright (c) 2012 - 2022 Jolla Ltd.
  * Copyright (c) 2019 - 2020 Open Mobile Platform LLC.
- * Copyright (c) 2025 Jolla Mobile Ltd
+ * Copyright (c) 2025 - 2026 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>
@@ -40,6 +40,7 @@
 #include "../modules/powersavemode.h"
 #include "../modules/proximity.h"
 #include "../modules/memnotify.h"
+#include "../modules/mempressure-psi.h"
 #include "../modules/led.h"
 #include "../modules/charging.h"
 #include "../systemui/dbus-names.h"
@@ -139,7 +140,9 @@ static int           xmce_parse_powerkeyevent                          (const ch
 static unsigned      xmce_parse_radio_states                           (const char *args);
 static gboolean      xmce_parse_enabled                                (const char *args);
 static int           xmce_parse_integer                                (const char *args);
+static uint64_t      xmce_parse_memory_amount                          (const char *args);
 static int           xmce_parse_memory_limit                           (const char *args);
+static double        xmce_parse_time_amount                            (const char *args);
 static double        xmce_parse_double                                 (const char *args);
 static bool          xmce_set_verbosity                                (const char *arg);
 static void          xmce_get_verbosity                                (void);
@@ -360,6 +363,16 @@ static bool          xmce_set_memnotify_critical_active                (const ch
 static void          xmce_get_memnotify_helper                         (const char *title, const char *key);
 static void          xmce_get_memnotify_limits                         (void);
 static void          xmce_get_memnotify_level                          (void);
+static const char   *xmce_parse_mempressure_psi_type                   (const char *args);
+static gint          xmce_parse_mempressure_psi_limit                  (const char *args);
+static bool          xmce_set_mempressure_psi_window                   (const char *args);
+static bool          xmce_set_mempressure_psi_warning_stall            (const char *args);
+static bool          xmce_set_mempressure_psi_warning_type             (const char *args);
+static bool          xmce_set_mempressure_psi_critical_stall           (const char *args);
+static bool          xmce_set_mempressure_psi_critical_type            (const char *args);
+static void          xmce_get_mempressure_psi_int_helper               (const char *title, const char *key);
+static void          xmce_get_mempressure_psi_string_helper            (const char *title, const char *key);
+static void          xmce_get_mempressure_psi_limits                   (void);
 static bool          xmce_set_input_policy_mode                        (const char *args);
 static void          xmce_get_input_policy_mode                        (void);
 static bool          xmce_set_touch_unblock_delay                      (const char *args);
@@ -1723,7 +1736,7 @@ EXIT:
  */
 static gboolean xmce_setting_set_string(const gchar *const key, const char *value)
 {
-        debugf("@%s(%s, %d)\n", __FUNCTION__, key, value);
+        debugf("@%s(%s, %s)\n", __FUNCTION__, key, value ?: "<null>");
 
         static const char sig[] = DBUS_TYPE_STRING_AS_STRING;
 
@@ -2092,13 +2105,13 @@ static int xmce_parse_integer(const char *args)
         return res;
 }
 
-/** Convert string to memory limit page count
+/** Convert string to memory amount
  *
  * @param args string from user
  *
  * @return integer number, or terminate on errors
  */
-static int xmce_parse_memory_limit(const char *args)
+static uint64_t xmce_parse_memory_amount(const char *args)
 {
         char     *end = 0;
         uint64_t  val = strtoull(args, &end, 0);
@@ -2106,15 +2119,15 @@ static int xmce_parse_memory_limit(const char *args)
                 switch( *end ) {
                 case 'k':
                         ++end;
-                        val = (val << 10) / PAGE_SIZE;
+                        val <<= 10;
                         break;
                 case 'M':
                         ++end;
-                        val = (val << 20) / PAGE_SIZE;
+                        val <<= 20;
                         break;
                 case 'G':
                         ++end;
-                        val = (val << 30) / PAGE_SIZE;
+                        val <<= 30;
                         break;
                 default:
                         errorf("'%c' is not among supported modifiers 'kMG'\n", *end);
@@ -2126,12 +2139,61 @@ static int xmce_parse_memory_limit(const char *args)
                 errorf("%s: not a valid integer value\n", args);
                 exit(EXIT_FAILURE);
         }
-        int res = (int)val;
-        if( res < 0 || (uint64_t)res != val ) {
+        return val;
+}
+
+/** Convert string to memory limit page count
+ *
+ * @param args string from user
+ *
+ * @return integer number, or terminate on errors
+ */
+static int xmce_parse_memory_limit(const char *args)
+{
+        uint64_t bytes = xmce_parse_memory_amount(args);
+        uint64_t pages = bytes / PAGE_SIZE;
+        int      res   = (int)pages;
+
+        if( (uint64_t)res != pages ) {
                 errorf("limit range overflow\n");
                 exit(EXIT_FAILURE);
         }
         return res;
+}
+
+/** Convert string to time amount
+ *
+ * @param args string from user
+ *
+ * @return integer number, or terminate on errors
+ */
+static double xmce_parse_time_amount(const char *args)
+{
+        char   *end = NULL;
+        double   val = strtod(args, &end);
+        if( end > args && *end != 0) {
+                if( !strcmp(end, "s") ) {
+                        end += 1;
+                }
+                else if( !strcmp(end, "ms") ) {
+                        end += 2;
+                        val *= 1e-3;
+                }
+                else if( !strcmp(end, "us") ) {
+                        end += 2;
+                        val *= 1e-6;
+                }
+                else {
+                        errorf("'%s' is not among supported modifiers 's|ms|us'\n", end);
+                        exit(EXIT_FAILURE);
+                }
+        }
+
+        if( end <= args || *end != 0 ) {
+                errorf("%s: not a valid double value\n", args);
+                exit(EXIT_FAILURE);
+        }
+        return val;
 }
 
 /** Convert string to double
@@ -6325,7 +6387,7 @@ static void xmce_get_brightness_fade(void)
 }
 
 /* ------------------------------------------------------------------------- *
- * memnotify limit settings
+ * memnotify / mempressure limit settings
  * ------------------------------------------------------------------------- */
 
 static bool xmce_set_memnotify_warning_used(const char *args)
@@ -6401,6 +6463,113 @@ static void xmce_get_memnotify_level(void)
         xmce_ipc_string_reply(MCE_MEMORY_LEVEL_GET, &str, DBUS_TYPE_INVALID);
         printf("%-"PAD1"s %s\n","Memory use level:", str ?: "unknown");
         free(str);
+}
+
+/* ------------------------------------------------------------------------- *
+ * mempressure_psi limit settings
+ * ------------------------------------------------------------------------- */
+
+static const char *xmce_parse_mempressure_psi_type(const char *args)
+{
+        // FIME: validate
+        return args ?: "unknown";
+}
+
+static gint xmce_parse_mempressure_psi_limit(const char *args)
+{
+        double us  = xmce_parse_time_amount(args) * 1e6;
+        gint   res = (gint)us;
+        if( fabs(us - res) >= 1.0 ) {
+                errorf("limit range overflow\n");
+                exit(EXIT_FAILURE);
+        }
+        return res;
+}
+
+static bool xmce_set_mempressure_psi_window(const char *args)
+{
+        const char *key = MCE_SETTING_MEMPRESSURE_PSI_WINDOW;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
+        return xmce_setting_set_int(key, xmce_parse_mempressure_psi_limit(args));
+}
+
+static bool xmce_set_mempressure_psi_warning_stall(const char *args)
+{
+        const char *key = MCE_SETTING_MEMPRESSURE_PSI_WARNING_STALL;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
+        return xmce_setting_set_int(key, xmce_parse_mempressure_psi_limit(args));
+}
+
+static bool xmce_set_mempressure_psi_warning_type(const char *args)
+{
+        const char *key = MCE_SETTING_MEMPRESSURE_PSI_WARNING_TYPE;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
+        return xmce_setting_set_string(key, xmce_parse_mempressure_psi_type(args));
+}
+
+static bool xmce_set_mempressure_psi_critical_stall(const char *args)
+{
+        const char *key = MCE_SETTING_MEMPRESSURE_PSI_CRITICAL_STALL;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
+        return xmce_setting_set_int(key, xmce_parse_mempressure_psi_limit(args));
+}
+
+static bool xmce_set_mempressure_psi_critical_type(const char *args)
+{
+        const char *key = MCE_SETTING_MEMPRESSURE_PSI_CRITICAL_TYPE;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
+        return xmce_setting_set_string(key, xmce_parse_mempressure_psi_type(args));
+}
+
+static void xmce_get_mempressure_psi_int_helper(const char *title, const char *key)
+{
+        gint val = 0;
+        if( !xmce_setting_get_int(key, &val) )
+                printf("%-"PAD1"s %s\n", title, "unknown");
+        else if( val <= 0 )
+                printf("%-"PAD1"s %s\n", title, "disabled");
+        else
+                printf("%-"PAD1"s %d [us]\n", title, val);
+}
+
+static void xmce_get_mempressure_psi_string_helper(const char *title, const char *key)
+{
+        gchar *val = NULL;
+
+        if( !xmce_setting_get_string(key, &val) )
+                printf("%-"PAD1"s %s\n", title, "unknown");
+        else if( !val || !*val )
+                printf("%-"PAD1"s %s\n", title, "unset");
+        else
+                printf("%-"PAD1"s %s\n", title, val);
+}
+
+static void xmce_get_mempressure_psi_limits(void)
+{
+        xmce_get_mempressure_psi_int_helper("Memory pressure-psi window:",
+                                            MCE_SETTING_MEMPRESSURE_PSI_WINDOW);
+
+        xmce_get_mempressure_psi_int_helper("Memory pressure-psi warning stall:",
+                                            MCE_SETTING_MEMPRESSURE_PSI_WARNING_STALL);
+
+        xmce_get_mempressure_psi_string_helper("Memory pressure-psi warning type:",
+                                               MCE_SETTING_MEMPRESSURE_PSI_WARNING_TYPE);
+
+        xmce_get_mempressure_psi_int_helper("Memory pressure-psi critical stall:",
+                                            MCE_SETTING_MEMPRESSURE_PSI_CRITICAL_STALL);
+
+        xmce_get_mempressure_psi_string_helper("Memory pressure-psi critical type:",
+                                               MCE_SETTING_MEMPRESSURE_PSI_CRITICAL_TYPE);
 }
 
 /* ------------------------------------------------------------------------- *
@@ -7054,6 +7223,7 @@ static bool xmce_get_status(const char *args)
 
         get_led_breathing_enabled();
         get_led_breathing_limit();
+        xmce_get_mempressure_psi_limits();
         xmce_get_memnotify_limits();
         xmce_get_memnotify_level();
         xmce_get_button_backlligut_off_delay();
@@ -8398,6 +8568,42 @@ static const mce_opt_t options[] =
                         "set critical limit for active memory pages; zero=disabled\n"
         },
         {
+                .name        = "set-mempressure-psi-window",
+                .with_arg    = xmce_set_mempressure_psi_window,
+                .values      = "time[s|ms|us]",
+                .usage       =
+                        "set memory pressure time window size; zero=disabled\n"
+        },
+        {
+                .name        = "set-mempressure-psi-warning-stall",
+                .with_arg    = xmce_set_mempressure_psi_warning_stall,
+                .values      = "time[s|ms|us]",
+                .usage       =
+                        "set warning level stall time; zero=disabled\n"
+        },
+        {
+                .name        = "set-mempressure-psi-warning-type",
+                .with_arg    = xmce_set_mempressure_psi_warning_type,
+                .values      = "some|full|...",
+                .usage       =
+                        "set warning level stall type\n"
+        },
+        {
+                .name        = "set-mempressure-psi-critical-stall",
+                .with_arg    = xmce_set_mempressure_psi_critical_stall,
+                .values      = "time[s|ms|us]",
+                .usage       =
+                        "set critical level stall time; zero=disabled\n"
+        },
+        {
+                .name        = "set-mempressure-psi-critical-type",
+                .with_arg    = xmce_set_mempressure_psi_critical_type,
+                .values      = "some|full|...",
+                .usage       =
+                        "set critical level stall type\n"
+        },
+
+        {
                 .name        = "set-exception-length-call-in",
                 .with_arg    = xmce_set_exception_length_call_in,
                 .values      = "msec",
@@ -8618,7 +8824,7 @@ PROG_NAME" v"G_STRINGIFY(PRG_VERSION)"\n"
 "Copyright (c) 2005 - 2011 Nokia Corporation.  All rights reserved.\n"
 "Copyright (c) 2012 - 2022 Jolla Ltd.\n"
 "Copyright (c) 2019 - 2020 Open Mobile Platform LLC.\n"
-"Copyright (c) 2025 Jolla Mobile Ltd\n"
+"Copyright (c) 2025 - 2026 Jolla Mobile Ltd\n"
 ;
 
 static __attribute__((__noreturn__)) bool mcetool_do_version(const char *arg)
