@@ -65,6 +65,7 @@
 #define PROP_STATUS    "POWER_SUPPLY_STATUS"
 #define PROP_REAL_TYPE "POWER_SUPPLY_REAL_TYPE"
 #define PROP_TYPE      "POWER_SUPPLY_TYPE"
+#define PROP_USB_TYPE  "POWER_SUPPLY_USB_TYPE"
 
 /** INI-file group for blacklisting device properties */
 #define MCE_CONF_BATTERY_UDEV_PROPERTY_BLACKLIST_GROUP "BatteryUDevPropertyBlacklist"
@@ -436,6 +437,7 @@ static const char * const udevproperty_used_keys[] = {
     PROP_ONLINE,
     PROP_REAL_TYPE,
     PROP_TYPE,
+    PROP_USB_TYPE,
     // battery
     PROP_CAPACITY,
     PROP_STATUS,
@@ -1230,12 +1232,16 @@ udevdevice_init_chargertype(void)
          */
         { "CDP",         CHARGER_TYPE_CDP      },
         { "USB_CDP",     CHARGER_TYPE_CDP      },
+        { "DCP",         CHARGER_TYPE_DCP      },
         { "USB_DCP",     CHARGER_TYPE_DCP      },
+        { "PD",          CHARGER_TYPE_DCP      },
+        { "PD_PPS",      CHARGER_TYPE_DCP      },
         { "USB_HVDCP",   CHARGER_TYPE_HVDCP    },
         { "USB_HVDCP_3", CHARGER_TYPE_HVDCP    },
         { "Mains",       CHARGER_TYPE_DCP      },
         { "USB",         CHARGER_TYPE_USB      },
         { "USB_ACA",     CHARGER_TYPE_USB      },
+        { "SDP",         CHARGER_TYPE_USB      },
 
         /* Additions since leaving statefs behind
          */
@@ -1501,8 +1507,20 @@ udevdevice_add_prop(udevdevice_t *self, const char *key)
 static bool
 udevdevice_set_prop(udevdevice_t *self, const char *key, const char *val)
 {
+    gchar *tmp = NULL;
+    if( !strcmp(key, PROP_USB_TYPE) ) {
+        // Pick the highlighted value from a list of values
+        // For example: "Unknown [SDP] DCP CDP" -> "SDP"
+        const char *beg = strchr(val, '[');
+        if( beg ) {
+            const char *end = strchr(++beg, ']');
+            if( end )
+                val = tmp = g_strndup(beg, end - beg);
+        }
+    }
     udevproperty_t *prop = udevdevice_add_prop(self, key);
     bool rethink = udevproperty_set(prop, val);
+    g_free(tmp);
     return rethink;
 }
 
@@ -1620,12 +1638,26 @@ udevdevice_evaluate_charger(udevdevice_t *self, mcebat_t *mcebat)
 
     bool active = (present > 0 || online > 0);
 
+    const char     *type_name  = NULL;
+    charger_type_t  type_value = CHARGER_TYPE_NONE;
+
     if( active ) {
+        /* Charger is online, evaluate charger type */
         mcebat->charger_state = CHARGER_STATE_ON;
 
-        /* Charger is online, evaluate charger type
+        /* Yet another MTK variant is to have separate USB_TYPE variable.
+         * As it is more reliable way to differentiate between a PC and
+         * a charger, give it precedence over other properties.
          *
-         * Legacy QC devices have TYPE property that has
+         * Exception: In case of disconnected / unrecognized values, make
+         * decision based on values of other properties.
+         */
+        if( (type_name = udevdevice_get_str_prop(self, PROP_USB_TYPE, 0)) ) {
+            if( udevdevice_lookup_charger_type(type_name) <= CHARGER_TYPE_NONE )
+                type_name = NULL;
+        }
+
+        /* Legacy QC devices have TYPE property that has
          * content sfos sw stack knows how to interpret.
          *
          * More recent QC devices might expose "USB_PD" in
@@ -1636,23 +1668,25 @@ udevdevice_evaluate_charger(udevdevice_t *self, mcebat_t *mcebat)
          * nodes visible in udev and charger type must be
          * determined from device node name.
          */
-        const char *name;
-        if( !(name = udevdevice_get_str_prop(self, PROP_REAL_TYPE, 0)) ) {
-            if( !(name = udevdevice_get_str_prop(self, PROP_TYPE, 0)) )
-                name = udevdevice_name(self);
-        }
+        if( !type_name )
+            if( !(type_name = udevdevice_get_str_prop(self, PROP_REAL_TYPE, 0)) )
+                if( !(type_name = udevdevice_get_str_prop(self, PROP_TYPE, 0)) )
+                    type_name = udevdevice_name(self);
 
-        charger_type_t type = udevdevice_lookup_charger_type(name);
+        type_value = udevdevice_lookup_charger_type(type_name);
 
         /* Update effective charger type exposed on D-Bus
          */
-        if( mcebat->charger_type < type )
-            mcebat->charger_type = type;
+        if( mcebat->charger_type < type_value )
+            mcebat->charger_type = type_value;
     }
 
     mce_log(LL_DEBUG, "%s: charger @ "
+            "type=%s/%s "
             "present=%d online=%d -> active=%d",
             udevdevice_name(self),
+            type_name ?: "none",
+            charger_type_repr(type_value),
             present, online, active);
 EXIT:
     return;
