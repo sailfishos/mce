@@ -1338,6 +1338,11 @@ static const setting_t gconf_defaults[] =
     .def  = G_STRINGIFY(MCE_DEFAULT_TK_LID_SENSOR_ENABLED),
   },
   {
+    .key  = MCE_SETTING_TK_LID_SENSOR_FEEDBACK,
+    .type = "b",
+    .def  = G_STRINGIFY(MCE_DEFAULT_TK_LID_SENSOR_FEEDBACK),
+  },
+  {
     .key  = MCE_SETTING_TK_FILTER_LID_WITH_ALS,
     .type = "b",
     .def  = G_STRINGIFY(MCE_DEFAULT_TK_FILTER_LID_WITH_ALS),

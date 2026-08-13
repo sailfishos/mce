@@ -93,6 +93,13 @@ enum
 # define MCE_SETTING_TK_LID_SENSOR_ENABLED       MCE_SETTING_TK_PATH "/lid_sensor_enabled"
 # define MCE_DEFAULT_TK_LID_SENSOR_ENABLED       true
 
+/** Whether lid sensor events should trigger feedback
+ *
+ * Note: Requires that NGFD events "lid_open" and "lid_close" are configured for the device.
+ */
+# define MCE_SETTING_TK_LID_SENSOR_FEEDBACK      MCE_SETTING_TK_PATH "/lid_sensor_feedback"
+# define MCE_DEFAULT_TK_LID_SENSOR_FEEDBACK      false
+
 /** Whether lid sensor state should be verified with light sensor
  *
  * If enabled, lid sensor state changes are ignored unless they

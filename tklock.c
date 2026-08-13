@@ -510,6 +510,10 @@ static guint tklock_lid_close_actions_setting_id = 0;
 static gboolean lid_sensor_enabled = MCE_DEFAULT_TK_LID_SENSOR_ENABLED;
 static guint    lid_sensor_enabled_setting_id = 0;
 
+/** Flag: Should we trigger feedback on lid sensor state changes */
+static gboolean lid_sensor_feedback = MCE_DEFAULT_TK_LID_SENSOR_FEEDBACK;
+static guint    lid_sensor_feedback_setting_id = 0;
+
 /** When to react to keyboard open */
 static gint   tklock_kbd_open_trigger = MCE_DEFAULT_TK_KBD_OPEN_TRIGGER;
 static guint  tklock_kbd_open_trigger_setting_id = 0;
@@ -2207,6 +2211,13 @@ static void tklock_datapipe_lid_sensor_filtered_cb(gconstpointer data)
     mce_log(LL_DEVEL, "lid_sensor_filtered = %s -> %s",
             cover_state_repr(prev),
             cover_state_repr(lid_sensor_filtered));
+
+    if( lid_sensor_filtered != COVER_UNDEF && lid_sensor_feedback ) {
+        if( lid_sensor_filtered == COVER_OPEN )
+            datapipe_exec_full(&ngfd_event_request_pipe, "lid_open");
+        else if( lid_sensor_filtered == COVER_CLOSED )
+            datapipe_exec_full(&ngfd_event_request_pipe, "lid_close");
+    }
 
     /* TODO: On devices that have means to detect physically covered
      *       display, it might be desirable to also power off:
@@ -5108,6 +5119,10 @@ static void tklock_setting_cb(GConfClient *const gcc, const guint id,
         lid_sensor_enabled = gconf_value_get_bool(gcv) ? 1 : 0;
         tklock_lidfilter_rethink_lid_state();
     }
+    else if( id == lid_sensor_feedback_setting_id ) {
+        // Note: affects only processing of future sensor changes
+        lid_sensor_feedback = gconf_value_get_bool(gcv);
+    }
     else if( id == als_enabled_setting_id ) {
         als_enabled = gconf_value_get_bool(gcv);
         tklock_lidfilter_rethink_lid_state();
@@ -5394,6 +5409,12 @@ static void tklock_setting_init(void)
                            tklock_setting_cb,
                            &lid_sensor_enabled_setting_id);
 
+    mce_setting_track_bool(MCE_SETTING_TK_LID_SENSOR_FEEDBACK,
+                           &lid_sensor_feedback,
+                           MCE_DEFAULT_TK_LID_SENSOR_FEEDBACK,
+                           tklock_setting_cb,
+                           &lid_sensor_feedback_setting_id);
+
     mce_setting_track_bool(MCE_SETTING_DISPLAY_ALS_ENABLED,
                            &als_enabled,
                            MCE_DEFAULT_DISPLAY_ALS_ENABLED,
@@ -5553,6 +5574,9 @@ static void tklock_setting_quit(void)
 
     mce_setting_notifier_remove(lid_sensor_enabled_setting_id),
         lid_sensor_enabled_setting_id = 0;
+
+    mce_setting_notifier_remove(lid_sensor_feedback_setting_id),
+        lid_sensor_feedback_setting_id = 0;
 
     mce_setting_notifier_remove(als_enabled_setting_id),
         als_enabled_setting_id = 0;
