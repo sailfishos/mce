@@ -1,3 +1,9 @@
+mce (1.117.2) precise; urgency=low
+
+  * [tklock] Optional LID sensor feedback. JB#64921
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Fri, 21 Aug 2026 15:16:25 +0300
+
 mce (1.117.1) precise; urgency=low
 
   * [battery-udev] Use POWER_SUPPLY_USB_TYPE property. JB#64437
