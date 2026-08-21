@@ -230,6 +230,8 @@ static bool          xmce_set_filter_lid_als_limit                     (const ch
 static void          xmce_get_filter_lid_als_limit                     (void);
 static bool          xmce_set_lid_sensor_mode                          (const char *args);
 static void          xmce_get_lid_sensor_mode                          (void);
+static bool          xmce_set_lid_sensor_feedback                      (const char *args);
+static void          xmce_get_lid_sensor_feedback                      (void);
 static bool          xmce_set_lid_open_actions                         (const char *args);
 static void          xmce_get_lid_open_actions                         (void);
 static bool          xmce_set_lid_close_actions                        (const char *args);
@@ -4194,6 +4196,33 @@ static void xmce_get_lid_sensor_mode(void)
         printf("%-"PAD1"s %s\n", "Use lid sensor mode:", txt);
 }
 
+/* Set lid_sensor feedback state
+ *
+ * @param args string suitable for interpreting as enabled/disabled
+ */
+static bool xmce_set_lid_sensor_feedback(const char *args)
+{
+        const char *key = MCE_SETTING_TK_LID_SENSOR_FEEDBACK;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
+        gboolean val = xmce_parse_enabled(args);
+        return xmce_setting_set_bool(key, val);
+}
+
+/** Get current lid_sensor feedback state from mce and print it out
+ */
+static void xmce_get_lid_sensor_feedback(void)
+{
+        gboolean    val = false;
+        const char *txt = "unknown";
+
+        if( xmce_setting_get_bool(MCE_SETTING_TK_LID_SENSOR_FEEDBACK, &val) )
+                txt = val ? "enabled" : "disabled";
+
+        printf("%-"PAD1"s %s\n", "Use lid sensor feedback:", txt);
+}
+
 /** Lookup table for lid open actions
  */
 static const symbol_t lid_open_actions[] = {
@@ -7030,6 +7059,7 @@ static bool xmce_get_status(const char *args)
         xmce_get_ps_blocks_touch();
         xmce_get_ps_acts_as_lid();
         xmce_get_lid_sensor_mode();
+        xmce_get_lid_sensor_feedback();
         xmce_get_filter_lid_with_als();
         xmce_get_filter_lid_als_limit();
         xmce_get_lid_open_actions();
@@ -7937,6 +7967,16 @@ static const mce_opt_t options[] =
                 .values      = "enabled|disabled",
                         "set the lid sensor mode; valid modes are:\n"
                         "'enabled' and 'disabled'\n"
+        },
+        {
+                .name        = "set-lid-sensor-feedback",
+                .with_arg    = xmce_set_lid_sensor_feedback,
+                .values      = "enabled|disabled",
+                        "set the lid sensor feedback state; valid options are:\n"
+                        "'enabled' and 'disabled'\n"
+                        "\n"
+                        "Note: Requires that device has NGFD side configuration\n"
+                        "       for \"lid_close\" and \"lid_open\"  events.\n"
         },
         {
                 .name        = "set-lid-open-actions",

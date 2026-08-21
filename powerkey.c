@@ -3372,14 +3372,15 @@ xngf_status_cb(NgfClient *client, uint32_t event_id, NgfEventState state, void *
         break;
 
     case NGF_EVENT_COMPLETED:
-        ngf_event_id = 0;
+        if( ngf_event_id == event_id )
+            ngf_event_id = 0;
         break;
 
     case NGF_EVENT_FAILED:
         mce_log(LL_ERR, "Failed to play id %d", event_id);
-        ngf_event_id = 0;
+        if( ngf_event_id == event_id )
+            ngf_event_id = 0;
         break;
-
     }
 }
 
@@ -3427,13 +3428,14 @@ xngf_delete_client(void)
 static void
 xngf_play_event(const char *event_name)
 {
-    if( ngf_event_id ) {
-        mce_log(LL_WARN, "previous event not finished yet");
-        goto EXIT;
-    }
-
     if( !xngf_create_client() )
         goto EXIT;
+
+    if( ngf_event_id ) {
+        mce_log(LL_WARN, "previous event not finished yet, canceling it");
+        ngf_client_stop_event(ngf_client_hnd, ngf_event_id),
+            ngf_event_id = 0;
+    }
 
     ngf_event_id = ngf_client_play_event (ngf_client_hnd, event_name, NULL);
 
