@@ -12267,24 +12267,24 @@ mdy_brightness_mapping_init(void)
     val = mce_conf_get_int_list(MCE_CONF_DISPLAY_GROUP, MCE_CONF_BRIGHTNESS_MAPPING, &cnt);
 
     if( !val || cnt < 2 ) {
-        mce_log(LL_WARN, "BrightnessMapping: not enough values");
+        mce_log(LL_ERR, "BrightnessMapping: not enough values");
         goto EXIT;
     }
 
-    if( val[0] != 0 ) {
+    /* Negative values are not allowed */
+    if( val[0] < 0 ) {
+        mce_log(LL_ERR, "BrightnessMapping: first value (= %d) is negative", val[0]);
+        goto EXIT;
+    }
+
+    /* Starting from nonzero value is unexpected */
+    if( val[0] != 0 )
         mce_log(LL_WARN, "BrightnessMapping: first value (= %d) is not zero", val[0]);
-        goto EXIT;
-    }
-
-    if( val[1] <= 0 ) {
-        mce_log(LL_WARN, "BrightnessMapping: second value (= %d) is not positive", val[1]);
-        goto EXIT;
-    }
 
     /* Values must be ascending (dups are allowed) */
     for( gsize i = 1; i < cnt; ++i ) {
         if( val[i] < val[i - i] ) {
-            mce_log(LL_WARN, "BrightnessMapping: values are not ascending");
+            mce_log(LL_ERR, "BrightnessMapping: values are not ascending (%d to %d)", val[i - i], val[i]);
             goto EXIT;
         }
     }
@@ -12292,7 +12292,7 @@ mdy_brightness_mapping_init(void)
     /* Values must fit in uint16_t */
     for( gsize i = 0; i < cnt; ++i ) {
         if( val[i] > UINT16_MAX ) {
-            mce_log(LL_WARN, "BrightnessMapping: value %d is not <= %d", val[i], UINT16_MAX);
+            mce_log(LL_ERR, "BrightnessMapping: value %d is not <= %d", val[i], UINT16_MAX);
             goto EXIT;
         }
     }
