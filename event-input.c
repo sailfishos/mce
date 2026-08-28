@@ -5,6 +5,7 @@
  * Copyright (c) 2004 - 2011 Nokia Corporation and/or its subsidiary(-ies).
  * Copyright (c) 2013 - 2020 Jolla Ltd.
  * Copyright (c) 2020 Open Mobile Platform LLC.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Ismo Laitinen <ismo.laitinen@nokia.com>
@@ -237,12 +238,6 @@ typedef enum {
     /** Button like touch device */
     EVDEV_DBLTAP,
 
-    /** Proximity sensor */
-    EVDEV_PS,
-
-    /** Ambient light sensor */
-    EVDEV_ALS,
-
     /** Volume key device */
     EVDEV_VOLKEY,
 
@@ -251,6 +246,9 @@ typedef enum {
 
     /** Device type was not explicitly set in configuration */
     EVDEV_UNKNOWN,
+
+    /** Obsolete configuration value */
+    EVDEV_OBSOLETE,
 } evin_evdevtype_t;
 
 static const char       *evin_evdevtype_repr                    (evin_evdevtype_t type);
@@ -1465,11 +1463,10 @@ evin_evdevtype_repr(evin_evdevtype_t type)
         [EVDEV_ACTIVITY] = "USER ACTIVITY ONLY",
         [EVDEV_IGNORE]   = "IGNORE",
         [EVDEV_DBLTAP]   = "DOUBLE TAP",
-        [EVDEV_PS]       = "PROXIMITY SENSOR",
-        [EVDEV_ALS]      = "AMBIENT LIGHT SENSOR",
         [EVDEV_VOLKEY]   = "VOLUME KEYS",
         [EVDEV_KEYBOARD] = "KEYBOARD",
         [EVDEV_UNKNOWN]  = "UNKNOWN",
+        [EVDEV_OBSOLETE] = "OBSOLETE",
     };
 
     return lut[type];
@@ -1498,10 +1495,10 @@ evin_evdevtype_parse(const char *name)
         { "IGNORE",               EVDEV_IGNORE,    },
         { "DOUBLE_TAP",           EVDEV_DBLTAP,    },
         { "DBLTAP",               EVDEV_DBLTAP,    },
-        { "PS",                   EVDEV_PS,        },
-        { "PROXIMITY_SENSOR",     EVDEV_PS,        },
-        { "ALS",                  EVDEV_ALS,       },
-        { "LIGHT_SENSOR",         EVDEV_ALS,       },
+        { "PS",                   EVDEV_OBSOLETE,  },
+        { "PROXIMITY_SENSOR",     EVDEV_OBSOLETE,  },
+        { "ALS",                  EVDEV_OBSOLETE,  },
+        { "LIGHT_SENSOR",         EVDEV_OBSOLETE,  },
         { "VOLKEY",               EVDEV_VOLKEY,    },
         { "VOLUME_KEYS",          EVDEV_VOLKEY,    },
         { "KEYBOARD",             EVDEV_KEYBOARD,  },
@@ -1520,7 +1517,10 @@ evin_evdevtype_parse(const char *name)
         if( strcmp(lut[i].key, name) )
             continue;
 
-        type = lut[i].val;
+        if( lut[i].val == EVDEV_OBSOLETE )
+            mce_log(LL_WARN, "evdev input file type %s is no longer supported", name);
+        else
+            type = lut[i].val;
         break;
     }
 
@@ -1604,16 +1604,19 @@ evin_evdevtype_from_info(evin_evdevinfo_t *info)
 
     int res = EVDEV_IGNORE;
 
-    /* Ambient light and proximity sensor inputs */
+    /* Assume that: devices that support only ABS_DISTANCE are
+     * proximity sensors and devices that support only ABS_MISC
+     * are ambient light sensors. These should be handled via
+     * sensorfwd - not directly from mce. */
     if( evin_evdevinfo_match_types(info, abs_only) ) {
         if( evin_evdevinfo_match_codes(info, EV_ABS, misc_only) ) {
             // only EV_ABS:ABS_MISC -> ALS
-            res = EVDEV_ALS;
+            res = EVDEV_REJECT;
             goto cleanup;
         }
         if( evin_evdevinfo_match_codes(info, EV_ABS, dist_only) ) {
             // only EV_ABS:ABS_DISTANCE -> PS
-            res = EVDEV_PS;
+            res = EVDEV_REJECT;
             goto cleanup;
         }
     }
@@ -1686,38 +1689,6 @@ evin_evdevtype_from_info(evin_evdevinfo_t *info)
     if( evin_evdevinfo_has_code(info, EV_MSC, MSC_GESTURE) ) {
         res = EVDEV_DBLTAP;
         goto cleanup;
-    }
-
-    /* Assume that: devices that support only ABS_DISTANCE are
-     * proximity sensors and devices that support only ABS_MISC
-     * are ambient light sensors that are handled via libhybris
-     * in more appropriate place and should not be used for
-     * "user activity" tracking. */
-    if( evin_evdevinfo_has_type(info, EV_ABS) &&
-        !evin_evdevinfo_has_types(info, all_but_abs_lut) ) {
-        int maybe_als = evin_evdevinfo_has_code(info, EV_ABS, ABS_MISC);
-        int maybe_ps  = evin_evdevinfo_has_code(info, EV_ABS, ABS_DISTANCE);
-
-        // supports one of the two, but not both ...
-        if( maybe_als != maybe_ps ) {
-            for( int code = 0; ; ++code ) {
-                switch( code ) {
-                case ABS_CNT:
-                    // ... and no other events supported
-                    res = EVDEV_REJECT;
-                    goto cleanup;
-
-                case ABS_DISTANCE:
-                case ABS_MISC:
-                    continue;
-
-                default:
-                    break;
-                }
-                if( evin_evdevinfo_has_code(info, EV_ABS, code) )
-                    break;
-            }
-        }
     }
 
     /* Ignore devices that emit only X or Y values */
@@ -2633,16 +2604,6 @@ evin_iomon_device_add(const gchar *path)
     case EVDEV_ACTIVITY:
         notify = evin_iomon_activity_cb;
         break;
-
-    case EVDEV_ALS:
-        /* Hook wakelockable ALS input source */
-        mce_sensorfw_als_attach(fd), fd = -1;
-        goto EXIT;
-
-    case EVDEV_PS:
-        /* Hook wakelockable PS input source */
-        mce_sensorfw_ps_attach(fd), fd = -1;
-        goto EXIT;
 
     case EVDEV_REJECT:
     case EVDEV_IGNORE:

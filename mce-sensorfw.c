@@ -33,8 +33,6 @@
 #include "mce-dbus.h"
 #include "libwakelock.h"
 
-#include <linux/input.h>
-
 #include <sys/socket.h>
 #include <sys/un.h>
 
@@ -108,7 +106,7 @@
  *
  * ========================================================================= *
  *
- * Rough Data/Control Flow Diagram - Error Handling and EVDEV Input Excluded
+ * Rough Data/Control Flow Diagram - Error Handling Excluded
  *
  * ========================================================================= *
  *
@@ -424,9 +422,6 @@ typedef enum
 
     /** Cached sensor state should be sent again */
     NOTIFY_REPEAT,
-
-    /** Sensor state was received from evdev source */
-    NOTIFY_EVDEV,
 
     /** Sensor state was received from sensord */
     NOTIFY_SENSORD,
@@ -1271,16 +1266,6 @@ static void (*sfw_notify_orient_cb)(int state) = 0;
 /** Wakeup event callback used for notifying upper level logic */
 static void (*sfw_notify_wakeup_cb)(int state) = 0;
 
-// (exported API defined in "mce-sensorfw.h")
-
-static gboolean mce_sensorfw_evdev_cb    (GIOChannel *chn, GIOCondition cnd, gpointer aptr);
-
-static void     mce_sensorfw_als_detach  (void);
-static void     mce_sensorfw_ps_detach   (void);
-
-static bool     als_from_evdev(void);
-static bool     ps_from_evdev(void);
-
 /* ========================================================================= *
  * SENSORD_DATA_TYPES
  * ========================================================================= */
@@ -2022,19 +2007,9 @@ sfw_backend_als_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *s
         tracking_active = true;
         break;
 
-    case NOTIFY_EVDEV:
+    case NOTIFY_SENSORD:
         if( sample )
             cached_value = *sample;
-        break;
-
-    case NOTIFY_SENSORD:
-        if( sample ) {
-            if( als_from_evdev() )
-                mce_log(LL_DEBUG, "ignoring sensord input: %s",
-                        sfw_sample_als_repr(sample));
-            else
-                cached_value = *sample;
-        }
         break;
     }
 
@@ -2093,19 +2068,9 @@ sfw_backend_ps_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *sa
         tracking_active = true;
         break;
 
-    case NOTIFY_EVDEV:
+    case NOTIFY_SENSORD:
         if( sample )
             cached_value = *sample;
-        break;
-
-    case NOTIFY_SENSORD:
-        if( sample ) {
-            if( ps_from_evdev() )
-                mce_log(LL_DEBUG, "ignoring sensord input: %s",
-                        sfw_sample_ps_repr(sample));
-            else
-                cached_value = *sample;
-        }
         break;
     }
 
@@ -2170,7 +2135,6 @@ sfw_backend_orient_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void
         tracking_active = true;
         break;
 
-    case NOTIFY_EVDEV:
     case NOTIFY_SENSORD:
         if( sample )
             cached_value = *sample;
@@ -2225,7 +2189,6 @@ sfw_backend_accelerometer_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, con
         tracking_active = true;
         break;
 
-    case NOTIFY_EVDEV:
     case NOTIFY_SENSORD:
         cached_value = *sample;
         break;
@@ -2266,7 +2229,6 @@ sfw_backend_compass_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const voi
         tracking_active = true;
         break;
 
-    case NOTIFY_EVDEV:
     case NOTIFY_SENSORD:
         cached_value = *sample;
         break;
@@ -2307,7 +2269,6 @@ sfw_backend_gyroscope_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const v
         tracking_active = true;
         break;
 
-    case NOTIFY_EVDEV:
     case NOTIFY_SENSORD:
         cached_value = *sample;
         break;
@@ -2348,7 +2309,6 @@ sfw_backend_lid_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *s
         tracking_active = true;
         break;
 
-    case NOTIFY_EVDEV:
     case NOTIFY_SENSORD:
         cached_value = *sample;
         break;
@@ -2389,7 +2349,6 @@ sfw_backend_humidity_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const vo
         tracking_active = true;
         break;
 
-    case NOTIFY_EVDEV:
     case NOTIFY_SENSORD:
         cached_value = *sample;
         break;
@@ -2430,7 +2389,6 @@ sfw_backend_magnetometer_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, cons
         tracking_active = true;
         break;
 
-    case NOTIFY_EVDEV:
     case NOTIFY_SENSORD:
         cached_value = *sample;
         break;
@@ -2471,7 +2429,6 @@ sfw_backend_pressure_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const vo
         tracking_active = true;
         break;
 
-    case NOTIFY_EVDEV:
     case NOTIFY_SENSORD:
         cached_value = *sample;
         break;
@@ -2512,7 +2469,6 @@ sfw_backend_rotation_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const vo
         tracking_active = true;
         break;
 
-    case NOTIFY_EVDEV:
     case NOTIFY_SENSORD:
         cached_value = *sample;
         break;
@@ -2553,7 +2509,6 @@ sfw_backend_stepcounter_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const
         tracking_active = true;
         break;
 
-    case NOTIFY_EVDEV:
     case NOTIFY_SENSORD:
         cached_value = *sample;
         break;
@@ -2594,7 +2549,6 @@ sfw_backend_tap_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *s
         tracking_active = true;
         break;
 
-    case NOTIFY_EVDEV:
     case NOTIFY_SENSORD:
         cached_value = *sample;
         break;
@@ -2635,7 +2589,6 @@ sfw_backend_temperature_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const
         tracking_active = true;
         break;
 
-    case NOTIFY_EVDEV:
     case NOTIFY_SENSORD:
         cached_value = *sample;
         break;
@@ -2676,7 +2629,6 @@ sfw_backend_wakeup_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void
         tracking_active = true;
         break;
 
-    case NOTIFY_EVDEV:
     case NOTIFY_SENSORD:
         cached_value = *sample;
         break;
@@ -5090,28 +5042,6 @@ sfw_service_set_sensor(const sfw_service_t *self, sensor_id_t id, bool enable)
  * SENSORFW_NOTIFY
  * ========================================================================= */
 
-/** io watch id for PS evdev file descriptor
- *
- * If this is non-zero, proximity data received from sensord is ignored.
- */
-static guint ps_evdev_id = 0;
-
-static bool ps_from_evdev(void)
-{
-    return ps_evdev_id != 0;
-}
-
-/** io watch id for ALS evdev file descriptor
- *
- * If this is non-zero, ambient light data received from sensord is ignored.
- */
-static guint als_evdev_id = 0;
-
-static bool als_from_evdev(void)
-{
-    return als_evdev_id != 0;
-}
-
 /** Translate notification type to human readable form
  */
 static const char *
@@ -5122,7 +5052,6 @@ sfw_notify_name(sfw_notify_t type)
         [NOTIFY_RESET]   = "RESET",
         [NOTIFY_RESTORE] = "RESTORE",
         [NOTIFY_REPEAT]  = "REPEAT",
-        [NOTIFY_EVDEV]   = "EVDEV",
         [NOTIFY_SENSORD] = "SENSORD",
         [NOTIFY_FORGET]  = "FORGET",
     };
@@ -5361,229 +5290,6 @@ mce_sensorfw_wakeup_disable(void)
 
 // ----------------------------------------------------------------
 
-/** Callback function for processing evdev events
- *
- * @param chn  io channel
- * @param cnd  conditions to handle
- * @param aptr pointer to io watch
- *
- * @return TRUE to keep io watch active, FALSE to stop it
- */
-static gboolean
-mce_sensorfw_evdev_cb(GIOChannel *chn, GIOCondition cnd, gpointer aptr)
-{
-    gboolean  keep = FALSE;
-    int      *id   = aptr;
-    int       fd   = g_io_channel_unix_get_fd(chn);
-    int       als  = -1;
-    int       ps   = -1;
-    int       rc;
-
-    struct input_event eve[256];
-
-    /* wakelock must be taken before reading the data */
-    wakelock_lock("mce_input_handler", -1);
-
-    if( cnd & (G_IO_ERR | G_IO_HUP | G_IO_NVAL) ) {
-        goto EXIT;
-    }
-
-    rc = read(fd, eve, sizeof eve);
-
-    if( rc == -1 ) {
-        if( errno == EINTR || errno == EAGAIN )
-            keep = TRUE;
-        else
-            mce_log(LL_ERR, "read events: %m");
-        goto EXIT;
-    }
-
-    if( rc == 0 ) {
-        mce_log(LL_ERR, "read events: EOF");
-        goto EXIT;
-    }
-
-    keep = TRUE;
-
-    size_t n = rc / sizeof *eve;
-    for( size_t i = 0; i < n; ++i ) {
-        if( eve[i].type != EV_ABS )
-            continue;
-
-        switch( eve[i].code ) {
-        case ABS_MISC:
-            als = eve[i].value;
-            break;
-        case ABS_DISTANCE:
-            ps = eve[i].value;
-            break;
-        default:
-            break;
-        }
-    }
-
-    if( als != -1 ) {
-        sfw_sample_als_t sample =
-        {
-            .als_value = als,
-        };
-
-        sfw_plugin_t *plugin = sfw_service_plugin(sfw_service, SFW_SENSOR_ID_ALS);
-        sfw_plugin_notify(plugin, NOTIFY_EVDEV, &sample);
-    }
-
-    if( ps != -1 ) {
-        sfw_sample_ps_t sample =
-        {
-            .ps_value           = (ps < 1) ? 0    : 10,
-            .ps_withinProximity = (ps < 1) ? true : false,
-        };
-
-        sfw_plugin_t *plugin = sfw_service_plugin(sfw_service, SFW_SENSOR_ID_PS);
-        sfw_plugin_notify(plugin, NOTIFY_EVDEV, &sample);
-    }
-
-EXIT:
-    if( !keep && *id ) {
-        *id = 0;
-        mce_log(LL_CRIT, "stopping io watch");
-    }
-
-    /* wakelock must be released when we are done with the data */
-    wakelock_unlock("mce_input_handler");
-
-    return keep;
-}
-
-/** Stop I/O watch for als evdev device node
- */
-static void
-mce_sensorfw_als_detach(void)
-{
-    if( als_evdev_id ) {
-        g_source_remove(als_evdev_id),
-            als_evdev_id = 0;
-    }
-}
-
-/** Use evdev file descriptor as ALS data source
- *
- * Called from evdev probing if ALS device node is detected.
- *
- * Caller expects the file descriptor to be owned by
- * sensor module after the call and it must thus be closed
- * if input monitoring is not succesfully initiated.
- *
- * @param fd file descriptor
- */
-void
-mce_sensorfw_als_attach(int fd)
-{
-    if( fd == -1 )
-        goto EXIT;
-
-    mce_sensorfw_als_detach();
-
-    struct input_absinfo info;
-    memset(&info, 0, sizeof info);
-
-    if( ioctl(fd, EVIOCGABS(ABS_MISC), &info) == -1 ) {
-        mce_log(LL_ERR, "EVIOCGABS(%s): %m", "ABS_MISC");
-        goto EXIT;
-    }
-
-    /* Note: als_evdev_id must be set before calling als_notify() */
-    als_evdev_id = sfw_socket_add_notify(fd, true, G_IO_IN,
-                                         mce_sensorfw_evdev_cb,
-                                         &als_evdev_id);
-
-    if( !als_evdev_id )
-        goto EXIT;
-
-    /* The I/O watch owns the file descriptor now */
-    fd = -1;
-
-    mce_log(LL_INFO, "ALS: %d (initial)", info.value);
-
-    sfw_sample_als_t sample =
-    {
-        .als_value = info.value,
-    };
-    sfw_plugin_t *plugin = sfw_service_plugin(sfw_service, SFW_SENSOR_ID_ALS);
-    sfw_plugin_notify(plugin, NOTIFY_EVDEV, &sample);
-
-EXIT:
-    if( fd != -1 )
-        close(fd);
-
-    return;
-}
-
-/** Stop I/O watch for ps evdev device node
- */
-static void
-mce_sensorfw_ps_detach(void)
-{
-    if( ps_evdev_id ) {
-        g_source_remove(ps_evdev_id),
-            ps_evdev_id = 0;
-    }
-}
-
-/** Use evdev file descriptor as PS data source
- *
- * Called from evdev probing if PS device node is detected.
- *
- * Caller expects the file descriptor to be owned by
- * sensor module after the call and it must thus be closed
- * if input monitoring is not succesfully initiated.
- *
- * @param fd file descriptor
- */
-void
-mce_sensorfw_ps_attach(int fd)
-{
-    if( fd == -1 )
-        goto EXIT;
-
-    mce_sensorfw_ps_detach();
-
-    struct input_absinfo info;
-    memset(&info, 0, sizeof info);
-
-    if( ioctl(fd, EVIOCGABS(ABS_DISTANCE), &info) == -1 ) {
-        mce_log(LL_ERR, "EVIOCGABS(%s): %m", "ABS_DISTANCE");
-        goto EXIT;
-    }
-
-    /* Note: ps_evdev_id must be set before calling ps_notify() */
-    ps_evdev_id = sfw_socket_add_notify(fd, true, G_IO_IN,
-                                        mce_sensorfw_evdev_cb,
-                                        &ps_evdev_id);
-    if( !ps_evdev_id )
-        goto EXIT;
-
-    /* The I/O watch owns the file descriptor now */
-    fd = -1;
-
-    mce_log(LL_NOTICE, "PS: %d (initial)", info.value);
-
-    int ps = info.value;
-    sfw_sample_ps_t sample =
-    {
-        .ps_value           = (ps < 1) ? 0    : 10,
-        .ps_withinProximity = (ps < 1) ? true : false,
-    };
-    sfw_plugin_t *plugin = sfw_service_plugin(sfw_service, SFW_SENSOR_ID_PS);
-    sfw_plugin_notify(plugin, NOTIFY_EVDEV, &sample);
-
-EXIT:
-    if( fd != -1 )
-        close(fd);
-}
-
-// ----------------------------------------------------------------
-
 /** Handle name owner changed signals for SENSORFW_SERVICE
  */
 static gboolean
@@ -5690,10 +5396,6 @@ mce_sensorfw_init(void)
 void
 mce_sensorfw_quit(void)
 {
-    /* Remove evdev I/O watches */
-    mce_sensorfw_ps_detach();
-    mce_sensorfw_als_detach();
-
     /* Remove D-Bus handlers */
     mce_dbus_handler_unregister_array(sfw_dbus_handlers);
 
