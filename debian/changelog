@@ -1,3 +1,10 @@
+mce (1.117.4) precise; urgency=low
+
+  * [battery-udev] Ignore remote device battery information. Fixes JB#65006
+  * [battery-udev] Deterministic handling for multiple batteries. JB#65006
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Fri, 28 Aug 2026 08:35:31 +0300
+
 mce (1.117.3) precise; urgency=low
 
   * [display] Allow brightness mapping sans zero value. JB#64900
