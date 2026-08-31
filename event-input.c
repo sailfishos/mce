@@ -1587,21 +1587,6 @@ evin_evdevtype_from_info(evin_evdevinfo_t *info)
         -1
     };
 
-    /* All event classes except EV_ABS */
-    static const int all_but_abs_lut[] = {
-        EV_KEY,
-        EV_REL,
-        EV_MSC,
-        EV_SW,
-        EV_LED,
-        EV_SND,
-        EV_REP,
-        EV_FF,
-        EV_PWR,
-        EV_FF_STATUS,
-        -1
-    };
-
     int res = EVDEV_IGNORE;
 
     /* Assume that: devices that support only ABS_DISTANCE are
