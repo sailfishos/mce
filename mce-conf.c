@@ -27,6 +27,7 @@
 
 #include "mce.h"
 #include "mce-log.h"
+#include "mce-lib.h"
 #include "modules/led.h"
 
 #include <string.h>
@@ -312,65 +313,100 @@ gchar **mce_conf_get_keys(const gchar *group, gsize *length)
 	return tmp;
 }
 
-/** Copy key value key value from one keyfile to another
+/** Modify key value list based on value list from another keyfile
  *
- * @param dest keyfile to modify
- * @param srce keyfile to copy from
- * @param grp  value group to copy
- * @param key  value key to copy
+ * @param old  Previous value
+ * @param val  Value modifiers
+ *
+ * @return modified value to use
  */
-static void mce_conf_override_key(GKeyFile *dest, GKeyFile *srce,
-			       const char *grp, const char *key)
+static gchar *mce_conf_modify_value(const char *old, const char *val)
 {
-	gchar *val = g_key_file_get_value(srce, grp, key, 0);
-	if( val ) {
-		//mce_log(LL_NOTICE, "[%s] %s = %s", grp, key, val);
-		g_key_file_set_value(dest, grp, key, val);
-		g_free(val);
+	gchar  *use    = NULL;
+	gchar **values = mce_strv_from_string(old);
+	gchar **params = mce_strv_from_string(val);
+
+	params = mce_strv_remove(params, "");
+
+	for( size_t i = 0; params[i]; ++i ) {
+		const gchar *item = params[i];
+		switch( *item ) {
+		case '=':
+			values = mce_strv_clear(values);
+			values = mce_strv_append(values, item + 1);
+			break;
+		case '-':
+			values = mce_strv_remove(values, item + 1);
+			break;
+		case '+':
+			values = mce_strv_add(values, item + 1);
+			break;
+		default:
+			values = mce_strv_append(values, item);
+			break;
+		}
 	}
+
+	values = mce_strv_remove(values, "");
+
+	use = mce_strv_to_string(values);
+
+	mce_strv_free(params);
+	mce_strv_free(values);
+
+	return use;
+}
+
+/** Override key value list based on values from another keyfile
+ *
+ * @param old  Previous value
+ * @param val  Override value
+ *
+ * @return modified value to use
+ */
+static gchar *mce_conf_override_value(const char *old, const char *val)
+{
+	// This is just to conform with pattern
+	(void)old;
+	return g_strdup(val);
 }
 
 /** Augment key value with data from another file
  *
- * @param dest keyfile to modify
- * @param srce keyfile to add from
- * @param grp  value group to add
- * @param key  value key to add
+ * @param old  Previous value
+ * @param val  Values to append
+ *
+ * @return modified value to use
  */
-static void mce_conf_append_key(GKeyFile *dest, GKeyFile *srce,
-			       const char *grp, const char *key)
+static gchar *mce_conf_append_value(const char *old, const char *val)
 {
-	gchar *val = g_key_file_get_value(srce, grp, key, 0);
+	gchar  *use    = NULL;
+	gchar **values = mce_strv_from_string(old);
+	gchar **params = mce_strv_from_string(val);
 
-	if( val ) {
-		gchar *old = g_key_file_get_value(dest, grp, key, 0);
-		gchar *tmp = 0;
+	params = mce_strv_remove(params, "");
 
-		if( old && *old ) {
-			tmp = g_strconcat(val, ";", old, NULL);
-		}
+	for( size_t i = 0; params[i]; ++i )
+		values = mce_strv_append(values, params[i]);
 
-		//mce_log(LL_NOTICE, "[%s] %s = %s", grp, key, tmp ?: val);
-		g_key_file_set_value(dest, grp, key, tmp ?: val);
+	values = mce_strv_remove(values, "");
 
-		g_free(tmp);
-		g_free(old);
-		g_free(val);
-	}
+	use = mce_strv_to_string(values);
+
+	mce_strv_free(params);
+	mce_strv_free(values);
+
+	return use;
 }
 
-/** Merge value from one keyfile to another
+/** Predicate for: setting is subject to legacy auto-append rules
  *
- * Existing values will be overridden, except for values
- * in group [evdev] that are appended to existing data.
+ * @param grp  Group name
+ * @param key  Key name
  *
- * @param dest keyfile to modify
- * @param srce keyfile to merge from
- * @param grp  value group to merge
- * @param key  value key to merge
+ * @return true if auto-append applies, false otherwise
  */
-static void mce_conf_merge_key(GKeyFile *dest, GKeyFile *srce,
-			       const char *grp, const char *key)
+static bool mce_conf_key_is_auto_append(const char *grp, const char *key)
 {
 	/* groups/keys to append instead of overriding */
 	static const struct {
@@ -396,18 +432,53 @@ static void mce_conf_merge_key(GKeyFile *dest, GKeyFile *srce,
 		}
 	};
 
-	for( size_t i = 0; ; ++i ) {
-		if( lut[i].grp == NULL ) {
-			mce_conf_override_key(dest, srce, grp, key);
-			break;
-		}
+	for( size_t i = 0; lut[i].grp; ++i ) {
 		if( strcmp(lut[i].grp, grp) )
 			continue;
-		if( !lut[i].key || !strcmp(lut[i].key, key) ) {
-			mce_conf_append_key(dest, srce, grp, key);
-			break;
+		if( lut[i].key && strcmp(lut[i].key, key) )
+			continue;
+		return true;
+	}
+	return false;
+}
+
+/** Merge value from one keyfile to another
+ *
+ * Existing values will be overridden, except for values
+ * in group [evdev] that are appended to existing data.
+ *
+ * @param dest keyfile to modify
+ * @param srce keyfile to merge from
+ * @param grp  value group to merge
+ * @param key  value key to merge
+ */
+static void mce_conf_merge_key(GKeyFile *dest, GKeyFile *srce,
+			       const char *grp, const char *key)
+{
+	static const char modify[] = "@modify;";
+
+	gchar *old = g_key_file_get_value(dest, grp, key, NULL);
+	gchar *val = g_key_file_get_value(srce, grp, key, 0);
+	gchar *use = NULL;
+
+	if( val ) {
+		if( g_str_has_prefix(val, modify) )
+			use = mce_conf_modify_value(old, val + sizeof modify - 1);
+		else if( mce_conf_key_is_auto_append(grp, key) )
+			use = mce_conf_append_value(old, val);
+		else
+			use = mce_conf_override_value(old, val);
+
+		if( g_strcmp0(old, use) ) {
+			mce_log(LL_NOTICE, "[%s] %s := %s", grp, key, use);
+			g_key_file_set_value(dest, grp, key, use);
 		}
 	}
+
+	g_free(use);
+	g_free(val);
+	g_free(old);
+
 }
 
 /** Merge group of values from one keyfile to another
