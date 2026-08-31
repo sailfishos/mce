@@ -1,3 +1,9 @@
+mce (1.117.5) precise; urgency=low
+
+  * [sensors] Remove evdev sensor hacks. Fixes JB#65028
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Mon, 31 Aug 2026 09:19:14 +0300
+
 mce (1.117.4) precise; urgency=low
 
   * [battery-udev] Ignore remote device battery information. Fixes JB#65006
