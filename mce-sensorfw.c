@@ -2008,8 +2008,10 @@ sfw_backend_als_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *s
         break;
 
     case NOTIFY_SENSORD:
-        if( sample )
-            cached_value = *sample;
+        if( sample ) {
+            cached_value.als_timestamp = sample->als_timestamp;
+            cached_value.als_value     = (uint32_t)(sample->als_value * als_value_multiplier + 0.5);
+        }
         break;
     }
 
@@ -2020,7 +2022,7 @@ sfw_backend_als_sample_cb(sfw_plugin_t *plugin, sfw_notify_t type, const void *s
         mce_log(LL_DEBUG, "ALS: NOTIFY %s %s",
                 sfw_notify_name(type),
                 sfw_sample_als_repr(sample));
-        sfw_notify_als_cb((int)(sample->als_value * als_value_multiplier + 0.5));
+        sfw_notify_als_cb(sample->als_value);
     }
 
     return;

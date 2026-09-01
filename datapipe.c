@@ -131,21 +131,25 @@ static const char  *datapipe_hook_memnotify_level_value    (gconstpointer data);
  * DATAPIPE
  * ------------------------------------------------------------------------- */
 
-const char       *datapipe_name                 (const datapipe_t *self);
-gconstpointer     datapipe_value                (const datapipe_t *self);
-void              datapipe_set_value            (datapipe_t *self, gconstpointer data);
-static void       datapipe_gc                   (datapipe_t *self);
-static gboolean   datapipe_gc_cb                (gpointer aptr);
-static void       datapipe_schedule_gc          (datapipe_t *self);
-static void       datapipe_cancel_gc            (datapipe_t *self);
-gconstpointer     datapipe_exec_full_real       (datapipe_t *self, gconstpointer indata, const char *file, const char *func);
-static void       datapipe_add_filter           (datapipe_t *self, gpointer (*filter)(gpointer data));
-static void       datapipe_remove_filter        (datapipe_t *self, gpointer (*filter)(gpointer data));
-static void       datapipe_add_input_trigger    (datapipe_t *self, void (*trigger)(gconstpointer data));
-static void       datapipe_remove_input_trigger (datapipe_t *self, void (*trigger)(gconstpointer data));
-static void       datapipe_add_output_trigger   (datapipe_t *self, void (*trigger)(gconstpointer data));
-static void       datapipe_remove_output_trigger(datapipe_t *self, void (*trigger)(gconstpointer data));
-static void       datapipe_free                 (datapipe_t *self);
+const char           *datapipe_name                 (const datapipe_t *self);
+gconstpointer         datapipe_value                (const datapipe_t *self);
+void                  datapipe_set_value            (datapipe_t *self, gconstpointer data);
+static void           datapipe_gc                   (datapipe_t *self);
+static gboolean       datapipe_gc_cb                (gpointer aptr);
+static void           datapipe_schedule_gc          (datapipe_t *self);
+static void           datapipe_cancel_gc            (datapipe_t *self);
+static guint          datapipe_get_update_token     (datapipe_t *self);
+static void           datapipe_exec_input_hooks     (datapipe_t *self, guint token, gconstpointer value);
+static gconstpointer  datapipe_exec_filter_hooks    (datapipe_t *self, guint token, gconstpointer value);
+static void           datapipe_exec_output_hooks    (datapipe_t *self, guint token, gconstpointer value);
+gconstpointer         datapipe_exec_full_real       (datapipe_t *self, gconstpointer indata, const char *file, const char *func);
+static void           datapipe_add_filter           (datapipe_t *self, gpointer (*filter)(gpointer data));
+static void           datapipe_remove_filter        (datapipe_t *self, gpointer (*filter)(gpointer data));
+static void           datapipe_add_input_trigger    (datapipe_t *self, void (*trigger)(gconstpointer data));
+static void           datapipe_remove_input_trigger (datapipe_t *self, void (*trigger)(gconstpointer data));
+static void           datapipe_add_output_trigger   (datapipe_t *self, void (*trigger)(gconstpointer data));
+static void           datapipe_remove_output_trigger(datapipe_t *self, void (*trigger)(gconstpointer data));
+static void           datapipe_free                 (datapipe_t *self);
 
 /* ------------------------------------------------------------------------- *
  * MCE_DATAPIPE
@@ -991,6 +995,94 @@ datapipe_cancel_gc(datapipe_t *self)
     }
 }
 
+/** Get recursion detection token
+ *
+ * Updating value of a datapipe is considered a transaction. That is: once a datapipe
+ * operation commences, all of the related input/filter/output hooks must be executed
+ * before datapipe value can be changed.
+ *
+ * As a protection against recursion / ringing, each datapipe contains an integer token
+ * which should remain unchanged until all hooks have been executed.
+ *
+ * @return token value to use for the duration of transaction
+ */
+static guint
+datapipe_get_update_token(datapipe_t *self)
+{
+    return ++self->dp_token;
+}
+
+/** Execute datapipe input hooks
+ *
+ * @param self  The datapipe to execute
+ * @param value The input data to run through the datapipe
+ */
+static void
+datapipe_exec_input_hooks(datapipe_t *self, guint token, gconstpointer value)
+{
+    for( GSList *item = self->dp_input_triggers; item; item = item->next ) {
+        void (*trigger)(gconstpointer input) = item->data;
+        if( !trigger )
+            continue;
+
+        if( self->dp_token != token ) {
+            mce_log(LL_WARN, "%s: recursion detected at input triggers", datapipe_name(self));
+            break;
+        }
+
+        trigger(value);
+    }
+}
+
+/** Execute datapipe filter hooks
+ *
+ * @param self  The datapipe to execute
+ * @param value The input data to run through the datapipe
+ *
+ * @return filtered value
+ */
+static gconstpointer
+datapipe_exec_filter_hooks(datapipe_t *self, guint token, gconstpointer value)
+{
+    if( self->dp_read_only == DATAPIPE_FILTERING_ALLOWED ) {
+        for( GSList *item = self->dp_filters; item; item = item->next ) {
+            gconstpointer (*filter)(gconstpointer input) = item->data;
+            if( !filter )
+                continue;
+
+            if( self->dp_token != token ) {
+                mce_log(LL_WARN, "%s: recursion detected at input filters", datapipe_name(self));
+                break;
+            }
+
+            value = filter(value);
+        }
+    }
+    return value;
+}
+
+/** Execute datapipe output hooks
+ *
+ * @param self  The datapipe to execute
+ * @param value The output data to run through the datapipe
+ */
+static void
+datapipe_exec_output_hooks(datapipe_t *self, guint token, gconstpointer value)
+{
+    for( GSList *item = self->dp_output_triggers; item; item = item->next ) {
+        void (*trigger)(gconstpointer input) = item->data;
+        if( !trigger )
+            continue;
+
+        if( self->dp_token != token ) {
+            mce_log(LL_WARN, "%s: recursion detected at output triggers", datapipe_name(self));
+            break;
+        }
+
+        trigger(value);
+    }
+}
+
 /** Execute the datapipe
  *
  * Note: Use #datapipe_exec_full() macro instead of calling
@@ -1028,7 +1120,7 @@ datapipe_exec_full_real(datapipe_t *self, gconstpointer indata,
         }
     }
 
-    guint token = ++self->dp_token;
+    guint token = datapipe_get_update_token(self);
 
     datapipe_cache_t cache_indata = self->dp_cache;
 
@@ -1038,56 +1130,18 @@ datapipe_exec_full_real(datapipe_t *self, gconstpointer indata,
     }
 
     /* Execute input value callbacks */
-    for( GSList *item = self->dp_input_triggers; item; item = item->next ) {
-        void (*trigger)(gconstpointer input) = item->data;
-        if( !trigger )
-            continue;
-
-        if( self->dp_token != token ) {
-            mce_log(LL_WARN, "%s: recursion detected at input triggers",
-                    datapipe_name(self));
-            goto EXIT;
-        }
-
-        trigger(indata);
-    }
+    datapipe_exec_input_hooks(self, token, indata);
 
     /* Determine output value */
-    outdata = indata;
-    if( self->dp_read_only == DATAPIPE_FILTERING_ALLOWED ) {
-        for( GSList *item = self->dp_filters; item; item = item->next ) {
-            gconstpointer (*filter)(gconstpointer input) = item->data;
-            if( !filter )
-                continue;
+    outdata = datapipe_exec_filter_hooks(self, token, indata);
 
-            if( self->dp_token != token ) {
-                mce_log(LL_WARN, "%s: recursion detected at input filters",
-                        datapipe_name(self));
-                goto EXIT;
-            }
-
-            outdata = filter(outdata);
-        }
-    }
     /* Optionally cache the value at the output stage */
     if( cache_indata & DATAPIPE_CACHE_OUTDATA ) {
         datapipe_set_value(self, outdata);
     }
 
     /* Execute output value callbacks */
-    for( GSList *item = self->dp_output_triggers; item; item = item->next ) {
-        void (*trigger)(gconstpointer input) = item->data;
-        if( !trigger )
-            continue;
-
-        if( self->dp_token != token ) {
-            mce_log(LL_WARN, "%s: recursion detected at output triggers",
-                    datapipe_name(self));
-            goto EXIT;
-        }
-
-        trigger(outdata);
-    }
+    datapipe_exec_output_hooks(self, token, outdata);
 
 EXIT:
     return outdata;
@@ -2312,11 +2366,31 @@ mce_datapipe_execute_handlers(datapipe_handler_t *bindings)
         goto EXIT;
 
     for( size_t i = 0; bindings[i].datapipe; ++i ) {
+        /* Skip if not bound yet */
         if( !bindings[i].bound )
             continue;
 
-        if( bindings[i].output_cb )
-            bindings[i].output_cb(bindings[i].datapipe->dp_cached_data);
+        /* We handle only output state notifications here */
+        if( !bindings[i].output_cb )
+            continue;
+
+        datapipe_t *datapipe = bindings[i].datapipe;
+
+        gconstpointer value = datapipe->dp_cached_data;
+
+        if( datapipe->dp_cache & DATAPIPE_CACHE_OUTDATA ) {
+            /* The cached value is used as-is */
+        }
+        else if( datapipe->dp_cache & DATAPIPE_CACHE_INDATA ) {
+            /* The cached value must be filtered */
+            value = datapipe_exec_filter_hooks(datapipe, datapipe_get_update_token(datapipe), value);
+        }
+        else {
+            /* Pure event datapipe without cached state */
+            continue;
+        }
+
+        bindings[i].output_cb(value);
     }
 
 EXIT:
