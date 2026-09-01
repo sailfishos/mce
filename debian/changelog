@@ -1,3 +1,10 @@
+mce (1.117.6) precise; urgency=low
+
+  * [sensors] Scale ALS value on input, not output. JB#64824
+  * [datapipe] Handle initial value notification special cases. Fixes JB#64824
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Tue, 01 Sep 2026 15:50:56 +0300
+
 mce (1.117.5) precise; urgency=low
 
   * [sensors] Remove evdev sensor hacks. Fixes JB#65028
