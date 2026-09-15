@@ -2212,7 +2212,7 @@ static void tklock_datapipe_lid_sensor_filtered_cb(gconstpointer data)
             cover_state_repr(prev),
             cover_state_repr(lid_sensor_filtered));
 
-    if( lid_sensor_filtered != COVER_UNDEF && lid_sensor_feedback ) {
+    if( prev != COVER_UNDEF && lid_sensor_feedback ) {
         if( lid_sensor_filtered == COVER_OPEN )
             datapipe_exec_full(&ngfd_event_request_pipe, "lid_open");
         else if( lid_sensor_filtered == COVER_CLOSED )
