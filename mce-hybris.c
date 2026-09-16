@@ -625,6 +625,30 @@ bool mce_hybris_indicator_set_brightness(int level)
   return !real ? false : real(level);
 }
 
+/** Set pattern active status
+ *
+ * Normal situation is that device has one notification led, and mce
+ * chooses the highest priority active pattern and notifies plugin
+ * about desired color / blinking patterns.
+ *
+ * This does not work in devices that have e.g. array of leds with different
+ * colors - multiple leds can be on simultanously.
+ *
+ * To facilititate backends that deal with these kinds of devices, mce
+ * signals pattern level active state to plugin. The plugin can then
+ * turn appropriate leds on / off.
+ *
+ * @param pattern  Led pattern name
+ * @param active   Whether pattern is active
+ */
+void mce_hybris_indicator_set_active(const char *pattern, bool active)
+{
+    static void (*real)(const char *, bool) = 0;
+    RESOLVE;
+    if( real )
+        real(pattern, active);
+}
+
 /* ------------------------------------------------------------------------- *
  * proximity sensor
  * ------------------------------------------------------------------------- */
