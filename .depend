@@ -14,6 +14,7 @@ builtin-gconf.o:\
 	modules/inactivity.h\
 	modules/led.h\
 	modules/memnotify.h\
+	modules/mempressure-psi.h\
 	modules/powersavemode.h\
 	modules/proximity.h\
 	musl-compatibility.h\
@@ -36,6 +37,7 @@ builtin-gconf.pic.o:\
 	modules/inactivity.h\
 	modules/led.h\
 	modules/memnotify.h\
+	modules/mempressure-psi.h\
 	modules/powersavemode.h\
 	modules/proximity.h\
 	musl-compatibility.h\
@@ -178,6 +180,7 @@ mce-conf.o:\
 	mce-conf.c\
 	datapipe.h\
 	mce-conf.h\
+	mce-lib.h\
 	mce-log.h\
 	mce.h\
 	modules/led.h\
@@ -187,6 +190,7 @@ mce-conf.pic.o:\
 	mce-conf.c\
 	datapipe.h\
 	mce-conf.h\
+	mce-lib.h\
 	mce-log.h\
 	mce.h\
 	modules/led.h\
@@ -1008,10 +1012,31 @@ modules/memnotify.pic.o:\
 	musl-compatibility.h\
 	modules/memnotify.h\
 
+modules/mempressure-psi.o:\
+	modules/mempressure-psi.c\
+	builtin-gconf.h\
+	datapipe.h\
+	mce-log.h\
+	mce-setting.h\
+	mce.h\
+	musl-compatibility.h\
+	modules/mempressure-psi.h\
+
+modules/mempressure-psi.pic.o:\
+	modules/mempressure-psi.c\
+	builtin-gconf.h\
+	datapipe.h\
+	mce-log.h\
+	mce-setting.h\
+	mce.h\
+	musl-compatibility.h\
+	modules/mempressure-psi.h\
+
 modules/mempressure.o:\
 	modules/mempressure.c\
 	builtin-gconf.h\
 	datapipe.h\
+	mce-lib.h\
 	mce-log.h\
 	mce-setting.h\
 	mce.h\
@@ -1022,6 +1047,7 @@ modules/mempressure.pic.o:\
 	modules/mempressure.c\
 	builtin-gconf.h\
 	datapipe.h\
+	mce-lib.h\
 	mce-log.h\
 	mce-setting.h\
 	mce.h\
@@ -1580,6 +1606,7 @@ tools/mcetool.o:\
 	modules/inactivity.h\
 	modules/led.h\
 	modules/memnotify.h\
+	modules/mempressure-psi.h\
 	modules/powersavemode.h\
 	modules/proximity.h\
 	musl-compatibility.h\
@@ -1604,6 +1631,7 @@ tools/mcetool.pic.o:\
 	modules/inactivity.h\
 	modules/led.h\
 	modules/memnotify.h\
+	modules/mempressure-psi.h\
 	modules/powersavemode.h\
 	modules/proximity.h\
 	musl-compatibility.h\
