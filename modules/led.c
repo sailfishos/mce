@@ -62,6 +62,17 @@
 
 #include <gmodule.h>
 
+/** Helper for making diagnostic messages more human readable
+ *
+ * @param val Boolean value
+ *
+ * @return "true" or "false"
+ */
+static const char *bool_repr(bool val)
+{
+	return val ? "true" : "false";
+}
+
 #if 0 // DEBUG: make all logging from this module "critical"
 # undef mce_log
 # define mce_log(LEV, FMT, ARGS...) \
@@ -143,7 +154,10 @@ typedef enum {
  */
 #define CHANNEL_SIZE		32 * 2
 
-/** Structure holding LED patterns */
+/** Structure holding LED patterns
+ *
+ * Keep led_pattern_create() and led_pattern_delete() in sync.
+ */
 typedef struct {
 	gchar *name;			/**< Pattern name */
 	gint priority;			/**< Pattern priority */
@@ -166,6 +180,7 @@ typedef struct {
 	guint setting_id;		/**< Callback ID for GConf entry */
 	guint rgb_color;                /**< RGB24 data for libhybris use */
 	gboolean undecided;		/**< Flag for policy=6 lock in */
+	bool eligible;                  /**< Pattern could be the active one */
 } pattern_struct;
 
 /** Pattern combination rule struct; this is also used for cross-referencing */
@@ -336,6 +351,7 @@ static void              disable_led                    (void);
 static pattern_struct   *led_pattern_create             (void);
 static void              led_pattern_delete             (pattern_struct *self);
 static void              led_pattern_set_active         (pattern_struct *self, gboolean active);
+static void              led_pattern_update_eligible    (pattern_struct *self);
 static bool              led_pattern_should_breathe     (const pattern_struct *self);
 static bool              led_pattern_can_breathe        (const pattern_struct *self);
 static gboolean          led_pattern_timeout_cb         (gpointer data);
@@ -952,6 +968,7 @@ static pattern_struct *led_pattern_create(void)
 	self->name       = 0;
 	self->timeout_id = 0;
 	self->setting_id = 0;
+	self->eligible   = false;
 
 EXIT:
 	return self;
@@ -1031,6 +1048,98 @@ EXIT:
 		dbus_message_unref(msg);
 
 	return;
+}
+
+/** Recalculate pattern eligible property
+ *
+ * Check if the pattern is in such a state that led policy and
+ * device state allows it to be activated.
+ *
+ * Update pattern eligible property accordingly and pass changes
+ * to hybris-plugin too.
+ *
+ * @param self    pattern object
+ */
+static void led_pattern_update_eligible(pattern_struct *self)
+{
+	bool eligible = true;
+
+#if 0 /* While this can be useful when actively debugging led
+       * activation logic, it creates so much noise that using
+       * debug verbosity becomes impossible - do not compile in
+       * by default. */
+	mce_log(LL_DEBUG, "pattern: %s, active: %d, enabled: %d", self->name, self->active, self->enabled);
+#endif
+
+	/* If the pattern is deactivated, ignore */
+	if( !self->active )
+		goto NEGATIVE;
+
+	/* If the pattern is disabled through GConf, ignore */
+	if( !self->enabled )
+		goto NEGATIVE;
+
+	/* If the LED is disabled,
+	 * only patterns with visibility 5 are shown
+	 */
+	if( !led_enabled && self->policy != 5 )
+		goto NEGATIVE;
+
+	/* Always show pattern with visibility 3 or 5 */
+	if( self->policy == 3 || self->policy == 5 )
+		goto POSITIVE;
+
+	/* Show pattern with visibility 7 if display is dimmed */
+	if( self->policy == 7 ) {
+		if( display_state_curr == MCE_DISPLAY_DIM )
+			goto POSITIVE;
+		goto NEGATIVE;
+	}
+
+	/* Acting dead behaviour */
+	if( system_state == MCE_SYSTEM_STATE_ACTDEAD ) {
+		/* If we're in acting dead,
+		 * show patterns with visibility 4
+		 */
+		if( self->policy == 4 )
+			goto POSITIVE;
+
+		/* If we're in acting dead
+		 * and the display is off, show pattern
+		 */
+		if( display_off_p(display_state_curr) && self->policy == 2 )
+			goto POSITIVE;
+
+		/* If the display is on and visibility is 2,
+		 * or if visibility is 1/0, ignore pattern
+		 */
+		goto NEGATIVE;
+	}
+
+	/* If the display is off or in low power mode,
+	 * we can use any active pattern
+	 */
+	if( display_off_p(display_state_curr) )
+		goto POSITIVE;
+
+	/* If the pattern should be shown with screen on, use it */
+	if( self->policy == 1 )
+		goto POSITIVE;
+
+NEGATIVE:
+	eligible = false;
+
+POSITIVE:
+	if( self->eligible != eligible ) {
+		mce_log(LL_DEBUG, "pattern: %s, eligible: %s -> %s",
+			self->name, bool_repr(self->eligible), bool_repr(eligible));
+		self->eligible = eligible;
+
+#ifdef ENABLE_HYBRIS
+		if( get_led_type() == LED_TYPE_HYBRIS )
+			mce_hybris_indicator_set_active(self->name, self->eligible);
+#endif
+	}
 }
 
 /** Check if a led pattern should always utilize sw breathing
@@ -1431,92 +1540,28 @@ static gboolean display_off_p(display_state_t state)
  */
 static void led_update_active_pattern(void)
 {
-	pattern_struct *new_active_pattern = 0;
+	pattern_struct *active = NULL;
 
 	if( !pattern_stack )
 		goto EXIT;
 
-	for( GList *iter = pattern_stack->head; ; iter = iter->next ) {
-		if( !iter ) {
-			new_active_pattern = 0;
+	/* Update eligibility of all patterns */
+	for( GList *iter = pattern_stack->head; iter; iter = iter->next ) {
+		pattern_struct *pattern = iter->data;
+		led_pattern_update_eligible(pattern);
+	}
+
+	/* Select the first / highest priority eligible pattern */
+	for( GList *iter = pattern_stack->head; iter; iter = iter->next ) {
+		pattern_struct *pattern = iter->data;
+		if( pattern->eligible ) {
+			active = pattern;
 			break;
 		}
-
-		new_active_pattern = iter->data;
-
-#if 0 /* While this can be useful when actively debugging led
-       * activation logic, it creates so much noise that using
-       * debug verbosity becomes impossible - do not compile in
-       * by default. */
-		mce_log(LL_DEBUG,
-			"pattern: %s, active: %d, enabled: %d",
-			new_active_pattern->name,
-			new_active_pattern->active,
-			new_active_pattern->enabled);
-#endif
-
-		/* If the pattern is deactivated, ignore */
-		if (new_active_pattern->active == FALSE)
-			continue;
-
-		/* If the pattern is disabled through GConf, ignore */
-		if (new_active_pattern->enabled == FALSE)
-			continue;
-
-		/* If the LED is disabled,
-		 * only patterns with visibility 5 are shown
-		 */
-		if ((led_enabled == FALSE) &&
-		    (new_active_pattern->policy != 5))
-			continue;
-
-		/* Always show pattern with visibility 3 or 5 */
-		if ((new_active_pattern->policy == 3) ||
-		    (new_active_pattern->policy == 5))
-			break;
-
-		/* Show pattern with visibility 7 if display is dimmed */
-		if( new_active_pattern->policy == 7 ) {
-			if( display_state_curr == MCE_DISPLAY_DIM )
-				break;
-			continue;
-		}
-
-		/* Acting dead behaviour */
-		if (system_state == MCE_SYSTEM_STATE_ACTDEAD) {
-			/* If we're in acting dead,
-			 * show patterns with visibility 4
-			 */
-			if (new_active_pattern->policy == 4)
-				break;
-
-			/* If we're in acting dead
-			 * and the display is off, show pattern
-			 */
-			if (display_off_p(display_state_curr) &&
-			    (new_active_pattern->policy == 2))
-				break;
-
-			/* If the display is on and visibility is 2,
-			 * or if visibility is 1/0, ignore pattern
-			 */
-			continue;
-		}
-
-		/* If the display is off or in low power mode,
-		 * we can use any active pattern
-		 */
-		if( display_off_p(display_state_curr) )
-			break;
-
-		/* If the pattern should be shown with screen on, use it */
-		if (new_active_pattern->policy == 1)
-			break;
 	}
 
 EXIT:
-	led_set_active_pattern(new_active_pattern);
-	return;
+	led_set_active_pattern(active);
 }
 
 /**
