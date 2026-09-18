@@ -1,3 +1,9 @@
+mce (1.118.0) precise; urgency=low
+
+  * [led] Enablers for supporting aw91xxx leds. JB#64879
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Fri, 18 Sep 2026 18:06:07 +0300
+
 mce (1.117.7) precise; urgency=low
 
   * [tklock] Do not trigger lid sounds on mce startup. Fixes JB#65176
