@@ -2655,6 +2655,9 @@ static gint mdy_hbm_level_written = -1;
 /** ID for high brightness mode timer source */
 static guint mdy_hbm_timeout_cb_id = 0;
 
+/** Upper limit for HBM setting **/
+static int hbm_max_val = 2;
+
 /** Helper for updating high brightness state with bounds checking
  *
  * @param number high brightness mode [0 ... 2]
@@ -2662,16 +2665,15 @@ static guint mdy_hbm_timeout_cb_id = 0;
 static void mdy_hbm_set_level(int number)
 {
     int minval = 0;
-    int maxval = 2;
 
     /* Clip value to valid range */
     if( number < minval ) {
         mce_log(LL_ERR, "value=%d vs min=%d", number, minval);
         number = minval;
     }
-    else if( number > maxval ) {
-        mce_log(LL_ERR, "value=%d vs max=%d", number, maxval);
-        number = maxval;
+    else if( number > hbm_max_val ) {
+        mce_log(LL_ERR, "value=%d vs max=%d", number, hbm_max_val);
+        number = hbm_max_val;
     }
     else
         mce_log(LL_DEBUG, "value=%d", number);
@@ -5784,6 +5786,15 @@ static display_type_t mdy_display_type_get(void)
     }
     else {
         display_type = DISPLAY_TYPE_NONE;
+    }
+
+    if (display_type == DISPLAY_TYPE_GENERIC) {
+        /* Calculate HBM mode for generic display */
+        mdy_high_brightness_mode_output.path = mce_conf_get_string("Display", DISPLAY_HBM_STATE_FILE, NULL);
+        mdy_high_brightness_mode_supported =
+        (g_access(mdy_high_brightness_mode_output.path, W_OK) == 0);
+
+        hbm_max_val = mce_conf_get_int("Display", DISPLAY_HBM_MAX_VALUE, 1);
     }
 
     errno = 0;
