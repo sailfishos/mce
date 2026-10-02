@@ -3761,7 +3761,7 @@ static void mdy_brightness_set_lpm_level(gint level)
 static void mdy_brightness_set_on_level(gint hbm_and_level)
 {
     gint new_brightness = (hbm_and_level >> 0) & 0xff;
-    gint new_hbm_level  = (hbm_and_level >> 8) & 0xff;
+    gint new_hbm_level  = (hbm_and_level >= 100 ? 1 : 0);
 
     mce_log(LL_INFO, "hbm_level=%d, brightness=%d",
             new_hbm_level, new_brightness);
