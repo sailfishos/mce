@@ -176,12 +176,6 @@
 /** Directory prefix for keypad LED controller */
 #define MCE_LED_KEYPAD_PREFIX			"/keypad"
 
-/** Directory prefix for cover LED controller */
-#define MCE_LED_COVER_PREFIX			"/cover"
-
-/** Directory prefix for keyboard LED controller */
-#define MCE_LED_KEYBOARD_PREFIX			"/keyboard"
-
 /** Directory prefix for LP5521 LED controller */
 #define MCE_LED_LP5521_PREFIX			"/lp5521"
 
@@ -196,21 +190,6 @@
 
 /** Name of LED channel 2 */
 #define MCE_LED_CHANNEL2			":channel2"
-
-/** Name of LED channel 3 */
-#define MCE_LED_CHANNEL3			":channel3"
-
-/** Name of LED channel 4 */
-#define MCE_LED_CHANNEL4			":channel4"
-
-/** Name of LED channel 5 */
-#define MCE_LED_CHANNEL5			":channel5"
-
-/** Name of LED channel 6 */
-#define MCE_LED_CHANNEL6			":channel6"
-
-/** Name of LED channel 7 */
-#define MCE_LED_CHANNEL7			":channel7"
 
 /** Name of LED channel 8 */
 #define MCE_LED_CHANNEL8			":channel8"
@@ -244,13 +223,6 @@
 #define MCE_LYSTI_LED1_MASK			(1 << 0)
 
 /**
- * Lysti LED mask for LED 2 (channel 7);
- * RM-680/RM-690 Monochrome LED behind model name
- * RX-51 keyboard backlight 5
- */
-#define MCE_LYSTI_LED2_MASK			(1 << 1)
-
-/**
  * Lysti LED mask for LED 3 (channel 6);
  * RM-680/RM-690 Monochrome LED behind model name
  * RX-51 red component of RGB LED
@@ -272,34 +244,6 @@
 #define MCE_LYSTI_LED5_MASK			(1 << 4)
 
 /**
- * Lysti LED mask for LED 6 (channel 3);
- * RM-680/RM-690 monochrome keyboard backlight 4
- * RX-51 monochrome keyboard backlight 4
- */
-#define MCE_LYSTI_LED6_MASK			(1 << 5)
-
-/**
- * Lysti LED mask for LED 7 (channel 2);
- * RM-680/RM-690 monochrome keyboard backlight 3
- * RX-51 monochrome keyboard backlight 3
- */
-#define MCE_LYSTI_LED7_MASK			(1 << 6)
-
-/**
- * Lysti LED mask for LED 8 (channel 1);
- * RM-680/RM-690 monochrome keyboard backlight 2
- * RX-51 monochrome keyboard backlight 2
- */
-#define MCE_LYSTI_LED8_MASK			(1 << 7)
-
-/**
- * Lysti LED mask for LED 9 (channel 0);
- * RM-680/RM-690 monochrome keyboard backlight 1
- * RX-51 monochrome keyboard backlight 1
- */
-#define MCE_LYSTI_LED9_MASK			(1 << 8)
-
-/**
  * Lysti LED mask for the
  * RM-680/RM-690 monochrome power button LED
  */
@@ -313,22 +257,6 @@
 
 /** Lysti LED mask for the RX-51 blue RGB LED component */
 #define MCE_LYSTI_BLUE_MASK_RX51		MCE_LYSTI_LED5_MASK
-
-/** Lysti LED mask for the RX-51 keyboard backlight */
-#define MCE_LYSTI_KB_BACKLIGHT_MASK_RX51	(MCE_LYSTI_LED9_MASK | \
-						 MCE_LYSTI_LED8_MASK | \
-						 MCE_LYSTI_LED7_MASK | \
-						 MCE_LYSTI_LED6_MASK | \
-						 MCE_LYSTI_LED2_MASK | \
-						 MCE_LYSTI_LED1_MASK)
-
-/** Lysti LED mask for the RM-680/RM-690 keyboard backlight */
-#define MCE_LYSTI_KB_BACKLIGHT_MASK_RM680	(MCE_LYSTI_LED9_MASK | \
-						 MCE_LYSTI_LED8_MASK | \
-						 MCE_LYSTI_LED7_MASK | \
-						 MCE_LYSTI_LED6_MASK | \
-						 MCE_LYSTI_LED5_MASK | \
-						 MCE_LYSTI_LED4_MASK)
 
 /* Brightness levels used by the keypad LED */
 #define BRIGHTNESS_LEVEL_0			"0"	/**< off */

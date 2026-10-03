@@ -65,100 +65,8 @@ static guint key_backlight_timeout_cb_id = 0;
 /** Default backlight brightness */
 static gint key_backlight_timeout = DEFAULT_KEY_BACKLIGHT_TIMEOUT;
 
-/** Default backlight fade in time */
-static gint key_backlight_fade_in_time = DEFAULT_KEY_BACKLIGHT_FADE_IN_TIME;
-
-/** Default backlight fade out time */
-static gint key_backlight_fade_out_time = DEFAULT_KEY_BACKLIGHT_FADE_OUT_TIME;
-
 /** Key backlight enabled/disabled */
 static gboolean key_backlight_is_enabled = FALSE;
-
-/** Key backlight channel 0 LED current path */
-static output_state_t led_current_kb0_output =
-{
-	.context = "led_current_kb0",
-	.truncate_file = TRUE,
-	.close_on_exit = FALSE,
-};
-/** Key backlight channel 1 LED current path */
-static output_state_t led_current_kb1_output =
-{
-	.context = "led_current_kb1",
-	.truncate_file = TRUE,
-	.close_on_exit = FALSE,
-};
-/** Key backlight channel 2 LED current path */
-static output_state_t led_current_kb2_output =
-{
-	.context = "led_current_kb2",
-	.truncate_file = TRUE,
-	.close_on_exit = FALSE,
-};
-/** Key backlight channel 3 LED current path */
-static output_state_t led_current_kb3_output =
-{
-	.context = "led_current_kb3",
-	.truncate_file = TRUE,
-	.close_on_exit = FALSE,
-};
-/** Key backlight channel 4 LED current path */
-static output_state_t led_current_kb4_output =
-{
-	.context = "led_current_kb4",
-	.truncate_file = TRUE,
-	.close_on_exit = FALSE,
-};
-/** Key backlight channel 5 LED current path */
-static output_state_t led_current_kb5_output =
-{
-	.context = "led_current_kb5",
-	.truncate_file = TRUE,
-	.close_on_exit = FALSE,
-};
-
-/** Key backlight channel 0 backlight path */
-static output_state_t led_brightness_kb0_output =
-{
-	.context = "led_brightness_kb0",
-	.truncate_file = TRUE,
-	.close_on_exit = FALSE,
-};
-/** Key backlight channel 1 backlight path */
-static output_state_t led_brightness_kb1_output =
-{
-	.context = "led_brightness_kb1",
-	.truncate_file = TRUE,
-	.close_on_exit = FALSE,
-};
-/** Key backlight channel 2 backlight path */
-static output_state_t led_brightness_kb2_output =
-{
-	.context = "led_brightness_kb2",
-	.truncate_file = TRUE,
-	.close_on_exit = FALSE,
-};
-/** Key backlight channel 3 backlight path */
-static output_state_t led_brightness_kb3_output =
-{
-	.context = "led_brightness_kb3",
-	.truncate_file = TRUE,
-	.close_on_exit = FALSE,
-};
-/** Key backlight channel 4 backlight path */
-static output_state_t led_brightness_kb4_output =
-{
-	.context = "led_brightness_kb4",
-	.truncate_file = TRUE,
-	.close_on_exit = FALSE,
-};
-/** Key backlight channel 5 backlight path */
-static output_state_t led_brightness_kb5_output =
-{
-	.context = "led_brightness_kb5",
-	.truncate_file = TRUE,
-	.close_on_exit = FALSE,
-};
 
 /** Maximum backlight brightness, hw specific */
 static gint backlight_brightness_level_maximum = DEFAULT_KEY_BACKLIGHT_LEVEL;
@@ -174,36 +82,6 @@ static output_state_t backlight_brightness_level_output =
 	.truncate_file = TRUE,
 	.close_on_exit = FALSE,
 };
-
-/** Path to engine 3 mode */
-static gchar *engine3_mode_path = NULL;
-
-/** Path to engine 3 load */
-static gchar *engine3_load_path = NULL;
-
-/** Path to engine 3 leds */
-static gchar *engine3_leds_path = NULL;
-
-/** File pointer for the N810 keypad fadetime */
-static output_state_t n810_keypad_fadetime_output =
-{
-	.context = "n810_keypad_fadetime",
-	.truncate_file = TRUE,
-	.close_on_exit = FALSE,
-	.path = MCE_KEYPAD_BACKLIGHT_FADETIME_SYS_PATH,
-};
-
-/** File pointer for the N810 keyboard fadetime */
-static output_state_t n810_keyboard_fadetime_output =
-{
-	.context = "n810_keyboard_fadetime",
-	.truncate_file = TRUE,
-	.close_on_exit = FALSE,
-	.path = MCE_KEYBOARD_BACKLIGHT_FADETIME_SYS_PATH,
-};
-
-/** Key backlight mask */
-static guint key_backlight_mask = 0;
 
 static void cancel_key_backlight_timeout(void);
 
@@ -281,204 +159,12 @@ static void probe_simple_backlight_brightness(void)
 static void setup_key_backlight(void)
 {
 	switch (get_product_id()) {
-	case PRODUCT_RM690:
-	case PRODUCT_RM680:
-		key_backlight_mask = MCE_LYSTI_KB_BACKLIGHT_MASK_RM680;
-
-		led_current_kb0_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_CURRENT_SUFFIX, NULL);
-		led_current_kb1_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL1, MCE_LED_CURRENT_SUFFIX, NULL);
-		led_current_kb2_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL2, MCE_LED_CURRENT_SUFFIX, NULL);
-		led_current_kb3_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL3, MCE_LED_CURRENT_SUFFIX, NULL);
-		led_current_kb4_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL4, MCE_LED_CURRENT_SUFFIX, NULL);
-		led_current_kb5_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL5, MCE_LED_CURRENT_SUFFIX, NULL);
-
-		led_brightness_kb0_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
-		led_brightness_kb1_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL1, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
-		led_brightness_kb2_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL2, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
-		led_brightness_kb3_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL3, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
-		led_brightness_kb4_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL4, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
-		led_brightness_kb5_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL5, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
-
-		engine3_mode_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE3, MCE_LED_MODE_SUFFIX, NULL);
-		engine3_load_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE3, MCE_LED_LOAD_SUFFIX, NULL);
-		engine3_leds_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE3, MCE_LED_LEDS_SUFFIX, NULL);
-		break;
-
-	case PRODUCT_RX51:
-		key_backlight_mask = MCE_LYSTI_KB_BACKLIGHT_MASK_RX51;
-
-		led_current_kb0_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_CURRENT_SUFFIX, NULL);
-		led_current_kb1_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL1, MCE_LED_CURRENT_SUFFIX, NULL);
-		led_current_kb2_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL2, MCE_LED_CURRENT_SUFFIX, NULL);
-		led_current_kb3_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL3, MCE_LED_CURRENT_SUFFIX, NULL);
-		led_current_kb4_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL7, MCE_LED_CURRENT_SUFFIX, NULL);
-		led_current_kb5_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL8, MCE_LED_CURRENT_SUFFIX, NULL);
-
-		led_brightness_kb0_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
-		led_brightness_kb1_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL1, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
-		led_brightness_kb2_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL2, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
-		led_brightness_kb3_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL3, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
-		led_brightness_kb4_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL7, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
-		led_brightness_kb5_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL8, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
-
-		engine3_mode_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE3, MCE_LED_MODE_SUFFIX, NULL);
-		engine3_load_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE3, MCE_LED_LOAD_SUFFIX, NULL);
-		engine3_leds_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE3, MCE_LED_LEDS_SUFFIX, NULL);
-		break;
-
-	case PRODUCT_RX48:
-	case PRODUCT_RX44:
-		/* Has backlight, but no special setup needed */
-		led_brightness_kb0_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_COVER_PREFIX, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
-		led_brightness_kb1_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_KEYBOARD_PREFIX, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
-		break;
-
 	default:
 		/* Check for user-defined simple keyboard backlight */
 		probe_simple_backlight_brightness();
 		break;
 	}
 }
-
-/**
- * Key backlight brightness for Lysti
- *
- * @param fadetime The fade time
- * @param brightness Backlight brightness
- */
-static void set_lysti_backlight_brightness(guint fadetime, guint brightness)
-{
-	/*                        remux|bright| fade | stop
-	 *                        xxxx   xx            xxxx */
-	static gchar pattern[] = "9d80" "4000" "0000" "c000";
-	static gchar convert[] = "0123456789abcdef";
-	static gint old_brightness = 0;
-	gint steps = (gint)brightness - old_brightness;
-
-	/* If we're fading towards 0 and receive a new brightness,
-	 * without the backlight timeout being set, the ALS has
-	 * adjusted the brightness; just ignore the request
-	 */
-	if ((old_brightness == 0) && (key_backlight_timeout_cb_id == 0))
-		goto EXIT;
-
-	/* Calculate fade time; if fade time is 0, set immediately. If
-	 * old and new brightnesses are the same, also write the value
-	 * just in case, this also avoids division by zero in other
-	 * branch.
-	 */
-	if ( (fadetime == 0) || (steps == 0) ) {
-		/* No fade */
-		pattern[6] = convert[(brightness & 0xf0) >> 4];
-		pattern[7] = convert[brightness & 0xf];
-		pattern[8] = '0';
-		pattern[9] = '0';
-		pattern[10] = '0';
-		pattern[11] = '0';
-	} else {
-		gint stepspeed;
-
-		/* Figure out how big steps we need to take when
-		 * fading (brightness - old_brightness) steps
-		 *
-		 * During calculations the fade time is multiplied by 1000
-		 * to avoid losing precision
-		 *
-		 * Every step is 0.49ms big
-		 */
-
-		/* This should be ok already to avoid division by
-		 * zero, but paranoid checking just in case some patch
-		 * breaks previous check.
-		 */
-		if (steps == 0) {
-			stepspeed = 1;
-		} else {
-			stepspeed = (((fadetime * 1000) / ABS(steps)) / 0.49) / 1000;
-		}
-
-		/* Sanity check the stepspeed */
-		if (stepspeed < 1)
-			stepspeed = 1;
-		else if (stepspeed > 31)
-			stepspeed = 31;
-
-		/* Even for increment, odd for decrement */
-		stepspeed *= 2;
-		stepspeed += steps > 0 ? 0 : 1;
-
-		/* Start from current brightness */
-		pattern[6] = convert[(old_brightness & 0xf0) >> 4];
-		pattern[7] = convert[old_brightness & 0xf];
-
-		/* Program the step speed */
-		pattern[8] = convert[(stepspeed & 0xf0) >> 4];
-		pattern[9] = convert[stepspeed & 0xf];
-
-		/* Program the number of steps */
-		pattern[10] = convert[(ABS(steps) & 0xf0) >> 4];
-		pattern[11] = convert[ABS(steps) & 0x0f];
-	}
-
-	/* Store the new brightness as the current one */
-	old_brightness = brightness;
-
-	/* Disable engine 3 */
-	mce_write_string_to_file(engine3_mode_path,
-				 MCE_LED_DISABLED_MODE);
-
-	/* Turn off all keyboard backlight LEDs */
-	mce_write_number_string_to_file(&led_brightness_kb0_output, 0);
-	mce_write_number_string_to_file(&led_brightness_kb1_output, 0);
-	mce_write_number_string_to_file(&led_brightness_kb2_output, 0);
-	mce_write_number_string_to_file(&led_brightness_kb3_output, 0);
-	mce_write_number_string_to_file(&led_brightness_kb4_output, 0);
-	mce_write_number_string_to_file(&led_brightness_kb5_output, 0);
-
-	/* Set backlight LED current */
-	mce_write_number_string_to_file(&led_current_kb0_output, MAXIMUM_LYSTI_BACKLIGHT_LED_CURRENT);
-	mce_write_number_string_to_file(&led_current_kb1_output, MAXIMUM_LYSTI_BACKLIGHT_LED_CURRENT);
-	mce_write_number_string_to_file(&led_current_kb2_output, MAXIMUM_LYSTI_BACKLIGHT_LED_CURRENT);
-	mce_write_number_string_to_file(&led_current_kb3_output, MAXIMUM_LYSTI_BACKLIGHT_LED_CURRENT);
-	mce_write_number_string_to_file(&led_current_kb4_output, MAXIMUM_LYSTI_BACKLIGHT_LED_CURRENT);
-	mce_write_number_string_to_file(&led_current_kb5_output, MAXIMUM_LYSTI_BACKLIGHT_LED_CURRENT);
-
-	/* Engine 3 */
-	mce_write_string_to_file(engine3_mode_path,
-				 MCE_LED_LOAD_MODE);
-
-	mce_write_string_to_file(engine3_leds_path,
-				 bin_to_string(key_backlight_mask));
-	mce_write_string_to_file(engine3_load_path,
-				 pattern);
-	mce_write_string_to_file(engine3_mode_path,
-				 MCE_LED_RUN_MODE);
-
-EXIT:
-	return;
-}
-
-/**
- * Key backlight brightness for N810/N810 WiMAX Edition
- *
- * @param fadetime The fade time
- * @param brightness Backlight brightness
- */
-static void set_n810_backlight_brightness(guint fadetime, guint brightness)
-{
-	/* Set fade time */
-	if (brightness == 0) {
-		mce_write_number_string_to_file(&n810_keypad_fadetime_output, fadetime);
-		mce_write_number_string_to_file(&n810_keyboard_fadetime_output, fadetime);
-	} else {
-		mce_write_number_string_to_file(&n810_keypad_fadetime_output, 0);
-		mce_write_number_string_to_file(&n810_keyboard_fadetime_output, 0);
-	}
-
-	mce_write_number_string_to_file(&led_brightness_kb0_output, brightness);
-	mce_write_number_string_to_file(&led_brightness_kb1_output, brightness);
-}
-
 /**
  * Key backlight brightness for simple backlight
  *
@@ -498,13 +184,6 @@ static void set_key_backlight_brightness(gconstpointer data)
 {
 	static gint cached_brightness = -1;
 	gint new_brightness = GPOINTER_TO_INT(data);
-	gint fadetime;
-
-	if (new_brightness == 0) {
-		fadetime = key_backlight_fade_out_time;
-	} else {
-		fadetime = key_backlight_fade_in_time;
-	}
 
 	/* If we're just rehashing the same brightness value, don't bother */
 	if ((new_brightness == cached_brightness) || (new_brightness == -1))
@@ -516,17 +195,6 @@ static void set_key_backlight_brightness(gconstpointer data)
 
 	/* Product specific key backlight handling */
 	switch (get_product_id()) {
-	case PRODUCT_RM690:
-	case PRODUCT_RM680:
-	case PRODUCT_RX51:
-		set_lysti_backlight_brightness(fadetime, new_brightness);
-		break;
-
-	case PRODUCT_RX48:
-	case PRODUCT_RX44:
-		set_n810_backlight_brightness(fadetime, new_brightness);
-		break;
-
 	default:
 		if (backlight_brightness_level_output.path) {
 			set_simple_backlight_brightness(new_brightness);
@@ -906,26 +574,6 @@ const gchar *g_module_check_init(GModule *module)
 				 MCE_CONF_KEY_BACKLIGHT_TIMEOUT,
 				 DEFAULT_KEY_BACKLIGHT_TIMEOUT);
 
-	key_backlight_fade_in_time =
-		mce_conf_get_int(MCE_CONF_KEYPAD_GROUP,
-				 MCE_CONF_KEY_BACKLIGHT_FADE_IN_TIME,
-				 DEFAULT_KEY_BACKLIGHT_FADE_IN_TIME);
-
-	if (((key_backlight_fade_in_time % 125) != 0) &&
-	    (key_backlight_fade_in_time > 1000))
-		key_backlight_fade_in_time =
-			DEFAULT_KEY_BACKLIGHT_FADE_IN_TIME;
-
-	key_backlight_fade_out_time =
-		mce_conf_get_int(MCE_CONF_KEYPAD_GROUP,
-				 MCE_CONF_KEY_BACKLIGHT_FADE_OUT_TIME,
-				 DEFAULT_KEY_BACKLIGHT_FADE_OUT_TIME);
-
-	if (((key_backlight_fade_out_time % 125) != 0) &&
-	    (key_backlight_fade_out_time > 1000))
-		key_backlight_fade_out_time =
-			DEFAULT_KEY_BACKLIGHT_FADE_OUT_TIME;
-
 	/* Add dbus handlers */
 	mce_keypad_init_dbus();
 
@@ -947,45 +595,8 @@ void g_module_unload(GModule *module)
 	/* Remove dbus handlers */
 	mce_keypad_quit_dbus();
 
-	/* Close files */
-	mce_close_output(&led_current_kb0_output);
-	mce_close_output(&led_current_kb1_output);
-	mce_close_output(&led_current_kb2_output);
-	mce_close_output(&led_current_kb3_output);
-	mce_close_output(&led_current_kb4_output);
-	mce_close_output(&led_current_kb5_output);
-
-	mce_close_output(&led_brightness_kb0_output);
-	mce_close_output(&led_brightness_kb1_output);
-	mce_close_output(&led_brightness_kb2_output);
-	mce_close_output(&led_brightness_kb3_output);
-	mce_close_output(&led_brightness_kb4_output);
-	mce_close_output(&led_brightness_kb5_output);
-
-	mce_close_output(&n810_keypad_fadetime_output);
-	mce_close_output(&n810_keyboard_fadetime_output);
-
-	/* Free path strings */
-	g_free((void*)led_current_kb0_output.path);
-	g_free((void*)led_current_kb1_output.path);
-	g_free((void*)led_current_kb2_output.path);
-	g_free((void*)led_current_kb3_output.path);
-	g_free((void*)led_current_kb4_output.path);
-	g_free((void*)led_current_kb5_output.path);
-
-	g_free((void*)led_brightness_kb0_output.path);
-	g_free((void*)led_brightness_kb1_output.path);
-	g_free((void*)led_brightness_kb2_output.path);
-	g_free((void*)led_brightness_kb3_output.path);
-	g_free((void*)led_brightness_kb4_output.path);
-	g_free((void*)led_brightness_kb5_output.path);
-
 	g_free((void*)backlight_brightness_level_output.path);
 	g_free(backlight_brightness_level_maximum_path);
-
-	g_free(engine3_mode_path);
-	g_free(engine3_load_path);
-	g_free(engine3_leds_path);
 
 	/* Remove triggers/filters from datapipes */
 	mce_keypad_datapipe_quit();
