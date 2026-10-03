@@ -636,6 +636,7 @@ NORMALIZE_USES_SPC =\
 	modules/filter-brightness-als.c\
 	modules/filter-brightness-als.h\
 	modules/fingerprint.c\
+	modules/keypad.c\
 	modules/keypad.h\
 	modules/inactivity.c\
 	modules/inactivity.h\
@@ -686,7 +687,6 @@ NORMALIZE_USES_TAB =\
 	modetransition.c\
 	modules/battery-bme.c\
 	modules/camera.c\
-	modules/keypad.c\
 	modules/led.c\
 	modules/led.h\
 	modules/powersavemode.c\
