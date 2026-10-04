@@ -928,10 +928,10 @@ modules/keypad.o:\
 	datapipe.h\
 	mce-conf.h\
 	mce-dbus.h\
-	mce-hal.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
+	mce-setting.h\
 	mce.h\
 	musl-compatibility.h\
 	modules/keypad.h\
@@ -943,10 +943,10 @@ modules/keypad.pic.o:\
 	datapipe.h\
 	mce-conf.h\
 	mce-dbus.h\
-	mce-hal.h\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
+	mce-setting.h\
 	mce.h\
 	musl-compatibility.h\
 	modules/keypad.h\

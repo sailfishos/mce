@@ -73,6 +73,17 @@ typedef enum
 # define MCE_DEFAULT_BUTTONBACKLIGHT_OFF_DELAY 5000 // = 5 seconds
 
 /* ========================================================================= *
+ * Keypad Backlight Settings
+ * ========================================================================= */
+
+/** Prefix for keypad setting keys */
+# define MCE_SETTING_KEYPADBACKLIGHT_PATH   "/system/osso/dsm/keypadbacklight"
+
+/** Whether keypad backlight is used or not */
+# define MCE_SETTING_KEYPADBACKLIGHT_ENABLED MCE_SETTING_KEYPADBACKLIGHT_PATH "/enabled"
+# define MCE_DEFAULT_KEYPADBACKLIGHT_ENABLED true
+
+/* ========================================================================= *
  * Functions
  * ========================================================================= */
 

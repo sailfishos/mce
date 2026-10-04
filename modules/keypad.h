@@ -25,20 +25,36 @@
 #define _KEYPAD_H_
 
 /** Default key backlight brightness */
-#define DEFAULT_KEY_BACKLIGHT_LEVEL                     255
+#define DEFAULT_KEYPAD_BACKLIGHT_LEVEL                  255
 
 /** Default key backlight timeout in seconds */
-#define DEFAULT_KEY_BACKLIGHT_TIMEOUT                   30      /* 30 s */
+#define DEFAULT_KEYPAD_BACKLIGHT_TIMEOUT                30 // [s]
 
-#ifndef MCE_CONF_KEYPAD_GROUP
 /** Name of Keypad configuration group */
-# define MCE_CONF_KEYPAD_GROUP                          "KeyPad"
-#endif
+#define MCE_CONF_KEYPAD_GROUP                           "KeyPad"
+
+/** Name of configuration key for keypad type */
+#define MCE_CONF_KEYPAD_TYPE                            "Type"
 
 /** Name of configuration key for keyboard backlight timeout */
-#define MCE_CONF_KEY_BACKLIGHT_TIMEOUT                  "BacklightTimeout"
+#define MCE_CONF_KEYPAD_BACKLIGHT_TIMEOUT               "BacklightTimeout"
 
-/** Name of configuration key for keyboard backlight path */
-#define MCE_CONF_KEY_BACKLIGHT_SYS_PATH                 "BrightnessDirectory"
+/** Name of configuration key for keyboard backlight brightness directories
+ *
+ * Acceptable values: directory paths that countain writable "brightness"
+ * and readable "max_brightness" file.
+ */
+#define MCE_CONF_KEYPAD_BACKLIGHT_BRIGHTNESS_DIR        "BrightnessDirectory"
+
+/** Name of configuration key for keyboard backlight binary brightness paths
+ *
+ * Acceptable values: paths to files where writing 1 / 0 turns backlight on / off.
+ */
+#define MCE_CONF_KEYPAD_BACKLIGHT_BRIGHTNESS_FILE       "BinaryBrightnessFile"
+
+/** Name of configuration key for enable backlight when charging */
+#define MCE_CONF_KEYPAD_ENABLE_BACKLIGHT_WHEN_CHARGING  "EnableBacklightWhenCharging"
+
+#define DEFAULT_KEYPAD_ENABLE_BACKLIGHT_WHEN_CHARGING   false
 
 #endif /* _KEYPAD_H_ */
