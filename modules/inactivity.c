@@ -41,6 +41,69 @@
 
 #include <gmodule.h>
 
+/* Display / tklock state transitions and interplay with inactivity state
+ *
+ * ON_LOCKED_ACTIVE vs ON_LOCKED_INACTIVE is a special case: tklock remains
+ * set for both, differentiation happens via interaction_expected state.
+ *
+ * More exotic cases like unblank to dimmed state / lock code view or display
+ * blanking without locking are left out to keep graph readable.
+ *
+ *
+ *                                                blank
+ *                                                timeout
+ *                        +-----------------------------------------------------+
+ *                        v                                                     |
+ *       blank          +-----------------------+                               |
+ *       timeout        |  OFF_LOCKED_INACTIVE  |                               |
+ *   +----------------> |                       | <+                            |
+ *   |                  +-----------------------+  |                            |
+ *   |                    |                        |                            |
+ *   |                    |                        | blank                      |
+ *   |                    | unblank                | timeout                    |
+ *   |                    v                        |                            |
+ *   |                  +----------------------------------------------------+  |
+ *   |    +------------ |                 ON_LOCKED_INACTIVE                 |  |
+ *   |    |             +----------------------------------------------------+  |
+ *   |    |               |                        ^                            |
+ *   |    |               | swipe                  | swipe         +------------+
+ *   |    |               v                        |               |
+ *   |    |             +----------------------------------------------------+   activity
+ *   |    |             |                                                    | -----------+
+ *   |    | fingerprint |                  ON_LOCKED_ACTIVE                  |            |
+ *   |    | unlock      |                                                    | <----------+
+ *   |    |             +----------------------------------------------------+
+ *   |    |               |                        |
+ *   |    |               | code                   | fingerprint
+ *   |    |               | unlock                 | unlock
+ *   |    |               v                        v
+ *   |    |             +----------------------------------------------------+   activity
+ *   |    |             |                                                    | -----------+
+ *   |    |             |                                                    |            |
+ *   |    +-----------> |                 ON_UNLOCKED_ACTIVE                 | <----------+
+ *   |                  |                                                    |
+ *   |                  |                                                    |
+ *   |    +-----------> |                                                    |
+ *   |    |             +----------------------------------------------------+
+ *   |    |               |                        |               ^
+ *   |    |               | inactivity             |               |
+ *   |    | activity      | timeout                |               | activity
+ *   |    |               v                        |               |
+ *   |    |             +-----------------------+  |               |
+ *   |    +------------ | ON_UNLOCKED_INACTIVE  |  |               |
+ *   |                  +-----------------------+  |               |
+ *   |                    |                        | dim           |
+ *   |                    | dim                    | timeout       |
+ *   |                    | timeout                |               |
+ *   |                    v                        |               |
+ *   |                  +-----------------------+  |               |
+ *   +----------------- | DIM_UNLOCKED_INACTIVE | <+               |
+ *                      +-----------------------+                  |
+ *                        |                                        |
+ *                        +----------------------------------------+
+ *
+ */
+
 /* ========================================================================= *
  * CONSTANTS
  * ========================================================================= */
@@ -527,6 +590,13 @@ static void mia_datapipe_submode_cb(gconstpointer data)
     mce_log(LL_DEBUG, "submode = %s",
             submode_change_repr(prev, submode));
 
+    if( (prev ^ submode) & MCE_SUBMODE_TKLOCK ) {
+        if( submode & MCE_SUBMODE_TKLOCK )
+            mce_datapipe_generate_inactivity();
+        else
+            mce_datapipe_generate_activity();
+    }
+
 EXIT:
     return;
 }
@@ -613,6 +683,11 @@ static void mia_datapipe_display_state_next_cb(gconstpointer data)
 
     if( prev == MCE_DISPLAY_UNDEF )
         mia_datapipe_check_initial_state();
+
+    if( display_state_next == MCE_DISPLAY_ON )
+        mce_datapipe_generate_activity();
+    else
+        mce_datapipe_generate_inactivity();
 
 EXIT:
     return;
