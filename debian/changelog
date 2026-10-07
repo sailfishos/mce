@@ -1,3 +1,13 @@
+mce (1.119.0) precise; urgency=low
+
+  * [keypad] Drop support for old Nokia devices
+  * [led] Drop support for old Nokia devices
+  * [keypad] Refactor keypad plugin
+  * [keypad] Implement keypad backlight policy for flip phones. JB#65265
+  * [inactivity] Normalize device inactive state behavior. JB#65265
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Wed, 07 Oct 2026 15:46:34 +0300
+
 mce (1.118.1) precise; urgency=low
 
   * [dbus] Exit cleanly on D-Bus disconnect. JB#65305
