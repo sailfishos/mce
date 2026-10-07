@@ -1,3 +1,10 @@
+mce (1.118.1) precise; urgency=low
+
+  * [dbus] Exit cleanly on D-Bus disconnect. JB#65305
+  * [led] Enablers for multiled sw breathing. JB#65305
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Wed, 07 Oct 2026 13:47:44 +0300
+
 mce (1.118.0) precise; urgency=low
 
   * [led] Enablers for supporting aw91xxx leds. JB#64879
