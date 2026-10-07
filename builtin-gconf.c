@@ -1975,6 +1975,11 @@ static const setting_t gconf_defaults[] =
     .def  = G_STRINGIFY(MCE_DEFAULT_BUTTONBACKLIGHT_OFF_DELAY),
   },
   {
+    .key  = MCE_SETTING_KEYPADBACKLIGHT_ENABLED,
+    .type = "b",
+    .def  = G_STRINGIFY(MCE_DEFAULT_KEYPADBACKLIGHT_ENABLED),
+  },
+  {
     .key  = MCE_SETTING_CHARGING_MODE,
     .type = "i",
     .def  = G_STRINGIFY(MCE_DEFAULT_CHARGING_MODE),

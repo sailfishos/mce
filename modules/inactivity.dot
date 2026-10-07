@@ -1,0 +1,45 @@
+// -*- mode: c -*-
+digraph Inactivity {
+    edge[arrowsize=0.4, fontsize=7];
+    node[shape=box, style=filled, fillcolor=yellow, width=0.001, height=0.001, fontsize=8];
+
+    node[fillcolor=red];
+
+    OFF_LOCKED_INACTIVE;
+    ON_LOCKED_INACTIVE;
+
+    node[fillcolor=yellow];
+
+    ON_UNLOCKED_INACTIVE;
+    DIM_UNLOCKED_INACTIVE;
+
+    node[fillcolor=green];
+
+    ON_LOCKED_ACTIVE;
+    ON_UNLOCKED_ACTIVE;
+
+    node[fillcolor=pink];
+
+    DIM_UNLOCKED_INACTIVE -> OFF_LOCKED_INACTIVE   [label=" blank \l timeout \l"];
+    DIM_UNLOCKED_INACTIVE -> ON_UNLOCKED_ACTIVE    [label=" activity \l"];
+
+    OFF_LOCKED_INACTIVE   -> ON_LOCKED_INACTIVE    [label=" unblank \l"];
+
+    ON_LOCKED_INACTIVE    -> ON_LOCKED_ACTIVE      [label=" swipe \l"];
+    ON_LOCKED_INACTIVE    -> OFF_LOCKED_INACTIVE   [label=" blank \l timeout \l"];
+    ON_LOCKED_INACTIVE    -> ON_UNLOCKED_ACTIVE    [label=" fingerprint \l unlock \l"];
+
+    ON_LOCKED_ACTIVE      -> ON_LOCKED_INACTIVE    [label=" swipe \l"];
+    ON_LOCKED_ACTIVE      -> ON_UNLOCKED_ACTIVE    [label=" code \l unlock \l"];
+    ON_LOCKED_ACTIVE      -> ON_UNLOCKED_ACTIVE    [label=" fingerprint \l unlock \l"];
+    ON_LOCKED_ACTIVE      -> OFF_LOCKED_INACTIVE   [label=" blank \l timeout \l"];
+    ON_LOCKED_ACTIVE      -> ON_LOCKED_ACTIVE      [label=" activity \l"];
+
+    ON_UNLOCKED_ACTIVE    -> DIM_UNLOCKED_INACTIVE [label=" dim \l timeout \l"];
+    ON_UNLOCKED_ACTIVE    -> ON_UNLOCKED_ACTIVE    [label=" activity \l"];
+
+    ON_UNLOCKED_ACTIVE    -> ON_UNLOCKED_INACTIVE  [label=" inactivity \l timeout \l"];
+
+    ON_UNLOCKED_INACTIVE  -> DIM_UNLOCKED_INACTIVE [label=" dim \l timeout \l"];
+    ON_UNLOCKED_INACTIVE  -> ON_UNLOCKED_ACTIVE    [label=" activity \l"];
+};

@@ -182,6 +182,9 @@ static void          xmce_get_button_backlligut_off_delay              (void);
 static bool          xmce_set_button_backlight_mode                    (const char *args);
 static bool          xmce_set_button_backlight                         (const char *args);
 static void          xmce_get_button_backlight                         (void);
+static bool          xmce_set_keypad_backlight_enabled                 (const char *args);
+static void          xmce_get_keypad_backlight_enabled                 (void);
+static bool          xmce_set_keypad_backlight_mode                    (const char *args);
 static void          xmce_set_display_state                            (const char *state);
 static void          xmce_get_display_state                            (void);
 static bool          xmce_prevent_display_blanking                     (const char *arg);
@@ -1922,6 +1925,15 @@ static const symbol_t button_backlight_mode_values[] = {
         { NULL, -1 }
 };
 
+/** Lookup table for keypad backlight mode options
+ */
+static const symbol_t keypad_backlight_mode_values[] = {
+        { "off",    MCE_KEYPAD_BACKLIGHT_MODE_OFF    },
+        { "on",     MCE_KEYPAD_BACKLIGHT_MODE_ON     },
+        { "policy", MCE_KEYPAD_BACKLIGHT_MODE_POLICY },
+        { NULL, -1 }
+};
+
 /** Lookup table for fake doubletap policies
  */
 static const symbol_t fake_doubletap_values[] = {
@@ -3445,6 +3457,65 @@ EXIT:
                rlookup(button_backlight_values, enabled));
 
         if( rsp ) dbus_message_unref(rsp);
+}
+
+/* ------------------------------------------------------------------------- *
+ * keypad backlight
+ * ------------------------------------------------------------------------- */
+
+/** Set keypad backlight enabled
+ *
+ * @param args string with "enable" or "disabled"
+ */
+static bool xmce_set_keypad_backlight_enabled(const char *args)
+{
+        const char *key = MCE_SETTING_KEYPADBACKLIGHT_ENABLED;
+
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
+        return xmce_setting_set_bool(key, xmce_parse_enabled(args));
+}
+
+/** Get current keypad backlight enabled
+ */
+static void xmce_get_keypad_backlight_enabled(void)
+{
+        const char *tag = "Keypad backlight:";
+        const char *key = MCE_SETTING_KEYPADBACKLIGHT_ENABLED;
+        gboolean    val = false;
+        const char *txt = "unknown";
+
+        if( xmce_setting_get_bool(key, &val) )
+                txt = val ? "enabled" : "disabled";
+
+        printf("%-"PAD1"s %s\n", tag, txt);
+}
+
+/** Set keypad backlight mode
+ *
+ * Note: The set mode gets cancelled when mcetool exits. The
+ *       --block option can be used keep mcetool connected to
+ *       system bus.
+ *
+ * @param args string with "off", "on", "policy"
+ */
+static bool xmce_set_keypad_backlight_mode(const char *args)
+{
+        if( mcetool_reject_common_args(args) )
+                return false;
+
+        dbus_int32_t val = lookup(keypad_backlight_mode_values, args);
+        if( val < 0 ) {
+                errorf("%s: invalid keypad backlight value\n", args);
+                return false;
+        }
+
+        xmce_ipc_no_reply(MCE_KEYPAD_BACKLIGHT_MODE_REQ,
+                          DBUS_TYPE_INT32, &val,
+                          DBUS_TYPE_INVALID);
+
+        return true;
 }
 
 /* ------------------------------------------------------------------------- *
@@ -7087,6 +7158,7 @@ static bool xmce_get_status(const char *args)
         xmce_get_memnotify_limits();
         xmce_get_memnotify_level();
         xmce_get_button_backlligut_off_delay();
+        xmce_get_keypad_backlight_enabled();
 
         xmce_get_battery_info();
         printf("\n");
@@ -8157,6 +8229,27 @@ static const mce_opt_t options[] =
                         "topmost application / system is prepared to handle\n"
                         "button presses.\n"
         },
+
+        {
+                .name        = "set-keypad-backlight",
+                .with_arg    = xmce_set_keypad_backlight_enabled,
+                .values      = "enabled|disabled",
+                .usage       =
+                        "request keypad backlight state\n"
+                        "Valid states are: enabled and disabled.\n"
+        },
+        {
+                .name        = "set-keypad-backlight-mode",
+                .with_arg    = xmce_set_keypad_backlight_mode,
+                .values      = "off|on|policy",
+                .usage       =
+                        "request keypad backlight mode\n"
+                        "Valid modes are: off|on|policy.\n"
+                        "\n"
+                        "Note: The 'on' and 'off' modes are cancelled when mcetool exits.\n"
+                        "      Option --block can be used keep mcetool connected to system bus.\n"
+        },
+
         {
                 .name        = "enable-led",
                 .flag        = 'l',

@@ -104,49 +104,6 @@ static GQueue *combination_rule_xref_list = NULL;
 /** The D-Bus controlled LED switch */
 static gboolean led_enabled = FALSE;
 
-/** Fields in the patterns */
-typedef enum {
-	/** Pattern priority field */
-	PATTERN_PRIO_FIELD = 0,
-	/** Pattern screen display policy field */
-	PATTERN_SCREEN_ON_FIELD = 1,
-	/** Pattern timeout field */
-	PATTERN_TIMEOUT_FIELD = 2,
-	/** On-period field for direct-controlled monochrome patterns */
-	PATTERN_ON_PERIOD_FIELD = 3,
-	/** R-channel pattern field for NJoy-controlled RGB patterns */
-	PATTERN_R_CHANNEL_FIELD = 3,
-	/** LED-muxing field for Lysti-controlled RGB patterns */
-	PATTERN_MUXING_FIELD = 3,
-	/**
-	 * Engine channel field for Lysti-controlled monochrome patterns
-	 * and NJoy-controlled monochrome patterns
-	 */
-	PATTERN_E_CHANNEL_FIELD = 3,
-	/** Number of fields used by Lysti-controlled monochrome patterns */
-	NUMBER_OF_PATTERN_FIELDS_LYSTI_MONO = 4,
-	/** Number of fields used by NJoy-controlled monochrome patterns */
-	NUMBER_OF_PATTERN_FIELDS_NJOY_MONO = 4,
-	/** Off-period field for direct-controlled monochrome patterns */
-	PATTERN_OFF_PERIOD_FIELD = 4,
-	/** G-channel pattern field for NJoy-controlled RGB patterns */
-	PATTERN_G_CHANNEL_FIELD = 4,
-	/** Engine channel 1 field for Lysti-controlled RGB patterns */
-	PATTERN_E1_CHANNEL_FIELD = 4,
-	/** Pattern brightness field for direct-controlled monochrome patterns */
-	PATTERN_BRIGHTNESS_FIELD = 5,
-	/** B-channel pattern field for NJoy-controlled RGB patterns */
-	PATTERN_B_CHANNEL_FIELD = 5,
-	/** Engine channel 2 field for Lysti-controlled RGB patterns */
-	PATTERN_E2_CHANNEL_FIELD = 5,
-	/**
-	 * Number of fields used by Lysti-controlled RGB patterns,
-	 * NJoy-controlled RGB patterns,
-	 * and monochrome direct-controlled patterns
-	 */
-	NUMBER_OF_PATTERN_FIELDS = 6
-} pattern_field;
-
 /**
  * Size of each LED channel
  *
@@ -169,14 +126,6 @@ typedef struct {
 	gint brightness;		/**< Pattern brightness */
 	gboolean active;		/**< Is the pattern active? */
 	gboolean enabled;		/**< Is the pattern enabled? */
-	guint engine1_mux;		/**< Muxing for engine 1 */
-	guint engine2_mux;		/**< Muxing for engine 2 */
-	/** Pattern for the R-channel/engine 1 */
-	gchar channel1[CHANNEL_SIZE + 1];
-	/** Pattern for the G-channel/engine 2 */
-	gchar channel2[CHANNEL_SIZE + 1];
-	/** Pattern for the B-channel */
-	gchar channel3[CHANNEL_SIZE + 1];
 	guint setting_id;		/**< Callback ID for GConf entry */
 	guint rgb_color;                /**< RGB24 data for libhybris use */
 	gboolean undecided;		/**< Flag for policy=6 lock in */
@@ -198,45 +147,12 @@ static pattern_struct *active_pattern = NULL;
 /** The active brightness */
 static gint active_brightness = -1;
 
-/** Currently driven leds */
-static guint current_lysti_led_pattern = 0;
-
-/** Brightness levels for the mono-LED */
-static const gchar *const brightness_map[] = {
-	BRIGHTNESS_LEVEL_0,
-	BRIGHTNESS_LEVEL_1,
-	BRIGHTNESS_LEVEL_2,
-	BRIGHTNESS_LEVEL_3,
-	BRIGHTNESS_LEVEL_4,
-	BRIGHTNESS_LEVEL_5,
-	BRIGHTNESS_LEVEL_6,
-	BRIGHTNESS_LEVEL_7,
-	BRIGHTNESS_LEVEL_8,
-	BRIGHTNESS_LEVEL_9,
-	BRIGHTNESS_LEVEL_10,
-	BRIGHTNESS_LEVEL_11,
-	BRIGHTNESS_LEVEL_12,
-	BRIGHTNESS_LEVEL_13,
-	BRIGHTNESS_LEVEL_14,
-	BRIGHTNESS_LEVEL_15
-};
-
 /** LED type */
 typedef enum {
 	/** LED type unset */
 	LED_TYPE_UNSET = -1,
 	/** No LED available */
 	LED_TYPE_NONE = 0,
-	/** Monochrome LED, direct LED control */
-	LED_TYPE_DIRECT_MONO = 1,
-	/** RGB LED, NJoy (LP5521) LED controller */
-	LED_TYPE_NJOY_RGB = 2,
-	/** Monochrome LED, NJoy (LP5521) LED controller */
-	LED_TYPE_NJOY_MONO = 3,
-	/** RGB LED, Lysti (LP5523) LED controller */
-	LED_TYPE_LYSTI_RGB = 4,
-	/** Monochrome LED, Lysti (LP5523) LED controller */
-	LED_TYPE_LYSTI_MONO = 5,
 #ifdef ENABLE_HYBRIS
 	/** Android adaptation via libhybris */
 	LED_TYPE_HYBRIS = 6,
@@ -247,75 +163,6 @@ typedef enum {
  * The configuration group containing the LED pattern
  */
 static const gchar *led_pattern_group = NULL;
-
-/** Path to monochrome/red channel LED current path  */
-static output_state_t led_current_rm_output =
-{
-	.context = "led_current_rm",
-	.truncate_file = TRUE,
-	.close_on_exit = FALSE,
-};
-
-/** Path to green channel LED current path */
-static output_state_t led_current_g_output =
-{
-	.context = "led_current_g",
-	.truncate_file = TRUE,
-	.close_on_exit = FALSE,
-};
-
-/** Path to blue channel LED current path */
-static output_state_t led_current_b_output =
-{
-	.context = "led_current_b",
-	.truncate_file = TRUE,
-	.close_on_exit = FALSE,
-};
-
-/** Path to monochrome/red channel LED brightness path  */
-static output_state_t led_brightness_rm_output =
-{
-	.context = "led_brightness_rm",
-	.truncate_file = TRUE,
-	.close_on_exit = FALSE,
-};
-
-/** Path to red channel LED brightness path */
-static output_state_t led_brightness_g_output =
-{
-	.context = "led_brightness_g",
-	.truncate_file = TRUE,
-	.close_on_exit = FALSE,
-};
-
-/** Path to blue channel LED brightness path */
-static output_state_t led_brightness_b_output =
-{
-	.context = "led_brightness_b",
-	.truncate_file = TRUE,
-	.close_on_exit = FALSE,
-};
-
-/** Path to engine 1 mode */
-static gchar *engine1_mode_path = NULL;
-/** Path to engine 2 mode */
-static gchar *engine2_mode_path = NULL;
-/** Path to engine 3 mode */
-static gchar *engine3_mode_path = NULL;
-
-/** Path to engine 1 load */
-static gchar *engine1_load_path = NULL;
-/** Path to engine 2 load */
-static gchar *engine2_load_path = NULL;
-/** Path to engine 3 load */
-static gchar *engine3_load_path = NULL;
-
-/** Path to engine 1 leds */
-static gchar *engine1_leds_path = NULL;
-/** Path to engine 2 leds */
-static gchar *engine2_leds_path = NULL;
-/** Path to engine 3 leds */
-static gchar *engine3_leds_path = NULL;
 
 /** Cached display state */
 static display_state_t display_state_curr = MCE_DISPLAY_UNDEF;
@@ -333,20 +180,13 @@ static gint led_brightness = 0;
  * led_brightness_pipe that converts the led brightness profile
  * values [%] into 0 ... maximum_led_brightness range. The latter are
  * then handled by the led_brightness_trigger() function below. */
-static guint maximum_led_brightness = MAXIMUM_LYSTI_MONOCHROME_LED_CURRENT;
+static guint maximum_led_brightness = 1; // 1 = safe for all non-zero value
 
 /* Function prototypes */
-static void              disable_reno                   (void);
 static led_type_t        get_led_type                   (void);
 static gint              queue_find                     (gconstpointer data, gconstpointer userdata);
 static gint              queue_prio_compare             (gconstpointer entry1, gconstpointer entry2, gpointer userdata);
-static void              lysti_set_brightness           (gint brightness);
-static void              njoy_set_brightness            (gint brightness);
-static void              mono_set_brightness            (gint brightness);
 static void              hybris_set_brightness          (gint brightness);
-static void              lysti_disable_led              (void);
-static void              njoy_disable_led               (void);
-static void              mono_disable_led               (void);
 static void              hybris_disable_led             (void);
 static void              disable_led                    (void);
 static pattern_struct   *led_pattern_create             (void);
@@ -358,9 +198,6 @@ static bool              led_pattern_should_breathe     (const pattern_struct *s
 static bool              led_pattern_can_breathe        (const pattern_struct *self);
 static bool              led_pattern_is_panic_blink     (const pattern_struct *self);
 static gboolean          led_pattern_timeout_cb         (gpointer data);
-static void              lysti_program_led              (const pattern_struct *const pattern);
-static void              njoy_program_led               (const pattern_struct *const pattern);
-static void              mono_program_led               (const pattern_struct *const pattern);
 static void              hybris_program_led             (const pattern_struct *const pattern);
 static void              program_led                    (const pattern_struct *const pattern);
 static gboolean          allow_sw_breathing_cb          (gpointer aptr);
@@ -395,9 +232,6 @@ static gboolean          led_deactivate_pattern_dbus_cb (DBusMessage *const msg)
 static gboolean          led_enable_dbus_cb             (DBusMessage *const msg);
 static gboolean          led_disable_dbus_cb            (DBusMessage *const msg);
 static gboolean          init_combination_rules         (void);
-static gboolean          init_lysti_patterns            (void);
-static gboolean          init_njoy_patterns             (void);
-static gboolean          init_mono_patterns             (void);
 static int               list_compare_item              (const void *a, const void *b);
 static void              list_remove_duplicates         (gchar **list);
 static gboolean          list_includes_item             (gchar **list, const gchar *elem);
@@ -416,92 +250,19 @@ G_MODULE_EXPORT const gchar *g_module_check_init        (GModule *module);
 G_MODULE_EXPORT void         g_module_unload            (GModule *module);
 
 /**
- * Disable the Reno LED controller
- */
-static void disable_reno(void)
-{
-	int fd;
-
-	if (access("/dev/i2c-0", F_OK) == 0) {
-		mce_log(LL_DEBUG, "Skipping Reno disable - suitable kernel detected");
-		/* Reset errno,
-		 * to avoid false positives down the line
-		 */
-		errno = 0;
-		return;
-	}
-
-	mce_log(LL_DEBUG, "Disabling Reno");
-
-	if ((fd = open("/dev/i2c-1", O_RDWR)) == -1) {
-		mce_log(LL_CRIT, "Failed to open /dev/i2c-1; %s",
-			g_strerror(errno));
-
-		/* Reset errno,
-		 * to avoid false positives down the line
-		 */
-		errno = 0;
-		goto EXIT;
-	}
-
-	if (ioctl(fd, I2C_SLAVE_FORCE, TWL5031_BCC) == -1) {
-		mce_log(LL_CRIT,
-			"ioctl() I2C_SLAVE_FORCE (%d) failed on `%s'; %s",
-			TWL5031_BCC, "/dev/i2c-1", g_strerror(errno));
-
-		/* Reset errno,
-		 * to avoid false positives down the line
-		 */
-		errno = 0;
-		goto EXIT;
-	}
-
-	struct i2c_smbus_ioctl_data args;
-	union i2c_smbus_data data;
-
-	data.byte = LEDC_DISABLE;
-	args.read_write = I2C_SMBUS_WRITE;
-	args.command = LED_DRIVER_CTRL;
-	args.size = I2C_SMBUS_BYTE_DATA;
-	args.data = &data;
-
-	if (ioctl(fd, I2C_SMBUS, &args) == -1) {
-		mce_log(LL_ERR,
-			"ioctl() I2C_SMBUS (write LED_DRIVER_CTRL %d) failed on `%s'; %s",
-			LEDC_DISABLE, "/dev/i2c-1", g_strerror(errno));
-		errno = 0;
-	}
-
-EXIT:
-	if (fd != -1) {
-		if (close(fd) == -1) {
-			mce_log(LL_ERR,
-				"Failed to close `%s': %s",
-				"/dev/i2c-1", g_strerror(errno));
-
-			/* Reset errno,
-			 * to avoid false positives down the line
-			 */
-			errno = 0;
-		}
-	}
-
-	return;
-}
-
-/**
  * Get the LED type
  *
  * @return The LED type
  */
 static led_type_t get_led_type(void)
 {
-	product_id_t product_id = PRODUCT_UNKNOWN;
 	static led_type_t led_type = LED_TYPE_UNSET;
 
 	/* If we have the LED type already, return it */
 	if (led_type != LED_TYPE_UNSET)
 		goto EXIT;
+
+	led_type = LED_TYPE_NONE;
 
 #ifdef ENABLE_HYBRIS
 	/* Use mce-plugin-libhybris if available */
@@ -509,130 +270,9 @@ static led_type_t get_led_type(void)
 		led_type = LED_TYPE_HYBRIS;
 		led_pattern_group = MCE_CONF_LED_PATTERN_HYBRIS_GROUP;
 		maximum_led_brightness = MAXIMUM_HYBRIS_LED_BRIGHTNESS;
-		goto DONE;
 	}
 #endif
 
-	/* Otherwise use product id for determining led type */
-	product_id = get_product_id();
-
-	// FIXME: The code below is defunct as get_product_id()
-	//        does not work without sysinfod.
-
-	/* First build the paths needed to check */
-	switch ( product_id ) {
-	case PRODUCT_RM716:
-	case PRODUCT_RM696:
-		led_type = LED_TYPE_NJOY_MONO;
-		led_pattern_group = MCE_CONF_LED_PATTERN_RM696_GROUP;
-		maximum_led_brightness = MAXIMUM_NJOY_MONOCHROME_LED_CURRENT;
-
-		/* Build paths */
-		led_current_rm_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5521_PREFIX, MCE_LED_CHANNEL0, MCE_LED_CURRENT_SUFFIX, NULL);
-		led_brightness_rm_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5521_PREFIX, MCE_LED_CHANNEL0, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
-
-		engine1_mode_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5521_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE1, MCE_LED_MODE_SUFFIX, NULL);
-		engine2_mode_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5521_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE2, MCE_LED_MODE_SUFFIX, NULL);
-		engine3_mode_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5521_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE3, MCE_LED_MODE_SUFFIX, NULL);
-
-		/* We have 3 engines, but only 1 LED,
-		 * so while we need to be able to set the mode of all
-		 * engines (to disable the unused ones), we don't need
-		 * to program them
-		 */
-		engine1_load_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5521_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE1, MCE_LED_LOAD_SUFFIX, NULL);
-
-		disable_reno();
-		break;
-
-	case PRODUCT_RM690:
-	case PRODUCT_RM680:
-		led_type = LED_TYPE_LYSTI_MONO;
-		led_pattern_group = MCE_CONF_LED_PATTERN_RM680_GROUP;
-		maximum_led_brightness = MAXIMUM_LYSTI_MONOCHROME_LED_CURRENT;
-
-		/* Build paths */
-		led_current_rm_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL8, MCE_LED_CURRENT_SUFFIX, NULL);
-		led_brightness_rm_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL8, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
-
-		/* Engine 3 is used by keyboard backlight */
-		engine1_mode_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE1, MCE_LED_MODE_SUFFIX, NULL);
-		engine2_mode_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE2, MCE_LED_MODE_SUFFIX, NULL);
-
-		engine1_load_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE1, MCE_LED_LOAD_SUFFIX, NULL);
-		engine2_load_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE2, MCE_LED_LOAD_SUFFIX, NULL);
-
-		engine1_leds_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE1, MCE_LED_LEDS_SUFFIX, NULL);
-		engine2_leds_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE2, MCE_LED_LEDS_SUFFIX, NULL);
-
-		disable_reno();
-		break;
-
-	case PRODUCT_RX51:
-		led_type = LED_TYPE_LYSTI_RGB;
-		led_pattern_group = MCE_CONF_LED_PATTERN_RX51_GROUP;
-		maximum_led_brightness = MAXIMUM_LYSTI_RGB_LED_CURRENT;
-
-		/* Build paths */
-		led_current_rm_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_CURRENT_SUFFIX, NULL);
-		led_current_g_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL1, MCE_LED_CURRENT_SUFFIX, NULL);
-		led_current_b_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL2, MCE_LED_CURRENT_SUFFIX, NULL);
-		led_brightness_rm_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
-		led_brightness_g_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL1, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
-		led_brightness_b_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL2, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
-
-		engine1_mode_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE1, MCE_LED_MODE_SUFFIX, NULL);
-		engine2_mode_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE2, MCE_LED_MODE_SUFFIX, NULL);
-		engine3_mode_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE3, MCE_LED_MODE_SUFFIX, NULL);
-
-		engine1_load_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE1, MCE_LED_LOAD_SUFFIX, NULL);
-		engine2_load_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE2, MCE_LED_LOAD_SUFFIX, NULL);
-		engine3_load_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE3, MCE_LED_LOAD_SUFFIX, NULL);
-
-		engine1_leds_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE1, MCE_LED_LEDS_SUFFIX, NULL);
-		engine2_leds_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE2, MCE_LED_LEDS_SUFFIX, NULL);
-		engine3_leds_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5523_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE3, MCE_LED_LEDS_SUFFIX, NULL);
-		break;
-
-	case PRODUCT_RX44:
-	case PRODUCT_RX48:
-		led_type = LED_TYPE_NJOY_RGB;
-		maximum_led_brightness = MAXIMUM_NJOY_RGB_LED_CURRENT;
-
-		if (product_id == PRODUCT_RX48)
-			led_pattern_group = MCE_CONF_LED_PATTERN_RX48_GROUP;
-		else
-			led_pattern_group = MCE_CONF_LED_PATTERN_RX44_GROUP;
-
-		/* Build paths */
-		led_current_rm_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5521_PREFIX, MCE_LED_CHANNEL0, MCE_LED_CURRENT_SUFFIX, NULL);
-		led_brightness_rm_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5521_PREFIX, MCE_LED_CHANNEL0, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
-
-		engine1_mode_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5521_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE1, MCE_LED_MODE_SUFFIX, NULL);
-		engine2_mode_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5521_PREFIX, MCE_LED_CHANNEL1, MCE_LED_DEVICE, MCE_LED_ENGINE2, MCE_LED_MODE_SUFFIX, NULL);
-		engine3_mode_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5521_PREFIX, MCE_LED_CHANNEL2, MCE_LED_DEVICE, MCE_LED_ENGINE3, MCE_LED_MODE_SUFFIX, NULL);
-
-		engine1_load_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5521_PREFIX, MCE_LED_CHANNEL0, MCE_LED_DEVICE, MCE_LED_ENGINE1, MCE_LED_LOAD_SUFFIX, NULL);
-		engine2_load_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5521_PREFIX, MCE_LED_CHANNEL1, MCE_LED_DEVICE, MCE_LED_ENGINE2, MCE_LED_LOAD_SUFFIX, NULL);
-		engine3_load_path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_LP5521_PREFIX, MCE_LED_CHANNEL2, MCE_LED_DEVICE, MCE_LED_ENGINE3, MCE_LED_LOAD_SUFFIX, NULL);
-		break;
-
-	case PRODUCT_RX34:
-		led_type = LED_TYPE_DIRECT_MONO;
-		led_pattern_group = MCE_CONF_LED_PATTERN_RX34_GROUP;
-
-		/* Build paths */
-		led_brightness_rm_output.path = g_strconcat(MCE_LED_DIRECT_SYS_PATH, MCE_LED_KEYPAD_PREFIX, MCE_LED_BRIGHTNESS_SUFFIX, NULL);
-		break;
-
-	default:
-		led_type = LED_TYPE_NONE;
-		break;
-	}
-
-#ifdef ENABLE_HYBRIS
-DONE:
-#endif
 	mce_log(LL_DEBUG, "LED-type: %d", led_type);
 
 EXIT:
@@ -689,143 +329,6 @@ static gint queue_prio_compare(gconstpointer entry1,
 	return psp1->priority - psp2->priority;
 }
 
-/**
- * Set Lysti-LED brightness
- *
- * @param brightness The brightness of the LED
- *                   (0 - maximum_led_brightness),
- *                   or -1 to adjust colour hues without changing brightness,
- *                   and to reset brightness when the LED has been disabled
- */
-static void lysti_set_brightness(gint brightness)
-{
-	guint r_brightness = 0;
-	guint g_brightness = 0;
-	guint b_brightness = 0;
-
-	if (brightness < -1 || brightness > (gint)maximum_led_brightness) {
-		mce_log(LL_WARN, "Invalid brightness value %d", brightness);
-		return;
-	}
-
-	if (brightness != -1) {
-		if (active_brightness == brightness)
-			return;
-
-		active_brightness = brightness;
-	}
-
-	if ((current_lysti_led_pattern & MCE_LYSTI_RED_MASK_RX51) &&
-	    (get_led_type() == LED_TYPE_LYSTI_RGB)) {
-		/* Red is on, tweaking is needed */
-		if ((current_lysti_led_pattern & MCE_LYSTI_GREEN_MASK_RX51) &&
-		    (current_lysti_led_pattern & MCE_LYSTI_BLUE_MASK_RX51)) {
-			/* White */
-			r_brightness = (unsigned)active_brightness * 4;
-			r_brightness = (r_brightness < maximum_led_brightness) ? r_brightness : maximum_led_brightness;
-			g_brightness = r_brightness / 4;
-			b_brightness = r_brightness / 4;
-		} else if (current_lysti_led_pattern & MCE_LYSTI_GREEN_MASK_RX51) {
-			/* Orange */
-			r_brightness = (unsigned)active_brightness * 10;
-			r_brightness = (r_brightness < maximum_led_brightness) ? r_brightness : maximum_led_brightness;
-			g_brightness = r_brightness / 10;
-			b_brightness = 0;
-		} else {
-			/* Purple */
-			r_brightness = (unsigned)active_brightness * 4;
-			r_brightness = (r_brightness < maximum_led_brightness) ? r_brightness : maximum_led_brightness;
-			b_brightness = r_brightness / 4;
-			g_brightness = 0;
-		}
-	} else {
-		/* When red is not on, we use brightness as is */
-		r_brightness = (unsigned)active_brightness;
-		g_brightness = (unsigned)active_brightness;
-		b_brightness = (unsigned)active_brightness;
-	}
-
-	if (get_led_type() == LED_TYPE_LYSTI_MONO) {
-		/* If we have a monochrome LED only set one brightness */
-		mce_write_number_string_to_file(&led_current_rm_output, r_brightness);
-
-		mce_log(LL_DEBUG,
-			"Brightness set to %d",
-			active_brightness);
-	} else if (get_led_type() == LED_TYPE_LYSTI_RGB) {
-		/* If we have an RGB LED set the brightness for all channels */
-		mce_write_number_string_to_file(&led_current_rm_output, r_brightness);
-		mce_write_number_string_to_file(&led_current_g_output, g_brightness);
-		mce_write_number_string_to_file(&led_current_b_output, b_brightness);
-
-		mce_log(LL_DEBUG,
-			"Brightness set to %d (%d, %d, %d)",
-			active_brightness, r_brightness,
-			g_brightness, b_brightness);
-	}
-}
-
-/**
- * Set NJoy-LED brightness
- *
- * @param brightness The brightness of the LED
- *                   (0 - maximum_led_brightness),
- *                   or -1 to reset brightness when the LED has been disabled
- */
-static void njoy_set_brightness(gint brightness)
-{
-	if (brightness < -1 || brightness > (gint)maximum_led_brightness) {
-		mce_log(LL_WARN, "Invalid brightness value %d", brightness);
-		return;
-	}
-
-	/* This is a bit questionable, but currently 696 does not have any
-	 * use for brightness setting, it only causes unwanted LED
-	 * turn-ons when used with ALS. Let zero brightnesses through to
-	 * be a bit safer.
-	 */
-	if ((get_product_id() == PRODUCT_RM696) &&
-		((brightness > 0) ||
-		 (brightness == -1 && active_brightness != 0))) {
-		mce_log(LL_DEBUG, "don't set useless brightness value %d", brightness);
-		return;
-	}
-
-	if (brightness != -1) {
-		if (active_brightness == brightness)
-			return;
-
-		active_brightness = brightness;
-	}
-
-	mce_write_number_string_to_file(&led_brightness_rm_output,
-					(unsigned)active_brightness);
-
-	mce_log(LL_DEBUG, "Brightness set to %d", active_brightness);
-}
-
-/**
- * Set mono-LED brightness
- *
- * @param brightness The brightness of the LED (0-15)
- */
-static void mono_set_brightness(gint brightness)
-{
-	if (brightness < 0 || brightness > 15) {
-		mce_log(LL_WARN, "Invalid brightness value %d", brightness);
-		return;
-	}
-
-	if (active_brightness == brightness)
-		return;
-
-	active_brightness = brightness;
-	mce_write_string_to_file(led_brightness_rm_output.path,
-				 brightness_map[brightness]);
-
-	mce_log(LL_DEBUG, "Brightness set to %d", brightness);
-}
-
 #ifdef ENABLE_HYBRIS
 static void hybris_program_led(const pattern_struct *const pattern);
 
@@ -857,68 +360,6 @@ static void hybris_set_brightness(gint brightness)
 }
 #endif /* ENABLE_HYBRIS */
 
-/**
- * Disable the Lysti-LED
- */
-static void lysti_disable_led(void)
-{
-	/* Disable engine 1 */
-	mce_write_string_to_file(engine1_mode_path,
-				 MCE_LED_DISABLED_MODE);
-
-	if (get_led_type() == LED_TYPE_LYSTI_MONO) {
-		/* Turn off the led */
-		mce_write_number_string_to_file(&led_brightness_rm_output, 0);
-	} else if (get_led_type() == LED_TYPE_LYSTI_RGB) {
-		/* Disable engine 2 */
-		mce_write_string_to_file(engine2_mode_path,
-					 MCE_LED_DISABLED_MODE);
-
-		/* Turn off all three leds */
-		mce_write_number_string_to_file(&led_brightness_rm_output, 0);
-		mce_write_number_string_to_file(&led_brightness_g_output, 0);
-		mce_write_number_string_to_file(&led_brightness_b_output, 0);
-	}
-}
-
-/**
- * Disable the NJoy-LED
- */
-static void njoy_disable_led(void)
-{
-	/* Disable engine 1 */
-	mce_write_string_to_file(engine1_mode_path,
-				 MCE_LED_DISABLED_MODE);
-
-	if (get_led_type() == LED_TYPE_NJOY_MONO) {
-		/* Turn off the led */
-		mce_write_number_string_to_file(&led_brightness_rm_output, 0);
-	} else if (get_led_type() == LED_TYPE_NJOY_RGB) {
-		/* Disable engine 2 */
-		mce_write_string_to_file(engine2_mode_path,
-					 MCE_LED_DISABLED_MODE);
-
-		/* Disable engine 3 */
-		mce_write_string_to_file(engine3_mode_path,
-					 MCE_LED_DISABLED_MODE);
-
-		/* Turn off all three leds */
-		mce_write_number_string_to_file(&led_brightness_rm_output, 0);
-		mce_write_number_string_to_file(&led_brightness_g_output, 0);
-		mce_write_number_string_to_file(&led_brightness_b_output, 0);
-	}
-}
-
-/**
- * Disable the mono-LED
- */
-static void mono_disable_led(void)
-{
-	mce_write_string_to_file(MCE_LED_TRIGGER_PATH,
-				 MCE_LED_TRIGGER_NONE);
-	mono_set_brightness(0);
-}
-
 #ifdef ENABLE_HYBRIS
 /** Disable the libhybris-LED
  */
@@ -934,26 +375,11 @@ static void hybris_disable_led(void)
 static void disable_led(void)
 {
 	switch (get_led_type()) {
-	case LED_TYPE_LYSTI_RGB:
-	case LED_TYPE_LYSTI_MONO:
-		lysti_disable_led();
-		break;
-
-	case LED_TYPE_NJOY_RGB:
-	case LED_TYPE_NJOY_MONO:
-		njoy_disable_led();
-		break;
-
-	case LED_TYPE_DIRECT_MONO:
-		mono_disable_led();
-		break;
-
 #ifdef ENABLE_HYBRIS
 	case LED_TYPE_HYBRIS:
 		hybris_disable_led();
 		break;
 #endif
-
 	default:
 		break;
 	}
@@ -1286,146 +712,6 @@ static gboolean led_pattern_timeout_cb(gpointer data)
 	return FALSE;
 }
 
-/**
- * Setup and activate a new Lysti-LED pattern
- *
- * @param pattern A pointer to a pattern_struct with the new pattern
- */
-static void lysti_program_led(const pattern_struct *const pattern)
-{
-	/* Disable old LED patterns */
-	lysti_disable_led();
-
-	/* Load new patterns, one engine at a time */
-
-	/* Engine 1 */
-	mce_write_string_to_file(engine1_mode_path,
-				 MCE_LED_LOAD_MODE);
-	mce_write_string_to_file(engine1_leds_path,
-				 bin_to_string(pattern->engine1_mux));
-	mce_write_string_to_file(engine1_load_path,
-				 pattern->channel1);
-
-	/* Engine 2; if needed */
-	if (get_led_type() == LED_TYPE_LYSTI_RGB) {
-		mce_write_string_to_file(engine2_mode_path,
-					 MCE_LED_LOAD_MODE);
-		mce_write_string_to_file(engine2_leds_path,
-					 bin_to_string(pattern->engine2_mux));
-		mce_write_string_to_file(engine2_load_path,
-					 pattern->channel2);
-
-		/* Run the new pattern; enable engines in reverse order */
-		mce_write_string_to_file(engine2_mode_path,
-					 MCE_LED_RUN_MODE);
-	}
-
-	mce_write_string_to_file(engine1_mode_path,
-				 MCE_LED_RUN_MODE);
-
-	/* Save what colors we are driving */
-	current_lysti_led_pattern = pattern->engine1_mux | pattern->engine2_mux;
-
-	/* Reset brightness and update color hue
-	 * according what leds are driven
-	 */
-	lysti_set_brightness(-1);
-}
-
-/**
- * Setup and activate a new NJoy-LED pattern
- *
- * @param pattern A pointer to a pattern_struct with the new pattern
- */
-static void njoy_program_led(const pattern_struct *const pattern)
-{
-	/* Disable old LED patterns */
-	njoy_disable_led();
-
-	/* Load new patterns */
-
-	/* Engine 1 */
-	mce_write_string_to_file(engine1_mode_path,
-				 MCE_LED_LOAD_MODE);
-	mce_write_string_to_file(engine1_load_path,
-				 pattern->channel1);
-
-	if (get_led_type() == LED_TYPE_NJOY_RGB) {
-		/* Engine 2 */
-		mce_write_string_to_file(engine2_mode_path,
-					 MCE_LED_LOAD_MODE);
-		mce_write_string_to_file(engine2_load_path,
-					 pattern->channel2);
-
-		/* Engine 3 */
-		mce_write_string_to_file(engine3_mode_path,
-					 MCE_LED_LOAD_MODE);
-		mce_write_string_to_file(engine3_load_path,
-					 pattern->channel3);
-
-		/* Run the new pattern; enable engines in reverse order */
-		mce_write_string_to_file(engine3_mode_path,
-					 MCE_LED_RUN_MODE);
-		mce_write_string_to_file(engine2_mode_path,
-					 MCE_LED_RUN_MODE);
-	}
-
-	mce_write_string_to_file(engine1_mode_path,
-				 MCE_LED_RUN_MODE);
-
-	/* Reset brightness */
-	njoy_set_brightness(-1);
-}
-
-/**
- * Setup and activate a new mono-LED pattern
- *
- * @param pattern A pointer to a pattern_struct with the new pattern
- */
-static void mono_program_led(const pattern_struct *const pattern)
-{
-	static output_state_t led_on_period_output =
-	{
-		.context = "led_on_period",
-		.truncate_file = TRUE,
-		.close_on_exit = TRUE,
-		.path = MCE_LED_ON_PERIOD_PATH,
-	};
-	static output_state_t led_off_period_output =
-	{
-		.context = "led_off_period",
-		.truncate_file = TRUE,
-		.close_on_exit = TRUE,
-		.path = MCE_LED_OFF_PERIOD_PATH,
-	};
-
-	/* This shouldn't happen; disable the LED instead */
-	if (pattern->on_period == 0) {
-		mono_disable_led();
-		goto EXIT;
-	}
-
-	/* If we have a normal, on/off pattern,
-	 * use a timer trigger, otherwise disable the trigger
-	 */
-	if (pattern->off_period != 0) {
-		mce_write_string_to_file(MCE_LED_TRIGGER_PATH,
-					 MCE_LED_TRIGGER_TIMER);
-		mce_write_number_string_to_file(&led_off_period_output,
-						(unsigned)pattern->off_period);
-		mce_write_number_string_to_file(&led_on_period_output,
-						(unsigned)pattern->on_period);
-	} else {
-		mce_write_string_to_file(MCE_LED_TRIGGER_PATH,
-					 MCE_LED_TRIGGER_NONE);
-	}
-
-	mono_set_brightness(pattern->brightness);
-
-EXIT:
-	return;
-}
-
 #ifdef ENABLE_HYBRIS
 /**
  * Setup and activate a new libhybris-LED pattern
@@ -1452,26 +738,11 @@ static void hybris_program_led(const pattern_struct *const pattern)
 static void program_led(const pattern_struct *const pattern)
 {
 	switch (get_led_type()) {
-	case LED_TYPE_LYSTI_RGB:
-	case LED_TYPE_LYSTI_MONO:
-		lysti_program_led(pattern);
-		break;
-
-	case LED_TYPE_NJOY_RGB:
-	case LED_TYPE_NJOY_MONO:
-		njoy_program_led(pattern);
-		break;
-
-	case LED_TYPE_DIRECT_MONO:
-		mono_program_led(pattern);
-		break;
-
 #ifdef ENABLE_HYBRIS
 	case LED_TYPE_HYBRIS:
 		hybris_program_led(pattern);
 		break;
 #endif
-
 	default:
 		break;
 	}
@@ -2028,23 +1299,11 @@ static void led_brightness_trigger(gconstpointer data)
 		prev, led_brightness);
 
 	switch (get_led_type()) {
-	case LED_TYPE_LYSTI_RGB:
-	case LED_TYPE_LYSTI_MONO:
-		lysti_set_brightness(led_brightness);
-		break;
-
-	case LED_TYPE_NJOY_RGB:
-	case LED_TYPE_NJOY_MONO:
-		njoy_set_brightness(led_brightness);
-		break;
-
 #ifdef ENABLE_HYBRIS
 	case LED_TYPE_HYBRIS:
 		hybris_set_brightness(led_brightness);
 		break;
 #endif
-
-	case LED_TYPE_DIRECT_MONO:
 	case LED_TYPE_UNSET:
 	case LED_TYPE_NONE:
 	default:
@@ -2417,391 +1676,6 @@ EXIT:
 	return status;
 }
 
-/**
- * Init patterns for Lysti controlled RGB or monochrome LED
- *
- * @return TRUE on success, FALSE on failure
- */
-static gboolean init_lysti_patterns(void)
-{
-	led_type_t led_type = get_led_type();
-	gchar **patternlist = NULL;
-	gboolean status = FALSE;
-	gsize length;
-	gint i;
-
-	/* Get the list of valid LED patterns */
-	patternlist = mce_conf_get_string_list(MCE_CONF_LED_GROUP,
-					       MCE_CONF_LED_PATTERNS_REQUIRED,
-					       &length);
-
-	/* Treat failed conf-value reads as if they were due to invalid keys
-	 * rather than failed allocations; let future allocation attempts fail
-	 * instead; otherwise we'll miss the real invalid key failures
-	 */
-	if (patternlist == NULL) {
-		mce_log(LL_WARN,
-			"Failed to configure LED patterns");
-		status = TRUE;
-		goto EXIT;
-	}
-
-	/* Used for Lysti LED patterns */
-	for (i = 0; patternlist[i]; i++) {
-		gchar **tmp;
-
-		mce_log(LL_DEBUG,
-			"Getting LED pattern for: %s",
-			patternlist[i]);
-
-		tmp = mce_conf_get_string_list(led_pattern_group,
-					       patternlist[i],
-					       &length);
-
-		if (tmp != NULL) {
-			pattern_struct *psp;
-			guint engine1_mux;
-			guint engine2_mux;
-
-			if (((led_type == LED_TYPE_LYSTI_MONO) &&
-			     ((length != NUMBER_OF_PATTERN_FIELDS_LYSTI_MONO) ||
-			      (strlen(tmp[PATTERN_E_CHANNEL_FIELD]) >
-			       CHANNEL_SIZE))) ||
-			    ((led_type == LED_TYPE_LYSTI_RGB) &&
-			     ((length != NUMBER_OF_PATTERN_FIELDS) ||
-			      (strlen(tmp[PATTERN_E1_CHANNEL_FIELD]) >
-			       CHANNEL_SIZE) ||
-			      (strlen(tmp[PATTERN_E2_CHANNEL_FIELD]) >
-			       CHANNEL_SIZE)))) {
-				mce_log(LL_ERR,
-					"Skipping invalid LED-pattern");
-				g_strfreev(tmp);
-				continue;
-			}
-
-			engine1_mux = 0;
-			engine2_mux = 0;
-
-			if (led_type == LED_TYPE_LYSTI_MONO) {
-				engine1_mux |= MCE_LYSTI_MONOCHROME_MASK_RM680;
-			} else if (led_type == LED_TYPE_LYSTI_RGB) {
-				if (strchr(tmp[PATTERN_MUXING_FIELD], 'r'))
-					engine1_mux |= MCE_LYSTI_RED_MASK_RX51;
-
-				if (strchr(tmp[PATTERN_MUXING_FIELD], 'R'))
-					engine2_mux |= MCE_LYSTI_RED_MASK_RX51;
-
-				if (strchr(tmp[PATTERN_MUXING_FIELD], 'g'))
-					engine1_mux |= MCE_LYSTI_GREEN_MASK_RX51;
-
-				if (strchr(tmp[PATTERN_MUXING_FIELD], 'G'))
-					engine2_mux |= MCE_LYSTI_GREEN_MASK_RX51;
-
-				if (strchr(tmp[PATTERN_MUXING_FIELD], 'b'))
-					engine1_mux |= MCE_LYSTI_BLUE_MASK_RX51;
-
-				if (strchr(tmp[PATTERN_MUXING_FIELD], 'B'))
-					engine2_mux |= MCE_LYSTI_BLUE_MASK_RX51;
-			}
-
-			if ((engine1_mux & engine2_mux) != 0) {
-				mce_log(LL_ERR,
-					"Same LED muxed to multiple engines; "
-					"skipping invalid LED-pattern");
-				g_strfreev(tmp);
-				continue;
-			}
-
-			psp = led_pattern_create();
-
-			if (!psp) {
-				g_strfreev(tmp);
-				goto EXIT2;
-			}
-
-			psp->priority = strtoul(tmp[PATTERN_PRIO_FIELD],
-						NULL, 10);
-			psp->policy = strtoul(tmp[PATTERN_SCREEN_ON_FIELD],
-						 NULL, 10);
-
-			if ((psp->timeout = strtoul(tmp[PATTERN_TIMEOUT_FIELD],
-						    NULL, 10)) == 0)
-				psp->timeout = -1;
-
-			/* Catch all error checking for all three strtoul */
-			if ((errno == EINVAL) || (errno == ERANGE)) {
-				/* Reset errno,
-				 * to avoid false positives further down
-				 */
-				g_strfreev(tmp);
-				led_pattern_delete(psp);
-				continue;
-			}
-
-			psp->engine1_mux = engine1_mux;
-			psp->engine2_mux = engine2_mux;
-
-			if (led_type == LED_TYPE_LYSTI_MONO) {
-				strncpy(psp->channel1,
-				       tmp[PATTERN_E_CHANNEL_FIELD],
-				       CHANNEL_SIZE);
-			} else if (led_type == LED_TYPE_LYSTI_RGB) {
-				strncpy(psp->channel1,
-				       tmp[PATTERN_E1_CHANNEL_FIELD],
-				       CHANNEL_SIZE);
-				strncpy(psp->channel2,
-				       tmp[PATTERN_E2_CHANNEL_FIELD],
-				       CHANNEL_SIZE);
-			}
-
-			led_pattern_set_active(psp, FALSE);
-
-			psp->enabled = pattern_get_enabled(patternlist[i],
-							   &psp->setting_id);
-
-			psp->name = strdup(patternlist[i]);
-
-			g_strfreev(tmp);
-
-			g_queue_insert_sorted(pattern_stack, psp,
-					      queue_prio_compare,
-					      NULL);
-		}
-	}
-
-	init_combination_rules();
-
-	/* Set the LED brightness */
-	datapipe_exec_full(&led_brightness_pipe,
-			   GINT_TO_POINTER(maximum_led_brightness));
-
-	status = TRUE;
-
-EXIT2:
-	g_strfreev(patternlist);
-
-EXIT:
-	return status;
-}
-
-/**
- * Init patterns for NJoy controlled RGB LED
- *
- * @return TRUE on success, FALSE on failure
- */
-static gboolean init_njoy_patterns(void)
-{
-	led_type_t led_type = get_led_type();
-	gchar **patternlist = NULL;
-	gboolean status = FALSE;
-	gsize length;
-	gint i;
-
-	/* Get the list of valid LED patterns */
-	patternlist = mce_conf_get_string_list(MCE_CONF_LED_GROUP,
-					       MCE_CONF_LED_PATTERNS_REQUIRED,
-					       &length);
-
-	/* Treat failed conf-value reads as if they were due to invalid keys
-	 * rather than failed allocations; let future allocation attempts fail
-	 * instead; otherwise we'll miss the real invalid key failures
-	 */
-	if (patternlist == NULL) {
-		mce_log(LL_WARN,
-			"Failed to configure LED patterns");
-		status = TRUE;
-		goto EXIT;
-	}
-
-	/* Used for RGB NJoy LED patterns */
-	for (i = 0; patternlist[i]; i++) {
-		gchar **tmp;
-
-		mce_log(LL_DEBUG,
-			"Getting LED pattern for: %s",
-			patternlist[i]);
-
-		tmp = mce_conf_get_string_list(led_pattern_group,
-					       patternlist[i],
-					       &length);
-
-		if (tmp != NULL) {
-			pattern_struct *psp;
-
-			if (((led_type == LED_TYPE_NJOY_MONO) &&
-			    ((length != NUMBER_OF_PATTERN_FIELDS_NJOY_MONO) ||
-			     (strlen(tmp[PATTERN_E_CHANNEL_FIELD]) >
-			      CHANNEL_SIZE))) ||
-			    ((led_type == LED_TYPE_NJOY_RGB) &&
-			     ((length != NUMBER_OF_PATTERN_FIELDS) ||
-			      (strlen(tmp[PATTERN_R_CHANNEL_FIELD]) >
-			       CHANNEL_SIZE) ||
-			      (strlen(tmp[PATTERN_G_CHANNEL_FIELD]) >
-			       CHANNEL_SIZE) ||
-			      (strlen(tmp[PATTERN_B_CHANNEL_FIELD]) >
-			       CHANNEL_SIZE)))) {
-				mce_log(LL_ERR,
-					"Skipping invalid LED-pattern");
-				g_strfreev(tmp);
-				continue;
-			}
-
-			psp = led_pattern_create();
-
-			if (!psp) {
-				g_strfreev(tmp);
-				goto EXIT2;
-			}
-
-			psp->priority = strtoul(tmp[PATTERN_PRIO_FIELD],
-						NULL, 10);
-			psp->policy = strtoul(tmp[PATTERN_SCREEN_ON_FIELD],
-						 NULL, 10);
-
-			if ((psp->timeout = strtoul(tmp[PATTERN_TIMEOUT_FIELD],
-						    NULL, 10)) == 0)
-				psp->timeout = -1;
-
-			/* Catch all error checking for all three strtoul */
-			if ((errno == EINVAL) || (errno == ERANGE)) {
-				/* Reset errno,
-				 * to avoid false positives further down
-				 */
-				g_strfreev(tmp);
-				led_pattern_delete(psp);
-				continue;
-			}
-
-			if (led_type == LED_TYPE_NJOY_MONO) {
-				strncpy(psp->channel1,
-				       tmp[PATTERN_E_CHANNEL_FIELD],
-				       CHANNEL_SIZE);
-			} else {
-				strncpy(psp->channel1,
-				       tmp[PATTERN_R_CHANNEL_FIELD],
-				       CHANNEL_SIZE);
-				strncpy(psp->channel2,
-				       tmp[PATTERN_G_CHANNEL_FIELD],
-				       CHANNEL_SIZE);
-				strncpy(psp->channel3,
-				       tmp[PATTERN_B_CHANNEL_FIELD],
-				       CHANNEL_SIZE);
-			}
-
-			led_pattern_set_active(psp, FALSE);
-
-			psp->enabled = pattern_get_enabled(patternlist[i],
-							   &psp->setting_id);
-
-			psp->name = strdup(patternlist[i]);
-
-			g_strfreev(tmp);
-
-			g_queue_insert_sorted(pattern_stack, psp,
-					      queue_prio_compare,
-					      NULL);
-		}
-	}
-
-	/* Set the LED brightness */
-	datapipe_exec_full(&led_brightness_pipe,
-			   GINT_TO_POINTER(maximum_led_brightness));
-
-	status = TRUE;
-
-EXIT2:
-	g_strfreev(patternlist);
-
-EXIT:
-	return status;
-}
-
-/**
- * Init patterns for direct controlled monochrome LED
- *
- * @return TRUE on success, FALSE on failure
- */
-static gboolean init_mono_patterns(void)
-{
-	gchar **patternlist = NULL;
-	gboolean status = FALSE;
-	gsize length;
-	gint i;
-
-	/* Get the list of valid LED patterns */
-	patternlist = mce_conf_get_string_list(MCE_CONF_LED_GROUP,
-					       MCE_CONF_LED_PATTERNS_REQUIRED,
-					       &length);
-
-	/* Treat failed conf-value reads as if they were due to invalid keys
-	 * rather than failed allocations; let future allocation attempts fail
-	 * instead; otherwise we'll miss the real invalid key failures
-	 */
-	if (patternlist == NULL) {
-		mce_log(LL_WARN,
-			"Failed to configure LED patterns");
-		status = TRUE;
-		goto EXIT;
-	}
-
-	/* Used for single-colour LED patterns */
-	for (i = 0; patternlist[i]; i++) {
-		gint *tmp;
-
-		mce_log(LL_DEBUG,
-			"Getting LED pattern for: %s",
-			patternlist[i]);
-
-		tmp = mce_conf_get_int_list(led_pattern_group,
-					    patternlist[i],
-					    &length);
-
-		if (tmp != NULL) {
-			pattern_struct *psp;
-
-			if (length != NUMBER_OF_PATTERN_FIELDS) {
-				mce_log(LL_ERR,
-					"Skipping invalid LED-pattern");
-				g_free(tmp);
-				continue;
-			}
-
-			psp = led_pattern_create();
-
-			if (!psp) {
-				g_free(tmp);
-				goto EXIT2;
-			}
-
-			psp->name = strdup(patternlist[i]);
-			psp->priority = tmp[PATTERN_PRIO_FIELD];
-			psp->policy = tmp[PATTERN_SCREEN_ON_FIELD];
-			psp->timeout = tmp[PATTERN_TIMEOUT_FIELD] ? tmp[PATTERN_TIMEOUT_FIELD] : -1;
-			psp->on_period = tmp[PATTERN_ON_PERIOD_FIELD];
-			psp->off_period = tmp[PATTERN_OFF_PERIOD_FIELD];
-			psp->brightness = tmp[PATTERN_BRIGHTNESS_FIELD];
-			psp->active = FALSE;
-
-			psp->enabled = pattern_get_enabled(patternlist[i],
-							   &psp->setting_id);
-
-			g_free(tmp);
-
-			g_queue_insert_sorted(pattern_stack, psp,
-					      queue_prio_compare,
-					      NULL);
-		}
-	}
-
-	status = TRUE;
-
-EXIT2:
-	g_strfreev(patternlist);
-
-EXIT:
-	return status;
-}
-
 #ifdef ENABLE_HYBRIS
 /** Compare operator for sorting arrays of led pattern names
  *
@@ -2995,26 +1869,11 @@ static gboolean init_patterns(void)
 
 	/* Type specific pattern configuration */
 	switch (get_led_type()) {
-	case LED_TYPE_LYSTI_MONO:
-	case LED_TYPE_LYSTI_RGB:
-		status = init_lysti_patterns();
-		break;
-
-	case LED_TYPE_NJOY_MONO:
-	case LED_TYPE_NJOY_RGB:
-		status = init_njoy_patterns();
-		break;
-
-	case LED_TYPE_DIRECT_MONO:
-		status = init_mono_patterns();
-		break;
-
 #ifdef ENABLE_HYBRIS
 	case LED_TYPE_HYBRIS:
 		status = init_hybris_patterns();
 		break;
 #endif
-
 	default:
 		break;
 	}
@@ -3400,14 +2259,6 @@ void g_module_unload(GModule *module)
 	mce_led_quit_dbus();
 
 	/* Close files */
-	mce_close_output(&led_current_rm_output);
-	mce_close_output(&led_current_g_output);
-	mce_close_output(&led_current_b_output);
-
-	mce_close_output(&led_brightness_rm_output);
-	mce_close_output(&led_brightness_g_output);
-	mce_close_output(&led_brightness_b_output);
-
 	/* Remove triggers/filters from datapipes */
 	mce_led_datapipes_quit();
 
@@ -3439,29 +2290,6 @@ void g_module_unload(GModule *module)
 			break;
 		}
 	}
-
-	/* Free path strings; this has to be done after
-	 * led_set_active_pattern(0), since it uses these paths
-	 */
-	g_free((void*)led_current_rm_output.path);
-	g_free((void*)led_current_g_output.path);
-	g_free((void*)led_current_b_output.path);
-
-	g_free((void*)led_brightness_rm_output.path);
-	g_free((void*)led_brightness_g_output.path);
-	g_free((void*)led_brightness_b_output.path);
-
-	g_free(engine1_mode_path);
-	g_free(engine2_mode_path);
-	g_free(engine3_mode_path);
-
-	g_free(engine1_load_path);
-	g_free(engine2_load_path);
-	g_free(engine3_load_path);
-
-	g_free(engine1_leds_path);
-	g_free(engine2_leds_path);
-	g_free(engine3_leds_path);
 
 	/* Free the pattern stack */
 	if (pattern_stack != NULL) {
