@@ -348,7 +348,7 @@ EXIT:
  *
  * @return function address, or NULL in case of errors
  */
-static void *mce_hybris_lookup_function(const char *name)
+static void *mce_hybris_lookup_function(const char *name, int level)
 {
   static void *base   = 0;
   static bool  done   = false;
@@ -392,7 +392,7 @@ static void *mce_hybris_lookup_function(const char *name)
 
   if( base ) {
     if( !(addr = dlsym(base, name)) ) {
-      mce_log(LL_ERR, "%s: failed to lookup: %s", name, dlerror());
+      mce_log(level, "%s: failed to lookup: %s", name, dlerror());
     }
   }
 
@@ -405,13 +405,16 @@ static void *mce_hybris_lookup_function(const char *name)
  * and the local function name is the same as the function
  * we want to lookup from the plugin.so
  */
-#define RESOLVE do {\
+#define RESOLVE_WITH_VERBOSITY(LEVEL) do {\
   static bool done = false; \
   if( !done ) { \
     done = true;\
-    real = mce_hybris_lookup_function(__FUNCTION__);\
+    real = mce_hybris_lookup_function(__FUNCTION__, LEVEL);\
   }\
 } while(0);
+
+#define RESOLVE          RESOLVE_WITH_VERBOSITY(LL_ERR)
+#define RESOLVE_OPTIONAL RESOLVE_WITH_VERBOSITY(LL_DEBUG)
 
 /* Thunk functions that will either call the real functionality
  * from the hybris plugin, or fall back to NOP with appropriate
@@ -568,6 +571,36 @@ void mce_hybris_indicator_quit(void)
   if( real ) real();
 }
 
+/* Notify that mce is about to exit
+ *
+ * Note that existing single led plugins are unlikely to implement this
+ * function, in which case it turns into a nop.
+ */
+void mce_hybris_indicator_shutdown(void)
+{
+  static void (*real)(void) = 0;
+  RESOLVE_OPTIONAL;
+  if( real )
+    real();
+}
+
+/* Query type of indicator backend
+ *
+ * Traditional single multicolor led setup requires slightly different
+ * policy actions than setups that have multple single color leds.
+ *
+ * Note that existing single led plugins do not implement this function
+ * and implicit false return value is provided.
+ *
+ * @return true if there are multiple leds, false otherwise
+ */
+bool mce_hybris_indicator_has_multiple_leds(void)
+{
+  static bool (*real)(void) = 0;
+  RESOLVE_OPTIONAL;
+  return real ? real() : false;
+}
+
 /** Set indicator led pattern via libhybris
  *
  * @param r     red intensity 0 ... 255
@@ -638,15 +671,18 @@ bool mce_hybris_indicator_set_brightness(int level)
  * signals pattern level active state to plugin. The plugin can then
  * turn appropriate leds on / off.
  *
+ * Note that existing single led plugins do not implement this function,
+ * in which case it turns into a nop.
+ *
  * @param pattern  Led pattern name
  * @param active   Whether pattern is active
  */
 void mce_hybris_indicator_set_active(const char *pattern, bool active)
 {
-    static void (*real)(const char *, bool) = 0;
-    RESOLVE;
-    if( real )
-        real(pattern, active);
+  static void (*real)(const char *, bool) = 0;
+  RESOLVE_OPTIONAL;
+  if( real )
+    real(pattern, active);
 }
 
 /* ------------------------------------------------------------------------- *

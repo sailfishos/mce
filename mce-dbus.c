@@ -5148,6 +5148,20 @@ static void mce_dbus_nameowner_unwatch(gchar *rule)
  * MODULE_INIT_QUIT
  * ========================================================================= */
 
+/** D-Bus callback for systembus disconnect signal
+ *
+ * @param msg The D-Bus message
+ *
+ * @return TRUE on success, FALSE on failure
+ */
+static gboolean mce_dbus_disconnect_cb(DBusMessage *const msg)
+{
+	(void)msg;
+	mce_log(LL_DEBUG, "D-Bus disconnect detected; exiting");
+	mce_quit_mainloop();
+	return true;
+}
+
 /** Array of dbus message handlers */
 static mce_dbus_handler_t mce_dbus_handlers[] =
 {
@@ -5238,6 +5252,13 @@ static mce_dbus_handler_t mce_dbus_handlers[] =
 		.callback  = introspect_dbus_cb,
 		.args      =
 			"    <arg direction=\"out\" name=\"xml_data\" type=\"s\"/>\n"
+	},
+	/* signals */
+	{
+		.interface = DBUS_INTERFACE_LOCAL,
+		.name      = "Disconnected",
+		.type      = DBUS_MESSAGE_TYPE_SIGNAL,
+		.callback  = mce_dbus_disconnect_cb,
 	},
 	/* sentinel */
 	{
@@ -5392,6 +5413,8 @@ gboolean mce_dbus_init(const gboolean systembus)
 			error.message);
 		goto EXIT;
 	}
+
+	dbus_connection_set_exit_on_disconnect(dbus_connection, false);
 
 	mce_log(LL_DEBUG, "Connecting D-Bus to the mainloop");
 

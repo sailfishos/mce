@@ -70,6 +70,8 @@ bool mce_hybris_keypad_init(void);
 
 bool mce_hybris_indicator_init(void);
 void mce_hybris_indicator_quit(void);
+void mce_hybris_indicator_shutdown(void);
+bool mce_hybris_indicator_has_multiple_leds(void);
 bool mce_hybris_indicator_set_pattern(int r, int g, int b, int ms_on, int ms_off);
 void mce_hybris_indicator_enable_breathing(bool enable);
 bool mce_hybris_indicator_set_brightness(int level);

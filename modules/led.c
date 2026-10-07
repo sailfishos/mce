@@ -181,6 +181,7 @@ typedef struct {
 	guint rgb_color;                /**< RGB24 data for libhybris use */
 	gboolean undecided;		/**< Flag for policy=6 lock in */
 	bool eligible;                  /**< Pattern could be the active one */
+	bool eligible_hybris;           /**< State reported to hybris plugin */
 } pattern_struct;
 
 /** Pattern combination rule struct; this is also used for cross-referencing */
@@ -352,15 +353,19 @@ static pattern_struct   *led_pattern_create             (void);
 static void              led_pattern_delete             (pattern_struct *self);
 static void              led_pattern_set_active         (pattern_struct *self, gboolean active);
 static void              led_pattern_update_eligible    (pattern_struct *self);
+static void              led_pattern_sync_eligible      (pattern_struct *self);
 static bool              led_pattern_should_breathe     (const pattern_struct *self);
 static bool              led_pattern_can_breathe        (const pattern_struct *self);
+static bool              led_pattern_is_panic_blink     (const pattern_struct *self);
 static gboolean          led_pattern_timeout_cb         (gpointer data);
 static void              lysti_program_led              (const pattern_struct *const pattern);
 static void              njoy_program_led               (const pattern_struct *const pattern);
 static void              mono_program_led               (const pattern_struct *const pattern);
 static void              hybris_program_led             (const pattern_struct *const pattern);
 static void              program_led                    (const pattern_struct *const pattern);
+static gboolean          allow_sw_breathing_cb          (gpointer aptr);
 static void              allow_sw_breathing             (bool enable);
+static void              allow_sw_breathing_now         (bool enable);
 static void              led_set_active_pattern         (pattern_struct *pattern);
 static gboolean          display_off_p                  (display_state_t state);
 static void              led_update_active_pattern      (void);
@@ -965,10 +970,11 @@ static pattern_struct *led_pattern_create(void)
 	if( !self )
 		goto EXIT;
 
-	self->name       = 0;
-	self->timeout_id = 0;
-	self->setting_id = 0;
-	self->eligible   = false;
+	self->name            = NULL;
+	self->timeout_id      = 0;
+	self->setting_id      = 0;
+	self->eligible        = false;
+	self->eligible_hybris = false;
 
 EXIT:
 	return self;
@@ -1134,12 +1140,22 @@ POSITIVE:
 		mce_log(LL_DEBUG, "pattern: %s, eligible: %s -> %s",
 			self->name, bool_repr(self->eligible), bool_repr(eligible));
 		self->eligible = eligible;
-
-#ifdef ENABLE_HYBRIS
-		if( get_led_type() == LED_TYPE_HYBRIS )
-			mce_hybris_indicator_set_active(self->name, self->eligible);
-#endif
 	}
+}
+
+/** Forward pattern eligible property changes to hybris plugin
+ *
+ * @param self    pattern object
+ */
+static void led_pattern_sync_eligible(pattern_struct *self)
+{
+#ifdef ENABLE_HYBRIS
+	if( self->eligible_hybris != self->eligible ) {
+		self->eligible_hybris = self->eligible;
+		if( get_led_type() == LED_TYPE_HYBRIS )
+			mce_hybris_indicator_set_active(self->name, self->eligible_hybris);
+	}
+#endif
 }
 
 /** Check if a led pattern should always utilize sw breathing
@@ -1234,6 +1250,24 @@ static bool led_pattern_can_breathe(const pattern_struct *self)
 EXIT:
 
 	return breathe;
+}
+
+/** Check if pattern is of panic blink type
+ *
+ * These patterns with short on/off period should utilize
+ * hard blinking instead of soft breathing.
+ *
+ * @param self led pattern object
+ *
+ * @return true if pattern is panic, false otherwise
+ */
+static bool led_pattern_is_panic_blink(const pattern_struct *self)
+{
+	const int min_ms = 1;
+	const int max_ms = 250;
+
+	return (self->on_period  >= min_ms && self->on_period  <= max_ms &&
+		self->off_period >= min_ms && self->off_period <= max_ms);
 }
 
 /** Timeout callback for LED patterns
@@ -1443,40 +1477,92 @@ static void program_led(const pattern_struct *const pattern)
 	}
 }
 
-/** Enable/disable led breathing via software
+/** Current sw breathing enabled state */
+static bool allow_sw_breathing_active = false;
+
+/** Target for delayed sw breathing enable/disable */
+static bool allow_sw_breathing_target = false;
+
+/** Idle callback id for delayed sw breathing enable/disable */
+static guint allow_sw_breathing_id = 0;
+
+/** Idle callback for enabling / disabling sw led breathing
  *
- * @param pattern A pointer to a pattern_struct with the new pattern
+ * @param aptr  (unused user data pointer)
+ *
+ * @return G_SOURCE_REMOVE to remove idle callback source id
+ */
+static gboolean allow_sw_breathing_cb(gpointer aptr)
+{
+	(void)aptr;
+	allow_sw_breathing_id = 0;
+	allow_sw_breathing_now(allow_sw_breathing_target);
+	return G_SOURCE_REMOVE;
+}
+
+/** Enable/disable led breathing via software - possibly after delay
+ *
+ * Enabling is done immediately so that pattern activation
+ * notifications to hybris plugin happen in already enabled
+ * state.
+ *
+ * Disabling is done from idle callback so that pattern deactivation
+ * notifications to hybris plugin happen while still in enabled state.
+ *
+ * @param enable  Whether breathing should be enabled / disabled
  */
 static void allow_sw_breathing(bool enable)
 {
-	static bool current = false;
-
 	/* If led backend does not support breathing make sure we do
 	 * not grab a useless wakelock and block suspend unnecessarily */
 	if( !mce_hybris_indicator_can_breathe() )
 		enable = false;
 
-	if( current == enable )
+	if( allow_sw_breathing_target == enable )
 		goto EXIT;
 
-	current = enable;
+	allow_sw_breathing_target = enable;
 
-	switch (get_led_type()) {
 #ifdef ENABLE_HYBRIS
-	case LED_TYPE_HYBRIS:
-		if( enable )
-			wakelock_lock("mce_led_breathing", -1);
-		mce_hybris_indicator_enable_breathing(enable);
-		if( !enable )
-			wakelock_unlock("mce_led_breathing");
-		break;
+	if( get_led_type() == LED_TYPE_HYBRIS ) {
+		if( allow_sw_breathing_target )
+			allow_sw_breathing_now(true);
+		else if( !allow_sw_breathing_id )
+			allow_sw_breathing_id = g_idle_add(allow_sw_breathing_cb, NULL);
+	}
 #endif
 
-	default:
-		break;
-	}
 EXIT:
 	return;
+}
+/** Enable/disable led breathing via software without delay
+ *
+ * Any pending delayed enable/disable is canceled.
+ *
+ * @param enable  Whether breathing should be enabled / disabled
+ */
+
+static void allow_sw_breathing_now(bool enable)
+{
+	static const char name[] = "mce_led_breathing";
+
+	if( allow_sw_breathing_id )
+		g_source_remove(allow_sw_breathing_id), allow_sw_breathing_id = 0;
+
+	if( allow_sw_breathing_active != enable ) {
+		allow_sw_breathing_active = allow_sw_breathing_target = enable;
+
+		if( allow_sw_breathing_active ) {
+			wakelock_lock(name, -1);
+			mce_log(LL_DEBUG, "sw breathing wakelock: acquired");
+			mce_hybris_indicator_enable_breathing(true);
+		}
+		else {
+			mce_hybris_indicator_enable_breathing(false);
+			mce_log(LL_DEBUG, "sw breathing wakelock: released");
+			wakelock_unlock(name);
+		}
+	}
 }
 
 /** Setter function for active_pattern
@@ -1542,26 +1628,39 @@ static void led_update_active_pattern(void)
 {
 	pattern_struct *active = NULL;
 
-	if( !pattern_stack )
-		goto EXIT;
+	/* First: Handle MCE side transitions
+	 */
+	if( pattern_stack ) {
+		/* Update eligibility of all patterns */
+		for( GList *iter = pattern_stack->head; iter; iter = iter->next ) {
+			pattern_struct *pattern = iter->data;
+			led_pattern_update_eligible(pattern);
+		}
 
-	/* Update eligibility of all patterns */
-	for( GList *iter = pattern_stack->head; iter; iter = iter->next ) {
-		pattern_struct *pattern = iter->data;
-		led_pattern_update_eligible(pattern);
-	}
-
-	/* Select the first / highest priority eligible pattern */
-	for( GList *iter = pattern_stack->head; iter; iter = iter->next ) {
-		pattern_struct *pattern = iter->data;
-		if( pattern->eligible ) {
-			active = pattern;
-			break;
+		/* Select the first / highest priority eligible pattern */
+		for( GList *iter = pattern_stack->head; iter; iter = iter->next ) {
+			pattern_struct *pattern = iter->data;
+			if( pattern->eligible ) {
+				active = pattern;
+				break;
+			}
 		}
 	}
 
-EXIT:
 	led_set_active_pattern(active);
+
+	/* Then: Synchronize to hybris plugin
+	 */
+	if( pattern_stack ) {
+		/* Re-evaluate breathing policy */
+		sw_breathing_rethink();
+
+		/* Communicate eligibility changes to hybris plugin */
+		for( GList *iter = pattern_stack->head; iter; iter = iter->next ) {
+			pattern_struct *pattern = iter->data;
+			led_pattern_sync_eligible(pattern);
+		}
+	}
 }
 
 /**
@@ -1906,6 +2005,7 @@ static void display_state_curr_trigger(gconstpointer data)
 	}
 
 	led_update_active_pattern();
+	sw_breathing_rethink();
 
 EXIT:
 	return;
@@ -2954,32 +3054,52 @@ static guint sw_breathing_battery_limit_setting_id = 0;
  */
 static void sw_breathing_rethink(void)
 {
-	bool breathe = false;
+	bool breathing_allowed = false;
+	bool breathing_needed  = false;
 
-	/* Check breathing configuration */
-	if( sw_breathing_enabled ) {
-		breathe = (charger_state == CHARGER_STATE_ON ||
-			   battery_level >= sw_breathing_battery_limit);
-	}
-
-	/* Check if active pattern can utilize breathing */
 	if( !active_pattern ) {
-		/* If there is no active pattern, breathing must
-		 * be disabled so that suspend does not get blocked */
-		breathe = false;
-	}
-	else {
-		/* Check for always breathing special cases */
-		if( !breathe )
-			breathe = led_pattern_should_breathe(active_pattern);
-
-		/* If pattern is configured not to breathe, we should
-		 * not breathe even if it were allowed */
-		if( !led_pattern_can_breathe(active_pattern) )
-			breathe = false;
+		/* No active pattern -> no eligible patterns */
+		goto EXIT;
 	}
 
-	allow_sw_breathing(breathe);
+	if( led_pattern_should_breathe(active_pattern) ) {
+		// Special patterns can override settings
+		breathing_needed  = true;
+		breathing_allowed = true;
+	}
+	else if( !sw_breathing_enabled ) {
+		// Disabled in settings
+	}
+	else if( display_state_curr != MCE_DISPLAY_OFF ) {
+		// We are not suspending anyway
+		breathing_allowed = true;
+	}
+	else if( charger_state == CHARGER_STATE_ON || battery_level >= sw_breathing_battery_limit ) {
+		// Charger connected or battery full enough
+		breathing_allowed = true;
+	}
+
+	if( breathing_allowed && !breathing_needed ) {
+		if( mce_hybris_indicator_has_multiple_leds() ) {
+			/* Check if at least one eligible pattern needs breathing */
+			for( GList *iter = pattern_stack->head; iter; iter = iter->next ) {
+				pattern_struct *pattern = iter->data;
+				if( !pattern->eligible )
+					continue;
+				if( led_pattern_can_breathe(pattern) || led_pattern_is_panic_blink(pattern) ) {
+					breathing_needed = true;
+					break;
+				}
+			}
+		}
+		else {
+			/* Check the active pattern needs breathing */
+			if( led_pattern_can_breathe(active_pattern) || led_pattern_is_panic_blink(active_pattern) )
+				breathing_needed = true;
+		}
+	}
+EXIT:
+	allow_sw_breathing(breathing_needed && breathing_allowed);
 }
 
 /** Gconf notification callback function
@@ -3025,7 +3145,7 @@ static void sw_breathing_quit(void)
 	mce_setting_notifier_remove(sw_breathing_enabled_setting_id),
 		sw_breathing_enabled_setting_id = 0;
 
-	allow_sw_breathing(false);
+	allow_sw_breathing_now(false);
 }
 
 /** Initialize sw breathing state data
@@ -3290,6 +3410,12 @@ void g_module_unload(GModule *module)
 
 	/* Remove triggers/filters from datapipes */
 	mce_led_datapipes_quit();
+
+	/* Notify hybris plugin that we are about to exit */
+#ifdef ENABLE_HYBRIS
+	if( get_led_type() == LED_TYPE_HYBRIS )
+		mce_hybris_indicator_shutdown();
+#endif
 
 	/* Remove breathing timers and wakelocks */
 	sw_breathing_quit();
