@@ -5,7 +5,7 @@
  * <p>
  * Copyright (c) 2004 - 2011 Nokia Corporation and/or its subsidiary(-ies).
  * Copyright (c) 2014 - 2019 Jolla Ltd.
- * Copyright (c) 2025 Jolla Mobile Ltd
+ * Copyright (c) 2025 - 2026 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Tapio Rantala <ext-tapio.rantala@nokia.com>
@@ -610,4 +610,164 @@ mce_append_string(char *pos, char *end, const char *str)
 	*pos = 0;
     }
     return pos;
+}
+
+/** Get lenght of string array
+ *
+ * @param arr  Null terminated array of strings, or NULL
+ *
+ * @return Array length, or 0 in case of NULL array
+ */
+size_t
+mce_strv_length(gchar **arr)
+{
+    size_t len = 0;
+
+    if( arr ) {
+	while( arr[len] )
+	    ++len;
+    }
+
+    return len;
+}
+
+/** Check if string array contains given item
+ *
+ * @param arr   Null terminated array of strings, or NULL
+ * @param item  String to find
+ *
+ * @return true if item is in the array, false otherwise
+ */
+bool
+mce_strv_contains(gchar **arr, const char *item)
+{
+    if( arr && item ) {
+	for( size_t i = 0; arr[i]; ++i )
+	    if( !strcmp(arr[i], item) )
+		return true;
+    }
+    return false;
+}
+
+/** Remove all matching items from string array
+ *
+ * @param arr   Null terminated array of strings, or NULL
+ * @param item  String to to remove
+ *
+ * @return Updated string array
+ */
+gchar **
+mce_strv_remove(gchar **arr, const char *item)
+{
+    if( arr && item ) {
+	size_t idx = 0;
+	size_t len = 0;
+
+	while( arr[idx] ) {
+	    gchar *val = arr[idx++];
+	    if( !strcmp(val, item) )
+		g_free(val);
+	    else
+		arr[len++] = val;
+	}
+
+	arr[len] = NULL;
+
+	if( len != idx )
+	    arr = g_realloc(arr, (len + 1) * sizeof *arr);
+    }
+
+    return arr;
+}
+
+/** Remove all items from string array
+ *
+ * @param arr   Null terminated array of strings, or NULL
+ *
+ * @return Updated string array
+ */
+gchar **
+mce_strv_clear(gchar **arr)
+{
+    if( arr && arr[0] ) {
+	for( size_t i = 0; arr[i]; ++i )
+	    g_free(arr[i]);
+	arr[0] = NULL;
+	arr = g_realloc(arr, 1 * sizeof *arr);
+    }
+
+    return arr;
+}
+
+/** Unconditionally add item to end of string array
+ *
+ * @param arr   Null terminated array of strings, or NULL
+ * @param item  String to add into array
+ *
+ * @return Updated string array
+ */
+gchar **
+mce_strv_append(gchar **arr, const char *item)
+{
+    if( item) {
+	size_t len = mce_strv_length(arr);
+
+	arr = g_realloc(arr, (len + 2) * sizeof *arr);
+
+	arr[len + 0] = g_strdup(item);
+	arr[len + 1] = NULL;
+    }
+
+    return arr;
+}
+
+/** If item is not already in string array, add it to end of array
+ *
+ * @param arr   Null terminated array of strings, or NULL
+ * @param item  String to add into array
+ *
+ * @return Updated string array
+ */
+gchar **
+mce_strv_add(gchar **arr, const char *item)
+{
+    return mce_strv_contains(arr, item) ? arr : mce_strv_append(arr, item);
+}
+
+/** Construct string array from string
+ *
+ * @param str   String with ';' separated items, or NULL
+ *
+ * @return String array
+ */
+gchar **
+mce_strv_from_string(const char *str)
+{
+    // null / empty str -> non-null, but empty array
+    gchar **arr = g_strsplit(str ?: "", ";", -1);
+    for( size_t i = 0; arr[i]; ++i )
+	mce_strip_string(arr[i]);
+    return arr;
+}
+
+/** Combine string array into string
+ *
+ * @param arr   Null terminated array of strings, or NULL
+ *
+ * @return String with ';' separated items, or "" in case of null array
+ */
+gchar *
+mce_strv_to_string(gchar **arr)
+{
+    return arr ? g_strjoinv(";", arr) : g_strdup("");
+}
+
+/** Release string array
+ *
+ * @param arr   Null terminated array of strings, or NULL
+ */
+void
+mce_strv_free(gchar **arr)
+{
+    g_strfreev(arr);
 }
