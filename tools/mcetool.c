@@ -7545,7 +7545,7 @@ static const mce_opt_t options[] =
                         "set the doubletap wakeup mode; valid modes are:\n"
                         "'never', 'always', 'proximity'\n"
                         "\n"
-                        "Note: proximity setting applies for lid sensor too."
+                        "Note: proximity setting applies for lid sensor too.\n"
         },
         {
                 .name        = "set-fingerprint-wakeup-mode",
@@ -7623,7 +7623,7 @@ static const mce_opt_t options[] =
                         "  proximity   -  act if proximity sensor is not covered\n"
                         "  proximity2  -  act if display is on or PS not covered\n"
                         "\n"
-                        "Note: proximity settings apply for lid sensor too."
+                        "Note: proximity settings apply for lid sensor too.\n"
         },
         {
                 .name        = "set-powerkey-blanking",
@@ -8535,63 +8535,63 @@ static const mce_opt_t options[] =
                 .with_arg    = xmce_set_exception_length_call_in,
                 .values      = "msec",
                 .usage       =
-                        "how long to keep display on after incoming call"
+                        "how long to keep display on after incoming call\n"
         },
         {
                 .name        = "set-exception-length-call-out",
                 .with_arg    = xmce_set_exception_length_call_out,
                 .values      = "msec",
                 .usage       =
-                        "how long to keep display on after outgoing call"
+                        "how long to keep display on after outgoing call\n"
         },
         {
                 .name        = "set-exception-length-alarm",
                 .with_arg    = xmce_set_exception_length_alarm,
                 .values      = "msec",
                 .usage       =
-                        "how long to keep display on after alarm"
+                        "how long to keep display on after alarm\n"
         },
         {
                 .name        = "set-exception-length-usb-connect",
                 .with_arg    = xmce_set_exception_length_usb_connect,
                 .values      = "msec",
                 .usage       =
-                        "how long to keep display on at usb connect"
+                        "how long to keep display on at usb connect\n"
         },
         {
                 .name        = "set-exception-length-usb-dialog",
                 .with_arg    = xmce_set_exception_length_usb_dialog,
                 .values      = "msec",
                 .usage       =
-                        "how long to keep display on at usb mode query"
+                        "how long to keep display on at usb mode query\n"
         },
         {
                 .name        = "set-exception-length-charger",
                 .with_arg    = xmce_set_exception_length_charger,
                 .values      = "msec",
                 .usage       =
-                        "how long to keep display on at charging start"
+                        "how long to keep display on at charging start\n"
         },
         {
                 .name        = "set-exception-length-battery",
                 .with_arg    = xmce_set_exception_length_battery,
                 .values      = "msec",
                 .usage       =
-                        "how long to keep display on at battery full"
+                        "how long to keep display on at battery full\n"
         },
         {
                 .name        = "set-exception-length-jack-in",
                 .with_arg    = xmce_set_exception_length_jack_in,
                 .values      = "msec",
                 .usage       =
-                        "how long to keep display on at jack insert"
+                        "how long to keep display on at jack insert\n"
         },
         {
                 .name        = "set-exception-length-jack-out",
                 .with_arg    = xmce_set_exception_length_jack_out,
                 .values      = "msec",
                 .usage       =
-                        "how long to keep display on at jack remove"
+                        "how long to keep display on at jack remove\n"
         },
         {
                 .name        = "set-exception-length-camera",
