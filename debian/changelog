@@ -1,3 +1,10 @@
+mce (1.119.1) precise; urgency=low
+
+  * [mce] Allow user to control keypad backlight policy. JB#65103
+  * Add missing newlines at the end of usage strings
+
+ -- Matti Viljanen <matti.viljanen@jolla.com>  Thu, 15 Oct 2026 10:40:05 +0300
+
 mce (1.119.0) precise; urgency=low
 
   * [keypad] Drop support for old Nokia devices
