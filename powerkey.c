@@ -3106,8 +3106,15 @@ pwrkey_datapipe_keypress_event_cb(gconstpointer const data)
                      * begin display power up already on power key press
                      * without waiting for user to lift finger off the button):
                      * Synthetize key release, if no actions are bound to long
-                     * power key press from display off state. */
-                    if( pwrkey_stm_display_state == MCE_DISPLAY_OFF ) {
+                     * power key press from display off state.
+                     *
+                     * In ACTDEAD the long press is not a configurable action
+                     * but the hardwired power-up request (see
+                     * pwrkey_actions_do_long_press()), and the display-off
+                     * action mask is empty there only because no client sets
+                     * one. The simulation must not cancel that request. */
+                    if( pwrkey_stm_display_state == MCE_DISPLAY_OFF &&
+                        system_state != MCE_SYSTEM_STATE_ACTDEAD ) {
                         if( !pwrkey_actions_from_display_off.mask_long ) {
                             mce_log(LL_DEBUG, "powerkey release simulated");
                             pwrkey_stm_powerkey_released();
