@@ -32,6 +32,9 @@
 /** Name of the configuration key for doubletap wakeup control file */
 # define MCE_CONF_DOUBLETAP_CONTROL_PATH "ControlPath"
 
+/** Name of the configuration key for doubletap sysfs node watch path */
+# define MCE_CONF_DOUBLETAP_WATCH_PATH "WatchPath"
+
 /** Name of the configuration key for doubletap enable value */
 # define MCE_CONF_DOUBLETAP_ENABLE_VALUE "EnableValue"
 
