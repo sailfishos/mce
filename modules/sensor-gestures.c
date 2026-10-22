@@ -35,6 +35,9 @@
  * STATE_DATA
  * ========================================================================= */
 
+/** Cached lid sensor state */
+static cover_state_t lid_sensor_filtered = COVER_UNDEF;
+
 /** Cached display state */
 static display_state_t display_state_curr = MCE_DISPLAY_UNDEF;
 
@@ -57,6 +60,14 @@ static gint orientation_sensor_effective_id = 0;
 static gboolean sg_flipover_gesture_enabled = MCE_DEFAULT_FLIPOVER_GESTURE_ENABLED;
 static guint    sg_flipover_gesture_enabled_setting_id = 0;
 
+/** Use of lid_opened gesture enabled */
+static gboolean sg_lid_opened_gesture_enabled = MCE_DEFAULT_LID_OPENED_GESTURE_ENABLED;
+static guint    sg_lid_opened_gesture_enabled_setting_id = 0;
+
+/** Use of lid_closed gesture enabled */
+static gboolean sg_lid_closed_gesture_enabled = MCE_DEFAULT_LID_CLOSED_GESTURE_ENABLED;
+static guint    sg_lid_closed_gesture_enabled_setting_id = 0;
+
 /* ========================================================================= *
  * FUNCTIONS
  * ========================================================================= */
@@ -69,12 +80,28 @@ static void     sg_send_flipover_signal     (const char *sig);
 static void     sg_detect_flipover_gesture  (void);
 
 /* ------------------------------------------------------------------------- *
+ * LID_OPENED_GESTURE
+ * ------------------------------------------------------------------------- */
+
+static void     sg_send_lid_opened_signal   (const char *sig);
+static void     sg_detect_lid_opened_gesture(void);
+
+/* ------------------------------------------------------------------------- *
+ * LID_CLOSED_GESTURE
+ * ------------------------------------------------------------------------- */
+
+static void     sg_send_lid_closed_signal   (const char *sig);
+static void     sg_detect_lid_closed_gesture(void);
+
+/* ------------------------------------------------------------------------- *
  * DATAPIPE_TRACKING
  * ------------------------------------------------------------------------- */
 
 static bool     sg_have_alarm_dialog        (void);
 static bool     sg_have_incoming_call       (void);
+static bool     sg_have_active_call         (void);
 
+static void     sg_lid_sensor_filtered_cb   (gconstpointer const data);
 static void     sg_call_state_cb            (gconstpointer const data);
 static void     sg_alarm_ui_state_cb        (gconstpointer data);
 static void     sg_display_state_curr_cb    (gconstpointer data);
@@ -100,6 +127,131 @@ static void     sg_setting_quit             (void);
 
 G_MODULE_EXPORT const gchar *g_module_check_init (GModule *module);
 G_MODULE_EXPORT void         g_module_unload     (GModule *module);
+
+/* ========================================================================= *
+ * LID_OPENED_GESTURE
+ * ========================================================================= */
+
+/** Helper for sending lid_opened dbus signal
+ *
+ * @param signal name
+ */
+static void sg_send_lid_opened_signal(const char *sig)
+{
+    /* Do not send the signals if feature is disabled */
+    if( !sg_lid_opened_gesture_enabled )
+        goto EXIT;
+
+    // NOTE: introspection data shared with powerkey.c
+    const char *arg = MCE_FEEDBACK_EVENT_LID_OPENED;
+    mce_log(LL_DEVEL, "sending dbus signal: %s %s", sig, arg);
+    dbus_send(0, MCE_SIGNAL_PATH, MCE_SIGNAL_IF,  sig, 0,
+              DBUS_TYPE_STRING, &arg, DBUS_TYPE_INVALID);
+
+EXIT:
+    return;
+}
+
+/** Detect and broadcast lid_opened during incoming call
+ *
+ * Start from: lid closed, display off, incoming call
+ *
+ * Then, before incoming call is hung up:
+ *
+ * Lid is opened -> unblank starts
+ *
+ * Display turns on -> send signal
+ *
+ */
+static void sg_detect_lid_opened_gesture(void)
+{
+    static bool primed = false;
+
+    /* This matters only if we have an incoming call */
+    if( !sg_have_incoming_call() ) {
+        primed = false;
+        goto EXIT;
+    }
+
+    /* We want to see: lid closed, display off and incoming call */
+    if( lid_sensor_filtered == COVER_CLOSED && display_state_curr != MCE_DISPLAY_ON && sg_have_incoming_call() ) {
+        primed = true;
+        goto EXIT;
+    }
+
+    /* Followed by: lid is opened and display turns on */
+    if( primed && lid_sensor_filtered == COVER_OPEN && display_state_curr == MCE_DISPLAY_ON ) {
+        primed = false;
+        if( sg_have_incoming_call() )
+            sg_send_lid_opened_signal(MCE_CALL_UI_FEEDBACK_SIG);
+    }
+
+EXIT:
+    return;
+}
+
+/* ========================================================================= *
+ * LID_CLOSED_GESTURE
+ * ========================================================================= */
+
+/** Helper for sending lid_closed dbus signal
+ *
+ * @param signal name
+ */
+static void sg_send_lid_closed_signal(const char *sig)
+{
+    /* Do not send the signals if feature is disabled */
+    if( !sg_lid_closed_gesture_enabled )
+        goto EXIT;
+
+    // NOTE: introspection data shared with powerkey.c
+    const char *arg = MCE_FEEDBACK_EVENT_LID_CLOSED;
+    mce_log(LL_DEVEL, "sending dbus signal: %s %s", sig, arg);
+    dbus_send(0, MCE_SIGNAL_PATH, MCE_SIGNAL_IF,  sig, 0,
+              DBUS_TYPE_STRING, &arg, DBUS_TYPE_INVALID);
+
+EXIT:
+    return;
+}
+
+/** Detect and broadcast device lid_closed during call / alarm
+ *
+ * Start from: lid open, display on and alarm / call
+ *
+ * Then, before alarm / call is ended:
+ *
+ * Lid is closed -> send signal
+ */
+static void sg_detect_lid_closed_gesture(void)
+{
+    static bool primed = false;
+
+    /* This matters only if we have an alarm or incoming/active call */
+    if( !sg_have_alarm_dialog() && !sg_have_incoming_call() && !sg_have_active_call() ) {
+        primed = false;
+        goto EXIT;
+    }
+
+    /* We Want to see: lid open, display on and call/alarm */
+    if( lid_sensor_filtered == COVER_OPEN && display_state_curr == MCE_DISPLAY_ON ) {
+        primed = true;
+        goto EXIT;
+    }
+
+    /* Followed by: lid is closed */
+    if( primed && lid_sensor_filtered == COVER_CLOSED ) {
+        primed = false;
+
+        if( sg_have_alarm_dialog() )
+            sg_send_lid_closed_signal(MCE_ALARM_UI_FEEDBACK_SIG);
+
+        if( sg_have_active_call() || sg_have_incoming_call() )
+            sg_send_lid_closed_signal(MCE_CALL_UI_FEEDBACK_SIG);
+    }
+
+EXIT:
+    return;
+}
 
 /* ========================================================================= *
  * FLIPOVER_GESTURE
@@ -222,6 +374,48 @@ static bool sg_have_incoming_call(void)
     return res;
 }
 
+/** Helper for checking if there is an active call
+ *
+ * @return true if there is active call, false otherwise
+ */
+static bool sg_have_active_call(void)
+{
+    bool res = false;
+
+    switch( call_state ) {
+    case CALL_STATE_ACTIVE:
+        res = true;
+        break;
+    default:
+        break;
+    }
+
+    return res;
+}
+
+/** Handle lid_sensor_filtered_pipe notifications
+ *
+ * @param data lid_sensor_filtered_pipe status as a pointer
+ */
+static void
+sg_lid_sensor_filtered_cb(gconstpointer const data)
+{
+    cover_state_t prev = lid_sensor_filtered;
+
+    lid_sensor_filtered = GPOINTER_TO_INT(data);
+
+    if( lid_sensor_filtered == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "lid_sensor_filtered: %s -> %s", cover_state_repr(prev), cover_state_repr(lid_sensor_filtered));
+
+    sg_detect_lid_opened_gesture();
+    sg_detect_lid_closed_gesture();
+
+EXIT:
+    return;
+}
+
 /** Handle call_state_pipe notifications
  *
  * @param data The call state stored in a pointer
@@ -239,8 +433,10 @@ static void sg_call_state_cb(gconstpointer const data)
             call_state_repr(call_state));
 
     sg_detect_flipover_gesture();
-EXIT:
+    sg_detect_lid_opened_gesture();
+    sg_detect_lid_closed_gesture();
 
+EXIT:
     return;
 }
 
@@ -261,6 +457,7 @@ static void sg_alarm_ui_state_cb(gconstpointer data)
             alarm_state_repr(alarm_ui_state));
 
     sg_detect_flipover_gesture();
+    sg_detect_lid_closed_gesture();
 
 EXIT:
     return;
@@ -283,6 +480,8 @@ static void sg_display_state_curr_cb(gconstpointer data)
             display_state_repr(display_state_curr));
 
     sg_detect_flipover_gesture();
+    sg_detect_lid_opened_gesture();
+    sg_detect_lid_closed_gesture();
 
 EXIT:
     return;
@@ -409,6 +608,10 @@ static datapipe_handler_t sg_datapipe_handlers[] =
         .datapipe  = &alarm_ui_state_pipe,
         .output_cb = sg_alarm_ui_state_cb,
     },
+    {
+        .datapipe  = &lid_sensor_filtered_pipe,
+        .output_cb = sg_lid_sensor_filtered_cb,
+    },
 
     // sentinel
     {
@@ -456,7 +659,7 @@ static void sg_setting_cb(GConfClient *const gcc, const guint id,
     (void)data;
 
     /* Key is unset */
-    if (gcv == NULL) {
+    if( gcv == NULL ) {
         mce_log(LL_DEBUG, "GConf Key `%s' has been unset",
                 gconf_entry_get_key(entry));
         goto EXIT;
@@ -464,6 +667,12 @@ static void sg_setting_cb(GConfClient *const gcc, const guint id,
 
     if( id == sg_flipover_gesture_enabled_setting_id ) {
         sg_flipover_gesture_enabled = gconf_value_get_bool(gcv);
+    }
+    else if( id == sg_lid_opened_gesture_enabled_setting_id ) {
+        sg_lid_opened_gesture_enabled = gconf_value_get_bool(gcv);
+    }
+    else if( id == sg_lid_closed_gesture_enabled_setting_id ) {
+        sg_lid_closed_gesture_enabled = gconf_value_get_bool(gcv);
     }
     else {
         mce_log(LL_WARN, "Spurious GConf value received; confused!");
@@ -482,6 +691,18 @@ static void sg_setting_init(void)
                            MCE_DEFAULT_FLIPOVER_GESTURE_ENABLED,
                            sg_setting_cb,
                            &sg_flipover_gesture_enabled_setting_id);
+
+    mce_setting_track_bool(MCE_SETTING_LID_OPENED_GESTURE_ENABLED,
+                           &sg_lid_opened_gesture_enabled,
+                           MCE_DEFAULT_LID_OPENED_GESTURE_ENABLED,
+                           sg_setting_cb,
+                           &sg_lid_opened_gesture_enabled_setting_id);
+
+    mce_setting_track_bool(MCE_SETTING_LID_CLOSED_GESTURE_ENABLED,
+                           &sg_lid_closed_gesture_enabled,
+                           MCE_DEFAULT_LID_CLOSED_GESTURE_ENABLED,
+                           sg_setting_cb,
+                           &sg_lid_closed_gesture_enabled_setting_id);
 }
 
 /** Stop tracking setting changes */
@@ -489,6 +710,12 @@ static void sg_setting_quit(void)
 {
     mce_setting_notifier_remove(sg_flipover_gesture_enabled_setting_id),
         sg_flipover_gesture_enabled_setting_id = 0;
+
+    mce_setting_notifier_remove(sg_lid_opened_gesture_enabled_setting_id),
+        sg_lid_opened_gesture_enabled_setting_id = 0;
+
+    mce_setting_notifier_remove(sg_lid_closed_gesture_enabled_setting_id),
+        sg_lid_closed_gesture_enabled_setting_id = 0;
 }
 
 /* ========================================================================= *

@@ -187,6 +187,14 @@
 # define MCE_SETTING_FLIPOVER_GESTURE_ENABLED            MCE_SETTING_DISPLAY_PATH "/flipover_gesture_enabled"
 # define MCE_DEFAULT_FLIPOVER_GESTURE_ENABLED            true
 
+/** Whether lid opened gesture detection should be enabled */
+# define MCE_SETTING_LID_OPENED_GESTURE_ENABLED          MCE_SETTING_DISPLAY_PATH "/lid_opened_gesture_enabled"
+# define MCE_DEFAULT_LID_OPENED_GESTURE_ENABLED          false
+
+/** Whether lid closed gesture detection should be enabled */
+# define MCE_SETTING_LID_CLOSED_GESTURE_ENABLED          MCE_SETTING_DISPLAY_PATH "/lid_closed_gesture_enabled"
+# define MCE_DEFAULT_LID_CLOSED_GESTURE_ENABLED          false
+
 /** Whether orientation changes constitute user activity */
 # define MCE_SETTING_ORIENTATION_CHANGE_IS_ACTIVITY      MCE_SETTING_DISPLAY_PATH "/orientation_change_is_activity"
 # define MCE_DEFAULT_ORIENTATION_CHANGE_IS_ACTIVITY      true
