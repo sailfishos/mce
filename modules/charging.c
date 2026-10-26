@@ -439,7 +439,7 @@ mch_policy_evaluate_charging_state(void)
     if( limit_disable <= limit_enable )
         limit_disable = 100;
 
-    if( usb_cable_state == USB_CABLE_DISCONNECTED ) {
+    if( charger_state != CHARGER_STATE_ON ) {
         /* Clear battery full seen on disconnect */
         mch_policy_set_battery_full(false);
 
