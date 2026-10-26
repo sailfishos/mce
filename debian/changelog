@@ -1,3 +1,9 @@
+mce (1.120.0) precise; urgency=low
+
+  * [sensor-gestures] Add lid open/close notifications. JB#65117
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Mon, 26 Oct 2026 09:32:04 +0200
+
 mce (1.119.1) precise; urgency=low
 
   * [mce] Allow user to control keypad backlight policy. JB#65103
