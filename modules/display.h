@@ -93,6 +93,8 @@
 
 /** High Brightness Mode file */
 # define DISPLAY_HBM_FILE                        "/hbm"
+# define DISPLAY_HBM_STATE_FILE                  "HBMStateFile"
+# define DISPLAY_HBM_MAX_VALUE                   "HBMMaxValue"
 
 /** CABC name for CABC disabled */
 # define CABC_MODE_OFF                           "off"
