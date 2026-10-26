@@ -5,7 +5,7 @@
  * <p>
  * Copyright (c) 2004 - 2011 Nokia Corporation and/or its subsidiary(-ies).
  * Copyright (c) 2014 - 2019 Jolla Ltd.
- * Copyright (c) 2025 Jolla Mobile Ltd
+ * Copyright (c) 2025 - 2026 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Tapio Rantala <ext-tapio.rantala@nokia.com>
@@ -28,6 +28,7 @@
 #define _MCE_LIB_H_
 
 #include <stdint.h>
+#include <stdbool.h>
 
 #include <glib.h>
 
@@ -76,5 +77,15 @@ guint mce_wakelocked_idle_add(GSourceFunc function, gpointer data);
 char *mce_strip_string(char *str);
 char *mce_slice_token(char *pos, char **ppos, const char *sep);
 char *mce_append_string(char *pos, char *end, const char *str);
+
+size_t mce_strv_length (gchar **arr);
+bool mce_strv_contains (gchar **arr, const char *item);
+gchar **mce_strv_remove (gchar **arr, const char *item);
+gchar **mce_strv_clear (gchar **arr);
+gchar **mce_strv_append (gchar **arr, const char *item);
+gchar **mce_strv_add (gchar **arr, const char *item);
+gchar **mce_strv_from_string (const char *str);
+gchar *mce_strv_to_string (gchar **arr);
+void mce_strv_free (gchar **arr);
 
 #endif /* _MCE_LIB_H_ */
