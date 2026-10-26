@@ -1273,6 +1273,16 @@ static const setting_t gconf_defaults[] =
     .def  = G_STRINGIFY(MCE_DEFAULT_FLIPOVER_GESTURE_ENABLED),
   },
   {
+    .key  = MCE_SETTING_LID_OPENED_GESTURE_ENABLED,
+    .type = "b",
+    .def  = G_STRINGIFY(MCE_DEFAULT_LID_OPENED_GESTURE_ENABLED),
+  },
+  {
+    .key  = MCE_SETTING_LID_CLOSED_GESTURE_ENABLED,
+    .type = "b",
+    .def  = G_STRINGIFY(MCE_DEFAULT_LID_CLOSED_GESTURE_ENABLED),
+  },
+  {
     .key  = MCE_SETTING_ORIENTATION_CHANGE_IS_ACTIVITY,
     .type = "b",
     .def  = G_STRINGIFY(MCE_DEFAULT_ORIENTATION_CHANGE_IS_ACTIVITY),

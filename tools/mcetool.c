@@ -253,6 +253,10 @@ static bool          xmce_set_orientation_change_is_activity           (const ch
 static void          xmce_get_orientation_change_is_activity           (void);
 static bool          xmce_set_flipover_gesture_detection               (const char *args);
 static void          xmce_get_flipover_gesture_detection               (void);
+static bool          xmce_set_lid_opened_gesture_detection             (const char *args);
+static void          xmce_get_lid_opened_gesture_detection             (void);
+static bool          xmce_set_lid_closed_gesture_detection             (const char *args);
+static void          xmce_get_lid_closed_gesture_detection             (void);
 static bool          xmce_set_wakeup_sensor_mode                       (const char *args);
 static void          xmce_get_wakeup_sensor_mode                       (void);
 static bool          xmce_set_ps_mode                                  (const char *args);
@@ -4590,6 +4594,56 @@ static void xmce_get_flipover_gesture_detection(void)
         printf("%-"PAD1"s %s\n", "Flipover gesture detection:", txt);
 }
 
+/** Set lid_opened gesture detection toggle
+ *
+ * @param args string suitable for interpreting as enabled/disabled
+ */
+static bool xmce_set_lid_opened_gesture_detection(const char *args)
+{
+        const char *key = MCE_SETTING_LID_OPENED_GESTURE_ENABLED;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
+        return xmce_setting_set_bool(key, xmce_parse_enabled(args));
+}
+
+/** Show lid_opened gesture detection toggle
+ */
+static void xmce_get_lid_opened_gesture_detection(void)
+{
+        gboolean    val = 0;
+        const char *txt = "unknown";
+
+        if( xmce_setting_get_bool(MCE_SETTING_LID_OPENED_GESTURE_ENABLED, &val) )
+                txt = val ? "enabled" : "disabled";
+        printf("%-"PAD1"s %s\n", "lid_opened gesture detection:", txt);
+}
+
+/** Set lid_closed gesture detection toggle
+ *
+ * @param args string suitable for interpreting as enabled/disabled
+ */
+static bool xmce_set_lid_closed_gesture_detection(const char *args)
+{
+        const char *key = MCE_SETTING_LID_CLOSED_GESTURE_ENABLED;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
+        return xmce_setting_set_bool(key, xmce_parse_enabled(args));
+}
+
+/** Show lid_closed gesture detection toggle
+ */
+static void xmce_get_lid_closed_gesture_detection(void)
+{
+        gboolean    val = 0;
+        const char *txt = "unknown";
+
+        if( xmce_setting_get_bool(MCE_SETTING_LID_CLOSED_GESTURE_ENABLED, &val) )
+                txt = val ? "enabled" : "disabled";
+        printf("%-"PAD1"s %s\n", "lid_closed gesture detection:", txt);
+}
+
 /* ------------------------------------------------------------------------- *
  * wakeup sensor
  * ------------------------------------------------------------------------- */
@@ -7123,6 +7177,8 @@ static bool xmce_get_status(const char *args)
         xmce_get_orientation_sensor_mode();
         xmce_get_orientation_change_is_activity();
         xmce_get_flipover_gesture_detection();
+        xmce_get_lid_opened_gesture_detection();
+        xmce_get_lid_closed_gesture_detection();
         xmce_get_wakeup_sensor_mode();
         xmce_get_ps_mode();
         xmce_get_ps_on_demand();
@@ -8154,6 +8210,22 @@ static const mce_opt_t options[] =
                         "set the flipover gesture detection toggle; valid modes are:\n"
                         "  'enabled'  flipover gestures can be used to silence calls/alarms\n"
                         "  'disabled' turning device over does not affect calls/alarms\n"
+        },
+        {
+                .name        = "set-lid-opened-gesture-detection",
+                .with_arg    = xmce_set_lid_opened_gesture_detection,
+                .values      = "enabled|disabled",
+                        "set the lid_opened gesture detection toggle; valid modes are:\n"
+                        "  'enabled'  lid opening can be used for call control\n"
+                        "  'disabled' opening lid does not affect calls\n"
+        },
+        {
+                .name        = "set-lid-closed-gesture-detection",
+                .with_arg    = xmce_set_lid_closed_gesture_detection,
+                .values      = "enabled|disabled",
+                        "set the lid_closed gesture detection toggle; valid modes are:\n"
+                        "  'enabled'  lid closing can be used for call / alarm control\n"
+                        "  'disabled' opening lid does not affect calls / alarms\n"
         },
         {
                 .name        = "set-wakeup-sensor-mode",
