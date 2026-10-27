@@ -5,6 +5,7 @@
  * Copyright (c) 2004 - 2011 Nokia Corporation and/or its subsidiary(-ies).
  * Copyright (c) 2012 - 2021 Jolla Ltd.
  * Copyright (c) 2019 - 2020 Open Mobile Platform LLC.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Irina Bezruk <ext-irina.bezruk@nokia.com>
@@ -130,6 +131,42 @@
 
 /** LED pattern used as feedback for user activity */
 #define MCE_LED_PATTERN_USER_FEEDBACK		"PatternUserFeedback"
+
+/** LED pattern used when bluez reports adapter in discovery mode */
+#define MCE_LED_PATTERN_BLUETOOTH_IN_DISCOVERY_MODE    "PatternBluetoothInDiscoveryMode"
+
+/** LED pattern used when bluez reports device connect */
+#define MCE_LED_PATTERN_BLUETOOTH_DEVICE_CONNECTED     "PatternBluetoothDeviceConnected"
+
+/** LED pattern used when bluez reports device diconnect */
+#define MCE_LED_PATTERN_BLUETOOTH_DEVICE_DISCONNECTED  "PatternBluetoothDeviceDisconnected"
+
+/** LED pattern used when there is an incoming call */
+#define MCE_LED_PATTERN_CALL_RINGING                   "PatternCallRinging"
+
+/** LED pattern used when call is connected */
+#define MCE_LED_PATTERN_CALL_CONNECTED                 "PatternCallConnected"
+
+/** LED pattern used when call is ended */
+#define MCE_LED_PATTERN_CALL_ENDED                     "PatternCallEnded"
+
+/** LED pattern used when alarm is ringing */
+#define MCE_LED_PATTERN_ALARM_RINGING                  "PatternAlarmRinging"
+
+/** LED pattern used when flight mode gets enabled */
+#define MCE_LED_PATTERN_FLIGHT_MODE_ENABLED            "PatternFlightModeEnabled"
+
+/** LED pattern used when silent mode gets enabled */
+#define MCE_LED_PATTERN_SILENT_MODE_ENABLED            "PatternSilentModeEnabled"
+
+/** LED pattern used when software update is in progress */
+#define MCE_LED_PATTERN_SOFTWARE_UPDATE_IN_PROGRESS    "PatternSoftwareUpdateInProgress"
+
+/** LED pattern used when unlock with lock code fails */
+#define MCE_LED_PATTERN_UNLOCK_FAILED                  "PatternUnlockFailed"
+
+/** LED pattern used when voice recorder is active */
+#define MCE_LED_PATTERN_VOICE_RECORDER_ACTIVE          "PatternVoiceRecorderActive"
 
 /** Persistent lock file for backups */
 #define MCE_SETTINGS_LOCK_FILE_PATH		G_STRINGIFY(MCE_RUN_DIR) "/restored"

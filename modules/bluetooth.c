@@ -2,7 +2,8 @@
  * @file bluetooth.c
  * Bluetooth module -- this implements bluez tracking for MCE
  * <p>
- * Copyright (C) 2014-2019 Jolla Ltd.
+ * Copyright (c) 2014 - 2019 Jolla Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
@@ -44,14 +45,31 @@ static void     bluetooth_suspend_block_stop(void);
 static void     bluetooth_suspend_block_start(void);
 
 /* ------------------------------------------------------------------------- *
+ * LEDS
+ * ------------------------------------------------------------------------- */
+
+static void     bluetooth_leds_update(int discovering, int connected);
+
+/* ------------------------------------------------------------------------- *
  * DBUS_HANDLERS
  * ------------------------------------------------------------------------- */
 
 static gboolean bluetooth_dbus_bluez4_signal_cb(DBusMessage *const msg);
+
+static void     bluetooth_dbus_bluez5_parse_changed_properties(DBusMessageIter *body);
+static void     bluetooth_dbus_bluez5_parse_dropped_properties(DBusMessageIter *body);
 static gboolean bluetooth_dbus_bluez5_signal_cb(DBusMessage *const msg);
 
 static void     bluetooth_dbus_init(void);
 static void     bluetooth_dbus_quit(void);
+
+/* ------------------------------------------------------------------------- *
+ * DATAPIPE_TRACKING
+ * ------------------------------------------------------------------------- */
+
+static void     bluetooth_datapipe_bluez_service_state_cb(gconstpointer const data);
+static void     bluetooth_datapipe_init(void);
+static void     bluetooth_datapipe_quit(void);
 
 /* ------------------------------------------------------------------------- *
  * MODULE_LOAD_UNLOAD
@@ -117,6 +135,32 @@ static void bluetooth_suspend_block_start(void)
 }
 
 /* ========================================================================= *
+ * LEDS
+ * ========================================================================= */
+
+static void
+bluetooth_leds_update(int discovering, int connected)
+{
+    if( discovering != -1 ) {
+        if( discovering )
+            datapipe_exec_full(&led_pattern_activate_pipe, MCE_LED_PATTERN_BLUETOOTH_IN_DISCOVERY_MODE);
+        else
+            datapipe_exec_full(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_BLUETOOTH_IN_DISCOVERY_MODE );
+    }
+
+    if( connected != -1 ) {
+        if( connected ) {
+            datapipe_exec_full(&led_pattern_activate_pipe, MCE_LED_PATTERN_BLUETOOTH_DEVICE_CONNECTED);
+            datapipe_exec_full(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_BLUETOOTH_DEVICE_DISCONNECTED);
+        }
+        else {
+            datapipe_exec_full(&led_pattern_activate_pipe, MCE_LED_PATTERN_BLUETOOTH_DEVICE_DISCONNECTED);
+            datapipe_exec_full(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_BLUETOOTH_DEVICE_CONNECTED);
+        }
+    }
+}
+
+/* ========================================================================= *
  * DBUS_HANDLERS
  * ========================================================================= */
 
@@ -142,6 +186,104 @@ bluetooth_dbus_bluez4_signal_cb(DBusMessage *const msg)
 
     bluetooth_suspend_block_start();
     return TRUE;
+}
+
+#define PROP_DISCOVERING "Discovering"
+#define PROP_CONNECTED   "Connected"
+
+static void
+bluetooth_dbus_bluez5_parse_changed_properties(DBusMessageIter *body)
+{
+    // Initialize to "no changes seen"
+    int discovering = -1;
+    int connected   = -1;
+
+    if( !body )
+        goto EXIT;
+
+    DBusMessageIter arr, ent, var;
+    // <arg type="a{sv}" name="changed_properties"/>
+
+    if( !mce_dbus_iter_get_array(body, &arr) )
+        goto EXIT;
+
+    while( !mce_dbus_iter_at_end(&arr) ) {
+        const char *key = 0;
+
+        if( !mce_dbus_iter_get_entry(&arr, &ent) )
+            goto EXIT;
+
+        if( !mce_dbus_iter_get_string(&ent, &key) )
+            goto EXIT;
+
+        if( !mce_dbus_iter_get_variant(&ent, &var) )
+            goto EXIT;
+
+        if( !strcmp(key, PROP_DISCOVERING) ) {
+            bool val = false;
+            if( !mce_dbus_iter_get_bool(&var, &val) )
+                goto EXIT;
+            mce_log(LL_DEBUG, "%s = bool %d", key, val);
+            discovering = val;
+        }
+        else if( !strcmp(key, PROP_CONNECTED) ) {
+            bool val = false;
+            if( !mce_dbus_iter_get_bool(&var, &val) )
+                goto EXIT;
+            mce_log(LL_DEBUG, "%s = bool %d", key, val);
+            connected = val;
+        }
+        else if( mce_log_p(LL_DEBUG) ) {
+            char *val = mce_dbus_message_iter_repr(&var);
+            mce_log(LL_DEBUG, "%s = %s", key, val);
+            free(val);
+        }
+    }
+
+    bluetooth_leds_update(discovering, connected);
+
+EXIT:
+
+    return;
+}
+
+static void
+bluetooth_dbus_bluez5_parse_dropped_properties(DBusMessageIter *body)
+{
+    // Initialize to "no changes seen"
+    int discovering = -1;
+    int connected   = -1;
+
+    if( !body )
+        goto EXIT;
+
+    DBusMessageIter arr;
+
+    // <arg type="as" name="invalidated_properties"/>
+
+    if( !mce_dbus_iter_get_array(body, &arr) )
+        goto EXIT;
+
+    while( !mce_dbus_iter_at_end(&arr) ) {
+        const char *key = 0;
+
+        if( !mce_dbus_iter_get_string(&arr, &key) )
+            goto EXIT;
+
+        mce_log(LL_DEBUG, "%s = <dropped>", key);
+
+        if( !strcmp(key, PROP_DISCOVERING) ) {
+            discovering = false;
+        }
+        else if( !strcmp(key, PROP_CONNECTED) ) {
+            connected = false;
+        }
+    }
+
+    bluetooth_leds_update(discovering, connected);
+
+EXIT:
+    return;
 }
 
 /** Handle signal originating from bluez5
@@ -182,13 +324,42 @@ bluetooth_dbus_bluez5_signal_cb(DBusMessage *const msg)
     if( strcmp(sender, owner) && strcmp(sender, name) )
         goto EXIT;
 
-    if( mce_log_p(LL_DEBUG) ) {
-        char *repr = mce_dbus_message_repr(msg);
-        mce_log(LL_DEBUG, "%s", repr ?: "bluez sig");
-        free(repr);
-    }
+    DBusMessageIter body;
+
+    dbus_message_iter_init(msg, &body);
+
+    /* Check whether the property changes are about an
+     * interface we are interested in */
+    const char *interface = NULL;
+    if( !mce_dbus_iter_get_string(&body, &interface) )
+        goto EXIT;
+
+    static const char adapter[] = "org.bluez.Adapter";
+    static const char device[]  = "org.bluez.Device";
+
+    if( !g_str_has_prefix(interface, adapter) && !g_str_has_prefix(interface, device) )
+        goto EXIT;
+
+    /* We are not actually interested in tracking
+     * adapter / device states, we just want to see
+     * and react to some transition events.
+     *
+     * Assumptions:
+     * - Adapters have PROP_DISCOVERING, devices do not
+     * - Devices have PROP_CONNECTED, adapters do not
+     * - Bluez sends only true property changes
+     *
+     * -> can use common code for both interfaces that
+     *    looks for PROP_DISCOVERING / PROP_CONNECTED
+     *    change notifications.
+     */
+    mce_log(LL_DEBUG, "properties changed");
+
+    bluetooth_dbus_bluez5_parse_changed_properties(&body);
+    bluetooth_dbus_bluez5_parse_dropped_properties(&body);
 
     bluetooth_suspend_block_start();
+
 EXIT:
     return TRUE;
 }

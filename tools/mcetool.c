@@ -4,7 +4,7 @@
  * Copyright (c) 2005 - 2011 Nokia Corporation and/or its subsidiary(-ies).
  * Copyright (c) 2012 - 2022 Jolla Ltd.
  * Copyright (c) 2019 - 2020 Open Mobile Platform LLC.
- * Copyright (c) 2025 Jolla Mobile Ltd
+ * Copyright (c) 2025 - 2026 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>
@@ -2421,6 +2421,18 @@ static const char * const led_patterns[] =
         MCE_LED_PATTERN_CAMERA,
         MCE_LED_PATTERN_DEVICE_ON,
         MCE_LED_PATTERN_BATTERY_LOW,
+        MCE_LED_PATTERN_BLUETOOTH_IN_DISCOVERY_MODE,
+        MCE_LED_PATTERN_BLUETOOTH_DEVICE_CONNECTED,
+        MCE_LED_PATTERN_BLUETOOTH_DEVICE_DISCONNECTED,
+        MCE_LED_PATTERN_CALL_RINGING,
+        MCE_LED_PATTERN_CALL_CONNECTED,
+        MCE_LED_PATTERN_CALL_ENDED,
+        MCE_LED_PATTERN_ALARM_RINGING,
+        MCE_LED_PATTERN_FLIGHT_MODE_ENABLED,
+        MCE_LED_PATTERN_SILENT_MODE_ENABLED,
+        MCE_LED_PATTERN_SOFTWARE_UPDATE_IN_PROGRESS,
+        MCE_LED_PATTERN_UNLOCK_FAILED,
+        MCE_LED_PATTERN_VOICE_RECORDER_ACTIVE,
         MCE_LED_PATTERN_COMMUNICATION_EVENT_BATTERY_FULL,
         MCE_LED_PATTERN_BATTERY_CHARGING_FLAT,
         MCE_LED_PATTERN_COMMON_NOTIFICATION,
@@ -8823,7 +8835,7 @@ PROG_NAME" v"G_STRINGIFY(PRG_VERSION)"\n"
 "Copyright (c) 2005 - 2011 Nokia Corporation.  All rights reserved.\n"
 "Copyright (c) 2012 - 2022 Jolla Ltd.\n"
 "Copyright (c) 2019 - 2020 Open Mobile Platform LLC.\n"
-"Copyright (c) 2025 Jolla Mobile Ltd\n"
+"Copyright (c) 2025 - 2026 Jolla Mobile Ltd\n"
 ;
 
 static __attribute__((__noreturn__)) bool mcetool_do_version(const char *arg)
