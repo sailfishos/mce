@@ -5,6 +5,7 @@
  * Copyright (c) 2006 - 2011 Nokia Corporation and/or its subsidiary(-ies).
  * Copyright (c) 2012 - 2020 Jolla Ltd.
  * Copyright (c) 2020 Open Mobile Platform LLC.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Tapio Rantala <ext-tapio.rantala@nokia.com>
@@ -173,6 +174,9 @@ static system_state_t system_state = MCE_SYSTEM_STATE_UNDEF;
 /** Cached led brightness */
 static gint led_brightness = 0;
 
+/** Cached devicelock_state */
+static devicelock_state_t devicelock_state = DEVICELOCK_STATE_UNDEFINED;
+
 /** Maximum LED brightness
  *
  * The led_brightness_pipe is initialized to maximum_led_brightness
@@ -243,8 +247,18 @@ static void              sw_breathing_quit              (void);
 static void              sw_breathing_init              (void);
 static void              charger_state_trigger          (gconstpointer data);
 static void              battery_level_trigger          (gconstpointer data);
+static void              devicelock_state_trigger       (gconstpointer data);
+static gboolean          devicelock_auth_checked_dbus_cb(DBusMessage *const msg);
 static void              mce_led_init_dbus              (void);
 static void              mce_led_quit_dbus              (void);
+static void              alarm_ui_state_trigger         (gconstpointer data);
+static void              call_state_trigger             (gconstpointer const data);
+static void              rethink_sw_update_led          (void);
+static void              packagekit_locked_trigger      (gconstpointer data);
+static void              osupdate_running_trigger       (gconstpointer data);
+static void              master_radio_enabled_trigger   (gconstpointer data);
+static void              mce_led_datapipes_init         (void);
+static void              mce_led_datapipes_quit         (void);
 
 G_MODULE_EXPORT const gchar *g_module_check_init        (GModule *module);
 G_MODULE_EXPORT void         g_module_unload            (GModule *module);
@@ -2066,6 +2080,71 @@ EXIT:
 	return;
 }
 
+/** Notification callback for devicelock_state_pipe
+ *
+ * @param data  devicelock_state_t value as void pointer
+ */
+static void devicelock_state_trigger(gconstpointer data)
+{
+	devicelock_state_t prev = devicelock_state;
+	devicelock_state = GPOINTER_TO_INT(data);
+
+	if( devicelock_state == prev )
+		goto EXIT;
+
+	mce_log(LL_DEBUG, "devicelock_state = %s -> %s",
+		devicelock_state_repr(prev),
+		devicelock_state_repr(devicelock_state));
+
+	if( devicelock_state == DEVICELOCK_STATE_UNLOCKED ) {
+		/* Deactivate in case we did not get authenticationChecked(true) event */
+		datapipe_exec_full(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_UNLOCK_FAILED);
+	}
+
+EXIT:
+	return;
+}
+
+/** D-Bus callback for handling device lock code check result signals
+ *
+ *
+ * @param msg The D-Bus message
+ *
+ * @return TRUE
+ */
+static gboolean devicelock_auth_checked_dbus_cb(DBusMessage *const msg)
+{
+	DBusError    err = DBUS_ERROR_INIT;
+	dbus_bool_t  val = false;
+
+	if( !msg )
+		goto EXIT;
+
+	if( !dbus_message_get_args(msg, &err, DBUS_TYPE_BOOLEAN, &val, DBUS_TYPE_INVALID) ) {
+		mce_log(LL_ERR, "Failed to parse %s.%s signal: %s: %s", dbus_message_get_interface(msg),
+			dbus_message_get_member(msg), err.name, err.message);
+		goto EXIT;
+	}
+
+	mce_log(LL_DEBUG, "received signal: %s.%s(%s)", dbus_message_get_interface(msg),
+		dbus_message_get_member(msg), bool_repr(val));
+
+	/* Note that these D-Bus signals are events rather than state transitions.
+	 * Meaning that e.g. in case of lock code failure followed by successful
+	 * fingerprint unlock, we will not see lock code success event -> a led
+	 * activated on authenticationChecked(false) must be deactivated on unlock.
+	 */
+	if( val )
+		datapipe_exec_full(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_UNLOCK_FAILED);
+	else
+		datapipe_exec_full(&led_pattern_activate_pipe, MCE_LED_PATTERN_UNLOCK_FAILED);
+
+EXIT:
+	dbus_error_free(&err);
+
+	return TRUE;
+}
+
 /** Array of dbus message handlers */
 static mce_dbus_handler_t led_dbus_handlers[] =
 {
@@ -2083,6 +2162,14 @@ static mce_dbus_handler_t led_dbus_handlers[] =
 		.type      = DBUS_MESSAGE_TYPE_SIGNAL,
 		.args      =
 			"    <arg name=\"pattern_name\" type=\"s\"/>\n"
+	},
+	/* signals - inbound */
+	{
+		.interface = "org.nemomobile.lipstick.devicelock",
+		.name      = "authenticationChecked",
+		.rules     = "path='/devicelock'",
+		.type      = DBUS_MESSAGE_TYPE_SIGNAL,
+		.callback  = devicelock_auth_checked_dbus_cb,
 	},
 	/* method calls */
 	{
@@ -2137,6 +2224,172 @@ static void mce_led_quit_dbus(void)
 	mce_dbus_handler_unregister_array(led_dbus_handlers);
 }
 
+/** Cached alarm ui state */
+static alarm_ui_state_t alarm_ui_state = MCE_ALARM_UI_INVALID_INT32;
+
+/** Cached call state */
+static call_state_t call_state = CALL_STATE_INVALID;
+
+/** Cached PackageKit locked state */
+static bool packagekit_locked = false;
+
+/** Cached os update running state */
+static bool osupdate_running = false;
+
+/** Cached master radio enable state */
+static bool master_radio_enabled = false;
+
+/** Handle alarm_ui_state_pipe notifications
+ *
+ * @param data The alarm state stored in a pointer
+ */
+static void alarm_ui_state_trigger(gconstpointer data)
+{
+	alarm_ui_state_t prev =  alarm_ui_state;
+	alarm_ui_state = GPOINTER_TO_INT(data);
+
+	if( alarm_ui_state == prev )
+		goto EXIT;
+
+	mce_log(LL_DEBUG, "alarm: %s -> %s", alarm_state_repr(prev), alarm_state_repr(alarm_ui_state));
+
+	switch( alarm_ui_state ) {
+	case MCE_ALARM_UI_RINGING_INT32:
+	case MCE_ALARM_UI_VISIBLE_INT32:
+		datapipe_exec_full(&led_pattern_activate_pipe, MCE_LED_PATTERN_ALARM_RINGING);
+		break;
+
+	default:
+		datapipe_exec_full(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_ALARM_RINGING);
+		break;
+	}
+
+EXIT:
+	return;
+}
+
+/** Handle call_state_pipe notifications
+ *
+ * @param data The call state stored in a pointer
+ */
+static void call_state_trigger(gconstpointer const data)
+{
+	call_state_t prev = call_state;
+	call_state = GPOINTER_TO_INT(data);
+
+	if( call_state == prev )
+		goto EXIT;
+
+	mce_log(LL_DEBUG, "call: %s -> %s", call_state_repr(prev), call_state_repr(call_state));
+
+	if( call_state == CALL_STATE_RINGING ) {
+		datapipe_exec_full(&led_pattern_activate_pipe, MCE_LED_PATTERN_CALL_RINGING);
+		datapipe_exec_full(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_CALL_CONNECTED);
+		datapipe_exec_full(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_CALL_ENDED);
+	}
+	else if( call_state == CALL_STATE_ACTIVE ) {
+		datapipe_exec_full(&led_pattern_activate_pipe, MCE_LED_PATTERN_CALL_CONNECTED);
+		datapipe_exec_full(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_CALL_RINGING);
+		datapipe_exec_full(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_CALL_ENDED);
+	}
+	else if( call_state == CALL_STATE_NONE && prev != CALL_STATE_INVALID ) {
+		datapipe_exec_full(&led_pattern_activate_pipe, MCE_LED_PATTERN_CALL_ENDED);
+		datapipe_exec_full(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_CALL_RINGING);
+		datapipe_exec_full(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_CALL_CONNECTED);
+	}
+	else {
+		datapipe_exec_full(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_CALL_RINGING);
+		datapipe_exec_full(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_CALL_CONNECTED);
+		datapipe_exec_full(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_CALL_ENDED);
+	}
+
+EXIT:
+	return;
+}
+
+static void rethink_sw_update_led(void)
+{
+	static bool prev = false;
+
+	bool activate = packagekit_locked || osupdate_running;
+
+	if( prev == activate )
+		goto EXIT;
+
+	if( (prev = activate) )
+		datapipe_exec_full(&led_pattern_activate_pipe, MCE_LED_PATTERN_SOFTWARE_UPDATE_IN_PROGRESS);
+	else
+		datapipe_exec_full(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_SOFTWARE_UPDATE_IN_PROGRESS);
+
+EXIT:
+	return;;
+}
+
+/**
+ * Handle packagekit_locked_pipe notifications
+ *
+ * @param data The locked state stored in a pointer
+ */
+static void packagekit_locked_trigger(gconstpointer data)
+{
+	bool prev = packagekit_locked;
+	packagekit_locked = GPOINTER_TO_INT(data);
+
+	if( packagekit_locked == prev )
+		goto EXIT;
+
+	/* Log by default as it might help analyzing upgrade problems */
+	mce_log(LL_DEBUG, "packagekit_locked: %s -> %s", bool_repr(prev), bool_repr(packagekit_locked));
+
+	rethink_sw_update_led();
+
+EXIT:
+	return;
+}
+
+/** Change notifications for osupdate_running
+ *
+ * @param data The running state stored in a pointer
+ */
+static void osupdate_running_trigger(gconstpointer data)
+{
+	bool prev = osupdate_running;
+	osupdate_running = GPOINTER_TO_INT(data);
+
+	if( osupdate_running == prev )
+		goto EXIT;
+
+	mce_log(LL_DEBUG, "osupdate_running: %s -> %s", bool_repr(prev), bool_repr(osupdate_running));
+
+	rethink_sw_update_led();
+
+EXIT:
+	return;
+}
+
+/** Change notifications for master_radio_enabled
+ *
+ * @param data The running state stored in a pointer
+ */
+static void master_radio_enabled_trigger(gconstpointer data)
+{
+	bool prev = master_radio_enabled;
+	master_radio_enabled = GPOINTER_TO_INT(data);
+
+	if( master_radio_enabled == prev )
+		goto EXIT;
+
+	mce_log(LL_DEBUG, "master_radio_enabled: %s -> %s", bool_repr(prev), bool_repr(master_radio_enabled));
+
+	if( master_radio_enabled )
+		datapipe_exec_full(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_FLIGHT_MODE_ENABLED);
+	else
+		datapipe_exec_full(&led_pattern_activate_pipe, MCE_LED_PATTERN_FLIGHT_MODE_ENABLED);
+
+EXIT:
+	return;
+}
+
 /** Array of datapipe handlers */
 static datapipe_handler_t mce_led_datapipe_handlers[] =
 {
@@ -2173,6 +2426,31 @@ static datapipe_handler_t mce_led_datapipe_handlers[] =
 		.datapipe  = &battery_level_pipe,
 		.output_cb = battery_level_trigger,
 	},
+	{
+		.datapipe  = &alarm_ui_state_pipe,
+		.output_cb = alarm_ui_state_trigger,
+	},
+	{
+		.datapipe  = &call_state_pipe,
+		.output_cb = call_state_trigger,
+	},
+	{
+		.datapipe  = &packagekit_locked_pipe,
+		.output_cb = packagekit_locked_trigger,
+	},
+	{
+		.datapipe  = &osupdate_running_pipe,
+		.output_cb = osupdate_running_trigger,
+	},
+	{
+		.datapipe  = &master_radio_enabled_pipe,
+		.output_cb = master_radio_enabled_trigger,
+	},
+	{
+		.datapipe  = &devicelock_state_pipe,
+		.output_cb = devicelock_state_trigger,
+	},
+
 	// sentinel
 	{
 		.datapipe = 0,

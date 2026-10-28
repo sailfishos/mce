@@ -43,9 +43,6 @@
 /** Module name */
 #define MODULE_NAME "battery_udev"
 
-/** Whether to support legacy pattery low led pattern; nonzero for yes */
-#define SUPPORT_BATTERY_LOW_LED_PATTERN 0
-
 /* Limits for udev capacity percent -> battery_status_t mapping
  *
  * FIXME: These should be configurable / device type, and they should be
@@ -278,6 +275,7 @@ static void     mcebat_dbus_quit                   (void);
  * MCEBAT
  * ------------------------------------------------------------------------- */
 
+static void     mcebat_update_leds    (const mcebat_t *mcebat);
 static void     mcebat_update         (void);
 static gboolean mcebat_init_tracker_cb(gpointer aptr);
 static void     mcebat_init_settings  (void);
@@ -895,6 +893,56 @@ static void mcebat_dbus_quit(void)
  * MCEBAT
  * ========================================================================= */
 
+static void
+mcebat_update_leds(const mcebat_t *mcebat)
+{
+    enum {
+        BATTERY_PATTERN_NONE     = 0,
+        BATTERY_PATTERN_LOW      = 1 << 0,
+        BATTERY_PATTERN_CHARGING = 1 << 1,
+        BATTERY_PATTERN_FULL     = 1 << 2,
+    };
+
+    static unsigned prev = BATTERY_PATTERN_NONE;
+
+    unsigned curr = BATTERY_PATTERN_NONE;
+
+    if( mcebat->battery_status == BATTERY_STATUS_FULL )
+        curr = BATTERY_PATTERN_FULL;
+    else if( mcebat->charger_state == CHARGER_STATE_ON )
+        curr = BATTERY_PATTERN_CHARGING;
+    else if( mcebat->battery_status == BATTERY_STATUS_LOW || mcebat->battery_status == BATTERY_STATUS_EMPTY )
+        curr = BATTERY_PATTERN_LOW;
+
+    if( prev != curr ) {
+        /* To minimize jitter, do activations 1st followed be deactivations
+         */
+        unsigned activate = (prev ^ curr) & curr;
+
+        if( activate & BATTERY_PATTERN_LOW )
+            datapipe_exec_full(&led_pattern_activate_pipe, MCE_LED_PATTERN_BATTERY_LOW);
+
+        if( activate & BATTERY_PATTERN_CHARGING )
+            datapipe_exec_full(&led_pattern_activate_pipe, MCE_LED_PATTERN_BATTERY_CHARGING);
+
+        if( activate & BATTERY_PATTERN_FULL )
+            datapipe_exec_full(&led_pattern_activate_pipe, MCE_LED_PATTERN_BATTERY_FULL);
+
+        unsigned deactivate = (prev ^ curr) & prev;
+
+        if( deactivate & BATTERY_PATTERN_LOW )
+            datapipe_exec_full(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_BATTERY_LOW);
+
+        if( deactivate & BATTERY_PATTERN_CHARGING )
+            datapipe_exec_full(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_BATTERY_CHARGING);
+
+        if( deactivate & BATTERY_PATTERN_FULL )
+            datapipe_exec_full(&led_pattern_deactivate_pipe, MCE_LED_PATTERN_BATTERY_FULL);
+
+        prev = curr;
+    }
+}
+
 /** Update battery state visible in datapipes
  *
  * @param curr  Battery state data to expose.
@@ -930,16 +978,6 @@ mcebat_update(void)
         datapipe_exec_full(&charger_state_pipe,
                            GINT_TO_POINTER(curr->charger_state));
 
-        /* Charging led pattern */
-        if( curr->charger_state == CHARGER_STATE_ON ) {
-            datapipe_exec_full(&led_pattern_activate_pipe,
-                               MCE_LED_PATTERN_BATTERY_CHARGING);
-        }
-        else {
-            datapipe_exec_full(&led_pattern_deactivate_pipe,
-                               MCE_LED_PATTERN_BATTERY_CHARGING);
-        }
-
         /* Generate activity */
         mce_datapipe_generate_activity();
     }
@@ -959,29 +997,6 @@ mcebat_update(void)
                 battery_status_repr(prev.battery_status),
                 battery_status_repr(curr->battery_status));
 
-        /* Battery full led pattern */
-        if( curr->battery_status == BATTERY_STATUS_FULL ) {
-            datapipe_exec_full(&led_pattern_activate_pipe,
-                               MCE_LED_PATTERN_BATTERY_FULL);
-        }
-        else {
-            datapipe_exec_full(&led_pattern_deactivate_pipe,
-                               MCE_LED_PATTERN_BATTERY_FULL);
-        }
-
-#if SUPPORT_BATTERY_LOW_LED_PATTERN
-        /* Battery low led pattern */
-        if( curr->battery_status == BATTERY_STATUS_LOW ||
-            curr->battery_status == BATTERY_STATUS_EMPTY ) {
-            datapipe_exec_full(&led_pattern_activate_pipe,
-                               MCE_LED_PATTERN_BATTERY_LOW);
-        }
-        else {
-            datapipe_exec_full(&led_pattern_deactivate_pipe,
-                               MCE_LED_PATTERN_BATTERY_LOW);
-        }
-#endif /* SUPPORT_BATTERY_LOW_LED_PATTERN */
-
         /* Battery charge state */
         datapipe_exec_full(&battery_status_pipe,
                            GINT_TO_POINTER(curr->battery_status));
@@ -994,6 +1009,8 @@ mcebat_update(void)
         datapipe_exec_full(&battery_level_pipe,
                            GINT_TO_POINTER(curr->battery_level));
     }
+
+    mcebat_update_leds(curr);
 }
 
 /* ========================================================================= *

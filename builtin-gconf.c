@@ -4,6 +4,7 @@
  * <p>
  * Copyright (c) 2012 - 2022 Jolla Ltd.
  * Copyright (c) 2025 Jollyboys Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
@@ -1512,7 +1513,67 @@ static const setting_t gconf_defaults[] =
   {
     .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_BATTERY_LOW,
     .type = "b",
-    .def  = G_STRINGIFY(MCE_DEFAULT_LED_PATTERN_ENABLED),
+    .def  = G_STRINGIFY(false),
+  },
+  {
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_BLUETOOTH_IN_DISCOVERY_MODE,
+    .type = "b",
+    .def  = G_STRINGIFY(false),
+  },
+  {
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_BLUETOOTH_DEVICE_CONNECTED,
+    .type = "b",
+    .def  = G_STRINGIFY(false),
+  },
+  {
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_BLUETOOTH_DEVICE_DISCONNECTED,
+    .type = "b",
+    .def  = G_STRINGIFY(false),
+  },
+  {
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_CALL_RINGING,
+    .type = "b",
+    .def  = G_STRINGIFY(false),
+  },
+  {
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_CALL_CONNECTED,
+    .type = "b",
+    .def  = G_STRINGIFY(false),
+  },
+  {
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_CALL_ENDED,
+    .type = "b",
+    .def  = G_STRINGIFY(false),
+  },
+  {
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_ALARM_RINGING,
+    .type = "b",
+    .def  = G_STRINGIFY(false),
+  },
+  {
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_FLIGHT_MODE_ENABLED,
+    .type = "b",
+    .def  = G_STRINGIFY(false),
+  },
+  {
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_SILENT_MODE_ENABLED,
+    .type = "b",
+    .def  = G_STRINGIFY(false),
+  },
+  {
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_SOFTWARE_UPDATE_IN_PROGRESS,
+    .type = "b",
+    .def  = G_STRINGIFY(false),
+  },
+  {
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_UNLOCK_FAILED,
+    .type = "b",
+    .def  = G_STRINGIFY(false),
+  },
+  {
+    .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_VOICE_RECORDER_ACTIVE,
+    .type = "b",
+    .def  = G_STRINGIFY(false),
   },
   {
     .key  = MCE_SETTING_LED_PATH"/"MCE_LED_PATTERN_COMMUNICATION_EVENT_BATTERY_FULL,

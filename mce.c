@@ -2,8 +2,9 @@
  * @file mce.c
  * Mode Control Entity - main file
  * <p>
- * Copyright © 2004-2011 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2012-2017 Jolla Ltd.
+ * Copyright (c) 2004 - 2011 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (c) 2012 - 2017 Jolla Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Tapio Rantala <ext-tapio.rantala@nokia.com>
@@ -925,7 +926,10 @@ static bool mce_do_version(const char *arg)
 	static const char info[] =
 		"Written by David Weinehall.\n"
 		"\n"
-		"Copyright (C) 2004-2010 Nokia Corporation.  "
+		"Copyright (c) 2004 - 2010 Nokia Corporation.\n"
+		"Copyright (c) 2012 - 2017 Jolla Ltd.\n"
+		"Copyright (c) 2026 Jolla Mobile Ltd\n"
+		"\n"
 		"All rights reserved.\n";
 
 	fprintf(stdout,	"%s v%s\n%s", progname, vers, info);
@@ -984,6 +988,9 @@ static gboolean mce_auto_exit_cb(gpointer aptr)
  */
 int main(int argc, char **argv)
 {
+	setlinebuf(stdout);
+	setlinebuf(stderr);
+
 	int status = EXIT_FAILURE;
 
 	/* Set the program-name */
