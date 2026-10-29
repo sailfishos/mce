@@ -42,8 +42,6 @@
 #include "../mce-wakelock.h"
 #include "../tklock.h"
 
-#include <string.h>
-
 #include <mce/dbus-names.h>
 
 #include <gmodule.h>

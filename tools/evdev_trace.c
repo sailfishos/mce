@@ -26,11 +26,7 @@
 #include "fileusers.h"
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <stdbool.h>
-#include <unistd.h>
-#include <string.h>
-#include <errno.h>
 #include <poll.h>
 #include <glob.h>
 #include <getopt.h>

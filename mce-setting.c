@@ -2,8 +2,9 @@
  * @file mce-setting.c
  * Runtime setting handling code for the Mode Control Entity
  * <p>
- * Copyright © 2004-2009 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright © 2012-2016 Jolla Ltd.
+ * Copyright (c) 2004 - 2009 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (c) 2012 - 2016 Jolla Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
@@ -24,8 +25,6 @@
 #include "mce-setting.h"
 
 #include "mce-log.h"
-
-#include <string.h>
 
 /** Pointer to the GConf client */
 static GConfClient *gconf_client = NULL;

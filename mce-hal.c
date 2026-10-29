@@ -2,8 +2,9 @@
  * @file mce-hal.c
  * Hardware Abstraction Layer for MCE
  * <p>
- * Copyright © 2009-2011 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2012-2019 Jolla Ltd.
+ * Copyright (c) 2009 - 2011 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (c) 2012 - 2019 Jolla Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Tapio Rantala <ext-tapio.rantala@nokia.com>
@@ -28,9 +29,6 @@
 #include "mce-log.h"
 #include "mce-lib.h"
 
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
 #include <fcntl.h>
 
 #ifndef SYSINFOD_SERVICE

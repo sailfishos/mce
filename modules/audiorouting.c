@@ -2,8 +2,9 @@
  * @file audiorouting.c
  * Audio routing module -- this listens to the audio routing
  * <p>
- * Copyright © 2009-2010 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2014-2019 Jolla Ltd.
+ * Copyright (c) 2009 - 2010 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (c) 2014 - 2019 Jolla Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
@@ -26,7 +27,6 @@
 #include "../mce-dbus.h"
 
 #include <stdio.h>
-#include <string.h>
 
 #include <gmodule.h>
 

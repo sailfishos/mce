@@ -3,8 +3,9 @@
  * This file implements the submode handling component
  * of the Mode Control Entity
  * <p>
- * Copyright © 2004-2011 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2013-2019 Jolla Ltd.
+ * Copyright (c) 2004 - 2011 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (c) 2013 - 2019 Jolla Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Tapio Rantala <ext-tapio.rantala@nokia.com>
@@ -30,9 +31,6 @@
 #include "mce.h"
 #include "mce-log.h"
 #include "mce-io.h"
-
-#include <unistd.h>
-#include <errno.h>
 
 #include <glib/gstdio.h>
 

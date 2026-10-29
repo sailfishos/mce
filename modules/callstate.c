@@ -4,6 +4,7 @@
  * <p>
  * Copyright (c) 2008 - 2009 Nokia Corporation and/or its subsidiary(-ies).
  * Copyright (c) 2012 - 2023 Jolla Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Kalle Jokiniemi <kalle.jokiniemi@jolla.com>
@@ -26,9 +27,6 @@
 #include "../mce-log.h"
 #include "../mce-dbus.h"
 #include "../mce-wltimer.h"
-
-#include <stdlib.h>
-#include <string.h>
 
 #include <mce/dbus-names.h>
 

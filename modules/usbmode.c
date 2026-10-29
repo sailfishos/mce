@@ -3,7 +3,8 @@
  *
  * USB mode tracking module for the Mode Control Entity
  * <p>
- * Copyright © 2015 Jolla Ltd.
+ * Copyright (c) 2015 Jolla Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
@@ -23,8 +24,6 @@
 #include "../mce.h"
 #include "../mce-log.h"
 #include "../mce-dbus.h"
-
-#include <string.h>
 
 #include <gmodule.h>
 

@@ -28,7 +28,7 @@
 #ifndef _MCE_H_
 #define _MCE_H_
 
-#include "musl-compatibility.h"
+#include "musl-compatibility.h" // NOTRIM
 #include "datapipe.h"
 
 /** Indicate enabled (sub)mode */

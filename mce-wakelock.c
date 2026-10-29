@@ -2,7 +2,8 @@
  * @file mce-wakelock.c
  * Wakelock multiplexing code for the Mode Control Entity
  * <p>
- * Copyright (C) 2015 Jolla Ltd.
+ * Copyright (c) 2015 Jolla Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
@@ -23,9 +24,7 @@
 #include "mce-log.h"
 
 #include <stdbool.h>
-#include <unistd.h>
 #include <fcntl.h>
-#include <errno.h>
 
 #include <glib.h>
 

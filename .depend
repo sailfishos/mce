@@ -83,7 +83,6 @@ event-input.o:\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
-	mce-sensorfw.h\
 	mce-setting.h\
 	mce-wakelock.h\
 	mce.h\
@@ -101,7 +100,6 @@ event-input.pic.o:\
 	mce-io.h\
 	mce-lib.h\
 	mce-log.h\
-	mce-sensorfw.h\
 	mce-setting.h\
 	mce-wakelock.h\
 	mce.h\
@@ -378,7 +376,6 @@ mce-sensorfw.o:\
 	mce-sensorfw.c\
 	builtin-gconf.h\
 	datapipe.h\
-	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-log.h\
@@ -390,7 +387,6 @@ mce-sensorfw.pic.o:\
 	mce-sensorfw.c\
 	builtin-gconf.h\
 	datapipe.h\
-	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-log.h\
@@ -722,7 +718,6 @@ modules/charging.o:\
 	modules/charging.c\
 	builtin-gconf.h\
 	datapipe.h\
-	datapipe.h\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-log.h\
@@ -734,7 +729,6 @@ modules/charging.o:\
 modules/charging.pic.o:\
 	modules/charging.c\
 	builtin-gconf.h\
-	datapipe.h\
 	datapipe.h\
 	mce-conf.h\
 	mce-dbus.h\
@@ -929,13 +923,11 @@ modules/keypad.o:\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-io.h\
-	mce-lib.h\
 	mce-log.h\
 	mce-setting.h\
 	mce.h\
 	musl-compatibility.h\
 	modules/keypad.h\
-	modules/led.h\
 
 modules/keypad.pic.o:\
 	modules/keypad.c\
@@ -944,13 +936,11 @@ modules/keypad.pic.o:\
 	mce-conf.h\
 	mce-dbus.h\
 	mce-io.h\
-	mce-lib.h\
 	mce-log.h\
 	mce-setting.h\
 	mce.h\
 	musl-compatibility.h\
 	modules/keypad.h\
-	modules/led.h\
 
 modules/led.o:\
 	modules/led.c\
@@ -959,11 +949,8 @@ modules/led.o:\
 	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
-	mce-hal.h\
 	mce-hbtimer.h\
 	mce-hybris.h\
-	mce-io.h\
-	mce-lib.h\
 	mce-log.h\
 	mce-setting.h\
 	mce.h\
@@ -977,11 +964,8 @@ modules/led.pic.o:\
 	libwakelock.h\
 	mce-conf.h\
 	mce-dbus.h\
-	mce-hal.h\
 	mce-hbtimer.h\
 	mce-hybris.h\
-	mce-io.h\
-	mce-lib.h\
 	mce-log.h\
 	mce-setting.h\
 	mce.h\

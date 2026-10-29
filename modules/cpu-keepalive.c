@@ -3,7 +3,7 @@
  * cpu-keepalive module -- this implements late suspend blocking for MCE
  * <p>
  * Copyright (c) 2013 - 2019 Jolla Ltd.
- * Copyright (c) 2025 Jolla Mobile Ltd
+ * Copyright (c) 2025 - 2026 Jolla Mobile Ltd
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
@@ -28,7 +28,6 @@
 # include "../libwakelock.h"
 #endif
 
-#include <string.h>
 #include <inttypes.h>
 
 #include <mce/dbus-names.h>

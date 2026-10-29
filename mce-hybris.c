@@ -2,7 +2,8 @@
  * @file mce-hybris.c
  * Mode Control Entity - android hal access
  * <p>
- * Copyright (C) 2013-2019 Jolla Ltd.
+ * Copyright (c) 2013 - 2019 Jolla Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
@@ -40,9 +41,6 @@
 #include "mce-modules.h"
 
 #include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <errno.h>
 #include <dlfcn.h>
 
 /* ========================================================================= *

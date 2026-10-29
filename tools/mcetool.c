@@ -46,15 +46,9 @@
 #include "../systemui/tklock-dbus-names.h"
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <inttypes.h>
-#include <unistd.h>
-#include <string.h>
-#include <errno.h>
 #include <math.h>
 #include <syslog.h>
-
-#include <dbus/dbus.h>
 
 #include <mce/dbus-names.h>
 #include <mce/mode-names.h>

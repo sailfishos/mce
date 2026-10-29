@@ -28,10 +28,7 @@
 #include "../mce-setting.h"
 #include "../evdev.h"
 
-#include <unistd.h>
-#include <string.h>
 #include <fcntl.h>
-#include <errno.h>
 
 #include <mce/dbus-names.h>
 #include <mce/mode-names.h>

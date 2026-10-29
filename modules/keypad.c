@@ -2,8 +2,9 @@
  *
  * Keypad module -- this handles the keypress logic for MCE
  * <p>
- * Copyright © 2004-2011 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2012-2019 Jolla Ltd.
+ * Copyright (c) 2004 - 2011 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (c) 2012 - 2019 Jolla Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>
@@ -29,11 +30,8 @@
 #include "../mce-conf.h"
 #include "../mce-dbus.h"
 #include "../mce-io.h"
-#include "../mce-lib.h"
 #include "../mce-log.h"
 #include "../mce-setting.h"
-
-#include "led.h"
 
 #include <mce/dbus-names.h>
 #include <mce/mode-names.h>

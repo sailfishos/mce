@@ -23,7 +23,7 @@
 #ifndef EVDEV_H_
 #define EVDEV_H_
 
-#include <linux/input.h>
+#include <linux/input.h> // NOTRIM
 
 #ifndef  KEY_CAMERA_SNAPSHOT
 # define KEY_CAMERA_SNAPSHOT 0x02fe

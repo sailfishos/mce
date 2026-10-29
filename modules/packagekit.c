@@ -2,7 +2,8 @@
  * @file packagekit.c
  * Mode Control Entity - tracking package upgrade status
  * <p>
- * Copyright (C) 2014-2019 Jolla Ltd.
+ * Copyright (c) 2014 - 2019 Jolla Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
@@ -22,9 +23,6 @@
 #include "../mce.h"
 #include "../mce-log.h"
 #include "../mce-dbus.h"
-
-#include <stdlib.h>
-#include <string.h>
 
 #include <gmodule.h>
 

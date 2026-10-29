@@ -3,7 +3,7 @@
  * Frame buffer device handling code for the Mode Control Entity
  * <p>
  * Copyright (c) 2015 Jolla Ltd.
- * Copyright (c) 2025 Jolla Mobile Ltd
+ * Copyright (c) 2025 - 2026 Jolla Mobile Ltd
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
@@ -32,10 +32,7 @@
 
 #include <sys/ioctl.h>
 
-#include <stdlib.h>
-#include <unistd.h>
 #include <fcntl.h>
-#include <errno.h>
 
 /* ========================================================================= *
  * CONSTANTS

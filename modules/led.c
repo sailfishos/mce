@@ -32,9 +32,6 @@
 
 #include "../mce.h"
 #include "../mce-log.h"
-#include "../mce-io.h"
-#include "../mce-lib.h"
-#include "../mce-hal.h"
 #include "../mce-conf.h"
 #include "../mce-setting.h"
 #include "../mce-dbus.h"
@@ -45,18 +42,6 @@
 #endif
 
 #include "../libwakelock.h"
-
-#include <linux/i2c.h>
-#include <linux/i2c-dev.h>
-
-#include <sys/time.h>
-#include <sys/ioctl.h>
-
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
-#include <errno.h>
-#include <fcntl.h>
 
 #include <mce/dbus-names.h>
 #include <mce/mode-names.h>

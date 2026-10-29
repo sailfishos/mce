@@ -29,7 +29,6 @@
 #include "mce-log.h"
 #include "modules/led.h"
 
-#include <string.h>
 #include <glob.h>
 
 /** Pointer to the keyfile structure where config values are read from */

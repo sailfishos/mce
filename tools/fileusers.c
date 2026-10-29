@@ -5,7 +5,8 @@
  *
  * <p>
  *
- * Copyright (C) 2015 Jolla Ltd.
+ * Copyright (c) 2015 Jolla Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  *
  * <p>
  *
@@ -29,11 +30,7 @@
 
 #include <stdio.h>
 #include <stdbool.h>
-#include <unistd.h>
-#include <string.h>
-#include <stdlib.h>
 #include <fcntl.h>
-#include <errno.h>
 
 #include "../musl-compatibility.h"
 

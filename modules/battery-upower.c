@@ -3,7 +3,7 @@
  * Battery module -- this implements battery and charger logic for MCE
  * <p>
  * Copyright (c) 2013 Jolla Ltd.
- * Copyright (c) 2025 Jolla Mobile Ltd
+ * Copyright (c) 2025 - 2026 Jolla Mobile Ltd
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  * <p>
@@ -23,9 +23,6 @@
 #include "../mce.h"
 #include "../mce-log.h"
 #include "../mce-dbus.h"
-
-#include <stdlib.h>
-#include <string.h>
 
 #include <gmodule.h>
 

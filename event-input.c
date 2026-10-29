@@ -40,17 +40,12 @@
 #ifdef ENABLE_DOUBLETAP_EMULATION
 # include "mce-setting.h"
 #endif
-#include "mce-sensorfw.h"
 #include "mce-wakelock.h"
 #include "multitouch.h"
-#include "evdev.h"
 
 #include <mce/dbus-names.h>
 #include <mce/mode-names.h>
 
-#include <stdlib.h>
-#include <string.h>
-#include <errno.h>
 #include <fcntl.h>
 
 #include <glib/gstdio.h>

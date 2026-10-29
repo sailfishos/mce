@@ -5,6 +5,7 @@
  * Copyright (c) 2004 - 2010 Nokia Corporation and/or its subsidiary(-ies).
  * Copyright (c) 2013 - 2023 Jolla Ltd.
  * Copyright (c) 2019 Open Mobile Platform LLC.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
@@ -25,8 +26,6 @@
 # define MCE_DBUS_H_
 
 # include "builtin-gconf.h"
-
-# include <unistd.h>
 
 # include <dbus/dbus.h>
 

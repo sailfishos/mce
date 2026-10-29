@@ -794,3 +794,29 @@ graphs:: $(GRAPHS_PNG) $(GRAPHS_PDF)
 
 clean::
 	$(RM) $(GRAPHS_PNG) $(GRAPHS_PDF)
+
+# ----------------------------------------------------------------------------
+# Check for excess include statements
+# ----------------------------------------------------------------------------
+
+.PHONY: headers
+
+.SUFFIXES: %.checked
+
+headers:: c_headers c_sources
+
+%.checked : CPPFLAGS += $(MCE_CFLAGS)
+%.checked : CPPFLAGS += $(MODULE_CFLAGS)
+
+%.checked : %
+	find_unneeded_includes.py $(CPPFLAGS) $(CFLAGS) -- $<
+	@touch $@
+
+c_headers:: $(patsubst %, %.checked, $(wildcard *.h modules/*.h tools/*.h))
+c_sources:: $(patsubst %, %.checked, $(wildcard *.c modules/*.c tools/*.c))
+
+order::
+	find_unneeded_includes.py -- $(wildcard *.h) $(wildcard *.c)
+
+clean::
+	$(RM) *.checked */*.checked *.order */*.order

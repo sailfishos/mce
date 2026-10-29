@@ -2,7 +2,8 @@
  * @file libwakelock.h
  * Mode Control Entity - wakelock management
  * <p>
- * Copyright (C) 2012-2019 Jolla Ltd.
+ * Copyright (c) 2012 - 2019 Jolla Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
@@ -22,7 +23,7 @@
 #ifndef LIBWAKELOCK_H_
 # define LIBWAKELOCK_H_
 
-# include "musl-compatibility.h"
+# include "musl-compatibility.h" // NOTRIM
 
 # ifdef __cplusplus
 extern "C" {
