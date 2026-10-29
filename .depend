@@ -1160,10 +1160,12 @@ modules/usbmode.pic.o:\
 
 multitouch.o:\
 	multitouch.c\
+	evdev.h\
 	multitouch.h\
 
 multitouch.pic.o:\
 	multitouch.c\
+	evdev.h\
 	multitouch.h\
 
 powerkey.o:\

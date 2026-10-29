@@ -3,7 +3,8 @@
  *
  * Fingerprint daemon tracking module for the Mode Control Entity
  * <p>
- * Copyright (c) 2015-2019 Jolla Ltd.
+ * Copyright (c) 2015 - 2019 Jolla Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
@@ -26,8 +27,6 @@
 #include "../mce-dbus.h"
 #include "../mce-setting.h"
 #include "../evdev.h"
-
-#include <linux/input.h>
 
 #include <gmodule.h>
 

@@ -3,7 +3,8 @@
  *
  * buttonbacklight module -- implements MENU/HOME/BACK button backlight policy
  * <p>
- * Copyright Copyright (C) 2017 Jolla Ltd.
+ * Copyright (c) 2017 Jolla Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
@@ -26,8 +27,6 @@
 #include "../mce-conf.h"
 #include "../mce-setting.h"
 #include "../evdev.h"
-
-#include <linux/input.h>
 
 #include <unistd.h>
 #include <string.h>

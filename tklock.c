@@ -5,7 +5,7 @@
  * <p>
  * Copyright (c) 2004 - 2011 Nokia Corporation and/or its subsidiary(-ies).
  * Copyright (c) 2012 - 2019 Jolla Ltd.
- * Copyright (c) 2025 Jolla Mobile Ltd
+ * Copyright (c) 2025 - 2026 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Tapio Rantala <ext-tapio.rantala@nokia.com>
@@ -52,8 +52,6 @@
 
 #include "systemui/dbus-names.h"
 #include "systemui/tklock-dbus-names.h"
-
-#include <linux/input.h>
 
 #include <unistd.h>
 #include <string.h>

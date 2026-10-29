@@ -4,7 +4,7 @@
  * <p>
  * Copyright (c) 2012 - 2020 Jolla Ltd.
  * Copyright (c) 2020 Open Mobile Platform LLC.
- * Copyright (c) 2025 Jolla Mobile Ltd
+ * Copyright (c) 2025 - 2026 Jolla Mobile Ltd
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
@@ -24,8 +24,6 @@
 #include "evdev.h"
 
 #include "mce-log.h"
-
-#include <linux/input.h>
 
 #include <stdio.h>
 #include <stdarg.h>

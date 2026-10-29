@@ -4,7 +4,7 @@
  * <p>
  * Copyright (c) 2004 - 2011 Nokia Corporation and/or its subsidiary(-ies).
  * Copyright (c) 2013 - 2019 Jolla Ltd.
- * Copyright (c) 2025 Jolla Mobile Ltd
+ * Copyright (c) 2025 - 2026 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Tapio Rantala <ext-tapio.rantala@nokia.com>
@@ -45,8 +45,6 @@
 #ifdef ENABLE_WAKELOCKS
 # include "libwakelock.h"
 #endif
-
-#include <linux/input.h>
 
 #include <stdlib.h>
 #include <string.h>

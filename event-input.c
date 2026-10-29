@@ -60,42 +60,6 @@
  * CONSTANTS
  * ========================================================================= */
 
-#ifndef SW_CAMERA_LENS_COVER
-/** Input layer code for the camera lens cover switch */
-# define SW_CAMERA_LENS_COVER           0x09
-#endif
-
-#ifndef SW_KEYPAD_SLIDE
-/** Input layer code for the keypad slide switch */
-# define SW_KEYPAD_SLIDE                0x0a
-#endif
-
-#ifndef SW_FRONT_PROXIMITY
-/** Input layer code for the front proximity sensor switch */
-# define SW_FRONT_PROXIMITY             0x0b
-#endif
-
-#ifndef KEY_CAMERA_FOCUS
-/** Input layer code for the camera focus button */
-# define KEY_CAMERA_FOCUS               0x0210
-#endif
-
-#ifndef FF_STATUS_CNT
-# ifdef FF_STATUS_MAX
-#  define FF_STATUS_CNT (FF_STATUS_MAX+1)
-# else
-#  define FF_STATUS_CNT 0
-# endif
-#endif
-
-#ifndef PWR_CNT
-# ifdef PWR_MAX
-#  define PWR_CNT (PWR_MAX+1)
-# else
-#  define PWR_CNT 0
-# endif
-#endif
-
 /** How long to block suspend after receiwing KEY_WAKEUP event */
 #define WAKEUP_EVENT_TIMEOUT_MS    10000
 /** Wakelock used for blocking suspend after receiving KEY_WAKEUP event */
@@ -1307,10 +1271,6 @@ evin_evdevinfo_match_codes(const evin_evdevinfo_t *self, int type, const int *co
 {
     return evin_evdevinfo_match_codes_ex(self, type, codes, 0);
 }
-
-#ifndef  KEY_CAMERA_SNAPSHOT
-# define KEY_CAMERA_SNAPSHOT 0x02fe
-#endif
 
 /** Test if input device sends only volume key events
  *
