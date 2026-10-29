@@ -1,3 +1,9 @@
+mce (1.120.2) precise; urgency=low
+
+  * [leds] Adjust SW update pattern priority. Fixes JB#65699
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Thu, 29 Oct 2026 13:07:36 +0200
+
 mce (1.120.1) precise; urgency=low
 
   * [mce] Force stdout/stderr to linebuffered mode
