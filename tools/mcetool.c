@@ -5372,6 +5372,34 @@ static void xmce_get_powerkey_blanking(void)
         printf("%-"PAD1"s %s \n", "Powerkey blanking mode:", txt ?: "unknown");
 }
 
+/** Set anykey wakeup mode
+ *
+ * @param args string that can be parsed to anykey wakeup mode
+ */
+static bool xmce_set_powerkey_anykey_wakeup(const char *args)
+{
+        const char *key = MCE_SETTING_POWERKEY_ANYKEY_WAKEUP;
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
+        gboolean val = xmce_parse_enabled(args);
+        return xmce_setting_set_bool(key, val);
+}
+
+/** Get current anykey wakeup mode from mce and print it out
+ */
+static void xmce_get_powerkey_anykey_wakeup(void)
+{
+        const char *key = MCE_SETTING_POWERKEY_ANYKEY_WAKEUP;
+        gboolean    val = FALSE;
+        const char *txt = "unknown";
+
+        if( xmce_setting_get_bool(key, &val) )
+                txt = val ? "enabled" : "disabled";
+
+        printf("%-"PAD1"s %s\n", "Powerkey anykey wakeup:", txt);
+}
+
 /** Set powerkey long press delay
  *
  * @param args string that can be parsed to number
@@ -7167,6 +7195,7 @@ static bool xmce_get_status(const char *args)
         xmce_get_volkey_policy();
         xmce_get_powerkey_action();
         xmce_get_powerkey_blanking();
+        xmce_get_powerkey_anykey_wakeup();
         xmce_get_powerkey_long_press_delay();
         xmce_get_powerkey_double_press_delay();
         xmce_get_powerkey_action_masks();
@@ -7694,6 +7723,15 @@ static const mce_opt_t options[] =
                 .usage       =
                         "set the doubletap blanking mode; valid modes are:\n"
                         "'off', 'lpm'\n"
+        },
+        {
+                .name        = "set-anykey-wakeup",
+                .with_arg    = xmce_set_powerkey_anykey_wakeup,
+                .values      = "enabled|disabled",
+                .usage       =
+                        "set the anykey-wakeup mode; valid modes are:\n"
+                        "  'enabled'   any non-special key can be used to wake up display\n"
+                        "  'disabled'  only special keys like power key will wake up display\n"
         },
         {
                 .name        = "set-powerkey-long-press-delay",

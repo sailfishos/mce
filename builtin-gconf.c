@@ -1738,6 +1738,11 @@ static const setting_t gconf_defaults[] =
     .def  = G_STRINGIFY(MCE_DEFAULT_POWERKEY_BLANKING_MODE),
   },
   {
+    .key  = MCE_SETTING_POWERKEY_ANYKEY_WAKEUP,
+    .type = "b",
+    .def  = G_STRINGIFY(MCE_DEFAULT_POWERKEY_ANYKEY_WAKEUP),
+  },
+  {
     .key  = MCE_SETTING_POWERKEY_PS_OVERRIDE_COUNT,
     .type = "i",
     .def  = G_STRINGIFY(MCE_DEFAULT_POWERKEY_PS_OVERRIDE_COUNT),

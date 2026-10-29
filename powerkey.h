@@ -2,8 +2,9 @@
  * @file powerkey.h
  * Headers for the power key logic for the Mode Control Entity
  * <p>
- * Copyright © 2004-2010 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2014-2019 Jolla Ltd.
+ * Copyright (c) 2004 - 2010 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (c) 2014 - 2019 Jolla Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
@@ -64,6 +65,10 @@ typedef enum
 /** How power key "blank" action should behave */
 # define MCE_SETTING_POWERKEY_BLANKING_MODE        MCE_SETTING_POWERKEY_PATH "/blanking_mode"
 # define MCE_DEFAULT_POWERKEY_BLANKING_MODE        0 // = PWRKEY_BLANK_TO_OFF
+
+/** Whether anykey-wakeup is enabled or not */
+# define MCE_SETTING_POWERKEY_ANYKEY_WAKEUP        MCE_SETTING_POWERKEY_PATH "/anykey_wakeup"
+# define MCE_DEFAULT_POWERKEY_ANYKEY_WAKEUP        false
 
 /** How many consequent power key presses trigger proximity override
  *
