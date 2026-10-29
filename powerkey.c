@@ -550,6 +550,8 @@ static void     pwrkey_dbus_send_signal(const char *sig, const char *arg);
 
 static gboolean pwrkey_dbus_trigger_event_cb(DBusMessage *const req);
 static gboolean pwrkey_dbus_ignore_incoming_call_cb(DBusMessage *const req);
+static gboolean pwrkey_dbus_suppress_powerkey_handling_cb(DBusMessage *const req);
+static gboolean pwrkey_dbus_restore_powerkey_handling_cb(DBusMessage *const req);
 
 static void     pwrkey_dbus_init(void);
 static void     pwrkey_dbus_quit(void);
@@ -2178,6 +2180,8 @@ static void pwrkey_stm_store_initial_state(void)
  * DBUS_IPC
  * ========================================================================= */
 
+static bool pwrkey_dbus_ignore_one_power_key_press = false;
+
 /** Helper for sending powerkey feedback dbus signal
  *
  * @param sig name of the signal to send
@@ -2313,6 +2317,42 @@ static gboolean pwrkey_dbus_ignore_incoming_call_cb(DBusMessage *const req)
     return TRUE;
 }
 
+/** D-Bus callback for suppressing power key handling
+ *
+ * @param msg D-Bus message
+ *
+ * @return TRUE
+ */
+static gboolean pwrkey_dbus_suppress_powerkey_handling_cb(DBusMessage *const req)
+{
+    mce_log(LL_DEVEL, "suppress power key handling request from %s", mce_dbus_get_message_sender_ident(req));
+
+    pwrkey_dbus_ignore_one_power_key_press = true;
+
+    if( !dbus_message_get_no_reply(req) )
+        dbus_send_message(dbus_new_method_reply(req));
+
+    return TRUE;
+}
+
+/** D-Bus callback for restoring power key handling
+ *
+ * @param msg D-Bus message
+ *
+ * @return TRUE
+ */
+static gboolean pwrkey_dbus_restore_powerkey_handling_cb(DBusMessage *const req)
+{
+    mce_log(LL_DEVEL, "restore power key handling request from %s", mce_dbus_get_message_sender_ident(req));
+
+    pwrkey_dbus_ignore_one_power_key_press = false;
+
+    if( !dbus_message_get_no_reply(req) )
+        dbus_send_message(dbus_new_method_reply(req));
+
+    return TRUE;
+}
+
 /** Array of dbus message handlers */
 static mce_dbus_handler_t pwrkey_dbus_handlers[] =
 {
@@ -2353,6 +2393,22 @@ static mce_dbus_handler_t pwrkey_dbus_handlers[] =
         .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
         .callback  = pwrkey_dbus_ignore_incoming_call_cb,
         .args      = 0
+    },
+    {
+        .interface  = MCE_REQUEST_IF,
+        .name       = MCE_SUPRESS_POWERKEY_PROCESSING_REQ,
+        .type       = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback   = pwrkey_dbus_suppress_powerkey_handling_cb,
+        .privileged = true,
+        .args       = NULL
+    },
+    {
+        .interface  = MCE_REQUEST_IF,
+        .name       = MCE_RESTORE_POWERKEY_PROCESSING_REQ,
+        .type       = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback   = pwrkey_dbus_restore_powerkey_handling_cb,
+        .privileged = true,
+        .args       = NULL
     },
     /* sentinel */
     {
@@ -3071,6 +3127,14 @@ pwrkey_datapipe_keypress_event_cb(gconstpointer const data)
     case EV_KEY:
         switch( ev->code ) {
         case KEY_POWER:
+            if( pwrkey_dbus_ignore_one_power_key_press ) {
+                if( ev->value == 0 )
+                    pwrkey_dbus_ignore_one_power_key_press = false;
+                else
+                    mce_log(LL_CRUCIAL, "power key press ignored");
+                break;
+            }
+
             if( ev->value == 1 ) {
                 /* Use event time infomation provided by kernel.
                  * Assumed: monotonically rising values, we use
