@@ -1,3 +1,11 @@
+mce (1.120.3) precise; urgency=low
+
+  * [evdev] Move input event fallback value handling to one place
+  * [mce] Remove redundant include statements
+  * [powerkey] Optionally use any key to wake up display. JB#65555
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Fri, 30 Oct 2026 08:29:37 +0200
+
 mce (1.120.2) precise; urgency=low
 
   * [leds] Adjust SW update pattern priority. Fixes JB#65699
