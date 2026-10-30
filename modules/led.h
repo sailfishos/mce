@@ -44,6 +44,10 @@
  */
 #define MCE_CONF_LED_PATTERN_HYBRIS_GROUP	"LEDPatternHybris"
 
+/** Name of LED RGB pattern breathing configuration group
+ */
+#define MCE_CONF_LED_PATTERN_BREATHING_GROUP "LEDPatternBreathingOverride"
+
 /* ========================================================================= *
  * Settings
  * ========================================================================= */
