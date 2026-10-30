@@ -2395,6 +2395,9 @@ evin_iomon_keypress_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
             break;
 
         case SW_LID:
+            /* Forward LID events for type6 LED policy evaluation */
+            datapipe_exec_full(&user_activity_event_pipe, ev);
+
             /* hammerhead magnetic lid sensor; Feed in to the
              * same datapipe as N770 sliding cover uses */
             if( ev->value ) {
@@ -2420,6 +2423,16 @@ evin_iomon_keypress_cb(mce_io_mon_t *iomon, gpointer data, gsize bytes_read)
         if( ev->value != 2 )
             evin_iomon_generate_activity(ev, false, true);
         goto EXIT;
+    }
+
+    /* If we are in a situation where touch input would be both possible
+     * and affect type6 LED policy, also key presses must to forwarded
+     * for evaluation */
+    if( ev->type == EV_KEY && ev->value == 1 && display_state_curr == MCE_DISPLAY_ON ) {
+        if( !(submode & (MCE_SUBMODE_TKLOCK | MCE_SUBMODE_EVEATER)) ) {
+            evin_iomon_generate_activity(ev, false, true);
+            goto EXIT;
+        }
     }
 
     /* Generate activity - rate limited to once/second */
