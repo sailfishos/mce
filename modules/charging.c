@@ -4,7 +4,8 @@
  * Charging -- this module handles user space charger enable/disable
  * <p>
  * Copyright (c) 2017 - 2022 Jolla Ltd.
-  * <p>
+ * Copyright (c) 2026 Jolla Mobile Ltd
+ * <p>
  * @author Simo Piiroinen <simo.piiroinen@jolla.com>
  *
  * mce is free software; you can redistribute it and/or modify
@@ -25,18 +26,12 @@
 #include "../mce.h"
 #include "../mce-conf.h"
 #include "../mce-log.h"
-#include "../datapipe.h"
 #include "../mce-setting.h"
 #include "../mce-dbus.h"
 
 #include <mce/dbus-names.h>
 #include <mce/mode-names.h>
 
-#include <sys/types.h>
-#include <sys/stat.h>
-
-#include <unistd.h>
-#include <string.h>
 #include <fcntl.h>
 
 #include <gmodule.h>

@@ -2,8 +2,9 @@
  * @file inactivity.c
  * Inactivity module -- this implements inactivity logic for MCE
  * <p>
- * Copyright © 2007-2011 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2013-2019 Jolla Ltd.
+ * Copyright (c) 2007 - 2011 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (c) 2013 - 2019 Jolla Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>
@@ -34,8 +35,6 @@
 #ifdef ENABLE_WAKELOCKS
 # include "../libwakelock.h"
 #endif
-
-#include <string.h>
 
 #include <mce/dbus-names.h>
 

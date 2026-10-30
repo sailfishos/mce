@@ -6,7 +6,7 @@
  * Copyright (c) 2007 - 2008 Nokia Corporation and/or its subsidiary(-ies).
  * Copyright (c) 2014 - 2021 Jolla Ltd.
  * Copyright (c) 2019 - 2020 Open Mobile Platform LLC.
- * Copyright (c) 2025 Jolla Mobile Ltd
+ * Copyright (c) 2025 - 2026 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
@@ -30,8 +30,6 @@
 #include "evdev.h"
 
 #include <mce/mode-names.h>
-
-#include <linux/input.h>
 
 #include <stdio.h>
 

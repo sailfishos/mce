@@ -2,8 +2,9 @@
  * @file event-switches.c
  * Switch event provider for the Mode Control Entity
  * <p>
- * Copyright © 2007-2011 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2014-2019 Jolla Ltd.
+ * Copyright (c) 2007 - 2011 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (c) 2014 - 2019 Jolla Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>
@@ -26,10 +27,6 @@
 
 #include "mce.h"
 #include "mce-io.h"
-
-#include <unistd.h>
-#include <string.h>
-#include <errno.h>
 
 #include <glib/gstdio.h>
 

@@ -2,7 +2,8 @@
  * @file evdev_trace.c
  * Mode Control Entity - cli utility for inspecting evdev input devices
  * <p>
- * Copyright (C) 2013-2019 Jolla Ltd.
+ * Copyright (c) 2013 - 2019 Jolla Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  * @author Mikko Harju <mikko.harju@jolla.com>
@@ -24,14 +25,8 @@
 #include "../evdev.h"
 #include "fileusers.h"
 
-#include <linux/input.h>
-
 #include <stdio.h>
-#include <stdlib.h>
 #include <stdbool.h>
-#include <unistd.h>
-#include <string.h>
-#include <errno.h>
 #include <poll.h>
 #include <glob.h>
 #include <getopt.h>

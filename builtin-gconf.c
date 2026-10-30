@@ -53,9 +53,6 @@
 #include "modules/inactivity.h"
 #include "modules/charging.h"
 
-#include <stdlib.h>
-#include <string.h>
-#include <errno.h>
 #include <glob.h>
 
 /* ========================================================================= *
@@ -1739,6 +1736,11 @@ static const setting_t gconf_defaults[] =
     .key  = MCE_SETTING_POWERKEY_BLANKING_MODE,
     .type = "i",
     .def  = G_STRINGIFY(MCE_DEFAULT_POWERKEY_BLANKING_MODE),
+  },
+  {
+    .key  = MCE_SETTING_POWERKEY_ANYKEY_WAKEUP,
+    .type = "b",
+    .def  = G_STRINGIFY(MCE_DEFAULT_POWERKEY_ANYKEY_WAKEUP),
   },
   {
     .key  = MCE_SETTING_POWERKEY_PS_OVERRIDE_COUNT,

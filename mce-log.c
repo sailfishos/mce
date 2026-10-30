@@ -5,7 +5,7 @@
  * Copyright (c) 2006 - 2007, 2010 Nokia Corporation and/or its subsidiary(-ies).
  * Copyright (c) 2012 - 2020 Jolla Ltd.
  * Copyright (c) 2020 Open Mobile Platform LLC.
- * Copyright (c) 2025 Jolla Mobile Ltd
+ * Copyright (c) 2025 - 2026 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
@@ -27,11 +27,7 @@
 
 #include "mce-log.h"
 
-#include <sys/time.h>
-
-#include <stdlib.h>
 #include <stdbool.h>
-#include <string.h>
 #include <fnmatch.h>
 
 #include <glib/gprintf.h>

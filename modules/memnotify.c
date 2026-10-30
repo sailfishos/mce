@@ -3,6 +3,7 @@
  * Memory use tracking and notification plugin for the Mode Control Entity
  * <p>
  * Copyright (c) 2014 - 2021 Jolla Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  *
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
@@ -26,7 +27,6 @@
 #include "../mce-setting.h"
 
 #include <stdio.h>
-#include <unistd.h>
 #include <fcntl.h>
 
 #include <gmodule.h>

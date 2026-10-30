@@ -4,7 +4,7 @@
  * <p>
  * Copyright (c) 2004 - 2011 Nokia Corporation and/or its subsidiary(-ies).
  * Copyright (c) 2013 - 2019 Jolla Ltd.
- * Copyright (c) 2025 Jolla Mobile Ltd
+ * Copyright (c) 2025 - 2026 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Tapio Rantala <ext-tapio.rantala@nokia.com>
@@ -46,11 +46,6 @@
 # include "libwakelock.h"
 #endif
 
-#include <linux/input.h>
-
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
 #include <fcntl.h>
 
 #include <mce/dbus-names.h>
@@ -128,6 +123,13 @@ static inline bool empty(const char *s)
     return s == 0 || *s == 0;
 }
 
+/** Get boolean value in human readable form
+ */
+static inline const char *bool_repr(bool val)
+{
+    return val ? "true" : "false";
+}
+
 static char   *pwrkey_get_token(char **ppos);
 static bool    pwrkey_create_flagfile(const char *path);
 static bool    pwrkey_delete_flagfile(const char *path);
@@ -148,6 +150,15 @@ static gint  pwrkey_ps_override_timeout = MCE_DEFAULT_POWERKEY_PS_OVERRIDE_TIMEO
 static guint pwrkey_ps_override_timeout_setting_id = 0;
 
 static void  pwrkey_ps_override_evaluate(void);
+
+/* ------------------------------------------------------------------------- *
+ * ANYKEY_WAKEUP
+ * ------------------------------------------------------------------------- */
+
+static void pwrkey_anykey_set_code(int code);
+static bool pwrkey_anykey_probe   (int code, int value);
+static void pwrkey_anykey_reset   (void);
+static void pwrkey_anykey_rethink (void);
 
 /* ------------------------------------------------------------------------- *
  * ACTION_EXEC
@@ -853,6 +864,115 @@ pwrkey_ps_override_evaluate(void)
 EXIT:
 
     return;
+}
+
+/* ========================================================================= *
+ * ANYKEY_WAKEUP
+ * ========================================================================= */
+
+/** Setting value for ANYKEY_WAKEUP enable */
+static gboolean pwrkey_anykey_enabled = MCE_DEFAULT_POWERKEY_ANYKEY_WAKEUP;
+static guint pwrkey_anykey_enabled_id = 0;
+
+/** Keycode used as ANYKEY_WAKEUP, or -1 for inactive */
+static int pwrkey_anykey_code = -1;
+
+/** Set key code used for ANYKEY_WAKEUP
+ */
+static void pwrkey_anykey_set_code(int code)
+{
+    if( pwrkey_anykey_code != code ) {
+        mce_log(LL_DEVEL, "ANYKEY_WAKEUP: %s -> %s",
+                evdev_get_event_code_name(EV_KEY, pwrkey_anykey_code),
+                evdev_get_event_code_name(EV_KEY, code));
+        pwrkey_anykey_code = code;
+    }
+}
+
+/** Handle ANYKEY_WAKEUP key lock-in / checking
+ *
+ * Locks-in to key that is pressed down
+ *
+ * Lock-in lasts until:
+ * - Display transitions to ON/DIMMED state, or
+ * - Power key action queue gets emptied
+ *
+ *
+ * @param code  key code
+ * @param value 1=press, 2=repeat, 0=release
+ *
+ * return true if this keycode should be handled as powerkey, false otherwise
+ */
+static bool pwrkey_anykey_probe(int code, int value)
+{
+    /* Once locked in, no changes until explicit reset */
+    if( pwrkey_anykey_code != -1 )
+        goto EXIT;
+
+    /* No lock-in while disabled in settings */
+    if( !pwrkey_anykey_enabled )
+        goto EXIT;
+
+    /* No lock-in due to repeat / release events */
+    if( value != 1 )
+        goto EXIT;
+
+    /* Exclude keys that can have special meaning in display off too
+     */
+    switch( code ) {
+    case KEY_CAMERA:
+    case KEY_CAMERA_FOCUS:
+    case KEY_CAMERA_SNAPSHOT:
+    case KEY_ESC:
+    case KEY_POWER:
+    case KEY_VOLUMEDOWN:
+    case KEY_VOLUMEUP:
+    case KEY_WAKEUP:
+        goto EXIT;
+    default:
+        break;
+    }
+
+    /* Only in stable display off state */
+    if( display_state_curr != display_state_next )
+        goto EXIT;
+
+    switch( display_state_curr ) {
+    case MCE_DISPLAY_OFF:
+    case MCE_DISPLAY_LPM_OFF:
+    case MCE_DISPLAY_LPM_ON:
+        pwrkey_anykey_set_code(code);
+        break;
+    default:
+        break;
+    }
+
+EXIT:
+    return pwrkey_anykey_code == code;
+}
+
+/** Cancel ANYKEY_WAKEUP
+ */
+static void pwrkey_anykey_reset(void)
+{
+    pwrkey_anykey_set_code(-1);
+}
+
+/** Cancel / keep ANYKEY_WAKEUP depending on system state
+ */
+static void pwrkey_anykey_rethink(void)
+{
+    switch( display_state_curr ) {
+    case MCE_DISPLAY_OFF:
+    case MCE_DISPLAY_LPM_OFF:
+    case MCE_DISPLAY_LPM_ON:
+    case MCE_DISPLAY_POWER_UP:
+        // keep current value
+        break;
+    default:
+        pwrkey_anykey_reset();
+        break;
+    }
 }
 
 /* ========================================================================= *
@@ -2651,6 +2771,12 @@ pwrkey_setting_cb(GConfClient *const gcc, const guint id,
         mce_log(LL_NOTICE, "pwrkey_gestures_enable_mode: %d -> %d",
                 old, pwrkey_gestures_enable_mode);
     }
+    else if( id == pwrkey_anykey_enabled_id ) {
+        gboolean old = pwrkey_anykey_enabled;
+        pwrkey_anykey_enabled = gconf_value_get_bool(gcv);
+        mce_log(LL_NOTICE, "pwrkey_anykey_enabled: %s -> %s",
+                bool_repr(old), bool_repr(pwrkey_anykey_enabled));
+    }
     else if( pwrkey_setting_handle_gesture(gcv, id) ) {
         // nop
     }
@@ -2690,6 +2816,13 @@ EXIT:
 static void
 pwrkey_setting_init(void)
 {
+    /* Anykey feature enable toggle */
+    mce_setting_track_bool(MCE_SETTING_POWERKEY_ANYKEY_WAKEUP,
+                           &pwrkey_anykey_enabled,
+                           MCE_DEFAULT_POWERKEY_ANYKEY_WAKEUP,
+                           pwrkey_setting_cb,
+                           &pwrkey_anykey_enabled_id);
+
     /* Power key press handling mode */
     mce_setting_track_int(MCE_SETTING_POWERKEY_MODE,
                           &pwrkey_stm_enable_mode,
@@ -2806,6 +2939,10 @@ pwrkey_setting_init(void)
 static void
 pwrkey_setting_quit(void)
 {
+    /* Anykey feature enable toggle */
+    mce_setting_notifier_remove(pwrkey_anykey_enabled_id),
+        pwrkey_anykey_enabled_id = 0;
+
     /* Power key press handling mode */
     mce_setting_notifier_remove(pwrkey_stm_enable_mode_setting_id),
         pwrkey_stm_enable_mode_setting_id = 0;
@@ -2821,6 +2958,14 @@ pwrkey_setting_quit(void)
     /* Power key press blanking mode */
     mce_setting_notifier_remove(pwrkey_ps_override_timeout_setting_id),
         pwrkey_ps_override_timeout_setting_id = 0;
+
+    /* Delay for waiting long press */
+    mce_setting_notifier_remove(pwrkey_long_press_delay_setting_id),
+        pwrkey_long_press_delay_setting_id = 0;
+
+    /* Delay for waiting double press */
+    mce_setting_notifier_remove(pwrkey_double_press_delay_setting_id),
+        pwrkey_double_press_delay_setting_id = 0;
 
     /* Action sets */
 
@@ -2951,6 +3096,8 @@ pwrkey_datapipe_display_state_curr_cb(gconstpointer data)
 
     pwrkey_queue_rethink_delays();
 
+    pwrkey_anykey_rethink();
+
 EXIT:
     return;
 }
@@ -3066,6 +3213,15 @@ pwrkey_datapipe_keypress_event_cb(gconstpointer const data)
 
     if( !(ev = *evp) )
         goto EXIT;
+
+    struct input_event anykey;
+
+    if( ev->type == EV_KEY && pwrkey_anykey_probe(ev->code, ev->value) ) {
+        mce_log(LL_DEVEL, "treating %s as KEY_POWER", evdev_get_event_code_name(ev->type, ev->code));
+        anykey = *ev;
+        anykey.code = KEY_POWER;
+        ev = &anykey;
+    }
 
     switch( ev->type ) {
     case EV_KEY:
@@ -3229,8 +3385,7 @@ static void pwrkey_datapipe_enroll_in_progress_cb(gconstpointer data)
         goto EXIT;
 
     mce_log(LL_DEBUG, "enroll_in_progress = %s -> %s",
-            prev ? "true" : "false",
-            enroll_in_progress ? "true" : "false");
+            bool_repr(prev), bool_repr(enroll_in_progress));
 
     /* no immediate action, but see pwrkey_predicate_powerkey() */
 
@@ -3618,8 +3773,10 @@ pwrkey_queue_execute(void)
 {
     while( !pwrkey_queue_is_delayed() ) {
         pwrkey_queued_t *curr = pwrkey_queue_current_action();
-        if( !curr )
+        if( !curr ) {
+            pwrkey_anykey_reset();
             break;
+        }
 
         if( mce_log_p(LL_DEBUG) ) {
             gchar *names = pwrkey_mask_to_names(curr->actions);

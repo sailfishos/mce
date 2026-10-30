@@ -25,9 +25,6 @@
 #include "../mce-dbus.h"
 #include "../libwakelock.h"
 
-#include <stdlib.h>
-#include <string.h>
-
 #include <gmodule.h>
 
 /* Unlike the other standard dbus interfaces, the object manager seems

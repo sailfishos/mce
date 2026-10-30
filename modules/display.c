@@ -43,7 +43,6 @@
 #include "../mce-common.h"
 #include "../mce-conf.h"
 #include "../mce-setting.h"
-#include "../mce-dbus.h"
 #include "../mce-sensorfw.h"
 #include "../mce-wltimer.h"
 #include "../tklock.h"
@@ -66,13 +65,8 @@
 #include <sys/ptrace.h>
 #include <sys/wait.h>
 
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
-#include <errno.h>
 #include <fcntl.h>
 #include <glob.h>
-#include <pthread.h>
 
 #include <mce/dbus-names.h>
 #include <mce/mode-names.h>

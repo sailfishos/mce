@@ -2,7 +2,8 @@
  * @file filewatcher.c
  * Mode Control Entity - flag file tracking
  * <p>
- * Copyright (C) 2013-2019 Jolla Ltd.
+ * Copyright (c) 2013 - 2019 Jolla Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
@@ -24,10 +25,6 @@
 #include "mce-log.h"
 
 #include <sys/inotify.h>
-
-#include <unistd.h>
-#include <string.h>
-#include <errno.h>
 
 #define DEBUG_INOTIFY_EVENTS 0
 

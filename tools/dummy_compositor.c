@@ -3,6 +3,7 @@
  * Tool for creating a mid compositor hand off stop gap
  * <p>
  * Copyright (c) 2019 - 2023 Jolla Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  *
@@ -22,18 +23,11 @@
 #include "../mce-dbus.h"
 
 #include <stdio.h>
-#include <stdlib.h>
-#include <stdbool.h>
-#include <unistd.h>
-#include <errno.h>
 #include <syslog.h>
 #include <getopt.h>
 
 #include "../musl-compatibility.h"
 
-#include <glib.h>
-
-#include <dbus/dbus.h>
 #include "../dbus-gmain/dbus-gmain.h"
 
 /* ========================================================================= *

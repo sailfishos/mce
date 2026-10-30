@@ -5,6 +5,7 @@
  * Copyright (c) 2007 Nokia Corporation and/or its subsidiary(-ies).
  * Copyright (c) 2014 - 2021 Jolla Ltd.
  * Copyright (c) 2019 Open Mobile Platform LLC.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author: Simo Piiroinen <simo.piiroinen@jollamobile.com>
@@ -25,7 +26,6 @@
 # define _DATAPIPE_H_
 
 # include <stdbool.h>
-# include <stdint.h>
 # include <glib.h>
 
 /* ========================================================================= *

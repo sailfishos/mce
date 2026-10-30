@@ -5,7 +5,8 @@
  *
  * <p>
  *
- * Copyright (C) 2015 Jolla Ltd.
+ * Copyright (c) 2015 Jolla Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  *
  * <p>
  *
@@ -27,7 +28,7 @@
 #ifndef MCE_MULTITOUCH_H_
 # define MCE_MULTITOUCH_H_
 
-# include <linux/input.h>
+# include "evdev.h"
 # include <stdbool.h>
 
 typedef struct mt_state_t mt_state_t;

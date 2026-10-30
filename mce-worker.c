@@ -6,7 +6,7 @@
  * <p>
  *
  * Copyright (c) 2015 Jolla Ltd.
- * Copyright (c) 2025 Jolla Mobile Ltd
+ * Copyright (c) 2025 - 2026 Jolla Mobile Ltd
  *
  * <p>
  *
@@ -29,12 +29,6 @@
 #include "mce-log.h"
 
 #include <sys/eventfd.h>
-
-#include <string.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <pthread.h>
-#include <errno.h>
 
 #include <glib.h>
 

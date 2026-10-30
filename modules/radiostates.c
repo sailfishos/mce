@@ -4,7 +4,7 @@
  * <p>
  * Copyright (c) 2010 - 2011 Nokia Corporation and/or its subsidiary(-ies).
  * Copyright (c) 2013 - 2019 Jolla Ltd.
- * Copyright (c) 2025 Jolla Mobile Ltd
+ * Copyright (c) 2025 - 2026 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>
@@ -31,10 +31,6 @@
 #include "../mce-io.h"
 #include "../mce-conf.h"
 #include "../mce-dbus.h"
-
-#include <unistd.h>
-#include <string.h>
-#include <errno.h>
 
 #include <mce/dbus-names.h>
 #include <mce/mode-names.h>

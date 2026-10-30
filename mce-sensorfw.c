@@ -31,16 +31,12 @@
 #include "mce-conf.h"
 #include "mce-log.h"
 #include "mce-dbus.h"
-#include "libwakelock.h"
 
 #include <sys/socket.h>
 #include <sys/un.h>
 
 #include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
 #include <fcntl.h>
-#include <errno.h>
 #include <inttypes.h>
 
 /* ========================================================================= *

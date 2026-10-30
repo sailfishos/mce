@@ -6,6 +6,7 @@
  * <p>
  *
  * Copyright (c) 2015 - 2023 Jolla Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  *
  * <p>
  *
@@ -28,9 +29,6 @@
 
 #include "mce-log.h"
 #include "mce-wakelock.h"
-
-#include <stdlib.h>
-#include <string.h>
 
 /* ========================================================================= *
  * Types and functions

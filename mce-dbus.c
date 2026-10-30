@@ -4,7 +4,7 @@
  * <p>
  * Copyright (c) 2004 - 2009 Nokia Corporation and/or its subsidiary(-ies).
  * Copyright (c) 2012 - 2023 Jolla Ltd.
- * Copyright (c) 2025 Jolla Mobile Ltd
+ * Copyright (c) 2025 - 2026 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Ismo Laitinen <ismo.laitinen@nokia.com>
@@ -36,8 +36,6 @@
 #include <sys/stat.h>
 
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <fcntl.h>
 #include <dlfcn.h>
 #include <grp.h>

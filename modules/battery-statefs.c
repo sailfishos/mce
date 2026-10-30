@@ -2,7 +2,8 @@
  * @file battery-statefs.c
  * Battery module -- this implements battery and charger logic for MCE
  * <p>
- * Copyright (C) 2013-2015 Jolla Ltd.
+ * Copyright (c) 2013 - 2015 Jolla Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
  * <p>
@@ -51,11 +52,7 @@
 
 #include <sys/epoll.h>
 
-#include <unistd.h>
 #include <fcntl.h>
-#include <errno.h>
-#include <string.h>
-#include <stdlib.h>
 
 #include <gmodule.h>
 

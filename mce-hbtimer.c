@@ -5,7 +5,8 @@
  *
  * <p>
  *
- * Copyright (C) 2014-2015 Jolla Ltd.
+ * Copyright (c) 2014 - 2015 Jolla Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  *
  * <p>
  *
@@ -36,11 +37,7 @@
 
 #include <sys/socket.h>
 
-#include <stdlib.h>
 #include <inttypes.h>
-#include <string.h>
-#include <errno.h>
-#include <pthread.h>
 
 #include <iphbd/libiphb.h>
 

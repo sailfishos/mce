@@ -2,8 +2,9 @@
  * @file mce-io.h
  * Headers for the generic I/O functionality for the Mode Control Entity
  * <p>
- * Copyright © 2007, 2009-2011 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2012-2019 Jolla Ltd.
+ * Copyright (c) 2007, 2009 - 2011 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (c) 2012 - 2019 Jolla Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Santtu Lakkala <ext-santtu.1.lakkala@nokia.com>
@@ -24,8 +25,6 @@
  */
 #ifndef _MCE_IO_H_
 #define _MCE_IO_H_
-
-#include <sys/stat.h>
 
 #include <stdio.h>
 #include <stdbool.h>
