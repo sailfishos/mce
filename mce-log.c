@@ -27,6 +27,8 @@
 
 #include "mce-log.h"
 
+#include <sys/time.h> // NOTRIM
+
 #include <stdbool.h>
 #include <fnmatch.h>
 
