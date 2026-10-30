@@ -1,3 +1,9 @@
+mce (1.120.4) precise; urgency=low
+
+  * [mce] Restore some include statements. JB#65555
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Fri, 30 Oct 2026 09:19:24 +0200
+
 mce (1.120.3) precise; urgency=low
 
   * [evdev] Move input event fallback value handling to one place
