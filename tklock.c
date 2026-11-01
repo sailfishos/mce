@@ -398,6 +398,9 @@ static gboolean tklock_dbus_display_blanking_policy_get_cb(DBusMessage *const ms
 static void     tklock_dbus_send_keyboard_slide_state(DBusMessage *const req);
 static gboolean tklock_dbus_keyboard_slide_state_get_req_cb(DBusMessage *const msg);
 
+static void     tklock_dbus_send_lid_sensor_filtered_state(DBusMessage *const req);
+static gboolean tklock_dbus_lid_sensor_filtered_state_get_req_cb(DBusMessage *const msg);
+
 static void     tklock_dbus_send_keyboard_available_state(DBusMessage *const req);
 static gboolean tklock_dbus_keyboard_available_state_get_req_cb(DBusMessage *const msg);
 
@@ -2207,6 +2210,8 @@ static void tklock_datapipe_lid_sensor_filtered_cb(gconstpointer data)
     mce_log(LL_DEVEL, "lid_sensor_filtered = %s -> %s",
             cover_state_repr(prev),
             cover_state_repr(lid_sensor_filtered));
+
+    tklock_dbus_send_lid_sensor_filtered_state(0);
 
     if( prev != COVER_UNDEF && lid_sensor_feedback ) {
         if( lid_sensor_filtered == COVER_OPEN )
@@ -6266,6 +6271,61 @@ tklock_dbus_keyboard_slide_state_get_req_cb(DBusMessage *const msg)
     return TRUE;
 }
 
+/** Send the filtered lid sensor open/closed/undef state
+ *
+ * @param req A method call message to be replied, or
+ *            NULL to broadcast a lid sensor state signal
+ */
+static void
+tklock_dbus_send_lid_sensor_filtered_state(DBusMessage *const req)
+{
+    DBusMessage *rsp = 0;
+
+    if( req )
+        rsp = dbus_new_method_reply(req);
+    else
+        rsp = dbus_new_signal(MCE_SIGNAL_PATH, MCE_SIGNAL_IF, MCE_LID_SENSOR_FILTERED_STATE_SIG);
+
+    if( !rsp )
+        goto EXIT;
+
+    const char *arg = MCE_LID_SENSOR_UNDEF;
+
+    switch( lid_sensor_filtered ) {
+    case COVER_OPEN:   arg = MCE_LID_SENSOR_OPEN;   break;
+    case COVER_CLOSED: arg = MCE_LID_SENSOR_CLOSED; break;
+    default: break;
+    }
+
+    mce_log(LL_DEBUG, "send filtered lid sensor state %s: %s", req ? "reply" : "signal", arg);
+
+    if( !dbus_message_append_args(rsp, DBUS_TYPE_STRING, &arg, DBUS_TYPE_INVALID) )
+        goto EXIT;
+
+    dbus_send_message(rsp), rsp = 0;
+
+EXIT:
+    if( rsp )
+        dbus_message_unref(rsp);
+}
+
+/** D-Bus callback for the get filtered lid sensor state method call
+ *
+ * @param msg The D-Bus message
+ *
+ * @return TRUE
+ */
+static gboolean
+tklock_dbus_lid_sensor_filtered_state_get_req_cb(DBusMessage *const msg)
+{
+    mce_log(LL_DEVEL, "Received filtered lid sensor state get request from %s",
+            mce_dbus_get_message_sender_ident(msg));
+
+    tklock_dbus_send_lid_sensor_filtered_state(msg);
+
+    return TRUE;
+}
+
 /** Send the keyboard available state
  *
  * @param req A method call message to be replied, or
@@ -6792,6 +6852,13 @@ static mce_dbus_handler_t tklock_dbus_handlers[] =
     },
     {
         .interface = MCE_SIGNAL_IF,
+        .name      = MCE_LID_SENSOR_FILTERED_STATE_SIG,
+        .type      = DBUS_MESSAGE_TYPE_SIGNAL,
+        .args      =
+            "    <arg name=\"lid_sensor_state\" type=\"s\"/>\n"
+    },
+    {
+        .interface = MCE_SIGNAL_IF,
         .name      = MCE_HARDWARE_KEYBOARD_STATE_SIG,
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
         .args      =
@@ -6862,6 +6929,14 @@ static mce_dbus_handler_t tklock_dbus_handlers[] =
         .callback  = tklock_dbus_keyboard_slide_state_get_req_cb,
         .args      =
             "    <arg direction=\"out\" name=\"slide_state\" type=\"s\"/>\n"
+    },
+    {
+        .interface = MCE_REQUEST_IF,
+        .name      = MCE_LID_SENSOR_FILTERED_STATE_GET,
+        .type      = DBUS_MESSAGE_TYPE_METHOD_CALL,
+        .callback  = tklock_dbus_lid_sensor_filtered_state_get_req_cb,
+        .args      =
+            "    <arg direction=\"out\" name=\"lid_sensor_state\" type=\"s\"/>\n"
     },
     {
         .interface = MCE_REQUEST_IF,
@@ -7392,6 +7467,9 @@ gboolean mce_tklock_init(void)
 
     /* Evaluate initial lid sensor state */
     tklock_lidfilter_rethink_lid_state();
+
+    /* Broadcast initial filtered lid sensor state */
+    tklock_dbus_send_lid_sensor_filtered_state(0);
 
     status = TRUE;
 
