@@ -3221,6 +3221,9 @@ pwrkey_datapipe_keypress_event_cb(gconstpointer const data)
         anykey = *ev;
         anykey.code = KEY_POWER;
         ev = &anykey;
+
+        /* Forward synthesized power key event for type6 LED policy evaluation */
+        datapipe_exec_full(&user_activity_event_pipe, ev);
     }
 
     switch( ev->type ) {

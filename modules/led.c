@@ -92,6 +92,20 @@ static GQueue *combination_rule_xref_list = NULL;
 /** The D-Bus controlled LED switch */
 static gboolean led_enabled = FALSE;
 
+/** Flag for: charger connected */
+static charger_state_t charger_state = CHARGER_STATE_UNDEF;
+
+/** Current battery percent level: assume unknown */
+static int battery_level = MCE_BATTERY_LEVEL_UNKNOWN;
+
+/** Setting: sw breathing allowed */
+static gboolean sw_breathing_enabled = MCE_DEFAULT_LED_SW_BREATH_ENABLED;
+static guint    sw_breathing_enabled_setting_id = 0;
+
+/** Setting: battery level at which sw breathing is disabled */
+static gint  sw_breathing_battery_limit = MCE_DEFAULT_LED_SW_BREATH_BATTERY_LIMIT;
+static guint sw_breathing_battery_limit_setting_id = 0;
+
 /**
  * Size of each LED channel
  *
@@ -119,6 +133,7 @@ typedef struct {
 	gboolean undecided;		/**< Flag for policy=6 lock in */
 	bool eligible;                  /**< Pattern could be the active one */
 	bool eligible_hybris;           /**< State reported to hybris plugin */
+	bool breathing;                 /**< Block suspend to allow breathing */
 } pattern_struct;
 
 /** Pattern combination rule struct; this is also used for cross-referencing */
@@ -185,8 +200,10 @@ static void              led_pattern_delete             (pattern_struct *self);
 static void              led_pattern_set_active         (pattern_struct *self, gboolean active);
 static void              led_pattern_update_eligible    (pattern_struct *self);
 static void              led_pattern_sync_eligible      (pattern_struct *self);
+static bool              led_pattern_must_breathe       (const pattern_struct *self);
 static bool              led_pattern_should_breathe     (const pattern_struct *self);
 static bool              led_pattern_can_breathe        (const pattern_struct *self);
+static bool              led_pattern_needs_breathing    (const pattern_struct *self);
 static bool              led_pattern_is_panic_blink     (const pattern_struct *self);
 static gboolean          led_pattern_timeout_cb         (gpointer data);
 static void              hybris_program_led             (const pattern_struct *const pattern);
@@ -402,6 +419,7 @@ static pattern_struct *led_pattern_create(void)
 	self->setting_id      = 0;
 	self->eligible        = false;
 	self->eligible_hybris = false;
+	self->breathing       = false;
 
 EXIT:
 	return self;
@@ -585,13 +603,24 @@ static void led_pattern_sync_eligible(pattern_struct *self)
 #endif
 }
 
-/** Check if a led pattern should always utilize sw breathing
+/** Check if a led pattern should utilize sw breathing
  *
  * @param self led pattern object
  *
- * @return true if the pattern should always breathe, false otherwise
+ * @return true if the pattern should breathe, false otherwise
  */
 static bool led_pattern_should_breathe(const pattern_struct *self)
+{
+	return self && self->breathing;
+}
+
+/** Check if a led pattern must always utilize sw breathing
+ *
+ * @param self led pattern object
+ *
+ * @return true if the pattern must always breathe, false otherwise
+ */
+static bool led_pattern_must_breathe(const pattern_struct *self)
 {
 	static const char * const lut[] =
 	{
@@ -677,6 +706,46 @@ static bool led_pattern_can_breathe(const pattern_struct *self)
 EXIT:
 
 	return breathe;
+}
+
+/** Check if pattern should be breathing in current system state
+ *
+ * @param self led pattern object
+ *
+ * @return true if pattern should be breathing, false otherwise
+ */
+static bool led_pattern_needs_breathing(const pattern_struct *self)
+{
+	bool allowed   = false;
+	bool breathing = false;
+
+	if( !self ) {
+		// Nope
+	}
+	else if( led_pattern_must_breathe(self) ) {
+		// Special patterns can override settings
+		allowed = true;
+	}
+	else if( !sw_breathing_enabled ) {
+		// Feature disabled in settings
+	}
+	else if( led_pattern_should_breathe(self) ) {
+		// Enabled in pattern settings
+		allowed = true;
+	}
+	else if( display_state_curr != MCE_DISPLAY_OFF ) {
+		// We are not suspending anyway
+		allowed = true;
+	}
+	else if( charger_state == CHARGER_STATE_ON || battery_level >= sw_breathing_battery_limit ) {
+		// Charger connected or battery full enough
+		allowed = true;
+	}
+
+	if( allowed )
+		breathing = led_pattern_can_breathe(self) || led_pattern_is_panic_blink(self);
+
+	return breathing;
 }
 
 /** Check if pattern is of panic blink type
@@ -1226,6 +1295,7 @@ static void user_activity_event_trigger(gconstpointer data)
 
 	if( display_state_curr == MCE_DISPLAY_ON )
 		led_pattern_op(type6_revert_cb);
+
 	get_monotime(&activity_time);
 }
 
@@ -1832,8 +1902,8 @@ static gboolean init_hybris_patterns(void)
 			psp->off_period = strtol(v[IDX_OFF_PERIOD], 0, 0);
 			psp->rgb_color  = strtol(v[IDX_COLOR], 0, 16);
 			psp->active     = FALSE;
-			psp->enabled    = pattern_get_enabled(name,
-							      &psp->setting_id);
+			psp->enabled    = pattern_get_enabled(name, &psp->setting_id);
+			psp->breathing  = mce_conf_get_bool(MCE_CONF_LED_PATTERN_BREATHING_GROUP, psp->name, false);
 
 			g_queue_insert_sorted(pattern_stack, psp,
 					      queue_prio_compare,
@@ -1896,70 +1966,35 @@ static gboolean init_patterns(void)
 	return status;
 }
 
-/** Flag for: charger connected */
-static charger_state_t charger_state = CHARGER_STATE_UNDEF;
-
-/** Current battery percent level: assume unknown */
-static int battery_level = MCE_BATTERY_LEVEL_UNKNOWN;
-
-/** Setting: sw breathing allowed */
-static gboolean sw_breathing_enabled = MCE_DEFAULT_LED_SW_BREATH_ENABLED;
-static guint    sw_breathing_enabled_setting_id = 0;
-
-/** Setting: battery level at which sw breathing is disabled */
-static gint  sw_breathing_battery_limit = MCE_DEFAULT_LED_SW_BREATH_BATTERY_LIMIT;
-static guint sw_breathing_battery_limit_setting_id = 0;
-
 /** Re-evaluate sw breathing enable state
  */
 static void sw_breathing_rethink(void)
 {
-	bool breathing_allowed = false;
-	bool breathing_needed  = false;
+	bool breathing = false;
 
-	if( !active_pattern ) {
-		/* No active pattern -> no eligible patterns */
+	/* No active pattern -> no eligible patterns either */
+	if( !active_pattern )
 		goto EXIT;
+
+	/* If active pattern is breathing, no further inspection is needed */
+	if( (breathing = led_pattern_needs_breathing(active_pattern)) )
+		goto EXIT;
+
+	/* Eligibility matters only in multi-led devices */
+	if( !mce_hybris_indicator_has_multiple_leds() )
+		goto EXIT;
+
+	/* Check if at least one eligible pattern needs breathing */
+	for( GList *iter = pattern_stack->head; iter; iter = iter->next ) {
+		pattern_struct *pattern = iter->data;
+		if( !pattern->eligible )
+			continue;
+		if( (breathing = led_pattern_needs_breathing(pattern)) )
+			goto EXIT;
 	}
 
-	if( led_pattern_should_breathe(active_pattern) ) {
-		// Special patterns can override settings
-		breathing_needed  = true;
-		breathing_allowed = true;
-	}
-	else if( !sw_breathing_enabled ) {
-		// Disabled in settings
-	}
-	else if( display_state_curr != MCE_DISPLAY_OFF ) {
-		// We are not suspending anyway
-		breathing_allowed = true;
-	}
-	else if( charger_state == CHARGER_STATE_ON || battery_level >= sw_breathing_battery_limit ) {
-		// Charger connected or battery full enough
-		breathing_allowed = true;
-	}
-
-	if( breathing_allowed && !breathing_needed ) {
-		if( mce_hybris_indicator_has_multiple_leds() ) {
-			/* Check if at least one eligible pattern needs breathing */
-			for( GList *iter = pattern_stack->head; iter; iter = iter->next ) {
-				pattern_struct *pattern = iter->data;
-				if( !pattern->eligible )
-					continue;
-				if( led_pattern_can_breathe(pattern) || led_pattern_is_panic_blink(pattern) ) {
-					breathing_needed = true;
-					break;
-				}
-			}
-		}
-		else {
-			/* Check the active pattern needs breathing */
-			if( led_pattern_can_breathe(active_pattern) || led_pattern_is_panic_blink(active_pattern) )
-				breathing_needed = true;
-		}
-	}
 EXIT:
-	allow_sw_breathing(breathing_needed && breathing_allowed);
+	allow_sw_breathing(breathing);
 }
 
 /** Gconf notification callback function
