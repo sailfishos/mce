@@ -1,3 +1,10 @@
+mce (1.120.5) precise; urgency=low
+
+  * [leds] Make SW breathing per pattern configurable. JB#65706
+  * [leds] Trigger pattern auto-disable also on key input. JB#65706
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Mon, 02 Nov 2026 08:45:20 +0200
+
 mce (1.120.4) precise; urgency=low
 
   * [mce] Restore some include statements. JB#65555
