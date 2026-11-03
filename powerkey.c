@@ -927,6 +927,7 @@ static bool pwrkey_anykey_probe(int code, int value)
     case KEY_POWER:
     case KEY_VOLUMEDOWN:
     case KEY_VOLUMEUP:
+    case KEY_F24:
     case KEY_WAKEUP:
         goto EXIT;
     default:
