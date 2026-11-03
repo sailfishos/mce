@@ -33,6 +33,7 @@
 #include <mce/mode-names.h>
 
 #include <fcntl.h>
+#include <unistd.h>
 
 #include <gmodule.h>
 

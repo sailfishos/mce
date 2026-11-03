@@ -29,7 +29,7 @@
 #endif
 
 #include <linux/fb.h>
-
+#include <unistd.h>
 #include <sys/ioctl.h>
 
 #include <fcntl.h>

@@ -31,6 +31,7 @@
 #include <stdio.h>
 #include <inttypes.h>
 #include <fcntl.h>
+#include <unistd.h>
 
 #include <gmodule.h>
 

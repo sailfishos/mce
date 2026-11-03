@@ -28,6 +28,8 @@
 #include "mce.h"
 #include "mce-io.h"
 
+#include <unistd.h>
+
 #include <glib/gstdio.h>
 
 /** ID for the lockkey I/O monitor */

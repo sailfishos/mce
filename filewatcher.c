@@ -25,6 +25,7 @@
 #include "mce-log.h"
 
 #include <sys/inotify.h>
+#include <unistd.h>
 
 #define DEBUG_INOTIFY_EVENTS 0
 

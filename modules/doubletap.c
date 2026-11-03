@@ -28,6 +28,8 @@
 #include "../mce-conf.h"
 #include "../mce-setting.h"
 
+#include <unistd.h>
+
 #include <gmodule.h>
 
 /** Config value for doubletap enable mode */

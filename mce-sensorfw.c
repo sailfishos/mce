@@ -38,6 +38,7 @@
 #include <stdio.h>
 #include <fcntl.h>
 #include <inttypes.h>
+#include <unistd.h>
 
 /* ========================================================================= *
  *

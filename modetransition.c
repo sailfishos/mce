@@ -32,6 +32,8 @@
 #include "mce-log.h"
 #include "mce-io.h"
 
+#include <unistd.h>
+
 #include <glib/gstdio.h>
 
 /**

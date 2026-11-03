@@ -31,6 +31,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <fcntl.h>
+#include <unistd.h>
 
 #include "../musl-compatibility.h"
 

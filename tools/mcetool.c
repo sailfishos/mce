@@ -49,6 +49,7 @@
 #include <inttypes.h>
 #include <math.h>
 #include <syslog.h>
+#include <unistd.h>
 
 #include <mce/dbus-names.h>
 #include <mce/mode-names.h>

@@ -30,6 +30,7 @@
 #include "mce-lib.h"
 
 #include <fcntl.h>
+#include <unistd.h>
 
 #ifndef SYSINFOD_SERVICE
 /** SYSINFOD D-Bus service */
