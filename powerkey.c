@@ -912,6 +912,10 @@ static bool pwrkey_anykey_probe(int code, int value)
     if( pwrkey_anykey_code != -1 )
         goto EXIT;
 
+    /* No lock-in while LID is closed */
+    if( lid_sensor_filtered == COVER_CLOSED )
+        goto EXIT;
+
     /* No lock-in while disabled in settings */
     if( !pwrkey_anykey_enabled )
         goto EXIT;
@@ -930,6 +934,7 @@ static bool pwrkey_anykey_probe(int code, int value)
     case KEY_POWER:
     case KEY_VOLUMEDOWN:
     case KEY_VOLUMEUP:
+    case KEY_F24:
     case KEY_WAKEUP:
         goto EXIT;
     default:
