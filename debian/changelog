@@ -1,3 +1,9 @@
+mce (1.120.6) precise; urgency=low
+
+  * [mce] Add missing unistd.h includes. JB#49548
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Wed, 04 Nov 2026 16:49:50 +0200
+
 mce (1.120.5) precise; urgency=low
 
   * [leds] Make SW breathing per pattern configurable. JB#65706
