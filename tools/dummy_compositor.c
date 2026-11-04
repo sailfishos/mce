@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <syslog.h>
 #include <getopt.h>
+#include <unistd.h>
 
 #include "../musl-compatibility.h"
 

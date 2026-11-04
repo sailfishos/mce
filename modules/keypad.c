@@ -36,6 +36,8 @@
 #include <mce/dbus-names.h>
 #include <mce/mode-names.h>
 
+#include <unistd.h>
+
 #include <gmodule.h>
 
 /* ========================================================================= *

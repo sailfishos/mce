@@ -40,6 +40,7 @@
 #include <dlfcn.h>
 #include <grp.h>
 #include <pwd.h>
+#include <unistd.h>
 
 #include "dbus-gmain/dbus-gmain.h"
 

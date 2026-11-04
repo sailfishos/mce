@@ -53,6 +53,7 @@
 #include <sys/epoll.h>
 
 #include <fcntl.h>
+#include <unistd.h>
 
 #include <gmodule.h>
 

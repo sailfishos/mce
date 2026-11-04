@@ -29,6 +29,7 @@
 #include "../evdev.h"
 
 #include <fcntl.h>
+#include <unistd.h>
 
 #include <mce/dbus-names.h>
 #include <mce/mode-names.h>

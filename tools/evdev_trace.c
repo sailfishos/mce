@@ -30,6 +30,7 @@
 #include <poll.h>
 #include <glob.h>
 #include <getopt.h>
+#include <unistd.h>
 
 #include "../musl-compatibility.h"
 

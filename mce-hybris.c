@@ -42,6 +42,7 @@
 
 #include <stdio.h>
 #include <dlfcn.h>
+#include <unistd.h>
 
 /* ========================================================================= *
  * On some devices using in theory supported hybris functionality can lead

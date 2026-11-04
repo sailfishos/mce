@@ -39,6 +39,7 @@
 
 #include <inttypes.h>
 #include <fcntl.h>
+#include <unistd.h>
 
 #include <glib/gstdio.h>
 
