@@ -1,3 +1,9 @@
+mce (1.121.0) precise; urgency=low
+
+  * [powerkey] Allow CSD to temporarily suppress power key handling. JB#65638
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Thu, 05 Nov 2026 14:12:59 +0200
+
 mce (1.120.6) precise; urgency=low
 
   * [mce] Add missing unistd.h includes. JB#49548
