@@ -1,3 +1,9 @@
+mce (1.122.1) precise; urgency=low
+
+  * [tklock] Skip lid sensor actions during mce startup. Fixes JB#65877
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Fri, 06 Nov 2026 17:53:33 +0200
+
 mce (1.122.0) precise; urgency=low
 
   * [lid] Send lid state over dbus. JB#65395
