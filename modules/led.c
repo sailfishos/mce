@@ -219,8 +219,7 @@ static void              update_combination_rule        (gpointer name, gpointer
 static void              update_combination_rules       (const gchar *const name);
 static void              led_activate_pattern           (const gchar *const name);
 static void              led_deactivate_pattern         (const gchar *const name);
-static void              led_enable                     (void);
-static void              led_disable                    (void);
+static void              led_set_enabled                (bool enable);
 static void              system_state_trigger           (gconstpointer data);
 static void              get_monotime                   (struct timeval *tv);
 static void              type6_lock_in_cb               (void *data, void *aptr);
@@ -1150,22 +1149,20 @@ static void led_deactivate_pattern(const gchar *const name)
 	}
 }
 
-/**
- * Enable the LED
+/** Enable / disable regular LED patterns
+ *
+ * @param enable true to enable, false to disable
  */
-static void led_enable(void)
+static void led_set_enabled(bool enable)
 {
-	led_enabled = TRUE;
-	led_update_active_pattern();
-}
+	if( led_enabled != enable ) {
+		mce_log(LL_DEBUG, "led_enabled: %s -> %s", bool_repr(led_enabled), bool_repr(enable));
 
-/**
- * Disable the LED
- */
-static void led_disable(void)
-{
-	led_enabled = FALSE;
-	led_update_active_pattern();
+		led_enabled = enable;
+
+		datapipe_exec_full(&led_enabled_pipe, GUINT_TO_POINTER(led_enabled));
+		led_update_active_pattern();
+	}
 }
 
 /**
@@ -1603,7 +1600,7 @@ static gboolean led_enable_dbus_cb(DBusMessage *const msg)
 	mce_log(LL_DEVEL, "Received LED enable request from %s",
 		mce_dbus_get_message_sender_ident(msg));
 
-	led_enable();
+	led_set_enabled(true);
 
 	if (no_reply == FALSE) {
 		DBusMessage *reply = dbus_new_method_reply(msg);
@@ -1631,7 +1628,7 @@ static gboolean led_disable_dbus_cb(DBusMessage *const msg)
 	mce_log(LL_DEVEL, "Received LED disable request from %s",
 		mce_dbus_get_message_sender_ident(msg));
 
-	led_disable();
+	led_set_enabled(false);
 
 	if (no_reply == FALSE) {
 		DBusMessage *reply = dbus_new_method_reply(msg);
@@ -2538,7 +2535,7 @@ const gchar *g_module_check_init(GModule *module)
 	battery_level_trigger(datapipe_value(&battery_level_pipe));
 
 	/* Evaluate initial active pattern state */
-	led_enable();
+	led_set_enabled(true);
 
 EXIT:
 	return status;

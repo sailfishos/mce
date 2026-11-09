@@ -614,6 +614,9 @@ datapipe_t led_pattern_activate_pipe            = DATAPIPE_INIT(led_pattern_acti
 /** LED pattern to deactivate; read only */
 datapipe_t led_pattern_deactivate_pipe          = DATAPIPE_INIT(led_pattern_deactivate, string, 0, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_NOTHING);
 
+/** LED enabled; read only */
+datapipe_t led_enabled_pipe                     = DATAPIPE_INIT(led_enabled, boolean, false, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
+
 /** resumed from suspend notification; read only */
 datapipe_t resume_detected_event_pipe           = DATAPIPE_INIT(resume_detected_event, impulse, 0, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_NOTHING);
 
@@ -702,6 +705,9 @@ datapipe_t proximity_sensor_required_pipe       = DATAPIPE_INIT(proximity_sensor
 
 /** proximity blanking; read only */
 datapipe_t proximity_blanked_pipe               = DATAPIPE_INIT(proximity_blanked, boolean, false, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
+
+/** Ambient light sensor active; read only */
+datapipe_t light_sensor_active_pipe             = DATAPIPE_INIT(light_sensor_actual, boolean, false, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
 
 /** Ambient light sensor; read only */
 datapipe_t light_sensor_actual_pipe             = DATAPIPE_INIT(light_sensor_actual, int, 400, 0, DATAPIPE_FILTERING_DENIED, DATAPIPE_CACHE_DEFAULT);
@@ -1401,6 +1407,7 @@ void mce_datapipe_quit(void)
     datapipe_free(&proximity_sensor_effective_pipe);
     datapipe_free(&proximity_sensor_required_pipe);
     datapipe_free(&proximity_blanked_pipe);
+    datapipe_free(&light_sensor_active_pipe);
     datapipe_free(&light_sensor_actual_pipe);
     datapipe_free(&light_sensor_filtered_pipe);
     datapipe_free(&light_sensor_poll_request_pipe);
@@ -1422,6 +1429,7 @@ void mce_datapipe_quit(void)
     datapipe_free(&user_activity_event_pipe);
     datapipe_free(&led_pattern_deactivate_pipe);
     datapipe_free(&led_pattern_activate_pipe);
+    datapipe_free(&led_enabled_pipe);
     datapipe_free(&resume_detected_event_pipe);
     datapipe_free(&led_brightness_pipe);
     datapipe_free(&lpm_brightness_pipe);

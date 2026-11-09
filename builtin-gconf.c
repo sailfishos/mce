@@ -50,6 +50,7 @@
 #include "modules/powersavemode.h"
 #include "modules/doubletap.h"
 #include "modules/led.h"
+#include "modules/keypad.h"
 #include "modules/inactivity.h"
 #include "modules/charging.h"
 
@@ -1164,6 +1165,16 @@ static const setting_t gconf_defaults[] =
     .key  = MCE_SETTING_DISPLAY_ALS_AUTOBRIGHTNESS,
     .type = "b",
     .def  = G_STRINGIFY(MCE_DEFAULT_DISPLAY_ALS_AUTOBRIGHTNESS),
+  },
+  {
+    .key  = MCE_SETTING_KEYPADBACKLIGHT_ALS_AUTOBRIGHTNESS,
+    .type = "b",
+    .def  = G_STRINGIFY(MCE_DEFAULT_KEYPADBACKLIGHT_ALS_AUTOBRIGHTNESS),
+  },
+  {
+    .key  = MCE_SETTING_LED_ALS_AUTOBRIGHTNESS,
+    .type = "b",
+    .def  = G_STRINGIFY(MCE_DEFAULT_LED_ALS_AUTOBRIGHTNESS),
   },
   {
     .key  = MCE_SETTING_DISPLAY_ALS_INPUT_FILTER,

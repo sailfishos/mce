@@ -2,8 +2,9 @@
  * @file led.h
  * Headers for the LED module
  * <p>
- * Copyright © 2006-2010 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2013-2019 Jolla Ltd.
+ * Copyright (c) 2006 - 2010 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (c) 2013 - 2019 Jolla Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
@@ -62,6 +63,10 @@
 /** Mimimum battery level to allow led breathing without charger */
 #define MCE_SETTING_LED_SW_BREATH_BATTERY_LIMIT	MCE_SETTING_LED_PATH"/sw_breath_battery_limit"
 #define MCE_DEFAULT_LED_SW_BREATH_BATTERY_LIMIT	101
+
+/** LED brightness filtering mode */
+# define MCE_SETTING_LED_ALS_AUTOBRIGHTNESS     MCE_SETTING_LED_PATH "/als_autobrightness"
+# define MCE_DEFAULT_LED_ALS_AUTOBRIGHTNESS     true
 
 /** Default value for LED pattern enabled settings
  *
