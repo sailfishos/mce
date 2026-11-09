@@ -92,6 +92,16 @@ static const char    *keypad_type_repr (keypad_type_t value);
 static keypad_type_t  keypad_type_parse(const char *name);
 
 /* ------------------------------------------------------------------------- *
+ * KEYPAD_INDICATOR
+ * ------------------------------------------------------------------------- */
+
+static gboolean keypad_indicator_timeout_cb    (gpointer aptr);
+static void     keypad_indicator_cancel_timeout(void);
+static void     keypad_indicator_start_timeout (void);
+static bool     keypad_indicator_is_active     (void);
+static void     keypad_indicator_update_enabled(void);
+
+/* ------------------------------------------------------------------------- *
  * KEYPAD
  * ------------------------------------------------------------------------- */
 
@@ -102,7 +112,7 @@ static void     keypad_set_backlight_off       (void);
 static gboolean keypad_backlight_timeout_cb    (gpointer data);
 static void     keypad_setup_backlight_timeout (void);
 static void     keypad_cancel_backlight_timeout(void);
-static bool     keypad_rethink_backlight_policy(void);
+static void     keypad_rethink_backlight_policy(void);
 
 /* ------------------------------------------------------------------------- *
  * KEYPAD_DATAPIPE
@@ -118,7 +128,7 @@ static void keypad_datapipe_keyboard_slide_state_cb    (gconstpointer const data
 static void keypad_datapipe_lid_sensor_filtered_cb     (gconstpointer const data);
 static void keypad_datapipe_alarm_ui_state_cb          (gconstpointer data);
 static void keypad_datapipe_call_state_cb              (gconstpointer const data);
-static void keypad_datapipe_battery_state_cb           (gconstpointer data);
+static void keypad_datapipe_charger_state_cb           (gconstpointer data);
 static void keypad_datapipe_init                       (void);
 static void keypad_datapipe_quit                       (void);
 
@@ -200,6 +210,12 @@ static guint keypad_backlight_timeout_id = 0;
 /** Configured delay for turning backlight off */
 static gint keypad_backlight_timeout_seconds = DEFAULT_KEYPAD_BACKLIGHT_TIMEOUT;
 
+/** Timer id for disabling backlight as charging indicator */
+static guint keypad_indicator_timeout_id = 0;
+
+/** Configured delay for disabling backlight as charging indicator */
+static guint keypad_indicator_timeout_seconds = DEFAULT_KEYPAD_INDICATOR_TIMEOUT;
+
 /** Flag for: brightness control is binary
  *
  * Brightness control uses light sensor and that logic does not work when
@@ -236,7 +252,7 @@ static cover_state_t    keyboard_slide_state = COVER_UNDEF;
 static cover_state_t    lid_sensor_filtered  = COVER_UNDEF;
 static alarm_ui_state_t alarm_ui_state       = MCE_ALARM_UI_INVALID_INT32;
 static call_state_t     call_state           = CALL_STATE_INVALID;
-static battery_state_t  battery_state        = BATTERY_STATE_UNKNOWN;
+static charger_state_t  charger_state        = CHARGER_STATE_UNDEF;
 
 /* ========================================================================= *
  * Code
@@ -305,6 +321,75 @@ keypad_type_parse(const char *name)
 }
 
 /* ------------------------------------------------------------------------- *
+ * KEYPAD_INDICATOR
+ * ------------------------------------------------------------------------- */
+
+static gboolean keypad_indicator_timeout_cb(gpointer aptr)
+{
+    (void)aptr;
+    mce_log(LL_DEBUG, "indicator timeout: triggered");
+
+    keypad_indicator_timeout_id = 0;
+
+    keypad_rethink_backlight_policy();
+
+    return G_SOURCE_REMOVE;
+}
+
+static void keypad_indicator_cancel_timeout(void)
+{
+    if( keypad_indicator_timeout_id ) {
+        mce_log(LL_DEBUG, "indicator timeout: canceled");
+        g_source_remove(keypad_indicator_timeout_id), keypad_indicator_timeout_id = 0;
+    }
+}
+
+static void keypad_indicator_start_timeout(void)
+{
+    if( !keypad_indicator_timeout_id ) {
+        mce_log(LL_DEBUG, "indicator timeout: scheduled");
+        keypad_indicator_timeout_id = g_timeout_add_seconds(keypad_indicator_timeout_seconds,
+                                                            keypad_indicator_timeout_cb, NULL);
+    }
+}
+
+static bool keypad_indicator_is_active(void)
+{
+    return keypad_indicator_timeout_id != 0;
+}
+
+static void keypad_indicator_update_enabled(void)
+{
+    static bool keypad_indicator_enabled = false;
+
+    bool enable  = false;
+
+    if( !keypad_enable_backlight_when_charging )
+        goto EXIT;
+
+    if( lid_sensor_filtered != COVER_CLOSED )
+        goto EXIT;
+
+    if( display_state_curr != MCE_DISPLAY_OFF )
+        goto EXIT;
+
+    if( charger_state != CHARGER_STATE_ON )
+        goto EXIT;
+
+    enable = true;
+
+EXIT:
+
+    if( keypad_indicator_enabled != enable ) {
+        mce_log(LL_DEBUG, "keypad_indicator_enabled: %s -> %s", bool_repr(keypad_indicator_enabled), bool_repr(enable));
+        if( (keypad_indicator_enabled = enable) )
+            keypad_indicator_start_timeout();
+        else
+            keypad_indicator_cancel_timeout();
+    }
+}
+
+/* ------------------------------------------------------------------------- *
  * KEYPAD
  * ------------------------------------------------------------------------- */
 
@@ -329,9 +414,7 @@ keypad_set_mode(int backlight_mode)
 
         keypad_backlight_mode = backlight_mode;
 
-        keypad_cancel_backlight_timeout();
-        if( keypad_rethink_backlight_policy() )
-            keypad_setup_backlight_timeout();
+        keypad_rethink_backlight_policy();
     }
 }
 
@@ -356,9 +439,7 @@ static void
 keypad_set_backlight_on(void)
 {
     keypad_setup_backlight_timeout();
-
-    if( datapipe_get_guint(key_backlight_brightness_pipe) == 0 )
-        datapipe_exec_full(&key_backlight_brightness_pipe, GINT_TO_POINTER(keypad_max_brightness));
+    datapipe_exec_full(&key_backlight_brightness_pipe, GINT_TO_POINTER(keypad_max_brightness));
 }
 
 /** Turn backlight off
@@ -367,9 +448,7 @@ static void
 keypad_set_backlight_off(void)
 {
     keypad_cancel_backlight_timeout();
-
-    if( datapipe_get_guint(key_backlight_brightness_pipe) != 0 )
-        datapipe_exec_full(&key_backlight_brightness_pipe, GINT_TO_POINTER(0));
+    datapipe_exec_full(&key_backlight_brightness_pipe, GINT_TO_POINTER(0));
 }
 
 /** Timeout callback for key backlight
@@ -397,7 +476,13 @@ keypad_backlight_timeout_cb(gpointer data)
 static void
 keypad_setup_backlight_timeout(void)
 {
-    if( !keypad_backlight_timeout_id && keypad_backlight_mode == MCE_KEYPAD_BACKLIGHT_MODE_POLICY ) {
+    if( keypad_indicator_is_active() ) {
+        keypad_cancel_backlight_timeout();
+    }
+    else if( keypad_backlight_mode != MCE_KEYPAD_BACKLIGHT_MODE_POLICY ) {
+        keypad_cancel_backlight_timeout();
+    }
+    else if( !keypad_backlight_timeout_id ) {
         mce_log(LL_DEBUG, "backlight timeout: scheduled");
         keypad_backlight_timeout_id = g_timeout_add_seconds(keypad_backlight_timeout_seconds,
                                                             keypad_backlight_timeout_cb, NULL);
@@ -417,12 +502,12 @@ keypad_cancel_backlight_timeout(void)
 
 /** Policy based enabling of key backlight
  */
-static bool
+static void
 keypad_rethink_backlight_policy(void)
 {
     /* Base policy: allow when in user mode, display is on, and ...
      */
-    bool allow = true;
+    bool allow  = true;
     bool closed = true;
     bool tklock = submode & MCE_SUBMODE_TKLOCK;
 
@@ -461,9 +546,8 @@ keypad_rethink_backlight_policy(void)
             allow = true;
     }
 
-    if( closed && keypad_enable_backlight_when_charging )
-        if( battery_state == BATTERY_STATE_CHARGING || battery_state == BATTERY_STATE_FULL)
-            allow = true;
+    if( keypad_indicator_is_active() )
+        allow = true;
 
     /* User settings
      */
@@ -485,17 +569,20 @@ keypad_rethink_backlight_policy(void)
     }
 
     /* Execute policy decision
+     *
+     * Log only policy changes, but always run the ALS pipeline all
+     * the way to keypad_datapipe_key_backlight_brightness_cb()
+     * where ALS can be overruled in case of indicator / CSD use.
      */
     if( keypad_backlight_allowed != allow ) {
         mce_log(LL_DEBUG, "backlight_allowed: %s -> %s", bool_repr(keypad_backlight_allowed), bool_repr(allow));
-
-        if( (keypad_backlight_allowed = allow) )
-            keypad_set_backlight_on();
-        else
-            keypad_set_backlight_off();
+        keypad_backlight_allowed = allow;
     }
 
-    return keypad_backlight_allowed;
+    if( keypad_backlight_allowed )
+        keypad_set_backlight_on();
+    else
+        keypad_set_backlight_off();
 }
 
 /* ------------------------------------------------------------------------- *
@@ -509,29 +596,40 @@ keypad_rethink_backlight_policy(void)
 static void
 keypad_datapipe_key_backlight_brightness_cb(gconstpointer data)
 {
-    static gint backlight_input  = -1;
-    static gint backlight_output = -1;
+    static gint brightness_input  = -1;
+    static gint brightness_output = -1;
 
-    gint prev_input = backlight_input;
+    gint prev_input  = brightness_input;
 
-    backlight_input = GPOINTER_TO_INT(data);
+    brightness_input = GPOINTER_TO_INT(data);
 
-    if( prev_input != backlight_input ) {
-        mce_log(LL_DEBUG, "backlight_input: %d -> %d", prev_input, backlight_input);
+    if( prev_input != brightness_input )
+        mce_log(LL_DEBUG, "brightness_input: %d -> %d", prev_input, brightness_input);
 
-        gint prev_output = backlight_output;
+    gint prev_output = brightness_output;
 
-        if( backlight_input <= 0 )
-            backlight_output = 0;
-        else if( keypad_binary_brightness )
-            backlight_output = 1;
-        else
-            backlight_output = backlight_input;
+    /* Precedence order
+     * 1) Use as a charging indicator
+     * 2) Override from CSD HW test
+     * 3) Normal keypad backlight behavior
+     *
+     * Note that (1) and (2) are not subject to ALS brightness filtering
+     */
 
-        if( prev_output != backlight_output ) {
-            mce_log(LL_DEBUG, "backlight_output: %d -> %d", prev_output, backlight_output);
-            keypad_set_brightness(backlight_output);
-        }
+    if( keypad_indicator_is_active() )
+        brightness_output = keypad_binary_brightness ? 1 : keypad_max_brightness;
+    else if( keypad_backlight_mode == MCE_KEYPAD_BACKLIGHT_MODE_OFF )
+        brightness_output = 0;
+    else if( keypad_backlight_mode == MCE_KEYPAD_BACKLIGHT_MODE_ON )
+        brightness_output = keypad_binary_brightness ? 1 : keypad_max_brightness;
+    else if( brightness_input <= 0 )
+        brightness_output = 0;
+    else
+        brightness_output = keypad_binary_brightness ? 1 : brightness_input;
+
+    if( prev_output != brightness_output ) {
+        mce_log(LL_DEBUG, "brightness_output: %d -> %d", prev_output, brightness_output);
+        keypad_set_brightness(brightness_output);
     }
 }
 
@@ -565,6 +663,7 @@ keypad_datapipe_display_state_curr_cb(gconstpointer data)
 
     if( prev != display_state_curr ) {
         mce_log(LL_DEBUG, "display_state_curr: %s -> %s", display_state_repr(prev), display_state_repr(display_state_curr));
+        keypad_indicator_update_enabled();
         keypad_rethink_backlight_policy();
     }
 }
@@ -622,10 +721,8 @@ keypad_datapipe_device_inactive_cb(gconstpointer const data)
     else if( !device_inactive ) {
         /** Edge trigger: user activity event */
         mce_log(LL_DEBUG, "user activity");
-        if( keypad_rethink_backlight_policy() ) {
-            keypad_cancel_backlight_timeout();
-            keypad_set_backlight_on();
-        }
+        keypad_cancel_backlight_timeout();
+        keypad_rethink_backlight_policy();
     }
 }
 
@@ -660,6 +757,7 @@ keypad_datapipe_lid_sensor_filtered_cb(gconstpointer const data)
 
     if( prev != lid_sensor_filtered ) {
         mce_log(LL_DEBUG, "lid_sensor_filtered: %s -> %s", cover_state_repr(prev), cover_state_repr(lid_sensor_filtered));
+        keypad_indicator_update_enabled();
         keypad_rethink_backlight_policy();
     }
 }
@@ -698,19 +796,18 @@ keypad_datapipe_call_state_cb(gconstpointer const data)
     }
 }
 
-/** Handle battery state change
- *
- * @param data battery_state_pipe status as a pointer
+/** Notification callback function for charger_state_pipe
  */
-static void
-keypad_datapipe_battery_state_cb(gconstpointer data)
+static void keypad_datapipe_charger_state_cb(gconstpointer data)
 {
-    battery_state_t prev = battery_state;
+    charger_state_t prev = charger_state;
 
-    battery_state = GPOINTER_TO_INT(data);
+    charger_state = GPOINTER_TO_INT(data);
 
-    if( prev != battery_state ) {
-        mce_log(LL_DEBUG, "battery_state: %s -> %s", battery_state_repr(prev), battery_state_repr(battery_state));
+    if( charger_state != prev ) {
+        mce_log(LL_DEBUG, "charger_state: %s -> %s", charger_state_repr(prev), charger_state_repr(charger_state));
+
+        keypad_indicator_update_enabled();
         keypad_rethink_backlight_policy();
     }
 }
@@ -760,8 +857,8 @@ static datapipe_handler_t mce_keypad_datapipe_handlers[] =
         .output_cb = keypad_datapipe_call_state_cb,
     },
     {
-        .datapipe  = &battery_state_pipe,
-        .output_cb = keypad_datapipe_battery_state_cb,
+        .datapipe  = &charger_state_pipe,
+        .output_cb = keypad_datapipe_charger_state_cb,
     },
     // sentinel
     {
@@ -1058,9 +1155,7 @@ keypad_settings_change_cb(GConfClient *const gcc, const guint id,
             mce_log(LL_NOTICE, "backlight_enabled: %s -> %s", bool_repr(keypad_backlight_enabled), bool_repr(enabled));
             keypad_backlight_enabled = enabled;
 
-            keypad_cancel_backlight_timeout();
-            if( keypad_rethink_backlight_policy() )
-                keypad_setup_backlight_timeout();
+            keypad_rethink_backlight_policy();
         }
     }
     else {
@@ -1175,6 +1270,9 @@ keypad_config_init(void)
     keypad_backlight_timeout_seconds =
         mce_conf_get_int(MCE_CONF_KEYPAD_GROUP, MCE_CONF_KEYPAD_BACKLIGHT_TIMEOUT, DEFAULT_KEYPAD_BACKLIGHT_TIMEOUT);
 
+    keypad_indicator_timeout_seconds =
+        mce_conf_get_int(MCE_CONF_KEYPAD_GROUP, MCE_CONF_KEYPAD_INDICATOR_TIMEOUT, DEFAULT_KEYPAD_INDICATOR_TIMEOUT);
+
     keypad_enable_backlight_when_charging =
         mce_conf_get_bool(MCE_CONF_KEYPAD_GROUP, MCE_CONF_KEYPAD_ENABLE_BACKLIGHT_WHEN_CHARGING,
                           DEFAULT_KEYPAD_ENABLE_BACKLIGHT_WHEN_CHARGING);
@@ -1188,6 +1286,7 @@ keypad_config_init(void)
     mce_log(LL_DEBUG, "brightness range = 0 ... %d", keypad_binary_brightness ? 1 : keypad_max_brightness);
     mce_log(LL_DEBUG, "enable backlight when charging = %s", bool_repr(keypad_enable_backlight_when_charging));
     mce_log(LL_DEBUG, "backlight timeout = %d s", keypad_backlight_timeout_seconds);
+    mce_log(LL_DEBUG, "indicator timeout = %d s", keypad_indicator_timeout_seconds);
 }
 
 /** Cleanup static configuration related variables
@@ -1247,4 +1346,5 @@ g_module_unload(GModule *module)
 
     /* Do not leave timers behind */
     keypad_cancel_backlight_timeout();
+    keypad_indicator_cancel_timeout();
 }

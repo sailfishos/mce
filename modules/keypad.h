@@ -30,6 +30,9 @@
 /** Default key backlight timeout in seconds */
 #define DEFAULT_KEYPAD_BACKLIGHT_TIMEOUT                30 // [s]
 
+/** Default key backlight as indicator timeout in seconds */
+#define DEFAULT_KEYPAD_INDICATOR_TIMEOUT                60 // [s]
+
 /** Name of Keypad configuration group */
 #define MCE_CONF_KEYPAD_GROUP                           "KeyPad"
 
@@ -38,6 +41,9 @@
 
 /** Name of configuration key for keyboard backlight timeout */
 #define MCE_CONF_KEYPAD_BACKLIGHT_TIMEOUT               "BacklightTimeout"
+
+/** Name of configuration key for keyboard backlight as indicatortimeout */
+#define MCE_CONF_KEYPAD_INDICATOR_TIMEOUT               "IndicatorTimeout"
 
 /** Name of configuration key for keyboard backlight brightness directories
  *
