@@ -170,6 +170,7 @@ MODULES += $(MODULE_DIR)/buttonbacklight.so
 MODULES += $(MODULE_DIR)/display.so
 MODULES += $(MODULE_DIR)/usbmode.so
 MODULES += $(MODULE_DIR)/doubletap.so
+MODULES += $(MODULE_DIR)/doubletap-watch.so
 MODULES += $(MODULE_DIR)/sensor-gestures.so
 MODULES += $(MODULE_DIR)/led.so
 MODULES += $(MODULE_DIR)/callstate.so
@@ -632,6 +633,7 @@ NORMALIZE_USES_SPC =\
 	modules/display.c\
 	modules/display.h\
 	modules/doubletap.c\
+	modules/doubletap-watch.c\
 	modules/doubletap.h\
 	modules/filter-brightness-als.c\
 	modules/filter-brightness-als.h\
