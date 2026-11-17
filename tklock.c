@@ -6328,7 +6328,7 @@ EXIT:
 static gboolean
 tklock_dbus_lid_sensor_filtered_state_get_req_cb(DBusMessage *const msg)
 {
-    mce_log(LL_DEVEL, "Received filtered lid sensor state get request from %s",
+    mce_log(LL_DEBUG, "Received filtered lid sensor state get request from %s",
             mce_dbus_get_message_sender_ident(msg));
 
     tklock_dbus_send_lid_sensor_filtered_state(msg);
@@ -6385,7 +6385,7 @@ EXIT:
 static gboolean
 tklock_dbus_keyboard_available_state_get_req_cb(DBusMessage *const msg)
 {
-    mce_log(LL_DEVEL, "Received keyboard available state get request from %s",
+    mce_log(LL_DEBUG, "Received keyboard available state get request from %s",
             mce_dbus_get_message_sender_ident(msg));
 
     tklock_dbus_send_keyboard_available_state(msg);
@@ -6443,7 +6443,7 @@ EXIT:
 static gboolean
 tklock_dbus_mouse_available_state_get_req_cb(DBusMessage *const msg)
 {
-    mce_log(LL_DEVEL, "Received mouse available state get request from %s",
+    mce_log(LL_DEBUG, "Received mouse available state get request from %s",
             mce_dbus_get_message_sender_ident(msg));
 
     tklock_dbus_send_mouse_available_state(msg);
@@ -6509,7 +6509,7 @@ static gboolean tklock_dbus_mode_get_req_cb(DBusMessage *const msg)
 {
     gboolean status = FALSE;
 
-    mce_log(LL_DEVEL, "Received tklock mode get request from %s",
+    mce_log(LL_DEBUG, "Received tklock mode get request from %s",
             mce_dbus_get_message_sender_ident(msg));
 
     /* Try to send a reply that contains the current tklock mode */

@@ -315,7 +315,7 @@ static gboolean psm_state_get_dbus_cb(DBusMessage *const msg)
 {
 	gboolean status = FALSE;
 
-	mce_log(LL_DEVEL, "Received PSM state get request from %s",
+	mce_log(LL_DEBUG, "Received PSM state get request from %s",
 	       mce_dbus_get_message_sender_ident(msg));
 
 	/* Try to send a reply that contains the current PSM state */
