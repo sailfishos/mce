@@ -1,3 +1,11 @@
+mce (1.122.3) precise; urgency=low
+
+  * [mce] Make logging less verbose
+  * [bluetooth] Use separate handlers for different bluez5 signal types
+  * [als] Add LED and keypad auto-brightness settings. JB#65913
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Fri, 20 Nov 2026 09:57:13 +0200
+
 mce (1.122.2) precise; urgency=low
 
   * [keypad] Add separate timeout for charging indicator use. Fixes JB#65490
