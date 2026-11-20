@@ -77,6 +77,12 @@ typedef enum
  * Keypad Backlight Settings
  * ========================================================================= */
 
+/** Autobrightness modes */
+typedef enum {
+    AUTOBRIGHTNESS_MODE_LADDER    = 0, /**< Static configuration for N level brightness control */
+    AUTOBRIGHTNESS_MODE_THRESHOLD = 1, /**< Dynamic setting for binary on/off brightness control */
+} autobrightness_mode_t;
+
 /** Prefix for keypad setting keys */
 # define MCE_SETTING_KEYPADBACKLIGHT_PATH   "/system/osso/dsm/keypadbacklight"
 
@@ -87,6 +93,18 @@ typedef enum
 /** Whether keypad backlight brightness is automatically adjusted or not */
 # define MCE_SETTING_KEYPADBACKLIGHT_ALS_AUTOBRIGHTNESS MCE_SETTING_KEYPADBACKLIGHT_PATH "/als_autobrightness"
 # define MCE_DEFAULT_KEYPADBACKLIGHT_ALS_AUTOBRIGHTNESS true
+
+/** How keypad backlight brightness is automatically adjusted */
+# define MCE_SETTING_KEYPADBACKLIGHT_AUTOBRIGHTNESS_MODE MCE_SETTING_KEYPADBACKLIGHT_PATH "/autobrightness_mode"
+# define MCE_DEFAULT_KEYPADBACKLIGHT_AUTOBRIGHTNESS_MODE 0 // = AUTOBRIGHTNESS_MODE_LADDER
+
+/** Limit below which backlight is turned on in AUTOBRIGHTNESS_MODE_THRESHOLD */
+# define MCE_SETTING_KEYPADBACKLIGHT_THRESHOLD_ON MCE_SETTING_KEYPADBACKLIGHT_PATH "/threshold_on"
+# define MCE_DEFAULT_KEYPADBACKLIGHT_THRESHOLD_ON 50
+
+/** Limit above which backlight is turned off in AUTOBRIGHTNESS_MODE_THRESHOLD */
+# define MCE_SETTING_KEYPADBACKLIGHT_THRESHOLD_OFF MCE_SETTING_KEYPADBACKLIGHT_PATH "/threshold_off"
+# define MCE_DEFAULT_KEYPADBACKLIGHT_THRESHOLD_OFF 60 // = MCE_DEFAULT_KEYPADBACKLIGHT_THRESHOLD_ON + 20% hysteresis
 
 /* ========================================================================= *
  * Functions

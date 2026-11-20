@@ -102,12 +102,21 @@ static int  fba_util_imin   (int a, int b);
 static bool fba_util_streq  (const char *s1, const char *s2);
 
 /* ------------------------------------------------------------------------- *
+ * AUTOBRIGHTNESS_MODE
+ * ------------------------------------------------------------------------- */
+
+static const char *autobrightness_mode_repr(autobrightness_mode_t value);
+
+/* ------------------------------------------------------------------------- *
  * DYNAMIC_SETTINGS
  * ------------------------------------------------------------------------- */
 
-static void fba_setting_cb    (GConfClient *gcc, guint id, GConfEntry *entry, gpointer const data);
-static void fba_setting_init  (void);
-static void fba_setting_quit  (void);
+static gboolean fba_setting_sanitize_cb     (gpointer aptr);
+static void     fba_setting_sanitize_later  (void);
+static void     fba_setting_cancel_sanitize (void);
+static void     fba_setting_cb              (GConfClient *gcc, guint id, GConfEntry *entry, gpointer const data);
+static void     fba_setting_init            (void);
+static void     fba_setting_quit            (void);
 
 /* ------------------------------------------------------------------------- *
  * COLOR_PROFILE
@@ -218,6 +227,7 @@ static gpointer fba_datapipe_light_sensor_poll_request_filter(gpointer data);
 static void     fba_datapipe_display_state_curr_trigger (gconstpointer data);
 static void     fba_datapipe_display_state_next_trigger (gconstpointer data);
 static void     fba_datapipe_led_enabled_trigger        (gconstpointer data);
+static void     fba_datapipe_light_sensor_active_trigger(gconstpointer data);
 
 static void     fba_datapipe_execute_brightness_change  (void);
 
@@ -294,8 +304,28 @@ static bool fba_util_streq(const char *s1, const char *s2)
 }
 
 /* ========================================================================= *
+ * AUTOBRIGHTNESS_MODE
+ * ========================================================================= */
+
+static const char *autobrightness_mode_repr(autobrightness_mode_t value)
+{
+    const char *repr = "AUTOBRIGHTNESS_MODE_INVALID";
+
+    switch( value ) {
+    case AUTOBRIGHTNESS_MODE_LADDER:    repr = "AUTOBRIGHTNESS_MODE_LADDER";    break;
+    case AUTOBRIGHTNESS_MODE_THRESHOLD: repr = "AUTOBRIGHTNESS_MODE_THRESHOLD"; break;
+    default: break;
+    }
+
+    return repr;
+}
+
+/* ========================================================================= *
  * DYNAMIC_SETTINGS
  * ========================================================================= */
+
+/** Idle callback to sanitize invalid setting values */
+static guint fba_setting_sanitize_id = 0;
 
 /** Master ALS enabled setting */
 static gboolean fba_setting_als_enabled = MCE_DEFAULT_DISPLAY_ALS_ENABLED;
@@ -308,6 +338,18 @@ static guint    fba_setting_display_autobrightness_id = 0;
 /** Filter Keypad backlight brightness through ALS setting */
 static gboolean fba_setting_keypad_autobrightness = MCE_DEFAULT_KEYPADBACKLIGHT_ALS_AUTOBRIGHTNESS;
 static guint    fba_setting_keypad_autobrightness_id = 0;
+
+/** What autobrightness control mode is used for keypad backlight */
+static gint     fba_setting_keypad_autobrightness_mode = MCE_DEFAULT_KEYPADBACKLIGHT_AUTOBRIGHTNESS_MODE;
+static guint    fba_setting_keypad_autobrightness_mode_id = 0;
+
+/** Backlight on limit for AUTOBRIGHTNESS_MODE_THRESHOLD */
+static gint     fba_setting_keypad_threshold_on = MCE_DEFAULT_KEYPADBACKLIGHT_THRESHOLD_OFF;
+static guint    fba_setting_keypad_threshold_on_id = 0;
+
+/** Backlight off limit for AUTOBRIGHTNESS_MODE_THRESHOLD */
+static gint     fba_setting_keypad_threshold_off = MCE_DEFAULT_KEYPADBACKLIGHT_THRESHOLD_OFF;
+static guint    fba_setting_keypad_threshold_off_id = 0;
 
 /** Filter LED brightness through ALS setting */
 static gboolean fba_setting_led_autobrightness = MCE_DEFAULT_LED_ALS_AUTOBRIGHTNESS;
@@ -332,6 +374,9 @@ static guint    fba_setting_color_profile_id = 0;
 /** Default color profile, set in ini-files */
 static gchar   *fba_default_color_profile = 0;
 
+/** Cached keypad backlight scale; assigning -1 -> resets hysteresis */
+static int      fba_saved_key_backlight_scale = -1;
+
 /** GConf callback for powerkey related settings
  *
  * @param gcc    (not used)
@@ -351,6 +396,9 @@ fba_setting_cb(GConfClient *gcc, guint id, GConfEntry *entry, gpointer const dat
         mce_log(LL_DEBUG, "GConf Key `%s' has been unset", gconf_entry_get_key(entry));
         goto EXIT;
     }
+
+    /* Reset keypad backlight hysteresis on setting change */
+    fba_saved_key_backlight_scale = -1;
 
     if( id == fba_setting_als_enabled_id ) {
         gboolean val = gconf_value_get_bool(gcv);
@@ -373,6 +421,31 @@ fba_setting_cb(GConfClient *gcc, guint id, GConfEntry *entry, gpointer const dat
                 bool_repr(fba_setting_keypad_autobrightness), bool_repr(val));
 
         fba_setting_keypad_autobrightness = val;
+        fba_status_rethink();
+    }
+    else if( id == fba_setting_keypad_autobrightness_mode_id ) {
+        gint val = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "fba_setting_keypad_autobrightness_mode: %s -> %s",
+                autobrightness_mode_repr(fba_setting_keypad_autobrightness_mode),
+                autobrightness_mode_repr(val));
+
+        fba_setting_keypad_autobrightness_mode = val;
+        fba_status_rethink();
+    }
+    else if( id == fba_setting_keypad_threshold_on_id ) {
+        gint val = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "fba_setting_keypad_threshold_on: %d -> %d",
+                fba_setting_keypad_threshold_on, val);
+
+        fba_setting_keypad_threshold_on = val;
+        fba_status_rethink();
+    }
+    else if( id == fba_setting_keypad_threshold_off_id ) {
+        gint val = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "fba_setting_keypad_threshold_off: %d -> %d",
+                fba_setting_keypad_threshold_off, val);
+
+        fba_setting_keypad_threshold_off = val;
         fba_status_rethink();
     }
     else if( id == fba_setting_led_autobrightness_id ) {
@@ -419,9 +492,64 @@ fba_setting_cb(GConfClient *gcc, guint id, GConfEntry *entry, gpointer const dat
         mce_log(LL_WARN, "Spurious GConf value received; confused!");
     }
 
+    fba_setting_sanitize_later();
+
 EXIT:
 
     return;
+}
+
+/** Idle callback for sanity checking setting values
+ *
+ * Fix settings that have been set to logically invalid values over D-Bus.
+ *
+ * @param aptr  Unused user data pointer
+ *
+ * @return G_SOURCE_REMOVE
+ */
+static gboolean fba_setting_sanitize_cb(gpointer aptr)
+{
+    (void)aptr;
+
+    fba_setting_sanitize_id = 0;
+
+    switch( fba_setting_keypad_autobrightness_mode ) {
+    case AUTOBRIGHTNESS_MODE_LADDER:
+    case AUTOBRIGHTNESS_MODE_THRESHOLD:
+        break;
+    default:
+        fba_setting_keypad_autobrightness_mode = AUTOBRIGHTNESS_MODE_LADDER;
+        mce_setting_set_int(MCE_SETTING_KEYPADBACKLIGHT_AUTOBRIGHTNESS_MODE, fba_setting_keypad_autobrightness_mode);
+        break;
+    }
+
+    if( fba_setting_keypad_threshold_on < 0 ) {
+        fba_setting_keypad_threshold_on = 0;
+        mce_setting_set_int(MCE_SETTING_KEYPADBACKLIGHT_THRESHOLD_ON, fba_setting_keypad_threshold_on);
+    }
+
+    if( fba_setting_keypad_threshold_off < fba_setting_keypad_threshold_on ) {
+        fba_setting_keypad_threshold_off = fba_setting_keypad_threshold_on;
+        mce_setting_set_int(MCE_SETTING_KEYPADBACKLIGHT_THRESHOLD_OFF, fba_setting_keypad_threshold_off);
+    }
+
+    return G_SOURCE_REMOVE;
+}
+
+/** Schedule dynamic setting sanity check
+ */
+static void fba_setting_sanitize_later(void)
+{
+    if( !fba_setting_sanitize_id )
+        fba_setting_sanitize_id = g_idle_add(fba_setting_sanitize_cb, NULL);
+}
+
+/** Cancel scheduled dynamic setting sanity check
+ */
+static void fba_setting_cancel_sanitize(void)
+{
+    if( fba_setting_sanitize_id )
+        g_source_remove(fba_setting_sanitize_id), fba_setting_sanitize_id = 0;
 }
 
 /** Start tracking setting changes
@@ -447,6 +575,24 @@ fba_setting_init(void)
                            MCE_DEFAULT_KEYPADBACKLIGHT_ALS_AUTOBRIGHTNESS,
                            fba_setting_cb,
                            &fba_setting_keypad_autobrightness_id);
+
+    mce_setting_track_int(MCE_SETTING_KEYPADBACKLIGHT_AUTOBRIGHTNESS_MODE,
+                          &fba_setting_keypad_autobrightness_mode,
+                          MCE_DEFAULT_KEYPADBACKLIGHT_AUTOBRIGHTNESS_MODE,
+                          fba_setting_cb,
+                          &fba_setting_keypad_autobrightness_mode_id);
+
+    mce_setting_track_int(MCE_SETTING_KEYPADBACKLIGHT_THRESHOLD_OFF,
+                          &fba_setting_keypad_threshold_off,
+                          MCE_DEFAULT_KEYPADBACKLIGHT_THRESHOLD_OFF,
+                          fba_setting_cb,
+                          &fba_setting_keypad_threshold_off_id);
+
+    mce_setting_track_int(MCE_SETTING_KEYPADBACKLIGHT_THRESHOLD_ON,
+                          &fba_setting_keypad_threshold_on,
+                          MCE_DEFAULT_KEYPADBACKLIGHT_THRESHOLD_ON,
+                          fba_setting_cb,
+                          &fba_setting_keypad_threshold_on_id);
 
     mce_setting_track_bool(MCE_SETTING_LED_ALS_AUTOBRIGHTNESS,
                            &fba_setting_led_autobrightness,
@@ -481,6 +627,8 @@ fba_setting_init(void)
                              &fba_setting_color_profile_id);
 
     fba_color_profile_init();
+
+    fba_setting_sanitize_later();
 }
 
 /** Stop tracking setting changes
@@ -496,6 +644,15 @@ fba_setting_quit(void)
 
     mce_setting_notifier_remove(fba_setting_keypad_autobrightness_id),
         fba_setting_keypad_autobrightness_id = 0;
+
+    mce_setting_notifier_remove(fba_setting_keypad_autobrightness_mode_id),
+        fba_setting_keypad_autobrightness_mode_id = 0;
+
+    mce_setting_notifier_remove(fba_setting_keypad_threshold_on_id),
+        fba_setting_keypad_threshold_on_id = 0;
+
+    mce_setting_notifier_remove(fba_setting_keypad_threshold_off_id),
+        fba_setting_keypad_threshold_off_id = 0;
 
     mce_setting_notifier_remove(fba_setting_led_autobrightness_id),
         fba_setting_led_autobrightness_id = 0;
@@ -513,6 +670,8 @@ fba_setting_quit(void)
         fba_setting_color_profile_id = 0;
 
     fba_color_profile_quit();
+
+    fba_setting_cancel_sanitize();
 }
 
 /* ========================================================================= *
@@ -1390,10 +1549,41 @@ fba_datapipe_key_backlight_brightness_filter(gpointer data)
         /* Sensor use is disabled / sensor is not in active state
          * -> do not allow fallback value to turn the backlight off */
     }
-    else if( fba_inputflt_output_lux >= 0 ) {
-        /* Evaluate brightness scale based on available sensor data */
-        scale = fba_als_filter_run(&lut_key, 0, fba_inputflt_output_lux);
+    else if( fba_setting_keypad_autobrightness_mode == AUTOBRIGHTNESS_MODE_THRESHOLD ) {
+        /* Dynamic threshold settings with hysteresis.
+         * Used in devices where backlight brightness control is binary on/off.
+         */
+        if( fba_saved_key_backlight_scale < 0 ) {
+            /* Service restart / settings change -> hysteresis reset */
+            if( fba_inputflt_output_lux < 0 )
+                scale = 0;
+            else if( fba_inputflt_output_lux <= fba_setting_keypad_threshold_on )
+                scale = 100;
+            else
+                scale = 0;
+        }
+        else {
+            if( fba_inputflt_output_lux <= fba_setting_keypad_threshold_on )
+                scale = 100;
+            else if( fba_inputflt_output_lux >= fba_setting_keypad_threshold_off )
+                scale = 0;
+            else
+                scale = fba_saved_key_backlight_scale;
+        }
     }
+    else {
+        /* Static brightness ladder configuration.
+         * Used in devices where backlight brightness control has N levels.
+         */
+        if( fba_inputflt_output_lux >= 0 )
+            scale = fba_als_filter_run(&lut_key, 0, fba_inputflt_output_lux);
+        else if( fba_saved_key_backlight_scale >= 0 )
+            scale = fba_saved_key_backlight_scale;
+        else
+            scale = 0;
+    }
+
+    fba_saved_key_backlight_scale = scale;
 
     /* Result is: modified hw brightness value */
     return GINT_TO_POINTER(value * scale / 100);
