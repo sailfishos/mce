@@ -2,8 +2,9 @@
  * @file mce-setting.h
  * Headers for the runtime setting handling code for the Mode Control Entity
  * <p>
- * Copyright © 2004-2007 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright © 2014-2016 Jolla Ltd.
+ * Copyright (c) 2004 - 2007 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (c) 2014 - 2016 Jolla Ltd.
+ * Copyright (c) 2026 Jolla Mobile Ltd
  * <p>
  * @author David Weinehall <david.weinehall@nokia.com>
  * @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
@@ -82,6 +83,10 @@ typedef enum
 /** Whether keypad backlight is used or not */
 # define MCE_SETTING_KEYPADBACKLIGHT_ENABLED MCE_SETTING_KEYPADBACKLIGHT_PATH "/enabled"
 # define MCE_DEFAULT_KEYPADBACKLIGHT_ENABLED true
+
+/** Whether keypad backlight brightness is automatically adjusted or not */
+# define MCE_SETTING_KEYPADBACKLIGHT_ALS_AUTOBRIGHTNESS MCE_SETTING_KEYPADBACKLIGHT_PATH "/als_autobrightness"
+# define MCE_DEFAULT_KEYPADBACKLIGHT_ALS_AUTOBRIGHTNESS true
 
 /* ========================================================================= *
  * Functions

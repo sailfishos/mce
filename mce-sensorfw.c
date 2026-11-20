@@ -728,6 +728,9 @@ struct sfw_backend_t
 
     /** D-Bus method name for querying the initial sensor value */
     const char   *be_value_method;
+
+    /** Datapipe for: activation state reporting */
+    datapipe_t   *be_active_datapipe;
 };
 
 static bool sfw_backend_parse_data              (DBusMessageIter *data, int arg_type, ...);
@@ -2675,6 +2678,7 @@ static const sfw_backend_t sfw_backend_lut[SFW_SENSOR_ID_COUNT] =
         .be_value_cb         = sfw_backend_als_value_cb,
         .be_sample_cb        = sfw_backend_als_sample_cb,
         .be_value_method     = SFW_SENSOR_METHOD_READ_ALS,
+        .be_active_datapipe  = &light_sensor_active_pipe,
     },
     [SFW_SENSOR_ID_ORIENT] = {
         .be_sensor_name      = SFW_SENSOR_NAME_ORIENT,
@@ -3090,6 +3094,9 @@ sfw_reporting_trans(sfw_reporting_t *self, sfw_reporting_state_t state)
         break;
 
     }
+
+    if( self->rep_plugin->plg_backend->be_active_datapipe )
+        datapipe_exec_full(self->rep_plugin->plg_backend->be_active_datapipe, GINT_TO_POINTER(self->rep_state == REPORTING_ENABLED));
 
 EXIT:
 

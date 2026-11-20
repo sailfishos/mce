@@ -41,6 +41,7 @@
 #include "../modules/proximity.h"
 #include "../modules/memnotify.h"
 #include "../modules/led.h"
+#include "../modules/keypad.h"
 #include "../modules/charging.h"
 #include "../systemui/dbus-names.h"
 #include "../systemui/tklock-dbus-names.h"
@@ -269,6 +270,10 @@ static bool          xmce_set_incall_ps_uncover_delay                  (const ch
 static void          xmce_get_ps_uncover_delay                         (void);
 static bool          xmce_set_inactivity_shutdown_delay                (const char *args);
 static void          xmce_get_inactivity_shutdown_delay                (void);
+static bool          xmce_set_keypad_autobrightness                    (const char *args);
+static void          xmce_get_keypad_autobrightness                    (void);
+static bool          xmce_set_led_autobrightness                       (const char *args);
+static void          xmce_get_led_autobrightness                       (void);
 static bool          xmce_set_als_autobrightness                       (const char *args);
 static void          xmce_get_als_autobrightness                       (void);
 static bool          xmce_set_als_mode                                 (const char *args);
@@ -297,6 +302,8 @@ static bool          xmce_set_powerkey_action                          (const ch
 static void          xmce_get_powerkey_action                          (void);
 static bool          xmce_set_powerkey_blanking                        (const char *args);
 static void          xmce_get_powerkey_blanking                        (void);
+static bool          xmce_set_powerkey_anykey_wakeup                   (const char *args);
+static void          xmce_get_powerkey_anykey_wakeup                   (void);
 static bool          xmce_set_powerkey_long_press_delay                (const char *args);
 static void          xmce_get_powerkey_long_press_delay                (void);
 static bool          xmce_set_powerkey_double_press_delay              (const char *args);
@@ -4896,30 +4903,88 @@ static void xmce_get_inactivity_shutdown_delay(void)
  * als
  * ------------------------------------------------------------------------- */
 
-/* Set als autobrightness mode
+/** Set keypad backlight brightness filtering mode
+ *
+ * @param args string suitable for interpreting as off/static/dynamic
+ */
+static bool xmce_set_keypad_autobrightness(const char *args)
+{
+        const char *key = MCE_SETTING_KEYPADBACKLIGHT_ALS_AUTOBRIGHTNESS;
+
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
+        return xmce_setting_set_bool(key,  xmce_parse_enabled(args));
+}
+
+/** Get curremt keypad backlight brightness filtering mode from mce and print it out
+ */
+static void xmce_get_keypad_autobrightness(void)
+{
+        const char *key = MCE_SETTING_KEYPADBACKLIGHT_ALS_AUTOBRIGHTNESS;
+        gboolean    val = FALSE;
+        const char *txt = NULL;
+
+        if( xmce_setting_get_bool(key, &val) )
+                txt = val ? "enabled" : "disabled";
+
+        printf("%-"PAD1"s %s\n", "Keypad autobrightness:", txt ?: "unknown");
+}
+
+/** Set led brightness filtering mode
+ *
+ * @param args string suitable for interpreting as off/static/dynamic
+ */
+static bool xmce_set_led_autobrightness(const char *args)
+{
+        const char *key = MCE_SETTING_LED_ALS_AUTOBRIGHTNESS;
+
+        if( mcetool_handle_common_args(key, args) )
+                return true;
+
+        return xmce_setting_set_bool(key,  xmce_parse_enabled(args));
+}
+
+/** Get curremt led brightness filtering mode from mce and print it out
+ */
+static void xmce_get_led_autobrightness(void)
+{
+        const char *key = MCE_SETTING_LED_ALS_AUTOBRIGHTNESS;
+        gboolean    val = FALSE;
+        const char *txt = NULL;
+
+        if( xmce_setting_get_bool(key, &val) )
+                txt = val ? "enabled" : "disabled";
+
+        printf("%-"PAD1"s %s\n", "LED autobrightness:", txt ?: "unknown");
+}
+
+/** Set als autobrightness mode
  *
  * @param args string suitable for interpreting as enabled/disabled
  */
 static bool xmce_set_als_autobrightness(const char *args)
 {
         const char *key = MCE_SETTING_DISPLAY_ALS_AUTOBRIGHTNESS;
+
         if( mcetool_handle_common_args(key, args) )
                 return true;
 
-        gboolean val = xmce_parse_enabled(args);
-        return xmce_setting_set_bool(key, val);
+        return xmce_setting_set_bool(key,  xmce_parse_enabled(args));
 }
 
 /** Get current als autobrightness from mce and print it out
  */
 static void xmce_get_als_autobrightness(void)
 {
-        gboolean val = 0;
-        char txt[32] = "unknown";
+        const char *key = MCE_SETTING_DISPLAY_ALS_AUTOBRIGHTNESS;
+        gboolean    val = FALSE;
+        const char *txt = NULL;
 
-        if( xmce_setting_get_bool(MCE_SETTING_DISPLAY_ALS_AUTOBRIGHTNESS, &val) )
-                snprintf(txt, sizeof txt, "%s", val ? "enabled" : "disabled");
-        printf("%-"PAD1"s %s\n", "Use als autobrightness:", txt);
+        if( xmce_setting_get_bool(key, &val) )
+                txt = val ? "enabled" : "disabled";
+
+        printf("%-"PAD1"s %s\n", "Display autobrightness:", txt ?: "unknown");
 }
 
 /* Set als use mode
@@ -4929,23 +4994,25 @@ static void xmce_get_als_autobrightness(void)
 static bool xmce_set_als_mode(const char *args)
 {
         const char *key = MCE_SETTING_DISPLAY_ALS_ENABLED;
+
         if( mcetool_handle_common_args(key, args) )
                 return true;
 
-        gboolean val = xmce_parse_enabled(args);
-        return xmce_setting_set_bool(key, val);
+        return xmce_setting_set_bool(key,  xmce_parse_enabled(args));
 }
 
 /** Get current als mode from mce and print it out
  */
 static void xmce_get_als_mode(void)
 {
-        gboolean val = 0;
-        char txt[32] = "unknown";
+        const char *key = MCE_SETTING_DISPLAY_ALS_ENABLED;
+        gboolean    val = FALSE;
+        const char *txt = NULL;
 
-        if( xmce_setting_get_bool(MCE_SETTING_DISPLAY_ALS_ENABLED, &val) )
-                snprintf(txt, sizeof txt, "%s", val ? "enabled" : "disabled");
-        printf("%-"PAD1"s %s\n", "Use als mode:", txt);
+        if( xmce_setting_get_bool(key, &val) )
+                txt = val ? "enabled" : "disabled";
+
+        printf("%-"PAD1"s %s\n", "Use als mode:", txt ?: "unknown");
 }
 
 /** Check that given ALS input filter name is valid
@@ -7208,6 +7275,8 @@ static bool xmce_get_status(const char *args)
         xmce_get_lpmui_triggering();
         xmce_get_als_mode();
         xmce_get_als_autobrightness();
+        xmce_get_led_autobrightness();
+        xmce_get_keypad_autobrightness();
         xmce_get_als_input_filter();
         xmce_get_als_sample_time();
         xmce_get_orientation_sensor_mode();
@@ -8067,11 +8136,28 @@ static const mce_opt_t options[] =
                 .with_arg    = xmce_set_als_autobrightness,
                 .values      = "enabled|disabled",
                 .usage       =
-                        "use the als for automatic brightness tuning; valid modes are:\n"
-                        "'enabled' and 'disabled'\n"
-                        "\n"
-                        "When enabled, affects display, notification led and keypad\n"
-                        "backlight brightness.\n"
+                        "use the als for automatic display brightness tuning; valid modes are:\n"
+                        "  'enabled'   display brightness is adjusted based on\n"
+                        "              brightness setting and light sensor reading\n"
+                        "  'disabled'  display brightness is set according to brightness setting\n"
+        },
+        {
+                .name        = "set-led-autobrightness",
+                .with_arg    = xmce_set_led_autobrightness,
+                .values      = "enabled|disabled",
+                .usage       =
+                        "use the als for automatic LED brightness tuning; valid modes are:\n"
+                        "  'enabled'   led brightness is adjusted based onlight sensor reading\n"
+                        "  'disabled'  led is kept at fixed brightness\n"
+        },
+        {
+                .name        = "set-keypad-autobrightness",
+                .with_arg    = xmce_set_keypad_autobrightness,
+                .values      = "enabled|disabled",
+                .usage       =
+                        "use the als for automatic keypad backlight brightness tuning; valid modes are:\n"
+                        "  'enabled'   backlight brightness is adjusted based onlight sensor reading\n"
+                        "  'disabled'  backlight is kept at fixed brightness\n"
         },
         {
                 .name        = "set-als-input-filter",

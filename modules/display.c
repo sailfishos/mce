@@ -3922,7 +3922,7 @@ static void mdy_ui_dimming_rethink(void)
                             MCE_FADER_DURATION_UI_MAX,
                             duration);
 
-    mce_log(LL_DEVEL, "sending dbus signal: %s %d %d",
+    mce_log(LL_DEBUG, "sending dbus signal: %s %d %d",
             MCE_FADER_OPACITY_SIG, dimming_curr, duration);
 
     dbus_send(0, MCE_SIGNAL_PATH, MCE_SIGNAL_IF,
@@ -10646,7 +10646,7 @@ static gboolean mdy_dbus_handle_display_status_get_req(DBusMessage *const msg)
 {
     gboolean status = FALSE;
 
-    mce_log(LL_DEVEL, "Received display status get request from %s",
+    mce_log(LL_DEBUG, "Received display status get request from %s",
             mce_dbus_get_message_sender_ident(msg));
 
     /* Try to send a reply that contains the current display status */

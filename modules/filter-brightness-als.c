@@ -32,6 +32,8 @@
 
 #include "filter-brightness-als.h"
 #include "display.h"
+#include "keypad.h"
+#include "led.h"
 
 #include "../mce-log.h"
 #include "../mce-io.h"
@@ -45,6 +47,20 @@
 #include <mce/dbus-names.h>
 
 #include <gmodule.h>
+
+/* ========================================================================= *
+ * Inline helpers
+ * ========================================================================= */
+
+static inline const char *bool_repr(int value)
+{
+    return value < 0 ? "unset" : value ? "true" : "false";
+}
+
+static inline const char *str_repr(const char *value)
+{
+    return !value ? "<null>" : !*value ? "<empty>" : value;
+}
 
 /* ========================================================================= *
  * CONSTANTS
@@ -89,7 +105,7 @@ static bool fba_util_streq  (const char *s1, const char *s2);
  * DYNAMIC_SETTINGS
  * ------------------------------------------------------------------------- */
 
-static void fba_setting_cb    (GConfClient *const gcc, const guint id, GConfEntry *const entry, gpointer const data);
+static void fba_setting_cb    (GConfClient *gcc, guint id, GConfEntry *entry, gpointer const data);
 static void fba_setting_init  (void);
 static void fba_setting_quit  (void);
 
@@ -201,6 +217,7 @@ static gpointer fba_datapipe_light_sensor_poll_request_filter(gpointer data);
 
 static void     fba_datapipe_display_state_curr_trigger (gconstpointer data);
 static void     fba_datapipe_display_state_next_trigger (gconstpointer data);
+static void     fba_datapipe_led_enabled_trigger        (gconstpointer data);
 
 static void     fba_datapipe_execute_brightness_change  (void);
 
@@ -284,9 +301,17 @@ static bool fba_util_streq(const char *s1, const char *s2)
 static gboolean fba_setting_als_enabled = MCE_DEFAULT_DISPLAY_ALS_ENABLED;
 static guint    fba_setting_als_enabled_id = 0;
 
-/** Filter brightness through ALS setting */
-static gboolean fba_setting_als_autobrightness = MCE_DEFAULT_DISPLAY_ALS_AUTOBRIGHTNESS;
-static guint    fba_setting_als_autobrightness_id = 0;
+/** Filter display brightness through ALS setting */
+static gboolean fba_setting_display_autobrightness = MCE_DEFAULT_DISPLAY_ALS_AUTOBRIGHTNESS;
+static guint    fba_setting_display_autobrightness_id = 0;
+
+/** Filter Keypad backlight brightness through ALS setting */
+static gboolean fba_setting_keypad_autobrightness = MCE_DEFAULT_KEYPADBACKLIGHT_ALS_AUTOBRIGHTNESS;
+static guint    fba_setting_keypad_autobrightness_id = 0;
+
+/** Filter LED brightness through ALS setting */
+static gboolean fba_setting_led_autobrightness = MCE_DEFAULT_LED_ALS_AUTOBRIGHTNESS;
+static guint    fba_setting_led_autobrightness_id = 0;
 
 /** ALS is used for LID filtering setting */
 static gboolean fba_setting_filter_lid_with_als = MCE_DEFAULT_TK_FILTER_LID_WITH_ALS;
@@ -315,8 +340,7 @@ static gchar   *fba_default_color_profile = 0;
  * @param data   (not used)
  */
 static void
-fba_setting_cb(GConfClient *const gcc, const guint id,
-               GConfEntry *const entry, gpointer const data)
+fba_setting_cb(GConfClient *gcc, guint id, GConfEntry *entry, gpointer const data)
 {
     (void)gcc;
     (void)data;
@@ -324,25 +348,53 @@ fba_setting_cb(GConfClient *const gcc, const guint id,
     const GConfValue *gcv = gconf_entry_get_value(entry);
 
     if( !gcv ) {
-        mce_log(LL_DEBUG, "GConf Key `%s' has been unset",
-                gconf_entry_get_key(entry));
+        mce_log(LL_DEBUG, "GConf Key `%s' has been unset", gconf_entry_get_key(entry));
         goto EXIT;
     }
 
     if( id == fba_setting_als_enabled_id ) {
-        fba_setting_als_enabled = gconf_value_get_bool(gcv);
+        gboolean val = gconf_value_get_bool(gcv);
+        mce_log(LL_NOTICE, "fba_setting_als_enabled: %s -> %s", bool_repr(fba_setting_als_enabled), bool_repr(val));
+
+        fba_setting_als_enabled = val;
         fba_status_rethink();
     }
-    else if( id == fba_setting_als_autobrightness_id ) {
-        fba_setting_als_autobrightness = gconf_value_get_bool(gcv);
+    else if( id == fba_setting_display_autobrightness_id ) {
+        gboolean val = gconf_value_get_bool(gcv);
+        mce_log(LL_NOTICE, "fba_setting_display_autobrightness: %s -> %s",
+                bool_repr(fba_setting_display_autobrightness), bool_repr(val));
+
+        fba_setting_display_autobrightness = val;
+        fba_status_rethink();
+    }
+    else if( id == fba_setting_keypad_autobrightness_id ) {
+        gboolean val = gconf_value_get_bool(gcv);
+        mce_log(LL_NOTICE, "fba_setting_keypad_autobrightness: %s -> %s",
+                bool_repr(fba_setting_keypad_autobrightness), bool_repr(val));
+
+        fba_setting_keypad_autobrightness = val;
+        fba_status_rethink();
+    }
+    else if( id == fba_setting_led_autobrightness_id ) {
+        gboolean val = gconf_value_get_bool(gcv);
+        mce_log(LL_NOTICE, "fba_setting_led_autobrightness: %s -> %s",
+                bool_repr(fba_setting_led_autobrightness), bool_repr(val));
+
+        fba_setting_led_autobrightness = val;
         fba_status_rethink();
     }
     else if( id == fba_setting_filter_lid_with_als_id ) {
-        fba_setting_filter_lid_with_als = gconf_value_get_bool(gcv);
+        gboolean val = gconf_value_get_bool(gcv);
+        mce_log(LL_NOTICE, "fba_setting_filter_lid_with_als: %s -> %s",
+                bool_repr(fba_setting_filter_lid_with_als), bool_repr(val));
+
+        fba_setting_filter_lid_with_als = val;
         fba_status_rethink();
     }
     else if( id == fba_setting_als_input_filter_id ) {
         const char *val = gconf_value_get_string(gcv);
+        mce_log(LL_NOTICE, "fba_setting_als_input_filter: %s -> %s",
+                str_repr(fba_setting_als_input_filter), str_repr(val));
 
         if( !fba_util_streq(fba_setting_als_input_filter, val) ) {
             g_free(fba_setting_als_input_filter);
@@ -351,19 +403,16 @@ fba_setting_cb(GConfClient *const gcc, const guint id,
         }
     }
     else if( id == fba_setting_als_sample_time_id ) {
-        gint old = fba_setting_als_sample_time;
-        fba_setting_als_sample_time = gconf_value_get_int(gcv);
+        gint val = gconf_value_get_int(gcv);
+        mce_log(LL_NOTICE, "fba_setting_als_sample_time: %d -> %d", fba_setting_als_sample_time, val);
 
-        if( fba_setting_als_sample_time != old ) {
-            mce_log(LL_NOTICE, "fba_setting_als_sample_time: %d -> %d",
-                    old, fba_setting_als_sample_time);
-            // NB: takes effect on the next sample timer restart
-        }
+        fba_setting_als_sample_time = val;
+        // NB: takes effect on the next sample timer restart
     }
     else if (id == fba_setting_color_profile_id) {
         const gchar *val = gconf_value_get_string(gcv);
-        mce_log(LL_NOTICE, "fba_setting_color_profile: '%s' -> '%s'",
-                fba_setting_color_profile, val);
+        mce_log(LL_NOTICE, "fba_setting_color_profile: '%s' -> '%s'", str_repr(fba_setting_color_profile), str_repr(val));
+
         fba_color_profile_set(val);
     }
     else {
@@ -388,10 +437,22 @@ fba_setting_init(void)
                            &fba_setting_als_enabled_id);
 
     mce_setting_track_bool(MCE_SETTING_DISPLAY_ALS_AUTOBRIGHTNESS,
-                           &fba_setting_als_autobrightness,
+                           &fba_setting_display_autobrightness,
                            MCE_DEFAULT_DISPLAY_ALS_AUTOBRIGHTNESS,
                            fba_setting_cb,
-                           &fba_setting_als_autobrightness_id);
+                           &fba_setting_display_autobrightness_id);
+
+    mce_setting_track_bool(MCE_SETTING_KEYPADBACKLIGHT_ALS_AUTOBRIGHTNESS,
+                           &fba_setting_keypad_autobrightness,
+                           MCE_DEFAULT_KEYPADBACKLIGHT_ALS_AUTOBRIGHTNESS,
+                           fba_setting_cb,
+                           &fba_setting_keypad_autobrightness_id);
+
+    mce_setting_track_bool(MCE_SETTING_LED_ALS_AUTOBRIGHTNESS,
+                           &fba_setting_led_autobrightness,
+                           MCE_DEFAULT_LED_ALS_AUTOBRIGHTNESS,
+                           fba_setting_cb,
+                           &fba_setting_led_autobrightness_id);
 
     mce_setting_track_bool(MCE_SETTING_TK_FILTER_LID_WITH_ALS,
                            &fba_setting_filter_lid_with_als,
@@ -430,8 +491,14 @@ fba_setting_quit(void)
     mce_setting_notifier_remove(fba_setting_als_enabled_id),
         fba_setting_als_enabled_id = 0;
 
-    mce_setting_notifier_remove(fba_setting_als_autobrightness_id),
-        fba_setting_als_autobrightness_id = 0;
+    mce_setting_notifier_remove(fba_setting_display_autobrightness_id),
+        fba_setting_display_autobrightness_id = 0;
+
+    mce_setting_notifier_remove(fba_setting_keypad_autobrightness_id),
+        fba_setting_keypad_autobrightness_id = 0;
+
+    mce_setting_notifier_remove(fba_setting_led_autobrightness_id),
+        fba_setting_led_autobrightness_id = 0;
 
     mce_setting_notifier_remove(fba_setting_filter_lid_with_als_id),
         fba_setting_filter_lid_with_als_id = 0;
@@ -1196,6 +1263,12 @@ static display_state_t fba_display_state_curr_next = MCE_DISPLAY_UNDEF;
 /** Cached als poll state; tracked via fba_datapipe_light_sensor_poll_request_filter() */
 static bool fba_light_sensor_polling = false;
 
+/** Cached led_enabled state */
+static bool fba_led_enabled = false;
+
+/** Cached light_sensor_active state */
+static bool fba_light_sensor_active = false;
+
 /**
  * Ambient Light Sensor filter for display brightness
  *
@@ -1209,7 +1282,7 @@ fba_datapipe_display_brightness_filter(gpointer data)
 
     int brightness = setting;
 
-    if( !fba_setting_als_autobrightness || fba_inputflt_output_lux < 0 )
+    if( !fba_setting_display_autobrightness || fba_inputflt_output_lux < 0 )
         goto EXIT;
 
     int max_prof = lut_display.profiles - 1;
@@ -1236,36 +1309,38 @@ EXIT:
 static gpointer
 fba_datapipe_led_brightness_filter(gpointer data)
 {
-    /* Startup default: LED brightness scale is unknown */
+    /* Startup default: LED autobrightness scale is unknown
+     *
+     * Once sensor data is available, the value derived from
+     * it is retained over sensor stop/start cycles.
+     */
     static int prev_scale = -1;
 
-    /* Default to: Brightness setting * 40 % */
+    /* Input is: brightness setting in 1-100 range */
     int brightness = GPOINTER_TO_INT(data);
+
+    /* Default to: brightness setting * 40% */
     int curr_scale = 40;
 
-    /* Check if LED brightness configuration exists */
-    if( lut_led.profiles < 1 )
-        goto EXIT;
-
-    /* Forget cached output state if als master toggle or
-     * autobrightness setting gets disabled */
-    if(  !fba_setting_als_enabled ||
-         !fba_setting_als_autobrightness ) {
+    if( !fba_setting_led_autobrightness || lut_led.profiles < 1 ) {
+        /* Autobrightness is disabled or not configured */
         prev_scale = -1;
-        goto EXIT;
     }
-
-    if( fba_inputflt_output_lux >= 0 ) {
+    else if( !fba_led_enabled ) {
+        /* Regular LED patterns disabled = CSD LED test is running
+         * -> do not allow sensor data to turn the led off */
+        prev_scale = -1;
+    }
+    else if( fba_inputflt_output_lux >= 0 ) {
         /* Evaluate brightness scale based on available sensor data */
-        curr_scale = fba_als_filter_run(&lut_led, 0, fba_inputflt_output_lux);
-        prev_scale = curr_scale;
+        prev_scale = curr_scale = fba_als_filter_run(&lut_led, 0, fba_inputflt_output_lux);
     }
     else if( prev_scale >= 0 ) {
         /* Use previously evaluated brightness scale */
         curr_scale = prev_scale;
     }
 
-EXIT:
+    /* Result is: modified brightness setting in 1-100 range */
     return GINT_TO_POINTER(brightness * curr_scale / 100);
 }
 
@@ -1279,7 +1354,7 @@ fba_datapipe_lpm_brightness_filter(gpointer data)
 {
     int value = GPOINTER_TO_INT(data);
 
-    if( !fba_setting_als_autobrightness || fba_inputflt_output_lux < 0 )
+    if( !fba_setting_display_autobrightness || fba_inputflt_output_lux < 0 )
         goto EXIT;
 
     if( lut_lpm.profiles < 1 )
@@ -1302,18 +1377,25 @@ EXIT:
 static gpointer
 fba_datapipe_key_backlight_brightness_filter(gpointer data)
 {
+    /* Input is: hw brightness value */
     int value = GPOINTER_TO_INT(data);
+
+    /* Default to: brightness value * 100% */
     int scale = 100;
 
-    if( !fba_setting_als_autobrightness || fba_inputflt_output_lux < 0 )
-        goto EXIT;
+    if( !fba_setting_keypad_autobrightness || lut_key.profiles < 1 ) {
+        /* Autobrightness is disabled or not configured */
+    }
+    else if( !fba_setting_als_enabled || !fba_light_sensor_active ) {
+        /* Sensor use is disabled / sensor is not in active state
+         * -> do not allow fallback value to turn the backlight off */
+    }
+    else if( fba_inputflt_output_lux >= 0 ) {
+        /* Evaluate brightness scale based on available sensor data */
+        scale = fba_als_filter_run(&lut_key, 0, fba_inputflt_output_lux);
+    }
 
-    if( lut_key.profiles < 1 )
-        goto EXIT;
-
-    scale = fba_als_filter_run(&lut_key, 0, fba_inputflt_output_lux);
-
-EXIT:
+    /* Result is: modified hw brightness value */
     return GINT_TO_POINTER(value * scale / 100);
 }
 
@@ -1393,6 +1475,48 @@ EXIT:
     return;
 }
 
+/** Notification callback for led_enabled_pipe
+ *
+ * @param data  boolean value as void pointer
+ */
+static void fba_datapipe_led_enabled_trigger(gconstpointer data)
+{
+    bool prev = fba_led_enabled;
+
+    fba_led_enabled = GPOINTER_TO_UINT(data);
+
+    if( fba_led_enabled == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "led_enabled = %s -> %s", bool_repr(prev), bool_repr(fba_led_enabled));
+
+    fba_status_rethink();
+
+EXIT:
+    return;
+}
+
+/** Notification callback for light_sensor_active_pipe
+ *
+ * @param data  boolean value as void pointer
+ */
+static void fba_datapipe_light_sensor_active_trigger(gconstpointer data)
+{
+    bool prev = fba_light_sensor_active;
+
+    fba_light_sensor_active = GPOINTER_TO_UINT(data);
+
+    if( fba_light_sensor_active == prev )
+        goto EXIT;
+
+    mce_log(LL_DEBUG, "light_sensor_active = %s -> %s", bool_repr(prev), bool_repr(fba_light_sensor_active));
+
+    fba_status_rethink();
+
+EXIT:
+    return;
+}
+
 static void
 fba_datapipe_execute_brightness_change(void)
 {
@@ -1440,6 +1564,14 @@ static datapipe_handler_t fba_datapipe_handlers[] =
     {
         .datapipe  = &display_state_curr_pipe,
         .output_cb = fba_datapipe_display_state_curr_trigger,
+    },
+    {
+        .datapipe  = &led_enabled_pipe,
+        .output_cb = fba_datapipe_led_enabled_trigger,
+    },
+    {
+        .datapipe  = &light_sensor_active_pipe,
+        .output_cb = fba_datapipe_light_sensor_active_trigger,
     },
 
     // sentinel
@@ -1707,8 +1839,8 @@ fba_status_sensor_is_needed(void)
     case MCE_DISPLAY_DIM:
     case MCE_DISPLAY_LPM_OFF:
     case MCE_DISPLAY_LPM_ON:
-        if( fba_setting_als_autobrightness || fba_setting_filter_lid_with_als )
-            need_als = true;
+        need_als = (fba_setting_display_autobrightness || fba_setting_filter_lid_with_als ||
+                    fba_setting_keypad_autobrightness  || fba_setting_led_autobrightness);
         break;
 
     default:
@@ -1725,14 +1857,11 @@ fba_status_sensor_is_needed(void)
 static void
 fba_status_rethink(void)
 {
-    static int old_autobrightness = -1;
-
     static int enable_old = -1;
     bool       enable_new = false;
 
     if( fba_setting_als_enabled )
-        enable_new = (fba_light_sensor_polling ||
-                      fba_status_sensor_is_needed());
+        enable_new = fba_light_sensor_polling || fba_status_sensor_is_needed();
 
     if( fba_module_unload )
         enable_new = false;
@@ -1740,8 +1869,9 @@ fba_status_rethink(void)
     if( enable_old == enable_new )
         goto EXIT;
 
-    mce_log(LL_DEBUG, "enabled=%d; autobright=%d; filter_lid=%d -> enable=%d",
-            fba_setting_als_enabled, fba_setting_als_autobrightness, fba_setting_filter_lid_with_als, enable_new);
+    mce_log(LL_DEBUG, "enabled=%d; display=%d; keypad=%d; led=%d: filter_lid=%d -> enable=%d",
+            fba_setting_als_enabled, fba_setting_display_autobrightness, fba_setting_keypad_autobrightness,
+            fba_setting_led_autobrightness, fba_setting_filter_lid_with_als, enable_new);
 
     enable_old = enable_new;
 
@@ -1775,10 +1905,8 @@ fba_status_rethink(void)
     }
 
 EXIT:
-    if( old_autobrightness != fba_setting_als_autobrightness ) {
-        old_autobrightness = fba_setting_als_autobrightness;
-        fba_datapipe_execute_brightness_change();
-    }
+    /* Always re-execute filters */
+    fba_datapipe_execute_brightness_change();
 
     /* Block device from suspending while temporary ALS poll is active */
     if( enable_new && fba_light_sensor_polling )

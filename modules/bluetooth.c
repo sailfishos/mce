@@ -55,7 +55,10 @@ static gboolean bluetooth_dbus_bluez4_signal_cb(DBusMessage *const msg);
 
 static void     bluetooth_dbus_bluez5_parse_changed_properties(DBusMessageIter *body);
 static void     bluetooth_dbus_bluez5_parse_dropped_properties(DBusMessageIter *body);
-static gboolean bluetooth_dbus_bluez5_signal_cb(DBusMessage *const msg);
+static bool     bluetooth_dbus_message_is_from_bluez5(DBusMessage *msg);
+static gboolean bluetooth_dbus_bluez5_properties_changed_cb(DBusMessage *msg);
+static gboolean bluetooth_dbus_bluez5_interfaces_added_cb(DBusMessage *msg);
+static gboolean bluetooth_dbus_bluez5_interfaces_removed_cb(DBusMessage *msg);
 
 static void     bluetooth_dbus_init(void);
 static void     bluetooth_dbus_quit(void);
@@ -283,20 +286,17 @@ EXIT:
     return;
 }
 
-/** Handle signal originating from bluez5
- *
- * MCE is not interested in the signal content per se, any incoming
- * signals just mean there is bluetooth activity and mce should allow
- * related ipc and processing to happen without the device getting
- * suspened too soon.
+/** Check if message originates from bluez5
  *
  * @param msg dbus signal message
  *
- * @return TRUE
+ * @return true if signal was sent by bluez, false otherwise
  */
-static gboolean
-bluetooth_dbus_bluez5_signal_cb(DBusMessage *const msg)
+static bool
+bluetooth_dbus_message_is_from_bluez5(DBusMessage *msg)
 {
+    bool from_bluez5 = false;
+
     static const char name[] = "org.bluez";
 
     /* Note: The signal match rule can and should use the
@@ -320,6 +320,32 @@ bluetooth_dbus_bluez5_signal_cb(DBusMessage *const msg)
 
     if( strcmp(sender, owner) && strcmp(sender, name) )
         goto EXIT;
+
+    from_bluez5 = true;
+
+EXIT:
+    return from_bluez5;
+}
+
+/** Handle PropertiesChanged signal originating from bluez5
+ *
+ * Receiving of these signals is taken as an indication of
+ * bluetooth activity that should briefly block suspend.
+ *
+ * Additionally message content is inspected in case there
+ * are property changes that trigger notification LED activity.
+ *
+ * @param msg dbus signal message
+ *
+ * @return TRUE
+ */
+static gboolean
+bluetooth_dbus_bluez5_properties_changed_cb(DBusMessage *msg)
+{
+    if( !bluetooth_dbus_message_is_from_bluez5(msg) )
+        goto EXIT;
+
+    bluetooth_suspend_block_start();
 
     DBusMessageIter body;
 
@@ -355,9 +381,43 @@ bluetooth_dbus_bluez5_signal_cb(DBusMessage *const msg)
     bluetooth_dbus_bluez5_parse_changed_properties(&body);
     bluetooth_dbus_bluez5_parse_dropped_properties(&body);
 
-    bluetooth_suspend_block_start();
-
 EXIT:
+    return TRUE;
+}
+
+/** Handle InterfacesAdded signal originating from bluez5
+ *
+ * Receiving of these signals is taken as an indication of
+ * bluetooth activity that should briefly block suspend.
+ *
+ * @param msg dbus signal message
+ *
+ * @return TRUE
+ */
+static gboolean
+bluetooth_dbus_bluez5_interfaces_added_cb(DBusMessage *msg)
+{
+    if( bluetooth_dbus_message_is_from_bluez5(msg) )
+        bluetooth_suspend_block_start();
+
+    return TRUE;
+}
+
+/** Handle InterfacesRemoved signal originating from bluez5
+ *
+ * Receiving of these signals is taken as an indication of
+ * bluetooth activity that should briefly block suspend.
+ *
+ * @param msg dbus signal message
+ *
+ * @return TRUE
+ */
+static gboolean
+bluetooth_dbus_bluez5_interfaces_removed_cb(DBusMessage *msg)
+{
+    if( bluetooth_dbus_message_is_from_bluez5(msg) )
+        bluetooth_suspend_block_start();
+
     return TRUE;
 }
 
@@ -401,21 +461,21 @@ static mce_dbus_handler_t bluetooth_dbus_handlers[] =
         .interface = DBUS_INTERFACE_OBJECT_MANAGER,
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
         .name      = "InterfacesAdded",
-        .callback  = bluetooth_dbus_bluez5_signal_cb,
+        .callback  = bluetooth_dbus_bluez5_interfaces_added_cb,
     },
     {
         .sender    = "org.bluez",
         .interface = DBUS_INTERFACE_OBJECT_MANAGER,
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
         .name      = "InterfacesRemoved",
-        .callback  = bluetooth_dbus_bluez5_signal_cb,
+        .callback  = bluetooth_dbus_bluez5_interfaces_removed_cb,
     },
     {
         .sender    = "org.bluez",
         .interface = DBUS_INTERFACE_PROPERTIES,
         .type      = DBUS_MESSAGE_TYPE_SIGNAL,
         .name      = "PropertiesChanged",
-        .callback  = bluetooth_dbus_bluez5_signal_cb,
+        .callback  = bluetooth_dbus_bluez5_properties_changed_cb,
     },
     /* sentinel */
     {
