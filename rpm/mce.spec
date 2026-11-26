@@ -1,5 +1,5 @@
 Name:       mce
-Summary:    Mode Control Entity for Nokia mobile computers
+Summary:    Mode Control Entity
 Version:    1.122.4
 Release:    1
 License:    LGPLv2
@@ -11,8 +11,6 @@ Requires:   systemd
 Requires(preun): systemd
 Requires(post): systemd
 Requires(postun): systemd
-Conflicts: mce-plugin-libhybris < 1.3.0
-Conflicts: lipstick-qt5 < 0.24.7
 BuildRequires:  pkgconfig(dbus-1) >= 1.8.0
 BuildRequires:  pkgconfig(dsme) >= 0.65.0
 BuildRequires:  pkgconfig(thermalmanager_dbus_if)
@@ -21,23 +19,19 @@ BuildRequires:  pkgconfig(glib-2.0) >= 2.36.0
 BuildRequires:  pkgconfig(mce) >= 1.36.0
 BuildRequires:  pkgconfig(libngf0) >= 0.24
 BuildRequires:  pkgconfig(libsystemd)
-BuildRequires:  kernel-headers >= 2.6.32
 BuildRequires:  pkgconfig(usb_moded)
 BuildRequires:  pkgconfig(libudev)
+BuildRequires:  kernel-headers
 # systemd has /etc/rpm/macros.systemd
-# Automatically genereted libglib-2.0.so.0 dependency is not enough
-Requires: glib2 >= 2.36.0
 
 %description
 This package contains the Mode Control Entity which provides
 mode management features.  This is a daemon that is the backend
-for many features on Nokia's mobile computers.
+for many features on mobile devices.
 
 %package tools
 Summary:    Tools for interacting with mce
 Requires:   %{name} = %{version}-%{release}
-# Automatically genereted libglib-2.0.so.0 dependency is not enough
-Requires: glib2 >= 2.36.0
 
 %description tools
 This package contains tools that can be used to interact with
@@ -46,8 +40,6 @@ the Mode Control Entity and to get mode information.
 %package tests
 Summary:  Test suite for mce
 BuildRequires:  pkgconfig(check)
-# Automatically genereted libglib-2.0.so.0 dependency is not enough
-Requires: glib2 >= 2.36.0
 
 %description tests
 This package contains test suite for mce
