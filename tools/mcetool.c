@@ -2595,6 +2595,7 @@ static bool mcetool_do_enable_led(const char *arg)
         (void)arg;
         return xmce_ipc_no_reply(MCE_ENABLE_LED, DBUS_TYPE_INVALID);
 }
+
 /** Disable LED feature
  */
 static bool mcetool_do_disable_led(const char *arg)
@@ -2655,6 +2656,7 @@ static bool mcetool_do_deactivate_pattern(const char *args)
                                  DBUS_TYPE_STRING, &args,
                                  DBUS_TYPE_INVALID);
 }
+
 /* ------------------------------------------------------------------------- *
  * mce verbosity
  * ------------------------------------------------------------------------- */
@@ -3294,6 +3296,7 @@ static void xmce_get_lpmui_triggering(void)
 
         printf("%-"PAD1"s %s\n", "LPM UI triggering:", work);
 }
+
 /* ------------------------------------------------------------------------- *
  * input_grab triggering
  * ------------------------------------------------------------------------- */
@@ -6006,6 +6009,7 @@ FAILURE:
 
         return ret;
 }
+
 /** Helper for showing current dbus action config
  */
 static void xmce_get_powerkey_dbus_action(size_t action_id)
@@ -6645,6 +6649,7 @@ static bool xmce_set_brightness_fade_default(const char *args)
         int val = xmce_parse_integer(args);
         return xmce_setting_set_int(key, val);
 }
+
 static bool xmce_set_brightness_fade_dimming(const char *args)
 {
         const char *key = MCE_SETTING_BRIGHTNESS_FADE_DIMMING_MS;
@@ -6654,6 +6659,7 @@ static bool xmce_set_brightness_fade_dimming(const char *args)
         int val = xmce_parse_integer(args);
         return xmce_setting_set_int(key, val);
 }
+
 static bool xmce_set_brightness_fade_als(const char *args)
 {
         const char *key = MCE_SETTING_BRIGHTNESS_FADE_ALS_MS;
@@ -6663,6 +6669,7 @@ static bool xmce_set_brightness_fade_als(const char *args)
         int val = xmce_parse_integer(args);
         return xmce_setting_set_int(key, val);
 }
+
 static bool xmce_set_brightness_fade_blank(const char *args)
 {
         const char *key = MCE_SETTING_BRIGHTNESS_FADE_BLANK_MS;
@@ -6672,6 +6679,7 @@ static bool xmce_set_brightness_fade_blank(const char *args)
         int val = xmce_parse_integer(args);
         return xmce_setting_set_int(key, val);
 }
+
 static bool xmce_set_brightness_fade_unblank(const char *args)
 {
         const char *key = MCE_SETTING_BRIGHTNESS_FADE_UNBLANK_MS;
@@ -7538,18 +7546,21 @@ static bool mcetool_do_unblank_screen(const char *arg)
         xmce_set_display_state("on");
         return true;
 }
+
 static bool mcetool_do_dim_screen(const char *arg)
 {
         (void)arg;
         xmce_set_display_state("dim");
         return true;
 }
+
 static bool mcetool_do_blank_screen(const char *arg)
 {
         (void)arg;
         xmce_set_display_state("off");
         return true;
 }
+
 static bool mcetool_do_blank_screen_lpm(const char *arg)
 {
         (void)arg;

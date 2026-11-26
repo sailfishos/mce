@@ -1043,6 +1043,7 @@ fba_inputflt_sampling_output(int lux)
 EXIT:
     return;
 }
+
 /** Timer callback for: ALS data sampling
  *
  * @param aptr (unused user data pointer)

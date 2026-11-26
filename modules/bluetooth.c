@@ -496,6 +496,7 @@ static void bluetooth_dbus_quit(void)
 {
     mce_dbus_handler_unregister_array(bluetooth_dbus_handlers);
 }
+
 /* ========================================================================= *
  * DATAPIPE_TRACKING
  * ========================================================================= */

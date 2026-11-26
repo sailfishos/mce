@@ -9609,6 +9609,7 @@ static struct
     int64_t         entries;
     int64_t         time_ms;
 }
+
 mdy_statistics_data[MCE_DISPLAY_NUMSTATES] =
 {
     [MCE_DISPLAY_UNDEF]      = { 0, 0 },

@@ -319,6 +319,7 @@ void wakelock_unlock(const char *name)
 		lwl_write_file(lwl_unlock_path, tmp);
 	}
 }
+
 /** Use sysfs interface to allow automatic entry to suspend
  *
  * After this call the device will enter suspend mode once all

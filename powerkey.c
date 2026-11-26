@@ -3585,6 +3585,7 @@ xngf_state_repr(NgfEventState state)
 
     return repr;
 }
+
 static void
 xngf_status_cb(NgfClient *client, uint32_t event_id, NgfEventState state, void *userdata)
 {
