@@ -1,3 +1,9 @@
+mce (1.122.4) precise; urgency=low
+
+  * [als] Add setting for keypad backlight thresholds. JB#66132
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Thu, 26 Nov 2026 13:48:50 +0200
+
 mce (1.122.3) precise; urgency=low
 
   * [mce] Make logging less verbose
