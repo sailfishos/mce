@@ -106,7 +106,9 @@ static void     keypad_indicator_update_enabled(void);
  * ------------------------------------------------------------------------- */
 
 static void     keypad_set_mode                (int backlight_mode);
-static void     keypad_set_brightness          (guint brightness);
+static gboolean keypad_brightness_commit_cb    (gpointer aptr);
+static void     keypad_commit_brightness       (void);
+static void     keypad_set_brightness          (gint brightness);
 static void     keypad_set_backlight_on        (void);
 static void     keypad_set_backlight_off       (void);
 static gboolean keypad_backlight_timeout_cb    (gpointer data);
@@ -121,6 +123,7 @@ static void     keypad_rethink_backlight_policy(void);
 static void keypad_datapipe_key_backlight_brightness_cb(gconstpointer data);
 static void keypad_datapipe_system_state_cb            (gconstpointer data);
 static void keypad_datapipe_display_state_curr_cb      (gconstpointer data);
+static void keypad_datapipe_display_state_next_cb      (gconstpointer data);
 static void keypad_datapipe_submode_cb                 (gconstpointer const data);
 static void keypad_datapipe_interaction_expected_cb    (gconstpointer const data);
 static void keypad_datapipe_device_inactive_cb         (gconstpointer const data);
@@ -245,6 +248,8 @@ static GSList *keypad_dbus_mode_clients = NULL;
 /* Locally cached datapipe values */
 static system_state_t   system_state         = MCE_SYSTEM_STATE_UNDEF;
 static display_state_t  display_state_curr   = MCE_DISPLAY_UNDEF;
+static display_state_t  display_state_next   = MCE_DISPLAY_UNDEF;
+
 static submode_t        submode              = MCE_SUBMODE_INVALID;
 static bool             interaction_expected = false;
 static bool             device_inactive      = true;
@@ -370,7 +375,7 @@ static void keypad_indicator_update_enabled(void)
     if( lid_sensor_filtered != COVER_CLOSED )
         goto EXIT;
 
-    if( display_state_curr != MCE_DISPLAY_OFF )
+    if( display_state_curr != MCE_DISPLAY_OFF || display_state_next != MCE_DISPLAY_OFF )
         goto EXIT;
 
     if( charger_state != CHARGER_STATE_ON )
@@ -418,18 +423,74 @@ keypad_set_mode(int backlight_mode)
     }
 }
 
+static gint  keypad_brightness_active = -1;
+static gint  keypad_brightness_target = 0;
+static guint keypad_brightness_commit_id = 0;
+
+/** Timer callback for setting backlight hw brightness
+ *
+ * Executes hw brightness modification after debounce delay.
+ *
+ * @param aptr Unused user data pointer
+ *
+ * @return G_SOURCE_REMOVE to stop timer from repeating
+ */
+static gboolean
+keypad_brightness_commit_cb(gpointer aptr)
+{
+    (void)aptr;
+
+    mce_log(LL_DEBUG, "delayed brightness commit: triggered");
+
+    keypad_brightness_commit_id = 0;
+
+    keypad_commit_brightness();
+
+    return G_SOURCE_REMOVE;
+}
+
+/** Synchronize keypad hw brightness with the target value
+ *
+ * If there is a pending delayed commit, it is canceled.
+ */
+static void
+keypad_commit_brightness(void)
+{
+    if( keypad_brightness_commit_id ) {
+        mce_log(LL_DEBUG, "delayed brightness commit: forced");
+        g_source_remove(keypad_brightness_commit_id), keypad_brightness_commit_id = 0;
+    }
+
+    if( keypad_brightness_active != keypad_brightness_target ) {
+        mce_log(LL_DEBUG, "keypad_brightness_active: %d -> %d", keypad_brightness_active, keypad_brightness_target);
+
+        keypad_brightness_active = keypad_brightness_target;
+        keypad_backlight_active  = keypad_brightness_active > 0;
+
+        if( !mce_write_number_string_to_file(&keypad_brightness_file, (guint)keypad_brightness_active) )
+            mce_log(LL_ERR, "failed to write '%d' to %s", keypad_brightness_active, keypad_brightness_file.path);
+
+    }
+}
+
 /** Key backlight brightness
  *
  * @param brightness Backlight brightness
  */
 static void
-keypad_set_brightness(guint brightness)
+keypad_set_brightness(gint brightness)
 {
-    if( keypad_brightness_file.path ) {
-        if( !mce_write_number_string_to_file(&keypad_brightness_file, brightness) )
-            mce_log(LL_ERR, "failed to write '%u' to %s", brightness, keypad_brightness_file.path);
-        else
-            keypad_backlight_active = brightness > 0;
+    if( brightness < 0 )
+        brightness = 0;
+
+    if( keypad_brightness_target != brightness ) {
+        mce_log(LL_DEBUG, "keypad_brightness_target: %d -> %d", keypad_brightness_target, brightness);
+        keypad_brightness_target = brightness;
+
+        if( !keypad_brightness_commit_id ) {
+            mce_log(LL_DEBUG, "delayed brightness commit: scheduled");
+            keypad_brightness_commit_id = g_idle_add(keypad_brightness_commit_cb, NULL);
+        }
     }
 }
 
@@ -514,7 +575,7 @@ keypad_rethink_backlight_policy(void)
     if( system_state != MCE_SYSTEM_STATE_USER )
         allow = false;
 
-    if( display_state_curr != MCE_DISPLAY_ON )
+    if( display_state_curr != MCE_DISPLAY_ON || display_state_next != MCE_DISPLAY_ON )
         allow = false;
 
     if( keypad_type == KEYPAD_TYPE_FLIP ) {
@@ -650,7 +711,7 @@ keypad_datapipe_system_state_cb(gconstpointer data)
     }
 }
 
-/** Datapipe trigger for display state
+/** Datapipe trigger for current display state
  *
  * @param data display_state_curr_pipe status as a pointer
  */
@@ -663,6 +724,22 @@ keypad_datapipe_display_state_curr_cb(gconstpointer data)
 
     if( prev != display_state_curr ) {
         mce_log(LL_DEBUG, "display_state_curr: %s -> %s", display_state_repr(prev), display_state_repr(display_state_curr));
+        keypad_indicator_update_enabled();
+        keypad_rethink_backlight_policy();
+    }
+}
+
+/** Datapipe trigger for target display state
+ *
+ * @param data display_state_next_pipe status as a pointer
+ */
+static void keypad_datapipe_display_state_next_cb(gconstpointer data)
+{
+    display_state_t prev = display_state_next;
+    display_state_next = GPOINTER_TO_INT(data);
+
+    if( prev != display_state_next ) {
+        mce_log(LL_DEBUG, "display_state_next = %s -> %s", display_state_repr(prev), display_state_repr(display_state_next));
         keypad_indicator_update_enabled();
         keypad_rethink_backlight_policy();
     }
@@ -827,6 +904,10 @@ static datapipe_handler_t mce_keypad_datapipe_handlers[] =
     {
         .datapipe  = &display_state_curr_pipe,
         .output_cb = keypad_datapipe_display_state_curr_cb,
+    },
+    {
+        .datapipe  = &display_state_next_pipe,
+        .output_cb = keypad_datapipe_display_state_next_cb,
     },
     {
         .datapipe  = &submode_pipe,
@@ -1347,4 +1428,5 @@ g_module_unload(GModule *module)
     /* Do not leave timers behind */
     keypad_cancel_backlight_timeout();
     keypad_indicator_cancel_timeout();
+    keypad_commit_brightness();
 }
