@@ -1543,19 +1543,20 @@ fba_datapipe_key_backlight_brightness_filter(gpointer data)
     /* Default to: brightness value * 100% */
     int scale = 100;
 
-    if( !fba_setting_keypad_autobrightness || lut_key.profiles < 1 ) {
-        /* Autobrightness is disabled or not configured */
+    if( !fba_setting_als_enabled || !fba_setting_keypad_autobrightness ) {
+        /* Sensor / autobrightness feature disabled -> backlight on */
+        fba_saved_key_backlight_scale = scale;
     }
-    else if( !fba_setting_als_enabled || !fba_light_sensor_active ) {
-        /* Sensor use is disabled / sensor is not in active state
-         * -> do not allow fallback value to turn the backlight off */
+    else if( !fba_light_sensor_active ) {
+        /* Sensor is inactive -> backlight off - without affecting hystereis */
+        scale = 0;
     }
     else if( fba_setting_keypad_autobrightness_mode == AUTOBRIGHTNESS_MODE_THRESHOLD ) {
         /* Dynamic threshold settings with hysteresis.
          * Used in devices where backlight brightness control is binary on/off.
          */
         if( fba_saved_key_backlight_scale < 0 ) {
-            /* Service restart / settings change -> hysteresis reset */
+            /* No history -> evaluate without hysteresis */
             if( fba_inputflt_output_lux < 0 )
                 scale = 0;
             else if( fba_inputflt_output_lux <= fba_setting_keypad_threshold_on )
@@ -1564,6 +1565,7 @@ fba_datapipe_key_backlight_brightness_filter(gpointer data)
                 scale = 0;
         }
         else {
+            /* Evaluate state with hysteresis */
             if( fba_inputflt_output_lux <= fba_setting_keypad_threshold_on )
                 scale = 100;
             else if( fba_inputflt_output_lux >= fba_setting_keypad_threshold_off )
@@ -1571,20 +1573,22 @@ fba_datapipe_key_backlight_brightness_filter(gpointer data)
             else
                 scale = fba_saved_key_backlight_scale;
         }
+        fba_saved_key_backlight_scale = scale;
     }
     else {
         /* Static brightness ladder configuration.
          * Used in devices where backlight brightness control has N levels.
          */
-        if( fba_inputflt_output_lux >= 0 )
+        if( lut_key.profiles < 1 )
+            scale = 100;
+        else if( fba_inputflt_output_lux >= 0 )
             scale = fba_als_filter_run(&lut_key, 0, fba_inputflt_output_lux);
         else if( fba_saved_key_backlight_scale >= 0 )
             scale = fba_saved_key_backlight_scale;
         else
             scale = 0;
+        fba_saved_key_backlight_scale = scale;
     }
-
-    fba_saved_key_backlight_scale = scale;
 
     /* Result is: modified hw brightness value */
     return GINT_TO_POINTER(value * scale / 100);
