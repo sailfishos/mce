@@ -1,6 +1,6 @@
 Name:       mce
 Summary:    Mode Control Entity
-Version:    1.122.4
+Version:    1.122.5
 Release:    1
 License:    LGPLv2
 URL:        https://github.com/sailfishos/mce

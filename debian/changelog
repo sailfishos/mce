@@ -1,3 +1,10 @@
+mce (1.122.5) precise; urgency=low
+
+  * [keypad] Debounce backlight hw brightness changes. Fixes JB#66213
+  * [als] Fix ladder vs threshold autobrightness differentiation. JB#66213
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Fri, 27 Nov 2026 13:57:36 +0200
+
 mce (1.122.4) precise; urgency=low
 
   * [als] Add setting for keypad backlight thresholds. JB#66132
